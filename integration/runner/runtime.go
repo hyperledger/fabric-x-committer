@@ -356,7 +356,7 @@ func (c *CommitterRuntime) CreateMetaTX(t *testing.T, namespaces ...string) *pro
 	t.Helper()
 	writeToMetaNs := &protoblocktx.TxNamespace{
 		NsId:       types.MetaNamespaceID,
-		NsVersion:  types.VersionNumber(0).Bytes(),
+		NsVersion:  0,
 		ReadWrites: make([]*protoblocktx.ReadWrite, 0, len(namespaces)),
 	}
 

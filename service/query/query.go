@@ -101,7 +101,7 @@ func unsafeQueryRows(
 		return nil, err
 	}
 	defer r.Close()
-	return readKeysAndValues(r, len(keys))
+	return readQueryRows(r, len(keys))
 }
 
 func queryPolicies(ctx context.Context, queryObj querier) (*protoblocktx.NamespacePolicies, error) {
@@ -110,7 +110,7 @@ func queryPolicies(ctx context.Context, queryObj querier) (*protoblocktx.Namespa
 		return nil, errors.Wrap(err, "failed to query policies")
 	}
 	defer r.Close()
-	rows, err := readKeysAndValues(r, 1)
+	rows, err := readQueryRows(r, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +133,7 @@ func queryConfig(ctx context.Context, queryObj querier) (*protoblocktx.ConfigTra
 		return nil, errors.Wrap(err, "failed to query policies")
 	}
 	defer r.Close()
-	rows, err := readKeysAndValues(r, 1)
+	rows, err := readQueryRows(r, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +145,7 @@ func queryConfig(ctx context.Context, queryObj querier) (*protoblocktx.ConfigTra
 	return configTX, nil
 }
 
-func readKeysAndValues(r pgx.Rows, expectedSize int) ([]*protoqueryservice.Row, error) {
+func readQueryRows(r pgx.Rows, expectedSize int) ([]*protoqueryservice.Row, error) {
 	rows := make([]*protoqueryservice.Row, 0, expectedSize)
 	for r.Next() {
 		v := &protoqueryservice.Row{}

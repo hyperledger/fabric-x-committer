@@ -18,7 +18,6 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protosigverifierservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/service/verifier/policy"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/channel"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/connection"
@@ -72,7 +71,7 @@ func TestMinimalInput(t *testing.T) {
 	tx1 := &protoblocktx.Tx{
 		Namespaces: []*protoblocktx.TxNamespace{{
 			NsId:      "1",
-			NsVersion: types.VersionNumber(0).Bytes(),
+			NsVersion: 0,
 			BlindWrites: []*protoblocktx.Write{{
 				Key: []byte("0001"),
 			}},
@@ -84,7 +83,7 @@ func TestMinimalInput(t *testing.T) {
 	tx2 := &protoblocktx.Tx{
 		Namespaces: []*protoblocktx.TxNamespace{{
 			NsId:      "1",
-			NsVersion: types.VersionNumber(0).Bytes(),
+			NsVersion: 0,
 			BlindWrites: []*protoblocktx.Write{{
 				Key: []byte("0010"),
 			}},
@@ -97,7 +96,7 @@ func TestMinimalInput(t *testing.T) {
 	tx3 := &protoblocktx.Tx{
 		Namespaces: []*protoblocktx.TxNamespace{{
 			NsId:      "1",
-			NsVersion: types.VersionNumber(0).Bytes(),
+			NsVersion: 0,
 			BlindWrites: []*protoblocktx.Write{{
 				Key: []byte("0011"),
 			}},
@@ -329,7 +328,7 @@ func makeTX(name string, namespaces ...string) *protoblocktx.Tx {
 	for i, ns := range namespaces {
 		tx.Namespaces[i] = &protoblocktx.TxNamespace{
 			NsId:      ns,
-			NsVersion: types.VersionNumber(0).Bytes(),
+			NsVersion: 0,
 			BlindWrites: []*protoblocktx.Write{{
 				Key: []byte("0001"),
 			}},

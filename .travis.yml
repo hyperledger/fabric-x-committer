@@ -52,22 +52,25 @@ jobs:
         - make lint
     - stage: test
       name: Unit Test (non DB)
-      script: make test-no-db
+      script: travis_wait 30 make test-no-db
+    - stage: test
+      name: Fuzz Test (non DB)
+      script: travis_wait 30 make test-fuzz
     - stage: test
       name: Requires and Core DB Tests (postgres)
       before_script: scripts/get-and-start-postgres.sh
-      script: make test-requires-db test-core-db
+      script: travis_wait 30 make test-requires-db test-core-db
     - stage: test
       name: Core DB Tests (yugabyte)
       before_script: scripts/get-and-start-yuga.sh
-      script: make test-core-db
+      script: travis_wait 30 make test-core-db
     - stage: test
       name: Integration Tests (yugabyte)
       before_script: scripts/get-and-start-yuga.sh
       script: travis_wait 30 make test-integration
     - stage: test
       name: Integration DB Resiliency (container)
-      script: make test-integration-db-resiliency
+      script: travis_wait 30 make test-integration-db-resiliency
     - stage: test
       name: Build and test all-in-one test image (container)
-      script: make test-container -j16
+      script: travis_wait 30 make test-container -j16

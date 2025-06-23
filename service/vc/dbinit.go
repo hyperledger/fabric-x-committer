@@ -10,6 +10,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/yugabyte/pgx/v4/pgxpool"
@@ -29,61 +30,22 @@ const (
 	updateNsStatesFuncNamePrefix    = "update_"
 	insertNsStatesFuncNamePrefix    = "insert_"
 
-	createTxStatusTableSQLStmt = `
-		CREATE TABLE IF NOT EXISTS ` + txStatusTableName + `(
-				tx_id BYTEA NOT NULL PRIMARY KEY,
-				status INTEGER,
-				height BYTEA NOT NULL
-		);
-	`
+	nsTableTemplateMarker = "ns_table"
 
-	createMetadataTableSQLStmt = `
-		CREATE TABLE IF NOT EXISTS ` + metadataTableName + `(
-				key BYTEA NOT NULL PRIMARY KEY,
-				value BYTEA
-		);
-	`
-	createNsTableSQLTempl = `
-		CREATE TABLE IF NOT EXISTS %[1]s (
-				key BYTEA NOT NULL PRIMARY KEY,
-				value BYTEA DEFAULT NULL,
-				version BYTEA DEFAULT '\x00'::BYTEA
-		);
-	`
-
-	initializeMetadataPrepSQLStmt = "INSERT INTO " + metadataTableName + " VALUES ($1, $2) ON CONFLICT DO NOTHING;"
-	setMetadataPrepSQLStmt        = "UPDATE " + metadataTableName + " SET value = $2 WHERE key = $1;"
-	getMetadataPrepSQLStmt        = "SELECT value FROM " + metadataTableName + " WHERE key = $1;"
-	queryTxIDsStatusPrepSQLStmt   = "SELECT tx_id, status, height FROM " + txStatusTableName + " WHERE tx_id = ANY($1);"
+	setMetadataPrepSQLStmt      = "UPDATE " + metadataTableName + " SET value = $2 WHERE key = $1;"
+	getMetadataPrepSQLStmt      = "SELECT value FROM " + metadataTableName + " WHERE key = $1;"
+	queryTxIDsStatusPrepSQLStmt = "SELECT tx_id, status, height FROM " + txStatusTableName + " WHERE tx_id = ANY($1);"
 
 	lastCommittedBlockNumberKey = "last committed block number"
 )
 
 var (
-
-	//go:embed create_insert_tx_status_func.sql
-	createInsertTxStatusFuncSQLStmt string
-	//go:embed create_validate_func_templ.sql
-	createValidateReadsOnNsStatesFuncSQLTempl string
-	//go:embed create_update_ns_states_func_templ.sql
-	createUpdateNsStatesFuncSQLTempl string
-	//go:embed create_insert_ns_states_func_templ.sql
-	createInsertNsStatesFuncSQLTempl string
+	//go:embed init_database.sql
+	dbInitSQLStmt string
+	//go:embed create_namespace.sql
+	createNamespaceSQLStmt string
 
 	systemNamespaces = []string{types.MetaNamespaceID, types.ConfigNamespaceID}
-
-	createSystemTablesAndFuncsStmts = []string{
-		createTxStatusTableSQLStmt,
-		createInsertTxStatusFuncSQLStmt,
-		createMetadataTableSQLStmt,
-	}
-
-	createNsTablesAndFuncsTemplates = []string{
-		createNsTableSQLTempl,
-		createValidateReadsOnNsStatesFuncSQLTempl,
-		createUpdateNsStatesFuncSQLTempl,
-		createInsertNsStatesFuncSQLTempl,
-	}
 )
 
 // NewDatabasePool creates a new pool from a database config.
@@ -111,25 +73,33 @@ func NewDatabasePool(ctx context.Context, config *DatabaseConfig) (*pgxpool.Pool
 
 // TODO: merge this file with database.go.
 func (db *database) setupSystemTablesAndNamespaces(ctx context.Context) error {
-	for _, stmt := range createSystemTablesAndFuncsStmts {
-		if execErr := db.retry.ExecuteSQL(ctx, db.pool, stmt); execErr != nil {
-			return fmt.Errorf("failed to create system tables and functions: %w", execErr)
-		}
-	}
 	logger.Info("Created tx status table, metadata table, and its methods.")
-	if execErr := db.retry.ExecuteSQL(
-		ctx, db.pool, initializeMetadataPrepSQLStmt, []byte(lastCommittedBlockNumberKey), nil); execErr != nil {
-		return fmt.Errorf("failed to initialize metadata table: %w", execErr)
+	if execErr := db.retry.ExecuteSQL(ctx, db.pool, dbInitSQLStmt); execErr != nil {
+		return fmt.Errorf("failed to create system tables and functions: %w", execErr)
 	}
 
 	for _, nsID := range systemNamespaces {
-		tableName := TableName(nsID)
-		for _, stmt := range createNsTablesAndFuncsTemplates {
-			if execErr := db.retry.ExecuteSQL(ctx, db.pool, fmt.Sprintf(stmt, tableName)); execErr != nil {
-				return fmt.Errorf("failed to create tables and functions for system namespaces: %w", execErr)
-			}
+		execErr := createNsTables(nsID, func(q string) error {
+			return db.retry.ExecuteSQL(ctx, db.pool, q)
+		})
+		if execErr != nil {
+			return execErr
 		}
-		logger.Infof("namespace %s: created table '%s' and its methods.", nsID, tableName)
+		logger.Infof("namespace %s: created table and its methods.", nsID)
 	}
 	return nil
+}
+
+func createNsTables(nsID string, queryFunc func(q string) error) error {
+	tableName := TableName(nsID)
+	query := fmtQueryTable(createNamespaceSQLStmt, tableName)
+	if err := queryFunc(query); err != nil {
+		return errors.Wrapf(err, "failed to create table and functions for namespace [%s] with query [%s]",
+			nsID, query)
+	}
+	return nil
+}
+
+func fmtQueryTable(tmpl, tableName string) string {
+	return strings.ReplaceAll(tmpl, nsTableTemplateMarker, tableName)
 }

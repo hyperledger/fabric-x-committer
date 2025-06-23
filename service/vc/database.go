@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/jackc/pgtype"
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
@@ -30,10 +30,10 @@ const (
 
 	// validateReadsSQLTempl template for validating reads for each namespace.
 	validateReadsSQLTempl = "SELECT * FROM " + validateReadsOnNsFuncNamePrefix + tableNameTempl +
-		"($1::bytea[], $2::bytea[]);"
+		"($1::bytea[], $2::bigint[]);"
 	// updateNsStatesSQLTempl template for the committing updates for each namespace.
 	updateNsStatesSQLTempl = "SELECT " + updateNsStatesFuncNamePrefix + tableNameTempl +
-		"($1::bytea[], $2::bytea[], $3::bytea[]);"
+		"($1::bytea[], $2::bytea[], $3::bigint[]);"
 	// insertNsStatesSQLTempl template for committing new keys for each namespace.
 	insertNsStatesSQLTempl = "SELECT " + insertNsStatesFuncNamePrefix + tableNameTempl + "($1::bytea[], $2::bytea[]);"
 
@@ -58,7 +58,7 @@ type (
 	}
 
 	// keyToVersion is a map from key to version.
-	keyToVersion map[string][]byte
+	keyToVersion map[string]uint64
 
 	statesToBeCommitted struct {
 		updateWrites namespaceToWrites
@@ -120,13 +120,15 @@ func (db *database) validateNamespaceReads(
 	start := time.Now()
 	query := fmt.Sprintf(validateReadsSQLTempl, nsID)
 
-	keys, values, err := db.retryQueryAndReadRows(ctx, query, r.keys, r.versions)
+	conflictIdx, err := retryQueryAndReadArrayResult[int](ctx, db, query, r.keys, r.versions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to validate reads on namespace [%s]: %w", nsID, err)
 	}
-
 	readConflicts := &reads{}
-	readConflicts.appendMany(keys, values)
+	for _, i := range conflictIdx {
+		// SQL indexing starts from 1.
+		readConflicts.append(r.keys[i-1], r.versions[i-1])
+	}
 	promutil.Observe(db.metrics.databaseTxBatchValidationLatencySeconds, time.Since(start))
 
 	return readConflicts, nil
@@ -137,14 +139,14 @@ func (db *database) queryVersionsIfPresent(ctx context.Context, nsID string, que
 	start := time.Now()
 	query := fmt.Sprintf(queryVersionsSQLTempl, nsID)
 
-	foundKeys, foundVersions, err := db.retryQueryAndReadRows(ctx, query, queryKeys)
+	foundKeys, foundVersions, err := retryQueryAndReadTwoItems[[]byte, int64](ctx, db, query, queryKeys)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get keys' version from namespace [%s]: %w", nsID, err)
 	}
 
 	kToV := make(keyToVersion)
 	for i, key := range foundKeys {
-		kToV[string(key)] = foundVersions[i]
+		kToV[string(key)] = uint64(foundVersions[i]) //nolint:gosec // DB table is constraint to non-negative value.
 	}
 	promutil.Observe(db.metrics.databaseTxBatchQueryVersionLatencySeconds, time.Since(start))
 
@@ -301,7 +303,7 @@ func (db *database) insertTxStatus(
 	}
 
 	ret := tx.QueryRow(ctx, insertTxStatusSQLTempl, ids, statues, heights)
-	duplicates, err := readInsertResult(ret, ids)
+	duplicates, err := readArrayResult[[]byte](ret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read result from query [%s]: %w", insertTxStatusSQLTempl, err)
 	}
@@ -338,7 +340,7 @@ func (db *database) insertStates(
 
 		q := fmt.Sprintf(insertNsStatesSQLTempl, nsID)
 		ret := tx.QueryRow(ctx, q, writes.keys, writes.values)
-		violating, err := readInsertResult(ret, writes.keys)
+		violating, err := readArrayResult[[]byte](ret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read result from query [%s]: %w", q, err)
 		}
@@ -346,7 +348,7 @@ func (db *database) insertStates(
 		if len(violating) > 0 {
 			// We can use arbitrary versions from the list of writes since they are all 'nil'.
 			logger.Debugf("Total number of conflicts: %d for namespace [%s]", len(conflicts), nsID)
-			conflicts.getOrCreate(nsID).appendMany(violating, writes.versions[:len(violating)])
+			conflicts.getOrCreate(nsID).appendMany(violating, make([]*uint64, len(violating)))
 		}
 	}
 
@@ -386,12 +388,12 @@ func createTablesAndFunctionsForNamespaces(ctx context.Context, tx pgx.Tx, newNs
 
 		tableName := TableName(nsID)
 		logger.Infof("Creating table [%s] and required functions for namespace [%s]", tableName, ns)
-		for _, stmt := range createNsTablesAndFuncsTemplates {
-			query := fmt.Sprintf(stmt, tableName)
-			if _, err := tx.Exec(ctx, query); err != nil {
-				return errors.Wrapf(err, "failed to create table and functions for namespace [%s] with query [%s]",
-					nsID, query)
-			}
+		err := createNsTables(nsID, func(q string) error {
+			_, execErr := tx.Exec(ctx, q)
+			return execErr
+		})
+		if err != nil {
+			return err
 		}
 	}
 
@@ -414,50 +416,6 @@ func (db *database) beginTx(ctx context.Context) (pgx.Tx, func(), error) {
 
 func (s *statesToBeCommitted) empty() bool {
 	return s.updateWrites.empty() && s.newWrites.empty() && (s.batchStatus == nil || len(s.batchStatus.Status) == 0)
-}
-
-// readKeysAndValues reads the keys and values from the given rows.
-func readKeysAndValues[K, V any](r pgx.Rows) ([]K, []V, error) {
-	var keys []K
-	var values []V
-
-	for r.Next() {
-		var key K
-		var value V
-		if err := r.Scan(&key, &value); err != nil {
-			return nil, nil, errors.Wrap(err, "failed while scaning a row")
-		}
-		keys = append(keys, key)
-		values = append(values, value)
-	}
-
-	return keys, values, errors.Wrap(r.Err(), "failed while reading from rows")
-}
-
-func readInsertResult(r pgx.Row, allKeys [][]byte) ([][]byte, error) {
-	var res []pgtype.Value
-	if err := r.Scan(&res); err != nil {
-		return nil, errors.Wrap(err, "failed while scaning a row")
-	}
-
-	var result string
-	if err := res[0].AssignTo(&result); err != nil {
-		return nil, errors.Wrap(err, "failed reading result from row")
-	}
-	switch result {
-	case "success":
-		return nil, nil
-	case "all-unique-violation":
-		return allKeys, nil
-	default:
-	}
-
-	var violating [][]byte
-	if err := res[1].AssignTo(&violating); err != nil {
-		return nil, errors.Wrap(err, "failed reading violating from row")
-	}
-
-	return violating, nil
 }
 
 // TableName returns the table name for the given namespace.
@@ -502,7 +460,7 @@ func (db *database) readStatusWithHeight(
 }
 
 func (db *database) readNamespacePolicies(ctx context.Context) (*protoblocktx.NamespacePolicies, error) {
-	keys, values, err := db.retryQueryAndReadRows(ctx, queryPoliciesSQLStmt)
+	keys, values, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, db, queryPoliciesSQLStmt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the policies from table [%s]: %w", TableName(types.MetaNamespaceID), err)
 	}
@@ -519,7 +477,7 @@ func (db *database) readNamespacePolicies(ctx context.Context) (*protoblocktx.Na
 }
 
 func (db *database) readConfigTX(ctx context.Context) (*protoblocktx.ConfigTransaction, error) {
-	_, values, err := db.retryQueryAndReadRows(ctx, queryConfigSQLStmt)
+	_, values, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, db, queryConfigSQLStmt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the config transaction from table [%s]: %w",
 			TableName(types.ConfigNamespaceID), err)
@@ -531,25 +489,55 @@ func (db *database) readConfigTX(ctx context.Context) (*protoblocktx.ConfigTrans
 	return configTX, nil
 }
 
-func (db *database) retryQueryAndReadRows(
-	ctx context.Context, query string, args ...any,
-) (rows [][]byte,
-	metadata [][]byte,
-	err error,
-) {
-	var (
-		values [][]byte
-		keys   [][]byte
-	)
+func retryQueryAndReadArrayResult[T any](
+	ctx context.Context, db *database, query string, args ...any,
+) (items []T, retryErr error) {
+	retryErr = db.retry.Execute(ctx, func() error {
+		row := db.pool.QueryRow(ctx, query, args...)
+		var readErr error
+		items, readErr = readArrayResult[T](row)
+		if readErr != nil {
+			logger.Debugf("failed attempt: %s", readErr)
+		}
+		return errors.Wrapf(readErr, "failed to read rows from the query [%s] results", query)
+	})
+	return items, retryErr
+}
+
+func retryQueryAndReadTwoItems[T1, T2 any](
+	ctx context.Context, db *database, query string, args ...any,
+) (items1 []T1, items2 []T2, err error) {
 	retryErr := db.retry.Execute(ctx, func() error {
-		rows, err := db.pool.Query(ctx, query, args...)
-		if err != nil {
-			return errors.Wrapf(err, "failed to query rows: query [%s]", query)
+		rows, queryErr := db.pool.Query(ctx, query, args...)
+		if queryErr != nil {
+			return errors.Wrapf(queryErr, "failed to query rows: query [%s]", query)
 		}
 		defer rows.Close()
-		keys, values, err = readKeysAndValues[[]byte, []byte](rows)
-		return errors.Wrapf(err, "failed to read rows from the query [%s] results", query)
+		var readErr error
+		items1, items2, readErr = readTwoItems[T1, T2](rows)
+		if readErr != nil {
+			logger.WithOptions(zap.AddCallerSkip(8)).Debugf("failed attempt: %s", readErr)
+		}
+		return errors.Wrapf(readErr, "failed to read rows from the query [%s] results", query)
 	})
+	return items1, items2, retryErr
+}
 
-	return keys, values, retryErr
+// readTwoItems reads two items from given rows.
+func readTwoItems[T1, T2 any](r pgx.Rows) (items1 []T1, items2 []T2, err error) {
+	for r.Next() {
+		var i1 T1
+		var i2 T2
+		if err := r.Scan(&i1, &i2); err != nil {
+			return nil, nil, errors.Wrap(err, "failed while scanning a row")
+		}
+		items1 = append(items1, i1)
+		items2 = append(items2, i2)
+	}
+	return items1, items2, errors.Wrap(r.Err(), "failed while reading from rows")
+}
+
+func readArrayResult[T any](r pgx.Row) (res []T, err error) {
+	err = r.Scan(&res)
+	return res, errors.Wrap(err, "failed while scanning a row")
 }

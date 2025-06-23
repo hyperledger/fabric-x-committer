@@ -7,9 +7,11 @@ SPDX-License-Identifier: Apache-2.0
 package vc
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/yugabyte/pgx/v4/pgxpool"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 )
@@ -19,17 +21,49 @@ const (
 	ns2 = "2"
 )
 
-var (
-	v0 = types.VersionNumber(0).Bytes()
-	v1 = types.VersionNumber(1).Bytes()
-)
-
 func newDatabaseTestEnvWithTablesSetup(t *testing.T) *DatabaseTestEnv {
 	t.Helper()
 	env := NewDatabaseTestEnv(t)
 	ctx, _ := createContext(t)
 	require.NoError(t, env.DB.setupSystemTablesAndNamespaces(ctx))
+	listTablesAndMethods(t, env.DB.pool)
 	return env
+}
+
+func listTablesAndMethods(t *testing.T, querier *pgxpool.Pool) {
+	t.Helper()
+	rows, err := querier.Query(t.Context(), "select distinct tablename from pg_catalog.pg_tables;")
+	require.NoError(t, err)
+	defer rows.Close()
+
+	for rows.Next() {
+		require.NoError(t, rows.Err())
+		var tableName string
+		require.NoError(t, rows.Scan(&tableName))
+		if strings.HasPrefix(tableName, "pg_") || strings.HasPrefix(tableName, "sql_") {
+			continue
+		}
+		t.Logf("table: %s", tableName)
+	}
+
+	rows, err = querier.Query(t.Context(), `
+SELECT proname AS function_name, pg_get_function_identity_arguments(oid) AS arguments_accepted
+FROM pg_proc
+WHERE pronamespace = 'public'::regnamespace;
+`)
+	require.NoError(t, err)
+	defer rows.Close()
+
+	for rows.Next() {
+		require.NoError(t, rows.Err())
+		var methodName string
+		var methodVars string
+		require.NoError(t, rows.Scan(&methodName, &methodVars))
+		if strings.HasPrefix(methodName, "pg_") || strings.HasPrefix(methodName, "sql_") {
+			continue
+		}
+		t.Logf("method: %-30s vars: %s", methodName, methodVars)
+	}
 }
 
 func TestValidateNamespaceReads(t *testing.T) {
@@ -53,12 +87,12 @@ func TestValidateNamespaceReads(t *testing.T) {
 			ns1: {
 				keys:     [][]byte{k1, k2, k3},
 				values:   [][]byte{[]byte("value1"), []byte("value2"), []byte("value3")},
-				versions: [][]byte{v0, v0, v0},
+				versions: []uint64{0, 0, 0},
 			},
 			ns2: {
 				keys:     [][]byte{k4, k5, k6},
 				values:   [][]byte{[]byte("value4"), []byte("value5"), []byte("value6")},
-				versions: [][]byte{v1, v1, v1},
+				versions: []uint64{1, 1, 1},
 			},
 		},
 		nil,
@@ -82,7 +116,7 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns1,
 			r: &reads{
 				keys:     [][]byte{k4, k5, k6},
-				versions: [][]byte{nil, nil, nil},
+				versions: []*uint64{nil, nil, nil},
 			},
 			expectedReadConflicts: &reads{},
 		},
@@ -91,11 +125,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns2,
 			r: &reads{
 				keys:     [][]byte{k7, k8, k9},
-				versions: [][]byte{nil, v0, nil},
+				versions: []*uint64{nil, v(0), nil},
 			},
 			expectedReadConflicts: &reads{
 				keys:     [][]byte{k8},
-				versions: [][]byte{v0},
+				versions: []*uint64{v(0)},
 			},
 		},
 		{
@@ -103,11 +137,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns2,
 			r: &reads{
 				keys:     [][]byte{k7, k8, k9},
-				versions: [][]byte{v1, v0, v1},
+				versions: []*uint64{v(1), v(0), v(1)},
 			},
 			expectedReadConflicts: &reads{
 				keys:     [][]byte{k7, k8, k9},
-				versions: [][]byte{v1, v0, v1},
+				versions: []*uint64{v(1), v(0), v(1)},
 			},
 		},
 		{
@@ -115,7 +149,7 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns1,
 			r: &reads{
 				keys:     [][]byte{k1, k2, k3},
-				versions: [][]byte{v0, v0, v0},
+				versions: []*uint64{v(0), v(0), v(0)},
 			},
 			expectedReadConflicts: &reads{},
 		},
@@ -124,11 +158,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns1,
 			r: &reads{
 				keys:     [][]byte{k1, k2, k3},
-				versions: [][]byte{v1, v0, v1},
+				versions: []*uint64{v(1), v(0), v(1)},
 			},
 			expectedReadConflicts: &reads{
 				keys:     [][]byte{k1, k3},
-				versions: [][]byte{v1, v1},
+				versions: []*uint64{v(1), v(1)},
 			},
 		},
 		{
@@ -136,11 +170,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns2,
 			r: &reads{
 				keys:     [][]byte{k4, k5, k6},
-				versions: [][]byte{v0, v0, v0},
+				versions: []*uint64{v(0), v(0), v(0)},
 			},
 			expectedReadConflicts: &reads{
 				keys:     [][]byte{k4, k5, k6},
-				versions: [][]byte{v0, v0, v0},
+				versions: []*uint64{v(0), v(0), v(0)},
 			},
 		},
 		{
@@ -148,11 +182,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns2,
 			r: &reads{
 				keys:     [][]byte{k4, k5, k6, k7, k8, k9},
-				versions: [][]byte{v1, v0, v1, nil, v0, nil},
+				versions: []*uint64{v(1), v(0), v(1), nil, v(0), nil},
 			},
 			expectedReadConflicts: &reads{
 				keys:     [][]byte{k5, k8},
-				versions: [][]byte{v0, v0},
+				versions: []*uint64{v(0), v(0)},
 			},
 		},
 	}
@@ -193,17 +227,17 @@ func TestDBCommit(t *testing.T) {
 		ns1: {
 			keys:     [][]byte{k1, k2, k3},
 			values:   [][]byte{[]byte("value1"), []byte("value2"), []byte("value3")},
-			versions: [][]byte{v0, v0, v0},
+			versions: []uint64{0, 0, 0},
 		},
 		ns2: {
 			keys:     [][]byte{k4, k5, k6},
 			values:   [][]byte{[]byte("value4"), []byte("value5"), []byte("value6")},
-			versions: [][]byte{v1, v1, v1},
+			versions: []uint64{1, 1, 1},
 		},
 		types.MetaNamespaceID: {
 			keys:     [][]byte{[]byte("3"), []byte("4")},
 			values:   [][]byte{[]byte("value7"), []byte("value8")},
-			versions: [][]byte{v0, v0, v0},
+			versions: []uint64{0, 0, 0},
 		},
 	}
 
@@ -219,12 +253,12 @@ func TestDBCommit(t *testing.T) {
 		"3": {
 			keys:     [][]byte{k1, k2},
 			values:   [][]byte{[]byte("value1"), []byte("value2")},
-			versions: [][]byte{v0, v0},
+			versions: []uint64{0, 0},
 		},
 		"4": {
 			keys:     [][]byte{k4, k5},
 			values:   [][]byte{[]byte("value4"), []byte("value5")},
-			versions: [][]byte{v0, v0},
+			versions: []uint64{0, 0},
 		},
 	}
 
@@ -245,13 +279,9 @@ func toComparableReads(r *reads) []comparableRead {
 	if r == nil || len(r.keys) == 0 {
 		return nil
 	}
-
 	compReads := make([]comparableRead, len(r.keys))
 	for i := range r.keys {
-		compReads[i] = comparableRead{
-			key:     string(r.keys[i]),
-			version: string(r.versions[i]),
-		}
+		compReads[i] = newCmpRead("", r.keys[i], r.versions[i])
 	}
 	return compReads
 }

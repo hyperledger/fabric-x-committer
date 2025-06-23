@@ -61,7 +61,7 @@ type (
 	// reads represents a list of keys and their corresponding versions.
 	reads struct {
 		keys     [][]byte
-		versions [][]byte
+		versions []*uint64
 	}
 
 	// readToTransactions maps a read to the transaction ID.
@@ -70,10 +70,11 @@ type (
 	readToTransactions map[comparableRead][]TxID
 
 	// comparableRead defines a read with fields suitable for use as a map key (for uniqueness).
+	// We use int64 instead of uint64 for version to allow encoding nil version as -1.
 	comparableRead struct {
 		nsID    string
 		key     string
-		version string
+		version int64
 	}
 
 	transactionToWrites map[TxID]namespaceToWrites
@@ -83,7 +84,7 @@ type (
 	namespaceWrites struct {
 		keys     [][]byte
 		values   [][]byte
-		versions [][]byte
+		versions []uint64
 	}
 )
 
@@ -99,6 +100,14 @@ func newPreparer(
 		outgoingPreparedTransactions: preparedTxs,
 		metrics:                      metrics,
 	}
+}
+
+func newCmpRead(nsID string, key []byte, version *uint64) comparableRead {
+	var ver int64 = -1
+	if version != nil {
+		ver = int64(*version) //nolint:gosec // convert to int64 to allow negative value.
+	}
+	return comparableRead{nsID, string(key), ver}
 }
 
 func (p *transactionPreparer) run(ctx context.Context, numWorkers int) error {
@@ -183,7 +192,7 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 						NsId: types.ConfigNamespaceID,
 						ReadsOnly: []*protoblocktx.Read{{
 							Key:     []byte(types.ConfigKey),
-							Version: nsOperations.NsVersion,
+							Version: &nsOperations.NsVersion,
 						}},
 					})
 				case types.ConfigNamespaceID:
@@ -193,7 +202,7 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 						NsId: types.MetaNamespaceID,
 						ReadsOnly: []*protoblocktx.Read{{
 							Key:     []byte(nsOperations.NsId),
-							Version: nsOperations.NsVersion,
+							Version: &nsOperations.NsVersion,
 						}},
 					})
 				}
@@ -233,11 +242,7 @@ func (p *preparedTransactions) addReadsOnly(id TxID, ns *protoblocktx.TxNamespac
 	for _, r := range ns.ReadsOnly {
 		// When more than one txs read the same key, we only need to add the key once for validation.
 		// If the read is already present in the list, we can skip adding it.
-		cr := comparableRead{
-			nsID:    ns.NsId,
-			key:     string(r.Key),
-			version: string(r.Version),
-		}
+		cr := newCmpRead(ns.NsId, r.Key, r.Version)
 		v, present := p.readToTxIDs[cr]
 		p.readToTxIDs[cr] = append(v, id)
 		if !present {
@@ -263,22 +268,18 @@ func (p *preparedTransactions) addReadWrites(id TxID, ns *protoblocktx.TxNamespa
 		// In read-writes, duplicates are not possible between transactions. This is because
 		// read-write and write-write dependency ensures that only one of the transactions is
 		// chosen for the validation and commit.
-		cr := comparableRead{
-			nsID:    ns.NsId,
-			key:     string(rw.Key),
-			version: string(rw.Version),
-		}
-		v, present := p.readToTxIDs[cr]
-		p.readToTxIDs[cr] = append(v, id)
+		cr := newCmpRead(ns.NsId, rw.Key, rw.Version)
+		rtt, present := p.readToTxIDs[cr]
+		p.readToTxIDs[cr] = append(rtt, id)
 
 		if rw.Version != nil {
 			if !present {
 				nsReads.append(rw.Key, rw.Version)
 			}
-			ver := types.VersionNumberFromBytes(rw.Version) + 1
-			nsWrites.append(rw.Key, rw.Value, ver.Bytes())
+			ver := *rw.Version + 1
+			nsWrites.append(rw.Key, rw.Value, ver)
 		} else {
-			newWrites.append(rw.Key, rw.Value, nil)
+			newWrites.append(rw.Key, rw.Value, 0)
 		}
 	}
 }
@@ -295,7 +296,7 @@ func (p *preparedTransactions) addBlindWrites(id TxID, ns *protoblocktx.TxNamesp
 	nsWrites := p.txIDToNsBlindWrites.getOrCreate(id, ns.NsId)
 
 	for _, w := range ns.BlindWrites {
-		nsWrites.append(w.Key, w.Value, nil)
+		nsWrites.append(w.Key, w.Value, 0)
 	}
 }
 
@@ -372,26 +373,26 @@ func (tw transactionToWrites) clearEmpty() {
 	}
 }
 
-func (r *reads) append(key, version []byte) {
+func (r *reads) append(key []byte, version *uint64) {
 	r.keys = append(r.keys, key)
 	r.versions = append(r.versions, version)
 }
 
-func (r *reads) appendMany(keys, versions [][]byte) {
+func (r *reads) appendMany(keys [][]byte, versions []*uint64) {
 	r.keys = append(r.keys, keys...)
 	r.versions = append(r.versions, versions...)
 }
 
-func (nw *namespaceWrites) append(key, value, version []byte) {
+func (nw *namespaceWrites) append(key, value []byte, version uint64) {
 	nw.keys = append(nw.keys, key)
 	nw.values = append(nw.values, value)
 	nw.versions = append(nw.versions, version)
 }
 
-func (nw *namespaceWrites) appendMany(key, value, version [][]byte) {
-	nw.keys = append(nw.keys, key...)
-	nw.values = append(nw.values, value...)
-	nw.versions = append(nw.versions, version...)
+func (nw *namespaceWrites) appendWrites(other *namespaceWrites) {
+	nw.keys = append(nw.keys, other.keys...)
+	nw.values = append(nw.values, other.values...)
+	nw.versions = append(nw.versions, other.versions...)
 }
 
 func (nw *namespaceWrites) empty() bool {

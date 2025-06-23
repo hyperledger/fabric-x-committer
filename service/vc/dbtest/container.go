@@ -84,7 +84,8 @@ func (dc *DatabaseContainer) StartContainer(ctx context.Context, t *testing.T) {
 
 	// Starts the container
 	err := dc.client.StartContainerWithContext(dc.containerID, nil, ctx)
-	if _, ok := err.(*docker.ContainerAlreadyRunning); ok {
+	var containerAlreadyRunning *docker.ContainerAlreadyRunning
+	if errors.As(err, &containerAlreadyRunning) {
 		t.Log("Container is already running")
 		return
 	}

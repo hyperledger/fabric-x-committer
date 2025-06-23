@@ -9,6 +9,7 @@ package types
 import (
 	"fmt"
 
+	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils"
 )
 
@@ -16,6 +17,15 @@ import (
 type Height struct {
 	BlockNum uint64
 	TxNum    uint32
+}
+
+// CreateStatusWithHeight creates a protoblocktx.StatusWithHeight with the given values.
+func CreateStatusWithHeight(s protoblocktx.Status, blkNum uint64, txNum int) *protoblocktx.StatusWithHeight {
+	return &protoblocktx.StatusWithHeight{
+		Code:        s,
+		BlockNumber: blkNum,
+		TxNumber:    uint32(txNum), //nolint:gosec
+	}
 }
 
 // NewHeight constructs a new instance of Height.

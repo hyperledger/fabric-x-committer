@@ -15,7 +15,7 @@ templater = placeholder
 # See https://docs.sqlfluff.com/en/stable/perma/rule_disabling.html
 # AM04 (ambiguous.column_count) and ST06 (structure.column_order) are
 # two of the more controversial rules included to illustrate usage.
-exclude_rules = ambiguous.column_count, structure.column_order
+exclude_rules = ambiguous.column_count, structure.column_order, LT01, LT02
 
 # The standard max_line_length is 80 in line with the convention of
 # other tools and several style guides. Many projects however prefer
@@ -78,4 +78,3 @@ param_regex = %\[\d+\]s
 allow_scalar = True
 single_table_references = consistent
 unquoted_identifiers_policy = none
-

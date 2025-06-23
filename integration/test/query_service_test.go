@@ -16,7 +16,6 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/integration/runner"
 )
 
@@ -45,7 +44,7 @@ func TestQueryService(t *testing.T) {
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
 							NsId:      "1",
-							NsVersion: types.VersionNumber(0).Bytes(),
+							NsVersion: 0,
 							BlindWrites: []*protoblocktx.Write{
 								{
 									Key:   []byte("k1"),
@@ -59,7 +58,7 @@ func TestQueryService(t *testing.T) {
 						},
 						{
 							NsId:      "2",
-							NsVersion: types.VersionNumber(0).Bytes(),
+							NsVersion: 0,
 							BlindWrites: []*protoblocktx.Write{
 								{
 									Key:   []byte("k3"),
@@ -111,7 +110,7 @@ func TestQueryService(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		testItemsVersion := types.VersionNumber(0).Bytes()
+		testItemsVersion := uint64(0)
 
 		requiredItems := []*protoqueryservice.RowsNamespace{
 			{

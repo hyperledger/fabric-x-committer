@@ -18,7 +18,6 @@ import (
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoqueryservice"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/signature"
 	"github.ibm.com/decentralized-trust-research/scalable-committer/utils/test"
 )
@@ -387,7 +386,7 @@ func TestGenTxWithRateLimit(t *testing.T) {
 
 // modGenTester simulates querying the version from the query service.
 type modGenTester struct {
-	nsVersion []byte
+	nsVersion uint64
 }
 
 func (m *modGenTester) Next() Modifier {
@@ -405,8 +404,8 @@ func TestGenTxWithModifier(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(8)
 
-	mod0 := &modGenTester{types.VersionNumber(0).Bytes()}
-	mod1 := &modGenTester{types.VersionNumber(1).Bytes()}
+	mod0 := &modGenTester{0}
+	mod1 := &modGenTester{1}
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions(), mod0, mod1)
 	g := c.MakeGenerator()
 	tx := g.Next(t.Context())

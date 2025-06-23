@@ -11,7 +11,6 @@ import (
 	"math/rand"
 
 	"github.ibm.com/decentralized-trust-research/scalable-committer/api/protoblocktx"
-	"github.ibm.com/decentralized-trust-research/scalable-committer/api/types"
 )
 
 // Dependency types.
@@ -60,7 +59,7 @@ func newSignTxModifier(
 		Namespaces: []*protoblocktx.TxNamespace{
 			{
 				NsId:      GeneratedNamespaceID,
-				NsVersion: types.VersionNumber(0).Bytes(),
+				NsVersion: 0,
 			},
 		},
 	}

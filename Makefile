@@ -121,6 +121,10 @@ test-core-db: build
 test-requires-db: build
 	@$(go_test) ${REQUIRES_DB_PACKAGES} | gotestfmt ${GO_TEST_FMT_FLAGS}
 
+# Tests the ASN.1 marshalling using fuzz testing.
+test-fuzz: build
+	@$(go_test) -run="^$$" -fuzz=".*" -fuzztime=5m ./utils/signature | gotestfmt ${GO_TEST_FMT_FLAGS}
+
 # Tests that require no DB at all, e.g., pure logic, utilities
 test-no-db: build
 	@$(go_test) ${NO_DB_PACKAGES} | gotestfmt ${GO_TEST_FMT_FLAGS}
@@ -156,6 +160,10 @@ bench-dep: FORCE
 # Run dependency detector benchmarks with added op/sec column.
 bench-preparer: FORCE
 	$(go_cmd) test ./service/vc/... -bench "BenchmarkPrepare.*" -run "^$$" | awk -f scripts/bench-tx-per-sec.awk
+
+# Run signature benchmarks with added op/sec column.
+bench-sign: FORCE
+	$(go_cmd) test ./utils/signature/... -bench ".*" -run "^$$" | awk -f scripts/bench-tx-per-sec.awk
 
 #########################
 # Generate protos

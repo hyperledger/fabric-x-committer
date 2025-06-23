@@ -219,10 +219,10 @@ func (c *transactionCommitter) populateVersionsAndCategorizeBlindWrites(
 			nsState := state[ns]
 			for i, key := range nsWrites.keys {
 				if ver, present := nsState[string(key)]; present {
-					nextVer := (types.VersionNumberFromBytes(ver) + 1).Bytes()
+					nextVer := ver + 1
 					vTx.validTxNonBlindWrites.getOrCreate(curTxID, ns).append(key, nsWrites.values[i], nextVer)
 				} else {
-					vTx.newWrites.getOrCreate(curTxID, ns).append(key, nsWrites.values[i], nil)
+					vTx.newWrites.getOrCreate(curTxID, ns).append(key, nsWrites.values[i], 0)
 				}
 			}
 		}
@@ -276,8 +276,8 @@ func groupWritesByNamespace(txWrites transactionToWrites) namespaceToWrites {
 			if writes.empty() {
 				continue
 			}
-			nsWrites := nsToWrites.getOrCreate(ns)
-			nsWrites.appendMany(writes.keys, writes.values, writes.versions)
+			curNsWrites := nsToWrites.getOrCreate(ns)
+			curNsWrites.appendWrites(writes)
 		}
 	}
 

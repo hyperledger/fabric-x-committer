@@ -20,7 +20,7 @@ message Tx {
 // Represents a namespace within a transaction.
 message TxNamespace {
     string ns_id = 1; // The namespace ID.
-    bytes ns_version = 2; // The version of the namespace.
+    uint64 ns_version = 2; // The version of the namespace.
     repeated Read reads_only = 3; // List of read only operations within the namespace.
     repeated ReadWrite read_writes = 4; // List of read-write operations within the namespace.
     repeated Write blind_writes = 5; // List of blind write operations within the namespace.
@@ -29,23 +29,19 @@ message TxNamespace {
 // Represents a read operation.
 message Read {
     bytes key = 1; // The key being read.
-    bytes version = 2; // The version of the key being read.
+    optional uint64 version = 2; // The version of the key being read. Nil version means it doesn't exist.
 }
 
 // Represents a read-write operation.
 message ReadWrite {
     bytes key = 1; // The key involved in the read-write operation.
-    // If the key is empty, the key would be constructed using the txID
-    // and the index of the read-write operation.
-    bytes version = 2; // The version of the key being read and written.
+    optional uint64 version = 2; // The version of the key being read and written. Nil version means it doesn't exist.
     bytes value = 3; // The value associated with the key being written.
 }
 
 // Represents a write operation.
 message Write {
     bytes key = 1; // The key being written.
-    // If the key is empty, the key would be constructed using the txID
-    // and the index of the read-write operation.
     bytes value = 2; // The value associated with the key being written.
 }
 
@@ -84,12 +80,12 @@ message NamespacePolicies {
 message PolicyItem {
     string namespace = 1;
     bytes policy = 2;
-    bytes version = 3;
+    uint64 version = 3;
 }
 
 message ConfigTransaction {
     bytes envelope = 1;
-    bytes version = 2;
+    uint64 version = 2;
 }
 
 enum Status {
@@ -101,7 +97,6 @@ enum Status {
     ABORTED_DUPLICATE_NAMESPACE = 5;
     ABORTED_NAMESPACE_POLICY_INVALID = 6;
     ABORTED_NAMESPACE_ID_INVALID = 7;
-    ABORTED_MISSING_NAMESPACE_VERSION = 8;
 	  ABORTED_BLIND_WRITES_NOT_ALLOWED = 9;
     ABORTED_NO_WRITES = 10;
     ABORTED_UNSUPPORTED_TX_PAYLOAD = 11;
