@@ -17,8 +17,8 @@ import (
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 )
 
-//nolint:paralleltest // Reduce tests load.
 func TestMixOfValidAndInvalidSign(t *testing.T) { //nolint:gocognit
+	t.Parallel()
 	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{
 		NumVerifiers: 2,

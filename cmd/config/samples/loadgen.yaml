@@ -42,6 +42,8 @@ load-profile:
         _meta:
           scheme: ECDSA
           seed: 11
+      orderer-endpoints:
+        - id=0,msp-id=org,broadcast,deliver,ordering-service:7050
   conflicts:
     invalid-signatures: 0.1
   seed: 12345

@@ -53,8 +53,8 @@ func testSetup(t *testing.T) *runner.CommitterRuntime {
 	return c
 }
 
-//nolint:paralleltest // Reduce tests load.
 func TestDependentHappyPath(t *testing.T) {
+	t.Parallel()
 	c := testSetup(t)
 
 	v0 := types.VersionNumber(0).Bytes()
@@ -171,8 +171,8 @@ func TestDependentHappyPath(t *testing.T) {
 	fmt.Println("done")
 }
 
-//nolint:paralleltest // Reduce tests load.
 func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
+	t.Parallel()
 	c := testSetup(t)
 
 	v0 := types.VersionNumber(0).Bytes()
@@ -267,8 +267,8 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 	}
 }
 
-//nolint:paralleltest // Reduce tests load.
 func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
+	t.Parallel()
 	c := testSetup(t)
 
 	v0 := types.VersionNumber(0).Bytes()
@@ -359,8 +359,8 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 	}
 }
 
-//nolint:paralleltest // Reduce tests load.
 func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
+	t.Parallel()
 	c := testSetup(t)
 
 	v0 := types.VersionNumber(0).Bytes()
@@ -526,8 +526,8 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 	}
 }
 
-//nolint:paralleltest // Reduce tests load.
 func TestWriteWriteConflictsAmongActiveTransactions(t *testing.T) {
+	t.Parallel()
 	c := testSetup(t)
 
 	v0 := types.VersionNumber(0).Bytes()

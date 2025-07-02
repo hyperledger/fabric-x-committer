@@ -27,8 +27,8 @@ import (
 
 const blockSize = 1
 
-//nolint:paralleltest
 func TestConfigUpdate(t *testing.T) {
+	t.Parallel()
 	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{
 		NumVerifiers: 2,

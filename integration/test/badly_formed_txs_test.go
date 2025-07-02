@@ -25,7 +25,7 @@ func TestBadlyFormedTxs(t *testing.T) {
 		NumVerifiers: 2,
 		NumVCService: 2,
 		BlockSize:    5,
-		BlockTimeout: 2 * time.Second,
+		BlockTimeout: 1 * time.Second,
 	})
 	c.Start(t, runner.FullTxPath)
 

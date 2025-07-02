@@ -88,7 +88,7 @@ COR_DB_PACKAGES=$(shell $(go_cmd) list ./... | grep -E "$(CORE_DB_PACKAGES_REGEX
 REQUIRES_DB_PACKAGES=$(shell $(go_cmd) list ./... | grep -E "$(REQUIRES_DB_PACKAGES_REGEXP)")
 NO_DB_PACKAGES=$(shell $(go_cmd) list ./... | grep -vE "$(CORE_DB_PACKAGES_REGEXP)|$(REQUIRES_DB_PACKAGES_REGEXP)|$(HEAVY_PACKAGES_REGEXP)")
 
-GO_TEST_FMT_FLAGS := -hide empty-packages $(if $(TRAVIS),-template-dir .gotestfmt/travisci,)
+GO_TEST_FMT_FLAGS := -hide empty-packages
 
 
 # Excludes integration and container tests.
@@ -111,7 +111,7 @@ test-integration-db-resiliency: build
 
 # Tests the all-in-one docker image.
 test-container: build-test-node-image
-	@$(go_test) ./docker/... | gotestfmt ${GO_TEST_FMT_FLAGS}
+	$(go_cmd) test -v -timeout 30m ./docker/...
 
 # Tests for components that directly talk to the DB, where different DBs might affect behaviour.
 test-core-db: build
@@ -227,7 +227,11 @@ build-release-image: build-arch
 		$(docker_cmd) $(version) $(image_namespace) $(dockerfile_release_dir) $(multiplatform) $(arch_output_dir_rel)
 
 build-test-genesis-block: $(output_dir) build-cli-loadgen
-	bin/loadgen make-genesis-block -c "$(project_dir)/cmd/config/samples/loadgen.yaml" > "$(output_dir)/sc-genesis-block.proto.bin"
+	@# We load the env from the Dockerfile to use them to generate the config block.
+	env -v $(shell grep '^ENV' $(dockerfile_test_node_dir)/Dockerfile | cut -d' ' -f2- | xargs) \
+		bin/loadgen make-genesis-block \
+		-c "$(project_dir)/cmd/config/samples/loadgen.yaml" \
+		>"$(output_dir)/sc-genesis-block.proto.bin"
 
 #########################
 # Linter

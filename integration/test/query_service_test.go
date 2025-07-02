@@ -20,8 +20,8 @@ import (
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 )
 
-//nolint:paralleltest // Reduce tests load.
 func TestQueryService(t *testing.T) {
+	t.Parallel()
 	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{
 		NumVerifiers: 2,

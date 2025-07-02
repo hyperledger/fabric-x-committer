@@ -2,10 +2,8 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-servers:
-  {{- range .Endpoints.Orderer }}
-  - endpoint: {{ .Server }}
-  {{- end }}
+server:
+  endpoint: {{ .ServiceEndpoints.Server | default "localhost:0" }}
 block-size: {{ .BlockSize }}
 block-timeout: {{ .BlockTimeout }}
 config-block-path: {{ .ConfigBlockPath }}

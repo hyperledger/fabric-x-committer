@@ -361,6 +361,12 @@ func TestReadConfigLoadGen(t *testing.T) {
 								Scheme: "ECDSA", Seed: 11,
 							},
 						},
+						OrdererEndpoints: []*connection.OrdererEndpoint{{
+							ID:       0,
+							MspID:    "org",
+							API:      []string{"broadcast", "deliver"},
+							Endpoint: *makeEndpoint("ordering-service", 7050),
+						}},
 					},
 				},
 				Conflicts: workload.ConflictProfile{

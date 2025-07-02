@@ -88,6 +88,8 @@ func CreateDefaultConfigBlock(conf *ConfigBlock) (*common.Block, error) {
 		consenter.ClientTLSCert = tlsCertPath
 		consenter.ServerTLSCert = tlsCertPath
 	}
+	// Resetting Arma.Path to an empty string as it isn't needed.
+	configBlock.Orderer.Arma.Path = ""
 
 	if conf.MetaNamespaceVerificationKey == nil {
 		conf.MetaNamespaceVerificationKey, _ = NewHashSignerVerifier(&Policy{

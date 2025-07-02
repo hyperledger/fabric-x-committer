@@ -13,7 +13,6 @@ package protoqueryservice
 
 import (
 	context "context"
-
 	protoblocktx "github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"

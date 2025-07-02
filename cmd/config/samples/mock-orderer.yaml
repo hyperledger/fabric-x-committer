@@ -2,8 +2,9 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-servers:
-  - endpoint: :7050
+server:
+  endpoint: :7050
+
 block-size: 1024
 block-timeout: 30s
 send-config-block: true

@@ -158,9 +158,8 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 func (dc *DatabaseContainer) createContainer(ctx context.Context, t *testing.T) {
 	t.Helper()
 	// If container exists, we don't have to create it.
-	found := dc.findContainer(t)
-
-	if found {
+	err := dc.findContainer(t)
+	if err == nil {
 		return
 	}
 
@@ -200,25 +199,26 @@ func (dc *DatabaseContainer) createContainer(ctx context.Context, t *testing.T) 
 	require.ErrorIs(t, err, docker.ErrContainerAlreadyExists)
 
 	// Try to find it again.
-	require.True(t, dc.findContainer(t), "cannot create container (already exists), but cannot find it")
+	require.NoError(t, dc.findContainer(t))
 }
 
 // findContainer looks up a container with the same name.
-func (dc *DatabaseContainer) findContainer(t *testing.T) bool {
+func (dc *DatabaseContainer) findContainer(t *testing.T) error {
 	t.Helper()
 	allContainers, err := dc.client.ListContainers(docker.ListContainersOptions{All: true})
 	require.NoError(t, err, "could not load containers.")
 
+	names := make([]string, 0, len(allContainers))
 	for _, c := range allContainers {
 		for _, n := range c.Names {
+			names = append(names, n)
 			if n == dc.Name || n == fmt.Sprintf("/%s", dc.Name) {
 				dc.containerID = c.ID
-				return true
+				return nil
 			}
 		}
 	}
-
-	return false
+	return errors.Errorf("cannot find container '%s'. Containers: %v", dc.Name, names)
 }
 
 // getConnectionOptions inspect the container and fetches the available connection options.
