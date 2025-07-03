@@ -35,7 +35,7 @@ jobs:
           # Check if original code changed due to formatting.
           git diff --exit-code
           # Fetch main to only show new lint issues.
-          git fetch origin main:main
+          git fetch -u origin main:main
           make lint
 
       - name: Build
