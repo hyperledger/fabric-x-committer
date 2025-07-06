@@ -5,8 +5,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-export GO111MODULE=on
-export GOPRIVATE=github.ibm.com
 export DB_DEPLOYMENT=local
 
 echo "Unit Test (non DB)" | tee /tmp/sc-tests.txt
