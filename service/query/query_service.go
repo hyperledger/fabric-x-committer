@@ -87,11 +87,13 @@ func (q *Service) BeginView(
 	q.metrics.requests.WithLabelValues(grpcBeginView).Inc()
 	defer q.requestLatency(grpcBeginView, time.Now())
 
+	// Validate and cap timeout.
 	if params.TimeoutMilliseconds == 0 ||
 		int64(params.TimeoutMilliseconds) > q.config.MaxViewTimeout.Milliseconds() { //nolint:gosec
 		params.TimeoutMilliseconds = uint64(q.config.MaxViewTimeout.Milliseconds()) //nolint:gosec
 	}
 
+	// Generate unique view ID and create view.
 	// We try again if we have view-id collision.
 	for ctx.Err() == nil {
 		viewID, err := getUUID()

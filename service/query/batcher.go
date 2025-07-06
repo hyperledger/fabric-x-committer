@@ -421,10 +421,12 @@ func (q *namespaceQueryBatch) waitForRows(
 	ctx context.Context,
 	keys [][]byte,
 ) ([]*protoqueryservice.Row, error) {
+	// Wait for batch to be finalized or context to be canceled.
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-q.ctx.Done():
+		// Query completed.
 	}
 
 	if errors.Is(q.ctx.Err(), context.DeadlineExceeded) {
@@ -435,8 +437,10 @@ func (q *namespaceQueryBatch) waitForRows(
 		return nil, err
 	}
 
+	// Extract results for requested keys.
 	res := make([]*protoqueryservice.Row, 0, len(keys))
 	for _, key := range keys {
+		// Get result for this key from the batch results.
 		if row, ok := q.result[string(key)]; ok && row != nil {
 			res = append(res, row)
 		}
