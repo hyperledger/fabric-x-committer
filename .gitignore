@@ -17,6 +17,9 @@ archbin
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
+# Profile output.
+*.prof
+
 # Output of the build and experiment runs
 out/
 
