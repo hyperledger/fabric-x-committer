@@ -11,7 +11,6 @@ import (
 	"math/rand"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/types"
 )
 
 // Dependency types.
@@ -60,7 +59,7 @@ func newSignTxModifier(
 		Namespaces: []*protoblocktx.TxNamespace{
 			{
 				NsId:      GeneratedNamespaceID,
-				NsVersion: types.VersionNumber(0).Bytes(),
+				NsVersion: 0,
 			},
 		},
 	}

@@ -21,7 +21,7 @@ type DigestVerifier interface {
 
 // NsVerifier verifies a given namespace.
 type NsVerifier struct {
-	DigestVerifier
+	verifier DigestVerifier
 }
 
 // NewNsVerifier creates a new namespace verifier according to the implementation scheme.
@@ -31,7 +31,7 @@ func NewNsVerifier(scheme Scheme, key []byte) (*NsVerifier, error) {
 	var v DigestVerifier
 	switch scheme {
 	case NoScheme, "":
-		v = &DummyVerifier{}
+		v = nil
 	case Ecdsa:
 		v, err = NewEcdsaVerifier(key)
 	case Bls:
@@ -41,7 +41,7 @@ func NewNsVerifier(scheme Scheme, key []byte) (*NsVerifier, error) {
 	default:
 		return nil, errors.Newf("scheme '%v' not supported", scheme)
 	}
-	return &NsVerifier{DigestVerifier: v}, errors.Wrap(err, "failed creating verifier")
+	return &NsVerifier{verifier: v}, errors.Wrap(err, "failed creating verifier")
 }
 
 // VerifyNs verifies a transaction's namespace signature.
@@ -49,9 +49,12 @@ func (v *NsVerifier) VerifyNs(tx *protoblocktx.Tx, nsIndex int) error {
 	if nsIndex < 0 || nsIndex >= len(tx.Namespaces) || nsIndex >= len(tx.Signatures) {
 		return errors.New("namespace index out of range")
 	}
+	if v.verifier == nil {
+		return nil
+	}
 	digest, err := DigestTxNamespace(tx, nsIndex)
 	if err != nil {
 		return err
 	}
-	return v.Verify(digest, tx.Signatures[nsIndex])
+	return v.verifier.Verify(digest, tx.Signatures[nsIndex])
 }

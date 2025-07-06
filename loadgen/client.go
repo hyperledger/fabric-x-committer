@@ -185,7 +185,7 @@ func (c *Client) runLimiterServer(ctx context.Context) error {
 		c.txStream.SetLimit(request.Limit)
 		ginCtx.IndentedJSON(http.StatusOK, request)
 	})
-	logger.Infof("Start remote controller listener on %c", endpoint.Address())
+	logger.Infof("Start remote controller listener on %s", endpoint.Address())
 	g, gCtx := errgroup.WithContext(ctx)
 	logger.Infof("Serving...")
 	server := &http.Server{Addr: endpoint.Address(), Handler: router, ReadTimeout: time.Minute}

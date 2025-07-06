@@ -10,7 +10,6 @@ import (
 	"math/rand"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/types"
 )
 
 type (
@@ -66,7 +65,7 @@ func (g *IndependentTxGenerator) Next() *protoblocktx.Tx {
 		Namespaces: []*protoblocktx.TxNamespace{
 			{
 				NsId:        GeneratedNamespaceID,
-				NsVersion:   types.VersionNumber(0).Bytes(),
+				NsVersion:   0,
 				ReadsOnly:   make([]*protoblocktx.Read, len(readOnly)),
 				ReadWrites:  make([]*protoblocktx.ReadWrite, len(readWrite)),
 				BlindWrites: make([]*protoblocktx.Write, len(blindWriteKey)),

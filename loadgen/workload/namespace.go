@@ -46,7 +46,7 @@ func CreateNamespacesTX(policy *PolicyProfile) (*protoblocktx.Tx, error) {
 		Id: fmt.Sprintf("initial policy update: %v", strings.Join(allNamespaces, ",")),
 		Namespaces: []*protoblocktx.TxNamespace{{
 			NsId:       types.MetaNamespaceID,
-			NsVersion:  types.VersionNumber(0).Bytes(),
+			NsVersion:  0,
 			ReadWrites: readWrites,
 		}},
 	}

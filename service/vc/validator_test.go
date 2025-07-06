@@ -50,10 +50,6 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 
 	env := newValidatorTestEnv(t)
 
-	v0 := types.VersionNumber(0).Bytes()
-	v1 := types.VersionNumber(1).Bytes()
-	v2 := types.VersionNumber(2).Bytes()
-
 	k1_1 := []byte("key1.1")
 	k1_2 := []byte("key1.2")
 	k1_3 := []byte("key1.3")
@@ -73,12 +69,12 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 			"1": {
 				keys:     [][]byte{k1_1, k1_2, k1_3, k1_4},
 				values:   [][]byte{[]byte("value1.1"), []byte("value1.2"), []byte("value1.3"), []byte("value1.4")},
-				versions: [][]byte{v1, v1, v2, v2},
+				versions: []uint64{1, 1, 2, 2},
 			},
 			"2": {
 				keys:     [][]byte{k2_1, k2_2, k2_3, k2_4},
 				values:   [][]byte{[]byte("value2.1"), []byte("value2.2"), []byte("value2.3"), []byte("value2.4")},
-				versions: [][]byte{v0, v0, v1, v1},
+				versions: []uint64{0, 0, 1, 1},
 			},
 		},
 		nil,
@@ -89,33 +85,33 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 		"1": {
 			keys:     [][]byte{k1_1},
 			values:   [][]byte{[]byte("value1.1.1")},
-			versions: [][]byte{v2},
+			versions: []uint64{2},
 		},
 		"2": {
 			keys:     [][]byte{k2_1},
 			values:   [][]byte{[]byte("value1.1.1")},
-			versions: [][]byte{v2},
+			versions: []uint64{2},
 		},
 	}
 	tx2NonBlindWrites := namespaceToWrites{
 		"1": {
 			keys:     [][]byte{k1_5},
 			values:   [][]byte{[]byte("value1.5.1")},
-			versions: [][]byte{v0},
+			versions: []uint64{0},
 		},
 	}
 	tx3NonBlindWrites := namespaceToWrites{
 		"2": {
 			keys:     [][]byte{k2_2},
 			values:   [][]byte{[]byte("value2.2.1")},
-			versions: [][]byte{v2},
+			versions: []uint64{2},
 		},
 	}
 	tx3BlindWrites := namespaceToWrites{
 		"1": {
 			keys:     [][]byte{k1_6},
 			values:   [][]byte{[]byte("value1.6")},
-			versions: [][]byte{nil},
+			versions: []uint64{0},
 		},
 	}
 
@@ -131,42 +127,26 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				nsToReads: namespaceToReads{
 					"1": &reads{
 						keys:     [][]byte{k1_1, k1_2, k1_5},
-						versions: [][]byte{v1, v1, nil},
+						versions: []*uint64{v(1), v(1), nil},
 					},
 					"2": &reads{
 						keys:     [][]byte{k2_1, k2_2, k2_5},
-						versions: [][]byte{v0, v0, nil},
+						versions: []*uint64{v(0), v(0), nil},
 					},
 					types.MetaNamespaceID: &reads{
 						keys:     [][]byte{[]byte("1"), []byte("2")},
-						versions: [][]byte{v0, v0},
+						versions: []*uint64{v(0), v(0)},
 					},
 				},
 				readToTxIDs: readToTransactions{
-					comparableRead{"1", string(k1_1), string(v1)}: []TxID{
-						"tx1",
-					},
-					comparableRead{"1", string(k1_2), string(v1)}: []TxID{
-						"tx1",
-					},
-					comparableRead{"1", string(k1_5), ""}: []TxID{
-						"tx2",
-					},
-					comparableRead{"2", string(k2_1), string(v0)}: []TxID{
-						"tx1",
-					},
-					comparableRead{"2", string(k2_2), string(v0)}: []TxID{
-						"tx3",
-					},
-					comparableRead{"2", string(k2_5), ""}: []TxID{
-						"tx3",
-					},
-					comparableRead{types.MetaNamespaceID, "1", string(v0)}: []TxID{
-						"tx1", "tx2",
-					},
-					comparableRead{types.MetaNamespaceID, "2", string(v0)}: []TxID{
-						"tx1", "tx3",
-					},
+					newCmpRead("1", k1_1, v(1)):                          []TxID{"tx1"},
+					newCmpRead("1", k1_2, v(1)):                          []TxID{"tx1"},
+					newCmpRead("1", k1_5, nil):                           []TxID{"tx2"},
+					newCmpRead("2", k2_1, v(0)):                          []TxID{"tx1"},
+					newCmpRead("2", k2_2, v(0)):                          []TxID{"tx3"},
+					newCmpRead("2", k2_5, nil):                           []TxID{"tx3"},
+					newCmpRead(types.MetaNamespaceID, []byte("1"), v(0)): []TxID{"tx1", "tx2"},
+					newCmpRead(types.MetaNamespaceID, []byte("2"), v(0)): []TxID{"tx1", "tx3"},
 				},
 				txIDToNsNonBlindWrites: transactionToWrites{
 					"tx1": tx1NonBlindWrites,
@@ -206,42 +186,26 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				nsToReads: namespaceToReads{
 					"1": &reads{
 						keys:     [][]byte{k1_1, k1_2, k1_5},
-						versions: [][]byte{v0, v0, v1},
+						versions: []*uint64{v(0), v(0), v(1)},
 					},
 					"2": &reads{
 						keys:     [][]byte{k2_1, k2_2, k2_5},
-						versions: [][]byte{nil, nil, nil},
+						versions: []*uint64{nil, nil, nil},
 					},
 					types.MetaNamespaceID: &reads{
 						keys:     [][]byte{[]byte("1"), []byte("2")},
-						versions: [][]byte{v1, v1},
+						versions: []*uint64{v(1), v(1)},
 					},
 				},
 				readToTxIDs: readToTransactions{
-					comparableRead{"1", string(k1_1), string(v0)}: []TxID{
-						"tx1",
-					},
-					comparableRead{"1", string(k1_2), string(v0)}: []TxID{
-						"tx1",
-					},
-					comparableRead{"1", string(k1_5), string(v1)}: []TxID{
-						"tx2",
-					},
-					comparableRead{"2", string(k2_1), ""}: []TxID{
-						"tx1",
-					},
-					comparableRead{"2", string(k2_2), ""}: []TxID{
-						"tx3",
-					},
-					comparableRead{"2", string(k2_5), ""}: []TxID{
-						"tx3",
-					},
-					comparableRead{types.MetaNamespaceID, "1", string(v1)}: []TxID{
-						"tx1", "tx2",
-					},
-					comparableRead{types.MetaNamespaceID, "2", string(v1)}: []TxID{
-						"tx1", "tx2",
-					},
+					newCmpRead("1", k1_1, v(0)):                          []TxID{"tx1"},
+					newCmpRead("1", k1_2, v(0)):                          []TxID{"tx1"},
+					newCmpRead("1", k1_5, v(1)):                          []TxID{"tx2"},
+					newCmpRead("2", k2_1, nil):                           []TxID{"tx1"},
+					newCmpRead("2", k2_2, nil):                           []TxID{"tx3"},
+					newCmpRead("2", k2_5, nil):                           []TxID{"tx3"},
+					newCmpRead(types.MetaNamespaceID, []byte("1"), v(1)): []TxID{"tx1", "tx2"},
+					newCmpRead(types.MetaNamespaceID, []byte("2"), v(1)): []TxID{"tx1", "tx2"},
 				},
 				txIDToNsNonBlindWrites: transactionToWrites{
 					"tx1": tx1NonBlindWrites,
@@ -279,11 +243,11 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				nsToReads: namespaceToReads{
 					"1": &reads{
 						keys:     [][]byte{k1_1, k1_2, k1_5},
-						versions: [][]byte{v1, v1, nil},
+						versions: []*uint64{v(1), v(1), nil},
 					},
 					"2": &reads{
 						keys:     [][]byte{k2_1, k2_2, k2_5},
-						versions: [][]byte{nil, nil, nil},
+						versions: []*uint64{nil, nil, nil},
 					},
 					types.MetaNamespaceID: &reads{
 						keys: [][]byte{
@@ -291,37 +255,19 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 							[]byte("2"),
 							[]byte("2"),
 						},
-						versions: [][]byte{v0, v0, v1},
+						versions: []*uint64{v(0), v(0), v(1)},
 					},
 				},
 				readToTxIDs: readToTransactions{
-					comparableRead{"1", string(k1_1), string(v1)}: []TxID{
-						"tx1",
-					},
-					comparableRead{"1", string(k1_2), string(v1)}: []TxID{
-						"tx1",
-					},
-					comparableRead{"1", string(k1_5), ""}: []TxID{
-						"tx2",
-					},
-					comparableRead{"2", string(k2_1), ""}: []TxID{
-						"tx1",
-					},
-					comparableRead{"2", string(k2_2), ""}: []TxID{
-						"tx3",
-					},
-					comparableRead{"2", string(k2_5), ""}: []TxID{
-						"tx3",
-					},
-					comparableRead{types.MetaNamespaceID, "1", string(v0)}: []TxID{
-						"tx1", "tx2",
-					},
-					comparableRead{types.MetaNamespaceID, "2", string(v0)}: []TxID{
-						"tx1", "tx3",
-					},
-					comparableRead{types.MetaNamespaceID, "2", string(v1)}: []TxID{
-						"tx4",
-					},
+					newCmpRead("1", k1_1, v(1)):                          []TxID{"tx1"},
+					newCmpRead("1", k1_2, v(1)):                          []TxID{"tx1"},
+					newCmpRead("1", k1_5, nil):                           []TxID{"tx2"},
+					newCmpRead("2", k2_1, nil):                           []TxID{"tx1"},
+					newCmpRead("2", k2_2, nil):                           []TxID{"tx3"},
+					newCmpRead("2", k2_5, nil):                           []TxID{"tx3"},
+					newCmpRead(types.MetaNamespaceID, []byte("1"), v(0)): []TxID{"tx1", "tx2"},
+					newCmpRead(types.MetaNamespaceID, []byte("2"), v(0)): []TxID{"tx1", "tx3"},
+					newCmpRead(types.MetaNamespaceID, []byte("2"), v(1)): []TxID{"tx4"},
 				},
 				txIDToNsNonBlindWrites: transactionToWrites{
 					"tx1": tx1NonBlindWrites,

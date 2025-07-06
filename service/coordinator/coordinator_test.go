@@ -160,7 +160,7 @@ func (e *coordinatorTestEnv) createNamespaces(t *testing.T, blkNum int, nsIDs ..
 			Id: uuid.NewString(),
 			Namespaces: []*protoblocktx.TxNamespace{{
 				NsId:      types.MetaNamespaceID,
-				NsVersion: types.VersionNumber(0).Bytes(),
+				NsVersion: 0,
 				ReadWrites: []*protoblocktx.ReadWrite{{
 					Key:   []byte(nsID),
 					Value: pBytes,
@@ -244,7 +244,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 			Namespaces: []*protoblocktx.TxNamespace{
 				{
 					NsId:      "1",
-					NsVersion: types.VersionNumber(0).Bytes(),
+					NsVersion: 0,
 					ReadWrites: []*protoblocktx.ReadWrite{
 						{
 							Key: []byte("key"),
@@ -253,7 +253,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 				},
 				{
 					NsId:      types.MetaNamespaceID,
-					NsVersion: types.VersionNumber(0).Bytes(),
+					NsVersion: 0,
 					ReadWrites: []*protoblocktx.ReadWrite{
 						{
 							Key:   []byte("2"),
@@ -299,7 +299,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 	env.start(ctx, t)
 
 	utNsID := "1"
-	utNsVersion := types.VersionNumber(0).Bytes()
+	utNsVersion := uint64(0)
 	mainKey := []byte("main-key")
 	subKey := []byte("sub-key")
 	p := &protoblocktx.NamespacePolicy{
@@ -330,7 +330,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 				Id: "create namespace 1",
 				Namespaces: []*protoblocktx.TxNamespace{{
 					NsId:      types.MetaNamespaceID,
-					NsVersion: types.VersionNumber(0).Bytes(),
+					NsVersion: 0,
 					ReadWrites: []*protoblocktx.ReadWrite{
 						{
 							Key:   []byte(utNsID),
@@ -358,7 +358,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 					ReadWrites: []*protoblocktx.ReadWrite{{
 						Key:     mainKey,
 						Value:   []byte("value of version 1"),
-						Version: types.VersionNumber(0).Bytes(),
+						Version: v(0),
 					}},
 				}},
 			},
@@ -380,7 +380,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 					NsVersion: utNsVersion,
 					ReadsOnly: []*protoblocktx.Read{{
 						Key:     mainKey,
-						Version: types.VersionNumber(2).Bytes(),
+						Version: v(2),
 					}},
 					ReadWrites: []*protoblocktx.ReadWrite{{
 						Key:   subKey,
@@ -395,7 +395,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 					NsVersion: utNsVersion,
 					ReadWrites: []*protoblocktx.ReadWrite{{
 						Key:     mainKey,
-						Version: types.VersionNumber(2).Bytes(),
+						Version: v(2),
 						Value:   []byte("Value of version 3"),
 					}},
 				}},
@@ -425,11 +425,11 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 	res := env.dbEnv.FetchKeys(t, utNsID, [][]byte{mainKey, subKey})
 	mainValue, ok := res[string(mainKey)]
 	require.True(t, ok)
-	require.Equal(t, types.VersionNumber(3).Bytes(), mainValue.Version)
+	require.EqualValues(t, 3, mainValue.Version)
 
 	subValue, ok := res[string(subKey)]
 	require.True(t, ok)
-	require.Equal(t, types.VersionNumber(0).Bytes(), subValue.Version)
+	require.EqualValues(t, 0, subValue.Version)
 }
 
 func TestQueueSize(t *testing.T) {
@@ -485,7 +485,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      "1",
-						NsVersion: types.VersionNumber(0).Bytes(),
+						NsVersion: 0,
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
 								Key:   []byte("key1"),
@@ -531,7 +531,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      "1",
-						NsVersion: types.VersionNumber(0).Bytes(),
+						NsVersion: 0,
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
 								Key: []byte("key2"),
@@ -548,7 +548,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      "2",
-						NsVersion: types.VersionNumber(0).Bytes(),
+						NsVersion: 0,
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
 								Key: []byte("key3"),
@@ -565,7 +565,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      "1",
-						NsVersion: types.VersionNumber(0).Bytes(),
+						NsVersion: 0,
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
 								Key:   []byte("key1"),
@@ -617,7 +617,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      "1",
-						NsVersion: types.VersionNumber(0).Bytes(),
+						NsVersion: 0,
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
 								Key: []byte("key2"),
@@ -634,7 +634,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      "1",
-						NsVersion: types.VersionNumber(0).Bytes(),
+						NsVersion: 0,
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
 								Key: []byte("key3"),
@@ -651,7 +651,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      "2",
-						NsVersion: types.VersionNumber(0).Bytes(),
+						NsVersion: 0,
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
 								Key: []byte("key3"),
@@ -668,7 +668,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      "1",
-						NsVersion: types.VersionNumber(0).Bytes(),
+						NsVersion: 0,
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
 								Key: []byte("key"),
@@ -677,7 +677,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 					},
 					{
 						NsId:      types.MetaNamespaceID,
-						NsVersion: types.VersionNumber(0).Bytes(),
+						NsVersion: 0,
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
 								Key:   []byte("2"),
@@ -687,7 +687,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 					},
 					{
 						NsId:      "1",
-						NsVersion: types.VersionNumber(0).Bytes(),
+						NsVersion: 0,
 					},
 				},
 				Signatures: [][]byte{
@@ -701,7 +701,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      "1",
-						NsVersion: types.VersionNumber(0).Bytes(),
+						NsVersion: 0,
 						ReadWrites: []*protoblocktx.ReadWrite{
 							{
 								Key:   []byte("key1"),
@@ -749,7 +749,7 @@ func TestCoordinatorStreamFailureWithSidecar(t *testing.T) {
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      "1",
-						NsVersion: types.VersionNumber(0).Bytes(),
+						NsVersion: 0,
 						BlindWrites: []*protoblocktx.Write{
 							{
 								Key: []byte("key1"),
@@ -955,7 +955,7 @@ func makeTestBlock(txPerBlock int) (*protocoordinatorservice.Block, map[string]*
 			Id: txID,
 			Namespaces: []*protoblocktx.TxNamespace{{
 				NsId:      "1",
-				NsVersion: types.VersionNumber(0).Bytes(),
+				NsVersion: 0,
 				BlindWrites: []*protoblocktx.Write{{
 					Key: []byte("key" + strconv.Itoa(i)),
 				}},
@@ -967,4 +967,9 @@ func makeTestBlock(txPerBlock int) (*protocoordinatorservice.Block, map[string]*
 	}
 
 	return b, expectedTxsStatus
+}
+
+// v is a helper function to create a version pointer in a single line.
+func v(v uint64) *uint64 {
+	return &v
 }

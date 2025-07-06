@@ -61,7 +61,7 @@ message RowsNamespace {
 message Row {
   bytes key = 1;
   bytes value = 2;
-  bytes version = 3;
+  uint64 version = 3;
 }
 
 message Empty {}

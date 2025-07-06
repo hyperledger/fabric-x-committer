@@ -14,7 +14,6 @@ import (
 	"github.com/onsi/gomega"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 )
 
@@ -35,7 +34,7 @@ func testSetup(t *testing.T) *runner.CommitterRuntime {
 		Namespaces: []*protoblocktx.TxNamespace{
 			{
 				NsId:      "1",
-				NsVersion: types.VersionNumber(0).Bytes(),
+				NsVersion: 0,
 				BlindWrites: []*protoblocktx.Write{
 					{
 						Key: []byte("k1"),
@@ -56,8 +55,6 @@ func testSetup(t *testing.T) *runner.CommitterRuntime {
 func TestDependentHappyPath(t *testing.T) {
 	t.Parallel()
 	c := testSetup(t)
-
-	v0 := types.VersionNumber(0).Bytes()
 
 	tests := []struct {
 		name            string
@@ -80,7 +77,7 @@ func TestDependentHappyPath(t *testing.T) {
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
 									Key:     []byte("k1"),
-									Version: v0,
+									Version: v(0),
 									Value:   []byte("v2"),
 								},
 							},
@@ -120,7 +117,7 @@ func TestDependentHappyPath(t *testing.T) {
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
 									Key:     []byte("k1"),
-									Version: types.VersionNumber(1).Bytes(),
+									Version: v(1),
 									Value:   []byte("v3"),
 								},
 							},
@@ -139,7 +136,7 @@ func TestDependentHappyPath(t *testing.T) {
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
 									Key:     []byte("k1"),
-									Version: types.VersionNumber(2).Bytes(),
+									Version: v(2),
 									Value:   []byte("v4"),
 								},
 							},
@@ -159,7 +156,7 @@ func TestDependentHappyPath(t *testing.T) {
 			for _, tx := range tt.txs {
 				for _, ns := range tx.Namespaces {
 					ns.NsId = "1"
-					ns.NsVersion = v0
+					ns.NsVersion = 0
 				}
 				c.AddSignatures(t, tx)
 			}
@@ -174,9 +171,6 @@ func TestDependentHappyPath(t *testing.T) {
 func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 	t.Parallel()
 	c := testSetup(t)
-
-	v0 := types.VersionNumber(0).Bytes()
-	v1 := types.VersionNumber(1).Bytes()
 
 	tests := []struct {
 		name            string
@@ -203,7 +197,7 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 			readsOnly: []*protoblocktx.Read{
 				{
 					Key:     []byte("k2"),
-					Version: v0,
+					Version: v(0),
 				},
 			},
 			expectedResults: &runner.ExpectedStatusInBlock{
@@ -217,7 +211,7 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 			readsOnly: []*protoblocktx.Read{
 				{
 					Key:     []byte("k1"),
-					Version: v1,
+					Version: v(1),
 				},
 			},
 			expectedResults: &runner.ExpectedStatusInBlock{
@@ -231,7 +225,7 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 			readsOnly: []*protoblocktx.Read{
 				{
 					Key:     []byte("k1"),
-					Version: v0,
+					Version: v(0),
 				},
 			},
 			expectedResults: &runner.ExpectedStatusInBlock{
@@ -249,7 +243,7 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      "1",
-						NsVersion: v0,
+						NsVersion: 0,
 						ReadsOnly: tt.readsOnly,
 						BlindWrites: []*protoblocktx.Write{
 							{
@@ -270,9 +264,6 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 	t.Parallel()
 	c := testSetup(t)
-
-	v0 := types.VersionNumber(0).Bytes()
-	v1 := types.VersionNumber(1).Bytes()
 
 	tests := []struct {
 		name            string
@@ -300,7 +291,7 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 			readWrites: []*protoblocktx.ReadWrite{
 				{
 					Key:     []byte("k2"),
-					Version: v0,
+					Version: v(0),
 				},
 			},
 			expectedResults: &runner.ExpectedStatusInBlock{
@@ -314,7 +305,7 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 			readWrites: []*protoblocktx.ReadWrite{
 				{
 					Key:     []byte("k1"),
-					Version: v1,
+					Version: v(1),
 				},
 			},
 			expectedResults: &runner.ExpectedStatusInBlock{
@@ -328,7 +319,7 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 			readWrites: []*protoblocktx.ReadWrite{
 				{
 					Key:     []byte("k1"),
-					Version: v0,
+					Version: v(0),
 				},
 			},
 			expectedResults: &runner.ExpectedStatusInBlock{
@@ -346,7 +337,7 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:       "1",
-						NsVersion:  v0,
+						NsVersion:  0,
 						ReadWrites: tt.readWrites,
 					},
 				},
@@ -363,8 +354,6 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 	t.Parallel()
 	c := testSetup(t)
 
-	v0 := types.VersionNumber(0).Bytes()
-
 	tests := []struct {
 		name            string
 		txs             []*protoblocktx.Tx
@@ -380,7 +369,7 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
 									Key:     []byte("k1"),
-									Version: v0,
+									Version: v(0),
 								},
 							},
 						},
@@ -393,7 +382,7 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
 									Key:     []byte("k1"),
-									Version: v0,
+									Version: v(0),
 								},
 							},
 						},
@@ -421,7 +410,7 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
 									Key:     []byte("k1"),
-									Version: v0,
+									Version: v(0),
 								},
 							},
 						},
@@ -434,7 +423,7 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
 									Key:     []byte("k1"),
-									Version: types.VersionNumber(2).Bytes(),
+									Version: v(2),
 								},
 							},
 						},
@@ -447,7 +436,7 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
 									Key:     []byte("k1"),
-									Version: types.VersionNumber(1).Bytes(),
+									Version: v(1),
 								},
 							},
 						},
@@ -515,7 +504,7 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 			for _, tx := range tt.txs {
 				for _, ns := range tx.Namespaces {
 					ns.NsId = "1"
-					ns.NsVersion = v0
+					ns.NsVersion = 0
 				}
 				c.AddSignatures(t, tx)
 			}
@@ -529,8 +518,6 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 func TestWriteWriteConflictsAmongActiveTransactions(t *testing.T) {
 	t.Parallel()
 	c := testSetup(t)
-
-	v0 := types.VersionNumber(0).Bytes()
 
 	tests := []struct {
 		name            string
@@ -559,7 +546,7 @@ func TestWriteWriteConflictsAmongActiveTransactions(t *testing.T) {
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
 									Key:     []byte("k1"),
-									Version: v0,
+									Version: v(0),
 								},
 							},
 						},
@@ -624,7 +611,7 @@ func TestWriteWriteConflictsAmongActiveTransactions(t *testing.T) {
 			for _, tx := range tt.txs {
 				for _, ns := range tx.Namespaces {
 					ns.NsId = "1"
-					ns.NsVersion = v0
+					ns.NsVersion = 0
 				}
 				c.AddSignatures(t, tx)
 			}
@@ -633,4 +620,9 @@ func TestWriteWriteConflictsAmongActiveTransactions(t *testing.T) {
 			c.ValidateExpectedResultsInCommittedBlock(t, tt.expectedResults)
 		})
 	}
+}
+
+// v is a helper function to create a version pointer in a single line.
+func v(ver uint64) *uint64 {
+	return &ver
 }

@@ -52,6 +52,17 @@ jobs:
       - run: scripts/install-dev-dependencies.sh
       - run: make test-no-db
 
+  fuzz-test:
+    name: Fuzz Test (non DB)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: scripts/install-dev-dependencies.sh
+      - run: make test-fuzz
+
   db-test:
     name: Requires and Core DB Tests (postgres)
     runs-on: ubuntu-latest

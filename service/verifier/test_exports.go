@@ -13,10 +13,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/types"
 )
 
-var (
-	v0  = types.VersionNumber(0).Bytes()
-	ns1 = "1"
-)
+var ns1 = "1"
 
 // BadTxFormatTestCases holds the test cases needed to test bad transaction formats.
 var BadTxFormatTestCases = []struct {
@@ -41,7 +38,7 @@ var BadTxFormatTestCases = []struct {
 			Namespaces: []*protoblocktx.TxNamespace{
 				{
 					NsId:       ns1,
-					NsVersion:  v0,
+					NsVersion:  0,
 					ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("1")}},
 				},
 			},
@@ -65,25 +62,11 @@ var BadTxFormatTestCases = []struct {
 	},
 	{
 		Tx: &protoblocktx.Tx{
-			Id: "missing namespace version",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId: ns1,
-				},
-			},
-			Signatures: [][]byte{
-				[]byte("dummy"),
-			},
-		},
-		ExpectedStatus: protoblocktx.Status_ABORTED_MISSING_NAMESPACE_VERSION,
-	},
-	{
-		Tx: &protoblocktx.Tx{
 			Id: "no writes",
 			Namespaces: []*protoblocktx.TxNamespace{
 				{
 					NsId:      ns1,
-					NsVersion: v0,
+					NsVersion: 0,
 					ReadsOnly: []*protoblocktx.Read{
 						{
 							Key: []byte("k1"),
@@ -103,7 +86,7 @@ var BadTxFormatTestCases = []struct {
 			Namespaces: []*protoblocktx.TxNamespace{
 				{
 					NsId:      ns1,
-					NsVersion: v0,
+					NsVersion: 0,
 					ReadWrites: []*protoblocktx.ReadWrite{
 						{
 							Key: []byte("key"),
@@ -112,7 +95,7 @@ var BadTxFormatTestCases = []struct {
 				},
 				{
 					NsId:      types.MetaNamespaceID,
-					NsVersion: v0,
+					NsVersion: 0,
 					ReadWrites: []*protoblocktx.ReadWrite{
 						{
 							Key: []byte("/\\"),
@@ -133,7 +116,7 @@ var BadTxFormatTestCases = []struct {
 			Namespaces: []*protoblocktx.TxNamespace{
 				{
 					NsId:      ns1,
-					NsVersion: v0,
+					NsVersion: 0,
 					ReadWrites: []*protoblocktx.ReadWrite{
 						{
 							Key: []byte("key"),
@@ -142,7 +125,7 @@ var BadTxFormatTestCases = []struct {
 				},
 				{
 					NsId:      types.MetaNamespaceID,
-					NsVersion: v0,
+					NsVersion: 0,
 					ReadWrites: []*protoblocktx.ReadWrite{
 						{
 							Key:   []byte("2"),
@@ -164,7 +147,7 @@ var BadTxFormatTestCases = []struct {
 			Namespaces: []*protoblocktx.TxNamespace{
 				{
 					NsId:      ns1,
-					NsVersion: v0,
+					NsVersion: 0,
 					ReadWrites: []*protoblocktx.ReadWrite{
 						{
 							Key: []byte("key"),
@@ -173,7 +156,7 @@ var BadTxFormatTestCases = []struct {
 				},
 				{
 					NsId:      types.MetaNamespaceID,
-					NsVersion: v0,
+					NsVersion: 0,
 					ReadWrites: []*protoblocktx.ReadWrite{
 						{
 							Key:   []byte("2"),
@@ -183,7 +166,7 @@ var BadTxFormatTestCases = []struct {
 				},
 				{
 					NsId:      ns1,
-					NsVersion: v0,
+					NsVersion: 0,
 				},
 			},
 			Signatures: [][]byte{
@@ -200,7 +183,7 @@ var BadTxFormatTestCases = []struct {
 			Namespaces: []*protoblocktx.TxNamespace{
 				{
 					NsId:      ns1,
-					NsVersion: v0,
+					NsVersion: 0,
 					ReadWrites: []*protoblocktx.ReadWrite{
 						{
 							Key: []byte("key"),
@@ -209,7 +192,7 @@ var BadTxFormatTestCases = []struct {
 				},
 				{
 					NsId:      types.MetaNamespaceID,
-					NsVersion: v0,
+					NsVersion: 0,
 					BlindWrites: []*protoblocktx.Write{
 						{
 							Key:   []byte("2"),
@@ -231,7 +214,7 @@ var BadTxFormatTestCases = []struct {
 			Namespaces: []*protoblocktx.TxNamespace{
 				{
 					NsId:       ns1,
-					NsVersion:  v0,
+					NsVersion:  0,
 					ReadsOnly:  []*protoblocktx.Read{{Key: nil}},
 					ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("1")}},
 				},
@@ -246,7 +229,7 @@ var BadTxFormatTestCases = []struct {
 			Namespaces: []*protoblocktx.TxNamespace{
 				{
 					NsId:       ns1,
-					NsVersion:  v0,
+					NsVersion:  0,
 					ReadWrites: []*protoblocktx.ReadWrite{{Key: nil}},
 				},
 			},
@@ -260,7 +243,7 @@ var BadTxFormatTestCases = []struct {
 			Namespaces: []*protoblocktx.TxNamespace{
 				{
 					NsId:        ns1,
-					NsVersion:   v0,
+					NsVersion:   0,
 					BlindWrites: []*protoblocktx.Write{{Key: nil}},
 				},
 			},
@@ -274,7 +257,7 @@ var BadTxFormatTestCases = []struct {
 			Namespaces: []*protoblocktx.TxNamespace{
 				{
 					NsId:       ns1,
-					NsVersion:  v0,
+					NsVersion:  0,
 					ReadsOnly:  []*protoblocktx.Read{{Key: []byte("key1")}, {Key: []byte("key1")}},
 					ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("1")}},
 				},
@@ -289,7 +272,7 @@ var BadTxFormatTestCases = []struct {
 			Namespaces: []*protoblocktx.TxNamespace{
 				{
 					NsId:       ns1,
-					NsVersion:  v0,
+					NsVersion:  0,
 					ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("key1")}, {Key: []byte("key1")}},
 				},
 			},
@@ -303,7 +286,7 @@ var BadTxFormatTestCases = []struct {
 			Namespaces: []*protoblocktx.TxNamespace{
 				{
 					NsId:        ns1,
-					NsVersion:   v0,
+					NsVersion:   0,
 					BlindWrites: []*protoblocktx.Write{{Key: []byte("key1")}, {Key: []byte("key1")}},
 				},
 			},
@@ -317,7 +300,7 @@ var BadTxFormatTestCases = []struct {
 			Namespaces: []*protoblocktx.TxNamespace{
 				{
 					NsId:       ns1,
-					NsVersion:  v0,
+					NsVersion:  0,
 					ReadsOnly:  []*protoblocktx.Read{{Key: []byte("key1")}},
 					ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("key1")}},
 				},
@@ -332,7 +315,7 @@ var BadTxFormatTestCases = []struct {
 			Namespaces: []*protoblocktx.TxNamespace{
 				{
 					NsId:        ns1,
-					NsVersion:   v0,
+					NsVersion:   0,
 					ReadWrites:  []*protoblocktx.ReadWrite{{Key: []byte("key1")}},
 					BlindWrites: []*protoblocktx.Write{{Key: []byte("key1")}},
 				},

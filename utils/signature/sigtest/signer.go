@@ -25,16 +25,13 @@ type (
 	// NsSigner signs a transaction's namespace.
 	// It also implements DigestSigner.
 	NsSigner struct {
-		DigestSigner
+		signer DigestSigner
 	}
 
 	// DigestSigner is an interface for signing a digest.
 	DigestSigner interface {
 		Sign(signature.Digest) (signature.Signature, error)
 	}
-
-	// DummySigner returns a fixed signature.
-	DummySigner struct{}
 
 	// EddsaSigner signs using the EDDSA scheme.
 	EddsaSigner struct {
@@ -52,6 +49,8 @@ type (
 	}
 )
 
+var dummySig = make([]byte, 0)
+
 // NewNsSigner creates a new namespace signer according to the implementation scheme.
 func NewNsSigner(scheme signature.Scheme, key []byte) (*NsSigner, error) {
 	scheme = strings.ToUpper(scheme)
@@ -59,7 +58,7 @@ func NewNsSigner(scheme signature.Scheme, key []byte) (*NsSigner, error) {
 	var s DigestSigner
 	switch scheme {
 	case signature.NoScheme, "":
-		s = &DummySigner{}
+		s = nil
 	case signature.Ecdsa:
 		s, err = NewEcdsaSigner(key)
 	case signature.Bls:
@@ -69,7 +68,7 @@ func NewNsSigner(scheme signature.Scheme, key []byte) (*NsSigner, error) {
 	default:
 		return nil, errors.Newf("scheme '%v' not supported", scheme)
 	}
-	return &NsSigner{DigestSigner: s}, errors.Wrap(err, "failed creating signer")
+	return &NsSigner{signer: s}, errors.Wrap(err, "failed creating signer")
 }
 
 // NewBlsSigner instantiate a BlsSigner given a key.
@@ -93,16 +92,14 @@ func (v *NsSigner) SignNs(tx *protoblocktx.Tx, nsIndex int) (signature.Signature
 	if nsIndex < 0 || nsIndex >= len(tx.Namespaces) {
 		return nil, errors.New("namespace index out of range")
 	}
+	if v.signer == nil {
+		return dummySig, nil
+	}
 	digest, err := signature.DigestTxNamespace(tx, nsIndex)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed creating digest")
 	}
-	return v.Sign(digest)
-}
-
-// Sign signs a digest.
-func (*DummySigner) Sign(signature.Digest) (signature.Signature, error) {
-	return []byte{}, nil
+	return v.signer.Sign(digest)
 }
 
 // Sign signs a digest.

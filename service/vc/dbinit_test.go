@@ -8,6 +8,7 @@ package vc
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -19,24 +20,26 @@ import (
 
 func TestDBInit(t *testing.T) {
 	t.Parallel()
-	env := NewDatabaseTestEnv(t)
+	env := newDatabaseTestEnvWithTablesSetup(t)
 
-	require.NoError(t, env.DB.setupSystemTablesAndNamespaces(t.Context()))
-	tableName := nsTableNamePrefix + systemNamespaces[0]
-	_, err := env.DB.pool.Exec(t.Context(), "insert into "+tableName+" values (UNNEST($1::bytea[]));", [][]byte{
-		[]byte("tx1"), []byte("tx2"), []byte("tx3"), []byte("tx4"),
-	})
+	tableName := nsTableNamePrefix + types.MetaNamespaceID
+	keys := [][]byte{[]byte("tx1"), []byte("tx2"), []byte("tx3"), []byte("tx4")}
+	ret := env.DB.pool.QueryRow(t.Context(), fmt.Sprintf(insertNsStatesSQLTempl, types.MetaNamespaceID), keys, keys)
+	duplicates, err := readArrayResult[[]byte](ret)
 	require.NoError(t, err)
+	require.Empty(t, duplicates)
 
 	// Validate default values
 	r, err := env.DB.pool.Query(t.Context(), "select * from "+tableName+";")
 	require.NoError(t, err)
 	defer r.Close()
 	for r.Next() {
-		var key, value, version []byte
+		var key, value []byte
+		var version uint64
 		require.NoError(t, r.Scan(&key, &value, &version))
-		require.Nil(t, value)
-		require.Equal(t, types.VersionNumber(0).Bytes(), version)
+		require.NotNil(t, key)
+		require.Equal(t, key, value)
+		require.EqualValues(t, 0, version)
 	}
 }
 

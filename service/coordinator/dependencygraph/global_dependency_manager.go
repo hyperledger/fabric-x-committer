@@ -219,7 +219,7 @@ func (dm *globalDependencyManager) processValidatedTransactions(ctx context.Cont
 		// Step 2: Send the fullyFreedDependents to the outgoingDepFreeTransactionsNode.
 		start = time.Now()
 		if len(fullyFreedDependents) > 0 {
-			promutil.SubFromGauge(m.dependentTransactionsQueueSize, (len(fullyFreedDependents)))
+			promutil.SubFromGauge(m.dependentTransactionsQueueSize, len(fullyFreedDependents))
 			dm.freedTransactionsSet.add(fullyFreedDependents)
 			fullyFreedDependents = nil
 		}

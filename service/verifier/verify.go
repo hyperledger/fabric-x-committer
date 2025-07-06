@@ -11,6 +11,7 @@ import (
 	"maps"
 	"slices"
 	"sync/atomic"
+	"unicode/utf8"
 
 	"github.com/cockroachdb/errors"
 	"go.uber.org/zap/zapcore"
@@ -144,6 +145,14 @@ func verifyTxForm(tx *protoblocktx.Tx) protoblocktx.Status {
 		return protoblocktx.Status_ABORTED_MISSING_TXID
 	}
 
+	if !utf8.ValidString(tx.Id) {
+		// ASN.1. Marshalling only supports valid UTF8 strings.
+		// This case is unlikely as the message received via protobuf message which also only support
+		// valid UTF8 strings.
+		// Thus, we do not create a designated status for such error.
+		return protoblocktx.Status_ABORTED_MISSING_TXID
+	}
+
 	if len(tx.Namespaces) == 0 {
 		return protoblocktx.Status_ABORTED_EMPTY_NAMESPACES
 	}
@@ -174,10 +183,6 @@ func verifyTxForm(tx *protoblocktx.Tx) protoblocktx.Status {
 }
 
 func checkNamespaceFormation(ns *protoblocktx.TxNamespace) protoblocktx.Status {
-	// The config namespace is version-less.
-	if ns.NsVersion == nil && ns.NsId != types.ConfigNamespaceID {
-		return protoblocktx.Status_ABORTED_MISSING_NAMESPACE_VERSION
-	}
 	if len(ns.ReadWrites) == 0 && len(ns.BlindWrites) == 0 {
 		return protoblocktx.Status_ABORTED_NO_WRITES
 	}

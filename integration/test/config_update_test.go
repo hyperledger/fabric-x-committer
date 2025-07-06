@@ -62,7 +62,6 @@ func TestConfigUpdate(t *testing.T) {
 
 	c.CreateNamespacesAndCommit(t, "1")
 
-	v0 := types.VersionNumber(0).Bytes()
 	sendTXs := func() {
 		expected := &runner.ExpectedStatusInBlock{
 			TxIDs:    make([]string, blockSize),
@@ -77,7 +76,7 @@ func TestConfigUpdate(t *testing.T) {
 				Id: expected.TxIDs[i],
 				Namespaces: []*protoblocktx.TxNamespace{{
 					NsId:        "1",
-					NsVersion:   v0,
+					NsVersion:   0,
 					BlindWrites: []*protoblocktx.Write{{Key: []byte(fmt.Sprintf("key-%d", i))}},
 				}},
 			}
@@ -114,7 +113,7 @@ func TestConfigUpdate(t *testing.T) {
 
 	// We replace the ID to prevent duplicated status, and re-sign it with the correct key.
 	metaTX.Id = uuid.New().String()
-	metaTX.Namespaces[0].NsVersion = types.VersionNumber(1).Bytes()
+	metaTX.Namespaces[0].NsVersion = 1
 	c.AddSignatures(t, metaTX)
 	c.SendTransactionsToOrderer(t, []*protoblocktx.Tx{metaTX})
 	c.ValidateExpectedResultsInCommittedBlock(t, &runner.ExpectedStatusInBlock{

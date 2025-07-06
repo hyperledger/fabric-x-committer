@@ -128,7 +128,7 @@ func configTx(id string, value []byte) *protoblocktx.Tx {
 		Id: id,
 		Namespaces: []*protoblocktx.TxNamespace{{
 			NsId:      types.ConfigNamespaceID,
-			NsVersion: types.VersionNumber(0).Bytes(),
+			NsVersion: 0,
 			BlindWrites: []*protoblocktx.Write{{
 				Key:   []byte(types.ConfigKey),
 				Value: value,

@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 )
 
@@ -109,11 +108,10 @@ func TestCrashWhenIdle(t *testing.T) {
 
 func addSignAndSendTransactions(t *testing.T, c *runner.CommitterRuntime, txs []*protoblocktx.Tx) {
 	t.Helper()
-	v0 := types.VersionNumber(0).Bytes()
 	for _, tx := range txs {
 		for _, ns := range tx.Namespaces {
 			ns.NsId = "1"
-			ns.NsVersion = v0
+			ns.NsVersion = 0
 		}
 		c.AddSignatures(t, tx)
 	}
