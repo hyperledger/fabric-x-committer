@@ -149,6 +149,10 @@ kill-test-docker: FORCE
 	$(docker_cmd) ps -aq -f name=sc_yugabyte_unit_tests | xargs $(docker_cmd) rm -f
 	$(docker_cmd) ps -aq -f name=sc_postgres_unit_tests | xargs $(docker_cmd) rm -f
 
+#########################
+# Benchmarks
+#########################
+
 # Run a load generation benchmarks with added TX/sec column.
 bench-loadgen: FORCE
 	$(go_cmd) test ./loadgen/... -bench "Benchmark.*" -run="^$$" | awk -f scripts/bench-tx-per-sec.awk
@@ -164,6 +168,10 @@ bench-preparer: FORCE
 # Run signature benchmarks with added op/sec column.
 bench-sign: FORCE
 	$(go_cmd) test ./utils/signature/... -bench ".*" -run "^$$" | awk -f scripts/bench-tx-per-sec.awk
+
+# Run dependency detector benchmarks with added op/sec column.
+bench-verify: FORCE
+	$(go_cmd) test ./service/verifier/... -bench "BenchmarkVerifyForm.*" -run "^$$" | awk -f scripts/bench-tx-per-sec.awk
 
 #########################
 # Generate protos
