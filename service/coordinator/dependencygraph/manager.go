@@ -12,56 +12,32 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
-type (
-	// Manager is the main component of the dependency graph module.
-	// It is responsible for managing the local dependency constructor
-	// and the global dependency manager.
-	Manager struct {
-		localDepConstructor         *localDependencyConstructor
-		globalDepManager            *globalDependencyManager
-		config                      *Config
-		outgoingTxsNodeWithLocalDep chan *transactionNodeBatch
-		metrics                     *perfMetrics
-	}
-
-	// Config holds the configuration for the dependency graph manager.
-	Config struct {
-		// IncomingTxs is the channel for dependency manager to receive
-		// incoming transactions.
-		IncomingTxs <-chan *TransactionBatch
-		// OutgoingDepFreeTxsNode is the channel dependency manager to send
-		// dependency free transactions for validation and commit.
-		OutgoingDepFreeTxsNode chan<- TxNodeBatch
-		// IncomingValidatedTxsNode is the channel for dependency manager
-		// to receive validated transactions.
-		IncomingValidatedTxsNode <-chan TxNodeBatch
-		// NumOfLocalDepConstructors defines the number of local
-		// dependency constructors.
-		NumOfLocalDepConstructors int
-		// WaitingTxsLimit defines the maximum number of transactions
-		// that can be waiting at the dependency manager.
-		WaitingTxsLimit int
-		// PrometheusMetricsProvider is the provider for Prometheus metrics.
-		PrometheusMetricsProvider *monitoring.Provider
-	}
-)
+// Manager is the main component of the dependency graph module.
+// It is responsible for managing the local dependency constructor
+// and the global dependency manager.
+type Manager struct {
+	localDepConstructor         *localDependencyConstructor
+	globalDepManager            *globalDependencyManager
+	parameters                  *Parameters
+	outgoingTxsNodeWithLocalDep chan *transactionNodeBatch
+	metrics                     *perfMetrics
+}
 
 // NewManager creates a new dependency graph manager.
-func NewManager(c *Config) *Manager {
-	metrics := newPerformanceMetrics(c.PrometheusMetricsProvider)
+func NewManager(p *Parameters) *Manager {
+	metrics := newPerformanceMetrics(p.PrometheusMetricsProvider)
 
-	outgoingTxsNodeWithLocalDep := make(chan *transactionNodeBatch, cap(c.IncomingTxs))
-	ldp := newLocalDependencyConstructor(c.IncomingTxs, outgoingTxsNodeWithLocalDep, metrics)
+	outgoingTxsNodeWithLocalDep := make(chan *transactionNodeBatch, cap(p.IncomingTxs))
+	ldp := newLocalDependencyConstructor(p.IncomingTxs, outgoingTxsNodeWithLocalDep, metrics)
 
 	gdConf := &globalDepConfig{
 		incomingTxsNode:        outgoingTxsNodeWithLocalDep,
-		outgoingDepFreeTxsNode: c.OutgoingDepFreeTxsNode,
-		validatedTxsNode:       c.IncomingValidatedTxsNode,
-		waitingTxsLimit:        c.WaitingTxsLimit,
+		outgoingDepFreeTxsNode: p.OutgoingDepFreeTxsNode,
+		validatedTxsNode:       p.IncomingValidatedTxsNode,
+		waitingTxsLimit:        p.WaitingTxsLimit,
 		metrics:                metrics,
 	}
 
@@ -70,7 +46,7 @@ func NewManager(c *Config) *Manager {
 	return &Manager{
 		localDepConstructor:         ldp,
 		globalDepManager:            gdp,
-		config:                      c,
+		parameters:                  p,
 		outgoingTxsNodeWithLocalDep: outgoingTxsNodeWithLocalDep,
 		metrics:                     metrics,
 	}
@@ -87,7 +63,7 @@ func (m *Manager) Run(ctx context.Context) {
 	})
 
 	g.Go(func() error {
-		m.localDepConstructor.run(gCtx, m.config.NumOfLocalDepConstructors)
+		m.localDepConstructor.run(gCtx, m.parameters.NumOfLocalDepConstructors)
 		return nil
 	})
 
