@@ -18,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/broadcastdeliver"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -149,10 +150,7 @@ func mapToStatusBatch(block *common.Block) []metrics.TxStatus {
 
 // recapStatusCodes recaps of the status codes of a block.
 func recapStatusCodes(statusCodes []byte) string {
-	codes := make(map[byte]uint64)
-	for _, code := range statusCodes {
-		codes[code]++
-	}
+	codes := utils.CountAppearances(statusCodes)
 	items := make([]string, 0, len(codes))
 	for code, count := range codes {
 		items = append(

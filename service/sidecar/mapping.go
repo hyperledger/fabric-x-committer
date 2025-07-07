@@ -8,31 +8,51 @@ package sidecar
 
 import (
 	"fmt"
+	"unicode/utf8"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 )
 
 type (
-	validationCode    = byte
 	scBlockWithStatus struct {
 		block      *protocoordinatorservice.Block
 		withStatus *blockWithStatus
 		isConfig   bool
+		// txIDToHeight is a reference to the relay map.
+		txIDToHeight *utils.SyncMap[string, types.Height]
+	}
+
+	blockWithStatus struct {
+		block        *common.Block
+		txStatus     []protoblocktx.Status
+		pendingCount int
 	}
 )
 
 const (
-	excludedStatus  = validationCode(protoblocktx.Status_ABORTED_UNSUPPORTED_TX_PAYLOAD)
-	notYetValidated = validationCode(protoblocktx.Status_NOT_VALIDATED)
+	statusNotYetValidated = protoblocktx.Status_NOT_VALIDATED
+	statusIdx             = int(common.BlockMetadataIndex_TRANSACTIONS_FILTER)
 )
 
-func mapBlock(block *common.Block) *scBlockWithStatus {
+func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, types.Height]) *scBlockWithStatus {
+	// Prepare block's metadata.
+	if block.Metadata == nil {
+		block.Metadata = &common.BlockMetadata{}
+	}
+	metadataSize := len(block.Metadata.Metadata)
+	if metadataSize <= statusIdx {
+		block.Metadata.Metadata = append(block.Metadata.Metadata, make([][]byte, statusIdx+1-metadataSize)...)
+	}
+
 	if block.Data == nil {
 		logger.Warnf("Received a block [%d] without data", block.Header.Number)
 		return &scBlockWithStatus{
@@ -40,66 +60,145 @@ func mapBlock(block *common.Block) *scBlockWithStatus {
 				Number: block.Header.Number,
 			},
 			withStatus: &blockWithStatus{
-				block:         block,
-				txIDToTxIndex: make(map[string]int),
+				block: block,
 			},
+			txIDToHeight: txIDToHeight,
 		}
 	}
+
 	txCount := len(block.Data.Data)
 	mappedBlock := &scBlockWithStatus{
 		block: &protocoordinatorservice.Block{
-			Number: block.Header.Number,
-			Txs:    make([]*protoblocktx.Tx, 0, txCount),
-			TxsNum: make([]uint32, 0, txCount),
+			Number:   block.Header.Number,
+			Txs:      make([]*protoblocktx.Tx, 0, txCount),
+			TxsNum:   make([]uint32, 0, txCount),
+			Rejected: make([]*protocoordinatorservice.TxStatusInfo, 0, txCount),
 		},
 		withStatus: &blockWithStatus{
-			block:         block,
-			txStatus:      newValidationCodes(txCount),
-			txIDToTxIndex: make(map[string]int, txCount),
-			pendingCount:  txCount,
+			block:        block,
+			txStatus:     make([]protoblocktx.Status, txCount),
+			pendingCount: txCount,
 		},
+		txIDToHeight: txIDToHeight,
 	}
-
-	for txNum, msg := range block.Data.Data {
-		logger.Debugf("Mapping transaction [blk,tx] = [%d,%d]", block.Header.Number, txNum)
-		data, hdr, err := serialization.UnwrapEnvelope(msg)
-		if err != nil {
-			mappedBlock.excludeTx(txNum, hdr, err.Error())
-			continue
-		}
-
-		switch hdr.Type {
-		case int32(common.HeaderType_CONFIG):
-			mappedBlock.appendTx(txNum, hdr, configTx(hdr.TxId, msg))
-			mappedBlock.isConfig = true
-		case int32(common.HeaderType_MESSAGE):
-			tx, err := serialization.UnmarshalTx(data)
-			if err != nil {
-				mappedBlock.excludeTx(txNum, hdr, err.Error())
-				continue
-			}
-			if isApplicationConfigTx(tx) {
-				mappedBlock.excludeTx(txNum, hdr, "application's config tx")
-				continue
-			}
-			mappedBlock.appendTx(txNum, hdr, tx)
-		default:
-			mappedBlock.excludeTx(txNum, hdr, "unsupported message type")
-		}
+	for msgIndex, msg := range block.Data.Data {
+		logger.Debugf("Mapping transaction [blk,tx] = [%d,%d]", mappedBlock.block.Number, msgIndex)
+		mappedBlock.mapMessage(uint32(msgIndex), msg) //nolint:gosec // int -> uint32.
 	}
 	return mappedBlock
 }
 
-func (b *scBlockWithStatus) appendTx(txNum int, channelHdr *common.ChannelHeader, tx *protoblocktx.Tx) {
-	b.block.TxsNum = append(b.block.TxsNum, uint32(txNum)) //nolint:gosec
-	b.block.Txs = append(b.block.Txs, tx)
-	debugTx(channelHdr, "including [==> %s]", tx.Id)
+func (b *scBlockWithStatus) mapMessage(msgIndex uint32, msg []byte) {
+	data, hdr, envErr := serialization.UnwrapEnvelope(msg)
+	if envErr != nil {
+		b.rejectTx(msgIndex, hdr, protoblocktx.Status_MALFORMED_BAD_ENVELOPE, envErr.Error())
+		return
+	}
+	if hdr.TxId == "" {
+		b.rejectTx(msgIndex, hdr, protoblocktx.Status_MALFORMED_MISSING_TX_ID, "no TX ID")
+		return
+	}
+
+	switch common.HeaderType(hdr.Type) {
+	default:
+		b.rejectTx(msgIndex, hdr, protoblocktx.Status_MALFORMED_UNSUPPORTED_TX_PAYLOAD, "message type")
+	case common.HeaderType_CONFIG:
+		_, err := policy.ParsePolicyFromConfigTx(msg)
+		if err != nil {
+			b.rejectTx(msgIndex, hdr, protoblocktx.Status_MALFORMED_CONFIG_TX_INVALID, err.Error())
+			return
+		}
+		b.appendTx(msgIndex, hdr, configTx(hdr.TxId, msg))
+		b.isConfig = true
+	case common.HeaderType_MESSAGE:
+		tx, err := serialization.UnmarshalTx(data)
+		if err != nil {
+			b.rejectTx(msgIndex, hdr, protoblocktx.Status_MALFORMED_BAD_PAYLOAD, err.Error())
+			return
+		}
+		if hdr.TxId != tx.Id {
+			b.rejectTx(msgIndex, hdr, protoblocktx.Status_MALFORMED_TX_ID_CONFLICT, "tx ID does not match")
+		}
+		if status := verifyTxForm(tx); status != statusNotYetValidated {
+			b.rejectTx(msgIndex, hdr, status, "malformed tx")
+			return
+		}
+		b.appendTx(msgIndex, hdr, tx)
+	}
 }
 
-func (b *scBlockWithStatus) excludeTx(txNum int, channelHdr *common.ChannelHeader, reason string) {
-	b.withStatus.txStatus[txNum] = excludedStatus
-	b.withStatus.pendingCount--
-	debugTx(channelHdr, "excluding due to %s", reason)
+func (b *scBlockWithStatus) appendTx(txNum uint32, hdr *common.ChannelHeader, tx *protoblocktx.Tx) {
+	if idAlreadyExists := b.addTxIDMapping(txNum, hdr); idAlreadyExists {
+		return
+	}
+	b.block.TxsNum = append(b.block.TxsNum, txNum)
+	b.block.Txs = append(b.block.Txs, tx)
+	debugTx(hdr, "included: %s", hdr.TxId)
+}
+
+func (b *scBlockWithStatus) rejectTx(
+	txNum uint32, hdr *common.ChannelHeader, status protoblocktx.Status, reason string,
+) {
+	if !IsStatusStoredInDB(status) {
+		err := b.withStatus.setFinalStatus(txNum, status)
+		if err != nil {
+			// This should never happen unless there is a bug in the mapper.
+			logger.Errorf("[BUG] failed to set final-status for tx %d: %v", txNum, err)
+			return
+		}
+		debugTx(hdr, "excluded: %s (%s)", &status, reason)
+		return
+	}
+	if idAlreadyExists := b.addTxIDMapping(txNum, hdr); idAlreadyExists {
+		return
+	}
+	b.block.Rejected = append(b.block.Rejected, &protocoordinatorservice.TxStatusInfo{
+		TxNum:  txNum,
+		Id:     hdr.TxId,
+		Status: status,
+	})
+	debugTx(hdr, "rejected: %s (%s)", &status, reason)
+}
+
+func (b *scBlockWithStatus) addTxIDMapping(txNum uint32, hdr *common.ChannelHeader) (idAlreadyExists bool) {
+	_, idAlreadyExists = b.txIDToHeight.LoadOrStore(hdr.TxId, types.Height{
+		BlockNum: b.block.Number,
+		TxNum:    txNum,
+	})
+	if idAlreadyExists {
+		b.rejectTx(txNum, hdr, protoblocktx.Status_REJECTED_DUPLICATE_TX_ID, "duplicate tx")
+	}
+	return idAlreadyExists
+}
+
+func (b *blockWithStatus) setFinalStatus(txNum uint32, status protoblocktx.Status) error {
+	if b.txStatus[txNum] != statusNotYetValidated {
+		// This can never occur unless there is a bug in the relay or the coordinator.
+		return errors.Newf("two results for a TX [blockNum: %d, txNum: %d]", b.block.Header.Number, txNum)
+	}
+	b.txStatus[txNum] = status
+	b.pendingCount--
+	return nil
+}
+
+func (b *blockWithStatus) setStatusMetadataInBlock() {
+	statusMetadata := make([]byte, len(b.txStatus))
+	for i, s := range b.txStatus {
+		statusMetadata[i] = byte(s)
+	}
+	b.block.Metadata.Metadata[statusIdx] = statusMetadata
+}
+
+// IsStatusStoredInDB returns true if the given status code can be stored in the state DB.
+func IsStatusStoredInDB(status protoblocktx.Status) bool {
+	switch status {
+	case protoblocktx.Status_MALFORMED_BAD_ENVELOPE,
+		protoblocktx.Status_MALFORMED_MISSING_TX_ID,
+		protoblocktx.Status_REJECTED_DUPLICATE_TX_ID:
+		return false
+	default:
+		return true
+	}
 }
 
 func debugTx(channelHdr *common.ChannelHeader, format string, a ...any) {
@@ -115,14 +214,6 @@ func debugTx(channelHdr *common.ChannelHeader, format string, a ...any) {
 	logger.Debugf("TX type [%s] ID [%s]: %s", hdr, txID, fmt.Sprintf(format, a...))
 }
 
-func newValidationCodes(expected int) []validationCode {
-	codes := make([]validationCode, expected)
-	for i := range codes {
-		codes[i] = notYetValidated
-	}
-	return codes
-}
-
 func configTx(id string, value []byte) *protoblocktx.Tx {
 	return &protoblocktx.Tx{
 		Id: id,
@@ -134,17 +225,110 @@ func configTx(id string, value []byte) *protoblocktx.Tx {
 				Value: value,
 			}},
 		}},
-		// A valid TX must have a signature per namespace.
-		Signatures: make([][]byte, 1),
 	}
 }
 
-// isApplicationConfigTx checks the application does not submit a config TX.
-func isApplicationConfigTx(tx *protoblocktx.Tx) bool {
-	for _, ns := range tx.Namespaces {
-		if ns.NsId == types.ConfigNamespaceID {
-			return true
-		}
+// verifyTxForm verifies that a TX is not malformed.
+// It returns status MALFORMED_<reason> if it is malformed, or not-validated otherwise.
+func verifyTxForm(tx *protoblocktx.Tx) protoblocktx.Status {
+	if tx.Id == "" || !utf8.ValidString(tx.Id) {
+		// ASN.1. Marshalling only supports valid UTF8 strings.
+		// This case is unlikely as the message received via protobuf message which also only support
+		// valid UTF8 strings.
+		// Thus, we do not create a designated status for such error.
+		return protoblocktx.Status_MALFORMED_MISSING_TX_ID
 	}
-	return false
+
+	if len(tx.Namespaces) == 0 {
+		return protoblocktx.Status_MALFORMED_EMPTY_NAMESPACES
+	}
+	if len(tx.Namespaces) != len(tx.Signatures) {
+		return protoblocktx.Status_MALFORMED_MISSING_SIGNATURE
+	}
+
+	nsIDs := make(map[string]any, len(tx.Namespaces))
+	for _, ns := range tx.Namespaces {
+		// Checks that the application does not submit a config TX.
+		if ns.NsId == types.ConfigNamespaceID || policy.ValidateNamespaceID(ns.NsId) != nil {
+			return protoblocktx.Status_MALFORMED_NAMESPACE_ID_INVALID
+		}
+		if _, ok := nsIDs[ns.NsId]; ok {
+			return protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE
+		}
+
+		for _, check := range []func(ns *protoblocktx.TxNamespace) protoblocktx.Status{
+			checkNamespaceFormation, checkMetaNamespace,
+		} {
+			if status := check(ns); status != statusNotYetValidated {
+				return status
+			}
+		}
+		nsIDs[ns.NsId] = nil
+	}
+	return statusNotYetValidated
+}
+
+func checkNamespaceFormation(ns *protoblocktx.TxNamespace) protoblocktx.Status {
+	if len(ns.ReadWrites) == 0 && len(ns.BlindWrites) == 0 {
+		return protoblocktx.Status_MALFORMED_NO_WRITES
+	}
+
+	keys := make([][]byte, 0, len(ns.ReadsOnly)+len(ns.ReadWrites)+len(ns.BlindWrites))
+	for _, r := range ns.ReadsOnly {
+		keys = append(keys, r.Key)
+	}
+	for _, r := range ns.ReadWrites {
+		keys = append(keys, r.Key)
+	}
+	for _, r := range ns.BlindWrites {
+		keys = append(keys, r.Key)
+	}
+	return checkKeys(keys)
+}
+
+func checkMetaNamespace(txNs *protoblocktx.TxNamespace) protoblocktx.Status {
+	if txNs.NsId != types.MetaNamespaceID {
+		return statusNotYetValidated
+	}
+	if len(txNs.BlindWrites) > 0 {
+		return protoblocktx.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED
+	}
+
+	nsUpdate := make(map[string]any)
+	u := policy.GetUpdatesFromNamespace(txNs)
+	if u == nil {
+		return statusNotYetValidated
+	}
+	for _, pd := range u.NamespacePolicies.Policies {
+		_, err := policy.ParseNamespacePolicyItem(pd)
+		if err != nil {
+			if errors.Is(err, policy.ErrInvalidNamespaceID) {
+				return protoblocktx.Status_MALFORMED_NAMESPACE_ID_INVALID
+			}
+			return protoblocktx.Status_MALFORMED_NAMESPACE_POLICY_INVALID
+		}
+		if pd.Namespace == types.MetaNamespaceID {
+			return protoblocktx.Status_MALFORMED_NAMESPACE_POLICY_INVALID
+		}
+		if _, ok := nsUpdate[pd.Namespace]; ok {
+			return protoblocktx.Status_MALFORMED_NAMESPACE_POLICY_INVALID
+		}
+		nsUpdate[pd.Namespace] = nil
+	}
+	return statusNotYetValidated
+}
+
+// checkKeys verifies there are no duplicate keys and no nil keys.
+func checkKeys(keys [][]byte) protoblocktx.Status {
+	seenKeys := make(map[string]any, len(keys))
+	for _, k := range keys {
+		if len(k) == 0 {
+			return protoblocktx.Status_MALFORMED_EMPTY_KEY
+		}
+		seenKeys[string(k)] = nil
+	}
+	if len(seenKeys) != len(keys) {
+		return protoblocktx.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET
+	}
+	return statusNotYetValidated
 }

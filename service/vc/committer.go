@@ -165,7 +165,7 @@ func (c *transactionCommitter) commitTransactions(
 		if err := vTx.invalidateTxsOnReadConflicts(conflicts); err != nil {
 			return nil, fmt.Errorf("failed to invalidate transactions on read conflicts: %w", err)
 		}
-		vTx.updateInvalidTxs(duplicates, protoblocktx.Status_ABORTED_DUPLICATE_TXID)
+		vTx.updateInvalidTxs(duplicates, protoblocktx.Status_REJECTED_DUPLICATE_TX_ID)
 	}
 
 	return nil, errors.Newf("[BUG] commit failed after %d retries", maxRetriesToRemoveAllInvalidTxs)
@@ -241,7 +241,7 @@ func (c *transactionCommitter) setCorrectStatusForDuplicateTxID(
 ) error {
 	var dupTxIDs [][]byte
 	for id, s := range txsStatus.Status {
-		if s.Code == protoblocktx.Status_ABORTED_DUPLICATE_TXID {
+		if s.Code == protoblocktx.Status_REJECTED_DUPLICATE_TX_ID {
 			dupTxIDs = append(dupTxIDs, []byte(id))
 		}
 	}

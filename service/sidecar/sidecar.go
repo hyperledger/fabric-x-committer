@@ -324,7 +324,8 @@ func appendMissingBlock(
 	blk *common.Block,
 	committedBlocks channel.Writer[*common.Block],
 ) error {
-	mappedBlock := mapBlock(blk)
+	var txIDToHeight utils.SyncMap[string, types.Height]
+	mappedBlock := mapBlock(blk, &txIDToHeight)
 	txIDs := make([]string, len(mappedBlock.block.Txs))
 	expectedHeight := make(map[string]*types.Height)
 	for i, tx := range mappedBlock.block.Txs {
@@ -341,11 +342,9 @@ func appendMissingBlock(
 		return err
 	}
 
-	blk.Metadata = &common.BlockMetadata{
-		Metadata: [][]byte{nil, nil, mappedBlock.withStatus.txStatus},
-	}
+	mappedBlock.withStatus.setStatusMetadataInBlock()
 
-	if !committedBlocks.Write(blk) {
+	if !committedBlocks.Write(mappedBlock.withStatus.block) {
 		return errors.New("context ended")
 	}
 	return nil
@@ -391,7 +390,7 @@ func waitForIdleCoordinator(ctx context.Context, client protocoordinatorservice.
 }
 
 func fillStatuses(
-	finalStatuses []validationCode,
+	finalStatuses []protoblocktx.Status,
 	statuses map[string]*protoblocktx.StatusWithHeight,
 	expectedHeight map[string]*types.Height,
 ) error {
@@ -401,11 +400,10 @@ func fillStatuses(
 			return errors.Newf("committer should have the status of txID [%s] but it does not", txID)
 		}
 		if types.AreSame(height, types.NewHeight(s.BlockNumber, s.TxNumber)) {
-			finalStatuses[height.TxNum] = byte(s.Code)
+			finalStatuses[height.TxNum] = s.Code
 			continue
 		}
-		finalStatuses[height.TxNum] = byte(protoblocktx.Status_ABORTED_DUPLICATE_TXID)
+		finalStatuses[height.TxNum] = protoblocktx.Status_REJECTED_DUPLICATE_TX_ID
 	}
-
 	return nil
 }

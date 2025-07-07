@@ -381,7 +381,7 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 			},
 			expectedTxStatuses: map[string]*protoblocktx.StatusWithHeight{
-				"tx1":            types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_DUPLICATE_TXID, 1, 5),
+				"tx1":            types.CreateStatusWithHeight(protoblocktx.Status_REJECTED_DUPLICATE_TX_ID, 1, 5),
 				"tx-conflict-10": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 1, 1),
 				"tx-conflict-11": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 4, 2),
 				"tx-conflict-12": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 66000, 3),

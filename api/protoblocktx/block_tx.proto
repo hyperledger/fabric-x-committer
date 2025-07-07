@@ -88,20 +88,36 @@ message ConfigTransaction {
     uint64 version = 2;
 }
 
+// Status represents the result of transaction validation.
+// Except for NOT_VALIDATED, all statuses are recorded in the ledger.
+// Some statuses are also stored in the state database which prevent resubmission of the same transaction ID.
 enum Status {
-    COMMITTED = 0;
-    ABORTED_MVCC_CONFLICT = 1;
-    ABORTED_DUPLICATE_TXID = 2;
-    ABORTED_SIGNATURE_INVALID = 3;
-    ABORTED_MISSING_TXID = 4;
-    ABORTED_DUPLICATE_NAMESPACE = 5;
-    ABORTED_NAMESPACE_POLICY_INVALID = 6;
-    ABORTED_NAMESPACE_ID_INVALID = 7;
-	  ABORTED_BLIND_WRITES_NOT_ALLOWED = 9;
-    ABORTED_NO_WRITES = 10;
-    ABORTED_UNSUPPORTED_TX_PAYLOAD = 11;
-    ABORTED_NIL_KEY = 12;
-    ABORTED_DUPLICATE_KEY_IN_READ_WRITE_SET = 13;
-    ABORTED_EMPTY_NAMESPACES = 14;
-    NOT_VALIDATED = 255;
+    // Should never be persisted or reported.
+    NOT_VALIDATED = 0;                                  // Default. The transaction has not been validated yet.
+
+    // Stored in the state database. Prevents submitting a transaction with the same ID.
+    COMMITTED = 1;                                      // Successfully committed and state updated.
+    ABORTED_SIGNATURE_INVALID = 2;                      // Signature is invalid according to the namespace policy.
+    ABORTED_MVCC_CONFLICT = 3;                          // Read-write set conflict.
+
+    // Cannot be stored in the state database because the TX ID cannot be extracted,
+    // or the TX ID entry is already occupied.
+    REJECTED_DUPLICATE_TX_ID = 100;                     // Transaction with the same ID has already been processed.
+    MALFORMED_BAD_ENVELOPE = 101;                       // Cannot unmarshal envelope.
+    MALFORMED_MISSING_TX_ID = 102;                      // Envelope is missing transaction ID.
+
+    // Stored in the state database. Prevents submitting a transaction with the same ID.
+    MALFORMED_UNSUPPORTED_TX_PAYLOAD = 103;             // Unsupported transaction payload type.
+    MALFORMED_BAD_PAYLOAD = 104;                        // Cannot unmarshal envelope's payload.
+    MALFORMED_TX_ID_CONFLICT = 105;                     // Envelope's TX ID does not match the payload's TX ID.
+    MALFORMED_EMPTY_NAMESPACES = 106;                   // No namespaces provided.
+    MALFORMED_DUPLICATE_NAMESPACE = 107;                // Duplicate namespace detected.
+    MALFORMED_NAMESPACE_ID_INVALID = 108;               // Invalid namespace identifier.
+    MALFORMED_BLIND_WRITES_NOT_ALLOWED = 109;           // Blind writes are not allowed in a namespace transaction.
+    MALFORMED_NO_WRITES = 110;                          // No write operations in the transaction.
+    MALFORMED_EMPTY_KEY = 111;                          // Unset key detected.
+    MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET = 112;    // Duplicate key in the read-write set.
+    MALFORMED_MISSING_SIGNATURE = 113;                  // Number of signatures does not match the number of namespaces.
+    MALFORMED_NAMESPACE_POLICY_INVALID = 114;           // Invalid namespace policy.
+    MALFORMED_CONFIG_TX_INVALID = 115;                  // Invalid configuration transaction.
 }

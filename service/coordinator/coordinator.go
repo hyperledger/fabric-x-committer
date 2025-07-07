@@ -9,6 +9,8 @@ package coordinator
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,6 +23,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
+	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -366,6 +369,7 @@ func (c *Service) receiveAndProcessBlock(
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
 ) error {
 	txsBatchForDependencyGraph := channel.NewWriter(ctx, c.queues.coordinatorToDepGraphTxs)
+	txBatchForVcService := channel.NewWriter(ctx, c.queues.sigVerifierToVCServiceValidatedTxs)
 
 	for ctx.Err() == nil {
 		blk, err := stream.Recv()
@@ -389,25 +393,39 @@ func (c *Service) receiveAndProcessBlock(
 		}
 		logger.Debugf("Coordinator received block [%d] with %d TXs", blk.Number, len(blk.Txs))
 
-		promutil.AddToCounter(c.metrics.transactionReceivedTotal, len(blk.Txs))
+		promutil.AddToCounter(c.metrics.transactionReceivedTotal, len(blk.Txs)+len(blk.Rejected))
 		c.numWaitingTxsForStatus.Add(int32(len(blk.Txs))) //nolint:gosec
 
-		if len(blk.Txs) == 0 {
-			continue
-		}
-
-		// TODO: make it configurable.
-		chunkSizeForDepGraph := min(c.config.DependencyGraphConfig.WaitingTxsLimit, 500)
-		for i := 0; i < len(blk.Txs); i += chunkSizeForDepGraph {
-			end := min(i+chunkSizeForDepGraph, len(blk.Txs))
-			txsBatchForDependencyGraph.Write(
-				&dependencygraph.TransactionBatch{
+		if len(blk.Txs) > 0 {
+			// TODO: make it configurable.
+			chunkSizeForDepGraph := min(c.config.DependencyGraphConfig.WaitingTxsLimit, 500)
+			for i := 0; i < len(blk.Txs); i += chunkSizeForDepGraph {
+				end := min(i+chunkSizeForDepGraph, len(blk.Txs))
+				txsBatchForDependencyGraph.Write(&dependencygraph.TransactionBatch{
 					ID:          c.txBatchIDToDepGraph,
 					BlockNumber: blk.Number,
 					Txs:         blk.Txs[i:end],
 					TxsNum:      blk.TxsNum[i:end],
 				})
-			c.txBatchIDToDepGraph++
+				c.txBatchIDToDepGraph++
+			}
+		}
+
+		if len(blk.Rejected) > 0 {
+			rejected := make(dependencygraph.TxNodeBatch, len(blk.Rejected))
+			for i, tx := range blk.Rejected {
+				rejected[i] = &dependencygraph.TransactionNode{
+					Tx: &protovcservice.Transaction{
+						ID: tx.Id,
+						PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
+							Code: tx.Status,
+						},
+						BlockNumber: blk.Number,
+						TxNum:       tx.TxNum,
+					},
+				}
+			}
+			txBatchForVcService.Write(rejected)
 		}
 	}
 
@@ -432,19 +450,10 @@ func (c *Service) sendTxStatus(
 
 		logger.Debugf("Batch with %d TX statuses forwarded to output stream.", len(txStatus.Status))
 
-		// TODO: introduce metrics to record all sent statuses. Issue #436.
+		statusCount := utils.CountAppearances(slices.Collect(maps.Values(txStatus.Status)))
 		m := c.metrics
-		for _, status := range txStatus.Status {
-			switch status.Code {
-			case protoblocktx.Status_COMMITTED:
-				promutil.AddToCounter(m.transactionCommittedStatusSentTotal, 1)
-			case protoblocktx.Status_ABORTED_MVCC_CONFLICT:
-				promutil.AddToCounter(m.transactionMVCCConflictStatusSentTotal, 1)
-			case protoblocktx.Status_ABORTED_DUPLICATE_TXID:
-				promutil.AddToCounter(m.transactionDuplicateTxStatusSentTotal, 1)
-			case protoblocktx.Status_ABORTED_SIGNATURE_INVALID:
-				promutil.AddToCounter(m.transactionInvalidSignatureStatusSentTotal, 1)
-			}
+		for code, count := range statusCount {
+			promutil.AddToCounter(m.transactionCommittedTotal.WithLabelValues(code.Code.String()), count)
 		}
 	}
 }

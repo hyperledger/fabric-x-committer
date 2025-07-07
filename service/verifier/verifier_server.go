@@ -15,7 +15,6 @@ import (
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -31,8 +30,6 @@ type Server struct {
 	metrics     *metrics
 	healthcheck *health.Server
 }
-
-const retValid = protoblocktx.Status_COMMITTED
 
 var (
 	logger = logging.New("verifier")
@@ -117,12 +114,16 @@ func (s *Server) handleInputs(
 			return errors.Wrap(rpcErr, "stream ended")
 		}
 		logger.Debugf("Received input from client with %v requests", len(batch.Requests))
+
+		// Update policies if included in the batch.
 		err := executor.verifier.updatePolicies(batch.Update)
 		if err != nil {
 			return errors.Join(ErrUpdatePolicies, err)
 		}
 		promutil.AddToCounter(s.metrics.VerifierServerInTxs, len(batch.Requests))
 		promutil.AddToGauge(s.metrics.ActiveRequests, len(batch.Requests))
+
+		// Pass verification requests for processing.
 		for _, r := range batch.Requests {
 			if ok := input.Write(r); !ok {
 				return errors.Wrap(stream.Context().Err(), "context ended")

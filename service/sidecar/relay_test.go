@@ -18,7 +18,9 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
+	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
+	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -35,7 +37,7 @@ type relayTestEnv struct {
 
 const (
 	valid     = byte(protoblocktx.Status_COMMITTED)
-	duplicate = byte(protoblocktx.Status_ABORTED_DUPLICATE_TXID)
+	duplicate = byte(protoblocktx.Status_REJECTED_DUPLICATE_TX_ID)
 )
 
 func newRelayTestEnv(t *testing.T) *relayTestEnv {
@@ -85,7 +87,7 @@ func TestRelayNormalBlock(t *testing.T) {
 	relayEnv := newRelayTestEnv(t)
 	relayEnv.coordinator.SetDelay(10 * time.Second)
 
-	blk0 := createBlockForTest(0, nil, [3]string{"tx1", "tx2", "tx3"})
+	blk0 := createBlockForTest(t, 0, nil, [3]string{"tx1", "tx2", "tx3"})
 	require.Nil(t, blk0.Metadata)
 	relayEnv.incomingBlockToBeCommitted <- blk0
 
@@ -112,7 +114,7 @@ func TestRelayNormalBlock(t *testing.T) {
 	require.Greater(t, test.GetMetricValue(t, m.transactionStatusesProcessingInRelaySeconds), float64(0))
 
 	relayEnv.relay.waitingTxsSlots.Store(t, int64(0))
-	blk1 := createBlockForTest(1, nil, [3]string{"tx1", "tx2", "tx3"})
+	blk1 := createBlockForTest(t, 1, nil, [3]string{"tx1", "tx2", "tx3"})
 	relayEnv.incomingBlockToBeCommitted <- blk1
 	require.Never(t, func() bool {
 		return test.GetMetricValue(t, m.transactionsSentTotal) > 3
@@ -125,20 +127,34 @@ func TestRelayNormalBlock(t *testing.T) {
 func TestBlockWithDuplicateTransactions(t *testing.T) {
 	t.Parallel()
 	relayEnv := newRelayTestEnv(t)
-	blk0 := createBlockForTest(0, nil, [3]string{"tx1", "tx1", "tx1"})
+
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	t.Cleanup(cancel)
+	incoming := channel.NewWriter(ctx, relayEnv.incomingBlockToBeCommitted)
+	committed := channel.NewReader(ctx, relayEnv.committedBlock)
+
+	t.Log("Submitting block 0")
+	blk0 := createBlockForTest(t, 0, nil, [3]string{"tx1", "tx1", "tx1"})
 	require.Nil(t, blk0.Metadata)
-	relayEnv.incomingBlockToBeCommitted <- blk0
-	committedBlock0 := <-relayEnv.committedBlock
+	incoming.Write(blk0)
+
+	t.Log("Waiting for block 0 result")
+	committedBlock0, ok := committed.Read()
+	require.True(t, ok)
 	expectedMetadata := &common.BlockMetadata{
 		Metadata: [][]byte{nil, nil, {valid, duplicate, duplicate}},
 	}
 	require.Equal(t, expectedMetadata, committedBlock0.Metadata)
 	require.Equal(t, blk0, committedBlock0)
 
-	blk1 := createBlockForTest(1, nil, [3]string{"tx2", "tx3", "tx2"})
+	t.Log("Submitting block 1")
+	blk1 := createBlockForTest(t, 1, nil, [3]string{"tx2", "tx3", "tx2"})
 	require.Nil(t, blk1.Metadata)
-	relayEnv.incomingBlockToBeCommitted <- blk1
-	committedBlock1 := <-relayEnv.committedBlock
+	incoming.Write(blk1)
+
+	t.Log("Waiting for block 1 result")
+	committedBlock1, ok := committed.Read()
+	require.True(t, ok)
 	expectedMetadata = &common.BlockMetadata{
 		Metadata: [][]byte{nil, nil, {valid, valid, duplicate}},
 	}
@@ -149,38 +165,27 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 func TestRelayConfigBlock(t *testing.T) {
 	t.Parallel()
 	relayEnv := newRelayTestEnv(t)
-	configBlk := createConfigBlockForTest(nil, 0)
+	configBlk := createConfigBlockForTest(t)
 	relayEnv.incomingBlockToBeCommitted <- configBlk
 	committedBlock := <-relayEnv.committedBlock
 	require.Equal(t, configBlk, committedBlock)
-	require.Equal(t, &common.BlockMetadata{
-		Metadata: [][]byte{nil, nil, {valid}},
-	}, committedBlock.Metadata)
+	require.NotNil(t, committedBlock.Metadata)
+	require.Greater(t, len(committedBlock.Metadata.Metadata), statusIdx)
+	require.Equal(t, []byte{valid}, committedBlock.Metadata.Metadata[statusIdx])
 	require.Len(t, relayEnv.configBlocks, 1)
 	require.Equal(t, configBlk, relayEnv.configBlocks[0])
 }
 
-func createConfigBlockForTest(_ *testing.T, number uint64) *common.Block {
-	data := protoutil.MarshalOrPanic(&common.Envelope{
-		Payload: protoutil.MarshalOrPanic(&common.Payload{
-			Header: &common.Header{
-				ChannelHeader: protoutil.MarshalOrPanic(&common.ChannelHeader{
-					Type: int32(common.HeaderType_CONFIG),
-				}),
-			},
-		},
-		),
-	},
-	)
-
-	return &common.Block{
-		Header: &common.BlockHeader{Number: number},
-		Data:   &common.BlockData{Data: [][]byte{data}},
-	}
+func createConfigBlockForTest(t *testing.T) *common.Block {
+	t.Helper()
+	block, err := workload.CreateConfigBlock(&workload.PolicyProfile{})
+	require.NoError(t, err)
+	return block
 }
 
 // createBlockForTest creates sample block with three txIDs.
-func createBlockForTest(number uint64, preBlockHash []byte, txIDs [3]string) *common.Block {
+func createBlockForTest(t *testing.T, number uint64, preBlockHash []byte, txIDs [3]string) *common.Block {
+	t.Helper()
 	return &common.Block{
 		Header: &common.BlockHeader{
 			Number:       number,
@@ -188,15 +193,16 @@ func createBlockForTest(number uint64, preBlockHash []byte, txIDs [3]string) *co
 		},
 		Data: &common.BlockData{
 			Data: [][]byte{
-				createEnvelopeBytesForTest(txIDs[0]),
-				createEnvelopeBytesForTest(txIDs[1]),
-				createEnvelopeBytesForTest(txIDs[2]),
+				createEnvelopeBytesForTest(t, txIDs[0]),
+				createEnvelopeBytesForTest(t, txIDs[1]),
+				createEnvelopeBytesForTest(t, txIDs[2]),
 			},
 		},
 	}
 }
 
-func createEnvelopeBytesForTest(txID string) []byte {
+func createEnvelopeBytesForTest(t *testing.T, txID string) []byte {
+	t.Helper()
 	header := &common.Header{
 		ChannelHeader: protoutil.MarshalOrPanic(&common.ChannelHeader{
 			ChannelId: "ch1",
@@ -207,7 +213,7 @@ func createEnvelopeBytesForTest(txID string) []byte {
 	return protoutil.MarshalOrPanic(&common.Envelope{
 		Payload: protoutil.MarshalOrPanic(&common.Payload{
 			Header: header,
-			Data:   protoutil.MarshalOrPanic(&protoblocktx.Tx{Id: txID}),
+			Data:   protoutil.MarshalOrPanic(makeValidTx(t, txID)),
 		}),
 	})
 }

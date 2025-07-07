@@ -20,7 +20,9 @@ import (
 type (
 	// TransactionNode is a node in the dependency graph.
 	TransactionNode struct {
-		Tx *protovcservice.Transaction
+		Tx         *protovcservice.Transaction
+		Signatures [][]byte
+
 		// dependsOnTxs is a set of transactions that this transaction depends on.
 		// A transaction is eligible for validation once all the transactions
 		// in dependsOnTxs set are validated.
@@ -50,7 +52,6 @@ type (
 		// from each dependent transaction.
 		dependentTxs utils.SyncMap[*TransactionNode, any]
 		rwKeys       *readWriteKeys
-		Signatures   [][]byte
 
 		// Used by the simple dependency graph.
 		waitForKeysCount uint64
@@ -76,8 +77,8 @@ func newTransactionNode(blockNum uint64, txNum uint32, tx *protoblocktx.Tx) *Tra
 			BlockNumber: blockNum,
 			TxNum:       txNum,
 		},
-		rwKeys:     readAndWriteKeys(tx.Namespaces),
 		Signatures: tx.Signatures,
+		rwKeys:     readAndWriteKeys(tx.Namespaces),
 	}
 }
 

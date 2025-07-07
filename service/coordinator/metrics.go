@@ -16,11 +16,8 @@ type perfMetrics struct {
 	*monitoring.Provider
 
 	// received and processed transactions
-	transactionReceivedTotal                   prometheus.Counter
-	transactionCommittedStatusSentTotal        prometheus.Counter
-	transactionMVCCConflictStatusSentTotal     prometheus.Counter
-	transactionInvalidSignatureStatusSentTotal prometheus.Counter
-	transactionDuplicateTxStatusSentTotal      prometheus.Counter
+	transactionReceivedTotal  prometheus.Counter
+	transactionCommittedTotal *prometheus.CounterVec
 
 	// queue sizes
 	sigverifierInputTxBatchQueueSize           prometheus.Gauge
@@ -50,33 +47,12 @@ func newPerformanceMetrics() *perfMetrics {
 			Name:      "received_transaction_total",
 			Help:      "Total number of transactions received by the coordinator service from the client.",
 		}),
-		transactionCommittedStatusSentTotal: p.NewCounter(prometheus.CounterOpts{
+		transactionCommittedTotal: p.NewCounterVec(prometheus.CounterOpts{
 			Namespace: "coordinator",
 			Subsystem: "grpc",
-			Name:      "sent_transaction_committed_status_total",
+			Name:      "committed_transaction_total",
 			Help:      "Total number of transactions committed status sent by the coordinator service to the client.",
-		}),
-		transactionMVCCConflictStatusSentTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "coordinator",
-			Subsystem: "grpc",
-			Name:      "sent_transaction_mvcc_conflict_status_total",
-			Help: "Total number of transactions mvcc conflict status sent by" +
-				" the coordinator service to the client.",
-		}),
-		transactionInvalidSignatureStatusSentTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "coordinator",
-			Subsystem: "grpc",
-			Name:      "sent_transaction_invalid_signature_status_total",
-			Help: "Total number of transactions invalid signature status sent by" +
-				" the coordinator service to the client.",
-		}),
-		transactionDuplicateTxStatusSentTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "coordinator",
-			Subsystem: "grpc",
-			Name:      "sent_transaction_duplicate_tx_status_total",
-			Help: "Total number of transactions duplicate tx status sent by the" +
-				" coordinator service to the client.",
-		}),
+		}, []string{"status"}),
 		sigverifierInputTxBatchQueueSize: p.NewGauge(prometheus.GaugeOpts{
 			Namespace: "coordinator",
 			Subsystem: "sigverifier",

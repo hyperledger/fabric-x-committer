@@ -12,6 +12,8 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 )
 
 // NoOpSigner supports unsigned envelopes.
@@ -72,7 +74,12 @@ func CreateEnvelope(
 	}
 	signatureHeader := protoutil.NewSignatureHeaderOrPanic(signer)
 	channelHeader := protoutil.MakeChannelHeader(common.HeaderType_MESSAGE, 0, channelID, 0)
-	channelHeader.TxId = protoutil.ComputeTxID(signatureHeader.Nonce, signatureHeader.Creator)
+	switch msg := protoMsg.(type) {
+	case *protoblocktx.Tx:
+		channelHeader.TxId = msg.Id
+	default:
+		channelHeader.TxId = protoutil.ComputeTxID(signatureHeader.Nonce, signatureHeader.Creator)
+	}
 	payloadHeader := protoutil.MakePayloadHeader(channelHeader, signatureHeader)
 	payload := WrapEnvelope(data, payloadHeader)
 

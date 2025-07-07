@@ -169,9 +169,9 @@ bench-preparer: FORCE
 bench-sign: FORCE
 	$(go_cmd) test ./utils/signature/... -bench ".*" -run "^$$" | awk -f scripts/bench-tx-per-sec.awk
 
-# Run verifier benchmarks with added op/sec column.
-bench-verify: FORCE
-	$(go_cmd) test ./service/verifier/... -bench "BenchmarkVerifyForm.*" -run "^$$" | awk -f scripts/bench-tx-per-sec.awk
+# Run sidecar benchmarks with added op/sec column.
+bench-sidecar: FORCE
+	$(go_cmd) test ./service/sidecar/... -bench "Benchmark.*" -run "^$$" | awk -f scripts/bench-tx-per-sec.awk
 
 #########################
 # Generate protos
