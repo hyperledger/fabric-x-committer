@@ -21,27 +21,31 @@ type DigestVerifier interface {
 
 // NsVerifier verifies a given namespace.
 type NsVerifier struct {
-	verifier DigestVerifier
+	verifier  DigestVerifier
+	Scheme    Scheme
+	PublicKey PublicKey
 }
 
 // NewNsVerifier creates a new namespace verifier according to the implementation scheme.
-func NewNsVerifier(scheme Scheme, key []byte) (*NsVerifier, error) {
-	scheme = strings.ToUpper(scheme)
+func NewNsVerifier(scheme Scheme, key PublicKey) (*NsVerifier, error) {
+	res := &NsVerifier{
+		Scheme:    strings.ToUpper(scheme),
+		PublicKey: key,
+	}
 	var err error
-	var v DigestVerifier
-	switch scheme {
+	switch res.Scheme {
 	case NoScheme, "":
-		v = nil
+		res.verifier = nil
 	case Ecdsa:
-		v, err = NewEcdsaVerifier(key)
+		res.verifier, err = NewEcdsaVerifier(key)
 	case Bls:
-		v, err = NewBLSVerifier(key)
+		res.verifier, err = NewBLSVerifier(key)
 	case Eddsa:
-		v = &EdDSAVerifier{PublicKey: key}
+		res.verifier = &EdDSAVerifier{PublicKey: key}
 	default:
 		return nil, errors.Newf("scheme '%v' not supported", scheme)
 	}
-	return &NsVerifier{verifier: v}, errors.Wrap(err, "failed creating verifier")
+	return res, errors.Wrap(err, "failed creating verifier")
 }
 
 // VerifyNs verifies a transaction's namespace signature.
