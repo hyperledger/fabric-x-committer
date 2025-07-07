@@ -26,8 +26,12 @@ func TestLoadGen(t *testing.T) {
 		serviceFlags int
 	}{
 		{
-			name:         "orderer",
+			name:         "orderer with committer",
 			serviceFlags: runner.FullTxPathWithLoadGen,
+		},
+		{
+			name:         "only orderer",
+			serviceFlags: runner.LoadGenForOnlyOrderer | runner.Orderer,
 		},
 		{
 			name:         "committer",

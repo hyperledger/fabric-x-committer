@@ -6,7 +6,6 @@
 # It should be complimented by the common load generator configuration.
 
 orderer-client:
-  sidecar-endpoint: {{ .Endpoints.Sidecar.Server }}
   orderer:
     connection:
       endpoints:

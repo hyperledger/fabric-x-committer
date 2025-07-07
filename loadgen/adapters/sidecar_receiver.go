@@ -24,16 +24,17 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 )
 
-type receiverConfig struct {
+type sidecarReceiverConfig struct {
 	Endpoint  *connection.Endpoint
 	ChannelID string
 	Res       *ClientResources
 }
 
 const committedBlocksQueueSize = 1024
+const statusIdx = int(common.BlockMetadataIndex_TRANSACTIONS_FILTER)
 
-// runReceiver start receiving blocks from the sidecar.
-func runReceiver(ctx context.Context, config *receiverConfig) error {
+// runSidecarReceiver start receiving blocks from the sidecar.
+func runSidecarReceiver(ctx context.Context, config *sidecarReceiverConfig) error {
 	ledgerReceiver, err := sidecarclient.New(&sidecarclient.Config{
 		ChannelID: config.ChannelID,
 		Endpoint:  config.Endpoint,
@@ -41,20 +42,38 @@ func runReceiver(ctx context.Context, config *receiverConfig) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to create ledger receiver")
 	}
-
-	g, gCtx := errgroup.WithContext(ctx)
-	committedBlock := make(chan *common.Block, committedBlocksQueueSize)
-	g.Go(func() error {
+	return runDeliveryReceiver(ctx, config.Res, func(gCtx context.Context, committedBlock chan *common.Block) error {
 		return ledgerReceiver.Deliver(gCtx, &sidecarclient.DeliverConfig{
 			EndBlkNum:   broadcastdeliver.MaxBlockNum,
 			OutputBlock: committedBlock,
 		})
 	})
+}
+
+// runOrdererReceiver start receiving blocks from the orderer.
+func runOrdererReceiver(ctx context.Context, res *ClientResources, client *broadcastdeliver.Client) error {
+	return runDeliveryReceiver(ctx, res, func(gCtx context.Context, committedBlock chan *common.Block) error {
+		return client.Deliver(gCtx, &broadcastdeliver.DeliverConfig{
+			EndBlkNum:   broadcastdeliver.MaxBlockNum,
+			OutputBlock: committedBlock,
+		})
+	})
+}
+
+// runDeliveryReceiver start receiving blocks from a delivery service.
+func runDeliveryReceiver(
+	ctx context.Context, res *ClientResources, deliver func(context.Context, chan *common.Block) error,
+) error {
+	g, gCtx := errgroup.WithContext(ctx)
+	committedBlock := make(chan *common.Block, committedBlocksQueueSize)
 	g.Go(func() error {
-		receiveCommittedBlock(gCtx, committedBlock, config.Res)
+		return deliver(gCtx, committedBlock)
+	})
+	g.Go(func() error {
+		receiveCommittedBlock(gCtx, committedBlock, res)
 		return context.Canceled
 	})
-	return errors.Wrap(g.Wait(), "sidecar receiver done")
+	return errors.Wrap(g.Wait(), "receiver done")
 }
 
 func receiveCommittedBlock(
@@ -74,29 +93,7 @@ func receiveCommittedBlock(
 			if !ok {
 				return
 			}
-
-			statusCodes := block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER]
-			logger.Infof("Received block #%d with %d TXs and %d statuses [%s]",
-				block.Header.Number, len(block.Data.Data), len(statusCodes), recapStatusCodes(statusCodes),
-			)
-
-			statusBatch := make([]metrics.TxStatus, 0, len(block.Data.Data))
-			for i, data := range block.Data.Data {
-				_, channelHeader, err := serialization.UnwrapEnvelope(data)
-				if err != nil {
-					logger.Warnf("Failed to unmarshal envelope: %v", err)
-					continue
-				}
-				if common.HeaderType(channelHeader.Type) == common.HeaderType_CONFIG {
-					// We can ignore config transactions as we only count data transactions.
-					continue
-				}
-				statusBatch = append(statusBatch, metrics.TxStatus{
-					TxID:   channelHeader.TxId,
-					Status: protoblocktx.Status(statusCodes[i]),
-				})
-			}
-			processedBlocks.Write(statusBatch)
+			processedBlocks.Write(mapToStatusBatch(block))
 		}
 	}()
 
@@ -110,6 +107,44 @@ func receiveCommittedBlock(
 			return
 		}
 	}
+}
+
+// mapToStatusBatch creates a status batch from a given block.
+func mapToStatusBatch(block *common.Block) []metrics.TxStatus {
+	if block.Data == nil || len(block.Data.Data) == 0 {
+		return nil
+	}
+	blockSize := len(block.Data.Data)
+
+	var statusCodes []byte
+	if block.Metadata != nil && len(block.Metadata.Metadata) > statusIdx {
+		statusCodes = block.Metadata.Metadata[statusIdx]
+	}
+	logger.Infof("Received block #%d with %d TXs and %d statuses [%s]",
+		block.Header.Number, len(block.Data.Data), len(statusCodes), recapStatusCodes(statusCodes),
+	)
+
+	statusBatch := make([]metrics.TxStatus, 0, blockSize)
+	for i, data := range block.Data.Data {
+		_, channelHeader, err := serialization.UnwrapEnvelope(data)
+		if err != nil {
+			logger.Warnf("Failed to unmarshal envelope: %v", err)
+			continue
+		}
+		if common.HeaderType(channelHeader.Type) == common.HeaderType_CONFIG {
+			// We can ignore config transactions as we only count data transactions.
+			continue
+		}
+		status := protoblocktx.Status_COMMITTED
+		if len(statusCodes) > i {
+			status = protoblocktx.Status(statusCodes[i])
+		}
+		statusBatch = append(statusBatch, metrics.TxStatus{
+			TxID:   channelHeader.TxId,
+			Status: status,
+		})
+	}
+	return statusBatch
 }
 
 // recapStatusCodes recaps of the status codes of a block.

@@ -94,6 +94,7 @@ var (
 	//go:embed templates/signatureverifier.yaml
 	TemplateVerifier string
 
+	TemplateLoadGenOnlyOrderer              = templateLoadGenOnlyOrdererClient + templateLoadGenCommon
 	TemplateLoadGenOrderer                  = templateLoadGenOrdererClient + templateLoadGenCommon
 	TemplateLoadGenCommitter                = templateLoadGenCommitterClient + templateLoadGenCommon
 	TemplateLoadGenCoordinator              = templateLoadGenCoordinatorClient + templateLoadGenCommon
@@ -103,6 +104,8 @@ var (
 
 	//go:embed templates/loadgen_common.yaml
 	templateLoadGenCommon string
+	//go:embed templates/loadgen_client_only_orderer.yaml
+	templateLoadGenOnlyOrdererClient string
 	//go:embed templates/loadgen_client_orderer.yaml
 	templateLoadGenOrdererClient string
 	//go:embed templates/loadgen_client_sidecar.yaml

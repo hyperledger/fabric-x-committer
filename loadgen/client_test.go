@@ -295,6 +295,48 @@ func TestLoadGenForOrderer(t *testing.T) {
 	}
 }
 
+func TestLoadGenForOnlyOrderer(t *testing.T) {
+	t.Parallel()
+	for _, limit := range defaultLimits {
+		clientConf := DefaultClientConf()
+		clientConf.Limit = limit
+		t.Run(limitToString(limit), func(t *testing.T) {
+			t.Parallel()
+			// Start dependencies
+			orderer, ordererServer := mock.StartMockOrderingServices(
+				t, &mock.OrdererConfig{
+					NumService: 3,
+					BlockSize:  int(clientConf.LoadProfile.Block.Size), //nolint:gosec // uint64 -> int.
+				},
+			)
+
+			endpoints := connection.NewOrdererEndpoints(0, "msp", ordererServer.Configs...)
+
+			// Submit default config block.
+			// This is ignored when sidecar isn't used.
+			// We validate the test doesn't break when config block is delivered.
+			require.NotNil(t, clientConf.LoadProfile)
+			clientConf.LoadProfile.Transaction.Policy.OrdererEndpoints = endpoints
+			configBlock, err := workload.CreateConfigBlock(clientConf.LoadProfile.Transaction.Policy)
+			require.NoError(t, err)
+			orderer.SubmitBlock(t.Context(), configBlock)
+
+			// Start client
+			clientConf.Adapter.OrdererClient = &adapters.OrdererClientConfig{
+				Orderer: broadcastdeliver.Config{
+					Connection: broadcastdeliver.ConnectionConfig{
+						Endpoints: endpoints,
+					},
+					ChannelID:     "mychannel",
+					ConsensusType: broadcastdeliver.Bft,
+				},
+				BroadcastParallelism: 5,
+			}
+			testLoadGenerator(t, clientConf)
+		})
+	}
+}
+
 func preAllocatePorts(t *testing.T) *connection.ServerConfig {
 	t.Helper()
 	server := connection.NewLocalHostServer()

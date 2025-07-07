@@ -10,8 +10,10 @@ import (
 	"context"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/broadcastdeliver"
 )
@@ -34,39 +36,46 @@ func NewOrdererAdapter(config *OrdererClientConfig, res *ClientResources) *Order
 
 // RunWorkload applies load on the sidecar.
 func (c *OrdererAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWithSetup) error {
-	broadcastSubmitter, err := broadcastdeliver.New(&c.config.Orderer)
+	client, err := broadcastdeliver.New(&c.config.Orderer)
 	if err != nil {
 		return errors.Wrap(err, "failed to create orderer clients")
 	}
-	defer broadcastSubmitter.Close()
+	defer client.Close()
 
 	dCtx, dCancel := context.WithCancel(ctx)
 	defer dCancel()
 	g, gCtx := errgroup.WithContext(dCtx)
-	g.Go(func() error {
-		defer dCancel() // We stop sending if we can't track the received items.
-		return runReceiver(gCtx, &receiverConfig{
-			ChannelID: c.config.Orderer.ChannelID,
-			Endpoint:  c.config.SidecarEndpoint,
-			Res:       c.res,
+	if c.config.SidecarEndpoint == nil || c.config.SidecarEndpoint.Empty() {
+		g.Go(func() error {
+			defer dCancel() // We stop sending if we can't track the received items.
+			return runOrdererReceiver(gCtx, c.res, client)
 		})
-	})
+	} else {
+		g.Go(func() error {
+			defer dCancel() // We stop sending if we can't track the received items.
+			return runSidecarReceiver(gCtx, &sidecarReceiverConfig{
+				ChannelID: c.config.Orderer.ChannelID,
+				Endpoint:  c.config.SidecarEndpoint,
+				Res:       c.res,
+			})
+		})
+	}
 
 	for range c.config.BroadcastParallelism {
 		g.Go(func() error {
-			stream, err := broadcastSubmitter.Broadcast(gCtx)
+			stream, err := client.Broadcast(gCtx)
 			if err != nil {
 				return errors.Wrap(err, "failed to create a broadcast stream")
 			}
-			g.Go(func() error {
-				err := c.sendTransactions(gCtx, txStream, stream)
-				// Insufficient quorum may happen when the context ends due to unavailable servers.
-				if ctx.Err() != nil {
-					return ctx.Err()
-				}
-				return err
-			})
-			return nil
+			return sendBlocks(
+				gCtx, &c.commonAdapter, txStream,
+				func(txs []*protoblocktx.Tx) ([]*common.Envelope, []string, error) {
+					return mapToBatch(txs, stream)
+				},
+				func(envs []*common.Envelope) error {
+					return sendBatch(envs, stream)
+				},
+			)
 		})
 	}
 	return errors.Wrap(g.Wait(), "workload done")
@@ -83,25 +92,28 @@ func (*OrdererAdapter) Supports() Phases {
 	}
 }
 
-// sendTransactions submits Fabric TXs. It uses the envelope's TX ID to track the TXs latency.
-func (c *OrdererAdapter) sendTransactions(
-	ctx context.Context, txStream *workload.StreamWithSetup, stream *broadcastdeliver.EnvelopedStream,
-) error {
-	txGen := txStream.MakeTxGenerator()
-	for ctx.Err() == nil {
-		tx := txGen.Next(ctx, 1)
-		if len(tx) == 0 {
-			// The context ended.
-			return nil
-		}
-		txID, err := stream.SendWithEnv(tx[0])
+// mapToBatch creates a batch of orderer envelopes. It uses the envelope header ID to track the TXs latency.
+func mapToBatch(
+	txs []*protoblocktx.Tx, stream *broadcastdeliver.EnvelopedStream,
+) ([]*common.Envelope, []string, error) {
+	envs := make([]*common.Envelope, len(txs))
+	txIDs := make([]string, len(txs))
+	for i, tx := range txs {
+		var err error
+		envs[i], txIDs[i], err = stream.CreateEnvelope(tx)
 		if err != nil {
-			return errors.Wrap(err, "failed to submit transaction")
+			return nil, nil, err
 		}
-		logger.Debugf("Sent TX %s", txID)
-		c.res.Metrics.OnSendTransaction(txID)
-		if c.res.isTXSendLimit() {
-			return nil
+	}
+	return envs, txIDs, nil
+}
+
+// sendBatch sends a batch one by one.
+func sendBatch(envelopes []*common.Envelope, stream *broadcastdeliver.EnvelopedStream) error {
+	for _, env := range envelopes {
+		err := stream.Send(env)
+		if err != nil {
+			return err
 		}
 	}
 	return nil

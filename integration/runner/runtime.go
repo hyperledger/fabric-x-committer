@@ -105,6 +105,8 @@ const (
 	Verifier
 	VC
 	QueryService
+
+	LoadGenForOnlyOrderer
 	LoadGenForOrderer
 	LoadGenForCommitter
 	LoadGenForCoordinator
@@ -120,7 +122,7 @@ const (
 	CommitterTxPathWithLoadGen = CommitterTxPath | LoadGenForCommitter
 
 	// loadGenMatcher is used to extract only the load generator flags from the full service flags value.
-	loadGenMatcher = LoadGenForOrderer | LoadGenForCommitter | LoadGenForCoordinator |
+	loadGenMatcher = LoadGenForOnlyOrderer | LoadGenForOrderer | LoadGenForCommitter | LoadGenForCoordinator |
 		LoadGenForVCService | LoadGenForVerifier
 )
 
@@ -272,10 +274,12 @@ func (c *CommitterRuntime) startLoadGen(t *testing.T, serviceFlags int) {
 	require.Falsef(t, isMoreThanOneBitSet(loadGenFlag), "only one load generator may be set")
 	loadGenParams := cmdLoadGen
 	switch loadGenFlag {
-	case LoadGenForCommitter:
-		loadGenParams.Template = config.TemplateLoadGenCommitter
+	case LoadGenForOnlyOrderer:
+		loadGenParams.Template = config.TemplateLoadGenOnlyOrderer
 	case LoadGenForOrderer:
 		loadGenParams.Template = config.TemplateLoadGenOrderer
+	case LoadGenForCommitter:
+		loadGenParams.Template = config.TemplateLoadGenCommitter
 	case LoadGenForCoordinator:
 		loadGenParams.Template = config.TemplateLoadGenCoordinator
 	case LoadGenForVCService:
