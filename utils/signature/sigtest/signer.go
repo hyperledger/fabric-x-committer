@@ -33,9 +33,6 @@ type (
 		Sign(signature.Digest) (signature.Signature, error)
 	}
 
-	// DummySigner returns a fixed signature.
-	DummySigner struct{}
-
 	// EddsaSigner signs using the EDDSA scheme.
 	EddsaSigner struct {
 		PrivateKey ed25519.PrivateKey
@@ -52,6 +49,8 @@ type (
 	}
 )
 
+var defaultEmptySig = make([]byte, 0)
+
 // NewNsSigner creates a new namespace signer according to the implementation scheme.
 func NewNsSigner(scheme signature.Scheme, key []byte) (*NsSigner, error) {
 	scheme = strings.ToUpper(scheme)
@@ -59,7 +58,7 @@ func NewNsSigner(scheme signature.Scheme, key []byte) (*NsSigner, error) {
 	var s DigestSigner
 	switch scheme {
 	case signature.NoScheme, "":
-		s = &DummySigner{}
+		s = nil
 	case signature.Ecdsa:
 		s, err = NewEcdsaSigner(key)
 	case signature.Bls:
@@ -93,16 +92,15 @@ func (v *NsSigner) SignNs(tx *protoblocktx.Tx, nsIndex int) (signature.Signature
 	if nsIndex < 0 || nsIndex >= len(tx.Namespaces) {
 		return nil, errors.New("namespace index out of range")
 	}
+	if v.DigestSigner == nil {
+		// Optimization to avoid digesting the TX for no reason.
+		return defaultEmptySig, nil
+	}
 	digest, err := signature.DigestTxNamespace(tx, nsIndex)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed creating digest")
 	}
 	return v.Sign(digest)
-}
-
-// Sign signs a digest.
-func (*DummySigner) Sign(signature.Digest) (signature.Signature, error) {
-	return []byte{}, nil
 }
 
 // Sign signs a digest.
