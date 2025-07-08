@@ -382,7 +382,7 @@ func (b *namespaceQueryBatch) waitForRows(ctx context.Context, keys [][]byte) ([
 	// ...
 
     // Extract results for requested keys
-    rows := make([]*protoqueryservice.Row, len(keys))
+    res := make([]*protoqueryservice.Row, len(keys))
     for i, key := range keys {
         // Get result for this key from the batch results.
 		if row, ok := q.result[string(key)]; ok && row != nil {
