@@ -39,7 +39,7 @@ func ASN1MarshalTxNamespace(tx *protoblocktx.Tx, nsIndex int) ([]byte, error) {
 // TranslateTx translates a TX namespace to a stab struct for tx_schema.asn.
 // Any change to [*protoblocktx.Tx] requires a change to this method.
 func TranslateTx(tx *protoblocktx.Tx, nsIndex int) (*TxWithNamespace, error) {
-	if nsIndex >= len(tx.Namespaces) {
+	if nsIndex < 0 || nsIndex >= len(tx.Namespaces) {
 		return nil, errors.New("namespace index out of range")
 	}
 	ns := tx.Namespaces[nsIndex]

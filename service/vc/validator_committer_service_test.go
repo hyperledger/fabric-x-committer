@@ -292,7 +292,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 								{
 									Key:     []byte("Existing key"),
 									Value:   []byte("new-value"),
-									Version: v(0),
+									Version: types.Version(0),
 								},
 							},
 						},

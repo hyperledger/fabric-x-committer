@@ -14,6 +14,7 @@ import (
 	"github.com/onsi/gomega"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 )
 
@@ -77,7 +78,7 @@ func TestDependentHappyPath(t *testing.T) {
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
 									Key:     []byte("k1"),
-									Version: v(0),
+									Version: types.Version(0),
 									Value:   []byte("v2"),
 								},
 							},
@@ -117,7 +118,7 @@ func TestDependentHappyPath(t *testing.T) {
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
 									Key:     []byte("k1"),
-									Version: v(1),
+									Version: types.Version(1),
 									Value:   []byte("v3"),
 								},
 							},
@@ -136,7 +137,7 @@ func TestDependentHappyPath(t *testing.T) {
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
 									Key:     []byte("k1"),
-									Version: v(2),
+									Version: types.Version(2),
 									Value:   []byte("v4"),
 								},
 							},
@@ -197,7 +198,7 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 			readsOnly: []*protoblocktx.Read{
 				{
 					Key:     []byte("k2"),
-					Version: v(0),
+					Version: types.Version(0),
 				},
 			},
 			expectedResults: &runner.ExpectedStatusInBlock{
@@ -211,7 +212,7 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 			readsOnly: []*protoblocktx.Read{
 				{
 					Key:     []byte("k1"),
-					Version: v(1),
+					Version: types.Version(1),
 				},
 			},
 			expectedResults: &runner.ExpectedStatusInBlock{
@@ -225,7 +226,7 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 			readsOnly: []*protoblocktx.Read{
 				{
 					Key:     []byte("k1"),
-					Version: v(0),
+					Version: types.Version(0),
 				},
 			},
 			expectedResults: &runner.ExpectedStatusInBlock{
@@ -291,7 +292,7 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 			readWrites: []*protoblocktx.ReadWrite{
 				{
 					Key:     []byte("k2"),
-					Version: v(0),
+					Version: types.Version(0),
 				},
 			},
 			expectedResults: &runner.ExpectedStatusInBlock{
@@ -305,7 +306,7 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 			readWrites: []*protoblocktx.ReadWrite{
 				{
 					Key:     []byte("k1"),
-					Version: v(1),
+					Version: types.Version(1),
 				},
 			},
 			expectedResults: &runner.ExpectedStatusInBlock{
@@ -319,7 +320,7 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 			readWrites: []*protoblocktx.ReadWrite{
 				{
 					Key:     []byte("k1"),
-					Version: v(0),
+					Version: types.Version(0),
 				},
 			},
 			expectedResults: &runner.ExpectedStatusInBlock{
@@ -369,7 +370,7 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
 									Key:     []byte("k1"),
-									Version: v(0),
+									Version: types.Version(0),
 								},
 							},
 						},
@@ -382,7 +383,7 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
 									Key:     []byte("k1"),
-									Version: v(0),
+									Version: types.Version(0),
 								},
 							},
 						},
@@ -410,7 +411,7 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
 									Key:     []byte("k1"),
-									Version: v(0),
+									Version: types.Version(0),
 								},
 							},
 						},
@@ -423,7 +424,7 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
 									Key:     []byte("k1"),
-									Version: v(2),
+									Version: types.Version(2),
 								},
 							},
 						},
@@ -436,7 +437,7 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
 									Key:     []byte("k1"),
-									Version: v(1),
+									Version: types.Version(1),
 								},
 							},
 						},
@@ -546,7 +547,7 @@ func TestWriteWriteConflictsAmongActiveTransactions(t *testing.T) {
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
 									Key:     []byte("k1"),
-									Version: v(0),
+									Version: types.Version(0),
 								},
 							},
 						},
@@ -620,9 +621,4 @@ func TestWriteWriteConflictsAmongActiveTransactions(t *testing.T) {
 			c.ValidateExpectedResultsInCommittedBlock(t, tt.expectedResults)
 		})
 	}
-}
-
-// v is a helper function to create a version pointer in a single line.
-func v(ver uint64) *uint64 {
-	return &ver
 }

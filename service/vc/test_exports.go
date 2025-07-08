@@ -286,13 +286,12 @@ func (env *DatabaseTestEnv) populateData( //nolint:revive
 		require.Len(t, writes.values, len(writes.keys))
 		require.Len(t, writes.versions, len(writes.keys))
 
-		query := fmtQueryTable(
-			`
-			INSERT INTO ns_table (key, value, version)
-			SELECT _key, _value, _version
-			FROM UNNEST($1::bytea[], $2::bytea[], $3::bigint[]) AS t(_key, _value, _version);`,
-			TableName(nsID),
-		)
+		insertQuery := `
+INSERT INTO ns_${NAMESPACE_ID} (key, value, version)
+SELECT _key, _value, _version
+FROM UNNEST($1::bytea[], $2::bytea[], $3::bigint[]) AS t(_key, _value, _version);
+`
+		query := FmtNsID(insertQuery, nsID)
 		require.NoError(t, env.DB.retry.ExecuteSQL(t.Context(), env.DB.pool, query,
 			writes.keys, writes.values, writes.versions,
 		))
@@ -355,9 +354,4 @@ func (env *DatabaseTestEnv) rowNotExists(t *testing.T, nsID string, keys [][]byt
 		assert.Failf(t, "Key should not exist", "key [%s] value: [%s] version [%d]",
 			key, string(valVer.Value), valVer.Version)
 	}
-}
-
-// v is a helper function to create a version pointer in a single line.
-func v(val uint64) *uint64 {
-	return &val
 }

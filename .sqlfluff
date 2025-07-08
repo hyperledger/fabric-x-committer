@@ -72,7 +72,7 @@ extended_capitalisation_policy = upper
 preferred_not_equal_style = c_style
 
 [sqlfluff:templater:placeholder]
-param_regex = %\[\d+\]s
+param_regex = \$\{(?P<param_name>[\w_]+)\}
 
 [sqlfluff:rules]
 allow_scalar = True

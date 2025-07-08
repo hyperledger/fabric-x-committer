@@ -26,44 +26,78 @@ func newDatabaseTestEnvWithTablesSetup(t *testing.T) *DatabaseTestEnv {
 	env := NewDatabaseTestEnv(t)
 	ctx, _ := createContext(t)
 	require.NoError(t, env.DB.setupSystemTablesAndNamespaces(ctx))
-	listTablesAndMethods(t, env.DB.pool)
 	return env
 }
 
-func listTablesAndMethods(t *testing.T, querier *pgxpool.Pool) {
-	t.Helper()
-	rows, err := querier.Query(t.Context(), "select distinct tablename from pg_catalog.pg_tables;")
-	require.NoError(t, err)
-	defer rows.Close()
+func TestTablesAndMethods(t *testing.T) {
+	t.Parallel()
+	env := NewDatabaseTestEnv(t)
+	ctx, _ := createContext(t)
+	require.NoError(t, env.DB.setupSystemTablesAndNamespaces(ctx))
+	env.populateData(t, []string{"a", "b"}, namespaceToWrites{}, nil, nil)
 
+	expectedTables := []string{"metadata", "tx_status", "ns__meta", "ns__config", "ns_a", "ns_b"}
+	expectedMethodsPerNamespace := []string{"insert_", "update_", "validate_reads_"}
+	expectedMethods := []string{"insert_tx_status"}
+	for _, table := range expectedTables {
+		if !strings.HasPrefix(table, "ns_") {
+			continue
+		}
+		for _, method := range expectedMethodsPerNamespace {
+			expectedMethods = append(expectedMethods, method+table)
+		}
+	}
+
+	tables := readTables(t, env.DB.pool)
+	require.ElementsMatch(t, tables, expectedTables)
+	methods := readMethods(t, env.DB.pool)
+	require.ElementsMatch(t, methods, expectedMethods)
+}
+
+func readTables(t *testing.T, querier *pgxpool.Pool) []string {
+	t.Helper()
+	rows, err := querier.Query(t.Context(), `
+SELECT DISTINCT tablename
+FROM pg_catalog.pg_tables
+WHERE tablename NOT LIKE 'sql_%'
+  AND tablename NOT LIKE 'pg_%';
+`)
+	require.NoError(t, err)
+	t.Cleanup(rows.Close)
+
+	var tables []string
 	for rows.Next() {
 		require.NoError(t, rows.Err())
 		var tableName string
 		require.NoError(t, rows.Scan(&tableName))
-		if strings.HasPrefix(tableName, "pg_") || strings.HasPrefix(tableName, "sql_") {
-			continue
-		}
 		t.Logf("table: %s", tableName)
+		tables = append(tables, tableName)
 	}
+	return tables
+}
 
-	rows, err = querier.Query(t.Context(), `
-SELECT proname AS function_name, pg_get_function_identity_arguments(oid) AS arguments_accepted
+func readMethods(t *testing.T, querier *pgxpool.Pool) []string {
+	t.Helper()
+	rows, err := querier.Query(t.Context(), `
+SELECT proname, pg_get_function_identity_arguments(oid)
 FROM pg_proc
-WHERE pronamespace = 'public'::regnamespace;
+WHERE pronamespace = 'public'::regnamespace
+  AND proname NOT LIKE 'sql_%'
+  AND proname NOT LIKE 'pg_%';
 `)
 	require.NoError(t, err)
 	defer rows.Close()
 
+	var methods []string
 	for rows.Next() {
 		require.NoError(t, rows.Err())
 		var methodName string
 		var methodVars string
 		require.NoError(t, rows.Scan(&methodName, &methodVars))
-		if strings.HasPrefix(methodName, "pg_") || strings.HasPrefix(methodName, "sql_") {
-			continue
-		}
 		t.Logf("method: %-30s vars: %s", methodName, methodVars)
+		methods = append(methods, methodName)
 	}
+	return methods
 }
 
 func TestValidateNamespaceReads(t *testing.T) {
@@ -125,11 +159,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns2,
 			r: &reads{
 				keys:     [][]byte{k7, k8, k9},
-				versions: []*uint64{nil, v(0), nil},
+				versions: []*uint64{nil, types.Version(0), nil},
 			},
 			expectedReadConflicts: &reads{
 				keys:     [][]byte{k8},
-				versions: []*uint64{v(0)},
+				versions: []*uint64{types.Version(0)},
 			},
 		},
 		{
@@ -137,11 +171,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns2,
 			r: &reads{
 				keys:     [][]byte{k7, k8, k9},
-				versions: []*uint64{v(1), v(0), v(1)},
+				versions: []*uint64{types.Version(1), types.Version(0), types.Version(1)},
 			},
 			expectedReadConflicts: &reads{
 				keys:     [][]byte{k7, k8, k9},
-				versions: []*uint64{v(1), v(0), v(1)},
+				versions: []*uint64{types.Version(1), types.Version(0), types.Version(1)},
 			},
 		},
 		{
@@ -149,7 +183,7 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns1,
 			r: &reads{
 				keys:     [][]byte{k1, k2, k3},
-				versions: []*uint64{v(0), v(0), v(0)},
+				versions: []*uint64{types.Version(0), types.Version(0), types.Version(0)},
 			},
 			expectedReadConflicts: &reads{},
 		},
@@ -158,11 +192,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns1,
 			r: &reads{
 				keys:     [][]byte{k1, k2, k3},
-				versions: []*uint64{v(1), v(0), v(1)},
+				versions: []*uint64{types.Version(1), types.Version(0), types.Version(1)},
 			},
 			expectedReadConflicts: &reads{
 				keys:     [][]byte{k1, k3},
-				versions: []*uint64{v(1), v(1)},
+				versions: []*uint64{types.Version(1), types.Version(1)},
 			},
 		},
 		{
@@ -170,11 +204,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns2,
 			r: &reads{
 				keys:     [][]byte{k4, k5, k6},
-				versions: []*uint64{v(0), v(0), v(0)},
+				versions: []*uint64{types.Version(0), types.Version(0), types.Version(0)},
 			},
 			expectedReadConflicts: &reads{
 				keys:     [][]byte{k4, k5, k6},
-				versions: []*uint64{v(0), v(0), v(0)},
+				versions: []*uint64{types.Version(0), types.Version(0), types.Version(0)},
 			},
 		},
 		{
@@ -182,11 +216,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns2,
 			r: &reads{
 				keys:     [][]byte{k4, k5, k6, k7, k8, k9},
-				versions: []*uint64{v(1), v(0), v(1), nil, v(0), nil},
+				versions: []*uint64{types.Version(1), types.Version(0), types.Version(1), nil, types.Version(0), nil},
 			},
 			expectedReadConflicts: &reads{
 				keys:     [][]byte{k5, k8},
-				versions: []*uint64{v(0), v(0)},
+				versions: []*uint64{types.Version(0), types.Version(0)},
 			},
 		},
 	}

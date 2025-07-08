@@ -15,3 +15,8 @@ const (
 	// ConfigKey is the key of the config transaction.
 	ConfigKey = "_config"
 )
+
+// Version is a convenient method to create a version pointer in a single line.
+func Version(version uint64) *uint64 {
+	return &version
+}

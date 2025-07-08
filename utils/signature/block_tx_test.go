@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -251,10 +252,6 @@ func generateTX( //nolint:revive // required parameters.
 	return tx
 }
 
-func v(val uint64) *uint64 {
-	return &val
-}
-
 var txTestCases = &protoblocktx.Tx{
 	Id: "tx-1",
 	Namespaces: []*protoblocktx.TxNamespace{
@@ -268,11 +265,11 @@ var txTestCases = &protoblocktx.Tx{
 			ReadsOnly: []*protoblocktx.Read{
 				{
 					Key:     []byte{1},
-					Version: v(2),
+					Version: types.Version(2),
 				},
 				{
 					Key:     []byte{3, 4, 5},
-					Version: v(0),
+					Version: types.Version(0),
 				},
 			},
 		},
@@ -282,11 +279,11 @@ var txTestCases = &protoblocktx.Tx{
 			ReadsOnly: []*protoblocktx.Read{
 				{
 					Key:     []byte{1},
-					Version: v(2),
+					Version: types.Version(2),
 				},
 				{
 					Key:     []byte{3, 4, 5},
-					Version: v(0),
+					Version: types.Version(0),
 				},
 				{
 					Key:     []byte{7, 8, 9},
@@ -300,12 +297,12 @@ var txTestCases = &protoblocktx.Tx{
 			ReadWrites: []*protoblocktx.ReadWrite{
 				{
 					Key:     []byte{1},
-					Version: v(2),
+					Version: types.Version(2),
 					Value:   []byte{3},
 				},
 				{
 					Key:     []byte{5},
-					Version: v(0),
+					Version: types.Version(0),
 					Value:   []byte{6},
 				},
 			},
@@ -316,7 +313,7 @@ var txTestCases = &protoblocktx.Tx{
 			ReadWrites: []*protoblocktx.ReadWrite{
 				{
 					Key:     []byte{1},
-					Version: v(2),
+					Version: types.Version(2),
 					Value:   []byte{3},
 				},
 				{
@@ -326,7 +323,7 @@ var txTestCases = &protoblocktx.Tx{
 				},
 				{
 					Key:     []byte{9},
-					Version: v(3),
+					Version: types.Version(3),
 					Value:   nil,
 				},
 				{
@@ -374,22 +371,22 @@ var txTestCases = &protoblocktx.Tx{
 			ReadsOnly: []*protoblocktx.Read{
 				{
 					Key:     []byte{6},
-					Version: v(7),
+					Version: types.Version(7),
 				},
 				{
 					Key:     []byte{9, 10, 11},
-					Version: v(12),
+					Version: types.Version(12),
 				},
 			},
 			ReadWrites: []*protoblocktx.ReadWrite{
 				{
 					Key:     []byte{100},
-					Version: v(1),
+					Version: types.Version(1),
 					Value:   []byte{2},
 				},
 				{
 					Key:     []byte{5},
-					Version: v(10),
+					Version: types.Version(10),
 					Value:   []byte{13},
 				},
 			},
@@ -410,23 +407,23 @@ var txTestCases = &protoblocktx.Tx{
 			ReadsOnly: []*protoblocktx.Read{
 				{
 					Key:     []byte{1, 2},
-					Version: v(3),
+					Version: types.Version(3),
 				},
 			},
 			ReadWrites: []*protoblocktx.ReadWrite{
 				{
 					Key:     []byte{1},
-					Version: v(2),
+					Version: types.Version(2),
 					Value:   []byte{3},
 				},
 				{
 					Key:     []byte{4},
-					Version: v(5),
+					Version: types.Version(5),
 					Value:   []byte{6},
 				},
 				{
 					Key:     []byte{7},
-					Version: v(8),
+					Version: types.Version(8),
 					Value:   []byte{9},
 				},
 			},

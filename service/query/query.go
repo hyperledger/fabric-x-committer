@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/service/vc"
 )
 
 //go:embed query.sql
@@ -95,7 +96,7 @@ func (t *sharedLazyTx) Release() {
 func unsafeQueryRows(
 	ctx context.Context, queryObj querier, nsID string, keys [][]byte,
 ) ([]*protoqueryservice.Row, error) {
-	queryStmt := fmt.Sprintf(queryRowSQLTemplate, nsID)
+	queryStmt := vc.FmtNsID(queryRowSQLTemplate, nsID)
 	r, err := queryObj.Query(ctx, queryStmt, keys)
 	if err != nil {
 		return nil, err

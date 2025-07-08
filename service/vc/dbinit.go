@@ -30,13 +30,14 @@ const (
 	updateNsStatesFuncNamePrefix    = "update_"
 	insertNsStatesFuncNamePrefix    = "insert_"
 
-	nsTableTemplateMarker = "ns_table"
-
 	setMetadataPrepSQLStmt      = "UPDATE " + metadataTableName + " SET value = $2 WHERE key = $1;"
 	getMetadataPrepSQLStmt      = "SELECT value FROM " + metadataTableName + " WHERE key = $1;"
 	queryTxIDsStatusPrepSQLStmt = "SELECT tx_id, status, height FROM " + txStatusTableName + " WHERE tx_id = ANY($1);"
 
 	lastCommittedBlockNumberKey = "last committed block number"
+
+	// nsIDTemplatePlaceholder is used as a template placeholder for SQL queries.
+	nsIDTemplatePlaceholder = "${NAMESPACE_ID}"
 )
 
 var (
@@ -91,8 +92,7 @@ func (db *database) setupSystemTablesAndNamespaces(ctx context.Context) error {
 }
 
 func createNsTables(nsID string, queryFunc func(q string) error) error {
-	tableName := TableName(nsID)
-	query := fmtQueryTable(createNamespaceSQLStmt, tableName)
+	query := FmtNsID(createNamespaceSQLStmt, nsID)
 	if err := queryFunc(query); err != nil {
 		return errors.Wrapf(err, "failed to create table and functions for namespace [%s] with query [%s]",
 			nsID, query)
@@ -100,6 +100,7 @@ func createNsTables(nsID string, queryFunc func(q string) error) error {
 	return nil
 }
 
-func fmtQueryTable(tmpl, tableName string) string {
-	return strings.ReplaceAll(tmpl, nsTableTemplateMarker, tableName)
+// FmtNsID replaces the namespace placeholder with the namespace ID in an SQL template string.
+func FmtNsID(sqlTemplate, namespaceID string) string {
+	return strings.ReplaceAll(sqlTemplate, nsIDTemplatePlaceholder, namespaceID)
 }

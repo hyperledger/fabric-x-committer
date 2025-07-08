@@ -276,9 +276,10 @@ func (p *preparedTransactions) addReadWrites(id TxID, ns *protoblocktx.TxNamespa
 			if !present {
 				nsReads.append(rw.Key, rw.Version)
 			}
-			ver := *rw.Version + 1
-			nsWrites.append(rw.Key, rw.Value, ver)
+			nsWrites.append(rw.Key, rw.Value, *rw.Version+1)
 		} else {
+			// This version value will not be used because we do not assign the version
+			// when inserting a new key. We use the DB default value instead, which is 0.
 			newWrites.append(rw.Key, rw.Value, 0)
 		}
 	}

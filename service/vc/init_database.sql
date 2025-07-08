@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+-- This SQL is the flow to initiate the DB for the committer.
+
 CREATE TABLE IF NOT EXISTS metadata
 (
     key   BYTEA NOT NULL PRIMARY KEY,

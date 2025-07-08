@@ -358,7 +358,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 					ReadWrites: []*protoblocktx.ReadWrite{{
 						Key:     mainKey,
 						Value:   []byte("value of version 1"),
-						Version: v(0),
+						Version: types.Version(0),
 					}},
 				}},
 			},
@@ -380,7 +380,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 					NsVersion: utNsVersion,
 					ReadsOnly: []*protoblocktx.Read{{
 						Key:     mainKey,
-						Version: v(2),
+						Version: types.Version(2),
 					}},
 					ReadWrites: []*protoblocktx.ReadWrite{{
 						Key:   subKey,
@@ -395,7 +395,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 					NsVersion: utNsVersion,
 					ReadWrites: []*protoblocktx.ReadWrite{{
 						Key:     mainKey,
-						Version: v(2),
+						Version: types.Version(2),
 						Value:   []byte("Value of version 3"),
 					}},
 				}},
@@ -967,9 +967,4 @@ func makeTestBlock(txPerBlock int) (*protocoordinatorservice.Block, map[string]*
 	}
 
 	return b, expectedTxsStatus
-}
-
-// v is a helper function to create a version pointer in a single line.
-func v(v uint64) *uint64 {
-	return &v
 }

@@ -120,7 +120,7 @@ func TestCreateUpdateNamespace(t *testing.T) {
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
 									Key:     []byte("1"),
-									Version: v(0),
+									Version: types.Version(0),
 									Value:   policyBytesNs2,
 								},
 							},
@@ -151,7 +151,7 @@ func TestCreateUpdateNamespace(t *testing.T) {
 							ReadWrites: []*protoblocktx.ReadWrite{
 								{
 									Key:     []byte("1"),
-									Version: v(1),
+									Version: types.Version(1),
 									Value:   policyBytes,
 								},
 							},
