@@ -212,8 +212,9 @@ The Query Service operates with the following three stages.
 
 #### Stage 1. View Management
 
-View management provides clients with consistent access to the database through configurable isolation levels.
-This stage is optional as the client can use `nil` view, which does not offer any consistency between future reads.
+View management provides clients with configurable isolation levels to the database.
+This stage is optional as the client can call `GetRows()` with `nil` view.
+Using `nil` view does not offer any consistency between future calls to `GetRows()`.
 
 **a. View Creation:**
 
@@ -257,14 +258,16 @@ Each view is configured with specific parameters:
     - Read Uncommitted (0): Lowest isolation, may read uncommitted changes
     - Read Committed (1): Only reads committed data
     - Repeatable Read (2): Ensures the same data is returned for repeated reads
-    - Serializable (3): Highest isolation, ensures transactions are completely isolated
+    - Serializable (3): (default) Highest isolation, ensures transactions are completely isolated
 
-2. **Deferred Status**: Controls when constraint violations are checked
+2. **Deferred Status**: Controls when isolation level violations are checked
 
     - Non-deferred (false): Checks happen immediately for each operation
-    - Deferred (true): Checks happen only at transaction commit time
+    - Deferred (true): (default) Checks happen only at transaction commit time
 
 3. **Timeout**: Maximum lifetime for the view
+ 
+    - If omitted, it defaults to the maximum value defined in the service configuration
 
 **c. View Aggregation:**
 
@@ -363,7 +366,7 @@ Clients waiting for results are notified through a combination of:
 
 **c. Result Retrieval:**
 
-When a client calls `waitForRows()` on a batch:
+When `waitForRows()` is called on a batch:
 
 1. If the batch is already finalized, results are returned immediately
 2. Otherwise, the client waits until the batch is finalized or the context is canceled
