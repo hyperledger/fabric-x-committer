@@ -586,7 +586,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 	expectedTxStatus := map[string]*protoblocktx.StatusWithHeight{
 		"tx2":           types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 2, 0),
 		"mvcc conflict": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 2, 2),
-		"tx1":           types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_DUPLICATE_TXID, 2, 5),
+		"tx1":           types.CreateStatusWithHeight(protoblocktx.Status_REJECTED_DUPLICATE_TX_ID, 2, 5),
 	}
 	env.requireStatus(ctx, t, expectedTxStatus, map[string]*protoblocktx.StatusWithHeight{
 		"tx1": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 0),
@@ -725,7 +725,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 		"tx3":                 types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 2, 1),
 		"mvcc conflict":       types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 2, 2),
 		"duplicate namespace": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 2, 4),
-		"tx1":                 types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_DUPLICATE_TXID, 2, 5),
+		"tx1":                 types.CreateStatusWithHeight(protoblocktx.Status_REJECTED_DUPLICATE_TX_ID, 2, 5),
 	}, map[string]*protoblocktx.StatusWithHeight{
 		"tx1": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 0),
 	})

@@ -88,20 +88,38 @@ message ConfigTransaction {
     uint64 version = 2;
 }
 
+// Status represents the result of transaction validation.
+// Except for NOT_VALIDATED, all statuses are recorded in the ledger.
+// Some statuses are also stored in the state database which prevent resubmission of the same transaction ID.
 enum Status {
-    COMMITTED = 0;
-    ABORTED_MVCC_CONFLICT = 1;
-    ABORTED_DUPLICATE_TXID = 2;
-    ABORTED_SIGNATURE_INVALID = 3;
-    ABORTED_MISSING_TXID = 4;
-    ABORTED_DUPLICATE_NAMESPACE = 5;
-    ABORTED_NAMESPACE_POLICY_INVALID = 6;
-    ABORTED_NAMESPACE_ID_INVALID = 7;
-	  ABORTED_BLIND_WRITES_NOT_ALLOWED = 9;
-    ABORTED_NO_WRITES = 10;
-    ABORTED_UNSUPPORTED_TX_PAYLOAD = 11;
-    ABORTED_NIL_KEY = 12;
-    ABORTED_DUPLICATE_KEY_IN_READ_WRITE_SET = 13;
-    ABORTED_EMPTY_NAMESPACES = 14;
-    NOT_VALIDATED = 255;
+    // Default status. The transaction has not been validated yet.
+    NOT_VALIDATED = 0;
+
+    // The transaction was successfully committed and the state was updated.
+    // Stored in the state database.
+    COMMITTED = 1;
+
+    // Rejected because a transaction with the same ID has already been processed.
+    // Not stored in the state database as the entry is already occupied.
+    REJECTED_DUPLICATE_TX_ID = 2;
+
+    // Critical abort reasons.
+    // Stored in the state database.
+    ABORTED_SIGNATURE_INVALID = 3;                      // Signature is invalid according to the namespace policy.
+    ABORTED_MVCC_CONFLICT = 4;                          // Read-write set conflict.
+
+    // Malformed transaction reasons. These are rejected during initial verification and not processed further.
+    // Not stored in the state database. Transactions with the same ID can be resubmitted if corrected.
+    MALFORMED_UNSUPPORTED_TX_PAYLOAD = 100;             // Unsupported transaction payload type.
+    MALFORMED_MISSING_SIGNATURE = 101;                  // Number of signatures does not match the number of namespaces.
+    MALFORMED_MISSING_TX_ID = 102;                      // Missing transaction ID.
+    MALFORMED_DUPLICATE_NAMESPACE = 103;                // Duplicate namespace detected.
+    MALFORMED_NAMESPACE_ID_INVALID = 104;               // Invalid namespace identifier.
+    MALFORMED_BLIND_WRITES_NOT_ALLOWED = 105;           // Blind writes are not allowed in a namespace transaction.
+    MALFORMED_NO_WRITES = 106;                          // No write operations in the transaction.
+    MALFORMED_EMPTY_KEY = 107;                          // Unset key detected.
+    MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET = 108;    // Duplicate key in the read-write set.
+    MALFORMED_EMPTY_NAMESPACES = 109;                   // No namespaces provided.
+    MALFORMED_NAMESPACE_POLICY_INVALID = 110;           // Invalid namespace policy.
+    MALFORMED_CONFIG_TX_INVALID = 111;                  // Invalid configuration transaction.
 }

@@ -201,21 +201,21 @@ func (env *DatabaseTestEnv) StatusExistsForNonDuplicateTxID(
 	expectedStatuses map[string]*protoblocktx.StatusWithHeight,
 ) {
 	t.Helper()
-	var nonDupTxIDs [][]byte
+	var dbStatusTXIDs [][]byte
 	for id, s := range expectedStatuses {
-		if s.Code != protoblocktx.Status_ABORTED_DUPLICATE_TXID {
-			nonDupTxIDs = append(nonDupTxIDs, []byte(id))
+		if s.Code != protoblocktx.Status_REJECTED_DUPLICATE_TX_ID {
+			dbStatusTXIDs = append(dbStatusTXIDs, []byte(id))
 		}
 	}
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
-	actualRows, err := env.DB.readStatusWithHeight(ctx, nonDupTxIDs)
+	actualRows, err := env.DB.readStatusWithHeight(ctx, dbStatusTXIDs)
 	require.NoError(t, err)
 
-	require.Len(t, actualRows, len(nonDupTxIDs))
-	for _, tID := range nonDupTxIDs {
-		require.Equal(t, expectedStatuses[string(tID)], actualRows[string(tID)])
+	require.Len(t, actualRows, len(dbStatusTXIDs))
+	for _, tID := range dbStatusTXIDs {
+		require.EqualExportedValues(t, expectedStatuses[string(tID)], actualRows[string(tID)])
 	}
 }
 
@@ -229,7 +229,7 @@ func (env *DatabaseTestEnv) StatusExistsWithDifferentHeightForDuplicateTxID(
 	t.Helper()
 	var dupTxIDs [][]byte
 	for id, s := range expectedStatuses {
-		if s.Code == protoblocktx.Status_ABORTED_DUPLICATE_TXID {
+		if s.Code == protoblocktx.Status_REJECTED_DUPLICATE_TX_ID {
 			dupTxIDs = append(dupTxIDs, []byte(id))
 		}
 	}

@@ -393,7 +393,7 @@ func fillStatuses(
 			finalStatuses[height.TxNum] = byte(s.Code)
 			continue
 		}
-		finalStatuses[height.TxNum] = byte(protoblocktx.Status_ABORTED_DUPLICATE_TXID)
+		finalStatuses[height.TxNum] = validationCode(protoblocktx.Status_REJECTED_DUPLICATE_TX_ID)
 	}
 
 	return nil

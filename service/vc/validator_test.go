@@ -280,8 +280,8 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 					"tx3": tx3BlindWrites,
 				},
 				invalidTxIDStatus: map[TxID]protoblocktx.Status{
-					"tx5": protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
-					"tx6": protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
+					"tx5": protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
+					"tx6": protoblocktx.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
 				},
 				txIDToHeight: transactionIDToHeight{
 					"tx1": types.NewHeight(1, 1),
@@ -301,8 +301,8 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 					"tx1": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 					"tx4": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-					"tx5": protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
-					"tx6": protoblocktx.Status_ABORTED_BLIND_WRITES_NOT_ALLOWED,
+					"tx5": protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
+					"tx6": protoblocktx.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
 				},
 				txIDToHeight: transactionIDToHeight{
 					"tx1": types.NewHeight(1, 1),

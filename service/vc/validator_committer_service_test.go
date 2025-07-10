@@ -380,7 +380,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 				{
 					ID: "prelim invalid tx",
 					PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
-						Code: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+						Code: protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
 					},
 					BlockNumber: 5,
 					TxNum:       2,
@@ -412,7 +412,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 
 		expectedStatus := []protoblocktx.Status{
 			protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-			protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+			protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
 			protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 		}
 
@@ -628,12 +628,12 @@ func TestTransactionResubmission(t *testing.T) {
 			tx: &protovcservice.Transaction{
 				ID: "duplicate namespace",
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
-					Code: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+					Code: protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
 				},
 				BlockNumber: 3,
 				TxNum:       7,
 			},
-			expectedStatus: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+			expectedStatus: protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
 		},
 		{
 			tx: &protovcservice.Transaction{

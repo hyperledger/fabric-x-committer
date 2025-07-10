@@ -428,7 +428,7 @@ func (c *Service) sendTxStatus(
 				promutil.AddToCounter(m.transactionCommittedStatusSentTotal, 1)
 			case protoblocktx.Status_ABORTED_MVCC_CONFLICT:
 				promutil.AddToCounter(m.transactionMVCCConflictStatusSentTotal, 1)
-			case protoblocktx.Status_ABORTED_DUPLICATE_TXID:
+			case protoblocktx.Status_REJECTED_DUPLICATE_TX_ID:
 				promutil.AddToCounter(m.transactionDuplicateTxStatusSentTotal, 1)
 			case protoblocktx.Status_ABORTED_SIGNATURE_INVALID:
 				promutil.AddToCounter(m.transactionInvalidSignatureStatusSentTotal, 1)

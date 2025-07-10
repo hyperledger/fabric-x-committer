@@ -508,7 +508,7 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 			{
 				ID: "tx3",
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
-					Code: protoblocktx.Status_ABORTED_NO_WRITES,
+					Code: protoblocktx.Status_MALFORMED_NO_WRITES,
 				},
 				BlockNumber: 6,
 				TxNum:       2,
@@ -516,7 +516,7 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 			{
 				ID: "tx4",
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
-					Code: protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+					Code: protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
 				},
 				BlockNumber: 5,
 				TxNum:       2,
@@ -663,8 +663,8 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 			},
 		},
 		invalidTxIDStatus: map[TxID]protoblocktx.Status{
-			"tx3": protoblocktx.Status_ABORTED_NO_WRITES,
-			"tx4": protoblocktx.Status_ABORTED_DUPLICATE_NAMESPACE,
+			"tx3": protoblocktx.Status_MALFORMED_NO_WRITES,
+			"tx4": protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
 		},
 		txIDToHeight: transactionIDToHeight{
 			"tx1":   types.NewHeight(8, 0),
