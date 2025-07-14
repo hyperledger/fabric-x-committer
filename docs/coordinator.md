@@ -37,9 +37,9 @@ The [Coordinator](https://github.com/hyperledger/fabric-x-committer/tree/main/se
 This is the core mechanism for identifying which transactions can be safely processed in parallel.
 3.  **Dispatch for Signature Verification:** Forwards dependency-free transactions to a `Signature Verifier Manager`, which distributes the workload
 among available `Signature Verifier` services for structural validation and signature checks.
-4.  **Dispatch for Final Commit:** Routes transactions that have passed signature verification to a `Validator Committer Manager`, which in turn distributes
+4.  **Dispatch for Final Commit:** Routes transactions that have passed signature verification to a `Validator-Committer Manager`, which in turn distributes
 them to available `Validator-Committer` services for final MVCC checks and commitment to the database.
-5.  **Aggregate and Relay Statuses:** Receives final transaction statuses from the `Validator Committer Manager`, notifies the `Dependency Graph Manager` 
+5.  **Aggregate and Relay Statuses:** Receives final transaction statuses from the `Validator-Committer Manager`, notifies the `Dependency Graph Manager` 
 to update the graph, and relays the status for each transaction back to the Sidecar.
 
 ## 3. Configuration
@@ -109,14 +109,14 @@ are passed along to the next stage via the `sigVerifierToVCServiceValidatedTxs` 
 
 ### Step 4. Final Validation and Commit
 
-The [`Validator Committer Manager`](https://github.com/hyperledger/fabric-x-committer/blob/main/service/coordinator/validator_committer_manager.go) receives verified transactions from the `sigVerifierToVCServiceValidatedTxs` channel and routes them to
+The [`Validator-Committer Manager`](https://github.com/hyperledger/fabric-x-committer/blob/main/service/coordinator/validator_committer_manager.go) receives verified transactions from the `sigVerifierToVCServiceValidatedTxs` channel and routes them to
 available `Validator-Committer` services. The manager also keeps track of all requests sent to each verifier service. If a service fails, the manager
 forwards any pending requests to another available service to ensure no transactions are lost.  The `Validator-Committer` services execute their own
 three-phase pipelined process (Prepare, Validate, Commit) to perform final MVCC checks against the database and commit the results.
 
 ### Step 5. Status Aggregation and Feedback Loop
 
-As transactions are committed or aborted by the `Validator-Committer` services, their final statuses are sent back to the `Validator Committer Manager`.
+As transactions are committed or aborted by the `Validator-Committer` services, their final statuses are sent back to the `Validator-Committer Manager`.
 This manager then forwards the results to two separate channels:
 1.  The final node status (committed or aborted) is sent to the `vcServiceToDepGraphValidatedTxs` channel. The `Dependency Graph Manager` consumes
 this to update the graph, which may resolve dependencies for other waiting transactions.
