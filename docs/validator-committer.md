@@ -19,8 +19,9 @@ SPDX-License-Identifier: Apache-2.0
 ## 1. Overview
 
 The [Validator-Committer (VC) service](https://github.com/hyperledger/fabric-x-committer/tree/main/service/vc) is a core component responsible for the final stages of transaction processing.
-It operates downstream from the Coordinator, receiving batches of conflict-free transactions. Its primary function
-is to perform optimistic concurrency control by validating each transaction's read-set against the current state in
+It operates downstream from the Coordinator, receiving batches of transactions that are internally conflict-free. 
+This means that these conflict-free transactions do not conflict with any other active transactions being processed concurrently.
+Its primary function is to perform optimistic concurrency control by validating each transaction's read-set against the current state in
 the database. Transactions that pass this validation are then committed, and their write-sets are applied to the database.
 
 ## 2. Core Responsibilities
@@ -51,11 +52,11 @@ world state for each namespace, and internal metadata. The tables are categorize
 
 * **Transaction Status Table (`tx_status`)**: This table stores the final status of every transaction processed by the system.
 
-| Column Name | Data Type | Description/Constraints                                                 |
-| :---------- | :-------- | :---------------------------------------------------------------------- |
-| `tx_id`     | `BYTEA`   | The transaction ID. Primary Key.                                        |
-| `status`    | `INTEGER` | The final status code.                                                  |
-| `height`    | `BYTEA`   | A combination of the block number and the transaction's index within the block. |
+| Column Name | Data Type | Description/Constraints                                                                                            |
+| :---------- | :-------- | :----------------------------------------------------------------------------------------------------------------  |
+| `tx_id`     | `BYTEA`   | The transaction ID. Primary Key.                                                                                   |
+| `status`    | `INTEGER` | The final status code.                                                                                             |
+| `height`    | `BYTEA`   | A combination of the block number and the transaction's index within the block, encoded as order-preserving bytes. |
 
 * **Namespace Metadata Table (`ns__meta`)**: This table stores metadata about each namespace, primarily its endorsement policy.
 
@@ -71,7 +72,7 @@ world state for each namespace, and internal metadata. The tables are categorize
 | :---------- | :-------- | :------------------------------------------------- |
 | `key`       | `BYTEA`   | A fixed key, `_config`. Primary Key.               |
 | `value`     | `BYTEA`   | The system configuration transaction.              |
-| `version`   | `BIGINT`  | Not Applicable |
+| `version`   | `BIGINT`  | Not Applicable                                     |
 
 * **Metadata Table (`metadata`)**: This table is a simple key-value store for other internal system metadata. For now, we
 only store the last committed block number.
@@ -100,7 +101,7 @@ To optimize performance and minimize network round-trips, the VC service relies 
 | `insert_tx_status`                  | Stores transaction statuses in bulk. On a primary key violation (duplicate `tx_id`), it returns the violating `tx_id`.                                                    |
 | `validate_reads_ns_${NAMESPACE_ID}` | Performs MVCC validation for a batch of reads within a specific namespace. It returns the indices of keys whose committed version differs from the passed version.         |
 | `update_ns_${NAMESPACE_ID}`         | Updates existing keys within a namespace with new values and versions.                                                                                                  |
-| `insert_ns_${NAMESPACE_ID}`         | Inserts new key-value pairs into a namespace. If a key already exists (violating the primary key constraint), it returns the key that caused the violation.                 |
+| `insert_ns_${NAMESPACE_ID}`         | Inserts new key-value pairs into a namespace. If a key already exists (violating the primary key constraint), it returns the keys that caused the violation.                 |
 
 Note: `${NAMESPACE_ID}` is a placeholder that is replaced with the actual namespace ID at runtime to invoke the correct procedure for a given data partition.
 
@@ -121,8 +122,8 @@ Communication among these tasks is managed by a series of internal channels:
 
 ### Task 1. Preparing Transaction Batches
 
-This task consumes transaction batches from the `toPrepareTxs` channel and transforms them into a structured format optimized for validation
-. The primary goal is to organize the reads and writes from all transactions in the batch for efficient processing in the subsequent stages.
+This task consumes transaction batches from the `toPrepareTxs` channel and transforms them into a structured format optimized for validation.
+The primary goal is to organize the reads and writes from all transactions in the batch for efficient processing in the subsequent stages.
 
 **a. Dequeueing Transaction Batches:** The [preparer](https://github.com/hyperledger/fabric-x-committer/blob/main/service/vc/preparer.go) reads a batch of transactions from the `toPrepareTxs` input queue.
 
@@ -131,7 +132,7 @@ This task consumes transaction batches from the `toPrepareTxs` channel and trans
 * Mapping all transaction reads to their respective namespaces.
 * Creating a reverse map from each specific read (key-version pair) back to the transaction IDs that performed it. This is crucial for quickly
 identifying all invalid transactions if a single read proves invalid.
-* Categorizing all transaction writes into non-blind writes, blind writes, and new writes.
+* Categorizing all transaction writes into new writes, blind writes, and non-blind writes.
 
 The main data structure produced by this task is `preparedTransactions`:
 
@@ -172,20 +173,22 @@ type writes struct {
 
 ```
 
-
 **c. Rationale for Write Categorization:**
 The categorization of writes is a key performance optimization. Each category is handled differently to maximize efficiency:
 
-* **Non-Blind Writes (Read-Modify-Write):** These are standard updates where a key is read before being written. Since the version 
-is known from the read phase, the new version is simply calculated by incrementing the read version by one. This avoids a redundant database
-lookup during the commit phase.
-* **Blind Writes (Write-Only):** These occur when a transaction writes to a key without reading it first. The endorser is "blind" to the key's 
-current version. The version calculation is deferred until the commit phase (Task 3), where the current version is fetched from the database
-and incremented just before the write is applied. This prevents the validation phase from being blocked by lookups for keys outside the transaction's read-set.
-* **New Writes (Inserts):** These are writes intended to create new key-value pairs. Conceptually, this is also a read-write operation, 
-but one where the read version is `nil`, signifying the key does not exist. Instead of performing a costly pre-check, the system optimistically
-assumes it is new and relies on the database's unique key constraints (e.g., primary key) to enforce uniqueness. If the key already exists, 
-the database will reject the insert, causing the transaction to fail. This is an efficient trade-off, as collisions on new keys are typically infrequent.
+* **New Writes (Inserts)**: These are writes intended to create new key-value pairs. Conceptually, this is also a read-write operation,
+but one where the read version is `nil`, signifying the key does not exist. Instead of performing a costly pre-check, the system
+optimistically assumes the key is new and relies on the database's unique key constraints (e.g., a primary key) to enforce uniqueness.
+If the key already exists, the database will reject the insert, causing the transaction to fail. This is an efficient trade-off, 
+as collisions on new keys are typically infrequent.
+
+* **Blind Writes (Write-Only)**: These occur when a transaction writes to a key without first reading it. The endorser is "blind" to
+the key's current version. The version calculation is deferred to the commit phase (Task 3), where the current version is fetched
+from the database. If the key does not exist, it is moved to the list of new writes. Otherwise, the existing version is
+incremented by 1.
+
+* **Non-Blind Writes (Read-Modify-Write)**: These are standard updates where a key is read before being written. Since the version
+is known from the read phase, the new version is calculated by simply incrementing the read version by one.
 
 **d. Enqueueing for Validation:** Once the `preparedTransactions` struct is fully populated, it is enqueued into the `preparedTxs` channel for the Validator task.
 
@@ -259,7 +262,7 @@ back to the Coordinator, completing the workflow for the transaction batch.
 
 ## 6. gRPC Service API
 
-The VC service exposes a [gRPC API](https://github.com/hyperledger/fabric-x-committer/blob/main/service/vc/validator_committer_service.go) (`ValidationAndCommitServiceClient`) for the Coordinator and other system components. The key methods are:
+The VC service exposes a [gRPC API](https://github.com/hyperledger/fabric-x-committer/blob/main/service/vc/validator_committer_service.go) (`ValidationAndCommitServiceClient`) for the Coordinator and other system components. The methods are:
 
 ```go
 StartValidateAndCommitStream(ctx context.Context, opts ...grpc.CallOption) (ValidationAndCommitService_StartValidateAndCommitStreamClient, error)
