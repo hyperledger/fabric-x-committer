@@ -115,6 +115,8 @@ func (v *verifier) verifyTX(tx *protoblocktx.Tx) protoblocktx.Status {
 	verifiers := *v.verifiers.Load()
 	for nsIndex, ns := range tx.Namespaces {
 		if ns.NsId == types.ConfigNamespaceID {
+			// Configuration TX is not signed in the same manner as application TX.
+			// Its signatures are verified by the ordering service.
 			continue
 		}
 		nsVerifier, ok := verifiers[ns.NsId]
