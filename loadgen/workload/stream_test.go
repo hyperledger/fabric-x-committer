@@ -365,7 +365,7 @@ func TestReadWriteWithValue(t *testing.T) {
 func TestGenTxWithRateLimit(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(8)
-	limit := 100
+	limit := 1000
 	expectedSeconds := 5
 	producedTotal := expectedSeconds * limit
 
