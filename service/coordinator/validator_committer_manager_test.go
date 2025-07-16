@@ -8,11 +8,12 @@ package coordinator
 
 import (
 	"context"
+	"crypto/rand"
 	"maps"
-	"strconv"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -99,7 +100,7 @@ func (e *vcMgrTestEnv) requireRetriedTxsTotal(t *testing.T, expectedRetriedTxsTo
 	)
 }
 
-func TestValidatorCommitterManager(t *testing.T) {
+func TestValidatorCommitterManagerX(t *testing.T) {
 	t.Parallel()
 
 	ensureZeroWaitingTxs := func(env *vcMgrTestEnv) {
@@ -108,10 +109,10 @@ func TestValidatorCommitterManager(t *testing.T) {
 		}
 	}
 
-	t.Run("Send tx batch to use any vcservice", func(t *testing.T) {
+	t.Run("Send tx batch to use any vcservice and send a batch with larger size", func(t *testing.T) {
 		t.Parallel()
 		env := newVcMgrTestEnv(t, 2)
-		txBatch, expectedTxsStatus := createInputTxsNodeForTest(5, 1, 1)
+		txBatch, expectedTxsStatus := createInputTxsNodeForTest(t, 5, 0, 1)
 		env.inputTxs <- txBatch
 
 		outTxs := <-env.outputTxs
@@ -125,14 +126,49 @@ func TestValidatorCommitterManager(t *testing.T) {
 			t, 5, env.validatorCommitterManager.config.metrics.vcserviceTransactionProcessedTotal,
 			2*time.Second, 100*time.Millisecond,
 		)
+
+		totalBlocks := 3
+		txPerBlock := 50
+		txBatches := make(dependencygraph.TxNodeBatch, 0, totalBlocks*txPerBlock)
+		expectedTxsStatus = &protoblocktx.TransactionsStatus{Status: make(map[string]*protoblocktx.StatusWithHeight)}
+
+		for i := range 3 {
+			//nolint:gosec // int -> int64
+			txBatch, txStatus := createInputTxsNodeForTest(t, txPerBlock, 1024*1024, uint64(i+2))
+			txBatches = append(txBatches, txBatch...)
+			maps.Copy(expectedTxsStatus.Status, txStatus.Status)
+		}
+
+		env.inputTxs <- txBatches
+
+		// txBatch would be split into three parts, one per block.
+		outTxs = <-env.outputTxs
+		outTxs = append(outTxs, <-env.outputTxs...)
+		outTxs = append(outTxs, <-env.outputTxs...)
+		require.ElementsMatch(t, txBatches, outTxs)
+
+		outTxsStatus = <-env.outputTxsStatus
+		status := <-env.outputTxsStatus
+		maps.Copy(outTxsStatus.Status, status.Status)
+		status = <-env.outputTxsStatus
+		maps.Copy(outTxsStatus.Status, status.Status)
+		require.Equal(t, expectedTxsStatus.Status, outTxsStatus.Status)
+
+		test.EventuallyIntMetric(
+			t, 5+totalBlocks*txPerBlock,
+			env.validatorCommitterManager.config.metrics.vcserviceTransactionProcessedTotal,
+			2*time.Second, 100*time.Millisecond,
+		)
+
 		ensureZeroWaitingTxs(env)
 	})
 
 	t.Run("send batches to ensure all vcservices are used", func(t *testing.T) {
 		t.Parallel()
 		env := newVcMgrTestEnv(t, 2)
-		txBatch1, expectedTxsStatus1 := createInputTxsNodeForTest(5, 1, 2)
-		txBatch2, expectedTxsStatus2 := createInputTxsNodeForTest(5, 6, 3)
+
+		txBatch1, expectedTxsStatus1 := createInputTxsNodeForTest(t, 5, 0, 2)
+		txBatch2, expectedTxsStatus2 := createInputTxsNodeForTest(t, 5, 0, 3)
 
 		require.Eventually(t, func() bool {
 			env.inputTxs <- txBatch1
@@ -281,7 +317,7 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	env.requireRetriedTxsTotal(t, 0)
 
 	numTxs := 10
-	txBatch, expectedTxsStatus := createInputTxsNodeForTest(numTxs, 0, 0)
+	txBatch, expectedTxsStatus := createInputTxsNodeForTest(t, numTxs, 0, 0)
 	env.inputTxs <- txBatch
 
 	require.Eventually(t, func() bool {
@@ -323,21 +359,36 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	}, 2*time.Second, 1*time.Second)
 }
 
-func createInputTxsNodeForTest(numTxs, startIndex int, blkNum uint64) (
+func createInputTxsNodeForTest(t *testing.T, numTxs, valueSize int, blkNum uint64) (
 	[]*dependencygraph.TransactionNode, *protoblocktx.TransactionsStatus,
 ) {
+	t.Helper()
+
 	txsNode := make([]*dependencygraph.TransactionNode, numTxs)
 	expectedTxsStatus := &protoblocktx.TransactionsStatus{
 		Status: make(map[string]*protoblocktx.StatusWithHeight),
 	}
 
+	b := make([]byte, valueSize)
+	_, err := rand.Read(b)
+	require.NoError(t, err)
+
 	for i := range numTxs {
-		id := "tx" + strconv.Itoa(startIndex+i)
+		id := uuid.NewString()
 		txsNode[i] = &dependencygraph.TransactionNode{
 			Tx: &protovcservice.Transaction{
 				ID:          id,
 				BlockNumber: blkNum,
 				TxNum:       uint32(i), //nolint:gosec
+				Namespaces: []*protoblocktx.TxNamespace{
+					{
+						BlindWrites: []*protoblocktx.Write{
+							{
+								Value: b,
+							},
+						},
+					},
+				},
 			},
 		}
 		expectedTxsStatus.Status[id] = types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, blkNum, i)

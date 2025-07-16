@@ -71,6 +71,8 @@ func (c *ServerConfig) GrpcServer() *grpc.Server {
 			PermitWithoutStream: c.KeepAlive.EnforcementPolicy.PermitWithoutStream,
 		}))
 	}
+	opts = append(opts, grpc.MaxRecvMsgSize(maxMsgSize))
+	opts = append(opts, grpc.MaxSendMsgSize(maxMsgSize))
 	return grpc.NewServer(opts...)
 }
 

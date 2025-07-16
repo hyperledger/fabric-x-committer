@@ -105,7 +105,6 @@ func (p *RetryProfile) NewBackoff() *backoff.ExponentialBackOff {
 //
 //	(1) UNAVAILABLE	The service is currently unavailable (e.g., transient network issue, server down).
 //	(2) DEADLINE_EXCEEDED	Operation took too long (deadline passed).
-//	(3) RESOURCE_EXHAUSTED	Some resource (e.g., quota) has been exhausted; the operation cannot proceed.
 func (p *RetryProfile) MakeGrpcRetryPolicyJSON() string {
 	// We initialize a backoff object to fetch the default values.
 	b := p.NewBackoff()
@@ -130,7 +129,6 @@ func (p *RetryProfile) MakeGrpcRetryPolicyJSON() string {
 				"retryableStatusCodes": []string{
 					"UNAVAILABLE",
 					"DEADLINE_EXCEEDED",
-					"RESOURCE_EXHAUSTED",
 				},
 			},
 		}},

@@ -247,6 +247,7 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient,
 	inputTxsNode channel.Reader[dependencygraph.TxNodeBatch],
 ) error {
+	firstBatch := true
 	for {
 		txsNode, ok := inputTxsNode.Read()
 		if !ok {
@@ -260,15 +261,47 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 			txBatch[i] = txNode.Tx
 		}
 
-		err := stream.Send(&protovcservice.TransactionBatch{
+		if firstBatch {
+			if err := splitAndSendToVC(stream, txBatch); err != nil {
+				return errors.Wrap(err, "send to stream ended with error")
+			}
+			firstBatch = false
+			continue
+		}
+
+		if err := stream.Send(&protovcservice.TransactionBatch{
 			Transactions: txBatch,
-		})
-		if err != nil {
-			// The stream ended or the VCM was closed.
-			return errors.Wrap(err, "receive from stream ended with error")
+		}); err != nil {
+			return errors.Wrap(err, "send to stream ended with error")
 		}
 		logger.Debugf("TX node contains %d TXs, and was sent to a vcservice", len(txBatch))
 	}
+}
+
+func splitAndSendToVC(
+	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient,
+	txBatch []*protovcservice.Transaction,
+) error {
+	blkToBatch := make(map[uint64]*protovcservice.TransactionBatch)
+	for _, tx := range txBatch {
+		rBatch, ok := blkToBatch[tx.BlockNumber]
+		if !ok {
+			rBatch = &protovcservice.TransactionBatch{
+				Transactions: make([]*protovcservice.Transaction, 0, len(txBatch)),
+			}
+			blkToBatch[tx.BlockNumber] = rBatch
+		}
+
+		rBatch.Transactions = append(rBatch.Transactions, tx)
+	}
+
+	for _, rBatch := range blkToBatch {
+		if err := stream.Send(rBatch); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (vc *validatorCommitter) receiveStatusAndForwardToOutput(
