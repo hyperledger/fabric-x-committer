@@ -2,27 +2,49 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-
 name: Release Fabric-X Committer Docker Image
 
 on:
   push:
     tags:
-      - "v*" # Triggers on tags like v0.1.0
+      - "v*"  # e.g., v0.1.0
 
 permissions:
   contents: read
   packages: write
 
 jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        goarch: [amd64, arm64, s390x]
+        goos: [linux]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build binary for ${{ matrix.goos }}/${{ matrix.goarch }}
+        run: |
+          mkdir -p output/${{ matrix.goos }}-${{ matrix.goarch }}
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 go build -o output/${{ matrix.goos }}-${{ matrix.goarch }}/committer ./cmd/committer
+
   docker-release:
+    needs: build-and-push
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout source code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up QEMU for multi-arch
+      - name: Set up QEMU for cross-arch
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -38,13 +60,17 @@ jobs:
         id: extract
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
 
-      - name: Build and Push Multi-Platform Image
+      - name: Build and push multi-platform Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/images/release/Dockerfile
           platforms: linux/amd64,linux/arm64,linux/s390x
           push: true
+          build-args: |
+            BIN=committer
+            ARCHBIN_PATH=output
+            PORTS=7050
           tags: |
             docker.io/${{ secrets.DOCKER_HUB_USERNAME }}/fabric-x-committer:latest
             docker.io/${{ secrets.DOCKER_HUB_USERNAME }}/fabric-x-committer:${{ env.VERSION }}
