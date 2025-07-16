@@ -8,18 +8,13 @@ package connection
 
 import (
 	"context"
-	"crypto/tls"
-	"fmt"
 	"net"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
-
-	"github.com/hyperledger/fabric-x-committer/utils"
 )
 
 const grpcProtocol = "tcp"
@@ -40,18 +35,23 @@ func NewLocalHostServer() *ServerConfig {
 	return &ServerConfig{Endpoint: *NewLocalHost()}
 }
 
-// GrpcServer instantiate a [grpc.Server].
-func (c *ServerConfig) GrpcServer() *grpc.Server {
-	var opts []grpc.ServerOption
-	if c.Creds != nil {
-		cert, err := tls.LoadX509KeyPair(c.Creds.CertPath, c.Creds.KeyPath)
-		utils.Must(err)
-		opts = append(opts, grpc.Creds(credentials.NewTLS(&tls.Config{
-			Certificates: []tls.Certificate{cert},
-			ClientAuth:   tls.NoClientCert,
-			MinVersion:   tls.VersionTLS12,
-		})))
+// NewLocalHostServerWithCreds returns a default server config with endpoint "localhost:0" given server credentials.
+func NewLocalHostServerWithCreds(creds *ConfigTLS) *ServerConfig {
+	return &ServerConfig{
+		Endpoint:    *NewLocalHost(),
+		ServerCreds: creds,
 	}
+}
+
+// GrpcServer instantiate a [grpc.Server].
+func (c *ServerConfig) GrpcServer() (*grpc.Server, error) {
+	var opts []grpc.ServerOption
+	serverGrpcCreds, err := c.ServerCreds.ServerOption()
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed loading the server's grpc credentials")
+	}
+	opts = append(opts, serverGrpcCreds)
+
 	if c.KeepAlive != nil && c.KeepAlive.Params != nil {
 		opts = append(opts, grpc.KeepaliveParams(keepalive.ServerParameters{
 			MaxConnectionIdle:     c.KeepAlive.Params.MaxConnectionIdle,
@@ -67,7 +67,7 @@ func (c *ServerConfig) GrpcServer() *grpc.Server {
 			PermitWithoutStream: c.KeepAlive.EnforcementPolicy.PermitWithoutStream,
 		}))
 	}
-	return grpc.NewServer(opts...)
+	return grpc.NewServer(opts...), nil
 }
 
 // Listener instantiate a [net.Listener] and updates the config port with the effective port.
@@ -112,7 +112,10 @@ func RunGrpcServerMainWithError(
 	if err != nil {
 		return err
 	}
-	server := serverConfig.GrpcServer()
+	server, err := serverConfig.GrpcServer()
+	if err != nil {
+		return errors.Wrapf(err, "failed creating grpc server")
+	}
 	register(server)
 
 	g, gCtx := errgroup.WithContext(ctx)
@@ -147,7 +150,7 @@ func StartService(
 	defer cancelTimeout()
 	if !service.WaitForReady(ctxTimeout) {
 		cancel()
-		return fmt.Errorf("service is not ready: %w", g.Wait())
+		return errors.Newf("service is not ready: %w", g.Wait())
 	}
 
 	if register != nil && serverConfig != nil {

@@ -70,7 +70,8 @@ func RunGrpcServerForTest(
 	t.Helper()
 	listener, err := serverConfig.Listener()
 	require.NoError(t, err)
-	server := serverConfig.GrpcServer()
+	server, err := serverConfig.GrpcServer()
+	require.NoError(t, err)
 
 	// We register a health check service for all servers in tests to allow waiting for readiness.
 	healthcheck := health.NewServer()
@@ -270,4 +271,17 @@ func SetupDebugging() {
 		Caller:      true,
 		Development: true,
 	})
+}
+
+// MakeClientConfig creates a client configuration for test purposes given host and port.
+func MakeClientConfig(ep ...*connection.Endpoint) *connection.ClientConfig {
+	return MakeClientConfigWithCreds(nil, ep...)
+}
+
+// MakeClientConfigWithCreds creates a client configuration for test purposes given host, port, and creds.
+func MakeClientConfigWithCreds(tlsConfig *connection.ConfigTLS, ep ...*connection.Endpoint) *connection.ClientConfig {
+	return &connection.ClientConfig{
+		Endpoints: ep,
+		Creds:     tlsConfig,
+	}
 }

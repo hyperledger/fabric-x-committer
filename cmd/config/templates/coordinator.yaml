@@ -4,6 +4,16 @@
 #
 server:
   endpoint: {{ .ServiceEndpoints.Server | default "localhost:0" }}
+  server-creds:
+    tls-mode: {{ .ServiceTLS.Mode }}
+    server-name: {{ .ServiceTLS.ServerName }}
+    cert-path: {{ .ServiceTLS.CertPath }}
+    key-path: {{ .ServiceTLS.KeyPath }}
+    ca-cert-paths:
+      {{- range .ServiceTLS.CACertPaths }}
+      - {{ . }}
+      {{- end }}
+
 monitoring:
   server:
     endpoint: {{ .ServiceEndpoints.Metrics | default "localhost:0" }}
@@ -13,11 +23,30 @@ verifier:
     {{- range .Endpoints.Verifier }}
     - {{ .Server }}
     {{- end }}
+  client-creds:
+    tls-mode: {{ .ClientsCreds.Verifier.Mode }}
+    server-name: {{ .ClientsCreds.Verifier.ServerName }}
+    key-path: {{ .ClientsCreds.Verifier.KeyPath }}
+    cert-path: {{ .ClientsCreds.Verifier.CertPath }}
+    ca-cert-paths:
+      {{- range .ClientsCreds.Verifier.CACertPaths }}
+      - {{ . }}
+      {{- end }}
+
 validator-committer:
   endpoints:
-   {{- range .Endpoints.VCService }}
+    {{- range .Endpoints.VCService }}
     - {{ .Server }}
-   {{- end }}
+    {{- end }}
+  client-creds:
+    tls-mode: {{ .ClientsCreds.Vc.Mode }}
+    server-name: {{ .ClientsCreds.Vc.ServerName }}
+    key-path: {{ .ClientsCreds.Vc.KeyPath }}
+    cert-path: {{ .ClientsCreds.Vc.CertPath }}
+    ca-cert-paths:
+      {{- range .ClientsCreds.Vc.CACertPaths }}
+      - {{ . }}
+      {{- end }}
 
 dependency-graph:
   num-of-local-dep-constructors: 1

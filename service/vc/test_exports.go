@@ -53,6 +53,16 @@ func NewValidatorAndCommitServiceTestEnv(
 	db ...*DatabaseTestEnv,
 ) *ValidatorAndCommitterServiceTestEnv {
 	t.Helper()
+	return newValidatorAndCommitServiceTestEnvWithTLS(t, numServices, nil, db...)
+}
+
+func newValidatorAndCommitServiceTestEnvWithTLS(
+	t *testing.T,
+	numServices int,
+	serverCreds *connection.ConfigTLS, // one credentials set for all the vc-services.
+	db ...*DatabaseTestEnv,
+) *ValidatorAndCommitterServiceTestEnv {
+	t.Helper()
 	require.LessOrEqual(t, len(db), 1)
 
 	var dbEnv *DatabaseTestEnv
@@ -73,7 +83,7 @@ func NewValidatorAndCommitServiceTestEnv(
 	endpoints := make([]*connection.Endpoint, numServices)
 	for i := range vcservices {
 		config := &Config{
-			Server:   connection.NewLocalHostServer(),
+			Server:   connection.NewLocalHostServerWithCreds(serverCreds),
 			Database: dbEnv.DBConf,
 			ResourceLimits: &ResourceLimitsConfig{
 				MaxWorkersForPreparer:             2,
@@ -354,4 +364,14 @@ func (env *DatabaseTestEnv) rowNotExists(t *testing.T, nsID string, keys [][]byt
 		assert.Failf(t, "Key should not exist", "key [%s] value: [%s] version [%d]",
 			key, string(valVer.Value), valVer.Version)
 	}
+}
+
+//nolint:ireturn // returning a gRPC client interface is intentional for test purpose.
+func createVcClientWithTLS(
+	t *testing.T,
+	ep *connection.Endpoint,
+	tlsCfg *connection.ConfigTLS,
+) protovcservice.ValidationAndCommitServiceClient {
+	t.Helper()
+	return test.CreateClientWithTLS(t, ep, tlsCfg, protovcservice.NewValidationAndCommitServiceClient)
 }
