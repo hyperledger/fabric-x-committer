@@ -25,9 +25,9 @@ import (
 )
 
 type sidecarReceiverConfig struct {
-	Endpoint  *connection.Endpoint
-	ChannelID string
-	Res       *ClientResources
+	SidecarConfig *connection.ClientConfig
+	ChannelID     string
+	Res           *ClientResources
 }
 
 const committedBlocksQueueSize = 1024
@@ -36,8 +36,8 @@ const statusIdx = int(common.BlockMetadataIndex_TRANSACTIONS_FILTER)
 // runSidecarReceiver start receiving blocks from the sidecar.
 func runSidecarReceiver(ctx context.Context, config *sidecarReceiverConfig) error {
 	ledgerReceiver, err := sidecarclient.New(&sidecarclient.Config{
-		ChannelID: config.ChannelID,
-		Endpoint:  config.Endpoint,
+		ChannelID:    config.ChannelID,
+		ClientConfig: config.SidecarConfig,
 	})
 	if err != nil {
 		return errors.Wrap(err, "failed to create ledger receiver")

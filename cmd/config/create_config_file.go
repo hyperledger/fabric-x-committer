@@ -34,11 +34,15 @@ type (
 		// Instance endpoints.
 		ServiceEndpoints ServiceEndpoints
 
+		// Service Tls options and certificates.
+		ServiceTLS connection.ConfigTLS
+
 		// System's resources.
 		Endpoints SystemEndpoints
 		DB        DatabaseConfig
 
 		// Per service configurations.
+		ClientsCreds      ClientsTLSConfig        // coordinator, sidecar
 		BlockSize         uint64                  // orderer, loadgen
 		BlockTimeout      time.Duration           // orderer
 		ConfigBlockPath   string                  // orderer, sidecar, loadgen
@@ -73,6 +77,15 @@ type (
 		Name        string
 		LoadBalance bool
 		Endpoints   []*connection.Endpoint
+	}
+
+	// ClientsTLSConfig contains the client's config TLS.
+	ClientsTLSConfig struct {
+		Vc          connection.ConfigTLS
+		Verifier    connection.ConfigTLS
+		Coordinator connection.ConfigTLS
+		Sidecar     connection.ConfigTLS
+		Query       connection.ConfigTLS
 	}
 
 	// ConfigBlock represents the configuration of the config block.

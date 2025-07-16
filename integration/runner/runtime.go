@@ -33,6 +33,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/broadcastdeliver"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/connection/tlsgen"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -72,6 +73,8 @@ type (
 		seedForCryptoGen *rand.Rand
 
 		LastReceivedBlockNumber uint64
+
+		TLSManager *tlsgen.SecureCommunicationManager
 	}
 
 	// Crypto holds crypto material for a namespace.
@@ -94,6 +97,8 @@ type (
 
 		// DBCluster configures the cluster to operate in DB cluster mode.
 		DBCluster *dbtest.Connection
+		// TLS configures the secure level between the components: none | tls | mtls
+		TLS connection.TLSMode
 	}
 )
 
@@ -182,25 +187,61 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		MetaNamespaceVerificationKey: metaCrypto.PubKey,
 	})
 
+	t.Log("create TLS manager")
+	c.TLSManager = tlsgen.NewSecureCommunicationManager(t)
+
+	t.Log("create clients certificates per service")
+	s.ClientsCreds.Vc = c.createClientConfigTLS(t, "validator-committer")
+	s.ClientsCreds.Verifier = c.createClientConfigTLS(t, "verifier")
+	s.ClientsCreds.Coordinator = c.createClientConfigTLS(t, "coordinator")
+	s.ClientsCreds.Query = c.createClientConfigTLS(t, "query-service")
+	s.ClientsCreds.Sidecar = c.createClientConfigTLS(t, "sidecar")
+
 	t.Log("Create processes")
 	c.MockOrderer = newProcess(t, cmdOrderer, s.WithEndpoint(s.Endpoints.Orderer[0]))
 	for i, e := range s.Endpoints.Verifier {
 		p := cmdVerifier
 		p.Name = fmt.Sprintf("%s-%d", p.Name, i)
-		c.Verifier = append(c.Verifier, newProcess(t, p, s.WithEndpoint(e)))
+		c.Verifier = append(c.Verifier, newProcess(
+			t, p, c.createSystemConfigWithServerCerts(t, e, "verifier")))
 	}
+
 	for i, e := range s.Endpoints.VCService {
 		p := cmdVC
 		p.Name = fmt.Sprintf("%s-%d", p.Name, i)
-		c.VcService = append(c.VcService, newProcess(t, p, s.WithEndpoint(e)))
+		c.VcService = append(c.VcService, newProcess(
+			t, p, c.createSystemConfigWithServerCerts(t, e, "validator-committer")))
 	}
-	c.Coordinator = newProcess(t, cmdCoordinator, s.WithEndpoint(s.Endpoints.Coordinator))
-	c.Sidecar = newProcess(t, cmdSidecar, s.WithEndpoint(s.Endpoints.Sidecar))
-	c.QueryService = newProcess(t, cmdQuery, s.WithEndpoint(s.Endpoints.Query))
+
+	c.Coordinator = newProcess(t,
+		cmdCoordinator,
+		c.createSystemConfigWithServerCerts(t, s.Endpoints.Coordinator, "coordinator"),
+	)
+
+	c.QueryService = newProcess(t,
+		cmdQuery,
+		c.createSystemConfigWithServerCerts(t, s.Endpoints.Query, "query-service"),
+	)
+
+	c.Sidecar = newProcess(t,
+		cmdSidecar,
+		c.createSystemConfigWithServerCerts(t, s.Endpoints.Sidecar, "sidecar"),
+	)
 
 	t.Log("Create clients")
-	c.CoordinatorClient = protocoordinatorservice.NewCoordinatorClient(clientConn(t, s.Endpoints.Coordinator.Server))
-	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(clientConn(t, s.Endpoints.Query.Server))
+	c.CoordinatorClient = protocoordinatorservice.NewCoordinatorClient(
+		clientConnWithCreds(t,
+			s.Endpoints.Coordinator.Server,
+			c.SystemConfig.ClientsCreds.Coordinator,
+		),
+	)
+
+	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(
+		clientConnWithCreds(t,
+			s.Endpoints.Query.Server,
+			c.SystemConfig.ClientsCreds.Query,
+		),
+	)
 
 	var err error
 	c.ordererClient, err = broadcastdeliver.New(&broadcastdeliver.Config{
@@ -217,7 +258,10 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 
 	c.sidecarClient, err = sidecarclient.New(&sidecarclient.Config{
 		ChannelID: s.ChannelID,
-		Endpoint:  s.Endpoints.Sidecar.Server,
+		ClientConfig: test.MakeClientConfigWithCreds(
+			&c.SystemConfig.ClientsCreds.Sidecar,
+			s.Endpoints.Sidecar.Server,
+		),
 	})
 	require.NoError(t, err)
 	return c
@@ -331,10 +375,12 @@ func (c *CommitterRuntime) startBlockDelivery(t *testing.T) {
 	})
 }
 
-// clientConn creates a service connection using its given server endpoint.
-func clientConn(t *testing.T, e *connection.Endpoint) *grpc.ClientConn {
+// clientConnWithCreds creates a service connection using its given server endpoint and TLS configuration.
+func clientConnWithCreds(t *testing.T, e *connection.Endpoint, tlsConfig connection.ConfigTLS) *grpc.ClientConn {
 	t.Helper()
-	serviceConnection, err := connection.Connect(connection.NewInsecureDialConfig(e))
+	clientCredentials, err := tlsConfig.ClientOption()
+	require.NoError(t, err)
+	serviceConnection, err := connection.Connect(connection.NewDialConfigWithCreds(e, clientCredentials))
 	require.NoError(t, err)
 	return serviceConnection
 }
@@ -590,6 +636,37 @@ func (c *CommitterRuntime) ensureAtLeastLastCommittedBlockNumber(t *testing.T, b
 		require.NotNil(ct, lastCommittedBlock.Block)
 		require.GreaterOrEqual(ct, lastCommittedBlock.Block.Number, blkNum)
 	}, 2*time.Minute, 250*time.Millisecond)
+}
+
+func (c *CommitterRuntime) createSystemConfigWithServerCerts(
+	t *testing.T,
+	endpoints config.ServiceEndpoints,
+	serverName string,
+) *config.SystemConfig {
+	t.Helper()
+	serviceCfg := c.SystemConfig
+	serviceCfg.ServiceTLS = c.createServerConfigTLS(t, serverName)
+	serviceCfg.ServiceEndpoints = endpoints
+	return &serviceCfg
+}
+
+func (c *CommitterRuntime) createServerConfigTLS(t *testing.T, asServer string) connection.ConfigTLS {
+	t.Helper()
+	// We pass asServer twice: first to generate the server's keys,
+	// and second to include the server name in the ConfigTLS.
+	// Note: the Server Name Indication (SNI) is not used when creating
+	// the server's transport credentials, so passing it during TLS config
+	// creation is not strictly necessary.
+	return c.createConfigTLS(c.TLSManager.CreateServerCertificate(t, asServer), asServer)
+}
+
+func (c *CommitterRuntime) createClientConfigTLS(t *testing.T, forServer string) connection.ConfigTLS {
+	t.Helper()
+	return c.createConfigTLS(c.TLSManager.CreateClientCertificate(t), forServer)
+}
+
+func (c *CommitterRuntime) createConfigTLS(paths map[string]string, serverName string) connection.ConfigTLS {
+	return test.CreateTLSConfigFromPaths(c.config.TLS, paths, serverName)
 }
 
 func isMoreThanOneBitSet(bits int) bool {

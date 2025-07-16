@@ -6,7 +6,18 @@
 # It should be complimented by the common load generator configuration.
 
 sidecar-client:
-  sidecar-endpoint: {{ .Endpoints.Sidecar.Server }}
+  sidecar-client-config:
+    endpoints:
+      - {{ .Endpoints.Sidecar.Server }}
+    client-creds:
+      tls-mode: {{ .ClientsCreds.Sidecar.Mode }}
+      server-name: {{ .ClientsCreds.Sidecar.ServerName }}
+      cert-path: {{ .ClientsCreds.Sidecar.CertPath }}
+      key-path: {{ .ClientsCreds.Sidecar.KeyPath }}
+      ca-cert-paths:
+        {{- range .ClientsCreds.Sidecar.CACertPaths }}
+        - {{ . }}
+        {{- end }}
   orderer-servers:
     {{- range .Endpoints.Orderer }}
     - endpoint: {{ .Server }}

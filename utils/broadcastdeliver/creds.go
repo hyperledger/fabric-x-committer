@@ -14,8 +14,6 @@ import (
 	"github.com/hyperledger/fabric/msp"
 	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
 	"gopkg.in/yaml.v3"
-
-	"github.com/hyperledger/fabric-x-committer/utils/tls"
 )
 
 // NewIdentitySigner instantiate a signer for the given identity.
@@ -49,22 +47,6 @@ func NewIdentitySigner(config *IdentityConfig) (msp.SigningIdentity, error) { //
 		return nil, errors.Wrap(err, "failed to load local signing identity")
 	}
 	return signer, nil
-}
-
-// LoadTLSConfig returns TLS configuration for connections.
-func LoadTLSConfig(config *ConnectionConfig) (*cryptotls.Config, error) {
-	var conf *cryptotls.Config
-	var err error
-	switch {
-	case len(config.RootCA) > 0:
-		conf, err = tls.LoadTLSCredentialsRaw(config.RootCA)
-	case len(config.RootCAPaths) > 0:
-		conf, err = tls.LoadTLSCredentials(config.RootCAPaths)
-	}
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to load TLS config")
-	}
-	return conf, nil
 }
 
 // IsTLSConfigEqual returns true of the two configurations are equal.

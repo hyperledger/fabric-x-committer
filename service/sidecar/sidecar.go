@@ -94,14 +94,24 @@ func (s *Service) Run(ctx context.Context) error {
 		_ = s.metrics.StartPrometheusServer(pCtx, s.config.Monitoring.Server, s.monitorQueues)
 	}()
 
-	logger.Infof("Create coordinator client and connect to %s\n", &s.config.Committer.Endpoint)
-	conn, connErr := connection.Connect(connection.NewInsecureDialConfig(&s.config.Committer.Endpoint))
+	coordinatorEndpoints := connection.AddressString(s.config.Committer.Config.Endpoints...)
+	logger.Infof("Create coordinator client and connect to %s", coordinatorEndpoints)
+
+	committerDialConfig, err := connection.NewLoadBalancedDialConfig(s.config.Committer.Config)
+	if err != nil {
+		return errors.Wrapf(err, "could not load coordinator dial config")
+	}
+
+	// connecting to the coordinator.
+	conn, connErr := connection.Connect(committerDialConfig)
 	if connErr != nil {
-		return fmt.Errorf("failed to connect to coordinator: %w", connErr)
+		return errors.Wrapf(connErr, "failed to connect to coordinator")
 	}
 	s.coordConn = conn
 	defer connection.CloseConnectionsLog(conn)
-	logger.Infof("sidecar connected to coordinator at %s", &s.config.Committer.Endpoint)
+	logger.Infof("sidecar connected to coordinator at %s", coordinatorEndpoints)
+
+	// creating coordinator client.
 	coordClient := protocoordinatorservice.NewCoordinatorClient(conn)
 
 	g, gCtx := errgroup.WithContext(pCtx)

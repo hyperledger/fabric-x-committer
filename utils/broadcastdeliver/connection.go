@@ -194,10 +194,9 @@ func openConnection(
 	shuffle(endpoints)
 	logger.Infof("Opening connections to %d endpoints: %v.", len(endpoints), endpoints)
 	dialConfig, err := connection.NewLoadBalancedDialConfig(&connection.ClientConfig{
-		Endpoints:   endpoints,
-		Retry:       conf.Retry,
-		RootCA:      conf.RootCA,
-		RootCAPaths: conf.RootCAPaths,
+		Endpoints: endpoints,
+		Retry:     conf.Retry,
+		Creds:     conf.Creds,
 	})
 	if err != nil {
 		return nil, err

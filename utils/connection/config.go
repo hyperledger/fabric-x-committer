@@ -15,17 +15,15 @@ type (
 	// ClientConfig contains the endpoints, CAs, and retry profile.
 	ClientConfig struct {
 		Endpoints []*Endpoint   `mapstructure:"endpoints"`
+		Creds     *ConfigTLS    `mapstructure:"client-creds"`
 		Retry     *RetryProfile `mapstructure:"reconnect"`
-		RootCA    [][]byte      `mapstructure:"root-ca"`
-		// RootCAPaths The path to the root CAs (alternative to the raw data).
-		RootCAPaths []string `mapstructure:"root-ca-paths"`
 	}
 
 	// ServerConfig describes the connection parameter for a server.
 	ServerConfig struct {
-		Endpoint  Endpoint               `mapstructure:"endpoint"`
-		Creds     *ServerCredsConfig     `mapstructure:"creds"`
-		KeepAlive *ServerKeepAliveConfig `mapstructure:"keep-alive"`
+		Endpoint    Endpoint               `mapstructure:"endpoint"`
+		ServerCreds *ConfigTLS             `mapstructure:"server-creds"`
+		KeepAlive   *ServerKeepAliveConfig `mapstructure:"keep-alive"`
 
 		preAllocatedListener net.Listener
 	}
@@ -49,11 +47,5 @@ type (
 	ServerKeepAliveEnforcementPolicyConfig struct {
 		MinTime             time.Duration `mapstructure:"min-time"`
 		PermitWithoutStream bool          `mapstructure:"permit-without-stream"`
-	}
-
-	// ServerCredsConfig describes the server's credentials configuration.
-	ServerCredsConfig struct {
-		CertPath string `mapstructure:"cert-path"`
-		KeyPath  string `mapstructure:"key-path"`
 	}
 )

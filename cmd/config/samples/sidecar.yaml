@@ -31,7 +31,9 @@ orderer:
   #       Security: 256
   #       Hash: SHA2
 committer:
-  endpoint: coordinator:9001
+  client:
+    endpoints:
+      - coordinator:9001
 ledger:
   path: /root/sc/ledger
 
