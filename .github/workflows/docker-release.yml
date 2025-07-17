@@ -69,6 +69,6 @@ jobs:
           build-args: |
             BIN=committer
             ARCHBIN_PATH=archbin
-            PORTS=4001,2114,9001,2119,5001,2115,6001,2116,7001,2117
+            PORTS=4001 2114 9001 2119 5001 2115 6001 2116 7001 2117
           cache-from: type=registry,ref=docker.io/${{ secrets.DOCKERHUB_USERNAME }}/fabric-x-committer:buildcache
           cache-to: type=registry,ref=docker.io/${{ secrets.DOCKERHUB_USERNAME }}/fabric-x-committer:buildcache,mode=max
