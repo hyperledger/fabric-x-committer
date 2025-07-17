@@ -1,13 +1,13 @@
-# Copyright IBM Corp. All Rights Reserved.
-#
-# SPDX-License-Identifier: Apache-2.0
-#
 name: Release Fabric-X Committer Docker Image
 
 on:
   push:
     tags:
       - "v*" # Trigger on tags like v0.0.1
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   docker-release:
@@ -33,11 +33,19 @@ jobs:
         id: extract
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
 
-      - name: Build and push multi-platform Docker image
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build cross-architecture binaries
+        run: make build-arch
+
+      - name: Build and Push Multi-Platform Docker Image for Committer
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/images/release/Dockerfile
+          file: ./docker/images/release/Dockerfile
           platforms: linux/amd64,linux/arm64,linux/s390x
           push: true
           build-args: |
