@@ -8,6 +8,7 @@ package coordinator
 
 import (
 	"context"
+	"crypto/rand"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -87,7 +88,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 func (e *svMgrTestEnv) submitTxBatch(t *testing.T, numTxs int) dependencygraph.TxNodeBatch {
 	t.Helper()
 	blkNum := e.curBlockNum.Add(1) - 1
-	txBatch, expectedValidatedTxs := createTxNodeBatchForTest(t, blkNum, numTxs)
+	txBatch, expectedValidatedTxs := createInputTxsNodeForSVM(t, blkNum, numTxs, 0)
 	channel.NewWriter(t.Context(), e.inputTxBatch).Write(txBatch)
 	return expectedValidatedTxs
 }
@@ -142,6 +143,45 @@ func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
 
 	test.EventuallyIntMetric(
 		t, 15, env.signVerifierManager.config.metrics.sigverifierTransactionProcessedTotal,
+		30*time.Second, 10*time.Millisecond,
+	)
+}
+
+func TestSignatureVerifierManagerWithLargeSize(t *testing.T) {
+	t.Parallel()
+	env := newSvMgrTestEnv(t, 1)
+
+	expectedValidatedTxs := env.submitTxBatch(t, 1)
+	env.requireTxBatch(t, expectedValidatedTxs)
+
+	totalBlocks := 3
+	txPerBlock := 50
+	txBatches := make([]dependencygraph.TxNodeBatch, totalBlocks)
+	expectedValidatedTxs = make(dependencygraph.TxNodeBatch, 0, totalBlocks*txPerBlock)
+	for i := range totalBlocks {
+		//nolint:gosec // int -> uint64
+		txBatch, expectedValidatedTxsBatch := createInputTxsNodeForSVM(t, uint64(i+1), txPerBlock, 1024*1024)
+		txBatches[i] = txBatch
+		expectedValidatedTxs = append(expectedValidatedTxs, expectedValidatedTxsBatch...)
+	}
+
+	txsBatch := make(dependencygraph.TxNodeBatch, 0, totalBlocks*txPerBlock)
+	for _, b := range txBatches {
+		txsBatch = append(txsBatch, b...)
+	}
+
+	channel.NewWriter(t.Context(), env.inputTxBatch).Write(txsBatch)
+
+	actualValidatedTxs := make(dependencygraph.TxNodeBatch, 0, totalBlocks*txPerBlock)
+	for range totalBlocks {
+		txs := <-env.outputValidatedTxs
+		actualValidatedTxs = append(actualValidatedTxs, txs...)
+	}
+	require.Len(t, actualValidatedTxs, totalBlocks*txPerBlock)
+	require.ElementsMatch(t, expectedValidatedTxs, actualValidatedTxs)
+
+	test.EventuallyIntMetric(
+		t, totalBlocks*txPerBlock+1, env.signVerifierManager.config.metrics.sigverifierTransactionProcessedTotal,
 		30*time.Second, 10*time.Millisecond,
 	)
 }
@@ -206,19 +246,37 @@ func TestSignatureVerifierWithAllInvalidTxs(t *testing.T) {
 	}
 
 	env := newSvMgrTestEnv(t, 1)
+	env.requireTxBatch(t, env.submitTxBatch(t, 1))
+
 	channel.NewWriter(t.Context(), env.inputTxBatch).Write(txBatch)
 	env.requireTxBatch(t, expectedValidatedTxs)
 }
 
-func createTxNodeBatchForTest(
-	_ *testing.T,
-	blkNum uint64, numTxs int,
+func createInputTxsNodeForSVM(
+	t *testing.T,
+	blkNum uint64, numTxs, valueSize int,
 ) (inputTxBatch, expectedValidatedTxs dependencygraph.TxNodeBatch) {
+	t.Helper()
+
+	b := make([]byte, valueSize)
+	_, err := rand.Read(b)
+	require.NoError(t, err)
+
+	ns := []*protoblocktx.TxNamespace{
+		{
+			BlindWrites: []*protoblocktx.Write{
+				{
+					Value: b,
+				},
+			},
+		},
+	}
 	for i := range numTxs {
 		txNode := &dependencygraph.TransactionNode{
 			Tx: &protovcservice.Transaction{
 				BlockNumber: blkNum,
 				TxNum:       uint32(i), //nolint:gosec
+				Namespaces:  ns,
 			},
 		}
 
@@ -234,6 +292,7 @@ func createTxNodeBatchForTest(
 				Tx: &protovcservice.Transaction{
 					BlockNumber:           txNode.Tx.BlockNumber,
 					TxNum:                 txNode.Tx.TxNum,
+					Namespaces:            txNode.Tx.Namespaces,
 					PrelimInvalidTxStatus: sigInvalidTxStatus,
 				},
 			}
