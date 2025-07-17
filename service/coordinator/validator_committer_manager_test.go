@@ -199,7 +199,7 @@ func TestValidatorCommitterManager(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		txBatch := dependencygraph.TxNodeBatch{
+		txBatch := []*dependencygraph.TransactionNode{
 			{
 				Tx: &protovcservice.Transaction{
 					ID: "create config",

@@ -8,6 +8,7 @@ package dependencygraph
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -299,7 +300,7 @@ func TestLocalDependencyConstructorWithOrder(t *testing.T) {
 func makeTestKeys(_ *testing.T, numKeys int) [][]byte {
 	keys := make([][]byte, numKeys)
 	for i := range numKeys {
-		keys[i] = []byte{byte(i)}
+		keys[i] = fmt.Appendf(nil, "%d", i)
 	}
 	return keys
 }
