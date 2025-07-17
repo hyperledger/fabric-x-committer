@@ -42,7 +42,7 @@ jobs:
           push: true
           build-args: |
             BIN=committer
-            ARCHBIN_PATH=output
+            ARCHBIN_PATH=archbin
             PORTS=7050
           tags: |
             docker.io/${{ secrets.DOCKER_HUB_USERNAME }}/fabric-x-committer:latest
