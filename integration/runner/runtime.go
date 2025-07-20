@@ -202,31 +202,27 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	for i, e := range s.Endpoints.Verifier {
 		p := cmdVerifier
 		p.Name = fmt.Sprintf("%s-%d", p.Name, i)
-		c.Verifier = append(c.Verifier, newProcess(
-			t, p, c.createSystemConfigWithServerCerts(t, e, "verifier")))
+		// we generate different keys for each verifier.
+		verifierSystemConfig := c.createSystemConfigWithServerCerts(t, e, "verifier")
+		c.Verifier = append(c.Verifier, newProcess(t, p, &verifierSystemConfig))
 	}
 
 	for i, e := range s.Endpoints.VCService {
 		p := cmdVC
 		p.Name = fmt.Sprintf("%s-%d", p.Name, i)
-		c.VcService = append(c.VcService, newProcess(
-			t, p, c.createSystemConfigWithServerCerts(t, e, "validator-committer")))
+		// we generate different keys for each vc-service.
+		vcSystemConfig := c.createSystemConfigWithServerCerts(t, e, "validator-committer")
+		c.VcService = append(c.VcService, newProcess(t, p, &vcSystemConfig))
 	}
 
-	c.Coordinator = newProcess(t,
-		cmdCoordinator,
-		c.createSystemConfigWithServerCerts(t, s.Endpoints.Coordinator, "coordinator"),
-	)
+	coordinatorServiceConfig := c.createSystemConfigWithServerCerts(t, s.Endpoints.Coordinator, "coordinator")
+	c.Coordinator = newProcess(t, cmdCoordinator, &coordinatorServiceConfig)
 
-	c.QueryService = newProcess(t,
-		cmdQuery,
-		c.createSystemConfigWithServerCerts(t, s.Endpoints.Query, "query-service"),
-	)
+	queryServiceConfig := c.createSystemConfigWithServerCerts(t, s.Endpoints.Query, "query-service")
+	c.QueryService = newProcess(t, cmdQuery, &queryServiceConfig)
 
-	c.Sidecar = newProcess(t,
-		cmdSidecar,
-		c.createSystemConfigWithServerCerts(t, s.Endpoints.Sidecar, "sidecar"),
-	)
+	sidecarServiceConfig := c.createSystemConfigWithServerCerts(t, s.Endpoints.Sidecar, "sidecar")
+	c.Sidecar = newProcess(t, cmdSidecar, &sidecarServiceConfig)
 
 	t.Log("Create clients")
 	c.CoordinatorClient = protocoordinatorservice.NewCoordinatorClient(
@@ -642,12 +638,12 @@ func (c *CommitterRuntime) createSystemConfigWithServerCerts(
 	t *testing.T,
 	endpoints config.ServiceEndpoints,
 	serverName string,
-) *config.SystemConfig {
+) config.SystemConfig {
 	t.Helper()
 	serviceCfg := c.SystemConfig
 	serviceCfg.ServiceTLS = c.createServerConfigTLS(t, serverName)
 	serviceCfg.ServiceEndpoints = endpoints
-	return &serviceCfg
+	return serviceCfg
 }
 
 func (c *CommitterRuntime) createServerConfigTLS(t *testing.T, asServer string) connection.ConfigTLS {

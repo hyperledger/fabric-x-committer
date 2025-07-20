@@ -35,10 +35,10 @@ type (
 
 const (
 	//nolint:revive // usage: TLS configuration modes.
-	TLSEmpty  TLSMode = ""
-	TLSNone   TLSMode = "none"
-	TLSServer TLSMode = "tls"
-	TLSMutual TLSMode = "mtls"
+	TLSDefault TLSMode = ""
+	TLSNone    TLSMode = "none"
+	TLSServer  TLSMode = "tls"
+	TLSMutual  TLSMode = "mtls"
 )
 
 // ServerOption returns the appropriate gRPC server option based on the TLS configuration.
@@ -70,22 +70,9 @@ func (c *ConfigTLS) ClientOption() (credentials.TransportCredentials, error) {
 	return creds, err
 }
 
-// ClientOptionWithConfig returns the gRPC transport credentials and
-// the tls configuration to be used by a client,
-// based on the provided TLS configuration.
-// If TLS is disabled or c is nil, it returns
-// insecure credentials; otherwise, it returns TLS credentials configured
-// with or without mutual TLS, depending on the settings.
-func (c *ConfigTLS) ClientOptionWithConfig() (*tls.Config, credentials.TransportCredentials, error) {
-	if c == nil {
-		return nil, insecure.NewCredentials(), nil
-	}
-	return c.buildClientCreds()
-}
-
 func (c *ConfigTLS) buildServerCreds() (credentials.TransportCredentials, error) {
 	switch c.Mode {
-	case TLSNone, TLSEmpty:
+	case TLSNone, TLSDefault:
 		return insecure.NewCredentials(), nil
 
 	case TLSServer, TLSMutual:
@@ -118,7 +105,7 @@ func (c *ConfigTLS) buildServerCreds() (credentials.TransportCredentials, error)
 
 func (c *ConfigTLS) buildClientCreds() (*tls.Config, credentials.TransportCredentials, error) {
 	switch c.Mode {
-	case TLSNone, TLSEmpty:
+	case TLSNone, TLSDefault:
 		return nil, insecure.NewCredentials(), nil
 
 	case TLSServer, TLSMutual:

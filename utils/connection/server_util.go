@@ -43,7 +43,7 @@ func NewLocalHostServerWithCreds(creds *ConfigTLS) *ServerConfig {
 	}
 }
 
-// GrpcServer instantiate a [grpc.Server].
+// GrpcServer instantiate a [*grpc.Server].
 func (c *ServerConfig) GrpcServer() (*grpc.Server, error) {
 	var opts []grpc.ServerOption
 	serverGrpcCreds, err := c.ServerCreds.ServerOption()
@@ -150,7 +150,7 @@ func StartService(
 	defer cancelTimeout()
 	if !service.WaitForReady(ctxTimeout) {
 		cancel()
-		return errors.Newf("service is not ready: %w", g.Wait())
+		return errors.Wrapf(g.Wait(), "service is not ready")
 	}
 
 	if register != nil && serverConfig != nil {
