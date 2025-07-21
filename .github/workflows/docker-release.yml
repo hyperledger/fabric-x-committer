@@ -56,6 +56,17 @@ jobs:
       - name: Build cross-architecture binaries
         run: make build-arch
 
+      - name: Print GitHub Repository Owner
+        run: echo "Repository owner is ${{ github.repository_owner }}"
+
+      - name: Set image prefix
+        run: |
+          if [ "${{ github.repository_owner }}" = "hyperledger" ]; then
+            echo "IMAGE_PREFIX=hyperledger" >> $GITHUB_ENV
+           else
+            echo "IMAGE_PREFIX=${{ secrets.DOCKERHUB_USERNAME }}" >> $GITHUB_ENV
+          fi
+
       - name: Build and Push Multi-Platform Docker Image for Committer
         uses: docker/build-push-action@v6
         with:
@@ -64,11 +75,11 @@ jobs:
           platforms: linux/amd64,linux/arm64,linux/s390x
           push: true
           tags: |
-            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/fabric-x-committer:latest
-            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/fabric-x-committer:${{ env.VERSION }}
+            docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-committer:latest
+            docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-committer:${{ env.VERSION }}
           build-args: |
             BIN=committer
             ARCHBIN_PATH=archbin
             PORTS=4001 2114 9001 2119 5001 2115 6001 2116 7001 2117
-          cache-from: type=registry,ref=docker.io/${{ secrets.DOCKERHUB_USERNAME }}/fabric-x-committer:buildcache
-          cache-to: type=registry,ref=docker.io/${{ secrets.DOCKERHUB_USERNAME }}/fabric-x-committer:buildcache,mode=max
+          cache-from: type=registry,ref=docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-committer:buildcache
+          cache-to: type=registry,ref=docker.io/${{  env.IMAGE_PREFIX  }}/fabric-x-committer:buildcache,mode=max
