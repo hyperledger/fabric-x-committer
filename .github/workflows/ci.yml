@@ -109,7 +109,7 @@ jobs:
           go-version-file: go.mod
       - run: scripts/install-dev-dependencies.sh
       - run: scripts/get-and-start-yuga.sh
-      - run: make test-tls
+      - run: make test-integration-tls
 
   db-resiliency-test:
     name: Integration DB Resiliency (container)
