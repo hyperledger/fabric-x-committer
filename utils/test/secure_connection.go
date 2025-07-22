@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/connection/tlsgen"
+	"github.com/hyperledger/fabric-x-committer/utils/tlsgen"
 )
 
 type (
