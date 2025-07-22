@@ -100,7 +100,7 @@ test: build
 test-package-%: build
 	@$(go_test) ./$*/... | gotestfmt ${GO_TEST_FMT_FLAGS}
 
-# Integration tests excluding DB resiliency tests.
+# Integration tests excluding DB resiliency and secure communication tests.
 # Use `test-integration-db-resiliency`.
 test-integration: build
 	@$(go_test) ./integration/... -skip 'DBResiliency.*|.*TLSConnection.*' | gotestfmt ${GO_TEST_FMT_FLAGS}
@@ -109,7 +109,7 @@ test-integration: build
 test-integration-db-resiliency: build
 	@$(go_test) ./integration/... -run "DBResiliency.*" | gotestfmt ${GO_TEST_FMT_FLAGS}
 
-# tryout test.
+# Secure communication tests.
 test-integration-tls: build
 	@$(go_test) ./integration/... -run ".*TLSConnection.*" | gotestfmt ${GO_TEST_FMT_FLAGS}
 
