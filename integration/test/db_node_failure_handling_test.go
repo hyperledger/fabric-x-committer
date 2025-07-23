@@ -63,15 +63,19 @@ func TestDBResiliencyPrimaryPostgresNodeCrash(t *testing.T) {
 	waitForCommittedTxs(t, c, 15_000)
 }
 
+func TestNothing(t *testing.T) {
+	dbtest.GetDockerContainersIPs(t)
+}
+
 func TestDBResiliencySecondaryPostgresNodeCrash(t *testing.T) {
 	t.Parallel()
 
 	//clusterController, clusterConnection := runner.StartPostgresCluster(createInitContext(t), t)
 
 	clusterConnection := dbtest.NewConnection([]*connection.Endpoint{
-		connection.CreateEndpointHP("172.19.0.4", "5433"),
-		connection.CreateEndpointHP("172.19.0.5", "5433"),
+		connection.CreateEndpointHP("172.19.0.3", "5433"),
 		connection.CreateEndpointHP("172.19.0.2", "5433"),
+		connection.CreateEndpointHP("172.19.0.4", "5433"),
 	}...)
 
 	c := registerAndCreateRuntime(t, clusterConnection)

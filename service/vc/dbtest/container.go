@@ -355,3 +355,42 @@ func GetDockerClient(t *testing.T) *docker.Client {
 	require.NoError(t, err)
 	return client
 }
+
+func GetDockerContainersIPs(t *testing.T) {
+	client, err := docker.NewClientFromEnv()
+	if err != nil {
+		t.Fatalf("Failed to create Docker client: %v", err)
+	}
+
+	containers, err := client.ListContainers(docker.ListContainersOptions{All: true})
+	if err != nil {
+		t.Fatalf("Failed to list containers: %v", err)
+	}
+
+	for _, container := range containers {
+		info, err := client.InspectContainer(container.ID)
+		if err != nil {
+			t.Errorf("Failed to inspect container %s: %v", container.ID, err)
+			continue
+		}
+
+		name := info.Name
+		if len(name) > 0 && name[0] == '/' {
+			name = name[1:]
+		}
+
+		// Try to get IP from custom network(s)
+		networkIPs := ""
+		for netName, net := range info.NetworkSettings.Networks {
+			if net.IPAddress != "" {
+				networkIPs += fmt.Sprintf("[%s: %s] ", netName, net.IPAddress)
+			}
+		}
+
+		if networkIPs == "" {
+			t.Logf("Container %s has no IP (not connected to a network with an IP)", name)
+		} else {
+			fmt.Printf("Container: %-20s IPs: %s\n", name, networkIPs)
+		}
+	}
+}
