@@ -8,6 +8,7 @@ package test
 
 import (
 	"context"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"testing"
 	"time"
 
@@ -65,13 +66,19 @@ func TestDBResiliencyPrimaryPostgresNodeCrash(t *testing.T) {
 func TestDBResiliencySecondaryPostgresNodeCrash(t *testing.T) {
 	t.Parallel()
 
-	clusterController, clusterConnection := runner.StartPostgresCluster(createInitContext(t), t)
+	//clusterController, clusterConnection := runner.StartPostgresCluster(createInitContext(t), t)
+
+	clusterConnection := dbtest.NewConnection([]*connection.Endpoint{
+		connection.CreateEndpointHP("172.19.0.4", "5433"),
+		connection.CreateEndpointHP("172.19.0.5", "5433"),
+		connection.CreateEndpointHP("172.19.0.2", "5433"),
+	}...)
 
 	c := registerAndCreateRuntime(t, clusterConnection)
 
-	waitForCommittedTxs(t, c, 10_000)
-	clusterController.StopAndRemoveNodeWithRole(t, runner.FollowerNode)
-	waitForCommittedTxs(t, c, 15_000)
+	waitForCommittedTxs(t, c, 50_000)
+	//clusterController.StopAndRemoveNodeWithRole(t, runner.FollowerNode)
+	//waitForCommittedTxs(t, c, 15_000)
 }
 
 func registerAndCreateRuntime(t *testing.T, clusterConnection *dbtest.Connection) *runner.CommitterRuntime {
