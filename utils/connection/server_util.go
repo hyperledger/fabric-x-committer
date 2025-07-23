@@ -17,6 +17,8 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/health"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -32,6 +34,8 @@ type (
 		// WaitForReady waits for the service resources to initialize.
 		// If the context ended before the service is ready, returns false.
 		WaitForReady(ctx context.Context) bool
+		// RegisterService registers the supported APIs for this service.
+		RegisterService(server *grpc.Server)
 	}
 )
 
@@ -102,8 +106,8 @@ func (c *ServerConfig) PreAllocateListener() (net.Listener, error) {
 	return listener, nil
 }
 
-// RunGrpcServerMainWithError runs a server and returns error if failed.
-func RunGrpcServerMainWithError(
+// RunGrpcServer runs a server and returns error if failed.
+func RunGrpcServer(
 	ctx context.Context,
 	serverConfig *ServerConfig,
 	register func(server *grpc.Server),
@@ -125,13 +129,12 @@ func RunGrpcServerMainWithError(
 	return g.Wait()
 }
 
-// StartService runs a service, waits until it is ready, and register the gRPC server.
+// StartService runs a service, waits until it is ready, and register the gRPC server(s).
 // It will stop if either the service ended or its respective gRPC server.
 func StartService(
 	ctx context.Context,
 	service Service,
-	serverConfig *ServerConfig,
-	register func(server *grpc.Server),
+	serverConfigs ...*ServerConfig,
 ) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -150,14 +153,20 @@ func StartService(
 		return fmt.Errorf("service is not ready: %w", g.Wait())
 	}
 
-	if register != nil && serverConfig != nil {
+	for _, server := range serverConfigs {
+		server := server
 		g.Go(func() error {
-			// If the GRPC server stops, there is no reason to continue the service.
+			// If the GRPC servers stop, there is no reason to continue the service.
 			defer cancel()
-			return RunGrpcServerMainWithError(gCtx, serverConfig, func(server *grpc.Server) {
-				register(server)
-			})
+			return RunGrpcServer(gCtx, server, service.RegisterService)
 		})
 	}
 	return g.Wait()
+}
+
+// DefaultHealthCheckService returns a health-check service that returns SERVING for all services.
+func DefaultHealthCheckService() *health.Server {
+	healthcheck := health.NewServer()
+	healthcheck.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
+	return healthcheck
 }

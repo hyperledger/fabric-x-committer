@@ -12,11 +12,15 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 )
 
@@ -31,6 +35,7 @@ type SigVerifier struct {
 	numBlocksReceived          atomic.Uint32
 	returnErrForUpdatePolicies atomic.Bool
 	policyUpdateCounter        atomic.Uint64
+	healthcheck                *health.Server
 	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
 	MockFaultyNodeDropSize int
 }
@@ -39,7 +44,14 @@ type SigVerifier struct {
 func NewMockSigVerifier() *SigVerifier {
 	return &SigVerifier{
 		requestBatch: make(chan *protosigverifierservice.RequestBatch, 10),
+		healthcheck:  connection.DefaultHealthCheckService(),
 	}
+}
+
+// RegisterService registers for the verifier's GRPC services.
+func (m *SigVerifier) RegisterService(server *grpc.Server) {
+	protosigverifierservice.RegisterVerifierServer(server, m)
+	healthgrpc.RegisterHealthServer(server, m.healthcheck)
 }
 
 func (m *SigVerifier) updatePolicies(update *protosigverifierservice.Update) error {

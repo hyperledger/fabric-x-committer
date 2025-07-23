@@ -14,14 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -67,9 +62,7 @@ func TestLoadGenForLoadGen(t *testing.T) {
 			require.NoError(t, err)
 
 			t.Log("Start distributed loadgen")
-			test.RunServiceAndGrpcForTest(t.Context(), t, subClient, subClientConf.Server, func(s *grpc.Server) {
-				protoloadgen.RegisterLoadGenServiceServer(s, subClient)
-			})
+			test.RunServiceAndGrpcForTest(t.Context(), t, subClient, subClientConf.Server)
 			testLoadGenerator(t, clientConf)
 		})
 	}
@@ -120,9 +113,7 @@ func startVerifiers(t *testing.T) *adapters.VerifierClientConfig {
 		}
 
 		service := verifier.New(sConf)
-		test.RunGrpcServerForTest(t.Context(), t, sConf.Server, func(server *grpc.Server) {
-			protosigverifierservice.RegisterVerifierServer(server, service)
-		})
+		test.RunGrpcServerForTest(t.Context(), t, sConf.Server, service.RegisterService)
 		endpoints[i] = &sConf.Server.Endpoint
 	}
 	return &adapters.VerifierClientConfig{
@@ -158,9 +149,7 @@ func TestLoadGenForCoordinator(t *testing.T) {
 			}
 
 			service := coordinator.NewCoordinatorService(cConf)
-			test.RunServiceAndGrpcForTest(t.Context(), t, service, cConf.Server, func(server *grpc.Server) {
-				protocoordinatorservice.RegisterCoordinatorServer(server, service)
-			})
+			test.RunServiceAndGrpcForTest(t.Context(), t, service, cConf.Server)
 
 			// Start client
 			clientConf.Adapter.CoordinatorClient = &adapters.CoordinatorClientConfig{
@@ -220,9 +209,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 			service, err := sidecar.New(sidecarConf)
 			require.NoError(t, err)
 			t.Cleanup(service.Close)
-			test.RunServiceAndGrpcForTest(t.Context(), t, service, sidecarConf.Server, func(server *grpc.Server) {
-				peer.RegisterDeliverServer(server, service.GetLedgerService())
-			})
+			test.RunServiceAndGrpcForTest(t.Context(), t, service, sidecarConf.Server)
 
 			// Start client
 			clientConf.Adapter.SidecarClient = &adapters.SidecarClientConfig{
@@ -273,9 +260,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 			service, err := sidecar.New(sidecarConf)
 			require.NoError(t, err)
 			t.Cleanup(service.Close)
-			test.RunServiceAndGrpcForTest(t.Context(), t, service, sidecarConf.Server, func(server *grpc.Server) {
-				peer.RegisterDeliverServer(server, service.GetLedgerService())
-			})
+			test.RunServiceAndGrpcForTest(t.Context(), t, service, sidecarConf.Server)
 
 			// Submit default config block.
 			require.NotNil(t, clientConf.LoadProfile)
@@ -353,9 +338,7 @@ func testLoadGenerator(t *testing.T, c *ClientConfig) {
 	client, err := NewLoadGenClient(c)
 	require.NoError(t, err)
 
-	ready := test.RunServiceAndGrpcForTest(t.Context(), t, client, client.conf.Server, func(s *grpc.Server) {
-		protoloadgen.RegisterLoadGenServiceServer(s, client)
-	})
+	ready := test.RunServiceAndGrpcForTest(t.Context(), t, client, client.conf.Server)
 	eventuallyMetrics(t, client.resources.Metrics, func(m metrics.MetricState) bool {
 		return m.TransactionsSent > 0 &&
 			m.TransactionsReceived > 0 &&

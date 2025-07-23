@@ -13,9 +13,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/mock"
@@ -97,7 +95,7 @@ func TestBroadcastDeliver(t *testing.T) {
 	})
 
 	t.Log("One incorrect server")
-	fakeServer := test.RunGrpcServerForTest(ctx, t, servers[2].Configs[0])
+	fakeServer := test.RunGrpcServerForTest(ctx, t, servers[2].Configs[0], nil)
 	waitUntilGrpcServerIsReady(ctx, t, &servers[2].Configs[0].Endpoint)
 
 	submit(t, stream, outputBlocks, expectedSubmit{
@@ -108,9 +106,7 @@ func TestBroadcastDeliver(t *testing.T) {
 
 	t.Log("All good again")
 	fakeServer.Stop()
-	servers[2].Servers[0] = test.RunGrpcServerForTest(ctx, t, servers[2].Configs[0], func(server *grpc.Server) {
-		ab.RegisterAtomicBroadcastServer(server, ordererService)
-	})
+	servers[2].Servers[0] = test.RunGrpcServerForTest(ctx, t, servers[2].Configs[0], ordererService.RegisterService)
 	waitUntilGrpcServerIsReady(ctx, t, &servers[2].Configs[0].Endpoint)
 	submit(t, stream, outputBlocks, expectedSubmit{
 		id:      "5",

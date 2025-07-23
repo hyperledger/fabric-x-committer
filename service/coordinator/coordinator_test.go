@@ -17,7 +17,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -103,9 +102,7 @@ func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
 			Port: 0,
 		},
 	}
-	test.RunServiceAndGrpcForTest(ctx, t, cs, sc, func(server *grpc.Server) {
-		protocoordinatorservice.RegisterCoordinatorServer(server, cs)
-	})
+	test.RunServiceAndGrpcForTest(ctx, t, cs, sc)
 
 	conn, err := connection.Connect(connection.NewInsecureDialConfig(&sc.Endpoint))
 	require.NoError(t, err)

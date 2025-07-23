@@ -13,9 +13,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/loadgen"
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
@@ -79,9 +77,7 @@ func loadGenCMD() *cobra.Command {
 			if err != nil {
 				return errors.Wrap(err, "failed to create loadgen client")
 			}
-			return connection.StartService(cmd.Context(), client, conf.Server, func(s *grpc.Server) {
-				protoloadgen.RegisterLoadGenServiceServer(s, client)
-			})
+			return connection.StartService(cmd.Context(), client, conf.Server)
 		},
 	}
 	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))

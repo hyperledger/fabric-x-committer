@@ -13,11 +13,15 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 )
 
@@ -30,6 +34,7 @@ type VcService struct {
 	lastCommittedBlock atomic.Pointer[protoblocktx.BlockInfo]
 	txsStatus          *fifoCache[*protoblocktx.StatusWithHeight]
 	txsStatusMu        sync.Mutex
+	healthcheck        *health.Server
 	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
 	MockFaultyNodeDropSize int
 }
@@ -39,7 +44,14 @@ func NewMockVcService() *VcService {
 	return &VcService{
 		txBatchChan: make(chan *protovcservice.TransactionBatch),
 		txsStatus:   newFifoCache[*protoblocktx.StatusWithHeight](defaultTxStatusStorageSize),
+		healthcheck: connection.DefaultHealthCheckService(),
 	}
+}
+
+// RegisterService registers for the validator-committer's GRPC services.
+func (v *VcService) RegisterService(server *grpc.Server) {
+	protovcservice.RegisterValidationAndCommitServiceServer(server, v)
+	healthgrpc.RegisterHealthServer(server, v.healthcheck)
 }
 
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger.

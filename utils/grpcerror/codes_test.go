@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -65,35 +65,29 @@ func TestHasCode(t *testing.T) {
 
 func TestHasCodeWithGRPCService(t *testing.T) {
 	t.Parallel()
-	type VcServiceUnimplemented struct {
-		protovcservice.ValidationAndCommitServiceServer
-	}
-
-	vc := &VcServiceUnimplemented{protovcservice.UnimplementedValidationAndCommitServiceServer{}}
-
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
-	vcGrpc := test.StartGrpcServersForTest(ctx, t, 1, func(server *grpc.Server, _ int) {
-		protovcservice.RegisterValidationAndCommitServiceServer(server, vc)
+	server := test.StartGrpcServersForTest(ctx, t, 1, func(server *grpc.Server, _ int) {
+		healthgrpc.RegisterHealthServer(server, &healthgrpc.UnimplementedHealthServer{})
 	})
 
-	dialConfig := connection.NewInsecureDialConfig(&vcGrpc.Configs[0].Endpoint)
+	dialConfig := connection.NewInsecureDialConfig(&server.Configs[0].Endpoint)
 	dialConfig.SetRetryProfile(&connection.RetryProfile{MaxElapsedTime: 2 * time.Second})
 	conn, err := connection.Connect(dialConfig)
 	require.NoError(t, err)
 
-	client := protovcservice.NewValidationAndCommitServiceClient(conn)
+	client := healthgrpc.NewHealthClient(conn)
 
-	_, err = client.SetLastCommittedBlockNumber(ctx, nil)
+	_, err = client.Check(ctx, nil)
 	require.True(t, HasCode(err, codes.Unimplemented)) // all APIs are codes.Unimplemented
 
-	_, err = client.GetLastCommittedBlockNumber(ctx, nil)
+	_, err = client.List(ctx, nil)
 	require.False(t, HasCode(err, codes.NotFound)) // all APIs are codes.Unimplemented
 
-	vcGrpc.Servers[0].Stop()
-	test.CheckServerStopped(t, vcGrpc.Configs[0].Endpoint.Address())
+	server.Servers[0].Stop()
+	test.CheckServerStopped(t, server.Configs[0].Endpoint.Address())
 
-	_, err = client.GetLastCommittedBlockNumber(ctx, nil)
+	_, err = client.Check(ctx, nil)
 	require.Truef(t, HasCode(err, codes.Unavailable), "code: %s", GetCode(err))
 	require.NoError(t, FilterUnavailableErrorCode(err))
 }

@@ -24,7 +24,6 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -152,9 +151,7 @@ func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 
 func (env *sidecarTestEnv) start(ctx context.Context, t *testing.T, startBlkNum int64) {
 	t.Helper()
-	test.RunServiceAndGrpcForTest(ctx, t, env.sidecar, env.config.Server, func(server *grpc.Server) {
-		peer.RegisterDeliverServer(server, env.sidecar.GetLedgerService())
-	})
+	test.RunServiceAndGrpcForTest(ctx, t, env.sidecar, env.config.Server)
 	env.committedBlock = sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Config{
 		ChannelID: env.config.Orderer.ChannelID,
 		Endpoint:  &env.config.Server.Endpoint,
