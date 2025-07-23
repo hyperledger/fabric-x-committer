@@ -99,7 +99,7 @@ func TestCrashWhenIdle(t *testing.T) {
 		expectedResults = &runner.ExpectedStatusInBlock{
 			TxIDs: []string{"tx1"},
 			Statuses: []protoblocktx.Status{
-				protoblocktx.Status_ABORTED_DUPLICATE_TXID,
+				protoblocktx.Status_REJECTED_DUPLICATE_TX_ID,
 			},
 		}
 		c.ValidateExpectedResultsInCommittedBlock(t, expectedResults)

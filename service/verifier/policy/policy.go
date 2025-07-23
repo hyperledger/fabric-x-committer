@@ -18,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
 // KeyValue represents any key/value implementation.
@@ -75,7 +76,7 @@ func GetUpdatesFromNamespace(nsTx *protoblocktx.TxNamespace) *protosigverifierse
 }
 
 // ParseNamespacePolicyItem parses policy item to a namespace policy.
-func ParseNamespacePolicyItem(pd *protoblocktx.PolicyItem) (*protoblocktx.NamespacePolicy, error) {
+func ParseNamespacePolicyItem(pd *protoblocktx.PolicyItem) (*signature.NsVerifier, error) {
 	if err := validateNamespaceIDInPolicy(pd.Namespace); err != nil {
 		return nil, err
 	}
@@ -84,7 +85,7 @@ func ParseNamespacePolicyItem(pd *protoblocktx.PolicyItem) (*protoblocktx.Namesp
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal namespace policy")
 	}
-	return p, nil
+	return signature.NewNsVerifier(p.Scheme, p.PublicKey)
 }
 
 // validateNamespaceIDInPolicy checks that a given namespace fulfills namespace naming conventions.
@@ -113,7 +114,7 @@ func ValidateNamespaceID(nsID string) error {
 }
 
 // ParsePolicyFromConfigTx parses the meta namespace policy from a config transaction.
-func ParsePolicyFromConfigTx(value []byte) (*protoblocktx.NamespacePolicy, error) {
+func ParsePolicyFromConfigTx(value []byte) (*signature.NsVerifier, error) {
 	envelope, err := protoutil.UnmarshalEnvelope(value)
 	if err != nil {
 		return nil, errors.Wrap(err, "error unmarshalling envelope")
@@ -131,11 +132,8 @@ func ParsePolicyFromConfigTx(value []byte) (*protoblocktx.NamespacePolicy, error
 		return nil, errors.New("application configuration of incorrect type")
 	}
 	key := acx.MetaNamespaceVerificationKey()
-	return &protoblocktx.NamespacePolicy{
-		PublicKey: key.KeyMaterial,
-		// We use existing proto here to avoid introducing new ones.
-		// So we encode the key schema as the identifier.
-		// This will be replaced in the future with a generic policy mechanism.
-		Scheme: key.KeyIdentifier,
-	}, nil
+	// We use existing proto here to avoid introducing new ones.
+	// So we encode the key schema as the identifier.
+	// This will be replaced in the future with a generic policy mechanism.
+	return signature.NewNsVerifier(key.KeyIdentifier, key.KeyMaterial)
 }
