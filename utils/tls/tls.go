@@ -14,7 +14,7 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// LoadTLSCredentials returns a new [tls.Config] with the credentials from the given paths.
+// LoadTLSCredentials returns a new [tls.Config] with the credentials loaded from the given paths.
 func LoadTLSCredentials(certPaths []string) (*tls.Config, error) {
 	certs := make([][]byte, len(certPaths))
 	var err error
