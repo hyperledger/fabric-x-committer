@@ -52,6 +52,38 @@ type (
 	}
 )
 
+// TestCoordinatorSecureConnection verifies the Coordinator gRPC server's behavior
+// under various client TLS configurations.
+func TestCoordinatorSecureConnection(t *testing.T) {
+	t.Parallel()
+	test.RunSecureConnectionTest(t,
+		test.SecureConnectionFunctionArguments{
+			ServerCN: "coordinator",
+			ServerStarter: func(t *testing.T, tlsCfg *connection.ConfigTLS) connection.Endpoint {
+				t.Helper()
+				env := newCoordinatorTestEnv(t, &testConfig{
+					numSigService: 1,
+					numVcService:  1,
+					mockVcService: true,
+				})
+				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+				t.Cleanup(cancel)
+				env.startWithCreds(ctx, t, tlsCfg)
+				return env.coordinator.config.Server.Endpoint
+			},
+			ClientStarter: func(t *testing.T, ep *connection.Endpoint, cfg *connection.ConfigTLS) test.RequestFunc {
+				t.Helper()
+				client := createCoordinatorClientWithTLS(t, ep, cfg)
+				return func(ctx context.Context) error {
+					_, err := client.BlockProcessing(ctx)
+					return err
+				}
+			},
+			Parallel: true,
+		},
+	)
+}
+
 func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEnv {
 	t.Helper()
 	svs, svServers := mock.StartMockSVService(t, tConfig.numSigService)
@@ -96,30 +128,26 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 
 func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
 	t.Helper()
-	cs := e.coordinator
-	sc := &connection.ServerConfig{
-		Endpoint: connection.Endpoint{
-			Host: "localhost",
-			Port: 0,
-		},
-	}
-	test.RunServiceAndGrpcForTest(ctx, t, cs, sc, func(server *grpc.Server) {
-		protocoordinatorservice.RegisterCoordinatorServer(server, cs)
-	})
-
-	conn, err := connection.Connect(connection.NewInsecureDialConfig(&sc.Endpoint))
-	require.NoError(t, err)
-
-	client := protocoordinatorservice.NewCoordinatorClient(conn)
-	e.client = client
+	e.startWithCreds(ctx, t, nil)
+	e.client = createCoordinatorClientWithTLS(t, &e.coordinator.config.Server.Endpoint, nil)
 
 	sCtx, sCancel := context.WithTimeout(ctx, 5*time.Minute)
 	t.Cleanup(sCancel)
-	csStream, err := client.BlockProcessing(sCtx)
+	csStream, err := e.client.BlockProcessing(sCtx)
 	require.NoError(t, err)
 
 	e.csStream = csStream
 	e.streamCancel = sCancel
+}
+
+func (e *coordinatorTestEnv) startWithCreds(ctx context.Context, t *testing.T, serverCreds *connection.ConfigTLS) {
+	t.Helper()
+	cs := e.coordinator
+	e.coordinator.config.Server = connection.NewLocalHostServerWithCreds(serverCreds)
+
+	test.RunServiceAndGrpcForTest(ctx, t, cs, e.coordinator.config.Server, func(server *grpc.Server) {
+		protocoordinatorservice.RegisterCoordinatorServer(server, cs)
+	})
 }
 
 func (e *coordinatorTestEnv) ensureStreamActive(t *testing.T) {
@@ -967,4 +995,14 @@ func makeTestBlock(txPerBlock int) (*protocoordinatorservice.Block, map[string]*
 	}
 
 	return b, expectedTxsStatus
+}
+
+//nolint:ireturn // returning a gRPC client interface is intentional for test purpose.
+func createCoordinatorClientWithTLS(
+	t *testing.T,
+	ep *connection.Endpoint,
+	tlsCfg *connection.ConfigTLS,
+) protocoordinatorservice.CoordinatorClient {
+	t.Helper()
+	return test.CreateClientWithTLS(t, ep, tlsCfg, protocoordinatorservice.NewCoordinatorClient)
 }

@@ -4,6 +4,15 @@
 #
 server:
   endpoint: {{ .ServiceEndpoints.Server | default "localhost:0" }}
+  server-creds:
+    tls-mode: {{ .ServiceTLS.Mode }}
+    server-name: {{ .ServiceTLS.ServerName }}
+    cert-path: {{ .ServiceTLS.CertPath }}
+    key-path: {{ .ServiceTLS.KeyPath }}
+    ca-cert-paths:
+      {{- range .ServiceTLS.CACertPaths }}
+      - {{ . }}
+      {{- end }}
   keep-alive:
     params:
       time: 300s
@@ -24,7 +33,18 @@ orderer:
   channel-id: {{ .ChannelID }}
   consensus-type: BFT
 committer:
-  endpoint: {{ .Endpoints.Coordinator.Server }}
+  client:
+    endpoints:
+      - {{ .Endpoints.Coordinator.Server }}
+    client-creds:
+      tls-mode: {{ .ClientsCreds.Coordinator.Mode }}
+      server-name: {{ .ClientsCreds.Coordinator.ServerName }}
+      cert-path: {{ .ClientsCreds.Coordinator.CertPath }}
+      key-path: {{ .ClientsCreds.Coordinator.KeyPath }}
+      ca-cert-paths:
+        {{- range .ClientsCreds.Coordinator.CACertPaths }}
+        - {{ . }}
+        {{- end }}
 
 ledger:
   path: {{ .LedgerPath }}

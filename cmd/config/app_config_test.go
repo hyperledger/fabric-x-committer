@@ -49,7 +49,7 @@ func TestReadConfigSidecar(t *testing.T) {
 				ChannelID: "mychannel",
 			},
 			Committer: sidecar.CoordinatorConfig{
-				Endpoint: *makeEndpoint("localhost", 9001),
+				Config: makeClientConfig("localhost", 9001),
 			},
 			Ledger: sidecar.LedgerConfig{
 				Path: "./ledger/",
@@ -84,7 +84,7 @@ func TestReadConfigSidecar(t *testing.T) {
 				ChannelID: "mychannel",
 			},
 			Committer: sidecar.CoordinatorConfig{
-				Endpoint: *makeEndpoint("coordinator", 9001),
+				Config: makeClientConfig("coordinator", 9001),
 			},
 			Ledger: sidecar.LedgerConfig{
 				Path: "/root/sc/ledger",
@@ -128,14 +128,10 @@ func TestReadConfigCoordinator(t *testing.T) {
 		name:           "sample",
 		configFilePath: "samples/coordinator.yaml",
 		expectedConfig: &coordinator.Config{
-			Server:     makeServer("", 9001),
-			Monitoring: makeMonitoring("", 2119),
-			VerifierConfig: connection.ClientConfig{
-				Endpoints: []*connection.Endpoint{makeEndpoint("signature-verifier", 5001)},
-			},
-			ValidatorCommitterConfig: connection.ClientConfig{
-				Endpoints: []*connection.Endpoint{makeEndpoint("validator-persister", 6001)},
-			},
+			Server:                   makeServer("", 9001),
+			Monitoring:               makeMonitoring("", 2119),
+			VerifierConfig:           *makeClientConfig("signature-verifier", 5001),
+			ValidatorCommitterConfig: *makeClientConfig("validator-persister", 6001),
 			DependencyGraphConfig: &coordinator.DependencyGraphConfig{
 				NumOfLocalDepConstructors:       1,
 				WaitingTxsLimit:                 10_000,
@@ -334,7 +330,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 			},
 			Adapter: adapters.AdapterConfig{
 				OrdererClient: &adapters.OrdererClientConfig{
-					SidecarEndpoint: makeEndpoint("sidecar", 4001),
+					SidecarConfig: makeClientConfig("sidecar", 4001),
 					Orderer: broadcastdeliver.Config{
 						Connection: broadcastdeliver.ConnectionConfig{
 							Endpoints: connection.NewOrdererEndpoints(
@@ -438,16 +434,24 @@ func defaultSampleDBConfig() *vc.DatabaseConfig {
 	}
 }
 
-func makeEndpoint(host string, port int) *connection.Endpoint {
-	return &connection.Endpoint{
-		Host: host,
-		Port: port,
+func makeClientConfig(host string, port int) *connection.ClientConfig {
+	return &connection.ClientConfig{
+		Endpoints: []*connection.Endpoint{
+			makeEndpoint(host, port),
+		},
 	}
 }
 
 func makeServer(host string, port int) *connection.ServerConfig {
 	return &connection.ServerConfig{
 		Endpoint: *makeEndpoint(host, port),
+	}
+}
+
+func makeEndpoint(host string, port int) *connection.Endpoint {
+	return &connection.Endpoint{
+		Host: host,
+		Port: port,
 	}
 }
 
