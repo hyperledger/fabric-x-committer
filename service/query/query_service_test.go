@@ -322,9 +322,7 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 	sConfig := &connection.ServerConfig{
 		Endpoint: connection.Endpoint{Host: "localhost", Port: 0},
 	}
-	test.RunServiceAndGrpcForTest(t.Context(), t, qs, sConfig, func(server *grpc.Server) {
-		protoqueryservice.RegisterQueryServiceServer(server, qs)
-	})
+	test.RunServiceAndGrpcForTest(t.Context(), t, qs, sConfig)
 
 	clientConn, err := connection.Connect(connection.NewInsecureDialConfig(&sConfig.Endpoint))
 	require.NoError(t, err)

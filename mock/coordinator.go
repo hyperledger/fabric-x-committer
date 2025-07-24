@@ -15,11 +15,15 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 )
 
@@ -34,6 +38,7 @@ type Coordinator struct {
 	txsStatusMu             sync.Mutex
 	configTransaction       atomic.Pointer[protoblocktx.ConfigTransaction]
 	latency                 atomic.Pointer[time.Duration]
+	healthcheck             *health.Server
 }
 
 // We don't want to utilize unlimited memory for storing the transactions status.
@@ -43,8 +48,15 @@ var defaultTxStatusStorageSize = 100_000
 // NewMockCoordinator creates a new mock coordinator.
 func NewMockCoordinator() *Coordinator {
 	return &Coordinator{
-		txsStatus: newFifoCache[*protoblocktx.StatusWithHeight](defaultTxStatusStorageSize),
+		txsStatus:   newFifoCache[*protoblocktx.StatusWithHeight](defaultTxStatusStorageSize),
+		healthcheck: connection.DefaultHealthCheckService(),
 	}
+}
+
+// RegisterService registers for the coordinator's GRPC services.
+func (c *Coordinator) RegisterService(server *grpc.Server) {
+	protocoordinatorservice.RegisterCoordinatorServer(server, c)
+	healthgrpc.RegisterHealthServer(server, c.healthcheck)
 }
 
 // GetConfigTransaction return the latest configuration transaction.

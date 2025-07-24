@@ -11,13 +11,8 @@ import (
 	"os"
 
 	"github.com/cockroachdb/errors"
-	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/spf13/cobra"
-	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
 
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -25,10 +20,11 @@ import (
 )
 
 const (
-	mockCmdName      = "mock"
-	mockOrdererName  = "mock-ordering-service"
-	mockVerifierName = "mock-verifier-service"
-	mockVcName       = "mock-vc-service"
+	mockCmdName         = "mock"
+	mockOrdererName     = "mock-ordering-service"
+	mockCoordinatorName = "mock-coordinator-service"
+	mockVerifierName    = "mock-verifier-service"
+	mockVcName          = "mock-vc-service"
 )
 
 func main() {
@@ -48,6 +44,7 @@ func mockCMD() *cobra.Command {
 	}
 	cmd.AddCommand(config.VersionCmd())
 	cmd.AddCommand(mockOrdererCMD())
+	cmd.AddCommand(mockCoordinatorCMD())
 	cmd.AddCommand(mockVerifierCMD())
 	cmd.AddCommand(mockVcCMD())
 	return cmd
@@ -74,23 +71,32 @@ func mockOrdererCMD() *cobra.Command {
 			if err != nil {
 				return errors.Wrap(err, "failed to create mock ordering service")
 			}
+			return connection.StartService(cmd.Context(), service, append(conf.ServerConfigs, conf.Server)...)
+		},
+	}
+	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))
+	return cmd
+}
 
-			g, gCtx := errgroup.WithContext(cmd.Context())
+func mockCoordinatorCMD() *cobra.Command {
+	v := config.NewViperWithCoordinatorDefaults()
+	var configPath string
+	cmd := &cobra.Command{
+		Use:   "start-coordinator",
+		Short: fmt.Sprintf("Starts %v", mockCoordinatorName),
+		Long:  fmt.Sprintf("%v is a mock coordinator service.", mockCoordinatorName),
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			conf, err := config.ReadCoordinatorYamlAndSetupLogging(v, configPath)
+			if err != nil {
+				return err
+			}
+			cmd.SilenceUsage = true
+			cmd.Printf("Starting %v\n", mockVerifierName)
+			defer cmd.Printf("%v ended\n", mockVerifierName)
 
-			// We run the main worker, and start GRPC servers.
-			reg := func(s *grpc.Server) {
-				ab.RegisterAtomicBroadcastServer(s, service)
-			}
-			g.Go(func() error {
-				return connection.StartService(gCtx, service, conf.Server, reg)
-			})
-			for _, subServer := range conf.ServerConfigs {
-				subServer := subServer
-				g.Go(func() error {
-					return connection.RunGrpcServerMainWithError(gCtx, subServer, reg)
-				})
-			}
-			return g.Wait()
+			service := mock.NewMockCoordinator()
+			return connection.RunGrpcServer(cmd.Context(), conf.Server, service.RegisterService)
 		},
 	}
 	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))
@@ -116,9 +122,7 @@ func mockVerifierCMD() *cobra.Command {
 			defer cmd.Printf("%v ended\n", mockVerifierName)
 
 			sv := mock.NewMockSigVerifier()
-			return connection.RunGrpcServerMainWithError(cmd.Context(), conf.Server, func(s *grpc.Server) {
-				protosigverifierservice.RegisterVerifierServer(s, sv)
-			})
+			return connection.RunGrpcServer(cmd.Context(), conf.Server, sv.RegisterService)
 		},
 	}
 	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))
@@ -144,9 +148,7 @@ func mockVcCMD() *cobra.Command {
 			defer cmd.Printf("%v ended\n", mockVcName)
 
 			vcs := mock.NewMockVcService()
-			return connection.RunGrpcServerMainWithError(cmd.Context(), conf.Server, func(server *grpc.Server) {
-				protovcservice.RegisterValidationAndCommitServiceServer(server, vcs)
-			})
+			return connection.RunGrpcServer(cmd.Context(), conf.Server, vcs.RegisterService)
 		},
 	}
 	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))

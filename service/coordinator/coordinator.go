@@ -15,12 +15,16 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
@@ -61,6 +65,8 @@ type (
 		numWaitingTxsForStatus *atomic.Int32
 
 		txBatchIDToDepGraph uint64
+
+		healthcheck *health.Server
 	}
 
 	channels struct {
@@ -165,17 +171,17 @@ func NewCoordinatorService(c *Config) *Service {
 	)
 
 	return &Service{
-		UnimplementedCoordinatorServer: protocoordinatorservice.UnimplementedCoordinatorServer{},
-		dependencyMgr:                  depMgr,
-		signatureVerifierMgr:           svMgr,
-		validatorCommitterMgr:          vcMgr,
-		policyMgr:                      policyMgr,
-		queues:                         queues,
-		config:                         c,
-		metrics:                        metrics,
-		initializationDone:             channel.NewReady(),
-		numWaitingTxsForStatus:         &atomic.Int32{},
-		txBatchIDToDepGraph:            1,
+		dependencyMgr:          depMgr,
+		signatureVerifierMgr:   svMgr,
+		validatorCommitterMgr:  vcMgr,
+		policyMgr:              policyMgr,
+		queues:                 queues,
+		config:                 c,
+		metrics:                metrics,
+		initializationDone:     channel.NewReady(),
+		numWaitingTxsForStatus: &atomic.Int32{},
+		txBatchIDToDepGraph:    1,
+		healthcheck:            connection.DefaultHealthCheckService(),
 	}
 }
 
@@ -247,6 +253,12 @@ func (c *Service) WaitForReady(ctx context.Context) bool {
 	//       and vcservice manager are ready. Hence, we can just wait for
 	//       the coordinator initialization.
 	return c.initializationDone.WaitForReady(ctx)
+}
+
+// RegisterService registers for the coordinator's GRPC services.
+func (c *Service) RegisterService(server *grpc.Server) {
+	protocoordinatorservice.RegisterCoordinatorServer(server, c)
+	healthgrpc.RegisterHealthServer(server, c.healthcheck)
 }
 
 // GetConfigTransaction get the config transaction from the state DB.
