@@ -9,6 +9,7 @@ package channel
 import (
 	"context"
 	"sync"
+	"time"
 )
 
 type (
@@ -30,6 +31,7 @@ type (
 	Reader[T any] interface {
 		WithContext[T]
 		Read() (T, bool)
+		ReadWithTimeout(time.Duration) (T, bool)
 	}
 	// Writer helps in writing to channels with context.
 	Writer[T any] interface {
@@ -110,6 +112,22 @@ func (c *channel[T]) Read() (T, bool) {
 	}
 	select {
 	case <-c.ctx.Done():
+		return *new(T), false
+	case val, ok := <-c.input:
+		return val, ok
+	}
+}
+
+// ReadWithTimeout reads one value from the channel.
+// Returns false if the channel is closed, timeout occurred, or the context is done.
+func (c *channel[T]) ReadWithTimeout(timeout time.Duration) (T, bool) {
+	if c.input == nil || c.ctx.Err() != nil {
+		return *new(T), false
+	}
+	select {
+	case <-c.ctx.Done():
+		return *new(T), false
+	case <-time.After(timeout):
 		return *new(T), false
 	case val, ok := <-c.input:
 		return val, ok

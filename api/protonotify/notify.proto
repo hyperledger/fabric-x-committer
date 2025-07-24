@@ -1,0 +1,49 @@
+/*
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+*/
+
+syntax = "proto3";
+
+option go_package = "github.com/hyperledger/fabric-x-committer/api/protonotify";
+
+package protonotify;
+
+import "google/protobuf/duration.proto";
+import "api/protoblocktx/block_tx.proto";
+
+// The notifier service provides API to subscript to ledger events and receive asynchronous notifications.
+service Notifier {
+    rpc OpenNotificationStream (stream NotificationRequest) returns (stream NotificationResponse);
+}
+
+// NotificationRequest is sent by the clients to subscribe to events.
+message NotificationRequest {
+    optional TxStatusRequest tx_status_request = 1;
+
+    // The timeout duration that applies to ALL the subscriptions in this request.
+    // If this field is not set or has a default value (zero), the default would be applied as
+    // per the committer's configuration.
+    google.protobuf.Duration timeout = 2;
+}
+
+// TxStatusRequest details subscription to transaction status event.
+message TxStatusRequest {
+    // List of transaction IDS to be registered.
+    repeated string tx_ids = 1;
+}
+
+// NotificationResponse contains a batch of event details.
+// It is pushed to the client via the stream.
+message NotificationResponse {
+    // List of transaction status events.
+    repeated TxStatusEvent tx_status_events = 1;
+    // List of timeout events.
+    repeated string timeout_tx_ids = 2;
+}
+
+message TxStatusEvent {
+    string tx_id = 1;
+    protoblocktx.StatusWithHeight status_with_height = 2;
+}

@@ -23,7 +23,7 @@ import (
 )
 
 type (
-	scBlockWithStatus struct {
+	blockMappingResult struct {
 		block      *protocoordinatorservice.Block
 		withStatus *blockWithStatus
 		isConfig   bool
@@ -43,7 +43,7 @@ const (
 	statusIdx             = int(common.BlockMetadataIndex_TRANSACTIONS_FILTER)
 )
 
-func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, types.Height]) (*scBlockWithStatus, error) {
+func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, types.Height]) (*blockMappingResult, error) {
 	// Prepare block's metadata.
 	if block.Metadata == nil {
 		block.Metadata = &common.BlockMetadata{}
@@ -55,7 +55,7 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, types.Hei
 
 	if block.Data == nil {
 		logger.Warnf("Received a block [%d] without data", block.Header.Number)
-		return &scBlockWithStatus{
+		return &blockMappingResult{
 			block: &protocoordinatorservice.Block{
 				Number: block.Header.Number,
 			},
@@ -67,7 +67,7 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, types.Hei
 	}
 
 	txCount := len(block.Data.Data)
-	mappedBlock := &scBlockWithStatus{
+	mappedBlock := &blockMappingResult{
 		block: &protocoordinatorservice.Block{
 			Number:   block.Header.Number,
 			Txs:      make([]*protoblocktx.Tx, 0, txCount),
@@ -92,7 +92,7 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, types.Hei
 	return mappedBlock, nil
 }
 
-func (b *scBlockWithStatus) mapMessage(msgIndex uint32, msg []byte) error {
+func (b *blockMappingResult) mapMessage(msgIndex uint32, msg []byte) error {
 	data, hdr, envErr := serialization.UnwrapEnvelope(msg)
 	if envErr != nil {
 		return b.rejectNonDBStatusTx(msgIndex, hdr, protoblocktx.Status_MALFORMED_BAD_ENVELOPE, envErr.Error())
@@ -123,7 +123,7 @@ func (b *scBlockWithStatus) mapMessage(msgIndex uint32, msg []byte) error {
 	}
 }
 
-func (b *scBlockWithStatus) appendTx(txNum uint32, hdr *common.ChannelHeader, tx *protoblocktx.Tx) error {
+func (b *blockMappingResult) appendTx(txNum uint32, hdr *common.ChannelHeader, tx *protoblocktx.Tx) error {
 	if idAlreadyExists, err := b.addTxIDMapping(txNum, hdr); idAlreadyExists || err != nil {
 		return err
 	}
@@ -133,7 +133,7 @@ func (b *scBlockWithStatus) appendTx(txNum uint32, hdr *common.ChannelHeader, tx
 	return nil
 }
 
-func (b *scBlockWithStatus) rejectTx(
+func (b *blockMappingResult) rejectTx(
 	txNum uint32, hdr *common.ChannelHeader, status protoblocktx.Status, reason string,
 ) error {
 	if !IsStatusStoredInDB(status) {
@@ -151,7 +151,10 @@ func (b *scBlockWithStatus) rejectTx(
 	return nil
 }
 
-func (b *scBlockWithStatus) rejectNonDBStatusTx(
+// rejectNonDBStatusTx is used to reject with statuses that are not stored in the state DB.
+// Namely, statuses for cases where we don't have a TX ID, or there is a TX ID duplication.
+// For such cases, no notification will be given by the notification service.
+func (b *blockMappingResult) rejectNonDBStatusTx(
 	txNum uint32, hdr *common.ChannelHeader, status protoblocktx.Status, reason string,
 ) error {
 	if IsStatusStoredInDB(status) {
@@ -159,11 +162,14 @@ func (b *scBlockWithStatus) rejectNonDBStatusTx(
 		return errors.Newf("[BUG] status should be stored [blk:%d,num:%d]: %s", b.block.Number, txNum, &status)
 	}
 	err := b.withStatus.setFinalStatus(txNum, status)
+	if err != nil {
+		return err
+	}
 	debugTx(hdr, "excluded: %s (%s)", &status, reason)
-	return err
+	return nil
 }
 
-func (b *scBlockWithStatus) addTxIDMapping(txNum uint32, hdr *common.ChannelHeader) (idAlreadyExists bool, err error) {
+func (b *blockMappingResult) addTxIDMapping(txNum uint32, hdr *common.ChannelHeader) (idAlreadyExists bool, err error) {
 	_, idAlreadyExists = b.txIDToHeight.LoadOrStore(hdr.TxId, types.Height{
 		BlockNum: b.block.Number,
 		TxNum:    txNum,
