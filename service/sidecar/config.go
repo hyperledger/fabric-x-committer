@@ -27,14 +27,15 @@ type (
 	// and the config of ledger service, and the orderer setup.
 	// It may contain the orderer endpoint from which the sidecar pulls blocks.
 	Config struct {
-		Server                        *connection.ServerConfig `mapstructure:"server"`
-		Committer                     CoordinatorConfig        `mapstructure:"committer"`
-		Ledger                        LedgerConfig             `mapstructure:"ledger"`
-		Orderer                       broadcastdeliver.Config  `mapstructure:"orderer"`
-		LastCommittedBlockSetInterval time.Duration            `mapstructure:"last-committed-block-set-interval"`
-		WaitingTxsLimit               int                      `mapstructure:"waiting-txs-limit"`
-		Monitoring                    monitoring.Config        `mapstructure:"monitoring"`
-		Bootstrap                     Bootstrap                `mapstructure:"bootstrap"`
+		Server                        *connection.ServerConfig  `mapstructure:"server"`
+		Monitoring                    monitoring.Config         `mapstructure:"monitoring"`
+		Committer                     CoordinatorConfig         `mapstructure:"committer"`
+		Orderer                       broadcastdeliver.Config   `mapstructure:"orderer"`
+		Ledger                        LedgerConfig              `mapstructure:"ledger"`
+		Notification                  NotificationServiceConfig `mapstructure:"notification"`
+		LastCommittedBlockSetInterval time.Duration             `mapstructure:"last-committed-block-set-interval"`
+		WaitingTxsLimit               int                       `mapstructure:"waiting-txs-limit"`
+		Bootstrap                     Bootstrap                 `mapstructure:"bootstrap"`
 	}
 	// Bootstrap configures how to obtain the bootstrap configuration.
 	Bootstrap struct {
@@ -53,6 +54,20 @@ type (
 	LedgerConfig struct {
 		Path string `mapstructure:"path"`
 	}
+
+	// NotificationServiceConfig holds the parameters for notifications.
+	NotificationServiceConfig struct {
+		// MaxTimeout is an upper limit on the request's timeout to prevent resource exhaustion.
+		// If a request doesn't specify a timeout, this value will be used.
+		MaxTimeout time.Duration `mapstructure:"default-timeout"`
+		// ChannelBufferSize is the buffer size that will be used to queue requests, statuses, and notifications.
+		ChannelBufferSize int `mapstructure:"channel-buffer-size"`
+	}
+)
+
+const (
+	defaultNotificationMaxTimeout = time.Minute
+	defaultNotificationBufferSize = 100
 )
 
 // LoadBootstrapConfig loads the bootstrap config according to the bootstrap method.

@@ -17,6 +17,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
+	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -27,6 +28,7 @@ type (
 	relay struct {
 		incomingBlockToBeCommitted    <-chan *common.Block
 		outgoingCommittedBlock        chan<- *common.Block
+		outgoingStatusUpdates         chan<- []*protonotify.TxStatusEvent
 		nextBlockNumberToBeCommitted  atomic.Uint64
 		activeBlocksCount             atomic.Int32
 		blkNumToBlkWithStatus         utils.SyncMap[uint64, *blockWithStatus]
@@ -42,6 +44,7 @@ type (
 		configUpdater                  func(*common.Block)
 		incomingBlockToBeCommitted     <-chan *common.Block
 		outgoingCommittedBlock         chan<- *common.Block
+		outgoingStatusUpdates          chan<- []*protonotify.TxStatusEvent
 		waitingTxsLimit                int
 	}
 )
@@ -67,6 +70,7 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 	r.nextBlockNumberToBeCommitted.Store(config.nextExpectedBlockByCoordinator)
 	r.incomingBlockToBeCommitted = config.incomingBlockToBeCommitted
 	r.outgoingCommittedBlock = config.outgoingCommittedBlock
+	r.outgoingStatusUpdates = config.outgoingStatusUpdates
 	r.blkNumToBlkWithStatus.Clear()
 	r.txIDToHeight.Clear()
 	r.waitingTxsSlots = utils.NewSlots(int64(config.waitingTxsLimit))
@@ -87,7 +91,7 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 
 	expectedNextBlockToBeCommitted := r.nextBlockNumberToBeCommitted.Load()
 
-	mappedBlockQueue := make(chan *scBlockWithStatus, cap(r.incomingBlockToBeCommitted))
+	mappedBlockQueue := make(chan *blockMappingResult, cap(r.incomingBlockToBeCommitted))
 	g.Go(func() error {
 		return r.preProcessBlock(sCtx, mappedBlockQueue, config.configUpdater)
 	})
@@ -112,7 +116,7 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 
 func (r *relay) preProcessBlock(
 	ctx context.Context,
-	mappedBlockQueue chan<- *scBlockWithStatus,
+	mappedBlockQueue chan<- *blockMappingResult,
 	configUpdater func(*common.Block),
 ) error {
 	incomingBlockToBeCommitted := channel.NewReader(ctx, r.incomingBlockToBeCommitted)
@@ -153,7 +157,7 @@ func (r *relay) preProcessBlock(
 
 func (r *relay) sendBlocksToCoordinator(
 	ctx context.Context,
-	mappedBlockQueue <-chan *scBlockWithStatus,
+	mappedBlockQueue <-chan *blockMappingResult,
 	stream protocoordinatorservice.Coordinator_BlockProcessingClient,
 ) error {
 	queue := channel.NewReader(ctx, mappedBlockQueue)
@@ -207,6 +211,7 @@ func (r *relay) processStatusBatch(
 ) error {
 	txsStatus := channel.NewReader(ctx, statusBatch)
 	outgoingCommittedBlock := channel.NewWriter(ctx, r.outgoingCommittedBlock)
+	outgoingStatusUpdates := channel.NewWriter(ctx, r.outgoingStatusUpdates)
 	for {
 		tStatus, readOK := txsStatus.Read()
 		if !readOK {
@@ -215,6 +220,7 @@ func (r *relay) processStatusBatch(
 
 		txStatusProcessedCount := int64(0)
 		startTime := time.Now()
+		statusReport := make([]*protonotify.TxStatusEvent, 0, len(tStatus.Status))
 		for txID, txStatus := range tStatus.Status {
 			// We cannot use LoadAndDelete(txID) because it may not match the received statues.
 			height, ok := r.txIDToHeight.Load(txID)
@@ -254,6 +260,15 @@ func (r *relay) processStatusBatch(
 			}
 			r.txIDToHeight.Delete(txID)
 			txStatusProcessedCount++
+
+			statusReport = append(statusReport, &protonotify.TxStatusEvent{
+				TxId:             txID,
+				StatusWithHeight: txStatus,
+			})
+		}
+
+		if len(statusReport) > 0 {
+			outgoingStatusUpdates.Write(statusReport)
 		}
 
 		r.waitingTxsSlots.Release(txStatusProcessedCount)

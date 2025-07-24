@@ -41,6 +41,7 @@ func TestCrashWhenIdle(t *testing.T) {
 		// We use a single TX per block to ensure we always get "all" the expected TXs in one block.
 		BlockSize:    1,
 		BlockTimeout: 2 * time.Second,
+		CrashTest:    true,
 	})
 	c.Start(t, runner.FullTxPath)
 	c.CreateNamespacesAndCommit(t, "1")
@@ -127,6 +128,7 @@ func TestCrashWhenNonIdle(t *testing.T) {
 		BlockSize:         500,
 		BlockTimeout:      120 * time.Second,
 		LoadgenBlockLimit: 300,
+		CrashTest:         true,
 		// The limit of 300 with 500 transactions was chosen based on local/CI testing
 		// to ensure that load is generated until all failure scenarios complete. There is
 		// enough buffer here to ensure that the test would pass even on a faster server.
