@@ -20,8 +20,10 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
+	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
@@ -133,6 +135,14 @@ func (q *Service) GetRows(
 	ctx context.Context, query *protoqueryservice.Query,
 ) (*protoqueryservice.Rows, error) {
 	q.metrics.requests.WithLabelValues(grpcGetRows).Inc()
+
+	for _, ns := range query.Namespaces {
+		err := policy.ValidateNamespaceID(ns.NsId)
+		if err != nil {
+			return nil, grpcerror.WrapInvalidArgument(err)
+		}
+	}
+
 	defer q.requestLatency(grpcGetRows, time.Now())
 	for _, ns := range query.Namespaces {
 		promutil.AddToCounter(q.metrics.keysRequested, len(ns.Keys))
