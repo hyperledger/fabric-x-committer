@@ -306,7 +306,7 @@ func TestCoordinatorServiceRejectedTx(t *testing.T) {
 			{
 				TxNum:  0,
 				Id:     "rejected",
-				Status: protoblocktx.Status_MALFORMED_UNSUPPORTED_TX_PAYLOAD,
+				Status: protoblocktx.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
 			},
 		},
 	})
@@ -317,11 +317,11 @@ func TestCoordinatorServiceRejectedTx(t *testing.T) {
 	)
 
 	env.requireStatus(ctx, t, map[string]*protoblocktx.StatusWithHeight{
-		"rejected": {Code: protoblocktx.Status_MALFORMED_UNSUPPORTED_TX_PAYLOAD, BlockNumber: 1},
+		"rejected": {Code: protoblocktx.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD, BlockNumber: 1},
 	}, nil)
 
 	test.RequireIntMetricValue(t, 1, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
-		protoblocktx.Status_MALFORMED_UNSUPPORTED_TX_PAYLOAD.String(),
+		protoblocktx.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD.String(),
 	))
 	test.RequireIntMetricValue(t, preMetricsValue, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
 		protoblocktx.Status_COMMITTED.String(),

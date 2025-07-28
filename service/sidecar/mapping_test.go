@@ -26,11 +26,11 @@ func BenchmarkMapBlock(b *testing.B) {
 	txs := workload.GenerateTransactions(b, workload.DefaultProfile(8), b.N)
 	block := makeBlock(b, txs)
 
-	var mappedBlock *scBlockWithStatus
 	var txIDToHeight utils.SyncMap[string, types.Height]
 	b.ResetTimer()
-	mappedBlock = mapBlock(block, &txIDToHeight)
+	mappedBlock, err := mapBlock(block, &txIDToHeight)
 	b.StopTimer()
+	require.NoError(b, err, "This can never occur unless there is a bug in the relay.")
 	require.NotNil(b, mappedBlock)
 }
 
@@ -71,7 +71,8 @@ func TestBlockMapping(t *testing.T) {
 	txIDToHeight.Store(duplicatedID, types.Height{})
 
 	block := makeBlock(t, txs)
-	mappedBlock := mapBlock(block, &txIDToHeight)
+	mappedBlock, err := mapBlock(block, &txIDToHeight)
+	require.NoError(t, err, "This can never occur unless there is a bug in the relay.")
 
 	require.NotNil(t, mappedBlock)
 	require.NotNil(t, mappedBlock.block)

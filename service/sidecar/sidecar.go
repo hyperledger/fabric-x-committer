@@ -325,7 +325,11 @@ func appendMissingBlock(
 	committedBlocks channel.Writer[*common.Block],
 ) error {
 	var txIDToHeight utils.SyncMap[string, types.Height]
-	mappedBlock := mapBlock(blk, &txIDToHeight)
+	mappedBlock, err := mapBlock(blk, &txIDToHeight)
+	if err != nil {
+		// This can never occur unless there is a bug in the relay.
+		return err
+	}
 	txIDs := make([]string, len(mappedBlock.block.Txs))
 	expectedHeight := make(map[string]*types.Height)
 	for i, tx := range mappedBlock.block.Txs {

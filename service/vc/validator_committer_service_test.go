@@ -408,7 +408,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					BlockNumber: 2,
 					TxNum:       7,
 					PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
-						Code: protoblocktx.Status_MALFORMED_UNSUPPORTED_TX_PAYLOAD,
+						Code: protoblocktx.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
 					},
 				},
 			},
@@ -422,7 +422,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 			protoblocktx.Status_ABORTED_MVCC_CONFLICT,
 			protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
 			protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-			protoblocktx.Status_MALFORMED_UNSUPPORTED_TX_PAYLOAD,
+			protoblocktx.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
 		}
 
 		expectedTxStatus := make(map[string]*protoblocktx.StatusWithHeight, len(txBatch.Transactions))

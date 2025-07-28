@@ -71,11 +71,11 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 	r.txIDToHeight.Clear()
 	r.waitingTxsSlots = utils.NewSlots(int64(config.waitingTxsLimit))
 
-	rCtx, rCancel := context.WithCancel(ctx)
-	defer rCancel()
-
 	// Using the errgroup context for the stream ensures that we cancel the stream once one of the tasks fails.
 	// And we use the stream's context to ensure that if the stream is closed, we stop all the tasks.
+	// Finally, we use `rCtx` to ensure that even if all tasks stops without an error, the stream will be cancelled.
+	rCtx, rCancel := context.WithCancel(ctx)
+	defer rCancel()
 	g, gCtx := errgroup.WithContext(rCtx)
 	stream, err := config.coordClient.BlockProcessing(gCtx)
 	if err != nil {
@@ -134,7 +134,11 @@ func (r *relay) preProcessBlock(
 		logger.Debugf("Block %d arrived in the relay", block.Header.Number)
 
 		start := time.Now()
-		mappedBlock := mapBlock(block, &r.txIDToHeight)
+		mappedBlock, err := mapBlock(block, &r.txIDToHeight)
+		if err != nil {
+			// This can never occur unless there is a bug in the relay.
+			return err
+		}
 		promutil.Observe(r.metrics.blockMappingInRelaySeconds, time.Since(start))
 		if mappedBlock.isConfig {
 			configUpdater(block)

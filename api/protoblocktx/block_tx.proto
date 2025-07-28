@@ -107,8 +107,8 @@ enum Status {
     MALFORMED_MISSING_TX_ID = 102;                      // Envelope is missing transaction ID.
 
     // Stored in the state database. Prevents submitting a transaction with the same ID.
-    MALFORMED_UNSUPPORTED_TX_PAYLOAD = 103;             // Unsupported transaction payload type.
-    MALFORMED_BAD_PAYLOAD = 104;                        // Cannot unmarshal envelope's payload.
+    MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD = 103;       // Unsupported envelope payload type.
+    MALFORMED_BAD_ENVELOPE_PAYLOAD = 104;               // Cannot unmarshal envelope's payload.
     MALFORMED_TX_ID_CONFLICT = 105;                     // Envelope's TX ID does not match the payload's TX ID.
     MALFORMED_EMPTY_NAMESPACES = 106;                   // No namespaces provided.
     MALFORMED_DUPLICATE_NAMESPACE = 107;                // Duplicate namespace detected.
