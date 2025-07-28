@@ -25,25 +25,21 @@ import (
 )
 
 const (
-	// tableNameTempl is the template for the table name for each namespace.
-	tableNameTempl = "ns_%s"
-
 	// validateReadsSQLTempl template for validating reads for each namespace.
-	validateReadsSQLTempl = "SELECT * FROM " + validateReadsOnNsFuncNamePrefix + tableNameTempl +
-		"($1::bytea[], $2::bigint[]);"
+	validateReadsSQLTempl = "SELECT * FROM validate_reads_ns_${NAMESPACE_ID}($1::BYTEA[], $2::BIGINT[]);"
 	// updateNsStatesSQLTempl template for the committing updates for each namespace.
-	updateNsStatesSQLTempl = "SELECT " + updateNsStatesFuncNamePrefix + tableNameTempl +
-		"($1::bytea[], $2::bytea[], $3::bigint[]);"
+	updateNsStatesSQLTempl = "SELECT * FROM update_ns_${NAMESPACE_ID}($1::BYTEA[], $2::BYTEA[], $3::BIGINT[]);"
 	// insertNsStatesSQLTempl template for committing new keys for each namespace.
-	insertNsStatesSQLTempl = "SELECT " + insertNsStatesFuncNamePrefix + tableNameTempl + "($1::bytea[], $2::bytea[]);"
-
+	insertNsStatesSQLTempl = "SELECT * FROM insert_ns_${NAMESPACE_ID}($1::BYTEA[], $2::BYTEA[]);"
 	// queryVersionsSQLTempl template for the querying versions for given keys for each namespace.
-	queryVersionsSQLTempl = "SELECT key, version FROM " + tableNameTempl + " WHERE key = ANY($1);"
-	// insertTxStatusSQLTempl template for committing transaction's status for each TX.
-	insertTxStatusSQLTempl = "SELECT " + insertTxStatusFuncName + "($1::bytea[], $2::integer[], $3::bytea[]);"
+	queryVersionsSQLTempl = "SELECT key, version FROM ns_${NAMESPACE_ID} WHERE key = ANY($1);"
 
+	// insertTxStatusSQLStmt commits transaction's status for each TX.
+	insertTxStatusSQLStmt = "SELECT * FROM insert_tx_status($1::BYTEA[], $2::INTEGER[], $3::BYTEA[]);"
+	// queryPoliciesSQLStmt queries meta-namespace policies.
 	queryPoliciesSQLStmt = "SELECT key, value from ns_" + types.MetaNamespaceID + ";"
-	queryConfigSQLStmt   = "SELECT key, value from ns_" + types.ConfigNamespaceID + ";"
+	// queryConfigSQLStmt queries the config-namespace policy.
+	queryConfigSQLStmt = "SELECT key, value from ns_" + types.ConfigNamespaceID + ";"
 )
 
 // ErrMetadataEmpty indicates that a requested metadata value is empty or not found.
@@ -118,7 +114,7 @@ func (db *database) validateNamespaceReads(
 	// a common function for all namespace, we need to pass the table name as a parameter
 	// which makes the query dynamic and hence we lose the benefits of static SQL.
 	start := time.Now()
-	query := fmt.Sprintf(validateReadsSQLTempl, nsID)
+	query := FmtNsID(validateReadsSQLTempl, nsID)
 
 	conflictIdx, err := retryQueryAndReadArrayResult[int](ctx, db, query, r.keys, r.versions)
 	if err != nil {
@@ -137,7 +133,7 @@ func (db *database) validateNamespaceReads(
 // queryVersionsIfPresent queries the versions for the given keys if they exist.
 func (db *database) queryVersionsIfPresent(ctx context.Context, nsID string, queryKeys [][]byte) (keyToVersion, error) {
 	start := time.Now()
-	query := fmt.Sprintf(queryVersionsSQLTempl, nsID)
+	query := FmtNsID(queryVersionsSQLTempl, nsID)
 
 	foundKeys, foundVersions, err := retryQueryAndReadTwoItems[[]byte, int64](ctx, db, query, queryKeys)
 	if err != nil {
@@ -302,10 +298,10 @@ func (db *database) insertTxStatus(
 		heights = append(heights, blkAndTxNum.ToBytes())
 	}
 
-	ret := tx.QueryRow(ctx, insertTxStatusSQLTempl, ids, statues, heights)
+	ret := tx.QueryRow(ctx, insertTxStatusSQLStmt, ids, statues, heights)
 	duplicates, err := readArrayResult[[]byte](ret)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read result from query [%s]: %w", insertTxStatusSQLTempl, err)
+		return nil, fmt.Errorf("failed to read result from query [%s]: %w", insertTxStatusSQLStmt, err)
 	}
 	if len(duplicates) == 0 {
 		promutil.Observe(db.metrics.databaseTxBatchCommitTxsStatusLatencySeconds, time.Since(start))
@@ -338,7 +334,7 @@ func (db *database) insertStates(
 			continue
 		}
 
-		q := fmt.Sprintf(insertNsStatesSQLTempl, nsID)
+		q := FmtNsID(insertNsStatesSQLTempl, nsID)
 		ret := tx.QueryRow(ctx, q, writes.keys, writes.values)
 		violating, err := readArrayResult[[]byte](ret)
 		if err != nil {
@@ -367,7 +363,7 @@ func (db *database) updateStates(ctx context.Context, tx pgx.Tx, nsToWrites name
 			continue
 		}
 
-		query := fmt.Sprintf(updateNsStatesSQLTempl, nsID)
+		query := FmtNsID(updateNsStatesSQLTempl, nsID)
 		_, err := tx.Exec(ctx, query, writes.keys, writes.values, writes.versions)
 		if err != nil {
 			return errors.Wrapf(err, "failed to execute query [%s]", query)
@@ -416,11 +412,6 @@ func (db *database) beginTx(ctx context.Context) (pgx.Tx, func(), error) {
 
 func (s *statesToBeCommitted) empty() bool {
 	return s.updateWrites.empty() && s.newWrites.empty() && (s.batchStatus == nil || len(s.batchStatus.Status) == 0)
-}
-
-// TableName returns the table name for the given namespace.
-func TableName(nsID string) string {
-	return fmt.Sprintf(tableNameTempl, nsID)
 }
 
 func (db *database) readStatusWithHeight(
