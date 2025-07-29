@@ -641,7 +641,7 @@ func (c *CommitterRuntime) createSystemConfigWithServerCerts(
 ) config.SystemConfig {
 	t.Helper()
 	serviceCfg := c.SystemConfig
-	serviceCfg.ServiceTLS = c.createServerConfigTLS(t, serverName)
+	serviceCfg.ServiceCreds = c.createServerConfigTLS(t, serverName)
 	serviceCfg.ServiceEndpoints = endpoints
 	return serviceCfg
 }

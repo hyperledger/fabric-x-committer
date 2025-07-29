@@ -35,7 +35,7 @@ type (
 		ServiceEndpoints ServiceEndpoints
 
 		// Service Tls options and certificates.
-		ServiceTLS connection.ConfigTLS
+		ServiceCreds connection.ConfigTLS
 
 		// System's resources.
 		Endpoints SystemEndpoints
