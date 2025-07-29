@@ -83,7 +83,7 @@ func (c *sidecarTestConfig) String() string {
 func TestSidecarSecureConnection(t *testing.T) {
 	t.Parallel()
 	var env *sidecarTestEnv
-	for _, TLSMode := range []string{connection.MutualTLSMode, connection.ServerSideTLSMode, connection.NoneTLSMode} {
+	for _, TLSMode := range test.ServerModes {
 		test.RunSecureConnectionTest(t,
 			test.SecureConnectionArguments{
 				ServerCN:      "sidecar",

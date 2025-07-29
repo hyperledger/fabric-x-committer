@@ -36,7 +36,7 @@ type validatorAndCommitterServiceTestEnvWithClient struct {
 
 func TestVCSecureConnection(t *testing.T) {
 	t.Parallel()
-	for _, TLSMode := range []string{connection.MutualTLSMode, connection.ServerSideTLSMode, connection.NoneTLSMode} {
+	for _, TLSMode := range test.ServerModes {
 		test.RunSecureConnectionTest(t,
 			test.SecureConnectionArguments{
 				ServerCN:      "validator-committer",

@@ -55,7 +55,7 @@ type (
 // under various client TLS configurations.
 func TestCoordinatorSecureConnection(t *testing.T) {
 	t.Parallel()
-	for _, TLSMode := range []string{connection.MutualTLSMode, connection.ServerSideTLSMode, connection.NoneTLSMode} {
+	for _, TLSMode := range test.ServerModes {
 		test.RunSecureConnectionTest(t,
 			test.SecureConnectionArguments{
 				ServerCN:      "coordinator",

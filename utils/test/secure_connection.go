@@ -29,6 +29,7 @@ type (
 		Parallel      bool
 	}
 
+	// Case define a secure connection test case.
 	Case struct {
 		testDescription  string
 		clientSecureMode string
@@ -45,38 +46,44 @@ type (
 	RequestFunc func(ctx context.Context) error
 )
 
+// ServerModes is a list of server-side TLS modes used for testing.
+var ServerModes = []string{connection.MutualTLSMode, connection.ServerSideTLSMode, connection.NoneTLSMode}
+
 // BuildTestCases creates test cases based on the server's TLS mode.
-// cases:
-// server mode | client mTLS | client server side TLS | client none TLS
 //
-//	mtls     |   connect   |     can't connect      |  can't connect
-//	tls      |   connect   |      connect      		|  can't connect
-//	none     |can't connect|    can't connect       |    connect
+// Cases:
+// Server Mode | Client with mTLS | Client with server-side TLS | Client with no TLS
+// ------------|------------------|-----------------------------|--------------------
+//
+//	mTLS    |      connect     |        can't connect        |     can't connect
+//	TLS     |      connect     |           connect           |     can't connect
+//	None    |   can't connect  |        can't connect        |       connect
 func BuildTestCases(t *testing.T, serverTLSMode string) []Case {
+	t.Helper()
+
 	switch serverTLSMode {
 	case connection.MutualTLSMode:
 		return []Case{
-			{"client mTLS", connection.MutualTLSMode, false},
-			{"client server side TLS", connection.ServerSideTLSMode, true},
-			{"with no TLS at all", connection.NoneTLSMode, true},
+			{"client mTLS", connection.MutualTLSMode, true},
+			{"client with server-side TLS", connection.ServerSideTLSMode, false},
+			{"client no TLS", connection.NoneTLSMode, false},
 		}
 	case connection.ServerSideTLSMode:
 		return []Case{
-			{"client mTLS", connection.MutualTLSMode, false},
-			{"client server side TLS", connection.ServerSideTLSMode, false},
-			{"with no TLS at all", connection.NoneTLSMode, true},
+			{"client mTLS", connection.MutualTLSMode, true},
+			{"client with server-side TLS", connection.ServerSideTLSMode, true},
+			{"client no TLS", connection.NoneTLSMode, false},
 		}
 	case connection.NoneTLSMode:
 		return []Case{
-			{"client mTLS", connection.MutualTLSMode, true},
-			{"client server side TLS", connection.ServerSideTLSMode, true},
-			{"with no TLS at all", connection.NoneTLSMode, false},
+			{"client mTLS", connection.MutualTLSMode, false},
+			{"client with server-side TLS", connection.ServerSideTLSMode, false},
+			{"client no TLS", connection.NoneTLSMode, true},
 		}
 	default:
-		t.Fatalf("unknown server TLS mode %s", serverTLSMode)
+		t.Fatalf("unknown server TLS mode: %s", serverTLSMode)
+		return nil // unreachable, but required
 	}
-
-	return nil // unreachable but require for compiler.
 }
 
 // RunSecureConnectionTest starts a gRPC server with mTLS enabled and
@@ -97,7 +104,12 @@ func RunSecureConnectionTest(
 
 	for _, tc := range secureConnArguments.TestCases {
 		testCase := tc
-		t.Run(fmt.Sprintf("%s/%s/%s", secureConnArguments.ServerCN, secureConnArguments.ServerTLSMode, testCase.testDescription), func(t *testing.T) {
+		t.Run(fmt.Sprintf(
+			"%s/%s/%s",
+			secureConnArguments.ServerCN,
+			secureConnArguments.ServerTLSMode,
+			testCase.testDescription,
+		), func(t *testing.T) {
 			if secureConnArguments.Parallel {
 				t.Parallel()
 			}
