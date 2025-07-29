@@ -156,11 +156,7 @@ func (c *TLSConfig) buildClientCreds() (credentials.TransportCredentials, error)
 			}
 			tlsCfg.Certificates = []tls.Certificate{cert}
 		}
-
-		if c.ServerName != "" {
-			tlsCfg.ServerName = c.ServerName
-		}
-
+		tlsCfg.ServerName = c.ServerName
 		return credentials.NewTLS(tlsCfg), nil
 
 	default:
