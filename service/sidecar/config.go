@@ -28,7 +28,7 @@ type (
 	// It may contain the orderer endpoint from which the sidecar pulls blocks.
 	Config struct {
 		Server                        *connection.ServerConfig `mapstructure:"server"`
-		Committer                     CoordinatorConfig        `mapstructure:"committer"`
+		Committer                     *connection.ClientConfig `mapstructure:"committer"`
 		Ledger                        LedgerConfig             `mapstructure:"ledger"`
 		Orderer                       broadcastdeliver.Config  `mapstructure:"orderer"`
 		LastCommittedBlockSetInterval time.Duration            `mapstructure:"last-committed-block-set-interval"`
@@ -41,12 +41,6 @@ type (
 		// GenesisBlockFilePath is the path for the genesis block.
 		// If omitted, the local configuration will be used.
 		GenesisBlockFilePath string `mapstructure:"genesis-block-file-path" yaml:"genesis-block-file-path,omitempty"`
-	}
-
-	// CoordinatorConfig holds the endpoint of the coordinator component in the
-	// committer service.
-	CoordinatorConfig struct {
-		Config *connection.ClientConfig `mapstructure:"client"`
 	}
 
 	// LedgerConfig holds the ledger path.

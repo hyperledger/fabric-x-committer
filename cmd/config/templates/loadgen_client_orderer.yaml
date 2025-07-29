@@ -6,10 +6,10 @@
 # It should be complimented by the common load generator configuration.
 
 orderer-client:
-  sidecar-client-config:
+  sidecar-client:
     endpoints:
       - {{ .Endpoints.Sidecar.Server }}
-    client-creds:
+    creds:
       tls-mode: {{ .ClientsCreds.Sidecar.Mode }}
       server-name: {{ .ClientsCreds.Sidecar.ServerName }}
       cert-path: {{ .ClientsCreds.Sidecar.CertPath }}

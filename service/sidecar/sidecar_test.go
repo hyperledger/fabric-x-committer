@@ -159,9 +159,7 @@ func newSidecarTestEnvWithCreds(
 				Endpoints: initOrdererEndpoints,
 			},
 		},
-		Committer: CoordinatorConfig{
-			Config: test.MakeClientConfig(&coordinatorServer.Configs[0].Endpoint),
-		},
+		Committer: test.MakeClientConfig(&coordinatorServer.Configs[0].Endpoint),
 		Ledger: LedgerConfig{
 			Path: t.TempDir(),
 		},
@@ -217,8 +215,8 @@ func (env *sidecarTestEnv) startSidecarClient(
 ) {
 	t.Helper()
 	env.committedBlock = sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Config{
-		ChannelID:    env.config.Orderer.ChannelID,
-		ClientConfig: test.MakeClientConfigWithCreds(sidecarClientCreds, &env.config.Server.Endpoint),
+		ChannelID: env.config.Orderer.ChannelID,
+		Client:    test.MakeClientConfigWithCreds(sidecarClientCreds, &env.config.Server.Endpoint),
 	}, startBlkNum)
 }
 
@@ -328,7 +326,7 @@ func TestSidecarConfigRecovery(t *testing.T) {
 	newCtx, newCancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(newCancel)
 
-	t.Log("Modify the Sidecar config, use illegal host endpoint")
+	t.Log("Modify the SidecarClient config, use illegal host endpoint")
 	// We need to use ilegalEndpoints instead of an empty Endpoints struct,
 	// as the sidecar expects the Endpoints to be non-empty.
 	env.config.Orderer.Connection.Endpoints = []*connection.OrdererEndpoint{
@@ -520,7 +518,7 @@ func TestSidecarStartWithoutCoordinator(t *testing.T) {
 
 func (env *sidecarTestEnv) getCoordinatorLabel(t *testing.T) string {
 	t.Helper()
-	dialConfig, err := connection.NewLoadBalancedDialConfig(env.config.Committer.Config)
+	dialConfig, err := connection.NewLoadBalancedDialConfig(env.config.Committer)
 	require.NoError(t, err)
 	conn, err := connection.Connect(dialConfig)
 	require.NoError(t, err)

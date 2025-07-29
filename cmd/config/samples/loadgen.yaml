@@ -16,7 +16,7 @@ monitoring:
       bucket-count: 1000
 
 orderer-client:
-  sidecar-client-config:
+  sidecar-client:
     endpoints:
       - sidecar:4001
   orderer:

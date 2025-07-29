@@ -27,7 +27,7 @@ const (
 	CommitterVersion = "0.0.2"
 
 	CommitterName   = "Committer"
-	SidecarName     = "Sidecar"
+	SidecarName     = "SidecarClient"
 	CoordinatorName = "Coordinator"
 	VcName          = "Validator-Committer"
 	VerifierName    = "Verifier"

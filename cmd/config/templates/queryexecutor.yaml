@@ -5,7 +5,7 @@
 # Configuration for the server
 server:
   endpoint: {{ .ServiceEndpoints.Server | default "localhost:0" }}
-  server-creds:
+  creds:
     tls-mode: {{ .ServiceCreds.Mode }}
     server-name: {{ .ServiceCreds.ServerName }}
     cert-path: {{ .ServiceCreds.CertPath }}

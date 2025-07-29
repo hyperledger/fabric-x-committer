@@ -15,15 +15,15 @@ type (
 	// ClientConfig contains the endpoints, CAs, and retry profile.
 	ClientConfig struct {
 		Endpoints []*Endpoint   `mapstructure:"endpoints"`
-		Creds     *ConfigTLS    `mapstructure:"client-creds"`
+		Creds     *ConfigTLS    `mapstructure:"creds"`
 		Retry     *RetryProfile `mapstructure:"reconnect"`
 	}
 
 	// ServerConfig describes the connection parameter for a server.
 	ServerConfig struct {
-		Endpoint    Endpoint               `mapstructure:"endpoint"`
-		ServerCreds *ConfigTLS             `mapstructure:"server-creds"`
-		KeepAlive   *ServerKeepAliveConfig `mapstructure:"keep-alive"`
+		Endpoint  Endpoint               `mapstructure:"endpoint"`
+		Creds     *ConfigTLS             `mapstructure:"creds"`
+		KeepAlive *ServerKeepAliveConfig `mapstructure:"keep-alive"`
 
 		preAllocatedListener net.Listener
 	}

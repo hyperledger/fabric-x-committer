@@ -198,10 +198,8 @@ func TestLoadGenForSidecar(t *testing.T) {
 				},
 				LastCommittedBlockSetInterval: 100 * time.Millisecond,
 				WaitingTxsLimit:               5000,
-				Committer: sidecar.CoordinatorConfig{
-					Config: test.MakeClientConfig(&coordinatorServer.Configs[0].Endpoint),
-				},
-				Monitoring: defaultMonitoring(),
+				Committer:                     test.MakeClientConfig(&coordinatorServer.Configs[0].Endpoint),
+				Monitoring:                    defaultMonitoring(),
 				Ledger: sidecar.LedgerConfig{
 					Path: t.TempDir(),
 				},
@@ -215,7 +213,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 			clientConf.Adapter.SidecarClient = &adapters.SidecarClientConfig{
 				ChannelID:      chanID,
 				OrdererServers: ordererServers,
-				SidecarConfig:  test.ServerToClientConfig(sidecarServerConf),
+				Config:         test.ServerToClientConfig(sidecarServerConf),
 			}
 			testLoadGenerator(t, clientConf)
 		})
@@ -247,10 +245,8 @@ func TestLoadGenForOrderer(t *testing.T) {
 				},
 				LastCommittedBlockSetInterval: 100 * time.Millisecond,
 				WaitingTxsLimit:               5000,
-				Committer: sidecar.CoordinatorConfig{
-					Config: test.MakeClientConfig(&coordinatorServer.Configs[0].Endpoint),
-				},
-				Monitoring: defaultMonitoring(),
+				Committer:                     test.MakeClientConfig(&coordinatorServer.Configs[0].Endpoint),
+				Monitoring:                    defaultMonitoring(),
 				Ledger: sidecar.LedgerConfig{
 					Path: t.TempDir(),
 				},
@@ -271,7 +267,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 
 			// Start client
 			clientConf.Adapter.OrdererClient = &adapters.OrdererClientConfig{
-				SidecarConfig:        test.MakeClientConfig(&sidecarConf.Server.Endpoint),
+				SidecarClient:        test.MakeClientConfig(&sidecarConf.Server.Endpoint),
 				Orderer:              sidecarConf.Orderer,
 				BroadcastParallelism: 5,
 			}

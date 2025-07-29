@@ -52,8 +52,8 @@ func TestStartTestNode(t *testing.T) {
 	sidecarEndpoint, err := connection.NewEndpoint("localhost:" + sidecarPort)
 	require.NoError(t, err)
 	committedBlock := sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Config{
-		ChannelID:    channelName,
-		ClientConfig: test.MakeClientConfig(sidecarEndpoint),
+		ChannelID: channelName,
+		Client:    test.MakeClientConfig(sidecarEndpoint),
 	}, 0)
 	b, ok := channel.NewReader(ctx, committedBlock).Read()
 	require.True(t, ok)

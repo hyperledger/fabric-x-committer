@@ -355,7 +355,7 @@ func newQueryServiceTestEnvWithServerAndClientCreds(
 				Host: "localhost",
 				Port: 0,
 			},
-			ServerCreds: serverTLS,
+			Creds: serverTLS,
 		},
 		Database: dbConf,
 		Monitoring: monitoring.Config{

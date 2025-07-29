@@ -26,16 +26,16 @@ type (
 	OrdererClientConfig struct {
 		Orderer              broadcastdeliver.Config `mapstructure:"orderer"`
 		BroadcastParallelism int                     `mapstructure:"broadcast-parallelism"`
-		// SidecarConfig is used to deliver status from the sidecar.
+		// SidecarClient is used to deliver status from the sidecar.
 		// If omitted, we will fetch directly from the orderer.
-		SidecarConfig *connection.ClientConfig `mapstructure:"sidecar-client-config"`
+		SidecarClient *connection.ClientConfig `mapstructure:"sidecar-client"`
 	}
 
 	// SidecarClientConfig is a struct that contains the configuration for the sidecar client.
 	SidecarClientConfig struct {
 		ChannelID      string                     `mapstructure:"channel-id"`
-		SidecarConfig  *connection.ClientConfig   `mapstructure:"sidecar-client-config"`
 		OrdererServers []*connection.ServerConfig `mapstructure:"orderer-servers"`
+		Config         *connection.ClientConfig   `mapstructure:"config"`
 	}
 
 	// CoordinatorClientConfig is a struct that contains the configuration for the coordinator client.
