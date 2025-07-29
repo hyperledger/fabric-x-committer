@@ -15,6 +15,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
@@ -23,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 )
 
@@ -30,10 +34,11 @@ type (
 	// Client for applying load on the services.
 	Client struct {
 		protoloadgen.UnimplementedLoadGenServiceServer
-		conf      *ClientConfig
-		txStream  *workload.TxStream
-		resources adapters.ClientResources
-		adapter   ServiceAdapter
+		conf        *ClientConfig
+		txStream    *workload.TxStream
+		resources   adapters.ClientResources
+		adapter     ServiceAdapter
+		healthcheck *health.Server
 	}
 
 	// ServiceAdapter encapsulates the common interface for adapters.
@@ -61,6 +66,7 @@ func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 			Stream:  conf.Stream,
 			Limit:   conf.Limit,
 		},
+		healthcheck: connection.DefaultHealthCheckService(),
 	}
 	c.resources.Metrics = metrics.NewLoadgenServiceMetrics(&conf.Monitoring)
 
@@ -142,6 +148,12 @@ func (c *Client) Run(ctx context.Context) error {
 // If the context ended before the service is ready, returns false.
 func (*Client) WaitForReady(context.Context) bool {
 	return true
+}
+
+// RegisterService registers for the load-gen's GRPC services.
+func (c *Client) RegisterService(server *grpc.Server) {
+	protoloadgen.RegisterLoadGenServiceServer(server, c)
+	healthgrpc.RegisterHealthServer(server, c.healthcheck)
 }
 
 // AppendBatch appends a batch to the stream.

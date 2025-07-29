@@ -15,10 +15,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -100,9 +98,7 @@ func newValidatorAndCommitServiceTestEnvWithTLS(
 		vcs, err := NewValidatorCommitterService(initCtx, config)
 		require.NoError(t, err)
 		t.Cleanup(vcs.Close)
-		test.RunServiceAndGrpcForTest(t.Context(), t, vcs, config.Server, func(server *grpc.Server) {
-			protovcservice.RegisterValidationAndCommitServiceServer(server, vcs)
-		})
+		test.RunServiceAndGrpcForTest(t.Context(), t, vcs, config.Server)
 		vcservices[i] = vcs
 		configs[i] = config
 		endpoints[i] = &config.Server.Endpoint

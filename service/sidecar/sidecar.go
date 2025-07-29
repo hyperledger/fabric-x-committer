@@ -13,9 +13,12 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric/protoutil"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
@@ -41,6 +44,7 @@ type Service struct {
 	blockToBeCommitted chan *common.Block
 	committedBlock     chan *common.Block
 	config             *Config
+	healthcheck        *health.Server
 	metrics            *perfMetrics
 }
 
@@ -72,6 +76,7 @@ func New(c *Config) (*Service, error) {
 		ordererClient:      ordererClient,
 		relay:              relayService,
 		ledgerService:      ledgerService,
+		healthcheck:        connection.DefaultHealthCheckService(),
 		config:             c,
 		metrics:            metrics,
 		blockToBeCommitted: make(chan *common.Block, 100),
@@ -136,6 +141,12 @@ func (s *Service) Run(ctx context.Context) error {
 	})
 
 	return utils.ProcessErr(g.Wait(), "sidecar has been stopped")
+}
+
+// RegisterService registers for the sidecar's GRPC services.
+func (s *Service) RegisterService(server *grpc.Server) {
+	peer.RegisterDeliverServer(server, s.ledgerService)
+	healthgrpc.RegisterHealthServer(server, s.healthcheck)
 }
 
 func (s *Service) sendBlocksAndReceiveStatus(

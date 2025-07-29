@@ -17,7 +17,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -145,9 +144,7 @@ func (e *coordinatorTestEnv) startWithCreds(ctx context.Context, t *testing.T, s
 	cs := e.coordinator
 	e.coordinator.config.Server = connection.NewLocalHostServerWithCreds(serverCreds)
 
-	test.RunServiceAndGrpcForTest(ctx, t, cs, e.coordinator.config.Server, func(server *grpc.Server) {
-		protocoordinatorservice.RegisterCoordinatorServer(server, cs)
-	})
+	test.RunServiceAndGrpcForTest(ctx, t, cs, e.coordinator.config.Server)
 }
 
 func (e *coordinatorTestEnv) ensureStreamActive(t *testing.T) {

@@ -25,7 +25,6 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -207,9 +206,7 @@ func (env *sidecarTestEnv) startWithSidecarClientCreds(
 
 func (env *sidecarTestEnv) startSidecarService(ctx context.Context, t *testing.T) {
 	t.Helper()
-	test.RunServiceAndGrpcForTest(ctx, t, env.sidecar, env.config.Server, func(server *grpc.Server) {
-		peer.RegisterDeliverServer(server, env.sidecar.GetLedgerService())
-	})
+	test.RunServiceAndGrpcForTest(ctx, t, env.sidecar, env.config.Server)
 }
 
 func (env *sidecarTestEnv) startSidecarClient(

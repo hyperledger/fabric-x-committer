@@ -11,9 +11,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -56,16 +54,8 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 	g, gCtx := errgroup.WithContext(dCtx)
 
 	g.Go(func() error {
-		return connection.StartService(gCtx, orderer, nil, nil)
+		return connection.StartService(gCtx, orderer, c.config.OrdererServers...)
 	})
-	for _, conf := range c.config.OrdererServers {
-		conf := conf
-		g.Go(func() error {
-			return connection.RunGrpcServerMainWithError(gCtx, conf, func(s *grpc.Server) {
-				ab.RegisterAtomicBroadcastServer(s, orderer)
-			})
-		})
-	}
 
 	// The sidecar adapter submits a config block manually.
 	policy := *c.res.Profile.Transaction.Policy

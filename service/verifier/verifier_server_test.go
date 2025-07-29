@@ -14,7 +14,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
@@ -412,9 +411,7 @@ type State struct {
 func newTestState(t *testing.T, config *Config) *State {
 	t.Helper()
 	service := New(config)
-	test.RunServiceAndGrpcForTest(t.Context(), t, service, config.Server, func(grpcServer *grpc.Server) {
-		protosigverifierservice.RegisterVerifierServer(grpcServer, service)
-	})
+	test.RunServiceAndGrpcForTest(t.Context(), t, service, config.Server)
 
 	clientConnection, err := connection.Connect(connection.NewInsecureDialConfig(&config.Server.Endpoint))
 	require.NoError(t, err)

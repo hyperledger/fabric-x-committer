@@ -13,11 +13,15 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
@@ -48,6 +52,7 @@ type ValidatorCommitterService struct {
 	minTxBatchSize           int
 	timeoutForMinTxBatchSize time.Duration
 	config                   *Config
+	healthcheck              *health.Server
 
 	// isStreamActive indicates whether a stream from the client (i.e., coordinator) to the vcservice
 	// is currently active. We permit a maximum of one active stream at a time. If multiple
@@ -106,6 +111,7 @@ func NewValidatorCommitterService(
 		minTxBatchSize:           config.ResourceLimits.MinTransactionBatchSize,
 		timeoutForMinTxBatchSize: config.ResourceLimits.TimeoutForMinTransactionBatchSize,
 		config:                   config,
+		healthcheck:              connection.DefaultHealthCheckService(),
 	}
 
 	return vc, nil
@@ -161,6 +167,12 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 // If the context ended before the service is ready, returns false.
 func (*ValidatorCommitterService) WaitForReady(context.Context) bool {
 	return true
+}
+
+// RegisterService registers for the validator-committer's GRPC services.
+func (vc *ValidatorCommitterService) RegisterService(server *grpc.Server) {
+	protovcservice.RegisterValidationAndCommitServiceServer(server, vc)
+	healthgrpc.RegisterHealthServer(server, vc.healthcheck)
 }
 
 func (vc *ValidatorCommitterService) monitorQueues(ctx context.Context) {

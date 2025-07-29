@@ -11,16 +11,8 @@ import (
 	"runtime"
 
 	"github.com/cockroachdb/errors"
-	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health"
-	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator"
 	"github.com/hyperledger/fabric-x-committer/service/query"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
@@ -84,15 +76,7 @@ func SidecarCMD(use string) *cobra.Command {
 				return errors.Wrap(err, "failed to create sidecar service")
 			}
 			defer service.Close()
-
-			// enable health check server
-			healthcheck := health.NewServer()
-			healthcheck.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
-
-			return connection.StartService(cmd.Context(), service, conf.Server, func(server *grpc.Server) {
-				peer.RegisterDeliverServer(server, service.GetLedgerService())
-				healthgrpc.RegisterHealthServer(server, healthcheck)
-			})
+			return connection.StartService(cmd.Context(), service, conf.Server)
 		},
 	}
 	utils.Must(SetDefaultFlags(v, cmd, &configPath))
@@ -128,9 +112,7 @@ func CoordinatorCMD(use string) *cobra.Command {
 			defer cmd.Printf("%v ended\n", CoordinatorName)
 
 			service := coordinator.NewCoordinatorService(conf)
-			return connection.StartService(cmd.Context(), service, conf.Server, func(s *grpc.Server) {
-				protocoordinatorservice.RegisterCoordinatorServer(s, service)
-			})
+			return connection.StartService(cmd.Context(), service, conf.Server)
 		},
 	}
 	utils.Must(SetDefaultFlags(v, cmd, &configPath))
@@ -160,9 +142,7 @@ func VcCMD(use string) *cobra.Command {
 				return errors.Wrap(err, "failed to create validator committer service")
 			}
 			defer service.Close()
-			return connection.StartService(cmd.Context(), service, conf.Server, func(server *grpc.Server) {
-				protovcservice.RegisterValidationAndCommitServiceServer(server, service)
-			})
+			return connection.StartService(cmd.Context(), service, conf.Server)
 		},
 	}
 	utils.Must(SetDefaultFlags(v, cmd, &configPath))
@@ -188,9 +168,7 @@ func VerifierCMD(use string) *cobra.Command {
 			defer cmd.Printf("%v ended\n", VerifierName)
 
 			service := verifier.New(conf)
-			return connection.StartService(cmd.Context(), service, conf.Server, func(server *grpc.Server) {
-				protosigverifierservice.RegisterVerifierServer(server, service)
-			})
+			return connection.StartService(cmd.Context(), service, conf.Server)
 		},
 	}
 	utils.Must(SetDefaultFlags(v, cmd, &configPath))
@@ -236,9 +214,7 @@ func QueryCMD(use string) *cobra.Command {
 			defer cmd.Printf("%v ended\n", QueryName)
 
 			qs := query.NewQueryService(conf)
-			return connection.StartService(cmd.Context(), qs, conf.Server, func(server *grpc.Server) {
-				protoqueryservice.RegisterQueryServiceServer(server, qs)
-			})
+			return connection.StartService(cmd.Context(), qs, conf.Server)
 		},
 	}
 	utils.Must(SetDefaultFlags(v, cmd, &configPath))

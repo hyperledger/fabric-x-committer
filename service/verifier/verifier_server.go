@@ -11,10 +11,14 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
@@ -23,8 +27,9 @@ import (
 // Server implements verifier.Server.
 type Server struct {
 	protosigverifierservice.UnimplementedVerifierServer
-	config  *Config
-	metrics *metrics
+	config      *Config
+	metrics     *metrics
+	healthcheck *health.Server
 }
 
 const retValid = protoblocktx.Status_COMMITTED
@@ -39,12 +44,11 @@ var (
 // New instantiate a new VerifierServer.
 func New(config *Config) *Server {
 	logger.Info("Initializing new verifier server")
-	m := newMonitoring()
-	s := &Server{
-		config:  config,
-		metrics: m,
+	return &Server{
+		config:      config,
+		metrics:     newMonitoring(),
+		healthcheck: connection.DefaultHealthCheckService(),
 	}
-	return s
 }
 
 // Run the verifier background service.
@@ -59,6 +63,12 @@ func (s *Server) Run(ctx context.Context) error {
 // If the context ended before the service is ready, returns false.
 func (*Server) WaitForReady(context.Context) bool {
 	return true
+}
+
+// RegisterService registers for the verifier's GRPC services.
+func (s *Server) RegisterService(server *grpc.Server) {
+	protosigverifierservice.RegisterVerifierServer(server, s)
+	healthgrpc.RegisterHealthServer(server, s.healthcheck)
 }
 
 // StartStream starts a verification stream.
