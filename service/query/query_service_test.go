@@ -53,12 +53,12 @@ func TestQuerySecureConnection(t *testing.T) {
 	test.RunSecureConnectionTest(t,
 		test.SecureConnectionFunctionArguments{
 			ServerCN: "query",
-			ServerStarter: func(t *testing.T, tlsCfg *connection.ConfigTLS) connection.Endpoint {
+			ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {
 				t.Helper()
 				env := newQueryServiceTestEnvWithServerAndClientCreds(t, tlsCfg, nil)
 				return env.qs.config.Server.Endpoint
 			},
-			ClientStarter: func(t *testing.T, ep *connection.Endpoint, cfg *connection.ConfigTLS) test.RequestFunc {
+			ClientStarter: func(t *testing.T, ep *connection.Endpoint, cfg *connection.TLSConfig) test.RequestFunc {
 				t.Helper()
 				client := createQueryServiceClientWithTLS(t, ep, cfg)
 				return func(ctx context.Context) error {
@@ -337,7 +337,7 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 
 func newQueryServiceTestEnvWithServerAndClientCreds(
 	t *testing.T,
-	serverTLS, clientTLS *connection.ConfigTLS,
+	serverTLS, clientTLS *connection.TLSConfig,
 ) *queryServiceTestEnv {
 	t.Helper()
 	t.Log("generating config and namespaces")
@@ -582,7 +582,7 @@ func defaultViewParams(timeout time.Duration) *protoqueryservice.ViewParameters 
 func createQueryServiceClientWithTLS(
 	t *testing.T,
 	ep *connection.Endpoint,
-	tlsCfg *connection.ConfigTLS,
+	tlsCfg *connection.TLSConfig,
 ) protoqueryservice.QueryServiceClient {
 	t.Helper()
 	return test.CreateClientWithTLS(t, ep, tlsCfg, protoqueryservice.NewQueryServiceClient)

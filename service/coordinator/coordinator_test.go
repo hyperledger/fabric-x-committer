@@ -58,7 +58,7 @@ func TestCoordinatorSecureConnection(t *testing.T) {
 	test.RunSecureConnectionTest(t,
 		test.SecureConnectionFunctionArguments{
 			ServerCN: "coordinator",
-			ServerStarter: func(t *testing.T, tlsCfg *connection.ConfigTLS) connection.Endpoint {
+			ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {
 				t.Helper()
 				env := newCoordinatorTestEnv(t, &testConfig{
 					numSigService: 1,
@@ -70,7 +70,7 @@ func TestCoordinatorSecureConnection(t *testing.T) {
 				env.startWithCreds(ctx, t, tlsCfg)
 				return env.coordinator.config.Server.Endpoint
 			},
-			ClientStarter: func(t *testing.T, ep *connection.Endpoint, cfg *connection.ConfigTLS) test.RequestFunc {
+			ClientStarter: func(t *testing.T, ep *connection.Endpoint, cfg *connection.TLSConfig) test.RequestFunc {
 				t.Helper()
 				client := createCoordinatorClientWithTLS(t, ep, cfg)
 				return func(ctx context.Context) error {
@@ -139,7 +139,7 @@ func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
 	e.streamCancel = sCancel
 }
 
-func (e *coordinatorTestEnv) startWithCreds(ctx context.Context, t *testing.T, serverCreds *connection.ConfigTLS) {
+func (e *coordinatorTestEnv) startWithCreds(ctx context.Context, t *testing.T, serverCreds *connection.TLSConfig) {
 	t.Helper()
 	cs := e.coordinator
 	e.coordinator.config.Server = connection.NewLocalHostServerWithCreds(serverCreds)
@@ -998,7 +998,7 @@ func makeTestBlock(txPerBlock int) (*protocoordinatorservice.Block, map[string]*
 func createCoordinatorClientWithTLS(
 	t *testing.T,
 	ep *connection.Endpoint,
-	tlsCfg *connection.ConfigTLS,
+	tlsCfg *connection.TLSConfig,
 ) protocoordinatorservice.CoordinatorClient {
 	t.Helper()
 	return test.CreateClientWithTLS(t, ep, tlsCfg, protocoordinatorservice.NewCoordinatorClient)

@@ -35,7 +35,7 @@ type (
 		ServiceEndpoints ServiceEndpoints
 
 		// Service Tls options and certificates.
-		ServiceCreds connection.ConfigTLS
+		ServiceCreds connection.TLSConfig
 
 		// System's resources.
 		Endpoints SystemEndpoints
@@ -81,11 +81,11 @@ type (
 
 	// ClientsTLSConfig contains the client's config TLS.
 	ClientsTLSConfig struct {
-		Vc          connection.ConfigTLS
-		Verifier    connection.ConfigTLS
-		Coordinator connection.ConfigTLS
-		Sidecar     connection.ConfigTLS
-		Query       connection.ConfigTLS
+		Vc          connection.TLSConfig
+		Verifier    connection.TLSConfig
+		Coordinator connection.TLSConfig
+		Sidecar     connection.TLSConfig
+		Query       connection.TLSConfig
 	}
 
 	// ConfigBlock represents the configuration of the config block.

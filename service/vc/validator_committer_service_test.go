@@ -39,12 +39,12 @@ func TestVCSecureConnection(t *testing.T) {
 	test.RunSecureConnectionTest(t,
 		test.SecureConnectionFunctionArguments{
 			ServerCN: "validator-committer",
-			ServerStarter: func(t *testing.T, tlsCfg *connection.ConfigTLS) connection.Endpoint {
+			ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {
 				t.Helper()
 				env := newValidatorAndCommitServiceTestEnvWithTLS(t, 1, tlsCfg)
 				return env.Configs[0].Server.Endpoint
 			},
-			ClientStarter: func(t *testing.T, ep *connection.Endpoint, cfg *connection.ConfigTLS) test.RequestFunc {
+			ClientStarter: func(t *testing.T, ep *connection.Endpoint, cfg *connection.TLSConfig) test.RequestFunc {
 				t.Helper()
 				client := createVcClientWithTLS(t, ep, cfg)
 				return func(ctx context.Context) error {

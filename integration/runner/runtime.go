@@ -98,7 +98,7 @@ type (
 		// DBCluster configures the cluster to operate in DB cluster mode.
 		DBCluster *dbtest.Connection
 		// TLS configures the secure level between the components: none | tls | mtls
-		TLS connection.TLSMode
+		TLS string
 	}
 )
 
@@ -372,7 +372,7 @@ func (c *CommitterRuntime) startBlockDelivery(t *testing.T) {
 }
 
 // clientConnWithCreds creates a service connection using its given server endpoint and TLS configuration.
-func clientConnWithCreds(t *testing.T, e *connection.Endpoint, tlsConfig connection.ConfigTLS) *grpc.ClientConn {
+func clientConnWithCreds(t *testing.T, e *connection.Endpoint, tlsConfig connection.TLSConfig) *grpc.ClientConn {
 	t.Helper()
 	clientCredentials, err := tlsConfig.ClientOption()
 	require.NoError(t, err)
@@ -646,22 +646,22 @@ func (c *CommitterRuntime) createSystemConfigWithServerCerts(
 	return serviceCfg
 }
 
-func (c *CommitterRuntime) createServerConfigTLS(t *testing.T, asServer string) connection.ConfigTLS {
+func (c *CommitterRuntime) createServerConfigTLS(t *testing.T, asServer string) connection.TLSConfig {
 	t.Helper()
 	// We pass asServer twice: first to generate the server's keys,
-	// and second to include the server name in the ConfigTLS.
+	// and second to include the server name in the TLSConfig.
 	// Note: the Server Name Indication (SNI) is not used when creating
 	// the server's transport credentials, so passing it during TLS config
 	// creation is not strictly necessary.
 	return c.createConfigTLS(c.TLSManager.CreateServerCertificate(t, asServer), asServer)
 }
 
-func (c *CommitterRuntime) createClientConfigTLS(t *testing.T, forServer string) connection.ConfigTLS {
+func (c *CommitterRuntime) createClientConfigTLS(t *testing.T, forServer string) connection.TLSConfig {
 	t.Helper()
 	return c.createConfigTLS(c.TLSManager.CreateClientCertificate(t), forServer)
 }
 
-func (c *CommitterRuntime) createConfigTLS(paths map[string]string, serverName string) connection.ConfigTLS {
+func (c *CommitterRuntime) createConfigTLS(paths map[string]string, serverName string) connection.TLSConfig {
 	return test.CreateTLSConfigFromPaths(c.config.TLS, paths, serverName)
 }
 

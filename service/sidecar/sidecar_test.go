@@ -86,7 +86,7 @@ func TestSidecarSecureConnection(t *testing.T) {
 	test.RunSecureConnectionTest(t,
 		test.SecureConnectionFunctionArguments{
 			ServerCN: "sidecar",
-			ServerStarter: func(t *testing.T, tlsCfg *connection.ConfigTLS) connection.Endpoint {
+			ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {
 				t.Helper()
 				env = newSidecarTestEnvWithCreds(
 					t,
@@ -96,7 +96,7 @@ func TestSidecarSecureConnection(t *testing.T) {
 				env.startSidecarService(t.Context(), t)
 				return env.config.Server.Endpoint
 			},
-			ClientStarter: func(t *testing.T, _ *connection.Endpoint, cfg *connection.ConfigTLS) test.RequestFunc {
+			ClientStarter: func(t *testing.T, _ *connection.Endpoint, cfg *connection.TLSConfig) test.RequestFunc {
 				t.Helper()
 				return func(ctx context.Context) error {
 					env.startSidecarClient(ctx, t, 0, cfg)
@@ -119,7 +119,7 @@ func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 func newSidecarTestEnvWithCreds(
 	t *testing.T,
 	conf sidecarTestConfig,
-	serverCreds *connection.ConfigTLS,
+	serverCreds *connection.TLSConfig,
 ) *sidecarTestEnv {
 	t.Helper()
 	coordinator, coordinatorServer := mock.StartMockCoordinatorService(t)
@@ -195,7 +195,7 @@ func (env *sidecarTestEnv) startWithSidecarClientCreds(
 	ctx context.Context,
 	t *testing.T,
 	startBlkNum int64,
-	sidecarClientCreds *connection.ConfigTLS,
+	sidecarClientCreds *connection.TLSConfig,
 ) {
 	t.Helper()
 	env.startSidecarService(ctx, t)
@@ -211,7 +211,7 @@ func (env *sidecarTestEnv) startSidecarClient(
 	ctx context.Context,
 	t *testing.T,
 	startBlkNum int64,
-	sidecarClientCreds *connection.ConfigTLS,
+	sidecarClientCreds *connection.TLSConfig,
 ) {
 	t.Helper()
 	env.committedBlock = sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Config{

@@ -26,7 +26,7 @@ func TestMutualTLSConnection(t *testing.T) {
 		NumVCService: 2,
 		BlockTimeout: 2 * time.Second,
 		BlockSize:    500,
-		TLS:          connection.TLSMutual,
+		TLS:          connection.MutualTLSMode,
 	})
 
 	c.Start(t, runner.FullTxPathWithLoadGen)
@@ -47,7 +47,7 @@ func TestOneSidedTLSConnection(t *testing.T) {
 		NumVCService: 2,
 		BlockTimeout: 2 * time.Second,
 		BlockSize:    500,
-		TLS:          connection.TLSServer,
+		TLS:          connection.ServerSideTLSMode,
 	})
 
 	c.Start(t, runner.FullTxPathWithLoadGen)

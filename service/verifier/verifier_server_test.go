@@ -33,12 +33,12 @@ func TestVerifierSecureConnection(t *testing.T) {
 	test.RunSecureConnectionTest(t,
 		test.SecureConnectionFunctionArguments{
 			ServerCN: "verifier",
-			ServerStarter: func(t *testing.T, tlsCfg *connection.ConfigTLS) connection.Endpoint {
+			ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {
 				t.Helper()
 				env := newTestState(t, defaultConfigWithCreds(tlsCfg))
 				return env.Service.config.Server.Endpoint
 			},
-			ClientStarter: func(t *testing.T, ep *connection.Endpoint, cfg *connection.ConfigTLS) test.RequestFunc {
+			ClientStarter: func(t *testing.T, ep *connection.Endpoint, cfg *connection.TLSConfig) test.RequestFunc {
 				t.Helper()
 				client := createVerifierClientWithTLS(t, ep, cfg)
 				return func(ctx context.Context) error {
@@ -464,7 +464,7 @@ func defaultConfig() *Config {
 	return defaultConfigWithCreds(nil)
 }
 
-func defaultConfigWithCreds(creds *connection.ConfigTLS) *Config {
+func defaultConfigWithCreds(creds *connection.TLSConfig) *Config {
 	return &Config{
 		Server: connection.NewLocalHostServerWithCreds(creds),
 		ParallelExecutor: ExecutorConfig{
@@ -489,7 +489,7 @@ func defaultConfigQuickCutoff() *Config {
 func createVerifierClientWithTLS(
 	t *testing.T,
 	ep *connection.Endpoint,
-	tlsCfg *connection.ConfigTLS,
+	tlsCfg *connection.TLSConfig,
 ) protosigverifierservice.VerifierClient {
 	t.Helper()
 	return test.CreateClientWithTLS(t, ep, tlsCfg, protosigverifierservice.NewVerifierClient)

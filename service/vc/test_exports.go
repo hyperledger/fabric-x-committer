@@ -58,7 +58,7 @@ func NewValidatorAndCommitServiceTestEnv(
 func newValidatorAndCommitServiceTestEnvWithTLS(
 	t *testing.T,
 	numServices int,
-	serverCreds *connection.ConfigTLS, // one credentials set for all the vc-services.
+	serverCreds *connection.TLSConfig, // one credentials set for all the vc-services.
 	db ...*DatabaseTestEnv,
 ) *ValidatorAndCommitterServiceTestEnv {
 	t.Helper()
@@ -367,7 +367,7 @@ func (env *DatabaseTestEnv) rowNotExists(t *testing.T, nsID string, keys [][]byt
 func createVcClientWithTLS(
 	t *testing.T,
 	ep *connection.Endpoint,
-	tlsCfg *connection.ConfigTLS,
+	tlsCfg *connection.TLSConfig,
 ) protovcservice.ValidationAndCommitServiceClient {
 	t.Helper()
 	return test.CreateClientWithTLS(t, ep, tlsCfg, protovcservice.NewValidationAndCommitServiceClient)

@@ -29,10 +29,10 @@ type (
 	}
 
 	// ServerStarter is a func that receives a TLS config, start the server and return its endpoint.
-	ServerStarter func(t *testing.T, serverTLS *connection.ConfigTLS) (endpoint connection.Endpoint)
+	ServerStarter func(t *testing.T, serverTLS *connection.TLSConfig) (endpoint connection.Endpoint)
 
 	// ClientStarter dials the service and returns a func that executes a request.
-	ClientStarter func(t *testing.T, endpoint *connection.Endpoint, cfg *connection.ConfigTLS) RequestFunc
+	ClientStarter func(t *testing.T, endpoint *connection.Endpoint, cfg *connection.TLSConfig) RequestFunc
 
 	// RequestFunc performs a request and returns the resulting error.
 	RequestFunc func(ctx context.Context) error
@@ -48,20 +48,20 @@ func RunSecureConnectionTest(
 	t.Helper()
 	tlsMgr := tlsgen.NewSecureCommunicationManager(t)
 	serverCreds := tlsMgr.CreateServerCertificate(t, secureConnArguments.ServerCN)
-	serverTLS := CreateTLSConfigFromPaths(connection.TLSMutual, serverCreds, "")
+	serverTLS := CreateTLSConfigFromPaths(connection.MutualTLSMode, serverCreds, "")
 	endpoint := secureConnArguments.ServerStarter(t, &serverTLS)
 
 	clientCreds := tlsMgr.CreateClientCertificate(t)
-	baseClientTLS := CreateTLSConfigFromPaths(connection.TLSNone, clientCreds, secureConnArguments.ServerCN)
+	baseClientTLS := CreateTLSConfigFromPaths(connection.NoneTLSMode, clientCreds, secureConnArguments.ServerCN)
 
 	cases := []struct {
 		desc      string
-		tlsMode   connection.TLSMode
+		tlsMode   string
 		expectErr bool
 	}{
-		{"correct client credentials", connection.TLSMutual, false},
-		{"without mTLS", connection.TLSServer, true},
-		{"with no TLS at all", connection.TLSNone, true},
+		{"correct client credentials", connection.MutualTLSMode, false},
+		{"without mTLS", connection.ServerSideTLSMode, true},
+		{"with no TLS at all", connection.NoneTLSMode, true},
 	}
 
 	for _, tc := range cases {
@@ -95,7 +95,7 @@ func RunSecureConnectionTest(
 func CreateClientWithTLS[T any](
 	t *testing.T,
 	endpoint *connection.Endpoint,
-	tlsCfg *connection.ConfigTLS,
+	tlsCfg *connection.TLSConfig,
 	protoClient func(grpc.ClientConnInterface) T,
 ) T {
 	t.Helper()
@@ -116,11 +116,11 @@ func CreateClientWithTLS[T any](
 // CreateTLSConfigFromPaths creates and returns a TLS configuration based on the
 // given TLS mode, credential file paths, and the expected server name.
 func CreateTLSConfigFromPaths(
-	connectionMode connection.TLSMode,
+	connectionMode string,
 	paths map[string]string,
 	serverName string,
-) connection.ConfigTLS {
-	return connection.ConfigTLS{
+) connection.TLSConfig {
+	return connection.TLSConfig{
 		Mode:        connectionMode,
 		ServerName:  serverName,
 		KeyPath:     paths["private-key"],
