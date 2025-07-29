@@ -22,9 +22,17 @@ type (
 	// SecureConnectionArguments groups the arguments required to run a secure connection test.
 	SecureConnectionArguments struct {
 		ServerCN      string
+		ServerTLSMode string
+		TestCases     []Case
 		ServerStarter ServerStarter
 		ClientStarter ClientStarter
 		Parallel      bool
+	}
+
+	Case struct {
+		testDescription  string
+		clientSecureMode string
+		shouldFail       bool
 	}
 
 	// ServerStarter is a func that receives a TLS config, start the server and return its endpoint.
@@ -37,6 +45,40 @@ type (
 	RequestFunc func(ctx context.Context) error
 )
 
+// BuildTestCases creates test cases based on the server's TLS mode.
+// cases:
+// server mode | client mTLS | client server side TLS | client none TLS
+//
+//	mtls     |   connect   |     can't connect      |  can't connect
+//	tls      |   connect   |      connect      		|  can't connect
+//	none     |can't connect|    can't connect       |    connect
+func BuildTestCases(t *testing.T, serverTLSMode string) []Case {
+	switch serverTLSMode {
+	case connection.MutualTLSMode:
+		return []Case{
+			{"client mTLS", connection.MutualTLSMode, false},
+			{"client server side TLS", connection.ServerSideTLSMode, true},
+			{"with no TLS at all", connection.NoneTLSMode, true},
+		}
+	case connection.ServerSideTLSMode:
+		return []Case{
+			{"client mTLS", connection.MutualTLSMode, false},
+			{"client server side TLS", connection.ServerSideTLSMode, false},
+			{"with no TLS at all", connection.NoneTLSMode, true},
+		}
+	case connection.NoneTLSMode:
+		return []Case{
+			{"client mTLS", connection.MutualTLSMode, true},
+			{"client server side TLS", connection.ServerSideTLSMode, true},
+			{"with no TLS at all", connection.NoneTLSMode, false},
+		}
+	default:
+		t.Fatalf("unknown server TLS mode %s", serverTLSMode)
+	}
+
+	return nil // unreachable but require for compiler.
+}
+
 // RunSecureConnectionTest starts a gRPC server with mTLS enabled and
 // tests client connections using various TLS configurations to verify that
 // the server correctly accepts or rejects connections based on the client's setup.
@@ -47,31 +89,21 @@ func RunSecureConnectionTest(
 	t.Helper()
 	tlsMgr := NewSecureCommunicationManager(t)
 	serverCreds := tlsMgr.CreateServerCertificate(t, secureConnArguments.ServerCN)
-	serverTLS := CreateTLSConfigFromPaths(connection.MutualTLSMode, serverCreds, "")
+	serverTLS := CreateTLSConfigFromPaths(secureConnArguments.ServerTLSMode, serverCreds, "")
 	endpoint := secureConnArguments.ServerStarter(t, &serverTLS)
 
 	clientCreds := tlsMgr.CreateClientCertificate(t)
 	baseClientTLS := CreateTLSConfigFromPaths(connection.NoneTLSMode, clientCreds, secureConnArguments.ServerCN)
 
-	cases := []struct {
-		desc      string
-		tlsMode   string
-		expectErr bool
-	}{
-		{"correct client credentials", connection.MutualTLSMode, false},
-		{"without mTLS", connection.ServerSideTLSMode, true},
-		{"with no TLS at all", connection.NoneTLSMode, true},
-	}
-
-	for _, tc := range cases {
+	for _, tc := range secureConnArguments.TestCases {
 		testCase := tc
-		t.Run(fmt.Sprintf("%s/%s", secureConnArguments.ServerCN, testCase.desc), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s/%s/%s", secureConnArguments.ServerCN, secureConnArguments.ServerTLSMode, testCase.testDescription), func(t *testing.T) {
 			if secureConnArguments.Parallel {
 				t.Parallel()
 			}
 
 			cfg := baseClientTLS
-			cfg.Mode = testCase.tlsMode
+			cfg.Mode = testCase.clientSecureMode
 
 			requestFunc := secureConnArguments.ClientStarter(t, &endpoint, &cfg)
 
@@ -79,7 +111,7 @@ func RunSecureConnectionTest(
 			t.Cleanup(cancel)
 
 			err := requestFunc(ctx)
-			if tc.expectErr {
+			if tc.shouldFail {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)

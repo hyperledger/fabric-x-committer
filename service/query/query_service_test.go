@@ -50,25 +50,29 @@ type queryServiceTestEnv struct {
 // under various client TLS configurations.
 func TestQuerySecureConnection(t *testing.T) {
 	t.Parallel()
-	test.RunSecureConnectionTest(t,
-		test.SecureConnectionArguments{
-			ServerCN: "query",
-			ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {
-				t.Helper()
-				env := newQueryServiceTestEnvWithServerAndClientCreds(t, tlsCfg, nil)
-				return env.qs.config.Server.Endpoint
+	for _, TLSMode := range []string{connection.MutualTLSMode, connection.ServerSideTLSMode, connection.NoneTLSMode} {
+		test.RunSecureConnectionTest(t,
+			test.SecureConnectionArguments{
+				ServerCN:      "query",
+				ServerTLSMode: TLSMode,
+				TestCases:     test.BuildTestCases(t, TLSMode),
+				ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {
+					t.Helper()
+					env := newQueryServiceTestEnvWithServerAndClientCreds(t, tlsCfg, nil)
+					return env.qs.config.Server.Endpoint
+				},
+				ClientStarter: func(t *testing.T, ep *connection.Endpoint, cfg *connection.TLSConfig) test.RequestFunc {
+					t.Helper()
+					client := createQueryServiceClientWithTLS(t, ep, cfg)
+					return func(ctx context.Context) error {
+						_, err := client.GetConfigTransaction(ctx, nil)
+						return err
+					}
+				},
+				Parallel: true,
 			},
-			ClientStarter: func(t *testing.T, ep *connection.Endpoint, cfg *connection.TLSConfig) test.RequestFunc {
-				t.Helper()
-				client := createQueryServiceClientWithTLS(t, ep, cfg)
-				return func(ctx context.Context) error {
-					_, err := client.GetConfigTransaction(ctx, nil)
-					return err
-				}
-			},
-			Parallel: true,
-		},
-	)
+		)
+	}
 }
 
 func TestQuery(t *testing.T) {
@@ -366,9 +370,9 @@ func newQueryServiceTestEnvWithServerAndClientCreds(
 	qs := NewQueryService(config)
 	test.RunServiceAndGrpcForTest(t.Context(), t, qs, qs.config.Server)
 
-	clientOpts, err := clientTLS.ClientCredentials()
+	clientCreds, err := clientTLS.ClientCredentials()
 	require.NoError(t, err)
-	clientConn, err := connection.Connect(connection.NewDialConfigWithCreds(&qs.config.Server.Endpoint, clientOpts))
+	clientConn, err := connection.Connect(connection.NewDialConfigWithCreds(&qs.config.Server.Endpoint, clientCreds))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		assert.NoError(t, clientConn.Close())

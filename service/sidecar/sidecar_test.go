@@ -83,32 +83,36 @@ func (c *sidecarTestConfig) String() string {
 func TestSidecarSecureConnection(t *testing.T) {
 	t.Parallel()
 	var env *sidecarTestEnv
-	test.RunSecureConnectionTest(t,
-		test.SecureConnectionArguments{
-			ServerCN: "sidecar",
-			ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {
-				t.Helper()
-				env = newSidecarTestEnvWithCreds(
-					t,
-					sidecarTestConfig{NumService: 1},
-					tlsCfg,
-				)
-				env.startSidecarService(t.Context(), t)
-				return env.config.Server.Endpoint
-			},
-			ClientStarter: func(t *testing.T, _ *connection.Endpoint, cfg *connection.TLSConfig) test.RequestFunc {
-				t.Helper()
-				return func(ctx context.Context) error {
-					env.startSidecarClient(ctx, t, 0, cfg)
-					if _, ok := channel.NewReader(ctx, env.committedBlock).Read(); !ok {
-						return errors.New("failed to read committed block")
+	for _, TLSMode := range []string{connection.MutualTLSMode, connection.ServerSideTLSMode, connection.NoneTLSMode} {
+		test.RunSecureConnectionTest(t,
+			test.SecureConnectionArguments{
+				ServerCN:      "sidecar",
+				ServerTLSMode: TLSMode,
+				TestCases:     test.BuildTestCases(t, TLSMode),
+				ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {
+					t.Helper()
+					env = newSidecarTestEnvWithCreds(
+						t,
+						sidecarTestConfig{NumService: 1},
+						tlsCfg,
+					)
+					env.startSidecarService(t.Context(), t)
+					return env.config.Server.Endpoint
+				},
+				ClientStarter: func(t *testing.T, _ *connection.Endpoint, cfg *connection.TLSConfig) test.RequestFunc {
+					t.Helper()
+					return func(ctx context.Context) error {
+						env.startSidecarClient(ctx, t, 0, cfg)
+						if _, ok := channel.NewReader(ctx, env.committedBlock).Read(); !ok {
+							return errors.New("failed to read committed block")
+						}
+						return nil
 					}
-					return nil
-				}
+				},
+				Parallel: false,
 			},
-			Parallel: false,
-		},
-	)
+		)
+	}
 }
 
 func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {

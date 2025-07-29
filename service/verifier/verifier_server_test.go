@@ -30,25 +30,29 @@ const testTimeout = 3 * time.Second
 
 func TestVerifierSecureConnection(t *testing.T) {
 	t.Parallel()
-	test.RunSecureConnectionTest(t,
-		test.SecureConnectionArguments{
-			ServerCN: "verifier",
-			ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {
-				t.Helper()
-				env := newTestState(t, defaultConfigWithCreds(tlsCfg))
-				return env.Service.config.Server.Endpoint
+	for _, TLSMode := range []string{connection.MutualTLSMode, connection.ServerSideTLSMode, connection.NoneTLSMode} {
+		test.RunSecureConnectionTest(t,
+			test.SecureConnectionArguments{
+				ServerCN:      "verifier",
+				ServerTLSMode: TLSMode,
+				TestCases:     test.BuildTestCases(t, TLSMode),
+				ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {
+					t.Helper()
+					env := newTestState(t, defaultConfigWithCreds(tlsCfg))
+					return env.Service.config.Server.Endpoint
+				},
+				ClientStarter: func(t *testing.T, ep *connection.Endpoint, cfg *connection.TLSConfig) test.RequestFunc {
+					t.Helper()
+					client := createVerifierClientWithTLS(t, ep, cfg)
+					return func(ctx context.Context) error {
+						_, err := client.StartStream(ctx)
+						return err
+					}
+				},
+				Parallel: true,
 			},
-			ClientStarter: func(t *testing.T, ep *connection.Endpoint, cfg *connection.TLSConfig) test.RequestFunc {
-				t.Helper()
-				client := createVerifierClientWithTLS(t, ep, cfg)
-				return func(ctx context.Context) error {
-					_, err := client.StartStream(ctx)
-					return err
-				}
-			},
-			Parallel: true,
-		},
-	)
+		)
+	}
 }
 
 func TestNoVerificationKeySet(t *testing.T) {
