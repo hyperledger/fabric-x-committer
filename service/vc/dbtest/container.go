@@ -348,6 +348,39 @@ func (dc *DatabaseContainer) EnsureNodeReadiness(t *testing.T, requiredOutput st
 	return nil
 }
 
+// CreateDockerNetwork creates a network if it doesn't exist.
+func CreateDockerNetwork(t *testing.T, name string) *docker.Network {
+	t.Helper()
+	client := GetDockerClient(t)
+	network, err := client.NetworkInfo(name)
+	if err == nil {
+		t.Logf("network %s already exists", name)
+		return network
+	}
+
+	network, err = client.CreateNetwork(docker.CreateNetworkOptions{
+		Name:   name,
+		Driver: "bridge",
+	})
+	require.NoError(t, err, "failed to create network")
+
+	t.Logf("network %s created", network.Name)
+	return network
+}
+
+// RemoveDockerNetwork removes a Docker network by name.
+func RemoveDockerNetwork(t *testing.T, name string) {
+	t.Helper()
+	client := GetDockerClient(t)
+	network, err := client.NetworkInfo(name)
+	require.NoError(t, err)
+
+	err = client.RemoveNetwork(network.ID)
+	require.NoError(t, err)
+
+	t.Logf("network %s removed successfully", name)
+}
+
 // GetDockerClient instantiate a new docker client.
 func GetDockerClient(t *testing.T) *docker.Client {
 	t.Helper()

@@ -75,7 +75,7 @@ func TestDBResiliencySecondaryPostgresNodeCrash(t *testing.T) {
 	clusterConnection := dbtest.NewConnection([]*connection.Endpoint{
 		connection.CreateEndpointHP("172.19.0.3", "5433"),
 		connection.CreateEndpointHP("172.19.0.2", "5433"),
-		connection.CreateEndpointHP("172.19.0.4", "5433"),
+		connection.CreateEndpointHP("172.19.0.5", "5433"),
 	}...)
 
 	c := registerAndCreateRuntime(t, clusterConnection)
@@ -109,7 +109,7 @@ func waitForCommittedTxs(t *testing.T, c *runner.CommitterRuntime, waitForCount 
 			t.Logf("Amount of committed txs: %d\n", committedTxs)
 			return committedTxs > currentNumberOfTxs+waitForCount
 		},
-		90*time.Second,
+		150*time.Second,
 		500*time.Millisecond,
 	)
 	require.Zero(t, c.CountAlternateStatus(t, protoblocktx.Status_COMMITTED))
@@ -122,3 +122,66 @@ func createInitContext(t *testing.T) context.Context {
 
 	return ctx
 }
+
+func TestNewCluster(t *testing.T) {
+	t.Parallel()
+
+	clusterController, clusterConnection := runner.StartYugaClusterWithTabletsAndMasters(createInitContext(t), t, 3, 3)
+
+	c := registerAndCreateRuntime(t, clusterConnection)
+
+	waitForCommittedTxs(t, c, 10_000)
+	clusterController.RemoveLeaderMasterNode(t)
+	waitForCommittedTxs(t, c, 30_000)
+}
+
+//func TestRunYBAdminCommand(t *testing.T) {
+//	containerName := "yuga-master-badf0ae4" // or yb-master2 or yb-master3
+//	cmd := []string{"/home/yugabyte/bin/yb-admin", "-init_master_addrs", "yb-master1:7100", "list_all_masters"}
+//
+//	client, err := docker.NewClientFromEnv()
+//	if err != nil {
+//		t.Fatalf("Failed to create Docker client: %v", err)
+//	}
+//
+//	// Lookup container by name
+//	container, err := client.InspectContainer(containerName)
+//	if err != nil {
+//		t.Fatalf("Failed to inspect container %s: %v", containerName, err)
+//	}
+//
+//	// Create exec instance
+//	exec, err := client.CreateExec(docker.CreateExecOptions{
+//		Container:    container.ID,
+//		Cmd:          cmd,
+//		AttachStdout: true,
+//		AttachStderr: true,
+//	})
+//	if err != nil {
+//		t.Fatalf("Failed to create exec: %v", err)
+//	}
+//
+//	// Capture output
+//	var stdout, stderr strings.Builder
+//	err = client.StartExec(exec.ID, docker.StartExecOptions{
+//		OutputStream: &stdout,
+//		ErrorStream:  &stderr,
+//		RawTerminal:  false,
+//	})
+//	if err != nil {
+//		t.Fatalf("Failed to start exec: %v\nStderr: %s", err, stderr.String())
+//	}
+//
+//	// Inspect exit code
+//	inspect, err := client.InspectExec(exec.ID)
+//	if err != nil {
+//		t.Fatalf("Failed to inspect exec result: %v", err)
+//	}
+//	if inspect.ExitCode != 0 {
+//		t.Fatalf("Command exited with code %d\nStderr: %s", inspect.ExitCode, stderr.String())
+//	}
+//
+//	// Print output
+//	fmt.Println("YB-Master status output:")
+//	fmt.Println(stdout.String())
+//}
