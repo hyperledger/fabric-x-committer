@@ -16,12 +16,11 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/tlsgen"
 )
 
 type (
-	// SecureConnectionFunctionArguments groups the arguments required to run a secure connection test.
-	SecureConnectionFunctionArguments struct {
+	// SecureConnectionArguments groups the arguments required to run a secure connection test.
+	SecureConnectionArguments struct {
 		ServerCN      string
 		ServerStarter ServerStarter
 		ClientStarter ClientStarter
@@ -43,10 +42,10 @@ type (
 // the server correctly accepts or rejects connections based on the client's setup.
 func RunSecureConnectionTest(
 	t *testing.T,
-	secureConnArguments SecureConnectionFunctionArguments,
+	secureConnArguments SecureConnectionArguments,
 ) {
 	t.Helper()
-	tlsMgr := tlsgen.NewSecureCommunicationManager(t)
+	tlsMgr := NewSecureCommunicationManager(t)
 	serverCreds := tlsMgr.CreateServerCertificate(t, secureConnArguments.ServerCN)
 	serverTLS := CreateTLSConfigFromPaths(connection.MutualTLSMode, serverCreds, "")
 	endpoint := secureConnArguments.ServerStarter(t, &serverTLS)
@@ -100,7 +99,7 @@ func CreateClientWithTLS[T any](
 ) T {
 	t.Helper()
 
-	creds, err := tlsCfg.ClientOption()
+	creds, err := tlsCfg.ClientCredentials()
 	require.NoError(t, err)
 
 	conn, err := connection.Connect(

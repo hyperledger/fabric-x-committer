@@ -38,7 +38,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
-	"github.com/hyperledger/fabric-x-committer/utils/tlsgen"
 )
 
 type (
@@ -74,7 +73,7 @@ type (
 
 		LastReceivedBlockNumber uint64
 
-		TLSManager *tlsgen.SecureCommunicationManager
+		TLSManager *test.SecureCommunicationManager
 	}
 
 	// Crypto holds crypto material for a namespace.
@@ -188,7 +187,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	})
 
 	t.Log("create TLS manager")
-	c.TLSManager = tlsgen.NewSecureCommunicationManager(t)
+	c.TLSManager = test.NewSecureCommunicationManager(t)
 
 	t.Log("create clients certificates per service")
 	s.ClientsCreds.Vc = c.createClientConfigTLS(t, "validator-committer")
@@ -374,7 +373,7 @@ func (c *CommitterRuntime) startBlockDelivery(t *testing.T) {
 // clientConnWithCreds creates a service connection using its given server endpoint and TLS configuration.
 func clientConnWithCreds(t *testing.T, e *connection.Endpoint, tlsConfig connection.TLSConfig) *grpc.ClientConn {
 	t.Helper()
-	clientCredentials, err := tlsConfig.ClientOption()
+	clientCredentials, err := tlsConfig.ClientCredentials()
 	require.NoError(t, err)
 	serviceConnection, err := connection.Connect(connection.NewDialConfigWithCreds(e, clientCredentials))
 	require.NoError(t, err)

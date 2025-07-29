@@ -84,7 +84,7 @@ func TestSidecarSecureConnection(t *testing.T) {
 	t.Parallel()
 	var env *sidecarTestEnv
 	test.RunSecureConnectionTest(t,
-		test.SecureConnectionFunctionArguments{
+		test.SecureConnectionArguments{
 			ServerCN: "sidecar",
 			ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {
 				t.Helper()

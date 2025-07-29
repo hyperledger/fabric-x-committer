@@ -56,7 +56,7 @@ type (
 func TestCoordinatorSecureConnection(t *testing.T) {
 	t.Parallel()
 	test.RunSecureConnectionTest(t,
-		test.SecureConnectionFunctionArguments{
+		test.SecureConnectionArguments{
 			ServerCN: "coordinator",
 			ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {
 				t.Helper()

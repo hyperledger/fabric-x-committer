@@ -31,7 +31,7 @@ const testTimeout = 3 * time.Second
 func TestVerifierSecureConnection(t *testing.T) {
 	t.Parallel()
 	test.RunSecureConnectionTest(t,
-		test.SecureConnectionFunctionArguments{
+		test.SecureConnectionArguments{
 			ServerCN: "verifier",
 			ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {
 				t.Helper()

@@ -51,7 +51,7 @@ type queryServiceTestEnv struct {
 func TestQuerySecureConnection(t *testing.T) {
 	t.Parallel()
 	test.RunSecureConnectionTest(t,
-		test.SecureConnectionFunctionArguments{
+		test.SecureConnectionArguments{
 			ServerCN: "query",
 			ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {
 				t.Helper()
@@ -366,7 +366,7 @@ func newQueryServiceTestEnvWithServerAndClientCreds(
 	qs := NewQueryService(config)
 	test.RunServiceAndGrpcForTest(t.Context(), t, qs, qs.config.Server)
 
-	clientOpts, err := clientTLS.ClientOption()
+	clientOpts, err := clientTLS.ClientCredentials()
 	require.NoError(t, err)
 	clientConn, err := connection.Connect(connection.NewDialConfigWithCreds(&qs.config.Server.Endpoint, clientOpts))
 	require.NoError(t, err)

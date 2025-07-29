@@ -50,11 +50,11 @@ func NewLocalHostServerWithCreds(creds *TLSConfig) *ServerConfig {
 // GrpcServer instantiate a [*grpc.Server].
 func (c *ServerConfig) GrpcServer() (*grpc.Server, error) {
 	var opts []grpc.ServerOption
-	serverGrpcCreds, err := c.Creds.ServerOption()
+	serverGrpcTransportCreds, err := c.Creds.ServerCredentials()
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed loading the server's grpc credentials")
 	}
-	opts = append(opts, serverGrpcCreds)
+	opts = append(opts, grpc.Creds(serverGrpcTransportCreds))
 
 	if c.KeepAlive != nil && c.KeepAlive.Params != nil {
 		opts = append(opts, grpc.KeepaliveParams(keepalive.ServerParameters{
