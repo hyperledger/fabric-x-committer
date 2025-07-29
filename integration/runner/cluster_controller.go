@@ -27,6 +27,8 @@ const (
 	//nolint:revive // LeaderNode and FollowerNode represent db nodes role.
 	LeaderNode   = "leader"
 	FollowerNode = "follower"
+	TabletNode   = "tablet"
+	MasterNode   = "master"
 
 	linuxOS = "linux"
 )
@@ -44,6 +46,20 @@ func (cc *DBClusterController) StopAndRemoveNodeWithRole(t *testing.T, role stri
 	require.NotEmpty(t, cc.nodes, "trying to remove nodes of an empty cluster.")
 	for idx, node := range cc.nodes {
 		if node.Role == role {
+			node.StopAndRemoveContainer(t)
+			cc.nodes = append(cc.nodes[:idx], cc.nodes[idx+1:]...)
+			return
+		}
+	}
+}
+
+// StopAndRemoveNodeWithName stops and removes a node given a name.
+func (cc *DBClusterController) StopAndRemoveNodeWithName(t *testing.T, name string) {
+	t.Helper()
+	require.NotEmpty(t, cc.nodes, "trying to remove nodes of an empty cluster.")
+	for idx, node := range cc.nodes {
+		if node.Name == name {
+			t.Logf("found ")
 			node.StopAndRemoveContainer(t)
 			cc.nodes = append(cc.nodes[:idx], cc.nodes[idx+1:]...)
 			return
