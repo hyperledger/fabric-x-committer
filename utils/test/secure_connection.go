@@ -64,21 +64,21 @@ func BuildTestCases(t *testing.T, serverTLSMode string) []Case {
 	switch serverTLSMode {
 	case connection.MutualTLSMode:
 		return []Case{
-			{"client mTLS", connection.MutualTLSMode, true},
-			{"client with server-side TLS", connection.ServerSideTLSMode, false},
-			{"client no TLS", connection.NoneTLSMode, false},
+			{"client mTLS", connection.MutualTLSMode, false},
+			{"client with server-side TLS", connection.ServerSideTLSMode, true},
+			{"client no TLS", connection.NoneTLSMode, true},
 		}
 	case connection.ServerSideTLSMode:
-		return []Case{
-			{"client mTLS", connection.MutualTLSMode, true},
-			{"client with server-side TLS", connection.ServerSideTLSMode, true},
-			{"client no TLS", connection.NoneTLSMode, false},
-		}
-	case connection.NoneTLSMode:
 		return []Case{
 			{"client mTLS", connection.MutualTLSMode, false},
 			{"client with server-side TLS", connection.ServerSideTLSMode, false},
 			{"client no TLS", connection.NoneTLSMode, true},
+		}
+	case connection.NoneTLSMode:
+		return []Case{
+			{"client mTLS", connection.MutualTLSMode, true},
+			{"client with server-side TLS", connection.ServerSideTLSMode, true},
+			{"client no TLS", connection.NoneTLSMode, false},
 		}
 	default:
 		t.Fatalf("unknown server TLS mode: %s", serverTLSMode)
