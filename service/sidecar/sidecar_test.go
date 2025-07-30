@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/google/uuid"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
@@ -79,7 +80,51 @@ func (c *sidecarTestConfig) String() string {
 	return "default"
 }
 
+func TestSidecarSecureConnection(t *testing.T) {
+	t.Parallel()
+	var env *sidecarTestEnv
+	for _, TLSMode := range test.ServerModes {
+		test.RunSecureConnectionTest(t,
+			test.SecureConnectionArguments{
+				ServerCN:      "sidecar",
+				ServerTLSMode: TLSMode,
+				TestCases:     test.BuildTestCases(t, TLSMode),
+				ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {
+					t.Helper()
+					env = newSidecarTestEnvWithCreds(
+						t,
+						sidecarTestConfig{NumService: 1},
+						tlsCfg,
+					)
+					env.startSidecarService(t.Context(), t)
+					return env.config.Server.Endpoint
+				},
+				ClientStarter: func(t *testing.T, _ *connection.Endpoint, cfg *connection.TLSConfig) test.RequestFunc {
+					t.Helper()
+					return func(ctx context.Context) error {
+						env.startSidecarClient(ctx, t, 0, cfg)
+						if _, ok := channel.NewReader(ctx, env.committedBlock).Read(); !ok {
+							return errors.New("failed to read committed block")
+						}
+						return nil
+					}
+				},
+				Parallel: false,
+			},
+		)
+	}
+}
+
 func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
+	t.Helper()
+	return newSidecarTestEnvWithCreds(t, conf, nil)
+}
+
+func newSidecarTestEnvWithCreds(
+	t *testing.T,
+	conf sidecarTestConfig,
+	serverCreds *connection.TLSConfig,
+) *sidecarTestEnv {
 	t.Helper()
 	coordinator, coordinatorServer := mock.StartMockCoordinatorService(t)
 	ordererEnv := mock.NewOrdererTestEnv(t, &mock.OrdererTestConfig{
@@ -111,18 +156,14 @@ func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 		initOrdererEndpoints = nil
 	}
 	sidecarConf := &Config{
-		Server: &connection.ServerConfig{
-			Endpoint: connection.Endpoint{Host: "localhost"},
-		},
+		Server: connection.NewLocalHostServerWithCreds(serverCreds),
 		Orderer: broadcastdeliver.Config{
 			ChannelID: ordererEnv.TestConfig.ChanID,
 			Connection: broadcastdeliver.ConnectionConfig{
 				Endpoints: initOrdererEndpoints,
 			},
 		},
-		Committer: CoordinatorConfig{
-			Endpoint: coordinatorServer.Configs[0].Endpoint,
-		},
+		Committer: test.MakeClientConfig(&coordinatorServer.Configs[0].Endpoint),
 		Ledger: LedgerConfig{
 			Path: t.TempDir(),
 		},
@@ -151,10 +192,35 @@ func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 
 func (env *sidecarTestEnv) start(ctx context.Context, t *testing.T, startBlkNum int64) {
 	t.Helper()
+	env.startWithSidecarClientCreds(ctx, t, startBlkNum, nil)
+}
+
+func (env *sidecarTestEnv) startWithSidecarClientCreds(
+	ctx context.Context,
+	t *testing.T,
+	startBlkNum int64,
+	sidecarClientCreds *connection.TLSConfig,
+) {
+	t.Helper()
+	env.startSidecarService(ctx, t)
+	env.startSidecarClient(ctx, t, startBlkNum, sidecarClientCreds)
+}
+
+func (env *sidecarTestEnv) startSidecarService(ctx context.Context, t *testing.T) {
+	t.Helper()
 	test.RunServiceAndGrpcForTest(ctx, t, env.sidecar, env.config.Server)
+}
+
+func (env *sidecarTestEnv) startSidecarClient(
+	ctx context.Context,
+	t *testing.T,
+	startBlkNum int64,
+	sidecarClientCreds *connection.TLSConfig,
+) {
+	t.Helper()
 	env.committedBlock = sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Config{
 		ChannelID: env.config.Orderer.ChannelID,
-		Endpoint:  &env.config.Server.Endpoint,
+		Client:    test.MakeClientConfigWithCreds(sidecarClientCreds, &env.config.Server.Endpoint),
 	}, startBlkNum)
 }
 
@@ -486,7 +552,9 @@ func TestSidecarVerifyBadTxForm(t *testing.T) {
 
 func (env *sidecarTestEnv) getCoordinatorLabel(t *testing.T) string {
 	t.Helper()
-	conn, err := connection.Connect(connection.NewInsecureDialConfig(&env.config.Committer.Endpoint))
+	dialConfig, err := connection.NewLoadBalancedDialConfig(env.config.Committer)
+	require.NoError(t, err)
+	conn, err := connection.Connect(dialConfig)
 	require.NoError(t, err)
 	require.NoError(t, conn.Close())
 	return conn.CanonicalTarget()

@@ -25,10 +25,8 @@ type (
 	// ConnectionConfig contains the endpoints, CAs, and retry profile.
 	ConnectionConfig struct {
 		Endpoints []*connection.OrdererEndpoint `mapstructure:"endpoints"`
+		Creds     *connection.TLSConfig         `mapstructure:"tls-config"`
 		Retry     *connection.RetryProfile      `mapstructure:"reconnect"`
-		RootCA    [][]byte                      `mapstructure:"root-ca"`
-		// RootCAPaths The path to the root CAs (alternative to the raw data).
-		RootCAPaths []string `mapstructure:"root-ca-paths"`
 	}
 
 	// IdentityConfig defines the orderer's MSP.

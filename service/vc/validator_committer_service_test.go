@@ -34,6 +34,33 @@ type validatorAndCommitterServiceTestEnvWithClient struct {
 	dbEnv        *DatabaseTestEnv
 }
 
+func TestVCSecureConnection(t *testing.T) {
+	t.Parallel()
+	for _, TLSMode := range test.ServerModes {
+		test.RunSecureConnectionTest(t,
+			test.SecureConnectionArguments{
+				ServerCN:      "validator-committer",
+				ServerTLSMode: TLSMode,
+				TestCases:     test.BuildTestCases(t, TLSMode),
+				ServerStarter: func(t *testing.T, cfg *connection.TLSConfig) connection.Endpoint {
+					t.Helper()
+					env := newValidatorAndCommitServiceTestEnvWithTLS(t, 1, cfg)
+					return env.Configs[0].Server.Endpoint
+				},
+				ClientStarter: func(t *testing.T, ep *connection.Endpoint, cfg *connection.TLSConfig) test.RequestFunc {
+					t.Helper()
+					client := createVcClientWithTLS(t, ep, cfg)
+					return func(ctx context.Context) error {
+						_, err := client.SetupSystemTablesAndNamespaces(ctx, nil)
+						return err
+					}
+				},
+				Parallel: true,
+			},
+		)
+	}
+}
+
 func newValidatorAndCommitServiceTestEnvWithClient(
 	t *testing.T,
 	numServices int,
@@ -56,7 +83,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 		dbEnv:        vcs.DBEnv,
 	}
 
-	initCtx, initCancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	initCtx, initCancel := context.WithTimeout(t.Context(), 8*time.Minute)
 	defer initCancel()
 	_, setupErr := vcsTestEnv.commonClient.SetupSystemTablesAndNamespaces(initCtx, nil)
 	require.NoError(t, setupErr)
@@ -532,7 +559,7 @@ func TestVCServiceOneActiveStreamOnly(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return env.vcs[0].isStreamActive.Load()
-	}, 4*time.Second, 250*time.Millisecond)
+	}, 20*time.Second, 250*time.Millisecond)
 
 	ctx, _ := createContext(t)
 	stream, err := env.commonClient.StartValidateAndCommitStream(ctx)

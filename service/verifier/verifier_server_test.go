@@ -28,6 +28,33 @@ import (
 
 const testTimeout = 3 * time.Second
 
+func TestVerifierSecureConnection(t *testing.T) {
+	t.Parallel()
+	for _, TLSMode := range test.ServerModes {
+		test.RunSecureConnectionTest(t,
+			test.SecureConnectionArguments{
+				ServerCN:      "verifier",
+				ServerTLSMode: TLSMode,
+				TestCases:     test.BuildTestCases(t, TLSMode),
+				ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {
+					t.Helper()
+					env := newTestState(t, defaultConfigWithCreds(tlsCfg))
+					return env.Service.config.Server.Endpoint
+				},
+				ClientStarter: func(t *testing.T, ep *connection.Endpoint, cfg *connection.TLSConfig) test.RequestFunc {
+					t.Helper()
+					client := createVerifierClientWithTLS(t, ep, cfg)
+					return func(ctx context.Context) error {
+						_, err := client.StartStream(ctx)
+						return err
+					}
+				},
+				Parallel: true,
+			},
+		)
+	}
+}
+
 func TestNoVerificationKeySet(t *testing.T) {
 	t.Parallel()
 	c := newTestState(t, defaultConfig())
@@ -440,8 +467,12 @@ func defaultUpdate(t *testing.T) (*protosigverifierservice.Update, *sigtest.NsSi
 }
 
 func defaultConfig() *Config {
+	return defaultConfigWithCreds(nil)
+}
+
+func defaultConfigWithCreds(creds *connection.TLSConfig) *Config {
 	return &Config{
-		Server: connection.NewLocalHostServer(),
+		Server: connection.NewLocalHostServerWithCreds(creds),
 		ParallelExecutor: ExecutorConfig{
 			BatchSizeCutoff:   3,
 			BatchTimeCutoff:   1 * time.Hour,
@@ -458,4 +489,14 @@ func defaultConfigQuickCutoff() *Config {
 	config := defaultConfig()
 	config.ParallelExecutor.BatchSizeCutoff = 1
 	return config
+}
+
+//nolint:ireturn // returning a gRPC client interface is intentional for test purpose.
+func createVerifierClientWithTLS(
+	t *testing.T,
+	ep *connection.Endpoint,
+	tlsCfg *connection.TLSConfig,
+) protosigverifierservice.VerifierClient {
+	t.Helper()
+	return test.CreateClientWithTLS(t, ep, tlsCfg, protosigverifierservice.NewVerifierClient)
 }

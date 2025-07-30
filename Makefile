@@ -100,14 +100,18 @@ test: build
 test-package-%: build
 	@$(go_test) ./$*/... | gotestfmt ${GO_TEST_FMT_FLAGS}
 
-# Integration tests excluding DB resiliency tests.
+# Integration tests excluding DB resiliency and secure communication tests.
 # Use `test-integration-db-resiliency`.
 test-integration: build
-	@$(go_test) ./integration/... -skip "DBResiliency.*" | gotestfmt ${GO_TEST_FMT_FLAGS}
+	@$(go_test) ./integration/... -skip 'DBResiliency.*|.*TLSConnection.*' | gotestfmt ${GO_TEST_FMT_FLAGS}
 
 # DB resiliency integration tests.
 test-integration-db-resiliency: build
 	@$(go_test) ./integration/... -run "DBResiliency.*" | gotestfmt ${GO_TEST_FMT_FLAGS}
+
+# Secure communication tests.
+test-integration-tls: build
+	@$(go_test) ./integration/... -run ".*TLSConnection.*" | gotestfmt ${GO_TEST_FMT_FLAGS}
 
 # Tests the all-in-one docker image.
 test-container: build-test-node-image

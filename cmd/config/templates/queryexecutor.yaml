@@ -5,6 +5,15 @@
 # Configuration for the server
 server:
   endpoint: {{ .ServiceEndpoints.Server | default "localhost:0" }}
+  creds:
+    tls-mode: {{ .ServiceCreds.Mode }}
+    server-name: {{ .ServiceCreds.ServerName }}
+    cert-path: {{ .ServiceCreds.CertPath }}
+    key-path: {{ .ServiceCreds.KeyPath }}
+    ca-cert-paths:
+      {{- range .ServiceCreds.CACertPaths }}
+      - {{ . }}
+      {{- end }}
 monitoring:
   server:
     endpoint: {{ .ServiceEndpoints.Metrics | default "localhost:0" }}

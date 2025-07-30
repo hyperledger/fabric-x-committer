@@ -34,6 +34,10 @@ type (
 		// Instance endpoints.
 		ServiceEndpoints ServiceEndpoints
 
+		// Service Tls options and certificates.
+		ServiceCreds connection.TLSConfig
+		ClientCreds  connection.TLSConfig
+
 		// System's resources.
 		Endpoints SystemEndpoints
 		DB        DatabaseConfig
