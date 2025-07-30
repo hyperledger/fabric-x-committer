@@ -25,6 +25,8 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
+const streamEndErrWrap = "sending to stream ended with an error"
+
 type (
 	// validatorCommitterManager is responsible for managing all communication with
 	// all vcservices. It is responsible for:
@@ -263,7 +265,7 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 
 		if firstBatch {
 			if err := splitAndSendToVC(stream, txBatch); err != nil {
-				return errors.Wrap(err, "send to stream ended with error")
+				return err
 			}
 			firstBatch = false
 			continue
@@ -272,7 +274,7 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 		if err := stream.Send(&protovcservice.TransactionBatch{
 			Transactions: txBatch,
 		}); err != nil {
-			return errors.Wrap(err, "send to stream ended with error")
+			return errors.Wrap(err, streamEndErrWrap)
 		}
 		logger.Debugf("TX node contains %d TXs, and was sent to a vcservice", len(txBatch))
 	}
@@ -297,7 +299,7 @@ func splitAndSendToVC(
 
 	for _, rBatch := range blkToBatch {
 		if err := stream.Send(rBatch); err != nil {
-			return err
+			return errors.Wrap(err, streamEndErrWrap)
 		}
 	}
 

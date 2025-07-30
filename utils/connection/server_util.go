@@ -42,7 +42,8 @@ func NewLocalHostServer() *ServerConfig {
 
 // GrpcServer instantiate a [grpc.Server].
 func (c *ServerConfig) GrpcServer() *grpc.Server {
-	var opts []grpc.ServerOption
+	opts := append([]grpc.ServerOption{}, grpc.MaxRecvMsgSize(maxMsgSize))
+	opts = append(opts, grpc.MaxSendMsgSize(maxMsgSize))
 	if c.Creds != nil {
 		cert, err := tls.LoadX509KeyPair(c.Creds.CertPath, c.Creds.KeyPath)
 		utils.Must(err)
@@ -67,8 +68,6 @@ func (c *ServerConfig) GrpcServer() *grpc.Server {
 			PermitWithoutStream: c.KeepAlive.EnforcementPolicy.PermitWithoutStream,
 		}))
 	}
-	opts = append(opts, grpc.MaxRecvMsgSize(maxMsgSize))
-	opts = append(opts, grpc.MaxSendMsgSize(maxMsgSize))
 	return grpc.NewServer(opts...)
 }
 
