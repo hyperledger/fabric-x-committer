@@ -330,7 +330,7 @@ func TestSidecarConfigRecovery(t *testing.T) {
 	newCtx, newCancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(newCancel)
 
-	t.Log("Modify the SidecarClient config, use illegal host endpoint")
+	t.Log("Modify the Sidecar config, use illegal host endpoint")
 	// We need to use ilegalEndpoints instead of an empty Endpoints struct,
 	// as the sidecar expects the Endpoints to be non-empty.
 	env.config.Orderer.Connection.Endpoints = []*connection.OrdererEndpoint{
