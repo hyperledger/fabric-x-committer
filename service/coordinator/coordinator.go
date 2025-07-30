@@ -140,7 +140,7 @@ func NewCoordinatorService(c *Config) *Service {
 	metrics := newPerformanceMetrics()
 
 	depMgr := dependencygraph.NewManager(
-		&dependencygraph.Config{
+		&dependencygraph.Parameters{
 			IncomingTxs:               queues.coordinatorToDepGraphTxs,
 			OutgoingDepFreeTxsNode:    queues.depGraphToSigVerifierFreeTxs,
 			IncomingValidatedTxsNode:  queues.vcServiceToDepGraphValidatedTxs,

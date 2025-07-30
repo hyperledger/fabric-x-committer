@@ -24,8 +24,7 @@ type (
 
 	// DependencyGraphConfig is the configuration for dependency graph manager. It contains resource limits.
 	DependencyGraphConfig struct {
-		NumOfLocalDepConstructors       int `mapstructure:"num-of-local-dep-constructors"`
-		WaitingTxsLimit                 int `mapstructure:"waiting-txs-limit"`
-		NumOfWorkersForGlobalDepManager int `mapstructure:"num-of-workers-for-global-dep-manager"`
+		NumOfLocalDepConstructors int `mapstructure:"num-of-local-dep-constructors"`
+		WaitingTxsLimit           int `mapstructure:"waiting-txs-limit"`
 	}
 )
