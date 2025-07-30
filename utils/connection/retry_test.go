@@ -139,7 +139,7 @@ func TestGrpcRetryJSON(t *testing.T) {
 		  "backoffMultiplier": 1.5,
 		  "initialBackoff": "0.5s",
 		  "maxBackoff": "10s",
-		  "retryableStatusCodes": ["UNAVAILABLE", "DEADLINE_EXCEEDED", "RESOURCE_EXHAUSTED"]
+		  "retryableStatusCodes": ["UNAVAILABLE", "DEADLINE_EXCEEDED"]
 		}
 	  }]
 	}`

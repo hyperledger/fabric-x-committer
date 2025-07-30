@@ -234,14 +234,14 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 
 		if firstBatch {
 			if err := splitAndSendToVerifier(stream, request); err != nil {
-				return errors.Wrap(err, "send to stream ended with error")
+				return err
 			}
 			firstBatch = false
 			continue
 		}
 
 		if err := stream.Send(request); err != nil {
-			return errors.Wrap(err, "send to stream ended with error")
+			return errors.Wrap(err, streamEndErrWrap)
 		}
 		logger.Debugf("Batch contains %d TXs, and was stored in the accumulator and sent to a sv", batchSize)
 	}
@@ -281,7 +281,7 @@ func splitAndSendToVerifier(
 		if err := stream.Send(rBatch); err != nil {
 			// ResourceExhausted should not occur here, as we have split a block's transactions
 			// into two batches, assuming the block size is less than the maximum gRPC message size.
-			return err
+			return errors.Wrap(err, streamEndErrWrap)
 		}
 	}
 
