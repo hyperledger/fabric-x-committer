@@ -190,7 +190,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	c.TLSManager = test.NewSecureCommunicationManager(t)
 
 	t.Log("create clients certificates per service")
-	s.ClientsCreds.Vc = c.createClientConfigTLS(t, "validator-committer")
+	s.ClientsCreds.VCService = c.createClientConfigTLS(t, "validator-committer")
 	s.ClientsCreds.Verifier = c.createClientConfigTLS(t, "verifier")
 	s.ClientsCreds.Coordinator = c.createClientConfigTLS(t, "coordinator")
 	s.ClientsCreds.Query = c.createClientConfigTLS(t, "query-service")

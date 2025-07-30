@@ -81,7 +81,7 @@ type (
 
 	// ClientsTLSConfig contains the client's config TLS.
 	ClientsTLSConfig struct {
-		Vc          connection.TLSConfig
+		VCService   connection.TLSConfig
 		Verifier    connection.TLSConfig
 		Coordinator connection.TLSConfig
 		Sidecar     connection.TLSConfig

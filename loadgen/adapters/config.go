@@ -35,7 +35,7 @@ type (
 	SidecarClientConfig struct {
 		ChannelID      string                     `mapstructure:"channel-id"`
 		OrdererServers []*connection.ServerConfig `mapstructure:"orderer-servers"`
-		Config         *connection.ClientConfig   `mapstructure:"config"`
+		Client         *connection.ClientConfig   `mapstructure:"client-config"`
 	}
 
 	// CoordinatorClientConfig is a struct that contains the configuration for the coordinator client.

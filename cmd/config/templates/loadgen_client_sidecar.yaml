@@ -6,7 +6,7 @@
 # It should be complimented by the common load generator configuration.
 
 sidecar-client:
-  config:
+  client-config:
     endpoints:
       - {{ .Endpoints.Sidecar.Server }}
     creds:

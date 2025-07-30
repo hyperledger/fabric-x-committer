@@ -71,7 +71,7 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 		defer dCancel() // We stop sending if we can't track the received items.
 		return runSidecarReceiver(gCtx, &sidecarReceiverConfig{
 			ChannelID: c.config.ChannelID,
-			Config:    c.config.Config,
+			Config:    c.config.Client,
 			Res:       c.res,
 		})
 	})

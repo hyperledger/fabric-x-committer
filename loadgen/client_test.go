@@ -213,7 +213,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 			clientConf.Adapter.SidecarClient = &adapters.SidecarClientConfig{
 				ChannelID:      chanID,
 				OrdererServers: ordererServers,
-				Config:         test.ServerToClientConfig(sidecarServerConf),
+				Client:         test.ServerToClientConfig(sidecarServerConf),
 			}
 			testLoadGenerator(t, clientConf)
 		})
