@@ -60,7 +60,7 @@ type (
 	// for secure communication between servers and clients.
 	TLSConfig struct {
 		Mode string `mapstructure:"tls-mode"`
-		// ServerName is required by the client if the server's certificate uses SNI.
+		// ServerName is required by the client if the server's certificate uses SAN (Subject Alternative Name).
 		ServerName string `mapstructure:"server-name"`
 		// CertPath is the path to the certificate file (public key).
 		CertPath string `mapstructure:"cert-path"`

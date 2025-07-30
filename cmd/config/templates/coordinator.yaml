@@ -23,13 +23,13 @@ verifier:
     {{- range .Endpoints.Verifier }}
     - {{ .Server }}
     {{- end }}
-  creds:
-    tls-mode: {{ .ClientsCreds.Verifier.Mode }}
-    server-name: {{ .ClientsCreds.Verifier.ServerName }}
-    key-path: {{ .ClientsCreds.Verifier.KeyPath }}
-    cert-path: {{ .ClientsCreds.Verifier.CertPath }}
+  creds: &ClientCreds
+    tls-mode: {{ .ClientCreds.Mode }}
+    server-name: {{ .ClientCreds.ServerName }}
+    key-path: {{ .ClientCreds.KeyPath }}
+    cert-path: {{ .ClientCreds.CertPath }}
     ca-cert-paths:
-      {{- range .ClientsCreds.Verifier.CACertPaths }}
+      {{- range .ClientCreds.CACertPaths }}
       - {{ . }}
       {{- end }}
 
@@ -39,14 +39,7 @@ validator-committer:
     - {{ .Server }}
     {{- end }}
   creds:
-    tls-mode: {{ .ClientsCreds.Vc.Mode }}
-    server-name: {{ .ClientsCreds.Vc.ServerName }}
-    key-path: {{ .ClientsCreds.Vc.KeyPath }}
-    cert-path: {{ .ClientsCreds.Vc.CertPath }}
-    ca-cert-paths:
-      {{- range .ClientsCreds.Vc.CACertPaths }}
-      - {{ . }}
-      {{- end }}
+    *ClientCreds
 
 dependency-graph:
   num-of-local-dep-constructors: 1

@@ -33,7 +33,7 @@ func NewSecureCommunicationManager(t *testing.T) *SecureCommunicationManager {
 	}
 }
 
-// CreateServerCertificate creates a server key pair given SNI,
+// CreateServerCertificate creates a server key pair given SAN (Subject Alternative Name),
 // Writing it to a temp testing folder and returns a map with the credential paths.
 func (scm *SecureCommunicationManager) CreateServerCertificate(
 	t *testing.T,

@@ -186,15 +186,9 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		MetaNamespaceVerificationKey: metaCrypto.PubKey,
 	})
 
-	t.Log("create TLS manager")
+	t.Log("create TLS manager and clients certificate")
 	c.TLSManager = test.NewSecureCommunicationManager(t)
-
-	t.Log("create clients certificates per service")
-	s.ClientsCreds.VCService = c.createClientConfigTLS(t, "validator-committer")
-	s.ClientsCreds.Verifier = c.createClientConfigTLS(t, "verifier")
-	s.ClientsCreds.Coordinator = c.createClientConfigTLS(t, "coordinator")
-	s.ClientsCreds.Query = c.createClientConfigTLS(t, "query-service")
-	s.ClientsCreds.Sidecar = c.createClientConfigTLS(t, "sidecar")
+	s.ClientCreds = c.createClientConfigTLS(t, connection.NewLocalHostServer().Endpoint.Host)
 
 	t.Log("Create processes")
 	c.MockOrderer = newProcess(t, cmdOrderer, s.WithEndpoint(s.Endpoints.Orderer[0]))
@@ -202,7 +196,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		p := cmdVerifier
 		p.Name = fmt.Sprintf("%s-%d", p.Name, i)
 		// we generate different keys for each verifier.
-		verifierSystemConfig := c.createSystemConfigWithServerCerts(t, e, "verifier")
+		verifierSystemConfig := c.createSystemConfigWithServerCerts(t, e)
 		c.Verifier = append(c.Verifier, newProcess(t, p, &verifierSystemConfig))
 	}
 
@@ -210,31 +204,31 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		p := cmdVC
 		p.Name = fmt.Sprintf("%s-%d", p.Name, i)
 		// we generate different keys for each vc-service.
-		vcSystemConfig := c.createSystemConfigWithServerCerts(t, e, "validator-committer")
+		vcSystemConfig := c.createSystemConfigWithServerCerts(t, e)
 		c.VcService = append(c.VcService, newProcess(t, p, &vcSystemConfig))
 	}
 
-	coordinatorServiceConfig := c.createSystemConfigWithServerCerts(t, s.Endpoints.Coordinator, "coordinator")
+	coordinatorServiceConfig := c.createSystemConfigWithServerCerts(t, s.Endpoints.Coordinator)
 	c.Coordinator = newProcess(t, cmdCoordinator, &coordinatorServiceConfig)
 
-	queryServiceConfig := c.createSystemConfigWithServerCerts(t, s.Endpoints.Query, "query-service")
+	queryServiceConfig := c.createSystemConfigWithServerCerts(t, s.Endpoints.Query)
 	c.QueryService = newProcess(t, cmdQuery, &queryServiceConfig)
 
-	sidecarServiceConfig := c.createSystemConfigWithServerCerts(t, s.Endpoints.Sidecar, "sidecar")
+	sidecarServiceConfig := c.createSystemConfigWithServerCerts(t, s.Endpoints.Sidecar)
 	c.Sidecar = newProcess(t, cmdSidecar, &sidecarServiceConfig)
 
 	t.Log("Create clients")
 	c.CoordinatorClient = protocoordinatorservice.NewCoordinatorClient(
 		clientConnWithCreds(t,
 			s.Endpoints.Coordinator.Server,
-			c.SystemConfig.ClientsCreds.Coordinator,
+			c.SystemConfig.ClientCreds,
 		),
 	)
 
 	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(
 		clientConnWithCreds(t,
 			s.Endpoints.Query.Server,
-			c.SystemConfig.ClientsCreds.Query,
+			c.SystemConfig.ClientCreds,
 		),
 	)
 
@@ -254,7 +248,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	c.sidecarClient, err = sidecarclient.New(&sidecarclient.Config{
 		ChannelID: s.ChannelID,
 		Client: test.MakeClientConfigWithCreds(
-			&c.SystemConfig.ClientsCreds.Sidecar,
+			&c.SystemConfig.ClientCreds,
 			s.Endpoints.Sidecar.Server,
 		),
 	})
@@ -636,11 +630,10 @@ func (c *CommitterRuntime) ensureAtLeastLastCommittedBlockNumber(t *testing.T, b
 func (c *CommitterRuntime) createSystemConfigWithServerCerts(
 	t *testing.T,
 	endpoints config.ServiceEndpoints,
-	serverName string,
 ) config.SystemConfig {
 	t.Helper()
 	serviceCfg := c.SystemConfig
-	serviceCfg.ServiceCreds = c.createServerConfigTLS(t, serverName)
+	serviceCfg.ServiceCreds = c.createServerConfigTLS(t, endpoints.Server.Host)
 	serviceCfg.ServiceEndpoints = endpoints
 	return serviceCfg
 }
@@ -649,7 +642,7 @@ func (c *CommitterRuntime) createServerConfigTLS(t *testing.T, asServer string) 
 	t.Helper()
 	// We pass asServer twice: first to generate the server's keys,
 	// and second to include the server name in the TLSConfig.
-	// Note: the Server Name Indication (SNI) is not used when creating
+	// Note: the SAN (Subject Alternative Name) is not used when creating
 	// the server's transport credentials, so passing it during TLS config
 	// creation is not strictly necessary.
 	return c.createConfigTLS(c.TLSManager.CreateServerCertificate(t, asServer), asServer)

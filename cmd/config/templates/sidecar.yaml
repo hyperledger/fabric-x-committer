@@ -36,12 +36,12 @@ committer:
   endpoints:
     - {{ .Endpoints.Coordinator.Server }}
   creds:
-    tls-mode: {{ .ClientsCreds.Coordinator.Mode }}
-    server-name: {{ .ClientsCreds.Coordinator.ServerName }}
-    cert-path: {{ .ClientsCreds.Coordinator.CertPath }}
-    key-path: {{ .ClientsCreds.Coordinator.KeyPath }}
+    tls-mode: {{ .ClientCreds.Mode }}
+    server-name: {{ .ClientCreds.ServerName }}
+    cert-path: {{ .ClientCreds.CertPath }}
+    key-path: {{ .ClientCreds.KeyPath }}
     ca-cert-paths:
-      {{- range .ClientsCreds.Coordinator.CACertPaths }}
+      {{- range .ClientCreds.CACertPaths }}
       - {{ . }}
       {{- end }}
 
