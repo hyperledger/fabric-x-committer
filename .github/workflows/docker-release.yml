@@ -54,7 +54,7 @@ jobs:
         run: scripts/install-dev-dependencies.sh
 
       - name: Build cross-architecture binaries
-        run: make build-arch
+        run: make build-arch build-test-genesis-block
 
       - name: Set image prefix
         run: |
@@ -80,3 +80,18 @@ jobs:
             PORTS=4001 2114 9001 2119 5001 2115 6001 2116 7001 2117
           cache-from: type=registry,ref=docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-committer:buildcache
           cache-to: type=registry,ref=docker.io/${{  env.IMAGE_PREFIX  }}/fabric-x-committer:buildcache,mode=max
+
+      - name: Build and Push Multi-Platform Docker Image for Committer's Test Node
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/images/test_node/Dockerfile
+          platforms: linux/amd64,linux/arm64,linux/s390x
+          push: true
+          tags: |
+            docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-committer-test-node:latest
+            docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-committer-test-node:${{ env.VERSION }}
+          build-args: |
+            ARCHBIN_PATH=archbin
+          cache-from: type=registry,ref=docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-committer-test-node:buildcache
+          cache-to: type=registry,ref=docker.io/${{  env.IMAGE_PREFIX  }}/fabric-x-committer-test-node:buildcache,mode=max
