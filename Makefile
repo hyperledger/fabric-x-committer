@@ -188,6 +188,7 @@ proto: $(PROTO_TARGETS)
 proto-%: FORCE
 	@echo "Compiling: $*"
 	@protoc --proto_path="${PWD}" \
+          --proto_path="/usr/include" \
           --go-grpc_out=. --go-grpc_opt=paths=source_relative \
           --go_out=paths=source_relative:. ${PWD}/api/proto$*/*.proto
 

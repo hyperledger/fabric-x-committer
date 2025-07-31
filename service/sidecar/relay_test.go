@@ -18,6 +18,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
+	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -30,6 +31,7 @@ type relayTestEnv struct {
 	coordinator                *mock.Coordinator
 	incomingBlockToBeCommitted chan *common.Block
 	committedBlock             chan *common.Block
+	statusQueue                chan []*protonotify.TxStatusEvent
 	configBlocks               []*common.Block
 	metrics                    *perfMetrics
 	waitingTxsLimit            int
@@ -62,6 +64,7 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 		coordinator:                coord,
 		incomingBlockToBeCommitted: make(chan *common.Block, 10),
 		committedBlock:             make(chan *common.Block, 10),
+		statusQueue:                make(chan []*protonotify.TxStatusEvent, 10),
 		metrics:                    metrics,
 		waitingTxsLimit:            100,
 	}
@@ -76,6 +79,7 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 			},
 			incomingBlockToBeCommitted: env.incomingBlockToBeCommitted,
 			outgoingCommittedBlock:     env.committedBlock,
+			outgoingStatusUpdates:      env.statusQueue,
 			waitingTxsLimit:            env.waitingTxsLimit,
 		}))
 	}, nil)
@@ -85,41 +89,80 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 func TestRelayNormalBlock(t *testing.T) {
 	t.Parallel()
 	relayEnv := newRelayTestEnv(t)
+	m := relayEnv.metrics
 	relayEnv.coordinator.SetDelay(10 * time.Second)
 
+	t.Log("Block #0: Submit")
+	txCount := 3
 	blk0 := createBlockForTest(t, 0, nil, [3]string{"tx1", "tx2", "tx3"})
 	require.Nil(t, blk0.Metadata)
 	relayEnv.incomingBlockToBeCommitted <- blk0
 
-	test.EventuallyIntMetric(t, 3, relayEnv.metrics.transactionsSentTotal, 5*time.Second, 10*time.Millisecond)
-	test.EventuallyIntMetric(t, 3, relayEnv.metrics.waitingTransactionsQueueSize, 5*time.Second, 10*time.Millisecond)
-	require.Equal(t, int64(relayEnv.waitingTxsLimit-3), relayEnv.relay.waitingTxsSlots.Load(t))
+	t.Log("Block #0: Check submit metrics")
+	test.EventuallyIntMetric(t, txCount, m.transactionsSentTotal, 5*time.Second, 10*time.Millisecond)
+	test.EventuallyIntMetric(t, txCount, m.waitingTransactionsQueueSize, 5*time.Second, 10*time.Millisecond)
+	require.Equal(t, int64(relayEnv.waitingTxsLimit-txCount), relayEnv.relay.waitingTxsSlots.Load(t))
 
+	t.Log("Block #0: Check block in the queue")
 	committedBlock0 := <-relayEnv.committedBlock
-	test.RequireIntMetricValue(t, 3, relayEnv.metrics.transactionsStatusReceivedTotal.WithLabelValues(
-		protoblocktx.Status_COMMITTED.String(),
-	))
-	test.EventuallyIntMetric(t, 0, relayEnv.metrics.waitingTransactionsQueueSize, 5*time.Second, 10*time.Millisecond)
-	require.Equal(t, int64(relayEnv.waitingTxsLimit), relayEnv.relay.waitingTxsSlots.Load(t))
-
-	expectedMetadata := &common.BlockMetadata{
+	require.NotNil(t, committedBlock0)
+	require.Equal(t, &common.BlockMetadata{
 		Metadata: [][]byte{nil, nil, {valid, valid, valid}},
-	}
-	require.Equal(t, expectedMetadata, committedBlock0.Metadata)
+	}, committedBlock0.Metadata)
 	require.Equal(t, blk0, committedBlock0)
 
-	m := relayEnv.metrics
+	t.Log("Block #0: Check status in the queue")
+	status0 := relayEnv.readAllStatusQueue(t)
+	test.RequireProtoElementsMatch(t, []*protonotify.TxStatusEvent{
+		{
+			TxId: "tx1",
+			StatusWithHeight: &protoblocktx.StatusWithHeight{
+				BlockNumber: 0,
+				TxNumber:    0,
+				Code:        protoblocktx.Status_COMMITTED,
+			},
+		},
+		{
+			TxId: "tx2",
+			StatusWithHeight: &protoblocktx.StatusWithHeight{
+				BlockNumber: 0,
+				TxNumber:    1,
+				Code:        protoblocktx.Status_COMMITTED,
+			},
+		},
+		{
+			TxId: "tx3",
+			StatusWithHeight: &protoblocktx.StatusWithHeight{
+				BlockNumber: 0,
+				TxNumber:    2,
+				Code:        protoblocktx.Status_COMMITTED,
+			},
+		},
+	}, status0)
+
+	t.Log("Block #0: Check receive metrics")
+	test.RequireIntMetricValue(t, txCount, m.transactionsStatusReceivedTotal.WithLabelValues(
+		protoblocktx.Status_COMMITTED.String(),
+	))
+	test.EventuallyIntMetric(t, 0, m.waitingTransactionsQueueSize, 5*time.Second, 10*time.Millisecond)
 	require.Greater(t, test.GetMetricValue(t, m.blockMappingInRelaySeconds), float64(0))
 	require.Greater(t, test.GetMetricValue(t, m.mappedBlockProcessingInRelaySeconds), float64(0))
 	require.Greater(t, test.GetMetricValue(t, m.transactionStatusesProcessingInRelaySeconds), float64(0))
+	require.Equal(t, int64(relayEnv.waitingTxsLimit), relayEnv.relay.waitingTxsSlots.Load(t))
 
-	relayEnv.relay.waitingTxsSlots.Store(t, int64(0))
+	t.Log("Block #1: Submit without available slots")
 	blk1 := createBlockForTest(t, 1, nil, [3]string{"tx1", "tx2", "tx3"})
+	require.Nil(t, blk1.Metadata)
+	relayEnv.relay.waitingTxsSlots.Store(t, int64(0))
 	relayEnv.incomingBlockToBeCommitted <- blk1
+
+	t.Log("Block #1: Verify not processed")
 	require.Never(t, func() bool {
 		return test.GetMetricValue(t, m.transactionsSentTotal) > 3
 	}, 3*time.Second, 1*time.Second)
-	relayEnv.relay.waitingTxsSlots.Store(t, int64(3))
+
+	t.Log("Block #1: Release slots and verify processing")
+	relayEnv.relay.waitingTxsSlots.Store(t, int64(txCount))
 	relayEnv.relay.waitingTxsSlots.Broadcast()
 	test.EventuallyIntMetric(t, 6, relayEnv.metrics.transactionsSentTotal, 5*time.Second, 10*time.Millisecond)
 }
@@ -133,12 +176,12 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 	incoming := channel.NewWriter(ctx, relayEnv.incomingBlockToBeCommitted)
 	committed := channel.NewReader(ctx, relayEnv.committedBlock)
 
-	t.Log("Submitting block 0")
+	t.Log("Block #0: Submit")
 	blk0 := createBlockForTest(t, 0, nil, [3]string{"tx1", "tx1", "tx1"})
 	require.Nil(t, blk0.Metadata)
 	incoming.Write(blk0)
 
-	t.Log("Waiting for block 0 result")
+	t.Log("Block #0: Check block in the queue")
 	committedBlock0, ok := committed.Read()
 	require.True(t, ok)
 	expectedMetadata := &common.BlockMetadata{
@@ -147,12 +190,25 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 	require.Equal(t, expectedMetadata, committedBlock0.Metadata)
 	require.Equal(t, blk0, committedBlock0)
 
-	t.Log("Submitting block 1")
+	t.Log("Block #0: Check status in the queue")
+	status0 := relayEnv.readAllStatusQueue(t)
+	test.RequireProtoElementsMatch(t, []*protonotify.TxStatusEvent{
+		{
+			TxId: "tx1",
+			StatusWithHeight: &protoblocktx.StatusWithHeight{
+				BlockNumber: 0,
+				TxNumber:    0,
+				Code:        protoblocktx.Status_COMMITTED,
+			},
+		},
+	}, status0)
+
+	t.Log("Block #1: Submit")
 	blk1 := createBlockForTest(t, 1, nil, [3]string{"tx2", "tx3", "tx2"})
 	require.Nil(t, blk1.Metadata)
 	incoming.Write(blk1)
 
-	t.Log("Waiting for block 1 result")
+	t.Log("Block #1: Check block in the queue")
 	committedBlock1, ok := committed.Read()
 	require.True(t, ok)
 	expectedMetadata = &common.BlockMetadata{
@@ -160,6 +216,27 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 	}
 	require.Equal(t, expectedMetadata, committedBlock1.Metadata)
 	require.Equal(t, blk1, committedBlock1)
+
+	t.Log("Block #1: Check status in the queue")
+	status1 := relayEnv.readAllStatusQueue(t)
+	test.RequireProtoElementsMatch(t, []*protonotify.TxStatusEvent{
+		{
+			TxId: "tx2",
+			StatusWithHeight: &protoblocktx.StatusWithHeight{
+				BlockNumber: 1,
+				TxNumber:    0,
+				Code:        protoblocktx.Status_COMMITTED,
+			},
+		},
+		{
+			TxId: "tx3",
+			StatusWithHeight: &protoblocktx.StatusWithHeight{
+				BlockNumber: 1,
+				TxNumber:    1,
+				Code:        protoblocktx.Status_COMMITTED,
+			},
+		},
+	}, status1)
 }
 
 func TestRelayConfigBlock(t *testing.T) {
@@ -174,6 +251,22 @@ func TestRelayConfigBlock(t *testing.T) {
 	require.Equal(t, []byte{valid}, committedBlock.Metadata.Metadata[statusIdx])
 	require.Len(t, relayEnv.configBlocks, 1)
 	require.Equal(t, configBlk, relayEnv.configBlocks[0])
+}
+
+func (e *relayTestEnv) readAllStatusQueue(t *testing.T) []*protonotify.TxStatusEvent {
+	t.Helper()
+	var status []*protonotify.TxStatusEvent
+	statusQueue := channel.NewReader(t.Context(), e.statusQueue)
+	// We have to read multiple times from the queue because it might split the status report into batches according
+	// to the processing logic.
+	for {
+		s, ok := statusQueue.ReadWithTimeout(5 * time.Second)
+		if !ok {
+			break
+		}
+		status = append(status, s...)
+	}
+	return status
 }
 
 func createConfigBlockForTest(t *testing.T) *common.Block {

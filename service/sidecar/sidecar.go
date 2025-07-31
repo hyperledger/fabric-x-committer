@@ -22,6 +22,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
+	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/broadcastdeliver"
@@ -39,7 +40,8 @@ var logger = logging.New("sidecar")
 type Service struct {
 	ordererClient      *broadcastdeliver.Client
 	relay              *relay
-	ledgerService      *LedgerService
+	notifier           *notifier
+	ledgerService      *ledgerService
 	coordConn          *grpc.ClientConn
 	blockToBeCommitted chan *common.Block
 	committedBlock     chan *common.Block
@@ -75,6 +77,7 @@ func New(c *Config) (*Service, error) {
 	return &Service{
 		ordererClient:      ordererClient,
 		relay:              relayService,
+		notifier:           newNotifier(&c.Notification),
 		ledgerService:      ledgerService,
 		healthcheck:        connection.DefaultHealthCheckService(),
 		config:             c,
@@ -111,13 +114,18 @@ func (s *Service) Run(ctx context.Context) error {
 
 	g, gCtx := errgroup.WithContext(pCtx)
 
-	// Deliver the block with status to client runs independently of the coordinator connection lifecycle.
-	// eCtx will be cancelled if this service stopped processing the blocks due to ledger error.
+	// The following runs independently of the coordinator connection lifecycle.
+	// gCtx will be cancelled if these stopped processing due to ledger error.
 	// Such errors require human interaction to resolve the ledger discrepancy.
 	g.Go(func() error {
+		// Deliver the block with status to clients.
 		return s.ledgerService.run(gCtx, &ledgerRunConfig{
 			IncomingCommittedBlock: s.committedBlock,
 		})
+	})
+	g.Go(func() error {
+		// Notification for clients.
+		return s.notifier.run(gCtx)
 	})
 
 	g.Go(func() error {
@@ -136,6 +144,7 @@ func (s *Service) Run(ctx context.Context) error {
 // RegisterService registers for the sidecar's GRPC services.
 func (s *Service) RegisterService(server *grpc.Server) {
 	peer.RegisterDeliverServer(server, s.ledgerService)
+	protonotify.RegisterNotifierServer(server, s.notifier)
 	healthgrpc.RegisterHealthServer(server, s.healthcheck)
 }
 
@@ -177,6 +186,7 @@ func (s *Service) sendBlocksAndReceiveStatus(
 			configUpdater:                  s.configUpdater,
 			incomingBlockToBeCommitted:     s.blockToBeCommitted,
 			outgoingCommittedBlock:         s.committedBlock,
+			outgoingStatusUpdates:          s.notifier.statusQueue,
 			waitingTxsLimit:                s.config.WaitingTxsLimit,
 		})
 	})
@@ -372,11 +382,6 @@ func (s *Service) monitorQueues(ctx context.Context) {
 // Close closes the ledger.
 func (s *Service) Close() {
 	s.ledgerService.close()
-}
-
-// GetLedgerService returns the ledger that implements peer.DeliverServer.
-func (s *Service) GetLedgerService() *LedgerService {
-	return s.ledgerService
 }
 
 func waitForIdleCoordinator(ctx context.Context, client protocoordinatorservice.CoordinatorClient) error {

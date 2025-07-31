@@ -23,6 +23,11 @@ echo "Extracting protoc to $HOME/bin"
 unzip -jo "${protoc_zip_download_path}" 'bin/*' -d "$HOME/bin"
 rm -rf "${download_dir}"
 
+if which apt >/dev/null 2>&1; then
+  # Required for "duration" protobuf.
+  sudo apt install -y libprotobuf-dev
+fi
+
 echo
 echo "Installing protoc-gen-go"
 go install "google.golang.org/protobuf/cmd/protoc-gen-go@${protoc_gen_go_version}"
