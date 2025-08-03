@@ -58,7 +58,7 @@ func TestCoordinatorSecureConnection(t *testing.T) {
 	for _, TLSMode := range test.ServerModes {
 		test.RunSecureConnectionTest(t,
 			test.SecureConnectionArguments{
-				ServerCN:      "coordinator",
+				Service:       "coordinator",
 				ServerTLSMode: TLSMode,
 				TestCases:     test.BuildTestCases(t, TLSMode),
 				ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {

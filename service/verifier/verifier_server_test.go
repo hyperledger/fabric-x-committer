@@ -33,7 +33,7 @@ func TestVerifierSecureConnection(t *testing.T) {
 	for _, TLSMode := range test.ServerModes {
 		test.RunSecureConnectionTest(t,
 			test.SecureConnectionArguments{
-				ServerCN:      "verifier",
+				Service:       "verifier",
 				ServerTLSMode: TLSMode,
 				TestCases:     test.BuildTestCases(t, TLSMode),
 				ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {

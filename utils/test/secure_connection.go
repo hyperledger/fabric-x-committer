@@ -21,7 +21,7 @@ import (
 type (
 	// SecureConnectionArguments groups the arguments required to run a secure connection test.
 	SecureConnectionArguments struct {
-		ServerCN      string
+		Service       string
 		ServerTLSMode string
 		TestCases     []Case
 		ServerStarter ServerStarter
@@ -45,6 +45,8 @@ type (
 	// RequestFunc performs a request and returns the resulting error.
 	RequestFunc func(ctx context.Context) error
 )
+
+const defaultHostName = "localhost"
 
 // ServerModes is a list of server-side TLS modes used for testing.
 var ServerModes = []string{connection.MutualTLSMode, connection.ServerSideTLSMode, connection.NoneTLSMode}
@@ -95,7 +97,7 @@ func RunSecureConnectionTest(
 ) {
 	t.Helper()
 	tlsMgr := NewSecureCommunicationManager(t)
-	serverCreds := tlsMgr.CreateServerCertificate(t, secureConnArguments.ServerCN)
+	serverCreds := tlsMgr.CreateServerCertificate(t, defaultHostName)
 	serverTLS := CreateTLSConfigFromPaths(secureConnArguments.ServerTLSMode, serverCreds)
 	endpoint := secureConnArguments.ServerStarter(t, &serverTLS)
 
@@ -106,7 +108,7 @@ func RunSecureConnectionTest(
 		testCase := tc
 		t.Run(fmt.Sprintf(
 			"%s/%s/%s",
-			secureConnArguments.ServerCN,
+			secureConnArguments.Service,
 			secureConnArguments.ServerTLSMode,
 			testCase.testDescription,
 		), func(t *testing.T) {

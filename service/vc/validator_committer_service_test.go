@@ -39,7 +39,7 @@ func TestVCSecureConnection(t *testing.T) {
 	for _, TLSMode := range test.ServerModes {
 		test.RunSecureConnectionTest(t,
 			test.SecureConnectionArguments{
-				ServerCN:      "validator-committer",
+				Service:       "validator-committer",
 				ServerTLSMode: TLSMode,
 				TestCases:     test.BuildTestCases(t, TLSMode),
 				ServerStarter: func(t *testing.T, cfg *connection.TLSConfig) connection.Endpoint {
