@@ -51,7 +51,7 @@ var ServerModes = []string{connection.MutualTLSMode, connection.ServerSideTLSMod
 
 // BuildTestCases creates test cases based on the server's TLS mode.
 //
-// Cases:
+// The cases and their expected results:
 // Server Mode | Client with mTLS | Client with server-side TLS | Client with no TLS
 // ------------|------------------|-----------------------------|--------------------
 //

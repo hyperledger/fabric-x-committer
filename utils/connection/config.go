@@ -57,7 +57,11 @@ type (
 	}
 
 	// TLSConfig holds the TLS options and certificate paths
-	// for secure communication between servers and clients.
+	// used for secure communication between servers and clients.
+	//
+	// Credentials are built based on the configuration mode.
+	// For example, If only server-side TLS is required, the certificate pool (certPool) is not built (for a server),
+	// since the relevant certificates paths are defined in the YAML according to the selected mode.
 	TLSConfig struct {
 		Mode string `mapstructure:"tls-mode"`
 		// ServerName is required by the client if the server's certificate uses SAN (Subject Alternative Name).

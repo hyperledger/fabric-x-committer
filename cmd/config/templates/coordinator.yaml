@@ -35,9 +35,9 @@ verifier:
 
 validator-committer:
   endpoints:
-    {{- range .Endpoints.VCService }}
+   {{- range .Endpoints.VCService }}
     - {{ .Server }}
-    {{- end }}
+   {{- end }}
   creds:
     *ClientCreds
 

@@ -34,9 +34,10 @@ type (
 		// Instance endpoints.
 		ServiceEndpoints ServiceEndpoints
 
-		// Service Tls options and certificates.
+		// ServiceCreds holds the TLS configuration for a service.
 		ServiceCreds connection.TLSConfig
-		ClientCreds  connection.TLSConfig
+		// ClientCreds holds the TLS configuration used by a service when acting as a client to other services.
+		ClientCreds connection.TLSConfig
 
 		// System's resources.
 		Endpoints SystemEndpoints
