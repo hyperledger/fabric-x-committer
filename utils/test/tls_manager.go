@@ -37,10 +37,10 @@ func NewSecureCommunicationManager(t *testing.T) *SecureCommunicationManager {
 // Writing it to a temp testing folder and returns a map with the credential paths.
 func (scm *SecureCommunicationManager) CreateServerCertificate(
 	t *testing.T,
-	serverNameIndicator string,
+	san string,
 ) map[string]string {
 	t.Helper()
-	serverKeypair, err := scm.CertificateAuthority.NewServerCertKeyPair(serverNameIndicator)
+	serverKeypair, err := scm.CertificateAuthority.NewServerCertKeyPair(san)
 	require.NoError(t, err)
 	return createCertificatesPaths(t, createDataFromKeyPair(serverKeypair, scm.CertificateAuthority.CertBytes()))
 }

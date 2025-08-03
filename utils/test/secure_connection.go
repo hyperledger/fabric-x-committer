@@ -96,11 +96,11 @@ func RunSecureConnectionTest(
 	t.Helper()
 	tlsMgr := NewSecureCommunicationManager(t)
 	serverCreds := tlsMgr.CreateServerCertificate(t, secureConnArguments.ServerCN)
-	serverTLS := CreateTLSConfigFromPaths(secureConnArguments.ServerTLSMode, serverCreds, "")
+	serverTLS := CreateTLSConfigFromPaths(secureConnArguments.ServerTLSMode, serverCreds)
 	endpoint := secureConnArguments.ServerStarter(t, &serverTLS)
 
 	clientCreds := tlsMgr.CreateClientCertificate(t)
-	baseClientTLS := CreateTLSConfigFromPaths(connection.NoneTLSMode, clientCreds, secureConnArguments.ServerCN)
+	baseClientTLS := CreateTLSConfigFromPaths(connection.NoneTLSMode, clientCreds)
 
 	for _, tc := range secureConnArguments.TestCases {
 		testCase := tc
@@ -161,11 +161,9 @@ func CreateClientWithTLS[T any](
 func CreateTLSConfigFromPaths(
 	connectionMode string,
 	paths map[string]string,
-	serverName string,
 ) connection.TLSConfig {
 	return connection.TLSConfig{
 		Mode:        connectionMode,
-		ServerName:  serverName,
 		KeyPath:     paths["private-key"],
 		CertPath:    paths["public-key"],
 		CACertPaths: []string{paths["ca-certificate"]},

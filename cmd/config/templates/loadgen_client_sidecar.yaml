@@ -11,7 +11,6 @@ sidecar-client:
       - {{ .Endpoints.Sidecar.Server }}
     creds:
       tls-mode: {{ .ClientCreds.Mode }}
-      server-name: {{ .ClientCreds.ServerName }}
       cert-path: {{ .ClientCreds.CertPath }}
       key-path: {{ .ClientCreds.KeyPath }}
       ca-cert-paths:

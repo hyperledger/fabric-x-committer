@@ -64,8 +64,6 @@ type (
 	// since the relevant certificates paths are defined in the YAML according to the selected mode.
 	TLSConfig struct {
 		Mode string `mapstructure:"tls-mode"`
-		// ServerName is required by the client if the server's certificate uses SAN (Subject Alternative Name).
-		ServerName string `mapstructure:"server-name"`
 		// CertPath is the path to the certificate file (public key).
 		CertPath string `mapstructure:"cert-path"`
 		// KeyPath is the path to the key file (private key).
@@ -160,7 +158,6 @@ func (c *TLSConfig) buildClientCreds() (credentials.TransportCredentials, error)
 			}
 			tlsCfg.Certificates = []tls.Certificate{cert}
 		}
-		tlsCfg.ServerName = c.ServerName
 		return credentials.NewTLS(tlsCfg), nil
 
 	default:

@@ -189,7 +189,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 
 	t.Log("create TLS manager and clients certificate")
 	c.TLSManager = test.NewSecureCommunicationManager(t)
-	s.ClientCreds = c.createClientConfigTLS(t, connection.NewLocalHostServer().Endpoint.Host)
+	s.ClientCreds = c.createClientTLSConfig(t)
 
 	t.Log("Create processes")
 	c.MockOrderer = newProcess(t, cmdOrderer, s.WithEndpoint(s.Endpoints.Orderer[0]))
@@ -639,28 +639,17 @@ func (c *CommitterRuntime) createSystemConfigWithServerCerts(
 ) config.SystemConfig {
 	t.Helper()
 	serviceCfg := c.SystemConfig
-	serviceCfg.ServiceCreds = c.createServerConfigTLS(t, endpoints.Server.Host)
+	serviceCfg.ServiceCreds = test.CreateTLSConfigFromPaths(
+		c.config.TLS,
+		c.TLSManager.CreateServerCertificate(t, endpoints.Server.Host),
+	)
 	serviceCfg.ServiceEndpoints = endpoints
 	return serviceCfg
 }
 
-func (c *CommitterRuntime) createServerConfigTLS(t *testing.T, asServer string) connection.TLSConfig {
+func (c *CommitterRuntime) createClientTLSConfig(t *testing.T) connection.TLSConfig {
 	t.Helper()
-	// We pass asServer twice: first to generate the server's keys,
-	// and second to include the server name in the TLSConfig.
-	// Note: the SAN (Subject Alternative Name) is not used when creating
-	// the server's transport credentials, so passing it during TLS config
-	// creation is not strictly necessary.
-	return c.createConfigTLS(c.TLSManager.CreateServerCertificate(t, asServer), asServer)
-}
-
-func (c *CommitterRuntime) createClientConfigTLS(t *testing.T, forServer string) connection.TLSConfig {
-	t.Helper()
-	return c.createConfigTLS(c.TLSManager.CreateClientCertificate(t), forServer)
-}
-
-func (c *CommitterRuntime) createConfigTLS(paths map[string]string, serverName string) connection.TLSConfig {
-	return test.CreateTLSConfigFromPaths(c.config.TLS, paths, serverName)
+	return test.CreateTLSConfigFromPaths(c.config.TLS, c.TLSManager.CreateClientCertificate(t))
 }
 
 func isMoreThanOneBitSet(bits int) bool {

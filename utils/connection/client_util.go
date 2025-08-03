@@ -104,7 +104,8 @@ func newLoadBalancedDialConfig(
 ) *DialConfig {
 	resolverEndpoints := make([]resolver.Endpoint, len(endpoint))
 	for i, e := range endpoint {
-		resolverEndpoints[i] = resolver.Endpoint{Addresses: []resolver.Address{{Addr: e.Address()}}}
+		// we're setting ServerName for each address because each service-instance has its own certificates.
+		resolverEndpoints[i] = resolver.Endpoint{Addresses: []resolver.Address{{Addr: e.Address(), ServerName: e.Host}}}
 	}
 	r := manual.NewBuilderWithScheme(scResolverSchema)
 	r.UpdateState(resolver.State{Endpoints: resolverEndpoints})
