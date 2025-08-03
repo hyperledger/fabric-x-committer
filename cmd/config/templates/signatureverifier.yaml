@@ -12,7 +12,6 @@ server:
       {{- range .ServiceCreds.CACertPaths }}
       - {{ . }}
       {{- end }}
-
 monitoring:
   server:
     endpoint: {{ .ServiceEndpoints.Metrics | default "localhost:0" }}
