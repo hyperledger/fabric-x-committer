@@ -375,7 +375,7 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 				committed++
 			case protoblocktx.Status_ABORTED_MVCC_CONFLICT:
 				mvcc++
-			case protoblocktx.Status_ABORTED_DUPLICATE_TXID:
+			case protoblocktx.Status_REJECTED_DUPLICATE_TX_ID:
 				dup++
 			}
 		}

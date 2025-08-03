@@ -27,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
+	"github.com/hyperledger/fabric-x-committer/service/sidecar"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
@@ -568,27 +569,32 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 
 	c.ensureLastCommittedBlockNumber(t, blk.Header.Number)
 
+	var persistedTxIDs []string
+	persistedTxIDsStatus := make(map[string]*protoblocktx.StatusWithHeight)
 	nonDuplicateTxIDsStatus := make(map[string]*protoblocktx.StatusWithHeight)
-	var nonDupTxIDs []string
 	duplicateTxIDsStatus := make(map[string]*protoblocktx.StatusWithHeight)
 	for i, tID := range expected.TxIDs {
 		s := types.CreateStatusWithHeight(expected.Statuses[i], blk.Header.Number, i)
-		if expected.Statuses[i] != protoblocktx.Status_ABORTED_DUPLICATE_TXID {
+		if s.Code == protoblocktx.Status_REJECTED_DUPLICATE_TX_ID {
+			duplicateTxIDsStatus[tID] = s
+		} else {
 			nonDuplicateTxIDsStatus[tID] = s
-			nonDupTxIDs = append(nonDupTxIDs, tID)
-			continue
 		}
-		duplicateTxIDsStatus[tID] = s
+
+		if sidecar.IsStatusStoredInDB(s.Code) {
+			persistedTxIDsStatus[tID] = s
+			persistedTxIDs = append(persistedTxIDs, tID)
+		}
 	}
 
-	c.dbEnv.StatusExistsForNonDuplicateTxID(t, nonDuplicateTxIDsStatus)
+	c.dbEnv.StatusExistsForNonDuplicateTxID(t, persistedTxIDsStatus)
 	// For the duplicate txID, neither the status nor the height would match the entry in the
 	// transaction status table.
 	c.dbEnv.StatusExistsWithDifferentHeightForDuplicateTxID(t, duplicateTxIDsStatus)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Minute)
 	defer cancel()
-	test.EnsurePersistedTxStatus(ctx, t, c.CoordinatorClient, nonDupTxIDs, nonDuplicateTxIDsStatus)
+	test.EnsurePersistedTxStatus(ctx, t, c.CoordinatorClient, persistedTxIDs, persistedTxIDsStatus)
 }
 
 // CountStatus returns the number of transactions with a given tx status.

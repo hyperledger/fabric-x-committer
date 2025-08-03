@@ -286,7 +286,7 @@ func (db *database) insertTxStatus(
 	heights := make([][]byte, 0, numEntries)
 	for tID, status := range states.batchStatus.Status {
 		// We cannot insert a "duplicate ID" status since we already have a status entry with this ID.
-		if status.Code == protoblocktx.Status_ABORTED_DUPLICATE_TXID {
+		if status.Code == protoblocktx.Status_REJECTED_DUPLICATE_TX_ID {
 			continue
 		}
 		ids = append(ids, []byte(tID))

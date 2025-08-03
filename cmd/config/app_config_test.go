@@ -114,9 +114,8 @@ func TestReadConfigCoordinator(t *testing.T) {
 			Server:     makeServer("localhost", 9001),
 			Monitoring: makeMonitoring("localhost", 2119),
 			DependencyGraphConfig: &coordinator.DependencyGraphConfig{
-				NumOfLocalDepConstructors:       1,
-				WaitingTxsLimit:                 100_000,
-				NumOfWorkersForGlobalDepManager: 1,
+				NumOfLocalDepConstructors: 1,
+				WaitingTxsLimit:           100_000,
 			},
 			ChannelBufferSizePerGoroutine: 10,
 		},
@@ -129,9 +128,8 @@ func TestReadConfigCoordinator(t *testing.T) {
 			VerifierConfig:           *makeClientConfig("signature-verifier", 5001),
 			ValidatorCommitterConfig: *makeClientConfig("validator-persister", 6001),
 			DependencyGraphConfig: &coordinator.DependencyGraphConfig{
-				NumOfLocalDepConstructors:       1,
-				WaitingTxsLimit:                 10_000,
-				NumOfWorkersForGlobalDepManager: 1,
+				NumOfLocalDepConstructors: 1,
+				WaitingTxsLimit:           100_000,
 			},
 			ChannelBufferSizePerGoroutine: 10,
 		},

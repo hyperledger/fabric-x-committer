@@ -20,7 +20,6 @@ func NewViperWithCoordinatorDefaults() *viper.Viper {
 	v := NewViperWithServiceDefault(9001, 2119)
 	v.SetDefault("dependency-graph.num-of-local-dep-constructors", 1)
 	v.SetDefault("dependency-graph.waiting-txs-limit", 100_000)
-	v.SetDefault("dependency-graph.num-of-workers-for-global-dep-manager", 1)
 	v.SetDefault("per-channel-buffer-size-per-goroutine", 10)
 	return v
 }
