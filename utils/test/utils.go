@@ -275,6 +275,6 @@ func MakeClientConfig(ep ...*connection.Endpoint) *connection.ClientConfig {
 func MakeClientConfigWithCreds(tlsConfig *connection.TLSConfig, ep ...*connection.Endpoint) *connection.ClientConfig {
 	return &connection.ClientConfig{
 		Endpoints: ep,
-		Creds:     tlsConfig,
+		TLS:       tlsConfig,
 	}
 }

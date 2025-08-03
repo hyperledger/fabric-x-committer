@@ -4,8 +4,8 @@
 #
 server:
   endpoint: {{ .ServiceEndpoints.Server | default "localhost:0" }}
-  creds:
-    tls-mode: {{ .ServiceCreds.Mode }}
+  tls:
+    mode: {{ .ServiceCreds.Mode }}
     cert-path: {{ .ServiceCreds.CertPath }}
     key-path: {{ .ServiceCreds.KeyPath }}
     ca-cert-paths:
@@ -22,8 +22,8 @@ verifier:
     {{- range .Endpoints.Verifier }}
     - {{ .Server }}
     {{- end }}
-  creds: &ClientCreds
-    tls-mode: {{ .ClientCreds.Mode }}
+  tls: &ClientCreds
+    mode: {{ .ClientCreds.Mode }}
     key-path: {{ .ClientCreds.KeyPath }}
     cert-path: {{ .ClientCreds.CertPath }}
     ca-cert-paths:
@@ -36,7 +36,7 @@ validator-committer:
    {{- range .Endpoints.VCService }}
     - {{ .Server }}
    {{- end }}
-  creds:
+  tls:
     *ClientCreds
 
 dependency-graph:

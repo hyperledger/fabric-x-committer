@@ -52,7 +52,7 @@ func TestQuerySecureConnection(t *testing.T) {
 	t.Parallel()
 	for _, TLSMode := range test.ServerModes {
 		test.RunSecureConnectionTest(t,
-			test.SecureConnectionArguments{
+			test.SecureConnectionParameters{
 				Service:       "query",
 				ServerTLSMode: TLSMode,
 				TestCases:     test.BuildTestCases(t, TLSMode),
@@ -359,7 +359,7 @@ func newQueryServiceTestEnvWithServerAndClientCreds(
 				Host: "localhost",
 				Port: 0,
 			},
-			Creds: serverTLS,
+			TLS: serverTLS,
 		},
 		Database: dbConf,
 		Monitoring: monitoring.Config{

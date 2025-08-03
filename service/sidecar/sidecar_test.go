@@ -85,7 +85,7 @@ func TestSidecarSecureConnection(t *testing.T) {
 	var env *sidecarTestEnv
 	for _, TLSMode := range test.ServerModes {
 		test.RunSecureConnectionTest(t,
-			test.SecureConnectionArguments{
+			test.SecureConnectionParameters{
 				Service:       "sidecar",
 				ServerTLSMode: TLSMode,
 				TestCases:     test.BuildTestCases(t, TLSMode),

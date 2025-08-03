@@ -9,8 +9,8 @@ sidecar-client:
   client-config:
     endpoints:
       - {{ .Endpoints.Sidecar.Server }}
-    creds:
-      tls-mode: {{ .ClientCreds.Mode }}
+    tls:
+      mode: {{ .ClientCreds.Mode }}
       cert-path: {{ .ClientCreds.CertPath }}
       key-path: {{ .ClientCreds.KeyPath }}
       ca-cert-paths:

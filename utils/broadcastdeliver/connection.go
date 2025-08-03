@@ -196,7 +196,7 @@ func openConnection(
 	dialConfig, err := connection.NewLoadBalancedDialConfig(&connection.ClientConfig{
 		Endpoints: endpoints,
 		Retry:     conf.Retry,
-		Creds:     conf.Creds,
+		TLS:       conf.TLS,
 	})
 	if err != nil {
 		return nil, err

@@ -50,7 +50,7 @@ func New(config *Config) (*Client, error) {
 	connConfig := &broadcastdeliver.ConnectionConfig{
 		Endpoints: connection.ToOrdererEndpoints(config.Client.Endpoints...),
 		Retry:     config.Client.Retry,
-		Creds:     config.Client.Creds,
+		TLS:       config.Client.TLS,
 	}
 	if err := cm.Update(connConfig); err != nil {
 		return nil, err

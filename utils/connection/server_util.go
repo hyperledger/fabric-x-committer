@@ -43,14 +43,14 @@ func NewLocalHostServer() *ServerConfig {
 func NewLocalHostServerWithCreds(creds *TLSConfig) *ServerConfig {
 	return &ServerConfig{
 		Endpoint: *NewLocalHost(),
-		Creds:    creds,
+		TLS:      creds,
 	}
 }
 
 // GrpcServer instantiate a [*grpc.Server].
 func (c *ServerConfig) GrpcServer() (*grpc.Server, error) {
 	var opts []grpc.ServerOption
-	serverGrpcTransportCreds, err := c.Creds.ServerCredentials()
+	serverGrpcTransportCreds, err := c.TLS.ServerCredentials()
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed loading the server's grpc credentials")
 	}

@@ -9,6 +9,8 @@ package test
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,11 +18,19 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric/common/crypto/tlsgen"
 )
 
 type (
-	// SecureConnectionArguments groups the arguments required to run a secure connection test.
-	SecureConnectionArguments struct {
+	// SecureCommunicationManager responsible for the creation of
+	// TLS certificates for testing purposes by utilizing the tls generation library of 'Hyperledger Fabric'.
+	// Path map convention: private-key, public-key, ca-certificate.
+	SecureCommunicationManager struct {
+		CertificateAuthority tlsgen.CA
+	}
+
+	// SecureConnectionParameters groups the parameters required to run a secure connection test.
+	SecureConnectionParameters struct {
 		Service       string
 		ServerTLSMode string
 		TestCases     []Case
@@ -50,6 +60,67 @@ const defaultHostName = "localhost"
 
 // ServerModes is a list of server-side TLS modes used for testing.
 var ServerModes = []string{connection.MutualTLSMode, connection.ServerSideTLSMode, connection.NoneTLSMode}
+
+// NewSecureCommunicationManager returns a SecureCommunicationManager with a new CA.
+func NewSecureCommunicationManager(t *testing.T) *SecureCommunicationManager {
+	t.Helper()
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+	return &SecureCommunicationManager{
+		CertificateAuthority: ca,
+	}
+}
+
+// CreateServerCertificate creates a server key pair given SAN (Subject Alternative Name),
+// Writing it to a temp testing folder and returns a map with the credential paths.
+func (scm *SecureCommunicationManager) CreateServerCertificate(
+	t *testing.T,
+	san string,
+) map[string]string {
+	t.Helper()
+	serverKeypair, err := scm.CertificateAuthority.NewServerCertKeyPair(san)
+	require.NoError(t, err)
+	return createCertificatesPaths(t, createDataFromKeyPair(serverKeypair, scm.CertificateAuthority.CertBytes()))
+}
+
+// CreateClientCertificate creates a client key pair,
+// Writing it to a temp testing folder and returns a map with the credential paths.
+func (scm *SecureCommunicationManager) CreateClientCertificate(t *testing.T) map[string]string {
+	t.Helper()
+	clientKeypair, err := scm.CertificateAuthority.NewClientCertKeyPair()
+	require.NoError(t, err)
+	return createCertificatesPaths(t, createDataFromKeyPair(clientKeypair, scm.CertificateAuthority.CertBytes()))
+}
+
+func createCertificatesPaths(t *testing.T, data map[string][]byte) map[string]string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	t.Cleanup(func() {
+		require.NoError(t, os.RemoveAll(tmpDir))
+	})
+
+	paths := make(map[string]string)
+
+	for key, value := range data {
+		dataPath, err := saveBytesToFile(tmpDir, key, value)
+		require.NoError(t, err)
+		paths[key] = dataPath
+	}
+	return paths
+}
+
+func createDataFromKeyPair(keyPair *tlsgen.CertKeyPair, caCertificate []byte) map[string][]byte {
+	data := make(map[string][]byte)
+	data["private-key"] = keyPair.Key
+	data["public-key"] = keyPair.Cert
+	data["ca-certificate"] = caCertificate
+	return data
+}
+
+func saveBytesToFile(dir, filename string, data []byte) (string, error) {
+	filePath := filepath.Join(dir, filename)
+	return filePath, os.WriteFile(filePath, data, 0o600)
+}
 
 // BuildTestCases creates test cases based on the server's TLS mode.
 //
@@ -93,33 +164,33 @@ func BuildTestCases(t *testing.T, serverTLSMode string) []Case {
 // the server correctly accepts or rejects connections based on the client's setup.
 func RunSecureConnectionTest(
 	t *testing.T,
-	secureConnArguments SecureConnectionArguments,
+	secureConnParameters SecureConnectionParameters,
 ) {
 	t.Helper()
 	tlsMgr := NewSecureCommunicationManager(t)
 	serverCreds := tlsMgr.CreateServerCertificate(t, defaultHostName)
-	serverTLS := CreateTLSConfigFromPaths(secureConnArguments.ServerTLSMode, serverCreds)
-	endpoint := secureConnArguments.ServerStarter(t, &serverTLS)
+	serverTLS := CreateTLSConfigFromPaths(secureConnParameters.ServerTLSMode, serverCreds)
+	endpoint := secureConnParameters.ServerStarter(t, &serverTLS)
 
 	clientCreds := tlsMgr.CreateClientCertificate(t)
 	baseClientTLS := CreateTLSConfigFromPaths(connection.NoneTLSMode, clientCreds)
 
-	for _, tc := range secureConnArguments.TestCases {
+	for _, tc := range secureConnParameters.TestCases {
 		testCase := tc
 		t.Run(fmt.Sprintf(
 			"%s/%s/%s",
-			secureConnArguments.Service,
-			secureConnArguments.ServerTLSMode,
+			secureConnParameters.Service,
+			secureConnParameters.ServerTLSMode,
 			testCase.testDescription,
 		), func(t *testing.T) {
-			if secureConnArguments.Parallel {
+			if secureConnParameters.Parallel {
 				t.Parallel()
 			}
 
 			cfg := baseClientTLS
 			cfg.Mode = testCase.clientSecureMode
 
-			requestFunc := secureConnArguments.ClientStarter(t, &endpoint, &cfg)
+			requestFunc := secureConnParameters.ClientStarter(t, &endpoint, &cfg)
 
 			ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 			t.Cleanup(cancel)

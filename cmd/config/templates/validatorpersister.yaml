@@ -4,8 +4,8 @@
 #
 server:
   endpoint: {{ .ServiceEndpoints.Server | default "localhost:0" }}
-  creds:
-    tls-mode: {{ .ServiceCreds.Mode }}
+  tls:
+    mode: {{ .ServiceCreds.Mode }}
     cert-path: {{ .ServiceCreds.CertPath }}
     key-path: {{ .ServiceCreds.KeyPath }}
     ca-cert-paths:

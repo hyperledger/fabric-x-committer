@@ -22,14 +22,14 @@ type (
 	// ClientConfig contains the endpoints, CAs, and retry profile.
 	ClientConfig struct {
 		Endpoints []*Endpoint   `mapstructure:"endpoints"`
-		Creds     *TLSConfig    `mapstructure:"creds"`
+		TLS       *TLSConfig    `mapstructure:"tls"`
 		Retry     *RetryProfile `mapstructure:"reconnect"`
 	}
 
 	// ServerConfig describes the connection parameter for a server.
 	ServerConfig struct {
 		Endpoint  Endpoint               `mapstructure:"endpoint"`
-		Creds     *TLSConfig             `mapstructure:"creds"`
+		TLS       *TLSConfig             `mapstructure:"tls"`
 		KeepAlive *ServerKeepAliveConfig `mapstructure:"keep-alive"`
 
 		preAllocatedListener net.Listener
@@ -63,7 +63,7 @@ type (
 	// For example, If only server-side TLS is required, the certificate pool (certPool) is not built (for a server),
 	// since the relevant certificates paths are defined in the YAML according to the selected mode.
 	TLSConfig struct {
-		Mode string `mapstructure:"tls-mode"`
+		Mode string `mapstructure:"mode"`
 		// CertPath is the path to the certificate file (public key).
 		CertPath string `mapstructure:"cert-path"`
 		// KeyPath is the path to the key file (private key).
@@ -106,30 +106,25 @@ func (c *TLSConfig) buildServerCreds() (credentials.TransportCredentials, error)
 	switch c.Mode {
 	case NoneTLSMode, DefaultTLSMode:
 		return insecure.NewCredentials(), nil
-
 	case ServerSideTLSMode, MutualTLSMode:
+		tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
+
 		cert, err := tls.LoadX509KeyPair(c.CertPath, c.KeyPath)
 		if err != nil {
 			return nil, errors.Wrapf(err, "while loading server certificate and private key")
 		}
+		tlsCfg.Certificates = append(tlsCfg.Certificates, cert)
 
-		tlsCfg := &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			MinVersion:   tls.VersionTLS12,
-			ClientAuth:   tls.NoClientCert,
+		tlsCfg.ClientCAs, err = buildCertPool(c.CACertPaths)
+		if err != nil && c.Mode == MutualTLSMode {
+			return nil, err
 		}
 
 		if c.Mode == MutualTLSMode {
-			certPool, err := buildCertPool(c.CACertPaths)
-			if err != nil {
-				return nil, err
-			}
 			tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
-			tlsCfg.ClientCAs = certPool
 		}
 
 		return credentials.NewTLS(tlsCfg), nil
-
 	default:
 		return nil, errors.Errorf("unknown tls mode %v", c.Mode)
 	}
@@ -139,27 +134,21 @@ func (c *TLSConfig) buildClientCreds() (credentials.TransportCredentials, error)
 	switch c.Mode {
 	case NoneTLSMode, DefaultTLSMode:
 		return insecure.NewCredentials(), nil
-
 	case ServerSideTLSMode, MutualTLSMode:
-		certPool, err := buildCertPool(c.CACertPaths)
+		tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
+
+		cert, err := tls.LoadX509KeyPair(c.CertPath, c.KeyPath)
+		if err != nil && c.Mode == MutualTLSMode {
+			return nil, errors.Wrapf(err, "while loading client certificate and private key")
+		}
+		tlsCfg.Certificates = append(tlsCfg.Certificates, cert)
+
+		tlsCfg.RootCAs, err = buildCertPool(c.CACertPaths)
 		if err != nil {
 			return nil, err
 		}
 
-		tlsCfg := &tls.Config{
-			RootCAs:    certPool,
-			MinVersion: tls.VersionTLS12,
-		}
-
-		if c.Mode == MutualTLSMode {
-			cert, err := tls.LoadX509KeyPair(c.CertPath, c.KeyPath)
-			if err != nil {
-				return nil, errors.Wrapf(err, "while loading client certificate and private key")
-			}
-			tlsCfg.Certificates = []tls.Certificate{cert}
-		}
 		return credentials.NewTLS(tlsCfg), nil
-
 	default:
 		return nil, errors.Errorf("unknown tls mode: %v", c.Mode)
 	}
