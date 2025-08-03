@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -156,7 +157,7 @@ func BenchmarkDependencyGraph(b *testing.B) {
 func TestDependencyGraphManager(t *testing.T) {
 	t.Parallel()
 
-	keysPoll := makeTestKeys(t, 10)
+	keysPoll := makeTestKeys(t, 100)
 	keys := func(idx ...int) [][]byte {
 		k := make([][]byte, len(idx))
 		for i := range idx {
@@ -164,6 +165,8 @@ func TestDependencyGraphManager(t *testing.T) {
 		}
 		return k
 	}
+
+	const waitingTXsLimit = 20
 
 	for _, manType := range []string{"global-local", "simple"} {
 		t.Run(manType, func(t *testing.T) {
@@ -177,7 +180,7 @@ func TestDependencyGraphManager(t *testing.T) {
 				OutgoingDepFreeTxsNode:    outgoingTxs,
 				IncomingValidatedTxsNode:  validatedTxs,
 				NumOfLocalDepConstructors: 2,
-				WaitingTxsLimit:           20,
+				WaitingTxsLimit:           waitingTXsLimit,
 				PrometheusMetricsProvider: monitoring.NewProvider(),
 			})
 
@@ -250,7 +253,7 @@ func TestDependencyGraphManager(t *testing.T) {
 
 			ensureProcessedAndValidatedMetrics(t, metrics, 4, 4)
 			// after validating all txs, the dependency detector should be empty
-			ensureEmptyManager(t, manService)
+			ensureWaitingTXsLimit(t, manService, 0)
 
 			t.Log("check dependency in namespace")
 			// t2 depends on t1, t1 depends on t0.
@@ -330,25 +333,75 @@ func TestDependencyGraphManager(t *testing.T) {
 
 			ensureProcessedAndValidatedMetrics(t, metrics, 9, 9)
 			// after validating all txs, the dependency detector should be empty
-			ensureEmptyManager(t, manService)
+			ensureWaitingTXsLimit(t, manService, 0)
+
+			t.Log("check waiting TX limit")
+			txs := make([]*protoblocktx.Tx, waitingTXsLimit+1)
+			for i := range txs {
+				txs[i] = createTxForTest(t, nsID1ForTest, nil, keys(i), nil)
+			}
+			incomingTxs <- &TransactionBatch{
+				ID:     5,
+				Txs:    txs,
+				TxsNum: utils.Range(uint32(0), uint32(len(txs))), //nolint:gosec // int -> uint32.
+			}
+
+			txs2 := make([]*protoblocktx.Tx, 10)
+			for i := range txs2 {
+				txs2[i] = createTxForTest(t, nsID1ForTest, nil, keys(i+len(txs)), nil)
+			}
+			incomingTxs <- &TransactionBatch{
+				ID:     6,
+				Txs:    txs2,
+				TxsNum: utils.Range(uint32(0), uint32(len(txs2))), //nolint:gosec // int -> uint32.
+			}
+
+			depFreeTxs = <-outgoingTxs
+			require.Len(t, depFreeTxs, len(txs))
+			ensureNoOutputs(t, outgoingTxs)
+
+			ensureWaitingTXsLimit(t, manService, len(txs))
+			ensureNeverGreaterWaitingTXsLimit(t, manService, len(txs))
+
+			validatedTxs <- depFreeTxs
+			depFreeTxs = <-outgoingTxs
+			require.Len(t, depFreeTxs, len(txs2))
+			ensureNoOutputs(t, outgoingTxs)
+
+			ensureWaitingTXsLimit(t, manService, len(txs2))
+			ensureNeverGreaterWaitingTXsLimit(t, manService, len(txs2))
+
+			validatedTxs <- depFreeTxs
+			ensureWaitingTXsLimit(t, manService, 0)
 		})
 	}
 }
 
-func ensureEmptyManager(t *testing.T, m any) {
+func ensureWaitingTXsLimit(t *testing.T, m any, expectedValue int) {
 	t.Helper()
-	require.Eventually(t, func() bool {
-		switch mt := m.(type) {
-		case *Manager:
-			d := mt.globalDepManager.dependencyDetector
-			w := len(d.readOnlyKeyToWaitingTxs) + len(d.writeOnlyKeyToWaitingTxs) + len(d.readWriteKeyToWaitingTxs)
-			return w == 0
-		case *SimpleManager:
-			return mt.waitingTXs == 0
-		default:
-			return false
-		}
-	}, 2*time.Second, 100*time.Millisecond)
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		require.Equal(ct, expectedValue, getWaitingTXs(t, m))
+	}, 5*time.Second, 100*time.Millisecond)
+}
+
+func ensureNeverGreaterWaitingTXsLimit(t *testing.T, m any, expectedValue int) {
+	t.Helper()
+	require.Never(t, func() bool {
+		return getWaitingTXs(t, m) > expectedValue
+	}, 5*time.Second, 100*time.Millisecond)
+}
+
+func getWaitingTXs(t *testing.T, m any) int {
+	t.Helper()
+	switch mt := m.(type) {
+	case *Manager:
+		d := mt.globalDepManager
+		return d.waitingTxsLimit - int(d.waitingTxsSlots.Load(t))
+	case *SimpleManager:
+		return mt.waitingTXs
+	default:
+		return -1
+	}
 }
 
 func ensureNoOutputs(t *testing.T, outgoingTxs <-chan TxNodeBatch) {

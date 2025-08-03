@@ -18,15 +18,15 @@ type (
 	// SimpleManager is the simpler version of the dependency graph module.
 	// It uses only 3 go routines, and a single regular map.
 	SimpleManager struct {
-		in              <-chan *TransactionBatch
-		out             chan<- TxNodeBatch
-		val             <-chan TxNodeBatch
-		waitingTxsLimit int
-		batchQueue      chan TxNodeBatch
-		valQueue        chan validatedBatch
-		keyToWaitingTXs map[string]*waiting
-		waitingTXs      int
-		metrics         *perfMetrics
+		in                              <-chan *TransactionBatch
+		out                             chan<- TxNodeBatch
+		val                             <-chan TxNodeBatch
+		waitingTxsLimit                 int
+		preProcessedTxBatchQueue        chan TxNodeBatch
+		preProcessedValidatedBatchQueue chan validatedBatch
+		keyToWaitingTXs                 map[string]*waiting
+		waitingTXs                      int
+		metrics                         *perfMetrics
 	}
 
 	validatedBatch struct {
@@ -49,14 +49,14 @@ type (
 // NewSimpleManager create a simple dependency graph manager.
 func NewSimpleManager(p *Parameters) *SimpleManager {
 	return &SimpleManager{
-		in:              p.IncomingTxs,
-		out:             p.OutgoingDepFreeTxsNode,
-		val:             p.IncomingValidatedTxsNode,
-		waitingTxsLimit: p.WaitingTxsLimit,
-		batchQueue:      make(chan TxNodeBatch, cap(p.IncomingTxs)),
-		valQueue:        make(chan validatedBatch, cap(p.IncomingValidatedTxsNode)),
-		keyToWaitingTXs: make(map[string]*waiting),
-		metrics:         newPerformanceMetrics(p.PrometheusMetricsProvider),
+		in:                              p.IncomingTxs,
+		out:                             p.OutgoingDepFreeTxsNode,
+		val:                             p.IncomingValidatedTxsNode,
+		waitingTxsLimit:                 p.WaitingTxsLimit,
+		preProcessedTxBatchQueue:        make(chan TxNodeBatch, cap(p.IncomingTxs)),
+		preProcessedValidatedBatchQueue: make(chan validatedBatch, cap(p.IncomingValidatedTxsNode)),
+		keyToWaitingTXs:                 make(map[string]*waiting),
+		metrics:                         newPerformanceMetrics(p.PrometheusMetricsProvider),
 	}
 }
 
@@ -82,10 +82,10 @@ func (m *SimpleManager) Run(ctx context.Context) {
 }
 
 // preProcessIn maps the data.
-// - in  (TransactionBatch) -> batchQueue (TxNodeBatch).
+// - in  (TransactionBatch) -> preProcessedTxBatchQueue (TxNodeBatch).
 func (m *SimpleManager) preProcessIn(ctx context.Context) {
 	in := channel.NewReader(ctx, m.in)
-	batchQueue := channel.NewWriter(ctx, m.batchQueue)
+	batchQueue := channel.NewWriter(ctx, m.preProcessedTxBatchQueue)
 	for ctx.Err() == nil {
 		batch, ok := in.Read()
 		if !ok {
@@ -102,10 +102,10 @@ func (m *SimpleManager) preProcessIn(ctx context.Context) {
 }
 
 // preProcessVal maps the data.
-// - val (TxNodeBatch)      -> valQueue   (validated).
+// - val (TxNodeBatch)      -> preProcessedValidatedBatchQueue   (validated).
 func (m *SimpleManager) preProcessVal(ctx context.Context) {
 	val := channel.NewReader(ctx, m.val)
-	valQueue := channel.NewWriter(ctx, m.valQueue)
+	valQueue := channel.NewWriter(ctx, m.preProcessedValidatedBatchQueue)
 	for ctx.Err() == nil {
 		batch, ok := val.Read()
 		if !ok {
@@ -126,7 +126,7 @@ func (m *SimpleManager) preProcessVal(ctx context.Context) {
 func (m *SimpleManager) taskProcessing(ctx context.Context) {
 	out := channel.NewWriter(ctx, m.out)
 	for ctx.Err() == nil {
-		batchQueue := m.batchQueue
+		batchQueue := m.preProcessedTxBatchQueue
 		if m.waitingTXs > m.waitingTxsLimit {
 			// When we passed the waiting TX limit, we only fetch from the validation queue.
 			batchQueue = nil
@@ -140,7 +140,7 @@ func (m *SimpleManager) taskProcessing(ctx context.Context) {
 			depFree = m.processTxBatch(batch)
 			promutil.AddToCounter(m.metrics.gdgTxProcessedTotal, len(batch))
 			promutil.AddToGauge(m.metrics.dependentTransactionsQueueSize, len(batch)-len(depFree))
-		case batch := <-m.valQueue:
+		case batch := <-m.preProcessedValidatedBatchQueue:
 			depFree = m.processValidatedBatch(batch)
 			promutil.AddToCounter(m.metrics.gdgValidatedTxProcessedTotal, batch.txCount)
 			promutil.SubFromGauge(m.metrics.dependentTransactionsQueueSize, len(depFree))
