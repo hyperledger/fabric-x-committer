@@ -107,21 +107,24 @@ func (c *TLSConfig) buildServerCreds() (credentials.TransportCredentials, error)
 	case NoneTLSMode, DefaultTLSMode:
 		return insecure.NewCredentials(), nil
 	case ServerSideTLSMode, MutualTLSMode:
-		tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
-
 		cert, err := tls.LoadX509KeyPair(c.CertPath, c.KeyPath)
 		if err != nil {
 			return nil, errors.Wrapf(err, "while loading server certificate and private key")
 		}
-		tlsCfg.Certificates = append(tlsCfg.Certificates, cert)
 
-		tlsCfg.ClientCAs, err = buildCertPool(c.CACertPaths)
-		if err != nil && c.Mode == MutualTLSMode {
-			return nil, err
+		tlsCfg := &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS12,
+			ClientAuth:   tls.NoClientCert,
 		}
 
 		if c.Mode == MutualTLSMode {
+			certPool, err := buildCertPool(c.CACertPaths)
+			if err != nil {
+				return nil, err
+			}
 			tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
+			tlsCfg.ClientCAs = certPool
 		}
 
 		return credentials.NewTLS(tlsCfg), nil
@@ -134,21 +137,27 @@ func (c *TLSConfig) buildClientCreds() (credentials.TransportCredentials, error)
 	switch c.Mode {
 	case NoneTLSMode, DefaultTLSMode:
 		return insecure.NewCredentials(), nil
+
 	case ServerSideTLSMode, MutualTLSMode:
-		tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
-
-		cert, err := tls.LoadX509KeyPair(c.CertPath, c.KeyPath)
-		if err != nil && c.Mode == MutualTLSMode {
-			return nil, errors.Wrapf(err, "while loading client certificate and private key")
-		}
-		tlsCfg.Certificates = append(tlsCfg.Certificates, cert)
-
-		tlsCfg.RootCAs, err = buildCertPool(c.CACertPaths)
+		certPool, err := buildCertPool(c.CACertPaths)
 		if err != nil {
 			return nil, err
 		}
 
+		tlsCfg := &tls.Config{
+			RootCAs:    certPool,
+			MinVersion: tls.VersionTLS12,
+		}
+
+		if c.Mode == MutualTLSMode {
+			cert, err := tls.LoadX509KeyPair(c.CertPath, c.KeyPath)
+			if err != nil {
+				return nil, errors.Wrapf(err, "while loading client certificate and private key")
+			}
+			tlsCfg.Certificates = []tls.Certificate{cert}
+		}
 		return credentials.NewTLS(tlsCfg), nil
+
 	default:
 		return nil, errors.Errorf("unknown tls mode: %v", c.Mode)
 	}
