@@ -317,17 +317,29 @@ func (dc *DatabaseContainer) ContainerID() string {
 	return dc.containerID
 }
 
-// ExecuteCommand execute a given command in the container.
-func (dc *DatabaseContainer) ExecuteCommand(t *testing.T, cmd []string) {
+// ExecuteCommand executes a command and returns the container output.
+func (dc *DatabaseContainer) ExecuteCommand(t *testing.T, cmd []string) string {
 	t.Helper()
 	require.NotNil(t, dc.client)
 	t.Logf("executing %s", strings.Join(cmd, " "))
+
+	var stdout strings.Builder
 	exec, err := dc.client.CreateExec(docker.CreateExecOptions{
-		Container: dc.containerID,
-		Cmd:       cmd,
+		Container:    dc.containerID,
+		Cmd:          cmd,
+		AttachStdout: true,
 	})
 	require.NoError(t, err)
-	require.NoError(t, dc.client.StartExec(exec.ID, docker.StartExecOptions{}))
+	require.NoError(t, dc.client.StartExec(exec.ID, docker.StartExecOptions{
+		OutputStream: &stdout,
+		RawTerminal:  false,
+	}))
+
+	inspect, err := dc.client.InspectExec(exec.ID)
+	require.NoError(t, err)
+	require.Equal(t, 0, inspect.ExitCode)
+
+	return stdout.String()
 }
 
 // EnsureNodeReadiness checks the container's readiness by monitoring its logs and ensure its running correctly.
@@ -387,43 +399,4 @@ func GetDockerClient(t *testing.T) *docker.Client {
 	client, err := docker.NewClientFromEnv()
 	require.NoError(t, err)
 	return client
-}
-
-func GetDockerContainersIPs(t *testing.T) {
-	client, err := docker.NewClientFromEnv()
-	if err != nil {
-		t.Fatalf("Failed to create Docker client: %v", err)
-	}
-
-	containers, err := client.ListContainers(docker.ListContainersOptions{All: true})
-	if err != nil {
-		t.Fatalf("Failed to list containers: %v", err)
-	}
-
-	for _, container := range containers {
-		info, err := client.InspectContainer(container.ID)
-		if err != nil {
-			t.Errorf("Failed to inspect container %s: %v", container.ID, err)
-			continue
-		}
-
-		name := info.Name
-		if len(name) > 0 && name[0] == '/' {
-			name = name[1:]
-		}
-
-		// Try to get IP from custom network(s)
-		networkIPs := ""
-		for netName, net := range info.NetworkSettings.Networks {
-			if net.IPAddress != "" {
-				networkIPs += fmt.Sprintf("[%s: %s] ", netName, net.IPAddress)
-			}
-		}
-
-		if networkIPs == "" {
-			t.Logf("Container %s has no IP (not connected to a network with an IP)", name)
-		} else {
-			fmt.Printf("Container: %-20s IPs: %s\n", name, networkIPs)
-		}
-	}
 }
