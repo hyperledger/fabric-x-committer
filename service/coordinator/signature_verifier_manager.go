@@ -202,6 +202,7 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 	inputTxBatch channel.Reader[dependencygraph.TxNodeBatch],
 ) error {
 	var policyVersion uint64
+	firstBatch := true
 	for {
 		txBatch, ctxAlive := inputTxBatch.Read()
 		if !ctxAlive {
@@ -231,11 +232,60 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 			}
 		}
 
+		if firstBatch {
+			if err := splitAndSendToVerifier(stream, request); err != nil {
+				return err
+			}
+			firstBatch = false
+			continue
+		}
+
 		if err := stream.Send(request); err != nil {
-			return errors.Wrap(err, "send to stream ended with error")
+			return errors.Wrap(err, streamEndErrWrap)
 		}
 		logger.Debugf("Batch contains %d TXs, and was stored in the accumulator and sent to a sv", batchSize)
 	}
+}
+
+func splitAndSendToVerifier(
+	stream protosigverifierservice.Verifier_StartStreamClient,
+	r *protosigverifierservice.RequestBatch,
+) error {
+	// We group transactions by block to ensure our batch sizes do not exceed the gRPC message limit.
+	// This strategy prevents RESOURCE_EXHAUSTED errors because the orderer's maximum block size
+	// will be configured to be safely smaller than the gRPC send/receive limit.
+	// For added safety, we can split each block's transactions into more batches, but this is deferred for now
+	// until the orderer implements all sanity checks on the configuration provided in the config block.
+	// For example, if the orderer can enforce that the maximum block size should be at most half of the
+	// maximum message size in gRPC, one batch would be adequate.
+	blkToBatch := make(map[uint64]*protosigverifierservice.RequestBatch)
+	for _, req := range r.Requests {
+		rBatch, ok := blkToBatch[req.BlockNum]
+		if !ok {
+			rBatch = &protosigverifierservice.RequestBatch{
+				Requests: make([]*protosigverifierservice.Request, 0, len(r.Requests)),
+			}
+			blkToBatch[req.BlockNum] = rBatch
+		}
+
+		rBatch.Requests = append(rBatch.Requests, req)
+	}
+
+	updateSent := false
+	for _, rBatch := range blkToBatch {
+		if !updateSent {
+			rBatch.Update = r.Update
+			updateSent = false
+		}
+
+		if err := stream.Send(rBatch); err != nil {
+			// ResourceExhausted should not occur here, as we have split a block's transactions
+			// into two batches, assuming the block size is less than the maximum gRPC message size.
+			return errors.Wrap(err, streamEndErrWrap)
+		}
+	}
+
+	return nil
 }
 
 func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
