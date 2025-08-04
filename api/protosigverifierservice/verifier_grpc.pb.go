@@ -52,7 +52,7 @@ func (c *verifierClient) StartStream(ctx context.Context, opts ...grpc.CallOptio
 }
 
 type Verifier_StartStreamClient interface {
-	Send(*RequestBatch) error
+	Send(*Batch) error
 	Recv() (*ResponseBatch, error)
 	grpc.ClientStream
 }
@@ -61,7 +61,7 @@ type verifierStartStreamClient struct {
 	grpc.ClientStream
 }
 
-func (x *verifierStartStreamClient) Send(m *RequestBatch) error {
+func (x *verifierStartStreamClient) Send(m *Batch) error {
 	return x.ClientStream.SendMsg(m)
 }
 
@@ -107,7 +107,7 @@ func _Verifier_StartStream_Handler(srv interface{}, stream grpc.ServerStream) er
 
 type Verifier_StartStreamServer interface {
 	Send(*ResponseBatch) error
-	Recv() (*RequestBatch, error)
+	Recv() (*Batch, error)
 	grpc.ServerStream
 }
 
@@ -119,8 +119,8 @@ func (x *verifierStartStreamServer) Send(m *ResponseBatch) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *verifierStartStreamServer) Recv() (*RequestBatch, error) {
-	m := new(RequestBatch)
+func (x *verifierStartStreamServer) Recv() (*Batch, error) {
+	m := new(Batch)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}

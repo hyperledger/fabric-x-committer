@@ -14,53 +14,54 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"google.golang.org/grpc"
 
-	"github.com/hyperledger/fabric-x-committer/utils/broadcastdeliver"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/deliver"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
 
 type (
 	// Client allow connecting to the sidecar to deliver blocks.
 	Client struct {
-		broadcastdeliver.DeliverCftClient
+		deliver.CftClient
 	}
 
-	// Config is used to define the connection properties to the sidecar.
-	Config struct {
+	// Parameters used to define the connection properties to the sidecar.
+	Parameters struct {
 		Endpoint  *connection.Endpoint
 		ChannelID string
 		Retry     *connection.RetryProfile
 	}
 
-	// DeliverConfig holds the configuration needed for deliver to run.
-	// This is copy of broadcastdeliver.DeliverConfig to allow easy divergence in the future.
-	DeliverConfig struct {
+	// DeliverParameters needed for deliver to run.
+	// This is copy of deliver.Parameters to allow easy divergence in the future.
+	DeliverParameters struct {
 		StartBlkNum int64
 		EndBlkNum   uint64
 		OutputBlock chan<- *common.Block
 	}
 
-	// ledgerDeliverStream implements DeliverStream.
+	// ledgerDeliverStream implements deliver.Stream.
 	ledgerDeliverStream struct {
 		peer.Deliver_DeliverClient
 	}
 )
 
 // New instantiate a new sidecar client.
-func New(config *Config) (*Client, error) {
-	cm := &broadcastdeliver.OrdererConnectionManager{}
-	connConfig := &broadcastdeliver.ConnectionConfig{
-		Endpoints: []*connection.OrdererEndpoint{{Endpoint: *config.Endpoint}},
+func New(config *Parameters) (*Client, error) {
+	cm := &ordererconn.ConnectionManager{}
+	connConfig := &ordererconn.ConnectionConfig{
+		Endpoints: []*ordererconn.Endpoint{{Endpoint: *config.Endpoint}},
 		Retry:     config.Retry,
 	}
 	if err := cm.Update(connConfig); err != nil {
 		return nil, err
 	}
 	return &Client{
-		DeliverCftClient: broadcastdeliver.DeliverCftClient{
+		CftClient: deliver.CftClient{
 			ConnectionManager: cm,
 			ChannelID:         config.ChannelID,
 			StreamCreator: func(ctx context.Context, conn grpc.ClientConnInterface) (
-				broadcastdeliver.DeliverStream, error,
+				deliver.Stream, error,
 			) {
 				client, err := peer.NewDeliverClient(conn).Deliver(ctx)
 				if err != nil {
@@ -72,11 +73,16 @@ func New(config *Config) (*Client, error) {
 	}, nil
 }
 
+// Close closes all the connections.
+func (c *Client) Close() {
+	c.ConnectionManager.Close()
+}
+
 // Deliver start receiving blocks starting from config.StartBlkNum to config.OutputBlock.
 // The value of config.StartBlkNum is updated with the latest block number.
-// This is a wrapper for DeliverCftClient.Deliver to allow easy divergence in the future.
-func (c *Client) Deliver(ctx context.Context, config *DeliverConfig) error {
-	return c.DeliverCftClient.Deliver(ctx, &broadcastdeliver.DeliverConfig{
+// This is a wrapper for CftClient.Deliver to allow easy divergence in the future.
+func (c *Client) Deliver(ctx context.Context, config *DeliverParameters) error {
+	return c.CftClient.Deliver(ctx, &deliver.Parameters{
 		StartBlkNum: config.StartBlkNum,
 		EndBlkNum:   config.EndBlkNum,
 		OutputBlock: config.OutputBlock,

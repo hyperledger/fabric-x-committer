@@ -65,7 +65,7 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 		}
 
 		logger.Infof("Set verification verification policy")
-		err = streams[i].Send(&protosigverifierservice.RequestBatch{Update: updateMsg})
+		err = streams[i].Send(&protosigverifierservice.Batch{Update: updateMsg})
 		if err != nil {
 			return errors.Wrap(err, "failed submitting verification policy")
 		}
@@ -73,7 +73,7 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 
 	for _, stream := range streams {
 		g.Go(func() error {
-			return sendBlocks(gCtx, &c.commonAdapter, txStream, c.mapToBatch, stream.Send)
+			return sendBlocks(gCtx, &c.commonAdapter, txStream, workload.MapToVerifierBatch, stream.Send)
 		})
 		g.Go(func() error {
 			defer dCancel() // We stop sending if we can't track the received items.
@@ -132,7 +132,7 @@ func (c *SvAdapter) receiveStatus(
 		statusBatch := make([]metrics.TxStatus, len(responseBatch.Responses))
 		for i, response := range responseBatch.Responses {
 			logger.Debugf("Received Responses: %s", response.Status)
-			statusBatch[i] = metrics.TxStatus{TxID: response.TxId, Status: response.Status}
+			statusBatch[i] = metrics.TxStatus{TxID: response.Ref.TxId, Status: response.Status}
 		}
 		c.res.Metrics.OnReceiveBatch(statusBatch)
 		if c.res.isReceiveLimit() {
@@ -140,17 +140,4 @@ func (c *SvAdapter) receiveStatus(
 		}
 	}
 	return nil
-}
-
-// mapToBatch creates a Verifier request batch. It uses the protoblocktx.Tx.Id to track the TXs latency.
-func (c *SvAdapter) mapToBatch(txs []*protoblocktx.Tx) (*protosigverifierservice.RequestBatch, []string, error) {
-	reqs := make([]*protosigverifierservice.Request, len(txs))
-	for i, tx := range txs {
-		reqs[i] = &protosigverifierservice.Request{
-			BlockNum: c.NextBlockNum(),
-			TxNum:    uint64(i), //nolint:gosec // int -> uint64.
-			Tx:       tx,
-		}
-	}
-	return &protosigverifierservice.RequestBatch{Requests: reqs}, getTXsIDs(txs), nil
 }

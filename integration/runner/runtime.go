@@ -10,20 +10,20 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"sync"
+	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
+	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
@@ -33,10 +33,10 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
-	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/broadcastdeliver"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
@@ -57,10 +57,7 @@ type (
 
 		dbEnv *vc.DatabaseTestEnv
 
-		ordererEndpoints []*connection.OrdererEndpoint
-
-		ordererClient      *broadcastdeliver.Client
-		ordererStream      *broadcastdeliver.EnvelopedStream
+		ordererStream      *test.BroadcastStream
 		CoordinatorClient  protocoordinatorservice.CoordinatorClient
 		QueryServiceClient protoqueryservice.QueryServiceClient
 		sidecarClient      *sidecarclient.Client
@@ -69,8 +66,7 @@ type (
 
 		CommittedBlock chan *common.Block
 
-		nsToCrypto     map[string]*Crypto
-		nsToCryptoLock sync.Mutex
+		TxBuilder *workload.TxBuilder
 
 		config *Config
 
@@ -132,6 +128,8 @@ const (
 	// loadGenMatcher is used to extract only the load generator flags from the full service flags value.
 	loadGenMatcher = LoadGenForOnlyOrderer | LoadGenForOrderer | LoadGenForCommitter | LoadGenForCoordinator |
 		LoadGenForVCService | LoadGenForVerifier
+
+	TestChannelName = "channel1"
 )
 
 // NewRuntime creates a new test runtime.
@@ -141,17 +139,20 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	c := &CommitterRuntime{
 		config: conf,
 		SystemConfig: config.SystemConfig{
-			ChannelID:         "channel1",
 			BlockSize:         conf.BlockSize,
 			BlockTimeout:      conf.BlockTimeout,
 			LoadGenBlockLimit: conf.LoadgenBlockLimit,
 			LoadGenWorkers:    1,
-			Logging:           &logging.DefaultConfig,
+			Policy: &workload.PolicyProfile{
+				ChannelID:         TestChannelName,
+				NamespacePolicies: make(map[string]*workload.Policy),
+			},
+			Logging: &logging.DefaultConfig,
 		},
-		nsToCrypto:       make(map[string]*Crypto),
 		CommittedBlock:   make(chan *common.Block, 100),
 		seedForCryptoGen: rand.New(rand.NewSource(10)),
 	}
+	c.AddOrUpdateNamespaces(t, types.MetaNamespaceID, workload.GeneratedNamespaceID, "1", "2", "3")
 
 	t.Log("Making DB env")
 	if conf.DBCluster == nil {
@@ -165,6 +166,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	s.DB.LoadBalance = c.dbEnv.DBConf.LoadBalance
 	s.DB.Endpoints = c.dbEnv.DBConf.Endpoints
 	s.LedgerPath = t.TempDir()
+	s.ConfigBlockPath = filepath.Join(t.TempDir(), "config-block.pb.bin")
 
 	t.Log("Allocating ports")
 	ports := portAllocator{}
@@ -176,19 +178,18 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	s.Endpoints.Coordinator = ports.allocatePorts(t, 1)[0]
 	s.Endpoints.Sidecar = ports.allocatePorts(t, 1)[0]
 	s.Endpoints.LoadGen = ports.allocatePorts(t, 1)[0]
-	t.Logf("Endpoints: %s", &utils.LazyJSON{O: s.Endpoints, Indent: "  "})
+	s.Policy.OrdererEndpoints = make([]*ordererconn.Endpoint, len(s.Endpoints.Orderer))
+	for i, e := range s.Endpoints.Orderer {
+		s.Policy.OrdererEndpoints[i] = &ordererconn.Endpoint{MspID: "org", Endpoint: *e.Server}
+	}
+
+	test.LogStruct(t, "System Parameters", s)
 
 	t.Log("Creating config block")
-	c.ordererEndpoints = make([]*connection.OrdererEndpoint, len(s.Endpoints.Orderer))
-	for i, e := range s.Endpoints.Orderer {
-		c.ordererEndpoints[i] = &connection.OrdererEndpoint{MspID: "org", Endpoint: *e.Server}
-	}
-	metaCrypto := c.CreateCryptoForNs(t, types.MetaNamespaceID, signature.Ecdsa)
-	s.ConfigBlockPath = config.CreateConfigBlock(t, &config.ConfigBlock{
-		ChannelID:                    s.ChannelID,
-		OrdererEndpoints:             c.ordererEndpoints,
-		MetaNamespaceVerificationKey: metaCrypto.PubKey,
-	})
+	configBlock, err := workload.CreateConfigBlock(s.Policy)
+	require.NoError(t, err)
+	err = configtxgen.WriteOutputBlock(configBlock, s.ConfigBlockPath)
+	require.NoError(t, err)
 
 	t.Log("Create processes")
 	c.MockOrderer = newProcess(t, cmdOrderer, s.WithEndpoint(s.Endpoints.Orderer[0]))
@@ -211,24 +212,23 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(clientConn(t, s.Endpoints.Query.Server))
 	c.notifyClient = protonotify.NewNotifierClient(clientConn(t, s.Endpoints.Sidecar.Server))
 
-	var err error
-	c.ordererClient, err = broadcastdeliver.New(&broadcastdeliver.Config{
-		Connection: broadcastdeliver.ConnectionConfig{
-			Endpoints: c.ordererEndpoints,
+	c.ordererStream, err = test.NewBroadcastStream(t.Context(), &ordererconn.Config{
+		Connection: ordererconn.ConnectionConfig{
+			Endpoints: s.Policy.OrdererEndpoints,
 		},
-		ChannelID:     s.ChannelID,
-		ConsensusType: broadcastdeliver.Bft,
+		ChannelID:     s.Policy.ChannelID,
+		Identity:      s.Policy.Identity,
+		ConsensusType: ordererconn.Bft,
 	})
 	require.NoError(t, err)
+	t.Cleanup(c.ordererStream.Close)
 
-	c.ordererStream, err = c.ordererClient.Broadcast(t.Context())
-	require.NoError(t, err)
-
-	c.sidecarClient, err = sidecarclient.New(&sidecarclient.Config{
-		ChannelID: s.ChannelID,
+	c.sidecarClient, err = sidecarclient.New(&sidecarclient.Parameters{
+		ChannelID: s.Policy.ChannelID,
 		Endpoint:  s.Endpoints.Sidecar.Server,
 	})
 	require.NoError(t, err)
+	t.Cleanup(c.sidecarClient.Close)
 	return c
 }
 
@@ -302,14 +302,6 @@ func (c *CommitterRuntime) startLoadGen(t *testing.T, serviceFlags int) {
 		return
 	}
 	s := c.SystemConfig
-	s.Policy = &workload.PolicyProfile{
-		NamespacePolicies: make(map[string]*workload.Policy),
-	}
-	// We create the crypto profile for the generated namespace to ensure consistency.
-	c.GerOrCreateCryptoForNs(t, workload.GeneratedNamespaceID, signature.Ecdsa)
-	for _, cr := range c.GetAllCrypto() {
-		s.Policy.NamespacePolicies[cr.Namespace] = cr.Profile
-	}
 
 	isDist := serviceFlags&LoadGenForDistributedLoadGen != 0
 	if isDist {
@@ -328,8 +320,8 @@ func (c *CommitterRuntime) startBlockDelivery(t *testing.T) {
 	t.Helper()
 	t.Log("Running delivery client")
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
-		return connection.FilterStreamRPCError(c.sidecarClient.Deliver(ctx, &sidecarclient.DeliverConfig{
-			EndBlkNum:   broadcastdeliver.MaxBlockNum,
+		return connection.FilterStreamRPCError(c.sidecarClient.Deliver(ctx, &sidecarclient.DeliverParameters{
+			EndBlkNum:   deliver.MaxBlockNum,
 			OutputBlock: c.CommittedBlock,
 		}))
 	}, func(ctx context.Context) bool {
@@ -351,6 +343,20 @@ func clientConn(t *testing.T, e *connection.Endpoint) *grpc.ClientConn {
 	return serviceConnection
 }
 
+// AddOrUpdateNamespaces adds policies for namespaces. If already exists, the policy will be updated.
+func (c *CommitterRuntime) AddOrUpdateNamespaces(t *testing.T, namespaces ...string) {
+	t.Helper()
+	for _, ns := range namespaces {
+		c.SystemConfig.Policy.NamespacePolicies[ns] = &workload.Policy{
+			Scheme: signature.Ecdsa,
+			Seed:   c.seedForCryptoGen.Int63(),
+		}
+	}
+	var err error
+	c.TxBuilder, err = workload.NewTxBuilderFromPolicy(c.SystemConfig.Policy, nil)
+	require.NoError(t, err)
+}
+
 // CreateNamespacesAndCommit creates namespaces in the committer.
 func (c *CommitterRuntime) CreateNamespacesAndCommit(t *testing.T, namespaces ...string) {
 	t.Helper()
@@ -359,72 +365,56 @@ func (c *CommitterRuntime) CreateNamespacesAndCommit(t *testing.T, namespaces ..
 	}
 
 	t.Logf("Creating namespaces: %v", namespaces)
-	metaTX := c.CreateMetaTX(t, namespaces...)
-	c.SendTransactionsToOrderer(t, []*protoblocktx.Tx{metaTX})
-	c.ValidateExpectedResultsInCommittedBlock(t, &ExpectedStatusInBlock{
-		TxIDs:    []string{metaTX.Id},
-		Statuses: []protoblocktx.Status{protoblocktx.Status_COMMITTED},
-	})
+	metaTX, err := workload.CreateNamespacesTX(c.SystemConfig.Policy, 0, namespaces...)
+	require.NoError(t, err)
+	c.MakeAndSendTransactionsToOrderer(
+		t,
+		[][]*protoblocktx.TxNamespace{metaTX.Namespaces},
+		[]protoblocktx.Status{protoblocktx.Status_COMMITTED},
+	)
 }
 
-// CreateMetaTX creates a meta transaction without submitting it.
-func (c *CommitterRuntime) CreateMetaTX(t *testing.T, namespaces ...string) *protoblocktx.Tx {
+// MakeAndSendTransactionsToOrderer creates a block with given transactions, send it to the committer,
+// and verify the result.
+func (c *CommitterRuntime) MakeAndSendTransactionsToOrderer(
+	t *testing.T, txsNs [][]*protoblocktx.TxNamespace, expectedStatus []protoblocktx.Status,
+) []string {
 	t.Helper()
-	writeToMetaNs := &protoblocktx.TxNamespace{
-		NsId:       types.MetaNamespaceID,
-		NsVersion:  0,
-		ReadWrites: make([]*protoblocktx.ReadWrite, 0, len(namespaces)),
-	}
+	txs := make([]*protoloadgen.TX, len(txsNs))
 
-	for _, nsID := range namespaces {
-		nsCr := c.CreateCryptoForNs(t, nsID, signature.Ecdsa)
-		nsPolicy := &protoblocktx.NamespacePolicy{
-			Scheme:    signature.Ecdsa,
-			PublicKey: nsCr.PubKey,
+	for i, namespaces := range txsNs {
+		tx := &protoblocktx.Tx{
+			Namespaces: namespaces,
 		}
-		policyBytes, err := proto.Marshal(nsPolicy)
-		require.NoError(t, err)
-
-		writeToMetaNs.ReadWrites = append(writeToMetaNs.ReadWrites, &protoblocktx.ReadWrite{
-			Key:   []byte(nsID),
-			Value: policyBytes,
-		})
+		if expectedStatus != nil && expectedStatus[i] == protoblocktx.Status_ABORTED_SIGNATURE_INVALID {
+			tx.Signatures = make([][]byte, len(namespaces))
+			for nsIdx := range namespaces {
+				tx.Signatures[nsIdx] = []byte("dummy")
+			}
+		}
+		txs[i] = c.TxBuilder.MakeTx(tx)
 	}
 
-	tx := &protoblocktx.Tx{
-		Id: uuid.New().String(),
-		Namespaces: []*protoblocktx.TxNamespace{
-			writeToMetaNs,
-		},
-	}
-	c.AddSignatures(t, tx)
-	return tx
+	return c.SendTransactionsToOrderer(t, txs, expectedStatus)
 }
 
-// AddSignatures adds signature for each namespace in a given transaction.
-func (c *CommitterRuntime) AddSignatures(t *testing.T, tx *protoblocktx.Tx) {
+// SendTransactionsToOrderer creates a block with given transactions, send it to the committer, and verify the result.
+func (c *CommitterRuntime) SendTransactionsToOrderer(
+	t *testing.T, txs []*protoloadgen.TX, expectedStatus []protoblocktx.Status,
+) []string {
 	t.Helper()
-	tx.Signatures = make([][]byte, len(tx.Namespaces))
-	for idx, ns := range tx.Namespaces {
-		nsCr := c.GetCryptoForNs(t, ns.NsId)
-		sig, err := nsCr.NsSigner.SignNs(tx, idx)
-		require.NoError(t, err)
-		tx.Signatures[idx] = sig
+	expected := &ExpectedStatusInBlock{
+		Statuses: expectedStatus,
+		TxIDs:    make([]string, len(txs)),
 	}
-}
-
-// SendTransactionsToOrderer creates a block with given transactions and sent it to the committer.
-func (c *CommitterRuntime) SendTransactionsToOrderer(t *testing.T, txs []*protoblocktx.Tx) {
-	t.Helper()
+	for i, tx := range txs {
+		expected.TxIDs[i] = tx.Id
+	}
 
 	if !c.config.CrashTest {
-		txIDs := make([]string, len(txs))
-		for i, tx := range txs {
-			txIDs[i] = tx.Id
-		}
 		err := c.notifyStream.Send(&protonotify.NotificationRequest{
 			TxStatusRequest: &protonotify.TxStatusRequest{
-				TxIds: txIDs,
+				TxIds: expected.TxIDs,
 			},
 			Timeout: durationpb.New(3 * time.Minute),
 		})
@@ -433,89 +423,13 @@ func (c *CommitterRuntime) SendTransactionsToOrderer(t *testing.T, txs []*protob
 		time.Sleep(1 * time.Second)
 	}
 
-	for _, tx := range txs {
-		_, err := c.ordererStream.SendWithEnv(tx)
-		require.NoError(t, err)
+	err := c.ordererStream.SendBatch(workload.MapToEnvelopeBatch(0, txs))
+	require.NoError(t, err)
+
+	if expectedStatus != nil {
+		c.ValidateExpectedResultsInCommittedBlock(t, expected)
 	}
-}
-
-// CreateCryptoForNs creates Crypto materials for a namespace and stores it locally.
-// It will fail the test if we create crypto material twice for the same namespace.
-func (c *CommitterRuntime) CreateCryptoForNs(t *testing.T, nsID string, schema signature.Scheme) *Crypto {
-	t.Helper()
-	cr := c.createCrypto(t, nsID, schema)
-	c.nsToCryptoLock.Lock()
-	defer c.nsToCryptoLock.Unlock()
-	require.Nil(t, c.nsToCrypto[nsID])
-	c.nsToCrypto[nsID] = cr
-	return cr
-}
-
-// GerOrCreateCryptoForNs creates Crypto materials for a namespace and stores it locally.
-// It will get existing material if it already exists.
-func (c *CommitterRuntime) GerOrCreateCryptoForNs(t *testing.T, nsID string, schema signature.Scheme) *Crypto {
-	t.Helper()
-	c.nsToCryptoLock.Lock()
-	defer c.nsToCryptoLock.Unlock()
-	cr, ok := c.nsToCrypto[nsID]
-	if ok {
-		return cr
-	}
-	cr = c.createCrypto(t, nsID, schema)
-	require.NotNil(t, cr)
-	c.nsToCrypto[nsID] = cr
-	return cr
-}
-
-// createCrypto creates Crypto materials.
-func (c *CommitterRuntime) createCrypto(t *testing.T, nsID string, schema signature.Scheme) *Crypto {
-	t.Helper()
-	policyMsg := &workload.Policy{
-		Scheme: schema,
-		Seed:   c.seedForCryptoGen.Int63(),
-	}
-	hashSigner := workload.NewHashSignerVerifier(policyMsg)
-	pubKey, signer := hashSigner.GetVerificationKeyAndSigner()
-	return &Crypto{
-		Namespace:  nsID,
-		Profile:    policyMsg,
-		HashSigner: hashSigner,
-		NsSigner:   signer,
-		PubKey:     pubKey,
-	}
-}
-
-// UpdateCryptoForNs creates Crypto materials for a namespace and stores it locally.
-// It will fail the test if we create crypto material for the first time.
-func (c *CommitterRuntime) UpdateCryptoForNs(t *testing.T, nsID string, schema signature.Scheme) *Crypto {
-	t.Helper()
-	cr := c.createCrypto(t, nsID, schema)
-	c.nsToCryptoLock.Lock()
-	defer c.nsToCryptoLock.Unlock()
-	require.NotNil(t, c.nsToCrypto[nsID])
-	c.nsToCrypto[nsID] = cr
-	return cr
-}
-
-// GetCryptoForNs returns the Crypto material a namespace.
-func (c *CommitterRuntime) GetCryptoForNs(t *testing.T, nsID string) *Crypto {
-	t.Helper()
-	c.nsToCryptoLock.Lock()
-	defer c.nsToCryptoLock.Unlock()
-	cr, ok := c.nsToCrypto[nsID]
-	require.True(t, ok)
-	return cr
-}
-
-// GetAllCrypto returns all the Crypto material.
-func (c *CommitterRuntime) GetAllCrypto() []*Crypto {
-	c.nsToCryptoLock.Lock()
-	defer c.nsToCryptoLock.Unlock()
-	ret := make([]*Crypto, 0, len(c.nsToCrypto))
-	for _, cr := range c.nsToCrypto {
-		ret = append(ret, cr)
-	}
-	return ret
+	return expected.TxIDs
 }
 
 // ExpectedStatusInBlock holds pairs of expected txID and the corresponding status in a block. The order of statuses
@@ -541,11 +455,6 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 	c.LastReceivedBlockNumber = blk.Header.Number
 	t.Logf("Got block #%d", blk.Header.Number)
 
-	expectedStatuses := make([]byte, 0, len(expected.Statuses))
-	for _, s := range expected.Statuses {
-		expectedStatuses = append(expectedStatuses, byte(s))
-	}
-
 	for txNum, txEnv := range blk.Data.Data {
 		txBytes, hdr, err := serialization.UnwrapEnvelope(txEnv)
 		require.NoError(t, err)
@@ -553,12 +462,23 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 		if hdr.Type == int32(common.HeaderType_CONFIG) {
 			continue
 		}
-		tx, err := serialization.UnmarshalTx(txBytes)
+		_, err = serialization.UnmarshalTx(txBytes)
 		require.NoError(t, err)
-		require.Equal(t, expected.TxIDs[txNum], tx.GetId())
+		require.Equal(t, expected.TxIDs[txNum], hdr.TxId)
 	}
 
-	require.Equal(t, expectedStatuses, blk.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
+	expectedStatuses := make([]string, len(expected.Statuses))
+	for i, s := range expected.Statuses {
+		expectedStatuses[i] = s.String()
+	}
+	require.NotNil(t, blk.Metadata)
+	require.Greater(t, len(blk.Metadata.Metadata), int(common.BlockMetadataIndex_TRANSACTIONS_FILTER))
+	statusBytes := blk.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER]
+	actualStatuses := make([]string, len(statusBytes))
+	for i, sB := range statusBytes {
+		actualStatuses[i] = protoblocktx.Status(sB).String()
+	}
+	require.Equal(t, expectedStatuses, actualStatuses)
 
 	c.ensureLastCommittedBlockNumber(t, blk.Header.Number)
 
@@ -567,7 +487,8 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 	nonDuplicateTxIDsStatus := make(map[string]*protoblocktx.StatusWithHeight)
 	duplicateTxIDsStatus := make(map[string]*protoblocktx.StatusWithHeight)
 	for i, tID := range expected.TxIDs {
-		s := types.CreateStatusWithHeight(expected.Statuses[i], blk.Header.Number, i)
+		//nolint:gosec // int -> uint32.
+		s := types.NewStatusWithHeight(expected.Statuses[i], blk.Header.Number, uint32(i))
 		if s.Code == protoblocktx.Status_REJECTED_DUPLICATE_TX_ID {
 			duplicateTxIDsStatus[tID] = s
 		} else {

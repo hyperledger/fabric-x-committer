@@ -29,94 +29,52 @@ func TestMixOfValidAndInvalidSign(t *testing.T) { //nolint:gocognit
 	c.CreateNamespacesAndCommit(t, "1")
 
 	tests := []struct {
-		name            string
-		txs             []*protoblocktx.Tx
-		validSign       []bool
-		expectedResults *runner.ExpectedStatusInBlock
+		name     string
+		txs      [][]*protoblocktx.TxNamespace
+		expected []protoblocktx.Status
 	}{
 		{
 			name: "txs with valid and invalid signs",
-			txs: []*protoblocktx.Tx{
-				{
-					Id: "valid sign 1",
-					Namespaces: []*protoblocktx.TxNamespace{
-						{
-							BlindWrites: []*protoblocktx.Write{
-								{
-									Key: []byte("k2"),
-								},
-							},
-						},
-					},
-				},
-				{
-					Id: "invalid sign 1",
-					Namespaces: []*protoblocktx.TxNamespace{
-						{
-							BlindWrites: []*protoblocktx.Write{
-								{
-									Key: []byte("k3"),
-								},
-							},
-						},
-					},
-				},
-				{
-					Id: "valid sign 2",
-					Namespaces: []*protoblocktx.TxNamespace{
-						{
-							BlindWrites: []*protoblocktx.Write{
-								{
-									Key: []byte("k4"),
-								},
-							},
-						},
-					},
-				},
-				{
-					Id: "invalid sign 2",
-					Namespaces: []*protoblocktx.TxNamespace{
-						{
-							BlindWrites: []*protoblocktx.Write{
-								{
-									Key: []byte("k5"),
-								},
-							},
-						},
-					},
-				},
+			txs: [][]*protoblocktx.TxNamespace{
+				{{ // valid sign 1.
+					BlindWrites: []*protoblocktx.Write{{
+						Key: []byte("k2"),
+					}},
+				}},
+				{{ // invalid sign 1.
+					BlindWrites: []*protoblocktx.Write{{
+						Key: []byte("k3"),
+					}},
+				}},
+				{{ // valid sign 2.
+					BlindWrites: []*protoblocktx.Write{{
+						Key: []byte("k4"),
+					}},
+				}},
+				{{ // invalid sign 2.
+					BlindWrites: []*protoblocktx.Write{{
+						Key: []byte("k5"),
+					}},
+				}},
 			},
-			validSign: []bool{true, false, true, false},
-			expectedResults: &runner.ExpectedStatusInBlock{
-				TxIDs: []string{"valid sign 1", "invalid sign 1", "valid sign 2", "invalid sign 2"},
-				Statuses: []protoblocktx.Status{
-					protoblocktx.Status_COMMITTED,
-					protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
-					protoblocktx.Status_COMMITTED,
-					protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
-				},
+			expected: []protoblocktx.Status{
+				protoblocktx.Status_COMMITTED,
+				protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+				protoblocktx.Status_COMMITTED,
+				protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
 			},
 		},
 	}
 
 	for _, tt := range tests { //nolint:paralleltest // order is important.
 		t.Run(tt.name, func(t *testing.T) {
-			for i, tx := range tt.txs {
-				for _, ns := range tx.Namespaces {
+			for _, tx := range tt.txs {
+				for _, ns := range tx {
 					ns.NsId = "1"
 					ns.NsVersion = 0
 				}
-				if tt.validSign[i] {
-					c.AddSignatures(t, tx)
-					continue
-				}
-				for range len(tx.Namespaces) {
-					tx.Signatures = append(tx.Signatures, []byte("dummy"))
-				}
 			}
-
-			c.SendTransactionsToOrderer(t, tt.txs)
-			c.ValidateExpectedResultsInCommittedBlock(t, tt.expectedResults)
+			c.MakeAndSendTransactionsToOrderer(t, tt.txs, tt.expected)
 		})
 	}
 }

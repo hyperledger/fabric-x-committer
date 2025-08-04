@@ -8,6 +8,7 @@ package sidecar
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -26,10 +27,18 @@ import (
 
 type (
 	relay struct {
-		incomingBlockToBeCommitted    <-chan *common.Block
-		outgoingCommittedBlock        chan<- *common.Block
-		outgoingStatusUpdates         chan<- []*protonotify.TxStatusEvent
-		nextBlockNumberToBeCommitted  atomic.Uint64
+		incomingBlockToBeCommitted <-chan *common.Block
+		outgoingCommittedBlock     chan<- *common.Block
+		outgoingStatusUpdates      chan<- []*protonotify.TxStatusEvent
+
+		// nextExpectedBlockNumberToBeReceived denotes the next block number that the sidecar
+		// expects to receive from the orderer. This value is initially extracted from the last committed
+		// block number in the ledger, then incremented.
+		// The sidecar queries the coordinator for this value before starting to pull blocks from the ordering service.
+		nextExpectedBlockNumberToBeReceived atomic.Uint64
+		// nextBlockNumberToBeCommitted denotes the next block number of to be committed.
+		nextBlockNumberToBeCommitted atomic.Uint64
+
 		activeBlocksCount             atomic.Int32
 		blkNumToBlkWithStatus         utils.SyncMap[uint64, *blockWithStatus]
 		txIDToHeight                  utils.SyncMap[string, types.Height]
@@ -67,6 +76,7 @@ func newRelay(
 
 // run starts the relay service. The call to run blocks until an error occurs or the context is canceled.
 func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolint:contextcheck // false positive
+	r.nextExpectedBlockNumberToBeReceived.Store(config.nextExpectedBlockByCoordinator)
 	r.nextBlockNumberToBeCommitted.Store(config.nextExpectedBlockByCoordinator)
 	r.incomingBlockToBeCommitted = config.incomingBlockToBeCommitted
 	r.outgoingCommittedBlock = config.outgoingCommittedBlock
@@ -134,8 +144,19 @@ func (r *relay) preProcessBlock(
 			logger.Warn("Received a block without header")
 			continue
 		}
-
 		logger.Debugf("Block %d arrived in the relay", block.Header.Number)
+
+		blockNum := block.Header.Number
+		swapped := r.nextExpectedBlockNumberToBeReceived.CompareAndSwap(blockNum, blockNum+1)
+		if !swapped {
+			errMsg := fmt.Sprintf(
+				"sidecar expects block [%d] but received block [%d]",
+				r.nextExpectedBlockNumberToBeReceived.Load(),
+				blockNum,
+			)
+			logger.Error(errMsg)
+			return errors.New(errMsg)
+		}
 
 		start := time.Now()
 		mappedBlock, err := mapBlock(block, &r.txIDToHeight)
@@ -170,7 +191,7 @@ func (r *relay) sendBlocksToCoordinator(
 		}
 
 		startTime := time.Now()
-		r.blkNumToBlkWithStatus.Store(mappedBlock.block.Number, mappedBlock.withStatus)
+		r.blkNumToBlkWithStatus.Store(mappedBlock.blockNumber, mappedBlock.withStatus)
 		r.activeBlocksCount.Add(1)
 
 		if mappedBlock.withStatus.pendingCount == 0 {
@@ -182,8 +203,7 @@ func (r *relay) sendBlocksToCoordinator(
 		}
 		txsCount := len(mappedBlock.block.Txs)
 		promutil.AddToCounter(r.metrics.transactionsSentTotal, txsCount)
-		logger.Debugf("Sent SC block %d with %d transactions to Coordinator",
-			mappedBlock.block.Number, txsCount)
+		logger.Debugf("Sent SC block %d with %d TXs to Coordinator", mappedBlock.blockNumber, txsCount)
 		promutil.Observe(r.metrics.mappedBlockProcessingInRelaySeconds, time.Since(startTime))
 	}
 }

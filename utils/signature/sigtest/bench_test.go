@@ -12,12 +12,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
+	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 )
 
 func BenchmarkSign(b *testing.B) {
-	g := workload.StartGenerator(b, workload.DefaultProfile(8))
+	logging.SetupWithConfig(&logging.Config{Enabled: false})
 	for _, scheme := range signature.AllRealSchemes {
 		f := sigtest.NewSignatureFactory(scheme)
 		sk, _ := f.NewKeys()
@@ -25,26 +26,26 @@ func BenchmarkSign(b *testing.B) {
 		require.NoError(b, err)
 
 		b.Run(scheme, func(b *testing.B) {
-			txs := g.NextN(b.Context(), b.N)
+			txs := workload.GenerateTransactions(b, workload.DefaultProfile(8), b.N)
 
-			var (
-				resBench []byte
-				errBench error
-			)
+			resBench := make([][]byte, b.N)
+			errBench := make([]error, b.N)
 
 			b.ResetTimer()
-			for _, tx := range txs {
-				resBench, errBench = s.SignNs(tx, 0)
+			for i, tx := range txs {
+				resBench[i], errBench[i] = s.SignNs(tx.Id, tx.Tx, 0)
 			}
 			b.StopTimer()
-			require.NoError(b, errBench)
-			require.NotNil(b, resBench)
+			for i := range b.N {
+				require.NoError(b, errBench[i], "error at index %d", i)
+				require.NotNil(b, resBench[i], "no result at index %d", i)
+			}
 		})
 	}
 }
 
 func BenchmarkVerify(b *testing.B) {
-	g := workload.StartGenerator(b, workload.DefaultProfile(8))
+	logging.SetupWithConfig(&logging.Config{Enabled: false})
 	for _, scheme := range signature.AllRealSchemes {
 		f := sigtest.NewSignatureFactory(scheme)
 		sk, pk := f.NewKeys()
@@ -54,20 +55,23 @@ func BenchmarkVerify(b *testing.B) {
 		require.NoError(b, err)
 
 		b.Run(scheme, func(b *testing.B) {
-			txs := g.NextN(b.Context(), b.N)
+			txs := workload.GenerateTransactions(b, workload.DefaultProfile(8), b.N)
 			for _, tx := range txs {
-				sig, _ := s.SignNs(tx, 0)
-				tx.Signatures = append(tx.Signatures, sig)
+				sig, signErr := s.SignNs(tx.Id, tx.Tx, 0)
+				require.NoError(b, signErr)
+				tx.Tx.Signatures = [][]byte{sig}
 			}
 
-			var errBench error
+			errBench := make([]error, b.N)
 
 			b.ResetTimer()
-			for _, tx := range txs {
-				errBench = v.VerifyNs(tx, 0)
+			for i, tx := range txs {
+				errBench[i] = v.VerifyNs(tx.Id, tx.Tx, 0)
 			}
 			b.StopTimer()
-			require.NoError(b, errBench)
+			for i := range b.N {
+				require.NoError(b, errBench[i], "error at index %d", i)
+			}
 		})
 	}
 }

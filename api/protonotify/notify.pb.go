@@ -94,8 +94,7 @@ type TxStatusRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// List of transaction IDS to be registered.
-	TxIds []string `protobuf:"bytes,1,rep,name=tx_ids,json=txIds,proto3" json:"tx_ids,omitempty"`
+	TxIds []string `protobuf:"bytes,1,rep,name=tx_ids,json=txIds,proto3" json:"tx_ids,omitempty"` // List of transaction IDS to be registered.
 }
 
 func (x *TxStatusRequest) Reset() {
@@ -144,10 +143,8 @@ type NotificationResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// List of transaction status events.
-	TxStatusEvents []*TxStatusEvent `protobuf:"bytes,1,rep,name=tx_status_events,json=txStatusEvents,proto3" json:"tx_status_events,omitempty"`
-	// List of timeout events.
-	TimeoutTxIds []string `protobuf:"bytes,2,rep,name=timeout_tx_ids,json=timeoutTxIds,proto3" json:"timeout_tx_ids,omitempty"`
+	TxStatusEvents []*TxStatusEvent `protobuf:"bytes,1,rep,name=tx_status_events,json=txStatusEvents,proto3" json:"tx_status_events,omitempty"` // List of transaction status events.
+	TimeoutTxIds   []string         `protobuf:"bytes,2,rep,name=timeout_tx_ids,json=timeoutTxIds,proto3" json:"timeout_tx_ids,omitempty"`       // List of timeout events.
 }
 
 func (x *NotificationResponse) Reset() {

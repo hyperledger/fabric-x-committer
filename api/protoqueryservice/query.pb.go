@@ -232,11 +232,9 @@ type ViewParameters struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// Defaults to serializable deferrable.
-	IsoLevel      IsoLevel `protobuf:"varint,1,opt,name=iso_level,json=isoLevel,proto3,enum=protoqueryservice.IsoLevel" json:"iso_level,omitempty"`
-	NonDeferrable bool     `protobuf:"varint,2,opt,name=nonDeferrable,proto3" json:"nonDeferrable,omitempty"`
-	// Zero => maximal value
-	TimeoutMilliseconds uint64 `protobuf:"varint,3,opt,name=timeout_milliseconds,json=timeoutMilliseconds,proto3" json:"timeout_milliseconds,omitempty"`
+	IsoLevel            IsoLevel `protobuf:"varint,1,opt,name=iso_level,json=isoLevel,proto3,enum=protoqueryservice.IsoLevel" json:"iso_level,omitempty"`  // View's isolation level. Defaults to serializable.
+	NonDeferrable       bool     `protobuf:"varint,2,opt,name=nonDeferrable,proto3" json:"nonDeferrable,omitempty"`                                        // Do not defer errors. Defaults deferrable.
+	TimeoutMilliseconds uint64   `protobuf:"varint,3,opt,name=timeout_milliseconds,json=timeoutMilliseconds,proto3" json:"timeout_milliseconds,omitempty"` // View's timeout. Zero => maximal value
 }
 
 func (x *ViewParameters) Reset() {

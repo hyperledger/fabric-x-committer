@@ -7,9 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package connection
 
 import (
-	"fmt"
+	"net"
 	"strconv"
-	"strings"
 
 	"github.com/cockroachdb/errors"
 )
@@ -27,7 +26,7 @@ func (e *Endpoint) Empty() bool {
 
 // Address returns a string representation of the endpoint's address.
 func (e *Endpoint) Address() string {
-	return fmt.Sprintf("%s:%d", e.Host, e.Port)
+	return net.JoinHostPort(e.Host, strconv.Itoa(e.Port))
 }
 
 // String returns a string representation of the endpoint.
@@ -62,20 +61,19 @@ func CreateEndpoint(value string) *Endpoint {
 }
 
 // NewEndpoint parses an endpoint from an address string.
-func NewEndpoint(value string) (*Endpoint, error) {
-	if len(value) == 0 {
+func NewEndpoint(hostPort string) (*Endpoint, error) {
+	if len(hostPort) == 0 {
 		return &Endpoint{}, nil
 	}
-	vals := strings.Split(value, ":")
-	if len(vals) != 2 {
-		return nil, errors.New("not in format: 1.2.3.4:5")
-	}
-	host := vals[0]
-	port, err := strconv.Atoi(vals[1])
+	host, port, err := net.SplitHostPort(hostPort)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "could not split host and port")
 	}
-	return &Endpoint{Host: host, Port: port}, nil
+	portInt, err := strconv.Atoi(port)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not convert port to integer")
+	}
+	return &Endpoint{Host: host, Port: portInt}, nil
 }
 
 // NewLocalHost returns a default endpoint "localhost:0".

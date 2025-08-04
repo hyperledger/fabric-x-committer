@@ -19,16 +19,15 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/broadcastdeliver"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 )
 
 type sidecarReceiverConfig struct {
-	Endpoint  *connection.Endpoint
-	ChannelID string
-	Res       *ClientResources
+	Endpoint *connection.Endpoint
+	Res      *ClientResources
 }
 
 const committedBlocksQueueSize = 1024
@@ -36,26 +35,26 @@ const statusIdx = int(common.BlockMetadataIndex_TRANSACTIONS_FILTER)
 
 // runSidecarReceiver start receiving blocks from the sidecar.
 func runSidecarReceiver(ctx context.Context, config *sidecarReceiverConfig) error {
-	ledgerReceiver, err := sidecarclient.New(&sidecarclient.Config{
-		ChannelID: config.ChannelID,
+	ledgerReceiver, err := sidecarclient.New(&sidecarclient.Parameters{
+		ChannelID: config.Res.Profile.Transaction.Policy.ChannelID,
 		Endpoint:  config.Endpoint,
 	})
 	if err != nil {
 		return errors.Wrap(err, "failed to create ledger receiver")
 	}
 	return runDeliveryReceiver(ctx, config.Res, func(gCtx context.Context, committedBlock chan *common.Block) error {
-		return ledgerReceiver.Deliver(gCtx, &sidecarclient.DeliverConfig{
-			EndBlkNum:   broadcastdeliver.MaxBlockNum,
+		return ledgerReceiver.Deliver(gCtx, &sidecarclient.DeliverParameters{
+			EndBlkNum:   deliver.MaxBlockNum,
 			OutputBlock: committedBlock,
 		})
 	})
 }
 
 // runOrdererReceiver start receiving blocks from the orderer.
-func runOrdererReceiver(ctx context.Context, res *ClientResources, client *broadcastdeliver.Client) error {
+func runOrdererReceiver(ctx context.Context, res *ClientResources, client *deliver.Client) error {
 	return runDeliveryReceiver(ctx, res, func(gCtx context.Context, committedBlock chan *common.Block) error {
-		return client.Deliver(gCtx, &broadcastdeliver.DeliverConfig{
-			EndBlkNum:   broadcastdeliver.MaxBlockNum,
+		return client.Deliver(gCtx, &deliver.Parameters{
+			EndBlkNum:   deliver.MaxBlockNum,
 			OutputBlock: committedBlock,
 		})
 	})
@@ -63,12 +62,12 @@ func runOrdererReceiver(ctx context.Context, res *ClientResources, client *broad
 
 // runDeliveryReceiver start receiving blocks from a delivery service.
 func runDeliveryReceiver(
-	ctx context.Context, res *ClientResources, deliver func(context.Context, chan *common.Block) error,
+	ctx context.Context, res *ClientResources, deliverMethod func(context.Context, chan *common.Block) error,
 ) error {
 	g, gCtx := errgroup.WithContext(ctx)
 	committedBlock := make(chan *common.Block, committedBlocksQueueSize)
 	g.Go(func() error {
-		return deliver(gCtx, committedBlock)
+		return deliverMethod(gCtx, committedBlock)
 	})
 	g.Go(func() error {
 		receiveCommittedBlock(gCtx, committedBlock, res)

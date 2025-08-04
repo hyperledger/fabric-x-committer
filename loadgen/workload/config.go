@@ -13,6 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
@@ -105,11 +106,15 @@ type PolicyProfile struct {
 	// OrdererEndpoints may specify the endpoints to add to the config block.
 	// If this field is empty, no endpoints will be configured.
 	// If ConfigBlockPath is specified, this value is ignored.
-	OrdererEndpoints []*connection.OrdererEndpoint `mapstructure:"orderer-endpoints" yaml:"orderer-endpoints"`
+	OrdererEndpoints []*ordererconn.Endpoint `mapstructure:"orderer-endpoints" yaml:"orderer-endpoints"`
 
 	// ConfigBlockPath may specify the config block to use.
 	// If this field is empty, a default config block will be generated.
 	ConfigBlockPath string `mapstructure:"config-block-path" yaml:"config-block-path"`
+
+	// ChannelID and Identity are used to create the TX envelop.
+	ChannelID string                      `mapstructure:"channel-id"`
+	Identity  *ordererconn.IdentityConfig `mapstructure:"identity"`
 }
 
 // Policy describes how to sign/verify a TX.

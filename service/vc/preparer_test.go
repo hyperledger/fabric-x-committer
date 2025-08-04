@@ -24,13 +24,13 @@ import (
 
 type prepareTestEnv struct {
 	preparer    *transactionPreparer
-	txBatch     chan *protovcservice.TransactionBatch
+	txBatch     chan *protovcservice.Batch
 	preparedTxs chan *preparedTransactions
 }
 
 func newPrepareTestEnv(t *testing.T) *prepareTestEnv {
 	t.Helper()
-	txBatch := make(chan *protovcservice.TransactionBatch, 10)
+	txBatch := make(chan *protovcservice.Batch, 10)
 	preparedTxs := make(chan *preparedTransactions, 10)
 	metrics := newVCServiceMetrics()
 	p := newPreparer(txBatch, preparedTxs, metrics)
@@ -57,10 +57,10 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 	k5 := []byte("key5")
 	k6 := []byte("key6")
 
-	tx := &protovcservice.TransactionBatch{
-		Transactions: []*protovcservice.Transaction{
+	tx := &protovcservice.Batch{
+		Transactions: []*protovcservice.Tx{
 			{
-				ID: "tx1",
+				Ref: types.TxRef("tx1", 1, 1),
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      "1",
@@ -80,11 +80,9 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 						},
 					},
 				},
-				BlockNumber: 1,
-				TxNum:       1,
 			},
 			{
-				ID: "tx2",
+				Ref: types.TxRef("tx2", 4, 2),
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      "1",
@@ -105,8 +103,6 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 						},
 					},
 				},
-				BlockNumber: 4,
-				TxNum:       2,
 			},
 		},
 	}
@@ -166,10 +162,10 @@ func TestPrepareTxWithBlindWritesOnly(t *testing.T) {
 	k4 := []byte("key4")
 	k5 := []byte("key5")
 
-	tx := &protovcservice.TransactionBatch{
-		Transactions: []*protovcservice.Transaction{
+	tx := &protovcservice.Batch{
+		Transactions: []*protovcservice.Tx{
 			{
-				ID: "tx1",
+				Ref: types.TxRef("tx1", 10, 5),
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      "1",
@@ -189,11 +185,9 @@ func TestPrepareTxWithBlindWritesOnly(t *testing.T) {
 						}},
 					},
 				},
-				BlockNumber: 10,
-				TxNum:       5,
 			},
 			{
-				ID: "tx2",
+				Ref: types.TxRef("tx2", 6, 3),
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      "1",
@@ -204,8 +198,6 @@ func TestPrepareTxWithBlindWritesOnly(t *testing.T) {
 						},
 					},
 				},
-				BlockNumber: 6,
-				TxNum:       3,
 			},
 		},
 	}
@@ -272,10 +264,10 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 	k6 := []byte("key6")
 	k7 := []byte("key7")
 
-	tx := &protovcservice.TransactionBatch{
-		Transactions: []*protovcservice.Transaction{
+	tx := &protovcservice.Batch{
+		Transactions: []*protovcservice.Tx{
 			{
-				ID: "tx1",
+				Ref: types.TxRef("tx1", 7, 4),
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      "1",
@@ -295,11 +287,9 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 						},
 					},
 				},
-				BlockNumber: 7,
-				TxNum:       4,
 			},
 			{
-				ID: "tx2",
+				Ref: types.TxRef("tx2", 7, 5),
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      "1",
@@ -318,8 +308,6 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 						},
 					},
 				},
-				BlockNumber: 7,
-				TxNum:       5,
 			},
 		},
 	}
@@ -428,10 +416,10 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 	k9 := []byte("key9")
 	k10 := []byte("key10")
 
-	tx := &protovcservice.TransactionBatch{
-		Transactions: []*protovcservice.Transaction{
+	tx := &protovcservice.Batch{
+		Transactions: []*protovcservice.Tx{
 			{
-				ID: "tx1",
+				Ref: types.TxRef("tx1", 8, 0),
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      "1",
@@ -461,11 +449,9 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 						},
 					},
 				},
-				BlockNumber: 8,
-				TxNum:       0,
 			},
 			{
-				ID: "tx2",
+				Ref: types.TxRef("tx2", 9, 3),
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      "1",
@@ -481,12 +467,10 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 						},
 					},
 				},
-				BlockNumber: 9,
-				TxNum:       3,
 			},
 			{
 				// We ensure no duplicate reads with duplicated TX.
-				ID: "tx2.2",
+				Ref: types.TxRef("tx2.2", 9, 4),
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      "1",
@@ -502,27 +486,21 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 						},
 					},
 				},
-				BlockNumber: 9,
-				TxNum:       4,
 			},
 			{
-				ID: "tx3",
+				Ref: types.TxRef("tx3", 6, 2),
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
 					Code: protoblocktx.Status_MALFORMED_NO_WRITES,
 				},
-				BlockNumber: 6,
-				TxNum:       2,
 			},
 			{
-				ID: "tx4",
+				Ref: types.TxRef("tx4", 5, 2),
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
 					Code: protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
 				},
-				BlockNumber: 5,
-				TxNum:       2,
 			},
 			{
-				ID: "tx5",
+				Ref: types.TxRef("tx5", 6, 2),
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId:      types.MetaNamespaceID,
@@ -532,11 +510,9 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 						},
 					},
 				},
-				BlockNumber: 6,
-				TxNum:       2,
 			},
 			{
-				ID: "tx6",
+				Ref: types.TxRef("tx6", 6, 2),
 				Namespaces: []*protoblocktx.TxNamespace{
 					{
 						NsId: types.ConfigNamespaceID,
@@ -545,8 +521,6 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 						},
 					},
 				},
-				BlockNumber: 6,
-				TxNum:       2,
 			},
 		},
 	}
@@ -706,13 +680,10 @@ func BenchmarkPrepare(b *testing.B) {
 	// Parameters
 	batchSize := 1024
 
-	// The generator.
-	g := workload.StartGenerator(b, workload.DefaultProfile(8))
-
 	for _, w := range []int{1, 2, 4, 8} {
 		w := w
 		b.Run(fmt.Sprintf("w=%d", w), func(b *testing.B) {
-			txBatch := make(chan *protovcservice.TransactionBatch, 8)
+			txBatch := make(chan *protovcservice.Batch, 8)
 			preparedTxs := make(chan *preparedTransactions, 8)
 			metrics := newVCServiceMetrics()
 			p := newPreparer(txBatch, preparedTxs, metrics)
@@ -720,24 +691,18 @@ func BenchmarkPrepare(b *testing.B) {
 				return p.run(ctx, w)
 			}, nil)
 
+			txPoll := workload.GenerateTransactions(b, workload.DefaultProfile(8), max(b.N*3, batchSize*3))
+
 			inCtx := channel.NewWriter(b.Context(), txBatch)
 			outCtx := channel.NewReader(b.Context(), preparedTxs)
 			b.ResetTimer()
 			// Generates the load to the preparer's queue.
 			go func() {
 				var i uint64
-				for b.Context().Err() == nil {
-					txs := g.NextN(b.Context(), batchSize)
-					protoTXs := make([]*protovcservice.Transaction, len(txs))
-					for txIdx, tx := range txs {
-						protoTXs[txIdx] = &protovcservice.Transaction{
-							ID:          tx.Id,
-							Namespaces:  tx.Namespaces,
-							BlockNumber: i,
-							TxNum:       uint32(txIdx), //nolint:gosec // int -> uint32.
-						}
-					}
-					inCtx.Write(&protovcservice.TransactionBatch{Transactions: protoTXs})
+				for b.Context().Err() == nil && len(txPoll) > 0 {
+					take := min(batchSize, len(txPoll))
+					inCtx.Write(workload.MapToVcBatch(i, txPoll[:take]))
+					txPoll = txPoll[take:]
 					i++
 				}
 			}()

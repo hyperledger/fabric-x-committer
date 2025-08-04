@@ -31,20 +31,18 @@ func TestEndToEnd(t *testing.T) {
 			require.NoError(t, err)
 			s, err := f.NewSigner(priv)
 			require.NoError(t, err)
-			tx := protoblocktx.Tx{
-				Id: "test",
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						NsId:       "0",
-						NsVersion:  0,
-						ReadWrites: make([]*protoblocktx.ReadWrite, 0),
-					},
-				},
+			txID := "test"
+			tx := &protoblocktx.Tx{
+				Namespaces: []*protoblocktx.TxNamespace{{
+					NsId:       "0",
+					NsVersion:  0,
+					ReadWrites: make([]*protoblocktx.ReadWrite, 0),
+				}},
 			}
-			sig, err := s.SignNs(&tx, 0)
+			sig, err := s.SignNs(txID, tx, 0)
 			tx.Signatures = [][]byte{sig}
 			require.NoError(t, err)
-			require.NoError(t, v.VerifyNs(&tx, 0))
+			require.NoError(t, v.VerifyNs(txID, tx, 0))
 		})
 	}
 }
@@ -84,26 +82,24 @@ func TestEcdsaPem(t *testing.T) {
 	require.NotNil(t, pemV, "missing public key in PEM")
 	require.NotNil(t, pemS, "missing private key in PEM")
 
-	tx := protoblocktx.Tx{
-		Id: "test",
-		Namespaces: []*protoblocktx.TxNamespace{
-			{
-				NsId:       "0",
-				NsVersion:  0,
-				ReadWrites: make([]*protoblocktx.ReadWrite, 0),
-			},
-		},
+	txID := "test"
+	tx := &protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{{
+			NsId:       "0",
+			NsVersion:  0,
+			ReadWrites: make([]*protoblocktx.ReadWrite, 0),
+		}},
 	}
 
-	sig, err := s.SignNs(&tx, 0)
+	sig, err := s.SignNs(txID, tx, 0)
 	require.NoError(t, err)
 	tx.Signatures = [][]byte{sig}
-	require.NoError(t, pemV.VerifyNs(&tx, 0))
+	require.NoError(t, pemV.VerifyNs(txID, tx, 0))
 
-	sig, err = pemS.SignNs(&tx, 0)
+	sig, err = pemS.SignNs(txID, tx, 0)
 	require.NoError(t, err)
 	tx.Signatures = [][]byte{sig}
-	require.NoError(t, v.VerifyNs(&tx, 0))
+	require.NoError(t, v.VerifyNs(txID, tx, 0))
 }
 
 func readPem(certPath string) (map[string][]byte, error) {

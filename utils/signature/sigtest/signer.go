@@ -88,14 +88,14 @@ func NewEcdsaSigner(key signature.PrivateKey) (*EcdsaSigner, error) {
 }
 
 // SignNs signs a transaction's namespace.
-func (v *NsSigner) SignNs(tx *protoblocktx.Tx, nsIndex int) (signature.Signature, error) {
+func (v *NsSigner) SignNs(txID string, tx *protoblocktx.Tx, nsIndex int) (signature.Signature, error) {
 	if nsIndex < 0 || nsIndex >= len(tx.Namespaces) {
 		return nil, errors.New("namespace index out of range")
 	}
 	if v.signer == nil {
 		return dummySig, nil
 	}
-	digest, err := signature.DigestTxNamespace(tx, nsIndex)
+	digest, err := signature.DigestTxNamespace(txID, tx.Namespaces[nsIndex])
 	if err != nil {
 		return nil, errors.Wrap(err, "failed creating digest")
 	}

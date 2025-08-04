@@ -7,29 +7,59 @@ SPDX-License-Identifier: Apache-2.0
 package workload
 
 import (
-	"fmt"
-	"strings"
+	"maps"
+	"slices"
 
 	"github.com/cockroachdb/errors"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 )
 
-// CreateNamespacesTX creating the transaction containing the requested namespaces into the MetaNamespace.
-func CreateNamespacesTX(policy *PolicyProfile) (*protoblocktx.Tx, error) {
-	txSigner := NewTxSignerVerifier(policy)
-	policyNamespaceSigner, ok := txSigner.HashSigners[types.MetaNamespaceID]
+// CreateLoadGenNamespacesTX creating the transaction containing the requested namespaces into the MetaNamespace.
+func CreateLoadGenNamespacesTX(policy *PolicyProfile) (*protoloadgen.TX, error) {
+	txb, txbErr := NewTxBuilderFromPolicy(policy, nil)
+	if txbErr != nil {
+		return nil, txbErr
+	}
+	_, ok := txb.TxSigner.HashSigners[types.MetaNamespaceID]
 	if !ok {
-		return nil, errors.New("no policy namespace signer found; cannot create namespaces")
+		return nil, errors.New("no meta namespace signer found; cannot create namespaces")
 	}
 
-	readWrites := make([]*protoblocktx.ReadWrite, 0, len(txSigner.HashSigners))
-	allNamespaces := make([]string, 0, len(txSigner.HashSigners))
-	for ns, p := range txSigner.HashSigners {
+	tx, err := CreateNamespacesTxFromSigner(txb.TxSigner, 0)
+	if err != nil {
+		return nil, err
+	}
+	return txb.MakeTx(tx), nil
+}
+
+// CreateNamespacesTX creating the transaction containing the requested namespaces into the MetaNamespace.
+func CreateNamespacesTX(
+	policy *PolicyProfile, metaNamespaceVersion uint64, includeNS ...string,
+) (*protoblocktx.Tx, error) {
+	signer := NewTxSignerVerifier(policy)
+	return CreateNamespacesTxFromSigner(signer, metaNamespaceVersion, includeNS...)
+}
+
+// CreateNamespacesTxFromSigner creating the transaction containing the requested namespaces into the MetaNamespace.
+func CreateNamespacesTxFromSigner(
+	signer *TxSignerVerifier, metaNamespaceVersion uint64, includeNS ...string,
+) (*protoblocktx.Tx, error) {
+	if len(includeNS) == 0 {
+		includeNS = slices.Collect(maps.Keys(signer.HashSigners))
+	}
+
+	readWrites := make([]*protoblocktx.ReadWrite, 0, len(signer.HashSigners))
+	for _, ns := range includeNS {
 		if ns == types.MetaNamespaceID {
 			continue
+		}
+		p, ok := signer.HashSigners[ns]
+		if !ok {
+			return nil, errors.Errorf("no policy for '%s'", ns)
 		}
 		policyBytes, err := proto.Marshal(p.GetVerificationPolicy())
 		if err != nil {
@@ -39,17 +69,13 @@ func CreateNamespacesTX(policy *PolicyProfile) (*protoblocktx.Tx, error) {
 			Key:   []byte(ns),
 			Value: policyBytes,
 		})
-		allNamespaces = append(allNamespaces, ns)
 	}
 
-	tx := &protoblocktx.Tx{
-		Id: fmt.Sprintf("initial policy update: %v", strings.Join(allNamespaces, ",")),
+	return &protoblocktx.Tx{
 		Namespaces: []*protoblocktx.TxNamespace{{
 			NsId:       types.MetaNamespaceID,
-			NsVersion:  0,
+			NsVersion:  metaNamespaceVersion,
 			ReadWrites: readWrites,
 		}},
-	}
-	tx.Signatures = [][]byte{policyNamespaceSigner.Sign(tx, 0)}
-	return tx, nil
+	}, nil
 }

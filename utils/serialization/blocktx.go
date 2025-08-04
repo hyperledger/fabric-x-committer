@@ -13,7 +13,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 )
 
-// UnmarshalTx unmarshals data bytes to protoblocktx.Tx.
+// UnmarshalTx unmarshal data bytes to protoblocktx.Tx.
 func UnmarshalTx(data []byte) (*protoblocktx.Tx, error) {
 	var tx protoblocktx.Tx
 	if err := proto.Unmarshal(data, &tx); err != nil {

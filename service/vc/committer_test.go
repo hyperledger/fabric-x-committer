@@ -89,8 +89,8 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 		),
 		&protoblocktx.TransactionsStatus{
 			Status: map[string]*protoblocktx.StatusWithHeight{
-				"tx1": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 1),
-				"tx2": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 2),
+				"tx1": types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 1),
+				"tx2": types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 2),
 			},
 		},
 		transactionIDToHeight{
@@ -136,8 +136,8 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 			},
 			expectedTxStatuses: map[string]*protoblocktx.StatusWithHeight{
-				"tx-new-1": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 1),
-				"tx-new-2": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 244, 2),
+				"tx-new-1": types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 1),
+				"tx-new-2": types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 244, 2),
 			},
 			expectedNsRows: writes(
 				false,
@@ -172,7 +172,7 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 			},
 			expectedTxStatuses: map[string]*protoblocktx.StatusWithHeight{
-				"tx-non-blind-1": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 239, 1),
+				"tx-non-blind-1": types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 239, 1),
 			},
 			expectedNsRows: writes(
 				false,
@@ -203,7 +203,7 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 			},
 			expectedTxStatuses: map[string]*protoblocktx.StatusWithHeight{
-				"tx-blind-1": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 1024, 1),
+				"tx-blind-1": types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 1024, 1),
 			},
 			expectedNsRows: writes(
 				false,
@@ -267,11 +267,11 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 			},
 			expectedTxStatuses: map[string]*protoblocktx.StatusWithHeight{
-				"tx-all-1":      types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 5, 1),
-				"tx-all-2":      types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 200, 2),
-				"tx-conflict-1": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 1, 1),
-				"tx-conflict-2": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 396, 2),
-				"tx-conflict-3": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 396, 3),
+				"tx-all-1":      types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 5, 1),
+				"tx-all-2":      types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 200, 2),
+				"tx-conflict-1": types.NewStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 1, 1),
+				"tx-conflict-2": types.NewStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 396, 2),
+				"tx-conflict-3": types.NewStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 396, 3),
 			},
 			expectedNsRows: writes(
 				false,
@@ -337,9 +337,9 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 			},
 			expectedTxStatuses: map[string]*protoblocktx.StatusWithHeight{
-				"tx-violate-1":     types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 1, 1),
-				"tx-not-violate-1": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 4, 2),
-				"tx-conflict-4":    types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 1000, 3),
+				"tx-violate-1":     types.NewStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 1, 1),
+				"tx-not-violate-1": types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 4, 2),
+				"tx-conflict-4":    types.NewStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 1000, 3),
 			},
 			expectedNsRows: writes(
 				false,
@@ -381,10 +381,10 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 			},
 			expectedTxStatuses: map[string]*protoblocktx.StatusWithHeight{
-				"tx1":            types.CreateStatusWithHeight(protoblocktx.Status_REJECTED_DUPLICATE_TX_ID, 1, 5),
-				"tx-conflict-10": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 1, 1),
-				"tx-conflict-11": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 4, 2),
-				"tx-conflict-12": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 66000, 3),
+				"tx1":            types.NewStatusWithHeight(protoblocktx.Status_REJECTED_DUPLICATE_TX_ID, 1, 5),
+				"tx-conflict-10": types.NewStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 1, 1),
+				"tx-conflict-11": types.NewStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 4, 2),
+				"tx-conflict-12": types.NewStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 66000, 3),
 			},
 			expectedNsRows: writes(
 				false,

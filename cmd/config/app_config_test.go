@@ -25,9 +25,10 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
-	"github.com/hyperledger/fabric-x-committer/utils/broadcastdeliver"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
+	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
 func TestReadConfigSidecar(t *testing.T) {
@@ -42,9 +43,9 @@ func TestReadConfigSidecar(t *testing.T) {
 		expectedConfig: &sidecar.Config{
 			Server:     makeServer("localhost", 4001),
 			Monitoring: makeMonitoring("localhost", 2114),
-			Orderer: broadcastdeliver.Config{
-				Connection: broadcastdeliver.ConnectionConfig{
-					Endpoints: connection.NewOrdererEndpoints(0, "", makeServer("localhost", 7050)),
+			Orderer: ordererconn.Config{
+				Connection: ordererconn.ConnectionConfig{
+					Endpoints: ordererconn.NewEndpoints(0, "", makeServer("localhost", 7050)),
 				},
 				ChannelID: "mychannel",
 			},
@@ -79,9 +80,9 @@ func TestReadConfigSidecar(t *testing.T) {
 				},
 			},
 			Monitoring: makeMonitoring("", 2114),
-			Orderer: broadcastdeliver.Config{
-				Connection: broadcastdeliver.ConnectionConfig{
-					Endpoints: connection.NewOrdererEndpoints(
+			Orderer: ordererconn.Config{
+				Connection: ordererconn.ConnectionConfig{
+					Endpoints: ordererconn.NewEndpoints(
 						0, "", makeServer("ordering-service", 7050),
 					),
 				},
@@ -341,14 +342,14 @@ func TestReadConfigLoadGen(t *testing.T) {
 			Adapter: adapters.AdapterConfig{
 				OrdererClient: &adapters.OrdererClientConfig{
 					SidecarEndpoint: makeEndpoint("sidecar", 4001),
-					Orderer: broadcastdeliver.Config{
-						Connection: broadcastdeliver.ConnectionConfig{
-							Endpoints: connection.NewOrdererEndpoints(
+					Orderer: ordererconn.Config{
+						Connection: ordererconn.ConnectionConfig{
+							Endpoints: ordererconn.NewEndpoints(
 								0, "", makeServer("ordering-service", 7050),
 							),
 						},
 						ChannelID:     "mychannel",
-						ConsensusType: "BFT",
+						ConsensusType: ordererconn.Bft,
 					},
 					BroadcastParallelism: 1,
 				},
@@ -359,15 +360,16 @@ func TestReadConfigLoadGen(t *testing.T) {
 				Transaction: workload.TransactionProfile{
 					ReadWriteCount: workload.NewConstantDistribution(2),
 					Policy: &workload.PolicyProfile{
+						ChannelID: "mychannel",
 						NamespacePolicies: map[string]*workload.Policy{
 							workload.GeneratedNamespaceID: {
-								Scheme: "ECDSA", Seed: 10,
+								Scheme: signature.Ecdsa, Seed: 10,
 							},
 							types.MetaNamespaceID: {
-								Scheme: "ECDSA", Seed: 11,
+								Scheme: signature.Ecdsa, Seed: 11,
 							},
 						},
-						OrdererEndpoints: []*connection.OrdererEndpoint{{
+						OrdererEndpoints: []*ordererconn.Endpoint{{
 							ID:       0,
 							MspID:    "org",
 							API:      []string{"broadcast", "deliver"},

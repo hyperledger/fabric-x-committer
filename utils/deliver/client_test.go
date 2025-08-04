@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package broadcastdeliver
+package deliver
 
 import (
 	"context"
@@ -16,9 +16,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
+	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -29,6 +32,8 @@ var testGrpcRetryProfile = connection.RetryProfile{
 	Multiplier:      2,
 	MaxElapsedTime:  time.Second,
 }
+
+const channelForTest = "mychannel"
 
 func TestBroadcastDeliver(t *testing.T) {
 	t.Parallel()
@@ -46,11 +51,12 @@ func TestBroadcastDeliver(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	t.Cleanup(cancel)
-	stream, err := client.Broadcast(ctx)
+	stream, err := test.NewBroadcastStream(ctx, &conf)
 	require.NoError(t, err)
+	t.Cleanup(stream.Close)
 	outputBlocksChan := make(chan *common.Block, 100)
 	go func() {
-		deliverConf := &DeliverConfig{
+		p := &Parameters{
 			StartBlkNum: 0,
 			EndBlkNum:   MaxBlockNum,
 			OutputBlock: outputBlocksChan,
@@ -59,7 +65,7 @@ func TestBroadcastDeliver(t *testing.T) {
 		// receive the broadcast errors.
 		// But for delivery, we want to continue indefinitely.
 		for ctx.Err() == nil {
-			err = client.Deliver(ctx, deliverConf)
+			err = client.Deliver(ctx, p)
 			t.Logf("Deliver ended with: %v", err)
 		}
 	}()
@@ -73,7 +79,6 @@ func TestBroadcastDeliver(t *testing.T) {
 
 	t.Log("All good")
 	submit(t, stream, outputBlocks, expectedSubmit{
-		id:      "1",
 		success: 3,
 	})
 
@@ -81,7 +86,6 @@ func TestBroadcastDeliver(t *testing.T) {
 	servers[2].Servers[0].Stop()
 	time.Sleep(3 * time.Second)
 	submit(t, stream, outputBlocks, expectedSubmit{
-		id:      "2",
 		success: 3,
 	})
 
@@ -89,7 +93,6 @@ func TestBroadcastDeliver(t *testing.T) {
 	servers[2].Servers[1].Stop()
 	time.Sleep(3 * time.Second)
 	submit(t, stream, outputBlocks, expectedSubmit{
-		id:          "3",
 		success:     2,
 		unavailable: 1,
 	})
@@ -99,7 +102,6 @@ func TestBroadcastDeliver(t *testing.T) {
 	waitUntilGrpcServerIsReady(ctx, t, &servers[2].Configs[0].Endpoint)
 
 	submit(t, stream, outputBlocks, expectedSubmit{
-		id:            "4",
 		success:       2,
 		unimplemented: 1,
 	})
@@ -109,7 +111,6 @@ func TestBroadcastDeliver(t *testing.T) {
 	servers[2].Servers[0] = test.RunGrpcServerForTest(ctx, t, servers[2].Configs[0], ordererService.RegisterService)
 	waitUntilGrpcServerIsReady(ctx, t, &servers[2].Configs[0].Endpoint)
 	submit(t, stream, outputBlocks, expectedSubmit{
-		id:      "5",
 		success: 3,
 	})
 
@@ -120,7 +121,6 @@ func TestBroadcastDeliver(t *testing.T) {
 	servers[1].Servers[1].Stop()
 	time.Sleep(3 * time.Second)
 	submit(t, stream, outputBlocks, expectedSubmit{
-		id:          "6",
 		success:     1,
 		unavailable: 2,
 	})
@@ -129,14 +129,13 @@ func TestBroadcastDeliver(t *testing.T) {
 	conf.Connection.Endpoints = allEndpoints[6:]
 	err = client.UpdateConnections(&conf.Connection)
 	require.NoError(t, err)
+	require.NoError(t, stream.ConnectionManager.Update(&conf.Connection))
 	submit(t, stream, outputBlocks, expectedSubmit{
-		id:      "7",
 		success: 3,
 	})
 }
 
 type expectedSubmit struct {
-	id            string
 	success       int
 	unavailable   int
 	unimplemented int
@@ -144,13 +143,15 @@ type expectedSubmit struct {
 
 func submit(
 	t *testing.T,
-	stream *EnvelopedStream,
+	stream *test.BroadcastStream,
 	outputBlocks channel.Reader[*common.Block],
 	expected expectedSubmit,
 ) {
 	t.Helper()
-	tx := &protoblocktx.Tx{Id: expected.id}
-	_, err := stream.SendWithEnv(tx)
+	txb := workload.TxBuilder{ChannelID: channelForTest}
+	tx := txb.MakeTx(&protoblocktx.Tx{})
+
+	err := stream.SendBatch(workload.MapToEnvelopeBatch(0, []*protoloadgen.TX{tx}))
 	if err != nil {
 		t.Logf("Response error:\n%s", err)
 	}
@@ -175,14 +176,12 @@ func submit(
 	require.True(t, ok)
 	require.NotNil(t, b)
 	require.Len(t, b.Data.Data, 1)
-	data, _, err := serialization.UnwrapEnvelope(b.Data.Data[0])
+	_, hdr, err := serialization.UnwrapEnvelope(b.Data.Data[0])
 	require.NoError(t, err)
-	blockTx, err := serialization.UnmarshalTx(data)
-	require.NoError(t, err)
-	require.Equal(t, tx.Id, blockTx.Id)
+	require.Equal(t, tx.Id, hdr.TxId)
 }
 
-func makeConfig(t *testing.T) (*mock.Orderer, []test.GrpcServers, Config) {
+func makeConfig(t *testing.T) (*mock.Orderer, []test.GrpcServers, ordererconn.Config) {
 	t.Helper()
 
 	idCount := 3
@@ -194,15 +193,15 @@ func makeConfig(t *testing.T) (*mock.Orderer, []test.GrpcServers, Config) {
 	)
 	require.Len(t, ordererServer.Servers, instanceCount)
 
-	conf := Config{
-		ChannelID:     "mychannel",
-		ConsensusType: Bft,
-		Connection:    ConnectionConfig{Retry: &testGrpcRetryProfile},
+	conf := ordererconn.Config{
+		ChannelID:     channelForTest,
+		ConsensusType: ordererconn.Bft,
+		Connection:    ordererconn.ConnectionConfig{Retry: &testGrpcRetryProfile},
 	}
 	servers := make([]test.GrpcServers, idCount)
 	for i, c := range ordererServer.Configs {
 		id := uint32(i % idCount) //nolint:gosec // integer overflow conversion int -> uint32
-		conf.Connection.Endpoints = append(conf.Connection.Endpoints, &connection.OrdererEndpoint{
+		conf.Connection.Endpoints = append(conf.Connection.Endpoints, &ordererconn.Endpoint{
 			ID:       id,
 			Endpoint: c.Endpoint,
 		})

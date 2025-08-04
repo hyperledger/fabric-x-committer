@@ -257,9 +257,9 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 		}
 
 		logger.Debugf("New TX node came from dependency graph manager to vc manager")
-		txBatch := make([]*protovcservice.Transaction, len(txsNode))
+		txBatch := make([]*protovcservice.Tx, len(txsNode))
 		for i, txNode := range txsNode {
-			vc.txBeingValidated.Store(txNode.Tx.ID, txNode)
+			vc.txBeingValidated.Store(txNode.Tx.Ref.TxId, txNode)
 			txBatch[i] = txNode.Tx
 		}
 
@@ -271,7 +271,7 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 			continue
 		}
 
-		if err := stream.Send(&protovcservice.TransactionBatch{
+		if err := stream.Send(&protovcservice.Batch{
 			Transactions: txBatch,
 		}); err != nil {
 			return errors.Wrap(err, streamEndErrWrap)
@@ -282,16 +282,16 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 
 func splitAndSendToVC(
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient,
-	txBatch []*protovcservice.Transaction,
+	txBatch []*protovcservice.Tx,
 ) error {
-	blkToBatch := make(map[uint64]*protovcservice.TransactionBatch)
+	blkToBatch := make(map[uint64]*protovcservice.Batch)
 	for _, tx := range txBatch {
-		rBatch, ok := blkToBatch[tx.BlockNumber]
+		rBatch, ok := blkToBatch[tx.Ref.BlockNum]
 		if !ok {
-			rBatch = &protovcservice.TransactionBatch{
-				Transactions: make([]*protovcservice.Transaction, 0, len(txBatch)),
+			rBatch = &protovcservice.Batch{
+				Transactions: make([]*protovcservice.Tx, 0, len(txBatch)),
 			}
-			blkToBatch[tx.BlockNumber] = rBatch
+			blkToBatch[tx.Ref.BlockNum] = rBatch
 		}
 
 		rBatch.Transactions = append(rBatch.Transactions, tx)

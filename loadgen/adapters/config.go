@@ -7,8 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package adapters
 
 import (
-	"github.com/hyperledger/fabric-x-committer/utils/broadcastdeliver"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
 
 type (
@@ -24,8 +24,8 @@ type (
 
 	// OrdererClientConfig is a struct that contains the configuration for the orderer client.
 	OrdererClientConfig struct {
-		Orderer              broadcastdeliver.Config `mapstructure:"orderer"`
-		BroadcastParallelism int                     `mapstructure:"broadcast-parallelism"`
+		Orderer              ordererconn.Config `mapstructure:"orderer"`
+		BroadcastParallelism int                `mapstructure:"broadcast-parallelism"`
 		// SidecarEndpoint is used to deliver status from the sidecar.
 		// If omitted, we will fetch directly from the orderer.
 		SidecarEndpoint *connection.Endpoint `mapstructure:"sidecar-endpoint"`
@@ -33,7 +33,6 @@ type (
 
 	// SidecarClientConfig is a struct that contains the configuration for the sidecar client.
 	SidecarClientConfig struct {
-		ChannelID       string                     `mapstructure:"channel-id"`
 		SidecarEndpoint *connection.Endpoint       `mapstructure:"sidecar-endpoint"`
 		OrdererServers  []*connection.ServerConfig `mapstructure:"orderer-servers"`
 	}

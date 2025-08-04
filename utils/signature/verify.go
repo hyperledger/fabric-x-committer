@@ -49,14 +49,14 @@ func NewNsVerifier(scheme Scheme, key PublicKey) (*NsVerifier, error) {
 }
 
 // VerifyNs verifies a transaction's namespace signature.
-func (v *NsVerifier) VerifyNs(tx *protoblocktx.Tx, nsIndex int) error {
+func (v *NsVerifier) VerifyNs(txID string, tx *protoblocktx.Tx, nsIndex int) error {
 	if nsIndex < 0 || nsIndex >= len(tx.Namespaces) || nsIndex >= len(tx.Signatures) {
 		return errors.New("namespace index out of range")
 	}
 	if v.verifier == nil {
 		return nil
 	}
-	digest, err := DigestTxNamespace(tx, nsIndex)
+	digest, err := DigestTxNamespace(txID, tx.Namespaces[nsIndex])
 	if err != nil {
 		return err
 	}

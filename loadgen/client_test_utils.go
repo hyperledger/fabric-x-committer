@@ -59,6 +59,7 @@ func DefaultClientConf() *ClientConfig {
 							Seed:   11,
 						},
 					},
+					ChannelID: "channel",
 				},
 			},
 			Seed: 12345,

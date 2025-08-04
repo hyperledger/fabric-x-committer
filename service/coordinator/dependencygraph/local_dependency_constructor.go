@@ -13,7 +13,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
@@ -45,10 +45,8 @@ type (
 	// dependency graph. The id field denotes the order in which the batch
 	// needs to be processed.
 	TransactionBatch struct {
-		ID          uint64
-		BlockNumber uint64
-		Txs         []*protoblocktx.Tx
-		TxsNum      []uint32
+		ID  uint64
+		Txs []*protocoordinatorservice.Tx
 	}
 
 	transactionNodeBatch struct {
@@ -106,7 +104,7 @@ func (p *localDependencyConstructor) construct(ctx context.Context) {
 		for i, tx := range txs.Txs {
 			// NOTE: we can parallelize newTransactionNode(), and
 			//       addDependenciesAndUpdateDependents() across txs.
-			txNode := newTransactionNode(txs.BlockNumber, txs.TxsNum[i], tx)
+			txNode := newTransactionNode(tx)
 
 			// using the dependency detector, we find the transactions that
 			// txNode depends on. We then add these transactions as

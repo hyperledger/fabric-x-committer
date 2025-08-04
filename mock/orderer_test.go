@@ -16,11 +16,9 @@ import (
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -159,7 +157,7 @@ func TestOrderer(t *testing.T) {
 
 	// insert block and get it.
 	sentBlock := makeBlockData(expectedBlock)
-	require.True(t, o.SubmitBlock(ctx, sentBlock))
+	require.NoError(t, o.SubmitBlock(ctx, sentBlock))
 
 	block, err = o.GetBlock(ctx, expectedBlock)
 	require.NoError(t, err)
@@ -186,12 +184,9 @@ func TestOrderer(t *testing.T) {
 
 	expectedBlock++
 
-	// submit payload and force cut
-	sentPayload := &common.Payload{
-		Data: []byte("payload"),
-	}
-	_, err = o.SubmitPayload(ctx, "chan", sentPayload)
-	require.NoError(t, err)
+	// submit env and force cut
+	sentEnv1 := makeEnvelopePayload(2)
+	require.True(t, o.SubmitEnv(ctx, sentEnv1))
 
 	require.True(t, o.CutBlock(ctx))
 
@@ -200,10 +195,9 @@ func TestOrderer(t *testing.T) {
 	require.NotNil(t, block)
 	require.Equal(t, expectedBlock, block.Header.Number)
 	require.Len(t, block.Data.Data, 1)
-	payloadData, _, err := serialization.UnwrapEnvelope(block.Data.Data[0])
+	env1, err := protoutil.UnmarshalEnvelope(block.Data.Data[0])
 	require.NoError(t, err)
-	payload := protoutil.UnmarshalPayloadOrPanic(payloadData)
-	require.True(t, proto.Equal(sentPayload, payload))
+	require.Equal(t, sentEnv1.Payload, env1.Payload)
 
 	expectedBlock++
 

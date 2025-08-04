@@ -8,7 +8,12 @@ package test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"maps"
 	"runtime"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -209,11 +214,9 @@ func WaitUntilGrpcServerIsReady(
 
 // StatusRetriever provides implementation retrieve status of given transaction identifiers.
 type StatusRetriever interface {
-	GetTransactionsStatus(
-		context.Context,
-		*protoblocktx.QueryStatus,
-		...grpc.CallOption,
-	) (*protoblocktx.TransactionsStatus, error)
+	GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus, ...grpc.CallOption) (
+		*protoblocktx.TransactionsStatus, error,
+	)
 }
 
 // EnsurePersistedTxStatus fails the test if the given TX IDs does not match the expected status.
@@ -263,4 +266,78 @@ func SetupDebugging() {
 		Caller:      true,
 		Development: true,
 	})
+}
+
+// LogStruct logs a struct in a flat representation.
+func LogStruct(t *testing.T, name string, v any) {
+	t.Helper()
+	// Marshal struct to JSON
+	data, err := json.Marshal(v)
+	require.NoError(t, err)
+
+	// Unmarshal to map
+	var m map[string]any
+	err = json.Unmarshal(data, &m)
+	require.NoError(t, err)
+
+	// Flatten
+	flat := make(map[string]any)
+	flatten("", m, flat)
+	sb := &strings.Builder{}
+	for _, k := range slices.Sorted(maps.Keys(flat)) {
+		sb.WriteString(k)
+		sb.WriteString(": ")
+		_, printErr := fmt.Fprintf(sb, "%v", flat[k])
+		require.NoError(t, printErr)
+		sb.WriteString("\n")
+	}
+	t.Logf("%s:\n%s", name, sb.String())
+}
+
+func flatten(prefix string, in any, out map[string]any) {
+	switch val := in.(type) {
+	default:
+		out[prefix] = val
+	case map[string]any:
+		e := flattenEndpoint(val)
+		if e != nil {
+			out[prefix] = e
+			return
+		}
+		for k, v := range val {
+			key := k
+			if prefix != "" {
+				key = prefix + "." + k
+			}
+			flatten(key, v, out)
+		}
+	case []any:
+		for i, item := range val {
+			key := fmt.Sprintf("%s.%d", prefix, i)
+			flatten(key, item, out)
+		}
+	}
+}
+
+func flattenEndpoint(in map[string]any) *connection.Endpoint {
+	if len(in) != 2 {
+		return nil
+	}
+	host, okHost := in["host"]
+	if !okHost {
+		return nil
+	}
+	hostStr, okHostStr := host.(string)
+	if !okHostStr {
+		return nil
+	}
+	port, okPort := in["port"]
+	if !okPort {
+		return nil
+	}
+	portFloat, okPortFloat := port.(float64)
+	if !okPortFloat {
+		return nil
+	}
+	return &connection.Endpoint{Host: hostStr, Port: int(portFloat)}
 }

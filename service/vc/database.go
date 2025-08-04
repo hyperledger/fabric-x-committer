@@ -442,7 +442,7 @@ func (db *database) readStatusWithHeight(
 				return fmt.Errorf("failed to create height: %w", err)
 			}
 
-			rows[string(id)] = types.CreateStatusWithHeight(protoblocktx.Status(status), ht.BlockNum, int(ht.TxNum))
+			rows[string(id)] = ht.WithStatus(protoblocktx.Status(status))
 		}
 		return errors.Wrap(r.Err(), "error occurred while reading rows")
 	})

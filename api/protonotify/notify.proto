@@ -32,17 +32,14 @@ message NotificationRequest {
 
 // TxStatusRequest details subscription to transaction status event.
 message TxStatusRequest {
-    // List of transaction IDS to be registered.
-    repeated string tx_ids = 1;
+    repeated string tx_ids = 1;  // List of transaction IDS to be registered.
 }
 
 // NotificationResponse contains a batch of event details.
 // It is pushed to the client via the stream.
 message NotificationResponse {
-    // List of transaction status events.
-    repeated TxStatusEvent tx_status_events = 1;
-    // List of timeout events.
-    repeated string timeout_tx_ids = 2;
+    repeated TxStatusEvent tx_status_events = 1; // List of transaction status events.
+    repeated string timeout_tx_ids = 2;          // List of timeout events.
 }
 
 message TxStatusEvent {

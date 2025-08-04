@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -94,7 +93,7 @@ func TestRelayNormalBlock(t *testing.T) {
 
 	t.Log("Block #0: Submit")
 	txCount := 3
-	blk0 := createBlockForTest(t, 0, nil, [3]string{"tx1", "tx2", "tx3"})
+	blk0, txIDs0 := createBlockForTest(t, 0, nil)
 	require.Nil(t, blk0.Metadata)
 	relayEnv.incomingBlockToBeCommitted <- blk0
 
@@ -115,7 +114,7 @@ func TestRelayNormalBlock(t *testing.T) {
 	status0 := relayEnv.readAllStatusQueue(t)
 	test.RequireProtoElementsMatch(t, []*protonotify.TxStatusEvent{
 		{
-			TxId: "tx1",
+			TxId: txIDs0[0],
 			StatusWithHeight: &protoblocktx.StatusWithHeight{
 				BlockNumber: 0,
 				TxNumber:    0,
@@ -123,7 +122,7 @@ func TestRelayNormalBlock(t *testing.T) {
 			},
 		},
 		{
-			TxId: "tx2",
+			TxId: txIDs0[1],
 			StatusWithHeight: &protoblocktx.StatusWithHeight{
 				BlockNumber: 0,
 				TxNumber:    1,
@@ -131,7 +130,7 @@ func TestRelayNormalBlock(t *testing.T) {
 			},
 		},
 		{
-			TxId: "tx3",
+			TxId: txIDs0[2],
 			StatusWithHeight: &protoblocktx.StatusWithHeight{
 				BlockNumber: 0,
 				TxNumber:    2,
@@ -151,7 +150,7 @@ func TestRelayNormalBlock(t *testing.T) {
 	require.Equal(t, int64(relayEnv.waitingTxsLimit), relayEnv.relay.waitingTxsSlots.Load(t))
 
 	t.Log("Block #1: Submit without available slots")
-	blk1 := createBlockForTest(t, 1, nil, [3]string{"tx1", "tx2", "tx3"})
+	blk1, _ := createBlockForTest(t, 1, nil)
 	require.Nil(t, blk1.Metadata)
 	relayEnv.relay.waitingTxsSlots.Store(t, int64(0))
 	relayEnv.incomingBlockToBeCommitted <- blk1
@@ -177,8 +176,10 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 	committed := channel.NewReader(ctx, relayEnv.committedBlock)
 
 	t.Log("Block #0: Submit")
-	blk0 := createBlockForTest(t, 0, nil, [3]string{"tx1", "tx1", "tx1"})
+	blk0, txIDs0 := createBlockForTest(t, 0, nil)
 	require.Nil(t, blk0.Metadata)
+	blk0.Data.Data[1] = blk0.Data.Data[0]
+	blk0.Data.Data[2] = blk0.Data.Data[0]
 	incoming.Write(blk0)
 
 	t.Log("Block #0: Check block in the queue")
@@ -194,7 +195,7 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 	status0 := relayEnv.readAllStatusQueue(t)
 	test.RequireProtoElementsMatch(t, []*protonotify.TxStatusEvent{
 		{
-			TxId: "tx1",
+			TxId: txIDs0[0],
 			StatusWithHeight: &protoblocktx.StatusWithHeight{
 				BlockNumber: 0,
 				TxNumber:    0,
@@ -204,7 +205,8 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 	}, status0)
 
 	t.Log("Block #1: Submit")
-	blk1 := createBlockForTest(t, 1, nil, [3]string{"tx2", "tx3", "tx2"})
+	blk1, txIDs1 := createBlockForTest(t, 1, nil)
+	blk1.Data.Data[2] = blk1.Data.Data[0]
 	require.Nil(t, blk1.Metadata)
 	incoming.Write(blk1)
 
@@ -221,7 +223,7 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 	status1 := relayEnv.readAllStatusQueue(t)
 	test.RequireProtoElementsMatch(t, []*protonotify.TxStatusEvent{
 		{
-			TxId: "tx2",
+			TxId: txIDs1[0],
 			StatusWithHeight: &protoblocktx.StatusWithHeight{
 				BlockNumber: 1,
 				TxNumber:    0,
@@ -229,7 +231,7 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 			},
 		},
 		{
-			TxId: "tx3",
+			TxId: txIDs1[1],
 			StatusWithHeight: &protoblocktx.StatusWithHeight{
 				BlockNumber: 1,
 				TxNumber:    1,
@@ -277,8 +279,11 @@ func createConfigBlockForTest(t *testing.T) *common.Block {
 }
 
 // createBlockForTest creates sample block with three txIDs.
-func createBlockForTest(t *testing.T, number uint64, preBlockHash []byte, txIDs [3]string) *common.Block {
+func createBlockForTest(t *testing.T, number uint64, preBlockHash []byte) (*common.Block, [3]string) {
 	t.Helper()
+	tx1 := makeValidTx(t, "ch1")
+	tx2 := makeValidTx(t, "ch1")
+	tx3 := makeValidTx(t, "ch1")
 	return &common.Block{
 		Header: &common.BlockHeader{
 			Number:       number,
@@ -286,27 +291,10 @@ func createBlockForTest(t *testing.T, number uint64, preBlockHash []byte, txIDs 
 		},
 		Data: &common.BlockData{
 			Data: [][]byte{
-				createEnvelopeBytesForTest(t, txIDs[0]),
-				createEnvelopeBytesForTest(t, txIDs[1]),
-				createEnvelopeBytesForTest(t, txIDs[2]),
+				tx1.SerializedEnvelope,
+				tx2.SerializedEnvelope,
+				tx3.SerializedEnvelope,
 			},
 		},
-	}
-}
-
-func createEnvelopeBytesForTest(t *testing.T, txID string) []byte {
-	t.Helper()
-	header := &common.Header{
-		ChannelHeader: protoutil.MarshalOrPanic(&common.ChannelHeader{
-			ChannelId: "ch1",
-			TxId:      txID,
-			Type:      int32(common.HeaderType_MESSAGE),
-		}),
-	}
-	return protoutil.MarshalOrPanic(&common.Envelope{
-		Payload: protoutil.MarshalOrPanic(&common.Payload{
-			Header: header,
-			Data:   protoutil.MarshalOrPanic(makeValidTx(t, txID)),
-		}),
-	})
+	}, [3]string{tx1.Id, tx2.Id, tx3.Id}
 }
