@@ -14,8 +14,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 var nsID1ForTest = "1"
@@ -90,29 +92,27 @@ func TestTransactionNode(t *testing.T) {
 
 func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *TransactionNode {
 	t.Helper()
-	tx := createTxForTest(t, nsID1ForTest, readOnly, readWrite, blindWrite)
-	txNode := newTransactionNode(0, 0, tx)
+	tx := createTxForTest(t, 0, nsID1ForTest, readOnly, readWrite, blindWrite)
+	txNode := newTransactionNode(tx)
 
 	expectedReads := make([]string, 0, len(readOnly))
 	expectedWrites := make([]string, 0, len(blindWrite))
 	expectedReadsAndWrites := make([]string, 0, len(readWrite))
 
-	nsID := tx.Namespaces[0].NsId
-
 	for _, k := range readOnly {
-		expectedReads = append(expectedReads, constructCompositeKey(nsID, k))
+		expectedReads = append(expectedReads, constructCompositeKey(nsID1ForTest, k))
 	}
 	expectedReads = append(
 		expectedReads,
-		constructCompositeKey(types.MetaNamespaceID, []byte(nsID)),
+		constructCompositeKey(types.MetaNamespaceID, []byte(nsID1ForTest)),
 	)
 
 	for _, k := range readWrite {
-		expectedReadsAndWrites = append(expectedReadsAndWrites, constructCompositeKey(nsID, k))
+		expectedReadsAndWrites = append(expectedReadsAndWrites, constructCompositeKey(nsID1ForTest, k))
 	}
 
 	for _, k := range blindWrite {
-		expectedWrites = append(expectedWrites, constructCompositeKey(nsID, k))
+		expectedWrites = append(expectedWrites, constructCompositeKey(nsID1ForTest, k))
 	}
 
 	checkNewTxNode(
@@ -130,8 +130,8 @@ func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *Trans
 }
 
 func createTxForTest( //nolint: revive
-	_ *testing.T, nsID string, readOnly, readWrite, blindWrite [][]byte,
-) *protoblocktx.Tx {
+	_ *testing.T, txNum int, nsID string, readOnly, readWrite, blindWrite [][]byte,
+) *protocoordinatorservice.Tx {
 	reads := make([]*protoblocktx.Read, len(readOnly))
 	for i, k := range readOnly {
 		reads[i] = &protoblocktx.Read{Key: k}
@@ -147,28 +147,28 @@ func createTxForTest( //nolint: revive
 		blindWrites[i] = &protoblocktx.Write{Key: k}
 	}
 
-	return &protoblocktx.Tx{
-		Id: uuid.New().String(),
-		Namespaces: []*protoblocktx.TxNamespace{
-			{
+	return &protocoordinatorservice.Tx{
+		Ref: types.TxRef(uuid.New().String(), 0, uint32(txNum)), //nolint:gosec // int -> uint32.
+		Content: &protoblocktx.Tx{
+			Namespaces: []*protoblocktx.TxNamespace{{
 				NsId:        nsID,
 				ReadsOnly:   reads,
 				ReadWrites:  readWrites,
 				BlindWrites: blindWrites,
-			},
+			}},
 		},
 	}
 }
 
 func checkNewTxNode(
 	t *testing.T,
-	tx *protoblocktx.Tx,
+	tx *protocoordinatorservice.Tx,
 	readsWrites *readWriteKeys,
 	txNode *TransactionNode,
 ) {
 	t.Helper()
-	require.Equal(t, tx.Id, txNode.Tx.ID)
-	require.Equal(t, tx.Namespaces, txNode.Tx.Namespaces)
+	test.RequireProtoEqual(t, tx.Ref, txNode.Tx.Ref)
+	test.RequireProtoElementsMatch(t, tx.Content.Namespaces, txNode.Tx.Namespaces)
 	require.True(t, txNode.isDependencyFree())
 	require.ElementsMatch(t, readsWrites.readsOnly, txNode.rwKeys.readsOnly)
 	require.ElementsMatch(t, readsWrites.writesOnly, txNode.rwKeys.writesOnly)

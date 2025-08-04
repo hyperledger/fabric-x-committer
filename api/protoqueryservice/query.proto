@@ -41,11 +41,9 @@ enum IsoLevel {
 }
 
 message ViewParameters {
-  // Defaults to serializable deferrable.
-  IsoLevel iso_level = 1;
-  bool nonDeferrable = 2;
-  // Zero => maximal value
-  uint64 timeout_milliseconds = 3;
+  IsoLevel iso_level = 1;          // View's isolation level. Defaults to serializable.
+  bool nonDeferrable = 2;          // Do not defer errors. Defaults deferrable.
+  uint64 timeout_milliseconds = 3; // View's timeout. Zero => maximal value
 }
 
 message QueryNamespace {

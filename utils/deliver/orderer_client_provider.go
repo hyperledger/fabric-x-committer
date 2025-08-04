@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package broadcastdeliver
+package deliver
 
 import (
 	"errors"
@@ -13,7 +13,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 )
 
-// ordererDeliverStream implements DeliverStream.
+// ordererDeliverStream implements Stream.
 type ordererDeliverStream struct {
 	orderer.AtomicBroadcast_DeliverClient
 }

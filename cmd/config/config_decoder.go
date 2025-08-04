@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
 
 type decoderFunc = func(dataType, targetType reflect.Type, rawData any) (any, bool, error)
@@ -21,7 +22,7 @@ type decoderFunc = func(dataType, targetType reflect.Type, rawData any) (any, bo
 var decoders = []decoderFunc{durationDecoder, serverDecoder, endpointDecoder, ordererEndpointDecoder}
 
 // decoderHook contains custom unmarshalling for types not supported by default by mapstructure.
-// I.e., [time.Duration], [connection.Endpoint], [connection.OrdererEndpoint].
+// I.e., [time.Duration], [connection.Endpoint], [ordererconn.Endpoint].
 func decoderHook(hooks ...decoderFunc) viper.DecoderConfigOption {
 	return viper.DecodeHook(func(dataType, targetType reflect.Type, rawData any) (any, error) {
 		for _, hook := range hooks {
@@ -53,10 +54,10 @@ func endpointDecoder(dataType, targetType reflect.Type, rawData any) (result any
 
 func ordererEndpointDecoder(dataType, targetType reflect.Type, rawData any) (result any, done bool, err error) {
 	stringData, ok := getStringData(dataType, rawData)
-	if !ok || targetType != reflect.TypeOf(connection.OrdererEndpoint{}) {
+	if !ok || targetType != reflect.TypeOf(ordererconn.Endpoint{}) {
 		return nil, false, nil
 	}
-	endpoint, err := connection.ParseOrdererEndpoint(stringData)
+	endpoint, err := ordererconn.ParseEndpoint(stringData)
 	return endpoint, true, errors.Wrap(err, "failed to parse orderer endpoint")
 }
 

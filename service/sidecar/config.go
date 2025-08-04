@@ -16,9 +16,9 @@ import (
 	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 
-	"github.com/hyperledger/fabric-x-committer/utils/broadcastdeliver"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
 
 type (
@@ -30,7 +30,7 @@ type (
 		Server                        *connection.ServerConfig  `mapstructure:"server"`
 		Monitoring                    monitoring.Config         `mapstructure:"monitoring"`
 		Committer                     CoordinatorConfig         `mapstructure:"committer"`
-		Orderer                       broadcastdeliver.Config   `mapstructure:"orderer"`
+		Orderer                       ordererconn.Config        `mapstructure:"orderer"`
 		Ledger                        LedgerConfig              `mapstructure:"ledger"`
 		Notification                  NotificationServiceConfig `mapstructure:"notification"`
 		LastCommittedBlockSetInterval time.Duration             `mapstructure:"last-committed-block-set-interval"`
@@ -112,17 +112,17 @@ func OverwriteConfigFromEnvelope(conf *Config, envelope *common.Envelope) error 
 	return nil
 }
 
-func getDeliveryEndpointsFromConfig(bundle *channelconfig.Bundle) ([]*connection.OrdererEndpoint, error) {
+func getDeliveryEndpointsFromConfig(bundle *channelconfig.Bundle) ([]*ordererconn.Endpoint, error) {
 	oc, ok := bundle.OrdererConfig()
 	if !ok {
 		return nil, errors.New("could not find orderer config")
 	}
 
-	var endpoints []*connection.OrdererEndpoint
+	var endpoints []*ordererconn.Endpoint
 	for orgID, org := range oc.Organizations() {
 		endpointsStr := org.Endpoints()
 		for _, eStr := range endpointsStr {
-			e, err := connection.ParseOrdererEndpoint(eStr)
+			e, err := ordererconn.ParseEndpoint(eStr)
 			if err != nil {
 				return nil, err
 			}

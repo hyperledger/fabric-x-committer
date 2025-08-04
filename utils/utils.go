@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
-	"golang.org/x/exp/constraints"
 )
 
 // ErrActiveStream represents the error when attempting to create a new stream while one is already active.
@@ -34,6 +33,9 @@ type LazyJSON struct {
 
 // String marshals the give object as JSON.
 func (lj *LazyJSON) String() string {
+	if lj.O == nil {
+		return "{}"
+	}
 	var p []byte
 	var err error
 	if lj.Indent != "" {
@@ -52,18 +54,6 @@ func Must(err error, msg ...string) {
 	if err != nil {
 		panic(errors.Wrap(err, strings.Join(msg, " ")))
 	}
-}
-
-// Range returns a slice containing integers in the range from start (including) to end (excluding).
-func Range[T constraints.Integer](start, end T) []T {
-	if start >= end {
-		return nil
-	}
-	results := make([]T, 0, end-start)
-	for i := start; i < end; i++ {
-		results = append(results, i)
-	}
-	return results
 }
 
 // ProcessErr wraps a non-nil error with a message using %w for unwrapping.

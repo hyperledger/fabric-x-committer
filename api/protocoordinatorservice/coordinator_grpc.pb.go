@@ -65,7 +65,7 @@ func (c *coordinatorClient) BlockProcessing(ctx context.Context, opts ...grpc.Ca
 }
 
 type Coordinator_BlockProcessingClient interface {
-	Send(*Block) error
+	Send(*Batch) error
 	Recv() (*protoblocktx.TransactionsStatus, error)
 	grpc.ClientStream
 }
@@ -74,7 +74,7 @@ type coordinatorBlockProcessingClient struct {
 	grpc.ClientStream
 }
 
-func (x *coordinatorBlockProcessingClient) Send(m *Block) error {
+func (x *coordinatorBlockProcessingClient) Send(m *Batch) error {
 	return x.ClientStream.SendMsg(m)
 }
 
@@ -198,7 +198,7 @@ func _Coordinator_BlockProcessing_Handler(srv interface{}, stream grpc.ServerStr
 
 type Coordinator_BlockProcessingServer interface {
 	Send(*protoblocktx.TransactionsStatus) error
-	Recv() (*Block, error)
+	Recv() (*Batch, error)
 	grpc.ServerStream
 }
 
@@ -210,8 +210,8 @@ func (x *coordinatorBlockProcessingServer) Send(m *protoblocktx.TransactionsStat
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *coordinatorBlockProcessingServer) Recv() (*Block, error) {
-	m := new(Block)
+func (x *coordinatorBlockProcessingServer) Recv() (*Batch, error) {
+	m := new(Batch)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}

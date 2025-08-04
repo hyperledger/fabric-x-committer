@@ -14,7 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -55,9 +55,10 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 		env := newLocalDependencyConstructorTestEnv(t)
 		noDepsTxs := &TransactionBatch{
 			ID: 1,
-			Txs: []*protoblocktx.Tx{
+			Txs: []*protocoordinatorservice.Tx{
 				createTxForTest(
 					t,
+					0,
 					nsID1ForTest,
 					[][]byte{keys[0], keys[1]},
 					[][]byte{keys[2], keys[3]},
@@ -65,6 +66,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 				),
 				createTxForTest(
 					t,
+					1,
 					nsID1ForTest,
 					[][]byte{keys[6], keys[7]},
 					[][]byte{keys[8], keys[9]},
@@ -72,6 +74,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 				),
 				createTxForTest(
 					t,
+					2,
 					nsID1ForTest,
 					[][]byte{keys[12], keys[13]},
 					[][]byte{keys[14], keys[15]},
@@ -79,6 +82,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 				),
 				createTxForTest(
 					t,
+					3,
 					nsID1ForTest,
 					[][]byte{keys[18], keys[19]},
 					[][]byte{keys[20], keys[21]},
@@ -86,13 +90,13 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 				),
 				createTxForTest(
 					t,
+					4,
 					types.MetaNamespaceID,
 					nil,
 					[][]byte{[]byte("2")},
 					nil,
 				),
 			},
-			TxsNum: []uint32{0, 1, 2, 3, 4},
 		}
 		env.inComingTxs <- noDepsTxs
 
@@ -114,13 +118,12 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 		env := newLocalDependencyConstructorTestEnv(t)
 		noDepsTxs := &TransactionBatch{
 			ID: 1,
-			Txs: []*protoblocktx.Tx{
-				createTxForTest(t, nsID1ForTest, [][]byte{keys[1]}, [][]byte{keys[2]}, nil),
-				createTxForTest(t, nsID1ForTest, [][]byte{keys[2]}, [][]byte{keys[3]}, nil),
-				createTxForTest(t, nsID1ForTest, [][]byte{keys[3]}, [][]byte{keys[4]}, nil),
-				createTxForTest(t, nsID1ForTest, [][]byte{keys[4]}, [][]byte{keys[5]}, nil),
+			Txs: []*protocoordinatorservice.Tx{
+				createTxForTest(t, 0, nsID1ForTest, [][]byte{keys[1]}, [][]byte{keys[2]}, nil),
+				createTxForTest(t, 1, nsID1ForTest, [][]byte{keys[2]}, [][]byte{keys[3]}, nil),
+				createTxForTest(t, 2, nsID1ForTest, [][]byte{keys[3]}, [][]byte{keys[4]}, nil),
+				createTxForTest(t, 3, nsID1ForTest, [][]byte{keys[4]}, [][]byte{keys[5]}, nil),
 			},
-			TxsNum: []uint32{0, 1, 2, 3},
 		}
 		env.inComingTxs <- noDepsTxs
 
@@ -156,15 +159,14 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 		env := newLocalDependencyConstructorTestEnv(t)
 		noDepsTxs := &TransactionBatch{
 			ID: 1,
-			Txs: []*protoblocktx.Tx{
+			Txs: []*protocoordinatorservice.Tx{
 				createTxForTest(
-					t, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
+					t, 0, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 				),
-				createTxForTest(t, nsID1ForTest, [][]byte{keys[2]}, nil, nil),
-				createTxForTest(t, nsID1ForTest, [][]byte{keys[3]}, nil, nil),
-				createTxForTest(t, nsID1ForTest, [][]byte{keys[4]}, nil, nil),
+				createTxForTest(t, 1, nsID1ForTest, [][]byte{keys[2]}, nil, nil),
+				createTxForTest(t, 2, nsID1ForTest, [][]byte{keys[3]}, nil, nil),
+				createTxForTest(t, 3, nsID1ForTest, [][]byte{keys[4]}, nil, nil),
 			},
-			TxsNum: []uint32{0, 1, 2, 3},
 		}
 		env.inComingTxs <- noDepsTxs
 
@@ -190,15 +192,14 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 		env := newLocalDependencyConstructorTestEnv(t)
 		noDepsTxs := &TransactionBatch{
 			ID: 1,
-			Txs: []*protoblocktx.Tx{
-				createTxForTest(t, nsID1ForTest, [][]byte{keys[2]}, nil, nil),
-				createTxForTest(t, nsID1ForTest, [][]byte{keys[3]}, nil, nil),
-				createTxForTest(t, nsID1ForTest, [][]byte{keys[4]}, nil, nil),
+			Txs: []*protocoordinatorservice.Tx{
+				createTxForTest(t, 0, nsID1ForTest, [][]byte{keys[2]}, nil, nil),
+				createTxForTest(t, 1, nsID1ForTest, [][]byte{keys[3]}, nil, nil),
+				createTxForTest(t, 2, nsID1ForTest, [][]byte{keys[4]}, nil, nil),
 				createTxForTest(
-					t, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
+					t, 3, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 				),
 			},
-			TxsNum: []uint32{0, 1, 2, 3},
 		}
 		env.inComingTxs <- noDepsTxs
 
@@ -231,25 +232,23 @@ func TestLocalDependencyConstructorWithOrder(t *testing.T) {
 	// send the transactions in reverse order
 	noDepsTxs := &TransactionBatch{
 		ID: 3,
-		Txs: []*protoblocktx.Tx{
-			createTxForTest(t, nsID1ForTest, nil, [][]byte{keys[4]}, nil),
-			createTxForTest(t, nsID1ForTest, nil, [][]byte{keys[5]}, nil),
-			createTxForTest(t, nsID1ForTest, nil, [][]byte{keys[6]}, nil),
-			createTxForTest(t, nsID1ForTest, nil, [][]byte{keys[7]}, nil),
-			createTxForTest(t, nsID1ForTest, nil, [][]byte{keys[8]}, nil),
+		Txs: []*protocoordinatorservice.Tx{
+			createTxForTest(t, 0, nsID1ForTest, nil, [][]byte{keys[4]}, nil),
+			createTxForTest(t, 1, nsID1ForTest, nil, [][]byte{keys[5]}, nil),
+			createTxForTest(t, 2, nsID1ForTest, nil, [][]byte{keys[6]}, nil),
+			createTxForTest(t, 3, nsID1ForTest, nil, [][]byte{keys[7]}, nil),
+			createTxForTest(t, 4, nsID1ForTest, nil, [][]byte{keys[8]}, nil),
 		},
-		TxsNum: []uint32{0, 1, 2, 3, 4},
 	}
 	env.inComingTxs <- noDepsTxs
 
 	noDepsTxs = &TransactionBatch{
 		ID: 2,
-		Txs: []*protoblocktx.Tx{
-			createTxForTest(t, nsID1ForTest, nil, [][]byte{keys[1]}, nil),
-			createTxForTest(t, nsID1ForTest, nil, [][]byte{keys[2]}, nil),
-			createTxForTest(t, nsID1ForTest, nil, [][]byte{keys[3]}, nil),
+		Txs: []*protocoordinatorservice.Tx{
+			createTxForTest(t, 0, nsID1ForTest, nil, [][]byte{keys[1]}, nil),
+			createTxForTest(t, 1, nsID1ForTest, nil, [][]byte{keys[2]}, nil),
+			createTxForTest(t, 2, nsID1ForTest, nil, [][]byte{keys[3]}, nil),
 		},
-		TxsNum: []uint32{0, 1, 2},
 	}
 	env.inComingTxs <- noDepsTxs
 
@@ -261,10 +260,9 @@ func TestLocalDependencyConstructorWithOrder(t *testing.T) {
 
 	noDepsTxs = &TransactionBatch{
 		ID: 1,
-		Txs: []*protoblocktx.Tx{
-			createTxForTest(t, nsID1ForTest, nil, [][]byte{keys[0]}, nil),
+		Txs: []*protocoordinatorservice.Tx{
+			createTxForTest(t, 0, nsID1ForTest, nil, [][]byte{keys[0]}, nil),
 		},
-		TxsNum: []uint32{0},
 	}
 	env.inComingTxs <- noDepsTxs
 

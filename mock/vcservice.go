@@ -29,7 +29,7 @@ import (
 // It is used for testing the client which is the coordinator service.
 type VcService struct {
 	protovcservice.ValidationAndCommitServiceServer
-	txBatchChan        chan *protovcservice.TransactionBatch
+	txBatchChan        chan *protovcservice.Batch
 	numBatchesReceived atomic.Uint32
 	lastCommittedBlock atomic.Pointer[protoblocktx.BlockInfo]
 	txsStatus          *fifoCache[*protoblocktx.StatusWithHeight]
@@ -42,7 +42,7 @@ type VcService struct {
 // NewMockVcService returns a new VcService.
 func NewMockVcService() *VcService {
 	return &VcService{
-		txBatchChan: make(chan *protovcservice.TransactionBatch),
+		txBatchChan: make(chan *protovcservice.Batch),
 		txsStatus:   newFifoCache[*protoblocktx.StatusWithHeight](defaultTxStatusStorageSize),
 		healthcheck: connection.DefaultHealthCheckService(),
 	}
@@ -138,9 +138,9 @@ func (v *VcService) receiveAndProcessTransactions(
 			return errors.Wrap(err, "error receiving transactions")
 		}
 
-		preTxNum := txBatch.Transactions[0].TxNum
+		preTxNum := txBatch.Transactions[0].Ref.TxNum
 		for _, tx := range txBatch.Transactions[1:] {
-			if preTxNum == tx.TxNum {
+			if preTxNum == tx.Ref.TxNum {
 				return errors.New("duplication tx num detected")
 			}
 		}
@@ -173,9 +173,9 @@ func (v *VcService) sendTransactionStatus(
 			if tx.PrelimInvalidTxStatus != nil {
 				code = tx.PrelimInvalidTxStatus.Code
 			}
-			s := types.CreateStatusWithHeight(code, tx.BlockNumber, int(tx.TxNum))
-			txsStatus.Status[tx.ID] = s
-			v.txsStatus.addIfNotExist(tx.ID, s)
+			s := types.NewStatusWithHeightFromRef(code, tx.Ref)
+			txsStatus.Status[tx.Ref.TxId] = s
+			v.txsStatus.addIfNotExist(tx.Ref.TxId, s)
 		}
 		v.txsStatusMu.Unlock()
 
@@ -194,6 +194,6 @@ func (v *VcService) GetNumBatchesReceived() uint32 {
 // SubmitTransactions enqueues the given transactions to a queue read by status sending goroutine.
 // This methods helps the test code to bypass the stream to submit transactions to the mock
 // vcservice.
-func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *protovcservice.TransactionBatch) {
+func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *protovcservice.Batch) {
 	channel.NewWriter(ctx, v.txBatchChan).Write(txsBatch)
 }

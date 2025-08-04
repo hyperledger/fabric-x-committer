@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package connection
+package ordererconn
 
 import (
 	"encoding/json"
@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
+
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 func TestReadWrite(t *testing.T) {
@@ -26,11 +28,11 @@ api:
 host: localhost
 port: 5050
 `
-	expected := &OrdererEndpoint{
+	expected := &Endpoint{
 		ID:    5,
 		MspID: "org",
-		API:   []string{"broadcast", "deliver"},
-		Endpoint: Endpoint{
+		API:   []string{Broadcast, Deliver},
+		Endpoint: connection.Endpoint{
 			Host: "localhost",
 			Port: 5050,
 		},
@@ -45,15 +47,15 @@ port: 5050
 	require.NoError(t, err)
 	require.YAMLEq(t, valYAML, string(valYamlRaw))
 
-	e, err := ParseOrdererEndpoint(valSchema)
+	e, err := ParseEndpoint(valSchema)
 	require.NoError(t, err)
 	require.Equal(t, expected, e)
 
-	e, err = ParseOrdererEndpoint(valJSON)
+	e, err = ParseEndpoint(valJSON)
 	require.NoError(t, err)
 	require.Equal(t, expected, e)
 
-	e, err = ParseOrdererEndpoint(valYAML)
+	e, err = ParseEndpoint(valYAML)
 	require.NoError(t, err)
 	require.Equal(t, expected, e)
 }
