@@ -12,10 +12,11 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
-
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+
+	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 const (
@@ -87,7 +88,7 @@ func (cc *PostgresClusterController) addPrimaryNode(ctx context.Context, t *test
 		postgresNodeCreationBundle{
 			name:           fmt.Sprintf("postgres-primary-%s", uuid.New()),
 			requiredOutput: "database system is ready to accept connections",
-			role:           LeaderNode,
+			role:           MasterNode,
 			additionalEnvs: []string{
 				"POSTGRESQL_REPLICATION_MODE=master",
 				"POSTGRESQL_USERNAME=yugabyte",
@@ -144,6 +145,31 @@ func (cc *PostgresClusterController) createAndStartNode(
 	}))
 
 	return node
+}
+
+func (cc *PostgresClusterController) getNodesConnections(ctx context.Context, t *testing.T) *dbtest.Connection {
+	t.Helper()
+	endpoints := make([]*connection.Endpoint, cc.GetClusterSize())
+	for i, node := range cc.nodes {
+		endpoints[i] = node.GetContainerConnectionDetails(ctx, t)
+	}
+
+	return dbtest.NewConnection(endpoints...)
+}
+
+func (cc *PostgresClusterController) getLeaderHost(ctx context.Context, t *testing.T) string {
+	t.Helper()
+
+	require.NotEmpty(t, cc.nodes, "no nodes available in cluster")
+
+	for _, node := range cc.nodes {
+		if node.Role == MasterNode {
+			return node.GetContainerConnectionDetails(ctx, t).GetHost()
+		}
+	}
+
+	t.Fatal("no leader node found in cluster")
+	return "" // unreachable, but required for compiler
 }
 
 // PromoteFollowerNode runs a script that promotes the first follower db node

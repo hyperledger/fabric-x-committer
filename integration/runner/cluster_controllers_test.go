@@ -22,7 +22,7 @@ func TestDBResiliencyYugabyteClusterController(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
 
-	cc, conn := StartYugaCluster(ctx, t, 3)
+	cc, conn := StartYugaCluster(ctx, t, 3, 3)
 	containersIDs := cc.GetNodesContainerID(t)
 
 	t.Cleanup(func() {
@@ -30,15 +30,11 @@ func TestDBResiliencyYugabyteClusterController(t *testing.T) {
 		ensureContainersRemoval(t, containersIDs)
 	})
 
-	require.Equal(t, 3, cc.GetClusterSize())
-
 	dbtest.ConnectAndQueryTest(t, conn)
+	require.Equal(t, 6, cc.GetClusterSize())
 
-	cc.AddNode(ctx, t)
-	require.Equal(t, 4, cc.GetClusterSize())
-
-	cc.StopAndRemoveNodeWithRole(t, FollowerNode)
-	require.Equal(t, 3, cc.GetClusterSize())
+	cc.StopAndRemoveNodeWithRole(t, TabletNode)
+	require.Equal(t, 5, cc.GetClusterSize())
 }
 
 func TestDBResiliencyPostgresClusterController(t *testing.T) {
