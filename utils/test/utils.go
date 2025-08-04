@@ -19,7 +19,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
@@ -65,22 +64,17 @@ func ServerToClientConfig(servers ...*connection.ServerConfig) *connection.Clien
 // did not specify a port.
 // The method asserts that the GRPC server did not end with failure.
 func RunGrpcServerForTest(
-	ctx context.Context, t *testing.T, serverConfig *connection.ServerConfig, register ...func(server *grpc.Server),
+	ctx context.Context, t *testing.T, serverConfig *connection.ServerConfig, register func(server *grpc.Server),
 ) *grpc.Server {
 	t.Helper()
 	listener, err := serverConfig.Listener()
 	require.NoError(t, err)
 	server := serverConfig.GrpcServer()
 
-	// We register a health check service for all servers in tests to allow waiting for readiness.
-	healthcheck := health.NewServer()
-	healthcheck.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
-	healthgrpc.RegisterHealthServer(server, healthcheck)
-
-	// We support instantiating a server with multiple APIs for testing.
-	// We also support no APIs (only the health check API).
-	for _, r := range register {
-		r(server)
+	if register != nil {
+		register(server)
+	} else {
+		healthgrpc.RegisterHealthServer(server, connection.DefaultHealthCheckService())
 	}
 
 	var wg sync.WaitGroup
@@ -104,26 +98,29 @@ func StartGrpcServersForTest(
 	ctx context.Context,
 	t *testing.T,
 	numService int,
-	register ...func(*grpc.Server, int),
+	register func(*grpc.Server, int),
 ) *GrpcServers {
 	t.Helper()
 	sc := make([]*connection.ServerConfig, numService)
 	for i := range sc {
 		sc[i] = connection.NewLocalHostServer()
 	}
-	return StartGrpcServersWithConfigForTest(ctx, t, sc, register...)
+	return StartGrpcServersWithConfigForTest(ctx, t, sc, register)
 }
 
 // StartGrpcServersWithConfigForTest starts multiple GRPC servers with given configurations.
 func StartGrpcServersWithConfigForTest(
-	ctx context.Context, t *testing.T, sc []*connection.ServerConfig, register ...func(*grpc.Server, int),
+	ctx context.Context, t *testing.T, sc []*connection.ServerConfig, register func(*grpc.Server, int),
 ) *GrpcServers {
 	t.Helper()
 	grpcServers := make([]*grpc.Server, len(sc))
 	for i, s := range sc {
+		i := i
 		grpcServers[i] = RunGrpcServerForTest(ctx, t, s, func(server *grpc.Server) {
-			for _, r := range register {
-				r(server, i)
+			if register != nil {
+				register(server, i)
+			} else {
+				healthgrpc.RegisterHealthServer(server, connection.DefaultHealthCheckService())
 			}
 		})
 	}
@@ -177,23 +174,19 @@ func RunServiceForTest(
 
 // RunServiceAndGrpcForTest combines running a service and its GRPC server.
 // It is intended for services that implements the Service API (i.e., command line services).
-//
-//nolint:revive // maximum number of arguments per function exceeded; max 4 but got 5.
 func RunServiceAndGrpcForTest(
 	ctx context.Context,
 	t *testing.T,
 	service connection.Service,
-	serverConfig *connection.ServerConfig,
-	register ...func(server *grpc.Server),
+	serverConfig ...*connection.ServerConfig,
 ) *channel.Ready {
 	t.Helper()
 	doneFlag := RunServiceForTest(ctx, t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(service.Run(ctx))
 	}, service.WaitForReady)
-	if serverConfig == nil || register == nil {
-		return nil
+	for _, server := range serverConfig {
+		RunGrpcServerForTest(ctx, t, server, service.RegisterService)
 	}
-	RunGrpcServerForTest(ctx, t, serverConfig, register...)
 	return doneFlag
 }
 

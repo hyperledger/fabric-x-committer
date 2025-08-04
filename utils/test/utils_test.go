@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -25,12 +24,9 @@ func TestCheckServerStopped(t *testing.T) {
 	t.Cleanup(cancel)
 
 	mockSigVer := mock.NewMockSigVerifier()
-
-	sigVerServers := test.StartGrpcServersForTest(ctx, t, 1,
-		func(server *grpc.Server, _ int) {
-			protosigverifierservice.RegisterVerifierServer(server, mockSigVer)
-		},
-	)
+	sigVerServers := test.StartGrpcServersForTest(ctx, t, 1, func(server *grpc.Server, _ int) {
+		mockSigVer.RegisterService(server)
+	})
 
 	addr := sigVerServers.Configs[0].Endpoint.Address()
 	require.Eventually(t, func() bool {

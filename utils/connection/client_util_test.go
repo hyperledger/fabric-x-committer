@@ -41,14 +41,11 @@ func TestGRPCRetry(t *testing.T) {
 	})
 
 	t.Log("Starting service")
-	regService := func(server *grpc.Server) {
-		protovcservice.RegisterValidationAndCommitServiceServer(server, mock.NewMockVcService())
-	}
 	serverConfig := connection.NewLocalHostServer()
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	vcGrpc := test.RunGrpcServerForTest(ctx, t, serverConfig, regService)
+	vcGrpc := test.RunGrpcServerForTest(ctx, t, serverConfig, mock.NewMockVcService().RegisterService)
 
 	t.Log("Setup dial config")
 	dialConfig := connection.NewInsecureDialConfig(&serverConfig.Endpoint)
@@ -76,7 +73,7 @@ func TestGRPCRetry(t *testing.T) {
 	go func() {
 		time.Sleep(30 * time.Second)
 		t.Log("Service is starting")
-		test.RunGrpcServerForTest(ctx, t, serverConfig, regService)
+		test.RunGrpcServerForTest(ctx, t, serverConfig, mock.NewMockVcService().RegisterService)
 	}()
 
 	t.Log("Attempting to connect with default GRPC config")
@@ -104,7 +101,7 @@ func TestGRPCRetry(t *testing.T) {
 	go func() {
 		time.Sleep(30 * time.Second)
 		t.Log("Service is starting")
-		test.RunGrpcServerForTest(ctx, t, serverConfig, regService)
+		test.RunGrpcServerForTest(ctx, t, serverConfig, mock.NewMockVcService().RegisterService)
 	}()
 
 	t.Log("Attempting to connect again with lower timeout")
@@ -122,14 +119,11 @@ func TestGRPCRetryMultiEndpoints(t *testing.T) {
 	})
 
 	t.Log("Starting service")
-	regService := func(server *grpc.Server) {
-		protovcservice.RegisterValidationAndCommitServiceServer(server, mock.NewMockVcService())
-	}
 	serverConfig := connection.NewLocalHostServer()
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	test.RunGrpcServerForTest(ctx, t, serverConfig, regService)
+	test.RunGrpcServerForTest(ctx, t, serverConfig, mock.NewMockVcService().RegisterService)
 
 	t.Log("Connecting")
 	conn, err := connection.Connect(connection.NewInsecureDialConfig(&serverConfig.Endpoint))

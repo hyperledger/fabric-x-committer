@@ -17,7 +17,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -75,9 +74,8 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 		VerifierConfig:           *test.ServerToClientConfig(svServers.Configs...),
 		ValidatorCommitterConfig: *test.ServerToClientConfig(vcServerConfigs...),
 		DependencyGraphConfig: &DependencyGraphConfig{
-			NumOfLocalDepConstructors:       3,
-			WaitingTxsLimit:                 10,
-			NumOfWorkersForGlobalDepManager: 3,
+			NumOfLocalDepConstructors: 3,
+			WaitingTxsLimit:           10,
 		},
 		ChannelBufferSizePerGoroutine: 2000,
 		Monitoring: monitoring.Config{
@@ -103,9 +101,7 @@ func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
 			Port: 0,
 		},
 	}
-	test.RunServiceAndGrpcForTest(ctx, t, cs, sc, func(server *grpc.Server) {
-		protocoordinatorservice.RegisterCoordinatorServer(server, cs)
-	})
+	test.RunServiceAndGrpcForTest(ctx, t, cs, sc)
 
 	conn, err := connection.Connect(connection.NewInsecureDialConfig(&sc.Endpoint))
 	require.NoError(t, err)
@@ -279,7 +275,56 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 		"tx1": {Code: protoblocktx.Status_COMMITTED, BlockNumber: 1},
 	}, nil)
 
-	test.RequireIntMetricValue(t, preMetricsValue+1, env.coordinator.metrics.transactionCommittedStatusSentTotal)
+	test.RequireIntMetricValue(t, preMetricsValue+1, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
+		protoblocktx.Status_COMMITTED.String(),
+	))
+
+	_, err = env.coordinator.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1})
+	require.NoError(t, err)
+
+	lastCommittedBlock, err := env.coordinator.GetLastCommittedBlockNumber(ctx, nil)
+	require.NoError(t, err)
+	require.NotNil(t, lastCommittedBlock.Block)
+	require.Equal(t, uint64(1), lastCommittedBlock.Block.Number)
+}
+
+func TestCoordinatorServiceRejectedTx(t *testing.T) {
+	t.Parallel()
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: false})
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+	t.Cleanup(cancel)
+	env.start(ctx, t)
+
+	env.createNamespaces(t, 0, "1")
+
+	preMetricsValue := test.GetIntMetricValue(t, env.coordinator.metrics.transactionReceivedTotal)
+
+	err := env.csStream.Send(&protocoordinatorservice.Block{
+		Number: 1,
+		Rejected: []*protocoordinatorservice.TxStatusInfo{
+			{
+				TxNum:  0,
+				Id:     "rejected",
+				Status: protoblocktx.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
+			},
+		},
+	})
+	require.NoError(t, err)
+	test.EventuallyIntMetric(
+		t, preMetricsValue+1, env.coordinator.metrics.transactionReceivedTotal,
+		1*time.Second, 100*time.Millisecond,
+	)
+
+	env.requireStatus(ctx, t, map[string]*protoblocktx.StatusWithHeight{
+		"rejected": {Code: protoblocktx.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD, BlockNumber: 1},
+	}, nil)
+
+	test.RequireIntMetricValue(t, 1, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
+		protoblocktx.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD.String(),
+	))
+	test.RequireIntMetricValue(t, preMetricsValue, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
+		protoblocktx.Status_COMMITTED.String(),
+	))
 
 	_, err = env.coordinator.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1})
 	require.NoError(t, err)
@@ -420,7 +465,9 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 	for txID, txStatus := range status {
 		require.Equal(t, protoblocktx.Status_COMMITTED, txStatus.Code, txID)
 	}
-	test.RequireIntMetricValue(t, expectedReceived, env.coordinator.metrics.transactionCommittedStatusSentTotal)
+	test.RequireIntMetricValue(t, expectedReceived, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
+		protoblocktx.Status_COMMITTED.String(),
+	))
 
 	res := env.dbEnv.FetchKeys(t, utNsID, [][]byte{mainKey, subKey})
 	mainValue, ok := res[string(mainKey)]
@@ -586,7 +633,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 	expectedTxStatus := map[string]*protoblocktx.StatusWithHeight{
 		"tx2":           types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 2, 0),
 		"mvcc conflict": types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 2, 2),
-		"tx1":           types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_DUPLICATE_TXID, 2, 5),
+		"tx1":           types.CreateStatusWithHeight(protoblocktx.Status_REJECTED_DUPLICATE_TX_ID, 2, 5),
 	}
 	env.requireStatus(ctx, t, expectedTxStatus, map[string]*protoblocktx.StatusWithHeight{
 		"tx1": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 0),
@@ -725,7 +772,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 		"tx3":                 types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 2, 1),
 		"mvcc conflict":       types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 2, 2),
 		"duplicate namespace": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 2, 4),
-		"tx1":                 types.CreateStatusWithHeight(protoblocktx.Status_ABORTED_DUPLICATE_TXID, 2, 5),
+		"tx1":                 types.CreateStatusWithHeight(protoblocktx.Status_REJECTED_DUPLICATE_TX_ID, 2, 5),
 	}, map[string]*protoblocktx.StatusWithHeight{
 		"tx1": types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 0),
 	})
@@ -855,7 +902,9 @@ func TestChunkSizeSentForDepGraph(t *testing.T) {
 	}
 
 	require.Equal(t, expectedTxsStatus, actualTxsStatus)
-	test.RequireIntMetricValue(t, txPerBlock, env.coordinator.metrics.transactionCommittedStatusSentTotal)
+	test.RequireIntMetricValue(t, txPerBlock, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
+		protoblocktx.Status_COMMITTED.String(),
+	))
 }
 
 func TestWaitingTxsCount(t *testing.T) {
@@ -907,7 +956,9 @@ func TestWaitingTxsCount(t *testing.T) {
 	}
 
 	require.Equal(t, expectedTxsStatus, actualTxsStatus)
-	test.RequireIntMetricValue(t, txPerBlock, env.coordinator.metrics.transactionCommittedStatusSentTotal)
+	test.RequireIntMetricValue(t, txPerBlock, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
+		protoblocktx.Status_COMMITTED.String(),
+	))
 
 	env.streamCancel()
 	require.Eventually(t, func() bool {

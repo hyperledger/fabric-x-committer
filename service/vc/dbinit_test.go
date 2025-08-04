@@ -8,7 +8,6 @@ package vc
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -22,9 +21,9 @@ func TestDBInit(t *testing.T) {
 	t.Parallel()
 	env := newDatabaseTestEnvWithTablesSetup(t)
 
-	tableName := nsTableNamePrefix + types.MetaNamespaceID
+	tableName := TableName(types.MetaNamespaceID)
 	keys := [][]byte{[]byte("tx1"), []byte("tx2"), []byte("tx3"), []byte("tx4")}
-	ret := env.DB.pool.QueryRow(t.Context(), fmt.Sprintf(insertNsStatesSQLTempl, types.MetaNamespaceID), keys, keys)
+	ret := env.DB.pool.QueryRow(t.Context(), FmtNsID(insertNsStatesSQLTempl, types.MetaNamespaceID), keys, keys)
 	duplicates, err := readArrayResult[[]byte](ret)
 	require.NoError(t, err)
 	require.Empty(t, duplicates)

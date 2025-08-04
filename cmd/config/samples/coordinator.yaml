@@ -17,8 +17,7 @@ validator-committer:
 
 dependency-graph:
   num-of-local-dep-constructors: 1
-  waiting-txs-limit: 10_000
-  num-of-workers-for-global-dep-manager: 1
+  waiting-txs-limit: 100_000
   per-channel-buffer-size-per-goroutine: 10
 
 logging:

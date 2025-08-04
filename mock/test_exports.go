@@ -12,13 +12,9 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -36,7 +32,7 @@ func StartMockSVService(t *testing.T, numService int) (
 
 	sigVerServers := test.StartGrpcServersForTest(t.Context(), t, len(mockSigVer),
 		func(server *grpc.Server, index int) {
-			protosigverifierservice.RegisterVerifierServer(server, mockSigVer[index])
+			mockSigVer[index].RegisterService(server)
 		})
 	return mockSigVer, sigVerServers
 }
@@ -47,7 +43,7 @@ func StartMockSVServiceFromListWithConfig(
 ) *test.GrpcServers {
 	t.Helper()
 	return test.StartGrpcServersWithConfigForTest(t.Context(), t, sc, func(server *grpc.Server, index int) {
-		protosigverifierservice.RegisterVerifierServer(server, svs[index])
+		svs[index].RegisterService(server)
 	})
 }
 
@@ -62,7 +58,7 @@ func StartMockVCService(t *testing.T, numService int) (
 	}
 
 	vcGrpc := test.StartGrpcServersForTest(t.Context(), t, numService, func(server *grpc.Server, index int) {
-		protovcservice.RegisterValidationAndCommitServiceServer(server, vcServices[index])
+		vcServices[index].RegisterService(server)
 	})
 	return vcServices, vcGrpc
 }
@@ -73,7 +69,7 @@ func StartMockVCServiceFromListWithConfig(
 ) *test.GrpcServers {
 	t.Helper()
 	return test.StartGrpcServersWithConfigForTest(t.Context(), t, sc, func(server *grpc.Server, index int) {
-		protovcservice.RegisterValidationAndCommitServiceServer(server, vcs[index])
+		vcs[index].RegisterService(server)
 	})
 }
 
@@ -84,7 +80,7 @@ func StartMockCoordinatorService(t *testing.T) (
 	t.Helper()
 	mockCoordinator := NewMockCoordinator()
 	coordinatorGrpc := test.StartGrpcServersForTest(t.Context(), t, 1, func(server *grpc.Server, _ int) {
-		protocoordinatorservice.RegisterCoordinatorServer(server, mockCoordinator)
+		mockCoordinator.RegisterService(server)
 	})
 	return mockCoordinator, coordinatorGrpc
 }
@@ -98,7 +94,7 @@ func StartMockCoordinatorServiceFromListWithConfig(
 	t.Helper()
 	return test.StartGrpcServersWithConfigForTest(t.Context(), t, []*connection.ServerConfig{sc},
 		func(server *grpc.Server, _ int) {
-			protocoordinatorservice.RegisterCoordinatorServer(server, coordService)
+			coordService.RegisterService(server)
 		})
 }
 
@@ -117,14 +113,14 @@ func StartMockOrderingServices(t *testing.T, conf *OrdererConfig) (
 		return service, test.StartGrpcServersWithConfigForTest(
 			t.Context(),
 			t, conf.ServerConfigs, func(server *grpc.Server, _ int) {
-				ab.RegisterAtomicBroadcastServer(server, service)
+				service.RegisterService(server)
 			},
 		)
 	}
 
 	servers := test.StartGrpcServersForTest(
 		t.Context(), t, conf.NumService, func(server *grpc.Server, _ int) {
-			ab.RegisterAtomicBroadcastServer(server, service)
+			service.RegisterService(server)
 		},
 	)
 	return service, servers
@@ -161,9 +157,9 @@ func NewOrdererTestEnv(t *testing.T, conf *OrdererTestConfig) *OrdererTestEnv {
 		Holder:         holder,
 		OrdererServers: ordererServers,
 		HolderServers: test.StartGrpcServersForTest(t.Context(), t, conf.NumHolders, func(s *grpc.Server, _ int) {
-			ab.RegisterAtomicBroadcastServer(s, holder)
+			holder.RegisterService(s)
 		}),
-		FakeServers: test.StartGrpcServersForTest(t.Context(), t, conf.NumFake),
+		FakeServers: test.StartGrpcServersForTest(t.Context(), t, conf.NumFake, nil),
 	}
 }
 

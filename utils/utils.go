@@ -75,3 +75,12 @@ func ProcessErr(err error, msg string) error {
 	}
 	return nil
 }
+
+// CountAppearances returns the number of appearances each item have.
+func CountAppearances[T comparable](items []T) map[T]int {
+	countMap := make(map[T]int)
+	for _, item := range items {
+		countMap[item]++
+	}
+	return countMap
+}

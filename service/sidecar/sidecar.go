@@ -13,9 +13,12 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric/protoutil"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
@@ -41,6 +44,7 @@ type Service struct {
 	blockToBeCommitted chan *common.Block
 	committedBlock     chan *common.Block
 	config             *Config
+	healthcheck        *health.Server
 	metrics            *perfMetrics
 }
 
@@ -72,6 +76,7 @@ func New(c *Config) (*Service, error) {
 		ordererClient:      ordererClient,
 		relay:              relayService,
 		ledgerService:      ledgerService,
+		healthcheck:        connection.DefaultHealthCheckService(),
 		config:             c,
 		metrics:            metrics,
 		blockToBeCommitted: make(chan *common.Block, 100),
@@ -126,6 +131,12 @@ func (s *Service) Run(ctx context.Context) error {
 	})
 
 	return utils.ProcessErr(g.Wait(), "sidecar has been stopped")
+}
+
+// RegisterService registers for the sidecar's GRPC services.
+func (s *Service) RegisterService(server *grpc.Server) {
+	peer.RegisterDeliverServer(server, s.ledgerService)
+	healthgrpc.RegisterHealthServer(server, s.healthcheck)
 }
 
 func (s *Service) sendBlocksAndReceiveStatus(
@@ -313,7 +324,12 @@ func appendMissingBlock(
 	blk *common.Block,
 	committedBlocks channel.Writer[*common.Block],
 ) error {
-	mappedBlock := mapBlock(blk)
+	var txIDToHeight utils.SyncMap[string, types.Height]
+	mappedBlock, err := mapBlock(blk, &txIDToHeight)
+	if err != nil {
+		// This can never occur unless there is a bug in the relay.
+		return err
+	}
 	txIDs := make([]string, len(mappedBlock.block.Txs))
 	expectedHeight := make(map[string]*types.Height)
 	for i, tx := range mappedBlock.block.Txs {
@@ -330,11 +346,9 @@ func appendMissingBlock(
 		return err
 	}
 
-	blk.Metadata = &common.BlockMetadata{
-		Metadata: [][]byte{nil, nil, mappedBlock.withStatus.txStatus},
-	}
+	mappedBlock.withStatus.setStatusMetadataInBlock()
 
-	if !committedBlocks.Write(blk) {
+	if !committedBlocks.Write(mappedBlock.withStatus.block) {
 		return errors.New("context ended")
 	}
 	return nil
@@ -380,7 +394,7 @@ func waitForIdleCoordinator(ctx context.Context, client protocoordinatorservice.
 }
 
 func fillStatuses(
-	finalStatuses []validationCode,
+	finalStatuses []protoblocktx.Status,
 	statuses map[string]*protoblocktx.StatusWithHeight,
 	expectedHeight map[string]*types.Height,
 ) error {
@@ -390,11 +404,10 @@ func fillStatuses(
 			return errors.Newf("committer should have the status of txID [%s] but it does not", txID)
 		}
 		if types.AreSame(height, types.NewHeight(s.BlockNumber, s.TxNumber)) {
-			finalStatuses[height.TxNum] = byte(s.Code)
+			finalStatuses[height.TxNum] = s.Code
 			continue
 		}
-		finalStatuses[height.TxNum] = byte(protoblocktx.Status_ABORTED_DUPLICATE_TXID)
+		finalStatuses[height.TxNum] = protoblocktx.Status_REJECTED_DUPLICATE_TX_ID
 	}
-
 	return nil
 }

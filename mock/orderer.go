@@ -21,6 +21,9 @@ import (
 	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
 	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/protoutil"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -53,6 +56,7 @@ type (
 		inBlocks    chan *common.Block
 		cutBlock    chan any
 		cache       *blockCache
+		healthcheck *health.Server
 	}
 
 	// HoldingOrderer allows holding a block.
@@ -139,6 +143,7 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 		inBlocks:    make(chan *common.Block, config.BlockSize*config.OutBlockCapacity),
 		cutBlock:    make(chan any),
 		cache:       newBlockCache(config.OutBlockCapacity),
+		healthcheck: connection.DefaultHealthCheckService(),
 	}, nil
 }
 
@@ -211,6 +216,12 @@ func (o *HoldingOrderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error 
 // Release blocks.
 func (o *HoldingOrderer) Release() {
 	o.HoldFromBlock.Store(math.MaxUint64)
+}
+
+// RegisterService registers for the orderer's GRPC services.
+func (o *HoldingOrderer) RegisterService(server *grpc.Server) {
+	ab.RegisterAtomicBroadcastServer(server, o)
+	healthgrpc.RegisterHealthServer(server, o.healthcheck)
 }
 
 func (s *holdingStream) Send(msg *ab.DeliverResponse) error {
@@ -313,6 +324,12 @@ func (o *Orderer) Run(ctx context.Context) error {
 // WaitForReady returns true when we are ready to process GRPC requests.
 func (*Orderer) WaitForReady(context.Context) bool {
 	return true
+}
+
+// RegisterService registers for the orderer's GRPC services.
+func (o *Orderer) RegisterService(server *grpc.Server) {
+	ab.RegisterAtomicBroadcastServer(server, o)
+	healthgrpc.RegisterHealthServer(server, o.healthcheck)
 }
 
 // SubmitBlock allows submitting blocks directly for testing other packages.

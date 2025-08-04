@@ -9,18 +9,25 @@ package coordinator
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
+	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
@@ -61,6 +68,8 @@ type (
 		numWaitingTxsForStatus *atomic.Int32
 
 		txBatchIDToDepGraph uint64
+
+		healthcheck *health.Server
 	}
 
 	channels struct {
@@ -131,7 +140,7 @@ func NewCoordinatorService(c *Config) *Service {
 	metrics := newPerformanceMetrics()
 
 	depMgr := dependencygraph.NewManager(
-		&dependencygraph.Config{
+		&dependencygraph.Parameters{
 			IncomingTxs:               queues.coordinatorToDepGraphTxs,
 			OutgoingDepFreeTxsNode:    queues.depGraphToSigVerifierFreeTxs,
 			IncomingValidatedTxsNode:  queues.vcServiceToDepGraphValidatedTxs,
@@ -165,17 +174,17 @@ func NewCoordinatorService(c *Config) *Service {
 	)
 
 	return &Service{
-		UnimplementedCoordinatorServer: protocoordinatorservice.UnimplementedCoordinatorServer{},
-		dependencyMgr:                  depMgr,
-		signatureVerifierMgr:           svMgr,
-		validatorCommitterMgr:          vcMgr,
-		policyMgr:                      policyMgr,
-		queues:                         queues,
-		config:                         c,
-		metrics:                        metrics,
-		initializationDone:             channel.NewReady(),
-		numWaitingTxsForStatus:         &atomic.Int32{},
-		txBatchIDToDepGraph:            1,
+		dependencyMgr:          depMgr,
+		signatureVerifierMgr:   svMgr,
+		validatorCommitterMgr:  vcMgr,
+		policyMgr:              policyMgr,
+		queues:                 queues,
+		config:                 c,
+		metrics:                metrics,
+		initializationDone:     channel.NewReady(),
+		numWaitingTxsForStatus: &atomic.Int32{},
+		txBatchIDToDepGraph:    1,
+		healthcheck:            connection.DefaultHealthCheckService(),
 	}
 }
 
@@ -247,6 +256,12 @@ func (c *Service) WaitForReady(ctx context.Context) bool {
 	//       and vcservice manager are ready. Hence, we can just wait for
 	//       the coordinator initialization.
 	return c.initializationDone.WaitForReady(ctx)
+}
+
+// RegisterService registers for the coordinator's GRPC services.
+func (c *Service) RegisterService(server *grpc.Server) {
+	protocoordinatorservice.RegisterCoordinatorServer(server, c)
+	healthgrpc.RegisterHealthServer(server, c.healthcheck)
 }
 
 // GetConfigTransaction get the config transaction from the state DB.
@@ -354,6 +369,7 @@ func (c *Service) receiveAndProcessBlock(
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
 ) error {
 	txsBatchForDependencyGraph := channel.NewWriter(ctx, c.queues.coordinatorToDepGraphTxs)
+	txBatchForVcService := channel.NewWriter(ctx, c.queues.sigVerifierToVCServiceValidatedTxs)
 
 	for ctx.Err() == nil {
 		blk, err := stream.Recv()
@@ -377,25 +393,39 @@ func (c *Service) receiveAndProcessBlock(
 		}
 		logger.Debugf("Coordinator received block [%d] with %d TXs", blk.Number, len(blk.Txs))
 
-		promutil.AddToCounter(c.metrics.transactionReceivedTotal, len(blk.Txs))
+		promutil.AddToCounter(c.metrics.transactionReceivedTotal, len(blk.Txs)+len(blk.Rejected))
 		c.numWaitingTxsForStatus.Add(int32(len(blk.Txs))) //nolint:gosec
 
-		if len(blk.Txs) == 0 {
-			continue
-		}
-
-		// TODO: make it configurable.
-		chunkSizeForDepGraph := min(c.config.DependencyGraphConfig.WaitingTxsLimit, 500)
-		for i := 0; i < len(blk.Txs); i += chunkSizeForDepGraph {
-			end := min(i+chunkSizeForDepGraph, len(blk.Txs))
-			txsBatchForDependencyGraph.Write(
-				&dependencygraph.TransactionBatch{
+		if len(blk.Txs) > 0 {
+			// TODO: make it configurable.
+			chunkSizeForDepGraph := min(c.config.DependencyGraphConfig.WaitingTxsLimit, 500)
+			for i := 0; i < len(blk.Txs); i += chunkSizeForDepGraph {
+				end := min(i+chunkSizeForDepGraph, len(blk.Txs))
+				txsBatchForDependencyGraph.Write(&dependencygraph.TransactionBatch{
 					ID:          c.txBatchIDToDepGraph,
 					BlockNumber: blk.Number,
 					Txs:         blk.Txs[i:end],
 					TxsNum:      blk.TxsNum[i:end],
 				})
-			c.txBatchIDToDepGraph++
+				c.txBatchIDToDepGraph++
+			}
+		}
+
+		if len(blk.Rejected) > 0 {
+			rejected := make(dependencygraph.TxNodeBatch, len(blk.Rejected))
+			for i, tx := range blk.Rejected {
+				rejected[i] = &dependencygraph.TransactionNode{
+					Tx: &protovcservice.Transaction{
+						ID: tx.Id,
+						PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
+							Code: tx.Status,
+						},
+						BlockNumber: blk.Number,
+						TxNum:       tx.TxNum,
+					},
+				}
+			}
+			txBatchForVcService.Write(rejected)
 		}
 	}
 
@@ -420,19 +450,10 @@ func (c *Service) sendTxStatus(
 
 		logger.Debugf("Batch with %d TX statuses forwarded to output stream.", len(txStatus.Status))
 
-		// TODO: introduce metrics to record all sent statuses. Issue #436.
+		statusCount := utils.CountAppearances(slices.Collect(maps.Values(txStatus.Status)))
 		m := c.metrics
-		for _, status := range txStatus.Status {
-			switch status.Code {
-			case protoblocktx.Status_COMMITTED:
-				promutil.AddToCounter(m.transactionCommittedStatusSentTotal, 1)
-			case protoblocktx.Status_ABORTED_MVCC_CONFLICT:
-				promutil.AddToCounter(m.transactionMVCCConflictStatusSentTotal, 1)
-			case protoblocktx.Status_ABORTED_DUPLICATE_TXID:
-				promutil.AddToCounter(m.transactionDuplicateTxStatusSentTotal, 1)
-			case protoblocktx.Status_ABORTED_SIGNATURE_INVALID:
-				promutil.AddToCounter(m.transactionInvalidSignatureStatusSentTotal, 1)
-			}
+		for code, count := range statusCount {
+			promutil.AddToCounter(m.transactionCommittedTotal.WithLabelValues(code.Code.String()), count)
 		}
 	}
 }

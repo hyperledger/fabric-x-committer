@@ -13,11 +13,17 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
+	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
@@ -28,19 +34,21 @@ type (
 	// Service is a gRPC service that implements the QueryServiceServer interface.
 	Service struct {
 		protoqueryservice.UnimplementedQueryServiceServer
-		batcher viewsBatcher
-		config  *Config
-		metrics *perfMetrics
-		ready   *channel.Ready
+		batcher     viewsBatcher
+		config      *Config
+		metrics     *perfMetrics
+		ready       *channel.Ready
+		healthcheck *health.Server
 	}
 )
 
 // NewQueryService create a new QueryService given a configuration.
 func NewQueryService(config *Config) *Service {
 	return &Service{
-		config:  config,
-		metrics: newQueryServiceMetrics(),
-		ready:   channel.NewReady(),
+		config:      config,
+		metrics:     newQueryServiceMetrics(),
+		ready:       channel.NewReady(),
+		healthcheck: connection.DefaultHealthCheckService(),
 	}
 }
 
@@ -78,6 +86,12 @@ func (q *Service) Run(ctx context.Context) error {
 	// We don't use the error here as we avoid stopping the service due to monitoring error.
 	<-ctx.Done()
 	return nil
+}
+
+// RegisterService registers for the query-service's GRPC services.
+func (q *Service) RegisterService(server *grpc.Server) {
+	protoqueryservice.RegisterQueryServiceServer(server, q)
+	healthgrpc.RegisterHealthServer(server, q.healthcheck)
 }
 
 // BeginView implements the query-service interface.
@@ -121,6 +135,14 @@ func (q *Service) GetRows(
 	ctx context.Context, query *protoqueryservice.Query,
 ) (*protoqueryservice.Rows, error) {
 	q.metrics.requests.WithLabelValues(grpcGetRows).Inc()
+
+	for _, ns := range query.Namespaces {
+		err := policy.ValidateNamespaceID(ns.NsId)
+		if err != nil {
+			return nil, grpcerror.WrapInvalidArgument(err)
+		}
+	}
+
 	defer q.requestLatency(grpcGetRows, time.Now())
 	for _, ns := range query.Namespaces {
 		promutil.AddToCounter(q.metrics.keysRequested, len(ns.Keys))

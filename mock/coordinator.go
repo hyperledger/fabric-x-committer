@@ -15,11 +15,15 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 )
 
@@ -34,6 +38,7 @@ type Coordinator struct {
 	txsStatusMu             sync.Mutex
 	configTransaction       atomic.Pointer[protoblocktx.ConfigTransaction]
 	latency                 atomic.Pointer[time.Duration]
+	healthcheck             *health.Server
 }
 
 // We don't want to utilize unlimited memory for storing the transactions status.
@@ -43,8 +48,15 @@ var defaultTxStatusStorageSize = 100_000
 // NewMockCoordinator creates a new mock coordinator.
 func NewMockCoordinator() *Coordinator {
 	return &Coordinator{
-		txsStatus: newFifoCache[*protoblocktx.StatusWithHeight](defaultTxStatusStorageSize),
+		txsStatus:   newFifoCache[*protoblocktx.StatusWithHeight](defaultTxStatusStorageSize),
+		healthcheck: connection.DefaultHealthCheckService(),
 	}
+}
+
+// RegisterService registers for the coordinator's GRPC services.
+func (c *Coordinator) RegisterService(server *grpc.Server) {
+	protocoordinatorservice.RegisterCoordinatorServer(server, c)
+	healthgrpc.RegisterHealthServer(server, c.healthcheck)
 }
 
 // GetConfigTransaction return the latest configuration transaction.
@@ -183,15 +195,22 @@ func (c *Coordinator) sendTxsValidationStatus(
 			}
 		}
 
-		txs := scBlock.Txs
-		txNums := scBlock.TxsNum
-		for len(txs) > 0 {
-			chunkSize := rand.Intn(len(txs)) + 1
-			if err := c.sendTxsStatusChunk(stream, txs[:chunkSize], txNums[:chunkSize], scBlock.Number); err != nil {
+		info := scBlock.Rejected
+		for i, tx := range scBlock.Txs {
+			info = append(info, &protocoordinatorservice.TxStatusInfo{
+				TxNum:  scBlock.TxsNum[i],
+				Id:     tx.Id,
+				Status: protoblocktx.Status_COMMITTED,
+			})
+		}
+		rand.Shuffle(len(info), func(i, j int) { info[i], info[j] = info[j], info[i] })
+
+		for len(info) > 0 {
+			chunkSize := rand.Intn(len(info)) + 1
+			if err := c.sendTxsStatusChunk(stream, info[:chunkSize], scBlock.Number); err != nil {
 				return errors.Wrap(err, "submit chunk failed")
 			}
-			txs = txs[chunkSize:]
-			txNums = txNums[chunkSize:]
+			info = info[chunkSize:]
 		}
 	}
 	return errors.Wrap(ctx.Err(), "context cancelled")
@@ -199,18 +218,18 @@ func (c *Coordinator) sendTxsValidationStatus(
 
 func (c *Coordinator) sendTxsStatusChunk(
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
-	txs []*protoblocktx.Tx,
-	txNum []uint32, blockNum uint64,
+	txs []*protocoordinatorservice.TxStatusInfo,
+	blockNum uint64,
 ) error {
 	b := &protoblocktx.TransactionsStatus{
 		Status: make(map[string]*protoblocktx.StatusWithHeight, len(txs)),
 	}
 	c.txsStatusMu.Lock()
 	defer c.txsStatusMu.Unlock()
-	for i, tx := range txs {
-		s := types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, blockNum, int(txNum[i]))
-		b.Status[tx.Id] = s
-		c.txsStatus.addIfNotExist(tx.Id, s)
+	for _, info := range txs {
+		s := types.CreateStatusWithHeight(info.Status, blockNum, int(info.TxNum))
+		b.Status[info.Id] = s
+		c.txsStatus.addIfNotExist(info.Id, s)
 	}
 	if err := stream.Send(b); err != nil {
 		return errors.Wrap(err, "failed to send status")

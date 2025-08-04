@@ -14,7 +14,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
@@ -120,31 +119,33 @@ func TestMinimalInput(t *testing.T) {
 	require.Len(t, ret, 3)
 }
 
-func TestBadTxFormat(t *testing.T) {
+func TestBadSignature(t *testing.T) {
 	t.Parallel()
-	test.FailHandler(t)
 	c := newTestState(t, defaultConfigQuickCutoff())
 
-	ctx, cancel := context.WithTimeout(t.Context(), testTimeout)
-	t.Cleanup(cancel)
-	stream, _ := c.Client.StartStream(ctx)
-
-	update, _ := defaultUpdate(t)
-	err := stream.Send(&protosigverifierservice.RequestBatch{Update: update})
+	stream, err := c.Client.StartStream(t.Context())
 	require.NoError(t, err)
 
-	blockNumber := uint64(1)
-	for _, tt := range BadTxFormatTestCases { //nolint:paralleltest
-		t.Run(tt.Tx.Id, func(t *testing.T) {
-			requireTestCase(t, stream, &testCase{
-				blkNum:         blockNumber,
-				txNum:          0,
-				tx:             tt.Tx,
-				expectedStatus: tt.ExpectedStatus,
-			})
-			blockNumber++
-		})
-	}
+	update, _ := defaultUpdate(t)
+	err = stream.Send(&protosigverifierservice.RequestBatch{Update: update})
+	require.NoError(t, err)
+
+	requireTestCase(t, stream, &testCase{
+		blkNum: 1,
+		txNum:  0,
+		tx: &protoblocktx.Tx{
+			Id: "1",
+			Namespaces: []*protoblocktx.TxNamespace{{
+				NsId:      "1",
+				NsVersion: 0,
+				ReadWrites: []*protoblocktx.ReadWrite{
+					{Key: make([]byte, 0)},
+				},
+			}},
+			Signatures: [][]byte{{0, 1, 2}},
+		},
+		expectedStatus: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+	})
 }
 
 func TestUpdatePolicies(t *testing.T) {
@@ -389,9 +390,7 @@ type State struct {
 func newTestState(t *testing.T, config *Config) *State {
 	t.Helper()
 	service := New(config)
-	test.RunServiceAndGrpcForTest(t.Context(), t, service, config.Server, func(grpcServer *grpc.Server) {
-		protosigverifierservice.RegisterVerifierServer(grpcServer, service)
-	})
+	test.RunServiceAndGrpcForTest(t.Context(), t, service, config.Server)
 
 	clientConnection, err := connection.Connect(connection.NewInsecureDialConfig(&config.Server.Endpoint))
 	require.NoError(t, err)

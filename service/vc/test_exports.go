@@ -15,10 +15,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -90,9 +88,7 @@ func NewValidatorAndCommitServiceTestEnv(
 		vcs, err := NewValidatorCommitterService(initCtx, config)
 		require.NoError(t, err)
 		t.Cleanup(vcs.Close)
-		test.RunServiceAndGrpcForTest(t.Context(), t, vcs, config.Server, func(server *grpc.Server) {
-			protovcservice.RegisterValidationAndCommitServiceServer(server, vcs)
-		})
+		test.RunServiceAndGrpcForTest(t.Context(), t, vcs, config.Server)
 		vcservices[i] = vcs
 		configs[i] = config
 		endpoints[i] = &config.Server.Endpoint
@@ -201,21 +197,21 @@ func (env *DatabaseTestEnv) StatusExistsForNonDuplicateTxID(
 	expectedStatuses map[string]*protoblocktx.StatusWithHeight,
 ) {
 	t.Helper()
-	var nonDupTxIDs [][]byte
+	var persistedTxIDs [][]byte
 	for id, s := range expectedStatuses {
-		if s.Code != protoblocktx.Status_ABORTED_DUPLICATE_TXID {
-			nonDupTxIDs = append(nonDupTxIDs, []byte(id))
+		if s.Code < protoblocktx.Status_REJECTED_DUPLICATE_TX_ID {
+			persistedTxIDs = append(persistedTxIDs, []byte(id))
 		}
 	}
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
-	actualRows, err := env.DB.readStatusWithHeight(ctx, nonDupTxIDs)
+	actualRows, err := env.DB.readStatusWithHeight(ctx, persistedTxIDs)
 	require.NoError(t, err)
 
-	require.Len(t, actualRows, len(nonDupTxIDs))
-	for _, tID := range nonDupTxIDs {
-		require.Equal(t, expectedStatuses[string(tID)], actualRows[string(tID)])
+	require.Len(t, actualRows, len(persistedTxIDs))
+	for _, tID := range persistedTxIDs {
+		require.EqualExportedValues(t, expectedStatuses[string(tID)], actualRows[string(tID)])
 	}
 }
 
@@ -227,20 +223,18 @@ func (env *DatabaseTestEnv) StatusExistsWithDifferentHeightForDuplicateTxID(
 	expectedStatuses map[string]*protoblocktx.StatusWithHeight,
 ) {
 	t.Helper()
-	var dupTxIDs [][]byte
-	for id, s := range expectedStatuses {
-		if s.Code == protoblocktx.Status_ABORTED_DUPLICATE_TXID {
-			dupTxIDs = append(dupTxIDs, []byte(id))
-		}
+	txIDs := make([][]byte, 0, len(expectedStatuses))
+	for id := range expectedStatuses {
+		txIDs = append(txIDs, []byte(id))
 	}
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
-	actualRows, err := env.DB.readStatusWithHeight(ctx, dupTxIDs)
+	actualRows, err := env.DB.readStatusWithHeight(ctx, txIDs)
 	require.NoError(t, err)
 
-	require.Len(t, actualRows, len(dupTxIDs))
-	for _, tID := range dupTxIDs {
+	require.Len(t, actualRows, len(txIDs))
+	for _, tID := range txIDs {
 		// For the duplicate txID, neither the status nor the height would match the entry in the
 		// transaction status table.
 		txID := string(tID) //nolint:staticcheck // false positive.

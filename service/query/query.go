@@ -22,7 +22,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 )
 
-//go:embed query.sql
+//go:embed query_tmpl.sql
 var queryRowSQLTemplate string
 
 var (

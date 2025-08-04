@@ -19,31 +19,23 @@ import (
 )
 
 const (
-	// system tables and function names.
-	txStatusTableName      = "tx_status"
-	metadataTableName      = "metadata"
-	insertTxStatusFuncName = "insert_tx_status"
-
-	// namespace table and function names prefix.
-	nsTableNamePrefix               = "ns_"
-	validateReadsOnNsFuncNamePrefix = "validate_reads_"
-	updateNsStatesFuncNamePrefix    = "update_"
-	insertNsStatesFuncNamePrefix    = "insert_"
-
-	setMetadataPrepSQLStmt      = "UPDATE " + metadataTableName + " SET value = $2 WHERE key = $1;"
-	getMetadataPrepSQLStmt      = "SELECT value FROM " + metadataTableName + " WHERE key = $1;"
-	queryTxIDsStatusPrepSQLStmt = "SELECT tx_id, status, height FROM " + txStatusTableName + " WHERE tx_id = ANY($1);"
+	setMetadataPrepSQLStmt      = "UPDATE metadata SET value = $2 WHERE key = $1;"
+	getMetadataPrepSQLStmt      = "SELECT value FROM metadata WHERE key = $1;"
+	queryTxIDsStatusPrepSQLStmt = "SELECT tx_id, status, height FROM tx_status WHERE tx_id = ANY($1);"
 
 	lastCommittedBlockNumberKey = "last committed block number"
 
 	// nsIDTemplatePlaceholder is used as a template placeholder for SQL queries.
 	nsIDTemplatePlaceholder = "${NAMESPACE_ID}"
+
+	// tableNameTempl is the template for the table name for each namespace.
+	tableNameTempl = "ns_" + nsIDTemplatePlaceholder
 )
 
 var (
-	//go:embed init_database.sql
+	//go:embed init_database_tmpl.sql
 	dbInitSQLStmt string
-	//go:embed create_namespace.sql
+	//go:embed create_namespace_tmpl.sql
 	createNamespaceSQLStmt string
 
 	systemNamespaces = []string{types.MetaNamespaceID, types.ConfigNamespaceID}
@@ -103,4 +95,9 @@ func createNsTables(nsID string, queryFunc func(q string) error) error {
 // FmtNsID replaces the namespace placeholder with the namespace ID in an SQL template string.
 func FmtNsID(sqlTemplate, namespaceID string) string {
 	return strings.ReplaceAll(sqlTemplate, nsIDTemplatePlaceholder, namespaceID)
+}
+
+// TableName returns the table name for the given namespace.
+func TableName(nsID string) string {
+	return FmtNsID(tableNameTempl, nsID)
 }

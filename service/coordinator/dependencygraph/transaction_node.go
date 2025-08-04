@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package dependencygraph
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 
@@ -20,7 +19,9 @@ import (
 type (
 	// TransactionNode is a node in the dependency graph.
 	TransactionNode struct {
-		Tx *protovcservice.Transaction
+		Tx         *protovcservice.Transaction
+		Signatures [][]byte
+
 		// dependsOnTxs is a set of transactions that this transaction depends on.
 		// A transaction is eligible for validation once all the transactions
 		// in dependsOnTxs set are validated.
@@ -50,7 +51,6 @@ type (
 		// from each dependent transaction.
 		dependentTxs utils.SyncMap[*TransactionNode, any]
 		rwKeys       *readWriteKeys
-		Signatures   [][]byte
 
 		// Used by the simple dependency graph.
 		waitForKeysCount uint64
@@ -76,8 +76,8 @@ func newTransactionNode(blockNum uint64, txNum uint32, tx *protoblocktx.Tx) *Tra
 			BlockNumber: blockNum,
 			TxNum:       txNum,
 		},
-		rwKeys:     readAndWriteKeys(tx.Namespaces),
 		Signatures: tx.Signatures,
+		rwKeys:     readAndWriteKeys(tx.Namespaces),
 	}
 }
 
@@ -200,13 +200,16 @@ func (rw *readWriteKeys) size() int {
 	return len(rw.readsOnly) + len(rw.readsAndWrites) + len(rw.writesOnly)
 }
 
+// constructCompositeKey must ensures no false positives collisions in the composite key space.
 func constructCompositeKey(ns string, key []byte) string {
-	// NOTE: composite key construction must ensure
-	//       no false positives collisions in the
-	//       composite key space.
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%03d", len(ns)))
-	sb.WriteString(ns)
-	sb.Write(key)
+	// We pre-allocate the buffer to prevent multiple allocations.
+	sb.Grow(1 + len(ns) + len(key))
+	// We encode the namespace as length-value to ensure 1:1 transformation.
+	// The maximum namespace length is 60, so it can fit in one byte.
+	// The key length is implicit as it is encoded with the remaining bytes.
+	sb.WriteByte(byte(len(ns))) //nolint:revive,nolintlint // false positive; write cannot fail.
+	sb.WriteString(ns)          //nolint:revive,nolintlint // false positive; write cannot fail.
+	sb.Write(key)               //nolint:revive,nolintlint // false positive; write cannot fail.
 	return sb.String()
 }

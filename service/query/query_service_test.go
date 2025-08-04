@@ -81,6 +81,17 @@ func TestQuery(t *testing.T) {
 		requireResults(t, requiredItems, ret.Namespaces)
 	})
 
+	t.Run("Query GetRows bad namespace ID", func(t *testing.T) {
+		t.Parallel()
+		badQuery, _, _ := makeQuery(requiredItems)
+		badQuery.Namespaces[0].NsId = "$1"
+		client := protoqueryservice.NewQueryServiceClient(env.clientConn)
+		ret, err := client.GetRows(t.Context(), badQuery)
+		require.Error(t, err)
+		require.Nil(t, ret)
+		require.Contains(t, err.Error(), policy.ErrInvalidNamespaceID.Error())
+	})
+
 	t.Run("Query GetRows client with view", func(t *testing.T) {
 		t.Parallel()
 		client := protoqueryservice.NewQueryServiceClient(env.clientConn)
@@ -322,9 +333,7 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 	sConfig := &connection.ServerConfig{
 		Endpoint: connection.Endpoint{Host: "localhost", Port: 0},
 	}
-	test.RunServiceAndGrpcForTest(t.Context(), t, qs, sConfig, func(server *grpc.Server) {
-		protoqueryservice.RegisterQueryServiceServer(server, qs)
-	})
+	test.RunServiceAndGrpcForTest(t.Context(), t, qs, sConfig)
 
 	clientConn, err := connection.Connect(connection.NewInsecureDialConfig(&sConfig.Endpoint))
 	require.NoError(t, err)
