@@ -141,9 +141,8 @@ func TestLoadGenForCoordinator(t *testing.T) {
 				VerifierConfig:           *test.ServerToClientConfig(sigVerServer.Configs...),
 				ValidatorCommitterConfig: *test.ServerToClientConfig(vcServer.Configs...),
 				DependencyGraphConfig: &coordinator.DependencyGraphConfig{
-					NumOfLocalDepConstructors:       1,
-					WaitingTxsLimit:                 10_000,
-					NumOfWorkersForGlobalDepManager: 1,
+					NumOfLocalDepConstructors: 1,
+					WaitingTxsLimit:           100_000,
 				},
 				ChannelBufferSizePerGoroutine: 10,
 			}

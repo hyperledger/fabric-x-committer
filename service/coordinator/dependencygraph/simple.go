@@ -11,22 +11,27 @@ import (
 	"sync"
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
 type (
 	// SimpleManager is the simpler version of the dependency graph module.
-	// It uses only 3 go routines, and a single map.
+	// It uses only 3 go routines, and a single regular map.
 	SimpleManager struct {
-		in              <-chan *TransactionBatch
-		out             chan<- TxNodeBatch
-		val             <-chan TxNodeBatch
-		taskQueue       chan task
-		keyToWaitingTXs map[string]*waiting
+		in                              <-chan *TransactionBatch
+		out                             chan<- TxNodeBatch
+		val                             <-chan TxNodeBatch
+		waitingTxsLimit                 int
+		preProcessedTxBatchQueue        chan TxNodeBatch
+		preProcessedValidatedBatchQueue chan validatedBatch
+		keyToWaitingTXs                 map[string]*waiting
+		waitingTXs                      int
+		metrics                         *perfMetrics
 	}
 
-	task struct {
-		txs       []*TransactionNode
-		validated []*waiting
+	validatedBatch struct {
+		txCount int
+		waiting []*waiting
 	}
 
 	waiting struct {
@@ -42,13 +47,16 @@ type (
 )
 
 // NewSimpleManager create a simple dependency graph manager.
-func NewSimpleManager(c *Config) *SimpleManager {
+func NewSimpleManager(p *Parameters) *SimpleManager {
 	return &SimpleManager{
-		in:              c.IncomingTxs,
-		out:             c.OutgoingDepFreeTxsNode,
-		val:             c.IncomingValidatedTxsNode,
-		taskQueue:       make(chan task, cap(c.IncomingTxs)),
-		keyToWaitingTXs: make(map[string]*waiting),
+		in:                              p.IncomingTxs,
+		out:                             p.OutgoingDepFreeTxsNode,
+		val:                             p.IncomingValidatedTxsNode,
+		waitingTxsLimit:                 p.WaitingTxsLimit,
+		preProcessedTxBatchQueue:        make(chan TxNodeBatch, cap(p.IncomingTxs)),
+		preProcessedValidatedBatchQueue: make(chan validatedBatch, cap(p.IncomingValidatedTxsNode)),
+		keyToWaitingTXs:                 make(map[string]*waiting),
+		metrics:                         newPerformanceMetrics(p.PrometheusMetricsProvider),
 	}
 }
 
@@ -57,12 +65,14 @@ func (m *SimpleManager) Run(ctx context.Context) {
 	wg := sync.WaitGroup{}
 	wg.Add(3)
 	go func() {
+		// This manager must have a single incoming pre-processing
+		// worker to maintain the original TX order.
 		defer wg.Done()
-		m.txInToTask(ctx)
+		m.preProcessIn(ctx)
 	}()
 	go func() {
 		defer wg.Done()
-		m.validatedInToTask(ctx)
+		m.preProcessVal(ctx)
 	}()
 	go func() {
 		defer wg.Done()
@@ -71,69 +81,79 @@ func (m *SimpleManager) Run(ctx context.Context) {
 	wg.Wait()
 }
 
-// txInToTask -- in (TransactionBatch) -> taskQueue (TxNodeBatch).
-func (m *SimpleManager) txInToTask(ctx context.Context) {
+// preProcessIn maps the data.
+// - in  (TransactionBatch) -> preProcessedTxBatchQueue (TxNodeBatch).
+func (m *SimpleManager) preProcessIn(ctx context.Context) {
 	in := channel.NewReader(ctx, m.in)
-	taskQueue := channel.NewWriter(ctx, m.taskQueue)
+	batchQueue := channel.NewWriter(ctx, m.preProcessedTxBatchQueue)
 	for ctx.Err() == nil {
 		batch, ok := in.Read()
 		if !ok {
 			return
 		}
-
 		depTX := make([]*TransactionNode, len(batch.Txs))
 		for i, tx := range batch.Txs {
 			node := newTransactionNode(batch.BlockNumber, batch.TxsNum[i], tx)
 			node.waitingKeys = make([]*waiting, 0, node.rwKeys.size())
 			depTX[i] = node
 		}
-		taskQueue.Write(task{txs: depTX})
+		batchQueue.Write(depTX)
 	}
 }
 
-// validatedInToTask -- val (TxNodeBatch) -> taskQueue (keys).
-func (m *SimpleManager) validatedInToTask(ctx context.Context) {
+// preProcessVal maps the data.
+// - val (TxNodeBatch)      -> preProcessedValidatedBatchQueue   (validated).
+func (m *SimpleManager) preProcessVal(ctx context.Context) {
 	val := channel.NewReader(ctx, m.val)
-	taskQueue := channel.NewWriter(ctx, m.taskQueue)
+	valQueue := channel.NewWriter(ctx, m.preProcessedValidatedBatchQueue)
 	for ctx.Err() == nil {
 		batch, ok := val.Read()
 		if !ok {
 			return
 		}
-
 		var ws []*waiting
 		for _, node := range batch {
 			ws = append(ws, node.waitingKeys...)
 		}
-		if len(ws) > 0 {
-			taskQueue.Write(task{validated: ws})
-		}
+		valQueue.Write(validatedBatch{
+			txCount: len(batch),
+			waiting: ws,
+		})
 	}
 }
 
 // taskProcessing -- taskQueue (TxNodeBatch/keys) -> out (TxNodeBatch).
 func (m *SimpleManager) taskProcessing(ctx context.Context) {
-	taskQueue := channel.NewReader(ctx, m.taskQueue)
 	out := channel.NewWriter(ctx, m.out)
 	for ctx.Err() == nil {
-		t, ok := taskQueue.Read()
-		if !ok {
-			return
+		batchQueue := m.preProcessedTxBatchQueue
+		if m.waitingTXs > m.waitingTxsLimit {
+			// When we passed the waiting TX limit, we only fetch from the validation queue.
+			batchQueue = nil
 		}
 
 		var depFree TxNodeBatch
-		if len(t.txs) > 0 {
-			depFree = m.processBatch(t.txs)
-		} else if len(t.validated) > 0 {
-			depFree = m.processValidatedKeys(t.validated)
+		select {
+		case <-ctx.Done():
+			return
+		case batch := <-batchQueue:
+			depFree = m.processTxBatch(batch)
+			promutil.AddToCounter(m.metrics.gdgTxProcessedTotal, len(batch))
+			promutil.AddToGauge(m.metrics.dependentTransactionsQueueSize, len(batch)-len(depFree))
+		case batch := <-m.preProcessedValidatedBatchQueue:
+			depFree = m.processValidatedBatch(batch)
+			promutil.AddToCounter(m.metrics.gdgValidatedTxProcessedTotal, batch.txCount)
+			promutil.SubFromGauge(m.metrics.dependentTransactionsQueueSize, len(depFree))
 		}
+		promutil.SetGauge(m.metrics.gdgWaitingTxQueueSize, m.waitingTXs)
 		if len(depFree) > 0 {
 			out.Write(depFree)
 		}
 	}
 }
 
-func (m *SimpleManager) processBatch(batch []*TransactionNode) TxNodeBatch {
+func (m *SimpleManager) processTxBatch(batch TxNodeBatch) TxNodeBatch {
+	m.waitingTXs += len(batch)
 	depFree := make(TxNodeBatch, 0, len(batch))
 	for _, depTX := range batch {
 		// With writes.
@@ -154,10 +174,11 @@ func (m *SimpleManager) processBatch(batch []*TransactionNode) TxNodeBatch {
 	return depFree
 }
 
-func (m *SimpleManager) processValidatedKeys(ws []*waiting) TxNodeBatch {
-	depFree := make(TxNodeBatch, 0, len(ws))
-	for _, w := range ws {
-		depFree = m.appendFree(w, depFree)
+func (m *SimpleManager) processValidatedBatch(val validatedBatch) TxNodeBatch {
+	m.waitingTXs -= val.txCount
+	depFree := make(TxNodeBatch, 0, len(val.waiting))
+	for _, w := range val.waiting {
+		depFree = m.appendFree(depFree, w)
 	}
 	return depFree
 }
@@ -182,7 +203,7 @@ func (m *SimpleManager) checkTXFree(tx *TransactionNode, k string, writer bool) 
 }
 
 // appendFree indicate a key processing item is done, and appends free nodes if applicable.
-func (m *SimpleManager) appendFree(w *waiting, out TxNodeBatch) TxNodeBatch {
+func (m *SimpleManager) appendFree(out TxNodeBatch, w *waiting) TxNodeBatch {
 	nextWaiters, noMoreWait := w.popAndGetNext()
 	if noMoreWait {
 		delete(m.keyToWaitingTXs, w.key)

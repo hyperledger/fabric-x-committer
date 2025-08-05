@@ -34,8 +34,10 @@ const (
 
 	// defaultGrpcMaxAttempts is set to a high number to allow the timeout to dictate the retry end condition.
 	defaultGrpcMaxAttempts = 1024
-	maxMsgSize             = 100 * 1024 * 1024
-	scResolverSchema       = "sc.connection"
+	// TODO: All services including the orderer must use the same default maximum message size.
+	//       Hence, we need to move this constant to fabric-x-common.
+	maxMsgSize       = 100 * 1024 * 1024
+	scResolverSchema = "sc.connection"
 )
 
 type (

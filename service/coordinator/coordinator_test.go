@@ -74,9 +74,8 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 		VerifierConfig:           *test.ServerToClientConfig(svServers.Configs...),
 		ValidatorCommitterConfig: *test.ServerToClientConfig(vcServerConfigs...),
 		DependencyGraphConfig: &DependencyGraphConfig{
-			NumOfLocalDepConstructors:       3,
-			WaitingTxsLimit:                 10,
-			NumOfWorkersForGlobalDepManager: 3,
+			NumOfLocalDepConstructors: 3,
+			WaitingTxsLimit:           10,
 		},
 		ChannelBufferSizePerGoroutine: 2000,
 		Monitoring: monitoring.Config{

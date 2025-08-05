@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package dependencygraph
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 
@@ -201,13 +200,16 @@ func (rw *readWriteKeys) size() int {
 	return len(rw.readsOnly) + len(rw.readsAndWrites) + len(rw.writesOnly)
 }
 
+// constructCompositeKey must ensures no false positives collisions in the composite key space.
 func constructCompositeKey(ns string, key []byte) string {
-	// NOTE: composite key construction must ensure
-	//       no false positives collisions in the
-	//       composite key space.
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%03d", len(ns)))
-	sb.WriteString(ns)
-	sb.Write(key)
+	// We pre-allocate the buffer to prevent multiple allocations.
+	sb.Grow(1 + len(ns) + len(key))
+	// We encode the namespace as length-value to ensure 1:1 transformation.
+	// The maximum namespace length is 60, so it can fit in one byte.
+	// The key length is implicit as it is encoded with the remaining bytes.
+	sb.WriteByte(byte(len(ns))) //nolint:revive,nolintlint // false positive; write cannot fail.
+	sb.WriteString(ns)          //nolint:revive,nolintlint // false positive; write cannot fail.
+	sb.Write(key)               //nolint:revive,nolintlint // false positive; write cannot fail.
 	return sb.String()
 }

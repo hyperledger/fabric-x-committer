@@ -46,7 +46,7 @@ func NewLocalHostServer() *ServerConfig {
 
 // GrpcServer instantiate a [grpc.Server].
 func (c *ServerConfig) GrpcServer() *grpc.Server {
-	var opts []grpc.ServerOption
+	opts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxMsgSize), grpc.MaxSendMsgSize(maxMsgSize)}
 	if c.Creds != nil {
 		cert, err := tls.LoadX509KeyPair(c.Creds.CertPath, c.Creds.KeyPath)
 		utils.Must(err)

@@ -159,7 +159,7 @@ bench-loadgen: FORCE
 
 # Run dependency detector benchmarks with added op/sec column.
 bench-dep: FORCE
-	$(go_cmd) test ./service/coordinator/dependencygraph/... -bench "BenchmarkDependencyGraph.*" -run="^$$" | awk -f scripts/bench-tx-per-sec.awk
+	$(go_cmd) test ./service/coordinator/dependencygraph/... -timeout 60m -bench "BenchmarkDependencyGraph.*" -run="^$$" | awk -f scripts/bench-tx-per-sec.awk
 
 # Run dependency detector benchmarks with added op/sec column.
 bench-preparer: FORCE
