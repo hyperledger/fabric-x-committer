@@ -34,8 +34,8 @@ type (
 	// SidecarClientConfig is a struct that contains the configuration for the sidecar client.
 	SidecarClientConfig struct {
 		ChannelID      string                     `mapstructure:"channel-id"`
+		Client         *connection.ClientConfig   `mapstructure:"client"`
 		OrdererServers []*connection.ServerConfig `mapstructure:"orderer-servers"`
-		Client         *connection.ClientConfig   `mapstructure:"client-config"`
 	}
 
 	// CoordinatorClientConfig is a struct that contains the configuration for the coordinator client.

@@ -136,11 +136,11 @@ func TestLoadGenForCoordinator(t *testing.T) {
 			_, vcServer := mock.StartMockVCService(t, 1)
 
 			cConf := &coordinator.Config{
-				Server:                   connection.NewLocalHostServer(),
-				Monitoring:               defaultMonitoring(),
-				VerifierConfig:           *test.ServerToClientConfig(sigVerServer.Configs...),
-				ValidatorCommitterConfig: *test.ServerToClientConfig(vcServer.Configs...),
-				DependencyGraphConfig: &coordinator.DependencyGraphConfig{
+				Server:             connection.NewLocalHostServer(),
+				Monitoring:         defaultMonitoring(),
+				Verifier:           *test.ServerToClientConfig(sigVerServer.Configs...),
+				ValidatorCommitter: *test.ServerToClientConfig(vcServer.Configs...),
+				DependencyGraph: &coordinator.DependencyGraphConfig{
 					NumOfLocalDepConstructors: 1,
 					WaitingTxsLimit:           100_000,
 				},
@@ -197,7 +197,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 				},
 				LastCommittedBlockSetInterval: 100 * time.Millisecond,
 				WaitingTxsLimit:               5000,
-				Committer:                     test.MakeClientConfig(&coordinatorServer.Configs[0].Endpoint),
+				Committer:                     test.MakeInsecureClientConfig(&coordinatorServer.Configs[0].Endpoint),
 				Monitoring:                    defaultMonitoring(),
 				Ledger: sidecar.LedgerConfig{
 					Path: t.TempDir(),
@@ -244,7 +244,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 				},
 				LastCommittedBlockSetInterval: 100 * time.Millisecond,
 				WaitingTxsLimit:               5000,
-				Committer:                     test.MakeClientConfig(&coordinatorServer.Configs[0].Endpoint),
+				Committer:                     test.MakeInsecureClientConfig(&coordinatorServer.Configs[0].Endpoint),
 				Monitoring:                    defaultMonitoring(),
 				Ledger: sidecar.LedgerConfig{
 					Path: t.TempDir(),
@@ -266,7 +266,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 
 			// Start client
 			clientConf.Adapter.OrdererClient = &adapters.OrdererClientConfig{
-				SidecarClient:        test.MakeClientConfig(&sidecarConf.Server.Endpoint),
+				SidecarClient:        test.MakeInsecureClientConfig(&sidecarConf.Server.Endpoint),
 				Orderer:              sidecarConf.Orderer,
 				BroadcastParallelism: 5,
 			}

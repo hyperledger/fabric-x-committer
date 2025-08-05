@@ -34,8 +34,7 @@ validator-committer:
    {{- range .Endpoints.VCService }}
     - {{ .Server }}
    {{- end }}
-  tls:
-    *ClientCreds
+  tls: *ClientCreds
 
 dependency-graph:
   num-of-local-dep-constructors: 1

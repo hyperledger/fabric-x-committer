@@ -6,7 +6,7 @@
 # It should be complimented by the common load generator configuration.
 
 sidecar-client:
-  client-config:
+  client:
     endpoints:
       - {{ .Endpoints.Sidecar.Server }}
     tls:

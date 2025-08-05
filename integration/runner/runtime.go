@@ -189,7 +189,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 
 	t.Log("create TLS manager and clients certificate")
 	c.TLSManager = test.NewSecureCommunicationManager(t)
-	s.ClientCreds = c.createClientTLSConfig(t)
+	s.ClientTLS = test.CreateTLSConfigFromPaths(c.config.TLS, c.TLSManager.CreateClientCertificate(t))
 
 	t.Log("Create processes")
 	c.MockOrderer = newProcess(t, cmdOrderer, s.WithEndpoint(s.Endpoints.Orderer[0]))
@@ -197,7 +197,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		p := cmdVerifier
 		p.Name = fmt.Sprintf("%s-%d", p.Name, i)
 		// we generate different keys for each verifier.
-		verifierSystemConfig := c.createSystemConfigWithServerCerts(t, e)
+		verifierSystemConfig := c.createSystemConfigWithServerTLS(t, e)
 		c.Verifier = append(c.Verifier, newProcess(t, p, &verifierSystemConfig))
 	}
 
@@ -205,31 +205,31 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		p := cmdVC
 		p.Name = fmt.Sprintf("%s-%d", p.Name, i)
 		// we generate different keys for each vc-service.
-		vcSystemConfig := c.createSystemConfigWithServerCerts(t, e)
+		vcSystemConfig := c.createSystemConfigWithServerTLS(t, e)
 		c.VcService = append(c.VcService, newProcess(t, p, &vcSystemConfig))
 	}
 
-	coordinatorServiceConfig := c.createSystemConfigWithServerCerts(t, s.Endpoints.Coordinator)
+	coordinatorServiceConfig := c.createSystemConfigWithServerTLS(t, s.Endpoints.Coordinator)
 	c.Coordinator = newProcess(t, cmdCoordinator, &coordinatorServiceConfig)
 
-	queryServiceConfig := c.createSystemConfigWithServerCerts(t, s.Endpoints.Query)
+	queryServiceConfig := c.createSystemConfigWithServerTLS(t, s.Endpoints.Query)
 	c.QueryService = newProcess(t, cmdQuery, &queryServiceConfig)
 
-	sidecarServiceConfig := c.createSystemConfigWithServerCerts(t, s.Endpoints.Sidecar)
+	sidecarServiceConfig := c.createSystemConfigWithServerTLS(t, s.Endpoints.Sidecar)
 	c.Sidecar = newProcess(t, cmdSidecar, &sidecarServiceConfig)
 
 	t.Log("Create clients")
 	c.CoordinatorClient = protocoordinatorservice.NewCoordinatorClient(
-		clientConnWithCreds(t,
+		clientConnWithTLS(t,
 			s.Endpoints.Coordinator.Server,
-			c.SystemConfig.ClientCreds,
+			c.SystemConfig.ClientTLS,
 		),
 	)
 
 	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(
-		clientConnWithCreds(t,
+		clientConnWithTLS(t,
 			s.Endpoints.Query.Server,
-			c.SystemConfig.ClientCreds,
+			c.SystemConfig.ClientTLS,
 		),
 	)
 
@@ -248,8 +248,8 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 
 	c.sidecarClient, err = sidecarclient.New(&sidecarclient.Config{
 		ChannelID: s.ChannelID,
-		Client: test.MakeClientConfigWithCreds(
-			&c.SystemConfig.ClientCreds,
+		Client: test.MakeTLSClientConfig(
+			&c.SystemConfig.ClientTLS,
 			s.Endpoints.Sidecar.Server,
 		),
 	})
@@ -365,12 +365,12 @@ func (c *CommitterRuntime) startBlockDelivery(t *testing.T) {
 	})
 }
 
-// clientConnWithCreds creates a service connection using its given server endpoint and TLS configuration.
-func clientConnWithCreds(t *testing.T, e *connection.Endpoint, tlsConfig connection.TLSConfig) *grpc.ClientConn {
+// clientConnWithTLS creates a service connection using its given server endpoint and TLS configuration.
+func clientConnWithTLS(t *testing.T, e *connection.Endpoint, tlsConfig connection.TLSConfig) *grpc.ClientConn {
 	t.Helper()
-	clientCredentials, err := tlsConfig.ClientCredentials()
+	dialConfig, err := connection.NewSecuredDialConfig(e, tlsConfig)
 	require.NoError(t, err)
-	serviceConnection, err := connection.Connect(connection.NewDialConfigWithCreds(e, clientCredentials))
+	serviceConnection, err := connection.Connect(dialConfig)
 	require.NoError(t, err)
 	return serviceConnection
 }
@@ -633,23 +633,18 @@ func (c *CommitterRuntime) ensureAtLeastLastCommittedBlockNumber(t *testing.T, b
 	}, 2*time.Minute, 250*time.Millisecond)
 }
 
-func (c *CommitterRuntime) createSystemConfigWithServerCerts(
+func (c *CommitterRuntime) createSystemConfigWithServerTLS(
 	t *testing.T,
 	endpoints config.ServiceEndpoints,
 ) config.SystemConfig {
 	t.Helper()
 	serviceCfg := c.SystemConfig
-	serviceCfg.ServiceCreds = test.CreateTLSConfigFromPaths(
+	serviceCfg.ServiceTLS = test.CreateTLSConfigFromPaths(
 		c.config.TLS,
 		c.TLSManager.CreateServerCertificate(t, endpoints.Server.Host),
 	)
 	serviceCfg.ServiceEndpoints = endpoints
 	return serviceCfg
-}
-
-func (c *CommitterRuntime) createClientTLSConfig(t *testing.T) connection.TLSConfig {
-	t.Helper()
-	return test.CreateTLSConfigFromPaths(c.config.TLS, c.TLSManager.CreateClientCertificate(t))
 }
 
 func isMoreThanOneBitSet(bits int) bool {

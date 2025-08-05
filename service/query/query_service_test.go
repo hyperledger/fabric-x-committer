@@ -369,10 +369,9 @@ func newQueryServiceTestEnvWithServerAndClientCreds(
 
 	qs := NewQueryService(config)
 	test.RunServiceAndGrpcForTest(t.Context(), t, qs, qs.config.Server)
-
-	clientCreds, err := clientTLS.ClientCredentials()
+	dialConfig, err := connection.NewSecuredDialConfig(&qs.config.Server.Endpoint, *clientTLS)
 	require.NoError(t, err)
-	clientConn, err := connection.Connect(connection.NewDialConfigWithCreds(&qs.config.Server.Endpoint, clientCreds))
+	clientConn, err := connection.Connect(dialConfig)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		assert.NoError(t, clientConn.Close())

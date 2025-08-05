@@ -91,7 +91,7 @@ func TestSidecarSecureConnection(t *testing.T) {
 				TestCases:     test.BuildTestCases(t, TLSMode),
 				ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {
 					t.Helper()
-					env = newSidecarTestEnvWithCreds(
+					env = newSidecarTestEnvWithTLS(
 						t,
 						sidecarTestConfig{NumService: 1},
 						tlsCfg,
@@ -117,10 +117,10 @@ func TestSidecarSecureConnection(t *testing.T) {
 
 func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 	t.Helper()
-	return newSidecarTestEnvWithCreds(t, conf, nil)
+	return newSidecarTestEnvWithTLS(t, conf, nil)
 }
 
-func newSidecarTestEnvWithCreds(
+func newSidecarTestEnvWithTLS(
 	t *testing.T,
 	conf sidecarTestConfig,
 	serverCreds *connection.TLSConfig,
@@ -163,7 +163,7 @@ func newSidecarTestEnvWithCreds(
 				Endpoints: initOrdererEndpoints,
 			},
 		},
-		Committer: test.MakeClientConfig(&coordinatorServer.Configs[0].Endpoint),
+		Committer: test.MakeInsecureClientConfig(&coordinatorServer.Configs[0].Endpoint),
 		Ledger: LedgerConfig{
 			Path: t.TempDir(),
 		},
@@ -220,7 +220,7 @@ func (env *sidecarTestEnv) startSidecarClient(
 	t.Helper()
 	env.committedBlock = sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Config{
 		ChannelID: env.config.Orderer.ChannelID,
-		Client:    test.MakeClientConfigWithCreds(sidecarClientCreds, &env.config.Server.Endpoint),
+		Client:    test.MakeTLSClientConfig(sidecarClientCreds, &env.config.Server.Endpoint),
 	}, startBlkNum)
 }
 

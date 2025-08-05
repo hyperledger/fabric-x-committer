@@ -266,13 +266,13 @@ func SetupDebugging() {
 	})
 }
 
-// MakeClientConfig creates a client configuration for test purposes given host and port.
-func MakeClientConfig(ep ...*connection.Endpoint) *connection.ClientConfig {
-	return MakeClientConfigWithCreds(nil, ep...)
+// MakeInsecureClientConfig creates a client configuration for test purposes given host and port.
+func MakeInsecureClientConfig(ep ...*connection.Endpoint) *connection.ClientConfig {
+	return MakeTLSClientConfig(nil, ep...)
 }
 
-// MakeClientConfigWithCreds creates a client configuration for test purposes given host, port, and creds.
-func MakeClientConfigWithCreds(tlsConfig *connection.TLSConfig, ep ...*connection.Endpoint) *connection.ClientConfig {
+// MakeTLSClientConfig creates a client configuration for test purposes given host, port, and creds.
+func MakeTLSClientConfig(tlsConfig *connection.TLSConfig, ep ...*connection.Endpoint) *connection.ClientConfig {
 	return &connection.ClientConfig{
 		Endpoints: ep,
 		TLS:       tlsConfig,

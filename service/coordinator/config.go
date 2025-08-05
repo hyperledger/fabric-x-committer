@@ -15,9 +15,9 @@ type (
 	// Config is the configuration for coordinator service. It contains configurations for all managers.
 	Config struct {
 		Server                        *connection.ServerConfig `mapstructure:"server"`
-		VerifierConfig                connection.ClientConfig  `mapstructure:"verifier"`
-		ValidatorCommitterConfig      connection.ClientConfig  `mapstructure:"validator-committer"`
-		DependencyGraphConfig         *DependencyGraphConfig   `mapstructure:"dependency-graph"`
+		Verifier                      connection.ClientConfig  `mapstructure:"verifier"`
+		ValidatorCommitter            connection.ClientConfig  `mapstructure:"validator-committer"`
+		DependencyGraph               *DependencyGraphConfig   `mapstructure:"dependency-graph"`
 		Monitoring                    monitoring.Config        `mapstructure:"monitoring"`
 		ChannelBufferSizePerGoroutine int                      `mapstructure:"per-channel-buffer-size-per-goroutine"`
 	}

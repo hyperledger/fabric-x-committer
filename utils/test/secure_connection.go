@@ -215,17 +215,11 @@ func CreateClientWithTLS[T any](
 	protoClient func(grpc.ClientConnInterface) T,
 ) T {
 	t.Helper()
-
-	creds, err := tlsCfg.ClientCredentials()
+	dialConfig, err := connection.NewSecuredDialConfig(endpoint, *tlsCfg)
 	require.NoError(t, err)
-
-	conn, err := connection.Connect(
-		connection.NewDialConfigWithCreds(endpoint, creds),
-	)
+	conn, err := connection.Connect(dialConfig)
 	require.NoError(t, err)
-
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-
 	return protoClient(conn)
 }
 

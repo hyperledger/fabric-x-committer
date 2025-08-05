@@ -113,7 +113,7 @@ func TestReadConfigCoordinator(t *testing.T) {
 		expectedConfig: &coordinator.Config{
 			Server:     makeServer("localhost", 9001),
 			Monitoring: makeMonitoring("localhost", 2119),
-			DependencyGraphConfig: &coordinator.DependencyGraphConfig{
+			DependencyGraph: &coordinator.DependencyGraphConfig{
 				NumOfLocalDepConstructors: 1,
 				WaitingTxsLimit:           100_000,
 			},
@@ -123,11 +123,11 @@ func TestReadConfigCoordinator(t *testing.T) {
 		name:           "sample",
 		configFilePath: "samples/coordinator.yaml",
 		expectedConfig: &coordinator.Config{
-			Server:                   makeServer("", 9001),
-			Monitoring:               makeMonitoring("", 2119),
-			VerifierConfig:           *makeClientConfig("signature-verifier", 5001),
-			ValidatorCommitterConfig: *makeClientConfig("validator-persister", 6001),
-			DependencyGraphConfig: &coordinator.DependencyGraphConfig{
+			Server:             makeServer("", 9001),
+			Monitoring:         makeMonitoring("", 2119),
+			Verifier:           *makeClientConfig("signature-verifier", 5001),
+			ValidatorCommitter: *makeClientConfig("validator-persister", 6001),
+			DependencyGraph: &coordinator.DependencyGraphConfig{
 				NumOfLocalDepConstructors: 1,
 				WaitingTxsLimit:           100_000,
 			},

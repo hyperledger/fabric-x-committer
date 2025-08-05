@@ -85,17 +85,23 @@ func NewDialConfigPerEndpoint(config *ClientConfig) ([]*DialConfig, error) {
 	return ret, nil
 }
 
-// NewDialConfigWithCreds creates the default dial config with given transport credentials.
-func NewDialConfigWithCreds(endpoint WithAddress, transportCredentials credentials.TransportCredentials) *DialConfig {
-	return newDialConfig(endpoint.Address(), transportCredentials, &DefaultGrpcRetryProfile)
+// NewSecuredDialConfig creates the default dial config with given transport credentials.
+func NewSecuredDialConfig(endpoint WithAddress, tlsConfig TLSConfig) (*DialConfig, error) {
+	clientCreds, err := tlsConfig.ClientCredentials()
+	if err != nil {
+		return nil, err
+	}
+	return newDialConfig(endpoint.Address(), clientCreds, &DefaultGrpcRetryProfile), nil
 }
 
 // NewInsecureDialConfig creates the default dial config with insecure credentials.
+// Used for testing.
 func NewInsecureDialConfig(endpoint WithAddress) *DialConfig {
 	return newDialConfig(endpoint.Address(), insecure.NewCredentials(), &DefaultGrpcRetryProfile)
 }
 
 // NewInsecureLoadBalancedDialConfig creates the default dial config with insecure credentials.
+// Used for testing.
 func NewInsecureLoadBalancedDialConfig(endpoint []*Endpoint) *DialConfig {
 	return newLoadBalancedDialConfig(endpoint, insecure.NewCredentials(), &DefaultGrpcRetryProfile)
 }
