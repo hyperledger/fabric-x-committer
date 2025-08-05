@@ -10,6 +10,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/durationpb"
 
@@ -18,35 +19,35 @@ import (
 )
 
 type (
+	// notifier uses a single go-routine for processing.
+	// Each stream has its own notificationQueue (stream-level).
+	// All requests flow into the global requestQueue and are accumulated in subscriptionMap (txID -> requests).
+	// Status updates from statusQueue are dispatched by grouping responses per stream and
+	// writing to each stream's notificationQueue.
+	// Deadlock is prevented by buffered channels and single-threaded processing in run().
 	notifier struct {
 		protonotify.UnimplementedNotifierServer
 		bufferSize int
 		maxTimeout time.Duration
 		// requestQueue receives requests from users.
 		requestQueue chan *notificationRequest
-		// statusQueue receives statuses from the committer.
-		statusQueue chan []*protonotify.TxStatusEvent
 	}
 
 	notificationRequest struct {
 		request *protonotify.NotificationRequest
-		// notificationQueue is used to submit notifications to the users (includes the request's context).
-		notificationQueue channel.Writer[*protonotify.NotificationResponse]
+		// streamEventQueue is used to submit notifications to the users (includes the request's context).
+		streamEventQueue channel.Writer[*protonotify.NotificationResponse]
 
 		// Internal use. Used to keep track of the request, and release its resources when it is fulfilled.
 		timer   *time.Timer
 		pending int
 	}
 
-	// notificationMap maps from TX ID to a set of notificationRequest objects.
-	notificationMap map[string]map[*notificationRequest]any
+	// subscriptionMap maps from TX ID to a set of notificationRequest objects.
+	subscriptionMap map[string]map[*notificationRequest]any
 )
 
-func newNotifier(conf *NotificationServiceConfig) *notifier {
-	bufferSize := conf.ChannelBufferSize
-	if bufferSize <= 0 {
-		bufferSize = defaultNotificationBufferSize
-	}
+func newNotifier(bufferSize int, conf *NotificationServiceConfig) *notifier {
 	maxTimeout := conf.MaxTimeout
 	if maxTimeout <= 0 {
 		maxTimeout = defaultNotificationMaxTimeout
@@ -55,12 +56,11 @@ func newNotifier(conf *NotificationServiceConfig) *notifier {
 		bufferSize:   bufferSize,
 		maxTimeout:   maxTimeout,
 		requestQueue: make(chan *notificationRequest, bufferSize),
-		statusQueue:  make(chan []*protonotify.TxStatusEvent, bufferSize),
 	}
 }
 
-func (n *notifier) run(ctx context.Context) error {
-	notifyMap := notificationMap(make(map[string]map[*notificationRequest]any))
+func (n *notifier) run(ctx context.Context, statusQueue chan []*protonotify.TxStatusEvent) error {
+	notifyMap := subscriptionMap(make(map[string]map[*notificationRequest]any))
 	timeoutQueue := make(chan *notificationRequest, cap(n.requestQueue))
 	timeoutQueueCtx := channel.NewWriter(ctx, timeoutQueue)
 
@@ -75,10 +75,10 @@ func (n *notifier) run(ctx context.Context) error {
 					timeoutQueueCtx.Write(req)
 				})
 			}
-		case status := <-n.statusQueue:
-			notifyMap.removeWithStatus(status)
+		case status := <-statusQueue:
+			notifyMap.removeAndEnqueueStatusEvents(status)
 		case req := <-timeoutQueue:
-			notifyMap.removeWithTimeout(req)
+			notifyMap.removeAndEnqueueTimeoutEvents(req)
 		}
 	}
 }
@@ -87,25 +87,25 @@ func (n *notifier) run(ctx context.Context) error {
 func (n *notifier) OpenNotificationStream(stream protonotify.Notifier_OpenNotificationStreamServer) error {
 	g, gCtx := errgroup.WithContext(stream.Context())
 	requestQueue := channel.NewWriter(gCtx, n.requestQueue)
-	notificationQueue := channel.Make[*protonotify.NotificationResponse](gCtx, n.bufferSize)
+	streamEventQueue := channel.Make[*protonotify.NotificationResponse](gCtx, n.bufferSize)
 
 	g.Go(func() error {
 		for gCtx.Err() == nil {
 			req, err := stream.Recv()
 			if err != nil {
-				return err
+				return errors.Wrap(err, "error receiving request")
 			}
 			fixTimeout(req, n.maxTimeout)
 			requestQueue.Write(&notificationRequest{
-				request:           req,
-				notificationQueue: notificationQueue,
+				request:          req,
+				streamEventQueue: streamEventQueue,
 			})
 		}
 		return gCtx.Err()
 	})
 	g.Go(func() error {
 		for gCtx.Err() == nil {
-			res, ok := notificationQueue.Read()
+			res, ok := streamEventQueue.Read()
 			if !ok {
 				break
 			}
@@ -127,7 +127,7 @@ func fixTimeout(request *protonotify.NotificationRequest, maxTimeout time.Durati
 }
 
 // addRequest adds a requests to the map and updates the number of pending TX IDs for this request.
-func (m notificationMap) addRequest(req *notificationRequest) {
+func (m subscriptionMap) addRequest(req *notificationRequest) {
 	for _, id := range req.request.TxStatusRequest.TxIds {
 		requests, ok := m[id]
 		if !ok {
@@ -141,8 +141,8 @@ func (m notificationMap) addRequest(req *notificationRequest) {
 	}
 }
 
-// removeWithStatus removes TXs from the map and reports the responses to the subscribers.
-func (m notificationMap) removeWithStatus(status []*protonotify.TxStatusEvent) {
+// removeAndEnqueueStatusEvents removes TXs from the map and reports the responses to the subscribers.
+func (m subscriptionMap) removeAndEnqueueStatusEvents(status []*protonotify.TxStatusEvent) {
 	respMap := make(map[channel.Writer[*protonotify.NotificationResponse]][]*protonotify.TxStatusEvent)
 	for _, response := range status {
 		reqList, ok := m[response.TxId]
@@ -151,7 +151,7 @@ func (m notificationMap) removeWithStatus(status []*protonotify.TxStatusEvent) {
 		}
 		delete(m, response.TxId)
 		for req := range reqList {
-			respMap[req.notificationQueue] = append(respMap[req.notificationQueue], response)
+			respMap[req.streamEventQueue] = append(respMap[req.streamEventQueue], response)
 			req.pending--
 			if req.pending == 0 {
 				req.timer.Stop()
@@ -165,8 +165,8 @@ func (m notificationMap) removeWithStatus(status []*protonotify.TxStatusEvent) {
 	}
 }
 
-// removeWithTimeout removes a request from the map, and reports the remaining TX IDs for this request.
-func (m notificationMap) removeWithTimeout(req *notificationRequest) {
+// removeAndEnqueueTimeoutEvents removes a request from the map, and reports the remaining TX IDs for this request.
+func (m subscriptionMap) removeAndEnqueueTimeoutEvents(req *notificationRequest) {
 	txIDs := make([]string, 0, len(req.request.TxStatusRequest.TxIds))
 	for _, id := range req.request.TxStatusRequest.TxIds {
 		requests, ok := m[id]
@@ -183,7 +183,7 @@ func (m notificationMap) removeWithTimeout(req *notificationRequest) {
 			delete(requests, req)
 		}
 	}
-	req.notificationQueue.Write(&protonotify.NotificationResponse{
+	req.streamEventQueue.Write(&protonotify.NotificationResponse{
 		TimeoutTxIds: txIDs,
 	})
 }

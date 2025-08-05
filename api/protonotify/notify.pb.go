@@ -35,6 +35,8 @@ type NotificationRequest struct {
 
 	TxStatusRequest *TxStatusRequest `protobuf:"bytes,1,opt,name=tx_status_request,json=txStatusRequest,proto3,oneof" json:"tx_status_request,omitempty"`
 	// The timeout duration that applies to ALL the subscriptions in this request.
+	// It is non-strict, i.e., it is possible to receive notifications for this request
+	// after the timeout has passed.
 	// If this field is not set or has a default value (zero), the default would be applied as
 	// per the committer's configuration.
 	Timeout *durationpb.Duration `protobuf:"bytes,2,opt,name=timeout,proto3" json:"timeout,omitempty"`

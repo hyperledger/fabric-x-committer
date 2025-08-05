@@ -45,6 +45,7 @@ type Service struct {
 	coordConn          *grpc.ClientConn
 	blockToBeCommitted chan *common.Block
 	committedBlock     chan *common.Block
+	statusQueue        chan []*protonotify.TxStatusEvent
 	config             *Config
 	healthcheck        *health.Server
 	metrics            *perfMetrics
@@ -74,16 +75,22 @@ func New(c *Config) (*Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ledger: %w", err)
 	}
+
+	bufferSize := c.ChannelBufferSize
+	if bufferSize <= 0 {
+		bufferSize = defaultBufferSize
+	}
 	return &Service{
 		ordererClient:      ordererClient,
 		relay:              relayService,
-		notifier:           newNotifier(&c.Notification),
+		notifier:           newNotifier(bufferSize, &c.Notification),
 		ledgerService:      ledgerService,
 		healthcheck:        connection.DefaultHealthCheckService(),
 		config:             c,
 		metrics:            metrics,
-		blockToBeCommitted: make(chan *common.Block, 100),
-		committedBlock:     make(chan *common.Block, 100),
+		blockToBeCommitted: make(chan *common.Block, bufferSize),
+		committedBlock:     make(chan *common.Block, bufferSize),
+		statusQueue:        make(chan []*protonotify.TxStatusEvent, bufferSize),
 	}, nil
 }
 
@@ -125,7 +132,7 @@ func (s *Service) Run(ctx context.Context) error {
 	})
 	g.Go(func() error {
 		// Notification for clients.
-		return s.notifier.run(gCtx)
+		return s.notifier.run(gCtx, s.statusQueue)
 	})
 
 	g.Go(func() error {
@@ -186,7 +193,7 @@ func (s *Service) sendBlocksAndReceiveStatus(
 			configUpdater:                  s.configUpdater,
 			incomingBlockToBeCommitted:     s.blockToBeCommitted,
 			outgoingCommittedBlock:         s.committedBlock,
-			outgoingStatusUpdates:          s.notifier.statusQueue,
+			outgoingStatusUpdates:          s.statusQueue,
 			waitingTxsLimit:                s.config.WaitingTxsLimit,
 		})
 	})

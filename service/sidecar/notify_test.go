@@ -67,8 +67,8 @@ func BenchmarkNotifier(b *testing.B) {
 	b.ResetTimer()
 	for _, r := range requests {
 		env.requestQueue.Write(&notificationRequest{
-			request:           r,
-			notificationQueue: q,
+			request:          r,
+			streamEventQueue: q,
 		})
 	}
 
@@ -113,7 +113,7 @@ func TestNotifierDirect(t *testing.T) {
 				},
 				Timeout: durationpb.New(5 * time.Minute),
 			},
-			notificationQueue: q,
+			streamEventQueue: q,
 		})
 	}
 
@@ -216,7 +216,7 @@ func TestNotifierDirect(t *testing.T) {
 				},
 				Timeout: durationpb.New(1 * time.Millisecond),
 			},
-			notificationQueue: q,
+			streamEventQueue: q,
 		})
 	}
 	for _, q := range env.notificationQueues {
@@ -430,17 +430,18 @@ func TestNotifierStream(t *testing.T) {
 func newNotifierTestEnv(tb testing.TB) *notifierTestEnv {
 	tb.Helper()
 	env := &notifierTestEnv{
-		n:                  newNotifier(&NotificationServiceConfig{}),
+		n:                  newNotifier(defaultBufferSize, &NotificationServiceConfig{}),
 		notificationQueues: make([]channel.ReaderWriter[*protonotify.NotificationResponse], 5),
 	}
+	statusQueue := make(chan []*protonotify.TxStatusEvent, defaultBufferSize)
 	env.requestQueue = channel.NewWriter(tb.Context(), env.n.requestQueue)
-	env.statusQueue = channel.NewWriter(tb.Context(), env.n.statusQueue)
+	env.statusQueue = channel.NewWriter(tb.Context(), statusQueue)
 	for i := range env.notificationQueues {
 		env.notificationQueues[i] = channel.Make[*protonotify.NotificationResponse](tb.Context(), 10)
 	}
 
 	test.RunServiceForTest(tb.Context(), tb, func(ctx context.Context) error {
-		return connection.FilterStreamRPCError(env.n.run(ctx))
+		return connection.FilterStreamRPCError(env.n.run(ctx, statusQueue))
 	}, nil)
 	return env
 }

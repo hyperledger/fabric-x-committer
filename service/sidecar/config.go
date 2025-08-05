@@ -35,7 +35,9 @@ type (
 		Notification                  NotificationServiceConfig `mapstructure:"notification"`
 		LastCommittedBlockSetInterval time.Duration             `mapstructure:"last-committed-block-set-interval"`
 		WaitingTxsLimit               int                       `mapstructure:"waiting-txs-limit"`
-		Bootstrap                     Bootstrap                 `mapstructure:"bootstrap"`
+		// ChannelBufferSize is the buffer size that will be used to queue blocks, requests, and statuses.
+		ChannelBufferSize int       `mapstructure:"channel-buffer-size"`
+		Bootstrap         Bootstrap `mapstructure:"bootstrap"`
 	}
 	// Bootstrap configures how to obtain the bootstrap configuration.
 	Bootstrap struct {
@@ -59,15 +61,13 @@ type (
 	NotificationServiceConfig struct {
 		// MaxTimeout is an upper limit on the request's timeout to prevent resource exhaustion.
 		// If a request doesn't specify a timeout, this value will be used.
-		MaxTimeout time.Duration `mapstructure:"default-timeout"`
-		// ChannelBufferSize is the buffer size that will be used to queue requests, statuses, and notifications.
-		ChannelBufferSize int `mapstructure:"channel-buffer-size"`
+		MaxTimeout time.Duration `mapstructure:"max-timeout"`
 	}
 )
 
 const (
 	defaultNotificationMaxTimeout = time.Minute
-	defaultNotificationBufferSize = 100
+	defaultBufferSize             = 100
 )
 
 // LoadBootstrapConfig loads the bootstrap config according to the bootstrap method.
