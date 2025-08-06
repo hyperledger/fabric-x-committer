@@ -74,7 +74,7 @@ In this section, we provide an overview of each of these tasks in detail.
 The following code runs *Task 1* which fetches blocks from the ordering service and
 enqueue to `blockToBeCommitted` queues.
 
-From [https://github.com/hyperledger/fabric-x-committer/blob/main/service/sidecar/sidecar.go](https://github.com/hyperledger/fabric-x-committer/service/sidecar/sidecar.go#L138)
+From [service/sidecar/sidecar.go](/service/sidecar/sidecar.go#L138)
 
 ```go
     g.Go(func() error {
@@ -101,7 +101,7 @@ using the IP addresses provided in the configuration. It creates an `AtomicBroad
 (a.k.a Orderer Client) using the `NewAtomicBroadcastClient()` function provided by the `fabric-protos-go` library 
 (`orderer/ab.pb.go`).
 
-From [https://github.com/hyperledger/fabric-protos-go/orderer/ab.pb.go](https://github.com/hyperledger/fabric-protos-go/orderer/ab.pb.go)
+From [hyperledger/fabric-protos-go/orderer/ab.pb.go](https://github.com/hyperledger/fabric-protos-go/blob/main/orderer/ab.pb.go)
 ```go
     func NewAtomicBroadcastClient(cc grpc.ClientConnInterface) AtomicBroadcastClient {
         return &atomicBroadcastClient{cc}
@@ -121,7 +121,7 @@ The Sidecar calls the `Deliver()` method on the `AtomicBroadcastClient` to estab
 gRPC stream (`AtomicBroadcast_DeliverClient`) with the Ordering Service specifically 
 for receiving blocks. 
 
-From [https://github.com/hyperledger/fabric-protos-go/orderer/ab.pb.go](https://github.com/hyperledger/fabric-protos-go/orderer/ab.pb.go)
+From [hyperledger/fabric-protos-go/orderer/ab.pb.go](https://github.com/hyperledger/fabric-protos-go/blob/main/orderer/ab.pb.go)
 
 ```go
     type AtomicBroadcast_DeliverClient interface {
@@ -140,7 +140,7 @@ set the start position to block `0` and the stop position to `MaxUint64`. When t
 restarts after a failure, it determines the next needed block number and sets the start block
 number accordingly. It always sets the `SeekBehavior` to `BLOCK_UNTIL_READY`.
 
-From [https://github.com/hyperledger/fabric-protos-go/orderer/ab.pb.go](https://github.com/hyperledger/fabric-protos-go/orderer/ab.pb.go) (illustrative fields)
+From [hyperledger/fabric-protos-go/orderer/ab.pb.go](https://github.com/hyperledger/fabric-protos-go/blob/main/orderer/ab.pb.go) (illustrative fields)
 ```go
     message SeekInfo {
         SeekPosition start = 1;         // The position to start the deliver from
@@ -183,7 +183,7 @@ Sidecar responsible for relaying them to the Coordinator.
 The following code runs *Task 2* which relays the blocks present in 
 `blocksToBeCommitted` to coordinator and receive statuses.
 
-From [https://github.com/hyperledger/fabric-x-committer/blob/main/service/sidecar/sidecar.go](https://github.com/hyperledger/fabric-x-committer/service/sidecar/sidecar.go#L152)
+From [service/sidecar/sidecar.go](/service/sidecar/sidecar.go#L152)
 ```go
   	relayService := newRelay(c.LastCommittedBlockSetInterval, metrics)
     ...
@@ -277,7 +277,7 @@ Subsequently, this modified block is enqueued onto the `committedBlocks` output 
 The following code runs *Task 3* which reads blocks present in the `committedBlocks`
 queue and store the block in the file system.
 
-From [https://github.com/hyperledger/fabric-x-committer/blob/main/service/sidecar/sidecar.go](https://github.com/hyperledger/fabric-x-committer/service/sidecar/sidecar.go#L103)
+From [service/sidecar/sidecar.go](/service/sidecar/sidecar.go#L103)
 
 ```go
 	g.Go(func() error {
@@ -333,7 +333,7 @@ using the IP:Port on which the ledger service (the Sidecar's block delivery serv
 is listening. It creates a `DeliverClient` using the `NewDeliverClient()` function 
 provided by the `fabric-protos-go`` library (`peer/events.pb.go`).
 
-From [https://github.com/hyperledger/fabric-protos-go/peer/events.pb.go](https://github.com/hyperledger/fabric-protos-go/peer/events.pb.go)
+From [hyperledger/fabric-protos-go/peer/events.pb.go](https://github.com/hyperledger/fabric-protos-go/blob/main/peer/events.pb.go)
   ```go
     func NewDeliverClient(cc grpc.ClientConnInterface) DeliverClient {
       return &deliverClient{cc}
@@ -354,7 +354,7 @@ From [https://github.com/hyperledger/fabric-protos-go/peer/events.pb.go](https:/
 The sidecarclient calls the `Deliver()` method on the `DeliverClient` to establish a 
 gRPC stream (`Deliver_DeliverClient`) with the Sidecar for receiving blocks.
 
-From [https://github.com/hyperledger/fabric-protos-go/peer/events.pb.go](https://github.com/hyperledger/fabric-protos-go/peer/events.pb.go)
+From [hyperledger/fabric-protos-go/peer/events.pb.go](https://github.com/hyperledger/fabric-protos-go/blob/main/peer/events.pb.go)
   ```go
     type Deliver_DeliverClient interface {
       Send(*common.Envelope) error
