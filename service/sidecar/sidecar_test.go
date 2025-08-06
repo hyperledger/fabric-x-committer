@@ -25,8 +25,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
@@ -48,6 +50,7 @@ type sidecarTestEnv struct {
 	sidecar        *Service
 	committedBlock chan *common.Block
 	configBlock    *common.Block
+	notifyStream   protonotify.Notifier_OpenNotificationStreamClient
 }
 
 type sidecarTestConfig struct {
@@ -111,9 +114,7 @@ func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
 		initOrdererEndpoints = nil
 	}
 	sidecarConf := &Config{
-		Server: &connection.ServerConfig{
-			Endpoint: connection.Endpoint{Host: "localhost"},
-		},
+		Server: connection.NewLocalHostServer(),
 		Orderer: broadcastdeliver.Config{
 			ChannelID: ordererEnv.TestConfig.ChanID,
 			Connection: broadcastdeliver.ConnectionConfig{
@@ -156,6 +157,10 @@ func (env *sidecarTestEnv) start(ctx context.Context, t *testing.T, startBlkNum 
 		ChannelID: env.config.Orderer.ChannelID,
 		Endpoint:  &env.config.Server.Endpoint,
 	}, startBlkNum)
+	conn, err := connection.Connect(connection.NewInsecureDialConfig(&env.config.Server.Endpoint))
+	require.NoError(t, err)
+	env.notifyStream, err = protonotify.NewNotifierClient(conn).OpenNotificationStream(ctx)
+	require.NoError(t, err)
 }
 
 func TestSidecar(t *testing.T) {
@@ -362,13 +367,13 @@ func TestSidecarRecovery(t *testing.T) {
 	env.coordinator.SetWaitingTxsCount(0)
 
 	t.Log("8. Blockstore would recover lost blocks")
-	ensureAtLeastHeight(t, env.sidecar.GetLedgerService(), 11)
+	ensureAtLeastHeight(t, env.sidecar.ledgerService, 11)
 
 	t.Log("9. Send the next expected block by the coordinator.")
 	env.sendTransactionsAndEnsureCommitted(ctx2, t, 11)
 
 	checkLastCommittedBlock(ctx2, t, env.coordinator, 11)
-	ensureAtLeastHeight(t, env.sidecar.GetLedgerService(), 12)
+	ensureAtLeastHeight(t, env.sidecar.ledgerService, 12)
 	cancel2()
 }
 
@@ -402,7 +407,7 @@ func TestSidecarRecoveryAfterCoordinatorFailure(t *testing.T) {
 	)
 
 	t.Log("3. Send transactions to ordering service to create block 11 after stopping the coordinator")
-	txs := env.sendTransactionsForBlock(ctx, t)
+	txs := env.sendGeneratedTransactionsForBlock(ctx, t)
 
 	t.Log("4. Restart the coordinator and validate processing block 11")
 	env.coordinatorServer = mock.StartMockCoordinatorServiceFromListWithConfig(t, env.coordinator,
@@ -472,11 +477,10 @@ func TestSidecarVerifyBadTxForm(t *testing.T) {
 		} else {
 			status[i] = protoblocktx.Status_COMMITTED
 		}
-		_, err := env.ordererEnv.Orderer.SubmitPayload(ctx, env.ordererEnv.TestConfig.ChanID, tt.Tx)
-		require.NoErrorf(t, err, "tx %s", tt.Tx.Id)
 	}
+	env.submitTXs(ctx, t, txs)
 	t.Logf("sending %d good txs", blockSize-testSize)
-	extraTxs := env.sendTransactions(ctx, t, blockSize-testSize)
+	extraTxs := env.sendGeneratedTransactions(ctx, t, blockSize-testSize)
 	txs = append(txs, extraTxs...)
 	for range extraTxs {
 		status = append(status, protoblocktx.Status_COMMITTED)
@@ -498,34 +502,56 @@ func (env *sidecarTestEnv) sendTransactionsAndEnsureCommitted(
 	expectedBlockNumber uint64,
 ) {
 	t.Helper()
-	txs := env.sendTransactionsForBlock(ctx, t)
+	txs := env.sendGeneratedTransactionsForBlock(ctx, t)
 	env.requireBlockWithTXs(ctx, t, expectedBlockNumber, txs)
 }
 
-func (env *sidecarTestEnv) sendTransactionsForBlock(
+func (env *sidecarTestEnv) sendGeneratedTransactionsForBlock(
 	ctx context.Context,
 	t *testing.T,
 ) []*protoblocktx.Tx {
 	t.Helper()
 	// mock-orderer expects <blockSize> txs to create the next block.
-	return env.sendTransactions(ctx, t, blockSize)
+	return env.sendGeneratedTransactions(ctx, t, blockSize)
 }
 
-func (env *sidecarTestEnv) sendTransactions(
+func (env *sidecarTestEnv) sendGeneratedTransactions(
 	ctx context.Context,
 	t *testing.T,
 	count int,
 ) []*protoblocktx.Tx {
 	t.Helper()
 	txIDPrefix := uuid.New().String()
-	// mock-orderer expects <blockSize> txs to create the next block.
 	txs := make([]*protoblocktx.Tx, count)
 	for i := range txs {
 		txs[i] = makeValidTx(t, txIDPrefix+"."+strconv.Itoa(i))
-		_, err := env.ordererEnv.Orderer.SubmitPayload(ctx, env.ordererEnv.TestConfig.ChanID, txs[i])
-		require.NoErrorf(t, err, "tx %d", i)
 	}
+	env.submitTXs(ctx, t, txs)
 	return txs
+}
+
+// submitTXs submits the given TXs and register them in the notification service.
+func (env *sidecarTestEnv) submitTXs(ctx context.Context, t *testing.T, txs []*protoblocktx.Tx) {
+	t.Helper()
+	txIDs := make([]string, len(txs))
+	for i, tx := range txs {
+		txIDs[i] = tx.Id
+	}
+	err := env.notifyStream.Send(&protonotify.NotificationRequest{
+		TxStatusRequest: &protonotify.TxStatusRequest{
+			TxIds: txIDs,
+		},
+		Timeout: durationpb.New(3 * time.Minute),
+	})
+	require.NoError(t, err)
+
+	// Allows processing the request before submitting the payload.
+	time.Sleep(1 * time.Second)
+
+	for i, tx := range txs {
+		_, submitErr := env.ordererEnv.Orderer.SubmitPayload(ctx, env.ordererEnv.TestConfig.ChanID, tx)
+		require.NoErrorf(t, submitErr, "tx %d", i)
+	}
 }
 
 func (env *sidecarTestEnv) requireBlockWithTXs(
@@ -565,11 +591,17 @@ func (env *sidecarTestEnv) requireBlockWithTXsAndStatus(
 		require.True(t, proto.Equal(txs[i], tx))
 	}
 	require.NotNil(t, block.Metadata)
-	require.Len(t, block.Metadata.Metadata, 3)
+	require.GreaterOrEqual(t, len(block.Metadata.Metadata), 3)
 	require.Len(t, block.Metadata.Metadata[2], blockSize)
 	for i, actualStatus := range block.Metadata.Metadata[2] {
 		require.Equal(t, byte(status[i]), actualStatus)
 	}
+
+	txIDs := make([]string, len(txs))
+	for i := range txs {
+		txIDs[i] = txs[i].Id
+	}
+	RequireNotifications(t, env.notifyStream, expectedBlockNumber, txIDs, status)
 }
 
 func (env *sidecarTestEnv) requireBlock(
@@ -579,7 +611,7 @@ func (env *sidecarTestEnv) requireBlock(
 ) *common.Block {
 	t.Helper()
 	checkLastCommittedBlock(ctx, t, env.coordinator, expectedBlockNumber)
-	ensureAtLeastHeight(t, env.sidecar.GetLedgerService(), expectedBlockNumber+1)
+	ensureAtLeastHeight(t, env.sidecar.ledgerService, expectedBlockNumber+1)
 
 	block, ok := channel.NewReader(ctx, env.committedBlock).Read()
 	require.True(t, ok)

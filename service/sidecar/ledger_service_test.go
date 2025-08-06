@@ -34,10 +34,7 @@ func TestLedgerService(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(ls.close)
 
-	config := &connection.ServerConfig{
-		Endpoint: connection.Endpoint{Host: "localhost"},
-	}
-
+	config := connection.NewLocalHostServer()
 	inputBlock := make(chan *common.Block, 10)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(ls.run(ctx, &ledgerRunConfig{
@@ -90,7 +87,7 @@ func TestLedgerService(t *testing.T) {
 }
 
 // ensureAtLeastHeight checks if the ledger is at or above the specified height.
-func ensureAtLeastHeight(t *testing.T, s *LedgerService, height uint64) {
+func ensureAtLeastHeight(t *testing.T, s *ledgerService, height uint64) {
 	t.Helper()
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		require.GreaterOrEqual(ct, s.GetBlockHeight(), height)

@@ -8,16 +8,22 @@ package test
 
 import (
 	"bytes"
-	"testing"
+	"fmt"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
+type tHelper = interface {
+	Helper()
+}
+
 // RequireProtoEqual verifies that two proto are equal.
-func RequireProtoEqual(t *testing.T, expected, actual proto.Message) {
-	t.Helper()
+func RequireProtoEqual(t require.TestingT, expected, actual proto.Message) {
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
 	require.Truef(
 		t,
 		proto.Equal(expected, actual),
@@ -29,20 +35,25 @@ func RequireProtoEqual(t *testing.T, expected, actual proto.Message) {
 
 // RequireProtoElementsMatch verifies that two arrays of proto have the same elements.
 func RequireProtoElementsMatch[T proto.Message](
-	t *testing.T, expected, actual []T, msgAndArgs ...any,
+	t require.TestingT, expected, actual []T, msgAndArgs ...any,
 ) {
-	t.Helper()
+	if h, ok := t.(tHelper); ok {
+		h.Helper()
+	}
 	if expected == nil {
 		require.Nil(t, actual, msgAndArgs...)
 		return
 	}
-	require.Len(t, actual, len(expected), msgAndArgs...)
 	if msg, haveDiff := protoElemDiff(expected, actual); haveDiff {
 		require.Fail(t, msg, msgAndArgs...)
 	}
 }
 
 func protoElemDiff[T proto.Message](expected, actual []T) (string, bool) { //nolint:gocognit // cognitive complexity 23
+	var msg bytes.Buffer
+	if len(expected) != len(actual) {
+		msg.WriteString(fmt.Sprintf("\nSIZE MISMATCH: expected=%d != actual=%d\n", len(expected), len(actual)))
+	}
 	expectedMatched := make([]bool, len(expected))
 	actualMatched := make([]bool, len(actual))
 	for aInd, aElem := range actual {
@@ -75,16 +86,15 @@ func protoElemDiff[T proto.Message](expected, actual []T) (string, bool) { //nol
 		return "", false
 	}
 
-	var msg bytes.Buffer
 	if len(extra) > 0 {
-		msg.WriteString("\nextra elements:\n")
+		msg.WriteString(fmt.Sprintf("\nEXTRA ELEMENTS (%d):\n\n", len(extra)))
 		for _, extraElem := range extra {
 			msg.WriteString(extraElem)
 			msg.WriteString("\n")
 		}
 	}
 	if len(missing) > 0 {
-		msg.WriteString("\nmissing elements:\n")
+		msg.WriteString(fmt.Sprintf("\n\nMISSING ELEMENTS (%d):\n\n", len(missing)))
 		for _, missingElem := range missing {
 			msg.WriteString(missingElem)
 			msg.WriteString("\n")

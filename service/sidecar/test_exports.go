@@ -7,13 +7,52 @@ SPDX-License-Identifier: Apache-2.0
 package sidecar
 
 import (
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
+
+// RequireNotifications verifies that the expected notification were received.
+func RequireNotifications( //nolint:revive // argument-limit.
+	t *testing.T,
+	notifyStream protonotify.Notifier_OpenNotificationStreamClient,
+	expectedBlockNumber uint64,
+	txIDs []string,
+	status []protoblocktx.Status,
+) {
+	t.Helper()
+	require.Len(t, status, len(txIDs))
+	expected := make([]*protonotify.TxStatusEvent, 0, len(txIDs))
+	for i, s := range status {
+		if !IsStatusStoredInDB(s) {
+			continue
+		}
+		expected = append(expected, &protonotify.TxStatusEvent{
+			TxId:             txIDs[i],
+			StatusWithHeight: types.CreateStatusWithHeight(s, expectedBlockNumber, i),
+		})
+	}
+
+	var actual []*protonotify.TxStatusEvent
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		res, err := notifyStream.Recv()
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		require.Nil(t, res.TimeoutTxIds)
+		actual = append(actual, res.TxStatusEvents...)
+		test.RequireProtoElementsMatch(ct, expected, actual)
+	}, 15*time.Second, 50*time.Millisecond)
+}
 
 // MalformedTxTestCases are valid and invalid TXs due to malformed.
 var MalformedTxTestCases = []struct {
