@@ -21,11 +21,11 @@ import (
 )
 
 // YugaClusterController is a struct that facilitates the manipulation of a DB cluster,
-// with its nodes running in Docker containers.
-// The cluster replication factor works as follows:
-// * If the number of masters is greater than or equal to 3,
-// the replication factor (RF) is set to 3; otherwise, RF is set to 1.
-// * In addition, RF=3 supports the failure of one master node, while RF=1 does not provide resilience to node failures.
+// with nodes running in Docker containers.
+// It allows configuring the number of master and tablet nodes.
+// The cluster's replication factor (RF) is determined as follows:
+//   - If the number of master nodes is greater than or equal to 3,
+//     RF is set to 3; otherwise, RF is set to 1.
 type YugaClusterController struct {
 	DBClusterController
 
@@ -58,9 +58,9 @@ func StartYugaCluster(ctx context.Context, t *testing.T, numberOfMasters, number
 		dbtest.RemoveDockerNetwork(t, cluster.networkName)
 	})
 
-	// we create the nodes before startup, so we can make sure
-	// that we hold the names/container IDs of the master nodes.
-	// to start each node, we need to know this information from a head.
+	// We create the nodes before startup to ensure
+	// we have the names of the master nodes.
+	// This information is required ahead of time to start each node.
 	for range numberOfMasters {
 		cluster.createNode(MasterNode)
 	}
@@ -73,8 +73,8 @@ func StartYugaCluster(ctx context.Context, t *testing.T, numberOfMasters, number
 		cluster.stopAndRemoveCluster(t)
 	})
 
-	// the master nodes aren't relevant for the db communication, the application,
-	// connects to the tablet servers.
+	// The master nodes are not involved in DB communication;
+	// the application connects to the tablet servers.
 	clusterConnection := cluster.getConnectionsOfGivenRole(ctx, t, TabletNode)
 	clusterConnection.LoadBalance = true
 
