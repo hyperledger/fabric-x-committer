@@ -9,7 +9,6 @@ package runner
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -33,7 +32,8 @@ type YugaClusterController struct {
 }
 
 const (
-	defaultImage = "yugabytedb/yugabyte:latest"
+	// latest LTS.
+	defaultImage = "yugabytedb/yugabyte:2024.2.4.0-b89"
 )
 
 // StartYugaCluster creates a Yugabyte cluster in a Docker environment
@@ -43,9 +43,9 @@ func StartYugaCluster(ctx context.Context, t *testing.T, numberOfMasters, number
 ) {
 	t.Helper()
 
-	if runtime.GOOS != linuxOS {
-		t.Skip("Container IP access not supported on non-linux Docker")
-	}
+	//if runtime.GOOS != linuxOS {
+	//	t.Skip("Container IP access not supported on non-linux Docker")
+	//}
 
 	t.Logf("starting yuga cluster with (%d) masters and (%d) tablets ", numberOfMasters, numberOfTablets)
 
