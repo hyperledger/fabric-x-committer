@@ -6,4 +6,15 @@
 # It should be complimented by the common load generator configuration.
 
 coordinator-client:
-  endpoint: {{ .Endpoints.Coordinator.Server }}
+  endpoints:
+    - {{ .Endpoints.Coordinator.Server }}
+  reconnect:
+    lb-policy: pick_first
+  tls:
+    mode: {{ .ClientTLS.Mode }}
+    key-path: {{ .ClientTLS.KeyPath }}
+    cert-path: {{ .ClientTLS.CertPath }}
+    ca-cert-paths:
+      {{- range .ClientTLS.CACertPaths }}
+      - {{ . }}
+      {{- end }}

@@ -6,11 +6,11 @@
 server:
   endpoint: {{ .ServiceEndpoints.Server | default "localhost:0" }}
   tls:
-    mode: {{ .ServiceCreds.Mode }}
-    cert-path: {{ .ServiceCreds.CertPath }}
-    key-path: {{ .ServiceCreds.KeyPath }}
+    mode: {{ .ServiceTLS.Mode }}
+    cert-path: {{ .ServiceTLS.CertPath }}
+    key-path: {{ .ServiceTLS.KeyPath }}
     ca-cert-paths:
-      {{- range .ServiceCreds.CACertPaths }}
+      {{- range .ServiceTLS.CACertPaths }}
       - {{ . }}
       {{- end }}
 monitoring:

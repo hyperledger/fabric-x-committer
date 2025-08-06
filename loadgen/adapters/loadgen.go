@@ -18,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type (
@@ -43,7 +44,13 @@ func NewLoadGenAdapter(config *LoadGenClientConfig, res *ClientResources) *LoadG
 
 // RunWorkload applies load on the SV.
 func (c *LoadGenAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWithSetup) error {
-	conn, err := connection.Connect(connection.NewInsecureDialConfig(c.config.Endpoint))
+	loadgenDialConfig, err := connection.NewLoadBalancedDialConfig(
+		*test.MakeInsecureClientConfig(c.config.Endpoint),
+	)
+	if err != nil {
+		return errors.Wrapf(err, "failed creating loadgen dial config")
+	}
+	conn, err := connection.Connect(loadgenDialConfig)
 	if err != nil {
 		return errors.Wrapf(err, "failed to connect to %s", c.config.Endpoint)
 	}

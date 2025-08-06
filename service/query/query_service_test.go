@@ -369,9 +369,7 @@ func newQueryServiceTestEnvWithServerAndClientCreds(
 
 	qs := NewQueryService(config)
 	test.RunServiceAndGrpcForTest(t.Context(), t, qs, qs.config.Server)
-	dialConfig, err := connection.NewSecuredDialConfig(&qs.config.Server.Endpoint, *clientTLS)
-	require.NoError(t, err)
-	clientConn, err := connection.Connect(dialConfig)
+	clientConn, err := connection.Connect(test.NewSecuredDialConfig(t, &qs.config.Server.Endpoint, clientTLS))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		assert.NoError(t, clientConn.Close())
@@ -399,7 +397,7 @@ func generateNamespacesUnderTest(t *testing.T, namespaces []string) *vc.Database
 
 	clientConf := loadgen.DefaultClientConf()
 	clientConf.Adapter.VCClient = &adapters.VCClientConfig{
-		Endpoints: env.Endpoints,
+		Client: *test.MakeInsecureClientConfig(env.Endpoints...),
 	}
 	policies := &workload.PolicyProfile{
 		NamespacePolicies: make(map[string]*workload.Policy, len(namespaces)),

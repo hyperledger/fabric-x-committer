@@ -419,7 +419,7 @@ func newTestState(t *testing.T, config *Config) *State {
 	service := New(config)
 	test.RunServiceAndGrpcForTest(t.Context(), t, service, config.Server)
 
-	clientConnection, err := connection.Connect(connection.NewInsecureDialConfig(&config.Server.Endpoint))
+	clientConnection, err := connection.Connect(test.NewInsecureDialConfig(&config.Server.Endpoint))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		assert.NoError(t, clientConnection.Close())

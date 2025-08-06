@@ -35,6 +35,8 @@ type RetryProfile struct {
 	// After MaxElapsedTime the ExponentialBackOff returns RetryStopDuration.
 	// It never stops if MaxElapsedTime == 0.
 	MaxElapsedTime time.Duration `mapstructure:"max-elapsed-time" yaml:"max-elapsed-time"`
+	// LBPolicy selects the gRPC load balancing policy: "pick_first" (default) or "round_robin".
+	LBPolicy string `mapstructure:"lb-policy" yaml:"lb-policy"`
 }
 
 const (
@@ -43,6 +45,10 @@ const (
 	defaultMultiplier          = 1.5
 	defaultMaxInterval         = 10 * time.Second
 	defaultMaxElapsedTime      = 15 * time.Minute
+
+	// LBPolicyPickFirst and LBPolicyRoundRobin set the load balancing policy for the grpc client connection.
+	LBPolicyPickFirst  = "pick_first"
+	LBPolicyRoundRobin = "round_robin" //nolint:revive
 )
 
 // Execute executes the given operation repeatedly until it succeeds or a timeout occurs.
@@ -115,9 +121,14 @@ func (p *RetryProfile) MakeGrpcRetryPolicyJSON() string {
 	maxInterval := max(b.MaxInterval.Seconds(), initialInterval)
 	multiplier := max(b.Multiplier, 1.0001)
 	maxElapsedTime := max(b.MaxElapsedTime.Seconds(), maxInterval)
+
+	// determine LB policy from the profile (default to pick_first).
+	lbPolicy := normalizeLBPolicy(p)
+	logger.Infof("using %v grpc client load balancing policy", lbPolicy)
+
 	ret := map[string]any{
 		"loadBalancingConfig": []map[string]any{{
-			"round_robin": make(map[string]any),
+			lbPolicy: make(map[string]any),
 		}},
 		"methodConfig": []map[string]any{{
 			// Setting an empty name sets the default for all methods.
@@ -161,4 +172,19 @@ func calcMaxAttempts(initialInterval, maxInterval, multiplier, maxElapsedTime fl
 		nextBackoffInterval = min(nextBackoffInterval*multiplier, maxInterval)
 	}
 	return attempts
+}
+
+func normalizeLBPolicy(p *RetryProfile) string {
+	if p == nil {
+		return LBPolicyPickFirst
+	}
+	switch p.LBPolicy {
+	case "", LBPolicyPickFirst:
+		return LBPolicyPickFirst
+	case LBPolicyRoundRobin:
+		return LBPolicyRoundRobin
+	default:
+		logger.Warnf("unknown load balancing policy %q; defaulting to pick_first", p.LBPolicy)
+		return LBPolicyPickFirst
+	}
 }

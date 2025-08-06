@@ -72,7 +72,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 	for i, c := range vcs.Configs {
 		allEndpoints[i] = &c.Server.Endpoint
 	}
-	commonConn, connErr := connection.Connect(connection.NewInsecureLoadBalancedDialConfig(allEndpoints))
+	commonConn, connErr := connection.Connect(test.NewInsecureLoadBalancedDialConfig(t, allEndpoints))
 	require.NoError(t, connErr)
 
 	vcsTestEnv := &validatorAndCommitterServiceTestEnvWithClient{
@@ -89,7 +89,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 	require.NoError(t, setupErr)
 
 	for i, c := range vcs.Configs {
-		clientConn, err := connection.Connect(connection.NewInsecureDialConfig(&c.Server.Endpoint))
+		clientConn, err := connection.Connect(test.NewInsecureDialConfig(&c.Server.Endpoint))
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, clientConn.Close())

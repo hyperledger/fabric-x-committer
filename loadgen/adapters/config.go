@@ -40,17 +40,17 @@ type (
 
 	// CoordinatorClientConfig is a struct that contains the configuration for the coordinator client.
 	CoordinatorClientConfig struct {
-		Endpoint *connection.Endpoint `mapstructure:"endpoint"`
+		Client connection.ClientConfig `mapstructure:",squash" yaml:",inline"`
 	}
 
 	// VCClientConfig is a struct that contains the configuration for the VC client.
 	VCClientConfig struct {
-		Endpoints []*connection.Endpoint `mapstructure:"endpoints"`
+		Client connection.ClientConfig `mapstructure:",squash" yaml:",inline"`
 	}
 
 	// VerifierClientConfig is a struct that contains the configuration for the verifier client.
 	VerifierClientConfig struct {
-		Endpoints []*connection.Endpoint `mapstructure:"endpoints"`
+		Client connection.ClientConfig `mapstructure:",squash" yaml:",inline"`
 	}
 
 	// LoadGenClientConfig is a struct that contains the configuration for the load generator client.

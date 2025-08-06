@@ -11,7 +11,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -44,8 +43,7 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	if err != nil {
 		return errors.Wrap(err, "failed creating verification policy")
 	}
-
-	connections, err := connection.OpenConnections(c.config.Endpoints, insecure.NewCredentials())
+	connections, err := connection.OpenConnections(c.config.Client)
 	if err != nil {
 		return errors.Wrap(err, "failed opening connections")
 	}
@@ -57,11 +55,11 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	streams := make([]protosigverifierservice.Verifier_StartStreamClient, len(connections))
 	for i, conn := range connections {
 		client := protosigverifierservice.NewVerifierClient(conn)
+		logger.Infof("Opening stream to %s", c.config.Client.Endpoints[i])
 
-		logger.Infof("Opening stream to %s", c.config.Endpoints[i])
 		streams[i], err = client.StartStream(gCtx)
 		if err != nil {
-			return errors.Wrapf(err, "failed opening a stream to %s", c.config.Endpoints[i])
+			return errors.Wrapf(err, "failed opening a stream to %s", c.config.Client.Endpoints[i])
 		}
 
 		logger.Infof("Set verification verification policy")

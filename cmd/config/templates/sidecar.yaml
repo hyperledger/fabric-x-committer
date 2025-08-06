@@ -5,11 +5,11 @@
 server:
   endpoint: {{ .ServiceEndpoints.Server | default "localhost:0" }}
   tls:
-    mode: {{ .ServiceCreds.Mode }}
-    cert-path: {{ .ServiceCreds.CertPath }}
-    key-path: {{ .ServiceCreds.KeyPath }}
+    mode: {{ .ServiceTLS.Mode }}
+    cert-path: {{ .ServiceTLS.CertPath }}
+    key-path: {{ .ServiceTLS.KeyPath }}
     ca-cert-paths:
-      {{- range .ServiceCreds.CACertPaths }}
+      {{- range .ServiceTLS.CACertPaths }}
       - {{ . }}
       {{- end }}
   keep-alive:
@@ -34,12 +34,14 @@ orderer:
 committer:
   endpoints:
     - {{ .Endpoints.Coordinator.Server }}
+  reconnect:
+    lb-policy: pick_first
   tls:
-    mode: {{ .ClientCreds.Mode }}
-    cert-path: {{ .ClientCreds.CertPath }}
-    key-path: {{ .ClientCreds.KeyPath }}
+    mode: {{ .ClientTLS.Mode }}
+    cert-path: {{ .ClientTLS.CertPath }}
+    key-path: {{ .ClientTLS.KeyPath }}
     ca-cert-paths:
-      {{- range .ClientCreds.CACertPaths }}
+      {{- range .ClientTLS.CACertPaths }}
       - {{ . }}
       {{- end }}
 

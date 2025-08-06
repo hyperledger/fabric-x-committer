@@ -9,12 +9,14 @@ orderer-client:
   sidecar-client:
     endpoints:
       - {{ .Endpoints.Sidecar.Server }}
+    reconnect:
+      lb-policy: pick_first
     tls:
-      mode: {{ .ClientCreds.Mode }}
-      cert-path: {{ .ClientCreds.CertPath }}
-      key-path: {{ .ClientCreds.KeyPath }}
+      mode: {{ .ClientTLS.Mode }}
+      cert-path: {{ .ClientTLS.CertPath }}
+      key-path: {{ .ClientTLS.KeyPath }}
       ca-cert-paths:
-        {{- range .ClientCreds.CACertPaths }}
+        {{- range .ClientTLS.CACertPaths }}
         - {{ . }}
         {{- end }}
   orderer:
@@ -23,6 +25,8 @@ orderer-client:
         {{- range .Endpoints.Orderer }}
         - {{ .Server }}
         {{- end }}
+    reconnect:
+      lb-policy: round_robin
     consensus-type: BFT
     channel-id: {{ .ChannelID }}
   broadcast-parallelism: 5

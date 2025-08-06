@@ -18,7 +18,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/resolver/manual"
 	"google.golang.org/grpc/status"
@@ -57,19 +56,28 @@ type (
 
 var logger = logging.New("connection")
 
-// DefaultGrpcRetryProfile defines the retry policy for a gRPC client connection.
-var DefaultGrpcRetryProfile RetryProfile
-
 var knownConnectionIssues = regexp.MustCompile(`(?i)EOF|connection\s+refused|closed\s+network\s+connection`)
 
 // NewLoadBalancedDialConfig creates a dial config with load balancing between the endpoints
 // in the given config.
-func NewLoadBalancedDialConfig(config *ClientConfig) (*DialConfig, error) {
+func NewLoadBalancedDialConfig(config ClientConfig) (*DialConfig, error) {
+	resolverEndpoints := make([]resolver.Endpoint, len(config.Endpoints))
+	for i, e := range config.Endpoints {
+		// we're setting ServerName for each address because each service-instance has its own certificates.
+		resolverEndpoints[i] = resolver.Endpoint{Addresses: []resolver.Address{{Addr: e.Address(), ServerName: e.Host}}}
+	}
+	r := manual.NewBuilderWithScheme(scResolverSchema)
+	r.UpdateState(resolver.State{Endpoints: resolverEndpoints})
+
 	tlsCredentials, err := config.TLS.ClientCredentials()
 	if err != nil {
 		return nil, err
 	}
-	return newLoadBalancedDialConfig(config.Endpoints, tlsCredentials, config.Retry), nil
+
+	dialConfig := NewDialConfig(fmt.Sprintf("%s:///%s", r.Scheme(), "method"), tlsCredentials, config.Retry)
+	dialConfig.Resolver = r
+	dialConfig.DialOpts = append(dialConfig.DialOpts, grpc.WithResolvers(r))
+	return dialConfig, nil
 }
 
 // NewDialConfigPerEndpoint creates a list of dial configs; one for each endpoint in the given config.
@@ -80,51 +88,13 @@ func NewDialConfigPerEndpoint(config *ClientConfig) ([]*DialConfig, error) {
 	}
 	ret := make([]*DialConfig, len(config.Endpoints))
 	for i, e := range config.Endpoints {
-		ret[i] = newDialConfig(e.Address(), tlsCreds, config.Retry)
+		ret[i] = NewDialConfig(e.Address(), tlsCreds, config.Retry)
 	}
 	return ret, nil
 }
 
-// NewSecuredDialConfig creates the default dial config with given transport credentials.
-func NewSecuredDialConfig(endpoint WithAddress, tlsConfig TLSConfig) (*DialConfig, error) {
-	clientCreds, err := tlsConfig.ClientCredentials()
-	if err != nil {
-		return nil, err
-	}
-	return newDialConfig(endpoint.Address(), clientCreds, &DefaultGrpcRetryProfile), nil
-}
-
-// NewInsecureDialConfig creates the default dial config with insecure credentials.
-// Used for testing.
-func NewInsecureDialConfig(endpoint WithAddress) *DialConfig {
-	return newDialConfig(endpoint.Address(), insecure.NewCredentials(), &DefaultGrpcRetryProfile)
-}
-
-// NewInsecureLoadBalancedDialConfig creates the default dial config with insecure credentials.
-// Used for testing.
-func NewInsecureLoadBalancedDialConfig(endpoint []*Endpoint) *DialConfig {
-	return newLoadBalancedDialConfig(endpoint, insecure.NewCredentials(), &DefaultGrpcRetryProfile)
-}
-
-// newLoadBalancedDialConfig creates a dial config with the default values for multiple endpoints.
-func newLoadBalancedDialConfig(
-	endpoint []*Endpoint, creds credentials.TransportCredentials, retry *RetryProfile,
-) *DialConfig {
-	resolverEndpoints := make([]resolver.Endpoint, len(endpoint))
-	for i, e := range endpoint {
-		// we're setting ServerName for each address because each service-instance has its own certificates.
-		resolverEndpoints[i] = resolver.Endpoint{Addresses: []resolver.Address{{Addr: e.Address(), ServerName: e.Host}}}
-	}
-	r := manual.NewBuilderWithScheme(scResolverSchema)
-	r.UpdateState(resolver.State{Endpoints: resolverEndpoints})
-	dialConfig := newDialConfig(fmt.Sprintf("%s:///%s", r.Scheme(), "method"), creds, retry)
-	dialConfig.Resolver = r
-	dialConfig.DialOpts = append(dialConfig.DialOpts, grpc.WithResolvers(r))
-	return dialConfig
-}
-
-// newDialConfig creates a dial config with the default values.
-func newDialConfig(
+// NewDialConfig creates a dial config with the default values.
+func NewDialConfig(
 	address string, creds credentials.TransportCredentials, retry *RetryProfile,
 ) *DialConfig {
 	return &DialConfig{
@@ -198,14 +168,15 @@ func Connect(config *DialConfig) (*grpc.ClientConn, error) {
 }
 
 // OpenConnections opens connections with multiple remotes.
-func OpenConnections[T WithAddress](
-	endpoints []T,
-	transportCredentials credentials.TransportCredentials,
-) ([]*grpc.ClientConn, error) {
-	logger.Infof("Opening connections to %d endpoints: %v.\n", len(endpoints), endpoints)
-	connections := make([]*grpc.ClientConn, len(endpoints))
-	for i, endpoint := range endpoints {
-		conn, err := Connect(newDialConfig(endpoint.Address(), transportCredentials, &DefaultGrpcRetryProfile))
+func OpenConnections(config ClientConfig) ([]*grpc.ClientConn, error) {
+	logger.Infof("Opening connections to %d endpoints: %v.\n", len(config.Endpoints), config.Endpoints)
+	dialConfigs, err := NewDialConfigPerEndpoint(&config)
+	if err != nil {
+		return nil, errors.Wrapf(err, "error while creating dial configs")
+	}
+	connections := make([]*grpc.ClientConn, len(config.Endpoints))
+	for i, dial := range dialConfigs {
+		conn, err := Connect(dial)
 		if err != nil {
 			logger.Errorf("Error connecting: %v", err)
 			CloseConnectionsLog(connections[:i]...)

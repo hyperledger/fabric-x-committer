@@ -48,7 +48,7 @@ func TestGRPCRetry(t *testing.T) {
 	vcGrpc := test.RunGrpcServerForTest(ctx, t, serverConfig, mock.NewMockVcService().RegisterService)
 
 	t.Log("Setup dial config")
-	dialConfig := connection.NewInsecureDialConfig(&serverConfig.Endpoint)
+	dialConfig := test.NewInsecureDialConfig(&serverConfig.Endpoint)
 
 	t.Log("Connecting")
 	conn, err := connection.Connect(dialConfig)
@@ -126,7 +126,7 @@ func TestGRPCRetryMultiEndpoints(t *testing.T) {
 	test.RunGrpcServerForTest(ctx, t, serverConfig, mock.NewMockVcService().RegisterService)
 
 	t.Log("Connecting")
-	conn, err := connection.Connect(connection.NewInsecureDialConfig(&serverConfig.Endpoint))
+	conn, err := connection.Connect(test.NewInsecureDialConfig(&serverConfig.Endpoint))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		assert.NoError(t, conn.Close())
@@ -146,7 +146,7 @@ func TestGRPCRetryMultiEndpoints(t *testing.T) {
 	})
 
 	t.Log("Setup dial config for multiple endpoints")
-	fakeDialConfig := connection.NewInsecureLoadBalancedDialConfig([]*connection.Endpoint{
+	fakeDialConfig := test.NewInsecureLoadBalancedDialConfig(t, []*connection.Endpoint{
 		// We put the fake one first to ensure we iterate over it.
 		&fakeServerConfig.Endpoint,
 		&serverConfig.Endpoint,
@@ -229,7 +229,7 @@ func newFilterTestEnv(t *testing.T) *filterTestEnv {
 	env.server = test.RunGrpcServerForTest(serviceCtx, t, env.serverConf, func(server *grpc.Server) {
 		peer.RegisterDeliverServer(server, env.service)
 	})
-	conn, err := connection.Connect(connection.NewInsecureDialConfig(&env.serverConf.Endpoint))
+	conn, err := connection.Connect(test.NewInsecureDialConfig(&env.serverConf.Endpoint))
 	require.NoError(t, err)
 	env.client = peer.NewDeliverClient(conn)
 

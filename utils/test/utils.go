@@ -46,6 +46,19 @@ func FailHandler(t *testing.T) {
 	})
 }
 
+// defaultGrpcRetryProfile defines the retry policy for a gRPC client connection.
+var defaultGrpcRetryProfile connection.RetryProfile
+
+// ServerToClientConfigWithLBPolicy is used to create client configuration from existing server(s)
+// given a load balancing policy.
+func ServerToClientConfigWithLBPolicy(lbPolicy string, servers ...*connection.ServerConfig) *connection.ClientConfig {
+	clientConfig := ServerToClientConfig(servers...)
+	clientConfig.Retry = &connection.RetryProfile{
+		LBPolicy: lbPolicy,
+	}
+	return clientConfig
+}
+
 // ServerToClientConfig is used to create client configuration from existing server(s).
 func ServerToClientConfig(servers ...*connection.ServerConfig) *connection.ClientConfig {
 	endpoints := make([]*connection.Endpoint, len(servers))
@@ -264,6 +277,34 @@ func SetupDebugging() {
 		Caller:      true,
 		Development: true,
 	})
+}
+
+// NewSecuredDialConfig creates the default dial config with given transport credentials.
+func NewSecuredDialConfig(
+	t *testing.T,
+	endpoint connection.WithAddress,
+	tlsConfig *connection.TLSConfig,
+) *connection.DialConfig {
+	t.Helper()
+	clientCreds, err := tlsConfig.ClientCredentials()
+	require.NoError(t, err)
+	return connection.NewDialConfig(endpoint.Address(), clientCreds, &defaultGrpcRetryProfile)
+}
+
+// NewInsecureDialConfig creates the default dial config with insecure credentials.
+func NewInsecureDialConfig(endpoint connection.WithAddress) *connection.DialConfig {
+	return connection.NewDialConfig(endpoint.Address(), insecure.NewCredentials(), &defaultGrpcRetryProfile)
+}
+
+// NewInsecureLoadBalancedDialConfig creates the default dial config with insecure credentials.
+func NewInsecureLoadBalancedDialConfig(t *testing.T, endpoints []*connection.Endpoint) *connection.DialConfig {
+	t.Helper()
+	dialConfig, err := connection.NewLoadBalancedDialConfig(connection.ClientConfig{
+		Endpoints: endpoints,
+		Retry:     &defaultGrpcRetryProfile,
+	})
+	require.NoError(t, err)
+	return dialConfig
 }
 
 // MakeInsecureClientConfig creates a client configuration for test purposes given host and port.

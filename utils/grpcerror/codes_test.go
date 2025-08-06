@@ -71,7 +71,7 @@ func TestHasCodeWithGRPCService(t *testing.T) {
 		healthgrpc.RegisterHealthServer(server, &healthgrpc.UnimplementedHealthServer{})
 	})
 
-	dialConfig := connection.NewInsecureDialConfig(&server.Configs[0].Endpoint)
+	dialConfig := test.NewInsecureDialConfig(&server.Configs[0].Endpoint)
 	dialConfig.SetRetryProfile(&connection.RetryProfile{MaxElapsedTime: 2 * time.Second})
 	conn, err := connection.Connect(dialConfig)
 	require.NoError(t, err)

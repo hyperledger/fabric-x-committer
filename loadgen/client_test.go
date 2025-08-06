@@ -77,7 +77,7 @@ func TestLoadGenForVCService(t *testing.T) {
 			t.Parallel()
 			env := vc.NewValidatorAndCommitServiceTestEnv(t, 2)
 			clientConf.Adapter.VCClient = &adapters.VCClientConfig{
-				Endpoints: env.Endpoints,
+				Client: *test.MakeInsecureClientConfig(env.Endpoints...),
 			}
 			testLoadGenerator(t, clientConf)
 		})
@@ -117,7 +117,7 @@ func startVerifiers(t *testing.T) *adapters.VerifierClientConfig {
 		endpoints[i] = &sConf.Server.Endpoint
 	}
 	return &adapters.VerifierClientConfig{
-		Endpoints: endpoints,
+		Client: *test.MakeInsecureClientConfig(endpoints...),
 	}
 }
 
@@ -136,10 +136,13 @@ func TestLoadGenForCoordinator(t *testing.T) {
 			_, vcServer := mock.StartMockVCService(t, 1)
 
 			cConf := &coordinator.Config{
-				Server:             connection.NewLocalHostServer(),
-				Monitoring:         defaultMonitoring(),
-				Verifier:           *test.ServerToClientConfig(sigVerServer.Configs...),
-				ValidatorCommitter: *test.ServerToClientConfig(vcServer.Configs...),
+				Server:     connection.NewLocalHostServer(),
+				Monitoring: defaultMonitoring(),
+				Verifier:   *test.ServerToClientConfig(sigVerServer.Configs...),
+				ValidatorCommitter: *test.ServerToClientConfigWithLBPolicy(
+					connection.LBPolicyRoundRobin,
+					vcServer.Configs...,
+				),
 				DependencyGraph: &coordinator.DependencyGraphConfig{
 					NumOfLocalDepConstructors: 1,
 					WaitingTxsLimit:           100_000,
@@ -152,7 +155,7 @@ func TestLoadGenForCoordinator(t *testing.T) {
 
 			// Start client
 			clientConf.Adapter.CoordinatorClient = &adapters.CoordinatorClientConfig{
-				Endpoint: &cConf.Server.Endpoint,
+				Client: *test.MakeInsecureClientConfig(&cConf.Server.Endpoint),
 			}
 			testLoadGenerator(t, clientConf)
 		})

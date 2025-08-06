@@ -368,9 +368,7 @@ func (c *CommitterRuntime) startBlockDelivery(t *testing.T) {
 // clientConnWithTLS creates a service connection using its given server endpoint and TLS configuration.
 func clientConnWithTLS(t *testing.T, e *connection.Endpoint, tlsConfig connection.TLSConfig) *grpc.ClientConn {
 	t.Helper()
-	dialConfig, err := connection.NewSecuredDialConfig(e, tlsConfig)
-	require.NoError(t, err)
-	serviceConnection, err := connection.Connect(dialConfig)
+	serviceConnection, err := connection.Connect(test.NewSecuredDialConfig(t, e, &tlsConfig))
 	require.NoError(t, err)
 	return serviceConnection
 }

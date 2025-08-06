@@ -108,7 +108,7 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 
 	c := &Config{
 		Verifier:           *test.ServerToClientConfig(svServers.Configs...),
-		ValidatorCommitter: *test.ServerToClientConfig(vcServerConfigs...),
+		ValidatorCommitter: *test.ServerToClientConfigWithLBPolicy(connection.LBPolicyRoundRobin, vcServerConfigs...),
 		DependencyGraph: &DependencyGraphConfig{
 			NumOfLocalDepConstructors: 3,
 			WaitingTxsLimit:           10,
@@ -675,7 +675,10 @@ func TestCoordinatorRecovery(t *testing.T) {
 	cancel()
 
 	vcEnv := vc.NewValidatorAndCommitServiceTestEnv(t, 1, env.dbEnv)
-	env.config.ValidatorCommitter = *test.ServerToClientConfig(vcEnv.Configs[0].Server)
+	env.config.ValidatorCommitter = *test.ServerToClientConfigWithLBPolicy(
+		connection.LBPolicyRoundRobin,
+		vcEnv.Configs[0].Server,
+	)
 	env.coordinator = NewCoordinatorService(env.config)
 	ctx, cancel = context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)

@@ -10,3 +10,13 @@ vc-client:
     {{- range .Endpoints.VCService }}
     - {{ .Server }}
     {{- end }}
+  reconnect:
+    lb-policy: pick_first
+  tls:
+    mode: {{ .ClientTLS.Mode }}
+    cert-path: {{ .ClientTLS.CertPath }}
+    key-path: {{ .ClientTLS.KeyPath }}
+    ca-cert-paths:
+      {{- range .ClientTLS.CACertPaths }}
+      - {{ . }}
+      {{- end }}

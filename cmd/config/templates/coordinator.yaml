@@ -5,11 +5,11 @@
 server:
   endpoint: {{ .ServiceEndpoints.Server | default "localhost:0" }}
   tls:
-    mode: {{ .ServiceCreds.Mode }}
-    cert-path: {{ .ServiceCreds.CertPath }}
-    key-path: {{ .ServiceCreds.KeyPath }}
+    mode: {{ .ServiceTLS.Mode }}
+    cert-path: {{ .ServiceTLS.CertPath }}
+    key-path: {{ .ServiceTLS.KeyPath }}
     ca-cert-paths:
-      {{- range .ServiceCreds.CACertPaths }}
+      {{- range .ServiceTLS.CACertPaths }}
       - {{ . }}
       {{- end }}
 monitoring:
@@ -21,12 +21,14 @@ verifier:
     {{- range .Endpoints.Verifier }}
     - {{ .Server }}
     {{- end }}
+  reconnect:
+    lb-policy: round_robin
   tls: &ClientCreds
-    mode: {{ .ClientCreds.Mode }}
-    key-path: {{ .ClientCreds.KeyPath }}
-    cert-path: {{ .ClientCreds.CertPath }}
+    mode: {{ .ClientTLS.Mode }}
+    key-path: {{ .ClientTLS.KeyPath }}
+    cert-path: {{ .ClientTLS.CertPath }}
     ca-cert-paths:
-      {{- range .ClientCreds.CACertPaths }}
+      {{- range .ClientTLS.CACertPaths }}
       - {{ . }}
       {{- end }}
 validator-committer:
@@ -34,6 +36,8 @@ validator-committer:
    {{- range .Endpoints.VCService }}
     - {{ .Server }}
    {{- end }}
+  reconnect:
+    lb-policy: round_robin
   tls: *ClientCreds
 
 dependency-graph:

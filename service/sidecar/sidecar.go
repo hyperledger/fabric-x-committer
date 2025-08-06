@@ -103,7 +103,7 @@ func (s *Service) Run(ctx context.Context) error {
 	logger.Infof("Create coordinator client and connect to %s", coordinatorEndpoints)
 	// Although we use a load balancing here, only one endpoint is
 	// actually used for the sidecar's connection to the committer.
-	committerDialConfig, err := connection.NewLoadBalancedDialConfig(s.config.Committer)
+	committerDialConfig, err := connection.NewLoadBalancedDialConfig(*s.config.Committer)
 	if err != nil {
 		return errors.Wrapf(err, "could not load coordinator dial config")
 	}
