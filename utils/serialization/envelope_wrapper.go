@@ -28,6 +28,7 @@ func WrapEnvelopePayload(data []byte, header *common.Header) []byte {
 	})
 }
 
+// WrapEnvelope wraps a payload with it's header and returns an envelope.
 func WrapEnvelope(data []byte, header *common.Header) []byte {
 	payloadBytes := WrapEnvelopePayload(data, header)
 
