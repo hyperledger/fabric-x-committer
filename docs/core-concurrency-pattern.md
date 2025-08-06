@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 # Core Concurrency Pattern
 
    1. [errgroup - Synchronization, Error Propagation, and Context Cancellation for Goroutines](#errgroup-synchronization,-error-propagation,-and-context-cancellation-for-goroutines) - [Code](https://cs.opensource.google/go/x/sync)
-   2. [channel - Handling Communication within and across errgroup Tasks](#handling-channel-communication-within-errgroup-tasks) - [Code](https://github.com/hyperledger/fabric-x-committer//utils/channel/channel.go)
+   2. [channel - Handling Communication within and across errgroup Tasks](#handling-channel-communication-within-errgroup-tasks) - [Code](/utils/channel/channel.go)
 
 ## 1. errgroup - Synchronization, Error Propagation, and Context Cancellation for Goroutines
 
@@ -83,7 +83,7 @@ This pattern ensures that related long-running tasks are managed as a cohesive u
 reliably shutting down together when any essential part fails, preventing partially 
 functioning states.
 
-Example from [https://github.com/hyperledger/fabric-x-committer/service/sidecar/relay.go](https://github.com/hyperledger/fabric-x-committer/blob/main/service/sidecar/relay.go#L64)
+Example from [service/sidecar/relay.go](/service/sidecar/relay.go#L64)
 
 ```go
   g, gCtx := errgroup.WithContext(stream.Context())
