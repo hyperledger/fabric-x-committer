@@ -9,6 +9,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -43,9 +44,9 @@ func StartYugaCluster(ctx context.Context, t *testing.T, numberOfMasters, number
 ) {
 	t.Helper()
 
-	//if runtime.GOOS != linuxOS {
-	//	t.Skip("Container IP access not supported on non-linux Docker")
-	//}
+	if runtime.GOOS != linuxOS {
+		t.Skip("Container IP access not supported on non-linux Docker")
+	}
 
 	t.Logf("starting yuga cluster with (%d) masters and (%d) tablets ", numberOfMasters, numberOfTablets)
 
