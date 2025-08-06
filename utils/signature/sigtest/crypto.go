@@ -32,7 +32,6 @@ func SerializeVerificationKey(key *ecdsa.PublicKey) ([]byte, error) {
 
 // SerializeSigningKey encodes a ECDSA private key into a PEM file.
 func SerializeSigningKey(key *ecdsa.PrivateKey) ([]byte, error) {
-
 	if key == nil {
 		return nil, errors.New("key is nil")
 	}
