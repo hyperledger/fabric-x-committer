@@ -37,7 +37,7 @@ func TestUnwrapEnvelopeBadInput(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run(" OK Payload with a nil Header", func(t *testing.T) {
+	t.Run("OK Payload with a nil Header", func(t *testing.T) {
 		t.Parallel()
 		payload := &common.Payload{
 			Header: nil,
