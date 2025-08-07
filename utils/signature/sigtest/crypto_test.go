@@ -39,7 +39,7 @@ func TestSerializeVerificationKey(t *testing.T) {
 		},
 
 		// {
-		// 	//  ? TODO find an invalid example?
+		// 	// TODO: find an invalid example?
 		// 	name:    "Invalid input",
 		// 	curve:   elliptic.(),
 		// 	wantErr: true,
