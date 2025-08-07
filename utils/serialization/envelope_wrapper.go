@@ -20,7 +20,7 @@ import (
 // NoOpSigner supports unsigned envelopes.
 type NoOpSigner struct{}
 
-// WrapEnvelopePayload serialize envelope.
+// WrapEnvelopePayload serializes envelope payload.
 func WrapEnvelopePayload(data []byte, header *common.Header) []byte {
 	return protoutil.MarshalOrPanic(&common.Payload{
 		Header: header,
