@@ -25,7 +25,7 @@ import (
 // with nodes running in Docker containers.
 // It allows configuring the number of master and tablet nodes.
 // The cluster's replication factor (RF) is determined as follows:
-//   - If the number of master nodes is greater than or equal to 3,
+//   - If the number of tablet nodes is greater than or equal to 3,
 //     RF is set to 3; otherwise, RF is set to 1.
 type YugaClusterController struct {
 	DBClusterController
