@@ -231,7 +231,12 @@ func (env *sidecarTestEnv) startSidecarClient(
 	}, startBlkNum)
 }
 
-func (env *sidecarTestEnv) startNotificationService(ctx context.Context, t *testing.T, tlsConfig *connection.TLSConfig) {
+func (env *sidecarTestEnv) startNotificationService(
+	ctx context.Context,
+	t *testing.T,
+	tlsConfig *connection.TLSConfig,
+) {
+	t.Helper()
 	conn, err := connection.Connect(test.NewSecuredDialConfig(t,
 		&env.config.Server.Endpoint,
 		tlsConfig,
