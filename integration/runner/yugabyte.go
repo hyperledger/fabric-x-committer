@@ -9,6 +9,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"net"
 	"runtime"
 	"strings"
 	"testing"
@@ -101,7 +102,7 @@ func (cc *YugaClusterController) startNodes(ctx context.Context, t *testing.T) {
 }
 
 func (cc *YugaClusterController) getMasterAddresses() string {
-	addrs := make([]string, 0, len(cc.nodes)+1)
+	addrs := make([]string, 0, len(cc.nodes))
 	for _, n := range cc.nodes {
 		if n.Role == MasterNode {
 			addrs = append(addrs, fmt.Sprintf("%s:7100", n.Name))
@@ -110,15 +111,15 @@ func (cc *YugaClusterController) getMasterAddresses() string {
 	return strings.Join(addrs, ",")
 }
 
-// RF=3 when number of masters >=3, else RF=1.
+// RF=3 when number of tablets >=3, else RF=1.
 func (cc *YugaClusterController) desiredRF() int {
-	numberOfMasters := 0
+	numberOfTablets := 0
 	for _, n := range cc.nodes {
-		if n.Role == MasterNode {
-			numberOfMasters++
+		if n.Role == TabletNode {
+			numberOfTablets++
 		}
 	}
-	if numberOfMasters >= 3 {
+	if numberOfTablets >= 3 {
 		return 3
 	}
 	return 1
@@ -128,19 +129,28 @@ func (cc *YugaClusterController) getLeaderMaster(t *testing.T) string {
 	t.Helper()
 	var output string
 	for _, n := range cc.nodes {
-		output = n.ExecuteCommand(t, cc.getLeaderMasterCommand())
-		break // one success is enough
+		if out := n.ExecuteCommand(t, cc.getLeaderMasterCommand()); out != "" {
+			output = out
+			break
+		}
 	}
 
 	if output == "" {
 		t.Fatal("Could not get yb-admin output from any master")
 	}
 
+	// split by lines.
 	for _, line := range strings.Split(output, "\n") {
+		// if the line has a "LEADER" role mentioned, keep on.
 		if strings.Contains(line, "LEADER") {
+			// separate into fields.
+			// fields[1] holds the host:port information.
 			if fields := strings.Fields(line); len(fields) >= 2 {
-				if host := strings.SplitN(fields[1], ":", 2)[0]; host != "" {
-					fmt.Printf("Master leader is: %s\n", host)
+				// split into host and port.
+				host, _, err := net.SplitHostPort(fields[1])
+				require.NoError(t, err)
+				if host != "" {
+					t.Logf("master leader is %s", host)
 					return host
 				}
 			}
