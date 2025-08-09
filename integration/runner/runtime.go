@@ -20,9 +20,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
+	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
@@ -62,6 +64,8 @@ type (
 		CoordinatorClient  protocoordinatorservice.CoordinatorClient
 		QueryServiceClient protoqueryservice.QueryServiceClient
 		sidecarClient      *sidecarclient.Client
+		notifyClient       protonotify.NotifierClient
+		notifyStream       protonotify.Notifier_OpenNotificationStreamClient
 
 		CommittedBlock chan *common.Block
 
@@ -99,6 +103,9 @@ type (
 		DBCluster *dbtest.Connection
 		// TLS configures the secure level between the components: none | tls | mtls
 		TLS string
+
+		// CrashTest is true to indicate a service crash is expected, and not a failure.
+		CrashTest bool
 	}
 )
 
@@ -233,6 +240,13 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		),
 	)
 
+	c.notifyClient = protonotify.NewNotifierClient(
+		clientConnWithTLS(t,
+			s.Endpoints.Sidecar.Server,
+			c.SystemConfig.ClientTLS,
+		),
+	)
+
 	var err error
 	c.ordererClient, err = broadcastdeliver.New(&broadcastdeliver.Config{
 		Connection: broadcastdeliver.ConnectionConfig{
@@ -286,6 +300,9 @@ func (c *CommitterRuntime) Start(t *testing.T, serviceFlags int) {
 	}
 	if Sidecar&serviceFlags != 0 {
 		c.Sidecar.Restart(t)
+		var err error
+		c.notifyStream, err = c.notifyClient.OpenNotificationStream(t.Context())
+		require.NoError(t, err)
 	}
 	if QueryService&serviceFlags != 0 {
 		c.QueryService.Restart(t)
@@ -438,6 +455,23 @@ func (c *CommitterRuntime) AddSignatures(t *testing.T, tx *protoblocktx.Tx) {
 // SendTransactionsToOrderer creates a block with given transactions and sent it to the committer.
 func (c *CommitterRuntime) SendTransactionsToOrderer(t *testing.T, txs []*protoblocktx.Tx) {
 	t.Helper()
+
+	if !c.config.CrashTest {
+		txIDs := make([]string, len(txs))
+		for i, tx := range txs {
+			txIDs[i] = tx.Id
+		}
+		err := c.notifyStream.Send(&protonotify.NotificationRequest{
+			TxStatusRequest: &protonotify.TxStatusRequest{
+				TxIds: txIDs,
+			},
+			Timeout: durationpb.New(3 * time.Minute),
+		})
+		require.NoError(t, err)
+		// Allows processing the request before submitting the payload.
+		time.Sleep(1 * time.Second)
+	}
+
 	for _, tx := range txs {
 		_, err := c.ordererStream.SendWithEnv(tx)
 		require.NoError(t, err)
@@ -593,6 +627,12 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Minute)
 	defer cancel()
 	test.EnsurePersistedTxStatus(ctx, t, c.CoordinatorClient, persistedTxIDs, persistedTxIDsStatus)
+
+	if len(expected.TxIDs) == 0 || c.config.CrashTest {
+		return
+	}
+
+	sidecar.RequireNotifications(t, c.notifyStream, blk.Header.Number, expected.TxIDs, expected.Statuses)
 }
 
 // CountStatus returns the number of transactions with a given tx status.

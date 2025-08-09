@@ -35,9 +35,12 @@ committer:
     - coordinator:9001
 ledger:
   path: /root/sc/ledger
+notification:
+  max-timeout: 10m
 
 last-committed-block-set-interval: 5s
 waiting-txs-limit: 20_000_000
+channel-buffer-size: 100
 
 logging:
   enabled: true

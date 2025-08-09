@@ -77,13 +77,13 @@ func ServerToClientConfig(servers ...*connection.ServerConfig) *connection.Clien
 // did not specify a port.
 // The method asserts that the GRPC server did not end with failure.
 func RunGrpcServerForTest(
-	ctx context.Context, t *testing.T, serverConfig *connection.ServerConfig, register func(server *grpc.Server),
+	ctx context.Context, tb testing.TB, serverConfig *connection.ServerConfig, register func(server *grpc.Server),
 ) *grpc.Server {
-	t.Helper()
+	tb.Helper()
 	listener, err := serverConfig.Listener()
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	server, err := serverConfig.GrpcServer()
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
 	if register != nil {
 		register(server)
@@ -92,13 +92,13 @@ func RunGrpcServerForTest(
 	}
 
 	var wg sync.WaitGroup
-	t.Cleanup(wg.Wait)
-	t.Cleanup(server.Stop)
+	tb.Cleanup(wg.Wait)
+	tb.Cleanup(server.Stop)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		// We use assert to prevent panicking for cleanup errors.
-		assert.NoError(t, server.Serve(listener))
+		assert.NoError(tb, server.Serve(listener))
 	}()
 
 	_ = context.AfterFunc(ctx, func() {

@@ -52,8 +52,12 @@ func TestReadConfigSidecar(t *testing.T) {
 			Ledger: sidecar.LedgerConfig{
 				Path: "./ledger/",
 			},
+			Notification: sidecar.NotificationServiceConfig{
+				MaxTimeout: time.Minute,
+			},
 			LastCommittedBlockSetInterval: 3 * time.Second,
 			WaitingTxsLimit:               100_000,
+			ChannelBufferSize:             100,
 		},
 	}, {
 		name:           "sample",
@@ -85,8 +89,12 @@ func TestReadConfigSidecar(t *testing.T) {
 			Ledger: sidecar.LedgerConfig{
 				Path: "/root/sc/ledger",
 			},
+			Notification: sidecar.NotificationServiceConfig{
+				MaxTimeout: 10 * time.Minute,
+			},
 			LastCommittedBlockSetInterval: 5 * time.Second,
 			WaitingTxsLimit:               20_000_000,
+			ChannelBufferSize:             100,
 		},
 	}}
 	for _, test := range tests {

@@ -35,6 +35,7 @@ func TestConfigUpdate(t *testing.T) {
 		NumVCService: 2,
 		BlockSize:    100,
 		BlockTimeout: 2 * time.Second,
+		CrashTest:    true,
 	})
 	ordererServers := make([]*connection.ServerConfig, len(c.SystemConfig.Endpoints.Orderer))
 	for i, e := range c.SystemConfig.Endpoints.Orderer {
