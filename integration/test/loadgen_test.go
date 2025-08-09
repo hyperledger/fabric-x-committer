@@ -15,6 +15,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -63,6 +64,7 @@ func TestLoadGen(t *testing.T) {
 				NumVCService: 2,
 				BlockTimeout: 2 * time.Second,
 				BlockSize:    500,
+				TLS:          connection.MutualTLSMode,
 			})
 			c.Start(t, serviceFlags)
 

@@ -46,6 +46,19 @@ func FailHandler(t *testing.T) {
 	})
 }
 
+// defaultGrpcRetryProfile defines the retry policy for a gRPC client connection.
+var defaultGrpcRetryProfile connection.RetryProfile
+
+// ServerToClientConfigWithLBPolicy is used to create client configuration from existing server(s)
+// given a load balancing policy.
+func ServerToClientConfigWithLBPolicy(lbPolicy string, servers ...*connection.ServerConfig) *connection.ClientConfig {
+	clientConfig := ServerToClientConfig(servers...)
+	clientConfig.Retry = &connection.RetryProfile{
+		LBPolicy: lbPolicy,
+	}
+	return clientConfig
+}
+
 // ServerToClientConfig is used to create client configuration from existing server(s).
 func ServerToClientConfig(servers ...*connection.ServerConfig) *connection.ClientConfig {
 	endpoints := make([]*connection.Endpoint, len(servers))
@@ -69,7 +82,8 @@ func RunGrpcServerForTest(
 	tb.Helper()
 	listener, err := serverConfig.Listener()
 	require.NoError(tb, err)
-	server := serverConfig.GrpcServer()
+	server, err := serverConfig.GrpcServer()
+	require.NoError(tb, err)
 
 	if register != nil {
 		register(server)
@@ -263,4 +277,60 @@ func SetupDebugging() {
 		Caller:      true,
 		Development: true,
 	})
+}
+
+// NewSecuredDialConfig creates the default dial config with given transport credentials.
+func NewSecuredDialConfig(
+	t *testing.T,
+	endpoint connection.WithAddress,
+	tlsConfig *connection.TLSConfig,
+) *connection.DialConfig {
+	t.Helper()
+	clientCreds, err := tlsConfig.ClientCredentials()
+	require.NoError(t, err)
+	return connection.NewDialConfig(endpoint.Address(), clientCreds, &defaultGrpcRetryProfile)
+}
+
+// NewInsecureDialConfig creates the default dial config with insecure credentials.
+func NewInsecureDialConfig(endpoint connection.WithAddress) *connection.DialConfig {
+	return connection.NewDialConfig(endpoint.Address(), insecure.NewCredentials(), &defaultGrpcRetryProfile)
+}
+
+// NewInsecureLoadBalancedDialConfig creates the default dial config with insecure credentials.
+func NewInsecureLoadBalancedDialConfig(t *testing.T, endpoints []*connection.Endpoint) *connection.DialConfig {
+	t.Helper()
+	dialConfig, err := connection.NewLoadBalancedDialConfig(connection.ClientConfig{
+		Endpoints: endpoints,
+		Retry:     &defaultGrpcRetryProfile,
+	})
+	require.NoError(t, err)
+	return dialConfig
+}
+
+// NewInsecureLoadBalancedDialConfigWithRoundRobin creates the default dial config with insecure credentials.
+func NewInsecureLoadBalancedDialConfigWithRoundRobin(
+	t *testing.T,
+	endpoints []*connection.Endpoint,
+) *connection.DialConfig {
+	t.Helper()
+	retryProfile := defaultGrpcRetryProfile
+	retryProfile.LBPolicy = connection.LBPolicyRoundRobin
+	clientConfig := MakeInsecureClientConfig(endpoints...)
+	clientConfig.Retry = &retryProfile
+	dialConfig, err := connection.NewLoadBalancedDialConfig(*clientConfig)
+	require.NoError(t, err)
+	return dialConfig
+}
+
+// MakeInsecureClientConfig creates a client configuration for test purposes given host and port.
+func MakeInsecureClientConfig(ep ...*connection.Endpoint) *connection.ClientConfig {
+	return MakeTLSClientConfig(nil, ep...)
+}
+
+// MakeTLSClientConfig creates a client configuration for test purposes given host, port, and creds.
+func MakeTLSClientConfig(tlsConfig *connection.TLSConfig, ep ...*connection.Endpoint) *connection.ClientConfig {
+	return &connection.ClientConfig{
+		Endpoints: ep,
+		TLS:       tlsConfig,
+	}
 }
