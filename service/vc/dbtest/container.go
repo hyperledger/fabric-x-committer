@@ -385,9 +385,16 @@ func RemoveDockerNetwork(t *testing.T, name string) {
 	t.Helper()
 	client := GetDockerClient(t)
 	network, err := client.NetworkInfo(name)
+	if errors.As(err, new(*docker.NoSuchNetwork)) {
+		t.Logf("error: %s", err)
+		return
+	}
 	require.NoError(t, err)
 
-	err = client.RemoveNetwork(network.ID)
+	if errors.As(client.RemoveNetwork(network.ID), new(*docker.NoSuchNetwork)) {
+		t.Logf("error: %s", err)
+		return
+	}
 	require.NoError(t, err)
 
 	t.Logf("network %s removed successfully", name)
