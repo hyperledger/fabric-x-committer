@@ -307,6 +307,21 @@ func NewInsecureLoadBalancedDialConfig(t *testing.T, endpoints []*connection.End
 	return dialConfig
 }
 
+// NewInsecureLoadBalancedDialConfigWithRoundRobin creates the default dial config with insecure credentials.
+func NewInsecureLoadBalancedDialConfigWithRoundRobin(
+	t *testing.T,
+	endpoints []*connection.Endpoint,
+) *connection.DialConfig {
+	t.Helper()
+	retryProfile := defaultGrpcRetryProfile
+	retryProfile.LBPolicy = connection.LBPolicyRoundRobin
+	clientConfig := MakeInsecureClientConfig(endpoints...)
+	clientConfig.Retry = &retryProfile
+	dialConfig, err := connection.NewLoadBalancedDialConfig(*clientConfig)
+	require.NoError(t, err)
+	return dialConfig
+}
+
 // MakeInsecureClientConfig creates a client configuration for test purposes given host and port.
 func MakeInsecureClientConfig(ep ...*connection.Endpoint) *connection.ClientConfig {
 	return MakeTLSClientConfig(nil, ep...)

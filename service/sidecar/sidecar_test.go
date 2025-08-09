@@ -85,37 +85,28 @@ func (c *sidecarTestConfig) String() string {
 
 func TestSidecarSecureConnection(t *testing.T) {
 	t.Parallel()
-	var env *sidecarTestEnv
-	for _, TLSMode := range []string{connection.MutualTLSMode} {
-		test.RunSecureConnectionTest(t,
-			test.SecureConnectionParameters{
-				Service:       "sidecar",
-				ServerTLSMode: TLSMode,
-				TestCases:     test.BuildTestCases(t, TLSMode),
-				ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {
+	test.RunSecureConnectionTest(t,
+		test.SecureConnectionParameters{
+			Service: "sidecar",
+			ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) test.ClientStarter {
+				t.Helper()
+				env := newSidecarTestEnvWithTLS(
+					t,
+					sidecarTestConfig{NumService: 1},
+					tlsCfg,
+				)
+				env.startSidecarService(t.Context(), t)
+				return func(ctx context.Context, t *testing.T, cfg *connection.TLSConfig) error {
 					t.Helper()
-					env = newSidecarTestEnvWithTLS(
-						t,
-						sidecarTestConfig{NumService: 1},
-						tlsCfg,
-					)
-					env.startSidecarService(t.Context(), t)
-					return env.config.Server.Endpoint
-				},
-				ClientStarter: func(t *testing.T, _ *connection.Endpoint, cfg *connection.TLSConfig) test.RequestFunc {
-					t.Helper()
-					return func(ctx context.Context) error {
-						env.startSidecarClient(ctx, t, 0, cfg)
-						if _, ok := channel.NewReader(ctx, env.committedBlock).Read(); !ok {
-							return errors.New("failed to read committed block")
-						}
-						return nil
+					env.startSidecarClient(ctx, t, 0, cfg)
+					if _, ok := channel.NewReader(ctx, env.committedBlock).Read(); !ok {
+						return errors.New("failed to read committed block")
 					}
-				},
-				Parallel: false,
+					return nil
+				}
 			},
-		)
-	}
+		},
+	)
 }
 
 func newSidecarTestEnv(t *testing.T, conf sidecarTestConfig) *sidecarTestEnv {
@@ -237,10 +228,7 @@ func (env *sidecarTestEnv) startNotificationService(
 	tlsConfig *connection.TLSConfig,
 ) {
 	t.Helper()
-	conn, err := connection.Connect(test.NewSecuredDialConfig(t,
-		&env.config.Server.Endpoint,
-		tlsConfig,
-	))
+	conn, err := connection.Connect(test.NewSecuredDialConfig(t, &env.config.Server.Endpoint, tlsConfig))
 	require.NoError(t, err)
 	env.notifyStream, err = protonotify.NewNotifierClient(conn).OpenNotificationStream(ctx)
 	require.NoError(t, err)

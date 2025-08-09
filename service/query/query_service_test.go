@@ -50,29 +50,21 @@ type queryServiceTestEnv struct {
 // under various client TLS configurations.
 func TestQuerySecureConnection(t *testing.T) {
 	t.Parallel()
-	for _, TLSMode := range test.ServerModes {
-		test.RunSecureConnectionTest(t,
-			test.SecureConnectionParameters{
-				Service:       "query",
-				ServerTLSMode: TLSMode,
-				TestCases:     test.BuildTestCases(t, TLSMode),
-				ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) connection.Endpoint {
+	test.RunSecureConnectionTest(t,
+		test.SecureConnectionParameters{
+			Service: "query",
+			ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) test.ClientStarter {
+				t.Helper()
+				env := newQueryServiceTestEnvWithServerAndClientCreds(t, tlsCfg, nil)
+				return func(ctx context.Context, t *testing.T, cfg *connection.TLSConfig) error {
 					t.Helper()
-					env := newQueryServiceTestEnvWithServerAndClientCreds(t, tlsCfg, nil)
-					return env.qs.config.Server.Endpoint
-				},
-				ClientStarter: func(t *testing.T, ep *connection.Endpoint, cfg *connection.TLSConfig) test.RequestFunc {
-					t.Helper()
-					client := createQueryServiceClientWithTLS(t, ep, cfg)
-					return func(ctx context.Context) error {
-						_, err := client.GetConfigTransaction(ctx, nil)
-						return err
-					}
-				},
-				Parallel: true,
+					client := createQueryServiceClientWithTLS(t, &env.qs.config.Server.Endpoint, cfg)
+					_, err := client.GetConfigTransaction(ctx, nil)
+					return err
+				}
 			},
-		)
-	}
+		},
+	)
 }
 
 func TestQuery(t *testing.T) {

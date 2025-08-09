@@ -36,29 +36,21 @@ type validatorAndCommitterServiceTestEnvWithClient struct {
 
 func TestVCSecureConnection(t *testing.T) {
 	t.Parallel()
-	for _, TLSMode := range test.ServerModes {
-		test.RunSecureConnectionTest(t,
-			test.SecureConnectionParameters{
-				Service:       "validator-committer",
-				ServerTLSMode: TLSMode,
-				TestCases:     test.BuildTestCases(t, TLSMode),
-				ServerStarter: func(t *testing.T, cfg *connection.TLSConfig) connection.Endpoint {
+	test.RunSecureConnectionTest(t,
+		test.SecureConnectionParameters{
+			Service: "validator-committer",
+			ServerStarter: func(t *testing.T, cfg *connection.TLSConfig) test.ClientStarter {
+				t.Helper()
+				env := newValidatorAndCommitServiceTestEnvWithTLS(t, 1, cfg)
+				return func(ctx context.Context, t *testing.T, cfg *connection.TLSConfig) error {
 					t.Helper()
-					env := newValidatorAndCommitServiceTestEnvWithTLS(t, 1, cfg)
-					return env.Configs[0].Server.Endpoint
-				},
-				ClientStarter: func(t *testing.T, ep *connection.Endpoint, cfg *connection.TLSConfig) test.RequestFunc {
-					t.Helper()
-					client := createVcClientWithTLS(t, ep, cfg)
-					return func(ctx context.Context) error {
-						_, err := client.SetupSystemTablesAndNamespaces(ctx, nil)
-						return err
-					}
-				},
-				Parallel: true,
+					client := createVcClientWithTLS(t, &env.Configs[0].Server.Endpoint, cfg)
+					_, err := client.SetupSystemTablesAndNamespaces(ctx, nil)
+					return err
+				}
 			},
-		)
-	}
+		},
+	)
 }
 
 func newValidatorAndCommitServiceTestEnvWithClient(
@@ -72,7 +64,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 	for i, c := range vcs.Configs {
 		allEndpoints[i] = &c.Server.Endpoint
 	}
-	commonConn, connErr := connection.Connect(test.NewInsecureLoadBalancedDialConfig(t, allEndpoints))
+	commonConn, connErr := connection.Connect(test.NewInsecureLoadBalancedDialConfigWithRoundRobin(t, allEndpoints))
 	require.NoError(t, connErr)
 
 	vcsTestEnv := &validatorAndCommitterServiceTestEnvWithClient{

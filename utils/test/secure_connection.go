@@ -35,8 +35,6 @@ type (
 		ServerTLSMode string
 		TestCases     []Case
 		ServerStarter ServerStarter
-		ClientStarter ClientStarter
-		Parallel      bool
 	}
 
 	// Case define a secure connection test case.
@@ -46,14 +44,13 @@ type (
 		shouldFail       bool
 	}
 
-	// ServerStarter is a func that receives a TLS config, start the server and return its endpoint.
-	ServerStarter func(t *testing.T, serverTLS *connection.TLSConfig) (endpoint connection.Endpoint)
+	// ServerStarter is a function that receives a TLS configuration, starts the server,
+	// and returns a ClientStarter function for initiating a client connection.
+	ServerStarter func(t *testing.T, serverTLS *connection.TLSConfig) ClientStarter
 
-	// ClientStarter dials the service and returns a func that executes a request.
-	ClientStarter func(t *testing.T, endpoint *connection.Endpoint, cfg *connection.TLSConfig) RequestFunc
-
-	// RequestFunc performs a request and returns the resulting error.
-	RequestFunc func(ctx context.Context) error
+	// ClientStarter is a function returned by ServerStarter that contains the information
+	// needed to start a client connection.
+	ClientStarter func(ctx context.Context, t *testing.T, cfg *connection.TLSConfig) error
 )
 
 const defaultHostName = "localhost"
@@ -167,41 +164,42 @@ func RunSecureConnectionTest(
 	secureConnParameters SecureConnectionParameters,
 ) {
 	t.Helper()
+	// create server and client credentials
 	tlsMgr := NewSecureCommunicationManager(t)
 	serverCreds := tlsMgr.CreateServerCertificate(t, defaultHostName)
-	serverTLS := CreateTLSConfigFromPaths(secureConnParameters.ServerTLSMode, serverCreds)
-	endpoint := secureConnParameters.ServerStarter(t, &serverTLS)
-
 	clientCreds := tlsMgr.CreateClientCertificate(t)
+	// create a base TLS configuration for the client
 	baseClientTLS := CreateTLSConfigFromPaths(connection.NoneTLSMode, clientCreds)
 
-	for _, tc := range secureConnParameters.TestCases {
-		testCase := tc
-		t.Run(fmt.Sprintf(
-			"%s/%s/%s",
-			secureConnParameters.Service,
-			secureConnParameters.ServerTLSMode,
-			testCase.testDescription,
-		), func(t *testing.T) {
-			if secureConnParameters.Parallel {
+	for _, serverSecureMode := range ServerModes {
+		// create server's tls config and start it according to the serverSecureMode.
+		serverTLS := CreateTLSConfigFromPaths(serverSecureMode, serverCreds)
+		clientStarterFunc := secureConnParameters.ServerStarter(t, &serverTLS)
+		// for each server secure mode, build the client's test cases.
+		for _, tc := range BuildTestCases(t, serverSecureMode) {
+			testCase := tc
+			t.Run(fmt.Sprintf(
+				"%s/%s/%s",
+				secureConnParameters.Service,
+				serverSecureMode,
+				testCase.testDescription,
+			), func(t *testing.T) {
 				t.Parallel()
-			}
 
-			cfg := baseClientTLS
-			cfg.Mode = testCase.clientSecureMode
+				cfg := baseClientTLS
+				cfg.Mode = testCase.clientSecureMode
 
-			requestFunc := secureConnParameters.ClientStarter(t, &endpoint, &cfg)
+				ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+				t.Cleanup(cancel)
 
-			ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
-			t.Cleanup(cancel)
-
-			err := requestFunc(ctx)
-			if tc.shouldFail {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-			}
-		})
+				err := clientStarterFunc(ctx, t, &cfg)
+				if tc.shouldFail {
+					require.Error(t, err)
+				} else {
+					require.NoError(t, err)
+				}
+			})
+		}
 	}
 }
 
