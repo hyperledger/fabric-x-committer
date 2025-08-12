@@ -11,7 +11,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
@@ -38,7 +37,11 @@ func NewVCAdapter(config *VCClientConfig, res *ClientResources) *VcAdapter {
 
 // RunWorkload applies load on the VC.
 func (c *VcAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWithSetup) error {
-	commonConn, connErr := connection.Connect(connection.NewInsecureLoadBalancedDialConfig(c.config.Endpoints))
+	commonDial, dialErr := connection.NewLoadBalancedDialConfig(c.config.Client)
+	if dialErr != nil {
+		return errors.Wrapf(dialErr, "could not create dial config for vcs")
+	}
+	commonConn, connErr := connection.Connect(commonDial)
 	if connErr != nil {
 		return errors.Wrapf(connErr, "failed to create connection to validator persisters")
 	}
@@ -55,8 +58,7 @@ func (c *VcAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	} else {
 		c.nextBlockNum.Store(0)
 	}
-
-	connections, connErr := connection.OpenConnections(c.config.Endpoints, insecure.NewCredentials())
+	connections, connErr := connection.OpenConnections(c.config.Client)
 	if connErr != nil {
 		return errors.Wrap(connErr, "failed opening connection to vc-service")
 	}

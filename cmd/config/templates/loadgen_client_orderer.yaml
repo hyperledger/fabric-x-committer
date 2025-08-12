@@ -6,13 +6,27 @@
 # It should be complimented by the common load generator configuration.
 
 orderer-client:
-  sidecar-endpoint: {{ .Endpoints.Sidecar.Server }}
+  sidecar-client:
+    endpoints:
+      - {{ .Endpoints.Sidecar.Server }}
+    reconnect:
+      lb-policy: pick_first
+    tls:
+      mode: {{ .ClientTLS.Mode }}
+      cert-path: {{ .ClientTLS.CertPath }}
+      key-path: {{ .ClientTLS.KeyPath }}
+      ca-cert-paths:
+        {{- range .ClientTLS.CACertPaths }}
+        - {{ . }}
+        {{- end }}
   orderer:
     connection:
       endpoints:
         {{- range .Endpoints.Orderer }}
         - {{ .Server }}
         {{- end }}
+    reconnect:
+      lb-policy: round_robin
     consensus-type: BFT
     channel-id: {{ .ChannelID }}
   broadcast-parallelism: 5

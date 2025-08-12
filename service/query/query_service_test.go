@@ -46,6 +46,27 @@ type queryServiceTestEnv struct {
 	disabledViews []string
 }
 
+// TestQuerySecureConnection verifies the query service gRPC server's behavior
+// under various client TLS configurations.
+func TestQuerySecureConnection(t *testing.T) {
+	t.Parallel()
+	test.RunSecureConnectionTest(t,
+		test.SecureConnectionParameters{
+			Service: "query",
+			ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) test.ClientStarter {
+				t.Helper()
+				env := newQueryServiceTestEnvWithServerAndClientCreds(t, tlsCfg, nil)
+				return func(ctx context.Context, t *testing.T, cfg *connection.TLSConfig) error {
+					t.Helper()
+					client := createQueryServiceClientWithTLS(t, &env.qs.config.Server.Endpoint, cfg)
+					_, err := client.GetConfigTransaction(ctx, nil)
+					return err
+				}
+			},
+		},
+	)
+}
+
 func TestQuery(t *testing.T) {
 	t.Parallel()
 	env := newQueryServiceTestEnv(t)
@@ -307,6 +328,14 @@ func encodeBytesForProto(str string) []byte {
 
 func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 	t.Helper()
+	return newQueryServiceTestEnvWithServerAndClientCreds(t, nil, nil)
+}
+
+func newQueryServiceTestEnvWithServerAndClientCreds(
+	t *testing.T,
+	serverTLS, clientTLS *connection.TLSConfig,
+) *queryServiceTestEnv {
+	t.Helper()
 	t.Log("generating config and namespaces")
 	namespacesToTest := []string{"0", "1", "2"}
 	dbConf := generateNamespacesUnderTest(t, namespacesToTest)
@@ -322,6 +351,7 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 				Host: "localhost",
 				Port: 0,
 			},
+			TLS: serverTLS,
 		},
 		Database: dbConf,
 		Monitoring: monitoring.Config{
@@ -330,12 +360,8 @@ func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
 	}
 
 	qs := NewQueryService(config)
-	sConfig := &connection.ServerConfig{
-		Endpoint: connection.Endpoint{Host: "localhost", Port: 0},
-	}
-	test.RunServiceAndGrpcForTest(t.Context(), t, qs, sConfig)
-
-	clientConn, err := connection.Connect(connection.NewInsecureDialConfig(&sConfig.Endpoint))
+	test.RunServiceAndGrpcForTest(t.Context(), t, qs, qs.config.Server)
+	clientConn, err := connection.Connect(test.NewSecuredDialConfig(t, &qs.config.Server.Endpoint, clientTLS))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		assert.NoError(t, clientConn.Close())
@@ -363,7 +389,7 @@ func generateNamespacesUnderTest(t *testing.T, namespaces []string) *vc.Database
 
 	clientConf := loadgen.DefaultClientConf()
 	clientConf.Adapter.VCClient = &adapters.VCClientConfig{
-		Endpoints: env.Endpoints,
+		Client: *test.MakeInsecureClientConfig(env.Endpoints...),
 	}
 	policies := &workload.PolicyProfile{
 		NamespacePolicies: make(map[string]*workload.Policy, len(namespaces)),
@@ -543,4 +569,14 @@ func defaultViewParams(timeout time.Duration) *protoqueryservice.ViewParameters 
 		NonDeferrable:       false,
 		TimeoutMilliseconds: uint64(timeout.Milliseconds()), //nolint:gosec
 	}
+}
+
+//nolint:ireturn // returning a gRPC client interface is intentional for test purpose.
+func createQueryServiceClientWithTLS(
+	t *testing.T,
+	ep *connection.Endpoint,
+	tlsCfg *connection.TLSConfig,
+) protoqueryservice.QueryServiceClient {
+	t.Helper()
+	return test.CreateClientWithTLS(t, ep, tlsCfg, protoqueryservice.NewQueryServiceClient)
 }

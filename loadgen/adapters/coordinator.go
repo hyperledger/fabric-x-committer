@@ -40,9 +40,16 @@ func NewCoordinatorAdapter(config *CoordinatorClientConfig, res *ClientResources
 
 // RunWorkload applies load on the coordinator.
 func (c *CoordinatorAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWithSetup) error {
-	conn, err := connection.Connect(connection.NewInsecureDialConfig(c.config.Endpoint))
+	coordinatorDialConfig, err := connection.NewLoadBalancedDialConfig(c.config.Client)
 	if err != nil {
-		return errors.Wrapf(err, "failed to connect to %s", c.config.Endpoint)
+		return errors.Wrapf(err, "failed creating coordinator dial config")
+	}
+	// connecting to the coordinator.
+	conn, connErr := connection.Connect(coordinatorDialConfig)
+	if connErr != nil {
+		return errors.Wrapf(err, "failed to connect to coordinator at %s", connection.AddressString(
+			c.config.Client.Endpoints...),
+		)
 	}
 	defer connection.CloseConnectionsLog(conn)
 	client := protocoordinatorservice.NewCoordinatorClient(conn)

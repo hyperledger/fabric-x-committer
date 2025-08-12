@@ -6,7 +6,19 @@
 # It should be complimented by the common load generator configuration.
 
 sidecar-client:
-  sidecar-endpoint: {{ .Endpoints.Sidecar.Server }}
+  client:
+    endpoints:
+      - {{ .Endpoints.Sidecar.Server }}
+    reconnect:
+      lb-policy: pick_first
+    tls:
+      mode: {{ .ClientTLS.Mode }}
+      cert-path: {{ .ClientTLS.CertPath }}
+      key-path: {{ .ClientTLS.KeyPath }}
+      ca-cert-paths:
+        {{- range .ClientTLS.CACertPaths }}
+        - {{ . }}
+        {{- end }}
   orderer-servers:
     {{- range .Endpoints.Orderer }}
     - endpoint: {{ .Server }}

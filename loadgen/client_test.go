@@ -77,7 +77,7 @@ func TestLoadGenForVCService(t *testing.T) {
 			t.Parallel()
 			env := vc.NewValidatorAndCommitServiceTestEnv(t, 2)
 			clientConf.Adapter.VCClient = &adapters.VCClientConfig{
-				Endpoints: env.Endpoints,
+				Client: *test.MakeInsecureClientConfig(env.Endpoints...),
 			}
 			testLoadGenerator(t, clientConf)
 		})
@@ -117,7 +117,7 @@ func startVerifiers(t *testing.T) *adapters.VerifierClientConfig {
 		endpoints[i] = &sConf.Server.Endpoint
 	}
 	return &adapters.VerifierClientConfig{
-		Endpoints: endpoints,
+		Client: *test.MakeInsecureClientConfig(endpoints...),
 	}
 }
 
@@ -136,11 +136,14 @@ func TestLoadGenForCoordinator(t *testing.T) {
 			_, vcServer := mock.StartMockVCService(t, 1)
 
 			cConf := &coordinator.Config{
-				Server:                   connection.NewLocalHostServer(),
-				Monitoring:               defaultMonitoring(),
-				VerifierConfig:           *test.ServerToClientConfig(sigVerServer.Configs...),
-				ValidatorCommitterConfig: *test.ServerToClientConfig(vcServer.Configs...),
-				DependencyGraphConfig: &coordinator.DependencyGraphConfig{
+				Server:     connection.NewLocalHostServer(),
+				Monitoring: defaultMonitoring(),
+				Verifier:   *test.ServerToClientConfig(sigVerServer.Configs...),
+				ValidatorCommitter: *test.ServerToClientConfigWithLBPolicy(
+					connection.LBPolicyRoundRobin,
+					vcServer.Configs...,
+				),
+				DependencyGraph: &coordinator.DependencyGraphConfig{
 					NumOfLocalDepConstructors: 1,
 					WaitingTxsLimit:           100_000,
 				},
@@ -152,7 +155,7 @@ func TestLoadGenForCoordinator(t *testing.T) {
 
 			// Start client
 			clientConf.Adapter.CoordinatorClient = &adapters.CoordinatorClientConfig{
-				Endpoint: &cConf.Server.Endpoint,
+				Client: *test.MakeInsecureClientConfig(&cConf.Server.Endpoint),
 			}
 			testLoadGenerator(t, clientConf)
 		})
@@ -197,10 +200,8 @@ func TestLoadGenForSidecar(t *testing.T) {
 				},
 				LastCommittedBlockSetInterval: 100 * time.Millisecond,
 				WaitingTxsLimit:               5000,
-				Committer: sidecar.CoordinatorConfig{
-					Endpoint: coordinatorServer.Configs[0].Endpoint,
-				},
-				Monitoring: defaultMonitoring(),
+				Committer:                     test.MakeInsecureClientConfig(&coordinatorServer.Configs[0].Endpoint),
+				Monitoring:                    defaultMonitoring(),
 				Ledger: sidecar.LedgerConfig{
 					Path: t.TempDir(),
 				},
@@ -212,9 +213,9 @@ func TestLoadGenForSidecar(t *testing.T) {
 
 			// Start client
 			clientConf.Adapter.SidecarClient = &adapters.SidecarClientConfig{
-				SidecarEndpoint: &sidecarServerConf.Endpoint,
-				ChannelID:       chanID,
-				OrdererServers:  ordererServers,
+				ChannelID:      chanID,
+				OrdererServers: ordererServers,
+				Client:         test.ServerToClientConfig(sidecarServerConf),
 			}
 			testLoadGenerator(t, clientConf)
 		})
@@ -246,10 +247,8 @@ func TestLoadGenForOrderer(t *testing.T) {
 				},
 				LastCommittedBlockSetInterval: 100 * time.Millisecond,
 				WaitingTxsLimit:               5000,
-				Committer: sidecar.CoordinatorConfig{
-					Endpoint: coordinatorServer.Configs[0].Endpoint,
-				},
-				Monitoring: defaultMonitoring(),
+				Committer:                     test.MakeInsecureClientConfig(&coordinatorServer.Configs[0].Endpoint),
+				Monitoring:                    defaultMonitoring(),
 				Ledger: sidecar.LedgerConfig{
 					Path: t.TempDir(),
 				},
@@ -270,7 +269,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 
 			// Start client
 			clientConf.Adapter.OrdererClient = &adapters.OrdererClientConfig{
-				SidecarEndpoint:      &sidecarConf.Server.Endpoint,
+				SidecarClient:        test.MakeInsecureClientConfig(&sidecarConf.Server.Endpoint),
 				Orderer:              sidecarConf.Orderer,
 				BroadcastParallelism: 5,
 			}

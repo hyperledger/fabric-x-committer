@@ -125,9 +125,9 @@ func NewCoordinatorService(c *Config) *Service {
 	// local dependency constructors. Hence, we define a buffer size for dependency graph manager by multiplying the
 	// number of local dependency constructors with the buffer size per goroutine. We follow this approach to avoid
 	// giving too many configurations to the user as it would add complexity to the user experience.
-	bufSzPerChanForSignVerifierMgr := c.ChannelBufferSizePerGoroutine * len(c.VerifierConfig.Endpoints)
-	bufSzPerChanForValCommitMgr := c.ChannelBufferSizePerGoroutine * len(c.ValidatorCommitterConfig.Endpoints)
-	bufSzPerChanForLocalDepMgr := c.ChannelBufferSizePerGoroutine * c.DependencyGraphConfig.NumOfLocalDepConstructors
+	bufSzPerChanForSignVerifierMgr := c.ChannelBufferSizePerGoroutine * len(c.Verifier.Endpoints)
+	bufSzPerChanForValCommitMgr := c.ChannelBufferSizePerGoroutine * len(c.ValidatorCommitter.Endpoints)
+	bufSzPerChanForLocalDepMgr := c.ChannelBufferSizePerGoroutine * c.DependencyGraph.NumOfLocalDepConstructors
 
 	queues := &channels{
 		coordinatorToDepGraphTxs:           make(chan *dependencygraph.TransactionBatch, bufSzPerChanForLocalDepMgr),
@@ -144,8 +144,8 @@ func NewCoordinatorService(c *Config) *Service {
 			IncomingTxs:               queues.coordinatorToDepGraphTxs,
 			OutgoingDepFreeTxsNode:    queues.depGraphToSigVerifierFreeTxs,
 			IncomingValidatedTxsNode:  queues.vcServiceToDepGraphValidatedTxs,
-			NumOfLocalDepConstructors: c.DependencyGraphConfig.NumOfLocalDepConstructors,
-			WaitingTxsLimit:           c.DependencyGraphConfig.WaitingTxsLimit,
+			NumOfLocalDepConstructors: c.DependencyGraph.NumOfLocalDepConstructors,
+			WaitingTxsLimit:           c.DependencyGraph.WaitingTxsLimit,
 			PrometheusMetricsProvider: metrics.Provider,
 		},
 	)
@@ -154,7 +154,7 @@ func NewCoordinatorService(c *Config) *Service {
 
 	svMgr := newSignatureVerifierManager(
 		&signVerifierManagerConfig{
-			clientConfig:             &c.VerifierConfig,
+			clientConfig:             &c.Verifier,
 			incomingTxsForValidation: queues.depGraphToSigVerifierFreeTxs,
 			outgoingValidatedTxs:     queues.sigVerifierToVCServiceValidatedTxs,
 			metrics:                  metrics,
@@ -164,7 +164,7 @@ func NewCoordinatorService(c *Config) *Service {
 
 	vcMgr := newValidatorCommitterManager(
 		&validatorCommitterManagerConfig{
-			clientConfig:                   &c.ValidatorCommitterConfig,
+			clientConfig:                   &c.ValidatorCommitter,
 			incomingTxsForValidationCommit: queues.sigVerifierToVCServiceValidatedTxs,
 			outgoingValidatedTxsNode:       queues.vcServiceToDepGraphValidatedTxs,
 			outgoingTxsStatus:              queues.vcServiceToCoordinatorTxStatus,
@@ -398,7 +398,7 @@ func (c *Service) receiveAndProcessBlock(
 
 		if len(blk.Txs) > 0 {
 			// TODO: make it configurable.
-			chunkSizeForDepGraph := min(c.config.DependencyGraphConfig.WaitingTxsLimit, 500)
+			chunkSizeForDepGraph := min(c.config.DependencyGraph.WaitingTxsLimit, 500)
 			for i := 0; i < len(blk.Txs); i += chunkSizeForDepGraph {
 				end := min(i+chunkSizeForDepGraph, len(blk.Txs))
 				txsBatchForDependencyGraph.Write(&dependencygraph.TransactionBatch{

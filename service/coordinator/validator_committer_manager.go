@@ -93,7 +93,7 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 		return nil
 	})
 
-	commonDial, dialErr := connection.NewLoadBalancedDialConfig(c.clientConfig)
+	commonDial, dialErr := connection.NewLoadBalancedDialConfig(*c.clientConfig)
 	if dialErr != nil {
 		return fmt.Errorf("failed to create connection to validator persisters: %w", dialErr)
 	}
