@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package serialization
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -19,12 +20,22 @@ import (
 // NoOpSigner supports unsigned envelopes.
 type NoOpSigner struct{}
 
-// WrapEnvelope serialize envelope.
-func WrapEnvelope(data []byte, header *common.Header) []byte {
+// WrapEnvelopePayload serializes envelope payload.
+func WrapEnvelopePayload(data []byte, header *common.Header) []byte {
 	return protoutil.MarshalOrPanic(&common.Payload{
 		Header: header,
 		Data:   data,
 	})
+}
+
+// WrapEnvelope wraps a payload with its header and returns an envelope.
+func WrapEnvelope(data []byte, header *common.Header) []byte {
+	payloadBytes := WrapEnvelopePayload(data, header)
+
+	envelope := &common.Envelope{
+		Payload: payloadBytes,
+	}
+	return protoutil.MarshalOrPanic(envelope)
 }
 
 // UnwrapEnvelope deserialize an envelope.
@@ -48,6 +59,11 @@ func ParseEnvelope(envelope *common.Envelope) (*common.Payload, *common.ChannelH
 	if err != nil {
 		return nil, nil, err
 	}
+
+	if payload.Header == nil {
+		return nil, nil, errors.New("payload header is nil")
+	}
+
 	channelHdr, err := protoutil.UnmarshalChannelHeader(payload.Header.ChannelHeader)
 	if err != nil {
 		return nil, nil, err
@@ -81,7 +97,7 @@ func CreateEnvelope(
 		channelHeader.TxId = protoutil.ComputeTxID(signatureHeader.Nonce, signatureHeader.Creator)
 	}
 	payloadHeader := protoutil.MakePayloadHeader(channelHeader, signatureHeader)
-	payload := WrapEnvelope(data, payloadHeader)
+	payload := WrapEnvelopePayload(data, payloadHeader)
 
 	signature, err := signer.Sign(payload)
 	if err != nil {
