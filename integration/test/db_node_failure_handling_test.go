@@ -19,33 +19,65 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 )
 
-func TestDBResiliencyYugabyteFollowerNodeCrash(t *testing.T) {
+func TestDBResiliencyYugabyteTabletNodeCrash(t *testing.T) {
 	t.Parallel()
 
-	clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3)
+	clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3, 3)
 
 	c := registerAndCreateRuntime(t, clusterConnection)
 
 	waitForCommittedTxs(t, c, 10_000)
-	clusterController.StopAndRemoveNodeWithRole(t, runner.FollowerNode)
+	clusterController.StopAndRemoveNodeWithRole(t, runner.TabletNode)
 	waitForCommittedTxs(t, c, 15_000)
 }
 
-func TestDBResiliencyYugabyteLeaderNodeCrash(t *testing.T) {
+func TestDBResiliencyYugabyteMasterNodeCrash(t *testing.T) {
 	t.Parallel()
 
-	clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3)
-
-	// Yugabyte has an undetected bug that causes slow tablet distribution.
-	// As a result, when a leader node fails before replication is complete,
-	// the db hangs and the remaining nodes become unreachable.
-	// To support this test, wait for the tablet replication to finish (~3m).
-	time.Sleep(3 * time.Minute)
+	clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3, 3)
 
 	c := registerAndCreateRuntime(t, clusterConnection)
 
 	waitForCommittedTxs(t, c, 10_000)
-	clusterController.StopAndRemoveNodeWithRole(t, runner.LeaderNode)
+	clusterController.RemoveNotLeaderMasterNode(t)
+	waitForCommittedTxs(t, c, 15_000)
+}
+
+func TestDBResiliencyYugabyteLeaderMasterNodeCrash(t *testing.T) {
+	t.Parallel()
+
+	clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3, 3)
+
+	c := registerAndCreateRuntime(t, clusterConnection)
+
+	waitForCommittedTxs(t, c, 10_000)
+	clusterController.RemoveLeaderMasterNode(t)
+	waitForCommittedTxs(t, c, 15_000)
+}
+
+func TestDBResiliencyYugabyteMasterAndTabletNodeCrash(t *testing.T) {
+	t.Parallel()
+
+	clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3, 3)
+
+	c := registerAndCreateRuntime(t, clusterConnection)
+
+	waitForCommittedTxs(t, c, 10_000)
+	clusterController.RemoveNotLeaderMasterNode(t)
+	clusterController.StopAndRemoveNodeWithRole(t, runner.TabletNode)
+	waitForCommittedTxs(t, c, 15_000)
+}
+
+func TestDBResiliencyYugabyteLeaderMasterAndTabletNodeCrash(t *testing.T) {
+	t.Parallel()
+
+	clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3, 3)
+
+	c := registerAndCreateRuntime(t, clusterConnection)
+
+	waitForCommittedTxs(t, c, 10_000)
+	clusterController.RemoveLeaderMasterNode(t)
+	clusterController.StopAndRemoveNodeWithRole(t, runner.TabletNode)
 	waitForCommittedTxs(t, c, 15_000)
 }
 
@@ -57,7 +89,7 @@ func TestDBResiliencyPrimaryPostgresNodeCrash(t *testing.T) {
 	c := registerAndCreateRuntime(t, clusterConnection)
 
 	waitForCommittedTxs(t, c, 10_000)
-	clusterController.StopAndRemoveNodeWithRole(t, runner.LeaderNode)
+	clusterController.StopAndRemoveNodeWithRole(t, runner.MasterNode)
 	clusterController.PromoteFollowerNode(t)
 	waitForCommittedTxs(t, c, 15_000)
 }
