@@ -10,7 +10,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cockroachdb/errors v1.11.3
 	github.com/consensys/gnark-crypto v0.14.0
-	github.com/docker/docker v27.5.1+incompatible
+	github.com/docker/docker v28.0.0+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/fsouza/go-dockerclient v1.12.0
 	github.com/gin-gonic/gin v1.10.0
