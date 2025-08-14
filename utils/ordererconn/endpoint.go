@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package connection
+package ordererconn
 
 import (
 	"encoding/json"
@@ -14,25 +14,20 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"gopkg.in/yaml.v3"
+
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 type (
-	// OrdererEndpoint defines a party's endpoint.
-	OrdererEndpoint struct {
+	// Endpoint defines a party's endpoint.
+	Endpoint struct {
+		connection.Endpoint `mapstructure:",squash" yaml:",inline"`
 		// ID is the concenter's ID (party).
 		ID    uint32 `mapstructure:"id" json:"id,omitempty" yaml:"id,omitempty"`
 		MspID string `mapstructure:"msp-id" json:"msp-id,omitempty" yaml:"msp-id,omitempty"`
 		// API should be broadcast and/or deliver.
-		API      []string `mapstructure:"api" json:"api,omitempty" yaml:"api,omitempty"`
-		Endpoint `mapstructure:",squash" yaml:",inline"`
+		API []string `mapstructure:"api" json:"api,omitempty" yaml:"api,omitempty"`
 	}
-)
-
-const (
-	// Broadcast support by endpoint.
-	Broadcast = "broadcast"
-	// Deliver support by endpoint.
-	Deliver = "deliver"
 )
 
 // Orderer endpoints errors.
@@ -41,22 +36,22 @@ var (
 	ErrInvalidEndpoint    = errors.New("invalid endpoint")
 )
 
-// NewOrdererEndpoints is a helper function to generate a list of OrdererEndpoint(s) from ServerConfig(s).
-func NewOrdererEndpoints(id uint32, msp string, configs ...*ServerConfig) []*OrdererEndpoint {
-	ordererEndpoints := make([]*OrdererEndpoint, len(configs))
+// NewEndpoints is a helper function to generate a list of Endpoint(s) from ServerConfig(s).
+func NewEndpoints(id uint32, msp string, configs ...*connection.ServerConfig) []*Endpoint {
+	ordererEndpoints := make([]*Endpoint, len(configs))
 	for i, c := range configs {
-		ordererEndpoints[i] = &OrdererEndpoint{
+		ordererEndpoints[i] = &Endpoint{
+			Endpoint: c.Endpoint,
 			ID:       id,
 			MspID:    msp,
 			API:      []string{Broadcast, Deliver},
-			Endpoint: c.Endpoint,
 		}
 	}
 	return ordererEndpoints
 }
 
 // String returns a deterministic representation of the endpoint.
-func (e *OrdererEndpoint) String() string {
+func (e *Endpoint) String() string {
 	var output strings.Builder
 	output.WriteString("id=")
 	output.WriteString(strconv.FormatUint(uint64(e.ID), 10))
@@ -79,16 +74,16 @@ func (e *OrdererEndpoint) String() string {
 
 // SupportsAPI returns true if this endpoint supports API.
 // It also returns true if no APIs are specified, as we cannot know.
-func (e *OrdererEndpoint) SupportsAPI(api string) bool {
+func (e *Endpoint) SupportsAPI(api string) bool {
 	return len(e.API) == 0 || slices.Contains(e.API, api)
 }
 
-// ParseOrdererEndpoint parses a string according to the following schema order (the first that succeeds).
+// ParseEndpoint parses a string according to the following schema order (the first that succeeds).
 // Schema 1: JSON.
 // Schema 2: YAML.
 // Schema 3: [id=ID,][msp-id=MspID,][broadcast,][deliver,][host=Host,][port=Port,][Host:Port].
-func ParseOrdererEndpoint(valueRaw string) (*OrdererEndpoint, error) {
-	ret := &OrdererEndpoint{}
+func ParseEndpoint(valueRaw string) (*Endpoint, error) {
+	ret := &Endpoint{}
 	if len(valueRaw) == 0 {
 		return ret, nil
 	}
@@ -98,11 +93,11 @@ func ParseOrdererEndpoint(valueRaw string) (*OrdererEndpoint, error) {
 	if err := yaml.Unmarshal([]byte(valueRaw), ret); err == nil {
 		return ret, nil
 	}
-	err := unmarshalOrdererEndpoint(valueRaw, ret)
+	err := unmarshalEndpoint(valueRaw, ret)
 	return ret, err
 }
 
-func unmarshalOrdererEndpoint(valueRaw string, out *OrdererEndpoint) error {
+func unmarshalEndpoint(valueRaw string, out *Endpoint) error {
 	metaParts := strings.Split(valueRaw, ",")
 	for _, item := range metaParts {
 		item = strings.TrimSpace(item)
@@ -139,7 +134,7 @@ func unmarshalOrdererEndpoint(valueRaw string, out *OrdererEndpoint) error {
 	return nil
 }
 
-func (e *OrdererEndpoint) setPort(portStr string) error {
+func (e *Endpoint) setPort(portStr string) error {
 	port, err := strconv.ParseInt(portStr, 10, 32)
 	if err != nil {
 		return errors.Wrap(err, "failed to parse port")
@@ -148,7 +143,7 @@ func (e *OrdererEndpoint) setPort(portStr string) error {
 	return nil
 }
 
-func (e *OrdererEndpoint) setID(idStr string) error {
+func (e *Endpoint) setID(idStr string) error {
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
 		return errors.Wrap(err, "invalid id value")

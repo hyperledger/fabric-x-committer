@@ -42,8 +42,8 @@ type ValidatorCommitterService struct {
 	preparer                 *transactionPreparer
 	validator                *transactionValidator
 	committer                *transactionCommitter
-	receivedTxBatch          chan *protovcservice.TransactionBatch
-	toPrepareTxs             chan *protovcservice.TransactionBatch
+	receivedTxBatch          chan *protovcservice.Batch
+	toPrepareTxs             chan *protovcservice.Batch
 	preparedTxs              chan *preparedTransactions
 	validatedTxs             chan *validatedTransactions
 	txsStatus                chan *protoblocktx.TransactionsStatus
@@ -84,8 +84,8 @@ func NewValidatorCommitterService(
 
 	// TODO: make queueMultiplier configurable
 	queueMultiplier := 1
-	receivedTxBatch := make(chan *protovcservice.TransactionBatch, l.MaxWorkersForPreparer*queueMultiplier)
-	toPrepareTxs := make(chan *protovcservice.TransactionBatch, l.MaxWorkersForPreparer*queueMultiplier)
+	receivedTxBatch := make(chan *protovcservice.Batch, l.MaxWorkersForPreparer*queueMultiplier)
+	toPrepareTxs := make(chan *protovcservice.Batch, l.MaxWorkersForPreparer*queueMultiplier)
 	preparedTxs := make(chan *preparedTransactions, l.MaxWorkersForValidator*queueMultiplier)
 	validatedTxs := make(chan *validatedTransactions, queueMultiplier)
 	txsStatus := make(chan *protoblocktx.TransactionsStatus, l.MaxWorkersForCommitter*queueMultiplier)
@@ -311,7 +311,7 @@ func (vc *ValidatorCommitterService) receiveTransactions(
 }
 
 func (vc *ValidatorCommitterService) batchReceivedTransactionsAndForwardForProcessing(ctx context.Context) {
-	largerBatch := &protovcservice.TransactionBatch{}
+	largerBatch := &protovcservice.Batch{}
 	timer := time.NewTimer(vc.timeoutForMinTxBatchSize)
 	defer timer.Stop()
 	toPrepareTxs := channel.NewWriter(ctx, vc.toPrepareTxs)
@@ -324,7 +324,7 @@ func (vc *ValidatorCommitterService) batchReceivedTransactionsAndForwardForProce
 		if ok := toPrepareTxs.Write(largerBatch); !ok {
 			return
 		}
-		largerBatch = &protovcservice.TransactionBatch{}
+		largerBatch = &protovcservice.Batch{}
 	}
 
 	for {

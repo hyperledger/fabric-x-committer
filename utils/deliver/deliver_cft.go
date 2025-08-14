@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package broadcastdeliver
+package deliver
 
 import (
 	"context"
@@ -19,28 +19,28 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/serialization"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
 
 type (
-	// DeliverCftClient allows delivering blocks from one connection at a time.
+	// CftClient allows delivering blocks from one connection at a time.
 	// If one connection fails, it will try to connect to another one.
-	DeliverCftClient struct {
-		ConnectionManager *OrdererConnectionManager
+	CftClient struct {
+		ConnectionManager *ordererconn.ConnectionManager
 		Signer            protoutil.Signer
 		ChannelID         string
-		StreamCreator     func(ctx context.Context, conn grpc.ClientConnInterface) (DeliverStream, error)
+		StreamCreator     func(ctx context.Context, conn grpc.ClientConnInterface) (Stream, error)
 	}
 
-	// DeliverConfig holds the configuration needed for deliver to run.
-	DeliverConfig struct {
+	// Parameters needed for deliver to run.
+	Parameters struct {
 		StartBlkNum int64
 		EndBlkNum   uint64
 		OutputBlock chan<- *common.Block
 	}
 
-	// DeliverStream requires the following interface.
-	DeliverStream interface {
+	// Stream requires the following interface.
+	Stream interface {
 		Send(*common.Envelope) error
 		RecvBlockOrStatus() (*common.Block, *common.Status, error)
 		Context() context.Context
@@ -54,20 +54,20 @@ var defaultRetryProfile = connection.RetryProfile{}
 
 // Deliver start receiving blocks starting from config.StartBlkNum to config.OutputBlock.
 // The value of config.StartBlkNum is updated with the latest block number.
-func (c *DeliverCftClient) Deliver(ctx context.Context, config *DeliverConfig) error {
+func (c *CftClient) Deliver(ctx context.Context, p *Parameters) error {
 	for ctx.Err() == nil {
-		if config.StartBlkNum > 0 && uint64(config.StartBlkNum) > config.EndBlkNum {
+		if p.StartBlkNum > 0 && uint64(p.StartBlkNum) > p.EndBlkNum {
 			logger.Infof("Deliver finished successfully")
 			return nil
 		}
-		err := c.receiveFromBlockDeliverer(ctx, config)
+		err := c.receiveFromBlockDeliverer(ctx, p)
 		logger.Warnf("Error receiving blocks: %v", err)
 	}
 	logger.Debugf("Deliver context ended: %v", ctx.Err())
 	return errors.Wrap(ctx.Err(), "context ended")
 }
 
-func (c *DeliverCftClient) receiveFromBlockDeliverer(ctx context.Context, config *DeliverConfig) error {
+func (c *CftClient) receiveFromBlockDeliverer(ctx context.Context, p *Parameters) error {
 	logger.Debugf("Deliver is waiting for connection")
 	conn, connErr := c.getConnection(ctx)
 	if connErr != nil {
@@ -89,7 +89,7 @@ func (c *DeliverCftClient) receiveFromBlockDeliverer(ctx context.Context, config
 
 	deliverRetry := defaultRetryProfile.NewBackoff()
 	for sCtx.Err() == nil {
-		status, err := c.deliverRelay(sCtx, stream, config)
+		status, err := c.deliverRelay(sCtx, stream, p)
 		if err != nil {
 			return err
 		}
@@ -112,28 +112,28 @@ func (c *DeliverCftClient) receiveFromBlockDeliverer(ctx context.Context, config
 // We always ask the connection manager for the connection as this is not done often.
 // If the endpoints haven't changed, the manager will return the exact same connection.
 // If no connection available, we wait and try again.
-func (c *DeliverCftClient) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
+func (c *CftClient) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 	getConnRetry := defaultRetryProfile.NewBackoff()
 	for ctx.Err() == nil {
-		conn, _ := c.ConnectionManager.GetConnection(WithAPI(Deliver))
+		conn, _ := c.ConnectionManager.GetConnection(ordererconn.WithAPI(ordererconn.Deliver))
 		if conn != nil {
 			return conn, nil
 		}
 		logger.Infof("No available connection to deliver block")
 		backoffErr := connection.WaitForNextBackOffDuration(ctx, getConnRetry)
 		if errors.Is(backoffErr, connection.ErrRetryTimeout) {
-			return nil, errors.Join(ErrNoConnections, backoffErr)
+			return nil, errors.Join(ordererconn.ErrNoConnections, backoffErr)
 		}
 	}
-	return nil, errors.Join(ErrNoConnections, ctx.Err())
+	return nil, errors.Join(ordererconn.ErrNoConnections, ctx.Err())
 }
 
 // deliverRelay initiate a new seek request and relays the delivered blocks to the output channel.
-func (c *DeliverCftClient) deliverRelay(
-	ctx context.Context, stream DeliverStream, config *DeliverConfig,
+func (c *CftClient) deliverRelay(
+	ctx context.Context, stream Stream, p *Parameters,
 ) (common.Status, error) {
-	logger.Infof("Sending seek request from block %d on channel %s.", config.StartBlkNum, c.ChannelID)
-	seekEnv, seekErr := seekSince(config.StartBlkNum, config.EndBlkNum, c.ChannelID, c.Signer)
+	logger.Infof("Sending seek request from block %d on channel %s.", p.StartBlkNum, c.ChannelID)
+	seekEnv, seekErr := seekSince(p.StartBlkNum, p.EndBlkNum, c.ChannelID, c.Signer)
 	if seekErr != nil {
 		return 0, errors.Wrap(seekErr, "failed to create seek request")
 	}
@@ -142,7 +142,7 @@ func (c *DeliverCftClient) deliverRelay(
 	}
 	logger.Info("Seek request sent.")
 
-	outputBlock := channel.NewWriter(ctx, config.OutputBlock)
+	outputBlock := channel.NewWriter(ctx, p.OutputBlock)
 	for ctx.Err() == nil {
 		block, status, err := stream.RecvBlockOrStatus()
 		if err != nil {
@@ -153,8 +153,8 @@ func (c *DeliverCftClient) deliverRelay(
 		}
 
 		//nolint:gosec // integer overflow conversion uint64 -> int64
-		config.StartBlkNum = int64(block.Header.Number) + 1
-		logger.Debugf("next expected block number is %d", config.StartBlkNum)
+		p.StartBlkNum = int64(block.Header.Number) + 1
+		logger.Debugf("next expected block number is %d", p.StartBlkNum)
 		outputBlock.Write(block)
 	}
 	return 0, errors.Wrap(ctx.Err(), "context ended")
@@ -192,10 +192,6 @@ func seekSince(
 		startPosition = &orderer.SeekPosition{Type: &orderer.SeekPosition_Specified{Specified: &orderer.SeekSpecified{
 			Number: uint64(startBlockNumber), //nolint:gosec // integer overflow conversion int64 -> uint64
 		}}}
-	}
-
-	if signer == nil {
-		signer = &serialization.NoOpSigner{}
 	}
 
 	return protoutil.CreateSignedEnvelope(common.HeaderType_DELIVER_SEEK_INFO, channelID, signer, &orderer.SeekInfo{

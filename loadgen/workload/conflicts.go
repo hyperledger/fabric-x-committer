@@ -23,9 +23,8 @@ const (
 type (
 	// signTxModifier signs transactions according to the conflicts profile.
 	signTxModifier struct {
-		Signer               *TxSignerVerifier
 		invalidSignGenerator *FloatToBooleanGenerator
-		invalidSignature     [][]byte
+		invalidSignature     []byte
 	}
 
 	// dependenciesModifier adds dependencies conflicts according to the conflict profile.
@@ -50,36 +49,22 @@ type (
 	}
 )
 
-func newSignTxModifier(
-	rnd *rand.Rand, signer *TxSignerVerifier, profile *Profile,
-) *signTxModifier {
+func newSignTxModifier(rnd *rand.Rand, profile *Profile) *signTxModifier {
 	dist := NewBernoulliDistribution(profile.Conflicts.InvalidSignatures)
-	invalidTx := &protoblocktx.Tx{
-		Id: "fake",
-		Namespaces: []*protoblocktx.TxNamespace{
-			{
-				NsId:      GeneratedNamespaceID,
-				NsVersion: 0,
-			},
-		},
-	}
-	signer.Sign(invalidTx)
 	return &signTxModifier{
-		Signer:               signer,
 		invalidSignGenerator: dist.MakeBooleanGenerator(rnd),
-		invalidSignature:     invalidTx.Signatures,
+		invalidSignature:     []byte("dummy"),
 	}
 }
 
 // Modify signs a transaction.
-func (g *signTxModifier) Modify(tx *protoblocktx.Tx) (*protoblocktx.Tx, error) {
-	switch {
-	case tx.Signatures != nil:
-		// We support pre-signed TXs
-	case g.invalidSignGenerator.Next():
-		tx.Signatures = g.invalidSignature
-	default:
-		g.Signer.Sign(tx)
+func (g *signTxModifier) Modify(tx *TxBuilder) (*TxBuilder, error) {
+	if g.invalidSignGenerator.Next() {
+		// Pre-assigning prevents TxBuilder from re-signing the TX.
+		tx.Tx.Signatures = make([][]byte, len(tx.Tx.Namespaces))
+		for i := range tx.Tx.Namespaces {
+			tx.Tx.Signatures[i] = g.invalidSignature
+		}
 	}
 	return tx, nil
 }
@@ -107,12 +92,12 @@ func newTxDependenciesModifier(
 }
 
 // Modify injects dependencies.
-func (g *dependenciesModifier) Modify(tx *protoblocktx.Tx) (*protoblocktx.Tx, error) {
+func (g *dependenciesModifier) Modify(tx *TxBuilder) (*TxBuilder, error) {
 	depList, ok := g.dependenciesMap[g.index]
 	if ok {
 		delete(g.dependenciesMap, g.index)
 		for _, d := range depList {
-			addKey(tx, d.dst, d.key)
+			addKey(tx.Tx, d.dst, d.key)
 		}
 	}
 
@@ -127,7 +112,7 @@ func (g *dependenciesModifier) Modify(tx *protoblocktx.Tx) (*protoblocktx.Tx, er
 			src: depDesc.src,
 			dst: depDesc.dst,
 		}
-		addKey(tx, d.src, d.key)
+		addKey(tx.Tx, d.src, d.key)
 		g.dependenciesMap[g.index+gap] = append(g.dependenciesMap[g.index+gap], d)
 	}
 

@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
 
 const config = `
@@ -44,15 +45,15 @@ func TestEndpoints(t *testing.T) {
 	v := viper.New()
 	require.NoError(t, readYamlConfigsFromIO(v, bytes.NewBufferString(config)))
 	conf := new(struct {
-		Server                       connection.ServerConfig    `mapstructure:"server"`
-		Endpoint                     connection.Endpoint        `mapstructure:"endpoint"`
-		OrdererEndpoint              connection.OrdererEndpoint `mapstructure:"orderer-endpoint"`
-		JSONOrdererEndpoint          connection.OrdererEndpoint `mapstructure:"json-orderer-endpoint"`
-		MultilineJSONOrdererEndpoint connection.OrdererEndpoint `mapstructure:"multiline-json-orderer-endpoint"`
-		YamlJSONOrdererEndpoint      connection.OrdererEndpoint `mapstructure:"yaml-orderer-endpoint"`
+		Server                       connection.ServerConfig `mapstructure:"server"`
+		Endpoint                     connection.Endpoint     `mapstructure:"endpoint"`
+		OrdererEndpoint              ordererconn.Endpoint    `mapstructure:"orderer-endpoint"`
+		JSONOrdererEndpoint          ordererconn.Endpoint    `mapstructure:"json-orderer-endpoint"`
+		MultilineJSONOrdererEndpoint ordererconn.Endpoint    `mapstructure:"multiline-json-orderer-endpoint"`
+		YamlJSONOrdererEndpoint      ordererconn.Endpoint    `mapstructure:"yaml-orderer-endpoint"`
 	})
 	require.NoError(t, unmarshal(v, conf))
-	expected := connection.OrdererEndpoint{
+	expected := ordererconn.Endpoint{
 		ID:    5,
 		MspID: "org",
 		API:   []string{"broadcast", "deliver"},

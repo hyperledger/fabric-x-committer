@@ -12,7 +12,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -118,7 +118,7 @@ func sendBlocks[T any](
 	ctx context.Context,
 	c *commonAdapter,
 	txStream *workload.StreamWithSetup,
-	mapper func([]*protoblocktx.Tx) (T, []string, error),
+	mapper func(uint64, []*protoloadgen.TX) T,
 	sender func(T) error,
 ) error {
 	queueRaw := make(chan *txsWithMapping[T], c.res.Stream.BuffersSize)
@@ -127,7 +127,7 @@ func sendBlocks[T any](
 	// Pipeline the mapping process.
 	go func() {
 		defer close(queueRaw)
-		mapToQueue(ctx, queueRaw, txStream, mapper, int(c.res.Profile.Block.Size)) //nolint:gosec // uint64 -> int.
+		mapToQueue(ctx, c, queueRaw, txStream, mapper, int(c.res.Profile.Block.Size)) //nolint:gosec // uint64 -> int.
 	}()
 
 	queue := channel.NewReader(ctx, queueRaw)
@@ -152,9 +152,10 @@ func sendBlocks[T any](
 //nolint:revive // Parameters are required.
 func mapToQueue[T any](
 	ctx context.Context,
+	c *commonAdapter,
 	queueRaw chan *txsWithMapping[T],
 	txStream *workload.StreamWithSetup,
-	mapper func([]*protoblocktx.Tx) (T, []string, error),
+	mapper func(uint64, []*protoloadgen.TX) T,
 	blockSize int,
 ) {
 	queue := channel.NewWriter(ctx, queueRaw)
@@ -166,19 +167,14 @@ func mapToQueue[T any](
 			// This indicates that the block generator should also be done.
 			return
 		}
-		mappedBatch, txIDs, err := mapper(txs)
-		if err != nil {
-			logger.Errorf("failed mapping block: %+v", err)
-			return
-		}
 		queue.Write(&txsWithMapping[T]{
-			mapping: mappedBatch,
-			txIDs:   txIDs,
+			mapping: mapper(c.NextBlockNum(), txs),
+			txIDs:   getTXsIDs(txs),
 		})
 	}
 }
 
-func getTXsIDs(txs []*protoblocktx.Tx) []string {
+func getTXsIDs(txs []*protoloadgen.TX) []string {
 	txIDs := make([]string, len(txs))
 	for i, tx := range txs {
 		txIDs[i] = tx.Id

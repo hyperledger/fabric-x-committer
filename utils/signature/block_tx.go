@@ -10,14 +10,12 @@ import (
 	"crypto/sha256"
 	"encoding/asn1"
 
-	"github.com/cockroachdb/errors"
-
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 )
 
 // DigestTxNamespace digests a transactions for a given namespace index.
-func DigestTxNamespace(tx *protoblocktx.Tx, nsIndex int) ([]byte, error) {
-	derBytes, err := ASN1MarshalTxNamespace(tx, nsIndex)
+func DigestTxNamespace(txID string, ns *protoblocktx.TxNamespace) ([]byte, error) {
+	derBytes, err := ASN1MarshalTxNamespace(txID, ns)
 	if err != nil {
 		return nil, err
 	}
@@ -28,8 +26,8 @@ func DigestTxNamespace(tx *protoblocktx.Tx, nsIndex int) ([]byte, error) {
 
 // ASN1MarshalTxNamespace marshals a transactions for a given namespace index.
 // It uses the schema described in tx_schema.asn.
-func ASN1MarshalTxNamespace(tx *protoblocktx.Tx, nsIndex int) ([]byte, error) {
-	n, err := TranslateTx(tx, nsIndex)
+func ASN1MarshalTxNamespace(txID string, ns *protoblocktx.TxNamespace) ([]byte, error) {
+	n, err := TranslateTx(txID, ns)
 	if err != nil {
 		return nil, err
 	}
@@ -38,13 +36,9 @@ func ASN1MarshalTxNamespace(tx *protoblocktx.Tx, nsIndex int) ([]byte, error) {
 
 // TranslateTx translates a TX namespace to a stab struct for tx_schema.asn.
 // Any change to [*protoblocktx.Tx] requires a change to this method.
-func TranslateTx(tx *protoblocktx.Tx, nsIndex int) (*TxWithNamespace, error) {
-	if nsIndex < 0 || nsIndex >= len(tx.Namespaces) {
-		return nil, errors.New("namespace index out of range")
-	}
-	ns := tx.Namespaces[nsIndex]
+func TranslateTx(txID string, ns *protoblocktx.TxNamespace) (*TxWithNamespace, error) {
 	n := TxWithNamespace{
-		TxID:             tx.Id,
+		TxID:             txID,
 		NamespaceID:      ns.NsId,
 		NamespaceVersion: ProtoToAsnVersion(&ns.NsVersion),
 		ReadsOnly:        make([]Read, len(ns.ReadsOnly)),

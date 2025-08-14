@@ -16,36 +16,51 @@ import (
 	"github.com/hyperledger/fabric-x-common/core/config/configtest"
 	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
 	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen/genesisconfig"
+	"github.com/hyperledger/fabric/protoutil"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/api/types"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
+	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
 // ConfigBlock represents the configuration of the config block.
 type ConfigBlock struct {
 	ChannelID                    string
-	OrdererEndpoints             []*connection.OrdererEndpoint
+	OrdererEndpoints             []*ordererconn.Endpoint
 	MetaNamespaceVerificationKey []byte
 }
 
 // CreateConfigTx creating a config TX.
-func CreateConfigTx(policy *PolicyProfile) (*protoblocktx.Tx, error) {
+func CreateConfigTx(policy *PolicyProfile) (*protoloadgen.TX, error) {
 	envelopeBytes, err := CreateConfigEnvelope(policy)
 	if err != nil {
 		return nil, err
 	}
-	return &protoblocktx.Tx{
-		Id: "config tx",
-		Namespaces: []*protoblocktx.TxNamespace{{
-			NsId: types.ConfigNamespaceID,
-			BlindWrites: []*protoblocktx.Write{{
-				Key:   []byte(types.ConfigNamespaceID),
-				Value: envelopeBytes,
+	envelope, err := protoutil.GetEnvelopeFromBlock(envelopeBytes)
+	if err != nil {
+		return nil, err
+	}
+	_, channelHdr, err := serialization.ParseEnvelope(envelope)
+	if err != nil {
+		return nil, err
+	}
+	return &protoloadgen.TX{
+		Id: channelHdr.TxId,
+		Tx: &protoblocktx.Tx{
+			Namespaces: []*protoblocktx.TxNamespace{{
+				NsId: types.ConfigNamespaceID,
+				BlindWrites: []*protoblocktx.Write{{
+					Key:   []byte(types.ConfigNamespaceID),
+					Value: envelopeBytes,
+				}},
 			}},
-		}},
-		Signatures: make([][]byte, 1),
+		},
+		EnvelopePayload:    envelope.Payload,
+		EnvelopeSignature:  envelope.Signature,
+		SerializedEnvelope: envelopeBytes,
 	}, nil
 }
 
@@ -76,6 +91,7 @@ func CreateConfigBlock(policy *PolicyProfile) (*common.Block, error) {
 	return CreateDefaultConfigBlock(&ConfigBlock{
 		MetaNamespaceVerificationKey: policyNamespaceSigner.pubKey,
 		OrdererEndpoints:             policy.OrdererEndpoints,
+		ChannelID:                    policy.ChannelID,
 	})
 }
 

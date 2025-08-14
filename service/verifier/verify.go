@@ -82,13 +82,11 @@ func parsePolicies(update *protosigverifierservice.Update) (map[string]*signatur
 	return newPolicies, nil
 }
 
-func (v *verifier) verifyRequest(request *protosigverifierservice.Request) *protosigverifierservice.Response {
-	logger.Debugf("Validating TX [%d:%d]: %s", request.BlockNum, request.TxNum, &utils.LazyJSON{O: request.Tx})
+func (v *verifier) verifyRequest(tx *protosigverifierservice.Tx) *protosigverifierservice.Response {
+	logger.Debugf("Validating TX: %s", &utils.LazyJSON{O: tx})
 	response := &protosigverifierservice.Response{
-		TxId:     request.Tx.Id,
-		BlockNum: request.BlockNum,
-		TxNum:    request.TxNum,
-		Status:   protoblocktx.Status_COMMITTED,
+		Ref:    tx.Ref,
+		Status: protoblocktx.Status_COMMITTED,
 	}
 	// The verifiers might temporarily retain the old map while updatePolicies has already set a new one.
 	// This is acceptable, provided the coordinator sends the validation status to the dependency graph
@@ -96,7 +94,7 @@ func (v *verifier) verifyRequest(request *protosigverifierservice.Request) *prot
 	// This ensures that dependent data transactions on these updated namespaces always use the map
 	// containing the latest policy.
 	verifiers := *v.verifiers.Load()
-	for nsIndex, ns := range request.Tx.Namespaces {
+	for nsIndex, ns := range tx.Tx.Namespaces {
 		if ns.NsId == types.ConfigNamespaceID {
 			// Configuration TX is not signed in the same manner as application TX.
 			// Its signatures are verified by the ordering service.
@@ -118,8 +116,8 @@ func (v *verifier) verifyRequest(request *protosigverifierservice.Request) *prot
 		//       the signatures are valid, the validator-committer service would
 		//       still mark the transaction as invalid due to an MVCC conflict on the
 		//       namespace version, which would reflect the correct validation status.
-		if err := nsVerifier.VerifyNs(request.Tx, nsIndex); err != nil {
-			logger.Debugf("Invalid signature found: '%v', namespace id: '%v'", request.Tx.Id, ns.NsId)
+		if err := nsVerifier.VerifyNs(tx.Ref.TxId, tx.Tx, nsIndex); err != nil {
+			logger.Debugf("Invalid signature found: '%v', NsId: '%v'", &utils.LazyJSON{O: tx.Ref}, ns.NsId)
 			response.Status = protoblocktx.Status_ABORTED_SIGNATURE_INVALID
 			return response
 		}

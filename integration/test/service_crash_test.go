@@ -52,32 +52,15 @@ func TestCrashWhenIdle(t *testing.T) {
 	// 3. Resubmit the same transaction to the ordering service while some services remain offline.
 	// 4. Restart the terminated services and confirm that all transactions are processed successfully,
 	//    with the client receiving duplicate transaction ID statuses.
-	txs := []*protoblocktx.Tx{
-		{
-			Id: "tx1",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					BlindWrites: []*protoblocktx.Write{
-						{
-							Key: []byte("k1"),
-						},
-					},
-				},
-			},
-		},
-	}
+	txs := [][]*protoblocktx.TxNamespace{{{
+		BlindWrites: []*protoblocktx.Write{{
+			Key: []byte("k1"),
+		}},
+	}}}
 
 	i := 1
 	t.Logf("\n%d. Send transactions before stopping services and verify their commitment.\n", i)
-	addSignAndSendTransactions(t, c, txs)
-
-	expectedResults := &runner.ExpectedStatusInBlock{
-		TxIDs: []string{"tx1"},
-		Statuses: []protoblocktx.Status{
-			protoblocktx.Status_COMMITTED,
-		},
-	}
-	c.ValidateExpectedResultsInCommittedBlock(t, expectedResults)
+	addSignAndSendTransactions(t, c, txs, []protoblocktx.Status{protoblocktx.Status_COMMITTED})
 
 	for _, serviceNames := range failureScenarios {
 		services := strings.Join(serviceNames, "-")
@@ -87,7 +70,7 @@ func TestCrashWhenIdle(t *testing.T) {
 
 		i++
 		t.Logf("\n%d. Send transactions after stopping "+services+"\n", i)
-		addSignAndSendTransactions(t, c, txs)
+		txIDs := addSignAndSendTransactions(t, c, txs, nil)
 
 		time.Sleep(10 * time.Second) // allow time for the transactions to reach orderer and create a block
 
@@ -97,26 +80,24 @@ func TestCrashWhenIdle(t *testing.T) {
 
 		i++
 		t.Logf("\n%d. Ensure that the last block is committed after restarting "+services+"\n", i)
-		expectedResults = &runner.ExpectedStatusInBlock{
-			TxIDs: []string{"tx1"},
-			Statuses: []protoblocktx.Status{
-				protoblocktx.Status_REJECTED_DUPLICATE_TX_ID,
-			},
-		}
-		c.ValidateExpectedResultsInCommittedBlock(t, expectedResults)
+		c.ValidateExpectedResultsInCommittedBlock(t, &runner.ExpectedStatusInBlock{
+			TxIDs:    txIDs,
+			Statuses: []protoblocktx.Status{protoblocktx.Status_COMMITTED},
+		})
 	}
 }
 
-func addSignAndSendTransactions(t *testing.T, c *runner.CommitterRuntime, txs []*protoblocktx.Tx) {
+func addSignAndSendTransactions(
+	t *testing.T, c *runner.CommitterRuntime, txs [][]*protoblocktx.TxNamespace, expectedStatus []protoblocktx.Status,
+) []string {
 	t.Helper()
 	for _, tx := range txs {
-		for _, ns := range tx.Namespaces {
+		for _, ns := range tx {
 			ns.NsId = "1"
 			ns.NsVersion = 0
 		}
-		c.AddSignatures(t, tx)
 	}
-	c.SendTransactionsToOrderer(t, txs)
+	return c.MakeAndSendTransactionsToOrderer(t, txs, expectedStatus)
 }
 
 func TestCrashWhenNonIdle(t *testing.T) {

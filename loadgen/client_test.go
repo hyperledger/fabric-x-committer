@@ -25,8 +25,8 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
-	"github.com/hyperledger/fabric-x-committer/utils/broadcastdeliver"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -185,15 +185,15 @@ func TestLoadGenForSidecar(t *testing.T) {
 			}
 
 			// Start server under test
-			chanID := "channel"
 			sidecarConf := &sidecar.Config{
 				Server: sidecarServerConf,
-				Orderer: broadcastdeliver.Config{
-					Connection: broadcastdeliver.ConnectionConfig{
-						Endpoints: connection.NewOrdererEndpoints(0, "org", ordererServers...),
+				Orderer: ordererconn.Config{
+					Connection: ordererconn.ConnectionConfig{
+						Endpoints: ordererconn.NewEndpoints(0, "org", ordererServers...),
 					},
-					ChannelID:     chanID,
-					ConsensusType: broadcastdeliver.Bft,
+					ChannelID:     clientConf.LoadProfile.Transaction.Policy.ChannelID,
+					Identity:      clientConf.LoadProfile.Transaction.Policy.Identity,
+					ConsensusType: ordererconn.Bft,
 				},
 				LastCommittedBlockSetInterval: 100 * time.Millisecond,
 				WaitingTxsLimit:               5000,
@@ -213,7 +213,6 @@ func TestLoadGenForSidecar(t *testing.T) {
 			// Start client
 			clientConf.Adapter.SidecarClient = &adapters.SidecarClientConfig{
 				SidecarEndpoint: &sidecarServerConf.Endpoint,
-				ChannelID:       chanID,
 				OrdererServers:  ordererServers,
 			}
 			testLoadGenerator(t, clientConf)
@@ -234,15 +233,16 @@ func TestLoadGenForOrderer(t *testing.T) {
 			)
 			_, coordinatorServer := mock.StartMockCoordinatorService(t)
 
-			endpoints := connection.NewOrdererEndpoints(0, "msp", ordererServer.Configs...)
+			endpoints := ordererconn.NewEndpoints(0, "msp", ordererServer.Configs...)
 			sidecarConf := &sidecar.Config{
 				Server: connection.NewLocalHostServer(),
-				Orderer: broadcastdeliver.Config{
-					Connection: broadcastdeliver.ConnectionConfig{
+				Orderer: ordererconn.Config{
+					Connection: ordererconn.ConnectionConfig{
 						Endpoints: endpoints,
 					},
-					ChannelID:     "mychannel",
-					ConsensusType: broadcastdeliver.Bft,
+					ChannelID:     clientConf.LoadProfile.Transaction.Policy.ChannelID,
+					Identity:      clientConf.LoadProfile.Transaction.Policy.Identity,
+					ConsensusType: ordererconn.Bft,
 				},
 				LastCommittedBlockSetInterval: 100 * time.Millisecond,
 				WaitingTxsLimit:               5000,
@@ -266,7 +266,8 @@ func TestLoadGenForOrderer(t *testing.T) {
 			clientConf.LoadProfile.Transaction.Policy.OrdererEndpoints = endpoints
 			configBlock, err := workload.CreateConfigBlock(clientConf.LoadProfile.Transaction.Policy)
 			require.NoError(t, err)
-			orderer.SubmitBlock(t.Context(), configBlock)
+			err = orderer.SubmitBlock(t.Context(), configBlock)
+			require.NoError(t, err)
 
 			// Start client
 			clientConf.Adapter.OrdererClient = &adapters.OrdererClientConfig{
@@ -294,7 +295,7 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 				},
 			)
 
-			endpoints := connection.NewOrdererEndpoints(0, "msp", ordererServer.Configs...)
+			endpoints := ordererconn.NewEndpoints(0, "msp", ordererServer.Configs...)
 
 			// Submit default config block.
 			// This is ignored when sidecar isn't used.
@@ -303,16 +304,17 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 			clientConf.LoadProfile.Transaction.Policy.OrdererEndpoints = endpoints
 			configBlock, err := workload.CreateConfigBlock(clientConf.LoadProfile.Transaction.Policy)
 			require.NoError(t, err)
-			orderer.SubmitBlock(t.Context(), configBlock)
+			err = orderer.SubmitBlock(t.Context(), configBlock)
+			require.NoError(t, err)
 
 			// Start client
 			clientConf.Adapter.OrdererClient = &adapters.OrdererClientConfig{
-				Orderer: broadcastdeliver.Config{
-					Connection: broadcastdeliver.ConnectionConfig{
+				Orderer: ordererconn.Config{
+					Connection: ordererconn.ConnectionConfig{
 						Endpoints: endpoints,
 					},
-					ChannelID:     "mychannel",
-					ConsensusType: broadcastdeliver.Bft,
+					ChannelID:     clientConf.LoadProfile.Transaction.Policy.ChannelID,
+					ConsensusType: ordererconn.Bft,
 				},
 				BroadcastParallelism: 5,
 			}

@@ -237,39 +237,27 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		txBatch := []*dependencygraph.TransactionNode{
 			{
-				Tx: &protovcservice.Transaction{
-					ID: "create config",
-					Namespaces: []*protoblocktx.TxNamespace{
-						{
-							NsId: types.ConfigNamespaceID,
-							BlindWrites: []*protoblocktx.Write{
-								{
-									Key:   []byte(types.ConfigKey),
-									Value: configBlock.Data.Data[0],
-								},
-							},
-						},
-					},
-					BlockNumber: uint64(100),
-					TxNum:       uint32(63),
+				Tx: &protovcservice.Tx{
+					Ref: types.TxRef("create config", 100, 63),
+					Namespaces: []*protoblocktx.TxNamespace{{
+						NsId: types.ConfigNamespaceID,
+						BlindWrites: []*protoblocktx.Write{{
+							Key:   []byte(types.ConfigKey),
+							Value: configBlock.Data.Data[0],
+						}},
+					}},
 				},
 			},
 			{
-				Tx: &protovcservice.Transaction{
-					ID: "create ns 1",
-					Namespaces: []*protoblocktx.TxNamespace{
-						{
-							NsId: types.MetaNamespaceID,
-							ReadWrites: []*protoblocktx.ReadWrite{
-								{
-									Key:   []byte("1"),
-									Value: pBytes,
-								},
-							},
-						},
-					},
-					BlockNumber: uint64(100),
-					TxNum:       uint32(64),
+				Tx: &protovcservice.Tx{
+					Ref: types.TxRef("create ns 1", 100, 64),
+					Namespaces: []*protoblocktx.TxNamespace{{
+						NsId: types.MetaNamespaceID,
+						ReadWrites: []*protoblocktx.ReadWrite{{
+							Key:   []byte("1"),
+							Value: pBytes,
+						}},
+					}},
 				},
 			},
 		}
@@ -279,11 +267,11 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		require.Len(t, outTxsStatus.Status, 2)
 		require.Equal(t,
-			types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 100, 63),
+			types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 100, 63),
 			outTxsStatus.Status["create config"],
 		)
 		require.Equal(t,
-			types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, 100, 64),
+			types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 100, 64),
 			outTxsStatus.Status["create ns 1"],
 		)
 
@@ -348,10 +336,10 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env.mockVcServices[0].SubmitTransactions(ctx, &protovcservice.TransactionBatch{
-		Transactions: []*protovcservice.Transaction{
-			{ID: "untrackedTxID1", BlockNumber: 1, TxNum: 1},
-			{ID: "untrackedTxID2", BlockNumber: 2, TxNum: 2},
+	env.mockVcServices[0].SubmitTransactions(ctx, &protovcservice.Batch{
+		Transactions: []*protovcservice.Tx{
+			{Ref: types.TxRef("untrackedTxID1", 1, 1)},
+			{Ref: types.TxRef("untrackedTxID2", 2, 2)},
 		},
 	})
 	require.Never(t, func() bool {
@@ -376,22 +364,17 @@ func createInputTxsNodeForTest(t *testing.T, numTxs, valueSize int, blkNum uint6
 	for i := range numTxs {
 		id := uuid.NewString()
 		txsNode[i] = &dependencygraph.TransactionNode{
-			Tx: &protovcservice.Transaction{
-				ID:          id,
-				BlockNumber: blkNum,
-				TxNum:       uint32(i), //nolint:gosec
-				Namespaces: []*protoblocktx.TxNamespace{
-					{
-						BlindWrites: []*protoblocktx.Write{
-							{
-								Value: b,
-							},
-						},
-					},
-				},
+			Tx: &protovcservice.Tx{
+				Ref: types.TxRef(id, blkNum, uint32(i)), //nolint:gosec
+				Namespaces: []*protoblocktx.TxNamespace{{
+					BlindWrites: []*protoblocktx.Write{{
+						Value: b,
+					}},
+				}},
 			},
 		}
-		expectedTxsStatus.Status[id] = types.CreateStatusWithHeight(protoblocktx.Status_COMMITTED, blkNum, i)
+		//nolint:gosec // int -> uint32.
+		expectedTxsStatus.Status[id] = types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, blkNum, uint32(i))
 	}
 
 	return txsNode, expectedTxsStatus

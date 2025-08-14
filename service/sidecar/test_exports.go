@@ -15,8 +15,10 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -37,9 +39,10 @@ func RequireNotifications( //nolint:revive // argument-limit.
 		if !IsStatusStoredInDB(s) {
 			continue
 		}
+		//nolint:gosec // int -> uint32.
 		expected = append(expected, &protonotify.TxStatusEvent{
 			TxId:             txIDs[i],
-			StatusWithHeight: types.CreateStatusWithHeight(s, expectedBlockNumber, i),
+			StatusWithHeight: types.NewStatusWithHeight(s, expectedBlockNumber, uint32(i)),
 		})
 	}
 
@@ -55,385 +58,202 @@ func RequireNotifications( //nolint:revive // argument-limit.
 }
 
 // MalformedTxTestCases are valid and invalid TXs due to malformed.
-var MalformedTxTestCases = []struct {
-	Tx             *protoblocktx.Tx
-	ExpectedStatus protoblocktx.Status
-}{
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "valid TX",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:      "1",
-					NsVersion: 0,
-					ReadWrites: []*protoblocktx.ReadWrite{
-						{Key: []byte("k1")},
-					},
-				},
+func MalformedTxTestCases(t *testing.T, f *workload.TxBuilderFactory) (
+	txs []*protoloadgen.TX, expectedStatuses []protoblocktx.Status,
+) {
+	t.Helper()
+	makeTX := func(tx *protoblocktx.Tx) *protoloadgen.TX {
+		lgTX, err := f.MakeTx(tx)
+		require.NoError(t, err)
+		return lgTX
+	}
+	makeTxWithID := func(txID string, tx *protoblocktx.Tx) *protoloadgen.TX {
+		lgTX, err := f.MakeTxWithID(txID, tx)
+		require.NoError(t, err)
+		return lgTX
+	}
+
+	validTX := []*protoblocktx.TxNamespace{{
+		NsId:        "1",
+		NsVersion:   0,
+		BlindWrites: []*protoblocktx.Write{{Key: []byte("k1")}},
+	}}
+	validLgTX := makeTX(&protoblocktx.Tx{Namespaces: validTX})
+
+	add := func(expected protoblocktx.Status, tx *protoloadgen.TX) {
+		txs = append(txs, tx)
+		expectedStatuses = append(expectedStatuses, expected)
+	}
+
+	add(protoblocktx.Status_COMMITTED, validLgTX)
+	add(protoblocktx.Status_REJECTED_DUPLICATE_TX_ID, makeTxWithID(validLgTX.Id, &protoblocktx.Tx{Namespaces: validTX}))
+	add(protoblocktx.Status_MALFORMED_MISSING_TX_ID, makeTxWithID("", &protoblocktx.Tx{Namespaces: validTX}))
+	add(protoblocktx.Status_MALFORMED_EMPTY_NAMESPACES, makeTX(&protoblocktx.Tx{}))
+	add(protoblocktx.Status_MALFORMED_MISSING_SIGNATURE, makeTX(&protoblocktx.Tx{
+		Namespaces: validTX,
+		Signatures: make([][]byte, 0), // Not enough signatures.
+	}))
+	add(protoblocktx.Status_MALFORMED_MISSING_SIGNATURE, makeTX(&protoblocktx.Tx{
+		Namespaces: validTX,
+		Signatures: make([][]byte, 2), // Too many signatures.
+	}))
+	add(protoblocktx.Status_MALFORMED_NO_WRITES, makeTX(&protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{{
+			NsId:      "1",
+			NsVersion: 0,
+			ReadsOnly: []*protoblocktx.Read{{Key: []byte("k1")}},
+		}},
+	}))
+	add(protoblocktx.Status_MALFORMED_NAMESPACE_ID_INVALID, makeTX(&protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{
+			// namespace id is invalid.
+			{NsId: "//", BlindWrites: validTX[0].BlindWrites},
+		},
+	}))
+	add(protoblocktx.Status_MALFORMED_NAMESPACE_ID_INVALID, makeTX(&protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{
+			validTX[0],
+			{
+				NsId:      types.MetaNamespaceID,
+				NsVersion: 0,
+				// namespace id is invalid in metaNs tx.
+				ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("/\\")}},
 			},
-			Signatures: make([][]byte, 1),
 		},
-		ExpectedStatus: protoblocktx.Status_NOT_VALIDATED,
-	},
-	{
-		Tx:             &protoblocktx.Tx{},
-		ExpectedStatus: protoblocktx.Status_MALFORMED_MISSING_TX_ID,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "empty namespaces",
-		},
-		ExpectedStatus: protoblocktx.Status_MALFORMED_EMPTY_NAMESPACES,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "missing signature",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:       "1",
-					NsVersion:  0,
-					ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("1")}},
-				},
+	}))
+	add(protoblocktx.Status_MALFORMED_NAMESPACE_POLICY_INVALID, makeTX(&protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{
+			validTX[0],
+			{
+				NsId:      types.MetaNamespaceID,
+				NsVersion: 0,
+				ReadWrites: []*protoblocktx.ReadWrite{{
+					Key:   []byte("2"),
+					Value: []byte("not a real policy"),
+				}},
 			},
 		},
-		ExpectedStatus: protoblocktx.Status_MALFORMED_MISSING_SIGNATURE,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "not enough signatures",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:       "1",
-					NsVersion:  0,
-					ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("1")}},
-				},
+	}))
+	add(protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE, makeTX(&protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{validTX[0], validTX[0]},
+	}))
+	add(protoblocktx.Status_COMMITTED, makeTX(&protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{{
+			// valid namespace TX.
+			NsId:      types.MetaNamespaceID,
+			NsVersion: 0,
+			ReadWrites: []*protoblocktx.ReadWrite{{
+				Key:   []byte("2"),
+				Value: defaultNsValidPolicy(),
+			}},
+		}},
+	}))
+	add(protoblocktx.Status_COMMITTED, makeTX(&protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{
+			// valid namespace TX with regular TX.
+			validTX[0],
+			{
+				NsId:      types.MetaNamespaceID,
+				NsVersion: 0,
+				ReadWrites: []*protoblocktx.ReadWrite{{
+					Key:     []byte("2"),
+					Version: types.Version(0),
+					Value:   defaultNsValidPolicy(),
+				}},
 			},
-			Signatures: make([][]byte, 0),
 		},
-		ExpectedStatus: protoblocktx.Status_MALFORMED_MISSING_SIGNATURE,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "too much signatures",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:       "1",
-					NsVersion:  0,
-					ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("1")}},
-				},
+	}))
+	add(protoblocktx.Status_MALFORMED_NAMESPACE_POLICY_INVALID, makeTX(&protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{{
+			NsId:      types.MetaNamespaceID,
+			NsVersion: 0,
+			ReadWrites: []*protoblocktx.ReadWrite{{
+				Key:     []byte("2"),
+				Version: types.Version(0),
+				Value:   defaultNsInvalidPolicy(), // invalid policy.
+			}},
+		}},
+	}))
+	add(protoblocktx.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED, makeTX(&protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{
+			validTX[0],
+			{
+				NsId:      types.MetaNamespaceID,
+				NsVersion: 0,
+				// blind writes not allowed in metaNs tx.
+				BlindWrites: []*protoblocktx.Write{{
+					Key:   []byte("2"),
+					Value: defaultNsInvalidPolicy(),
+				}},
 			},
-			Signatures: make([][]byte, 2),
 		},
-		ExpectedStatus: protoblocktx.Status_MALFORMED_MISSING_SIGNATURE,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "namespace id is invalid in tx",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{NsId: "//"},
-			},
-			Signatures: make([][]byte, 1),
-		},
-		ExpectedStatus: protoblocktx.Status_MALFORMED_NAMESPACE_ID_INVALID,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "no writes",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:      "1",
-					NsVersion: 0,
-					ReadsOnly: []*protoblocktx.Read{
-						{Key: []byte("k1")},
-					},
-				},
-			},
-			Signatures: make([][]byte, 1),
-		},
-		ExpectedStatus: protoblocktx.Status_MALFORMED_NO_WRITES,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "namespace id is invalid in metaNs tx",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:      "1",
-					NsVersion: 0,
-					ReadWrites: []*protoblocktx.ReadWrite{
-						{Key: []byte("key")},
-					},
-				},
-				{
-					NsId:      types.MetaNamespaceID,
-					NsVersion: 0,
-					ReadWrites: []*protoblocktx.ReadWrite{
-						{Key: []byte("/\\")},
-					},
-				},
-			},
-			Signatures: make([][]byte, 2),
-		},
-		ExpectedStatus: protoblocktx.Status_MALFORMED_NAMESPACE_ID_INVALID,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "namespace policy is invalid in metaNs tx",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:      "1",
-					NsVersion: 0,
-					ReadWrites: []*protoblocktx.ReadWrite{
-						{Key: []byte("key")},
-					},
-				},
-				{
-					NsId:      types.MetaNamespaceID,
-					NsVersion: 0,
-					ReadWrites: []*protoblocktx.ReadWrite{
-						{
-							Key:   []byte("2"),
-							Value: []byte("value"),
-						},
-					},
-				},
-			},
-			Signatures: make([][]byte, 2),
-		},
-		ExpectedStatus: protoblocktx.Status_MALFORMED_NAMESPACE_POLICY_INVALID,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "duplicate namespace",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:      "1",
-					NsVersion: 0,
-					ReadWrites: []*protoblocktx.ReadWrite{
-						{Key: []byte("key")},
-					},
-				},
-				{
-					NsId:      "1",
-					NsVersion: 0,
-				},
-			},
-			Signatures: make([][]byte, 2),
-		},
-		ExpectedStatus: protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "valid namespace TX",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:      types.MetaNamespaceID,
-					NsVersion: 0,
-					ReadWrites: []*protoblocktx.ReadWrite{
-						{
-							Key:   []byte("2"),
-							Value: defaultNsValidPolicy(),
-						},
-					},
-				},
-			},
-			Signatures: make([][]byte, 1),
-		},
-		ExpectedStatus: protoblocktx.Status_NOT_VALIDATED,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "valid namespace TX with regular TX",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:      "1",
-					NsVersion: 0,
-					ReadWrites: []*protoblocktx.ReadWrite{
-						{Key: []byte("key")},
-					},
-				},
-				{
-					NsId:      types.MetaNamespaceID,
-					NsVersion: 0,
-					ReadWrites: []*protoblocktx.ReadWrite{
-						{
-							Key:   []byte("2"),
-							Value: defaultNsValidPolicy(),
-						},
-					},
-				},
-			},
-			Signatures: make([][]byte, 2),
-		},
-		ExpectedStatus: protoblocktx.Status_NOT_VALIDATED,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "invalid policy",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:      types.MetaNamespaceID,
-					NsVersion: 0,
-					ReadWrites: []*protoblocktx.ReadWrite{
-						{
-							Key:   []byte("2"),
-							Value: defaultNsInvalidPolicy(),
-						},
-					},
-				},
-			},
-			Signatures: make([][]byte, 1),
-		},
-		ExpectedStatus: protoblocktx.Status_MALFORMED_NAMESPACE_POLICY_INVALID,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "blind writes not allowed in metaNs tx",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:      "1",
-					NsVersion: 0,
-					ReadWrites: []*protoblocktx.ReadWrite{
-						{
-							Key: []byte("key"),
-						},
-					},
-				},
-				{
-					NsId:      types.MetaNamespaceID,
-					NsVersion: 0,
-					BlindWrites: []*protoblocktx.Write{
-						{
-							Key:   []byte("2"),
-							Value: defaultNsInvalidPolicy(),
-						},
-					},
-				},
-			},
-			Signatures: make([][]byte, 2),
-		},
-		ExpectedStatus: protoblocktx.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "nil key in ReadOnly",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:       "1",
-					NsVersion:  0,
-					ReadsOnly:  []*protoblocktx.Read{{Key: nil}},
-					ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("1")}},
-				},
-			},
-			Signatures: make([][]byte, 1),
-		},
-		ExpectedStatus: protoblocktx.Status_MALFORMED_EMPTY_KEY,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "nil key in ReadWrites",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:       "1",
-					NsVersion:  0,
-					ReadWrites: []*protoblocktx.ReadWrite{{Key: nil}},
-				},
-			},
-			Signatures: make([][]byte, 1),
-		},
-		ExpectedStatus: protoblocktx.Status_MALFORMED_EMPTY_KEY,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "nil key in BlindWrites",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:        "1",
-					NsVersion:   0,
-					BlindWrites: []*protoblocktx.Write{{Key: nil}},
-				},
-			},
-			Signatures: make([][]byte, 1),
-		},
-		ExpectedStatus: protoblocktx.Status_MALFORMED_EMPTY_KEY,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "duplicate key within ReadOnly",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:       "1",
-					NsVersion:  0,
-					ReadsOnly:  []*protoblocktx.Read{{Key: []byte("key1")}, {Key: []byte("key1")}},
-					ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("1")}},
-				},
-			},
-			Signatures: make([][]byte, 1),
-		},
-		ExpectedStatus: protoblocktx.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "duplicate key within ReadWrite",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:       "1",
-					NsVersion:  0,
-					ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("key1")}, {Key: []byte("key1")}},
-				},
-			},
-			Signatures: make([][]byte, 1),
-		},
-		ExpectedStatus: protoblocktx.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "duplicate key within BlindWrites",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:        "1",
-					NsVersion:   0,
-					BlindWrites: []*protoblocktx.Write{{Key: []byte("key1")}, {Key: []byte("key1")}},
-				},
-			},
-			Signatures: make([][]byte, 1),
-		},
-		ExpectedStatus: protoblocktx.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "duplicate key across ReadOnly and ReadWrite",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:       "1",
-					NsVersion:  0,
-					ReadsOnly:  []*protoblocktx.Read{{Key: []byte("key1")}},
-					ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("key1")}},
-				},
-			},
-			Signatures: make([][]byte, 1),
-		},
-		ExpectedStatus: protoblocktx.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET,
-	},
-	{
-		Tx: &protoblocktx.Tx{
-			Id: "duplicate key across ReadWrite and BlindWrites",
-			Namespaces: []*protoblocktx.TxNamespace{
-				{
-					NsId:        "1",
-					NsVersion:   0,
-					ReadWrites:  []*protoblocktx.ReadWrite{{Key: []byte("key1")}},
-					BlindWrites: []*protoblocktx.Write{{Key: []byte("key1")}},
-				},
-			},
-			Signatures: make([][]byte, 1),
-		},
-		ExpectedStatus: protoblocktx.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET,
-	},
+	}))
+	add(protoblocktx.Status_MALFORMED_EMPTY_KEY, makeTX(&protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{{
+			NsId:       "1",
+			NsVersion:  0,
+			ReadsOnly:  []*protoblocktx.Read{{Key: nil}},
+			ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("1")}},
+		}},
+	}))
+	add(protoblocktx.Status_MALFORMED_EMPTY_KEY, makeTX(&protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{{
+			NsId:       "1",
+			NsVersion:  0,
+			ReadWrites: []*protoblocktx.ReadWrite{{Key: nil}},
+		}},
+	}))
+	add(protoblocktx.Status_MALFORMED_EMPTY_KEY, makeTX(&protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{{
+			NsId:        "1",
+			NsVersion:   0,
+			BlindWrites: []*protoblocktx.Write{{Key: nil}},
+		}},
+	}))
+	add(protoblocktx.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET, makeTX(&protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{{
+			NsId:       "1",
+			NsVersion:  0,
+			ReadsOnly:  []*protoblocktx.Read{{Key: []byte("key1")}, {Key: []byte("key1")}},
+			ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("1")}},
+		}},
+	}))
+	add(protoblocktx.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET, makeTX(&protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{{
+			NsId:       "1",
+			NsVersion:  0,
+			ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("key1")}, {Key: []byte("key1")}},
+		}},
+	}))
+	add(protoblocktx.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET, makeTX(&protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{{
+			NsId:        "1",
+			NsVersion:   0,
+			BlindWrites: []*protoblocktx.Write{{Key: []byte("key1")}, {Key: []byte("key1")}},
+		}},
+	}))
+	add(protoblocktx.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET, makeTX(&protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{{
+			NsId:       "1",
+			NsVersion:  0,
+			ReadsOnly:  []*protoblocktx.Read{{Key: []byte("key1")}},
+			ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("key1")}},
+		}},
+	}))
+	add(protoblocktx.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET, makeTX(&protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{{
+			NsId:        "1",
+			NsVersion:   0,
+			ReadWrites:  []*protoblocktx.ReadWrite{{Key: []byte("key1")}},
+			BlindWrites: []*protoblocktx.Write{{Key: []byte("key1")}},
+		}},
+	}))
+	return txs, expectedStatuses
 }
 
 func defaultNsInvalidPolicy() []byte {
 	nsPolicy, _ := proto.Marshal(&protoblocktx.NamespacePolicy{
-		Scheme:    "ECDSA",
+		Scheme:    signature.Ecdsa,
 		PublicKey: []byte("publicKey"),
 	})
 	return nsPolicy
@@ -443,7 +263,7 @@ func defaultNsValidPolicy() []byte {
 	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
 	_, verificationKey := factory.NewKeys()
 	nsPolicy, _ := proto.Marshal(&protoblocktx.NamespacePolicy{
-		Scheme:    "ECDSA",
+		Scheme:    signature.Ecdsa,
 		PublicKey: verificationKey,
 	})
 	return nsPolicy

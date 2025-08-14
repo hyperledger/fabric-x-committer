@@ -13,8 +13,8 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/utils/broadcastdeliver"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -22,7 +22,7 @@ import (
 func StartSidecarClient(
 	ctx context.Context,
 	t *testing.T,
-	config *Config,
+	config *Parameters,
 	startBlkNum int64,
 ) chan *common.Block {
 	t.Helper()
@@ -31,9 +31,9 @@ func StartSidecarClient(
 	require.NoError(t, err)
 	test.RunServiceForTest(ctx, t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(deliverClient.Deliver(ctx,
-			&DeliverConfig{
+			&DeliverParameters{
 				StartBlkNum: startBlkNum,
-				EndBlkNum:   broadcastdeliver.MaxBlockNum,
+				EndBlkNum:   deliver.MaxBlockNum,
 				OutputBlock: receivedBlocksFromLedgerService,
 			},
 		))

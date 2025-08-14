@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -65,8 +66,10 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 			LoadBalance: false,
 			Endpoints:   conn.Endpoints,
 		},
+		Policy: &workload.PolicyProfile{
+			ChannelID: "channel1",
+		},
 		LedgerPath: t.TempDir(),
-		ChannelID:  "channel1",
 	}
 }
 
