@@ -343,21 +343,12 @@ func (dc *DatabaseContainer) ExecuteCommand(t *testing.T, cmd []string) string {
 }
 
 // EnsureNodeReadiness checks the container's readiness by monitoring its logs and ensure its running correctly.
-func (dc *DatabaseContainer) EnsureNodeReadiness(t *testing.T, requiredOutput string) error {
+func (dc *DatabaseContainer) EnsureNodeReadiness(t *testing.T, requiredOutput string) {
 	t.Helper()
-	var err error
-	if ok := assert.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		output := dc.GetContainerLogs(t)
-		if !strings.Contains(output, requiredOutput) {
-			err = errors.Newf("Node %s readiness check failed", dc.Name)
-			return false
-		}
-		return true
-	}, 45*time.Second, 250*time.Millisecond); !ok {
-		dc.StopContainer(t)
-		return err
-	}
-	return nil
+		require.Contains(ct, output, requiredOutput)
+	}, 45*time.Second, 250*time.Millisecond)
 }
 
 // CreateDockerNetwork creates a network if it doesn't exist.

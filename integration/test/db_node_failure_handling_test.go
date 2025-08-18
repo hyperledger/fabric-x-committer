@@ -27,7 +27,7 @@ func TestDBResiliencyYugabyteTabletNodeCrash(t *testing.T) {
 	c := registerAndCreateRuntime(t, clusterConnection)
 
 	waitForCommittedTxs(t, c, 10_000)
-	clusterController.StopAndRemoveNodeWithRole(t, runner.TabletNode)
+	clusterController.StopAndRemoveSingleNodeWithRole(t, runner.TabletNode)
 	waitForCommittedTxs(t, c, 15_000)
 }
 
@@ -39,7 +39,7 @@ func TestDBResiliencyYugabyteMasterNodeCrash(t *testing.T) {
 	c := registerAndCreateRuntime(t, clusterConnection)
 
 	waitForCommittedTxs(t, c, 10_000)
-	clusterController.RemoveNotLeaderMasterNode(t)
+	clusterController.RemoveNonLeaderMasterNode(t)
 	waitForCommittedTxs(t, c, 15_000)
 }
 
@@ -63,8 +63,8 @@ func TestDBResiliencyYugabyteMasterAndTabletNodeCrash(t *testing.T) {
 	c := registerAndCreateRuntime(t, clusterConnection)
 
 	waitForCommittedTxs(t, c, 10_000)
-	clusterController.RemoveNotLeaderMasterNode(t)
-	clusterController.StopAndRemoveNodeWithRole(t, runner.TabletNode)
+	clusterController.RemoveNonLeaderMasterNode(t)
+	clusterController.StopAndRemoveSingleNodeWithRole(t, runner.TabletNode)
 	waitForCommittedTxs(t, c, 15_000)
 }
 
@@ -77,7 +77,7 @@ func TestDBResiliencyYugabyteLeaderMasterAndTabletNodeCrash(t *testing.T) {
 
 	waitForCommittedTxs(t, c, 10_000)
 	clusterController.RemoveLeaderMasterNode(t)
-	clusterController.StopAndRemoveNodeWithRole(t, runner.TabletNode)
+	clusterController.StopAndRemoveSingleNodeWithRole(t, runner.TabletNode)
 	waitForCommittedTxs(t, c, 15_000)
 }
 
@@ -89,8 +89,8 @@ func TestDBResiliencyPrimaryPostgresNodeCrash(t *testing.T) {
 	c := registerAndCreateRuntime(t, clusterConnection)
 
 	waitForCommittedTxs(t, c, 10_000)
-	clusterController.StopAndRemoveNodeWithRole(t, runner.MasterNode)
-	clusterController.PromoteFollowerNode(t)
+	clusterController.StopAndRemoveSingleNodeWithRole(t, runner.PrimaryNode)
+	clusterController.PromoteSecondaryNode(t)
 	waitForCommittedTxs(t, c, 15_000)
 }
 
@@ -102,7 +102,7 @@ func TestDBResiliencySecondaryPostgresNodeCrash(t *testing.T) {
 	c := registerAndCreateRuntime(t, clusterConnection)
 
 	waitForCommittedTxs(t, c, 10_000)
-	clusterController.StopAndRemoveNodeWithRole(t, runner.FollowerNode)
+	clusterController.StopAndRemoveSingleNodeWithRole(t, runner.SecondaryNode)
 	waitForCommittedTxs(t, c, 15_000)
 }
 
