@@ -33,7 +33,7 @@ func TestDBResiliencyYugabyteClusterController(t *testing.T) {
 	dbtest.ConnectAndQueryTest(t, conn)
 	require.Equal(t, 6, cc.GetClusterSize())
 
-	cc.StopAndRemoveNodeWithRole(t, TabletNode)
+	cc.StopAndRemoveSingleNodeWithRole(t, TabletNode)
 	require.Equal(t, 5, cc.GetClusterSize())
 }
 
@@ -53,7 +53,7 @@ func TestDBResiliencyPostgresClusterController(t *testing.T) {
 	dbtest.ConnectAndQueryTest(t, conn)
 	require.Equal(t, 2, cc.GetClusterSize())
 
-	cc.StopAndRemoveNodeWithRole(t, FollowerNode)
+	cc.StopAndRemoveSingleNodeWithRole(t, SecondaryNode)
 	require.Equal(t, 1, cc.GetClusterSize())
 }
 

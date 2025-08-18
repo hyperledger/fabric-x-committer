@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package runner
 
 import (
+	"iter"
 	"testing"
 	"time"
 
@@ -22,14 +23,7 @@ type DBClusterController struct {
 	nodes []*dbtest.DatabaseContainer
 }
 
-const (
-	//nolint:revive // MasterNode, FollowerNode and TabletNode represent db nodes role.
-	MasterNode   = "master"
-	TabletNode   = "tablet"
-	FollowerNode = "follower"
-
-	linuxOS = "linux"
-)
+const linuxOS = "linux"
 
 var nodeStartupRetry = &connection.RetryProfile{
 	// MaxElapsedTime is the duration allocated for the retry mechanism during the database initialization process.
@@ -38,15 +32,26 @@ var nodeStartupRetry = &connection.RetryProfile{
 	InitialInterval: 1 * time.Second,
 }
 
-// StopAndRemoveNodeWithRole stops and removes a node given a role.
-func (cc *DBClusterController) StopAndRemoveNodeWithRole(t *testing.T, role string) {
+// StopAndRemoveSingleNodeWithRole stops and removes a node given a role.
+func (cc *DBClusterController) StopAndRemoveSingleNodeWithRole(t *testing.T, role string) {
 	t.Helper()
 	require.NotEmpty(t, cc.nodes, "trying to remove nodes of an empty cluster.")
-	for idx, node := range cc.nodes {
-		if node.Role == role {
-			node.StopAndRemoveContainer(t)
-			cc.nodes = append(cc.nodes[:idx], cc.nodes[idx+1:]...)
-			return
+	for idx, node := range cc.IterNodesByRole(role) {
+		node.StopAndRemoveContainer(t)
+		cc.nodes = append(cc.nodes[:idx], cc.nodes[idx+1:]...)
+		return
+	}
+}
+
+// IterNodesByRole stops and removes a node given a role.
+func (cc *DBClusterController) IterNodesByRole(role string) iter.Seq2[int, *dbtest.DatabaseContainer] {
+	return func(yield func(int, *dbtest.DatabaseContainer) bool) {
+		for idx, node := range cc.nodes {
+			if node.Role == role {
+				if !yield(idx, node) {
+					return
+				}
+			}
 		}
 	}
 }

@@ -28,6 +28,10 @@ const (
 	postgresImage             = "bitnami/postgresql"
 	defaultPostgresDBName     = "postgres"
 	defaultBitnamiPostgresTag = "latest"
+
+	//nolint:revive // PrimaryNode and SecondaryNode represents postgres db nodes role.
+	PrimaryNode   = "primary"
+	SecondaryNode = "secondary"
 )
 
 var postgresSecondaryPromotionCommand = []string{
@@ -46,9 +50,8 @@ type (
 		DBClusterController
 	}
 
-	postgresNodeCreationBundle struct {
+	postgresNodeCreationParameters struct {
 		name           string
-		requiredOutput string
 		role           string
 		additionalEnvs []string
 	}
@@ -83,45 +86,38 @@ func StartPostgresCluster(ctx context.Context, t *testing.T) (*PostgresClusterCo
 
 func (cc *PostgresClusterController) addPrimaryNode(ctx context.Context, t *testing.T) *dbtest.DatabaseContainer {
 	t.Helper()
-	return cc.createAndStartNode(
-		ctx, t,
-		postgresNodeCreationBundle{
-			name:           fmt.Sprintf("postgres-primary-%s", uuid.New()),
-			requiredOutput: "database system is ready to accept connections",
-			role:           MasterNode,
-			additionalEnvs: []string{
-				"POSTGRESQL_REPLICATION_MODE=master",
-				"POSTGRESQL_USERNAME=yugabyte",
-				"POSTGRESQL_PASSWORD=yugabyte",
-			},
+	node := cc.createNode(postgresNodeCreationParameters{
+		name: fmt.Sprintf("postgres-primary-%s", uuid.New()),
+		role: PrimaryNode,
+		additionalEnvs: []string{
+			"POSTGRESQL_REPLICATION_MODE=master",
+			"POSTGRESQL_USERNAME=yugabyte",
+			"POSTGRESQL_PASSWORD=yugabyte",
 		},
-	)
+	})
+	node.StartContainer(ctx, t)
+	node.EnsureNodeReadiness(t, "database system is ready to accept connections")
+	return node
 }
 
 func (cc *PostgresClusterController) addSecondaryNode(ctx context.Context, t *testing.T) *dbtest.DatabaseContainer {
 	t.Helper()
 	// the cluster has to contain a primary node.
 	require.NotEmpty(t, cc.nodes)
-	return cc.createAndStartNode(
-		ctx, t,
-		postgresNodeCreationBundle{
-			name:           fmt.Sprintf("postgres-secondary-%s", uuid.New()),
-			requiredOutput: "started streaming WAL from primary",
-			role:           FollowerNode,
-			additionalEnvs: []string{
-				"POSTGRESQL_REPLICATION_MODE=slave",
-				fmt.Sprintf("POSTGRESQL_MASTER_HOST=%s", cc.getLeaderHost(ctx, t)),
-			},
+	node := cc.createNode(postgresNodeCreationParameters{
+		name: fmt.Sprintf("postgres-secondary-%s", uuid.New()),
+		role: SecondaryNode,
+		additionalEnvs: []string{
+			"POSTGRESQL_REPLICATION_MODE=slave",
+			fmt.Sprintf("POSTGRESQL_MASTER_HOST=%s", cc.getLeaderHost(ctx, t)),
 		},
-	)
+	})
+	node.StartContainer(ctx, t)
+	node.EnsureNodeReadiness(t, "started streaming WAL from primary")
+	return node
 }
 
-func (cc *PostgresClusterController) createAndStartNode(
-	ctx context.Context,
-	t *testing.T,
-	nodeCreationOpts postgresNodeCreationBundle,
-) *dbtest.DatabaseContainer {
-	t.Helper()
+func (cc *PostgresClusterController) createNode(nodeCreationOpts postgresNodeCreationParameters) *dbtest.DatabaseContainer {
 	node := &dbtest.DatabaseContainer{
 		Name:         nodeCreationOpts.name,
 		Role:         nodeCreationOpts.role,
@@ -134,22 +130,14 @@ func (cc *PostgresClusterController) createAndStartNode(
 			"ALLOW_EMPTY_PASSWORD=yes",
 		}, nodeCreationOpts.additionalEnvs...),
 	}
-
 	cc.nodes = append(cc.nodes, node)
-	node.StartContainer(ctx, t)
-
-	require.NoError(t, nodeStartupRetry.Execute(ctx, func() error {
-		t.Logf("starting db node %v with role: %v", node.Name, node.Role)
-		node.StartContainer(ctx, t)
-		return node.EnsureNodeReadiness(t, nodeCreationOpts.requiredOutput)
-	}))
 
 	return node
 }
 
 func (cc *PostgresClusterController) getNodesConnections(ctx context.Context, t *testing.T) *dbtest.Connection {
 	t.Helper()
-	endpoints := make([]*connection.Endpoint, cc.GetClusterSize())
+	endpoints := make([]*connection.Endpoint, len(cc.nodes))
 	for i, node := range cc.nodes {
 		endpoints[i] = node.GetContainerConnectionDetails(ctx, t)
 	}
@@ -163,7 +151,7 @@ func (cc *PostgresClusterController) getLeaderHost(ctx context.Context, t *testi
 	require.NotEmpty(t, cc.nodes, "no nodes available in cluster")
 
 	for _, node := range cc.nodes {
-		if node.Role == MasterNode {
+		if node.Role == PrimaryNode {
 			return node.GetContainerConnectionDetails(ctx, t).GetHost()
 		}
 	}
@@ -172,13 +160,13 @@ func (cc *PostgresClusterController) getLeaderHost(ctx context.Context, t *testi
 	return "" // unreachable, but required for compiler
 }
 
-// PromoteFollowerNode runs a script that promotes the first follower db node
+// PromoteSecondaryNode runs a script that promotes the first follower db node
 // it finds, from read-only to read-write node.
-func (cc *PostgresClusterController) PromoteFollowerNode(t *testing.T) {
+func (cc *PostgresClusterController) PromoteSecondaryNode(t *testing.T) {
 	t.Helper()
 	require.NotEmpty(t, cc.nodes)
 	for _, node := range cc.nodes {
-		if node.Role == FollowerNode {
+		if node.Role == SecondaryNode {
 			node.ExecuteCommand(t, postgresSecondaryPromotionCommand)
 		}
 	}
