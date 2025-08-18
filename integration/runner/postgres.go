@@ -117,7 +117,9 @@ func (cc *PostgresClusterController) addSecondaryNode(ctx context.Context, t *te
 	return node
 }
 
-func (cc *PostgresClusterController) createNode(nodeCreationOpts postgresNodeCreationParameters) *dbtest.DatabaseContainer {
+func (cc *PostgresClusterController) createNode(
+	nodeCreationOpts postgresNodeCreationParameters,
+) *dbtest.DatabaseContainer {
 	node := &dbtest.DatabaseContainer{
 		Name:         nodeCreationOpts.name,
 		Role:         nodeCreationOpts.role,

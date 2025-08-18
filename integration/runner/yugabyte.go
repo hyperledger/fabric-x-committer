@@ -9,7 +9,6 @@ package runner
 import (
 	"context"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"maps"
 	"net"
 	"path"
@@ -20,6 +19,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
@@ -143,10 +143,7 @@ func (cc *YugaClusterController) getMasterAddresses() string {
 
 // RF=3 when number of tablets >=3, else RF=1.
 func (cc *YugaClusterController) desiredRF() int {
-	numberOfTablets := 0
-	for _, _ = range cc.IterNodesByRole(TabletNode) {
-		numberOfTablets++
-	}
+	numberOfTablets := len(maps.Collect(cc.IterNodesByRole(TabletNode)))
 	if numberOfTablets >= 3 {
 		return 3
 	}
@@ -183,9 +180,11 @@ func (cc *DBClusterController) getConnectionsOfGivenRole(
 	role string,
 ) *dbtest.Connection {
 	t.Helper()
-	var endpoints []*connection.Endpoint
+	endpoints := make([]*connection.Endpoint, len(maps.Collect(cc.IterNodesByRole(role))))
+	i := 0
 	for _, node := range cc.IterNodesByRole(role) {
-		endpoints = append(endpoints, node.GetContainerConnectionDetails(ctx, t))
+		endpoints[i] = node.GetContainerConnectionDetails(ctx, t)
+		i++
 	}
 	return dbtest.NewConnection(endpoints...)
 }
