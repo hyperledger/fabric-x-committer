@@ -19,66 +19,50 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 )
 
-func TestDBResiliencyYugabyteTabletNodeCrash(t *testing.T) {
-	t.Parallel()
-
-	clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3, 3)
-
-	c := registerAndCreateRuntime(t, clusterConnection)
-
-	waitForCommittedTxs(t, c, 10_000)
-	clusterController.StopAndRemoveSingleNodeWithRole(t, runner.TabletNode)
-	waitForCommittedTxs(t, c, 15_000)
+type yugabyteScenario struct {
+	name   string
+	action int
 }
 
-func TestDBResiliencyYugabyteMasterNodeCrash(t *testing.T) {
-	t.Parallel()
+const (
+	TABLET            = 1 << iota
+	NON_LEADER_MASTER //nolint:revive
+	LEADER_MASTER     //nolint:revive
+)
 
-	clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3, 3)
-
-	c := registerAndCreateRuntime(t, clusterConnection)
-
-	waitForCommittedTxs(t, c, 10_000)
-	clusterController.RemoveNonLeaderMasterNode(t)
-	waitForCommittedTxs(t, c, 15_000)
+var crashScenarios = []yugabyteScenario{
+	{
+		name:   "tablet",
+		action: TABLET,
+	},
+	{
+		name:   "non-leader-master",
+		action: NON_LEADER_MASTER,
+	},
+	{
+		name:   "leader-master",
+		action: LEADER_MASTER,
+	},
+	{
+		name:   "leader-master-and-tablet",
+		action: LEADER_MASTER | TABLET,
+	},
+	{
+		name:   "non-leader-master-and-tablet",
+		action: NON_LEADER_MASTER | TABLET,
+	},
 }
 
-func TestDBResiliencyYugabyteLeaderMasterNodeCrash(t *testing.T) {
+func TestDBResiliencyYugabyteScenarios(t *testing.T) {
 	t.Parallel()
 
-	clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3, 3)
-
-	c := registerAndCreateRuntime(t, clusterConnection)
-
-	waitForCommittedTxs(t, c, 10_000)
-	clusterController.RemoveLeaderMasterNode(t)
-	waitForCommittedTxs(t, c, 15_000)
-}
-
-func TestDBResiliencyYugabyteMasterAndTabletNodeCrash(t *testing.T) {
-	t.Parallel()
-
-	clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3, 3)
-
-	c := registerAndCreateRuntime(t, clusterConnection)
-
-	waitForCommittedTxs(t, c, 10_000)
-	clusterController.RemoveNonLeaderMasterNode(t)
-	clusterController.StopAndRemoveSingleNodeWithRole(t, runner.TabletNode)
-	waitForCommittedTxs(t, c, 15_000)
-}
-
-func TestDBResiliencyYugabyteLeaderMasterAndTabletNodeCrash(t *testing.T) {
-	t.Parallel()
-
-	clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3, 3)
-
-	c := registerAndCreateRuntime(t, clusterConnection)
-
-	waitForCommittedTxs(t, c, 10_000)
-	clusterController.RemoveLeaderMasterNode(t)
-	clusterController.StopAndRemoveSingleNodeWithRole(t, runner.TabletNode)
-	waitForCommittedTxs(t, c, 15_000)
+	for _, sc := range crashScenarios {
+		scenario := sc
+		t.Run(scenario.name, func(t *testing.T) {
+			t.Parallel()
+			runYBScenario(t, scenario.action)
+		})
+	}
 }
 
 func TestDBResiliencyPrimaryPostgresNodeCrash(t *testing.T) {
@@ -142,4 +126,31 @@ func createInitContext(t *testing.T) context.Context {
 	t.Cleanup(cancel)
 
 	return ctx
+}
+
+func executeAction(t *testing.T, action int, cc *runner.YugaClusterController) {
+	t.Helper()
+
+	if action&TABLET != 0 {
+		cc.StopAndRemoveSingleNodeWithRole(t, runner.TabletNode)
+	}
+
+	if action&LEADER_MASTER != 0 {
+		cc.RemoveLeaderMasterNode(t)
+	}
+
+	if action&NON_LEADER_MASTER != 0 {
+		cc.RemoveNonLeaderMasterNode(t)
+	}
+}
+
+func runYBScenario(t *testing.T, action int) {
+	t.Helper()
+
+	clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3, 3)
+	c := registerAndCreateRuntime(t, clusterConnection)
+
+	waitForCommittedTxs(t, c, 10_000)
+	executeAction(t, action, clusterController)
+	waitForCommittedTxs(t, c, 15_000)
 }
