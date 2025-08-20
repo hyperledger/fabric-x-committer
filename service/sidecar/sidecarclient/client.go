@@ -48,7 +48,7 @@ type (
 func New(config *Config) (*Client, error) {
 	cm := &broadcastdeliver.OrdererConnectionManager{}
 	connConfig := &broadcastdeliver.ConnectionConfig{
-		Endpoints: connection.ToOrdererEndpoints(config.Client.Endpoints...),
+		Endpoints: []*connection.OrdererEndpoint{{Endpoint: *config.Client.Endpoint}},
 		Retry:     config.Client.Retry,
 		TLS:       config.Client.TLS,
 	}

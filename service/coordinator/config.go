@@ -14,12 +14,13 @@ import (
 type (
 	// Config is the configuration for coordinator service. It contains configurations for all managers.
 	Config struct {
-		Server                        *connection.ServerConfig `mapstructure:"server"`
-		Verifier                      connection.ClientConfig  `mapstructure:"verifier"`
-		ValidatorCommitter            connection.ClientConfig  `mapstructure:"validator-committer"`
-		DependencyGraph               *DependencyGraphConfig   `mapstructure:"dependency-graph"`
-		Monitoring                    monitoring.Config        `mapstructure:"monitoring"`
-		ChannelBufferSizePerGoroutine int                      `mapstructure:"per-channel-buffer-size-per-goroutine"`
+		Server             *connection.ServerConfig     `mapstructure:"server"`
+		Verifier           connection.MultiClientConfig `mapstructure:"verifier"`
+		ValidatorCommitter connection.MultiClientConfig `mapstructure:"validator-committer"`
+		DependencyGraph    *DependencyGraphConfig       `mapstructure:"dependency-graph"`
+		Monitoring         monitoring.Config            `mapstructure:"monitoring"`
+		// ChannelBufferSizePerGoroutine defines the buffer size per go-routine.
+		ChannelBufferSizePerGoroutine int `mapstructure:"per-channel-buffer-size-per-goroutine"`
 	}
 
 	// DependencyGraphConfig is the configuration for dependency graph manager. It contains resource limits.

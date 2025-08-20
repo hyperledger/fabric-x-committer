@@ -23,12 +23,12 @@ type (
 	// VcAdapter applies load on the VC.
 	VcAdapter struct {
 		commonAdapter
-		config *VCClientConfig
+		config *connection.MultiClientConfig
 	}
 )
 
 // NewVCAdapter instantiate VcAdapter.
-func NewVCAdapter(config *VCClientConfig, res *ClientResources) *VcAdapter {
+func NewVCAdapter(config *connection.MultiClientConfig, res *ClientResources) *VcAdapter {
 	return &VcAdapter{
 		commonAdapter: commonAdapter{res: res},
 		config:        config,
@@ -37,7 +37,7 @@ func NewVCAdapter(config *VCClientConfig, res *ClientResources) *VcAdapter {
 
 // RunWorkload applies load on the VC.
 func (c *VcAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWithSetup) error {
-	commonDial, dialErr := connection.NewLoadBalancedDialConfig(c.config.Client)
+	commonDial, dialErr := connection.NewLoadBalancedDialConfig(*c.config)
 	if dialErr != nil {
 		return errors.Wrapf(dialErr, "could not create dial config for vcs")
 	}
@@ -58,7 +58,7 @@ func (c *VcAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	} else {
 		c.nextBlockNum.Store(0)
 	}
-	connections, connErr := connection.OpenConnections(c.config.Client)
+	connections, connErr := connection.OpenConnections(*c.config)
 	if connErr != nil {
 		return errors.Wrap(connErr, "failed opening connection to vc-service")
 	}

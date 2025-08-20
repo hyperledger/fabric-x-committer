@@ -57,7 +57,7 @@ type (
 	}
 
 	validatorCommitterManagerConfig struct {
-		clientConfig                   *connection.ClientConfig
+		clientConfig                   *connection.MultiClientConfig
 		incomingTxsForValidationCommit <-chan dependencygraph.TxNodeBatch
 		outgoingValidatedTxsNode       chan<- dependencygraph.TxNodeBatch
 		outgoingTxsStatus              chan<- *protoblocktx.TransactionsStatus

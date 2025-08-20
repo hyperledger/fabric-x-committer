@@ -25,12 +25,12 @@ type (
 	// SvAdapter applies load on the SV.
 	SvAdapter struct {
 		commonAdapter
-		config *VerifierClientConfig
+		config *connection.MultiClientConfig
 	}
 )
 
 // NewSVAdapter instantiate SvAdapter.
-func NewSVAdapter(config *VerifierClientConfig, res *ClientResources) *SvAdapter {
+func NewSVAdapter(config *connection.MultiClientConfig, res *ClientResources) *SvAdapter {
 	return &SvAdapter{
 		commonAdapter: commonAdapter{res: res},
 		config:        config,
@@ -43,7 +43,7 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	if err != nil {
 		return errors.Wrap(err, "failed creating verification policy")
 	}
-	connections, err := connection.OpenConnections(c.config.Client)
+	connections, err := connection.OpenConnections(*c.config)
 	if err != nil {
 		return errors.Wrap(err, "failed opening connections")
 	}
@@ -55,11 +55,11 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	streams := make([]protosigverifierservice.Verifier_StartStreamClient, len(connections))
 	for i, conn := range connections {
 		client := protosigverifierservice.NewVerifierClient(conn)
-		logger.Infof("Opening stream to %s", c.config.Client.Endpoints[i])
+		logger.Infof("Opening stream to %s", c.config.Endpoints[i])
 
 		streams[i], err = client.StartStream(gCtx)
 		if err != nil {
-			return errors.Wrapf(err, "failed opening a stream to %s", c.config.Client.Endpoints[i])
+			return errors.Wrapf(err, "failed opening a stream to %s", c.config.Endpoints[i])
 		}
 
 		logger.Infof("Set verification verification policy")

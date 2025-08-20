@@ -14,12 +14,12 @@ import (
 type (
 	// AdapterConfig contains all adapters configurations.
 	AdapterConfig struct {
-		OrdererClient     *OrdererClientConfig     `mapstructure:"orderer-client"`
-		SidecarClient     *SidecarClientConfig     `mapstructure:"sidecar-client"`
-		CoordinatorClient *CoordinatorClientConfig `mapstructure:"coordinator-client"`
-		VCClient          *VCClientConfig          `mapstructure:"vc-client"`
-		VerifierClient    *VerifierClientConfig    `mapstructure:"verifier-client"`
-		LoadGenClient     *LoadGenClientConfig     `mapstructure:"loadgen-client"`
+		OrdererClient     *OrdererClientConfig          `mapstructure:"orderer-client"`
+		SidecarClient     *SidecarClientConfig          `mapstructure:"sidecar-client"`
+		CoordinatorClient *connection.ClientConfig      `mapstructure:"coordinator-client"`
+		VCClient          *connection.MultiClientConfig `mapstructure:"vc-client"`
+		VerifierClient    *connection.MultiClientConfig `mapstructure:"verifier-client"`
+		LoadGenClient     *connection.ClientConfig      `mapstructure:"loadgen-client"`
 	}
 
 	// OrdererClientConfig is a struct that contains the configuration for the orderer client.
@@ -36,25 +36,5 @@ type (
 		ChannelID      string                     `mapstructure:"channel-id"`
 		Client         *connection.ClientConfig   `mapstructure:"client"`
 		OrdererServers []*connection.ServerConfig `mapstructure:"orderer-servers"`
-	}
-
-	// CoordinatorClientConfig is a struct that contains the configuration for the coordinator client.
-	CoordinatorClientConfig struct {
-		Client connection.ClientConfig `mapstructure:",squash" yaml:",inline"`
-	}
-
-	// VCClientConfig is a struct that contains the configuration for the VC client.
-	VCClientConfig struct {
-		Client connection.ClientConfig `mapstructure:",squash" yaml:",inline"`
-	}
-
-	// VerifierClientConfig is a struct that contains the configuration for the verifier client.
-	VerifierClientConfig struct {
-		Client connection.ClientConfig `mapstructure:",squash" yaml:",inline"`
-	}
-
-	// LoadGenClientConfig is a struct that contains the configuration for the load generator client.
-	LoadGenClientConfig struct {
-		Endpoint *connection.Endpoint `mapstructure:"endpoint"`
 	}
 )

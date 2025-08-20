@@ -60,7 +60,7 @@ var knownConnectionIssues = regexp.MustCompile(`(?i)EOF|connection\s+refused|clo
 
 // NewLoadBalancedDialConfig creates a dial config with load balancing between the endpoints
 // in the given config.
-func NewLoadBalancedDialConfig(config ClientConfig) (*DialConfig, error) {
+func NewLoadBalancedDialConfig(config MultiClientConfig) (*DialConfig, error) {
 	resolverEndpoints := make([]resolver.Endpoint, len(config.Endpoints))
 	for i, e := range config.Endpoints {
 		// we're setting ServerName for each address because each service-instance has its own certificates.
@@ -81,7 +81,7 @@ func NewLoadBalancedDialConfig(config ClientConfig) (*DialConfig, error) {
 }
 
 // NewDialConfigPerEndpoint creates a list of dial configs; one for each endpoint in the given config.
-func NewDialConfigPerEndpoint(config *ClientConfig) ([]*DialConfig, error) {
+func NewDialConfigPerEndpoint(config *MultiClientConfig) ([]*DialConfig, error) {
 	tlsCreds, err := config.TLS.ClientCredentials()
 	if err != nil {
 		return nil, err
@@ -91,6 +91,15 @@ func NewDialConfigPerEndpoint(config *ClientConfig) ([]*DialConfig, error) {
 		ret[i] = NewDialConfig(e.Address(), tlsCreds, config.Retry)
 	}
 	return ret, nil
+}
+
+// NewSingleDialConfig creates a single dial config given a client config.
+func NewSingleDialConfig(config *ClientConfig) (*DialConfig, error) {
+	tlsCreds, err := config.TLS.ClientCredentials()
+	if err != nil {
+		return nil, err
+	}
+	return NewDialConfig(config.Endpoint.Address(), tlsCreds, config.Retry), nil
 }
 
 // NewDialConfig creates a dial config with the default values.
@@ -168,7 +177,7 @@ func Connect(config *DialConfig) (*grpc.ClientConn, error) {
 }
 
 // OpenConnections opens connections with multiple remotes.
-func OpenConnections(config ClientConfig) ([]*grpc.ClientConn, error) {
+func OpenConnections(config MultiClientConfig) ([]*grpc.ClientConn, error) {
 	logger.Infof("Opening connections to %d endpoints: %v.\n", len(config.Endpoints), config.Endpoints)
 	dialConfigs, err := NewDialConfigPerEndpoint(&config)
 	if err != nil {

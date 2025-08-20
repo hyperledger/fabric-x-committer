@@ -21,8 +21,6 @@ verifier:
     {{- range .Endpoints.Verifier }}
     - {{ .Server }}
     {{- end }}
-  reconnect:
-    lb-policy: round_robin
   tls: &ClientCreds
     mode: {{ .ClientTLS.Mode }}
     key-path: {{ .ClientTLS.KeyPath }}
@@ -36,8 +34,6 @@ validator-committer:
    {{- range .Endpoints.VCService }}
     - {{ .Server }}
    {{- end }}
-  reconnect:
-    lb-policy: round_robin
   tls: *ClientCreds
 
 dependency-graph:

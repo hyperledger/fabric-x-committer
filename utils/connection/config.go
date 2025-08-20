@@ -19,11 +19,18 @@ import (
 )
 
 type (
-	// ClientConfig contains the endpoints, CAs, and retry profile.
+	// MultiClientConfig contains the endpoints, CAs, and retry profile.
+	MultiClientConfig struct {
+		Endpoints []*Endpoint   `mapstructure:"endpoints" yaml:"endpoints"`
+		TLS       *TLSConfig    `mapstructure:"tls"       yaml:"tls"`
+		Retry     *RetryProfile `mapstructure:"reconnect" yaml:"reconnect"`
+	}
+
+	// ClientConfig contains a single endpoint, CAs, and retry profile.
 	ClientConfig struct {
-		Endpoints []*Endpoint   `mapstructure:"endpoints"`
-		TLS       *TLSConfig    `mapstructure:"tls"`
-		Retry     *RetryProfile `mapstructure:"reconnect"`
+		Endpoint *Endpoint     `mapstructure:"endpoint"  yaml:"endpoint"`
+		TLS      *TLSConfig    `mapstructure:"tls"       yaml:"tls"`
+		Retry    *RetryProfile `mapstructure:"reconnect" yaml:"reconnect"`
 	}
 
 	// ServerConfig describes the connection parameter for a server.

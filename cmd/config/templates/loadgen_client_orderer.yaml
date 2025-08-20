@@ -7,10 +7,7 @@
 
 orderer-client:
   sidecar-client:
-    endpoints:
-      - {{ .Endpoints.Sidecar.Server }}
-    reconnect:
-      lb-policy: pick_first
+    endpoint: {{ .Endpoints.Sidecar.Server }}
     tls:
       mode: {{ .ClientTLS.Mode }}
       cert-path: {{ .ClientTLS.CertPath }}
@@ -25,8 +22,6 @@ orderer-client:
         {{- range .Endpoints.Orderer }}
         - {{ .Server }}
         {{- end }}
-    reconnect:
-      lb-policy: round_robin
     consensus-type: BFT
     channel-id: {{ .ChannelID }}
   broadcast-parallelism: 5

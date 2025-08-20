@@ -7,10 +7,7 @@
 
 sidecar-client:
   client:
-    endpoints:
-      - {{ .Endpoints.Sidecar.Server }}
-    reconnect:
-      lb-policy: pick_first
+    endpoint: {{ .Endpoints.Sidecar.Server }}
     tls:
       mode: {{ .ClientTLS.Mode }}
       cert-path: {{ .ClientTLS.CertPath }}

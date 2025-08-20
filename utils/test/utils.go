@@ -49,23 +49,13 @@ func FailHandler(t *testing.T) {
 // defaultGrpcRetryProfile defines the retry policy for a gRPC client connection.
 var defaultGrpcRetryProfile connection.RetryProfile
 
-// ServerToClientConfigWithLBPolicy is used to create client configuration from existing server(s)
-// given a load balancing policy.
-func ServerToClientConfigWithLBPolicy(lbPolicy string, servers ...*connection.ServerConfig) *connection.ClientConfig {
-	clientConfig := ServerToClientConfig(servers...)
-	clientConfig.Retry = &connection.RetryProfile{
-		LBPolicy: lbPolicy,
-	}
-	return clientConfig
-}
-
 // ServerToClientConfig is used to create client configuration from existing server(s).
-func ServerToClientConfig(servers ...*connection.ServerConfig) *connection.ClientConfig {
+func ServerToClientConfig(servers ...*connection.ServerConfig) *connection.MultiClientConfig {
 	endpoints := make([]*connection.Endpoint, len(servers))
 	for i, server := range servers {
 		endpoints[i] = &server.Endpoint
 	}
-	return &connection.ClientConfig{
+	return &connection.MultiClientConfig{
 		Endpoints: endpoints,
 	}
 }
@@ -299,7 +289,7 @@ func NewInsecureDialConfig(endpoint connection.WithAddress) *connection.DialConf
 // NewInsecureLoadBalancedDialConfig creates the default dial config with insecure credentials.
 func NewInsecureLoadBalancedDialConfig(t *testing.T, endpoints []*connection.Endpoint) *connection.DialConfig {
 	t.Helper()
-	dialConfig, err := connection.NewLoadBalancedDialConfig(connection.ClientConfig{
+	dialConfig, err := connection.NewLoadBalancedDialConfig(connection.MultiClientConfig{
 		Endpoints: endpoints,
 		Retry:     &defaultGrpcRetryProfile,
 	})
@@ -307,30 +297,31 @@ func NewInsecureLoadBalancedDialConfig(t *testing.T, endpoints []*connection.End
 	return dialConfig
 }
 
-// NewInsecureLoadBalancedDialConfigWithRoundRobin creates the default dial config with insecure credentials.
-func NewInsecureLoadBalancedDialConfigWithRoundRobin(
-	t *testing.T,
-	endpoints []*connection.Endpoint,
-) *connection.DialConfig {
-	t.Helper()
-	retryProfile := defaultGrpcRetryProfile
-	retryProfile.LBPolicy = connection.LBPolicyRoundRobin
-	clientConfig := MakeInsecureClientConfig(endpoints...)
-	clientConfig.Retry = &retryProfile
-	dialConfig, err := connection.NewLoadBalancedDialConfig(*clientConfig)
-	require.NoError(t, err)
-	return dialConfig
+// MakeInsecureMultiClientConfig creates a client configuration for test purposes given number of endpoints.
+func MakeInsecureMultiClientConfig(ep ...*connection.Endpoint) *connection.MultiClientConfig {
+	return MakeTLSMultiClientConfig(nil, ep...)
 }
 
-// MakeInsecureClientConfig creates a client configuration for test purposes given host and port.
-func MakeInsecureClientConfig(ep ...*connection.Endpoint) *connection.ClientConfig {
-	return MakeTLSClientConfig(nil, ep...)
+// MakeInsecureClientConfig creates a client configuration for test purposes given an endpoint.
+func MakeInsecureClientConfig(ep *connection.Endpoint) *connection.ClientConfig {
+	return MakeTLSClientConfig(nil, ep)
 }
 
-// MakeTLSClientConfig creates a client configuration for test purposes given host, port, and creds.
-func MakeTLSClientConfig(tlsConfig *connection.TLSConfig, ep ...*connection.Endpoint) *connection.ClientConfig {
-	return &connection.ClientConfig{
+// MakeTLSMultiClientConfig creates a client configuration for test purposes given one or more endpoints, and creds.
+func MakeTLSMultiClientConfig(
+	tlsConfig *connection.TLSConfig,
+	ep ...*connection.Endpoint,
+) *connection.MultiClientConfig {
+	return &connection.MultiClientConfig{
 		Endpoints: ep,
 		TLS:       tlsConfig,
+	}
+}
+
+// MakeTLSClientConfig creates a client configuration for test purposes given a single endpoint and creds.
+func MakeTLSClientConfig(tlsConfig *connection.TLSConfig, ep *connection.Endpoint) *connection.ClientConfig {
+	return &connection.ClientConfig{
+		Endpoint: ep,
+		TLS:      tlsConfig,
 	}
 }

@@ -131,7 +131,7 @@ func TestGrpcRetryJSON(t *testing.T) {
 	t.Parallel()
 	templateExpectedJSON := `
 	{
-	  "loadBalancingConfig": [{"pick_first": {}}],
+	  "loadBalancingConfig": [{"round_robin": {}}],
 	  "methodConfig": [{
 		"name": [{}],
 		"retryPolicy": {

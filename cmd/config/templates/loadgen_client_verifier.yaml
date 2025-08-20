@@ -10,8 +10,6 @@ verifier-client:
     {{- range .Endpoints.Verifier }}
     - {{ .Server }}
     {{- end }}
-  reconnect:
-    lb-policy: pick_first
   tls:
     mode: {{ .ClientTLS.Mode }}
     cert-path: {{ .ClientTLS.CertPath }}

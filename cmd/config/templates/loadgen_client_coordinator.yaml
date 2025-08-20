@@ -6,10 +6,7 @@
 # It should be complimented by the common load generator configuration.
 
 coordinator-client:
-  endpoints:
-    - {{ .Endpoints.Coordinator.Server }}
-  reconnect:
-    lb-policy: pick_first
+  endpoint: {{ .Endpoints.Coordinator.Server }}
   tls:
     mode: {{ .ClientTLS.Mode }}
     key-path: {{ .ClientTLS.KeyPath }}

@@ -32,10 +32,7 @@ orderer:
   channel-id: {{ .ChannelID }}
   consensus-type: BFT
 committer:
-  endpoints:
-    - {{ .Endpoints.Coordinator.Server }}
-  reconnect:
-    lb-policy: pick_first
+  endpoint: {{ .Endpoints.Coordinator.Server }}
   tls:
     mode: {{ .ClientTLS.Mode }}
     cert-path: {{ .ClientTLS.CertPath }}

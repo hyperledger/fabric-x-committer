@@ -155,9 +155,6 @@ func newSidecarTestEnvWithTLS(
 			ChannelID: ordererEnv.TestConfig.ChanID,
 			Connection: broadcastdeliver.ConnectionConfig{
 				Endpoints: initOrdererEndpoints,
-				Retry: &connection.RetryProfile{
-					LBPolicy: connection.LBPolicyRoundRobin,
-				},
 			},
 		},
 		Committer: test.MakeInsecureClientConfig(&coordinatorServer.Configs[0].Endpoint),
@@ -561,7 +558,7 @@ func TestSidecarVerifyBadTxForm(t *testing.T) {
 
 func (env *sidecarTestEnv) getCoordinatorLabel(t *testing.T) string {
 	t.Helper()
-	dialConfig, err := connection.NewLoadBalancedDialConfig(*env.config.Committer)
+	dialConfig, err := connection.NewSingleDialConfig(env.config.Committer)
 	require.NoError(t, err)
 	conn, err := connection.Connect(dialConfig)
 	require.NoError(t, err)
