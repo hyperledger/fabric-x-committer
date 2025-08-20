@@ -43,7 +43,7 @@ func (cc *DBClusterController) StopAndRemoveSingleNodeWithRole(t *testing.T, rol
 	}
 }
 
-// IterNodesByRole stops and removes a node given a role.
+// IterNodesByRole returns an iterator over the cluster's nodes that match the given role.
 func (cc *DBClusterController) IterNodesByRole(role string) iter.Seq2[int, *dbtest.DatabaseContainer] {
 	return func(yield func(int, *dbtest.DatabaseContainer) bool) {
 		for idx, node := range cc.nodes {
