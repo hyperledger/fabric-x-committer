@@ -128,6 +128,17 @@ func createInitContext(t *testing.T) context.Context {
 	return ctx
 }
 
+func runYBScenario(t *testing.T, action int) {
+	t.Helper()
+
+	clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3, 3)
+	c := registerAndCreateRuntime(t, clusterConnection)
+
+	waitForCommittedTxs(t, c, 10_000)
+	executeAction(t, action, clusterController)
+	waitForCommittedTxs(t, c, 15_000)
+}
+
 func executeAction(t *testing.T, action int, cc *runner.YugaClusterController) {
 	t.Helper()
 
@@ -142,15 +153,4 @@ func executeAction(t *testing.T, action int, cc *runner.YugaClusterController) {
 	if action&NON_LEADER_MASTER != 0 {
 		cc.RemoveNonLeaderMasterNode(t)
 	}
-}
-
-func runYBScenario(t *testing.T, action int) {
-	t.Helper()
-
-	clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3, 3)
-	c := registerAndCreateRuntime(t, clusterConnection)
-
-	waitForCommittedTxs(t, c, 10_000)
-	executeAction(t, action, clusterController)
-	waitForCommittedTxs(t, c, 15_000)
 }
