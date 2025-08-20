@@ -18,7 +18,7 @@ SPDX-License-Identifier: Apache-2.0
 
 ## 1. Overview
 
-The [Validator-Committer (VC) service](https://github.com/hyperledger/fabric-x-committer/tree/main/service/vc) is a core component responsible for the final stages of transaction processing.
+The [Validator-Committer (VC) service](/service/vc) is a core component responsible for the final stages of transaction processing.
 It operates downstream from the Coordinator, receiving batches of transactions that are internally conflict-free. 
 This means that these conflict-free transactions do not conflict with any other active transactions being processed concurrently.
 Its primary function is to perform optimistic concurrency control by validating each transaction's read-set against the current state in
@@ -37,7 +37,7 @@ write to the state database, ensuring consistent data access.
 
 ## 3. Configuration
 
-The VC service requires the following configuration settings, provided in a YAML [configuration file](https://github.com/hyperledger/fabric-x-committer/blob/main/cmd/config/samples/vcservice.yaml):
+The VC service requires the following configuration settings, provided in a YAML [configuration file](/cmd/config/samples/vcservice.yaml):
 
 * *Database Endpoints*: Address(es) of the state database nodes that the service will connect to.
 * *Listen Address*: The local address and port (e.g., 0.0.0.0:7056) where the VC service will host its gRPC service, enabling
@@ -125,7 +125,7 @@ Communication among these tasks is managed by a series of internal channels:
 This task consumes transaction batches from the `toPrepareTxs` channel and transforms them into a structured format optimized for validation.
 The primary goal is to organize the reads and writes from all transactions in the batch for efficient processing in the subsequent stages.
 
-**a. Dequeueing Transaction Batches:** The [preparer](https://github.com/hyperledger/fabric-x-committer/blob/main/service/vc/preparer.go) reads a batch of transactions from the `toPrepareTxs` input queue.
+**a. Dequeueing Transaction Batches:** The [preparer](/service/vc/preparer.go) reads a batch of transactions from the `toPrepareTxs` input queue.
 
 **b. Data Structuring:** It iterates through each transaction in the batch and populates a `preparedTransactions` struct. This involves:
 
@@ -197,7 +197,7 @@ is known from the read phase, the new version is calculated by simply incrementi
 This task performs the core MVCC logic. It consumes `preparedTransactions` from its input channel, checks the read-sets against the database, and 
 filters out any transactions that are invalidated by the check.
 
-**a. Dequeueing Prepared Transactions:** The [validator](https://github.com/hyperledger/fabric-x-committer/blob/main/service/vc/validator.go) reads a `preparedTransactions` object from the `preparedTxs` queue.
+**a. Dequeueing Prepared Transactions:** The [validator](/service/vc/validator.go) reads a `preparedTransactions` object from the `preparedTxs` queue.
 
 **b. Validating Reads:** For performance, instead of fetching each key's version individually, the validator invokes a stored procedure for each namespace. 
 This procedure takes the entire read-set for that namespace as input and performs the version validation within the database itself, returning only the 
@@ -229,7 +229,7 @@ type validatedTransactions struct {
 This final task consumes `validatedTransactions`, performs final write preparations, commits the valid data to the database, and
 reports the final status of all transactions back to the Coordinator.
 
-**a. Dequeueing Validated Transactions:** The [committer](https://github.com/hyperledger/fabric-x-committer/blob/main/service/vc/committer.go) reads a `validatedTransactions` object from the `validatedTxs` queue.
+**a. Dequeueing Validated Transactions:** The [committer](/service/vc/committer.go) reads a `validatedTransactions` object from the `validatedTxs` queue.
 
 **b. Resolving Blind Writes:** Before committing, the committer must resolve the "blind writes". It fetches the current versions of keys in 
 the `validTxBlindWrites` set from the database. This allows it to categorize each blind write as either an update to an existing key or 
@@ -262,7 +262,7 @@ back to the Coordinator, completing the workflow for the transaction batch.
 
 ## 6. gRPC Service API
 
-The VC service exposes a [gRPC API](https://github.com/hyperledger/fabric-x-committer/blob/main/service/vc/validator_committer_service.go) (`ValidationAndCommitServiceClient`) for the Coordinator and other system components. The methods are:
+The VC service exposes a [gRPC API](/service/vc/validator_committer_service.go) (`ValidationAndCommitServiceClient`) for the Coordinator and other system components. The methods are:
 
 ```go
 StartValidateAndCommitStream(ctx context.Context, opts ...grpc.CallOption) (ValidationAndCommitService_StartValidateAndCommitStreamClient, error)

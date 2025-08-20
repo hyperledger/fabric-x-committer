@@ -30,7 +30,7 @@ parallel processing while ensuring deterministic outcomes.
 
 ## 2. Core Responsibilities
 
-The [Coordinator](https://github.com/hyperledger/fabric-x-committer/tree/main/service/coordinator) service performs five main tasks:
+The [Coordinator](/service/coordinator) service performs five main tasks:
 
 1.  **Receive Blocks:** Ingests blocks of transactions from the Sidecar service.
 2.  **Manage Dependencies:** Utilizes a `Dependency Graph Manager` to construct and maintain a directed acyclic graph (DAG) of transaction dependencies. 
@@ -44,7 +44,7 @@ to update the graph, and relays the status for each transaction back to the Side
 
 ## 3. Configuration
 
-The Coordinator service requires the following configuration settings, provided in a standard YAML [configuration file](https://github.com/hyperledger/fabric-x-committer/blob/main/cmd/config/samples/coordinator.yaml):
+The Coordinator service requires the following configuration settings, provided in a standard YAML [configuration file](/cmd/config/samples/coordinator.yaml):
 
  - *Signature Verifier Endpoints:* Address(es) of the signature verifier service node(s).
  - *Validator-Committer Endpoints:* Address(es) of the validator-committer service node(s).
@@ -91,14 +91,14 @@ onto the `coordinatorToDepGraphTxs` channel.
 
 ### Step 2. Dependency Analysis & Parallel Validation
 
-The [`Dependency Graph Manager`](https://github.com/hyperledger/fabric-x-committer/tree/main/service/coordinator/dependencygraph)
+The [`Dependency Graph Manager`](/service/coordinator/dependencygraph)
 consumes transactions from the `coordinatorToDepGraphTxs` channel and builds a dependency graph. This process
 identifies all transactions that are "dependency-free" and can be immediately scheduled for validation. These dependency-free transaction
 nodes are sent to the `depGraphToSigVerifierFreeTxs` channel.
 
 ### Step 3. Signature Verification
 
-The [`Signature Verifier Manager`](https://github.com/hyperledger/fabric-x-committer/blob/main/service/coordinator/signature_verifier_manager.go) receives dependency-free nodes from the `depGraphToSigVerifierFreeTxs` channel and acts as a load balancer,
+The [`Signature Verifier Manager`](/service/coordinator/signature_verifier_manager.go) receives dependency-free nodes from the `depGraphToSigVerifierFreeTxs` channel and acts as a load balancer,
 distributing the transactions across a pool of available `Signature Verifiers`. The manager also keeps track of all requests sent to each 
 verifier service. If a service fails, the manager forwards any pending requests to another available service to ensure no transactions are lost.
 These services perform preliminary checks, including signature
@@ -109,7 +109,7 @@ are passed along to the next stage via the `sigVerifierToVCServiceValidatedTxs` 
 
 ### Step 4. Final Validation and Commit
 
-The [`Validator-Committer Manager`](https://github.com/hyperledger/fabric-x-committer/blob/main/service/coordinator/validator_committer_manager.go) receives verified transactions from the `sigVerifierToVCServiceValidatedTxs` channel and routes them to
+The [`Validator-Committer Manager`](/service/coordinator/validator_committer_manager.go) receives verified transactions from the `sigVerifierToVCServiceValidatedTxs` channel and routes them to
 available `Validator-Committer` services. The manager also keeps track of all requests sent to each verifier service. If a service fails, the manager
 forwards any pending requests to another available service to ensure no transactions are lost.  The `Validator-Committer` services execute their own
 three-phase pipelined process (Prepare, Validate, Commit) to perform final MVCC checks against the database and commit the results.
@@ -125,7 +125,7 @@ to the Sidecar for final aggregation and delivery to clients.
 
 ### Step 6. Post-Commit Processing
 If a committed transaction creates or updates a namespace, a post-commit process is triggered to update the system's policies. The `Validator-Committer Manager`,
-in conjunction with a [`Policy Manager`](https://github.com/hyperledger/fabric-x-committer/blob/main/service/coordinator/policy_manager.go), ensures that all `Signature Verifier` services are updated with the new endorsement policy for that namespace. 
+in conjunction with a [`Policy Manager`](/service/coordinator/policy_manager.go), ensures that all `Signature Verifier` services are updated with the new endorsement policy for that namespace. 
 This update is not performed immediately via a separate call. Instead, for efficiency, the policy update is "piggybacked" onto the next validation
 request sent to each verifier. The verifier then updates its internal policy list before processing the accompanying transactions.
 
@@ -138,11 +138,11 @@ This directed acyclic graph (DAG) ensures deterministic outcomes despite concurr
 
 An edge from a later transaction ($T_j$) to an earlier transaction ($T_i$) indicates that $T_i$ must be finalized before $T_j$ can be validated. The graph tracks three types of dependencies:
 
-1.  **Read-Write Dependency ($T_{i}\xleftarrow{rw\mbox{(}k\mbox{)}}T_{j}$):** $T_i$ writes to key `k`, and a later transaction $T_j$ reads the *previous* version of `k`.
+1.  **Read-Write Dependency ($T_{i}\xleftarrow{rw(k)}T_{j}$):** $T_i$ writes to key `k`, and a later transaction $T_j$ reads the *previous* version of `k`.
 If $T_i$ is valid, $T_j$ must be invalid because it read a stale value.
-2.  **Write-Read Dependency ($T_{i}\xleftarrow{wr\mbox{(}k\mbox{)}}T_{j}$):** $T_i$ reads key `k`, and a later transaction $T_j$ writes to `k`. This dependency is used
+2.  **Write-Read Dependency ($T_{i}\xleftarrow{wr(k)}T_{j}$):** $T_i$ reads key `k`, and a later transaction $T_j$ writes to `k`. This dependency is used
 to enforce commit order. $T_j$ cannot be committed before $T_i$ is finalized, otherwise $T_i$'s read would become stale, violating the original block order.
-3.  **Write-Write Dependency ($T_{i}\xleftarrow{ww\mbox{(}k\mbox{)}}T_{j}$):** Both $T_i$ and $T_j$ write to the same key `k`. This dependency ensures $T_j$ is not 
+3.  **Write-Write Dependency ($T_{i}\xleftarrow{ww(k)}T_{j}$):** Both $T_i$ and $T_j$ write to the same key `k`. This dependency ensures $T_j$ is not 
 committed before $T_i$, preventing $T_j$'s write from being overwritten and lost.
 
 ### B. Identifying Dependency-Free Transactions
