@@ -9,22 +9,19 @@ package sidecar
 import (
 	"testing"
 
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
-	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 )
 
 func BenchmarkMapBlock(b *testing.B) {
 	logging.SetupWithConfig(&logging.Config{Enabled: false})
 	txs := workload.GenerateTransactions(b, workload.DefaultProfile(8), b.N)
-	block := makeBlock(b, txs)
+	block := workload.MapToOrdererBlock(1, txs)
 
 	var txIDToHeight utils.SyncMap[string, types.Height]
 	b.ResetTimer()
@@ -36,41 +33,28 @@ func BenchmarkMapBlock(b *testing.B) {
 
 func TestBlockMapping(t *testing.T) {
 	t.Parallel()
-	txs := make([]*protoblocktx.Tx, len(MalformedTxTestCases)+1)
-	expectedStatus := make([]protoblocktx.Status, len(MalformedTxTestCases)+1)
+	txb := &workload.TxBuilder{ChannelID: "chan"}
+	txs, expected := MalformedTxTestCases(txb)
 	expectedBlockSize := 0
 	expectedRejected := 0
-	for i, tt := range MalformedTxTestCases {
-		txs[i] = tt.Tx
-
-		if !IsStatusStoredInDB(tt.ExpectedStatus) {
-			expectedStatus[i] = tt.ExpectedStatus
+	for i, e := range expected {
+		if !IsStatusStoredInDB(e) {
 			continue
 		}
+		expected[i] = statusNotYetValidated
 		expectedBlockSize++
-		if tt.ExpectedStatus != statusNotYetValidated {
+		if e != protoblocktx.Status_COMMITTED {
 			expectedRejected++
 		}
 	}
-	duplicatedID := "global duplicated ID"
-	txs[len(txs)-1] = &protoblocktx.Tx{
-		Id: duplicatedID,
-		Namespaces: []*protoblocktx.TxNamespace{
-			{
-				NsId:      "1",
-				NsVersion: 0,
-				ReadWrites: []*protoblocktx.ReadWrite{
-					{Key: []byte("k1")},
-				},
-			},
-		},
-		Signatures: make([][]byte, 1),
-	}
-	expectedStatus[len(txs)-1] = protoblocktx.Status_REJECTED_DUPLICATE_TX_ID
-	var txIDToHeight utils.SyncMap[string, types.Height]
-	txIDToHeight.Store(duplicatedID, types.Height{})
+	lgTX := txb.MakeTx(txs[0].Tx)
+	txs = append(txs, lgTX)
+	expected = append(expected, protoblocktx.Status_REJECTED_DUPLICATE_TX_ID)
 
-	block := makeBlock(t, txs)
+	var txIDToHeight utils.SyncMap[string, types.Height]
+	txIDToHeight.Store(lgTX.Id, types.Height{})
+
+	block := workload.MapToOrdererBlock(1, txs)
 	mappedBlock, err := mapBlock(block, &txIDToHeight)
 	require.NoError(t, err, "This can never occur unless there is a bug in the relay.")
 
@@ -79,27 +63,11 @@ func TestBlockMapping(t *testing.T) {
 	require.NotNil(t, mappedBlock.withStatus)
 
 	require.Equal(t, block, mappedBlock.withStatus.block)
-	require.Equal(t, block.Header.Number, mappedBlock.block.Number)
-	require.Equal(t, expectedStatus, mappedBlock.withStatus.txStatus)
+	require.Equal(t, block.Header.Number, mappedBlock.blockNumber)
+	require.Equal(t, expected, mappedBlock.withStatus.txStatus)
 
 	require.Equal(t, expectedBlockSize+1, txIDToHeight.Count())
 	require.Len(t, mappedBlock.block.Txs, expectedBlockSize-expectedRejected)
-	require.Len(t, mappedBlock.block.TxsNum, expectedBlockSize-expectedRejected)
 	require.Len(t, mappedBlock.block.Rejected, expectedRejected)
 	require.Equal(t, expectedBlockSize, mappedBlock.withStatus.pendingCount)
-}
-
-func makeBlock(tb testing.TB, txs []*protoblocktx.Tx) *common.Block {
-	tb.Helper()
-	data := make([][]byte, len(txs))
-	for i, tx := range txs {
-		env, _, err := serialization.CreateEnvelope("channel", nil, tx)
-		require.NoError(tb, err)
-		data[i], err = proto.Marshal(env)
-		require.NoError(tb, err)
-	}
-	return &common.Block{
-		Header: &common.BlockHeader{Number: 1},
-		Data:   &common.BlockData{Data: data},
-	}
 }

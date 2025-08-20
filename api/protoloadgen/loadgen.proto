@@ -19,7 +19,15 @@ service LoadGenService {
 }
 
 message Batch {
-  repeated protoblocktx.Tx tx = 1;
+  repeated TX tx = 1;
+}
+
+message TX {
+  string id = 1;
+  protoblocktx.Tx tx = 2;
+  bytes envelope_payload = 3;
+  bytes envelope_signature = 4;
+  bytes serialized_envelope = 5;
 }
 
 message Limit {

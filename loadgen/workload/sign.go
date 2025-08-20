@@ -56,22 +56,26 @@ func NewTxSignerVerifier(policy *PolicyProfile) *TxSignerVerifier {
 }
 
 // Sign signs a TX.
-func (e *TxSignerVerifier) Sign(tx *protoblocktx.Tx) {
-	for nsIndex, ns := range tx.GetNamespaces() {
-		signer := e.HashSigners[ns.NsId]
-		tx.Signatures = append(tx.Signatures, signer.Sign(tx, nsIndex))
+func (e *TxSignerVerifier) Sign(txID string, tx *protoblocktx.Tx) {
+	tx.Signatures = make([][]byte, len(tx.Namespaces))
+	for nsIndex, ns := range tx.Namespaces {
+		signer, ok := e.HashSigners[ns.NsId]
+		if !ok {
+			continue
+		}
+		tx.Signatures[nsIndex] = signer.Sign(txID, tx, nsIndex)
 	}
 }
 
 // Verify verifies a signature on the transaction.
-func (e *TxSignerVerifier) Verify(tx *protoblocktx.Tx) bool {
+func (e *TxSignerVerifier) Verify(txID string, tx *protoblocktx.Tx) bool {
 	if len(tx.Signatures) < len(tx.Namespaces) {
 		return false
 	}
 
 	for nsIndex, ns := range tx.GetNamespaces() {
-		signer := e.HashSigners[ns.NsId]
-		if !signer.Verify(tx, nsIndex) {
+		signer, ok := e.HashSigners[ns.NsId]
+		if !ok || !signer.Verify(txID, tx, nsIndex) {
 			return false
 		}
 	}
@@ -109,15 +113,15 @@ func NewHashSignerVerifier(profile *Policy) *HashSignerVerifier {
 }
 
 // Sign signs a hash.
-func (e *HashSignerVerifier) Sign(tx *protoblocktx.Tx, nsIndex int) signature.Signature {
-	sign, err := e.signer.SignNs(tx, nsIndex)
+func (e *HashSignerVerifier) Sign(txID string, tx *protoblocktx.Tx, nsIndex int) signature.Signature {
+	sign, err := e.signer.SignNs(txID, tx, nsIndex)
 	Must(err)
 	return sign
 }
 
 // Verify verifies a Signature.
-func (e *HashSignerVerifier) Verify(tx *protoblocktx.Tx, nsIndex int) bool {
-	if err := e.verifier.VerifyNs(tx, nsIndex); err != nil {
+func (e *HashSignerVerifier) Verify(txID string, tx *protoblocktx.Tx, nsIndex int) bool {
+	if err := e.verifier.VerifyNs(txID, tx, nsIndex); err != nil {
 		return false
 	}
 	return true

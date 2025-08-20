@@ -93,7 +93,7 @@ func (m *SimpleManager) preProcessIn(ctx context.Context) {
 		}
 		depTX := make([]*TransactionNode, len(batch.Txs))
 		for i, tx := range batch.Txs {
-			node := newTransactionNode(batch.BlockNumber, batch.TxsNum[i], tx)
+			node := newTransactionNode(tx)
 			node.waitingKeys = make([]*waiting, 0, node.rwKeys.size())
 			depTX[i] = node
 		}

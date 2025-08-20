@@ -27,7 +27,7 @@ type QueryGenerator struct {
 func newQueryGenerator(rnd *rand.Rand, keys *ByteArrayGenerator, profile *Profile) *QueryGenerator {
 	return &QueryGenerator{
 		ValidKeyGenerator:   keys,
-		InvalidKeyGenerator: &ByteArrayGenerator{Size: profile.Key.Size, Rnd: rnd},
+		InvalidKeyGenerator: &ByteArrayGenerator{Size: profile.Key.Size, Source: rnd},
 		Size:                profile.Query.QuerySize.MakeIntGenerator(rnd),
 		InvalidPortion:      profile.Query.MinInvalidKeysPortion.MakeGenerator(rnd),
 		ShuffleRnd:          rnd,

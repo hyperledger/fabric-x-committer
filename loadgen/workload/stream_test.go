@@ -17,6 +17,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -135,41 +136,44 @@ func requireValidKey(t *testing.T, key []byte, profile *Profile) {
 	require.Positive(t, SumInt(key))
 }
 
-func requireValidTx(t *testing.T, tx *protoblocktx.Tx, profile *Profile, signer *TxSignerVerifier) {
+func requireValidTx(t *testing.T, tx *protoloadgen.TX, profile *Profile, signer *TxSignerVerifier) {
 	t.Helper()
-	require.Len(t, tx.Namespaces, 1)
+	require.NotEmpty(t, tx.Id)
+	require.NotNil(t, tx.Tx)
+	require.NotEmpty(t, tx.EnvelopePayload)
+	require.Len(t, tx.Tx.Namespaces, 1)
 
 	if profile.Transaction.ReadOnlyCount != nil {
-		require.Len(t, tx.Namespaces[0].ReadsOnly, 1)
+		require.Len(t, tx.Tx.Namespaces[0].ReadsOnly, 1)
 	} else {
-		require.Empty(t, tx.Namespaces[0].ReadsOnly)
+		require.Empty(t, tx.Tx.Namespaces[0].ReadsOnly)
 	}
 
 	if profile.Transaction.ReadWriteCount != nil {
-		require.Len(t, tx.Namespaces[0].ReadWrites, 2)
+		require.Len(t, tx.Tx.Namespaces[0].ReadWrites, 2)
 	} else {
-		require.Empty(t, tx.Namespaces[0].ReadWrites)
+		require.Empty(t, tx.Tx.Namespaces[0].ReadWrites)
 	}
 
 	if profile.Transaction.BlindWriteCount != nil {
-		require.Len(t, tx.Namespaces[0].BlindWrites, 3)
+		require.Len(t, tx.Tx.Namespaces[0].BlindWrites, 3)
 	} else {
-		require.Empty(t, tx.Namespaces[0].BlindWrites)
+		require.Empty(t, tx.Tx.Namespaces[0].BlindWrites)
 	}
 
-	for _, v := range tx.Namespaces[0].ReadsOnly {
+	for _, v := range tx.Tx.Namespaces[0].ReadsOnly {
 		requireValidKey(t, v.Key, profile)
 	}
 
-	for _, v := range tx.Namespaces[0].ReadWrites {
+	for _, v := range tx.Tx.Namespaces[0].ReadWrites {
 		requireValidKey(t, v.Key, profile)
 	}
 
-	for _, v := range tx.Namespaces[0].BlindWrites {
+	for _, v := range tx.Tx.Namespaces[0].BlindWrites {
 		requireValidKey(t, v.Key, profile)
 	}
 
-	require.True(t, signer.Verify(tx))
+	require.True(t, signer.Verify(tx.Id, tx.Tx))
 }
 
 func testWorkersProfiles() (profiles []*Profile) {
@@ -266,8 +270,8 @@ func TestGenInvalidSigTx(t *testing.T) {
 	g := c.MakeGenerator()
 	txs := g.NextN(t.Context(), 1e4)
 	signer := NewTxSignerVerifier(p.Transaction.Policy)
-	valid := Map(txs, func(_ int, _ *protoblocktx.Tx) float64 {
-		if !signer.Verify(g.Next(t.Context())) {
+	valid := Map(txs, func(_ int, tx *protoloadgen.TX) float64 {
+		if !signer.Verify(tx.Id, tx.Tx) {
 			return 1
 		}
 		return 0
@@ -312,7 +316,7 @@ func TestGenDependentTx(t *testing.T) {
 	txs := g.NextN(t.Context(), 1e6)
 	m := make(map[string]uint64)
 	for _, tx := range txs {
-		for _, ns := range tx.Namespaces {
+		for _, ns := range tx.Tx.Namespaces {
 			for _, r := range ns.ReadsOnly {
 				m[string(r.Key)]++
 			}
@@ -341,8 +345,8 @@ func TestBlindWriteWithValue(t *testing.T) {
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 	g := c.MakeGenerator()
 	tx := g.Next(t.Context())
-	require.Len(t, tx.Namespaces[0].BlindWrites, 2)
-	for _, v := range tx.Namespaces[0].BlindWrites {
+	require.Len(t, tx.Tx.Namespaces[0].BlindWrites, 2)
+	for _, v := range tx.Tx.Namespaces[0].BlindWrites {
 		require.Len(t, v.Value, 32)
 	}
 }
@@ -356,8 +360,8 @@ func TestReadWriteWithValue(t *testing.T) {
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 	g := c.MakeGenerator()
 	tx := g.Next(t.Context())
-	require.Len(t, tx.Namespaces[0].ReadWrites, 2)
-	for _, v := range tx.Namespaces[0].ReadWrites {
+	require.Len(t, tx.Tx.Namespaces[0].ReadWrites, 2)
+	for _, v := range tx.Tx.Namespaces[0].ReadWrites {
 		require.Len(t, v.Value, 32)
 	}
 }
@@ -393,11 +397,10 @@ func (m *modGenTester) Next() Modifier {
 	return m
 }
 
-func (m *modGenTester) Modify(tx *protoblocktx.Tx) (*protoblocktx.Tx, error) {
+func (m *modGenTester) Modify(tx *protoblocktx.Tx) {
 	for _, ns := range tx.Namespaces {
 		ns.NsVersion = m.nsVersion
 	}
-	return tx, nil
 }
 
 func TestGenTxWithModifier(t *testing.T) {
@@ -409,7 +412,7 @@ func TestGenTxWithModifier(t *testing.T) {
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions(), mod0, mod1)
 	g := c.MakeGenerator()
 	tx := g.Next(t.Context())
-	for _, ns := range tx.Namespaces {
+	for _, ns := range tx.Tx.Namespaces {
 		require.Equal(t, mod1.nsVersion, ns.NsVersion)
 	}
 }
@@ -417,7 +420,7 @@ func TestGenTxWithModifier(t *testing.T) {
 type queryTestEnv struct {
 	p        *Profile
 	keys     map[string]*struct{}
-	txGen    *RateLimiterGenerator[*protoblocktx.Tx]
+	txGen    *RateLimiterGenerator[*protoloadgen.TX]
 	queryGen *RateLimiterGenerator[*protoqueryservice.Query]
 }
 
@@ -438,7 +441,7 @@ func newQueryTestEnv(t *testing.T, p *Profile, o *StreamOptions) *queryTestEnv {
 func (q *queryTestEnv) addBlock(ctx context.Context, size uint64) {
 	txs := q.txGen.NextN(ctx, int(size)) //nolint:gosec // uint64 -> int.
 	for _, tx := range txs {
-		for _, ns := range tx.Namespaces {
+		for _, ns := range tx.Tx.Namespaces {
 			for _, r := range ns.ReadsOnly {
 				q.keys[string(r.Key)] = nil
 			}

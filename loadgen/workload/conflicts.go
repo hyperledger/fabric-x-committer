@@ -23,9 +23,8 @@ const (
 type (
 	// signTxModifier signs transactions according to the conflicts profile.
 	signTxModifier struct {
-		Signer               *TxSignerVerifier
 		invalidSignGenerator *FloatToBooleanGenerator
-		invalidSignature     [][]byte
+		invalidSignature     []byte
 	}
 
 	// dependenciesModifier adds dependencies conflicts according to the conflict profile.
@@ -50,45 +49,30 @@ type (
 	}
 )
 
-func newSignTxModifier(
-	rnd *rand.Rand, signer *TxSignerVerifier, profile *Profile,
-) *signTxModifier {
+func newSignTxModifier(rnd *rand.Rand, profile *Profile) *signTxModifier {
 	dist := NewBernoulliDistribution(profile.Conflicts.InvalidSignatures)
-	invalidTx := &protoblocktx.Tx{
-		Id: "fake",
-		Namespaces: []*protoblocktx.TxNamespace{
-			{
-				NsId:      GeneratedNamespaceID,
-				NsVersion: 0,
-			},
-		},
-	}
-	signer.Sign(invalidTx)
 	return &signTxModifier{
-		Signer:               signer,
 		invalidSignGenerator: dist.MakeBooleanGenerator(rnd),
-		invalidSignature:     invalidTx.Signatures,
+		invalidSignature:     []byte("dummy"),
 	}
 }
 
 // Modify signs a transaction.
-func (g *signTxModifier) Modify(tx *protoblocktx.Tx) (*protoblocktx.Tx, error) {
-	switch {
-	case tx.Signatures != nil:
-		// We support pre-signed TXs
-	case g.invalidSignGenerator.Next():
-		tx.Signatures = g.invalidSignature
-	default:
-		g.Signer.Sign(tx)
+func (g *signTxModifier) Modify(tx *protoblocktx.Tx) {
+	if g.invalidSignGenerator.Next() {
+		// Pre-assigning prevents TxBuilder from re-signing the TX.
+		tx.Signatures = make([][]byte, len(tx.Namespaces))
+		for i := range tx.Namespaces {
+			tx.Signatures[i] = g.invalidSignature
+		}
 	}
-	return tx, nil
 }
 
 func newTxDependenciesModifier(
 	rnd *rand.Rand, profile *Profile,
 ) *dependenciesModifier {
 	return &dependenciesModifier{
-		keyGenerator: &ByteArrayGenerator{Size: profile.Key.Size, Rnd: rnd},
+		keyGenerator: &ByteArrayGenerator{Size: profile.Key.Size, Source: rnd},
 		dependencies: Map(profile.Conflicts.Dependencies, func(
 			_ int, value DependencyDescription,
 		) dependencyDesc {
@@ -107,7 +91,7 @@ func newTxDependenciesModifier(
 }
 
 // Modify injects dependencies.
-func (g *dependenciesModifier) Modify(tx *protoblocktx.Tx) (*protoblocktx.Tx, error) {
+func (g *dependenciesModifier) Modify(tx *protoblocktx.Tx) {
 	depList, ok := g.dependenciesMap[g.index]
 	if ok {
 		delete(g.dependenciesMap, g.index)
@@ -132,7 +116,6 @@ func (g *dependenciesModifier) Modify(tx *protoblocktx.Tx) (*protoblocktx.Tx, er
 	}
 
 	g.index++
-	return tx, nil
 }
 
 func addKey(tx *protoblocktx.Tx, dependencyType string, key []byte) {

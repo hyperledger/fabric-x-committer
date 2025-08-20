@@ -214,18 +214,16 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 		batchSize := len(txBatch)
 		logger.Debugf("Batch containing %d TXs was stored in the being validated list", batchSize)
 
-		request := &protosigverifierservice.RequestBatch{
-			Requests: make([]*protosigverifierservice.Request, batchSize),
+		request := &protosigverifierservice.Batch{
+			Requests: make([]*protosigverifierservice.Tx, batchSize),
 		}
 
 		request.Update, policyVersion = sv.policyManager.getUpdates(policyVersion)
 
 		for idx, txNode := range txBatch {
-			request.Requests[idx] = &protosigverifierservice.Request{
-				BlockNum: txNode.Tx.BlockNumber,
-				TxNum:    uint64(txNode.Tx.TxNum),
+			request.Requests[idx] = &protosigverifierservice.Tx{
+				Ref: txNode.Tx.Ref,
 				Tx: &protoblocktx.Tx{
-					Id:         txNode.Tx.ID,
 					Namespaces: txNode.Tx.Namespaces,
 					Signatures: txNode.Signatures,
 				},
@@ -249,7 +247,7 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 
 func splitAndSendToVerifier(
 	stream protosigverifierservice.Verifier_StartStreamClient,
-	r *protosigverifierservice.RequestBatch,
+	r *protosigverifierservice.Batch,
 ) error {
 	// We group transactions by block to ensure our batch sizes do not exceed the gRPC message limit.
 	// This strategy prevents RESOURCE_EXHAUSTED errors because the orderer's maximum block size
@@ -258,14 +256,14 @@ func splitAndSendToVerifier(
 	// until the orderer implements all sanity checks on the configuration provided in the config block.
 	// For example, if the orderer can enforce that the maximum block size should be at most half of the
 	// maximum message size in gRPC, one batch would be adequate.
-	blkToBatch := make(map[uint64]*protosigverifierservice.RequestBatch)
+	blkToBatch := make(map[uint64]*protosigverifierservice.Batch)
 	for _, req := range r.Requests {
-		rBatch, ok := blkToBatch[req.BlockNum]
+		rBatch, ok := blkToBatch[req.Ref.BlockNum]
 		if !ok {
-			rBatch = &protosigverifierservice.RequestBatch{
-				Requests: make([]*protosigverifierservice.Request, 0, len(r.Requests)),
+			rBatch = &protosigverifierservice.Batch{
+				Requests: make([]*protosigverifierservice.Tx, 0, len(r.Requests)),
 			}
-			blkToBatch[req.BlockNum] = rBatch
+			blkToBatch[req.Ref.BlockNum] = rBatch
 		}
 
 		rBatch.Requests = append(rBatch.Requests, req)
@@ -275,7 +273,7 @@ func splitAndSendToVerifier(
 	for _, rBatch := range blkToBatch {
 		if !updateSent {
 			rBatch.Update = r.Update
-			updateSent = false
+			updateSent = true
 		}
 
 		if err := stream.Send(rBatch); err != nil {
@@ -328,7 +326,7 @@ func (sv *signatureVerifier) fetchAndDeleteTxBeingValidated(
 	sv.txMu.Lock()
 	defer sv.txMu.Unlock()
 	for _, resp := range response.Responses {
-		k := types.Height{BlockNum: resp.BlockNum, TxNum: uint32(resp.TxNum)} //nolint:gosec
+		k := *types.NewHeightFromTxRef(resp.Ref)
 		txNode, ok := sv.txBeingValidated[k]
 		if !ok {
 			continue
@@ -365,6 +363,6 @@ func (sv *signatureVerifier) addTxsBeingValidated(txBatch dependencygraph.TxNode
 	sv.txMu.Lock()
 	defer sv.txMu.Unlock()
 	for _, txNode := range txBatch {
-		sv.txBeingValidated[types.Height{BlockNum: txNode.Tx.BlockNumber, TxNum: txNode.Tx.TxNum}] = txNode
+		sv.txBeingValidated[*types.NewHeightFromTxRef(txNode.Tx.Ref)] = txNode
 	}
 }
