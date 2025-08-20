@@ -132,13 +132,11 @@ func (cc *YugaClusterController) startNodes(ctx context.Context, t *testing.T) {
 }
 
 func (cc *YugaClusterController) getMasterAddresses() string {
-	addrs := make([]string, 0, len(cc.nodes))
-	for _, n := range cc.nodes {
-		if n.Role == MasterNode {
-			addrs = append(addrs, fmt.Sprintf("%s:7100", n.Name))
-		}
+	var masterAddresses []string //nolint:prealloc
+	for _, n := range cc.IterNodesByRole(MasterNode) {
+		masterAddresses = append(masterAddresses, fmt.Sprintf("%s:7100", n.Name))
 	}
-	return strings.Join(addrs, ",")
+	return strings.Join(masterAddresses, ",")
 }
 
 // RF=3 when number of tablets >=3, else RF=1.
@@ -180,11 +178,9 @@ func (cc *DBClusterController) getConnectionsOfGivenRole(
 	role string,
 ) *dbtest.Connection {
 	t.Helper()
-	endpoints := make([]*connection.Endpoint, len(maps.Collect(cc.IterNodesByRole(role))))
-	i := 0
+	var endpoints []*connection.Endpoint //nolint:prealloc
 	for _, node := range cc.IterNodesByRole(role) {
-		endpoints[i] = node.GetContainerConnectionDetails(ctx, t)
-		i++
+		endpoints = append(endpoints, node.GetContainerConnectionDetails(ctx, t))
 	}
 	return dbtest.NewConnection(endpoints...)
 }

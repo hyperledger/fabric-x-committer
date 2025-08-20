@@ -152,13 +152,11 @@ func (cc *PostgresClusterController) getLeaderHost(ctx context.Context, t *testi
 
 	require.NotEmpty(t, cc.nodes, "no nodes available in cluster")
 
-	for _, node := range cc.nodes {
-		if node.Role == PrimaryNode {
-			return node.GetContainerConnectionDetails(ctx, t).GetHost()
-		}
+	for _, node := range cc.IterNodesByRole(PrimaryNode) {
+		return node.GetContainerConnectionDetails(ctx, t).GetHost()
 	}
 
-	t.Fatal("no leader node found in cluster")
+	t.Fatal("no primary node found in cluster")
 	return "" // unreachable, but required for compiler
 }
 
@@ -167,9 +165,7 @@ func (cc *PostgresClusterController) getLeaderHost(ctx context.Context, t *testi
 func (cc *PostgresClusterController) PromoteSecondaryNode(t *testing.T) {
 	t.Helper()
 	require.NotEmpty(t, cc.nodes)
-	for _, node := range cc.nodes {
-		if node.Role == SecondaryNode {
-			node.ExecuteCommand(t, postgresSecondaryPromotionCommand)
-		}
+	for _, node := range cc.IterNodesByRole(SecondaryNode) {
+		node.ExecuteCommand(t, postgresSecondaryPromotionCommand)
 	}
 }
