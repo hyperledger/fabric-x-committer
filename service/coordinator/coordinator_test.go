@@ -1003,6 +1003,7 @@ func TestWaitingTxsCount(t *testing.T) {
 }
 
 func fakeConfigForTest(t *testing.T) *Config {
+	t.Helper()
 	randomEndpoint, err := connection.NewEndpoint("random:1234")
 	require.NoError(t, err)
 	return &Config{
