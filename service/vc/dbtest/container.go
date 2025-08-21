@@ -243,12 +243,11 @@ func (dc *DatabaseContainer) getConnectionOptions(ctx context.Context, t *testin
 
 // GetContainerConnectionDetails inspect the container and fetches its connection to an endpoint.
 func (dc *DatabaseContainer) GetContainerConnectionDetails(
-	ctx context.Context,
 	t *testing.T,
 ) *connection.Endpoint {
 	t.Helper()
 	container, err := dc.client.InspectContainerWithOptions(docker.InspectContainerOptions{
-		Context: ctx,
+		Context: t.Context(),
 		ID:      dc.containerID,
 	})
 	require.NoError(t, err)

@@ -29,8 +29,9 @@ const (
 	defaultPostgresDBName     = "postgres"
 	defaultBitnamiPostgresTag = "latest"
 
-	//nolint:revive // PrimaryNode and SecondaryNode represents postgres db nodes role.
-	PrimaryNode   = "primary"
+	// PrimaryNode represents a primary postgres db node.
+	PrimaryNode = "primary"
+	// SecondaryNode represents a secondary postgres db node.
 	SecondaryNode = "secondary"
 )
 
@@ -76,7 +77,7 @@ func StartPostgresCluster(ctx context.Context, t *testing.T) (*PostgresClusterCo
 		cluster.stopAndRemoveCluster(t)
 	})
 
-	clusterConnections := cluster.getNodesConnections(ctx, t)
+	clusterConnections := cluster.getNodesConnections(t)
 	// bitnami/postgres requires explicit db name mentioning for initial connection.
 	// After the initial connection, we create a testing-db that will be used by the vc-service.
 	clusterConnections.Database = defaultPostgresDBName
@@ -109,7 +110,7 @@ func (cc *PostgresClusterController) addSecondaryNode(ctx context.Context, t *te
 		role: SecondaryNode,
 		additionalEnvs: []string{
 			"POSTGRESQL_REPLICATION_MODE=slave",
-			fmt.Sprintf("POSTGRESQL_MASTER_HOST=%s", cc.getLeaderHost(ctx, t)),
+			fmt.Sprintf("POSTGRESQL_MASTER_HOST=%s", cc.getPrimaryHost(t)),
 		},
 	})
 	node.StartContainer(ctx, t)
@@ -137,23 +138,21 @@ func (cc *PostgresClusterController) createNode(
 	return node
 }
 
-func (cc *PostgresClusterController) getNodesConnections(ctx context.Context, t *testing.T) *dbtest.Connection {
+func (cc *PostgresClusterController) getNodesConnections(t *testing.T) *dbtest.Connection {
 	t.Helper()
 	endpoints := make([]*connection.Endpoint, len(cc.nodes))
 	for i, node := range cc.nodes {
-		endpoints[i] = node.GetContainerConnectionDetails(ctx, t)
+		endpoints[i] = node.GetContainerConnectionDetails(t)
 	}
 
 	return dbtest.NewConnection(endpoints...)
 }
 
-func (cc *PostgresClusterController) getLeaderHost(ctx context.Context, t *testing.T) string {
+func (cc *PostgresClusterController) getPrimaryHost(t *testing.T) string {
 	t.Helper()
 
-	require.NotEmpty(t, cc.nodes, "no nodes available in cluster")
-
 	for _, node := range cc.IterNodesByRole(PrimaryNode) {
-		return node.GetContainerConnectionDetails(ctx, t).GetHost()
+		return node.GetContainerConnectionDetails(t).GetHost()
 	}
 
 	t.Fatal("no primary node found in cluster")
@@ -167,5 +166,6 @@ func (cc *PostgresClusterController) PromoteSecondaryNode(t *testing.T) {
 	require.NotEmpty(t, cc.nodes)
 	for _, node := range cc.IterNodesByRole(SecondaryNode) {
 		node.ExecuteCommand(t, postgresSecondaryPromotionCommand)
+		break
 	}
 }
