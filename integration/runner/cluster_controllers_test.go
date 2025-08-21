@@ -33,7 +33,7 @@ func TestDBResiliencyYugabyteClusterController(t *testing.T) {
 	dbtest.ConnectAndQueryTest(t, conn)
 	require.Equal(t, 6, cc.GetClusterSize())
 
-	cc.StopAndRemoveSingleNodeWithRole(t, TabletNode)
+	cc.StopAndRemoveNode(t, Tablet)
 	require.Equal(t, 5, cc.GetClusterSize())
 }
 

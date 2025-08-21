@@ -19,37 +19,29 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 )
 
-type yugabyteScenario struct {
+var crashScenarios = []struct {
 	name   string
 	action int
-}
-
-const (
-	TABLET            = 1 << iota
-	NON_LEADER_MASTER //nolint:revive
-	LEADER_MASTER     //nolint:revive
-)
-
-var crashScenarios = []yugabyteScenario{
+}{
 	{
 		name:   "tablet",
-		action: TABLET,
+		action: runner.Tablet,
 	},
 	{
 		name:   "non-leader-master",
-		action: NON_LEADER_MASTER,
+		action: runner.NonLeaderMaster,
 	},
 	{
 		name:   "leader-master",
-		action: LEADER_MASTER,
+		action: runner.LeaderMaster,
 	},
 	{
 		name:   "leader-master-and-tablet",
-		action: LEADER_MASTER | TABLET,
+		action: runner.LeaderMaster | runner.Tablet,
 	},
 	{
 		name:   "non-leader-master-and-tablet",
-		action: NON_LEADER_MASTER | TABLET,
+		action: runner.NonLeaderMaster | runner.Tablet,
 	},
 }
 
@@ -60,7 +52,12 @@ func TestDBResiliencyYugabyteScenarios(t *testing.T) {
 		scenario := sc
 		t.Run(scenario.name, func(t *testing.T) {
 			t.Parallel()
-			runYBScenario(t, scenario.action)
+			clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3, 3)
+			c := registerAndCreateRuntime(t, clusterConnection)
+
+			waitForCommittedTxs(t, c, 10_000)
+			clusterController.StopAndRemoveNode(t, scenario.action)
+			waitForCommittedTxs(t, c, 15_000)
 		})
 	}
 }
@@ -126,31 +123,4 @@ func createInitContext(t *testing.T) context.Context {
 	t.Cleanup(cancel)
 
 	return ctx
-}
-
-func runYBScenario(t *testing.T, action int) {
-	t.Helper()
-
-	clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3, 3)
-	c := registerAndCreateRuntime(t, clusterConnection)
-
-	waitForCommittedTxs(t, c, 10_000)
-	executeAction(t, action, clusterController)
-	waitForCommittedTxs(t, c, 15_000)
-}
-
-func executeAction(t *testing.T, action int, cc *runner.YugaClusterController) {
-	t.Helper()
-
-	if action&TABLET != 0 {
-		cc.StopAndRemoveSingleNodeWithRole(t, runner.TabletNode)
-	}
-
-	if action&LEADER_MASTER != 0 {
-		cc.RemoveLeaderMasterNode(t)
-	}
-
-	if action&NON_LEADER_MASTER != 0 {
-		cc.RemoveNonLeaderMasterNode(t)
-	}
 }

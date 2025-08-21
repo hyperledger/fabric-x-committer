@@ -23,38 +23,54 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
-// YugaClusterController is a struct that facilitates the manipulation of a DB cluster,
-// with nodes running in Docker containers.
-// It allows configuring the number of master and tablet nodes.
-// The cluster's replication factor (RF) is determined as follows:
-//   - If the number of tablet nodes is greater than or equal to 3,
-//     RF is set to 3; otherwise, RF is set to 1.
-type YugaClusterController struct {
-	DBClusterController
+type (
+	// YugaClusterController is a struct that facilitates the manipulation of a DB cluster,
+	// with nodes running in Docker containers.
+	// It allows configuring the number of master and tablet nodes.
+	// The cluster's replication factor (RF) is determined as follows:
+	//   - If the number of tablet nodes is greater than or equal to 3,
+	//     RF is set to 3; otherwise, RF is set to 1.
+	YugaClusterController struct {
+		DBClusterController
 
-	networkName string
-}
+		replicationFactor int
+		networkName       string
+	}
+
+	nodeConfigParameters struct {
+		role              string
+		nodeName          string
+		masterAddresses   string
+		replicationFactor int
+	}
+)
 
 const (
 	// latest LTS.
 	defaultImage = "yugabytedb/yugabyte:2024.2.4.0-b89"
 
-	// leaderRegexPattern is the raw regular expression pattern.
-	// It is used for matching lines in the master status output
-	// and extracting the RPC Host/Port of the master node whose Role is LEADER.
-	leaderRegexPattern = `(?m)^[^\n]*[ \t]+(\S+):\d+[ \t]+[^\n]+[ \t]+LEADER[ \t]+[^\n]*$`
+	networkPrefix = "sc_yuga_net_"
+	masterPort    = "7100"
+	tabletPort    = "9100"
 
-	//nolint:revive // MasterNode and TabletNode represents yugabyte db nodes role.
+	// MasterNode represents yugabyte master db node.
 	MasterNode = "master"
+	// TabletNode represents yugabyte tablet db node.
 	TabletNode = "tablet"
+
+	// Tablet is a tablet (data node) in the cluster.
+	Tablet = 1 << iota
+	// NonLeaderMaster is a master node that does not hold the leader role.
+	NonLeaderMaster
+	// LeaderMaster is the master node currently acting as the leader.
+	LeaderMaster
 )
 
 // leaderRegex is the compiled regular expression.
 // to efficiently extract the leader master's RPC Host/Port.
-var leaderRegex = regexp.MustCompile(leaderRegexPattern)
+var leaderRegex = regexp.MustCompile(`(?m)^[^\n]*[ \t]+(\S+):\d+[ \t]+[^\n]+[ \t]+LEADER[ \t]+[^\n]*$`)
 
 // StartYugaCluster creates a Yugabyte cluster in a Docker environment
 // and returns its connection properties.
@@ -70,7 +86,8 @@ func StartYugaCluster(ctx context.Context, t *testing.T, numberOfMasters, number
 	t.Logf("starting yuga cluster with (%d) masters and (%d) tablets ", numberOfMasters, numberOfTablets)
 
 	cluster := &YugaClusterController{
-		networkName: uuid.NewString(),
+		replicationFactor: desiredRF(numberOfTablets),
+		networkName:       fmt.Sprintf("%s%s", networkPrefix, uuid.NewString()),
 	}
 	dbtest.CreateDockerNetwork(t, cluster.networkName)
 	t.Cleanup(func() {
@@ -94,7 +111,7 @@ func StartYugaCluster(ctx context.Context, t *testing.T, numberOfMasters, number
 
 	// The master nodes are not involved in DB communication;
 	// the application connects to the tablet servers.
-	clusterConnection := cluster.getConnectionsOfGivenRole(ctx, t, TabletNode)
+	clusterConnection := cluster.getConnectionsByRole(t, TabletNode)
 	clusterConnection.LoadBalance = true
 
 	return cluster, clusterConnection
@@ -113,8 +130,14 @@ func (cc *YugaClusterController) createNode(role string) {
 
 func (cc *YugaClusterController) startNodes(ctx context.Context, t *testing.T) {
 	t.Helper()
+	masterAddresses := cc.getMasterAddresses()
 	for _, n := range cc.IterNodesByRole(MasterNode) {
-		n.Cmd = nodeConfig(n.Role, n.Name, cc.getMasterAddresses(), cc.desiredRF())
+		n.Cmd = nodeConfig(t, nodeConfigParameters{
+			n.Role,
+			n.Name,
+			masterAddresses,
+			cc.replicationFactor,
+		})
 		n.StartContainer(ctx, t)
 	}
 
@@ -125,76 +148,61 @@ func (cc *YugaClusterController) startNodes(ctx context.Context, t *testing.T) {
 	}, time.Minute, time.Millisecond*100)
 
 	for _, n := range cc.IterNodesByRole(TabletNode) {
-		n.Cmd = nodeConfig(n.Role, n.Name, cc.getMasterAddresses(), cc.desiredRF())
+		n.Cmd = nodeConfig(t, nodeConfigParameters{
+			n.Role,
+			n.Name,
+			masterAddresses,
+			cc.replicationFactor,
+		})
 		n.StartContainer(ctx, t)
 		n.EnsureNodeReadiness(t, "syncing data to disk ... ok")
 	}
 }
 
 func (cc *YugaClusterController) getMasterAddresses() string {
-	var masterAddresses []string //nolint:prealloc
+	var masterAddresses []string //nolint:prealloc // IterNodesByRole returns the original index.
 	for _, n := range cc.IterNodesByRole(MasterNode) {
-		masterAddresses = append(masterAddresses, fmt.Sprintf("%s:7100", n.Name))
+		masterAddresses = append(masterAddresses, net.JoinHostPort(n.Name, masterPort))
 	}
 	return strings.Join(masterAddresses, ",")
-}
-
-// RF=3 when number of tablets >=3, else RF=1.
-func (cc *YugaClusterController) desiredRF() int {
-	numberOfTablets := len(maps.Collect(cc.IterNodesByRole(TabletNode)))
-	if numberOfTablets >= 3 {
-		return 3
-	}
-	return 1
 }
 
 func (cc *YugaClusterController) getLeaderMaster(t *testing.T) (string, int) {
 	t.Helper()
 	var output string
-	masterAddresses := cc.getMasterAddresses()
+	cmd := []string{
+		"/home/yugabyte/bin/yb-admin",
+		"-master_addresses", cc.getMasterAddresses(),
+		"list_all_masters",
+	}
 	for _, n := range cc.nodes {
-		if out := n.ExecuteCommand(t, []string{
-			"/home/yugabyte/bin/yb-admin",
-			"-master_addresses", masterAddresses,
-			"list_all_masters",
-		}); out != "" {
+		if out := n.ExecuteCommand(t, cmd); out != "" {
 			output = out
 			break
 		}
 	}
-
-	if output == "" {
-		t.Fatal("Could not get yb-admin output from any master")
-	}
+	require.NotEmpty(t, output, "Could not get yb-admin output from any node")
 
 	found := leaderRegex.FindStringSubmatch(output)
-	require.NotEmpty(t, found)
+	require.Greater(t, len(found), 1)
 	return found[1], strings.Count(output, "ALIVE")
 }
 
-func (cc *DBClusterController) getConnectionsOfGivenRole(
-	ctx context.Context,
-	t *testing.T,
-	role string,
-) *dbtest.Connection {
+// StopAndRemoveNode stops and removes cluster nodes according to the role bitmask.
+// The bitmask can combine Tablet, LeaderMaster, and NonLeaderMaster flags.
+func (cc *YugaClusterController) StopAndRemoveNode(t *testing.T, node int) {
 	t.Helper()
-	var endpoints []*connection.Endpoint //nolint:prealloc
-	for _, node := range cc.IterNodesByRole(role) {
-		endpoints = append(endpoints, node.GetContainerConnectionDetails(ctx, t))
+	if node&Tablet != 0 {
+		cc.StopAndRemoveSingleNodeWithRole(t, TabletNode)
 	}
-	return dbtest.NewConnection(endpoints...)
-}
 
-// RemoveLeaderMasterNode finds the leader of the master nodes, retrieve its container name and removes it.
-func (cc *YugaClusterController) RemoveLeaderMasterNode(t *testing.T) {
-	t.Helper()
-	cc.removeMasterNode(t, true)
-}
+	if node&LeaderMaster != 0 {
+		cc.stopAndRemoveMasterNode(t, true)
+	}
 
-// RemoveNonLeaderMasterNode finds a master node, which is not a leader, retrieve its container name and removes it.
-func (cc *YugaClusterController) RemoveNonLeaderMasterNode(t *testing.T) {
-	t.Helper()
-	cc.removeMasterNode(t, false)
+	if node&NonLeaderMaster != 0 {
+		cc.stopAndRemoveMasterNode(t, false)
+	}
 }
 
 // removeMaster removes a master node from the cluster.
@@ -202,52 +210,55 @@ func (cc *YugaClusterController) RemoveNonLeaderMasterNode(t *testing.T) {
 // Otherwise, it removes any non-leader master.
 //
 //nolint:revive // flag-parameter is required here to avoid code duplication.
-func (cc *YugaClusterController) removeMasterNode(t *testing.T, isLeader bool) {
+func (cc *YugaClusterController) stopAndRemoveMasterNode(t *testing.T, isLeader bool) {
 	t.Helper()
 	require.NotEmpty(t, cc.nodes, "trying to remove nodes of an empty cluster")
 
 	leaderName, _ := cc.getLeaderMaster(t)
 	targetIdx := -1
 
-	for idx, node := range cc.nodes {
-		if node.Role != MasterNode {
-			continue
-		}
+	for idx, node := range cc.IterNodesByRole(MasterNode) {
 		if isLeader && node.Name == leaderName || !isLeader && node.Name != leaderName {
 			targetIdx = idx
 			break
 		}
 	}
-
 	require.NotEqual(t, -1, targetIdx, "no suitable master node found for removal")
 
-	node := cc.nodes[targetIdx]
-	t.Logf("Removing master node: %s", node.Name)
-	node.StopAndRemoveContainer(t)
-	cc.nodes = append(cc.nodes[:targetIdx], cc.nodes[targetIdx+1:]...)
+	cc.StopAndRemoveNodeByIndex(t, targetIdx)
 }
 
-func nodeConfig(role, nodeName, masterAddresses string, replicationFactor int) []string {
-	switch role {
+func nodeConfig(t *testing.T, params nodeConfigParameters) []string {
+	t.Helper()
+	switch params.role {
 	case MasterNode:
-		return append(baseConfig("yb-master", nodeName, "7100"),
-			"--master_addresses", masterAddresses,
-			fmt.Sprintf("--replication_factor=%d", replicationFactor),
+		return append(nodeCommonConfig("yb-master", params.nodeName, masterPort),
+			"--master_addresses", params.masterAddresses,
+			fmt.Sprintf("--replication_factor=%d", params.replicationFactor),
 		)
 	case TabletNode:
-		return append(baseConfig("yb-tserver", nodeName, "9100"),
+		return append(nodeCommonConfig("yb-tserver", params.nodeName, tabletPort),
 			"--start_pgsql_proxy",
-			"--tserver_master_addrs", masterAddresses,
+			"--tserver_master_addrs", params.masterAddresses,
 		)
 	default:
+		t.Fatalf("unknown role provided: %s", params.role)
 		return nil
 	}
 }
 
-func baseConfig(binary, nodeName, bindPort string) []string {
+func nodeCommonConfig(binary, nodeName, bindPort string) []string {
 	return []string{
 		path.Join("/home/yugabyte/bin", binary),
 		"--fs_data_dirs=/mnt/disk0",
 		"--rpc_bind_addresses", net.JoinHostPort(nodeName, bindPort),
 	}
+}
+
+// RF=3 when number of tablets >=3, else RF=1.
+func desiredRF(numberOfTabletNodes uint) int {
+	if numberOfTabletNodes >= 3 {
+		return 3
+	}
+	return 1
 }

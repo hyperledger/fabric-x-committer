@@ -9,7 +9,6 @@ package runner
 import (
 	"iter"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -25,22 +24,36 @@ type DBClusterController struct {
 
 const linuxOS = "linux"
 
-var nodeStartupRetry = &connection.RetryProfile{
-	// MaxElapsedTime is the duration allocated for the retry mechanism during the database initialization process.
-	MaxElapsedTime: 5 * time.Minute,
-	// InitialInterval is the starting wait time interval that increases every retry attempt.
-	InitialInterval: 1 * time.Second,
-}
-
 // StopAndRemoveSingleNodeWithRole stops and removes a node given a role.
 func (cc *DBClusterController) StopAndRemoveSingleNodeWithRole(t *testing.T, role string) {
 	t.Helper()
 	require.NotEmpty(t, cc.nodes, "trying to remove nodes of an empty cluster.")
-	for idx, node := range cc.IterNodesByRole(role) {
-		node.StopAndRemoveContainer(t)
-		cc.nodes = append(cc.nodes[:idx], cc.nodes[idx+1:]...)
+	//nolint:revive,gofumpt // IterNodesByRole requires 2 vars; we only need idx.
+	for idx, _ := range cc.IterNodesByRole(role) {
+		cc.StopAndRemoveNodeByIndex(t, idx)
 		return
 	}
+}
+
+// StopAndRemoveNodeByIndex stop and remove the node in the provided index.
+func (cc *DBClusterController) StopAndRemoveNodeByIndex(t *testing.T, index int) {
+	t.Helper()
+	node := cc.nodes[index]
+	t.Logf("Removing node: %s", node.Name)
+	node.StopAndRemoveContainer(t)
+	cc.nodes = append(cc.nodes[:index], cc.nodes[index+1:]...)
+}
+
+func (cc *DBClusterController) getConnectionsByRole(
+	t *testing.T,
+	role string,
+) *dbtest.Connection {
+	t.Helper()
+	var endpoints []*connection.Endpoint //nolint:prealloc // IterNodesByRole returns the original index.
+	for _, node := range cc.IterNodesByRole(role) {
+		endpoints = append(endpoints, node.GetContainerConnectionDetails(t))
+	}
+	return dbtest.NewConnection(endpoints...)
 }
 
 // IterNodesByRole returns an iterator over the cluster's nodes that match the given role.
