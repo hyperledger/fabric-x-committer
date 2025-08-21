@@ -16,10 +16,10 @@ type (
 	AdapterConfig struct {
 		OrdererClient     *OrdererClientConfig          `mapstructure:"orderer-client"`
 		SidecarClient     *SidecarClientConfig          `mapstructure:"sidecar-client"`
+		LoadGenClient     *connection.ClientConfig      `mapstructure:"loadgen-client"`
 		CoordinatorClient *connection.ClientConfig      `mapstructure:"coordinator-client"`
 		VCClient          *connection.MultiClientConfig `mapstructure:"vc-client"`
 		VerifierClient    *connection.MultiClientConfig `mapstructure:"verifier-client"`
-		LoadGenClient     *connection.ClientConfig      `mapstructure:"loadgen-client"`
 	}
 
 	// OrdererClientConfig is a struct that contains the configuration for the orderer client.

@@ -52,7 +52,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 
 	vcm := newValidatorCommitterManager(
 		&validatorCommitterManagerConfig{
-			clientConfig:                   test.ServerToClientConfig(servers.Configs...),
+			clientConfig:                   test.ServerToMultiClientConfig(servers.Configs...),
 			incomingTxsForValidationCommit: inputTxs,
 			outgoingValidatedTxsNode:       outputTxs,
 			outgoingTxsStatus:              outputTxsStatus,

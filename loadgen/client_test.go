@@ -132,8 +132,8 @@ func TestLoadGenForCoordinator(t *testing.T) {
 			cConf := &coordinator.Config{
 				Server:             connection.NewLocalHostServer(),
 				Monitoring:         defaultMonitoring(),
-				Verifier:           *test.ServerToClientConfig(sigVerServer.Configs...),
-				ValidatorCommitter: *test.ServerToClientConfig(vcServer.Configs...),
+				Verifier:           *test.ServerToMultiClientConfig(sigVerServer.Configs...),
+				ValidatorCommitter: *test.ServerToMultiClientConfig(vcServer.Configs...),
 				DependencyGraph: &coordinator.DependencyGraphConfig{
 					NumOfLocalDepConstructors: 1,
 					WaitingTxsLimit:           100_000,
@@ -204,7 +204,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 			clientConf.Adapter.SidecarClient = &adapters.SidecarClientConfig{
 				ChannelID:      chanID,
 				OrdererServers: ordererServers,
-				Client:         &connection.ClientConfig{Endpoint: &sidecarServerConf.Endpoint},
+				Client:         test.MakeInsecureClientConfig(&sidecarServerConf.Endpoint),
 			}
 			testLoadGenerator(t, clientConf)
 		})

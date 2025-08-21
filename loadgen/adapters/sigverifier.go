@@ -56,7 +56,6 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	for i, conn := range connections {
 		client := protosigverifierservice.NewVerifierClient(conn)
 		logger.Infof("Opening stream to %s", c.config.Endpoints[i])
-
 		streams[i], err = client.StartStream(gCtx)
 		if err != nil {
 			return errors.Wrapf(err, "failed opening a stream to %s", c.config.Endpoints[i])

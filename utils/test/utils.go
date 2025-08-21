@@ -49,8 +49,8 @@ func FailHandler(t *testing.T) {
 // defaultGrpcRetryProfile defines the retry policy for a gRPC client connection.
 var defaultGrpcRetryProfile connection.RetryProfile
 
-// ServerToClientConfig is used to create client configuration from existing server(s).
-func ServerToClientConfig(servers ...*connection.ServerConfig) *connection.MultiClientConfig {
+// ServerToMultiClientConfig is used to create a multi client configuration from existing server(s).
+func ServerToMultiClientConfig(servers ...*connection.ServerConfig) *connection.MultiClientConfig {
 	endpoints := make([]*connection.Endpoint, len(servers))
 	for i, server := range servers {
 		endpoints[i] = &server.Endpoint
@@ -315,6 +315,7 @@ func MakeTLSMultiClientConfig(
 	return &connection.MultiClientConfig{
 		Endpoints: ep,
 		TLS:       tlsConfig,
+		Retry:     &defaultGrpcRetryProfile,
 	}
 }
 
@@ -323,5 +324,6 @@ func MakeTLSClientConfig(tlsConfig *connection.TLSConfig, ep *connection.Endpoin
 	return &connection.ClientConfig{
 		Endpoint: ep,
 		TLS:      tlsConfig,
+		Retry:    &defaultGrpcRetryProfile,
 	}
 }

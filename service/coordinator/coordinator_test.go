@@ -99,8 +99,8 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 	}
 
 	c := &Config{
-		Verifier:           *test.ServerToClientConfig(svServers.Configs...),
-		ValidatorCommitter: *test.ServerToClientConfig(vcServerConfigs...),
+		Verifier:           *test.ServerToMultiClientConfig(svServers.Configs...),
+		ValidatorCommitter: *test.ServerToMultiClientConfig(vcServerConfigs...),
 		DependencyGraph: &DependencyGraphConfig{
 			NumOfLocalDepConstructors: 3,
 			WaitingTxsLimit:           10,
@@ -667,7 +667,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 	cancel()
 
 	vcEnv := vc.NewValidatorAndCommitServiceTestEnv(t, 1, env.dbEnv)
-	env.config.ValidatorCommitter = *test.ServerToClientConfig(vcEnv.Configs[0].Server)
+	env.config.ValidatorCommitter = *test.ServerToMultiClientConfig(vcEnv.Configs[0].Server)
 	env.coordinator = NewCoordinatorService(env.config)
 	ctx, cancel = context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -1002,12 +1002,13 @@ func TestWaitingTxsCount(t *testing.T) {
 	}, 2*time.Second, 100*time.Millisecond)
 }
 
-func fakeConfigForTest(_ *testing.T) *Config {
-	randomEndpoint := connection.Endpoint{Host: "random", Port: 1234}
+func fakeConfigForTest(t *testing.T) *Config {
+	randomEndpoint, err := connection.NewEndpoint("random:1234")
+	require.NoError(t, err)
 	return &Config{
 		Server:             connection.NewLocalHostServer(),
-		Verifier:           *test.MakeInsecureMultiClientConfig(&randomEndpoint),
-		ValidatorCommitter: *test.MakeInsecureMultiClientConfig(&randomEndpoint),
+		Verifier:           *test.MakeInsecureMultiClientConfig(randomEndpoint),
+		ValidatorCommitter: *test.MakeInsecureMultiClientConfig(randomEndpoint),
 		DependencyGraph:    &DependencyGraphConfig{},
 		Monitoring: monitoring.Config{
 			Server: connection.NewLocalHostServer(),
