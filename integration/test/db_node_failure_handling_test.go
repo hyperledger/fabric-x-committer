@@ -19,6 +19,15 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 )
 
+const (
+	// Tablet is a tablet (data node) in the cluster.
+	Tablet = 1 << iota
+	// NonLeaderMaster is a master node that does not hold the leader role.
+	NonLeaderMaster
+	// LeaderMaster is the master node currently acting as the leader.
+	LeaderMaster
+)
+
 func TestDBResiliencyYugabyteScenarios(t *testing.T) {
 	t.Parallel()
 
@@ -28,23 +37,23 @@ func TestDBResiliencyYugabyteScenarios(t *testing.T) {
 	}{
 		{
 			name:   "tablet",
-			action: runner.Tablet,
+			action: Tablet,
 		},
 		{
 			name:   "non-leader-master",
-			action: runner.NonLeaderMaster,
+			action: NonLeaderMaster,
 		},
 		{
 			name:   "leader-master",
-			action: runner.LeaderMaster,
+			action: LeaderMaster,
 		},
 		{
 			name:   "leader-master-and-tablet",
-			action: runner.LeaderMaster | runner.Tablet,
+			action: LeaderMaster | Tablet,
 		},
 		{
 			name:   "non-leader-master-and-tablet",
-			action: runner.NonLeaderMaster | runner.Tablet,
+			action: NonLeaderMaster | Tablet,
 		},
 	} {
 		scenario := sc
@@ -53,14 +62,14 @@ func TestDBResiliencyYugabyteScenarios(t *testing.T) {
 			clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3, 3)
 			c := registerAndCreateRuntime(t, clusterConnection)
 			waitForCommittedTxs(t, c, 10_000)
-			if scenario.action&runner.Tablet != 0 {
+			if scenario.action&Tablet != 0 {
 				clusterController.StopAndRemoveSingleNodeByRole(t, runner.TabletNode)
 			}
-			if scenario.action|runner.NonLeaderMaster != 0 {
-				clusterController.StopAndRemoveMasterNode(t, runner.NonLeaderMaster)
+			if scenario.action|NonLeaderMaster != 0 {
+				clusterController.StopAndRemoveSingleMasterNodeByRaftRole(t, runner.LeaderMasterNode)
 			}
-			if scenario.action&runner.LeaderMaster != 0 {
-				clusterController.StopAndRemoveMasterNode(t, runner.LeaderMaster)
+			if scenario.action&LeaderMaster != 0 {
+				clusterController.StopAndRemoveSingleMasterNodeByRaftRole(t, runner.FollowerMasterNode)
 			}
 			waitForCommittedTxs(t, c, 15_000)
 		})

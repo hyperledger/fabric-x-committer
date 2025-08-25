@@ -13,7 +13,6 @@ import (
 	"net"
 	"path"
 	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -59,13 +58,10 @@ const (
 	MasterNode = "master"
 	// TabletNode represents yugabyte tablet db node.
 	TabletNode = "tablet"
-
-	// Tablet is a tablet (data node) in the cluster.
-	Tablet = 1 << iota
-	// NonLeaderMaster is a master node that does not hold the leader role.
-	NonLeaderMaster
-	// LeaderMaster is the master node currently acting as the leader.
-	LeaderMaster
+	// LeaderMasterNode represents yugabyte's raft leader master db node.
+	LeaderMasterNode = "leader"
+	// FollowerMasterNode represents yugabyte follower master db node.
+	FollowerMasterNode = "follower"
 )
 
 // leaderRegex is the compiled regular expression.
@@ -79,9 +75,9 @@ func StartYugaCluster(ctx context.Context, t *testing.T, numberOfMasters, number
 ) {
 	t.Helper()
 
-	if runtime.GOOS != linuxOS {
-		t.Skip("Container IP access not supported on non-linux Docker")
-	}
+	//if runtime.GOOS != linuxOS {
+	//	t.Skip("Container IP access not supported on non-linux Docker")
+	//}
 
 	t.Logf("starting yuga cluster with (%d) masters and (%d) tablets ", numberOfMasters, numberOfTablets)
 
@@ -195,14 +191,10 @@ func (cc *YugaClusterController) getLeaderMaster(t *testing.T) (string, int) {
 	return found[1], strings.Count(output, "ALIVE")
 }
 
-// StopAndRemoveMasterNode stops and removes a single master node from the cluster, based on the provided bitmask.
-// The masterKind bitmask can include LeaderMaster, NonLeaderMaster, or both.
-// * If both are set, the function stops and removes the first matching master it finds (leader or non-leader).
-// * If only one is set, it stops and removes a matching master accordingly.
-func (cc *YugaClusterController) StopAndRemoveMasterNode(t *testing.T, masterKind int) {
+// StopAndRemoveSingleMasterNodeByRaftRole stops and removes a single
+// master node from the cluster based on the provided role.
+func (cc *YugaClusterController) StopAndRemoveSingleMasterNodeByRaftRole(t *testing.T, raftRole string) {
 	t.Helper()
-	require.NotZero(t, masterKind&(LeaderMaster|NonLeaderMaster),
-		"mask should be set to LeaderMaster or NonLeaderMaster")
 	require.NotEmpty(t, cc.nodes, "trying to remove nodes of an empty cluster")
 
 	leaderName, _ := cc.getLeaderMaster(t)
@@ -210,7 +202,7 @@ func (cc *YugaClusterController) StopAndRemoveMasterNode(t *testing.T, masterKin
 
 	for idx, node := range cc.IterNodesByRole(MasterNode) {
 		isLeader := node.Name == leaderName
-		if masterKind&LeaderMaster != 0 && isLeader || masterKind&NonLeaderMaster != 0 && !isLeader {
+		if raftRole == LeaderMasterNode && isLeader || raftRole == FollowerMasterNode && !isLeader {
 			targetIdx = idx
 			break
 		}
