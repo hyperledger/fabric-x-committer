@@ -195,37 +195,22 @@ func (cc *YugaClusterController) getLeaderMaster(t *testing.T) (string, int) {
 	return found[1], strings.Count(output, "ALIVE")
 }
 
-// StopAndRemoveNode stops and removes cluster nodes according to the role bitmask.
-// The bitmask can combine Tablet, LeaderMaster, and NonLeaderMaster flags.
-func (cc *YugaClusterController) StopAndRemoveNode(t *testing.T, node int) {
+// StopAndRemoveMasterNode stops and removes a single master node from the cluster, based on the provided bitmask.
+// The masterKind bitmask can include LeaderMaster, NonLeaderMaster, or both.
+// * If both are set, the function stops and removes the first matching master it finds (leader or non-leader).
+// * If only one is set, it stops and removes a matching master accordingly.
+func (cc *YugaClusterController) StopAndRemoveMasterNode(t *testing.T, masterKind int) {
 	t.Helper()
-	if node&Tablet != 0 {
-		cc.StopAndRemoveSingleNodeByRole(t, TabletNode)
-	}
-
-	if node&LeaderMaster != 0 {
-		cc.stopAndRemoveMasterNode(t, true)
-	}
-
-	if node&NonLeaderMaster != 0 {
-		cc.stopAndRemoveMasterNode(t, false)
-	}
-}
-
-// removeMaster removes a master node from the cluster.
-// If isLeader is true, it removes the current leader master.
-// Otherwise, it removes any non-leader master.
-//
-//nolint:revive // flag-parameter is required here to avoid code duplication.
-func (cc *YugaClusterController) stopAndRemoveMasterNode(t *testing.T, isLeader bool) {
-	t.Helper()
+	require.NotZero(t, masterKind&(LeaderMaster|NonLeaderMaster),
+		"mask should be set to LeaderMaster or NonLeaderMaster")
 	require.NotEmpty(t, cc.nodes, "trying to remove nodes of an empty cluster")
 
 	leaderName, _ := cc.getLeaderMaster(t)
 	targetIdx := -1
 
 	for idx, node := range cc.IterNodesByRole(MasterNode) {
-		if isLeader && node.Name == leaderName || !isLeader && node.Name != leaderName {
+		isLeader := node.Name == leaderName
+		if masterKind&LeaderMaster != 0 && isLeader || masterKind&NonLeaderMaster != 0 && !isLeader {
 			targetIdx = idx
 			break
 		}

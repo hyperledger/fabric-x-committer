@@ -46,15 +46,26 @@ func TestDBResiliencyYugabyteScenarios(t *testing.T) {
 			name:   "non-leader-master-and-tablet",
 			action: runner.NonLeaderMaster | runner.Tablet,
 		},
+		{
+			name:   "non-leader-master-and-tablet",
+			action: runner.NonLeaderMaster | runner.LeaderMaster,
+		},
 	} {
 		scenario := sc
 		t.Run(scenario.name, func(t *testing.T) {
 			t.Parallel()
 			clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3, 3)
 			c := registerAndCreateRuntime(t, clusterConnection)
-
 			waitForCommittedTxs(t, c, 10_000)
-			clusterController.StopAndRemoveNode(t, scenario.action)
+			if scenario.action&runner.Tablet != 0 {
+				clusterController.StopAndRemoveSingleNodeByRole(t, runner.TabletNode)
+			}
+			if scenario.action|runner.NonLeaderMaster != 0 {
+				clusterController.StopAndRemoveMasterNode(t, runner.NonLeaderMaster)
+			}
+			if scenario.action&runner.LeaderMaster != 0 {
+				clusterController.StopAndRemoveMasterNode(t, runner.LeaderMaster)
+			}
 			waitForCommittedTxs(t, c, 15_000)
 		})
 	}
