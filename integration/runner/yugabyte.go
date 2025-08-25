@@ -85,8 +85,13 @@ func StartYugaCluster(ctx context.Context, t *testing.T, numberOfMasters, number
 
 	t.Logf("starting yuga cluster with (%d) masters and (%d) tablets ", numberOfMasters, numberOfTablets)
 
+	rf := 1
+	if numberOfTablets >= 3 {
+		rf = 3
+	}
+
 	cluster := &YugaClusterController{
-		replicationFactor: desiredRF(numberOfTablets),
+		replicationFactor: rf,
 		networkName:       fmt.Sprintf("%s%s", networkPrefix, uuid.NewString()),
 	}
 	dbtest.CreateDockerNetwork(t, cluster.networkName)
@@ -111,7 +116,7 @@ func StartYugaCluster(ctx context.Context, t *testing.T, numberOfMasters, number
 
 	// The master nodes are not involved in DB communication;
 	// the application connects to the tablet servers.
-	clusterConnection := cluster.getConnectionsByRole(t, TabletNode)
+	clusterConnection := cluster.getNodesConnectionsByRole(t, TabletNode)
 	clusterConnection.LoadBalance = true
 
 	return cluster, clusterConnection
@@ -155,12 +160,15 @@ func (cc *YugaClusterController) startNodes(ctx context.Context, t *testing.T) {
 			cc.replicationFactor,
 		})
 		n.StartContainer(ctx, t)
+	}
+
+	for _, n := range cc.IterNodesByRole(TabletNode) {
 		n.EnsureNodeReadiness(t, "syncing data to disk ... ok")
 	}
 }
 
 func (cc *YugaClusterController) getMasterAddresses() string {
-	var masterAddresses []string //nolint:prealloc // IterNodesByRole returns the original index.
+	masterAddresses := make([]string, 0, len(cc.nodes))
 	for _, n := range cc.IterNodesByRole(MasterNode) {
 		masterAddresses = append(masterAddresses, net.JoinHostPort(n.Name, masterPort))
 	}
@@ -176,8 +184,7 @@ func (cc *YugaClusterController) getLeaderMaster(t *testing.T) (string, int) {
 		"list_all_masters",
 	}
 	for _, n := range cc.nodes {
-		if out := n.ExecuteCommand(t, cmd); out != "" {
-			output = out
+		if output = n.ExecuteCommand(t, cmd); output != "" {
 			break
 		}
 	}
@@ -193,7 +200,7 @@ func (cc *YugaClusterController) getLeaderMaster(t *testing.T) (string, int) {
 func (cc *YugaClusterController) StopAndRemoveNode(t *testing.T, node int) {
 	t.Helper()
 	if node&Tablet != 0 {
-		cc.StopAndRemoveSingleNodeWithRole(t, TabletNode)
+		cc.StopAndRemoveSingleNodeByRole(t, TabletNode)
 	}
 
 	if node&LeaderMaster != 0 {
@@ -253,12 +260,4 @@ func nodeCommonConfig(binary, nodeName, bindPort string) []string {
 		"--fs_data_dirs=/mnt/disk0",
 		"--rpc_bind_addresses", net.JoinHostPort(nodeName, bindPort),
 	}
-}
-
-// RF=3 when number of tablets >=3, else RF=1.
-func desiredRF(numberOfTabletNodes uint) int {
-	if numberOfTabletNodes >= 3 {
-		return 3
-	}
-	return 1
 }

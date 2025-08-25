@@ -53,7 +53,7 @@ func TestDBResiliencyPostgresClusterController(t *testing.T) {
 	dbtest.ConnectAndQueryTest(t, conn)
 	require.Equal(t, 2, cc.GetClusterSize())
 
-	cc.StopAndRemoveSingleNodeWithRole(t, SecondaryNode)
+	cc.StopAndRemoveSingleNodeByRole(t, SecondaryNode)
 	require.Equal(t, 1, cc.GetClusterSize())
 }
 

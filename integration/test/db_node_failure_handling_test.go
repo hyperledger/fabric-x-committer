@@ -68,7 +68,7 @@ func TestDBResiliencyPrimaryPostgresNodeCrash(t *testing.T) {
 	c := registerAndCreateRuntime(t, clusterConnection)
 
 	waitForCommittedTxs(t, c, 10_000)
-	clusterController.StopAndRemoveSingleNodeWithRole(t, runner.PrimaryNode)
+	clusterController.StopAndRemoveSingleNodeByRole(t, runner.PrimaryNode)
 	clusterController.PromoteSecondaryNode(t)
 	waitForCommittedTxs(t, c, 15_000)
 }
@@ -81,7 +81,7 @@ func TestDBResiliencySecondaryPostgresNodeCrash(t *testing.T) {
 	c := registerAndCreateRuntime(t, clusterConnection)
 
 	waitForCommittedTxs(t, c, 10_000)
-	clusterController.StopAndRemoveSingleNodeWithRole(t, runner.SecondaryNode)
+	clusterController.StopAndRemoveSingleNodeByRole(t, runner.SecondaryNode)
 	waitForCommittedTxs(t, c, 15_000)
 }
 

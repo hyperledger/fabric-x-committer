@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 const (
@@ -138,34 +137,18 @@ func (cc *PostgresClusterController) createNode(
 	return node
 }
 
-func (cc *PostgresClusterController) getNodesConnections(t *testing.T) *dbtest.Connection {
-	t.Helper()
-	endpoints := make([]*connection.Endpoint, len(cc.nodes))
-	for i, node := range cc.nodes {
-		endpoints[i] = node.GetContainerConnectionDetails(t)
-	}
-
-	return dbtest.NewConnection(endpoints...)
-}
-
 func (cc *PostgresClusterController) getPrimaryHost(t *testing.T) string {
 	t.Helper()
-
-	for _, node := range cc.IterNodesByRole(PrimaryNode) {
-		return node.GetContainerConnectionDetails(t).GetHost()
-	}
-
-	t.Fatal("no primary node found in cluster")
-	return "" // unreachable, but required for compiler
+	node, _ := cc.GetSingleNodeByRole(PrimaryNode)
+	require.NotNil(t, node)
+	return node.GetContainerConnectionDetails(t).GetHost()
 }
 
 // PromoteSecondaryNode runs a script that promotes the first follower db node
 // it finds, from read-only to read-write node.
 func (cc *PostgresClusterController) PromoteSecondaryNode(t *testing.T) {
 	t.Helper()
-	require.NotEmpty(t, cc.nodes)
-	for _, node := range cc.IterNodesByRole(SecondaryNode) {
-		node.ExecuteCommand(t, postgresSecondaryPromotionCommand)
-		break
-	}
+	secondaryNode, _ := cc.GetSingleNodeByRole(SecondaryNode)
+	require.NotNil(t, secondaryNode)
+	secondaryNode.ExecuteCommand(t, postgresSecondaryPromotionCommand)
 }

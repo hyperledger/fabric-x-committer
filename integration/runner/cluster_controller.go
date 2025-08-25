@@ -24,35 +24,52 @@ type DBClusterController struct {
 
 const linuxOS = "linux"
 
-// StopAndRemoveSingleNodeWithRole stops and removes a node given a role.
-func (cc *DBClusterController) StopAndRemoveSingleNodeWithRole(t *testing.T, role string) {
+// StopAndRemoveSingleNodeByRole stops and removes a node given a role.
+func (cc *DBClusterController) StopAndRemoveSingleNodeByRole(t *testing.T, role string) {
 	t.Helper()
-	require.NotEmpty(t, cc.nodes, "trying to remove nodes of an empty cluster.")
-	//nolint:revive,gofumpt // IterNodesByRole requires 2 vars; we only need idx.
-	for idx, _ := range cc.IterNodesByRole(role) {
-		cc.StopAndRemoveNodeByIndex(t, idx)
-		return
-	}
+	nodeToBeRemoved, itsIndex := cc.GetSingleNodeByRole(role)
+	require.NotNil(t, nodeToBeRemoved, "not found nodes to remove of requested role.")
+	cc.StopAndRemoveNodeByIndex(t, itsIndex)
+
 }
 
 // StopAndRemoveNodeByIndex stop and remove the node in the provided index.
 func (cc *DBClusterController) StopAndRemoveNodeByIndex(t *testing.T, index int) {
 	t.Helper()
+	require.Greater(t, len(cc.nodes), index)
 	node := cc.nodes[index]
 	t.Logf("Removing node: %s", node.Name)
 	node.StopAndRemoveContainer(t)
 	cc.nodes = append(cc.nodes[:index], cc.nodes[index+1:]...)
 }
 
-func (cc *DBClusterController) getConnectionsByRole(
+func (cc *DBClusterController) getNodesConnectionsByRole(
 	t *testing.T,
 	role string,
 ) *dbtest.Connection {
 	t.Helper()
-	var endpoints []*connection.Endpoint //nolint:prealloc // IterNodesByRole returns the original index.
+	endpoints := make([]*connection.Endpoint, 0, len(cc.nodes))
 	for _, node := range cc.IterNodesByRole(role) {
 		endpoints = append(endpoints, node.GetContainerConnectionDetails(t))
 	}
+	return dbtest.NewConnection(endpoints...)
+}
+
+// GetSingleNodeByRole returns the first node that matches the requested role in the cluster.
+func (cc *DBClusterController) GetSingleNodeByRole(role string) (*dbtest.DatabaseContainer, int) {
+	for idx, node := range cc.IterNodesByRole(role) {
+		return node, idx
+	}
+	return nil, 0
+}
+
+func (cc *DBClusterController) getNodesConnections(t *testing.T) *dbtest.Connection {
+	t.Helper()
+	endpoints := make([]*connection.Endpoint, len(cc.nodes))
+	for i, node := range cc.nodes {
+		endpoints[i] = node.GetContainerConnectionDetails(t)
+	}
+
 	return dbtest.NewConnection(endpoints...)
 }
 
