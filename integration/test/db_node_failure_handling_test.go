@@ -19,34 +19,45 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 )
 
-func TestDBResiliencyYugabyteFollowerNodeCrash(t *testing.T) {
+func TestDBResiliencyYugabyteScenarios(t *testing.T) {
 	t.Parallel()
 
-	clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3)
+	for _, sc := range []struct {
+		name   string
+		action int
+	}{
+		{
+			name:   "tablet",
+			action: runner.Tablet,
+		},
+		{
+			name:   "non-leader-master",
+			action: runner.NonLeaderMaster,
+		},
+		{
+			name:   "leader-master",
+			action: runner.LeaderMaster,
+		},
+		{
+			name:   "leader-master-and-tablet",
+			action: runner.LeaderMaster | runner.Tablet,
+		},
+		{
+			name:   "non-leader-master-and-tablet",
+			action: runner.NonLeaderMaster | runner.Tablet,
+		},
+	} {
+		scenario := sc
+		t.Run(scenario.name, func(t *testing.T) {
+			t.Parallel()
+			clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3, 3)
+			c := registerAndCreateRuntime(t, clusterConnection)
 
-	c := registerAndCreateRuntime(t, clusterConnection)
-
-	waitForCommittedTxs(t, c, 10_000)
-	clusterController.StopAndRemoveNodeWithRole(t, runner.FollowerNode)
-	waitForCommittedTxs(t, c, 15_000)
-}
-
-func TestDBResiliencyYugabyteLeaderNodeCrash(t *testing.T) {
-	t.Parallel()
-
-	clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3)
-
-	// Yugabyte has an undetected bug that causes slow tablet distribution.
-	// As a result, when a leader node fails before replication is complete,
-	// the db hangs and the remaining nodes become unreachable.
-	// To support this test, wait for the tablet replication to finish (~3m).
-	time.Sleep(3 * time.Minute)
-
-	c := registerAndCreateRuntime(t, clusterConnection)
-
-	waitForCommittedTxs(t, c, 10_000)
-	clusterController.StopAndRemoveNodeWithRole(t, runner.LeaderNode)
-	waitForCommittedTxs(t, c, 15_000)
+			waitForCommittedTxs(t, c, 10_000)
+			clusterController.StopAndRemoveNode(t, scenario.action)
+			waitForCommittedTxs(t, c, 15_000)
+		})
+	}
 }
 
 func TestDBResiliencyPrimaryPostgresNodeCrash(t *testing.T) {
@@ -57,8 +68,8 @@ func TestDBResiliencyPrimaryPostgresNodeCrash(t *testing.T) {
 	c := registerAndCreateRuntime(t, clusterConnection)
 
 	waitForCommittedTxs(t, c, 10_000)
-	clusterController.StopAndRemoveNodeWithRole(t, runner.LeaderNode)
-	clusterController.PromoteFollowerNode(t)
+	clusterController.StopAndRemoveSingleNodeWithRole(t, runner.PrimaryNode)
+	clusterController.PromoteSecondaryNode(t)
 	waitForCommittedTxs(t, c, 15_000)
 }
 
@@ -70,7 +81,7 @@ func TestDBResiliencySecondaryPostgresNodeCrash(t *testing.T) {
 	c := registerAndCreateRuntime(t, clusterConnection)
 
 	waitForCommittedTxs(t, c, 10_000)
-	clusterController.StopAndRemoveNodeWithRole(t, runner.FollowerNode)
+	clusterController.StopAndRemoveSingleNodeWithRole(t, runner.SecondaryNode)
 	waitForCommittedTxs(t, c, 15_000)
 }
 
