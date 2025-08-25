@@ -30,7 +30,6 @@ func (cc *DBClusterController) StopAndRemoveSingleNodeByRole(t *testing.T, role 
 	nodeToBeRemoved, itsIndex := cc.GetSingleNodeByRole(role)
 	require.NotNil(t, nodeToBeRemoved, "not found nodes to remove of requested role.")
 	cc.StopAndRemoveNodeByIndex(t, itsIndex)
-
 }
 
 // StopAndRemoveNodeByIndex stop and remove the node in the provided index.
