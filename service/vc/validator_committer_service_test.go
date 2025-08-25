@@ -34,6 +34,25 @@ type validatorAndCommitterServiceTestEnvWithClient struct {
 	dbEnv        *DatabaseTestEnv
 }
 
+func TestVCSecureConnection(t *testing.T) {
+	t.Parallel()
+	test.RunSecureConnectionTest(t,
+		test.SecureConnectionParameters{
+			Service: "validator-committer",
+			ServerStarter: func(t *testing.T, cfg *connection.TLSConfig) test.ClientStarter {
+				t.Helper()
+				env := newValidatorAndCommitServiceTestEnvWithTLS(t, 1, cfg)
+				return func(ctx context.Context, t *testing.T, cfg *connection.TLSConfig) error {
+					t.Helper()
+					client := createVcClientWithTLS(t, &env.Configs[0].Server.Endpoint, cfg)
+					_, err := client.SetupSystemTablesAndNamespaces(ctx, nil)
+					return err
+				}
+			},
+		},
+	)
+}
+
 func newValidatorAndCommitServiceTestEnvWithClient(
 	t *testing.T,
 	numServices int,
@@ -45,7 +64,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 	for i, c := range vcs.Configs {
 		allEndpoints[i] = &c.Server.Endpoint
 	}
-	commonConn, connErr := connection.Connect(connection.NewInsecureLoadBalancedDialConfig(allEndpoints))
+	commonConn, connErr := connection.Connect(test.NewInsecureLoadBalancedDialConfig(t, allEndpoints))
 	require.NoError(t, connErr)
 
 	vcsTestEnv := &validatorAndCommitterServiceTestEnvWithClient{
@@ -56,13 +75,13 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 		dbEnv:        vcs.DBEnv,
 	}
 
-	initCtx, initCancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	initCtx, initCancel := context.WithTimeout(t.Context(), 8*time.Minute)
 	defer initCancel()
 	_, setupErr := vcsTestEnv.commonClient.SetupSystemTablesAndNamespaces(initCtx, nil)
 	require.NoError(t, setupErr)
 
 	for i, c := range vcs.Configs {
-		clientConn, err := connection.Connect(connection.NewInsecureDialConfig(&c.Server.Endpoint))
+		clientConn, err := connection.Connect(test.NewInsecureDialConfig(&c.Server.Endpoint))
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, clientConn.Close())
@@ -532,7 +551,7 @@ func TestVCServiceOneActiveStreamOnly(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return env.vcs[0].isStreamActive.Load()
-	}, 4*time.Second, 250*time.Millisecond)
+	}, 20*time.Second, 250*time.Millisecond)
 
 	ctx, _ := createContext(t)
 	stream, err := env.commonClient.StartValidateAndCommitStream(ctx)

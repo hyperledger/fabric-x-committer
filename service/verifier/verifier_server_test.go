@@ -28,6 +28,25 @@ import (
 
 const testTimeout = 3 * time.Second
 
+func TestVerifierSecureConnection(t *testing.T) {
+	t.Parallel()
+	test.RunSecureConnectionTest(t,
+		test.SecureConnectionParameters{
+			Service: "verifier",
+			ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) test.ClientStarter {
+				t.Helper()
+				env := newTestState(t, defaultConfigWithCreds(tlsCfg))
+				return func(ctx context.Context, t *testing.T, cfg *connection.TLSConfig) error {
+					t.Helper()
+					client := createVerifierClientWithTLS(t, &env.Service.config.Server.Endpoint, cfg)
+					_, err := client.StartStream(ctx)
+					return err
+				}
+			},
+		},
+	)
+}
+
 func TestNoVerificationKeySet(t *testing.T) {
 	t.Parallel()
 	c := newTestState(t, defaultConfig())
@@ -392,7 +411,7 @@ func newTestState(t *testing.T, config *Config) *State {
 	service := New(config)
 	test.RunServiceAndGrpcForTest(t.Context(), t, service, config.Server)
 
-	clientConnection, err := connection.Connect(connection.NewInsecureDialConfig(&config.Server.Endpoint))
+	clientConnection, err := connection.Connect(test.NewInsecureDialConfig(&config.Server.Endpoint))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		assert.NoError(t, clientConnection.Close())
@@ -440,8 +459,12 @@ func defaultUpdate(t *testing.T) (*protosigverifierservice.Update, *sigtest.NsSi
 }
 
 func defaultConfig() *Config {
+	return defaultConfigWithCreds(nil)
+}
+
+func defaultConfigWithCreds(creds *connection.TLSConfig) *Config {
 	return &Config{
-		Server: connection.NewLocalHostServer(),
+		Server: connection.NewLocalHostServerWithCreds(creds),
 		ParallelExecutor: ExecutorConfig{
 			BatchSizeCutoff:   3,
 			BatchTimeCutoff:   1 * time.Hour,
@@ -458,4 +481,14 @@ func defaultConfigQuickCutoff() *Config {
 	config := defaultConfig()
 	config.ParallelExecutor.BatchSizeCutoff = 1
 	return config
+}
+
+//nolint:ireturn // returning a gRPC client interface is intentional for test purpose.
+func createVerifierClientWithTLS(
+	t *testing.T,
+	ep *connection.Endpoint,
+	tlsCfg *connection.TLSConfig,
+) protosigverifierservice.VerifierClient {
+	t.Helper()
+	return test.CreateClientWithTLS(t, ep, tlsCfg, protosigverifierservice.NewVerifierClient)
 }

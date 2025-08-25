@@ -51,6 +51,34 @@ type (
 	}
 )
 
+// TestCoordinatorSecureConnection verifies the Coordinator gRPC server's behavior
+// under various client TLS configurations.
+func TestCoordinatorSecureConnection(t *testing.T) {
+	t.Parallel()
+	test.RunSecureConnectionTest(t,
+		test.SecureConnectionParameters{
+			Service: "coordinator",
+			ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) test.ClientStarter {
+				t.Helper()
+				env := newCoordinatorTestEnv(t, &testConfig{
+					numSigService: 1,
+					numVcService:  1,
+					mockVcService: true,
+				})
+				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+				t.Cleanup(cancel)
+				env.startWithCreds(ctx, t, tlsCfg)
+				return func(ctx context.Context, t *testing.T, cfg *connection.TLSConfig) error {
+					t.Helper()
+					client := createCoordinatorClientWithTLS(t, &env.coordinator.config.Server.Endpoint, cfg)
+					_, err := client.BlockProcessing(ctx)
+					return err
+				}
+			},
+		},
+	)
+}
+
 func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEnv {
 	t.Helper()
 	svs, svServers := mock.StartMockSVService(t, tConfig.numSigService)
@@ -71,9 +99,9 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 	}
 
 	c := &Config{
-		VerifierConfig:           *test.ServerToClientConfig(svServers.Configs...),
-		ValidatorCommitterConfig: *test.ServerToClientConfig(vcServerConfigs...),
-		DependencyGraphConfig: &DependencyGraphConfig{
+		Verifier:           *test.ServerToMultiClientConfig(svServers.Configs...),
+		ValidatorCommitter: *test.ServerToMultiClientConfig(vcServerConfigs...),
+		DependencyGraph: &DependencyGraphConfig{
 			NumOfLocalDepConstructors: 3,
 			WaitingTxsLimit:           10,
 		},
@@ -94,28 +122,24 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 
 func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
 	t.Helper()
-	cs := e.coordinator
-	sc := &connection.ServerConfig{
-		Endpoint: connection.Endpoint{
-			Host: "localhost",
-			Port: 0,
-		},
-	}
-	test.RunServiceAndGrpcForTest(ctx, t, cs, sc)
-
-	conn, err := connection.Connect(connection.NewInsecureDialConfig(&sc.Endpoint))
-	require.NoError(t, err)
-
-	client := protocoordinatorservice.NewCoordinatorClient(conn)
-	e.client = client
+	e.startWithCreds(ctx, t, nil)
+	e.client = createCoordinatorClientWithTLS(t, &e.coordinator.config.Server.Endpoint, nil)
 
 	sCtx, sCancel := context.WithTimeout(ctx, 5*time.Minute)
 	t.Cleanup(sCancel)
-	csStream, err := client.BlockProcessing(sCtx)
+	csStream, err := e.client.BlockProcessing(sCtx)
 	require.NoError(t, err)
 
 	e.csStream = csStream
 	e.streamCancel = sCancel
+}
+
+func (e *coordinatorTestEnv) startWithCreds(ctx context.Context, t *testing.T, serverCreds *connection.TLSConfig) {
+	t.Helper()
+	cs := e.coordinator
+	e.coordinator.config.Server = connection.NewLocalHostServerWithCreds(serverCreds)
+
+	test.RunServiceAndGrpcForTest(ctx, t, cs, e.coordinator.config.Server)
 }
 
 func (e *coordinatorTestEnv) ensureStreamActive(t *testing.T) {
@@ -643,7 +667,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 	cancel()
 
 	vcEnv := vc.NewValidatorAndCommitServiceTestEnv(t, 1, env.dbEnv)
-	env.config.ValidatorCommitterConfig = *test.ServerToClientConfig(vcEnv.Configs[0].Server)
+	env.config.ValidatorCommitter = *test.ServerToMultiClientConfig(vcEnv.Configs[0].Server)
 	env.coordinator = NewCoordinatorService(env.config)
 	ctx, cancel = context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -978,16 +1002,15 @@ func TestWaitingTxsCount(t *testing.T) {
 	}, 2*time.Second, 100*time.Millisecond)
 }
 
-func fakeConfigForTest(_ *testing.T) *Config {
+func fakeConfigForTest(t *testing.T) *Config {
+	t.Helper()
+	randomEndpoint, err := connection.NewEndpoint("random:1234")
+	require.NoError(t, err)
 	return &Config{
-		Server: connection.NewLocalHostServer(),
-		VerifierConfig: connection.ClientConfig{
-			Endpoints: []*connection.Endpoint{{Host: "random", Port: 1234}},
-		},
-		ValidatorCommitterConfig: connection.ClientConfig{
-			Endpoints: []*connection.Endpoint{{Host: "random", Port: 1234}},
-		},
-		DependencyGraphConfig: &DependencyGraphConfig{},
+		Server:             connection.NewLocalHostServer(),
+		Verifier:           *test.MakeInsecureMultiClientConfig(randomEndpoint),
+		ValidatorCommitter: *test.MakeInsecureMultiClientConfig(randomEndpoint),
+		DependencyGraph:    &DependencyGraphConfig{},
 		Monitoring: monitoring.Config{
 			Server: connection.NewLocalHostServer(),
 		},
@@ -1018,4 +1041,14 @@ func makeTestBlock(txPerBlock int) (*protocoordinatorservice.Block, map[string]*
 	}
 
 	return b, expectedTxsStatus
+}
+
+//nolint:ireturn // returning a gRPC client interface is intentional for test purpose.
+func createCoordinatorClientWithTLS(
+	t *testing.T,
+	ep *connection.Endpoint,
+	tlsCfg *connection.TLSConfig,
+) protocoordinatorservice.CoordinatorClient {
+	t.Helper()
+	return test.CreateClientWithTLS(t, ep, tlsCfg, protocoordinatorservice.NewCoordinatorClient)
 }

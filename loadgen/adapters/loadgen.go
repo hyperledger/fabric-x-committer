@@ -24,7 +24,7 @@ type (
 	// LoadGenAdapter applies load on another load generator.
 	LoadGenAdapter struct {
 		commonAdapter
-		config *LoadGenClientConfig
+		config *connection.ClientConfig
 	}
 
 	receivedBatch struct {
@@ -34,7 +34,7 @@ type (
 )
 
 // NewLoadGenAdapter instantiate LoadGenAdapter.
-func NewLoadGenAdapter(config *LoadGenClientConfig, res *ClientResources) *LoadGenAdapter {
+func NewLoadGenAdapter(config *connection.ClientConfig, res *ClientResources) *LoadGenAdapter {
 	return &LoadGenAdapter{
 		commonAdapter: commonAdapter{res: res},
 		config:        config,
@@ -43,7 +43,11 @@ func NewLoadGenAdapter(config *LoadGenClientConfig, res *ClientResources) *LoadG
 
 // RunWorkload applies load on the SV.
 func (c *LoadGenAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWithSetup) error {
-	conn, err := connection.Connect(connection.NewInsecureDialConfig(c.config.Endpoint))
+	loadgenDialConfig, err := connection.NewSingleDialConfig(c.config)
+	if err != nil {
+		return errors.Wrapf(err, "failed creating loadgen dial config")
+	}
+	conn, err := connection.Connect(loadgenDialConfig)
 	if err != nil {
 		return errors.Wrapf(err, "failed to connect to %s", c.config.Endpoint)
 	}

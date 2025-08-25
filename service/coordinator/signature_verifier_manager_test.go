@@ -49,7 +49,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 	pm := newPolicyManager()
 	svm := newSignatureVerifierManager(
 		&signVerifierManagerConfig{
-			clientConfig:             test.ServerToClientConfig(sc.Configs...),
+			clientConfig:             test.ServerToMultiClientConfig(sc.Configs...),
 			incomingTxsForValidation: inputTxBatch,
 			outgoingValidatedTxs:     outputValidatedTxs,
 			metrics:                  newPerformanceMetrics(),

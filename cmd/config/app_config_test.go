@@ -48,9 +48,7 @@ func TestReadConfigSidecar(t *testing.T) {
 				},
 				ChannelID: "mychannel",
 			},
-			Committer: sidecar.CoordinatorConfig{
-				Endpoint: *makeEndpoint("localhost", 9001),
-			},
+			Committer: makeClientConfig("localhost", 9001),
 			Ledger: sidecar.LedgerConfig{
 				Path: "./ledger/",
 			},
@@ -87,9 +85,7 @@ func TestReadConfigSidecar(t *testing.T) {
 				},
 				ChannelID: "mychannel",
 			},
-			Committer: sidecar.CoordinatorConfig{
-				Endpoint: *makeEndpoint("coordinator", 9001),
-			},
+			Committer: makeClientConfig("coordinator", 9001),
 			Ledger: sidecar.LedgerConfig{
 				Path: "/root/sc/ledger",
 			},
@@ -125,7 +121,7 @@ func TestReadConfigCoordinator(t *testing.T) {
 		expectedConfig: &coordinator.Config{
 			Server:     makeServer("localhost", 9001),
 			Monitoring: makeMonitoring("localhost", 2119),
-			DependencyGraphConfig: &coordinator.DependencyGraphConfig{
+			DependencyGraph: &coordinator.DependencyGraphConfig{
 				NumOfLocalDepConstructors: 1,
 				WaitingTxsLimit:           100_000,
 			},
@@ -137,13 +133,17 @@ func TestReadConfigCoordinator(t *testing.T) {
 		expectedConfig: &coordinator.Config{
 			Server:     makeServer("", 9001),
 			Monitoring: makeMonitoring("", 2119),
-			VerifierConfig: connection.ClientConfig{
-				Endpoints: []*connection.Endpoint{makeEndpoint("signature-verifier", 5001)},
+			Verifier: connection.MultiClientConfig{
+				Endpoints: []*connection.Endpoint{
+					makeEndpoint("signature-verifier", 5001),
+				},
 			},
-			ValidatorCommitterConfig: connection.ClientConfig{
-				Endpoints: []*connection.Endpoint{makeEndpoint("validator-persister", 6001)},
+			ValidatorCommitter: connection.MultiClientConfig{
+				Endpoints: []*connection.Endpoint{
+					makeEndpoint("validator-persister", 6001),
+				},
 			},
-			DependencyGraphConfig: &coordinator.DependencyGraphConfig{
+			DependencyGraph: &coordinator.DependencyGraphConfig{
 				NumOfLocalDepConstructors: 1,
 				WaitingTxsLimit:           100_000,
 			},
@@ -340,7 +340,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 			},
 			Adapter: adapters.AdapterConfig{
 				OrdererClient: &adapters.OrdererClientConfig{
-					SidecarEndpoint: makeEndpoint("sidecar", 4001),
+					SidecarClient: makeClientConfig("sidecar", 4001),
 					Orderer: broadcastdeliver.Config{
 						Connection: broadcastdeliver.ConnectionConfig{
 							Endpoints: connection.NewOrdererEndpoints(
@@ -444,16 +444,22 @@ func defaultSampleDBConfig() *vc.DatabaseConfig {
 	}
 }
 
-func makeEndpoint(host string, port int) *connection.Endpoint {
-	return &connection.Endpoint{
-		Host: host,
-		Port: port,
+func makeClientConfig(host string, port int) *connection.ClientConfig {
+	return &connection.ClientConfig{
+		Endpoint: makeEndpoint(host, port),
 	}
 }
 
 func makeServer(host string, port int) *connection.ServerConfig {
 	return &connection.ServerConfig{
 		Endpoint: *makeEndpoint(host, port),
+	}
+}
+
+func makeEndpoint(host string, port int) *connection.Endpoint {
+	return &connection.Endpoint{
+		Host: host,
+		Port: port,
 	}
 }
 

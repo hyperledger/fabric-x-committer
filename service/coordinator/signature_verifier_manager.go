@@ -58,7 +58,7 @@ type (
 	}
 
 	signVerifierManagerConfig struct {
-		clientConfig             *connection.ClientConfig
+		clientConfig             *connection.MultiClientConfig
 		incomingTxsForValidation <-chan dependencygraph.TxNodeBatch
 		outgoingValidatedTxs     chan<- dependencygraph.TxNodeBatch
 		metrics                  *perfMetrics

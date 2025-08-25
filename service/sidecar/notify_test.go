@@ -288,7 +288,7 @@ func TestNotifierStream(t *testing.T) {
 		protonotify.RegisterNotifierServer(server, env.n)
 	})
 	endpoint := &config.Endpoint
-	conn, err := connection.Connect(connection.NewInsecureDialConfig(endpoint))
+	conn, err := connection.Connect(test.NewInsecureDialConfig(endpoint))
 	require.NoError(t, err)
 	client := protonotify.NewNotifierClient(conn)
 
