@@ -278,12 +278,18 @@ func NewSecuredDialConfig(
 	t.Helper()
 	clientCreds, err := tlsConfig.ClientCredentials()
 	require.NoError(t, err)
-	return connection.NewDialConfig(endpoint.Address(), clientCreds, &defaultGrpcRetryProfile)
+	return connection.NewDialConfigBuilder(endpoint.Address()).
+		WithCredentials(clientCreds).
+		WithRetry(&defaultGrpcRetryProfile).
+		Build()
 }
 
 // NewInsecureDialConfig creates the default dial config with insecure credentials.
 func NewInsecureDialConfig(endpoint connection.WithAddress) *connection.DialConfig {
-	return connection.NewDialConfig(endpoint.Address(), insecure.NewCredentials(), &defaultGrpcRetryProfile)
+	return connection.NewDialConfigBuilder(endpoint.Address()).
+		WithCredentials(insecure.NewCredentials()).
+		WithRetry(&defaultGrpcRetryProfile).
+		Build()
 }
 
 // NewInsecureLoadBalancedDialConfig creates the default dial config with insecure credentials.
@@ -299,24 +305,16 @@ func NewInsecureLoadBalancedDialConfig(t *testing.T, endpoints []*connection.End
 
 // MakeInsecureMultiClientConfig creates a client configuration for test purposes given number of endpoints.
 func MakeInsecureMultiClientConfig(ep ...*connection.Endpoint) *connection.MultiClientConfig {
-	return MakeTLSMultiClientConfig(nil, ep...)
+	return &connection.MultiClientConfig{
+		Endpoints: ep,
+		TLS:       nil, // nil means insecure.
+		Retry:     &defaultGrpcRetryProfile,
+	}
 }
 
 // MakeInsecureClientConfig creates a client configuration for test purposes given an endpoint.
 func MakeInsecureClientConfig(ep *connection.Endpoint) *connection.ClientConfig {
 	return MakeTLSClientConfig(nil, ep)
-}
-
-// MakeTLSMultiClientConfig creates a client configuration for test purposes given one or more endpoints, and creds.
-func MakeTLSMultiClientConfig(
-	tlsConfig *connection.TLSConfig,
-	ep ...*connection.Endpoint,
-) *connection.MultiClientConfig {
-	return &connection.MultiClientConfig{
-		Endpoints: ep,
-		TLS:       tlsConfig,
-		Retry:     &defaultGrpcRetryProfile,
-	}
 }
 
 // MakeTLSClientConfig creates a client configuration for test purposes given a single endpoint and creds.
