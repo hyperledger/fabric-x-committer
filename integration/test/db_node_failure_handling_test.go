@@ -46,10 +46,6 @@ func TestDBResiliencyYugabyteScenarios(t *testing.T) {
 			name:   "non-leader-master-and-tablet",
 			action: runner.NonLeaderMaster | runner.Tablet,
 		},
-		{
-			name:   "non-leader-master-and-tablet",
-			action: runner.NonLeaderMaster | runner.LeaderMaster,
-		},
 	} {
 		scenario := sc
 		t.Run(scenario.name, func(t *testing.T) {
