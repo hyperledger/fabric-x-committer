@@ -19,36 +19,34 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 )
 
-var crashScenarios = []struct {
-	name   string
-	action int
-}{
-	{
-		name:   "tablet",
-		action: runner.Tablet,
-	},
-	{
-		name:   "non-leader-master",
-		action: runner.NonLeaderMaster,
-	},
-	{
-		name:   "leader-master",
-		action: runner.LeaderMaster,
-	},
-	{
-		name:   "leader-master-and-tablet",
-		action: runner.LeaderMaster | runner.Tablet,
-	},
-	{
-		name:   "non-leader-master-and-tablet",
-		action: runner.NonLeaderMaster | runner.Tablet,
-	},
-}
-
 func TestDBResiliencyYugabyteScenarios(t *testing.T) {
 	t.Parallel()
 
-	for _, sc := range crashScenarios {
+	for _, sc := range []struct {
+		name   string
+		action int
+	}{
+		{
+			name:   "tablet",
+			action: runner.Tablet,
+		},
+		{
+			name:   "non-leader-master",
+			action: runner.NonLeaderMaster,
+		},
+		{
+			name:   "leader-master",
+			action: runner.LeaderMaster,
+		},
+		{
+			name:   "leader-master-and-tablet",
+			action: runner.LeaderMaster | runner.Tablet,
+		},
+		{
+			name:   "non-leader-master-and-tablet",
+			action: runner.NonLeaderMaster | runner.Tablet,
+		},
+	} {
 		scenario := sc
 		t.Run(scenario.name, func(t *testing.T) {
 			t.Parallel()
