@@ -59,9 +59,9 @@ const (
 	MasterNode = "master"
 	// TabletNode represents yugabyte tablet db node.
 	TabletNode = "tablet"
-	// LeaderMasterNode represents yugabyte's raft leader master db node.
+	// LeaderMasterNode represents the yugabyte master node currently serving as the Raft leader.
 	LeaderMasterNode = "leader"
-	// FollowerMasterNode represents yugabyte follower master db node.
+	// FollowerMasterNode represents a yugabyte master node that is not the leader (a follower).
 	FollowerMasterNode = "follower"
 )
 
