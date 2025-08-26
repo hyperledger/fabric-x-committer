@@ -65,11 +65,11 @@ func TestDBResiliencyYugabyteScenarios(t *testing.T) {
 			if scenario.action&Tablet != 0 {
 				clusterController.StopAndRemoveSingleNodeByRole(t, runner.TabletNode)
 			}
-			if scenario.action|NonLeaderMaster != 0 {
-				clusterController.StopAndRemoveSingleMasterNodeByRaftRole(t, runner.LeaderMasterNode)
+			if scenario.action&NonLeaderMaster != 0 {
+				clusterController.StopAndRemoveSingleMasterNodeByRaftRole(t, runner.FollowerMasterNode)
 			}
 			if scenario.action&LeaderMaster != 0 {
-				clusterController.StopAndRemoveSingleMasterNodeByRaftRole(t, runner.FollowerMasterNode)
+				clusterController.StopAndRemoveSingleMasterNodeByRaftRole(t, runner.LeaderMasterNode)
 			}
 			waitForCommittedTxs(t, c, 15_000)
 		})
