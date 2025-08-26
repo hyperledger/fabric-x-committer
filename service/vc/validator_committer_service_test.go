@@ -239,7 +239,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 				},
 				// The following 2 TXs test the new key path
 				{
-					Ref: types.TxRef("New key with value", 3, 4),
+					Ref: types.TxRef("New key with value", 2, 4),
 					Namespaces: []*protoblocktx.TxNamespace{
 						{
 							NsId:      "1",

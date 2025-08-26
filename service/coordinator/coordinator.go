@@ -368,6 +368,10 @@ func (c *Service) receiveAndProcessBlock(
 		}
 		logger.Debugf("Coordinator received a batch with %d TXs", len(blk.Txs))
 
+		// NOTE: Block processing is decoupled from the stream's lifecycle.
+		// Even if the stream terminates unexpectedly, any received blocks will
+		// still be forwarded to downstream components for complete processing.
+
 		promutil.AddToCounter(c.metrics.transactionReceivedTotal, len(blk.Txs)+len(blk.Rejected))
 		c.numWaitingTxsForStatus.Add(int32(len(blk.Txs))) //nolint:gosec
 
