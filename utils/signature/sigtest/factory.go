@@ -134,9 +134,7 @@ func (*blsFactory) NewKeysWithSeed(seed int64) (signature.PrivateKey, signature.
 	r := pseudorand.New(pseudorand.NewSource(seed))
 	_, _, _, g2 := bn254.Generators()
 
-	randomBytes := make([]byte, fr.Modulus().BitLen())
-	_, err := r.Read(randomBytes)
-	utils.Must(err)
+	randomBytes := utils.MustRead(r, fr.Modulus().BitLen())
 
 	sk := big.NewInt(0)
 	sk.SetBytes(randomBytes)

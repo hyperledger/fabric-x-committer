@@ -13,7 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -55,33 +55,31 @@ func TestDependencyGraph(t *testing.T) {
 
 	// t2 depends on t1
 	t1 := createTxForTest(
-		t, nsID1ForTest, [][]byte{keys[0], keys[1]}, [][]byte{keys[2], keys[3]}, [][]byte{keys[4], keys[5]},
+		t, 0, nsID1ForTest, [][]byte{keys[0], keys[1]}, [][]byte{keys[2], keys[3]}, [][]byte{keys[4], keys[5]},
 	)
 	t2 := createTxForTest(
-		t, nsID1ForTest, [][]byte{keys[4], keys[5]}, [][]byte{keys[2], keys[6]}, [][]byte{keys[3], keys[7]},
+		t, 1, nsID1ForTest, [][]byte{keys[4], keys[5]}, [][]byte{keys[2], keys[6]}, [][]byte{keys[3], keys[7]},
 	)
 
 	localDepIncomingTxs <- &TransactionBatch{
-		ID:     1,
-		Txs:    []*protoblocktx.Tx{t1, t2},
-		TxsNum: []uint32{0, 1},
+		ID:  1,
+		Txs: []*protocoordinatorservice.Tx{t1, t2},
 	}
 
 	test.EventuallyIntMetric(t, 1, metrics.dependentTransactionsQueueSize, 5*time.Second, 100*time.Millisecond)
 
 	// t3 depends on t2 and t1
 	t3 := createTxForTest(
-		t, nsID1ForTest, [][]byte{keys[7], keys[3]}, [][]byte{keys[2], keys[3]}, [][]byte{keys[8], keys[5]},
+		t, 0, nsID1ForTest, [][]byte{keys[7], keys[3]}, [][]byte{keys[2], keys[3]}, [][]byte{keys[8], keys[5]},
 	)
 	// t4 depends on t2 and t1
 	t4 := createTxForTest(
-		t, nsID1ForTest, [][]byte{keys[7], keys[6]}, [][]byte{keys[4], keys[1]}, [][]byte{keys[0], keys[9]},
+		t, 1, nsID1ForTest, [][]byte{keys[7], keys[6]}, [][]byte{keys[4], keys[1]}, [][]byte{keys[0], keys[9]},
 	)
 
 	localDepIncomingTxs <- &TransactionBatch{
-		ID:     2,
-		Txs:    []*protoblocktx.Tx{t3, t4},
-		TxsNum: []uint32{0, 1},
+		ID:  2,
+		Txs: []*protocoordinatorservice.Tx{t3, t4},
 	}
 
 	test.EventuallyIntMetric(t, 3, metrics.dependentTransactionsQueueSize, 5*time.Second, 100*time.Millisecond)
@@ -90,7 +88,7 @@ func TestDependencyGraph(t *testing.T) {
 	depFreeTxs := <-globalDepOutgoingTxs
 	require.Len(t, depFreeTxs, 1)
 	actualT1 := depFreeTxs[0]
-	require.Equal(t, t1.Id, actualT1.Tx.ID)
+	test.RequireProtoEqual(t, t1.Ref, actualT1.Tx.Ref)
 
 	// t1 has 3 dependent transactions, t2, t3, and t4
 	require.Eventually(t, func() bool {
@@ -103,7 +101,7 @@ func TestDependencyGraph(t *testing.T) {
 	depFreeTxs = <-globalDepOutgoingTxs
 	require.Len(t, depFreeTxs, 1)
 	actualT2 := depFreeTxs[0]
-	require.Equal(t, t2.Id, actualT2.Tx.ID)
+	test.RequireProtoEqual(t, t2.Ref, actualT2.Tx.Ref)
 
 	test.RequireIntMetricValue(t, 2, metrics.dependentTransactionsQueueSize)
 
@@ -116,15 +114,15 @@ func TestDependencyGraph(t *testing.T) {
 	depFreeTxs = <-globalDepOutgoingTxs
 	require.Len(t, depFreeTxs, 2)
 	var actualT3, actualT4 *TransactionNode
-	if t3.Id == depFreeTxs[0].Tx.ID {
+	if t3.Ref.TxId == depFreeTxs[0].Tx.Ref.TxId {
 		actualT3 = depFreeTxs[0]
 		actualT4 = depFreeTxs[1]
 	} else {
 		actualT3 = depFreeTxs[1]
 		actualT4 = depFreeTxs[0]
 	}
-	require.Equal(t, t3.Id, actualT3.Tx.ID)
-	require.Equal(t, t4.Id, actualT4.Tx.ID)
+	test.RequireProtoEqual(t, t3.Ref, actualT3.Tx.Ref)
+	test.RequireProtoEqual(t, t4.Ref, actualT4.Tx.Ref)
 
 	test.RequireIntMetricValue(t, 0, metrics.dependentTransactionsQueueSize)
 
@@ -138,41 +136,39 @@ func TestDependencyGraph(t *testing.T) {
 	keys = makeTestKeys(t, 10)
 	// t2 depends on t1, t1 depends on t0.
 	t0 := createTxForTest(
-		t, types.ConfigNamespaceID, nil, nil, [][]byte{[]byte(types.ConfigKey)},
+		t, 0, types.ConfigNamespaceID, nil, nil, [][]byte{[]byte(types.ConfigKey)},
 	)
 	t1 = createTxForTest(
-		t, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
+		t, 1, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 	)
 	t2 = createTxForTest(
-		t, nsID1ForTest, [][]byte{keys[4], keys[5]}, [][]byte{keys[2], keys[6]}, [][]byte{keys[3], keys[7]},
+		t, 2, nsID1ForTest, [][]byte{keys[4], keys[5]}, [][]byte{keys[2], keys[6]}, [][]byte{keys[3], keys[7]},
 	)
 
 	localDepIncomingTxs <- &TransactionBatch{
-		ID:     3,
-		Txs:    []*protoblocktx.Tx{t0, t1, t2},
-		TxsNum: []uint32{0, 1, 2},
+		ID:  3,
+		Txs: []*protocoordinatorservice.Tx{t0, t1, t2},
 	}
 
 	// t3 depends on t2, t1, and t0
 	t3 = createTxForTest(
-		t, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
+		t, 0, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 	)
 	// t4 depends on t3, t2 and t1
 	t4 = createTxForTest(
-		t, nsID1ForTest, [][]byte{keys[7], keys[6]}, [][]byte{keys[4], keys[1]}, [][]byte{keys[0], keys[9]},
+		t, 1, nsID1ForTest, [][]byte{keys[7], keys[6]}, [][]byte{keys[4], keys[1]}, [][]byte{keys[0], keys[9]},
 	)
 
 	localDepIncomingTxs <- &TransactionBatch{
-		ID:     4,
-		Txs:    []*protoblocktx.Tx{t3, t4},
-		TxsNum: []uint32{0, 1},
+		ID:  4,
+		Txs: []*protocoordinatorservice.Tx{t3, t4},
 	}
 
 	// only t0 is dependency free
 	depFreeTxs = <-globalDepOutgoingTxs
 	require.Len(t, depFreeTxs, 1)
 	actualT0 := depFreeTxs[0]
-	require.Equal(t, t0.Id, actualT0.Tx.ID)
+	test.RequireProtoEqual(t, t0.Ref, actualT0.Tx.Ref)
 
 	// t0 has 2 dependent transactions: t1, and t2
 	require.Eventually(t, func() bool {
@@ -185,7 +181,7 @@ func TestDependencyGraph(t *testing.T) {
 	depFreeTxs = <-globalDepOutgoingTxs
 	require.Len(t, depFreeTxs, 1)
 	actualT1 = depFreeTxs[0]
-	require.Equal(t, t1.Id, actualT1.Tx.ID)
+	test.RequireProtoEqual(t, t1.Ref, actualT1.Tx.Ref)
 
 	// t1 has 3 dependent transactions, t2, t3, and t4
 	require.Eventually(t, func() bool {
@@ -198,7 +194,7 @@ func TestDependencyGraph(t *testing.T) {
 	depFreeTxs = <-globalDepOutgoingTxs
 	require.Len(t, depFreeTxs, 1)
 	actualT2 = depFreeTxs[0]
-	require.Equal(t, t2.Id, actualT2.Tx.ID)
+	test.RequireProtoEqual(t, t2.Ref, actualT2.Tx.Ref)
 
 	// t2 has 2 dependent transactions, t3 and t4
 	require.Equal(t, 2, actualT2.dependentTxs.Count())
@@ -209,7 +205,7 @@ func TestDependencyGraph(t *testing.T) {
 	depFreeTxs = <-globalDepOutgoingTxs
 	require.Len(t, depFreeTxs, 1)
 	actualT3 = depFreeTxs[0]
-	require.Equal(t, t3.Id, actualT3.Tx.ID)
+	test.RequireProtoEqual(t, t3.Ref, actualT3.Tx.Ref)
 
 	validatedTxs <- TxNodeBatch{actualT3}
 
@@ -217,7 +213,7 @@ func TestDependencyGraph(t *testing.T) {
 	depFreeTxs = <-globalDepOutgoingTxs
 	require.Len(t, depFreeTxs, 1)
 	actualT4 = depFreeTxs[0]
-	require.Equal(t, t4.Id, actualT4.Tx.ID)
+	test.RequireProtoEqual(t, t4.Ref, actualT4.Tx.Ref)
 
 	validatedTxs <- TxNodeBatch{actualT4}
 

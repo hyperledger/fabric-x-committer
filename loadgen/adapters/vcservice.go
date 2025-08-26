@@ -12,7 +12,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -80,7 +79,7 @@ func (c *VcAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	g, gCtx := errgroup.WithContext(dCtx)
 	for _, stream := range streams {
 		g.Go(func() error {
-			return sendBlocks(ctx, &c.commonAdapter, txStream, c.mapToBatch, stream.Send)
+			return sendBlocks(ctx, &c.commonAdapter, txStream, workload.MapToVcBatch, stream.Send)
 		})
 		g.Go(func() error {
 			defer dCancel() // We stop sending if we can't track the received items.
@@ -111,18 +110,4 @@ func (c *VcAdapter) receiveStatus(
 		}
 	}
 	return nil
-}
-
-// mapToBatch creates a VC batch. It uses the protoblocktx.Tx.Id to track the TXs latency.
-func (c *VcAdapter) mapToBatch(txs []*protoblocktx.Tx) (*protovcservice.TransactionBatch, []string, error) {
-	batchTxs := make([]*protovcservice.Transaction, len(txs))
-	for i, tx := range txs {
-		batchTxs[i] = &protovcservice.Transaction{
-			ID:          tx.Id,
-			Namespaces:  tx.Namespaces,
-			BlockNumber: c.NextBlockNum(),
-			TxNum:       uint32(i), //nolint:gosec // int -> uint32.
-		}
-	}
-	return &protovcservice.TransactionBatch{Transactions: batchTxs}, getTXsIDs(txs), nil
 }

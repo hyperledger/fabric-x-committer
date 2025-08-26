@@ -11,14 +11,15 @@ option go_package = "github.com/hyperledger/fabric-x-committer/api/protosigverif
 package protosigverifierservice;
 
 import "api/protoblocktx/block_tx.proto";
+import "api/protocoordinatorservice/coordinator.proto";
 
 service Verifier {
-    rpc StartStream(stream RequestBatch) returns (stream ResponseBatch);
+    rpc StartStream(stream Batch) returns (stream ResponseBatch);
 }
 
-message RequestBatch {
+message Batch {
     optional Update update = 1;
-    repeated Request requests = 2;
+    repeated Tx requests = 2;
 }
 
 message Update {
@@ -26,17 +27,14 @@ message Update {
     optional protoblocktx.NamespacePolicies namespace_policies = 2;
 }
 
-message Request {
-    uint64 block_num  = 1;
-    uint64 tx_num = 2;
-    protoblocktx.Tx tx = 3;
+message Tx {
+    protocoordinatorservice.TxRef ref = 1;
+    protoblocktx.Tx tx = 2;
 }
 
 message Response {
-    uint64 block_num  = 1;
-    uint64 tx_num = 2;
-    string tx_id = 3;
-    protoblocktx.Status status = 4;
+    protocoordinatorservice.TxRef ref = 1;
+    protoblocktx.Status status = 2;
 }
 
 message ResponseBatch {

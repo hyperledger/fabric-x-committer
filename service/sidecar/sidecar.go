@@ -25,9 +25,9 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/broadcastdeliver"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
@@ -38,7 +38,7 @@ var logger = logging.New("sidecar")
 // it aggregates the transaction status and forwards the validated block to clients who have
 // registered on the ledger server.
 type Service struct {
-	ordererClient      *broadcastdeliver.Client
+	ordererClient      *deliver.Client
 	relay              *relay
 	notifier           *notifier
 	ledgerService      *ledgerService
@@ -60,7 +60,7 @@ func New(c *Config) (*Service, error) {
 	}
 
 	// 1. Fetch blocks from the ordering service.
-	ordererClient, err := broadcastdeliver.New(&c.Orderer)
+	ordererClient, err := deliver.New(&c.Orderer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create orderer client: %w", err)
 	}
@@ -183,9 +183,9 @@ func (s *Service) sendBlocksAndReceiveStatus(
 	// NOTE: ordererClient.Deliver and relay.Run must always return an error on exist.
 	g.Go(func() error {
 		logger.Info("Fetch blocks from the ordering service and write them on s.blockToBeCommitted.")
-		err := s.ordererClient.Deliver(gCtx, &broadcastdeliver.DeliverConfig{
+		err := s.ordererClient.Deliver(gCtx, &deliver.Parameters{
 			StartBlkNum: int64(nextBlockNum), //nolint:gosec
-			EndBlkNum:   broadcastdeliver.MaxBlockNum,
+			EndBlkNum:   deliver.MaxBlockNum,
 			OutputBlock: s.blockToBeCommitted,
 		})
 		if errors.Is(err, context.Canceled) {
@@ -320,7 +320,7 @@ func (s *Service) recoverLedgerStore(
 	g.Go(func() error {
 		logger.Infof("starting delivery service with the orderer to receive block %d to %d",
 			blockStoreHeight, stateDBHeight-1)
-		return s.ordererClient.Deliver(gCtx, &broadcastdeliver.DeliverConfig{
+		return s.ordererClient.Deliver(gCtx, &deliver.Parameters{
 			StartBlkNum: int64(blockStoreHeight), //nolint:gosec
 			EndBlkNum:   stateDBHeight - 1,
 			OutputBlock: blockCh,
@@ -357,11 +357,12 @@ func appendMissingBlock(
 		// This can never occur unless there is a bug in the relay.
 		return err
 	}
+
 	txIDs := make([]string, len(mappedBlock.block.Txs))
-	expectedHeight := make(map[string]*types.Height)
+	expectedHeight := make(map[string]*types.Height, len(mappedBlock.block.Txs))
 	for i, tx := range mappedBlock.block.Txs {
-		txIDs[i] = tx.Id
-		expectedHeight[tx.Id] = types.NewHeight(mappedBlock.block.Number, mappedBlock.block.TxsNum[i])
+		txIDs[i] = tx.Ref.TxId
+		expectedHeight[tx.Ref.TxId] = types.NewHeightFromTxRef(tx.Ref)
 	}
 
 	txsStatus, err := client.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{TxIDs: txIDs})

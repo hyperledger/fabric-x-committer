@@ -178,8 +178,7 @@ func prepareStatusForCommit(vTx *validatedTransactions) *protoblocktx.Transactio
 	}
 
 	setStatus := func(txID TxID, status protoblocktx.Status) {
-		h := vTx.txIDToHeight[txID]
-		txCommitStatus.Status[string(txID)] = types.CreateStatusWithHeight(status, h.BlockNum, int(h.TxNum))
+		txCommitStatus.Status[string(txID)] = vTx.txIDToHeight[txID].WithStatus(status)
 	}
 
 	for txID, status := range vTx.invalidTxStatus {

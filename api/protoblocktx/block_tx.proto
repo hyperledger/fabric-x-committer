@@ -12,42 +12,41 @@ package protoblocktx;
 
 // Represents a transaction in the blockchain.
 message Tx {
-    string id = 1; // The transaction ID.
-    repeated TxNamespace namespaces = 2; // Namespaces associated with the transaction.
-    repeated bytes signatures = 3; // signature per namespace.
+    repeated TxNamespace namespaces = 1; // Namespaces associated with the transaction.
+    repeated bytes signatures = 2;       // Signature per namespace.
 }
 
 // Represents a namespace within a transaction.
 message TxNamespace {
-    string ns_id = 1; // The namespace ID.
-    uint64 ns_version = 2; // The version of the namespace.
-    repeated Read reads_only = 3; // List of read only operations within the namespace.
+    string ns_id = 1;                   // The namespace ID.
+    uint64 ns_version = 2;              // The version of the namespace.
+    repeated Read reads_only = 3;       // List of read only operations within the namespace.
     repeated ReadWrite read_writes = 4; // List of read-write operations within the namespace.
-    repeated Write blind_writes = 5; // List of blind write operations within the namespace.
+    repeated Write blind_writes = 5;    // List of blind write operations within the namespace.
 }
 
 // Represents a read operation.
 message Read {
-    bytes key = 1; // The key being read.
+    bytes key = 1;               // The key being read.
     optional uint64 version = 2; // The version of the key being read. Nil version means it doesn't exist.
 }
 
 // Represents a read-write operation.
 message ReadWrite {
-    bytes key = 1; // The key involved in the read-write operation.
+    bytes key = 1;               // The key involved in the read-write operation.
     optional uint64 version = 2; // The version of the key being read and written. Nil version means it doesn't exist.
-    bytes value = 3; // The value associated with the key being written.
+    bytes value = 3;             // The value associated with the key being written.
 }
 
 // Represents a write operation.
 message Write {
-    bytes key = 1; // The key being written.
+    bytes key = 1;   // The key being written.
     bytes value = 2; // The value associated with the key being written.
 }
 
 // Represents a namespace policy.
 message NamespacePolicy {
-    string scheme = 1; // The scheme for signature verification.
+    string scheme = 1;    // The scheme for signature verification.
     bytes public_key = 2; // The public key for signature verification.
 }
 

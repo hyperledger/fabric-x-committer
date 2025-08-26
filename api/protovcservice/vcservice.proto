@@ -11,9 +11,10 @@ option go_package = "github.com/hyperledger/fabric-x-committer/api/protovcservic
 package protovcservice;
 
 import "api/protoblocktx/block_tx.proto";
+import "api/protocoordinatorservice/coordinator.proto";
 
 service ValidationAndCommitService {
-  rpc StartValidateAndCommitStream (stream TransactionBatch) returns (stream protoblocktx.TransactionsStatus);
+  rpc StartValidateAndCommitStream (stream Batch) returns (stream protoblocktx.TransactionsStatus);
   rpc SetLastCommittedBlockNumber (protoblocktx.BlockInfo) returns (Empty) {};
   rpc GetLastCommittedBlockNumber (Empty) returns (protoblocktx.LastCommittedBlock) {};
   rpc GetTransactionsStatus (protoblocktx.QueryStatus) returns (protoblocktx.TransactionsStatus) {};
@@ -22,16 +23,14 @@ service ValidationAndCommitService {
   rpc SetupSystemTablesAndNamespaces(Empty) returns (Empty) {};
 }
 
-message TransactionBatch {
-  repeated Transaction transactions = 1;
+message Batch {
+  repeated Tx transactions = 1;
 }
 
-message Transaction {
-  string ID = 1;
+message Tx {
+  protocoordinatorservice.TxRef ref = 1;
   repeated protoblocktx.TxNamespace namespaces = 2;
   optional InvalidTxStatus prelim_invalid_tx_status = 3;
-  uint64 block_number = 4;
-  uint32 tx_num = 5;
 }
 
 message InvalidTxStatus {
@@ -39,4 +38,3 @@ message InvalidTxStatus {
 }
 
 message Empty {}
-

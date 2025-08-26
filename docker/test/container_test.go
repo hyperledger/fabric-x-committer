@@ -51,7 +51,7 @@ func TestStartTestNode(t *testing.T) {
 	t.Log("Try to fetch the first block")
 	sidecarEndpoint, err := connection.NewEndpoint("localhost:" + sidecarPort)
 	require.NoError(t, err)
-	committedBlock := sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Config{
+	committedBlock := sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Parameters{
 		ChannelID: channelName,
 		Client:    test.MakeInsecureClientConfig(sidecarEndpoint),
 	}, 0)

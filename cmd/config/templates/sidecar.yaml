@@ -29,7 +29,7 @@ orderer:
       {{- range .Endpoints.Orderer }}
       - {{ .Server }}
       {{- end }}
-  channel-id: {{ .ChannelID }}
+  channel-id: {{ .Policy.ChannelID }}
   consensus-type: BFT
 committer:
   endpoint: {{ .Endpoints.Coordinator.Server }}

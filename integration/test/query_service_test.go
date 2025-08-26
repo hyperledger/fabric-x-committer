@@ -33,60 +33,36 @@ func TestQueryService(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute*5)
 	t.Cleanup(cancel)
 
-	insertions := []struct {
-		txs             []*protoblocktx.Tx
-		expectedResults *runner.ExpectedStatusInBlock
-	}{
+	c.MakeAndSendTransactionsToOrderer(t, [][]*protoblocktx.TxNamespace{{
 		{
-			txs: []*protoblocktx.Tx{
+			NsId:      "1",
+			NsVersion: 0,
+			BlindWrites: []*protoblocktx.Write{
 				{
-					Id: "write items to namespaces",
-					Namespaces: []*protoblocktx.TxNamespace{
-						{
-							NsId:      "1",
-							NsVersion: 0,
-							BlindWrites: []*protoblocktx.Write{
-								{
-									Key:   []byte("k1"),
-									Value: []byte("v1"),
-								},
-								{
-									Key:   []byte("k2"),
-									Value: []byte("v2"),
-								},
-							},
-						},
-						{
-							NsId:      "2",
-							NsVersion: 0,
-							BlindWrites: []*protoblocktx.Write{
-								{
-									Key:   []byte("k3"),
-									Value: []byte("v3"),
-								},
-								{
-									Key:   []byte("k4"),
-									Value: []byte("v4"),
-								},
-							},
-						},
-					},
+					Key:   []byte("k1"),
+					Value: []byte("v1"),
+				},
+				{
+					Key:   []byte("k2"),
+					Value: []byte("v2"),
 				},
 			},
-			expectedResults: &runner.ExpectedStatusInBlock{
-				TxIDs:    []string{"write items to namespaces"},
-				Statuses: []protoblocktx.Status{protoblocktx.Status_COMMITTED},
+		},
+		{
+			NsId:      "2",
+			NsVersion: 0,
+			BlindWrites: []*protoblocktx.Write{
+				{
+					Key:   []byte("k3"),
+					Value: []byte("v3"),
+				},
+				{
+					Key:   []byte("k4"),
+					Value: []byte("v4"),
+				},
 			},
 		},
-	}
-
-	for _, operation := range insertions {
-		for _, tx := range operation.txs {
-			c.AddSignatures(t, tx)
-		}
-		c.SendTransactionsToOrderer(t, operation.txs)
-		c.ValidateExpectedResultsInCommittedBlock(t, operation.expectedResults)
-	}
+	}}, []protoblocktx.Status{protoblocktx.Status_COMMITTED})
 
 	t.Run("Query-GetRows-Both-Namespaces", func(t *testing.T) {
 		ret, err := c.QueryServiceClient.GetRows(

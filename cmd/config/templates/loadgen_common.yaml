@@ -30,6 +30,7 @@ load-profile:
     read-write-count:
       const: 2
     policy:
+      channel-id: {{ .Policy.ChannelID }}
       namespace-policies:
         {{ range $nsID, $element := .Policy.NamespacePolicies }}
         {{ $nsID }}:

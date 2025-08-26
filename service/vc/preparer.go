@@ -23,7 +23,7 @@ type (
 	// transactionPreparer prepares transaction batches for validation and commit.
 	transactionPreparer struct {
 		// incomingTransactionBatch is an input to the preparer
-		incomingTransactionBatch <-chan *protovcservice.TransactionBatch
+		incomingTransactionBatch <-chan *protovcservice.Batch
 		// outgoingPreparedTransactions is an output of the preparer and an input to the validator
 		outgoingPreparedTransactions chan<- *preparedTransactions
 		// metrics is the metrics collector
@@ -90,7 +90,7 @@ type (
 
 // newPreparer creates a new preparer instance with input channel txBatch and output channel preparedTxs.
 func newPreparer(
-	txBatch <-chan *protovcservice.TransactionBatch,
+	txBatch <-chan *protovcservice.Batch,
 	preparedTxs chan<- *preparedTransactions,
 	metrics *perfMetrics,
 ) *transactionPreparer {
@@ -150,7 +150,7 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 		}
 
 		for _, tx := range txBatch.Transactions {
-			if _, ok := prepTxs.txIDToHeight[TxID(tx.ID)]; ok {
+			if _, ok := prepTxs.txIDToHeight[TxID(tx.Ref.TxId)]; ok {
 				// It's possible to receive the same transaction multiple times within a batch
 				// if there's a connection issue between the coordinator and the vcservice.
 				// Although the coordinator does not send the same transaction more than once
@@ -161,20 +161,20 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 				// Hence, we detect such duplicate transactions and ignore them.
 				continue
 			}
-			prepTxs.txIDToHeight[TxID(tx.ID)] = &types.Height{BlockNum: tx.BlockNumber, TxNum: tx.TxNum}
+			prepTxs.txIDToHeight[TxID(tx.Ref.TxId)] = types.NewHeightFromTxRef(tx.Ref)
 			// If the preliminary invalid transaction status is set,
 			// the vcservice does not need to validate the transaction,
 			// but it will still commit the status only if the txID is not a duplicate.
 			if tx.PrelimInvalidTxStatus != nil {
 				logger.Debugf("Transaction %s marked as preliminarily invalid with status: %v",
-					tx.ID, tx.PrelimInvalidTxStatus.Code)
-				prepTxs.invalidTxIDStatus[TxID(tx.ID)] = tx.PrelimInvalidTxStatus.Code
+					tx.Ref.TxId, tx.PrelimInvalidTxStatus.Code)
+				prepTxs.invalidTxIDStatus[TxID(tx.Ref.TxId)] = tx.PrelimInvalidTxStatus.Code
 				continue
 			}
 
 			for _, nsOperations := range tx.Namespaces {
-				tID := TxID(tx.ID)
-				logger.Debugf("Preparing namespace %s in transaction with ID %s ", nsOperations.NsId, tx.ID)
+				tID := TxID(tx.Ref.TxId)
+				logger.Debugf("Preparing namespace %s in TX with ID %s ", nsOperations.NsId, tx.Ref.TxId)
 				prepTxs.addReadsOnly(tID, nsOperations)
 				prepTxs.addReadWrites(tID, nsOperations)
 				prepTxs.addBlindWrites(tID, nsOperations)

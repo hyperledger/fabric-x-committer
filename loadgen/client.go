@@ -19,7 +19,6 @@ import (
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
@@ -116,7 +115,7 @@ func (c *Client) Run(ctx context.Context) error {
 		return c.txStream.Run(gCtx)
 	})
 
-	workloadSetupTXs := make(chan *protoblocktx.Tx, 1)
+	workloadSetupTXs := make(chan *protoloadgen.TX, 1)
 	cs := &workload.StreamWithSetup{
 		BlockSize:        c.conf.LoadProfile.Block.Size,
 		WorkloadSetupTXs: channel.NewReader(gCtx, workloadSetupTXs),
@@ -210,7 +209,7 @@ func (c *Client) runLimiterServer(ctx context.Context) error {
 }
 
 // submitWorkloadSetupTXs writes the workload setup TXs to the channel, and waits for them to be committed.
-func (c *Client) submitWorkloadSetupTXs(ctx context.Context, txs chan *protoblocktx.Tx) error {
+func (c *Client) submitWorkloadSetupTXs(ctx context.Context, txs chan *protoloadgen.TX) error {
 	defer close(txs)
 
 	workloadSetupTXs, err := makeWorkloadSetupTXs(c.conf)
@@ -238,8 +237,8 @@ func (c *Client) submitWorkloadSetupTXs(ctx context.Context, txs chan *protobloc
 	return nil
 }
 
-func makeWorkloadSetupTXs(config *ClientConfig) ([]*protoblocktx.Tx, error) {
-	workloadSetupTXs := make([]*protoblocktx.Tx, 0, 2)
+func makeWorkloadSetupTXs(config *ClientConfig) ([]*protoloadgen.TX, error) {
+	workloadSetupTXs := make([]*protoloadgen.TX, 0, 2)
 	if config.Generate.Config {
 		configTX, err := workload.CreateConfigTx(config.LoadProfile.Transaction.Policy)
 		if err != nil {
@@ -248,7 +247,7 @@ func makeWorkloadSetupTXs(config *ClientConfig) ([]*protoblocktx.Tx, error) {
 		workloadSetupTXs = append(workloadSetupTXs, configTX)
 	}
 	if config.Generate.Namespaces {
-		metaNsTX, err := workload.CreateNamespacesTX(config.LoadProfile.Transaction.Policy)
+		metaNsTX, err := workload.CreateLoadGenNamespacesTX(config.LoadProfile.Transaction.Policy)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create namespaces meta tx")
 		}

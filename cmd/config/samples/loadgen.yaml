@@ -36,6 +36,7 @@ load-profile:
     read-write-count:
       const: 2
     policy:
+      channel-id: mychannel
       namespace-policies:
         0:
           scheme: ECDSA

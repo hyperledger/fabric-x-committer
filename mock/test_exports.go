@@ -17,6 +17,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -185,7 +186,7 @@ func (e *OrdererTestEnv) SubmitConfigBlock(t *testing.T, conf *workload.ConfigBl
 }
 
 // AllEndpoints returns a list of all the endpoints (real, fake, and holders).
-func (e *OrdererTestEnv) AllEndpoints() []*connection.OrdererEndpoint {
+func (e *OrdererTestEnv) AllEndpoints() []*ordererconn.Endpoint {
 	return slices.Concat(
 		e.AllRealOrdererEndpoints(),
 		e.AllHolderEndpoints(),
@@ -194,16 +195,16 @@ func (e *OrdererTestEnv) AllEndpoints() []*connection.OrdererEndpoint {
 }
 
 // AllRealOrdererEndpoints returns a list of the real orderer endpoints.
-func (e *OrdererTestEnv) AllRealOrdererEndpoints() []*connection.OrdererEndpoint {
-	return connection.NewOrdererEndpoints(0, "org", e.OrdererServers.Configs...)
+func (e *OrdererTestEnv) AllRealOrdererEndpoints() []*ordererconn.Endpoint {
+	return ordererconn.NewEndpoints(0, "org", e.OrdererServers.Configs...)
 }
 
 // AllFakeEndpoints returns a list of the fake orderer endpoints.
-func (e *OrdererTestEnv) AllFakeEndpoints() []*connection.OrdererEndpoint {
-	return connection.NewOrdererEndpoints(0, "org", e.FakeServers.Configs...)
+func (e *OrdererTestEnv) AllFakeEndpoints() []*ordererconn.Endpoint {
+	return ordererconn.NewEndpoints(0, "org", e.FakeServers.Configs...)
 }
 
 // AllHolderEndpoints returns a list of the holder orderer endpoints.
-func (e *OrdererTestEnv) AllHolderEndpoints() []*connection.OrdererEndpoint {
-	return connection.NewOrdererEndpoints(0, "org", e.HolderServers.Configs...)
+func (e *OrdererTestEnv) AllHolderEndpoints() []*ordererconn.Endpoint {
+	return ordererconn.NewEndpoints(0, "org", e.HolderServers.Configs...)
 }

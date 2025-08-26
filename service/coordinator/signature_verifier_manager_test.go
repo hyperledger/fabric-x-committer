@@ -19,9 +19,11 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
+	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
@@ -193,7 +195,7 @@ func TestSignatureVerifierManagerWithMultipleVerifiers(t *testing.T) {
 	for range numBlocks {
 		select {
 		case txBatch := <-env.outputValidatedTxs:
-			require.ElementsMatch(t, expectedValidatedTxs[txBatch[0].Tx.BlockNumber], txBatch)
+			require.ElementsMatch(t, expectedValidatedTxs[txBatch[0].Tx.Ref.BlockNum], txBatch)
 		case <-deadline:
 			t.Fatal("Did not receive all blocks from output after timeout")
 		}
@@ -220,17 +222,15 @@ func TestSignatureVerifierWithAllInvalidTxs(t *testing.T) {
 	expectedValidatedTxs := dependencygraph.TxNodeBatch{}
 	for i := range 3 {
 		txNode := &dependencygraph.TransactionNode{
-			Tx: &protovcservice.Transaction{
-				BlockNumber: uint64(i), //nolint:gosec
-				TxNum:       uint32(i), //nolint:gosec
+			Tx: &protovcservice.Tx{
+				Ref: types.TxRef("", uint64(i), uint32(i)), //nolint:gosec
 			},
 		}
 		txBatch = append(txBatch, txNode)
 
 		expectedValidatedTxs = append(expectedValidatedTxs, &dependencygraph.TransactionNode{
-			Tx: &protovcservice.Transaction{
-				BlockNumber:           txNode.Tx.BlockNumber,
-				TxNum:                 txNode.Tx.TxNum,
+			Tx: &protovcservice.Tx{
+				Ref:                   txNode.Tx.Ref,
 				PrelimInvalidTxStatus: sigInvalidTxStatus,
 			},
 		})
@@ -249,25 +249,16 @@ func createTxNodeBatchForTest(
 ) (inputTxBatch, expectedValidatedTxs dependencygraph.TxNodeBatch) {
 	t.Helper()
 
-	b := make([]byte, valueSize)
-	_, err := rand.Read(b)
-	require.NoError(t, err)
-
-	ns := []*protoblocktx.TxNamespace{
-		{
-			BlindWrites: []*protoblocktx.Write{
-				{
-					Value: b,
-				},
-			},
-		},
-	}
+	ns := []*protoblocktx.TxNamespace{{
+		BlindWrites: []*protoblocktx.Write{{
+			Value: utils.MustRead(rand.Reader, valueSize),
+		}},
+	}}
 	for i := range numTxs {
 		txNode := &dependencygraph.TransactionNode{
-			Tx: &protovcservice.Transaction{
-				BlockNumber: blkNum,
-				TxNum:       uint32(i), //nolint:gosec
-				Namespaces:  ns,
+			Tx: &protovcservice.Tx{
+				Ref:        types.TxRef("", blkNum, uint32(i)), //nolint:gosec
+				Namespaces: ns,
 			},
 		}
 
@@ -280,9 +271,8 @@ func createTxNodeBatchForTest(
 			// odd number txs are invalid. No signature means invalid transaction.
 			// we need to create a copy of txNode to add expected status.
 			txNodeWithStatus := &dependencygraph.TransactionNode{
-				Tx: &protovcservice.Transaction{
-					BlockNumber:           txNode.Tx.BlockNumber,
-					TxNum:                 txNode.Tx.TxNum,
+				Tx: &protovcservice.Tx{
+					Ref:                   txNode.Tx.Ref,
 					Namespaces:            ns,
 					PrelimInvalidTxStatus: sigInvalidTxStatus,
 				},

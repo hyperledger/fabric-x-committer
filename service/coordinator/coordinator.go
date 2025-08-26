@@ -8,7 +8,6 @@ package coordinator
 
 import (
 	"context"
-	"fmt"
 	"maps"
 	"slices"
 	"sync"
@@ -23,11 +22,11 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
@@ -46,12 +45,6 @@ type (
 		queues                *channels
 		config                *Config
 		metrics               *perfMetrics
-
-		// nextExpectedBlockNumberToBeReceived denotes the next block number that the coordinator
-		// expects to receive from the sidecar. This value is determined based on the last committed
-		// block number in the ledger. The sidecar queries the coordinator for this value before
-		// starting to pull blocks from the ordering service.
-		nextExpectedBlockNumberToBeReceived atomic.Uint64
 
 		// initializationDone is used to find out whether the coordinator service has
 		// been initialized or not.
@@ -233,16 +226,6 @@ func (c *Service) Run(ctx context.Context) error {
 	if err := c.validatorCommitterMgr.recoverPolicyManagerFromStateDB(ctx); err != nil {
 		return err
 	}
-	lastCommittedBlock, getErr := c.validatorCommitterMgr.getLastCommittedBlockNumber(ctx)
-	if getErr != nil {
-		return getErr
-	}
-	if lastCommittedBlock.Block == nil {
-		// no block has been committed.
-		c.nextExpectedBlockNumberToBeReceived.Store(0)
-	} else {
-		c.nextExpectedBlockNumberToBeReceived.Store(lastCommittedBlock.Block.Number + 1)
-	}
 
 	c.initializationDone.SignalReady()
 
@@ -289,7 +272,7 @@ func (c *Service) GetLastCommittedBlockNumber(
 
 // GetNextExpectedBlockNumber returns the next expected block number to be received by the coordinator.
 func (c *Service) GetNextExpectedBlockNumber(
-	_ context.Context,
+	ctx context.Context,
 	_ *protocoordinatorservice.Empty,
 ) (*protoblocktx.BlockInfo, error) {
 	if !c.streamActive.TryRLock() {
@@ -297,9 +280,16 @@ func (c *Service) GetNextExpectedBlockNumber(
 	}
 	defer c.streamActive.RUnlock()
 
-	return &protoblocktx.BlockInfo{
-		Number: c.nextExpectedBlockNumberToBeReceived.Load(),
-	}, nil
+	lastCommittedBlock, getErr := c.validatorCommitterMgr.getLastCommittedBlockNumber(ctx)
+	if getErr != nil {
+		return nil, grpcerror.WrapInternalError(getErr)
+	}
+
+	res := &protoblocktx.BlockInfo{} // default: no block has been committed.
+	if lastCommittedBlock.Block != nil {
+		res.Number = lastCommittedBlock.Block.Number + 1
+	}
+	return res, nil
 }
 
 // GetTransactionsStatus returns the status of given transactions identifiers.
@@ -376,22 +366,11 @@ func (c *Service) receiveAndProcessBlock(
 		if err != nil {
 			return errors.Wrap(err, "failed to receive blocks from the sidecar")
 		}
+		logger.Debugf("Coordinator received a batch with %d TXs", len(blk.Txs))
 
 		// NOTE: Block processing is decoupled from the stream's lifecycle.
 		// Even if the stream terminates unexpectedly, any received blocks will
 		// still be forwarded to downstream components for complete processing.
-
-		swapped := c.nextExpectedBlockNumberToBeReceived.CompareAndSwap(blk.Number, blk.Number+1)
-		if !swapped {
-			errMsg := fmt.Sprintf(
-				"coordinator expects block [%d] but received block [%d]",
-				c.nextExpectedBlockNumberToBeReceived.Load(),
-				blk.Number,
-			)
-			logger.Error(errMsg)
-			return errors.New(errMsg)
-		}
-		logger.Debugf("Coordinator received block [%d] with %d TXs", blk.Number, len(blk.Txs))
 
 		promutil.AddToCounter(c.metrics.transactionReceivedTotal, len(blk.Txs)+len(blk.Rejected))
 		c.numWaitingTxsForStatus.Add(int32(len(blk.Txs))) //nolint:gosec
@@ -402,10 +381,8 @@ func (c *Service) receiveAndProcessBlock(
 			for i := 0; i < len(blk.Txs); i += chunkSizeForDepGraph {
 				end := min(i+chunkSizeForDepGraph, len(blk.Txs))
 				txsBatchForDependencyGraph.Write(&dependencygraph.TransactionBatch{
-					ID:          c.txBatchIDToDepGraph,
-					BlockNumber: blk.Number,
-					Txs:         blk.Txs[i:end],
-					TxsNum:      blk.TxsNum[i:end],
+					ID:  c.txBatchIDToDepGraph,
+					Txs: blk.Txs[i:end],
 				})
 				c.txBatchIDToDepGraph++
 			}
@@ -414,16 +391,7 @@ func (c *Service) receiveAndProcessBlock(
 		if len(blk.Rejected) > 0 {
 			rejected := make(dependencygraph.TxNodeBatch, len(blk.Rejected))
 			for i, tx := range blk.Rejected {
-				rejected[i] = &dependencygraph.TransactionNode{
-					Tx: &protovcservice.Transaction{
-						ID: tx.Id,
-						PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
-							Code: tx.Status,
-						},
-						BlockNumber: blk.Number,
-						TxNum:       tx.TxNum,
-					},
-				}
+				rejected[i] = dependencygraph.NewRejectedTransactionNode(tx)
 			}
 			txBatchForVcService.Write(rejected)
 		}

@@ -18,6 +18,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
+	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -31,7 +32,7 @@ import (
 type SigVerifier struct {
 	protosigverifierservice.UnimplementedVerifierServer
 	updates                    []*protosigverifierservice.Update
-	requestBatch               chan *protosigverifierservice.RequestBatch
+	requestBatch               chan *protosigverifierservice.Batch
 	numBlocksReceived          atomic.Uint32
 	returnErrForUpdatePolicies atomic.Bool
 	policyUpdateCounter        atomic.Uint64
@@ -43,7 +44,7 @@ type SigVerifier struct {
 // NewMockSigVerifier returns a new mock verifier.
 func NewMockSigVerifier() *SigVerifier {
 	return &SigVerifier{
-		requestBatch: make(chan *protosigverifierservice.RequestBatch, 10),
+		requestBatch: make(chan *protosigverifierservice.Batch, 10),
 		healthcheck:  connection.DefaultHealthCheckService(),
 	}
 }
@@ -129,13 +130,13 @@ func (m *SigVerifier) sendResponseBatch(
 				continue
 			}
 			status := protoblocktx.Status_COMMITTED
-			if len(req.GetTx().GetSignatures()) == 0 {
+			isConfig := len(req.Tx.Namespaces) == 1 && req.Tx.Namespaces[0].NsId == types.ConfigNamespaceID
+			if len(req.Tx.Signatures) == 0 && !isConfig {
 				status = protoblocktx.Status_ABORTED_SIGNATURE_INVALID
 			}
 			respBatch.Responses = append(respBatch.Responses, &protosigverifierservice.Response{
-				BlockNum: req.BlockNum,
-				TxNum:    req.TxNum,
-				Status:   status,
+				Ref:    req.Ref,
+				Status: status,
 			})
 		}
 
@@ -178,7 +179,7 @@ func (m *SigVerifier) ClearPolicies() {
 // Returns true if successful.
 func (m *SigVerifier) SendRequestBatchWithoutStream(
 	ctx context.Context,
-	requestBatch *protosigverifierservice.RequestBatch,
+	requestBatch *protosigverifierservice.Batch,
 ) bool {
 	return channel.NewWriter(ctx, m.requestBatch).Write(requestBatch)
 }

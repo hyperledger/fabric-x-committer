@@ -8,21 +8,20 @@ package test
 
 import (
 	"fmt"
-	"strconv"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/signature"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
 
 const blockSize = 1
@@ -64,41 +63,35 @@ func TestConfigUpdate(t *testing.T) {
 	c.CreateNamespacesAndCommit(t, "1")
 
 	sendTXs := func() {
-		expected := &runner.ExpectedStatusInBlock{
-			TxIDs:    make([]string, blockSize),
-			Statuses: make([]protoblocktx.Status, blockSize),
-		}
-		txs := make([]*protoblocktx.Tx, blockSize)
-		txIDPrefix := uuid.New().String()
+		txs := make([][]*protoblocktx.TxNamespace, blockSize)
+		expected := make([]protoblocktx.Status, blockSize)
 		for i := range blockSize {
-			expected.TxIDs[i] = txIDPrefix + strconv.Itoa(i)
-			expected.Statuses[i] = protoblocktx.Status_COMMITTED
-			txs[i] = &protoblocktx.Tx{
-				Id: expected.TxIDs[i],
-				Namespaces: []*protoblocktx.TxNamespace{{
-					NsId:        "1",
-					NsVersion:   0,
-					BlindWrites: []*protoblocktx.Write{{Key: []byte(fmt.Sprintf("key-%d", i))}},
-				}},
-			}
-			c.AddSignatures(t, txs[i])
+			txs[i] = []*protoblocktx.TxNamespace{{
+				NsId:        "1",
+				NsVersion:   0,
+				BlindWrites: []*protoblocktx.Write{{Key: []byte(fmt.Sprintf("key-%d", i))}},
+			}}
+			expected[i] = protoblocktx.Status_COMMITTED
 		}
-		c.SendTransactionsToOrderer(t, txs)
-		c.ValidateExpectedResultsInCommittedBlock(t, expected)
+		c.MakeAndSendTransactionsToOrderer(t, txs, expected)
 	}
 
 	t.Log("Sanity check")
 	sendTXs()
 
-	// We create the meta TX with the old signature.
-	metaTX := c.CreateMetaTX(t, "2", "3")
+	metaTx, err := workload.CreateNamespacesTX(c.SystemConfig.Policy, 1, "2", "3")
+	require.NoError(t, err)
 
-	newMetaCrypto := c.UpdateCryptoForNs(t, types.MetaNamespaceID, signature.Ecdsa)
-	submitConfigBlock := func(endpoints []*connection.OrdererEndpoint) {
+	// We sign the meta TX with the old signature.
+	lgMetaTx := c.TxBuilder.MakeTx(metaTx)
+
+	c.AddOrUpdateNamespaces(t, types.MetaNamespaceID)
+	metaPolicy := c.TxBuilder.TxSigner.HashSigners[types.MetaNamespaceID].GetVerificationPolicy()
+	submitConfigBlock := func(endpoints []*ordererconn.Endpoint) {
 		ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
-			ChannelID:                    c.SystemConfig.ChannelID,
+			ChannelID:                    c.SystemConfig.Policy.ChannelID,
 			OrdererEndpoints:             endpoints,
-			MetaNamespaceVerificationKey: newMetaCrypto.PubKey,
+			MetaNamespaceVerificationKey: metaPolicy.PublicKey,
 		})
 	}
 	submitConfigBlock(ordererEnv.AllRealOrdererEndpoints())
@@ -106,21 +99,19 @@ func TestConfigUpdate(t *testing.T) {
 		Statuses: []protoblocktx.Status{protoblocktx.Status_COMMITTED},
 	})
 
-	c.SendTransactionsToOrderer(t, []*protoblocktx.Tx{metaTX})
-	c.ValidateExpectedResultsInCommittedBlock(t, &runner.ExpectedStatusInBlock{
-		TxIDs:    []string{metaTX.Id},
-		Statuses: []protoblocktx.Status{protoblocktx.Status_ABORTED_SIGNATURE_INVALID},
-	})
+	// We send the old version and it fails.
+	c.SendTransactionsToOrderer(
+		t,
+		[]*protoloadgen.TX{lgMetaTx},
+		[]protoblocktx.Status{protoblocktx.Status_ABORTED_SIGNATURE_INVALID},
+	)
 
-	// We replace the ID to prevent duplicated status, and re-sign it with the correct key.
-	metaTX.Id = uuid.New().String()
-	metaTX.Namespaces[0].NsVersion = 1
-	c.AddSignatures(t, metaTX)
-	c.SendTransactionsToOrderer(t, []*protoblocktx.Tx{metaTX})
-	c.ValidateExpectedResultsInCommittedBlock(t, &runner.ExpectedStatusInBlock{
-		TxIDs:    []string{metaTX.Id},
-		Statuses: []protoblocktx.Status{protoblocktx.Status_COMMITTED},
-	})
+	// We send with the updated key and it works.
+	c.MakeAndSendTransactionsToOrderer(
+		t,
+		[][]*protoblocktx.TxNamespace{metaTx.Namespaces},
+		[]protoblocktx.Status{protoblocktx.Status_COMMITTED},
+	)
 
 	t.Log("Sanity check")
 	sendTXs()

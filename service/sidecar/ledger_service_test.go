@@ -45,10 +45,10 @@ func TestLedgerService(t *testing.T) {
 		peer.RegisterDeliverServer(server, ls)
 	})
 
-	// NOTE: if we start the deliver client without even the 0'th block, it would
+	// NOTE: if we start the delivery client without even the 0'th block, it would
 	//       result in an error. This is due to the iterator implementation in the
 	//       fabric ledger.
-	blk0 := createBlockForTest(t, 0, nil, [3]string{"0", "1", "2"})
+	blk0, _ := createBlockForTest(t, 0, nil)
 	valid := byte(protoblocktx.Status_COMMITTED)
 	metadata := &common.BlockMetadata{
 		Metadata: [][]byte{nil, nil, {valid, valid, valid}},
@@ -61,14 +61,14 @@ func TestLedgerService(t *testing.T) {
 	require.Equal(t, 1, test.GetIntMetricValue(t, metrics.blockHeight))
 	require.Greater(t, test.GetMetricValue(t, metrics.appendBlockToLedgerSeconds), float64(0))
 
-	receivedBlocksFromLedgerService := sidecarclient.StartSidecarClient(t.Context(), t, &sidecarclient.Config{
+	receivedBlocksFromLedgerService := sidecarclient.StartSidecarClient(t.Context(), t, &sidecarclient.Parameters{
 		ChannelID: channelID,
 		Client:    test.MakeInsecureClientConfig(&config.Endpoint),
 	}, 0)
 
-	blk1 := createBlockForTest(t, 1, protoutil.BlockHeaderHash(blk0.Header), [3]string{"3", "4", "5"})
+	blk1, _ := createBlockForTest(t, 1, protoutil.BlockHeaderHash(blk0.Header))
 	blk1.Metadata = metadata
-	blk2 := createBlockForTest(t, 2, protoutil.BlockHeaderHash(blk1.Header), [3]string{"6", "7", "8"})
+	blk2, _ := createBlockForTest(t, 2, protoutil.BlockHeaderHash(blk1.Header))
 	blk2.Metadata = metadata
 	inputBlock <- blk1
 	inputBlock <- blk2

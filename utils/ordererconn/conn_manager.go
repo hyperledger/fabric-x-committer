@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package broadcastdeliver
+package ordererconn
 
 import (
 	"fmt"
@@ -19,17 +19,14 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 )
 
-var logger = logging.New("broadcast-deliver")
-
 type (
-	// OrdererConnectionManager packs all the orderer connections.
+	// ConnectionManager packs all the orderer connections.
 	// Its connections can be updated via the Update() method.
 	// This will increase the config version, allowing a connection instance to identify
 	// a connection update and fetch the new connections.
-	OrdererConnectionManager struct {
+	ConnectionManager struct {
 		configVersion atomic.Uint64
 		connections   map[string]*grpc.ClientConn
 		config        *ConnectionConfig
@@ -89,7 +86,7 @@ func aggregateFilter(filters ...ConnFilter) ConnFilter {
 	return k
 }
 
-func filterOrdererEndpoints(endpoints []*connection.OrdererEndpoint, filters ...ConnFilter) []*connection.Endpoint {
+func filterOrdererEndpoints(endpoints []*Endpoint, filters ...ConnFilter) []*connection.Endpoint {
 	key := aggregateFilter(filters...)
 	result := make([]*connection.Endpoint, 0, len(endpoints))
 	for _, endpoint := range endpoints {
@@ -106,14 +103,14 @@ func filterOrdererEndpoints(endpoints []*connection.OrdererEndpoint, filters ...
 
 // Update updates the connection configs.
 // This will close all connections, forcing the clients to reload.
-func (c *OrdererConnectionManager) Update(config *ConnectionConfig) error {
-	if err := validateConnectionConfig(config); err != nil {
+func (c *ConnectionManager) Update(config *ConnectionConfig) error {
+	if err := ValidateConnectionConfig(config); err != nil {
 		return err
 	}
 
 	// We pre create all the connections to ensure correct form.
 	connections := make(map[string]*grpc.ClientConn)
-	allAPis := []string{anyAPI, connection.Broadcast, connection.Deliver}
+	allAPis := []string{anyAPI, Broadcast, Deliver}
 	for _, id := range append(getAllIDs(config.Endpoints), anyID) {
 		for _, api := range allAPis {
 			filter := aggregateFilter(WithAPI(api), WithID(id))
@@ -143,7 +140,7 @@ func (c *OrdererConnectionManager) Update(config *ConnectionConfig) error {
 }
 
 // GetConnection returns a connection given filters.
-func (c *OrdererConnectionManager) GetConnection(filters ...ConnFilter) (*grpc.ClientConn, uint64) {
+func (c *ConnectionManager) GetConnection(filters ...ConnFilter) (*grpc.ClientConn, uint64) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	v := c.configVersion.Load()
@@ -154,7 +151,7 @@ func (c *OrdererConnectionManager) GetConnection(filters ...ConnFilter) (*grpc.C
 }
 
 // GetConnectionPerID returns a connection given filters per ID.
-func (c *OrdererConnectionManager) GetConnectionPerID(filters ...ConnFilter) (map[uint32]*grpc.ClientConn, uint64) {
+func (c *ConnectionManager) GetConnectionPerID(filters ...ConnFilter) (map[uint32]*grpc.ClientConn, uint64) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	ret := make(map[uint32]*grpc.ClientConn)
@@ -172,7 +169,7 @@ func (c *OrdererConnectionManager) GetConnectionPerID(filters ...ConnFilter) (ma
 	return ret, v
 }
 
-func getAllIDs(endpoints []*connection.OrdererEndpoint) []uint32 {
+func getAllIDs(endpoints []*Endpoint) []uint32 {
 	ids := make(map[uint32]any)
 	for _, conn := range endpoints {
 		ids[conn.ID] = nil
@@ -205,7 +202,7 @@ func openConnection(
 }
 
 // Close closes all the connections.
-func (c *OrdererConnectionManager) Close() {
+func (c *ConnectionManager) Close() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	closeConnection(c.connections)
@@ -214,7 +211,7 @@ func (c *OrdererConnectionManager) Close() {
 
 // IsStale checks if the given OrdererConnectionResiliencyManager is stale.
 // If nil is given, it returns true.
-func (c *OrdererConnectionManager) IsStale(configVersion uint64) bool {
+func (c *ConnectionManager) IsStale(configVersion uint64) bool {
 	return c.configVersion.Load() != configVersion
 }
 

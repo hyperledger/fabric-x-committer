@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/utils"
 )
 
@@ -19,18 +20,30 @@ type Height struct {
 	TxNum    uint32
 }
 
-// CreateStatusWithHeight creates a protoblocktx.StatusWithHeight with the given values.
-func CreateStatusWithHeight(s protoblocktx.Status, blkNum uint64, txNum int) *protoblocktx.StatusWithHeight {
+// NewStatusWithHeight creates a protoblocktx.StatusWithHeight with the given values.
+func NewStatusWithHeight(s protoblocktx.Status, blkNum uint64, txNum uint32) *protoblocktx.StatusWithHeight {
 	return &protoblocktx.StatusWithHeight{
 		Code:        s,
 		BlockNumber: blkNum,
-		TxNumber:    uint32(txNum), //nolint:gosec
+		TxNumber:    txNum,
 	}
+}
+
+// NewStatusWithHeightFromRef creates a protoblocktx.StatusWithHeight with the given values.
+func NewStatusWithHeightFromRef(
+	s protoblocktx.Status, ref *protocoordinatorservice.TxRef,
+) *protoblocktx.StatusWithHeight {
+	return NewStatusWithHeight(s, ref.BlockNum, ref.TxNum)
 }
 
 // NewHeight constructs a new instance of Height.
 func NewHeight(blockNum uint64, txNum uint32) *Height {
-	return &Height{blockNum, txNum}
+	return &Height{BlockNum: blockNum, TxNum: txNum}
+}
+
+// NewHeightFromTxRef constructs a new instance of Height.
+func NewHeightFromTxRef(ref *protocoordinatorservice.TxRef) *Height {
+	return NewHeight(ref.BlockNum, ref.TxNum)
 }
 
 // NewHeightFromBytes constructs a new instance of Height from serialized bytes.
@@ -44,6 +57,11 @@ func NewHeightFromBytes(b []byte) (*Height, int, error) {
 		return nil, -1, fmt.Errorf("failed to decode tx number from bytes [%v]: %w", b, err)
 	}
 	return NewHeight(blockNum, uint32(txNum)), n1 + n2, nil //nolint:gosec
+}
+
+// WithStatus creates protoblocktx.StatusWithHeight with this height and the given code.
+func (h *Height) WithStatus(code protoblocktx.Status) *protoblocktx.StatusWithHeight {
+	return NewStatusWithHeight(code, h.BlockNum, h.TxNum)
 }
 
 // ToBytes serializes the Height.

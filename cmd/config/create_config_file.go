@@ -13,14 +13,11 @@ import (
 	"html/template"
 	"os"
 	"path"
-	"path/filepath"
 	"testing"
 	"time"
 
 	sprig "github.com/go-task/slim-sprig/v3"
 	"github.com/google/uuid"
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -48,7 +45,6 @@ type (
 		BlockTimeout      time.Duration           // orderer
 		ConfigBlockPath   string                  // orderer, sidecar, loadgen
 		LedgerPath        string                  // sidecar
-		ChannelID         string                  // sidecar, loadgen
 		Policy            *workload.PolicyProfile // loadgen
 		LoadGenBlockLimit uint64                  // loadgen
 		LoadGenTXLimit    uint64                  // loadgen
@@ -79,9 +75,6 @@ type (
 		LoadBalance bool
 		Endpoints   []*connection.Endpoint
 	}
-
-	// ConfigBlock represents the configuration of the config block.
-	ConfigBlock = workload.ConfigBlock //nolint:revive
 )
 
 // Config templates.
@@ -144,23 +137,6 @@ func CreateTempConfigFromTemplate(t *testing.T, cmdTemplate string, conf *System
 	outputConfigFilePath := path.Join(t.TempDir(), fmt.Sprintf("config-%s.yaml", uuid.NewString()))
 	CreateConfigFromTemplate(t, cmdTemplate, outputConfigFilePath, conf)
 	return outputConfigFilePath
-}
-
-// CreateConfigBlock create and writes a config block to file.
-func CreateConfigBlock(t *testing.T, conf *ConfigBlock) string {
-	t.Helper()
-	block, err := workload.CreateDefaultConfigBlock(conf)
-	require.NoError(t, err)
-	return WriteConfigBlock(t, block)
-}
-
-// WriteConfigBlock writes a config block to file.
-func WriteConfigBlock(t *testing.T, block *common.Block) string {
-	t.Helper()
-	blockDir := t.TempDir()
-	configBlockPath := filepath.Join(blockDir, "config.block")
-	require.NoError(t, configtxgen.WriteOutputBlock(block, configBlockPath))
-	return configBlockPath
 }
 
 // WithEndpoint creates a new SystemConfig with a modified ServerEndpoint and MetricsEndpoint.

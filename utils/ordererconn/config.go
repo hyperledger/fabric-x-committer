@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package broadcastdeliver
+package ordererconn
 
 import (
 	"github.com/cockroachdb/errors"
@@ -17,34 +17,30 @@ type (
 	// Config for the orderer-client.
 	Config struct {
 		Connection    ConnectionConfig `mapstructure:"connection"`
-		ConsensusType ConsensusType    `mapstructure:"consensus-type"`
+		ConsensusType string           `mapstructure:"consensus-type"`
 		ChannelID     string           `mapstructure:"channel-id"`
 		Identity      *IdentityConfig  `mapstructure:"identity"`
 	}
 
 	// ConnectionConfig contains the endpoints, CAs, and retry profile.
 	ConnectionConfig struct {
-		Endpoints []*connection.OrdererEndpoint `mapstructure:"endpoints"`
-		TLS       *connection.TLSConfig         `mapstructure:"tls"`
-		Retry     *connection.RetryProfile      `mapstructure:"reconnect"`
+		Endpoints []*Endpoint              `mapstructure:"endpoints"`
+		TLS       *connection.TLSConfig    `mapstructure:"tls"`
+		Retry     *connection.RetryProfile `mapstructure:"reconnect"`
 	}
 
 	// IdentityConfig defines the orderer's MSP.
 	IdentityConfig struct {
-		SignedEnvelopes bool `mapstructure:"signed-envelopes" yaml:"signed-envelopes"`
 		// MspID indicates to which MSP this client belongs to.
 		MspID  string               `mapstructure:"msp-id" yaml:"msp-id"`
 		MSPDir string               `mapstructure:"msp-dir" yaml:"msp-dir"`
 		BCCSP  *factory.FactoryOpts `mapstructure:"bccsp" yaml:"bccsp"`
 	}
-
-	// ConsensusType can be either CFT or BFT.
-	ConsensusType = string
 )
 
 const (
 	// Cft client support for crash fault tolerance.
-	Cft ConsensusType = "CFT"
+	Cft = "CFT"
 	// Bft client support for byzantine fault tolerance.
 	Bft = "BFT"
 	// DefaultConsensus default fault tolerance.
@@ -63,17 +59,19 @@ var (
 	ErrNoEndpoints           = errors.New("no endpoints")
 )
 
-func validateConfig(c *Config) error {
+// ValidateConfig validate the configuration.
+func ValidateConfig(c *Config) error {
 	if c.ConsensusType == "" {
 		c.ConsensusType = DefaultConsensus
 	}
 	if c.ConsensusType != Bft && c.ConsensusType != Cft {
 		return errors.Newf("unsupported orderer type %s", c.ConsensusType)
 	}
-	return validateConnectionConfig(&c.Connection)
+	return ValidateConnectionConfig(&c.Connection)
 }
 
-func validateConnectionConfig(c *ConnectionConfig) error {
+// ValidateConnectionConfig validate the configuration.
+func ValidateConnectionConfig(c *ConnectionConfig) error {
 	if c == nil {
 		return ErrEmptyConnectionConfig
 	}

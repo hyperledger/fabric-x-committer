@@ -12,7 +12,6 @@ import (
 	_ "embed"
 	"fmt"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -22,22 +21,23 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
-	"github.com/hyperledger/fabric-x-committer/utils/broadcastdeliver"
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -151,9 +151,9 @@ func newSidecarTestEnvWithTLS(
 	}
 	sidecarConf := &Config{
 		Server: connection.NewLocalHostServerWithCreds(serverCreds),
-		Orderer: broadcastdeliver.Config{
+		Orderer: ordererconn.Config{
 			ChannelID: ordererEnv.TestConfig.ChanID,
-			Connection: broadcastdeliver.ConnectionConfig{
+			Connection: ordererconn.ConnectionConfig{
 				Endpoints: initOrdererEndpoints,
 			},
 		},
@@ -213,7 +213,7 @@ func (env *sidecarTestEnv) startSidecarClient(
 	sidecarClientCreds *connection.TLSConfig,
 ) {
 	t.Helper()
-	env.committedBlock = sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Config{
+	env.committedBlock = sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Parameters{
 		ChannelID: env.config.Orderer.ChannelID,
 		Client:    test.MakeTLSClientConfig(sidecarClientCreds, &env.config.Server.Endpoint),
 	}, startBlkNum)
@@ -267,7 +267,7 @@ func TestSidecarConfigUpdate(t *testing.T) {
 	env.sendTransactionsAndEnsureCommitted(ctx, t, expectedBlock)
 	expectedBlock++
 
-	submitConfigBlock := func(endpoints []*connection.OrdererEndpoint) {
+	submitConfigBlock := func(endpoints []*ordererconn.Endpoint) {
 		env.ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
 			OrdererEndpoints: endpoints,
 		})
@@ -340,7 +340,7 @@ func TestSidecarConfigRecovery(t *testing.T) {
 	t.Log("Modify the Sidecar config, use illegal host endpoint")
 	// We need to use ilegalEndpoints instead of an empty Endpoints struct,
 	// as the sidecar expects the Endpoints to be non-empty.
-	env.config.Orderer.Connection.Endpoints = []*connection.OrdererEndpoint{
+	env.config.Orderer.Connection.Endpoints = []*ordererconn.Endpoint{
 		{Endpoint: connection.Endpoint{Host: "localhost", Port: 9999}},
 	}
 
@@ -534,26 +534,17 @@ func TestSidecarVerifyBadTxForm(t *testing.T) {
 	t.Cleanup(cancel)
 	env.start(ctx, t, 0)
 	env.requireBlock(ctx, t, 0)
-	testSize := len(MalformedTxTestCases)
-	txs := make([]*protoblocktx.Tx, testSize)
-	status := make([]protoblocktx.Status, testSize)
+	txs, expected := MalformedTxTestCases(&workload.TxBuilder{ChannelID: env.ordererEnv.TestConfig.ChanID})
+	testSize := len(expected)
 	t.Logf("sending %d malformed txs", testSize)
-	for i, tt := range MalformedTxTestCases {
-		txs[i] = tt.Tx
-		if tt.ExpectedStatus != protoblocktx.Status_NOT_VALIDATED {
-			status[i] = tt.ExpectedStatus
-		} else {
-			status[i] = protoblocktx.Status_COMMITTED
-		}
-	}
 	env.submitTXs(ctx, t, txs)
 	t.Logf("sending %d good txs", blockSize-testSize)
 	extraTxs := env.sendGeneratedTransactions(ctx, t, blockSize-testSize)
 	txs = append(txs, extraTxs...)
 	for range extraTxs {
-		status = append(status, protoblocktx.Status_COMMITTED)
+		expected = append(expected, protoblocktx.Status_COMMITTED)
 	}
-	env.requireBlockWithTXsAndStatus(ctx, t, 1, txs, status)
+	env.requireBlockWithTXsAndStatus(ctx, t, 1, txs, expected)
 }
 
 func (env *sidecarTestEnv) getCoordinatorLabel(t *testing.T) string {
@@ -579,7 +570,7 @@ func (env *sidecarTestEnv) sendTransactionsAndEnsureCommitted(
 func (env *sidecarTestEnv) sendGeneratedTransactionsForBlock(
 	ctx context.Context,
 	t *testing.T,
-) []*protoblocktx.Tx {
+) []*protoloadgen.TX {
 	t.Helper()
 	// mock-orderer expects <blockSize> txs to create the next block.
 	return env.sendGeneratedTransactions(ctx, t, blockSize)
@@ -589,19 +580,18 @@ func (env *sidecarTestEnv) sendGeneratedTransactions(
 	ctx context.Context,
 	t *testing.T,
 	count int,
-) []*protoblocktx.Tx {
+) []*protoloadgen.TX {
 	t.Helper()
-	txIDPrefix := uuid.New().String()
-	txs := make([]*protoblocktx.Tx, count)
+	txs := make([]*protoloadgen.TX, count)
 	for i := range txs {
-		txs[i] = makeValidTx(t, txIDPrefix+"."+strconv.Itoa(i))
+		txs[i] = makeValidTx(t, env.ordererEnv.TestConfig.ChanID)
 	}
 	env.submitTXs(ctx, t, txs)
 	return txs
 }
 
 // submitTXs submits the given TXs and register them in the notification service.
-func (env *sidecarTestEnv) submitTXs(ctx context.Context, t *testing.T, txs []*protoblocktx.Tx) {
+func (env *sidecarTestEnv) submitTXs(ctx context.Context, t *testing.T, txs []*protoloadgen.TX) {
 	t.Helper()
 	txIDs := make([]string, len(txs))
 	for i, tx := range txs {
@@ -618,9 +608,9 @@ func (env *sidecarTestEnv) submitTXs(ctx context.Context, t *testing.T, txs []*p
 	// Allows processing the request before submitting the payload.
 	time.Sleep(1 * time.Second)
 
-	for i, tx := range txs {
-		_, submitErr := env.ordererEnv.Orderer.SubmitPayload(ctx, env.ordererEnv.TestConfig.ChanID, tx)
-		require.NoErrorf(t, submitErr, "tx %d", i)
+	for i, tx := range workload.MapToEnvelopeBatch(0, txs) {
+		ok := env.ordererEnv.Orderer.SubmitEnv(ctx, tx)
+		require.True(t, ok, "tx %d", i)
 	}
 }
 
@@ -628,7 +618,7 @@ func (env *sidecarTestEnv) requireBlockWithTXs(
 	ctx context.Context,
 	t *testing.T,
 	expectedBlockNumber uint64,
-	txs []*protoblocktx.Tx,
+	txs []*protoloadgen.TX,
 ) {
 	t.Helper()
 	allValid := make([]protoblocktx.Status, len(txs))
@@ -643,7 +633,7 @@ func (env *sidecarTestEnv) requireBlockWithTXsAndStatus(
 	ctx context.Context,
 	t *testing.T,
 	expectedBlockNumber uint64,
-	txs []*protoblocktx.Tx,
+	txs []*protoloadgen.TX,
 	status []protoblocktx.Status,
 ) {
 	t.Helper()
@@ -651,20 +641,19 @@ func (env *sidecarTestEnv) requireBlockWithTXsAndStatus(
 	block := env.requireBlock(ctx, t, expectedBlockNumber)
 	require.NotNil(t, block.Data)
 	require.Len(t, block.Data.Data, blockSize)
-	for i := range block.Data.Data {
-		actualEnv, err := protoutil.ExtractEnvelope(block, i)
+	for i, msg := range block.Data.Data {
+		payload, hdr, err := serialization.UnwrapEnvelope(msg)
 		require.NoError(t, err)
-		payload, _, err := serialization.ParseEnvelope(actualEnv)
+		require.Equal(t, txs[i].Id, hdr.TxId)
+		tx, err := serialization.UnmarshalTx(payload)
 		require.NoError(t, err)
-		tx, err := serialization.UnmarshalTx(payload.Data)
-		require.NoError(t, err)
-		require.True(t, proto.Equal(txs[i], tx))
+		require.True(t, proto.Equal(txs[i].Tx, tx))
 	}
 	require.NotNil(t, block.Metadata)
 	require.GreaterOrEqual(t, len(block.Metadata.Metadata), 3)
 	require.Len(t, block.Metadata.Metadata[2], blockSize)
 	for i, actualStatus := range block.Metadata.Metadata[2] {
-		require.Equal(t, byte(status[i]), actualStatus)
+		require.Equalf(t, status[i].String(), protoblocktx.Status(actualStatus).String(), "tx index: %d", i)
 	}
 
 	txIDs := make([]string, len(txs))
@@ -754,18 +743,14 @@ func checkLastCommittedBlock(
 	}, expectedProcessingTime, 50*time.Millisecond)
 }
 
-func makeValidTx(t *testing.T, txID string) *protoblocktx.Tx {
+func makeValidTx(t *testing.T, chanID string) *protoloadgen.TX {
 	t.Helper()
-	key := make([]byte, 32)
-	_, err := rand.Read(key)
-	require.NoError(t, err)
-	return &protoblocktx.Tx{
-		Id: txID,
+	txb := workload.TxBuilder{ChannelID: chanID}
+	return txb.MakeTx(&protoblocktx.Tx{
 		Namespaces: []*protoblocktx.TxNamespace{{
 			NsId:        strings.ReplaceAll(uuid.New().String(), "-", "")[:32],
 			NsVersion:   0,
-			BlindWrites: []*protoblocktx.Write{{Key: key}},
+			BlindWrites: []*protoblocktx.Write{{Key: utils.MustRead(rand.Reader, 32)}},
 		}},
-		Signatures: make([][]byte, 1),
-	}
+	})
 }

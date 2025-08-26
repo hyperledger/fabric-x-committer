@@ -9,31 +9,15 @@ package workload
 import (
 	"context"
 	"testing"
-	"time"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-// StartGenerator is used for benchmarking.
-func StartGenerator(tb testing.TB, p *Profile) *RateLimiterGenerator[*protoblocktx.Tx] {
-	tb.Helper()
-	s := NewTxStream(p, &StreamOptions{
-		BuffersSize: 1024,
-		GenBatch:    4096,
-	})
-	test.RunServiceForTest(tb.Context(), tb, s.Run, nil)
-
-	// Give the generator a head start.
-	time.Sleep(3 * time.Second)
-
-	return s.MakeGenerator()
-}
-
 // GenerateTransactions is used for benchmarking.
-func GenerateTransactions(tb testing.TB, p *Profile, count int) []*protoblocktx.Tx {
+func GenerateTransactions(tb testing.TB, p *Profile, count int) []*protoloadgen.TX {
 	tb.Helper()
 	s := NewTxStream(p, &StreamOptions{
 		BuffersSize: 1024,

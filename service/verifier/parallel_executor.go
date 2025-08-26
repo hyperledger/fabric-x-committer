@@ -11,12 +11,13 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 )
 
 type (
 	parallelExecutor struct {
-		inputCh        chan *protosigverifierservice.Request
+		inputCh        chan *protosigverifierservice.Tx
 		outputSingleCh chan *protosigverifierservice.Response
 		outputCh       chan []*protosigverifierservice.Response
 		verifier       *verifier
@@ -28,7 +29,7 @@ func newParallelExecutor(config *ExecutorConfig) *parallelExecutor {
 	channelCapacity := config.ChannelBufferSize * config.Parallelism
 	return &parallelExecutor{
 		config:         config,
-		inputCh:        make(chan *protosigverifierservice.Request, channelCapacity),
+		inputCh:        make(chan *protosigverifierservice.Tx, channelCapacity),
 		outputCh:       make(chan []*protosigverifierservice.Response),
 		outputSingleCh: make(chan *protosigverifierservice.Response, channelCapacity),
 		verifier:       newVerifier(),
@@ -43,7 +44,7 @@ func (e *parallelExecutor) handleChannelInput(ctx context.Context) {
 		if !ok {
 			return
 		}
-		logger.Debugf("Received request %v with in worker", input.Tx.Id)
+		logger.Debugf("Received request '%v' with in worker", &utils.LazyJSON{O: input.Ref})
 		output := e.verifier.verifyRequest(input)
 		logger.Debugf("Received output from executor: %v", output)
 		chOut.Write(output)

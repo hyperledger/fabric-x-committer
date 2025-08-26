@@ -61,18 +61,20 @@ func (c *LoadGenAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 	g, gCtx := errgroup.WithContext(dCtx)
 	g.Go(func() error {
 		receiveQueueCtx := channel.NewWriter(gCtx, receiveQueue)
-		return sendBlocks(dCtx, &c.commonAdapter, txStream, mapToLoadGenBatch, func(batch *protoloadgen.Batch) error {
-			_, appendErr := client.AppendBatch(dCtx, batch)
-			status := protoblocktx.Status_COMMITTED
-			if appendErr != nil {
-				status = protoblocktx.Status_NOT_VALIDATED
-			}
-			receiveQueueCtx.Write(receivedBatch{
-				batch:  batch,
-				status: status,
-			})
-			return appendErr
-		})
+		return sendBlocks(dCtx, &c.commonAdapter, txStream, workload.MapToLoadGenBatch,
+			func(batch *protoloadgen.Batch) error {
+				_, appendErr := client.AppendBatch(dCtx, batch)
+				status := protoblocktx.Status_COMMITTED
+				if appendErr != nil {
+					status = protoblocktx.Status_NOT_VALIDATED
+				}
+				receiveQueueCtx.Write(receivedBatch{
+					batch:  batch,
+					status: status,
+				})
+				return appendErr
+			},
+		)
 	})
 	g.Go(func() error {
 		defer dCancel() // We stop sending if we can't track the received items.
@@ -91,11 +93,6 @@ func (*LoadGenAdapter) Supports() Phases {
 		Namespaces: false,
 		Load:       true,
 	}
-}
-
-// mapToBlock creates a Fabric block. It uses the envelope's TX ID to track the TXs latency.
-func mapToLoadGenBatch(txs []*protoblocktx.Tx) (*protoloadgen.Batch, []string, error) {
-	return &protoloadgen.Batch{Tx: txs}, getTXsIDs(txs), nil
 }
 
 func (c *LoadGenAdapter) receiveStatus(ctx context.Context, queue <-chan receivedBatch) {
