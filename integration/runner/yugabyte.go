@@ -210,7 +210,7 @@ func (cc *YugaClusterController) StopAndRemoveSingleMasterNodeByRaftRole(t *test
 	}
 	require.NotEqual(t, -1, targetIdx, "no suitable master node found for removal")
 
-	cc.StopAndRemoveNodeByIndex(t, targetIdx)
+	cc.StopAndRemoveSingleNodeByIndex(t, targetIdx)
 }
 
 func nodeConfig(t *testing.T, params nodeConfigParameters) []string {

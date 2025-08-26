@@ -29,11 +29,11 @@ func (cc *DBClusterController) StopAndRemoveSingleNodeByRole(t *testing.T, role 
 	t.Helper()
 	nodeToBeRemoved, itsIndex := cc.GetSingleNodeByRole(role)
 	require.NotNil(t, nodeToBeRemoved, "not found nodes to remove of requested role.")
-	cc.StopAndRemoveNodeByIndex(t, itsIndex)
+	cc.StopAndRemoveSingleNodeByIndex(t, itsIndex)
 }
 
-// StopAndRemoveNodeByIndex stop and remove the node in the provided index.
-func (cc *DBClusterController) StopAndRemoveNodeByIndex(t *testing.T, index int) {
+// StopAndRemoveSingleNodeByIndex stop and remove the node in the provided index.
+func (cc *DBClusterController) StopAndRemoveSingleNodeByIndex(t *testing.T, index int) {
 	t.Helper()
 	require.Greater(t, len(cc.nodes), index)
 	node := cc.nodes[index]
