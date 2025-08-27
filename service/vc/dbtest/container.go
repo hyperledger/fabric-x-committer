@@ -358,7 +358,7 @@ func CreateDockerNetwork(t *testing.T, name string) *docker.Network {
 		Name:   name,
 		Driver: "bridge",
 	})
-	if errors.As(err, docker.ErrNetworkAlreadyExists) {
+	if errors.Is(err, docker.ErrNetworkAlreadyExists) {
 		t.Logf("network %s already exists", name)
 		network, err = client.NetworkInfo(name)
 		require.NoError(t, err)

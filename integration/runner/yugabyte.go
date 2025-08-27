@@ -180,6 +180,7 @@ func (cc *YugaClusterController) getLeaderMasterName(t *testing.T) string {
 }
 
 func (cc *YugaClusterController) getNumberOfAliveMasters(t *testing.T) int {
+	t.Helper()
 	return strings.Count(cc.listAllMasters(t), "ALIVE")
 }
 
