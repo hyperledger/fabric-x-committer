@@ -78,12 +78,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 	require.NoError(t, setupErr)
 
 	for i, c := range vcs.Configs {
-		clientConn, err := connection.Connect(test.NewInsecureDialConfig(&c.Server.Endpoint))
-		require.NoError(t, err)
-		t.Cleanup(func() {
-			require.NoError(t, clientConn.Close())
-		})
-		client := protovcservice.NewValidationAndCommitServiceClient(clientConn)
+		client := createValidatorAndCommitClientWithTLS(t, &c.Server.Endpoint, test.DefaultTLSConfig)
 
 		sCtx, sCancel := context.WithTimeout(t.Context(), 5*time.Minute)
 		t.Cleanup(sCancel)

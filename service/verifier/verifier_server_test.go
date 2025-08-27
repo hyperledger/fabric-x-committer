@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -398,14 +397,9 @@ func newTestState(t *testing.T, config *Config) *State {
 	service := New(config)
 	test.RunServiceAndGrpcForTest(t.Context(), t, service, config.Server)
 
-	clientConnection, err := connection.Connect(test.NewInsecureDialConfig(&config.Server.Endpoint))
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		assert.NoError(t, clientConnection.Close())
-	})
 	return &State{
 		Service: service,
-		Client:  protosigverifierservice.NewVerifierClient(clientConnection),
+		Client:  createVerifierClientWithTLS(t, &config.Server.Endpoint, test.DefaultTLSConfig),
 	}
 }
 
