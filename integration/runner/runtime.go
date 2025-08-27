@@ -74,7 +74,7 @@ type (
 
 		LastReceivedBlockNumber uint64
 
-		TLSManager *test.SecureCommunicationManager
+		TLSManager *test.CertificateManager
 	}
 
 	// Crypto holds crypto material for a namespace.
@@ -196,7 +196,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	require.NoError(t, err)
 
 	t.Log("create TLS manager and clients certificate")
-	c.TLSManager = test.NewSecureCommunicationManager(t)
+	c.TLSManager = test.NewTLSCertificateManager(t)
 	s.ClientTLS = test.CreateTLSConfigFromPaths(c.config.TLS, c.TLSManager.CreateClientCertificate(t))
 
 	t.Log("Create processes")
@@ -261,7 +261,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 
 	c.sidecarClient, err = sidecarclient.New(&sidecarclient.Parameters{
 		ChannelID: s.Policy.ChannelID,
-		Client: test.MakeTLSClientConfig(
+		Client: test.NewTLSClientConfig(
 			&c.SystemConfig.ClientTLS,
 			s.Endpoints.Sidecar.Server,
 		),

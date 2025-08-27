@@ -954,8 +954,8 @@ func fakeConfigForTest(t *testing.T) *Config {
 	require.NoError(t, err)
 	return &Config{
 		Server:             connection.NewLocalHostServer(),
-		Verifier:           *test.MakeInsecureMultiClientConfig(randomEndpoint),
-		ValidatorCommitter: *test.MakeInsecureMultiClientConfig(randomEndpoint),
+		Verifier:           *test.NewInsecureMultiClientConfig(randomEndpoint),
+		ValidatorCommitter: *test.NewInsecureMultiClientConfig(randomEndpoint),
 		DependencyGraph:    &DependencyGraphConfig{},
 		Monitoring: monitoring.Config{
 			Server: connection.NewLocalHostServer(),

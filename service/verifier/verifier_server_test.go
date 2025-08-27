@@ -37,7 +37,7 @@ func TestVerifierSecureConnection(t *testing.T) {
 			Service: "verifier",
 			ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) test.ClientStarter {
 				t.Helper()
-				env := newTestState(t, defaultConfigWithCreds(tlsCfg))
+				env := newTestState(t, defaultConfigWithTLS(tlsCfg))
 				return func(ctx context.Context, t *testing.T, cfg *connection.TLSConfig) error {
 					t.Helper()
 					client := createVerifierClientWithTLS(t, &env.Service.config.Server.Endpoint, cfg)
@@ -449,12 +449,12 @@ func defaultUpdate(t *testing.T) (*protosigverifierservice.Update, *sigtest.NsSi
 }
 
 func defaultConfig() *Config {
-	return defaultConfigWithCreds(nil)
+	return defaultConfigWithTLS(nil)
 }
 
-func defaultConfigWithCreds(creds *connection.TLSConfig) *Config {
+func defaultConfigWithTLS(tlsConfig *connection.TLSConfig) *Config {
 	return &Config{
-		Server: connection.NewLocalHostServerWithCreds(creds),
+		Server: connection.NewLocalHostServerWithCreds(tlsConfig),
 		ParallelExecutor: ExecutorConfig{
 			BatchSizeCutoff:   3,
 			BatchTimeCutoff:   1 * time.Hour,

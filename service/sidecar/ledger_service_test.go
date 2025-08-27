@@ -63,7 +63,7 @@ func TestLedgerService(t *testing.T) {
 
 	receivedBlocksFromLedgerService := sidecarclient.StartSidecarClient(t.Context(), t, &sidecarclient.Parameters{
 		ChannelID: channelID,
-		Client:    test.MakeInsecureClientConfig(&config.Endpoint),
+		Client:    test.NewInsecureClientConfig(&config.Endpoint),
 	}, 0)
 
 	blk1, _ := createBlockForTest(t, 1, protoutil.BlockHeaderHash(blk0.Header))

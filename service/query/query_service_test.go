@@ -58,7 +58,7 @@ func TestQuerySecureConnection(t *testing.T) {
 				env := newQueryServiceTestEnvWithServerAndClientCreds(t, tlsCfg, nil)
 				return func(ctx context.Context, t *testing.T, cfg *connection.TLSConfig) error {
 					t.Helper()
-					client := createQueryServiceClientWithTLS(t, &env.qs.config.Server.Endpoint, cfg)
+					client := createQueryClientWithTLS(t, &env.qs.config.Server.Endpoint, cfg)
 					_, err := client.GetConfigTransaction(ctx, nil)
 					return err
 				}
@@ -388,7 +388,7 @@ func generateNamespacesUnderTest(t *testing.T, namespaces []string) *vc.Database
 	env.SetupSystemTablesAndNamespaces(t.Context(), t)
 
 	clientConf := loadgen.DefaultClientConf()
-	clientConf.Adapter.VCClient = test.MakeInsecureMultiClientConfig(env.Endpoints...)
+	clientConf.Adapter.VCClient = test.NewInsecureMultiClientConfig(env.Endpoints...)
 	policies := &workload.PolicyProfile{
 		NamespacePolicies: make(map[string]*workload.Policy, len(namespaces)),
 	}
@@ -570,7 +570,7 @@ func defaultViewParams(timeout time.Duration) *protoqueryservice.ViewParameters 
 }
 
 //nolint:ireturn // returning a gRPC client interface is intentional for test purpose.
-func createQueryServiceClientWithTLS(
+func createQueryClientWithTLS(
 	t *testing.T,
 	ep *connection.Endpoint,
 	tlsCfg *connection.TLSConfig,

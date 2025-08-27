@@ -33,7 +33,7 @@ type (
 
 	// SidecarClientConfig is a struct that contains the configuration for the sidecar client.
 	SidecarClientConfig struct {
-		Client         *connection.ClientConfig   `mapstructure:"client"`
+		Client         *connection.ClientConfig   `mapstructure:",squash" yaml:",inline"`
 		OrdererServers []*connection.ServerConfig `mapstructure:"orderer-servers"`
 	}
 )

@@ -362,7 +362,7 @@ func (env *DatabaseTestEnv) rowNotExists(t *testing.T, nsID string, keys [][]byt
 }
 
 //nolint:ireturn // returning a gRPC client interface is intentional for test purpose.
-func createVcClientWithTLS(
+func createValidatorAndCommitClientWithTLS(
 	t *testing.T,
 	ep *connection.Endpoint,
 	tlsCfg *connection.TLSConfig,

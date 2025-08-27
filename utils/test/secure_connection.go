@@ -22,10 +22,10 @@ import (
 )
 
 type (
-	// SecureCommunicationManager responsible for the creation of
+	// CertificateManager responsible for the creation of
 	// TLS certificates for testing purposes by utilizing the tls generation library of 'Hyperledger Fabric'.
 	// Path map convention: private-key, public-key, ca-certificate.
-	SecureCommunicationManager struct {
+	CertificateManager struct {
 		CertificateAuthority tlsgen.CA
 	}
 
@@ -58,19 +58,19 @@ const defaultHostName = "localhost"
 // ServerModes is a list of server-side TLS modes used for testing.
 var ServerModes = []string{connection.MutualTLSMode, connection.ServerSideTLSMode, connection.NoneTLSMode}
 
-// NewSecureCommunicationManager returns a SecureCommunicationManager with a new CA.
-func NewSecureCommunicationManager(t *testing.T) *SecureCommunicationManager {
+// NewTLSCertificateManager returns a CertificateManager with a new CA.
+func NewTLSCertificateManager(t *testing.T) *CertificateManager {
 	t.Helper()
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
-	return &SecureCommunicationManager{
+	return &CertificateManager{
 		CertificateAuthority: ca,
 	}
 }
 
 // CreateServerCertificate creates a server key pair given SAN (Subject Alternative Name),
 // Writing it to a temp testing folder and returns a map with the credential paths.
-func (scm *SecureCommunicationManager) CreateServerCertificate(
+func (scm *CertificateManager) CreateServerCertificate(
 	t *testing.T,
 	san string,
 ) map[string]string {
@@ -82,7 +82,7 @@ func (scm *SecureCommunicationManager) CreateServerCertificate(
 
 // CreateClientCertificate creates a client key pair,
 // Writing it to a temp testing folder and returns a map with the credential paths.
-func (scm *SecureCommunicationManager) CreateClientCertificate(t *testing.T) map[string]string {
+func (scm *CertificateManager) CreateClientCertificate(t *testing.T) map[string]string {
 	t.Helper()
 	clientKeypair, err := scm.CertificateAuthority.NewClientCertKeyPair()
 	require.NoError(t, err)
@@ -165,7 +165,7 @@ func RunSecureConnectionTest(
 ) {
 	t.Helper()
 	// create server and client credentials
-	tlsMgr := NewSecureCommunicationManager(t)
+	tlsMgr := NewTLSCertificateManager(t)
 	serverCreds := tlsMgr.CreateServerCertificate(t, defaultHostName)
 	clientCreds := tlsMgr.CreateClientCertificate(t)
 	// create a base TLS configuration for the client

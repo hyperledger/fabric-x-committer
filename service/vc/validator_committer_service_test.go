@@ -44,7 +44,7 @@ func TestVCSecureConnection(t *testing.T) {
 				env := newValidatorAndCommitServiceTestEnvWithTLS(t, 1, cfg)
 				return func(ctx context.Context, t *testing.T, cfg *connection.TLSConfig) error {
 					t.Helper()
-					client := createVcClientWithTLS(t, &env.Configs[0].Server.Endpoint, cfg)
+					client := createValidatorAndCommitClientWithTLS(t, &env.Configs[0].Server.Endpoint, cfg)
 					_, err := client.SetupSystemTablesAndNamespaces(ctx, nil)
 					return err
 				}
@@ -75,7 +75,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 		dbEnv:        vcs.DBEnv,
 	}
 
-	initCtx, initCancel := context.WithTimeout(t.Context(), 8*time.Minute)
+	initCtx, initCancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer initCancel()
 	_, setupErr := vcsTestEnv.commonClient.SetupSystemTablesAndNamespaces(initCtx, nil)
 	require.NoError(t, setupErr)
