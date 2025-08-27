@@ -82,7 +82,7 @@ func newValidatorAndCommitServiceTestEnvWithTLS(
 	endpoints := make([]*connection.Endpoint, numServices)
 	for i := range vcservices {
 		config := &Config{
-			Server:   connection.NewLocalHostServerWithCreds(serverCreds),
+			Server:   connection.NewLocalHostServerWithTLS(serverCreds),
 			Database: dbEnv.DBConf,
 			ResourceLimits: &ResourceLimitsConfig{
 				MaxWorkersForPreparer:             2,

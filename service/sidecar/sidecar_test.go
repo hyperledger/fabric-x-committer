@@ -150,7 +150,7 @@ func newSidecarTestEnvWithTLS(
 		initOrdererEndpoints = nil
 	}
 	sidecarConf := &Config{
-		Server: connection.NewLocalHostServerWithCreds(serverCreds),
+		Server: connection.NewLocalHostServerWithTLS(serverCreds),
 		Orderer: ordererconn.Config{
 			ChannelID: ordererEnv.TestConfig.ChanID,
 			Connection: ordererconn.ConnectionConfig{

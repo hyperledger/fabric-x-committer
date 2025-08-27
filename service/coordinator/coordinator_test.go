@@ -136,7 +136,7 @@ func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
 func (e *coordinatorTestEnv) startWithCreds(ctx context.Context, t *testing.T, serverCreds *connection.TLSConfig) {
 	t.Helper()
 	cs := e.coordinator
-	e.coordinator.config.Server = connection.NewLocalHostServerWithCreds(serverCreds)
+	e.coordinator.config.Server = connection.NewLocalHostServerWithTLS(serverCreds)
 
 	test.RunServiceAndGrpcForTest(ctx, t, cs, e.coordinator.config.Server)
 }

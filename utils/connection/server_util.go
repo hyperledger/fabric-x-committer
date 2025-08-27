@@ -39,8 +39,8 @@ func NewLocalHostServer() *ServerConfig {
 	return &ServerConfig{Endpoint: *NewLocalHost()}
 }
 
-// NewLocalHostServerWithCreds returns a default server config with endpoint "localhost:0" given server credentials.
-func NewLocalHostServerWithCreds(creds *TLSConfig) *ServerConfig {
+// NewLocalHostServerWithTLS returns a default server config with endpoint "localhost:0" given server credentials.
+func NewLocalHostServerWithTLS(creds *TLSConfig) *ServerConfig {
 	return &ServerConfig{
 		Endpoint: *NewLocalHost(),
 		TLS:      creds,

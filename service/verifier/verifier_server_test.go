@@ -454,7 +454,7 @@ func defaultConfig() *Config {
 
 func defaultConfigWithTLS(tlsConfig *connection.TLSConfig) *Config {
 	return &Config{
-		Server: connection.NewLocalHostServerWithCreds(tlsConfig),
+		Server: connection.NewLocalHostServerWithTLS(tlsConfig),
 		ParallelExecutor: ExecutorConfig{
 			BatchSizeCutoff:   3,
 			BatchTimeCutoff:   1 * time.Hour,
