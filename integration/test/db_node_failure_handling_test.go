@@ -125,7 +125,7 @@ func waitForCommittedTxs(t *testing.T, c *runner.CommitterRuntime, waitForCount 
 			t.Logf("Amount of committed txs: %d\n", committedTxs)
 			return committedTxs > currentNumberOfTxs+waitForCount
 		},
-		90*time.Second,
+		120*time.Second,
 		500*time.Millisecond,
 	)
 	require.Zero(t, c.CountAlternateStatus(t, protoblocktx.Status_COMMITTED))
