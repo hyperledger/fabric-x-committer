@@ -354,16 +354,16 @@ func (dc *DatabaseContainer) EnsureNodeReadiness(t *testing.T, requiredOutput st
 func CreateDockerNetwork(t *testing.T, name string) *docker.Network {
 	t.Helper()
 	client := GetDockerClient(t)
-	network, err := client.NetworkInfo(name)
-	if err == nil {
-		t.Logf("network %s already exists", name)
-		return network
-	}
-
-	network, err = client.CreateNetwork(docker.CreateNetworkOptions{
+	network, err := client.CreateNetwork(docker.CreateNetworkOptions{
 		Name:   name,
 		Driver: "bridge",
 	})
+	if errors.As(err, docker.ErrNetworkAlreadyExists) {
+		t.Logf("network %s already exists", name)
+		network, err = client.NetworkInfo(name)
+		require.NoError(t, err)
+		return network
+	}
 	require.NoError(t, err, "failed to create network")
 
 	t.Logf("network %s created", network.Name)
@@ -374,14 +374,8 @@ func CreateDockerNetwork(t *testing.T, name string) *docker.Network {
 func RemoveDockerNetwork(t *testing.T, name string) {
 	t.Helper()
 	client := GetDockerClient(t)
-	network, err := client.NetworkInfo(name)
+	err := client.RemoveNetwork(name)
 	if errors.As(err, new(*docker.NoSuchNetwork)) {
-		t.Logf("error: %s", err)
-		return
-	}
-	require.NoError(t, err)
-
-	if errors.As(client.RemoveNetwork(network.ID), new(*docker.NoSuchNetwork)) {
 		t.Logf("error: %s", err)
 		return
 	}

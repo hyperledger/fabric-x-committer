@@ -145,7 +145,7 @@ func (cc *YugaClusterController) startNodes(ctx context.Context, t *testing.T) {
 
 	expectedAlive := len(maps.Collect(cc.IterNodesByRole(MasterNode)))
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		_, actualAlive := cc.getLeaderMaster(t)
+		actualAlive := cc.getNumberOfAliveMasters(t)
 		require.Equal(ct, expectedAlive, actualAlive)
 	}, time.Minute, time.Millisecond*100)
 
@@ -172,7 +172,18 @@ func (cc *YugaClusterController) getMasterAddresses() string {
 	return strings.Join(masterAddresses, ",")
 }
 
-func (cc *YugaClusterController) getLeaderMaster(t *testing.T) (string, int) {
+func (cc *YugaClusterController) getLeaderMasterName(t *testing.T) string {
+	t.Helper()
+	found := leaderRegex.FindStringSubmatch(cc.listAllMasters(t))
+	require.Greater(t, len(found), 1)
+	return found[1]
+}
+
+func (cc *YugaClusterController) getNumberOfAliveMasters(t *testing.T) int {
+	return strings.Count(cc.listAllMasters(t), "ALIVE")
+}
+
+func (cc *YugaClusterController) listAllMasters(t *testing.T) string {
 	t.Helper()
 	var output string
 	cmd := []string{
@@ -186,10 +197,7 @@ func (cc *YugaClusterController) getLeaderMaster(t *testing.T) (string, int) {
 		}
 	}
 	require.NotEmpty(t, output, "Could not get yb-admin output from any node")
-
-	found := leaderRegex.FindStringSubmatch(output)
-	require.Greater(t, len(found), 1)
-	return found[1], strings.Count(output, "ALIVE")
+	return output
 }
 
 // StopAndRemoveSingleMasterNodeByRaftRole stops and removes a single
@@ -198,12 +206,12 @@ func (cc *YugaClusterController) StopAndRemoveSingleMasterNodeByRaftRole(t *test
 	t.Helper()
 	require.NotEmpty(t, cc.nodes, "trying to remove nodes of an empty cluster")
 
-	leaderName, _ := cc.getLeaderMaster(t)
+	leaderName := cc.getLeaderMasterName(t)
 	targetIdx := -1
 
 	for idx, node := range cc.IterNodesByRole(MasterNode) {
 		isLeader := node.Name == leaderName
-		if raftRole == LeaderMasterNode && isLeader || raftRole == FollowerMasterNode && !isLeader {
+		if (raftRole == LeaderMasterNode && isLeader) || (raftRole == FollowerMasterNode && !isLeader) {
 			targetIdx = idx
 			break
 		}

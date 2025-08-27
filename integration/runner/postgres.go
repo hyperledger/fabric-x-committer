@@ -104,12 +104,16 @@ func (cc *PostgresClusterController) addSecondaryNode(ctx context.Context, t *te
 	t.Helper()
 	// the cluster has to contain a primary node.
 	require.NotEmpty(t, cc.nodes)
+	t.Helper()
+	primary, _ := cc.GetSingleNodeByRole(PrimaryNode)
+	require.NotNil(t, primary)
+
 	node := cc.createNode(postgresNodeCreationParameters{
 		name: fmt.Sprintf("postgres-secondary-%s", uuid.New()),
 		role: SecondaryNode,
 		additionalEnvs: []string{
 			"POSTGRESQL_REPLICATION_MODE=slave",
-			fmt.Sprintf("POSTGRESQL_MASTER_HOST=%s", cc.getPrimaryHost(t)),
+			fmt.Sprintf("POSTGRESQL_MASTER_HOST=%s", primary.GetContainerConnectionDetails(t).GetHost()),
 		},
 	})
 	node.StartContainer(ctx, t)
@@ -135,13 +139,6 @@ func (cc *PostgresClusterController) createNode(
 	cc.nodes = append(cc.nodes, node)
 
 	return node
-}
-
-func (cc *PostgresClusterController) getPrimaryHost(t *testing.T) string {
-	t.Helper()
-	node, _ := cc.GetSingleNodeByRole(PrimaryNode)
-	require.NotNil(t, node)
-	return node.GetContainerConnectionDetails(t).GetHost()
 }
 
 // PromoteSecondaryNode runs a script that promotes the first follower db node
