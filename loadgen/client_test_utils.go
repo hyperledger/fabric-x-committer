@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 const defaultBlockSize = 500
@@ -39,7 +40,7 @@ func eventuallyMetrics(
 // DefaultClientConf returns default config values for client testing.
 func DefaultClientConf() *ClientConfig {
 	return &ClientConfig{
-		Server: connection.NewLocalHostServer(),
+		Server: connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig),
 		Monitoring: metrics.Config{
 			Config: defaultMonitoring(),
 		},
@@ -82,6 +83,6 @@ func DefaultClientConf() *ClientConfig {
 
 func defaultMonitoring() monitoring.Config {
 	return monitoring.Config{
-		Server: connection.NewLocalHostServer(),
+		Server: connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig),
 	}
 }

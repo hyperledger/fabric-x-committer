@@ -14,6 +14,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type portAllocator struct {
@@ -33,7 +34,7 @@ func (p *portAllocator) allocatePorts(t *testing.T, count int) []config.ServiceE
 
 func (p *portAllocator) allocate(t *testing.T) *connection.Endpoint {
 	t.Helper()
-	s := connection.NewLocalHostServer()
+	s := connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig)
 	listener, err := s.Listener()
 	require.NoError(t, err)
 	p.listeners = append(p.listeners, listener)

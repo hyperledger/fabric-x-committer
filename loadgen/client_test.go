@@ -73,7 +73,7 @@ func TestLoadGenForVCService(t *testing.T) {
 		clientConf.Limit = limit
 		t.Run(limitToString(limit), func(t *testing.T) {
 			t.Parallel()
-			env := vc.NewValidatorAndCommitServiceTestEnv(t, 2)
+			env := vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, 2, test.DefaultTLSConfig)
 			clientConf.Adapter.VCClient = test.NewInsecureMultiClientConfig(env.Endpoints...)
 			testLoadGenerator(t, clientConf)
 		})
@@ -99,7 +99,7 @@ func startVerifiers(t *testing.T) *connection.MultiClientConfig {
 	endpoints := make([]*connection.Endpoint, 2)
 	for i := range endpoints {
 		sConf := &verifier.Config{
-			Server: connection.NewLocalHostServer(),
+			Server: connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig),
 			ParallelExecutor: verifier.ExecutorConfig{
 				BatchSizeCutoff:   50,
 				BatchTimeCutoff:   10 * time.Millisecond,
@@ -130,7 +130,7 @@ func TestLoadGenForCoordinator(t *testing.T) {
 			_, vcServer := mock.StartMockVCService(t, 1)
 
 			cConf := &coordinator.Config{
-				Server:             connection.NewLocalHostServer(),
+				Server:             connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig),
 				Monitoring:         defaultMonitoring(),
 				Verifier:           *test.ServerToMultiClientConfig(sigVerServer.Configs...),
 				ValidatorCommitter: *test.ServerToMultiClientConfig(vcServer.Configs...),
@@ -203,7 +203,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 			// Start client
 			clientConf.Adapter.SidecarClient = &adapters.SidecarClientConfig{
 				OrdererServers: ordererServers,
-				Client:         test.NewInsecureClientConfig(&sidecarServerConf.Endpoint),
+				SidecarClient:  test.NewInsecureClientConfig(&sidecarServerConf.Endpoint),
 			}
 			testLoadGenerator(t, clientConf)
 		})
@@ -225,7 +225,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 
 			endpoints := ordererconn.NewEndpoints(0, "msp", ordererServer.Configs...)
 			sidecarConf := &sidecar.Config{
-				Server: connection.NewLocalHostServer(),
+				Server: connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig),
 				Orderer: ordererconn.Config{
 					Connection: ordererconn.ConnectionConfig{
 						Endpoints: endpoints,
@@ -313,7 +313,7 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 
 func preAllocatePorts(t *testing.T) *connection.ServerConfig {
 	t.Helper()
-	server := connection.NewLocalHostServer()
+	server := connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig)
 	listener, err := server.PreAllocateListener()
 	require.NoError(t, err)
 	t.Cleanup(func() {

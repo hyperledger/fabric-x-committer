@@ -99,18 +99,6 @@ jobs:
       - run: scripts/get-and-start-yuga.sh
       - run: make test-integration
 
-  integration-test-tls:
-    name: Integration TLS tests (yugabyte)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - run: scripts/install-dev-dependencies.sh
-      - run: scripts/get-and-start-yuga.sh
-      - run: make test-integration-tls
-
   db-resiliency-test:
     name: Integration DB Resiliency (container)
     runs-on: ubuntu-latest

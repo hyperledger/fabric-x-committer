@@ -44,7 +44,9 @@ func (c *OrdererAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 	dCtx, dCancel := context.WithCancel(ctx)
 	defer dCancel()
 	g, gCtx := errgroup.WithContext(dCtx)
-	if c.config.SidecarClient == nil || c.config.SidecarClient.Endpoint.Empty() {
+	if (c.config.SidecarClient == nil) ||
+		(c.config.SidecarClient.Endpoint == nil) ||
+		(c.config.SidecarClient.Endpoint.Empty()) {
 		g.Go(func() error {
 			defer dCancel() // We stop sending if we can't track the received items.
 			return runOrdererReceiver(gCtx, c.res, client)

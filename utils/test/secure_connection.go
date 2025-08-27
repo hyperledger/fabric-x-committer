@@ -22,19 +22,11 @@ import (
 )
 
 type (
-	// CertificateManager responsible for the creation of
+	// CredentialsFactory responsible for the creation of
 	// TLS certificates for testing purposes by utilizing the tls generation library of 'Hyperledger Fabric'.
 	// Path map convention: private-key, public-key, ca-certificate.
-	CertificateManager struct {
+	CredentialsFactory struct {
 		CertificateAuthority tlsgen.CA
-	}
-
-	// SecureConnectionParameters groups the parameters required to run a secure connection test.
-	SecureConnectionParameters struct {
-		Service       string
-		ServerTLSMode string
-		TestCases     []Case
-		ServerStarter ServerStarter
 	}
 
 	// Case define a secure connection test case.
@@ -45,51 +37,58 @@ type (
 	}
 
 	// ServerStarter is a function that receives a TLS configuration, starts the server,
-	// and returns a ClientStarter function for initiating a client connection.
-	ServerStarter func(t *testing.T, serverTLS *connection.TLSConfig) ClientStarter
+	// and returns a RPCAttempt function for initiating a client connection and attempting an RPC call.
+	ServerStarter func(t *testing.T, serverTLS connection.TLSConfig) RPCAttempt
 
-	// ClientStarter is a function returned by ServerStarter that contains the information
-	// needed to start a client connection.
-	ClientStarter func(ctx context.Context, t *testing.T, cfg *connection.TLSConfig) error
+	// RPCAttempt is a function returned by ServerStarter that contains the information
+	// needed to start a client connection and attempt an RPC call.
+	RPCAttempt func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error
 )
 
 const defaultHostName = "localhost"
 
 // ServerModes is a list of server-side TLS modes used for testing.
-var ServerModes = []string{connection.MutualTLSMode, connection.ServerSideTLSMode, connection.NoneTLSMode}
+var ServerModes = []string{connection.MutualTLSMode, connection.OneSideTLSMode, connection.NoneTLSMode}
 
-// NewTLSCertificateManager returns a CertificateManager with a new CA.
-func NewTLSCertificateManager(t *testing.T) *CertificateManager {
+// NewCredentialsFactory returns a CredentialsFactory with a new CA.
+func NewCredentialsFactory(t *testing.T) *CredentialsFactory {
 	t.Helper()
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
-	return &CertificateManager{
+	return &CredentialsFactory{
 		CertificateAuthority: ca,
 	}
 }
 
-// CreateServerCertificate creates a server key pair given SAN (Subject Alternative Name),
+// CreateServerCredentials creates a server key pair given SAN (Subject Alternative Name),
 // Writing it to a temp testing folder and returns a map with the credential paths.
-func (scm *CertificateManager) CreateServerCertificate(
+func (scm *CredentialsFactory) CreateServerCredentials(
 	t *testing.T,
+	tlsMode string,
 	san string,
-) map[string]string {
+) connection.TLSConfig {
 	t.Helper()
 	serverKeypair, err := scm.CertificateAuthority.NewServerCertKeyPair(san)
 	require.NoError(t, err)
-	return createCertificatesPaths(t, createDataFromKeyPair(serverKeypair, scm.CertificateAuthority.CertBytes()))
+	return CreateTLSConfigFromPaths(
+		tlsMode,
+		createCredentialsPaths(t, createDataFromKeyPair(serverKeypair, scm.CertificateAuthority.CertBytes())),
+	)
 }
 
-// CreateClientCertificate creates a client key pair,
+// CreateClientCredentials creates a client key pair,
 // Writing it to a temp testing folder and returns a map with the credential paths.
-func (scm *CertificateManager) CreateClientCertificate(t *testing.T) map[string]string {
+func (scm *CredentialsFactory) CreateClientCredentials(t *testing.T, tlsMode string) connection.TLSConfig {
 	t.Helper()
 	clientKeypair, err := scm.CertificateAuthority.NewClientCertKeyPair()
 	require.NoError(t, err)
-	return createCertificatesPaths(t, createDataFromKeyPair(clientKeypair, scm.CertificateAuthority.CertBytes()))
+	return CreateTLSConfigFromPaths(
+		tlsMode,
+		createCredentialsPaths(t, createDataFromKeyPair(clientKeypair, scm.CertificateAuthority.CertBytes())),
+	)
 }
 
-func createCertificatesPaths(t *testing.T, data map[string][]byte) map[string]string {
+func createCredentialsPaths(t *testing.T, data map[string][]byte) map[string]string {
 	t.Helper()
 	tmpDir := t.TempDir()
 	t.Cleanup(func() {
@@ -135,19 +134,19 @@ func BuildTestCases(t *testing.T, serverTLSMode string) []Case {
 	case connection.MutualTLSMode:
 		return []Case{
 			{"client mTLS", connection.MutualTLSMode, false},
-			{"client with server-side TLS", connection.ServerSideTLSMode, true},
+			{"client with one sided TLS", connection.OneSideTLSMode, true},
 			{"client no TLS", connection.NoneTLSMode, true},
 		}
-	case connection.ServerSideTLSMode:
+	case connection.OneSideTLSMode:
 		return []Case{
 			{"client mTLS", connection.MutualTLSMode, false},
-			{"client with server-side TLS", connection.ServerSideTLSMode, false},
+			{"client with one sided TLS", connection.OneSideTLSMode, false},
 			{"client no TLS", connection.NoneTLSMode, true},
 		}
 	case connection.NoneTLSMode:
 		return []Case{
 			{"client mTLS", connection.MutualTLSMode, true},
-			{"client with server-side TLS", connection.ServerSideTLSMode, true},
+			{"client with one sided TLS", connection.OneSideTLSMode, true},
 			{"client no TLS", connection.NoneTLSMode, false},
 		}
 	default:
@@ -159,28 +158,27 @@ func BuildTestCases(t *testing.T, serverTLSMode string) []Case {
 // RunSecureConnectionTest starts a gRPC server with mTLS enabled and
 // tests client connections using various TLS configurations to verify that
 // the server correctly accepts or rejects connections based on the client's setup.
+// It runs a server instance of the service and returns a function
+// that starts a client with the required TLS mode, attempts an RPC call,
+// and returns the resulting error.
 func RunSecureConnectionTest(
 	t *testing.T,
-	secureConnParameters SecureConnectionParameters,
+	starter ServerStarter,
 ) {
 	t.Helper()
 	// create server and client credentials
-	tlsMgr := NewTLSCertificateManager(t)
-	serverCreds := tlsMgr.CreateServerCertificate(t, defaultHostName)
-	clientCreds := tlsMgr.CreateClientCertificate(t)
+	tlsMgr := NewCredentialsFactory(t)
 	// create a base TLS configuration for the client
-	baseClientTLS := CreateTLSConfigFromPaths(connection.NoneTLSMode, clientCreds)
-
+	baseClientTLS := tlsMgr.CreateClientCredentials(t, connection.NoneTLSMode)
 	for _, serverSecureMode := range ServerModes {
 		// create server's tls config and start it according to the serverSecureMode.
-		serverTLS := CreateTLSConfigFromPaths(serverSecureMode, serverCreds)
-		clientStarterFunc := secureConnParameters.ServerStarter(t, &serverTLS)
+		serverTLS := tlsMgr.CreateServerCredentials(t, serverSecureMode, defaultHostName)
+		rpcAttemptFunc := starter(t, serverTLS)
 		// for each server secure mode, build the client's test cases.
 		for _, tc := range BuildTestCases(t, serverSecureMode) {
 			testCase := tc
 			t.Run(fmt.Sprintf(
-				"%s/%s/%s",
-				secureConnParameters.Service,
+				"server_secure_mode_%s/%s",
 				serverSecureMode,
 				testCase.testDescription,
 			), func(t *testing.T) {
@@ -192,7 +190,7 @@ func RunSecureConnectionTest(
 				ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 				t.Cleanup(cancel)
 
-				err := clientStarterFunc(ctx, t, &cfg)
+				err := rpcAttemptFunc(ctx, t, cfg)
 				if tc.shouldFail {
 					require.Error(t, err)
 				} else {
@@ -209,7 +207,7 @@ func RunSecureConnectionTest(
 func CreateClientWithTLS[T any](
 	t *testing.T,
 	endpoint *connection.Endpoint,
-	tlsCfg *connection.TLSConfig,
+	tlsCfg connection.TLSConfig,
 	protoClient func(grpc.ClientConnInterface) T,
 ) T {
 	t.Helper()

@@ -45,20 +45,12 @@ type (
 	}
 )
 
-// NewValidatorAndCommitServiceTestEnv creates a new test environment with a vcservice and a database.
-func NewValidatorAndCommitServiceTestEnv(
+// NewValidatorAndCommitServiceTestEnvWithTLS creates a new test environment with a vcservice and a database.
+// It allows TLS with the acceptance of server creds.
+func NewValidatorAndCommitServiceTestEnvWithTLS(
 	t *testing.T,
 	numServices int,
-	db ...*DatabaseTestEnv,
-) *ValidatorAndCommitterServiceTestEnv {
-	t.Helper()
-	return newValidatorAndCommitServiceTestEnvWithTLS(t, numServices, nil, db...)
-}
-
-func newValidatorAndCommitServiceTestEnvWithTLS(
-	t *testing.T,
-	numServices int,
-	serverCreds *connection.TLSConfig, // one credentials set for all the vc-services.
+	serverCreds connection.TLSConfig, // one credentials set for all the vc-services.
 	db ...*DatabaseTestEnv,
 ) *ValidatorAndCommitterServiceTestEnv {
 	t.Helper()
@@ -93,7 +85,7 @@ func newValidatorAndCommitServiceTestEnvWithTLS(
 				// we are setting the timeout value to 20 seconds
 			},
 			Monitoring: monitoring.Config{
-				Server: connection.NewLocalHostServer(),
+				Server: connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig),
 			},
 		}
 		vcs, err := NewValidatorCommitterService(initCtx, config)
@@ -365,7 +357,7 @@ func (env *DatabaseTestEnv) rowNotExists(t *testing.T, nsID string, keys [][]byt
 func createValidatorAndCommitClientWithTLS(
 	t *testing.T,
 	ep *connection.Endpoint,
-	tlsCfg *connection.TLSConfig,
+	tlsCfg connection.TLSConfig,
 ) protovcservice.ValidationAndCommitServiceClient {
 	t.Helper()
 	return test.CreateClientWithTLS(t, ep, tlsCfg, protovcservice.NewValidationAndCommitServiceClient)

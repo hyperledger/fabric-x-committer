@@ -37,18 +37,15 @@ type validatorAndCommitterServiceTestEnvWithClient struct {
 func TestVCSecureConnection(t *testing.T) {
 	t.Parallel()
 	test.RunSecureConnectionTest(t,
-		test.SecureConnectionParameters{
-			Service: "validator-committer",
-			ServerStarter: func(t *testing.T, cfg *connection.TLSConfig) test.ClientStarter {
+		func(t *testing.T, cfg connection.TLSConfig) test.RPCAttempt {
+			t.Helper()
+			env := NewValidatorAndCommitServiceTestEnvWithTLS(t, 1, cfg)
+			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
 				t.Helper()
-				env := newValidatorAndCommitServiceTestEnvWithTLS(t, 1, cfg)
-				return func(ctx context.Context, t *testing.T, cfg *connection.TLSConfig) error {
-					t.Helper()
-					client := createValidatorAndCommitClientWithTLS(t, &env.Configs[0].Server.Endpoint, cfg)
-					_, err := client.SetupSystemTablesAndNamespaces(ctx, nil)
-					return err
-				}
-			},
+				client := createValidatorAndCommitClientWithTLS(t, &env.Configs[0].Server.Endpoint, cfg)
+				_, err := client.SetupSystemTablesAndNamespaces(ctx, nil)
+				return err
+			}
 		},
 	)
 }
@@ -58,7 +55,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 	numServices int,
 ) *validatorAndCommitterServiceTestEnvWithClient {
 	t.Helper()
-	vcs := NewValidatorAndCommitServiceTestEnv(t, numServices)
+	vcs := NewValidatorAndCommitServiceTestEnvWithTLS(t, numServices, test.DefaultTLSConfig)
 
 	allEndpoints := make([]*connection.Endpoint, len(vcs.Configs))
 	for i, c := range vcs.Configs {

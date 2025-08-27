@@ -283,7 +283,7 @@ func TestNotifierDirect(t *testing.T) {
 func TestNotifierStream(t *testing.T) {
 	t.Parallel()
 	env := newNotifierTestEnv(t)
-	config := connection.NewLocalHostServer()
+	config := connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig)
 	test.RunGrpcServerForTest(t.Context(), t, config, func(server *grpc.Server) {
 		protonotify.RegisterNotifierServer(server, env.n)
 	})

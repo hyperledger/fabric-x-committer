@@ -25,7 +25,7 @@ type (
 	// ConnectionConfig contains the endpoints, CAs, and retry profile.
 	ConnectionConfig struct {
 		Endpoints []*Endpoint              `mapstructure:"endpoints"`
-		TLS       *connection.TLSConfig    `mapstructure:"tls"`
+		TLS       connection.TLSConfig     `mapstructure:"tls"`
 		Retry     *connection.RetryProfile `mapstructure:"reconnect"`
 	}
 

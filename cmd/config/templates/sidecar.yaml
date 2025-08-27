@@ -6,8 +6,8 @@ server:
   endpoint: {{ .ServiceEndpoints.Server | default "localhost:0" }}
   tls:
     mode: {{ .ServiceTLS.Mode }}
-    cert-path: {{ .ServiceTLS.CertPath }}
     key-path: {{ .ServiceTLS.KeyPath }}
+    cert-path: {{ .ServiceTLS.CertPath }}
     ca-cert-paths:
       {{- range .ServiceTLS.CACertPaths }}
       - {{ . }}
@@ -35,8 +35,8 @@ committer:
   endpoint: {{ .Endpoints.Coordinator.Server }}
   tls:
     mode: {{ .ClientTLS.Mode }}
-    cert-path: {{ .ClientTLS.CertPath }}
     key-path: {{ .ClientTLS.KeyPath }}
+    cert-path: {{ .ClientTLS.CertPath }}
     ca-cert-paths:
       {{- range .ClientTLS.CACertPaths }}
       - {{ . }}

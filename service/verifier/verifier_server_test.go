@@ -33,25 +33,22 @@ const fakeTxID = "fake-id"
 func TestVerifierSecureConnection(t *testing.T) {
 	t.Parallel()
 	test.RunSecureConnectionTest(t,
-		test.SecureConnectionParameters{
-			Service: "verifier",
-			ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) test.ClientStarter {
+		func(t *testing.T, tlsCfg connection.TLSConfig) test.RPCAttempt {
+			t.Helper()
+			env := newTestState(t, defaultConfigWithTLS(tlsCfg))
+			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
 				t.Helper()
-				env := newTestState(t, defaultConfigWithTLS(tlsCfg))
-				return func(ctx context.Context, t *testing.T, cfg *connection.TLSConfig) error {
-					t.Helper()
-					client := createVerifierClientWithTLS(t, &env.Service.config.Server.Endpoint, cfg)
-					_, err := client.StartStream(ctx)
-					return err
-				}
-			},
+				client := createVerifierClientWithTLS(t, &env.Service.config.Server.Endpoint, cfg)
+				_, err := client.StartStream(ctx)
+				return err
+			}
 		},
 	)
 }
 
 func TestNoVerificationKeySet(t *testing.T) {
 	t.Parallel()
-	c := newTestState(t, defaultConfig())
+	c := newTestState(t, defaultConfigWithTLS(test.DefaultTLSConfig))
 
 	stream, err := c.Client.StartStream(t.Context())
 	require.NoError(t, err)
@@ -67,7 +64,7 @@ func TestNoVerificationKeySet(t *testing.T) {
 func TestNoInput(t *testing.T) {
 	t.Parallel()
 	test.FailHandler(t)
-	c := newTestState(t, defaultConfig())
+	c := newTestState(t, defaultConfigWithTLS(test.DefaultTLSConfig))
 
 	stream, _ := c.Client.StartStream(t.Context())
 
@@ -82,7 +79,7 @@ func TestNoInput(t *testing.T) {
 func TestMinimalInput(t *testing.T) {
 	t.Parallel()
 	test.FailHandler(t)
-	c := newTestState(t, defaultConfig())
+	c := newTestState(t, defaultConfigWithTLS(test.DefaultTLSConfig))
 
 	stream, _ := c.Client.StartStream(t.Context())
 
@@ -448,11 +445,7 @@ func defaultUpdate(t *testing.T) (*protosigverifierservice.Update, *sigtest.NsSi
 	return update, txSigner
 }
 
-func defaultConfig() *Config {
-	return defaultConfigWithTLS(nil)
-}
-
-func defaultConfigWithTLS(tlsConfig *connection.TLSConfig) *Config {
+func defaultConfigWithTLS(tlsConfig connection.TLSConfig) *Config {
 	return &Config{
 		Server: connection.NewLocalHostServerWithTLS(tlsConfig),
 		ParallelExecutor: ExecutorConfig{
@@ -462,13 +455,13 @@ func defaultConfigWithTLS(tlsConfig *connection.TLSConfig) *Config {
 			ChannelBufferSize: 1,
 		},
 		Monitoring: monitoring.Config{
-			Server: connection.NewLocalHostServer(),
+			Server: connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig),
 		},
 	}
 }
 
 func defaultConfigQuickCutoff() *Config {
-	config := defaultConfig()
+	config := defaultConfigWithTLS(test.DefaultTLSConfig)
 	config.ParallelExecutor.BatchSizeCutoff = 1
 	return config
 }
@@ -477,7 +470,7 @@ func defaultConfigQuickCutoff() *Config {
 func createVerifierClientWithTLS(
 	t *testing.T,
 	ep *connection.Endpoint,
-	tlsCfg *connection.TLSConfig,
+	tlsCfg connection.TLSConfig,
 ) protosigverifierservice.VerifierClient {
 	t.Helper()
 	return test.CreateClientWithTLS(t, ep, tlsCfg, protosigverifierservice.NewVerifierClient)

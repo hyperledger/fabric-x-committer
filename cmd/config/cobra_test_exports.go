@@ -26,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 // CommandTest is a struct that represents a CMD unit test.
@@ -47,7 +48,7 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 	_, orderer := mock.StartMockOrderingServices(t, &mock.OrdererConfig{NumService: 1})
 	_, coordinator := mock.StartMockCoordinatorService(t)
 	conn := dbtest.PrepareTestEnv(t)
-	server := connection.NewLocalHostServer()
+	server := connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig)
 	listen, err := server.Listener()
 	require.NoError(t, err)
 	connection.CloseConnectionsLog(listen)

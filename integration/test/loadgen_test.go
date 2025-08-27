@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -20,7 +21,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-func TestLoadGen(t *testing.T) {
+func TestLoadGenWithTLSModes(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name         string
@@ -55,26 +56,33 @@ func TestLoadGen(t *testing.T) {
 			serviceFlags: runner.LoadGenForVerifier | runner.LoadGenForDistributedLoadGen | runner.Verifier,
 		},
 	} {
+		tc := tc
 		serviceFlags := tc.serviceFlags
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			gomega.RegisterTestingT(t)
-			c := runner.NewRuntime(t, &runner.Config{
-				NumVerifiers: 2,
-				NumVCService: 2,
-				BlockTimeout: 2 * time.Second,
-				BlockSize:    500,
-				TLS:          connection.MutualTLSMode,
-			})
-			c.Start(t, serviceFlags)
+			for _, mode := range []string{connection.NoneTLSMode, connection.OneSideTLSMode, connection.MutualTLSMode} {
+				mode := mode
+				t.Run(fmt.Sprintf("%s_secure_mode", mode), func(t *testing.T) {
+					t.Parallel()
+					gomega.RegisterTestingT(t)
+					c := runner.NewRuntime(t, &runner.Config{
+						NumVerifiers: 2,
+						NumVCService: 2,
+						BlockTimeout: 2 * time.Second,
+						BlockSize:    500,
+						TLSMode:      mode,
+					})
+					c.Start(t, serviceFlags)
 
-			metricsURL, err := monitoring.MakeMetricsURL(c.SystemConfig.Endpoints.LoadGen.Metrics.Address())
-			require.NoError(t, err)
-			require.Eventually(t, func() bool {
-				count := test.GetMetricValueFromURL(t, metricsURL, "loadgen_transaction_committed_total")
-				t.Logf("count %d", count)
-				return count > 1_000
-			}, 90*time.Second, 1*time.Second)
+					metricsURL, err := monitoring.MakeMetricsURL(c.SystemConfig.Endpoints.LoadGen.Metrics.Address())
+					require.NoError(t, err)
+					require.Eventually(t, func() bool {
+						count := test.GetMetricValueFromURL(t, metricsURL, "loadgen_transaction_committed_total")
+						t.Logf("count %d", count)
+						return count > 1_000
+					}, 150*time.Second, 1*time.Second)
+				})
+			}
 		})
 	}
 }

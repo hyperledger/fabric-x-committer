@@ -74,7 +74,7 @@ type (
 
 		LastReceivedBlockNumber uint64
 
-		TLSManager *test.CertificateManager
+		CredFactory *test.CredentialsFactory
 	}
 
 	// Crypto holds crypto material for a namespace.
@@ -98,7 +98,7 @@ type (
 		// DBCluster configures the cluster to operate in DB cluster mode.
 		DBCluster *dbtest.Connection
 		// TLS configures the secure level between the components: none | tls | mtls
-		TLS string
+		TLSMode string
 
 		// CrashTest is true to indicate a service crash is expected, and not a failure.
 		CrashTest bool
@@ -196,8 +196,8 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	require.NoError(t, err)
 
 	t.Log("create TLS manager and clients certificate")
-	c.TLSManager = test.NewTLSCertificateManager(t)
-	s.ClientTLS = test.CreateTLSConfigFromPaths(c.config.TLS, c.TLSManager.CreateClientCertificate(t))
+	c.CredFactory = test.NewCredentialsFactory(t)
+	s.ClientTLS = c.CredFactory.CreateClientCredentials(t, c.config.TLSMode)
 
 	t.Log("Create processes")
 	c.MockOrderer = newProcess(t, cmdOrderer, s.WithEndpoint(s.Endpoints.Orderer[0]))
@@ -205,47 +205,33 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		p := cmdVerifier
 		p.Name = fmt.Sprintf("%s-%d", p.Name, i)
 		// we generate different keys for each verifier.
-		verifierSystemConfig := c.createSystemConfigWithServerTLS(t, e)
-		c.Verifier = append(c.Verifier, newProcess(t, p, &verifierSystemConfig))
+		c.Verifier = append(c.Verifier, newProcess(t, p, c.createSystemConfigWithServerTLS(t, e)))
 	}
 
 	for i, e := range s.Endpoints.VCService {
 		p := cmdVC
 		p.Name = fmt.Sprintf("%s-%d", p.Name, i)
 		// we generate different keys for each vc-service.
-		vcSystemConfig := c.createSystemConfigWithServerTLS(t, e)
-		c.VcService = append(c.VcService, newProcess(t, p, &vcSystemConfig))
+		c.VcService = append(c.VcService, newProcess(t, p, c.createSystemConfigWithServerTLS(t, e)))
 	}
 
-	coordinatorServiceConfig := c.createSystemConfigWithServerTLS(t, s.Endpoints.Coordinator)
-	c.Coordinator = newProcess(t, cmdCoordinator, &coordinatorServiceConfig)
+	c.Coordinator = newProcess(t, cmdCoordinator, c.createSystemConfigWithServerTLS(t, s.Endpoints.Coordinator))
 
-	queryServiceConfig := c.createSystemConfigWithServerTLS(t, s.Endpoints.Query)
-	c.QueryService = newProcess(t, cmdQuery, &queryServiceConfig)
+	c.QueryService = newProcess(t, cmdQuery, c.createSystemConfigWithServerTLS(t, s.Endpoints.Query))
 
-	sidecarServiceConfig := c.createSystemConfigWithServerTLS(t, s.Endpoints.Sidecar)
-	c.Sidecar = newProcess(t, cmdSidecar, &sidecarServiceConfig)
+	c.Sidecar = newProcess(t, cmdSidecar, c.createSystemConfigWithServerTLS(t, s.Endpoints.Sidecar))
 
 	t.Log("Create clients")
 	c.CoordinatorClient = protocoordinatorservice.NewCoordinatorClient(
-		clientConnWithTLS(t,
-			s.Endpoints.Coordinator.Server,
-			c.SystemConfig.ClientTLS,
-		),
+		clientConnWithTLS(t, s.Endpoints.Coordinator.Server, c.SystemConfig.ClientTLS),
 	)
 
 	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(
-		clientConnWithTLS(t,
-			s.Endpoints.Query.Server,
-			c.SystemConfig.ClientTLS,
-		),
+		clientConnWithTLS(t, s.Endpoints.Query.Server, c.SystemConfig.ClientTLS),
 	)
 
 	c.notifyClient = protonotify.NewNotifierClient(
-		clientConnWithTLS(t,
-			s.Endpoints.Sidecar.Server,
-			c.SystemConfig.ClientTLS,
-		),
+		clientConnWithTLS(t, s.Endpoints.Sidecar.Server, c.SystemConfig.ClientTLS),
 	)
 
 	c.ordererStream, err = test.NewBroadcastStream(t.Context(), &ordererconn.Config{
@@ -262,7 +248,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	c.sidecarClient, err = sidecarclient.New(&sidecarclient.Parameters{
 		ChannelID: s.Policy.ChannelID,
 		Client: test.NewTLSClientConfig(
-			&c.SystemConfig.ClientTLS,
+			c.SystemConfig.ClientTLS,
 			s.Endpoints.Sidecar.Server,
 		),
 	})
@@ -346,7 +332,8 @@ func (c *CommitterRuntime) startLoadGen(t *testing.T, serviceFlags int) {
 	if isDist {
 		s.LoadGenWorkers = 0
 	}
-	newProcess(t, loadGenParams, s.WithEndpoint(s.Endpoints.LoadGen)).Restart(t)
+	newProcess(t, loadGenParams, c.createSystemConfigWithServerTLS(t, s.Endpoints.LoadGen)).Restart(t)
+
 	if isDist {
 		s.LoadGenWorkers = 1
 		loadGenParams.Name = "dist-loadgen"
@@ -377,7 +364,7 @@ func (c *CommitterRuntime) startBlockDelivery(t *testing.T) {
 // clientConnWithTLS creates a service connection using its given server endpoint and TLS configuration.
 func clientConnWithTLS(t *testing.T, e *connection.Endpoint, tlsConfig connection.TLSConfig) *grpc.ClientConn {
 	t.Helper()
-	serviceConnection, err := connection.Connect(test.NewSecuredDialConfig(t, e, &tlsConfig))
+	serviceConnection, err := connection.Connect(test.NewSecuredDialConfig(t, e, tlsConfig))
 	require.NoError(t, err)
 	return serviceConnection
 }
@@ -595,15 +582,13 @@ func (c *CommitterRuntime) ensureAtLeastLastCommittedBlockNumber(t *testing.T, b
 func (c *CommitterRuntime) createSystemConfigWithServerTLS(
 	t *testing.T,
 	endpoints config.ServiceEndpoints,
-) config.SystemConfig {
+) *config.SystemConfig {
 	t.Helper()
 	serviceCfg := c.SystemConfig
-	serviceCfg.ServiceTLS = test.CreateTLSConfigFromPaths(
-		c.config.TLS,
-		c.TLSManager.CreateServerCertificate(t, endpoints.Server.Host),
-	)
+	serviceCfg.ServiceTLS = c.CredFactory.CreateServerCredentials(t, c.config.TLSMode, endpoints.Server.Host)
+	t.Logf("server_tls_%s", serviceCfg.ServiceTLS)
 	serviceCfg.ServiceEndpoints = endpoints
-	return serviceCfg
+	return &serviceCfg
 }
 
 func isMoreThanOneBitSet(bits int) bool {

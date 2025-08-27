@@ -12,8 +12,8 @@ verifier-client:
     {{- end }}
   tls:
     mode: {{ .ClientTLS.Mode }}
-    cert-path: {{ .ClientTLS.CertPath }}
     key-path: {{ .ClientTLS.KeyPath }}
+    cert-path: {{ .ClientTLS.CertPath }}
     ca-cert-paths:
       {{- range .ClientTLS.CACertPaths }}
       - {{ . }}

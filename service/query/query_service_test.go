@@ -17,11 +17,9 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v4/pgxpool"
 	"golang.org/x/exp/slices"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
@@ -41,7 +39,7 @@ type queryServiceTestEnv struct {
 	config        *Config
 	qs            *Service
 	ns            []string
-	clientConn    *grpc.ClientConn
+	clientConn    protoqueryservice.QueryServiceClient
 	pool          *pgxpool.Pool
 	disabledViews []string
 }
@@ -51,25 +49,22 @@ type queryServiceTestEnv struct {
 func TestQuerySecureConnection(t *testing.T) {
 	t.Parallel()
 	test.RunSecureConnectionTest(t,
-		test.SecureConnectionParameters{
-			Service: "query",
-			ServerStarter: func(t *testing.T, tlsCfg *connection.TLSConfig) test.ClientStarter {
+		func(t *testing.T, tlsCfg connection.TLSConfig) test.RPCAttempt {
+			t.Helper()
+			env := newQueryServiceTestEnvWithServerAndClientCreds(t, tlsCfg, test.DefaultTLSConfig)
+			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
 				t.Helper()
-				env := newQueryServiceTestEnvWithServerAndClientCreds(t, tlsCfg, nil)
-				return func(ctx context.Context, t *testing.T, cfg *connection.TLSConfig) error {
-					t.Helper()
-					client := createQueryClientWithTLS(t, &env.qs.config.Server.Endpoint, cfg)
-					_, err := client.GetConfigTransaction(ctx, nil)
-					return err
-				}
-			},
+				client := createQueryClientWithTLS(t, &env.qs.config.Server.Endpoint, cfg)
+				_, err := client.GetConfigTransaction(ctx, nil)
+				return err
+			}
 		},
 	)
 }
 
 func TestQuery(t *testing.T) {
 	t.Parallel()
-	env := newQueryServiceTestEnv(t)
+	env := newQueryServiceTestEnvWithServerAndClientCreds(t, test.DefaultTLSConfig, test.DefaultTLSConfig)
 	requiredItems := env.makeItems(t)
 	query, _, _ := makeQuery(requiredItems)
 
@@ -96,8 +91,7 @@ func TestQuery(t *testing.T) {
 
 	t.Run("Query GetRows client", func(t *testing.T) {
 		t.Parallel()
-		client := protoqueryservice.NewQueryServiceClient(env.clientConn)
-		ret, err := client.GetRows(t.Context(), query)
+		ret, err := env.clientConn.GetRows(t.Context(), query)
 		require.NoError(t, err)
 		requireResults(t, requiredItems, ret.Namespaces)
 	})
@@ -106,8 +100,7 @@ func TestQuery(t *testing.T) {
 		t.Parallel()
 		badQuery, _, _ := makeQuery(requiredItems)
 		badQuery.Namespaces[0].NsId = "$1"
-		client := protoqueryservice.NewQueryServiceClient(env.clientConn)
-		ret, err := client.GetRows(t.Context(), badQuery)
+		ret, err := env.clientConn.GetRows(t.Context(), badQuery)
 		require.Error(t, err)
 		require.Nil(t, ret)
 		require.Contains(t, err.Error(), policy.ErrInvalidNamespaceID.Error())
@@ -115,9 +108,8 @@ func TestQuery(t *testing.T) {
 
 	t.Run("Query GetRows client with view", func(t *testing.T) {
 		t.Parallel()
-		client := protoqueryservice.NewQueryServiceClient(env.clientConn)
-		ret, err := client.GetRows(t.Context(), &protoqueryservice.Query{
-			View:       env.beginView(t, client, defaultViewParams(time.Minute)),
+		ret, err := env.clientConn.GetRows(t.Context(), &protoqueryservice.Query{
+			View:       env.beginView(t, env.clientConn, defaultViewParams(time.Minute)),
 			Namespaces: query.Namespaces,
 		})
 		require.NoError(t, err)
@@ -126,50 +118,44 @@ func TestQuery(t *testing.T) {
 
 	t.Run("Nil view parameters", func(t *testing.T) {
 		t.Parallel()
-		client := protoqueryservice.NewQueryServiceClient(env.clientConn)
-		env.beginView(t, client, nil)
+		env.beginView(t, env.clientConn, nil)
 	})
 
 	t.Run("Bad view ID", func(t *testing.T) {
 		t.Parallel()
-		client := protoqueryservice.NewQueryServiceClient(env.clientConn)
-		_, err := client.EndView(t.Context(), &protoqueryservice.View{Id: "bad"})
+		_, err := env.clientConn.EndView(t.Context(), &protoqueryservice.View{Id: "bad"})
 		require.Equal(t, ErrInvalidOrStaleView.Error(), status.Convert(err).Message())
 	})
 
 	t.Run("Cancelled view ID", func(t *testing.T) {
 		t.Parallel()
-		client := protoqueryservice.NewQueryServiceClient(env.clientConn)
-		view, err := client.BeginView(t.Context(), defaultViewParams(time.Minute))
+		view, err := env.clientConn.BeginView(t.Context(), defaultViewParams(time.Minute))
 		require.NoError(t, err)
-		_, err = client.EndView(t.Context(), view)
+		_, err = env.clientConn.EndView(t.Context(), view)
 		require.NoError(t, err)
-		_, err = client.EndView(t.Context(), view)
+		_, err = env.clientConn.EndView(t.Context(), view)
 		require.Equal(t, ErrInvalidOrStaleView.Error(), status.Convert(err).Message())
 	})
 
 	t.Run("Expired view ID", func(t *testing.T) {
 		t.Parallel()
-		client := protoqueryservice.NewQueryServiceClient(env.clientConn)
-		view, err := client.BeginView(t.Context(), defaultViewParams(100*time.Millisecond))
+		view, err := env.clientConn.BeginView(t.Context(), defaultViewParams(100*time.Millisecond))
 		require.NoError(t, err)
 		time.Sleep(150 * time.Millisecond)
-		_, err = client.EndView(t.Context(), view)
+		_, err = env.clientConn.EndView(t.Context(), view)
 		require.ErrorContains(t, err, status.Convert(err).Message())
 	})
 }
 
 func TestQueryMetrics(t *testing.T) {
 	t.Parallel()
-	env := newQueryServiceTestEnv(t)
+	env := newQueryServiceTestEnvWithServerAndClientCreds(t, test.DefaultTLSConfig, test.DefaultTLSConfig)
 	requiredItems := env.makeItems(t)
 	query, keyCount, querySize := makeQuery(requiredItems)
 
-	client := protoqueryservice.NewQueryServiceClient(env.clientConn)
-
 	t.Log("Query GetRows client with view")
-	view0 := env.beginView(t, client, defaultViewParams(time.Minute))
-	ret, err := client.GetRows(t.Context(), &protoqueryservice.Query{
+	view0 := env.beginView(t, env.clientConn, defaultViewParams(time.Minute))
+	ret, err := env.clientConn.GetRows(t.Context(), &protoqueryservice.Query{
 		View:       view0,
 		Namespaces: query.Namespaces,
 	})
@@ -181,7 +167,7 @@ func TestQueryMetrics(t *testing.T) {
 	requireIntVecMetricValue(t, 1, env.qs.metrics.requests.MetricVec, grpcBeginView)
 	test.RequireIntMetricValue(t, 1, env.qs.metrics.processingSessions.WithLabelValues(sessionViews))
 	test.RequireIntMetricValue(t, 1, env.qs.metrics.processingSessions.WithLabelValues(sessionTransactions))
-	env.endView(t, client, view0)
+	env.endView(t, env.clientConn, view0)
 	require.Equal(t, 0, env.qs.batcher.viewIDToViewHolder.Count())
 
 	for range 3 {
@@ -201,11 +187,11 @@ func TestQueryMetrics(t *testing.T) {
 
 func TestQueryWithConsistentView(t *testing.T) {
 	t.Parallel()
-	env := newQueryServiceTestEnv(t)
+	env := newQueryServiceTestEnvWithServerAndClientCreds(t, test.DefaultTLSConfig, test.DefaultTLSConfig)
 	requiredItems := env.makeItems(t)
 	query, _, _ := makeQuery(requiredItems)
 
-	client := protoqueryservice.NewQueryServiceClient(env.clientConn)
+	client := env.clientConn
 
 	t.Log("Query GetRows client with view")
 	view0 := env.beginView(t, client, defaultViewParams(time.Minute))
@@ -277,10 +263,9 @@ func TestQueryWithConsistentView(t *testing.T) {
 
 func TestQueryPolicies(t *testing.T) {
 	t.Parallel()
-	env := newQueryServiceTestEnv(t)
+	env := newQueryServiceTestEnvWithServerAndClientCreds(t, test.DefaultTLSConfig, test.DefaultTLSConfig)
 
-	client := protoqueryservice.NewQueryServiceClient(env.clientConn)
-	policies, err := client.GetNamespacePolicies(t.Context(), nil)
+	policies, err := env.clientConn.GetNamespacePolicies(t.Context(), nil)
 	require.NoError(t, err)
 	require.NotNil(t, policies)
 	require.Len(t, policies.Policies, len(env.ns))
@@ -299,7 +284,7 @@ func TestQueryPolicies(t *testing.T) {
 		require.Equal(t, signature.Ecdsa, item.Scheme)
 	}
 
-	configTX, err := client.GetConfigTransaction(t.Context(), nil)
+	configTX, err := env.clientConn.GetConfigTransaction(t.Context(), nil)
 	require.NoError(t, err)
 	require.NotNil(t, configTX)
 	require.NotEmpty(t, configTX.Envelope)
@@ -326,14 +311,9 @@ func encodeBytesForProto(str string) []byte {
 	return decodeString
 }
 
-func newQueryServiceTestEnv(t *testing.T) *queryServiceTestEnv {
-	t.Helper()
-	return newQueryServiceTestEnvWithServerAndClientCreds(t, nil, nil)
-}
-
 func newQueryServiceTestEnvWithServerAndClientCreds(
 	t *testing.T,
-	serverTLS, clientTLS *connection.TLSConfig,
+	serverTLS, clientTLS connection.TLSConfig,
 ) *queryServiceTestEnv {
 	t.Helper()
 	t.Log("generating config and namespaces")
@@ -346,26 +326,16 @@ func newQueryServiceTestEnvWithServerAndClientCreds(
 		ViewAggregationWindow: time.Minute,
 		MaxViewTimeout:        time.Minute,
 		MaxAggregatedViews:    5,
-		Server: &connection.ServerConfig{
-			Endpoint: connection.Endpoint{
-				Host: "localhost",
-				Port: 0,
-			},
-			TLS: serverTLS,
-		},
-		Database: dbConf,
+		Server:                connection.NewLocalHostServerWithTLS(serverTLS),
+		Database:              dbConf,
 		Monitoring: monitoring.Config{
-			Server: connection.NewLocalHostServer(),
+			Server: connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig),
 		},
 	}
 
 	qs := NewQueryService(config)
 	test.RunServiceAndGrpcForTest(t.Context(), t, qs, qs.config.Server)
-	clientConn, err := connection.Connect(test.NewSecuredDialConfig(t, &qs.config.Server.Endpoint, clientTLS))
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		assert.NoError(t, clientConn.Close())
-	})
+	clientConn := createQueryClientWithTLS(t, &qs.config.Server.Endpoint, clientTLS)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -384,7 +354,7 @@ func newQueryServiceTestEnvWithServerAndClientCreds(
 
 func generateNamespacesUnderTest(t *testing.T, namespaces []string) *vc.DatabaseConfig {
 	t.Helper()
-	env := vc.NewValidatorAndCommitServiceTestEnv(t, 1)
+	env := vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, 1, test.DefaultTLSConfig)
 	env.SetupSystemTablesAndNamespaces(t.Context(), t)
 
 	clientConf := loadgen.DefaultClientConf()
@@ -573,7 +543,7 @@ func defaultViewParams(timeout time.Duration) *protoqueryservice.ViewParameters 
 func createQueryClientWithTLS(
 	t *testing.T,
 	ep *connection.Endpoint,
-	tlsCfg *connection.TLSConfig,
+	tlsCfg connection.TLSConfig,
 ) protoqueryservice.QueryServiceClient {
 	t.Helper()
 	return test.CreateClientWithTLS(t, ep, tlsCfg, protoqueryservice.NewQueryServiceClient)
