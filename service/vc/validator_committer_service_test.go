@@ -87,8 +87,8 @@ func TestCreateConfigAndTables(t *testing.T) {
 	t.Parallel()
 	env := newValidatorAndCommitServiceTestEnvWithClient(t, 1)
 	p := &protoblocktx.NamespacePolicy{
-		Scheme:    "ECDSA",
-		PublicKey: []byte("public-key"),
+		Scheme: "ECDSA",
+		Policy: []byte("public-key"),
 	}
 	pBytes, err := proto.Marshal(p)
 	require.NoError(t, err)

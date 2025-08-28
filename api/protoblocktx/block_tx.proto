@@ -10,10 +10,14 @@ option go_package = "github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 
 package protoblocktx;
 
-// Represents a transaction in the blockchain.
 message Tx {
-    repeated TxNamespace namespaces = 1; // Namespaces associated with the transaction.
-    repeated bytes signatures = 2;       // Signature per namespace.
+  // A list of namespaces that define the transaction's scope.
+  repeated TxNamespace namespaces = 1;
+
+  // A list of signature sets.
+  // IMPORTANT: This list MUST be the same size as the namespaces list.
+  // The SignatureSet at index i corresponds to the namespace at index i.
+  repeated SignatureSet signature_sets = 2;
 }
 
 // Represents a namespace within a transaction.
@@ -44,10 +48,56 @@ message Write {
     bytes value = 2; // The value associated with the key being written.
 }
 
+// SignatureSet holds all the signatures that correspond to a single namespace
+// in the transaction's namespaces list.
+message SignatureSet {
+  // The list of individual signatures for the corresponding namespace.
+  repeated SignatureWithIdentity signatures_with_identity = 1;
+}
+
+// SignatureWithIdentity bundles a single signature with the identity of its creator.
+message SignatureWithIdentity {
+  // The actual cryptographic signature bytes.
+  bytes signature = 1;
+
+  // The identity of the creator who produced the signature.
+  Identity identity = 2;
+}
+
+message Identity {
+  // The identifier of the associated membership service provider
+  string msp_id = 1;
+
+  oneof creator {
+    // The full raw bytes of the creator's certificate (e.g., an X.509 certificate).
+    bytes certificate= 2;
+
+    // An identifier for a certificate that is pre-stored or known by the committer.
+    string certificate_id = 3;
+  }
+}
+
 // Represents a namespace policy.
 message NamespacePolicy {
-    string scheme = 1;    // The scheme for signature verification.
-    bytes public_key = 2; // The public key for signature verification.
+    string scheme = 1;      // The scheme for signature verification.
+    bytes policy = 2;       // The policy rule.
+    PolicyType type = 3;    // The type of policy used.
+}
+
+enum PolicyType {
+    // A policy for verifying a single signature that was generated via a Threshold Signature
+    // Scheme (TSS). In a TSS, a threshold (T) of N parties must cooperate to
+    // collectively compute and produce the single signature.
+    THRESHOLD_RULE = 0;
+
+    // A policy defined by an explicit rule that evaluates one or more required signatures.
+    // For example: "OR('Org1MSP.admin', 'Org2MSP.admin')"
+    SIGNATURE_RULE = 1;
+
+    // A policy that implicitly aggregates the results of policies defined at a lower
+    // level in the configuration hierarchy. For example, a MAJORITY rule on the
+    // Admins policies of all member organizations.
+    HIERARCHICAL_RULE = 2;
 }
 
 message BlockInfo {
@@ -78,7 +128,7 @@ message NamespacePolicies {
 
 message PolicyItem {
     string namespace = 1;
-    bytes policy = 2;
+    bytes policy = 2; // This holds the complete NamespacePolicy.
     uint64 version = 3;
 }
 

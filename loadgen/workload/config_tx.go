@@ -97,7 +97,7 @@ func CreateConfigBlock(policy *PolicyProfile) (*common.Block, error) {
 
 // CreateDefaultConfigBlock creates a config block with default values.
 func CreateDefaultConfigBlock(conf *ConfigBlock) (*common.Block, error) {
-	configBlock := genesisconfig.Load(genesisconfig.SampleFabricX, configtest.GetDevConfigDir())
+	configBlock := genesisconfig.Load(genesisconfig.TwoOrgsSampleFabricX, configtest.GetDevConfigDir())
 	tlsCertPath := filepath.Join(configtest.GetDevConfigDir(), "msp", "tlscacerts", "tlsroot.pem")
 	for _, consenter := range configBlock.Orderer.ConsenterMapping {
 		consenter.Identity = tlsCertPath

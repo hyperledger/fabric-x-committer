@@ -8,7 +8,7 @@ go 1.24.3
 
 require (
 	github.com/cenkalti/backoff/v4 v4.3.0
-	github.com/cockroachdb/errors v1.11.3
+	github.com/cockroachdb/errors v1.12.0
 	github.com/consensys/gnark-crypto v0.14.0
 	github.com/docker/docker v28.0.0+incompatible
 	github.com/docker/go-connections v0.5.0
@@ -20,7 +20,7 @@ require (
 	github.com/hyperledger/fabric v1.4.0-rc1.0.20240918034325-94590aa4332b
 	github.com/hyperledger/fabric-lib-go v1.1.3-0.20240523144151-25edd1eaf5f5
 	github.com/hyperledger/fabric-protos-go-apiv2 v0.3.3
-	github.com/hyperledger/fabric-x-common v0.0.0-20250701155113-a1ddf93333d8
+	github.com/hyperledger/fabric-x-common v0.0.0-20250916061807-0d5dacc2a10f
 	github.com/jackc/puddle v1.3.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/onsi/gomega v1.34.2
@@ -79,6 +79,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
+	github.com/google/pprof v0.0.0-20240827171923-fa2c70bbbfe5 // indirect
 	github.com/hyperledger-labs/SmartBFT v0.0.0-20240916013553-852e5be5889b // indirect
 	github.com/hyperledger/aries-bbs-go v0.0.0-20240528084656-761671ea73bc // indirect
 	github.com/hyperledger/fabric-amcl v0.0.0-20230602173724-9e02669dceb2 // indirect
@@ -113,6 +114,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nxadm/tail v1.4.11 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
+	github.com/onsi/ginkgo/v2 v2.20.2 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect

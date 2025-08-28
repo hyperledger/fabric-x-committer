@@ -273,7 +273,7 @@ func TestQueryPolicies(t *testing.T) {
 		_, ok := expectedNamespaces[p.Namespace]
 		require.True(t, ok)
 		delete(expectedNamespaces, p.Namespace)
-		item, parseErr := policy.ParseNamespacePolicyItem(p)
+		item, parseErr := policy.CreateNamespaceVerifier(p, nil)
 		require.NoError(t, parseErr)
 		require.Equal(t, signature.Ecdsa, item.Scheme)
 	}
