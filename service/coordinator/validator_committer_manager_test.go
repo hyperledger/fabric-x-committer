@@ -30,6 +30,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 )
 
 type vcMgrTestEnv struct {
@@ -225,8 +226,11 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 			Seed:   10,
 		}).GetVerificationKeyAndSigner()
 		p := &protoblocktx.NamespacePolicy{
-			Scheme:    signature.Ecdsa,
-			PublicKey: verificationKey,
+			Type: protoblocktx.PolicyType_THRESHOLD_RULE,
+			Policy: protoutil.MarshalOrPanic(&protoblocktx.ThresholdRule{
+				Scheme:    signature.Ecdsa,
+				PublicKey: verificationKey,
+			}),
 		}
 		pBytes, err := proto.Marshal(p)
 		require.NoError(t, err)

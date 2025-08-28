@@ -55,7 +55,7 @@ func TestAsnMarshal(t *testing.T) {
 	for _, tx := range txs {
 		tx := tx
 		// We don't serialize the signature.
-		tx.Tx.Signatures = nil
+		tx.Tx.Endorsements = nil
 		t.Run(tx.Id, func(t *testing.T) {
 			t.Parallel()
 			for _, ns := range tx.Tx.Namespaces {

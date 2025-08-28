@@ -242,7 +242,7 @@ func verifyTxForm(tx *protoblocktx.Tx) protoblocktx.Status {
 	if len(tx.Namespaces) == 0 {
 		return protoblocktx.Status_MALFORMED_EMPTY_NAMESPACES
 	}
-	if len(tx.Namespaces) != len(tx.Signatures) {
+	if len(tx.Namespaces) != len(tx.Endorsements) {
 		return protoblocktx.Status_MALFORMED_MISSING_SIGNATURE
 	}
 
@@ -300,7 +300,7 @@ func checkMetaNamespace(txNs *protoblocktx.TxNamespace) protoblocktx.Status {
 		return statusNotYetValidated
 	}
 	for _, pd := range u.NamespacePolicies.Policies {
-		_, err := policy.ParseNamespacePolicyItem(pd)
+		_, err := policy.CreateNamespaceVerifier(pd, nil)
 		if err != nil {
 			if errors.Is(err, policy.ErrInvalidNamespaceID) {
 				return protoblocktx.Status_MALFORMED_NAMESPACE_ID_INVALID

@@ -12,7 +12,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
@@ -22,6 +21,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 )
 
 // RequireNotifications verifies that the expected notification were received.
@@ -85,12 +85,8 @@ func MalformedTxTestCases(txb *workload.TxBuilder) (
 		Namespaces: make([]*protoblocktx.TxNamespace, 0),
 	}))
 	add(protoblocktx.Status_MALFORMED_MISSING_SIGNATURE, txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: validTxNamespaces,
-		Signatures: make([][]byte, 0), // Not enough signatures.
-	}))
-	add(protoblocktx.Status_MALFORMED_MISSING_SIGNATURE, txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: validTxNamespaces,
-		Signatures: make([][]byte, 2), // Too many signatures.
+		Namespaces:   validTxNamespaces,
+		Endorsements: make([]*protoblocktx.Endorsements, 2), // Too many signatures.
 	}))
 	add(protoblocktx.Status_MALFORMED_NO_WRITES, txb.MakeTx(&protoblocktx.Tx{
 		Namespaces: []*protoblocktx.TxNamespace{{
@@ -247,19 +243,23 @@ func MalformedTxTestCases(txb *workload.TxBuilder) (
 }
 
 func defaultNsInvalidPolicy() []byte {
-	nsPolicy, _ := proto.Marshal(&protoblocktx.NamespacePolicy{
-		Scheme:    signature.Ecdsa,
-		PublicKey: []byte("publicKey"),
+	return protoutil.MarshalOrPanic(&protoblocktx.NamespacePolicy{
+		Type: protoblocktx.PolicyType_THRESHOLD_RULE,
+		Policy: protoutil.MarshalOrPanic(&protoblocktx.ThresholdRule{
+			Scheme:    signature.Ecdsa,
+			PublicKey: []byte("publicKey"),
+		}),
 	})
-	return nsPolicy
 }
 
 func defaultNsValidPolicy() []byte {
 	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
 	_, verificationKey := factory.NewKeys()
-	nsPolicy, _ := proto.Marshal(&protoblocktx.NamespacePolicy{
-		Scheme:    signature.Ecdsa,
-		PublicKey: verificationKey,
+	return protoutil.MarshalOrPanic(&protoblocktx.NamespacePolicy{
+		Type: protoblocktx.PolicyType_THRESHOLD_RULE,
+		Policy: protoutil.MarshalOrPanic(&protoblocktx.ThresholdRule{
+			Scheme:    signature.Ecdsa,
+			PublicKey: verificationKey,
+		}),
 	})
-	return nsPolicy
 }
