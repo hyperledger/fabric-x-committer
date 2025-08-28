@@ -11,6 +11,7 @@ import (
 	"math/rand"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 // Dependency types.
@@ -61,9 +62,9 @@ func newSignTxModifier(rnd *rand.Rand, profile *Profile) *signTxModifier {
 func (g *signTxModifier) Modify(tx *protoblocktx.Tx) {
 	if g.invalidSignGenerator.Next() {
 		// Pre-assigning prevents TxBuilder from re-signing the TX.
-		tx.Signatures = make([][]byte, len(tx.Namespaces))
-		for i := range tx.Namespaces {
-			tx.Signatures[i] = g.invalidSignature
+		tx.Endorsements = make([]*protoblocktx.Endorsements, len(tx.Namespaces))
+		for i := range len(tx.Namespaces) {
+			tx.Endorsements[i] = test.CreateEndorsementsForThresholdRule(g.invalidSignature)[0]
 		}
 	}
 }
