@@ -206,10 +206,29 @@ func WaitUntilGrpcServerIsReady(
 		return
 	}
 	healthClient := healthgrpc.NewHealthClient(conn)
-	res, err := healthClient.Check(ctx, &healthgrpc.HealthCheckRequest{}, grpc.WaitForReady(true))
+	res, err := healthClient.Check(ctx, nil, grpc.WaitForReady(true))
 	assert.NotEqual(t, codes.Canceled, status.Code(err))
 	require.NoError(t, err)
 	require.Equal(t, healthgrpc.HealthCheckResponse_SERVING, res.Status)
+}
+
+// WaitUntilGrpcServerIsDown uses the health check API to check a service is down.
+func WaitUntilGrpcServerIsDown(
+	ctx context.Context,
+	t *testing.T,
+	conn grpc.ClientConnInterface,
+) {
+	t.Helper()
+	if conn == nil {
+		return
+	}
+	healthClient := healthgrpc.NewHealthClient(conn)
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		_, err := healthClient.Check(checkCtx, nil)
+		require.Error(ct, err)
+	}, time.Minute, 50*time.Millisecond)
 }
 
 // StatusRetriever provides implementation retrieve status of given transaction identifiers.

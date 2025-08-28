@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -51,23 +52,15 @@ func TestBroadcastDeliver(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	t.Cleanup(cancel)
-	stream, err := test.NewBroadcastStream(ctx, &conf)
-	require.NoError(t, err)
-	t.Cleanup(stream.Close)
+
 	outputBlocksChan := make(chan *common.Block, 100)
 	go func() {
-		p := &Parameters{
+		err = client.Deliver(ctx, &Parameters{
 			StartBlkNum: 0,
 			EndBlkNum:   MaxBlockNum,
 			OutputBlock: outputBlocksChan,
-		}
-		// We set the client to stop retry after a second to quickly
-		// receive the broadcast errors.
-		// But for delivery, we want to continue indefinitely.
-		for ctx.Err() == nil {
-			err = client.Deliver(ctx, p)
-			t.Logf("Deliver ended with: %v", err)
-		}
+		})
+		assert.ErrorIs(t, err, context.Canceled)
 	}()
 	outputBlocks := channel.NewReader(ctx, outputBlocksChan)
 
@@ -78,21 +71,21 @@ func TestBroadcastDeliver(t *testing.T) {
 	require.Len(t, b.Data.Data, 1)
 
 	t.Log("All good")
-	submit(t, stream, outputBlocks, expectedSubmit{
+	submit(t, &conf, outputBlocks, expectedSubmit{
 		success: 3,
 	})
 
 	t.Log("One server down")
 	servers[2].Servers[0].Stop()
-	time.Sleep(3 * time.Second)
-	submit(t, stream, outputBlocks, expectedSubmit{
+	waitUntilGrpcServerIsDown(ctx, t, &servers[2].Configs[0].Endpoint)
+	submit(t, &conf, outputBlocks, expectedSubmit{
 		success: 3,
 	})
 
 	t.Log("Two servers down")
 	servers[2].Servers[1].Stop()
-	time.Sleep(3 * time.Second)
-	submit(t, stream, outputBlocks, expectedSubmit{
+	waitUntilGrpcServerIsDown(ctx, t, &servers[2].Configs[1].Endpoint)
+	submit(t, &conf, outputBlocks, expectedSubmit{
 		success:     2,
 		unavailable: 1,
 	})
@@ -100,37 +93,40 @@ func TestBroadcastDeliver(t *testing.T) {
 	t.Log("One incorrect server")
 	fakeServer := test.RunGrpcServerForTest(ctx, t, servers[2].Configs[0], nil)
 	waitUntilGrpcServerIsReady(ctx, t, &servers[2].Configs[0].Endpoint)
-
-	submit(t, stream, outputBlocks, expectedSubmit{
+	submit(t, &conf, outputBlocks, expectedSubmit{
 		success:       2,
 		unimplemented: 1,
 	})
 
 	t.Log("All good again")
 	fakeServer.Stop()
+	waitUntilGrpcServerIsDown(ctx, t, &servers[2].Configs[0].Endpoint)
 	servers[2].Servers[0] = test.RunGrpcServerForTest(ctx, t, servers[2].Configs[0], ordererService.RegisterService)
 	waitUntilGrpcServerIsReady(ctx, t, &servers[2].Configs[0].Endpoint)
-	submit(t, stream, outputBlocks, expectedSubmit{
+	submit(t, &conf, outputBlocks, expectedSubmit{
 		success: 3,
 	})
 
 	t.Log("Insufficient quorum")
-	servers[0].Servers[0].Stop()
-	servers[0].Servers[1].Stop()
-	servers[1].Servers[0].Stop()
-	servers[1].Servers[1].Stop()
-	time.Sleep(3 * time.Second)
-	submit(t, stream, outputBlocks, expectedSubmit{
+	for _, gs := range servers[:2] {
+		for _, s := range gs.Servers[:2] {
+			s.Stop()
+		}
+	}
+	for _, gs := range servers[:2] {
+		for _, c := range gs.Configs[:2] {
+			waitUntilGrpcServerIsDown(ctx, t, &c.Endpoint)
+		}
+	}
+	submit(t, &conf, outputBlocks, expectedSubmit{
 		success:     1,
 		unavailable: 2,
 	})
 
 	t.Log("Update endpoints")
 	conf.Connection.Endpoints = allEndpoints[6:]
-	err = client.UpdateConnections(&conf.Connection)
-	require.NoError(t, err)
-	require.NoError(t, stream.ConnectionManager.Update(&conf.Connection))
-	submit(t, stream, outputBlocks, expectedSubmit{
+	require.NoError(t, client.UpdateConnections(&conf.Connection))
+	submit(t, &conf, outputBlocks, expectedSubmit{
 		success: 3,
 	})
 }
@@ -143,7 +139,7 @@ type expectedSubmit struct {
 
 func submit(
 	t *testing.T,
-	stream *test.BroadcastStream,
+	conf *ordererconn.Config,
 	outputBlocks channel.Reader[*common.Block],
 	expected expectedSubmit,
 ) {
@@ -151,14 +147,21 @@ func submit(
 	txb := workload.TxBuilder{ChannelID: channelForTest}
 	tx := txb.MakeTx(&protoblocktx.Tx{})
 
-	err := stream.SendBatch(workload.MapToEnvelopeBatch(0, []*protoloadgen.TX{tx}))
+	// We create a new stream for each request to ensure GRPC does not cache the latest state.
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+	stream, err := test.NewBroadcastStream(ctx, conf)
+	require.NoError(t, err)
+	defer stream.Close()
+
+	err = stream.SendBatch(workload.MapToEnvelopeBatch(0, []*protoloadgen.TX{tx}))
 	if err != nil {
 		t.Logf("Response error:\n%s", err)
 	}
 	if expected.unavailable > 0 {
-		// Unimplemented sometimes not responding with error, so we cannot enforce it.
 		require.Error(t, err)
 	} else if expected.unimplemented == 0 {
+		// Unimplemented sometimes not responding with error, so we cannot enforce it.
 		require.NoError(t, err)
 	}
 
@@ -226,6 +229,13 @@ func waitUntilGrpcServerIsReady(ctx context.Context, t *testing.T, endpoint *con
 	defer connection.CloseConnectionsLog(newConn)
 	test.WaitUntilGrpcServerIsReady(ctx, t, newConn)
 	t.Logf("%v is ready", endpoint)
-	// Wait a while to allow the GRPC connection enough time to make a new attempt.
-	time.Sleep(time.Second)
+}
+
+func waitUntilGrpcServerIsDown(ctx context.Context, t *testing.T, endpoint *connection.Endpoint) {
+	t.Helper()
+	newConn, err := connection.Connect(connection.NewInsecureDialConfig(endpoint))
+	require.NoError(t, err)
+	defer connection.CloseConnectionsLog(newConn)
+	test.WaitUntilGrpcServerIsDown(ctx, t, newConn)
+	t.Logf("%v is down", endpoint)
 }
