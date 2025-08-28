@@ -675,8 +675,8 @@ github.com/cncf/xds/go v0.0.0-20230105202645-06c439db220b/go.mod h1:eXthEFrGJvWH
 github.com/cncf/xds/go v0.0.0-20230310173818-32f1caf87195/go.mod h1:eXthEFrGJvWHgFFCl3hGmgk+/aYT6PnTQLykKQRLhEs=
 github.com/cockroachdb/apd v1.1.0 h1:3LFP3629v+1aKXU5Q37mxmRxX/pIu1nijXydLShEq5I=
 github.com/cockroachdb/apd v1.1.0/go.mod h1:8Sl8LxpKi29FqWXR16WEFZRNSz3SoPzUzeMeY4+DwBQ=
-github.com/cockroachdb/errors v1.11.3 h1:5bA+k2Y6r+oz/6Z/RFlNeVCesGARKuC6YymtcDrbC/I=
-github.com/cockroachdb/errors v1.11.3/go.mod h1:m4UIW4CDjx+R5cybPsNrRbreomiFqt8o1h1wUVazSd8=
+github.com/cockroachdb/errors v1.12.0 h1:d7oCs6vuIMUQRVbi6jWWWEJZahLCfJpnJSVobd1/sUo=
+github.com/cockroachdb/errors v1.12.0/go.mod h1:SvzfYNNBshAVbZ8wzNc/UPK3w1vf0dKDUP41ucAIf7g=
 github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b h1:r6VH0faHjZeQy818SGhaone5OnYfxFR/+AzdY3sf5aE=
 github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b/go.mod h1:Vz9DsVWQQhf3vs21MhPMZpMGSht7O/2vFW2xusFUVOs=
 github.com/cockroachdb/redact v1.1.5 h1:u1PMllDkdFfPWaNGMyLD1+so+aq3uUItthCFqzwPJ30=
@@ -916,10 +916,17 @@ github.com/hyperledger/fabric-config v0.3.0 h1:FS5/dc9GAniljP6RYxQRG92AaiBVoN2vT
 github.com/hyperledger/fabric-config v0.3.0/go.mod h1:kSevTn78K83Suc++JsEo7Nt1tYIPqDajW+ORz3OhWlg=
 github.com/hyperledger/fabric-lib-go v1.1.3-0.20240523144151-25edd1eaf5f5 h1:RPWTL5wxAb+xDOrsCU3QYZP65305F8v3PaOyzdbPVMU=
 github.com/hyperledger/fabric-lib-go v1.1.3-0.20240523144151-25edd1eaf5f5/go.mod h1:SHNCq8AB0VpHAmvJEtdbzabv6NNV1F48JdmDihasBjc=
+<<<<<<< HEAD
 github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7 h1:sQ5qv8vQQfwewa1JlCiSCC8dLElmaU2/frLolpgibEY=
 github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7/go.mod h1:bJnwzfv03oZQeCc863pdGTDgf5nmCy6Za3RAE7d2XsQ=
 github.com/hyperledger/fabric-x-common v0.0.0-20251023133631-047a3c32c228 h1:JdVLvE5ExlHvGL2LuaX3IQLo+7ZExsJhPkDutmNCJEU=
 github.com/hyperledger/fabric-x-common v0.0.0-20251023133631-047a3c32c228/go.mod h1:eztTd6MwzVOZtlWcOXWZepDBK/pQz3c3epu91BXAp6o=
+=======
+github.com/hyperledger/fabric-protos-go-apiv2 v0.3.3 h1:Xpd6fzG/KjAOHJsq7EQXY2l+qi/y8muxBaY7R6QWABk=
+github.com/hyperledger/fabric-protos-go-apiv2 v0.3.3/go.mod h1:2pq0ui6ZWA0cC8J+eCErgnMDCS1kPOEYVY+06ZAK0qE=
+github.com/hyperledger/fabric-x-common v0.0.0-20250929135229-402ed28111ec h1:qN9nTEzDkwHl8ZXba04tKsbT0UbJwH431EO2SrVEq6s=
+github.com/hyperledger/fabric-x-common v0.0.0-20250929135229-402ed28111ec/go.mod h1:Jq5eZFxs8ofSglp5YOYKlNfz1NLw9hBVWTz6bk52vc4=
+>>>>>>> e3c14f2 (Enable multiple policies type)
 github.com/iancoleman/strcase v0.2.0/go.mod h1:iwCmte+B7n89clKwxIoIXy/HfoL7AsD47ZCWhYzw7ho=
 github.com/ianlancetaylor/demangle v0.0.0-20181102032728-5e5cf60278f6/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
 github.com/ianlancetaylor/demangle v0.0.0-20200824232613-28f6c0f3b639/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=

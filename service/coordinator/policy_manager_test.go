@@ -9,6 +9,7 @@ package coordinator
 import (
 	"testing"
 
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -154,7 +155,10 @@ func requireUpdateEqual(t *testing.T, expected, actual *protosigverifierservice.
 func makeFakePolicy(t *testing.T, ns, key string) *protoblocktx.PolicyItem {
 	t.Helper()
 	return policy.MakePolicy(t, ns, &protoblocktx.NamespacePolicy{
-		PublicKey: []byte(key),
-		Scheme:    signature.Ecdsa,
+		Type: protoblocktx.PolicyType_THRESHOLD_RULE,
+		Policy: protoutil.MarshalOrPanic(&protoblocktx.ThresholdRule{
+			Scheme:    signature.Ecdsa,
+			PublicKey: []byte(key),
+		}),
 	})
 }

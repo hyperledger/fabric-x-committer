@@ -224,8 +224,8 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 			request.Requests[idx] = &protosigverifierservice.Tx{
 				Ref: txNode.Tx.Ref,
 				Tx: &protoblocktx.Tx{
-					Namespaces: txNode.Tx.Namespaces,
-					Signatures: txNode.Signatures,
+					Namespaces:   txNode.Tx.Namespaces,
+					Endorsements: txNode.Signatures,
 				},
 			}
 		}

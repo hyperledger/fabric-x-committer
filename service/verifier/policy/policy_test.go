@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -64,16 +65,17 @@ func TestParsePolicyItem(t *testing.T) {
 	t.Parallel()
 	_, verificationKey := sigtest.NewSignatureFactory(signature.Ecdsa).NewKeys()
 	p := &protoblocktx.NamespacePolicy{
-		Scheme:    signature.Ecdsa,
-		PublicKey: verificationKey,
+		Type: protoblocktx.PolicyType_THRESHOLD_RULE,
+		Policy: protoutil.MarshalOrPanic(&protoblocktx.ThresholdRule{
+			Scheme: signature.Ecdsa, PublicKey: verificationKey,
+		}),
 	}
 	for _, ns := range []string{"0", "1"} {
 		t.Run(fmt.Sprintf("valid policy ns: '%s'", ns), func(t *testing.T) {
 			pd := MakePolicy(t, ns, p)
-			retP, err := ParseNamespacePolicyItem(pd)
+			retP, err := CreateNamespaceVerifier(pd, nil)
 			require.NoError(t, err)
-			require.Equal(t, p.PublicKey, retP.PublicKey)
-			require.Equal(t, p.Scheme, retP.Scheme)
+			require.Equal(t, p.Policy, retP.Policy)
 		})
 	}
 
@@ -83,7 +85,7 @@ func TestParsePolicyItem(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("valid ns: '%s'", ns), func(t *testing.T) {
 			pd := MakePolicy(t, ns, p)
-			_, err := ParseNamespacePolicyItem(pd)
+			_, err := CreateNamespaceVerifier(pd, nil)
 			require.NoError(t, err)
 		})
 	}
@@ -96,7 +98,7 @@ func TestParsePolicyItem(t *testing.T) {
 		t.Run(fmt.Sprintf("invalid ns: '%s'", ns), func(t *testing.T) {
 			t.Parallel()
 			pd := MakePolicy(t, ns, p)
-			_, err := ParseNamespacePolicyItem(pd)
+			_, err := CreateNamespaceVerifier(pd, nil)
 			require.ErrorIs(t, err, ErrInvalidNamespaceID)
 		})
 	}
@@ -104,7 +106,7 @@ func TestParsePolicyItem(t *testing.T) {
 	t.Run("invalid policy", func(t *testing.T) {
 		pd := MakePolicy(t, "0", p)
 		pd.Policy = []byte("bad-policy")
-		_, err := ParseNamespacePolicyItem(pd)
+		_, err := CreateNamespaceVerifier(pd, nil)
 		require.Error(t, err)
 	})
 }

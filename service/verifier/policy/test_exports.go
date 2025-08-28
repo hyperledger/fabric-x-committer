@@ -9,6 +9,7 @@ package policy
 import (
 	"testing"
 
+	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
@@ -28,8 +29,10 @@ func MakePolicy(
 	t.Helper()
 	var policyBytes []byte
 	if ns == types.MetaNamespaceID {
+		p := &protoblocktx.ThresholdRule{}
+		require.NoError(t, proto.Unmarshal(nsPolicy.Policy, p))
 		block, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
-			MetaNamespaceVerificationKey: nsPolicy.PublicKey,
+			MetaNamespaceVerificationKey: p.PublicKey,
 		})
 		require.NoError(t, err)
 		policyBytes = block.Data.Data[0]
@@ -56,8 +59,11 @@ func MakePolicyAndNsSigner(
 	txSigner, err := factory.NewSigner(signingKey)
 	require.NoError(t, err)
 	p := MakePolicy(t, ns, &protoblocktx.NamespacePolicy{
-		PublicKey: verificationKey,
-		Scheme:    signature.Ecdsa,
+		Type: protoblocktx.PolicyType_THRESHOLD_RULE,
+		Policy: protoutil.MarshalOrPanic(&protoblocktx.ThresholdRule{
+			Scheme:    signature.Ecdsa,
+			PublicKey: verificationKey,
+		}),
 	})
 	return p, txSigner
 }

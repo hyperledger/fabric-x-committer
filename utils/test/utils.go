@@ -423,3 +423,47 @@ func MustCreateEndpoint(value string) *connection.Endpoint {
 	}
 	return endpoint
 }
+
+// CreateEndorsementsForThresholdRule creates a slice of EndorsementSet pointers from individual threshold signatures.
+// Each signature provided is wrapped in its own EndorsementWithIdentity and then placed
+// in its own new EndorsementSet.
+func CreateEndorsementsForThresholdRule(signatures ...[]byte) []*protoblocktx.Endorsements {
+	sets := make([]*protoblocktx.Endorsements, 0, len(signatures))
+
+	for _, sig := range signatures {
+		set := &protoblocktx.Endorsements{
+			EndorsementsWithIdentity: []*protoblocktx.EndorsementWithIdentity{{Endorsement: sig}},
+		}
+		sets = append(sets, set)
+	}
+
+	return sets
+}
+
+// CreateEndorsementsForSignatureRule creates a EndorsementSet for a signature rule.
+// It takes parallel slices of signatures, MSP IDs, and certificate bytes,
+// and creates a EndorsementSet where each signature is paired with its corresponding
+// identity (MSP ID and certificate). This is used when a set of signatures
+// must all be present to satisfy a rule (e.g., an AND condition).
+func CreateEndorsementsForSignatureRule(signatures, mspIDs, certBytes [][]byte) *protoblocktx.Endorsements {
+	set := &protoblocktx.Endorsements{}
+	for i, sig := range signatures {
+		set.EndorsementsWithIdentity = append(set.EndorsementsWithIdentity,
+			&protoblocktx.EndorsementWithIdentity{
+				Endorsement: sig,
+				Identity: &protoblocktx.Identity{
+					MspId:   string(mspIDs[i]),
+					Creator: &protoblocktx.Identity_Certificate{Certificate: certBytes[i]},
+				},
+			})
+	}
+	return set
+}
+
+// AppendToEndorsementSetsForThresholdRule is a utility function that creates new signature sets
+// for a threshold rule and appends them to an existing slice of signature sets.
+func AppendToEndorsementSetsForThresholdRule(
+	ss []*protoblocktx.Endorsements, signatures ...[]byte,
+) []*protoblocktx.Endorsements {
+	return append(ss, CreateEndorsementsForThresholdRule(signatures...)...)
+}

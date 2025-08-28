@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
 
@@ -87,11 +88,13 @@ func TestConfigUpdate(t *testing.T) {
 
 	c.AddOrUpdateNamespaces(t, types.MetaNamespaceID)
 	metaPolicy := c.TxBuilder.TxSigner.HashSigners[types.MetaNamespaceID].GetVerificationPolicy()
+	key := &protoblocktx.ThresholdRule{}
+	require.NoError(t, proto.Unmarshal(metaPolicy.Policy, key))
 	submitConfigBlock := func(endpoints []*ordererconn.Endpoint) {
 		ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
 			ChannelID:                    c.SystemConfig.Policy.ChannelID,
 			OrdererEndpoints:             endpoints,
-			MetaNamespaceVerificationKey: metaPolicy.PublicKey,
+			MetaNamespaceVerificationKey: key.PublicKey,
 		})
 	}
 	submitConfigBlock(ordererEnv.AllRealOrdererEndpoints())

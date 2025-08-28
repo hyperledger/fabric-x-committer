@@ -8,8 +8,8 @@ go 1.24.3
 
 require (
 	github.com/cenkalti/backoff/v4 v4.3.0
-	github.com/cockroachdb/errors v1.11.3
-	github.com/consensys/gnark-crypto v0.18.1
+	github.com/cockroachdb/errors v1.12.0
+	github.com/consensys/gnark-crypto v0.14.0
 	github.com/docker/docker v28.0.0+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/fsouza/go-dockerclient v1.12.0
@@ -110,6 +110,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nxadm/tail v1.4.11 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
+	github.com/onsi/ginkgo/v2 v2.20.2 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
