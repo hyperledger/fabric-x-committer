@@ -225,8 +225,8 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 			Seed:   10,
 		}).GetVerificationKeyAndSigner()
 		p := &protoblocktx.NamespacePolicy{
-			Scheme:    signature.Ecdsa,
-			PublicKey: verificationKey,
+			Scheme: signature.Ecdsa,
+			Policy: verificationKey,
 		}
 		pBytes, err := proto.Marshal(p)
 		require.NoError(t, err)

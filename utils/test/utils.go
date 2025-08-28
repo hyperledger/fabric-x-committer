@@ -341,3 +341,47 @@ func flattenEndpoint(in map[string]any) *connection.Endpoint {
 	}
 	return &connection.Endpoint{Host: hostStr, Port: int(portFloat)}
 }
+
+// CreateSignatureSetsForThresholdRule creates a slice of SignatureSet pointers from individual threshold signatures.
+// Each signature provided is wrapped in its own SignatureWithIdentity and then placed
+// in its own new SignatureSet.
+func CreateSignatureSetsForThresholdRule(signatures ...[]byte) []*protoblocktx.SignatureSet {
+	sets := make([]*protoblocktx.SignatureSet, 0, len(signatures))
+
+	for _, sig := range signatures {
+		set := &protoblocktx.SignatureSet{
+			SignaturesWithIdentity: []*protoblocktx.SignatureWithIdentity{{Signature: sig}},
+		}
+		sets = append(sets, set)
+	}
+
+	return sets
+}
+
+// CreateSignatureSetForSignatureRule creates a SignatureSet for a signature rule.
+// It takes parallel slices of signatures, MSP IDs, and certificate bytes,
+// and creates a SignatureSet where each signature is paired with its corresponding
+// identity (MSP ID and certificate). This is used when a set of signatures
+// must all be present to satisfy a rule (e.g., an AND condition).
+func CreateSignatureSetForSignatureRule(signatures, mspIDs, certBytes [][]byte) *protoblocktx.SignatureSet {
+	set := &protoblocktx.SignatureSet{}
+	for i, sig := range signatures {
+		set.SignaturesWithIdentity = append(set.SignaturesWithIdentity,
+			&protoblocktx.SignatureWithIdentity{
+				Signature: sig,
+				Identity: &protoblocktx.Identity{
+					MspId:   string(mspIDs[i]),
+					Creator: &protoblocktx.Identity_Certificate{Certificate: certBytes[i]},
+				},
+			})
+	}
+	return set
+}
+
+// AppendToSignatureSetsForThresholdRule is a utility function that creates new signature sets
+// for a threshold rule and appends them to an existing slice of signature sets.
+func AppendToSignatureSetsForThresholdRule(
+	ss []*protoblocktx.SignatureSet, signatures ...[]byte,
+) []*protoblocktx.SignatureSet {
+	return append(ss, CreateSignatureSetsForThresholdRule(signatures...)...)
+}
