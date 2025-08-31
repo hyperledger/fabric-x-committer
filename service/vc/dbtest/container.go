@@ -243,12 +243,11 @@ func (dc *DatabaseContainer) getConnectionOptions(ctx context.Context, t *testin
 
 // GetContainerConnectionDetails inspect the container and fetches its connection to an endpoint.
 func (dc *DatabaseContainer) GetContainerConnectionDetails(
-	ctx context.Context,
 	t *testing.T,
 ) *connection.Endpoint {
 	t.Helper()
 	container, err := dc.client.InspectContainerWithOptions(docker.InspectContainerOptions{
-		Context: ctx,
+		Context: t.Context(),
 		ID:      dc.containerID,
 	})
 	require.NoError(t, err)
@@ -317,35 +316,72 @@ func (dc *DatabaseContainer) ContainerID() string {
 	return dc.containerID
 }
 
-// ExecuteCommand execute a given command in the container.
-func (dc *DatabaseContainer) ExecuteCommand(t *testing.T, cmd []string) {
+// ExecuteCommand executes a command and returns the container output.
+func (dc *DatabaseContainer) ExecuteCommand(t *testing.T, cmd []string) string {
 	t.Helper()
 	require.NotNil(t, dc.client)
 	t.Logf("executing %s", strings.Join(cmd, " "))
+
+	var stdout strings.Builder
 	exec, err := dc.client.CreateExec(docker.CreateExecOptions{
-		Container: dc.containerID,
-		Cmd:       cmd,
+		Container:    dc.containerID,
+		Cmd:          cmd,
+		AttachStdout: true,
 	})
 	require.NoError(t, err)
-	require.NoError(t, dc.client.StartExec(exec.ID, docker.StartExecOptions{}))
+	require.NoError(t, dc.client.StartExec(exec.ID, docker.StartExecOptions{
+		OutputStream: &stdout,
+		RawTerminal:  false,
+	}))
+
+	inspect, err := dc.client.InspectExec(exec.ID)
+	require.NoError(t, err)
+	require.Equal(t, 0, inspect.ExitCode)
+
+	return stdout.String()
 }
 
 // EnsureNodeReadiness checks the container's readiness by monitoring its logs and ensure its running correctly.
-func (dc *DatabaseContainer) EnsureNodeReadiness(t *testing.T, requiredOutput string) error {
+func (dc *DatabaseContainer) EnsureNodeReadiness(t *testing.T, requiredOutput string) {
 	t.Helper()
-	var err error
-	if ok := assert.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		output := dc.GetContainerLogs(t)
-		if !strings.Contains(output, requiredOutput) {
-			err = errors.Newf("Node %s readiness check failed", dc.Name)
-			return false
-		}
-		return true
-	}, 45*time.Second, 250*time.Millisecond); !ok {
-		dc.StopContainer(t)
-		return err
+		require.Contains(ct, output, requiredOutput)
+	}, 45*time.Second, 250*time.Millisecond)
+}
+
+// CreateDockerNetwork creates a network if it doesn't exist.
+func CreateDockerNetwork(t *testing.T, name string) *docker.Network {
+	t.Helper()
+	client := GetDockerClient(t)
+	network, err := client.CreateNetwork(docker.CreateNetworkOptions{
+		Name:   name,
+		Driver: "bridge",
+	})
+	if errors.Is(err, docker.ErrNetworkAlreadyExists) {
+		t.Logf("network %s already exists", name)
+		network, err = client.NetworkInfo(name)
+		require.NoError(t, err)
+		return network
 	}
-	return nil
+	require.NoError(t, err, "failed to create network")
+
+	t.Logf("network %s created", network.Name)
+	return network
+}
+
+// RemoveDockerNetwork removes a Docker network by name.
+func RemoveDockerNetwork(t *testing.T, name string) {
+	t.Helper()
+	client := GetDockerClient(t)
+	err := client.RemoveNetwork(name)
+	if errors.As(err, new(*docker.NoSuchNetwork)) {
+		t.Logf("error: %s", err)
+		return
+	}
+	require.NoError(t, err)
+
+	t.Logf("network %s removed successfully", name)
 }
 
 // GetDockerClient instantiate a new docker client.

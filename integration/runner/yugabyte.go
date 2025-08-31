@@ -9,36 +9,69 @@ package runner
 import (
 	"context"
 	"fmt"
+	"maps"
+	"net"
+	"path"
+	"regexp"
 	"runtime"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 )
 
-// YugaClusterController is a struct that facilitates the manipulation of a DB cluster,
-// with its nodes running in Docker containers.
-//
-// To create the cluster, we are using Yugabyte's preconfigured tool, which is set up as follows:
-// 1. If the cluster size is greater than or equal to 3,
-// the replication factor (RF) is set to 3; otherwise, RF is set to 1.
-// 2. The cluster supports a maximum of 3 master nodes.
-// Therefore, a cluster with more than 3 master nodes cannot be created.
-// Any additional node will act as a tserver node.
-//
-// In addition, RF=3 supports the failure of one master node, while RF=1 does not provide resilience to node failures.
-// There are some bugs in YugaDB that prevent the cluster behavior from functioning as expected:
-// 1. After a master-node is deleted, a new master-node cannot be added to the cluster as a replacement.
-// 2. If the leader node is failing, the whole db connectivity will stop functioning.
-type YugaClusterController struct {
-	DBClusterController
-}
+type (
+	// YugaClusterController is a struct that facilitates the manipulation of a DB cluster,
+	// with nodes running in Docker containers.
+	// It allows configuring the number of master and tablet nodes.
+	// The cluster's replication factor (RF) is determined as follows:
+	//   - If the number of tablet nodes is greater than or equal to 3,
+	//     RF is set to 3; otherwise, RF is set to 1.
+	YugaClusterController struct {
+		DBClusterController
+
+		replicationFactor int
+		networkName       string
+	}
+
+	nodeConfigParameters struct {
+		role              string
+		nodeName          string
+		masterAddresses   string
+		replicationFactor int
+	}
+)
+
+const (
+	// latest LTS.
+	defaultImage = "yugabytedb/yugabyte:2024.2.4.0-b89"
+
+	networkPrefix = "sc_yuga_net_"
+	masterPort    = "7100"
+	tabletPort    = "9100"
+
+	// MasterNode represents yugabyte master db node.
+	MasterNode = "master"
+	// TabletNode represents yugabyte tablet db node.
+	TabletNode = "tablet"
+	// LeaderMasterNode represents the yugabyte master node currently serving as the Raft leader.
+	LeaderMasterNode = "leader"
+	// FollowerMasterNode represents a yugabyte master node that is not the leader (a follower).
+	FollowerMasterNode = "follower"
+)
+
+// leaderRegex is the compiled regular expression.
+// to efficiently extract the leader master's RPC Host/Port.
+var leaderRegex = regexp.MustCompile(`(?m)^[^\n]*[ \t]+(\S+):\d+[ \t]+[^\n]+[ \t]+LEADER[ \t]+[^\n]*$`)
 
 // StartYugaCluster creates a Yugabyte cluster in a Docker environment
 // and returns its connection properties.
-func StartYugaCluster(ctx context.Context, t *testing.T, clusterSize uint) (
+func StartYugaCluster(ctx context.Context, t *testing.T, numberOfMasters, numberOfTablets uint) (
 	*YugaClusterController, *dbtest.Connection,
 ) {
 	t.Helper()
@@ -47,47 +80,171 @@ func StartYugaCluster(ctx context.Context, t *testing.T, clusterSize uint) (
 		t.Skip("Container IP access not supported on non-linux Docker")
 	}
 
-	cluster := &YugaClusterController{}
+	t.Logf("starting yuga cluster with (%d) masters and (%d) tablets ", numberOfMasters, numberOfTablets)
 
-	t.Logf("starting yuga cluster of size: %d", clusterSize)
-	for range clusterSize {
-		cluster.AddNode(ctx, t)
+	rf := 1
+	if numberOfTablets >= 3 {
+		rf = 3
 	}
+
+	cluster := &YugaClusterController{
+		replicationFactor: rf,
+		networkName:       fmt.Sprintf("%s%s", networkPrefix, uuid.NewString()),
+	}
+	dbtest.CreateDockerNetwork(t, cluster.networkName)
+	t.Cleanup(func() {
+		dbtest.RemoveDockerNetwork(t, cluster.networkName)
+	})
+
+	// We create the nodes before startup to ensure
+	// we have the names of the master nodes.
+	// This information is required ahead of time to start each node.
+	for range numberOfMasters {
+		cluster.createNode(MasterNode)
+	}
+	for range numberOfTablets {
+		cluster.createNode(TabletNode)
+	}
+	cluster.startNodes(ctx, t)
 
 	t.Cleanup(func() {
 		cluster.stopAndRemoveCluster(t)
 	})
 
-	clusterConnection := cluster.getNodesConnections(ctx, t)
+	// The master nodes are not involved in DB communication;
+	// the application connects to the tablet servers.
+	clusterConnection := cluster.getNodesConnectionsByRole(t, TabletNode)
 	clusterConnection.LoadBalance = true
 
 	return cluster, clusterConnection
 }
 
-// AddNode creates, starts and add a YugabyteDB node to the cluster.
-func (cc *YugaClusterController) AddNode(ctx context.Context, t *testing.T) *dbtest.DatabaseContainer {
-	t.Helper()
-
+func (cc *YugaClusterController) createNode(role string) {
 	node := &dbtest.DatabaseContainer{
-		Name:         fmt.Sprintf("yuga-%s", uuid.New()),
-		Role:         LeaderNode,
+		Name:         fmt.Sprintf("yuga-%s-%s", role, uuid.New().String()),
+		Image:        defaultImage,
+		Role:         role,
 		DatabaseType: dbtest.YugaDBType,
-		Cmd:          dbtest.YugabyteCMD,
+		Network:      cc.networkName,
 	}
-
-	if cc.GetClusterSize() != 0 {
-		// node.Role refers to the node's Raft role.
-		node.Role = FollowerNode
-		node.Cmd = append(node.Cmd, fmt.Sprintf("--join=%s", cc.getLeaderHost(ctx, t)))
-	}
-
 	cc.nodes = append(cc.nodes, node)
+}
 
-	require.NoError(t, nodeStartupRetry.Execute(ctx, func() error {
-		t.Logf("starting db node %v with role: %v", node.Name, node.Role)
-		node.StartContainer(ctx, t)
-		return node.EnsureNodeReadiness(t, "Data placement constraint successfully verified")
-	}))
+func (cc *YugaClusterController) startNodes(ctx context.Context, t *testing.T) {
+	t.Helper()
+	masterAddresses := cc.getMasterAddresses()
+	for _, n := range cc.IterNodesByRole(MasterNode) {
+		n.Cmd = nodeConfig(t, nodeConfigParameters{
+			n.Role,
+			n.Name,
+			masterAddresses,
+			cc.replicationFactor,
+		})
+		n.StartContainer(ctx, t)
+	}
 
-	return node
+	expectedAlive := len(maps.Collect(cc.IterNodesByRole(MasterNode)))
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		actualAlive := cc.getNumberOfAliveMasters(t)
+		require.Equal(ct, expectedAlive, actualAlive)
+	}, time.Minute, time.Millisecond*100)
+
+	for _, n := range cc.IterNodesByRole(TabletNode) {
+		n.Cmd = nodeConfig(t, nodeConfigParameters{
+			n.Role,
+			n.Name,
+			masterAddresses,
+			cc.replicationFactor,
+		})
+		n.StartContainer(ctx, t)
+	}
+
+	for _, n := range cc.IterNodesByRole(TabletNode) {
+		n.EnsureNodeReadiness(t, "syncing data to disk ... ok")
+	}
+}
+
+func (cc *YugaClusterController) getMasterAddresses() string {
+	masterAddresses := make([]string, 0, len(cc.nodes))
+	for _, n := range cc.IterNodesByRole(MasterNode) {
+		masterAddresses = append(masterAddresses, net.JoinHostPort(n.Name, masterPort))
+	}
+	return strings.Join(masterAddresses, ",")
+}
+
+func (cc *YugaClusterController) getLeaderMasterName(t *testing.T) string {
+	t.Helper()
+	found := leaderRegex.FindStringSubmatch(cc.listAllMasters(t))
+	require.Greater(t, len(found), 1)
+	return found[1]
+}
+
+func (cc *YugaClusterController) getNumberOfAliveMasters(t *testing.T) int {
+	t.Helper()
+	return strings.Count(cc.listAllMasters(t), "ALIVE")
+}
+
+func (cc *YugaClusterController) listAllMasters(t *testing.T) string {
+	t.Helper()
+	var output string
+	cmd := []string{
+		"/home/yugabyte/bin/yb-admin",
+		"-master_addresses", cc.getMasterAddresses(),
+		"list_all_masters",
+	}
+	for _, n := range cc.nodes {
+		if output = n.ExecuteCommand(t, cmd); output != "" {
+			break
+		}
+	}
+	require.NotEmpty(t, output, "Could not get yb-admin output from any node")
+	return output
+}
+
+// StopAndRemoveSingleMasterNodeByRaftRole stops and removes a single
+// master node from the cluster based on the provided role.
+func (cc *YugaClusterController) StopAndRemoveSingleMasterNodeByRaftRole(t *testing.T, raftRole string) {
+	t.Helper()
+	require.NotEmpty(t, cc.nodes, "trying to remove nodes of an empty cluster")
+
+	leaderName := cc.getLeaderMasterName(t)
+	targetIdx := -1
+
+	for idx, node := range cc.IterNodesByRole(MasterNode) {
+		isLeader := node.Name == leaderName
+		if (raftRole == LeaderMasterNode && isLeader) || (raftRole == FollowerMasterNode && !isLeader) {
+			targetIdx = idx
+			break
+		}
+	}
+	require.NotEqual(t, -1, targetIdx, "no suitable master node found for removal")
+
+	cc.StopAndRemoveSingleNodeByIndex(t, targetIdx)
+}
+
+func nodeConfig(t *testing.T, params nodeConfigParameters) []string {
+	t.Helper()
+	switch params.role {
+	case MasterNode:
+		return append(nodeCommonConfig("yb-master", params.nodeName, masterPort),
+			"--master_addresses", params.masterAddresses,
+			fmt.Sprintf("--replication_factor=%d", params.replicationFactor),
+		)
+	case TabletNode:
+		return append(nodeCommonConfig("yb-tserver", params.nodeName, tabletPort),
+			"--start_pgsql_proxy",
+			"--tserver_master_addrs", params.masterAddresses,
+		)
+	default:
+		t.Fatalf("unknown role provided: %s", params.role)
+		return nil
+	}
+}
+
+func nodeCommonConfig(binary, nodeName, bindPort string) []string {
+	return []string{
+		path.Join("/home/yugabyte/bin", binary),
+		"--fs_data_dirs=/mnt/disk0",
+		"--rpc_bind_addresses", net.JoinHostPort(nodeName, bindPort),
+	}
 }
