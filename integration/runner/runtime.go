@@ -333,7 +333,6 @@ func (c *CommitterRuntime) startLoadGen(t *testing.T, serviceFlags int) {
 		s.LoadGenWorkers = 0
 	}
 	newProcess(t, loadGenParams, c.createSystemConfigWithServerTLS(t, s.Endpoints.LoadGen)).Restart(t)
-
 	if isDist {
 		s.LoadGenWorkers = 1
 		loadGenParams.Name = "dist-loadgen"
@@ -586,7 +585,6 @@ func (c *CommitterRuntime) createSystemConfigWithServerTLS(
 	t.Helper()
 	serviceCfg := c.SystemConfig
 	serviceCfg.ServiceTLS = c.CredFactory.CreateServerCredentials(t, c.config.TLSMode, endpoints.Server.Host)
-	t.Logf("server_tls_%s", serviceCfg.ServiceTLS)
 	serviceCfg.ServiceEndpoints = endpoints
 	return &serviceCfg
 }
