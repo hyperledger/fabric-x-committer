@@ -189,6 +189,7 @@ func createTLSConfigFromBytes(
 	keyPair *tlsgen.CertKeyPair,
 	caCertificate []byte,
 ) connection.TLSConfig {
+	t.Helper()
 	tmpDir := t.TempDir()
 
 	privateKeyPath := filepath.Join(tmpDir, "private-key")
