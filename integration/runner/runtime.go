@@ -248,7 +248,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	c.sidecarClient, err = sidecarclient.New(&sidecarclient.Parameters{
 		ChannelID: s.Policy.ChannelID,
 		Client: test.NewTLSClientConfig(
-			c.SystemConfig.ClientTLS,
+			s.ClientTLS,
 			s.Endpoints.Sidecar.Server,
 		),
 	})

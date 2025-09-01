@@ -97,7 +97,8 @@ func TestSidecarSecureConnection(t *testing.T) {
 			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
 				t.Helper()
 				env.startSidecarClient(ctx, t, 0, cfg)
-				if _, ok := channel.NewReader(ctx, env.committedBlock).Read(); !ok {
+				committerBlock := channel.NewReader(ctx, env.committedBlock)
+				if _, ok := committerBlock.Read(); !ok {
 					return errors.New("failed to read committed block")
 				}
 				return nil

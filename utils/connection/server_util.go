@@ -42,7 +42,7 @@ func NewLocalHostServerWithTLS(creds TLSConfig) *ServerConfig {
 	}
 }
 
-// GrpcServer instantiate a [*grpc.Server].
+// GrpcServer instantiate a [grpc.Server].
 func (c *ServerConfig) GrpcServer() (*grpc.Server, error) {
 	opts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxMsgSize), grpc.MaxSendMsgSize(maxMsgSize)}
 	serverGrpcTransportCreds, err := c.TLS.ServerCredentials()

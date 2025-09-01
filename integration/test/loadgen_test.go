@@ -16,7 +16,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -60,9 +59,9 @@ func TestLoadGenWithTLSModes(t *testing.T) {
 		serviceFlags := tc.serviceFlags
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			for _, mode := range []string{connection.NoneTLSMode, connection.OneSideTLSMode, connection.MutualTLSMode} {
+			for _, mode := range test.ServerModes {
 				mode := mode
-				t.Run(fmt.Sprintf("%s_secure_mode", mode), func(t *testing.T) {
+				t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 					t.Parallel()
 					gomega.RegisterTestingT(t)
 					c := runner.NewRuntime(t, &runner.Config{

@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -351,14 +350,4 @@ func (env *DatabaseTestEnv) rowNotExists(t *testing.T, nsID string, keys [][]byt
 		assert.Failf(t, "Key should not exist", "key [%s] value: [%s] version [%d]",
 			key, string(valVer.Value), valVer.Version)
 	}
-}
-
-//nolint:ireturn // returning a gRPC client interface is intentional for test purpose.
-func createValidatorAndCommitClientWithTLS(
-	t *testing.T,
-	ep *connection.Endpoint,
-	tlsCfg connection.TLSConfig,
-) protovcservice.ValidationAndCommitServiceClient {
-	t.Helper()
-	return test.CreateClientWithTLS(t, ep, tlsCfg, protovcservice.NewValidationAndCommitServiceClient)
 }

@@ -91,9 +91,8 @@ const (
 	DefaultTLSMinVersion = tls.VersionTLS12
 )
 
-// ServerCredentials returns the appropriate gRPC server option based on the TLS configuration.
-// If TLS is enabled, it returns a server option with TLS credentials; otherwise,
-// it returns an insecure option.
+// ServerCredentials returns the gRPC transport credentials to be used by a server,
+// based on the provided TLS configuration.
 func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error) {
 	switch c.Mode {
 	case NoneTLSMode, UnmentionedTLSMode:
@@ -130,9 +129,6 @@ func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error)
 
 // ClientCredentials returns the gRPC transport credentials to be used by a client,
 // based on the provided TLS configuration.
-// If TLS is disabled or c is nil, it returns
-// insecure credentials; otherwise, it returns TLS credentials configured
-// with or without mutual TLS, depending on the settings.
 func (c TLSConfig) ClientCredentials() (credentials.TransportCredentials, error) {
 	switch c.Mode {
 	case NoneTLSMode, UnmentionedTLSMode:

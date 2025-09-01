@@ -733,3 +733,13 @@ func createContext(t *testing.T) (context.Context, context.CancelFunc) {
 	t.Cleanup(cancel)
 	return ctx, cancel
 }
+
+//nolint:ireturn // returning a gRPC client interface is intentional for test purpose.
+func createValidatorAndCommitClientWithTLS(
+	t *testing.T,
+	ep *connection.Endpoint,
+	tlsCfg connection.TLSConfig,
+) protovcservice.ValidationAndCommitServiceClient {
+	t.Helper()
+	return test.CreateClientWithTLS(t, ep, tlsCfg, protovcservice.NewValidationAndCommitServiceClient)
+}
