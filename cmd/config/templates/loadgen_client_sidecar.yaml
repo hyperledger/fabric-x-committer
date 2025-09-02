@@ -20,3 +20,4 @@ sidecar-client:
     {{- range .Endpoints.Orderer }}
     - endpoint: {{ .Server }}
     {{- end }}
+  channel-id: {{ .Policy.ChannelID }}
