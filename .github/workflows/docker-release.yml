@@ -98,8 +98,10 @@ jobs:
           platforms: linux/amd64,linux/arm64,linux/s390x
           push: true
           tags: |
-            docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-loadgen:latest
             docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-loadgen:${{ env.VERSION }}
+            docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-loadgen:latest
+            ghcr.io/${{ env.IMAGE_PREFIX }}/fabric-x-loadgen:${{ env.VERSION }}
+            ghcr.io/${{ env.IMAGE_PREFIX }}/fabric-x-loadgen:latest
           build-args: |
             BIN=loadgen
             ARCHBIN_PATH=archbin
