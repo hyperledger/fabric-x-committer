@@ -94,7 +94,7 @@ jobs:
           build-args: |
             BIN=loadgen
             ARCHBIN_PATH=archbin
-            PORTS=4001 2114 9001 2119 5001 2115 6001 2116 7001 2117
+            PORTS=8001 2118
           cache-from: type=registry,ref=docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-loadgen:buildcache
           cache-to: type=registry,ref=docker.io/${{  env.IMAGE_PREFIX  }}/fabric-x-loadgen:buildcache,mode=max
 
