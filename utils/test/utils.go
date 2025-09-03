@@ -320,11 +320,6 @@ func NewInsecureMultiClientConfig(ep ...*connection.Endpoint) *connection.MultiC
 	}
 }
 
-// NewInsecureClientConfig creates a client configuration for test purposes given an endpoint.
-func NewInsecureClientConfig(ep *connection.Endpoint) *connection.ClientConfig {
-	return NewTLSClientConfig(DefaultTLSConfig, ep)
-}
-
 // NewTLSClientConfig creates a client configuration for test purposes given a single endpoint and creds.
 func NewTLSClientConfig(tlsConfig connection.TLSConfig, ep *connection.Endpoint) *connection.ClientConfig {
 	return &connection.ClientConfig{

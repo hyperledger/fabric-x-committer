@@ -53,7 +53,7 @@ func TestStartTestNode(t *testing.T) {
 	require.NoError(t, err)
 	committedBlock := sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Parameters{
 		ChannelID: channelName,
-		Client:    test.NewInsecureClientConfig(sidecarEndpoint),
+		Client:    test.NewTLSClientConfig(test.DefaultTLSConfig, sidecarEndpoint),
 	}, 0)
 	b, ok := channel.NewReader(ctx, committedBlock).Read()
 	require.True(t, ok)

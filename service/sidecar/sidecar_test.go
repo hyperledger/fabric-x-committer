@@ -150,7 +150,7 @@ func newSidecarTestEnvWithTLS(
 				Endpoints: initOrdererEndpoints,
 			},
 		},
-		Committer: test.NewInsecureClientConfig(&coordinatorServer.Configs[0].Endpoint),
+		Committer: test.NewTLSClientConfig(test.DefaultTLSConfig, &coordinatorServer.Configs[0].Endpoint),
 		Ledger: LedgerConfig{
 			Path: t.TempDir(),
 		},
