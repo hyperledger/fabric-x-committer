@@ -55,7 +55,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 	numServices int,
 ) *validatorAndCommitterServiceTestEnvWithClient {
 	t.Helper()
-	vcs := NewValidatorAndCommitServiceTestEnvWithTLS(t, numServices, test.DefaultTLSConfig)
+	vcs := NewValidatorAndCommitServiceTestEnvWithTLS(t, numServices, test.InsecureTLSConfig)
 
 	allEndpoints := make([]*connection.Endpoint, len(vcs.Configs))
 	for i, c := range vcs.Configs {
@@ -78,7 +78,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 	require.NoError(t, setupErr)
 
 	for i, c := range vcs.Configs {
-		client := createValidatorAndCommitClientWithTLS(t, &c.Server.Endpoint, test.DefaultTLSConfig)
+		client := createValidatorAndCommitClientWithTLS(t, &c.Server.Endpoint, test.InsecureTLSConfig)
 
 		sCtx, sCancel := context.WithTimeout(t.Context(), 5*time.Minute)
 		t.Cleanup(sCancel)

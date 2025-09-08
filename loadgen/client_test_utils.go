@@ -40,7 +40,7 @@ func eventuallyMetrics(
 // DefaultClientConf returns default config values for client testing.
 func DefaultClientConf() *ClientConfig {
 	return &ClientConfig{
-		Server: connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig),
+		Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
 		Monitoring: metrics.Config{
 			Config: defaultMonitoring(),
 		},
@@ -83,6 +83,6 @@ func DefaultClientConf() *ClientConfig {
 
 func defaultMonitoring() monitoring.Config {
 	return monitoring.Config{
-		Server: connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig),
+		Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
 	}
 }

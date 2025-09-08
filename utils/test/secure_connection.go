@@ -70,7 +70,7 @@ func (scm *CredentialsFactory) CreateServerCredentials(
 	t.Helper()
 	serverKeypair, err := scm.CertificateAuthority.NewServerCertKeyPair(san)
 	require.NoError(t, err)
-	return createTLSConfigFromBytes(t, tlsMode, serverKeypair, scm.CertificateAuthority.CertBytes())
+	return createTLSConfig(t, tlsMode, serverKeypair, scm.CertificateAuthority.CertBytes())
 }
 
 // CreateClientCredentials creates a client key pair,
@@ -79,21 +79,21 @@ func (scm *CredentialsFactory) CreateClientCredentials(t *testing.T, tlsMode str
 	t.Helper()
 	clientKeypair, err := scm.CertificateAuthority.NewClientCertKeyPair()
 	require.NoError(t, err)
-	return createTLSConfigFromBytes(t, tlsMode, clientKeypair, scm.CertificateAuthority.CertBytes())
+	return createTLSConfig(t, tlsMode, clientKeypair, scm.CertificateAuthority.CertBytes())
 }
 
 /*
-		 RunSecureConnectionTest starts a gRPC server with mTLS enabled and
-		 tests client connections using various TLS configurations to verify that
-		 the server correctly accepts or rejects connections based on the client's setup.
-		 It runs a server instance of the service and returns a function
-		 that starts a client with the required TLS mode, attempts an RPC call,
-		 and returns the resulting error.
-		 Server Mode | Client with mTLS | Client with server-side TLS | Client with no TLS
-		 ------------|------------------|-----------------------------|--------------------
-	      mTLS       |      connect     |        can't connect        |     can't connect
-	      TLS        |      connect     |           connect           |     can't connect
-	      None       | can't connect    |        can't connect        |       connect
+RunSecureConnectionTest starts a gRPC server with mTLS enabled and
+tests client connections using various TLS configurations to verify that
+the server correctly accepts or rejects connections based on the client's setup.
+It runs a server instance of the service and returns a function
+that starts a client with the required TLS mode, attempts an RPC call,
+and returns the resulting error.
+Server Mode | Client with mTLS | Client with server-side TLS | Client with no TLS
+------------|------------------|-----------------------------|--------------------
+mTLS        |      connect     |        can't connect        |     can't connect
+TLS         |      connect     |           connect           |     can't connect
+None        | can't connect    |        can't connect        |       connect.
 */
 func RunSecureConnectionTest(
 	t *testing.T,
@@ -181,9 +181,9 @@ func CreateClientWithTLS[T any](
 	return protoClient(conn)
 }
 
-// createTLSConfigFromBytes creates and returns a TLS configuration based on the
+// createTLSConfig creates and returns a TLS configuration based on the
 // given TLS mode and the credential bytes.
-func createTLSConfigFromBytes(
+func createTLSConfig(
 	t *testing.T,
 	connectionMode string,
 	keyPair *tlsgen.CertKeyPair,

@@ -52,8 +52,8 @@ func FailHandler(t *testing.T) {
 }
 
 var (
-	// DefaultTLSConfig defines an empty tls config.
-	DefaultTLSConfig connection.TLSConfig
+	// InsecureTLSConfig defines an empty tls config.
+	InsecureTLSConfig connection.TLSConfig
 	// defaultGrpcRetryProfile defines the retry policy for a gRPC client connection.
 	defaultGrpcRetryProfile connection.RetryProfile
 )
@@ -116,7 +116,7 @@ func StartGrpcServersForTest(
 	t.Helper()
 	sc := make([]*connection.ServerConfig, numService)
 	for i := range sc {
-		sc[i] = connection.NewLocalHostServerWithTLS(DefaultTLSConfig)
+		sc[i] = connection.NewLocalHostServerWithTLS(InsecureTLSConfig)
 	}
 	return StartGrpcServersWithConfigForTest(ctx, t, sc, register)
 }
@@ -312,11 +312,21 @@ func NewInsecureLoadBalancedDialConfig(t *testing.T, endpoints []*connection.End
 	return dialConfig
 }
 
-// NewInsecureMultiClientConfig creates a client configuration for test purposes given number of endpoints.
+// NewInsecureMultiClientConfig creates a multi client configuration for test purposes given number of endpoints.
 func NewInsecureMultiClientConfig(ep ...*connection.Endpoint) *connection.MultiClientConfig {
 	return &connection.MultiClientConfig{
 		Endpoints: ep,
+		TLS:       InsecureTLSConfig,
 		Retry:     &defaultGrpcRetryProfile,
+	}
+}
+
+// NewInsecureClientConfig creates a client configuration for test purposes given an endpoints.
+func NewInsecureClientConfig(ep *connection.Endpoint) *connection.ClientConfig {
+	return &connection.ClientConfig{
+		Endpoint: ep,
+		TLS:      InsecureTLSConfig,
+		Retry:    &defaultGrpcRetryProfile,
 	}
 }
 

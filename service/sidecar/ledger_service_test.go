@@ -34,7 +34,7 @@ func TestLedgerService(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(ls.close)
 
-	config := connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig)
+	config := connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig)
 	inputBlock := make(chan *common.Block, 10)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(ls.run(ctx, &ledgerRunConfig{
@@ -63,7 +63,7 @@ func TestLedgerService(t *testing.T) {
 
 	receivedBlocksFromLedgerService := sidecarclient.StartSidecarClient(t.Context(), t, &sidecarclient.Parameters{
 		ChannelID: channelID,
-		Client:    test.NewTLSClientConfig(test.DefaultTLSConfig, &config.Endpoint),
+		Client:    test.NewInsecureClientConfig(&config.Endpoint),
 	}, 0)
 
 	blk1, _ := createBlockForTest(t, 1, protoutil.BlockHeaderHash(blk0.Header))

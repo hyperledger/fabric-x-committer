@@ -47,7 +47,7 @@ func TestVerifierSecureConnection(t *testing.T) {
 
 func TestNoVerificationKeySet(t *testing.T) {
 	t.Parallel()
-	c := newTestState(t, defaultConfigWithTLS(test.DefaultTLSConfig))
+	c := newTestState(t, defaultConfigWithTLS(test.InsecureTLSConfig))
 
 	stream, err := c.Client.StartStream(t.Context())
 	require.NoError(t, err)
@@ -63,7 +63,7 @@ func TestNoVerificationKeySet(t *testing.T) {
 func TestNoInput(t *testing.T) {
 	t.Parallel()
 	test.FailHandler(t)
-	c := newTestState(t, defaultConfigWithTLS(test.DefaultTLSConfig))
+	c := newTestState(t, defaultConfigWithTLS(test.InsecureTLSConfig))
 
 	stream, _ := c.Client.StartStream(t.Context())
 
@@ -78,7 +78,7 @@ func TestNoInput(t *testing.T) {
 func TestMinimalInput(t *testing.T) {
 	t.Parallel()
 	test.FailHandler(t)
-	c := newTestState(t, defaultConfigWithTLS(test.DefaultTLSConfig))
+	c := newTestState(t, defaultConfigWithTLS(test.InsecureTLSConfig))
 
 	stream, _ := c.Client.StartStream(t.Context())
 
@@ -399,7 +399,7 @@ func newTestState(t *testing.T, config *Config) *State {
 
 	return &State{
 		Service: service,
-		Client:  createVerifierClientWithTLS(t, &config.Server.Endpoint, test.DefaultTLSConfig),
+		Client:  createVerifierClientWithTLS(t, &config.Server.Endpoint, test.InsecureTLSConfig),
 	}
 }
 
@@ -449,13 +449,13 @@ func defaultConfigWithTLS(tlsConfig connection.TLSConfig) *Config {
 			ChannelBufferSize: 1,
 		},
 		Monitoring: monitoring.Config{
-			Server: connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig),
+			Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
 		},
 	}
 }
 
 func defaultConfigQuickCutoff() *Config {
-	config := defaultConfigWithTLS(test.DefaultTLSConfig)
+	config := defaultConfigWithTLS(test.InsecureTLSConfig)
 	config.ParallelExecutor.BatchSizeCutoff = 1
 	return config
 }

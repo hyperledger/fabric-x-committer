@@ -51,7 +51,7 @@ func TestQuerySecureConnection(t *testing.T) {
 	test.RunSecureConnectionTest(t,
 		func(t *testing.T, tlsCfg connection.TLSConfig) test.RPCAttempt {
 			t.Helper()
-			env := newQueryServiceTestEnvWithServerAndClientCreds(t, tlsCfg, test.DefaultTLSConfig)
+			env := newQueryServiceTestEnvWithServerAndClientCreds(t, tlsCfg, test.InsecureTLSConfig)
 			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
 				t.Helper()
 				client := createQueryClientWithTLS(t, &env.qs.config.Server.Endpoint, cfg)
@@ -64,7 +64,7 @@ func TestQuerySecureConnection(t *testing.T) {
 
 func TestQuery(t *testing.T) {
 	t.Parallel()
-	env := newQueryServiceTestEnvWithServerAndClientCreds(t, test.DefaultTLSConfig, test.DefaultTLSConfig)
+	env := newQueryServiceTestEnvWithServerAndClientCreds(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
 	requiredItems := env.makeItems(t)
 	query, _, _ := makeQuery(requiredItems)
 
@@ -149,7 +149,7 @@ func TestQuery(t *testing.T) {
 
 func TestQueryMetrics(t *testing.T) {
 	t.Parallel()
-	env := newQueryServiceTestEnvWithServerAndClientCreds(t, test.DefaultTLSConfig, test.DefaultTLSConfig)
+	env := newQueryServiceTestEnvWithServerAndClientCreds(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
 	requiredItems := env.makeItems(t)
 	query, keyCount, querySize := makeQuery(requiredItems)
 
@@ -187,7 +187,7 @@ func TestQueryMetrics(t *testing.T) {
 
 func TestQueryWithConsistentView(t *testing.T) {
 	t.Parallel()
-	env := newQueryServiceTestEnvWithServerAndClientCreds(t, test.DefaultTLSConfig, test.DefaultTLSConfig)
+	env := newQueryServiceTestEnvWithServerAndClientCreds(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
 	requiredItems := env.makeItems(t)
 	query, _, _ := makeQuery(requiredItems)
 
@@ -263,7 +263,7 @@ func TestQueryWithConsistentView(t *testing.T) {
 
 func TestQueryPolicies(t *testing.T) {
 	t.Parallel()
-	env := newQueryServiceTestEnvWithServerAndClientCreds(t, test.DefaultTLSConfig, test.DefaultTLSConfig)
+	env := newQueryServiceTestEnvWithServerAndClientCreds(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
 
 	policies, err := env.clientConn.GetNamespacePolicies(t.Context(), nil)
 	require.NoError(t, err)
@@ -329,7 +329,7 @@ func newQueryServiceTestEnvWithServerAndClientCreds(
 		Server:                connection.NewLocalHostServerWithTLS(serverTLS),
 		Database:              dbConf,
 		Monitoring: monitoring.Config{
-			Server: connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig),
+			Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
 		},
 	}
 
@@ -354,7 +354,7 @@ func newQueryServiceTestEnvWithServerAndClientCreds(
 
 func generateNamespacesUnderTest(t *testing.T, namespaces []string) *vc.DatabaseConfig {
 	t.Helper()
-	env := vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, 1, test.DefaultTLSConfig)
+	env := vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, 1, test.InsecureTLSConfig)
 	env.SetupSystemTablesAndNamespaces(t.Context(), t)
 
 	clientConf := loadgen.DefaultClientConf()

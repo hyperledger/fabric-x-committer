@@ -32,7 +32,7 @@ func newMetricsProviderTestEnv(t *testing.T) *metricsProviderTestEnv {
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	c := connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig)
+	c := connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig)
 	go func() {
 		assert.NoError(t, p.StartPrometheusServer(ctx, c))
 	}()

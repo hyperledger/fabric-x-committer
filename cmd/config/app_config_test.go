@@ -132,18 +132,10 @@ func TestReadConfigCoordinator(t *testing.T) {
 		name:           "sample",
 		configFilePath: "samples/coordinator.yaml",
 		expectedConfig: &coordinator.Config{
-			Server:     newServerConfig("", 9001),
-			Monitoring: newMonitoringConfig("", 2119),
-			Verifier: connection.MultiClientConfig{
-				Endpoints: []*connection.Endpoint{
-					newEndpoint("signature-verifier", 5001),
-				},
-			},
-			ValidatorCommitter: connection.MultiClientConfig{
-				Endpoints: []*connection.Endpoint{
-					newEndpoint("validator-persister", 6001),
-				},
-			},
+			Server:             newServerConfig("", 9001),
+			Monitoring:         newMonitoringConfig("", 2119),
+			Verifier:           newMultiClientConfig("signature-verifier", 5001),
+			ValidatorCommitter: newMultiClientConfig("validator-persister", 6001),
 			DependencyGraph: &coordinator.DependencyGraphConfig{
 				NumOfLocalDepConstructors: 1,
 				WaitingTxsLimit:           100_000,
@@ -449,6 +441,14 @@ func defaultSampleDBConfig() *vc.DatabaseConfig {
 func newClientConfig(host string, port int) *connection.ClientConfig {
 	return &connection.ClientConfig{
 		Endpoint: newEndpoint(host, port),
+	}
+}
+
+func newMultiClientConfig(host string, port int) connection.MultiClientConfig {
+	return connection.MultiClientConfig{
+		Endpoints: []*connection.Endpoint{
+			newEndpoint(host, port),
+		},
 	}
 }
 

@@ -84,7 +84,7 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 	var dbEnv *vc.DatabaseTestEnv
 
 	if !tConfig.mockVcService {
-		vcsTestEnv = vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, tConfig.numVcService, test.DefaultTLSConfig)
+		vcsTestEnv = vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, tConfig.numVcService, test.InsecureTLSConfig)
 		for _, c := range vcsTestEnv.Configs {
 			vcServerConfigs = append(vcServerConfigs, c.Server)
 		}
@@ -103,7 +103,7 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 		},
 		ChannelBufferSizePerGoroutine: 2000,
 		Monitoring: monitoring.Config{
-			Server: connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig),
+			Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
 		},
 	}
 
@@ -118,8 +118,8 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 
 func (e *coordinatorTestEnv) startInsecureServiceAndOpenStream(ctx context.Context, t *testing.T) {
 	t.Helper()
-	e.startServiceWithCreds(ctx, t, test.DefaultTLSConfig)
-	e.client = createCoordinatorClientWithTLS(t, &e.coordinator.config.Server.Endpoint, test.DefaultTLSConfig)
+	e.startServiceWithCreds(ctx, t, test.InsecureTLSConfig)
+	e.client = createCoordinatorClientWithTLS(t, &e.coordinator.config.Server.Endpoint, test.InsecureTLSConfig)
 
 	sCtx, sCancel := context.WithTimeout(ctx, 5*time.Minute)
 	t.Cleanup(sCancel)
@@ -646,7 +646,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 
 	cancel()
 
-	vcEnv := vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, 1, test.DefaultTLSConfig, env.dbEnv)
+	vcEnv := vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, 1, test.InsecureTLSConfig, env.dbEnv)
 	env.config.ValidatorCommitter = *test.ServerToMultiClientConfig(vcEnv.Configs[0].Server)
 	env.coordinator = NewCoordinatorService(env.config)
 	ctx, cancel = context.WithTimeout(t.Context(), 2*time.Minute)
@@ -954,12 +954,12 @@ func fakeConfigForTest(t *testing.T) *Config {
 	randomEndpoint, err := connection.NewEndpoint("random:1234")
 	require.NoError(t, err)
 	return &Config{
-		Server:             connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig),
+		Server:             connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
 		Verifier:           *test.NewInsecureMultiClientConfig(randomEndpoint),
 		ValidatorCommitter: *test.NewInsecureMultiClientConfig(randomEndpoint),
 		DependencyGraph:    &DependencyGraphConfig{},
 		Monitoring: monitoring.Config{
-			Server: connection.NewLocalHostServerWithTLS(test.DefaultTLSConfig),
+			Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
 		},
 	}
 }
