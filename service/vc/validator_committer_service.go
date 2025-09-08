@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
@@ -196,7 +197,7 @@ func (vc *ValidatorCommitterService) monitorQueues(ctx context.Context) {
 func (vc *ValidatorCommitterService) SetLastCommittedBlockNumber(
 	ctx context.Context,
 	lastCommittedBlock *protoblocktx.BlockInfo,
-) (*protovcservice.Empty, error) {
+) (*emptypb.Empty, error) {
 	err := vc.db.setLastCommittedBlockNumber(ctx, lastCommittedBlock)
 	logger.ErrorStackTrace(err)
 	return nil, grpcerror.WrapInternalError(err)
@@ -205,7 +206,7 @@ func (vc *ValidatorCommitterService) SetLastCommittedBlockNumber(
 // GetLastCommittedBlockNumber get the last committed block number in the database/ledger.
 func (vc *ValidatorCommitterService) GetLastCommittedBlockNumber(
 	ctx context.Context,
-	_ *protovcservice.Empty,
+	_ *emptypb.Empty,
 ) (*protoblocktx.LastCommittedBlock, error) {
 	blkInfo, err := vc.db.getLastCommittedBlockNumber(ctx)
 	logger.ErrorStackTrace(err)
@@ -239,7 +240,7 @@ func (vc *ValidatorCommitterService) GetTransactionsStatus(
 // GetNamespacePolicies retrieves the policy data from the database.
 func (vc *ValidatorCommitterService) GetNamespacePolicies(
 	ctx context.Context,
-	_ *protovcservice.Empty,
+	_ *emptypb.Empty,
 ) (*protoblocktx.NamespacePolicies, error) {
 	policies, err := vc.db.readNamespacePolicies(ctx)
 	logger.ErrorStackTrace(err)
@@ -249,7 +250,7 @@ func (vc *ValidatorCommitterService) GetNamespacePolicies(
 // GetConfigTransaction retrieves the config block from the database.
 func (vc *ValidatorCommitterService) GetConfigTransaction(
 	ctx context.Context,
-	_ *protovcservice.Empty,
+	_ *emptypb.Empty,
 ) (*protoblocktx.ConfigTransaction, error) {
 	policies, err := vc.db.readConfigTX(ctx)
 	logger.ErrorStackTrace(err)
@@ -259,8 +260,8 @@ func (vc *ValidatorCommitterService) GetConfigTransaction(
 // SetupSystemTablesAndNamespaces creates the required system tables and namespaces.
 func (vc *ValidatorCommitterService) SetupSystemTablesAndNamespaces(
 	ctx context.Context,
-	_ *protovcservice.Empty,
-) (*protovcservice.Empty, error) {
+	_ *emptypb.Empty,
+) (*emptypb.Empty, error) {
 	return nil, grpcerror.WrapInternalError(vc.db.setupSystemTablesAndNamespaces(ctx))
 }
 

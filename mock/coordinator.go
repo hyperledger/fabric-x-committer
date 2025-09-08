@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
@@ -60,9 +61,7 @@ func (c *Coordinator) RegisterService(server *grpc.Server) {
 }
 
 // GetConfigTransaction return the latest configuration transaction.
-func (c *Coordinator) GetConfigTransaction(
-	context.Context, *protocoordinatorservice.Empty,
-) (*protoblocktx.ConfigTransaction, error) {
+func (c *Coordinator) GetConfigTransaction(context.Context, *emptypb.Empty) (*protoblocktx.ConfigTransaction, error) {
 	return c.configTransaction.Load(), nil
 }
 
@@ -74,23 +73,23 @@ func (c *Coordinator) SetConfigTransaction(data []byte) {
 // SetLastCommittedBlockNumber sets the last committed block number.
 func (c *Coordinator) SetLastCommittedBlockNumber(
 	_ context.Context, lastBlock *protoblocktx.BlockInfo,
-) (*protocoordinatorservice.Empty, error) {
+) (*emptypb.Empty, error) {
 	c.lastCommittedBlock.Store(lastBlock)
 	return nil, nil
 }
 
 // GetLastCommittedBlockNumber returns the last committed block number.
 func (c *Coordinator) GetLastCommittedBlockNumber(
-	_ context.Context,
-	_ *protocoordinatorservice.Empty,
+	context.Context,
+	*emptypb.Empty,
 ) (*protoblocktx.LastCommittedBlock, error) {
 	return &protoblocktx.LastCommittedBlock{Block: c.lastCommittedBlock.Load()}, nil
 }
 
 // GetNextExpectedBlockNumber returns the next expected block number to be received by the coordinator.
 func (c *Coordinator) GetNextExpectedBlockNumber(
-	_ context.Context,
-	_ *protocoordinatorservice.Empty,
+	context.Context,
+	*emptypb.Empty,
 ) (*protoblocktx.BlockInfo, error) {
 	return &protoblocktx.BlockInfo{Number: c.nextExpectedBlockNumber.Load()}, nil
 }
@@ -112,8 +111,8 @@ func (c *Coordinator) GetTransactionsStatus(
 
 // NumberOfWaitingTransactionsForStatus returns the number of transactions waiting to get the final status.
 func (c *Coordinator) NumberOfWaitingTransactionsForStatus(
-	_ context.Context,
-	_ *protocoordinatorservice.Empty,
+	context.Context,
+	*emptypb.Empty,
 ) (*protocoordinatorservice.WaitingTransactions, error) {
 	return &protocoordinatorservice.WaitingTransactions{Count: c.numWaitingTxs.Load()}, nil
 }

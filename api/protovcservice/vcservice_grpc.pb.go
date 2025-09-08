@@ -17,6 +17,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -39,12 +40,12 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ValidationAndCommitServiceClient interface {
 	StartValidateAndCommitStream(ctx context.Context, opts ...grpc.CallOption) (ValidationAndCommitService_StartValidateAndCommitStreamClient, error)
-	SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.BlockInfo, opts ...grpc.CallOption) (*Empty, error)
-	GetLastCommittedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.LastCommittedBlock, error)
+	SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.BlockInfo, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	GetLastCommittedBlockNumber(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.LastCommittedBlock, error)
 	GetTransactionsStatus(ctx context.Context, in *protoblocktx.QueryStatus, opts ...grpc.CallOption) (*protoblocktx.TransactionsStatus, error)
-	GetNamespacePolicies(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.NamespacePolicies, error)
-	GetConfigTransaction(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.ConfigTransaction, error)
-	SetupSystemTablesAndNamespaces(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error)
+	GetNamespacePolicies(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.NamespacePolicies, error)
+	GetConfigTransaction(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.ConfigTransaction, error)
+	SetupSystemTablesAndNamespaces(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type validationAndCommitServiceClient struct {
@@ -86,8 +87,8 @@ func (x *validationAndCommitServiceStartValidateAndCommitStreamClient) Recv() (*
 	return m, nil
 }
 
-func (c *validationAndCommitServiceClient) SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.BlockInfo, opts ...grpc.CallOption) (*Empty, error) {
-	out := new(Empty)
+func (c *validationAndCommitServiceClient) SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.BlockInfo, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, ValidationAndCommitService_SetLastCommittedBlockNumber_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -95,7 +96,7 @@ func (c *validationAndCommitServiceClient) SetLastCommittedBlockNumber(ctx conte
 	return out, nil
 }
 
-func (c *validationAndCommitServiceClient) GetLastCommittedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.LastCommittedBlock, error) {
+func (c *validationAndCommitServiceClient) GetLastCommittedBlockNumber(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.LastCommittedBlock, error) {
 	out := new(protoblocktx.LastCommittedBlock)
 	err := c.cc.Invoke(ctx, ValidationAndCommitService_GetLastCommittedBlockNumber_FullMethodName, in, out, opts...)
 	if err != nil {
@@ -113,7 +114,7 @@ func (c *validationAndCommitServiceClient) GetTransactionsStatus(ctx context.Con
 	return out, nil
 }
 
-func (c *validationAndCommitServiceClient) GetNamespacePolicies(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.NamespacePolicies, error) {
+func (c *validationAndCommitServiceClient) GetNamespacePolicies(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.NamespacePolicies, error) {
 	out := new(protoblocktx.NamespacePolicies)
 	err := c.cc.Invoke(ctx, ValidationAndCommitService_GetNamespacePolicies_FullMethodName, in, out, opts...)
 	if err != nil {
@@ -122,7 +123,7 @@ func (c *validationAndCommitServiceClient) GetNamespacePolicies(ctx context.Cont
 	return out, nil
 }
 
-func (c *validationAndCommitServiceClient) GetConfigTransaction(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.ConfigTransaction, error) {
+func (c *validationAndCommitServiceClient) GetConfigTransaction(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.ConfigTransaction, error) {
 	out := new(protoblocktx.ConfigTransaction)
 	err := c.cc.Invoke(ctx, ValidationAndCommitService_GetConfigTransaction_FullMethodName, in, out, opts...)
 	if err != nil {
@@ -131,8 +132,8 @@ func (c *validationAndCommitServiceClient) GetConfigTransaction(ctx context.Cont
 	return out, nil
 }
 
-func (c *validationAndCommitServiceClient) SetupSystemTablesAndNamespaces(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error) {
-	out := new(Empty)
+func (c *validationAndCommitServiceClient) SetupSystemTablesAndNamespaces(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, ValidationAndCommitService_SetupSystemTablesAndNamespaces_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -145,12 +146,12 @@ func (c *validationAndCommitServiceClient) SetupSystemTablesAndNamespaces(ctx co
 // for forward compatibility
 type ValidationAndCommitServiceServer interface {
 	StartValidateAndCommitStream(ValidationAndCommitService_StartValidateAndCommitStreamServer) error
-	SetLastCommittedBlockNumber(context.Context, *protoblocktx.BlockInfo) (*Empty, error)
-	GetLastCommittedBlockNumber(context.Context, *Empty) (*protoblocktx.LastCommittedBlock, error)
+	SetLastCommittedBlockNumber(context.Context, *protoblocktx.BlockInfo) (*emptypb.Empty, error)
+	GetLastCommittedBlockNumber(context.Context, *emptypb.Empty) (*protoblocktx.LastCommittedBlock, error)
 	GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error)
-	GetNamespacePolicies(context.Context, *Empty) (*protoblocktx.NamespacePolicies, error)
-	GetConfigTransaction(context.Context, *Empty) (*protoblocktx.ConfigTransaction, error)
-	SetupSystemTablesAndNamespaces(context.Context, *Empty) (*Empty, error)
+	GetNamespacePolicies(context.Context, *emptypb.Empty) (*protoblocktx.NamespacePolicies, error)
+	GetConfigTransaction(context.Context, *emptypb.Empty) (*protoblocktx.ConfigTransaction, error)
+	SetupSystemTablesAndNamespaces(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
 	mustEmbedUnimplementedValidationAndCommitServiceServer()
 }
 
@@ -161,22 +162,22 @@ type UnimplementedValidationAndCommitServiceServer struct {
 func (UnimplementedValidationAndCommitServiceServer) StartValidateAndCommitStream(ValidationAndCommitService_StartValidateAndCommitStreamServer) error {
 	return status.Errorf(codes.Unimplemented, "method StartValidateAndCommitStream not implemented")
 }
-func (UnimplementedValidationAndCommitServiceServer) SetLastCommittedBlockNumber(context.Context, *protoblocktx.BlockInfo) (*Empty, error) {
+func (UnimplementedValidationAndCommitServiceServer) SetLastCommittedBlockNumber(context.Context, *protoblocktx.BlockInfo) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetLastCommittedBlockNumber not implemented")
 }
-func (UnimplementedValidationAndCommitServiceServer) GetLastCommittedBlockNumber(context.Context, *Empty) (*protoblocktx.LastCommittedBlock, error) {
+func (UnimplementedValidationAndCommitServiceServer) GetLastCommittedBlockNumber(context.Context, *emptypb.Empty) (*protoblocktx.LastCommittedBlock, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetLastCommittedBlockNumber not implemented")
 }
 func (UnimplementedValidationAndCommitServiceServer) GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTransactionsStatus not implemented")
 }
-func (UnimplementedValidationAndCommitServiceServer) GetNamespacePolicies(context.Context, *Empty) (*protoblocktx.NamespacePolicies, error) {
+func (UnimplementedValidationAndCommitServiceServer) GetNamespacePolicies(context.Context, *emptypb.Empty) (*protoblocktx.NamespacePolicies, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetNamespacePolicies not implemented")
 }
-func (UnimplementedValidationAndCommitServiceServer) GetConfigTransaction(context.Context, *Empty) (*protoblocktx.ConfigTransaction, error) {
+func (UnimplementedValidationAndCommitServiceServer) GetConfigTransaction(context.Context, *emptypb.Empty) (*protoblocktx.ConfigTransaction, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetConfigTransaction not implemented")
 }
-func (UnimplementedValidationAndCommitServiceServer) SetupSystemTablesAndNamespaces(context.Context, *Empty) (*Empty, error) {
+func (UnimplementedValidationAndCommitServiceServer) SetupSystemTablesAndNamespaces(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetupSystemTablesAndNamespaces not implemented")
 }
 func (UnimplementedValidationAndCommitServiceServer) mustEmbedUnimplementedValidationAndCommitServiceServer() {
@@ -238,7 +239,7 @@ func _ValidationAndCommitService_SetLastCommittedBlockNumber_Handler(srv interfa
 }
 
 func _ValidationAndCommitService_GetLastCommittedBlockNumber_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Empty)
+	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -250,7 +251,7 @@ func _ValidationAndCommitService_GetLastCommittedBlockNumber_Handler(srv interfa
 		FullMethod: ValidationAndCommitService_GetLastCommittedBlockNumber_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ValidationAndCommitServiceServer).GetLastCommittedBlockNumber(ctx, req.(*Empty))
+		return srv.(ValidationAndCommitServiceServer).GetLastCommittedBlockNumber(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -274,7 +275,7 @@ func _ValidationAndCommitService_GetTransactionsStatus_Handler(srv interface{}, 
 }
 
 func _ValidationAndCommitService_GetNamespacePolicies_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Empty)
+	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -286,13 +287,13 @@ func _ValidationAndCommitService_GetNamespacePolicies_Handler(srv interface{}, c
 		FullMethod: ValidationAndCommitService_GetNamespacePolicies_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ValidationAndCommitServiceServer).GetNamespacePolicies(ctx, req.(*Empty))
+		return srv.(ValidationAndCommitServiceServer).GetNamespacePolicies(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _ValidationAndCommitService_GetConfigTransaction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Empty)
+	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -304,13 +305,13 @@ func _ValidationAndCommitService_GetConfigTransaction_Handler(srv interface{}, c
 		FullMethod: ValidationAndCommitService_GetConfigTransaction_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ValidationAndCommitServiceServer).GetConfigTransaction(ctx, req.(*Empty))
+		return srv.(ValidationAndCommitServiceServer).GetConfigTransaction(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _ValidationAndCommitService_SetupSystemTablesAndNamespaces_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Empty)
+	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -322,7 +323,7 @@ func _ValidationAndCommitService_SetupSystemTablesAndNamespaces_Handler(srv inte
 		FullMethod: ValidationAndCommitService_SetupSystemTablesAndNamespaces_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ValidationAndCommitServiceServer).SetupSystemTablesAndNamespaces(ctx, req.(*Empty))
+		return srv.(ValidationAndCommitServiceServer).SetupSystemTablesAndNamespaces(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }

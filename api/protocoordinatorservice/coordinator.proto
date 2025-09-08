@@ -11,15 +11,16 @@ option go_package = "github.com/hyperledger/fabric-x-committer/api/protocoordina
 package protocoordinatorservice;
 
 import "api/protoblocktx/block_tx.proto";
+import "google/protobuf/empty.proto";
 
 service Coordinator {
     rpc BlockProcessing(stream Batch) returns (stream protoblocktx.TransactionsStatus);
-    rpc SetLastCommittedBlockNumber (protoblocktx.BlockInfo) returns (Empty) {};
-    rpc GetLastCommittedBlockNumber (Empty) returns (protoblocktx.LastCommittedBlock) {};
-    rpc GetNextExpectedBlockNumber (Empty) returns (protoblocktx.BlockInfo) {};
+    rpc SetLastCommittedBlockNumber (protoblocktx.BlockInfo) returns (google.protobuf.Empty) {};
+    rpc GetLastCommittedBlockNumber (google.protobuf.Empty) returns (protoblocktx.LastCommittedBlock) {};
+    rpc GetNextExpectedBlockNumber (google.protobuf.Empty) returns (protoblocktx.BlockInfo) {};
     rpc GetTransactionsStatus(protoblocktx.QueryStatus) returns (protoblocktx.TransactionsStatus);
-    rpc GetConfigTransaction(Empty) returns (protoblocktx.ConfigTransaction) {};
-    rpc NumberOfWaitingTransactionsForStatus(Empty) returns (WaitingTransactions);
+    rpc GetConfigTransaction(google.protobuf.Empty) returns (protoblocktx.ConfigTransaction) {};
+    rpc NumberOfWaitingTransactionsForStatus(google.protobuf.Empty) returns (WaitingTransactions);
 }
 
 // A committer's representation of a block in the blockchain.
@@ -48,7 +49,4 @@ message TxRef {
 
 message WaitingTransactions {
     int32 count = 1;
-}
-
-message Empty {
 }

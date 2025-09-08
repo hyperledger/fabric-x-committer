@@ -11,13 +11,14 @@ option go_package = "github.com/hyperledger/fabric-x-committer/api/protoqueryser
 package protoqueryservice;
 
 import "api/protoblocktx/block_tx.proto";
+import "google/protobuf/empty.proto";
 
 service QueryService {
   rpc GetRows(Query) returns (Rows) {};
   rpc BeginView(ViewParameters) returns (View) {};
   rpc EndView(View) returns (View) {};
-  rpc GetNamespacePolicies(Empty) returns (protoblocktx.NamespacePolicies) {};
-  rpc GetConfigTransaction(Empty) returns (protoblocktx.ConfigTransaction) {};
+  rpc GetNamespacePolicies(google.protobuf.Empty) returns (protoblocktx.NamespacePolicies) {};
+  rpc GetConfigTransaction(google.protobuf.Empty) returns (protoblocktx.ConfigTransaction) {};
 }
 
 message View {
@@ -61,5 +62,3 @@ message Row {
   bytes value = 2;
   uint64 version = 3;
 }
-
-message Empty {}

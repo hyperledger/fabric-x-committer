@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
@@ -58,15 +59,15 @@ func (v *VcService) RegisterService(server *grpc.Server) {
 func (v *VcService) SetLastCommittedBlockNumber(
 	_ context.Context,
 	lastBlock *protoblocktx.BlockInfo,
-) (*protovcservice.Empty, error) {
+) (*emptypb.Empty, error) {
 	v.lastCommittedBlock.Store(lastBlock)
 	return nil, nil
 }
 
 // GetLastCommittedBlockNumber get the last committed block number in the database/ledger.
 func (v *VcService) GetLastCommittedBlockNumber(
-	_ context.Context,
-	_ *protovcservice.Empty,
+	context.Context,
+	*emptypb.Empty,
 ) (*protoblocktx.LastCommittedBlock, error) {
 	return &protoblocktx.LastCommittedBlock{Block: v.lastCommittedBlock.Load()}, nil
 }
@@ -74,7 +75,7 @@ func (v *VcService) GetLastCommittedBlockNumber(
 // GetNamespacePolicies is a mock implementation of the protovcservice.GetNamespacePolicies.
 func (*VcService) GetNamespacePolicies(
 	context.Context,
-	*protovcservice.Empty,
+	*emptypb.Empty,
 ) (*protoblocktx.NamespacePolicies, error) {
 	return &protoblocktx.NamespacePolicies{}, nil
 }
@@ -82,7 +83,7 @@ func (*VcService) GetNamespacePolicies(
 // GetConfigTransaction is a mock implementation of the protovcservice.GetConfigTransaction.
 func (*VcService) GetConfigTransaction(
 	context.Context,
-	*protovcservice.Empty,
+	*emptypb.Empty,
 ) (*protoblocktx.ConfigTransaction, error) {
 	return &protoblocktx.ConfigTransaction{}, nil
 }
@@ -106,8 +107,8 @@ func (v *VcService) GetTransactionsStatus(
 // SetupSystemTablesAndNamespaces creates the required system tables and namespaces.
 func (*VcService) SetupSystemTablesAndNamespaces(
 	context.Context,
-	*protovcservice.Empty,
-) (*protovcservice.Empty, error) {
+	*emptypb.Empty,
+) (*emptypb.Empty, error) {
 	return nil, nil
 }
 

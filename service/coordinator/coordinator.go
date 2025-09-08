@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
@@ -249,7 +250,7 @@ func (c *Service) RegisterService(server *grpc.Server) {
 
 // GetConfigTransaction get the config transaction from the state DB.
 func (c *Service) GetConfigTransaction(
-	ctx context.Context, _ *protocoordinatorservice.Empty,
+	ctx context.Context, _ *emptypb.Empty,
 ) (*protoblocktx.ConfigTransaction, error) {
 	return c.validatorCommitterMgr.getConfigTransaction(ctx)
 }
@@ -258,14 +259,14 @@ func (c *Service) GetConfigTransaction(
 func (c *Service) SetLastCommittedBlockNumber(
 	ctx context.Context,
 	lastBlock *protoblocktx.BlockInfo,
-) (*protocoordinatorservice.Empty, error) {
-	return &protocoordinatorservice.Empty{}, c.validatorCommitterMgr.setLastCommittedBlockNumber(ctx, lastBlock)
+) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, c.validatorCommitterMgr.setLastCommittedBlockNumber(ctx, lastBlock)
 }
 
 // GetLastCommittedBlockNumber get the last committed block number in the database/ledger.
 func (c *Service) GetLastCommittedBlockNumber(
 	ctx context.Context,
-	_ *protocoordinatorservice.Empty,
+	_ *emptypb.Empty,
 ) (*protoblocktx.LastCommittedBlock, error) {
 	return c.validatorCommitterMgr.getLastCommittedBlockNumber(ctx)
 }
@@ -273,7 +274,7 @@ func (c *Service) GetLastCommittedBlockNumber(
 // GetNextExpectedBlockNumber returns the next expected block number to be received by the coordinator.
 func (c *Service) GetNextExpectedBlockNumber(
 	ctx context.Context,
-	_ *protocoordinatorservice.Empty,
+	_ *emptypb.Empty,
 ) (*protoblocktx.BlockInfo, error) {
 	if !c.streamActive.TryRLock() {
 		return nil, ErrActiveStreamBlockNumber
@@ -302,8 +303,8 @@ func (c *Service) GetTransactionsStatus(
 
 // NumberOfWaitingTransactionsForStatus returns the number of transactions waiting to get the final status.
 func (c *Service) NumberOfWaitingTransactionsForStatus(
-	_ context.Context,
-	_ *protocoordinatorservice.Empty,
+	context.Context,
+	*emptypb.Empty,
 ) (*protocoordinatorservice.WaitingTransactions, error) {
 	if !c.streamActive.TryLock() {
 		return nil, ErrActiveStreamWaitingTransactions

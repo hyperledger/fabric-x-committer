@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
@@ -156,18 +157,18 @@ func (c *Client) RegisterService(server *grpc.Server) {
 }
 
 // AppendBatch appends a batch to the stream.
-func (c *Client) AppendBatch(ctx context.Context, batch *protoloadgen.Batch) (*protoloadgen.Empty, error) {
+func (c *Client) AppendBatch(ctx context.Context, batch *protoloadgen.Batch) (*emptypb.Empty, error) {
 	c.txStream.AppendBatch(ctx, batch.Tx)
 	return nil, nil
 }
 
 // GetLimit reads the stream limit.
-func (c *Client) GetLimit(_ context.Context, _ *protoloadgen.Empty) (*protoloadgen.Limit, error) {
+func (c *Client) GetLimit(context.Context, *emptypb.Empty) (*protoloadgen.Limit, error) {
 	return &protoloadgen.Limit{Rate: float64(c.txStream.GetLimit())}, nil
 }
 
 // SetLimit sets the stream limit.
-func (c *Client) SetLimit(_ context.Context, limit *protoloadgen.Limit) (*protoloadgen.Empty, error) {
+func (c *Client) SetLimit(_ context.Context, limit *protoloadgen.Limit) (*emptypb.Empty, error) {
 	c.txStream.SetLimit(rate.Limit(limit.Rate))
 	return nil, nil
 }

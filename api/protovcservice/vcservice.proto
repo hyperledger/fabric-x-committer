@@ -12,15 +12,16 @@ package protovcservice;
 
 import "api/protoblocktx/block_tx.proto";
 import "api/protocoordinatorservice/coordinator.proto";
+import "google/protobuf/empty.proto";
 
 service ValidationAndCommitService {
   rpc StartValidateAndCommitStream (stream Batch) returns (stream protoblocktx.TransactionsStatus);
-  rpc SetLastCommittedBlockNumber (protoblocktx.BlockInfo) returns (Empty) {};
-  rpc GetLastCommittedBlockNumber (Empty) returns (protoblocktx.LastCommittedBlock) {};
+  rpc SetLastCommittedBlockNumber (protoblocktx.BlockInfo) returns (google.protobuf.Empty) {};
+  rpc GetLastCommittedBlockNumber (google.protobuf.Empty) returns (protoblocktx.LastCommittedBlock) {};
   rpc GetTransactionsStatus (protoblocktx.QueryStatus) returns (protoblocktx.TransactionsStatus) {};
-  rpc GetNamespacePolicies(Empty) returns (protoblocktx.NamespacePolicies) {};
-  rpc GetConfigTransaction(Empty) returns (protoblocktx.ConfigTransaction) {};
-  rpc SetupSystemTablesAndNamespaces(Empty) returns (Empty) {};
+  rpc GetNamespacePolicies(google.protobuf.Empty) returns (protoblocktx.NamespacePolicies) {};
+  rpc GetConfigTransaction(google.protobuf.Empty) returns (protoblocktx.ConfigTransaction) {};
+  rpc SetupSystemTablesAndNamespaces(google.protobuf.Empty) returns (google.protobuf.Empty) {};
 }
 
 message Batch {
@@ -36,5 +37,3 @@ message Tx {
 message InvalidTxStatus {
     protoblocktx.Status code = 1;
 }
-
-message Empty {}

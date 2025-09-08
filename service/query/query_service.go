@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
@@ -173,7 +174,7 @@ func (q *Service) GetRows(
 // GetNamespacePolicies implements the query-service interface.
 func (q *Service) GetNamespacePolicies(
 	ctx context.Context,
-	_ *protoqueryservice.Empty,
+	_ *emptypb.Empty,
 ) (*protoblocktx.NamespacePolicies, error) {
 	return queryPolicies(ctx, q.batcher.pool)
 }
@@ -181,7 +182,7 @@ func (q *Service) GetNamespacePolicies(
 // GetConfigTransaction implements the query-service interface.
 func (q *Service) GetConfigTransaction(
 	ctx context.Context,
-	_ *protoqueryservice.Empty,
+	_ *emptypb.Empty,
 ) (*protoblocktx.ConfigTransaction, error) {
 	return queryConfig(ctx, q.batcher.pool)
 }
