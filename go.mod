@@ -8,7 +8,7 @@ go 1.24.3
 
 require (
 	github.com/cenkalti/backoff/v4 v4.3.0
-	github.com/cockroachdb/errors v1.11.3
+	github.com/cockroachdb/errors v1.12.0
 	github.com/consensys/gnark-crypto v0.14.0
 	github.com/docker/docker v28.0.0+incompatible
 	github.com/docker/go-connections v0.5.0
@@ -20,7 +20,7 @@ require (
 	github.com/hyperledger/fabric v1.4.0-rc1.0.20240918034325-94590aa4332b
 	github.com/hyperledger/fabric-lib-go v1.1.3-0.20240523144151-25edd1eaf5f5
 	github.com/hyperledger/fabric-protos-go-apiv2 v0.3.3
-	github.com/hyperledger/fabric-x-common v0.0.0-20250701155113-a1ddf93333d8
+	github.com/hyperledger/fabric-x-common v0.0.0-20250907124409-88f08cdf7476
 	github.com/jackc/puddle v1.3.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/onsi/gomega v1.34.2

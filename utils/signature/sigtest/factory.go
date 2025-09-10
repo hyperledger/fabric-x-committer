@@ -21,6 +21,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"golang.org/x/crypto/sha3"
 
+	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
@@ -59,7 +60,9 @@ func (f *SignerVerifierFactory) Scheme() signature.Scheme {
 
 // NewVerifier instantiate a verifier given a public key.
 func (f *SignerVerifierFactory) NewVerifier(key signature.PublicKey) (*signature.NsVerifier, error) {
-	v, err := signature.NewNsVerifier(f.scheme, key)
+	v, err := signature.NewNsVerifier(&protoblocktx.NamespacePolicy{
+		Scheme: f.scheme, Policy: key, Type: protoblocktx.PolicyType_THRESHOLD_RULE,
+	}, nil)
 	return v, errors.Wrap(err, "error creating verifier")
 }
 

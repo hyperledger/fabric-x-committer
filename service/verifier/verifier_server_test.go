@@ -12,12 +12,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-x-common/common/policydsl"
+	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -27,8 +30,10 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-const testTimeout = 3 * time.Second
-const fakeTxID = "fake-id"
+const (
+	testTimeout = 3 * time.Second
+	fakeTxID    = "fake-id"
+)
 
 func TestNoVerificationKeySet(t *testing.T) {
 	t.Parallel()
@@ -67,7 +72,7 @@ func TestMinimalInput(t *testing.T) {
 
 	stream, _ := c.Client.StartStream(t.Context())
 
-	update, txSigner := defaultUpdate(t)
+	update, signers := defaultUpdate(t)
 
 	tx1 := &protoblocktx.Tx{
 		Namespaces: []*protoblocktx.TxNamespace{{
@@ -78,8 +83,8 @@ func TestMinimalInput(t *testing.T) {
 			}},
 		}},
 	}
-	s, _ := txSigner.SignNs(fakeTxID, tx1, 0)
-	tx1.Signatures = append(tx1.Signatures, s)
+	s, _ := signers[1].SignNs(fakeTxID, tx1, 0)
+	tx1.SignatureSets = test.AppendToSignatureSetsForThresholdRule(tx1.SignatureSets, s)
 
 	tx2 := &protoblocktx.Tx{
 		Namespaces: []*protoblocktx.TxNamespace{{
@@ -91,8 +96,8 @@ func TestMinimalInput(t *testing.T) {
 		}},
 	}
 
-	s, _ = txSigner.SignNs(fakeTxID, tx2, 0)
-	tx2.Signatures = append(tx2.Signatures, s)
+	s, _ = signers[1].SignNs(fakeTxID, tx2, 0)
+	tx2.SignatureSets = test.AppendToSignatureSetsForThresholdRule(tx2.SignatureSets, s)
 
 	tx3 := &protoblocktx.Tx{
 		Namespaces: []*protoblocktx.TxNamespace{{
@@ -103,8 +108,8 @@ func TestMinimalInput(t *testing.T) {
 			}},
 		}},
 	}
-	s, _ = txSigner.SignNs(fakeTxID, tx3, 0)
-	tx3.Signatures = append(tx3.Signatures, s)
+	s, _ = signers[1].SignNs(fakeTxID, tx3, 0)
+	tx3.SignatureSets = test.AppendToSignatureSetsForThresholdRule(tx3.SignatureSets, s)
 
 	err := stream.Send(&protosigverifierservice.Batch{
 		Update: update,
@@ -119,6 +124,38 @@ func TestMinimalInput(t *testing.T) {
 	ret, ok := readStream(t, stream, testTimeout)
 	require.True(t, ok)
 	require.Len(t, ret, 3)
+
+	identities := signature.CreateSerializedIdentities([]string{"SampleOrg"}, []string{"junk"})
+	nsPolicy := &protoblocktx.NamespacePolicy{
+		Policy: protoutil.MarshalOrPanic(policydsl.Envelope(policydsl.SignedBy(0), identities)),
+		Type:   protoblocktx.PolicyType_SIGNATURE_RULE,
+	}
+	nsPolicyBytes := protoutil.MarshalOrPanic(nsPolicy)
+
+	tx4 := &protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{{
+			NsId:      types.MetaNamespaceID,
+			NsVersion: 0,
+			ReadWrites: []*protoblocktx.ReadWrite{{
+				Key:   []byte("2"),
+				Value: nsPolicyBytes,
+			}},
+		}},
+	}
+	s, _ = signers[0].SignNs(fakeTxID, tx4, 0)
+
+	tx4.SignatureSets = test.AppendToSignatureSetsForThresholdRule(tx4.SignatureSets, s)
+
+	err = stream.Send(&protosigverifierservice.Batch{
+		Update: update,
+		Requests: []*protosigverifierservice.Tx{
+			{Ref: types.TxRef(fakeTxID, 1, 1), Tx: tx4},
+		},
+	})
+	require.NoError(t, err)
+
+	_, ok = readStream(t, stream, testTimeout)
+	require.False(t, ok)
 }
 
 func TestBadSignature(t *testing.T) {
@@ -143,7 +180,7 @@ func TestBadSignature(t *testing.T) {
 						{Key: make([]byte, 0)},
 					},
 				}},
-				Signatures: [][]byte{{0, 1, 2}},
+				SignatureSets: test.CreateSignatureSetsForThresholdRule([]byte{0}, []byte{1}, []byte{2}),
 			},
 		},
 		expectedStatus: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
@@ -164,10 +201,13 @@ func TestUpdatePolicies(t *testing.T) {
 		stream, err := c.Client.StartStream(t.Context())
 		require.NoError(t, err)
 
+		update, _ := defaultUpdate(t)
+
 		ns1Policy, _ := makePolicyItem(t, ns1)
 		ns2Policy, _ := makePolicyItem(t, ns2)
 		err = stream.Send(&protosigverifierservice.Batch{
 			Update: &protosigverifierservice.Update{
+				Config: update.Config,
 				NamespacePolicies: &protoblocktx.NamespacePolicies{
 					Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
 				},
@@ -184,8 +224,8 @@ func TestUpdatePolicies(t *testing.T) {
 					Policies: []*protoblocktx.PolicyItem{
 						p3,
 						policy.MakePolicy(t, ns2, &protoblocktx.NamespacePolicy{
-							PublicKey: []byte("bad-key"),
-							Scheme:    signature.Ecdsa,
+							Policy: []byte("bad-key"),
+							Scheme: signature.Ecdsa,
 						}),
 					},
 				},
@@ -203,10 +243,13 @@ func TestUpdatePolicies(t *testing.T) {
 		stream, err := c.Client.StartStream(t.Context())
 		require.NoError(t, err)
 
+		update, _ := defaultUpdate(t)
+
 		ns1Policy, ns1Signer := makePolicyItem(t, ns1)
 		ns2Policy, _ := makePolicyItem(t, ns2)
 		err = stream.Send(&protosigverifierservice.Batch{
 			Update: &protosigverifierservice.Update{
+				Config: update.Config,
 				NamespacePolicies: &protoblocktx.NamespacePolicies{
 					Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
 				},
@@ -248,6 +291,8 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 	stream, err := c.Client.StartStream(t.Context())
 	require.NoError(t, err)
 
+	update, _ := defaultUpdate(t)
+
 	// Each policy update will update a unique namespace, and the common namespace.
 	updateCount := len(ns) - 1
 	uniqueNsSigners := make([]*sigtest.NsSigner, updateCount)
@@ -258,6 +303,7 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 		commonNsPolicy, commonNsSigner := makePolicyItem(t, ns[len(ns)-1])
 		commonNsSigners[i] = commonNsSigner
 		p := &protosigverifierservice.Update{
+			Config: update.Config,
 			NamespacePolicies: &protoblocktx.NamespacePolicies{
 				Policies: []*protoblocktx.PolicyItem{uniqueNsPolicy, commonNsPolicy},
 			},
@@ -312,11 +358,11 @@ type testCase struct {
 
 func sign(t *testing.T, tx *protoblocktx.Tx, signers ...*sigtest.NsSigner) {
 	t.Helper()
-	tx.Signatures = make([][]byte, len(signers))
+	tx.SignatureSets = make([]*protoblocktx.SignatureSet, len(signers))
 	for i, s := range signers {
 		s, err := s.SignNs(fakeTxID, tx, i)
 		require.NoError(t, err)
-		tx.Signatures[i] = s
+		tx.SignatureSets[i] = test.CreateSignatureSetsForThresholdRule(s)[0]
 	}
 }
 
@@ -343,8 +389,8 @@ func makePolicyItem(t *testing.T, ns string) (*protoblocktx.PolicyItem, *sigtest
 	txSigner, err := factory.NewSigner(signingKey)
 	require.NoError(t, err)
 	p := policy.MakePolicy(t, ns, &protoblocktx.NamespacePolicy{
-		PublicKey: verificationKey,
-		Scheme:    signature.Ecdsa,
+		Policy: verificationKey,
+		Scheme: signature.Ecdsa,
 	})
 	return p, txSigner
 }
@@ -411,22 +457,32 @@ func readStream(
 	return channel.NewReader(ctx, outputChan).Read()
 }
 
-func defaultUpdate(t *testing.T) (*protosigverifierservice.Update, *sigtest.NsSigner) {
+func defaultUpdate(t *testing.T) (*protosigverifierservice.Update, []*sigtest.NsSigner) {
 	t.Helper()
 	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
-	signingKey, verificationKey := factory.NewKeys()
-	txSigner, _ := factory.NewSigner(signingKey)
+	nsTxSigningKey, nsTxVerificationKey := factory.NewKeys()
+	configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
+		MetaNamespaceVerificationKey: nsTxVerificationKey,
+	})
+	require.NoError(t, err)
+	nsTxSigner, _ := factory.NewSigner(nsTxSigningKey)
+
+	dataTxSigningKey, dataTxVerificationKey := factory.NewKeys()
+	dataTxSigner, _ := factory.NewSigner(dataTxSigningKey)
 	update := &protosigverifierservice.Update{
+		Config: &protoblocktx.ConfigTransaction{
+			Envelope: configBlock.Data.Data[0],
+		},
 		NamespacePolicies: &protoblocktx.NamespacePolicies{
 			Policies: []*protoblocktx.PolicyItem{
 				policy.MakePolicy(t, "1", &protoblocktx.NamespacePolicy{
-					PublicKey: verificationKey,
-					Scheme:    signature.Ecdsa,
+					Policy: dataTxVerificationKey,
+					Scheme: signature.Ecdsa,
 				}),
 			},
 		},
 	}
-	return update, txSigner
+	return update, []*sigtest.NsSigner{nsTxSigner, dataTxSigner}
 }
 
 func defaultConfig() *Config {

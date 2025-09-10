@@ -29,7 +29,7 @@ func MakePolicy(
 	var policyBytes []byte
 	if ns == types.MetaNamespaceID {
 		block, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
-			MetaNamespaceVerificationKey: nsPolicy.PublicKey,
+			MetaNamespaceVerificationKey: nsPolicy.Policy,
 		})
 		require.NoError(t, err)
 		policyBytes = block.Data.Data[0]
@@ -56,8 +56,8 @@ func MakePolicyAndNsSigner(
 	txSigner, err := factory.NewSigner(signingKey)
 	require.NoError(t, err)
 	p := MakePolicy(t, ns, &protoblocktx.NamespacePolicy{
-		PublicKey: verificationKey,
-		Scheme:    signature.Ecdsa,
+		Policy: verificationKey,
+		Scheme: signature.Ecdsa,
 	})
 	return p, txSigner
 }

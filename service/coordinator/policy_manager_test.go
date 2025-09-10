@@ -154,7 +154,7 @@ func requireUpdateEqual(t *testing.T, expected, actual *protosigverifierservice.
 func makeFakePolicy(t *testing.T, ns, key string) *protoblocktx.PolicyItem {
 	t.Helper()
 	return policy.MakePolicy(t, ns, &protoblocktx.NamespacePolicy{
-		PublicKey: []byte(key),
-		Scheme:    signature.Ecdsa,
+		Policy: []byte(key),
+		Scheme: signature.Ecdsa,
 	})
 }
