@@ -7,3 +7,11 @@
 
 loadgen-client:
   endpoint: {{ .Endpoints.LoadGen.Server }}
+  tls:
+    mode: {{ .ClientTLS.Mode }}
+    key-path: {{ .ClientTLS.KeyPath }}
+    cert-path: {{ .ClientTLS.CertPath }}
+    ca-cert-paths:
+      {{- range .ClientTLS.CACertPaths }}
+      - {{ . }}
+      {{- end }}

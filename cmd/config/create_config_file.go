@@ -31,6 +31,11 @@ type (
 		// Instance endpoints.
 		ServiceEndpoints ServiceEndpoints
 
+		// ServiceTLS holds the TLS configuration for a service.
+		ServiceTLS connection.TLSConfig
+		// ClientTLS holds the TLS configuration used by a service when acting as a client to other services.
+		ClientTLS connection.TLSConfig
+
 		// System's resources.
 		Endpoints SystemEndpoints
 		DB        DatabaseConfig

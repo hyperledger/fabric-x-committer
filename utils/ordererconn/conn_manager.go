@@ -190,11 +190,10 @@ func openConnection(
 	// We shuffle the endpoints for load balancing.
 	shuffle(endpoints)
 	logger.Infof("Opening connections to %d endpoints: %v.", len(endpoints), endpoints)
-	dialConfig, err := connection.NewLoadBalancedDialConfig(&connection.ClientConfig{
-		Endpoints:   endpoints,
-		Retry:       conf.Retry,
-		RootCA:      conf.RootCA,
-		RootCAPaths: conf.RootCAPaths,
+	dialConfig, err := connection.NewLoadBalancedDialConfig(connection.MultiClientConfig{
+		Endpoints: endpoints,
+		Retry:     conf.Retry,
+		TLS:       conf.TLS,
 	})
 	if err != nil {
 		return nil, err

@@ -25,24 +25,24 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 )
 
-type sidecarReceiverConfig struct {
-	Endpoint *connection.Endpoint
-	Res      *ClientResources
+type sidecarReceiverParameters struct {
+	Res          *ClientResources
+	ClientConfig *connection.ClientConfig
 }
 
 const committedBlocksQueueSize = 1024
 const statusIdx = int(common.BlockMetadataIndex_TRANSACTIONS_FILTER)
 
 // runSidecarReceiver start receiving blocks from the sidecar.
-func runSidecarReceiver(ctx context.Context, config *sidecarReceiverConfig) error {
+func runSidecarReceiver(ctx context.Context, params *sidecarReceiverParameters) error {
 	ledgerReceiver, err := sidecarclient.New(&sidecarclient.Parameters{
-		ChannelID: config.Res.Profile.Transaction.Policy.ChannelID,
-		Endpoint:  config.Endpoint,
+		ChannelID: params.Res.Profile.Transaction.Policy.ChannelID,
+		Client:    params.ClientConfig,
 	})
 	if err != nil {
 		return errors.Wrap(err, "failed to create ledger receiver")
 	}
-	return runDeliveryReceiver(ctx, config.Res, func(gCtx context.Context, committedBlock chan *common.Block) error {
+	return runDeliveryReceiver(ctx, params.Res, func(gCtx context.Context, committedBlock chan *common.Block) error {
 		return ledgerReceiver.Deliver(gCtx, &sidecarclient.DeliverParameters{
 			EndBlkNum:   deliver.MaxBlockNum,
 			OutputBlock: committedBlock,

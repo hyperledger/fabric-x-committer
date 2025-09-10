@@ -55,9 +55,7 @@ func TestLoadGenForLoadGen(t *testing.T) {
 			require.NoError(t, err)
 
 			subClientConf := DefaultClientConf()
-			subClientConf.Adapter.LoadGenClient = &adapters.LoadGenClientConfig{
-				Endpoint: &clientConf.Server.Endpoint,
-			}
+			subClientConf.Adapter.LoadGenClient = test.NewInsecureClientConfig(&clientConf.Server.Endpoint)
 			subClient, err := NewLoadGenClient(subClientConf)
 			require.NoError(t, err)
 
@@ -75,10 +73,8 @@ func TestLoadGenForVCService(t *testing.T) {
 		clientConf.Limit = limit
 		t.Run(limitToString(limit), func(t *testing.T) {
 			t.Parallel()
-			env := vc.NewValidatorAndCommitServiceTestEnv(t, 2)
-			clientConf.Adapter.VCClient = &adapters.VCClientConfig{
-				Endpoints: env.Endpoints,
-			}
+			env := vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, 2, test.InsecureTLSConfig)
+			clientConf.Adapter.VCClient = test.NewInsecureMultiClientConfig(env.Endpoints...)
 			testLoadGenerator(t, clientConf)
 		})
 	}
@@ -98,12 +94,12 @@ func TestLoadGenForSigVerifier(t *testing.T) {
 	}
 }
 
-func startVerifiers(t *testing.T) *adapters.VerifierClientConfig {
+func startVerifiers(t *testing.T) *connection.MultiClientConfig {
 	t.Helper()
 	endpoints := make([]*connection.Endpoint, 2)
 	for i := range endpoints {
 		sConf := &verifier.Config{
-			Server: connection.NewLocalHostServer(),
+			Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
 			ParallelExecutor: verifier.ExecutorConfig{
 				BatchSizeCutoff:   50,
 				BatchTimeCutoff:   10 * time.Millisecond,
@@ -116,9 +112,7 @@ func startVerifiers(t *testing.T) *adapters.VerifierClientConfig {
 		test.RunGrpcServerForTest(t.Context(), t, sConf.Server, service.RegisterService)
 		endpoints[i] = &sConf.Server.Endpoint
 	}
-	return &adapters.VerifierClientConfig{
-		Endpoints: endpoints,
-	}
+	return test.NewInsecureMultiClientConfig(endpoints...)
 }
 
 func TestLoadGenForCoordinator(t *testing.T) {
@@ -136,11 +130,11 @@ func TestLoadGenForCoordinator(t *testing.T) {
 			_, vcServer := mock.StartMockVCService(t, 1)
 
 			cConf := &coordinator.Config{
-				Server:                   connection.NewLocalHostServer(),
-				Monitoring:               defaultMonitoring(),
-				VerifierConfig:           *test.ServerToClientConfig(sigVerServer.Configs...),
-				ValidatorCommitterConfig: *test.ServerToClientConfig(vcServer.Configs...),
-				DependencyGraphConfig: &coordinator.DependencyGraphConfig{
+				Server:             connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
+				Monitoring:         defaultMonitoring(),
+				Verifier:           *test.ServerToMultiClientConfig(sigVerServer.Configs...),
+				ValidatorCommitter: *test.ServerToMultiClientConfig(vcServer.Configs...),
+				DependencyGraph: &coordinator.DependencyGraphConfig{
 					NumOfLocalDepConstructors: 1,
 					WaitingTxsLimit:           100_000,
 				},
@@ -151,9 +145,7 @@ func TestLoadGenForCoordinator(t *testing.T) {
 			test.RunServiceAndGrpcForTest(t.Context(), t, service, cConf.Server)
 
 			// Start client
-			clientConf.Adapter.CoordinatorClient = &adapters.CoordinatorClientConfig{
-				Endpoint: &cConf.Server.Endpoint,
-			}
+			clientConf.Adapter.CoordinatorClient = test.NewInsecureClientConfig(&cConf.Server.Endpoint)
 			testLoadGenerator(t, clientConf)
 		})
 	}
@@ -197,10 +189,8 @@ func TestLoadGenForSidecar(t *testing.T) {
 				},
 				LastCommittedBlockSetInterval: 100 * time.Millisecond,
 				WaitingTxsLimit:               5000,
-				Committer: sidecar.CoordinatorConfig{
-					Endpoint: coordinatorServer.Configs[0].Endpoint,
-				},
-				Monitoring: defaultMonitoring(),
+				Committer:                     test.NewInsecureClientConfig(&coordinatorServer.Configs[0].Endpoint),
+				Monitoring:                    defaultMonitoring(),
 				Ledger: sidecar.LedgerConfig{
 					Path: t.TempDir(),
 				},
@@ -212,8 +202,8 @@ func TestLoadGenForSidecar(t *testing.T) {
 
 			// Start client
 			clientConf.Adapter.SidecarClient = &adapters.SidecarClientConfig{
-				SidecarEndpoint: &sidecarServerConf.Endpoint,
-				OrdererServers:  ordererServers,
+				OrdererServers: ordererServers,
+				SidecarClient:  test.NewInsecureClientConfig(&sidecarServerConf.Endpoint),
 			}
 			testLoadGenerator(t, clientConf)
 		})
@@ -235,7 +225,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 
 			endpoints := ordererconn.NewEndpoints(0, "msp", ordererServer.Configs...)
 			sidecarConf := &sidecar.Config{
-				Server: connection.NewLocalHostServer(),
+				Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
 				Orderer: ordererconn.Config{
 					Connection: ordererconn.ConnectionConfig{
 						Endpoints: endpoints,
@@ -246,10 +236,8 @@ func TestLoadGenForOrderer(t *testing.T) {
 				},
 				LastCommittedBlockSetInterval: 100 * time.Millisecond,
 				WaitingTxsLimit:               5000,
-				Committer: sidecar.CoordinatorConfig{
-					Endpoint: coordinatorServer.Configs[0].Endpoint,
-				},
-				Monitoring: defaultMonitoring(),
+				Committer:                     test.NewInsecureClientConfig(&coordinatorServer.Configs[0].Endpoint),
+				Monitoring:                    defaultMonitoring(),
 				Ledger: sidecar.LedgerConfig{
 					Path: t.TempDir(),
 				},
@@ -271,7 +259,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 
 			// Start client
 			clientConf.Adapter.OrdererClient = &adapters.OrdererClientConfig{
-				SidecarEndpoint:      &sidecarConf.Server.Endpoint,
+				SidecarClient:        test.NewInsecureClientConfig(&sidecarConf.Server.Endpoint),
 				Orderer:              sidecarConf.Orderer,
 				BroadcastParallelism: 5,
 			}
@@ -325,7 +313,7 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 
 func preAllocatePorts(t *testing.T) *connection.ServerConfig {
 	t.Helper()
-	server := connection.NewLocalHostServer()
+	server := connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig)
 	listener, err := server.PreAllocateListener()
 	require.NoError(t, err)
 	t.Cleanup(func() {

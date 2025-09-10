@@ -4,6 +4,14 @@
 #
 server:
   endpoint: {{ .ServiceEndpoints.Server | default "localhost:0" }}
+  tls:
+    mode: {{ .ServiceTLS.Mode }}
+    key-path: {{ .ServiceTLS.KeyPath }}
+    cert-path: {{ .ServiceTLS.CertPath }}
+    ca-cert-paths:
+      {{- range .ServiceTLS.CACertPaths }}
+      - {{ . }}
+      {{- end }}
   keep-alive:
     params:
       time: 300s
@@ -25,6 +33,14 @@ orderer:
   consensus-type: BFT
 committer:
   endpoint: {{ .Endpoints.Coordinator.Server }}
+  tls:
+    mode: {{ .ClientTLS.Mode }}
+    key-path: {{ .ClientTLS.KeyPath }}
+    cert-path: {{ .ClientTLS.CertPath }}
+    ca-cert-paths:
+      {{- range .ClientTLS.CACertPaths }}
+      - {{ . }}
+      {{- end }}
 
 ledger:
   path: {{ .LedgerPath }}

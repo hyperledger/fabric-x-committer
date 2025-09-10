@@ -44,10 +44,12 @@ type (
 	}
 )
 
-// NewValidatorAndCommitServiceTestEnv creates a new test environment with a vcservice and a database.
-func NewValidatorAndCommitServiceTestEnv(
+// NewValidatorAndCommitServiceTestEnvWithTLS creates a new test environment with a vcservice and a database.
+// It allows TLS with the acceptance of server creds.
+func NewValidatorAndCommitServiceTestEnvWithTLS(
 	t *testing.T,
 	numServices int,
+	serverCreds connection.TLSConfig, // one credentials set for all the vc-services.
 	db ...*DatabaseTestEnv,
 ) *ValidatorAndCommitterServiceTestEnv {
 	t.Helper()
@@ -71,7 +73,7 @@ func NewValidatorAndCommitServiceTestEnv(
 	endpoints := make([]*connection.Endpoint, numServices)
 	for i := range vcservices {
 		config := &Config{
-			Server:   connection.NewLocalHostServer(),
+			Server:   connection.NewLocalHostServerWithTLS(serverCreds),
 			Database: dbEnv.DBConf,
 			ResourceLimits: &ResourceLimitsConfig{
 				MaxWorkersForPreparer:             2,
@@ -82,7 +84,7 @@ func NewValidatorAndCommitServiceTestEnv(
 				// we are setting the timeout value to 20 seconds
 			},
 			Monitoring: monitoring.Config{
-				Server: connection.NewLocalHostServer(),
+				Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
 			},
 		}
 		vcs, err := NewValidatorCommitterService(initCtx, config)

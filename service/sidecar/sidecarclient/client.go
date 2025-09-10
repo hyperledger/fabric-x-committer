@@ -27,9 +27,8 @@ type (
 
 	// Parameters used to define the connection properties to the sidecar.
 	Parameters struct {
-		Endpoint  *connection.Endpoint
+		Client    *connection.ClientConfig
 		ChannelID string
-		Retry     *connection.RetryProfile
 	}
 
 	// DeliverParameters needed for deliver to run.
@@ -50,8 +49,9 @@ type (
 func New(config *Parameters) (*Client, error) {
 	cm := &ordererconn.ConnectionManager{}
 	connConfig := &ordererconn.ConnectionConfig{
-		Endpoints: []*ordererconn.Endpoint{{Endpoint: *config.Endpoint}},
-		Retry:     config.Retry,
+		Endpoints: []*ordererconn.Endpoint{{Endpoint: *config.Client.Endpoint}},
+		Retry:     config.Client.Retry,
+		TLS:       config.Client.TLS,
 	}
 	if err := cm.Update(connConfig); err != nil {
 		return nil, err

@@ -14,46 +14,26 @@ import (
 type (
 	// AdapterConfig contains all adapters configurations.
 	AdapterConfig struct {
-		OrdererClient     *OrdererClientConfig     `mapstructure:"orderer-client"`
-		SidecarClient     *SidecarClientConfig     `mapstructure:"sidecar-client"`
-		CoordinatorClient *CoordinatorClientConfig `mapstructure:"coordinator-client"`
-		VCClient          *VCClientConfig          `mapstructure:"vc-client"`
-		VerifierClient    *VerifierClientConfig    `mapstructure:"verifier-client"`
-		LoadGenClient     *LoadGenClientConfig     `mapstructure:"loadgen-client"`
+		OrdererClient     *OrdererClientConfig          `mapstructure:"orderer-client"`
+		SidecarClient     *SidecarClientConfig          `mapstructure:"sidecar-client"`
+		LoadGenClient     *connection.ClientConfig      `mapstructure:"loadgen-client"`
+		CoordinatorClient *connection.ClientConfig      `mapstructure:"coordinator-client"`
+		VCClient          *connection.MultiClientConfig `mapstructure:"vc-client"`
+		VerifierClient    *connection.MultiClientConfig `mapstructure:"verifier-client"`
 	}
 
 	// OrdererClientConfig is a struct that contains the configuration for the orderer client.
 	OrdererClientConfig struct {
 		Orderer              ordererconn.Config `mapstructure:"orderer"`
 		BroadcastParallelism int                `mapstructure:"broadcast-parallelism"`
-		// SidecarEndpoint is used to deliver status from the sidecar.
+		// SidecarClient is used to deliver status from the sidecar.
 		// If omitted, we will fetch directly from the orderer.
-		SidecarEndpoint *connection.Endpoint `mapstructure:"sidecar-endpoint"`
+		SidecarClient *connection.ClientConfig `mapstructure:"sidecar-client"`
 	}
 
 	// SidecarClientConfig is a struct that contains the configuration for the sidecar client.
 	SidecarClientConfig struct {
-		SidecarEndpoint *connection.Endpoint       `mapstructure:"sidecar-endpoint"`
-		OrdererServers  []*connection.ServerConfig `mapstructure:"orderer-servers"`
-	}
-
-	// CoordinatorClientConfig is a struct that contains the configuration for the coordinator client.
-	CoordinatorClientConfig struct {
-		Endpoint *connection.Endpoint `mapstructure:"endpoint"`
-	}
-
-	// VCClientConfig is a struct that contains the configuration for the VC client.
-	VCClientConfig struct {
-		Endpoints []*connection.Endpoint `mapstructure:"endpoints"`
-	}
-
-	// VerifierClientConfig is a struct that contains the configuration for the verifier client.
-	VerifierClientConfig struct {
-		Endpoints []*connection.Endpoint `mapstructure:"endpoints"`
-	}
-
-	// LoadGenClientConfig is a struct that contains the configuration for the load generator client.
-	LoadGenClientConfig struct {
-		Endpoint *connection.Endpoint `mapstructure:"endpoint"`
+		SidecarClient  *connection.ClientConfig   `mapstructure:"sidecar-client"`
+		OrdererServers []*connection.ServerConfig `mapstructure:"orderer-servers"`
 	}
 )

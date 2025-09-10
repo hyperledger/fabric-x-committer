@@ -4,6 +4,14 @@
 #
 server:
   endpoint: {{ .ServiceEndpoints.Server | default "localhost:0" }}
+  tls:
+    mode: {{ .ServiceTLS.Mode }}
+    key-path: {{ .ServiceTLS.KeyPath }}
+    cert-path: {{ .ServiceTLS.CertPath }}
+    ca-cert-paths:
+      {{- range .ServiceTLS.CACertPaths }}
+      - {{ . }}
+      {{- end }}
 monitoring:
   server:
     endpoint: {{ .ServiceEndpoints.Metrics | default "localhost:0" }}
@@ -13,11 +21,20 @@ verifier:
     {{- range .Endpoints.Verifier }}
     - {{ .Server }}
     {{- end }}
+  tls: &ClientCreds
+    mode: {{ .ClientTLS.Mode }}
+    key-path: {{ .ClientTLS.KeyPath }}
+    cert-path: {{ .ClientTLS.CertPath }}
+    ca-cert-paths:
+      {{- range .ClientTLS.CACertPaths }}
+      - {{ . }}
+      {{- end }}
 validator-committer:
   endpoints:
    {{- range .Endpoints.VCService }}
     - {{ .Server }}
    {{- end }}
+  tls: *ClientCreds
 
 dependency-graph:
   num-of-local-dep-constructors: 1

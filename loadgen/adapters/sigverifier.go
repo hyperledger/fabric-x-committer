@@ -11,7 +11,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -26,12 +25,12 @@ type (
 	// SvAdapter applies load on the SV.
 	SvAdapter struct {
 		commonAdapter
-		config *VerifierClientConfig
+		config *connection.MultiClientConfig
 	}
 )
 
 // NewSVAdapter instantiate SvAdapter.
-func NewSVAdapter(config *VerifierClientConfig, res *ClientResources) *SvAdapter {
+func NewSVAdapter(config *connection.MultiClientConfig, res *ClientResources) *SvAdapter {
 	return &SvAdapter{
 		commonAdapter: commonAdapter{res: res},
 		config:        config,
@@ -44,8 +43,7 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	if err != nil {
 		return errors.Wrap(err, "failed creating verification policy")
 	}
-
-	connections, err := connection.OpenConnections(c.config.Endpoints, insecure.NewCredentials())
+	connections, err := connection.OpenConnections(*c.config)
 	if err != nil {
 		return errors.Wrap(err, "failed opening connections")
 	}
@@ -57,7 +55,6 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	streams := make([]protosigverifierservice.Verifier_StartStreamClient, len(connections))
 	for i, conn := range connections {
 		client := protosigverifierservice.NewVerifierClient(conn)
-
 		logger.Infof("Opening stream to %s", c.config.Endpoints[i])
 		streams[i], err = client.StartStream(gCtx)
 		if err != nil {

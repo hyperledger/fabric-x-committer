@@ -50,6 +50,31 @@ type (
 	}
 )
 
+// TestCoordinatorSecureConnection verifies the Coordinator gRPC server's behavior
+// under various client TLS configurations.
+func TestCoordinatorSecureConnection(t *testing.T) {
+	t.Parallel()
+	test.RunSecureConnectionTest(t,
+		func(t *testing.T, tlsCfg connection.TLSConfig) test.RPCAttempt {
+			t.Helper()
+			env := newCoordinatorTestEnv(t, &testConfig{
+				numSigService: 1,
+				numVcService:  1,
+				mockVcService: true,
+			})
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+			t.Cleanup(cancel)
+			env.startServiceWithCreds(ctx, t, tlsCfg)
+			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
+				t.Helper()
+				client := createCoordinatorClientWithTLS(t, &env.coordinator.config.Server.Endpoint, cfg)
+				_, err := client.GetNextExpectedBlockNumber(ctx, nil)
+				return err
+			}
+		},
+	)
+}
+
 func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEnv {
 	t.Helper()
 	svs, svServers := mock.StartMockSVService(t, tConfig.numSigService)
@@ -59,7 +84,7 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 	var dbEnv *vc.DatabaseTestEnv
 
 	if !tConfig.mockVcService {
-		vcsTestEnv = vc.NewValidatorAndCommitServiceTestEnv(t, tConfig.numVcService)
+		vcsTestEnv = vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, tConfig.numVcService, test.InsecureTLSConfig)
 		for _, c := range vcsTestEnv.Configs {
 			vcServerConfigs = append(vcServerConfigs, c.Server)
 		}
@@ -70,15 +95,15 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 	}
 
 	c := &Config{
-		VerifierConfig:           *test.ServerToClientConfig(svServers.Configs...),
-		ValidatorCommitterConfig: *test.ServerToClientConfig(vcServerConfigs...),
-		DependencyGraphConfig: &DependencyGraphConfig{
+		Verifier:           *test.ServerToMultiClientConfig(svServers.Configs...),
+		ValidatorCommitter: *test.ServerToMultiClientConfig(vcServerConfigs...),
+		DependencyGraph: &DependencyGraphConfig{
 			NumOfLocalDepConstructors: 3,
 			WaitingTxsLimit:           10,
 		},
 		ChannelBufferSizePerGoroutine: 2000,
 		Monitoring: monitoring.Config{
-			Server: connection.NewLocalHostServer(),
+			Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
 		},
 	}
 
@@ -91,30 +116,30 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 	}
 }
 
-func (e *coordinatorTestEnv) start(ctx context.Context, t *testing.T) {
+func (e *coordinatorTestEnv) startInsecureServiceAndOpenStream(ctx context.Context, t *testing.T) {
 	t.Helper()
-	cs := e.coordinator
-	sc := &connection.ServerConfig{
-		Endpoint: connection.Endpoint{
-			Host: "localhost",
-			Port: 0,
-		},
-	}
-	test.RunServiceAndGrpcForTest(ctx, t, cs, sc)
-
-	conn, err := connection.Connect(connection.NewInsecureDialConfig(&sc.Endpoint))
-	require.NoError(t, err)
-
-	client := protocoordinatorservice.NewCoordinatorClient(conn)
-	e.client = client
+	e.startServiceWithCreds(ctx, t, test.InsecureTLSConfig)
+	e.client = createCoordinatorClientWithTLS(t, &e.coordinator.config.Server.Endpoint, test.InsecureTLSConfig)
 
 	sCtx, sCancel := context.WithTimeout(ctx, 5*time.Minute)
 	t.Cleanup(sCancel)
-	csStream, err := client.BlockProcessing(sCtx)
+	csStream, err := e.client.BlockProcessing(sCtx)
 	require.NoError(t, err)
 
 	e.csStream = csStream
 	e.streamCancel = sCancel
+}
+
+func (e *coordinatorTestEnv) startServiceWithCreds(
+	ctx context.Context,
+	t *testing.T,
+	serverCreds connection.TLSConfig,
+) {
+	t.Helper()
+	cs := e.coordinator
+	e.coordinator.config.Server = connection.NewLocalHostServerWithTLS(serverCreds)
+
+	test.RunServiceAndGrpcForTest(ctx, t, cs, e.coordinator.config.Server)
 }
 
 func (e *coordinatorTestEnv) ensureStreamActive(t *testing.T) {
@@ -193,7 +218,7 @@ func TestCoordinatorOneActiveStreamOnly(t *testing.T) {
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env.start(ctx, t)
+	env.startInsecureServiceAndOpenStream(ctx, t)
 
 	env.ensureStreamActive(t)
 
@@ -208,7 +233,7 @@ func TestGetNextBlockNumWithActiveStream(t *testing.T) {
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env.start(ctx, t)
+	env.startInsecureServiceAndOpenStream(ctx, t)
 
 	env.ensureStreamActive(t)
 
@@ -222,7 +247,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: false})
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
-	env.start(ctx, t)
+	env.startInsecureServiceAndOpenStream(ctx, t)
 
 	env.createNamespaces(t, 0, "1")
 
@@ -293,7 +318,7 @@ func TestCoordinatorServiceRejectedTx(t *testing.T) {
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: false})
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
-	env.start(ctx, t)
+	env.startInsecureServiceAndOpenStream(ctx, t)
 
 	env.createNamespaces(t, 0, "1")
 
@@ -339,7 +364,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: false})
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
-	env.start(ctx, t)
+	env.startInsecureServiceAndOpenStream(ctx, t)
 
 	utNsID := "1"
 	utNsVersion := uint64(0)
@@ -522,7 +547,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: false})
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
-	env.start(ctx, t)
+	env.startInsecureServiceAndOpenStream(ctx, t)
 
 	env.createNamespaces(t, 0, "1")
 
@@ -621,12 +646,12 @@ func TestCoordinatorRecovery(t *testing.T) {
 
 	cancel()
 
-	vcEnv := vc.NewValidatorAndCommitServiceTestEnv(t, 1, env.dbEnv)
-	env.config.ValidatorCommitterConfig = *test.ServerToClientConfig(vcEnv.Configs[0].Server)
+	vcEnv := vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, 1, test.InsecureTLSConfig, env.dbEnv)
+	env.config.ValidatorCommitter = *test.ServerToMultiClientConfig(vcEnv.Configs[0].Server)
 	env.coordinator = NewCoordinatorService(env.config)
 	ctx, cancel = context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env.start(ctx, t)
+	env.startInsecureServiceAndOpenStream(ctx, t)
 
 	env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus)
 
@@ -734,7 +759,7 @@ func TestCoordinatorStreamFailureWithSidecar(t *testing.T) {
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: false})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env.start(ctx, t)
+	env.startInsecureServiceAndOpenStream(ctx, t)
 
 	env.createNamespaces(t, 0, "1")
 
@@ -829,7 +854,7 @@ func TestChunkSizeSentForDepGraph(t *testing.T) {
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env.start(ctx, t)
+	env.startInsecureServiceAndOpenStream(ctx, t)
 
 	txPerBlock := 1990
 	b, expectedTxsStatus := makeTestBlock(txPerBlock)
@@ -859,7 +884,7 @@ func TestWaitingTxsCount(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env.start(ctx, t)
+	env.startInsecureServiceAndOpenStream(ctx, t)
 
 	txPerBlock := 10
 	b, expectedTxsStatus := makeTestBlock(txPerBlock)
@@ -924,18 +949,17 @@ func TestWaitingTxsCount(t *testing.T) {
 	}, 2*time.Second, 100*time.Millisecond)
 }
 
-func fakeConfigForTest(_ *testing.T) *Config {
+func fakeConfigForTest(t *testing.T) *Config {
+	t.Helper()
+	randomEndpoint, err := connection.NewEndpoint("random:1234")
+	require.NoError(t, err)
 	return &Config{
-		Server: connection.NewLocalHostServer(),
-		VerifierConfig: connection.ClientConfig{
-			Endpoints: []*connection.Endpoint{{Host: "random", Port: 1234}},
-		},
-		ValidatorCommitterConfig: connection.ClientConfig{
-			Endpoints: []*connection.Endpoint{{Host: "random", Port: 1234}},
-		},
-		DependencyGraphConfig: &DependencyGraphConfig{},
+		Server:             connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
+		Verifier:           *test.NewInsecureMultiClientConfig(randomEndpoint),
+		ValidatorCommitter: *test.NewInsecureMultiClientConfig(randomEndpoint),
+		DependencyGraph:    &DependencyGraphConfig{},
 		Monitoring: monitoring.Config{
-			Server: connection.NewLocalHostServer(),
+			Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
 		},
 	}
 }
@@ -965,4 +989,14 @@ func makeTestBlock(txPerBlock int) (*protocoordinatorservice.Batch, map[string]*
 	}
 
 	return b, expectedTxsStatus
+}
+
+//nolint:ireturn // returning a gRPC client interface is intentional for test purpose.
+func createCoordinatorClientWithTLS(
+	t *testing.T,
+	ep *connection.Endpoint,
+	tlsCfg connection.TLSConfig,
+) protocoordinatorservice.CoordinatorClient {
+	t.Helper()
+	return test.CreateClientWithTLS(t, ep, tlsCfg, protocoordinatorservice.NewCoordinatorClient)
 }

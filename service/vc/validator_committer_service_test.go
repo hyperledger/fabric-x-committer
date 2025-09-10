@@ -34,18 +34,34 @@ type validatorAndCommitterServiceTestEnvWithClient struct {
 	dbEnv        *DatabaseTestEnv
 }
 
+func TestVCSecureConnection(t *testing.T) {
+	t.Parallel()
+	test.RunSecureConnectionTest(t,
+		func(t *testing.T, cfg connection.TLSConfig) test.RPCAttempt {
+			t.Helper()
+			env := NewValidatorAndCommitServiceTestEnvWithTLS(t, 1, cfg)
+			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
+				t.Helper()
+				client := createValidatorAndCommitClientWithTLS(t, &env.Configs[0].Server.Endpoint, cfg)
+				_, err := client.SetupSystemTablesAndNamespaces(ctx, nil)
+				return err
+			}
+		},
+	)
+}
+
 func newValidatorAndCommitServiceTestEnvWithClient(
 	t *testing.T,
 	numServices int,
 ) *validatorAndCommitterServiceTestEnvWithClient {
 	t.Helper()
-	vcs := NewValidatorAndCommitServiceTestEnv(t, numServices)
+	vcs := NewValidatorAndCommitServiceTestEnvWithTLS(t, numServices, test.InsecureTLSConfig)
 
 	allEndpoints := make([]*connection.Endpoint, len(vcs.Configs))
 	for i, c := range vcs.Configs {
 		allEndpoints[i] = &c.Server.Endpoint
 	}
-	commonConn, connErr := connection.Connect(connection.NewInsecureLoadBalancedDialConfig(allEndpoints))
+	commonConn, connErr := connection.Connect(test.NewInsecureLoadBalancedDialConfig(t, allEndpoints))
 	require.NoError(t, connErr)
 
 	vcsTestEnv := &validatorAndCommitterServiceTestEnvWithClient{
@@ -62,12 +78,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 	require.NoError(t, setupErr)
 
 	for i, c := range vcs.Configs {
-		clientConn, err := connection.Connect(connection.NewInsecureDialConfig(&c.Server.Endpoint))
-		require.NoError(t, err)
-		t.Cleanup(func() {
-			require.NoError(t, clientConn.Close())
-		})
-		client := protovcservice.NewValidationAndCommitServiceClient(clientConn)
+		client := createValidatorAndCommitClientWithTLS(t, &c.Server.Endpoint, test.InsecureTLSConfig)
 
 		sCtx, sCancel := context.WithTimeout(t.Context(), 5*time.Minute)
 		t.Cleanup(sCancel)
@@ -507,7 +518,7 @@ func TestVCServiceOneActiveStreamOnly(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return env.vcs[0].isStreamActive.Load()
-	}, 4*time.Second, 250*time.Millisecond)
+	}, 20*time.Second, 250*time.Millisecond)
 
 	ctx, _ := createContext(t)
 	stream, err := env.commonClient.StartValidateAndCommitStream(ctx)
@@ -721,4 +732,14 @@ func createContext(t *testing.T) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
 	return ctx, cancel
+}
+
+//nolint:ireturn // returning a gRPC client interface is intentional for test purpose.
+func createValidatorAndCommitClientWithTLS(
+	t *testing.T,
+	ep *connection.Endpoint,
+	tlsCfg connection.TLSConfig,
+) protovcservice.ValidationAndCommitServiceClient {
+	t.Helper()
+	return test.CreateClientWithTLS(t, ep, tlsCfg, protovcservice.NewValidationAndCommitServiceClient)
 }

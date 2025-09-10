@@ -10,3 +10,11 @@ verifier-client:
     {{- range .Endpoints.Verifier }}
     - {{ .Server }}
     {{- end }}
+  tls:
+    mode: {{ .ClientTLS.Mode }}
+    key-path: {{ .ClientTLS.KeyPath }}
+    cert-path: {{ .ClientTLS.CertPath }}
+    ca-cert-paths:
+      {{- range .ClientTLS.CACertPaths }}
+      - {{ . }}
+      {{- end }}

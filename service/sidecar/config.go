@@ -29,7 +29,7 @@ type (
 	Config struct {
 		Server                        *connection.ServerConfig  `mapstructure:"server"`
 		Monitoring                    monitoring.Config         `mapstructure:"monitoring"`
-		Committer                     CoordinatorConfig         `mapstructure:"committer"`
+		Committer                     *connection.ClientConfig  `mapstructure:"committer"`
 		Orderer                       ordererconn.Config        `mapstructure:"orderer"`
 		Ledger                        LedgerConfig              `mapstructure:"ledger"`
 		Notification                  NotificationServiceConfig `mapstructure:"notification"`
@@ -44,12 +44,6 @@ type (
 		// GenesisBlockFilePath is the path for the genesis block.
 		// If omitted, the local configuration will be used.
 		GenesisBlockFilePath string `mapstructure:"genesis-block-file-path" yaml:"genesis-block-file-path,omitempty"`
-	}
-
-	// CoordinatorConfig holds the endpoint of the coordinator component in the
-	// committer service.
-	CoordinatorConfig struct {
-		Endpoint connection.Endpoint `mapstructure:"endpoint"`
 	}
 
 	// LedgerConfig holds the ledger path.

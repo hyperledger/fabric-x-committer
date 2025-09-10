@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -30,9 +29,25 @@ import (
 const testTimeout = 3 * time.Second
 const fakeTxID = "fake-id"
 
+func TestVerifierSecureConnection(t *testing.T) {
+	t.Parallel()
+	test.RunSecureConnectionTest(t,
+		func(t *testing.T, tlsCfg connection.TLSConfig) test.RPCAttempt {
+			t.Helper()
+			env := newTestState(t, defaultConfigWithTLS(tlsCfg))
+			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
+				t.Helper()
+				client := createVerifierClientWithTLS(t, &env.Service.config.Server.Endpoint, cfg)
+				_, err := client.StartStream(ctx)
+				return err
+			}
+		},
+	)
+}
+
 func TestNoVerificationKeySet(t *testing.T) {
 	t.Parallel()
-	c := newTestState(t, defaultConfig())
+	c := newTestState(t, defaultConfigWithTLS(test.InsecureTLSConfig))
 
 	stream, err := c.Client.StartStream(t.Context())
 	require.NoError(t, err)
@@ -48,7 +63,7 @@ func TestNoVerificationKeySet(t *testing.T) {
 func TestNoInput(t *testing.T) {
 	t.Parallel()
 	test.FailHandler(t)
-	c := newTestState(t, defaultConfig())
+	c := newTestState(t, defaultConfigWithTLS(test.InsecureTLSConfig))
 
 	stream, _ := c.Client.StartStream(t.Context())
 
@@ -63,7 +78,7 @@ func TestNoInput(t *testing.T) {
 func TestMinimalInput(t *testing.T) {
 	t.Parallel()
 	test.FailHandler(t)
-	c := newTestState(t, defaultConfig())
+	c := newTestState(t, defaultConfigWithTLS(test.InsecureTLSConfig))
 
 	stream, _ := c.Client.StartStream(t.Context())
 
@@ -382,14 +397,9 @@ func newTestState(t *testing.T, config *Config) *State {
 	service := New(config)
 	test.RunServiceAndGrpcForTest(t.Context(), t, service, config.Server)
 
-	clientConnection, err := connection.Connect(connection.NewInsecureDialConfig(&config.Server.Endpoint))
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		assert.NoError(t, clientConnection.Close())
-	})
 	return &State{
 		Service: service,
-		Client:  protosigverifierservice.NewVerifierClient(clientConnection),
+		Client:  createVerifierClientWithTLS(t, &config.Server.Endpoint, test.InsecureTLSConfig),
 	}
 }
 
@@ -429,9 +439,9 @@ func defaultUpdate(t *testing.T) (*protosigverifierservice.Update, *sigtest.NsSi
 	return update, txSigner
 }
 
-func defaultConfig() *Config {
+func defaultConfigWithTLS(tlsConfig connection.TLSConfig) *Config {
 	return &Config{
-		Server: connection.NewLocalHostServer(),
+		Server: connection.NewLocalHostServerWithTLS(tlsConfig),
 		ParallelExecutor: ExecutorConfig{
 			BatchSizeCutoff:   3,
 			BatchTimeCutoff:   1 * time.Hour,
@@ -439,13 +449,23 @@ func defaultConfig() *Config {
 			ChannelBufferSize: 1,
 		},
 		Monitoring: monitoring.Config{
-			Server: connection.NewLocalHostServer(),
+			Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
 		},
 	}
 }
 
 func defaultConfigQuickCutoff() *Config {
-	config := defaultConfig()
+	config := defaultConfigWithTLS(test.InsecureTLSConfig)
 	config.ParallelExecutor.BatchSizeCutoff = 1
 	return config
+}
+
+//nolint:ireturn // returning a gRPC client interface is intentional for test purpose.
+func createVerifierClientWithTLS(
+	t *testing.T,
+	ep *connection.Endpoint,
+	tlsCfg connection.TLSConfig,
+) protosigverifierservice.VerifierClient {
+	t.Helper()
+	return test.CreateClientWithTLS(t, ep, tlsCfg, protosigverifierservice.NewVerifierClient)
 }
