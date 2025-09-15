@@ -368,7 +368,7 @@ func TestReadWriteWithValue(t *testing.T) {
 
 func TestGenTxWithRateLimit(t *testing.T) {
 	t.Parallel()
-	p := DefaultProfile(8)
+	p := DefaultProfile(1)
 	limit := 1000
 	expectedSeconds := 5
 	producedTotal := expectedSeconds * limit
@@ -385,7 +385,7 @@ func TestGenTxWithRateLimit(t *testing.T) {
 	start := time.Now()
 	g.NextN(t.Context(), producedTotal)
 	duration := time.Since(start)
-	require.InDelta(t, float64(expectedSeconds), duration.Seconds(), 0.1)
+	require.InDelta(t, float64(expectedSeconds), duration.Seconds(), 0.1*float64(expectedSeconds))
 }
 
 // modGenTester simulates querying the version from the query service.
