@@ -85,9 +85,15 @@ func NewBroadcastStream(ctx context.Context, config *ordererconn.Config) (*Broad
 	return stream, nil
 }
 
-// Close closes all the connections for the stream.
-func (s *BroadcastStream) Close() {
-	s.ConnectionManager.Close()
+// CloseConnections closes all the connections for the stream.
+func (s *BroadcastStream) CloseConnections() {
+	s.ConnectionManager.CloseConnections()
+}
+
+// Close is included to implement the [io.Closer] interface.
+func (s *BroadcastStream) Close() error {
+	s.CloseConnections()
+	return nil
 }
 
 // SendBatch sends a batch one by one.

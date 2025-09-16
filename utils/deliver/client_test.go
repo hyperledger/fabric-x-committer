@@ -48,7 +48,7 @@ func TestBroadcastDeliver(t *testing.T) {
 	conf.Connection.Endpoints = allEndpoints[:6]
 	client, err := New(&conf)
 	require.NoError(t, err)
-	t.Cleanup(client.Close)
+	t.Cleanup(client.CloseConnections)
 
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	t.Cleanup(cancel)
@@ -152,7 +152,7 @@ func submit(
 	defer cancel()
 	stream, err := test.NewBroadcastStream(ctx, conf)
 	require.NoError(t, err)
-	defer stream.Close()
+	defer stream.CloseConnections()
 
 	err = stream.SendBatch(workload.MapToEnvelopeBatch(0, []*protoloadgen.TX{tx}))
 	if err != nil {
@@ -233,7 +233,7 @@ func waitUntilGrpcServerIsReady(ctx context.Context, t *testing.T, endpoint *con
 
 func waitUntilGrpcServerIsDown(ctx context.Context, t *testing.T, endpoint *connection.Endpoint) {
 	t.Helper()
-	newConn, err := connection.Connect(connection.NewInsecureDialConfig(endpoint))
+	newConn, err := connection.Connect(test.NewInsecureDialConfig(endpoint))
 	require.NoError(t, err)
 	defer connection.CloseConnectionsLog(newConn)
 	test.WaitUntilGrpcServerIsDown(ctx, t, newConn)

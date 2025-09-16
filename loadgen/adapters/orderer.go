@@ -13,6 +13,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -39,7 +40,7 @@ func (c *OrdererAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 	if err != nil {
 		return errors.Wrap(err, "failed to create orderer clients")
 	}
-	defer client.Close()
+	defer client.CloseConnections()
 
 	dCtx, dCancel := context.WithCancel(ctx)
 	defer dCancel()
@@ -61,13 +62,19 @@ func (c *OrdererAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 		})
 	}
 
-	for range c.config.BroadcastParallelism {
+	streams := make([]*test.BroadcastStream, c.config.BroadcastParallelism)
+	for i := range streams {
+		streams[i], err = test.NewBroadcastStream(gCtx, &c.config.Orderer)
+		if err != nil {
+			connection.CloseConnectionsLog(streams[:i]...)
+			return errors.Wrap(err, "failed to create a broadcast stream")
+		}
+	}
+	defer connection.CloseConnectionsLog(streams...)
+
+	for _, stream := range streams {
+		stream := stream
 		g.Go(func() error {
-			stream, streamErr := test.NewBroadcastStream(gCtx, &c.config.Orderer)
-			if streamErr != nil {
-				return errors.Wrap(streamErr, "failed to create a broadcast stream")
-			}
-			defer stream.Close()
 			return sendBlocks(gCtx, &c.commonAdapter, txStream, workload.MapToEnvelopeBatch, stream.SendBatch)
 		})
 	}

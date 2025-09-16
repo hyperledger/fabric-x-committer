@@ -302,6 +302,7 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 						Endpoints: endpoints,
 					},
 					ChannelID:     clientConf.LoadProfile.Transaction.Policy.ChannelID,
+					Identity:      clientConf.LoadProfile.Transaction.Policy.Identity,
 					ConsensusType: ordererconn.Bft,
 				},
 				BroadcastParallelism: 5,

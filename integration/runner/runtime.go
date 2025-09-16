@@ -243,14 +243,14 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		ConsensusType: ordererconn.Bft,
 	})
 	require.NoError(t, err)
-	t.Cleanup(c.ordererStream.Close)
+	t.Cleanup(c.ordererStream.CloseConnections)
 
 	c.sidecarClient, err = sidecarclient.New(&sidecarclient.Parameters{
 		ChannelID: s.Policy.ChannelID,
 		Client:    test.NewTLSClientConfig(s.ClientTLS, s.Endpoints.Sidecar.Server),
 	})
 	require.NoError(t, err)
-	t.Cleanup(c.sidecarClient.Close)
+	t.Cleanup(c.sidecarClient.CloseConnections)
 	return c
 }
 

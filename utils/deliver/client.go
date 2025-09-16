@@ -52,9 +52,9 @@ func New(config *ordererconn.Config) (*Client, error) {
 	}, nil
 }
 
-// Close closes all the connections for the client.
-func (s *Client) Close() {
-	s.connectionManager.Close()
+// CloseConnections closes all the connections for the client.
+func (s *Client) CloseConnections() {
+	s.connectionManager.CloseConnections()
 }
 
 // UpdateConnections updates the connection config.

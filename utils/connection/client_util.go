@@ -201,7 +201,7 @@ func Connect(config *DialConfig) (*grpc.ClientConn, error) {
 
 // OpenConnections opens connections with multiple remotes.
 func OpenConnections(config MultiClientConfig) ([]*grpc.ClientConn, error) {
-	logger.Infof("Opening connections to %d endpoints: %v.\n", len(config.Endpoints), config.Endpoints)
+	logger.Infof("Opening connections to %d endpoints: %v.", len(config.Endpoints), config.Endpoints)
 	dialConfigs, err := NewDialConfigPerEndpoint(&config)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error while creating dial configs")

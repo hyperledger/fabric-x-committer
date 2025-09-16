@@ -78,6 +78,7 @@ func (c *VcAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	defer dCancel()
 	g, gCtx := errgroup.WithContext(dCtx)
 	for _, stream := range streams {
+		stream := stream
 		g.Go(func() error {
 			return sendBlocks(ctx, &c.commonAdapter, txStream, workload.MapToVcBatch, stream.Send)
 		})

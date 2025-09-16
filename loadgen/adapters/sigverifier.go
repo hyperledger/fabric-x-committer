@@ -69,6 +69,7 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	}
 
 	for _, stream := range streams {
+		stream := stream
 		g.Go(func() error {
 			return sendBlocks(gCtx, &c.commonAdapter, txStream, workload.MapToVerifierBatch, stream.Send)
 		})

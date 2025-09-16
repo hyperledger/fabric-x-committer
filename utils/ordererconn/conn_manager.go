@@ -12,6 +12,7 @@ import (
 	"math"
 	"math/rand"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -110,17 +111,26 @@ func (c *ConnectionManager) Update(config *ConnectionConfig) error {
 
 	// We pre create all the connections to ensure correct form.
 	connections := make(map[string]*grpc.ClientConn)
-	allAPis := []string{anyAPI, Broadcast, Deliver}
+	// We use a connection cache to avoid opening the same connection multiple times.
+	connCache := make(map[string]*grpc.ClientConn)
+	allAPIs := []string{anyAPI, Broadcast, Deliver}
 	for _, id := range append(getAllIDs(config.Endpoints), anyID) {
-		for _, api := range allAPis {
+		for _, api := range allAPIs {
 			filter := aggregateFilter(WithAPI(api), WithID(id))
-			conn, err := openConnection(config, filter)
-			if errors.Is(err, ErrNoConnections) {
+			endpoints := filterOrdererEndpoints(config.Endpoints, filter)
+			if len(endpoints) == 0 {
 				continue
 			}
-			if err != nil {
-				closeConnection(connections)
-				return err
+			endpointsKey := makeEndpointsKey(endpoints)
+			conn, connInCache := connCache[endpointsKey]
+			if !connInCache {
+				var err error
+				conn, err = openConnection(config, endpoints)
+				if err != nil {
+					closeConnection(connections)
+					return err
+				}
+				connCache[endpointsKey] = conn
 			}
 			connections[filterKey(filter)] = conn
 		}
@@ -179,14 +189,8 @@ func getAllIDs(endpoints []*Endpoint) []uint32 {
 
 func openConnection(
 	conf *ConnectionConfig,
-	filter ...ConnFilter,
+	endpoints []*connection.Endpoint,
 ) (*grpc.ClientConn, error) {
-	key := aggregateFilter(filter...)
-
-	endpoints := filterOrdererEndpoints(conf.Endpoints, key)
-	if len(endpoints) == 0 {
-		return nil, ErrNoConnections
-	}
 	// We shuffle the endpoints for load balancing.
 	shuffle(endpoints)
 	logger.Infof("Opening connections to %d endpoints: %v.", len(endpoints), endpoints)
@@ -201,8 +205,17 @@ func openConnection(
 	return connection.Connect(dialConfig)
 }
 
-// Close closes all the connections.
-func (c *ConnectionManager) Close() {
+func makeEndpointsKey(endpoint []*connection.Endpoint) string {
+	addresses := make([]string, len(endpoint))
+	for i, e := range endpoint {
+		addresses[i] = e.Address()
+	}
+	slices.Sort(addresses)
+	return strings.Join(addresses, ";")
+}
+
+// CloseConnections closes all the connections.
+func (c *ConnectionManager) CloseConnections() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	closeConnection(c.connections)

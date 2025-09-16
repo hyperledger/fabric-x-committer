@@ -73,9 +73,9 @@ func New(config *Parameters) (*Client, error) {
 	}, nil
 }
 
-// Close closes all the connections.
-func (c *Client) Close() {
-	c.ConnectionManager.Close()
+// CloseConnections closes all the connections.
+func (c *Client) CloseConnections() {
+	c.ConnectionManager.CloseConnections()
 }
 
 // Deliver start receiving blocks starting from config.StartBlkNum to config.OutputBlock.
