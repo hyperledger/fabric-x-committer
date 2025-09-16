@@ -233,7 +233,7 @@ func waitUntilGrpcServerIsReady(ctx context.Context, t *testing.T, endpoint *con
 
 func waitUntilGrpcServerIsDown(ctx context.Context, t *testing.T, endpoint *connection.Endpoint) {
 	t.Helper()
-	newConn, err := connection.Connect(connection.NewInsecureDialConfig(endpoint))
+	newConn, err := connection.Connect(test.NewInsecureDialConfig(endpoint))
 	require.NoError(t, err)
 	defer connection.CloseConnectionsLog(newConn)
 	test.WaitUntilGrpcServerIsDown(ctx, t, newConn)
