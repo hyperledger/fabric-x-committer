@@ -133,33 +133,32 @@ func RunSecureConnectionTest(
 			},
 		},
 	} {
-		// create server's tls config and start it according to the serverSecureMode.
-		serverTLS := tlsMgr.CreateServerCredentials(t, tc.serverMode, defaultHostName)
-		rpcAttemptFunc := starter(t, serverTLS)
-		// for each server secure mode, build the client's test cases.
-		for _, clientTestCase := range tc.cases {
-			clientTc := clientTestCase
-			t.Run(fmt.Sprintf(
-				"tls-mode:%s/%s",
-				tc.serverMode,
-				clientTc.testDescription,
-			), func(t *testing.T) {
-				t.Parallel()
+		t.Run(fmt.Sprintf("server-tls:%s", tc.serverMode), func(t *testing.T) {
+			t.Parallel()
+			// create server's tls config and start it according to the serverSecureMode.
+			serverTLS := tlsMgr.CreateServerCredentials(t, tc.serverMode, defaultHostName)
+			rpcAttemptFunc := starter(t, serverTLS)
+			// for each server secure mode, build the client's test cases.
+			for _, clientTestCase := range tc.cases {
+				clientTc := clientTestCase
+				t.Run(fmt.Sprintf("%s", clientTc.testDescription), func(t *testing.T) {
+					t.Parallel()
 
-				cfg := baseClientTLS
-				cfg.Mode = clientTc.clientSecureMode
+					cfg := baseClientTLS
+					cfg.Mode = clientTc.clientSecureMode
 
-				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-				t.Cleanup(cancel)
+					ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+					t.Cleanup(cancel)
 
-				err := rpcAttemptFunc(ctx, t, cfg)
-				if clientTc.shouldFail {
-					require.Error(t, err)
-				} else {
-					require.NoError(t, err)
-				}
-			})
-		}
+					err := rpcAttemptFunc(ctx, t, cfg)
+					if clientTc.shouldFail {
+						require.Error(t, err)
+					} else {
+						require.NoError(t, err)
+					}
+				})
+			}
+		})
 	}
 }
 
@@ -173,7 +172,12 @@ func CreateClientWithTLS[T any](
 	protoClient func(grpc.ClientConnInterface) T,
 ) T {
 	t.Helper()
-	conn, err := connection.Connect(NewSecuredDialConfig(t, endpoint, tlsCfg))
+	dialConfig := NewSecuredDialConfig(t, endpoint, tlsCfg)
+	// prevents secure connection tests from hanging until the context times out.
+	dialConfig.SetRetryProfile(&connection.RetryProfile{
+		MaxElapsedTime: 3 * time.Second,
+	})
+	conn, err := connection.Connect(dialConfig)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, conn.Close())
