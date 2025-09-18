@@ -135,7 +135,7 @@ func RunSecureConnectionTest(
 	} {
 		t.Run(fmt.Sprintf("server-tls:%s", tc.serverMode), func(t *testing.T) {
 			t.Parallel()
-			// create server's tls config and start it according to the serverSecureMode.
+			// create server's tls config and start it according to the server tls mode.
 			serverTLS := tlsMgr.CreateServerCredentials(t, tc.serverMode, defaultHostName)
 			rpcAttemptFunc := starter(t, serverTLS)
 			// for each server secure mode, build the client's test cases.
