@@ -141,7 +141,7 @@ func RunSecureConnectionTest(
 			// for each server secure mode, build the client's test cases.
 			for _, clientTestCase := range tc.cases {
 				clientTc := clientTestCase
-				t.Run(fmt.Sprintf("%s", clientTc.testDescription), func(t *testing.T) {
+				t.Run(clientTc.testDescription, func(t *testing.T) {
 					t.Parallel()
 
 					cfg := baseClientTLS
