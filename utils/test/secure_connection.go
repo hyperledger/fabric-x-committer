@@ -149,7 +149,7 @@ func RunSecureConnectionTest(
 				cfg := baseClientTLS
 				cfg.Mode = clientTc.clientSecureMode
 
-				ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 				t.Cleanup(cancel)
 
 				err := rpcAttemptFunc(ctx, t, cfg)

@@ -24,7 +24,10 @@ const (
 	// The image includes built-in scripts and environment variables that handle replication configuration
 	// out of the box, which reduces complexity and potential
 	// misconfigurations compared to setting it up manually with the official image.
-	postgresImage             = "bitnami/postgresql"
+	// Bitnami has migrated the bitnami/postgresql image to bitnamilegacy/postgresql,
+	// where it no longer receives updates or security patches.
+	// Since this image is used only for testing purposes, we can retain it for now.
+	postgresImage             = "bitnamilegacy/postgresql"
 	defaultPostgresDBName     = "postgres"
 	defaultBitnamiPostgresTag = "latest"
 
