@@ -36,15 +36,15 @@ const (
 	committerReleaseImage = "icr.io/cbdc/committer:0.0.2"
 	loadgenReleaseImage   = "icr.io/cbdc/loadgen:0.0.2"
 	containerPrefixName   = "sc_test"
-	networkPrefixName     = "sc_test_network"
+	networkPrefixName     = containerPrefixName + "_network"
 	genBlockFile          = "sc-genesis-block.proto.bin"
 	// containerConfigPath is the path to the config directory inside the container.
 	containerConfigPath = "/root/config"
-	// localConfigPath is the path for the sample YAML configurations per service.
+	// localConfigPath is the path to the sample YAML configuration of each service.
 	localConfigPath = "../../cmd/config/samples"
 )
 
-// TestCommitterReleaseImagesWithTLS runs the committer components in Docker container with different TLS
+// TestCommitterReleaseImagesWithTLS runs the committer components in different Docker containers with different TLS
 // modes and verifies it starts and connect successfully.
 // This test uses the release images for all the components but 'db' and 'orderer'.
 func TestCommitterReleaseImagesWithTLS(t *testing.T) {
