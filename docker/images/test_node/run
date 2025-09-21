@@ -20,9 +20,9 @@ if [[ $ops == *"orderer"* ]]; then
 fi
 
 if [[ $ops == *"committer"* ]]; then
-  "$BINS_PATH/committer" start-verifier    --config "$CONFIGS_PATH/sigservice.yaml" &
-  "$BINS_PATH/committer" start-vc          --config "$CONFIGS_PATH/vcservice.yaml" &
-  "$BINS_PATH/committer" start-query       --config "$CONFIGS_PATH/queryservice.yaml" &
+  "$BINS_PATH/committer" start-verifier    --config "$CONFIGS_PATH/verifier.yaml" &
+  "$BINS_PATH/committer" start-vc          --config "$CONFIGS_PATH/vc.yaml" &
+  "$BINS_PATH/committer" start-query       --config "$CONFIGS_PATH/query.yaml" &
   "$BINS_PATH/committer" start-coordinator --config "$CONFIGS_PATH/coordinator.yaml" &
   "$BINS_PATH/committer" start-sidecar     --config "$CONFIGS_PATH/sidecar.yaml" &
 fi

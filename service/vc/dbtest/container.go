@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 const (
@@ -151,7 +152,7 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 		}
 	}
 	if dc.client == nil {
-		dc.client = GetDockerClient(t)
+		dc.client = test.GetDockerClient(t)
 	}
 }
 
@@ -348,46 +349,4 @@ func (dc *DatabaseContainer) EnsureNodeReadiness(t *testing.T, requiredOutput st
 		output := dc.GetContainerLogs(t)
 		require.Contains(ct, output, requiredOutput)
 	}, 45*time.Second, 250*time.Millisecond)
-}
-
-// CreateDockerNetwork creates a network if it doesn't exist.
-func CreateDockerNetwork(t *testing.T, name string) *docker.Network {
-	t.Helper()
-	client := GetDockerClient(t)
-	network, err := client.CreateNetwork(docker.CreateNetworkOptions{
-		Name:   name,
-		Driver: "bridge",
-	})
-	if errors.Is(err, docker.ErrNetworkAlreadyExists) {
-		t.Logf("network %s already exists", name)
-		network, err = client.NetworkInfo(name)
-		require.NoError(t, err)
-		return network
-	}
-	require.NoError(t, err, "failed to create network")
-
-	t.Logf("network %s created", network.Name)
-	return network
-}
-
-// RemoveDockerNetwork removes a Docker network by name.
-func RemoveDockerNetwork(t *testing.T, name string) {
-	t.Helper()
-	client := GetDockerClient(t)
-	err := client.RemoveNetwork(name)
-	if errors.As(err, new(*docker.NoSuchNetwork)) {
-		t.Logf("error: %s", err)
-		return
-	}
-	require.NoError(t, err)
-
-	t.Logf("network %s removed successfully", name)
-}
-
-// GetDockerClient instantiate a new docker client.
-func GetDockerClient(t *testing.T) *docker.Client {
-	t.Helper()
-	client, err := docker.NewClientFromEnv()
-	require.NoError(t, err)
-	return client
 }

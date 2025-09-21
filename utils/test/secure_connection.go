@@ -60,22 +60,22 @@ func NewCredentialsFactory(t *testing.T) *CredentialsFactory {
 	}
 }
 
-// CreateServerCredentials creates a server key pair given SAN (Subject Alternative Name),
+// CreateServerCredentials creates a server key pair given SAN(s) (Subject Alternative Name),
 // Writing it to a temp testing folder and returns a [connection.TLSConfig].
 func (scm *CredentialsFactory) CreateServerCredentials(
 	t *testing.T,
 	tlsMode string,
-	san string,
-) connection.TLSConfig {
+	san ...string,
+) (connection.TLSConfig, string) {
 	t.Helper()
-	serverKeypair, err := scm.CertificateAuthority.NewServerCertKeyPair(san)
+	serverKeypair, err := scm.CertificateAuthority.NewServerCertKeyPair(san...)
 	require.NoError(t, err)
 	return createTLSConfig(t, tlsMode, serverKeypair, scm.CertificateAuthority.CertBytes())
 }
 
 // CreateClientCredentials creates a client key pair,
 // Writing it to a temp testing folder and returns a [connection.TLSConfig].
-func (scm *CredentialsFactory) CreateClientCredentials(t *testing.T, tlsMode string) connection.TLSConfig {
+func (scm *CredentialsFactory) CreateClientCredentials(t *testing.T, tlsMode string) (connection.TLSConfig, string) {
 	t.Helper()
 	clientKeypair, err := scm.CertificateAuthority.NewClientCertKeyPair()
 	require.NoError(t, err)
@@ -103,7 +103,7 @@ func RunSecureConnectionTest(
 	// create server and client credentials
 	tlsMgr := NewCredentialsFactory(t)
 	// create a base TLS configuration for the client
-	baseClientTLS := tlsMgr.CreateClientCredentials(t, connection.NoneTLSMode)
+	baseClientTLS, _ := tlsMgr.CreateClientCredentials(t, connection.NoneTLSMode)
 	for _, tc := range []struct {
 		serverMode string
 		cases      []testCase
@@ -136,7 +136,7 @@ func RunSecureConnectionTest(
 		t.Run(fmt.Sprintf("server-tls:%s", tc.serverMode), func(t *testing.T) {
 			t.Parallel()
 			// create server's tls config and start it according to the server tls mode.
-			serverTLS := tlsMgr.CreateServerCredentials(t, tc.serverMode, defaultHostName)
+			serverTLS, _ := tlsMgr.CreateServerCredentials(t, tc.serverMode, defaultHostName)
 			rpcAttemptFunc := starter(t, serverTLS)
 			// for each server secure mode, build the client's test cases.
 			for _, clientTestCase := range tc.cases {
@@ -191,7 +191,7 @@ func createTLSConfig(
 	connectionMode string,
 	keyPair *tlsgen.CertKeyPair,
 	caCertificate []byte,
-) connection.TLSConfig {
+) (connection.TLSConfig, string) {
 	t.Helper()
 	tmpDir := t.TempDir()
 
@@ -209,5 +209,5 @@ func createTLSConfig(
 		KeyPath:     privateKeyPath,
 		CertPath:    publicKeyPath,
 		CACertPaths: []string{caCertificatePath},
-	}
+	}, tmpDir
 }

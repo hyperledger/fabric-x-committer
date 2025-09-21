@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type (
@@ -91,9 +92,9 @@ func StartYugaCluster(ctx context.Context, t *testing.T, numberOfMasters, number
 		replicationFactor: rf,
 		networkName:       fmt.Sprintf("%s%s", networkPrefix, uuid.NewString()),
 	}
-	dbtest.CreateDockerNetwork(t, cluster.networkName)
+	test.CreateDockerNetwork(t, cluster.networkName)
 	t.Cleanup(func() {
-		dbtest.RemoveDockerNetwork(t, cluster.networkName)
+		test.RemoveDockerNetwork(t, cluster.networkName)
 	})
 
 	// We create the nodes before startup to ensure
