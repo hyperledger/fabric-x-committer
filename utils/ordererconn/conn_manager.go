@@ -28,10 +28,11 @@ type (
 	// This will increase the config version, allowing a connection instance to identify
 	// a connection update and fetch the new connections.
 	ConnectionManager struct {
-		configVersion atomic.Uint64
-		connections   map[string]*grpc.ClientConn
-		config        *ConnectionConfig
-		lock          sync.Mutex
+		configVersion     atomic.Uint64
+		connections       map[string]*grpc.ClientConn
+		uniqueConnections []*grpc.ClientConn
+		config            *ConnectionConfig
+		lock              sync.Mutex
 	}
 
 	// ConnFilter is used to filter connections.
@@ -127,7 +128,7 @@ func (c *ConnectionManager) Update(config *ConnectionConfig) error {
 				var err error
 				conn, err = openConnection(config, endpoints)
 				if err != nil {
-					closeConnection(connections)
+					connection.CloseConnectionsLog(slices.Collect(maps.Values(connCache))...)
 					return err
 				}
 				connCache[endpointsKey] = conn
@@ -143,8 +144,9 @@ func (c *ConnectionManager) Update(config *ConnectionConfig) error {
 	// We increase the version early (before closing any connections, but after locking)
 	// to ensure the recovery stage knows about an update.
 	c.configVersion.Add(1)
-	closeConnection(c.connections)
+	connection.CloseConnectionsLog(c.uniqueConnections...)
 	c.connections = connections
+	c.uniqueConnections = slices.Collect(maps.Values(connCache))
 	c.config = config
 	return nil
 }
@@ -218,20 +220,15 @@ func makeEndpointsKey(endpoint []*connection.Endpoint) string {
 func (c *ConnectionManager) CloseConnections() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	closeConnection(c.connections)
+	connection.CloseConnectionsLog(c.uniqueConnections...)
 	c.connections = nil
+	c.uniqueConnections = nil
 }
 
 // IsStale checks if the given OrdererConnectionResiliencyManager is stale.
 // If nil is given, it returns true.
 func (c *ConnectionManager) IsStale(configVersion uint64) bool {
 	return c.configVersion.Load() != configVersion
-}
-
-func closeConnection(connections map[string]*grpc.ClientConn) {
-	if connections != nil {
-		connection.CloseConnectionsLog(slices.Collect(maps.Values(connections))...)
-	}
 }
 
 func shuffle[T any](nodes []T) {
