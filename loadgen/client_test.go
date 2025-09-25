@@ -47,12 +47,10 @@ var defaultLimits = []*adapters.GenerateLimit{
 func TestLoadGenForLoadGen(t *testing.T) {
 	t.Parallel()
 	for _, mode := range test.ServerModes {
-		mode := mode
 		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
 			serverCreds, clientCreds := createServerAndClientTLSCerts(t, mode)
 			for _, limit := range defaultLimits {
-				limit := limit
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
 					clientConf := DefaultClientConf()
@@ -86,12 +84,10 @@ func TestLoadGenForLoadGen(t *testing.T) {
 func TestLoadGenForVCService(t *testing.T) {
 	t.Parallel()
 	for _, mode := range test.ServerModes {
-		mode := mode
 		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
 			serverCreds, clientCreds := createServerAndClientTLSCerts(t, mode)
 			for _, limit := range defaultLimits {
-				limit := limit
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
 					clientConf := DefaultClientConf()
@@ -108,12 +104,10 @@ func TestLoadGenForVCService(t *testing.T) {
 func TestLoadGenForSigVerifier(t *testing.T) {
 	t.Parallel()
 	for _, mode := range test.ServerModes {
-		mode := mode
 		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
 			serverCreds, clientCreds := createServerAndClientTLSCerts(t, mode)
 			for _, limit := range defaultLimits {
-				limit := limit
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
 					clientConf := DefaultClientConf()
@@ -151,7 +145,6 @@ func startVerifiers(t *testing.T, serverCreds, clientCreds connection.TLSConfig)
 func TestLoadGenForCoordinator(t *testing.T) {
 	t.Parallel()
 	for _, mode := range test.ServerModes {
-		mode := mode
 		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
 			serverCreds, clientCreds := createServerAndClientTLSCerts(t, mode)
@@ -162,7 +155,6 @@ func TestLoadGenForCoordinator(t *testing.T) {
 					Transactions: 5*defaultBlockSize + 2, // +2 for the config and meta namespace TXs.
 				},
 			) {
-				limit := limit
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
 					clientConf := DefaultClientConf()
@@ -197,7 +189,6 @@ func TestLoadGenForCoordinator(t *testing.T) {
 func TestLoadGenForSidecar(t *testing.T) {
 	t.Parallel()
 	for _, mode := range test.ServerModes {
-		mode := mode
 		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
 			serverCreds, clientCreds := createServerAndClientTLSCerts(t, mode)
@@ -206,7 +197,6 @@ func TestLoadGenForSidecar(t *testing.T) {
 				&adapters.GenerateLimit{Blocks: 5},
 				&adapters.GenerateLimit{Transactions: 5*defaultBlockSize + 1}, // +1 for the meta namespace TX.
 			) {
-				limit := limit
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
 					clientConf := DefaultClientConf()
@@ -264,7 +254,6 @@ func TestLoadGenForSidecar(t *testing.T) {
 func TestLoadGenForOrderer(t *testing.T) {
 	t.Parallel()
 	for _, limit := range defaultLimits {
-		limit := limit
 		t.Run(limitToString(limit), func(t *testing.T) {
 			t.Parallel()
 			clientConf := DefaultClientConf()
@@ -457,7 +446,8 @@ func limitToString(m *adapters.GenerateLimit) string {
 	return strings.Join(out, ",")
 }
 
-// createServerAndClientTLSCerts creates a tls configuration using the credential factory.
+// createServerAndClientTLSCerts creates tls configurations for
+// both the server and client.
 func createServerAndClientTLSCerts(t *testing.T, tlsMode string) (
 	serverCreds, clientCreds connection.TLSConfig,
 ) {
