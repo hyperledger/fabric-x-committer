@@ -178,7 +178,9 @@ func TestLoadGenForCoordinator(t *testing.T) {
 					test.RunServiceAndGrpcForTest(t.Context(), t, service, cConf.Server)
 
 					// Start client
-					clientConf.Adapter.CoordinatorClient = test.NewTLSClientConfig(clientTLSConfig, &cConf.Server.Endpoint)
+					clientConf.Adapter.CoordinatorClient = test.NewTLSClientConfig(
+						clientTLSConfig, &cConf.Server.Endpoint,
+					)
 					testLoadGenerator(t, clientConf)
 				})
 			}
