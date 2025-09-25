@@ -184,8 +184,8 @@ func CreateClientWithTLS[T any](
 	return protoClient(conn)
 }
 
-// createTLSConfig creates and returns a TLS configuration based on the
-// given TLS mode and the credential bytes.
+// createTLSConfig creates a TLS configuration based on the
+// given TLS mode and credential bytes, and returns it along with the certificates' path.
 func createTLSConfig(
 	t *testing.T,
 	connectionMode string,
