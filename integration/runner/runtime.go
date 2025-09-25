@@ -197,7 +197,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 
 	t.Log("create TLS manager and clients certificate")
 	c.CredFactory = test.NewCredentialsFactory(t)
-	s.ClientTLS = c.CredFactory.CreateClientCredentials(t, c.config.TLSMode)
+	s.ClientTLS, _ = c.CredFactory.CreateClientCredentials(t, c.config.TLSMode)
 
 	t.Log("Create processes")
 	c.MockOrderer = newProcess(t, cmdOrderer, s.WithEndpoint(s.Endpoints.Orderer[0]))
@@ -581,7 +581,7 @@ func (c *CommitterRuntime) createSystemConfigWithServerTLS(
 ) *config.SystemConfig {
 	t.Helper()
 	serviceCfg := c.SystemConfig
-	serviceCfg.ServiceTLS = c.CredFactory.CreateServerCredentials(t, c.config.TLSMode, endpoints.Server.Host)
+	serviceCfg.ServiceTLS, _ = c.CredFactory.CreateServerCredentials(t, c.config.TLSMode, endpoints.Server.Host)
 	serviceCfg.ServiceEndpoints = endpoints
 	return &serviceCfg
 }
