@@ -127,7 +127,7 @@ func stopAndRemoveContainerByID(ctx context.Context, t *testing.T, dockerClient 
 	}
 }
 
-func containerMappedHostPort(
+func getContainerMappedHostPort(
 	ctx context.Context, t *testing.T, containerName, containerPort string,
 ) string {
 	t.Helper()

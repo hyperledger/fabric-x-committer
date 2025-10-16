@@ -95,7 +95,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 				}
 			}
 			monitorMetric(t,
-				containerMappedHostPort(ctx, t, assembleContainerName("loadgen", mode), loadGenMetricsPort),
+				getContainerMappedHostPort(ctx, t, assembleContainerName("loadgen", mode), loadGenMetricsPort),
 			)
 		})
 	}
@@ -108,10 +108,6 @@ func startCommitterNodeWithReleaseImage(
 	params startNodeParameters,
 ) {
 	t.Helper()
-	_, serverCredsPath := params.credsFactory.CreateServerCredentials(t, params.tlsMode, params.node)
-	require.NotEmpty(t, serverCredsPath)
-	_, clientCredsPath := params.credsFactory.CreateClientCredentials(t, params.tlsMode)
-	require.NotEmpty(t, clientCredsPath)
 
 	configPath := filepath.Join(containerConfigPath, params.node)
 	createAndStartContainerAndItsLogs(ctx, t, createAndStartContainerParameters{
@@ -138,9 +134,7 @@ func startCommitterNodeWithReleaseImage(
 		},
 		hostConfig: &container.HostConfig{
 			NetworkMode: container.NetworkMode(params.networkName),
-			Binds: assembleBinds(t,
-				serverCredsPath,
-				clientCredsPath,
+			Binds: assembleBinds(t, params,
 				fmt.Sprintf("%s.yaml:/%s.yaml",
 					filepath.Join(mustGetWD(t), localConfigPath, params.node), configPath,
 				),
@@ -157,10 +151,6 @@ func startLoadgenNodeWithReleaseImage(
 	params startNodeParameters,
 ) {
 	t.Helper()
-	_, serverCredsPath := params.credsFactory.CreateServerCredentials(t, params.tlsMode, params.node)
-	require.NotEmpty(t, serverCredsPath)
-	_, clientCredsPath := params.credsFactory.CreateClientCredentials(t, params.tlsMode)
-	require.NotEmpty(t, clientCredsPath)
 
 	configPath := filepath.Join(containerConfigPath, params.node)
 	createAndStartContainerAndItsLogs(ctx, t, createAndStartContainerParameters{
@@ -190,9 +180,7 @@ func startLoadgenNodeWithReleaseImage(
 					HostPort: "0", // auto port assign
 				}},
 			},
-			Binds: assembleBinds(t,
-				serverCredsPath,
-				clientCredsPath,
+			Binds: assembleBinds(t, params,
 				fmt.Sprintf("%s.yaml:/%s.yaml",
 					filepath.Join(mustGetWD(t), localConfigPath, params.node), configPath,
 				),
@@ -209,10 +197,6 @@ func startCommitterNodeWithTestImage(
 	params startNodeParameters,
 ) {
 	t.Helper()
-	_, serverCredsPath := params.credsFactory.CreateServerCredentials(t, params.tlsMode, params.node)
-	require.NotEmpty(t, serverCredsPath)
-	_, clientCredsPath := params.credsFactory.CreateClientCredentials(t, params.tlsMode)
-	require.NotEmpty(t, clientCredsPath)
 
 	createAndStartContainerAndItsLogs(ctx, t, createAndStartContainerParameters{
 		config: &container.Config{
@@ -223,9 +207,7 @@ func startCommitterNodeWithTestImage(
 		},
 		hostConfig: &container.HostConfig{
 			NetworkMode: container.NetworkMode(params.networkName),
-			Binds: assembleBinds(t,
-				serverCredsPath,
-				clientCredsPath,
+			Binds: assembleBinds(t, params,
 				fmt.Sprintf("%s:/%s", params.configBlockPath, filepath.Join(containerConfigPath, genBlockFile)),
 			),
 		},
@@ -237,8 +219,14 @@ func assembleContainerName(node, tlsMode string) string {
 	return fmt.Sprintf("%s_%s_%s", containerPrefixName, node, tlsMode)
 }
 
-func assembleBinds(t *testing.T, serverCredsPath, clientCredsPath string, additionalBinds ...string) []string {
+func assembleBinds(t *testing.T, params startNodeParameters, additionalBinds ...string) []string {
 	t.Helper()
+
+	_, serverCredsPath := params.credsFactory.CreateServerCredentials(t, params.tlsMode, params.node)
+	require.NotEmpty(t, serverCredsPath)
+	_, clientCredsPath := params.credsFactory.CreateClientCredentials(t, params.tlsMode)
+	require.NotEmpty(t, clientCredsPath)
+
 	return append([]string{
 		fmt.Sprintf("%s:/certs", serverCredsPath),
 		fmt.Sprintf("%s:/client_certs", clientCredsPath),

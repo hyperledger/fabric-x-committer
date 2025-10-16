@@ -154,7 +154,7 @@ func TestReadConfigCoordinator(t *testing.T) {
 		name:           "sample",
 		configFilePath: "samples/coordinator.yaml",
 		expectedConfig: &coordinator.Config{
-			Server:             newServerConfigWithDefaultTLS("", 9001),
+			Server:             newServerConfigWithDefaultTLS(9001),
 			Monitoring:         newMonitoringConfig("", 2119),
 			Verifier:           newMultiClientConfigWithDefaultTLS("verifier", 5001),
 			ValidatorCommitter: newMultiClientConfigWithDefaultTLS("vc", 6001),
@@ -203,7 +203,7 @@ func TestReadConfigVC(t *testing.T) {
 		name:           "sample",
 		configFilePath: "samples/vc.yaml",
 		expectedConfig: &vc.Config{
-			Server:     newServerConfigWithDefaultTLS("", 6001),
+			Server:     newServerConfigWithDefaultTLS(6001),
 			Monitoring: newMonitoringConfig("", 2116),
 			Database:   defaultSampleDBConfig(),
 			ResourceLimits: &vc.ResourceLimitsConfig{
@@ -251,7 +251,7 @@ func TestReadConfigVerifier(t *testing.T) {
 		name:           "sample",
 		configFilePath: "samples/verifier.yaml",
 		expectedConfig: &verifier.Config{
-			Server:     newServerConfigWithDefaultTLS("", 5001),
+			Server:     newServerConfigWithDefaultTLS(5001),
 			Monitoring: newMonitoringConfig("", 2115),
 			ParallelExecutor: verifier.ExecutorConfig{
 				BatchSizeCutoff:   50,
@@ -297,7 +297,7 @@ func TestReadConfigQuery(t *testing.T) {
 		name:           "sample",
 		configFilePath: "samples/query.yaml",
 		expectedConfig: &query.Config{
-			Server:                newServerConfigWithDefaultTLS("", 7001),
+			Server:                newServerConfigWithDefaultTLS(7001),
 			Monitoring:            newMonitoringConfig("", 2117),
 			Database:              defaultSampleDBConfig(),
 			MinBatchKeys:          1024,
@@ -339,7 +339,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 		name:           "sample",
 		configFilePath: "samples/loadgen.yaml",
 		expectedConfig: &loadgen.ClientConfig{
-			Server: newServerConfigWithDefaultTLS("", 8001),
+			Server: newServerConfigWithDefaultTLS(8001),
 			Monitoring: metrics.Config{
 				Config: newMonitoringConfig("", 2118),
 				Latency: metrics.LatencyConfig{
@@ -482,10 +482,9 @@ func newMonitoringConfig(host string, port int) monitoring.Config {
 	}
 }
 
-//nolint:unparam // currently, we use this function only with host:""
-func newServerConfigWithDefaultTLS(host string, port int) *connection.ServerConfig {
+func newServerConfigWithDefaultTLS(port int) *connection.ServerConfig {
 	return &connection.ServerConfig{
-		Endpoint: *newEndpoint(host, port),
+		Endpoint: *newEndpoint("", port),
 		TLS:      defaultServerTLSConfig,
 	}
 }
