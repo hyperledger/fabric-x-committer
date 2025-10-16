@@ -4,16 +4,29 @@
 #
 server:
   endpoint: :9001
+  tls:
+    mode: mtls
+    cert-path: /certs/public-key
+    key-path: /certs/private-key
+    ca-cert-paths:
+      - /certs/ca-certificate
 monitoring:
   server:
     endpoint: :2119
 
 verifier:
   endpoints:
-    - signature-verifier:5001
+    - verifier:5001
+  tls: &ClientTLS
+    mode: mtls
+    cert-path: /client_certs/public-key
+    key-path: /client_certs/private-key
+    ca-cert-paths:
+      - /client_certs/ca-certificate
 validator-committer:
   endpoints:
-    - validator-persister:6001
+    - vc:6001
+  tls: *ClientTLS
 
 dependency-graph:
   num-of-local-dep-constructors: 1

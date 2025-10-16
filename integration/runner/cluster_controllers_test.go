@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 func TestDBResiliencyYugabyteClusterController(t *testing.T) {
@@ -59,7 +60,7 @@ func TestDBResiliencyPostgresClusterController(t *testing.T) {
 
 func ensureContainersRemoval(t *testing.T, containersIDs []string) {
 	t.Helper()
-	allContainers, err := dbtest.GetDockerClient(t).ListContainers(docker.ListContainersOptions{All: true})
+	allContainers, err := test.GetDockerClient(t).ListContainers(docker.ListContainersOptions{All: true})
 	require.NoError(t, err)
 
 	for _, c := range allContainers {
