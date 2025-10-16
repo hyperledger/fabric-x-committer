@@ -30,8 +30,12 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-// We expect at least 3 blocks for a valid test run.
-const defaultExpectedTXs = defaultBlockSize * 3
+const (
+	// We expect at least 3 blocks for a valid test run.
+	defaultExpectedTXs = defaultBlockSize * 3
+	// Each server's SAN is localhost.
+	defaultServerSAN = "localhost"
+)
 
 // We can enforce exact limits only for the sidecar and the coordinator.
 // The other adapters runs concurrent workers that might overshoot.
@@ -42,64 +46,85 @@ var defaultLimits = []*adapters.GenerateLimit{
 
 func TestLoadGenForLoadGen(t *testing.T) {
 	t.Parallel()
-
-	for _, limit := range defaultLimits {
-		clientConf := DefaultClientConf()
-		clientConf.Limit = limit
-		// Ensure the client doesn't generate load, but only receives it from the sub client.
-		clientConf.LoadProfile.Workers = 0
-		t.Run(limitToString(limit), func(t *testing.T) {
+	for _, mode := range test.ServerModes {
+		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
-			clientConf.Adapter.VerifierClient = startVerifiers(t)
-			_, err := clientConf.Server.PreAllocateListener()
-			require.NoError(t, err)
+			serverTLSConfig, clientTLSConfig := createServerAndClientTLSConfig(t, mode)
+			for _, limit := range defaultLimits {
+				t.Run(limitToString(limit), func(t *testing.T) {
+					t.Parallel()
+					clientConf := DefaultClientConf()
+					clientConf.Server.TLS = serverTLSConfig
+					clientConf.Limit = limit
+					// Ensure the client doesn't generate load, but only receives it from the sub client.
+					clientConf.LoadProfile.Workers = 0
 
-			subClientConf := DefaultClientConf()
-			subClientConf.Adapter.LoadGenClient = test.NewInsecureClientConfig(&clientConf.Server.Endpoint)
-			subClient, err := NewLoadGenClient(subClientConf)
-			require.NoError(t, err)
+					clientConf.Adapter.VerifierClient = startVerifiers(t, serverTLSConfig, clientTLSConfig)
+					_, err := clientConf.Server.PreAllocateListener()
+					require.NoError(t, err)
 
-			t.Log("Start distributed loadgen")
-			test.RunServiceAndGrpcForTest(t.Context(), t, subClient, subClientConf.Server)
-			testLoadGenerator(t, clientConf)
+					subClientConf := DefaultClientConf()
+					subClientConf.Adapter.LoadGenClient = test.NewTLSClientConfig(
+						clientTLSConfig, &clientConf.Server.Endpoint,
+					)
+					subClient, err := NewLoadGenClient(subClientConf)
+					require.NoError(t, err)
+
+					t.Log("Start distributed loadgen")
+					test.RunServiceAndGrpcForTest(t.Context(), t, subClient, subClientConf.Server)
+					testLoadGenerator(t, clientConf)
+				})
+			}
 		})
 	}
 }
 
 func TestLoadGenForVCService(t *testing.T) {
 	t.Parallel()
-	for _, limit := range defaultLimits {
-		clientConf := DefaultClientConf()
-		clientConf.Limit = limit
-		t.Run(limitToString(limit), func(t *testing.T) {
+	for _, mode := range test.ServerModes {
+		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
-			env := vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, 2, test.InsecureTLSConfig)
-			clientConf.Adapter.VCClient = test.NewInsecureMultiClientConfig(env.Endpoints...)
-			testLoadGenerator(t, clientConf)
+			serverTLSConfig, clientTLSConfig := createServerAndClientTLSConfig(t, mode)
+			for _, limit := range defaultLimits {
+				t.Run(limitToString(limit), func(t *testing.T) {
+					t.Parallel()
+					clientConf := DefaultClientConf()
+					clientConf.Limit = limit
+					env := vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, 2, serverTLSConfig)
+					clientConf.Adapter.VCClient = test.NewTLSMultiClientConfig(clientTLSConfig, env.Endpoints...)
+					testLoadGenerator(t, clientConf)
+				})
+			}
 		})
 	}
 }
 
 func TestLoadGenForSigVerifier(t *testing.T) {
 	t.Parallel()
-	for _, limit := range defaultLimits {
-		clientConf := DefaultClientConf()
-		clientConf.Limit = limit
-		t.Run(limitToString(limit), func(t *testing.T) {
+	for _, mode := range test.ServerModes {
+		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
-			clientConf.Adapter.VerifierClient = startVerifiers(t)
-			// Start client
-			testLoadGenerator(t, clientConf)
+			serverTLSConfig, clientTLSConfig := createServerAndClientTLSConfig(t, mode)
+			for _, limit := range defaultLimits {
+				t.Run(limitToString(limit), func(t *testing.T) {
+					t.Parallel()
+					clientConf := DefaultClientConf()
+					clientConf.Limit = limit
+					clientConf.Adapter.VerifierClient = startVerifiers(t, serverTLSConfig, clientTLSConfig)
+					// Start client
+					testLoadGenerator(t, clientConf)
+				})
+			}
 		})
 	}
 }
 
-func startVerifiers(t *testing.T) *connection.MultiClientConfig {
+func startVerifiers(t *testing.T, serverTLS, clientTLS connection.TLSConfig) *connection.MultiClientConfig {
 	t.Helper()
 	endpoints := make([]*connection.Endpoint, 2)
 	for i := range endpoints {
 		sConf := &verifier.Config{
-			Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
+			Server: connection.NewLocalHostServerWithTLS(serverTLS),
 			ParallelExecutor: verifier.ExecutorConfig{
 				BatchSizeCutoff:   50,
 				BatchTimeCutoff:   10 * time.Millisecond,
@@ -112,100 +137,116 @@ func startVerifiers(t *testing.T) *connection.MultiClientConfig {
 		test.RunGrpcServerForTest(t.Context(), t, sConf.Server, service.RegisterService)
 		endpoints[i] = &sConf.Server.Endpoint
 	}
-	return test.NewInsecureMultiClientConfig(endpoints...)
+	return test.NewTLSMultiClientConfig(clientTLS, endpoints...)
 }
 
 func TestLoadGenForCoordinator(t *testing.T) {
 	t.Parallel()
-	for _, limit := range append(
-		defaultLimits,
-		&adapters.GenerateLimit{Blocks: 5},
-		&adapters.GenerateLimit{Transactions: 5*defaultBlockSize + 2}, // +2 for the config and meta namespace TXs.
-	) {
-		clientConf := DefaultClientConf()
-		clientConf.Limit = limit
-		t.Run(limitToString(limit), func(t *testing.T) {
+	for _, mode := range test.ServerModes {
+		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
-			_, sigVerServer := mock.StartMockSVService(t, 1)
-			_, vcServer := mock.StartMockVCService(t, 1)
-
-			cConf := &coordinator.Config{
-				Server:             connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
-				Monitoring:         defaultMonitoring(),
-				Verifier:           *test.ServerToMultiClientConfig(sigVerServer.Configs...),
-				ValidatorCommitter: *test.ServerToMultiClientConfig(vcServer.Configs...),
-				DependencyGraph: &coordinator.DependencyGraphConfig{
-					NumOfLocalDepConstructors: 1,
-					WaitingTxsLimit:           100_000,
+			serverTLSConfig, clientTLSConfig := createServerAndClientTLSConfig(t, mode)
+			for _, limit := range append(
+				defaultLimits,
+				&adapters.GenerateLimit{Blocks: 5},
+				&adapters.GenerateLimit{
+					Transactions: 5*defaultBlockSize + 2, // +2 for the config and meta namespace TXs.
 				},
-				ChannelBufferSizePerGoroutine: 10,
+			) {
+				t.Run(limitToString(limit), func(t *testing.T) {
+					t.Parallel()
+					clientConf := DefaultClientConf()
+					clientConf.Limit = limit
+					_, sigVerServer := mock.StartMockSVService(t, 1)
+					_, vcServer := mock.StartMockVCService(t, 1)
+
+					cConf := &coordinator.Config{
+						Server:             connection.NewLocalHostServerWithTLS(serverTLSConfig),
+						Monitoring:         defaultMonitoring(),
+						Verifier:           *test.ServerToMultiClientConfig(sigVerServer.Configs...),
+						ValidatorCommitter: *test.ServerToMultiClientConfig(vcServer.Configs...),
+						DependencyGraph: &coordinator.DependencyGraphConfig{
+							NumOfLocalDepConstructors: 1,
+							WaitingTxsLimit:           100_000,
+						},
+						ChannelBufferSizePerGoroutine: 10,
+					}
+
+					service := coordinator.NewCoordinatorService(cConf)
+					test.RunServiceAndGrpcForTest(t.Context(), t, service, cConf.Server)
+
+					// Start client
+					clientConf.Adapter.CoordinatorClient = test.NewTLSClientConfig(
+						clientTLSConfig, &cConf.Server.Endpoint,
+					)
+					testLoadGenerator(t, clientConf)
+				})
 			}
-
-			service := coordinator.NewCoordinatorService(cConf)
-			test.RunServiceAndGrpcForTest(t.Context(), t, service, cConf.Server)
-
-			// Start client
-			clientConf.Adapter.CoordinatorClient = test.NewInsecureClientConfig(&cConf.Server.Endpoint)
-			testLoadGenerator(t, clientConf)
 		})
 	}
 }
 
 func TestLoadGenForSidecar(t *testing.T) {
 	t.Parallel()
-
-	for _, limit := range append(
-		defaultLimits,
-		&adapters.GenerateLimit{Blocks: 5},
-		&adapters.GenerateLimit{Transactions: 5*defaultBlockSize + 1}, // +1 for the meta namespace TX.
-	) {
-		clientConf := DefaultClientConf()
-		clientConf.Limit = limit
-		t.Run(limitToString(limit), func(t *testing.T) {
+	for _, mode := range test.ServerModes {
+		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
-			_, coordinatorServer := mock.StartMockCoordinatorService(t)
+			serverTLSConfig, clientTLSConfig := createServerAndClientTLSConfig(t, mode)
+			for _, limit := range append(
+				defaultLimits,
+				&adapters.GenerateLimit{Blocks: 5},
+				&adapters.GenerateLimit{Transactions: 5*defaultBlockSize + 1}, // +1 for the meta namespace TX.
+			) {
+				t.Run(limitToString(limit), func(t *testing.T) {
+					t.Parallel()
+					clientConf := DefaultClientConf()
+					clientConf.Limit = limit
+					_, coordinatorServer := mock.StartMockCoordinatorService(t)
 
-			// When using the sidecar adapter, the load generator and the sidecar
-			// should have each other's endpoints.
-			// To avoid manually pre-choosing ports that might conflict with other tests,
-			// we pre allocate them by starting a listener that picks a port automatically and bind to it.
-			// In real evaluation scenario, the ports will be selected by the deployment infrastructure.
-			sidecarServerConf := preAllocatePorts(t)
-			ordererServers := make([]*connection.ServerConfig, 3)
-			for i := range ordererServers {
-				ordererServers[i] = preAllocatePorts(t)
+					// When using the sidecar adapter, the load generator and the sidecar
+					// should have each other's endpoints.
+					// To avoid manually pre-choosing ports that might conflict with other tests,
+					// we pre allocate them by starting a listener that picks a port automatically and bind to it.
+					// In real evaluation scenario, the ports will be selected by the deployment infrastructure.
+					sidecarServerConf := preAllocatePorts(t)
+					ordererServers := make([]*connection.ServerConfig, 3)
+					for i := range ordererServers {
+						ordererServers[i] = preAllocatePorts(t)
+					}
+					sidecarServerConf.TLS = serverTLSConfig
+					// Start server under test
+					sidecarConf := &sidecar.Config{
+						Server: sidecarServerConf,
+						Orderer: ordererconn.Config{
+							Connection: ordererconn.ConnectionConfig{
+								Endpoints: ordererconn.NewEndpoints(0, "org", ordererServers...),
+							},
+							ChannelID:     clientConf.LoadProfile.Transaction.Policy.ChannelID,
+							Identity:      clientConf.LoadProfile.Transaction.Policy.Identity,
+							ConsensusType: ordererconn.Bft,
+						},
+						LastCommittedBlockSetInterval: 100 * time.Millisecond,
+						WaitingTxsLimit:               5000,
+						Committer: test.NewInsecureClientConfig(
+							&coordinatorServer.Configs[0].Endpoint,
+						),
+						Monitoring: defaultMonitoring(),
+						Ledger: sidecar.LedgerConfig{
+							Path: t.TempDir(),
+						},
+					}
+					service, err := sidecar.New(sidecarConf)
+					require.NoError(t, err)
+					t.Cleanup(service.Close)
+					test.RunServiceAndGrpcForTest(t.Context(), t, service, sidecarConf.Server)
+					// Start client
+					clientConf.Adapter.SidecarClient = &adapters.SidecarClientConfig{
+						OrdererServers: ordererServers,
+						SidecarClient:  test.NewTLSClientConfig(clientTLSConfig, &sidecarServerConf.Endpoint),
+					}
+					testLoadGenerator(t, clientConf)
+				})
 			}
-
-			// Start server under test
-			sidecarConf := &sidecar.Config{
-				Server: sidecarServerConf,
-				Orderer: ordererconn.Config{
-					Connection: ordererconn.ConnectionConfig{
-						Endpoints: ordererconn.NewEndpoints(0, "org", ordererServers...),
-					},
-					ChannelID:     clientConf.LoadProfile.Transaction.Policy.ChannelID,
-					Identity:      clientConf.LoadProfile.Transaction.Policy.Identity,
-					ConsensusType: ordererconn.Bft,
-				},
-				LastCommittedBlockSetInterval: 100 * time.Millisecond,
-				WaitingTxsLimit:               5000,
-				Committer:                     test.NewInsecureClientConfig(&coordinatorServer.Configs[0].Endpoint),
-				Monitoring:                    defaultMonitoring(),
-				Ledger: sidecar.LedgerConfig{
-					Path: t.TempDir(),
-				},
-			}
-			service, err := sidecar.New(sidecarConf)
-			require.NoError(t, err)
-			t.Cleanup(service.Close)
-			test.RunServiceAndGrpcForTest(t.Context(), t, service, sidecarConf.Server)
-
-			// Start client
-			clientConf.Adapter.SidecarClient = &adapters.SidecarClientConfig{
-				OrdererServers: ordererServers,
-				SidecarClient:  test.NewInsecureClientConfig(&sidecarServerConf.Endpoint),
-			}
-			testLoadGenerator(t, clientConf)
 		})
 	}
 }
@@ -213,10 +254,10 @@ func TestLoadGenForSidecar(t *testing.T) {
 func TestLoadGenForOrderer(t *testing.T) {
 	t.Parallel()
 	for _, limit := range defaultLimits {
-		clientConf := DefaultClientConf()
-		clientConf.Limit = limit
 		t.Run(limitToString(limit), func(t *testing.T) {
 			t.Parallel()
+			clientConf := DefaultClientConf()
+			clientConf.Limit = limit
 			// Start dependencies
 			orderer, ordererServer := mock.StartMockOrderingServices(
 				t, &mock.OrdererConfig{NumService: 3, BlockSize: 100},
@@ -403,4 +444,16 @@ func limitToString(m *adapters.GenerateLimit) string {
 		return "<empty>"
 	}
 	return strings.Join(out, ",")
+}
+
+// createServerAndClientTLSConfig creates tls configurations for
+// both the server and client.
+func createServerAndClientTLSConfig(t *testing.T, tlsMode string) (
+	serverTLSConfig, clientTLSConfig connection.TLSConfig,
+) {
+	t.Helper()
+	credsFactory := test.NewCredentialsFactory(t)
+	clientTLSConfig, _ = credsFactory.CreateServerCredentials(t, tlsMode, defaultServerSAN)
+	serverTLSConfig, _ = credsFactory.CreateClientCredentials(t, tlsMode)
+	return clientTLSConfig, serverTLSConfig
 }

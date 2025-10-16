@@ -331,22 +331,22 @@ func NewInsecureLoadBalancedDialConfig(t *testing.T, endpoints []*connection.End
 	return dialConfig
 }
 
-// NewInsecureMultiClientConfig creates a multi client configuration for test purposes given number of endpoints.
-func NewInsecureMultiClientConfig(ep ...*connection.Endpoint) *connection.MultiClientConfig {
+// NewTLSMultiClientConfig creates a multi client configuration for test purposes
+// given number of endpoints and a TLS configuration.
+func NewTLSMultiClientConfig(
+	tlsConfig connection.TLSConfig,
+	ep ...*connection.Endpoint,
+) *connection.MultiClientConfig {
 	return &connection.MultiClientConfig{
 		Endpoints: ep,
-		TLS:       InsecureTLSConfig,
+		TLS:       tlsConfig,
 		Retry:     &defaultGrpcRetryProfile,
 	}
 }
 
-// NewInsecureClientConfig creates a client configuration for test purposes given an endpoints.
+// NewInsecureClientConfig creates a client configuration for test purposes given an endpoint.
 func NewInsecureClientConfig(ep *connection.Endpoint) *connection.ClientConfig {
-	return &connection.ClientConfig{
-		Endpoint: ep,
-		TLS:      InsecureTLSConfig,
-		Retry:    &defaultGrpcRetryProfile,
-	}
+	return NewTLSClientConfig(InsecureTLSConfig, ep)
 }
 
 // NewTLSClientConfig creates a client configuration for test purposes given a single endpoint and creds.

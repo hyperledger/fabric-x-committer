@@ -358,7 +358,7 @@ func generateNamespacesUnderTest(t *testing.T, namespaces []string) *vc.Database
 	env.SetupSystemTablesAndNamespaces(t.Context(), t)
 
 	clientConf := loadgen.DefaultClientConf()
-	clientConf.Adapter.VCClient = test.NewInsecureMultiClientConfig(env.Endpoints...)
+	clientConf.Adapter.VCClient = test.NewTLSMultiClientConfig(test.InsecureTLSConfig, env.Endpoints...)
 	policies := &workload.PolicyProfile{
 		NamespacePolicies: make(map[string]*workload.Policy, len(namespaces)),
 	}
