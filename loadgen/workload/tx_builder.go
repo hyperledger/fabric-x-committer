@@ -89,14 +89,14 @@ func (txb *TxBuilder) makeTx(optionalTxID *string, blockTx *protoblocktx.Tx) *pr
 
 	//  2. Signs the TX:
 	switch {
-	case blockTx.Signatures != nil:
+	case len(blockTx.Endorsements) > 0:
 		// If the TX already have a signature, it doesn't re-sign it.
 	case txb.TxSigner != nil:
 		// If TxSigner is given, it is used to sign the TX.
 		txb.TxSigner.Sign(txID, blockTx)
 	case txb.TxSigner == nil:
 		// Otherwise, it puts empty signatures for all namespaces to ensure well-formed TX.
-		blockTx.Signatures = make([][]byte, len(blockTx.Namespaces))
+		blockTx.Endorsements = make([]*protoblocktx.Endorsements, len(blockTx.Namespaces))
 	}
 
 	//  3. Serializes the envelope's payload.
