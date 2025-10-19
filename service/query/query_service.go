@@ -158,7 +158,7 @@ func (q *Service) GetRows(
 		Namespaces: make([]*protoqueryservice.RowsNamespace, len(query.Namespaces)),
 	}
 	for i, ns := range query.Namespaces {
-		resRows, resErr := batches[i].waitForRows(ctx, ns.Keys)
+		resRows, _, resErr := batches[i].waitForRows(ctx, ns.Keys)
 		if resErr != nil {
 			return nil, resErr
 		}
@@ -168,6 +168,40 @@ func (q *Service) GetRows(
 		}
 		promutil.AddToCounter(q.metrics.keysResponded, len(resRows))
 	}
+	return res, err
+}
+
+// GetTransactionStatus implements the query-service interface.
+func (q *Service) GetTransactionStatus(
+	ctx context.Context, query *protoqueryservice.TxStatusQuery,
+) (*protoqueryservice.TxStatusResponse, error) {
+	q.metrics.requests.WithLabelValues(grpcGetTxStatus).Inc()
+
+	defer q.requestLatency(grpcGetTxStatus, time.Now())
+
+	keys := make([][]byte, len(query.TxIds))
+	for i, txID := range query.TxIds {
+		keys[i] = []byte(txID)
+	}
+
+	batches, err := q.assignRequest(ctx, &protoqueryservice.Query{
+		View: query.View,
+		Namespaces: []*protoqueryservice.QueryNamespace{{
+			NsId: txStatusNsID,
+			Keys: keys,
+		}},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	res := &protoqueryservice.TxStatusResponse{}
+	_, resRows, resErr := batches[0].waitForRows(ctx, keys)
+	if resErr != nil {
+		return nil, resErr
+	}
+	res.Statuses = resRows
+	promutil.AddToCounter(q.metrics.keysResponded, len(resRows))
 	return res, err
 }
 

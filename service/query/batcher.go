@@ -15,6 +15,7 @@ import (
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
 
+	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
@@ -26,6 +27,9 @@ const (
 	minIsoLevel = 0 // 0b000
 	maxIsoLevel = 3 // 0b011
 	deferredBit = 4 // 0b100
+
+	// txStatusNsID we use "$" to identify a tx status request as "$" is not a valid namespace character.
+	txStatusNsID = "$tx_status$"
 )
 
 // viewsBatcher is designed to allow maximal concurrency between requests.
@@ -98,8 +102,9 @@ type (
 		submitter sync.Once
 
 		// finalized is true once the query is actively executed.
-		finalized bool
-		result    map[string]*protoqueryservice.Row
+		finalized    bool
+		result       map[string]*protoqueryservice.Row
+		statusResult map[string]*protonotify.TxStatusEvent
 	}
 )
 
@@ -387,12 +392,12 @@ func (q *namespaceQueryBatch) execute() {
 	m.Inc()
 	defer m.Dec()
 
-	q.result = make(map[string]*protoqueryservice.Row)
+	uniqueMap := make(map[string]*protoqueryservice.Row)
 	var uniqueKeys [][]byte
 	for _, key := range q.keys {
 		strKey := string(key)
-		if _, ok := q.result[strKey]; !ok {
-			q.result[strKey] = nil
+		if _, ok := uniqueMap[strKey]; !ok {
+			uniqueMap[strKey] = nil
 			uniqueKeys = append(uniqueKeys, key)
 		}
 	}
@@ -401,17 +406,34 @@ func (q *namespaceQueryBatch) execute() {
 	promutil.ObserveSize(q.metrics.batchQuerySize, len(uniqueKeys))
 
 	start := time.Now()
-	rows, err := unsafeQueryRows(q.ctx, queryObj, q.nsID, uniqueKeys)
+	var queryRows []*protoqueryservice.Row
+	var statusRows []*protonotify.TxStatusEvent
+	if q.nsID != txStatusNsID {
+		queryRows, err = unsafeQueryRows(q.ctx, queryObj, q.nsID, uniqueKeys)
+	} else {
+		statusRows, err = unsafeQueryTxStatus(q.ctx, queryObj, uniqueKeys)
+	}
 	if err != nil {
 		q.cancel(err)
 		return
 	}
 	promutil.Observe(q.metrics.queryLatencySeconds, time.Since(start))
-	promutil.ObserveSize(q.metrics.batchResponseSize, len(rows))
+	promutil.ObserveSize(q.metrics.batchResponseSize, len(queryRows)+len(statusRows))
 
-	for _, r := range rows {
-		q.result[string(r.Key)] = r
+	if queryRows != nil {
+		q.result = make(map[string]*protoqueryservice.Row)
+		for _, r := range queryRows {
+			q.result[string(r.Key)] = r
+		}
 	}
+
+	if statusRows != nil {
+		q.statusResult = make(map[string]*protonotify.TxStatusEvent)
+		for _, r := range statusRows {
+			q.statusResult[r.TxId] = r
+		}
+	}
+
 	q.cancel(nil)
 }
 
@@ -420,30 +442,42 @@ func (q *namespaceQueryBatch) execute() {
 func (q *namespaceQueryBatch) waitForRows(
 	ctx context.Context,
 	keys [][]byte,
-) ([]*protoqueryservice.Row, error) {
+) (res []*protoqueryservice.Row, statusRes []*protonotify.TxStatusEvent, err error) {
 	// Wait for batch to be finalized or context to be canceled.
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, nil, ctx.Err()
 	case <-q.ctx.Done():
 		// Query completed.
 	}
 
 	if errors.Is(q.ctx.Err(), context.DeadlineExceeded) {
-		return nil, ErrInvalidOrStaleView
+		return nil, nil, ErrInvalidOrStaleView
 	}
 	// context.Cause() returns context.Canceled when err=nil is reported.
 	if err := context.Cause(q.ctx); !errors.Is(err, context.Canceled) { //nolint:contextcheck // false positive.
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Extract results for requested keys.
-	res := make([]*protoqueryservice.Row, 0, len(keys))
-	for _, key := range keys {
-		// Get result for this key from the batch results.
-		if row, ok := q.result[string(key)]; ok && row != nil {
-			res = append(res, row)
+	if q.result != nil {
+		res = make([]*protoqueryservice.Row, 0, len(keys))
+		for _, key := range keys {
+			// Get result for this key from the batch results.
+			if row, ok := q.result[string(key)]; ok && row != nil {
+				res = append(res, row)
+			}
 		}
 	}
-	return res, nil
+	if q.statusResult != nil {
+		statusRes = make([]*protonotify.TxStatusEvent, 0, len(keys))
+		for _, key := range keys {
+			// Get result for this key from the batch results.
+			if row, ok := q.statusResult[string(key)]; ok && row != nil {
+				statusRes = append(statusRes, row)
+			}
+		}
+	}
+
+	return res, statusRes, nil
 }

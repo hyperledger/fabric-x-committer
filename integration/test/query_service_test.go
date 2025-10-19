@@ -15,8 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 func TestQueryService(t *testing.T) {
@@ -33,8 +35,9 @@ func TestQueryService(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute*5)
 	t.Cleanup(cancel)
 
-	c.MakeAndSendTransactionsToOrderer(t, [][]*protoblocktx.TxNamespace{{
-		{
+	t.Log("Insert TXs")
+	txIDs := c.MakeAndSendTransactionsToOrderer(t, [][]*protoblocktx.TxNamespace{
+		{{
 			NsId:      "1",
 			NsVersion: 0,
 			BlindWrites: []*protoblocktx.Write{
@@ -47,8 +50,8 @@ func TestQueryService(t *testing.T) {
 					Value: []byte("v2"),
 				},
 			},
-		},
-		{
+		}},
+		{{
 			NsId:      "2",
 			NsVersion: 0,
 			BlindWrites: []*protoblocktx.Write{
@@ -61,72 +64,97 @@ func TestQueryService(t *testing.T) {
 					Value: []byte("v4"),
 				},
 			},
-		},
-	}}, []protoblocktx.Status{protoblocktx.Status_COMMITTED})
+		}},
+	}, []protoblocktx.Status{protoblocktx.Status_COMMITTED, protoblocktx.Status_COMMITTED})
+	require.Len(t, txIDs, 2)
 
-	t.Run("Query-GetRows-Both-Namespaces", func(t *testing.T) {
-		ret, err := c.QueryServiceClient.GetRows(
-			ctx,
-			&protoqueryservice.Query{
-				Namespaces: []*protoqueryservice.QueryNamespace{
-					{
-						NsId: "1",
-						Keys: [][]byte{
-							[]byte("k1"), []byte("k2"),
-						},
-					},
-					{
-						NsId: "2",
-						Keys: [][]byte{
-							[]byte("k3"), []byte("k4"),
-						},
-					},
-				},
-			},
-		)
-		require.NoError(t, err)
-
-		testItemsVersion := uint64(0)
-
-		requiredItems := []*protoqueryservice.RowsNamespace{
-			{
-				NsId: "1",
-				Rows: []*protoqueryservice.Row{
-					{
-						Key:     []byte("k1"),
-						Value:   []byte("v1"),
-						Version: testItemsVersion,
-					},
-					{
-						Key:     []byte("k2"),
-						Value:   []byte("v2"),
-						Version: testItemsVersion,
-					},
-				},
-			},
-			{
-				NsId: "2",
-				Rows: []*protoqueryservice.Row{
-					{
-						Key:     []byte("k3"),
-						Value:   []byte("v3"),
-						Version: testItemsVersion,
-					},
-					{
-						Key:     []byte("k4"),
-						Value:   []byte("v4"),
-						Version: testItemsVersion,
-					},
-				},
-			},
-		}
-
-		requireQueryResults(
-			t,
-			requiredItems,
-			ret.Namespaces,
-		)
+	t.Log("Query TXs status")
+	status, err := c.QueryServiceClient.GetTransactionStatus(ctx, &protoqueryservice.TxStatusQuery{
+		TxIds: txIDs,
 	})
+	require.NoError(t, err)
+	require.Len(t, status.Statuses, len(txIDs))
+	test.RequireProtoElementsMatch(t, []*protonotify.TxStatusEvent{
+		{
+			TxId: txIDs[0],
+			StatusWithHeight: &protoblocktx.StatusWithHeight{
+				Code:        protoblocktx.Status_COMMITTED,
+				TxNumber:    uint32(0),
+				BlockNumber: uint64(2),
+			},
+		},
+		{
+			TxId: txIDs[1],
+			StatusWithHeight: &protoblocktx.StatusWithHeight{
+				Code:        protoblocktx.Status_COMMITTED,
+				TxNumber:    uint32(1),
+				BlockNumber: uint64(2),
+			},
+		},
+	}, status.Statuses)
+
+	t.Log("Query Rows")
+	ret, err := c.QueryServiceClient.GetRows(
+		ctx,
+		&protoqueryservice.Query{
+			Namespaces: []*protoqueryservice.QueryNamespace{
+				{
+					NsId: "1",
+					Keys: [][]byte{
+						[]byte("k1"), []byte("k2"),
+					},
+				},
+				{
+					NsId: "2",
+					Keys: [][]byte{
+						[]byte("k3"), []byte("k4"),
+					},
+				},
+			},
+		},
+	)
+	require.NoError(t, err)
+
+	testItemsVersion := uint64(0)
+
+	requiredItems := []*protoqueryservice.RowsNamespace{
+		{
+			NsId: "1",
+			Rows: []*protoqueryservice.Row{
+				{
+					Key:     []byte("k1"),
+					Value:   []byte("v1"),
+					Version: testItemsVersion,
+				},
+				{
+					Key:     []byte("k2"),
+					Value:   []byte("v2"),
+					Version: testItemsVersion,
+				},
+			},
+		},
+		{
+			NsId: "2",
+			Rows: []*protoqueryservice.Row{
+				{
+					Key:     []byte("k3"),
+					Value:   []byte("v3"),
+					Version: testItemsVersion,
+				},
+				{
+					Key:     []byte("k4"),
+					Value:   []byte("v4"),
+					Version: testItemsVersion,
+				},
+			},
+		},
+	}
+
+	requireQueryResults(
+		t,
+		requiredItems,
+		ret.Namespaces,
+	)
 }
 
 // requireQueryResults requires that the items retrieved by the Query service

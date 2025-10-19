@@ -16,6 +16,7 @@ const (
 	grpcBeginView             = "begin_view"
 	grpcEndView               = "end_view"
 	grpcGetRows               = "get_rows"
+	grpcGetTxStatus           = "get_tx_status"
 	sessionViews              = "active_views"
 	sessionProcessingQueries  = "processing_queries"
 	sessionWaitingQueries     = "waiting_queries"
