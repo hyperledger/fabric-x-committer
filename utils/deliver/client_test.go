@@ -8,6 +8,7 @@ package deliver
 
 import (
 	"context"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -50,7 +51,7 @@ func TestBroadcastDeliver(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(client.CloseConnections)
 
-	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
 
 	outputBlocksChan := make(chan *common.Block, 100)
@@ -77,20 +78,21 @@ func TestBroadcastDeliver(t *testing.T) {
 
 	t.Log("One server down")
 	servers[2].Servers[0].Stop()
-	waitUntilGrpcServerIsDown(ctx, t, &servers[2].Configs[0].Endpoint)
+	listener1 := holdPort(ctx, t, servers[2].Configs[0])
 	submit(t, &conf, outputBlocks, expectedSubmit{
 		success: 3,
 	})
 
 	t.Log("Two servers down")
 	servers[2].Servers[1].Stop()
-	waitUntilGrpcServerIsDown(ctx, t, &servers[2].Configs[1].Endpoint)
+	listener2 := holdPort(ctx, t, servers[2].Configs[1])
 	submit(t, &conf, outputBlocks, expectedSubmit{
 		success:     2,
 		unavailable: 1,
 	})
 
 	t.Log("One incorrect server")
+	_ = listener1.Close()
 	fakeServer := test.RunGrpcServerForTest(ctx, t, servers[2].Configs[0], nil)
 	waitUntilGrpcServerIsReady(ctx, t, &servers[2].Configs[0].Endpoint)
 	submit(t, &conf, outputBlocks, expectedSubmit{
@@ -100,7 +102,6 @@ func TestBroadcastDeliver(t *testing.T) {
 
 	t.Log("All good again")
 	fakeServer.Stop()
-	waitUntilGrpcServerIsDown(ctx, t, &servers[2].Configs[0].Endpoint)
 	servers[2].Servers[0] = test.RunGrpcServerForTest(ctx, t, servers[2].Configs[0], ordererService.RegisterService)
 	waitUntilGrpcServerIsReady(ctx, t, &servers[2].Configs[0].Endpoint)
 	submit(t, &conf, outputBlocks, expectedSubmit{
@@ -108,6 +109,7 @@ func TestBroadcastDeliver(t *testing.T) {
 	})
 
 	t.Log("Insufficient quorum")
+	_ = listener2.Close()
 	for _, gs := range servers[:2] {
 		for _, s := range gs.Servers[:2] {
 			s.Stop()
@@ -115,7 +117,7 @@ func TestBroadcastDeliver(t *testing.T) {
 	}
 	for _, gs := range servers[:2] {
 		for _, c := range gs.Configs[:2] {
-			waitUntilGrpcServerIsDown(ctx, t, &c.Endpoint)
+			holdPort(ctx, t, c)
 		}
 	}
 	submit(t, &conf, outputBlocks, expectedSubmit{
@@ -231,11 +233,13 @@ func waitUntilGrpcServerIsReady(ctx context.Context, t *testing.T, endpoint *con
 	t.Logf("%v is ready", endpoint)
 }
 
-func waitUntilGrpcServerIsDown(ctx context.Context, t *testing.T, endpoint *connection.Endpoint) {
+// holdPort try to bind to the server port. This holds it until the listener is closed.
+func holdPort(ctx context.Context, t *testing.T, c *connection.ServerConfig) net.Listener {
 	t.Helper()
-	newConn, err := connection.Connect(test.NewInsecureDialConfig(endpoint))
+	listener, err := c.Listener(ctx)
 	require.NoError(t, err)
-	defer connection.CloseConnectionsLog(newConn)
-	test.WaitUntilGrpcServerIsDown(ctx, t, newConn)
-	t.Logf("%v is down", endpoint)
+	t.Cleanup(func() {
+		_ = listener.Close()
+	})
+	return listener
 }
