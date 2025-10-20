@@ -13,9 +13,11 @@ SPDX-License-Identifier: Apache-2.0
    - [Task 2. Relaying Blocks to the Coordinator](#task-2-relaying-blocks-to-the-coordinator)
    - [Task 3. Persisting Committed Block in the File System](#task-3-persisting-committed-block-in-the-file-system)
 5. [Delivering Committed Block to Registered Clients](#5-delivering-committed-block-to-registered-clients)
-6. [Failure and Recovery](#6-failure-and-recovery)
+6. [Notification Service](#6-notification-service)
+7. [Failure and Recovery](#7-failure-and-recovery)
    - [A. State Persistence](#a-state-persistence)
    - [B. Restart and Recovery Procedure](#b-restart-and-recovery-procedure)
+   - [Notification Service Recovery](#notification-service-recovery)
 
 
 ## 1. Overview
@@ -29,18 +31,20 @@ delivered to downstream clients.
 The Sidecar performs four main tasks:
 
 1.  **Fetch Blocks:** Retrieves blocks sequentially from the Ordering Service.
-2.  **Relay and Validate:** Forwards fetched blocks to the Coordinator and receives feedback on transaction statuses
+2.  **Translate and Validate:** Decode transactions to a committer transactions (`protoblocktx.Tx`), 
+    and filter malformed transactions.
+3. **Relay and Collect:** Forwards fetched blocks to the Coordinator and receives feedback on transaction statuses
     within those blocks.
-3.  **Persist Committed Blocks:** Stores blocks confirmed as committed by the Coordinator in a local, append-only file
+4. **Persist Committed Blocks:** Stores blocks confirmed as committed by the Coordinator in a local, append-only file
     store for durability and auditability.
-4.  **Deliver to Clients:** Delivers the committed blocks to registered client applications.
+5. **Deliver to Clients:** Delivers the committed blocks to registered client applications.
+6. **Notification:** Allow subscribing to a transaction ID.
 
 Note that the fourth task is executed only when users/clients creates a stream with the sidecar.
 
 ## 3. Configuration
 
-The Sidecar requires the following configuration settings, provided in a Yaml configuration
-file:
+The Sidecar requires the following configuration settings, provided in a Yaml configuration file:
 
  - *Ordering Service Endpoints*: Address(es) of the ordering service node(s).
  - *Coordinator Endpoint*: Address of the coordinator service.
@@ -220,7 +224,38 @@ type Block struct {
 	TxsNum []uint32           
 }
 ```
-This conversion facilitates easier processing and decouples the Sidecar's internal logic from complex Fabric block structures.
+
+This conversion facilitates easier processing and decouples the committer's internal logic from the nested Fabric block structures.
+
+This internal block will only contain well-formed committer transactions.
+I.e., the sidecar filters transactions that cannot be processed correctly.
+Following are a list of statuses that the sidecar filters by:
+```protobuf
+enum Status {
+   // ...
+   
+   // Cannot be stored in the state database because the TX ID cannot be extracted,
+   // or the TX ID entry is already occupied.
+   REJECTED_DUPLICATE_TX_ID = 100;                     // Transaction with the same ID has already been processed.
+   MALFORMED_BAD_ENVELOPE = 101;                       // Cannot unmarshal envelope.
+   MALFORMED_MISSING_TX_ID = 102;                      // Envelope is missing transaction ID.
+
+   // Stored in the state database. Prevents submitting a transaction with the same ID.
+   MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD = 103;       // Unsupported envelope payload type.
+   MALFORMED_BAD_ENVELOPE_PAYLOAD = 104;               // Cannot unmarshal envelope's payload.
+   MALFORMED_TX_ID_CONFLICT = 105;                     // Envelope's TX ID does not match the payload's TX ID.
+   MALFORMED_EMPTY_NAMESPACES = 106;                   // No namespaces provided.
+   MALFORMED_DUPLICATE_NAMESPACE = 107;                // Duplicate namespace detected.
+   MALFORMED_NAMESPACE_ID_INVALID = 108;               // Invalid namespace identifier.
+   MALFORMED_BLIND_WRITES_NOT_ALLOWED = 109;           // Blind writes are not allowed in a namespace transaction.
+   MALFORMED_NO_WRITES = 110;                          // No write operations in the transaction.
+   MALFORMED_EMPTY_KEY = 111;                          // Unset key detected.
+   MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET = 112;    // Duplicate key in the read-write set.
+   MALFORMED_MISSING_SIGNATURE = 113;                  // Number of signatures does not match the number of namespaces.
+   MALFORMED_NAMESPACE_POLICY_INVALID = 114;           // Invalid namespace policy.
+   MALFORMED_CONFIG_TX_INVALID = 115;                  // Invalid configuration transaction.
+}
+```
 
 **c. In-Flight Duplicate Transaction Detection**: 
 
@@ -378,7 +413,12 @@ The Sidecar sends back `DeliverResponse` messages, each containing a committed b
 If the client requests a future block (one not yet committed), the `Recv()` call will 
 block until that block becomes available for delivery from the Sidecar.
 
-## 6. Failure and Recovery
+## 6. Notification Service
+
+The sidecar supports subscribing for transaction IDs status, and be notified once a
+transaction is committed or aborted.
+
+## 7. Failure and Recovery
 
 The Sidecar is designed for resilience, allowing it to recover from failures that might
 occur at any point during block processing. This recovery capability relies on persistently
@@ -419,3 +459,8 @@ When the Sidecar restarts after a failure, it follows these steps:
   **g. Resume Operation**: Once the local block store is synchronized (missing blocks fetched)
    and the transaction statuses for the recovered range are confirmed, the Sidecar seamlessly
    resumes its standard block processing routines from block N+1.
+
+### Notification Service Recovery
+
+When a sidecar fails and restarts, the client should assume that no state is persisted at the sidecar and,
+therefore, needs to resubmit the transaction IDs of interest for which it has not yet received a status update.

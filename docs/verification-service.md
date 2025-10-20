@@ -82,11 +82,10 @@ The service uses a lock-free design with an atomic pointer to update the policy 
 
 The verification process follows these steps:
 
-1. **Validate Format**: Check that the transaction is well-formed.
-2. **Policy Lookup**: For each namespace in a transaction, the service looks up the corresponding policy.
-3. **Signature Validation**: The service validates the transaction signatures against the namespace policy.
-4. **Result Determination**: If it is well-formed, and all signatures are valid, 
-the transaction is marked as `COMMITTED`. Otherwise, it's marked as `ABORTED_<reason>`. 
+1. **Policy Lookup**: For each namespace in a transaction, the service looks up the corresponding policy.
+2. **Signature Validation**: The service validates the transaction signatures against the namespace policy.
+3. **Result Determination**: If all signatures are valid, the transaction is marked as `COMMITTED`.
+   Otherwise, it's marked as `ABORTED_SIGNATURE_INVALID`.
 
 ## 4. Parallel Execution
 
@@ -454,15 +453,8 @@ func (v *verifier) verifyRequest(request *protosigverifierservice.Request) *prot
         TxId:     request.Tx.Id,
         BlockNum: request.BlockNum,
         TxNum:    request.TxNum,
-        Status:   v.verifyTX(request.Tx),
+        Status:   protoblocktx.Status_COMMITTED,
     }
-}
-
-func (v *verifier) verifyTX(tx *protoblocktx.Tx) protoblocktx.Status {
-    if status := verifyTxForm(tx); status != retValid {
-        return status
-    }
-	
     // The verifiers might temporarily retain the old map while updatePolicies has already set a new one.
     // This is acceptable, provided the coordinator sends the validation status to the dependency graph
     // after updating the policies in the verifier.
@@ -478,7 +470,8 @@ func (v *verifier) verifyTX(tx *protoblocktx.Tx) protoblocktx.Status {
         nsVerifier, ok := verifiers[ns.NsId]
         if !ok {
             logger.Debugf("No verifier for namespace: '%v'", ns.NsId)
-            return protoblocktx.Status_ABORTED_SIGNATURE_INVALID
+            response.Status = protoblocktx.Status_ABORTED_SIGNATURE_INVALID
+            return response
         }
 
         // NOTE: We do not compare the namespace version in the transaction
@@ -492,15 +485,14 @@ func (v *verifier) verifyTX(tx *protoblocktx.Tx) protoblocktx.Status {
         //       namespace version, which would reflect the correct validation status.
         if err := nsVerifier.VerifyNs(request.Tx, nsIndex); err != nil {
             logger.Debugf("Invalid signature found: '%v', namespace id: '%v'", request.Tx.Id, ns.NsId)
-            return protoblocktx.Status_ABORTED_SIGNATURE_INVALID
+            response.Status = protoblocktx.Status_ABORTED_SIGNATURE_INVALID
+            return response
         }
     }
-	
-    return retValid
+    return response
 }
 ```
 
-The `verifyTxForm()` verifies that a transaction is well-formed. 
 The `VerifyNs()` method in the `signature.NsVerifier` verifies signatures for a specific namespace:
 
 1. It extracts the signatures for the namespace from the transaction.
