@@ -8,10 +8,10 @@ server:
   endpoint: :7001
   tls:
     mode: mtls
-    cert-path: /server_certs/public-key
-    key-path: /server_certs/private-key
+    cert-path: /server-certs/public-key
+    key-path: /server-certs/private-key
     ca-cert-paths:
-      - /server_certs/ca-certificate
+      - /server-certs/ca-certificate
   # Credentials for the server
 monitoring:
   server:

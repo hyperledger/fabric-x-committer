@@ -228,8 +228,8 @@ func assembleBinds(t *testing.T, params startNodeParameters, additionalBinds ...
 	require.NotEmpty(t, clientCredsPath)
 
 	return append([]string{
-		fmt.Sprintf("%s:/server_certs", serverCredsPath),
-		fmt.Sprintf("%s:/client_certs", clientCredsPath),
+		fmt.Sprintf("%s:/server-certs", serverCredsPath),
+		fmt.Sprintf("%s:/client-certs", clientCredsPath),
 	}, additionalBinds...)
 }
 

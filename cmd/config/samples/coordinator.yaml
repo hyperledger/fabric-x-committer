@@ -6,10 +6,10 @@ server:
   endpoint: :9001
   tls:
     mode: mtls
-    cert-path: /server_certs/public-key
-    key-path: /server_certs/private-key
+    cert-path: /server-certs/public-key
+    key-path: /server-certs/private-key
     ca-cert-paths:
-      - /server_certs/ca-certificate
+      - /server-certs/ca-certificate
 monitoring:
   server:
     endpoint: :2119
@@ -19,10 +19,10 @@ verifier:
     - verifier:5001
   tls: &ClientTLS
     mode: mtls
-    cert-path: /client_certs/public-key
-    key-path: /client_certs/private-key
+    cert-path: /client-certs/public-key
+    key-path: /client-certs/private-key
     ca-cert-paths:
-      - /client_certs/ca-certificate
+      - /client-certs/ca-certificate
 validator-committer:
   endpoints:
     - vc:6001
