@@ -34,10 +34,10 @@ import (
 var (
 	defaultServerTLSConfig = connection.TLSConfig{
 		Mode:     connection.MutualTLSMode,
-		CertPath: "/server-certs/public-key",
-		KeyPath:  "/server-certs/private-key",
+		CertPath: "/server_certs/public-key",
+		KeyPath:  "/server_certs/private-key",
 		CACertPaths: []string{
-			"/server-certs/ca-certificate",
+			"/server_certs/ca-certificate",
 		},
 	}
 	defaultClientTLSConfig = connection.TLSConfig{

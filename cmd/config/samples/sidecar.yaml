@@ -6,10 +6,10 @@ server:
   endpoint: :4001
   tls:
     mode: mtls
-    cert-path: /server-certs/public-key
-    key-path: /server-certs/private-key
+    cert-path: /server_certs/public-key
+    key-path: /server_certs/private-key
     ca-cert-paths:
-      - /server-certs/ca-certificate
+      - /server_certs/ca-certificate
   keep-alive:
     params:
       time: 300s
