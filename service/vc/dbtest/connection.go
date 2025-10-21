@@ -44,6 +44,7 @@ type Connection struct {
 	Password    string
 	Database    string
 	LoadBalance bool
+	TLS         connection.DatabaseTLS
 }
 
 // NewConnection returns a connection parameters with the specified host:port, and the default values
@@ -58,8 +59,23 @@ func NewConnection(endpoints ...*connection.Endpoint) *Connection {
 
 // dataSourceName returns the dataSourceName to be used by the database/sql package.
 func (c *Connection) dataSourceName() string {
-	return fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable",
+	ret := fmt.Sprintf("postgres://%s:%s@%s/%s?",
 		c.User, c.Password, c.endpointsString(), c.Database)
+
+	if c.TLS.UseTLS() {
+		ret += "sslmode=verify-full"
+	} else {
+		ret += "sslmode=disable"
+	}
+	// The load balancing flag is only available when the server supports it (having multiple nodes).
+	// Thus, we only add it when explicitly required. Otherwise, an error will occur.
+	if c.LoadBalance {
+		ret += "&load_balance=true"
+	}
+	if c.TLS.UseTLS() {
+		ret += fmt.Sprintf("&sslrootcert=%s", c.TLS.CACertPath)
+	}
+	return ret
 }
 
 // endpointsString returns the address:port as a string with comma as a separator between endpoints.

@@ -7,10 +7,12 @@ SPDX-License-Identifier: Apache-2.0
 package dbtest
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -18,9 +20,11 @@ import (
 
 	"github.com/cockroachdb/errors"
 	docker "github.com/fsouza/go-dockerclient"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -36,6 +40,9 @@ const (
 	// container's Memory and CPU management.
 	gb         = 1 << 30 // gb is the number of bytes needed to represent 1 GB.
 	memorySwap = -1      // memorySwap disable memory swaps (don't store data on disk)
+
+	// PostgresReadinessOutput is the output indicating that a Postgres node is ready.
+	PostgresReadinessOutput = "database system is ready to accept connections"
 )
 
 // YugabyteCMD starts yugabyte without SSL and fault tolerance (single server).
@@ -59,17 +66,22 @@ type DatabaseContainer struct {
 	Image        string
 	HostIP       string
 	Network      string
+	Hostname     string
 	DatabaseType string
 	Tag          string
 	Role         string
+	CredsPathDir string
 	Cmd          []string
 	Env          []string
+	Binds        []string
 	HostPort     int
 	DbPort       docker.Port
 	PortMap      docker.Port
 	PortBinds    map[docker.Port][]docker.PortBinding
 	NetToIP      map[string]*docker.EndpointConfig
 	AutoRm       bool
+	UseTLS       bool
+	TLSConfig    connection.TLSConfig
 
 	client      *docker.Client
 	containerID string
@@ -100,19 +112,27 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 	t.Helper()
 
 	switch dc.DatabaseType {
-	case YugaDBType:
+	case test.YugaDBType:
 		if dc.Image == "" {
 			dc.Image = defaultYugabyteImage
 		}
 
 		if dc.Cmd == nil {
 			dc.Cmd = YugabyteCMD
+
+			if dc.UseTLS {
+				dc.Cmd = append(
+					utils.ReplacePattern(dc.Cmd, func(s string) bool { return s == "--insecure" }, "--secure"),
+					"--certs_dir=/creds",
+					"--advertise_address", dc.Hostname,
+				)
+			}
 		}
 
 		if dc.DbPort == "" {
 			dc.DbPort = docker.Port(fmt.Sprintf("%s/tcp", yugaDBPort))
 		}
-	case PostgresDBType:
+	case test.PostgresDBType:
 		if dc.Image == "" {
 			dc.Image = defaultPostgresImage
 		}
@@ -126,6 +146,14 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 
 		if dc.DbPort == "" {
 			dc.DbPort = docker.Port(fmt.Sprintf("%s/tcp", postgresDBPort))
+		}
+
+		if dc.UseTLS {
+			dc.Cmd = []string{
+				"-c", "ssl=on",
+				"-c", "ssl_cert_file=/creds/server.crt",
+				"-c", "ssl_key_file=/creds/server.key",
+			}
 		}
 	default:
 		t.Fatalf("Unsupported database type: %s", dc.DatabaseType)
@@ -154,6 +182,10 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 	if dc.client == nil {
 		dc.client = test.GetDockerClient(t)
 	}
+	if dc.UseTLS {
+		dc.Binds = append(dc.Binds, fmt.Sprintf("%s:/creds", dc.CredsPathDir))
+		dc.Name += fmt.Sprintf("_with_tls_%s", uuid.NewString()[0:8])
+	}
 }
 
 // createContainer attempts to create a container instance, or attach to an existing one.
@@ -179,14 +211,16 @@ func (dc *DatabaseContainer) createContainer(ctx context.Context, t *testing.T) 
 			Context: ctx,
 			Name:    dc.Name,
 			Config: &docker.Config{
-				Image: dc.Image,
-				Cmd:   dc.Cmd,
-				Env:   dc.Env,
+				Image:    dc.Image,
+				Cmd:      dc.Cmd,
+				Env:      dc.Env,
+				Hostname: dc.Hostname,
 			},
 			HostConfig: &docker.HostConfig{
 				AutoRemove:   dc.AutoRm,
 				PortBindings: dc.PortBinds,
 				NetworkMode:  dc.Network,
+				Binds:        dc.Binds,
 				Memory:       4 * gb,
 				MemorySwap:   memorySwap,
 			},
@@ -223,8 +257,8 @@ func (dc *DatabaseContainer) findContainer(t *testing.T) error {
 	return errors.Errorf("cannot find container '%s'. Containers: %v", dc.Name, names)
 }
 
-// getConnectionOptions inspect the container and fetches the available connection options.
-func (dc *DatabaseContainer) getConnectionOptions(ctx context.Context, t *testing.T) *Connection {
+// GetConnectionOptions inspect the container and fetches the available connection options.
+func (dc *DatabaseContainer) GetConnectionOptions(ctx context.Context, t *testing.T) *Connection {
 	t.Helper()
 	container, err := dc.client.InspectContainerWithOptions(docker.InspectContainerOptions{
 		Context: ctx,
@@ -233,7 +267,7 @@ func (dc *DatabaseContainer) getConnectionOptions(ctx context.Context, t *testin
 	require.NoError(t, err)
 
 	endpoints := []*connection.Endpoint{
-		connection.CreateEndpointHP(container.NetworkSettings.IPAddress, dc.DbPort.Port()),
+		dc.GetContainerConnectionDetails(t),
 	}
 	for _, p := range container.NetworkSettings.Ports[dc.DbPort] {
 		endpoints = append(endpoints, connection.CreateEndpointHP(p.HostIP, p.HostPort))
@@ -317,6 +351,30 @@ func (dc *DatabaseContainer) ContainerID() string {
 	return dc.containerID
 }
 
+// ReadPasswordFromContainer extracts the randomly generated password from a file inside the container.
+// This is required because YugabyteDB, when running in secure mode, doesn't allow default passwords
+// and instead generates a random one at startup.
+// If no password is found, the default one will be returned.
+func (dc *DatabaseContainer) ReadPasswordFromContainer(t *testing.T, filePath string) string {
+	t.Helper()
+	output := dc.ExecuteCommand(t, []string{"cat", filePath})
+
+	scanner := bufio.NewScanner(strings.NewReader(output))
+	re := regexp.MustCompile(`(?i)^password:\s*(.+)$`)
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if matches := re.FindStringSubmatch(line); len(matches) == 2 {
+			return matches[1]
+		}
+	}
+
+	require.NoError(t, scanner.Err(), "error scanning command output")
+	t.Log("password not found in output, returning default password.")
+
+	return defaultPassword
+}
+
 // ExecuteCommand executes a command and returns the container output.
 func (dc *DatabaseContainer) ExecuteCommand(t *testing.T, cmd []string) string {
 	t.Helper()
@@ -335,10 +393,6 @@ func (dc *DatabaseContainer) ExecuteCommand(t *testing.T, cmd []string) string {
 		RawTerminal:  false,
 	}))
 
-	inspect, err := dc.client.InspectExec(exec.ID)
-	require.NoError(t, err)
-	require.Equal(t, 0, inspect.ExitCode)
-
 	return stdout.String()
 }
 
@@ -349,4 +403,17 @@ func (dc *DatabaseContainer) EnsureNodeReadiness(t *testing.T, requiredOutput st
 		output := dc.GetContainerLogs(t)
 		require.Contains(ct, output, requiredOutput)
 	}, 45*time.Second, 250*time.Millisecond)
+}
+
+// FixFilesPermissions fixes the ownership of the given files in the container.
+func (dc *DatabaseContainer) FixFilesPermissions(t *testing.T, user string, files ...string,
+) {
+	t.Helper()
+	exec, err := dc.client.CreateExec(docker.CreateExecOptions{
+		Container: dc.containerID,
+		Cmd:       append([]string{"chown", user}, files...),
+		User:      "root", // Run as root to change ownership
+	})
+	require.NoError(t, err)
+	require.NoError(t, dc.client.StartExec(exec.ID, docker.StartExecOptions{}))
 }

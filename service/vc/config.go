@@ -32,17 +32,26 @@ type DatabaseConfig struct {
 	MinConnections int32                    `mapstructure:"min-connections"`
 	LoadBalance    bool                     `mapstructure:"load-balance"`
 	Retry          *connection.RetryProfile `mapstructure:"retry"`
+	TLS            connection.DatabaseTLS   `mapstructure:"tls"`
 }
 
 // DataSourceName returns the data source name of the database.
 func (d *DatabaseConfig) DataSourceName() string {
-	ret := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable",
+	ret := fmt.Sprintf("postgres://%s:%s@%s/%s?",
 		d.Username, d.Password, d.EndpointsString(), d.Database)
 
+	if d.TLS.UseTLS() {
+		ret += "sslmode=verify-full"
+	} else {
+		ret += "sslmode=disable"
+	}
 	// The load balancing flag is only available when the server supports it (having multiple nodes).
 	// Thus, we only add it when explicitly required. Otherwise, an error will occur.
 	if d.LoadBalance {
 		ret += "&load_balance=true"
+	}
+	if d.TLS.UseTLS() {
+		ret += fmt.Sprintf("&sslrootcert=%s", d.TLS.CACertPath)
 	}
 	return ret
 }

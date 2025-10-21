@@ -72,8 +72,10 @@ type (
 	// DatabaseConfig represents the used DB.
 	DatabaseConfig struct {
 		Name        string
+		Password    string
 		LoadBalance bool
 		Endpoints   []*connection.Endpoint
+		TLS         connection.DatabaseTLS
 	}
 )
 

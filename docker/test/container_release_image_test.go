@@ -21,6 +21,8 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
+	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	testutils "github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -30,6 +32,8 @@ type startNodeParameters struct {
 	networkName     string
 	tlsMode         string
 	configBlockPath string
+	dbType          string
+	dbPassword      string
 }
 
 const (
@@ -42,6 +46,28 @@ const (
 	containerConfigPath = "/root/config"
 	// localConfigPath is the path to the sample YAML configuration of each service.
 	localConfigPath = "../../cmd/config/samples"
+
+	// containerPathForYugabytePassword holds the path to the database credentials inside the docker container.
+	// This work-around is needed due to a Yugabyte behavior that prevents using default passwords in secure mode.
+	// Instead, Yugabyte generates a random password, and this path points to the output file containing it.
+	containerPathForYugabytePassword = "/root/var/data/yugabyted_credentials.txt" //nolint:gosec
+
+	// yugabytedReadinessOutput is the output indicating that a Yugabyte node is ready.
+	yugabytedReadinessOutput = "Data placement constraint successfully verified"
+)
+
+var (
+	// enforcePostgresSSLScript enforces SSL-only client connections to a PostgreSQL instance by updating pg_hba.conf.
+	enforcePostgresSSLScript = []string{
+		"sh", "-c",
+		`sed -i 's/^host all all all scram-sha-256$/hostssl all all 0.0.0.0\/0 scram-sha-256/' ` +
+			`/var/lib/postgresql/data/pg_hba.conf`,
+	}
+
+	// reloadPostgresConfigScript reloads the PostgreSQL server configuration without restarting the instance.
+	reloadPostgresConfigScript = []string{
+		"psql", "-U", "yugabyte", "-c", "SELECT pg_reload_conf();",
+	}
 )
 
 // TestCommitterReleaseImagesWithTLS runs the committer components in different Docker containers with different TLS
@@ -71,22 +97,25 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 				testutils.RemoveDockerNetwork(t, networkName)
 			})
 
+			params := startNodeParameters{
+				credsFactory:    credsFactory,
+				networkName:     networkName,
+				tlsMode:         mode,
+				configBlockPath: configBlockPath,
+				dbType:          testutils.YugaDBType,
+			}
+
 			for _, node := range []string{
 				"db", "verifier", "vc", "query", "coordinator", "sidecar", "orderer", "loadgen",
 			} {
-				params := startNodeParameters{
-					credsFactory:    credsFactory,
-					node:            node,
-					networkName:     networkName,
-					tlsMode:         mode,
-					configBlockPath: configBlockPath,
-				}
-
+				params.node = node
 				// stop and remove the container if it already exists.
 				stopAndRemoveContainersByName(ctx, t, createDockerClient(t), assembleContainerName(node, mode))
 
 				switch node {
-				case "db", "orderer":
+				case "db":
+					params.dbPassword = startSecuredDatabaseNode(ctx, t, params).Password
+				case "orderer":
 					startCommitterNodeWithTestImage(ctx, t, params)
 				case "loadgen":
 					startLoadgenNodeWithReleaseImage(ctx, t, params)
@@ -101,12 +130,64 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	}
 }
 
+// CreateAndStartSecuredDatabaseNode creates a containerized Yugabyte or PostgreSQL database instance in a secure mode.
+func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNodeParameters) *dbtest.Connection {
+	t.Helper()
+
+	tlsConfig, credsPath := params.credsFactory.CreateServerCredentials(t, params.tlsMode, params.dbType, params.node)
+
+	node := &dbtest.DatabaseContainer{
+		DatabaseType: params.dbType,
+		Network:      params.networkName,
+		Hostname:     params.node,
+		TLSConfig:    tlsConfig,
+		CredsPathDir: credsPath,
+		UseTLS:       true,
+	}
+
+	node.StartContainer(ctx, t)
+	conn := node.GetConnectionOptions(ctx, t)
+
+	// this is relevant if we used different CA to create the DB's tls certificates.
+	require.NotEmpty(t, node.TLSConfig.CACertPaths)
+	conn.TLS = connection.DatabaseTLS{
+		Activate:   true,
+		CACertPath: node.TLSConfig.CACertPaths[0],
+	}
+
+	// post start container tweaking
+	switch node.DatabaseType {
+	case testutils.YugaDBType:
+		node.FixFilesPermissions(t,
+			"root:root",
+			fmt.Sprintf("/creds/node.%s.crt", node.Hostname),
+			fmt.Sprintf("/creds/node.%s.key", node.Hostname),
+		)
+		node.EnsureNodeReadiness(t, yugabytedReadinessOutput)
+		conn.Password = node.ReadPasswordFromContainer(t, containerPathForYugabytePassword)
+	case testutils.PostgresDBType:
+		node.FixFilesPermissions(t,
+			"postgres:postgres",
+			"/creds/server.crt",
+			"/creds/server.key",
+		)
+		node.EnsureNodeReadiness(t, dbtest.PostgresReadinessOutput)
+		node.ExecuteCommand(t, enforcePostgresSSLScript)
+		node.ExecuteCommand(t, reloadPostgresConfigScript)
+	default:
+		t.Fatalf("Unsupported database type: %s", node.DatabaseType)
+	}
+
+	t.Cleanup(
+		func() {
+			node.StopAndRemoveContainer(t)
+		})
+
+	return conn
+}
+
 // startCommitterNodeWithReleaseImage starts a committer node using the release image.
-func startCommitterNodeWithReleaseImage(
-	ctx context.Context,
-	t *testing.T,
-	params startNodeParameters,
-) {
+func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, params startNodeParameters) {
 	t.Helper()
 
 	configPath := filepath.Join(containerConfigPath, params.node)
@@ -129,6 +210,8 @@ func startCommitterNodeWithReleaseImage(
 				"SC_SIDECAR_COMMITTER_TLS_MODE=" + params.tlsMode,
 				"SC_VC_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_VERIFIER_SERVER_TLS_MODE=" + params.tlsMode,
+				"SC_VC_DATABASE_PASSWORD=" + params.dbPassword,
+				"SC_QUERY_DATABASE_PASSWORD=" + params.dbPassword,
 			},
 			Tty: true,
 		},
@@ -222,7 +305,9 @@ func assembleContainerName(node, tlsMode string) string {
 func assembleBinds(t *testing.T, params startNodeParameters, additionalBinds ...string) []string {
 	t.Helper()
 
-	_, serverCredsPath := params.credsFactory.CreateServerCredentials(t, params.tlsMode, params.node)
+	_, serverCredsPath := params.credsFactory.CreateServerCredentials(
+		t, params.tlsMode, testutils.DefaultCertStyle, params.node,
+	)
 	require.NotEmpty(t, serverCredsPath)
 	_, clientCredsPath := params.credsFactory.CreateClientCredentials(t, params.tlsMode)
 	require.NotEmpty(t, clientCredsPath)

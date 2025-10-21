@@ -64,8 +64,8 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 		},
 		DB: DatabaseConfig{
 			Name:        conn.Database,
-			LoadBalance: false,
 			Endpoints:   conn.Endpoints,
+			LoadBalance: false,
 		},
 		Policy: &workload.PolicyProfile{
 			ChannelID: "channel1",

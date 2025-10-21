@@ -88,3 +88,14 @@ func CountAppearances[T comparable](items []T) map[T]int {
 	}
 	return countMap
 }
+
+// ReplacePattern replaces the first matching value in a slice using a predicate and a new value.
+func ReplacePattern[T any](slice []T, match func(T) bool, newValue T) []T {
+	for i, val := range slice {
+		if match(val) {
+			slice[i] = newValue
+			break
+		}
+	}
+	return slice
+}

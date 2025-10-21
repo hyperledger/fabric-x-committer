@@ -95,8 +95,8 @@ type (
 		BlockTimeout      time.Duration
 		LoadgenBlockLimit uint64
 
-		// DBCluster configures the cluster to operate in DB cluster mode.
-		DBCluster *dbtest.Connection
+		// DBConnection configures the runtime to operate with a custom database connection.
+		DBConnection *dbtest.Connection
 		// TLS configures the secure level between the components: none | tls | mtls
 		TLSMode string
 
@@ -159,16 +159,18 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	c.AddOrUpdateNamespaces(t, types.MetaNamespaceID, workload.GeneratedNamespaceID, "1", "2", "3")
 
 	t.Log("Making DB env")
-	if conf.DBCluster == nil {
+	if conf.DBConnection == nil {
 		c.dbEnv = vc.NewDatabaseTestEnv(t)
 	} else {
-		c.dbEnv = vc.NewDatabaseTestEnvWithCluster(t, conf.DBCluster)
+		c.dbEnv = vc.NewDatabaseTestEnvWithCustomConnection(t, conf.DBConnection)
 	}
 
 	s := &c.SystemConfig
 	s.DB.Name = c.dbEnv.DBConf.Database
+	s.DB.Password = c.dbEnv.DBConf.Password
 	s.DB.LoadBalance = c.dbEnv.DBConf.LoadBalance
 	s.DB.Endpoints = c.dbEnv.DBConf.Endpoints
+	s.DB.TLS = c.dbEnv.DBConf.TLS
 	s.LedgerPath = t.TempDir()
 	s.ConfigBlockPath = filepath.Join(t.TempDir(), "config-block.pb.bin")
 
@@ -581,7 +583,12 @@ func (c *CommitterRuntime) createSystemConfigWithServerTLS(
 ) *config.SystemConfig {
 	t.Helper()
 	serviceCfg := c.SystemConfig
-	serviceCfg.ServiceTLS, _ = c.CredFactory.CreateServerCredentials(t, c.config.TLSMode, endpoints.Server.Host)
+	serviceCfg.ServiceTLS, _ = c.CredFactory.CreateServerCredentials(
+		t,
+		c.config.TLSMode,
+		test.DefaultCertStyle,
+		endpoints.Server.Host,
+	)
 	serviceCfg.ServiceEndpoints = endpoints
 	return &serviceCfg
 }

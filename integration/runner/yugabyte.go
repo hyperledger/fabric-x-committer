@@ -77,7 +77,7 @@ func StartYugaCluster(ctx context.Context, t *testing.T, numberOfMasters, number
 ) {
 	t.Helper()
 
-	if runtime.GOOS != linuxOS {
+	if runtime.GOOS != "linux" {
 		t.Skip("Container IP access not supported on non-linux Docker")
 	}
 
@@ -125,7 +125,7 @@ func (cc *YugaClusterController) createNode(role string) {
 		Name:         fmt.Sprintf("yuga-%s-%s", role, uuid.New().String()),
 		Image:        defaultImage,
 		Role:         role,
-		DatabaseType: dbtest.YugaDBType,
+		DatabaseType: test.YugaDBType,
 		Network:      cc.networkName,
 	}
 	cc.nodes = append(cc.nodes, node)
