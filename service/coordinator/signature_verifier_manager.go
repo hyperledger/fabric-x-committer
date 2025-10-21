@@ -97,26 +97,20 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 		return nil
 	})
 
-	dialConfigs, dialErr := connection.NewDialConfigPerEndpoint(c.clientConfig)
-	if dialErr != nil {
-		return dialErr
+	connections, connErr := connection.NewConnectionPerEndpoint(c.clientConfig)
+	if connErr != nil {
+		return fmt.Errorf("failed to create connection to signature verifier: %w", connErr)
 	}
-	for i, d := range dialConfigs {
-		conn, err := connection.Connect(d)
-		if err != nil {
-			return fmt.Errorf("failed to create connection to signature verifier [%d] at %s: %w",
-				i, d.Address, err)
-		}
-		logger.Infof("connected to signature verifier [%d] at %s", i, d.Address)
+	defer connection.CloseConnectionsLog(connections...)
+	for i, conn := range connections {
 		label := conn.CanonicalTarget()
 		c.metrics.verifiersConnection.Disconnected(label)
 
 		sv := newSignatureVerifier(c, conn)
 		svm.signVerifier[i] = sv
-		logger.Debugf("Client [%d] successfully created and connected to sv", i)
+		logger.Infof("Client [%d] successfully created and connected to sv at %s", i, label)
 
 		g.Go(func() error {
-			defer connection.CloseConnectionsLog(conn)
 			// error should never occur unless there is a bug or malicious activity. Hence, it is fine to crash for now.
 			return connection.Sustain(eCtx, func() error {
 				defer sv.recoverPendingTransactions(txBatchQueue)
