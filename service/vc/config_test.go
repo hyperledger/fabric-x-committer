@@ -12,13 +12,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 func TestDatasourceName(t *testing.T) {
 	t.Parallel()
 	c1 := &DatabaseConfig{
 		Endpoints: []*connection.Endpoint{
-			connection.CreateEndpoint("localhost:5433"),
+			test.MustCreateEndpoint("localhost:5433"),
 		},
 		Username:    "yugabyte_user",
 		Password:    "yugabyte_pass",
@@ -31,8 +32,8 @@ func TestDatasourceName(t *testing.T) {
 
 	c2 := &DatabaseConfig{
 		Endpoints: []*connection.Endpoint{
-			connection.CreateEndpoint("host1:1111"),
-			connection.CreateEndpoint("host2:2222"),
+			test.MustCreateEndpoint("host1:1111"),
+			test.MustCreateEndpoint("host2:2222"),
 		},
 		Username:    "yugabyte",
 		Password:    "yugabyte",

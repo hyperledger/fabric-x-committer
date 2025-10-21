@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -430,4 +431,14 @@ func flattenEndpoint(in map[string]any) *connection.Endpoint {
 		return nil
 	}
 	return &connection.Endpoint{Host: hostStr, Port: int(portFloat)}
+}
+
+// MustCreateEndpoint parses an endpoint from an address string.
+// It panics if it fails to parse.
+func MustCreateEndpoint(value string) *connection.Endpoint {
+	endpoint, err := connection.NewEndpoint(value)
+	if err != nil {
+		panic(errors.Wrap(err, "could not create endpoint"))
+	}
+	return endpoint
 }

@@ -59,8 +59,7 @@ func (f *SignerVerifierFactory) Scheme() signature.Scheme {
 
 // NewVerifier instantiate a verifier given a public key.
 func (f *SignerVerifierFactory) NewVerifier(key signature.PublicKey) (*signature.NsVerifier, error) {
-	v, err := signature.NewNsVerifier(f.scheme, key)
-	return v, errors.Wrap(err, "error creating verifier")
+	return signature.NewNsVerifier(f.scheme, key)
 }
 
 // NewSigner instantiate a signer given a private key.

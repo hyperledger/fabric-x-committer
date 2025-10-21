@@ -59,7 +59,7 @@ func (c *VcAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	}
 	connections, connErr := connection.OpenConnections(*c.config)
 	if connErr != nil {
-		return errors.Wrap(connErr, "failed opening connection to vc-service")
+		return connErr
 	}
 	defer connection.CloseConnectionsLog(connections...)
 

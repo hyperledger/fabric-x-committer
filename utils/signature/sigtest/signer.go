@@ -68,7 +68,7 @@ func NewNsSigner(scheme signature.Scheme, key []byte) (*NsSigner, error) {
 	default:
 		return nil, errors.Newf("scheme '%v' not supported", scheme)
 	}
-	return &NsSigner{signer: s}, errors.Wrap(err, "failed creating signer")
+	return &NsSigner{signer: s}, err
 }
 
 // NewBlsSigner instantiate a BlsSigner given a key.
@@ -97,7 +97,7 @@ func (v *NsSigner) SignNs(txID string, tx *protoblocktx.Tx, nsIndex int) (signat
 	}
 	digest, err := signature.DigestTxNamespace(txID, tx.Namespaces[nsIndex])
 	if err != nil {
-		return nil, errors.Wrap(err, "failed creating digest")
+		return nil, err
 	}
 	return v.signer.Sign(digest)
 }

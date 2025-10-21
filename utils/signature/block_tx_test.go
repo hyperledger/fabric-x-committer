@@ -122,8 +122,7 @@ func FuzzASN1MarshalTxNamespace(f *testing.F) {
 
 func requireASN1Marshal(t *testing.T, txID string, ns *protoblocktx.TxNamespace) []byte {
 	t.Helper()
-	translated, err := signature.TranslateTx(txID, ns)
-	require.NoError(t, err)
+	translated := signature.TranslateTx(txID, ns)
 
 	// The marshalled object cannot distinguish between empty and nil slice.
 	// So, we convert all nils to empty slices to allow comparison with the unmarshalled object.

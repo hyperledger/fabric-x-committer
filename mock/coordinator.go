@@ -204,7 +204,7 @@ func (c *Coordinator) sendTxsValidationStatus(
 		for len(info) > 0 {
 			chunkSize := rand.Intn(len(info)) + 1
 			if err := c.sendTxsStatusChunk(stream, info[:chunkSize]); err != nil {
-				return errors.Wrap(err, "submit chunk failed")
+				return err
 			}
 			info = info[chunkSize:]
 		}

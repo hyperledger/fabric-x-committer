@@ -63,7 +63,7 @@ func CreateNamespacesTxFromSigner(
 		}
 		policyBytes, err := proto.Marshal(p.GetVerificationPolicy())
 		if err != nil {
-			return nil, errors.New("failed to serialize namespace policy")
+			return nil, errors.Wrap(err, "failed to serialize namespace policy")
 		}
 		readWrites = append(readWrites, &protoblocktx.ReadWrite{
 			Key:   []byte(ns),

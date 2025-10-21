@@ -10,6 +10,8 @@ import (
 	"crypto/sha256"
 	"encoding/asn1"
 
+	"github.com/cockroachdb/errors"
+
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 )
 
@@ -27,16 +29,13 @@ func DigestTxNamespace(txID string, ns *protoblocktx.TxNamespace) ([]byte, error
 // ASN1MarshalTxNamespace marshals a transactions for a given namespace index.
 // It uses the schema described in tx_schema.asn.
 func ASN1MarshalTxNamespace(txID string, ns *protoblocktx.TxNamespace) ([]byte, error) {
-	n, err := TranslateTx(txID, ns)
-	if err != nil {
-		return nil, err
-	}
-	return asn1.Marshal(*n)
+	ret, err := asn1.Marshal(*TranslateTx(txID, ns))
+	return ret, errors.Wrap(err, "failed to marshal tx namespace")
 }
 
 // TranslateTx translates a TX namespace to a stab struct for tx_schema.asn.
 // Any change to [*protoblocktx.Tx] requires a change to this method.
-func TranslateTx(txID string, ns *protoblocktx.TxNamespace) (*TxWithNamespace, error) {
+func TranslateTx(txID string, ns *protoblocktx.TxNamespace) *TxWithNamespace {
 	n := TxWithNamespace{
 		TxID:             txID,
 		NamespaceID:      ns.NsId,
@@ -64,7 +63,7 @@ func TranslateTx(txID string, ns *protoblocktx.TxNamespace) (*TxWithNamespace, e
 			Value: w.Value,
 		}
 	}
-	return &n, nil
+	return &n
 }
 
 // ProtoToAsnVersion converts the proto version to ASN.1 version.

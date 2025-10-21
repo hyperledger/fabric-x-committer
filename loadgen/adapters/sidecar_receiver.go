@@ -40,7 +40,7 @@ func runSidecarReceiver(ctx context.Context, params *sidecarReceiverParameters) 
 		Client:    params.ClientConfig,
 	})
 	if err != nil {
-		return errors.Wrap(err, "failed to create ledger receiver")
+		return err
 	}
 	return runDeliveryReceiver(ctx, params.Res, func(gCtx context.Context, committedBlock chan *common.Block) error {
 		return ledgerReceiver.Deliver(gCtx, &sidecarclient.DeliverParameters{

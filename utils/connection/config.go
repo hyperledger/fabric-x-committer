@@ -114,7 +114,7 @@ func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error)
 		if c.Mode == MutualTLSMode {
 			tlsCfg.ClientCAs, err = buildCertPool(c.CACertPaths)
 			if err != nil {
-				return nil, errors.Wrap(err, "failed to build CA certificate pool")
+				return nil, err
 			}
 			tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
 		}
@@ -151,7 +151,7 @@ func (c TLSConfig) ClientCredentials() (credentials.TransportCredentials, error)
 		var err error
 		tlsCfg.RootCAs, err = buildCertPool(c.CACertPaths)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to build CA certificate pool")
+			return nil, err
 		}
 
 		return credentials.NewTLS(tlsCfg), nil

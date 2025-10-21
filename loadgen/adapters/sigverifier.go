@@ -41,11 +41,11 @@ func NewSVAdapter(config *connection.MultiClientConfig, res *ClientResources) *S
 func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWithSetup) error {
 	updateMsg, err := createUpdate(c.res.Profile.Transaction.Policy)
 	if err != nil {
-		return errors.Wrap(err, "failed creating verification policy")
+		return err
 	}
 	connections, err := connection.OpenConnections(*c.config)
 	if err != nil {
-		return errors.Wrap(err, "failed opening connections")
+		return err
 	}
 	defer connection.CloseConnectionsLog(connections...)
 
@@ -86,7 +86,7 @@ func createUpdate(policy *workload.PolicyProfile) (*protosigverifierservice.Upda
 
 	envelopeBytes, err := workload.CreateConfigEnvelope(policy)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed creating config")
+		return nil, err
 	}
 	updateMsg := &protosigverifierservice.Update{
 		Config: &protoblocktx.ConfigTransaction{

@@ -64,13 +64,13 @@ func (p *Provider) StartPrometheusServer(
 
 	l, err := serverConfig.Listener()
 	if err != nil {
-		return errors.Wrap(err, "failed to start prometheus server")
+		return err
 	}
 	defer connection.CloseConnectionsLog(l)
 
 	p.url, err = MakeMetricsURL(l.Addr().String())
 	if err != nil {
-		return errors.Wrap(err, "failed formatting URL")
+		return err
 	}
 
 	g, gCtx := errgroup.WithContext(ctx)
@@ -195,5 +195,6 @@ func (p *Provider) Registry() *prometheus.Registry {
 
 // MakeMetricsURL construct the Prometheus metrics URL.
 func MakeMetricsURL(address string) (string, error) {
-	return url.JoinPath(scheme, address, metricsSubPath)
+	ret, err := url.JoinPath(scheme, address, metricsSubPath)
+	return ret, errors.Wrap(err, "failed to make prometheus URL")
 }

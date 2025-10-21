@@ -15,6 +15,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 func TestDBInit(t *testing.T) {
@@ -50,7 +51,7 @@ func TestRetry(t *testing.T) {
 		ctx,
 		&DatabaseConfig{
 			Endpoints: []*connection.Endpoint{
-				connection.CreateEndpoint(":1234"),
+				test.MustCreateEndpoint(":1234"),
 			},
 			Username:       "name",
 			Password:       "pwd",

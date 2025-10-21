@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package serialization
 
 import (
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric/protoutil"
 )
@@ -15,7 +16,7 @@ import (
 func UnwrapEnvelope(message []byte) ([]byte, *common.ChannelHeader, error) {
 	envelope, err := protoutil.GetEnvelopeFromBlock(message)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.Wrap(err, "error parsing envelope")
 	}
 
 	payload, channelHdr, err := ParseEnvelope(envelope)
@@ -30,11 +31,11 @@ func UnwrapEnvelope(message []byte) ([]byte, *common.ChannelHeader, error) {
 func ParseEnvelope(envelope *common.Envelope) (*common.Payload, *common.ChannelHeader, error) {
 	payload, err := protoutil.UnmarshalPayload(envelope.Payload)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.Wrap(err, "error unmarshaling payload")
 	}
 	channelHdr, err := protoutil.UnmarshalChannelHeader(payload.Header.ChannelHeader)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.Wrap(err, "error unmarshaling channel header")
 	}
 	return payload, channelHdr, nil
 }

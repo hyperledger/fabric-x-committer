@@ -44,7 +44,7 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 		ServerConfigs: c.config.OrdererServers,
 	})
 	if err != nil {
-		return errors.Wrap(err, "failed to create orderer")
+		return err
 	}
 
 	dCtx, dCancel := context.WithCancel(ctx)
@@ -60,7 +60,7 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 	policy.OrdererEndpoints = ordererconn.NewEndpoints(0, "msp", c.config.OrdererServers...)
 	configBlock, err := workload.CreateConfigBlock(&policy)
 	if err != nil {
-		return errors.Wrap(err, "failed to create config block")
+		return err
 	}
 	if err = orderer.SubmitBlock(ctx, configBlock); err != nil {
 		return err
