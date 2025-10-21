@@ -171,15 +171,9 @@ func CreateClientWithTLS[T any](
 	protoClient func(grpc.ClientConnInterface) T,
 ) T {
 	t.Helper()
-	dialConfig := NewSecuredDialConfig(t, endpoint, tlsCfg)
-	// prevents secure connection tests from hanging until the context times out.
-	dialConfig.SetRetryProfile(&connection.RetryProfile{
+	conn := NewSecuredConnectionWithRetry(t, endpoint, tlsCfg, connection.RetryProfile{
+		// prevents secure connection tests from hanging until the context times out.
 		MaxElapsedTime: 3 * time.Second,
-	})
-	conn, err := connection.Connect(dialConfig)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, conn.Close())
 	})
 	return protoClient(conn)
 }

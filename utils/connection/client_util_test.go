@@ -18,7 +18,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -47,19 +46,12 @@ func TestGRPCRetry(t *testing.T) {
 	t.Cleanup(cancel)
 	vcGrpc := test.RunGrpcServerForTest(ctx, t, serverConfig, mock.NewMockVcService().RegisterService)
 
-	t.Log("Setup dial config")
-	dialConfig := test.NewInsecureDialConfig(&serverConfig.Endpoint)
-
 	t.Log("Connecting")
-	conn, err := connection.Connect(dialConfig)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		assert.NoError(t, conn.Close())
-	})
+	conn := test.NewInsecureConnection(t, &serverConfig.Endpoint)
 	client := protovcservice.NewValidationAndCommitServiceClient(conn)
 
 	t.Log("Sanity check")
-	_, err = client.GetNamespacePolicies(ctx, nil)
+	_, err := client.GetNamespacePolicies(ctx, nil)
 	require.NoError(t, err)
 
 	t.Log("Stopping the grpc server")
@@ -80,9 +72,9 @@ func TestGRPCRetry(t *testing.T) {
 	_, err = client.GetNamespacePolicies(ctx, nil)
 	require.NoError(t, err)
 
-	dialConfig.SetRetryProfile(&connection.RetryProfile{MaxElapsedTime: 2 * time.Second})
-	conn2, err := connection.Connect(dialConfig)
-	require.NoError(t, err)
+	conn2 := test.NewInsecureConnectionWithRetry(t, &serverConfig.Endpoint, connection.RetryProfile{
+		MaxElapsedTime: 2 * time.Second,
+	})
 	client2 := protovcservice.NewValidationAndCommitServiceClient(conn2)
 
 	t.Log("Sanity check with lower timeout")
@@ -126,15 +118,11 @@ func TestGRPCRetryMultiEndpoints(t *testing.T) {
 	test.RunGrpcServerForTest(ctx, t, serverConfig, mock.NewMockVcService().RegisterService)
 
 	t.Log("Connecting")
-	conn, err := connection.Connect(test.NewInsecureDialConfig(&serverConfig.Endpoint))
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		assert.NoError(t, conn.Close())
-	})
+	conn := test.NewInsecureConnection(t, &serverConfig.Endpoint)
 	client := protovcservice.NewValidationAndCommitServiceClient(conn)
 
 	t.Log("Sanity check")
-	_, err = client.GetNamespacePolicies(ctx, nil)
+	_, err := client.GetNamespacePolicies(ctx, nil)
 	require.NoError(t, err)
 
 	t.Log("Creating fake service address")
@@ -146,17 +134,12 @@ func TestGRPCRetryMultiEndpoints(t *testing.T) {
 	})
 
 	t.Log("Setup dial config for multiple endpoints")
-	fakeDialConfig := test.NewInsecureLoadBalancedDialConfig(t, []*connection.Endpoint{
+
+	t.Log("Connecting to multiple endpoints")
+	multiConn := test.NewInsecureLoadBalancedConnection(t, []*connection.Endpoint{
 		// We put the fake one first to ensure we iterate over it.
 		&fakeServerConfig.Endpoint,
 		&serverConfig.Endpoint,
-	})
-
-	t.Log("Connecting to multiple endpoints")
-	multiConn, err := connection.Connect(fakeDialConfig)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		assert.NoError(t, multiConn.Close())
 	})
 	multiClient := protovcservice.NewValidationAndCommitServiceClient(multiConn)
 	for i := range 100 {
@@ -229,13 +212,13 @@ func newFilterTestEnv(t *testing.T) *filterTestEnv {
 	env.server = test.RunGrpcServerForTest(serviceCtx, t, env.serverConf, func(server *grpc.Server) {
 		peer.RegisterDeliverServer(server, env.service)
 	})
-	conn, err := connection.Connect(test.NewInsecureDialConfig(&env.serverConf.Endpoint))
-	require.NoError(t, err)
+	conn := test.NewInsecureConnection(t, &env.serverConf.Endpoint)
 	env.client = peer.NewDeliverClient(conn)
 
 	clientCtx, clientCancel := context.WithTimeout(t.Context(), 3*time.Minute)
 	t.Cleanup(clientCancel)
 	env.clientCancel = clientCancel
+	var err error
 	env.deliver, err = env.client.Deliver(clientCtx)
 	require.NoError(t, err)
 
