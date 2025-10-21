@@ -81,15 +81,15 @@ type (
 var (
 	//go:embed templates/coordinator.yaml
 	TemplateCoordinator string
-	//go:embed templates/mockorderingservice.yaml
+	//go:embed templates/mock-orderer.yaml
 	TemplateMockOrderer string
-	//go:embed templates/queryexecutor.yaml
+	//go:embed templates/query.yaml
 	TemplateQueryService string
 	//go:embed templates/sidecar.yaml
 	TemplateSidecar string
-	//go:embed templates/validatorpersister.yaml
+	//go:embed templates/vc.yaml
 	TemplateVC string
-	//go:embed templates/signatureverifier.yaml
+	//go:embed templates/verifier.yaml
 	TemplateVerifier string
 
 	TemplateLoadGenOnlyOrderer              = templateLoadGenOnlyOrdererClient + templateLoadGenCommon
