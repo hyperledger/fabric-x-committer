@@ -41,7 +41,7 @@ func CreateConfigTx(policy *PolicyProfile) (*protoloadgen.TX, error) {
 	}
 	envelope, err := protoutil.GetEnvelopeFromBlock(envelopeBytes)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "error getting envelope")
 	}
 	_, channelHdr, err := serialization.ParseEnvelope(envelope)
 	if err != nil {
@@ -115,7 +115,7 @@ func CreateDefaultConfigBlock(conf *ConfigBlock) (*common.Block, error) {
 	}
 	metaPubKeyPath, err := writeTempPem(conf.MetaNamespaceVerificationKey)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create temp PEM file")
+		return nil, err
 	}
 	defer func() {
 		_ = os.Remove(metaPubKeyPath)

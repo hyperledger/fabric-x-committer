@@ -50,16 +50,6 @@ func CreateEndpointHP(host, port string) *Endpoint {
 	}
 }
 
-// CreateEndpoint parses an endpoint from an address string.
-// It panics if it fails to parse.
-func CreateEndpoint(value string) *Endpoint {
-	endpoint, err := NewEndpoint(value)
-	if err != nil {
-		panic(errors.Wrap(err, "could not create endpoint"))
-	}
-	return endpoint
-}
-
 // NewEndpoint parses an endpoint from an address string.
 func NewEndpoint(hostPort string) (*Endpoint, error) {
 	if len(hostPort) == 0 {

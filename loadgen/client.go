@@ -243,14 +243,14 @@ func makeWorkloadSetupTXs(config *ClientConfig) ([]*protoloadgen.TX, error) {
 	if config.Generate.Config {
 		configTX, err := workload.CreateConfigTx(config.LoadProfile.Transaction.Policy)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to create a config tx")
+			return nil, err
 		}
 		workloadSetupTXs = append(workloadSetupTXs, configTX)
 	}
 	if config.Generate.Namespaces {
 		metaNsTX, err := workload.CreateLoadGenNamespacesTX(config.LoadProfile.Transaction.Policy)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to create namespaces meta tx")
+			return nil, err
 		}
 		workloadSetupTXs = append(workloadSetupTXs, metaNsTX)
 	}

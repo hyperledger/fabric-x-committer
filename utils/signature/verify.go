@@ -45,7 +45,7 @@ func NewNsVerifier(scheme Scheme, key PublicKey) (*NsVerifier, error) {
 	default:
 		return nil, errors.Newf("scheme '%v' not supported", scheme)
 	}
-	return res, errors.Wrap(err, "failed creating verifier")
+	return res, err
 }
 
 // VerifyNs verifies a transaction's namespace signature.

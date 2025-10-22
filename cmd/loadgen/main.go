@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/spf13/cobra"
 
@@ -75,7 +74,7 @@ func loadGenCMD() *cobra.Command {
 
 			client, err := loadgen.NewLoadGenClient(conf)
 			if err != nil {
-				return errors.Wrap(err, "failed to create loadgen client")
+				return err
 			}
 			return connection.StartService(cmd.Context(), client, conf.Server)
 		},

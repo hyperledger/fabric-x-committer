@@ -71,7 +71,7 @@ func serverDecoder(dataType, targetType reflect.Type, rawData any) (result any, 
 	if endpoint != nil {
 		ret = connection.ServerConfig{Endpoint: *endpoint}
 	}
-	return ret, true, errors.Wrap(err, "failed to parse orderer endpoint")
+	return ret, true, err
 }
 
 func getStringData(dataType reflect.Type, rawData any) (stringData string, isStringData bool) {

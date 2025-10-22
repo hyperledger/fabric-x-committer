@@ -38,7 +38,7 @@ func NewOrdererAdapter(config *OrdererClientConfig, res *ClientResources) *Order
 func (c *OrdererAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWithSetup) error {
 	client, err := deliver.New(&c.config.Orderer)
 	if err != nil {
-		return errors.Wrap(err, "failed to create orderer clients")
+		return err
 	}
 	defer client.CloseConnections()
 
@@ -67,7 +67,7 @@ func (c *OrdererAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 		streams[i], err = test.NewBroadcastStream(gCtx, &c.config.Orderer)
 		if err != nil {
 			connection.CloseConnectionsLog(streams[:i]...)
-			return errors.Wrap(err, "failed to create a broadcast stream")
+			return err
 		}
 	}
 	defer connection.CloseConnectionsLog(streams...)
