@@ -24,7 +24,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -45,7 +44,7 @@ const (
 	PostgresReadinessOutput = "database system is ready to accept connections"
 )
 
-// YugabyteCMD starts yugabyte without SSL and fault tolerance (single server).
+// YugabyteCMD starts yugabyte without fault tolerance (single server).
 var YugabyteCMD = []string{
 	"bin/yugabyted", "start",
 	"--callhome", "false",
@@ -57,7 +56,6 @@ var YugabyteCMD = []string{
 		"yb_num_shards_per_tserver=1," +
 		"minloglevel=3," +
 		"yb_enable_read_committed_isolation=true",
-	"--insecure",
 }
 
 // DatabaseContainer manages the execution of an instance of a dockerized DB for tests.
@@ -119,13 +117,10 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 
 		if dc.Cmd == nil {
 			dc.Cmd = YugabyteCMD
-
 			if dc.UseTLS {
-				dc.Cmd = append(
-					utils.ReplacePattern(dc.Cmd, func(s string) bool { return s == "--insecure" }, "--secure"),
-					"--certs_dir=/creds",
-					"--advertise_address", dc.Hostname,
-				)
+				dc.Cmd = append(dc.Cmd, "--secure", "--certs_dir=/creds", "--advertise_address", dc.Hostname)
+			} else {
+				dc.Cmd = append(dc.Cmd, "--insecure")
 			}
 		}
 
@@ -147,7 +142,6 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 		if dc.DbPort == "" {
 			dc.DbPort = docker.Port(fmt.Sprintf("%s/tcp", postgresDBPort))
 		}
-
 		if dc.UseTLS {
 			dc.Cmd = []string{
 				"-c", "ssl=on",
@@ -393,6 +387,10 @@ func (dc *DatabaseContainer) ExecuteCommand(t *testing.T, cmd []string) string {
 		RawTerminal:  false,
 	}))
 
+	inspect, err := dc.client.InspectExec(exec.ID)
+	require.NoError(t, err)
+	require.Equal(t, 0, inspect.ExitCode)
+
 	return stdout.String()
 }
 
@@ -403,17 +401,4 @@ func (dc *DatabaseContainer) EnsureNodeReadiness(t *testing.T, requiredOutput st
 		output := dc.GetContainerLogs(t)
 		require.Contains(ct, output, requiredOutput)
 	}, 45*time.Second, 250*time.Millisecond)
-}
-
-// FixFilesPermissions fixes the ownership of the given files in the container.
-func (dc *DatabaseContainer) FixFilesPermissions(t *testing.T, user string, files ...string,
-) {
-	t.Helper()
-	exec, err := dc.client.CreateExec(docker.CreateExecOptions{
-		Container: dc.containerID,
-		Cmd:       append([]string{"chown", user}, files...),
-		User:      "root", // Run as root to change ownership
-	})
-	require.NoError(t, err)
-	require.NoError(t, dc.client.StartExec(exec.ID, docker.StartExecOptions{}))
 }

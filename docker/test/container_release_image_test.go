@@ -51,9 +51,6 @@ const (
 	// This work-around is needed due to a Yugabyte behavior that prevents using default passwords in secure mode.
 	// Instead, Yugabyte generates a random password, and this path points to the output file containing it.
 	containerPathForYugabytePassword = "/root/var/data/yugabyted_credentials.txt" //nolint:gosec
-
-	// yugabytedReadinessOutput is the output indicating that a Yugabyte node is ready.
-	yugabytedReadinessOutput = "Data placement constraint successfully verified"
 )
 
 var (
@@ -130,7 +127,8 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	}
 }
 
-// CreateAndStartSecuredDatabaseNode creates a containerized Yugabyte or PostgreSQL database instance in a secure mode.
+// CreateAndStartSecuredDatabaseNode creates a containerized YugabyteDB or PostgreSQL
+// database instance in a secure mode.
 func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNodeParameters) *dbtest.Connection {
 	t.Helper()
 
@@ -148,7 +146,7 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 	node.StartContainer(ctx, t)
 	conn := node.GetConnectionOptions(ctx, t)
 
-	// this is relevant if we used different CA to create the DB's tls certificates.
+	// This is relevant if a different CA was used to issue the DB's TLS certificates.
 	require.NotEmpty(t, node.TLSConfig.CACertPaths)
 	conn.TLS = connection.DatabaseTLS{
 		Activate:   true,
@@ -158,19 +156,21 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 	// post start container tweaking
 	switch node.DatabaseType {
 	case testutils.YugaDBType:
-		node.FixFilesPermissions(t,
-			"root:root",
+		// Ensure proper root ownership and permissions for the TLS certificate files.
+		node.ExecuteCommand(t, []string{
+			"chown", "root:root",
 			fmt.Sprintf("/creds/node.%s.crt", node.Hostname),
 			fmt.Sprintf("/creds/node.%s.key", node.Hostname),
-		)
-		node.EnsureNodeReadiness(t, yugabytedReadinessOutput)
+		})
+		node.EnsureNodeReadiness(t, "Data placement constraint successfully verified")
 		conn.Password = node.ReadPasswordFromContainer(t, containerPathForYugabytePassword)
 	case testutils.PostgresDBType:
-		node.FixFilesPermissions(t,
-			"postgres:postgres",
+		// Ensure proper root ownership and permissions for the TLS certificate files.
+		node.ExecuteCommand(t, []string{
+			"chown", "postgres:postgres",
 			"/creds/server.crt",
 			"/creds/server.key",
-		)
+		})
 		node.EnsureNodeReadiness(t, dbtest.PostgresReadinessOutput)
 		node.ExecuteCommand(t, enforcePostgresSSLScript)
 		node.ExecuteCommand(t, reloadPostgresConfigScript)

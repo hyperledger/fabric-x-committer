@@ -131,7 +131,7 @@ func NewDatabaseTestEnv(t *testing.T) *DatabaseTestEnv {
 	return newDatabaseTestEnv(t, dbtest.PrepareTestEnv(t), false)
 }
 
-// NewDatabaseTestEnvWithCustomConnection creates a new db test environment given a connection.
+// NewDatabaseTestEnvWithCustomConnection creates a new db test environment given a db connection.
 func NewDatabaseTestEnvWithCustomConnection(t *testing.T, dbConnections *dbtest.Connection) *DatabaseTestEnv {
 	t.Helper()
 	require.NotNil(t, dbConnections)

@@ -22,6 +22,8 @@ type DBClusterController struct {
 	nodes []*dbtest.DatabaseContainer
 }
 
+const linuxOS = "linux"
+
 // StopAndRemoveSingleNodeByRole stops and removes a node given a role.
 func (cc *DBClusterController) StopAndRemoveSingleNodeByRole(t *testing.T, role string) {
 	t.Helper()

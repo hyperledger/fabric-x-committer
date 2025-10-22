@@ -40,7 +40,6 @@ type (
 		connectionMode string
 		keyPair        *tlsgen.CertKeyPair
 		namingStyle    string
-		san            string
 	}
 
 	// ServerStarter is a function that receives a TLS configuration, starts the server,
@@ -55,16 +54,16 @@ type (
 const (
 	defaultHostName = "localhost"
 
-	YugaDBType     = "yugabyte" //nolint:revive
+	// YugaDBType represents the usage of Yugabyte DB.
+	YugaDBType = "yugabyte"
+	// PostgresDBType represents the usage of PostgreSQL DB.
 	PostgresDBType = "postgres"
-
+	// DefaultCertStyle represents the default TLS certificate style creation.
 	DefaultCertStyle = "default"
-
+	//nolint:revive // KeyPrivate, KeyPublic and KeyCACert represents the chosen key in the naming function.
 	KeyPrivate = "private-key"
 	KeyPublic  = "public-key"
 	KeyCACert  = "ca-certificate"
-
-	caCertFileName = "ca.crt"
 )
 
 // ServerModes is a list of server-side TLS modes used for testing.
@@ -89,13 +88,11 @@ func (scm *CredentialsFactory) CreateServerCredentials(
 	san ...string,
 ) (connection.TLSConfig, string) {
 	t.Helper()
-	require.NotEmpty(t, san)
 	serverKeypair, err := scm.CertificateAuthority.NewServerCertKeyPair(san...)
 	require.NoError(t, err)
 	return scm.createTLSConfig(t, createTLSConfigParameters{
 		connectionMode: tlsMode,
 		keyPair:        serverKeypair,
-		san:            san[0],
 		namingStyle:    namingStyle,
 	})
 }
@@ -223,7 +220,7 @@ func (scm *CredentialsFactory) createTLSConfig(
 ) (connection.TLSConfig, string) {
 	t.Helper()
 	tmpDir := t.TempDir()
-	namingFunction := selectFileNames(params.namingStyle, params.san)
+	namingFunction := selectFileNames(params.namingStyle)
 
 	privateKeyPath := filepath.Join(tmpDir, namingFunction("private-key"))
 	require.NoError(t, os.WriteFile(privateKeyPath, params.keyPair.Key, 0o600))
@@ -242,17 +239,20 @@ func (scm *CredentialsFactory) createTLSConfig(
 	}, tmpDir
 }
 
-func selectFileNames(style, serverName string) func(string) string {
+func selectFileNames(style string) func(string) string {
 	switch style {
 	case YugaDBType:
 		return func(key string) string {
 			switch key {
+			// We currently use YugabyteDB with the hostname "db" only.
+			// To support additional instances with different hostnames,
+			// replace "db" with the desired hostname when creating the instance.
 			case KeyPublic:
-				return fmt.Sprintf("node.%s.crt", serverName)
+				return "node.db.crt"
 			case KeyPrivate:
-				return fmt.Sprintf("node.%s.key", serverName)
+				return "node.db.key"
 			case KeyCACert:
-				return caCertFileName
+				return "ca.crt"
 			default:
 				return ""
 			}

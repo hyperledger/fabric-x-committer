@@ -77,7 +77,7 @@ func StartYugaCluster(ctx context.Context, t *testing.T, numberOfMasters, number
 ) {
 	t.Helper()
 
-	if runtime.GOOS != "linux" {
+	if runtime.GOOS != linuxOS {
 		t.Skip("Container IP access not supported on non-linux Docker")
 	}
 

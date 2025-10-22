@@ -41,7 +41,11 @@ func (d *DatabaseConfig) DataSourceName() string {
 		d.Username, d.Password, d.EndpointsString(), d.Database)
 
 	if d.TLS.UseTLS() {
+		// Enforce full SSL verification:
+		// requires an encrypted connection (TLS),
+		// and ensures the server hostname matches the certificate.
 		ret += "sslmode=verify-full"
+		ret += fmt.Sprintf("&sslrootcert=%s", d.TLS.CACertPath)
 	} else {
 		ret += "sslmode=disable"
 	}
@@ -49,9 +53,6 @@ func (d *DatabaseConfig) DataSourceName() string {
 	// Thus, we only add it when explicitly required. Otherwise, an error will occur.
 	if d.LoadBalance {
 		ret += "&load_balance=true"
-	}
-	if d.TLS.UseTLS() {
-		ret += fmt.Sprintf("&sslrootcert=%s", d.TLS.CACertPath)
 	}
 	return ret
 }

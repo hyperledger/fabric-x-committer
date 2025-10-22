@@ -66,7 +66,7 @@ type (
 func StartPostgresCluster(ctx context.Context, t *testing.T) (*PostgresClusterController, *dbtest.Connection) {
 	t.Helper()
 
-	if runtime.GOOS != "linux" {
+	if runtime.GOOS != linuxOS {
 		t.Skip("Container IP access not supported on non-linux Docker")
 	}
 
