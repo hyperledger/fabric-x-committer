@@ -433,19 +433,20 @@ func TestLastCommittedBlockNumber(t *testing.T) {
 
 	ctx, _ := createContext(t)
 	for i := range numServices {
-		lastCommittedBlock, err := env.clients[i].GetLastCommittedBlockNumber(ctx, nil)
+		nextBlock, err := env.clients[i].GetNextBlockNumberToCommit(ctx, nil)
 		require.NoError(t, err)
-		require.Nil(t, lastCommittedBlock.Block)
+		require.NotNil(t, nextBlock)
+		require.Equal(t, uint64(0), nextBlock.Number)
 	}
 
 	_, err := env.commonClient.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 0})
 	require.NoError(t, err)
 
 	for i := range numServices {
-		lastCommittedBlock, err := env.clients[i].GetLastCommittedBlockNumber(ctx, nil)
+		nextBlock, err := env.clients[i].GetNextBlockNumberToCommit(ctx, nil)
 		require.NoError(t, err)
-		require.NotNil(t, lastCommittedBlock.Block)
-		require.Equal(t, uint64(0), lastCommittedBlock.Block.Number)
+		require.NotNil(t, nextBlock)
+		require.Equal(t, uint64(1), nextBlock.Number)
 	}
 }
 
@@ -478,8 +479,8 @@ func TestGRPCStatusCode(t *testing.T) {
 			fn:   func() (any, error) { return c.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1}) },
 		},
 		{
-			name: "GetLastCommittedBlockNumber returns an internal error",
-			fn:   func() (any, error) { return c.GetLastCommittedBlockNumber(ctx, nil) },
+			name: "GetNextBlockNumberToCommit returns an internal error",
+			fn:   func() (any, error) { return c.GetNextBlockNumberToCommit(ctx, nil) },
 		},
 		{
 			name: "GetPolicies returns an internal error",

@@ -550,10 +550,10 @@ func (c *CommitterRuntime) ensureLastCommittedBlockNumber(t *testing.T, blkNum u
 
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
-	lastCommittedBlock, err := c.CoordinatorClient.GetLastCommittedBlockNumber(ctx, nil)
+	nextBlock, err := c.CoordinatorClient.GetNextBlockNumberToCommit(ctx, nil)
 	require.NoError(t, err)
-	require.NotNil(t, lastCommittedBlock.Block)
-	require.Equal(t, blkNum, lastCommittedBlock.Block.Number)
+	require.NotNil(t, nextBlock)
+	require.Equal(t, blkNum+1, nextBlock.Number)
 }
 
 func (c *CommitterRuntime) ensureAtLeastLastCommittedBlockNumber(t *testing.T, blkNum uint64) {
@@ -561,10 +561,10 @@ func (c *CommitterRuntime) ensureAtLeastLastCommittedBlockNumber(t *testing.T, b
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		lastCommittedBlock, err := c.CoordinatorClient.GetLastCommittedBlockNumber(ctx, nil)
+		nextBlock, err := c.CoordinatorClient.GetNextBlockNumberToCommit(ctx, nil)
 		require.NoError(ct, err)
-		require.NotNil(ct, lastCommittedBlock.Block)
-		require.GreaterOrEqual(ct, lastCommittedBlock.Block.Number, blkNum)
+		require.NotNil(ct, nextBlock)
+		require.Greater(ct, nextBlock.Number, blkNum)
 	}, 2*time.Minute, 250*time.Millisecond)
 }
 

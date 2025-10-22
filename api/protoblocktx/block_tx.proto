@@ -94,10 +94,6 @@ message BlockInfo {
     uint64 number = 1;
 }
 
-message LastCommittedBlock {
-    optional BlockInfo block = 1;
-}
-
 message QueryStatus {
     repeated string txIDs = 1;
 }

@@ -254,7 +254,7 @@ func (s *Service) recover(ctx context.Context, coordClient protocoordinatorservi
 		return 0, err
 	}
 
-	blkInfo, err := coordClient.GetNextExpectedBlockNumber(ctx, nil)
+	blkInfo, err := coordClient.GetNextBlockNumberToCommit(ctx, nil)
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to fetch the next expected block number from coordinator")
 	}

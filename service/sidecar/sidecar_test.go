@@ -291,10 +291,10 @@ func TestSidecarConfigUpdate(t *testing.T) {
 	}
 
 	t.Log("We expect the block to be held")
-	lastCommittedBlock, err := env.coordinator.GetLastCommittedBlockNumber(ctx, nil)
+	nextBlock, err := env.coordinator.GetNextBlockNumberToCommit(ctx, nil)
 	require.NoError(t, err)
-	require.NotNil(t, lastCommittedBlock.Block)
-	require.Equal(t, expectedBlock-1, lastCommittedBlock.Block.Number)
+	require.NotNil(t, nextBlock)
+	require.Equal(t, expectedBlock, nextBlock.Number)
 
 	t.Log("We advance the holder by one to allow the config block to pass through, but not other blocks")
 	env.ordererEnv.Holder.HoldFromBlock.Add(1)
@@ -394,7 +394,7 @@ func TestSidecarRecovery(t *testing.T) {
 	require.NoError(t, blkstorage.ResetBlockStore(env.config.Ledger.Path))
 	ctx2, cancel2 := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel2)
-	checkLastCommittedBlock(ctx2, t, env.coordinator, 10)
+	checkNextBlockNumberToCommit(ctx2, t, env.coordinator, 11)
 
 	// NOTE: The Fabric block store implementation used by the sidecar
 	//       maintains the ledger height in memory and updates it whenever
@@ -433,7 +433,7 @@ func TestSidecarRecovery(t *testing.T) {
 	t.Log("9. Send the next expected block by the coordinator.")
 	env.sendTransactionsAndEnsureCommitted(ctx2, t, 11)
 
-	checkLastCommittedBlock(ctx2, t, env.coordinator, 11)
+	checkNextBlockNumberToCommit(ctx2, t, env.coordinator, 12)
 	ensureAtLeastHeight(t, env.sidecar.ledgerService, 12)
 	cancel2()
 }
@@ -660,7 +660,7 @@ func (env *sidecarTestEnv) requireBlock(
 	expectedBlockNumber uint64,
 ) *common.Block {
 	t.Helper()
-	checkLastCommittedBlock(ctx, t, env.coordinator, expectedBlockNumber)
+	checkNextBlockNumberToCommit(ctx, t, env.coordinator, expectedBlockNumber+1)
 	ensureAtLeastHeight(t, env.sidecar.ledgerService, expectedBlockNumber+1)
 
 	block, ok := channel.NewReader(ctx, env.committedBlock).Read()
@@ -719,7 +719,7 @@ func TestConstructStatuses(t *testing.T) {
 	require.Equal(t, expectedFinalStatuses, actualFinalStatuses)
 }
 
-func checkLastCommittedBlock(
+func checkNextBlockNumberToCommit(
 	ctx context.Context,
 	t *testing.T,
 	coordinator *mock.Coordinator,
@@ -727,10 +727,10 @@ func checkLastCommittedBlock(
 ) {
 	t.Helper()
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		lastCommittedBlock, err := coordinator.GetLastCommittedBlockNumber(ctx, nil)
+		nextBlock, err := coordinator.GetNextBlockNumberToCommit(ctx, nil)
 		require.NoError(ct, err)
-		require.NotNil(ct, lastCommittedBlock.Block)
-		require.Equal(ct, expectedBlockNumber, lastCommittedBlock.Block.Number)
+		require.NotNil(ct, nextBlock)
+		require.Equal(ct, expectedBlockNumber, nextBlock.Number)
 	}, expectedProcessingTime, 50*time.Millisecond)
 }
 
