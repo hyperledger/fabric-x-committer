@@ -38,7 +38,7 @@ The Sidecar performs four main tasks:
 4. **Persist Committed Blocks:** Stores blocks confirmed as committed by the Coordinator in a local, append-only file
     store for durability and auditability.
 5. **Deliver to Clients:** Delivers the committed blocks to registered client applications.
-6. **Notification:** Allow subscribing to a transaction ID.
+6. **Notification:** Notifies subscribers when transactions are committed or aborted, on a per-transaction ID basis.
 
 Note that the fourth task is executed only when users/clients creates a stream with the sidecar.
 
@@ -415,8 +415,24 @@ block until that block becomes available for delivery from the Sidecar.
 
 ## 6. Notification Service
 
-The sidecar supports subscribing for transaction IDs status, and be notified once a
-transaction is committed or aborted.
+The sidecar exposes an API that allows clients to subscribe to transaction status updates and 
+receive notifications when transactions are either committed or aborted.
+
+From [api/protonotify/notify.proto](/api/protonotify/notify.proto)
+```protobuf
+// The notifier service provides API to subscribe to ledger events and receive asynchronous notifications.
+service Notifier {
+    rpc OpenNotificationStream (stream NotificationRequest) returns (stream NotificationResponse);
+}
+```
+
+Once a stream is established, the client can send a `NotificationRequest` containing a list of transaction IDs 
+and a timeout value. The sidecar responds with a `NotificationResponse`, which includes batches of transactions
+and their corresponding commit statuses for the subscribed transaction IDs. If the timeout expires before some 
+of the transactions complete, the response will include the IDs of the transactions that timed out.
+
+Note that if a transaction has already completed before the notification request is submitted, 
+no notification will be sent for it.
 
 ## 7. Failure and Recovery
 
