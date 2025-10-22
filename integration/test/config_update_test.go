@@ -145,10 +145,10 @@ func TestConfigUpdate(t *testing.T) {
 	}
 
 	t.Log("We expect the block to be held")
-	lastCommittedBlock, err := c.CoordinatorClient.GetLastCommittedBlockNumber(t.Context(), nil)
+	nextExpectedBlock, err := c.CoordinatorClient.GetNextExpectedBlockNumber(t.Context(), nil)
 	require.NoError(t, err)
-	require.NotNil(t, lastCommittedBlock.Block)
-	require.Equal(t, holdingBlock-1, lastCommittedBlock.Block.Number)
+	require.NotNil(t, nextExpectedBlock)
+	require.Equal(t, holdingBlock, nextExpectedBlock.Number)
 
 	t.Log("We advance the holder by one to allow the config block to pass through, but not other blocks")
 	ordererEnv.Holder.HoldFromBlock.Add(1)
