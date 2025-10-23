@@ -16,9 +16,9 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
-	"github.com/hyperledger/fabric/common/ledger/blockledger"
-	"github.com/hyperledger/fabric/common/ledger/blockledger/fileledger"
-	"github.com/hyperledger/fabric/common/util"
+	"github.com/hyperledger/fabric-x-common/common/ledger/blockledger"
+	"github.com/hyperledger/fabric-x-common/common/ledger/blockledger/fileledger"
+	"github.com/hyperledger/fabric-x-common/common/util"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
