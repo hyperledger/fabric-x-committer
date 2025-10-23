@@ -123,7 +123,11 @@ func UnitTestRunner(
 		defer wg.Done()
 		_, err := cmd.ExecuteContextC(ctx)
 		err = connection.FilterStreamRPCError(err)
-		assert.Equal(t, test.Err, err)
+		if test.Err == nil {
+			assert.NoError(t, err)
+		} else if assert.Error(t, err) {
+			assert.Equal(t, test.Err.Error(), err.Error())
+		}
 	}()
 
 	assert.Eventually(t, func() bool {
