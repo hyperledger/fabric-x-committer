@@ -31,6 +31,7 @@ const (
 	QueryService_EndView_FullMethodName              = "/protoqueryservice.QueryService/EndView"
 	QueryService_GetNamespacePolicies_FullMethodName = "/protoqueryservice.QueryService/GetNamespacePolicies"
 	QueryService_GetConfigTransaction_FullMethodName = "/protoqueryservice.QueryService/GetConfigTransaction"
+	QueryService_GetTransactionStatus_FullMethodName = "/protoqueryservice.QueryService/GetTransactionStatus"
 )
 
 // QueryServiceClient is the client API for QueryService service.
@@ -42,6 +43,7 @@ type QueryServiceClient interface {
 	EndView(ctx context.Context, in *View, opts ...grpc.CallOption) (*View, error)
 	GetNamespacePolicies(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.NamespacePolicies, error)
 	GetConfigTransaction(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.ConfigTransaction, error)
+	GetTransactionStatus(ctx context.Context, in *TxStatusQuery, opts ...grpc.CallOption) (*TxStatusResponse, error)
 }
 
 type queryServiceClient struct {
@@ -97,6 +99,15 @@ func (c *queryServiceClient) GetConfigTransaction(ctx context.Context, in *empty
 	return out, nil
 }
 
+func (c *queryServiceClient) GetTransactionStatus(ctx context.Context, in *TxStatusQuery, opts ...grpc.CallOption) (*TxStatusResponse, error) {
+	out := new(TxStatusResponse)
+	err := c.cc.Invoke(ctx, QueryService_GetTransactionStatus_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // QueryServiceServer is the server API for QueryService service.
 // All implementations must embed UnimplementedQueryServiceServer
 // for forward compatibility
@@ -106,6 +117,7 @@ type QueryServiceServer interface {
 	EndView(context.Context, *View) (*View, error)
 	GetNamespacePolicies(context.Context, *emptypb.Empty) (*protoblocktx.NamespacePolicies, error)
 	GetConfigTransaction(context.Context, *emptypb.Empty) (*protoblocktx.ConfigTransaction, error)
+	GetTransactionStatus(context.Context, *TxStatusQuery) (*TxStatusResponse, error)
 	mustEmbedUnimplementedQueryServiceServer()
 }
 
@@ -127,6 +139,9 @@ func (UnimplementedQueryServiceServer) GetNamespacePolicies(context.Context, *em
 }
 func (UnimplementedQueryServiceServer) GetConfigTransaction(context.Context, *emptypb.Empty) (*protoblocktx.ConfigTransaction, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetConfigTransaction not implemented")
+}
+func (UnimplementedQueryServiceServer) GetTransactionStatus(context.Context, *TxStatusQuery) (*TxStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetTransactionStatus not implemented")
 }
 func (UnimplementedQueryServiceServer) mustEmbedUnimplementedQueryServiceServer() {}
 
@@ -231,6 +246,24 @@ func _QueryService_GetConfigTransaction_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _QueryService_GetTransactionStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TxStatusQuery)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServiceServer).GetTransactionStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QueryService_GetTransactionStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServiceServer).GetTransactionStatus(ctx, req.(*TxStatusQuery))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // QueryService_ServiceDesc is the grpc.ServiceDesc for QueryService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -257,6 +290,10 @@ var QueryService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetConfigTransaction",
 			Handler:    _QueryService_GetConfigTransaction_Handler,
+		},
+		{
+			MethodName: "GetTransactionStatus",
+			Handler:    _QueryService_GetTransactionStatus_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
