@@ -49,7 +49,7 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 	_, coordinator := mock.StartMockCoordinatorService(t)
 	conn := dbtest.PrepareTestEnv(t)
 	server := connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig)
-	listen, err := server.Listener()
+	listen, err := server.Listener(t.Context())
 	require.NoError(t, err)
 	connection.CloseConnectionsLog(listen)
 	return SystemConfig{
