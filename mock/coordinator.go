@@ -78,14 +78,6 @@ func (c *Coordinator) SetLastCommittedBlockNumber(
 	return nil, nil
 }
 
-// GetLastCommittedBlockNumber returns the last committed block number.
-func (c *Coordinator) GetLastCommittedBlockNumber(
-	context.Context,
-	*emptypb.Empty,
-) (*protoblocktx.LastCommittedBlock, error) {
-	return &protoblocktx.LastCommittedBlock{Block: c.lastCommittedBlock.Load()}, nil
-}
-
 // GetNextExpectedBlockNumber returns the next expected block number to be received by the coordinator.
 func (c *Coordinator) GetNextExpectedBlockNumber(
 	context.Context,

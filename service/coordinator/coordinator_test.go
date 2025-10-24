@@ -237,9 +237,8 @@ func TestGetNextBlockNumWithActiveStream(t *testing.T) {
 
 	env.ensureStreamActive(t)
 
-	blkInfo, err := env.client.GetNextExpectedBlockNumber(ctx, nil)
-	require.ErrorContains(t, err, ErrActiveStreamBlockNumber.Error())
-	require.Nil(t, blkInfo)
+	_, err := env.client.GetNextExpectedBlockNumber(ctx, nil)
+	require.NoError(t, err)
 }
 
 func TestCoordinatorServiceValidTx(t *testing.T) {
@@ -307,10 +306,10 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 	_, err = env.coordinator.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1})
 	require.NoError(t, err)
 
-	lastCommittedBlock, err := env.coordinator.GetLastCommittedBlockNumber(ctx, nil)
+	nextExpectedBlock, err := env.coordinator.GetNextExpectedBlockNumber(ctx, nil)
 	require.NoError(t, err)
-	require.NotNil(t, lastCommittedBlock.Block)
-	require.Equal(t, uint64(1), lastCommittedBlock.Block.Number)
+	require.NotNil(t, nextExpectedBlock)
+	require.Equal(t, uint64(2), nextExpectedBlock.Number)
 }
 
 func TestCoordinatorServiceRejectedTx(t *testing.T) {
@@ -352,10 +351,10 @@ func TestCoordinatorServiceRejectedTx(t *testing.T) {
 	_, err = env.coordinator.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1})
 	require.NoError(t, err)
 
-	lastCommittedBlock, err := env.coordinator.GetLastCommittedBlockNumber(ctx, nil)
+	nextExpectedBlock, err := env.coordinator.GetNextExpectedBlockNumber(ctx, nil)
 	require.NoError(t, err)
-	require.NotNil(t, lastCommittedBlock.Block)
-	require.Equal(t, uint64(1), lastCommittedBlock.Block.Number)
+	require.NotNil(t, nextExpectedBlock)
+	require.Equal(t, uint64(2), nextExpectedBlock.Number)
 }
 
 func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
@@ -576,10 +575,10 @@ func TestCoordinatorRecovery(t *testing.T) {
 	_, err = env.client.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1})
 	require.NoError(t, err)
 
-	lastCommittedBlock, err := env.client.GetLastCommittedBlockNumber(ctx, nil)
+	nextExpectedBlock, err := env.client.GetNextExpectedBlockNumber(ctx, nil)
 	require.NoError(t, err)
-	require.NotNil(t, lastCommittedBlock.Block)
-	require.Equal(t, uint64(1), lastCommittedBlock.Block.Number)
+	require.NotNil(t, nextExpectedBlock)
+	require.Equal(t, uint64(2), nextExpectedBlock.Number)
 
 	// To simulate a failure scenario in which a block is partially committed, we first create block 2
 	// with two transaction but actual block 2 is supposed to have four transactions. Once the partial block 2

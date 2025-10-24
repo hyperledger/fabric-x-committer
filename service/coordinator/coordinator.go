@@ -263,34 +263,13 @@ func (c *Service) SetLastCommittedBlockNumber(
 	return &emptypb.Empty{}, c.validatorCommitterMgr.setLastCommittedBlockNumber(ctx, lastBlock)
 }
 
-// GetLastCommittedBlockNumber get the last committed block number in the database/ledger.
-func (c *Service) GetLastCommittedBlockNumber(
-	ctx context.Context,
-	_ *emptypb.Empty,
-) (*protoblocktx.LastCommittedBlock, error) {
-	return c.validatorCommitterMgr.getLastCommittedBlockNumber(ctx)
-}
-
 // GetNextExpectedBlockNumber returns the next expected block number to be received by the coordinator.
 func (c *Service) GetNextExpectedBlockNumber(
 	ctx context.Context,
 	_ *emptypb.Empty,
 ) (*protoblocktx.BlockInfo, error) {
-	if !c.streamActive.TryRLock() {
-		return nil, ErrActiveStreamBlockNumber
-	}
-	defer c.streamActive.RUnlock()
-
-	lastCommittedBlock, getErr := c.validatorCommitterMgr.getLastCommittedBlockNumber(ctx)
-	if getErr != nil {
-		return nil, grpcerror.WrapInternalError(getErr)
-	}
-
-	res := &protoblocktx.BlockInfo{} // default: no block has been committed.
-	if lastCommittedBlock.Block != nil {
-		res.Number = lastCommittedBlock.Block.Number + 1
-	}
-	return res, nil
+	res, err := c.validatorCommitterMgr.getNextExpectedBlockNumber(ctx)
+	return res, grpcerror.WrapInternalError(err)
 }
 
 // GetTransactionsStatus returns the status of given transactions identifiers.
