@@ -43,7 +43,7 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	if err != nil {
 		return err
 	}
-	connections, err := connection.OpenConnections(*c.config)
+	connections, err := connection.NewConnectionPerEndpoint(c.config)
 	if err != nil {
 		return err
 	}

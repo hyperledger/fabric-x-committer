@@ -40,21 +40,13 @@ const (
 )
 
 type (
-	// DialConfig represents the dial options to create a connection.
-	DialConfig struct {
-		Address  string
-		DialOpts []grpc.DialOption
-		// Resolver may be updated to update the connection's endpoints.
-		Resolver *manual.Resolver
-	}
-
 	// WithAddress represents any type that can generate an address.
 	WithAddress interface {
 		Address() string
 	}
 
-	// DialConfigParameters contain the dial config usable parameters.
-	DialConfigParameters struct {
+	// Parameters contain connection parameters.
+	Parameters struct {
 		Address        string
 		Creds          credentials.TransportCredentials
 		Retry          *RetryProfile
@@ -67,9 +59,9 @@ var logger = logging.New("connection")
 
 var knownConnectionIssues = regexp.MustCompile(`(?i)EOF|connection\s+refused|closed\s+network\s+connection`)
 
-// NewLoadBalancedDialConfig creates a dial config with load balancing between the endpoints
+// NewLoadBalancedConnection creates a connection with load balancing between the endpoints
 // in the given config.
-func NewLoadBalancedDialConfig(config MultiClientConfig) (*DialConfig, error) {
+func NewLoadBalancedConnection(config *MultiClientConfig) (*grpc.ClientConn, error) {
 	tlsCredentials, err := config.TLS.ClientCredentials()
 	if err != nil {
 		return nil, err
@@ -85,68 +77,71 @@ func NewLoadBalancedDialConfig(config MultiClientConfig) (*DialConfig, error) {
 	r := manual.NewBuilderWithScheme(scResolverSchema)
 	r.UpdateState(resolver.State{Endpoints: resolverEndpoints})
 
-	return NewDialConfig(DialConfigParameters{
-		Address:        fmt.Sprintf("%s:///%s", r.Scheme(), "method"),
-		Creds:          tlsCredentials,
-		Retry:          config.Retry,
-		Resolver:       r,
-		AdditionalOpts: []grpc.DialOption{grpc.WithResolvers(r)},
-	}), nil
+	return NewConnection(Parameters{
+		Address:  fmt.Sprintf("%s:///%s", r.Scheme(), "method"),
+		Creds:    tlsCredentials,
+		Retry:    config.Retry,
+		Resolver: r,
+	})
 }
 
-// NewDialConfigPerEndpoint creates a list of dial configs; one for each endpoint in the given config.
-func NewDialConfigPerEndpoint(config *MultiClientConfig) ([]*DialConfig, error) {
+// NewConnectionPerEndpoint creates a list of connections; one for each endpoint in the given config.
+func NewConnectionPerEndpoint(config *MultiClientConfig) ([]*grpc.ClientConn, error) {
 	tlsCreds, err := config.TLS.ClientCredentials()
 	if err != nil {
 		return nil, err
 	}
-	ret := make([]*DialConfig, len(config.Endpoints))
+	connections := make([]*grpc.ClientConn, len(config.Endpoints))
 	for i, e := range config.Endpoints {
-		ret[i] = NewDialConfig(DialConfigParameters{
+		connections[i], err = NewConnection(Parameters{
 			Address: e.Address(),
 			Creds:   tlsCreds,
 			Retry:   config.Retry,
 		})
+		if err != nil {
+			CloseConnectionsLog(connections[:i]...)
+			return nil, err
+		}
 	}
-	return ret, nil
+	return connections, nil
 }
 
-// NewSingleDialConfig creates a single dial config given a client config.
-func NewSingleDialConfig(config *ClientConfig) (*DialConfig, error) {
+// NewSingleConnection creates a single connection given a client config.
+func NewSingleConnection(config *ClientConfig) (*grpc.ClientConn, error) {
 	tlsCreds, err := config.TLS.ClientCredentials()
 	if err != nil {
 		return nil, err
 	}
-	return NewDialConfig(DialConfigParameters{
+	return NewConnection(Parameters{
 		Address: config.Endpoint.Address(),
 		Creds:   tlsCreds,
 		Retry:   config.Retry,
-	}), nil
+	})
 }
 
-// NewDialConfig creates a dial config given its parameters.
-func NewDialConfig(p DialConfigParameters) *DialConfig {
-	dialConfig := &DialConfig{
-		Address: p.Address,
-		DialOpts: append([]grpc.DialOption{
-			grpc.WithDefaultServiceConfig(p.Retry.MakeGrpcRetryPolicyJSON()),
-			grpc.WithTransportCredentials(p.Creds),
-			grpc.WithDefaultCallOptions(
-				grpc.MaxCallRecvMsgSize(maxMsgSize),
-				grpc.MaxCallSendMsgSize(maxMsgSize),
-			),
-			grpc.WithMaxCallAttempts(defaultGrpcMaxAttempts),
-		}, p.AdditionalOpts...),
-		Resolver: p.Resolver,
+// NewConnection creates a connection with the given parameters.
+// It will not attempt to create a connection with the remote.
+func NewConnection(p Parameters) (*grpc.ClientConn, error) {
+	dialOpts := []grpc.DialOption{
+		grpc.WithDefaultServiceConfig(p.Retry.MakeGrpcRetryPolicyJSON()),
+		grpc.WithTransportCredentials(p.Creds),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(maxMsgSize),
+			grpc.MaxCallSendMsgSize(maxMsgSize),
+		),
+		grpc.WithMaxCallAttempts(defaultGrpcMaxAttempts),
 	}
+	if p.Resolver != nil {
+		dialOpts = append(dialOpts, grpc.WithResolvers(p.Resolver))
+	}
+	dialOpts = append(dialOpts, p.AdditionalOpts...)
 
-	return dialConfig
-}
-
-// SetRetryProfile replaces the GRPC retry policy.
-func (d *DialConfig) SetRetryProfile(profile *RetryProfile) {
-	// Index 0 is reserved for the GRPC retry policy.
-	d.DialOpts[0] = grpc.WithDefaultServiceConfig(profile.MakeGrpcRetryPolicyJSON())
+	cc, err := grpc.NewClient(p.Address, dialOpts...)
+	if err != nil {
+		logger.Errorf("Error openning connection to %s: %v", p.Address, err)
+		return nil, errors.Wrap(err, "error connecting to grpc")
+	}
+	return cc, nil
 }
 
 // CloseConnections calls [closer.Close()] for all the given connections and return the close errors.
@@ -186,38 +181,6 @@ func filterAcceptableCloseErr(err error) error {
 		}
 	}
 	return err
-}
-
-// Connect creates a new [grpc.ClientConn] with the given [DialConfig].
-// It will not attempt to create a connection with the remote.
-func Connect(config *DialConfig) (*grpc.ClientConn, error) {
-	cc, err := grpc.NewClient(config.Address, config.DialOpts...)
-	if err != nil {
-		logger.Errorf("Error openning connection to %s: %v", config.Address, err)
-		return nil, errors.Wrap(err, "error connecting to grpc")
-	}
-	return cc, nil
-}
-
-// OpenConnections opens connections with multiple remotes.
-func OpenConnections(config MultiClientConfig) ([]*grpc.ClientConn, error) {
-	logger.Infof("Opening connections to %d endpoints: %v.", len(config.Endpoints), config.Endpoints)
-	dialConfigs, err := NewDialConfigPerEndpoint(&config)
-	if err != nil {
-		return nil, errors.Wrapf(err, "error while creating dial configs")
-	}
-	connections := make([]*grpc.ClientConn, len(config.Endpoints))
-	for i, dial := range dialConfigs {
-		conn, err := Connect(dial)
-		if err != nil {
-			logger.Errorf("Error connecting: %v", err)
-			CloseConnectionsLog(connections[:i]...)
-			return nil, err
-		}
-		connections[i] = conn
-	}
-	logger.Infof("Opened %d connections", len(connections))
-	return connections, nil
 }
 
 // FilterStreamRPCError filters RPC errors that caused due to ending stream.

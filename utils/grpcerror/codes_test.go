@@ -71,14 +71,13 @@ func TestHasCodeWithGRPCService(t *testing.T) {
 		healthgrpc.RegisterHealthServer(server, &healthgrpc.UnimplementedHealthServer{})
 	})
 
-	dialConfig := test.NewInsecureDialConfig(&server.Configs[0].Endpoint)
-	dialConfig.SetRetryProfile(&connection.RetryProfile{MaxElapsedTime: 2 * time.Second})
-	conn, err := connection.Connect(dialConfig)
-	require.NoError(t, err)
+	conn := test.NewInsecureConnectionWithRetry(t, &server.Configs[0].Endpoint, connection.RetryProfile{
+		MaxElapsedTime: 2 * time.Second,
+	})
 
 	client := healthgrpc.NewHealthClient(conn)
 
-	_, err = client.Check(ctx, nil)
+	_, err := client.Check(ctx, nil)
 	require.True(t, HasCode(err, codes.Unimplemented)) // all APIs are codes.Unimplemented
 
 	_, err = client.List(ctx, nil)
