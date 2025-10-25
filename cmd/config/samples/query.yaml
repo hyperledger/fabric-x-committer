@@ -8,11 +8,10 @@ server:
   endpoint: :7001
   tls:
     mode: mtls
-    cert-path: /server-certs/public-key
-    key-path: /server-certs/private-key
+    cert-path: /server-certs/public-key.crt
+    key-path: /server-certs/private-key.key
     ca-cert-paths:
-      - /server-certs/ca-certificate
-  # Credentials for the server
+      - /server-certs/ca-certificate.crt
 monitoring:
   server:
     endpoint: :2117
@@ -24,6 +23,9 @@ database:
   # TODO: pass password via environment variable
   password: "yugabyte" # The password for the database
   database: "yugabyte" # The database name
+  tls:
+    activate: true
+    ca-cert-path: /server-certs/ca-certificate.crt
   max-connections: 10 # The maximum size of the connection pool
   min-connections: 5 # The minimum size of the connection pool
   load-balance: false # Should be enabled for DB cluster

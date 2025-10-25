@@ -34,18 +34,18 @@ import (
 var (
 	defaultServerTLSConfig = connection.TLSConfig{
 		Mode:     connection.MutualTLSMode,
-		CertPath: "/server-certs/public-key",
-		KeyPath:  "/server-certs/private-key",
+		CertPath: "/server-certs/public-key.crt",
+		KeyPath:  "/server-certs/private-key.key",
 		CACertPaths: []string{
-			"/server-certs/ca-certificate",
+			"/server-certs/ca-certificate.crt",
 		},
 	}
 	defaultClientTLSConfig = connection.TLSConfig{
 		Mode:     connection.MutualTLSMode,
-		CertPath: "/client-certs/public-key",
-		KeyPath:  "/client-certs/private-key",
+		CertPath: "/client-certs/public-key.crt",
+		KeyPath:  "/client-certs/private-key.key",
 		CACertPaths: []string{
-			"/client-certs/ca-certificate",
+			"/client-certs/ca-certificate.crt",
 		},
 	}
 )
@@ -443,10 +443,14 @@ func defaultDBConfig() *vc.DatabaseConfig {
 
 func defaultSampleDBConfig() *vc.DatabaseConfig {
 	return &vc.DatabaseConfig{
-		Endpoints:      []*connection.Endpoint{newEndpoint("db", 5433)},
-		Username:       "yugabyte",
-		Password:       "yugabyte",
-		Database:       "yugabyte",
+		Endpoints: []*connection.Endpoint{newEndpoint("db", 5433)},
+		Username:  "yugabyte",
+		Password:  "yugabyte",
+		Database:  "yugabyte",
+		TLS: connection.DatabaseTLS{
+			Activate:   true,
+			CACertPath: "/server-certs/ca-certificate.crt",
+		},
 		MaxConnections: 10,
 		MinConnections: 5,
 		LoadBalance:    false,

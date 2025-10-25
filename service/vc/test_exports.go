@@ -131,8 +131,8 @@ func NewDatabaseTestEnv(t *testing.T) *DatabaseTestEnv {
 	return newDatabaseTestEnv(t, dbtest.PrepareTestEnv(t), false)
 }
 
-// NewDatabaseTestEnvWithCluster creates a new db cluster test environment.
-func NewDatabaseTestEnvWithCluster(t *testing.T, dbConnections *dbtest.Connection) *DatabaseTestEnv {
+// NewDatabaseTestEnvWithCustomConnection creates a new db test environment given a db connection.
+func NewDatabaseTestEnvWithCustomConnection(t *testing.T, dbConnections *dbtest.Connection) *DatabaseTestEnv {
 	t.Helper()
 	require.NotNil(t, dbConnections)
 	return newDatabaseTestEnv(t, dbtest.PrepareTestEnvWithConnection(t, dbConnections), dbConnections.LoadBalance)
@@ -148,6 +148,7 @@ func newDatabaseTestEnv(t *testing.T, cs *dbtest.Connection, loadBalance bool) *
 		MaxConnections: 10,
 		MinConnections: 1,
 		LoadBalance:    loadBalance,
+		TLS:            cs.TLS,
 		Retry: &connection.RetryProfile{
 			MaxElapsedTime:  5 * time.Minute,
 			InitialInterval: time.Duration(rand.Intn(900)+100) * time.Millisecond,

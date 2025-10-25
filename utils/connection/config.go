@@ -77,6 +77,12 @@ type (
 		KeyPath     string   `mapstructure:"key-path"`
 		CACertPaths []string `mapstructure:"ca-cert-paths"`
 	}
+
+	// DatabaseTLS holds the database connection credentials.
+	DatabaseTLS struct {
+		Activate   bool   `mapstructure:"activate"`
+		CACertPath string `mapstructure:"ca-cert-path"`
+	}
 )
 
 const (
@@ -89,6 +95,11 @@ const (
 	// DefaultTLSMinVersion is the minimum version required to achieve secure connections.
 	DefaultTLSMinVersion = tls.VersionTLS12
 )
+
+// UseTLS sets the option of using TLS configuration for database connection.
+func (dc *DatabaseTLS) UseTLS() bool {
+	return dc.Activate && dc.CACertPath != ""
+}
 
 // ServerCredentials returns the gRPC transport credentials to be used by a server,
 // based on the provided TLS configuration.
