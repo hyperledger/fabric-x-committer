@@ -213,8 +213,8 @@ func (env *sidecarTestEnv) startNotificationStream(
 	sidecarClientCreds connection.TLSConfig,
 ) {
 	t.Helper()
-	conn, err := connection.Connect(test.NewSecuredDialConfig(t, &env.config.Server.Endpoint, sidecarClientCreds))
-	require.NoError(t, err)
+	conn := test.NewSecuredConnection(t, &env.config.Server.Endpoint, sidecarClientCreds)
+	var err error
 	env.notifyStream, err = protonotify.NewNotifierClient(conn).OpenNotificationStream(ctx)
 	require.NoError(t, err)
 }
@@ -537,9 +537,7 @@ func TestSidecarVerifyBadTxForm(t *testing.T) {
 
 func (env *sidecarTestEnv) getCoordinatorLabel(t *testing.T) string {
 	t.Helper()
-	dialConfig, err := connection.NewSingleDialConfig(env.config.Committer)
-	require.NoError(t, err)
-	conn, err := connection.Connect(dialConfig)
+	conn, err := connection.NewSingleConnection(env.config.Committer)
 	require.NoError(t, err)
 	require.NoError(t, conn.Close())
 	return conn.CanonicalTarget()

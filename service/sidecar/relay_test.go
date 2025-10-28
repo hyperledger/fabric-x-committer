@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -52,9 +51,7 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 		metrics,
 	)
 
-	conn, err := connection.Connect(test.NewInsecureDialConfig(&coordinatorEndpoint))
-	require.NoError(t, err)
-	t.Cleanup(func() { assert.NoError(t, conn.Close()) })
+	conn := test.NewInsecureConnection(t, &coordinatorEndpoint)
 
 	logger.Infof("sidecar connected to coordinator at %s", &coordinatorEndpoint)
 

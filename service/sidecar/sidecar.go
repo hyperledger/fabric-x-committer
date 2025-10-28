@@ -110,11 +110,7 @@ func (s *Service) Run(ctx context.Context) error {
 	}()
 
 	logger.Infof("Create coordinator client and connect to %s", s.config.Committer.Endpoint)
-	committerDialConfig, err := connection.NewSingleDialConfig(s.config.Committer)
-	if err != nil {
-		return errors.Wrapf(err, "could not load coordinator dial config")
-	}
-	conn, connErr := connection.Connect(committerDialConfig)
+	conn, connErr := connection.NewSingleConnection(s.config.Committer)
 	if connErr != nil {
 		return errors.Wrapf(connErr, "failed to connect to coordinator")
 	}
