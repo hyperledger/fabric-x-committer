@@ -8,17 +8,25 @@ package verifier
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	bccsputils "github.com/hyperledger/fabric-lib-go/bccsp/utils"
+	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
 	"github.com/hyperledger/fabric-x-common/core/config/configtest"
-	"github.com/hyperledger/fabric/integration/nwo"
-	"github.com/hyperledger/fabric/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
@@ -156,21 +164,21 @@ func TestSignatureRule(t *testing.T) {
 	err = stream.Send(&protosigverifierservice.Batch{Update: update})
 	require.NoError(t, err)
 
-	signingIdentities := make([]*nwo.SigningIdentity, 2)
+	signingIdentities := make([]*signingIdentity, 2)
 
 	for i, org := range []string{"Org1", "Org2"} {
-		signingIdentities[i] = &nwo.SigningIdentity{
+		signingIdentities[i] = &signingIdentity{
 			CertPath: filepath.Join(configtest.GetDevConfigDir(), "crypto/"+org+"/users/User1@"+org+"/msp",
 				"signcerts", "User1@"+org+"-cert.pem"),
 			KeyPath: filepath.Join(configtest.GetDevConfigDir(), "crypto/"+org+"/users/User1@"+org+"/msp",
-				"keystore", "key.pem"),
+				"keystore", "priv_sk"),
 			MSPID: org,
 		}
 	}
 
 	serializedSigningIdentities := make([][]byte, len(signingIdentities))
 	for i, si := range signingIdentities {
-		serializedIdentity, serr := si.Serialize()
+		serializedIdentity, serr := si.serialize()
 		require.NoError(t, serr)
 		serializedSigningIdentities[i] = serializedIdentity
 	}
@@ -206,7 +214,7 @@ func TestSignatureRule(t *testing.T) {
 	mspIDs := make([][]byte, len(signingIdentities))
 	certsBytes := make([][]byte, len(signingIdentities))
 	for i, si := range signingIdentities {
-		s, serr := si.Sign(data)
+		s, serr := si.sign(data)
 		require.NoError(t, serr)
 		signatures[i] = s
 
@@ -602,4 +610,58 @@ func createVerifierClientWithTLS(
 ) protosigverifierservice.VerifierClient {
 	t.Helper()
 	return test.CreateClientWithTLS(t, ep, tlsCfg, protosigverifierservice.NewVerifierClient)
+}
+
+// A signingIdentity represents an MSP signing identity.
+type signingIdentity struct {
+	CertPath string
+	KeyPath  string
+	MSPID    string
+}
+
+// serialize returns the probobuf encoding of an msp.SerializedIdenity.
+func (s *signingIdentity) serialize() ([]byte, error) {
+	cert, err := os.ReadFile(s.CertPath)
+	if err != nil {
+		return nil, err
+	}
+	return proto.Marshal(&msp.SerializedIdentity{
+		Mspid:   s.MSPID,
+		IdBytes: cert,
+	})
+}
+
+// sign computes a SHA256 message digest if key is ECDSA,
+// signs it with the associated private key, and returns the
+// signature. Low-S normlization is applied for ECDSA signatures.
+func (s *signingIdentity) sign(msg []byte) ([]byte, error) {
+	digest := sha256.Sum256(msg)
+	pemKey, err := os.ReadFile(s.KeyPath)
+	if err != nil {
+		return nil, err
+	}
+	block, _ := pem.Decode(pemKey)
+	if block.Type != "EC PRIVATE KEY" && block.Type != "PRIVATE KEY" {
+		return nil, fmt.Errorf("file %s does not contain a private key", s.KeyPath)
+	}
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	switch k := key.(type) {
+	case *ecdsa.PrivateKey:
+		r, _s, err := ecdsa.Sign(rand.Reader, k, digest[:])
+		if err != nil {
+			return nil, err
+		}
+		sig, err := bccsputils.MarshalECDSASignature(r, _s)
+		if err != nil {
+			return nil, err
+		}
+		return bccsputils.SignatureToLowS(&k.PublicKey, sig)
+	case ed25519.PrivateKey:
+		return ed25519.Sign(k, msg), nil
+	default:
+		return nil, fmt.Errorf("unexpected key type: %T", key)
+	}
 }
