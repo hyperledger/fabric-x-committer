@@ -20,6 +20,9 @@ import (
 
 // SerializeVerificationKey encodes a ECDSA public key into a PEM file.
 func SerializeVerificationKey(key *ecdsa.PublicKey) ([]byte, error) {
+	if key == nil {
+		return nil, errors.New("key is nil")
+	}
 	x509encodedPub, err := x509.MarshalPKIXPublicKey(key)
 	if err != nil {
 		return nil, errors.Wrap(err, "cannot serialize public key")
