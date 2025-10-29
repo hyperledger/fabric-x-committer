@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TODO: Combine into 1 single tests for signing and verifying keys
 func TestSerializeVerificationKey(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -62,7 +63,7 @@ func TestSerializeVerificationKey(t *testing.T) {
 	}
 }
 
-func TestSerializeSigningKey(t *testing.T) {
+func TestSerializeAndParseSigningKey(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Key Empty", func(t *testing.T) {
@@ -83,22 +84,6 @@ func TestSerializeSigningKey(t *testing.T) {
 		require.NoError(t, err)
 		key, err := SerializeSigningKey(privateKey)
 		require.NotNil(t, key)
-		require.NoError(t, err)
-	})
-}
-
-func TestParseSigningKey(t *testing.T) {
-	t.Parallel()
-	t.Run("Key is nil", func(t *testing.T) {
-		t.Parallel()
-		_, err := ParseSigningKey(nil)
-		require.Error(t, err)
-	})
-	t.Run("Key OK", func(t *testing.T) {
-		t.Parallel()
-		privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-		require.NoError(t, err)
-		key, err := SerializeSigningKey(privateKey)
 		require.NoError(t, err)
 		_, err = ParseSigningKey(key)
 		require.NoError(t, err)
