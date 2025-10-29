@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TODO: Combine into 1 single tests for signing and verifying keys
 func TestSerializeVerificationKey(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
