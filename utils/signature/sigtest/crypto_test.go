@@ -63,12 +63,7 @@ func TestSerializeVerificationKey(t *testing.T) {
 }
 
 func TestSerializeSigningKey(t *testing.T) {
-	// Panic can happen from unwanted side effects when nil and empty Keys are passed
-	defer func() {
-		if r := recover(); r != nil {
-			t.Errorf("SerializeSigningKey() panics: %v", r)
-		}
-	}()
+	t.Parallel()
 
 	t.Run("Key Empty", func(t *testing.T) {
 		t.Parallel()
@@ -93,6 +88,7 @@ func TestSerializeSigningKey(t *testing.T) {
 }
 
 func TestParseSigningKey(t *testing.T) {
+	t.Parallel()
 	t.Run("Key is nil", func(t *testing.T) {
 		t.Parallel()
 		_, err := ParseSigningKey(nil)
