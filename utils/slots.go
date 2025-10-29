@@ -17,12 +17,14 @@ import (
 type Slots struct {
 	available atomic.Int64
 	cond      *sync.Cond
+	size      int64
 }
 
 // NewSlots creates a new Slots instance with the specified initial size.
 func NewSlots(size int64) *Slots {
 	w := &Slots{
 		cond: sync.NewCond(&sync.Mutex{}),
+		size: size,
 	}
 	w.available.Store(size)
 	return w
@@ -51,4 +53,13 @@ func (w *Slots) Release(n int64) {
 // Broadcast wakes up all goroutines waiting to acquire slots.
 func (w *Slots) Broadcast() {
 	w.cond.Broadcast()
+}
+
+// WaitTillEmpty waits till all available slots are empty.
+func (w *Slots) WaitTillEmpty(ctx context.Context) {
+	w.cond.L.Lock()
+	defer w.cond.L.Unlock()
+	for w.available.Load() < w.size && ctx.Err() == nil {
+		w.cond.Wait()
+	}
 }
