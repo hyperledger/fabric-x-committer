@@ -34,6 +34,12 @@ type (
 	}
 )
 
+var listenRetry = RetryProfile{
+	InitialInterval: 50 * time.Millisecond,
+	MaxInterval:     500 * time.Millisecond,
+	MaxElapsedTime:  2 * time.Minute,
+}
+
 // NewLocalHostServerWithTLS returns a default server config with endpoint "localhost:0" given server credentials.
 func NewLocalHostServerWithTLS(creds TLSConfig) *ServerConfig {
 	return &ServerConfig{
@@ -70,11 +76,23 @@ func (c *ServerConfig) GrpcServer() (*grpc.Server, error) {
 }
 
 // Listener instantiate a [net.Listener] and updates the config port with the effective port.
-func (c *ServerConfig) Listener() (net.Listener, error) {
+// If the port is predefined, it will retry to bind to the port until successful or until the context ends.
+func (c *ServerConfig) Listener(ctx context.Context) (net.Listener, error) {
 	if c.preAllocatedListener != nil {
 		return c.preAllocatedListener, nil
 	}
-	listener, err := net.Listen(grpcProtocol, c.Endpoint.Address())
+
+	var err error
+	var listener net.Listener
+	if c.Endpoint.Port == 0 {
+		listener, err = net.Listen(grpcProtocol, c.Endpoint.Address())
+	} else {
+		err = listenRetry.Execute(ctx, func() error {
+			var listenErr error
+			listener, listenErr = net.Listen(grpcProtocol, c.Endpoint.Address())
+			return listenErr
+		})
+	}
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to listen")
 	}
@@ -93,7 +111,7 @@ func (c *ServerConfig) Listener() (net.Listener, error) {
 // PreAllocateListener is used to allocate a port and bind to ahead of the server initialization.
 // It stores the listener object internally to be reused on subsequent calls to Listener().
 func (c *ServerConfig) PreAllocateListener() (net.Listener, error) {
-	listener, err := c.Listener()
+	listener, err := c.Listener(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +125,7 @@ func RunGrpcServer(
 	serverConfig *ServerConfig,
 	register func(server *grpc.Server),
 ) error {
-	listener, err := serverConfig.Listener()
+	listener, err := serverConfig.Listener(ctx)
 	if err != nil {
 		return err
 	}
