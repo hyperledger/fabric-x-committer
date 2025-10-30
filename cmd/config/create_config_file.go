@@ -75,7 +75,7 @@ type (
 		Password    string
 		LoadBalance bool
 		Endpoints   []*connection.Endpoint
-		TLS         connection.DatabaseTLS
+		TLS         connection.DatabaseTLSConfig
 	}
 )
 

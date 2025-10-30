@@ -78,8 +78,8 @@ type (
 		CACertPaths []string `mapstructure:"ca-cert-paths"`
 	}
 
-	// DatabaseTLS holds the database connection credentials.
-	DatabaseTLS struct {
+	// DatabaseTLSConfig holds the database connection credentials.
+	DatabaseTLSConfig struct {
 		Activate   bool   `mapstructure:"activate"`
 		CACertPath string `mapstructure:"ca-cert-path"`
 	}
@@ -97,7 +97,7 @@ const (
 )
 
 // UseTLS sets the option of using TLS configuration for database connection.
-func (dc *DatabaseTLS) UseTLS() bool {
+func (dc *DatabaseTLSConfig) UseTLS() bool {
 	return dc.Activate && dc.CACertPath != ""
 }
 

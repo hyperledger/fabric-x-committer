@@ -44,7 +44,7 @@ type Connection struct {
 	Password    string
 	Database    string
 	LoadBalance bool
-	TLS         connection.DatabaseTLS
+	TLS         connection.DatabaseTLSConfig
 }
 
 // NewConnection returns a connection parameters with the specified host:port, and the default values
