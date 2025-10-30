@@ -167,12 +167,21 @@ func (r *relay) preProcessBlock(
 		promutil.Observe(r.metrics.blockMappingInRelaySeconds, time.Since(start))
 		if mappedBlock.isConfig {
 			configUpdater(block)
+			// We wait for all previously submitted transactions to be processed by
+			// the committer before submitting the config block.
+			r.waitingTxsSlots.WaitTillEmpty(ctx)
 		}
 
 		txsCount := len(mappedBlock.block.Txs)
 		r.waitingTxsSlots.Acquire(ctx, int64(txsCount))
 		promutil.AddToGauge(r.metrics.waitingTransactionsQueueSize, txsCount)
 		queue.Write(mappedBlock)
+
+		if mappedBlock.isConfig {
+			// we wait for the config block to be processed by the committer
+			// before submitting any other data transactions.
+			r.waitingTxsSlots.WaitTillEmpty(ctx)
+		}
 	}
 }
 

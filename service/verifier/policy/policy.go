@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"google.golang.org/protobuf/proto"
 
@@ -75,8 +76,10 @@ func GetUpdatesFromNamespace(nsTx *protoblocktx.TxNamespace) *protosigverifierse
 	return nil
 }
 
-// ParseNamespacePolicyItem parses policy item to a namespace policy.
-func ParseNamespacePolicyItem(pd *protoblocktx.PolicyItem) (*signature.NsVerifier, error) {
+// CreateNamespaceVerifier parses policy item to a namespace policy.
+func CreateNamespaceVerifier(
+	pd *protoblocktx.PolicyItem, idDeserializer msp.IdentityDeserializer,
+) (*signature.NsVerifier, error) {
 	if err := validateNamespaceIDInPolicy(pd.Namespace); err != nil {
 		return nil, err
 	}
@@ -85,7 +88,8 @@ func ParseNamespacePolicyItem(pd *protoblocktx.PolicyItem) (*signature.NsVerifie
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal namespace policy")
 	}
-	return signature.NewNsVerifier(p.Scheme, p.PublicKey)
+
+	return signature.NewNsVerifier(p, idDeserializer)
 }
 
 // validateNamespaceIDInPolicy checks that a given namespace fulfills namespace naming conventions.
@@ -135,5 +139,16 @@ func ParsePolicyFromConfigTx(value []byte) (*signature.NsVerifier, error) {
 	// We use existing proto here to avoid introducing new ones.
 	// So we encode the key schema as the identifier.
 	// This will be replaced in the future with a generic policy mechanism.
-	return signature.NewNsVerifier(key.KeyIdentifier, key.KeyMaterial)
+
+	policy, err := proto.Marshal(&protoblocktx.ThresholdRule{
+		Scheme:    key.KeyIdentifier,
+		PublicKey: key.KeyMaterial,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to marshal ThresholdRule")
+	}
+	return signature.NewNsVerifier(&protoblocktx.NamespacePolicy{
+		Type:   protoblocktx.PolicyType_THRESHOLD_RULE,
+		Policy: policy,
+	}, nil)
 }

@@ -409,9 +409,9 @@ func (c *CommitterRuntime) MakeAndSendTransactionsToOrderer(
 			Namespaces: namespaces,
 		}
 		if expectedStatus != nil && expectedStatus[i] == protoblocktx.Status_ABORTED_SIGNATURE_INVALID {
-			tx.Signatures = make([][]byte, len(namespaces))
+			tx.Endorsements = make([]*protoblocktx.Endorsements, len(namespaces))
 			for nsIdx := range namespaces {
-				tx.Signatures[nsIdx] = []byte("dummy")
+				tx.Endorsements[nsIdx] = test.CreateEndorsementsForThresholdRule([]byte("dummy"))[0]
 			}
 		}
 		txs[i] = c.TxBuilder.MakeTx(tx)

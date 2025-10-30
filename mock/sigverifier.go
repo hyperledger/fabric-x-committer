@@ -131,7 +131,7 @@ func (m *SigVerifier) sendResponseBatch(
 			}
 			status := protoblocktx.Status_COMMITTED
 			isConfig := len(req.Tx.Namespaces) == 1 && req.Tx.Namespaces[0].NsId == types.ConfigNamespaceID
-			if len(req.Tx.Signatures) == 0 && !isConfig {
+			if len(req.Tx.Endorsements) == 0 && !isConfig {
 				status = protoblocktx.Status_ABORTED_SIGNATURE_INVALID
 			}
 			respBatch.Responses = append(respBatch.Responses, &protosigverifierservice.Response{
