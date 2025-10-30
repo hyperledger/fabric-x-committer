@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/hyperledger/fabric/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/spf13/cobra"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"

@@ -16,7 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/core/config/configtest"
 	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
 	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen/genesisconfig"
-	"github.com/hyperledger/fabric/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"

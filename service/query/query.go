@@ -17,6 +17,7 @@ import (
 	"github.com/yugabyte/pgx/v4/pgxpool"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
@@ -26,8 +27,9 @@ import (
 var queryRowSQLTemplate string
 
 var (
-	queryPoliciesStmt = fmt.Sprintf("SELECT key, value, version from ns_%s;", types.MetaNamespaceID)
-	queryConfigStmt   = fmt.Sprintf("SELECT key, value, version from ns_%s;", types.ConfigNamespaceID)
+	queryPoliciesStmt    = fmt.Sprintf("SELECT key, value, version from ns_%s;", types.MetaNamespaceID)
+	queryConfigStmt      = fmt.Sprintf("SELECT key, value, version from ns_%s;", types.ConfigNamespaceID)
+	queryTxIDsStatusStmt = "SELECT tx_id, status, height FROM tx_status WHERE tx_id = ANY($1);"
 )
 
 // sharedPool and sharedLazyTx implements of sharedQuerier.
@@ -105,6 +107,19 @@ func unsafeQueryRows(
 	return readQueryRows(r, len(keys))
 }
 
+// unsafeQueryTxStatus queries rows from the tx_status table.
+// It may not support concurrent execution, depending on the querier implementation.
+func unsafeQueryTxStatus(
+	ctx context.Context, queryObj querier, txIDs [][]byte,
+) ([]*protonotify.TxStatusEvent, error) {
+	r, err := queryObj.Query(ctx, queryTxIDsStatusStmt, txIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return readTxStatusRows(r, len(txIDs))
+}
+
 func queryPolicies(ctx context.Context, queryObj querier) (*protoblocktx.NamespacePolicies, error) {
 	r, err := queryObj.Query(ctx, queryPoliciesStmt)
 	if err != nil {
@@ -154,6 +169,34 @@ func readQueryRows(r pgx.Rows, expectedSize int) ([]*protoqueryservice.Row, erro
 			return nil, err
 		}
 		rows = append(rows, v)
+	}
+	return rows, r.Err()
+}
+
+func readTxStatusRows(r pgx.Rows, expectedSize int) ([]*protonotify.TxStatusEvent, error) {
+	rows := make([]*protonotify.TxStatusEvent, 0, expectedSize)
+	for r.Next() {
+		var id []byte
+		var status int32
+		var height []byte
+
+		if err := r.Scan(&id, &status, &height); err != nil {
+			return nil, errors.Wrap(err, "failed to read rows from the query result")
+		}
+
+		ht, _, err := types.NewHeightFromBytes(height)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create height")
+		}
+
+		rows = append(rows, &protonotify.TxStatusEvent{
+			TxId: string(id),
+			StatusWithHeight: &protoblocktx.StatusWithHeight{
+				Code:        protoblocktx.Status(status),
+				BlockNumber: ht.BlockNum,
+				TxNumber:    ht.TxNum,
+			},
+		})
 	}
 	return rows, r.Err()
 }

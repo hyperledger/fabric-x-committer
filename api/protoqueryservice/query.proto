@@ -11,6 +11,7 @@ option go_package = "github.com/hyperledger/fabric-x-committer/api/protoqueryser
 package protoqueryservice;
 
 import "api/protoblocktx/block_tx.proto";
+import "api/protonotify/notify.proto";
 import "google/protobuf/empty.proto";
 
 service QueryService {
@@ -19,6 +20,7 @@ service QueryService {
   rpc EndView(View) returns (View) {};
   rpc GetNamespacePolicies(google.protobuf.Empty) returns (protoblocktx.NamespacePolicies) {};
   rpc GetConfigTransaction(google.protobuf.Empty) returns (protoblocktx.ConfigTransaction) {};
+  rpc GetTransactionStatus(TxStatusQuery) returns (TxStatusResponse) {};
 }
 
 message View {
@@ -61,4 +63,13 @@ message Row {
   bytes key = 1;
   bytes value = 2;
   uint64 version = 3;
+}
+
+message TxStatusQuery {
+  optional View view = 1;
+  repeated string tx_ids = 2;  // List of transaction IDs.
+}
+
+message TxStatusResponse {
+  repeated protonotify.TxStatusEvent statuses = 1;
 }
