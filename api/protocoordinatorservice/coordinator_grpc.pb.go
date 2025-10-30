@@ -28,7 +28,6 @@ const _ = grpc.SupportPackageIsVersion7
 const (
 	Coordinator_BlockProcessing_FullMethodName                      = "/protocoordinatorservice.Coordinator/BlockProcessing"
 	Coordinator_SetLastCommittedBlockNumber_FullMethodName          = "/protocoordinatorservice.Coordinator/SetLastCommittedBlockNumber"
-	Coordinator_GetLastCommittedBlockNumber_FullMethodName          = "/protocoordinatorservice.Coordinator/GetLastCommittedBlockNumber"
 	Coordinator_GetNextExpectedBlockNumber_FullMethodName           = "/protocoordinatorservice.Coordinator/GetNextExpectedBlockNumber"
 	Coordinator_GetTransactionsStatus_FullMethodName                = "/protocoordinatorservice.Coordinator/GetTransactionsStatus"
 	Coordinator_GetConfigTransaction_FullMethodName                 = "/protocoordinatorservice.Coordinator/GetConfigTransaction"
@@ -41,7 +40,6 @@ const (
 type CoordinatorClient interface {
 	BlockProcessing(ctx context.Context, opts ...grpc.CallOption) (Coordinator_BlockProcessingClient, error)
 	SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.BlockInfo, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	GetLastCommittedBlockNumber(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.LastCommittedBlock, error)
 	GetNextExpectedBlockNumber(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
 	GetTransactionsStatus(ctx context.Context, in *protoblocktx.QueryStatus, opts ...grpc.CallOption) (*protoblocktx.TransactionsStatus, error)
 	GetConfigTransaction(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.ConfigTransaction, error)
@@ -96,15 +94,6 @@ func (c *coordinatorClient) SetLastCommittedBlockNumber(ctx context.Context, in 
 	return out, nil
 }
 
-func (c *coordinatorClient) GetLastCommittedBlockNumber(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.LastCommittedBlock, error) {
-	out := new(protoblocktx.LastCommittedBlock)
-	err := c.cc.Invoke(ctx, Coordinator_GetLastCommittedBlockNumber_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *coordinatorClient) GetNextExpectedBlockNumber(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error) {
 	out := new(protoblocktx.BlockInfo)
 	err := c.cc.Invoke(ctx, Coordinator_GetNextExpectedBlockNumber_FullMethodName, in, out, opts...)
@@ -147,7 +136,6 @@ func (c *coordinatorClient) NumberOfWaitingTransactionsForStatus(ctx context.Con
 type CoordinatorServer interface {
 	BlockProcessing(Coordinator_BlockProcessingServer) error
 	SetLastCommittedBlockNumber(context.Context, *protoblocktx.BlockInfo) (*emptypb.Empty, error)
-	GetLastCommittedBlockNumber(context.Context, *emptypb.Empty) (*protoblocktx.LastCommittedBlock, error)
 	GetNextExpectedBlockNumber(context.Context, *emptypb.Empty) (*protoblocktx.BlockInfo, error)
 	GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error)
 	GetConfigTransaction(context.Context, *emptypb.Empty) (*protoblocktx.ConfigTransaction, error)
@@ -164,9 +152,6 @@ func (UnimplementedCoordinatorServer) BlockProcessing(Coordinator_BlockProcessin
 }
 func (UnimplementedCoordinatorServer) SetLastCommittedBlockNumber(context.Context, *protoblocktx.BlockInfo) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetLastCommittedBlockNumber not implemented")
-}
-func (UnimplementedCoordinatorServer) GetLastCommittedBlockNumber(context.Context, *emptypb.Empty) (*protoblocktx.LastCommittedBlock, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetLastCommittedBlockNumber not implemented")
 }
 func (UnimplementedCoordinatorServer) GetNextExpectedBlockNumber(context.Context, *emptypb.Empty) (*protoblocktx.BlockInfo, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetNextExpectedBlockNumber not implemented")
@@ -233,24 +218,6 @@ func _Coordinator_SetLastCommittedBlockNumber_Handler(srv interface{}, ctx conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CoordinatorServer).SetLastCommittedBlockNumber(ctx, req.(*protoblocktx.BlockInfo))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _Coordinator_GetLastCommittedBlockNumber_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(CoordinatorServer).GetLastCommittedBlockNumber(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Coordinator_GetLastCommittedBlockNumber_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(CoordinatorServer).GetLastCommittedBlockNumber(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -337,10 +304,6 @@ var Coordinator_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetLastCommittedBlockNumber",
 			Handler:    _Coordinator_SetLastCommittedBlockNumber_Handler,
-		},
-		{
-			MethodName: "GetLastCommittedBlockNumber",
-			Handler:    _Coordinator_GetLastCommittedBlockNumber_Handler,
 		},
 		{
 			MethodName: "GetNextExpectedBlockNumber",
