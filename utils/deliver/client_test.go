@@ -233,7 +233,11 @@ func waitUntilGrpcServerIsReady(ctx context.Context, t *testing.T, endpoint *con
 	t.Logf("%v is ready", endpoint)
 }
 
-// holdPort try to bind to the server port. This holds it until the listener is closed.
+// holdPort attempts to bind to the specified server port and holds it until the listener is closed.
+// It serves two purposes:
+//  1. A successful bind indicates the port is free, meaning the server previously using it is down.
+//  2. It prevents other tests from binding to the same port, ensuring this test correctly detects the server as
+//     unavailable.
 func holdPort(ctx context.Context, t *testing.T, c *connection.ServerConfig) net.Listener {
 	t.Helper()
 	listener, err := c.Listener(ctx)

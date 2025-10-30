@@ -84,7 +84,7 @@ func (c *ServerConfig) Listener(ctx context.Context) (net.Listener, error) {
 
 	var err error
 	var listener net.Listener
-	if ctx == nil || c.Endpoint.Port == 0 {
+	if c.Endpoint.Port == 0 {
 		listener, err = net.Listen(grpcProtocol, c.Endpoint.Address())
 	} else {
 		err = listenRetry.Execute(ctx, func() error {
