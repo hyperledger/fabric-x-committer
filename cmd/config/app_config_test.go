@@ -448,7 +448,7 @@ func defaultSampleDBConfig() *vc.DatabaseConfig {
 		Password:  "yugabyte",
 		Database:  "yugabyte",
 		TLS: connection.DatabaseTLSConfig{
-			Activate:   true,
+			Mode:       connection.OneSideTLSMode,
 			CACertPath: "/server-certs/ca-certificate.crt",
 		},
 		MaxConnections: 10,

@@ -149,7 +149,7 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 	// This is relevant if a different CA was used to issue the DB's TLS certificates.
 	require.NotEmpty(t, node.TLSConfig.CACertPaths)
 	conn.TLS = connection.DatabaseTLSConfig{
-		Activate:   true,
+		Mode:       connection.OneSideTLSMode,
 		CACertPath: node.TLSConfig.CACertPaths[0],
 	}
 

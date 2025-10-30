@@ -23,7 +23,7 @@ database:
   password: "yugabyte" # The password for the database
   database: "yugabyte" # The database name
   tls:
-    activate: true
+    mode: tls
     ca-cert-path: /server-certs/ca-certificate.crt
   max-connections: 10 # The maximum size of the connection pool
   min-connections: 5 # The minimum size of the connection pool.

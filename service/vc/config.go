@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cockroachdb/errors"
+
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
@@ -36,25 +38,31 @@ type DatabaseConfig struct {
 }
 
 // DataSourceName returns the data source name of the database.
-func (d *DatabaseConfig) DataSourceName() string {
+func (d *DatabaseConfig) DataSourceName() (string, error) {
 	ret := fmt.Sprintf("postgres://%s:%s@%s/%s?",
 		d.Username, d.Password, d.EndpointsString(), d.Database)
 
-	if d.TLS.UseTLS() {
+	switch d.TLS.Mode {
+	case connection.NoneTLSMode, connection.UnmentionedTLSMode:
+		ret += "sslmode=disable"
+	case connection.OneSideTLSMode:
 		// Enforce full SSL verification:
 		// requires an encrypted connection (TLS),
 		// and ensures the server hostname matches the certificate.
 		ret += "sslmode=verify-full"
 		ret += fmt.Sprintf("&sslrootcert=%s", d.TLS.CACertPath)
-	} else {
-		ret += "sslmode=disable"
+	case connection.MutualTLSMode:
+		return "", errors.Newf("unsupportted db tls mode: %s", d.TLS.Mode)
+	default:
+		return "", errors.Newf("unknown TLS mode: %s (valid modes: %s, %s, %s)",
+			d.TLS.Mode, connection.NoneTLSMode, connection.OneSideTLSMode, connection.MutualTLSMode)
 	}
 	// The load balancing flag is only available when the server supports it (having multiple nodes).
 	// Thus, we only add it when explicitly required. Otherwise, an error will occur.
 	if d.LoadBalance {
 		ret += "&load_balance=true"
 	}
-	return ret
+	return ret, nil
 }
 
 // EndpointsString returns the address:port as a string with comma as a separator between endpoints.

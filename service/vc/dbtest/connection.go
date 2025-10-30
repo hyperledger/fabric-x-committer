@@ -58,25 +58,31 @@ func NewConnection(endpoints ...*connection.Endpoint) *Connection {
 }
 
 // dataSourceName returns the dataSourceName to be used by the database/sql package.
-func (c *Connection) dataSourceName() string {
+func (c *Connection) dataSourceName() (string, error) {
 	ret := fmt.Sprintf("postgres://%s:%s@%s/%s?",
 		c.User, c.Password, c.endpointsString(), c.Database)
 
-	if c.TLS.UseTLS() {
+	switch c.TLS.Mode {
+	case connection.NoneTLSMode, connection.UnmentionedTLSMode:
+		ret += "sslmode=disable"
+	case connection.OneSideTLSMode:
 		// Enforce full SSL verification:
 		// requires an encrypted connection (TLS),
 		// and ensures the server hostname matches the certificate.
 		ret += "sslmode=verify-full"
 		ret += fmt.Sprintf("&sslrootcert=%s", c.TLS.CACertPath)
-	} else {
-		ret += "sslmode=disable"
+	case connection.MutualTLSMode:
+		return "", errors.Newf("unsupportted db tls mode: %s", c.TLS.Mode)
+	default:
+		return "", errors.Newf("unknown TLS mode: %s (valid modes: %s, %s, %s)",
+			c.TLS.Mode, connection.NoneTLSMode, connection.OneSideTLSMode, connection.MutualTLSMode)
 	}
 	// The load balancing flag is only available when the server supports it (having multiple nodes).
 	// Thus, we only add it when explicitly required. Otherwise, an error will occur.
 	if c.LoadBalance {
 		ret += "&load_balance=true"
 	}
-	return ret
+	return ret, nil
 }
 
 // endpointsString returns the address:port as a string with comma as a separator between endpoints.
@@ -86,7 +92,11 @@ func (c *Connection) endpointsString() string {
 
 // open opens a connection pool to the database.
 func (c *Connection) open(ctx context.Context) (*pgxpool.Pool, error) {
-	poolConfig, err := pgxpool.ParseConfig(c.dataSourceName())
+	connString, err := c.dataSourceName()
+	if err != nil {
+		return nil, errors.Wrapf(err, "could not build database connection string")
+	}
+	poolConfig, err := pgxpool.ParseConfig(connString)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error parsing datasource: %s", c.endpointsString())
 	}

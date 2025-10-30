@@ -27,7 +27,7 @@ database:
   database: {{ .DB.Name }}
   load-balance: {{ .DB.LoadBalance }}
   tls:
-    activate: {{ .DB.TLS.Activate }}
+    mode: {{ .DB.TLS.Mode }}
     ca-cert-path: {{ .DB.TLS.CACertPath }}
   max-connections: 10
   min-connections: 5
