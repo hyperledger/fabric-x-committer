@@ -22,6 +22,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 const (
@@ -30,9 +31,6 @@ const (
 
 	deploymentLocal     = "local"
 	deploymentContainer = "container"
-
-	YugaDBType     = "yugabyte" //nolint:revive
-	PostgresDBType = "postgres"
 
 	yugaDBPort     = "5433"
 	postgresDBPort = "5432"
@@ -73,7 +71,7 @@ func getDBTypeFromEnv() string {
 	if found {
 		return strings.ToLower(val)
 	}
-	return YugaDBType
+	return test.YugaDBType
 }
 
 // PrepareTestEnv initializes a test environment for an existing or uncontrollable db instance.
@@ -120,7 +118,7 @@ func StartAndConnect(ctx context.Context, t *testing.T) *Connection {
 			DatabaseType: getDBTypeFromEnv(),
 		}
 		container.StartContainer(ctx, t)
-		connOptions = container.getConnectionOptions(ctx, t)
+		connOptions = container.GetConnectionOptions(ctx, t)
 	case deploymentLocal:
 		connOptions = NewConnection(connection.CreateEndpointHP("localhost", defaultLocalDBPort))
 	default:

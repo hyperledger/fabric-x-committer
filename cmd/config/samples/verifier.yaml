@@ -6,10 +6,10 @@ server:
   endpoint: :5001
   tls:
     mode: mtls
-    cert-path: /server-certs/public-key
-    key-path: /server-certs/private-key
+    cert-path: /server-certs/public-key.crt
+    key-path: /server-certs/private-key.key
     ca-cert-paths:
-      - /server-certs/ca-certificate
+      - /server-certs/ca-certificate.crt
 monitoring:
   server:
     endpoint: :2115

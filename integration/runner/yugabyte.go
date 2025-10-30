@@ -125,7 +125,7 @@ func (cc *YugaClusterController) createNode(role string) {
 		Name:         fmt.Sprintf("yuga-%s-%s", role, uuid.New().String()),
 		Image:        defaultImage,
 		Role:         role,
-		DatabaseType: dbtest.YugaDBType,
+		DatabaseType: test.YugaDBType,
 		Network:      cc.networkName,
 	}
 	cc.nodes = append(cc.nodes, node)

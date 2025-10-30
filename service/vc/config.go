@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cockroachdb/errors"
+
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
@@ -24,27 +26,42 @@ type Config struct {
 
 // DatabaseConfig is the configuration for the database.
 type DatabaseConfig struct {
-	Endpoints      []*connection.Endpoint   `mapstructure:"endpoints"`
-	Username       string                   `mapstructure:"username"`
-	Password       string                   `mapstructure:"password"`
-	Database       string                   `mapstructure:"database"`
-	MaxConnections int32                    `mapstructure:"max-connections"`
-	MinConnections int32                    `mapstructure:"min-connections"`
-	LoadBalance    bool                     `mapstructure:"load-balance"`
-	Retry          *connection.RetryProfile `mapstructure:"retry"`
+	Endpoints      []*connection.Endpoint       `mapstructure:"endpoints"`
+	Username       string                       `mapstructure:"username"`
+	Password       string                       `mapstructure:"password"`
+	Database       string                       `mapstructure:"database"`
+	MaxConnections int32                        `mapstructure:"max-connections"`
+	MinConnections int32                        `mapstructure:"min-connections"`
+	LoadBalance    bool                         `mapstructure:"load-balance"`
+	Retry          *connection.RetryProfile     `mapstructure:"retry"`
+	TLS            connection.DatabaseTLSConfig `mapstructure:"tls"`
 }
 
 // DataSourceName returns the data source name of the database.
-func (d *DatabaseConfig) DataSourceName() string {
-	ret := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable",
+func (d *DatabaseConfig) DataSourceName() (string, error) {
+	ret := fmt.Sprintf("postgres://%s:%s@%s/%s?",
 		d.Username, d.Password, d.EndpointsString(), d.Database)
 
+	switch d.TLS.Mode {
+	case connection.NoneTLSMode, connection.UnmentionedTLSMode:
+		ret += "sslmode=disable"
+	case connection.OneSideTLSMode:
+		// Enforce full SSL verification:
+		// requires an encrypted connection (TLS),
+		// and ensures the server hostname matches the certificate.
+		ret += fmt.Sprintf("sslmode=%s&sslrootcert=%s", "verify-full", d.TLS.CACertPath)
+	case connection.MutualTLSMode:
+		return "", errors.Newf("unsupportted db tls mode: %s", d.TLS.Mode)
+	default:
+		return "", errors.Newf("unknown TLS mode: %s (valid modes: %s, %s, %s)",
+			d.TLS.Mode, connection.NoneTLSMode, connection.OneSideTLSMode, connection.MutualTLSMode)
+	}
 	// The load balancing flag is only available when the server supports it (having multiple nodes).
 	// Thus, we only add it when explicitly required. Otherwise, an error will occur.
 	if d.LoadBalance {
 		ret += "&load_balance=true"
 	}
-	return ret
+	return ret, nil
 }
 
 // EndpointsString returns the address:port as a string with comma as a separator between endpoints.

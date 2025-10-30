@@ -43,8 +43,12 @@ var (
 
 // NewDatabasePool creates a new pool from a database config.
 func NewDatabasePool(ctx context.Context, config *DatabaseConfig) (*pgxpool.Pool, error) {
-	logger.Infof("DB source: %s", config.DataSourceName())
-	poolConfig, err := pgxpool.ParseConfig(config.DataSourceName())
+	connString, err := config.DataSourceName()
+	if err != nil {
+		return nil, errors.Wrapf(err, "could not build database connection string")
+	}
+	logger.Infof("DB source: %s", connString)
+	poolConfig, err := pgxpool.ParseConfig(connString)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed parsing datasource")
 	}

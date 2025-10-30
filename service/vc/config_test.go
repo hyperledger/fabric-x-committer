@@ -28,7 +28,9 @@ func TestDatasourceName(t *testing.T) {
 	}
 	e1 := "postgres://yugabyte_user:yugabyte_pass@localhost:5433/" +
 		"yugabyte_db?sslmode=disable"
-	require.Equal(t, e1, c1.DataSourceName())
+	connString, err := c1.DataSourceName()
+	require.NoError(t, err)
+	require.Equal(t, e1, connString)
 
 	c2 := &DatabaseConfig{
 		Endpoints: []*connection.Endpoint{
@@ -42,5 +44,7 @@ func TestDatasourceName(t *testing.T) {
 	}
 	//nolint:gosec // fake password.
 	e2 := "postgres://yugabyte:yugabyte@host1:1111,host2:2222/yugabyte?sslmode=disable&load_balance=true"
-	require.Equal(t, e2, c2.DataSourceName())
+	connString, err = c2.DataSourceName()
+	require.NoError(t, err)
+	require.Equal(t, e2, connString)
 }

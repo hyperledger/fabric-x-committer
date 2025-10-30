@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 const (
@@ -99,7 +100,7 @@ func (cc *PostgresClusterController) addPrimaryNode(ctx context.Context, t *test
 		},
 	})
 	node.StartContainer(ctx, t)
-	node.EnsureNodeReadiness(t, "database system is ready to accept connections")
+	node.EnsureNodeReadiness(t, dbtest.PostgresReadinessOutput)
 	return node
 }
 
@@ -132,7 +133,7 @@ func (cc *PostgresClusterController) createNode(
 		Role:         nodeCreationOpts.role,
 		Image:        postgresImage,
 		Tag:          defaultBitnamiPostgresTag,
-		DatabaseType: dbtest.PostgresDBType,
+		DatabaseType: test.PostgresDBType,
 		Env: append([]string{
 			"POSTGRESQL_REPLICATION_USER=repl_user",
 			"POSTGRESQL_REPLICATION_PASSWORD=repl_password",
