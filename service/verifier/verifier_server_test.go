@@ -8,15 +8,30 @@ package verifier
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	bccsputils "github.com/hyperledger/fabric-lib-go/bccsp/utils"
+	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
+	"github.com/hyperledger/fabric-x-common/common/policydsl"
+	"github.com/hyperledger/fabric-x-common/core/config/configtest"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -26,8 +41,10 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-const testTimeout = 3 * time.Second
-const fakeTxID = "fake-id"
+const (
+	testTimeout = 3 * time.Second
+	fakeTxID    = "fake-id"
+)
 
 func TestVerifierSecureConnection(t *testing.T) {
 	t.Parallel()
@@ -82,7 +99,7 @@ func TestMinimalInput(t *testing.T) {
 
 	stream, _ := c.Client.StartStream(t.Context())
 
-	update, txSigner := defaultUpdate(t)
+	update, signers := defaultUpdate(t)
 
 	tx1 := &protoblocktx.Tx{
 		Namespaces: []*protoblocktx.TxNamespace{{
@@ -93,8 +110,8 @@ func TestMinimalInput(t *testing.T) {
 			}},
 		}},
 	}
-	s, _ := txSigner.SignNs(fakeTxID, tx1, 0)
-	tx1.Signatures = append(tx1.Signatures, s)
+	s, _ := signers[1].SignNs(fakeTxID, tx1, 0)
+	tx1.Endorsements = test.AppendToEndorsementSetsForThresholdRule(tx1.Endorsements, s)
 
 	tx2 := &protoblocktx.Tx{
 		Namespaces: []*protoblocktx.TxNamespace{{
@@ -106,8 +123,8 @@ func TestMinimalInput(t *testing.T) {
 		}},
 	}
 
-	s, _ = txSigner.SignNs(fakeTxID, tx2, 0)
-	tx2.Signatures = append(tx2.Signatures, s)
+	s, _ = signers[1].SignNs(fakeTxID, tx2, 0)
+	tx2.Endorsements = test.AppendToEndorsementSetsForThresholdRule(tx2.Endorsements, s)
 
 	tx3 := &protoblocktx.Tx{
 		Namespaces: []*protoblocktx.TxNamespace{{
@@ -118,8 +135,8 @@ func TestMinimalInput(t *testing.T) {
 			}},
 		}},
 	}
-	s, _ = txSigner.SignNs(fakeTxID, tx3, 0)
-	tx3.Signatures = append(tx3.Signatures, s)
+	s, _ = signers[1].SignNs(fakeTxID, tx3, 0)
+	tx3.Endorsements = test.AppendToEndorsementSetsForThresholdRule(tx3.Endorsements, s)
 
 	err := stream.Send(&protosigverifierservice.Batch{
 		Update: update,
@@ -134,6 +151,101 @@ func TestMinimalInput(t *testing.T) {
 	ret, ok := readStream(t, stream, testTimeout)
 	require.True(t, ok)
 	require.Len(t, ret, 3)
+}
+
+func TestSignatureRule(t *testing.T) {
+	t.Parallel()
+	c := newTestState(t, defaultConfigQuickCutoff())
+
+	stream, err := c.Client.StartStream(t.Context())
+	require.NoError(t, err)
+
+	update, _ := defaultUpdate(t)
+	err = stream.Send(&protosigverifierservice.Batch{Update: update})
+	require.NoError(t, err)
+
+	signingIdentities := make([]*signingIdentity, 2)
+
+	for i, org := range []string{"Org1", "Org2"} {
+		signingIdentities[i] = &signingIdentity{
+			CertPath: filepath.Join(configtest.GetDevConfigDir(), "crypto/"+org+"/users/User1@"+org+"/msp",
+				"signcerts", "User1@"+org+"-cert.pem"),
+			KeyPath: filepath.Join(configtest.GetDevConfigDir(), "crypto/"+org+"/users/User1@"+org+"/msp",
+				"keystore", "priv_sk"),
+			MSPID: org,
+		}
+	}
+
+	serializedSigningIdentities := make([][]byte, len(signingIdentities))
+	for i, si := range signingIdentities {
+		serializedIdentity, serr := si.serialize()
+		require.NoError(t, serr)
+		serializedSigningIdentities[i] = serializedIdentity
+	}
+
+	nsPolicy := &protoblocktx.NamespacePolicy{
+		Policy: protoutil.MarshalOrPanic(policydsl.Envelope(policydsl.And(policydsl.SignedBy(0), policydsl.SignedBy(1)),
+			serializedSigningIdentities)),
+		Type: protoblocktx.PolicyType_SIGNATURE_RULE,
+	}
+
+	update = &protosigverifierservice.Update{
+		NamespacePolicies: &protoblocktx.NamespacePolicies{
+			Policies: []*protoblocktx.PolicyItem{
+				policy.MakePolicy(t, "2", nsPolicy),
+			},
+		},
+	}
+
+	tx1 := &protoblocktx.Tx{
+		Namespaces: []*protoblocktx.TxNamespace{{
+			NsId:      "2",
+			NsVersion: 0,
+			BlindWrites: []*protoblocktx.Write{{
+				Key: []byte("0011"),
+			}},
+		}},
+	}
+
+	data, err := signature.ASN1MarshalTxNamespace(fakeTxID, tx1.Namespaces[0])
+	require.NoError(t, err)
+
+	signatures := make([][]byte, len(signingIdentities))
+	mspIDs := make([][]byte, len(signingIdentities))
+	certsBytes := make([][]byte, len(signingIdentities))
+	for i, si := range signingIdentities {
+		s, serr := si.sign(data)
+		require.NoError(t, serr)
+		signatures[i] = s
+
+		mspIDs[i] = []byte(si.MSPID)
+		certBytes, rerr := os.ReadFile(si.CertPath)
+		require.NoError(t, rerr)
+		certsBytes[i] = certBytes
+	}
+
+	tx1.Endorsements = []*protoblocktx.Endorsements{
+		test.CreateEndorsementsForSignatureRule(signatures, mspIDs, certsBytes),
+	}
+
+	requireTestCase(t, stream, &testCase{
+		update: update,
+		req: &protosigverifierservice.Tx{
+			Ref: types.TxRef(fakeTxID, 1, 1), Tx: tx1,
+		},
+		expectedStatus: protoblocktx.Status_COMMITTED,
+	})
+
+	tx1.Endorsements = []*protoblocktx.Endorsements{
+		test.CreateEndorsementsForSignatureRule(signatures[0:1], mspIDs[0:1], certsBytes[0:1]),
+	}
+
+	requireTestCase(t, stream, &testCase{
+		req: &protosigverifierservice.Tx{
+			Ref: types.TxRef(fakeTxID, 1, 1), Tx: tx1,
+		},
+		expectedStatus: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+	})
 }
 
 func TestBadSignature(t *testing.T) {
@@ -158,7 +270,7 @@ func TestBadSignature(t *testing.T) {
 						{Key: make([]byte, 0)},
 					},
 				}},
-				Signatures: [][]byte{{0, 1, 2}},
+				Endorsements: test.CreateEndorsementsForThresholdRule([]byte{0}, []byte{1}, []byte{2}),
 			},
 		},
 		expectedStatus: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
@@ -179,10 +291,13 @@ func TestUpdatePolicies(t *testing.T) {
 		stream, err := c.Client.StartStream(t.Context())
 		require.NoError(t, err)
 
+		update, _ := defaultUpdate(t)
+
 		ns1Policy, _ := makePolicyItem(t, ns1)
 		ns2Policy, _ := makePolicyItem(t, ns2)
 		err = stream.Send(&protosigverifierservice.Batch{
 			Update: &protosigverifierservice.Update{
+				Config: update.Config,
 				NamespacePolicies: &protoblocktx.NamespacePolicies{
 					Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
 				},
@@ -199,8 +314,11 @@ func TestUpdatePolicies(t *testing.T) {
 					Policies: []*protoblocktx.PolicyItem{
 						p3,
 						policy.MakePolicy(t, ns2, &protoblocktx.NamespacePolicy{
-							PublicKey: []byte("bad-key"),
-							Scheme:    signature.Ecdsa,
+							Type: protoblocktx.PolicyType_THRESHOLD_RULE,
+							Policy: protoutil.MarshalOrPanic(&protoblocktx.ThresholdRule{
+								PublicKey: []byte("bad-key"),
+								Scheme:    signature.Ecdsa,
+							}),
 						}),
 					},
 				},
@@ -218,10 +336,13 @@ func TestUpdatePolicies(t *testing.T) {
 		stream, err := c.Client.StartStream(t.Context())
 		require.NoError(t, err)
 
+		update, _ := defaultUpdate(t)
+
 		ns1Policy, ns1Signer := makePolicyItem(t, ns1)
 		ns2Policy, _ := makePolicyItem(t, ns2)
 		err = stream.Send(&protosigverifierservice.Batch{
 			Update: &protosigverifierservice.Update{
+				Config: update.Config,
 				NamespacePolicies: &protoblocktx.NamespacePolicies{
 					Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
 				},
@@ -263,6 +384,8 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 	stream, err := c.Client.StartStream(t.Context())
 	require.NoError(t, err)
 
+	update, _ := defaultUpdate(t)
+
 	// Each policy update will update a unique namespace, and the common namespace.
 	updateCount := len(ns) - 1
 	uniqueNsSigners := make([]*sigtest.NsSigner, updateCount)
@@ -273,6 +396,7 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 		commonNsPolicy, commonNsSigner := makePolicyItem(t, ns[len(ns)-1])
 		commonNsSigners[i] = commonNsSigner
 		p := &protosigverifierservice.Update{
+			Config: update.Config,
 			NamespacePolicies: &protoblocktx.NamespacePolicies{
 				Policies: []*protoblocktx.PolicyItem{uniqueNsPolicy, commonNsPolicy},
 			},
@@ -321,17 +445,18 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 }
 
 type testCase struct {
+	update         *protosigverifierservice.Update
 	req            *protosigverifierservice.Tx
 	expectedStatus protoblocktx.Status
 }
 
 func sign(t *testing.T, tx *protoblocktx.Tx, signers ...*sigtest.NsSigner) {
 	t.Helper()
-	tx.Signatures = make([][]byte, len(signers))
+	tx.Endorsements = make([]*protoblocktx.Endorsements, len(signers))
 	for i, s := range signers {
 		s, err := s.SignNs(fakeTxID, tx, i)
 		require.NoError(t, err)
-		tx.Signatures[i] = s
+		tx.Endorsements[i] = test.CreateEndorsementsForThresholdRule(s)[0]
 	}
 }
 
@@ -358,8 +483,11 @@ func makePolicyItem(t *testing.T, ns string) (*protoblocktx.PolicyItem, *sigtest
 	txSigner, err := factory.NewSigner(signingKey)
 	require.NoError(t, err)
 	p := policy.MakePolicy(t, ns, &protoblocktx.NamespacePolicy{
-		PublicKey: verificationKey,
-		Scheme:    signature.Ecdsa,
+		Type: protoblocktx.PolicyType_THRESHOLD_RULE,
+		Policy: protoutil.MarshalOrPanic(&protoblocktx.ThresholdRule{
+			Scheme:    signature.Ecdsa,
+			PublicKey: verificationKey,
+		}),
 	})
 	return p, txSigner
 }
@@ -371,6 +499,7 @@ func requireTestCase(
 ) {
 	t.Helper()
 	err := stream.Send(&protosigverifierservice.Batch{
+		Update:   tt.update,
 		Requests: []*protosigverifierservice.Tx{tt.req},
 	})
 	require.NoError(t, err)
@@ -421,22 +550,35 @@ func readStream(
 	return channel.NewReader(ctx, outputChan).Read()
 }
 
-func defaultUpdate(t *testing.T) (*protosigverifierservice.Update, *sigtest.NsSigner) {
+func defaultUpdate(t *testing.T) (*protosigverifierservice.Update, []*sigtest.NsSigner) {
 	t.Helper()
 	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
-	signingKey, verificationKey := factory.NewKeys()
-	txSigner, _ := factory.NewSigner(signingKey)
+	nsTxSigningKey, nsTxVerificationKey := factory.NewKeys()
+	configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
+		MetaNamespaceVerificationKey: nsTxVerificationKey,
+	})
+	require.NoError(t, err)
+	nsTxSigner, _ := factory.NewSigner(nsTxSigningKey)
+
+	dataTxSigningKey, dataTxVerificationKey := factory.NewKeys()
+	dataTxSigner, _ := factory.NewSigner(dataTxSigningKey)
 	update := &protosigverifierservice.Update{
+		Config: &protoblocktx.ConfigTransaction{
+			Envelope: configBlock.Data.Data[0],
+		},
 		NamespacePolicies: &protoblocktx.NamespacePolicies{
 			Policies: []*protoblocktx.PolicyItem{
 				policy.MakePolicy(t, "1", &protoblocktx.NamespacePolicy{
-					PublicKey: verificationKey,
-					Scheme:    signature.Ecdsa,
+					Type: protoblocktx.PolicyType_THRESHOLD_RULE,
+					Policy: protoutil.MarshalOrPanic(&protoblocktx.ThresholdRule{
+						Scheme:    signature.Ecdsa,
+						PublicKey: dataTxVerificationKey,
+					}),
 				}),
 			},
 		},
 	}
-	return update, txSigner
+	return update, []*sigtest.NsSigner{nsTxSigner, dataTxSigner}
 }
 
 func defaultConfigWithTLS(tlsConfig connection.TLSConfig) *Config {
@@ -468,4 +610,58 @@ func createVerifierClientWithTLS(
 ) protosigverifierservice.VerifierClient {
 	t.Helper()
 	return test.CreateClientWithTLS(t, ep, tlsCfg, protosigverifierservice.NewVerifierClient)
+}
+
+// A signingIdentity represents an MSP signing identity.
+type signingIdentity struct {
+	CertPath string
+	KeyPath  string
+	MSPID    string
+}
+
+// serialize returns the probobuf encoding of an msp.SerializedIdenity.
+func (s *signingIdentity) serialize() ([]byte, error) {
+	cert, err := os.ReadFile(s.CertPath)
+	if err != nil {
+		return nil, err
+	}
+	return proto.Marshal(&msp.SerializedIdentity{
+		Mspid:   s.MSPID,
+		IdBytes: cert,
+	})
+}
+
+// sign computes a SHA256 message digest if key is ECDSA,
+// signs it with the associated private key, and returns the
+// signature. Low-S normlization is applied for ECDSA signatures.
+func (s *signingIdentity) sign(msg []byte) ([]byte, error) {
+	digest := sha256.Sum256(msg)
+	pemKey, err := os.ReadFile(s.KeyPath)
+	if err != nil {
+		return nil, err
+	}
+	block, _ := pem.Decode(pemKey)
+	if block.Type != "EC PRIVATE KEY" && block.Type != "PRIVATE KEY" {
+		return nil, fmt.Errorf("file %s does not contain a private key", s.KeyPath)
+	}
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	switch k := key.(type) {
+	case *ecdsa.PrivateKey:
+		r, _s, err := ecdsa.Sign(rand.Reader, k, digest[:])
+		if err != nil {
+			return nil, err
+		}
+		sig, err := bccsputils.MarshalECDSASignature(r, _s)
+		if err != nil {
+			return nil, err
+		}
+		return bccsputils.SignatureToLowS(&k.PublicKey, sig)
+	case ed25519.PrivateKey:
+		return ed25519.Sign(k, msg), nil
+	default:
+		return nil, fmt.Errorf("unexpected key type: %T", key)
+	}
 }

@@ -21,6 +21,8 @@ type (
 	PublicKey = []byte
 	// Scheme to be used.
 	Scheme = string
+	// Policy defining the governance.
+	Policy = []byte
 )
 
 // Supported schemes.

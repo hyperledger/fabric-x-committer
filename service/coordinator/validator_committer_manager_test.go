@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -225,8 +226,11 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 			Seed:   10,
 		}).GetVerificationKeyAndSigner()
 		p := &protoblocktx.NamespacePolicy{
-			Scheme:    signature.Ecdsa,
-			PublicKey: verificationKey,
+			Type: protoblocktx.PolicyType_THRESHOLD_RULE,
+			Policy: protoutil.MarshalOrPanic(&protoblocktx.ThresholdRule{
+				Scheme:    signature.Ecdsa,
+				PublicKey: verificationKey,
+			}),
 		}
 		pBytes, err := proto.Marshal(p)
 		require.NoError(t, err)
