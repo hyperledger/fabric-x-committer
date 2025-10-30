@@ -78,7 +78,7 @@ type (
 		CACertPaths []string `mapstructure:"ca-cert-paths"`
 	}
 
-	// DatabaseTLSConfig holds the database connection credentials.
+	// DatabaseTLSConfig holds the database TLS mode and its necessary credentials.
 	DatabaseTLSConfig struct {
 		Mode       string `mapstructure:"mode"`
 		CACertPath string `mapstructure:"ca-cert-path"`

@@ -49,8 +49,7 @@ func (d *DatabaseConfig) DataSourceName() (string, error) {
 		// Enforce full SSL verification:
 		// requires an encrypted connection (TLS),
 		// and ensures the server hostname matches the certificate.
-		ret += "sslmode=verify-full"
-		ret += fmt.Sprintf("&sslrootcert=%s", d.TLS.CACertPath)
+		ret += fmt.Sprintf("sslmode=%s&sslrootcert=%s", "verify-full", d.TLS.CACertPath)
 	case connection.MutualTLSMode:
 		return "", errors.Newf("unsupportted db tls mode: %s", d.TLS.Mode)
 	default:
