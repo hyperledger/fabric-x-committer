@@ -161,7 +161,7 @@ func (cc *YugaClusterController) startNodes(ctx context.Context, t *testing.T) {
 	}
 
 	for _, n := range cc.IterNodesByRole(TabletNode) {
-		n.EnsureNodeReadiness(t, "syncing data to disk ... ok")
+		n.EnsureNodeReadinessByLogs(t, "syncing data to disk ... ok")
 	}
 }
 
@@ -194,7 +194,7 @@ func (cc *YugaClusterController) listAllMasters(t *testing.T) string {
 		"list_all_masters",
 	}
 	for _, n := range cc.nodes {
-		if output = n.ExecuteCommand(t, cmd); output != "" {
+		if output, _ = n.ExecuteCommand(t, cmd); output != "" {
 			break
 		}
 	}

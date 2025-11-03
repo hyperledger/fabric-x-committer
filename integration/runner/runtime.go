@@ -583,12 +583,7 @@ func (c *CommitterRuntime) createSystemConfigWithServerTLS(
 ) *config.SystemConfig {
 	t.Helper()
 	serviceCfg := c.SystemConfig
-	serviceCfg.ServiceTLS, _ = c.CredFactory.CreateServerCredentials(
-		t,
-		c.config.TLSMode,
-		test.DefaultCertStyle,
-		endpoints.Server.Host,
-	)
+	serviceCfg.ServiceTLS, _ = c.CredFactory.CreateServerCredentials(t, c.config.TLSMode, endpoints.Server.Host)
 	serviceCfg.ServiceEndpoints = endpoints
 	return &serviceCfg
 }

@@ -48,16 +48,10 @@ type (
 const (
 	defaultHostName = "localhost"
 
-	// YugaDBType represents the usage of Yugabyte DB.
-	YugaDBType = "yugabyte"
-	// PostgresDBType represents the usage of PostgreSQL DB.
-	PostgresDBType = "postgres"
-	// DefaultCertStyle represents the default TLS certificate style creation.
-	DefaultCertStyle = "default"
-	//nolint:revive // KeyPrivate, KeyPublic and KeyCACert represents the chosen key in the naming function.
-	KeyPrivate = "private-key"
-	KeyPublic  = "public-key"
-	KeyCACert  = "ca-certificate"
+	//nolint:revive // represents the default certificate's names.
+	PrivateKey       = "private-key.pem"
+	PublicKey        = "public-key.pem"
+	CACertificateKey = "ca-certificate.pem"
 )
 
 // ServerModes is a list of server-side TLS modes used for testing.
@@ -78,13 +72,12 @@ func NewCredentialsFactory(t *testing.T) *CredentialsFactory {
 func (scm *CredentialsFactory) CreateServerCredentials(
 	t *testing.T,
 	tlsMode string,
-	namingStyle string,
 	san ...string,
 ) (connection.TLSConfig, string) {
 	t.Helper()
 	serverKeypair, err := scm.CertificateAuthority.NewServerCertKeyPair(san...)
 	require.NoError(t, err)
-	return scm.createTLSConfig(t, tlsMode, serverKeypair, namingStyle)
+	return scm.createTLSConfig(t, tlsMode, serverKeypair)
 }
 
 // CreateClientCredentials creates a client key pair,
@@ -93,7 +86,7 @@ func (scm *CredentialsFactory) CreateClientCredentials(t *testing.T, tlsMode str
 	t.Helper()
 	clientKeypair, err := scm.CertificateAuthority.NewClientCertKeyPair()
 	require.NoError(t, err)
-	return scm.createTLSConfig(t, tlsMode, clientKeypair, DefaultCertStyle)
+	return scm.createTLSConfig(t, tlsMode, clientKeypair)
 }
 
 /*
@@ -150,7 +143,7 @@ func RunSecureConnectionTest(
 		t.Run(fmt.Sprintf("server-tls:%s", tc.serverMode), func(t *testing.T) {
 			t.Parallel()
 			// create server's tls config and start it according to the server tls mode.
-			serverTLS, _ := tlsMgr.CreateServerCredentials(t, tc.serverMode, DefaultCertStyle, defaultHostName)
+			serverTLS, _ := tlsMgr.CreateServerCredentials(t, tc.serverMode, defaultHostName)
 			rpcAttemptFunc := starter(t, serverTLS)
 			// for each server secure mode, build the client's test cases.
 			for _, clientTestCase := range tc.cases {
@@ -204,19 +197,17 @@ func (scm *CredentialsFactory) createTLSConfig(
 	t *testing.T,
 	connectionMode string,
 	keyPair *tlsgen.CertKeyPair,
-	namingStyle string,
 ) (connection.TLSConfig, string) {
 	t.Helper()
 	tmpDir := t.TempDir()
-	namingFunction := selectFileNames(namingStyle)
 
-	privateKeyPath := filepath.Join(tmpDir, namingFunction("private-key"))
+	privateKeyPath := filepath.Join(tmpDir, PrivateKey)
 	require.NoError(t, os.WriteFile(privateKeyPath, keyPair.Key, 0o600))
 
-	publicKeyPath := filepath.Join(tmpDir, namingFunction("public-key"))
+	publicKeyPath := filepath.Join(tmpDir, PublicKey)
 	require.NoError(t, os.WriteFile(publicKeyPath, keyPair.Cert, 0o600))
 
-	caCertificatePath := filepath.Join(tmpDir, namingFunction("ca-certificate"))
+	caCertificatePath := filepath.Join(tmpDir, CACertificateKey)
 	require.NoError(t, os.WriteFile(caCertificatePath, scm.CertificateAuthority.CertBytes(), 0o600))
 
 	return connection.TLSConfig{
@@ -225,51 +216,4 @@ func (scm *CredentialsFactory) createTLSConfig(
 		CertPath:    publicKeyPath,
 		CACertPaths: []string{caCertificatePath},
 	}, tmpDir
-}
-
-func selectFileNames(style string) func(string) string {
-	switch style {
-	case YugaDBType:
-		return func(key string) string {
-			switch key {
-			// We currently use YugabyteDB with the hostname "db" only.
-			// To support additional instances with different hostnames,
-			// replace "db" with the desired hostname when creating the instance.
-			case KeyPublic:
-				return "node.db.crt"
-			case KeyPrivate:
-				return "node.db.key"
-			case KeyCACert:
-				return "ca.crt"
-			default:
-				return ""
-			}
-		}
-	case PostgresDBType:
-		return func(key string) string {
-			switch key {
-			case KeyPublic:
-				return "server.crt"
-			case KeyPrivate:
-				return "server.key"
-			case KeyCACert:
-				return "ca-certificate.crt"
-			default:
-				return ""
-			}
-		}
-	default:
-		return func(key string) string {
-			switch key {
-			case KeyPublic:
-				return "public-key.crt"
-			case KeyPrivate:
-				return "private-key.key"
-			case KeyCACert:
-				return "ca-certificate.crt"
-			default:
-				return ""
-			}
-		}
-	}
 }

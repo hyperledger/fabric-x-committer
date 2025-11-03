@@ -36,6 +36,12 @@ type startNodeParameters struct {
 	dbPassword      string
 }
 
+func (p *startNodeParameters) asNode(node string) startNodeParameters {
+	params := *p
+	params.node = node
+	return params
+}
+
 const (
 	committerReleaseImage = "icr.io/cbdc/committer:0.0.2"
 	loadgenReleaseImage   = "icr.io/cbdc/loadgen:0.0.2"
@@ -51,20 +57,6 @@ const (
 	// This work-around is needed due to a Yugabyte behavior that prevents using default passwords in secure mode.
 	// Instead, Yugabyte generates a random password, and this path points to the output file containing it.
 	containerPathForYugabytePassword = "/root/var/data/yugabyted_credentials.txt" //nolint:gosec
-)
-
-var (
-	// enforcePostgresSSLScript enforces SSL-only client connections to a PostgreSQL instance by updating pg_hba.conf.
-	enforcePostgresSSLScript = []string{
-		"sh", "-c",
-		`sed -i 's/^host all all all scram-sha-256$/hostssl all all 0.0.0.0\/0 scram-sha-256/' ` +
-			`/var/lib/postgresql/data/pg_hba.conf`,
-	}
-
-	// reloadPostgresConfigScript reloads the PostgreSQL server configuration without restarting the instance.
-	reloadPostgresConfigScript = []string{
-		"psql", "-U", "yugabyte", "-c", "SELECT pg_reload_conf();",
-	}
 )
 
 // TestCommitterReleaseImagesWithTLS runs the committer components in different Docker containers with different TLS
@@ -83,74 +75,87 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, configtxgen.WriteOutputBlock(configBlock, configBlockPath))
 
+	dbNode := "db"
+	ordererNode := "orderer"
+	loadgenNode := "loadgen"
+	committerNodes := []string{"verifier", "vc", "query", "coordinator", "sidecar"}
+
 	credsFactory := testutils.NewCredentialsFactory(t)
-	for _, mode := range testutils.ServerModes {
-		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
+	for _, dbType := range []string{testutils.YugaDBType, testutils.PostgresDBType} {
+		t.Run(fmt.Sprintf("database:%s", dbType), func(t *testing.T) {
 			t.Parallel()
-			// Create an isolated network for each test with different tls mode.
-			networkName := fmt.Sprintf("%s_%s", networkPrefixName, uuid.NewString())
-			testutils.CreateDockerNetwork(t, networkName)
-			t.Cleanup(func() {
-				testutils.RemoveDockerNetwork(t, networkName)
-			})
+			for _, mode := range testutils.ServerModes {
+				t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
+					t.Parallel()
+					// Create an isolated network for each test with different tls mode.
+					networkName := fmt.Sprintf("%s_%s", networkPrefixName, uuid.NewString())
+					testutils.CreateDockerNetwork(t, networkName)
+					t.Cleanup(func() {
+						testutils.RemoveDockerNetwork(t, networkName)
+					})
 
-			params := startNodeParameters{
-				credsFactory:    credsFactory,
-				networkName:     networkName,
-				tlsMode:         mode,
-				configBlockPath: configBlockPath,
-				dbType:          testutils.YugaDBType,
+					params := startNodeParameters{
+						credsFactory:    credsFactory,
+						networkName:     networkName,
+						tlsMode:         mode,
+						configBlockPath: configBlockPath,
+						dbType:          dbType,
+					}
+
+					for _, node := range append(committerNodes, dbNode, ordererNode, loadgenNode) {
+						// stop and remove the container if it already exists.
+						stopAndRemoveContainersByName(
+							ctx, t, createDockerClient(t), assembleContainerName(node, mode, dbType),
+						)
+					}
+
+					// start a secured database node and return the db password.
+					params.dbPassword = startSecuredDatabaseNode(ctx, t, params.asNode(dbNode))
+					// start the orderer node.
+					startCommitterNodeWithTestImage(ctx, t, params.asNode(ordererNode))
+					// start the committer nodes.
+					for _, node := range committerNodes {
+						startCommitterNodeWithReleaseImage(ctx, t, params.asNode(node))
+					}
+					// start the load generator node.
+					startLoadgenNodeWithReleaseImage(ctx, t, params.asNode(loadgenNode))
+
+					monitorMetric(t,
+						getContainerMappedHostPort(
+							ctx, t, assembleContainerName("loadgen", mode, dbType), loadGenMetricsPort,
+						),
+					)
+				})
 			}
-
-			for _, node := range []string{
-				"db", "verifier", "vc", "query", "coordinator", "sidecar", "orderer", "loadgen",
-			} {
-				params.node = node
-				// stop and remove the container if it already exists.
-				stopAndRemoveContainersByName(ctx, t, createDockerClient(t), assembleContainerName(node, mode))
-
-				switch node {
-				case "db":
-					params.dbPassword = startSecuredDatabaseNode(ctx, t, params).Password
-				case "orderer":
-					startCommitterNodeWithTestImage(ctx, t, params)
-				case "loadgen":
-					startLoadgenNodeWithReleaseImage(ctx, t, params)
-				default:
-					startCommitterNodeWithReleaseImage(ctx, t, params)
-				}
-			}
-			monitorMetric(t,
-				getContainerMappedHostPort(ctx, t, assembleContainerName("loadgen", mode), loadGenMetricsPort),
-			)
 		})
 	}
 }
 
 // CreateAndStartSecuredDatabaseNode creates a containerized YugabyteDB or PostgreSQL
 // database instance in a secure mode.
-func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNodeParameters) *dbtest.Connection {
+func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNodeParameters) string {
 	t.Helper()
 
-	tlsConfig, credsPath := params.credsFactory.CreateServerCredentials(t, params.tlsMode, params.dbType, params.node)
+	tlsConfig, _ := params.credsFactory.CreateServerCredentials(t, params.tlsMode, params.node)
 
 	node := &dbtest.DatabaseContainer{
 		DatabaseType: params.dbType,
 		Network:      params.networkName,
 		Hostname:     params.node,
-		TLSConfig:    tlsConfig,
-		CredsPathDir: credsPath,
-		UseTLS:       true,
+		TLSConfig:    &tlsConfig,
 	}
 
 	node.StartContainer(ctx, t)
+	t.Cleanup(func() {
+		node.StopAndRemoveContainer(t)
+	})
 	conn := node.GetConnectionOptions(ctx, t)
 
 	// This is relevant if a different CA was used to issue the DB's TLS certificates.
-	require.NotEmpty(t, node.TLSConfig.CACertPaths)
+	require.NotEmpty(t, tlsConfig.CACertPaths)
 	conn.TLS = connection.DatabaseTLSConfig{
 		Mode:       connection.OneSideTLSMode,
-		CACertPath: node.TLSConfig.CACertPaths[0],
+		CACertPath: tlsConfig.CACertPaths[0],
 	}
 
 	// post start container tweaking
@@ -158,32 +163,32 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 	case testutils.YugaDBType:
 		// Ensure proper root ownership and permissions for the TLS certificate files.
 		node.ExecuteCommand(t, []string{
-			"chown", "root:root",
-			fmt.Sprintf("/creds/node.%s.crt", node.Hostname),
-			fmt.Sprintf("/creds/node.%s.key", node.Hostname),
+			"chown",
+			"root:root",
+			filepath.Join("/creds", dbtest.YugabytePublicKeyFileName),
+			filepath.Join("/creds", dbtest.YugabytePrivateKeyFileName),
 		})
-		node.EnsureNodeReadiness(t, "Data placement constraint successfully verified")
+		node.EnsureNodeReadinessByLogs(t, dbtest.YugabytedReadinessOutput)
 		conn.Password = node.ReadPasswordFromContainer(t, containerPathForYugabytePassword)
 	case testutils.PostgresDBType:
-		// Ensure proper root ownership and permissions for the TLS certificate files.
+		node.EnsurePostgresNodeReadiness(t)
 		node.ExecuteCommand(t, []string{
-			"chown", "postgres:postgres",
-			"/creds/server.crt",
-			"/creds/server.key",
+			"sh", "-c",
+			`// Ensure proper root ownership and permissions for the TLS certificate files.
+			chown postgres:postgres /creds/server.crt /creds/server.key
+			
+			// Enforces SSL-only client connections to a PostgreSQL instance by updating pg_hba.conf.
+			sed -i 's/^host all all all scram-sha-256$/hostssl all all 0.0.0.0\/0 scram-sha-256/'
+			/var/lib/postgresql/data/pg_hba.conf
+			
+			// Reloads the PostgreSQL server configuration without restarting the instance.
+			psql -U yugabyte -c SELECT pg_reload_conf();`,
 		})
-		node.EnsureNodeReadiness(t, dbtest.PostgresReadinessOutput)
-		node.ExecuteCommand(t, enforcePostgresSSLScript)
-		node.ExecuteCommand(t, reloadPostgresConfigScript)
 	default:
 		t.Fatalf("Unsupported database type: %s", node.DatabaseType)
 	}
 
-	t.Cleanup(
-		func() {
-			node.StopAndRemoveContainer(t)
-		})
-
-	return conn
+	return conn.Password
 }
 
 // startCommitterNodeWithReleaseImage starts a committer node using the release image.
@@ -223,7 +228,7 @@ func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, param
 				),
 			),
 		},
-		name: assembleContainerName(params.node, params.tlsMode),
+		name: assembleContainerName(params.node, params.tlsMode, params.dbType),
 	})
 }
 
@@ -269,7 +274,7 @@ func startLoadgenNodeWithReleaseImage(
 				),
 			),
 		},
-		name: assembleContainerName(params.node, params.tlsMode),
+		name: assembleContainerName(params.node, params.tlsMode, params.dbType),
 	})
 }
 
@@ -294,20 +299,18 @@ func startCommitterNodeWithTestImage(
 				fmt.Sprintf("%s:/%s", params.configBlockPath, filepath.Join(containerConfigPath, genBlockFile)),
 			),
 		},
-		name: assembleContainerName(params.node, params.tlsMode),
+		name: assembleContainerName(params.node, params.tlsMode, params.dbType),
 	})
 }
 
-func assembleContainerName(node, tlsMode string) string {
-	return fmt.Sprintf("%s_%s_%s", containerPrefixName, node, tlsMode)
+func assembleContainerName(node, tlsMode, dbType string) string {
+	return fmt.Sprintf("%s_%s_%s_%s", containerPrefixName, node, tlsMode, dbType)
 }
 
 func assembleBinds(t *testing.T, params startNodeParameters, additionalBinds ...string) []string {
 	t.Helper()
 
-	_, serverCredsPath := params.credsFactory.CreateServerCredentials(
-		t, params.tlsMode, testutils.DefaultCertStyle, params.node,
-	)
+	_, serverCredsPath := params.credsFactory.CreateServerCredentials(t, params.tlsMode, params.node)
 	require.NotEmpty(t, serverCredsPath)
 	_, clientCredsPath := params.credsFactory.CreateClientCredentials(t, params.tlsMode)
 	require.NotEmpty(t, clientCredsPath)
