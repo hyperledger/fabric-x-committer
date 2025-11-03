@@ -139,7 +139,7 @@ func TestGRPCRetryMultiEndpoints(t *testing.T) {
 
 	t.Log("Creating fake service address")
 	fakeServerConfig := connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig)
-	l, err := fakeServerConfig.Listener(t.Context())
+	l, err := fakeServerConfig.Listener()
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		connection.CloseConnectionsLog(l)

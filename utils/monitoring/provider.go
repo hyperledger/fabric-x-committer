@@ -62,7 +62,7 @@ func (p *Provider) StartPrometheusServer(
 		Handler:     mux,
 	}
 
-	l, err := serverConfig.Listener(ctx)
+	l, err := serverConfig.Listener()
 	if err != nil {
 		return err
 	}
