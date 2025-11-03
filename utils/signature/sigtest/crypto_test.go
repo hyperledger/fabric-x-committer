@@ -17,9 +17,8 @@ import (
 func TestSerializeVerificationKey(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name    string
-		curve   elliptic.Curve
-		wantErr bool
+		name  string
+		curve elliptic.Curve
 	}{
 		{
 			name:  "P256",
@@ -37,13 +36,6 @@ func TestSerializeVerificationKey(t *testing.T) {
 			name:  "P521",
 			curve: elliptic.P521(),
 		},
-
-		// {
-		// 	// TODO: find an invalid example?
-		// 	name:    "Invalid input",
-		// 	curve:   elliptic.(),
-		// 	wantErr: true,
-		// },
 	}
 
 	for _, tt := range tests {
@@ -53,11 +45,7 @@ func TestSerializeVerificationKey(t *testing.T) {
 			require.NoError(t, err)
 
 			_, err = SerializeVerificationKey(&privKey.PublicKey)
-			if tt.wantErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-			}
+			require.NoError(t, err)
 		})
 	}
 }
