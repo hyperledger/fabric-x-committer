@@ -144,9 +144,9 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 		if dc.TLSConfig != nil {
 			require.NotEmpty(t, dc.TLSConfig.CACertPaths)
 			dc.Binds = append(dc.Binds,
-				fmt.Sprintf("%s:/creds/%s:rw", dc.TLSConfig.CertPath, YugabytePublicKeyFileName),
-				fmt.Sprintf("%s:/creds/%s:rw", dc.TLSConfig.KeyPath, YugabytePrivateKeyFileName),
-				fmt.Sprintf("%s:/creds/%s:rw", dc.TLSConfig.CACertPaths[0], YugabyteCACertificateFileName),
+				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CertPath, YugabytePublicKeyFileName),
+				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.KeyPath, YugabytePrivateKeyFileName),
+				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CACertPaths[0], YugabyteCACertificateFileName),
 			)
 		}
 	case test.PostgresDBType:
@@ -166,8 +166,8 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 		}
 		if dc.TLSConfig != nil {
 			dc.Binds = append(dc.Binds,
-				fmt.Sprintf("%s:/creds/%s:rw", dc.TLSConfig.CertPath, PostgresPublicKeyFileName),
-				fmt.Sprintf("%s:/creds/%s:rw", dc.TLSConfig.KeyPath, PostgresPrivateKeyFileName),
+				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CertPath, PostgresPublicKeyFileName),
+				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.KeyPath, PostgresPrivateKeyFileName),
 			)
 			dc.Cmd = []string{
 				// Configure PostgreSQL to run in secure mode
