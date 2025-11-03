@@ -100,7 +100,7 @@ func (cc *PostgresClusterController) addPrimaryNode(ctx context.Context, t *test
 		},
 	})
 	node.StartContainer(ctx, t)
-	node.EnsurePostgresNodeReadiness(t)
+	node.EnsurePostgresNodeReadiness(t, "5432")
 	return node
 }
 
@@ -121,7 +121,7 @@ func (cc *PostgresClusterController) addSecondaryNode(ctx context.Context, t *te
 		},
 	})
 	node.StartContainer(ctx, t)
-	node.EnsurePostgresNodeReadiness(t)
+	node.EnsurePostgresNodeReadiness(t, "5432")
 	return node
 }
 

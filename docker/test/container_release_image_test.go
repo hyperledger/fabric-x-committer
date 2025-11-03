@@ -171,7 +171,7 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 		node.EnsureNodeReadinessByLogs(t, dbtest.YugabytedReadinessOutput)
 		conn.Password = node.ReadPasswordFromContainer(t, containerPathForYugabytePassword)
 	case testutils.PostgresDBType:
-		node.EnsurePostgresNodeReadiness(t)
+		node.EnsurePostgresNodeReadiness(t, "5433")
 		node.ExecuteCommand(t, []string{
 			"sh", "-c",
 			`// Ensure proper root ownership and permissions for the TLS certificate files.

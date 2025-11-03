@@ -34,18 +34,18 @@ import (
 var (
 	defaultServerTLSConfig = connection.TLSConfig{
 		Mode:     connection.MutualTLSMode,
-		CertPath: "/server-certs/public-key.crt",
-		KeyPath:  "/server-certs/private-key.key",
+		CertPath: "/server-certs/public-key.pem",
+		KeyPath:  "/server-certs/private-key.pem",
 		CACertPaths: []string{
-			"/server-certs/ca-certificate.crt",
+			"/server-certs/ca-certificate.pem",
 		},
 	}
 	defaultClientTLSConfig = connection.TLSConfig{
 		Mode:     connection.MutualTLSMode,
-		CertPath: "/client-certs/public-key.crt",
-		KeyPath:  "/client-certs/private-key.key",
+		CertPath: "/client-certs/public-key.pem",
+		KeyPath:  "/client-certs/private-key.pem",
 		CACertPaths: []string{
-			"/client-certs/ca-certificate.crt",
+			"/client-certs/ca-certificate.pem",
 		},
 	}
 )
@@ -449,7 +449,7 @@ func defaultSampleDBConfig() *vc.DatabaseConfig {
 		Database:  "yugabyte",
 		TLS: connection.DatabaseTLSConfig{
 			Mode:       connection.OneSideTLSMode,
-			CACertPath: "/server-certs/ca-certificate.crt",
+			CACertPath: "/server-certs/ca-certificate.pem",
 		},
 		MaxConnections: 10,
 		MinConnections: 5,

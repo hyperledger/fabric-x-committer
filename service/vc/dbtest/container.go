@@ -43,6 +43,7 @@ const (
 	// YugabytedReadinessOutput is the output indicating that a Yugabyted node is ready.
 	YugabytedReadinessOutput = "Data placement constraint successfully verified"
 
+	//nolint:revive // Represents the required TLS certificate files name.
 	YugabytePublicKeyFileName     = "node.db.crt"
 	YugabytePrivateKeyFileName    = "node.db.key"
 	YugabyteCACertificateFileName = "ca.crt"
@@ -424,11 +425,11 @@ func (dc *DatabaseContainer) EnsureNodeReadinessByLogs(t *testing.T, requiredOut
 // is ready to accept connections.
 // It repeatedly executes `pg_isready` until the command
 // returns a successful exit code (0) or the timeout is reached.
-func (dc *DatabaseContainer) EnsurePostgresNodeReadiness(t *testing.T) {
+func (dc *DatabaseContainer) EnsurePostgresNodeReadiness(t *testing.T, port string) {
 	t.Helper()
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		_, exitCode := dc.ExecuteCommand(t, []string{
-			"bash", "-c", "pg_isready -U yugabyte -d yugabyte -h localhost -p 5433",
+			"bash", "-c", fmt.Sprintf("pg_isready -U yugabyte -d yugabyte -h localhost -p %s", port),
 		})
 		require.Equal(ct, 0, exitCode)
 	}, 45*time.Second, 250*time.Millisecond)
