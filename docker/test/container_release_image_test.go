@@ -59,6 +59,20 @@ const (
 	containerPathForYugabytePassword = "/root/var/data/yugabyted_credentials.txt" //nolint:gosec
 )
 
+var (
+	// enforcePostgresSSLScript enforces SSL-only client connections to a PostgreSQL instance by updating pg_hba.conf.
+	enforcePostgresSSLScript = []string{
+		"sh", "-c",
+		`sed -i 's/^host all all all scram-sha-256$/hostssl all all 0.0.0.0\/0 scram-sha-256/' ` +
+			`/var/lib/postgresql/data/pg_hba.conf`,
+	}
+
+	// reloadPostgresConfigScript reloads the PostgreSQL server configuration without restarting the instance.
+	reloadPostgresConfigScript = []string{
+		"psql", "-U", "yugabyte", "-c", "SELECT pg_reload_conf();",
+	}
+)
+
 // TestCommitterReleaseImagesWithTLS runs the committer components in different Docker containers with different TLS
 // modes and verifies it starts and connect successfully.
 // This test uses the release images for all the components but 'db' and 'orderer'.
@@ -171,19 +185,14 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 		node.EnsureNodeReadinessByLogs(t, dbtest.YugabytedReadinessOutput)
 		conn.Password = node.ReadPasswordFromContainer(t, containerPathForYugabytePassword)
 	case testutils.PostgresDBType:
-		node.EnsurePostgresNodeReadiness(t, "5433")
 		node.ExecuteCommand(t, []string{
-			"sh", "-c",
-			`// Ensure proper root ownership and permissions for the TLS certificate files.
-			chown postgres:postgres /creds/server.crt /creds/server.key
-			
-			// Enforces SSL-only client connections to a PostgreSQL instance by updating pg_hba.conf.
-			sed -i 's/^host all all all scram-sha-256$/hostssl all all 0.0.0.0\/0 scram-sha-256/'
-			/var/lib/postgresql/data/pg_hba.conf
-			
-			// Reloads the PostgreSQL server configuration without restarting the instance.
-			psql -U yugabyte -c SELECT pg_reload_conf();`,
+			"chown", "postgres:postgres",
+			"/creds/server.crt",
+			"/creds/server.key",
 		})
+		node.EnsurePostgresNodeReadiness(t, "5433")
+		node.ExecuteCommand(t, enforcePostgresSSLScript)
+		node.ExecuteCommand(t, reloadPostgresConfigScript)
 	default:
 		t.Fatalf("Unsupported database type: %s", node.DatabaseType)
 	}
