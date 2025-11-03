@@ -28,29 +28,23 @@ func TestUnwrapEnvelopeBadInput(t *testing.T) {
 
 	t.Run("OK Header with an invalid payload", func(t *testing.T) {
 		t.Parallel()
-		envelope := &common.Envelope{
+		envelopeBytes := protoutil.MarshalOrPanic(&common.Envelope{
 			Payload: []byte("not-a-payload"),
-		}
-
-		envelopeBytes := protoutil.MarshalOrPanic(envelope)
-
+		})
 		_, _, err := serialization.UnwrapEnvelope(envelopeBytes)
 		require.Error(t, err)
 	})
 
 	t.Run("OK Payload with a nil Header", func(t *testing.T) {
 		t.Parallel()
-		payload := &common.Payload{
+		payloadBytes := protoutil.MarshalOrPanic(&common.Payload{
 			Header: nil,
 			Data:   []byte("some data"),
-		}
+		})
 
-		payloadBytes := protoutil.MarshalOrPanic(payload)
-		envelope := &common.Envelope{
+		envelopeBytes := protoutil.MarshalOrPanic(&common.Envelope{
 			Payload: payloadBytes,
-		}
-
-		envelopeBytes := protoutil.MarshalOrPanic(envelope)
+		})
 
 		_, _, err := serialization.UnwrapEnvelope(envelopeBytes)
 		require.Error(t, err)
@@ -58,19 +52,14 @@ func TestUnwrapEnvelopeBadInput(t *testing.T) {
 
 	t.Run("OK payload but invalid ChannelHeader", func(t *testing.T) {
 		t.Parallel()
-		header := &common.Header{
-			ChannelHeader: []byte("not-a-channel-header"),
-		}
-		payload := &common.Payload{
-			Header: header,
-			Data:   []byte("some data"),
-		}
-		payloadBytes := protoutil.MarshalOrPanic(payload)
-
-		envelope := &common.Envelope{
-			Payload: payloadBytes,
-		}
-		envelopeBytes := protoutil.MarshalOrPanic(envelope)
+		envelopeBytes := protoutil.MarshalOrPanic(&common.Envelope{
+			Payload: protoutil.MarshalOrPanic(&common.Payload{
+				Header: &common.Header{
+					ChannelHeader: []byte("not-a-channel-header"),
+				},
+				Data: []byte("some data"),
+			}),
+		})
 
 		_, _, err := serialization.UnwrapEnvelope(envelopeBytes)
 		require.Error(t, err)
