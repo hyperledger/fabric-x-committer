@@ -69,31 +69,31 @@ func TestUnwrapEnvelopeBadInput(t *testing.T) {
 // TestUnwrapEnvelopeGoodInput Tests properly wrapped envelope is unwrapped correctly.
 func TestUnwrapEnvelopeGoodInput(t *testing.T) {
 	t.Parallel()
-	originalPayload := []byte("test payload")
+	expectedPayload := []byte("test payload")
 
-	originalChannelHeader := &common.ChannelHeader{
+	expectedChannelHeader := &common.ChannelHeader{
 		ChannelId: "test-channel",
 	}
 
-	originalHeader := &common.Header{
-		ChannelHeader: protoutil.MarshalOrPanic(originalChannelHeader),
+	expectedHeader := &common.Header{
+		ChannelHeader: protoutil.MarshalOrPanic(expectedChannelHeader),
 	}
 
 	// Wrap
 	wrappedEnvelope := protoutil.MarshalOrPanic(&common.Envelope{
 		Payload: protoutil.MarshalOrPanic(&common.Payload{
-			Header: originalHeader,
-			Data:   originalPayload,
+			Header: expectedHeader,
+			Data:   expectedPayload,
 		}),
 	})
 
 	// Unwrap
-	payload, channelHeader, err := serialization.UnwrapEnvelope(wrappedEnvelope)
+	actualPayload, actualChannelHeader, err := serialization.UnwrapEnvelope(wrappedEnvelope)
 
 	// -Check 1- Check unwrap envelope has no error
 	require.NoError(t, err)
 
 	// -Check 2- Check we get the correct Payload & Header
-	require.Equal(t, originalPayload, payload)
-	test.RequireProtoEqual(t, originalChannelHeader, channelHeader)
+	require.Equal(t, expectedPayload, actualPayload)
+	test.RequireProtoEqual(t, expectedChannelHeader, actualChannelHeader)
 }
