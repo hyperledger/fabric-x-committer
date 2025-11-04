@@ -39,8 +39,11 @@ const channelForTest = "mychannel"
 
 func TestBroadcastDeliver(t *testing.T) {
 	t.Parallel()
+
+	serverTLSConfig, _ := createServerAndClientTLSConfig(t, connection.MutualTLSMode)
+
 	// We use a short retry grpc-config to shorten the test time.
-	ordererService, servers, conf := makeConfig(t)
+	ordererService, servers, conf := makeConfig(t, &serverTLSConfig)
 
 	allEndpoints := conf.Connection.Endpoints
 
@@ -186,16 +189,30 @@ func submit(
 	require.Equal(t, tx.Id, hdr.TxId)
 }
 
-func makeConfig(t *testing.T) (*mock.Orderer, []test.GrpcServers, ordererconn.Config) {
+func makeConfig(t *testing.T, TLSConfig *connection.TLSConfig) (*mock.Orderer, []test.GrpcServers, ordererconn.Config) {
 	t.Helper()
 
 	idCount := 3
 	serverPerID := 4
 	instanceCount := idCount * serverPerID
 	t.Logf("Instance count: %d; idCount: %d", instanceCount, idCount)
+
 	ordererService, ordererServer := mock.StartMockOrderingServices(
 		t, &mock.OrdererConfig{NumService: instanceCount, BlockSize: 1, SendConfigBlock: true},
 	)
+
+	if TLSConfig != nil {
+		sc := make([]*connection.ServerConfig, instanceCount)
+		for i := range sc {
+			creds := *TLSConfig
+			sc[i] = connection.NewLocalHostServerWithTLS(creds)
+		}
+
+		ordererService, ordererServer = mock.StartMockOrderingServices(
+			t, &mock.OrdererConfig{ServerConfigs: sc, NumService: instanceCount, BlockSize: 1, SendConfigBlock: true},
+		)
+	}
+
 	require.Len(t, ordererServer.Servers, instanceCount)
 
 	conf := ordererconn.Config{
@@ -246,4 +263,16 @@ func holdPort(ctx context.Context, t *testing.T, c *connection.ServerConfig) net
 		_ = listener.Close()
 	})
 	return listener
+}
+
+// createServerAndClientTLSConfig creates tls configurations for
+// both the server and client.
+func createServerAndClientTLSConfig(t *testing.T, tlsMode string) (
+	serverTLSConfig, clientTLSConfig connection.TLSConfig,
+) {
+	t.Helper()
+	credsFactory := test.NewCredentialsFactory(t)
+	clientTLSConfig, _ = credsFactory.CreateServerCredentials(t, tlsMode, "localhost")
+	serverTLSConfig, _ = credsFactory.CreateClientCredentials(t, tlsMode)
+	return clientTLSConfig, serverTLSConfig
 }

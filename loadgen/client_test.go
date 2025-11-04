@@ -258,9 +258,15 @@ func TestLoadGenForOrderer(t *testing.T) {
 			t.Parallel()
 			clientConf := DefaultClientConf()
 			clientConf.Limit = limit
+			numService := 3
+			serverTLSConfig, clientTLSConfig := createServerAndClientTLSConfig(t, connection.MutualTLSMode)
+			sc := make([]*connection.ServerConfig, numService)
+			for i := range sc {
+				sc[i] = connection.NewLocalHostServerWithTLS(serverTLSConfig)
+			}
 			// Start dependencies
 			orderer, ordererServer := mock.StartMockOrderingServices(
-				t, &mock.OrdererConfig{NumService: 3, BlockSize: 100},
+				t, &mock.OrdererConfig{ServerConfigs: sc, NumService: numService, BlockSize: 100},
 			)
 			_, coordinatorServer := mock.StartMockCoordinatorService(t)
 
@@ -270,6 +276,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 				Orderer: ordererconn.Config{
 					Connection: ordererconn.ConnectionConfig{
 						Endpoints: endpoints,
+						TLS:       clientTLSConfig,
 					},
 					ChannelID:     clientConf.LoadProfile.Transaction.Policy.ChannelID,
 					Identity:      clientConf.LoadProfile.Transaction.Policy.Identity,
