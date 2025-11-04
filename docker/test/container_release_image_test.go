@@ -180,8 +180,7 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 	case testutils.YugaDBType:
 		// Must run after node startup to ensure proper root ownership and permissions for the TLS certificate files.
 		_, exitCode := node.ExecuteCommand(t, []string{
-			"chown",
-			"root:root",
+			"chown", "root:root",
 			filepath.Join("/creds", dbtest.YugabytePublicKeyFileName),
 			filepath.Join("/creds", dbtest.YugabytePrivateKeyFileName),
 		})
