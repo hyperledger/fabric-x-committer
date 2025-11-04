@@ -17,6 +17,7 @@ import (
 	"github.com/yugabyte/pgx/v4/pgxpool"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/types"
@@ -458,10 +459,15 @@ func (db *database) readNamespacePolicies(ctx context.Context) (*protoblocktx.Na
 	policy := &protoblocktx.NamespacePolicies{
 		Policies: make([]*protoblocktx.PolicyItem, len(keys)),
 	}
+
 	for i, key := range keys {
+		nsPolicy := protoblocktx.NamespacePolicy{}
+		if err := proto.Unmarshal(values[i], &nsPolicy); err != nil {
+			return nil, err
+		}
 		policy.Policies[i] = &protoblocktx.PolicyItem{
 			Namespace: string(key),
-			Policy:    values[i],
+			Policy:    &nsPolicy,
 		}
 	}
 	return policy, nil

@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen/genesisconfig"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -26,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
+	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
@@ -225,19 +226,13 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 			Scheme: signature.Ecdsa,
 			Seed:   10,
 		}).GetVerificationKeyAndSigner()
-		p := &protoblocktx.NamespacePolicy{
-			Type: protoblocktx.PolicyType_THRESHOLD_RULE,
-			Policy: protoutil.MarshalOrPanic(&protoblocktx.ThresholdRule{
-				Scheme:    signature.Ecdsa,
-				PublicKey: verificationKey,
-			}),
-		}
+		p := policy.MakeECDSAThresholdRuleNsPolicy(verificationKey)
 		pBytes, err := proto.Marshal(p)
 		require.NoError(t, err)
 
 		configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
 			MetaNamespaceVerificationKey: verificationKey,
-		})
+		}, genesisconfig.TwoOrgsSampleFabricX)
 		require.NoError(t, err)
 
 		txBatch := []*dependencygraph.TransactionNode{
@@ -290,7 +285,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 				Policies: []*protoblocktx.PolicyItem{
 					{
 						Namespace: "1",
-						Policy:    pBytes,
+						Policy:    p,
 					},
 				},
 			},

@@ -295,7 +295,10 @@ func checkMetaNamespace(txNs *protoblocktx.TxNamespace) protoblocktx.Status {
 	}
 
 	nsUpdate := make(map[string]any)
-	u := policy.GetUpdatesFromNamespace(txNs)
+	u, err := policy.GetUpdatesFromNamespace(txNs)
+	if err != nil {
+		return protoblocktx.Status_MALFORMED_NAMESPACE_POLICY_INVALID
+	}
 	if u == nil {
 		return statusNotYetValidated
 	}

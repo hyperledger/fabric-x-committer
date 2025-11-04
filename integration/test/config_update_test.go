@@ -13,7 +13,6 @@ import (
 
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
@@ -88,13 +87,11 @@ func TestConfigUpdate(t *testing.T) {
 
 	c.AddOrUpdateNamespaces(t, types.MetaNamespaceID)
 	metaPolicy := c.TxBuilder.TxSigner.HashSigners[types.MetaNamespaceID].GetVerificationPolicy()
-	key := &protoblocktx.ThresholdRule{}
-	require.NoError(t, proto.Unmarshal(metaPolicy.Policy, key))
 	submitConfigBlock := func(endpoints []*ordererconn.Endpoint) {
 		ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
 			ChannelID:                    c.SystemConfig.Policy.ChannelID,
 			OrdererEndpoints:             endpoints,
-			MetaNamespaceVerificationKey: key.PublicKey,
+			MetaNamespaceVerificationKey: metaPolicy.GetThresholdRule().GetPublicKey(),
 		})
 	}
 	submitConfigBlock(ordererEnv.AllRealOrdererEndpoints())

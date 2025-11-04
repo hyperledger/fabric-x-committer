@@ -25,9 +25,7 @@ const fakeTxID = "fake-id"
 func TestNsVerifierThresholdRule(t *testing.T) {
 	t.Parallel()
 	p, nsSigner := policy.MakePolicyAndNsSigner(t, "1")
-	nsPolicy := &protoblocktx.NamespacePolicy{}
-	require.NoError(t, proto.Unmarshal(p.Policy, nsPolicy))
-	nsVerifier, err := signature.NewNsVerifier(nsPolicy, nil)
+	nsVerifier, err := signature.NewNsVerifier(p.Policy, nil)
 	require.NoError(t, err)
 
 	tx1 := &protoblocktx.Tx{
@@ -62,7 +60,7 @@ func TestNsVerifierSignatureRule(t *testing.T) {
 	require.NoError(t, err)
 
 	nsVerifier, err := signature.NewNsVerifier(
-		&protoblocktx.NamespacePolicy{Policy: pBytes, Type: protoblocktx.PolicyType_SIGNATURE_RULE},
+		&protoblocktx.NamespacePolicy{Rule: &protoblocktx.NamespacePolicy_SignatureRule{SignatureRule: pBytes}},
 		&cauthdsl.MockIdentityDeserializer{})
 	require.NoError(t, err)
 

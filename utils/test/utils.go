@@ -431,10 +431,9 @@ func CreateEndorsementsForThresholdRule(signatures ...[]byte) []*protoblocktx.En
 	sets := make([]*protoblocktx.Endorsements, 0, len(signatures))
 
 	for _, sig := range signatures {
-		set := &protoblocktx.Endorsements{
+		sets = append(sets, &protoblocktx.Endorsements{
 			EndorsementsWithIdentity: []*protoblocktx.EndorsementWithIdentity{{Endorsement: sig}},
-		}
-		sets = append(sets, set)
+		})
 	}
 
 	return sets
@@ -446,7 +445,9 @@ func CreateEndorsementsForThresholdRule(signatures ...[]byte) []*protoblocktx.En
 // identity (MSP ID and certificate). This is used when a set of signatures
 // must all be present to satisfy a rule (e.g., an AND condition).
 func CreateEndorsementsForSignatureRule(signatures, mspIDs, certBytes [][]byte) *protoblocktx.Endorsements {
-	set := &protoblocktx.Endorsements{}
+	set := &protoblocktx.Endorsements{
+		EndorsementsWithIdentity: make([]*protoblocktx.EndorsementWithIdentity, 0, len(signatures)),
+	}
 	for i, sig := range signatures {
 		set.EndorsementsWithIdentity = append(set.EndorsementsWithIdentity,
 			&protoblocktx.EndorsementWithIdentity{

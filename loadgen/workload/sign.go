@@ -10,7 +10,6 @@ import (
 	"os"
 
 	"github.com/cockroachdb/errors"
-	"github.com/hyperledger/fabric-x-common/protoutil"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/types"
@@ -132,11 +131,11 @@ func (e *HashSignerVerifier) Verify(txID string, tx *protoblocktx.Tx, nsIndex in
 // GetVerificationPolicy returns the verification policy.
 func (e *HashSignerVerifier) GetVerificationPolicy() *protoblocktx.NamespacePolicy {
 	return &protoblocktx.NamespacePolicy{
-		Type: protoblocktx.PolicyType_THRESHOLD_RULE,
-		Policy: protoutil.MarshalOrPanic(&protoblocktx.ThresholdRule{
-			Scheme:    e.scheme,
-			PublicKey: e.pubKey,
-		}),
+		Rule: &protoblocktx.NamespacePolicy_ThresholdRule{
+			ThresholdRule: &protoblocktx.ThresholdRule{
+				Scheme: e.scheme, PublicKey: e.pubKey,
+			},
+		},
 	}
 }
 

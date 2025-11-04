@@ -70,9 +70,9 @@ func (v *verifier) updatePolicies(
 
 		// If there is a config update, the verifier for signature policies must be
 		// recreated to use the latest MSP Manager from the new configuration.
-		if update.Config != nil && nsVerifier.Type == protoblocktx.PolicyType_SIGNATURE_RULE {
+		if update.Config != nil && nsVerifier.NamespacePolicy.GetSignatureRule() != nil {
 			nsVerifier, err = policy.CreateNamespaceVerifier(&protoblocktx.PolicyItem{
-				Namespace: k, Policy: nsVerifier.Policy,
+				Namespace: k, Policy: nsVerifier.NamespacePolicy,
 			}, v.bundle.MSPManager())
 			if err != nil {
 				return err

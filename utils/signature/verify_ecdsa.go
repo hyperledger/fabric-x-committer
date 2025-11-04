@@ -12,15 +12,17 @@ import (
 	"encoding/pem"
 
 	"github.com/cockroachdb/errors"
+	mspi "github.com/hyperledger/fabric-x-common/msp"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 )
 
-// EcdsaTxVerifier verifies using the ECDSA scheme.
-type EcdsaTxVerifier struct {
+// ecdsaTxVerifier verifies using the ECDSA scheme.
+type ecdsaTxVerifier struct {
 	verificationKey *ecdsa.PublicKey
 }
 
-// NewEcdsaVerifier instantiate a new ECDSA scheme verifier.
-func NewEcdsaVerifier(key []byte) (*EcdsaTxVerifier, error) {
+// newEcdsaVerifier instantiate a new ECDSA scheme verifier.
+func newEcdsaVerifier(key []byte) (*ecdsaTxVerifier, error) {
 	block, _ := pem.Decode(key)
 	if block == nil || block.Type != "PUBLIC KEY" {
 		return nil, errors.Newf("failed to decode PEM block containing public key, got %v", block)
@@ -35,14 +37,25 @@ func NewEcdsaVerifier(key []byte) (*EcdsaTxVerifier, error) {
 	if !ok {
 		return nil, errors.New("failed to assert public key type to ECDSA")
 	}
-	return &EcdsaTxVerifier{verificationKey: ecdsaVerificationKey}, nil
+	return &ecdsaTxVerifier{verificationKey: ecdsaVerificationKey}, nil
 }
 
-// Verify a digest given a signature.
-func (v *EcdsaTxVerifier) Verify(digest Digest, signature Signature) error {
+// verify a digest given a signature.
+func (v *ecdsaTxVerifier) verify(digest Digest, signature Signature) error {
 	valid := ecdsa.VerifyASN1(v.verificationKey, digest, signature)
 	if !valid {
 		return ErrSignatureMismatch
 	}
+	return nil
+}
+
+// EvaluateSignedData takes a set of SignedData and evaluates whether
+// the signatures are valid over the related message.
+func (v *ecdsaTxVerifier) EvaluateSignedData(signatureSet []*protoutil.SignedData) error {
+	return verify(signatureSet, v)
+}
+
+// EvaluateIdentities returns nil as it is not applicable for EcdsaTxVerifier.
+func (*ecdsaTxVerifier) EvaluateIdentities(_ []mspi.Identity) error {
 	return nil
 }

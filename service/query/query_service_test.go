@@ -21,9 +21,7 @@ import (
 	"github.com/yugabyte/pgx/v4/pgxpool"
 	"golang.org/x/exp/slices"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/loadgen"
@@ -283,9 +281,8 @@ func TestQueryPolicies(t *testing.T) {
 		delete(expectedNamespaces, p.Namespace)
 		item, parseErr := policy.CreateNamespaceVerifier(p, nil)
 		require.NoError(t, parseErr)
-		require.Equal(t, protoblocktx.PolicyType_THRESHOLD_RULE, item.Type)
-		p := &protoblocktx.ThresholdRule{}
-		require.NoError(t, proto.Unmarshal(item.Policy, p))
+		p := item.NamespacePolicy.GetThresholdRule()
+		require.NotNil(t, p)
 		require.Equal(t, signature.Ecdsa, p.Scheme)
 	}
 

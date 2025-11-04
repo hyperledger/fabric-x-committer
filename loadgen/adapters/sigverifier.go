@@ -11,7 +11,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
@@ -101,15 +100,11 @@ func createUpdate(policy *workload.PolicyProfile) (*protosigverifierservice.Upda
 		if ns == types.MetaNamespaceID {
 			continue
 		}
-		policyBytes, err := proto.Marshal(p.GetVerificationPolicy())
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to serialize policy")
-		}
 		updateMsg.NamespacePolicies.Policies = append(
 			updateMsg.NamespacePolicies.Policies,
 			&protoblocktx.PolicyItem{
 				Namespace: ns,
-				Policy:    policyBytes,
+				Policy:    p.GetVerificationPolicy(),
 			},
 		)
 	}

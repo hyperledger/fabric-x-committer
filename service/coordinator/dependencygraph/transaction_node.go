@@ -20,8 +20,8 @@ import (
 type (
 	// TransactionNode is a node in the dependency graph.
 	TransactionNode struct {
-		Tx         *protovcservice.Tx
-		Signatures []*protoblocktx.Endorsements
+		Tx           *protovcservice.Tx
+		Endorsements []*protoblocktx.Endorsements
 
 		// dependsOnTxs is a set of transactions that this transaction depends on.
 		// A transaction is eligible for validation once all the transactions
@@ -76,8 +76,8 @@ func newTransactionNode(tx *protocoordinatorservice.Tx) *TransactionNode {
 			Ref:        tx.Ref,
 			Namespaces: tx.Content.Namespaces,
 		},
-		Signatures: tx.Content.Endorsements,
-		rwKeys:     readAndWriteKeys(tx.Content.Namespaces),
+		Endorsements: tx.Content.Endorsements,
+		rwKeys:       readAndWriteKeys(tx.Content.Namespaces),
 	}
 }
 

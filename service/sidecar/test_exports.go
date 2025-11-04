@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
+	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -83,6 +84,10 @@ func MalformedTxTestCases(txb *workload.TxBuilder) (
 	add(protoblocktx.Status_MALFORMED_EMPTY_NAMESPACES, txb.MakeTx(&protoblocktx.Tx{}))
 	add(protoblocktx.Status_MALFORMED_EMPTY_NAMESPACES, txb.MakeTx(&protoblocktx.Tx{
 		Namespaces: make([]*protoblocktx.TxNamespace, 0),
+	}))
+	add(protoblocktx.Status_MALFORMED_MISSING_SIGNATURE, txb.MakeTx(&protoblocktx.Tx{
+		Namespaces:   append(validTxNamespaces, nil),
+		Endorsements: make([]*protoblocktx.Endorsements, 1), // Not enough signatures.
 	}))
 	add(protoblocktx.Status_MALFORMED_MISSING_SIGNATURE, txb.MakeTx(&protoblocktx.Tx{
 		Namespaces:   validTxNamespaces,
@@ -243,23 +248,11 @@ func MalformedTxTestCases(txb *workload.TxBuilder) (
 }
 
 func defaultNsInvalidPolicy() []byte {
-	return protoutil.MarshalOrPanic(&protoblocktx.NamespacePolicy{
-		Type: protoblocktx.PolicyType_THRESHOLD_RULE,
-		Policy: protoutil.MarshalOrPanic(&protoblocktx.ThresholdRule{
-			Scheme:    signature.Ecdsa,
-			PublicKey: []byte("publicKey"),
-		}),
-	})
+	return protoutil.MarshalOrPanic(policy.MakeECDSAThresholdRuleNsPolicy([]byte("public-key")))
 }
 
 func defaultNsValidPolicy() []byte {
 	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
 	_, verificationKey := factory.NewKeys()
-	return protoutil.MarshalOrPanic(&protoblocktx.NamespacePolicy{
-		Type: protoblocktx.PolicyType_THRESHOLD_RULE,
-		Policy: protoutil.MarshalOrPanic(&protoblocktx.ThresholdRule{
-			Scheme:    signature.Ecdsa,
-			PublicKey: verificationKey,
-		}),
-	})
+	return protoutil.MarshalOrPanic(policy.MakeECDSAThresholdRuleNsPolicy(verificationKey))
 }

@@ -92,12 +92,12 @@ func CreateConfigBlock(policy *PolicyProfile) (*common.Block, error) {
 		MetaNamespaceVerificationKey: policyNamespaceSigner.pubKey,
 		OrdererEndpoints:             policy.OrdererEndpoints,
 		ChannelID:                    policy.ChannelID,
-	})
+	}, genesisconfig.TwoOrgsSampleFabricX)
 }
 
 // CreateDefaultConfigBlock creates a config block with default values.
-func CreateDefaultConfigBlock(conf *ConfigBlock) (*common.Block, error) {
-	configBlock := genesisconfig.Load(genesisconfig.TwoOrgsSampleFabricX, configtest.GetDevConfigDir())
+func CreateDefaultConfigBlock(conf *ConfigBlock, profileName string) (*common.Block, error) {
+	configBlock := genesisconfig.Load(profileName, configtest.GetDevConfigDir())
 	tlsCertPath := filepath.Join(configtest.GetDevConfigDir(), "msp", "tlscacerts", "tlsroot.pem")
 	for _, consenter := range configBlock.Orderer.ConsenterMapping {
 		consenter.Identity = tlsCertPath

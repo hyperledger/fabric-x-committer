@@ -70,7 +70,7 @@ message Identity {
 
   oneof creator {
     // The full raw bytes of the creator's certificate (e.g., an X.509 certificate).
-    bytes certificate= 2;
+    bytes certificate = 2;
 
     // An identifier for a certificate that is pre-stored or known by the committer.
     string certificate_id = 3;
@@ -79,19 +79,10 @@ message Identity {
 
 // Represents a namespace policy.
 message NamespacePolicy {
-    PolicyType type = 1;    // The type of policy used.
-    bytes policy = 2;       // The policy rule.
-}
-
-enum PolicyType {
-    // A policy for verifying a single signature that was generated via a Threshold Signature
-    // Scheme (TSS). In a TSS, a threshold (T) of N parties must cooperate to
-    // collectively compute and produce the single signature.
-    THRESHOLD_RULE = 0;
-
-    // A policy defined by an explicit rule that evaluates one or more required signatures.
-    // For example: "OR('Org1MSP.admin', 'Org2MSP.admin')"
-    SIGNATURE_RULE = 1;
+  oneof rule {
+    ThresholdRule threshold_rule = 1;
+    bytes signature_rule = 2; 
+  }
 }
 
 message ThresholdRule {
@@ -127,7 +118,7 @@ message NamespacePolicies {
 
 message PolicyItem {
     string namespace = 1;
-    bytes policy = 2; // This holds the complete NamespacePolicy.
+    NamespacePolicy policy = 2;
     uint64 version = 3;
 }
 

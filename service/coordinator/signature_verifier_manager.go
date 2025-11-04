@@ -225,7 +225,7 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 				Ref: txNode.Tx.Ref,
 				Tx: &protoblocktx.Tx{
 					Namespaces:   txNode.Tx.Namespaces,
-					Endorsements: txNode.Signatures,
+					Endorsements: txNode.Endorsements,
 				},
 			}
 		}

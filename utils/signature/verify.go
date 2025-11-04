@@ -13,56 +13,44 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 )
 
-// ThresholdVerifier verifies a digest.
-type ThresholdVerifier interface {
-	Verify(Digest, Signature) error
-}
-
 // NsVerifier verifies a given namespace.
 type NsVerifier struct {
-	thresholdVerifier ThresholdVerifier
-	signatureVerifier policies.Policy
-	Type              protoblocktx.PolicyType
-	Policy            Policy
+	verifier        policies.Policy
+	NamespacePolicy *protoblocktx.NamespacePolicy
 }
 
 // NewNsVerifier creates a new namespace verifier according to the implementation scheme.
 func NewNsVerifier(p *protoblocktx.NamespacePolicy, idDeserializer msp.IdentityDeserializer) (*NsVerifier, error) {
 	res := &NsVerifier{
-		Type:   p.Type,
-		Policy: p.Policy,
+		NamespacePolicy: p,
 	}
 	var err error
 
-	switch p.Type {
-	case protoblocktx.PolicyType_THRESHOLD_RULE:
-		policy := &protoblocktx.ThresholdRule{}
-		if merr := proto.Unmarshal(p.Policy, policy); merr != nil {
-			return nil, merr
-		}
+	switch r := p.GetRule().(type) {
+	case *protoblocktx.NamespacePolicy_ThresholdRule:
+		policy := r.ThresholdRule
 
 		switch policy.Scheme {
 		case NoScheme, "":
-			res.thresholdVerifier = nil
+			res.verifier = nil
 		case Ecdsa:
-			res.thresholdVerifier, err = NewEcdsaVerifier(policy.PublicKey)
+			res.verifier, err = newEcdsaVerifier(policy.PublicKey)
 		case Bls:
-			res.thresholdVerifier, err = NewBLSVerifier(policy.PublicKey)
+			res.verifier, err = newBLSVerifier(policy.PublicKey)
 		case Eddsa:
-			res.thresholdVerifier = &EdDSAVerifier{PublicKey: policy.PublicKey}
+			res.verifier = &edDSAVerifier{PublicKey: policy.PublicKey}
 		default:
 			return nil, errors.Newf("scheme '%v' not supported", policy.Scheme)
 		}
-	case protoblocktx.PolicyType_SIGNATURE_RULE:
+	case *protoblocktx.NamespacePolicy_SignatureRule:
 		pp := cauthdsl.NewPolicyProvider(idDeserializer)
-		res.signatureVerifier, _, err = pp.NewPolicy(p.Policy)
+		res.verifier, _, err = pp.NewPolicy(r.SignatureRule)
 	default:
-		return nil, errors.Newf("policy type '%v' not supported", p.Type)
+		return nil, errors.Newf("policy rule '%v' not supported", p.GetRule())
 	}
 	return res, err
 }
@@ -73,38 +61,45 @@ func (v *NsVerifier) VerifyNs(txID string, tx *protoblocktx.Tx, nsIndex int) err
 		return errors.New("namespace index out of range")
 	}
 
-	switch v.Type {
-	case protoblocktx.PolicyType_THRESHOLD_RULE:
-		if v.thresholdVerifier == nil {
-			return nil
-		}
-		digest, err := DigestTxNamespace(txID, tx.Namespaces[nsIndex])
-		if err != nil {
-			return err
-		}
-		return v.thresholdVerifier.Verify(digest, tx.Endorsements[nsIndex].EndorsementsWithIdentity[0].Endorsement)
-	case protoblocktx.PolicyType_SIGNATURE_RULE:
-		data, err := ASN1MarshalTxNamespace(txID, tx.Namespaces[nsIndex])
-		if err != nil {
-			return err
-		}
+	if v.verifier == nil {
+		return nil
+	}
+
+	data, err := ASN1MarshalTxNamespace(txID, tx.Namespaces[nsIndex])
+	if err != nil {
+		return err
+	}
+
+	switch v.NamespacePolicy.GetRule().(type) {
+	case *protoblocktx.NamespacePolicy_ThresholdRule:
+		return v.verifier.EvaluateSignedData([]*protoutil.SignedData{
+			{
+				Data:      data,
+				Signature: tx.Endorsements[nsIndex].EndorsementsWithIdentity[0].Endorsement,
+			},
+		})
+	case *protoblocktx.NamespacePolicy_SignatureRule:
 		signedData := make([]*protoutil.SignedData, len(tx.Endorsements[nsIndex].EndorsementsWithIdentity))
 		for i, s := range tx.Endorsements[nsIndex].EndorsementsWithIdentity {
-			idBytes, err := msp.NewSerializedIdentity(s.Identity.MspId, s.Identity.GetCertificate())
+			// NOTE: CertificateID is not supported as MSP does not have the supported for pre-stored certificates yet.
+			cert := s.Identity.GetCertificate()
+			if cert == nil {
+				return errors.New("An empty certificate is provided for the identity")
+			}
+			idBytes, err := msp.NewSerializedIdentity(s.Identity.MspId, cert)
 			if err != nil {
 				return err
 			}
 
-			// Do we need to append Identity to the data? Is identity part of the signature content?
 			signedData[i] = &protoutil.SignedData{
 				Data:      data,
 				Identity:  idBytes,
 				Signature: s.Endorsement,
 			}
 		}
-		return v.signatureVerifier.EvaluateSignedData(signedData)
+		return v.verifier.EvaluateSignedData(signedData)
 	default:
-		return errors.Newf("policy type [%v] not supported", v.Type)
+		return errors.Newf("policy rule [%v] not supported", v.NamespacePolicy.GetRule())
 	}
 }
 
@@ -115,4 +110,18 @@ func CreateSerializedIdentities(mspIDs, certBytes []string) [][]byte {
 		identities[i] = protoutil.MarshalOrPanic(&fmsp.SerializedIdentity{Mspid: mspID, IdBytes: []byte(certBytes[i])})
 	}
 	return identities
+}
+
+// verifier verifies a digest.
+type verifier interface {
+	verify(Digest, Signature) error
+}
+
+func verify(signatureSet []*protoutil.SignedData, v verifier) error {
+	for _, s := range signatureSet {
+		if err := v.verify(digest(s.Data), s.Signature); err != nil {
+			return err
+		}
+	}
+	return nil
 }

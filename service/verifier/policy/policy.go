@@ -46,22 +46,29 @@ var validNamespaceID = regexp.MustCompile(`^[a-z0-9_]+$`)
 // ErrInvalidNamespaceID is returned when the namespace ID cannot be parsed.
 var ErrInvalidNamespaceID = errors.New("invalid namespace ID")
 
+// ErrInvalidPolicy is returned when the namespace policy cannot be parsed.
+var ErrInvalidPolicy = errors.New("invalid namespace policy")
+
 // GetUpdatesFromNamespace translates a namespace TX to policy updates.
-func GetUpdatesFromNamespace(nsTx *protoblocktx.TxNamespace) *protosigverifierservice.Update {
+func GetUpdatesFromNamespace(nsTx *protoblocktx.TxNamespace) (*protosigverifierservice.Update, error) {
 	switch nsTx.NsId {
 	case types.MetaNamespaceID:
 		pd := make([]*protoblocktx.PolicyItem, len(nsTx.ReadWrites))
 		for i, rw := range nsTx.ReadWrites {
+			nsPolicy := &protoblocktx.NamespacePolicy{}
+			if err := proto.Unmarshal(rw.Value, nsPolicy); err != nil {
+				return nil, ErrInvalidPolicy
+			}
 			pd[i] = &protoblocktx.PolicyItem{
 				Namespace: string(rw.Key),
-				Policy:    rw.Value,
+				Policy:    nsPolicy,
 			}
 		}
 		return &protosigverifierservice.Update{
 			NamespacePolicies: &protoblocktx.NamespacePolicies{
 				Policies: pd,
 			},
-		}
+		}, nil
 	case types.ConfigNamespaceID:
 		for _, rw := range nsTx.BlindWrites {
 			if string(rw.Key) == types.ConfigKey {
@@ -69,11 +76,11 @@ func GetUpdatesFromNamespace(nsTx *protoblocktx.TxNamespace) *protosigverifierse
 					Config: &protoblocktx.ConfigTransaction{
 						Envelope: rw.Value,
 					},
-				}
+				}, nil
 			}
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // CreateNamespaceVerifier parses policy item to a namespace policy.
@@ -81,15 +88,10 @@ func CreateNamespaceVerifier(
 	pd *protoblocktx.PolicyItem, idDeserializer msp.IdentityDeserializer,
 ) (*signature.NsVerifier, error) {
 	if err := validateNamespaceIDInPolicy(pd.Namespace); err != nil {
-		return nil, err
-	}
-	p := &protoblocktx.NamespacePolicy{}
-	err := proto.Unmarshal(pd.Policy, p)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal namespace policy")
+		return nil, ErrInvalidNamespaceID
 	}
 
-	return signature.NewNsVerifier(p, idDeserializer)
+	return signature.NewNsVerifier(pd.Policy, idDeserializer)
 }
 
 // validateNamespaceIDInPolicy checks that a given namespace fulfills namespace naming conventions.
@@ -140,15 +142,12 @@ func ParsePolicyFromConfigTx(value []byte) (*signature.NsVerifier, error) {
 	// So we encode the key schema as the identifier.
 	// This will be replaced in the future with a generic policy mechanism.
 
-	policy, err := proto.Marshal(&protoblocktx.ThresholdRule{
-		Scheme:    key.KeyIdentifier,
-		PublicKey: key.KeyMaterial,
-	})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to marshal ThresholdRule")
-	}
 	return signature.NewNsVerifier(&protoblocktx.NamespacePolicy{
-		Type:   protoblocktx.PolicyType_THRESHOLD_RULE,
-		Policy: policy,
+		Rule: &protoblocktx.NamespacePolicy_ThresholdRule{
+			ThresholdRule: &protoblocktx.ThresholdRule{
+				Scheme:    key.KeyIdentifier,
+				PublicKey: key.KeyMaterial,
+			},
+		},
 	}, nil)
 }

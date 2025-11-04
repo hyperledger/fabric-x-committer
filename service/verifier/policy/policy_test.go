@@ -12,11 +12,13 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 func TestGetUpdatesFromNamespace(t *testing.T) {
@@ -25,22 +27,31 @@ func TestGetUpdatesFromNamespace(t *testing.T) {
 	items := make([]*protoblocktx.ReadWrite, 5)
 	for i := range items {
 		items[i] = &protoblocktx.ReadWrite{
-			Key:   fmt.Appendf(nil, "key-%d", i),
-			Value: fmt.Appendf(nil, "value-%d", i),
+			Key: fmt.Appendf(nil, "key-%d", i),
+			Value: protoutil.MarshalOrPanic(&protoblocktx.NamespacePolicy{
+				Rule: &protoblocktx.NamespacePolicy_ThresholdRule{
+					ThresholdRule: &protoblocktx.ThresholdRule{
+						Scheme: signature.Ecdsa, PublicKey: fmt.Appendf(nil, "value-%d", i),
+					},
+				},
+			}),
 		}
 	}
 	tx := &protoblocktx.TxNamespace{
 		NsId:       types.MetaNamespaceID,
 		ReadWrites: items,
 	}
-	update := GetUpdatesFromNamespace(tx)
+	update, err := GetUpdatesFromNamespace(tx)
+	require.NoError(t, err)
 	require.NotNil(t, update)
 	require.NotNil(t, update.NamespacePolicies)
 	require.Nil(t, update.Config)
 	require.Len(t, update.NamespacePolicies.Policies, len(items))
 	for i, p := range update.NamespacePolicies.Policies {
 		require.Equal(t, items[i].Key, []byte(p.Namespace))
-		require.Equal(t, items[i].Value, p.Policy)
+		nsPolicy := &protoblocktx.NamespacePolicy{}
+		require.NoError(t, proto.Unmarshal(items[i].Value, nsPolicy))
+		test.RequireProtoEqual(t, nsPolicy, p.Policy)
 	}
 
 	t.Log("config namespace")
@@ -54,7 +65,8 @@ func TestGetUpdatesFromNamespace(t *testing.T) {
 		}},
 	}
 
-	update = GetUpdatesFromNamespace(tx)
+	update, err = GetUpdatesFromNamespace(tx)
+	require.NoError(t, err)
 	require.NotNil(t, update)
 	require.NotNil(t, update.Config)
 	require.Nil(t, update.NamespacePolicies)
@@ -64,18 +76,14 @@ func TestGetUpdatesFromNamespace(t *testing.T) {
 func TestParsePolicyItem(t *testing.T) {
 	t.Parallel()
 	_, verificationKey := sigtest.NewSignatureFactory(signature.Ecdsa).NewKeys()
-	p := &protoblocktx.NamespacePolicy{
-		Type: protoblocktx.PolicyType_THRESHOLD_RULE,
-		Policy: protoutil.MarshalOrPanic(&protoblocktx.ThresholdRule{
-			Scheme: signature.Ecdsa, PublicKey: verificationKey,
-		}),
-	}
+	p := MakeECDSAThresholdRuleNsPolicy(verificationKey)
+
 	for _, ns := range []string{"0", "1"} {
 		t.Run(fmt.Sprintf("valid policy ns: '%s'", ns), func(t *testing.T) {
 			pd := MakePolicy(t, ns, p)
 			retP, err := CreateNamespaceVerifier(pd, nil)
 			require.NoError(t, err)
-			require.Equal(t, p.Policy, retP.Policy)
+			require.Equal(t, p, retP.NamespacePolicy)
 		})
 	}
 
@@ -102,11 +110,4 @@ func TestParsePolicyItem(t *testing.T) {
 			require.ErrorIs(t, err, ErrInvalidNamespaceID)
 		})
 	}
-
-	t.Run("invalid policy", func(t *testing.T) {
-		pd := MakePolicy(t, "0", p)
-		pd.Policy = []byte("bad-policy")
-		_, err := CreateNamespaceVerifier(pd, nil)
-		require.Error(t, err)
-	})
 }
