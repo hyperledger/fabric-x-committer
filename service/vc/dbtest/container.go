@@ -141,6 +141,7 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 		if dc.DbPort == "" {
 			dc.DbPort = docker.Port(fmt.Sprintf("%s/tcp", yugaDBPort))
 		}
+
 		if dc.TLSConfig != nil {
 			require.NotEmpty(t, dc.TLSConfig.CACertPaths)
 			dc.Binds = append(dc.Binds,
@@ -164,6 +165,7 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 		if dc.DbPort == "" {
 			dc.DbPort = docker.Port(fmt.Sprintf("%s/tcp", postgresDBPort))
 		}
+
 		if dc.TLSConfig != nil {
 			dc.Binds = append(dc.Binds,
 				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CertPath, PostgresPublicKeyFileName),
@@ -379,7 +381,8 @@ func (dc *DatabaseContainer) ContainerID() string {
 // If no password is found, the default one will be returned.
 func (dc *DatabaseContainer) ReadPasswordFromContainer(t *testing.T, filePath string) string {
 	t.Helper()
-	output, _ := dc.ExecuteCommand(t, []string{"cat", filePath})
+	output, exitCode := dc.ExecuteCommand(t, []string{"cat", filePath})
+	require.Zero(t, exitCode)
 	found := passwordRegex.FindStringSubmatch(output)
 	if len(found) > 1 {
 		return found[1]
@@ -431,6 +434,6 @@ func (dc *DatabaseContainer) EnsurePostgresNodeReadiness(t *testing.T, port stri
 		_, exitCode := dc.ExecuteCommand(t, []string{
 			"bash", "-c", fmt.Sprintf("pg_isready -U yugabyte -d yugabyte -h localhost -p %s", port),
 		})
-		require.Equal(ct, 0, exitCode)
+		require.Zero(ct, exitCode)
 	}, 45*time.Second, 250*time.Millisecond)
 }

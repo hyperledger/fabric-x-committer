@@ -151,5 +151,6 @@ func (cc *PostgresClusterController) PromoteSecondaryNode(t *testing.T) {
 	t.Helper()
 	secondaryNode, _ := cc.GetSingleNodeByRole(SecondaryNode)
 	require.NotNil(t, secondaryNode)
-	secondaryNode.ExecuteCommand(t, postgresSecondaryPromotionCommand)
+	_, exitCode := secondaryNode.ExecuteCommand(t, postgresSecondaryPromotionCommand)
+	require.Zero(t, exitCode)
 }

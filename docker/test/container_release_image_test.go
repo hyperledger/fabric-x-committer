@@ -57,6 +57,8 @@ const (
 	// This work-around is needed due to a Yugabyte behavior that prevents using default passwords in secure mode.
 	// Instead, Yugabyte generates a random password, and this path points to the output file containing it.
 	containerPathForYugabytePassword = "/root/var/data/yugabyted_credentials.txt" //nolint:gosec
+
+	defaultDBPort = "5433"
 )
 
 var (
@@ -156,6 +158,7 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 		DatabaseType: params.dbType,
 		Network:      params.networkName,
 		Hostname:     params.node,
+		DbPort:       defaultDBPort,
 		TLSConfig:    &tlsConfig,
 	}
 
@@ -175,24 +178,27 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 	// post start container tweaking
 	switch node.DatabaseType {
 	case testutils.YugaDBType:
-		// Ensure proper root ownership and permissions for the TLS certificate files.
-		node.ExecuteCommand(t, []string{
+		// Must run after node startup to ensure proper root ownership and permissions for the TLS certificate files.
+		_, exitCode := node.ExecuteCommand(t, []string{
 			"chown",
 			"root:root",
 			filepath.Join("/creds", dbtest.YugabytePublicKeyFileName),
 			filepath.Join("/creds", dbtest.YugabytePrivateKeyFileName),
 		})
+		require.Zero(t, exitCode)
 		node.EnsureNodeReadinessByLogs(t, dbtest.YugabytedReadinessOutput)
 		conn.Password = node.ReadPasswordFromContainer(t, containerPathForYugabytePassword)
 	case testutils.PostgresDBType:
-		node.ExecuteCommand(t, []string{
+		// Must run after node startup to ensure proper root ownership and permissions for the TLS certificate files.
+		_, exitCode := node.ExecuteCommand(t, []string{
 			"chown", "postgres:postgres",
-			"/creds/server.crt",
-			"/creds/server.key",
+			filepath.Join("/creds", dbtest.PostgresPublicKeyFileName),
+			filepath.Join("/creds", dbtest.PostgresPrivateKeyFileName),
 		})
+		require.Zero(t, exitCode)
 		node.EnsurePostgresNodeReadiness(t, "5433")
-		node.ExecuteCommand(t, enforcePostgresSSLScript)
-		node.ExecuteCommand(t, reloadPostgresConfigScript)
+		_, exitCode = node.ExecuteCommand(t, append(enforcePostgresSSLScript, reloadPostgresConfigScript...))
+		require.Zero(t, exitCode)
 	default:
 		t.Fatalf("Unsupported database type: %s", node.DatabaseType)
 	}

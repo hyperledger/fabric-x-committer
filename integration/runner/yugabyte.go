@@ -187,14 +187,17 @@ func (cc *YugaClusterController) getNumberOfAliveMasters(t *testing.T) int {
 
 func (cc *YugaClusterController) listAllMasters(t *testing.T) string {
 	t.Helper()
-	var output string
 	cmd := []string{
 		"/home/yugabyte/bin/yb-admin",
 		"-master_addresses", cc.getMasterAddresses(),
 		"list_all_masters",
 	}
+	var (
+		output   string
+		exitCode int
+	)
 	for _, n := range cc.nodes {
-		if output, _ = n.ExecuteCommand(t, cmd); output != "" {
+		if output, exitCode = n.ExecuteCommand(t, cmd); output != "" && exitCode == 0 {
 			break
 		}
 	}
