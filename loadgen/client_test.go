@@ -285,8 +285,10 @@ func TestLoadGenForOrderer(t *testing.T) {
 						},
 						LastCommittedBlockSetInterval: 100 * time.Millisecond,
 						WaitingTxsLimit:               5000,
-						Committer:                     test.NewInsecureClientConfig(&coordinatorServer.Configs[0].Endpoint),
-						Monitoring:                    defaultMonitoring(),
+						Committer: test.NewInsecureClientConfig(
+							&coordinatorServer.Configs[0].Endpoint,
+						),
+						Monitoring: defaultMonitoring(),
 						Ledger: sidecar.LedgerConfig{
 							Path: t.TempDir(),
 						},
