@@ -37,13 +37,11 @@ func TestUnwrapEnvelopeBadInput(t *testing.T) {
 
 	t.Run("OK Payload with a nil Header", func(t *testing.T) {
 		t.Parallel()
-		payloadBytes := protoutil.MarshalOrPanic(&common.Payload{
-			Header: nil,
-			Data:   []byte("some data"),
-		})
-
 		envelopeBytes := protoutil.MarshalOrPanic(&common.Envelope{
-			Payload: payloadBytes,
+			Payload: protoutil.MarshalOrPanic(&common.Payload{
+				Header: nil,
+				Data:   []byte("some data"),
+			}),
 		})
 
 		_, _, err := serialization.UnwrapEnvelope(envelopeBytes)

@@ -43,7 +43,6 @@ func SerializeSigningKey(key *ecdsa.PrivateKey) ([]byte, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "cannot serialize private key")
 	}
-
 	return pem.EncodeToMemory(&pem.Block{
 		Type:  "EC PRIVATE KEY",
 		Bytes: x509encodedPri,
