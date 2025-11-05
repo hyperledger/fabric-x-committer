@@ -8,6 +8,7 @@ package deliver
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"testing"
@@ -39,101 +40,110 @@ const channelForTest = "mychannel"
 
 func TestBroadcastDeliver(t *testing.T) {
 	t.Parallel()
+	for _, mode := range test.ServerModes {
+		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
+			t.Parallel()
+			// Create the credentials for both server and client using the same CA.
+			// In this test, we are using the same server TLS config for all the orderer instances for simplicity.
+			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
 
-	serverTLSConfig, _ := createServerAndClientTLSConfig(t, connection.MutualTLSMode)
+			// We use a short retry grpc-config to shorten the test time.
+			ordererService, servers, conf := makeConfig(t, &serverTLSConfig)
 
-	// We use a short retry grpc-config to shorten the test time.
-	ordererService, servers, conf := makeConfig(t, &serverTLSConfig)
+			// Set the orderer client credentials.
+			conf.Connection.TLS = clientTLSConfig
+			allEndpoints := conf.Connection.Endpoints
 
-	allEndpoints := conf.Connection.Endpoints
+			// We only take the bottom endpoints for now.
+			// Later we take the other endpoints and update the client.
+			conf.Connection.Endpoints = allEndpoints[:6]
+			client, err := New(&conf)
+			require.NoError(t, err)
+			t.Cleanup(client.CloseConnections)
 
-	// We only take the bottom endpoints for now.
-	// Later we take the other endpoints and update the client.
-	conf.Connection.Endpoints = allEndpoints[:6]
-	client, err := New(&conf)
-	require.NoError(t, err)
-	t.Cleanup(client.CloseConnections)
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+			t.Cleanup(cancel)
 
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
-	t.Cleanup(cancel)
+			outputBlocksChan := make(chan *common.Block, 100)
+			go func() {
+				err = client.Deliver(ctx, &Parameters{
+					StartBlkNum: 0,
+					EndBlkNum:   MaxBlockNum,
+					OutputBlock: outputBlocksChan,
+				})
+				assert.ErrorIs(t, err, context.Canceled)
+			}()
+			outputBlocks := channel.NewReader(ctx, outputBlocksChan)
 
-	outputBlocksChan := make(chan *common.Block, 100)
-	go func() {
-		err = client.Deliver(ctx, &Parameters{
-			StartBlkNum: 0,
-			EndBlkNum:   MaxBlockNum,
-			OutputBlock: outputBlocksChan,
+			t.Log("Read config block")
+			b, ok := outputBlocks.Read()
+			require.True(t, ok)
+			require.NotNil(t, b)
+			require.Len(t, b.Data.Data, 1)
+
+			t.Log("All good")
+			submit(t, &conf, outputBlocks, expectedSubmit{
+				success: 3,
+			})
+
+			t.Log("One server down")
+			servers[2].Servers[0].Stop()
+			listener1 := holdPort(ctx, t, servers[2].Configs[0])
+			submit(t, &conf, outputBlocks, expectedSubmit{
+				success: 3,
+			})
+
+			t.Log("Two servers down")
+			servers[2].Servers[1].Stop()
+			listener2 := holdPort(ctx, t, servers[2].Configs[1])
+			submit(t, &conf, outputBlocks, expectedSubmit{
+				success:     2,
+				unavailable: 1,
+			})
+
+			t.Log("One incorrect server")
+			_ = listener1.Close()
+			fakeServer := test.RunGrpcServerForTest(ctx, t, servers[2].Configs[0], nil)
+			waitUntilGrpcServerIsReady(ctx, t, &servers[2].Configs[0].Endpoint, clientTLSConfig)
+			submit(t, &conf, outputBlocks, expectedSubmit{
+				success:       2,
+				unimplemented: 1,
+			})
+			t.Log("All good again")
+			fakeServer.Stop()
+			servers[2].Servers[0] = test.RunGrpcServerForTest(
+				ctx, t, servers[2].Configs[0], ordererService.RegisterService,
+			)
+			waitUntilGrpcServerIsReady(ctx, t, &servers[2].Configs[0].Endpoint, clientTLSConfig)
+			submit(t, &conf, outputBlocks, expectedSubmit{
+				success: 3,
+			})
+
+			t.Log("Insufficient quorum")
+			_ = listener2.Close()
+			for _, gs := range servers[:2] {
+				for _, s := range gs.Servers[:2] {
+					s.Stop()
+				}
+			}
+			for _, gs := range servers[:2] {
+				for _, c := range gs.Configs[:2] {
+					holdPort(ctx, t, c)
+				}
+			}
+			submit(t, &conf, outputBlocks, expectedSubmit{
+				success:     1,
+				unavailable: 2,
+			})
+
+			t.Log("Update endpoints")
+			conf.Connection.Endpoints = allEndpoints[6:]
+			require.NoError(t, client.UpdateConnections(&conf.Connection))
+			submit(t, &conf, outputBlocks, expectedSubmit{
+				success: 3,
+			})
 		})
-		assert.ErrorIs(t, err, context.Canceled)
-	}()
-	outputBlocks := channel.NewReader(ctx, outputBlocksChan)
-
-	t.Log("Read config block")
-	b, ok := outputBlocks.Read()
-	require.True(t, ok)
-	require.NotNil(t, b)
-	require.Len(t, b.Data.Data, 1)
-
-	t.Log("All good")
-	submit(t, &conf, outputBlocks, expectedSubmit{
-		success: 3,
-	})
-
-	t.Log("One server down")
-	servers[2].Servers[0].Stop()
-	listener1 := holdPort(ctx, t, servers[2].Configs[0])
-	submit(t, &conf, outputBlocks, expectedSubmit{
-		success: 3,
-	})
-
-	t.Log("Two servers down")
-	servers[2].Servers[1].Stop()
-	listener2 := holdPort(ctx, t, servers[2].Configs[1])
-	submit(t, &conf, outputBlocks, expectedSubmit{
-		success:     2,
-		unavailable: 1,
-	})
-
-	t.Log("One incorrect server")
-	_ = listener1.Close()
-	fakeServer := test.RunGrpcServerForTest(ctx, t, servers[2].Configs[0], nil)
-	waitUntilGrpcServerIsReady(ctx, t, &servers[2].Configs[0].Endpoint)
-	submit(t, &conf, outputBlocks, expectedSubmit{
-		success:       2,
-		unimplemented: 1,
-	})
-
-	t.Log("All good again")
-	fakeServer.Stop()
-	servers[2].Servers[0] = test.RunGrpcServerForTest(ctx, t, servers[2].Configs[0], ordererService.RegisterService)
-	waitUntilGrpcServerIsReady(ctx, t, &servers[2].Configs[0].Endpoint)
-	submit(t, &conf, outputBlocks, expectedSubmit{
-		success: 3,
-	})
-
-	t.Log("Insufficient quorum")
-	_ = listener2.Close()
-	for _, gs := range servers[:2] {
-		for _, s := range gs.Servers[:2] {
-			s.Stop()
-		}
 	}
-	for _, gs := range servers[:2] {
-		for _, c := range gs.Configs[:2] {
-			holdPort(ctx, t, c)
-		}
-	}
-	submit(t, &conf, outputBlocks, expectedSubmit{
-		success:     1,
-		unavailable: 2,
-	})
-
-	t.Log("Update endpoints")
-	conf.Connection.Endpoints = allEndpoints[6:]
-	require.NoError(t, client.UpdateConnections(&conf.Connection))
-	submit(t, &conf, outputBlocks, expectedSubmit{
-		success: 3,
-	})
 }
 
 type expectedSubmit struct {
@@ -189,7 +199,7 @@ func submit(
 	require.Equal(t, tx.Id, hdr.TxId)
 }
 
-func makeConfig(t *testing.T, TLSConfig *connection.TLSConfig) (*mock.Orderer, []test.GrpcServers, ordererconn.Config) {
+func makeConfig(t *testing.T, tlsConfig *connection.TLSConfig) (*mock.Orderer, []test.GrpcServers, ordererconn.Config) {
 	t.Helper()
 
 	idCount := 3
@@ -197,22 +207,20 @@ func makeConfig(t *testing.T, TLSConfig *connection.TLSConfig) (*mock.Orderer, [
 	instanceCount := idCount * serverPerID
 	t.Logf("Instance count: %d; idCount: %d", instanceCount, idCount)
 
-	ordererService, ordererServer := mock.StartMockOrderingServices(
-		t, &mock.OrdererConfig{NumService: instanceCount, BlockSize: 1, SendConfigBlock: true},
-	)
-
-	if TLSConfig != nil {
+	config := &mock.OrdererConfig{
+		NumService:      instanceCount,
+		BlockSize:       1,
+		SendConfigBlock: true,
+	}
+	if tlsConfig != nil {
 		sc := make([]*connection.ServerConfig, instanceCount)
 		for i := range sc {
-			creds := *TLSConfig
+			creds := *tlsConfig
 			sc[i] = connection.NewLocalHostServerWithTLS(creds)
 		}
-
-		ordererService, ordererServer = mock.StartMockOrderingServices(
-			t, &mock.OrdererConfig{ServerConfigs: sc, NumService: instanceCount, BlockSize: 1, SendConfigBlock: true},
-		)
+		config.ServerConfigs = sc
 	}
-
+	ordererService, ordererServer := mock.StartMockOrderingServices(t, config)
 	require.Len(t, ordererServer.Servers, instanceCount)
 
 	conf := ordererconn.Config{
@@ -241,9 +249,11 @@ func makeConfig(t *testing.T, TLSConfig *connection.TLSConfig) (*mock.Orderer, [
 	return ordererService, servers, conf
 }
 
-func waitUntilGrpcServerIsReady(ctx context.Context, t *testing.T, endpoint *connection.Endpoint) {
+func waitUntilGrpcServerIsReady(
+	ctx context.Context, t *testing.T, endpoint *connection.Endpoint, clientTLSConfig connection.TLSConfig,
+) {
 	t.Helper()
-	newConn, err := connection.Connect(test.NewInsecureDialConfig(endpoint))
+	newConn, err := connection.Connect(test.NewSecuredDialConfig(t, endpoint, clientTLSConfig))
 	require.NoError(t, err)
 	defer connection.CloseConnectionsLog(newConn)
 	test.WaitUntilGrpcServerIsReady(ctx, t, newConn)
@@ -263,16 +273,4 @@ func holdPort(ctx context.Context, t *testing.T, c *connection.ServerConfig) net
 		_ = listener.Close()
 	})
 	return listener
-}
-
-// createServerAndClientTLSConfig creates tls configurations for
-// both the server and client.
-func createServerAndClientTLSConfig(t *testing.T, tlsMode string) (
-	serverTLSConfig, clientTLSConfig connection.TLSConfig,
-) {
-	t.Helper()
-	credsFactory := test.NewCredentialsFactory(t)
-	clientTLSConfig, _ = credsFactory.CreateServerCredentials(t, tlsMode, "localhost")
-	serverTLSConfig, _ = credsFactory.CreateClientCredentials(t, tlsMode)
-	return clientTLSConfig, serverTLSConfig
 }
