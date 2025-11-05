@@ -221,23 +221,29 @@ func (env *sidecarTestEnv) startNotificationStream(
 
 func TestSidecar(t *testing.T) {
 	t.Parallel()
-	for _, conf := range []sidecarTestConfig{
-		{WithConfigBlock: false},
-		{WithConfigBlock: true},
-		{
-			WithConfigBlock: true,
-			NumFakeService:  3,
-		},
-	} {
-		conf := conf
-		t.Run(conf.String(), func(t *testing.T) {
+	for _, mode := range test.ServerModes {
+		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
-			env := newSidecarTestEnvWithTLS(t, conf, test.InsecureTLSConfig)
-			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
-			t.Cleanup(cancel)
-			env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
-			env.requireBlock(ctx, t, 0)
-			env.sendTransactionsAndEnsureCommitted(ctx, t, 1)
+			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
+			for _, conf := range []sidecarTestConfig{
+				{WithConfigBlock: false},
+				{WithConfigBlock: true},
+				{
+					WithConfigBlock: true,
+					NumFakeService:  3,
+				},
+			} {
+				conf := conf
+				t.Run(conf.String(), func(t *testing.T) {
+					t.Parallel()
+					env := newSidecarTestEnvWithTLS(t, conf, serverTLSConfig)
+					ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+					t.Cleanup(cancel)
+					env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, clientTLSConfig)
+					env.requireBlock(ctx, t, 0)
+					env.sendTransactionsAndEnsureCommitted(ctx, t, 1)
+				})
+			}
 		})
 	}
 }
