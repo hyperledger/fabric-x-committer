@@ -55,8 +55,7 @@ func TestSerializeAndParseSigningKey(t *testing.T) {
 
 	t.Run("Key Empty", func(t *testing.T) {
 		t.Parallel()
-		emptyKey := &ecdsa.PrivateKey{}
-		_, err := SerializeSigningKey(emptyKey)
+		_, err := SerializeSigningKey(&ecdsa.PrivateKey{})
 		require.Error(t, err)
 	})
 	t.Run("Key is nil", func(t *testing.T) {
