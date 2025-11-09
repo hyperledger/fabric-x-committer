@@ -206,18 +206,18 @@ func TestLoadGenForSidecar(t *testing.T) {
 					// To avoid manually pre-choosing ports that might conflict with other tests,
 					// we pre allocate them by starting a listener that picks a port automatically and bind to it.
 					// In real evaluation scenario, the ports will be selected by the deployment infrastructure.
-					sidecarServerConf := preAllocatePorts(t)
+					sidecarServerConf := preAllocatePorts(t, serverTLSConfig)
 					ordererServers := make([]*connection.ServerConfig, 3)
 					for i := range ordererServers {
-						ordererServers[i] = preAllocatePorts(t)
+						ordererServers[i] = preAllocatePorts(t, serverTLSConfig)
 					}
-					sidecarServerConf.TLS = serverTLSConfig
 					// Start server under test
 					sidecarConf := &sidecar.Config{
 						Server: sidecarServerConf,
 						Orderer: ordererconn.Config{
 							Connection: ordererconn.ConnectionConfig{
 								Endpoints: ordererconn.NewEndpoints(0, "org", ordererServers...),
+								TLS:       clientTLSConfig,
 							},
 							ChannelID:     clientConf.LoadProfile.Transaction.Policy.ChannelID,
 							Identity:      clientConf.LoadProfile.Transaction.Policy.Identity,
@@ -378,9 +378,9 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 	}
 }
 
-func preAllocatePorts(t *testing.T) *connection.ServerConfig {
+func preAllocatePorts(t *testing.T, tlsConfig connection.TLSConfig) *connection.ServerConfig {
 	t.Helper()
-	server := connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig)
+	server := connection.NewLocalHostServerWithTLS(tlsConfig)
 	listener, err := server.PreAllocateListener()
 	require.NoError(t, err)
 	t.Cleanup(func() {
