@@ -43,11 +43,7 @@ func NewLoadGenAdapter(config *connection.ClientConfig, res *ClientResources) *L
 
 // RunWorkload applies load on the SV.
 func (c *LoadGenAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWithSetup) error {
-	loadgenDialConfig, err := connection.NewSingleDialConfig(c.config)
-	if err != nil {
-		return errors.Wrapf(err, "failed creating loadgen dial config")
-	}
-	conn, err := connection.Connect(loadgenDialConfig)
+	conn, err := connection.NewSingleConnection(c.config)
 	if err != nil {
 		return errors.Wrapf(err, "failed to connect to %s", c.config.Endpoint)
 	}
