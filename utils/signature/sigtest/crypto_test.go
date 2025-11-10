@@ -9,12 +9,13 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestSerializeVerificationKey(t *testing.T) {
+func TestVerificationAndSigningKeys(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name  string
@@ -48,31 +49,54 @@ func TestSerializeVerificationKey(t *testing.T) {
 			_, err = SerializeVerificationKey(&privKey.PublicKey)
 			require.NoError(t, err)
 		})
+
+		t.Run(fmt.Sprintf("Serialize %s VerificationKey", tt.name),
+			func(t *testing.T) {
+				t.Parallel()
+
+				privKey, err := ecdsa.GenerateKey(tt.curve, rand.Reader)
+				require.NoError(t, err)
+				require.NotNil(t, privKey)
+
+				_, err = SerializeVerificationKey(&privKey.PublicKey)
+				require.NoError(t, err)
+			})
+
+		t.Run(fmt.Sprintf("Serialize and Parse %s SigningKey", tt.name),
+			func(t *testing.T) {
+				t.Parallel()
+				privateKey, err := ecdsa.GenerateKey(tt.curve, rand.Reader)
+				require.NoError(t, err)
+				key, err := SerializeSigningKey(privateKey)
+				require.NotNil(t, key)
+				require.NoError(t, err)
+
+				_, err = ParseSigningKey(key)
+				require.NoError(t, err)
+			})
 	}
-}
 
-func TestSerializeAndParseSigningKey(t *testing.T) {
-	t.Parallel()
-
-	t.Run("Key Empty", func(t *testing.T) {
+	t.Run("SigningKey Key Empty", func(t *testing.T) {
 		t.Parallel()
 		_, err := SerializeSigningKey(&ecdsa.PrivateKey{})
 		require.Error(t, err)
 	})
-	t.Run("Key is nil", func(t *testing.T) {
+
+	t.Run("SigningKey Key is nil", func(t *testing.T) {
 		t.Parallel()
 		_, err := SerializeSigningKey(nil)
 		require.Error(t, err)
 	})
 
-	t.Run("Key OK", func(t *testing.T) {
+	t.Run("VerificationKey Key Empty", func(t *testing.T) {
 		t.Parallel()
-		privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-		require.NoError(t, err)
-		key, err := SerializeSigningKey(privateKey)
-		require.NotNil(t, key)
-		require.NoError(t, err)
-		_, err = ParseSigningKey(key)
-		require.NoError(t, err)
+		_, err := SerializeVerificationKey(&ecdsa.PublicKey{})
+		require.Error(t, err)
+	})
+
+	t.Run("VerificationKey Key is nil", func(t *testing.T) {
+		t.Parallel()
+		_, err := SerializeVerificationKey(nil)
+		require.Error(t, err)
 	})
 }
