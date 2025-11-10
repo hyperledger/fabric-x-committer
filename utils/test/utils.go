@@ -277,40 +277,73 @@ func SetupDebugging() {
 	})
 }
 
-// NewSecuredDialConfig creates the default dial config with given transport credentials.
-func NewSecuredDialConfig(
+// NewSecuredConnection creates the default connection with given transport credentials.
+func NewSecuredConnection(
 	t *testing.T,
 	endpoint connection.WithAddress,
 	tlsConfig connection.TLSConfig,
-) *connection.DialConfig {
+) *grpc.ClientConn {
+	t.Helper()
+	return NewSecuredConnectionWithRetry(t, endpoint, tlsConfig, defaultGrpcRetryProfile)
+}
+
+// NewSecuredConnectionWithRetry creates the default connection with given transport credentials.
+func NewSecuredConnectionWithRetry(
+	t *testing.T,
+	endpoint connection.WithAddress,
+	tlsConfig connection.TLSConfig,
+	retry connection.RetryProfile,
+) *grpc.ClientConn {
 	t.Helper()
 	clientCreds, err := tlsConfig.ClientCredentials()
 	require.NoError(t, err)
-	return connection.NewDialConfig(connection.DialConfigParameters{
+	conn, err := connection.NewConnection(connection.Parameters{
 		Address: endpoint.Address(),
 		Creds:   clientCreds,
-		Retry:   &defaultGrpcRetryProfile,
+		Retry:   &retry,
 	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = conn.Close()
+	})
+	return conn
 }
 
-// NewInsecureDialConfig creates the default dial config with insecure credentials.
-func NewInsecureDialConfig(endpoint connection.WithAddress) *connection.DialConfig {
-	return connection.NewDialConfig(connection.DialConfigParameters{
+// NewInsecureConnection creates the default connection with insecure credentials.
+func NewInsecureConnection(t *testing.T, endpoint connection.WithAddress) *grpc.ClientConn {
+	t.Helper()
+	return NewInsecureConnectionWithRetry(t, endpoint, defaultGrpcRetryProfile)
+}
+
+// NewInsecureConnectionWithRetry creates the default dial config with insecure credentials.
+func NewInsecureConnectionWithRetry(
+	t *testing.T, endpoint connection.WithAddress, retry connection.RetryProfile,
+) *grpc.ClientConn {
+	t.Helper()
+	conn, err := connection.NewConnection(connection.Parameters{
 		Address: endpoint.Address(),
 		Creds:   insecure.NewCredentials(),
-		Retry:   &defaultGrpcRetryProfile,
+		Retry:   &retry,
 	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = conn.Close()
+	})
+	return conn
 }
 
-// NewInsecureLoadBalancedDialConfig creates the default dial config with insecure credentials.
-func NewInsecureLoadBalancedDialConfig(t *testing.T, endpoints []*connection.Endpoint) *connection.DialConfig {
+// NewInsecureLoadBalancedConnection creates the default connection with insecure credentials.
+func NewInsecureLoadBalancedConnection(t *testing.T, endpoints []*connection.Endpoint) *grpc.ClientConn {
 	t.Helper()
-	dialConfig, err := connection.NewLoadBalancedDialConfig(connection.MultiClientConfig{
+	conn, err := connection.NewLoadBalancedConnection(&connection.MultiClientConfig{
 		Endpoints: endpoints,
 		Retry:     &defaultGrpcRetryProfile,
 	})
 	require.NoError(t, err)
-	return dialConfig
+	t.Cleanup(func() {
+		_ = conn.Close()
+	})
+	return conn
 }
 
 // NewTLSMultiClientConfig creates a multi client configuration for test purposes

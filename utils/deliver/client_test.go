@@ -253,8 +253,7 @@ func waitUntilGrpcServerIsReady(
 	ctx context.Context, t *testing.T, endpoint *connection.Endpoint, clientTLSConfig connection.TLSConfig,
 ) {
 	t.Helper()
-	newConn, err := connection.Connect(test.NewSecuredDialConfig(t, endpoint, clientTLSConfig))
-	require.NoError(t, err)
+	newConn := test.NewSecuredConnection(t, endpoint, clientTLSConfig)
 	defer connection.CloseConnectionsLog(newConn)
 	test.WaitUntilGrpcServerIsReady(ctx, t, newConn)
 	t.Logf("%v is ready", endpoint)
