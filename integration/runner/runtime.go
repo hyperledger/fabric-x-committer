@@ -18,7 +18,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -225,15 +224,15 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 
 	t.Log("Create clients")
 	c.CoordinatorClient = protocoordinatorservice.NewCoordinatorClient(
-		clientConnWithTLS(t, s.Endpoints.Coordinator.Server, c.SystemConfig.ClientTLS),
+		test.NewSecuredConnection(t, s.Endpoints.Coordinator.Server, c.SystemConfig.ClientTLS),
 	)
 
 	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(
-		clientConnWithTLS(t, s.Endpoints.Query.Server, c.SystemConfig.ClientTLS),
+		test.NewSecuredConnection(t, s.Endpoints.Query.Server, c.SystemConfig.ClientTLS),
 	)
 
 	c.notifyClient = protonotify.NewNotifierClient(
-		clientConnWithTLS(t, s.Endpoints.Sidecar.Server, c.SystemConfig.ClientTLS),
+		test.NewSecuredConnection(t, s.Endpoints.Sidecar.Server, c.SystemConfig.ClientTLS),
 	)
 
 	c.ordererStream, err = test.NewBroadcastStream(t.Context(), &ordererconn.Config{
@@ -357,14 +356,6 @@ func (c *CommitterRuntime) startBlockDelivery(t *testing.T) {
 			return true
 		}
 	})
-}
-
-// clientConnWithTLS creates a service connection using its given server endpoint and TLS configuration.
-func clientConnWithTLS(t *testing.T, e *connection.Endpoint, tlsConfig connection.TLSConfig) *grpc.ClientConn {
-	t.Helper()
-	serviceConnection, err := connection.Connect(test.NewSecuredDialConfig(t, e, tlsConfig))
-	require.NoError(t, err)
-	return serviceConnection
 }
 
 // AddOrUpdateNamespaces adds policies for namespaces. If already exists, the policy will be updated.
