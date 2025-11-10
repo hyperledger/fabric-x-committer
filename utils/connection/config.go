@@ -19,7 +19,7 @@ import (
 )
 
 type (
-	// MultiClientConfig contains the endpoints, CAs, and retry profile.
+	// MultiClientConfig contains the endpoints, TLS config, and retry profile.
 	// This config allows the support of number of different endpoints to multiple service instances.
 	MultiClientConfig struct {
 		Endpoints []*Endpoint   `mapstructure:"endpoints" yaml:"endpoints"`
@@ -27,7 +27,7 @@ type (
 		Retry     *RetryProfile `mapstructure:"reconnect" yaml:"reconnect"`
 	}
 
-	// ClientConfig contains a single endpoint, CAs, and retry profile.
+	// ClientConfig contains a single endpoint, TLS config, and retry profile.
 	ClientConfig struct {
 		Endpoint *Endpoint     `mapstructure:"endpoint"  yaml:"endpoint"`
 		TLS      TLSConfig     `mapstructure:"tls"       yaml:"tls"`
