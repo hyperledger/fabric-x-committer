@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
 
@@ -23,20 +24,20 @@ type Config struct {
 
 // DatabaseConfig is the configuration for the database.
 type DatabaseConfig struct {
-	Endpoints      []*connection.Endpoint       `mapstructure:"endpoints"`
-	Username       string                       `mapstructure:"username"`
-	Password       string                       `mapstructure:"password"`
-	Database       string                       `mapstructure:"database"`
-	MaxConnections int32                        `mapstructure:"max-connections"`
-	MinConnections int32                        `mapstructure:"min-connections"`
-	LoadBalance    bool                         `mapstructure:"load-balance"`
-	Retry          *connection.RetryProfile     `mapstructure:"retry"`
-	TLS            connection.DatabaseTLSConfig `mapstructure:"tls"`
+	Endpoints      []*connection.Endpoint   `mapstructure:"endpoints"`
+	Username       string                   `mapstructure:"username"`
+	Password       string                   `mapstructure:"password"`
+	Database       string                   `mapstructure:"database"`
+	MaxConnections int32                    `mapstructure:"max-connections"`
+	MinConnections int32                    `mapstructure:"min-connections"`
+	LoadBalance    bool                     `mapstructure:"load-balance"`
+	Retry          *connection.RetryProfile `mapstructure:"retry"`
+	TLS            dbconn.DatabaseTLSConfig `mapstructure:"tls"`
 }
 
 // DataSourceName returns the data source name of the database.
 func (d *DatabaseConfig) DataSourceName() (string, error) {
-	return connection.DataSourceName(connection.DataSourceNameParams{
+	return dbconn.DataSourceName(dbconn.DataSourceNameParams{
 		Username:        d.Username,
 		Password:        d.Password,
 		Database:        d.Database,

@@ -26,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -447,7 +448,7 @@ func defaultSampleDBConfig() *vc.DatabaseConfig {
 		Username:  "yugabyte",
 		Password:  "yugabyte",
 		Database:  "yugabyte",
-		TLS: connection.DatabaseTLSConfig{
+		TLS: dbconn.DatabaseTLSConfig{
 			Mode:       connection.OneSideTLSMode,
 			CACertPath: "/server-certs/ca-certificate.pem",
 		},

@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 const (
@@ -100,7 +99,7 @@ func (cc *PostgresClusterController) addPrimaryNode(ctx context.Context, t *test
 		},
 	})
 	node.StartContainer(ctx, t)
-	node.EnsurePostgresNodeReadiness(t, "5432")
+	node.EnsureNodeReadinessByLogs(t, dbtest.PostgresReadinesssOutput)
 	return node
 }
 
@@ -121,7 +120,7 @@ func (cc *PostgresClusterController) addSecondaryNode(ctx context.Context, t *te
 		},
 	})
 	node.StartContainer(ctx, t)
-	node.EnsurePostgresNodeReadiness(t, "5432")
+	node.EnsureNodeReadinessByLogs(t, dbtest.SecondaryPostgresNodeReadinessOutput)
 	return node
 }
 
@@ -133,7 +132,7 @@ func (cc *PostgresClusterController) createNode(
 		Role:         nodeCreationOpts.role,
 		Image:        postgresImage,
 		Tag:          defaultBitnamiPostgresTag,
-		DatabaseType: test.PostgresDBType,
+		DatabaseType: dbtest.PostgresDBType,
 		Env: append([]string{
 			"POSTGRESQL_REPLICATION_USER=repl_user",
 			"POSTGRESQL_REPLICATION_PASSWORD=repl_password",
@@ -151,6 +150,5 @@ func (cc *PostgresClusterController) PromoteSecondaryNode(t *testing.T) {
 	t.Helper()
 	secondaryNode, _ := cc.GetSingleNodeByRole(SecondaryNode)
 	require.NotNil(t, secondaryNode)
-	_, exitCode := secondaryNode.ExecuteCommand(t, postgresSecondaryPromotionCommand)
-	require.Zero(t, exitCode)
+	secondaryNode.ExecuteCommand(t, postgresSecondaryPromotionCommand)
 }

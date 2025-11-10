@@ -42,13 +42,19 @@ const (
 
 	// YugabytedReadinessOutput is the output indicating that a Yugabyted node is ready.
 	YugabytedReadinessOutput = "Data placement constraint successfully verified"
+	// YugabyteTabletNodeReadinessOutput is the output indicating that a yugabyte's tablet node is ready.
+	YugabyteTabletNodeReadinessOutput = "syncing data to disk ... ok"
+	// PostgresReadinesssOutput is the output indicating that a PostgreSQL node is ready.
+	PostgresReadinesssOutput = "database system is ready to accept connections"
+	// SecondaryPostgresNodeReadinessOutput is the output indicating that a secondary PostgreSQL node is ready.
+	SecondaryPostgresNodeReadinessOutput = "started streaming WAL from primary"
 
 	//nolint:revive // Represents the required TLS certificate files name.
 	YugabytePublicKeyFileName     = "node.db.crt"
 	YugabytePrivateKeyFileName    = "node.db.key"
-	YugabyteCACertificateFileName = "ca.crt"
 	PostgresPublicKeyFileName     = "server.crt"
 	PostgresPrivateKeyFileName    = "server.key"
+	yugabyteCACertificateFileName = "ca.crt"
 )
 
 var (
@@ -123,7 +129,7 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 	t.Helper()
 
 	switch dc.DatabaseType {
-	case test.YugaDBType:
+	case YugaDBType:
 		if dc.Image == "" {
 			dc.Image = defaultYugabyteImage
 		}
@@ -147,10 +153,10 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 			dc.Binds = append(dc.Binds,
 				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CertPath, YugabytePublicKeyFileName),
 				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.KeyPath, YugabytePrivateKeyFileName),
-				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CACertPaths[0], YugabyteCACertificateFileName),
+				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CACertPaths[0], yugabyteCACertificateFileName),
 			)
 		}
-	case test.PostgresDBType:
+	case PostgresDBType:
 		if dc.Image == "" {
 			dc.Image = defaultPostgresImage
 		}
@@ -173,8 +179,8 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 			)
 			dc.Cmd = []string{
 				// Configure PostgreSQL to run in secure mode
-				// and listen for incoming connections on port 5433.
-				"-c", "port=5433",
+				// and listen for incoming connections on a chosen port.
+				"-c", fmt.Sprintf("port=%s", dc.DbPort),
 				"-c", "ssl=on",
 				"-c", fmt.Sprintf("ssl_cert_file=%s", filepath.Join("/creds", PostgresPublicKeyFileName)),
 				"-c", fmt.Sprintf("ssl_key_file=%s", filepath.Join("/creds", PostgresPrivateKeyFileName)),
@@ -186,6 +192,9 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 
 	if dc.Name == "" {
 		dc.Name = fmt.Sprintf(defaultDBDeploymentTemplateName, dc.DatabaseType)
+		if dc.TLSConfig != nil {
+			dc.Name += fmt.Sprintf("_with_tls_%s", uuid.NewString()[0:8])
+		}
 	}
 
 	if dc.HostIP == "" {
@@ -206,9 +215,6 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 	}
 	if dc.client == nil {
 		dc.client = test.GetDockerClient(t)
-	}
-	if dc.TLSConfig != nil {
-		dc.Name += fmt.Sprintf("_with_tls_%s", uuid.NewString()[0:8])
 	}
 }
 
@@ -378,11 +384,12 @@ func (dc *DatabaseContainer) ContainerID() string {
 // ReadPasswordFromContainer extracts the randomly generated password from a file inside the container.
 // This is required because YugabyteDB, when running in secure mode, doesn't allow default passwords
 // and instead generates a random one at startup.
-// If no password is found, the default one will be returned.
+// This method being called only when a secured Yugabyted node is started.
+// If the file doesn’t exist, the test should fail.
+// If the file exists but doesn’t contain a password (no password found), we fall back to the default password.
 func (dc *DatabaseContainer) ReadPasswordFromContainer(t *testing.T, filePath string) string {
 	t.Helper()
-	output, exitCode := dc.ExecuteCommand(t, []string{"cat", filePath})
-	require.Zero(t, exitCode)
+	output := dc.ExecuteCommand(t, []string{"cat", filePath})
 	found := passwordRegex.FindStringSubmatch(output)
 	if len(found) > 1 {
 		return found[1]
@@ -392,7 +399,7 @@ func (dc *DatabaseContainer) ReadPasswordFromContainer(t *testing.T, filePath st
 }
 
 // ExecuteCommand executes a command and returns the container output.
-func (dc *DatabaseContainer) ExecuteCommand(t *testing.T, cmd []string) (string, int) {
+func (dc *DatabaseContainer) ExecuteCommand(t *testing.T, cmd []string) string {
 	t.Helper()
 	require.NotNil(t, dc.client)
 	t.Logf("executing %s", strings.Join(cmd, " "))
@@ -411,8 +418,9 @@ func (dc *DatabaseContainer) ExecuteCommand(t *testing.T, cmd []string) (string,
 
 	inspect, err := dc.client.InspectExec(exec.ID)
 	require.NoError(t, err)
+	require.Zero(t, inspect.ExitCode)
 
-	return stdout.String(), inspect.ExitCode
+	return stdout.String()
 }
 
 // EnsureNodeReadinessByLogs checks the container's readiness by monitoring its logs and ensure its running correctly.
@@ -421,19 +429,5 @@ func (dc *DatabaseContainer) EnsureNodeReadinessByLogs(t *testing.T, requiredOut
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		output := dc.GetContainerLogs(t)
 		require.Contains(ct, output, requiredOutput)
-	}, 45*time.Second, 250*time.Millisecond)
-}
-
-// EnsurePostgresNodeReadiness verifies that the PostgreSQL node
-// is ready to accept connections.
-// It repeatedly executes `pg_isready` until the command
-// returns a successful exit code (0) or the timeout is reached.
-func (dc *DatabaseContainer) EnsurePostgresNodeReadiness(t *testing.T, port string) {
-	t.Helper()
-	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		_, exitCode := dc.ExecuteCommand(t, []string{
-			"bash", "-c", fmt.Sprintf("pg_isready -U yugabyte -d yugabyte -h localhost -p %s", port),
-		})
-		require.Zero(ct, exitCode)
 	}, 45*time.Second, 250*time.Millisecond)
 }

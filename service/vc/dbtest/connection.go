@@ -15,6 +15,7 @@ import (
 	"github.com/yugabyte/pgx/v4/pgxpool"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 )
 
@@ -43,7 +44,7 @@ type Connection struct {
 	Password    string
 	Database    string
 	LoadBalance bool
-	TLS         connection.DatabaseTLSConfig
+	TLS         dbconn.DatabaseTLSConfig
 }
 
 // NewConnection returns a connection parameters with the specified host:port, and the default values
@@ -58,7 +59,7 @@ func NewConnection(endpoints ...*connection.Endpoint) *Connection {
 
 // dataSourceName returns the dataSourceName to be used by the database/sql package.
 func (c *Connection) dataSourceName() (string, error) {
-	return connection.DataSourceName(connection.DataSourceNameParams{
+	return dbconn.DataSourceName(dbconn.DataSourceNameParams{
 		Username:        c.User,
 		Password:        c.Password,
 		Database:        c.Database,

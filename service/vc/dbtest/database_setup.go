@@ -22,7 +22,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 const (
@@ -31,6 +30,11 @@ const (
 
 	deploymentLocal     = "local"
 	deploymentContainer = "container"
+
+	// YugaDBType represents the usage of Yugabyte DB.
+	YugaDBType = "yugabyte"
+	// PostgresDBType represents the usage of PostgreSQL DB.
+	PostgresDBType = "postgres"
 
 	yugaDBPort     = "5433"
 	postgresDBPort = "5432"
@@ -71,7 +75,7 @@ func getDBTypeFromEnv() string {
 	if found {
 		return strings.ToLower(val)
 	}
-	return test.YugaDBType
+	return YugaDBType
 }
 
 // PrepareTestEnv initializes a test environment for an existing or uncontrollable db instance.

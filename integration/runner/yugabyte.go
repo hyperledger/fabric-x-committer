@@ -125,7 +125,7 @@ func (cc *YugaClusterController) createNode(role string) {
 		Name:         fmt.Sprintf("yuga-%s-%s", role, uuid.New().String()),
 		Image:        defaultImage,
 		Role:         role,
-		DatabaseType: test.YugaDBType,
+		DatabaseType: dbtest.YugaDBType,
 		Network:      cc.networkName,
 	}
 	cc.nodes = append(cc.nodes, node)
@@ -161,7 +161,7 @@ func (cc *YugaClusterController) startNodes(ctx context.Context, t *testing.T) {
 	}
 
 	for _, n := range cc.IterNodesByRole(TabletNode) {
-		n.EnsureNodeReadinessByLogs(t, "syncing data to disk ... ok")
+		n.EnsureNodeReadinessByLogs(t, dbtest.YugabyteTabletNodeReadinessOutput)
 	}
 }
 
@@ -192,12 +192,9 @@ func (cc *YugaClusterController) listAllMasters(t *testing.T) string {
 		"-master_addresses", cc.getMasterAddresses(),
 		"list_all_masters",
 	}
-	var (
-		output   string
-		exitCode int
-	)
+	var output string
 	for _, n := range cc.nodes {
-		if output, exitCode = n.ExecuteCommand(t, cmd); output != "" && exitCode == 0 {
+		if output = n.ExecuteCommand(t, cmd); output != "" {
 			break
 		}
 	}

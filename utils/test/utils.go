@@ -41,13 +41,6 @@ var (
 	defaultGrpcRetryProfile connection.RetryProfile
 )
 
-const (
-	// YugaDBType represents the usage of Yugabyte DB.
-	YugaDBType = "yugabyte"
-	// PostgresDBType represents the usage of PostgreSQL DB.
-	PostgresDBType = "postgres"
-)
-
 type (
 	// GrpcServers holds the server instances and their respective configurations.
 	GrpcServers struct {

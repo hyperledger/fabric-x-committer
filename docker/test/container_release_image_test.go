@@ -23,6 +23,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
 	testutils "github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -61,19 +62,14 @@ const (
 	defaultDBPort = "5433"
 )
 
-var (
-	// enforcePostgresSSLScript enforces SSL-only client connections to a PostgreSQL instance by updating pg_hba.conf.
-	enforcePostgresSSLScript = []string{
-		"sh", "-c",
-		`sed -i 's/^host all all all scram-sha-256$/hostssl all all 0.0.0.0\/0 scram-sha-256/' ` +
-			`/var/lib/postgresql/data/pg_hba.conf`,
-	}
-
-	// reloadPostgresConfigScript reloads the PostgreSQL server configuration without restarting the instance.
-	reloadPostgresConfigScript = []string{
-		"psql", "-U", "yugabyte", "-c", "SELECT pg_reload_conf();",
-	}
-)
+// enforcePostgresSSLAndReloadConfigScript enforces SSL-only client connections to a PostgreSQL
+// instance by updating pg_hba.conf and reloads its server configuration without restarting the instance.
+var enforcePostgresSSLAndReloadConfigScript = []string{
+	"sh", "-c",
+	`sed -i 's/^host all all all scram-sha-256$/hostssl all all 0.0.0.0\/0 scram-sha-256/' ` +
+		`/var/lib/postgresql/data/pg_hba.conf`,
+	`psql -U yugabyte -c "SELECT pg_reload_conf();"`,
+}
 
 // TestCommitterReleaseImagesWithTLS runs the committer components in different Docker containers with different TLS
 // modes and verifies it starts and connect successfully.
@@ -97,7 +93,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	committerNodes := []string{"verifier", "vc", "query", "coordinator", "sidecar"}
 
 	credsFactory := testutils.NewCredentialsFactory(t)
-	for _, dbType := range []string{testutils.YugaDBType, testutils.PostgresDBType} {
+	for _, dbType := range []string{dbtest.YugaDBType, dbtest.PostgresDBType} {
 		t.Run(fmt.Sprintf("database:%s", dbType), func(t *testing.T) {
 			t.Parallel()
 			for _, mode := range testutils.ServerModes {
@@ -170,34 +166,31 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 
 	// This is relevant if a different CA was used to issue the DB's TLS certificates.
 	require.NotEmpty(t, tlsConfig.CACertPaths)
-	conn.TLS = connection.DatabaseTLSConfig{
+	conn.TLS = dbconn.DatabaseTLSConfig{
 		Mode:       connection.OneSideTLSMode,
 		CACertPath: tlsConfig.CACertPaths[0],
 	}
 
 	// post start container tweaking
 	switch node.DatabaseType {
-	case testutils.YugaDBType:
+	case dbtest.YugaDBType:
 		// Must run after node startup to ensure proper root ownership and permissions for the TLS certificate files.
-		_, exitCode := node.ExecuteCommand(t, []string{
+		node.ExecuteCommand(t, []string{
 			"chown", "root:root",
 			filepath.Join("/creds", dbtest.YugabytePublicKeyFileName),
 			filepath.Join("/creds", dbtest.YugabytePrivateKeyFileName),
 		})
-		require.Zero(t, exitCode)
 		node.EnsureNodeReadinessByLogs(t, dbtest.YugabytedReadinessOutput)
 		conn.Password = node.ReadPasswordFromContainer(t, containerPathForYugabytePassword)
-	case testutils.PostgresDBType:
+	case dbtest.PostgresDBType:
 		// Must run after node startup to ensure proper root ownership and permissions for the TLS certificate files.
-		_, exitCode := node.ExecuteCommand(t, []string{
+		node.ExecuteCommand(t, []string{
 			"chown", "postgres:postgres",
 			filepath.Join("/creds", dbtest.PostgresPublicKeyFileName),
 			filepath.Join("/creds", dbtest.PostgresPrivateKeyFileName),
 		})
-		require.Zero(t, exitCode)
-		node.EnsurePostgresNodeReadiness(t, "5433")
-		_, exitCode = node.ExecuteCommand(t, append(enforcePostgresSSLScript, reloadPostgresConfigScript...))
-		require.Zero(t, exitCode)
+		node.EnsureNodeReadinessByLogs(t, dbtest.PostgresReadinesssOutput)
+		node.ExecuteCommand(t, enforcePostgresSSLAndReloadConfigScript)
 	default:
 		t.Fatalf("Unsupported database type: %s", node.DatabaseType)
 	}
