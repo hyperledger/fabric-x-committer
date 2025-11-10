@@ -43,6 +43,7 @@ func TestSerializeVerificationKey(t *testing.T) {
 			t.Parallel()
 			privKey, err := ecdsa.GenerateKey(tt.curve, rand.Reader)
 			require.NoError(t, err)
+			require.NotNil(t, privKey)
 
 			_, err = SerializeVerificationKey(&privKey.PublicKey)
 			require.NoError(t, err)

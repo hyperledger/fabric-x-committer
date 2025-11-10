@@ -73,15 +73,13 @@ func TestUnwrapEnvelopeGoodInput(t *testing.T) {
 		ChannelId: "test-channel",
 	}
 
-	expectedHeader := &common.Header{
-		ChannelHeader: protoutil.MarshalOrPanic(expectedChannelHeader),
-	}
-
 	// Wrap
 	wrappedEnvelope := protoutil.MarshalOrPanic(&common.Envelope{
 		Payload: protoutil.MarshalOrPanic(&common.Payload{
-			Header: expectedHeader,
-			Data:   expectedPayload,
+			Header: &common.Header{
+				ChannelHeader: protoutil.MarshalOrPanic(expectedChannelHeader),
+			},
+			Data: expectedPayload,
 		}),
 	})
 
