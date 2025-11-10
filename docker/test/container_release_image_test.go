@@ -175,20 +175,12 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 	switch node.DatabaseType {
 	case dbtest.YugaDBType:
 		// Must run after node startup to ensure proper root ownership and permissions for the TLS certificate files.
-		node.ExecuteCommand(t, []string{
-			"chown", "root:root",
-			filepath.Join("/creds", dbtest.YugabytePublicKeyFileName),
-			filepath.Join("/creds", dbtest.YugabytePrivateKeyFileName),
-		})
+		node.ExecuteCommand(t, []string{"bash", "-c", "chown root:root /creds/*"})
 		node.EnsureNodeReadinessByLogs(t, dbtest.YugabytedReadinessOutput)
 		conn.Password = node.ReadPasswordFromContainer(t, containerPathForYugabytePassword)
 	case dbtest.PostgresDBType:
 		// Must run after node startup to ensure proper root ownership and permissions for the TLS certificate files.
-		node.ExecuteCommand(t, []string{
-			"chown", "postgres:postgres",
-			filepath.Join("/creds", dbtest.PostgresPublicKeyFileName),
-			filepath.Join("/creds", dbtest.PostgresPrivateKeyFileName),
-		})
+		node.ExecuteCommand(t, []string{"bash", "-c", "chown postgres:postgres /creds/*"})
 		node.EnsureNodeReadinessByLogs(t, dbtest.PostgresReadinesssOutput)
 		node.ExecuteCommand(t, enforcePostgresSSLAndReloadConfigScript)
 	default:
