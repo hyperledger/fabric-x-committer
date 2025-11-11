@@ -33,8 +33,6 @@ import (
 const (
 	// We expect at least 3 blocks for a valid test run.
 	defaultExpectedTXs = defaultBlockSize * 3
-	// Each server's SAN is localhost.
-	defaultServerSAN = "localhost"
 )
 
 // We can enforce exact limits only for the sidecar and the coordinator.
@@ -49,7 +47,7 @@ func TestLoadGenForLoadGen(t *testing.T) {
 	for _, mode := range test.ServerModes {
 		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
-			serverTLSConfig, clientTLSConfig := createServerAndClientTLSConfig(t, mode)
+			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
 			for _, limit := range defaultLimits {
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
@@ -84,7 +82,7 @@ func TestLoadGenForVCService(t *testing.T) {
 	for _, mode := range test.ServerModes {
 		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
-			serverTLSConfig, clientTLSConfig := createServerAndClientTLSConfig(t, mode)
+			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
 			for _, limit := range defaultLimits {
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
@@ -104,7 +102,7 @@ func TestLoadGenForSigVerifier(t *testing.T) {
 	for _, mode := range test.ServerModes {
 		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
-			serverTLSConfig, clientTLSConfig := createServerAndClientTLSConfig(t, mode)
+			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
 			for _, limit := range defaultLimits {
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
@@ -145,7 +143,7 @@ func TestLoadGenForCoordinator(t *testing.T) {
 	for _, mode := range test.ServerModes {
 		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
-			serverTLSConfig, clientTLSConfig := createServerAndClientTLSConfig(t, mode)
+			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
 			for _, limit := range append(
 				defaultLimits,
 				&adapters.GenerateLimit{Blocks: 5},
@@ -191,7 +189,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 	for _, mode := range test.ServerModes {
 		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
-			serverTLSConfig, clientTLSConfig := createServerAndClientTLSConfig(t, mode)
+			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
 			for _, limit := range append(
 				defaultLimits,
 				&adapters.GenerateLimit{Blocks: 5},
@@ -208,18 +206,18 @@ func TestLoadGenForSidecar(t *testing.T) {
 					// To avoid manually pre-choosing ports that might conflict with other tests,
 					// we pre allocate them by starting a listener that picks a port automatically and bind to it.
 					// In real evaluation scenario, the ports will be selected by the deployment infrastructure.
-					sidecarServerConf := preAllocatePorts(t)
+					sidecarServerConf := preAllocatePorts(t, serverTLSConfig)
 					ordererServers := make([]*connection.ServerConfig, 3)
 					for i := range ordererServers {
-						ordererServers[i] = preAllocatePorts(t)
+						ordererServers[i] = preAllocatePorts(t, serverTLSConfig)
 					}
-					sidecarServerConf.TLS = serverTLSConfig
 					// Start server under test
 					sidecarConf := &sidecar.Config{
 						Server: sidecarServerConf,
 						Orderer: ordererconn.Config{
 							Connection: ordererconn.ConnectionConfig{
 								Endpoints: ordererconn.NewEndpoints(0, "org", ordererServers...),
+								TLS:       clientTLSConfig,
 							},
 							ChannelID:     clientConf.LoadProfile.Transaction.Policy.ChannelID,
 							Identity:      clientConf.LoadProfile.Transaction.Policy.Identity,
@@ -253,109 +251,136 @@ func TestLoadGenForSidecar(t *testing.T) {
 
 func TestLoadGenForOrderer(t *testing.T) {
 	t.Parallel()
-	for _, limit := range defaultLimits {
-		t.Run(limitToString(limit), func(t *testing.T) {
+	for _, mode := range test.ServerModes {
+		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
-			clientConf := DefaultClientConf()
-			clientConf.Limit = limit
-			// Start dependencies
-			orderer, ordererServer := mock.StartMockOrderingServices(
-				t, &mock.OrdererConfig{NumService: 3, BlockSize: 100},
-			)
-			_, coordinatorServer := mock.StartMockCoordinatorService(t)
+			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
+			for _, limit := range defaultLimits {
+				t.Run(limitToString(limit), func(t *testing.T) {
+					t.Parallel()
+					clientConf := DefaultClientConf()
+					clientConf.Limit = limit
+					numService := 3
+					sc := make([]*connection.ServerConfig, numService)
+					for i := range sc {
+						sc[i] = connection.NewLocalHostServerWithTLS(serverTLSConfig)
+					}
+					// Start dependencies
+					orderer, ordererServer := mock.StartMockOrderingServices(
+						t, &mock.OrdererConfig{ServerConfigs: sc, NumService: numService, BlockSize: 100},
+					)
+					_, coordinatorServer := mock.StartMockCoordinatorService(t)
 
-			endpoints := ordererconn.NewEndpoints(0, "msp", ordererServer.Configs...)
-			sidecarConf := &sidecar.Config{
-				Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
-				Orderer: ordererconn.Config{
-					Connection: ordererconn.ConnectionConfig{
-						Endpoints: endpoints,
-					},
-					ChannelID:     clientConf.LoadProfile.Transaction.Policy.ChannelID,
-					Identity:      clientConf.LoadProfile.Transaction.Policy.Identity,
-					ConsensusType: ordererconn.Bft,
-				},
-				LastCommittedBlockSetInterval: 100 * time.Millisecond,
-				WaitingTxsLimit:               5000,
-				Committer:                     test.NewInsecureClientConfig(&coordinatorServer.Configs[0].Endpoint),
-				Monitoring:                    defaultMonitoring(),
-				Ledger: sidecar.LedgerConfig{
-					Path: t.TempDir(),
-				},
+					endpoints := ordererconn.NewEndpoints(0, "msp", ordererServer.Configs...)
+					sidecarConf := &sidecar.Config{
+						Server: connection.NewLocalHostServerWithTLS(serverTLSConfig),
+						Orderer: ordererconn.Config{
+							Connection: ordererconn.ConnectionConfig{
+								Endpoints: endpoints,
+								TLS:       clientTLSConfig,
+							},
+							ChannelID:     clientConf.LoadProfile.Transaction.Policy.ChannelID,
+							Identity:      clientConf.LoadProfile.Transaction.Policy.Identity,
+							ConsensusType: ordererconn.Bft,
+						},
+						LastCommittedBlockSetInterval: 100 * time.Millisecond,
+						WaitingTxsLimit:               5000,
+						Committer: test.NewInsecureClientConfig(
+							&coordinatorServer.Configs[0].Endpoint,
+						),
+						Monitoring: defaultMonitoring(),
+						Ledger: sidecar.LedgerConfig{
+							Path: t.TempDir(),
+						},
+					}
+
+					// Start sidecar.
+					service, err := sidecar.New(sidecarConf)
+					require.NoError(t, err)
+					t.Cleanup(service.Close)
+					test.RunServiceAndGrpcForTest(t.Context(), t, service, sidecarConf.Server)
+
+					// Submit default config block.
+					require.NotNil(t, clientConf.LoadProfile)
+					clientConf.LoadProfile.Transaction.Policy.OrdererEndpoints = endpoints
+					configBlock, err := workload.CreateConfigBlock(clientConf.LoadProfile.Transaction.Policy)
+					require.NoError(t, err)
+					err = orderer.SubmitBlock(t.Context(), configBlock)
+					require.NoError(t, err)
+
+					// Start client
+					clientConf.Adapter.OrdererClient = &adapters.OrdererClientConfig{
+						SidecarClient:        test.NewTLSClientConfig(clientTLSConfig, &sidecarConf.Server.Endpoint),
+						Orderer:              sidecarConf.Orderer,
+						BroadcastParallelism: 5,
+					}
+					testLoadGenerator(t, clientConf)
+				})
 			}
-
-			// Start sidecar.
-			service, err := sidecar.New(sidecarConf)
-			require.NoError(t, err)
-			t.Cleanup(service.Close)
-			test.RunServiceAndGrpcForTest(t.Context(), t, service, sidecarConf.Server)
-
-			// Submit default config block.
-			require.NotNil(t, clientConf.LoadProfile)
-			clientConf.LoadProfile.Transaction.Policy.OrdererEndpoints = endpoints
-			configBlock, err := workload.CreateConfigBlock(clientConf.LoadProfile.Transaction.Policy)
-			require.NoError(t, err)
-			err = orderer.SubmitBlock(t.Context(), configBlock)
-			require.NoError(t, err)
-
-			// Start client
-			clientConf.Adapter.OrdererClient = &adapters.OrdererClientConfig{
-				SidecarClient:        test.NewInsecureClientConfig(&sidecarConf.Server.Endpoint),
-				Orderer:              sidecarConf.Orderer,
-				BroadcastParallelism: 5,
-			}
-			testLoadGenerator(t, clientConf)
 		})
 	}
 }
 
 func TestLoadGenForOnlyOrderer(t *testing.T) {
 	t.Parallel()
-	for _, limit := range defaultLimits {
-		clientConf := DefaultClientConf()
-		clientConf.Limit = limit
-		t.Run(limitToString(limit), func(t *testing.T) {
+	for _, mode := range test.ServerModes {
+		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
-			// Start dependencies
-			orderer, ordererServer := mock.StartMockOrderingServices(
-				t, &mock.OrdererConfig{
-					NumService: 3,
-					BlockSize:  int(clientConf.LoadProfile.Block.Size), //nolint:gosec // uint64 -> int.
-				},
-			)
+			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
+			for _, limit := range defaultLimits {
+				clientConf := DefaultClientConf()
+				clientConf.Limit = limit
+				t.Run(limitToString(limit), func(t *testing.T) {
+					t.Parallel()
+					numService := 3
+					sc := make([]*connection.ServerConfig, numService)
+					for i := range sc {
+						sc[i] = connection.NewLocalHostServerWithTLS(serverTLSConfig)
+					}
+					// Start dependencies
+					orderer, ordererServer := mock.StartMockOrderingServices(
+						t, &mock.OrdererConfig{
+							ServerConfigs: sc,
+							NumService:    numService,
+							BlockSize:     int(clientConf.LoadProfile.Block.Size), //nolint:gosec // uint64 -> int.
+						},
+					)
 
-			endpoints := ordererconn.NewEndpoints(0, "msp", ordererServer.Configs...)
+					endpoints := ordererconn.NewEndpoints(0, "msp", ordererServer.Configs...)
 
-			// Submit default config block.
-			// This is ignored when sidecar isn't used.
-			// We validate the test doesn't break when config block is delivered.
-			require.NotNil(t, clientConf.LoadProfile)
-			clientConf.LoadProfile.Transaction.Policy.OrdererEndpoints = endpoints
-			configBlock, err := workload.CreateConfigBlock(clientConf.LoadProfile.Transaction.Policy)
-			require.NoError(t, err)
-			err = orderer.SubmitBlock(t.Context(), configBlock)
-			require.NoError(t, err)
+					// Submit default config block.
+					// This is ignored when sidecar isn't used.
+					// We validate the test doesn't break when config block is delivered.
+					require.NotNil(t, clientConf.LoadProfile)
+					clientConf.LoadProfile.Transaction.Policy.OrdererEndpoints = endpoints
+					configBlock, err := workload.CreateConfigBlock(clientConf.LoadProfile.Transaction.Policy)
+					require.NoError(t, err)
+					err = orderer.SubmitBlock(t.Context(), configBlock)
+					require.NoError(t, err)
 
-			// Start client
-			clientConf.Adapter.OrdererClient = &adapters.OrdererClientConfig{
-				Orderer: ordererconn.Config{
-					Connection: ordererconn.ConnectionConfig{
-						Endpoints: endpoints,
-					},
-					ChannelID:     clientConf.LoadProfile.Transaction.Policy.ChannelID,
-					Identity:      clientConf.LoadProfile.Transaction.Policy.Identity,
-					ConsensusType: ordererconn.Bft,
-				},
-				BroadcastParallelism: 5,
+					// Start client
+					clientConf.Adapter.OrdererClient = &adapters.OrdererClientConfig{
+						Orderer: ordererconn.Config{
+							Connection: ordererconn.ConnectionConfig{
+								Endpoints: endpoints,
+								TLS:       clientTLSConfig,
+							},
+							ChannelID:     clientConf.LoadProfile.Transaction.Policy.ChannelID,
+							Identity:      clientConf.LoadProfile.Transaction.Policy.Identity,
+							ConsensusType: ordererconn.Bft,
+						},
+						BroadcastParallelism: 5,
+					}
+					testLoadGenerator(t, clientConf)
+				})
 			}
-			testLoadGenerator(t, clientConf)
 		})
 	}
 }
 
-func preAllocatePorts(t *testing.T) *connection.ServerConfig {
+func preAllocatePorts(t *testing.T, tlsConfig connection.TLSConfig) *connection.ServerConfig {
 	t.Helper()
-	server := connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig)
+	server := connection.NewLocalHostServerWithTLS(tlsConfig)
 	listener, err := server.PreAllocateListener()
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -444,16 +469,4 @@ func limitToString(m *adapters.GenerateLimit) string {
 		return "<empty>"
 	}
 	return strings.Join(out, ",")
-}
-
-// createServerAndClientTLSConfig creates tls configurations for
-// both the server and client.
-func createServerAndClientTLSConfig(t *testing.T, tlsMode string) (
-	serverTLSConfig, clientTLSConfig connection.TLSConfig,
-) {
-	t.Helper()
-	credsFactory := test.NewCredentialsFactory(t)
-	clientTLSConfig, _ = credsFactory.CreateServerCredentials(t, tlsMode, defaultServerSAN)
-	serverTLSConfig, _ = credsFactory.CreateClientCredentials(t, tlsMode)
-	return clientTLSConfig, serverTLSConfig
 }

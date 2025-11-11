@@ -211,3 +211,14 @@ func (scm *CredentialsFactory) createTLSConfig(
 		CACertPaths: []string{caCertificatePath},
 	}, tmpDir
 }
+
+// CreateServerAndClientTLSConfig creates server and client TLS configurations given a TLS mode.
+func CreateServerAndClientTLSConfig(t *testing.T, tlsMode string) (
+	serverTLSConfig, clientTLSConfig connection.TLSConfig,
+) {
+	t.Helper()
+	credsFactory := NewCredentialsFactory(t)
+	clientTLSConfig, _ = credsFactory.CreateServerCredentials(t, tlsMode, defaultHostName)
+	serverTLSConfig, _ = credsFactory.CreateClientCredentials(t, tlsMode)
+	return clientTLSConfig, serverTLSConfig
+}
