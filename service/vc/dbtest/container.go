@@ -49,7 +49,7 @@ const (
 	// SecondaryPostgresNodeReadinessOutput is the output indicating that a secondary PostgreSQL node is ready.
 	SecondaryPostgresNodeReadinessOutput = "started streaming WAL from primary"
 
-	//nolint:revive // Represents the required TLS certificate files name.
+	// Represents the required database TLS certificate files name.
 	yugabytePublicKeyFileName     = "node.db.crt"
 	yugabytePrivateKeyFileName    = "node.db.key"
 	postgresPublicKeyFileName     = "server.crt"
