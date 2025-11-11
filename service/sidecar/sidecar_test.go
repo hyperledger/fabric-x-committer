@@ -233,7 +233,6 @@ func TestSidecar(t *testing.T) {
 					NumFakeService:  3,
 				},
 			} {
-				conf := conf
 				t.Run(conf.String(), func(t *testing.T) {
 					t.Parallel()
 					env := newSidecarTestEnvWithTLS(t, conf, serverTLSConfig)

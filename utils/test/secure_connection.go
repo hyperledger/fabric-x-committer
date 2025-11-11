@@ -206,8 +206,7 @@ func createTLSConfig(
 	}, tmpDir
 }
 
-// CreateServerAndClientTLSConfig creates tls configurations for
-// both the server and client given a TLS mode.
+// CreateServerAndClientTLSConfig creates server and client TLS configurations given a TLS mode.
 func CreateServerAndClientTLSConfig(t *testing.T, tlsMode string) (
 	serverTLSConfig, clientTLSConfig connection.TLSConfig,
 ) {
