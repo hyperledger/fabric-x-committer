@@ -385,17 +385,13 @@ func (dc *DatabaseContainer) ContainerID() string {
 // This is required because YugabyteDB, when running in secure mode, doesn't allow default passwords
 // and instead generates a random one at startup.
 // This method being called only when a secured Yugabyted node is started.
-// If the file doesn’t exist, the test should fail.
-// If the file exists but doesn’t contain a password (no password found), we fall back to the default password.
+// If the file doesn’t exist or doesn't contain a password, the test should fail.
 func (dc *DatabaseContainer) ReadPasswordFromContainer(t *testing.T, filePath string) string {
 	t.Helper()
 	output := dc.ExecuteCommand(t, []string{"cat", filePath})
 	found := passwordRegex.FindStringSubmatch(output)
-	if len(found) > 1 {
-		return found[1]
-	}
-	t.Log("password not found in output, returning default password.")
-	return defaultPassword
+	require.Greater(t, len(found), 1)
+	return found[1]
 }
 
 // ExecuteCommand executes a command and returns the container output.
