@@ -106,6 +106,7 @@ func TestReadConfigSidecar(t *testing.T) {
 					Endpoints: ordererconn.NewEndpoints(
 						0, "", newServerConfig("orderer", 7050),
 					),
+					TLS: defaultClientTLSConfig,
 				},
 				ChannelID: "mychannel",
 			},
@@ -362,6 +363,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 							Endpoints: ordererconn.NewEndpoints(
 								0, "", newServerConfig("orderer", 7050),
 							),
+							TLS: defaultClientTLSConfig,
 						},
 						ChannelID:     "mychannel",
 						ConsensusType: ordererconn.Bft,

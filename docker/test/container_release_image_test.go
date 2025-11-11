@@ -214,6 +214,7 @@ func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, param
 				"SC_SIDECAR_COMMITTER_TLS_MODE=" + params.tlsMode,
 				"SC_VC_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_VERIFIER_SERVER_TLS_MODE=" + params.tlsMode,
+				"SC_SIDECAR_ORDERER_CONNECTION_TLS_MODE=" + params.tlsMode,
 				"SC_VC_DATABASE_PASSWORD=" + params.dbPassword,
 				"SC_QUERY_DATABASE_PASSWORD=" + params.dbPassword,
 			},
@@ -257,6 +258,7 @@ func startLoadgenNodeWithReleaseImage(
 			Env: []string{
 				"SC_LOADGEN_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_LOADGEN_ORDERER_CLIENT_SIDECAR_CLIENT_TLS_MODE=" + params.tlsMode,
+				"SC_LOADGEN_ORDERER_CLIENT_ORDERER_CONNECTION_TLS_MODE=" + params.tlsMode,
 			},
 		},
 		hostConfig: &container.HostConfig{
@@ -291,6 +293,9 @@ func startCommitterNodeWithTestImage(
 			Cmd:      []string{"run", params.node},
 			Tty:      true,
 			Hostname: params.node,
+			Env: []string{
+				"SC_ORDERER_SERVER_TLS_MODE=" + params.tlsMode,
+			},
 		},
 		hostConfig: &container.HostConfig{
 			NetworkMode: container.NetworkMode(params.networkName),
