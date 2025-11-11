@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
@@ -96,10 +97,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 func TestCreateConfigAndTables(t *testing.T) {
 	t.Parallel()
 	env := newValidatorAndCommitServiceTestEnvWithClient(t, 1)
-	p := &protoblocktx.NamespacePolicy{
-		Scheme:    "ECDSA",
-		PublicKey: []byte("public-key"),
-	}
+	p := policy.MakeECDSAThresholdRuleNsPolicy([]byte("publick-key"))
 	pBytes, err := proto.Marshal(p)
 	require.NoError(t, err)
 	configID := "create config"
@@ -171,7 +169,7 @@ func TestCreateConfigAndTables(t *testing.T) {
 	require.Len(t, policies.Policies, 1)
 	require.NotNil(t, policies.Policies[0])
 	require.Equal(t, utNsID, policies.Policies[0].Namespace)
-	require.Equal(t, pBytes, policies.Policies[0].Policy)
+	test.RequireProtoEqual(t, p, policies.Policies[0].Policy)
 
 	// Ensure the table exists.
 	rows, err := env.dbEnv.DB.pool.Query(ctx, fmt.Sprintf("select key, value from %s", TableName(utNsID)))

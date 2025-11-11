@@ -26,6 +26,12 @@ func DigestTxNamespace(txID string, ns *protoblocktx.TxNamespace) ([]byte, error
 	return h.Sum(nil), nil
 }
 
+func digest(data []byte) []byte {
+	h := sha256.New()
+	h.Write(data) //nolint:revive,nolintlint // Hash write never fail.
+	return h.Sum(nil)
+}
+
 // ASN1MarshalTxNamespace marshals a transactions for a given namespace index.
 // It uses the schema described in tx_schema.asn.
 func ASN1MarshalTxNamespace(txID string, ns *protoblocktx.TxNamespace) ([]byte, error) {

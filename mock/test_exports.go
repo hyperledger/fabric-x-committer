@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen/genesisconfig"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
@@ -179,7 +180,7 @@ func (e *OrdererTestEnv) SubmitConfigBlock(t *testing.T, conf *workload.ConfigBl
 	if conf.MetaNamespaceVerificationKey == nil {
 		conf.MetaNamespaceVerificationKey = e.TestConfig.MetaNamespaceVerificationKey
 	}
-	configBlock, err := workload.CreateDefaultConfigBlock(conf)
+	configBlock, err := workload.CreateDefaultConfigBlock(conf, genesisconfig.TwoOrgsSampleFabricX)
 	require.NoError(t, err)
 	e.Orderer.SubmitBlock(t.Context(), configBlock)
 	return configBlock

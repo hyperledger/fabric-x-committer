@@ -91,7 +91,7 @@ func TestConfigUpdate(t *testing.T) {
 		ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
 			ChannelID:                    c.SystemConfig.Policy.ChannelID,
 			OrdererEndpoints:             endpoints,
-			MetaNamespaceVerificationKey: metaPolicy.PublicKey,
+			MetaNamespaceVerificationKey: metaPolicy.GetThresholdRule().GetPublicKey(),
 		})
 	}
 	submitConfigBlock(ordererEnv.AllRealOrdererEndpoints())

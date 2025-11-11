@@ -25,6 +25,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
+	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
@@ -155,11 +156,7 @@ func (e *coordinatorTestEnv) ensureStreamActive(t *testing.T) {
 
 func (e *coordinatorTestEnv) createNamespaces(t *testing.T, blkNum int, nsIDs ...string) {
 	t.Helper()
-	p := &protoblocktx.NamespacePolicy{
-		Scheme:    "ECDSA",
-		PublicKey: []byte("publicKey"),
-	}
-	pBytes, err := proto.Marshal(p)
+	pBytes, err := proto.Marshal(policy.MakeECDSAThresholdRuleNsPolicy([]byte("publicKey")))
 	require.NoError(t, err)
 
 	blockNum := uint64(blkNum) //nolint:gosec // int -> uint64.
@@ -193,7 +190,7 @@ func (e *coordinatorTestEnv) createNamespaces(t *testing.T, blkNum int, nsIDs ..
 	}
 	for _, tx := range blk.Txs {
 		// The mock verifier verifies that len(tx.Namespace)==len(tx.Signatures)
-		tx.Content.Signatures = make([][]byte, len(tx.Content.Namespaces))
+		tx.Content.Endorsements = make([]*protoblocktx.Endorsements, len(tx.Content.Namespaces))
 	}
 
 	err = e.csStream.Send(blk)
@@ -253,11 +250,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 
 	preMetricsValue := test.GetIntMetricValue(t, env.coordinator.metrics.transactionReceivedTotal)
 
-	p := &protoblocktx.NamespacePolicy{
-		Scheme:    "ECDSA",
-		PublicKey: []byte("publicKey"),
-	}
-	pBytes, err := proto.Marshal(p)
+	pBytes, err := proto.Marshal(policy.MakeECDSAThresholdRuleNsPolicy([]byte("publicKey")))
 	require.NoError(t, err)
 	err = env.csStream.Send(&protocoordinatorservice.Batch{
 		Txs: []*protocoordinatorservice.Tx{
@@ -285,7 +278,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 							},
 						},
 					},
-					Signatures: make([][]byte, 2),
+					Endorsements: make([]*protoblocktx.Endorsements, 2),
 				},
 			},
 		},
@@ -370,11 +363,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 	utNsVersion := uint64(0)
 	mainKey := []byte("main-key")
 	subKey := []byte("sub-key")
-	p := &protoblocktx.NamespacePolicy{
-		Scheme:    "ECDSA",
-		PublicKey: []byte("public-key"),
-	}
-	pBytes, err := proto.Marshal(p)
+	pBytes, err := proto.Marshal(policy.MakeECDSAThresholdRuleNsPolicy([]byte("publicKey")))
 	require.NoError(t, err)
 
 	// We send a block with a series of TXs with apparent conflicts, but all should be committed successfully if
@@ -480,7 +469,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 		},
 	}
 	for _, tx := range b1.Txs {
-		tx.Content.Signatures = [][]byte{[]byte("dummy")}
+		tx.Content.Endorsements = test.CreateEndorsementsForThresholdRule([]byte("dummy"))
 	}
 
 	expectedReceived := test.GetIntMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) + len(b1.Txs)
@@ -563,7 +552,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 						Value: []byte("value1"),
 					}},
 				}},
-				Signatures: make([][]byte, 1),
+				Endorsements: make([]*protoblocktx.Endorsements, 1),
 			},
 		}},
 	})
@@ -584,10 +573,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 	// To simulate a failure scenario in which a block is partially committed, we first create block 2
 	// with two transaction but actual block 2 is supposed to have four transactions. Once the partial block 2
 	// is committed, we will restart the service and send a full block 2 with all four transactions.
-	nsPolicy, err := proto.Marshal(&protoblocktx.NamespacePolicy{
-		Scheme:    "ECDSA",
-		PublicKey: []byte("publicKey"),
-	})
+	nsPolicy, err := proto.Marshal(policy.MakeECDSAThresholdRuleNsPolicy([]byte("publicKey")))
 	require.NoError(t, err)
 	block2 := &protocoordinatorservice.Batch{
 		Txs: []*protocoordinatorservice.Tx{
@@ -601,7 +587,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 							Key: []byte("key2"),
 						}},
 					}},
-					Signatures: make([][]byte, 1),
+					Endorsements: make([]*protoblocktx.Endorsements, 1),
 				},
 			},
 			{
@@ -614,7 +600,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 							Key: []byte("key3"),
 						}},
 					}},
-					Signatures: make([][]byte, 1),
+					Endorsements: make([]*protoblocktx.Endorsements, 1),
 				},
 			},
 			{
@@ -628,7 +614,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 							Value: []byte("value1"),
 						}},
 					}},
-					Signatures: make([][]byte, 1),
+					Endorsements: make([]*protoblocktx.Endorsements, 1),
 				},
 			},
 		},
@@ -668,7 +654,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 							Key: []byte("key2"),
 						}},
 					}},
-					Signatures: make([][]byte, 1),
+					Endorsements: make([]*protoblocktx.Endorsements, 1),
 				},
 			},
 			{
@@ -681,7 +667,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 							Key: []byte("key3"),
 						}},
 					}},
-					Signatures: make([][]byte, 1),
+					Endorsements: make([]*protoblocktx.Endorsements, 1),
 				},
 			},
 			{
@@ -694,7 +680,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 							Key: []byte("key3"),
 						}},
 					}},
-					Signatures: [][]byte{[]byte("dummy")},
+					Endorsements: test.CreateEndorsementsForThresholdRule([]byte("dummy")),
 				},
 			},
 			{
@@ -721,7 +707,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 							NsVersion: 0,
 						},
 					},
-					Signatures: make([][]byte, 3),
+					Endorsements: make([]*protoblocktx.Endorsements, 3),
 				},
 			},
 			{
@@ -735,7 +721,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 							Value: []byte("value1"),
 						}},
 					}},
-					Signatures: make([][]byte, 1),
+					Endorsements: make([]*protoblocktx.Endorsements, 1),
 				},
 			},
 		},
@@ -775,7 +761,7 @@ func TestCoordinatorStreamFailureWithSidecar(t *testing.T) {
 							Key: []byte("key1"),
 						}},
 					}},
-					Signatures: [][]byte{[]byte("dummy")},
+					Endorsements: test.CreateEndorsementsForThresholdRule([]byte("dummy")),
 				},
 			},
 		},
@@ -981,7 +967,7 @@ func makeTestBlock(txPerBlock int) (*protocoordinatorservice.Batch, map[string]*
 						Key: []byte("key" + strconv.Itoa(i)),
 					}},
 				}},
-				Signatures: [][]byte{[]byte("dummy")},
+				Endorsements: test.CreateEndorsementsForThresholdRule([]byte("dummy")),
 			},
 		}
 		//nolint: gosec // int -> uint32.
