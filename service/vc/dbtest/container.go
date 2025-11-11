@@ -50,10 +50,10 @@ const (
 	SecondaryPostgresNodeReadinessOutput = "started streaming WAL from primary"
 
 	//nolint:revive // Represents the required TLS certificate files name.
-	YugabytePublicKeyFileName     = "node.db.crt"
-	YugabytePrivateKeyFileName    = "node.db.key"
-	PostgresPublicKeyFileName     = "server.crt"
-	PostgresPrivateKeyFileName    = "server.key"
+	yugabytePublicKeyFileName     = "node.db.crt"
+	yugabytePrivateKeyFileName    = "node.db.key"
+	postgresPublicKeyFileName     = "server.crt"
+	postgresPrivateKeyFileName    = "server.key"
 	yugabyteCACertificateFileName = "ca.crt"
 )
 
@@ -151,8 +151,8 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 		if dc.TLSConfig != nil {
 			require.NotEmpty(t, dc.TLSConfig.CACertPaths)
 			dc.Binds = append(dc.Binds,
-				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CertPath, YugabytePublicKeyFileName),
-				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.KeyPath, YugabytePrivateKeyFileName),
+				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CertPath, yugabytePublicKeyFileName),
+				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.KeyPath, yugabytePrivateKeyFileName),
 				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CACertPaths[0], yugabyteCACertificateFileName),
 			)
 		}
@@ -174,16 +174,16 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 
 		if dc.TLSConfig != nil {
 			dc.Binds = append(dc.Binds,
-				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CertPath, PostgresPublicKeyFileName),
-				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.KeyPath, PostgresPrivateKeyFileName),
+				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CertPath, postgresPublicKeyFileName),
+				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.KeyPath, postgresPrivateKeyFileName),
 			)
 			dc.Cmd = []string{
 				// Configure PostgreSQL to run in secure mode
 				// and listen for incoming connections on a chosen port.
 				"-c", fmt.Sprintf("port=%s", dc.DbPort),
 				"-c", "ssl=on",
-				"-c", fmt.Sprintf("ssl_cert_file=%s", filepath.Join("/creds", PostgresPublicKeyFileName)),
-				"-c", fmt.Sprintf("ssl_key_file=%s", filepath.Join("/creds", PostgresPrivateKeyFileName)),
+				"-c", fmt.Sprintf("ssl_cert_file=%s", filepath.Join("/creds", postgresPublicKeyFileName)),
+				"-c", fmt.Sprintf("ssl_key_file=%s", filepath.Join("/creds", postgresPrivateKeyFileName)),
 			}
 		}
 	default:
