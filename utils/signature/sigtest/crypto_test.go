@@ -40,16 +40,6 @@ func TestVerificationAndSigningKeys(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			privKey, err := ecdsa.GenerateKey(tt.curve, rand.Reader)
-			require.NoError(t, err)
-			require.NotNil(t, privKey)
-
-			_, err = SerializeVerificationKey(&privKey.PublicKey)
-			require.NoError(t, err)
-		})
-
 		t.Run(fmt.Sprintf("Serialize %s VerificationKey", tt.name),
 			func(t *testing.T) {
 				t.Parallel()
@@ -76,25 +66,25 @@ func TestVerificationAndSigningKeys(t *testing.T) {
 			})
 	}
 
-	t.Run("SigningKey Key Empty", func(t *testing.T) {
+	t.Run("Signing Key Empty", func(t *testing.T) {
 		t.Parallel()
 		_, err := SerializeSigningKey(&ecdsa.PrivateKey{})
 		require.Error(t, err)
 	})
 
-	t.Run("SigningKey Key is nil", func(t *testing.T) {
+	t.Run("Signing Key is nil", func(t *testing.T) {
 		t.Parallel()
 		_, err := SerializeSigningKey(nil)
 		require.Error(t, err)
 	})
 
-	t.Run("VerificationKey Key Empty", func(t *testing.T) {
+	t.Run("Verification Key Empty", func(t *testing.T) {
 		t.Parallel()
 		_, err := SerializeVerificationKey(&ecdsa.PublicKey{})
 		require.Error(t, err)
 	})
 
-	t.Run("VerificationKey Key is nil", func(t *testing.T) {
+	t.Run("Verification Key is nil", func(t *testing.T) {
 		t.Parallel()
 		_, err := SerializeVerificationKey(nil)
 		require.Error(t, err)
