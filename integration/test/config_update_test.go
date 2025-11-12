@@ -145,7 +145,7 @@ func TestConfigUpdate(t *testing.T) {
 	}
 
 	t.Log("We expect the block to be held")
-	nextExpectedBlock, err := c.CoordinatorClient.GetNextExpectedBlockNumber(t.Context(), nil)
+	nextExpectedBlock, err := c.CoordinatorClient.GetNextBlockNumberToCommit(t.Context(), nil)
 	require.NoError(t, err)
 	require.NotNil(t, nextExpectedBlock)
 	require.Equal(t, holdingBlock, nextExpectedBlock.Number)

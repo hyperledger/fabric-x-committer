@@ -32,7 +32,7 @@ import (
 type Coordinator struct {
 	protocoordinatorservice.CoordinatorServer
 	lastCommittedBlock      atomic.Pointer[protoblocktx.BlockInfo]
-	nextExpectedBlockNumber atomic.Uint64
+	nextBlockNumberToCommit atomic.Uint64
 	streamActive            atomic.Bool
 	numWaitingTxs           atomic.Int32
 	txsStatus               *fifoCache[*protoblocktx.StatusWithHeight]
@@ -78,12 +78,9 @@ func (c *Coordinator) SetLastCommittedBlockNumber(
 	return nil, nil
 }
 
-// GetNextExpectedBlockNumber returns the next expected block number to be received by the coordinator.
-func (c *Coordinator) GetNextExpectedBlockNumber(
-	context.Context,
-	*emptypb.Empty,
-) (*protoblocktx.BlockInfo, error) {
-	return &protoblocktx.BlockInfo{Number: c.nextExpectedBlockNumber.Load()}, nil
+// GetNextBlockNumberToCommit returns the next expected block number to be received by the coordinator.
+func (c *Coordinator) GetNextBlockNumberToCommit(context.Context, *emptypb.Empty) (*protoblocktx.BlockInfo, error) {
+	return &protoblocktx.BlockInfo{Number: c.nextBlockNumberToCommit.Load()}, nil
 }
 
 // GetTransactionsStatus returns the status of given set of transaction identifiers.
@@ -152,7 +149,7 @@ func (c *Coordinator) receiveBlocks(
 		if len(block.Rejected) > 0 {
 			maxBlock = max(maxBlock, block.Rejected[len(block.Rejected)-1].Ref.BlockNum)
 		}
-		c.nextExpectedBlockNumber.Store(maxBlock + 1)
+		c.nextBlockNumberToCommit.Store(maxBlock + 1)
 
 		logger.Debugf("Received batch with %d transactions", len(block.Txs))
 		c.numWaitingTxs.Add(int32(len(block.Txs))) //nolint:gosec

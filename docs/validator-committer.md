@@ -279,10 +279,10 @@ SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.BlockInfo, opt
 about the latest block number that has been successfully committed. This is used during recovery.
 
 ```go
-GetLastCommittedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.LastCommittedBlock, error)
+GetNextBlockNumberToCommit(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
 ```
 
- * This API retrieves the last committed block number set by the Sidecar.
+ * This API retrieves the next block number to be committed, which is set by the Sidecar.
 
 ```go
 GetTransactionsStatus(ctx context.Context, in *protoblocktx.QueryStatus, opts ...grpc.CallOption) (*protoblocktx.TransactionsStatus, error)

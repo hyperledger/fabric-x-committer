@@ -142,10 +142,10 @@ func (vcm *validatorCommitterManager) setLastCommittedBlockNumber(
 	return errors.Wrap(err, "failed setting the last committed block number")
 }
 
-func (vcm *validatorCommitterManager) getNextExpectedBlockNumber(
+func (vcm *validatorCommitterManager) getNextBlockNumberToCommit(
 	ctx context.Context,
 ) (*protoblocktx.BlockInfo, error) {
-	ret, err := vcm.commonClient.GetNextExpectedBlockNumber(ctx, nil)
+	ret, err := vcm.commonClient.GetNextBlockNumberToCommit(ctx, nil)
 	return ret, errors.Wrap(err, "failed getting the next expected block number")
 }
 

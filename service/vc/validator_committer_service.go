@@ -203,8 +203,8 @@ func (vc *ValidatorCommitterService) SetLastCommittedBlockNumber(
 	return nil, grpcerror.WrapInternalError(err)
 }
 
-// GetNextExpectedBlockNumber get the last committed block number in the database/ledger.
-func (vc *ValidatorCommitterService) GetNextExpectedBlockNumber(
+// GetNextBlockNumberToCommit get the last committed block number in the database/ledger.
+func (vc *ValidatorCommitterService) GetNextBlockNumberToCommit(
 	ctx context.Context,
 	_ *emptypb.Empty,
 ) (*protoblocktx.BlockInfo, error) {

@@ -65,11 +65,8 @@ func (v *VcService) SetLastCommittedBlockNumber(
 	return nil, nil
 }
 
-// GetNextExpectedBlockNumber get the next expected block number in the database/ledger.
-func (v *VcService) GetNextExpectedBlockNumber(
-	context.Context,
-	*emptypb.Empty,
-) (*protoblocktx.BlockInfo, error) {
+// GetNextBlockNumberToCommit get the next expected block number in the database/ledger.
+func (v *VcService) GetNextBlockNumberToCommit(context.Context, *emptypb.Empty) (*protoblocktx.BlockInfo, error) {
 	return v.nextExpectedBlock.Load(), nil
 }
 

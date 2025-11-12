@@ -291,7 +291,7 @@ func TestSidecarConfigUpdate(t *testing.T) {
 	}
 
 	t.Log("We expect the block to be held")
-	nextExpectedBlock, err := env.coordinator.GetNextExpectedBlockNumber(ctx, nil)
+	nextExpectedBlock, err := env.coordinator.GetNextBlockNumberToCommit(ctx, nil)
 	require.NoError(t, err)
 	require.NotNil(t, nextExpectedBlock)
 	require.Equal(t, expectedBlock, nextExpectedBlock.Number)
@@ -394,7 +394,7 @@ func TestSidecarRecovery(t *testing.T) {
 	require.NoError(t, blkstorage.ResetBlockStore(env.config.Ledger.Path))
 	ctx2, cancel2 := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel2)
-	checkNextExpectedBlock(ctx2, t, env.coordinator, 11)
+	checkNextBlockNumberToCommit(ctx2, t, env.coordinator, 11)
 
 	// NOTE: The Fabric block store implementation used by the sidecar
 	//       maintains the ledger height in memory and updates it whenever
@@ -433,7 +433,7 @@ func TestSidecarRecovery(t *testing.T) {
 	t.Log("9. Send the next expected block by the coordinator.")
 	env.sendTransactionsAndEnsureCommitted(ctx2, t, 11)
 
-	checkNextExpectedBlock(ctx2, t, env.coordinator, 12)
+	checkNextBlockNumberToCommit(ctx2, t, env.coordinator, 12)
 	ensureAtLeastHeight(t, env.sidecar.ledgerService, 12)
 	cancel2()
 }
@@ -660,7 +660,7 @@ func (env *sidecarTestEnv) requireBlock(
 	expectedBlockNumber uint64,
 ) *common.Block {
 	t.Helper()
-	checkNextExpectedBlock(ctx, t, env.coordinator, expectedBlockNumber+1)
+	checkNextBlockNumberToCommit(ctx, t, env.coordinator, expectedBlockNumber+1)
 	ensureAtLeastHeight(t, env.sidecar.ledgerService, expectedBlockNumber+1)
 
 	block, ok := channel.NewReader(ctx, env.committedBlock).Read()
@@ -719,7 +719,7 @@ func TestConstructStatuses(t *testing.T) {
 	require.Equal(t, expectedFinalStatuses, actualFinalStatuses)
 }
 
-func checkNextExpectedBlock(
+func checkNextBlockNumberToCommit(
 	ctx context.Context,
 	t *testing.T,
 	coordinator *mock.Coordinator,
@@ -727,7 +727,7 @@ func checkNextExpectedBlock(
 ) {
 	t.Helper()
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		nextExpectedBlock, err := coordinator.GetNextExpectedBlockNumber(ctx, nil)
+		nextExpectedBlock, err := coordinator.GetNextBlockNumberToCommit(ctx, nil)
 		require.NoError(ct, err)
 		require.NotNil(ct, nextExpectedBlock)
 		require.Equal(ct, expectedBlockNumber, nextExpectedBlock.Number)

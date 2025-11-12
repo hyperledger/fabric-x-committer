@@ -68,7 +68,7 @@ func TestCoordinatorSecureConnection(t *testing.T) {
 			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
 				t.Helper()
 				client := createCoordinatorClientWithTLS(t, &env.coordinator.config.Server.Endpoint, cfg)
-				_, err := client.GetNextExpectedBlockNumber(ctx, nil)
+				_, err := client.GetNextBlockNumberToCommit(ctx, nil)
 				return err
 			}
 		},
@@ -237,7 +237,7 @@ func TestGetNextBlockNumWithActiveStream(t *testing.T) {
 
 	env.ensureStreamActive(t)
 
-	_, err := env.client.GetNextExpectedBlockNumber(ctx, nil)
+	_, err := env.client.GetNextBlockNumberToCommit(ctx, nil)
 	require.NoError(t, err)
 }
 
@@ -306,7 +306,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 	_, err = env.coordinator.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1})
 	require.NoError(t, err)
 
-	nextExpectedBlock, err := env.coordinator.GetNextExpectedBlockNumber(ctx, nil)
+	nextExpectedBlock, err := env.coordinator.GetNextBlockNumberToCommit(ctx, nil)
 	require.NoError(t, err)
 	require.NotNil(t, nextExpectedBlock)
 	require.Equal(t, uint64(2), nextExpectedBlock.Number)
@@ -351,7 +351,7 @@ func TestCoordinatorServiceRejectedTx(t *testing.T) {
 	_, err = env.coordinator.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1})
 	require.NoError(t, err)
 
-	nextExpectedBlock, err := env.coordinator.GetNextExpectedBlockNumber(ctx, nil)
+	nextExpectedBlock, err := env.coordinator.GetNextBlockNumberToCommit(ctx, nil)
 	require.NoError(t, err)
 	require.NotNil(t, nextExpectedBlock)
 	require.Equal(t, uint64(2), nextExpectedBlock.Number)
@@ -575,7 +575,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 	_, err = env.client.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1})
 	require.NoError(t, err)
 
-	nextExpectedBlock, err := env.client.GetNextExpectedBlockNumber(ctx, nil)
+	nextExpectedBlock, err := env.client.GetNextBlockNumberToCommit(ctx, nil)
 	require.NoError(t, err)
 	require.NotNil(t, nextExpectedBlock)
 	require.Equal(t, uint64(2), nextExpectedBlock.Number)

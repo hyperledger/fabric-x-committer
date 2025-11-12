@@ -166,12 +166,7 @@ SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.BlockInfo, opt
   The Coordinator then passes this to the Validator-Committer service to store in the state database. This is used for state synchronization during recovery.
 
 ```go
-GetLastCommittedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.LastCommittedBlock, error)
-```
-  * This API retrieves the last committed block number by querying the Validator-Committer service, which reads the data from the state database.
-
-```go
-GetNextExpectedBlockNumber(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
+GetNextBlockNumberToCommit(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
 ```
   * This API is used by the Sidecar on startup/recovery to ask the Coordinator which block it should fetch next from the ordering service.
 

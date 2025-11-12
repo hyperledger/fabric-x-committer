@@ -46,7 +46,7 @@ func (c *VcAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	if setupError != nil {
 		return errors.Wrap(setupError, "failed to setup system tables and namespaces")
 	}
-	if nextExpectedBlock, getErr := commonClient.GetNextExpectedBlockNumber(ctx, nil); getErr != nil {
+	if nextExpectedBlock, getErr := commonClient.GetNextBlockNumberToCommit(ctx, nil); getErr != nil {
 		// We do not return error as we can proceed assuming no blocks were committed.
 		logger.Infof("failed getting last committed block number: %v", getErr)
 	} else if nextExpectedBlock != nil {
