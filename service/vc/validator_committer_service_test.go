@@ -170,7 +170,7 @@ func TestCreateConfigAndTables(t *testing.T) {
 	require.Len(t, policies.Policies, 1)
 	require.NotNil(t, policies.Policies[0])
 	require.Equal(t, utNsID, policies.Policies[0].Namespace)
-	test.RequireProtoEqual(t, p, policies.Policies[0].Policy)
+	require.Equal(t, pBytes, policies.Policies[0].Policy)
 
 	// Ensure the table exists.
 	rows, err := env.dbEnv.DB.pool.Query(ctx, fmt.Sprintf("select key, value from %s", TableName(utNsID)))

@@ -35,19 +35,14 @@ func newPolicyManager() *policyManager {
 	}
 }
 
-func (pm *policyManager) updateFromTx(namespaces []*protoblocktx.TxNamespace) error {
+func (pm *policyManager) updateFromTx(namespaces []*protoblocktx.TxNamespace) {
 	var updates []*protosigverifierservice.Update
 	for _, ns := range namespaces {
-		u, err := policy.GetUpdatesFromNamespace(ns)
-		if err != nil {
-			return err
-		}
-		if u != nil {
+		if u := policy.GetUpdatesFromNamespace(ns); u != nil {
 			updates = append(updates, u)
 		}
 	}
 	pm.update(updates...)
-	return nil
 }
 
 func (pm *policyManager) update(update ...*protosigverifierservice.Update) {

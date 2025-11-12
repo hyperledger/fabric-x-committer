@@ -21,9 +21,8 @@ func DigestTxNamespace(txID string, ns *protoblocktx.TxNamespace) ([]byte, error
 	if err != nil {
 		return nil, err
 	}
-	h := sha256.New()
-	h.Write(derBytes) //nolint:revive,nolintlint // Hash write never fail.
-	return h.Sum(nil), nil
+
+	return digest(derBytes), nil
 }
 
 func digest(data []byte) []byte {

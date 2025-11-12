@@ -50,25 +50,21 @@ var ErrInvalidNamespaceID = errors.New("invalid namespace ID")
 var ErrInvalidPolicy = errors.New("invalid namespace policy")
 
 // GetUpdatesFromNamespace translates a namespace TX to policy updates.
-func GetUpdatesFromNamespace(nsTx *protoblocktx.TxNamespace) (*protosigverifierservice.Update, error) {
+func GetUpdatesFromNamespace(nsTx *protoblocktx.TxNamespace) *protosigverifierservice.Update {
 	switch nsTx.NsId {
 	case types.MetaNamespaceID:
 		pd := make([]*protoblocktx.PolicyItem, len(nsTx.ReadWrites))
 		for i, rw := range nsTx.ReadWrites {
-			nsPolicy := &protoblocktx.NamespacePolicy{}
-			if err := proto.Unmarshal(rw.Value, nsPolicy); err != nil {
-				return nil, ErrInvalidPolicy
-			}
 			pd[i] = &protoblocktx.PolicyItem{
 				Namespace: string(rw.Key),
-				Policy:    nsPolicy,
+				Policy:    rw.Value,
 			}
 		}
 		return &protosigverifierservice.Update{
 			NamespacePolicies: &protoblocktx.NamespacePolicies{
 				Policies: pd,
 			},
-		}, nil
+		}
 	case types.ConfigNamespaceID:
 		for _, rw := range nsTx.BlindWrites {
 			if string(rw.Key) == types.ConfigKey {
@@ -76,11 +72,11 @@ func GetUpdatesFromNamespace(nsTx *protoblocktx.TxNamespace) (*protosigverifiers
 					Config: &protoblocktx.ConfigTransaction{
 						Envelope: rw.Value,
 					},
-				}, nil
+				}
 			}
 		}
 	}
-	return nil, nil
+	return nil
 }
 
 // CreateNamespaceVerifier parses policy item to a namespace policy.
@@ -88,10 +84,15 @@ func CreateNamespaceVerifier(
 	pd *protoblocktx.PolicyItem, idDeserializer msp.IdentityDeserializer,
 ) (*signature.NsVerifier, error) {
 	if err := validateNamespaceIDInPolicy(pd.Namespace); err != nil {
-		return nil, ErrInvalidNamespaceID
+		return nil, err
 	}
 
-	return signature.NewNsVerifier(pd.Policy, idDeserializer)
+	pol := &protoblocktx.NamespacePolicy{}
+	if err := proto.Unmarshal(pd.Policy, pol); err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal namepsace policy bytes")
+	}
+
+	return signature.NewNsVerifier(pol, idDeserializer)
 }
 
 // validateNamespaceIDInPolicy checks that a given namespace fulfills namespace naming conventions.

@@ -183,8 +183,8 @@ func TestSignatureRule(t *testing.T) {
 	}
 
 	nsPolicy := &protoblocktx.NamespacePolicy{
-		Rule: &protoblocktx.NamespacePolicy_SignatureRule{
-			SignatureRule: protoutil.MarshalOrPanic(
+		Rule: &protoblocktx.NamespacePolicy_MspRule{
+			MspRule: protoutil.MarshalOrPanic(
 				policydsl.Envelope(policydsl.And(policydsl.SignedBy(0), policydsl.SignedBy(1)),
 					serializedSigningIdentities)),
 		},

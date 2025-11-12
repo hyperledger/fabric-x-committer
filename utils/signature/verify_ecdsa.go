@@ -52,7 +52,7 @@ func (v *ecdsaTxVerifier) verify(digest Digest, signature Signature) error {
 // EvaluateSignedData takes a set of SignedData and evaluates whether
 // the signatures are valid over the related message.
 func (v *ecdsaTxVerifier) EvaluateSignedData(signatureSet []*protoutil.SignedData) error {
-	return verify(signatureSet, v)
+	return verifySignedData(signatureSet, v)
 }
 
 // EvaluateIdentities returns nil as it is not applicable for EcdsaTxVerifier.

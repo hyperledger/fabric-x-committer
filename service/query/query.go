@@ -15,7 +15,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protonotify"
@@ -135,14 +134,10 @@ func queryPolicies(ctx context.Context, queryObj querier) (*protoblocktx.Namespa
 		Policies: make([]*protoblocktx.PolicyItem, len(rows)),
 	}
 
-	nsPolicy := &protoblocktx.NamespacePolicy{}
 	for i, row := range rows {
-		if err := proto.Unmarshal(row.Value, nsPolicy); err != nil {
-			return nil, err
-		}
 		policy.Policies[i] = &protoblocktx.PolicyItem{
 			Namespace: string(row.Key),
-			Policy:    nsPolicy,
+			Policy:    row.Value,
 			Version:   row.Version,
 		}
 	}

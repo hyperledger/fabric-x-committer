@@ -81,7 +81,7 @@ message Identity {
 message NamespacePolicy {
   oneof rule {
     ThresholdRule threshold_rule = 1;
-    bytes signature_rule = 2; 
+    bytes msp_rule = 2; 
   }
 }
 
@@ -118,7 +118,7 @@ message NamespacePolicies {
 
 message PolicyItem {
     string namespace = 1;
-    NamespacePolicy policy = 2;
+    bytes policy = 2;
     uint64 version = 3;
 }
 

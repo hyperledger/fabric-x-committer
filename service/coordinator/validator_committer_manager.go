@@ -320,10 +320,7 @@ func (vc *validatorCommitter) receiveStatusAndForwardToOutput(
 
 		logger.Debugf("Batch contains %d TX statuses", len(txsStatus.Status))
 
-		txsNode, untrackedTxIDs, err := vc.getTxsAndUpdatePolicies(txsStatus)
-		if err != nil {
-			return err
-		}
+		txsNode, untrackedTxIDs := vc.getTxsAndUpdatePolicies(txsStatus)
 		for _, txID := range untrackedTxIDs {
 			// untrackedTxIDs can be non-empty only when the coordinator restarts.
 			delete(txsStatus.Status, txID)
@@ -374,7 +371,7 @@ func (vc *validatorCommitter) recoverPendingTransactions(inputTxsNode channel.Wr
 }
 
 func (vc *validatorCommitter) getTxsAndUpdatePolicies(txsStatus *protoblocktx.TransactionsStatus) (
-	[]*dependencygraph.TransactionNode, []string, error,
+	[]*dependencygraph.TransactionNode, []string,
 ) {
 	txsNode := make([]*dependencygraph.TransactionNode, 0, len(txsStatus.Status))
 	var untrackedTxIDs []string
@@ -398,10 +395,8 @@ func (vc *validatorCommitter) getTxsAndUpdatePolicies(txsStatus *protoblocktx.Tr
 		// Updating policy before sending transaction nodes to the dependency
 		// graph manager to free dependent transactions. Otherwise, dependent transactions
 		// might be validated against a stale policy.
-		if err := vc.policyMgr.updateFromTx(txNode.Tx.Namespaces); err != nil {
-			return nil, nil, connection.ErrNonRetryable
-		}
+		vc.policyMgr.updateFromTx(txNode.Tx.Namespaces)
 	}
 
-	return txsNode, untrackedTxIDs, nil
+	return txsNode, untrackedTxIDs
 }

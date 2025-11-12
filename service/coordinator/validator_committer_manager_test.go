@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen/genesisconfig"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -285,7 +286,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 				Policies: []*protoblocktx.PolicyItem{
 					{
 						Namespace: "1",
-						Policy:    p,
+						Policy:    protoutil.MarshalOrPanic(p),
 					},
 				},
 			},

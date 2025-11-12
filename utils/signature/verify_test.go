@@ -9,8 +9,10 @@ package signature_test
 import (
 	"testing"
 
+	fmsp "github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/common/cauthdsl"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
@@ -24,8 +26,10 @@ const fakeTxID = "fake-id"
 
 func TestNsVerifierThresholdRule(t *testing.T) {
 	t.Parallel()
-	p, nsSigner := policy.MakePolicyAndNsSigner(t, "1")
-	nsVerifier, err := signature.NewNsVerifier(p.Policy, nil)
+	pItem, nsSigner := policy.MakePolicyAndNsSigner(t, "1")
+	pol := &protoblocktx.NamespacePolicy{}
+	require.NoError(t, proto.Unmarshal(pItem.Policy, pol))
+	nsVerifier, err := signature.NewNsVerifier(pol, nil)
 	require.NoError(t, err)
 
 	tx1 := &protoblocktx.Tx{
@@ -43,8 +47,12 @@ func TestNsVerifierThresholdRule(t *testing.T) {
 
 func TestNsVerifierSignatureRule(t *testing.T) {
 	t.Parallel()
-	identities := signature.CreateSerializedIdentities([]string{"org0", "org1", "org2", "org3"},
-		[]string{"id0", "id1", "id2", "id3"})
+	mspIDs := []string{"org0", "org1", "org2", "org3"}
+	certBytes := []string{"id0", "id1", "id2", "id3"}
+	identities := make([][]byte, len(mspIDs))
+	for i, mspID := range mspIDs {
+		identities[i] = protoutil.MarshalOrPanic(&fmsp.SerializedIdentity{Mspid: mspID, IdBytes: []byte(certBytes[i])})
+	}
 
 	// org0 and org3 must sign along with either org1 or org2. To realize this condition, the policy can be
 	// written in many ways but we choose the following to test the nested structure.
@@ -60,7 +68,7 @@ func TestNsVerifierSignatureRule(t *testing.T) {
 	require.NoError(t, err)
 
 	nsVerifier, err := signature.NewNsVerifier(
-		&protoblocktx.NamespacePolicy{Rule: &protoblocktx.NamespacePolicy_SignatureRule{SignatureRule: pBytes}},
+		&protoblocktx.NamespacePolicy{Rule: &protoblocktx.NamespacePolicy_MspRule{MspRule: pBytes}},
 		&cauthdsl.MockIdentityDeserializer{})
 	require.NoError(t, err)
 

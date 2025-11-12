@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -23,9 +24,11 @@ func MakePolicy(
 	nsPolicy *protoblocktx.NamespacePolicy,
 ) *protoblocktx.PolicyItem {
 	t.Helper()
+	nsPolicyBytes, err := proto.Marshal(nsPolicy)
+	require.NoError(t, err)
 	return &protoblocktx.PolicyItem{
 		Namespace: ns,
-		Policy:    nsPolicy,
+		Policy:    nsPolicyBytes,
 	}
 }
 
@@ -39,14 +42,7 @@ func MakePolicyAndNsSigner(
 	signingKey, verificationKey := factory.NewKeys()
 	txSigner, err := factory.NewSigner(signingKey)
 	require.NoError(t, err)
-	p := MakePolicy(t, ns, &protoblocktx.NamespacePolicy{
-		Rule: &protoblocktx.NamespacePolicy_ThresholdRule{
-			ThresholdRule: &protoblocktx.ThresholdRule{
-				Scheme:    signature.Ecdsa,
-				PublicKey: verificationKey,
-			},
-		},
-	})
+	p := MakePolicy(t, ns, MakeECDSAThresholdRuleNsPolicy(verificationKey))
 	return p, txSigner
 }
 

@@ -8,7 +8,6 @@ package signature
 
 import (
 	"github.com/cockroachdb/errors"
-	fmsp "github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/common/cauthdsl"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/msp"
@@ -46,9 +45,9 @@ func NewNsVerifier(p *protoblocktx.NamespacePolicy, idDeserializer msp.IdentityD
 		default:
 			return nil, errors.Newf("scheme '%v' not supported", policy.Scheme)
 		}
-	case *protoblocktx.NamespacePolicy_SignatureRule:
+	case *protoblocktx.NamespacePolicy_MspRule:
 		pp := cauthdsl.NewPolicyProvider(idDeserializer)
-		res.verifier, _, err = pp.NewPolicy(r.SignatureRule)
+		res.verifier, _, err = pp.NewPolicy(r.MspRule)
 	default:
 		return nil, errors.Newf("policy rule '%v' not supported", p.GetRule())
 	}
@@ -70,17 +69,17 @@ func (v *NsVerifier) VerifyNs(txID string, tx *protoblocktx.Tx, nsIndex int) err
 		return err
 	}
 
+	endorsements := tx.Endorsements[nsIndex].EndorsementsWithIdentity
+	signedData := make([]*protoutil.SignedData, 0, len(endorsements))
+
 	switch v.NamespacePolicy.GetRule().(type) {
 	case *protoblocktx.NamespacePolicy_ThresholdRule:
-		return v.verifier.EvaluateSignedData([]*protoutil.SignedData{
-			{
-				Data:      data,
-				Signature: tx.Endorsements[nsIndex].EndorsementsWithIdentity[0].Endorsement,
-			},
+		signedData = append(signedData, &protoutil.SignedData{
+			Data:      data,
+			Signature: endorsements[0].Endorsement,
 		})
-	case *protoblocktx.NamespacePolicy_SignatureRule:
-		signedData := make([]*protoutil.SignedData, len(tx.Endorsements[nsIndex].EndorsementsWithIdentity))
-		for i, s := range tx.Endorsements[nsIndex].EndorsementsWithIdentity {
+	case *protoblocktx.NamespacePolicy_MspRule:
+		for _, s := range endorsements {
 			// NOTE: CertificateID is not supported as MSP does not have the supported for pre-stored certificates yet.
 			cert := s.Identity.GetCertificate()
 			if cert == nil {
@@ -91,25 +90,17 @@ func (v *NsVerifier) VerifyNs(txID string, tx *protoblocktx.Tx, nsIndex int) err
 				return err
 			}
 
-			signedData[i] = &protoutil.SignedData{
+			signedData = append(signedData, &protoutil.SignedData{
 				Data:      data,
 				Identity:  idBytes,
 				Signature: s.Endorsement,
-			}
+			})
 		}
-		return v.verifier.EvaluateSignedData(signedData)
 	default:
 		return errors.Newf("policy rule [%v] not supported", v.NamespacePolicy.GetRule())
 	}
-}
 
-// CreateSerializedIdentities creates serialized identities using the mspIDs and certBytes.
-func CreateSerializedIdentities(mspIDs, certBytes []string) [][]byte {
-	identities := make([][]byte, len(mspIDs))
-	for i, mspID := range mspIDs {
-		identities[i] = protoutil.MarshalOrPanic(&fmsp.SerializedIdentity{Mspid: mspID, IdBytes: []byte(certBytes[i])})
-	}
-	return identities
+	return v.verifier.EvaluateSignedData(signedData)
 }
 
 // verifier verifies a digest.
@@ -117,7 +108,7 @@ type verifier interface {
 	verify(Digest, Signature) error
 }
 
-func verify(signatureSet []*protoutil.SignedData, v verifier) error {
+func verifySignedData(signatureSet []*protoutil.SignedData, v verifier) error {
 	for _, s := range signatureSet {
 		if err := v.verify(digest(s.Data), s.Signature); err != nil {
 			return err

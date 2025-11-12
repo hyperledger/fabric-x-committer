@@ -295,14 +295,14 @@ func checkMetaNamespace(txNs *protoblocktx.TxNamespace) protoblocktx.Status {
 	}
 
 	nsUpdate := make(map[string]any)
-	u, err := policy.GetUpdatesFromNamespace(txNs)
-	if err != nil {
-		return protoblocktx.Status_MALFORMED_NAMESPACE_POLICY_INVALID
-	}
+	u := policy.GetUpdatesFromNamespace(txNs)
 	if u == nil {
 		return statusNotYetValidated
 	}
 	for _, pd := range u.NamespacePolicies.Policies {
+		// The identity deserializer is not needed because it is only
+		// used when evaluating signatures. Since this policy is created
+		// only to validate its form, we can skip the deserializer.
 		_, err := policy.CreateNamespaceVerifier(pd, nil)
 		if err != nil {
 			if errors.Is(err, policy.ErrInvalidNamespaceID) {
