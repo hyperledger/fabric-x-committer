@@ -64,6 +64,23 @@ func StartMockVCService(t *testing.T, numService int) (
 	return vcServices, vcGrpc
 }
 
+func StartSharedMockVCServices(t *testing.T, numService int) (
+	[]*VcService, *test.GrpcServers,
+) {
+	t.Helper()
+	shared := NewMockVcService()
+
+	vcServices := make([]*VcService, numService)
+	for i := range vcServices {
+		vcServices[i] = shared
+	}
+
+	vcGrpc := test.StartGrpcServersForTest(t.Context(), t, numService, func(server *grpc.Server, index int) {
+		vcServices[index].RegisterService(server)
+	})
+	return vcServices, vcGrpc
+}
+
 // StartMockVCServiceFromListWithConfig starts a specified number of mock vc service.
 func StartMockVCServiceFromListWithConfig(
 	t *testing.T, vcs []*VcService, sc []*connection.ServerConfig,
