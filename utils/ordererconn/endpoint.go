@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
