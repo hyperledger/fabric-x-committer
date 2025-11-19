@@ -16,7 +16,7 @@ USER 10001
 WORKDIR /app
 
 # --- Copy the architecture-specific binary ---
-COPY ${ARCHBIN_PATH}/${TARGETOS}-${TARGETARCH}/${BIN} /usr/local/bin/${BIN}
+COPY ${ARCHBIN_PATH}/${TARGETOS}-${TARGETARCH}/${BIN} /bin/${BIN}
 
 # --- Expose ports for Kubernetes/OpenShift ---
 EXPOSE ${PORTS}
@@ -30,4 +30,4 @@ LABEL name="${BIN}" \
       license="Apache-2.0"
 
 # --- Set runtime entrypoint ---
-ENTRYPOINT ["/usr/local/bin/${BIN}"]
+ENTRYPOINT [/bin/${BIN}]
