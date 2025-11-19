@@ -12,6 +12,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -49,9 +50,12 @@ type (
 func New(config *Parameters) (*Client, error) {
 	cm := &ordererconn.ConnectionManager{}
 	connConfig := &ordererconn.ConnectionConfig{
-		Endpoints: []*ordererconn.Endpoint{{Endpoint: *config.Client.Endpoint}},
-		Retry:     config.Client.Retry,
-		TLS:       config.Client.TLS,
+		Endpoints: []*commontypes.OrdererEndpoint{{
+			Host: config.Client.Endpoint.Host,
+			Port: config.Client.Endpoint.Port,
+		}},
+		Retry: config.Client.Retry,
+		TLS:   config.Client.TLS,
 	}
 	if err := cm.Update(connConfig); err != nil {
 		return nil, err
