@@ -9,6 +9,7 @@ package ordererconn
 import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
@@ -24,9 +25,9 @@ type (
 
 	// ConnectionConfig contains the endpoints, CAs, and retry profile.
 	ConnectionConfig struct {
-		Endpoints []*Endpoint              `mapstructure:"endpoints"`
-		TLS       connection.TLSConfig     `mapstructure:"tls"`
-		Retry     *connection.RetryProfile `mapstructure:"reconnect"`
+		Endpoints []*commontypes.OrdererEndpoint `mapstructure:"endpoints"`
+		TLS       connection.TLSConfig           `mapstructure:"tls"`
+		Retry     *connection.RetryProfile       `mapstructure:"reconnect"`
 	}
 
 	// IdentityConfig defines the orderer's MSP.
@@ -80,7 +81,7 @@ func ValidateConnectionConfig(c *ConnectionConfig) error {
 	}
 	uniqueEndpoints := make(map[string]string)
 	for _, e := range c.Endpoints {
-		if e.Empty() {
+		if e.Host == "" || e.Port == 0 {
 			return ErrEmptyEndpoint
 		}
 		target := e.Address()

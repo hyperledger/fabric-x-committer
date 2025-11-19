@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/types"
@@ -65,7 +66,9 @@ func TestReadConfigSidecar(t *testing.T) {
 			Monitoring: newMonitoringConfig("localhost", 2114),
 			Orderer: ordererconn.Config{
 				Connection: ordererconn.ConnectionConfig{
-					Endpoints: ordererconn.NewEndpoints(0, "", newServerConfig("localhost", 7050)),
+					Endpoints: []*commontypes.OrdererEndpoint{
+						newOrdererEndpoint("", "localhost"),
+					},
 				},
 				ChannelID: "mychannel",
 			},
@@ -103,9 +106,9 @@ func TestReadConfigSidecar(t *testing.T) {
 			Monitoring: newMonitoringConfig("", 2114),
 			Orderer: ordererconn.Config{
 				Connection: ordererconn.ConnectionConfig{
-					Endpoints: ordererconn.NewEndpoints(
-						0, "", newServerConfig("orderer", 7050),
-					),
+					Endpoints: []*commontypes.OrdererEndpoint{
+						newOrdererEndpoint("", "orderer"),
+					},
 					TLS: defaultClientTLSConfig,
 				},
 				ChannelID: "mychannel",
@@ -360,9 +363,9 @@ func TestReadConfigLoadGen(t *testing.T) {
 					SidecarClient: newClientConfigWithDefaultTLS("sidecar", 4001),
 					Orderer: ordererconn.Config{
 						Connection: ordererconn.ConnectionConfig{
-							Endpoints: ordererconn.NewEndpoints(
-								0, "", newServerConfig("orderer", 7050),
-							),
+							Endpoints: []*commontypes.OrdererEndpoint{
+								newOrdererEndpoint("", "orderer"),
+							},
 							TLS: defaultClientTLSConfig,
 						},
 						ChannelID:     "mychannel",
@@ -386,12 +389,9 @@ func TestReadConfigLoadGen(t *testing.T) {
 								Scheme: signature.Ecdsa, Seed: 11,
 							},
 						},
-						OrdererEndpoints: []*ordererconn.Endpoint{{
-							ID:       0,
-							MspID:    "org",
-							API:      []string{"broadcast", "deliver"},
-							Endpoint: *newEndpoint("orderer", 7050),
-						}},
+						OrdererEndpoints: []*commontypes.OrdererEndpoint{
+							newOrdererEndpoint("org", "orderer"),
+						},
 					},
 				},
 				Conflicts: workload.ConflictProfile{
@@ -506,6 +506,16 @@ func newEndpoint(host string, port int) *connection.Endpoint {
 	return &connection.Endpoint{
 		Host: host,
 		Port: port,
+	}
+}
+
+func newOrdererEndpoint(mspID, host string) *commontypes.OrdererEndpoint {
+	return &commontypes.OrdererEndpoint{
+		ID:    0,
+		MspID: mspID,
+		Host:  host,
+		Port:  7050,
+		API:   []string{commontypes.Broadcast, commontypes.Deliver},
 	}
 }
 

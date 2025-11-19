@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -183,9 +184,12 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	s.Endpoints.Coordinator = ports.allocatePorts(t, 1)[0]
 	s.Endpoints.Sidecar = ports.allocatePorts(t, 1)[0]
 	s.Endpoints.LoadGen = ports.allocatePorts(t, 1)[0]
-	s.Policy.OrdererEndpoints = make([]*ordererconn.Endpoint, len(s.Endpoints.Orderer))
+	s.Policy.OrdererEndpoints = make([]*commontypes.OrdererEndpoint, len(s.Endpoints.Orderer))
 	for i, e := range s.Endpoints.Orderer {
-		s.Policy.OrdererEndpoints[i] = &ordererconn.Endpoint{MspID: "org", Endpoint: *e.Server}
+		s.Policy.OrdererEndpoints[i] = &commontypes.OrdererEndpoint{
+			ID: 0, MspID: "org", Host: e.Server.Host, Port: e.Server.Port,
+			API: []string{commontypes.Broadcast, commontypes.Deliver},
+		}
 	}
 
 	test.LogStruct(t, "System Parameters", s)
