@@ -30,4 +30,4 @@ LABEL name="${BIN}" \
       license="Apache-2.0"
 
 # --- Set runtime entrypoint ---
-ENTRYPOINT ["/bin/${BIN}"]
+ENTRYPOINT /bin/${BIN}
