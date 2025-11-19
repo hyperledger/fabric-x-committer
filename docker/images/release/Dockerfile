@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-FROM registry.access.redhat.com/ubi9/ubi-micro:9.5 AS prod
+FROM registry.access.redhat.com/ubi9/ubi-micro:9.4 AS prod
 ARG BIN
 ARG ARCHBIN_PATH
 ARG TARGETOS
