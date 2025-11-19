@@ -18,7 +18,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -95,8 +94,8 @@ type (
 		BlockTimeout      time.Duration
 		LoadgenBlockLimit uint64
 
-		// DBCluster configures the cluster to operate in DB cluster mode.
-		DBCluster *dbtest.Connection
+		// DBConnection configures the runtime to operate with a custom database connection.
+		DBConnection *dbtest.Connection
 		// TLS configures the secure level between the components: none | tls | mtls
 		TLSMode string
 
@@ -159,16 +158,18 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	c.AddOrUpdateNamespaces(t, types.MetaNamespaceID, workload.GeneratedNamespaceID, "1", "2", "3")
 
 	t.Log("Making DB env")
-	if conf.DBCluster == nil {
+	if conf.DBConnection == nil {
 		c.dbEnv = vc.NewDatabaseTestEnv(t)
 	} else {
-		c.dbEnv = vc.NewDatabaseTestEnvWithCluster(t, conf.DBCluster)
+		c.dbEnv = vc.NewDatabaseTestEnvWithCustomConnection(t, conf.DBConnection)
 	}
 
 	s := &c.SystemConfig
 	s.DB.Name = c.dbEnv.DBConf.Database
+	s.DB.Password = c.dbEnv.DBConf.Password
 	s.DB.LoadBalance = c.dbEnv.DBConf.LoadBalance
 	s.DB.Endpoints = c.dbEnv.DBConf.Endpoints
+	s.DB.TLS = c.dbEnv.DBConf.TLS
 	s.LedgerPath = t.TempDir()
 	s.ConfigBlockPath = filepath.Join(t.TempDir(), "config-block.pb.bin")
 
@@ -223,15 +224,15 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 
 	t.Log("Create clients")
 	c.CoordinatorClient = protocoordinatorservice.NewCoordinatorClient(
-		clientConnWithTLS(t, s.Endpoints.Coordinator.Server, c.SystemConfig.ClientTLS),
+		test.NewSecuredConnection(t, s.Endpoints.Coordinator.Server, c.SystemConfig.ClientTLS),
 	)
 
 	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(
-		clientConnWithTLS(t, s.Endpoints.Query.Server, c.SystemConfig.ClientTLS),
+		test.NewSecuredConnection(t, s.Endpoints.Query.Server, c.SystemConfig.ClientTLS),
 	)
 
 	c.notifyClient = protonotify.NewNotifierClient(
-		clientConnWithTLS(t, s.Endpoints.Sidecar.Server, c.SystemConfig.ClientTLS),
+		test.NewSecuredConnection(t, s.Endpoints.Sidecar.Server, c.SystemConfig.ClientTLS),
 	)
 
 	c.ordererStream, err = test.NewBroadcastStream(t.Context(), &ordererconn.Config{
@@ -355,14 +356,6 @@ func (c *CommitterRuntime) startBlockDelivery(t *testing.T) {
 			return true
 		}
 	})
-}
-
-// clientConnWithTLS creates a service connection using its given server endpoint and TLS configuration.
-func clientConnWithTLS(t *testing.T, e *connection.Endpoint, tlsConfig connection.TLSConfig) *grpc.ClientConn {
-	t.Helper()
-	serviceConnection, err := connection.Connect(test.NewSecuredDialConfig(t, e, tlsConfig))
-	require.NoError(t, err)
-	return serviceConnection
 }
 
 // AddOrUpdateNamespaces adds policies for namespaces. If already exists, the policy will be updated.

@@ -134,7 +134,7 @@ func getContainerMappedHostPort(
 	info, err := createDockerClient(t).ContainerInspect(ctx, containerName)
 	require.NoError(t, err)
 	require.NotNil(t, info)
-	portKey := nat.Port(fmt.Sprintf("%s/%s", containerPort, "tcp"))
+	portKey := nat.Port(fmt.Sprintf("%s/tcp", containerPort))
 	bindings, ok := info.NetworkSettings.Ports[portKey]
 	require.True(t, ok)
 	require.NotEmpty(t, bindings)

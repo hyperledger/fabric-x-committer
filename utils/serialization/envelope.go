@@ -29,10 +29,19 @@ func UnwrapEnvelope(message []byte) ([]byte, *common.ChannelHeader, error) {
 
 // ParseEnvelope parse the envelope content.
 func ParseEnvelope(envelope *common.Envelope) (*common.Payload, *common.ChannelHeader, error) {
+	if envelope == nil {
+		return nil, nil, errors.New("nil envelope")
+	}
+
 	payload, err := protoutil.UnmarshalPayload(envelope.Payload)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "error unmarshaling payload")
 	}
+
+	if payload.Header == nil { // Will panic if payload.Header is nil
+		return nil, nil, errors.New("nil payload header")
+	}
+
 	channelHdr, err := protoutil.UnmarshalChannelHeader(payload.Header.ChannelHeader)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "error unmarshaling channel header")

@@ -24,9 +24,12 @@ database:
     {{- end }}
   username: "yugabyte"
   # TODO: pass password via environment variable
-  password: "yugabyte"
+  password: {{ .DB.Password }}
   database: {{ .DB.Name }}
   load-balance: {{ .DB.LoadBalance }}
+  tls:
+    mode: {{ .DB.TLS.Mode }}
+    ca-cert-path: {{ .DB.TLS.CACertPath }}
   max-connections: 10
   min-connections: 5
   retry:

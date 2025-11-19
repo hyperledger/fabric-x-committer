@@ -6,10 +6,10 @@ server:
   endpoint: :8001
   tls:
     mode: mtls
-    cert-path: /server-certs/public-key
-    key-path: /server-certs/private-key
+    cert-path: /server-certs/public-key.pem
+    key-path: /server-certs/private-key.pem
     ca-cert-paths:
-      - /server-certs/ca-certificate
+      - /server-certs/ca-certificate.pem
 monitoring:
   server:
     endpoint: :2118
@@ -24,16 +24,17 @@ monitoring:
 orderer-client:
   sidecar-client:
     endpoint: sidecar:4001
-    tls:
+    tls: &clientTLS
       mode: mtls
-      cert-path: /client-certs/public-key
-      key-path: /client-certs/private-key
+      cert-path: /client-certs/public-key.pem
+      key-path: /client-certs/private-key.pem
       ca-cert-paths:
-        - /client-certs/ca-certificate
+        - /client-certs/ca-certificate.pem
   orderer:
     connection:
       endpoints:
         - broadcast,deliver,orderer:7050
+      tls: *clientTLS
     consensus-type: BFT
     channel-id: mychannel
   # We set low values to reduce the CPU load during tests.

@@ -213,31 +213,36 @@ func (env *sidecarTestEnv) startNotificationStream(
 	sidecarClientCreds connection.TLSConfig,
 ) {
 	t.Helper()
-	conn, err := connection.Connect(test.NewSecuredDialConfig(t, &env.config.Server.Endpoint, sidecarClientCreds))
-	require.NoError(t, err)
+	conn := test.NewSecuredConnection(t, &env.config.Server.Endpoint, sidecarClientCreds)
+	var err error
 	env.notifyStream, err = protonotify.NewNotifierClient(conn).OpenNotificationStream(ctx)
 	require.NoError(t, err)
 }
 
 func TestSidecar(t *testing.T) {
 	t.Parallel()
-	for _, conf := range []sidecarTestConfig{
-		{WithConfigBlock: false},
-		{WithConfigBlock: true},
-		{
-			WithConfigBlock: true,
-			NumFakeService:  3,
-		},
-	} {
-		conf := conf
-		t.Run(conf.String(), func(t *testing.T) {
+	for _, mode := range test.ServerModes {
+		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
-			env := newSidecarTestEnvWithTLS(t, conf, test.InsecureTLSConfig)
-			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
-			t.Cleanup(cancel)
-			env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
-			env.requireBlock(ctx, t, 0)
-			env.sendTransactionsAndEnsureCommitted(ctx, t, 1)
+			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
+			for _, conf := range []sidecarTestConfig{
+				{WithConfigBlock: false},
+				{WithConfigBlock: true},
+				{
+					WithConfigBlock: true,
+					NumFakeService:  3,
+				},
+			} {
+				t.Run(conf.String(), func(t *testing.T) {
+					t.Parallel()
+					env := newSidecarTestEnvWithTLS(t, conf, serverTLSConfig)
+					ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+					t.Cleanup(cancel)
+					env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, clientTLSConfig)
+					env.requireBlock(ctx, t, 0)
+					env.sendTransactionsAndEnsureCommitted(ctx, t, 1)
+				})
+			}
 		})
 	}
 }
@@ -537,9 +542,7 @@ func TestSidecarVerifyBadTxForm(t *testing.T) {
 
 func (env *sidecarTestEnv) getCoordinatorLabel(t *testing.T) string {
 	t.Helper()
-	dialConfig, err := connection.NewSingleDialConfig(env.config.Committer)
-	require.NoError(t, err)
-	conn, err := connection.Connect(dialConfig)
+	conn, err := connection.NewSingleConnection(env.config.Committer)
 	require.NoError(t, err)
 	require.NoError(t, conn.Close())
 	return conn.CanonicalTarget()

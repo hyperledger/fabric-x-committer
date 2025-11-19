@@ -26,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -34,18 +35,18 @@ import (
 var (
 	defaultServerTLSConfig = connection.TLSConfig{
 		Mode:     connection.MutualTLSMode,
-		CertPath: "/server-certs/public-key",
-		KeyPath:  "/server-certs/private-key",
+		CertPath: "/server-certs/public-key.pem",
+		KeyPath:  "/server-certs/private-key.pem",
 		CACertPaths: []string{
-			"/server-certs/ca-certificate",
+			"/server-certs/ca-certificate.pem",
 		},
 	}
 	defaultClientTLSConfig = connection.TLSConfig{
 		Mode:     connection.MutualTLSMode,
-		CertPath: "/client-certs/public-key",
-		KeyPath:  "/client-certs/private-key",
+		CertPath: "/client-certs/public-key.pem",
+		KeyPath:  "/client-certs/private-key.pem",
 		CACertPaths: []string{
-			"/client-certs/ca-certificate",
+			"/client-certs/ca-certificate.pem",
 		},
 	}
 )
@@ -105,6 +106,7 @@ func TestReadConfigSidecar(t *testing.T) {
 					Endpoints: ordererconn.NewEndpoints(
 						0, "", newServerConfig("orderer", 7050),
 					),
+					TLS: defaultClientTLSConfig,
 				},
 				ChannelID: "mychannel",
 			},
@@ -361,6 +363,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 							Endpoints: ordererconn.NewEndpoints(
 								0, "", newServerConfig("orderer", 7050),
 							),
+							TLS: defaultClientTLSConfig,
 						},
 						ChannelID:     "mychannel",
 						ConsensusType: ordererconn.Bft,
@@ -443,10 +446,14 @@ func defaultDBConfig() *vc.DatabaseConfig {
 
 func defaultSampleDBConfig() *vc.DatabaseConfig {
 	return &vc.DatabaseConfig{
-		Endpoints:      []*connection.Endpoint{newEndpoint("db", 5433)},
-		Username:       "yugabyte",
-		Password:       "yugabyte",
-		Database:       "yugabyte",
+		Endpoints: []*connection.Endpoint{newEndpoint("db", 5433)},
+		Username:  "yugabyte",
+		Password:  "yugabyte",
+		Database:  "yugabyte",
+		TLS: dbconn.DatabaseTLSConfig{
+			Mode:       connection.OneSideTLSMode,
+			CACertPath: "/server-certs/ca-certificate.pem",
+		},
 		MaxConnections: 10,
 		MinConnections: 5,
 		LoadBalance:    false,
