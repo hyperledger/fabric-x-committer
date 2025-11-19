@@ -46,9 +46,6 @@ var validNamespaceID = regexp.MustCompile(`^[a-z0-9_]+$`)
 // ErrInvalidNamespaceID is returned when the namespace ID cannot be parsed.
 var ErrInvalidNamespaceID = errors.New("invalid namespace ID")
 
-// ErrInvalidPolicy is returned when the namespace policy cannot be parsed.
-var ErrInvalidPolicy = errors.New("invalid namespace policy")
-
 // GetUpdatesFromNamespace translates a namespace TX to policy updates.
 func GetUpdatesFromNamespace(nsTx *protoblocktx.TxNamespace) *protosigverifierservice.Update {
 	switch nsTx.NsId {

@@ -103,7 +103,7 @@ func createUpdate(policy *workload.PolicyProfile) (*protosigverifierservice.Upda
 		}
 		policy, err := proto.Marshal(p.GetVerificationPolicy())
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "failed to serialize policy")
 		}
 		updateMsg.NamespacePolicies.Policies = append(
 			updateMsg.NamespacePolicies.Policies,
