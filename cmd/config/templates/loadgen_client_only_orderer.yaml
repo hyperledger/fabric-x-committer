@@ -10,7 +10,7 @@ orderer-client:
     connection:
       endpoints:
         {{- range .Endpoints.Orderer }}
-        - {{ .Server }}
+        - id=0,broadcast,deliver,{{ .Server }}
         {{- end }}
     consensus-type: BFT
     channel-id: {{ .Policy.ChannelID }}

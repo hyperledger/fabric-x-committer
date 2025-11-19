@@ -33,7 +33,7 @@ orderer-client:
   orderer:
     connection:
       endpoints:
-        - broadcast,deliver,orderer:7050
+        - id=0,broadcast,deliver,orderer:7050
       tls: *clientTLS
     consensus-type: BFT
     channel-id: mychannel

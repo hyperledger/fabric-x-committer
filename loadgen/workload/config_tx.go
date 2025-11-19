@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/core/config/configtest"
 	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
 	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen/genesisconfig"
@@ -21,7 +22,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/api/types"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
@@ -29,7 +29,7 @@ import (
 // ConfigBlock represents the configuration of the config block.
 type ConfigBlock struct {
 	ChannelID                    string
-	OrdererEndpoints             []*ordererconn.Endpoint
+	OrdererEndpoints             []*commontypes.OrdererEndpoint
 	MetaNamespaceVerificationKey []byte
 }
 
@@ -129,7 +129,7 @@ func CreateDefaultConfigBlock(conf *ConfigBlock, profileName string) (*common.Bl
 		sourceOrg := *configBlock.Orderer.Organizations[0]
 		configBlock.Orderer.Organizations = nil
 
-		orgMap := make(map[string]*[]string)
+		orgMap := make(map[string]*[]*commontypes.OrdererEndpoint)
 		for _, e := range conf.OrdererEndpoints {
 			orgEndpoints, ok := orgMap[e.MspID]
 			if !ok {
@@ -141,7 +141,7 @@ func CreateDefaultConfigBlock(conf *ConfigBlock, profileName string) (*common.Bl
 				orgMap[e.MspID] = &org.OrdererEndpoints
 				orgEndpoints = &org.OrdererEndpoints
 			}
-			*orgEndpoints = append(*orgEndpoints, e.String())
+			*orgEndpoints = append(*orgEndpoints, e)
 		}
 	}
 

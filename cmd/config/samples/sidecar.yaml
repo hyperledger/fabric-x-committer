@@ -24,7 +24,7 @@ monitoring:
 orderer:
   connection:
     endpoints:
-      - broadcast,deliver,orderer:7050
+      - id=0,broadcast,deliver,orderer:7050
     tls: &clientTLS
       mode: mtls
       cert-path: /client-certs/public-key.pem

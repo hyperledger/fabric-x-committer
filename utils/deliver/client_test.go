@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -231,9 +232,10 @@ func makeConfig(t *testing.T, tlsConfig *connection.TLSConfig) (*mock.Orderer, [
 	servers := make([]test.GrpcServers, idCount)
 	for i, c := range ordererServer.Configs {
 		id := uint32(i % idCount) //nolint:gosec // integer overflow conversion int -> uint32
-		conf.Connection.Endpoints = append(conf.Connection.Endpoints, &ordererconn.Endpoint{
-			ID:       id,
-			Endpoint: c.Endpoint,
+		conf.Connection.Endpoints = append(conf.Connection.Endpoints, &commontypes.OrdererEndpoint{
+			ID:   id,
+			Host: c.Endpoint.Host,
+			Port: c.Endpoint.Port,
 		})
 		s := &servers[id]
 		s.Configs = append(s.Configs, c)

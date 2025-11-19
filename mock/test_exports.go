@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen/genesisconfig"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -187,7 +188,7 @@ func (e *OrdererTestEnv) SubmitConfigBlock(t *testing.T, conf *workload.ConfigBl
 }
 
 // AllEndpoints returns a list of all the endpoints (real, fake, and holders).
-func (e *OrdererTestEnv) AllEndpoints() []*ordererconn.Endpoint {
+func (e *OrdererTestEnv) AllEndpoints() []*commontypes.OrdererEndpoint {
 	return slices.Concat(
 		e.AllRealOrdererEndpoints(),
 		e.AllHolderEndpoints(),
@@ -196,16 +197,16 @@ func (e *OrdererTestEnv) AllEndpoints() []*ordererconn.Endpoint {
 }
 
 // AllRealOrdererEndpoints returns a list of the real orderer endpoints.
-func (e *OrdererTestEnv) AllRealOrdererEndpoints() []*ordererconn.Endpoint {
+func (e *OrdererTestEnv) AllRealOrdererEndpoints() []*commontypes.OrdererEndpoint {
 	return ordererconn.NewEndpoints(0, "org", e.OrdererServers.Configs...)
 }
 
 // AllFakeEndpoints returns a list of the fake orderer endpoints.
-func (e *OrdererTestEnv) AllFakeEndpoints() []*ordererconn.Endpoint {
+func (e *OrdererTestEnv) AllFakeEndpoints() []*commontypes.OrdererEndpoint {
 	return ordererconn.NewEndpoints(0, "org", e.FakeServers.Configs...)
 }
 
 // AllHolderEndpoints returns a list of the holder orderer endpoints.
-func (e *OrdererTestEnv) AllHolderEndpoints() []*ordererconn.Endpoint {
+func (e *OrdererTestEnv) AllHolderEndpoints() []*commontypes.OrdererEndpoint {
 	return ordererconn.NewEndpoints(0, "org", e.HolderServers.Configs...)
 }
