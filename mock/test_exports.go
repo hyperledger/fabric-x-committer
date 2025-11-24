@@ -70,7 +70,7 @@ func StartSharedMockVCServices(t *testing.T, numService int) (*VcService, *test.
 	t.Helper()
 	shared := NewMockVcService()
 
-	vcGrpc := test.StartGrpcServersForTest(t.Context(), t, numService, func(server *grpc.Server, index int) {
+	vcGrpc := test.StartGrpcServersForTest(t.Context(), t, numService, func(server *grpc.Server, _ int) {
 		shared.RegisterService(server)
 	})
 	return shared, vcGrpc

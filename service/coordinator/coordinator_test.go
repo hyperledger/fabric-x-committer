@@ -315,7 +315,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 
 func TestCoordinatorServiceRejectedTx(t *testing.T) {
 	t.Parallel()
-	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: true})
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: false})
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
 	env.startInsecureServiceAndOpenStream(ctx, t)
