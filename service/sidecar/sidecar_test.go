@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/google/uuid"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
 	"github.com/stretchr/testify/assert"
@@ -260,7 +261,7 @@ func TestSidecarConfigUpdate(t *testing.T) {
 	env.sendTransactionsAndEnsureCommitted(ctx, t, expectedBlock)
 	expectedBlock++
 
-	submitConfigBlock := func(endpoints []*ordererconn.Endpoint) {
+	submitConfigBlock := func(endpoints []*commontypes.OrdererEndpoint) {
 		env.ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
 			OrdererEndpoints: endpoints,
 		})
@@ -333,8 +334,8 @@ func TestSidecarConfigRecovery(t *testing.T) {
 	t.Log("Modify the Sidecar config, use illegal host endpoint")
 	// We need to use ilegalEndpoints instead of an empty Endpoints struct,
 	// as the sidecar expects the Endpoints to be non-empty.
-	env.config.Orderer.Connection.Endpoints = []*ordererconn.Endpoint{
-		{Endpoint: connection.Endpoint{Host: "localhost", Port: 9999}},
+	env.config.Orderer.Connection.Endpoints = []*commontypes.OrdererEndpoint{
+		{Host: "localhost", Port: 9999},
 	}
 
 	var err error
