@@ -8,6 +8,7 @@ package mock
 
 import (
 	"context"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 
@@ -37,13 +38,16 @@ type VcService struct {
 	healthcheck        *health.Server
 	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
 	MockFaultyNodeDropSize int
+	txBatchChannels        []chan *protovcservice.Batch
+	txBatchChannelsMu      sync.Mutex
 }
 
 // NewMockVcService returns a new VcService.
 func NewMockVcService() *VcService {
 	return &VcService{
-		txsStatus:   newFifoCache[*protoblocktx.StatusWithHeight](defaultTxStatusStorageSize),
-		healthcheck: connection.DefaultHealthCheckService(),
+		txsStatus:       newFifoCache[*protoblocktx.StatusWithHeight](defaultTxStatusStorageSize),
+		healthcheck:     connection.DefaultHealthCheckService(),
+		txBatchChannels: make([]chan *protovcservice.Batch, 0),
 	}
 }
 
@@ -116,6 +120,9 @@ func (v *VcService) StartValidateAndCommitStream(
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
 	txBatchChan := make(chan *protovcservice.Batch)
+
+	v.txBatchChannels = append(v.txBatchChannels, txBatchChan)
+
 	logger.Info("Starting validate and commit stream")
 	defer logger.Info("Closed validate and commit stream")
 	g, gCtx := errgroup.WithContext(stream.Context())
@@ -199,24 +206,12 @@ func (v *VcService) GetNumBatchesReceived() uint32 {
 // This methods helps the test code to bypass the stream to submit transactions to the mock
 // vcservice.
 func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *protovcservice.Batch) {
-	txsStatus := &protoblocktx.TransactionsStatus{
-		Status: make(map[string]*protoblocktx.StatusWithHeight, len(txsBatch.Transactions)-v.MockFaultyNodeDropSize),
-	}
-	v.txsStatusMu.Lock()
-	for i, tx := range txsBatch.Transactions {
-		if i < v.MockFaultyNodeDropSize {
-			// We simulate a faulty node by not responding to the first X TXs.
-			continue
-		}
-		code := protoblocktx.Status_COMMITTED
-		if tx.PrelimInvalidTxStatus != nil {
-			code = tx.PrelimInvalidTxStatus.Code
-		}
-		s := types.NewStatusWithHeightFromRef(code, tx.Ref)
-		txsStatus.Status[tx.Ref.TxId] = s
-		v.txsStatus.addIfNotExist(tx.Ref.TxId, s)
-	}
-	v.txsStatusMu.Unlock()
+	v.txBatchChannelsMu.Lock()
+	rng := rand.Rand{}
+	idx := rng.Intn(len(v.txBatchChannels))
+	txBatchChan := v.txBatchChannels[idx]
+	channel.NewWriter(ctx, txBatchChan).Write(txsBatch)
+	v.txBatchChannelsMu.Unlock()
 }
 
 // GetTxsStatus returns the status of the transactions.
