@@ -30,7 +30,6 @@ import (
 // It is used for testing the client which is the coordinator service.
 type VcService struct {
 	protovcservice.ValidationAndCommitServiceServer
-	txBatchChan        chan *protovcservice.Batch
 	numBatchesReceived atomic.Uint32
 	lastCommittedBlock atomic.Pointer[protoblocktx.BlockInfo]
 	txsStatus          *fifoCache[*protoblocktx.StatusWithHeight]
@@ -43,7 +42,6 @@ type VcService struct {
 // NewMockVcService returns a new VcService.
 func NewMockVcService() *VcService {
 	return &VcService{
-		txBatchChan: make(chan *protovcservice.Batch),
 		txsStatus:   newFifoCache[*protoblocktx.StatusWithHeight](defaultTxStatusStorageSize),
 		healthcheck: connection.DefaultHealthCheckService(),
 	}
@@ -117,22 +115,25 @@ func (*VcService) SetupSystemTablesAndNamespaces(
 func (v *VcService) StartValidateAndCommitStream(
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
+	txBatchChan := make(chan *protovcservice.Batch)
 	logger.Info("Starting validate and commit stream")
 	defer logger.Info("Closed validate and commit stream")
 	g, gCtx := errgroup.WithContext(stream.Context())
 	g.Go(func() error {
-		return v.receiveAndProcessTransactions(gCtx, stream)
+		return v.receiveAndProcessTransactions(gCtx, stream, txBatchChan)
 	})
 	g.Go(func() error {
-		return v.sendTransactionStatus(gCtx, stream)
+		return v.sendTransactionStatus(gCtx, stream, txBatchChan)
 	})
 	return grpcerror.WrapCancelled(g.Wait())
 }
 
 func (v *VcService) receiveAndProcessTransactions(
-	ctx context.Context, stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	ctx context.Context,
+	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	txBatchChan chan *protovcservice.Batch,
 ) error {
-	txBatchChan := channel.NewWriter(ctx, v.txBatchChan)
+	txBatchChanWriter := channel.NewWriter(ctx, txBatchChan)
 	for ctx.Err() == nil {
 		txBatch, err := stream.Recv()
 		if err != nil {
@@ -147,17 +148,19 @@ func (v *VcService) receiveAndProcessTransactions(
 		}
 
 		v.numBatchesReceived.Add(1)
-		txBatchChan.Write(txBatch)
+		txBatchChanWriter.Write(txBatch)
 	}
 	return errors.Wrap(ctx.Err(), "context ended")
 }
 
 func (v *VcService) sendTransactionStatus(
-	ctx context.Context, stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	ctx context.Context,
+	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	txBatchChan chan *protovcservice.Batch,
 ) error {
-	txBatchChan := channel.NewReader(ctx, v.txBatchChan)
+	txBatchChanReader := channel.NewReader(ctx, txBatchChan)
 	for ctx.Err() == nil {
-		txBatch, ok := txBatchChan.Read()
+		txBatch, ok := txBatchChanReader.Read()
 		if !ok {
 			break
 		}
@@ -196,5 +199,27 @@ func (v *VcService) GetNumBatchesReceived() uint32 {
 // This methods helps the test code to bypass the stream to submit transactions to the mock
 // vcservice.
 func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *protovcservice.Batch) {
-	channel.NewWriter(ctx, v.txBatchChan).Write(txsBatch)
+	txsStatus := &protoblocktx.TransactionsStatus{
+		Status: make(map[string]*protoblocktx.StatusWithHeight, len(txsBatch.Transactions)-v.MockFaultyNodeDropSize),
+	}
+	v.txsStatusMu.Lock()
+	for i, tx := range txsBatch.Transactions {
+		if i < v.MockFaultyNodeDropSize {
+			// We simulate a faulty node by not responding to the first X TXs.
+			continue
+		}
+		code := protoblocktx.Status_COMMITTED
+		if tx.PrelimInvalidTxStatus != nil {
+			code = tx.PrelimInvalidTxStatus.Code
+		}
+		s := types.NewStatusWithHeightFromRef(code, tx.Ref)
+		txsStatus.Status[tx.Ref.TxId] = s
+		v.txsStatus.addIfNotExist(tx.Ref.TxId, s)
+	}
+	v.txsStatusMu.Unlock()
+}
+
+// GetTxsStatus returns the status of the transactions.
+func (v *VcService) GetTxsStatus() *fifoCache[*protoblocktx.StatusWithHeight] {
+	return v.txsStatus
 }
