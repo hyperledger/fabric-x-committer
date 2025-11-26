@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -39,7 +40,7 @@ type VcService struct {
 	healthcheck        *health.Server
 	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
 	MockFaultyNodeDropSize int
-	txBatchChannels        []chan *protovcservice.Batch
+	txBatchChannels        map[string]chan *protovcservice.Batch
 	txBatchChannelsMu      sync.Mutex
 }
 
@@ -48,7 +49,7 @@ func NewMockVcService() *VcService {
 	return &VcService{
 		txsStatus:       newFifoCache[*protoblocktx.StatusWithHeight](defaultTxStatusStorageSize),
 		healthcheck:     connection.DefaultHealthCheckService(),
-		txBatchChannels: make([]chan *protovcservice.Batch, 0),
+		txBatchChannels: make(map[string]chan *protovcservice.Batch),
 	}
 }
 
@@ -122,10 +123,21 @@ func (v *VcService) StartValidateAndCommitStream(
 ) error {
 	txBatchChan := make(chan *protovcservice.Batch)
 
-	v.txBatchChannels = append(v.txBatchChannels, txBatchChan)
+	// Get peer address to identify which VC this channel belongs to
+	vcID, _ := v.getVCID(stream.Context())
+
+	v.txBatchChannelsMu.Lock()
+	v.txBatchChannels[vcID] = txBatchChan
+	v.txBatchChannelsMu.Unlock()
 
 	logger.Info("Starting validate and commit stream")
-	defer logger.Info("Closed validate and commit stream")
+	defer func() {
+		logger.Info("Closed validate and commit stream")
+		// Clean up the channel when stream closes
+		v.txBatchChannelsMu.Lock()
+		delete(v.txBatchChannels, vcID)
+		v.txBatchChannelsMu.Unlock()
+	}()
 	g, gCtx := errgroup.WithContext(stream.Context())
 	g.Go(func() error {
 		return v.receiveAndProcessTransactions(gCtx, stream, txBatchChan)
@@ -206,13 +218,32 @@ func (v *VcService) GetNumBatchesReceived() uint32 {
 // SubmitTransactions enqueues the given transactions to a queue read by status sending goroutine.
 // This methods helps the test code to bypass the stream to submit transactions to the mock
 // vcservice.
-func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *protovcservice.Batch) {
+func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *protovcservice.Batch) error {
 	v.txBatchChannelsMu.Lock()
 	defer v.txBatchChannelsMu.Unlock()
+
+	if len(v.txBatchChannels) == 0 {
+		return errors.New("Trying to send transactions before channel created (no channels in map)")
+	}
+
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	idx := rng.Intn(len(v.txBatchChannels))
-	txBatchChan := v.txBatchChannels[idx]
+	channels := make([]chan *protovcservice.Batch, 0, len(v.txBatchChannels))
+	for _, ch := range v.txBatchChannels {
+		channels = append(channels, ch)
+	}
+	idx := rng.Intn(len(channels))
+	txBatchChan := channels[idx]
 	channel.NewWriter(ctx, txBatchChan).Write(txsBatch)
+	return nil
+}
+
+// getVCID extracts a unique identifier for the VC from the stream context.
+// It uses the peer address if available, otherwise error
+func (v *VcService) getVCID(ctx context.Context) (string, error) {
+	if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
+		return p.Addr.String(), nil
+	}
+	return "", errors.New("peer address not found")
 }
 
 // GetTxsStatus returns the status of the transactions.
