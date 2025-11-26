@@ -90,7 +90,7 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 		}
 		dbEnv = vcsTestEnv.GetDBEnv()
 	} else {
-		_, vcServers := mock.StartSharedMockVCServices(t, tConfig.numVcService)
+		_, vcServers := mock.StartMockVCServices(t, tConfig.numVcService)
 		vcServerConfigs = vcServers.Configs
 	}
 

@@ -11,6 +11,7 @@ import (
 	"math/rand"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
@@ -207,11 +208,11 @@ func (v *VcService) GetNumBatchesReceived() uint32 {
 // vcservice.
 func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *protovcservice.Batch) {
 	v.txBatchChannelsMu.Lock()
-	rng := rand.Rand{}
+	defer v.txBatchChannelsMu.Unlock()
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	idx := rng.Intn(len(v.txBatchChannels))
 	txBatchChan := v.txBatchChannels[idx]
 	channel.NewWriter(ctx, txBatchChan).Write(txsBatch)
-	v.txBatchChannelsMu.Unlock()
 }
 
 // GetTxsStatus returns the status of the transactions.

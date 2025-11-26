@@ -48,25 +48,9 @@ func StartMockSVServiceFromListWithConfig(
 	})
 }
 
-// StartMockVCService starts a specified number of mock VC service and register cancellation.
-func StartMockVCService(t *testing.T, numService int) (
-	[]*VcService, *test.GrpcServers,
-) {
-	t.Helper()
-	vcServices := make([]*VcService, numService)
-	for i := range numService {
-		vcServices[i] = NewMockVcService()
-	}
-
-	vcGrpc := test.StartGrpcServersForTest(t.Context(), t, numService, func(server *grpc.Server, index int) {
-		vcServices[index].RegisterService(server)
-	})
-	return vcServices, vcGrpc
-}
-
-// StartSharedMockVCServices starts a specified number of mock VC service using the same shared instance.
+// StartMockVCServices starts a specified number of mock VC service using the same shared instance.
 // It is used for testing when multiple VC services are required to share the same state.
-func StartSharedMockVCServices(t *testing.T, numService int) (*VcService, *test.GrpcServers) {
+func StartMockVCServices(t *testing.T, numService int) (*VcService, *test.GrpcServers) {
 	t.Helper()
 	shared := NewMockVcService()
 
