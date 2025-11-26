@@ -44,7 +44,7 @@ type CommandTest struct {
 func StartDefaultSystem(t *testing.T) SystemConfig {
 	t.Helper()
 	_, verifier := mock.StartMockSVService(t, 1)
-	_, vc := mock.StartMockVCServices(t, 1)
+	_, vc := mock.StartMockVCService(t, 1)
 	_, orderer := mock.StartMockOrderingServices(t, &mock.OrdererConfig{NumService: 1})
 	_, coordinator := mock.StartMockCoordinatorService(t)
 	conn := dbtest.PrepareTestEnv(t)

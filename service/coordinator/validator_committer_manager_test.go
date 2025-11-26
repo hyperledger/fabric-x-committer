@@ -44,7 +44,7 @@ type vcMgrTestEnv struct {
 
 func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 	t.Helper()
-	vcs, servers := mock.StartMockVCServices(t, numVCService)
+	vcs, servers := mock.StartMockVCService(t, numVCService)
 	svEnv := newSvMgrTestEnv(t, 2)
 
 	inputTxs := make(chan dependencygraph.TxNodeBatch, 10)
