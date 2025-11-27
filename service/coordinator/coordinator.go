@@ -213,7 +213,7 @@ func (c *Service) Run(ctx context.Context) error {
 	g.Go(func() error {
 		logger.Info("Starting validator committer manager")
 		if err := c.validatorCommitterMgr.run(eCtx); err != nil {
-			logger.Errorf("coordinator service stops due to an error returned by validator committer manager: %v", err)
+			logger.Errorf("coordinator service stopds due to an error returned by validator committer manager: %v", err)
 			return err
 		}
 		return nil
