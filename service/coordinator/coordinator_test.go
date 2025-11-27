@@ -240,7 +240,7 @@ func TestGetNextBlockNumWithActiveStream(t *testing.T) {
 
 func TestCoordinatorServiceValidTx(t *testing.T) {
 	t.Parallel()
-	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: false})
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: true})
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
 	env.startInsecureServiceAndOpenStream(ctx, t)
@@ -307,7 +307,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 
 func TestCoordinatorServiceRejectedTx(t *testing.T) {
 	t.Parallel()
-	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: false})
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: true})
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
 	env.startInsecureServiceAndOpenStream(ctx, t)
@@ -741,7 +741,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 
 func TestCoordinatorStreamFailureWithSidecar(t *testing.T) {
 	t.Parallel()
-	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: false})
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.startInsecureServiceAndOpenStream(ctx, t)

@@ -8,8 +8,13 @@ package mock
 
 import (
 	"context"
+	"maps"
+	"math/rand"
+	"slices"
+	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
@@ -30,22 +35,24 @@ import (
 // It is used for testing the client which is the coordinator service.
 type VcService struct {
 	protovcservice.ValidationAndCommitServiceServer
-	txBatchChan        chan *protovcservice.Batch
 	numBatchesReceived atomic.Uint32
 	nextBlock          atomic.Pointer[protoblocktx.BlockInfo]
 	txsStatus          *fifoCache[*protoblocktx.StatusWithHeight]
 	txsStatusMu        sync.Mutex
 	healthcheck        *health.Server
 	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
-	MockFaultyNodeDropSize int
+	MockFaultyNodeDropSize   int
+	txBatchChannels          map[string]chan *protovcservice.Batch
+	txBatchChannelsMu        sync.Mutex
+	txBatchChannelsIDCounter atomic.Uint64
 }
 
 // NewMockVcService returns a new VcService.
 func NewMockVcService() *VcService {
 	return &VcService{
-		txBatchChan: make(chan *protovcservice.Batch),
-		txsStatus:   newFifoCache[*protoblocktx.StatusWithHeight](defaultTxStatusStorageSize),
-		healthcheck: connection.DefaultHealthCheckService(),
+		txsStatus:       newFifoCache[*protoblocktx.StatusWithHeight](defaultTxStatusStorageSize),
+		healthcheck:     connection.DefaultHealthCheckService(),
+		txBatchChannels: make(map[string]chan *protovcservice.Batch),
 	}
 }
 
@@ -118,22 +125,37 @@ func (*VcService) SetupSystemTablesAndNamespaces(
 func (v *VcService) StartValidateAndCommitStream(
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
+	txBatchChan := make(chan *protovcservice.Batch)
+	vcID := strconv.FormatUint(v.txBatchChannelsIDCounter.Add(1), 10)
+
+	v.txBatchChannelsMu.Lock()
+	v.txBatchChannels[vcID] = txBatchChan
+	v.txBatchChannelsMu.Unlock()
+
 	logger.Info("Starting validate and commit stream")
-	defer logger.Info("Closed validate and commit stream")
+	defer func() {
+		logger.Info("Closed validate and commit stream")
+		logger.Info("Removing channel with vcID %s", vcID)
+		v.txBatchChannelsMu.Lock()
+		delete(v.txBatchChannels, vcID)
+		v.txBatchChannelsMu.Unlock()
+	}()
 	g, gCtx := errgroup.WithContext(stream.Context())
 	g.Go(func() error {
-		return v.receiveAndProcessTransactions(gCtx, stream)
+		return v.receiveAndProcessTransactions(gCtx, stream, txBatchChan)
 	})
 	g.Go(func() error {
-		return v.sendTransactionStatus(gCtx, stream)
+		return v.sendTransactionStatus(gCtx, stream, txBatchChan)
 	})
 	return grpcerror.WrapCancelled(g.Wait())
 }
 
 func (v *VcService) receiveAndProcessTransactions(
-	ctx context.Context, stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	ctx context.Context,
+	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	txBatchChan chan *protovcservice.Batch,
 ) error {
-	txBatchChan := channel.NewWriter(ctx, v.txBatchChan)
+	txBatchChanWriter := channel.NewWriter(ctx, txBatchChan)
 	for ctx.Err() == nil {
 		txBatch, err := stream.Recv()
 		if err != nil {
@@ -148,17 +170,19 @@ func (v *VcService) receiveAndProcessTransactions(
 		}
 
 		v.numBatchesReceived.Add(1)
-		txBatchChan.Write(txBatch)
+		txBatchChanWriter.Write(txBatch)
 	}
 	return errors.Wrap(ctx.Err(), "context ended")
 }
 
 func (v *VcService) sendTransactionStatus(
-	ctx context.Context, stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	ctx context.Context,
+	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	txBatchChan chan *protovcservice.Batch,
 ) error {
-	txBatchChan := channel.NewReader(ctx, v.txBatchChan)
+	txBatchChanReader := channel.NewReader(ctx, txBatchChan)
 	for ctx.Err() == nil {
-		txBatch, ok := txBatchChan.Read()
+		txBatch, ok := txBatchChanReader.Read()
 		if !ok {
 			break
 		}
@@ -196,6 +220,18 @@ func (v *VcService) GetNumBatchesReceived() uint32 {
 // SubmitTransactions enqueues the given transactions to a queue read by status sending goroutine.
 // This methods helps the test code to bypass the stream to submit transactions to the mock
 // vcservice.
-func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *protovcservice.Batch) {
-	channel.NewWriter(ctx, v.txBatchChan).Write(txsBatch)
+func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *protovcservice.Batch) error {
+	v.txBatchChannelsMu.Lock()
+	channels := slices.Collect(maps.Values(v.txBatchChannels))
+	v.txBatchChannelsMu.Unlock()
+
+	if len(channels) == 0 {
+		return errors.New("Trying to send transactions before channel created (no channels in map)")
+	}
+
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	idx := rng.Intn(len(channels))
+	txBatchChan := channels[idx]
+	channel.NewWriter(ctx, txBatchChan).Write(txsBatch)
+	return nil
 }
