@@ -334,12 +334,15 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env.mockVcService.SubmitTransactions(ctx, &protovcservice.Batch{
+
+	err := env.mockVcService.SubmitTransactions(ctx, &protovcservice.Batch{
 		Transactions: []*protovcservice.Tx{
 			{Ref: types.TxRef("untrackedTxID1", 1, 1)},
 			{Ref: types.TxRef("untrackedTxID2", 2, 2)},
 		},
 	})
+	require.NoError(t, err)
+
 	require.Never(t, func() bool {
 		return test.GetIntMetricValue(t, txProcessedTotalMetric) > txTotal
 	}, 2*time.Second, 1*time.Second)
