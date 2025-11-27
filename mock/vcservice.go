@@ -136,11 +136,8 @@ func (v *VcService) StartValidateAndCommitStream(
 		logger.Info("Closed validate and commit stream")
 		logger.Info("Removing channel with vcID %s", vcID)
 		v.txBatchChannelsMu.Lock()
-		defer v.txBatchChannelsMu.Unlock()
-		if ch, ok := v.txBatchChannels[vcID]; ok {
-			close(ch)
-			delete(v.txBatchChannels, vcID)
-		}
+		delete(v.txBatchChannels, vcID)
+		v.txBatchChannelsMu.Unlock()
 	}()
 	g, gCtx := errgroup.WithContext(stream.Context())
 	g.Go(func() error {
