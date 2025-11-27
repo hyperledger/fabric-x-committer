@@ -37,7 +37,7 @@ type vcMgrTestEnv struct {
 	inputTxs                  chan dependencygraph.TxNodeBatch
 	outputTxs                 chan dependencygraph.TxNodeBatch
 	outputTxsStatus           chan *protoblocktx.TransactionsStatus
-	mockVcServices            []*mock.VcService
+	mockVcService             *mock.VcService
 	mockVCGrpcServers         *test.GrpcServers
 	sigVerTestEnv             *svMgrTestEnv
 }
@@ -73,7 +73,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 		inputTxs:                  inputTxs,
 		outputTxs:                 outputTxs,
 		outputTxsStatus:           outputTxsStatus,
-		mockVcServices:            []*mock.VcService{vcs},
+		mockVcService:             vcs,
 		mockVCGrpcServers:         servers,
 		sigVerTestEnv:             svEnv,
 	}
@@ -203,11 +203,10 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 				mergeTxsStatus(outTxsStatus1, outTxsStatus2),
 			)
 
-			for _, vc := range env.mockVcServices {
-				if vc.GetNumBatchesReceived() == 0 {
-					return false
-				}
+			if env.mockVcService.GetNumBatchesReceived() == 0 {
+				return false
 			}
+
 			return true
 		}, 4*time.Second, 100*time.Millisecond)
 		ensureZeroWaitingTxs(env)
@@ -300,7 +299,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	t.Parallel()
 	env := newVcMgrTestEnv(t, 1)
-	env.mockVcServices[0].MockFaultyNodeDropSize = 4
+	env.mockVcService.MockFaultyNodeDropSize = 4
 
 	env.requireConnectionMetrics(t, 0, connection.Connected, 0)
 	env.requireRetriedTxsTotal(t, 0)
@@ -318,9 +317,11 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	test.CheckServerStopped(t, env.mockVCGrpcServers.Configs[0].Endpoint.Address())
 	env.requireConnectionMetrics(t, 0, connection.Disconnected, 1)
 
-	env.mockVcServices[0].MockFaultyNodeDropSize = 0
+	env.mockVcService.MockFaultyNodeDropSize = 0
 	env.mockVCGrpcServers = mock.StartMockVCServiceFromListWithConfig(
-		t, env.mockVcServices, env.mockVCGrpcServers.Configs,
+		t,
+		[]*mock.VcService{env.mockVcService},
+		env.mockVCGrpcServers.Configs,
 	)
 	env.requireConnectionMetrics(t, 0, connection.Connected, 1)
 	env.requireRetriedTxsTotal(t, 4)
@@ -337,7 +338,7 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env.mockVcServices[0].SubmitTransactions(ctx, &protovcservice.Batch{
+	env.mockVcService.SubmitTransactions(ctx, &protovcservice.Batch{
 		Transactions: []*protovcservice.Tx{
 			{Ref: types.TxRef("untrackedTxID1", 1, 1)},
 			{Ref: types.TxRef("untrackedTxID2", 2, 2)},

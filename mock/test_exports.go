@@ -52,12 +52,12 @@ func StartMockSVServiceFromListWithConfig(
 // It is used for testing when multiple VC services are required to share the same state.
 func StartMockVCService(t *testing.T, numService int) (*VcService, *test.GrpcServers) {
 	t.Helper()
-	shared := NewMockVcService()
+	sharedVC := NewMockVcService()
 
 	vcGrpc := test.StartGrpcServersForTest(t.Context(), t, numService, func(server *grpc.Server, _ int) {
-		shared.RegisterService(server)
+		sharedVC.RegisterService(server)
 	})
-	return shared, vcGrpc
+	return sharedVC, vcGrpc
 }
 
 // StartMockVCServiceFromListWithConfig starts a specified number of mock vc service.

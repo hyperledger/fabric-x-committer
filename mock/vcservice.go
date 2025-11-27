@@ -8,7 +8,9 @@ package mock
 
 import (
 	"context"
+	"maps"
 	"math/rand"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -39,10 +41,10 @@ type VcService struct {
 	txsStatusMu        sync.Mutex
 	healthcheck        *health.Server
 	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
-	MockFaultyNodeDropSize int
-	txBatchChannels        map[string]chan *protovcservice.Batch
-	txBatchChannelsMu      sync.Mutex
-	vcIDCounter            atomic.Uint64
+	MockFaultyNodeDropSize   int
+	txBatchChannels          map[string]chan *protovcservice.Batch
+	txBatchChannelsMu        sync.Mutex
+	txBatchChannelsIDCounter atomic.Uint64
 }
 
 // NewMockVcService returns a new VcService.
@@ -123,7 +125,7 @@ func (v *VcService) StartValidateAndCommitStream(
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
 	txBatchChan := make(chan *protovcservice.Batch)
-	vcID := v.getVCID()
+	vcID := strconv.FormatUint(v.txBatchChannelsIDCounter.Add(1), 10)
 
 	v.txBatchChannelsMu.Lock()
 	v.txBatchChannels[vcID] = txBatchChan
@@ -179,10 +181,6 @@ func (v *VcService) sendTransactionStatus(
 	for ctx.Err() == nil {
 		txBatch, ok := txBatchChanReader.Read()
 		if !ok {
-			// Channel was closed, which means the VC was removed/deleted
-			if ctx.Err() != nil {
-				return errors.Wrap(ctx.Err(), "context cancelled - VC may have been removed")
-			}
 			break
 		}
 		txsStatus := &protoblocktx.TransactionsStatus{
@@ -222,26 +220,19 @@ func (v *VcService) GetNumBatchesReceived() uint32 {
 func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *protovcservice.Batch) error {
 	v.txBatchChannelsMu.Lock()
 
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	channels := make([]chan *protovcservice.Batch, 0, len(v.txBatchChannels))
-	for _, ch := range v.txBatchChannels {
-		channels = append(channels, ch)
-	}
+	channels := slices.Collect(maps.Values(v.txBatchChannels))
+
 	v.txBatchChannelsMu.Unlock()
 
 	if len(channels) == 0 {
 		return errors.New("Trying to send transactions before channel created (no channels in map)")
 	}
 
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	idx := rng.Intn(len(channels))
 	txBatchChan := channels[idx]
 	channel.NewWriter(ctx, txBatchChan).Write(txsBatch)
 	return nil
-}
-
-// getVCID generates a unique identifier for the VC using a running number.
-func (v *VcService) getVCID() string {
-	return strconv.FormatUint(v.vcIDCounter.Add(1), 10) // converts uint64 -> base 10 -> string
 }
 
 // removeChannel removes a channel from the map for a given VC ID.
@@ -252,19 +243,4 @@ func (v *VcService) removeChannel(vcID string) {
 		close(ch)
 		delete(v.txBatchChannels, vcID)
 	}
-}
-
-// RemoveAllChannels removes all channels from the map.
-func (v *VcService) RemoveAllChannels() {
-	v.txBatchChannelsMu.Lock()
-	defer v.txBatchChannelsMu.Unlock()
-	for vcID, ch := range v.txBatchChannels {
-		close(ch)
-		delete(v.txBatchChannels, vcID)
-	}
-}
-
-// GetTxsStatus returns the status of the transactions.
-func (v *VcService) GetTxsStatus() *fifoCache[*protoblocktx.StatusWithHeight] {
-	return v.txsStatus
 }
