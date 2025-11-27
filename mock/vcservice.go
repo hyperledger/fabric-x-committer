@@ -135,7 +135,12 @@ func (v *VcService) StartValidateAndCommitStream(
 	defer func() {
 		logger.Info("Closed validate and commit stream")
 		logger.Info("Removing channel with vcID %s", vcID)
-		v.removeChannel(vcID)
+		v.txBatchChannelsMu.Lock()
+		defer v.txBatchChannelsMu.Unlock()
+		if ch, ok := v.txBatchChannels[vcID]; ok {
+			close(ch)
+			delete(v.txBatchChannels, vcID)
+		}
 	}()
 	g, gCtx := errgroup.WithContext(stream.Context())
 	g.Go(func() error {
@@ -219,9 +224,7 @@ func (v *VcService) GetNumBatchesReceived() uint32 {
 // vcservice.
 func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *protovcservice.Batch) error {
 	v.txBatchChannelsMu.Lock()
-
 	channels := slices.Collect(maps.Values(v.txBatchChannels))
-
 	v.txBatchChannelsMu.Unlock()
 
 	if len(channels) == 0 {
@@ -233,14 +236,4 @@ func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *protovcser
 	txBatchChan := channels[idx]
 	channel.NewWriter(ctx, txBatchChan).Write(txsBatch)
 	return nil
-}
-
-// removeChannel removes a channel from the map for a given VC ID.
-func (v *VcService) removeChannel(vcID string) {
-	v.txBatchChannelsMu.Lock()
-	defer v.txBatchChannelsMu.Unlock()
-	if ch, ok := v.txBatchChannels[vcID]; ok {
-		close(ch)
-		delete(v.txBatchChannels, vcID)
-	}
 }

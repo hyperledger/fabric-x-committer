@@ -203,11 +203,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 				mergeTxsStatus(outTxsStatus1, outTxsStatus2),
 			)
 
-			if env.mockVcService.GetNumBatchesReceived() == 0 {
-				return false
-			}
-
-			return true
+			return env.mockVcService.GetNumBatchesReceived() != 0
 		}, 4*time.Second, 100*time.Millisecond)
 		ensureZeroWaitingTxs(env)
 	})
