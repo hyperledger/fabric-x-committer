@@ -9,6 +9,7 @@ package mock
 import (
 	"context"
 	"math/rand"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,7 +19,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/peer"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -42,6 +42,7 @@ type VcService struct {
 	MockFaultyNodeDropSize int
 	txBatchChannels        map[string]chan *protovcservice.Batch
 	txBatchChannelsMu      sync.Mutex
+	vcIDCounter            atomic.Uint64
 }
 
 // NewMockVcService returns a new VcService.
@@ -122,9 +123,7 @@ func (v *VcService) StartValidateAndCommitStream(
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
 	txBatchChan := make(chan *protovcservice.Batch)
-
-	// Get peer address to identify which VC this channel belongs to
-	vcID, _ := v.getVCID(stream.Context())
+	vcID := v.getVCID()
 
 	v.txBatchChannelsMu.Lock()
 	v.txBatchChannels[vcID] = txBatchChan
@@ -133,10 +132,8 @@ func (v *VcService) StartValidateAndCommitStream(
 	logger.Info("Starting validate and commit stream")
 	defer func() {
 		logger.Info("Closed validate and commit stream")
-		// Clean up the channel when stream closes
-		v.txBatchChannelsMu.Lock()
-		delete(v.txBatchChannels, vcID)
-		v.txBatchChannelsMu.Unlock()
+		logger.Info("Removing channel with vcID %s", vcID)
+		v.removeChannel(vcID)
 	}()
 	g, gCtx := errgroup.WithContext(stream.Context())
 	g.Go(func() error {
@@ -182,6 +179,10 @@ func (v *VcService) sendTransactionStatus(
 	for ctx.Err() == nil {
 		txBatch, ok := txBatchChanReader.Read()
 		if !ok {
+			// Channel was closed, which means the VC was removed/deleted
+			if ctx.Err() != nil {
+				return errors.Wrap(ctx.Err(), "context cancelled - VC may have been removed")
+			}
 			break
 		}
 		txsStatus := &protoblocktx.TransactionsStatus{
@@ -220,30 +221,47 @@ func (v *VcService) GetNumBatchesReceived() uint32 {
 // vcservice.
 func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *protovcservice.Batch) error {
 	v.txBatchChannelsMu.Lock()
-	defer v.txBatchChannelsMu.Unlock()
-
-	if len(v.txBatchChannels) == 0 {
-		return errors.New("Trying to send transactions before channel created (no channels in map)")
-	}
 
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	channels := make([]chan *protovcservice.Batch, 0, len(v.txBatchChannels))
 	for _, ch := range v.txBatchChannels {
 		channels = append(channels, ch)
 	}
+	v.txBatchChannelsMu.Unlock()
+
+	if len(channels) == 0 {
+		return errors.New("Trying to send transactions before channel created (no channels in map)")
+	}
+
 	idx := rng.Intn(len(channels))
 	txBatchChan := channels[idx]
 	channel.NewWriter(ctx, txBatchChan).Write(txsBatch)
 	return nil
 }
 
-// getVCID extracts a unique identifier for the VC from the stream context.
-// It uses the peer address if available, otherwise error
-func (v *VcService) getVCID(ctx context.Context) (string, error) {
-	if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
-		return p.Addr.String(), nil
+// getVCID generates a unique identifier for the VC using a running number.
+func (v *VcService) getVCID() string {
+	return strconv.FormatUint(v.vcIDCounter.Add(1), 10) // converts uint64 -> base 10 -> string
+}
+
+// removeChannel removes a channel from the map for a given VC ID.
+func (v *VcService) removeChannel(vcID string) {
+	v.txBatchChannelsMu.Lock()
+	defer v.txBatchChannelsMu.Unlock()
+	if ch, ok := v.txBatchChannels[vcID]; ok {
+		close(ch)
+		delete(v.txBatchChannels, vcID)
 	}
-	return "", errors.New("peer address not found")
+}
+
+// RemoveAllChannels removes all channels from the map.
+func (v *VcService) RemoveAllChannels() {
+	v.txBatchChannelsMu.Lock()
+	defer v.txBatchChannelsMu.Unlock()
+	for vcID, ch := range v.txBatchChannels {
+		close(ch)
+		delete(v.txBatchChannels, vcID)
+	}
 }
 
 // GetTxsStatus returns the status of the transactions.
