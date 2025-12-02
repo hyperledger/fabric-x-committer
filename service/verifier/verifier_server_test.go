@@ -20,12 +20,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp"
 	bccsputils "github.com/hyperledger/fabric-lib-go/bccsp/utils"
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
 	"github.com/hyperledger/fabric-x-common/core/config/configtest"
-	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen/genesisconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
@@ -34,6 +35,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
+	"github.com/hyperledger/fabric-x-committer/utils/certificate"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
@@ -214,26 +216,37 @@ func TestSignatureRule(t *testing.T) {
 	signatures := make([][]byte, len(signingIdentities))
 	mspIDs := make([][]byte, len(signingIdentities))
 	certsBytes := make([][]byte, len(signingIdentities))
-	for i, si := range signingIdentities {
-		signatures[i] = si.sign(t, data)
 
-		mspIDs[i] = []byte(si.MSPID)
-		certBytes, rerr := os.ReadFile(si.CertPath)
-		require.NoError(t, rerr)
-		certsBytes[i] = certBytes
+	for _, certType := range []int{test.CreatorCertificate, test.CreatorID} {
+		for i, si := range signingIdentities {
+			signatures[i] = si.sign(t, data)
+			mspIDs[i] = []byte(si.MSPID)
+
+			switch certType {
+			case test.CreatorCertificate:
+				certBytes, rerr := os.ReadFile(si.CertPath)
+				require.NoError(t, rerr)
+				certsBytes[i] = certBytes
+			case test.CreatorID:
+				certID, derr := certificate.Digest(si.CertPath, bccsp.SHA256)
+				require.NoError(t, derr)
+				fmt.Println(string(certID))
+				certsBytes[i] = certID
+			}
+		}
+
+		tx1.Endorsements = []*protoblocktx.Endorsements{
+			test.CreateEndorsementsForSignatureRule(signatures, mspIDs, certsBytes, certType),
+		}
+
+		requireTestCase(t, stream, &testCase{
+			update: update,
+			req: &protosigverifierservice.Tx{
+				Ref: types.TxRef(fakeTxID, 1, 1), Tx: tx1,
+			},
+			expectedStatus: protoblocktx.Status_COMMITTED,
+		})
 	}
-
-	tx1.Endorsements = []*protoblocktx.Endorsements{
-		test.CreateEndorsementsForSignatureRule(signatures, mspIDs, certsBytes),
-	}
-
-	requireTestCase(t, stream, &testCase{
-		update: update,
-		req: &protosigverifierservice.Tx{
-			Ref: types.TxRef(fakeTxID, 1, 1), Tx: tx1,
-		},
-		expectedStatus: protoblocktx.Status_COMMITTED,
-	})
 
 	// Update the config block to have SampleFabricX profile instead of
 	// the default TwoOrgsSampleFabricX.
@@ -241,7 +254,7 @@ func TestSignatureRule(t *testing.T) {
 	_, metaTxVerificationKey := factory.NewKeys()
 	configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
 		MetaNamespaceVerificationKey: metaTxVerificationKey,
-	}, genesisconfig.SampleFabricX)
+	}, configtxgen.SampleFabricX)
 	require.NoError(t, err)
 	update = &protosigverifierservice.Update{
 		Config: &protoblocktx.ConfigTransaction{
@@ -555,7 +568,7 @@ func defaultUpdate(t *testing.T) (
 	metaTxSigningKey, metaTxVerificationKey := factory.NewKeys()
 	configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
 		MetaNamespaceVerificationKey: metaTxVerificationKey,
-	}, genesisconfig.TwoOrgsSampleFabricX)
+	}, configtxgen.TwoOrgsSampleFabricX)
 	require.NoError(t, err)
 	metaTxSigner, err = factory.NewSigner(metaTxSigningKey)
 	require.NoError(t, err)

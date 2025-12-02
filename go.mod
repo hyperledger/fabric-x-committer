@@ -19,10 +19,10 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hyperledger/fabric-lib-go v1.1.3-0.20240523144151-25edd1eaf5f5
 	github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7
-	github.com/hyperledger/fabric-x-common v0.0.0-20251124100221-a22f264816dd
+	github.com/hyperledger/fabric-x-common v0.0.0-20251202124918-fc1bdd9f047a
 	github.com/jackc/puddle v1.3.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/onsi/gomega v1.34.2
+	github.com/onsi/gomega v1.38.2
 	github.com/prometheus/client_golang v1.20.5
 	github.com/prometheus/client_model v0.6.1
 	github.com/spf13/cobra v1.8.1
@@ -80,7 +80,6 @@ require (
 	github.com/hyperledger-labs/SmartBFT v0.0.0-20250503203013-eb005eef8866 // indirect
 	github.com/hyperledger/aries-bbs-go v0.0.0-20240528084656-761671ea73bc // indirect
 	github.com/hyperledger/fabric-amcl v0.0.0-20230602173724-9e02669dceb2 // indirect
-	github.com/hyperledger/fabric-config v0.3.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
 	github.com/jackc/pgconn v1.14.3 // indirect

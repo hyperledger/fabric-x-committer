@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen/genesisconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -233,7 +233,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
 			MetaNamespaceVerificationKey: verificationKey,
-		}, genesisconfig.TwoOrgsSampleFabricX)
+		}, configtxgen.TwoOrgsSampleFabricX)
 		require.NoError(t, err)
 
 		txBatch := []*dependencygraph.TransactionNode{

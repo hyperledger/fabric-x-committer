@@ -20,12 +20,14 @@ import (
 type NsVerifier struct {
 	verifier        policies.Policy
 	NamespacePolicy *protoblocktx.NamespacePolicy
+	idDeserilizer   msp.IdentityDeserializer
 }
 
 // NewNsVerifier creates a new namespace verifier according to the implementation scheme.
 func NewNsVerifier(p *protoblocktx.NamespacePolicy, idDeserializer msp.IdentityDeserializer) (*NsVerifier, error) {
 	res := &NsVerifier{
 		NamespacePolicy: p,
+		idDeserilizer:   idDeserializer,
 	}
 	var err error
 
@@ -80,14 +82,35 @@ func (v *NsVerifier) VerifyNs(txID string, tx *protoblocktx.Tx, nsIndex int) err
 		})
 	case *protoblocktx.NamespacePolicy_MspRule:
 		for _, s := range endorsements {
-			// NOTE: CertificateID is not supported as MSP does not have the supported for pre-stored certificates yet.
-			cert := s.Identity.GetCertificate()
-			if cert == nil {
-				return errors.New("An empty certificate is provided for the identity")
-			}
-			idBytes, err := msp.NewSerializedIdentity(s.Identity.MspId, cert)
-			if err != nil {
-				return err
+			var idBytes []byte
+			switch s.Identity.Creator.(type) {
+			case *protoblocktx.Identity_Certificate:
+				cert := s.Identity.GetCertificate()
+				if cert == nil {
+					return errors.New("An empty certificate is provided for the identity")
+				}
+				idBytes, err = msp.NewSerializedIdentity(s.Identity.MspId, cert)
+				if err != nil {
+					return err
+				}
+			case *protoblocktx.Identity_CertificateId:
+				certID := s.Identity.GetCertificateId()
+				if certID == "" {
+					return errors.New("An empty certificate ID is provided for the identity")
+				}
+
+				identity := v.idDeserilizer.GetKnownDeserializedIdentity(msp.IdentityIdentifier{
+					Mspid: s.Identity.MspId,
+					Id:    certID,
+				})
+				if identity == nil {
+					return errors.Newf("Invalid certificate identity: %s", certID)
+				}
+
+				idBytes, err = identity.Serialize()
+				if err != nil {
+					return errors.Wrapf(err, "invalid certificate identifier: %s", certID)
+				}
 			}
 
 			signedData = append(signedData, &protoutil.SignedData{

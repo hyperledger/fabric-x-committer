@@ -15,9 +15,8 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/core/config/configtest"
-	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
-	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen/genesisconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
@@ -92,13 +91,14 @@ func CreateConfigBlock(policy *PolicyProfile) (*common.Block, error) {
 		MetaNamespaceVerificationKey: policyNamespaceSigner.pubKey,
 		OrdererEndpoints:             policy.OrdererEndpoints,
 		ChannelID:                    policy.ChannelID,
-	}, genesisconfig.TwoOrgsSampleFabricX)
+	}, configtxgen.TwoOrgsSampleFabricX)
 }
 
 // CreateDefaultConfigBlock creates a config block with default values.
 func CreateDefaultConfigBlock(conf *ConfigBlock, profileName string) (*common.Block, error) {
-	configBlock := genesisconfig.Load(profileName, configtest.GetDevConfigDir())
-	tlsCertPath := filepath.Join(configtest.GetDevConfigDir(), "msp", "tlscacerts", "tlsroot.pem")
+	configBlock := configtxgen.Load(profileName, configtest.GetDevConfigDir())
+	tlsCertPath := filepath.Join(configtest.GetDevConfigDir(), "crypto",
+		"SampleOrg", "msp", "tlscacerts", "tlsroot.pem")
 	for _, consenter := range configBlock.Orderer.ConsenterMapping {
 		consenter.Identity = tlsCertPath
 		consenter.ClientTLSCert = tlsCertPath

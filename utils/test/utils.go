@@ -8,6 +8,7 @@ package test
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -472,24 +473,41 @@ func CreateEndorsementsForThresholdRule(signatures ...[]byte) []*protoblocktx.En
 	return sets
 }
 
+const (
+	// CreatorCertificate denotes Creator field in protoblocktx.Identity to contain x509 certificate.
+	CreatorCertificate = 0
+	// CreatorID denotes Creator field in protoblocktx.Identity to contain the digest of x509 certificate.
+	CreatorID = 1
+)
+
 // CreateEndorsementsForSignatureRule creates a EndorsementSet for a signature rule.
 // It takes parallel slices of signatures, MSP IDs, and certificate bytes,
 // and creates a EndorsementSet where each signature is paired with its corresponding
 // identity (MSP ID and certificate). This is used when a set of signatures
 // must all be present to satisfy a rule (e.g., an AND condition).
-func CreateEndorsementsForSignatureRule(signatures, mspIDs, certBytes [][]byte) *protoblocktx.Endorsements {
+func CreateEndorsementsForSignatureRule(
+	signatures, mspIDs, certBytesOrID [][]byte, creatorType int,
+) *protoblocktx.Endorsements {
 	set := &protoblocktx.Endorsements{
 		EndorsementsWithIdentity: make([]*protoblocktx.EndorsementWithIdentity, 0, len(signatures)),
 	}
 	for i, sig := range signatures {
-		set.EndorsementsWithIdentity = append(set.EndorsementsWithIdentity,
-			&protoblocktx.EndorsementWithIdentity{
-				Endorsement: sig,
-				Identity: &protoblocktx.Identity{
-					MspId:   string(mspIDs[i]),
-					Creator: &protoblocktx.Identity_Certificate{Certificate: certBytes[i]},
-				},
-			})
+		eid := &protoblocktx.EndorsementWithIdentity{
+			Endorsement: sig,
+			Identity: &protoblocktx.Identity{
+				MspId: string(mspIDs[i]),
+			},
+		}
+		switch creatorType {
+		case CreatorCertificate:
+			eid.Identity.Creator = &protoblocktx.Identity_Certificate{Certificate: certBytesOrID[i]}
+		case CreatorID:
+			eid.Identity.Creator = &protoblocktx.Identity_CertificateId{
+				CertificateId: hex.EncodeToString(certBytesOrID[i]),
+			}
+		}
+
+		set.EndorsementsWithIdentity = append(set.EndorsementsWithIdentity, eid)
 	}
 	return set
 }
