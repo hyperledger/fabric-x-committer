@@ -6,10 +6,10 @@ server:
   endpoint: :4001
   tls:
     mode: mtls
-    cert-path: /server-certs/public-key
-    key-path: /server-certs/private-key
+    cert-path: /server-certs/public-key.pem
+    key-path: /server-certs/private-key.pem
     ca-cert-paths:
-      - /server-certs/ca-certificate
+      - /server-certs/ca-certificate.pem
   keep-alive:
     params:
       time: 300s
@@ -24,7 +24,13 @@ monitoring:
 orderer:
   connection:
     endpoints:
-      - broadcast,deliver,orderer:7050
+      - id=0,broadcast,deliver,orderer:7050
+    tls: &clientTLS
+      mode: mtls
+      cert-path: /client-certs/public-key.pem
+      key-path: /client-certs/private-key.pem
+      ca-cert-paths:
+        - /client-certs/ca-certificate.pem
   channel-id: mychannel
   # identity:
   #   root-ca-paths:
@@ -38,12 +44,7 @@ orderer:
   #       Hash: SHA2
 committer:
   endpoint: coordinator:9001
-  tls:
-    mode: mtls
-    cert-path: /client-certs/public-key
-    key-path: /client-certs/private-key
-    ca-cert-paths:
-      - /client-certs/ca-certificate
+  tls: *clientTLS
 ledger:
   path: /root/sc/ledger
 notification:

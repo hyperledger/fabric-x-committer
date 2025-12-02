@@ -99,7 +99,7 @@ func (cc *PostgresClusterController) addPrimaryNode(ctx context.Context, t *test
 		},
 	})
 	node.StartContainer(ctx, t)
-	node.EnsureNodeReadiness(t, "database system is ready to accept connections")
+	node.EnsureNodeReadinessByLogs(t, dbtest.PostgresReadinesssOutput)
 	return node
 }
 
@@ -120,7 +120,7 @@ func (cc *PostgresClusterController) addSecondaryNode(ctx context.Context, t *te
 		},
 	})
 	node.StartContainer(ctx, t)
-	node.EnsureNodeReadiness(t, "started streaming WAL from primary")
+	node.EnsureNodeReadinessByLogs(t, dbtest.SecondaryPostgresNodeReadinessOutput)
 	return node
 }
 

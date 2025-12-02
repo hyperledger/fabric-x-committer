@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
@@ -61,8 +62,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 	for i, c := range vcs.Configs {
 		allEndpoints[i] = &c.Server.Endpoint
 	}
-	commonConn, connErr := connection.Connect(test.NewInsecureLoadBalancedDialConfig(t, allEndpoints))
-	require.NoError(t, connErr)
+	commonConn := test.NewInsecureLoadBalancedConnection(t, allEndpoints)
 
 	vcsTestEnv := &validatorAndCommitterServiceTestEnvWithClient{
 		vcs:          vcs.VCServices,
@@ -97,10 +97,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 func TestCreateConfigAndTables(t *testing.T) {
 	t.Parallel()
 	env := newValidatorAndCommitServiceTestEnvWithClient(t, 1)
-	p := &protoblocktx.NamespacePolicy{
-		Scheme:    "ECDSA",
-		PublicKey: []byte("public-key"),
-	}
+	p := policy.MakeECDSAThresholdRuleNsPolicy([]byte("publick-key"))
 	pBytes, err := proto.Marshal(p)
 	require.NoError(t, err)
 	configID := "create config"
@@ -436,19 +433,20 @@ func TestLastCommittedBlockNumber(t *testing.T) {
 
 	ctx, _ := createContext(t)
 	for i := range numServices {
-		lastCommittedBlock, err := env.clients[i].GetLastCommittedBlockNumber(ctx, nil)
+		nextBlock, err := env.clients[i].GetNextBlockNumberToCommit(ctx, nil)
 		require.NoError(t, err)
-		require.Nil(t, lastCommittedBlock.Block)
+		require.NotNil(t, nextBlock)
+		require.Equal(t, uint64(0), nextBlock.Number)
 	}
 
 	_, err := env.commonClient.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 0})
 	require.NoError(t, err)
 
 	for i := range numServices {
-		lastCommittedBlock, err := env.clients[i].GetLastCommittedBlockNumber(ctx, nil)
+		nextBlock, err := env.clients[i].GetNextBlockNumberToCommit(ctx, nil)
 		require.NoError(t, err)
-		require.NotNil(t, lastCommittedBlock.Block)
-		require.Equal(t, uint64(0), lastCommittedBlock.Block.Number)
+		require.NotNil(t, nextBlock)
+		require.Equal(t, uint64(1), nextBlock.Number)
 	}
 }
 
@@ -481,8 +479,8 @@ func TestGRPCStatusCode(t *testing.T) {
 			fn:   func() (any, error) { return c.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1}) },
 		},
 		{
-			name: "GetLastCommittedBlockNumber returns an internal error",
-			fn:   func() (any, error) { return c.GetLastCommittedBlockNumber(ctx, nil) },
+			name: "GetNextBlockNumberToCommit returns an internal error",
+			fn:   func() (any, error) { return c.GetNextBlockNumberToCommit(ctx, nil) },
 		},
 		{
 			name: "GetPolicies returns an internal error",

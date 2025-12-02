@@ -31,15 +31,15 @@ import (
 // Coordinator is a mock coordinator.
 type Coordinator struct {
 	protocoordinatorservice.CoordinatorServer
-	lastCommittedBlock      atomic.Pointer[protoblocktx.BlockInfo]
-	nextExpectedBlockNumber atomic.Uint64
-	streamActive            atomic.Bool
-	numWaitingTxs           atomic.Int32
-	txsStatus               *fifoCache[*protoblocktx.StatusWithHeight]
-	txsStatusMu             sync.Mutex
-	configTransaction       atomic.Pointer[protoblocktx.ConfigTransaction]
-	latency                 atomic.Pointer[time.Duration]
-	healthcheck             *health.Server
+	lastCommittedBlock atomic.Pointer[protoblocktx.BlockInfo]
+	nextBlock          atomic.Uint64
+	streamActive       atomic.Bool
+	numWaitingTxs      atomic.Int32
+	txsStatus          *fifoCache[*protoblocktx.StatusWithHeight]
+	txsStatusMu        sync.Mutex
+	configTransaction  atomic.Pointer[protoblocktx.ConfigTransaction]
+	latency            atomic.Pointer[time.Duration]
+	healthcheck        *health.Server
 }
 
 // We don't want to utilize unlimited memory for storing the transactions status.
@@ -78,20 +78,12 @@ func (c *Coordinator) SetLastCommittedBlockNumber(
 	return nil, nil
 }
 
-// GetLastCommittedBlockNumber returns the last committed block number.
-func (c *Coordinator) GetLastCommittedBlockNumber(
-	context.Context,
-	*emptypb.Empty,
-) (*protoblocktx.LastCommittedBlock, error) {
-	return &protoblocktx.LastCommittedBlock{Block: c.lastCommittedBlock.Load()}, nil
-}
-
-// GetNextExpectedBlockNumber returns the next expected block number to be received by the coordinator.
-func (c *Coordinator) GetNextExpectedBlockNumber(
+// GetNextBlockNumberToCommit returns the next expected block number to be received by the coordinator.
+func (c *Coordinator) GetNextBlockNumberToCommit(
 	context.Context,
 	*emptypb.Empty,
 ) (*protoblocktx.BlockInfo, error) {
-	return &protoblocktx.BlockInfo{Number: c.nextExpectedBlockNumber.Load()}, nil
+	return &protoblocktx.BlockInfo{Number: c.nextBlock.Load()}, nil
 }
 
 // GetTransactionsStatus returns the status of given set of transaction identifiers.
@@ -160,7 +152,7 @@ func (c *Coordinator) receiveBlocks(
 		if len(block.Rejected) > 0 {
 			maxBlock = max(maxBlock, block.Rejected[len(block.Rejected)-1].Ref.BlockNum)
 		}
-		c.nextExpectedBlockNumber.Store(maxBlock + 1)
+		c.nextBlock.Store(maxBlock + 1)
 
 		logger.Debugf("Received batch with %d transactions", len(block.Txs))
 		c.numWaitingTxs.Add(int32(len(block.Txs))) //nolint:gosec

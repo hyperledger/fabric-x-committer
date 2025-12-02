@@ -10,11 +10,11 @@ import (
 	"bytes"
 	"testing"
 
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
 
 const config = `
@@ -45,25 +45,27 @@ func TestEndpoints(t *testing.T) {
 	v := viper.New()
 	require.NoError(t, readYamlConfigsFromIO(v, bytes.NewBufferString(config)))
 	conf := new(struct {
-		Server                       connection.ServerConfig `mapstructure:"server"`
-		Endpoint                     connection.Endpoint     `mapstructure:"endpoint"`
-		OrdererEndpoint              ordererconn.Endpoint    `mapstructure:"orderer-endpoint"`
-		JSONOrdererEndpoint          ordererconn.Endpoint    `mapstructure:"json-orderer-endpoint"`
-		MultilineJSONOrdererEndpoint ordererconn.Endpoint    `mapstructure:"multiline-json-orderer-endpoint"`
-		YamlJSONOrdererEndpoint      ordererconn.Endpoint    `mapstructure:"yaml-orderer-endpoint"`
+		Server                       connection.ServerConfig     `mapstructure:"server"`
+		Endpoint                     connection.Endpoint         `mapstructure:"endpoint"`
+		OrdererEndpoint              commontypes.OrdererEndpoint `mapstructure:"orderer-endpoint"`
+		JSONOrdererEndpoint          commontypes.OrdererEndpoint `mapstructure:"json-orderer-endpoint"`
+		MultilineJSONOrdererEndpoint commontypes.OrdererEndpoint `mapstructure:"multiline-json-orderer-endpoint"`
+		YamlJSONOrdererEndpoint      commontypes.OrdererEndpoint `mapstructure:"yaml-orderer-endpoint"`
 	})
 	require.NoError(t, unmarshal(v, conf))
-	expected := ordererconn.Endpoint{
+	expected := commontypes.OrdererEndpoint{
 		ID:    5,
 		MspID: "org",
 		API:   []string{"broadcast", "deliver"},
-		Endpoint: connection.Endpoint{
-			Host: "localhost",
-			Port: 5050,
-		},
+		Host:  "localhost",
+		Port:  5050,
 	}
-	require.Equal(t, expected.Endpoint, conf.Server.Endpoint)
-	require.Equal(t, expected.Endpoint, conf.Endpoint)
+	expectedEndpoint := connection.Endpoint{
+		Host: "localhost",
+		Port: 5050,
+	}
+	require.Equal(t, expectedEndpoint, conf.Server.Endpoint)
+	require.Equal(t, expectedEndpoint, conf.Endpoint)
 	require.Equal(t, expected, conf.OrdererEndpoint)
 	require.Equal(t, expected, conf.JSONOrdererEndpoint)
 	require.Equal(t, expected, conf.MultilineJSONOrdererEndpoint)

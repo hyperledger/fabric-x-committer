@@ -149,27 +149,22 @@ func (db *database) queryVersionsIfPresent(ctx context.Context, nsID string, que
 	return kToV, nil
 }
 
-func (db *database) getLastCommittedBlockNumber(ctx context.Context) (*protoblocktx.LastCommittedBlock, error) {
-	blkInfo, err := db.getBlockInfoMetadata(ctx, lastCommittedBlockNumberKey)
-	if err != nil && !errors.Is(err, ErrMetadataEmpty) {
-		return nil, fmt.Errorf("failed to get the last committed block number: %w", err)
-	}
-	return &protoblocktx.LastCommittedBlock{Block: blkInfo}, nil
-}
-
-func (db *database) getBlockInfoMetadata(ctx context.Context, key string) (*protoblocktx.BlockInfo, error) {
-	var r pgx.Row
+func (db *database) getNextBlockNumberToCommit(ctx context.Context) (*protoblocktx.BlockInfo, error) {
 	var value []byte
-	if retryErr := db.retry.Execute(ctx, func() error {
-		r = db.pool.QueryRow(ctx, getMetadataPrepSQLStmt, []byte(key))
-		return errors.Wrapf(r.Scan(&value), "failed to get key [%s] using query [%s]", key, getMetadataPrepSQLStmt)
-	}); retryErr != nil {
+	retryErr := db.retry.Execute(ctx, func() error {
+		r := db.pool.QueryRow(ctx, getMetadataPrepSQLStmt, []byte(lastCommittedBlockNumberKey))
+		return errors.Wrap(r.Scan(&value), "failed to get the last committed block number")
+	})
+	if retryErr != nil {
 		return nil, retryErr
 	}
-	if len(value) == 0 {
-		return nil, ErrMetadataEmpty
+	res := &protoblocktx.BlockInfo{
+		Number: 0, // default: no block has been committed.
 	}
-	return &protoblocktx.BlockInfo{Number: binary.BigEndian.Uint64(value)}, nil
+	if len(value) > 0 {
+		res.Number = binary.BigEndian.Uint64(value) + 1
+	}
+	return res, nil
 }
 
 func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *protoblocktx.BlockInfo) error {
@@ -458,6 +453,7 @@ func (db *database) readNamespacePolicies(ctx context.Context) (*protoblocktx.Na
 	policy := &protoblocktx.NamespacePolicies{
 		Policies: make([]*protoblocktx.PolicyItem, len(keys)),
 	}
+
 	for i, key := range keys {
 		policy.Policies[i] = &protoblocktx.PolicyItem{
 			Namespace: string(key),

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -52,9 +51,7 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 		metrics,
 	)
 
-	conn, err := connection.Connect(test.NewInsecureDialConfig(&coordinatorEndpoint))
-	require.NoError(t, err)
-	t.Cleanup(func() { assert.NoError(t, conn.Close()) })
+	conn := test.NewInsecureConnection(t, &coordinatorEndpoint)
 
 	logger.Infof("sidecar connected to coordinator at %s", &coordinatorEndpoint)
 
@@ -244,15 +241,64 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 func TestRelayConfigBlock(t *testing.T) {
 	t.Parallel()
 	relayEnv := newRelayTestEnv(t)
+	m := relayEnv.metrics
+	coordinatorDelay := 10 * time.Second
+	relayEnv.coordinator.SetDelay(coordinatorDelay)
+
+	t.Log("Block #0 (data tx): Submit")
+	txCount := 3
+	blk0, _ := createBlockForTest(t, 0, nil)
+	relayEnv.incomingBlockToBeCommitted <- blk0
+
+	t.Log("Block #1 (config tx): Submit.")
 	configBlk := createConfigBlockForTest(t)
+	configBlk.Header.Number = 1
 	relayEnv.incomingBlockToBeCommitted <- configBlk
-	committedBlock := <-relayEnv.committedBlock
-	require.Equal(t, configBlk, committedBlock)
-	require.NotNil(t, committedBlock.Metadata)
-	require.Greater(t, len(committedBlock.Metadata.Metadata), statusIdx)
-	require.Equal(t, []byte{valid}, committedBlock.Metadata.Metadata[statusIdx])
+
+	t.Log("Block #2 (data tx): Submit.")
+	blk2, _ := createBlockForTest(t, 2, nil)
+	relayEnv.incomingBlockToBeCommitted <- blk2
+
+	t.Log("Block #0 (data tx): Check submit metrics. Block 1 and 2 would not have been queued yet.")
+	test.EventuallyIntMetric(t, txCount, m.transactionsSentTotal, 5*time.Second, 10*time.Millisecond)
+	test.EventuallyIntMetric(t, txCount, m.waitingTransactionsQueueSize, 5*time.Second, 10*time.Millisecond)
+	require.Equal(t, int64(relayEnv.waitingTxsLimit-txCount), relayEnv.relay.waitingTxsSlots.Load(t))
+
+	t.Log("Block #1 (config tx): Will not be queued till all previously submitted transactions are processed")
+	require.Never(t, func() bool {
+		return relayEnv.relay.waitingTxsSlots.Load(t) < int64(relayEnv.waitingTxsLimit-txCount)
+	}, coordinatorDelay/2, 1*time.Second)
+
+	t.Log("Block #0 (data tx): Committed.")
+	committedBlock0 := <-relayEnv.committedBlock
+	require.Equal(t, blk0, committedBlock0)
+
+	t.Log("Block #1 (config tx): Check submit metrics. Block 1 would have been queued but Block 2.")
+	test.EventuallyIntMetric(t, txCount+1, m.transactionsSentTotal, 5*time.Second, 10*time.Millisecond)
+	test.EventuallyIntMetric(t, 1, m.waitingTransactionsQueueSize, 5*time.Second, 10*time.Millisecond)
+	require.Equal(t, int64(relayEnv.waitingTxsLimit-1), relayEnv.relay.waitingTxsSlots.Load(t))
+	require.Never(t, func() bool {
+		return relayEnv.relay.waitingTxsSlots.Load(t) < int64(relayEnv.waitingTxsLimit-1)
+	}, coordinatorDelay/2, 1*time.Second)
+
+	t.Log("Block #1 (config tx): Committed.")
+	committedBlock1 := <-relayEnv.committedBlock
+
+	select {
+	case <-relayEnv.committedBlock:
+		t.Fatal("Block #2 should not have been committed by now.")
+	case <-time.After(coordinatorDelay / 2):
+	}
+
+	require.Equal(t, configBlk, committedBlock1)
+	require.NotNil(t, committedBlock1.Metadata)
+	require.Greater(t, len(committedBlock1.Metadata.Metadata), statusIdx)
+	require.Equal(t, []byte{valid}, committedBlock1.Metadata.Metadata[statusIdx])
 	require.Len(t, relayEnv.configBlocks, 1)
 	require.Equal(t, configBlk, relayEnv.configBlocks[0])
+
+	committedBlock2 := <-relayEnv.committedBlock
+	require.Equal(t, blk2, committedBlock2)
 }
 
 func (e *relayTestEnv) readAllStatusQueue(t *testing.T) []*protonotify.TxStatusEvent {

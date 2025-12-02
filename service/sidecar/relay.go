@@ -31,11 +31,11 @@ type (
 		outgoingCommittedBlock     chan<- *common.Block
 		outgoingStatusUpdates      chan<- []*protonotify.TxStatusEvent
 
-		// nextExpectedBlockNumberToBeReceived denotes the next block number that the sidecar
+		// nextBlockNumberToBeReceived denotes the next block number that the sidecar
 		// expects to receive from the orderer. This value is initially extracted from the last committed
 		// block number in the ledger, then incremented.
 		// The sidecar queries the coordinator for this value before starting to pull blocks from the ordering service.
-		nextExpectedBlockNumberToBeReceived atomic.Uint64
+		nextBlockNumberToBeReceived atomic.Uint64
 		// nextBlockNumberToBeCommitted denotes the next block number of to be committed.
 		nextBlockNumberToBeCommitted atomic.Uint64
 
@@ -76,7 +76,7 @@ func newRelay(
 
 // run starts the relay service. The call to run blocks until an error occurs or the context is canceled.
 func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolint:contextcheck // false positive
-	r.nextExpectedBlockNumberToBeReceived.Store(config.nextExpectedBlockByCoordinator)
+	r.nextBlockNumberToBeReceived.Store(config.nextExpectedBlockByCoordinator)
 	r.nextBlockNumberToBeCommitted.Store(config.nextExpectedBlockByCoordinator)
 	r.incomingBlockToBeCommitted = config.incomingBlockToBeCommitted
 	r.outgoingCommittedBlock = config.outgoingCommittedBlock
@@ -147,11 +147,11 @@ func (r *relay) preProcessBlock(
 		logger.Debugf("Block %d arrived in the relay", block.Header.Number)
 
 		blockNum := block.Header.Number
-		swapped := r.nextExpectedBlockNumberToBeReceived.CompareAndSwap(blockNum, blockNum+1)
+		swapped := r.nextBlockNumberToBeReceived.CompareAndSwap(blockNum, blockNum+1)
 		if !swapped {
 			errMsg := fmt.Sprintf(
 				"sidecar expects block [%d] but received block [%d]",
-				r.nextExpectedBlockNumberToBeReceived.Load(),
+				r.nextBlockNumberToBeReceived.Load(),
 				blockNum,
 			)
 			logger.Error(errMsg)
@@ -167,12 +167,21 @@ func (r *relay) preProcessBlock(
 		promutil.Observe(r.metrics.blockMappingInRelaySeconds, time.Since(start))
 		if mappedBlock.isConfig {
 			configUpdater(block)
+			// We wait for all previously submitted transactions to be processed by
+			// the committer before submitting the config block.
+			r.waitingTxsSlots.WaitTillEmpty(ctx)
 		}
 
 		txsCount := len(mappedBlock.block.Txs)
 		r.waitingTxsSlots.Acquire(ctx, int64(txsCount))
 		promutil.AddToGauge(r.metrics.waitingTransactionsQueueSize, txsCount)
 		queue.Write(mappedBlock)
+
+		if mappedBlock.isConfig {
+			// we wait for the config block to be processed by the committer
+			// before submitting any other data transactions.
+			r.waitingTxsSlots.WaitTillEmpty(ctx)
+		}
 	}
 }
 

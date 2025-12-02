@@ -28,7 +28,7 @@ const _ = grpc.SupportPackageIsVersion7
 const (
 	ValidationAndCommitService_StartValidateAndCommitStream_FullMethodName   = "/protovcservice.ValidationAndCommitService/StartValidateAndCommitStream"
 	ValidationAndCommitService_SetLastCommittedBlockNumber_FullMethodName    = "/protovcservice.ValidationAndCommitService/SetLastCommittedBlockNumber"
-	ValidationAndCommitService_GetLastCommittedBlockNumber_FullMethodName    = "/protovcservice.ValidationAndCommitService/GetLastCommittedBlockNumber"
+	ValidationAndCommitService_GetNextBlockNumberToCommit_FullMethodName     = "/protovcservice.ValidationAndCommitService/GetNextBlockNumberToCommit"
 	ValidationAndCommitService_GetTransactionsStatus_FullMethodName          = "/protovcservice.ValidationAndCommitService/GetTransactionsStatus"
 	ValidationAndCommitService_GetNamespacePolicies_FullMethodName           = "/protovcservice.ValidationAndCommitService/GetNamespacePolicies"
 	ValidationAndCommitService_GetConfigTransaction_FullMethodName           = "/protovcservice.ValidationAndCommitService/GetConfigTransaction"
@@ -41,7 +41,7 @@ const (
 type ValidationAndCommitServiceClient interface {
 	StartValidateAndCommitStream(ctx context.Context, opts ...grpc.CallOption) (ValidationAndCommitService_StartValidateAndCommitStreamClient, error)
 	SetLastCommittedBlockNumber(ctx context.Context, in *protoblocktx.BlockInfo, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	GetLastCommittedBlockNumber(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.LastCommittedBlock, error)
+	GetNextBlockNumberToCommit(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error)
 	GetTransactionsStatus(ctx context.Context, in *protoblocktx.QueryStatus, opts ...grpc.CallOption) (*protoblocktx.TransactionsStatus, error)
 	GetNamespacePolicies(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.NamespacePolicies, error)
 	GetConfigTransaction(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.ConfigTransaction, error)
@@ -96,9 +96,9 @@ func (c *validationAndCommitServiceClient) SetLastCommittedBlockNumber(ctx conte
 	return out, nil
 }
 
-func (c *validationAndCommitServiceClient) GetLastCommittedBlockNumber(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.LastCommittedBlock, error) {
-	out := new(protoblocktx.LastCommittedBlock)
-	err := c.cc.Invoke(ctx, ValidationAndCommitService_GetLastCommittedBlockNumber_FullMethodName, in, out, opts...)
+func (c *validationAndCommitServiceClient) GetNextBlockNumberToCommit(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.BlockInfo, error) {
+	out := new(protoblocktx.BlockInfo)
+	err := c.cc.Invoke(ctx, ValidationAndCommitService_GetNextBlockNumberToCommit_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +147,7 @@ func (c *validationAndCommitServiceClient) SetupSystemTablesAndNamespaces(ctx co
 type ValidationAndCommitServiceServer interface {
 	StartValidateAndCommitStream(ValidationAndCommitService_StartValidateAndCommitStreamServer) error
 	SetLastCommittedBlockNumber(context.Context, *protoblocktx.BlockInfo) (*emptypb.Empty, error)
-	GetLastCommittedBlockNumber(context.Context, *emptypb.Empty) (*protoblocktx.LastCommittedBlock, error)
+	GetNextBlockNumberToCommit(context.Context, *emptypb.Empty) (*protoblocktx.BlockInfo, error)
 	GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error)
 	GetNamespacePolicies(context.Context, *emptypb.Empty) (*protoblocktx.NamespacePolicies, error)
 	GetConfigTransaction(context.Context, *emptypb.Empty) (*protoblocktx.ConfigTransaction, error)
@@ -165,8 +165,8 @@ func (UnimplementedValidationAndCommitServiceServer) StartValidateAndCommitStrea
 func (UnimplementedValidationAndCommitServiceServer) SetLastCommittedBlockNumber(context.Context, *protoblocktx.BlockInfo) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetLastCommittedBlockNumber not implemented")
 }
-func (UnimplementedValidationAndCommitServiceServer) GetLastCommittedBlockNumber(context.Context, *emptypb.Empty) (*protoblocktx.LastCommittedBlock, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetLastCommittedBlockNumber not implemented")
+func (UnimplementedValidationAndCommitServiceServer) GetNextBlockNumberToCommit(context.Context, *emptypb.Empty) (*protoblocktx.BlockInfo, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetNextBlockNumberToCommit not implemented")
 }
 func (UnimplementedValidationAndCommitServiceServer) GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus) (*protoblocktx.TransactionsStatus, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTransactionsStatus not implemented")
@@ -238,20 +238,20 @@ func _ValidationAndCommitService_SetLastCommittedBlockNumber_Handler(srv interfa
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ValidationAndCommitService_GetLastCommittedBlockNumber_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _ValidationAndCommitService_GetNextBlockNumberToCommit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ValidationAndCommitServiceServer).GetLastCommittedBlockNumber(ctx, in)
+		return srv.(ValidationAndCommitServiceServer).GetNextBlockNumberToCommit(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ValidationAndCommitService_GetLastCommittedBlockNumber_FullMethodName,
+		FullMethod: ValidationAndCommitService_GetNextBlockNumberToCommit_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ValidationAndCommitServiceServer).GetLastCommittedBlockNumber(ctx, req.(*emptypb.Empty))
+		return srv.(ValidationAndCommitServiceServer).GetNextBlockNumberToCommit(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -340,8 +340,8 @@ var ValidationAndCommitService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ValidationAndCommitService_SetLastCommittedBlockNumber_Handler,
 		},
 		{
-			MethodName: "GetLastCommittedBlockNumber",
-			Handler:    _ValidationAndCommitService_GetLastCommittedBlockNumber_Handler,
+			MethodName: "GetNextBlockNumberToCommit",
+			Handler:    _ValidationAndCommitService_GetNextBlockNumberToCommit_Handler,
 		},
 		{
 			MethodName: "GetTransactionsStatus",

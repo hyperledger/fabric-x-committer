@@ -20,6 +20,9 @@ import (
 
 // SerializeVerificationKey encodes a ECDSA public key into a PEM file.
 func SerializeVerificationKey(key *ecdsa.PublicKey) ([]byte, error) {
+	if key == nil {
+		return nil, errors.New("key is nil")
+	}
 	x509encodedPub, err := x509.MarshalPKIXPublicKey(key)
 	if err != nil {
 		return nil, errors.Wrap(err, "cannot serialize public key")
@@ -32,6 +35,10 @@ func SerializeVerificationKey(key *ecdsa.PublicKey) ([]byte, error) {
 
 // SerializeSigningKey encodes a ECDSA private key into a PEM file.
 func SerializeSigningKey(key *ecdsa.PrivateKey) ([]byte, error) {
+	if key == nil {
+		return nil, errors.New("key is nil")
+	}
+
 	x509encodedPri, err := x509.MarshalECPrivateKey(key)
 	if err != nil {
 		return nil, errors.Wrap(err, "cannot serialize private key")

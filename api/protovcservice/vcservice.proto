@@ -17,7 +17,7 @@ import "google/protobuf/empty.proto";
 service ValidationAndCommitService {
   rpc StartValidateAndCommitStream (stream Batch) returns (stream protoblocktx.TransactionsStatus);
   rpc SetLastCommittedBlockNumber (protoblocktx.BlockInfo) returns (google.protobuf.Empty) {};
-  rpc GetLastCommittedBlockNumber (google.protobuf.Empty) returns (protoblocktx.LastCommittedBlock) {};
+  rpc GetNextBlockNumberToCommit (google.protobuf.Empty) returns (protoblocktx.BlockInfo) {};
   rpc GetTransactionsStatus (protoblocktx.QueryStatus) returns (protoblocktx.TransactionsStatus) {};
   rpc GetNamespacePolicies(google.protobuf.Empty) returns (protoblocktx.NamespacePolicies) {};
   rpc GetConfigTransaction(google.protobuf.Empty) returns (protoblocktx.ConfigTransaction) {};

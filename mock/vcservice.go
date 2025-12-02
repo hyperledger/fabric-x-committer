@@ -36,7 +36,7 @@ import (
 type VcService struct {
 	protovcservice.ValidationAndCommitServiceServer
 	numBatchesReceived atomic.Uint32
-	lastCommittedBlock atomic.Pointer[protoblocktx.BlockInfo]
+	nextBlock          atomic.Pointer[protoblocktx.BlockInfo]
 	txsStatus          *fifoCache[*protoblocktx.StatusWithHeight]
 	txsStatusMu        sync.Mutex
 	healthcheck        *health.Server
@@ -67,16 +67,17 @@ func (v *VcService) SetLastCommittedBlockNumber(
 	_ context.Context,
 	lastBlock *protoblocktx.BlockInfo,
 ) (*emptypb.Empty, error) {
-	v.lastCommittedBlock.Store(lastBlock)
+	lastBlock.Number++
+	v.nextBlock.Store(lastBlock)
 	return nil, nil
 }
 
-// GetLastCommittedBlockNumber get the last committed block number in the database/ledger.
-func (v *VcService) GetLastCommittedBlockNumber(
+// GetNextBlockNumberToCommit get the next expected block number in the database/ledger.
+func (v *VcService) GetNextBlockNumberToCommit(
 	context.Context,
 	*emptypb.Empty,
-) (*protoblocktx.LastCommittedBlock, error) {
-	return &protoblocktx.LastCommittedBlock{Block: v.lastCommittedBlock.Load()}, nil
+) (*protoblocktx.BlockInfo, error) {
+	return v.nextBlock.Load(), nil
 }
 
 // GetNamespacePolicies is a mock implementation of the protovcservice.GetNamespacePolicies.

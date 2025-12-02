@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/google/uuid"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
 	"github.com/stretchr/testify/assert"
@@ -213,31 +214,36 @@ func (env *sidecarTestEnv) startNotificationStream(
 	sidecarClientCreds connection.TLSConfig,
 ) {
 	t.Helper()
-	conn, err := connection.Connect(test.NewSecuredDialConfig(t, &env.config.Server.Endpoint, sidecarClientCreds))
-	require.NoError(t, err)
+	conn := test.NewSecuredConnection(t, &env.config.Server.Endpoint, sidecarClientCreds)
+	var err error
 	env.notifyStream, err = protonotify.NewNotifierClient(conn).OpenNotificationStream(ctx)
 	require.NoError(t, err)
 }
 
 func TestSidecar(t *testing.T) {
 	t.Parallel()
-	for _, conf := range []sidecarTestConfig{
-		{WithConfigBlock: false},
-		{WithConfigBlock: true},
-		{
-			WithConfigBlock: true,
-			NumFakeService:  3,
-		},
-	} {
-		conf := conf
-		t.Run(conf.String(), func(t *testing.T) {
+	for _, mode := range test.ServerModes {
+		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
-			env := newSidecarTestEnvWithTLS(t, conf, test.InsecureTLSConfig)
-			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
-			t.Cleanup(cancel)
-			env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
-			env.requireBlock(ctx, t, 0)
-			env.sendTransactionsAndEnsureCommitted(ctx, t, 1)
+			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
+			for _, conf := range []sidecarTestConfig{
+				{WithConfigBlock: false},
+				{WithConfigBlock: true},
+				{
+					WithConfigBlock: true,
+					NumFakeService:  3,
+				},
+			} {
+				t.Run(conf.String(), func(t *testing.T) {
+					t.Parallel()
+					env := newSidecarTestEnvWithTLS(t, conf, serverTLSConfig)
+					ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+					t.Cleanup(cancel)
+					env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, clientTLSConfig)
+					env.requireBlock(ctx, t, 0)
+					env.sendTransactionsAndEnsureCommitted(ctx, t, 1)
+				})
+			}
 		})
 	}
 }
@@ -255,7 +261,7 @@ func TestSidecarConfigUpdate(t *testing.T) {
 	env.sendTransactionsAndEnsureCommitted(ctx, t, expectedBlock)
 	expectedBlock++
 
-	submitConfigBlock := func(endpoints []*ordererconn.Endpoint) {
+	submitConfigBlock := func(endpoints []*commontypes.OrdererEndpoint) {
 		env.ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
 			OrdererEndpoints: endpoints,
 		})
@@ -286,10 +292,10 @@ func TestSidecarConfigUpdate(t *testing.T) {
 	}
 
 	t.Log("We expect the block to be held")
-	lastCommittedBlock, err := env.coordinator.GetLastCommittedBlockNumber(ctx, nil)
+	nextBlock, err := env.coordinator.GetNextBlockNumberToCommit(ctx, nil)
 	require.NoError(t, err)
-	require.NotNil(t, lastCommittedBlock.Block)
-	require.Equal(t, expectedBlock-1, lastCommittedBlock.Block.Number)
+	require.NotNil(t, nextBlock)
+	require.Equal(t, expectedBlock, nextBlock.Number)
 
 	t.Log("We advance the holder by one to allow the config block to pass through, but not other blocks")
 	env.ordererEnv.Holder.HoldFromBlock.Add(1)
@@ -328,8 +334,8 @@ func TestSidecarConfigRecovery(t *testing.T) {
 	t.Log("Modify the Sidecar config, use illegal host endpoint")
 	// We need to use ilegalEndpoints instead of an empty Endpoints struct,
 	// as the sidecar expects the Endpoints to be non-empty.
-	env.config.Orderer.Connection.Endpoints = []*ordererconn.Endpoint{
-		{Endpoint: connection.Endpoint{Host: "localhost", Port: 9999}},
+	env.config.Orderer.Connection.Endpoints = []*commontypes.OrdererEndpoint{
+		{Host: "localhost", Port: 9999},
 	}
 
 	var err error
@@ -389,7 +395,7 @@ func TestSidecarRecovery(t *testing.T) {
 	require.NoError(t, blkstorage.ResetBlockStore(env.config.Ledger.Path))
 	ctx2, cancel2 := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel2)
-	checkLastCommittedBlock(ctx2, t, env.coordinator, 10)
+	checkNextBlockNumberToCommit(ctx2, t, env.coordinator, 11)
 
 	// NOTE: The Fabric block store implementation used by the sidecar
 	//       maintains the ledger height in memory and updates it whenever
@@ -428,7 +434,7 @@ func TestSidecarRecovery(t *testing.T) {
 	t.Log("9. Send the next expected block by the coordinator.")
 	env.sendTransactionsAndEnsureCommitted(ctx2, t, 11)
 
-	checkLastCommittedBlock(ctx2, t, env.coordinator, 11)
+	checkNextBlockNumberToCommit(ctx2, t, env.coordinator, 12)
 	ensureAtLeastHeight(t, env.sidecar.ledgerService, 12)
 	cancel2()
 }
@@ -537,9 +543,7 @@ func TestSidecarVerifyBadTxForm(t *testing.T) {
 
 func (env *sidecarTestEnv) getCoordinatorLabel(t *testing.T) string {
 	t.Helper()
-	dialConfig, err := connection.NewSingleDialConfig(env.config.Committer)
-	require.NoError(t, err)
-	conn, err := connection.Connect(dialConfig)
+	conn, err := connection.NewSingleConnection(env.config.Committer)
 	require.NoError(t, err)
 	require.NoError(t, conn.Close())
 	return conn.CanonicalTarget()
@@ -657,7 +661,7 @@ func (env *sidecarTestEnv) requireBlock(
 	expectedBlockNumber uint64,
 ) *common.Block {
 	t.Helper()
-	checkLastCommittedBlock(ctx, t, env.coordinator, expectedBlockNumber)
+	checkNextBlockNumberToCommit(ctx, t, env.coordinator, expectedBlockNumber+1)
 	ensureAtLeastHeight(t, env.sidecar.ledgerService, expectedBlockNumber+1)
 
 	block, ok := channel.NewReader(ctx, env.committedBlock).Read()
@@ -716,7 +720,7 @@ func TestConstructStatuses(t *testing.T) {
 	require.Equal(t, expectedFinalStatuses, actualFinalStatuses)
 }
 
-func checkLastCommittedBlock(
+func checkNextBlockNumberToCommit(
 	ctx context.Context,
 	t *testing.T,
 	coordinator *mock.Coordinator,
@@ -724,10 +728,10 @@ func checkLastCommittedBlock(
 ) {
 	t.Helper()
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		lastCommittedBlock, err := coordinator.GetLastCommittedBlockNumber(ctx, nil)
+		nextBlock, err := coordinator.GetNextBlockNumberToCommit(ctx, nil)
 		require.NoError(ct, err)
-		require.NotNil(ct, lastCommittedBlock.Block)
-		require.Equal(ct, expectedBlockNumber, lastCommittedBlock.Block.Number)
+		require.NotNil(ct, nextBlock)
+		require.Equal(ct, expectedBlockNumber, nextBlock.Number)
 	}, expectedProcessingTime, 50*time.Millisecond)
 }
 

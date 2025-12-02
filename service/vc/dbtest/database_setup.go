@@ -31,7 +31,9 @@ const (
 	deploymentLocal     = "local"
 	deploymentContainer = "container"
 
-	YugaDBType     = "yugabyte" //nolint:revive
+	// YugaDBType represents the usage of Yugabyte DB.
+	YugaDBType = "yugabyte"
+	// PostgresDBType represents the usage of PostgreSQL DB.
 	PostgresDBType = "postgres"
 
 	yugaDBPort     = "5433"
@@ -120,7 +122,7 @@ func StartAndConnect(ctx context.Context, t *testing.T) *Connection {
 			DatabaseType: getDBTypeFromEnv(),
 		}
 		container.StartContainer(ctx, t)
-		connOptions = container.getConnectionOptions(ctx, t)
+		connOptions = container.GetConnectionOptions(ctx, t)
 	case deploymentLocal:
 		connOptions = NewConnection(connection.CreateEndpointHP("localhost", defaultLocalDBPort))
 	default:

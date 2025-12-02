@@ -36,28 +36,25 @@ func NewVCAdapter(config *connection.MultiClientConfig, res *ClientResources) *V
 
 // RunWorkload applies load on the VC.
 func (c *VcAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWithSetup) error {
-	commonDial, dialErr := connection.NewLoadBalancedDialConfig(*c.config)
-	if dialErr != nil {
-		return errors.Wrapf(dialErr, "could not create dial config for vcs")
-	}
-	commonConn, connErr := connection.Connect(commonDial)
+	commonConn, connErr := connection.NewLoadBalancedConnection(c.config)
 	if connErr != nil {
 		return errors.Wrapf(connErr, "failed to create connection to validator persisters")
 	}
+	defer connection.CloseConnectionsLog(commonConn)
 	commonClient := protovcservice.NewValidationAndCommitServiceClient(commonConn)
 	_, setupError := commonClient.SetupSystemTablesAndNamespaces(ctx, nil)
 	if setupError != nil {
 		return errors.Wrap(setupError, "failed to setup system tables and namespaces")
 	}
-	if lastCommittedBlock, getErr := commonClient.GetLastCommittedBlockNumber(ctx, nil); getErr != nil {
+	if nextBlock, getErr := commonClient.GetNextBlockNumberToCommit(ctx, nil); getErr != nil {
 		// We do not return error as we can proceed assuming no blocks were committed.
 		logger.Infof("failed getting last committed block number: %v", getErr)
-	} else if lastCommittedBlock.Block != nil {
-		c.nextBlockNum.Store(lastCommittedBlock.Block.Number + 1)
+	} else if nextBlock != nil {
+		c.nextBlockNum.Store(nextBlock.Number)
 	} else {
 		c.nextBlockNum.Store(0)
 	}
-	connections, connErr := connection.OpenConnections(*c.config)
+	connections, connErr := connection.NewConnectionPerEndpoint(c.config)
 	if connErr != nil {
 		return connErr
 	}

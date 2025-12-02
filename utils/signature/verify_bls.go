@@ -9,6 +9,8 @@ package signature
 import (
 	"github.com/cockroachdb/errors"
 	"github.com/consensys/gnark-crypto/ecc/bn254"
+	mspi "github.com/hyperledger/fabric-x-common/msp"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 )
 
 var q []bn254.G2Affine
@@ -21,23 +23,23 @@ func init() {
 // BlsHashPrefix is the prefix used to verify a BLS scheme signature.
 const BlsHashPrefix = "BLS"
 
-// BLSVerifier verifies using the BLS scheme.
-type BLSVerifier struct {
+// blsVerifier verifies using the BLS scheme.
+type blsVerifier struct {
 	pk bn254.G2Affine
 }
 
-// NewBLSVerifier instantiate a new BLS scheme verifier.
-func NewBLSVerifier(key []byte) (*BLSVerifier, error) {
+// newBLSVerifier instantiate a new BLS scheme verifier.
+func newBLSVerifier(key []byte) (*blsVerifier, error) {
 	var pk bn254.G2Affine
 	_, err := pk.SetBytes(key)
 	if err != nil {
 		return nil, errors.Wrap(err, "cannot set G2 from verification key bytes")
 	}
-	return &BLSVerifier{pk: pk}, nil
+	return &blsVerifier{pk: pk}, nil
 }
 
-// Verify a digest given a signature.
-func (v *BLSVerifier) Verify(digest Digest, signature Signature) error {
+// verify a digest given a signature.
+func (v *blsVerifier) verify(digest Digest, signature Signature) error {
 	var sig bn254.G1Affine
 	_, err := sig.SetBytes(signature)
 	if err != nil {
@@ -63,4 +65,15 @@ func (v *BLSVerifier) Verify(digest Digest, signature Signature) error {
 		return nil
 	}
 	return ErrSignatureMismatch
+}
+
+// EvaluateSignedData takes a set of SignedData and evaluates whether
+// the signatures are valid over the related message.
+func (v *blsVerifier) EvaluateSignedData(signatureSet []*protoutil.SignedData) error {
+	return verifySignedData(signatureSet, v)
+}
+
+// EvaluateIdentities returns nil as it is not applicable for EcdsaTxVerifier.
+func (*blsVerifier) EvaluateIdentities(_ []mspi.Identity) error {
+	return nil
 }

@@ -38,8 +38,7 @@ func newPolicyManager() *policyManager {
 func (pm *policyManager) updateFromTx(namespaces []*protoblocktx.TxNamespace) {
 	var updates []*protosigverifierservice.Update
 	for _, ns := range namespaces {
-		u := policy.GetUpdatesFromNamespace(ns)
-		if u != nil {
+		if u := policy.GetUpdatesFromNamespace(ns); u != nil {
 			updates = append(updates, u)
 		}
 	}

@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -87,17 +88,17 @@ func aggregateFilter(filters ...ConnFilter) ConnFilter {
 	return k
 }
 
-func filterOrdererEndpoints(endpoints []*Endpoint, filters ...ConnFilter) []*connection.Endpoint {
+func filterOrdererEndpoints(endpoints []*commontypes.OrdererEndpoint, filters ...ConnFilter) []*connection.Endpoint {
 	key := aggregateFilter(filters...)
 	result := make([]*connection.Endpoint, 0, len(endpoints))
-	for _, endpoint := range endpoints {
-		if key.api != anyAPI && !endpoint.SupportsAPI(key.api) {
+	for _, ep := range endpoints {
+		if key.api != anyAPI && !ep.SupportsAPI(key.api) {
 			continue
 		}
-		if key.id != anyID && endpoint.ID != key.id {
+		if key.id != anyID && ep.ID != key.id {
 			continue
 		}
-		result = append(result, &endpoint.Endpoint)
+		result = append(result, &connection.Endpoint{Host: ep.Host, Port: ep.Port})
 	}
 	return result
 }
@@ -179,7 +180,7 @@ func (c *ConnectionManager) GetConnectionPerID(filters ...ConnFilter) (map[uint3
 	return ret, v
 }
 
-func getAllIDs(endpoints []*Endpoint) []uint32 {
+func getAllIDs(endpoints []*commontypes.OrdererEndpoint) []uint32 {
 	ids := make(map[uint32]any)
 	for _, conn := range endpoints {
 		ids[conn.ID] = nil
@@ -194,15 +195,11 @@ func openConnection(
 	// We shuffle the endpoints for load balancing.
 	shuffle(endpoints)
 	logger.Infof("Opening connections to %d endpoints: %v.", len(endpoints), endpoints)
-	dialConfig, err := connection.NewLoadBalancedDialConfig(connection.MultiClientConfig{
+	return connection.NewLoadBalancedConnection(&connection.MultiClientConfig{
 		Endpoints: endpoints,
 		Retry:     conf.Retry,
 		TLS:       conf.TLS,
 	})
-	if err != nil {
-		return nil, err
-	}
-	return connection.Connect(dialConfig)
 }
 
 func makeEndpointsKey(endpoint []*connection.Endpoint) string {

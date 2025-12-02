@@ -93,38 +93,31 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 		return nil
 	})
 
-	commonDial, dialErr := connection.NewLoadBalancedDialConfig(*c.clientConfig)
-	if dialErr != nil {
-		return fmt.Errorf("failed to create connection to validator persisters: %w", dialErr)
-	}
-	commonConn, err := connection.Connect(commonDial)
+	commonConn, err := connection.NewLoadBalancedConnection(c.clientConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create connection to validator persisters: %w", err)
 	}
+	defer connection.CloseConnectionsLog(commonConn)
 	vcm.commonClient = protovcservice.NewValidationAndCommitServiceClient(commonConn)
 	_, setupErr := vcm.commonClient.SetupSystemTablesAndNamespaces(ctx, nil)
 	if setupErr != nil {
 		return errors.Wrap(setupErr, "failed to setup system tables and namespaces")
 	}
 
-	dialConfigs, dialErr := connection.NewDialConfigPerEndpoint(c.clientConfig)
-	if dialErr != nil {
-		return dialErr
+	connections, connErr := connection.NewConnectionPerEndpoint(c.clientConfig)
+	if connErr != nil {
+		return fmt.Errorf("failed to create connection to validator persister: %w", connErr)
 	}
-	for i, d := range dialConfigs {
-		logger.Debugf("vc manager creates client to vc [%d] listening on %s", i, d.Address)
-		conn, connErr := connection.Connect(d)
-		if connErr != nil {
-			return fmt.Errorf("failed to create connection to validator persister running at %s", d.Address)
-		}
-		logger.Infof("validator persister manager connected to validator persister at %s", d.Address)
-		vc := newValidatorCommitter(conn, c.metrics, c.policyMgr)
+	defer connection.CloseConnectionsLog(connections...)
+	for i, conn := range connections {
+		label := conn.CanonicalTarget()
+		c.metrics.vcservicesConnection.Disconnected(label)
 
-		logger.Debugf("Client [%d] successfully created and connected to vc", i)
+		vc := newValidatorCommitter(conn, c.metrics, c.policyMgr)
 		vcm.validatorCommitter[i] = vc
+		logger.Infof("Client [%d] successfully created and connected to vc at %s", i, label)
 
 		g.Go(func() error {
-			defer connection.CloseConnectionsLog(vc.conn)
 			return connection.Sustain(eCtx, func() (err error) {
 				defer vc.recoverPendingTransactions(txBatchQueue)
 				return vc.sendTransactionsAndForwardStatus(
@@ -149,11 +142,11 @@ func (vcm *validatorCommitterManager) setLastCommittedBlockNumber(
 	return errors.Wrap(err, "failed setting the last committed block number")
 }
 
-func (vcm *validatorCommitterManager) getLastCommittedBlockNumber(
+func (vcm *validatorCommitterManager) getNextBlockNumberToCommit(
 	ctx context.Context,
-) (*protoblocktx.LastCommittedBlock, error) {
-	ret, err := vcm.commonClient.GetLastCommittedBlockNumber(ctx, nil)
-	return ret, errors.Wrap(err, "failed getting the last committed block number")
+) (*protoblocktx.BlockInfo, error) {
+	ret, err := vcm.commonClient.GetNextBlockNumberToCommit(ctx, nil)
+	return ret, errors.Wrap(err, "failed getting the next expected block number")
 }
 
 func (vcm *validatorCommitterManager) getTransactionsStatus(
@@ -198,12 +191,9 @@ func (vcm *validatorCommitterManager) recoverPolicyManagerFromStateDB(ctx contex
 }
 
 func newValidatorCommitter(conn *grpc.ClientConn, metrics *perfMetrics, policyMgr *policyManager) *validatorCommitter {
-	label := conn.CanonicalTarget()
-	metrics.vcservicesConnection.Disconnected(label)
-	client := protovcservice.NewValidationAndCommitServiceClient(conn)
 	return &validatorCommitter{
 		conn:      conn,
-		client:    client,
+		client:    protovcservice.NewValidationAndCommitServiceClient(conn),
 		metrics:   metrics,
 		policyMgr: policyMgr,
 	}

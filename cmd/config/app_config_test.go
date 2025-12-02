@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/types"
@@ -26,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -34,18 +36,18 @@ import (
 var (
 	defaultServerTLSConfig = connection.TLSConfig{
 		Mode:     connection.MutualTLSMode,
-		CertPath: "/server-certs/public-key",
-		KeyPath:  "/server-certs/private-key",
+		CertPath: "/server-certs/public-key.pem",
+		KeyPath:  "/server-certs/private-key.pem",
 		CACertPaths: []string{
-			"/server-certs/ca-certificate",
+			"/server-certs/ca-certificate.pem",
 		},
 	}
 	defaultClientTLSConfig = connection.TLSConfig{
 		Mode:     connection.MutualTLSMode,
-		CertPath: "/client-certs/public-key",
-		KeyPath:  "/client-certs/private-key",
+		CertPath: "/client-certs/public-key.pem",
+		KeyPath:  "/client-certs/private-key.pem",
 		CACertPaths: []string{
-			"/client-certs/ca-certificate",
+			"/client-certs/ca-certificate.pem",
 		},
 	}
 )
@@ -64,7 +66,9 @@ func TestReadConfigSidecar(t *testing.T) {
 			Monitoring: newMonitoringConfig("localhost", 2114),
 			Orderer: ordererconn.Config{
 				Connection: ordererconn.ConnectionConfig{
-					Endpoints: ordererconn.NewEndpoints(0, "", newServerConfig("localhost", 7050)),
+					Endpoints: []*commontypes.OrdererEndpoint{
+						newOrdererEndpoint("", "localhost"),
+					},
 				},
 				ChannelID: "mychannel",
 			},
@@ -102,9 +106,10 @@ func TestReadConfigSidecar(t *testing.T) {
 			Monitoring: newMonitoringConfig("", 2114),
 			Orderer: ordererconn.Config{
 				Connection: ordererconn.ConnectionConfig{
-					Endpoints: ordererconn.NewEndpoints(
-						0, "", newServerConfig("orderer", 7050),
-					),
+					Endpoints: []*commontypes.OrdererEndpoint{
+						newOrdererEndpoint("", "orderer"),
+					},
+					TLS: defaultClientTLSConfig,
 				},
 				ChannelID: "mychannel",
 			},
@@ -358,9 +363,10 @@ func TestReadConfigLoadGen(t *testing.T) {
 					SidecarClient: newClientConfigWithDefaultTLS("sidecar", 4001),
 					Orderer: ordererconn.Config{
 						Connection: ordererconn.ConnectionConfig{
-							Endpoints: ordererconn.NewEndpoints(
-								0, "", newServerConfig("orderer", 7050),
-							),
+							Endpoints: []*commontypes.OrdererEndpoint{
+								newOrdererEndpoint("", "orderer"),
+							},
+							TLS: defaultClientTLSConfig,
 						},
 						ChannelID:     "mychannel",
 						ConsensusType: ordererconn.Bft,
@@ -383,12 +389,9 @@ func TestReadConfigLoadGen(t *testing.T) {
 								Scheme: signature.Ecdsa, Seed: 11,
 							},
 						},
-						OrdererEndpoints: []*ordererconn.Endpoint{{
-							ID:       0,
-							MspID:    "org",
-							API:      []string{"broadcast", "deliver"},
-							Endpoint: *newEndpoint("orderer", 7050),
-						}},
+						OrdererEndpoints: []*commontypes.OrdererEndpoint{
+							newOrdererEndpoint("org", "orderer"),
+						},
 					},
 				},
 				Conflicts: workload.ConflictProfile{
@@ -443,10 +446,14 @@ func defaultDBConfig() *vc.DatabaseConfig {
 
 func defaultSampleDBConfig() *vc.DatabaseConfig {
 	return &vc.DatabaseConfig{
-		Endpoints:      []*connection.Endpoint{newEndpoint("db", 5433)},
-		Username:       "yugabyte",
-		Password:       "yugabyte",
-		Database:       "yugabyte",
+		Endpoints: []*connection.Endpoint{newEndpoint("db", 5433)},
+		Username:  "yugabyte",
+		Password:  "yugabyte",
+		Database:  "yugabyte",
+		TLS: dbconn.DatabaseTLSConfig{
+			Mode:       connection.OneSideTLSMode,
+			CACertPath: "/server-certs/ca-certificate.pem",
+		},
 		MaxConnections: 10,
 		MinConnections: 5,
 		LoadBalance:    false,
@@ -499,6 +506,16 @@ func newEndpoint(host string, port int) *connection.Endpoint {
 	return &connection.Endpoint{
 		Host: host,
 		Port: port,
+	}
+}
+
+func newOrdererEndpoint(mspID, host string) *commontypes.OrdererEndpoint {
+	return &commontypes.OrdererEndpoint{
+		ID:    0,
+		MspID: mspID,
+		Host:  host,
+		Port:  7050,
+		API:   []string{commontypes.Broadcast, commontypes.Deliver},
 	}
 }
 

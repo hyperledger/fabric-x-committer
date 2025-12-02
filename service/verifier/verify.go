@@ -12,6 +12,10 @@ import (
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	"github.com/hyperledger/fabric-x-common/msp"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
@@ -23,6 +27,7 @@ import (
 
 type verifier struct {
 	verifiers atomic.Pointer[map[string]*signature.NsVerifier]
+	bundle    *channelconfig.Bundle
 }
 
 func newVerifier() *verifier {
@@ -41,11 +46,16 @@ func (v *verifier) updatePolicies(
 	if update == nil || (update.Config == nil && update.NamespacePolicies == nil) {
 		return nil
 	}
+
+	if err := v.updateBundle(update); err != nil {
+		return err
+	}
+
 	// We parse the policy during validation and mark transactions as invalid if parsing fails.
 	// While it is unlikely that policy parsing would fail at this stage, it could happen
 	// if the stored policy in the database is corrupted or maliciously altered, or if there is a
 	// bug in the committer that modifies the policy bytes.
-	newVerifiers, err := parsePolicies(update)
+	newVerifiers, err := createVerifiers(update, v.bundle.MSPManager())
 	if err != nil {
 		return errors.Join(ErrUpdatePolicies, err)
 	}
@@ -53,17 +63,31 @@ func (v *verifier) updatePolicies(
 	defer logger.Infof("New verification policies for namespaces %v", slices.Collect(maps.Keys(newVerifiers)))
 
 	for k, nsVerifier := range *v.verifiers.Load() {
-		if _, ok := newVerifiers[k]; !ok {
-			newVerifiers[k] = nsVerifier
+		_, ok := newVerifiers[k]
+		if ok {
+			continue
 		}
+
+		// If there is a config update, the verifier for signature policies must be
+		// recreated to use the latest MSP Manager from the new configuration.
+		if update.Config != nil && nsVerifier.NamespacePolicy.GetMspRule() != nil {
+			nsVerifier, err = signature.NewNsVerifier(nsVerifier.NamespacePolicy, v.bundle.MSPManager())
+			if err != nil {
+				return err
+			}
+		}
+		newVerifiers[k] = nsVerifier
 	}
 	v.verifiers.Store(&newVerifiers)
 	return nil
 }
 
-func parsePolicies(update *protosigverifierservice.Update) (map[string]*signature.NsVerifier, error) {
+func createVerifiers(
+	update *protosigverifierservice.Update, idDeserializer msp.IdentityDeserializer,
+) (map[string]*signature.NsVerifier, error) {
 	newPolicies := make(map[string]*signature.NsVerifier)
 	if update.Config != nil {
+		// TODO: Support signature rule for meta namespace policy.
 		nsVerifier, err := policy.ParsePolicyFromConfigTx(update.Config.Envelope)
 		if err != nil {
 			return nil, errors.Join(ErrUpdatePolicies, err)
@@ -72,7 +96,7 @@ func parsePolicies(update *protosigverifierservice.Update) (map[string]*signatur
 	}
 	if update.NamespacePolicies != nil {
 		for _, pd := range update.NamespacePolicies.Policies {
-			nsVerifier, err := policy.ParseNamespacePolicyItem(pd)
+			nsVerifier, err := policy.CreateNamespaceVerifier(pd, idDeserializer)
 			if err != nil {
 				return nil, errors.Join(ErrUpdatePolicies, err)
 			}
@@ -80,6 +104,23 @@ func parsePolicies(update *protosigverifierservice.Update) (map[string]*signatur
 		}
 	}
 	return newPolicies, nil
+}
+
+func (v *verifier) updateBundle(u *protosigverifierservice.Update) error {
+	if u.Config == nil {
+		return nil
+	}
+	envelope, err := protoutil.UnmarshalEnvelope(u.Config.Envelope)
+	if err != nil {
+		return errors.Wrap(err, "error unmarshalling envelope")
+	}
+	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
+	if err != nil {
+		return errors.Wrap(err, "error parsing config")
+	}
+
+	v.bundle = bundle
+	return nil
 }
 
 func (v *verifier) verifyRequest(tx *protosigverifierservice.Tx) *protosigverifierservice.Response {

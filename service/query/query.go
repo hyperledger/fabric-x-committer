@@ -133,6 +133,7 @@ func queryPolicies(ctx context.Context, queryObj querier) (*protoblocktx.Namespa
 	policy := &protoblocktx.NamespacePolicies{
 		Policies: make([]*protoblocktx.PolicyItem, len(rows)),
 	}
+
 	for i, row := range rows {
 		policy.Policies[i] = &protoblocktx.PolicyItem{
 			Namespace: string(row.Key),
