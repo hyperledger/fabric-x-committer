@@ -15,10 +15,10 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
@@ -95,8 +95,8 @@ type (
 		BlockTimeout      time.Duration
 		LoadgenBlockLimit uint64
 
-		// DBCluster configures the cluster to operate in DB cluster mode.
-		DBCluster *dbtest.Connection
+		// DBConnection configures the runtime to operate with a custom database connection.
+		DBConnection *dbtest.Connection
 		// TLS configures the secure level between the components: none | tls | mtls
 		TLSMode string
 
@@ -159,16 +159,18 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	c.AddOrUpdateNamespaces(t, types.MetaNamespaceID, workload.GeneratedNamespaceID, "1", "2", "3")
 
 	t.Log("Making DB env")
-	if conf.DBCluster == nil {
+	if conf.DBConnection == nil {
 		c.dbEnv = vc.NewDatabaseTestEnv(t)
 	} else {
-		c.dbEnv = vc.NewDatabaseTestEnvWithCluster(t, conf.DBCluster)
+		c.dbEnv = vc.NewDatabaseTestEnvWithCustomConnection(t, conf.DBConnection)
 	}
 
 	s := &c.SystemConfig
 	s.DB.Name = c.dbEnv.DBConf.Database
+	s.DB.Password = c.dbEnv.DBConf.Password
 	s.DB.LoadBalance = c.dbEnv.DBConf.LoadBalance
 	s.DB.Endpoints = c.dbEnv.DBConf.Endpoints
+	s.DB.TLS = c.dbEnv.DBConf.TLS
 	s.LedgerPath = t.TempDir()
 	s.ConfigBlockPath = filepath.Join(t.TempDir(), "config-block.pb.bin")
 
@@ -182,9 +184,12 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	s.Endpoints.Coordinator = ports.allocatePorts(t, 1)[0]
 	s.Endpoints.Sidecar = ports.allocatePorts(t, 1)[0]
 	s.Endpoints.LoadGen = ports.allocatePorts(t, 1)[0]
-	s.Policy.OrdererEndpoints = make([]*ordererconn.Endpoint, len(s.Endpoints.Orderer))
+	s.Policy.OrdererEndpoints = make([]*commontypes.OrdererEndpoint, len(s.Endpoints.Orderer))
 	for i, e := range s.Endpoints.Orderer {
-		s.Policy.OrdererEndpoints[i] = &ordererconn.Endpoint{MspID: "org", Endpoint: *e.Server}
+		s.Policy.OrdererEndpoints[i] = &commontypes.OrdererEndpoint{
+			ID: 0, MspID: "org", Host: e.Server.Host, Port: e.Server.Port,
+			API: []string{commontypes.Broadcast, commontypes.Deliver},
+		}
 	}
 
 	test.LogStruct(t, "System Parameters", s)
@@ -223,15 +228,15 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 
 	t.Log("Create clients")
 	c.CoordinatorClient = protocoordinatorservice.NewCoordinatorClient(
-		clientConnWithTLS(t, s.Endpoints.Coordinator.Server, c.SystemConfig.ClientTLS),
+		test.NewSecuredConnection(t, s.Endpoints.Coordinator.Server, c.SystemConfig.ClientTLS),
 	)
 
 	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(
-		clientConnWithTLS(t, s.Endpoints.Query.Server, c.SystemConfig.ClientTLS),
+		test.NewSecuredConnection(t, s.Endpoints.Query.Server, c.SystemConfig.ClientTLS),
 	)
 
 	c.notifyClient = protonotify.NewNotifierClient(
-		clientConnWithTLS(t, s.Endpoints.Sidecar.Server, c.SystemConfig.ClientTLS),
+		test.NewSecuredConnection(t, s.Endpoints.Sidecar.Server, c.SystemConfig.ClientTLS),
 	)
 
 	c.ordererStream, err = test.NewBroadcastStream(t.Context(), &ordererconn.Config{
@@ -357,14 +362,6 @@ func (c *CommitterRuntime) startBlockDelivery(t *testing.T) {
 	})
 }
 
-// clientConnWithTLS creates a service connection using its given server endpoint and TLS configuration.
-func clientConnWithTLS(t *testing.T, e *connection.Endpoint, tlsConfig connection.TLSConfig) *grpc.ClientConn {
-	t.Helper()
-	serviceConnection, err := connection.Connect(test.NewSecuredDialConfig(t, e, tlsConfig))
-	require.NoError(t, err)
-	return serviceConnection
-}
-
 // AddOrUpdateNamespaces adds policies for namespaces. If already exists, the policy will be updated.
 func (c *CommitterRuntime) AddOrUpdateNamespaces(t *testing.T, namespaces ...string) {
 	t.Helper()
@@ -409,9 +406,9 @@ func (c *CommitterRuntime) MakeAndSendTransactionsToOrderer(
 			Namespaces: namespaces,
 		}
 		if expectedStatus != nil && expectedStatus[i] == protoblocktx.Status_ABORTED_SIGNATURE_INVALID {
-			tx.Signatures = make([][]byte, len(namespaces))
+			tx.Endorsements = make([]*protoblocktx.Endorsements, len(namespaces))
 			for nsIdx := range namespaces {
-				tx.Signatures[nsIdx] = []byte("dummy")
+				tx.Endorsements[nsIdx] = test.CreateEndorsementsForThresholdRule([]byte("dummy"))[0]
 			}
 		}
 		txs[i] = c.TxBuilder.MakeTx(tx)
@@ -557,10 +554,10 @@ func (c *CommitterRuntime) ensureLastCommittedBlockNumber(t *testing.T, blkNum u
 
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
-	lastCommittedBlock, err := c.CoordinatorClient.GetLastCommittedBlockNumber(ctx, nil)
+	nextBlock, err := c.CoordinatorClient.GetNextBlockNumberToCommit(ctx, nil)
 	require.NoError(t, err)
-	require.NotNil(t, lastCommittedBlock.Block)
-	require.Equal(t, blkNum, lastCommittedBlock.Block.Number)
+	require.NotNil(t, nextBlock)
+	require.Equal(t, blkNum+1, nextBlock.Number)
 }
 
 func (c *CommitterRuntime) ensureAtLeastLastCommittedBlockNumber(t *testing.T, blkNum uint64) {
@@ -568,10 +565,10 @@ func (c *CommitterRuntime) ensureAtLeastLastCommittedBlockNumber(t *testing.T, b
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		lastCommittedBlock, err := c.CoordinatorClient.GetLastCommittedBlockNumber(ctx, nil)
+		nextBlock, err := c.CoordinatorClient.GetNextBlockNumberToCommit(ctx, nil)
 		require.NoError(ct, err)
-		require.NotNil(ct, lastCommittedBlock.Block)
-		require.GreaterOrEqual(ct, lastCommittedBlock.Block.Number, blkNum)
+		require.NotNil(ct, nextBlock)
+		require.Greater(ct, nextBlock.Number, blkNum)
 	}, 2*time.Minute, 250*time.Millisecond)
 }
 

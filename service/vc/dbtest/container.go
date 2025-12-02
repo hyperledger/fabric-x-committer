@@ -11,6 +11,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	docker "github.com/fsouza/go-dockerclient"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -36,22 +39,43 @@ const (
 	// container's Memory and CPU management.
 	gb         = 1 << 30 // gb is the number of bytes needed to represent 1 GB.
 	memorySwap = -1      // memorySwap disable memory swaps (don't store data on disk)
+
+	// YugabytedReadinessOutput is the output indicating that a Yugabyted node is ready.
+	YugabytedReadinessOutput = "Data placement constraint successfully verified"
+	// YugabyteTabletNodeReadinessOutput is the output indicating that a yugabyte's tablet node is ready.
+	YugabyteTabletNodeReadinessOutput = "syncing data to disk ... ok"
+	// PostgresReadinesssOutput is the output indicating that a PostgreSQL node is ready.
+	PostgresReadinesssOutput = "database system is ready to accept connections"
+	// SecondaryPostgresNodeReadinessOutput is the output indicating that a secondary PostgreSQL node is ready.
+	SecondaryPostgresNodeReadinessOutput = "started streaming WAL from primary"
+
+	// Represents the required database TLS certificate files name.
+	yugabytePublicKeyFileName     = "node.db.crt"
+	yugabytePrivateKeyFileName    = "node.db.key"
+	postgresPublicKeyFileName     = "server.crt"
+	postgresPrivateKeyFileName    = "server.key"
+	yugabyteCACertificateFileName = "ca.crt"
 )
 
-// YugabyteCMD starts yugabyte without SSL and fault tolerance (single server).
-var YugabyteCMD = []string{
-	"bin/yugabyted", "start",
-	"--callhome", "false",
-	"--background", "false",
-	"--ui", "false",
-	"--tserver_flags",
-	"ysql_max_connections=500," +
-		"tablet_replicas_per_gib_limit=4000," +
-		"yb_num_shards_per_tserver=1," +
-		"minloglevel=3," +
-		"yb_enable_read_committed_isolation=true",
-	"--insecure",
-}
+var (
+	// YugabyteCMD starts yugabyte without fault tolerance (single server).
+	YugabyteCMD = []string{
+		"bin/yugabyted", "start",
+		"--callhome", "false",
+		"--background", "false",
+		"--ui", "false",
+		"--tserver_flags",
+		"ysql_max_connections=500," +
+			"tablet_replicas_per_gib_limit=4000," +
+			"yb_num_shards_per_tserver=1," +
+			"minloglevel=3," +
+			"yb_enable_read_committed_isolation=true",
+	}
+
+	// passwordRegex is the compiled regular expression.
+	// to efficiently extract the password of the Yugabyted node.
+	passwordRegex = regexp.MustCompile(`(?i)(?m)^password:\s*(.+)$`)
+)
 
 // DatabaseContainer manages the execution of an instance of a dockerized DB for tests.
 type DatabaseContainer struct {
@@ -59,17 +83,22 @@ type DatabaseContainer struct {
 	Image        string
 	HostIP       string
 	Network      string
+	Hostname     string
 	DatabaseType string
 	Tag          string
 	Role         string
 	Cmd          []string
 	Env          []string
+	Binds        []string
 	HostPort     int
 	DbPort       docker.Port
 	PortMap      docker.Port
 	PortBinds    map[docker.Port][]docker.PortBinding
 	NetToIP      map[string]*docker.EndpointConfig
 	AutoRm       bool
+	// TLSConfig holds the node TLS certificates.
+	// If TLSConfig isn't available (is nil), we fallback to insecure mode.
+	TLSConfig *connection.TLSConfig
 
 	client      *docker.Client
 	containerID string
@@ -107,10 +136,25 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 
 		if dc.Cmd == nil {
 			dc.Cmd = YugabyteCMD
+			if dc.TLSConfig != nil {
+				require.NotEmpty(t, dc.Hostname)
+				dc.Cmd = append(dc.Cmd, "--secure", "--certs_dir=/creds", "--advertise_address", dc.Hostname)
+			} else {
+				dc.Cmd = append(dc.Cmd, "--insecure")
+			}
 		}
 
 		if dc.DbPort == "" {
 			dc.DbPort = docker.Port(fmt.Sprintf("%s/tcp", yugaDBPort))
+		}
+
+		if dc.TLSConfig != nil {
+			require.NotEmpty(t, dc.TLSConfig.CACertPaths)
+			dc.Binds = append(dc.Binds,
+				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CertPath, yugabytePublicKeyFileName),
+				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.KeyPath, yugabytePrivateKeyFileName),
+				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CACertPaths[0], yugabyteCACertificateFileName),
+			)
 		}
 	case PostgresDBType:
 		if dc.Image == "" {
@@ -127,12 +171,30 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 		if dc.DbPort == "" {
 			dc.DbPort = docker.Port(fmt.Sprintf("%s/tcp", postgresDBPort))
 		}
+
+		if dc.TLSConfig != nil {
+			dc.Binds = append(dc.Binds,
+				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CertPath, postgresPublicKeyFileName),
+				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.KeyPath, postgresPrivateKeyFileName),
+			)
+			dc.Cmd = []string{
+				// Configure PostgreSQL to run in secure mode
+				// and listen for incoming connections on a chosen port.
+				"-c", fmt.Sprintf("port=%s", dc.DbPort),
+				"-c", "ssl=on",
+				"-c", fmt.Sprintf("ssl_cert_file=%s", filepath.Join("/creds", postgresPublicKeyFileName)),
+				"-c", fmt.Sprintf("ssl_key_file=%s", filepath.Join("/creds", postgresPrivateKeyFileName)),
+			}
+		}
 	default:
 		t.Fatalf("Unsupported database type: %s", dc.DatabaseType)
 	}
 
 	if dc.Name == "" {
 		dc.Name = fmt.Sprintf(defaultDBDeploymentTemplateName, dc.DatabaseType)
+		if dc.TLSConfig != nil {
+			dc.Name += fmt.Sprintf("_with_tls_%s", uuid.NewString()[0:8])
+		}
 	}
 
 	if dc.HostIP == "" {
@@ -179,14 +241,16 @@ func (dc *DatabaseContainer) createContainer(ctx context.Context, t *testing.T) 
 			Context: ctx,
 			Name:    dc.Name,
 			Config: &docker.Config{
-				Image: dc.Image,
-				Cmd:   dc.Cmd,
-				Env:   dc.Env,
+				Image:    dc.Image,
+				Cmd:      dc.Cmd,
+				Env:      dc.Env,
+				Hostname: dc.Hostname,
 			},
 			HostConfig: &docker.HostConfig{
 				AutoRemove:   dc.AutoRm,
 				PortBindings: dc.PortBinds,
 				NetworkMode:  dc.Network,
+				Binds:        dc.Binds,
 				Memory:       4 * gb,
 				MemorySwap:   memorySwap,
 			},
@@ -223,8 +287,8 @@ func (dc *DatabaseContainer) findContainer(t *testing.T) error {
 	return errors.Errorf("cannot find container '%s'. Containers: %v", dc.Name, names)
 }
 
-// getConnectionOptions inspect the container and fetches the available connection options.
-func (dc *DatabaseContainer) getConnectionOptions(ctx context.Context, t *testing.T) *Connection {
+// GetConnectionOptions inspect the container and fetches the available connection options.
+func (dc *DatabaseContainer) GetConnectionOptions(ctx context.Context, t *testing.T) *Connection {
 	t.Helper()
 	container, err := dc.client.InspectContainerWithOptions(docker.InspectContainerOptions{
 		Context: ctx,
@@ -233,7 +297,7 @@ func (dc *DatabaseContainer) getConnectionOptions(ctx context.Context, t *testin
 	require.NoError(t, err)
 
 	endpoints := []*connection.Endpoint{
-		connection.CreateEndpointHP(container.NetworkSettings.IPAddress, dc.DbPort.Port()),
+		dc.GetContainerConnectionDetails(t),
 	}
 	for _, p := range container.NetworkSettings.Ports[dc.DbPort] {
 		endpoints = append(endpoints, connection.CreateEndpointHP(p.HostIP, p.HostPort))
@@ -317,6 +381,19 @@ func (dc *DatabaseContainer) ContainerID() string {
 	return dc.containerID
 }
 
+// ReadPasswordFromContainer extracts the randomly generated password from a file inside the container.
+// This is required because YugabyteDB, when running in secure mode, doesn't allow default passwords
+// and instead generates a random one at startup.
+// This method being called only when a secured Yugabyted node is started.
+// If the file doesn’t exist or doesn't contain a password, the test should fail.
+func (dc *DatabaseContainer) ReadPasswordFromContainer(t *testing.T, filePath string) string {
+	t.Helper()
+	output := dc.ExecuteCommand(t, []string{"cat", filePath})
+	found := passwordRegex.FindStringSubmatch(output)
+	require.Greater(t, len(found), 1)
+	return found[1]
+}
+
 // ExecuteCommand executes a command and returns the container output.
 func (dc *DatabaseContainer) ExecuteCommand(t *testing.T, cmd []string) string {
 	t.Helper()
@@ -337,13 +414,13 @@ func (dc *DatabaseContainer) ExecuteCommand(t *testing.T, cmd []string) string {
 
 	inspect, err := dc.client.InspectExec(exec.ID)
 	require.NoError(t, err)
-	require.Equal(t, 0, inspect.ExitCode)
+	require.Zero(t, inspect.ExitCode)
 
 	return stdout.String()
 }
 
-// EnsureNodeReadiness checks the container's readiness by monitoring its logs and ensure its running correctly.
-func (dc *DatabaseContainer) EnsureNodeReadiness(t *testing.T, requiredOutput string) {
+// EnsureNodeReadinessByLogs checks the container's readiness by monitoring its logs and ensure its running correctly.
+func (dc *DatabaseContainer) EnsureNodeReadinessByLogs(t *testing.T, requiredOutput string) {
 	t.Helper()
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		output := dc.GetContainerLogs(t)

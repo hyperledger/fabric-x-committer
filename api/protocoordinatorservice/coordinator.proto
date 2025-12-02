@@ -16,8 +16,7 @@ import "google/protobuf/empty.proto";
 service Coordinator {
     rpc BlockProcessing(stream Batch) returns (stream protoblocktx.TransactionsStatus);
     rpc SetLastCommittedBlockNumber (protoblocktx.BlockInfo) returns (google.protobuf.Empty) {};
-    rpc GetLastCommittedBlockNumber (google.protobuf.Empty) returns (protoblocktx.LastCommittedBlock) {};
-    rpc GetNextExpectedBlockNumber (google.protobuf.Empty) returns (protoblocktx.BlockInfo) {};
+    rpc GetNextBlockNumberToCommit (google.protobuf.Empty) returns (protoblocktx.BlockInfo) {};
     rpc GetTransactionsStatus(protoblocktx.QueryStatus) returns (protoblocktx.TransactionsStatus);
     rpc GetConfigTransaction(google.protobuf.Empty) returns (protoblocktx.ConfigTransaction) {};
     rpc NumberOfWaitingTransactionsForStatus(google.protobuf.Empty) returns (WaitingTransactions);

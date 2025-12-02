@@ -161,7 +161,7 @@ func (cc *YugaClusterController) startNodes(ctx context.Context, t *testing.T) {
 	}
 
 	for _, n := range cc.IterNodesByRole(TabletNode) {
-		n.EnsureNodeReadiness(t, "syncing data to disk ... ok")
+		n.EnsureNodeReadinessByLogs(t, dbtest.YugabyteTabletNodeReadinessOutput)
 	}
 }
 
@@ -187,12 +187,12 @@ func (cc *YugaClusterController) getNumberOfAliveMasters(t *testing.T) int {
 
 func (cc *YugaClusterController) listAllMasters(t *testing.T) string {
 	t.Helper()
-	var output string
 	cmd := []string{
 		"/home/yugabyte/bin/yb-admin",
 		"-master_addresses", cc.getMasterAddresses(),
 		"list_all_masters",
 	}
+	var output string
 	for _, n := range cc.nodes {
 		if output = n.ExecuteCommand(t, cmd); output != "" {
 			break

@@ -36,22 +36,18 @@ func NewCoordinatorAdapter(config *connection.ClientConfig, res *ClientResources
 
 // RunWorkload applies load on the coordinator.
 func (c *CoordinatorAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWithSetup) error {
-	coordinatorDialConfig, err := connection.NewSingleDialConfig(c.config)
-	if err != nil {
-		return errors.Wrapf(err, "failed creating coordinator dial config")
-	}
 	// connecting to the coordinator.
-	conn, connErr := connection.Connect(coordinatorDialConfig)
+	conn, connErr := connection.NewSingleConnection(c.config)
 	if connErr != nil {
-		return errors.Wrapf(err, "failed to connect to coordinator at %s", c.config.Endpoint.Address())
+		return errors.Wrapf(connErr, "failed to connect to coordinator at %s", c.config.Endpoint.Address())
 	}
 	defer connection.CloseConnectionsLog(conn)
 	client := protocoordinatorservice.NewCoordinatorClient(conn)
-	if lastCommittedBlock, getErr := client.GetLastCommittedBlockNumber(ctx, nil); getErr != nil {
+	if nextBlock, getErr := client.GetNextBlockNumberToCommit(ctx, nil); getErr != nil {
 		// We do not return error as we can proceed assuming no blocks were committed.
 		logger.Infof("cannot fetch the last committed block number: %v", getErr)
-	} else if lastCommittedBlock.Block != nil {
-		c.nextBlockNum.Store(lastCommittedBlock.Block.Number + 1)
+	} else if nextBlock != nil {
+		c.nextBlockNum.Store(nextBlock.Number)
 	} else {
 		c.nextBlockNum.Store(0)
 	}

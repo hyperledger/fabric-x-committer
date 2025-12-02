@@ -98,7 +98,7 @@ func ReadYamlAndSetupLogging(v *viper.Viper, configPath, servicePrefix string, c
 // unmarshal populate a config object.
 func unmarshal(v *viper.Viper, c any) error {
 	defer logger.Debugf("Decoded config: %s", &utils.LazyJSON{O: c})
-	return errors.Wrap(v.Unmarshal(c, decoderHook(decoders...)), "error decoding config")
+	return errors.Wrap(v.Unmarshal(c, decoderHook()), "error decoding config")
 }
 
 // setupEnv enables setting configuration via environment variables.

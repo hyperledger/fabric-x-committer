@@ -43,7 +43,7 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	if err != nil {
 		return err
 	}
-	connections, err := connection.OpenConnections(*c.config)
+	connections, err := connection.NewConnectionPerEndpoint(c.config)
 	if err != nil {
 		return err
 	}
@@ -101,7 +101,7 @@ func createUpdate(policy *workload.PolicyProfile) (*protosigverifierservice.Upda
 		if ns == types.MetaNamespaceID {
 			continue
 		}
-		policyBytes, err := proto.Marshal(p.GetVerificationPolicy())
+		policy, err := proto.Marshal(p.GetVerificationPolicy())
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to serialize policy")
 		}
@@ -109,7 +109,7 @@ func createUpdate(policy *workload.PolicyProfile) (*protosigverifierservice.Upda
 			updateMsg.NamespacePolicies.Policies,
 			&protoblocktx.PolicyItem{
 				Namespace: ns,
-				Policy:    policyBytes,
+				Policy:    policy,
 			},
 		)
 	}

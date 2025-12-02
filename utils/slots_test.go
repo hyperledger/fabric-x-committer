@@ -50,6 +50,33 @@ func TestSlotsAcquireAndRelease(t *testing.T) {
 
 	wg.Wait()
 	require.Equal(t, int64(-7), w.Load(t))
+
+	started := make(chan any)
+	done := make(chan any)
+	go func() {
+		close(started)
+		w.WaitTillEmpty(ctx)
+		close(done)
+	}()
+
+	<-started
+	time.Sleep(1 * time.Second)
+
+	select {
+	case <-done:
+		t.Fatal("WaitTillEmpty did not block when slots are non-empty")
+	default:
+		t.Log("WaitTillEmpty is correctly blocking")
+	}
+
+	w.Release(17)
+
+	select {
+	case <-done:
+		t.Log("WaitTillEmpty correctly unblocked after Release")
+	case <-time.After(2 * time.Second):
+		t.Fatal("WaitTillEmpty did not unblock after Release")
+	}
 }
 
 func TestSlotsMultipleWaiters(t *testing.T) {

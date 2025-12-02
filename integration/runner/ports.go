@@ -35,7 +35,7 @@ func (p *portAllocator) allocatePorts(t *testing.T, count int) []config.ServiceE
 func (p *portAllocator) allocate(t *testing.T) *connection.Endpoint {
 	t.Helper()
 	s := connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig)
-	listener, err := s.Listener()
+	listener, err := s.Listener(t.Context())
 	require.NoError(t, err)
 	p.listeners = append(p.listeners, listener)
 	return &s.Endpoint

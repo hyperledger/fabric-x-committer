@@ -110,11 +110,7 @@ func (s *Service) Run(ctx context.Context) error {
 	}()
 
 	logger.Infof("Create coordinator client and connect to %s", s.config.Committer.Endpoint)
-	committerDialConfig, err := connection.NewSingleDialConfig(s.config.Committer)
-	if err != nil {
-		return errors.Wrapf(err, "could not load coordinator dial config")
-	}
-	conn, connErr := connection.Connect(committerDialConfig)
+	conn, connErr := connection.NewSingleConnection(s.config.Committer)
 	if connErr != nil {
 		return errors.Wrapf(connErr, "failed to connect to coordinator")
 	}
@@ -258,7 +254,7 @@ func (s *Service) recover(ctx context.Context, coordClient protocoordinatorservi
 		return 0, err
 	}
 
-	blkInfo, err := coordClient.GetNextExpectedBlockNumber(ctx, nil)
+	blkInfo, err := coordClient.GetNextBlockNumberToCommit(ctx, nil)
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to fetch the next expected block number from coordinator")
 	}

@@ -34,6 +34,13 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 )
 
+var (
+	// InsecureTLSConfig defines an empty tls config.
+	InsecureTLSConfig connection.TLSConfig
+	// defaultGrpcRetryProfile defines the retry policy for a gRPC client connection.
+	defaultGrpcRetryProfile connection.RetryProfile
+)
+
 type (
 	// GrpcServers holds the server instances and their respective configurations.
 	GrpcServers struct {
@@ -51,13 +58,6 @@ func FailHandler(t *testing.T) {
 		t.FailNow()
 	})
 }
-
-var (
-	// InsecureTLSConfig defines an empty tls config.
-	InsecureTLSConfig connection.TLSConfig
-	// defaultGrpcRetryProfile defines the retry policy for a gRPC client connection.
-	defaultGrpcRetryProfile connection.RetryProfile
-)
 
 // ServerToMultiClientConfig is used to create a multi client configuration from existing server(s).
 func ServerToMultiClientConfig(servers ...*connection.ServerConfig) *connection.MultiClientConfig {
@@ -80,7 +80,7 @@ func RunGrpcServerForTest(
 	ctx context.Context, tb testing.TB, serverConfig *connection.ServerConfig, register func(server *grpc.Server),
 ) *grpc.Server {
 	tb.Helper()
-	listener, err := serverConfig.Listener()
+	listener, err := serverConfig.Listener(ctx)
 	require.NoError(tb, err)
 	server, err := serverConfig.GrpcServer()
 	require.NoError(tb, err)
@@ -221,25 +221,6 @@ func WaitUntilGrpcServerIsReady(
 	require.Equal(t, healthgrpc.HealthCheckResponse_SERVING, res.Status)
 }
 
-// WaitUntilGrpcServerIsDown uses the health check API to check a service is down.
-func WaitUntilGrpcServerIsDown(
-	ctx context.Context,
-	t *testing.T,
-	conn grpc.ClientConnInterface,
-) {
-	t.Helper()
-	if conn == nil {
-		return
-	}
-	healthClient := healthgrpc.NewHealthClient(conn)
-	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-		_, err := healthClient.Check(checkCtx, nil)
-		require.Error(ct, err)
-	}, time.Minute, 50*time.Millisecond)
-}
-
 // StatusRetriever provides implementation retrieve status of given transaction identifiers.
 type StatusRetriever interface {
 	GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus, ...grpc.CallOption) (
@@ -296,40 +277,73 @@ func SetupDebugging() {
 	})
 }
 
-// NewSecuredDialConfig creates the default dial config with given transport credentials.
-func NewSecuredDialConfig(
+// NewSecuredConnection creates the default connection with given transport credentials.
+func NewSecuredConnection(
 	t *testing.T,
 	endpoint connection.WithAddress,
 	tlsConfig connection.TLSConfig,
-) *connection.DialConfig {
+) *grpc.ClientConn {
+	t.Helper()
+	return NewSecuredConnectionWithRetry(t, endpoint, tlsConfig, defaultGrpcRetryProfile)
+}
+
+// NewSecuredConnectionWithRetry creates the default connection with given transport credentials.
+func NewSecuredConnectionWithRetry(
+	t *testing.T,
+	endpoint connection.WithAddress,
+	tlsConfig connection.TLSConfig,
+	retry connection.RetryProfile,
+) *grpc.ClientConn {
 	t.Helper()
 	clientCreds, err := tlsConfig.ClientCredentials()
 	require.NoError(t, err)
-	return connection.NewDialConfig(connection.DialConfigParameters{
+	conn, err := connection.NewConnection(connection.Parameters{
 		Address: endpoint.Address(),
 		Creds:   clientCreds,
-		Retry:   &defaultGrpcRetryProfile,
+		Retry:   &retry,
 	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = conn.Close()
+	})
+	return conn
 }
 
-// NewInsecureDialConfig creates the default dial config with insecure credentials.
-func NewInsecureDialConfig(endpoint connection.WithAddress) *connection.DialConfig {
-	return connection.NewDialConfig(connection.DialConfigParameters{
+// NewInsecureConnection creates the default connection with insecure credentials.
+func NewInsecureConnection(t *testing.T, endpoint connection.WithAddress) *grpc.ClientConn {
+	t.Helper()
+	return NewInsecureConnectionWithRetry(t, endpoint, defaultGrpcRetryProfile)
+}
+
+// NewInsecureConnectionWithRetry creates the default dial config with insecure credentials.
+func NewInsecureConnectionWithRetry(
+	t *testing.T, endpoint connection.WithAddress, retry connection.RetryProfile,
+) *grpc.ClientConn {
+	t.Helper()
+	conn, err := connection.NewConnection(connection.Parameters{
 		Address: endpoint.Address(),
 		Creds:   insecure.NewCredentials(),
-		Retry:   &defaultGrpcRetryProfile,
+		Retry:   &retry,
 	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = conn.Close()
+	})
+	return conn
 }
 
-// NewInsecureLoadBalancedDialConfig creates the default dial config with insecure credentials.
-func NewInsecureLoadBalancedDialConfig(t *testing.T, endpoints []*connection.Endpoint) *connection.DialConfig {
+// NewInsecureLoadBalancedConnection creates the default connection with insecure credentials.
+func NewInsecureLoadBalancedConnection(t *testing.T, endpoints []*connection.Endpoint) *grpc.ClientConn {
 	t.Helper()
-	dialConfig, err := connection.NewLoadBalancedDialConfig(connection.MultiClientConfig{
+	conn, err := connection.NewLoadBalancedConnection(&connection.MultiClientConfig{
 		Endpoints: endpoints,
 		Retry:     &defaultGrpcRetryProfile,
 	})
 	require.NoError(t, err)
-	return dialConfig
+	t.Cleanup(func() {
+		_ = conn.Close()
+	})
+	return conn
 }
 
 // NewTLSMultiClientConfig creates a multi client configuration for test purposes
@@ -441,4 +455,49 @@ func MustCreateEndpoint(value string) *connection.Endpoint {
 		panic(errors.Wrap(err, "could not create endpoint"))
 	}
 	return endpoint
+}
+
+// CreateEndorsementsForThresholdRule creates a slice of EndorsementSet pointers from individual threshold signatures.
+// Each signature provided is wrapped in its own EndorsementWithIdentity and then placed
+// in its own new EndorsementSet.
+func CreateEndorsementsForThresholdRule(signatures ...[]byte) []*protoblocktx.Endorsements {
+	sets := make([]*protoblocktx.Endorsements, 0, len(signatures))
+
+	for _, sig := range signatures {
+		sets = append(sets, &protoblocktx.Endorsements{
+			EndorsementsWithIdentity: []*protoblocktx.EndorsementWithIdentity{{Endorsement: sig}},
+		})
+	}
+
+	return sets
+}
+
+// CreateEndorsementsForSignatureRule creates a EndorsementSet for a signature rule.
+// It takes parallel slices of signatures, MSP IDs, and certificate bytes,
+// and creates a EndorsementSet where each signature is paired with its corresponding
+// identity (MSP ID and certificate). This is used when a set of signatures
+// must all be present to satisfy a rule (e.g., an AND condition).
+func CreateEndorsementsForSignatureRule(signatures, mspIDs, certBytes [][]byte) *protoblocktx.Endorsements {
+	set := &protoblocktx.Endorsements{
+		EndorsementsWithIdentity: make([]*protoblocktx.EndorsementWithIdentity, 0, len(signatures)),
+	}
+	for i, sig := range signatures {
+		set.EndorsementsWithIdentity = append(set.EndorsementsWithIdentity,
+			&protoblocktx.EndorsementWithIdentity{
+				Endorsement: sig,
+				Identity: &protoblocktx.Identity{
+					MspId:   string(mspIDs[i]),
+					Creator: &protoblocktx.Identity_Certificate{Certificate: certBytes[i]},
+				},
+			})
+	}
+	return set
+}
+
+// AppendToEndorsementSetsForThresholdRule is a utility function that creates new signature sets
+// for a threshold rule and appends them to an existing slice of signature sets.
+func AppendToEndorsementSetsForThresholdRule(
+	ss []*protoblocktx.Endorsements, signatures ...[]byte,
+) []*protoblocktx.Endorsements {
+	return append(ss, CreateEndorsementsForThresholdRule(signatures...)...)
 }

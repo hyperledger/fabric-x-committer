@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
 
@@ -21,7 +22,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
 
 const blockSize = 1
@@ -87,11 +87,11 @@ func TestConfigUpdate(t *testing.T) {
 
 	c.AddOrUpdateNamespaces(t, types.MetaNamespaceID)
 	metaPolicy := c.TxBuilder.TxSigner.HashSigners[types.MetaNamespaceID].GetVerificationPolicy()
-	submitConfigBlock := func(endpoints []*ordererconn.Endpoint) {
+	submitConfigBlock := func(endpoints []*commontypes.OrdererEndpoint) {
 		ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
 			ChannelID:                    c.SystemConfig.Policy.ChannelID,
 			OrdererEndpoints:             endpoints,
-			MetaNamespaceVerificationKey: metaPolicy.PublicKey,
+			MetaNamespaceVerificationKey: metaPolicy.GetThresholdRule().GetPublicKey(),
 		})
 	}
 	submitConfigBlock(ordererEnv.AllRealOrdererEndpoints())
@@ -145,10 +145,10 @@ func TestConfigUpdate(t *testing.T) {
 	}
 
 	t.Log("We expect the block to be held")
-	lastCommittedBlock, err := c.CoordinatorClient.GetLastCommittedBlockNumber(t.Context(), nil)
+	nextBlock, err := c.CoordinatorClient.GetNextBlockNumberToCommit(t.Context(), nil)
 	require.NoError(t, err)
-	require.NotNil(t, lastCommittedBlock.Block)
-	require.Equal(t, holdingBlock-1, lastCommittedBlock.Block.Number)
+	require.NotNil(t, nextBlock)
+	require.Equal(t, holdingBlock, nextBlock.Number)
 
 	t.Log("We advance the holder by one to allow the config block to pass through, but not other blocks")
 	ordererEnv.Holder.HoldFromBlock.Add(1)

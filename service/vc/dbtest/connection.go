@@ -8,7 +8,6 @@ package dbtest
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"time"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/yugabyte/pgx/v4/pgxpool"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 )
 
@@ -44,6 +44,7 @@ type Connection struct {
 	Password    string
 	Database    string
 	LoadBalance bool
+	TLS         dbconn.DatabaseTLSConfig
 }
 
 // NewConnection returns a connection parameters with the specified host:port, and the default values
@@ -57,9 +58,15 @@ func NewConnection(endpoints ...*connection.Endpoint) *Connection {
 }
 
 // dataSourceName returns the dataSourceName to be used by the database/sql package.
-func (c *Connection) dataSourceName() string {
-	return fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable",
-		c.User, c.Password, c.endpointsString(), c.Database)
+func (c *Connection) dataSourceName() (string, error) {
+	return dbconn.DataSourceName(dbconn.DataSourceNameParams{
+		Username:        c.User,
+		Password:        c.Password,
+		Database:        c.Database,
+		EndpointsString: c.endpointsString(),
+		LoadBalance:     c.LoadBalance,
+		TLS:             c.TLS,
+	})
 }
 
 // endpointsString returns the address:port as a string with comma as a separator between endpoints.
@@ -69,7 +76,11 @@ func (c *Connection) endpointsString() string {
 
 // open opens a connection pool to the database.
 func (c *Connection) open(ctx context.Context) (*pgxpool.Pool, error) {
-	poolConfig, err := pgxpool.ParseConfig(c.dataSourceName())
+	connString, err := c.dataSourceName()
+	if err != nil {
+		return nil, errors.Wrapf(err, "could not build database connection string")
+	}
+	poolConfig, err := pgxpool.ParseConfig(connString)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error parsing datasource: %s", c.endpointsString())
 	}

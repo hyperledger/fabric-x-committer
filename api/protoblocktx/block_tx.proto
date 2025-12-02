@@ -10,10 +10,14 @@ option go_package = "github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 
 package protoblocktx;
 
-// Represents a transaction in the blockchain.
 message Tx {
-    repeated TxNamespace namespaces = 1; // Namespaces associated with the transaction.
-    repeated bytes signatures = 2;       // Signature per namespace.
+  // A list of namespaces that define the transaction's scope.
+  repeated TxNamespace namespaces = 1;
+
+  // A list of endorsements.
+  // IMPORTANT: This list MUST be the same size as the namespaces list.
+  // The Endorsement at index i corresponds to the namespace at index i.
+  repeated Endorsements endorsements = 2;
 }
 
 // Represents a namespace within a transaction.
@@ -44,18 +48,50 @@ message Write {
     bytes value = 2; // The value associated with the key being written.
 }
 
+// Endorsements holds all the signatures that correspond to a single namespace
+// in the transaction's namespaces list.
+message Endorsements {
+  // The list of individual signatures for the corresponding namespace.
+  repeated EndorsementWithIdentity endorsements_with_identity = 1;
+}
+
+// EndorsementWithIdentity bundles a single signature with the identity of its creator.
+message EndorsementWithIdentity {
+  // The actual cryptographic signature bytes.
+  bytes endorsement = 1;
+
+  // The identity of the creator who produced the signature, i.e., the endorsement.
+  Identity identity = 2;
+}
+
+message Identity {
+  // The identifier of the associated membership service provider
+  string msp_id = 1;
+
+  oneof creator {
+    // The full raw bytes of the creator's certificate (e.g., an X.509 certificate).
+    bytes certificate = 2;
+
+    // An identifier for a certificate that is pre-stored or known by the committer.
+    string certificate_id = 3;
+  }
+}
+
 // Represents a namespace policy.
 message NamespacePolicy {
-    string scheme = 1;    // The scheme for signature verification.
+  oneof rule {
+    ThresholdRule threshold_rule = 1;
+    bytes msp_rule = 2; 
+  }
+}
+
+message ThresholdRule {
+    string scheme = 1;      // The scheme for signature verification.
     bytes public_key = 2; // The public key for signature verification.
 }
 
 message BlockInfo {
     uint64 number = 1;
-}
-
-message LastCommittedBlock {
-    optional BlockInfo block = 1;
 }
 
 message QueryStatus {

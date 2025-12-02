@@ -15,9 +15,9 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.yaml.in/yaml/v3"
 	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/slices"
-	"gopkg.in/yaml.v3"
 )
 
 func makeRand() *rand.Rand {

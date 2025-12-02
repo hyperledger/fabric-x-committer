@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 func BenchmarkSign(b *testing.B) {
@@ -59,7 +60,7 @@ func BenchmarkVerify(b *testing.B) {
 			for _, tx := range txs {
 				sig, signErr := s.SignNs(tx.Id, tx.Tx, 0)
 				require.NoError(b, signErr)
-				tx.Tx.Signatures = [][]byte{sig}
+				tx.Tx.Endorsements = test.CreateEndorsementsForThresholdRule(sig)
 			}
 
 			errBench := make([]error, b.N)

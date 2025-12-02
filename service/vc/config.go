@@ -7,10 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 package vc
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
 
@@ -32,19 +32,19 @@ type DatabaseConfig struct {
 	MinConnections int32                    `mapstructure:"min-connections"`
 	LoadBalance    bool                     `mapstructure:"load-balance"`
 	Retry          *connection.RetryProfile `mapstructure:"retry"`
+	TLS            dbconn.DatabaseTLSConfig `mapstructure:"tls"`
 }
 
 // DataSourceName returns the data source name of the database.
-func (d *DatabaseConfig) DataSourceName() string {
-	ret := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable",
-		d.Username, d.Password, d.EndpointsString(), d.Database)
-
-	// The load balancing flag is only available when the server supports it (having multiple nodes).
-	// Thus, we only add it when explicitly required. Otherwise, an error will occur.
-	if d.LoadBalance {
-		ret += "&load_balance=true"
-	}
-	return ret
+func (d *DatabaseConfig) DataSourceName() (string, error) {
+	return dbconn.DataSourceName(dbconn.DataSourceNameParams{
+		Username:        d.Username,
+		Password:        d.Password,
+		Database:        d.Database,
+		EndpointsString: d.EndpointsString(),
+		LoadBalance:     d.LoadBalance,
+		TLS:             d.TLS,
+	})
 }
 
 // EndpointsString returns the address:port as a string with comma as a separator between endpoints.

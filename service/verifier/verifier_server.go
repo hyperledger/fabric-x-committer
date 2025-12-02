@@ -115,6 +115,12 @@ func (s *Server) handleInputs(
 		}
 		logger.Debugf("Received input from client with %v requests", len(batch.Requests))
 
+		// NOTE: When the sidecar receives a config transaction, it waits for all preceding
+		// transactions to complete before submitting it to the coordinator. The actual
+		// configuration update on the verifier is deferred. It is applied just-in-time,
+		// immediately before the next data transaction is processed, ensuring that
+		// transaction and all subsequent ones operate under the new configuration.
+
 		// Update policies if included in the batch.
 		err := executor.verifier.updatePolicies(batch.Update)
 		if err != nil {
