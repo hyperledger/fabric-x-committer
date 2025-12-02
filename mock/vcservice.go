@@ -11,10 +11,8 @@ import (
 	"maps"
 	"math/rand"
 	"slices"
-	"strconv"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
@@ -42,7 +40,7 @@ type VcService struct {
 	healthcheck        *health.Server
 	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
 	MockFaultyNodeDropSize   int
-	txBatchChannels          map[string]chan *protovcservice.Batch
+	txBatchChannels          map[uint64]chan *protovcservice.Batch
 	txBatchChannelsMu        sync.Mutex
 	txBatchChannelsIDCounter atomic.Uint64
 }
@@ -52,7 +50,7 @@ func NewMockVcService() *VcService {
 	return &VcService{
 		txsStatus:       newFifoCache[*protoblocktx.StatusWithHeight](defaultTxStatusStorageSize),
 		healthcheck:     connection.DefaultHealthCheckService(),
-		txBatchChannels: make(map[string]chan *protovcservice.Batch),
+		txBatchChannels: make(map[uint64]chan *protovcservice.Batch),
 	}
 }
 
@@ -125,7 +123,7 @@ func (v *VcService) StartValidateAndCommitStream(
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
 	txBatchChan := make(chan *protovcservice.Batch)
-	vcID := strconv.FormatUint(v.txBatchChannelsIDCounter.Add(1), 10)
+	vcID := v.txBatchChannelsIDCounter.Add(1)
 
 	v.txBatchChannelsMu.Lock()
 	v.txBatchChannels[vcID] = txBatchChan
@@ -228,9 +226,7 @@ func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *protovcser
 		return errors.New("Trying to send transactions before channel created (no channels in map)")
 	}
 
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	idx := rng.Intn(len(channels))
-	txBatchChan := channels[idx]
+	txBatchChan := channels[rand.Intn(len(channels))]
 	channel.NewWriter(ctx, txBatchChan).Write(txsBatch)
 	return nil
 }
