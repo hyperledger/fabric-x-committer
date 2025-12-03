@@ -76,7 +76,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 				cmd:          defaultCMD,
 			})
 
-			// we create a database environment, so we can connect to the database and ensure the transaction status
+			// create a dbEnv, so we can connect to the database and ensure the transaction status
 			dbEnv := vc.NewDatabaseTestEnvFromConnection(
 				t,
 				dbtest.NewConnection(mustGetEndpoint(ctx, t, containerName, databasePort)),
@@ -85,7 +85,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 
 			c := *conf
 			ordererEp := mustGetEndpoint(ctx, t, containerName, mockOrdererPort)
-			// We have on a non-pointer field that being duplicated. Therefore, shallow copy is enough.
+			// we have on a non-pointer field that being duplicated. therefore, shallow copy is enough
 			c.LoadProfile.Transaction.Policy.OrdererEndpoints = []*commontypes.OrdererEndpoint{
 				{
 					Host: ordererEp.Host, Port: ordererEp.Port, ID: 0, MspID: "org",
