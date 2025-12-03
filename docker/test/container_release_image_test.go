@@ -27,26 +27,9 @@ import (
 	testutils "github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-type startNodeParameters struct {
-	credsFactory    *testutils.CredentialsFactory
-	node            string
-	networkName     string
-	tlsMode         string
-	configBlockPath string
-	dbType          string
-	dbPassword      string
-}
-
-func (p *startNodeParameters) asNode(node string) startNodeParameters {
-	params := *p
-	params.node = node
-	return params
-}
-
 const (
 	committerReleaseImage = "icr.io/cbdc/committer:0.0.2"
 	loadgenReleaseImage   = "icr.io/cbdc/loadgen:0.0.2"
-	containerPrefixName   = "sc_test"
 	networkPrefixName     = containerPrefixName + "_network"
 	genBlockFile          = "sc-genesis-block.proto.bin"
 	// containerConfigPath is the path to the config directory inside the container.
@@ -305,24 +288,6 @@ func startCommitterNodeWithTestImage(
 		},
 		name: assembleContainerName(params.node, params.tlsMode, params.dbType),
 	})
-}
-
-func assembleContainerName(node, tlsMode, dbType string) string {
-	return fmt.Sprintf("%s_%s_%s_%s", containerPrefixName, node, tlsMode, dbType)
-}
-
-func assembleBinds(t *testing.T, params startNodeParameters, additionalBinds ...string) []string {
-	t.Helper()
-
-	_, serverCredsPath := params.credsFactory.CreateServerCredentials(t, params.tlsMode, params.node)
-	require.NotEmpty(t, serverCredsPath)
-	_, clientCredsPath := params.credsFactory.CreateClientCredentials(t, params.tlsMode)
-	require.NotEmpty(t, clientCredsPath)
-
-	return append([]string{
-		fmt.Sprintf("%s:/server-certs", serverCredsPath),
-		fmt.Sprintf("%s:/client-certs", clientCredsPath),
-	}, additionalBinds...)
 }
 
 // mustGetWD returns the current working directory.
