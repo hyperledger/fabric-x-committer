@@ -56,10 +56,6 @@ var defaultCMD = []string{"run", "db", "committer", "orderer"}
 func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 	t.Parallel()
 
-	// retrieve the policy from the loadgen configuration that corresponds to the config-block policy
-	v := config.NewViperWithLoadGenDefaults()
-	conf, err := config.ReadLoadGenYamlAndSetupLogging(v, filepath.Join(localConfigPath, "loadgen.yaml"))
-	require.NoError(t, err)
 	credsFactory := testutils.NewCredentialsFactory(t)
 
 	for _, mode := range testutils.ServerModes {
@@ -76,16 +72,12 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 				cmd:          defaultCMD,
 			})
 
-			// create a dbEnv, so we can connect to the database and ensure the transaction status
-			dbEnv := vc.NewDatabaseTestEnvFromConnection(
-				t,
-				dbtest.NewConnection(mustGetEndpoint(ctx, t, containerName, databasePort)),
-				false,
-			)
-
-			c := *conf
+			// retrieve the policy from the loadgen configuration that matches the config-block policy.
+			// we do this in each subtest to avoid race conditions.
+			v := config.NewViperWithLoadGenDefaults()
+			c, err := config.ReadLoadGenYamlAndSetupLogging(v, filepath.Join(localConfigPath, "loadgen.yaml"))
+			require.NoError(t, err)
 			ordererEp := mustGetEndpoint(ctx, t, containerName, mockOrdererPort)
-			// we have on a non-pointer field that being duplicated. therefore, shallow copy is enough
 			c.LoadProfile.Transaction.Policy.OrdererEndpoints = []*commontypes.OrdererEndpoint{
 				{
 					Host: ordererEp.Host, Port: ordererEp.Port, ID: 0, MspID: "org",
@@ -112,7 +104,11 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 					},
 					Policy: c.LoadProfile.Transaction.Policy,
 				},
-				DBEnv: dbEnv,
+				DBEnv: vc.NewDatabaseTestEnvFromConnection(
+					t,
+					dbtest.NewConnection(mustGetEndpoint(ctx, t, containerName, databasePort)),
+					false,
+				),
 			}
 			runtime.SystemConfig.ClientTLS, _ = runtime.CredFactory.CreateClientCredentials(t, mode)
 			runtime.CreateRuntimeClients(ctx, t)
