@@ -128,17 +128,20 @@ type DatabaseTestEnv struct {
 func NewDatabaseTestEnv(t *testing.T) *DatabaseTestEnv {
 	t.Helper()
 	// default parameters set.
-	return newDatabaseTestEnv(t, dbtest.PrepareTestEnv(t), false)
+	return NewDatabaseTestEnvFromConnection(t, dbtest.PrepareTestEnv(t), false)
 }
 
 // NewDatabaseTestEnvWithCustomConnection creates a new db test environment given a db connection.
 func NewDatabaseTestEnvWithCustomConnection(t *testing.T, dbConnections *dbtest.Connection) *DatabaseTestEnv {
 	t.Helper()
 	require.NotNil(t, dbConnections)
-	return newDatabaseTestEnv(t, dbtest.PrepareTestEnvWithConnection(t, dbConnections), dbConnections.LoadBalance)
+	return NewDatabaseTestEnvFromConnection(
+		t, dbtest.PrepareTestEnvWithConnection(t, dbConnections), dbConnections.LoadBalance,
+	)
 }
 
-func newDatabaseTestEnv(t *testing.T, cs *dbtest.Connection, loadBalance bool) *DatabaseTestEnv {
+// NewDatabaseTestEnvFromConnection creates a new db test environment given a db connection without preparations.
+func NewDatabaseTestEnvFromConnection(t *testing.T, cs *dbtest.Connection, loadBalance bool) *DatabaseTestEnv {
 	t.Helper()
 	config := &DatabaseConfig{
 		Endpoints:      cs.Endpoints,

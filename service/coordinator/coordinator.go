@@ -101,10 +101,6 @@ var (
 	ErrActiveStreamWaitingTransactions = errors.New("cannot determine number of waiting transactions for " +
 		"status while stream is active")
 
-	// ErrActiveStreamBlockNumber is returned when GetNextBlockNumberToCommit is called while a stream is active.
-	// The next expected block number cannot be reliably determined in this state.
-	ErrActiveStreamBlockNumber = errors.New("cannot determine next expected block number while stream is active")
-
 	// ErrExistingStreamOrConflictingOp indicates that a stream cannot be created because a stream already exists
 	// or a conflicting gRPC API call is being made concurrently.
 	ErrExistingStreamOrConflictingOp = errors.New("stream already exists or conflicting operation in progress")
