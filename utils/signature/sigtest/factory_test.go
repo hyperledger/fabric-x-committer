@@ -16,7 +16,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -33,11 +33,11 @@ func TestEndToEnd(t *testing.T) {
 			s, err := f.NewSigner(priv)
 			require.NoError(t, err)
 			txID := "test"
-			tx := &protoblocktx.Tx{
-				Namespaces: []*protoblocktx.TxNamespace{{
+			tx := &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
 					NsId:       "0",
 					NsVersion:  0,
-					ReadWrites: make([]*protoblocktx.ReadWrite, 0),
+					ReadWrites: make([]*applicationpb.ReadWrite, 0),
 				}},
 			}
 			sig, err := s.SignNs(txID, tx, 0)
@@ -84,11 +84,11 @@ func TestEcdsaPem(t *testing.T) {
 	require.NotNil(t, pemS, "missing private key in PEM")
 
 	txID := "test"
-	tx := &protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	tx := &applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:       "0",
 			NsVersion:  0,
-			ReadWrites: make([]*protoblocktx.ReadWrite, 0),
+			ReadWrites: make([]*applicationpb.ReadWrite, 0),
 		}},
 	}
 

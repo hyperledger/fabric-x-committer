@@ -18,7 +18,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
@@ -59,7 +59,7 @@ type (
 	statesToBeCommitted struct {
 		updateWrites namespaceToWrites
 		newWrites    namespaceToWrites
-		batchStatus  *protoblocktx.TransactionsStatus
+		batchStatus  *applicationpb.TransactionsStatus
 		txIDToHeight transactionIDToHeight
 	}
 )
@@ -149,7 +149,7 @@ func (db *database) queryVersionsIfPresent(ctx context.Context, nsID string, que
 	return kToV, nil
 }
 
-func (db *database) getNextBlockNumberToCommit(ctx context.Context) (*protoblocktx.BlockInfo, error) {
+func (db *database) getNextBlockNumberToCommit(ctx context.Context) (*applicationpb.BlockInfo, error) {
 	var value []byte
 	retryErr := db.retry.Execute(ctx, func() error {
 		r := db.pool.QueryRow(ctx, getMetadataPrepSQLStmt, []byte(lastCommittedBlockNumberKey))
@@ -158,7 +158,7 @@ func (db *database) getNextBlockNumberToCommit(ctx context.Context) (*protoblock
 	if retryErr != nil {
 		return nil, retryErr
 	}
-	res := &protoblocktx.BlockInfo{
+	res := &applicationpb.BlockInfo{
 		Number: 0, // default: no block has been committed.
 	}
 	if len(value) > 0 {
@@ -167,7 +167,7 @@ func (db *database) getNextBlockNumberToCommit(ctx context.Context) (*protoblock
 	return res, nil
 }
 
-func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *protoblocktx.BlockInfo) error {
+func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *applicationpb.BlockInfo) error {
 	// NOTE: We can actually batch this transaction with regular user transactions and perform
 	//       a single commit. However, we need to implement special logic to handle cases
 	//       when there are no waiting user transactions. Hence, for simplicity, we are not
@@ -281,7 +281,7 @@ func (db *database) insertTxStatus(
 	heights := make([][]byte, 0, numEntries)
 	for tID, status := range states.batchStatus.Status {
 		// We cannot insert a "duplicate ID" status since we already have a status entry with this ID.
-		if status.Code == protoblocktx.Status_REJECTED_DUPLICATE_TX_ID {
+		if status.Code == applicationpb.Status_REJECTED_DUPLICATE_TX_ID {
 			continue
 		}
 		ids = append(ids, []byte(tID))
@@ -412,8 +412,8 @@ func (s *statesToBeCommitted) empty() bool {
 func (db *database) readStatusWithHeight(
 	ctx context.Context,
 	txIDs [][]byte,
-) (map[string]*protoblocktx.StatusWithHeight, error) {
-	var rows map[string]*protoblocktx.StatusWithHeight
+) (map[string]*applicationpb.StatusWithHeight, error) {
+	var rows map[string]*applicationpb.StatusWithHeight
 	retryErr := db.retry.Execute(ctx, func() error {
 		r, err := db.pool.Query(ctx, queryTxIDsStatusPrepSQLStmt, txIDs)
 		if err != nil {
@@ -422,7 +422,7 @@ func (db *database) readStatusWithHeight(
 		defer r.Close()
 
 		// reset map every retry
-		rows = make(map[string]*protoblocktx.StatusWithHeight)
+		rows = make(map[string]*applicationpb.StatusWithHeight)
 		for r.Next() {
 			var id []byte
 			var status int32
@@ -437,7 +437,7 @@ func (db *database) readStatusWithHeight(
 				return fmt.Errorf("failed to create height: %w", err)
 			}
 
-			rows[string(id)] = ht.WithStatus(protoblocktx.Status(status))
+			rows[string(id)] = ht.WithStatus(applicationpb.Status(status))
 		}
 		return errors.Wrap(r.Err(), "error occurred while reading rows")
 	})
@@ -445,17 +445,17 @@ func (db *database) readStatusWithHeight(
 	return rows, retryErr
 }
 
-func (db *database) readNamespacePolicies(ctx context.Context) (*protoblocktx.NamespacePolicies, error) {
+func (db *database) readNamespacePolicies(ctx context.Context) (*applicationpb.NamespacePolicies, error) {
 	keys, values, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, db, queryPoliciesSQLStmt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the policies from table [%s]: %w", TableName(types.MetaNamespaceID), err)
 	}
-	policy := &protoblocktx.NamespacePolicies{
-		Policies: make([]*protoblocktx.PolicyItem, len(keys)),
+	policy := &applicationpb.NamespacePolicies{
+		Policies: make([]*applicationpb.PolicyItem, len(keys)),
 	}
 
 	for i, key := range keys {
-		policy.Policies[i] = &protoblocktx.PolicyItem{
+		policy.Policies[i] = &applicationpb.PolicyItem{
 			Namespace: string(key),
 			Policy:    values[i],
 		}
@@ -463,13 +463,13 @@ func (db *database) readNamespacePolicies(ctx context.Context) (*protoblocktx.Na
 	return policy, nil
 }
 
-func (db *database) readConfigTX(ctx context.Context) (*protoblocktx.ConfigTransaction, error) {
+func (db *database) readConfigTX(ctx context.Context) (*applicationpb.ConfigTransaction, error) {
 	_, values, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, db, queryConfigSQLStmt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the config transaction from table [%s]: %w",
 			TableName(types.ConfigNamespaceID), err)
 	}
-	configTX := &protoblocktx.ConfigTransaction{}
+	configTX := &applicationpb.ConfigTransaction{}
 	for _, v := range values {
 		configTX.Envelope = v
 	}

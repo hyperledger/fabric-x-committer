@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -397,7 +397,7 @@ func (m *modGenTester) Next() Modifier {
 	return m
 }
 
-func (m *modGenTester) Modify(tx *protoblocktx.Tx) {
+func (m *modGenTester) Modify(tx *applicationpb.Tx) {
 	for _, ns := range tx.Namespaces {
 		ns.NsVersion = m.nsVersion
 	}

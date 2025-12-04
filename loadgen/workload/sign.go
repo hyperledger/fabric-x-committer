@@ -11,7 +11,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
@@ -57,8 +57,8 @@ func NewTxSignerVerifier(policy *PolicyProfile) *TxSignerVerifier {
 }
 
 // Sign signs a TX.
-func (e *TxSignerVerifier) Sign(txID string, tx *protoblocktx.Tx) {
-	tx.Endorsements = make([]*protoblocktx.Endorsements, len(tx.Namespaces))
+func (e *TxSignerVerifier) Sign(txID string, tx *applicationpb.Tx) {
+	tx.Endorsements = make([]*applicationpb.Endorsements, len(tx.Namespaces))
 	for nsIndex, ns := range tx.Namespaces {
 		signer, ok := e.HashSigners[ns.NsId]
 		if !ok {
@@ -69,7 +69,7 @@ func (e *TxSignerVerifier) Sign(txID string, tx *protoblocktx.Tx) {
 }
 
 // Verify verifies a signature on the transaction.
-func (e *TxSignerVerifier) Verify(txID string, tx *protoblocktx.Tx) bool {
+func (e *TxSignerVerifier) Verify(txID string, tx *applicationpb.Tx) bool {
 	if len(tx.Endorsements) < len(tx.Namespaces) {
 		return false
 	}
@@ -114,14 +114,14 @@ func NewHashSignerVerifier(profile *Policy) *HashSignerVerifier {
 }
 
 // Sign signs a hash.
-func (e *HashSignerVerifier) Sign(txID string, tx *protoblocktx.Tx, nsIndex int) signature.Signature {
+func (e *HashSignerVerifier) Sign(txID string, tx *applicationpb.Tx, nsIndex int) signature.Signature {
 	sign, err := e.signer.SignNs(txID, tx, nsIndex)
 	Must(err)
 	return sign
 }
 
 // Verify verifies a Signature.
-func (e *HashSignerVerifier) Verify(txID string, tx *protoblocktx.Tx, nsIndex int) bool {
+func (e *HashSignerVerifier) Verify(txID string, tx *applicationpb.Tx, nsIndex int) bool {
 	if err := e.verifier.VerifyNs(txID, tx, nsIndex); err != nil {
 		return false
 	}
@@ -129,10 +129,10 @@ func (e *HashSignerVerifier) Verify(txID string, tx *protoblocktx.Tx, nsIndex in
 }
 
 // GetVerificationPolicy returns the verification policy.
-func (e *HashSignerVerifier) GetVerificationPolicy() *protoblocktx.NamespacePolicy {
-	return &protoblocktx.NamespacePolicy{
-		Rule: &protoblocktx.NamespacePolicy_ThresholdRule{
-			ThresholdRule: &protoblocktx.ThresholdRule{
+func (e *HashSignerVerifier) GetVerificationPolicy() *applicationpb.NamespacePolicy {
+	return &applicationpb.NamespacePolicy{
+		Rule: &applicationpb.NamespacePolicy_ThresholdRule{
+			ThresholdRule: &applicationpb.ThresholdRule{
 				Scheme: e.scheme, PublicKey: e.pubKey,
 			},
 		},

@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -49,7 +49,7 @@ func TestLedgerService(t *testing.T) {
 	//       result in an error. This is due to the iterator implementation in the
 	//       fabric ledger.
 	blk0, _ := createBlockForTest(t, 0, nil)
-	valid := byte(protoblocktx.Status_COMMITTED)
+	valid := byte(applicationpb.Status_COMMITTED)
 	metadata := &common.BlockMetadata{
 		Metadata: [][]byte{nil, nil, {valid, valid, valid}},
 	}

@@ -13,24 +13,24 @@ import (
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 )
 
 // NsVerifier verifies a given namespace.
 type NsVerifier struct {
 	verifier        policies.Policy
-	NamespacePolicy *protoblocktx.NamespacePolicy
+	NamespacePolicy *applicationpb.NamespacePolicy
 }
 
 // NewNsVerifier creates a new namespace verifier according to the implementation scheme.
-func NewNsVerifier(p *protoblocktx.NamespacePolicy, idDeserializer msp.IdentityDeserializer) (*NsVerifier, error) {
+func NewNsVerifier(p *applicationpb.NamespacePolicy, idDeserializer msp.IdentityDeserializer) (*NsVerifier, error) {
 	res := &NsVerifier{
 		NamespacePolicy: p,
 	}
 	var err error
 
 	switch r := p.GetRule().(type) {
-	case *protoblocktx.NamespacePolicy_ThresholdRule:
+	case *applicationpb.NamespacePolicy_ThresholdRule:
 		policy := r.ThresholdRule
 
 		switch policy.Scheme {
@@ -45,7 +45,7 @@ func NewNsVerifier(p *protoblocktx.NamespacePolicy, idDeserializer msp.IdentityD
 		default:
 			return nil, errors.Newf("scheme '%v' not supported", policy.Scheme)
 		}
-	case *protoblocktx.NamespacePolicy_MspRule:
+	case *applicationpb.NamespacePolicy_MspRule:
 		pp := cauthdsl.NewPolicyProvider(idDeserializer)
 		res.verifier, _, err = pp.NewPolicy(r.MspRule)
 	default:
@@ -55,7 +55,7 @@ func NewNsVerifier(p *protoblocktx.NamespacePolicy, idDeserializer msp.IdentityD
 }
 
 // VerifyNs verifies a transaction's namespace signature.
-func (v *NsVerifier) VerifyNs(txID string, tx *protoblocktx.Tx, nsIndex int) error {
+func (v *NsVerifier) VerifyNs(txID string, tx *applicationpb.Tx, nsIndex int) error {
 	if nsIndex < 0 || nsIndex >= len(tx.Namespaces) || nsIndex >= len(tx.Endorsements) {
 		return errors.New("namespace index out of range")
 	}
@@ -73,12 +73,12 @@ func (v *NsVerifier) VerifyNs(txID string, tx *protoblocktx.Tx, nsIndex int) err
 	signedData := make([]*protoutil.SignedData, 0, len(endorsements))
 
 	switch v.NamespacePolicy.GetRule().(type) {
-	case *protoblocktx.NamespacePolicy_ThresholdRule:
+	case *applicationpb.NamespacePolicy_ThresholdRule:
 		signedData = append(signedData, &protoutil.SignedData{
 			Data:      data,
 			Signature: endorsements[0].Endorsement,
 		})
-	case *protoblocktx.NamespacePolicy_MspRule:
+	case *applicationpb.NamespacePolicy_MspRule:
 		for _, s := range endorsements {
 			// NOTE: CertificateID is not supported as MSP does not have the supported for pre-stored certificates yet.
 			cert := s.Identity.GetCertificate()

@@ -15,7 +15,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -135,9 +135,9 @@ func mapToStatusBatch(block *common.Block) []metrics.TxStatus {
 			// We can ignore config transactions as we only count data transactions.
 			continue
 		}
-		status := protoblocktx.Status_COMMITTED
+		status := applicationpb.Status_COMMITTED
 		if len(statusCodes) > i {
-			status = protoblocktx.Status(statusCodes[i])
+			status = applicationpb.Status(statusCodes[i])
 		}
 		statusBatch = append(statusBatch, metrics.TxStatus{
 			TxID:   channelHeader.TxId,
@@ -154,7 +154,7 @@ func recapStatusCodes(statusCodes []byte) string {
 	for code, count := range codes {
 		items = append(
 			items,
-			fmt.Sprintf("%s x %d", protoblocktx.Status(code).String(), count),
+			fmt.Sprintf("%s x %d", applicationpb.Status(code).String(), count),
 		)
 	}
 	return strings.Join(items, ", ")

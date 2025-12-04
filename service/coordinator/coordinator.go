@@ -21,7 +21,7 @@ import (
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -91,7 +91,7 @@ type (
 		// sender: validator committer manager sends transaction status to this channel. For each validator committer
 		// 	       server, there is a goroutine that sends transaction status to this channel.
 		// receiver: coordinator receives transaction status from this channel and forwards them to the sidecar.
-		vcServiceToCoordinatorTxStatus chan *protoblocktx.TransactionsStatus
+		vcServiceToCoordinatorTxStatus chan *applicationpb.TransactionsStatus
 	}
 )
 
@@ -128,7 +128,7 @@ func NewCoordinatorService(c *Config) *Service {
 		depGraphToSigVerifierFreeTxs:       make(chan dependencygraph.TxNodeBatch, bufSzPerChanForValCommitMgr),
 		sigVerifierToVCServiceValidatedTxs: make(chan dependencygraph.TxNodeBatch, bufSzPerChanForSignVerifierMgr),
 		vcServiceToDepGraphValidatedTxs:    make(chan dependencygraph.TxNodeBatch, bufSzPerChanForValCommitMgr),
-		vcServiceToCoordinatorTxStatus:     make(chan *protoblocktx.TransactionsStatus, bufSzPerChanForValCommitMgr),
+		vcServiceToCoordinatorTxStatus:     make(chan *applicationpb.TransactionsStatus, bufSzPerChanForValCommitMgr),
 	}
 
 	metrics := newPerformanceMetrics()
@@ -251,14 +251,14 @@ func (c *Service) RegisterService(server *grpc.Server) {
 // GetConfigTransaction get the config transaction from the state DB.
 func (c *Service) GetConfigTransaction(
 	ctx context.Context, _ *emptypb.Empty,
-) (*protoblocktx.ConfigTransaction, error) {
+) (*applicationpb.ConfigTransaction, error) {
 	return c.validatorCommitterMgr.getConfigTransaction(ctx)
 }
 
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger through a vcservice.
 func (c *Service) SetLastCommittedBlockNumber(
 	ctx context.Context,
-	lastBlock *protoblocktx.BlockInfo,
+	lastBlock *applicationpb.BlockInfo,
 ) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, c.validatorCommitterMgr.setLastCommittedBlockNumber(ctx, lastBlock)
 }
@@ -267,7 +267,7 @@ func (c *Service) SetLastCommittedBlockNumber(
 func (c *Service) GetNextBlockNumberToCommit(
 	ctx context.Context,
 	_ *emptypb.Empty,
-) (*protoblocktx.BlockInfo, error) {
+) (*applicationpb.BlockInfo, error) {
 	res, err := c.validatorCommitterMgr.getNextBlockNumberToCommit(ctx)
 	return res, grpcerror.WrapInternalError(err)
 }
@@ -275,8 +275,8 @@ func (c *Service) GetNextBlockNumberToCommit(
 // GetTransactionsStatus returns the status of given transactions identifiers.
 func (c *Service) GetTransactionsStatus(
 	ctx context.Context,
-	q *protoblocktx.QueryStatus,
-) (*protoblocktx.TransactionsStatus, error) {
+	q *applicationpb.QueryStatus,
+) (*applicationpb.TransactionsStatus, error) {
 	return c.validatorCommitterMgr.getTransactionsStatus(ctx, q)
 }
 

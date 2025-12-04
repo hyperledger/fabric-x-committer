@@ -29,7 +29,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -102,11 +102,11 @@ func TestMinimalInput(t *testing.T) {
 
 	update, metaTxSigner, dataTxSigner := defaultUpdate(t)
 
-	tx1 := &protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	tx1 := &applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:      "1",
 			NsVersion: 0,
-			BlindWrites: []*protoblocktx.Write{{
+			BlindWrites: []*applicationpb.Write{{
 				Key: []byte("0001"),
 			}},
 		}},
@@ -114,11 +114,11 @@ func TestMinimalInput(t *testing.T) {
 	s, _ := dataTxSigner.SignNs(fakeTxID, tx1, 0)
 	tx1.Endorsements = test.AppendToEndorsementSetsForThresholdRule(tx1.Endorsements, s)
 
-	tx2 := &protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	tx2 := &applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:      "1",
 			NsVersion: 0,
-			BlindWrites: []*protoblocktx.Write{{
+			BlindWrites: []*applicationpb.Write{{
 				Key: []byte("0010"),
 			}},
 		}},
@@ -127,11 +127,11 @@ func TestMinimalInput(t *testing.T) {
 	s, _ = dataTxSigner.SignNs(fakeTxID, tx2, 0)
 	tx2.Endorsements = test.AppendToEndorsementSetsForThresholdRule(tx2.Endorsements, s)
 
-	tx3 := &protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	tx3 := &applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:      types.MetaNamespaceID,
 			NsVersion: 0,
-			BlindWrites: []*protoblocktx.Write{{
+			BlindWrites: []*applicationpb.Write{{
 				Key: []byte("0011"),
 			}},
 		}},
@@ -182,8 +182,8 @@ func TestSignatureRule(t *testing.T) {
 		serializedSigningIdentities[i] = si.serialize(t)
 	}
 
-	nsPolicy := &protoblocktx.NamespacePolicy{
-		Rule: &protoblocktx.NamespacePolicy_MspRule{
+	nsPolicy := &applicationpb.NamespacePolicy{
+		Rule: &applicationpb.NamespacePolicy_MspRule{
 			MspRule: protoutil.MarshalOrPanic(
 				policydsl.Envelope(policydsl.And(policydsl.SignedBy(0), policydsl.SignedBy(1)),
 					serializedSigningIdentities)),
@@ -191,18 +191,18 @@ func TestSignatureRule(t *testing.T) {
 	}
 
 	update = &protosigverifierservice.Update{
-		NamespacePolicies: &protoblocktx.NamespacePolicies{
-			Policies: []*protoblocktx.PolicyItem{
+		NamespacePolicies: &applicationpb.NamespacePolicies{
+			Policies: []*applicationpb.PolicyItem{
 				policy.MakePolicy(t, "2", nsPolicy),
 			},
 		},
 	}
 
-	tx1 := &protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	tx1 := &applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:      "2",
 			NsVersion: 0,
-			BlindWrites: []*protoblocktx.Write{{
+			BlindWrites: []*applicationpb.Write{{
 				Key: []byte("0011"),
 			}},
 		}},
@@ -223,7 +223,7 @@ func TestSignatureRule(t *testing.T) {
 		certsBytes[i] = certBytes
 	}
 
-	tx1.Endorsements = []*protoblocktx.Endorsements{
+	tx1.Endorsements = []*applicationpb.Endorsements{
 		test.CreateEndorsementsForSignatureRule(signatures, mspIDs, certsBytes),
 	}
 
@@ -232,7 +232,7 @@ func TestSignatureRule(t *testing.T) {
 		req: &protosigverifierservice.Tx{
 			Ref: types.TxRef(fakeTxID, 1, 1), Tx: tx1,
 		},
-		expectedStatus: protoblocktx.Status_COMMITTED,
+		expectedStatus: applicationpb.Status_COMMITTED,
 	})
 
 	// Update the config block to have SampleFabricX profile instead of
@@ -244,7 +244,7 @@ func TestSignatureRule(t *testing.T) {
 	}, genesisconfig.SampleFabricX)
 	require.NoError(t, err)
 	update = &protosigverifierservice.Update{
-		Config: &protoblocktx.ConfigTransaction{
+		Config: &applicationpb.ConfigTransaction{
 			Envelope: configBlock.Data.Data[0],
 		},
 	}
@@ -254,7 +254,7 @@ func TestSignatureRule(t *testing.T) {
 		req: &protosigverifierservice.Tx{
 			Ref: types.TxRef(fakeTxID, 1, 1), Tx: tx1,
 		},
-		expectedStatus: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+		expectedStatus: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
 	})
 }
 
@@ -272,18 +272,18 @@ func TestBadSignature(t *testing.T) {
 	requireTestCase(t, stream, &testCase{
 		req: &protosigverifierservice.Tx{
 			Ref: types.TxRef(fakeTxID, 1, 0),
-			Tx: &protoblocktx.Tx{
-				Namespaces: []*protoblocktx.TxNamespace{{
+			Tx: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
 					NsId:      "1",
 					NsVersion: 0,
-					ReadWrites: []*protoblocktx.ReadWrite{
+					ReadWrites: []*applicationpb.ReadWrite{
 						{Key: make([]byte, 0)},
 					},
 				}},
 				Endorsements: test.CreateEndorsementsForThresholdRule([]byte{0}, []byte{1}, []byte{2}),
 			},
 		},
-		expectedStatus: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+		expectedStatus: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
 	})
 }
 
@@ -308,8 +308,8 @@ func TestUpdatePolicies(t *testing.T) {
 		err = stream.Send(&protosigverifierservice.Batch{
 			Update: &protosigverifierservice.Update{
 				Config: update.Config,
-				NamespacePolicies: &protoblocktx.NamespacePolicies{
-					Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
+				NamespacePolicies: &applicationpb.NamespacePolicies{
+					Policies: []*applicationpb.PolicyItem{ns1Policy, ns2Policy},
 				},
 			},
 		})
@@ -320,8 +320,8 @@ func TestUpdatePolicies(t *testing.T) {
 		p3, _ := makePolicyItem(t, ns1)
 		err = stream.Send(&protosigverifierservice.Batch{
 			Update: &protosigverifierservice.Update{
-				NamespacePolicies: &protoblocktx.NamespacePolicies{
-					Policies: []*protoblocktx.PolicyItem{
+				NamespacePolicies: &applicationpb.NamespacePolicies{
+					Policies: []*applicationpb.PolicyItem{
 						p3,
 						policy.MakePolicy(t, ns2, policy.MakeECDSAThresholdRuleNsPolicy([]byte("bad-key"))),
 					},
@@ -347,8 +347,8 @@ func TestUpdatePolicies(t *testing.T) {
 		err = stream.Send(&protosigverifierservice.Batch{
 			Update: &protosigverifierservice.Update{
 				Config: update.Config,
-				NamespacePolicies: &protoblocktx.NamespacePolicies{
-					Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
+				NamespacePolicies: &applicationpb.NamespacePolicies{
+					Policies: []*applicationpb.PolicyItem{ns1Policy, ns2Policy},
 				},
 			},
 		})
@@ -357,8 +357,8 @@ func TestUpdatePolicies(t *testing.T) {
 		ns2PolicyUpdate, ns2Signer := makePolicyItem(t, ns2)
 		err = stream.Send(&protosigverifierservice.Batch{
 			Update: &protosigverifierservice.Update{
-				NamespacePolicies: &protoblocktx.NamespacePolicies{
-					Policies: []*protoblocktx.PolicyItem{ns2PolicyUpdate},
+				NamespacePolicies: &applicationpb.NamespacePolicies{
+					Policies: []*applicationpb.PolicyItem{ns2PolicyUpdate},
 				},
 			},
 		})
@@ -370,7 +370,7 @@ func TestUpdatePolicies(t *testing.T) {
 				Ref: types.TxRef(fakeTxID, 1, 1),
 				Tx:  tx,
 			},
-			expectedStatus: protoblocktx.Status_COMMITTED,
+			expectedStatus: applicationpb.Status_COMMITTED,
 		})
 	})
 }
@@ -401,8 +401,8 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 		commonNsSigners[i] = commonNsSigner
 		p := &protosigverifierservice.Update{
 			Config: update.Config,
-			NamespacePolicies: &protoblocktx.NamespacePolicies{
-				Policies: []*protoblocktx.PolicyItem{uniqueNsPolicy, commonNsPolicy},
+			NamespacePolicies: &applicationpb.NamespacePolicies{
+				Policies: []*applicationpb.PolicyItem{uniqueNsPolicy, commonNsPolicy},
 			},
 		}
 		err = stream.Send(&protosigverifierservice.Batch{
@@ -429,7 +429,7 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, txStatus)
 		require.Len(t, txStatus.Responses, 1)
-		if txStatus.Responses[0].Status == protoblocktx.Status_COMMITTED {
+		if txStatus.Responses[0].Status == applicationpb.Status_COMMITTED {
 			success++
 		}
 	}
@@ -444,19 +444,19 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 			Ref: types.TxRef(fakeTxID, 1, 1),
 			Tx:  tx,
 		},
-		expectedStatus: protoblocktx.Status_COMMITTED,
+		expectedStatus: applicationpb.Status_COMMITTED,
 	})
 }
 
 type testCase struct {
 	update         *protosigverifierservice.Update
 	req            *protosigverifierservice.Tx
-	expectedStatus protoblocktx.Status
+	expectedStatus applicationpb.Status
 }
 
-func sign(t *testing.T, tx *protoblocktx.Tx, signers ...*sigtest.NsSigner) {
+func sign(t *testing.T, tx *applicationpb.Tx, signers ...*sigtest.NsSigner) {
 	t.Helper()
-	tx.Endorsements = make([]*protoblocktx.Endorsements, len(signers))
+	tx.Endorsements = make([]*applicationpb.Endorsements, len(signers))
 	for i, s := range signers {
 		s, err := s.SignNs(fakeTxID, tx, i)
 		require.NoError(t, err)
@@ -464,15 +464,15 @@ func sign(t *testing.T, tx *protoblocktx.Tx, signers ...*sigtest.NsSigner) {
 	}
 }
 
-func makeTX(namespaces ...string) *protoblocktx.Tx {
-	tx := &protoblocktx.Tx{
-		Namespaces: make([]*protoblocktx.TxNamespace, len(namespaces)),
+func makeTX(namespaces ...string) *applicationpb.Tx {
+	tx := &applicationpb.Tx{
+		Namespaces: make([]*applicationpb.TxNamespace, len(namespaces)),
 	}
 	for i, ns := range namespaces {
-		tx.Namespaces[i] = &protoblocktx.TxNamespace{
+		tx.Namespaces[i] = &applicationpb.TxNamespace{
 			NsId:      ns,
 			NsVersion: 0,
-			BlindWrites: []*protoblocktx.Write{{
+			BlindWrites: []*applicationpb.Write{{
 				Key: []byte("0001"),
 			}},
 		}
@@ -480,7 +480,7 @@ func makeTX(namespaces ...string) *protoblocktx.Tx {
 	return tx
 }
 
-func makePolicyItem(t *testing.T, ns string) (*protoblocktx.PolicyItem, *sigtest.NsSigner) {
+func makePolicyItem(t *testing.T, ns string) (*applicationpb.PolicyItem, *sigtest.NsSigner) {
 	t.Helper()
 	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
 	signingKey, verificationKey := factory.NewKeys()
@@ -564,11 +564,11 @@ func defaultUpdate(t *testing.T) (
 	dataTxSigner, err = factory.NewSigner(dataTxSigningKey)
 	require.NoError(t, err)
 	update = &protosigverifierservice.Update{
-		Config: &protoblocktx.ConfigTransaction{
+		Config: &applicationpb.ConfigTransaction{
 			Envelope: configBlock.Data.Data[0],
 		},
-		NamespacePolicies: &protoblocktx.NamespacePolicies{
-			Policies: []*protoblocktx.PolicyItem{
+		NamespacePolicies: &applicationpb.NamespacePolicies{
+			Policies: []*applicationpb.PolicyItem{
 				policy.MakePolicy(t, "1", policy.MakeECDSAThresholdRuleNsPolicy(dataTxVerificationKey)),
 			},
 		},

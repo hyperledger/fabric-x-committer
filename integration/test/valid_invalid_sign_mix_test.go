@@ -12,7 +12,7 @@ import (
 
 	"github.com/onsi/gomega"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 )
 
@@ -30,38 +30,38 @@ func TestMixOfValidAndInvalidSign(t *testing.T) { //nolint:gocognit
 
 	tests := []struct {
 		name     string
-		txs      [][]*protoblocktx.TxNamespace
-		expected []protoblocktx.Status
+		txs      [][]*applicationpb.TxNamespace
+		expected []applicationpb.Status
 	}{
 		{
 			name: "txs with valid and invalid signs",
-			txs: [][]*protoblocktx.TxNamespace{
+			txs: [][]*applicationpb.TxNamespace{
 				{{ // valid sign 1.
-					BlindWrites: []*protoblocktx.Write{{
+					BlindWrites: []*applicationpb.Write{{
 						Key: []byte("k2"),
 					}},
 				}},
 				{{ // invalid sign 1.
-					BlindWrites: []*protoblocktx.Write{{
+					BlindWrites: []*applicationpb.Write{{
 						Key: []byte("k3"),
 					}},
 				}},
 				{{ // valid sign 2.
-					BlindWrites: []*protoblocktx.Write{{
+					BlindWrites: []*applicationpb.Write{{
 						Key: []byte("k4"),
 					}},
 				}},
 				{{ // invalid sign 2.
-					BlindWrites: []*protoblocktx.Write{{
+					BlindWrites: []*applicationpb.Write{{
 						Key: []byte("k5"),
 					}},
 				}},
 			},
-			expected: []protoblocktx.Status{
-				protoblocktx.Status_COMMITTED,
-				protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
-				protoblocktx.Status_COMMITTED,
-				protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+			expected: []applicationpb.Status{
+				applicationpb.Status_COMMITTED,
+				applicationpb.Status_ABORTED_SIGNATURE_INVALID,
+				applicationpb.Status_COMMITTED,
+				applicationpb.Status_ABORTED_SIGNATURE_INVALID,
 			},
 		},
 	}

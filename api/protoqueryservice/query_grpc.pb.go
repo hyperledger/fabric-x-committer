@@ -13,7 +13,7 @@ package protoqueryservice
 
 import (
 	context "context"
-	protoblocktx "github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	applicationpb "github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -41,8 +41,8 @@ type QueryServiceClient interface {
 	GetRows(ctx context.Context, in *Query, opts ...grpc.CallOption) (*Rows, error)
 	BeginView(ctx context.Context, in *ViewParameters, opts ...grpc.CallOption) (*View, error)
 	EndView(ctx context.Context, in *View, opts ...grpc.CallOption) (*View, error)
-	GetNamespacePolicies(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.NamespacePolicies, error)
-	GetConfigTransaction(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.ConfigTransaction, error)
+	GetNamespacePolicies(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*applicationpb.NamespacePolicies, error)
+	GetConfigTransaction(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*applicationpb.ConfigTransaction, error)
 	GetTransactionStatus(ctx context.Context, in *TxStatusQuery, opts ...grpc.CallOption) (*TxStatusResponse, error)
 }
 
@@ -81,8 +81,8 @@ func (c *queryServiceClient) EndView(ctx context.Context, in *View, opts ...grpc
 	return out, nil
 }
 
-func (c *queryServiceClient) GetNamespacePolicies(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.NamespacePolicies, error) {
-	out := new(protoblocktx.NamespacePolicies)
+func (c *queryServiceClient) GetNamespacePolicies(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*applicationpb.NamespacePolicies, error) {
+	out := new(applicationpb.NamespacePolicies)
 	err := c.cc.Invoke(ctx, QueryService_GetNamespacePolicies_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -90,8 +90,8 @@ func (c *queryServiceClient) GetNamespacePolicies(ctx context.Context, in *empty
 	return out, nil
 }
 
-func (c *queryServiceClient) GetConfigTransaction(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*protoblocktx.ConfigTransaction, error) {
-	out := new(protoblocktx.ConfigTransaction)
+func (c *queryServiceClient) GetConfigTransaction(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*applicationpb.ConfigTransaction, error) {
+	out := new(applicationpb.ConfigTransaction)
 	err := c.cc.Invoke(ctx, QueryService_GetConfigTransaction_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -115,8 +115,8 @@ type QueryServiceServer interface {
 	GetRows(context.Context, *Query) (*Rows, error)
 	BeginView(context.Context, *ViewParameters) (*View, error)
 	EndView(context.Context, *View) (*View, error)
-	GetNamespacePolicies(context.Context, *emptypb.Empty) (*protoblocktx.NamespacePolicies, error)
-	GetConfigTransaction(context.Context, *emptypb.Empty) (*protoblocktx.ConfigTransaction, error)
+	GetNamespacePolicies(context.Context, *emptypb.Empty) (*applicationpb.NamespacePolicies, error)
+	GetConfigTransaction(context.Context, *emptypb.Empty) (*applicationpb.ConfigTransaction, error)
 	GetTransactionStatus(context.Context, *TxStatusQuery) (*TxStatusResponse, error)
 	mustEmbedUnimplementedQueryServiceServer()
 }
@@ -134,10 +134,10 @@ func (UnimplementedQueryServiceServer) BeginView(context.Context, *ViewParameter
 func (UnimplementedQueryServiceServer) EndView(context.Context, *View) (*View, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EndView not implemented")
 }
-func (UnimplementedQueryServiceServer) GetNamespacePolicies(context.Context, *emptypb.Empty) (*protoblocktx.NamespacePolicies, error) {
+func (UnimplementedQueryServiceServer) GetNamespacePolicies(context.Context, *emptypb.Empty) (*applicationpb.NamespacePolicies, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetNamespacePolicies not implemented")
 }
-func (UnimplementedQueryServiceServer) GetConfigTransaction(context.Context, *emptypb.Empty) (*protoblocktx.ConfigTransaction, error) {
+func (UnimplementedQueryServiceServer) GetConfigTransaction(context.Context, *emptypb.Empty) (*applicationpb.ConfigTransaction, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetConfigTransaction not implemented")
 }
 func (UnimplementedQueryServiceServer) GetTransactionStatus(context.Context, *TxStatusQuery) (*TxStatusResponse, error) {

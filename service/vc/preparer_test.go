@@ -13,7 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -61,11 +61,11 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 		Transactions: []*protovcservice.Tx{
 			{
 				Ref: types.TxRef("tx1", 1, 1),
-				Namespaces: []*protoblocktx.TxNamespace{
+				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
 						NsVersion: 1,
-						ReadsOnly: []*protoblocktx.Read{
+						ReadsOnly: []*applicationpb.Read{
 							{Key: k1, Version: types.Version(1)},
 							{Key: k2, Version: types.Version(1)},
 							{Key: k3, Version: nil},
@@ -74,7 +74,7 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 					{
 						NsId:      "2",
 						NsVersion: 1,
-						ReadsOnly: []*protoblocktx.Read{
+						ReadsOnly: []*applicationpb.Read{
 							{Key: k4, Version: types.Version(0)},
 							{Key: k5, Version: nil},
 						},
@@ -83,11 +83,11 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 			},
 			{
 				Ref: types.TxRef("tx2", 4, 2),
-				Namespaces: []*protoblocktx.TxNamespace{
+				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
 						NsVersion: 1,
-						ReadsOnly: []*protoblocktx.Read{
+						ReadsOnly: []*applicationpb.Read{
 							{Key: k1, Version: types.Version(1)},
 							{Key: k4, Version: types.Version(1)},
 							{Key: k5, Version: nil},
@@ -96,7 +96,7 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 					{
 						NsId:      "2",
 						NsVersion: 1,
-						ReadsOnly: []*protoblocktx.Read{
+						ReadsOnly: []*applicationpb.Read{
 							{Key: k4, Version: types.Version(1)},
 							{Key: k5, Version: types.Version(0)},
 							{Key: k6, Version: nil},
@@ -139,7 +139,7 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 		txIDToNsNonBlindWrites: transactionToWrites{},
 		txIDToNsBlindWrites:    transactionToWrites{},
 		txIDToNsNewWrites:      transactionToWrites{},
-		invalidTxIDStatus:      make(map[TxID]protoblocktx.Status),
+		invalidTxIDStatus:      make(map[TxID]applicationpb.Status),
 		txIDToHeight: transactionIDToHeight{
 			"tx1": types.NewHeight(1, 1),
 			"tx2": types.NewHeight(4, 2),
@@ -166,11 +166,11 @@ func TestPrepareTxWithBlindWritesOnly(t *testing.T) {
 		Transactions: []*protovcservice.Tx{
 			{
 				Ref: types.TxRef("tx1", 10, 5),
-				Namespaces: []*protoblocktx.TxNamespace{
+				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
 						NsVersion: 1,
-						BlindWrites: []*protoblocktx.Write{
+						BlindWrites: []*applicationpb.Write{
 							{Key: k1, Value: []byte("1")},
 							{Key: k2, Value: []byte("1")},
 							{Key: k3, Value: nil},
@@ -179,7 +179,7 @@ func TestPrepareTxWithBlindWritesOnly(t *testing.T) {
 					{
 						NsId:      "2",
 						NsVersion: 1,
-						BlindWrites: []*protoblocktx.Write{{
+						BlindWrites: []*applicationpb.Write{{
 							Key:   k1,
 							Value: []byte("5"),
 						}},
@@ -188,11 +188,11 @@ func TestPrepareTxWithBlindWritesOnly(t *testing.T) {
 			},
 			{
 				Ref: types.TxRef("tx2", 6, 3),
-				Namespaces: []*protoblocktx.TxNamespace{
+				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
 						NsVersion: 2,
-						BlindWrites: []*protoblocktx.Write{
+						BlindWrites: []*applicationpb.Write{
 							{Key: k4, Value: []byte("1")},
 							{Key: k5, Value: nil},
 						},
@@ -239,7 +239,7 @@ func TestPrepareTxWithBlindWritesOnly(t *testing.T) {
 			},
 		},
 		txIDToNsNewWrites: transactionToWrites{},
-		invalidTxIDStatus: make(map[TxID]protoblocktx.Status),
+		invalidTxIDStatus: make(map[TxID]applicationpb.Status),
 		txIDToHeight: transactionIDToHeight{
 			"tx1": types.NewHeight(10, 5),
 			"tx2": types.NewHeight(6, 3),
@@ -268,11 +268,11 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 		Transactions: []*protovcservice.Tx{
 			{
 				Ref: types.TxRef("tx1", 7, 4),
-				Namespaces: []*protoblocktx.TxNamespace{
+				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
 						NsVersion: 2,
-						ReadWrites: []*protoblocktx.ReadWrite{
+						ReadWrites: []*applicationpb.ReadWrite{
 							{Key: k1, Version: types.Version(1), Value: []byte("v1")},
 							{Key: k2, Version: types.Version(1), Value: []byte("v2")},
 							{Key: k3, Version: nil, Value: []byte("v3")},
@@ -281,7 +281,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 					{
 						NsId:      "2",
 						NsVersion: 2,
-						ReadWrites: []*protoblocktx.ReadWrite{
+						ReadWrites: []*applicationpb.ReadWrite{
 							{Key: k4, Version: types.Version(0), Value: []byte("v4")},
 							{Key: k5, Version: nil, Value: []byte("v5")},
 						},
@@ -290,11 +290,11 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 			},
 			{
 				Ref: types.TxRef("tx2", 7, 5),
-				Namespaces: []*protoblocktx.TxNamespace{
+				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
 						NsVersion: 2,
-						ReadWrites: []*protoblocktx.ReadWrite{
+						ReadWrites: []*applicationpb.ReadWrite{
 							{Key: k4, Version: types.Version(1), Value: []byte("v4")},
 							{Key: k5, Version: nil, Value: []byte("v5")},
 						},
@@ -302,7 +302,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 					{
 						NsId:      "2",
 						NsVersion: 2,
-						ReadWrites: []*protoblocktx.ReadWrite{
+						ReadWrites: []*applicationpb.ReadWrite{
 							{Key: k6, Version: nil, Value: []byte("v6")},
 							{Key: k7, Version: nil, Value: nil},
 						},
@@ -388,7 +388,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 				},
 			},
 		},
-		invalidTxIDStatus: make(map[TxID]protoblocktx.Status),
+		invalidTxIDStatus: make(map[TxID]applicationpb.Status),
 		txIDToHeight: transactionIDToHeight{
 			"tx1": types.NewHeight(7, 4),
 			"tx2": types.NewHeight(7, 5),
@@ -420,31 +420,31 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 		Transactions: []*protovcservice.Tx{
 			{
 				Ref: types.TxRef("tx1", 8, 0),
-				Namespaces: []*protoblocktx.TxNamespace{
+				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
 						NsVersion: 1,
-						ReadsOnly: []*protoblocktx.Read{
+						ReadsOnly: []*applicationpb.Read{
 							{Key: k1, Version: types.Version(1)},
 							{Key: k2, Version: types.Version(2)},
 						},
-						ReadWrites: []*protoblocktx.ReadWrite{
+						ReadWrites: []*applicationpb.ReadWrite{
 							{Key: k3, Version: types.Version(3), Value: []byte("v3")},
 						},
-						BlindWrites: []*protoblocktx.Write{
+						BlindWrites: []*applicationpb.Write{
 							{Key: k4, Value: []byte("v4")},
 						},
 					},
 					{
 						NsId:      "2",
 						NsVersion: 2,
-						ReadsOnly: []*protoblocktx.Read{
+						ReadsOnly: []*applicationpb.Read{
 							{Key: k5, Version: nil},
 						},
-						ReadWrites: []*protoblocktx.ReadWrite{
+						ReadWrites: []*applicationpb.ReadWrite{
 							{Key: k6, Version: nil, Value: []byte("v6")},
 						},
-						BlindWrites: []*protoblocktx.Write{
+						BlindWrites: []*applicationpb.Write{
 							{Key: k7, Value: []byte("v7")},
 						},
 					},
@@ -452,17 +452,17 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 			},
 			{
 				Ref: types.TxRef("tx2", 9, 3),
-				Namespaces: []*protoblocktx.TxNamespace{
+				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
 						NsVersion: 3,
-						ReadsOnly: []*protoblocktx.Read{
+						ReadsOnly: []*applicationpb.Read{
 							{Key: k8, Version: types.Version(8)},
 						},
-						ReadWrites: []*protoblocktx.ReadWrite{
+						ReadWrites: []*applicationpb.ReadWrite{
 							{Key: k9, Version: types.Version(9), Value: []byte("v9")},
 						},
-						BlindWrites: []*protoblocktx.Write{
+						BlindWrites: []*applicationpb.Write{
 							{Key: k10, Value: []byte("v10")},
 						},
 					},
@@ -471,17 +471,17 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 			{
 				// We ensure no duplicate reads with duplicated TX.
 				Ref: types.TxRef("tx2.2", 9, 4),
-				Namespaces: []*protoblocktx.TxNamespace{
+				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
 						NsVersion: 3,
-						ReadsOnly: []*protoblocktx.Read{
+						ReadsOnly: []*applicationpb.Read{
 							{Key: k8, Version: types.Version(8)},
 						},
-						ReadWrites: []*protoblocktx.ReadWrite{
+						ReadWrites: []*applicationpb.ReadWrite{
 							{Key: k9, Version: types.Version(9), Value: []byte("v9")},
 						},
-						BlindWrites: []*protoblocktx.Write{
+						BlindWrites: []*applicationpb.Write{
 							{Key: k10, Value: []byte("v10")},
 						},
 					},
@@ -490,22 +490,22 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 			{
 				Ref: types.TxRef("tx3", 6, 2),
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
-					Code: protoblocktx.Status_MALFORMED_NO_WRITES,
+					Code: applicationpb.Status_MALFORMED_NO_WRITES,
 				},
 			},
 			{
 				Ref: types.TxRef("tx4", 5, 2),
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
-					Code: protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
+					Code: applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
 				},
 			},
 			{
 				Ref: types.TxRef("tx5", 6, 2),
-				Namespaces: []*protoblocktx.TxNamespace{
+				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      types.MetaNamespaceID,
 						NsVersion: 4,
-						ReadWrites: []*protoblocktx.ReadWrite{
+						ReadWrites: []*applicationpb.ReadWrite{
 							{Key: []byte("1"), Version: types.Version(1), Value: []byte("meta")},
 						},
 					},
@@ -513,10 +513,10 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 			},
 			{
 				Ref: types.TxRef("tx6", 6, 2),
-				Namespaces: []*protoblocktx.TxNamespace{
+				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId: types.ConfigNamespaceID,
-						BlindWrites: []*protoblocktx.Write{
+						BlindWrites: []*applicationpb.Write{
 							{Key: []byte(types.ConfigKey), Value: []byte("config")},
 						},
 					},
@@ -636,9 +636,9 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 			},
 		},
-		invalidTxIDStatus: map[TxID]protoblocktx.Status{
-			"tx3": protoblocktx.Status_MALFORMED_NO_WRITES,
-			"tx4": protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
+		invalidTxIDStatus: map[TxID]applicationpb.Status{
+			"tx3": applicationpb.Status_MALFORMED_NO_WRITES,
+			"tx4": applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
 		},
 		txIDToHeight: transactionIDToHeight{
 			"tx1":   types.NewHeight(8, 0),

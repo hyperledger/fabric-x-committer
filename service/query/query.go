@@ -16,7 +16,7 @@ import (
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
@@ -120,7 +120,7 @@ func unsafeQueryTxStatus(
 	return readTxStatusRows(r, len(txIDs))
 }
 
-func queryPolicies(ctx context.Context, queryObj querier) (*protoblocktx.NamespacePolicies, error) {
+func queryPolicies(ctx context.Context, queryObj querier) (*applicationpb.NamespacePolicies, error) {
 	r, err := queryObj.Query(ctx, queryPoliciesStmt)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query policies")
@@ -130,12 +130,12 @@ func queryPolicies(ctx context.Context, queryObj querier) (*protoblocktx.Namespa
 	if err != nil {
 		return nil, err
 	}
-	policy := &protoblocktx.NamespacePolicies{
-		Policies: make([]*protoblocktx.PolicyItem, len(rows)),
+	policy := &applicationpb.NamespacePolicies{
+		Policies: make([]*applicationpb.PolicyItem, len(rows)),
 	}
 
 	for i, row := range rows {
-		policy.Policies[i] = &protoblocktx.PolicyItem{
+		policy.Policies[i] = &applicationpb.PolicyItem{
 			Namespace: string(row.Key),
 			Policy:    row.Value,
 			Version:   row.Version,
@@ -144,7 +144,7 @@ func queryPolicies(ctx context.Context, queryObj querier) (*protoblocktx.Namespa
 	return policy, nil
 }
 
-func queryConfig(ctx context.Context, queryObj querier) (*protoblocktx.ConfigTransaction, error) {
+func queryConfig(ctx context.Context, queryObj querier) (*applicationpb.ConfigTransaction, error) {
 	r, err := queryObj.Query(ctx, queryConfigStmt)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query policies")
@@ -154,7 +154,7 @@ func queryConfig(ctx context.Context, queryObj querier) (*protoblocktx.ConfigTra
 	if err != nil {
 		return nil, err
 	}
-	configTX := &protoblocktx.ConfigTransaction{}
+	configTX := &applicationpb.ConfigTransaction{}
 	for _, row := range rows {
 		configTX.Envelope = row.Value
 		configTX.Version = row.Version
@@ -192,8 +192,8 @@ func readTxStatusRows(r pgx.Rows, expectedSize int) ([]*protonotify.TxStatusEven
 
 		rows = append(rows, &protonotify.TxStatusEvent{
 			TxId: string(id),
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
-				Code:        protoblocktx.Status(status),
+			StatusWithHeight: &applicationpb.StatusWithHeight{
+				Code:        applicationpb.Status(status),
 				BlockNumber: ht.BlockNum,
 				TxNumber:    ht.TxNum,
 			},

@@ -9,7 +9,7 @@ package workload
 import (
 	"math/rand"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/utils"
 )
@@ -28,7 +28,7 @@ type (
 
 	// Modifier modifies a TX.
 	Modifier interface {
-		Modify(*protoblocktx.Tx)
+		Modify(*applicationpb.Tx)
 	}
 
 	// Key is an alias for byte array.
@@ -61,34 +61,34 @@ func (g *IndependentTxGenerator) Next() *protoloadgen.TX {
 	readWrite := g.ReadWriteKeyGenerator.Next()
 	blindWriteKey := g.BlindWriteKeyGenerator.Next()
 
-	ns := &protoblocktx.TxNamespace{
+	ns := &applicationpb.TxNamespace{
 		NsId:        GeneratedNamespaceID,
 		NsVersion:   0,
-		ReadsOnly:   make([]*protoblocktx.Read, len(readOnly)),
-		ReadWrites:  make([]*protoblocktx.ReadWrite, len(readWrite)),
-		BlindWrites: make([]*protoblocktx.Write, len(blindWriteKey)),
+		ReadsOnly:   make([]*applicationpb.Read, len(readOnly)),
+		ReadWrites:  make([]*applicationpb.ReadWrite, len(readWrite)),
+		BlindWrites: make([]*applicationpb.Write, len(blindWriteKey)),
 	}
 
 	for i, key := range readOnly {
-		ns.ReadsOnly[i] = &protoblocktx.Read{Key: key}
+		ns.ReadsOnly[i] = &applicationpb.Read{Key: key}
 	}
 
 	for i, key := range readWrite {
-		ns.ReadWrites[i] = &protoblocktx.ReadWrite{
+		ns.ReadWrites[i] = &applicationpb.ReadWrite{
 			Key:   key,
 			Value: g.ReadWriteValueGenerator.Next(),
 		}
 	}
 
 	for i, key := range blindWriteKey {
-		ns.BlindWrites[i] = &protoblocktx.Write{
+		ns.BlindWrites[i] = &applicationpb.Write{
 			Key:   key,
 			Value: g.BlindWriteValueGenerator.Next(),
 		}
 	}
 
-	tx := &protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{ns},
+	tx := &applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{ns},
 	}
 	for _, mod := range g.Modifiers {
 		mod.Modify(tx)

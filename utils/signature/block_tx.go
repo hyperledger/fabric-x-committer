@@ -12,11 +12,11 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 )
 
 // DigestTxNamespace digests a transactions for a given namespace index.
-func DigestTxNamespace(txID string, ns *protoblocktx.TxNamespace) ([]byte, error) {
+func DigestTxNamespace(txID string, ns *applicationpb.TxNamespace) ([]byte, error) {
 	derBytes, err := ASN1MarshalTxNamespace(txID, ns)
 	if err != nil {
 		return nil, err
@@ -33,14 +33,14 @@ func digest(data []byte) []byte {
 
 // ASN1MarshalTxNamespace marshals a transactions for a given namespace index.
 // It uses the schema described in tx_schema.asn.
-func ASN1MarshalTxNamespace(txID string, ns *protoblocktx.TxNamespace) ([]byte, error) {
+func ASN1MarshalTxNamespace(txID string, ns *applicationpb.TxNamespace) ([]byte, error) {
 	ret, err := asn1.Marshal(*TranslateTx(txID, ns))
 	return ret, errors.Wrap(err, "failed to marshal tx namespace")
 }
 
 // TranslateTx translates a TX namespace to a stab struct for tx_schema.asn.
 // Any change to [*protoblocktx.Tx] requires a change to this method.
-func TranslateTx(txID string, ns *protoblocktx.TxNamespace) *TxWithNamespace {
+func TranslateTx(txID string, ns *applicationpb.TxNamespace) *TxWithNamespace {
 	n := TxWithNamespace{
 		TxID:             txID,
 		NamespaceID:      ns.NsId,

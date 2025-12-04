@@ -14,7 +14,7 @@ import (
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
@@ -36,11 +36,11 @@ func TestQueryService(t *testing.T) {
 	t.Cleanup(cancel)
 
 	t.Log("Insert TXs")
-	txIDs := c.MakeAndSendTransactionsToOrderer(t, [][]*protoblocktx.TxNamespace{
+	txIDs := c.MakeAndSendTransactionsToOrderer(t, [][]*applicationpb.TxNamespace{
 		{{
 			NsId:      "1",
 			NsVersion: 0,
-			BlindWrites: []*protoblocktx.Write{
+			BlindWrites: []*applicationpb.Write{
 				{
 					Key:   []byte("k1"),
 					Value: []byte("v1"),
@@ -54,7 +54,7 @@ func TestQueryService(t *testing.T) {
 		{{
 			NsId:      "2",
 			NsVersion: 0,
-			BlindWrites: []*protoblocktx.Write{
+			BlindWrites: []*applicationpb.Write{
 				{
 					Key:   []byte("k3"),
 					Value: []byte("v3"),
@@ -65,7 +65,7 @@ func TestQueryService(t *testing.T) {
 				},
 			},
 		}},
-	}, []protoblocktx.Status{protoblocktx.Status_COMMITTED, protoblocktx.Status_COMMITTED})
+	}, []applicationpb.Status{applicationpb.Status_COMMITTED, applicationpb.Status_COMMITTED})
 	require.Len(t, txIDs, 2)
 
 	t.Log("Query TXs status")
@@ -77,16 +77,16 @@ func TestQueryService(t *testing.T) {
 	test.RequireProtoElementsMatch(t, []*protonotify.TxStatusEvent{
 		{
 			TxId: txIDs[0],
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
-				Code:        protoblocktx.Status_COMMITTED,
+			StatusWithHeight: &applicationpb.StatusWithHeight{
+				Code:        applicationpb.Status_COMMITTED,
 				TxNumber:    uint32(0),
 				BlockNumber: uint64(2),
 			},
 		},
 		{
 			TxId: txIDs[1],
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
-				Code:        protoblocktx.Status_COMMITTED,
+			StatusWithHeight: &applicationpb.StatusWithHeight{
+				Code:        applicationpb.Status_COMMITTED,
 				TxNumber:    uint32(1),
 				BlockNumber: uint64(2),
 			},

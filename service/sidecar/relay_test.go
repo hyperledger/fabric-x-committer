@@ -14,7 +14,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -36,8 +36,8 @@ type relayTestEnv struct {
 }
 
 const (
-	valid     = byte(protoblocktx.Status_COMMITTED)
-	duplicate = byte(protoblocktx.Status_REJECTED_DUPLICATE_TX_ID)
+	valid     = byte(applicationpb.Status_COMMITTED)
+	duplicate = byte(applicationpb.Status_REJECTED_DUPLICATE_TX_ID)
 )
 
 func newRelayTestEnv(t *testing.T) *relayTestEnv {
@@ -112,33 +112,33 @@ func TestRelayNormalBlock(t *testing.T) {
 	test.RequireProtoElementsMatch(t, []*protonotify.TxStatusEvent{
 		{
 			TxId: txIDs0[0],
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 0,
 				TxNumber:    0,
-				Code:        protoblocktx.Status_COMMITTED,
+				Code:        applicationpb.Status_COMMITTED,
 			},
 		},
 		{
 			TxId: txIDs0[1],
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 0,
 				TxNumber:    1,
-				Code:        protoblocktx.Status_COMMITTED,
+				Code:        applicationpb.Status_COMMITTED,
 			},
 		},
 		{
 			TxId: txIDs0[2],
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 0,
 				TxNumber:    2,
-				Code:        protoblocktx.Status_COMMITTED,
+				Code:        applicationpb.Status_COMMITTED,
 			},
 		},
 	}, status0)
 
 	t.Log("Block #0: Check receive metrics")
 	test.RequireIntMetricValue(t, txCount, m.transactionsStatusReceivedTotal.WithLabelValues(
-		protoblocktx.Status_COMMITTED.String(),
+		applicationpb.Status_COMMITTED.String(),
 	))
 	test.EventuallyIntMetric(t, 0, m.waitingTransactionsQueueSize, 5*time.Second, 10*time.Millisecond)
 	require.Greater(t, test.GetMetricValue(t, m.blockMappingInRelaySeconds), float64(0))
@@ -193,10 +193,10 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 	test.RequireProtoElementsMatch(t, []*protonotify.TxStatusEvent{
 		{
 			TxId: txIDs0[0],
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 0,
 				TxNumber:    0,
-				Code:        protoblocktx.Status_COMMITTED,
+				Code:        applicationpb.Status_COMMITTED,
 			},
 		},
 	}, status0)
@@ -221,18 +221,18 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 	test.RequireProtoElementsMatch(t, []*protonotify.TxStatusEvent{
 		{
 			TxId: txIDs1[0],
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 1,
 				TxNumber:    0,
-				Code:        protoblocktx.Status_COMMITTED,
+				Code:        applicationpb.Status_COMMITTED,
 			},
 		},
 		{
 			TxId: txIDs1[1],
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 1,
 				TxNumber:    1,
-				Code:        protoblocktx.Status_COMMITTED,
+				Code:        applicationpb.Status_COMMITTED,
 			},
 		},
 	}, status1)

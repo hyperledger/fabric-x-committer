@@ -6,9 +6,9 @@ SPDX-License-Identifier: Apache-2.0
 
 syntax = "proto3";
 
-option go_package = "github.com/hyperledger/fabric-x-committer/api/protoblocktx";
+option go_package = "github.com/hyperledger/fabric-x-committer/api/applicationpb";
 
-package protoblocktx;
+package applicationpb;
 
 message Tx {
   // A list of namespaces that define the transaction's scope.
