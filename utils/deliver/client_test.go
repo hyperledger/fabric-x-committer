@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
@@ -161,7 +161,7 @@ func submit(
 ) {
 	t.Helper()
 	txb := workload.TxBuilder{ChannelID: channelForTest}
-	tx := txb.MakeTx(&protoblocktx.Tx{})
+	tx := txb.MakeTx(&applicationpb.Tx{})
 
 	// We create a new stream for each request to ensure GRPC does not cache the latest state.
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)

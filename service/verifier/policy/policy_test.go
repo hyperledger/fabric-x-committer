@@ -13,7 +13,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
@@ -23,14 +23,14 @@ import (
 func TestGetUpdatesFromNamespace(t *testing.T) {
 	t.Parallel()
 	t.Log("meta namespace")
-	items := make([]*protoblocktx.ReadWrite, 5)
+	items := make([]*applicationpb.ReadWrite, 5)
 	for i := range items {
-		items[i] = &protoblocktx.ReadWrite{
+		items[i] = &applicationpb.ReadWrite{
 			Key:   fmt.Appendf(nil, "key-%d", i),
 			Value: protoutil.MarshalOrPanic(MakeECDSAThresholdRuleNsPolicy(fmt.Appendf(nil, "value-%d", i))),
 		}
 	}
-	tx := &protoblocktx.TxNamespace{
+	tx := &applicationpb.TxNamespace{
 		NsId:       types.MetaNamespaceID,
 		ReadWrites: items,
 	}
@@ -46,9 +46,9 @@ func TestGetUpdatesFromNamespace(t *testing.T) {
 	t.Log("config namespace")
 
 	expectedValue := []byte("test config")
-	tx = &protoblocktx.TxNamespace{
+	tx = &applicationpb.TxNamespace{
 		NsId: types.ConfigKey,
-		BlindWrites: []*protoblocktx.Write{{
+		BlindWrites: []*applicationpb.Write{{
 			Key:   []byte(types.ConfigKey),
 			Value: expectedValue,
 		}},

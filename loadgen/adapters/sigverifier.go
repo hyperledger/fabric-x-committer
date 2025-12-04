@@ -13,7 +13,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
@@ -89,11 +89,11 @@ func createUpdate(policy *workload.PolicyProfile) (*protosigverifierservice.Upda
 		return nil, err
 	}
 	updateMsg := &protosigverifierservice.Update{
-		Config: &protoblocktx.ConfigTransaction{
+		Config: &applicationpb.ConfigTransaction{
 			Envelope: envelopeBytes,
 		},
-		NamespacePolicies: &protoblocktx.NamespacePolicies{
-			Policies: make([]*protoblocktx.PolicyItem, 0, len(txSigner.HashSigners)),
+		NamespacePolicies: &applicationpb.NamespacePolicies{
+			Policies: make([]*applicationpb.PolicyItem, 0, len(txSigner.HashSigners)),
 		},
 	}
 
@@ -107,7 +107,7 @@ func createUpdate(policy *workload.PolicyProfile) (*protosigverifierservice.Upda
 		}
 		updateMsg.NamespacePolicies.Policies = append(
 			updateMsg.NamespacePolicies.Policies,
-			&protoblocktx.PolicyItem{
+			&applicationpb.PolicyItem{
 				Namespace: ns,
 				Policy:    policy,
 			},

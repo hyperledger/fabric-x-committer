@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	promgo "github.com/prometheus/client_model/go"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
@@ -43,7 +43,7 @@ type (
 	// TxStatus is used to report a batch item.
 	TxStatus struct {
 		TxID   string
-		Status protoblocktx.Status
+		Status applicationpb.Status
 	}
 )
 
@@ -154,7 +154,7 @@ func (c *PerfMetrics) OnReceiveBatch(batch []TxStatus) {
 	promutil.AddToCounter(c.transactionReceivedTotal, len(batch))
 	successCount := 0
 	for _, b := range batch {
-		success := b.Status == protoblocktx.Status_COMMITTED
+		success := b.Status == applicationpb.Status_COMMITTED
 		if success {
 			successCount++
 		}

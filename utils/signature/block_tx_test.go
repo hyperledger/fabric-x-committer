@@ -14,7 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -47,7 +47,7 @@ func TestAsnMarshal(t *testing.T) {
 
 	txs := []*protoloadgen.TX{{
 		Id: "some-tx-id",
-		Tx: &protoblocktx.Tx{Namespaces: txTestCases},
+		Tx: &applicationpb.Tx{Namespaces: txTestCases},
 	}}
 	// We test against the generated load to enforce a coupling between different parts of the system.
 	txs = append(txs, workload.GenerateTransactions(t, workload.DefaultProfile(8), 1024)...)
@@ -120,7 +120,7 @@ func FuzzASN1MarshalTxNamespace(f *testing.F) {
 	})
 }
 
-func requireASN1Marshal(t *testing.T, txID string, ns *protoblocktx.TxNamespace) []byte {
+func requireASN1Marshal(t *testing.T, txID string, ns *applicationpb.TxNamespace) []byte {
 	t.Helper()
 	translated := signature.TranslateTx(txID, ns)
 
@@ -151,9 +151,9 @@ func requireASN1Marshal(t *testing.T, txID string, ns *protoblocktx.TxNamespace)
 
 // reconstructTX unmarshal the given namespaces and reconstruct a TX.
 // Any change to [*protoblocktx.Tx] requires a change to this method.
-func reconstructTX(t *testing.T, namespaces [][]byte) (txID string, tx *protoblocktx.Tx) {
+func reconstructTX(t *testing.T, namespaces [][]byte) (txID string, tx *applicationpb.Tx) {
 	t.Helper()
-	tx = &protoblocktx.Tx{}
+	tx = &applicationpb.Tx{}
 
 	for i, nsDer := range namespaces {
 		translated := &signature.TxWithNamespace{}
@@ -168,30 +168,30 @@ func reconstructTX(t *testing.T, namespaces [][]byte) (txID string, tx *protoblo
 
 		nsVer := signature.AsnToProtoVersion(translated.NamespaceVersion)
 		require.NotNil(t, nsVer)
-		ns := &protoblocktx.TxNamespace{
+		ns := &applicationpb.TxNamespace{
 			NsId:        translated.NamespaceID,
 			NsVersion:   *nsVer,
-			ReadsOnly:   make([]*protoblocktx.Read, len(translated.ReadsOnly)),
-			ReadWrites:  make([]*protoblocktx.ReadWrite, len(translated.ReadWrites)),
-			BlindWrites: make([]*protoblocktx.Write, len(translated.BlindWrites)),
+			ReadsOnly:   make([]*applicationpb.Read, len(translated.ReadsOnly)),
+			ReadWrites:  make([]*applicationpb.ReadWrite, len(translated.ReadWrites)),
+			BlindWrites: make([]*applicationpb.Write, len(translated.BlindWrites)),
 		}
 		tx.Namespaces = append(tx.Namespaces, ns)
 
 		for j, read := range translated.ReadsOnly {
-			ns.ReadsOnly[j] = &protoblocktx.Read{
+			ns.ReadsOnly[j] = &applicationpb.Read{
 				Key:     read.Key,
 				Version: signature.AsnToProtoVersion(read.Version),
 			}
 		}
 		for j, rw := range translated.ReadWrites {
-			ns.ReadWrites[j] = &protoblocktx.ReadWrite{
+			ns.ReadWrites[j] = &applicationpb.ReadWrite{
 				Key:     rw.Key,
 				Value:   rw.Value,
 				Version: signature.AsnToProtoVersion(rw.Version),
 			}
 		}
 		for j, w := range translated.BlindWrites {
-			ns.BlindWrites[j] = &protoblocktx.Write{
+			ns.BlindWrites[j] = &applicationpb.Write{
 				Key:   w.Key,
 				Value: w.Value,
 			}
@@ -207,38 +207,38 @@ func generateTX( //nolint:revive // required parameters.
 	id, nsID string, nsVersion uint64, readVersion int64,
 	rCount, rwCount, wCount uint32,
 	maxSize uint32, seed int64,
-) (txID string, tx *protoblocktx.Tx) {
+) (txID string, tx *applicationpb.Tx) {
 	t.Helper()
 	if !utf8.ValidString(id) || !utf8.ValidString(nsID) {
 		t.Skip("invalid UTF8")
 	}
-	tx = &protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{
+	tx = &applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{
 			{
 				NsId:        nsID,
 				NsVersion:   nsVersion,
-				ReadsOnly:   make([]*protoblocktx.Read, rCount),
-				ReadWrites:  make([]*protoblocktx.ReadWrite, rwCount),
-				BlindWrites: make([]*protoblocktx.Write, wCount),
+				ReadsOnly:   make([]*applicationpb.Read, rCount),
+				ReadWrites:  make([]*applicationpb.ReadWrite, rwCount),
+				BlindWrites: make([]*applicationpb.Write, wCount),
 			},
 		},
 	}
 	rnd := rand.New(rand.NewSource(seed))
 	for i := range tx.Namespaces[0].ReadsOnly {
-		tx.Namespaces[0].ReadsOnly[i] = &protoblocktx.Read{
+		tx.Namespaces[0].ReadsOnly[i] = &applicationpb.Read{
 			Key:     utils.MustRead(rnd, rnd.Intn(int(maxSize))),
 			Version: signature.AsnToProtoVersion(readVersion),
 		}
 	}
 	for i := range tx.Namespaces[0].ReadWrites {
-		tx.Namespaces[0].ReadWrites[i] = &protoblocktx.ReadWrite{
+		tx.Namespaces[0].ReadWrites[i] = &applicationpb.ReadWrite{
 			Key:     utils.MustRead(rnd, rnd.Intn(int(maxSize))),
 			Value:   utils.MustRead(rnd, rnd.Intn(int(maxSize))),
 			Version: signature.AsnToProtoVersion(readVersion),
 		}
 	}
 	for i := range tx.Namespaces[0].BlindWrites {
-		tx.Namespaces[0].BlindWrites[i] = &protoblocktx.Write{
+		tx.Namespaces[0].BlindWrites[i] = &applicationpb.Write{
 			Key:   utils.MustRead(rnd, rnd.Intn(int(maxSize))),
 			Value: utils.MustRead(rnd, rnd.Intn(int(maxSize))),
 		}
@@ -246,7 +246,7 @@ func generateTX( //nolint:revive // required parameters.
 	return id, tx
 }
 
-var txTestCases = []*protoblocktx.TxNamespace{
+var txTestCases = []*applicationpb.TxNamespace{
 	{
 		NsId:      "empty",
 		NsVersion: 1,
@@ -254,7 +254,7 @@ var txTestCases = []*protoblocktx.TxNamespace{
 	{
 		NsId:      "only reads",
 		NsVersion: 2,
-		ReadsOnly: []*protoblocktx.Read{
+		ReadsOnly: []*applicationpb.Read{
 			{
 				Key:     []byte{1},
 				Version: types.Version(2),
@@ -268,7 +268,7 @@ var txTestCases = []*protoblocktx.TxNamespace{
 	{
 		NsId:      "only reads with nil version",
 		NsVersion: 2,
-		ReadsOnly: []*protoblocktx.Read{
+		ReadsOnly: []*applicationpb.Read{
 			{
 				Key:     []byte{1},
 				Version: types.Version(2),
@@ -286,7 +286,7 @@ var txTestCases = []*protoblocktx.TxNamespace{
 	{
 		NsId:      "only read-write",
 		NsVersion: 3,
-		ReadWrites: []*protoblocktx.ReadWrite{
+		ReadWrites: []*applicationpb.ReadWrite{
 			{
 				Key:     []byte{1},
 				Version: types.Version(2),
@@ -302,7 +302,7 @@ var txTestCases = []*protoblocktx.TxNamespace{
 	{
 		NsId:      "only read-write with nil value or version",
 		NsVersion: 3,
-		ReadWrites: []*protoblocktx.ReadWrite{
+		ReadWrites: []*applicationpb.ReadWrite{
 			{
 				Key:     []byte{1},
 				Version: types.Version(2),
@@ -328,7 +328,7 @@ var txTestCases = []*protoblocktx.TxNamespace{
 	{
 		NsId:      "only blind writes",
 		NsVersion: 4,
-		BlindWrites: []*protoblocktx.Write{
+		BlindWrites: []*applicationpb.Write{
 			{
 				Key:   []byte{5},
 				Value: []byte{6, 7},
@@ -342,7 +342,7 @@ var txTestCases = []*protoblocktx.TxNamespace{
 	{
 		NsId:      "only blind writes with nil value",
 		NsVersion: 4,
-		BlindWrites: []*protoblocktx.Write{
+		BlindWrites: []*applicationpb.Write{
 			{
 				Key:   []byte{5},
 				Value: []byte{6, 7},
@@ -360,7 +360,7 @@ var txTestCases = []*protoblocktx.TxNamespace{
 	{
 		NsId:      "all",
 		NsVersion: 5,
-		ReadsOnly: []*protoblocktx.Read{
+		ReadsOnly: []*applicationpb.Read{
 			{
 				Key:     []byte{6},
 				Version: types.Version(7),
@@ -370,7 +370,7 @@ var txTestCases = []*protoblocktx.TxNamespace{
 				Version: types.Version(12),
 			},
 		},
-		ReadWrites: []*protoblocktx.ReadWrite{
+		ReadWrites: []*applicationpb.ReadWrite{
 			{
 				Key:     []byte{100},
 				Version: types.Version(1),
@@ -382,7 +382,7 @@ var txTestCases = []*protoblocktx.TxNamespace{
 				Value:   []byte{13},
 			},
 		},
-		BlindWrites: []*protoblocktx.Write{
+		BlindWrites: []*applicationpb.Write{
 			{
 				Key:   []byte{1, 2, 3},
 				Value: []byte{100, 101, 102},
@@ -396,13 +396,13 @@ var txTestCases = []*protoblocktx.TxNamespace{
 	{
 		NsId:      "varying number of items",
 		NsVersion: 6,
-		ReadsOnly: []*protoblocktx.Read{
+		ReadsOnly: []*applicationpb.Read{
 			{
 				Key:     []byte{1, 2},
 				Version: types.Version(3),
 			},
 		},
-		ReadWrites: []*protoblocktx.ReadWrite{
+		ReadWrites: []*applicationpb.ReadWrite{
 			{
 				Key:     []byte{1},
 				Version: types.Version(2),
@@ -419,7 +419,7 @@ var txTestCases = []*protoblocktx.TxNamespace{
 				Value:   []byte{9},
 			},
 		},
-		BlindWrites: []*protoblocktx.Write{
+		BlindWrites: []*applicationpb.Write{
 			{
 				Key:   []byte{10},
 				Value: []byte{12},
@@ -433,7 +433,7 @@ var txTestCases = []*protoblocktx.TxNamespace{
 	{
 		NsId:      "varying length",
 		NsVersion: 6,
-		ReadsOnly: []*protoblocktx.Read{
+		ReadsOnly: []*applicationpb.Read{
 			{Key: make([]byte, 127)},
 			{Key: make([]byte, 128)},
 			{Key: make([]byte, 129)},

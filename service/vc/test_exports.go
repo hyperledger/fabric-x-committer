@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -169,13 +169,13 @@ func newDatabaseTestEnv(t *testing.T, cs *dbtest.Connection, loadBalance bool) *
 }
 
 // CountStatus returns the number of transactions with a given tx status.
-func (env *DatabaseTestEnv) CountStatus(t *testing.T, status protoblocktx.Status) int {
+func (env *DatabaseTestEnv) CountStatus(t *testing.T, status applicationpb.Status) int {
 	t.Helper()
 	return env.getRowCount(t, fmt.Sprintf("SELECT count(*) FROM tx_status WHERE status = %d", status))
 }
 
 // CountAlternateStatus returns the number of transactions not with a given tx status.
-func (env *DatabaseTestEnv) CountAlternateStatus(t *testing.T, status protoblocktx.Status) int {
+func (env *DatabaseTestEnv) CountAlternateStatus(t *testing.T, status applicationpb.Status) int {
 	t.Helper()
 	return env.getRowCount(t, fmt.Sprintf("SELECT count(*) FROM tx_status WHERE status != %d", status))
 }
@@ -197,12 +197,12 @@ func (env *DatabaseTestEnv) getRowCount(t *testing.T, query string) int {
 // duplicate txID statuses.
 func (env *DatabaseTestEnv) StatusExistsForNonDuplicateTxID(
 	t *testing.T,
-	expectedStatuses map[string]*protoblocktx.StatusWithHeight,
+	expectedStatuses map[string]*applicationpb.StatusWithHeight,
 ) {
 	t.Helper()
 	var persistedTxIDs [][]byte
 	for id, s := range expectedStatuses {
-		if s.Code < protoblocktx.Status_REJECTED_DUPLICATE_TX_ID {
+		if s.Code < applicationpb.Status_REJECTED_DUPLICATE_TX_ID {
 			persistedTxIDs = append(persistedTxIDs, []byte(id))
 		}
 	}
@@ -223,7 +223,7 @@ func (env *DatabaseTestEnv) StatusExistsForNonDuplicateTxID(
 // table for duplicate txID statuses.
 func (env *DatabaseTestEnv) StatusExistsWithDifferentHeightForDuplicateTxID(
 	t *testing.T,
-	expectedStatuses map[string]*protoblocktx.StatusWithHeight,
+	expectedStatuses map[string]*applicationpb.StatusWithHeight,
 ) {
 	t.Helper()
 	txIDs := make([][]byte, 0, len(expectedStatuses))
@@ -252,7 +252,7 @@ func (env *DatabaseTestEnv) populateData( //nolint:revive
 	t *testing.T,
 	createNsIDs []string,
 	nsToWrites namespaceToWrites,
-	batchStatus *protoblocktx.TransactionsStatus,
+	batchStatus *applicationpb.TransactionsStatus,
 	txIDToHeight transactionIDToHeight,
 ) {
 	t.Helper()

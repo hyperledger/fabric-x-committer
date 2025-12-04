@@ -11,7 +11,8 @@ option go_package = "github.com/hyperledger/fabric-x-committer/api/protonotify";
 package protonotify;
 
 import "google/protobuf/duration.proto";
-import "api/protoblocktx/block_tx.proto";
+
+import "api/applicationpb/block_tx.proto";
 
 // The notifier service provides API to subscribe to ledger events and receive asynchronous notifications.
 service Notifier {
@@ -44,5 +45,5 @@ message NotificationResponse {
 
 message TxStatusEvent {
     string tx_id = 1;
-    protoblocktx.StatusWithHeight status_with_height = 2;
+    applicationpb.StatusWithHeight status_with_height = 2;
 }

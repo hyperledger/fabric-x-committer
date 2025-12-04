@@ -10,7 +10,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
@@ -21,7 +21,7 @@ type (
 	// TransactionNode is a node in the dependency graph.
 	TransactionNode struct {
 		Tx           *protovcservice.Tx
-		Endorsements []*protoblocktx.Endorsements
+		Endorsements []*applicationpb.Endorsements
 
 		// dependsOnTxs is a set of transactions that this transaction depends on.
 		// A transaction is eligible for validation once all the transactions
@@ -151,7 +151,7 @@ func (n *TransactionNode) isDependencyFree() bool {
 	return len(n.dependsOnTxs) == 0
 }
 
-func readAndWriteKeys(txNamespaces []*protoblocktx.TxNamespace) *readWriteKeys {
+func readAndWriteKeys(txNamespaces []*applicationpb.TxNamespace) *readWriteKeys {
 	var readOnlyKeys, writeOnlyKeys, readAndWriteKeys []string //nolint:prealloc
 
 	for _, ns := range txNamespaces {

@@ -14,7 +14,7 @@ import (
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 )
 
@@ -52,15 +52,15 @@ func TestCrashWhenIdle(t *testing.T) {
 	// 3. Resubmit the same transaction to the ordering service while some services remain offline.
 	// 4. Restart the terminated services and confirm that all transactions are processed successfully,
 	//    with the client receiving duplicate transaction ID statuses.
-	txs := [][]*protoblocktx.TxNamespace{{{
-		BlindWrites: []*protoblocktx.Write{{
+	txs := [][]*applicationpb.TxNamespace{{{
+		BlindWrites: []*applicationpb.Write{{
 			Key: []byte("k1"),
 		}},
 	}}}
 
 	i := 1
 	t.Logf("\n%d. Send transactions before stopping services and verify their commitment.\n", i)
-	addSignAndSendTransactions(t, c, txs, []protoblocktx.Status{protoblocktx.Status_COMMITTED})
+	addSignAndSendTransactions(t, c, txs, []applicationpb.Status{applicationpb.Status_COMMITTED})
 
 	for _, serviceNames := range failureScenarios {
 		services := strings.Join(serviceNames, "-")
@@ -82,13 +82,13 @@ func TestCrashWhenIdle(t *testing.T) {
 		t.Logf("\n%d. Ensure that the last block is committed after restarting "+services+"\n", i)
 		c.ValidateExpectedResultsInCommittedBlock(t, &runner.ExpectedStatusInBlock{
 			TxIDs:    txIDs,
-			Statuses: []protoblocktx.Status{protoblocktx.Status_COMMITTED},
+			Statuses: []applicationpb.Status{applicationpb.Status_COMMITTED},
 		})
 	}
 }
 
 func addSignAndSendTransactions(
-	t *testing.T, c *runner.CommitterRuntime, txs [][]*protoblocktx.TxNamespace, expectedStatus []protoblocktx.Status,
+	t *testing.T, c *runner.CommitterRuntime, txs [][]*applicationpb.TxNamespace, expectedStatus []applicationpb.Status,
 ) []string {
 	t.Helper()
 	for _, tx := range txs {
@@ -137,9 +137,9 @@ func TestCrashWhenNonIdle(t *testing.T) {
 
 	// After all failure scenarios are executed, we should ensure that
 	// a few more transactions are being committed.
-	count := c.CountStatus(t, protoblocktx.Status_COMMITTED)
+	count := c.CountStatus(t, applicationpb.Status_COMMITTED)
 	require.Eventually(t, func() bool {
-		return c.CountStatus(t, protoblocktx.Status_COMMITTED) > count
+		return c.CountStatus(t, applicationpb.Status_COMMITTED) > count
 	}, 30*time.Second, 1*time.Millisecond)
 
 	// 1. Block 0 holds the config transaction.
@@ -147,7 +147,7 @@ func TestCrashWhenNonIdle(t *testing.T) {
 	actualCountedBlocks := c.SystemConfig.LoadGenBlockLimit - 1  // block 0 is not counted in the limit
 	totalTxs := c.SystemConfig.BlockSize*actualCountedBlocks + 2 // we add 2 txs (config tx and namespace tx).
 	require.Eventually(t, func() bool {
-		count := c.CountStatus(t, protoblocktx.Status_COMMITTED)
+		count := c.CountStatus(t, applicationpb.Status_COMMITTED)
 		t.Logf("count: %d, expected: %d", count, totalTxs)
 		return count == int(totalTxs) //nolint:gosec
 	}, 300*time.Second, 1*time.Second)

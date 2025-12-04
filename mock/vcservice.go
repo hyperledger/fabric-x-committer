@@ -21,7 +21,7 @@ import (
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -34,8 +34,8 @@ import (
 type VcService struct {
 	protovcservice.ValidationAndCommitServiceServer
 	numBatchesReceived atomic.Uint32
-	nextBlock          atomic.Pointer[protoblocktx.BlockInfo]
-	txsStatus          *fifoCache[*protoblocktx.StatusWithHeight]
+	nextBlock          atomic.Pointer[applicationpb.BlockInfo]
+	txsStatus          *fifoCache[*applicationpb.StatusWithHeight]
 	txsStatusMu        sync.Mutex
 	healthcheck        *health.Server
 	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
@@ -48,7 +48,7 @@ type VcService struct {
 // NewMockVcService returns a new VcService.
 func NewMockVcService() *VcService {
 	return &VcService{
-		txsStatus:       newFifoCache[*protoblocktx.StatusWithHeight](defaultTxStatusStorageSize),
+		txsStatus:       newFifoCache[*applicationpb.StatusWithHeight](defaultTxStatusStorageSize),
 		healthcheck:     connection.DefaultHealthCheckService(),
 		txBatchChannels: make(map[uint64]chan *protovcservice.Batch),
 	}
@@ -63,7 +63,7 @@ func (v *VcService) RegisterService(server *grpc.Server) {
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger.
 func (v *VcService) SetLastCommittedBlockNumber(
 	_ context.Context,
-	lastBlock *protoblocktx.BlockInfo,
+	lastBlock *applicationpb.BlockInfo,
 ) (*emptypb.Empty, error) {
 	lastBlock.Number++
 	v.nextBlock.Store(lastBlock)
@@ -74,7 +74,7 @@ func (v *VcService) SetLastCommittedBlockNumber(
 func (v *VcService) GetNextBlockNumberToCommit(
 	context.Context,
 	*emptypb.Empty,
-) (*protoblocktx.BlockInfo, error) {
+) (*applicationpb.BlockInfo, error) {
 	return v.nextBlock.Load(), nil
 }
 
@@ -82,24 +82,24 @@ func (v *VcService) GetNextBlockNumberToCommit(
 func (*VcService) GetNamespacePolicies(
 	context.Context,
 	*emptypb.Empty,
-) (*protoblocktx.NamespacePolicies, error) {
-	return &protoblocktx.NamespacePolicies{}, nil
+) (*applicationpb.NamespacePolicies, error) {
+	return &applicationpb.NamespacePolicies{}, nil
 }
 
 // GetConfigTransaction is a mock implementation of the protovcservice.GetConfigTransaction.
 func (*VcService) GetConfigTransaction(
 	context.Context,
 	*emptypb.Empty,
-) (*protoblocktx.ConfigTransaction, error) {
-	return &protoblocktx.ConfigTransaction{}, nil
+) (*applicationpb.ConfigTransaction, error) {
+	return &applicationpb.ConfigTransaction{}, nil
 }
 
 // GetTransactionsStatus get the status for a given set of transactions IDs.
 func (v *VcService) GetTransactionsStatus(
 	_ context.Context,
-	query *protoblocktx.QueryStatus,
-) (*protoblocktx.TransactionsStatus, error) {
-	s := &protoblocktx.TransactionsStatus{Status: make(map[string]*protoblocktx.StatusWithHeight)}
+	query *applicationpb.QueryStatus,
+) (*applicationpb.TransactionsStatus, error) {
+	s := &applicationpb.TransactionsStatus{Status: make(map[string]*applicationpb.StatusWithHeight)}
 	v.txsStatusMu.Lock()
 	defer v.txsStatusMu.Unlock()
 	for _, id := range query.TxIDs {
@@ -184,8 +184,8 @@ func (v *VcService) sendTransactionStatus(
 		if !ok {
 			break
 		}
-		txsStatus := &protoblocktx.TransactionsStatus{
-			Status: make(map[string]*protoblocktx.StatusWithHeight, len(txBatch.Transactions)-v.MockFaultyNodeDropSize),
+		txsStatus := &applicationpb.TransactionsStatus{
+			Status: make(map[string]*applicationpb.StatusWithHeight, len(txBatch.Transactions)),
 		}
 		v.txsStatusMu.Lock()
 		for i, tx := range txBatch.Transactions {
@@ -193,7 +193,7 @@ func (v *VcService) sendTransactionStatus(
 				// We simulate a faulty node by not responding to the first X TXs.
 				continue
 			}
-			code := protoblocktx.Status_COMMITTED
+			code := applicationpb.Status_COMMITTED
 			if tx.PrelimInvalidTxStatus != nil {
 				code = tx.PrelimInvalidTxStatus.Code
 			}
