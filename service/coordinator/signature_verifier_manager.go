@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
@@ -67,7 +67,7 @@ type (
 )
 
 var sigInvalidTxStatus = &protovcservice.InvalidTxStatus{
-	Code: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+	Code: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
 }
 
 func newSignatureVerifierManager(config *signVerifierManagerConfig) *signatureVerifierManager {
@@ -217,7 +217,7 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 		for idx, txNode := range txBatch {
 			request.Requests[idx] = &protosigverifierservice.Tx{
 				Ref: txNode.Tx.Ref,
-				Tx: &protoblocktx.Tx{
+				Tx: &applicationpb.Tx{
 					Namespaces:   txNode.Tx.Namespaces,
 					Endorsements: txNode.Endorsements,
 				},
@@ -326,7 +326,7 @@ func (sv *signatureVerifier) fetchAndDeleteTxBeingValidated(
 			continue
 		}
 		delete(sv.txBeingValidated, k)
-		if resp.Status != protoblocktx.Status_COMMITTED {
+		if resp.Status != applicationpb.Status_COMMITTED {
 			txNode.Tx.PrelimInvalidTxStatus = &protovcservice.InvalidTxStatus{Code: resp.Status}
 		}
 		validatedTxs = append(validatedTxs, txNode)

@@ -10,17 +10,18 @@ option go_package = "github.com/hyperledger/fabric-x-committer/api/protovcservic
 
 package protovcservice;
 
-import "api/protoblocktx/block_tx.proto";
-import "api/protocoordinatorservice/coordinator.proto";
 import "google/protobuf/empty.proto";
 
+import "api/applicationpb/block_tx.proto";
+import "api/protocoordinatorservice/coordinator.proto";
+
 service ValidationAndCommitService {
-  rpc StartValidateAndCommitStream (stream Batch) returns (stream protoblocktx.TransactionsStatus);
-  rpc SetLastCommittedBlockNumber (protoblocktx.BlockInfo) returns (google.protobuf.Empty) {};
-  rpc GetNextBlockNumberToCommit (google.protobuf.Empty) returns (protoblocktx.BlockInfo) {};
-  rpc GetTransactionsStatus (protoblocktx.QueryStatus) returns (protoblocktx.TransactionsStatus) {};
-  rpc GetNamespacePolicies(google.protobuf.Empty) returns (protoblocktx.NamespacePolicies) {};
-  rpc GetConfigTransaction(google.protobuf.Empty) returns (protoblocktx.ConfigTransaction) {};
+  rpc StartValidateAndCommitStream (stream Batch) returns (stream applicationpb.TransactionsStatus);
+  rpc SetLastCommittedBlockNumber (applicationpb.BlockInfo) returns (google.protobuf.Empty) {};
+  rpc GetNextBlockNumberToCommit (google.protobuf.Empty) returns (applicationpb.BlockInfo) {};
+  rpc GetTransactionsStatus (applicationpb.QueryStatus) returns (applicationpb.TransactionsStatus) {};
+  rpc GetNamespacePolicies(google.protobuf.Empty) returns (applicationpb.NamespacePolicies) {};
+  rpc GetConfigTransaction(google.protobuf.Empty) returns (applicationpb.ConfigTransaction) {};
   rpc SetupSystemTablesAndNamespaces(google.protobuf.Empty) returns (google.protobuf.Empty) {};
 }
 
@@ -30,10 +31,10 @@ message Batch {
 
 message Tx {
   protocoordinatorservice.TxRef ref = 1;
-  repeated protoblocktx.TxNamespace namespaces = 2;
+  repeated applicationpb.TxNamespace namespaces = 2;
   optional InvalidTxStatus prelim_invalid_tx_status = 3;
 }
 
 message InvalidTxStatus {
-    protoblocktx.Status code = 1;
+    applicationpb.Status code = 1;
 }

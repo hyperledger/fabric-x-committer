@@ -16,7 +16,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/types"
@@ -109,7 +109,7 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 		return r.sendBlocksToCoordinator(sCtx, mappedBlockQueue, stream)
 	})
 
-	statusBatch := make(chan *protoblocktx.TransactionsStatus, cap(r.outgoingCommittedBlock))
+	statusBatch := make(chan *applicationpb.TransactionsStatus, cap(r.outgoingCommittedBlock))
 	g.Go(func() error {
 		return receiveStatusFromCoordinator(sCtx, stream, statusBatch)
 	})
@@ -220,7 +220,7 @@ func (r *relay) sendBlocksToCoordinator(
 func receiveStatusFromCoordinator(
 	ctx context.Context,
 	stream protocoordinatorservice.Coordinator_BlockProcessingClient,
-	statusBatch chan<- *protoblocktx.TransactionsStatus,
+	statusBatch chan<- *applicationpb.TransactionsStatus,
 ) error {
 	txsStatus := channel.NewWriter(ctx, statusBatch)
 	for {
@@ -236,7 +236,7 @@ func receiveStatusFromCoordinator(
 
 func (r *relay) processStatusBatch(
 	ctx context.Context,
-	statusBatch <-chan *protoblocktx.TransactionsStatus,
+	statusBatch <-chan *applicationpb.TransactionsStatus,
 ) error {
 	txsStatus := channel.NewReader(ctx, statusBatch)
 	outgoingCommittedBlock := channel.NewWriter(ctx, r.outgoingCommittedBlock)
@@ -365,7 +365,7 @@ func (r *relay) setLastCommittedBlockNumber(
 
 		blkNum := r.nextBlockNumberToBeCommitted.Load() - 1
 		logger.Debugf("Setting the last committed block number: %d", blkNum)
-		_, err := client.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: blkNum})
+		_, err := client.SetLastCommittedBlockNumber(ctx, &applicationpb.BlockInfo{Number: blkNum})
 		if err != nil {
 			return errors.Wrapf(err, "failed to set the last committed block number [%d]", blkNum)
 		}

@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/mock"
@@ -163,10 +163,10 @@ func (e *coordinatorTestEnv) createNamespaces(t *testing.T, blkNum int, nsIDs ..
 	blk := &protocoordinatorservice.Batch{}
 	blk.Txs = append(blk.Txs, &protocoordinatorservice.Tx{
 		Ref: types.TxRef(uuid.NewString(), blockNum, 0),
-		Content: &protoblocktx.Tx{
-			Namespaces: []*protoblocktx.TxNamespace{{
+		Content: &applicationpb.Tx{
+			Namespaces: []*applicationpb.TxNamespace{{
 				NsId: types.ConfigNamespaceID,
-				ReadWrites: []*protoblocktx.ReadWrite{{
+				ReadWrites: []*applicationpb.ReadWrite{{
 					Key:   []byte(types.ConfigKey),
 					Value: pBytes,
 				}},
@@ -176,11 +176,11 @@ func (e *coordinatorTestEnv) createNamespaces(t *testing.T, blkNum int, nsIDs ..
 	for i, nsID := range nsIDs {
 		blk.Txs = append(blk.Txs, &protocoordinatorservice.Tx{
 			Ref: types.TxRef(uuid.NewString(), blockNum, uint32(i+1)), //nolint:gosec // int -> uint32.
-			Content: &protoblocktx.Tx{
-				Namespaces: []*protoblocktx.TxNamespace{{
+			Content: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
 					NsId:      types.MetaNamespaceID,
 					NsVersion: 0,
-					ReadWrites: []*protoblocktx.ReadWrite{{
+					ReadWrites: []*applicationpb.ReadWrite{{
 						Key:   []byte(nsID),
 						Value: pBytes,
 					}},
@@ -190,12 +190,12 @@ func (e *coordinatorTestEnv) createNamespaces(t *testing.T, blkNum int, nsIDs ..
 	}
 	for _, tx := range blk.Txs {
 		// The mock verifier verifies that len(tx.Namespace)==len(tx.Signatures)
-		tx.Content.Endorsements = make([]*protoblocktx.Endorsements, len(tx.Content.Namespaces))
+		tx.Content.Endorsements = make([]*applicationpb.Endorsements, len(tx.Content.Namespaces))
 	}
 
 	err = e.csStream.Send(blk)
 	require.NoError(t, err)
-	status := make(map[string]*protoblocktx.StatusWithHeight)
+	status := make(map[string]*applicationpb.StatusWithHeight)
 	require.Eventually(t, func() bool {
 		txStatus, err := e.csStream.Recv()
 		require.NoError(t, err)
@@ -206,7 +206,7 @@ func (e *coordinatorTestEnv) createNamespaces(t *testing.T, blkNum int, nsIDs ..
 	}, 2*time.Minute, 10*time.Millisecond)
 
 	for _, s := range status {
-		require.Equal(t, protoblocktx.Status_COMMITTED.String(), s.Code.String())
+		require.Equal(t, applicationpb.Status_COMMITTED.String(), s.Code.String())
 	}
 }
 
@@ -255,12 +255,12 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 		Txs: []*protocoordinatorservice.Tx{
 			{
 				Ref: types.TxRef("tx1", 1, 0),
-				Content: &protoblocktx.Tx{
-					Namespaces: []*protoblocktx.TxNamespace{
+				Content: &applicationpb.Tx{
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
 							NsVersion: 0,
-							ReadWrites: []*protoblocktx.ReadWrite{
+							ReadWrites: []*applicationpb.ReadWrite{
 								{
 									Key: []byte("key"),
 								},
@@ -269,7 +269,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 						{
 							NsId:      types.MetaNamespaceID,
 							NsVersion: 0,
-							ReadWrites: []*protoblocktx.ReadWrite{
+							ReadWrites: []*applicationpb.ReadWrite{
 								{
 									Key:   []byte("2"),
 									Value: pBytes,
@@ -277,7 +277,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 							},
 						},
 					},
-					Endorsements: make([]*protoblocktx.Endorsements, 2),
+					Endorsements: make([]*applicationpb.Endorsements, 2),
 				},
 			},
 		},
@@ -288,15 +288,15 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 		1*time.Second, 100*time.Millisecond,
 	)
 
-	env.requireStatus(ctx, t, map[string]*protoblocktx.StatusWithHeight{
-		"tx1": {Code: protoblocktx.Status_COMMITTED, BlockNumber: 1},
+	env.requireStatus(ctx, t, map[string]*applicationpb.StatusWithHeight{
+		"tx1": {Code: applicationpb.Status_COMMITTED, BlockNumber: 1},
 	}, nil)
 
 	test.RequireIntMetricValue(t, preMetricsValue+1, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
-		protoblocktx.Status_COMMITTED.String(),
+		applicationpb.Status_COMMITTED.String(),
 	))
 
-	_, err = env.coordinator.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1})
+	_, err = env.coordinator.SetLastCommittedBlockNumber(ctx, &applicationpb.BlockInfo{Number: 1})
 	require.NoError(t, err)
 
 	nextBlock, err := env.coordinator.GetNextBlockNumberToCommit(ctx, nil)
@@ -320,7 +320,7 @@ func TestCoordinatorServiceRejectedTx(t *testing.T) {
 		Rejected: []*protocoordinatorservice.TxStatusInfo{
 			{
 				Ref:    types.TxRef("rejected", 1, 0),
-				Status: protoblocktx.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
+				Status: applicationpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
 			},
 		},
 	})
@@ -330,18 +330,18 @@ func TestCoordinatorServiceRejectedTx(t *testing.T) {
 		1*time.Second, 100*time.Millisecond,
 	)
 
-	env.requireStatus(ctx, t, map[string]*protoblocktx.StatusWithHeight{
-		"rejected": {Code: protoblocktx.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD, BlockNumber: 1},
+	env.requireStatus(ctx, t, map[string]*applicationpb.StatusWithHeight{
+		"rejected": {Code: applicationpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD, BlockNumber: 1},
 	}, nil)
 
 	test.RequireIntMetricValue(t, 1, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
-		protoblocktx.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD.String(),
+		applicationpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD.String(),
 	))
 	test.RequireIntMetricValue(t, preMetricsValue, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
-		protoblocktx.Status_COMMITTED.String(),
+		applicationpb.Status_COMMITTED.String(),
 	))
 
-	_, err = env.coordinator.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1})
+	_, err = env.coordinator.SetLastCommittedBlockNumber(ctx, &applicationpb.BlockInfo{Number: 1})
 	require.NoError(t, err)
 
 	nextBlock, err := env.coordinator.GetNextBlockNumberToCommit(ctx, nil)
@@ -371,10 +371,10 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 		Txs: []*protocoordinatorservice.Tx{
 			{
 				Ref: types.TxRef("config TX", 0, 0),
-				Content: &protoblocktx.Tx{
-					Namespaces: []*protoblocktx.TxNamespace{{
+				Content: &applicationpb.Tx{
+					Namespaces: []*applicationpb.TxNamespace{{
 						NsId: types.ConfigNamespaceID,
-						ReadWrites: []*protoblocktx.ReadWrite{{
+						ReadWrites: []*applicationpb.ReadWrite{{
 							Key:   []byte(types.ConfigKey),
 							Value: []byte("config"),
 						}},
@@ -383,11 +383,11 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 			},
 			{
 				Ref: types.TxRef("create namespace 1", 0, 1),
-				Content: &protoblocktx.Tx{
-					Namespaces: []*protoblocktx.TxNamespace{{
+				Content: &applicationpb.Tx{
+					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      types.MetaNamespaceID,
 						NsVersion: 0,
-						ReadWrites: []*protoblocktx.ReadWrite{{
+						ReadWrites: []*applicationpb.ReadWrite{{
 							Key:   []byte(utNsID),
 							Value: pBytes,
 						}},
@@ -396,11 +396,11 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 			},
 			{
 				Ref: types.TxRef("create main key (read-write version 0)", 0, 2),
-				Content: &protoblocktx.Tx{
-					Namespaces: []*protoblocktx.TxNamespace{{
+				Content: &applicationpb.Tx{
+					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      utNsID,
 						NsVersion: utNsVersion,
-						ReadWrites: []*protoblocktx.ReadWrite{{
+						ReadWrites: []*applicationpb.ReadWrite{{
 							Key:   mainKey,
 							Value: []byte("value of version 0"),
 						}},
@@ -409,11 +409,11 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 			},
 			{
 				Ref: types.TxRef("update main key (read-write version 1)", 0, 3),
-				Content: &protoblocktx.Tx{
-					Namespaces: []*protoblocktx.TxNamespace{{
+				Content: &applicationpb.Tx{
+					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      utNsID,
 						NsVersion: utNsVersion,
-						ReadWrites: []*protoblocktx.ReadWrite{{
+						ReadWrites: []*applicationpb.ReadWrite{{
 							Key:     mainKey,
 							Value:   []byte("value of version 1"),
 							Version: types.Version(0),
@@ -423,11 +423,11 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 			},
 			{
 				Ref: types.TxRef("update main key (blind-write version 2)", 0, 4),
-				Content: &protoblocktx.Tx{
-					Namespaces: []*protoblocktx.TxNamespace{{
+				Content: &applicationpb.Tx{
+					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      utNsID,
 						NsVersion: utNsVersion,
-						BlindWrites: []*protoblocktx.Write{{
+						BlindWrites: []*applicationpb.Write{{
 							Key:   mainKey,
 							Value: []byte("Value of version 2"),
 						}},
@@ -436,15 +436,15 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 			},
 			{
 				Ref: types.TxRef("read main key, create sub key (read version 2, read-write version 0)", 0, 5),
-				Content: &protoblocktx.Tx{
-					Namespaces: []*protoblocktx.TxNamespace{{
+				Content: &applicationpb.Tx{
+					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      utNsID,
 						NsVersion: utNsVersion,
-						ReadsOnly: []*protoblocktx.Read{{
+						ReadsOnly: []*applicationpb.Read{{
 							Key:     mainKey,
 							Version: types.Version(2),
 						}},
-						ReadWrites: []*protoblocktx.ReadWrite{{
+						ReadWrites: []*applicationpb.ReadWrite{{
 							Key:   subKey,
 							Value: []byte("Sub value of version 0"),
 						}},
@@ -453,11 +453,11 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 			},
 			{
 				Ref: types.TxRef("update main key (read-write version 3)", 0, 6),
-				Content: &protoblocktx.Tx{
-					Namespaces: []*protoblocktx.TxNamespace{{
+				Content: &applicationpb.Tx{
+					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      utNsID,
 						NsVersion: utNsVersion,
-						ReadWrites: []*protoblocktx.ReadWrite{{
+						ReadWrites: []*applicationpb.ReadWrite{{
 							Key:     mainKey,
 							Version: types.Version(2),
 							Value:   []byte("Value of version 3"),
@@ -480,10 +480,10 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 
 	status := env.receiveStatus(t, len(b1.Txs))
 	for txID, txStatus := range status {
-		require.Equal(t, protoblocktx.Status_COMMITTED, txStatus.Code, txID)
+		require.Equal(t, applicationpb.Status_COMMITTED, txStatus.Code, txID)
 	}
 	test.RequireIntMetricValue(t, expectedReceived, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
-		protoblocktx.Status_COMMITTED.String(),
+		applicationpb.Status_COMMITTED.String(),
 	))
 
 	res := env.dbEnv.FetchKeys(t, utNsID, [][]byte{mainKey, subKey})
@@ -508,7 +508,7 @@ func TestQueueSize(t *testing.T) {
 	q.depGraphToSigVerifierFreeTxs <- dependencygraph.TxNodeBatch{}
 	q.sigVerifierToVCServiceValidatedTxs <- dependencygraph.TxNodeBatch{}
 	q.vcServiceToDepGraphValidatedTxs <- dependencygraph.TxNodeBatch{}
-	q.vcServiceToCoordinatorTxStatus <- &protoblocktx.TransactionsStatus{}
+	q.vcServiceToCoordinatorTxStatus <- &applicationpb.TransactionsStatus{}
 
 	require.Eventually(t, func() bool {
 		return test.GetIntMetricValue(t, m.sigverifierInputTxBatchQueueSize) == 1 &&
@@ -542,26 +542,26 @@ func TestCoordinatorRecovery(t *testing.T) {
 	err := env.csStream.Send(&protocoordinatorservice.Batch{
 		Txs: []*protocoordinatorservice.Tx{{
 			Ref: types.TxRef("tx1", 1, 0),
-			Content: &protoblocktx.Tx{
-				Namespaces: []*protoblocktx.TxNamespace{{
+			Content: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
 					NsId:      "1",
 					NsVersion: 0,
-					ReadWrites: []*protoblocktx.ReadWrite{{
+					ReadWrites: []*applicationpb.ReadWrite{{
 						Key:   []byte("key1"),
 						Value: []byte("value1"),
 					}},
 				}},
-				Endorsements: make([]*protoblocktx.Endorsements, 1),
+				Endorsements: make([]*applicationpb.Endorsements, 1),
 			},
 		}},
 	})
 	require.NoError(t, err)
 
-	env.requireStatus(ctx, t, map[string]*protoblocktx.StatusWithHeight{
-		"tx1": {Code: protoblocktx.Status_COMMITTED, BlockNumber: 1},
+	env.requireStatus(ctx, t, map[string]*applicationpb.StatusWithHeight{
+		"tx1": {Code: applicationpb.Status_COMMITTED, BlockNumber: 1},
 	}, nil)
 
-	_, err = env.client.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1})
+	_, err = env.client.SetLastCommittedBlockNumber(ctx, &applicationpb.BlockInfo{Number: 1})
 	require.NoError(t, err)
 
 	nextBlock, err := env.client.GetNextBlockNumberToCommit(ctx, nil)
@@ -578,55 +578,55 @@ func TestCoordinatorRecovery(t *testing.T) {
 		Txs: []*protocoordinatorservice.Tx{
 			{
 				Ref: types.TxRef("tx2", 2, 0),
-				Content: &protoblocktx.Tx{
-					Namespaces: []*protoblocktx.TxNamespace{{
+				Content: &applicationpb.Tx{
+					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      "1",
 						NsVersion: 0,
-						ReadWrites: []*protoblocktx.ReadWrite{{
+						ReadWrites: []*applicationpb.ReadWrite{{
 							Key: []byte("key2"),
 						}},
 					}},
-					Endorsements: make([]*protoblocktx.Endorsements, 1),
+					Endorsements: make([]*applicationpb.Endorsements, 1),
 				},
 			},
 			{
 				Ref: types.TxRef("mvcc conflict", 2, 2),
-				Content: &protoblocktx.Tx{
-					Namespaces: []*protoblocktx.TxNamespace{{
+				Content: &applicationpb.Tx{
+					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      "2",
 						NsVersion: 0,
-						ReadWrites: []*protoblocktx.ReadWrite{{
+						ReadWrites: []*applicationpb.ReadWrite{{
 							Key: []byte("key3"),
 						}},
 					}},
-					Endorsements: make([]*protoblocktx.Endorsements, 1),
+					Endorsements: make([]*applicationpb.Endorsements, 1),
 				},
 			},
 			{
 				Ref: types.TxRef("tx1", 2, 5),
-				Content: &protoblocktx.Tx{
-					Namespaces: []*protoblocktx.TxNamespace{{
+				Content: &applicationpb.Tx{
+					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      "1",
 						NsVersion: 0,
-						ReadWrites: []*protoblocktx.ReadWrite{{
+						ReadWrites: []*applicationpb.ReadWrite{{
 							Key:   []byte("key1"),
 							Value: []byte("value1"),
 						}},
 					}},
-					Endorsements: make([]*protoblocktx.Endorsements, 1),
+					Endorsements: make([]*applicationpb.Endorsements, 1),
 				},
 			},
 		},
 	}
 	require.NoError(t, env.csStream.Send(block2))
 
-	expectedTxStatus := map[string]*protoblocktx.StatusWithHeight{
-		"tx2":           types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 2, 0),
-		"mvcc conflict": types.NewStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 2, 2),
-		"tx1":           types.NewStatusWithHeight(protoblocktx.Status_REJECTED_DUPLICATE_TX_ID, 2, 5),
+	expectedTxStatus := map[string]*applicationpb.StatusWithHeight{
+		"tx2":           types.NewStatusWithHeight(applicationpb.Status_COMMITTED, 2, 0),
+		"mvcc conflict": types.NewStatusWithHeight(applicationpb.Status_ABORTED_MVCC_CONFLICT, 2, 2),
+		"tx1":           types.NewStatusWithHeight(applicationpb.Status_REJECTED_DUPLICATE_TX_ID, 2, 5),
 	}
-	env.requireStatus(ctx, t, expectedTxStatus, map[string]*protoblocktx.StatusWithHeight{
-		"tx1": types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 0),
+	env.requireStatus(ctx, t, expectedTxStatus, map[string]*applicationpb.StatusWithHeight{
+		"tx1": types.NewStatusWithHeight(applicationpb.Status_COMMITTED, 1, 0),
 	})
 
 	cancel()
@@ -645,37 +645,37 @@ func TestCoordinatorRecovery(t *testing.T) {
 		Txs: []*protocoordinatorservice.Tx{
 			{
 				Ref: types.TxRef("tx2", 2, 0),
-				Content: &protoblocktx.Tx{
-					Namespaces: []*protoblocktx.TxNamespace{{
+				Content: &applicationpb.Tx{
+					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      "1",
 						NsVersion: 0,
-						ReadWrites: []*protoblocktx.ReadWrite{{
+						ReadWrites: []*applicationpb.ReadWrite{{
 							Key: []byte("key2"),
 						}},
 					}},
-					Endorsements: make([]*protoblocktx.Endorsements, 1),
+					Endorsements: make([]*applicationpb.Endorsements, 1),
 				},
 			},
 			{
 				Ref: types.TxRef("tx3", 2, 1),
-				Content: &protoblocktx.Tx{
-					Namespaces: []*protoblocktx.TxNamespace{{
+				Content: &applicationpb.Tx{
+					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      "1",
 						NsVersion: 0,
-						ReadWrites: []*protoblocktx.ReadWrite{{
+						ReadWrites: []*applicationpb.ReadWrite{{
 							Key: []byte("key3"),
 						}},
 					}},
-					Endorsements: make([]*protoblocktx.Endorsements, 1),
+					Endorsements: make([]*applicationpb.Endorsements, 1),
 				},
 			},
 			{
 				Ref: types.TxRef("mvcc conflict", 2, 2),
-				Content: &protoblocktx.Tx{
-					Namespaces: []*protoblocktx.TxNamespace{{
+				Content: &applicationpb.Tx{
+					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      "2",
 						NsVersion: 0,
-						ReadWrites: []*protoblocktx.ReadWrite{{
+						ReadWrites: []*applicationpb.ReadWrite{{
 							Key: []byte("key3"),
 						}},
 					}},
@@ -684,19 +684,19 @@ func TestCoordinatorRecovery(t *testing.T) {
 			},
 			{
 				Ref: types.TxRef("duplicate namespace", 2, 4),
-				Content: &protoblocktx.Tx{
-					Namespaces: []*protoblocktx.TxNamespace{
+				Content: &applicationpb.Tx{
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
 							NsVersion: 0,
-							ReadWrites: []*protoblocktx.ReadWrite{{
+							ReadWrites: []*applicationpb.ReadWrite{{
 								Key: []byte("key"),
 							}},
 						},
 						{
 							NsId:      types.MetaNamespaceID,
 							NsVersion: 0,
-							ReadWrites: []*protoblocktx.ReadWrite{{
+							ReadWrites: []*applicationpb.ReadWrite{{
 								Key:   []byte("2"),
 								Value: nsPolicy,
 							}},
@@ -706,21 +706,21 @@ func TestCoordinatorRecovery(t *testing.T) {
 							NsVersion: 0,
 						},
 					},
-					Endorsements: make([]*protoblocktx.Endorsements, 3),
+					Endorsements: make([]*applicationpb.Endorsements, 3),
 				},
 			},
 			{
 				Ref: types.TxRef("tx1", 2, 5),
-				Content: &protoblocktx.Tx{
-					Namespaces: []*protoblocktx.TxNamespace{{
+				Content: &applicationpb.Tx{
+					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      "1",
 						NsVersion: 0,
-						ReadWrites: []*protoblocktx.ReadWrite{{
+						ReadWrites: []*applicationpb.ReadWrite{{
 							Key:   []byte("key1"),
 							Value: []byte("value1"),
 						}},
 					}},
-					Endorsements: make([]*protoblocktx.Endorsements, 1),
+					Endorsements: make([]*applicationpb.Endorsements, 1),
 				},
 			},
 		},
@@ -728,14 +728,14 @@ func TestCoordinatorRecovery(t *testing.T) {
 
 	require.NoError(t, env.csStream.Send(block2))
 
-	env.requireStatus(ctx, t, map[string]*protoblocktx.StatusWithHeight{
-		"tx2":                 types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 2, 0),
-		"tx3":                 types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 2, 1),
-		"mvcc conflict":       types.NewStatusWithHeight(protoblocktx.Status_ABORTED_MVCC_CONFLICT, 2, 2),
-		"duplicate namespace": types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 2, 4),
-		"tx1":                 types.NewStatusWithHeight(protoblocktx.Status_REJECTED_DUPLICATE_TX_ID, 2, 5),
-	}, map[string]*protoblocktx.StatusWithHeight{
-		"tx1": types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 0),
+	env.requireStatus(ctx, t, map[string]*applicationpb.StatusWithHeight{
+		"tx2":                 types.NewStatusWithHeight(applicationpb.Status_COMMITTED, 2, 0),
+		"tx3":                 types.NewStatusWithHeight(applicationpb.Status_COMMITTED, 2, 1),
+		"mvcc conflict":       types.NewStatusWithHeight(applicationpb.Status_ABORTED_MVCC_CONFLICT, 2, 2),
+		"duplicate namespace": types.NewStatusWithHeight(applicationpb.Status_COMMITTED, 2, 4),
+		"tx1":                 types.NewStatusWithHeight(applicationpb.Status_REJECTED_DUPLICATE_TX_ID, 2, 5),
+	}, map[string]*applicationpb.StatusWithHeight{
+		"tx1": types.NewStatusWithHeight(applicationpb.Status_COMMITTED, 1, 0),
 	})
 }
 
@@ -752,11 +752,11 @@ func TestCoordinatorStreamFailureWithSidecar(t *testing.T) {
 		Txs: []*protocoordinatorservice.Tx{
 			{
 				Ref: types.TxRef("tx1", 1, 0),
-				Content: &protoblocktx.Tx{
-					Namespaces: []*protoblocktx.TxNamespace{{
+				Content: &applicationpb.Tx{
+					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      "1",
 						NsVersion: 0,
-						BlindWrites: []*protoblocktx.Write{{
+						BlindWrites: []*applicationpb.Write{{
 							Key: []byte("key1"),
 						}},
 					}},
@@ -767,8 +767,8 @@ func TestCoordinatorStreamFailureWithSidecar(t *testing.T) {
 	}
 	require.NoError(t, env.csStream.Send(blk))
 
-	env.requireStatus(ctx, t, map[string]*protoblocktx.StatusWithHeight{
-		"tx1": {Code: protoblocktx.Status_COMMITTED, BlockNumber: 1},
+	env.requireStatus(ctx, t, map[string]*applicationpb.StatusWithHeight{
+		"tx1": {Code: applicationpb.Status_COMMITTED, BlockNumber: 1},
 	}, nil)
 
 	env.streamCancel() // simulate the failure of sidecar
@@ -793,15 +793,15 @@ func TestCoordinatorStreamFailureWithSidecar(t *testing.T) {
 	}
 	blk.Txs[0].Ref.TxId = "tx2"
 	require.NoError(t, env.csStream.Send(blk))
-	env.requireStatus(ctx, t, map[string]*protoblocktx.StatusWithHeight{
-		"tx2": {Code: protoblocktx.Status_COMMITTED, BlockNumber: 2},
+	env.requireStatus(ctx, t, map[string]*applicationpb.StatusWithHeight{
+		"tx2": {Code: applicationpb.Status_COMMITTED, BlockNumber: 2},
 	}, nil)
 }
 
 func (e *coordinatorTestEnv) requireStatus(
 	ctx context.Context,
 	t *testing.T,
-	expectedTxStatus, differentPersisted map[string]*protoblocktx.StatusWithHeight,
+	expectedTxStatus, differentPersisted map[string]*applicationpb.StatusWithHeight,
 ) {
 	t.Helper()
 	require.EqualExportedValues(t, expectedTxStatus, e.receiveStatus(t, len(expectedTxStatus)))
@@ -814,9 +814,9 @@ func (e *coordinatorTestEnv) requireStatus(
 	test.EnsurePersistedTxStatus(ctx, t, e.client, txIDs, expectedTxStatus)
 }
 
-func (e *coordinatorTestEnv) receiveStatus(t *testing.T, count int) map[string]*protoblocktx.StatusWithHeight {
+func (e *coordinatorTestEnv) receiveStatus(t *testing.T, count int) map[string]*applicationpb.StatusWithHeight {
 	t.Helper()
-	status := make(map[string]*protoblocktx.StatusWithHeight)
+	status := make(map[string]*applicationpb.StatusWithHeight)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		txStatus, err := e.csStream.Recv()
 		require.NoError(c, err)
@@ -850,7 +850,7 @@ func TestChunkSizeSentForDepGraph(t *testing.T) {
 		return test.GetIntMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) >= txPerBlock
 	}, 4*time.Second, 100*time.Millisecond)
 
-	actualTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)
+	actualTxsStatus := make(map[string]*applicationpb.StatusWithHeight)
 	for len(actualTxsStatus) < txPerBlock {
 		txStatus, err := env.csStream.Recv()
 		require.NoError(t, err)
@@ -859,7 +859,7 @@ func TestChunkSizeSentForDepGraph(t *testing.T) {
 
 	require.Equal(t, expectedTxsStatus, actualTxsStatus)
 	test.RequireIntMetricValue(t, txPerBlock, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
-		protoblocktx.Status_COMMITTED.String(),
+		applicationpb.Status_COMMITTED.String(),
 	))
 }
 
@@ -904,7 +904,7 @@ func TestWaitingTxsCount(t *testing.T) {
 		env.sigVerifierGrpcServers.Configs,
 	)
 
-	actualTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)
+	actualTxsStatus := make(map[string]*applicationpb.StatusWithHeight)
 	for len(actualTxsStatus) < txPerBlock {
 		txStatus, err := env.csStream.Recv()
 		require.NoError(t, err)
@@ -913,7 +913,7 @@ func TestWaitingTxsCount(t *testing.T) {
 
 	require.Equal(t, expectedTxsStatus, actualTxsStatus)
 	test.RequireIntMetricValue(t, txPerBlock, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
-		protoblocktx.Status_COMMITTED.String(),
+		applicationpb.Status_COMMITTED.String(),
 	))
 
 	env.streamCancel()
@@ -949,20 +949,20 @@ func fakeConfigForTest(t *testing.T) *Config {
 	}
 }
 
-func makeTestBlock(txPerBlock int) (*protocoordinatorservice.Batch, map[string]*protoblocktx.StatusWithHeight) {
+func makeTestBlock(txPerBlock int) (*protocoordinatorservice.Batch, map[string]*applicationpb.StatusWithHeight) {
 	b := &protocoordinatorservice.Batch{
 		Txs: make([]*protocoordinatorservice.Tx, txPerBlock),
 	}
-	expectedTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)
+	expectedTxsStatus := make(map[string]*applicationpb.StatusWithHeight)
 	for i := range txPerBlock {
 		txID := "tx" + strconv.Itoa(rand.Int())
 		b.Txs[i] = &protocoordinatorservice.Tx{
 			Ref: types.TxRef(txID, 0, uint32(i)), //nolint:gosec
-			Content: &protoblocktx.Tx{
-				Namespaces: []*protoblocktx.TxNamespace{{
+			Content: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
 					NsId:      "1",
 					NsVersion: 0,
-					BlindWrites: []*protoblocktx.Write{{
+					BlindWrites: []*applicationpb.Write{{
 						Key: []byte("key" + strconv.Itoa(i)),
 					}},
 				}},
@@ -970,7 +970,7 @@ func makeTestBlock(txPerBlock int) (*protocoordinatorservice.Batch, map[string]*
 			},
 		}
 		//nolint: gosec // int -> uint32.
-		expectedTxsStatus[txID] = types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 0, uint32(i))
+		expectedTxsStatus[txID] = types.NewStatusWithHeight(applicationpb.Status_COMMITTED, 0, uint32(i))
 	}
 
 	return b, expectedTxsStatus

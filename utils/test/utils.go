@@ -29,7 +29,7 @@ import (
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
@@ -224,8 +224,8 @@ func WaitUntilGrpcServerIsReady(
 
 // StatusRetriever provides implementation retrieve status of given transaction identifiers.
 type StatusRetriever interface {
-	GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus, ...grpc.CallOption) (
-		*protoblocktx.TransactionsStatus, error,
+	GetTransactionsStatus(context.Context, *applicationpb.QueryStatus, ...grpc.CallOption) (
+		*applicationpb.TransactionsStatus, error,
 	)
 }
 
@@ -237,13 +237,13 @@ func EnsurePersistedTxStatus(
 	t *testing.T,
 	r StatusRetriever,
 	txIDs []string,
-	expected map[string]*protoblocktx.StatusWithHeight,
+	expected map[string]*applicationpb.StatusWithHeight,
 ) {
 	t.Helper()
 	if len(txIDs) == 0 {
 		return
 	}
-	actualStatus, err := r.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{TxIDs: txIDs})
+	actualStatus, err := r.GetTransactionsStatus(ctx, &applicationpb.QueryStatus{TxIDs: txIDs})
 	require.NoError(t, err)
 	require.EqualExportedValues(t, expected, actualStatus.Status)
 }
@@ -461,12 +461,12 @@ func MustCreateEndpoint(value string) *connection.Endpoint {
 // CreateEndorsementsForThresholdRule creates a slice of EndorsementSet pointers from individual threshold signatures.
 // Each signature provided is wrapped in its own EndorsementWithIdentity and then placed
 // in its own new EndorsementSet.
-func CreateEndorsementsForThresholdRule(signatures ...[]byte) []*protoblocktx.Endorsements {
-	sets := make([]*protoblocktx.Endorsements, 0, len(signatures))
+func CreateEndorsementsForThresholdRule(signatures ...[]byte) []*applicationpb.Endorsements {
+	sets := make([]*applicationpb.Endorsements, 0, len(signatures))
 
 	for _, sig := range signatures {
-		sets = append(sets, &protoblocktx.Endorsements{
-			EndorsementsWithIdentity: []*protoblocktx.EndorsementWithIdentity{{Endorsement: sig}},
+		sets = append(sets, &applicationpb.Endorsements{
+			EndorsementsWithIdentity: []*applicationpb.EndorsementWithIdentity{{Endorsement: sig}},
 		})
 	}
 
@@ -487,22 +487,22 @@ const (
 // must all be present to satisfy a rule (e.g., an AND condition).
 func CreateEndorsementsForSignatureRule(
 	signatures, mspIDs, certBytesOrID [][]byte, creatorType int,
-) *protoblocktx.Endorsements {
-	set := &protoblocktx.Endorsements{
-		EndorsementsWithIdentity: make([]*protoblocktx.EndorsementWithIdentity, 0, len(signatures)),
+) *applicationpb.Endorsements {
+	set := &applicationpb.Endorsements{
+		EndorsementsWithIdentity: make([]*applicationpb.EndorsementWithIdentity, 0, len(signatures)),
 	}
 	for i, sig := range signatures {
-		eid := &protoblocktx.EndorsementWithIdentity{
+		eid := &applicationpb.EndorsementWithIdentity{
 			Endorsement: sig,
-			Identity: &protoblocktx.Identity{
+			Identity: &applicationpb.Identity{
 				MspId: string(mspIDs[i]),
 			},
 		}
 		switch creatorType {
 		case CreatorCertificate:
-			eid.Identity.Creator = &protoblocktx.Identity_Certificate{Certificate: certBytesOrID[i]}
+			eid.Identity.Creator = &applicationpb.Identity_Certificate{Certificate: certBytesOrID[i]}
 		case CreatorID:
-			eid.Identity.Creator = &protoblocktx.Identity_CertificateId{
+			eid.Identity.Creator = &applicationpb.Identity_CertificateId{
 				CertificateId: hex.EncodeToString(certBytesOrID[i]),
 			}
 		}
@@ -515,7 +515,7 @@ func CreateEndorsementsForSignatureRule(
 // AppendToEndorsementSetsForThresholdRule is a utility function that creates new signature sets
 // for a threshold rule and appends them to an existing slice of signature sets.
 func AppendToEndorsementSetsForThresholdRule(
-	ss []*protoblocktx.Endorsements, signatures ...[]byte,
-) []*protoblocktx.Endorsements {
+	ss []*applicationpb.Endorsements, signatures ...[]byte,
+) []*applicationpb.Endorsements {
 	return append(ss, CreateEndorsementsForThresholdRule(signatures...)...)
 }

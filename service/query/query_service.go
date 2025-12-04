@@ -18,7 +18,7 @@ import (
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
@@ -209,7 +209,7 @@ func (q *Service) GetTransactionStatus(
 func (q *Service) GetNamespacePolicies(
 	ctx context.Context,
 	_ *emptypb.Empty,
-) (*protoblocktx.NamespacePolicies, error) {
+) (*applicationpb.NamespacePolicies, error) {
 	return queryPolicies(ctx, q.batcher.pool)
 }
 
@@ -217,7 +217,7 @@ func (q *Service) GetNamespacePolicies(
 func (q *Service) GetConfigTransaction(
 	ctx context.Context,
 	_ *emptypb.Empty,
-) (*protoblocktx.ConfigTransaction, error) {
+) (*applicationpb.ConfigTransaction, error) {
 	return queryConfig(ctx, q.batcher.pool)
 }
 

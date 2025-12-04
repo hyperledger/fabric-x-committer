@@ -9,7 +9,7 @@ package types
 import (
 	"fmt"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/utils"
 )
@@ -21,8 +21,8 @@ type Height struct {
 }
 
 // NewStatusWithHeight creates a protoblocktx.StatusWithHeight with the given values.
-func NewStatusWithHeight(s protoblocktx.Status, blkNum uint64, txNum uint32) *protoblocktx.StatusWithHeight {
-	return &protoblocktx.StatusWithHeight{
+func NewStatusWithHeight(s applicationpb.Status, blkNum uint64, txNum uint32) *applicationpb.StatusWithHeight {
+	return &applicationpb.StatusWithHeight{
 		Code:        s,
 		BlockNumber: blkNum,
 		TxNumber:    txNum,
@@ -31,8 +31,8 @@ func NewStatusWithHeight(s protoblocktx.Status, blkNum uint64, txNum uint32) *pr
 
 // NewStatusWithHeightFromRef creates a protoblocktx.StatusWithHeight with the given values.
 func NewStatusWithHeightFromRef(
-	s protoblocktx.Status, ref *protocoordinatorservice.TxRef,
-) *protoblocktx.StatusWithHeight {
+	s applicationpb.Status, ref *protocoordinatorservice.TxRef,
+) *applicationpb.StatusWithHeight {
 	return NewStatusWithHeight(s, ref.BlockNum, ref.TxNum)
 }
 
@@ -60,7 +60,7 @@ func NewHeightFromBytes(b []byte) (*Height, int, error) {
 }
 
 // WithStatus creates protoblocktx.StatusWithHeight with this height and the given code.
-func (h *Height) WithStatus(code protoblocktx.Status) *protoblocktx.StatusWithHeight {
+func (h *Height) WithStatus(code applicationpb.Status) *applicationpb.StatusWithHeight {
 	return NewStatusWithHeight(code, h.BlockNum, h.TxNum)
 }
 

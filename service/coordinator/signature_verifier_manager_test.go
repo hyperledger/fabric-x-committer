@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
@@ -249,8 +249,8 @@ func createTxNodeBatchForTest(
 ) (inputTxBatch, expectedValidatedTxs dependencygraph.TxNodeBatch) {
 	t.Helper()
 
-	ns := []*protoblocktx.TxNamespace{{
-		BlindWrites: []*protoblocktx.Write{{
+	ns := []*applicationpb.TxNamespace{{
+		BlindWrites: []*applicationpb.Write{{
 			Value: utils.MustRead(rand.Reader, valueSize),
 		}},
 	}}
@@ -337,8 +337,8 @@ func TestSignatureVerifierFatalDueToBadPolicy(t *testing.T) {
 
 	sv.SetReturnErrorForUpdatePolicies(true)
 	env.policyManager.update(&protosigverifierservice.Update{
-		NamespacePolicies: &protoblocktx.NamespacePolicies{
-			Policies: []*protoblocktx.PolicyItem{{Namespace: "$$$"}},
+		NamespacePolicies: &applicationpb.NamespacePolicies{
+			Policies: []*applicationpb.PolicyItem{{Namespace: "$$$"}},
 		},
 	})
 
@@ -363,10 +363,10 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 	ns1Policy, _ := policy.MakePolicyAndNsSigner(t, "ns1")
 	ns2Policy, _ := policy.MakePolicyAndNsSigner(t, "ns2")
 	expectedUpdate := &protosigverifierservice.Update{
-		NamespacePolicies: &protoblocktx.NamespacePolicies{
-			Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
+		NamespacePolicies: &applicationpb.NamespacePolicies{
+			Policies: []*applicationpb.PolicyItem{ns1Policy, ns2Policy},
 		},
-		Config: &protoblocktx.ConfigTransaction{
+		Config: &applicationpb.ConfigTransaction{
 			Envelope: []byte("config1"),
 		},
 	}
@@ -384,10 +384,10 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 	t.Log("Update policy manager")
 	ns2NewPolicy, _ := policy.MakePolicyAndNsSigner(t, "ns2")
 	expectedSecondUpdate := &protosigverifierservice.Update{
-		NamespacePolicies: &protoblocktx.NamespacePolicies{
-			Policies: []*protoblocktx.PolicyItem{ns2NewPolicy},
+		NamespacePolicies: &applicationpb.NamespacePolicies{
+			Policies: []*applicationpb.PolicyItem{ns2NewPolicy},
 		},
-		Config: &protoblocktx.ConfigTransaction{
+		Config: &applicationpb.ConfigTransaction{
 			Envelope: []byte("config2"),
 		},
 	}
@@ -413,10 +413,10 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 	t.Log("New instance is up")
 
 	newExpectedUpdate := &protosigverifierservice.Update{
-		NamespacePolicies: &protoblocktx.NamespacePolicies{
-			Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2NewPolicy},
+		NamespacePolicies: &applicationpb.NamespacePolicies{
+			Policies: []*applicationpb.PolicyItem{ns1Policy, ns2NewPolicy},
 		},
-		Config: &protoblocktx.ConfigTransaction{
+		Config: &applicationpb.ConfigTransaction{
 			Envelope: []byte("config2"),
 		},
 	}

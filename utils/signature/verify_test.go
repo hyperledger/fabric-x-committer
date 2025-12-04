@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -29,16 +29,16 @@ const fakeTxID = "fake-id"
 func TestNsVerifierThresholdRule(t *testing.T) {
 	t.Parallel()
 	pItem, nsSigner := policy.MakePolicyAndNsSigner(t, "1")
-	pol := &protoblocktx.NamespacePolicy{}
+	pol := &applicationpb.NamespacePolicy{}
 	require.NoError(t, proto.Unmarshal(pItem.Policy, pol))
 	nsVerifier, err := signature.NewNsVerifier(pol, nil)
 	require.NoError(t, err)
 
-	tx1 := &protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	tx1 := &applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:       "1",
 			NsVersion:  1,
-			ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("k1"), Value: []byte("v1")}},
+			ReadWrites: []*applicationpb.ReadWrite{{Key: []byte("k1"), Value: []byte("v1")}},
 		}},
 	}
 	sig, err := nsSigner.SignNs(fakeTxID, tx1, 0)
@@ -73,20 +73,20 @@ func TestNsVerifierSignatureRule(t *testing.T) {
 	require.NoError(t, err)
 
 	nsVerifier, err := signature.NewNsVerifier(
-		&protoblocktx.NamespacePolicy{Rule: &protoblocktx.NamespacePolicy_MspRule{MspRule: pBytes}},
+		&applicationpb.NamespacePolicy{Rule: &applicationpb.NamespacePolicy_MspRule{MspRule: pBytes}},
 		&cauthdsl.MockIdentityDeserializer{KnownIdentities: knownIdentities})
 	require.NoError(t, err)
 
 	for _, creatorType := range []int{test.CreatorCertificate, test.CreatorID} {
-		tx1 := &protoblocktx.Tx{
-			Namespaces: []*protoblocktx.TxNamespace{{
+		tx1 := &applicationpb.Tx{
+			Namespaces: []*applicationpb.TxNamespace{{
 				NsId:       "1",
 				NsVersion:  1,
-				ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("k1"), Value: []byte("v1")}},
+				ReadWrites: []*applicationpb.ReadWrite{{Key: []byte("k1"), Value: []byte("v1")}},
 			}},
 		}
 		// org0, org3, and org1 sign.
-		tx1.Endorsements = []*protoblocktx.Endorsements{test.CreateEndorsementsForSignatureRule(
+		tx1.Endorsements = []*applicationpb.Endorsements{test.CreateEndorsementsForSignatureRule(
 			toByteArray("s0", "s3", "s1"),
 			toByteArray("org0", "org3", "org1"),
 			toByteArray("id0", "id3", "id1"),
@@ -95,7 +95,7 @@ func TestNsVerifierSignatureRule(t *testing.T) {
 		require.NoError(t, nsVerifier.VerifyNs(fakeTxID, tx1, 0))
 
 		// org0, org3, and org2 sign.
-		tx1.Endorsements = []*protoblocktx.Endorsements{test.CreateEndorsementsForSignatureRule(
+		tx1.Endorsements = []*applicationpb.Endorsements{test.CreateEndorsementsForSignatureRule(
 			toByteArray("s0", "s3", "s2"),
 			toByteArray("org0", "org3", "org2"),
 			toByteArray("id0", "id3", "id2"),
@@ -103,7 +103,7 @@ func TestNsVerifierSignatureRule(t *testing.T) {
 		)}
 		require.NoError(t, nsVerifier.VerifyNs(fakeTxID, tx1, 0))
 
-		tx1.Endorsements = []*protoblocktx.Endorsements{test.CreateEndorsementsForSignatureRule(
+		tx1.Endorsements = []*applicationpb.Endorsements{test.CreateEndorsementsForSignatureRule(
 			toByteArray("s0", "s3"),
 			toByteArray("org0", "org3"),
 			toByteArray("id0", "id3"),

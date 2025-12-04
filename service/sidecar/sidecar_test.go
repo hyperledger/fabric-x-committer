@@ -27,7 +27,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/types"
@@ -536,7 +536,7 @@ func TestSidecarVerifyBadTxForm(t *testing.T) {
 	extraTxs := env.sendGeneratedTransactions(ctx, t, blockSize-testSize)
 	txs = append(txs, extraTxs...)
 	for range extraTxs {
-		expected = append(expected, protoblocktx.Status_COMMITTED)
+		expected = append(expected, applicationpb.Status_COMMITTED)
 	}
 	env.requireBlockWithTXsAndStatus(ctx, t, 1, txs, expected)
 }
@@ -613,9 +613,9 @@ func (env *sidecarTestEnv) requireBlockWithTXs(
 	txs []*protoloadgen.TX,
 ) {
 	t.Helper()
-	allValid := make([]protoblocktx.Status, len(txs))
+	allValid := make([]applicationpb.Status, len(txs))
 	for i := range allValid {
-		allValid[i] = protoblocktx.Status_COMMITTED
+		allValid[i] = applicationpb.Status_COMMITTED
 	}
 	env.requireBlockWithTXsAndStatus(ctx, t, expectedBlockNumber, txs, allValid)
 }
@@ -626,7 +626,7 @@ func (env *sidecarTestEnv) requireBlockWithTXsAndStatus(
 	t *testing.T,
 	expectedBlockNumber uint64,
 	txs []*protoloadgen.TX,
-	status []protoblocktx.Status,
+	status []applicationpb.Status,
 ) {
 	t.Helper()
 	require.Len(t, status, len(txs))
@@ -645,7 +645,7 @@ func (env *sidecarTestEnv) requireBlockWithTXsAndStatus(
 	require.GreaterOrEqual(t, len(block.Metadata.Metadata), 3)
 	require.Len(t, block.Metadata.Metadata[2], blockSize)
 	for i, actualStatus := range block.Metadata.Metadata[2] {
-		require.Equalf(t, status[i].String(), protoblocktx.Status(actualStatus).String(), "tx index: %d", i)
+		require.Equalf(t, status[i].String(), applicationpb.Status(actualStatus).String(), "tx index: %d", i)
 	}
 
 	txIDs := make([]string, len(txs))
@@ -674,24 +674,24 @@ func (env *sidecarTestEnv) requireBlock(
 
 func TestConstructStatuses(t *testing.T) {
 	t.Parallel()
-	statuses := map[string]*protoblocktx.StatusWithHeight{
+	statuses := map[string]*applicationpb.StatusWithHeight{
 		"tx1": {
-			Code:        protoblocktx.Status_COMMITTED,
+			Code:        applicationpb.Status_COMMITTED,
 			BlockNumber: 1,
 			TxNumber:    1,
 		},
 		"tx2": {
-			Code:        protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+			Code:        applicationpb.Status_ABORTED_SIGNATURE_INVALID,
 			BlockNumber: 1,
 			TxNumber:    3,
 		},
 		"tx3": {
-			Code:        protoblocktx.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
+			Code:        applicationpb.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
 			BlockNumber: 2,
 			TxNumber:    3,
 		},
 		"tx4": {
-			Code:        protoblocktx.Status_COMMITTED,
+			Code:        applicationpb.Status_COMMITTED,
 			BlockNumber: 1,
 			TxNumber:    6,
 		},
@@ -703,18 +703,18 @@ func TestConstructStatuses(t *testing.T) {
 		"tx4": types.NewHeight(1, 6),
 	}
 
-	expectedFinalStatuses := []protoblocktx.Status{
-		protoblocktx.Status_COMMITTED,
-		protoblocktx.Status_COMMITTED,
-		protoblocktx.Status_COMMITTED,
-		protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
-		protoblocktx.Status_COMMITTED,
-		protoblocktx.Status_REJECTED_DUPLICATE_TX_ID,
-		protoblocktx.Status_COMMITTED,
+	expectedFinalStatuses := []applicationpb.Status{
+		applicationpb.Status_COMMITTED,
+		applicationpb.Status_COMMITTED,
+		applicationpb.Status_COMMITTED,
+		applicationpb.Status_ABORTED_SIGNATURE_INVALID,
+		applicationpb.Status_COMMITTED,
+		applicationpb.Status_REJECTED_DUPLICATE_TX_ID,
+		applicationpb.Status_COMMITTED,
 	}
-	actualFinalStatuses := make([]protoblocktx.Status, 7)
+	actualFinalStatuses := make([]applicationpb.Status, 7)
 	for _, skippedIdx := range []int{0, 2, 4} {
-		actualFinalStatuses[skippedIdx] = protoblocktx.Status_COMMITTED
+		actualFinalStatuses[skippedIdx] = applicationpb.Status_COMMITTED
 	}
 	require.NoError(t, fillStatuses(actualFinalStatuses, statuses, expectedHeight))
 	require.Equal(t, expectedFinalStatuses, actualFinalStatuses)
@@ -738,11 +738,11 @@ func checkNextBlockNumberToCommit(
 func makeValidTx(t *testing.T, chanID string) *protoloadgen.TX {
 	t.Helper()
 	txb := workload.TxBuilder{ChannelID: chanID}
-	return txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	return txb.MakeTx(&applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:        strings.ReplaceAll(uuid.New().String(), "-", "")[:32],
 			NsVersion:   0,
-			BlindWrites: []*protoblocktx.Write{{Key: utils.MustRead(rand.Reader, 32)}},
+			BlindWrites: []*applicationpb.Write{{Key: utils.MustRead(rand.Reader, 32)}},
 		}},
 	})
 }

@@ -21,7 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/api/protonotify"
@@ -388,25 +388,25 @@ func (c *CommitterRuntime) CreateNamespacesAndCommit(t *testing.T, namespaces ..
 	require.NoError(t, err)
 	c.MakeAndSendTransactionsToOrderer(
 		t,
-		[][]*protoblocktx.TxNamespace{metaTX.Namespaces},
-		[]protoblocktx.Status{protoblocktx.Status_COMMITTED},
+		[][]*applicationpb.TxNamespace{metaTX.Namespaces},
+		[]applicationpb.Status{applicationpb.Status_COMMITTED},
 	)
 }
 
 // MakeAndSendTransactionsToOrderer creates a block with given transactions, send it to the committer,
 // and verify the result.
 func (c *CommitterRuntime) MakeAndSendTransactionsToOrderer(
-	t *testing.T, txsNs [][]*protoblocktx.TxNamespace, expectedStatus []protoblocktx.Status,
+	t *testing.T, txsNs [][]*applicationpb.TxNamespace, expectedStatus []applicationpb.Status,
 ) []string {
 	t.Helper()
 	txs := make([]*protoloadgen.TX, len(txsNs))
 
 	for i, namespaces := range txsNs {
-		tx := &protoblocktx.Tx{
+		tx := &applicationpb.Tx{
 			Namespaces: namespaces,
 		}
-		if expectedStatus != nil && expectedStatus[i] == protoblocktx.Status_ABORTED_SIGNATURE_INVALID {
-			tx.Endorsements = make([]*protoblocktx.Endorsements, len(namespaces))
+		if expectedStatus != nil && expectedStatus[i] == applicationpb.Status_ABORTED_SIGNATURE_INVALID {
+			tx.Endorsements = make([]*applicationpb.Endorsements, len(namespaces))
 			for nsIdx := range namespaces {
 				tx.Endorsements[nsIdx] = test.CreateEndorsementsForThresholdRule([]byte("dummy"))[0]
 			}
@@ -419,7 +419,7 @@ func (c *CommitterRuntime) MakeAndSendTransactionsToOrderer(
 
 // SendTransactionsToOrderer creates a block with given transactions, send it to the committer, and verify the result.
 func (c *CommitterRuntime) SendTransactionsToOrderer(
-	t *testing.T, txs []*protoloadgen.TX, expectedStatus []protoblocktx.Status,
+	t *testing.T, txs []*protoloadgen.TX, expectedStatus []applicationpb.Status,
 ) []string {
 	t.Helper()
 	expected := &ExpectedStatusInBlock{
@@ -455,7 +455,7 @@ func (c *CommitterRuntime) SendTransactionsToOrderer(
 // is expected to be the same as in the committed block.
 type ExpectedStatusInBlock struct {
 	TxIDs    []string
-	Statuses []protoblocktx.Status
+	Statuses []applicationpb.Status
 }
 
 // ValidateExpectedResultsInCommittedBlock validates the status of transactions in the committed block.
@@ -495,20 +495,20 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 	statusBytes := blk.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER]
 	actualStatuses := make([]string, len(statusBytes))
 	for i, sB := range statusBytes {
-		actualStatuses[i] = protoblocktx.Status(sB).String()
+		actualStatuses[i] = applicationpb.Status(sB).String()
 	}
 	require.Equal(t, expectedStatuses, actualStatuses)
 
 	c.ensureLastCommittedBlockNumber(t, blk.Header.Number)
 
 	var persistedTxIDs []string
-	persistedTxIDsStatus := make(map[string]*protoblocktx.StatusWithHeight)
-	nonDuplicateTxIDsStatus := make(map[string]*protoblocktx.StatusWithHeight)
-	duplicateTxIDsStatus := make(map[string]*protoblocktx.StatusWithHeight)
+	persistedTxIDsStatus := make(map[string]*applicationpb.StatusWithHeight)
+	nonDuplicateTxIDsStatus := make(map[string]*applicationpb.StatusWithHeight)
+	duplicateTxIDsStatus := make(map[string]*applicationpb.StatusWithHeight)
 	for i, tID := range expected.TxIDs {
 		//nolint:gosec // int -> uint32.
 		s := types.NewStatusWithHeight(expected.Statuses[i], blk.Header.Number, uint32(i))
-		if s.Code == protoblocktx.Status_REJECTED_DUPLICATE_TX_ID {
+		if s.Code == applicationpb.Status_REJECTED_DUPLICATE_TX_ID {
 			duplicateTxIDsStatus[tID] = s
 		} else {
 			nonDuplicateTxIDsStatus[tID] = s
@@ -537,13 +537,13 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 }
 
 // CountStatus returns the number of transactions with a given tx status.
-func (c *CommitterRuntime) CountStatus(t *testing.T, status protoblocktx.Status) int {
+func (c *CommitterRuntime) CountStatus(t *testing.T, status applicationpb.Status) int {
 	t.Helper()
 	return c.dbEnv.CountStatus(t, status)
 }
 
 // CountAlternateStatus returns the number of transactions not with a given tx status.
-func (c *CommitterRuntime) CountAlternateStatus(t *testing.T, status protoblocktx.Status) int {
+func (c *CommitterRuntime) CountAlternateStatus(t *testing.T, status applicationpb.Status) int {
 	t.Helper()
 	return c.dbEnv.CountAlternateStatus(t, status)
 }

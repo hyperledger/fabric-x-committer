@@ -17,7 +17,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
@@ -105,10 +105,10 @@ func TestCreateConfigAndTables(t *testing.T) {
 	txBatch1 := &protovcservice.Batch{
 		Transactions: []*protovcservice.Tx{{
 			Ref: types.TxRef(configID, 0, 0),
-			Namespaces: []*protoblocktx.TxNamespace{{
+			Namespaces: []*applicationpb.TxNamespace{{
 				NsId:      types.ConfigNamespaceID,
 				NsVersion: 0,
-				BlindWrites: []*protoblocktx.Write{
+				BlindWrites: []*applicationpb.Write{
 					{
 						Key:   []byte(types.ConfigKey),
 						Value: []byte("config"),
@@ -125,7 +125,7 @@ func TestCreateConfigAndTables(t *testing.T) {
 	require.NotNil(t, txStatus1.Status)
 
 	require.Equal(t,
-		types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 0, 0),
+		types.NewStatusWithHeight(applicationpb.Status_COMMITTED, 0, 0),
 		txStatus1.Status[configID],
 	)
 
@@ -140,10 +140,10 @@ func TestCreateConfigAndTables(t *testing.T) {
 	txBatch2 := &protovcservice.Batch{
 		Transactions: []*protovcservice.Tx{{
 			Ref: types.TxRef(metaID, 1, 0),
-			Namespaces: []*protoblocktx.TxNamespace{{
+			Namespaces: []*applicationpb.TxNamespace{{
 				NsId:      types.MetaNamespaceID,
 				NsVersion: 0,
-				ReadWrites: []*protoblocktx.ReadWrite{
+				ReadWrites: []*applicationpb.ReadWrite{
 					{
 						Key:   []byte(utNsID),
 						Value: pBytes,
@@ -159,7 +159,7 @@ func TestCreateConfigAndTables(t *testing.T) {
 	require.NotNil(t, txStatus2.Status)
 
 	require.Equal(t,
-		types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 0),
+		types.NewStatusWithHeight(applicationpb.Status_COMMITTED, 1, 0),
 		txStatus2.Status[metaID],
 	)
 
@@ -203,11 +203,11 @@ func TestValidatorAndCommitterService(t *testing.T) {
 				// The following 3 TXs test the blind write path, merging to the update path
 				{
 					Ref: types.TxRef("Blind write without value", 1, 1),
-					Namespaces: []*protoblocktx.TxNamespace{
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
 							NsVersion: 0,
-							BlindWrites: []*protoblocktx.Write{
+							BlindWrites: []*applicationpb.Write{
 								{
 									Key: []byte("blind write without value"),
 								},
@@ -217,11 +217,11 @@ func TestValidatorAndCommitterService(t *testing.T) {
 				},
 				{
 					Ref: types.TxRef("Blind write with value", 1, 2),
-					Namespaces: []*protoblocktx.TxNamespace{
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
 							NsVersion: 0,
-							BlindWrites: []*protoblocktx.Write{
+							BlindWrites: []*applicationpb.Write{
 								{
 									Key:   []byte("Blind write with value"),
 									Value: []byte("value2"),
@@ -232,11 +232,11 @@ func TestValidatorAndCommitterService(t *testing.T) {
 				},
 				{
 					Ref: types.TxRef("Blind write update existing key", 2, 3),
-					Namespaces: []*protoblocktx.TxNamespace{
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
 							NsVersion: 0,
-							BlindWrites: []*protoblocktx.Write{
+							BlindWrites: []*applicationpb.Write{
 								{
 									Key:   []byte("Existing key update"),
 									Value: []byte("new-value"),
@@ -248,11 +248,11 @@ func TestValidatorAndCommitterService(t *testing.T) {
 				// The following 2 TXs test the new key path
 				{
 					Ref: types.TxRef("New key with value", 2, 4),
-					Namespaces: []*protoblocktx.TxNamespace{
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
 							NsVersion: 0,
-							ReadWrites: []*protoblocktx.ReadWrite{
+							ReadWrites: []*applicationpb.ReadWrite{
 								{
 									Key:   []byte("New key with value"),
 									Value: []byte("value3"),
@@ -263,11 +263,11 @@ func TestValidatorAndCommitterService(t *testing.T) {
 				},
 				{
 					Ref: types.TxRef("New key no value", 3, 5),
-					Namespaces: []*protoblocktx.TxNamespace{
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
 							NsVersion: 0,
-							ReadWrites: []*protoblocktx.ReadWrite{
+							ReadWrites: []*applicationpb.ReadWrite{
 								{
 									Key: []byte("New key no value"),
 								},
@@ -278,11 +278,11 @@ func TestValidatorAndCommitterService(t *testing.T) {
 				// The following TX tests the update path
 				{
 					Ref: types.TxRef("Existing key", 2, 6),
-					Namespaces: []*protoblocktx.TxNamespace{
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
 							NsVersion: 0,
-							ReadWrites: []*protoblocktx.ReadWrite{
+							ReadWrites: []*applicationpb.ReadWrite{
 								{
 									Key:     []byte("Existing key"),
 									Value:   []byte("new-value"),
@@ -301,10 +301,10 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		txStatus, err := env.streams[0].Recv()
 		require.NoError(t, err)
 
-		expectedTxStatus := make(map[string]*protoblocktx.StatusWithHeight)
+		expectedTxStatus := make(map[string]*applicationpb.StatusWithHeight)
 		txIDs := make([]string, len(txBatch.Transactions))
 		for i, tx := range txBatch.Transactions {
-			status := types.NewStatusWithHeightFromRef(protoblocktx.Status_COMMITTED, tx.Ref)
+			status := types.NewStatusWithHeightFromRef(applicationpb.Status_COMMITTED, tx.Ref)
 			expectedTxStatus[tx.Ref.TxId] = status
 			txIDs[i] = tx.Ref.TxId
 			assert.EqualExportedValuesf(t, status, txStatus.Status[tx.Ref.TxId], "TX ID: %s", tx.Ref.TxId)
@@ -322,11 +322,11 @@ func TestValidatorAndCommitterService(t *testing.T) {
 			Transactions: []*protovcservice.Tx{
 				{
 					Ref: types.TxRef("New key 2 no value", 2, 0),
-					Namespaces: []*protoblocktx.TxNamespace{
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
 							NsVersion: 0,
-							ReadWrites: []*protoblocktx.ReadWrite{
+							ReadWrites: []*applicationpb.ReadWrite{
 								{
 									Key: []byte("New key 2 no value"),
 								},
@@ -342,7 +342,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		require.Eventually(t, func() bool {
 			txStatus, err = env.streams[0].Recv()
 			require.NoError(t, err)
-			require.Equal(t, protoblocktx.Status_COMMITTED, txStatus.Status["New key 2 no value"].Code)
+			require.Equal(t, applicationpb.Status_COMMITTED, txStatus.Status["New key 2 no value"].Code)
 			return true
 		}, env.vcs[0].timeoutForMinTxBatchSize, 500*time.Millisecond)
 	})
@@ -354,11 +354,11 @@ func TestValidatorAndCommitterService(t *testing.T) {
 			Transactions: []*protovcservice.Tx{
 				{
 					Ref: types.TxRef("Namespace version mismatch", 4, 1),
-					Namespaces: []*protoblocktx.TxNamespace{
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
 							NsVersion: 1,
-							BlindWrites: []*protoblocktx.Write{
+							BlindWrites: []*applicationpb.Write{
 								{
 									Key: []byte("blind write without value"),
 								},
@@ -369,16 +369,16 @@ func TestValidatorAndCommitterService(t *testing.T) {
 				{
 					Ref: types.TxRef("prelim invalid tx", 5, 2),
 					PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
-						Code: protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
+						Code: applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
 					},
 				},
 				{
 					Ref: types.TxRef("invalid new writes", 2, 6),
-					Namespaces: []*protoblocktx.TxNamespace{
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
 							NsVersion: 0,
-							ReadWrites: []*protoblocktx.ReadWrite{
+							ReadWrites: []*applicationpb.ReadWrite{
 								{
 									Key:     []byte("Existing key"),
 									Value:   []byte("new-value"),
@@ -391,7 +391,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 				{
 					Ref: types.TxRef("Rejected TX", 2, 7),
 					PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
-						Code: protoblocktx.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
+						Code: applicationpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
 					},
 				},
 			},
@@ -401,14 +401,14 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		txStatus, err := env.streams[0].Recv()
 		require.NoError(t, err)
 
-		expectedStatus := []protoblocktx.Status{
-			protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-			protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
-			protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-			protoblocktx.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
+		expectedStatus := []applicationpb.Status{
+			applicationpb.Status_ABORTED_MVCC_CONFLICT,
+			applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
+			applicationpb.Status_ABORTED_MVCC_CONFLICT,
+			applicationpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
 		}
 
-		expectedTxStatus := make(map[string]*protoblocktx.StatusWithHeight, len(txBatch.Transactions))
+		expectedTxStatus := make(map[string]*applicationpb.StatusWithHeight, len(txBatch.Transactions))
 		txIDs := make([]string, len(txBatch.Transactions))
 		for i, tx := range txBatch.Transactions {
 			expectedTxStatus[tx.Ref.TxId] = types.NewStatusWithHeightFromRef(expectedStatus[i], tx.Ref)
@@ -420,7 +420,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus)
 
 		ctx, _ := createContext(t)
-		status, err := env.commonClient.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{TxIDs: txIDs})
+		status, err := env.commonClient.GetTransactionsStatus(ctx, &applicationpb.QueryStatus{TxIDs: txIDs})
 		require.NoError(t, err)
 		require.Equal(t, expectedTxStatus, status.Status)
 	})
@@ -439,7 +439,7 @@ func TestLastCommittedBlockNumber(t *testing.T) {
 		require.Equal(t, uint64(0), nextBlock.Number)
 	}
 
-	_, err := env.commonClient.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 0})
+	_, err := env.commonClient.SetLastCommittedBlockNumber(ctx, &applicationpb.BlockInfo{Number: 0})
 	require.NoError(t, err)
 
 	for i := range numServices {
@@ -476,7 +476,9 @@ func TestGRPCStatusCode(t *testing.T) {
 	}{
 		{
 			name: "SetLastCommittedBlockNumber returns an internal error",
-			fn:   func() (any, error) { return c.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1}) },
+			fn: func() (any, error) {
+				return c.SetLastCommittedBlockNumber(ctx, &applicationpb.BlockInfo{Number: 1})
+			},
 		},
 		{
 			name: "GetNextBlockNumberToCommit returns an internal error",
@@ -489,7 +491,7 @@ func TestGRPCStatusCode(t *testing.T) {
 		{
 			name: "GetTransactionsStatus returns an internal error",
 			fn: func() (any, error) {
-				return c.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{TxIDs: []string{"t1"}})
+				return c.GetTransactionsStatus(ctx, &applicationpb.QueryStatus{TxIDs: []string{"t1"}})
 			},
 		},
 	}
@@ -545,16 +547,16 @@ func TestTransactionResubmission(t *testing.T) {
 
 	txs := []struct {
 		tx             *protovcservice.Tx
-		expectedStatus protoblocktx.Status
+		expectedStatus applicationpb.Status
 	}{
 		{
 			tx: &protovcservice.Tx{
 				Ref: types.TxRef("Blind write with value", 1, 2),
-				Namespaces: []*protoblocktx.TxNamespace{
+				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "3",
 						NsVersion: 0,
-						BlindWrites: []*protoblocktx.Write{
+						BlindWrites: []*applicationpb.Write{
 							{
 								Key:   []byte("Blind write with value"),
 								Value: []byte("value2"),
@@ -563,16 +565,16 @@ func TestTransactionResubmission(t *testing.T) {
 					},
 				},
 			},
-			expectedStatus: protoblocktx.Status_COMMITTED,
+			expectedStatus: applicationpb.Status_COMMITTED,
 		},
 		{
 			tx: &protovcservice.Tx{
 				Ref: types.TxRef("New key with value", 2, 4),
-				Namespaces: []*protoblocktx.TxNamespace{
+				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "3",
 						NsVersion: 0,
-						ReadWrites: []*protoblocktx.ReadWrite{
+						ReadWrites: []*applicationpb.ReadWrite{
 							{
 								Key:   []byte("New key with value"),
 								Value: []byte("value3"),
@@ -581,16 +583,16 @@ func TestTransactionResubmission(t *testing.T) {
 					},
 				},
 			},
-			expectedStatus: protoblocktx.Status_COMMITTED,
+			expectedStatus: applicationpb.Status_COMMITTED,
 		},
 		{
 			tx: &protovcservice.Tx{
 				Ref: types.TxRef("New key no value", 3, 5),
-				Namespaces: []*protoblocktx.TxNamespace{
+				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "3",
 						NsVersion: 0,
-						ReadWrites: []*protoblocktx.ReadWrite{
+						ReadWrites: []*applicationpb.ReadWrite{
 							{
 								Key: []byte("New key no value"),
 							},
@@ -598,34 +600,34 @@ func TestTransactionResubmission(t *testing.T) {
 					},
 				},
 			},
-			expectedStatus: protoblocktx.Status_COMMITTED,
+			expectedStatus: applicationpb.Status_COMMITTED,
 		},
 		{
 			tx: &protovcservice.Tx{
 				Ref: types.TxRef("invalid sign", 3, 6),
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
-					Code: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+					Code: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
 				},
 			},
-			expectedStatus: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+			expectedStatus: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
 		},
 		{
 			tx: &protovcservice.Tx{
 				Ref: types.TxRef("duplicate namespace", 3, 7),
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
-					Code: protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
+					Code: applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
 				},
 			},
-			expectedStatus: protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
+			expectedStatus: applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
 		},
 		{
 			tx: &protovcservice.Tx{
 				Ref: types.TxRef("conflict", 3, 8),
-				Namespaces: []*protoblocktx.TxNamespace{
+				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "3",
 						NsVersion: 0,
-						ReadWrites: []*protoblocktx.ReadWrite{
+						ReadWrites: []*applicationpb.ReadWrite{
 							{
 								Key: []byte("Existing key"),
 							},
@@ -633,12 +635,12 @@ func TestTransactionResubmission(t *testing.T) {
 					},
 				},
 			},
-			expectedStatus: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expectedStatus: applicationpb.Status_ABORTED_MVCC_CONFLICT,
 		},
 	}
 
 	txBatch := &protovcservice.Batch{}
-	expectedTxStatus := make(map[string]*protoblocktx.StatusWithHeight)
+	expectedTxStatus := make(map[string]*applicationpb.StatusWithHeight)
 	txIDs := make([]string, len(txs))
 	for i, t := range txs {
 		txBatch.Transactions = append(txBatch.Transactions, t.tx)

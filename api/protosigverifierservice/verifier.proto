@@ -10,7 +10,7 @@ option go_package = "github.com/hyperledger/fabric-x-committer/api/protosigverif
 
 package protosigverifierservice;
 
-import "api/protoblocktx/block_tx.proto";
+import "api/applicationpb/block_tx.proto";
 import "api/protocoordinatorservice/coordinator.proto";
 
 service Verifier {
@@ -23,18 +23,18 @@ message Batch {
 }
 
 message Update {
-    optional protoblocktx.ConfigTransaction config = 1;
-    optional protoblocktx.NamespacePolicies namespace_policies = 2;
+    optional applicationpb.ConfigTransaction config = 1;
+    optional applicationpb.NamespacePolicies namespace_policies = 2;
 }
 
 message Tx {
     protocoordinatorservice.TxRef ref = 1;
-    protoblocktx.Tx tx = 2;
+    applicationpb.Tx tx = 2;
 }
 
 message Response {
     protocoordinatorservice.TxRef ref = 1;
-    protoblocktx.Status status = 2;
+    applicationpb.Status status = 2;
 }
 
 message ResponseBatch {

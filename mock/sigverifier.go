@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
@@ -129,10 +129,10 @@ func (m *SigVerifier) sendResponseBatch(
 				// We simulate a faulty node by not responding to the first X TXs.
 				continue
 			}
-			status := protoblocktx.Status_COMMITTED
+			status := applicationpb.Status_COMMITTED
 			isConfig := len(req.Tx.Namespaces) == 1 && req.Tx.Namespaces[0].NsId == types.ConfigNamespaceID
 			if len(req.Tx.Endorsements) == 0 && !isConfig {
-				status = protoblocktx.Status_ABORTED_SIGNATURE_INVALID
+				status = applicationpb.Status_ABORTED_SIGNATURE_INVALID
 			}
 			respBatch.Responses = append(respBatch.Responses, &protosigverifierservice.Response{
 				Ref:    req.Ref,

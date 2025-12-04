@@ -14,7 +14,7 @@ import (
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -100,12 +100,12 @@ func TestLoadGenCommitterWithLimit(t *testing.T) {
 
 	expectedTXs := 500*3 + 2 // +2 for config and namespace TXs
 	require.Eventually(t, func() bool {
-		count := c.CountStatus(t, protoblocktx.Status_COMMITTED)
+		count := c.CountStatus(t, applicationpb.Status_COMMITTED)
 		t.Logf("count %d", count)
 		return count >= expectedTXs
 	}, 90*time.Second, 1*time.Second)
-	require.Zero(t, c.CountAlternateStatus(t, protoblocktx.Status_COMMITTED))
+	require.Zero(t, c.CountAlternateStatus(t, applicationpb.Status_COMMITTED))
 
-	count := c.CountStatus(t, protoblocktx.Status_COMMITTED)
+	count := c.CountStatus(t, applicationpb.Status_COMMITTED)
 	require.Equal(t, expectedTXs, count)
 }

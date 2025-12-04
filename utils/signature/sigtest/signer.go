@@ -16,7 +16,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/consensys/gnark-crypto/ecc/bn254"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
@@ -88,7 +88,7 @@ func NewEcdsaSigner(key signature.PrivateKey) (*EcdsaSigner, error) {
 }
 
 // SignNs signs a transaction's namespace.
-func (v *NsSigner) SignNs(txID string, tx *protoblocktx.Tx, nsIndex int) (signature.Signature, error) {
+func (v *NsSigner) SignNs(txID string, tx *applicationpb.Tx, nsIndex int) (signature.Signature, error) {
 	if nsIndex < 0 || nsIndex >= len(tx.Namespaces) {
 		return nil, errors.New("namespace index out of range")
 	}

@@ -15,7 +15,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/crypto"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
@@ -53,13 +53,13 @@ func NewTxBuilderFromPolicy(policy *PolicyProfile, nonceSource io.Reader) (*TxBu
 }
 
 // MakeTx makes an enveloped TX with the builder's properties.
-func (txb *TxBuilder) MakeTx(tx *protoblocktx.Tx) *protoloadgen.TX {
+func (txb *TxBuilder) MakeTx(tx *applicationpb.Tx) *protoloadgen.TX {
 	return txb.makeTx(nil, tx)
 }
 
 // MakeTxWithID makes an enveloped TX with the builder's properties.
 // It uses the given TX-ID instead of generating a valid one.
-func (txb *TxBuilder) MakeTxWithID(txID string, tx *protoblocktx.Tx) *protoloadgen.TX {
+func (txb *TxBuilder) MakeTxWithID(txID string, tx *applicationpb.Tx) *protoloadgen.TX {
 	return txb.makeTx(&txID, tx)
 }
 
@@ -74,7 +74,7 @@ func (txb *TxBuilder) MakeTxWithID(txID string, tx *protoblocktx.Tx) *protoloadg
 //  5. Serializes the envelope.
 //
 // Returns a [protoloadgen.TX] with the appropriate values.
-func (txb *TxBuilder) makeTx(optionalTxID *string, blockTx *protoblocktx.Tx) *protoloadgen.TX {
+func (txb *TxBuilder) makeTx(optionalTxID *string, blockTx *applicationpb.Tx) *protoloadgen.TX {
 	//  1. Generates the signature-header, and TX-ID.
 	sigHeader := &common.SignatureHeader{
 		Creator: txb.EnvCreator,
@@ -96,7 +96,7 @@ func (txb *TxBuilder) makeTx(optionalTxID *string, blockTx *protoblocktx.Tx) *pr
 		txb.TxSigner.Sign(txID, blockTx)
 	case txb.TxSigner == nil:
 		// Otherwise, it puts empty signatures for all namespaces to ensure well-formed TX.
-		blockTx.Endorsements = make([]*protoblocktx.Endorsements, len(blockTx.Namespaces))
+		blockTx.Endorsements = make([]*applicationpb.Endorsements, len(blockTx.Namespaces))
 	}
 
 	//  3. Serializes the envelope's payload.

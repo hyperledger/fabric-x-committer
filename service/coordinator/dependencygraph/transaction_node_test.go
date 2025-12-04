@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -132,25 +132,25 @@ func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *Trans
 func createTxForTest( //nolint: revive
 	_ *testing.T, txNum int, nsID string, readOnly, readWrite, blindWrite [][]byte,
 ) *protocoordinatorservice.Tx {
-	reads := make([]*protoblocktx.Read, len(readOnly))
+	reads := make([]*applicationpb.Read, len(readOnly))
 	for i, k := range readOnly {
-		reads[i] = &protoblocktx.Read{Key: k}
+		reads[i] = &applicationpb.Read{Key: k}
 	}
 
-	readWrites := make([]*protoblocktx.ReadWrite, len(readWrite))
+	readWrites := make([]*applicationpb.ReadWrite, len(readWrite))
 	for i, k := range readWrite {
-		readWrites[i] = &protoblocktx.ReadWrite{Key: k}
+		readWrites[i] = &applicationpb.ReadWrite{Key: k}
 	}
 
-	blindWrites := make([]*protoblocktx.Write, len(blindWrite))
+	blindWrites := make([]*applicationpb.Write, len(blindWrite))
 	for i, k := range blindWrite {
-		blindWrites[i] = &protoblocktx.Write{Key: k}
+		blindWrites[i] = &applicationpb.Write{Key: k}
 	}
 
 	return &protocoordinatorservice.Tx{
 		Ref: types.TxRef(uuid.New().String(), 0, uint32(txNum)), //nolint:gosec // int -> uint32.
-		Content: &protoblocktx.Tx{
-			Namespaces: []*protoblocktx.TxNamespace{{
+		Content: &applicationpb.Tx{
+			Namespaces: []*applicationpb.TxNamespace{{
 				NsId:        nsID,
 				ReadsOnly:   reads,
 				ReadWrites:  readWrites,

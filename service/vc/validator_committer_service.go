@@ -18,7 +18,7 @@ import (
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -47,7 +47,7 @@ type ValidatorCommitterService struct {
 	toPrepareTxs             chan *protovcservice.Batch
 	preparedTxs              chan *preparedTransactions
 	validatedTxs             chan *validatedTransactions
-	txsStatus                chan *protoblocktx.TransactionsStatus
+	txsStatus                chan *applicationpb.TransactionsStatus
 	db                       *database
 	metrics                  *perfMetrics
 	minTxBatchSize           int
@@ -89,7 +89,7 @@ func NewValidatorCommitterService(
 	toPrepareTxs := make(chan *protovcservice.Batch, l.MaxWorkersForPreparer*queueMultiplier)
 	preparedTxs := make(chan *preparedTransactions, l.MaxWorkersForValidator*queueMultiplier)
 	validatedTxs := make(chan *validatedTransactions, queueMultiplier)
-	txsStatus := make(chan *protoblocktx.TransactionsStatus, l.MaxWorkersForCommitter*queueMultiplier)
+	txsStatus := make(chan *applicationpb.TransactionsStatus, l.MaxWorkersForCommitter*queueMultiplier)
 
 	metrics := newVCServiceMetrics()
 	db, err := newDatabase(ctx, config.Database, metrics)
@@ -196,7 +196,7 @@ func (vc *ValidatorCommitterService) monitorQueues(ctx context.Context) {
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger.
 func (vc *ValidatorCommitterService) SetLastCommittedBlockNumber(
 	ctx context.Context,
-	lastCommittedBlock *protoblocktx.BlockInfo,
+	lastCommittedBlock *applicationpb.BlockInfo,
 ) (*emptypb.Empty, error) {
 	err := vc.db.setLastCommittedBlockNumber(ctx, lastCommittedBlock)
 	logger.ErrorStackTrace(err)
@@ -207,7 +207,7 @@ func (vc *ValidatorCommitterService) SetLastCommittedBlockNumber(
 func (vc *ValidatorCommitterService) GetNextBlockNumberToCommit(
 	ctx context.Context,
 	_ *emptypb.Empty,
-) (*protoblocktx.BlockInfo, error) {
+) (*applicationpb.BlockInfo, error) {
 	blkInfo, err := vc.db.getNextBlockNumberToCommit(ctx)
 	logger.ErrorStackTrace(err)
 	return blkInfo, grpcerror.WrapInternalError(err)
@@ -216,8 +216,8 @@ func (vc *ValidatorCommitterService) GetNextBlockNumberToCommit(
 // GetTransactionsStatus gets the status of a given set of transaction IDs.
 func (vc *ValidatorCommitterService) GetTransactionsStatus(
 	ctx context.Context,
-	query *protoblocktx.QueryStatus,
-) (*protoblocktx.TransactionsStatus, error) {
+	query *applicationpb.QueryStatus,
+) (*applicationpb.TransactionsStatus, error) {
 	if len(query.TxIDs) == 0 {
 		return nil, grpcerror.WrapInvalidArgument(errors.New("query is empty"))
 	}
@@ -232,7 +232,7 @@ func (vc *ValidatorCommitterService) GetTransactionsStatus(
 		return nil, grpcerror.WrapInternalError(err)
 	}
 
-	return &protoblocktx.TransactionsStatus{
+	return &applicationpb.TransactionsStatus{
 		Status: txIDsStatus,
 	}, nil
 }
@@ -241,7 +241,7 @@ func (vc *ValidatorCommitterService) GetTransactionsStatus(
 func (vc *ValidatorCommitterService) GetNamespacePolicies(
 	ctx context.Context,
 	_ *emptypb.Empty,
-) (*protoblocktx.NamespacePolicies, error) {
+) (*applicationpb.NamespacePolicies, error) {
 	policies, err := vc.db.readNamespacePolicies(ctx)
 	logger.ErrorStackTrace(err)
 	return policies, grpcerror.WrapInternalError(err)
@@ -251,7 +251,7 @@ func (vc *ValidatorCommitterService) GetNamespacePolicies(
 func (vc *ValidatorCommitterService) GetConfigTransaction(
 	ctx context.Context,
 	_ *emptypb.Empty,
-) (*protoblocktx.ConfigTransaction, error) {
+) (*applicationpb.ConfigTransaction, error) {
 	policies, err := vc.db.readConfigTX(ctx)
 	logger.ErrorStackTrace(err)
 	return policies, grpcerror.WrapInternalError(err)
@@ -372,11 +372,11 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 		dup := 0
 		for _, s := range txStatus.Status {
 			switch s.Code {
-			case protoblocktx.Status_COMMITTED:
+			case applicationpb.Status_COMMITTED:
 				committed++
-			case protoblocktx.Status_ABORTED_MVCC_CONFLICT:
+			case applicationpb.Status_ABORTED_MVCC_CONFLICT:
 				mvcc++
-			case protoblocktx.Status_REJECTED_DUPLICATE_TX_ID:
+			case applicationpb.Status_REJECTED_DUPLICATE_TX_ID:
 				dup++
 			}
 		}

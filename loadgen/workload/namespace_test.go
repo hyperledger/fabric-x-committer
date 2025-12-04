@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
@@ -65,7 +65,7 @@ func TestCreateConfigTx(t *testing.T) {
 	require.NotEmpty(t, tx.SerializedEnvelope)
 }
 
-func getReadWritesFromNamespaceTx(t *testing.T, tx *protoblocktx.Tx) []*protoblocktx.ReadWrite {
+func getReadWritesFromNamespaceTx(t *testing.T, tx *applicationpb.Tx) []*applicationpb.ReadWrite {
 	t.Helper()
 	require.NotNil(t, tx)
 	require.Len(t, tx.Namespaces, 1)

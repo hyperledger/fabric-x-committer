@@ -10,8 +10,9 @@ option go_package = "github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 
 package protoloadgen;
 
-import "api/protoblocktx/block_tx.proto";
 import "google/protobuf/empty.proto";
+
+import "api/applicationpb/block_tx.proto";
 
 service LoadGenService {
   rpc AppendBatch(Batch) returns (google.protobuf.Empty) {};
@@ -25,7 +26,7 @@ message Batch {
 
 message TX {
   string id = 1;
-  protoblocktx.Tx tx = 2;
+  applicationpb.Tx tx = 2;
   bytes envelope_payload = 3;
   bytes envelope_signature = 4;
   bytes serialized_envelope = 5;

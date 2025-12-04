@@ -12,7 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -158,7 +158,7 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				txIDToNsBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
-				invalidTxIDStatus: make(map[TxID]protoblocktx.Status),
+				invalidTxIDStatus: make(map[TxID]applicationpb.Status),
 				txIDToHeight: transactionIDToHeight{
 					"tx1": types.NewHeight(1, 1),
 					"tx2": types.NewHeight(4, 2),
@@ -174,7 +174,7 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				validTxBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
-				invalidTxStatus: map[TxID]protoblocktx.Status{},
+				invalidTxStatus: map[TxID]applicationpb.Status{},
 				txIDToHeight: transactionIDToHeight{
 					"tx1": types.NewHeight(1, 1),
 					"tx2": types.NewHeight(4, 2),
@@ -217,7 +217,7 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				txIDToNsBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
-				invalidTxIDStatus: make(map[TxID]protoblocktx.Status),
+				invalidTxIDStatus: make(map[TxID]applicationpb.Status),
 				txIDToHeight: transactionIDToHeight{
 					"tx1": types.NewHeight(1, 1),
 					"tx2": types.NewHeight(5, 2),
@@ -227,10 +227,10 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 			expectedValidatedTx: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{},
 				validTxBlindWrites:    transactionToWrites{},
-				invalidTxStatus: map[TxID]protoblocktx.Status{
-					"tx1": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-					"tx2": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-					"tx3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+				invalidTxStatus: map[TxID]applicationpb.Status{
+					"tx1": applicationpb.Status_ABORTED_MVCC_CONFLICT,
+					"tx2": applicationpb.Status_ABORTED_MVCC_CONFLICT,
+					"tx3": applicationpb.Status_ABORTED_MVCC_CONFLICT,
 				},
 				txIDToHeight: transactionIDToHeight{
 					"tx1": types.NewHeight(1, 1),
@@ -279,9 +279,9 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				txIDToNsBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
-				invalidTxIDStatus: map[TxID]protoblocktx.Status{
-					"tx5": protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
-					"tx6": protoblocktx.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
+				invalidTxIDStatus: map[TxID]applicationpb.Status{
+					"tx5": applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
+					"tx6": applicationpb.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
 				},
 				txIDToHeight: transactionIDToHeight{
 					"tx1": types.NewHeight(1, 1),
@@ -297,12 +297,12 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 					"tx2": tx2NonBlindWrites,
 				},
 				validTxBlindWrites: transactionToWrites{},
-				invalidTxStatus: map[TxID]protoblocktx.Status{
-					"tx1": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-					"tx3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-					"tx4": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-					"tx5": protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
-					"tx6": protoblocktx.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
+				invalidTxStatus: map[TxID]applicationpb.Status{
+					"tx1": applicationpb.Status_ABORTED_MVCC_CONFLICT,
+					"tx3": applicationpb.Status_ABORTED_MVCC_CONFLICT,
+					"tx4": applicationpb.Status_ABORTED_MVCC_CONFLICT,
+					"tx5": applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
+					"tx6": applicationpb.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
 				},
 				txIDToHeight: transactionIDToHeight{
 					"tx1": types.NewHeight(1, 1),

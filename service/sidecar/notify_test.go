@@ -17,7 +17,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -128,14 +128,14 @@ func TestNotifierDirect(t *testing.T) {
 	expected := []*protonotify.TxStatusEvent{
 		{
 			TxId: "1",
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 1,
 				TxNumber:    1,
 			},
 		},
 		{
 			TxId: "2",
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 5,
 				TxNumber:    1,
 			},
@@ -161,14 +161,14 @@ func TestNotifierDirect(t *testing.T) {
 	env.statusQueue.Write([]*protonotify.TxStatusEvent{
 		{
 			TxId: "100",
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 1,
 				TxNumber:    1,
 			},
 		},
 		{
 			TxId: "200",
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 5,
 				TxNumber:    1,
 			},
@@ -184,14 +184,14 @@ func TestNotifierDirect(t *testing.T) {
 	expected = []*protonotify.TxStatusEvent{
 		{
 			TxId: "3",
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 2,
 				TxNumber:    5,
 			},
 		},
 		{
 			TxId: "4",
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 3,
 				TxNumber:    10,
 			},
@@ -231,7 +231,7 @@ func TestNotifierDirect(t *testing.T) {
 	expected = []*protonotify.TxStatusEvent{
 		{
 			TxId: "5",
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 3,
 				TxNumber:    0,
 			},
@@ -250,21 +250,21 @@ func TestNotifierDirect(t *testing.T) {
 	expected = []*protonotify.TxStatusEvent{
 		{
 			TxId: "6",
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 4,
 				TxNumber:    0,
 			},
 		},
 		{
 			TxId: "6",
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 4,
 				TxNumber:    1,
 			},
 		},
 		{
 			TxId: "6",
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 4,
 				TxNumber:    2,
 			},
@@ -310,14 +310,14 @@ func TestNotifierStream(t *testing.T) {
 	expected := []*protonotify.TxStatusEvent{
 		{
 			TxId: "1",
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 1,
 				TxNumber:    1,
 			},
 		},
 		{
 			TxId: "2",
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 5,
 				TxNumber:    1,
 			},
@@ -335,14 +335,14 @@ func TestNotifierStream(t *testing.T) {
 	expected = []*protonotify.TxStatusEvent{
 		{
 			TxId: "3",
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 2,
 				TxNumber:    5,
 			},
 		},
 		{
 			TxId: "4",
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 3,
 				TxNumber:    10,
 			},
@@ -379,7 +379,7 @@ func TestNotifierStream(t *testing.T) {
 	expected = []*protonotify.TxStatusEvent{
 		{
 			TxId: "5",
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 3,
 				TxNumber:    0,
 			},
@@ -397,21 +397,21 @@ func TestNotifierStream(t *testing.T) {
 	expected = []*protonotify.TxStatusEvent{
 		{
 			TxId: "6",
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 4,
 				TxNumber:    0,
 			},
 		},
 		{
 			TxId: "6",
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 4,
 				TxNumber:    1,
 			},
 		},
 		{
 			TxId: "6",
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
+			StatusWithHeight: &applicationpb.StatusWithHeight{
 				BlockNumber: 4,
 				TxNumber:    2,
 			},

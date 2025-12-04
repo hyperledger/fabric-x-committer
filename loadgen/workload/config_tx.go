@@ -18,7 +18,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
@@ -48,10 +48,10 @@ func CreateConfigTx(policy *PolicyProfile) (*protoloadgen.TX, error) {
 	}
 	return &protoloadgen.TX{
 		Id: channelHdr.TxId,
-		Tx: &protoblocktx.Tx{
-			Namespaces: []*protoblocktx.TxNamespace{{
+		Tx: &applicationpb.Tx{
+			Namespaces: []*applicationpb.TxNamespace{{
 				NsId: types.ConfigNamespaceID,
-				BlindWrites: []*protoblocktx.Write{{
+				BlindWrites: []*applicationpb.Write{{
 					Key:   []byte(types.ConfigNamespaceID),
 					Value: envelopeBytes,
 				}},

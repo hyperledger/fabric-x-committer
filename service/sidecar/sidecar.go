@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/types"
@@ -355,7 +355,7 @@ func appendMissingBlock(
 		expectedHeight[tx.Ref.TxId] = types.NewHeightFromTxRef(tx.Ref)
 	}
 
-	txsStatus, err := client.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{TxIDs: txIDs})
+	txsStatus, err := client.GetTransactionsStatus(ctx, &applicationpb.QueryStatus{TxIDs: txIDs})
 	if err != nil {
 		return errors.Wrap(err, "failed to get transaction status from the coordinator")
 	}
@@ -407,8 +407,8 @@ func waitForIdleCoordinator(ctx context.Context, client protocoordinatorservice.
 }
 
 func fillStatuses(
-	finalStatuses []protoblocktx.Status,
-	statuses map[string]*protoblocktx.StatusWithHeight,
+	finalStatuses []applicationpb.Status,
+	statuses map[string]*applicationpb.StatusWithHeight,
 	expectedHeight map[string]*types.Height,
 ) error {
 	for txID, height := range expectedHeight {
@@ -420,7 +420,7 @@ func fillStatuses(
 			finalStatuses[height.TxNum] = s.Code
 			continue
 		}
-		finalStatuses[height.TxNum] = protoblocktx.Status_REJECTED_DUPLICATE_TX_ID
+		finalStatuses[height.TxNum] = applicationpb.Status_REJECTED_DUPLICATE_TX_ID
 	}
 	return nil
 }
