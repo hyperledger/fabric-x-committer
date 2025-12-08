@@ -16,7 +16,7 @@ import (
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/loadgen"
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
@@ -385,7 +385,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 							workload.GeneratedNamespaceID: {
 								Scheme: signature.Ecdsa, Seed: 10,
 							},
-							types.MetaNamespaceID: {
+							committerpb.MetaNamespaceID: {
 								Scheme: signature.Ecdsa, Seed: 11,
 							},
 						},

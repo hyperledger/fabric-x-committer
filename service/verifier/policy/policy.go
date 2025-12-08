@@ -17,8 +17,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
@@ -49,7 +49,7 @@ var ErrInvalidNamespaceID = errors.New("invalid namespace ID")
 // GetUpdatesFromNamespace translates a namespace TX to policy updates.
 func GetUpdatesFromNamespace(nsTx *applicationpb.TxNamespace) *protosigverifierservice.Update {
 	switch nsTx.NsId {
-	case types.MetaNamespaceID:
+	case committerpb.MetaNamespaceID:
 		pd := make([]*applicationpb.PolicyItem, len(nsTx.ReadWrites))
 		for i, rw := range nsTx.ReadWrites {
 			pd[i] = &applicationpb.PolicyItem{
@@ -62,9 +62,9 @@ func GetUpdatesFromNamespace(nsTx *applicationpb.TxNamespace) *protosigverifiers
 				Policies: pd,
 			},
 		}
-	case types.ConfigNamespaceID:
+	case committerpb.ConfigNamespaceID:
 		for _, rw := range nsTx.BlindWrites {
-			if string(rw.Key) == types.ConfigKey {
+			if string(rw.Key) == committerpb.ConfigKey {
 				return &protosigverifierservice.Update{
 					Config: &applicationpb.ConfigTransaction{
 						Envelope: rw.Value,
@@ -95,7 +95,7 @@ func CreateNamespaceVerifier(
 // validateNamespaceIDInPolicy checks that a given namespace fulfills namespace naming conventions.
 func validateNamespaceIDInPolicy(nsID string) error {
 	// If it matches one of the system's namespaces it is invalid.
-	if nsID == types.MetaNamespaceID || nsID == types.ConfigNamespaceID {
+	if nsID == committerpb.MetaNamespaceID || nsID == committerpb.ConfigNamespaceID {
 		return ErrInvalidNamespaceID
 	}
 

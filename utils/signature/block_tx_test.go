@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
@@ -257,11 +257,11 @@ var txTestCases = []*applicationpb.TxNamespace{
 		ReadsOnly: []*applicationpb.Read{
 			{
 				Key:     []byte{1},
-				Version: types.Version(2),
+				Version: committerpb.Version(2),
 			},
 			{
 				Key:     []byte{3, 4, 5},
-				Version: types.Version(0),
+				Version: committerpb.Version(0),
 			},
 		},
 	},
@@ -271,11 +271,11 @@ var txTestCases = []*applicationpb.TxNamespace{
 		ReadsOnly: []*applicationpb.Read{
 			{
 				Key:     []byte{1},
-				Version: types.Version(2),
+				Version: committerpb.Version(2),
 			},
 			{
 				Key:     []byte{3, 4, 5},
-				Version: types.Version(0),
+				Version: committerpb.Version(0),
 			},
 			{
 				Key:     []byte{7, 8, 9},
@@ -289,12 +289,12 @@ var txTestCases = []*applicationpb.TxNamespace{
 		ReadWrites: []*applicationpb.ReadWrite{
 			{
 				Key:     []byte{1},
-				Version: types.Version(2),
+				Version: committerpb.Version(2),
 				Value:   []byte{3},
 			},
 			{
 				Key:     []byte{5},
-				Version: types.Version(0),
+				Version: committerpb.Version(0),
 				Value:   []byte{6},
 			},
 		},
@@ -305,7 +305,7 @@ var txTestCases = []*applicationpb.TxNamespace{
 		ReadWrites: []*applicationpb.ReadWrite{
 			{
 				Key:     []byte{1},
-				Version: types.Version(2),
+				Version: committerpb.Version(2),
 				Value:   []byte{3},
 			},
 			{
@@ -315,7 +315,7 @@ var txTestCases = []*applicationpb.TxNamespace{
 			},
 			{
 				Key:     []byte{9},
-				Version: types.Version(3),
+				Version: committerpb.Version(3),
 				Value:   nil,
 			},
 			{
@@ -363,22 +363,22 @@ var txTestCases = []*applicationpb.TxNamespace{
 		ReadsOnly: []*applicationpb.Read{
 			{
 				Key:     []byte{6},
-				Version: types.Version(7),
+				Version: committerpb.Version(7),
 			},
 			{
 				Key:     []byte{9, 10, 11},
-				Version: types.Version(12),
+				Version: committerpb.Version(12),
 			},
 		},
 		ReadWrites: []*applicationpb.ReadWrite{
 			{
 				Key:     []byte{100},
-				Version: types.Version(1),
+				Version: committerpb.Version(1),
 				Value:   []byte{2},
 			},
 			{
 				Key:     []byte{5},
-				Version: types.Version(10),
+				Version: committerpb.Version(10),
 				Value:   []byte{13},
 			},
 		},
@@ -399,23 +399,23 @@ var txTestCases = []*applicationpb.TxNamespace{
 		ReadsOnly: []*applicationpb.Read{
 			{
 				Key:     []byte{1, 2},
-				Version: types.Version(3),
+				Version: committerpb.Version(3),
 			},
 		},
 		ReadWrites: []*applicationpb.ReadWrite{
 			{
 				Key:     []byte{1},
-				Version: types.Version(2),
+				Version: committerpb.Version(2),
 				Value:   []byte{3},
 			},
 			{
 				Key:     []byte{4},
-				Version: types.Version(5),
+				Version: committerpb.Version(5),
 				Value:   []byte{6},
 			},
 			{
 				Key:     []byte{7},
-				Version: types.Version(8),
+				Version: committerpb.Version(8),
 				Value:   []byte{9},
 			},
 		},

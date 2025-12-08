@@ -18,8 +18,8 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -92,7 +92,7 @@ func createVerifiers(
 		if err != nil {
 			return nil, errors.Join(ErrUpdatePolicies, err)
 		}
-		newPolicies[types.MetaNamespaceID] = nsVerifier
+		newPolicies[committerpb.MetaNamespaceID] = nsVerifier
 	}
 	if update.NamespacePolicies != nil {
 		for _, pd := range update.NamespacePolicies.Policies {
@@ -136,7 +136,7 @@ func (v *verifier) verifyRequest(tx *protosigverifierservice.Tx) *protosigverifi
 	// containing the latest policy.
 	verifiers := *v.verifiers.Load()
 	for nsIndex, ns := range tx.Tx.Namespaces {
-		if ns.NsId == types.ConfigNamespaceID {
+		if ns.NsId == committerpb.ConfigNamespaceID {
 			// Configuration TX is not signed in the same manner as application TX.
 			// Its signatures are verified by the ordering service.
 			continue

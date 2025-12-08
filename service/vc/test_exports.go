@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -258,7 +259,7 @@ func (env *DatabaseTestEnv) populateData( //nolint:revive
 	t.Helper()
 	newNsIDsWrites := namespaceToWrites{}
 	for _, nsID := range createNsIDs {
-		nsWrites := newNsIDsWrites.getOrCreate(types.MetaNamespaceID)
+		nsWrites := newNsIDsWrites.getOrCreate(committerpb.MetaNamespaceID)
 		nsWrites.append([]byte(nsID), nil, 0)
 	}
 

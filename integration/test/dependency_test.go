@@ -13,8 +13,8 @@ import (
 	"github.com/onsi/gomega"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 )
 
@@ -64,7 +64,7 @@ func TestDependentHappyPath(t *testing.T) {
 					ReadWrites: []*applicationpb.ReadWrite{
 						{
 							Key:     []byte("k1"),
-							Version: types.Version(0),
+							Version: committerpb.Version(0),
 							Value:   []byte("v2"),
 						},
 					},
@@ -91,7 +91,7 @@ func TestDependentHappyPath(t *testing.T) {
 					ReadWrites: []*applicationpb.ReadWrite{
 						{
 							Key:     []byte("k1"),
-							Version: types.Version(1),
+							Version: committerpb.Version(1),
 							Value:   []byte("v3"),
 						},
 					},
@@ -105,7 +105,7 @@ func TestDependentHappyPath(t *testing.T) {
 					ReadWrites: []*applicationpb.ReadWrite{
 						{
 							Key:     []byte("k1"),
-							Version: types.Version(2),
+							Version: committerpb.Version(2),
 							Value:   []byte("v4"),
 						},
 					},
@@ -160,7 +160,7 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 			readsOnly: []*applicationpb.Read{
 				{
 					Key:     []byte("k2"),
-					Version: types.Version(0),
+					Version: committerpb.Version(0),
 				},
 			},
 			expected: []applicationpb.Status{applicationpb.Status_ABORTED_MVCC_CONFLICT},
@@ -170,7 +170,7 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 			readsOnly: []*applicationpb.Read{
 				{
 					Key:     []byte("k1"),
-					Version: types.Version(1),
+					Version: committerpb.Version(1),
 				},
 			},
 			expected: []applicationpb.Status{applicationpb.Status_ABORTED_MVCC_CONFLICT},
@@ -180,7 +180,7 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 			readsOnly: []*applicationpb.Read{
 				{
 					Key:     []byte("k1"),
-					Version: types.Version(0),
+					Version: committerpb.Version(0),
 				},
 			},
 			expected: []applicationpb.Status{applicationpb.Status_COMMITTED},
@@ -230,7 +230,7 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 			txs: [][]*applicationpb.TxNamespace{{{
 				ReadWrites: []*applicationpb.ReadWrite{{
 					Key:     []byte("k2"),
-					Version: types.Version(0),
+					Version: committerpb.Version(0),
 				}},
 			}}},
 			expected: []applicationpb.Status{applicationpb.Status_ABORTED_MVCC_CONFLICT},
@@ -240,7 +240,7 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 			txs: [][]*applicationpb.TxNamespace{{{
 				ReadWrites: []*applicationpb.ReadWrite{{
 					Key:     []byte("k1"),
-					Version: types.Version(1),
+					Version: committerpb.Version(1),
 				}},
 			}}},
 			expected: []applicationpb.Status{applicationpb.Status_ABORTED_MVCC_CONFLICT},
@@ -250,7 +250,7 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 			txs: [][]*applicationpb.TxNamespace{{{
 				ReadWrites: []*applicationpb.ReadWrite{{
 					Key:     []byte("k1"),
-					Version: types.Version(0),
+					Version: committerpb.Version(0),
 				}},
 			}}},
 			expected: []applicationpb.Status{applicationpb.Status_COMMITTED},
@@ -285,13 +285,13 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 				{{ // "read-write k1".
 					ReadWrites: []*applicationpb.ReadWrite{{
 						Key:     []byte("k1"),
-						Version: types.Version(0),
+						Version: committerpb.Version(0),
 					}},
 				}},
 				{{ // read-write k1 but invalid due to the previous tx.
 					ReadWrites: []*applicationpb.ReadWrite{{
 						Key:     []byte("k1"),
-						Version: types.Version(0),
+						Version: committerpb.Version(0),
 					}},
 				}},
 			},
@@ -306,19 +306,19 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 				{{ // read-write k1 but wrong version v0.
 					ReadWrites: []*applicationpb.ReadWrite{{
 						Key:     []byte("k1"),
-						Version: types.Version(0),
+						Version: committerpb.Version(0),
 					}},
 				}},
 				{{ // read-write k1 but wrong version v2.
 					ReadWrites: []*applicationpb.ReadWrite{{
 						Key:     []byte("k1"),
-						Version: types.Version(2),
+						Version: committerpb.Version(2),
 					}},
 				}},
 				{{ // read-write k1 with correct version.
 					ReadWrites: []*applicationpb.ReadWrite{{
 						Key:     []byte("k1"),
-						Version: types.Version(1),
+						Version: committerpb.Version(1),
 					}},
 				}},
 			},
@@ -387,7 +387,7 @@ func TestWriteWriteConflictsAmongActiveTransactions(t *testing.T) {
 					ReadWrites: []*applicationpb.ReadWrite{
 						{
 							Key:     []byte("k1"),
-							Version: types.Version(0),
+							Version: committerpb.Version(0),
 						},
 					},
 				}},

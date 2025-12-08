@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
@@ -255,10 +255,10 @@ func TestDependencyGraphManager(t *testing.T) {
 			t.Log("check dependency in namespace")
 			// t2 depends on t1, t1 depends on t0.
 			t0 := createTxForTest(
-				t, 0, types.ConfigNamespaceID, nil, nil, [][]byte{[]byte(types.ConfigKey)},
+				t, 0, committerpb.ConfigNamespaceID, nil, nil, [][]byte{[]byte(committerpb.ConfigKey)},
 			)
 			t1 = createTxForTest(
-				t, 1, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
+				t, 1, committerpb.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 			)
 			t2 = createTxForTest(
 				t, 2, nsID1ForTest, keys(4, 5), keys(2, 6), keys(3, 7),
@@ -271,7 +271,7 @@ func TestDependencyGraphManager(t *testing.T) {
 
 			// t3 depends on t2, t1, and t0
 			t3 = createTxForTest(
-				t, 0, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
+				t, 0, committerpb.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 			)
 			// t4 depends on t3, t2 and t1
 			t4 = createTxForTest(t, 1, nsID1ForTest, keys(7, 6), keys(4, 1), keys(0, 9))

@@ -14,8 +14,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -98,7 +98,7 @@ func createUpdate(policy *workload.PolicyProfile) (*protosigverifierservice.Upda
 	}
 
 	for ns, p := range txSigner.HashSigners {
-		if ns == types.MetaNamespaceID {
+		if ns == committerpb.MetaNamespaceID {
 			continue
 		}
 		policy, err := proto.Marshal(p.GetVerificationPolicy())

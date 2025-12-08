@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -104,7 +104,7 @@ func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *Trans
 	}
 	expectedReads = append(
 		expectedReads,
-		constructCompositeKey(types.MetaNamespaceID, []byte(nsID1ForTest)),
+		constructCompositeKey(committerpb.MetaNamespaceID, []byte(nsID1ForTest)),
 	)
 
 	for _, k := range readWrite {
@@ -148,7 +148,7 @@ func createTxForTest( //nolint: revive
 	}
 
 	return &protocoordinatorservice.Tx{
-		Ref: types.TxRef(uuid.New().String(), 0, uint32(txNum)), //nolint:gosec // int -> uint32.
+		Ref: committerpb.TxRef(uuid.New().String(), 0, uint32(txNum)), //nolint:gosec // int -> uint32.
 		Content: &applicationpb.Tx{
 			Namespaces: []*applicationpb.TxNamespace{{
 				NsId:        nsID,

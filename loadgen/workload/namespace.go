@@ -14,8 +14,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/types"
 )
 
 // CreateLoadGenNamespacesTX creating the transaction containing the requested namespaces into the MetaNamespace.
@@ -24,7 +24,7 @@ func CreateLoadGenNamespacesTX(policy *PolicyProfile) (*protoloadgen.TX, error) 
 	if txbErr != nil {
 		return nil, txbErr
 	}
-	_, ok := txb.TxSigner.HashSigners[types.MetaNamespaceID]
+	_, ok := txb.TxSigner.HashSigners[committerpb.MetaNamespaceID]
 	if !ok {
 		return nil, errors.New("no meta namespace signer found; cannot create namespaces")
 	}
@@ -54,7 +54,7 @@ func CreateNamespacesTxFromSigner(
 
 	readWrites := make([]*applicationpb.ReadWrite, 0, len(signer.HashSigners))
 	for _, ns := range includeNS {
-		if ns == types.MetaNamespaceID {
+		if ns == committerpb.MetaNamespaceID {
 			continue
 		}
 		p, ok := signer.HashSigners[ns]
@@ -73,7 +73,7 @@ func CreateNamespacesTxFromSigner(
 
 	return &applicationpb.Tx{
 		Namespaces: []*applicationpb.TxNamespace{{
-			NsId:       types.MetaNamespaceID,
+			NsId:       committerpb.MetaNamespaceID,
 			NsVersion:  metaNamespaceVersion,
 			ReadWrites: readWrites,
 		}},

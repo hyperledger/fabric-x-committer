@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
@@ -28,26 +28,26 @@ import (
 // RequireNotifications verifies that the expected notification were received.
 func RequireNotifications( //nolint:revive // argument-limit.
 	t *testing.T,
-	notifyStream protonotify.Notifier_OpenNotificationStreamClient,
+	notifyStream committerpb.Notifier_OpenNotificationStreamClient,
 	expectedBlockNumber uint64,
 	txIDs []string,
 	status []applicationpb.Status,
 ) {
 	t.Helper()
 	require.Len(t, status, len(txIDs))
-	expected := make([]*protonotify.TxStatusEvent, 0, len(txIDs))
+	expected := make([]*committerpb.TxStatusEvent, 0, len(txIDs))
 	for i, s := range status {
 		if !IsStatusStoredInDB(s) {
 			continue
 		}
 		//nolint:gosec // int -> uint32.
-		expected = append(expected, &protonotify.TxStatusEvent{
+		expected = append(expected, &committerpb.TxStatusEvent{
 			TxId:             txIDs[i],
 			StatusWithHeight: types.NewStatusWithHeight(s, expectedBlockNumber, uint32(i)),
 		})
 	}
 
-	var actual []*protonotify.TxStatusEvent
+	var actual []*committerpb.TxStatusEvent
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		res, err := notifyStream.Recv()
 		require.NoError(t, err)
@@ -110,7 +110,7 @@ func MalformedTxTestCases(txb *workload.TxBuilder) (
 		Namespaces: []*applicationpb.TxNamespace{
 			validTxNamespaces[0],
 			{
-				NsId:      types.MetaNamespaceID,
+				NsId:      committerpb.MetaNamespaceID,
 				NsVersion: 0,
 				// namespace id is invalid in metaNs tx.
 				ReadWrites: []*applicationpb.ReadWrite{{Key: []byte("/\\")}},
@@ -121,7 +121,7 @@ func MalformedTxTestCases(txb *workload.TxBuilder) (
 		Namespaces: []*applicationpb.TxNamespace{
 			validTxNamespaces[0],
 			{
-				NsId:      types.MetaNamespaceID,
+				NsId:      committerpb.MetaNamespaceID,
 				NsVersion: 0,
 				ReadWrites: []*applicationpb.ReadWrite{{
 					Key:   []byte("2"),
@@ -136,7 +136,7 @@ func MalformedTxTestCases(txb *workload.TxBuilder) (
 	add(applicationpb.Status_COMMITTED, txb.MakeTx(&applicationpb.Tx{
 		Namespaces: []*applicationpb.TxNamespace{{
 			// valid namespace TX.
-			NsId:      types.MetaNamespaceID,
+			NsId:      committerpb.MetaNamespaceID,
 			NsVersion: 0,
 			ReadWrites: []*applicationpb.ReadWrite{{
 				Key:   []byte("2"),
@@ -149,11 +149,11 @@ func MalformedTxTestCases(txb *workload.TxBuilder) (
 			// valid namespace TX with regular TX.
 			validTxNamespaces[0],
 			{
-				NsId:      types.MetaNamespaceID,
+				NsId:      committerpb.MetaNamespaceID,
 				NsVersion: 0,
 				ReadWrites: []*applicationpb.ReadWrite{{
 					Key:     []byte("2"),
-					Version: types.Version(0),
+					Version: committerpb.Version(0),
 					Value:   defaultNsValidPolicy(),
 				}},
 			},
@@ -161,11 +161,11 @@ func MalformedTxTestCases(txb *workload.TxBuilder) (
 	}))
 	add(applicationpb.Status_MALFORMED_NAMESPACE_POLICY_INVALID, txb.MakeTx(&applicationpb.Tx{
 		Namespaces: []*applicationpb.TxNamespace{{
-			NsId:      types.MetaNamespaceID,
+			NsId:      committerpb.MetaNamespaceID,
 			NsVersion: 0,
 			ReadWrites: []*applicationpb.ReadWrite{{
 				Key:     []byte("2"),
-				Version: types.Version(0),
+				Version: committerpb.Version(0),
 				Value:   defaultNsInvalidPolicy(), // invalid policy.
 			}},
 		}},
@@ -174,7 +174,7 @@ func MalformedTxTestCases(txb *workload.TxBuilder) (
 		Namespaces: []*applicationpb.TxNamespace{
 			validTxNamespaces[0],
 			{
-				NsId:      types.MetaNamespaceID,
+				NsId:      committerpb.MetaNamespaceID,
 				NsVersion: 0,
 				// blind writes not allowed in metaNs tx.
 				BlindWrites: []*applicationpb.Write{{

@@ -17,8 +17,8 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -29,7 +29,7 @@ type (
 	relay struct {
 		incomingBlockToBeCommitted <-chan *common.Block
 		outgoingCommittedBlock     chan<- *common.Block
-		outgoingStatusUpdates      chan<- []*protonotify.TxStatusEvent
+		outgoingStatusUpdates      chan<- []*committerpb.TxStatusEvent
 
 		// nextBlockNumberToBeReceived denotes the next block number that the sidecar
 		// expects to receive from the orderer. This value is initially extracted from the last committed
@@ -53,7 +53,7 @@ type (
 		configUpdater                  func(*common.Block)
 		incomingBlockToBeCommitted     <-chan *common.Block
 		outgoingCommittedBlock         chan<- *common.Block
-		outgoingStatusUpdates          chan<- []*protonotify.TxStatusEvent
+		outgoingStatusUpdates          chan<- []*committerpb.TxStatusEvent
 		waitingTxsLimit                int
 	}
 )
@@ -249,7 +249,7 @@ func (r *relay) processStatusBatch(
 
 		txStatusProcessedCount := int64(0)
 		startTime := time.Now()
-		statusReport := make([]*protonotify.TxStatusEvent, 0, len(tStatus.Status))
+		statusReport := make([]*committerpb.TxStatusEvent, 0, len(tStatus.Status))
 		for txID, txStatus := range tStatus.Status {
 			// We cannot use LoadAndDelete(txID) because it may not match the received statues.
 			height, ok := r.txIDToHeight.Load(txID)
@@ -290,7 +290,7 @@ func (r *relay) processStatusBatch(
 			r.txIDToHeight.Delete(txID)
 			txStatusProcessedCount++
 
-			statusReport = append(statusReport, &protonotify.TxStatusEvent{
+			statusReport = append(statusReport, &committerpb.TxStatusEvent{
 				TxId:             txID,
 				StatusWithHeight: txStatus,
 			})

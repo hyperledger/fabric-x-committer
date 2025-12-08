@@ -17,8 +17,8 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -210,7 +210,7 @@ func startTxGeneratorUnderTest(
 
 func startQueryGeneratorUnderTest(
 	t *testing.T, profile *Profile, options *StreamOptions,
-) *RateLimiterGenerator[*protoqueryservice.Query] {
+) *RateLimiterGenerator[*committerpb.Query] {
 	t.Helper()
 	g := NewQueryGenerator(profile, options)
 	test.RunServiceForTest(t.Context(), t, g.Run, nil)
@@ -421,7 +421,7 @@ type queryTestEnv struct {
 	p        *Profile
 	keys     map[string]*struct{}
 	txGen    *RateLimiterGenerator[*protoloadgen.TX]
-	queryGen *RateLimiterGenerator[*protoqueryservice.Query]
+	queryGen *RateLimiterGenerator[*committerpb.Query]
 }
 
 func newQueryTestEnv(t *testing.T, p *Profile, o *StreamOptions) *queryTestEnv {

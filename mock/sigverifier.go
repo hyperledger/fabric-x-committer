@@ -17,8 +17,8 @@ import (
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -130,7 +130,7 @@ func (m *SigVerifier) sendResponseBatch(
 				continue
 			}
 			status := applicationpb.Status_COMMITTED
-			isConfig := len(req.Tx.Namespaces) == 1 && req.Tx.Namespaces[0].NsId == types.ConfigNamespaceID
+			isConfig := len(req.Tx.Namespaces) == 1 && req.Tx.Namespaces[0].NsId == committerpb.ConfigNamespaceID
 			if len(req.Tx.Endorsements) == 0 && !isConfig {
 				status = applicationpb.Status_ABORTED_SIGNATURE_INVALID
 			}

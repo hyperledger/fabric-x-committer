@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -57,17 +58,20 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 	k5 := []byte("key5")
 	k6 := []byte("key6")
 
+	// Shortcut for version pointer.
+	v := committerpb.Version
+
 	tx := &protovcservice.Batch{
 		Transactions: []*protovcservice.Tx{
 			{
-				Ref: types.TxRef("tx1", 1, 1),
+				Ref: committerpb.TxRef("tx1", 1, 1),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
 						NsVersion: 1,
 						ReadsOnly: []*applicationpb.Read{
-							{Key: k1, Version: types.Version(1)},
-							{Key: k2, Version: types.Version(1)},
+							{Key: k1, Version: v(1)},
+							{Key: k2, Version: v(1)},
 							{Key: k3, Version: nil},
 						},
 					},
@@ -75,21 +79,21 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 						NsId:      "2",
 						NsVersion: 1,
 						ReadsOnly: []*applicationpb.Read{
-							{Key: k4, Version: types.Version(0)},
+							{Key: k4, Version: v(0)},
 							{Key: k5, Version: nil},
 						},
 					},
 				},
 			},
 			{
-				Ref: types.TxRef("tx2", 4, 2),
+				Ref: committerpb.TxRef("tx2", 4, 2),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
 						NsVersion: 1,
 						ReadsOnly: []*applicationpb.Read{
-							{Key: k1, Version: types.Version(1)},
-							{Key: k4, Version: types.Version(1)},
+							{Key: k1, Version: v(1)},
+							{Key: k4, Version: v(1)},
 							{Key: k5, Version: nil},
 						},
 					},
@@ -97,8 +101,8 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 						NsId:      "2",
 						NsVersion: 1,
 						ReadsOnly: []*applicationpb.Read{
-							{Key: k4, Version: types.Version(1)},
-							{Key: k5, Version: types.Version(0)},
+							{Key: k4, Version: v(1)},
+							{Key: k5, Version: v(0)},
 							{Key: k6, Version: nil},
 						},
 					},
@@ -111,30 +115,30 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 		nsToReads: namespaceToReads{
 			"1": &reads{
 				keys:     [][]byte{k1, k2, k3, k4, k5},
-				versions: []*uint64{types.Version(1), types.Version(1), nil, types.Version(1), nil},
+				versions: []*uint64{v(1), v(1), nil, v(1), nil},
 			},
 			"2": &reads{
 				keys:     [][]byte{k4, k5, k4, k5, k6},
-				versions: []*uint64{types.Version(0), nil, types.Version(1), types.Version(0), nil},
+				versions: []*uint64{v(0), nil, v(1), v(0), nil},
 			},
-			types.MetaNamespaceID: &reads{
+			committerpb.MetaNamespaceID: &reads{
 				keys:     [][]byte{[]byte("1"), []byte("2")},
-				versions: []*uint64{types.Version(1), types.Version(1)},
+				versions: []*uint64{v(1), v(1)},
 			},
 		},
 		readToTxIDs: readToTransactions{
-			newCmpRead("1", k1, types.Version(1)):                            []TxID{"tx1", "tx2"},
-			newCmpRead("1", k2, types.Version(1)):                            []TxID{"tx1"},
-			newCmpRead("1", k3, nil):                                         []TxID{"tx1"},
-			newCmpRead("1", k4, types.Version(1)):                            []TxID{"tx2"},
-			newCmpRead("1", k5, nil):                                         []TxID{"tx2"},
-			newCmpRead("2", k4, types.Version(0)):                            []TxID{"tx1"},
-			newCmpRead("2", k5, nil):                                         []TxID{"tx1"},
-			newCmpRead("2", k4, types.Version(1)):                            []TxID{"tx2"},
-			newCmpRead("2", k5, types.Version(0)):                            []TxID{"tx2"},
-			newCmpRead("2", k6, nil):                                         []TxID{"tx2"},
-			newCmpRead(types.MetaNamespaceID, []byte("1"), types.Version(1)): []TxID{"tx1", "tx2"},
-			newCmpRead(types.MetaNamespaceID, []byte("2"), types.Version(1)): []TxID{"tx1", "tx2"},
+			newCmpRead("1", k1, v(1)):                                  []TxID{"tx1", "tx2"},
+			newCmpRead("1", k2, v(1)):                                  []TxID{"tx1"},
+			newCmpRead("1", k3, nil):                                   []TxID{"tx1"},
+			newCmpRead("1", k4, v(1)):                                  []TxID{"tx2"},
+			newCmpRead("1", k5, nil):                                   []TxID{"tx2"},
+			newCmpRead("2", k4, v(0)):                                  []TxID{"tx1"},
+			newCmpRead("2", k5, nil):                                   []TxID{"tx1"},
+			newCmpRead("2", k4, v(1)):                                  []TxID{"tx2"},
+			newCmpRead("2", k5, v(0)):                                  []TxID{"tx2"},
+			newCmpRead("2", k6, nil):                                   []TxID{"tx2"},
+			newCmpRead(committerpb.MetaNamespaceID, []byte("1"), v(1)): []TxID{"tx1", "tx2"},
+			newCmpRead(committerpb.MetaNamespaceID, []byte("2"), v(1)): []TxID{"tx1", "tx2"},
 		},
 		txIDToNsNonBlindWrites: transactionToWrites{},
 		txIDToNsBlindWrites:    transactionToWrites{},
@@ -162,10 +166,13 @@ func TestPrepareTxWithBlindWritesOnly(t *testing.T) {
 	k4 := []byte("key4")
 	k5 := []byte("key5")
 
+	// Shortcut for version pointer.
+	v := committerpb.Version
+
 	tx := &protovcservice.Batch{
 		Transactions: []*protovcservice.Tx{
 			{
-				Ref: types.TxRef("tx1", 10, 5),
+				Ref: committerpb.TxRef("tx1", 10, 5),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
@@ -187,7 +194,7 @@ func TestPrepareTxWithBlindWritesOnly(t *testing.T) {
 				},
 			},
 			{
-				Ref: types.TxRef("tx2", 6, 3),
+				Ref: committerpb.TxRef("tx2", 6, 3),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
@@ -204,17 +211,17 @@ func TestPrepareTxWithBlindWritesOnly(t *testing.T) {
 
 	expectedPreparedTxs := &preparedTransactions{
 		nsToReads: namespaceToReads{
-			types.MetaNamespaceID: &reads{
+			committerpb.MetaNamespaceID: &reads{
 				keys: [][]byte{
 					[]byte("1"), []byte("2"), []byte("1"),
 				},
-				versions: []*uint64{types.Version(1), types.Version(1), types.Version(2)},
+				versions: []*uint64{v(1), v(1), v(2)},
 			},
 		},
 		readToTxIDs: readToTransactions{
-			newCmpRead(types.MetaNamespaceID, []byte("1"), types.Version(1)): []TxID{"tx1"},
-			newCmpRead(types.MetaNamespaceID, []byte("2"), types.Version(1)): []TxID{"tx1"},
-			newCmpRead(types.MetaNamespaceID, []byte("1"), types.Version(2)): []TxID{"tx2"},
+			newCmpRead(committerpb.MetaNamespaceID, []byte("1"), v(1)): []TxID{"tx1"},
+			newCmpRead(committerpb.MetaNamespaceID, []byte("2"), v(1)): []TxID{"tx1"},
+			newCmpRead(committerpb.MetaNamespaceID, []byte("1"), v(2)): []TxID{"tx2"},
 		},
 		txIDToNsNonBlindWrites: transactionToWrites{},
 		txIDToNsBlindWrites: transactionToWrites{
@@ -264,17 +271,20 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 	k6 := []byte("key6")
 	k7 := []byte("key7")
 
+	// Shortcut for version pointer.
+	v := committerpb.Version
+
 	tx := &protovcservice.Batch{
 		Transactions: []*protovcservice.Tx{
 			{
-				Ref: types.TxRef("tx1", 7, 4),
+				Ref: committerpb.TxRef("tx1", 7, 4),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
 						NsVersion: 2,
 						ReadWrites: []*applicationpb.ReadWrite{
-							{Key: k1, Version: types.Version(1), Value: []byte("v1")},
-							{Key: k2, Version: types.Version(1), Value: []byte("v2")},
+							{Key: k1, Version: v(1), Value: []byte("v1")},
+							{Key: k2, Version: v(1), Value: []byte("v2")},
 							{Key: k3, Version: nil, Value: []byte("v3")},
 						},
 					},
@@ -282,20 +292,20 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 						NsId:      "2",
 						NsVersion: 2,
 						ReadWrites: []*applicationpb.ReadWrite{
-							{Key: k4, Version: types.Version(0), Value: []byte("v4")},
+							{Key: k4, Version: v(0), Value: []byte("v4")},
 							{Key: k5, Version: nil, Value: []byte("v5")},
 						},
 					},
 				},
 			},
 			{
-				Ref: types.TxRef("tx2", 7, 5),
+				Ref: committerpb.TxRef("tx2", 7, 5),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
 						NsVersion: 2,
 						ReadWrites: []*applicationpb.ReadWrite{
-							{Key: k4, Version: types.Version(1), Value: []byte("v4")},
+							{Key: k4, Version: v(1), Value: []byte("v4")},
 							{Key: k5, Version: nil, Value: []byte("v5")},
 						},
 					},
@@ -316,29 +326,29 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 		nsToReads: namespaceToReads{
 			"1": &reads{
 				keys:     [][]byte{k1, k2, k4},
-				versions: []*uint64{types.Version(1), types.Version(1), types.Version(1)},
+				versions: []*uint64{v(1), v(1), v(1)},
 			},
 			"2": &reads{
 				keys:     [][]byte{k4},
-				versions: []*uint64{types.Version(0)},
+				versions: []*uint64{v(0)},
 			},
-			types.MetaNamespaceID: &reads{
+			committerpb.MetaNamespaceID: &reads{
 				keys:     [][]byte{[]byte("1"), []byte("2")},
-				versions: []*uint64{types.Version(2), types.Version(2)},
+				versions: []*uint64{v(2), v(2)},
 			},
 		},
 		readToTxIDs: readToTransactions{
-			newCmpRead("1", k1, types.Version(1)):                            []TxID{"tx1"},
-			newCmpRead("1", k2, types.Version(1)):                            []TxID{"tx1"},
-			newCmpRead("1", k3, nil):                                         []TxID{"tx1"},
-			newCmpRead("1", k4, types.Version(1)):                            []TxID{"tx2"},
-			newCmpRead("1", k5, nil):                                         []TxID{"tx2"},
-			newCmpRead("2", k4, types.Version(0)):                            []TxID{"tx1"},
-			newCmpRead("2", k5, nil):                                         []TxID{"tx1"},
-			newCmpRead("2", k6, nil):                                         []TxID{"tx2"},
-			newCmpRead("2", k7, nil):                                         []TxID{"tx2"},
-			newCmpRead(types.MetaNamespaceID, []byte("1"), types.Version(2)): []TxID{"tx1", "tx2"},
-			newCmpRead(types.MetaNamespaceID, []byte("2"), types.Version(2)): []TxID{"tx1", "tx2"},
+			newCmpRead("1", k1, v(1)):                                  []TxID{"tx1"},
+			newCmpRead("1", k2, v(1)):                                  []TxID{"tx1"},
+			newCmpRead("1", k3, nil):                                   []TxID{"tx1"},
+			newCmpRead("1", k4, v(1)):                                  []TxID{"tx2"},
+			newCmpRead("1", k5, nil):                                   []TxID{"tx2"},
+			newCmpRead("2", k4, v(0)):                                  []TxID{"tx1"},
+			newCmpRead("2", k5, nil):                                   []TxID{"tx1"},
+			newCmpRead("2", k6, nil):                                   []TxID{"tx2"},
+			newCmpRead("2", k7, nil):                                   []TxID{"tx2"},
+			newCmpRead(committerpb.MetaNamespaceID, []byte("1"), v(2)): []TxID{"tx1", "tx2"},
+			newCmpRead(committerpb.MetaNamespaceID, []byte("2"), v(2)): []TxID{"tx1", "tx2"},
 		},
 		txIDToNsNonBlindWrites: transactionToWrites{
 			"tx1": namespaceToWrites{
@@ -416,20 +426,23 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 	k9 := []byte("key9")
 	k10 := []byte("key10")
 
+	// Shortcut for version pointer.
+	v := committerpb.Version
+
 	tx := &protovcservice.Batch{
 		Transactions: []*protovcservice.Tx{
 			{
-				Ref: types.TxRef("tx1", 8, 0),
+				Ref: committerpb.TxRef("tx1", 8, 0),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
 						NsVersion: 1,
 						ReadsOnly: []*applicationpb.Read{
-							{Key: k1, Version: types.Version(1)},
-							{Key: k2, Version: types.Version(2)},
+							{Key: k1, Version: v(1)},
+							{Key: k2, Version: v(2)},
 						},
 						ReadWrites: []*applicationpb.ReadWrite{
-							{Key: k3, Version: types.Version(3), Value: []byte("v3")},
+							{Key: k3, Version: v(3), Value: []byte("v3")},
 						},
 						BlindWrites: []*applicationpb.Write{
 							{Key: k4, Value: []byte("v4")},
@@ -451,16 +464,16 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 			},
 			{
-				Ref: types.TxRef("tx2", 9, 3),
+				Ref: committerpb.TxRef("tx2", 9, 3),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
 						NsVersion: 3,
 						ReadsOnly: []*applicationpb.Read{
-							{Key: k8, Version: types.Version(8)},
+							{Key: k8, Version: v(8)},
 						},
 						ReadWrites: []*applicationpb.ReadWrite{
-							{Key: k9, Version: types.Version(9), Value: []byte("v9")},
+							{Key: k9, Version: v(9), Value: []byte("v9")},
 						},
 						BlindWrites: []*applicationpb.Write{
 							{Key: k10, Value: []byte("v10")},
@@ -470,16 +483,16 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 			},
 			{
 				// We ensure no duplicate reads with duplicated TX.
-				Ref: types.TxRef("tx2.2", 9, 4),
+				Ref: committerpb.TxRef("tx2.2", 9, 4),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
 						NsVersion: 3,
 						ReadsOnly: []*applicationpb.Read{
-							{Key: k8, Version: types.Version(8)},
+							{Key: k8, Version: v(8)},
 						},
 						ReadWrites: []*applicationpb.ReadWrite{
-							{Key: k9, Version: types.Version(9), Value: []byte("v9")},
+							{Key: k9, Version: v(9), Value: []byte("v9")},
 						},
 						BlindWrites: []*applicationpb.Write{
 							{Key: k10, Value: []byte("v10")},
@@ -488,36 +501,36 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 			},
 			{
-				Ref: types.TxRef("tx3", 6, 2),
+				Ref: committerpb.TxRef("tx3", 6, 2),
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
 					Code: applicationpb.Status_MALFORMED_NO_WRITES,
 				},
 			},
 			{
-				Ref: types.TxRef("tx4", 5, 2),
+				Ref: committerpb.TxRef("tx4", 5, 2),
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
 					Code: applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
 				},
 			},
 			{
-				Ref: types.TxRef("tx5", 6, 2),
+				Ref: committerpb.TxRef("tx5", 6, 2),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
-						NsId:      types.MetaNamespaceID,
+						NsId:      committerpb.MetaNamespaceID,
 						NsVersion: 4,
 						ReadWrites: []*applicationpb.ReadWrite{
-							{Key: []byte("1"), Version: types.Version(1), Value: []byte("meta")},
+							{Key: []byte("1"), Version: v(1), Value: []byte("meta")},
 						},
 					},
 				},
 			},
 			{
-				Ref: types.TxRef("tx6", 6, 2),
+				Ref: committerpb.TxRef("tx6", 6, 2),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
-						NsId: types.ConfigNamespaceID,
+						NsId: committerpb.ConfigNamespaceID,
 						BlindWrites: []*applicationpb.Write{
-							{Key: []byte(types.ConfigKey), Value: []byte("config")},
+							{Key: []byte(committerpb.ConfigKey), Value: []byte("config")},
 						},
 					},
 				},
@@ -530,37 +543,37 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 			"1": &reads{
 				keys: [][]byte{k1, k2, k3, k8, k9},
 				versions: []*uint64{
-					types.Version(1), types.Version(2), types.Version(3),
-					types.Version(8), types.Version(9),
+					v(1), v(2), v(3),
+					v(8), v(9),
 				},
 			},
 			"2": &reads{
 				keys:     [][]byte{k5},
 				versions: []*uint64{nil},
 			},
-			types.MetaNamespaceID: &reads{
+			committerpb.MetaNamespaceID: &reads{
 				keys: [][]byte{
 					[]byte("1"), []byte("2"), []byte("1"),
 				},
-				versions: []*uint64{types.Version(1), types.Version(2), types.Version(3)},
+				versions: []*uint64{v(1), v(2), v(3)},
 			},
-			types.ConfigNamespaceID: &reads{
-				keys:     [][]byte{[]byte(types.ConfigKey)},
-				versions: []*uint64{types.Version(4)},
+			committerpb.ConfigNamespaceID: &reads{
+				keys:     [][]byte{[]byte(committerpb.ConfigKey)},
+				versions: []*uint64{v(4)},
 			},
 		},
 		readToTxIDs: readToTransactions{
-			newCmpRead("1", k1, types.Version(1)):                                          []TxID{"tx1"},
-			newCmpRead("1", k2, types.Version(2)):                                          []TxID{"tx1"},
-			newCmpRead("1", k3, types.Version(3)):                                          []TxID{"tx1"},
-			newCmpRead("1", k8, types.Version(8)):                                          []TxID{"tx2", "tx2.2"},
-			newCmpRead("1", k9, types.Version(9)):                                          []TxID{"tx2", "tx2.2"},
+			newCmpRead("1", k1, v(1)):                                                      []TxID{"tx1"},
+			newCmpRead("1", k2, v(2)):                                                      []TxID{"tx1"},
+			newCmpRead("1", k3, v(3)):                                                      []TxID{"tx1"},
+			newCmpRead("1", k8, v(8)):                                                      []TxID{"tx2", "tx2.2"},
+			newCmpRead("1", k9, v(9)):                                                      []TxID{"tx2", "tx2.2"},
 			newCmpRead("2", k5, nil):                                                       []TxID{"tx1"},
 			newCmpRead("2", k6, nil):                                                       []TxID{"tx1"},
-			newCmpRead(types.MetaNamespaceID, []byte("1"), types.Version(1)):               []TxID{"tx1", "tx5"},
-			newCmpRead(types.MetaNamespaceID, []byte("2"), types.Version(2)):               []TxID{"tx1"},
-			newCmpRead(types.MetaNamespaceID, []byte("1"), types.Version(3)):               []TxID{"tx2", "tx2.2"},
-			newCmpRead(types.ConfigNamespaceID, []byte(types.ConfigKey), types.Version(4)): []TxID{"tx5"},
+			newCmpRead(committerpb.MetaNamespaceID, []byte("1"), v(1)):                     []TxID{"tx1", "tx5"},
+			newCmpRead(committerpb.MetaNamespaceID, []byte("2"), v(2)):                     []TxID{"tx1"},
+			newCmpRead(committerpb.MetaNamespaceID, []byte("1"), v(3)):                     []TxID{"tx2", "tx2.2"},
+			newCmpRead(committerpb.ConfigNamespaceID, []byte(committerpb.ConfigKey), v(4)): []TxID{"tx5"},
 		},
 		txIDToNsNonBlindWrites: transactionToWrites{
 			"tx1": namespaceToWrites{
@@ -585,7 +598,7 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 			},
 			"tx5": namespaceToWrites{
-				types.MetaNamespaceID: &namespaceWrites{
+				committerpb.MetaNamespaceID: &namespaceWrites{
 					keys:     [][]byte{[]byte("1")},
 					values:   [][]byte{[]byte("meta")},
 					versions: []uint64{2},
@@ -620,8 +633,8 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 			},
 			"tx6": namespaceToWrites{
-				types.ConfigNamespaceID: &namespaceWrites{
-					keys:     [][]byte{[]byte(types.ConfigKey)},
+				committerpb.ConfigNamespaceID: &namespaceWrites{
+					keys:     [][]byte{[]byte(committerpb.ConfigKey)},
 					values:   [][]byte{[]byte("config")},
 					versions: []uint64{0},
 				},

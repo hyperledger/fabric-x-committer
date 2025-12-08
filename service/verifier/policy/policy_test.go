@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -31,7 +31,7 @@ func TestGetUpdatesFromNamespace(t *testing.T) {
 		}
 	}
 	tx := &applicationpb.TxNamespace{
-		NsId:       types.MetaNamespaceID,
+		NsId:       committerpb.MetaNamespaceID,
 		ReadWrites: items,
 	}
 	update := GetUpdatesFromNamespace(tx)
@@ -47,9 +47,9 @@ func TestGetUpdatesFromNamespace(t *testing.T) {
 
 	expectedValue := []byte("test config")
 	tx = &applicationpb.TxNamespace{
-		NsId: types.ConfigKey,
+		NsId: committerpb.ConfigKey,
 		BlindWrites: []*applicationpb.Write{{
-			Key:   []byte(types.ConfigKey),
+			Key:   []byte(committerpb.ConfigKey),
 			Value: expectedValue,
 		}},
 	}
@@ -89,7 +89,7 @@ func TestParsePolicyItem(t *testing.T) {
 	for _, ns := range []string{
 		"", "abc_$", "a-", "go!", "My Namespace", "my name", "ABC_D", "new\nline",
 		"____too_long_namespace_namespace_id_0123456789_0123456789_012",
-		types.MetaNamespaceID, types.ConfigNamespaceID,
+		committerpb.MetaNamespaceID, committerpb.ConfigNamespaceID,
 	} {
 		t.Run(fmt.Sprintf("invalid ns: '%s'", ns), func(t *testing.T) {
 			t.Parallel()

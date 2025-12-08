@@ -6,14 +6,15 @@ SPDX-License-Identifier: Apache-2.0
 
 syntax = "proto3";
 
-option go_package = "github.com/hyperledger/fabric-x-committer/api/protoqueryservice";
+option go_package = "github.com/hyperledger/fabric-x-committer/api/committerpb";
 
-package protoqueryservice;
+package committerpb;
 
 import "google/protobuf/empty.proto";
 
 import "api/applicationpb/block_tx.proto";
-import "api/protonotify/notify.proto";
+
+import "api/committerpb/notify.proto";
 
 service QueryService {
   rpc GetRows(Query) returns (Rows) {};
@@ -72,5 +73,5 @@ message TxStatusQuery {
 }
 
 message TxStatusResponse {
-  repeated protonotify.TxStatusEvent statuses = 1;
+  repeated TxStatusEvent statuses = 1;
 }

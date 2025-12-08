@@ -21,8 +21,8 @@ import (
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -45,7 +45,7 @@ type Service struct {
 	coordConn          *grpc.ClientConn
 	blockToBeCommitted chan *common.Block
 	committedBlock     chan *common.Block
-	statusQueue        chan []*protonotify.TxStatusEvent
+	statusQueue        chan []*committerpb.TxStatusEvent
 	config             *Config
 	healthcheck        *health.Server
 	metrics            *perfMetrics
@@ -90,7 +90,7 @@ func New(c *Config) (*Service, error) {
 		metrics:            metrics,
 		blockToBeCommitted: make(chan *common.Block, bufferSize),
 		committedBlock:     make(chan *common.Block, bufferSize),
-		statusQueue:        make(chan []*protonotify.TxStatusEvent, bufferSize),
+		statusQueue:        make(chan []*committerpb.TxStatusEvent, bufferSize),
 	}, nil
 }
 
@@ -151,7 +151,7 @@ func (s *Service) Run(ctx context.Context) error {
 // RegisterService registers for the sidecar's GRPC services.
 func (s *Service) RegisterService(server *grpc.Server) {
 	peer.RegisterDeliverServer(server, s.ledgerService)
-	protonotify.RegisterNotifierServer(server, s.notifier)
+	committerpb.RegisterNotifierServer(server, s.notifier)
 	healthgrpc.RegisterHealthServer(server, s.healthcheck)
 }
 

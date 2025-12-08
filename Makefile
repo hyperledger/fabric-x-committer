@@ -56,7 +56,7 @@ go_build       ?= $(env) $(go_cmd) build $(build_flags)
 go_test        ?= $(go_cmd) test -json -v -timeout 30m
 proto_path     ?=
 
-ifneq ($(wildcard "/usr/include"),"")
+ifneq ("$(wildcard /usr/include)","")
     proto_path += "/usr/include"
 endif
 

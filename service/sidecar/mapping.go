@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
@@ -127,7 +128,7 @@ func (b *blockMappingResult) appendTx(txNum uint32, hdr *common.ChannelHeader, t
 		return err
 	}
 	b.block.Txs = append(b.block.Txs, &protocoordinatorservice.Tx{
-		Ref:     types.TxRef(hdr.TxId, b.blockNumber, txNum),
+		Ref:     committerpb.TxRef(hdr.TxId, b.blockNumber, txNum),
 		Content: tx,
 	})
 	debugTx(hdr, "included: %s", hdr.TxId)
@@ -144,7 +145,7 @@ func (b *blockMappingResult) rejectTx(
 		return err
 	}
 	b.block.Rejected = append(b.block.Rejected, &protocoordinatorservice.TxStatusInfo{
-		Ref:    types.TxRef(hdr.TxId, b.blockNumber, txNum),
+		Ref:    committerpb.TxRef(hdr.TxId, b.blockNumber, txNum),
 		Status: status,
 	})
 	debugTx(hdr, "rejected: %s (%s)", &status, reason)
@@ -226,10 +227,10 @@ func debugTx(channelHdr *common.ChannelHeader, format string, a ...any) {
 func configTx(value []byte) *applicationpb.Tx {
 	return &applicationpb.Tx{
 		Namespaces: []*applicationpb.TxNamespace{{
-			NsId:      types.ConfigNamespaceID,
+			NsId:      committerpb.ConfigNamespaceID,
 			NsVersion: 0,
 			BlindWrites: []*applicationpb.Write{{
-				Key:   []byte(types.ConfigKey),
+				Key:   []byte(committerpb.ConfigKey),
 				Value: value,
 			}},
 		}},
@@ -249,7 +250,7 @@ func verifyTxForm(tx *applicationpb.Tx) applicationpb.Status {
 	nsIDs := make(map[string]any, len(tx.Namespaces))
 	for _, ns := range tx.Namespaces {
 		// Checks that the application does not submit a config TX.
-		if ns.NsId == types.ConfigNamespaceID || policy.ValidateNamespaceID(ns.NsId) != nil {
+		if ns.NsId == committerpb.ConfigNamespaceID || policy.ValidateNamespaceID(ns.NsId) != nil {
 			return applicationpb.Status_MALFORMED_NAMESPACE_ID_INVALID
 		}
 		if _, ok := nsIDs[ns.NsId]; ok {
@@ -287,7 +288,7 @@ func checkNamespaceFormation(ns *applicationpb.TxNamespace) applicationpb.Status
 }
 
 func checkMetaNamespace(txNs *applicationpb.TxNamespace) applicationpb.Status {
-	if txNs.NsId != types.MetaNamespaceID {
+	if txNs.NsId != committerpb.MetaNamespaceID {
 		return statusNotYetValidated
 	}
 	if len(txNs.BlindWrites) > 0 {
@@ -310,7 +311,7 @@ func checkMetaNamespace(txNs *applicationpb.TxNamespace) applicationpb.Status {
 			}
 			return applicationpb.Status_MALFORMED_NAMESPACE_POLICY_INVALID
 		}
-		if pd.Namespace == types.MetaNamespaceID {
+		if pd.Namespace == committerpb.MetaNamespaceID {
 			return applicationpb.Status_MALFORMED_NAMESPACE_POLICY_INVALID
 		}
 		if _, ok := nsUpdate[pd.Namespace]; ok {

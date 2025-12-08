@@ -22,10 +22,9 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/protonotify"
-	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -59,10 +58,10 @@ type (
 
 		ordererStream      *test.BroadcastStream
 		CoordinatorClient  protocoordinatorservice.CoordinatorClient
-		QueryServiceClient protoqueryservice.QueryServiceClient
+		QueryServiceClient committerpb.QueryServiceClient
 		sidecarClient      *sidecarclient.Client
-		notifyClient       protonotify.NotifierClient
-		notifyStream       protonotify.Notifier_OpenNotificationStreamClient
+		notifyClient       committerpb.NotifierClient
+		notifyStream       committerpb.Notifier_OpenNotificationStreamClient
 
 		CommittedBlock chan *common.Block
 
@@ -156,7 +155,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		CommittedBlock:   make(chan *common.Block, 100),
 		seedForCryptoGen: rand.New(rand.NewSource(10)),
 	}
-	c.AddOrUpdateNamespaces(t, types.MetaNamespaceID, workload.GeneratedNamespaceID, "1", "2", "3")
+	c.AddOrUpdateNamespaces(t, committerpb.MetaNamespaceID, workload.GeneratedNamespaceID, "1", "2", "3")
 
 	t.Log("Making DB env")
 	if conf.DBConnection == nil {
@@ -231,11 +230,11 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		test.NewSecuredConnection(t, s.Endpoints.Coordinator.Server, c.SystemConfig.ClientTLS),
 	)
 
-	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(
+	c.QueryServiceClient = committerpb.NewQueryServiceClient(
 		test.NewSecuredConnection(t, s.Endpoints.Query.Server, c.SystemConfig.ClientTLS),
 	)
 
-	c.notifyClient = protonotify.NewNotifierClient(
+	c.notifyClient = committerpb.NewNotifierClient(
 		test.NewSecuredConnection(t, s.Endpoints.Sidecar.Server, c.SystemConfig.ClientTLS),
 	)
 
@@ -431,8 +430,8 @@ func (c *CommitterRuntime) SendTransactionsToOrderer(
 	}
 
 	if !c.config.CrashTest {
-		err := c.notifyStream.Send(&protonotify.NotificationRequest{
-			TxStatusRequest: &protonotify.TxStatusRequest{
+		err := c.notifyStream.Send(&committerpb.NotificationRequest{
+			TxStatusRequest: &committerpb.TxStatusRequest{
 				TxIds: expected.TxIDs,
 			},
 			Timeout: durationpb.New(3 * time.Minute),

@@ -28,8 +28,8 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
@@ -52,7 +52,7 @@ type sidecarTestEnv struct {
 	sidecar        *Service
 	committedBlock chan *common.Block
 	configBlock    *common.Block
-	notifyStream   protonotify.Notifier_OpenNotificationStreamClient
+	notifyStream   committerpb.Notifier_OpenNotificationStreamClient
 }
 
 type sidecarTestConfig struct {
@@ -216,7 +216,7 @@ func (env *sidecarTestEnv) startNotificationStream(
 	t.Helper()
 	conn := test.NewSecuredConnection(t, &env.config.Server.Endpoint, sidecarClientCreds)
 	var err error
-	env.notifyStream, err = protonotify.NewNotifierClient(conn).OpenNotificationStream(ctx)
+	env.notifyStream, err = committerpb.NewNotifierClient(conn).OpenNotificationStream(ctx)
 	require.NoError(t, err)
 }
 
@@ -589,8 +589,8 @@ func (env *sidecarTestEnv) submitTXs(ctx context.Context, t *testing.T, txs []*p
 	for i, tx := range txs {
 		txIDs[i] = tx.Id
 	}
-	err := env.notifyStream.Send(&protonotify.NotificationRequest{
-		TxStatusRequest: &protonotify.TxStatusRequest{
+	err := env.notifyStream.Send(&committerpb.NotificationRequest{
+		TxStatusRequest: &committerpb.TxStatusRequest{
 			TxIds: txIDs,
 		},
 		Timeout: durationpb.New(3 * time.Minute),

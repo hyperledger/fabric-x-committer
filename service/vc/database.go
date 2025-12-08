@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
@@ -37,9 +38,9 @@ const (
 	// insertTxStatusSQLStmt commits transaction's status for each TX.
 	insertTxStatusSQLStmt = "SELECT * FROM insert_tx_status($1::BYTEA[], $2::INTEGER[], $3::BYTEA[]);"
 	// queryPoliciesSQLStmt queries meta-namespace policies.
-	queryPoliciesSQLStmt = "SELECT key, value from ns_" + types.MetaNamespaceID + ";"
+	queryPoliciesSQLStmt = "SELECT key, value from ns_" + committerpb.MetaNamespaceID + ";"
 	// queryConfigSQLStmt queries the config-namespace policy.
-	queryConfigSQLStmt = "SELECT key, value from ns_" + types.ConfigNamespaceID + ";"
+	queryConfigSQLStmt = "SELECT key, value from ns_" + committerpb.ConfigNamespaceID + ";"
 )
 
 // ErrMetadataEmpty indicates that a requested metadata value is empty or not found.
@@ -253,7 +254,7 @@ func (db *database) writeStatesByGroup(
 		return conflicts, nil, nil
 	}
 
-	if err = createTablesAndFunctionsForNamespaces(ctx, tx, states.newWrites[types.MetaNamespaceID]); err != nil {
+	if err = createTablesAndFunctionsForNamespaces(ctx, tx, states.newWrites[committerpb.MetaNamespaceID]); err != nil {
 		return nil, nil, fmt.Errorf("failed to create tables and functions for new namespaces: %w", err)
 	}
 
@@ -448,7 +449,8 @@ func (db *database) readStatusWithHeight(
 func (db *database) readNamespacePolicies(ctx context.Context) (*applicationpb.NamespacePolicies, error) {
 	keys, values, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, db, queryPoliciesSQLStmt)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read the policies from table [%s]: %w", TableName(types.MetaNamespaceID), err)
+		metaTable := TableName(committerpb.MetaNamespaceID)
+		return nil, fmt.Errorf("failed to read the policies from table [%s]: %w", metaTable, err)
 	}
 	policy := &applicationpb.NamespacePolicies{
 		Policies: make([]*applicationpb.PolicyItem, len(keys)),
@@ -467,7 +469,7 @@ func (db *database) readConfigTX(ctx context.Context) (*applicationpb.ConfigTran
 	_, values, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, db, queryConfigSQLStmt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the config transaction from table [%s]: %w",
-			TableName(types.ConfigNamespaceID), err)
+			TableName(committerpb.ConfigNamespaceID), err)
 	}
 	configTX := &applicationpb.ConfigTransaction{}
 	for _, v := range values {

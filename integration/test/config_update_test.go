@@ -16,8 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
@@ -85,8 +85,8 @@ func TestConfigUpdate(t *testing.T) {
 	// We sign the meta TX with the old signature.
 	lgMetaTx := c.TxBuilder.MakeTx(metaTx)
 
-	c.AddOrUpdateNamespaces(t, types.MetaNamespaceID)
-	metaPolicy := c.TxBuilder.TxSigner.HashSigners[types.MetaNamespaceID].GetVerificationPolicy()
+	c.AddOrUpdateNamespaces(t, committerpb.MetaNamespaceID)
+	metaPolicy := c.TxBuilder.TxSigner.HashSigners[committerpb.MetaNamespaceID].GetVerificationPolicy()
 	submitConfigBlock := func(endpoints []*commontypes.OrdererEndpoint) {
 		ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
 			ChannelID:                    c.SystemConfig.Policy.ChannelID,

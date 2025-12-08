@@ -14,8 +14,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -91,7 +91,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 				createTxForTest(
 					t,
 					4,
-					types.MetaNamespaceID,
+					committerpb.MetaNamespaceID,
 					nil,
 					[][]byte{[]byte("2")},
 					nil,
@@ -161,7 +161,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 			ID: 1,
 			Txs: []*protocoordinatorservice.Tx{
 				createTxForTest(
-					t, 0, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
+					t, 0, committerpb.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 				),
 				createTxForTest(t, 1, nsID1ForTest, [][]byte{keys[2]}, nil, nil),
 				createTxForTest(t, 2, nsID1ForTest, [][]byte{keys[3]}, nil, nil),
@@ -197,7 +197,7 @@ func TestLocalDependencyConstructorWithDependencies(t *testing.T) { //nolint:goc
 				createTxForTest(t, 1, nsID1ForTest, [][]byte{keys[3]}, nil, nil),
 				createTxForTest(t, 2, nsID1ForTest, [][]byte{keys[4]}, nil, nil),
 				createTxForTest(
-					t, 3, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
+					t, 3, committerpb.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 				),
 			},
 		}

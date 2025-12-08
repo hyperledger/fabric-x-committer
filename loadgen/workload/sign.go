@@ -12,7 +12,7 @@ import (
 	"github.com/cockroachdb/errors"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -46,7 +46,7 @@ func NewTxSignerVerifier(policy *PolicyProfile) *TxSignerVerifier {
 	signers := make(map[string]*HashSignerVerifier)
 	// We set default policy to ensure smooth operation even if the user did not specify anything.
 	signers[GeneratedNamespaceID] = NewHashSignerVerifier(&defaultPolicy)
-	signers[types.MetaNamespaceID] = NewHashSignerVerifier(&defaultPolicy)
+	signers[committerpb.MetaNamespaceID] = NewHashSignerVerifier(&defaultPolicy)
 
 	for nsID, p := range policy.NamespacePolicies {
 		signers[nsID] = NewHashSignerVerifier(p)

@@ -20,6 +20,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/mock"
@@ -162,12 +163,12 @@ func (e *coordinatorTestEnv) createNamespaces(t *testing.T, blkNum int, nsIDs ..
 	blockNum := uint64(blkNum) //nolint:gosec // int -> uint64.
 	blk := &protocoordinatorservice.Batch{}
 	blk.Txs = append(blk.Txs, &protocoordinatorservice.Tx{
-		Ref: types.TxRef(uuid.NewString(), blockNum, 0),
+		Ref: committerpb.TxRef(uuid.NewString(), blockNum, 0),
 		Content: &applicationpb.Tx{
 			Namespaces: []*applicationpb.TxNamespace{{
-				NsId: types.ConfigNamespaceID,
+				NsId: committerpb.ConfigNamespaceID,
 				ReadWrites: []*applicationpb.ReadWrite{{
-					Key:   []byte(types.ConfigKey),
+					Key:   []byte(committerpb.ConfigKey),
 					Value: pBytes,
 				}},
 			}},
@@ -175,10 +176,10 @@ func (e *coordinatorTestEnv) createNamespaces(t *testing.T, blkNum int, nsIDs ..
 	})
 	for i, nsID := range nsIDs {
 		blk.Txs = append(blk.Txs, &protocoordinatorservice.Tx{
-			Ref: types.TxRef(uuid.NewString(), blockNum, uint32(i+1)), //nolint:gosec // int -> uint32.
+			Ref: committerpb.TxRef(uuid.NewString(), blockNum, uint32(i+1)), //nolint:gosec // int -> uint32.
 			Content: &applicationpb.Tx{
 				Namespaces: []*applicationpb.TxNamespace{{
-					NsId:      types.MetaNamespaceID,
+					NsId:      committerpb.MetaNamespaceID,
 					NsVersion: 0,
 					ReadWrites: []*applicationpb.ReadWrite{{
 						Key:   []byte(nsID),
@@ -254,7 +255,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 	err = env.csStream.Send(&protocoordinatorservice.Batch{
 		Txs: []*protocoordinatorservice.Tx{
 			{
-				Ref: types.TxRef("tx1", 1, 0),
+				Ref: committerpb.TxRef("tx1", 1, 0),
 				Content: &applicationpb.Tx{
 					Namespaces: []*applicationpb.TxNamespace{
 						{
@@ -267,7 +268,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 							},
 						},
 						{
-							NsId:      types.MetaNamespaceID,
+							NsId:      committerpb.MetaNamespaceID,
 							NsVersion: 0,
 							ReadWrites: []*applicationpb.ReadWrite{
 								{
@@ -319,7 +320,7 @@ func TestCoordinatorServiceRejectedTx(t *testing.T) {
 	err := env.csStream.Send(&protocoordinatorservice.Batch{
 		Rejected: []*protocoordinatorservice.TxStatusInfo{
 			{
-				Ref:    types.TxRef("rejected", 1, 0),
+				Ref:    committerpb.TxRef("rejected", 1, 0),
 				Status: applicationpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
 			},
 		},
@@ -370,22 +371,22 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 	b1 := &protocoordinatorservice.Batch{
 		Txs: []*protocoordinatorservice.Tx{
 			{
-				Ref: types.TxRef("config TX", 0, 0),
+				Ref: committerpb.TxRef("config TX", 0, 0),
 				Content: &applicationpb.Tx{
 					Namespaces: []*applicationpb.TxNamespace{{
-						NsId: types.ConfigNamespaceID,
+						NsId: committerpb.ConfigNamespaceID,
 						ReadWrites: []*applicationpb.ReadWrite{{
-							Key:   []byte(types.ConfigKey),
+							Key:   []byte(committerpb.ConfigKey),
 							Value: []byte("config"),
 						}},
 					}},
 				},
 			},
 			{
-				Ref: types.TxRef("create namespace 1", 0, 1),
+				Ref: committerpb.TxRef("create namespace 1", 0, 1),
 				Content: &applicationpb.Tx{
 					Namespaces: []*applicationpb.TxNamespace{{
-						NsId:      types.MetaNamespaceID,
+						NsId:      committerpb.MetaNamespaceID,
 						NsVersion: 0,
 						ReadWrites: []*applicationpb.ReadWrite{{
 							Key:   []byte(utNsID),
@@ -395,7 +396,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 				},
 			},
 			{
-				Ref: types.TxRef("create main key (read-write version 0)", 0, 2),
+				Ref: committerpb.TxRef("create main key (read-write version 0)", 0, 2),
 				Content: &applicationpb.Tx{
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      utNsID,
@@ -408,7 +409,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 				},
 			},
 			{
-				Ref: types.TxRef("update main key (read-write version 1)", 0, 3),
+				Ref: committerpb.TxRef("update main key (read-write version 1)", 0, 3),
 				Content: &applicationpb.Tx{
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      utNsID,
@@ -416,13 +417,13 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 						ReadWrites: []*applicationpb.ReadWrite{{
 							Key:     mainKey,
 							Value:   []byte("value of version 1"),
-							Version: types.Version(0),
+							Version: committerpb.Version(0),
 						}},
 					}},
 				},
 			},
 			{
-				Ref: types.TxRef("update main key (blind-write version 2)", 0, 4),
+				Ref: committerpb.TxRef("update main key (blind-write version 2)", 0, 4),
 				Content: &applicationpb.Tx{
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      utNsID,
@@ -435,14 +436,14 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 				},
 			},
 			{
-				Ref: types.TxRef("read main key, create sub key (read version 2, read-write version 0)", 0, 5),
+				Ref: committerpb.TxRef("read main key, create sub key (read version 2, read-write version 0)", 0, 5),
 				Content: &applicationpb.Tx{
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      utNsID,
 						NsVersion: utNsVersion,
 						ReadsOnly: []*applicationpb.Read{{
 							Key:     mainKey,
-							Version: types.Version(2),
+							Version: committerpb.Version(2),
 						}},
 						ReadWrites: []*applicationpb.ReadWrite{{
 							Key:   subKey,
@@ -452,14 +453,14 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 				},
 			},
 			{
-				Ref: types.TxRef("update main key (read-write version 3)", 0, 6),
+				Ref: committerpb.TxRef("update main key (read-write version 3)", 0, 6),
 				Content: &applicationpb.Tx{
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      utNsID,
 						NsVersion: utNsVersion,
 						ReadWrites: []*applicationpb.ReadWrite{{
 							Key:     mainKey,
-							Version: types.Version(2),
+							Version: committerpb.Version(2),
 							Value:   []byte("Value of version 3"),
 						}},
 					}},
@@ -541,7 +542,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 
 	err := env.csStream.Send(&protocoordinatorservice.Batch{
 		Txs: []*protocoordinatorservice.Tx{{
-			Ref: types.TxRef("tx1", 1, 0),
+			Ref: committerpb.TxRef("tx1", 1, 0),
 			Content: &applicationpb.Tx{
 				Namespaces: []*applicationpb.TxNamespace{{
 					NsId:      "1",
@@ -577,7 +578,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 	block2 := &protocoordinatorservice.Batch{
 		Txs: []*protocoordinatorservice.Tx{
 			{
-				Ref: types.TxRef("tx2", 2, 0),
+				Ref: committerpb.TxRef("tx2", 2, 0),
 				Content: &applicationpb.Tx{
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      "1",
@@ -590,7 +591,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				},
 			},
 			{
-				Ref: types.TxRef("mvcc conflict", 2, 2),
+				Ref: committerpb.TxRef("mvcc conflict", 2, 2),
 				Content: &applicationpb.Tx{
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      "2",
@@ -603,7 +604,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				},
 			},
 			{
-				Ref: types.TxRef("tx1", 2, 5),
+				Ref: committerpb.TxRef("tx1", 2, 5),
 				Content: &applicationpb.Tx{
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      "1",
@@ -644,7 +645,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 	block2 = &protocoordinatorservice.Batch{
 		Txs: []*protocoordinatorservice.Tx{
 			{
-				Ref: types.TxRef("tx2", 2, 0),
+				Ref: committerpb.TxRef("tx2", 2, 0),
 				Content: &applicationpb.Tx{
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      "1",
@@ -657,7 +658,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				},
 			},
 			{
-				Ref: types.TxRef("tx3", 2, 1),
+				Ref: committerpb.TxRef("tx3", 2, 1),
 				Content: &applicationpb.Tx{
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      "1",
@@ -670,7 +671,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				},
 			},
 			{
-				Ref: types.TxRef("mvcc conflict", 2, 2),
+				Ref: committerpb.TxRef("mvcc conflict", 2, 2),
 				Content: &applicationpb.Tx{
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      "2",
@@ -683,7 +684,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				},
 			},
 			{
-				Ref: types.TxRef("duplicate namespace", 2, 4),
+				Ref: committerpb.TxRef("duplicate namespace", 2, 4),
 				Content: &applicationpb.Tx{
 					Namespaces: []*applicationpb.TxNamespace{
 						{
@@ -694,7 +695,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 							}},
 						},
 						{
-							NsId:      types.MetaNamespaceID,
+							NsId:      committerpb.MetaNamespaceID,
 							NsVersion: 0,
 							ReadWrites: []*applicationpb.ReadWrite{{
 								Key:   []byte("2"),
@@ -710,7 +711,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 				},
 			},
 			{
-				Ref: types.TxRef("tx1", 2, 5),
+				Ref: committerpb.TxRef("tx1", 2, 5),
 				Content: &applicationpb.Tx{
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      "1",
@@ -751,7 +752,7 @@ func TestCoordinatorStreamFailureWithSidecar(t *testing.T) {
 	blk := &protocoordinatorservice.Batch{
 		Txs: []*protocoordinatorservice.Tx{
 			{
-				Ref: types.TxRef("tx1", 1, 0),
+				Ref: committerpb.TxRef("tx1", 1, 0),
 				Content: &applicationpb.Tx{
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      "1",
@@ -957,7 +958,7 @@ func makeTestBlock(txPerBlock int) (*protocoordinatorservice.Batch, map[string]*
 	for i := range txPerBlock {
 		txID := "tx" + strconv.Itoa(rand.Int())
 		b.Txs[i] = &protocoordinatorservice.Tx{
-			Ref: types.TxRef(txID, 0, uint32(i)), //nolint:gosec
+			Ref: committerpb.TxRef(txID, 0, uint32(i)), //nolint:gosec
 			Content: &applicationpb.Tx{
 				Namespaces: []*applicationpb.TxNamespace{{
 					NsId:      "1",

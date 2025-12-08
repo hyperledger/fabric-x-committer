@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
-var namespacesUnderTest = []string{GeneratedNamespaceID, "1", "2", types.MetaNamespaceID}
+var namespacesUnderTest = []string{GeneratedNamespaceID, "1", "2", committerpb.MetaNamespaceID}
 
 // TestNamespaceGeneratorKeyCreation verifies that the signers that created by the
 // namespace-generator are the same given the same seed number.
@@ -69,7 +69,7 @@ func getReadWritesFromNamespaceTx(t *testing.T, tx *applicationpb.Tx) []*applica
 	t.Helper()
 	require.NotNil(t, tx)
 	require.Len(t, tx.Namespaces, 1)
-	require.Equal(t, types.MetaNamespaceID, tx.Namespaces[0].NsId)
+	require.Equal(t, committerpb.MetaNamespaceID, tx.Namespaces[0].NsId)
 	require.Len(t, tx.Namespaces[0].ReadWrites, len(namespacesUnderTest)-1)
 	return tx.Namespaces[0].ReadWrites
 }

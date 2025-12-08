@@ -19,8 +19,8 @@ import (
 	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
@@ -50,9 +50,9 @@ func CreateConfigTx(policy *PolicyProfile) (*protoloadgen.TX, error) {
 		Id: channelHdr.TxId,
 		Tx: &applicationpb.Tx{
 			Namespaces: []*applicationpb.TxNamespace{{
-				NsId: types.ConfigNamespaceID,
+				NsId: committerpb.ConfigNamespaceID,
 				BlindWrites: []*applicationpb.Write{{
-					Key:   []byte(types.ConfigNamespaceID),
+					Key:   []byte(committerpb.ConfigNamespaceID),
 					Value: envelopeBytes,
 				}},
 			}},
@@ -83,7 +83,7 @@ func CreateConfigBlock(policy *PolicyProfile) (*common.Block, error) {
 	}
 
 	txSigner := NewTxSignerVerifier(policy)
-	policyNamespaceSigner, ok := txSigner.HashSigners[types.MetaNamespaceID]
+	policyNamespaceSigner, ok := txSigner.HashSigners[committerpb.MetaNamespaceID]
 	if !ok {
 		return nil, errors.New("no policy namespace signer found; cannot create namespaces")
 	}

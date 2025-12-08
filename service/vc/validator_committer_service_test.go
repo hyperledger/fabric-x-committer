@@ -18,6 +18,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
@@ -104,13 +105,13 @@ func TestCreateConfigAndTables(t *testing.T) {
 	configValue := []byte("config")
 	txBatch1 := &protovcservice.Batch{
 		Transactions: []*protovcservice.Tx{{
-			Ref: types.TxRef(configID, 0, 0),
+			Ref: committerpb.TxRef(configID, 0, 0),
 			Namespaces: []*applicationpb.TxNamespace{{
-				NsId:      types.ConfigNamespaceID,
+				NsId:      committerpb.ConfigNamespaceID,
 				NsVersion: 0,
 				BlindWrites: []*applicationpb.Write{
 					{
-						Key:   []byte(types.ConfigKey),
+						Key:   []byte(committerpb.ConfigKey),
 						Value: []byte("config"),
 					},
 				},
@@ -139,9 +140,9 @@ func TestCreateConfigAndTables(t *testing.T) {
 	utNsID := "1"
 	txBatch2 := &protovcservice.Batch{
 		Transactions: []*protovcservice.Tx{{
-			Ref: types.TxRef(metaID, 1, 0),
+			Ref: committerpb.TxRef(metaID, 1, 0),
 			Namespaces: []*applicationpb.TxNamespace{{
-				NsId:      types.MetaNamespaceID,
+				NsId:      committerpb.MetaNamespaceID,
 				NsVersion: 0,
 				ReadWrites: []*applicationpb.ReadWrite{
 					{
@@ -202,7 +203,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 			Transactions: []*protovcservice.Tx{
 				// The following 3 TXs test the blind write path, merging to the update path
 				{
-					Ref: types.TxRef("Blind write without value", 1, 1),
+					Ref: committerpb.TxRef("Blind write without value", 1, 1),
 					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
@@ -216,7 +217,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					},
 				},
 				{
-					Ref: types.TxRef("Blind write with value", 1, 2),
+					Ref: committerpb.TxRef("Blind write with value", 1, 2),
 					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
@@ -231,7 +232,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					},
 				},
 				{
-					Ref: types.TxRef("Blind write update existing key", 2, 3),
+					Ref: committerpb.TxRef("Blind write update existing key", 2, 3),
 					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
@@ -247,7 +248,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 				},
 				// The following 2 TXs test the new key path
 				{
-					Ref: types.TxRef("New key with value", 2, 4),
+					Ref: committerpb.TxRef("New key with value", 2, 4),
 					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
@@ -262,7 +263,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					},
 				},
 				{
-					Ref: types.TxRef("New key no value", 3, 5),
+					Ref: committerpb.TxRef("New key no value", 3, 5),
 					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
@@ -277,7 +278,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 				},
 				// The following TX tests the update path
 				{
-					Ref: types.TxRef("Existing key", 2, 6),
+					Ref: committerpb.TxRef("Existing key", 2, 6),
 					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
@@ -286,7 +287,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 								{
 									Key:     []byte("Existing key"),
 									Value:   []byte("new-value"),
-									Version: types.Version(0),
+									Version: committerpb.Version(0),
 								},
 							},
 						},
@@ -321,7 +322,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		txBatch = &protovcservice.Batch{
 			Transactions: []*protovcservice.Tx{
 				{
-					Ref: types.TxRef("New key 2 no value", 2, 0),
+					Ref: committerpb.TxRef("New key 2 no value", 2, 0),
 					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
@@ -353,7 +354,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		txBatch := &protovcservice.Batch{
 			Transactions: []*protovcservice.Tx{
 				{
-					Ref: types.TxRef("Namespace version mismatch", 4, 1),
+					Ref: committerpb.TxRef("Namespace version mismatch", 4, 1),
 					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
@@ -367,13 +368,13 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					},
 				},
 				{
-					Ref: types.TxRef("prelim invalid tx", 5, 2),
+					Ref: committerpb.TxRef("prelim invalid tx", 5, 2),
 					PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
 						Code: applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
 					},
 				},
 				{
-					Ref: types.TxRef("invalid new writes", 2, 6),
+					Ref: committerpb.TxRef("invalid new writes", 2, 6),
 					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
@@ -389,7 +390,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					},
 				},
 				{
-					Ref: types.TxRef("Rejected TX", 2, 7),
+					Ref: committerpb.TxRef("Rejected TX", 2, 7),
 					PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
 						Code: applicationpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
 					},
@@ -551,7 +552,7 @@ func TestTransactionResubmission(t *testing.T) {
 	}{
 		{
 			tx: &protovcservice.Tx{
-				Ref: types.TxRef("Blind write with value", 1, 2),
+				Ref: committerpb.TxRef("Blind write with value", 1, 2),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "3",
@@ -569,7 +570,7 @@ func TestTransactionResubmission(t *testing.T) {
 		},
 		{
 			tx: &protovcservice.Tx{
-				Ref: types.TxRef("New key with value", 2, 4),
+				Ref: committerpb.TxRef("New key with value", 2, 4),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "3",
@@ -587,7 +588,7 @@ func TestTransactionResubmission(t *testing.T) {
 		},
 		{
 			tx: &protovcservice.Tx{
-				Ref: types.TxRef("New key no value", 3, 5),
+				Ref: committerpb.TxRef("New key no value", 3, 5),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "3",
@@ -604,7 +605,7 @@ func TestTransactionResubmission(t *testing.T) {
 		},
 		{
 			tx: &protovcservice.Tx{
-				Ref: types.TxRef("invalid sign", 3, 6),
+				Ref: committerpb.TxRef("invalid sign", 3, 6),
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
 					Code: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
 				},
@@ -613,7 +614,7 @@ func TestTransactionResubmission(t *testing.T) {
 		},
 		{
 			tx: &protovcservice.Tx{
-				Ref: types.TxRef("duplicate namespace", 3, 7),
+				Ref: committerpb.TxRef("duplicate namespace", 3, 7),
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
 					Code: applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
 				},
@@ -622,7 +623,7 @@ func TestTransactionResubmission(t *testing.T) {
 		},
 		{
 			tx: &protovcservice.Tx{
-				Ref: types.TxRef("conflict", 3, 8),
+				Ref: committerpb.TxRef("conflict", 3, 8),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "3",

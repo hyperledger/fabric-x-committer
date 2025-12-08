@@ -13,6 +13,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -186,20 +187,20 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 				// adding the namespaceID, and version to the reads-only
 				// list of the metaNamespaceID.
 				switch nsOperations.NsId {
-				case types.MetaNamespaceID:
+				case committerpb.MetaNamespaceID:
 					// Meta TX is dependent on the config TX.
 					prepTxs.addReadsOnly(tID, &applicationpb.TxNamespace{
-						NsId: types.ConfigNamespaceID,
+						NsId: committerpb.ConfigNamespaceID,
 						ReadsOnly: []*applicationpb.Read{{
-							Key:     []byte(types.ConfigKey),
+							Key:     []byte(committerpb.ConfigKey),
 							Version: &nsOperations.NsVersion,
 						}},
 					})
-				case types.ConfigNamespaceID:
+				case committerpb.ConfigNamespaceID:
 					// A config TX is independent.
 				default:
 					prepTxs.addReadsOnly(tID, &applicationpb.TxNamespace{
-						NsId: types.MetaNamespaceID,
+						NsId: committerpb.MetaNamespaceID,
 						ReadsOnly: []*applicationpb.Read{{
 							Key:     []byte(nsOperations.NsId),
 							Version: &nsOperations.NsVersion,

@@ -17,9 +17,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
@@ -223,7 +223,7 @@ func TestSignatureVerifierWithAllInvalidTxs(t *testing.T) {
 	for i := range 3 {
 		txNode := &dependencygraph.TransactionNode{
 			Tx: &protovcservice.Tx{
-				Ref: types.TxRef("", uint64(i), uint32(i)), //nolint:gosec
+				Ref: committerpb.TxRef("", uint64(i), uint32(i)), //nolint:gosec
 			},
 		}
 		txBatch = append(txBatch, txNode)
@@ -257,7 +257,7 @@ func createTxNodeBatchForTest(
 	for i := range numTxs {
 		txNode := &dependencygraph.TransactionNode{
 			Tx: &protovcservice.Tx{
-				Ref:        types.TxRef("", blkNum, uint32(i)), //nolint:gosec
+				Ref:        committerpb.TxRef("", blkNum, uint32(i)), //nolint:gosec
 				Namespaces: ns,
 			},
 		}

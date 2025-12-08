@@ -9,11 +9,11 @@ package workload
 import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
 )
 
 // MapToCoordinatorBatch creates a Coordinator batch.
@@ -82,5 +82,5 @@ func MapToOrdererBlock(blockNum uint64, txs []*protoloadgen.TX) *common.Block {
 }
 
 func makeRef(txID string, blockNum uint64, txNum int) *protocoordinatorservice.TxRef {
-	return types.TxRef(txID, blockNum, uint32(txNum)) //nolint:gosec // int -> uint32.
+	return committerpb.TxRef(txID, blockNum, uint32(txNum)) //nolint:gosec // int -> uint32.
 }

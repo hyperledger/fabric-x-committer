@@ -6,9 +6,9 @@ SPDX-License-Identifier: Apache-2.0
 
 syntax = "proto3";
 
-option go_package = "github.com/hyperledger/fabric-x-committer/api/protonotify";
+option go_package = "github.com/hyperledger/fabric-x-committer/api/committerpb";
 
-package protonotify;
+package committerpb;
 
 import "google/protobuf/duration.proto";
 

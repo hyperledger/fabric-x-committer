@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package types
+package committerpb
 
 import "github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 

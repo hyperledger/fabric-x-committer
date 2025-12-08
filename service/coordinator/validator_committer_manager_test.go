@@ -21,6 +21,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/types"
@@ -234,11 +235,11 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 		txBatch := []*dependencygraph.TransactionNode{
 			{
 				Tx: &protovcservice.Tx{
-					Ref: types.TxRef("create config", 100, 63),
+					Ref: committerpb.TxRef("create config", 100, 63),
 					Namespaces: []*applicationpb.TxNamespace{{
-						NsId: types.ConfigNamespaceID,
+						NsId: committerpb.ConfigNamespaceID,
 						BlindWrites: []*applicationpb.Write{{
-							Key:   []byte(types.ConfigKey),
+							Key:   []byte(committerpb.ConfigKey),
 							Value: configBlock.Data.Data[0],
 						}},
 					}},
@@ -246,9 +247,9 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 			},
 			{
 				Tx: &protovcservice.Tx{
-					Ref: types.TxRef("create ns 1", 100, 64),
+					Ref: committerpb.TxRef("create ns 1", 100, 64),
 					Namespaces: []*applicationpb.TxNamespace{{
-						NsId: types.MetaNamespaceID,
+						NsId: committerpb.MetaNamespaceID,
 						ReadWrites: []*applicationpb.ReadWrite{{
 							Key:   []byte("1"),
 							Value: pBytes,
@@ -337,8 +338,8 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 
 	err := env.mockVcService.SubmitTransactions(ctx, &protovcservice.Batch{
 		Transactions: []*protovcservice.Tx{
-			{Ref: types.TxRef("untrackedTxID1", 1, 1)},
-			{Ref: types.TxRef("untrackedTxID2", 2, 2)},
+			{Ref: committerpb.TxRef("untrackedTxID1", 1, 1)},
+			{Ref: committerpb.TxRef("untrackedTxID2", 2, 2)},
 		},
 	})
 	require.NoError(t, err)
@@ -362,7 +363,7 @@ func createInputTxsNodeForTest(t *testing.T, numTxs, valueSize int, blkNum uint6
 		id := uuid.NewString()
 		txsNode[i] = &dependencygraph.TransactionNode{
 			Tx: &protovcservice.Tx{
-				Ref: types.TxRef(id, blkNum, uint32(i)), //nolint:gosec
+				Ref: committerpb.TxRef(id, blkNum, uint32(i)), //nolint:gosec
 				Namespaces: []*applicationpb.TxNamespace{{
 					BlindWrites: []*applicationpb.Write{{
 						Value: utils.MustRead(rand.Reader, valueSize),

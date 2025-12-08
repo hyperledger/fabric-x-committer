@@ -12,34 +12,34 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 )
 
 func TestRequireProtoEqual(t *testing.T) {
 	t.Parallel()
-	a := &protoqueryservice.View{Id: "a"}
+	a := &committerpb.View{Id: "a"}
 	RequireProtoEqual(t, a, a)
 	b := proto.Clone(a)
 	RequireProtoEqual(t, a, b)
-	c := &protoqueryservice.View{Id: "a"}
+	c := &committerpb.View{Id: "a"}
 	RequireProtoEqual(t, a, c)
 }
 
 func TestProtoDiff(t *testing.T) {
 	t.Parallel()
-	a := []*protoqueryservice.View{
+	a := []*committerpb.View{
 		{Id: "a"}, {Id: "b"},
 	}
 	msg, haveDiff := protoElemDiff(a, a)
 	require.False(t, haveDiff, msg)
 
-	b := []*protoqueryservice.View{
+	b := []*committerpb.View{
 		{Id: "b"}, {Id: "a"},
 	}
 	msg, haveDiff = protoElemDiff(a, b)
 	require.False(t, haveDiff, msg)
 
-	c := []*protoqueryservice.View{{Id: "b"}, {Id: "c"}}
+	c := []*committerpb.View{{Id: "b"}, {Id: "c"}}
 	msg, haveDiff = protoElemDiff(a, c)
 	require.True(t, haveDiff, msg)
 	t.Log(msg)

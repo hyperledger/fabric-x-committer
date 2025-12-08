@@ -15,7 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 )
 
@@ -42,7 +42,7 @@ func TestCreateUpdateNamespace(t *testing.T) {
 		{
 			name: "create namespace ns1",
 			txs: [][]*applicationpb.TxNamespace{{{ // create ns 1.
-				NsId:      types.MetaNamespaceID,
+				NsId:      committerpb.MetaNamespaceID,
 				NsVersion: 0,
 				ReadWrites: []*applicationpb.ReadWrite{{
 					Key:   []byte("1"),
@@ -75,11 +75,11 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					}},
 				}},
 				{{ // update ns 1 with incorrect policy.
-					NsId:      types.MetaNamespaceID,
+					NsId:      committerpb.MetaNamespaceID,
 					NsVersion: 0,
 					ReadWrites: []*applicationpb.ReadWrite{{
 						Key:     []byte("1"),
-						Version: types.Version(0),
+						Version: committerpb.Version(0),
 						Value:   policyBytesNs2,
 					}},
 				}},
@@ -92,11 +92,11 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					}},
 				}},
 				{{ // update ns 1 with correct policy.
-					NsId:      types.MetaNamespaceID,
+					NsId:      committerpb.MetaNamespaceID,
 					NsVersion: 0,
 					ReadWrites: []*applicationpb.ReadWrite{{
 						Key:     []byte("1"),
-						Version: types.Version(1),
+						Version: committerpb.Version(1),
 						Value:   policyBytesNs1,
 					}},
 				}},

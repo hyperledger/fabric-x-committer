@@ -17,8 +17,7 @@ import (
 	"github.com/yugabyte/pgx/v4/pgxpool"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/protonotify"
-	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 )
@@ -27,8 +26,8 @@ import (
 var queryRowSQLTemplate string
 
 var (
-	queryPoliciesStmt    = fmt.Sprintf("SELECT key, value, version from ns_%s;", types.MetaNamespaceID)
-	queryConfigStmt      = fmt.Sprintf("SELECT key, value, version from ns_%s;", types.ConfigNamespaceID)
+	queryPoliciesStmt    = fmt.Sprintf("SELECT key, value, version from ns_%s;", committerpb.MetaNamespaceID)
+	queryConfigStmt      = fmt.Sprintf("SELECT key, value, version from ns_%s;", committerpb.ConfigNamespaceID)
 	queryTxIDsStatusStmt = "SELECT tx_id, status, height FROM tx_status WHERE tx_id = ANY($1);"
 )
 
@@ -97,7 +96,7 @@ func (t *sharedLazyTx) Release() {
 // It may not support concurrent execution, depending on the querier implementation.
 func unsafeQueryRows(
 	ctx context.Context, queryObj querier, nsID string, keys [][]byte,
-) ([]*protoqueryservice.Row, error) {
+) ([]*committerpb.Row, error) {
 	queryStmt := vc.FmtNsID(queryRowSQLTemplate, nsID)
 	r, err := queryObj.Query(ctx, queryStmt, keys)
 	if err != nil {
@@ -111,7 +110,7 @@ func unsafeQueryRows(
 // It may not support concurrent execution, depending on the querier implementation.
 func unsafeQueryTxStatus(
 	ctx context.Context, queryObj querier, txIDs [][]byte,
-) ([]*protonotify.TxStatusEvent, error) {
+) ([]*committerpb.TxStatusEvent, error) {
 	r, err := queryObj.Query(ctx, queryTxIDsStatusStmt, txIDs)
 	if err != nil {
 		return nil, err
@@ -162,10 +161,10 @@ func queryConfig(ctx context.Context, queryObj querier) (*applicationpb.ConfigTr
 	return configTX, nil
 }
 
-func readQueryRows(r pgx.Rows, expectedSize int) ([]*protoqueryservice.Row, error) {
-	rows := make([]*protoqueryservice.Row, 0, expectedSize)
+func readQueryRows(r pgx.Rows, expectedSize int) ([]*committerpb.Row, error) {
+	rows := make([]*committerpb.Row, 0, expectedSize)
 	for r.Next() {
-		v := &protoqueryservice.Row{}
+		v := &committerpb.Row{}
 		if err := r.Scan(&v.Key, &v.Value, &v.Version); err != nil {
 			return nil, err
 		}
@@ -174,8 +173,8 @@ func readQueryRows(r pgx.Rows, expectedSize int) ([]*protoqueryservice.Row, erro
 	return rows, r.Err()
 }
 
-func readTxStatusRows(r pgx.Rows, expectedSize int) ([]*protonotify.TxStatusEvent, error) {
-	rows := make([]*protonotify.TxStatusEvent, 0, expectedSize)
+func readTxStatusRows(r pgx.Rows, expectedSize int) ([]*committerpb.TxStatusEvent, error) {
+	rows := make([]*committerpb.TxStatusEvent, 0, expectedSize)
 	for r.Next() {
 		var id []byte
 		var status int32
@@ -190,7 +189,7 @@ func readTxStatusRows(r pgx.Rows, expectedSize int) ([]*protonotify.TxStatusEven
 			return nil, errors.Wrap(err, "failed to create height")
 		}
 
-		rows = append(rows, &protonotify.TxStatusEvent{
+		rows = append(rows, &committerpb.TxStatusEvent{
 			TxId: string(id),
 			StatusWithHeight: &applicationpb.StatusWithHeight{
 				Code:        applicationpb.Status(status),

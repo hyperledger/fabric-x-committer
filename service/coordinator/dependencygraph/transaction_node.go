@@ -11,9 +11,9 @@ import (
 	"strings"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/utils"
 )
 
@@ -174,13 +174,13 @@ func readAndWriteKeys(txNamespaces []*applicationpb.TxNamespace) *readWriteKeys 
 		// including updates.
 		var key string
 		switch ns.NsId {
-		case types.MetaNamespaceID:
-			key = constructCompositeKey(types.ConfigNamespaceID, []byte(types.ConfigKey))
-		case types.ConfigNamespaceID:
+		case committerpb.MetaNamespaceID:
+			key = constructCompositeKey(committerpb.ConfigNamespaceID, []byte(committerpb.ConfigKey))
+		case committerpb.ConfigNamespaceID:
 			// Meta TX is dependent on the config TX, but not the other way around.
 			// The above dependency for meta TX is sufficed to force an order between config and meta transactions.
 		default:
-			key = constructCompositeKey(types.MetaNamespaceID, []byte(ns.NsId))
+			key = constructCompositeKey(committerpb.MetaNamespaceID, []byte(ns.NsId))
 		}
 		if key != "" {
 			readOnlyKeys = append(readOnlyKeys, key)

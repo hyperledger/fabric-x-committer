@@ -7,9 +7,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             v5.29.3
-// source: api/protonotify/notify.proto
+// source: api/committerpb/notify.proto
 
-package protonotify
+package committerpb
 
 import (
 	context "context"
@@ -24,7 +24,7 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Notifier_OpenNotificationStream_FullMethodName = "/protonotify.Notifier/OpenNotificationStream"
+	Notifier_OpenNotificationStream_FullMethodName = "/committerpb.Notifier/OpenNotificationStream"
 )
 
 // NotifierClient is the client API for Notifier service.
@@ -131,7 +131,7 @@ func (x *notifierOpenNotificationStreamServer) Recv() (*NotificationRequest, err
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Notifier_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "protonotify.Notifier",
+	ServiceName: "committerpb.Notifier",
 	HandlerType: (*NotifierServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
@@ -142,5 +142,5 @@ var Notifier_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "api/protonotify/notify.proto",
+	Metadata: "api/committerpb/notify.proto",
 }

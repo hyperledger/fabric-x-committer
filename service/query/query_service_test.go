@@ -22,8 +22,7 @@ import (
 	"golang.org/x/exp/slices"
 	"google.golang.org/grpc/status"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/loadgen"
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -39,7 +38,7 @@ type queryServiceTestEnv struct {
 	config        *Config
 	qs            *Service
 	ns            []string
-	clientConn    protoqueryservice.QueryServiceClient
+	clientConn    committerpb.QueryServiceClient
 	pool          *pgxpool.Pool
 	disabledViews []string
 }
@@ -75,7 +74,7 @@ func TestQuery(t *testing.T) {
 			t.Parallel()
 			ret, err := unsafeQueryRows(t.Context(), env.pool, qNs.NsId, qNs.Keys)
 			require.NoError(t, err)
-			requireRow(t, expectedItem, &protoqueryservice.RowsNamespace{
+			requireRow(t, expectedItem, &committerpb.RowsNamespace{
 				NsId: qNs.NsId,
 				Rows: ret,
 			})
@@ -108,7 +107,7 @@ func TestQuery(t *testing.T) {
 
 	t.Run("Query GetRows client with view", func(t *testing.T) {
 		t.Parallel()
-		ret, err := env.clientConn.GetRows(t.Context(), &protoqueryservice.Query{
+		ret, err := env.clientConn.GetRows(t.Context(), &committerpb.Query{
 			View:       env.beginView(t, env.clientConn, defaultViewParams(time.Minute)),
 			Namespaces: query.Namespaces,
 		})
@@ -123,7 +122,7 @@ func TestQuery(t *testing.T) {
 
 	t.Run("Bad view ID", func(t *testing.T) {
 		t.Parallel()
-		_, err := env.clientConn.EndView(t.Context(), &protoqueryservice.View{Id: "bad"})
+		_, err := env.clientConn.EndView(t.Context(), &committerpb.View{Id: "bad"})
 		require.Equal(t, ErrInvalidOrStaleView.Error(), status.Convert(err).Message())
 	})
 
@@ -155,7 +154,7 @@ func TestQueryMetrics(t *testing.T) {
 
 	t.Log("Query GetRows client with view")
 	view0 := env.beginView(t, env.clientConn, defaultViewParams(time.Minute))
-	ret, err := env.clientConn.GetRows(t.Context(), &protoqueryservice.Query{
+	ret, err := env.clientConn.GetRows(t.Context(), &committerpb.Query{
 		View:       view0,
 		Namespaces: query.Namespaces,
 	})
@@ -195,7 +194,7 @@ func TestQueryWithConsistentView(t *testing.T) {
 
 	t.Log("Query GetRows client with view")
 	view0 := env.beginView(t, client, defaultViewParams(time.Minute))
-	ret, err := client.GetRows(t.Context(), &protoqueryservice.Query{
+	ret, err := client.GetRows(t.Context(), &committerpb.Query{
 		View:       view0,
 		Namespaces: query.Namespaces,
 	})
@@ -210,9 +209,9 @@ func TestQueryWithConsistentView(t *testing.T) {
 	testItem1 := items{"0", t1.keys[:1], t1.values[:1], t1.versions[:1]}
 
 	view1 := env.beginView(t, client, defaultViewParams(time.Minute))
-	ret, err = client.GetRows(t.Context(), &protoqueryservice.Query{
+	ret, err = client.GetRows(t.Context(), &committerpb.Query{
 		View: view1,
-		Namespaces: []*protoqueryservice.QueryNamespace{{
+		Namespaces: []*committerpb.QueryNamespace{{
 			NsId: testItem1.ns,
 			Keys: testItem1.keys,
 		}},
@@ -227,9 +226,9 @@ func TestQueryWithConsistentView(t *testing.T) {
 	testItem2Mod.versions = []uint64{2}
 	env.update(t, &testItem2Mod)
 
-	key2Query := &protoqueryservice.Query{
+	key2Query := &committerpb.Query{
 		View: view1,
-		Namespaces: []*protoqueryservice.QueryNamespace{{
+		Namespaces: []*committerpb.QueryNamespace{{
 			NsId: testItem2.ns,
 			Keys: testItem2.keys,
 		}},
@@ -364,7 +363,7 @@ func generateNamespacesUnderTest(t *testing.T, namespaces []string) *vc.Database
 	policies := &workload.PolicyProfile{
 		NamespacePolicies: make(map[string]*workload.Policy, len(namespaces)),
 	}
-	for i, ns := range append(namespaces, types.MetaNamespaceID) {
+	for i, ns := range append(namespaces, committerpb.MetaNamespaceID) {
 		policies.NamespacePolicies[ns] = &workload.Policy{
 			Scheme: signature.Ecdsa,
 			Seed:   int64(i),
@@ -385,10 +384,10 @@ type items struct {
 	versions     []uint64
 }
 
-func (it *items) asRows() []*protoqueryservice.Row {
-	rows := make([]*protoqueryservice.Row, len(it.keys))
+func (it *items) asRows() []*committerpb.Row {
+	rows := make([]*committerpb.Row, len(it.keys))
 	for i, k := range it.keys {
-		rows[i] = &protoqueryservice.Row{
+		rows[i] = &committerpb.Row{
 			Key:     k,
 			Value:   it.values[i],
 			Version: it.versions[i],
@@ -397,8 +396,8 @@ func (it *items) asRows() []*protoqueryservice.Row {
 	return rows
 }
 
-func (it *items) asQuery() *protoqueryservice.QueryNamespace {
-	q := &protoqueryservice.QueryNamespace{
+func (it *items) asQuery() *committerpb.QueryNamespace {
+	q := &committerpb.QueryNamespace{
 		NsId: it.ns,
 		// Add additional item that does not exist.
 		Keys: append(it.keys, strToBytes("non+tx")...),
@@ -444,7 +443,7 @@ func (q *queryServiceTestEnv) update(t *testing.T, i *items) {
 func requireResults(
 	t *testing.T,
 	expected []*items,
-	ret []*protoqueryservice.RowsNamespace,
+	ret []*committerpb.RowsNamespace,
 ) {
 	t.Helper()
 	require.Len(t, ret, len(expected))
@@ -456,7 +455,7 @@ func requireResults(
 func requireRow(
 	t *testing.T,
 	expected *items,
-	ret *protoqueryservice.RowsNamespace,
+	ret *committerpb.RowsNamespace,
 ) {
 	t.Helper()
 	require.Equal(t, expected.ns, ret.NsId)
@@ -472,9 +471,9 @@ func requireIntVecMetricValue(t *testing.T, expected int, mv *prometheus.MetricV
 
 func (q *queryServiceTestEnv) beginView(
 	t *testing.T,
-	client protoqueryservice.QueryServiceClient,
-	params *protoqueryservice.ViewParameters,
-) *protoqueryservice.View {
+	client committerpb.QueryServiceClient,
+	params *committerpb.ViewParameters,
+) *committerpb.View {
 	t.Helper()
 	view, err := client.BeginView(t.Context(), params)
 	require.NoError(t, err)
@@ -496,8 +495,8 @@ func (q *queryServiceTestEnv) beginView(
 
 func (q *queryServiceTestEnv) endView(
 	t *testing.T,
-	client protoqueryservice.QueryServiceClient,
-	view *protoqueryservice.View,
+	client committerpb.QueryServiceClient,
+	view *committerpb.View,
 ) {
 	t.Helper()
 	_, err := client.EndView(t.Context(), view)
@@ -520,9 +519,9 @@ func (q *queryServiceTestEnv) makeItems(t *testing.T) []*items {
 	return requiredItems
 }
 
-func makeQuery(it []*items) (query *protoqueryservice.Query, keyCount, querySize int) {
-	query = &protoqueryservice.Query{
-		Namespaces: make([]*protoqueryservice.QueryNamespace, len(it)),
+func makeQuery(it []*items) (query *committerpb.Query, keyCount, querySize int) {
+	query = &committerpb.Query{
+		Namespaces: make([]*committerpb.QueryNamespace, len(it)),
 	}
 	for i, item := range it {
 		keyCount += len(item.keys)
@@ -533,9 +532,9 @@ func makeQuery(it []*items) (query *protoqueryservice.Query, keyCount, querySize
 	return query, keyCount, querySize
 }
 
-func defaultViewParams(timeout time.Duration) *protoqueryservice.ViewParameters {
-	return &protoqueryservice.ViewParameters{
-		IsoLevel:            protoqueryservice.IsoLevel_RepeatableRead,
+func defaultViewParams(timeout time.Duration) *committerpb.ViewParameters {
+	return &committerpb.ViewParameters{
+		IsoLevel:            committerpb.IsoLevel_RepeatableRead,
 		NonDeferrable:       false,
 		TimeoutMilliseconds: uint64(timeout.Milliseconds()), //nolint:gosec
 	}
@@ -546,7 +545,7 @@ func createQueryClientWithTLS(
 	t *testing.T,
 	ep *connection.Endpoint,
 	tlsCfg connection.TLSConfig,
-) protoqueryservice.QueryServiceClient {
+) committerpb.QueryServiceClient {
 	t.Helper()
-	return test.CreateClientWithTLS(t, ep, tlsCfg, protoqueryservice.NewQueryServiceClient)
+	return test.CreateClientWithTLS(t, ep, tlsCfg, committerpb.NewQueryServiceClient)
 }

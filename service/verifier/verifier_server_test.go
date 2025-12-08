@@ -31,8 +31,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/certificate"
@@ -131,7 +131,7 @@ func TestMinimalInput(t *testing.T) {
 
 	tx3 := &applicationpb.Tx{
 		Namespaces: []*applicationpb.TxNamespace{{
-			NsId:      types.MetaNamespaceID,
+			NsId:      committerpb.MetaNamespaceID,
 			NsVersion: 0,
 			BlindWrites: []*applicationpb.Write{{
 				Key: []byte("0011"),
@@ -144,9 +144,9 @@ func TestMinimalInput(t *testing.T) {
 	err := stream.Send(&protosigverifierservice.Batch{
 		Update: update,
 		Requests: []*protosigverifierservice.Tx{
-			{Ref: types.TxRef(fakeTxID, 1, 1), Tx: tx1},
-			{Ref: types.TxRef(fakeTxID, 1, 1), Tx: tx2},
-			{Ref: types.TxRef(fakeTxID, 1, 1), Tx: tx3},
+			{Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx1},
+			{Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx2},
+			{Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx3},
 		},
 	})
 	require.NoError(t, err)
@@ -242,7 +242,7 @@ func TestSignatureRule(t *testing.T) {
 		requireTestCase(t, stream, &testCase{
 			update: update,
 			req: &protosigverifierservice.Tx{
-				Ref: types.TxRef(fakeTxID, 1, 1), Tx: tx1,
+				Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx1,
 			},
 			expectedStatus: applicationpb.Status_COMMITTED,
 		})
@@ -265,7 +265,7 @@ func TestSignatureRule(t *testing.T) {
 	requireTestCase(t, stream, &testCase{
 		update: update,
 		req: &protosigverifierservice.Tx{
-			Ref: types.TxRef(fakeTxID, 1, 1), Tx: tx1,
+			Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx1,
 		},
 		expectedStatus: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
 	})
@@ -284,7 +284,7 @@ func TestBadSignature(t *testing.T) {
 
 	requireTestCase(t, stream, &testCase{
 		req: &protosigverifierservice.Tx{
-			Ref: types.TxRef(fakeTxID, 1, 0),
+			Ref: committerpb.TxRef(fakeTxID, 1, 0),
 			Tx: &applicationpb.Tx{
 				Namespaces: []*applicationpb.TxNamespace{{
 					NsId:      "1",
@@ -380,7 +380,7 @@ func TestUpdatePolicies(t *testing.T) {
 		sign(t, tx, ns1Signer, ns2Signer)
 		requireTestCase(t, stream, &testCase{
 			req: &protosigverifierservice.Tx{
-				Ref: types.TxRef(fakeTxID, 1, 1),
+				Ref: committerpb.TxRef(fakeTxID, 1, 1),
 				Tx:  tx,
 			},
 			expectedStatus: applicationpb.Status_COMMITTED,
@@ -433,7 +433,7 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 		sign(t, tx, append(uniqueNsSigners, commonNsSigners[i])...)
 		require.NoError(t, stream.Send(&protosigverifierservice.Batch{
 			Requests: []*protosigverifierservice.Tx{{
-				Ref: types.TxRef(fakeTxID, 0, 0),
+				Ref: committerpb.TxRef(fakeTxID, 0, 0),
 				Tx:  tx,
 			}},
 		}))
@@ -454,7 +454,7 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 	sign(t, tx, uniqueNsSigners...)
 	requireTestCase(t, stream, &testCase{
 		req: &protosigverifierservice.Tx{
-			Ref: types.TxRef(fakeTxID, 1, 1),
+			Ref: committerpb.TxRef(fakeTxID, 1, 1),
 			Tx:  tx,
 		},
 		expectedStatus: applicationpb.Status_COMMITTED,

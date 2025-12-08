@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/protonotify"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -29,7 +29,7 @@ type relayTestEnv struct {
 	coordinator                *mock.Coordinator
 	incomingBlockToBeCommitted chan *common.Block
 	committedBlock             chan *common.Block
-	statusQueue                chan []*protonotify.TxStatusEvent
+	statusQueue                chan []*committerpb.TxStatusEvent
 	configBlocks               []*common.Block
 	metrics                    *perfMetrics
 	waitingTxsLimit            int
@@ -60,7 +60,7 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 		coordinator:                coord,
 		incomingBlockToBeCommitted: make(chan *common.Block, 10),
 		committedBlock:             make(chan *common.Block, 10),
-		statusQueue:                make(chan []*protonotify.TxStatusEvent, 10),
+		statusQueue:                make(chan []*committerpb.TxStatusEvent, 10),
 		metrics:                    metrics,
 		waitingTxsLimit:            100,
 	}
@@ -109,7 +109,7 @@ func TestRelayNormalBlock(t *testing.T) {
 
 	t.Log("Block #0: Check status in the queue")
 	status0 := relayEnv.readAllStatusQueue(t)
-	test.RequireProtoElementsMatch(t, []*protonotify.TxStatusEvent{
+	test.RequireProtoElementsMatch(t, []*committerpb.TxStatusEvent{
 		{
 			TxId: txIDs0[0],
 			StatusWithHeight: &applicationpb.StatusWithHeight{
@@ -190,7 +190,7 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 
 	t.Log("Block #0: Check status in the queue")
 	status0 := relayEnv.readAllStatusQueue(t)
-	test.RequireProtoElementsMatch(t, []*protonotify.TxStatusEvent{
+	test.RequireProtoElementsMatch(t, []*committerpb.TxStatusEvent{
 		{
 			TxId: txIDs0[0],
 			StatusWithHeight: &applicationpb.StatusWithHeight{
@@ -218,7 +218,7 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 
 	t.Log("Block #1: Check status in the queue")
 	status1 := relayEnv.readAllStatusQueue(t)
-	test.RequireProtoElementsMatch(t, []*protonotify.TxStatusEvent{
+	test.RequireProtoElementsMatch(t, []*committerpb.TxStatusEvent{
 		{
 			TxId: txIDs1[0],
 			StatusWithHeight: &applicationpb.StatusWithHeight{
@@ -301,9 +301,9 @@ func TestRelayConfigBlock(t *testing.T) {
 	require.Equal(t, blk2, committedBlock2)
 }
 
-func (e *relayTestEnv) readAllStatusQueue(t *testing.T) []*protonotify.TxStatusEvent {
+func (e *relayTestEnv) readAllStatusQueue(t *testing.T) []*committerpb.TxStatusEvent {
 	t.Helper()
-	var status []*protonotify.TxStatusEvent
+	var status []*committerpb.TxStatusEvent
 	statusQueue := channel.NewReader(t.Context(), e.statusQueue)
 	// We have to read multiple times from the queue because it might split the status report into batches according
 	// to the processing logic.

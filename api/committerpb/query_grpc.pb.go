@@ -7,9 +7,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             v5.29.3
-// source: api/protoqueryservice/query.proto
+// source: api/committerpb/query.proto
 
-package protoqueryservice
+package committerpb
 
 import (
 	context "context"
@@ -26,12 +26,12 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	QueryService_GetRows_FullMethodName              = "/protoqueryservice.QueryService/GetRows"
-	QueryService_BeginView_FullMethodName            = "/protoqueryservice.QueryService/BeginView"
-	QueryService_EndView_FullMethodName              = "/protoqueryservice.QueryService/EndView"
-	QueryService_GetNamespacePolicies_FullMethodName = "/protoqueryservice.QueryService/GetNamespacePolicies"
-	QueryService_GetConfigTransaction_FullMethodName = "/protoqueryservice.QueryService/GetConfigTransaction"
-	QueryService_GetTransactionStatus_FullMethodName = "/protoqueryservice.QueryService/GetTransactionStatus"
+	QueryService_GetRows_FullMethodName              = "/committerpb.QueryService/GetRows"
+	QueryService_BeginView_FullMethodName            = "/committerpb.QueryService/BeginView"
+	QueryService_EndView_FullMethodName              = "/committerpb.QueryService/EndView"
+	QueryService_GetNamespacePolicies_FullMethodName = "/committerpb.QueryService/GetNamespacePolicies"
+	QueryService_GetConfigTransaction_FullMethodName = "/committerpb.QueryService/GetConfigTransaction"
+	QueryService_GetTransactionStatus_FullMethodName = "/committerpb.QueryService/GetTransactionStatus"
 )
 
 // QueryServiceClient is the client API for QueryService service.
@@ -268,7 +268,7 @@ func _QueryService_GetTransactionStatus_Handler(srv interface{}, ctx context.Con
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var QueryService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "protoqueryservice.QueryService",
+	ServiceName: "committerpb.QueryService",
 	HandlerType: (*QueryServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -297,5 +297,5 @@ var QueryService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "api/protoqueryservice/query.proto",
+	Metadata: "api/committerpb/query.proto",
 }
