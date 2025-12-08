@@ -15,7 +15,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
@@ -24,7 +24,7 @@ type (
 	// transactionPreparer prepares transaction batches for validation and commit.
 	transactionPreparer struct {
 		// incomingTransactionBatch is an input to the preparer
-		incomingTransactionBatch <-chan *protovcservice.Batch
+		incomingTransactionBatch <-chan *protovcservice.VcBatch
 		// outgoingPreparedTransactions is an output of the preparer and an input to the validator
 		outgoingPreparedTransactions chan<- *preparedTransactions
 		// metrics is the metrics collector
@@ -54,7 +54,7 @@ type (
 		txIDToHeight      transactionIDToHeight         // Maps txIDs to height in the blockchain.
 	}
 
-	transactionIDToHeight map[TxID]*types.Height
+	transactionIDToHeight map[TxID]*servicepb.Height
 
 	// namespaceToReads maps a namespace ID to a list of reads performed within that namespace.
 	namespaceToReads map[string]*reads
@@ -91,7 +91,7 @@ type (
 
 // newPreparer creates a new preparer instance with input channel txBatch and output channel preparedTxs.
 func newPreparer(
-	txBatch <-chan *protovcservice.Batch,
+	txBatch <-chan *protovcservice.VcBatch,
 	preparedTxs chan<- *preparedTransactions,
 	metrics *perfMetrics,
 ) *transactionPreparer {
@@ -162,7 +162,7 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 				// Hence, we detect such duplicate transactions and ignore them.
 				continue
 			}
-			prepTxs.txIDToHeight[TxID(tx.Ref.TxId)] = types.NewHeightFromTxRef(tx.Ref)
+			prepTxs.txIDToHeight[TxID(tx.Ref.TxId)] = servicepb.NewHeightFromTxRef(tx.Ref)
 			// If the preliminary invalid transaction status is set,
 			// the vcservice does not need to validate the transaction,
 			// but it will still commit the status only if the txID is not a duplicate.

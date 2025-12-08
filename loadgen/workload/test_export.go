@@ -17,7 +17,7 @@ import (
 )
 
 // GenerateTransactions is used for benchmarking.
-func GenerateTransactions(tb testing.TB, p *Profile, count int) []*protoloadgen.TX {
+func GenerateTransactions(tb testing.TB, p *Profile, count int) []*protoloadgen.LoadGenTx {
 	tb.Helper()
 	s := NewTxStream(p, &StreamOptions{
 		BuffersSize: 1024,

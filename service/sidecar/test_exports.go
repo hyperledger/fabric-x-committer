@@ -17,7 +17,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -43,7 +43,7 @@ func RequireNotifications( //nolint:revive // argument-limit.
 		//nolint:gosec // int -> uint32.
 		expected = append(expected, &committerpb.TxStatusEvent{
 			TxId:             txIDs[i],
-			StatusWithHeight: types.NewStatusWithHeight(s, expectedBlockNumber, uint32(i)),
+			StatusWithHeight: servicepb.NewStatusWithHeight(s, expectedBlockNumber, uint32(i)),
 		})
 	}
 
@@ -60,9 +60,9 @@ func RequireNotifications( //nolint:revive // argument-limit.
 
 // MalformedTxTestCases are valid and invalid TXs due to malformed.
 func MalformedTxTestCases(txb *workload.TxBuilder) (
-	txs []*protoloadgen.TX, expectedStatuses []applicationpb.Status,
+	txs []*protoloadgen.LoadGenTx, expectedStatuses []applicationpb.Status,
 ) {
-	add := func(expected applicationpb.Status, tx *protoloadgen.TX) {
+	add := func(expected applicationpb.Status, tx *protoloadgen.LoadGenTx) {
 		txs = append(txs, tx)
 		expectedStatuses = append(expectedStatuses, expected)
 	}

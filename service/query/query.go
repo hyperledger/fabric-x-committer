@@ -18,7 +18,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 )
 
@@ -184,7 +184,7 @@ func readTxStatusRows(r pgx.Rows, expectedSize int) ([]*committerpb.TxStatusEven
 			return nil, errors.Wrap(err, "failed to read rows from the query result")
 		}
 
-		ht, _, err := types.NewHeightFromBytes(height)
+		ht, _, err := servicepb.NewHeightFromBytes(height)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create height")
 		}

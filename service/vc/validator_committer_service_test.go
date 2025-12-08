@@ -20,7 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -103,8 +103,8 @@ func TestCreateConfigAndTables(t *testing.T) {
 	require.NoError(t, err)
 	configID := "create config"
 	configValue := []byte("config")
-	txBatch1 := &protovcservice.Batch{
-		Transactions: []*protovcservice.Tx{{
+	txBatch1 := &protovcservice.VcBatch{
+		Transactions: []*protovcservice.VcTx{{
 			Ref: committerpb.TxRef(configID, 0, 0),
 			Namespaces: []*applicationpb.TxNamespace{{
 				NsId:      committerpb.ConfigNamespaceID,
@@ -126,7 +126,7 @@ func TestCreateConfigAndTables(t *testing.T) {
 	require.NotNil(t, txStatus1.Status)
 
 	require.Equal(t,
-		types.NewStatusWithHeight(applicationpb.Status_COMMITTED, 0, 0),
+		servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 0, 0),
 		txStatus1.Status[configID],
 	)
 
@@ -138,8 +138,8 @@ func TestCreateConfigAndTables(t *testing.T) {
 
 	metaID := "create namespace 1"
 	utNsID := "1"
-	txBatch2 := &protovcservice.Batch{
-		Transactions: []*protovcservice.Tx{{
+	txBatch2 := &protovcservice.VcBatch{
+		Transactions: []*protovcservice.VcTx{{
 			Ref: committerpb.TxRef(metaID, 1, 0),
 			Namespaces: []*applicationpb.TxNamespace{{
 				NsId:      committerpb.MetaNamespaceID,
@@ -160,7 +160,7 @@ func TestCreateConfigAndTables(t *testing.T) {
 	require.NotNil(t, txStatus2.Status)
 
 	require.Equal(t,
-		types.NewStatusWithHeight(applicationpb.Status_COMMITTED, 1, 0),
+		servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 1, 0),
 		txStatus2.Status[metaID],
 	)
 
@@ -199,8 +199,8 @@ func TestValidatorAndCommitterService(t *testing.T) {
 	t.Run("all valid txs", func(t *testing.T) {
 		t.Parallel()
 		env := setup()
-		txBatch := &protovcservice.Batch{
-			Transactions: []*protovcservice.Tx{
+		txBatch := &protovcservice.VcBatch{
+			Transactions: []*protovcservice.VcTx{
 				// The following 3 TXs test the blind write path, merging to the update path
 				{
 					Ref: committerpb.TxRef("Blind write without value", 1, 1),
@@ -305,7 +305,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		expectedTxStatus := make(map[string]*applicationpb.StatusWithHeight)
 		txIDs := make([]string, len(txBatch.Transactions))
 		for i, tx := range txBatch.Transactions {
-			status := types.NewStatusWithHeightFromRef(applicationpb.Status_COMMITTED, tx.Ref)
+			status := servicepb.NewStatusWithHeightFromRef(applicationpb.Status_COMMITTED, tx.Ref)
 			expectedTxStatus[tx.Ref.TxId] = status
 			txIDs[i] = tx.Ref.TxId
 			assert.EqualExportedValuesf(t, status, txStatus.Status[tx.Ref.TxId], "TX ID: %s", tx.Ref.TxId)
@@ -319,8 +319,8 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		ctx, _ := createContext(t)
 		test.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
 
-		txBatch = &protovcservice.Batch{
-			Transactions: []*protovcservice.Tx{
+		txBatch = &protovcservice.VcBatch{
+			Transactions: []*protovcservice.VcTx{
 				{
 					Ref: committerpb.TxRef("New key 2 no value", 2, 0),
 					Namespaces: []*applicationpb.TxNamespace{
@@ -351,8 +351,8 @@ func TestValidatorAndCommitterService(t *testing.T) {
 	t.Run("invalid tx", func(t *testing.T) {
 		t.Parallel()
 		env := setup()
-		txBatch := &protovcservice.Batch{
-			Transactions: []*protovcservice.Tx{
+		txBatch := &protovcservice.VcBatch{
+			Transactions: []*protovcservice.VcTx{
 				{
 					Ref: committerpb.TxRef("Namespace version mismatch", 4, 1),
 					Namespaces: []*applicationpb.TxNamespace{
@@ -412,7 +412,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		expectedTxStatus := make(map[string]*applicationpb.StatusWithHeight, len(txBatch.Transactions))
 		txIDs := make([]string, len(txBatch.Transactions))
 		for i, tx := range txBatch.Transactions {
-			expectedTxStatus[tx.Ref.TxId] = types.NewStatusWithHeightFromRef(expectedStatus[i], tx.Ref)
+			expectedTxStatus[tx.Ref.TxId] = servicepb.NewStatusWithHeightFromRef(expectedStatus[i], tx.Ref)
 			txIDs = append(txIDs, tx.Ref.TxId)
 		}
 
@@ -547,11 +547,11 @@ func TestTransactionResubmission(t *testing.T) {
 	}
 
 	txs := []struct {
-		tx             *protovcservice.Tx
+		tx             *protovcservice.VcTx
 		expectedStatus applicationpb.Status
 	}{
 		{
-			tx: &protovcservice.Tx{
+			tx: &protovcservice.VcTx{
 				Ref: committerpb.TxRef("Blind write with value", 1, 2),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
@@ -569,7 +569,7 @@ func TestTransactionResubmission(t *testing.T) {
 			expectedStatus: applicationpb.Status_COMMITTED,
 		},
 		{
-			tx: &protovcservice.Tx{
+			tx: &protovcservice.VcTx{
 				Ref: committerpb.TxRef("New key with value", 2, 4),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
@@ -587,7 +587,7 @@ func TestTransactionResubmission(t *testing.T) {
 			expectedStatus: applicationpb.Status_COMMITTED,
 		},
 		{
-			tx: &protovcservice.Tx{
+			tx: &protovcservice.VcTx{
 				Ref: committerpb.TxRef("New key no value", 3, 5),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
@@ -604,7 +604,7 @@ func TestTransactionResubmission(t *testing.T) {
 			expectedStatus: applicationpb.Status_COMMITTED,
 		},
 		{
-			tx: &protovcservice.Tx{
+			tx: &protovcservice.VcTx{
 				Ref: committerpb.TxRef("invalid sign", 3, 6),
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
 					Code: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
@@ -613,7 +613,7 @@ func TestTransactionResubmission(t *testing.T) {
 			expectedStatus: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
 		},
 		{
-			tx: &protovcservice.Tx{
+			tx: &protovcservice.VcTx{
 				Ref: committerpb.TxRef("duplicate namespace", 3, 7),
 				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
 					Code: applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
@@ -622,7 +622,7 @@ func TestTransactionResubmission(t *testing.T) {
 			expectedStatus: applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
 		},
 		{
-			tx: &protovcservice.Tx{
+			tx: &protovcservice.VcTx{
 				Ref: committerpb.TxRef("conflict", 3, 8),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
@@ -640,12 +640,12 @@ func TestTransactionResubmission(t *testing.T) {
 		},
 	}
 
-	txBatch := &protovcservice.Batch{}
+	txBatch := &protovcservice.VcBatch{}
 	expectedTxStatus := make(map[string]*applicationpb.StatusWithHeight)
 	txIDs := make([]string, len(txs))
 	for i, t := range txs {
 		txBatch.Transactions = append(txBatch.Transactions, t.tx)
-		expectedTxStatus[t.tx.Ref.TxId] = types.NewStatusWithHeightFromRef(t.expectedStatus, t.tx.Ref)
+		expectedTxStatus[t.tx.Ref.TxId] = servicepb.NewStatusWithHeightFromRef(t.expectedStatus, t.tx.Ref)
 		txIDs[i] = t.tx.Ref.TxId
 	}
 
@@ -692,7 +692,7 @@ func TestTransactionResubmission(t *testing.T) {
 	t.Run("same transactions submitted again within the minbatchsize", func(t *testing.T) {
 		t.Parallel()
 		ctx, env := setup()
-		txBatchWithDup := &protovcservice.Batch{}
+		txBatchWithDup := &protovcservice.VcBatch{}
 		txBatchWithDup.Transactions = append(txBatchWithDup.Transactions, txBatch.Transactions...)
 		txBatchWithDup.Transactions = append(txBatchWithDup.Transactions, txBatch.Transactions...)
 		require.NoError(t, env.streams[0].Send(txBatchWithDup))
@@ -708,7 +708,7 @@ func TestTransactionResubmission(t *testing.T) {
 	t.Run("same duplicate transactions submitted in parallel to all vcservices", func(t *testing.T) {
 		t.Parallel()
 		ctx, env := setup()
-		txBatchWithDup := &protovcservice.Batch{}
+		txBatchWithDup := &protovcservice.VcBatch{}
 		for range 10 {
 			txBatchWithDup.Transactions = append(txBatchWithDup.Transactions, txBatch.Transactions...)
 			txBatchWithDup.Transactions = append(txBatchWithDup.Transactions, txBatch.Transactions...)

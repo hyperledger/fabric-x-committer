@@ -19,7 +19,7 @@ import (
 )
 
 // CreateLoadGenNamespacesTX creating the transaction containing the requested namespaces into the MetaNamespace.
-func CreateLoadGenNamespacesTX(policy *PolicyProfile) (*protoloadgen.TX, error) {
+func CreateLoadGenNamespacesTX(policy *PolicyProfile) (*protoloadgen.LoadGenTx, error) {
 	txb, txbErr := NewTxBuilderFromPolicy(policy, nil)
 	if txbErr != nil {
 		return nil, txbErr

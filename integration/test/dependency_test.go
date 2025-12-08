@@ -117,7 +117,7 @@ func TestDependentHappyPath(t *testing.T) {
 
 	for _, tt := range tests { //nolint:paralleltest // order is important.
 		t.Run(tt.name, func(t *testing.T) {
-			txs := make([]*protoloadgen.TX, len(tt.txs))
+			txs := make([]*protoloadgen.LoadGenTx, len(tt.txs))
 			for i, tx := range tt.txs {
 				txs[i] = c.TxBuilder.MakeTx(&applicationpb.Tx{
 					Namespaces: []*applicationpb.TxNamespace{
@@ -189,7 +189,7 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 
 	for _, tt := range tests { //nolint:paralleltest // order is important.
 		t.Run(tt.name, func(t *testing.T) {
-			txs := []*protoloadgen.TX{
+			txs := []*protoloadgen.LoadGenTx{
 				c.TxBuilder.MakeTx(&applicationpb.Tx{
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      "1",

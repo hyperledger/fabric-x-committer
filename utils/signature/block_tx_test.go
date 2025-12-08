@@ -45,7 +45,7 @@ func BenchmarkDigest(b *testing.B) {
 func TestAsnMarshal(t *testing.T) {
 	t.Parallel()
 
-	txs := []*protoloadgen.TX{{
+	txs := []*protoloadgen.LoadGenTx{{
 		Id: "some-tx-id",
 		Tx: &applicationpb.Tx{Namespaces: txTestCases},
 	}}

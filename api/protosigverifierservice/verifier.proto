@@ -14,29 +14,29 @@ import "api/applicationpb/block_tx.proto";
 import "api/protocoordinatorservice/coordinator.proto";
 
 service Verifier {
-    rpc StartStream(stream Batch) returns (stream ResponseBatch);
+    rpc StartStream(stream VerifierBatch) returns (stream VerifierResponseBatch);
 }
 
-message Batch {
-    optional Update update = 1;
-    repeated Tx requests = 2;
+message VerifierBatch {
+    optional VerifierUpdate update = 1;
+    repeated VerifierTx requests = 2;
 }
 
-message Update {
+message VerifierUpdate {
     optional applicationpb.ConfigTransaction config = 1;
     optional applicationpb.NamespacePolicies namespace_policies = 2;
 }
 
-message Tx {
+message VerifierTx {
     protocoordinatorservice.TxRef ref = 1;
     applicationpb.Tx tx = 2;
 }
 
-message Response {
+message VerifierResponse {
     protocoordinatorservice.TxRef ref = 1;
     applicationpb.Status status = 2;
 }
 
-message ResponseBatch {
-    repeated Response responses = 1;
+message VerifierResponseBatch {
+    repeated VerifierResponse responses = 1;
 }

@@ -30,7 +30,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
@@ -562,7 +562,7 @@ func (env *sidecarTestEnv) sendTransactionsAndEnsureCommitted(
 func (env *sidecarTestEnv) sendGeneratedTransactionsForBlock(
 	ctx context.Context,
 	t *testing.T,
-) []*protoloadgen.TX {
+) []*protoloadgen.LoadGenTx {
 	t.Helper()
 	// mock-orderer expects <blockSize> txs to create the next block.
 	return env.sendGeneratedTransactions(ctx, t, blockSize)
@@ -572,9 +572,9 @@ func (env *sidecarTestEnv) sendGeneratedTransactions(
 	ctx context.Context,
 	t *testing.T,
 	count int,
-) []*protoloadgen.TX {
+) []*protoloadgen.LoadGenTx {
 	t.Helper()
-	txs := make([]*protoloadgen.TX, count)
+	txs := make([]*protoloadgen.LoadGenTx, count)
 	for i := range txs {
 		txs[i] = makeValidTx(t, env.ordererEnv.TestConfig.ChanID)
 	}
@@ -583,7 +583,7 @@ func (env *sidecarTestEnv) sendGeneratedTransactions(
 }
 
 // submitTXs submits the given TXs and register them in the notification service.
-func (env *sidecarTestEnv) submitTXs(ctx context.Context, t *testing.T, txs []*protoloadgen.TX) {
+func (env *sidecarTestEnv) submitTXs(ctx context.Context, t *testing.T, txs []*protoloadgen.LoadGenTx) {
 	t.Helper()
 	txIDs := make([]string, len(txs))
 	for i, tx := range txs {
@@ -610,7 +610,7 @@ func (env *sidecarTestEnv) requireBlockWithTXs(
 	ctx context.Context,
 	t *testing.T,
 	expectedBlockNumber uint64,
-	txs []*protoloadgen.TX,
+	txs []*protoloadgen.LoadGenTx,
 ) {
 	t.Helper()
 	allValid := make([]applicationpb.Status, len(txs))
@@ -625,7 +625,7 @@ func (env *sidecarTestEnv) requireBlockWithTXsAndStatus(
 	ctx context.Context,
 	t *testing.T,
 	expectedBlockNumber uint64,
-	txs []*protoloadgen.TX,
+	txs []*protoloadgen.LoadGenTx,
 	status []applicationpb.Status,
 ) {
 	t.Helper()
@@ -696,11 +696,11 @@ func TestConstructStatuses(t *testing.T) {
 			TxNumber:    6,
 		},
 	}
-	expectedHeight := map[string]*types.Height{
-		"tx1": types.NewHeight(1, 1),
-		"tx2": types.NewHeight(1, 3),
-		"tx3": types.NewHeight(1, 5),
-		"tx4": types.NewHeight(1, 6),
+	expectedHeight := map[string]*servicepb.Height{
+		"tx1": servicepb.NewHeight(1, 1),
+		"tx2": servicepb.NewHeight(1, 3),
+		"tx3": servicepb.NewHeight(1, 5),
+		"tx4": servicepb.NewHeight(1, 6),
 	}
 
 	expectedFinalStatuses := []applicationpb.Status{
@@ -735,7 +735,7 @@ func checkNextBlockNumberToCommit(
 	}, expectedProcessingTime, 50*time.Millisecond)
 }
 
-func makeValidTx(t *testing.T, chanID string) *protoloadgen.TX {
+func makeValidTx(t *testing.T, chanID string) *protoloadgen.LoadGenTx {
 	t.Helper()
 	txb := workload.TxBuilder{ChannelID: chanID}
 	return txb.MakeTx(&applicationpb.Tx{

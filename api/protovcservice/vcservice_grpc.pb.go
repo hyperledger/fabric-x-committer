@@ -66,7 +66,7 @@ func (c *validationAndCommitServiceClient) StartValidateAndCommitStream(ctx cont
 }
 
 type ValidationAndCommitService_StartValidateAndCommitStreamClient interface {
-	Send(*Batch) error
+	Send(*VcBatch) error
 	Recv() (*applicationpb.TransactionsStatus, error)
 	grpc.ClientStream
 }
@@ -75,7 +75,7 @@ type validationAndCommitServiceStartValidateAndCommitStreamClient struct {
 	grpc.ClientStream
 }
 
-func (x *validationAndCommitServiceStartValidateAndCommitStreamClient) Send(m *Batch) error {
+func (x *validationAndCommitServiceStartValidateAndCommitStreamClient) Send(m *VcBatch) error {
 	return x.ClientStream.SendMsg(m)
 }
 
@@ -200,7 +200,7 @@ func _ValidationAndCommitService_StartValidateAndCommitStream_Handler(srv interf
 
 type ValidationAndCommitService_StartValidateAndCommitStreamServer interface {
 	Send(*applicationpb.TransactionsStatus) error
-	Recv() (*Batch, error)
+	Recv() (*VcBatch, error)
 	grpc.ServerStream
 }
 
@@ -212,8 +212,8 @@ func (x *validationAndCommitServiceStartValidateAndCommitStreamServer) Send(m *a
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *validationAndCommitServiceStartValidateAndCommitStreamServer) Recv() (*Batch, error) {
-	m := new(Batch)
+func (x *validationAndCommitServiceStartValidateAndCommitStreamServer) Recv() (*VcBatch, error) {
+	m := new(VcBatch)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}

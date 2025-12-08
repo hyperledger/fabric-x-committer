@@ -23,7 +23,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
@@ -40,7 +40,7 @@ type VcService struct {
 	healthcheck        *health.Server
 	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
 	MockFaultyNodeDropSize   int
-	txBatchChannels          map[uint64]chan *protovcservice.Batch
+	txBatchChannels          map[uint64]chan *protovcservice.VcBatch
 	txBatchChannelsMu        sync.Mutex
 	txBatchChannelsIDCounter atomic.Uint64
 }
@@ -50,7 +50,7 @@ func NewMockVcService() *VcService {
 	return &VcService{
 		txsStatus:       newFifoCache[*applicationpb.StatusWithHeight](defaultTxStatusStorageSize),
 		healthcheck:     connection.DefaultHealthCheckService(),
-		txBatchChannels: make(map[uint64]chan *protovcservice.Batch),
+		txBatchChannels: make(map[uint64]chan *protovcservice.VcBatch),
 	}
 }
 
@@ -123,7 +123,7 @@ func (*VcService) SetupSystemTablesAndNamespaces(
 func (v *VcService) StartValidateAndCommitStream(
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
-	txBatchChan := make(chan *protovcservice.Batch)
+	txBatchChan := make(chan *protovcservice.VcBatch)
 	vcID := v.txBatchChannelsIDCounter.Add(1)
 
 	v.txBatchChannelsMu.Lock()
@@ -151,7 +151,7 @@ func (v *VcService) StartValidateAndCommitStream(
 func (v *VcService) receiveAndProcessTransactions(
 	ctx context.Context,
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
-	txBatchChan chan *protovcservice.Batch,
+	txBatchChan chan *protovcservice.VcBatch,
 ) error {
 	txBatchChanWriter := channel.NewWriter(ctx, txBatchChan)
 	for ctx.Err() == nil {
@@ -176,7 +176,7 @@ func (v *VcService) receiveAndProcessTransactions(
 func (v *VcService) sendTransactionStatus(
 	ctx context.Context,
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
-	txBatchChan chan *protovcservice.Batch,
+	txBatchChan chan *protovcservice.VcBatch,
 ) error {
 	txBatchChanReader := channel.NewReader(ctx, txBatchChan)
 	for ctx.Err() == nil {
@@ -197,7 +197,7 @@ func (v *VcService) sendTransactionStatus(
 			if tx.PrelimInvalidTxStatus != nil {
 				code = tx.PrelimInvalidTxStatus.Code
 			}
-			s := types.NewStatusWithHeightFromRef(code, tx.Ref)
+			s := servicepb.NewStatusWithHeightFromRef(code, tx.Ref)
 			txsStatus.Status[tx.Ref.TxId] = s
 			v.txsStatus.addIfNotExist(tx.Ref.TxId, s)
 		}
@@ -218,7 +218,7 @@ func (v *VcService) GetNumBatchesReceived() uint32 {
 // SubmitTransactions enqueues the given transactions to a queue read by status sending goroutine.
 // This methods helps the test code to bypass the stream to submit transactions to the mock
 // vcservice.
-func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *protovcservice.Batch) error {
+func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *protovcservice.VcBatch) error {
 	v.txBatchChannelsMu.Lock()
 	channels := slices.Collect(maps.Values(v.txBatchChannels))
 	v.txBatchChannelsMu.Unlock()

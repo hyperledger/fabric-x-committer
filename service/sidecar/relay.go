@@ -19,7 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
@@ -41,7 +41,7 @@ type (
 
 		activeBlocksCount             atomic.Int32
 		blkNumToBlkWithStatus         utils.SyncMap[uint64, *blockWithStatus]
-		txIDToHeight                  utils.SyncMap[string, types.Height]
+		txIDToHeight                  utils.SyncMap[string, servicepb.Height]
 		lastCommittedBlockSetInterval time.Duration
 		waitingTxsSlots               *utils.Slots
 		metrics                       *perfMetrics

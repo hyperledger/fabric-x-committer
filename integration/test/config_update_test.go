@@ -102,7 +102,7 @@ func TestConfigUpdate(t *testing.T) {
 	// We send the old version and it fails.
 	c.SendTransactionsToOrderer(
 		t,
-		[]*protoloadgen.TX{lgMetaTx},
+		[]*protoloadgen.LoadGenTx{lgMetaTx},
 		[]applicationpb.Status{applicationpb.Status_ABORTED_SIGNATURE_INVALID},
 	)
 

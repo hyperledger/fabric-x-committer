@@ -24,7 +24,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
@@ -234,7 +234,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		txBatch := []*dependencygraph.TransactionNode{
 			{
-				Tx: &protovcservice.Tx{
+				Tx: &protovcservice.VcTx{
 					Ref: committerpb.TxRef("create config", 100, 63),
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId: committerpb.ConfigNamespaceID,
@@ -246,7 +246,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 				},
 			},
 			{
-				Tx: &protovcservice.Tx{
+				Tx: &protovcservice.VcTx{
 					Ref: committerpb.TxRef("create ns 1", 100, 64),
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId: committerpb.MetaNamespaceID,
@@ -264,17 +264,17 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		require.Len(t, outTxsStatus.Status, 2)
 		require.Equal(t,
-			types.NewStatusWithHeight(applicationpb.Status_COMMITTED, 100, 63),
+			servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 100, 63),
 			outTxsStatus.Status["create config"],
 		)
 		require.Equal(t,
-			types.NewStatusWithHeight(applicationpb.Status_COMMITTED, 100, 64),
+			servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 100, 64),
 			outTxsStatus.Status["create ns 1"],
 		)
 
 		require.ElementsMatch(t, txBatch, <-env.outputTxs)
 
-		expectedUpdate := &protosigverifierservice.Update{
+		expectedUpdate := &protosigverifierservice.VerifierUpdate{
 			Config: &applicationpb.ConfigTransaction{
 				Envelope: configBlock.Data.Data[0],
 			},
@@ -336,8 +336,8 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	err := env.mockVcService.SubmitTransactions(ctx, &protovcservice.Batch{
-		Transactions: []*protovcservice.Tx{
+	err := env.mockVcService.SubmitTransactions(ctx, &protovcservice.VcBatch{
+		Transactions: []*protovcservice.VcTx{
 			{Ref: committerpb.TxRef("untrackedTxID1", 1, 1)},
 			{Ref: committerpb.TxRef("untrackedTxID2", 2, 2)},
 		},
@@ -362,7 +362,7 @@ func createInputTxsNodeForTest(t *testing.T, numTxs, valueSize int, blkNum uint6
 	for i := range numTxs {
 		id := uuid.NewString()
 		txsNode[i] = &dependencygraph.TransactionNode{
-			Tx: &protovcservice.Tx{
+			Tx: &protovcservice.VcTx{
 				Ref: committerpb.TxRef(id, blkNum, uint32(i)), //nolint:gosec
 				Namespaces: []*applicationpb.TxNamespace{{
 					BlindWrites: []*applicationpb.Write{{
@@ -372,7 +372,7 @@ func createInputTxsNodeForTest(t *testing.T, numTxs, valueSize int, blkNum uint6
 			},
 		}
 		//nolint:gosec // int -> uint32.
-		expectedTxsStatus.Status[id] = types.NewStatusWithHeight(applicationpb.Status_COMMITTED, blkNum, uint32(i))
+		expectedTxsStatus.Status[id] = servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, blkNum, uint32(i))
 	}
 
 	return txsNode, expectedTxsStatus

@@ -18,7 +18,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
@@ -243,8 +243,8 @@ func (env *DatabaseTestEnv) StatusExistsWithDifferentHeightForDuplicateTxID(
 		// transaction status table.
 		txID := string(tID) //nolint:staticcheck // false positive.
 		require.NotEqual(t, expectedStatuses[txID].Code, actualRows[txID].Code)
-		expHeight := types.NewHeight(expectedStatuses[txID].BlockNumber, expectedStatuses[txID].TxNumber)
-		actualHeight := types.NewHeight(actualRows[txID].BlockNumber, actualRows[txID].TxNumber)
+		expHeight := servicepb.NewHeight(expectedStatuses[txID].BlockNumber, expectedStatuses[txID].TxNumber)
+		actualHeight := servicepb.NewHeight(actualRows[txID].BlockNumber, actualRows[txID].TxNumber)
 		require.NotEqual(t, expHeight, actualHeight)
 	}
 }

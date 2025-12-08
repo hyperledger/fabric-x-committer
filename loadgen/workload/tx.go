@@ -56,7 +56,7 @@ func newIndependentTxGenerator(
 }
 
 // Next generate a new TX.
-func (g *IndependentTxGenerator) Next() *protoloadgen.TX {
+func (g *IndependentTxGenerator) Next() *protoloadgen.LoadGenTx {
 	readOnly := g.ReadOnlyKeyGenerator.Next()
 	readWrite := g.ReadWriteKeyGenerator.Next()
 	blindWriteKey := g.BlindWriteKeyGenerator.Next()

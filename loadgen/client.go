@@ -116,7 +116,7 @@ func (c *Client) Run(ctx context.Context) error {
 		return c.txStream.Run(gCtx)
 	})
 
-	workloadSetupTXs := make(chan *protoloadgen.TX, 1)
+	workloadSetupTXs := make(chan *protoloadgen.LoadGenTx, 1)
 	cs := &workload.StreamWithSetup{
 		BlockSize:        c.conf.LoadProfile.Block.Size,
 		WorkloadSetupTXs: channel.NewReader(gCtx, workloadSetupTXs),
@@ -157,7 +157,7 @@ func (c *Client) RegisterService(server *grpc.Server) {
 }
 
 // AppendBatch appends a batch to the stream.
-func (c *Client) AppendBatch(ctx context.Context, batch *protoloadgen.Batch) (*emptypb.Empty, error) {
+func (c *Client) AppendBatch(ctx context.Context, batch *protoloadgen.LoadGenBatch) (*emptypb.Empty, error) {
 	c.txStream.AppendBatch(ctx, batch.Tx)
 	return nil, nil
 }
@@ -210,7 +210,7 @@ func (c *Client) runLimiterServer(ctx context.Context) error {
 }
 
 // submitWorkloadSetupTXs writes the workload setup TXs to the channel, and waits for them to be committed.
-func (c *Client) submitWorkloadSetupTXs(ctx context.Context, txs chan *protoloadgen.TX) error {
+func (c *Client) submitWorkloadSetupTXs(ctx context.Context, txs chan *protoloadgen.LoadGenTx) error {
 	defer close(txs)
 
 	workloadSetupTXs, err := makeWorkloadSetupTXs(c.conf)
@@ -238,8 +238,8 @@ func (c *Client) submitWorkloadSetupTXs(ctx context.Context, txs chan *protoload
 	return nil
 }
 
-func makeWorkloadSetupTXs(config *ClientConfig) ([]*protoloadgen.TX, error) {
-	workloadSetupTXs := make([]*protoloadgen.TX, 0, 2)
+func makeWorkloadSetupTXs(config *ClientConfig) ([]*protoloadgen.LoadGenTx, error) {
+	workloadSetupTXs := make([]*protoloadgen.LoadGenTx, 0, 2)
 	if config.Generate.Config {
 		configTX, err := workload.CreateConfigTx(config.LoadProfile.Transaction.Policy)
 		if err != nil {

@@ -43,8 +43,8 @@ type ValidatorCommitterService struct {
 	preparer                 *transactionPreparer
 	validator                *transactionValidator
 	committer                *transactionCommitter
-	receivedTxBatch          chan *protovcservice.Batch
-	toPrepareTxs             chan *protovcservice.Batch
+	receivedTxBatch          chan *protovcservice.VcBatch
+	toPrepareTxs             chan *protovcservice.VcBatch
 	preparedTxs              chan *preparedTransactions
 	validatedTxs             chan *validatedTransactions
 	txsStatus                chan *applicationpb.TransactionsStatus
@@ -85,8 +85,8 @@ func NewValidatorCommitterService(
 
 	// TODO: make queueMultiplier configurable
 	queueMultiplier := 1
-	receivedTxBatch := make(chan *protovcservice.Batch, l.MaxWorkersForPreparer*queueMultiplier)
-	toPrepareTxs := make(chan *protovcservice.Batch, l.MaxWorkersForPreparer*queueMultiplier)
+	receivedTxBatch := make(chan *protovcservice.VcBatch, l.MaxWorkersForPreparer*queueMultiplier)
+	toPrepareTxs := make(chan *protovcservice.VcBatch, l.MaxWorkersForPreparer*queueMultiplier)
 	preparedTxs := make(chan *preparedTransactions, l.MaxWorkersForValidator*queueMultiplier)
 	validatedTxs := make(chan *validatedTransactions, queueMultiplier)
 	txsStatus := make(chan *applicationpb.TransactionsStatus, l.MaxWorkersForCommitter*queueMultiplier)
@@ -312,7 +312,7 @@ func (vc *ValidatorCommitterService) receiveTransactions(
 }
 
 func (vc *ValidatorCommitterService) batchReceivedTransactionsAndForwardForProcessing(ctx context.Context) {
-	largerBatch := &protovcservice.Batch{}
+	largerBatch := &protovcservice.VcBatch{}
 	timer := time.NewTimer(vc.timeoutForMinTxBatchSize)
 	defer timer.Stop()
 	toPrepareTxs := channel.NewWriter(ctx, vc.toPrepareTxs)
@@ -325,7 +325,7 @@ func (vc *ValidatorCommitterService) batchReceivedTransactionsAndForwardForProce
 		if ok := toPrepareTxs.Write(largerBatch); !ok {
 			return
 		}
-		largerBatch = &protovcservice.Batch{}
+		largerBatch = &protovcservice.VcBatch{}
 	}
 
 	for {

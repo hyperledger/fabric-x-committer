@@ -34,7 +34,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type LoadGenServiceClient interface {
-	AppendBatch(ctx context.Context, in *Batch, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	AppendBatch(ctx context.Context, in *LoadGenBatch, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetLimit(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*Limit, error)
 	SetLimit(ctx context.Context, in *Limit, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
@@ -47,7 +47,7 @@ func NewLoadGenServiceClient(cc grpc.ClientConnInterface) LoadGenServiceClient {
 	return &loadGenServiceClient{cc}
 }
 
-func (c *loadGenServiceClient) AppendBatch(ctx context.Context, in *Batch, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *loadGenServiceClient) AppendBatch(ctx context.Context, in *LoadGenBatch, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, LoadGenService_AppendBatch_FullMethodName, in, out, opts...)
 	if err != nil {
@@ -78,7 +78,7 @@ func (c *loadGenServiceClient) SetLimit(ctx context.Context, in *Limit, opts ...
 // All implementations must embed UnimplementedLoadGenServiceServer
 // for forward compatibility
 type LoadGenServiceServer interface {
-	AppendBatch(context.Context, *Batch) (*emptypb.Empty, error)
+	AppendBatch(context.Context, *LoadGenBatch) (*emptypb.Empty, error)
 	GetLimit(context.Context, *emptypb.Empty) (*Limit, error)
 	SetLimit(context.Context, *Limit) (*emptypb.Empty, error)
 	mustEmbedUnimplementedLoadGenServiceServer()
@@ -88,7 +88,7 @@ type LoadGenServiceServer interface {
 type UnimplementedLoadGenServiceServer struct {
 }
 
-func (UnimplementedLoadGenServiceServer) AppendBatch(context.Context, *Batch) (*emptypb.Empty, error) {
+func (UnimplementedLoadGenServiceServer) AppendBatch(context.Context, *LoadGenBatch) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AppendBatch not implemented")
 }
 func (UnimplementedLoadGenServiceServer) GetLimit(context.Context, *emptypb.Empty) (*Limit, error) {
@@ -111,7 +111,7 @@ func RegisterLoadGenServiceServer(s grpc.ServiceRegistrar, srv LoadGenServiceSer
 }
 
 func _LoadGenService_AppendBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Batch)
+	in := new(LoadGenBatch)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -123,7 +123,7 @@ func _LoadGenService_AppendBatch_Handler(srv interface{}, ctx context.Context, d
 		FullMethod: LoadGenService_AppendBatch_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LoadGenServiceServer).AppendBatch(ctx, req.(*Batch))
+		return srv.(LoadGenServiceServer).AppendBatch(ctx, req.(*LoadGenBatch))
 	}
 	return interceptor(ctx, in, info, handler)
 }

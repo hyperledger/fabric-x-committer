@@ -47,7 +47,7 @@ var validNamespaceID = regexp.MustCompile(`^[a-z0-9_]+$`)
 var ErrInvalidNamespaceID = errors.New("invalid namespace ID")
 
 // GetUpdatesFromNamespace translates a namespace TX to policy updates.
-func GetUpdatesFromNamespace(nsTx *applicationpb.TxNamespace) *protosigverifierservice.Update {
+func GetUpdatesFromNamespace(nsTx *applicationpb.TxNamespace) *protosigverifierservice.VerifierUpdate {
 	switch nsTx.NsId {
 	case committerpb.MetaNamespaceID:
 		pd := make([]*applicationpb.PolicyItem, len(nsTx.ReadWrites))
@@ -57,7 +57,7 @@ func GetUpdatesFromNamespace(nsTx *applicationpb.TxNamespace) *protosigverifiers
 				Policy:    rw.Value,
 			}
 		}
-		return &protosigverifierservice.Update{
+		return &protosigverifierservice.VerifierUpdate{
 			NamespacePolicies: &applicationpb.NamespacePolicies{
 				Policies: pd,
 			},
@@ -65,7 +65,7 @@ func GetUpdatesFromNamespace(nsTx *applicationpb.TxNamespace) *protosigverifiers
 	case committerpb.ConfigNamespaceID:
 		for _, rw := range nsTx.BlindWrites {
 			if string(rw.Key) == committerpb.ConfigKey {
-				return &protosigverifierservice.Update{
+				return &protosigverifierservice.VerifierUpdate{
 					Config: &applicationpb.ConfigTransaction{
 						Envelope: rw.Value,
 					},

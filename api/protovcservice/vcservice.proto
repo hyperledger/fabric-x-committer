@@ -16,7 +16,7 @@ import "api/applicationpb/block_tx.proto";
 import "api/protocoordinatorservice/coordinator.proto";
 
 service ValidationAndCommitService {
-  rpc StartValidateAndCommitStream (stream Batch) returns (stream applicationpb.TransactionsStatus);
+  rpc StartValidateAndCommitStream (stream VcBatch) returns (stream applicationpb.TransactionsStatus);
   rpc SetLastCommittedBlockNumber (applicationpb.BlockInfo) returns (google.protobuf.Empty) {};
   rpc GetNextBlockNumberToCommit (google.protobuf.Empty) returns (applicationpb.BlockInfo) {};
   rpc GetTransactionsStatus (applicationpb.QueryStatus) returns (applicationpb.TransactionsStatus) {};
@@ -25,11 +25,11 @@ service ValidationAndCommitService {
   rpc SetupSystemTablesAndNamespaces(google.protobuf.Empty) returns (google.protobuf.Empty) {};
 }
 
-message Batch {
-  repeated Tx transactions = 1;
+message VcBatch {
+  repeated VcTx transactions = 1;
 }
 
-message Tx {
+message VcTx {
   protocoordinatorservice.TxRef ref = 1;
   repeated applicationpb.TxNamespace namespaces = 2;
   optional InvalidTxStatus prelim_invalid_tx_status = 3;

@@ -23,7 +23,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -341,7 +341,7 @@ func appendMissingBlock(
 	blk *common.Block,
 	committedBlocks channel.Writer[*common.Block],
 ) error {
-	var txIDToHeight utils.SyncMap[string, types.Height]
+	var txIDToHeight utils.SyncMap[string, servicepb.Height]
 	mappedBlock, err := mapBlock(blk, &txIDToHeight)
 	if err != nil {
 		// This can never occur unless there is a bug in the relay.
@@ -349,10 +349,10 @@ func appendMissingBlock(
 	}
 
 	txIDs := make([]string, len(mappedBlock.block.Txs))
-	expectedHeight := make(map[string]*types.Height, len(mappedBlock.block.Txs))
+	expectedHeight := make(map[string]*servicepb.Height, len(mappedBlock.block.Txs))
 	for i, tx := range mappedBlock.block.Txs {
 		txIDs[i] = tx.Ref.TxId
-		expectedHeight[tx.Ref.TxId] = types.NewHeightFromTxRef(tx.Ref)
+		expectedHeight[tx.Ref.TxId] = servicepb.NewHeightFromTxRef(tx.Ref)
 	}
 
 	txsStatus, err := client.GetTransactionsStatus(ctx, &applicationpb.QueryStatus{TxIDs: txIDs})
@@ -409,14 +409,14 @@ func waitForIdleCoordinator(ctx context.Context, client protocoordinatorservice.
 func fillStatuses(
 	finalStatuses []applicationpb.Status,
 	statuses map[string]*applicationpb.StatusWithHeight,
-	expectedHeight map[string]*types.Height,
+	expectedHeight map[string]*servicepb.Height,
 ) error {
 	for txID, height := range expectedHeight {
 		s, ok := statuses[txID]
 		if !ok {
 			return errors.Newf("committer should have the status of txID [%s] but it does not", txID)
 		}
-		if types.AreSame(height, types.NewHeight(s.BlockNumber, s.TxNumber)) {
+		if servicepb.AreSame(height, servicepb.NewHeight(s.BlockNumber, s.TxNumber)) {
 			finalStatuses[height.TxNum] = s.Code
 			continue
 		}

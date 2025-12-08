@@ -17,9 +17,9 @@ import (
 
 type (
 	parallelExecutor struct {
-		inputCh        chan *protosigverifierservice.Tx
-		outputSingleCh chan *protosigverifierservice.Response
-		outputCh       chan []*protosigverifierservice.Response
+		inputCh        chan *protosigverifierservice.VerifierTx
+		outputSingleCh chan *protosigverifierservice.VerifierResponse
+		outputCh       chan []*protosigverifierservice.VerifierResponse
 		verifier       *verifier
 		config         *ExecutorConfig
 	}
@@ -29,9 +29,9 @@ func newParallelExecutor(config *ExecutorConfig) *parallelExecutor {
 	channelCapacity := config.ChannelBufferSize * config.Parallelism
 	return &parallelExecutor{
 		config:         config,
-		inputCh:        make(chan *protosigverifierservice.Tx, channelCapacity),
-		outputCh:       make(chan []*protosigverifierservice.Response),
-		outputSingleCh: make(chan *protosigverifierservice.Response, channelCapacity),
+		inputCh:        make(chan *protosigverifierservice.VerifierTx, channelCapacity),
+		outputCh:       make(chan []*protosigverifierservice.VerifierResponse),
+		outputSingleCh: make(chan *protosigverifierservice.VerifierResponse, channelCapacity),
 		verifier:       newVerifier(),
 	}
 }
@@ -52,7 +52,7 @@ func (e *parallelExecutor) handleChannelInput(ctx context.Context) {
 }
 
 func (e *parallelExecutor) handleCutoff(ctx context.Context) {
-	var outputBuffer []*protosigverifierservice.Response
+	var outputBuffer []*protosigverifierservice.VerifierResponse
 	chOut := channel.NewWriter(ctx, e.outputCh)
 	cutBatch := func(size int) {
 		for len(outputBuffer) >= size {

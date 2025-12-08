@@ -153,7 +153,7 @@ func (s *Server) handleOutputs(
 		promutil.AddToCounter(s.metrics.VerifierServerOutTxs, len(outputs))
 		promutil.AddToGauge(s.metrics.ActiveRequests, -len(outputs))
 		logger.Debugf("Received output: %v", output)
-		rpcErr := stream.Send(&protosigverifierservice.ResponseBatch{Responses: outputs})
+		rpcErr := stream.Send(&protosigverifierservice.VerifierResponseBatch{Responses: outputs})
 		if rpcErr != nil {
 			return errors.Wrap(rpcErr, "stream ended")
 		}

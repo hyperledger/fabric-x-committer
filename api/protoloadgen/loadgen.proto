@@ -15,16 +15,16 @@ import "google/protobuf/empty.proto";
 import "api/applicationpb/block_tx.proto";
 
 service LoadGenService {
-  rpc AppendBatch(Batch) returns (google.protobuf.Empty) {};
+  rpc AppendBatch(LoadGenBatch) returns (google.protobuf.Empty) {};
   rpc GetLimit(google.protobuf.Empty) returns (Limit) {};
   rpc SetLimit(Limit) returns (google.protobuf.Empty);
 }
 
-message Batch {
-  repeated TX tx = 1;
+message LoadGenBatch {
+  repeated LoadGenTx tx = 1;
 }
 
-message TX {
+message LoadGenTx {
   string id = 1;
   applicationpb.Tx tx = 2;
   bytes envelope_payload = 3;

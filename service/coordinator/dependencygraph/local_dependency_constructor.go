@@ -46,7 +46,7 @@ type (
 	// needs to be processed.
 	TransactionBatch struct {
 		ID  uint64
-		Txs []*protocoordinatorservice.Tx
+		Txs []*protocoordinatorservice.CoordinatorTx
 	}
 
 	transactionNodeBatch struct {

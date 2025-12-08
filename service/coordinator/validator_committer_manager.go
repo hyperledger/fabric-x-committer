@@ -183,7 +183,7 @@ func (vcm *validatorCommitterManager) recoverPolicyManagerFromStateDB(ctx contex
 	if len(policyMsg.Policies) == 0 && configMsg.Envelope == nil {
 		return nil
 	}
-	vcm.config.policyMgr.update(&protosigverifierservice.Update{
+	vcm.config.policyMgr.update(&protosigverifierservice.VerifierUpdate{
 		NamespacePolicies: policyMsg,
 		Config:            configMsg,
 	})
@@ -247,7 +247,7 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 		}
 
 		logger.Debugf("New TX node came from dependency graph manager to vc manager")
-		txBatch := make([]*protovcservice.Tx, len(txsNode))
+		txBatch := make([]*protovcservice.VcTx, len(txsNode))
 		for i, txNode := range txsNode {
 			vc.txBeingValidated.Store(txNode.Tx.Ref.TxId, txNode)
 			txBatch[i] = txNode.Tx
@@ -261,7 +261,7 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 			continue
 		}
 
-		if err := stream.Send(&protovcservice.Batch{
+		if err := stream.Send(&protovcservice.VcBatch{
 			Transactions: txBatch,
 		}); err != nil {
 			return errors.Wrap(err, streamEndErrWrap)
@@ -272,14 +272,14 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 
 func splitAndSendToVC(
 	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient,
-	txBatch []*protovcservice.Tx,
+	txBatch []*protovcservice.VcTx,
 ) error {
-	blkToBatch := make(map[uint64]*protovcservice.Batch)
+	blkToBatch := make(map[uint64]*protovcservice.VcBatch)
 	for _, tx := range txBatch {
 		rBatch, ok := blkToBatch[tx.Ref.BlockNum]
 		if !ok {
-			rBatch = &protovcservice.Batch{
-				Transactions: make([]*protovcservice.Tx, 0, len(txBatch)),
+			rBatch = &protovcservice.VcBatch{
+				Transactions: make([]*protovcservice.VcTx, 0, len(txBatch)),
 			}
 			blkToBatch[tx.Ref.BlockNum] = rBatch
 		}

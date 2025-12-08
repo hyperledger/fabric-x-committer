@@ -41,7 +41,7 @@ func newVerifier() *verifier {
 // updatePolicies updates the verifier's policies.
 // We assume no parallel update calls, thus, no lock is required.
 func (v *verifier) updatePolicies(
-	update *protosigverifierservice.Update,
+	update *protosigverifierservice.VerifierUpdate,
 ) error {
 	if update == nil || (update.Config == nil && update.NamespacePolicies == nil) {
 		return nil
@@ -83,7 +83,7 @@ func (v *verifier) updatePolicies(
 }
 
 func createVerifiers(
-	update *protosigverifierservice.Update, idDeserializer msp.IdentityDeserializer,
+	update *protosigverifierservice.VerifierUpdate, idDeserializer msp.IdentityDeserializer,
 ) (map[string]*signature.NsVerifier, error) {
 	newPolicies := make(map[string]*signature.NsVerifier)
 	if update.Config != nil {
@@ -106,7 +106,7 @@ func createVerifiers(
 	return newPolicies, nil
 }
 
-func (v *verifier) updateBundle(u *protosigverifierservice.Update) error {
+func (v *verifier) updateBundle(u *protosigverifierservice.VerifierUpdate) error {
 	if u.Config == nil {
 		return nil
 	}
@@ -123,9 +123,9 @@ func (v *verifier) updateBundle(u *protosigverifierservice.Update) error {
 	return nil
 }
 
-func (v *verifier) verifyRequest(tx *protosigverifierservice.Tx) *protosigverifierservice.Response {
+func (v *verifier) verifyRequest(tx *protosigverifierservice.VerifierTx) *protosigverifierservice.VerifierResponse {
 	logger.Debugf("Validating TX: %s", &utils.LazyJSON{O: tx})
-	response := &protosigverifierservice.Response{
+	response := &protosigverifierservice.VerifierResponse{
 		Ref:    tx.Ref,
 		Status: applicationpb.Status_COMMITTED,
 	}

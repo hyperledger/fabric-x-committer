@@ -22,7 +22,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
@@ -161,8 +161,8 @@ func (e *coordinatorTestEnv) createNamespaces(t *testing.T, blkNum int, nsIDs ..
 	require.NoError(t, err)
 
 	blockNum := uint64(blkNum) //nolint:gosec // int -> uint64.
-	blk := &protocoordinatorservice.Batch{}
-	blk.Txs = append(blk.Txs, &protocoordinatorservice.Tx{
+	blk := &protocoordinatorservice.CoordinatorBatch{}
+	blk.Txs = append(blk.Txs, &protocoordinatorservice.CoordinatorTx{
 		Ref: committerpb.TxRef(uuid.NewString(), blockNum, 0),
 		Content: &applicationpb.Tx{
 			Namespaces: []*applicationpb.TxNamespace{{
@@ -175,7 +175,7 @@ func (e *coordinatorTestEnv) createNamespaces(t *testing.T, blkNum int, nsIDs ..
 		},
 	})
 	for i, nsID := range nsIDs {
-		blk.Txs = append(blk.Txs, &protocoordinatorservice.Tx{
+		blk.Txs = append(blk.Txs, &protocoordinatorservice.CoordinatorTx{
 			Ref: committerpb.TxRef(uuid.NewString(), blockNum, uint32(i+1)), //nolint:gosec // int -> uint32.
 			Content: &applicationpb.Tx{
 				Namespaces: []*applicationpb.TxNamespace{{
@@ -252,8 +252,8 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 
 	pBytes, err := proto.Marshal(policy.MakeECDSAThresholdRuleNsPolicy([]byte("publicKey")))
 	require.NoError(t, err)
-	err = env.csStream.Send(&protocoordinatorservice.Batch{
-		Txs: []*protocoordinatorservice.Tx{
+	err = env.csStream.Send(&protocoordinatorservice.CoordinatorBatch{
+		Txs: []*protocoordinatorservice.CoordinatorTx{
 			{
 				Ref: committerpb.TxRef("tx1", 1, 0),
 				Content: &applicationpb.Tx{
@@ -317,7 +317,7 @@ func TestCoordinatorServiceRejectedTx(t *testing.T) {
 
 	preMetricsValue := test.GetIntMetricValue(t, env.coordinator.metrics.transactionReceivedTotal)
 
-	err := env.csStream.Send(&protocoordinatorservice.Batch{
+	err := env.csStream.Send(&protocoordinatorservice.CoordinatorBatch{
 		Rejected: []*protocoordinatorservice.TxStatusInfo{
 			{
 				Ref:    committerpb.TxRef("rejected", 1, 0),
@@ -368,8 +368,8 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 
 	// We send a block with a series of TXs with apparent conflicts, but all should be committed successfully if
 	// executed serially.
-	b1 := &protocoordinatorservice.Batch{
-		Txs: []*protocoordinatorservice.Tx{
+	b1 := &protocoordinatorservice.CoordinatorBatch{
+		Txs: []*protocoordinatorservice.CoordinatorTx{
 			{
 				Ref: committerpb.TxRef("config TX", 0, 0),
 				Content: &applicationpb.Tx{
@@ -540,8 +540,8 @@ func TestCoordinatorRecovery(t *testing.T) {
 
 	env.createNamespaces(t, 0, "1")
 
-	err := env.csStream.Send(&protocoordinatorservice.Batch{
-		Txs: []*protocoordinatorservice.Tx{{
+	err := env.csStream.Send(&protocoordinatorservice.CoordinatorBatch{
+		Txs: []*protocoordinatorservice.CoordinatorTx{{
 			Ref: committerpb.TxRef("tx1", 1, 0),
 			Content: &applicationpb.Tx{
 				Namespaces: []*applicationpb.TxNamespace{{
@@ -575,8 +575,8 @@ func TestCoordinatorRecovery(t *testing.T) {
 	// is committed, we will restart the service and send a full block 2 with all four transactions.
 	nsPolicy, err := proto.Marshal(policy.MakeECDSAThresholdRuleNsPolicy([]byte("publicKey")))
 	require.NoError(t, err)
-	block2 := &protocoordinatorservice.Batch{
-		Txs: []*protocoordinatorservice.Tx{
+	block2 := &protocoordinatorservice.CoordinatorBatch{
+		Txs: []*protocoordinatorservice.CoordinatorTx{
 			{
 				Ref: committerpb.TxRef("tx2", 2, 0),
 				Content: &applicationpb.Tx{
@@ -622,12 +622,12 @@ func TestCoordinatorRecovery(t *testing.T) {
 	require.NoError(t, env.csStream.Send(block2))
 
 	expectedTxStatus := map[string]*applicationpb.StatusWithHeight{
-		"tx2":           types.NewStatusWithHeight(applicationpb.Status_COMMITTED, 2, 0),
-		"mvcc conflict": types.NewStatusWithHeight(applicationpb.Status_ABORTED_MVCC_CONFLICT, 2, 2),
-		"tx1":           types.NewStatusWithHeight(applicationpb.Status_REJECTED_DUPLICATE_TX_ID, 2, 5),
+		"tx2":           servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 2, 0),
+		"mvcc conflict": servicepb.NewStatusWithHeight(applicationpb.Status_ABORTED_MVCC_CONFLICT, 2, 2),
+		"tx1":           servicepb.NewStatusWithHeight(applicationpb.Status_REJECTED_DUPLICATE_TX_ID, 2, 5),
 	}
 	env.requireStatus(ctx, t, expectedTxStatus, map[string]*applicationpb.StatusWithHeight{
-		"tx1": types.NewStatusWithHeight(applicationpb.Status_COMMITTED, 1, 0),
+		"tx1": servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 1, 0),
 	})
 
 	cancel()
@@ -642,8 +642,8 @@ func TestCoordinatorRecovery(t *testing.T) {
 	env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus)
 
 	// Now, we are sending the full block 2.
-	block2 = &protocoordinatorservice.Batch{
-		Txs: []*protocoordinatorservice.Tx{
+	block2 = &protocoordinatorservice.CoordinatorBatch{
+		Txs: []*protocoordinatorservice.CoordinatorTx{
 			{
 				Ref: committerpb.TxRef("tx2", 2, 0),
 				Content: &applicationpb.Tx{
@@ -730,13 +730,13 @@ func TestCoordinatorRecovery(t *testing.T) {
 	require.NoError(t, env.csStream.Send(block2))
 
 	env.requireStatus(ctx, t, map[string]*applicationpb.StatusWithHeight{
-		"tx2":                 types.NewStatusWithHeight(applicationpb.Status_COMMITTED, 2, 0),
-		"tx3":                 types.NewStatusWithHeight(applicationpb.Status_COMMITTED, 2, 1),
-		"mvcc conflict":       types.NewStatusWithHeight(applicationpb.Status_ABORTED_MVCC_CONFLICT, 2, 2),
-		"duplicate namespace": types.NewStatusWithHeight(applicationpb.Status_COMMITTED, 2, 4),
-		"tx1":                 types.NewStatusWithHeight(applicationpb.Status_REJECTED_DUPLICATE_TX_ID, 2, 5),
+		"tx2":                 servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 2, 0),
+		"tx3":                 servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 2, 1),
+		"mvcc conflict":       servicepb.NewStatusWithHeight(applicationpb.Status_ABORTED_MVCC_CONFLICT, 2, 2),
+		"duplicate namespace": servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 2, 4),
+		"tx1":                 servicepb.NewStatusWithHeight(applicationpb.Status_REJECTED_DUPLICATE_TX_ID, 2, 5),
 	}, map[string]*applicationpb.StatusWithHeight{
-		"tx1": types.NewStatusWithHeight(applicationpb.Status_COMMITTED, 1, 0),
+		"tx1": servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 1, 0),
 	})
 }
 
@@ -749,8 +749,8 @@ func TestCoordinatorStreamFailureWithSidecar(t *testing.T) {
 
 	env.createNamespaces(t, 0, "1")
 
-	blk := &protocoordinatorservice.Batch{
-		Txs: []*protocoordinatorservice.Tx{
+	blk := &protocoordinatorservice.CoordinatorBatch{
+		Txs: []*protocoordinatorservice.CoordinatorTx{
 			{
 				Ref: committerpb.TxRef("tx1", 1, 0),
 				Content: &applicationpb.Tx{
@@ -950,14 +950,16 @@ func fakeConfigForTest(t *testing.T) *Config {
 	}
 }
 
-func makeTestBlock(txPerBlock int) (*protocoordinatorservice.Batch, map[string]*applicationpb.StatusWithHeight) {
-	b := &protocoordinatorservice.Batch{
-		Txs: make([]*protocoordinatorservice.Tx, txPerBlock),
+func makeTestBlock(txPerBlock int) (
+	*protocoordinatorservice.CoordinatorBatch, map[string]*applicationpb.StatusWithHeight,
+) {
+	b := &protocoordinatorservice.CoordinatorBatch{
+		Txs: make([]*protocoordinatorservice.CoordinatorTx, txPerBlock),
 	}
 	expectedTxsStatus := make(map[string]*applicationpb.StatusWithHeight)
 	for i := range txPerBlock {
 		txID := "tx" + strconv.Itoa(rand.Int())
-		b.Txs[i] = &protocoordinatorservice.Tx{
+		b.Txs[i] = &protocoordinatorservice.CoordinatorTx{
 			Ref: committerpb.TxRef(txID, 0, uint32(i)), //nolint:gosec
 			Content: &applicationpb.Tx{
 				Namespaces: []*applicationpb.TxNamespace{{
@@ -971,7 +973,7 @@ func makeTestBlock(txPerBlock int) (*protocoordinatorservice.Batch, map[string]*
 			},
 		}
 		//nolint: gosec // int -> uint32.
-		expectedTxsStatus[txID] = types.NewStatusWithHeight(applicationpb.Status_COMMITTED, 0, uint32(i))
+		expectedTxsStatus[txID] = servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 0, uint32(i))
 	}
 
 	return b, expectedTxsStatus

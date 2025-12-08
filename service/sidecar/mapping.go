@@ -17,7 +17,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
@@ -26,11 +26,11 @@ import (
 type (
 	blockMappingResult struct {
 		blockNumber uint64
-		block       *protocoordinatorservice.Batch
+		block       *protocoordinatorservice.CoordinatorBatch
 		withStatus  *blockWithStatus
 		isConfig    bool
 		// txIDToHeight is a reference to the relay map.
-		txIDToHeight *utils.SyncMap[string, types.Height]
+		txIDToHeight *utils.SyncMap[string, servicepb.Height]
 	}
 
 	blockWithStatus struct {
@@ -45,7 +45,7 @@ const (
 	statusIdx             = int(common.BlockMetadataIndex_TRANSACTIONS_FILTER)
 )
 
-func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, types.Height]) (*blockMappingResult, error) {
+func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb.Height]) (*blockMappingResult, error) {
 	// Prepare block's metadata.
 	if block.Metadata == nil {
 		block.Metadata = &common.BlockMetadata{}
@@ -61,7 +61,7 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, types.Hei
 		logger.Warnf("Received a block [%d] without data", block.Header.Number)
 		return &blockMappingResult{
 			blockNumber:  blockNumber,
-			block:        &protocoordinatorservice.Batch{},
+			block:        &protocoordinatorservice.CoordinatorBatch{},
 			withStatus:   &blockWithStatus{block: block},
 			txIDToHeight: txIDToHeight,
 		}, nil
@@ -70,8 +70,8 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, types.Hei
 	txCount := len(block.Data.Data)
 	mappedBlock := &blockMappingResult{
 		blockNumber: blockNumber,
-		block: &protocoordinatorservice.Batch{
-			Txs:      make([]*protocoordinatorservice.Tx, 0, txCount),
+		block: &protocoordinatorservice.CoordinatorBatch{
+			Txs:      make([]*protocoordinatorservice.CoordinatorTx, 0, txCount),
 			Rejected: make([]*protocoordinatorservice.TxStatusInfo, 0, txCount),
 		},
 		withStatus: &blockWithStatus{
@@ -127,7 +127,7 @@ func (b *blockMappingResult) appendTx(txNum uint32, hdr *common.ChannelHeader, t
 	if idAlreadyExists, err := b.addTxIDMapping(txNum, hdr); idAlreadyExists || err != nil {
 		return err
 	}
-	b.block.Txs = append(b.block.Txs, &protocoordinatorservice.Tx{
+	b.block.Txs = append(b.block.Txs, &protocoordinatorservice.CoordinatorTx{
 		Ref:     committerpb.TxRef(hdr.TxId, b.blockNumber, txNum),
 		Content: tx,
 	})
@@ -171,7 +171,7 @@ func (b *blockMappingResult) rejectNonDBStatusTx(
 }
 
 func (b *blockMappingResult) addTxIDMapping(txNum uint32, hdr *common.ChannelHeader) (idAlreadyExists bool, err error) {
-	_, idAlreadyExists = b.txIDToHeight.LoadOrStore(hdr.TxId, types.Height{
+	_, idAlreadyExists = b.txIDToHeight.LoadOrStore(hdr.TxId, servicepb.Height{
 		BlockNum: b.blockNumber,
 		TxNum:    txNum,
 	})

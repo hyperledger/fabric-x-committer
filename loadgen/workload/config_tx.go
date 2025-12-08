@@ -33,7 +33,7 @@ type ConfigBlock struct {
 }
 
 // CreateConfigTx creating a config TX.
-func CreateConfigTx(policy *PolicyProfile) (*protoloadgen.TX, error) {
+func CreateConfigTx(policy *PolicyProfile) (*protoloadgen.LoadGenTx, error) {
 	envelopeBytes, err := CreateConfigEnvelope(policy)
 	if err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func CreateConfigTx(policy *PolicyProfile) (*protoloadgen.TX, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &protoloadgen.TX{
+	return &protoloadgen.LoadGenTx{
 		Id: channelHdr.TxId,
 		Tx: &applicationpb.Tx{
 			Namespaces: []*applicationpb.TxNamespace{{

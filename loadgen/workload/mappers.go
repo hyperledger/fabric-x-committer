@@ -17,48 +17,48 @@ import (
 )
 
 // MapToCoordinatorBatch creates a Coordinator batch.
-func MapToCoordinatorBatch(blockNum uint64, txs []*protoloadgen.TX) *protocoordinatorservice.Batch {
-	blockTXs := make([]*protocoordinatorservice.Tx, len(txs))
+func MapToCoordinatorBatch(blockNum uint64, txs []*protoloadgen.LoadGenTx) *protocoordinatorservice.CoordinatorBatch {
+	blockTXs := make([]*protocoordinatorservice.CoordinatorTx, len(txs))
 	for i, tx := range txs {
-		blockTXs[i] = &protocoordinatorservice.Tx{
+		blockTXs[i] = &protocoordinatorservice.CoordinatorTx{
 			Ref:     makeRef(tx.Id, blockNum, i),
 			Content: tx.Tx,
 		}
 	}
-	return &protocoordinatorservice.Batch{Txs: blockTXs}
+	return &protocoordinatorservice.CoordinatorBatch{Txs: blockTXs}
 }
 
 // MapToVerifierBatch creates a Verifier batch.
-func MapToVerifierBatch(blockNum uint64, txs []*protoloadgen.TX) *protosigverifierservice.Batch {
-	reqs := make([]*protosigverifierservice.Tx, len(txs))
+func MapToVerifierBatch(blockNum uint64, txs []*protoloadgen.LoadGenTx) *protosigverifierservice.VerifierBatch {
+	reqs := make([]*protosigverifierservice.VerifierTx, len(txs))
 	for i, tx := range txs {
-		reqs[i] = &protosigverifierservice.Tx{
+		reqs[i] = &protosigverifierservice.VerifierTx{
 			Ref: makeRef(tx.Id, blockNum, i),
 			Tx:  tx.Tx,
 		}
 	}
-	return &protosigverifierservice.Batch{Requests: reqs}
+	return &protosigverifierservice.VerifierBatch{Requests: reqs}
 }
 
 // MapToVcBatch creates a VC batch.
-func MapToVcBatch(blockNum uint64, txs []*protoloadgen.TX) *protovcservice.Batch {
-	batchTxs := make([]*protovcservice.Tx, len(txs))
+func MapToVcBatch(blockNum uint64, txs []*protoloadgen.LoadGenTx) *protovcservice.VcBatch {
+	batchTxs := make([]*protovcservice.VcTx, len(txs))
 	for i, tx := range txs {
-		batchTxs[i] = &protovcservice.Tx{
+		batchTxs[i] = &protovcservice.VcTx{
 			Ref:        makeRef(tx.Id, blockNum, i),
 			Namespaces: tx.Tx.Namespaces,
 		}
 	}
-	return &protovcservice.Batch{Transactions: batchTxs}
+	return &protovcservice.VcBatch{Transactions: batchTxs}
 }
 
 // MapToLoadGenBatch creates a load-gen batch.
-func MapToLoadGenBatch(_ uint64, txs []*protoloadgen.TX) *protoloadgen.Batch {
-	return &protoloadgen.Batch{Tx: txs}
+func MapToLoadGenBatch(_ uint64, txs []*protoloadgen.LoadGenTx) *protoloadgen.LoadGenBatch {
+	return &protoloadgen.LoadGenBatch{Tx: txs}
 }
 
 // MapToEnvelopeBatch creates a batch of Fabric's Orderer input envelopes.
-func MapToEnvelopeBatch(_ uint64, txs []*protoloadgen.TX) []*common.Envelope {
+func MapToEnvelopeBatch(_ uint64, txs []*protoloadgen.LoadGenTx) []*common.Envelope {
 	envs := make([]*common.Envelope, len(txs))
 	for i, tx := range txs {
 		envs[i] = &common.Envelope{
@@ -70,7 +70,7 @@ func MapToEnvelopeBatch(_ uint64, txs []*protoloadgen.TX) []*common.Envelope {
 }
 
 // MapToOrdererBlock creates a Fabric's Orderer output block.
-func MapToOrdererBlock(blockNum uint64, txs []*protoloadgen.TX) *common.Block {
+func MapToOrdererBlock(blockNum uint64, txs []*protoloadgen.LoadGenTx) *common.Block {
 	data := make([][]byte, len(txs))
 	for i, tx := range txs {
 		data[i] = tx.SerializedEnvelope

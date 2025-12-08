@@ -118,7 +118,7 @@ func sendBlocks[T any](
 	ctx context.Context,
 	c *commonAdapter,
 	txStream *workload.StreamWithSetup,
-	mapper func(uint64, []*protoloadgen.TX) T,
+	mapper func(uint64, []*protoloadgen.LoadGenTx) T,
 	sender func(T) error,
 ) error {
 	queueRaw := make(chan *txsWithMapping[T], c.res.Stream.BuffersSize)
@@ -155,7 +155,7 @@ func mapToQueue[T any](
 	c *commonAdapter,
 	queueRaw chan *txsWithMapping[T],
 	txStream *workload.StreamWithSetup,
-	mapper func(uint64, []*protoloadgen.TX) T,
+	mapper func(uint64, []*protoloadgen.LoadGenTx) T,
 	blockSize int,
 ) {
 	queue := channel.NewWriter(ctx, queueRaw)
@@ -174,7 +174,7 @@ func mapToQueue[T any](
 	}
 }
 
-func getTXsIDs(txs []*protoloadgen.TX) []string {
+func getTXsIDs(txs []*protoloadgen.LoadGenTx) []string {
 	txIDs := make([]string, len(txs))
 	for i, tx := range txs {
 		txIDs[i] = tx.Id

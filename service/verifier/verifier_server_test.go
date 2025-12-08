@@ -72,7 +72,7 @@ func TestNoVerificationKeySet(t *testing.T) {
 	stream, err := c.Client.StartStream(t.Context())
 	require.NoError(t, err)
 
-	err = stream.Send(&protosigverifierservice.Batch{})
+	err = stream.Send(&protosigverifierservice.VerifierBatch{})
 	require.NoError(t, err)
 
 	t.Log("We should not receive any results with empty batch")
@@ -88,7 +88,7 @@ func TestNoInput(t *testing.T) {
 	stream, _ := c.Client.StartStream(t.Context())
 
 	update, _, _ := defaultUpdate(t)
-	err := stream.Send(&protosigverifierservice.Batch{Update: update})
+	err := stream.Send(&protosigverifierservice.VerifierBatch{Update: update})
 	require.NoError(t, err)
 
 	_, ok := readStream(t, stream, testTimeout)
@@ -141,9 +141,9 @@ func TestMinimalInput(t *testing.T) {
 	s, _ = metaTxSigner.SignNs(fakeTxID, tx3, 0)
 	tx3.Endorsements = test.AppendToEndorsementSetsForThresholdRule(tx3.Endorsements, s)
 
-	err := stream.Send(&protosigverifierservice.Batch{
+	err := stream.Send(&protosigverifierservice.VerifierBatch{
 		Update: update,
-		Requests: []*protosigverifierservice.Tx{
+		Requests: []*protosigverifierservice.VerifierTx{
 			{Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx1},
 			{Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx2},
 			{Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx3},
@@ -164,7 +164,7 @@ func TestSignatureRule(t *testing.T) {
 	require.NoError(t, err)
 
 	update, _, _ := defaultUpdate(t)
-	err = stream.Send(&protosigverifierservice.Batch{Update: update})
+	err = stream.Send(&protosigverifierservice.VerifierBatch{Update: update})
 	require.NoError(t, err)
 
 	signingIdentities := make([]*signingIdentity, 2)
@@ -192,7 +192,7 @@ func TestSignatureRule(t *testing.T) {
 		},
 	}
 
-	update = &protosigverifierservice.Update{
+	update = &protosigverifierservice.VerifierUpdate{
 		NamespacePolicies: &applicationpb.NamespacePolicies{
 			Policies: []*applicationpb.PolicyItem{
 				policy.MakePolicy(t, "2", nsPolicy),
@@ -241,7 +241,7 @@ func TestSignatureRule(t *testing.T) {
 
 		requireTestCase(t, stream, &testCase{
 			update: update,
-			req: &protosigverifierservice.Tx{
+			req: &protosigverifierservice.VerifierTx{
 				Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx1,
 			},
 			expectedStatus: applicationpb.Status_COMMITTED,
@@ -256,7 +256,7 @@ func TestSignatureRule(t *testing.T) {
 		MetaNamespaceVerificationKey: metaTxVerificationKey,
 	}, configtxgen.SampleFabricX)
 	require.NoError(t, err)
-	update = &protosigverifierservice.Update{
+	update = &protosigverifierservice.VerifierUpdate{
 		Config: &applicationpb.ConfigTransaction{
 			Envelope: configBlock.Data.Data[0],
 		},
@@ -264,7 +264,7 @@ func TestSignatureRule(t *testing.T) {
 
 	requireTestCase(t, stream, &testCase{
 		update: update,
-		req: &protosigverifierservice.Tx{
+		req: &protosigverifierservice.VerifierTx{
 			Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx1,
 		},
 		expectedStatus: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
@@ -279,11 +279,11 @@ func TestBadSignature(t *testing.T) {
 	require.NoError(t, err)
 
 	update, _, _ := defaultUpdate(t)
-	err = stream.Send(&protosigverifierservice.Batch{Update: update})
+	err = stream.Send(&protosigverifierservice.VerifierBatch{Update: update})
 	require.NoError(t, err)
 
 	requireTestCase(t, stream, &testCase{
-		req: &protosigverifierservice.Tx{
+		req: &protosigverifierservice.VerifierTx{
 			Ref: committerpb.TxRef(fakeTxID, 1, 0),
 			Tx: &applicationpb.Tx{
 				Namespaces: []*applicationpb.TxNamespace{{
@@ -318,8 +318,8 @@ func TestUpdatePolicies(t *testing.T) {
 
 		ns1Policy, _ := makePolicyItem(t, ns1)
 		ns2Policy, _ := makePolicyItem(t, ns2)
-		err = stream.Send(&protosigverifierservice.Batch{
-			Update: &protosigverifierservice.Update{
+		err = stream.Send(&protosigverifierservice.VerifierBatch{
+			Update: &protosigverifierservice.VerifierUpdate{
 				Config: update.Config,
 				NamespacePolicies: &applicationpb.NamespacePolicies{
 					Policies: []*applicationpb.PolicyItem{ns1Policy, ns2Policy},
@@ -331,8 +331,8 @@ func TestUpdatePolicies(t *testing.T) {
 		// We attempt a bad policies update.
 		// We expect no update since one of the given policies are invalid.
 		p3, _ := makePolicyItem(t, ns1)
-		err = stream.Send(&protosigverifierservice.Batch{
-			Update: &protosigverifierservice.Update{
+		err = stream.Send(&protosigverifierservice.VerifierBatch{
+			Update: &protosigverifierservice.VerifierUpdate{
 				NamespacePolicies: &applicationpb.NamespacePolicies{
 					Policies: []*applicationpb.PolicyItem{
 						p3,
@@ -357,8 +357,8 @@ func TestUpdatePolicies(t *testing.T) {
 
 		ns1Policy, ns1Signer := makePolicyItem(t, ns1)
 		ns2Policy, _ := makePolicyItem(t, ns2)
-		err = stream.Send(&protosigverifierservice.Batch{
-			Update: &protosigverifierservice.Update{
+		err = stream.Send(&protosigverifierservice.VerifierBatch{
+			Update: &protosigverifierservice.VerifierUpdate{
 				Config: update.Config,
 				NamespacePolicies: &applicationpb.NamespacePolicies{
 					Policies: []*applicationpb.PolicyItem{ns1Policy, ns2Policy},
@@ -368,8 +368,8 @@ func TestUpdatePolicies(t *testing.T) {
 		require.NoError(t, err)
 
 		ns2PolicyUpdate, ns2Signer := makePolicyItem(t, ns2)
-		err = stream.Send(&protosigverifierservice.Batch{
-			Update: &protosigverifierservice.Update{
+		err = stream.Send(&protosigverifierservice.VerifierBatch{
+			Update: &protosigverifierservice.VerifierUpdate{
 				NamespacePolicies: &applicationpb.NamespacePolicies{
 					Policies: []*applicationpb.PolicyItem{ns2PolicyUpdate},
 				},
@@ -379,7 +379,7 @@ func TestUpdatePolicies(t *testing.T) {
 
 		sign(t, tx, ns1Signer, ns2Signer)
 		requireTestCase(t, stream, &testCase{
-			req: &protosigverifierservice.Tx{
+			req: &protosigverifierservice.VerifierTx{
 				Ref: committerpb.TxRef(fakeTxID, 1, 1),
 				Tx:  tx,
 			},
@@ -412,13 +412,13 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 		uniqueNsSigners[i] = uniqueNsSigner
 		commonNsPolicy, commonNsSigner := makePolicyItem(t, ns[len(ns)-1])
 		commonNsSigners[i] = commonNsSigner
-		p := &protosigverifierservice.Update{
+		p := &protosigverifierservice.VerifierUpdate{
 			Config: update.Config,
 			NamespacePolicies: &applicationpb.NamespacePolicies{
 				Policies: []*applicationpb.PolicyItem{uniqueNsPolicy, commonNsPolicy},
 			},
 		}
-		err = stream.Send(&protosigverifierservice.Batch{
+		err = stream.Send(&protosigverifierservice.VerifierBatch{
 			Update: p,
 		})
 		require.NoError(t, err)
@@ -431,8 +431,8 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 	success := 0
 	for i := range updateCount {
 		sign(t, tx, append(uniqueNsSigners, commonNsSigners[i])...)
-		require.NoError(t, stream.Send(&protosigverifierservice.Batch{
-			Requests: []*protosigverifierservice.Tx{{
+		require.NoError(t, stream.Send(&protosigverifierservice.VerifierBatch{
+			Requests: []*protosigverifierservice.VerifierTx{{
 				Ref: committerpb.TxRef(fakeTxID, 0, 0),
 				Tx:  tx,
 			}},
@@ -453,7 +453,7 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 	tx = makeTX(ns[:updateCount]...)
 	sign(t, tx, uniqueNsSigners...)
 	requireTestCase(t, stream, &testCase{
-		req: &protosigverifierservice.Tx{
+		req: &protosigverifierservice.VerifierTx{
 			Ref: committerpb.TxRef(fakeTxID, 1, 1),
 			Tx:  tx,
 		},
@@ -462,8 +462,8 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 }
 
 type testCase struct {
-	update         *protosigverifierservice.Update
-	req            *protosigverifierservice.Tx
+	update         *protosigverifierservice.VerifierUpdate
+	req            *protosigverifierservice.VerifierTx
 	expectedStatus applicationpb.Status
 }
 
@@ -508,9 +508,9 @@ func requireTestCase(
 	tt *testCase,
 ) {
 	t.Helper()
-	err := stream.Send(&protosigverifierservice.Batch{
+	err := stream.Send(&protosigverifierservice.VerifierBatch{
 		Update:   tt.update,
-		Requests: []*protosigverifierservice.Tx{tt.req},
+		Requests: []*protosigverifierservice.VerifierTx{tt.req},
 	})
 	require.NoError(t, err)
 
@@ -546,9 +546,9 @@ func readStream(
 	t *testing.T,
 	stream protosigverifierservice.Verifier_StartStreamClient,
 	timeout time.Duration,
-) ([]*protosigverifierservice.Response, bool) {
+) ([]*protosigverifierservice.VerifierResponse, bool) {
 	t.Helper()
-	outputChan := make(chan []*protosigverifierservice.Response, 1)
+	outputChan := make(chan []*protosigverifierservice.VerifierResponse, 1)
 	ctx, cancel := context.WithTimeout(t.Context(), timeout)
 	defer cancel()
 	go func() {
@@ -561,7 +561,7 @@ func readStream(
 }
 
 func defaultUpdate(t *testing.T) (
-	update *protosigverifierservice.Update, metaTxSigner, dataTxSigner *sigtest.NsSigner,
+	update *protosigverifierservice.VerifierUpdate, metaTxSigner, dataTxSigner *sigtest.NsSigner,
 ) {
 	t.Helper()
 	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
@@ -576,7 +576,7 @@ func defaultUpdate(t *testing.T) (
 	dataTxSigningKey, dataTxVerificationKey := factory.NewKeys()
 	dataTxSigner, err = factory.NewSigner(dataTxSigningKey)
 	require.NoError(t, err)
-	update = &protosigverifierservice.Update{
+	update = &protosigverifierservice.VerifierUpdate{
 		Config: &applicationpb.ConfigTransaction{
 			Envelope: configBlock.Data.Data[0],
 		},

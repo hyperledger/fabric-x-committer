@@ -22,7 +22,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
@@ -124,7 +124,7 @@ func (c *Coordinator) BlockProcessing(stream protocoordinatorservice.Coordinator
 	defer logger.Info("Closed block processing stream")
 
 	g, gCtx := errgroup.WithContext(stream.Context())
-	blockQueue := channel.Make[*protocoordinatorservice.Batch](gCtx, 1000)
+	blockQueue := channel.Make[*protocoordinatorservice.CoordinatorBatch](gCtx, 1000)
 	g.Go(func() error {
 		return c.receiveBlocks(gCtx, stream, blockQueue)
 	})
@@ -137,7 +137,7 @@ func (c *Coordinator) BlockProcessing(stream protocoordinatorservice.Coordinator
 func (c *Coordinator) receiveBlocks(
 	ctx context.Context,
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
-	blockQueue channel.Writer[*protocoordinatorservice.Batch],
+	blockQueue channel.Writer[*protocoordinatorservice.CoordinatorBatch],
 ) error {
 	for ctx.Err() == nil {
 		block, err := stream.Recv()
@@ -166,7 +166,7 @@ func (c *Coordinator) receiveBlocks(
 func (c *Coordinator) sendTxsValidationStatus(
 	ctx context.Context,
 	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
-	blockQueue channel.Reader[*protocoordinatorservice.Batch],
+	blockQueue channel.Reader[*protocoordinatorservice.CoordinatorBatch],
 ) error {
 	for ctx.Err() == nil {
 		scBlock, ok := blockQueue.Read()
@@ -214,7 +214,7 @@ func (c *Coordinator) sendTxsStatusChunk(
 	c.txsStatusMu.Lock()
 	defer c.txsStatusMu.Unlock()
 	for _, info := range txs {
-		s := types.NewStatusWithHeightFromRef(info.Status, info.Ref)
+		s := servicepb.NewStatusWithHeightFromRef(info.Status, info.Ref)
 		b.Status[info.Ref.TxId] = s
 		c.txsStatus.addIfNotExist(info.Ref.TxId, s)
 	}

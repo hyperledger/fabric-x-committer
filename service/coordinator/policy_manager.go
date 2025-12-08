@@ -36,7 +36,7 @@ func newPolicyManager() *policyManager {
 }
 
 func (pm *policyManager) updateFromTx(namespaces []*applicationpb.TxNamespace) {
-	var updates []*protosigverifierservice.Update
+	var updates []*protosigverifierservice.VerifierUpdate
 	for _, ns := range namespaces {
 		if u := policy.GetUpdatesFromNamespace(ns); u != nil {
 			updates = append(updates, u)
@@ -45,7 +45,7 @@ func (pm *policyManager) updateFromTx(namespaces []*applicationpb.TxNamespace) {
 	pm.update(updates...)
 }
 
-func (pm *policyManager) update(update ...*protosigverifierservice.Update) {
+func (pm *policyManager) update(update ...*protosigverifierservice.VerifierUpdate) {
 	// Prevent unnecessary version increments.
 	if isUpdateEmpty(update...) {
 		return
@@ -71,7 +71,7 @@ func (pm *policyManager) update(update ...*protosigverifierservice.Update) {
 	}
 }
 
-func isUpdateEmpty(update ...*protosigverifierservice.Update) bool {
+func isUpdateEmpty(update ...*protosigverifierservice.VerifierUpdate) bool {
 	for _, u := range update {
 		if u != nil && (u.Config != nil || u.NamespacePolicies != nil) {
 			return false
@@ -80,10 +80,10 @@ func isUpdateEmpty(update ...*protosigverifierservice.Update) bool {
 	return true
 }
 
-func (pm *policyManager) getAll() (*protosigverifierservice.Update, uint64) {
+func (pm *policyManager) getAll() (*protosigverifierservice.VerifierUpdate, uint64) {
 	pm.lock.Lock()
 	defer pm.lock.Unlock()
-	return &protosigverifierservice.Update{
+	return &protosigverifierservice.VerifierUpdate{
 		NamespacePolicies: &applicationpb.NamespacePolicies{
 			Policies: slices.Collect(maps.Values(pm.nsPolicies)),
 		},
@@ -91,14 +91,14 @@ func (pm *policyManager) getAll() (*protosigverifierservice.Update, uint64) {
 	}, pm.latestVersion.Load()
 }
 
-func (pm *policyManager) getUpdates(version uint64) (*protosigverifierservice.Update, uint64) {
+func (pm *policyManager) getUpdates(version uint64) (*protosigverifierservice.VerifierUpdate, uint64) {
 	if version == pm.latestVersion.Load() {
 		return nil, version
 	}
 
 	pm.lock.Lock()
 	defer pm.lock.Unlock()
-	ret := &protosigverifierservice.Update{}
+	ret := &protosigverifierservice.VerifierUpdate{}
 	if version < pm.configVersion {
 		ret.Config = pm.configTransaction
 	}

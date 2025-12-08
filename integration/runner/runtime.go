@@ -25,7 +25,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
@@ -398,7 +398,7 @@ func (c *CommitterRuntime) MakeAndSendTransactionsToOrderer(
 	t *testing.T, txsNs [][]*applicationpb.TxNamespace, expectedStatus []applicationpb.Status,
 ) []string {
 	t.Helper()
-	txs := make([]*protoloadgen.TX, len(txsNs))
+	txs := make([]*protoloadgen.LoadGenTx, len(txsNs))
 
 	for i, namespaces := range txsNs {
 		tx := &applicationpb.Tx{
@@ -418,7 +418,7 @@ func (c *CommitterRuntime) MakeAndSendTransactionsToOrderer(
 
 // SendTransactionsToOrderer creates a block with given transactions, send it to the committer, and verify the result.
 func (c *CommitterRuntime) SendTransactionsToOrderer(
-	t *testing.T, txs []*protoloadgen.TX, expectedStatus []applicationpb.Status,
+	t *testing.T, txs []*protoloadgen.LoadGenTx, expectedStatus []applicationpb.Status,
 ) []string {
 	t.Helper()
 	expected := &ExpectedStatusInBlock{
@@ -506,7 +506,7 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 	duplicateTxIDsStatus := make(map[string]*applicationpb.StatusWithHeight)
 	for i, tID := range expected.TxIDs {
 		//nolint:gosec // int -> uint32.
-		s := types.NewStatusWithHeight(expected.Statuses[i], blk.Header.Number, uint32(i))
+		s := servicepb.NewStatusWithHeight(expected.Statuses[i], blk.Header.Number, uint32(i))
 		if s.Code == applicationpb.Status_REJECTED_DUPLICATE_TX_ID {
 			duplicateTxIDsStatus[tID] = s
 		} else {

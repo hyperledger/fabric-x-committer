@@ -16,7 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
@@ -25,13 +25,13 @@ import (
 
 type prepareTestEnv struct {
 	preparer    *transactionPreparer
-	txBatch     chan *protovcservice.Batch
+	txBatch     chan *protovcservice.VcBatch
 	preparedTxs chan *preparedTransactions
 }
 
 func newPrepareTestEnv(t *testing.T) *prepareTestEnv {
 	t.Helper()
-	txBatch := make(chan *protovcservice.Batch, 10)
+	txBatch := make(chan *protovcservice.VcBatch, 10)
 	preparedTxs := make(chan *preparedTransactions, 10)
 	metrics := newVCServiceMetrics()
 	p := newPreparer(txBatch, preparedTxs, metrics)
@@ -61,8 +61,8 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 	// Shortcut for version pointer.
 	v := committerpb.Version
 
-	tx := &protovcservice.Batch{
-		Transactions: []*protovcservice.Tx{
+	tx := &protovcservice.VcBatch{
+		Transactions: []*protovcservice.VcTx{
 			{
 				Ref: committerpb.TxRef("tx1", 1, 1),
 				Namespaces: []*applicationpb.TxNamespace{
@@ -145,8 +145,8 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 		txIDToNsNewWrites:      transactionToWrites{},
 		invalidTxIDStatus:      make(map[TxID]applicationpb.Status),
 		txIDToHeight: transactionIDToHeight{
-			"tx1": types.NewHeight(1, 1),
-			"tx2": types.NewHeight(4, 2),
+			"tx1": servicepb.NewHeight(1, 1),
+			"tx2": servicepb.NewHeight(4, 2),
 		},
 	}
 
@@ -169,8 +169,8 @@ func TestPrepareTxWithBlindWritesOnly(t *testing.T) {
 	// Shortcut for version pointer.
 	v := committerpb.Version
 
-	tx := &protovcservice.Batch{
-		Transactions: []*protovcservice.Tx{
+	tx := &protovcservice.VcBatch{
+		Transactions: []*protovcservice.VcTx{
 			{
 				Ref: committerpb.TxRef("tx1", 10, 5),
 				Namespaces: []*applicationpb.TxNamespace{
@@ -248,8 +248,8 @@ func TestPrepareTxWithBlindWritesOnly(t *testing.T) {
 		txIDToNsNewWrites: transactionToWrites{},
 		invalidTxIDStatus: make(map[TxID]applicationpb.Status),
 		txIDToHeight: transactionIDToHeight{
-			"tx1": types.NewHeight(10, 5),
-			"tx2": types.NewHeight(6, 3),
+			"tx1": servicepb.NewHeight(10, 5),
+			"tx2": servicepb.NewHeight(6, 3),
 		},
 	}
 
@@ -274,8 +274,8 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 	// Shortcut for version pointer.
 	v := committerpb.Version
 
-	tx := &protovcservice.Batch{
-		Transactions: []*protovcservice.Tx{
+	tx := &protovcservice.VcBatch{
+		Transactions: []*protovcservice.VcTx{
 			{
 				Ref: committerpb.TxRef("tx1", 7, 4),
 				Namespaces: []*applicationpb.TxNamespace{
@@ -400,8 +400,8 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 		},
 		invalidTxIDStatus: make(map[TxID]applicationpb.Status),
 		txIDToHeight: transactionIDToHeight{
-			"tx1": types.NewHeight(7, 4),
-			"tx2": types.NewHeight(7, 5),
+			"tx1": servicepb.NewHeight(7, 4),
+			"tx2": servicepb.NewHeight(7, 5),
 		},
 	}
 
@@ -429,8 +429,8 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 	// Shortcut for version pointer.
 	v := committerpb.Version
 
-	tx := &protovcservice.Batch{
-		Transactions: []*protovcservice.Tx{
+	tx := &protovcservice.VcBatch{
+		Transactions: []*protovcservice.VcTx{
 			{
 				Ref: committerpb.TxRef("tx1", 8, 0),
 				Namespaces: []*applicationpb.TxNamespace{
@@ -654,11 +654,11 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 			"tx4": applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
 		},
 		txIDToHeight: transactionIDToHeight{
-			"tx1":   types.NewHeight(8, 0),
-			"tx2":   types.NewHeight(9, 3),
-			"tx2.2": types.NewHeight(9, 4),
-			"tx3":   types.NewHeight(6, 2),
-			"tx4":   types.NewHeight(5, 2),
+			"tx1":   servicepb.NewHeight(8, 0),
+			"tx2":   servicepb.NewHeight(9, 3),
+			"tx2.2": servicepb.NewHeight(9, 4),
+			"tx3":   servicepb.NewHeight(6, 2),
+			"tx4":   servicepb.NewHeight(5, 2),
 		},
 	}
 
@@ -696,7 +696,7 @@ func BenchmarkPrepare(b *testing.B) {
 	for _, w := range []int{1, 2, 4, 8} {
 		w := w
 		b.Run(fmt.Sprintf("w=%d", w), func(b *testing.B) {
-			txBatch := make(chan *protovcservice.Batch, 8)
+			txBatch := make(chan *protovcservice.VcBatch, 8)
 			preparedTxs := make(chan *preparedTransactions, 8)
 			metrics := newVCServiceMetrics()
 			p := newPreparer(txBatch, preparedTxs, metrics)

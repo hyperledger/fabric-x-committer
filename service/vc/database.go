@@ -20,7 +20,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
@@ -433,7 +433,7 @@ func (db *database) readStatusWithHeight(
 				return errors.Wrapf(err, "failed to read rows from the query [%s] result", queryTxIDsStatusPrepSQLStmt)
 			}
 
-			ht, _, err := types.NewHeightFromBytes(height)
+			ht, _, err := servicepb.NewHeightFromBytes(height)
 			if err != nil {
 				return fmt.Errorf("failed to create height: %w", err)
 			}

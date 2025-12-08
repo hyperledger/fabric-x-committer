@@ -28,7 +28,7 @@ type (
 	}
 
 	receivedBatch struct {
-		batch  *protoloadgen.Batch
+		batch  *protoloadgen.LoadGenBatch
 		status applicationpb.Status
 	}
 )
@@ -58,7 +58,7 @@ func (c *LoadGenAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 	g.Go(func() error {
 		receiveQueueCtx := channel.NewWriter(gCtx, receiveQueue)
 		return sendBlocks(dCtx, &c.commonAdapter, txStream, workload.MapToLoadGenBatch,
-			func(batch *protoloadgen.Batch) error {
+			func(batch *protoloadgen.LoadGenBatch) error {
 				_, appendErr := client.AppendBatch(dCtx, batch)
 				status := applicationpb.Status_COMMITTED
 				if appendErr != nil {

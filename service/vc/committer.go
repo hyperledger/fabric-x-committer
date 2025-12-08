@@ -15,7 +15,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
@@ -259,7 +259,8 @@ func (c *transactionCommitter) setCorrectStatusForDuplicateTxID(
 	}
 
 	for txID, sWithHeight := range idStatusHeight {
-		if types.AreSame(txIDToHeight[TxID(txID)], types.NewHeight(sWithHeight.BlockNumber, sWithHeight.TxNumber)) {
+		requiredHeight := servicepb.NewHeight(sWithHeight.BlockNumber, sWithHeight.TxNumber)
+		if servicepb.AreSame(txIDToHeight[TxID(txID)], requiredHeight) {
 			txsStatus.Status[txID] = sWithHeight
 		}
 	}

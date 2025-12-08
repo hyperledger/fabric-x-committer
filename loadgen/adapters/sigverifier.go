@@ -62,7 +62,7 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 		}
 
 		logger.Infof("Set verification verification policy")
-		err = streams[i].Send(&protosigverifierservice.Batch{Update: updateMsg})
+		err = streams[i].Send(&protosigverifierservice.VerifierBatch{Update: updateMsg})
 		if err != nil {
 			return errors.Wrap(err, "failed submitting verification policy")
 		}
@@ -81,14 +81,14 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	return errors.Wrap(g.Wait(), "workload done")
 }
 
-func createUpdate(policy *workload.PolicyProfile) (*protosigverifierservice.Update, error) {
+func createUpdate(policy *workload.PolicyProfile) (*protosigverifierservice.VerifierUpdate, error) {
 	txSigner := workload.NewTxSignerVerifier(policy)
 
 	envelopeBytes, err := workload.CreateConfigEnvelope(policy)
 	if err != nil {
 		return nil, err
 	}
-	updateMsg := &protosigverifierservice.Update{
+	updateMsg := &protosigverifierservice.VerifierUpdate{
 		Config: &applicationpb.ConfigTransaction{
 			Envelope: envelopeBytes,
 		},

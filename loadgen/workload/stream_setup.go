@@ -16,7 +16,7 @@ import (
 type (
 	// StreamWithSetup implements the TxStream interface.
 	StreamWithSetup struct {
-		WorkloadSetupTXs channel.Reader[*protoloadgen.TX]
+		WorkloadSetupTXs channel.Reader[*protoloadgen.LoadGenTx]
 		TxStream         *TxStream
 		BlockSize        uint64
 	}
@@ -25,8 +25,8 @@ type (
 	// and blocks until indicated that it was committed.
 	// Then, it submits transactions from the tx stream.
 	TxGeneratorWithSetup struct {
-		WorkloadSetupTXs channel.Reader[*protoloadgen.TX]
-		TxGen            *RateLimiterGenerator[*protoloadgen.TX]
+		WorkloadSetupTXs channel.Reader[*protoloadgen.LoadGenTx]
+		TxGen            *RateLimiterGenerator[*protoloadgen.LoadGenTx]
 	}
 )
 
@@ -40,10 +40,10 @@ func (c *StreamWithSetup) MakeTxGenerator() *TxGeneratorWithSetup {
 }
 
 // Next generate the next TX.
-func (g *TxGeneratorWithSetup) Next(ctx context.Context, size int) []*protoloadgen.TX {
+func (g *TxGeneratorWithSetup) Next(ctx context.Context, size int) []*protoloadgen.LoadGenTx {
 	if g.WorkloadSetupTXs != nil {
 		if tx, ok := g.WorkloadSetupTXs.Read(); ok {
-			return []*protoloadgen.TX{tx}
+			return []*protoloadgen.LoadGenTx{tx}
 		}
 		g.WorkloadSetupTXs = nil
 	}

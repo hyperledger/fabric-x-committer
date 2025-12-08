@@ -23,14 +23,14 @@ func TestPolicyManager(t *testing.T) {
 
 	t.Log("Initial state")
 	update, version0 := pm.getAll()
-	requireUpdateEqual(t, &protosigverifierservice.Update{
+	requireUpdateEqual(t, &protosigverifierservice.VerifierUpdate{
 		NamespacePolicies: &applicationpb.NamespacePolicies{},
 	}, update)
 
 	t.Log("Update 1")
 	ns1Policy := makeFakePolicy(t, "ns1", "k1")
 	ns2Policy := makeFakePolicy(t, "ns2", "k2")
-	update1 := &protosigverifierservice.Update{
+	update1 := &protosigverifierservice.VerifierUpdate{
 		NamespacePolicies: &applicationpb.NamespacePolicies{
 			Policies: []*applicationpb.PolicyItem{ns1Policy, ns2Policy},
 		},
@@ -54,7 +54,7 @@ func TestPolicyManager(t *testing.T) {
 
 	t.Log("Update 2")
 	ns2NewPolicy := makeFakePolicy(t, "ns2", "k3")
-	update2 := &protosigverifierservice.Update{
+	update2 := &protosigverifierservice.VerifierUpdate{
 		NamespacePolicies: &applicationpb.NamespacePolicies{
 			Policies: []*applicationpb.PolicyItem{ns2NewPolicy},
 		},
@@ -70,7 +70,7 @@ func TestPolicyManager(t *testing.T) {
 	require.Equal(t, version2u2, version2u1)
 
 	update, version2u0 := pm.getUpdates(0)
-	expectedAll := &protosigverifierservice.Update{
+	expectedAll := &protosigverifierservice.VerifierUpdate{
 		NamespacePolicies: &applicationpb.NamespacePolicies{
 			Policies: []*applicationpb.PolicyItem{ns1Policy, ns2NewPolicy},
 		},
@@ -84,7 +84,7 @@ func TestPolicyManager(t *testing.T) {
 	require.Equal(t, version2u2, version2ua)
 
 	t.Log("Update 3")
-	update3 := &protosigverifierservice.Update{
+	update3 := &protosigverifierservice.VerifierUpdate{
 		Config: &applicationpb.ConfigTransaction{
 			Envelope: []byte("config2"),
 		},
@@ -100,7 +100,7 @@ func TestPolicyManager(t *testing.T) {
 	require.Equal(t, version3u3, version3u2)
 
 	update, version3u1 := pm.getUpdates(1)
-	requireUpdateEqual(t, &protosigverifierservice.Update{
+	requireUpdateEqual(t, &protosigverifierservice.VerifierUpdate{
 		NamespacePolicies: &applicationpb.NamespacePolicies{
 			Policies: update2.NamespacePolicies.Policies,
 		},
@@ -109,7 +109,7 @@ func TestPolicyManager(t *testing.T) {
 	require.Equal(t, version3u3, version3u1)
 
 	update, version3u0 := pm.getUpdates(0)
-	expectedAll = &protosigverifierservice.Update{
+	expectedAll = &protosigverifierservice.VerifierUpdate{
 		NamespacePolicies: &applicationpb.NamespacePolicies{
 			Policies: []*applicationpb.PolicyItem{ns1Policy, ns2NewPolicy},
 		},
@@ -123,12 +123,12 @@ func TestPolicyManager(t *testing.T) {
 	require.Equal(t, version3ua, version3u3)
 
 	t.Log("Empty updates")
-	pm.update(nil, &protosigverifierservice.Update{})
+	pm.update(nil, &protosigverifierservice.VerifierUpdate{})
 	_, versionNoUpdate := pm.getAll()
 	require.Equal(t, version3u3, versionNoUpdate)
 }
 
-func requireUpdateEqual(t *testing.T, expected, actual *protosigverifierservice.Update) {
+func requireUpdateEqual(t *testing.T, expected, actual *protosigverifierservice.VerifierUpdate) {
 	t.Helper()
 	if expected == nil {
 		require.Nil(t, actual)

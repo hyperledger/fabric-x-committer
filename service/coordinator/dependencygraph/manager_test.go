@@ -192,7 +192,7 @@ func TestDependencyGraphManager(t *testing.T) {
 
 			incomingTxs <- &TransactionBatch{
 				ID:  1,
-				Txs: []*protocoordinatorservice.Tx{t1, t2},
+				Txs: []*protocoordinatorservice.CoordinatorTx{t1, t2},
 			}
 
 			test.EventuallyIntMetric(t, 1, metrics.dependentTransactionsQueueSize, 5*time.Second, 100*time.Millisecond)
@@ -204,7 +204,7 @@ func TestDependencyGraphManager(t *testing.T) {
 
 			incomingTxs <- &TransactionBatch{
 				ID:  2,
-				Txs: []*protocoordinatorservice.Tx{t3, t4},
+				Txs: []*protocoordinatorservice.CoordinatorTx{t3, t4},
 			}
 
 			test.EventuallyIntMetric(t, 3, metrics.dependentTransactionsQueueSize, 5*time.Second, 100*time.Millisecond)
@@ -266,7 +266,7 @@ func TestDependencyGraphManager(t *testing.T) {
 
 			incomingTxs <- &TransactionBatch{
 				ID:  3,
-				Txs: []*protocoordinatorservice.Tx{t0, t1, t2},
+				Txs: []*protocoordinatorservice.CoordinatorTx{t0, t1, t2},
 			}
 
 			// t3 depends on t2, t1, and t0
@@ -278,7 +278,7 @@ func TestDependencyGraphManager(t *testing.T) {
 
 			incomingTxs <- &TransactionBatch{
 				ID:  4,
-				Txs: []*protocoordinatorservice.Tx{t3, t4},
+				Txs: []*protocoordinatorservice.CoordinatorTx{t3, t4},
 			}
 
 			// only t0 is dependency free
@@ -331,7 +331,7 @@ func TestDependencyGraphManager(t *testing.T) {
 			ensureWaitingTXsLimit(t, manService, 0)
 
 			t.Log("check waiting TX limit")
-			txs := make([]*protocoordinatorservice.Tx, waitingTXsLimit+1)
+			txs := make([]*protocoordinatorservice.CoordinatorTx, waitingTXsLimit+1)
 			for i := range txs {
 				txs[i] = createTxForTest(t, i, nsID1ForTest, nil, keys(i), nil)
 			}
@@ -340,7 +340,7 @@ func TestDependencyGraphManager(t *testing.T) {
 				Txs: txs,
 			}
 
-			txs2 := make([]*protocoordinatorservice.Tx, 10)
+			txs2 := make([]*protocoordinatorservice.CoordinatorTx, 10)
 			for i := range txs2 {
 				txs2[i] = createTxForTest(t, i, nsID1ForTest, nil, keys(i+len(txs)), nil)
 			}

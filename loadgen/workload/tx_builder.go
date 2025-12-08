@@ -53,13 +53,13 @@ func NewTxBuilderFromPolicy(policy *PolicyProfile, nonceSource io.Reader) (*TxBu
 }
 
 // MakeTx makes an enveloped TX with the builder's properties.
-func (txb *TxBuilder) MakeTx(tx *applicationpb.Tx) *protoloadgen.TX {
+func (txb *TxBuilder) MakeTx(tx *applicationpb.Tx) *protoloadgen.LoadGenTx {
 	return txb.makeTx(nil, tx)
 }
 
 // MakeTxWithID makes an enveloped TX with the builder's properties.
 // It uses the given TX-ID instead of generating a valid one.
-func (txb *TxBuilder) MakeTxWithID(txID string, tx *applicationpb.Tx) *protoloadgen.TX {
+func (txb *TxBuilder) MakeTxWithID(txID string, tx *applicationpb.Tx) *protoloadgen.LoadGenTx {
 	return txb.makeTx(&txID, tx)
 }
 
@@ -74,7 +74,7 @@ func (txb *TxBuilder) MakeTxWithID(txID string, tx *applicationpb.Tx) *protoload
 //  5. Serializes the envelope.
 //
 // Returns a [protoloadgen.TX] with the appropriate values.
-func (txb *TxBuilder) makeTx(optionalTxID *string, blockTx *applicationpb.Tx) *protoloadgen.TX {
+func (txb *TxBuilder) makeTx(optionalTxID *string, blockTx *applicationpb.Tx) *protoloadgen.LoadGenTx {
 	//  1. Generates the signature-header, and TX-ID.
 	sigHeader := &common.SignatureHeader{
 		Creator: txb.EnvCreator,
@@ -100,7 +100,7 @@ func (txb *TxBuilder) makeTx(optionalTxID *string, blockTx *applicationpb.Tx) *p
 	}
 
 	//  3. Serializes the envelope's payload.
-	tx := &protoloadgen.TX{
+	tx := &protoloadgen.LoadGenTx{
 		Id: txID,
 		Tx: blockTx,
 	}

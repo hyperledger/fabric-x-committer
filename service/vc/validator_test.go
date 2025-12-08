@@ -14,7 +14,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -161,9 +161,9 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 				invalidTxIDStatus: make(map[TxID]applicationpb.Status),
 				txIDToHeight: transactionIDToHeight{
-					"tx1": types.NewHeight(1, 1),
-					"tx2": types.NewHeight(4, 2),
-					"tx3": types.NewHeight(4, 3),
+					"tx1": servicepb.NewHeight(1, 1),
+					"tx2": servicepb.NewHeight(4, 2),
+					"tx3": servicepb.NewHeight(4, 3),
 				},
 			},
 			expectedValidatedTx: &validatedTransactions{
@@ -177,9 +177,9 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 				invalidTxStatus: map[TxID]applicationpb.Status{},
 				txIDToHeight: transactionIDToHeight{
-					"tx1": types.NewHeight(1, 1),
-					"tx2": types.NewHeight(4, 2),
-					"tx3": types.NewHeight(4, 3),
+					"tx1": servicepb.NewHeight(1, 1),
+					"tx2": servicepb.NewHeight(4, 2),
+					"tx3": servicepb.NewHeight(4, 3),
 				},
 			},
 		},
@@ -220,9 +220,9 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 				invalidTxIDStatus: make(map[TxID]applicationpb.Status),
 				txIDToHeight: transactionIDToHeight{
-					"tx1": types.NewHeight(1, 1),
-					"tx2": types.NewHeight(5, 2),
-					"tx3": types.NewHeight(5, 3),
+					"tx1": servicepb.NewHeight(1, 1),
+					"tx2": servicepb.NewHeight(5, 2),
+					"tx3": servicepb.NewHeight(5, 3),
 				},
 			},
 			expectedValidatedTx: &validatedTransactions{
@@ -234,9 +234,9 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 					"tx3": applicationpb.Status_ABORTED_MVCC_CONFLICT,
 				},
 				txIDToHeight: transactionIDToHeight{
-					"tx1": types.NewHeight(1, 1),
-					"tx2": types.NewHeight(5, 2),
-					"tx3": types.NewHeight(5, 3),
+					"tx1": servicepb.NewHeight(1, 1),
+					"tx2": servicepb.NewHeight(5, 2),
+					"tx3": servicepb.NewHeight(5, 3),
 				},
 			},
 		},
@@ -285,12 +285,12 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 					"tx6": applicationpb.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
 				},
 				txIDToHeight: transactionIDToHeight{
-					"tx1": types.NewHeight(1, 1),
-					"tx2": types.NewHeight(4, 2),
-					"tx3": types.NewHeight(4, 3),
-					"tx4": types.NewHeight(6, 3),
-					"tx5": types.NewHeight(7, 3),
-					"tx6": types.NewHeight(7, 4),
+					"tx1": servicepb.NewHeight(1, 1),
+					"tx2": servicepb.NewHeight(4, 2),
+					"tx3": servicepb.NewHeight(4, 3),
+					"tx4": servicepb.NewHeight(6, 3),
+					"tx5": servicepb.NewHeight(7, 3),
+					"tx6": servicepb.NewHeight(7, 4),
 				},
 			},
 			expectedValidatedTx: &validatedTransactions{
@@ -306,12 +306,12 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 					"tx6": applicationpb.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
 				},
 				txIDToHeight: transactionIDToHeight{
-					"tx1": types.NewHeight(1, 1),
-					"tx2": types.NewHeight(4, 2),
-					"tx3": types.NewHeight(4, 3),
-					"tx4": types.NewHeight(6, 3),
-					"tx5": types.NewHeight(7, 3),
-					"tx6": types.NewHeight(7, 4),
+					"tx1": servicepb.NewHeight(1, 1),
+					"tx2": servicepb.NewHeight(4, 2),
+					"tx3": servicepb.NewHeight(4, 3),
+					"tx4": servicepb.NewHeight(6, 3),
+					"tx5": servicepb.NewHeight(7, 3),
+					"tx6": servicepb.NewHeight(7, 4),
 				},
 			},
 		},

@@ -170,7 +170,7 @@ func submit(
 	require.NoError(t, err)
 	defer stream.CloseConnections()
 
-	err = stream.SendBatch(workload.MapToEnvelopeBatch(0, []*protoloadgen.TX{tx}))
+	err = stream.SendBatch(workload.MapToEnvelopeBatch(0, []*protoloadgen.LoadGenTx{tx}))
 	if err != nil {
 		t.Logf("Response error:\n%s", err)
 	}
