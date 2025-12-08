@@ -70,7 +70,7 @@ func TestDigest(t *testing.T) {
 			name:          "File Not Found",
 			filePath:      filepath.Join(tempDir, "non_existent.pem"),
 			hashFunc:      bccsp.SHA256,
-			expectedError: "could not read file",
+			expectedError: "cannot read certificate",
 		},
 		{
 			name:          "Invalid PEM Content",
