@@ -1,0 +1,37 @@
+/*
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+*/
+
+syntax = "proto3";
+
+option go_package = "github.com/hyperledger/fabric-x-committer/api/servicepb";
+
+package servicepb;
+
+import "google/protobuf/empty.proto";
+
+import "api/applicationpb/block_tx.proto";
+
+service LoadGenService {
+  rpc AppendBatch(LoadGenBatch) returns (google.protobuf.Empty) {};
+  rpc GetLimit(google.protobuf.Empty) returns (Limit) {};
+  rpc SetLimit(Limit) returns (google.protobuf.Empty);
+}
+
+message LoadGenBatch {
+  repeated LoadGenTx tx = 1;
+}
+
+message LoadGenTx {
+  string id = 1;
+  applicationpb.Tx tx = 2;
+  bytes envelope_payload = 3;
+  bytes envelope_signature = 4;
+  bytes serialized_envelope = 5;
+}
+
+message Limit {
+  double rate = 1;
+}
