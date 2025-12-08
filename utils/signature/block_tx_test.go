@@ -16,7 +16,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
@@ -45,7 +45,7 @@ func BenchmarkDigest(b *testing.B) {
 func TestAsnMarshal(t *testing.T) {
 	t.Parallel()
 
-	txs := []*protoloadgen.LoadGenTx{{
+	txs := []*servicepb.LoadGenTx{{
 		Id: "some-tx-id",
 		Tx: &applicationpb.Tx{Namespaces: txTestCases},
 	}}

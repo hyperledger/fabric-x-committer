@@ -6,14 +6,14 @@ SPDX-License-Identifier: Apache-2.0
 
 syntax = "proto3";
 
-option go_package = "github.com/hyperledger/fabric-x-committer/api/protovcservice";
+option go_package = "github.com/hyperledger/fabric-x-committer/api/servicepb";
 
-package protovcservice;
+package servicepb;
 
 import "google/protobuf/empty.proto";
 
 import "api/applicationpb/block_tx.proto";
-import "api/protocoordinatorservice/coordinator.proto";
+import "api/servicepb/coordinator.proto";
 
 service ValidationAndCommitService {
   rpc StartValidateAndCommitStream (stream VcBatch) returns (stream applicationpb.TransactionsStatus);
@@ -30,7 +30,7 @@ message VcBatch {
 }
 
 message VcTx {
-  protocoordinatorservice.TxRef ref = 1;
+  TxRef ref = 1;
   repeated applicationpb.TxNamespace namespaces = 2;
   optional InvalidTxStatus prelim_invalid_tx_status = 3;
 }

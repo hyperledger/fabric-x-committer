@@ -16,7 +16,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -26,7 +25,7 @@ import (
 type (
 	blockMappingResult struct {
 		blockNumber uint64
-		block       *protocoordinatorservice.CoordinatorBatch
+		block       *servicepb.CoordinatorBatch
 		withStatus  *blockWithStatus
 		isConfig    bool
 		// txIDToHeight is a reference to the relay map.
@@ -61,7 +60,7 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb
 		logger.Warnf("Received a block [%d] without data", block.Header.Number)
 		return &blockMappingResult{
 			blockNumber:  blockNumber,
-			block:        &protocoordinatorservice.CoordinatorBatch{},
+			block:        &servicepb.CoordinatorBatch{},
 			withStatus:   &blockWithStatus{block: block},
 			txIDToHeight: txIDToHeight,
 		}, nil
@@ -70,9 +69,9 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb
 	txCount := len(block.Data.Data)
 	mappedBlock := &blockMappingResult{
 		blockNumber: blockNumber,
-		block: &protocoordinatorservice.CoordinatorBatch{
-			Txs:      make([]*protocoordinatorservice.CoordinatorTx, 0, txCount),
-			Rejected: make([]*protocoordinatorservice.TxStatusInfo, 0, txCount),
+		block: &servicepb.CoordinatorBatch{
+			Txs:      make([]*servicepb.CoordinatorTx, 0, txCount),
+			Rejected: make([]*servicepb.TxStatusInfo, 0, txCount),
 		},
 		withStatus: &blockWithStatus{
 			block:        block,
@@ -127,7 +126,7 @@ func (b *blockMappingResult) appendTx(txNum uint32, hdr *common.ChannelHeader, t
 	if idAlreadyExists, err := b.addTxIDMapping(txNum, hdr); idAlreadyExists || err != nil {
 		return err
 	}
-	b.block.Txs = append(b.block.Txs, &protocoordinatorservice.CoordinatorTx{
+	b.block.Txs = append(b.block.Txs, &servicepb.CoordinatorTx{
 		Ref:     committerpb.TxRef(hdr.TxId, b.blockNumber, txNum),
 		Content: tx,
 	})
@@ -144,7 +143,7 @@ func (b *blockMappingResult) rejectTx(
 	if idAlreadyExists, err := b.addTxIDMapping(txNum, hdr); idAlreadyExists || err != nil {
 		return err
 	}
-	b.block.Rejected = append(b.block.Rejected, &protocoordinatorservice.TxStatusInfo{
+	b.block.Rejected = append(b.block.Rejected, &servicepb.TxStatusInfo{
 		Ref:    committerpb.TxRef(hdr.TxId, b.blockNumber, txNum),
 		Status: status,
 	})

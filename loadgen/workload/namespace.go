@@ -15,11 +15,11 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 )
 
 // CreateLoadGenNamespacesTX creating the transaction containing the requested namespaces into the MetaNamespace.
-func CreateLoadGenNamespacesTX(policy *PolicyProfile) (*protoloadgen.LoadGenTx, error) {
+func CreateLoadGenNamespacesTX(policy *PolicyProfile) (*servicepb.LoadGenTx, error) {
 	txb, txbErr := NewTxBuilderFromPolicy(policy, nil)
 	if txbErr != nil {
 		return nil, txbErr

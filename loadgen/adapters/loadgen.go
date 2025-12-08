@@ -13,7 +13,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -28,7 +28,7 @@ type (
 	}
 
 	receivedBatch struct {
-		batch  *protoloadgen.LoadGenBatch
+		batch  *servicepb.LoadGenBatch
 		status applicationpb.Status
 	}
 )
@@ -48,7 +48,7 @@ func (c *LoadGenAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 		return errors.Wrapf(err, "failed to connect to %s", c.config.Endpoint)
 	}
 	defer connection.CloseConnectionsLog(conn)
-	client := protoloadgen.NewLoadGenServiceClient(conn)
+	client := servicepb.NewLoadGenServiceClient(conn)
 
 	receiveQueue := make(chan receivedBatch, c.res.Stream.BuffersSize)
 
@@ -58,7 +58,7 @@ func (c *LoadGenAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 	g.Go(func() error {
 		receiveQueueCtx := channel.NewWriter(gCtx, receiveQueue)
 		return sendBlocks(dCtx, &c.commonAdapter, txStream, workload.MapToLoadGenBatch,
-			func(batch *protoloadgen.LoadGenBatch) error {
+			func(batch *servicepb.LoadGenBatch) error {
 				_, appendErr := client.AppendBatch(dCtx, batch)
 				status := applicationpb.Status_COMMITTED
 				if appendErr != nil {

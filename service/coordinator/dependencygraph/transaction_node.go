@@ -12,15 +12,14 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 )
 
 type (
 	// TransactionNode is a node in the dependency graph.
 	TransactionNode struct {
-		Tx           *protovcservice.VcTx
+		Tx           *servicepb.VcTx
 		Endorsements []*applicationpb.Endorsements
 
 		// dependsOnTxs is a set of transactions that this transaction depends on.
@@ -70,9 +69,9 @@ type (
 )
 
 // newTransactionNode creates a TX node for coordinator's TX.
-func newTransactionNode(tx *protocoordinatorservice.CoordinatorTx) *TransactionNode {
+func newTransactionNode(tx *servicepb.CoordinatorTx) *TransactionNode {
 	return &TransactionNode{
-		Tx: &protovcservice.VcTx{
+		Tx: &servicepb.VcTx{
 			Ref:        tx.Ref,
 			Namespaces: tx.Content.Namespaces,
 		},
@@ -82,11 +81,11 @@ func newTransactionNode(tx *protocoordinatorservice.CoordinatorTx) *TransactionN
 }
 
 // NewRejectedTransactionNode creates a TX node for a rejected TX.
-func NewRejectedTransactionNode(tx *protocoordinatorservice.TxStatusInfo) *TransactionNode {
+func NewRejectedTransactionNode(tx *servicepb.TxStatusInfo) *TransactionNode {
 	return &TransactionNode{
-		Tx: &protovcservice.VcTx{
+		Tx: &servicepb.VcTx{
 			Ref:                   tx.Ref,
-			PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{Code: tx.Status},
+			PrelimInvalidTxStatus: &servicepb.InvalidTxStatus{Code: tx.Status},
 		},
 	}
 }

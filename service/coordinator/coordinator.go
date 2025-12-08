@@ -22,7 +22,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -38,7 +38,7 @@ type (
 	// Service is responsible for coordinating signature verification, dependency tracking, and
 	// validation and commit of each transaction.
 	Service struct {
-		protocoordinatorservice.UnimplementedCoordinatorServer
+		servicepb.UnimplementedCoordinatorServer
 		dependencyMgr         *dependencygraph.Manager
 		signatureVerifierMgr  *signatureVerifierManager
 		validatorCommitterMgr *validatorCommitterManager
@@ -244,7 +244,7 @@ func (c *Service) WaitForReady(ctx context.Context) bool {
 
 // RegisterService registers for the coordinator's GRPC services.
 func (c *Service) RegisterService(server *grpc.Server) {
-	protocoordinatorservice.RegisterCoordinatorServer(server, c)
+	servicepb.RegisterCoordinatorServer(server, c)
 	healthgrpc.RegisterHealthServer(server, c.healthcheck)
 }
 
@@ -284,20 +284,20 @@ func (c *Service) GetTransactionsStatus(
 func (c *Service) NumberOfWaitingTransactionsForStatus(
 	context.Context,
 	*emptypb.Empty,
-) (*protocoordinatorservice.WaitingTransactions, error) {
+) (*servicepb.WaitingTransactions, error) {
 	if !c.streamActive.TryLock() {
 		return nil, ErrActiveStreamWaitingTransactions
 	}
 	defer c.streamActive.Unlock()
 
-	return &protocoordinatorservice.WaitingTransactions{
+	return &servicepb.WaitingTransactions{
 		Count: c.numWaitingTxsForStatus.Load() - int32(len(c.queues.vcServiceToCoordinatorTxStatus)), //nolint:gosec
 	}, nil
 }
 
 // BlockProcessing receives a stream of blocks from the client and processes them.
 func (c *Service) BlockProcessing(
-	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
+	stream servicepb.Coordinator_BlockProcessingServer,
 ) error {
 	if !c.streamActive.TryLock() {
 		return ErrExistingStreamOrConflictingOp
@@ -336,7 +336,7 @@ func (c *Service) BlockProcessing(
 
 func (c *Service) receiveAndProcessBlock(
 	ctx context.Context,
-	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
+	stream servicepb.Coordinator_BlockProcessingServer,
 ) error {
 	txsBatchForDependencyGraph := channel.NewWriter(ctx, c.queues.coordinatorToDepGraphTxs)
 	txBatchForVcService := channel.NewWriter(ctx, c.queues.sigVerifierToVCServiceValidatedTxs)
@@ -382,7 +382,7 @@ func (c *Service) receiveAndProcessBlock(
 
 func (c *Service) sendTxStatus(
 	ctx context.Context,
-	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
+	stream servicepb.Coordinator_BlockProcessingServer,
 ) error {
 	txsStatus := channel.NewReader(ctx, c.queues.vcServiceToCoordinatorTxStatus)
 	for {

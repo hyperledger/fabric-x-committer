@@ -11,13 +11,13 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 // GenerateTransactions is used for benchmarking.
-func GenerateTransactions(tb testing.TB, p *Profile, count int) []*protoloadgen.LoadGenTx {
+func GenerateTransactions(tb testing.TB, p *Profile, count int) []*servicepb.LoadGenTx {
 	tb.Helper()
 	s := NewTxStream(p, &StreamOptions{
 		BuffersSize: 1024,

@@ -29,7 +29,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
@@ -562,7 +561,7 @@ func (env *sidecarTestEnv) sendTransactionsAndEnsureCommitted(
 func (env *sidecarTestEnv) sendGeneratedTransactionsForBlock(
 	ctx context.Context,
 	t *testing.T,
-) []*protoloadgen.LoadGenTx {
+) []*servicepb.LoadGenTx {
 	t.Helper()
 	// mock-orderer expects <blockSize> txs to create the next block.
 	return env.sendGeneratedTransactions(ctx, t, blockSize)
@@ -572,9 +571,9 @@ func (env *sidecarTestEnv) sendGeneratedTransactions(
 	ctx context.Context,
 	t *testing.T,
 	count int,
-) []*protoloadgen.LoadGenTx {
+) []*servicepb.LoadGenTx {
 	t.Helper()
-	txs := make([]*protoloadgen.LoadGenTx, count)
+	txs := make([]*servicepb.LoadGenTx, count)
 	for i := range txs {
 		txs[i] = makeValidTx(t, env.ordererEnv.TestConfig.ChanID)
 	}
@@ -583,7 +582,7 @@ func (env *sidecarTestEnv) sendGeneratedTransactions(
 }
 
 // submitTXs submits the given TXs and register them in the notification service.
-func (env *sidecarTestEnv) submitTXs(ctx context.Context, t *testing.T, txs []*protoloadgen.LoadGenTx) {
+func (env *sidecarTestEnv) submitTXs(ctx context.Context, t *testing.T, txs []*servicepb.LoadGenTx) {
 	t.Helper()
 	txIDs := make([]string, len(txs))
 	for i, tx := range txs {
@@ -610,7 +609,7 @@ func (env *sidecarTestEnv) requireBlockWithTXs(
 	ctx context.Context,
 	t *testing.T,
 	expectedBlockNumber uint64,
-	txs []*protoloadgen.LoadGenTx,
+	txs []*servicepb.LoadGenTx,
 ) {
 	t.Helper()
 	allValid := make([]applicationpb.Status, len(txs))
@@ -625,7 +624,7 @@ func (env *sidecarTestEnv) requireBlockWithTXsAndStatus(
 	ctx context.Context,
 	t *testing.T,
 	expectedBlockNumber uint64,
-	txs []*protoloadgen.LoadGenTx,
+	txs []*servicepb.LoadGenTx,
 	status []applicationpb.Status,
 ) {
 	t.Helper()
@@ -735,7 +734,7 @@ func checkNextBlockNumberToCommit(
 	}, expectedProcessingTime, 50*time.Millisecond)
 }
 
-func makeValidTx(t *testing.T, chanID string) *protoloadgen.LoadGenTx {
+func makeValidTx(t *testing.T, chanID string) *servicepb.LoadGenTx {
 	t.Helper()
 	txb := workload.TxBuilder{ChannelID: chanID}
 	return txb.MakeTx(&applicationpb.Tx{

@@ -18,7 +18,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -48,7 +47,7 @@ type (
 	}
 
 	relayRunConfig struct {
-		coordClient                    protocoordinatorservice.CoordinatorClient
+		coordClient                    servicepb.CoordinatorClient
 		nextExpectedBlockByCoordinator uint64
 		configUpdater                  func(*common.Block)
 		incomingBlockToBeCommitted     <-chan *common.Block
@@ -188,7 +187,7 @@ func (r *relay) preProcessBlock(
 func (r *relay) sendBlocksToCoordinator(
 	ctx context.Context,
 	mappedBlockQueue <-chan *blockMappingResult,
-	stream protocoordinatorservice.Coordinator_BlockProcessingClient,
+	stream servicepb.Coordinator_BlockProcessingClient,
 ) error {
 	queue := channel.NewReader(ctx, mappedBlockQueue)
 	outgoingCommittedBlock := channel.NewWriter(ctx, r.outgoingCommittedBlock)
@@ -219,7 +218,7 @@ func (r *relay) sendBlocksToCoordinator(
 
 func receiveStatusFromCoordinator(
 	ctx context.Context,
-	stream protocoordinatorservice.Coordinator_BlockProcessingClient,
+	stream servicepb.Coordinator_BlockProcessingClient,
 	statusBatch chan<- *applicationpb.TransactionsStatus,
 ) error {
 	txsStatus := channel.NewWriter(ctx, statusBatch)
@@ -341,7 +340,7 @@ func (r *relay) processCommittedBlocksInOrder(
 
 func (r *relay) setLastCommittedBlockNumber(
 	ctx context.Context,
-	client protocoordinatorservice.CoordinatorClient,
+	client servicepb.CoordinatorClient,
 	expectedNextBlockToBeCommitted uint64,
 ) error {
 	for {

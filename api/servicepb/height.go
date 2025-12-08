@@ -10,7 +10,6 @@ import (
 	"fmt"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/utils"
 )
 
@@ -31,7 +30,7 @@ func NewStatusWithHeight(s applicationpb.Status, blkNum uint64, txNum uint32) *a
 
 // NewStatusWithHeightFromRef creates a protoblocktx.StatusWithHeight with the given values.
 func NewStatusWithHeightFromRef(
-	s applicationpb.Status, ref *protocoordinatorservice.TxRef,
+	s applicationpb.Status, ref *TxRef,
 ) *applicationpb.StatusWithHeight {
 	return NewStatusWithHeight(s, ref.BlockNum, ref.TxNum)
 }
@@ -42,7 +41,7 @@ func NewHeight(blockNum uint64, txNum uint32) *Height {
 }
 
 // NewHeightFromTxRef constructs a new instance of Height.
-func NewHeightFromTxRef(ref *protocoordinatorservice.TxRef) *Height {
+func NewHeightFromTxRef(ref *TxRef) *Height {
 	return NewHeight(ref.BlockNum, ref.TxNum)
 }
 

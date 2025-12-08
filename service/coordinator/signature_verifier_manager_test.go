@@ -18,8 +18,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
@@ -222,14 +221,14 @@ func TestSignatureVerifierWithAllInvalidTxs(t *testing.T) {
 	expectedValidatedTxs := dependencygraph.TxNodeBatch{}
 	for i := range 3 {
 		txNode := &dependencygraph.TransactionNode{
-			Tx: &protovcservice.VcTx{
+			Tx: &servicepb.VcTx{
 				Ref: committerpb.TxRef("", uint64(i), uint32(i)), //nolint:gosec
 			},
 		}
 		txBatch = append(txBatch, txNode)
 
 		expectedValidatedTxs = append(expectedValidatedTxs, &dependencygraph.TransactionNode{
-			Tx: &protovcservice.VcTx{
+			Tx: &servicepb.VcTx{
 				Ref:                   txNode.Tx.Ref,
 				PrelimInvalidTxStatus: sigInvalidTxStatus,
 			},
@@ -256,7 +255,7 @@ func createTxNodeBatchForTest(
 	}}
 	for i := range numTxs {
 		txNode := &dependencygraph.TransactionNode{
-			Tx: &protovcservice.VcTx{
+			Tx: &servicepb.VcTx{
 				Ref:        committerpb.TxRef("", blkNum, uint32(i)), //nolint:gosec
 				Namespaces: ns,
 			},
@@ -271,7 +270,7 @@ func createTxNodeBatchForTest(
 			// odd number txs are invalid. No signature means invalid transaction.
 			// we need to create a copy of txNode to add expected status.
 			txNodeWithStatus := &dependencygraph.TransactionNode{
-				Tx: &protovcservice.VcTx{
+				Tx: &servicepb.VcTx{
 					Ref:                   txNode.Tx.Ref,
 					Namespaces:            ns,
 					PrelimInvalidTxStatus: sigInvalidTxStatus,
@@ -336,7 +335,7 @@ func TestSignatureVerifierFatalDueToBadPolicy(t *testing.T) {
 	policyUpdateCount := sv.GetPolicyUpdateCounter()
 
 	sv.SetReturnErrorForUpdatePolicies(true)
-	env.policyManager.update(&protosigverifierservice.VerifierUpdate{
+	env.policyManager.update(&servicepb.VerifierUpdates{
 		NamespacePolicies: &applicationpb.NamespacePolicies{
 			Policies: []*applicationpb.PolicyItem{{Namespace: "$$$"}},
 		},
@@ -362,7 +361,7 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 	// set verification key
 	ns1Policy, _ := policy.MakePolicyAndNsSigner(t, "ns1")
 	ns2Policy, _ := policy.MakePolicyAndNsSigner(t, "ns2")
-	expectedUpdate := &protosigverifierservice.VerifierUpdate{
+	expectedUpdate := &servicepb.VerifierUpdates{
 		NamespacePolicies: &applicationpb.NamespacePolicies{
 			Policies: []*applicationpb.PolicyItem{ns1Policy, ns2Policy},
 		},
@@ -383,7 +382,7 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 
 	t.Log("Update policy manager")
 	ns2NewPolicy, _ := policy.MakePolicyAndNsSigner(t, "ns2")
-	expectedSecondUpdate := &protosigverifierservice.VerifierUpdate{
+	expectedSecondUpdate := &servicepb.VerifierUpdates{
 		NamespacePolicies: &applicationpb.NamespacePolicies{
 			Policies: []*applicationpb.PolicyItem{ns2NewPolicy},
 		},
@@ -412,7 +411,7 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 	env.requireConnectionMetrics(t, 0, connection.Connected, 1)
 	t.Log("New instance is up")
 
-	newExpectedUpdate := &protosigverifierservice.VerifierUpdate{
+	newExpectedUpdate := &servicepb.VerifierUpdates{
 		NamespacePolicies: &applicationpb.NamespacePolicies{
 			Policies: []*applicationpb.PolicyItem{ns1Policy, ns2NewPolicy},
 		},
@@ -428,10 +427,10 @@ func (e *svMgrTestEnv) requireAllUpdate(
 	t *testing.T,
 	svs []*mock.SigVerifier,
 	expectedCount int,
-	expected *protosigverifierservice.VerifierUpdate,
+	expected *servicepb.VerifierUpdates,
 ) {
 	t.Helper()
-	updates := make([][]*protosigverifierservice.VerifierUpdate, len(svs))
+	updates := make([][]*servicepb.VerifierUpdates, len(svs))
 
 	// verify that all mock policy verifiers have the same verification key.
 	require.Eventually(t, func() bool {

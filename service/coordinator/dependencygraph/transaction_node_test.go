@@ -15,7 +15,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -131,7 +131,7 @@ func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *Trans
 
 func createTxForTest( //nolint: revive
 	_ *testing.T, txNum int, nsID string, readOnly, readWrite, blindWrite [][]byte,
-) *protocoordinatorservice.CoordinatorTx {
+) *servicepb.CoordinatorTx {
 	reads := make([]*applicationpb.Read, len(readOnly))
 	for i, k := range readOnly {
 		reads[i] = &applicationpb.Read{Key: k}
@@ -147,7 +147,7 @@ func createTxForTest( //nolint: revive
 		blindWrites[i] = &applicationpb.Write{Key: k}
 	}
 
-	return &protocoordinatorservice.CoordinatorTx{
+	return &servicepb.CoordinatorTx{
 		Ref: committerpb.TxRef(uuid.New().String(), 0, uint32(txNum)), //nolint:gosec // int -> uint32.
 		Content: &applicationpb.Tx{
 			Namespaces: []*applicationpb.TxNamespace{{
@@ -162,7 +162,7 @@ func createTxForTest( //nolint: revive
 
 func checkNewTxNode(
 	t *testing.T,
-	tx *protocoordinatorservice.CoordinatorTx,
+	tx *servicepb.CoordinatorTx,
 	readsWrites *readWriteKeys,
 	txNode *TransactionNode,
 ) {

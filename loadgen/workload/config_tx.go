@@ -20,7 +20,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
@@ -33,7 +33,7 @@ type ConfigBlock struct {
 }
 
 // CreateConfigTx creating a config TX.
-func CreateConfigTx(policy *PolicyProfile) (*protoloadgen.LoadGenTx, error) {
+func CreateConfigTx(policy *PolicyProfile) (*servicepb.LoadGenTx, error) {
 	envelopeBytes, err := CreateConfigEnvelope(policy)
 	if err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func CreateConfigTx(policy *PolicyProfile) (*protoloadgen.LoadGenTx, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &protoloadgen.LoadGenTx{
+	return &servicepb.LoadGenTx{
 		Id: channelHdr.TxId,
 		Tx: &applicationpb.Tx{
 			Namespaces: []*applicationpb.TxNamespace{{

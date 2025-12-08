@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
@@ -192,7 +192,7 @@ func TestDependencyGraphManager(t *testing.T) {
 
 			incomingTxs <- &TransactionBatch{
 				ID:  1,
-				Txs: []*protocoordinatorservice.CoordinatorTx{t1, t2},
+				Txs: []*servicepb.CoordinatorTx{t1, t2},
 			}
 
 			test.EventuallyIntMetric(t, 1, metrics.dependentTransactionsQueueSize, 5*time.Second, 100*time.Millisecond)
@@ -204,7 +204,7 @@ func TestDependencyGraphManager(t *testing.T) {
 
 			incomingTxs <- &TransactionBatch{
 				ID:  2,
-				Txs: []*protocoordinatorservice.CoordinatorTx{t3, t4},
+				Txs: []*servicepb.CoordinatorTx{t3, t4},
 			}
 
 			test.EventuallyIntMetric(t, 3, metrics.dependentTransactionsQueueSize, 5*time.Second, 100*time.Millisecond)
@@ -266,7 +266,7 @@ func TestDependencyGraphManager(t *testing.T) {
 
 			incomingTxs <- &TransactionBatch{
 				ID:  3,
-				Txs: []*protocoordinatorservice.CoordinatorTx{t0, t1, t2},
+				Txs: []*servicepb.CoordinatorTx{t0, t1, t2},
 			}
 
 			// t3 depends on t2, t1, and t0
@@ -278,7 +278,7 @@ func TestDependencyGraphManager(t *testing.T) {
 
 			incomingTxs <- &TransactionBatch{
 				ID:  4,
-				Txs: []*protocoordinatorservice.CoordinatorTx{t3, t4},
+				Txs: []*servicepb.CoordinatorTx{t3, t4},
 			}
 
 			// only t0 is dependency free
@@ -331,7 +331,7 @@ func TestDependencyGraphManager(t *testing.T) {
 			ensureWaitingTXsLimit(t, manService, 0)
 
 			t.Log("check waiting TX limit")
-			txs := make([]*protocoordinatorservice.CoordinatorTx, waitingTXsLimit+1)
+			txs := make([]*servicepb.CoordinatorTx, waitingTXsLimit+1)
 			for i := range txs {
 				txs[i] = createTxForTest(t, i, nsID1ForTest, nil, keys(i), nil)
 			}
@@ -340,7 +340,7 @@ func TestDependencyGraphManager(t *testing.T) {
 				Txs: txs,
 			}
 
-			txs2 := make([]*protocoordinatorservice.CoordinatorTx, 10)
+			txs2 := make([]*servicepb.CoordinatorTx, 10)
 			for i := range txs2 {
 				txs2[i] = createTxForTest(t, i, nsID1ForTest, nil, keys(i+len(txs)), nil)
 			}

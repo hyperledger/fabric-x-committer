@@ -7,9 +7,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             v5.29.3
-// source: api/protosigverifierservice/verifier.proto
+// source: api/servicepb/verifier.proto
 
-package protosigverifierservice
+package servicepb
 
 import (
 	context "context"
@@ -24,7 +24,7 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Verifier_StartStream_FullMethodName = "/protosigverifierservice.Verifier/StartStream"
+	Verifier_StartStream_FullMethodName = "/servicepb.Verifier/StartStream"
 )
 
 // VerifierClient is the client API for Verifier service.
@@ -131,7 +131,7 @@ func (x *verifierStartStreamServer) Recv() (*VerifierBatch, error) {
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Verifier_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "protosigverifierservice.Verifier",
+	ServiceName: "servicepb.Verifier",
 	HandlerType: (*VerifierServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
@@ -142,5 +142,5 @@ var Verifier_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "api/protosigverifierservice/verifier.proto",
+	Metadata: "api/servicepb/verifier.proto",
 }

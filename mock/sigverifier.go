@@ -18,7 +18,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -30,9 +30,9 @@ import (
 // - when the tx has empty signature, it is invalid.
 // - when the tx has non-empty signature, it is valid.
 type SigVerifier struct {
-	protosigverifierservice.UnimplementedVerifierServer
-	updates                    []*protosigverifierservice.VerifierUpdate
-	requestBatch               chan *protosigverifierservice.VerifierBatch
+	servicepb.UnimplementedVerifierServer
+	updates                    []*servicepb.VerifierUpdates
+	requestBatch               chan *servicepb.VerifierBatch
 	numBlocksReceived          atomic.Uint32
 	returnErrForUpdatePolicies atomic.Bool
 	policyUpdateCounter        atomic.Uint64
@@ -44,18 +44,18 @@ type SigVerifier struct {
 // NewMockSigVerifier returns a new mock verifier.
 func NewMockSigVerifier() *SigVerifier {
 	return &SigVerifier{
-		requestBatch: make(chan *protosigverifierservice.VerifierBatch, 10),
+		requestBatch: make(chan *servicepb.VerifierBatch, 10),
 		healthcheck:  connection.DefaultHealthCheckService(),
 	}
 }
 
 // RegisterService registers for the verifier's GRPC services.
 func (m *SigVerifier) RegisterService(server *grpc.Server) {
-	protosigverifierservice.RegisterVerifierServer(server, m)
+	servicepb.RegisterVerifierServer(server, m)
 	healthgrpc.RegisterHealthServer(server, m.healthcheck)
 }
 
-func (m *SigVerifier) updatePolicies(update *protosigverifierservice.VerifierUpdate) error {
+func (m *SigVerifier) updatePolicies(update *servicepb.VerifierUpdates) error {
 	if update == nil {
 		return nil
 	}
@@ -69,7 +69,7 @@ func (m *SigVerifier) updatePolicies(update *protosigverifierservice.VerifierUpd
 }
 
 // StartStream is a mock implementation of the [protosignverifierservice.VerifierServer].
-func (m *SigVerifier) StartStream(stream protosigverifierservice.Verifier_StartStreamServer) error {
+func (m *SigVerifier) StartStream(stream servicepb.Verifier_StartStreamServer) error {
 	logger.Info("Starting verifier stream")
 	defer logger.Info("Closed verifier stream")
 	g, eCtx := errgroup.WithContext(stream.Context())
@@ -89,7 +89,7 @@ func (m *SigVerifier) StartStream(stream protosigverifierservice.Verifier_StartS
 
 func (m *SigVerifier) receiveRequestBatch(
 	ctx context.Context,
-	stream protosigverifierservice.Verifier_StartStreamServer,
+	stream servicepb.Verifier_StartStreamServer,
 ) error {
 	requestBatch := channel.NewWriter(ctx, m.requestBatch)
 	for ctx.Err() == nil {
@@ -112,7 +112,7 @@ func (m *SigVerifier) receiveRequestBatch(
 
 func (m *SigVerifier) sendResponseBatch(
 	ctx context.Context,
-	stream protosigverifierservice.Verifier_StartStreamServer,
+	stream servicepb.Verifier_StartStreamServer,
 ) error {
 	requestBatch := channel.NewReader(ctx, m.requestBatch)
 	for ctx.Err() == nil {
@@ -120,8 +120,8 @@ func (m *SigVerifier) sendResponseBatch(
 		if !ok {
 			break
 		}
-		respBatch := &protosigverifierservice.VerifierResponseBatch{
-			Responses: make([]*protosigverifierservice.VerifierResponse, 0, len(reqBatch.Requests)),
+		respBatch := &servicepb.VerifierResponseBatch{
+			Responses: make([]*servicepb.VerifierResponse, 0, len(reqBatch.Requests)),
 		}
 
 		for i, req := range reqBatch.Requests {
@@ -134,7 +134,7 @@ func (m *SigVerifier) sendResponseBatch(
 			if len(req.Tx.Endorsements) == 0 && !isConfig {
 				status = applicationpb.Status_ABORTED_SIGNATURE_INVALID
 			}
-			respBatch.Responses = append(respBatch.Responses, &protosigverifierservice.VerifierResponse{
+			respBatch.Responses = append(respBatch.Responses, &servicepb.VerifierResponse{
 				Ref:    req.Ref,
 				Status: status,
 			})
@@ -153,7 +153,7 @@ func (m *SigVerifier) GetNumBlocksReceived() uint32 {
 }
 
 // GetUpdates returns the updates received.
-func (m *SigVerifier) GetUpdates() []*protosigverifierservice.VerifierUpdate {
+func (m *SigVerifier) GetUpdates() []*servicepb.VerifierUpdates {
 	return m.updates
 }
 
@@ -179,7 +179,7 @@ func (m *SigVerifier) ClearPolicies() {
 // Returns true if successful.
 func (m *SigVerifier) SendRequestBatchWithoutStream(
 	ctx context.Context,
-	requestBatch *protosigverifierservice.VerifierBatch,
+	requestBatch *servicepb.VerifierBatch,
 ) bool {
 	return channel.NewWriter(ctx, m.requestBatch).Write(requestBatch)
 }

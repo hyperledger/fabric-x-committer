@@ -10,7 +10,7 @@ import (
 	"math/rand"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 )
 
@@ -56,7 +56,7 @@ func newIndependentTxGenerator(
 }
 
 // Next generate a new TX.
-func (g *IndependentTxGenerator) Next() *protoloadgen.LoadGenTx {
+func (g *IndependentTxGenerator) Next() *servicepb.LoadGenTx {
 	readOnly := g.ReadOnlyKeyGenerator.Next()
 	readWrite := g.ReadWriteKeyGenerator.Next()
 	blindWriteKey := g.BlindWriteKeyGenerator.Next()

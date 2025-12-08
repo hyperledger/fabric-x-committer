@@ -15,7 +15,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 )
 
@@ -24,7 +24,7 @@ type (
 	TxStream struct {
 		stream
 		gens  []*IndependentTxGenerator
-		queue chan []*protoloadgen.LoadGenTx
+		queue chan []*servicepb.LoadGenTx
 	}
 
 	// QueryStream generates stream's queries consumers.
@@ -53,7 +53,7 @@ func NewTxStream(
 ) *TxStream {
 	txStream := &TxStream{
 		stream: newStream(profile, options),
-		queue:  make(chan []*protoloadgen.LoadGenTx, max(options.BuffersSize, 1)),
+		queue:  make(chan []*servicepb.LoadGenTx, max(options.BuffersSize, 1)),
 	}
 	for _, w := range makeWorkersData(profile) {
 		modifiers := make([]Modifier, 0, len(modifierGenerators)+2)
@@ -86,7 +86,7 @@ func (s *TxStream) Run(ctx context.Context) error {
 }
 
 // AppendBatch appends a batch to the stream.
-func (s *TxStream) AppendBatch(ctx context.Context, batch []*protoloadgen.LoadGenTx) {
+func (s *TxStream) AppendBatch(ctx context.Context, batch []*servicepb.LoadGenTx) {
 	channel.NewWriter(ctx, s.queue).Write(batch)
 }
 
@@ -103,7 +103,7 @@ func (s *TxStream) SetLimit(limit rate.Limit) {
 // MakeGenerator creates a new generator that consumes from the stream.
 // Each generator must be used from a single goroutine, but different
 // generators from the same Stream can be used concurrently.
-func (s *TxStream) MakeGenerator() *RateLimiterGenerator[*protoloadgen.LoadGenTx] {
+func (s *TxStream) MakeGenerator() *RateLimiterGenerator[*servicepb.LoadGenTx] {
 	return NewRateLimiterGenerator(s.queue, s.limiter)
 }
 

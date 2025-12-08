@@ -12,7 +12,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -42,7 +42,7 @@ func (c *CoordinatorAdapter) RunWorkload(ctx context.Context, txStream *workload
 		return errors.Wrapf(connErr, "failed to connect to coordinator at %s", c.config.Endpoint.Address())
 	}
 	defer connection.CloseConnectionsLog(conn)
-	client := protocoordinatorservice.NewCoordinatorClient(conn)
+	client := servicepb.NewCoordinatorClient(conn)
 	if nextBlock, getErr := client.GetNextBlockNumberToCommit(ctx, nil); getErr != nil {
 		// We do not return error as we can proceed assuming no blocks were committed.
 		logger.Infof("cannot fetch the last committed block number: %v", getErr)
@@ -77,7 +77,7 @@ func (c *CoordinatorAdapter) Progress() uint64 {
 }
 
 func (c *CoordinatorAdapter) receiveStatus(
-	ctx context.Context, stream protocoordinatorservice.Coordinator_BlockProcessingClient,
+	ctx context.Context, stream servicepb.Coordinator_BlockProcessingClient,
 ) error {
 	for ctx.Err() == nil {
 		txStatus, err := stream.Recv()

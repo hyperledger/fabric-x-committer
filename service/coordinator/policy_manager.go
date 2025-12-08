@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 )
 
@@ -36,7 +36,7 @@ func newPolicyManager() *policyManager {
 }
 
 func (pm *policyManager) updateFromTx(namespaces []*applicationpb.TxNamespace) {
-	var updates []*protosigverifierservice.VerifierUpdate
+	var updates []*servicepb.VerifierUpdates
 	for _, ns := range namespaces {
 		if u := policy.GetUpdatesFromNamespace(ns); u != nil {
 			updates = append(updates, u)
@@ -45,7 +45,7 @@ func (pm *policyManager) updateFromTx(namespaces []*applicationpb.TxNamespace) {
 	pm.update(updates...)
 }
 
-func (pm *policyManager) update(update ...*protosigverifierservice.VerifierUpdate) {
+func (pm *policyManager) update(update ...*servicepb.VerifierUpdates) {
 	// Prevent unnecessary version increments.
 	if isUpdateEmpty(update...) {
 		return
@@ -71,7 +71,7 @@ func (pm *policyManager) update(update ...*protosigverifierservice.VerifierUpdat
 	}
 }
 
-func isUpdateEmpty(update ...*protosigverifierservice.VerifierUpdate) bool {
+func isUpdateEmpty(update ...*servicepb.VerifierUpdates) bool {
 	for _, u := range update {
 		if u != nil && (u.Config != nil || u.NamespacePolicies != nil) {
 			return false
@@ -80,10 +80,10 @@ func isUpdateEmpty(update ...*protosigverifierservice.VerifierUpdate) bool {
 	return true
 }
 
-func (pm *policyManager) getAll() (*protosigverifierservice.VerifierUpdate, uint64) {
+func (pm *policyManager) getAll() (*servicepb.VerifierUpdates, uint64) {
 	pm.lock.Lock()
 	defer pm.lock.Unlock()
-	return &protosigverifierservice.VerifierUpdate{
+	return &servicepb.VerifierUpdates{
 		NamespacePolicies: &applicationpb.NamespacePolicies{
 			Policies: slices.Collect(maps.Values(pm.nsPolicies)),
 		},
@@ -91,14 +91,14 @@ func (pm *policyManager) getAll() (*protosigverifierservice.VerifierUpdate, uint
 	}, pm.latestVersion.Load()
 }
 
-func (pm *policyManager) getUpdates(version uint64) (*protosigverifierservice.VerifierUpdate, uint64) {
+func (pm *policyManager) getUpdates(version uint64) (*servicepb.VerifierUpdates, uint64) {
 	if version == pm.latestVersion.Load() {
 		return nil, version
 	}
 
 	pm.lock.Lock()
 	defer pm.lock.Unlock()
-	ret := &protosigverifierservice.VerifierUpdate{}
+	ret := &servicepb.VerifierUpdates{}
 	if version < pm.configVersion {
 		ret.Config = pm.configTransaction
 	}

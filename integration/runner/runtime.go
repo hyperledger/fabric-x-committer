@@ -23,8 +23,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -57,7 +55,7 @@ type (
 		dbEnv *vc.DatabaseTestEnv
 
 		ordererStream      *test.BroadcastStream
-		CoordinatorClient  protocoordinatorservice.CoordinatorClient
+		CoordinatorClient  servicepb.CoordinatorClient
 		QueryServiceClient committerpb.QueryServiceClient
 		sidecarClient      *sidecarclient.Client
 		notifyClient       committerpb.NotifierClient
@@ -226,7 +224,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	c.Sidecar = newProcess(t, cmdSidecar, c.createSystemConfigWithServerTLS(t, s.Endpoints.Sidecar))
 
 	t.Log("Create clients")
-	c.CoordinatorClient = protocoordinatorservice.NewCoordinatorClient(
+	c.CoordinatorClient = servicepb.NewCoordinatorClient(
 		test.NewSecuredConnection(t, s.Endpoints.Coordinator.Server, c.SystemConfig.ClientTLS),
 	)
 
@@ -398,7 +396,7 @@ func (c *CommitterRuntime) MakeAndSendTransactionsToOrderer(
 	t *testing.T, txsNs [][]*applicationpb.TxNamespace, expectedStatus []applicationpb.Status,
 ) []string {
 	t.Helper()
-	txs := make([]*protoloadgen.LoadGenTx, len(txsNs))
+	txs := make([]*servicepb.LoadGenTx, len(txsNs))
 
 	for i, namespaces := range txsNs {
 		tx := &applicationpb.Tx{
@@ -418,7 +416,7 @@ func (c *CommitterRuntime) MakeAndSendTransactionsToOrderer(
 
 // SendTransactionsToOrderer creates a block with given transactions, send it to the committer, and verify the result.
 func (c *CommitterRuntime) SendTransactionsToOrderer(
-	t *testing.T, txs []*protoloadgen.LoadGenTx, expectedStatus []applicationpb.Status,
+	t *testing.T, txs []*servicepb.LoadGenTx, expectedStatus []applicationpb.Status,
 ) []string {
 	t.Helper()
 	expected := &ExpectedStatusInBlock{

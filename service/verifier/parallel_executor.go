@@ -10,16 +10,16 @@ import (
 	"context"
 	"time"
 
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 )
 
 type (
 	parallelExecutor struct {
-		inputCh        chan *protosigverifierservice.VerifierTx
-		outputSingleCh chan *protosigverifierservice.VerifierResponse
-		outputCh       chan []*protosigverifierservice.VerifierResponse
+		inputCh        chan *servicepb.VerifierTx
+		outputSingleCh chan *servicepb.VerifierResponse
+		outputCh       chan []*servicepb.VerifierResponse
 		verifier       *verifier
 		config         *ExecutorConfig
 	}
@@ -29,9 +29,9 @@ func newParallelExecutor(config *ExecutorConfig) *parallelExecutor {
 	channelCapacity := config.ChannelBufferSize * config.Parallelism
 	return &parallelExecutor{
 		config:         config,
-		inputCh:        make(chan *protosigverifierservice.VerifierTx, channelCapacity),
-		outputCh:       make(chan []*protosigverifierservice.VerifierResponse),
-		outputSingleCh: make(chan *protosigverifierservice.VerifierResponse, channelCapacity),
+		inputCh:        make(chan *servicepb.VerifierTx, channelCapacity),
+		outputCh:       make(chan []*servicepb.VerifierResponse),
+		outputSingleCh: make(chan *servicepb.VerifierResponse, channelCapacity),
 		verifier:       newVerifier(),
 	}
 }
@@ -52,7 +52,7 @@ func (e *parallelExecutor) handleChannelInput(ctx context.Context) {
 }
 
 func (e *parallelExecutor) handleCutoff(ctx context.Context) {
-	var outputBuffer []*protosigverifierservice.VerifierResponse
+	var outputBuffer []*servicepb.VerifierResponse
 	chOut := channel.NewWriter(ctx, e.outputCh)
 	cutBatch := func(size int) {
 		for len(outputBuffer) >= size {

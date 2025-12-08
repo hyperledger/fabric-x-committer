@@ -6,34 +6,34 @@ SPDX-License-Identifier: Apache-2.0
 
 syntax = "proto3";
 
-option go_package = "github.com/hyperledger/fabric-x-committer/api/protosigverifierservice";
+option go_package = "github.com/hyperledger/fabric-x-committer/api/servicepb";
 
-package protosigverifierservice;
+package servicepb;
 
 import "api/applicationpb/block_tx.proto";
-import "api/protocoordinatorservice/coordinator.proto";
+import "api/servicepb/coordinator.proto";
 
 service Verifier {
     rpc StartStream(stream VerifierBatch) returns (stream VerifierResponseBatch);
 }
 
 message VerifierBatch {
-    optional VerifierUpdate update = 1;
+    optional VerifierUpdates update = 1;
     repeated VerifierTx requests = 2;
 }
 
-message VerifierUpdate {
+message VerifierUpdates {
     optional applicationpb.ConfigTransaction config = 1;
     optional applicationpb.NamespacePolicies namespace_policies = 2;
 }
 
 message VerifierTx {
-    protocoordinatorservice.TxRef ref = 1;
+    TxRef ref = 1;
     applicationpb.Tx tx = 2;
 }
 
 message VerifierResponse {
-    protocoordinatorservice.TxRef ref = 1;
+    TxRef ref = 1;
     applicationpb.Status status = 2;
 }
 

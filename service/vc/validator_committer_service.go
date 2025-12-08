@@ -19,7 +19,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -39,12 +39,12 @@ var logger = logging.New("validator and committer service")
 // The service also sends the status of the transactions to the client.
 // ValidatorCommitterService is a gRPC service that implements the ValidationAndCommitService interface.
 type ValidatorCommitterService struct {
-	protovcservice.UnimplementedValidationAndCommitServiceServer
+	servicepb.UnimplementedValidationAndCommitServiceServer
 	preparer                 *transactionPreparer
 	validator                *transactionValidator
 	committer                *transactionCommitter
-	receivedTxBatch          chan *protovcservice.VcBatch
-	toPrepareTxs             chan *protovcservice.VcBatch
+	receivedTxBatch          chan *servicepb.VcBatch
+	toPrepareTxs             chan *servicepb.VcBatch
 	preparedTxs              chan *preparedTransactions
 	validatedTxs             chan *validatedTransactions
 	txsStatus                chan *applicationpb.TransactionsStatus
@@ -85,8 +85,8 @@ func NewValidatorCommitterService(
 
 	// TODO: make queueMultiplier configurable
 	queueMultiplier := 1
-	receivedTxBatch := make(chan *protovcservice.VcBatch, l.MaxWorkersForPreparer*queueMultiplier)
-	toPrepareTxs := make(chan *protovcservice.VcBatch, l.MaxWorkersForPreparer*queueMultiplier)
+	receivedTxBatch := make(chan *servicepb.VcBatch, l.MaxWorkersForPreparer*queueMultiplier)
+	toPrepareTxs := make(chan *servicepb.VcBatch, l.MaxWorkersForPreparer*queueMultiplier)
 	preparedTxs := make(chan *preparedTransactions, l.MaxWorkersForValidator*queueMultiplier)
 	validatedTxs := make(chan *validatedTransactions, queueMultiplier)
 	txsStatus := make(chan *applicationpb.TransactionsStatus, l.MaxWorkersForCommitter*queueMultiplier)
@@ -172,7 +172,7 @@ func (*ValidatorCommitterService) WaitForReady(context.Context) bool {
 
 // RegisterService registers for the validator-committer's GRPC services.
 func (vc *ValidatorCommitterService) RegisterService(server *grpc.Server) {
-	protovcservice.RegisterValidationAndCommitServiceServer(server, vc)
+	servicepb.RegisterValidationAndCommitServiceServer(server, vc)
 	healthgrpc.RegisterHealthServer(server, vc.healthcheck)
 }
 
@@ -269,7 +269,7 @@ func (vc *ValidatorCommitterService) SetupSystemTablesAndNamespaces(
 // It receives transactions from the client, prepares them, validates them and commits them to the database.
 // It also sends the status of the transactions to the client.
 func (vc *ValidatorCommitterService) StartValidateAndCommitStream(
-	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
 	if !vc.isStreamActive.CompareAndSwap(false, true) {
 		return utils.ErrActiveStream
@@ -295,7 +295,7 @@ func (vc *ValidatorCommitterService) StartValidateAndCommitStream(
 
 func (vc *ValidatorCommitterService) receiveTransactions(
 	ctx context.Context,
-	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
 	for ctx.Err() == nil {
 		b, err := stream.Recv()
@@ -312,7 +312,7 @@ func (vc *ValidatorCommitterService) receiveTransactions(
 }
 
 func (vc *ValidatorCommitterService) batchReceivedTransactionsAndForwardForProcessing(ctx context.Context) {
-	largerBatch := &protovcservice.VcBatch{}
+	largerBatch := &servicepb.VcBatch{}
 	timer := time.NewTimer(vc.timeoutForMinTxBatchSize)
 	defer timer.Stop()
 	toPrepareTxs := channel.NewWriter(ctx, vc.toPrepareTxs)
@@ -325,7 +325,7 @@ func (vc *ValidatorCommitterService) batchReceivedTransactionsAndForwardForProce
 		if ok := toPrepareTxs.Write(largerBatch); !ok {
 			return
 		}
-		largerBatch = &protovcservice.VcBatch{}
+		largerBatch = &servicepb.VcBatch{}
 	}
 
 	for {
@@ -353,7 +353,7 @@ func (vc *ValidatorCommitterService) batchReceivedTransactionsAndForwardForProce
 // sendTransactionStatus sends the status of the transactions to the client.
 func (vc *ValidatorCommitterService) sendTransactionStatus(
 	ctx context.Context,
-	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
 	logger.Info("Send transaction status")
 

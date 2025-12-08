@@ -15,7 +15,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -25,13 +24,13 @@ import (
 
 type prepareTestEnv struct {
 	preparer    *transactionPreparer
-	txBatch     chan *protovcservice.VcBatch
+	txBatch     chan *servicepb.VcBatch
 	preparedTxs chan *preparedTransactions
 }
 
 func newPrepareTestEnv(t *testing.T) *prepareTestEnv {
 	t.Helper()
-	txBatch := make(chan *protovcservice.VcBatch, 10)
+	txBatch := make(chan *servicepb.VcBatch, 10)
 	preparedTxs := make(chan *preparedTransactions, 10)
 	metrics := newVCServiceMetrics()
 	p := newPreparer(txBatch, preparedTxs, metrics)
@@ -61,8 +60,8 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 	// Shortcut for version pointer.
 	v := committerpb.Version
 
-	tx := &protovcservice.VcBatch{
-		Transactions: []*protovcservice.VcTx{
+	tx := &servicepb.VcBatch{
+		Transactions: []*servicepb.VcTx{
 			{
 				Ref: committerpb.TxRef("tx1", 1, 1),
 				Namespaces: []*applicationpb.TxNamespace{
@@ -169,8 +168,8 @@ func TestPrepareTxWithBlindWritesOnly(t *testing.T) {
 	// Shortcut for version pointer.
 	v := committerpb.Version
 
-	tx := &protovcservice.VcBatch{
-		Transactions: []*protovcservice.VcTx{
+	tx := &servicepb.VcBatch{
+		Transactions: []*servicepb.VcTx{
 			{
 				Ref: committerpb.TxRef("tx1", 10, 5),
 				Namespaces: []*applicationpb.TxNamespace{
@@ -274,8 +273,8 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 	// Shortcut for version pointer.
 	v := committerpb.Version
 
-	tx := &protovcservice.VcBatch{
-		Transactions: []*protovcservice.VcTx{
+	tx := &servicepb.VcBatch{
+		Transactions: []*servicepb.VcTx{
 			{
 				Ref: committerpb.TxRef("tx1", 7, 4),
 				Namespaces: []*applicationpb.TxNamespace{
@@ -429,8 +428,8 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 	// Shortcut for version pointer.
 	v := committerpb.Version
 
-	tx := &protovcservice.VcBatch{
-		Transactions: []*protovcservice.VcTx{
+	tx := &servicepb.VcBatch{
+		Transactions: []*servicepb.VcTx{
 			{
 				Ref: committerpb.TxRef("tx1", 8, 0),
 				Namespaces: []*applicationpb.TxNamespace{
@@ -502,13 +501,13 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 			},
 			{
 				Ref: committerpb.TxRef("tx3", 6, 2),
-				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
+				PrelimInvalidTxStatus: &servicepb.InvalidTxStatus{
 					Code: applicationpb.Status_MALFORMED_NO_WRITES,
 				},
 			},
 			{
 				Ref: committerpb.TxRef("tx4", 5, 2),
-				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
+				PrelimInvalidTxStatus: &servicepb.InvalidTxStatus{
 					Code: applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
 				},
 			},
@@ -696,7 +695,7 @@ func BenchmarkPrepare(b *testing.B) {
 	for _, w := range []int{1, 2, 4, 8} {
 		w := w
 		b.Run(fmt.Sprintf("w=%d", w), func(b *testing.B) {
-			txBatch := make(chan *protovcservice.VcBatch, 8)
+			txBatch := make(chan *servicepb.VcBatch, 8)
 			preparedTxs := make(chan *preparedTransactions, 8)
 			metrics := newVCServiceMetrics()
 			p := newPreparer(txBatch, preparedTxs, metrics)

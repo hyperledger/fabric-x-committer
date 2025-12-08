@@ -7,9 +7,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             v5.29.3
-// source: api/protovcservice/vcservice.proto
+// source: api/servicepb/vcservice.proto
 
-package protovcservice
+package servicepb
 
 import (
 	context "context"
@@ -26,13 +26,13 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	ValidationAndCommitService_StartValidateAndCommitStream_FullMethodName   = "/protovcservice.ValidationAndCommitService/StartValidateAndCommitStream"
-	ValidationAndCommitService_SetLastCommittedBlockNumber_FullMethodName    = "/protovcservice.ValidationAndCommitService/SetLastCommittedBlockNumber"
-	ValidationAndCommitService_GetNextBlockNumberToCommit_FullMethodName     = "/protovcservice.ValidationAndCommitService/GetNextBlockNumberToCommit"
-	ValidationAndCommitService_GetTransactionsStatus_FullMethodName          = "/protovcservice.ValidationAndCommitService/GetTransactionsStatus"
-	ValidationAndCommitService_GetNamespacePolicies_FullMethodName           = "/protovcservice.ValidationAndCommitService/GetNamespacePolicies"
-	ValidationAndCommitService_GetConfigTransaction_FullMethodName           = "/protovcservice.ValidationAndCommitService/GetConfigTransaction"
-	ValidationAndCommitService_SetupSystemTablesAndNamespaces_FullMethodName = "/protovcservice.ValidationAndCommitService/SetupSystemTablesAndNamespaces"
+	ValidationAndCommitService_StartValidateAndCommitStream_FullMethodName   = "/servicepb.ValidationAndCommitService/StartValidateAndCommitStream"
+	ValidationAndCommitService_SetLastCommittedBlockNumber_FullMethodName    = "/servicepb.ValidationAndCommitService/SetLastCommittedBlockNumber"
+	ValidationAndCommitService_GetNextBlockNumberToCommit_FullMethodName     = "/servicepb.ValidationAndCommitService/GetNextBlockNumberToCommit"
+	ValidationAndCommitService_GetTransactionsStatus_FullMethodName          = "/servicepb.ValidationAndCommitService/GetTransactionsStatus"
+	ValidationAndCommitService_GetNamespacePolicies_FullMethodName           = "/servicepb.ValidationAndCommitService/GetNamespacePolicies"
+	ValidationAndCommitService_GetConfigTransaction_FullMethodName           = "/servicepb.ValidationAndCommitService/GetConfigTransaction"
+	ValidationAndCommitService_SetupSystemTablesAndNamespaces_FullMethodName = "/servicepb.ValidationAndCommitService/SetupSystemTablesAndNamespaces"
 )
 
 // ValidationAndCommitServiceClient is the client API for ValidationAndCommitService service.
@@ -332,7 +332,7 @@ func _ValidationAndCommitService_SetupSystemTablesAndNamespaces_Handler(srv inte
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var ValidationAndCommitService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "protovcservice.ValidationAndCommitService",
+	ServiceName: "servicepb.ValidationAndCommitService",
 	HandlerType: (*ValidationAndCommitServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -368,5 +368,5 @@ var ValidationAndCommitService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "api/protovcservice/vcservice.proto",
+	Metadata: "api/servicepb/vcservice.proto",
 }

@@ -22,7 +22,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -117,7 +116,7 @@ func (s *Service) Run(ctx context.Context) error {
 	s.coordConn = conn
 	defer connection.CloseConnectionsLog(conn)
 	logger.Infof("sidecar connected to coordinator at %s", s.config.Committer.Endpoint)
-	coordClient := protocoordinatorservice.NewCoordinatorClient(conn)
+	coordClient := servicepb.NewCoordinatorClient(conn)
 
 	g, gCtx := errgroup.WithContext(pCtx)
 
@@ -157,7 +156,7 @@ func (s *Service) RegisterService(server *grpc.Server) {
 
 func (s *Service) sendBlocksAndReceiveStatus(
 	ctx context.Context,
-	coordClient protocoordinatorservice.CoordinatorClient,
+	coordClient servicepb.CoordinatorClient,
 ) error {
 	defer s.metrics.coordConnection.Disconnected(s.coordConn.CanonicalTarget())
 	nextBlockNum, err := s.recover(ctx, coordClient)
@@ -221,7 +220,7 @@ func (s *Service) configUpdater(block *common.Block) {
 	}
 }
 
-func (s *Service) recover(ctx context.Context, coordClient protocoordinatorservice.CoordinatorClient) (uint64, error) {
+func (s *Service) recover(ctx context.Context, coordClient servicepb.CoordinatorClient) (uint64, error) {
 	logger.Info("recovering sidecar")
 	// If the sidecar fails but the coordinator remains active, the sidecar
 	// must wait for the coordinator to become idle (i.e., to finish
@@ -264,7 +263,7 @@ func (s *Service) recover(ctx context.Context, coordClient protocoordinatorservi
 }
 
 func (s *Service) recoverConfigTransactionFromStateDB(
-	ctx context.Context, client protocoordinatorservice.CoordinatorClient,
+	ctx context.Context, client servicepb.CoordinatorClient,
 ) error {
 	configMsg, err := client.GetConfigTransaction(ctx, nil)
 	if err != nil {
@@ -287,7 +286,7 @@ func (s *Service) recoverConfigTransactionFromStateDB(
 
 func (s *Service) recoverLedgerStore(
 	ctx context.Context,
-	client protocoordinatorservice.CoordinatorClient,
+	client servicepb.CoordinatorClient,
 	stateDBHeight uint64,
 ) error {
 	blockStoreHeight := s.ledgerService.GetBlockHeight()
@@ -337,7 +336,7 @@ func (s *Service) recoverLedgerStore(
 
 func appendMissingBlock(
 	ctx context.Context,
-	client protocoordinatorservice.CoordinatorClient,
+	client servicepb.CoordinatorClient,
 	blk *common.Block,
 	committedBlocks channel.Writer[*common.Block],
 ) error {
@@ -392,7 +391,7 @@ func (s *Service) Close() {
 	s.ledgerService.close()
 }
 
-func waitForIdleCoordinator(ctx context.Context, client protocoordinatorservice.CoordinatorClient) error {
+func waitForIdleCoordinator(ctx context.Context, client servicepb.CoordinatorClient) error {
 	for {
 		waitingTxs, err := client.NumberOfWaitingTransactionsForStatus(ctx, nil)
 		if err != nil {

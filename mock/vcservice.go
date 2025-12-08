@@ -22,7 +22,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -32,7 +31,7 @@ import (
 // VcService implements the [protovcservice.ValidationAndCommitServiceServer] interface.
 // It is used for testing the client which is the coordinator service.
 type VcService struct {
-	protovcservice.ValidationAndCommitServiceServer
+	servicepb.ValidationAndCommitServiceServer
 	numBatchesReceived atomic.Uint32
 	nextBlock          atomic.Pointer[applicationpb.BlockInfo]
 	txsStatus          *fifoCache[*applicationpb.StatusWithHeight]
@@ -40,7 +39,7 @@ type VcService struct {
 	healthcheck        *health.Server
 	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
 	MockFaultyNodeDropSize   int
-	txBatchChannels          map[uint64]chan *protovcservice.VcBatch
+	txBatchChannels          map[uint64]chan *servicepb.VcBatch
 	txBatchChannelsMu        sync.Mutex
 	txBatchChannelsIDCounter atomic.Uint64
 }
@@ -50,13 +49,13 @@ func NewMockVcService() *VcService {
 	return &VcService{
 		txsStatus:       newFifoCache[*applicationpb.StatusWithHeight](defaultTxStatusStorageSize),
 		healthcheck:     connection.DefaultHealthCheckService(),
-		txBatchChannels: make(map[uint64]chan *protovcservice.VcBatch),
+		txBatchChannels: make(map[uint64]chan *servicepb.VcBatch),
 	}
 }
 
 // RegisterService registers for the validator-committer's GRPC services.
 func (v *VcService) RegisterService(server *grpc.Server) {
-	protovcservice.RegisterValidationAndCommitServiceServer(server, v)
+	servicepb.RegisterValidationAndCommitServiceServer(server, v)
 	healthgrpc.RegisterHealthServer(server, v.healthcheck)
 }
 
@@ -121,9 +120,9 @@ func (*VcService) SetupSystemTablesAndNamespaces(
 // StartValidateAndCommitStream is the mock implementation of the
 // [protovcservice.ValidationAndCommitServiceServer] interface.
 func (v *VcService) StartValidateAndCommitStream(
-	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
-	txBatchChan := make(chan *protovcservice.VcBatch)
+	txBatchChan := make(chan *servicepb.VcBatch)
 	vcID := v.txBatchChannelsIDCounter.Add(1)
 
 	v.txBatchChannelsMu.Lock()
@@ -150,8 +149,8 @@ func (v *VcService) StartValidateAndCommitStream(
 
 func (v *VcService) receiveAndProcessTransactions(
 	ctx context.Context,
-	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
-	txBatchChan chan *protovcservice.VcBatch,
+	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	txBatchChan chan *servicepb.VcBatch,
 ) error {
 	txBatchChanWriter := channel.NewWriter(ctx, txBatchChan)
 	for ctx.Err() == nil {
@@ -175,8 +174,8 @@ func (v *VcService) receiveAndProcessTransactions(
 
 func (v *VcService) sendTransactionStatus(
 	ctx context.Context,
-	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
-	txBatchChan chan *protovcservice.VcBatch,
+	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	txBatchChan chan *servicepb.VcBatch,
 ) error {
 	txBatchChanReader := channel.NewReader(ctx, txBatchChan)
 	for ctx.Err() == nil {
@@ -218,7 +217,7 @@ func (v *VcService) GetNumBatchesReceived() uint32 {
 // SubmitTransactions enqueues the given transactions to a queue read by status sending goroutine.
 // This methods helps the test code to bypass the stream to submit transactions to the mock
 // vcservice.
-func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *protovcservice.VcBatch) error {
+func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *servicepb.VcBatch) error {
 	v.txBatchChannelsMu.Lock()
 	channels := slices.Collect(maps.Values(v.txBatchChannels))
 	v.txBatchChannelsMu.Unlock()

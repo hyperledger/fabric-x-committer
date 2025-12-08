@@ -18,7 +18,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
@@ -47,7 +47,7 @@ var validNamespaceID = regexp.MustCompile(`^[a-z0-9_]+$`)
 var ErrInvalidNamespaceID = errors.New("invalid namespace ID")
 
 // GetUpdatesFromNamespace translates a namespace TX to policy updates.
-func GetUpdatesFromNamespace(nsTx *applicationpb.TxNamespace) *protosigverifierservice.VerifierUpdate {
+func GetUpdatesFromNamespace(nsTx *applicationpb.TxNamespace) *servicepb.VerifierUpdates {
 	switch nsTx.NsId {
 	case committerpb.MetaNamespaceID:
 		pd := make([]*applicationpb.PolicyItem, len(nsTx.ReadWrites))
@@ -57,7 +57,7 @@ func GetUpdatesFromNamespace(nsTx *applicationpb.TxNamespace) *protosigverifiers
 				Policy:    rw.Value,
 			}
 		}
-		return &protosigverifierservice.VerifierUpdate{
+		return &servicepb.VerifierUpdates{
 			NamespacePolicies: &applicationpb.NamespacePolicies{
 				Policies: pd,
 			},
@@ -65,7 +65,7 @@ func GetUpdatesFromNamespace(nsTx *applicationpb.TxNamespace) *protosigverifiers
 	case committerpb.ConfigNamespaceID:
 		for _, rw := range nsTx.BlindWrites {
 			if string(rw.Key) == committerpb.ConfigKey {
-				return &protosigverifierservice.VerifierUpdate{
+				return &servicepb.VerifierUpdates{
 					Config: &applicationpb.ConfigTransaction{
 						Envelope: rw.Value,
 					},

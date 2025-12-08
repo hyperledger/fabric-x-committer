@@ -21,7 +21,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -30,7 +29,7 @@ import (
 
 // Coordinator is a mock coordinator.
 type Coordinator struct {
-	protocoordinatorservice.CoordinatorServer
+	servicepb.CoordinatorServer
 	lastCommittedBlock atomic.Pointer[applicationpb.BlockInfo]
 	nextBlock          atomic.Uint64
 	streamActive       atomic.Bool
@@ -56,7 +55,7 @@ func NewMockCoordinator() *Coordinator {
 
 // RegisterService registers for the coordinator's GRPC services.
 func (c *Coordinator) RegisterService(server *grpc.Server) {
-	protocoordinatorservice.RegisterCoordinatorServer(server, c)
+	servicepb.RegisterCoordinatorServer(server, c)
 	healthgrpc.RegisterHealthServer(server, c.healthcheck)
 }
 
@@ -105,8 +104,8 @@ func (c *Coordinator) GetTransactionsStatus(
 func (c *Coordinator) NumberOfWaitingTransactionsForStatus(
 	context.Context,
 	*emptypb.Empty,
-) (*protocoordinatorservice.WaitingTransactions, error) {
-	return &protocoordinatorservice.WaitingTransactions{Count: c.numWaitingTxs.Load()}, nil
+) (*servicepb.WaitingTransactions, error) {
+	return &servicepb.WaitingTransactions{Count: c.numWaitingTxs.Load()}, nil
 }
 
 // IsStreamActive returns true if the stream from the sidecar is active.
@@ -115,7 +114,7 @@ func (c *Coordinator) IsStreamActive() bool {
 }
 
 // BlockProcessing processes a block.
-func (c *Coordinator) BlockProcessing(stream protocoordinatorservice.Coordinator_BlockProcessingServer) error {
+func (c *Coordinator) BlockProcessing(stream servicepb.Coordinator_BlockProcessingServer) error {
 	if !c.streamActive.CompareAndSwap(false, true) {
 		return errors.New("stream is already active. Only one stream is allowed")
 	}
@@ -124,7 +123,7 @@ func (c *Coordinator) BlockProcessing(stream protocoordinatorservice.Coordinator
 	defer logger.Info("Closed block processing stream")
 
 	g, gCtx := errgroup.WithContext(stream.Context())
-	blockQueue := channel.Make[*protocoordinatorservice.CoordinatorBatch](gCtx, 1000)
+	blockQueue := channel.Make[*servicepb.CoordinatorBatch](gCtx, 1000)
 	g.Go(func() error {
 		return c.receiveBlocks(gCtx, stream, blockQueue)
 	})
@@ -136,8 +135,8 @@ func (c *Coordinator) BlockProcessing(stream protocoordinatorservice.Coordinator
 
 func (c *Coordinator) receiveBlocks(
 	ctx context.Context,
-	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
-	blockQueue channel.Writer[*protocoordinatorservice.CoordinatorBatch],
+	stream servicepb.Coordinator_BlockProcessingServer,
+	blockQueue channel.Writer[*servicepb.CoordinatorBatch],
 ) error {
 	for ctx.Err() == nil {
 		block, err := stream.Recv()
@@ -165,8 +164,8 @@ func (c *Coordinator) receiveBlocks(
 
 func (c *Coordinator) sendTxsValidationStatus(
 	ctx context.Context,
-	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
-	blockQueue channel.Reader[*protocoordinatorservice.CoordinatorBatch],
+	stream servicepb.Coordinator_BlockProcessingServer,
+	blockQueue channel.Reader[*servicepb.CoordinatorBatch],
 ) error {
 	for ctx.Err() == nil {
 		scBlock, ok := blockQueue.Read()
@@ -186,7 +185,7 @@ func (c *Coordinator) sendTxsValidationStatus(
 
 		info := scBlock.Rejected
 		for _, tx := range scBlock.Txs {
-			info = append(info, &protocoordinatorservice.TxStatusInfo{
+			info = append(info, &servicepb.TxStatusInfo{
 				Ref:    tx.Ref,
 				Status: applicationpb.Status_COMMITTED,
 			})
@@ -205,8 +204,8 @@ func (c *Coordinator) sendTxsValidationStatus(
 }
 
 func (c *Coordinator) sendTxsStatusChunk(
-	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
-	txs []*protocoordinatorservice.TxStatusInfo,
+	stream servicepb.Coordinator_BlockProcessingServer,
+	txs []*servicepb.TxStatusInfo,
 ) error {
 	b := &applicationpb.TransactionsStatus{
 		Status: make(map[string]*applicationpb.StatusWithHeight, len(txs)),

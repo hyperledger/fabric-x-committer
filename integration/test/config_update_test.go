@@ -17,7 +17,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
@@ -102,7 +102,7 @@ func TestConfigUpdate(t *testing.T) {
 	// We send the old version and it fails.
 	c.SendTransactionsToOrderer(
 		t,
-		[]*protoloadgen.LoadGenTx{lgMetaTx},
+		[]*servicepb.LoadGenTx{lgMetaTx},
 		[]applicationpb.Status{applicationpb.Status_ABORTED_SIGNATURE_INVALID},
 	)
 

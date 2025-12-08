@@ -19,7 +19,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -41,7 +41,7 @@ func newVerifier() *verifier {
 // updatePolicies updates the verifier's policies.
 // We assume no parallel update calls, thus, no lock is required.
 func (v *verifier) updatePolicies(
-	update *protosigverifierservice.VerifierUpdate,
+	update *servicepb.VerifierUpdates,
 ) error {
 	if update == nil || (update.Config == nil && update.NamespacePolicies == nil) {
 		return nil
@@ -83,7 +83,7 @@ func (v *verifier) updatePolicies(
 }
 
 func createVerifiers(
-	update *protosigverifierservice.VerifierUpdate, idDeserializer msp.IdentityDeserializer,
+	update *servicepb.VerifierUpdates, idDeserializer msp.IdentityDeserializer,
 ) (map[string]*signature.NsVerifier, error) {
 	newPolicies := make(map[string]*signature.NsVerifier)
 	if update.Config != nil {
@@ -106,7 +106,7 @@ func createVerifiers(
 	return newPolicies, nil
 }
 
-func (v *verifier) updateBundle(u *protosigverifierservice.VerifierUpdate) error {
+func (v *verifier) updateBundle(u *servicepb.VerifierUpdates) error {
 	if u.Config == nil {
 		return nil
 	}
@@ -123,9 +123,9 @@ func (v *verifier) updateBundle(u *protosigverifierservice.VerifierUpdate) error
 	return nil
 }
 
-func (v *verifier) verifyRequest(tx *protosigverifierservice.VerifierTx) *protosigverifierservice.VerifierResponse {
+func (v *verifier) verifyRequest(tx *servicepb.VerifierTx) *servicepb.VerifierResponse {
 	logger.Debugf("Validating TX: %s", &utils.LazyJSON{O: tx})
-	response := &protosigverifierservice.VerifierResponse{
+	response := &servicepb.VerifierResponse{
 		Ref:    tx.Ref,
 		Status: applicationpb.Status_COMMITTED,
 	}

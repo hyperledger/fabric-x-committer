@@ -7,9 +7,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             v5.29.3
-// source: api/protoloadgen/loadgen.proto
+// source: api/servicepb/loadgen.proto
 
-package protoloadgen
+package servicepb
 
 import (
 	context "context"
@@ -25,9 +25,9 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	LoadGenService_AppendBatch_FullMethodName = "/protoloadgen.LoadGenService/AppendBatch"
-	LoadGenService_GetLimit_FullMethodName    = "/protoloadgen.LoadGenService/GetLimit"
-	LoadGenService_SetLimit_FullMethodName    = "/protoloadgen.LoadGenService/SetLimit"
+	LoadGenService_AppendBatch_FullMethodName = "/servicepb.LoadGenService/AppendBatch"
+	LoadGenService_GetLimit_FullMethodName    = "/servicepb.LoadGenService/GetLimit"
+	LoadGenService_SetLimit_FullMethodName    = "/servicepb.LoadGenService/SetLimit"
 )
 
 // LoadGenServiceClient is the client API for LoadGenService service.
@@ -168,7 +168,7 @@ func _LoadGenService_SetLimit_Handler(srv interface{}, ctx context.Context, dec 
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var LoadGenService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "protoloadgen.LoadGenService",
+	ServiceName: "servicepb.LoadGenService",
 	HandlerType: (*LoadGenServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -185,5 +185,5 @@ var LoadGenService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "api/protoloadgen/loadgen.proto",
+	Metadata: "api/servicepb/loadgen.proto",
 }

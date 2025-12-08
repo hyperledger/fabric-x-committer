@@ -22,8 +22,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
@@ -234,7 +232,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		txBatch := []*dependencygraph.TransactionNode{
 			{
-				Tx: &protovcservice.VcTx{
+				Tx: &servicepb.VcTx{
 					Ref: committerpb.TxRef("create config", 100, 63),
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId: committerpb.ConfigNamespaceID,
@@ -246,7 +244,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 				},
 			},
 			{
-				Tx: &protovcservice.VcTx{
+				Tx: &servicepb.VcTx{
 					Ref: committerpb.TxRef("create ns 1", 100, 64),
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId: committerpb.MetaNamespaceID,
@@ -274,7 +272,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		require.ElementsMatch(t, txBatch, <-env.outputTxs)
 
-		expectedUpdate := &protosigverifierservice.VerifierUpdate{
+		expectedUpdate := &servicepb.VerifierUpdates{
 			Config: &applicationpb.ConfigTransaction{
 				Envelope: configBlock.Data.Data[0],
 			},
@@ -336,8 +334,8 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	err := env.mockVcService.SubmitTransactions(ctx, &protovcservice.VcBatch{
-		Transactions: []*protovcservice.VcTx{
+	err := env.mockVcService.SubmitTransactions(ctx, &servicepb.VcBatch{
+		Transactions: []*servicepb.VcTx{
 			{Ref: committerpb.TxRef("untrackedTxID1", 1, 1)},
 			{Ref: committerpb.TxRef("untrackedTxID2", 2, 2)},
 		},
@@ -362,7 +360,7 @@ func createInputTxsNodeForTest(t *testing.T, numTxs, valueSize int, blkNum uint6
 	for i := range numTxs {
 		id := uuid.NewString()
 		txsNode[i] = &dependencygraph.TransactionNode{
-			Tx: &protovcservice.VcTx{
+			Tx: &servicepb.VcTx{
 				Ref: committerpb.TxRef(id, blkNum, uint32(i)), //nolint:gosec
 				Namespaces: []*applicationpb.TxNamespace{{
 					BlindWrites: []*applicationpb.Write{{

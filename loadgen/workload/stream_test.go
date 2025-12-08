@@ -18,7 +18,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -136,7 +136,7 @@ func requireValidKey(t *testing.T, key []byte, profile *Profile) {
 	require.Positive(t, SumInt(key))
 }
 
-func requireValidTx(t *testing.T, tx *protoloadgen.LoadGenTx, profile *Profile, signer *TxSignerVerifier) {
+func requireValidTx(t *testing.T, tx *servicepb.LoadGenTx, profile *Profile, signer *TxSignerVerifier) {
 	t.Helper()
 	require.NotEmpty(t, tx.Id)
 	require.NotNil(t, tx.Tx)
@@ -270,7 +270,7 @@ func TestGenInvalidSigTx(t *testing.T) {
 	g := c.MakeGenerator()
 	txs := g.NextN(t.Context(), 1e4)
 	signer := NewTxSignerVerifier(p.Transaction.Policy)
-	valid := Map(txs, func(_ int, tx *protoloadgen.LoadGenTx) float64 {
+	valid := Map(txs, func(_ int, tx *servicepb.LoadGenTx) float64 {
 		if !signer.Verify(tx.Id, tx.Tx) {
 			return 1
 		}
@@ -420,7 +420,7 @@ func TestGenTxWithModifier(t *testing.T) {
 type queryTestEnv struct {
 	p        *Profile
 	keys     map[string]*struct{}
-	txGen    *RateLimiterGenerator[*protoloadgen.LoadGenTx]
+	txGen    *RateLimiterGenerator[*servicepb.LoadGenTx]
 	queryGen *RateLimiterGenerator[*committerpb.Query]
 }
 

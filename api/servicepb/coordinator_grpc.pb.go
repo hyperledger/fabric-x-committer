@@ -7,9 +7,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             v5.29.3
-// source: api/protocoordinatorservice/coordinator.proto
+// source: api/servicepb/coordinator.proto
 
-package protocoordinatorservice
+package servicepb
 
 import (
 	context "context"
@@ -26,12 +26,12 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Coordinator_BlockProcessing_FullMethodName                      = "/protocoordinatorservice.Coordinator/BlockProcessing"
-	Coordinator_SetLastCommittedBlockNumber_FullMethodName          = "/protocoordinatorservice.Coordinator/SetLastCommittedBlockNumber"
-	Coordinator_GetNextBlockNumberToCommit_FullMethodName           = "/protocoordinatorservice.Coordinator/GetNextBlockNumberToCommit"
-	Coordinator_GetTransactionsStatus_FullMethodName                = "/protocoordinatorservice.Coordinator/GetTransactionsStatus"
-	Coordinator_GetConfigTransaction_FullMethodName                 = "/protocoordinatorservice.Coordinator/GetConfigTransaction"
-	Coordinator_NumberOfWaitingTransactionsForStatus_FullMethodName = "/protocoordinatorservice.Coordinator/NumberOfWaitingTransactionsForStatus"
+	Coordinator_BlockProcessing_FullMethodName                      = "/servicepb.Coordinator/BlockProcessing"
+	Coordinator_SetLastCommittedBlockNumber_FullMethodName          = "/servicepb.Coordinator/SetLastCommittedBlockNumber"
+	Coordinator_GetNextBlockNumberToCommit_FullMethodName           = "/servicepb.Coordinator/GetNextBlockNumberToCommit"
+	Coordinator_GetTransactionsStatus_FullMethodName                = "/servicepb.Coordinator/GetTransactionsStatus"
+	Coordinator_GetConfigTransaction_FullMethodName                 = "/servicepb.Coordinator/GetConfigTransaction"
+	Coordinator_NumberOfWaitingTransactionsForStatus_FullMethodName = "/servicepb.Coordinator/NumberOfWaitingTransactionsForStatus"
 )
 
 // CoordinatorClient is the client API for Coordinator service.
@@ -298,7 +298,7 @@ func _Coordinator_NumberOfWaitingTransactionsForStatus_Handler(srv interface{}, 
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Coordinator_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "protocoordinatorservice.Coordinator",
+	ServiceName: "servicepb.Coordinator",
 	HandlerType: (*CoordinatorServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -330,5 +330,5 @@ var Coordinator_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "api/protocoordinatorservice/coordinator.proto",
+	Metadata: "api/servicepb/coordinator.proto",
 }

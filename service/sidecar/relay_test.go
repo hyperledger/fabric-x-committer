@@ -16,7 +16,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -65,7 +65,7 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 		waitingTxsLimit:            100,
 	}
 
-	client := protocoordinatorservice.NewCoordinatorClient(conn)
+	client := servicepb.NewCoordinatorClient(conn)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(relayService.run(ctx, &relayRunConfig{
 			coordClient:                    client,

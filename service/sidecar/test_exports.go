@@ -16,7 +16,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
@@ -60,9 +59,9 @@ func RequireNotifications( //nolint:revive // argument-limit.
 
 // MalformedTxTestCases are valid and invalid TXs due to malformed.
 func MalformedTxTestCases(txb *workload.TxBuilder) (
-	txs []*protoloadgen.LoadGenTx, expectedStatuses []applicationpb.Status,
+	txs []*servicepb.LoadGenTx, expectedStatuses []applicationpb.Status,
 ) {
-	add := func(expected applicationpb.Status, tx *protoloadgen.LoadGenTx) {
+	add := func(expected applicationpb.Status, tx *servicepb.LoadGenTx) {
 		txs = append(txs, tx)
 		expectedStatuses = append(expectedStatuses, expected)
 	}

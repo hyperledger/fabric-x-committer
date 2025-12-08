@@ -17,8 +17,6 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -44,7 +42,7 @@ type (
 	// signature verifier server.
 	signatureVerifier struct {
 		conn    *grpc.ClientConn
-		client  protosigverifierservice.VerifierClient
+		client  servicepb.VerifierClient
 		metrics *perfMetrics
 
 		// txBeingValidated stores transactions currently being validated by the signature verifier.
@@ -66,7 +64,7 @@ type (
 	}
 )
 
-var sigInvalidTxStatus = &protovcservice.InvalidTxStatus{
+var sigInvalidTxStatus = &servicepb.InvalidTxStatus{
 	Code: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
 }
 
@@ -149,7 +147,7 @@ func newSignatureVerifier(
 	logger.Info("Initializing new SignatureVerifier")
 	return &signatureVerifier{
 		conn:             conn,
-		client:           protosigverifierservice.NewVerifierClient(conn),
+		client:           servicepb.NewVerifierClient(conn),
 		metrics:          config.metrics,
 		txBeingValidated: make(map[servicepb.Height]*dependencygraph.TransactionNode),
 		txMu:             &sync.Mutex{},
@@ -192,7 +190,7 @@ func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
 
 // NOTE: sendTransactionsToSVService filters all transient connection related errors.
 func (sv *signatureVerifier) sendTransactionsToSVService(
-	stream protosigverifierservice.Verifier_StartStreamClient,
+	stream servicepb.Verifier_StartStreamClient,
 	inputTxBatch channel.Reader[dependencygraph.TxNodeBatch],
 ) error {
 	var policyVersion uint64
@@ -208,14 +206,14 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 		batchSize := len(txBatch)
 		logger.Debugf("Batch containing %d TXs was stored in the being validated list", batchSize)
 
-		request := &protosigverifierservice.VerifierBatch{
-			Requests: make([]*protosigverifierservice.VerifierTx, batchSize),
+		request := &servicepb.VerifierBatch{
+			Requests: make([]*servicepb.VerifierTx, batchSize),
 		}
 
 		request.Update, policyVersion = sv.policyManager.getUpdates(policyVersion)
 
 		for idx, txNode := range txBatch {
-			request.Requests[idx] = &protosigverifierservice.VerifierTx{
+			request.Requests[idx] = &servicepb.VerifierTx{
 				Ref: txNode.Tx.Ref,
 				Tx: &applicationpb.Tx{
 					Namespaces:   txNode.Tx.Namespaces,
@@ -240,8 +238,8 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 }
 
 func splitAndSendToVerifier(
-	stream protosigverifierservice.Verifier_StartStreamClient,
-	r *protosigverifierservice.VerifierBatch,
+	stream servicepb.Verifier_StartStreamClient,
+	r *servicepb.VerifierBatch,
 ) error {
 	// We group transactions by block to ensure our batch sizes do not exceed the gRPC message limit.
 	// This strategy prevents RESOURCE_EXHAUSTED errors because the orderer's maximum block size
@@ -250,12 +248,12 @@ func splitAndSendToVerifier(
 	// until the orderer implements all sanity checks on the configuration provided in the config block.
 	// For example, if the orderer can enforce that the maximum block size should be at most half of the
 	// maximum message size in gRPC, one batch would be adequate.
-	blkToBatch := make(map[uint64]*protosigverifierservice.VerifierBatch)
+	blkToBatch := make(map[uint64]*servicepb.VerifierBatch)
 	for _, req := range r.Requests {
 		rBatch, ok := blkToBatch[req.Ref.BlockNum]
 		if !ok {
-			rBatch = &protosigverifierservice.VerifierBatch{
-				Requests: make([]*protosigverifierservice.VerifierTx, 0, len(r.Requests)),
+			rBatch = &servicepb.VerifierBatch{
+				Requests: make([]*servicepb.VerifierTx, 0, len(r.Requests)),
 			}
 			blkToBatch[req.Ref.BlockNum] = rBatch
 		}
@@ -281,7 +279,7 @@ func splitAndSendToVerifier(
 }
 
 func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
-	stream protosigverifierservice.Verifier_StartStreamClient,
+	stream servicepb.Verifier_StartStreamClient,
 	outputValidatedTxs channel.Writer[dependencygraph.TxNodeBatch],
 ) error {
 	for {
@@ -313,7 +311,7 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 }
 
 func (sv *signatureVerifier) fetchAndDeleteTxBeingValidated(
-	response *protosigverifierservice.VerifierResponseBatch,
+	response *servicepb.VerifierResponseBatch,
 ) dependencygraph.TxNodeBatch {
 	validatedTxs := dependencygraph.TxNodeBatch(make([]*dependencygraph.TransactionNode, 0, len(response.Responses)))
 	// TODO: introduce metrics to measure the lock wait/holding duration.
@@ -327,7 +325,7 @@ func (sv *signatureVerifier) fetchAndDeleteTxBeingValidated(
 		}
 		delete(sv.txBeingValidated, k)
 		if resp.Status != applicationpb.Status_COMMITTED {
-			txNode.Tx.PrelimInvalidTxStatus = &protovcservice.InvalidTxStatus{Code: resp.Status}
+			txNode.Tx.PrelimInvalidTxStatus = &servicepb.InvalidTxStatus{Code: resp.Status}
 		}
 		validatedTxs = append(validatedTxs, txNode)
 	}

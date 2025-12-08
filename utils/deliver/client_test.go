@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -170,7 +170,7 @@ func submit(
 	require.NoError(t, err)
 	defer stream.CloseConnections()
 
-	err = stream.SendBatch(workload.MapToEnvelopeBatch(0, []*protoloadgen.LoadGenTx{tx}))
+	err = stream.SendBatch(workload.MapToEnvelopeBatch(0, []*servicepb.LoadGenTx{tx}))
 	if err != nil {
 		t.Logf("Response error:\n%s", err)
 	}

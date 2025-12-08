@@ -15,7 +15,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -52,9 +52,9 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	dCtx, dCancel := context.WithCancel(ctx)
 	defer dCancel()
 	g, gCtx := errgroup.WithContext(dCtx)
-	streams := make([]protosigverifierservice.Verifier_StartStreamClient, len(connections))
+	streams := make([]servicepb.Verifier_StartStreamClient, len(connections))
 	for i, conn := range connections {
-		client := protosigverifierservice.NewVerifierClient(conn)
+		client := servicepb.NewVerifierClient(conn)
 		logger.Infof("Opening stream to %s", c.config.Endpoints[i])
 		streams[i], err = client.StartStream(gCtx)
 		if err != nil {
@@ -62,7 +62,7 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 		}
 
 		logger.Infof("Set verification verification policy")
-		err = streams[i].Send(&protosigverifierservice.VerifierBatch{Update: updateMsg})
+		err = streams[i].Send(&servicepb.VerifierBatch{Update: updateMsg})
 		if err != nil {
 			return errors.Wrap(err, "failed submitting verification policy")
 		}
@@ -81,14 +81,14 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	return errors.Wrap(g.Wait(), "workload done")
 }
 
-func createUpdate(policy *workload.PolicyProfile) (*protosigverifierservice.VerifierUpdate, error) {
+func createUpdate(policy *workload.PolicyProfile) (*servicepb.VerifierUpdates, error) {
 	txSigner := workload.NewTxSignerVerifier(policy)
 
 	envelopeBytes, err := workload.CreateConfigEnvelope(policy)
 	if err != nil {
 		return nil, err
 	}
-	updateMsg := &protosigverifierservice.VerifierUpdate{
+	updateMsg := &servicepb.VerifierUpdates{
 		Config: &applicationpb.ConfigTransaction{
 			Envelope: envelopeBytes,
 		},
@@ -118,7 +118,7 @@ func createUpdate(policy *workload.PolicyProfile) (*protosigverifierservice.Veri
 }
 
 func (c *SvAdapter) receiveStatus(
-	ctx context.Context, stream protosigverifierservice.Verifier_StartStreamClient,
+	ctx context.Context, stream servicepb.Verifier_StartStreamClient,
 ) error {
 	for ctx.Err() == nil {
 		responseBatch, err := stream.Recv()
