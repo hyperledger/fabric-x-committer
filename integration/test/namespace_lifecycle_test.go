@@ -79,7 +79,7 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					NsVersion: 0,
 					ReadWrites: []*applicationpb.ReadWrite{{
 						Key:     []byte("1"),
-						Version: committerpb.Version(0),
+						Version: applicationpb.NewVersion(0),
 						Value:   policyBytesNs2,
 					}},
 				}},
@@ -96,7 +96,7 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					NsVersion: 0,
 					ReadWrites: []*applicationpb.ReadWrite{{
 						Key:     []byte("1"),
-						Version: committerpb.Version(1),
+						Version: applicationpb.NewVersion(1),
 						Value:   policyBytesNs1,
 					}},
 				}},

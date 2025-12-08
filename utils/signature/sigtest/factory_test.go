@@ -18,7 +18,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/test/apptest"
 )
 
 func TestEndToEnd(t *testing.T) {
@@ -41,7 +41,7 @@ func TestEndToEnd(t *testing.T) {
 				}},
 			}
 			sig, err := s.SignNs(txID, tx, 0)
-			tx.Endorsements = test.CreateEndorsementsForThresholdRule(sig)
+			tx.Endorsements = apptest.CreateEndorsementsForThresholdRule(sig)
 			require.NoError(t, err)
 			require.NoError(t, v.VerifyNs(txID, tx, 0))
 		})
@@ -94,12 +94,12 @@ func TestEcdsaPem(t *testing.T) {
 
 	sig, err := s.SignNs(txID, tx, 0)
 	require.NoError(t, err)
-	tx.Endorsements = test.CreateEndorsementsForThresholdRule(sig)
+	tx.Endorsements = apptest.CreateEndorsementsForThresholdRule(sig)
 	require.NoError(t, pemV.VerifyNs(txID, tx, 0))
 
 	sig, err = pemS.SignNs(txID, tx, 0)
 	require.NoError(t, err)
-	tx.Endorsements = test.CreateEndorsementsForThresholdRule(sig)
+	tx.Endorsements = apptest.CreateEndorsementsForThresholdRule(sig)
 	require.NoError(t, v.VerifyNs(txID, tx, 0))
 }
 

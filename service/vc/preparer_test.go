@@ -58,7 +58,7 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 	k6 := []byte("key6")
 
 	// Shortcut for version pointer.
-	v := committerpb.Version
+	v := applicationpb.NewVersion
 
 	tx := &servicepb.VcBatch{
 		Transactions: []*servicepb.VcTx{
@@ -166,7 +166,7 @@ func TestPrepareTxWithBlindWritesOnly(t *testing.T) {
 	k5 := []byte("key5")
 
 	// Shortcut for version pointer.
-	v := committerpb.Version
+	v := applicationpb.NewVersion
 
 	tx := &servicepb.VcBatch{
 		Transactions: []*servicepb.VcTx{
@@ -271,7 +271,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 	k7 := []byte("key7")
 
 	// Shortcut for version pointer.
-	v := committerpb.Version
+	v := applicationpb.NewVersion
 
 	tx := &servicepb.VcBatch{
 		Transactions: []*servicepb.VcTx{
@@ -426,7 +426,7 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 	k10 := []byte("key10")
 
 	// Shortcut for version pointer.
-	v := committerpb.Version
+	v := applicationpb.NewVersion
 
 	tx := &servicepb.VcBatch{
 		Transactions: []*servicepb.VcTx{

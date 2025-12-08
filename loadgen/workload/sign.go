@@ -17,7 +17,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/test/apptest"
 )
 
 var logger = logging.New("load-gen-sign")
@@ -64,7 +64,7 @@ func (e *TxSignerVerifier) Sign(txID string, tx *applicationpb.Tx) {
 		if !ok {
 			continue
 		}
-		tx.Endorsements[nsIndex] = test.CreateEndorsementsForThresholdRule(signer.Sign(txID, tx, nsIndex))[0]
+		tx.Endorsements[nsIndex] = apptest.CreateEndorsementsForThresholdRule(signer.Sign(txID, tx, nsIndex))[0]
 	}
 }
 

@@ -42,6 +42,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/test/apptest"
 )
 
 const (
@@ -114,7 +115,7 @@ func TestMinimalInput(t *testing.T) {
 		}},
 	}
 	s, _ := dataTxSigner.SignNs(fakeTxID, tx1, 0)
-	tx1.Endorsements = test.AppendToEndorsementSetsForThresholdRule(tx1.Endorsements, s)
+	tx1.Endorsements = apptest.AppendToEndorsementSetsForThresholdRule(tx1.Endorsements, s)
 
 	tx2 := &applicationpb.Tx{
 		Namespaces: []*applicationpb.TxNamespace{{
@@ -127,7 +128,7 @@ func TestMinimalInput(t *testing.T) {
 	}
 
 	s, _ = dataTxSigner.SignNs(fakeTxID, tx2, 0)
-	tx2.Endorsements = test.AppendToEndorsementSetsForThresholdRule(tx2.Endorsements, s)
+	tx2.Endorsements = apptest.AppendToEndorsementSetsForThresholdRule(tx2.Endorsements, s)
 
 	tx3 := &applicationpb.Tx{
 		Namespaces: []*applicationpb.TxNamespace{{
@@ -139,7 +140,7 @@ func TestMinimalInput(t *testing.T) {
 		}},
 	}
 	s, _ = metaTxSigner.SignNs(fakeTxID, tx3, 0)
-	tx3.Endorsements = test.AppendToEndorsementSetsForThresholdRule(tx3.Endorsements, s)
+	tx3.Endorsements = apptest.AppendToEndorsementSetsForThresholdRule(tx3.Endorsements, s)
 
 	err := stream.Send(&servicepb.VerifierBatch{
 		Update: update,
@@ -236,7 +237,7 @@ func TestSignatureRule(t *testing.T) {
 		}
 
 		tx1.Endorsements = []*applicationpb.Endorsements{
-			test.CreateEndorsementsForSignatureRule(signatures, mspIDs, certsBytes, certType),
+			apptest.CreateEndorsementsForSignatureRule(signatures, mspIDs, certsBytes, certType),
 		}
 
 		requireTestCase(t, stream, &testCase{
@@ -293,7 +294,7 @@ func TestBadSignature(t *testing.T) {
 						{Key: make([]byte, 0)},
 					},
 				}},
-				Endorsements: test.CreateEndorsementsForThresholdRule([]byte{0}, []byte{1}, []byte{2}),
+				Endorsements: apptest.CreateEndorsementsForThresholdRule([]byte{0}, []byte{1}, []byte{2}),
 			},
 		},
 		expectedStatus: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
@@ -473,7 +474,7 @@ func sign(t *testing.T, tx *applicationpb.Tx, signers ...*sigtest.NsSigner) {
 	for i, s := range signers {
 		s, err := s.SignNs(fakeTxID, tx, i)
 		require.NoError(t, err)
-		tx.Endorsements[i] = test.CreateEndorsementsForThresholdRule(s)[0]
+		tx.Endorsements[i] = apptest.CreateEndorsementsForThresholdRule(s)[0]
 	}
 }
 

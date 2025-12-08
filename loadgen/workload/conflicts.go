@@ -11,7 +11,7 @@ import (
 	"math/rand"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/test/apptest"
 )
 
 // Dependency types.
@@ -64,7 +64,7 @@ func (g *signTxModifier) Modify(tx *applicationpb.Tx) {
 		// Pre-assigning prevents TxBuilder from re-signing the TX.
 		tx.Endorsements = make([]*applicationpb.Endorsements, len(tx.Namespaces))
 		for i := range len(tx.Namespaces) {
-			tx.Endorsements[i] = test.CreateEndorsementsForThresholdRule(g.invalidSignature)[0]
+			tx.Endorsements[i] = apptest.CreateEndorsementsForThresholdRule(g.invalidSignature)[0]
 		}
 	}
 }

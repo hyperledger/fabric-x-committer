@@ -20,11 +20,6 @@ const (
 	ConfigKey = "_config"
 )
 
-// Version is a convenient method to create a version pointer in a single line.
-func Version(version uint64) *uint64 {
-	return &version
-}
-
 // TxRef a convenient method to create a full, coordinator's TX reference in a single line.
 func TxRef(txID string, blockNum uint64, txNum uint32) *servicepb.TxRef {
 	return &servicepb.TxRef{TxId: txID, BlockNum: blockNum, TxNum: txNum}

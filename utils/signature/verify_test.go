@@ -22,6 +22,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/test/apptest"
 )
 
 const fakeTxID = "fake-id"
@@ -43,7 +44,7 @@ func TestNsVerifierThresholdRule(t *testing.T) {
 	}
 	sig, err := nsSigner.SignNs(fakeTxID, tx1, 0)
 	require.NoError(t, err)
-	tx1.Endorsements = test.CreateEndorsementsForThresholdRule(sig)
+	tx1.Endorsements = apptest.CreateEndorsementsForThresholdRule(sig)
 	require.NoError(t, nsVerifier.VerifyNs(fakeTxID, tx1, 0))
 }
 
@@ -86,7 +87,7 @@ func TestNsVerifierSignatureRule(t *testing.T) {
 			}},
 		}
 		// org0, org3, and org1 sign.
-		tx1.Endorsements = []*applicationpb.Endorsements{test.CreateEndorsementsForSignatureRule(
+		tx1.Endorsements = []*applicationpb.Endorsements{apptest.CreateEndorsementsForSignatureRule(
 			toByteArray("s0", "s3", "s1"),
 			toByteArray("org0", "org3", "org1"),
 			toByteArray("id0", "id3", "id1"),
@@ -95,7 +96,7 @@ func TestNsVerifierSignatureRule(t *testing.T) {
 		require.NoError(t, nsVerifier.VerifyNs(fakeTxID, tx1, 0))
 
 		// org0, org3, and org2 sign.
-		tx1.Endorsements = []*applicationpb.Endorsements{test.CreateEndorsementsForSignatureRule(
+		tx1.Endorsements = []*applicationpb.Endorsements{apptest.CreateEndorsementsForSignatureRule(
 			toByteArray("s0", "s3", "s2"),
 			toByteArray("org0", "org3", "org2"),
 			toByteArray("id0", "id3", "id2"),
@@ -103,7 +104,7 @@ func TestNsVerifierSignatureRule(t *testing.T) {
 		)}
 		require.NoError(t, nsVerifier.VerifyNs(fakeTxID, tx1, 0))
 
-		tx1.Endorsements = []*applicationpb.Endorsements{test.CreateEndorsementsForSignatureRule(
+		tx1.Endorsements = []*applicationpb.Endorsements{apptest.CreateEndorsementsForSignatureRule(
 			toByteArray("s0", "s3"),
 			toByteArray("org0", "org3"),
 			toByteArray("id0", "id3"),

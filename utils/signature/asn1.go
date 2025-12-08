@@ -22,10 +22,11 @@ func DigestTxNamespace(txID string, ns *applicationpb.TxNamespace) ([]byte, erro
 		return nil, err
 	}
 
-	return digest(derBytes), nil
+	return SHA256Digest(derBytes), nil
 }
 
-func digest(data []byte) []byte {
+// SHA256Digest computes the SHA256 digest of the given data.
+func SHA256Digest(data []byte) []byte {
 	h := sha256.New()
 	h.Write(data) //nolint:revive,nolintlint // Hash write never fail.
 	return h.Sum(nil)
@@ -39,31 +40,31 @@ func ASN1MarshalTxNamespace(txID string, ns *applicationpb.TxNamespace) ([]byte,
 }
 
 // TranslateTx translates a TX namespace to a stab struct for tx_schema.asn.
-// Any change to [*protoblocktx.Tx] requires a change to this method.
-func TranslateTx(txID string, ns *applicationpb.TxNamespace) *TxWithNamespace {
-	n := TxWithNamespace{
+// Any change to [*applicationpb.Tx] requires a change to this method.
+func TranslateTx(txID string, ns *applicationpb.TxNamespace) *ASN1Namespace {
+	n := ASN1Namespace{
 		TxID:             txID,
 		NamespaceID:      ns.NsId,
 		NamespaceVersion: ProtoToAsnVersion(&ns.NsVersion),
-		ReadsOnly:        make([]Read, len(ns.ReadsOnly)),
-		ReadWrites:       make([]ReadWrite, len(ns.ReadWrites)),
-		BlindWrites:      make([]Write, len(ns.BlindWrites)),
+		ReadsOnly:        make([]ASN1Read, len(ns.ReadsOnly)),
+		ReadWrites:       make([]ASN1ReadWrite, len(ns.ReadWrites)),
+		BlindWrites:      make([]ASN1Write, len(ns.BlindWrites)),
 	}
 	for i, r := range ns.ReadsOnly {
-		n.ReadsOnly[i] = Read{
+		n.ReadsOnly[i] = ASN1Read{
 			Key:     r.Key,
 			Version: ProtoToAsnVersion(r.Version),
 		}
 	}
 	for i, rw := range ns.ReadWrites {
-		n.ReadWrites[i] = ReadWrite{
+		n.ReadWrites[i] = ASN1ReadWrite{
 			Key:     rw.Key,
 			Version: ProtoToAsnVersion(rw.Version),
 			Value:   rw.Value,
 		}
 	}
 	for i, w := range ns.BlindWrites {
-		n.BlindWrites[i] = Write{
+		n.BlindWrites[i] = ASN1Write{
 			Key:   w.Key,
 			Value: w.Value,
 		}
@@ -91,36 +92,36 @@ func AsnToProtoVersion(ver int64) *uint64 {
 }
 
 type (
-	// TxWithNamespace is a stab for [protoblocktx.Tx] and [protoblocktx.TxNamespace].
+	// ASN1Namespace is a stab for [applicationpb.Tx] and [applicationpb.TxNamespace].
 	// Any change to these protobuf requires a change to these structures.
 	// It conforms with tx_schema.asn.
 	// We force the ASN.1 library to use UTF8 strings to avoid incompatibility with the schema.
 	// If not specified, the library choose to use ASCII (PrintableString) for simple strings,
 	// and UTF8 otherwise.
-	TxWithNamespace struct {
+	ASN1Namespace struct {
 		TxID             string `asn1:"utf8"`
 		NamespaceID      string `asn1:"utf8"`
 		NamespaceVersion int64
-		ReadsOnly        []Read
-		ReadWrites       []ReadWrite
-		BlindWrites      []Write
+		ReadsOnly        []ASN1Read
+		ReadWrites       []ASN1ReadWrite
+		BlindWrites      []ASN1Write
 	}
-	// Read is a stab for [protoblocktx.Read].
+	// ASN1Read is a stab for [applicationpb.Read].
 	// Any change to this protobuf requires a change to these structures.
-	Read struct {
+	ASN1Read struct {
 		Key     []byte
 		Version int64 `asn1:"optional,default:-1"`
 	}
-	// ReadWrite is a stab for [protoblocktx.ReadWrite].
+	// ASN1ReadWrite is a stab for [applicationpb.ReadWrite].
 	// Any change to this protobuf requires a change to these structures.
-	ReadWrite struct {
+	ASN1ReadWrite struct {
 		Key     []byte
 		Value   []byte
 		Version int64 `asn1:"optional,default:-1"`
 	}
-	// Write is a stab for [protoblocktx.Write].
+	// ASN1Write is a stab for [applicationpb.Write].
 	// Any change to this protobuf requires a change to these structures.
-	Write struct {
+	ASN1Write struct {
 		Key   []byte
 		Value []byte
 	}

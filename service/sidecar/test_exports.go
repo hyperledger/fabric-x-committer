@@ -152,7 +152,7 @@ func MalformedTxTestCases(txb *workload.TxBuilder) (
 				NsVersion: 0,
 				ReadWrites: []*applicationpb.ReadWrite{{
 					Key:     []byte("2"),
-					Version: committerpb.Version(0),
+					Version: applicationpb.NewVersion(0),
 					Value:   defaultNsValidPolicy(),
 				}},
 			},
@@ -164,7 +164,7 @@ func MalformedTxTestCases(txb *workload.TxBuilder) (
 			NsVersion: 0,
 			ReadWrites: []*applicationpb.ReadWrite{{
 				Key:     []byte("2"),
-				Version: committerpb.Version(0),
+				Version: applicationpb.NewVersion(0),
 				Value:   defaultNsInvalidPolicy(), // invalid policy.
 			}},
 		}},

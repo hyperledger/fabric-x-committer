@@ -38,6 +38,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/test/apptest"
 )
 
 type (
@@ -405,7 +406,7 @@ func (c *CommitterRuntime) MakeAndSendTransactionsToOrderer(
 		if expectedStatus != nil && expectedStatus[i] == applicationpb.Status_ABORTED_SIGNATURE_INVALID {
 			tx.Endorsements = make([]*applicationpb.Endorsements, len(namespaces))
 			for nsIdx := range namespaces {
-				tx.Endorsements[nsIdx] = test.CreateEndorsementsForThresholdRule([]byte("dummy"))[0]
+				tx.Endorsements[nsIdx] = apptest.CreateEndorsementsForThresholdRule([]byte("dummy"))[0]
 			}
 		}
 		txs[i] = c.TxBuilder.MakeTx(tx)
@@ -524,7 +525,7 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 
 	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Minute)
 	defer cancel()
-	test.EnsurePersistedTxStatus(ctx, t, c.CoordinatorClient, persistedTxIDs, persistedTxIDsStatus)
+	apptest.EnsurePersistedTxStatus(ctx, t, c.CoordinatorClient, persistedTxIDs, persistedTxIDsStatus)
 
 	if len(expected.TxIDs) == 0 || c.config.CrashTest {
 		return

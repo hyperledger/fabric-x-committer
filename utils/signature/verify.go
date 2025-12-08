@@ -135,7 +135,7 @@ type verifier interface {
 
 func verifySignedData(signatureSet []*protoutil.SignedData, v verifier) error {
 	for _, s := range signatureSet {
-		if err := v.verify(digest(s.Data), s.Signature); err != nil {
+		if err := v.verify(SHA256Digest(s.Data), s.Signature); err != nil {
 			return err
 		}
 	}

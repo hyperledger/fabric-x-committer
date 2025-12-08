@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v4/pgxpool"
 
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 )
 
@@ -134,7 +135,7 @@ func TestValidateNamespaceReads(t *testing.T) {
 	)
 
 	// Shortcut for version pointer.
-	v := committerpb.Version
+	v := applicationpb.NewVersion
 
 	tests := []struct {
 		name                  string

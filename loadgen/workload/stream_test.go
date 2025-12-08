@@ -552,3 +552,17 @@ func TestQueryShuffle(t *testing.T) {
 		}
 	})
 }
+
+func TestAsnMarshal(t *testing.T) {
+	t.Parallel()
+	loadGenTxs := GenerateTransactions(t, DefaultProfile(8), 128)
+	txs := make([]*signature.TestTx, len(loadGenTxs))
+	for i, tx := range loadGenTxs {
+		txs[i] = &signature.TestTx{
+			ID:         tx.Id,
+			Namespaces: tx.Tx.Namespaces,
+		}
+	}
+	// We test against the generated load to enforce a coupling between different parts of the system.
+	signature.CommonTestAsnMarshal(t, txs)
+}

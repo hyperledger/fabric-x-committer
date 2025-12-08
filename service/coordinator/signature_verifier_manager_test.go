@@ -27,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/test/apptest"
 )
 
 type svMgrTestEnv struct {
@@ -264,7 +265,7 @@ func createTxNodeBatchForTest(
 		switch i % 2 {
 		case 0:
 			// even number txs are valid.
-			txNode.Endorsements = test.CreateEndorsementsForThresholdRule([]byte("dummy"))
+			txNode.Endorsements = apptest.CreateEndorsementsForThresholdRule([]byte("dummy"))
 			expectedValidatedTxs = append(expectedValidatedTxs, txNode)
 		case 1:
 			// odd number txs are invalid. No signature means invalid transaction.
