@@ -24,7 +24,6 @@ import (
 	bccsputils "github.com/hyperledger/fabric-lib-go/bccsp/utils"
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
-	"github.com/hyperledger/fabric-x-common/core/config/configtest"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/stretchr/testify/require"
@@ -88,7 +87,7 @@ func TestNoInput(t *testing.T) {
 
 	stream, _ := c.Client.StartStream(t.Context())
 
-	update, _, _ := defaultUpdate(t)
+	_, update, _, _ := defaultUpdate(t)
 	err := stream.Send(&servicepb.VerifierBatch{Update: update})
 	require.NoError(t, err)
 
@@ -103,7 +102,7 @@ func TestMinimalInput(t *testing.T) {
 
 	stream, _ := c.Client.StartStream(t.Context())
 
-	update, metaTxSigner, dataTxSigner := defaultUpdate(t)
+	_, update, metaTxSigner, dataTxSigner := defaultUpdate(t)
 
 	tx1 := &applicationpb.Tx{
 		Namespaces: []*applicationpb.TxNamespace{{
@@ -164,19 +163,19 @@ func TestSignatureRule(t *testing.T) {
 	stream, err := c.Client.StartStream(t.Context())
 	require.NoError(t, err)
 
-	update, _, _ := defaultUpdate(t)
+	cryptoPath, update, _, _ := defaultUpdate(t)
 	err = stream.Send(&servicepb.VerifierBatch{Update: update})
 	require.NoError(t, err)
 
 	signingIdentities := make([]*signingIdentity, 2)
 
-	for i, org := range []string{"Org1", "Org2"} {
+	for i, org := range []string{"peer-org-0", "peer-org-1"} {
+		clientName := "client@" + org + ".com"
+		clientMspPath := filepath.Join(cryptoPath, "peerOrganizations", org, "users", clientName, "msp")
 		signingIdentities[i] = &signingIdentity{
-			CertPath: filepath.Join(configtest.GetDevConfigDir(), "crypto/"+org+"/users/User1@"+org+"/msp",
-				"signcerts", "User1@"+org+"-cert.pem"),
-			KeyPath: filepath.Join(configtest.GetDevConfigDir(), "crypto/"+org+"/users/User1@"+org+"/msp",
-				"keystore", "priv_sk"),
-			MSPID: org,
+			CertPath: filepath.Join(clientMspPath, "signcerts", clientName+"-cert.pem"),
+			KeyPath:  filepath.Join(clientMspPath, "keystore", "priv_sk"),
+			MSPID:    org,
 		}
 	}
 
@@ -279,7 +278,7 @@ func TestBadSignature(t *testing.T) {
 	stream, err := c.Client.StartStream(t.Context())
 	require.NoError(t, err)
 
-	update, _, _ := defaultUpdate(t)
+	_, update, _, _ := defaultUpdate(t)
 	err = stream.Send(&servicepb.VerifierBatch{Update: update})
 	require.NoError(t, err)
 
@@ -315,7 +314,7 @@ func TestUpdatePolicies(t *testing.T) {
 		stream, err := c.Client.StartStream(t.Context())
 		require.NoError(t, err)
 
-		update, _, _ := defaultUpdate(t)
+		_, update, _, _ := defaultUpdate(t)
 
 		ns1Policy, _ := makePolicyItem(t, ns1)
 		ns2Policy, _ := makePolicyItem(t, ns2)
@@ -354,7 +353,7 @@ func TestUpdatePolicies(t *testing.T) {
 		stream, err := c.Client.StartStream(t.Context())
 		require.NoError(t, err)
 
-		update, _, _ := defaultUpdate(t)
+		_, update, _, _ := defaultUpdate(t)
 
 		ns1Policy, ns1Signer := makePolicyItem(t, ns1)
 		ns2Policy, _ := makePolicyItem(t, ns2)
@@ -402,7 +401,7 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 	stream, err := c.Client.StartStream(t.Context())
 	require.NoError(t, err)
 
-	update, _, _ := defaultUpdate(t)
+	_, update, _, _ := defaultUpdate(t)
 
 	// Each policy update will update a unique namespace, and the common namespace.
 	updateCount := len(ns) - 1
@@ -522,8 +521,7 @@ func requireTestCase(
 	resp := txStatus.Responses[0]
 	require.NotNil(t, resp)
 	test.RequireProtoEqual(t, tt.req.Ref, resp.Ref)
-	t.Logf(tt.expectedStatus.String(), resp.Status.String())
-	require.Equal(t, tt.expectedStatus, resp.Status)
+	require.Equal(t, tt.expectedStatus.String(), resp.Status.String())
 }
 
 // State test state.
@@ -562,13 +560,15 @@ func readStream(
 }
 
 func defaultUpdate(t *testing.T) (
-	update *servicepb.VerifierUpdates, metaTxSigner, dataTxSigner *sigtest.NsSigner,
+	cryptoPath string, update *servicepb.VerifierUpdates, metaTxSigner, dataTxSigner *sigtest.NsSigner,
 ) {
 	t.Helper()
+	cryptoPath = t.TempDir()
 	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
 	metaTxSigningKey, metaTxVerificationKey := factory.NewKeys()
-	configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
+	configBlock, err := workload.CreateConfigBlockWithCrypto(cryptoPath, &workload.ConfigBlock{
 		MetaNamespaceVerificationKey: metaTxVerificationKey,
+		PeerOrganizationCount:        2,
 	}, configtxgen.TwoOrgsSampleFabricX)
 	require.NoError(t, err)
 	metaTxSigner, err = factory.NewSigner(metaTxSigningKey)
@@ -587,7 +587,7 @@ func defaultUpdate(t *testing.T) (
 			},
 		},
 	}
-	return update, metaTxSigner, dataTxSigner
+	return cryptoPath, update, metaTxSigner, dataTxSigner
 }
 
 func defaultConfigWithTLS(tlsConfig connection.TLSConfig) *Config {

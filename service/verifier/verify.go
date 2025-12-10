@@ -158,7 +158,8 @@ func (v *verifier) verifyRequest(tx *servicepb.VerifierTx) *servicepb.VerifierRe
 		//       still mark the transaction as invalid due to an MVCC conflict on the
 		//       namespace version, which would reflect the correct validation status.
 		if err := nsVerifier.VerifyNs(tx.Ref.TxId, tx.Tx, nsIndex); err != nil {
-			logger.Debugf("Invalid signature found: '%v', NsId: '%v'", &utils.LazyJSON{O: tx.Ref}, ns.NsId)
+			logger.Debugf("Invalid signature found: '%v', NsId: '%v': %+v",
+				&utils.LazyJSON{O: tx.Ref}, ns.NsId, err)
 			response.Status = applicationpb.Status_ABORTED_SIGNATURE_INVALID
 			return response
 		}

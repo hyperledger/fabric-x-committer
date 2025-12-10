@@ -123,7 +123,6 @@ type Policy struct {
 	Scheme signature.Scheme `mapstructure:"scheme" yaml:"scheme"`
 	Seed   int64            `mapstructure:"seed" yaml:"seed"`
 	// KeyPath describes how to find/generate the signature keys.
-	// KeyPath is still not supported.
 	KeyPath *KeyPath `mapstructure:"key-path" yaml:"key-path"`
 }
 
