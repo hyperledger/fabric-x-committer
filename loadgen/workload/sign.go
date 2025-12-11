@@ -19,20 +19,19 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
-	"github.com/hyperledger/fabric-x-committer/utils/test/apptest"
 )
 
 var logger = logging.New("load-gen-sign")
 
 type (
-	// TxSignerVerifier supports signing and verifying a TX, given a hash signer.
-	TxSignerVerifier struct {
-		policies map[string]*PolicySignerVerifier
+	// TxEndorserVerifier supports endorsing and verifying a TX, given an endorser.
+	TxEndorserVerifier struct {
+		policies map[string]*NsPolicyEndorserVerifier
 	}
 
-	// PolicySignerVerifier supports signing and verifying a hash value.
-	PolicySignerVerifier struct {
-		signer             *sigtest.NsSigner
+	// NsPolicyEndorserVerifier supports endorsing and verifying a TX namespace.
+	NsPolicyEndorserVerifier struct {
+		endorser           *sigtest.NsEndorser
 		verifier           *signature.NsVerifier
 		verificationPolicy *applicationpb.NamespacePolicy
 	}
@@ -42,57 +41,57 @@ var defaultPolicy = Policy{
 	Scheme: signature.Ecdsa,
 }
 
-// NewTxSignerVerifier creates a new TxSignerVerifier given a workload profile.
-func NewTxSignerVerifier(policy *PolicyProfile) *TxSignerVerifier {
-	signers := make(map[string]*PolicySignerVerifier, len(policy.NamespacePolicies)+2)
+// NewTxEndorserVerifier creates a new TxEndorserVerifier given a workload profile.
+func NewTxEndorserVerifier(policy *PolicyProfile) *TxEndorserVerifier {
+	endorsers := make(map[string]*NsPolicyEndorserVerifier, len(policy.NamespacePolicies)+2)
 	for nsID, p := range policy.NamespacePolicies {
-		signers[nsID] = NewPolicySignerVerifier(p)
+		endorsers[nsID] = NewPolicyEndorserVerifier(p)
 	}
 
 	// We set default policy to ensure smooth operation even if the user did not specify anything.
-	for _, ns := range []string{GeneratedNamespaceID, committerpb.MetaNamespaceID} {
-		if _, ok := signers[ns]; !ok {
-			signers[ns] = NewPolicySignerVerifier(&defaultPolicy)
+	for _, nsID := range []string{DefaultGeneratedNamespaceID, committerpb.MetaNamespaceID} {
+		if _, ok := endorsers[nsID]; !ok {
+			endorsers[nsID] = NewPolicyEndorserVerifier(&defaultPolicy)
 		}
 	}
 
-	return &TxSignerVerifier{policies: signers}
+	return &TxEndorserVerifier{policies: endorsers}
 }
 
-// AllNamespaces returns all the signer's supported namespaces.
-func (e *TxSignerVerifier) AllNamespaces() []string {
+// AllNamespaces returns all the endorser's supported namespaces.
+func (e *TxEndorserVerifier) AllNamespaces() []string {
 	return slices.Collect(maps.Keys(e.policies))
 }
 
 // Policy returns a namespace policy. It creates one if it does not exist.
-func (e *TxSignerVerifier) Policy(nsID string) *PolicySignerVerifier {
-	policySigner, ok := e.policies[nsID]
+func (e *TxEndorserVerifier) Policy(nsID string) *NsPolicyEndorserVerifier {
+	policyEndorser, ok := e.policies[nsID]
 	if !ok {
-		policySigner = NewPolicySignerVerifier(&defaultPolicy)
-		e.policies[nsID] = policySigner
+		policyEndorser = NewPolicyEndorserVerifier(&defaultPolicy)
+		e.policies[nsID] = policyEndorser
 	}
-	return policySigner
+	return policyEndorser
 }
 
-// Sign signs a TX.
-func (e *TxSignerVerifier) Sign(txID string, tx *applicationpb.Tx) {
+// Endorse a TX.
+func (e *TxEndorserVerifier) Endorse(txID string, tx *applicationpb.Tx) {
 	tx.Endorsements = make([]*applicationpb.Endorsements, len(tx.Namespaces))
 	for nsIndex, ns := range tx.Namespaces {
 		signer, ok := e.policies[ns.NsId]
 		if !ok {
 			continue
 		}
-		tx.Endorsements[nsIndex] = apptest.CreateEndorsementsForThresholdRule(signer.Sign(txID, tx, nsIndex))[0]
+		tx.Endorsements[nsIndex] = signer.Endorse(txID, tx, nsIndex)
 	}
 }
 
-// Verify verifies a signature on the transaction.
-func (e *TxSignerVerifier) Verify(txID string, tx *applicationpb.Tx) bool {
+// Verify an endorsement on the transaction.
+func (e *TxEndorserVerifier) Verify(txID string, tx *applicationpb.Tx) bool {
 	if len(tx.Endorsements) < len(tx.Namespaces) {
 		return false
 	}
 
-	for nsIndex, ns := range tx.GetNamespaces() {
+	for nsIndex, ns := range tx.Namespaces {
 		signer, ok := e.policies[ns.NsId]
 		if !ok || !signer.Verify(txID, tx, nsIndex) {
 			return false
@@ -102,8 +101,8 @@ func (e *TxSignerVerifier) Verify(txID string, tx *applicationpb.Tx) bool {
 	return true
 }
 
-// NewPolicySignerVerifier creates a new PolicySignerVerifier given a workload profile and a seed.
-func NewPolicySignerVerifier(profile *Policy) *PolicySignerVerifier {
+// NewPolicyEndorserVerifier creates a new NsPolicyEndorserVerifier given a workload profile and a seed.
+func NewPolicyEndorserVerifier(profile *Policy) *NsPolicyEndorserVerifier {
 	logger.Debugf("sig profile: %v", profile)
 	factory := sigtest.NewSignatureFactory(profile.Scheme)
 
@@ -120,11 +119,11 @@ func NewPolicySignerVerifier(profile *Policy) *PolicySignerVerifier {
 	}
 	v, err := factory.NewVerifier(verificationKey)
 	utils.Must(err)
-	signer, err := factory.NewSigner(signingKey)
+	endorser, err := factory.NewEndorser(signingKey)
 	utils.Must(err)
 
-	return &PolicySignerVerifier{
-		signer:   signer,
+	return &NsPolicyEndorserVerifier{
+		endorser: endorser,
 		verifier: v,
 		verificationPolicy: &applicationpb.NamespacePolicy{
 			Rule: &applicationpb.NamespacePolicy_ThresholdRule{
@@ -136,15 +135,15 @@ func NewPolicySignerVerifier(profile *Policy) *PolicySignerVerifier {
 	}
 }
 
-// Sign signs a hash.
-func (e *PolicySignerVerifier) Sign(txID string, tx *applicationpb.Tx, nsIndex int) signature.Signature {
-	sign, err := e.signer.SignNs(txID, tx, nsIndex)
+// Endorse a TX.
+func (e *NsPolicyEndorserVerifier) Endorse(txID string, tx *applicationpb.Tx, nsIndex int) *applicationpb.Endorsements {
+	sign, err := e.endorser.EndorseTxNs(txID, tx, nsIndex)
 	Must(err)
 	return sign
 }
 
-// Verify verifies a Signature.
-func (e *PolicySignerVerifier) Verify(txID string, tx *applicationpb.Tx, nsIndex int) bool {
+// Verify a TX endorsement.
+func (e *NsPolicyEndorserVerifier) Verify(txID string, tx *applicationpb.Tx, nsIndex int) bool {
 	if err := e.verifier.VerifyNs(txID, tx, nsIndex); err != nil {
 		return false
 	}
@@ -152,7 +151,7 @@ func (e *PolicySignerVerifier) Verify(txID string, tx *applicationpb.Tx, nsIndex
 }
 
 // VerificationPolicy returns the verification policy.
-func (e *PolicySignerVerifier) VerificationPolicy() *applicationpb.NamespacePolicy {
+func (e *NsPolicyEndorserVerifier) VerificationPolicy() *applicationpb.NamespacePolicy {
 	return e.verificationPolicy
 }
 

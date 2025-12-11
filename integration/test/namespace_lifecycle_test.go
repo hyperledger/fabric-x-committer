@@ -29,9 +29,9 @@ func TestCreateUpdateNamespace(t *testing.T) {
 	})
 	c.Start(t, runner.FullTxPath)
 
-	policyBytesNs1, err := proto.Marshal(c.TxBuilder.TxSigner.Policy("1").VerificationPolicy())
+	policyBytesNs1, err := proto.Marshal(c.TxBuilder.TxEndorser.Policy("1").VerificationPolicy())
 	require.NoError(t, err)
-	policyBytesNs2, err := proto.Marshal(c.TxBuilder.TxSigner.Policy("2").VerificationPolicy())
+	policyBytesNs2, err := proto.Marshal(c.TxBuilder.TxEndorser.Policy("2").VerificationPolicy())
 	require.NoError(t, err)
 
 	tests := []struct {

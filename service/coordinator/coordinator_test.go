@@ -29,8 +29,8 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
-	"github.com/hyperledger/fabric-x-committer/utils/test/apptest"
 )
 
 type (
@@ -469,7 +469,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 		},
 	}
 	for _, tx := range b1.Txs {
-		tx.Content.Endorsements = apptest.CreateEndorsementsForThresholdRule([]byte("dummy"))
+		tx.Content.Endorsements = sigtest.CreateEndorsementsForThresholdRule([]byte("dummy"))
 	}
 
 	expectedReceived := test.GetIntMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) + len(b1.Txs)
@@ -680,7 +680,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 							Key: []byte("key3"),
 						}},
 					}},
-					Endorsements: apptest.CreateEndorsementsForThresholdRule([]byte("dummy")),
+					Endorsements: sigtest.CreateEndorsementsForThresholdRule([]byte("dummy")),
 				},
 			},
 			{
@@ -761,7 +761,7 @@ func TestCoordinatorStreamFailureWithSidecar(t *testing.T) {
 							Key: []byte("key1"),
 						}},
 					}},
-					Endorsements: apptest.CreateEndorsementsForThresholdRule([]byte("dummy")),
+					Endorsements: sigtest.CreateEndorsementsForThresholdRule([]byte("dummy")),
 				},
 			},
 		},
@@ -812,7 +812,7 @@ func (e *coordinatorTestEnv) requireStatus(
 	}
 
 	maps.Copy(expectedTxStatus, differentPersisted)
-	apptest.EnsurePersistedTxStatus(ctx, t, e.client, txIDs, expectedTxStatus)
+	test.EnsurePersistedTxStatus(ctx, t, e.client, txIDs, expectedTxStatus)
 }
 
 func (e *coordinatorTestEnv) receiveStatus(t *testing.T, count int) map[string]*applicationpb.StatusWithHeight {
@@ -969,7 +969,7 @@ func makeTestBlock(txPerBlock int) (
 						Key: []byte("key" + strconv.Itoa(i)),
 					}},
 				}},
-				Endorsements: apptest.CreateEndorsementsForThresholdRule([]byte("dummy")),
+				Endorsements: sigtest.CreateEndorsementsForThresholdRule([]byte("dummy")),
 			},
 		}
 		//nolint: gosec // int -> uint32.

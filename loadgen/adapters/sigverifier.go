@@ -82,7 +82,7 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 }
 
 func createUpdate(policy *workload.PolicyProfile) (*servicepb.VerifierUpdates, error) {
-	txSigner := workload.NewTxSignerVerifier(policy)
+	txEndorser := workload.NewTxEndorserVerifier(policy)
 
 	envelopeBytes, err := workload.CreateConfigEnvelope(policy)
 	if err != nil {
@@ -93,15 +93,15 @@ func createUpdate(policy *workload.PolicyProfile) (*servicepb.VerifierUpdates, e
 			Envelope: envelopeBytes,
 		},
 		NamespacePolicies: &applicationpb.NamespacePolicies{
-			Policies: make([]*applicationpb.PolicyItem, 0, len(txSigner.AllNamespaces())),
+			Policies: make([]*applicationpb.PolicyItem, 0, len(txEndorser.AllNamespaces())),
 		},
 	}
 
-	for _, ns := range txSigner.AllNamespaces() {
+	for _, ns := range txEndorser.AllNamespaces() {
 		if ns == committerpb.MetaNamespaceID {
 			continue
 		}
-		policyBytes, err := proto.Marshal(txSigner.Policy(ns).VerificationPolicy())
+		policyBytes, err := proto.Marshal(txEndorser.Policy(ns).VerificationPolicy())
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to serialize policy")
 		}

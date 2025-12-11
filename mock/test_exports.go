@@ -179,7 +179,8 @@ func (e *OrdererTestEnv) SubmitConfigBlock(t *testing.T, conf *workload.ConfigBl
 	}
 	configBlock, err := workload.CreateDefaultConfigBlock(conf, configtxgen.TwoOrgsSampleFabricX)
 	require.NoError(t, err)
-	e.Orderer.SubmitBlock(t.Context(), configBlock)
+	err = e.Orderer.SubmitBlock(t.Context(), configBlock)
+	require.NoError(t, err)
 	return configBlock
 }
 

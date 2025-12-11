@@ -38,7 +38,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
-	"github.com/hyperledger/fabric-x-committer/utils/test/apptest"
 )
 
 type (
@@ -73,16 +72,6 @@ type (
 		LastReceivedBlockNumber uint64
 
 		CredFactory *test.CredentialsFactory
-	}
-
-	// Crypto holds crypto material for a namespace.
-	Crypto struct {
-		Namespace  string
-		Profile    *workload.Policy
-		HashSigner *workload.PolicySignerVerifier
-		NsSigner   *sigtest.NsSigner
-		PubKey     []byte
-		PubKeyPath string
 	}
 
 	// Config represents the runtime configuration.
@@ -154,7 +143,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		CommittedBlock:   make(chan *common.Block, 100),
 		seedForCryptoGen: rand.New(rand.NewSource(10)),
 	}
-	c.AddOrUpdateNamespaces(t, committerpb.MetaNamespaceID, workload.GeneratedNamespaceID, "1", "2", "3")
+	c.AddOrUpdateNamespaces(t, committerpb.MetaNamespaceID, workload.DefaultGeneratedNamespaceID, "1", "2", "3")
 
 	t.Log("Making DB env")
 	if conf.DBConnection == nil {
@@ -406,7 +395,7 @@ func (c *CommitterRuntime) MakeAndSendTransactionsToOrderer(
 		if expectedStatus != nil && expectedStatus[i] == applicationpb.Status_ABORTED_SIGNATURE_INVALID {
 			tx.Endorsements = make([]*applicationpb.Endorsements, len(namespaces))
 			for nsIdx := range namespaces {
-				tx.Endorsements[nsIdx] = apptest.CreateEndorsementsForThresholdRule([]byte("dummy"))[0]
+				tx.Endorsements[nsIdx] = sigtest.CreateEndorsementsForThresholdRule([]byte("dummy"))[0]
 			}
 		}
 		txs[i] = c.TxBuilder.MakeTx(tx)
@@ -525,7 +514,7 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 
 	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Minute)
 	defer cancel()
-	apptest.EnsurePersistedTxStatus(ctx, t, c.CoordinatorClient, persistedTxIDs, persistedTxIDsStatus)
+	test.EnsurePersistedTxStatus(ctx, t, c.CoordinatorClient, persistedTxIDs, persistedTxIDsStatus)
 
 	if len(expected.TxIDs) == 0 || c.config.CrashTest {
 		return

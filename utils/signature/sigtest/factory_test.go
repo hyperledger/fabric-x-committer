@@ -18,7 +18,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
-	"github.com/hyperledger/fabric-x-committer/utils/test/apptest"
 )
 
 func TestEndToEnd(t *testing.T) {
@@ -30,7 +29,7 @@ func TestEndToEnd(t *testing.T) {
 			priv, pub := f.NewKeys()
 			v, err := f.NewVerifier(pub)
 			require.NoError(t, err)
-			s, err := f.NewSigner(priv)
+			endorser, err := f.NewEndorser(priv)
 			require.NoError(t, err)
 			txID := "test"
 			tx := &applicationpb.Tx{
@@ -40,8 +39,8 @@ func TestEndToEnd(t *testing.T) {
 					ReadWrites: make([]*applicationpb.ReadWrite, 0),
 				}},
 			}
-			sig, err := s.SignNs(txID, tx, 0)
-			tx.Endorsements = apptest.CreateEndorsementsForThresholdRule(sig)
+			endorsement, err := endorser.EndorseTxNs(txID, tx, 0)
+			tx.Endorsements = []*applicationpb.Endorsements{endorsement}
 			require.NoError(t, err)
 			require.NoError(t, v.VerifyNs(txID, tx, 0))
 		})
@@ -59,14 +58,14 @@ func TestEcdsaPem(t *testing.T) {
 
 	v, err := f.NewVerifier(pub)
 	require.NoError(t, err)
-	s, err := f.NewSigner(priv)
+	endorser, err := f.NewEndorser(priv)
 	require.NoError(t, err)
 
 	m, err := readPem(pemPath)
 	require.NoError(t, err)
 
 	var pemV *signature.NsVerifier
-	var pemS *NsSigner
+	var pemS *NsEndorser
 
 	for key, value := range m {
 		t.Log(key)
@@ -75,7 +74,7 @@ func TestEcdsaPem(t *testing.T) {
 			require.NoError(t, err)
 		}
 		if strings.Contains(strings.ToLower(key), "private") {
-			pemS, err = f.NewSigner(value)
+			pemS, err = f.NewEndorser(value)
 			require.NoError(t, err)
 		}
 	}
@@ -92,14 +91,14 @@ func TestEcdsaPem(t *testing.T) {
 		}},
 	}
 
-	sig, err := s.SignNs(txID, tx, 0)
+	endorsement, err := endorser.EndorseTxNs(txID, tx, 0)
 	require.NoError(t, err)
-	tx.Endorsements = apptest.CreateEndorsementsForThresholdRule(sig)
+	tx.Endorsements = []*applicationpb.Endorsements{endorsement}
 	require.NoError(t, pemV.VerifyNs(txID, tx, 0))
 
-	sig, err = pemS.SignNs(txID, tx, 0)
+	endorsement, err = pemS.EndorseTxNs(txID, tx, 0)
 	require.NoError(t, err)
-	tx.Endorsements = apptest.CreateEndorsementsForThresholdRule(sig)
+	tx.Endorsements = []*applicationpb.Endorsements{endorsement}
 	require.NoError(t, v.VerifyNs(txID, tx, 0))
 }
 

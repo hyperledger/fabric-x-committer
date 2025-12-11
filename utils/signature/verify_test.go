@@ -21,15 +21,15 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
+	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
-	"github.com/hyperledger/fabric-x-committer/utils/test/apptest"
 )
 
 const fakeTxID = "fake-id"
 
 func TestNsVerifierThresholdRule(t *testing.T) {
 	t.Parallel()
-	pItem, nsSigner := policy.MakePolicyAndNsSigner(t, "1")
+	pItem, nsEndorser := policy.MakePolicyAndNsEndorser(t, "1")
 	pol := &applicationpb.NamespacePolicy{}
 	require.NoError(t, proto.Unmarshal(pItem.Policy, pol))
 	nsVerifier, err := signature.NewNsVerifier(pol, nil)
@@ -42,9 +42,9 @@ func TestNsVerifierThresholdRule(t *testing.T) {
 			ReadWrites: []*applicationpb.ReadWrite{{Key: []byte("k1"), Value: []byte("v1")}},
 		}},
 	}
-	sig, err := nsSigner.SignNs(fakeTxID, tx1, 0)
+	endorsement, err := nsEndorser.EndorseTxNs(fakeTxID, tx1, 0)
 	require.NoError(t, err)
-	tx1.Endorsements = apptest.CreateEndorsementsForThresholdRule(sig)
+	tx1.Endorsements = []*applicationpb.Endorsements{endorsement}
 	require.NoError(t, nsVerifier.VerifyNs(fakeTxID, tx1, 0))
 }
 
@@ -87,7 +87,7 @@ func TestNsVerifierSignatureRule(t *testing.T) {
 			}},
 		}
 		// org0, org3, and org1 sign.
-		tx1.Endorsements = []*applicationpb.Endorsements{apptest.CreateEndorsementsForSignatureRule(
+		tx1.Endorsements = []*applicationpb.Endorsements{sigtest.CreateEndorsementsForSignatureRule(
 			toByteArray("s0", "s3", "s1"),
 			toByteArray("org0", "org3", "org1"),
 			toByteArray("id0", "id3", "id1"),
@@ -96,7 +96,7 @@ func TestNsVerifierSignatureRule(t *testing.T) {
 		require.NoError(t, nsVerifier.VerifyNs(fakeTxID, tx1, 0))
 
 		// org0, org3, and org2 sign.
-		tx1.Endorsements = []*applicationpb.Endorsements{apptest.CreateEndorsementsForSignatureRule(
+		tx1.Endorsements = []*applicationpb.Endorsements{sigtest.CreateEndorsementsForSignatureRule(
 			toByteArray("s0", "s3", "s2"),
 			toByteArray("org0", "org3", "org2"),
 			toByteArray("id0", "id3", "id2"),
@@ -104,7 +104,7 @@ func TestNsVerifierSignatureRule(t *testing.T) {
 		)}
 		require.NoError(t, nsVerifier.VerifyNs(fakeTxID, tx1, 0))
 
-		tx1.Endorsements = []*applicationpb.Endorsements{apptest.CreateEndorsementsForSignatureRule(
+		tx1.Endorsements = []*applicationpb.Endorsements{sigtest.CreateEndorsementsForSignatureRule(
 			toByteArray("s0", "s3"),
 			toByteArray("org0", "org3"),
 			toByteArray("id0", "id3"),

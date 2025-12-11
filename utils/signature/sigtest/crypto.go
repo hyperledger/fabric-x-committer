@@ -96,14 +96,18 @@ func GetCert(certPath string) (*x509.Certificate, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "cannot read certificate")
 	}
+	return GetCertFromBytes(pemContent)
+}
+
+// GetCertFromBytes reads a PEM-encoded X.509 certificate and returns the parsed certificate.
+func GetCertFromBytes(pemContent []byte) (*x509.Certificate, error) {
 	block, _ := pem.Decode(pemContent)
 	if block == nil {
-		return nil, errors.Newf("no pem content for file %s", certPath)
+		return nil, errors.New("no PEM content in file")
 	}
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
 		return nil, errors.Wrap(err, "cannot parse cert")
 	}
-
 	return cert, nil
 }

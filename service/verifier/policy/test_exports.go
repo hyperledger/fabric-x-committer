@@ -32,15 +32,15 @@ func MakePolicy(
 	}
 }
 
-// MakePolicyAndNsSigner generates a policyItem and NsSigner.
-func MakePolicyAndNsSigner(
+// MakePolicyAndNsEndorser generates a policyItem and NsEndorser.
+func MakePolicyAndNsEndorser(
 	t *testing.T,
 	ns string,
-) (*applicationpb.PolicyItem, *sigtest.NsSigner) {
+) (*applicationpb.PolicyItem, *sigtest.NsEndorser) {
 	t.Helper()
 	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
 	signingKey, verificationKey := factory.NewKeys()
-	txSigner, err := factory.NewSigner(signingKey)
+	txSigner, err := factory.NewEndorser(signingKey)
 	require.NoError(t, err)
 	p := MakePolicy(t, ns, MakeECDSAThresholdRuleNsPolicy(verificationKey))
 	return p, txSigner

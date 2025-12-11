@@ -16,7 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
-var namespacesUnderTest = []string{GeneratedNamespaceID, "1", "2", committerpb.MetaNamespaceID}
+var namespacesUnderTest = []string{DefaultGeneratedNamespaceID, "1", "2", committerpb.MetaNamespaceID}
 
 // TestNamespaceGeneratorKeyCreation verifies that the signers that created by the
 // namespace-generator are the same given the same seed number.

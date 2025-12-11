@@ -35,8 +35,8 @@ type (
 	Key = []byte
 )
 
-// GeneratedNamespaceID for now we're only generating transactions for a single namespace.
-const GeneratedNamespaceID = "0"
+// DefaultGeneratedNamespaceID for now we're only generating transactions for a single namespace.
+const DefaultGeneratedNamespaceID = "0"
 
 // newIndependentTxGenerator creates a new valid TX generator given a transaction profile.
 func newIndependentTxGenerator(
@@ -62,7 +62,7 @@ func (g *IndependentTxGenerator) Next() *servicepb.LoadGenTx {
 	blindWriteKey := g.BlindWriteKeyGenerator.Next()
 
 	ns := &applicationpb.TxNamespace{
-		NsId:        GeneratedNamespaceID,
+		NsId:        DefaultGeneratedNamespaceID,
 		NsVersion:   0,
 		ReadsOnly:   make([]*applicationpb.Read, len(readOnly)),
 		ReadWrites:  make([]*applicationpb.ReadWrite, len(readWrite)),

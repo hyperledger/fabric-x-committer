@@ -25,7 +25,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
-	"github.com/hyperledger/fabric-x-committer/utils/test/apptest"
 )
 
 type validatorAndCommitterServiceTestEnvWithClient struct {
@@ -317,7 +316,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus)
 
 		ctx, _ := createContext(t)
-		apptest.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
+		test.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
 
 		txBatch = &servicepb.VcBatch{
 			Transactions: []*servicepb.VcTx{
@@ -670,7 +669,7 @@ func TestTransactionResubmission(t *testing.T) {
 			env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus)
 		}
 
-		apptest.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
+		test.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
 	})
 
 	t.Run("same transactions submitted again while previous submission is not yet committed", func(t *testing.T) {
@@ -686,7 +685,7 @@ func TestTransactionResubmission(t *testing.T) {
 			require.Equal(t, expectedTxStatus, txStatus.Status)
 		}
 		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus)
-		apptest.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
+		test.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
 	})
 
 	t.Run("same transactions submitted again within the minbatchsize", func(t *testing.T) {
@@ -702,7 +701,7 @@ func TestTransactionResubmission(t *testing.T) {
 		require.Equal(t, expectedTxStatus, txStatus.Status)
 
 		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus)
-		apptest.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
+		test.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
 	})
 
 	t.Run("same duplicate transactions submitted in parallel to all vcservices", func(t *testing.T) {
@@ -724,7 +723,7 @@ func TestTransactionResubmission(t *testing.T) {
 			require.Equal(t, expectedTxStatus, txStatus.Status)
 		}
 		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus)
-		apptest.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
+		test.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
 	})
 }
 

@@ -64,9 +64,9 @@ func benchTxProfiles() (profiles []*Profile) {
 	for _, sign := range []bool{true, false} {
 		for _, p := range benchWorkersProfiles() {
 			if !sign {
-				p.Transaction.Policy.NamespacePolicies[GeneratedNamespaceID].Scheme = signature.NoScheme
+				p.Transaction.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.NoScheme
 			} else {
-				p.Transaction.Policy.NamespacePolicies[GeneratedNamespaceID].Scheme = signature.Ecdsa
+				p.Transaction.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.Ecdsa
 			}
 			profiles = append(profiles, p)
 		}
@@ -78,7 +78,7 @@ func genericBench(b *testing.B, benchFunc func(b *testing.B, p *Profile)) {
 	b.Helper()
 	for _, p := range benchTxProfiles() {
 		name := fmt.Sprintf("workers-%d-sign-%s",
-			p.Workers, p.Transaction.Policy.NamespacePolicies[GeneratedNamespaceID].Scheme)
+			p.Workers, p.Transaction.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme)
 		b.Run(name, func(b *testing.B) {
 			benchFunc(b, p)
 		})
@@ -136,7 +136,7 @@ func requireValidKey(t *testing.T, key []byte, profile *Profile) {
 	require.Positive(t, SumInt(key))
 }
 
-func requireValidTx(t *testing.T, tx *servicepb.LoadGenTx, profile *Profile, signer *TxSignerVerifier) {
+func requireValidTx(t *testing.T, tx *servicepb.LoadGenTx, profile *Profile, endorser *TxEndorserVerifier) {
 	t.Helper()
 	require.NotEmpty(t, tx.Id)
 	require.NotNil(t, tx.Tx)
@@ -173,7 +173,7 @@ func requireValidTx(t *testing.T, tx *servicepb.LoadGenTx, profile *Profile, sig
 		requireValidKey(t, v.Key, profile)
 	}
 
-	require.True(t, signer.Verify(tx.Id, tx.Tx))
+	require.True(t, endorser.Verify(tx.Id, tx.Tx))
 }
 
 func testWorkersProfiles() (profiles []*Profile) {
@@ -228,10 +228,10 @@ func TestGenValidTx(t *testing.T) {
 			t.Parallel()
 			c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 			g := c.MakeGenerator()
-			signer := NewTxSignerVerifier(p.Transaction.Policy)
+			endorser := NewTxEndorserVerifier(p.Transaction.Policy)
 
 			for range 100 {
-				requireValidTx(t, g.Next(t.Context()), p, signer)
+				requireValidTx(t, g.Next(t.Context()), p, endorser)
 			}
 		})
 	}
@@ -248,12 +248,12 @@ func TestGenValidBlock(t *testing.T) {
 			t.Parallel()
 			c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 			g := c.MakeGenerator()
-			signer := NewTxSignerVerifier(p.Transaction.Policy)
+			endorser := NewTxEndorserVerifier(p.Transaction.Policy)
 
 			for range 5 {
 				txs := g.NextN(t.Context(), int(p.Block.Size)) //nolint:gosec // uint64 -> int.
 				for _, tx := range txs {
-					requireValidTx(t, tx, p, signer)
+					requireValidTx(t, tx, p, endorser)
 				}
 			}
 		})
@@ -263,15 +263,15 @@ func TestGenValidBlock(t *testing.T) {
 func TestGenInvalidSigTx(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(1)
-	p.Transaction.Policy.NamespacePolicies[GeneratedNamespaceID].Scheme = signature.Ecdsa
+	p.Transaction.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.Ecdsa
 	p.Conflicts.InvalidSignatures = 0.2
 
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 	g := c.MakeGenerator()
 	txs := g.NextN(t.Context(), 1e4)
-	signer := NewTxSignerVerifier(p.Transaction.Policy)
+	endorser := NewTxEndorserVerifier(p.Transaction.Policy)
 	valid := Map(txs, func(_ int, tx *servicepb.LoadGenTx) float64 {
-		if !signer.Verify(tx.Id, tx.Tx) {
+		if !endorser.Verify(tx.Id, tx.Tx) {
 			return 1
 		}
 		return 0
@@ -282,7 +282,7 @@ func TestGenInvalidSigTx(t *testing.T) {
 func TestGenDependentTx(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(1)
-	p.Transaction.Policy.NamespacePolicies[GeneratedNamespaceID].Scheme = signature.NoScheme
+	p.Transaction.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.NoScheme
 	p.Conflicts.Dependencies = []DependencyDescription{
 		{
 			Gap:         NewConstantDistribution(1),

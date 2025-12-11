@@ -71,9 +71,9 @@ func (f *SignerVerifierFactory) NewVerifier(key signature.PublicKey) (*signature
 	return v, errors.Wrap(err, "error creating verifier")
 }
 
-// NewSigner instantiate a signer given a private key.
-func (f *SignerVerifierFactory) NewSigner(key signature.PrivateKey) (*NsSigner, error) {
-	return NewNsSigner(f.scheme, key)
+// NewEndorser instantiate an endorser given a private key.
+func (f *SignerVerifierFactory) NewEndorser(key signature.PrivateKey) (*NsEndorser, error) {
+	return NewNsEndorser(f.scheme, key)
 }
 
 // NewSignatureFactory instantiate a SignerVerifierFactory.
