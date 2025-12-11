@@ -13,24 +13,26 @@ import (
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 )
 
 // NsVerifier verifies a given namespace.
 type NsVerifier struct {
 	verifier        policies.Policy
-	NamespacePolicy *protoblocktx.NamespacePolicy
+	NamespacePolicy *applicationpb.NamespacePolicy
+	idDeserilizer   msp.IdentityDeserializer
 }
 
 // NewNsVerifier creates a new namespace verifier according to the implementation scheme.
-func NewNsVerifier(p *protoblocktx.NamespacePolicy, idDeserializer msp.IdentityDeserializer) (*NsVerifier, error) {
+func NewNsVerifier(p *applicationpb.NamespacePolicy, idDeserializer msp.IdentityDeserializer) (*NsVerifier, error) {
 	res := &NsVerifier{
 		NamespacePolicy: p,
+		idDeserilizer:   idDeserializer,
 	}
 	var err error
 
 	switch r := p.GetRule().(type) {
-	case *protoblocktx.NamespacePolicy_ThresholdRule:
+	case *applicationpb.NamespacePolicy_ThresholdRule:
 		policy := r.ThresholdRule
 
 		switch policy.Scheme {
@@ -45,7 +47,7 @@ func NewNsVerifier(p *protoblocktx.NamespacePolicy, idDeserializer msp.IdentityD
 		default:
 			return nil, errors.Newf("scheme '%v' not supported", policy.Scheme)
 		}
-	case *protoblocktx.NamespacePolicy_MspRule:
+	case *applicationpb.NamespacePolicy_MspRule:
 		pp := cauthdsl.NewPolicyProvider(idDeserializer)
 		res.verifier, _, err = pp.NewPolicy(r.MspRule)
 	default:
@@ -55,7 +57,9 @@ func NewNsVerifier(p *protoblocktx.NamespacePolicy, idDeserializer msp.IdentityD
 }
 
 // VerifyNs verifies a transaction's namespace signature.
-func (v *NsVerifier) VerifyNs(txID string, tx *protoblocktx.Tx, nsIndex int) error {
+//
+//nolint:gocognit // cognitive complexity 30.
+func (v *NsVerifier) VerifyNs(txID string, tx *applicationpb.Tx, nsIndex int) error {
 	if nsIndex < 0 || nsIndex >= len(tx.Namespaces) || nsIndex >= len(tx.Endorsements) {
 		return errors.New("namespace index out of range")
 	}
@@ -73,21 +77,42 @@ func (v *NsVerifier) VerifyNs(txID string, tx *protoblocktx.Tx, nsIndex int) err
 	signedData := make([]*protoutil.SignedData, 0, len(endorsements))
 
 	switch v.NamespacePolicy.GetRule().(type) {
-	case *protoblocktx.NamespacePolicy_ThresholdRule:
+	case *applicationpb.NamespacePolicy_ThresholdRule:
 		signedData = append(signedData, &protoutil.SignedData{
 			Data:      data,
 			Signature: endorsements[0].Endorsement,
 		})
-	case *protoblocktx.NamespacePolicy_MspRule:
+	case *applicationpb.NamespacePolicy_MspRule:
 		for _, s := range endorsements {
-			// NOTE: CertificateID is not supported as MSP does not have the supported for pre-stored certificates yet.
-			cert := s.Identity.GetCertificate()
-			if cert == nil {
-				return errors.New("An empty certificate is provided for the identity")
-			}
-			idBytes, err := msp.NewSerializedIdentity(s.Identity.MspId, cert)
-			if err != nil {
-				return err
+			var idBytes []byte
+			switch s.Identity.Creator.(type) {
+			case *applicationpb.Identity_Certificate:
+				cert := s.Identity.GetCertificate()
+				if cert == nil {
+					return errors.New("An empty certificate is provided for the identity")
+				}
+				idBytes, err = msp.NewSerializedIdentity(s.Identity.MspId, cert)
+				if err != nil {
+					return err
+				}
+			case *applicationpb.Identity_CertificateId:
+				certID := s.Identity.GetCertificateId()
+				if certID == "" {
+					return errors.New("An empty certificate ID is provided for the identity")
+				}
+
+				identity := v.idDeserilizer.GetKnownDeserializedIdentity(msp.IdentityIdentifier{
+					Mspid: s.Identity.MspId,
+					Id:    certID,
+				})
+				if identity == nil {
+					return errors.Newf("Invalid certificate identity: %s", certID)
+				}
+
+				idBytes, err = identity.Serialize()
+				if err != nil {
+					return errors.Wrapf(err, "invalid certificate identifier: %s", certID)
+				}
 			}
 
 			signedData = append(signedData, &protoutil.SignedData{
@@ -110,7 +135,7 @@ type verifier interface {
 
 func verifySignedData(signatureSet []*protoutil.SignedData, v verifier) error {
 	for _, s := range signatureSet {
-		if err := v.verify(digest(s.Data), s.Signature); err != nil {
+		if err := v.verify(SHA256Digest(s.Data), s.Signature); err != nil {
 			return err
 		}
 	}

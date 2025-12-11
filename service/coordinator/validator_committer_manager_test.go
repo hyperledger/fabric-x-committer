@@ -14,16 +14,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen/genesisconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
@@ -39,7 +38,7 @@ type vcMgrTestEnv struct {
 	validatorCommitterManager *validatorCommitterManager
 	inputTxs                  chan dependencygraph.TxNodeBatch
 	outputTxs                 chan dependencygraph.TxNodeBatch
-	outputTxsStatus           chan *protoblocktx.TransactionsStatus
+	outputTxsStatus           chan *applicationpb.TransactionsStatus
 	mockVcService             *mock.VcService
 	mockVCGrpcServers         *test.GrpcServers
 	sigVerTestEnv             *svMgrTestEnv
@@ -52,7 +51,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 
 	inputTxs := make(chan dependencygraph.TxNodeBatch, 10)
 	outputTxs := make(chan dependencygraph.TxNodeBatch, 10)
-	outputTxsStatus := make(chan *protoblocktx.TransactionsStatus, 10)
+	outputTxsStatus := make(chan *applicationpb.TransactionsStatus, 10)
 
 	vcm := newValidatorCommitterManager(
 		&validatorCommitterManagerConfig{
@@ -134,7 +133,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 		totalBlocks := 3
 		txPerBlock := 50
 		txBatches := make(dependencygraph.TxNodeBatch, 0, totalBlocks*txPerBlock)
-		expectedTxsStatus = &protoblocktx.TransactionsStatus{Status: make(map[string]*protoblocktx.StatusWithHeight)}
+		expectedTxsStatus = &applicationpb.TransactionsStatus{Status: make(map[string]*applicationpb.StatusWithHeight)}
 
 		for i := range 3 {
 			//nolint:gosec // int -> int64
@@ -192,9 +191,9 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 			mergeTxsStatus := func(
 				txsStatus1,
-				txsStatus2 *protoblocktx.TransactionsStatus,
-			) map[string]*protoblocktx.StatusWithHeight {
-				txsStatus := make(map[string]*protoblocktx.StatusWithHeight)
+				txsStatus2 *applicationpb.TransactionsStatus,
+			) map[string]*applicationpb.StatusWithHeight {
+				txsStatus := make(map[string]*applicationpb.StatusWithHeight)
 				maps.Copy(txsStatus, txsStatus1.Status)
 				maps.Copy(txsStatus, txsStatus2.Status)
 				return txsStatus
@@ -228,28 +227,28 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
 			MetaNamespaceVerificationKey: verificationKey,
-		}, genesisconfig.TwoOrgsSampleFabricX)
+		}, configtxgen.TwoOrgsSampleFabricX)
 		require.NoError(t, err)
 
 		txBatch := []*dependencygraph.TransactionNode{
 			{
-				Tx: &protovcservice.Tx{
-					Ref: types.TxRef("create config", 100, 63),
-					Namespaces: []*protoblocktx.TxNamespace{{
-						NsId: types.ConfigNamespaceID,
-						BlindWrites: []*protoblocktx.Write{{
-							Key:   []byte(types.ConfigKey),
+				Tx: &servicepb.VcTx{
+					Ref: committerpb.TxRef("create config", 100, 63),
+					Namespaces: []*applicationpb.TxNamespace{{
+						NsId: committerpb.ConfigNamespaceID,
+						BlindWrites: []*applicationpb.Write{{
+							Key:   []byte(committerpb.ConfigKey),
 							Value: configBlock.Data.Data[0],
 						}},
 					}},
 				},
 			},
 			{
-				Tx: &protovcservice.Tx{
-					Ref: types.TxRef("create ns 1", 100, 64),
-					Namespaces: []*protoblocktx.TxNamespace{{
-						NsId: types.MetaNamespaceID,
-						ReadWrites: []*protoblocktx.ReadWrite{{
+				Tx: &servicepb.VcTx{
+					Ref: committerpb.TxRef("create ns 1", 100, 64),
+					Namespaces: []*applicationpb.TxNamespace{{
+						NsId: committerpb.MetaNamespaceID,
+						ReadWrites: []*applicationpb.ReadWrite{{
 							Key:   []byte("1"),
 							Value: pBytes,
 						}},
@@ -263,22 +262,22 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		require.Len(t, outTxsStatus.Status, 2)
 		require.Equal(t,
-			types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 100, 63),
+			servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 100, 63),
 			outTxsStatus.Status["create config"],
 		)
 		require.Equal(t,
-			types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 100, 64),
+			servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 100, 64),
 			outTxsStatus.Status["create ns 1"],
 		)
 
 		require.ElementsMatch(t, txBatch, <-env.outputTxs)
 
-		expectedUpdate := &protosigverifierservice.Update{
-			Config: &protoblocktx.ConfigTransaction{
+		expectedUpdate := &servicepb.VerifierUpdates{
+			Config: &applicationpb.ConfigTransaction{
 				Envelope: configBlock.Data.Data[0],
 			},
-			NamespacePolicies: &protoblocktx.NamespacePolicies{
-				Policies: []*protoblocktx.PolicyItem{
+			NamespacePolicies: &applicationpb.NamespacePolicies{
+				Policies: []*applicationpb.PolicyItem{
 					{
 						Namespace: "1",
 						Policy:    protoutil.MarshalOrPanic(p),
@@ -322,7 +321,7 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	env.requireConnectionMetrics(t, 0, connection.Connected, 1)
 	env.requireRetriedTxsTotal(t, 4)
 
-	actualTxsStatus := make(map[string]*protoblocktx.StatusWithHeight)
+	actualTxsStatus := make(map[string]*applicationpb.StatusWithHeight)
 	for range 2 {
 		result := <-env.outputTxsStatus
 		maps.Copy(actualTxsStatus, result.Status)
@@ -335,10 +334,10 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	err := env.mockVcService.SubmitTransactions(ctx, &protovcservice.Batch{
-		Transactions: []*protovcservice.Tx{
-			{Ref: types.TxRef("untrackedTxID1", 1, 1)},
-			{Ref: types.TxRef("untrackedTxID2", 2, 2)},
+	err := env.mockVcService.SubmitTransactions(ctx, &servicepb.VcBatch{
+		Transactions: []*servicepb.VcTx{
+			{Ref: committerpb.TxRef("untrackedTxID1", 1, 1)},
+			{Ref: committerpb.TxRef("untrackedTxID2", 2, 2)},
 		},
 	})
 	require.NoError(t, err)
@@ -349,29 +348,29 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 }
 
 func createInputTxsNodeForTest(t *testing.T, numTxs, valueSize int, blkNum uint64) (
-	[]*dependencygraph.TransactionNode, *protoblocktx.TransactionsStatus,
+	[]*dependencygraph.TransactionNode, *applicationpb.TransactionsStatus,
 ) {
 	t.Helper()
 
 	txsNode := make([]*dependencygraph.TransactionNode, numTxs)
-	expectedTxsStatus := &protoblocktx.TransactionsStatus{
-		Status: make(map[string]*protoblocktx.StatusWithHeight),
+	expectedTxsStatus := &applicationpb.TransactionsStatus{
+		Status: make(map[string]*applicationpb.StatusWithHeight),
 	}
 
 	for i := range numTxs {
 		id := uuid.NewString()
 		txsNode[i] = &dependencygraph.TransactionNode{
-			Tx: &protovcservice.Tx{
-				Ref: types.TxRef(id, blkNum, uint32(i)), //nolint:gosec
-				Namespaces: []*protoblocktx.TxNamespace{{
-					BlindWrites: []*protoblocktx.Write{{
+			Tx: &servicepb.VcTx{
+				Ref: committerpb.TxRef(id, blkNum, uint32(i)), //nolint:gosec
+				Namespaces: []*applicationpb.TxNamespace{{
+					BlindWrites: []*applicationpb.Write{{
 						Value: utils.MustRead(rand.Reader, valueSize),
 					}},
 				}},
 			},
 		}
 		//nolint:gosec // int -> uint32.
-		expectedTxsStatus.Status[id] = types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, blkNum, uint32(i))
+		expectedTxsStatus.Status[id] = servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, blkNum, uint32(i))
 	}
 
 	return txsNode, expectedTxsStatus

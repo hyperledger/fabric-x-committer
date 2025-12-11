@@ -11,13 +11,13 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/test/apptest"
 )
 
 var logger = logging.New("load-gen-sign")
@@ -46,7 +46,7 @@ func NewTxSignerVerifier(policy *PolicyProfile) *TxSignerVerifier {
 	signers := make(map[string]*HashSignerVerifier)
 	// We set default policy to ensure smooth operation even if the user did not specify anything.
 	signers[GeneratedNamespaceID] = NewHashSignerVerifier(&defaultPolicy)
-	signers[types.MetaNamespaceID] = NewHashSignerVerifier(&defaultPolicy)
+	signers[committerpb.MetaNamespaceID] = NewHashSignerVerifier(&defaultPolicy)
 
 	for nsID, p := range policy.NamespacePolicies {
 		signers[nsID] = NewHashSignerVerifier(p)
@@ -57,19 +57,19 @@ func NewTxSignerVerifier(policy *PolicyProfile) *TxSignerVerifier {
 }
 
 // Sign signs a TX.
-func (e *TxSignerVerifier) Sign(txID string, tx *protoblocktx.Tx) {
-	tx.Endorsements = make([]*protoblocktx.Endorsements, len(tx.Namespaces))
+func (e *TxSignerVerifier) Sign(txID string, tx *applicationpb.Tx) {
+	tx.Endorsements = make([]*applicationpb.Endorsements, len(tx.Namespaces))
 	for nsIndex, ns := range tx.Namespaces {
 		signer, ok := e.HashSigners[ns.NsId]
 		if !ok {
 			continue
 		}
-		tx.Endorsements[nsIndex] = test.CreateEndorsementsForThresholdRule(signer.Sign(txID, tx, nsIndex))[0]
+		tx.Endorsements[nsIndex] = apptest.CreateEndorsementsForThresholdRule(signer.Sign(txID, tx, nsIndex))[0]
 	}
 }
 
 // Verify verifies a signature on the transaction.
-func (e *TxSignerVerifier) Verify(txID string, tx *protoblocktx.Tx) bool {
+func (e *TxSignerVerifier) Verify(txID string, tx *applicationpb.Tx) bool {
 	if len(tx.Endorsements) < len(tx.Namespaces) {
 		return false
 	}
@@ -114,14 +114,14 @@ func NewHashSignerVerifier(profile *Policy) *HashSignerVerifier {
 }
 
 // Sign signs a hash.
-func (e *HashSignerVerifier) Sign(txID string, tx *protoblocktx.Tx, nsIndex int) signature.Signature {
+func (e *HashSignerVerifier) Sign(txID string, tx *applicationpb.Tx, nsIndex int) signature.Signature {
 	sign, err := e.signer.SignNs(txID, tx, nsIndex)
 	Must(err)
 	return sign
 }
 
 // Verify verifies a Signature.
-func (e *HashSignerVerifier) Verify(txID string, tx *protoblocktx.Tx, nsIndex int) bool {
+func (e *HashSignerVerifier) Verify(txID string, tx *applicationpb.Tx, nsIndex int) bool {
 	if err := e.verifier.VerifyNs(txID, tx, nsIndex); err != nil {
 		return false
 	}
@@ -129,10 +129,10 @@ func (e *HashSignerVerifier) Verify(txID string, tx *protoblocktx.Tx, nsIndex in
 }
 
 // GetVerificationPolicy returns the verification policy.
-func (e *HashSignerVerifier) GetVerificationPolicy() *protoblocktx.NamespacePolicy {
-	return &protoblocktx.NamespacePolicy{
-		Rule: &protoblocktx.NamespacePolicy_ThresholdRule{
-			ThresholdRule: &protoblocktx.ThresholdRule{
+func (e *HashSignerVerifier) GetVerificationPolicy() *applicationpb.NamespacePolicy {
+	return &applicationpb.NamespacePolicy{
+		Rule: &applicationpb.NamespacePolicy_ThresholdRule{
+			ThresholdRule: &applicationpb.ThresholdRule{
 				Scheme: e.scheme, PublicKey: e.pubKey,
 			},
 		},

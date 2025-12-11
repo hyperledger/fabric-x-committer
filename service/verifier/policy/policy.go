@@ -16,9 +16,9 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
@@ -47,26 +47,26 @@ var validNamespaceID = regexp.MustCompile(`^[a-z0-9_]+$`)
 var ErrInvalidNamespaceID = errors.New("invalid namespace ID")
 
 // GetUpdatesFromNamespace translates a namespace TX to policy updates.
-func GetUpdatesFromNamespace(nsTx *protoblocktx.TxNamespace) *protosigverifierservice.Update {
+func GetUpdatesFromNamespace(nsTx *applicationpb.TxNamespace) *servicepb.VerifierUpdates {
 	switch nsTx.NsId {
-	case types.MetaNamespaceID:
-		pd := make([]*protoblocktx.PolicyItem, len(nsTx.ReadWrites))
+	case committerpb.MetaNamespaceID:
+		pd := make([]*applicationpb.PolicyItem, len(nsTx.ReadWrites))
 		for i, rw := range nsTx.ReadWrites {
-			pd[i] = &protoblocktx.PolicyItem{
+			pd[i] = &applicationpb.PolicyItem{
 				Namespace: string(rw.Key),
 				Policy:    rw.Value,
 			}
 		}
-		return &protosigverifierservice.Update{
-			NamespacePolicies: &protoblocktx.NamespacePolicies{
+		return &servicepb.VerifierUpdates{
+			NamespacePolicies: &applicationpb.NamespacePolicies{
 				Policies: pd,
 			},
 		}
-	case types.ConfigNamespaceID:
+	case committerpb.ConfigNamespaceID:
 		for _, rw := range nsTx.BlindWrites {
-			if string(rw.Key) == types.ConfigKey {
-				return &protosigverifierservice.Update{
-					Config: &protoblocktx.ConfigTransaction{
+			if string(rw.Key) == committerpb.ConfigKey {
+				return &servicepb.VerifierUpdates{
+					Config: &applicationpb.ConfigTransaction{
 						Envelope: rw.Value,
 					},
 				}
@@ -78,13 +78,13 @@ func GetUpdatesFromNamespace(nsTx *protoblocktx.TxNamespace) *protosigverifierse
 
 // CreateNamespaceVerifier parses policy item to a namespace policy.
 func CreateNamespaceVerifier(
-	pd *protoblocktx.PolicyItem, idDeserializer msp.IdentityDeserializer,
+	pd *applicationpb.PolicyItem, idDeserializer msp.IdentityDeserializer,
 ) (*signature.NsVerifier, error) {
 	if err := validateNamespaceIDInPolicy(pd.Namespace); err != nil {
 		return nil, err
 	}
 
-	pol := &protoblocktx.NamespacePolicy{}
+	pol := &applicationpb.NamespacePolicy{}
 	if err := proto.Unmarshal(pd.Policy, pol); err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal namepsace policy bytes")
 	}
@@ -95,7 +95,7 @@ func CreateNamespaceVerifier(
 // validateNamespaceIDInPolicy checks that a given namespace fulfills namespace naming conventions.
 func validateNamespaceIDInPolicy(nsID string) error {
 	// If it matches one of the system's namespaces it is invalid.
-	if nsID == types.MetaNamespaceID || nsID == types.ConfigNamespaceID {
+	if nsID == committerpb.MetaNamespaceID || nsID == committerpb.ConfigNamespaceID {
 		return ErrInvalidNamespaceID
 	}
 
@@ -140,9 +140,9 @@ func ParsePolicyFromConfigTx(value []byte) (*signature.NsVerifier, error) {
 	// So we encode the key schema as the identifier.
 	// This will be replaced in the future with a generic policy mechanism.
 
-	return signature.NewNsVerifier(&protoblocktx.NamespacePolicy{
-		Rule: &protoblocktx.NamespacePolicy_ThresholdRule{
-			ThresholdRule: &protoblocktx.ThresholdRule{
+	return signature.NewNsVerifier(&applicationpb.NamespacePolicy{
+		Rule: &applicationpb.NamespacePolicy_ThresholdRule{
+			ThresholdRule: &applicationpb.ThresholdRule{
 				Scheme:    key.KeyIdentifier,
 				PublicKey: key.KeyMaterial,
 			},

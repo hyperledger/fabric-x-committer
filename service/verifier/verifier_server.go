@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
@@ -25,7 +25,7 @@ import (
 
 // Server implements verifier.Server.
 type Server struct {
-	protosigverifierservice.UnimplementedVerifierServer
+	servicepb.UnimplementedVerifierServer
 	config      *Config
 	metrics     *metrics
 	healthcheck *health.Server
@@ -64,12 +64,12 @@ func (*Server) WaitForReady(context.Context) bool {
 
 // RegisterService registers for the verifier's GRPC services.
 func (s *Server) RegisterService(server *grpc.Server) {
-	protosigverifierservice.RegisterVerifierServer(server, s)
+	servicepb.RegisterVerifierServer(server, s)
 	healthgrpc.RegisterHealthServer(server, s.healthcheck)
 }
 
 // StartStream starts a verification stream.
-func (s *Server) StartStream(stream protosigverifierservice.Verifier_StartStreamServer) error {
+func (s *Server) StartStream(stream servicepb.Verifier_StartStreamServer) error {
 	defer logger.Debug("Interrupted stream.")
 	s.metrics.ActiveStreams.Inc()
 	defer s.metrics.ActiveStreams.Dec()
@@ -103,7 +103,7 @@ func (s *Server) StartStream(stream protosigverifierservice.Verifier_StartStream
 
 func (s *Server) handleInputs(
 	ctx context.Context,
-	stream protosigverifierservice.Verifier_StartStreamServer,
+	stream servicepb.Verifier_StartStreamServer,
 	executor *parallelExecutor,
 ) error {
 	// ctx should be a child of stream.Context() so it will end with it.
@@ -140,7 +140,7 @@ func (s *Server) handleInputs(
 
 func (s *Server) handleOutputs(
 	ctx context.Context,
-	stream protosigverifierservice.Verifier_StartStreamServer,
+	stream servicepb.Verifier_StartStreamServer,
 	executor *parallelExecutor,
 ) error {
 	// ctx should be a child of stream.Context() so it will end with it.
@@ -153,7 +153,7 @@ func (s *Server) handleOutputs(
 		promutil.AddToCounter(s.metrics.VerifierServerOutTxs, len(outputs))
 		promutil.AddToGauge(s.metrics.ActiveRequests, -len(outputs))
 		logger.Debugf("Received output: %v", output)
-		rpcErr := stream.Send(&protosigverifierservice.ResponseBatch{Responses: outputs})
+		rpcErr := stream.Send(&servicepb.VerifierResponseBatch{Responses: outputs})
 		if rpcErr != nil {
 			return errors.Wrap(rpcErr, "stream ended")
 		}

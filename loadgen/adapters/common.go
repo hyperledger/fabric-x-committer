@@ -12,7 +12,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -118,7 +118,7 @@ func sendBlocks[T any](
 	ctx context.Context,
 	c *commonAdapter,
 	txStream *workload.StreamWithSetup,
-	mapper func(uint64, []*protoloadgen.TX) T,
+	mapper func(uint64, []*servicepb.LoadGenTx) T,
 	sender func(T) error,
 ) error {
 	queueRaw := make(chan *txsWithMapping[T], c.res.Stream.BuffersSize)
@@ -155,7 +155,7 @@ func mapToQueue[T any](
 	c *commonAdapter,
 	queueRaw chan *txsWithMapping[T],
 	txStream *workload.StreamWithSetup,
-	mapper func(uint64, []*protoloadgen.TX) T,
+	mapper func(uint64, []*servicepb.LoadGenTx) T,
 	blockSize int,
 ) {
 	queue := channel.NewWriter(ctx, queueRaw)
@@ -174,7 +174,7 @@ func mapToQueue[T any](
 	}
 }
 
-func getTXsIDs(txs []*protoloadgen.TX) []string {
+func getTXsIDs(txs []*servicepb.LoadGenTx) []string {
 	txIDs := make([]string, len(txs))
 	for i, tx := range txs {
 		txIDs[i] = tx.Id

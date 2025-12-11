@@ -10,18 +10,17 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 )
 
 type (
 	// TransactionNode is a node in the dependency graph.
 	TransactionNode struct {
-		Tx           *protovcservice.Tx
-		Endorsements []*protoblocktx.Endorsements
+		Tx           *servicepb.VcTx
+		Endorsements []*applicationpb.Endorsements
 
 		// dependsOnTxs is a set of transactions that this transaction depends on.
 		// A transaction is eligible for validation once all the transactions
@@ -70,9 +69,9 @@ type (
 )
 
 // newTransactionNode creates a TX node for coordinator's TX.
-func newTransactionNode(tx *protocoordinatorservice.Tx) *TransactionNode {
+func newTransactionNode(tx *servicepb.CoordinatorTx) *TransactionNode {
 	return &TransactionNode{
-		Tx: &protovcservice.Tx{
+		Tx: &servicepb.VcTx{
 			Ref:        tx.Ref,
 			Namespaces: tx.Content.Namespaces,
 		},
@@ -82,11 +81,11 @@ func newTransactionNode(tx *protocoordinatorservice.Tx) *TransactionNode {
 }
 
 // NewRejectedTransactionNode creates a TX node for a rejected TX.
-func NewRejectedTransactionNode(tx *protocoordinatorservice.TxStatusInfo) *TransactionNode {
+func NewRejectedTransactionNode(tx *servicepb.TxStatusInfo) *TransactionNode {
 	return &TransactionNode{
-		Tx: &protovcservice.Tx{
+		Tx: &servicepb.VcTx{
 			Ref:                   tx.Ref,
-			PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{Code: tx.Status},
+			PrelimInvalidTxStatus: &servicepb.InvalidTxStatus{Code: tx.Status},
 		},
 	}
 }
@@ -151,7 +150,7 @@ func (n *TransactionNode) isDependencyFree() bool {
 	return len(n.dependsOnTxs) == 0
 }
 
-func readAndWriteKeys(txNamespaces []*protoblocktx.TxNamespace) *readWriteKeys {
+func readAndWriteKeys(txNamespaces []*applicationpb.TxNamespace) *readWriteKeys {
 	var readOnlyKeys, writeOnlyKeys, readAndWriteKeys []string //nolint:prealloc
 
 	for _, ns := range txNamespaces {
@@ -174,13 +173,13 @@ func readAndWriteKeys(txNamespaces []*protoblocktx.TxNamespace) *readWriteKeys {
 		// including updates.
 		var key string
 		switch ns.NsId {
-		case types.MetaNamespaceID:
-			key = constructCompositeKey(types.ConfigNamespaceID, []byte(types.ConfigKey))
-		case types.ConfigNamespaceID:
+		case committerpb.MetaNamespaceID:
+			key = constructCompositeKey(committerpb.ConfigNamespaceID, []byte(committerpb.ConfigKey))
+		case committerpb.ConfigNamespaceID:
 			// Meta TX is dependent on the config TX, but not the other way around.
 			// The above dependency for meta TX is sufficed to force an order between config and meta transactions.
 		default:
-			key = constructCompositeKey(types.MetaNamespaceID, []byte(ns.NsId))
+			key = constructCompositeKey(committerpb.MetaNamespaceID, []byte(ns.NsId))
 		}
 		if key != "" {
 			readOnlyKeys = append(readOnlyKeys, key)

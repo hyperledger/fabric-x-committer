@@ -28,7 +28,6 @@ import (
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
@@ -221,31 +220,7 @@ func WaitUntilGrpcServerIsReady(
 	require.Equal(t, healthgrpc.HealthCheckResponse_SERVING, res.Status)
 }
 
-// StatusRetriever provides implementation retrieve status of given transaction identifiers.
-type StatusRetriever interface {
-	GetTransactionsStatus(context.Context, *protoblocktx.QueryStatus, ...grpc.CallOption) (
-		*protoblocktx.TransactionsStatus, error,
-	)
-}
-
-// EnsurePersistedTxStatus fails the test if the given TX IDs does not match the expected status.
-//
 //nolint:revive // maximum number of arguments per function exceeded; max 4 but got 5.
-func EnsurePersistedTxStatus(
-	ctx context.Context,
-	t *testing.T,
-	r StatusRetriever,
-	txIDs []string,
-	expected map[string]*protoblocktx.StatusWithHeight,
-) {
-	t.Helper()
-	if len(txIDs) == 0 {
-		return
-	}
-	actualStatus, err := r.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{TxIDs: txIDs})
-	require.NoError(t, err)
-	require.EqualExportedValues(t, expected, actualStatus.Status)
-}
 
 // CheckServerStopped returns true if the grpc server listening on a
 // given address has been stopped.
@@ -457,47 +432,9 @@ func MustCreateEndpoint(value string) *connection.Endpoint {
 	return endpoint
 }
 
-// CreateEndorsementsForThresholdRule creates a slice of EndorsementSet pointers from individual threshold signatures.
-// Each signature provided is wrapped in its own EndorsementWithIdentity and then placed
-// in its own new EndorsementSet.
-func CreateEndorsementsForThresholdRule(signatures ...[]byte) []*protoblocktx.Endorsements {
-	sets := make([]*protoblocktx.Endorsements, 0, len(signatures))
-
-	for _, sig := range signatures {
-		sets = append(sets, &protoblocktx.Endorsements{
-			EndorsementsWithIdentity: []*protoblocktx.EndorsementWithIdentity{{Endorsement: sig}},
-		})
-	}
-
-	return sets
-}
-
-// CreateEndorsementsForSignatureRule creates a EndorsementSet for a signature rule.
-// It takes parallel slices of signatures, MSP IDs, and certificate bytes,
-// and creates a EndorsementSet where each signature is paired with its corresponding
-// identity (MSP ID and certificate). This is used when a set of signatures
-// must all be present to satisfy a rule (e.g., an AND condition).
-func CreateEndorsementsForSignatureRule(signatures, mspIDs, certBytes [][]byte) *protoblocktx.Endorsements {
-	set := &protoblocktx.Endorsements{
-		EndorsementsWithIdentity: make([]*protoblocktx.EndorsementWithIdentity, 0, len(signatures)),
-	}
-	for i, sig := range signatures {
-		set.EndorsementsWithIdentity = append(set.EndorsementsWithIdentity,
-			&protoblocktx.EndorsementWithIdentity{
-				Endorsement: sig,
-				Identity: &protoblocktx.Identity{
-					MspId:   string(mspIDs[i]),
-					Creator: &protoblocktx.Identity_Certificate{Certificate: certBytes[i]},
-				},
-			})
-	}
-	return set
-}
-
-// AppendToEndorsementSetsForThresholdRule is a utility function that creates new signature sets
-// for a threshold rule and appends them to an existing slice of signature sets.
-func AppendToEndorsementSetsForThresholdRule(
-	ss []*protoblocktx.Endorsements, signatures ...[]byte,
-) []*protoblocktx.Endorsements {
-	return append(ss, CreateEndorsementsForThresholdRule(signatures...)...)
-}
+const (
+	// CreatorCertificate denotes Creator field in protoblocktx.Identity to contain x509 certificate.
+	CreatorCertificate = 0
+	// CreatorID denotes Creator field in protoblocktx.Identity to contain the digest of x509 certificate.
+	CreatorID = 1
+)

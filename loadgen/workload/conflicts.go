@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"math/rand"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/utils/test/apptest"
 )
 
 // Dependency types.
@@ -59,12 +59,12 @@ func newSignTxModifier(rnd *rand.Rand, profile *Profile) *signTxModifier {
 }
 
 // Modify signs a transaction.
-func (g *signTxModifier) Modify(tx *protoblocktx.Tx) {
+func (g *signTxModifier) Modify(tx *applicationpb.Tx) {
 	if g.invalidSignGenerator.Next() {
 		// Pre-assigning prevents TxBuilder from re-signing the TX.
-		tx.Endorsements = make([]*protoblocktx.Endorsements, len(tx.Namespaces))
+		tx.Endorsements = make([]*applicationpb.Endorsements, len(tx.Namespaces))
 		for i := range len(tx.Namespaces) {
-			tx.Endorsements[i] = test.CreateEndorsementsForThresholdRule(g.invalidSignature)[0]
+			tx.Endorsements[i] = apptest.CreateEndorsementsForThresholdRule(g.invalidSignature)[0]
 		}
 	}
 }
@@ -92,7 +92,7 @@ func newTxDependenciesModifier(
 }
 
 // Modify injects dependencies.
-func (g *dependenciesModifier) Modify(tx *protoblocktx.Tx) {
+func (g *dependenciesModifier) Modify(tx *applicationpb.Tx) {
 	depList, ok := g.dependenciesMap[g.index]
 	if ok {
 		delete(g.dependenciesMap, g.index)
@@ -119,15 +119,15 @@ func (g *dependenciesModifier) Modify(tx *protoblocktx.Tx) {
 	g.index++
 }
 
-func addKey(tx *protoblocktx.Tx, dependencyType string, key []byte) {
+func addKey(tx *applicationpb.Tx, dependencyType string, key []byte) {
 	txNs := tx.Namespaces[0]
 	switch dependencyType {
 	case DependencyReadOnly:
-		txNs.ReadsOnly = append(txNs.ReadsOnly, &protoblocktx.Read{Key: key})
+		txNs.ReadsOnly = append(txNs.ReadsOnly, &applicationpb.Read{Key: key})
 	case DependencyReadWrite:
-		txNs.ReadWrites = append(txNs.ReadWrites, &protoblocktx.ReadWrite{Key: key})
+		txNs.ReadWrites = append(txNs.ReadWrites, &applicationpb.ReadWrite{Key: key})
 	case DependencyBlindWrite:
-		txNs.BlindWrites = append(txNs.BlindWrites, &protoblocktx.Write{Key: key})
+		txNs.BlindWrites = append(txNs.BlindWrites, &applicationpb.Write{Key: key})
 	default:
 		panic(fmt.Sprintf("invalid dependency type: %s", dependencyType))
 	}

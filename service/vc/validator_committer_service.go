@@ -18,8 +18,8 @@ import (
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -39,15 +39,15 @@ var logger = logging.New("validator and committer service")
 // The service also sends the status of the transactions to the client.
 // ValidatorCommitterService is a gRPC service that implements the ValidationAndCommitService interface.
 type ValidatorCommitterService struct {
-	protovcservice.UnimplementedValidationAndCommitServiceServer
+	servicepb.UnimplementedValidationAndCommitServiceServer
 	preparer                 *transactionPreparer
 	validator                *transactionValidator
 	committer                *transactionCommitter
-	receivedTxBatch          chan *protovcservice.Batch
-	toPrepareTxs             chan *protovcservice.Batch
+	receivedTxBatch          chan *servicepb.VcBatch
+	toPrepareTxs             chan *servicepb.VcBatch
 	preparedTxs              chan *preparedTransactions
 	validatedTxs             chan *validatedTransactions
-	txsStatus                chan *protoblocktx.TransactionsStatus
+	txsStatus                chan *applicationpb.TransactionsStatus
 	db                       *database
 	metrics                  *perfMetrics
 	minTxBatchSize           int
@@ -85,11 +85,11 @@ func NewValidatorCommitterService(
 
 	// TODO: make queueMultiplier configurable
 	queueMultiplier := 1
-	receivedTxBatch := make(chan *protovcservice.Batch, l.MaxWorkersForPreparer*queueMultiplier)
-	toPrepareTxs := make(chan *protovcservice.Batch, l.MaxWorkersForPreparer*queueMultiplier)
+	receivedTxBatch := make(chan *servicepb.VcBatch, l.MaxWorkersForPreparer*queueMultiplier)
+	toPrepareTxs := make(chan *servicepb.VcBatch, l.MaxWorkersForPreparer*queueMultiplier)
 	preparedTxs := make(chan *preparedTransactions, l.MaxWorkersForValidator*queueMultiplier)
 	validatedTxs := make(chan *validatedTransactions, queueMultiplier)
-	txsStatus := make(chan *protoblocktx.TransactionsStatus, l.MaxWorkersForCommitter*queueMultiplier)
+	txsStatus := make(chan *applicationpb.TransactionsStatus, l.MaxWorkersForCommitter*queueMultiplier)
 
 	metrics := newVCServiceMetrics()
 	db, err := newDatabase(ctx, config.Database, metrics)
@@ -172,7 +172,7 @@ func (*ValidatorCommitterService) WaitForReady(context.Context) bool {
 
 // RegisterService registers for the validator-committer's GRPC services.
 func (vc *ValidatorCommitterService) RegisterService(server *grpc.Server) {
-	protovcservice.RegisterValidationAndCommitServiceServer(server, vc)
+	servicepb.RegisterValidationAndCommitServiceServer(server, vc)
 	healthgrpc.RegisterHealthServer(server, vc.healthcheck)
 }
 
@@ -196,7 +196,7 @@ func (vc *ValidatorCommitterService) monitorQueues(ctx context.Context) {
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger.
 func (vc *ValidatorCommitterService) SetLastCommittedBlockNumber(
 	ctx context.Context,
-	lastCommittedBlock *protoblocktx.BlockInfo,
+	lastCommittedBlock *applicationpb.BlockInfo,
 ) (*emptypb.Empty, error) {
 	err := vc.db.setLastCommittedBlockNumber(ctx, lastCommittedBlock)
 	logger.ErrorStackTrace(err)
@@ -207,7 +207,7 @@ func (vc *ValidatorCommitterService) SetLastCommittedBlockNumber(
 func (vc *ValidatorCommitterService) GetNextBlockNumberToCommit(
 	ctx context.Context,
 	_ *emptypb.Empty,
-) (*protoblocktx.BlockInfo, error) {
+) (*applicationpb.BlockInfo, error) {
 	blkInfo, err := vc.db.getNextBlockNumberToCommit(ctx)
 	logger.ErrorStackTrace(err)
 	return blkInfo, grpcerror.WrapInternalError(err)
@@ -216,8 +216,8 @@ func (vc *ValidatorCommitterService) GetNextBlockNumberToCommit(
 // GetTransactionsStatus gets the status of a given set of transaction IDs.
 func (vc *ValidatorCommitterService) GetTransactionsStatus(
 	ctx context.Context,
-	query *protoblocktx.QueryStatus,
-) (*protoblocktx.TransactionsStatus, error) {
+	query *applicationpb.QueryStatus,
+) (*applicationpb.TransactionsStatus, error) {
 	if len(query.TxIDs) == 0 {
 		return nil, grpcerror.WrapInvalidArgument(errors.New("query is empty"))
 	}
@@ -232,7 +232,7 @@ func (vc *ValidatorCommitterService) GetTransactionsStatus(
 		return nil, grpcerror.WrapInternalError(err)
 	}
 
-	return &protoblocktx.TransactionsStatus{
+	return &applicationpb.TransactionsStatus{
 		Status: txIDsStatus,
 	}, nil
 }
@@ -241,7 +241,7 @@ func (vc *ValidatorCommitterService) GetTransactionsStatus(
 func (vc *ValidatorCommitterService) GetNamespacePolicies(
 	ctx context.Context,
 	_ *emptypb.Empty,
-) (*protoblocktx.NamespacePolicies, error) {
+) (*applicationpb.NamespacePolicies, error) {
 	policies, err := vc.db.readNamespacePolicies(ctx)
 	logger.ErrorStackTrace(err)
 	return policies, grpcerror.WrapInternalError(err)
@@ -251,7 +251,7 @@ func (vc *ValidatorCommitterService) GetNamespacePolicies(
 func (vc *ValidatorCommitterService) GetConfigTransaction(
 	ctx context.Context,
 	_ *emptypb.Empty,
-) (*protoblocktx.ConfigTransaction, error) {
+) (*applicationpb.ConfigTransaction, error) {
 	policies, err := vc.db.readConfigTX(ctx)
 	logger.ErrorStackTrace(err)
 	return policies, grpcerror.WrapInternalError(err)
@@ -269,7 +269,7 @@ func (vc *ValidatorCommitterService) SetupSystemTablesAndNamespaces(
 // It receives transactions from the client, prepares them, validates them and commits them to the database.
 // It also sends the status of the transactions to the client.
 func (vc *ValidatorCommitterService) StartValidateAndCommitStream(
-	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
 	if !vc.isStreamActive.CompareAndSwap(false, true) {
 		return utils.ErrActiveStream
@@ -295,7 +295,7 @@ func (vc *ValidatorCommitterService) StartValidateAndCommitStream(
 
 func (vc *ValidatorCommitterService) receiveTransactions(
 	ctx context.Context,
-	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
 	for ctx.Err() == nil {
 		b, err := stream.Recv()
@@ -312,7 +312,7 @@ func (vc *ValidatorCommitterService) receiveTransactions(
 }
 
 func (vc *ValidatorCommitterService) batchReceivedTransactionsAndForwardForProcessing(ctx context.Context) {
-	largerBatch := &protovcservice.Batch{}
+	largerBatch := &servicepb.VcBatch{}
 	timer := time.NewTimer(vc.timeoutForMinTxBatchSize)
 	defer timer.Stop()
 	toPrepareTxs := channel.NewWriter(ctx, vc.toPrepareTxs)
@@ -325,7 +325,7 @@ func (vc *ValidatorCommitterService) batchReceivedTransactionsAndForwardForProce
 		if ok := toPrepareTxs.Write(largerBatch); !ok {
 			return
 		}
-		largerBatch = &protovcservice.Batch{}
+		largerBatch = &servicepb.VcBatch{}
 	}
 
 	for {
@@ -353,7 +353,7 @@ func (vc *ValidatorCommitterService) batchReceivedTransactionsAndForwardForProce
 // sendTransactionStatus sends the status of the transactions to the client.
 func (vc *ValidatorCommitterService) sendTransactionStatus(
 	ctx context.Context,
-	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
 	logger.Info("Send transaction status")
 
@@ -372,11 +372,11 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 		dup := 0
 		for _, s := range txStatus.Status {
 			switch s.Code {
-			case protoblocktx.Status_COMMITTED:
+			case applicationpb.Status_COMMITTED:
 				committed++
-			case protoblocktx.Status_ABORTED_MVCC_CONFLICT:
+			case applicationpb.Status_ABORTED_MVCC_CONFLICT:
 				mvcc++
-			case protoblocktx.Status_REJECTED_DUPLICATE_TX_ID:
+			case applicationpb.Status_REJECTED_DUPLICATE_TX_ID:
 				dup++
 			}
 		}

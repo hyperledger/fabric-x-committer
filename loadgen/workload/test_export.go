@@ -10,14 +10,14 @@ import (
 	"context"
 	"testing"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 // GenerateTransactions is used for benchmarking.
-func GenerateTransactions(tb testing.TB, p *Profile, count int) []*protoloadgen.TX {
+func GenerateTransactions(tb testing.TB, p *Profile, count int) []*servicepb.LoadGenTx {
 	tb.Helper()
 	s := NewTxStream(p, &StreamOptions{
 		BuffersSize: 1024,
@@ -40,8 +40,8 @@ func DefaultProfile(workers uint32) *Profile {
 			ReadWriteCount:     NewConstantDistribution(2),
 			Policy: &PolicyProfile{
 				NamespacePolicies: map[string]*Policy{
-					GeneratedNamespaceID:  {Scheme: signature.NoScheme},
-					types.MetaNamespaceID: {Scheme: signature.Ecdsa},
+					GeneratedNamespaceID:        {Scheme: signature.NoScheme},
+					committerpb.MetaNamespaceID: {Scheme: signature.Ecdsa},
 				},
 			},
 		},

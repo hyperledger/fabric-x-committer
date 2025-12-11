@@ -16,10 +16,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -44,14 +42,14 @@ type (
 	// signature verifier server.
 	signatureVerifier struct {
 		conn    *grpc.ClientConn
-		client  protosigverifierservice.VerifierClient
+		client  servicepb.VerifierClient
 		metrics *perfMetrics
 
 		// txBeingValidated stores transactions currently being validated by the signature verifier.
 		// The key is the Height (block number, transaction index), and the value is the
 		// dependencygraph.TransactionNode. If signature verifier service fails, these transactions are
 		// requeued to the input queue for processing by other signature verifiers.
-		txBeingValidated map[types.Height]*dependencygraph.TransactionNode
+		txBeingValidated map[servicepb.Height]*dependencygraph.TransactionNode
 		txMu             *sync.Mutex
 
 		policyManager *policyManager
@@ -66,8 +64,8 @@ type (
 	}
 )
 
-var sigInvalidTxStatus = &protovcservice.InvalidTxStatus{
-	Code: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+var sigInvalidTxStatus = &servicepb.InvalidTxStatus{
+	Code: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
 }
 
 func newSignatureVerifierManager(config *signVerifierManagerConfig) *signatureVerifierManager {
@@ -149,9 +147,9 @@ func newSignatureVerifier(
 	logger.Info("Initializing new SignatureVerifier")
 	return &signatureVerifier{
 		conn:             conn,
-		client:           protosigverifierservice.NewVerifierClient(conn),
+		client:           servicepb.NewVerifierClient(conn),
 		metrics:          config.metrics,
-		txBeingValidated: make(map[types.Height]*dependencygraph.TransactionNode),
+		txBeingValidated: make(map[servicepb.Height]*dependencygraph.TransactionNode),
 		txMu:             &sync.Mutex{},
 		policyManager:    config.policyManager,
 	}
@@ -192,7 +190,7 @@ func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
 
 // NOTE: sendTransactionsToSVService filters all transient connection related errors.
 func (sv *signatureVerifier) sendTransactionsToSVService(
-	stream protosigverifierservice.Verifier_StartStreamClient,
+	stream servicepb.Verifier_StartStreamClient,
 	inputTxBatch channel.Reader[dependencygraph.TxNodeBatch],
 ) error {
 	var policyVersion uint64
@@ -208,16 +206,16 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 		batchSize := len(txBatch)
 		logger.Debugf("Batch containing %d TXs was stored in the being validated list", batchSize)
 
-		request := &protosigverifierservice.Batch{
-			Requests: make([]*protosigverifierservice.Tx, batchSize),
+		request := &servicepb.VerifierBatch{
+			Requests: make([]*servicepb.VerifierTx, batchSize),
 		}
 
 		request.Update, policyVersion = sv.policyManager.getUpdates(policyVersion)
 
 		for idx, txNode := range txBatch {
-			request.Requests[idx] = &protosigverifierservice.Tx{
+			request.Requests[idx] = &servicepb.VerifierTx{
 				Ref: txNode.Tx.Ref,
-				Tx: &protoblocktx.Tx{
+				Tx: &applicationpb.Tx{
 					Namespaces:   txNode.Tx.Namespaces,
 					Endorsements: txNode.Endorsements,
 				},
@@ -240,8 +238,8 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 }
 
 func splitAndSendToVerifier(
-	stream protosigverifierservice.Verifier_StartStreamClient,
-	r *protosigverifierservice.Batch,
+	stream servicepb.Verifier_StartStreamClient,
+	r *servicepb.VerifierBatch,
 ) error {
 	// We group transactions by block to ensure our batch sizes do not exceed the gRPC message limit.
 	// This strategy prevents RESOURCE_EXHAUSTED errors because the orderer's maximum block size
@@ -250,12 +248,12 @@ func splitAndSendToVerifier(
 	// until the orderer implements all sanity checks on the configuration provided in the config block.
 	// For example, if the orderer can enforce that the maximum block size should be at most half of the
 	// maximum message size in gRPC, one batch would be adequate.
-	blkToBatch := make(map[uint64]*protosigverifierservice.Batch)
+	blkToBatch := make(map[uint64]*servicepb.VerifierBatch)
 	for _, req := range r.Requests {
 		rBatch, ok := blkToBatch[req.Ref.BlockNum]
 		if !ok {
-			rBatch = &protosigverifierservice.Batch{
-				Requests: make([]*protosigverifierservice.Tx, 0, len(r.Requests)),
+			rBatch = &servicepb.VerifierBatch{
+				Requests: make([]*servicepb.VerifierTx, 0, len(r.Requests)),
 			}
 			blkToBatch[req.Ref.BlockNum] = rBatch
 		}
@@ -281,7 +279,7 @@ func splitAndSendToVerifier(
 }
 
 func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
-	stream protosigverifierservice.Verifier_StartStreamClient,
+	stream servicepb.Verifier_StartStreamClient,
 	outputValidatedTxs channel.Writer[dependencygraph.TxNodeBatch],
 ) error {
 	for {
@@ -313,21 +311,21 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 }
 
 func (sv *signatureVerifier) fetchAndDeleteTxBeingValidated(
-	response *protosigverifierservice.ResponseBatch,
+	response *servicepb.VerifierResponseBatch,
 ) dependencygraph.TxNodeBatch {
 	validatedTxs := dependencygraph.TxNodeBatch(make([]*dependencygraph.TransactionNode, 0, len(response.Responses)))
 	// TODO: introduce metrics to measure the lock wait/holding duration.
 	sv.txMu.Lock()
 	defer sv.txMu.Unlock()
 	for _, resp := range response.Responses {
-		k := *types.NewHeightFromTxRef(resp.Ref)
+		k := *servicepb.NewHeightFromTxRef(resp.Ref)
 		txNode, ok := sv.txBeingValidated[k]
 		if !ok {
 			continue
 		}
 		delete(sv.txBeingValidated, k)
-		if resp.Status != protoblocktx.Status_COMMITTED {
-			txNode.Tx.PrelimInvalidTxStatus = &protovcservice.InvalidTxStatus{Code: resp.Status}
+		if resp.Status != applicationpb.Status_COMMITTED {
+			txNode.Tx.PrelimInvalidTxStatus = &servicepb.InvalidTxStatus{Code: resp.Status}
 		}
 		validatedTxs = append(validatedTxs, txNode)
 	}
@@ -347,7 +345,7 @@ func (sv *signatureVerifier) recoverPendingTransactions(inputTxBatch channel.Wri
 		logger.Debugf("Recovering tx: %v", txHeight)
 		pendingTxs = append(pendingTxs, txNode)
 	}
-	sv.txBeingValidated = make(map[types.Height]*dependencygraph.TransactionNode)
+	sv.txBeingValidated = make(map[servicepb.Height]*dependencygraph.TransactionNode)
 
 	inputTxBatch.Write(pendingTxs)
 	promutil.AddToCounter(sv.metrics.verifiersRetriedTransactionTotal, len(pendingTxs))
@@ -357,6 +355,6 @@ func (sv *signatureVerifier) addTxsBeingValidated(txBatch dependencygraph.TxNode
 	sv.txMu.Lock()
 	defer sv.txMu.Unlock()
 	for _, txNode := range txBatch {
-		sv.txBeingValidated[*types.NewHeightFromTxRef(txNode.Tx.Ref)] = txNode
+		sv.txBeingValidated[*servicepb.NewHeightFromTxRef(txNode.Tx.Ref)] = txNode
 	}
 }

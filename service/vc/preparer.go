@@ -12,9 +12,9 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
@@ -23,7 +23,7 @@ type (
 	// transactionPreparer prepares transaction batches for validation and commit.
 	transactionPreparer struct {
 		// incomingTransactionBatch is an input to the preparer
-		incomingTransactionBatch <-chan *protovcservice.Batch
+		incomingTransactionBatch <-chan *servicepb.VcBatch
 		// outgoingPreparedTransactions is an output of the preparer and an input to the validator
 		outgoingPreparedTransactions chan<- *preparedTransactions
 		// metrics is the metrics collector
@@ -49,11 +49,11 @@ type (
 		txIDToNsBlindWrites    transactionToWrites // Maps txIDs to blind writes per namespace.
 		txIDToNsNewWrites      transactionToWrites // Maps txIDs to new writes per namespace.
 
-		invalidTxIDStatus map[TxID]protoblocktx.Status // Maps txIDs to the status.
-		txIDToHeight      transactionIDToHeight        // Maps txIDs to height in the blockchain.
+		invalidTxIDStatus map[TxID]applicationpb.Status // Maps txIDs to the status.
+		txIDToHeight      transactionIDToHeight         // Maps txIDs to height in the blockchain.
 	}
 
-	transactionIDToHeight map[TxID]*types.Height
+	transactionIDToHeight map[TxID]*servicepb.Height
 
 	// namespaceToReads maps a namespace ID to a list of reads performed within that namespace.
 	namespaceToReads map[string]*reads
@@ -90,7 +90,7 @@ type (
 
 // newPreparer creates a new preparer instance with input channel txBatch and output channel preparedTxs.
 func newPreparer(
-	txBatch <-chan *protovcservice.Batch,
+	txBatch <-chan *servicepb.VcBatch,
 	preparedTxs chan<- *preparedTransactions,
 	metrics *perfMetrics,
 ) *transactionPreparer {
@@ -145,7 +145,7 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 			txIDToNsNonBlindWrites: make(transactionToWrites),
 			txIDToNsBlindWrites:    make(transactionToWrites),
 			txIDToNsNewWrites:      make(transactionToWrites),
-			invalidTxIDStatus:      make(map[TxID]protoblocktx.Status),
+			invalidTxIDStatus:      make(map[TxID]applicationpb.Status),
 			txIDToHeight:           make(transactionIDToHeight),
 		}
 
@@ -161,7 +161,7 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 				// Hence, we detect such duplicate transactions and ignore them.
 				continue
 			}
-			prepTxs.txIDToHeight[TxID(tx.Ref.TxId)] = types.NewHeightFromTxRef(tx.Ref)
+			prepTxs.txIDToHeight[TxID(tx.Ref.TxId)] = servicepb.NewHeightFromTxRef(tx.Ref)
 			// If the preliminary invalid transaction status is set,
 			// the vcservice does not need to validate the transaction,
 			// but it will still commit the status only if the txID is not a duplicate.
@@ -186,21 +186,21 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 				// adding the namespaceID, and version to the reads-only
 				// list of the metaNamespaceID.
 				switch nsOperations.NsId {
-				case types.MetaNamespaceID:
+				case committerpb.MetaNamespaceID:
 					// Meta TX is dependent on the config TX.
-					prepTxs.addReadsOnly(tID, &protoblocktx.TxNamespace{
-						NsId: types.ConfigNamespaceID,
-						ReadsOnly: []*protoblocktx.Read{{
-							Key:     []byte(types.ConfigKey),
+					prepTxs.addReadsOnly(tID, &applicationpb.TxNamespace{
+						NsId: committerpb.ConfigNamespaceID,
+						ReadsOnly: []*applicationpb.Read{{
+							Key:     []byte(committerpb.ConfigKey),
 							Version: &nsOperations.NsVersion,
 						}},
 					})
-				case types.ConfigNamespaceID:
+				case committerpb.ConfigNamespaceID:
 					// A config TX is independent.
 				default:
-					prepTxs.addReadsOnly(tID, &protoblocktx.TxNamespace{
-						NsId: types.MetaNamespaceID,
-						ReadsOnly: []*protoblocktx.Read{{
+					prepTxs.addReadsOnly(tID, &applicationpb.TxNamespace{
+						NsId: committerpb.MetaNamespaceID,
+						ReadsOnly: []*applicationpb.Read{{
 							Key:     []byte(nsOperations.NsId),
 							Version: &nsOperations.NsVersion,
 						}},
@@ -229,7 +229,7 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 }
 
 // addReadsOnly adds reads-only to the prepared transactions.
-func (p *preparedTransactions) addReadsOnly(id TxID, ns *protoblocktx.TxNamespace) {
+func (p *preparedTransactions) addReadsOnly(id TxID, ns *applicationpb.TxNamespace) {
 	if len(ns.ReadsOnly) == 0 {
 		logger.Debugf("No read-only entries found in namespace %s", ns.NsId)
 		return
@@ -252,7 +252,7 @@ func (p *preparedTransactions) addReadsOnly(id TxID, ns *protoblocktx.TxNamespac
 }
 
 // addReadWrites adds read-writes to the prepared transactions.
-func (p *preparedTransactions) addReadWrites(id TxID, ns *protoblocktx.TxNamespace) {
+func (p *preparedTransactions) addReadWrites(id TxID, ns *applicationpb.TxNamespace) {
 	if len(ns.ReadWrites) == 0 {
 		logger.Debugf("No read-write entries found in namespace %s", ns.NsId)
 		return
@@ -286,7 +286,7 @@ func (p *preparedTransactions) addReadWrites(id TxID, ns *protoblocktx.TxNamespa
 }
 
 // addBlindWrites adds the blind writes to the prepared transactions.
-func (p *preparedTransactions) addBlindWrites(id TxID, ns *protoblocktx.TxNamespace) {
+func (p *preparedTransactions) addBlindWrites(id TxID, ns *applicationpb.TxNamespace) {
 	if len(ns.BlindWrites) == 0 {
 		logger.Debugf("No blind writes entries found in namespace %s", ns.NsId)
 		return

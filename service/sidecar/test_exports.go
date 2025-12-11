@@ -14,10 +14,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/protonotify"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -28,26 +27,26 @@ import (
 // RequireNotifications verifies that the expected notification were received.
 func RequireNotifications( //nolint:revive // argument-limit.
 	t *testing.T,
-	notifyStream protonotify.Notifier_OpenNotificationStreamClient,
+	notifyStream committerpb.Notifier_OpenNotificationStreamClient,
 	expectedBlockNumber uint64,
 	txIDs []string,
-	status []protoblocktx.Status,
+	status []applicationpb.Status,
 ) {
 	t.Helper()
 	require.Len(t, status, len(txIDs))
-	expected := make([]*protonotify.TxStatusEvent, 0, len(txIDs))
+	expected := make([]*committerpb.TxStatusEvent, 0, len(txIDs))
 	for i, s := range status {
 		if !IsStatusStoredInDB(s) {
 			continue
 		}
 		//nolint:gosec // int -> uint32.
-		expected = append(expected, &protonotify.TxStatusEvent{
+		expected = append(expected, &committerpb.TxStatusEvent{
 			TxId:             txIDs[i],
-			StatusWithHeight: types.NewStatusWithHeight(s, expectedBlockNumber, uint32(i)),
+			StatusWithHeight: servicepb.NewStatusWithHeight(s, expectedBlockNumber, uint32(i)),
 		})
 	}
 
-	var actual []*protonotify.TxStatusEvent
+	var actual []*committerpb.TxStatusEvent
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		res, err := notifyStream.Recv()
 		require.NoError(t, err)
@@ -60,188 +59,188 @@ func RequireNotifications( //nolint:revive // argument-limit.
 
 // MalformedTxTestCases are valid and invalid TXs due to malformed.
 func MalformedTxTestCases(txb *workload.TxBuilder) (
-	txs []*protoloadgen.TX, expectedStatuses []protoblocktx.Status,
+	txs []*servicepb.LoadGenTx, expectedStatuses []applicationpb.Status,
 ) {
-	add := func(expected protoblocktx.Status, tx *protoloadgen.TX) {
+	add := func(expected applicationpb.Status, tx *servicepb.LoadGenTx) {
 		txs = append(txs, tx)
 		expectedStatuses = append(expectedStatuses, expected)
 	}
 
-	validTxNamespaces := []*protoblocktx.TxNamespace{{
+	validTxNamespaces := []*applicationpb.TxNamespace{{
 		NsId:        "1",
 		NsVersion:   0,
-		BlindWrites: []*protoblocktx.Write{{Key: []byte("k1")}},
+		BlindWrites: []*applicationpb.Write{{Key: []byte("k1")}},
 	}}
-	validTx := txb.MakeTx(&protoblocktx.Tx{Namespaces: validTxNamespaces})
+	validTx := txb.MakeTx(&applicationpb.Tx{Namespaces: validTxNamespaces})
 
-	add(protoblocktx.Status_COMMITTED, validTx)
-	add(protoblocktx.Status_REJECTED_DUPLICATE_TX_ID, txb.MakeTxWithID(validTx.Id, &protoblocktx.Tx{
+	add(applicationpb.Status_COMMITTED, validTx)
+	add(applicationpb.Status_REJECTED_DUPLICATE_TX_ID, txb.MakeTxWithID(validTx.Id, &applicationpb.Tx{
 		Namespaces: validTxNamespaces,
 	}))
-	add(protoblocktx.Status_MALFORMED_MISSING_TX_ID, txb.MakeTxWithID("", &protoblocktx.Tx{
+	add(applicationpb.Status_MALFORMED_MISSING_TX_ID, txb.MakeTxWithID("", &applicationpb.Tx{
 		Namespaces: validTxNamespaces,
 	}))
-	add(protoblocktx.Status_MALFORMED_EMPTY_NAMESPACES, txb.MakeTx(&protoblocktx.Tx{}))
-	add(protoblocktx.Status_MALFORMED_EMPTY_NAMESPACES, txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: make([]*protoblocktx.TxNamespace, 0),
+	add(applicationpb.Status_MALFORMED_EMPTY_NAMESPACES, txb.MakeTx(&applicationpb.Tx{}))
+	add(applicationpb.Status_MALFORMED_EMPTY_NAMESPACES, txb.MakeTx(&applicationpb.Tx{
+		Namespaces: make([]*applicationpb.TxNamespace, 0),
 	}))
-	add(protoblocktx.Status_MALFORMED_MISSING_SIGNATURE, txb.MakeTx(&protoblocktx.Tx{
+	add(applicationpb.Status_MALFORMED_MISSING_SIGNATURE, txb.MakeTx(&applicationpb.Tx{
 		Namespaces:   append(validTxNamespaces, nil),
-		Endorsements: make([]*protoblocktx.Endorsements, 1), // Not enough signatures.
+		Endorsements: make([]*applicationpb.Endorsements, 1), // Not enough signatures.
 	}))
-	add(protoblocktx.Status_MALFORMED_MISSING_SIGNATURE, txb.MakeTx(&protoblocktx.Tx{
+	add(applicationpb.Status_MALFORMED_MISSING_SIGNATURE, txb.MakeTx(&applicationpb.Tx{
 		Namespaces:   validTxNamespaces,
-		Endorsements: make([]*protoblocktx.Endorsements, 2), // Too many signatures.
+		Endorsements: make([]*applicationpb.Endorsements, 2), // Too many signatures.
 	}))
-	add(protoblocktx.Status_MALFORMED_NO_WRITES, txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	add(applicationpb.Status_MALFORMED_NO_WRITES, txb.MakeTx(&applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:      "1",
 			NsVersion: 0,
-			ReadsOnly: []*protoblocktx.Read{{Key: []byte("k1")}},
+			ReadsOnly: []*applicationpb.Read{{Key: []byte("k1")}},
 		}},
 	}))
-	add(protoblocktx.Status_MALFORMED_NAMESPACE_ID_INVALID, txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{
+	add(applicationpb.Status_MALFORMED_NAMESPACE_ID_INVALID, txb.MakeTx(&applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{
 			// namespace id is invalid.
 			{NsId: "//", BlindWrites: validTxNamespaces[0].BlindWrites},
 		},
 	}))
-	add(protoblocktx.Status_MALFORMED_NAMESPACE_ID_INVALID, txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{
+	add(applicationpb.Status_MALFORMED_NAMESPACE_ID_INVALID, txb.MakeTx(&applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{
 			validTxNamespaces[0],
 			{
-				NsId:      types.MetaNamespaceID,
+				NsId:      committerpb.MetaNamespaceID,
 				NsVersion: 0,
 				// namespace id is invalid in metaNs tx.
-				ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("/\\")}},
+				ReadWrites: []*applicationpb.ReadWrite{{Key: []byte("/\\")}},
 			},
 		},
 	}))
-	add(protoblocktx.Status_MALFORMED_NAMESPACE_POLICY_INVALID, txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{
+	add(applicationpb.Status_MALFORMED_NAMESPACE_POLICY_INVALID, txb.MakeTx(&applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{
 			validTxNamespaces[0],
 			{
-				NsId:      types.MetaNamespaceID,
+				NsId:      committerpb.MetaNamespaceID,
 				NsVersion: 0,
-				ReadWrites: []*protoblocktx.ReadWrite{{
+				ReadWrites: []*applicationpb.ReadWrite{{
 					Key:   []byte("2"),
 					Value: []byte("not a real policy"),
 				}},
 			},
 		},
 	}))
-	add(protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE, txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{validTxNamespaces[0], validTxNamespaces[0]},
+	add(applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE, txb.MakeTx(&applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{validTxNamespaces[0], validTxNamespaces[0]},
 	}))
-	add(protoblocktx.Status_COMMITTED, txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	add(applicationpb.Status_COMMITTED, txb.MakeTx(&applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			// valid namespace TX.
-			NsId:      types.MetaNamespaceID,
+			NsId:      committerpb.MetaNamespaceID,
 			NsVersion: 0,
-			ReadWrites: []*protoblocktx.ReadWrite{{
+			ReadWrites: []*applicationpb.ReadWrite{{
 				Key:   []byte("2"),
 				Value: defaultNsValidPolicy(),
 			}},
 		}},
 	}))
-	add(protoblocktx.Status_COMMITTED, txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{
+	add(applicationpb.Status_COMMITTED, txb.MakeTx(&applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{
 			// valid namespace TX with regular TX.
 			validTxNamespaces[0],
 			{
-				NsId:      types.MetaNamespaceID,
+				NsId:      committerpb.MetaNamespaceID,
 				NsVersion: 0,
-				ReadWrites: []*protoblocktx.ReadWrite{{
+				ReadWrites: []*applicationpb.ReadWrite{{
 					Key:     []byte("2"),
-					Version: types.Version(0),
+					Version: applicationpb.NewVersion(0),
 					Value:   defaultNsValidPolicy(),
 				}},
 			},
 		},
 	}))
-	add(protoblocktx.Status_MALFORMED_NAMESPACE_POLICY_INVALID, txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
-			NsId:      types.MetaNamespaceID,
+	add(applicationpb.Status_MALFORMED_NAMESPACE_POLICY_INVALID, txb.MakeTx(&applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
+			NsId:      committerpb.MetaNamespaceID,
 			NsVersion: 0,
-			ReadWrites: []*protoblocktx.ReadWrite{{
+			ReadWrites: []*applicationpb.ReadWrite{{
 				Key:     []byte("2"),
-				Version: types.Version(0),
+				Version: applicationpb.NewVersion(0),
 				Value:   defaultNsInvalidPolicy(), // invalid policy.
 			}},
 		}},
 	}))
-	add(protoblocktx.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED, txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{
+	add(applicationpb.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED, txb.MakeTx(&applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{
 			validTxNamespaces[0],
 			{
-				NsId:      types.MetaNamespaceID,
+				NsId:      committerpb.MetaNamespaceID,
 				NsVersion: 0,
 				// blind writes not allowed in metaNs tx.
-				BlindWrites: []*protoblocktx.Write{{
+				BlindWrites: []*applicationpb.Write{{
 					Key:   []byte("2"),
 					Value: defaultNsInvalidPolicy(),
 				}},
 			},
 		},
 	}))
-	add(protoblocktx.Status_MALFORMED_EMPTY_KEY, txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	add(applicationpb.Status_MALFORMED_EMPTY_KEY, txb.MakeTx(&applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:       "1",
 			NsVersion:  0,
-			ReadsOnly:  []*protoblocktx.Read{{Key: nil}},
-			ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("1")}},
+			ReadsOnly:  []*applicationpb.Read{{Key: nil}},
+			ReadWrites: []*applicationpb.ReadWrite{{Key: []byte("1")}},
 		}},
 	}))
-	add(protoblocktx.Status_MALFORMED_EMPTY_KEY, txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	add(applicationpb.Status_MALFORMED_EMPTY_KEY, txb.MakeTx(&applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:       "1",
 			NsVersion:  0,
-			ReadWrites: []*protoblocktx.ReadWrite{{Key: nil}},
+			ReadWrites: []*applicationpb.ReadWrite{{Key: nil}},
 		}},
 	}))
-	add(protoblocktx.Status_MALFORMED_EMPTY_KEY, txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	add(applicationpb.Status_MALFORMED_EMPTY_KEY, txb.MakeTx(&applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:        "1",
 			NsVersion:   0,
-			BlindWrites: []*protoblocktx.Write{{Key: nil}},
+			BlindWrites: []*applicationpb.Write{{Key: nil}},
 		}},
 	}))
-	add(protoblocktx.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET, txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	add(applicationpb.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET, txb.MakeTx(&applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:       "1",
 			NsVersion:  0,
-			ReadsOnly:  []*protoblocktx.Read{{Key: []byte("key1")}, {Key: []byte("key1")}},
-			ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("1")}},
+			ReadsOnly:  []*applicationpb.Read{{Key: []byte("key1")}, {Key: []byte("key1")}},
+			ReadWrites: []*applicationpb.ReadWrite{{Key: []byte("1")}},
 		}},
 	}))
-	add(protoblocktx.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET, txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	add(applicationpb.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET, txb.MakeTx(&applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:       "1",
 			NsVersion:  0,
-			ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("key1")}, {Key: []byte("key1")}},
+			ReadWrites: []*applicationpb.ReadWrite{{Key: []byte("key1")}, {Key: []byte("key1")}},
 		}},
 	}))
-	add(protoblocktx.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET, txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	add(applicationpb.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET, txb.MakeTx(&applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:        "1",
 			NsVersion:   0,
-			BlindWrites: []*protoblocktx.Write{{Key: []byte("key1")}, {Key: []byte("key1")}},
+			BlindWrites: []*applicationpb.Write{{Key: []byte("key1")}, {Key: []byte("key1")}},
 		}},
 	}))
-	add(protoblocktx.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET, txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	add(applicationpb.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET, txb.MakeTx(&applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:       "1",
 			NsVersion:  0,
-			ReadsOnly:  []*protoblocktx.Read{{Key: []byte("key1")}},
-			ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("key1")}},
+			ReadsOnly:  []*applicationpb.Read{{Key: []byte("key1")}},
+			ReadWrites: []*applicationpb.ReadWrite{{Key: []byte("key1")}},
 		}},
 	}))
-	add(protoblocktx.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET, txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	add(applicationpb.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET, txb.MakeTx(&applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:        "1",
 			NsVersion:   0,
-			ReadWrites:  []*protoblocktx.ReadWrite{{Key: []byte("key1")}},
-			BlindWrites: []*protoblocktx.Write{{Key: []byte("key1")}},
+			ReadWrites:  []*applicationpb.ReadWrite{{Key: []byte("key1")}},
+			BlindWrites: []*applicationpb.Write{{Key: []byte("key1")}},
 		}},
 	}))
 	return txs, expectedStatuses

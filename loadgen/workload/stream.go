@@ -14,8 +14,8 @@ import (
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 )
 
@@ -24,14 +24,14 @@ type (
 	TxStream struct {
 		stream
 		gens  []*IndependentTxGenerator
-		queue chan []*protoloadgen.TX
+		queue chan []*servicepb.LoadGenTx
 	}
 
 	// QueryStream generates stream's queries consumers.
 	QueryStream struct {
 		stream
 		gen   []*QueryGenerator
-		queue chan []*protoqueryservice.Query
+		queue chan []*committerpb.Query
 	}
 
 	stream struct {
@@ -53,7 +53,7 @@ func NewTxStream(
 ) *TxStream {
 	txStream := &TxStream{
 		stream: newStream(profile, options),
-		queue:  make(chan []*protoloadgen.TX, max(options.BuffersSize, 1)),
+		queue:  make(chan []*servicepb.LoadGenTx, max(options.BuffersSize, 1)),
 	}
 	for _, w := range makeWorkersData(profile) {
 		modifiers := make([]Modifier, 0, len(modifierGenerators)+2)
@@ -86,7 +86,7 @@ func (s *TxStream) Run(ctx context.Context) error {
 }
 
 // AppendBatch appends a batch to the stream.
-func (s *TxStream) AppendBatch(ctx context.Context, batch []*protoloadgen.TX) {
+func (s *TxStream) AppendBatch(ctx context.Context, batch []*servicepb.LoadGenTx) {
 	channel.NewWriter(ctx, s.queue).Write(batch)
 }
 
@@ -103,7 +103,7 @@ func (s *TxStream) SetLimit(limit rate.Limit) {
 // MakeGenerator creates a new generator that consumes from the stream.
 // Each generator must be used from a single goroutine, but different
 // generators from the same Stream can be used concurrently.
-func (s *TxStream) MakeGenerator() *RateLimiterGenerator[*protoloadgen.TX] {
+func (s *TxStream) MakeGenerator() *RateLimiterGenerator[*servicepb.LoadGenTx] {
 	return NewRateLimiterGenerator(s.queue, s.limiter)
 }
 
@@ -111,7 +111,7 @@ func (s *TxStream) MakeGenerator() *RateLimiterGenerator[*protoloadgen.TX] {
 func NewQueryGenerator(profile *Profile, options *StreamOptions) *QueryStream {
 	qs := &QueryStream{
 		stream: newStream(profile, options),
-		queue:  make(chan []*protoqueryservice.Query, max(options.BuffersSize, 1)),
+		queue:  make(chan []*committerpb.Query, max(options.BuffersSize, 1)),
 	}
 	for _, w := range makeWorkersData(profile) {
 		queryGen := newQueryGenerator(NewRandFromSeedGenerator(w.seed), w.keyGen, profile)
@@ -137,7 +137,7 @@ func (s *QueryStream) Run(ctx context.Context) error {
 // MakeGenerator creates a new generator that consumes from the stream.
 // Each generator must be used from a single goroutine, but different
 // generators from the same Stream can be used concurrently.
-func (s *QueryStream) MakeGenerator() *RateLimiterGenerator[*protoqueryservice.Query] {
+func (s *QueryStream) MakeGenerator() *RateLimiterGenerator[*committerpb.Query] {
 	return NewRateLimiterGenerator(s.queue, s.limiter)
 }
 

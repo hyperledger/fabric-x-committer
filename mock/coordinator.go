@@ -20,9 +20,8 @@ import (
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
@@ -30,14 +29,14 @@ import (
 
 // Coordinator is a mock coordinator.
 type Coordinator struct {
-	protocoordinatorservice.CoordinatorServer
-	lastCommittedBlock atomic.Pointer[protoblocktx.BlockInfo]
+	servicepb.CoordinatorServer
+	lastCommittedBlock atomic.Pointer[applicationpb.BlockInfo]
 	nextBlock          atomic.Uint64
 	streamActive       atomic.Bool
 	numWaitingTxs      atomic.Int32
-	txsStatus          *fifoCache[*protoblocktx.StatusWithHeight]
+	txsStatus          *fifoCache[*applicationpb.StatusWithHeight]
 	txsStatusMu        sync.Mutex
-	configTransaction  atomic.Pointer[protoblocktx.ConfigTransaction]
+	configTransaction  atomic.Pointer[applicationpb.ConfigTransaction]
 	latency            atomic.Pointer[time.Duration]
 	healthcheck        *health.Server
 }
@@ -49,30 +48,30 @@ var defaultTxStatusStorageSize = 100_000
 // NewMockCoordinator creates a new mock coordinator.
 func NewMockCoordinator() *Coordinator {
 	return &Coordinator{
-		txsStatus:   newFifoCache[*protoblocktx.StatusWithHeight](defaultTxStatusStorageSize),
+		txsStatus:   newFifoCache[*applicationpb.StatusWithHeight](defaultTxStatusStorageSize),
 		healthcheck: connection.DefaultHealthCheckService(),
 	}
 }
 
 // RegisterService registers for the coordinator's GRPC services.
 func (c *Coordinator) RegisterService(server *grpc.Server) {
-	protocoordinatorservice.RegisterCoordinatorServer(server, c)
+	servicepb.RegisterCoordinatorServer(server, c)
 	healthgrpc.RegisterHealthServer(server, c.healthcheck)
 }
 
 // GetConfigTransaction return the latest configuration transaction.
-func (c *Coordinator) GetConfigTransaction(context.Context, *emptypb.Empty) (*protoblocktx.ConfigTransaction, error) {
+func (c *Coordinator) GetConfigTransaction(context.Context, *emptypb.Empty) (*applicationpb.ConfigTransaction, error) {
 	return c.configTransaction.Load(), nil
 }
 
 // SetConfigTransaction stores the given envelope data as the current config transaction.
 func (c *Coordinator) SetConfigTransaction(data []byte) {
-	c.configTransaction.Store(&protoblocktx.ConfigTransaction{Envelope: data})
+	c.configTransaction.Store(&applicationpb.ConfigTransaction{Envelope: data})
 }
 
 // SetLastCommittedBlockNumber sets the last committed block number.
 func (c *Coordinator) SetLastCommittedBlockNumber(
-	_ context.Context, lastBlock *protoblocktx.BlockInfo,
+	_ context.Context, lastBlock *applicationpb.BlockInfo,
 ) (*emptypb.Empty, error) {
 	c.lastCommittedBlock.Store(lastBlock)
 	return nil, nil
@@ -82,31 +81,31 @@ func (c *Coordinator) SetLastCommittedBlockNumber(
 func (c *Coordinator) GetNextBlockNumberToCommit(
 	context.Context,
 	*emptypb.Empty,
-) (*protoblocktx.BlockInfo, error) {
-	return &protoblocktx.BlockInfo{Number: c.nextBlock.Load()}, nil
+) (*applicationpb.BlockInfo, error) {
+	return &applicationpb.BlockInfo{Number: c.nextBlock.Load()}, nil
 }
 
 // GetTransactionsStatus returns the status of given set of transaction identifiers.
 func (c *Coordinator) GetTransactionsStatus(
 	_ context.Context,
-	q *protoblocktx.QueryStatus,
-) (*protoblocktx.TransactionsStatus, error) {
-	status := make(map[string]*protoblocktx.StatusWithHeight, len(q.TxIDs))
+	q *applicationpb.QueryStatus,
+) (*applicationpb.TransactionsStatus, error) {
+	status := make(map[string]*applicationpb.StatusWithHeight, len(q.TxIDs))
 	c.txsStatusMu.Lock()
 	defer c.txsStatusMu.Unlock()
 	for _, txID := range q.TxIDs {
 		v, _ := c.txsStatus.get(txID)
 		status[txID] = v
 	}
-	return &protoblocktx.TransactionsStatus{Status: status}, nil
+	return &applicationpb.TransactionsStatus{Status: status}, nil
 }
 
 // NumberOfWaitingTransactionsForStatus returns the number of transactions waiting to get the final status.
 func (c *Coordinator) NumberOfWaitingTransactionsForStatus(
 	context.Context,
 	*emptypb.Empty,
-) (*protocoordinatorservice.WaitingTransactions, error) {
-	return &protocoordinatorservice.WaitingTransactions{Count: c.numWaitingTxs.Load()}, nil
+) (*servicepb.WaitingTransactions, error) {
+	return &servicepb.WaitingTransactions{Count: c.numWaitingTxs.Load()}, nil
 }
 
 // IsStreamActive returns true if the stream from the sidecar is active.
@@ -115,7 +114,7 @@ func (c *Coordinator) IsStreamActive() bool {
 }
 
 // BlockProcessing processes a block.
-func (c *Coordinator) BlockProcessing(stream protocoordinatorservice.Coordinator_BlockProcessingServer) error {
+func (c *Coordinator) BlockProcessing(stream servicepb.Coordinator_BlockProcessingServer) error {
 	if !c.streamActive.CompareAndSwap(false, true) {
 		return errors.New("stream is already active. Only one stream is allowed")
 	}
@@ -124,7 +123,7 @@ func (c *Coordinator) BlockProcessing(stream protocoordinatorservice.Coordinator
 	defer logger.Info("Closed block processing stream")
 
 	g, gCtx := errgroup.WithContext(stream.Context())
-	blockQueue := channel.Make[*protocoordinatorservice.Batch](gCtx, 1000)
+	blockQueue := channel.Make[*servicepb.CoordinatorBatch](gCtx, 1000)
 	g.Go(func() error {
 		return c.receiveBlocks(gCtx, stream, blockQueue)
 	})
@@ -136,8 +135,8 @@ func (c *Coordinator) BlockProcessing(stream protocoordinatorservice.Coordinator
 
 func (c *Coordinator) receiveBlocks(
 	ctx context.Context,
-	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
-	blockQueue channel.Writer[*protocoordinatorservice.Batch],
+	stream servicepb.Coordinator_BlockProcessingServer,
+	blockQueue channel.Writer[*servicepb.CoordinatorBatch],
 ) error {
 	for ctx.Err() == nil {
 		block, err := stream.Recv()
@@ -165,8 +164,8 @@ func (c *Coordinator) receiveBlocks(
 
 func (c *Coordinator) sendTxsValidationStatus(
 	ctx context.Context,
-	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
-	blockQueue channel.Reader[*protocoordinatorservice.Batch],
+	stream servicepb.Coordinator_BlockProcessingServer,
+	blockQueue channel.Reader[*servicepb.CoordinatorBatch],
 ) error {
 	for ctx.Err() == nil {
 		scBlock, ok := blockQueue.Read()
@@ -186,9 +185,9 @@ func (c *Coordinator) sendTxsValidationStatus(
 
 		info := scBlock.Rejected
 		for _, tx := range scBlock.Txs {
-			info = append(info, &protocoordinatorservice.TxStatusInfo{
+			info = append(info, &servicepb.TxStatusInfo{
 				Ref:    tx.Ref,
-				Status: protoblocktx.Status_COMMITTED,
+				Status: applicationpb.Status_COMMITTED,
 			})
 		}
 		rand.Shuffle(len(info), func(i, j int) { info[i], info[j] = info[j], info[i] })
@@ -205,16 +204,16 @@ func (c *Coordinator) sendTxsValidationStatus(
 }
 
 func (c *Coordinator) sendTxsStatusChunk(
-	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
-	txs []*protocoordinatorservice.TxStatusInfo,
+	stream servicepb.Coordinator_BlockProcessingServer,
+	txs []*servicepb.TxStatusInfo,
 ) error {
-	b := &protoblocktx.TransactionsStatus{
-		Status: make(map[string]*protoblocktx.StatusWithHeight, len(txs)),
+	b := &applicationpb.TransactionsStatus{
+		Status: make(map[string]*applicationpb.StatusWithHeight, len(txs)),
 	}
 	c.txsStatusMu.Lock()
 	defer c.txsStatusMu.Unlock()
 	for _, info := range txs {
-		s := types.NewStatusWithHeightFromRef(info.Status, info.Ref)
+		s := servicepb.NewStatusWithHeightFromRef(info.Status, info.Ref)
 		b.Status[info.Ref.TxId] = s
 		c.txsStatus.addIfNotExist(info.Ref.TxId, s)
 	}

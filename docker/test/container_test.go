@@ -22,8 +22,8 @@ import (
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
@@ -129,11 +129,11 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			runtime.CreateNamespacesAndCommit(t, "1")
 
 			t.Log("Insert TXs")
-			txIDs := runtime.MakeAndSendTransactionsToOrderer(t, [][]*protoblocktx.TxNamespace{
+			txIDs := runtime.MakeAndSendTransactionsToOrderer(t, [][]*applicationpb.TxNamespace{
 				{{
 					NsId:      "1",
 					NsVersion: 0,
-					BlindWrites: []*protoblocktx.Write{
+					BlindWrites: []*applicationpb.Write{
 						{
 							Key:   []byte("k1"),
 							Value: []byte("v1"),
@@ -144,7 +144,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 						},
 					},
 				}},
-			}, []protoblocktx.Status{protoblocktx.Status_COMMITTED})
+			}, []applicationpb.Status{applicationpb.Status_COMMITTED})
 			require.Len(t, txIDs, 1)
 
 			t.Log("Query Rows")
@@ -153,8 +153,8 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 
 			ret, err := runtime.QueryServiceClient.GetRows(
 				timeoutContext,
-				&protoqueryservice.Query{
-					Namespaces: []*protoqueryservice.QueryNamespace{
+				&committerpb.Query{
+					Namespaces: []*committerpb.QueryNamespace{
 						{
 							NsId: "1",
 							Keys: [][]byte{
@@ -167,10 +167,10 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			require.NoError(t, err)
 			t.Logf("read rows from namespace: %v", ret)
 
-			requiredItems := []*protoqueryservice.RowsNamespace{
+			requiredItems := []*committerpb.RowsNamespace{
 				{
 					NsId: "1",
-					Rows: []*protoqueryservice.Row{
+					Rows: []*committerpb.Row{
 						{
 							Key:     []byte("k1"),
 							Value:   []byte("v1"),
@@ -301,8 +301,8 @@ func mustGetEndpoint(ctx context.Context, t *testing.T, containerName, servicePo
 // protocmp.Transform() strips out protobuf-internal state so that the comparison checks only the actual row data.
 func requireQueryResults(
 	t *testing.T,
-	requiredItems []*protoqueryservice.RowsNamespace,
-	retNamespaces []*protoqueryservice.RowsNamespace,
+	requiredItems []*committerpb.RowsNamespace,
+	retNamespaces []*committerpb.RowsNamespace,
 ) {
 	t.Helper()
 	require.Len(t, retNamespaces, len(requiredItems))

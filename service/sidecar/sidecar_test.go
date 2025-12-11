@@ -21,16 +21,15 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/common/ledger/blkstorage"
-	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
+	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/protonotify"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
@@ -52,7 +51,7 @@ type sidecarTestEnv struct {
 	sidecar        *Service
 	committedBlock chan *common.Block
 	configBlock    *common.Block
-	notifyStream   protonotify.Notifier_OpenNotificationStreamClient
+	notifyStream   committerpb.Notifier_OpenNotificationStreamClient
 }
 
 type sidecarTestConfig struct {
@@ -216,7 +215,7 @@ func (env *sidecarTestEnv) startNotificationStream(
 	t.Helper()
 	conn := test.NewSecuredConnection(t, &env.config.Server.Endpoint, sidecarClientCreds)
 	var err error
-	env.notifyStream, err = protonotify.NewNotifierClient(conn).OpenNotificationStream(ctx)
+	env.notifyStream, err = committerpb.NewNotifierClient(conn).OpenNotificationStream(ctx)
 	require.NoError(t, err)
 }
 
@@ -536,7 +535,7 @@ func TestSidecarVerifyBadTxForm(t *testing.T) {
 	extraTxs := env.sendGeneratedTransactions(ctx, t, blockSize-testSize)
 	txs = append(txs, extraTxs...)
 	for range extraTxs {
-		expected = append(expected, protoblocktx.Status_COMMITTED)
+		expected = append(expected, applicationpb.Status_COMMITTED)
 	}
 	env.requireBlockWithTXsAndStatus(ctx, t, 1, txs, expected)
 }
@@ -562,7 +561,7 @@ func (env *sidecarTestEnv) sendTransactionsAndEnsureCommitted(
 func (env *sidecarTestEnv) sendGeneratedTransactionsForBlock(
 	ctx context.Context,
 	t *testing.T,
-) []*protoloadgen.TX {
+) []*servicepb.LoadGenTx {
 	t.Helper()
 	// mock-orderer expects <blockSize> txs to create the next block.
 	return env.sendGeneratedTransactions(ctx, t, blockSize)
@@ -572,9 +571,9 @@ func (env *sidecarTestEnv) sendGeneratedTransactions(
 	ctx context.Context,
 	t *testing.T,
 	count int,
-) []*protoloadgen.TX {
+) []*servicepb.LoadGenTx {
 	t.Helper()
-	txs := make([]*protoloadgen.TX, count)
+	txs := make([]*servicepb.LoadGenTx, count)
 	for i := range txs {
 		txs[i] = makeValidTx(t, env.ordererEnv.TestConfig.ChanID)
 	}
@@ -583,14 +582,14 @@ func (env *sidecarTestEnv) sendGeneratedTransactions(
 }
 
 // submitTXs submits the given TXs and register them in the notification service.
-func (env *sidecarTestEnv) submitTXs(ctx context.Context, t *testing.T, txs []*protoloadgen.TX) {
+func (env *sidecarTestEnv) submitTXs(ctx context.Context, t *testing.T, txs []*servicepb.LoadGenTx) {
 	t.Helper()
 	txIDs := make([]string, len(txs))
 	for i, tx := range txs {
 		txIDs[i] = tx.Id
 	}
-	err := env.notifyStream.Send(&protonotify.NotificationRequest{
-		TxStatusRequest: &protonotify.TxStatusRequest{
+	err := env.notifyStream.Send(&committerpb.NotificationRequest{
+		TxStatusRequest: &committerpb.TxStatusRequest{
 			TxIds: txIDs,
 		},
 		Timeout: durationpb.New(3 * time.Minute),
@@ -610,12 +609,12 @@ func (env *sidecarTestEnv) requireBlockWithTXs(
 	ctx context.Context,
 	t *testing.T,
 	expectedBlockNumber uint64,
-	txs []*protoloadgen.TX,
+	txs []*servicepb.LoadGenTx,
 ) {
 	t.Helper()
-	allValid := make([]protoblocktx.Status, len(txs))
+	allValid := make([]applicationpb.Status, len(txs))
 	for i := range allValid {
-		allValid[i] = protoblocktx.Status_COMMITTED
+		allValid[i] = applicationpb.Status_COMMITTED
 	}
 	env.requireBlockWithTXsAndStatus(ctx, t, expectedBlockNumber, txs, allValid)
 }
@@ -625,8 +624,8 @@ func (env *sidecarTestEnv) requireBlockWithTXsAndStatus(
 	ctx context.Context,
 	t *testing.T,
 	expectedBlockNumber uint64,
-	txs []*protoloadgen.TX,
-	status []protoblocktx.Status,
+	txs []*servicepb.LoadGenTx,
+	status []applicationpb.Status,
 ) {
 	t.Helper()
 	require.Len(t, status, len(txs))
@@ -645,7 +644,7 @@ func (env *sidecarTestEnv) requireBlockWithTXsAndStatus(
 	require.GreaterOrEqual(t, len(block.Metadata.Metadata), 3)
 	require.Len(t, block.Metadata.Metadata[2], blockSize)
 	for i, actualStatus := range block.Metadata.Metadata[2] {
-		require.Equalf(t, status[i].String(), protoblocktx.Status(actualStatus).String(), "tx index: %d", i)
+		require.Equalf(t, status[i].String(), applicationpb.Status(actualStatus).String(), "tx index: %d", i)
 	}
 
 	txIDs := make([]string, len(txs))
@@ -674,47 +673,47 @@ func (env *sidecarTestEnv) requireBlock(
 
 func TestConstructStatuses(t *testing.T) {
 	t.Parallel()
-	statuses := map[string]*protoblocktx.StatusWithHeight{
+	statuses := map[string]*applicationpb.StatusWithHeight{
 		"tx1": {
-			Code:        protoblocktx.Status_COMMITTED,
+			Code:        applicationpb.Status_COMMITTED,
 			BlockNumber: 1,
 			TxNumber:    1,
 		},
 		"tx2": {
-			Code:        protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+			Code:        applicationpb.Status_ABORTED_SIGNATURE_INVALID,
 			BlockNumber: 1,
 			TxNumber:    3,
 		},
 		"tx3": {
-			Code:        protoblocktx.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
+			Code:        applicationpb.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
 			BlockNumber: 2,
 			TxNumber:    3,
 		},
 		"tx4": {
-			Code:        protoblocktx.Status_COMMITTED,
+			Code:        applicationpb.Status_COMMITTED,
 			BlockNumber: 1,
 			TxNumber:    6,
 		},
 	}
-	expectedHeight := map[string]*types.Height{
-		"tx1": types.NewHeight(1, 1),
-		"tx2": types.NewHeight(1, 3),
-		"tx3": types.NewHeight(1, 5),
-		"tx4": types.NewHeight(1, 6),
+	expectedHeight := map[string]*servicepb.Height{
+		"tx1": servicepb.NewHeight(1, 1),
+		"tx2": servicepb.NewHeight(1, 3),
+		"tx3": servicepb.NewHeight(1, 5),
+		"tx4": servicepb.NewHeight(1, 6),
 	}
 
-	expectedFinalStatuses := []protoblocktx.Status{
-		protoblocktx.Status_COMMITTED,
-		protoblocktx.Status_COMMITTED,
-		protoblocktx.Status_COMMITTED,
-		protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
-		protoblocktx.Status_COMMITTED,
-		protoblocktx.Status_REJECTED_DUPLICATE_TX_ID,
-		protoblocktx.Status_COMMITTED,
+	expectedFinalStatuses := []applicationpb.Status{
+		applicationpb.Status_COMMITTED,
+		applicationpb.Status_COMMITTED,
+		applicationpb.Status_COMMITTED,
+		applicationpb.Status_ABORTED_SIGNATURE_INVALID,
+		applicationpb.Status_COMMITTED,
+		applicationpb.Status_REJECTED_DUPLICATE_TX_ID,
+		applicationpb.Status_COMMITTED,
 	}
-	actualFinalStatuses := make([]protoblocktx.Status, 7)
+	actualFinalStatuses := make([]applicationpb.Status, 7)
 	for _, skippedIdx := range []int{0, 2, 4} {
-		actualFinalStatuses[skippedIdx] = protoblocktx.Status_COMMITTED
+		actualFinalStatuses[skippedIdx] = applicationpb.Status_COMMITTED
 	}
 	require.NoError(t, fillStatuses(actualFinalStatuses, statuses, expectedHeight))
 	require.Equal(t, expectedFinalStatuses, actualFinalStatuses)
@@ -735,14 +734,14 @@ func checkNextBlockNumberToCommit(
 	}, expectedProcessingTime, 50*time.Millisecond)
 }
 
-func makeValidTx(t *testing.T, chanID string) *protoloadgen.TX {
+func makeValidTx(t *testing.T, chanID string) *servicepb.LoadGenTx {
 	t.Helper()
 	txb := workload.TxBuilder{ChannelID: chanID}
-	return txb.MakeTx(&protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	return txb.MakeTx(&applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:        strings.ReplaceAll(uuid.New().String(), "-", "")[:32],
 			NsVersion:   0,
-			BlindWrites: []*protoblocktx.Write{{Key: utils.MustRead(rand.Reader, 32)}},
+			BlindWrites: []*applicationpb.Write{{Key: utils.MustRead(rand.Reader, 32)}},
 		}},
 	})
 }

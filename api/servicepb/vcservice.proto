@@ -1,0 +1,40 @@
+/*
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+*/
+
+syntax = "proto3";
+
+option go_package = "github.com/hyperledger/fabric-x-committer/api/servicepb";
+
+package servicepb;
+
+import "google/protobuf/empty.proto";
+
+import "api/applicationpb/block_tx.proto";
+import "api/servicepb/coordinator.proto";
+
+service ValidationAndCommitService {
+  rpc StartValidateAndCommitStream (stream VcBatch) returns (stream applicationpb.TransactionsStatus);
+  rpc SetLastCommittedBlockNumber (applicationpb.BlockInfo) returns (google.protobuf.Empty) {};
+  rpc GetNextBlockNumberToCommit (google.protobuf.Empty) returns (applicationpb.BlockInfo) {};
+  rpc GetTransactionsStatus (applicationpb.QueryStatus) returns (applicationpb.TransactionsStatus) {};
+  rpc GetNamespacePolicies(google.protobuf.Empty) returns (applicationpb.NamespacePolicies) {};
+  rpc GetConfigTransaction(google.protobuf.Empty) returns (applicationpb.ConfigTransaction) {};
+  rpc SetupSystemTablesAndNamespaces(google.protobuf.Empty) returns (google.protobuf.Empty) {};
+}
+
+message VcBatch {
+  repeated VcTx transactions = 1;
+}
+
+message VcTx {
+  TxRef ref = 1;
+  repeated applicationpb.TxNamespace namespaces = 2;
+  optional InvalidTxStatus prelim_invalid_tx_status = 3;
+}
+
+message InvalidTxStatus {
+    applicationpb.Status code = 1;
+}

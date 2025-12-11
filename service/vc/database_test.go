@@ -13,7 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v4/pgxpool"
 
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 )
 
 const (
@@ -133,6 +134,9 @@ func TestValidateNamespaceReads(t *testing.T) {
 		nil,
 	)
 
+	// Shortcut for version pointer.
+	v := applicationpb.NewVersion
+
 	tests := []struct {
 		name                  string
 		nsID                  string
@@ -159,11 +163,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns2,
 			r: &reads{
 				keys:     [][]byte{k7, k8, k9},
-				versions: []*uint64{nil, types.Version(0), nil},
+				versions: []*uint64{nil, v(0), nil},
 			},
 			expectedReadConflicts: &reads{
 				keys:     [][]byte{k8},
-				versions: []*uint64{types.Version(0)},
+				versions: []*uint64{v(0)},
 			},
 		},
 		{
@@ -171,11 +175,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns2,
 			r: &reads{
 				keys:     [][]byte{k7, k8, k9},
-				versions: []*uint64{types.Version(1), types.Version(0), types.Version(1)},
+				versions: []*uint64{v(1), v(0), v(1)},
 			},
 			expectedReadConflicts: &reads{
 				keys:     [][]byte{k7, k8, k9},
-				versions: []*uint64{types.Version(1), types.Version(0), types.Version(1)},
+				versions: []*uint64{v(1), v(0), v(1)},
 			},
 		},
 		{
@@ -183,7 +187,7 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns1,
 			r: &reads{
 				keys:     [][]byte{k1, k2, k3},
-				versions: []*uint64{types.Version(0), types.Version(0), types.Version(0)},
+				versions: []*uint64{v(0), v(0), v(0)},
 			},
 			expectedReadConflicts: &reads{},
 		},
@@ -192,11 +196,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns1,
 			r: &reads{
 				keys:     [][]byte{k1, k2, k3},
-				versions: []*uint64{types.Version(1), types.Version(0), types.Version(1)},
+				versions: []*uint64{v(1), v(0), v(1)},
 			},
 			expectedReadConflicts: &reads{
 				keys:     [][]byte{k1, k3},
-				versions: []*uint64{types.Version(1), types.Version(1)},
+				versions: []*uint64{v(1), v(1)},
 			},
 		},
 		{
@@ -204,11 +208,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns2,
 			r: &reads{
 				keys:     [][]byte{k4, k5, k6},
-				versions: []*uint64{types.Version(0), types.Version(0), types.Version(0)},
+				versions: []*uint64{v(0), v(0), v(0)},
 			},
 			expectedReadConflicts: &reads{
 				keys:     [][]byte{k4, k5, k6},
-				versions: []*uint64{types.Version(0), types.Version(0), types.Version(0)},
+				versions: []*uint64{v(0), v(0), v(0)},
 			},
 		},
 		{
@@ -216,11 +220,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns2,
 			r: &reads{
 				keys:     [][]byte{k4, k5, k6, k7, k8, k9},
-				versions: []*uint64{types.Version(1), types.Version(0), types.Version(1), nil, types.Version(0), nil},
+				versions: []*uint64{v(1), v(0), v(1), nil, v(0), nil},
 			},
 			expectedReadConflicts: &reads{
 				keys:     [][]byte{k5, k8},
-				versions: []*uint64{types.Version(0), types.Version(0)},
+				versions: []*uint64{v(0), v(0)},
 			},
 		},
 	}
@@ -268,7 +272,7 @@ func TestDBCommit(t *testing.T) {
 			values:   [][]byte{[]byte("value4"), []byte("value5"), []byte("value6")},
 			versions: []uint64{1, 1, 1},
 		},
-		types.MetaNamespaceID: {
+		committerpb.MetaNamespaceID: {
 			keys:     [][]byte{[]byte("3"), []byte("4")},
 			values:   [][]byte{[]byte("value7"), []byte("value8")},
 			versions: []uint64{0, 0, 0},
@@ -279,7 +283,7 @@ func TestDBCommit(t *testing.T) {
 	commit(t, dbEnv, &statesToBeCommitted{updateWrites: nsToWrites})
 	dbEnv.rowExists(t, ns1, *nsToWrites[ns1])
 	dbEnv.rowExists(t, ns2, *nsToWrites[ns2])
-	dbEnv.rowExists(t, types.MetaNamespaceID, *nsToWrites[types.MetaNamespaceID])
+	dbEnv.rowExists(t, committerpb.MetaNamespaceID, *nsToWrites[committerpb.MetaNamespaceID])
 	dbEnv.tableExists(t, "3")
 	dbEnv.tableExists(t, "4")
 

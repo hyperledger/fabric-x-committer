@@ -20,26 +20,29 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp"
 	bccsputils "github.com/hyperledger/fabric-lib-go/bccsp/utils"
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
 	"github.com/hyperledger/fabric-x-common/core/config/configtest"
-	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen/genesisconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
+	"github.com/hyperledger/fabric-x-committer/utils/certificate"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/test/apptest"
 )
 
 const (
@@ -70,7 +73,7 @@ func TestNoVerificationKeySet(t *testing.T) {
 	stream, err := c.Client.StartStream(t.Context())
 	require.NoError(t, err)
 
-	err = stream.Send(&protosigverifierservice.Batch{})
+	err = stream.Send(&servicepb.VerifierBatch{})
 	require.NoError(t, err)
 
 	t.Log("We should not receive any results with empty batch")
@@ -86,7 +89,7 @@ func TestNoInput(t *testing.T) {
 	stream, _ := c.Client.StartStream(t.Context())
 
 	update, _, _ := defaultUpdate(t)
-	err := stream.Send(&protosigverifierservice.Batch{Update: update})
+	err := stream.Send(&servicepb.VerifierBatch{Update: update})
 	require.NoError(t, err)
 
 	_, ok := readStream(t, stream, testTimeout)
@@ -102,49 +105,49 @@ func TestMinimalInput(t *testing.T) {
 
 	update, metaTxSigner, dataTxSigner := defaultUpdate(t)
 
-	tx1 := &protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	tx1 := &applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:      "1",
 			NsVersion: 0,
-			BlindWrites: []*protoblocktx.Write{{
+			BlindWrites: []*applicationpb.Write{{
 				Key: []byte("0001"),
 			}},
 		}},
 	}
 	s, _ := dataTxSigner.SignNs(fakeTxID, tx1, 0)
-	tx1.Endorsements = test.AppendToEndorsementSetsForThresholdRule(tx1.Endorsements, s)
+	tx1.Endorsements = apptest.AppendToEndorsementSetsForThresholdRule(tx1.Endorsements, s)
 
-	tx2 := &protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	tx2 := &applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:      "1",
 			NsVersion: 0,
-			BlindWrites: []*protoblocktx.Write{{
+			BlindWrites: []*applicationpb.Write{{
 				Key: []byte("0010"),
 			}},
 		}},
 	}
 
 	s, _ = dataTxSigner.SignNs(fakeTxID, tx2, 0)
-	tx2.Endorsements = test.AppendToEndorsementSetsForThresholdRule(tx2.Endorsements, s)
+	tx2.Endorsements = apptest.AppendToEndorsementSetsForThresholdRule(tx2.Endorsements, s)
 
-	tx3 := &protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
-			NsId:      types.MetaNamespaceID,
+	tx3 := &applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
+			NsId:      committerpb.MetaNamespaceID,
 			NsVersion: 0,
-			BlindWrites: []*protoblocktx.Write{{
+			BlindWrites: []*applicationpb.Write{{
 				Key: []byte("0011"),
 			}},
 		}},
 	}
 	s, _ = metaTxSigner.SignNs(fakeTxID, tx3, 0)
-	tx3.Endorsements = test.AppendToEndorsementSetsForThresholdRule(tx3.Endorsements, s)
+	tx3.Endorsements = apptest.AppendToEndorsementSetsForThresholdRule(tx3.Endorsements, s)
 
-	err := stream.Send(&protosigverifierservice.Batch{
+	err := stream.Send(&servicepb.VerifierBatch{
 		Update: update,
-		Requests: []*protosigverifierservice.Tx{
-			{Ref: types.TxRef(fakeTxID, 1, 1), Tx: tx1},
-			{Ref: types.TxRef(fakeTxID, 1, 1), Tx: tx2},
-			{Ref: types.TxRef(fakeTxID, 1, 1), Tx: tx3},
+		Requests: []*servicepb.VerifierTx{
+			{Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx1},
+			{Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx2},
+			{Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx3},
 		},
 	})
 	require.NoError(t, err)
@@ -162,7 +165,7 @@ func TestSignatureRule(t *testing.T) {
 	require.NoError(t, err)
 
 	update, _, _ := defaultUpdate(t)
-	err = stream.Send(&protosigverifierservice.Batch{Update: update})
+	err = stream.Send(&servicepb.VerifierBatch{Update: update})
 	require.NoError(t, err)
 
 	signingIdentities := make([]*signingIdentity, 2)
@@ -182,27 +185,27 @@ func TestSignatureRule(t *testing.T) {
 		serializedSigningIdentities[i] = si.serialize(t)
 	}
 
-	nsPolicy := &protoblocktx.NamespacePolicy{
-		Rule: &protoblocktx.NamespacePolicy_MspRule{
+	nsPolicy := &applicationpb.NamespacePolicy{
+		Rule: &applicationpb.NamespacePolicy_MspRule{
 			MspRule: protoutil.MarshalOrPanic(
 				policydsl.Envelope(policydsl.And(policydsl.SignedBy(0), policydsl.SignedBy(1)),
 					serializedSigningIdentities)),
 		},
 	}
 
-	update = &protosigverifierservice.Update{
-		NamespacePolicies: &protoblocktx.NamespacePolicies{
-			Policies: []*protoblocktx.PolicyItem{
+	update = &servicepb.VerifierUpdates{
+		NamespacePolicies: &applicationpb.NamespacePolicies{
+			Policies: []*applicationpb.PolicyItem{
 				policy.MakePolicy(t, "2", nsPolicy),
 			},
 		},
 	}
 
-	tx1 := &protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	tx1 := &applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:      "2",
 			NsVersion: 0,
-			BlindWrites: []*protoblocktx.Write{{
+			BlindWrites: []*applicationpb.Write{{
 				Key: []byte("0011"),
 			}},
 		}},
@@ -214,26 +217,37 @@ func TestSignatureRule(t *testing.T) {
 	signatures := make([][]byte, len(signingIdentities))
 	mspIDs := make([][]byte, len(signingIdentities))
 	certsBytes := make([][]byte, len(signingIdentities))
-	for i, si := range signingIdentities {
-		signatures[i] = si.sign(t, data)
 
-		mspIDs[i] = []byte(si.MSPID)
-		certBytes, rerr := os.ReadFile(si.CertPath)
-		require.NoError(t, rerr)
-		certsBytes[i] = certBytes
+	for _, certType := range []int{test.CreatorCertificate, test.CreatorID} {
+		for i, si := range signingIdentities {
+			signatures[i] = si.sign(t, data)
+			mspIDs[i] = []byte(si.MSPID)
+
+			switch certType {
+			case test.CreatorCertificate:
+				certBytes, rerr := os.ReadFile(si.CertPath)
+				require.NoError(t, rerr)
+				certsBytes[i] = certBytes
+			case test.CreatorID:
+				certID, derr := certificate.Digest(si.CertPath, bccsp.SHA256)
+				require.NoError(t, derr)
+				fmt.Println(string(certID))
+				certsBytes[i] = certID
+			}
+		}
+
+		tx1.Endorsements = []*applicationpb.Endorsements{
+			apptest.CreateEndorsementsForSignatureRule(signatures, mspIDs, certsBytes, certType),
+		}
+
+		requireTestCase(t, stream, &testCase{
+			update: update,
+			req: &servicepb.VerifierTx{
+				Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx1,
+			},
+			expectedStatus: applicationpb.Status_COMMITTED,
+		})
 	}
-
-	tx1.Endorsements = []*protoblocktx.Endorsements{
-		test.CreateEndorsementsForSignatureRule(signatures, mspIDs, certsBytes),
-	}
-
-	requireTestCase(t, stream, &testCase{
-		update: update,
-		req: &protosigverifierservice.Tx{
-			Ref: types.TxRef(fakeTxID, 1, 1), Tx: tx1,
-		},
-		expectedStatus: protoblocktx.Status_COMMITTED,
-	})
 
 	// Update the config block to have SampleFabricX profile instead of
 	// the default TwoOrgsSampleFabricX.
@@ -241,20 +255,20 @@ func TestSignatureRule(t *testing.T) {
 	_, metaTxVerificationKey := factory.NewKeys()
 	configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
 		MetaNamespaceVerificationKey: metaTxVerificationKey,
-	}, genesisconfig.SampleFabricX)
+	}, configtxgen.SampleFabricX)
 	require.NoError(t, err)
-	update = &protosigverifierservice.Update{
-		Config: &protoblocktx.ConfigTransaction{
+	update = &servicepb.VerifierUpdates{
+		Config: &applicationpb.ConfigTransaction{
 			Envelope: configBlock.Data.Data[0],
 		},
 	}
 
 	requireTestCase(t, stream, &testCase{
 		update: update,
-		req: &protosigverifierservice.Tx{
-			Ref: types.TxRef(fakeTxID, 1, 1), Tx: tx1,
+		req: &servicepb.VerifierTx{
+			Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx1,
 		},
-		expectedStatus: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+		expectedStatus: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
 	})
 }
 
@@ -266,24 +280,24 @@ func TestBadSignature(t *testing.T) {
 	require.NoError(t, err)
 
 	update, _, _ := defaultUpdate(t)
-	err = stream.Send(&protosigverifierservice.Batch{Update: update})
+	err = stream.Send(&servicepb.VerifierBatch{Update: update})
 	require.NoError(t, err)
 
 	requireTestCase(t, stream, &testCase{
-		req: &protosigverifierservice.Tx{
-			Ref: types.TxRef(fakeTxID, 1, 0),
-			Tx: &protoblocktx.Tx{
-				Namespaces: []*protoblocktx.TxNamespace{{
+		req: &servicepb.VerifierTx{
+			Ref: committerpb.TxRef(fakeTxID, 1, 0),
+			Tx: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
 					NsId:      "1",
 					NsVersion: 0,
-					ReadWrites: []*protoblocktx.ReadWrite{
+					ReadWrites: []*applicationpb.ReadWrite{
 						{Key: make([]byte, 0)},
 					},
 				}},
-				Endorsements: test.CreateEndorsementsForThresholdRule([]byte{0}, []byte{1}, []byte{2}),
+				Endorsements: apptest.CreateEndorsementsForThresholdRule([]byte{0}, []byte{1}, []byte{2}),
 			},
 		},
-		expectedStatus: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+		expectedStatus: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
 	})
 }
 
@@ -305,11 +319,11 @@ func TestUpdatePolicies(t *testing.T) {
 
 		ns1Policy, _ := makePolicyItem(t, ns1)
 		ns2Policy, _ := makePolicyItem(t, ns2)
-		err = stream.Send(&protosigverifierservice.Batch{
-			Update: &protosigverifierservice.Update{
+		err = stream.Send(&servicepb.VerifierBatch{
+			Update: &servicepb.VerifierUpdates{
 				Config: update.Config,
-				NamespacePolicies: &protoblocktx.NamespacePolicies{
-					Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
+				NamespacePolicies: &applicationpb.NamespacePolicies{
+					Policies: []*applicationpb.PolicyItem{ns1Policy, ns2Policy},
 				},
 			},
 		})
@@ -318,10 +332,10 @@ func TestUpdatePolicies(t *testing.T) {
 		// We attempt a bad policies update.
 		// We expect no update since one of the given policies are invalid.
 		p3, _ := makePolicyItem(t, ns1)
-		err = stream.Send(&protosigverifierservice.Batch{
-			Update: &protosigverifierservice.Update{
-				NamespacePolicies: &protoblocktx.NamespacePolicies{
-					Policies: []*protoblocktx.PolicyItem{
+		err = stream.Send(&servicepb.VerifierBatch{
+			Update: &servicepb.VerifierUpdates{
+				NamespacePolicies: &applicationpb.NamespacePolicies{
+					Policies: []*applicationpb.PolicyItem{
 						p3,
 						policy.MakePolicy(t, ns2, policy.MakeECDSAThresholdRuleNsPolicy([]byte("bad-key"))),
 					},
@@ -344,21 +358,21 @@ func TestUpdatePolicies(t *testing.T) {
 
 		ns1Policy, ns1Signer := makePolicyItem(t, ns1)
 		ns2Policy, _ := makePolicyItem(t, ns2)
-		err = stream.Send(&protosigverifierservice.Batch{
-			Update: &protosigverifierservice.Update{
+		err = stream.Send(&servicepb.VerifierBatch{
+			Update: &servicepb.VerifierUpdates{
 				Config: update.Config,
-				NamespacePolicies: &protoblocktx.NamespacePolicies{
-					Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
+				NamespacePolicies: &applicationpb.NamespacePolicies{
+					Policies: []*applicationpb.PolicyItem{ns1Policy, ns2Policy},
 				},
 			},
 		})
 		require.NoError(t, err)
 
 		ns2PolicyUpdate, ns2Signer := makePolicyItem(t, ns2)
-		err = stream.Send(&protosigverifierservice.Batch{
-			Update: &protosigverifierservice.Update{
-				NamespacePolicies: &protoblocktx.NamespacePolicies{
-					Policies: []*protoblocktx.PolicyItem{ns2PolicyUpdate},
+		err = stream.Send(&servicepb.VerifierBatch{
+			Update: &servicepb.VerifierUpdates{
+				NamespacePolicies: &applicationpb.NamespacePolicies{
+					Policies: []*applicationpb.PolicyItem{ns2PolicyUpdate},
 				},
 			},
 		})
@@ -366,11 +380,11 @@ func TestUpdatePolicies(t *testing.T) {
 
 		sign(t, tx, ns1Signer, ns2Signer)
 		requireTestCase(t, stream, &testCase{
-			req: &protosigverifierservice.Tx{
-				Ref: types.TxRef(fakeTxID, 1, 1),
+			req: &servicepb.VerifierTx{
+				Ref: committerpb.TxRef(fakeTxID, 1, 1),
 				Tx:  tx,
 			},
-			expectedStatus: protoblocktx.Status_COMMITTED,
+			expectedStatus: applicationpb.Status_COMMITTED,
 		})
 	})
 }
@@ -399,13 +413,13 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 		uniqueNsSigners[i] = uniqueNsSigner
 		commonNsPolicy, commonNsSigner := makePolicyItem(t, ns[len(ns)-1])
 		commonNsSigners[i] = commonNsSigner
-		p := &protosigverifierservice.Update{
+		p := &servicepb.VerifierUpdates{
 			Config: update.Config,
-			NamespacePolicies: &protoblocktx.NamespacePolicies{
-				Policies: []*protoblocktx.PolicyItem{uniqueNsPolicy, commonNsPolicy},
+			NamespacePolicies: &applicationpb.NamespacePolicies{
+				Policies: []*applicationpb.PolicyItem{uniqueNsPolicy, commonNsPolicy},
 			},
 		}
-		err = stream.Send(&protosigverifierservice.Batch{
+		err = stream.Send(&servicepb.VerifierBatch{
 			Update: p,
 		})
 		require.NoError(t, err)
@@ -418,9 +432,9 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 	success := 0
 	for i := range updateCount {
 		sign(t, tx, append(uniqueNsSigners, commonNsSigners[i])...)
-		require.NoError(t, stream.Send(&protosigverifierservice.Batch{
-			Requests: []*protosigverifierservice.Tx{{
-				Ref: types.TxRef(fakeTxID, 0, 0),
+		require.NoError(t, stream.Send(&servicepb.VerifierBatch{
+			Requests: []*servicepb.VerifierTx{{
+				Ref: committerpb.TxRef(fakeTxID, 0, 0),
 				Tx:  tx,
 			}},
 		}))
@@ -429,7 +443,7 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, txStatus)
 		require.Len(t, txStatus.Responses, 1)
-		if txStatus.Responses[0].Status == protoblocktx.Status_COMMITTED {
+		if txStatus.Responses[0].Status == applicationpb.Status_COMMITTED {
 			success++
 		}
 	}
@@ -440,39 +454,39 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 	tx = makeTX(ns[:updateCount]...)
 	sign(t, tx, uniqueNsSigners...)
 	requireTestCase(t, stream, &testCase{
-		req: &protosigverifierservice.Tx{
-			Ref: types.TxRef(fakeTxID, 1, 1),
+		req: &servicepb.VerifierTx{
+			Ref: committerpb.TxRef(fakeTxID, 1, 1),
 			Tx:  tx,
 		},
-		expectedStatus: protoblocktx.Status_COMMITTED,
+		expectedStatus: applicationpb.Status_COMMITTED,
 	})
 }
 
 type testCase struct {
-	update         *protosigverifierservice.Update
-	req            *protosigverifierservice.Tx
-	expectedStatus protoblocktx.Status
+	update         *servicepb.VerifierUpdates
+	req            *servicepb.VerifierTx
+	expectedStatus applicationpb.Status
 }
 
-func sign(t *testing.T, tx *protoblocktx.Tx, signers ...*sigtest.NsSigner) {
+func sign(t *testing.T, tx *applicationpb.Tx, signers ...*sigtest.NsSigner) {
 	t.Helper()
-	tx.Endorsements = make([]*protoblocktx.Endorsements, len(signers))
+	tx.Endorsements = make([]*applicationpb.Endorsements, len(signers))
 	for i, s := range signers {
 		s, err := s.SignNs(fakeTxID, tx, i)
 		require.NoError(t, err)
-		tx.Endorsements[i] = test.CreateEndorsementsForThresholdRule(s)[0]
+		tx.Endorsements[i] = apptest.CreateEndorsementsForThresholdRule(s)[0]
 	}
 }
 
-func makeTX(namespaces ...string) *protoblocktx.Tx {
-	tx := &protoblocktx.Tx{
-		Namespaces: make([]*protoblocktx.TxNamespace, len(namespaces)),
+func makeTX(namespaces ...string) *applicationpb.Tx {
+	tx := &applicationpb.Tx{
+		Namespaces: make([]*applicationpb.TxNamespace, len(namespaces)),
 	}
 	for i, ns := range namespaces {
-		tx.Namespaces[i] = &protoblocktx.TxNamespace{
+		tx.Namespaces[i] = &applicationpb.TxNamespace{
 			NsId:      ns,
 			NsVersion: 0,
-			BlindWrites: []*protoblocktx.Write{{
+			BlindWrites: []*applicationpb.Write{{
 				Key: []byte("0001"),
 			}},
 		}
@@ -480,7 +494,7 @@ func makeTX(namespaces ...string) *protoblocktx.Tx {
 	return tx
 }
 
-func makePolicyItem(t *testing.T, ns string) (*protoblocktx.PolicyItem, *sigtest.NsSigner) {
+func makePolicyItem(t *testing.T, ns string) (*applicationpb.PolicyItem, *sigtest.NsSigner) {
 	t.Helper()
 	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
 	signingKey, verificationKey := factory.NewKeys()
@@ -491,13 +505,13 @@ func makePolicyItem(t *testing.T, ns string) (*protoblocktx.PolicyItem, *sigtest
 
 func requireTestCase(
 	t *testing.T,
-	stream protosigverifierservice.Verifier_StartStreamClient,
+	stream servicepb.Verifier_StartStreamClient,
 	tt *testCase,
 ) {
 	t.Helper()
-	err := stream.Send(&protosigverifierservice.Batch{
+	err := stream.Send(&servicepb.VerifierBatch{
 		Update:   tt.update,
-		Requests: []*protosigverifierservice.Tx{tt.req},
+		Requests: []*servicepb.VerifierTx{tt.req},
 	})
 	require.NoError(t, err)
 
@@ -515,7 +529,7 @@ func requireTestCase(
 // State test state.
 type State struct {
 	Service *Server
-	Client  protosigverifierservice.VerifierClient
+	Client  servicepb.VerifierClient
 }
 
 func newTestState(t *testing.T, config *Config) *State {
@@ -531,11 +545,11 @@ func newTestState(t *testing.T, config *Config) *State {
 
 func readStream(
 	t *testing.T,
-	stream protosigverifierservice.Verifier_StartStreamClient,
+	stream servicepb.Verifier_StartStreamClient,
 	timeout time.Duration,
-) ([]*protosigverifierservice.Response, bool) {
+) ([]*servicepb.VerifierResponse, bool) {
 	t.Helper()
-	outputChan := make(chan []*protosigverifierservice.Response, 1)
+	outputChan := make(chan []*servicepb.VerifierResponse, 1)
 	ctx, cancel := context.WithTimeout(t.Context(), timeout)
 	defer cancel()
 	go func() {
@@ -548,14 +562,14 @@ func readStream(
 }
 
 func defaultUpdate(t *testing.T) (
-	update *protosigverifierservice.Update, metaTxSigner, dataTxSigner *sigtest.NsSigner,
+	update *servicepb.VerifierUpdates, metaTxSigner, dataTxSigner *sigtest.NsSigner,
 ) {
 	t.Helper()
 	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
 	metaTxSigningKey, metaTxVerificationKey := factory.NewKeys()
 	configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
 		MetaNamespaceVerificationKey: metaTxVerificationKey,
-	}, genesisconfig.TwoOrgsSampleFabricX)
+	}, configtxgen.TwoOrgsSampleFabricX)
 	require.NoError(t, err)
 	metaTxSigner, err = factory.NewSigner(metaTxSigningKey)
 	require.NoError(t, err)
@@ -563,12 +577,12 @@ func defaultUpdate(t *testing.T) (
 	dataTxSigningKey, dataTxVerificationKey := factory.NewKeys()
 	dataTxSigner, err = factory.NewSigner(dataTxSigningKey)
 	require.NoError(t, err)
-	update = &protosigverifierservice.Update{
-		Config: &protoblocktx.ConfigTransaction{
+	update = &servicepb.VerifierUpdates{
+		Config: &applicationpb.ConfigTransaction{
 			Envelope: configBlock.Data.Data[0],
 		},
-		NamespacePolicies: &protoblocktx.NamespacePolicies{
-			Policies: []*protoblocktx.PolicyItem{
+		NamespacePolicies: &applicationpb.NamespacePolicies{
+			Policies: []*applicationpb.PolicyItem{
 				policy.MakePolicy(t, "1", policy.MakeECDSAThresholdRuleNsPolicy(dataTxVerificationKey)),
 			},
 		},
@@ -602,9 +616,9 @@ func createVerifierClientWithTLS(
 	t *testing.T,
 	ep *connection.Endpoint,
 	tlsCfg connection.TLSConfig,
-) protosigverifierservice.VerifierClient {
+) servicepb.VerifierClient {
 	t.Helper()
-	return test.CreateClientWithTLS(t, ep, tlsCfg, protosigverifierservice.NewVerifierClient)
+	return test.CreateClientWithTLS(t, ep, tlsCfg, servicepb.NewVerifierClient)
 }
 
 // A signingIdentity represents an MSP signing identity.

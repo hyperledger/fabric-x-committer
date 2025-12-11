@@ -13,18 +13,18 @@ import (
 	"github.com/cockroachdb/errors"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 )
 
 // CreateLoadGenNamespacesTX creating the transaction containing the requested namespaces into the MetaNamespace.
-func CreateLoadGenNamespacesTX(policy *PolicyProfile) (*protoloadgen.TX, error) {
+func CreateLoadGenNamespacesTX(policy *PolicyProfile) (*servicepb.LoadGenTx, error) {
 	txb, txbErr := NewTxBuilderFromPolicy(policy, nil)
 	if txbErr != nil {
 		return nil, txbErr
 	}
-	_, ok := txb.TxSigner.HashSigners[types.MetaNamespaceID]
+	_, ok := txb.TxSigner.HashSigners[committerpb.MetaNamespaceID]
 	if !ok {
 		return nil, errors.New("no meta namespace signer found; cannot create namespaces")
 	}
@@ -39,7 +39,7 @@ func CreateLoadGenNamespacesTX(policy *PolicyProfile) (*protoloadgen.TX, error) 
 // CreateNamespacesTX creating the transaction containing the requested namespaces into the MetaNamespace.
 func CreateNamespacesTX(
 	policy *PolicyProfile, metaNamespaceVersion uint64, includeNS ...string,
-) (*protoblocktx.Tx, error) {
+) (*applicationpb.Tx, error) {
 	signer := NewTxSignerVerifier(policy)
 	return CreateNamespacesTxFromSigner(signer, metaNamespaceVersion, includeNS...)
 }
@@ -47,14 +47,14 @@ func CreateNamespacesTX(
 // CreateNamespacesTxFromSigner creating the transaction containing the requested namespaces into the MetaNamespace.
 func CreateNamespacesTxFromSigner(
 	signer *TxSignerVerifier, metaNamespaceVersion uint64, includeNS ...string,
-) (*protoblocktx.Tx, error) {
+) (*applicationpb.Tx, error) {
 	if len(includeNS) == 0 {
 		includeNS = slices.Collect(maps.Keys(signer.HashSigners))
 	}
 
-	readWrites := make([]*protoblocktx.ReadWrite, 0, len(signer.HashSigners))
+	readWrites := make([]*applicationpb.ReadWrite, 0, len(signer.HashSigners))
 	for _, ns := range includeNS {
-		if ns == types.MetaNamespaceID {
+		if ns == committerpb.MetaNamespaceID {
 			continue
 		}
 		p, ok := signer.HashSigners[ns]
@@ -65,15 +65,15 @@ func CreateNamespacesTxFromSigner(
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to serialize namespace policy")
 		}
-		readWrites = append(readWrites, &protoblocktx.ReadWrite{
+		readWrites = append(readWrites, &applicationpb.ReadWrite{
 			Key:   []byte(ns),
 			Value: policyBytes,
 		})
 	}
 
-	return &protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
-			NsId:       types.MetaNamespaceID,
+	return &applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
+			NsId:       committerpb.MetaNamespaceID,
 			NsVersion:  metaNamespaceVersion,
 			ReadWrites: readWrites,
 		}},

@@ -16,9 +16,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -136,7 +136,7 @@ func requireValidKey(t *testing.T, key []byte, profile *Profile) {
 	require.Positive(t, SumInt(key))
 }
 
-func requireValidTx(t *testing.T, tx *protoloadgen.TX, profile *Profile, signer *TxSignerVerifier) {
+func requireValidTx(t *testing.T, tx *servicepb.LoadGenTx, profile *Profile, signer *TxSignerVerifier) {
 	t.Helper()
 	require.NotEmpty(t, tx.Id)
 	require.NotNil(t, tx.Tx)
@@ -210,7 +210,7 @@ func startTxGeneratorUnderTest(
 
 func startQueryGeneratorUnderTest(
 	t *testing.T, profile *Profile, options *StreamOptions,
-) *RateLimiterGenerator[*protoqueryservice.Query] {
+) *RateLimiterGenerator[*committerpb.Query] {
 	t.Helper()
 	g := NewQueryGenerator(profile, options)
 	test.RunServiceForTest(t.Context(), t, g.Run, nil)
@@ -270,7 +270,7 @@ func TestGenInvalidSigTx(t *testing.T) {
 	g := c.MakeGenerator()
 	txs := g.NextN(t.Context(), 1e4)
 	signer := NewTxSignerVerifier(p.Transaction.Policy)
-	valid := Map(txs, func(_ int, tx *protoloadgen.TX) float64 {
+	valid := Map(txs, func(_ int, tx *servicepb.LoadGenTx) float64 {
 		if !signer.Verify(tx.Id, tx.Tx) {
 			return 1
 		}
@@ -397,7 +397,7 @@ func (m *modGenTester) Next() Modifier {
 	return m
 }
 
-func (m *modGenTester) Modify(tx *protoblocktx.Tx) {
+func (m *modGenTester) Modify(tx *applicationpb.Tx) {
 	for _, ns := range tx.Namespaces {
 		ns.NsVersion = m.nsVersion
 	}
@@ -420,8 +420,8 @@ func TestGenTxWithModifier(t *testing.T) {
 type queryTestEnv struct {
 	p        *Profile
 	keys     map[string]*struct{}
-	txGen    *RateLimiterGenerator[*protoloadgen.TX]
-	queryGen *RateLimiterGenerator[*protoqueryservice.Query]
+	txGen    *RateLimiterGenerator[*servicepb.LoadGenTx]
+	queryGen *RateLimiterGenerator[*committerpb.Query]
 }
 
 func newQueryTestEnv(t *testing.T, p *Profile, o *StreamOptions) *queryTestEnv {
@@ -551,4 +551,18 @@ func TestQueryShuffle(t *testing.T) {
 			require.NotEqual(t, 0, env.countExistingKeys(query.Namespaces[0].Keys[validCount:]))
 		}
 	})
+}
+
+func TestAsnMarshal(t *testing.T) {
+	t.Parallel()
+	loadGenTxs := GenerateTransactions(t, DefaultProfile(8), 128)
+	txs := make([]*signature.TestTx, len(loadGenTxs))
+	for i, tx := range loadGenTxs {
+		txs[i] = &signature.TestTx{
+			ID:         tx.Id,
+			Namespaces: tx.Tx.Namespaces,
+		}
+	}
+	// We test against the generated load to enforce a coupling between different parts of the system.
+	signature.CommonTestAsnMarshal(t, txs)
 }

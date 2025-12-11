@@ -13,7 +13,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
@@ -46,7 +46,7 @@ type (
 	// needs to be processed.
 	TransactionBatch struct {
 		ID  uint64
-		Txs []*protocoordinatorservice.Tx
+		Txs []*servicepb.CoordinatorTx
 	}
 
 	transactionNodeBatch struct {

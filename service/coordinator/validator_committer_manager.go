@@ -15,9 +15,8 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -36,7 +35,7 @@ type (
 	// 4. Forwarding the status of the transactions to the coordinator.
 	validatorCommitterManager struct {
 		config              *validatorCommitterManagerConfig
-		commonClient        protovcservice.ValidationAndCommitServiceClient
+		commonClient        servicepb.ValidationAndCommitServiceClient
 		validatorCommitter  []*validatorCommitter
 		txsStatusBufferSize int
 		// ready indicates that the validatorCommitter array is initialized.
@@ -47,7 +46,7 @@ type (
 	// vcserver.
 	validatorCommitter struct {
 		conn      *grpc.ClientConn
-		client    protovcservice.ValidationAndCommitServiceClient
+		client    servicepb.ValidationAndCommitServiceClient
 		metrics   *perfMetrics
 		policyMgr *policyManager
 
@@ -60,7 +59,7 @@ type (
 		clientConfig                   *connection.MultiClientConfig
 		incomingTxsForValidationCommit <-chan dependencygraph.TxNodeBatch
 		outgoingValidatedTxsNode       chan<- dependencygraph.TxNodeBatch
-		outgoingTxsStatus              chan<- *protoblocktx.TransactionsStatus
+		outgoingTxsStatus              chan<- *applicationpb.TransactionsStatus
 		metrics                        *perfMetrics
 		policyMgr                      *policyManager
 	}
@@ -98,7 +97,7 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 		return fmt.Errorf("failed to create connection to validator persisters: %w", err)
 	}
 	defer connection.CloseConnectionsLog(commonConn)
-	vcm.commonClient = protovcservice.NewValidationAndCommitServiceClient(commonConn)
+	vcm.commonClient = servicepb.NewValidationAndCommitServiceClient(commonConn)
 	_, setupErr := vcm.commonClient.SetupSystemTablesAndNamespaces(ctx, nil)
 	if setupErr != nil {
 		return errors.Wrap(setupErr, "failed to setup system tables and namespaces")
@@ -136,7 +135,7 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 
 func (vcm *validatorCommitterManager) setLastCommittedBlockNumber(
 	ctx context.Context,
-	lastBlock *protoblocktx.BlockInfo,
+	lastBlock *applicationpb.BlockInfo,
 ) error {
 	_, err := vcm.commonClient.SetLastCommittedBlockNumber(ctx, lastBlock)
 	return errors.Wrap(err, "failed setting the last committed block number")
@@ -144,29 +143,29 @@ func (vcm *validatorCommitterManager) setLastCommittedBlockNumber(
 
 func (vcm *validatorCommitterManager) getNextBlockNumberToCommit(
 	ctx context.Context,
-) (*protoblocktx.BlockInfo, error) {
+) (*applicationpb.BlockInfo, error) {
 	ret, err := vcm.commonClient.GetNextBlockNumberToCommit(ctx, nil)
 	return ret, errors.Wrap(err, "failed getting the next expected block number")
 }
 
 func (vcm *validatorCommitterManager) getTransactionsStatus(
 	ctx context.Context,
-	query *protoblocktx.QueryStatus,
-) (*protoblocktx.TransactionsStatus, error) {
+	query *applicationpb.QueryStatus,
+) (*applicationpb.TransactionsStatus, error) {
 	ret, err := vcm.commonClient.GetTransactionsStatus(ctx, query)
 	return ret, errors.Wrap(err, "failed getting transactions status")
 }
 
 func (vcm *validatorCommitterManager) getNamespacePolicies(
 	ctx context.Context,
-) (*protoblocktx.NamespacePolicies, error) {
+) (*applicationpb.NamespacePolicies, error) {
 	ret, err := vcm.commonClient.GetNamespacePolicies(ctx, nil)
 	return ret, errors.Wrap(err, "failed loading policies")
 }
 
 func (vcm *validatorCommitterManager) getConfigTransaction(
 	ctx context.Context,
-) (*protoblocktx.ConfigTransaction, error) {
+) (*applicationpb.ConfigTransaction, error) {
 	ret, err := vcm.commonClient.GetConfigTransaction(ctx, nil)
 	return ret, errors.Wrap(err, "failed loading config transaction")
 }
@@ -183,7 +182,7 @@ func (vcm *validatorCommitterManager) recoverPolicyManagerFromStateDB(ctx contex
 	if len(policyMsg.Policies) == 0 && configMsg.Envelope == nil {
 		return nil
 	}
-	vcm.config.policyMgr.update(&protosigverifierservice.Update{
+	vcm.config.policyMgr.update(&servicepb.VerifierUpdates{
 		NamespacePolicies: policyMsg,
 		Config:            configMsg,
 	})
@@ -193,7 +192,7 @@ func (vcm *validatorCommitterManager) recoverPolicyManagerFromStateDB(ctx contex
 func newValidatorCommitter(conn *grpc.ClientConn, metrics *perfMetrics, policyMgr *policyManager) *validatorCommitter {
 	return &validatorCommitter{
 		conn:      conn,
-		client:    protovcservice.NewValidationAndCommitServiceClient(conn),
+		client:    servicepb.NewValidationAndCommitServiceClient(conn),
 		metrics:   metrics,
 		policyMgr: policyMgr,
 	}
@@ -203,7 +202,7 @@ func (vc *validatorCommitter) sendTransactionsAndForwardStatus(
 	ctx context.Context,
 	inputTxBatch channel.ReaderWriter[dependencygraph.TxNodeBatch],
 	outputValidatedTxsNode channel.Writer[dependencygraph.TxNodeBatch],
-	outputTxsStatus channel.Writer[*protoblocktx.TransactionsStatus],
+	outputTxsStatus channel.Writer[*applicationpb.TransactionsStatus],
 ) error {
 	defer vc.metrics.vcservicesConnection.Disconnected(vc.conn.CanonicalTarget())
 
@@ -236,7 +235,7 @@ func (vc *validatorCommitter) sendTransactionsAndForwardStatus(
 }
 
 func (vc *validatorCommitter) sendTransactionsToVCService(
-	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient,
+	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamClient,
 	inputTxsNode channel.Reader[dependencygraph.TxNodeBatch],
 ) error {
 	firstBatch := true
@@ -247,7 +246,7 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 		}
 
 		logger.Debugf("New TX node came from dependency graph manager to vc manager")
-		txBatch := make([]*protovcservice.Tx, len(txsNode))
+		txBatch := make([]*servicepb.VcTx, len(txsNode))
 		for i, txNode := range txsNode {
 			vc.txBeingValidated.Store(txNode.Tx.Ref.TxId, txNode)
 			txBatch[i] = txNode.Tx
@@ -261,7 +260,7 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 			continue
 		}
 
-		if err := stream.Send(&protovcservice.Batch{
+		if err := stream.Send(&servicepb.VcBatch{
 			Transactions: txBatch,
 		}); err != nil {
 			return errors.Wrap(err, streamEndErrWrap)
@@ -271,15 +270,15 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 }
 
 func splitAndSendToVC(
-	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient,
-	txBatch []*protovcservice.Tx,
+	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamClient,
+	txBatch []*servicepb.VcTx,
 ) error {
-	blkToBatch := make(map[uint64]*protovcservice.Batch)
+	blkToBatch := make(map[uint64]*servicepb.VcBatch)
 	for _, tx := range txBatch {
 		rBatch, ok := blkToBatch[tx.Ref.BlockNum]
 		if !ok {
-			rBatch = &protovcservice.Batch{
-				Transactions: make([]*protovcservice.Tx, 0, len(txBatch)),
+			rBatch = &servicepb.VcBatch{
+				Transactions: make([]*servicepb.VcTx, 0, len(txBatch)),
 			}
 			blkToBatch[tx.Ref.BlockNum] = rBatch
 		}
@@ -297,9 +296,9 @@ func splitAndSendToVC(
 }
 
 func (vc *validatorCommitter) receiveStatusAndForwardToOutput(
-	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient,
+	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamClient,
 	outputTxsNode channel.Writer[dependencygraph.TxNodeBatch],
-	outputTxsStatus channel.Writer[*protoblocktx.TransactionsStatus],
+	outputTxsStatus channel.Writer[*applicationpb.TransactionsStatus],
 ) error {
 	for {
 		txsStatus, err := stream.Recv()
@@ -360,7 +359,7 @@ func (vc *validatorCommitter) recoverPendingTransactions(inputTxsNode channel.Wr
 	inputTxsNode.Write(pendingTxs)
 }
 
-func (vc *validatorCommitter) getTxsAndUpdatePolicies(txsStatus *protoblocktx.TransactionsStatus) (
+func (vc *validatorCommitter) getTxsAndUpdatePolicies(txsStatus *applicationpb.TransactionsStatus) (
 	[]*dependencygraph.TransactionNode, []string,
 ) {
 	txsNode := make([]*dependencygraph.TransactionNode, 0, len(txsStatus.Status))
@@ -378,7 +377,7 @@ func (vc *validatorCommitter) getTxsAndUpdatePolicies(txsStatus *protoblocktx.Tr
 		}
 		txsNode = append(txsNode, txNode)
 
-		if txStatus.Code != protoblocktx.Status_COMMITTED {
+		if txStatus.Code != applicationpb.Status_COMMITTED {
 			continue
 		}
 

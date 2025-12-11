@@ -11,8 +11,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
@@ -23,7 +23,7 @@ func BenchmarkMapBlock(b *testing.B) {
 	txs := workload.GenerateTransactions(b, workload.DefaultProfile(8), b.N)
 	block := workload.MapToOrdererBlock(1, txs)
 
-	var txIDToHeight utils.SyncMap[string, types.Height]
+	var txIDToHeight utils.SyncMap[string, servicepb.Height]
 	b.ResetTimer()
 	mappedBlock, err := mapBlock(block, &txIDToHeight)
 	b.StopTimer()
@@ -43,16 +43,16 @@ func TestBlockMapping(t *testing.T) {
 		}
 		expected[i] = statusNotYetValidated
 		expectedBlockSize++
-		if e != protoblocktx.Status_COMMITTED {
+		if e != applicationpb.Status_COMMITTED {
 			expectedRejected++
 		}
 	}
 	lgTX := txb.MakeTx(txs[0].Tx)
 	txs = append(txs, lgTX)
-	expected = append(expected, protoblocktx.Status_REJECTED_DUPLICATE_TX_ID)
+	expected = append(expected, applicationpb.Status_REJECTED_DUPLICATE_TX_ID)
 
-	var txIDToHeight utils.SyncMap[string, types.Height]
-	txIDToHeight.Store(lgTX.Id, types.Height{})
+	var txIDToHeight utils.SyncMap[string, servicepb.Height]
+	txIDToHeight.Store(lgTX.Id, servicepb.Height{})
 
 	block := workload.MapToOrdererBlock(1, txs)
 	mappedBlock, err := mapBlock(block, &txIDToHeight)

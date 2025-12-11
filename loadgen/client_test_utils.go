@@ -12,7 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -55,7 +55,7 @@ func DefaultClientConf() *ClientConfig {
 							Scheme: signature.Ecdsa,
 							Seed:   10,
 						},
-						types.MetaNamespaceID: {
+						committerpb.MetaNamespaceID: {
 							Scheme: signature.Ecdsa,
 							Seed:   11,
 						},

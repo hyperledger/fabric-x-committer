@@ -24,7 +24,7 @@ import (
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/grpc/status"
 
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -48,7 +48,7 @@ func TestGRPCRetry(t *testing.T) {
 
 	t.Log("Connecting")
 	conn := test.NewInsecureConnection(t, &serverConfig.Endpoint)
-	client := protovcservice.NewValidationAndCommitServiceClient(conn)
+	client := servicepb.NewValidationAndCommitServiceClient(conn)
 
 	t.Log("Sanity check")
 	_, err := client.GetNamespacePolicies(ctx, nil)
@@ -75,7 +75,7 @@ func TestGRPCRetry(t *testing.T) {
 	conn2 := test.NewInsecureConnectionWithRetry(t, &serverConfig.Endpoint, connection.RetryProfile{
 		MaxElapsedTime: 2 * time.Second,
 	})
-	client2 := protovcservice.NewValidationAndCommitServiceClient(conn2)
+	client2 := servicepb.NewValidationAndCommitServiceClient(conn2)
 
 	t.Log("Sanity check with lower timeout")
 	_, err = client2.GetNamespacePolicies(ctx, nil)
@@ -119,7 +119,7 @@ func TestGRPCRetryMultiEndpoints(t *testing.T) {
 
 	t.Log("Connecting")
 	conn := test.NewInsecureConnection(t, &serverConfig.Endpoint)
-	client := protovcservice.NewValidationAndCommitServiceClient(conn)
+	client := servicepb.NewValidationAndCommitServiceClient(conn)
 
 	t.Log("Sanity check")
 	_, err := client.GetNamespacePolicies(ctx, nil)
@@ -141,7 +141,7 @@ func TestGRPCRetryMultiEndpoints(t *testing.T) {
 		&fakeServerConfig.Endpoint,
 		&serverConfig.Endpoint,
 	})
-	multiClient := protovcservice.NewValidationAndCommitServiceClient(multiConn)
+	multiClient := servicepb.NewValidationAndCommitServiceClient(multiConn)
 	for i := range 100 {
 		t.Logf("Fetch attempt: %d", i)
 		_, err = multiClient.GetNamespacePolicies(ctx, nil)

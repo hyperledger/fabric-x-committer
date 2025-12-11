@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
@@ -192,7 +192,7 @@ func TestDependencyGraphManager(t *testing.T) {
 
 			incomingTxs <- &TransactionBatch{
 				ID:  1,
-				Txs: []*protocoordinatorservice.Tx{t1, t2},
+				Txs: []*servicepb.CoordinatorTx{t1, t2},
 			}
 
 			test.EventuallyIntMetric(t, 1, metrics.dependentTransactionsQueueSize, 5*time.Second, 100*time.Millisecond)
@@ -204,7 +204,7 @@ func TestDependencyGraphManager(t *testing.T) {
 
 			incomingTxs <- &TransactionBatch{
 				ID:  2,
-				Txs: []*protocoordinatorservice.Tx{t3, t4},
+				Txs: []*servicepb.CoordinatorTx{t3, t4},
 			}
 
 			test.EventuallyIntMetric(t, 3, metrics.dependentTransactionsQueueSize, 5*time.Second, 100*time.Millisecond)
@@ -255,10 +255,10 @@ func TestDependencyGraphManager(t *testing.T) {
 			t.Log("check dependency in namespace")
 			// t2 depends on t1, t1 depends on t0.
 			t0 := createTxForTest(
-				t, 0, types.ConfigNamespaceID, nil, nil, [][]byte{[]byte(types.ConfigKey)},
+				t, 0, committerpb.ConfigNamespaceID, nil, nil, [][]byte{[]byte(committerpb.ConfigKey)},
 			)
 			t1 = createTxForTest(
-				t, 1, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
+				t, 1, committerpb.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 			)
 			t2 = createTxForTest(
 				t, 2, nsID1ForTest, keys(4, 5), keys(2, 6), keys(3, 7),
@@ -266,19 +266,19 @@ func TestDependencyGraphManager(t *testing.T) {
 
 			incomingTxs <- &TransactionBatch{
 				ID:  3,
-				Txs: []*protocoordinatorservice.Tx{t0, t1, t2},
+				Txs: []*servicepb.CoordinatorTx{t0, t1, t2},
 			}
 
 			// t3 depends on t2, t1, and t0
 			t3 = createTxForTest(
-				t, 0, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
+				t, 0, committerpb.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 			)
 			// t4 depends on t3, t2 and t1
 			t4 = createTxForTest(t, 1, nsID1ForTest, keys(7, 6), keys(4, 1), keys(0, 9))
 
 			incomingTxs <- &TransactionBatch{
 				ID:  4,
-				Txs: []*protocoordinatorservice.Tx{t3, t4},
+				Txs: []*servicepb.CoordinatorTx{t3, t4},
 			}
 
 			// only t0 is dependency free
@@ -331,7 +331,7 @@ func TestDependencyGraphManager(t *testing.T) {
 			ensureWaitingTXsLimit(t, manService, 0)
 
 			t.Log("check waiting TX limit")
-			txs := make([]*protocoordinatorservice.Tx, waitingTXsLimit+1)
+			txs := make([]*servicepb.CoordinatorTx, waitingTXsLimit+1)
 			for i := range txs {
 				txs[i] = createTxForTest(t, i, nsID1ForTest, nil, keys(i), nil)
 			}
@@ -340,7 +340,7 @@ func TestDependencyGraphManager(t *testing.T) {
 				Txs: txs,
 			}
 
-			txs2 := make([]*protocoordinatorservice.Tx, 10)
+			txs2 := make([]*servicepb.CoordinatorTx, 10)
 			for i := range txs2 {
 				txs2[i] = createTxForTest(t, i, nsID1ForTest, nil, keys(i+len(txs)), nil)
 			}

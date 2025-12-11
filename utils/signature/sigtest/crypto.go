@@ -76,14 +76,9 @@ func ParseSigningKey(keyContent []byte) (*ecdsa.PrivateKey, error) {
 
 // GetSerializedKeyFromCert reads a ECDSA public key from a certificate file.
 func GetSerializedKeyFromCert(certPath string) (signature.PublicKey, error) {
-	pemContent, err := os.ReadFile(filepath.Clean(certPath))
+	cert, err := GetCert(certPath)
 	if err != nil {
-		return nil, errors.Wrap(err, "cannot read certificate")
-	}
-	block, _ := pem.Decode(pemContent)
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		return nil, errors.Wrap(err, "cannot parse cert")
+		return nil, err
 	}
 
 	pk, ok := cert.PublicKey.(*ecdsa.PublicKey)
@@ -92,4 +87,23 @@ func GetSerializedKeyFromCert(certPath string) (signature.PublicKey, error) {
 	}
 
 	return SerializeVerificationKey(pk)
+}
+
+// GetCert reads a PEM-encoded X.509 certificate from the specified file path.
+// and returns the parsed certificate.
+func GetCert(certPath string) (*x509.Certificate, error) {
+	pemContent, err := os.ReadFile(filepath.Clean(certPath))
+	if err != nil {
+		return nil, errors.Wrap(err, "cannot read certificate")
+	}
+	block, _ := pem.Decode(pemContent)
+	if block == nil {
+		return nil, errors.Newf("no pem content for file %s", certPath)
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, errors.Wrap(err, "cannot parse cert")
+	}
+
+	return cert, nil
 }

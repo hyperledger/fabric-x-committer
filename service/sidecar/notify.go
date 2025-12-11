@@ -14,7 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/hyperledger/fabric-x-committer/api/protonotify"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 )
 
@@ -26,7 +26,7 @@ type (
 	// writing to each stream's notificationQueue.
 	// Deadlock is prevented by buffered channels and single-threaded processing in run().
 	notifier struct {
-		protonotify.UnimplementedNotifierServer
+		committerpb.UnimplementedNotifierServer
 		bufferSize int
 		maxTimeout time.Duration
 		// requestQueue receives requests from users.
@@ -34,9 +34,9 @@ type (
 	}
 
 	notificationRequest struct {
-		request *protonotify.NotificationRequest
+		request *committerpb.NotificationRequest
 		// streamEventQueue is used to submit notifications to the users (includes the request's context).
-		streamEventQueue channel.Writer[*protonotify.NotificationResponse]
+		streamEventQueue channel.Writer[*committerpb.NotificationResponse]
 
 		// Internal use. Used to keep track of the request, and release its resources when it is fulfilled.
 		timer   *time.Timer
@@ -59,7 +59,7 @@ func newNotifier(bufferSize int, conf *NotificationServiceConfig) *notifier {
 	}
 }
 
-func (n *notifier) run(ctx context.Context, statusQueue chan []*protonotify.TxStatusEvent) error {
+func (n *notifier) run(ctx context.Context, statusQueue chan []*committerpb.TxStatusEvent) error {
 	notifyMap := subscriptionMap(make(map[string]map[*notificationRequest]any))
 	timeoutQueue := make(chan *notificationRequest, cap(n.requestQueue))
 	timeoutQueueCtx := channel.NewWriter(ctx, timeoutQueue)
@@ -84,10 +84,10 @@ func (n *notifier) run(ctx context.Context, statusQueue chan []*protonotify.TxSt
 }
 
 // OpenNotificationStream implements the [protonotify.NotifierServer] API.
-func (n *notifier) OpenNotificationStream(stream protonotify.Notifier_OpenNotificationStreamServer) error {
+func (n *notifier) OpenNotificationStream(stream committerpb.Notifier_OpenNotificationStreamServer) error {
 	g, gCtx := errgroup.WithContext(stream.Context())
 	requestQueue := channel.NewWriter(gCtx, n.requestQueue)
-	streamEventQueue := channel.Make[*protonotify.NotificationResponse](gCtx, n.bufferSize)
+	streamEventQueue := channel.Make[*committerpb.NotificationResponse](gCtx, n.bufferSize)
 
 	g.Go(func() error {
 		for gCtx.Err() == nil {
@@ -118,7 +118,7 @@ func (n *notifier) OpenNotificationStream(stream protonotify.Notifier_OpenNotifi
 	return g.Wait()
 }
 
-func fixTimeout(request *protonotify.NotificationRequest, maxTimeout time.Duration) {
+func fixTimeout(request *committerpb.NotificationRequest, maxTimeout time.Duration) {
 	timeout := min(request.Timeout.AsDuration(), maxTimeout)
 	if timeout <= 0 {
 		timeout = maxTimeout
@@ -142,8 +142,8 @@ func (m subscriptionMap) addRequest(req *notificationRequest) {
 }
 
 // removeAndEnqueueStatusEvents removes TXs from the map and reports the responses to the subscribers.
-func (m subscriptionMap) removeAndEnqueueStatusEvents(status []*protonotify.TxStatusEvent) {
-	respMap := make(map[channel.Writer[*protonotify.NotificationResponse]][]*protonotify.TxStatusEvent)
+func (m subscriptionMap) removeAndEnqueueStatusEvents(status []*committerpb.TxStatusEvent) {
+	respMap := make(map[channel.Writer[*committerpb.NotificationResponse]][]*committerpb.TxStatusEvent)
 	for _, response := range status {
 		reqList, ok := m[response.TxId]
 		if !ok {
@@ -159,7 +159,7 @@ func (m subscriptionMap) removeAndEnqueueStatusEvents(status []*protonotify.TxSt
 		}
 	}
 	for notificationQueue, response := range respMap {
-		notificationQueue.Write(&protonotify.NotificationResponse{
+		notificationQueue.Write(&committerpb.NotificationResponse{
 			TxStatusEvents: response,
 		})
 	}
@@ -183,7 +183,7 @@ func (m subscriptionMap) removeAndEnqueueTimeoutEvents(req *notificationRequest)
 			delete(requests, req)
 		}
 	}
-	req.streamEventQueue.Write(&protonotify.NotificationResponse{
+	req.streamEventQueue.Write(&committerpb.NotificationResponse{
 		TimeoutTxIds: txIDs,
 	})
 }

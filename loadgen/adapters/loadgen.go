@@ -12,8 +12,8 @@ import (
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -28,8 +28,8 @@ type (
 	}
 
 	receivedBatch struct {
-		batch  *protoloadgen.Batch
-		status protoblocktx.Status
+		batch  *servicepb.LoadGenBatch
+		status applicationpb.Status
 	}
 )
 
@@ -48,7 +48,7 @@ func (c *LoadGenAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 		return errors.Wrapf(err, "failed to connect to %s", c.config.Endpoint)
 	}
 	defer connection.CloseConnectionsLog(conn)
-	client := protoloadgen.NewLoadGenServiceClient(conn)
+	client := servicepb.NewLoadGenServiceClient(conn)
 
 	receiveQueue := make(chan receivedBatch, c.res.Stream.BuffersSize)
 
@@ -58,11 +58,11 @@ func (c *LoadGenAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 	g.Go(func() error {
 		receiveQueueCtx := channel.NewWriter(gCtx, receiveQueue)
 		return sendBlocks(dCtx, &c.commonAdapter, txStream, workload.MapToLoadGenBatch,
-			func(batch *protoloadgen.Batch) error {
+			func(batch *servicepb.LoadGenBatch) error {
 				_, appendErr := client.AppendBatch(dCtx, batch)
-				status := protoblocktx.Status_COMMITTED
+				status := applicationpb.Status_COMMITTED
 				if appendErr != nil {
-					status = protoblocktx.Status_NOT_VALIDATED
+					status = applicationpb.Status_NOT_VALIDATED
 				}
 				receiveQueueCtx.Write(receivedBatch{
 					batch:  batch,

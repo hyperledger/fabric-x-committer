@@ -7,19 +7,22 @@ SPDX-License-Identifier: Apache-2.0
 package signature_test
 
 import (
+	"encoding/hex"
 	"testing"
 
 	fmsp "github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/common/cauthdsl"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
+	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/test/apptest"
 )
 
 const fakeTxID = "fake-id"
@@ -27,21 +30,21 @@ const fakeTxID = "fake-id"
 func TestNsVerifierThresholdRule(t *testing.T) {
 	t.Parallel()
 	pItem, nsSigner := policy.MakePolicyAndNsSigner(t, "1")
-	pol := &protoblocktx.NamespacePolicy{}
+	pol := &applicationpb.NamespacePolicy{}
 	require.NoError(t, proto.Unmarshal(pItem.Policy, pol))
 	nsVerifier, err := signature.NewNsVerifier(pol, nil)
 	require.NoError(t, err)
 
-	tx1 := &protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
+	tx1 := &applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:       "1",
 			NsVersion:  1,
-			ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("k1"), Value: []byte("v1")}},
+			ReadWrites: []*applicationpb.ReadWrite{{Key: []byte("k1"), Value: []byte("v1")}},
 		}},
 	}
 	sig, err := nsSigner.SignNs(fakeTxID, tx1, 0)
 	require.NoError(t, err)
-	tx1.Endorsements = test.CreateEndorsementsForThresholdRule(sig)
+	tx1.Endorsements = apptest.CreateEndorsementsForThresholdRule(sig)
 	require.NoError(t, nsVerifier.VerifyNs(fakeTxID, tx1, 0))
 }
 
@@ -50,8 +53,11 @@ func TestNsVerifierSignatureRule(t *testing.T) {
 	mspIDs := []string{"org0", "org1", "org2", "org3"}
 	certBytes := []string{"id0", "id1", "id2", "id3"}
 	identities := make([][]byte, len(mspIDs))
+	knownIdentities := make(map[msp.IdentityIdentifier]msp.Identity)
 	for i, mspID := range mspIDs {
 		identities[i] = protoutil.MarshalOrPanic(&fmsp.SerializedIdentity{Mspid: mspID, IdBytes: []byte(certBytes[i])})
+		idIdentifier := msp.IdentityIdentifier{Mspid: mspID, Id: hex.EncodeToString([]byte(certBytes[i]))}
+		knownIdentities[idIdentifier] = &cauthdsl.MockIdentity{MspID: mspID, IDBytes: []byte(certBytes[i])}
 	}
 
 	// org0 and org3 must sign along with either org1 or org2. To realize this condition, the policy can be
@@ -68,39 +74,44 @@ func TestNsVerifierSignatureRule(t *testing.T) {
 	require.NoError(t, err)
 
 	nsVerifier, err := signature.NewNsVerifier(
-		&protoblocktx.NamespacePolicy{Rule: &protoblocktx.NamespacePolicy_MspRule{MspRule: pBytes}},
-		&cauthdsl.MockIdentityDeserializer{})
+		&applicationpb.NamespacePolicy{Rule: &applicationpb.NamespacePolicy_MspRule{MspRule: pBytes}},
+		&cauthdsl.MockIdentityDeserializer{KnownIdentities: knownIdentities})
 	require.NoError(t, err)
 
-	tx1 := &protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{{
-			NsId:       "1",
-			NsVersion:  1,
-			ReadWrites: []*protoblocktx.ReadWrite{{Key: []byte("k1"), Value: []byte("v1")}},
-		}},
+	for _, creatorType := range []int{test.CreatorCertificate, test.CreatorID} {
+		tx1 := &applicationpb.Tx{
+			Namespaces: []*applicationpb.TxNamespace{{
+				NsId:       "1",
+				NsVersion:  1,
+				ReadWrites: []*applicationpb.ReadWrite{{Key: []byte("k1"), Value: []byte("v1")}},
+			}},
+		}
+		// org0, org3, and org1 sign.
+		tx1.Endorsements = []*applicationpb.Endorsements{apptest.CreateEndorsementsForSignatureRule(
+			toByteArray("s0", "s3", "s1"),
+			toByteArray("org0", "org3", "org1"),
+			toByteArray("id0", "id3", "id1"),
+			creatorType,
+		)}
+		require.NoError(t, nsVerifier.VerifyNs(fakeTxID, tx1, 0))
+
+		// org0, org3, and org2 sign.
+		tx1.Endorsements = []*applicationpb.Endorsements{apptest.CreateEndorsementsForSignatureRule(
+			toByteArray("s0", "s3", "s2"),
+			toByteArray("org0", "org3", "org2"),
+			toByteArray("id0", "id3", "id2"),
+			creatorType,
+		)}
+		require.NoError(t, nsVerifier.VerifyNs(fakeTxID, tx1, 0))
+
+		tx1.Endorsements = []*applicationpb.Endorsements{apptest.CreateEndorsementsForSignatureRule(
+			toByteArray("s0", "s3"),
+			toByteArray("org0", "org3"),
+			toByteArray("id0", "id3"),
+			creatorType,
+		)}
+		require.ErrorContains(t, nsVerifier.VerifyNs(fakeTxID, tx1, 0), "signature set did not satisfy policy")
 	}
-	// org0, org3, and org1 sign.
-	tx1.Endorsements = []*protoblocktx.Endorsements{test.CreateEndorsementsForSignatureRule(
-		toByteArray("s0", "s3", "s1"),
-		toByteArray("org0", "org3", "org1"),
-		toByteArray("id0", "id3", "id1"),
-	)}
-	require.NoError(t, nsVerifier.VerifyNs(fakeTxID, tx1, 0))
-
-	// org0, org3, and org2 sign.
-	tx1.Endorsements = []*protoblocktx.Endorsements{test.CreateEndorsementsForSignatureRule(
-		toByteArray("s0", "s3", "s2"),
-		toByteArray("org0", "org3", "org2"),
-		toByteArray("id0", "id3", "id2"),
-	)}
-	require.NoError(t, nsVerifier.VerifyNs(fakeTxID, tx1, 0))
-
-	tx1.Endorsements = []*protoblocktx.Endorsements{test.CreateEndorsementsForSignatureRule(
-		toByteArray("s0", "s3"),
-		toByteArray("org0", "org3"),
-		toByteArray("id0", "id3"),
-	)}
-	require.ErrorContains(t, nsVerifier.VerifyNs(fakeTxID, tx1, 0), "signature set did not satisfy policy")
 }
 
 func toByteArray(items ...string) [][]byte {
