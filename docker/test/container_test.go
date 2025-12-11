@@ -19,10 +19,8 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/go-connections/nat"
-	"github.com/google/go-cmp/cmp"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/testing/protocmp"
 
 	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
 	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
@@ -44,11 +42,11 @@ const (
 	coordinatorServicePort = "9001"
 	databasePort           = "5433"
 
-	baseContainerName = "committer"
-	defaultHost       = "localhost"
+	committerContainerName = "committer"
+	localhost              = "localhost"
 )
 
-var defaultCMD = []string{"run", "db", "committer", "orderer"}
+var commonTestNodeCMD = []string{"run", "db", "committer", "orderer"}
 
 // TestStartTestNodeWithTLSModesAndRemoteConnection launches the committer’s
 // all-in-one Docker image under each TLS mode, verifies that remote (non-internal)
@@ -63,17 +61,17 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			t.Parallel()
 			ctx := t.Context()
 
-			containerName := assembleContainerName(baseContainerName, mode, dbtest.PostgresDBType)
+			containerName := assembleContainerName(committerContainerName, mode, dbtest.PostgresDBType)
 			stopAndRemoveContainersByName(ctx, t, createDockerClient(t), containerName)
 			startCommitter(ctx, t, startNodeParameters{
 				node:         containerName,
 				credsFactory: credsFactory,
 				tlsMode:      mode,
-				cmd:          defaultCMD,
+				cmd:          commonTestNodeCMD,
 			})
 
-			// retrieve the policy from the loadgen configuration that matches the config-block policy.
-			// we do this in each subtest to avoid race conditions.
+			// Retrieve the policy from the loadgen configuration that matches the config-block policy.
+			// We do this in each subtest to avoid race conditions.
 			v := config.NewViperWithLoadGenDefaults()
 			c, err := config.ReadLoadGenYamlAndSetupLogging(v, filepath.Join(localConfigPath, "loadgen.yaml"))
 			require.NoError(t, err)
@@ -87,9 +85,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			runtime := runner.CommitterRuntime{
 				CredFactory:      credsFactory,
 				SeedForCryptoGen: rand.New(rand.NewSource(10)),
-				Config: &runner.Config{
-					CrashTest: false,
-				},
+				Config:           &runner.Config{},
 				SystemConfig: config.SystemConfig{
 					Endpoints: config.SystemEndpoints{
 						Sidecar: config.ServiceEndpoints{
@@ -114,7 +110,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			runtime.CreateRuntimeClients(ctx, t)
 			runtime.OpenNotificationStream(ctx, t)
 
-			// adding namespace policy and creating transaction builder
+			// Adding namespace policy and creating transaction builder
 			runtime.AddOrUpdateNamespaces(t, "1")
 
 			runtime.CommittedBlock = sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Parameters{
@@ -129,7 +125,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			require.True(t, ok)
 			t.Logf("Received block #%d with %d TXs", b.Header.Number, len(b.Data.Data))
 
-			// committing namespace transaction
+			// Committing namespace transaction
 			runtime.CreateNamespacesAndCommit(t, "1")
 
 			t.Log("Insert TXs")
@@ -199,17 +195,17 @@ func TestStartTestNode(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	stopAndRemoveContainersByName(ctx, t, createDockerClient(t), baseContainerName)
+	stopAndRemoveContainersByName(ctx, t, createDockerClient(t), committerContainerName)
 	startCommitter(ctx, t, startNodeParameters{
-		node:         baseContainerName,
+		node:         committerContainerName,
 		credsFactory: testutils.NewCredentialsFactory(t),
 		tlsMode:      connection.NoneTLSMode,
-		cmd:          append(defaultCMD, "loadgen"),
+		cmd:          append(commonTestNodeCMD, "loadgen"),
 	})
 
 	t.Log("Try to fetch the first block")
 	sidecarEndpoint, err := connection.NewEndpoint(
-		net.JoinHostPort(defaultHost, getContainerMappedHostPort(ctx, t, baseContainerName, sidecarPort)),
+		net.JoinHostPort(localhost, getContainerMappedHostPort(ctx, t, committerContainerName, sidecarPort)),
 	)
 	require.NoError(t, err)
 	committedBlock := sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Parameters{
@@ -220,7 +216,7 @@ func TestStartTestNode(t *testing.T) {
 	require.True(t, ok)
 	t.Logf("Received block #%d with %d TXs", b.Header.Number, len(b.Data.Data))
 
-	monitorMetric(t, getContainerMappedHostPort(ctx, t, baseContainerName, loadGenMetricsPort))
+	monitorMetric(t, getContainerMappedHostPort(ctx, t, committerContainerName, loadGenMetricsPort))
 }
 
 func startCommitter(ctx context.Context, t *testing.T, params startNodeParameters) {
@@ -259,32 +255,32 @@ func startCommitter(ctx context.Context, t *testing.T, params startNodeParameter
 			PortBindings: nat.PortMap{
 				// sidecar port binding
 				sidecarPort + "/tcp": []nat.PortBinding{{
-					HostIP:   defaultHost,
+					HostIP:   localhost,
 					HostPort: "0", // auto port assign
 				}},
 				mockOrdererPort + "/tcp": []nat.PortBinding{{
-					HostIP:   defaultHost,
+					HostIP:   localhost,
 					HostPort: "0", // auto port assign
 				}},
 				loadGenMetricsPort + "/tcp": []nat.PortBinding{{
-					HostIP:   defaultHost,
+					HostIP:   localhost,
 					HostPort: "0", // auto port assign
 				}},
 				queryServicePort + "/tcp": []nat.PortBinding{{
-					HostIP:   defaultHost,
+					HostIP:   localhost,
 					HostPort: "0", // auto port assign
 				}},
 				coordinatorServicePort + "/tcp": []nat.PortBinding{{
-					HostIP:   defaultHost,
+					HostIP:   localhost,
 					HostPort: "0", // auto port assign
 				}},
 				databasePort + "/tcp": []nat.PortBinding{{
-					HostIP:   defaultHost,
+					HostIP:   localhost,
 					HostPort: "0", // auto port assign
 				}},
 			},
 			// we create the credentials for the servers with "localhost" SNI.
-			Binds: assembleBinds(t, params.asNode(defaultHost)),
+			Binds: assembleBinds(t, params.asNode(localhost)),
 		},
 		name: params.node,
 	})
@@ -293,7 +289,7 @@ func startCommitter(ctx context.Context, t *testing.T, params startNodeParameter
 func mustGetEndpoint(ctx context.Context, t *testing.T, containerName, servicePort string) *connection.Endpoint {
 	t.Helper()
 	ep, err := connection.NewEndpoint(
-		net.JoinHostPort(defaultHost, getContainerMappedHostPort(ctx, t, containerName, servicePort)),
+		net.JoinHostPort(localhost, getContainerMappedHostPort(ctx, t, containerName, servicePort)),
 	)
 	require.NoError(t, err)
 	return ep
@@ -311,9 +307,6 @@ func requireQueryResults(
 	t.Helper()
 	require.Len(t, retNamespaces, len(requiredItems))
 	for idx := range retNamespaces {
-		require.True(t,
-			cmp.Equal(requiredItems[idx].Rows, retNamespaces[idx].Rows, protocmp.Transform()),
-			cmp.Diff(requiredItems[idx].Rows, retNamespaces[idx].Rows, protocmp.Transform()),
-		)
+		testutils.RequireProtoElementsMatch(t, requiredItems[idx].Rows, retNamespaces[idx].Rows)
 	}
 }

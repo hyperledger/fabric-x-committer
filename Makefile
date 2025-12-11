@@ -45,6 +45,9 @@ docker_cmd ?= $(shell command -v docker >/dev/null 2>&1 && echo docker || \
 							echo podman || { echo "Error: Neither Docker nor Podman is installed." >&2; exit 1; })
 image_namespace=icr.io/cbdc
 
+test_node_image_full ?= ${image_namespace}/committer-test-node:${version}
+export test_node_image_full
+
 # Set these parameters to compile to a specific os/arch
 # E.g., make build-local os=linux arch=amd64
 os             ?= $(shell $(go_cmd) env GOOS)
@@ -235,7 +238,7 @@ build-docker: FORCE $(cache_dir) $(mod_cache_dir)
 build-test-node-image: build-arch build-test-genesis-block
 	${docker_cmd} build $(docker_build_flags) \
 		-f $(dockerfile_test_node_dir)/Dockerfile \
-		-t ${image_namespace}/committer-test-node:${version} \
+		-t $(test_node_image_full) \
 		--build-arg ARCHBIN_PATH=${arch_output_dir_rel} \
 		. $(docker_push_arg)
 

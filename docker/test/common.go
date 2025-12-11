@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package test
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -50,11 +51,15 @@ func (p *startNodeParameters) asNode(node string) startNodeParameters {
 }
 
 const (
-	testNodeImage       = "icr.io/cbdc/committer-test-node:0.0.2"
 	channelName         = "mychannel"
 	monitoredMetric     = "loadgen_transaction_committed_total"
 	containerPrefixName = "sc_test"
 )
+
+var testNodeImage = func() string {
+	defaultFullNodeImage := "icr.io/cbdc/committer-test-node:0.0.2"
+	return cmp.Or(os.Getenv("test_node_image_full"), defaultFullNodeImage)
+}()
 
 func createAndStartContainerAndItsLogs(
 	ctx context.Context,
