@@ -7,7 +7,9 @@ SPDX-License-Identifier: Apache-2.0
 package workload
 
 import (
+	"maps"
 	"os"
+	"slices"
 
 	"github.com/cockroachdb/errors"
 
@@ -25,15 +27,14 @@ var logger = logging.New("load-gen-sign")
 type (
 	// TxSignerVerifier supports signing and verifying a TX, given a hash signer.
 	TxSignerVerifier struct {
-		HashSigners map[string]*HashSignerVerifier
+		policies map[string]*PolicySignerVerifier
 	}
 
-	// HashSignerVerifier supports signing and verifying a hash value.
-	HashSignerVerifier struct {
-		signer   *sigtest.NsSigner
-		verifier *signature.NsVerifier
-		pubKey   signature.PublicKey
-		scheme   signature.Scheme
+	// PolicySignerVerifier supports signing and verifying a hash value.
+	PolicySignerVerifier struct {
+		signer             *sigtest.NsSigner
+		verifier           *signature.NsVerifier
+		verificationPolicy *applicationpb.NamespacePolicy
 	}
 )
 
@@ -43,24 +44,41 @@ var defaultPolicy = Policy{
 
 // NewTxSignerVerifier creates a new TxSignerVerifier given a workload profile.
 func NewTxSignerVerifier(policy *PolicyProfile) *TxSignerVerifier {
-	signers := make(map[string]*HashSignerVerifier)
-	// We set default policy to ensure smooth operation even if the user did not specify anything.
-	signers[GeneratedNamespaceID] = NewHashSignerVerifier(&defaultPolicy)
-	signers[committerpb.MetaNamespaceID] = NewHashSignerVerifier(&defaultPolicy)
-
+	signers := make(map[string]*PolicySignerVerifier, len(policy.NamespacePolicies)+2)
 	for nsID, p := range policy.NamespacePolicies {
-		signers[nsID] = NewHashSignerVerifier(p)
+		signers[nsID] = NewPolicySignerVerifier(p)
 	}
-	return &TxSignerVerifier{
-		HashSigners: signers,
+
+	// We set default policy to ensure smooth operation even if the user did not specify anything.
+	for _, ns := range []string{GeneratedNamespaceID, committerpb.MetaNamespaceID} {
+		if _, ok := signers[ns]; !ok {
+			signers[ns] = NewPolicySignerVerifier(&defaultPolicy)
+		}
 	}
+
+	return &TxSignerVerifier{policies: signers}
+}
+
+// AllNamespaces returns all the signer's supported namespaces.
+func (e *TxSignerVerifier) AllNamespaces() []string {
+	return slices.Collect(maps.Keys(e.policies))
+}
+
+// Policy returns a namespace policy. It creates one if it does not exist.
+func (e *TxSignerVerifier) Policy(nsID string) *PolicySignerVerifier {
+	policySigner, ok := e.policies[nsID]
+	if !ok {
+		policySigner = NewPolicySignerVerifier(&defaultPolicy)
+		e.policies[nsID] = policySigner
+	}
+	return policySigner
 }
 
 // Sign signs a TX.
 func (e *TxSignerVerifier) Sign(txID string, tx *applicationpb.Tx) {
 	tx.Endorsements = make([]*applicationpb.Endorsements, len(tx.Namespaces))
 	for nsIndex, ns := range tx.Namespaces {
-		signer, ok := e.HashSigners[ns.NsId]
+		signer, ok := e.policies[ns.NsId]
 		if !ok {
 			continue
 		}
@@ -75,7 +93,7 @@ func (e *TxSignerVerifier) Verify(txID string, tx *applicationpb.Tx) bool {
 	}
 
 	for nsIndex, ns := range tx.GetNamespaces() {
-		signer, ok := e.HashSigners[ns.NsId]
+		signer, ok := e.policies[ns.NsId]
 		if !ok || !signer.Verify(txID, tx, nsIndex) {
 			return false
 		}
@@ -84,8 +102,8 @@ func (e *TxSignerVerifier) Verify(txID string, tx *applicationpb.Tx) bool {
 	return true
 }
 
-// NewHashSignerVerifier creates a new HashSignerVerifier given a workload profile and a seed.
-func NewHashSignerVerifier(profile *Policy) *HashSignerVerifier {
+// NewPolicySignerVerifier creates a new PolicySignerVerifier given a workload profile and a seed.
+func NewPolicySignerVerifier(profile *Policy) *PolicySignerVerifier {
 	logger.Debugf("sig profile: %v", profile)
 	factory := sigtest.NewSignatureFactory(profile.Scheme)
 
@@ -105,43 +123,37 @@ func NewHashSignerVerifier(profile *Policy) *HashSignerVerifier {
 	signer, err := factory.NewSigner(signingKey)
 	utils.Must(err)
 
-	return &HashSignerVerifier{
+	return &PolicySignerVerifier{
 		signer:   signer,
 		verifier: v,
-		pubKey:   verificationKey,
-		scheme:   profile.Scheme,
+		verificationPolicy: &applicationpb.NamespacePolicy{
+			Rule: &applicationpb.NamespacePolicy_ThresholdRule{
+				ThresholdRule: &applicationpb.ThresholdRule{
+					Scheme: profile.Scheme, PublicKey: verificationKey,
+				},
+			},
+		},
 	}
 }
 
 // Sign signs a hash.
-func (e *HashSignerVerifier) Sign(txID string, tx *applicationpb.Tx, nsIndex int) signature.Signature {
+func (e *PolicySignerVerifier) Sign(txID string, tx *applicationpb.Tx, nsIndex int) signature.Signature {
 	sign, err := e.signer.SignNs(txID, tx, nsIndex)
 	Must(err)
 	return sign
 }
 
 // Verify verifies a Signature.
-func (e *HashSignerVerifier) Verify(txID string, tx *applicationpb.Tx, nsIndex int) bool {
+func (e *PolicySignerVerifier) Verify(txID string, tx *applicationpb.Tx, nsIndex int) bool {
 	if err := e.verifier.VerifyNs(txID, tx, nsIndex); err != nil {
 		return false
 	}
 	return true
 }
 
-// GetVerificationPolicy returns the verification policy.
-func (e *HashSignerVerifier) GetVerificationPolicy() *applicationpb.NamespacePolicy {
-	return &applicationpb.NamespacePolicy{
-		Rule: &applicationpb.NamespacePolicy_ThresholdRule{
-			ThresholdRule: &applicationpb.ThresholdRule{
-				Scheme: e.scheme, PublicKey: e.pubKey,
-			},
-		},
-	}
-}
-
-// GetVerificationKeyAndSigner returns the verification key and the signer.
-func (e *HashSignerVerifier) GetVerificationKeyAndSigner() (signature.PublicKey, *sigtest.NsSigner) {
-	return e.pubKey, e.signer
+// VerificationPolicy returns the verification policy.
+func (e *PolicySignerVerifier) VerificationPolicy() *applicationpb.NamespacePolicy {
+	return e.verificationPolicy
 }
 
 func loadKeys(keyPath KeyPath) (signingKey signature.PrivateKey, verificationKey signature.PublicKey, err error) {

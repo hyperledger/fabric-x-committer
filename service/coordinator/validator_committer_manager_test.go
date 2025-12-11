@@ -31,6 +31,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
+	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -217,10 +218,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 			require.Empty(t, mockSvService.GetUpdates())
 		}
 
-		verificationKey, _ := workload.NewHashSignerVerifier(&workload.Policy{
-			Scheme: signature.Ecdsa,
-			Seed:   10,
-		}).GetVerificationKeyAndSigner()
+		_, verificationKey := sigtest.NewSignatureFactory(signature.Ecdsa).NewKeys()
 		p := policy.MakeECDSAThresholdRuleNsPolicy(verificationKey)
 		pBytes, err := proto.Marshal(p)
 		require.NoError(t, err)

@@ -93,15 +93,15 @@ func createUpdate(policy *workload.PolicyProfile) (*servicepb.VerifierUpdates, e
 			Envelope: envelopeBytes,
 		},
 		NamespacePolicies: &applicationpb.NamespacePolicies{
-			Policies: make([]*applicationpb.PolicyItem, 0, len(txSigner.HashSigners)),
+			Policies: make([]*applicationpb.PolicyItem, 0, len(txSigner.AllNamespaces())),
 		},
 	}
 
-	for ns, p := range txSigner.HashSigners {
+	for _, ns := range txSigner.AllNamespaces() {
 		if ns == committerpb.MetaNamespaceID {
 			continue
 		}
-		policy, err := proto.Marshal(p.GetVerificationPolicy())
+		policyBytes, err := proto.Marshal(txSigner.Policy(ns).VerificationPolicy())
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to serialize policy")
 		}
@@ -109,7 +109,7 @@ func createUpdate(policy *workload.PolicyProfile) (*servicepb.VerifierUpdates, e
 			updateMsg.NamespacePolicies.Policies,
 			&applicationpb.PolicyItem{
 				Namespace: ns,
-				Policy:    policy,
+				Policy:    policyBytes,
 			},
 		)
 	}

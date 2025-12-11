@@ -920,6 +920,10 @@ github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7 h1:sQ5qv8vQQfwewa1JlCiSCC8d
 github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7/go.mod h1:bJnwzfv03oZQeCc863pdGTDgf5nmCy6Za3RAE7d2XsQ=
 github.com/hyperledger/fabric-x-common v0.0.0-20251202124918-fc1bdd9f047a h1:6FKsx199DERm0lfSdzzExMPWrKRQic85y6gv9bDJLn4=
 github.com/hyperledger/fabric-x-common v0.0.0-20251202124918-fc1bdd9f047a/go.mod h1:7u/Yz8y3/88VX2JmqSOr2YVKm6qDtLbFc8PGZimP3V4=
+github.com/hyperledger/fabric-x-common v0.0.0-20251210111950-8c4f7df01875 h1:WsRxbhGgMXvduVIMn7Um5jqp9LRVLqLZo+Tbj0vhY4o=
+github.com/hyperledger/fabric-x-common v0.0.0-20251210111950-8c4f7df01875/go.mod h1:EDNayd2HEao22yv6ThvWfDKT2+cIR0Qplq3E/lgWwpA=
+github.com/hyperledger/fabric-x-common v0.0.0-20251211114026-4c950db7778e h1:5eDnbhRxekkH3l7w1xHmxW9m48HUSlzke+ZHRlm/PeM=
+github.com/hyperledger/fabric-x-common v0.0.0-20251211114026-4c950db7778e/go.mod h1:EDNayd2HEao22yv6ThvWfDKT2+cIR0Qplq3E/lgWwpA=
 github.com/iancoleman/strcase v0.2.0/go.mod h1:iwCmte+B7n89clKwxIoIXy/HfoL7AsD47ZCWhYzw7ho=
 github.com/ianlancetaylor/demangle v0.0.0-20181102032728-5e5cf60278f6/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
 github.com/ianlancetaylor/demangle v0.0.0-20200824232613-28f6c0f3b639/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
