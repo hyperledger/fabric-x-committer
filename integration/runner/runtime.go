@@ -79,7 +79,7 @@ type (
 	Crypto struct {
 		Namespace  string
 		Profile    *workload.Policy
-		HashSigner *workload.HashSignerVerifier
+		HashSigner *workload.PolicySignerVerifier
 		NsSigner   *sigtest.NsSigner
 		PubKey     []byte
 		PubKeyPath string
