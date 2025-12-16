@@ -31,7 +31,7 @@ type (
 
 	// NsPolicyEndorserVerifier supports endorsing and verifying a TX namespace.
 	NsPolicyEndorserVerifier struct {
-		endorser           *sigtest.NsEndorser
+		endorser           *sigtest.TxNsEndorser
 		verifier           *signature.NsVerifier
 		verificationPolicy *applicationpb.NamespacePolicy
 	}
@@ -104,7 +104,6 @@ func (e *TxEndorserVerifier) Verify(txID string, tx *applicationpb.Tx) bool {
 // NewPolicyEndorserVerifier creates a new NsPolicyEndorserVerifier given a workload profile and a seed.
 func NewPolicyEndorserVerifier(profile *Policy) *NsPolicyEndorserVerifier {
 	logger.Debugf("sig profile: %v", profile)
-	factory := sigtest.NewSignatureFactory(profile.Scheme)
 
 	var signingKey signature.PrivateKey
 	var verificationKey signature.PublicKey
@@ -115,11 +114,11 @@ func NewPolicyEndorserVerifier(profile *Policy) *NsPolicyEndorserVerifier {
 		utils.Must(err)
 	} else {
 		logger.Debugf("Generating new keys")
-		signingKey, verificationKey = factory.NewKeysWithSeed(profile.Seed)
+		signingKey, verificationKey = sigtest.NewKeysWithSeed(profile.Scheme, profile.Seed)
 	}
-	v, err := factory.NewVerifier(verificationKey)
+	v, err := sigtest.NewNsVerifierFromKey(profile.Scheme, verificationKey)
 	utils.Must(err)
-	endorser, err := factory.NewEndorser(signingKey)
+	endorser, err := sigtest.NewRawKeyEndorser(profile.Scheme, signingKey)
 	utils.Must(err)
 
 	return &NsPolicyEndorserVerifier{

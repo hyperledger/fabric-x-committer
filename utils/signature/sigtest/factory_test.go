@@ -22,14 +22,13 @@ import (
 
 func TestEndToEnd(t *testing.T) {
 	t.Parallel()
-	for _, schema := range signature.AllSchemes {
-		t.Run(schema, func(t *testing.T) {
+	for _, scheme := range signature.AllSchemes {
+		t.Run(scheme, func(t *testing.T) {
 			t.Parallel()
-			f := NewSignatureFactory(schema)
-			priv, pub := f.NewKeys()
-			v, err := f.NewVerifier(pub)
+			priv, pub := NewKeys(scheme)
+			v, err := NewNsVerifierFromKey(scheme, pub)
 			require.NoError(t, err)
-			endorser, err := f.NewEndorser(priv)
+			endorser, err := NewRawKeyEndorser(scheme, priv)
 			require.NoError(t, err)
 			txID := "test"
 			tx := &applicationpb.Tx{
@@ -50,31 +49,31 @@ func TestEndToEnd(t *testing.T) {
 func TestEcdsaPem(t *testing.T) {
 	t.Parallel()
 	// Currently, only ECDSA is encoded to PEM, so we only test it.
-	f := NewSignatureFactory(signature.Ecdsa)
+	scheme := signature.Ecdsa
 	dir := t.TempDir()
 	pemPath := filepath.Join(dir, fmt.Sprintf("%s.pem", signature.Ecdsa))
-	priv, pub := f.NewKeys()
+	priv, pub := NewKeys(scheme)
 	require.NoError(t, os.WriteFile(pemPath, append(priv, pub...), 0o600))
 
-	v, err := f.NewVerifier(pub)
+	v, err := NewNsVerifierFromKey(scheme, pub)
 	require.NoError(t, err)
-	endorser, err := f.NewEndorser(priv)
+	endorser, err := NewRawKeyEndorser(scheme, priv)
 	require.NoError(t, err)
 
 	m, err := readPem(pemPath)
 	require.NoError(t, err)
 
 	var pemV *signature.NsVerifier
-	var pemS *NsEndorser
+	var pemS *TxNsEndorser
 
 	for key, value := range m {
 		t.Log(key)
 		if strings.Contains(strings.ToLower(key), "public") {
-			pemV, err = f.NewVerifier(value)
+			pemV, err = NewNsVerifierFromKey(scheme, value)
 			require.NoError(t, err)
 		}
 		if strings.Contains(strings.ToLower(key), "private") {
-			pemS, err = f.NewEndorser(value)
+			pemS, err = NewRawKeyEndorser(scheme, value)
 			require.NoError(t, err)
 		}
 	}

@@ -40,8 +40,8 @@ const (
 type cryptoParameters struct {
 	cryptoPath   string
 	update       *servicepb.VerifierUpdates
-	metaTxSigner *sigtest.NsEndorser
-	dataTxSigner *sigtest.NsEndorser
+	metaTxSigner *sigtest.TxNsEndorser
+	dataTxSigner *sigtest.TxNsEndorser
 }
 
 func TestVerifierSecureConnection(t *testing.T) {
@@ -225,8 +225,7 @@ func TestSignatureRule(t *testing.T) {
 
 	// Update the config block to have SampleFabricX profile instead of
 	// the default TwoOrgsSampleFabricX.
-	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
-	_, metaTxVerificationKey := factory.NewKeys()
+	_, metaTxVerificationKey := sigtest.NewKeys(signature.Ecdsa)
 	configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
 		MetaNamespaceVerificationKey: metaTxVerificationKey,
 	}, configtxgen.SampleFabricX)
@@ -380,8 +379,8 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 
 	// Each policy update will update a unique namespace, and the common namespace.
 	updateCount := len(ns) - 1
-	uniqueNsEndorsers := make([]*sigtest.NsEndorser, updateCount)
-	commonNsEndorsers := make([]*sigtest.NsEndorser, updateCount)
+	uniqueNsEndorsers := make([]*sigtest.TxNsEndorser, updateCount)
+	commonNsEndorsers := make([]*sigtest.TxNsEndorser, updateCount)
 	for i := range updateCount {
 		uniqueNsPolicy, uniqueNsEndorser := makePolicyItem(t, ns[i])
 		uniqueNsEndorsers[i] = uniqueNsEndorser
@@ -442,7 +441,7 @@ type testCase struct {
 	expectedStatus applicationpb.Status
 }
 
-func endorse(t *testing.T, tx *applicationpb.Tx, signers ...*sigtest.NsEndorser) {
+func endorse(t *testing.T, tx *applicationpb.Tx, signers ...*sigtest.TxNsEndorser) {
 	t.Helper()
 	tx.Endorsements = make([]*applicationpb.Endorsements, len(signers))
 	for i, s := range signers {
@@ -468,11 +467,10 @@ func makeTX(namespaces ...string) *applicationpb.Tx {
 	return tx
 }
 
-func makePolicyItem(t *testing.T, ns string) (*applicationpb.PolicyItem, *sigtest.NsEndorser) {
+func makePolicyItem(t *testing.T, ns string) (*applicationpb.PolicyItem, *sigtest.TxNsEndorser) {
 	t.Helper()
-	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
-	signingKey, verificationKey := factory.NewKeys()
-	txEndorser, err := factory.NewEndorser(signingKey)
+	signingKey, verificationKey := sigtest.NewKeys(signature.Ecdsa)
+	txEndorser, err := sigtest.NewRawKeyEndorser(signature.Ecdsa, signingKey)
 	require.NoError(t, err)
 	return policy.MakePolicy(t, ns, policy.MakeECDSAThresholdRuleNsPolicy(verificationKey)), txEndorser
 }
@@ -540,18 +538,17 @@ func defaultCryptoParameters(t *testing.T) cryptoParameters {
 		cryptoPath: t.TempDir(),
 	}
 
-	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
-	metaTxSigningKey, metaTxVerificationKey := factory.NewKeys()
+	metaTxSigningKey, metaTxVerificationKey := sigtest.NewKeys(signature.Ecdsa)
 	configBlock, err := workload.CreateDefaultConfigBlockWithCrypto(ret.cryptoPath, &workload.ConfigBlock{
 		MetaNamespaceVerificationKey: metaTxVerificationKey,
 		PeerOrganizationCount:        2,
 	}, configtxgen.TwoOrgsSampleFabricX)
 	require.NoError(t, err)
-	ret.metaTxSigner, err = factory.NewEndorser(metaTxSigningKey)
+	ret.metaTxSigner, err = sigtest.NewRawKeyEndorser(signature.Ecdsa, metaTxSigningKey)
 	require.NoError(t, err)
 
-	dataTxSigningKey, dataTxVerificationKey := factory.NewKeys()
-	ret.dataTxSigner, err = factory.NewEndorser(dataTxSigningKey)
+	dataTxSigningKey, dataTxVerificationKey := sigtest.NewKeys(signature.Ecdsa)
+	ret.dataTxSigner, err = sigtest.NewRawKeyEndorser(signature.Ecdsa, dataTxSigningKey)
 	require.NoError(t, err)
 	ret.update = &servicepb.VerifierUpdates{
 		Config: &applicationpb.ConfigTransaction{

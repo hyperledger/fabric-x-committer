@@ -153,7 +153,7 @@ func CreateDefaultConfigBlockWithCrypto(
 	metaKey := conf.MetaNamespaceVerificationKey
 	if len(metaKey) == 0 {
 		// We must supply a valid meta namespace key.
-		_, metaKey = sigtest.NewSignatureFactory(signature.Ecdsa).NewKeys()
+		_, metaKey = sigtest.NewKeys(signature.Ecdsa)
 	}
 
 	return cryptogen.CreateDefaultConfigBlockWithCrypto(cryptogen.ConfigBlockParameters{

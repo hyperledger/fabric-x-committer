@@ -12,137 +12,74 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/binary"
+	"io"
 	"math/big"
 	pseudorand "math/rand"
-	"strings"
 
-	"github.com/cockroachdb/errors"
 	"github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"golang.org/x/crypto/sha3"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
-type (
-	// SignerVerifierFactory implements KeyFactory and instantiate verifiers and signers.
-	// This should only be used for evaluation and testing as it might use non-secure
-	// crypto methods.
-	SignerVerifierFactory struct {
-		KeyFactory
-		scheme signature.Scheme
-	}
-
-	// KeyFactory generates public and private keys.
-	KeyFactory interface {
-		NewKeys() (signature.PrivateKey, signature.PublicKey)
-		NewKeysWithSeed(int64) (signature.PrivateKey, signature.PublicKey)
-	}
-
-	// KeyFactory implementations.
-	dummyFactory struct{}
-	eddsaFactory struct{}
-	blsFactory   struct{}
-	ecdsaFactory struct{}
-)
-
-// String returns a string representation for logging.
-func (f *SignerVerifierFactory) String() string {
-	return f.Scheme()
-}
-
-// Scheme returns the factory scheme.
-func (f *SignerVerifierFactory) Scheme() signature.Scheme {
-	return f.scheme
-}
-
-// NewVerifier instantiate a verifier given a public key.
-func (f *SignerVerifierFactory) NewVerifier(key signature.PublicKey) (*signature.NsVerifier, error) {
-	v, err := signature.NewNsVerifier(&applicationpb.NamespacePolicy{
-		Rule: &applicationpb.NamespacePolicy_ThresholdRule{
-			ThresholdRule: &applicationpb.ThresholdRule{
-				Scheme:    f.scheme,
-				PublicKey: key,
-			},
-		},
-	}, nil)
-	return v, errors.Wrap(err, "error creating verifier")
-}
-
-// NewEndorser instantiate an endorser given a private key.
-func (f *SignerVerifierFactory) NewEndorser(key signature.PrivateKey) (*NsEndorser, error) {
-	return NewNsEndorser(f.scheme, key)
-}
-
-// NewSignatureFactory instantiate a SignerVerifierFactory.
-func NewSignatureFactory(scheme signature.Scheme) *SignerVerifierFactory {
-	f, err := getFactory(scheme)
-	if err != nil {
-		panic(err.Error())
-	}
-	return f
-}
-
-func getFactory(scheme signature.Scheme) (*SignerVerifierFactory, error) {
-	scheme = strings.ToUpper(scheme)
-	factory := &SignerVerifierFactory{scheme: scheme}
+// NewKeys generate private and public keys.
+// This should only be used for evaluation and testing as it might use non-secure crypto methods.
+func NewKeys(scheme signature.Scheme) (signature.PrivateKey, signature.PublicKey) {
 	switch scheme {
-	case signature.NoScheme, "":
-		factory.KeyFactory = &dummyFactory{}
 	case signature.Ecdsa:
-		factory.KeyFactory = &ecdsaFactory{}
+		return ecdsaNewKeys()
 	case signature.Bls:
-		factory.KeyFactory = &blsFactory{}
+		return blsNewKeys()
 	case signature.Eddsa:
-		factory.KeyFactory = &eddsaFactory{}
+		return eddsaNewKeys()
 	default:
-		return nil, errors.Newf("scheme '%v' not supported", scheme)
+		return []byte{}, []byte{}
 	}
-	return factory, nil
-}
-
-// dummy
-
-// NewKeys generate private and public keys.
-func (f *dummyFactory) NewKeys() (signature.PrivateKey, signature.PublicKey) {
-	return f.NewKeysWithSeed(0)
 }
 
 // NewKeysWithSeed generate deterministic private and public keys.
-func (*dummyFactory) NewKeysWithSeed(int64) (signature.PrivateKey, signature.PublicKey) {
-	return []byte{}, []byte{}
+// This should only be used for evaluation and testing as it might use non-secure crypto methods.
+func NewKeysWithSeed(scheme signature.Scheme, seed int64) (signature.PrivateKey, signature.PublicKey) {
+	switch scheme {
+	case signature.Ecdsa:
+		return ecdsaNewKeysWithSeed(seed)
+	case signature.Bls:
+		return blsNewKeysWithSeed(seed)
+	case signature.Eddsa:
+		return eddsaNewKeysWithSeed(seed)
+	default:
+		return []byte{}, []byte{}
+	}
 }
 
-// eddsa
-
-// NewKeys generate private and public keys.
-func (b *eddsaFactory) NewKeys() (signature.PrivateKey, signature.PublicKey) {
-	return b.NewKeysWithSeed(pseudorand.Int63())
+func eddsaNewKeys() (signature.PrivateKey, signature.PublicKey) {
+	return eddsaNewKeysWithRand(rand.Reader)
 }
 
-// NewKeysWithSeed generate deterministic private and public keys.
-func (*eddsaFactory) NewKeysWithSeed(seed int64) (signature.PrivateKey, signature.PublicKey) {
-	r := pseudorand.New(pseudorand.NewSource(seed))
-	pk, sk, err := ed25519.GenerateKey(r)
+func eddsaNewKeysWithSeed(seed int64) (signature.PrivateKey, signature.PublicKey) {
+	return eddsaNewKeysWithRand(pseudorand.New(pseudorand.NewSource(seed)))
+}
+
+func eddsaNewKeysWithRand(rnd io.Reader) (signature.PrivateKey, signature.PublicKey) {
+	pk, sk, err := ed25519.GenerateKey(rnd)
 	utils.Must(err)
 	return sk, pk
 }
 
-// bls
-
-// NewKeys generate private and public keys.
-func (b *blsFactory) NewKeys() (signature.PrivateKey, signature.PublicKey) {
-	return b.NewKeysWithSeed(pseudorand.Int63())
+func blsNewKeys() (signature.PrivateKey, signature.PublicKey) {
+	return blsNewKeysWithRand(rand.Reader)
 }
 
-// NewKeysWithSeed generate deterministic private and public keys.
-func (*blsFactory) NewKeysWithSeed(seed int64) (signature.PrivateKey, signature.PublicKey) {
-	r := pseudorand.New(pseudorand.NewSource(seed))
+func blsNewKeysWithSeed(seed int64) (signature.PrivateKey, signature.PublicKey) {
+	return blsNewKeysWithRand(pseudorand.New(pseudorand.NewSource(seed)))
+}
+
+func blsNewKeysWithRand(rnd io.Reader) (signature.PrivateKey, signature.PublicKey) {
 	_, _, _, g2 := bn254.Generators()
 
-	randomBytes := utils.MustRead(r, fr.Modulus().BitLen())
+	randomBytes := utils.MustRead(rnd, fr.Modulus().BitLen())
 
 	sk := big.NewInt(0)
 	sk.SetBytes(randomBytes)
@@ -155,10 +92,7 @@ func (*blsFactory) NewKeysWithSeed(seed int64) (signature.PrivateKey, signature.
 	return sk.Bytes(), pkBytes[:]
 }
 
-// ecdsa
-
-// NewKeys generate private and public keys.
-func (*ecdsaFactory) NewKeys() (signature.PrivateKey, signature.PublicKey) {
+func ecdsaNewKeys() (signature.PrivateKey, signature.PublicKey) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	utils.Must(err)
 	serializedPrivateKey, err := SerializeSigningKey(privateKey)
@@ -168,8 +102,7 @@ func (*ecdsaFactory) NewKeys() (signature.PrivateKey, signature.PublicKey) {
 	return serializedPrivateKey, serializedPublicKey
 }
 
-// NewKeysWithSeed generate deterministic private and public keys.
-func (*ecdsaFactory) NewKeysWithSeed(seed int64) (signature.PrivateKey, signature.PublicKey) {
+func ecdsaNewKeysWithSeed(seed int64) (signature.PrivateKey, signature.PublicKey) {
 	curve := elliptic.P256()
 
 	seedBytes := make([]byte, 8)
