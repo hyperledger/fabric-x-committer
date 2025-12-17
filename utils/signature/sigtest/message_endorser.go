@@ -19,29 +19,29 @@ import (
 )
 
 type (
-	// messageEndorser endorse a raw message.
-	messageEndorser interface {
-		EndorseMessage([]byte) (*applicationpb.Endorsements, error)
+	// endorser endorse a raw message.
+	endorser interface {
+		Endorse([]byte) (*applicationpb.Endorsements, error)
 	}
 
-	// mspMessageEndorser endorse a raw message using identities loaded from MSP directories.
-	mspMessageEndorser struct {
+	// mspEndorser endorse a raw message using identities loaded from MSP directories.
+	mspEndorser struct {
 		certType   int
 		identities []msp.SigningIdentity
 		mspIDs     [][]byte
 		certsBytes [][]byte
 	}
 
-	// rawKeyMessageEndorser endorse a raw message using a signing key.
-	rawKeyMessageEndorser struct {
+	// keyEndorser endorse a raw message using a signing key.
+	keyEndorser struct {
 		signer interface {
 			Sign(signature.Digest) (signature.Signature, error)
 		}
 	}
 )
 
-// EndorseMessage creates endorsements for all identities in the mspMessageEndorser.
-func (s *mspMessageEndorser) EndorseMessage(msg []byte) (*applicationpb.Endorsements, error) {
+// Endorse creates endorsements for all identities in the mspEndorser.
+func (s *mspEndorser) Endorse(msg []byte) (*applicationpb.Endorsements, error) {
 	signatures := make([][]byte, len(s.mspIDs))
 	for i, id := range s.identities {
 		var err error
@@ -53,8 +53,8 @@ func (s *mspMessageEndorser) EndorseMessage(msg []byte) (*applicationpb.Endorsem
 	return CreateEndorsementsForSignatureRule(signatures, s.mspIDs, s.certsBytes, s.certType), nil
 }
 
-// EndorseMessage endorses a digest of the given message.
-func (d *rawKeyMessageEndorser) EndorseMessage(msg []byte) (*applicationpb.Endorsements, error) {
+// Endorse endorses a digest of the given message.
+func (d *keyEndorser) Endorse(msg []byte) (*applicationpb.Endorsements, error) {
 	digest := sha256.Sum256(msg)
 	sig, err := d.signer.Sign(digest[:])
 	return CreateEndorsementsForThresholdRule(sig)[0], err

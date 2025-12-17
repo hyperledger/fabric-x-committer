@@ -20,54 +20,53 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-// TxNsEndorser endorse a transaction's namespace.
+// NsEndorser endorse a transaction's namespace.
 // It converts a TX into a ASN1 message, and then uses the message endorser interface to endorse it.
-// It also implements the message-endorser interface.
-type TxNsEndorser struct {
-	messageEndorser
+// It also implements the endorser interface, which can endorse raw messages.
+type NsEndorser struct {
+	endorser
 }
 
 var dummyEndorsement = CreateEndorsementsForThresholdRule(make([]byte, 0))[0]
 
-// NewRawKeyEndorser creates a new namespace endorser according to the implementation scheme.
-func NewRawKeyEndorser(scheme signature.Scheme, key []byte) (*TxNsEndorser, error) {
-	scheme = strings.ToUpper(scheme)
+// NewNsEndorserFromKey creates a new NsEndorser according to the key and scheme.
+func NewNsEndorserFromKey(scheme signature.Scheme, key []byte) (*NsEndorser, error) {
 	var err error
-	ret := &TxNsEndorser{}
-	switch scheme {
+	var e endorser
+	switch strings.ToUpper(scheme) {
 	case signature.NoScheme, "":
-		ret.messageEndorser = nil
+		e = nil
 	case signature.Ecdsa:
 		signingKey, parseErr := ParseSigningKey(key)
 		err = parseErr
-		ret.messageEndorser = &rawKeyMessageEndorser{signer: &ecdsaSigner{signingKey: signingKey}}
+		e = &keyEndorser{signer: &ecdsaSigner{signingKey: signingKey}}
 	case signature.Bls:
 		sk := big.NewInt(0)
 		sk.SetBytes(key)
-		ret.messageEndorser = &rawKeyMessageEndorser{signer: &blsSigner{sk}}
+		e = &keyEndorser{signer: &blsSigner{sk}}
 	case signature.Eddsa:
-		ret.messageEndorser = &rawKeyMessageEndorser{signer: &eddsaSigner{PrivateKey: key}}
+		e = &keyEndorser{signer: &eddsaSigner{PrivateKey: key}}
 	default:
 		return nil, errors.Newf("scheme '%v' not supported", scheme)
 	}
-	return ret, err
+	return &NsEndorser{endorser: e}, err
 }
 
-// NewMspEndorser creates a new mspMessageEndorser given MSP directories.
-// This signer will create an endorsement for each MSP provided.
-func NewMspEndorser(certType int, mspDirs ...msp.DirLoadParameters) (*TxNsEndorser, error) {
-	identities, err := GetSigningIdentities(mspDirs...)
-	if err != nil {
-		return nil, err
+// NewNsEndorserFromMsp creates a new NsEndorser using identities loaded from MSP directories.
+// This endorser will create an endorsement for each MSP provided.
+func NewNsEndorserFromMsp(certType int, mspDirs ...msp.DirLoadParameters) (*NsEndorser, error) {
+	identities, idErr := GetSigningIdentities(mspDirs...)
+	if idErr != nil {
+		return nil, idErr
 	}
-	mspEndorser := &mspMessageEndorser{
+	e := &mspEndorser{
 		certType:   certType,
 		identities: identities,
 		mspIDs:     make([][]byte, len(mspDirs)),
 		certsBytes: make([][]byte, len(mspDirs)),
 	}
 	for i, id := range identities {
-		mspEndorser.mspIDs[i] = []byte(id.GetMSPIdentifier())
+		e.mspIDs[i] = []byte(id.GetMSPIdentifier())
 		serializedIDBytes, err := id.Serialize()
 		if err != nil {
 			return nil, errors.Wrap(err, "serializing default signing identity")
@@ -83,24 +82,24 @@ func NewMspEndorser(certType int, mspDirs ...msp.DirLoadParameters) (*TxNsEndors
 				return nil, err
 			}
 		}
-		mspEndorser.certsBytes[i] = idBytes
+		e.certsBytes[i] = idBytes
 	}
-	return &TxNsEndorser{messageEndorser: mspEndorser}, nil
+	return &NsEndorser{endorser: e}, nil
 }
 
 // EndorseTxNs endorses a transaction's namespace.
-func (v *TxNsEndorser) EndorseTxNs(txID string, tx *applicationpb.Tx, nsIdx int) (*applicationpb.Endorsements, error) {
+func (v *NsEndorser) EndorseTxNs(txID string, tx *applicationpb.Tx, nsIdx int) (*applicationpb.Endorsements, error) {
 	if nsIdx < 0 || nsIdx >= len(tx.Namespaces) {
 		return nil, errors.New("namespace index out of range")
 	}
-	if v.messageEndorser == nil {
+	if v.endorser == nil {
 		return dummyEndorsement, nil
 	}
 	msg, err := signature.ASN1MarshalTxNamespace(txID, tx.Namespaces[nsIdx])
 	if err != nil {
 		return nil, err
 	}
-	return v.EndorseMessage(msg)
+	return v.Endorse(msg)
 }
 
 // GetSigningIdentities loads signing identities from the given MSP directories.

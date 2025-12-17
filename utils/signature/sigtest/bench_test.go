@@ -39,8 +39,8 @@ func BenchmarkDigest(b *testing.B) {
 func BenchmarkSign(b *testing.B) {
 	logging.SetupWithConfig(&logging.Config{Enabled: false})
 	for _, scheme := range signature.AllRealSchemes {
-		sk, _ := sigtest.NewKeys(scheme)
-		endorser, err := sigtest.NewRawKeyEndorser(scheme, sk)
+		sk, _ := sigtest.NewKeyPair(scheme)
+		endorser, err := sigtest.NewNsEndorserFromKey(scheme, sk)
 		require.NoError(b, err)
 
 		b.Run(scheme, func(b *testing.B) {
@@ -65,8 +65,8 @@ func BenchmarkSign(b *testing.B) {
 func BenchmarkVerify(b *testing.B) {
 	logging.SetupWithConfig(&logging.Config{Enabled: false})
 	for _, scheme := range signature.AllRealSchemes {
-		sk, pk := sigtest.NewKeys(scheme)
-		endorser, err := sigtest.NewRawKeyEndorser(scheme, sk)
+		sk, pk := sigtest.NewKeyPair(scheme)
+		endorser, err := sigtest.NewNsEndorserFromKey(scheme, sk)
 		require.NoError(b, err)
 		v, err := sigtest.NewNsVerifierFromKey(scheme, pk)
 		require.NoError(b, err)

@@ -24,59 +24,59 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
-// NewKeys generate private and public keys.
+// NewKeyPair generate private and public keys.
 // This should only be used for evaluation and testing as it might use non-secure crypto methods.
-func NewKeys(scheme signature.Scheme) (signature.PrivateKey, signature.PublicKey) {
+func NewKeyPair(scheme signature.Scheme) (signature.PrivateKey, signature.PublicKey) {
 	switch scheme {
 	case signature.Ecdsa:
-		return ecdsaNewKeys()
+		return ecdsaNewKeyPair()
 	case signature.Bls:
-		return blsNewKeys()
+		return blsNewKeyPair()
 	case signature.Eddsa:
-		return eddsaNewKeys()
+		return eddsaNewKeyPair()
 	default:
 		return []byte{}, []byte{}
 	}
 }
 
-// NewKeysWithSeed generate deterministic private and public keys.
+// NewKeyPairWithSeed generate deterministic private and public keys.
 // This should only be used for evaluation and testing as it might use non-secure crypto methods.
-func NewKeysWithSeed(scheme signature.Scheme, seed int64) (signature.PrivateKey, signature.PublicKey) {
+func NewKeyPairWithSeed(scheme signature.Scheme, seed int64) (signature.PrivateKey, signature.PublicKey) {
 	switch scheme {
 	case signature.Ecdsa:
-		return ecdsaNewKeysWithSeed(seed)
+		return ecdsaNewKeyPairWithSeed(seed)
 	case signature.Bls:
-		return blsNewKeysWithSeed(seed)
+		return blsNewKeyPairWithSeed(seed)
 	case signature.Eddsa:
-		return eddsaNewKeysWithSeed(seed)
+		return eddsaNewKeyPairWithSeed(seed)
 	default:
 		return []byte{}, []byte{}
 	}
 }
 
-func eddsaNewKeys() (signature.PrivateKey, signature.PublicKey) {
-	return eddsaNewKeysWithRand(rand.Reader)
+func eddsaNewKeyPair() (signature.PrivateKey, signature.PublicKey) {
+	return eddsaNewKeyPairWithRand(rand.Reader)
 }
 
-func eddsaNewKeysWithSeed(seed int64) (signature.PrivateKey, signature.PublicKey) {
-	return eddsaNewKeysWithRand(pseudorand.New(pseudorand.NewSource(seed)))
+func eddsaNewKeyPairWithSeed(seed int64) (signature.PrivateKey, signature.PublicKey) {
+	return eddsaNewKeyPairWithRand(pseudorand.New(pseudorand.NewSource(seed)))
 }
 
-func eddsaNewKeysWithRand(rnd io.Reader) (signature.PrivateKey, signature.PublicKey) {
+func eddsaNewKeyPairWithRand(rnd io.Reader) (signature.PrivateKey, signature.PublicKey) {
 	pk, sk, err := ed25519.GenerateKey(rnd)
 	utils.Must(err)
 	return sk, pk
 }
 
-func blsNewKeys() (signature.PrivateKey, signature.PublicKey) {
-	return blsNewKeysWithRand(rand.Reader)
+func blsNewKeyPair() (signature.PrivateKey, signature.PublicKey) {
+	return blsNewKeyPairWithRand(rand.Reader)
 }
 
-func blsNewKeysWithSeed(seed int64) (signature.PrivateKey, signature.PublicKey) {
-	return blsNewKeysWithRand(pseudorand.New(pseudorand.NewSource(seed)))
+func blsNewKeyPairWithSeed(seed int64) (signature.PrivateKey, signature.PublicKey) {
+	return blsNewKeyPairWithRand(pseudorand.New(pseudorand.NewSource(seed)))
 }
 
-func blsNewKeysWithRand(rnd io.Reader) (signature.PrivateKey, signature.PublicKey) {
+func blsNewKeyPairWithRand(rnd io.Reader) (signature.PrivateKey, signature.PublicKey) {
 	_, _, _, g2 := bn254.Generators()
 
 	randomBytes := utils.MustRead(rnd, fr.Modulus().BitLen())
@@ -92,7 +92,7 @@ func blsNewKeysWithRand(rnd io.Reader) (signature.PrivateKey, signature.PublicKe
 	return sk.Bytes(), pkBytes[:]
 }
 
-func ecdsaNewKeys() (signature.PrivateKey, signature.PublicKey) {
+func ecdsaNewKeyPair() (signature.PrivateKey, signature.PublicKey) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	utils.Must(err)
 	serializedPrivateKey, err := SerializeSigningKey(privateKey)
@@ -102,7 +102,7 @@ func ecdsaNewKeys() (signature.PrivateKey, signature.PublicKey) {
 	return serializedPrivateKey, serializedPublicKey
 }
 
-func ecdsaNewKeysWithSeed(seed int64) (signature.PrivateKey, signature.PublicKey) {
+func ecdsaNewKeyPairWithSeed(seed int64) (signature.PrivateKey, signature.PublicKey) {
 	curve := elliptic.P256()
 
 	seedBytes := make([]byte, 8)

@@ -32,17 +32,17 @@ func MakePolicy(
 	}
 }
 
-// MakePolicyAndNsEndorser generates a policyItem and TxNsEndorser.
+// MakePolicyAndNsEndorser generates a policyItem and NsEndorser.
 func MakePolicyAndNsEndorser(
 	t *testing.T,
 	ns string,
-) (*applicationpb.PolicyItem, *sigtest.TxNsEndorser) {
+) (*applicationpb.PolicyItem, *sigtest.NsEndorser) {
 	t.Helper()
-	signingKey, verificationKey := sigtest.NewKeys(signature.Ecdsa)
-	txSigner, err := sigtest.NewRawKeyEndorser(signature.Ecdsa, signingKey)
+	signingKey, verificationKey := sigtest.NewKeyPair(signature.Ecdsa)
+	txEndorser, err := sigtest.NewNsEndorserFromKey(signature.Ecdsa, signingKey)
 	require.NoError(t, err)
 	p := MakePolicy(t, ns, MakeECDSAThresholdRuleNsPolicy(verificationKey))
-	return p, txSigner
+	return p, txEndorser
 }
 
 // MakeECDSAThresholdRuleNsPolicy generates a namespace policy with threshold rule.
