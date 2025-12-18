@@ -18,19 +18,17 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
-	"github.com/hyperledger/fabric-x-committer/utils/test/apptest"
 )
 
 func TestEndToEnd(t *testing.T) {
 	t.Parallel()
-	for _, schema := range signature.AllSchemes {
-		t.Run(schema, func(t *testing.T) {
+	for _, scheme := range signature.AllSchemes {
+		t.Run(scheme, func(t *testing.T) {
 			t.Parallel()
-			f := NewSignatureFactory(schema)
-			priv, pub := f.NewKeys()
-			v, err := f.NewVerifier(pub)
+			priv, pub := NewKeyPair(scheme)
+			v, err := NewNsVerifierFromKey(scheme, pub)
 			require.NoError(t, err)
-			s, err := f.NewSigner(priv)
+			e, err := NewNsEndorserFromKey(scheme, priv)
 			require.NoError(t, err)
 			txID := "test"
 			tx := &applicationpb.Tx{
@@ -40,8 +38,8 @@ func TestEndToEnd(t *testing.T) {
 					ReadWrites: make([]*applicationpb.ReadWrite, 0),
 				}},
 			}
-			sig, err := s.SignNs(txID, tx, 0)
-			tx.Endorsements = apptest.CreateEndorsementsForThresholdRule(sig)
+			endorsement, err := e.EndorseTxNs(txID, tx, 0)
+			tx.Endorsements = []*applicationpb.Endorsements{endorsement}
 			require.NoError(t, err)
 			require.NoError(t, v.VerifyNs(txID, tx, 0))
 		})
@@ -51,31 +49,31 @@ func TestEndToEnd(t *testing.T) {
 func TestEcdsaPem(t *testing.T) {
 	t.Parallel()
 	// Currently, only ECDSA is encoded to PEM, so we only test it.
-	f := NewSignatureFactory(signature.Ecdsa)
+	scheme := signature.Ecdsa
 	dir := t.TempDir()
 	pemPath := filepath.Join(dir, fmt.Sprintf("%s.pem", signature.Ecdsa))
-	priv, pub := f.NewKeys()
+	priv, pub := NewKeyPair(scheme)
 	require.NoError(t, os.WriteFile(pemPath, append(priv, pub...), 0o600))
 
-	v, err := f.NewVerifier(pub)
+	v, err := NewNsVerifierFromKey(scheme, pub)
 	require.NoError(t, err)
-	s, err := f.NewSigner(priv)
+	e, err := NewNsEndorserFromKey(scheme, priv)
 	require.NoError(t, err)
 
 	m, err := readPem(pemPath)
 	require.NoError(t, err)
 
 	var pemV *signature.NsVerifier
-	var pemS *NsSigner
+	var pemS *NsEndorser
 
 	for key, value := range m {
 		t.Log(key)
 		if strings.Contains(strings.ToLower(key), "public") {
-			pemV, err = f.NewVerifier(value)
+			pemV, err = NewNsVerifierFromKey(scheme, value)
 			require.NoError(t, err)
 		}
 		if strings.Contains(strings.ToLower(key), "private") {
-			pemS, err = f.NewSigner(value)
+			pemS, err = NewNsEndorserFromKey(scheme, value)
 			require.NoError(t, err)
 		}
 	}
@@ -92,14 +90,14 @@ func TestEcdsaPem(t *testing.T) {
 		}},
 	}
 
-	sig, err := s.SignNs(txID, tx, 0)
+	endorsement, err := e.EndorseTxNs(txID, tx, 0)
 	require.NoError(t, err)
-	tx.Endorsements = apptest.CreateEndorsementsForThresholdRule(sig)
+	tx.Endorsements = []*applicationpb.Endorsements{endorsement}
 	require.NoError(t, pemV.VerifyNs(txID, tx, 0))
 
-	sig, err = pemS.SignNs(txID, tx, 0)
+	endorsement, err = pemS.EndorseTxNs(txID, tx, 0)
 	require.NoError(t, err)
-	tx.Endorsements = apptest.CreateEndorsementsForThresholdRule(sig)
+	tx.Endorsements = []*applicationpb.Endorsements{endorsement}
 	require.NoError(t, v.VerifyNs(txID, tx, 0))
 }
 

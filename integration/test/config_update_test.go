@@ -86,7 +86,7 @@ func TestConfigUpdate(t *testing.T) {
 	lgMetaTx := c.TxBuilder.MakeTx(metaTx)
 
 	c.AddOrUpdateNamespaces(t, committerpb.MetaNamespaceID)
-	metaPolicy := c.TxBuilder.TxSigner.Policy(committerpb.MetaNamespaceID).VerificationPolicy()
+	metaPolicy := c.TxBuilder.TxEndorser.Policy(committerpb.MetaNamespaceID).VerificationPolicy()
 	submitConfigBlock := func(endpoints []*commontypes.OrdererEndpoint) {
 		ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
 			ChannelID:                    c.SystemConfig.Policy.ChannelID,

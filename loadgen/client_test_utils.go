@@ -51,7 +51,7 @@ func DefaultClientConf() *ClientConfig {
 				ReadWriteCount: workload.NewConstantDistribution(2),
 				Policy: &workload.PolicyProfile{
 					NamespacePolicies: map[string]*workload.Policy{
-						workload.GeneratedNamespaceID: {
+						workload.DefaultGeneratedNamespaceID: {
 							Scheme: signature.Ecdsa,
 							Seed:   10,
 						},

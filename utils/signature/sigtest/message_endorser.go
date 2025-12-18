@@ -4,44 +4,60 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package apptest
+package sigtest
 
 import (
-	"context"
+	"crypto/sha256"
 	"encoding/hex"
-	"testing"
 
-	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
+	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-x-common/msp"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-// StatusRetriever provides implementation retrieve status of given transaction identifiers.
-type StatusRetriever interface {
-	GetTransactionsStatus(context.Context, *applicationpb.QueryStatus, ...grpc.CallOption) (
-		*applicationpb.TransactionsStatus, error,
-	)
+type (
+	// endorser endorse a raw message.
+	endorser interface {
+		Endorse([]byte) (*applicationpb.Endorsements, error)
+	}
+
+	// mspEndorser endorse a raw message using identities loaded from MSP directories.
+	mspEndorser struct {
+		certType   int
+		identities []msp.SigningIdentity
+		mspIDs     [][]byte
+		certsBytes [][]byte
+	}
+
+	// keyEndorser endorse a raw message using a signing key.
+	keyEndorser struct {
+		signer interface {
+			Sign(signature.Digest) (signature.Signature, error)
+		}
+	}
+)
+
+// Endorse creates endorsements for all identities in the mspEndorser.
+func (s *mspEndorser) Endorse(msg []byte) (*applicationpb.Endorsements, error) {
+	signatures := make([][]byte, len(s.mspIDs))
+	for i, id := range s.identities {
+		var err error
+		signatures[i], err = id.Sign(msg)
+		if err != nil {
+			return nil, errors.Wrap(err, "signing failed")
+		}
+	}
+	return CreateEndorsementsForSignatureRule(signatures, s.mspIDs, s.certsBytes, s.certType), nil
 }
 
-// EnsurePersistedTxStatus fails the test if the given TX IDs does not match the expected status.
-//
-//nolint:revive // maximum number of arguments per function exceeded; max 4 but got 5.
-func EnsurePersistedTxStatus(
-	ctx context.Context,
-	t *testing.T,
-	r StatusRetriever,
-	txIDs []string,
-	expected map[string]*applicationpb.StatusWithHeight,
-) {
-	t.Helper()
-	if len(txIDs) == 0 {
-		return
-	}
-	actualStatus, err := r.GetTransactionsStatus(ctx, &applicationpb.QueryStatus{TxIDs: txIDs})
-	require.NoError(t, err)
-	require.EqualExportedValues(t, expected, actualStatus.Status)
+// Endorse endorses a digest of the given message.
+func (d *keyEndorser) Endorse(msg []byte) (*applicationpb.Endorsements, error) {
+	digest := sha256.Sum256(msg)
+	sig, err := d.signer.Sign(digest[:])
+	return CreateEndorsementsForThresholdRule(sig)[0], err
 }
 
 // CreateEndorsementsForThresholdRule creates a slice of EndorsementSet pointers from individual threshold signatures.
@@ -89,12 +105,4 @@ func CreateEndorsementsForSignatureRule(
 		set.EndorsementsWithIdentity = append(set.EndorsementsWithIdentity, eid)
 	}
 	return set
-}
-
-// AppendToEndorsementSetsForThresholdRule is a utility function that creates new signature sets
-// for a threshold rule and appends them to an existing slice of signature sets.
-func AppendToEndorsementSetsForThresholdRule(
-	ss []*applicationpb.Endorsements, signatures ...[]byte,
-) []*applicationpb.Endorsements {
-	return append(ss, CreateEndorsementsForThresholdRule(signatures...)...)
 }

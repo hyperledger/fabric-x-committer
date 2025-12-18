@@ -8,46 +8,41 @@ package verifier
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/ed25519"
-	"crypto/rand"
-	"crypto/sha256"
-	"crypto/x509"
-	"encoding/pem"
 	"fmt"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-lib-go/bccsp"
-	bccsputils "github.com/hyperledger/fabric-lib-go/bccsp/utils"
-	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
+	commonmsp "github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
-	"github.com/hyperledger/fabric-x-committer/utils/certificate"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
-	"github.com/hyperledger/fabric-x-committer/utils/test/apptest"
 )
 
 const (
 	testTimeout = 3 * time.Second
 	fakeTxID    = "fake-id"
 )
+
+type cryptoParameters struct {
+	cryptoPath     string
+	update         *servicepb.VerifierUpdates
+	metaTxEndorser *sigtest.NsEndorser
+	dataTxEndorser *sigtest.NsEndorser
+}
 
 func TestVerifierSecureConnection(t *testing.T) {
 	t.Parallel()
@@ -87,8 +82,8 @@ func TestNoInput(t *testing.T) {
 
 	stream, _ := c.Client.StartStream(t.Context())
 
-	_, update, _, _ := defaultUpdate(t)
-	err := stream.Send(&servicepb.VerifierBatch{Update: update})
+	cp := defaultCryptoParameters(t)
+	err := stream.Send(&servicepb.VerifierBatch{Update: cp.update})
 	require.NoError(t, err)
 
 	_, ok := readStream(t, stream, testTimeout)
@@ -102,7 +97,7 @@ func TestMinimalInput(t *testing.T) {
 
 	stream, _ := c.Client.StartStream(t.Context())
 
-	_, update, metaTxSigner, dataTxSigner := defaultUpdate(t)
+	cp := defaultCryptoParameters(t)
 
 	tx1 := &applicationpb.Tx{
 		Namespaces: []*applicationpb.TxNamespace{{
@@ -113,8 +108,8 @@ func TestMinimalInput(t *testing.T) {
 			}},
 		}},
 	}
-	s, _ := dataTxSigner.SignNs(fakeTxID, tx1, 0)
-	tx1.Endorsements = apptest.AppendToEndorsementSetsForThresholdRule(tx1.Endorsements, s)
+	s, _ := cp.dataTxEndorser.EndorseTxNs(fakeTxID, tx1, 0)
+	tx1.Endorsements = append(tx1.Endorsements, s)
 
 	tx2 := &applicationpb.Tx{
 		Namespaces: []*applicationpb.TxNamespace{{
@@ -126,8 +121,8 @@ func TestMinimalInput(t *testing.T) {
 		}},
 	}
 
-	s, _ = dataTxSigner.SignNs(fakeTxID, tx2, 0)
-	tx2.Endorsements = apptest.AppendToEndorsementSetsForThresholdRule(tx2.Endorsements, s)
+	s, _ = cp.dataTxEndorser.EndorseTxNs(fakeTxID, tx2, 0)
+	tx2.Endorsements = append(tx2.Endorsements, s)
 
 	tx3 := &applicationpb.Tx{
 		Namespaces: []*applicationpb.TxNamespace{{
@@ -138,11 +133,11 @@ func TestMinimalInput(t *testing.T) {
 			}},
 		}},
 	}
-	s, _ = metaTxSigner.SignNs(fakeTxID, tx3, 0)
-	tx3.Endorsements = apptest.AppendToEndorsementSetsForThresholdRule(tx3.Endorsements, s)
+	s, _ = cp.metaTxEndorser.EndorseTxNs(fakeTxID, tx3, 0)
+	tx3.Endorsements = append(tx3.Endorsements, s)
 
 	err := stream.Send(&servicepb.VerifierBatch{
-		Update: update,
+		Update: cp.update,
 		Requests: []*servicepb.VerifierTx{
 			{Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx1},
 			{Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx2},
@@ -163,25 +158,24 @@ func TestSignatureRule(t *testing.T) {
 	stream, err := c.Client.StartStream(t.Context())
 	require.NoError(t, err)
 
-	cryptoPath, update, _, _ := defaultUpdate(t)
-	err = stream.Send(&servicepb.VerifierBatch{Update: update})
+	cp := defaultCryptoParameters(t)
+	err = stream.Send(&servicepb.VerifierBatch{Update: cp.update})
 	require.NoError(t, err)
 
-	signingIdentities := make([]*signingIdentity, 2)
-
+	mspDirs := make([]commonmsp.DirLoadParameters, 2)
 	for i, org := range []string{"peer-org-0", "peer-org-1"} {
+		mspDirs[i].MspName = org
 		clientName := "client@" + org + ".com"
-		clientMspPath := filepath.Join(cryptoPath, "peerOrganizations", org, "users", clientName, "msp")
-		signingIdentities[i] = &signingIdentity{
-			CertPath: filepath.Join(clientMspPath, "signcerts", clientName+"-cert.pem"),
-			KeyPath:  filepath.Join(clientMspPath, "keystore", "priv_sk"),
-			MSPID:    org,
-		}
+		mspDirs[i].MspDir = filepath.Join(cp.cryptoPath, "peerOrganizations", org, "users", clientName, "msp")
 	}
 
+	signingIdentities, err := sigtest.GetSigningIdentities(mspDirs...)
+	require.NoError(t, err)
 	serializedSigningIdentities := make([][]byte, len(signingIdentities))
 	for i, si := range signingIdentities {
-		serializedSigningIdentities[i] = si.serialize(t)
+		siBytes, serErr := si.Serialize()
+		require.NoError(t, serErr)
+		serializedSigningIdentities[i] = siBytes
 	}
 
 	nsPolicy := &applicationpb.NamespacePolicy{
@@ -192,7 +186,7 @@ func TestSignatureRule(t *testing.T) {
 		},
 	}
 
-	update = &servicepb.VerifierUpdates{
+	update := &servicepb.VerifierUpdates{
 		NamespacePolicies: &applicationpb.NamespacePolicies{
 			Policies: []*applicationpb.PolicyItem{
 				policy.MakePolicy(t, "2", nsPolicy),
@@ -213,31 +207,12 @@ func TestSignatureRule(t *testing.T) {
 	data, err := signature.ASN1MarshalTxNamespace(fakeTxID, tx1.Namespaces[0])
 	require.NoError(t, err)
 
-	signatures := make([][]byte, len(signingIdentities))
-	mspIDs := make([][]byte, len(signingIdentities))
-	certsBytes := make([][]byte, len(signingIdentities))
-
 	for _, certType := range []int{test.CreatorCertificate, test.CreatorID} {
-		for i, si := range signingIdentities {
-			signatures[i] = si.sign(t, data)
-			mspIDs[i] = []byte(si.MSPID)
-
-			switch certType {
-			case test.CreatorCertificate:
-				certBytes, rerr := os.ReadFile(si.CertPath)
-				require.NoError(t, rerr)
-				certsBytes[i] = certBytes
-			case test.CreatorID:
-				certID, derr := certificate.Digest(si.CertPath, bccsp.SHA256)
-				require.NoError(t, derr)
-				fmt.Println(string(certID))
-				certsBytes[i] = certID
-			}
-		}
-
-		tx1.Endorsements = []*applicationpb.Endorsements{
-			apptest.CreateEndorsementsForSignatureRule(signatures, mspIDs, certsBytes, certType),
-		}
+		signer, signerErr := sigtest.NewNsEndorserFromMsp(certType, mspDirs...)
+		require.NoError(t, signerErr)
+		sig, signerErr := signer.Endorse(data)
+		require.NoError(t, signerErr)
+		tx1.Endorsements = []*applicationpb.Endorsements{sig}
 
 		requireTestCase(t, stream, &testCase{
 			update: update,
@@ -250,8 +225,7 @@ func TestSignatureRule(t *testing.T) {
 
 	// Update the config block to have SampleFabricX profile instead of
 	// the default TwoOrgsSampleFabricX.
-	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
-	_, metaTxVerificationKey := factory.NewKeys()
+	_, metaTxVerificationKey := sigtest.NewKeyPair(signature.Ecdsa)
 	configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
 		MetaNamespaceVerificationKey: metaTxVerificationKey,
 	}, configtxgen.SampleFabricX)
@@ -278,8 +252,8 @@ func TestBadSignature(t *testing.T) {
 	stream, err := c.Client.StartStream(t.Context())
 	require.NoError(t, err)
 
-	_, update, _, _ := defaultUpdate(t)
-	err = stream.Send(&servicepb.VerifierBatch{Update: update})
+	cp := defaultCryptoParameters(t)
+	err = stream.Send(&servicepb.VerifierBatch{Update: cp.update})
 	require.NoError(t, err)
 
 	requireTestCase(t, stream, &testCase{
@@ -293,7 +267,7 @@ func TestBadSignature(t *testing.T) {
 						{Key: make([]byte, 0)},
 					},
 				}},
-				Endorsements: apptest.CreateEndorsementsForThresholdRule([]byte{0}, []byte{1}, []byte{2}),
+				Endorsements: sigtest.CreateEndorsementsForThresholdRule([]byte{0}, []byte{1}, []byte{2}),
 			},
 		},
 		expectedStatus: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
@@ -314,13 +288,13 @@ func TestUpdatePolicies(t *testing.T) {
 		stream, err := c.Client.StartStream(t.Context())
 		require.NoError(t, err)
 
-		_, update, _, _ := defaultUpdate(t)
+		cp := defaultCryptoParameters(t)
 
 		ns1Policy, _ := makePolicyItem(t, ns1)
 		ns2Policy, _ := makePolicyItem(t, ns2)
 		err = stream.Send(&servicepb.VerifierBatch{
 			Update: &servicepb.VerifierUpdates{
-				Config: update.Config,
+				Config: cp.update.Config,
 				NamespacePolicies: &applicationpb.NamespacePolicies{
 					Policies: []*applicationpb.PolicyItem{ns1Policy, ns2Policy},
 				},
@@ -353,13 +327,13 @@ func TestUpdatePolicies(t *testing.T) {
 		stream, err := c.Client.StartStream(t.Context())
 		require.NoError(t, err)
 
-		_, update, _, _ := defaultUpdate(t)
+		cp := defaultCryptoParameters(t)
 
 		ns1Policy, ns1Signer := makePolicyItem(t, ns1)
 		ns2Policy, _ := makePolicyItem(t, ns2)
 		err = stream.Send(&servicepb.VerifierBatch{
 			Update: &servicepb.VerifierUpdates{
-				Config: update.Config,
+				Config: cp.update.Config,
 				NamespacePolicies: &applicationpb.NamespacePolicies{
 					Policies: []*applicationpb.PolicyItem{ns1Policy, ns2Policy},
 				},
@@ -377,7 +351,7 @@ func TestUpdatePolicies(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		sign(t, tx, ns1Signer, ns2Signer)
+		endorse(t, tx, ns1Signer, ns2Signer)
 		requireTestCase(t, stream, &testCase{
 			req: &servicepb.VerifierTx{
 				Ref: committerpb.TxRef(fakeTxID, 1, 1),
@@ -401,19 +375,19 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 	stream, err := c.Client.StartStream(t.Context())
 	require.NoError(t, err)
 
-	_, update, _, _ := defaultUpdate(t)
+	cp := defaultCryptoParameters(t)
 
 	// Each policy update will update a unique namespace, and the common namespace.
 	updateCount := len(ns) - 1
-	uniqueNsSigners := make([]*sigtest.NsSigner, updateCount)
-	commonNsSigners := make([]*sigtest.NsSigner, updateCount)
+	uniqueNsEndorsers := make([]*sigtest.NsEndorser, updateCount)
+	commonNsEndorsers := make([]*sigtest.NsEndorser, updateCount)
 	for i := range updateCount {
-		uniqueNsPolicy, uniqueNsSigner := makePolicyItem(t, ns[i])
-		uniqueNsSigners[i] = uniqueNsSigner
-		commonNsPolicy, commonNsSigner := makePolicyItem(t, ns[len(ns)-1])
-		commonNsSigners[i] = commonNsSigner
+		uniqueNsPolicy, uniqueNsEndorser := makePolicyItem(t, ns[i])
+		uniqueNsEndorsers[i] = uniqueNsEndorser
+		commonNsPolicy, commonNsEndorser := makePolicyItem(t, ns[len(ns)-1])
+		commonNsEndorsers[i] = commonNsEndorser
 		p := &servicepb.VerifierUpdates{
-			Config: update.Config,
+			Config: cp.update.Config,
 			NamespacePolicies: &applicationpb.NamespacePolicies{
 				Policies: []*applicationpb.PolicyItem{uniqueNsPolicy, commonNsPolicy},
 			},
@@ -430,7 +404,7 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 	tx := makeTX(ns...)
 	success := 0
 	for i := range updateCount {
-		sign(t, tx, append(uniqueNsSigners, commonNsSigners[i])...)
+		endorse(t, tx, append(uniqueNsEndorsers, commonNsEndorsers[i])...)
 		require.NoError(t, stream.Send(&servicepb.VerifierBatch{
 			Requests: []*servicepb.VerifierTx{{
 				Ref: committerpb.TxRef(fakeTxID, 0, 0),
@@ -451,7 +425,7 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 	// The following TX updates all the namespaces but the common one.
 	// It must succeed.
 	tx = makeTX(ns[:updateCount]...)
-	sign(t, tx, uniqueNsSigners...)
+	endorse(t, tx, uniqueNsEndorsers...)
 	requireTestCase(t, stream, &testCase{
 		req: &servicepb.VerifierTx{
 			Ref: committerpb.TxRef(fakeTxID, 1, 1),
@@ -467,13 +441,13 @@ type testCase struct {
 	expectedStatus applicationpb.Status
 }
 
-func sign(t *testing.T, tx *applicationpb.Tx, signers ...*sigtest.NsSigner) {
+func endorse(t *testing.T, tx *applicationpb.Tx, signers ...*sigtest.NsEndorser) {
 	t.Helper()
 	tx.Endorsements = make([]*applicationpb.Endorsements, len(signers))
 	for i, s := range signers {
-		s, err := s.SignNs(fakeTxID, tx, i)
+		endorsements, err := s.EndorseTxNs(fakeTxID, tx, i)
 		require.NoError(t, err)
-		tx.Endorsements[i] = apptest.CreateEndorsementsForThresholdRule(s)[0]
+		tx.Endorsements[i] = endorsements
 	}
 }
 
@@ -493,13 +467,12 @@ func makeTX(namespaces ...string) *applicationpb.Tx {
 	return tx
 }
 
-func makePolicyItem(t *testing.T, ns string) (*applicationpb.PolicyItem, *sigtest.NsSigner) {
+func makePolicyItem(t *testing.T, ns string) (*applicationpb.PolicyItem, *sigtest.NsEndorser) {
 	t.Helper()
-	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
-	signingKey, verificationKey := factory.NewKeys()
-	txSigner, err := factory.NewSigner(signingKey)
+	signingKey, verificationKey := sigtest.NewKeyPair(signature.Ecdsa)
+	txEndorser, err := sigtest.NewNsEndorserFromKey(signature.Ecdsa, signingKey)
 	require.NoError(t, err)
-	return policy.MakePolicy(t, ns, policy.MakeECDSAThresholdRuleNsPolicy(verificationKey)), txSigner
+	return policy.MakePolicy(t, ns, policy.MakeECDSAThresholdRuleNsPolicy(verificationKey)), txEndorser
 }
 
 func requireTestCase(
@@ -559,25 +532,25 @@ func readStream(
 	return channel.NewReader(ctx, outputChan).Read()
 }
 
-func defaultUpdate(t *testing.T) (
-	cryptoPath string, update *servicepb.VerifierUpdates, metaTxSigner, dataTxSigner *sigtest.NsSigner,
-) {
+func defaultCryptoParameters(t *testing.T) cryptoParameters {
 	t.Helper()
-	cryptoPath = t.TempDir()
-	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
-	metaTxSigningKey, metaTxVerificationKey := factory.NewKeys()
-	configBlock, err := workload.CreateConfigBlockWithCrypto(cryptoPath, &workload.ConfigBlock{
+	ret := cryptoParameters{
+		cryptoPath: t.TempDir(),
+	}
+
+	metaTxSigningKey, metaTxVerificationKey := sigtest.NewKeyPair(signature.Ecdsa)
+	configBlock, err := workload.CreateDefaultConfigBlockWithCrypto(ret.cryptoPath, &workload.ConfigBlock{
 		MetaNamespaceVerificationKey: metaTxVerificationKey,
 		PeerOrganizationCount:        2,
 	}, configtxgen.TwoOrgsSampleFabricX)
 	require.NoError(t, err)
-	metaTxSigner, err = factory.NewSigner(metaTxSigningKey)
+	ret.metaTxEndorser, err = sigtest.NewNsEndorserFromKey(signature.Ecdsa, metaTxSigningKey)
 	require.NoError(t, err)
 
-	dataTxSigningKey, dataTxVerificationKey := factory.NewKeys()
-	dataTxSigner, err = factory.NewSigner(dataTxSigningKey)
+	dataTxSigningKey, dataTxVerificationKey := sigtest.NewKeyPair(signature.Ecdsa)
+	ret.dataTxEndorser, err = sigtest.NewNsEndorserFromKey(signature.Ecdsa, dataTxSigningKey)
 	require.NoError(t, err)
-	update = &servicepb.VerifierUpdates{
+	ret.update = &servicepb.VerifierUpdates{
 		Config: &applicationpb.ConfigTransaction{
 			Envelope: configBlock.Data.Data[0],
 		},
@@ -587,7 +560,7 @@ func defaultUpdate(t *testing.T) (
 			},
 		},
 	}
-	return cryptoPath, update, metaTxSigner, dataTxSigner
+	return ret
 }
 
 func defaultConfigWithTLS(tlsConfig connection.TLSConfig) *Config {
@@ -619,59 +592,4 @@ func createVerifierClientWithTLS(
 ) servicepb.VerifierClient {
 	t.Helper()
 	return test.CreateClientWithTLS(t, ep, tlsCfg, servicepb.NewVerifierClient)
-}
-
-// A signingIdentity represents an MSP signing identity.
-type signingIdentity struct {
-	CertPath string
-	KeyPath  string
-	MSPID    string
-}
-
-// serialize returns the probobuf encoding of an msp.SerializedIdenity.
-func (s *signingIdentity) serialize(t *testing.T) []byte {
-	t.Helper()
-	cert, err := os.ReadFile(s.CertPath)
-	require.NoError(t, err)
-	si, err := proto.Marshal(&msp.SerializedIdentity{
-		Mspid:   s.MSPID,
-		IdBytes: cert,
-	})
-	require.NoError(t, err)
-	return si
-}
-
-// sign computes a SHA256 message digest if key is ECDSA,
-// signs it with the associated private key, and returns the
-// signature. Low-S normlization is applied for ECDSA signatures.
-func (s *signingIdentity) sign(t *testing.T, msg []byte) []byte {
-	t.Helper()
-	digest := sha256.Sum256(msg)
-	pemKey, err := os.ReadFile(s.KeyPath)
-	require.NoError(t, err)
-
-	block, _ := pem.Decode(pemKey)
-	if block.Type != "EC PRIVATE KEY" && block.Type != "PRIVATE KEY" {
-		t.Fatalf("file %s does not contain a private key", s.KeyPath)
-	}
-
-	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-	require.NoError(t, err)
-
-	switch k := key.(type) {
-	case *ecdsa.PrivateKey:
-		r, _s, err := ecdsa.Sign(rand.Reader, k, digest[:])
-		require.NoError(t, err)
-		sig, err := bccsputils.MarshalECDSASignature(r, _s)
-		require.NoError(t, err)
-		s, err := bccsputils.SignatureToLowS(&k.PublicKey, sig)
-		require.NoError(t, err)
-		return s
-	case ed25519.PrivateKey:
-		return ed25519.Sign(k, msg)
-	default:
-		t.Fatalf("unexpected key type: %T", key)
-	}
-
-	return nil
 }

@@ -26,8 +26,8 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
-	"github.com/hyperledger/fabric-x-committer/utils/test/apptest"
 )
 
 type svMgrTestEnv struct {
@@ -265,7 +265,7 @@ func createTxNodeBatchForTest(
 		switch i % 2 {
 		case 0:
 			// even number txs are valid.
-			txNode.Endorsements = apptest.CreateEndorsementsForThresholdRule([]byte("dummy"))
+			txNode.Endorsements = sigtest.CreateEndorsementsForThresholdRule([]byte("dummy"))
 			expectedValidatedTxs = append(expectedValidatedTxs, txNode)
 		case 1:
 			// odd number txs are invalid. No signature means invalid transaction.
@@ -360,8 +360,8 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 	}
 
 	// set verification key
-	ns1Policy, _ := policy.MakePolicyAndNsSigner(t, "ns1")
-	ns2Policy, _ := policy.MakePolicyAndNsSigner(t, "ns2")
+	ns1Policy, _ := policy.MakePolicyAndNsEndorser(t, "ns1")
+	ns2Policy, _ := policy.MakePolicyAndNsEndorser(t, "ns2")
 	expectedUpdate := &servicepb.VerifierUpdates{
 		NamespacePolicies: &applicationpb.NamespacePolicies{
 			Policies: []*applicationpb.PolicyItem{ns1Policy, ns2Policy},
@@ -382,7 +382,7 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 	env.requireConnectionMetrics(t, 0, connection.Disconnected, 1)
 
 	t.Log("Update policy manager")
-	ns2NewPolicy, _ := policy.MakePolicyAndNsSigner(t, "ns2")
+	ns2NewPolicy, _ := policy.MakePolicyAndNsEndorser(t, "ns2")
 	expectedSecondUpdate := &servicepb.VerifierUpdates{
 		NamespacePolicies: &applicationpb.NamespacePolicies{
 			Policies: []*applicationpb.PolicyItem{ns2NewPolicy},

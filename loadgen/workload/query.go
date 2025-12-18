@@ -53,7 +53,7 @@ func (g *QueryGenerator) Next() *committerpb.Query {
 	return &committerpb.Query{
 		Namespaces: []*committerpb.QueryNamespace{
 			{
-				NsId: GeneratedNamespaceID,
+				NsId: DefaultGeneratedNamespaceID,
 				Keys: keys,
 			},
 		},

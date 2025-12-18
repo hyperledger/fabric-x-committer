@@ -21,7 +21,7 @@ func CreateLoadGenNamespacesTX(policy *PolicyProfile) (*servicepb.LoadGenTx, err
 	if txbErr != nil {
 		return nil, txbErr
 	}
-	tx, err := CreateNamespacesTxFromSigner(txb.TxSigner, 0)
+	tx, err := CreateNamespacesTxFromEndorser(txb.TxEndorser, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -32,16 +32,16 @@ func CreateLoadGenNamespacesTX(policy *PolicyProfile) (*servicepb.LoadGenTx, err
 func CreateNamespacesTX(
 	policy *PolicyProfile, metaNamespaceVersion uint64, includeNS ...string,
 ) (*applicationpb.Tx, error) {
-	signer := NewTxSignerVerifier(policy)
-	return CreateNamespacesTxFromSigner(signer, metaNamespaceVersion, includeNS...)
+	endorser := NewTxEndorserVerifier(policy)
+	return CreateNamespacesTxFromEndorser(endorser, metaNamespaceVersion, includeNS...)
 }
 
-// CreateNamespacesTxFromSigner creating the transaction containing the requested namespaces into the MetaNamespace.
-func CreateNamespacesTxFromSigner(
-	signer *TxSignerVerifier, metaNamespaceVersion uint64, includeNS ...string,
+// CreateNamespacesTxFromEndorser creating the transaction containing the requested namespaces into the MetaNamespace.
+func CreateNamespacesTxFromEndorser(
+	endorser *TxEndorserVerifier, metaNamespaceVersion uint64, includeNS ...string,
 ) (*applicationpb.Tx, error) {
 	if len(includeNS) == 0 {
-		includeNS = signer.AllNamespaces()
+		includeNS = endorser.AllNamespaces()
 	}
 
 	readWrites := make([]*applicationpb.ReadWrite, 0, len(includeNS))
@@ -49,7 +49,7 @@ func CreateNamespacesTxFromSigner(
 		if ns == committerpb.MetaNamespaceID {
 			continue
 		}
-		policyBytes, err := proto.Marshal(signer.Policy(ns).VerificationPolicy())
+		policyBytes, err := proto.Marshal(endorser.Policy(ns).VerificationPolicy())
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to serialize namespace policy")
 		}

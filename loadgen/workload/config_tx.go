@@ -85,8 +85,8 @@ func CreateConfigBlock(policy *PolicyProfile) (*common.Block, error) {
 		return block, nil
 	}
 
-	txSigner := NewTxSignerVerifier(policy)
-	metaPolicy := txSigner.Policy(committerpb.MetaNamespaceID)
+	txEndorser := NewTxEndorserVerifier(policy)
+	metaPolicy := txEndorser.Policy(committerpb.MetaNamespaceID)
 	return CreateDefaultConfigBlock(&ConfigBlock{
 		MetaNamespaceVerificationKey: metaPolicy.VerificationPolicy().GetThresholdRule().GetPublicKey(),
 		OrdererEndpoints:             policy.OrdererEndpoints,
@@ -103,11 +103,13 @@ func CreateDefaultConfigBlock(conf *ConfigBlock, profileName string) (*common.Bl
 	defer func() {
 		_ = os.RemoveAll(target)
 	}()
-	return CreateConfigBlockWithCrypto(target, conf, profileName)
+	return CreateDefaultConfigBlockWithCrypto(target, conf, profileName)
 }
 
-// CreateConfigBlockWithCrypto creates a config block with crypto material.
-func CreateConfigBlockWithCrypto(targetPath string, conf *ConfigBlock, profileName string) (*common.Block, error) {
+// CreateDefaultConfigBlockWithCrypto creates a config block with crypto material.
+func CreateDefaultConfigBlockWithCrypto(
+	targetPath string, conf *ConfigBlock, profileName string,
+) (*common.Block, error) {
 	orgs := make([]cryptogen.OrganizationParameters, 0, int(conf.PeerOrganizationCount)+len(conf.OrdererEndpoints))
 
 	ordererOrgsMap := make(map[uint32][]cryptogen.OrdererEndpoint)
@@ -151,7 +153,7 @@ func CreateConfigBlockWithCrypto(targetPath string, conf *ConfigBlock, profileNa
 	metaKey := conf.MetaNamespaceVerificationKey
 	if len(metaKey) == 0 {
 		// We must supply a valid meta namespace key.
-		_, metaKey = sigtest.NewSignatureFactory(signature.Ecdsa).NewKeys()
+		_, metaKey = sigtest.NewKeyPair(signature.Ecdsa)
 	}
 
 	return cryptogen.CreateDefaultConfigBlockWithCrypto(cryptogen.ConfigBlockParameters{

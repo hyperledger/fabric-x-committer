@@ -251,7 +251,6 @@ func defaultNsInvalidPolicy() []byte {
 }
 
 func defaultNsValidPolicy() []byte {
-	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
-	_, verificationKey := factory.NewKeys()
+	_, verificationKey := sigtest.NewKeyPair(signature.Ecdsa)
 	return protoutil.MarshalOrPanic(policy.MakeECDSAThresholdRuleNsPolicy(verificationKey))
 }

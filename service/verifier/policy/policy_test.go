@@ -63,7 +63,7 @@ func TestGetUpdatesFromNamespace(t *testing.T) {
 
 func TestParsePolicyItem(t *testing.T) {
 	t.Parallel()
-	_, verificationKey := sigtest.NewSignatureFactory(signature.Ecdsa).NewKeys()
+	_, verificationKey := sigtest.NewKeyPair(signature.Ecdsa)
 	p := MakeECDSAThresholdRuleNsPolicy(verificationKey)
 
 	for _, ns := range []string{"0", "1"} {

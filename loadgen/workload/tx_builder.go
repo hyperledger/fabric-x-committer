@@ -25,7 +25,7 @@ import (
 type TxBuilder struct {
 	ChannelID   string
 	EnvSigner   protoutil.Signer
-	TxSigner    *TxSignerVerifier
+	TxEndorser  *TxEndorserVerifier
 	EnvCreator  []byte
 	NonceSource io.Reader
 }
@@ -45,7 +45,7 @@ func NewTxBuilderFromPolicy(policy *PolicyProfile, nonceSource io.Reader) (*TxBu
 	}
 	return &TxBuilder{
 		ChannelID:   policy.ChannelID,
-		TxSigner:    NewTxSignerVerifier(policy),
+		TxEndorser:  NewTxEndorserVerifier(policy),
 		EnvSigner:   envSigner,
 		EnvCreator:  envCreator,
 		NonceSource: nonceSource,
@@ -67,7 +67,7 @@ func (txb *TxBuilder) MakeTxWithID(txID string, tx *applicationpb.Tx) *servicepb
 //  1. Generates the signature-header, and TX-ID.
 //  2. Signs the TX:
 //     - If the TX already have a signature, it doesn't re-sign it.
-//     - If TxSigner is given, it is used to sign the TX.
+//     - If TxEndorser is given, it is used to sign the TX.
 //     - Otherwise, it puts empty signatures for all namespaces to ensure well-formed TX.
 //  3. Serializes the envelope's payload.
 //  4. Signs the payload (if EnvSigner is given).
@@ -91,10 +91,10 @@ func (txb *TxBuilder) makeTx(optionalTxID *string, blockTx *applicationpb.Tx) *s
 	switch {
 	case len(blockTx.Endorsements) > 0:
 		// If the TX already have a signature, it doesn't re-sign it.
-	case txb.TxSigner != nil:
-		// If TxSigner is given, it is used to sign the TX.
-		txb.TxSigner.Sign(txID, blockTx)
-	case txb.TxSigner == nil:
+	case txb.TxEndorser != nil:
+		// If TxEndorser is given, it is used to sign the TX.
+		txb.TxEndorser.Endorse(txID, blockTx)
+	case txb.TxEndorser == nil:
 		// Otherwise, it puts empty signatures for all namespaces to ensure well-formed TX.
 		blockTx.Endorsements = make([]*applicationpb.Endorsements, len(blockTx.Namespaces))
 	}

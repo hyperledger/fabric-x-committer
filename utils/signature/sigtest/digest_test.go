@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package certificate
+package sigtest
 
 import (
 	"crypto/rand"
@@ -76,7 +76,7 @@ func TestDigest(t *testing.T) {
 			name:          "Invalid PEM Content",
 			filePath:      invalidPemPath,
 			hashFunc:      bccsp.SHA256,
-			expectedError: "no pem content for file",
+			expectedError: "no PEM content in file",
 		},
 		{
 			name:          "Unsupported Hash Function",

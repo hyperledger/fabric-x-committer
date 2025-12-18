@@ -218,7 +218,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 			require.Empty(t, mockSvService.GetUpdates())
 		}
 
-		_, verificationKey := sigtest.NewSignatureFactory(signature.Ecdsa).NewKeys()
+		_, verificationKey := sigtest.NewKeyPair(signature.Ecdsa)
 		p := policy.MakeECDSAThresholdRuleNsPolicy(verificationKey)
 		pBytes, err := proto.Marshal(p)
 		require.NoError(t, err)

@@ -40,7 +40,7 @@ func DefaultProfile(workers uint32) *Profile {
 			ReadWriteCount:     NewConstantDistribution(2),
 			Policy: &PolicyProfile{
 				NamespacePolicies: map[string]*Policy{
-					GeneratedNamespaceID:        {Scheme: signature.NoScheme},
+					DefaultGeneratedNamespaceID: {Scheme: signature.NoScheme},
 					committerpb.MetaNamespaceID: {Scheme: signature.Ecdsa},
 				},
 			},
