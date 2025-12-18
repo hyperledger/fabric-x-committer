@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 
@@ -64,9 +65,9 @@ func benchTxProfiles() (profiles []*Profile) {
 	for _, sign := range []bool{true, false} {
 		for _, p := range benchWorkersProfiles() {
 			if !sign {
-				p.Transaction.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.NoScheme
+				p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.NoScheme
 			} else {
-				p.Transaction.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.Ecdsa
+				p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.Ecdsa
 			}
 			profiles = append(profiles, p)
 		}
@@ -78,7 +79,7 @@ func genericBench(b *testing.B, benchFunc func(b *testing.B, p *Profile)) {
 	b.Helper()
 	for _, p := range benchTxProfiles() {
 		name := fmt.Sprintf("workers-%d-sign-%s",
-			p.Workers, p.Transaction.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme)
+			p.Workers, p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme)
 		b.Run(name, func(b *testing.B) {
 			benchFunc(b, p)
 		})
@@ -136,7 +137,7 @@ func requireValidKey(t *testing.T, key []byte, profile *Profile) {
 	require.Positive(t, SumInt(key))
 }
 
-func requireValidTx(t *testing.T, tx *servicepb.LoadGenTx, profile *Profile, endorser *TxEndorserVerifier) {
+func requireValidTx(t *testing.T, tx *servicepb.LoadGenTx, profile *Profile, endorser *TxEndorser) {
 	t.Helper()
 	require.NotEmpty(t, tx.Id)
 	require.NotNil(t, tx.Tx)
@@ -173,7 +174,7 @@ func requireValidTx(t *testing.T, tx *servicepb.LoadGenTx, profile *Profile, end
 		requireValidKey(t, v.Key, profile)
 	}
 
-	require.True(t, endorser.Verify(tx.Id, tx.Tx))
+	require.True(t, verify(t, endorser.VerificationPolicies(), tx.Id, tx.Tx, nil))
 }
 
 func testWorkersProfiles() (profiles []*Profile) {
@@ -228,7 +229,7 @@ func TestGenValidTx(t *testing.T) {
 			t.Parallel()
 			c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 			g := c.MakeGenerator()
-			endorser := NewTxEndorserVerifier(p.Transaction.Policy)
+			endorser := NewTxEndorser(&p.Policy)
 
 			for range 100 {
 				requireValidTx(t, g.Next(t.Context()), p, endorser)
@@ -248,7 +249,7 @@ func TestGenValidBlock(t *testing.T) {
 			t.Parallel()
 			c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 			g := c.MakeGenerator()
-			endorser := NewTxEndorserVerifier(p.Transaction.Policy)
+			endorser := NewTxEndorser(&p.Policy)
 
 			for range 5 {
 				txs := g.NextN(t.Context(), int(p.Block.Size)) //nolint:gosec // uint64 -> int.
@@ -263,15 +264,15 @@ func TestGenValidBlock(t *testing.T) {
 func TestGenInvalidSigTx(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(1)
-	p.Transaction.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.Ecdsa
+	p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.Ecdsa
 	p.Conflicts.InvalidSignatures = 0.2
 
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 	g := c.MakeGenerator()
 	txs := g.NextN(t.Context(), 1e4)
-	endorser := NewTxEndorserVerifier(p.Transaction.Policy)
+	endorser := NewTxEndorser(&p.Policy)
 	valid := Map(txs, func(_ int, tx *servicepb.LoadGenTx) float64 {
-		if !endorser.Verify(tx.Id, tx.Tx) {
+		if !verify(t, endorser.VerificationPolicies(), tx.Id, tx.Tx, nil) {
 			return 1
 		}
 		return 0
@@ -282,7 +283,7 @@ func TestGenInvalidSigTx(t *testing.T) {
 func TestGenDependentTx(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(1)
-	p.Transaction.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.NoScheme
+	p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.NoScheme
 	p.Conflicts.Dependencies = []DependencyDescription{
 		{
 			Gap:         NewConstantDistribution(1),
@@ -565,4 +566,27 @@ func TestAsnMarshal(t *testing.T) {
 	}
 	// We test against the generated load to enforce a coupling between different parts of the system.
 	signature.CommonTestAsnMarshal(t, txs)
+}
+
+//nolint:revive // 5 arguments.
+func verify(
+	t *testing.T,
+	policies map[string]*applicationpb.NamespacePolicy,
+	txID string, tx *applicationpb.Tx,
+	idDeserializer msp.IdentityDeserializer,
+) bool {
+	t.Helper()
+	if len(tx.Endorsements) < len(tx.Namespaces) {
+		return false
+	}
+	for nsIndex, ns := range tx.Namespaces {
+		policy, ok := policies[ns.NsId]
+		require.Truef(t, ok, "No policy nsID=%s", ns.NsId)
+		verifier, err := signature.NewNsVerifier(policy, idDeserializer)
+		require.NoError(t, err, "Failed to create verifier for nsID=%s", ns.NsId)
+		if verErr := verifier.VerifyNs(txID, tx, nsIndex); verErr != nil {
+			return false
+		}
+	}
+	return true
 }

@@ -40,17 +40,21 @@ const DefaultGeneratedNamespaceID = "0"
 
 // newIndependentTxGenerator creates a new valid TX generator given a transaction profile.
 func newIndependentTxGenerator(
-	rnd *rand.Rand, keys *ByteArrayGenerator, profile *TransactionProfile, modifiers ...Modifier,
+	rnd *rand.Rand,
+	keys *ByteArrayGenerator,
+	txProfile *TransactionProfile,
+	policyProfile *PolicyProfile,
+	modifiers ...Modifier,
 ) *IndependentTxGenerator {
-	txb, err := NewTxBuilderFromPolicy(profile.Policy, rnd)
+	txb, err := NewTxBuilderFromPolicy(policyProfile, rnd)
 	utils.Must(err)
 	return &IndependentTxGenerator{
 		TxBuilder:                txb,
-		ReadOnlyKeyGenerator:     multiKeyGenerator(rnd, keys, profile.ReadOnlyCount),
-		ReadWriteKeyGenerator:    multiKeyGenerator(rnd, keys, profile.ReadWriteCount),
-		BlindWriteKeyGenerator:   multiKeyGenerator(rnd, keys, profile.BlindWriteCount),
-		ReadWriteValueGenerator:  valueGenerator(rnd, profile.ReadWriteValueSize),
-		BlindWriteValueGenerator: valueGenerator(rnd, profile.BlindWriteValueSize),
+		ReadOnlyKeyGenerator:     multiKeyGenerator(rnd, keys, txProfile.ReadOnlyCount),
+		ReadWriteKeyGenerator:    multiKeyGenerator(rnd, keys, txProfile.ReadWriteCount),
+		BlindWriteKeyGenerator:   multiKeyGenerator(rnd, keys, txProfile.BlindWriteCount),
+		ReadWriteValueGenerator:  valueGenerator(rnd, txProfile.ReadWriteValueSize),
+		BlindWriteValueGenerator: valueGenerator(rnd, txProfile.BlindWriteValueSize),
 		Modifiers:                modifiers,
 	}
 }
