@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package test
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -23,7 +22,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
-	testutils "github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type (
@@ -33,7 +32,7 @@ type (
 		name       string
 	}
 	startNodeParameters struct {
-		credsFactory    *testutils.CredentialsFactory
+		credsFactory    *test.CredentialsFactory
 		node            string
 		networkName     string
 		tlsMode         string
@@ -54,12 +53,8 @@ const (
 	channelName         = "mychannel"
 	monitoredMetric     = "loadgen_transaction_committed_total"
 	containerPrefixName = "sc_test"
+	testNodeImage       = "icr.io/cbdc/committer-test-node:0.0.2"
 )
-
-var testNodeImage = func() string {
-	defaultFullNodeImage := "icr.io/cbdc/committer-test-node:0.0.2"
-	return cmp.Or(os.Getenv("test_node_image_full"), defaultFullNodeImage)
-}()
 
 func createAndStartContainerAndItsLogs(
 	ctx context.Context,
@@ -103,7 +98,7 @@ func monitorMetric(t *testing.T, metricsPort string) {
 	// We log only if there are changes to avoid spamming the log.
 	prevCount := -1
 	require.Eventually(t, func() bool {
-		count := testutils.GetMetricValueFromURL(t, metricsURL, monitoredMetric)
+		count := test.GetMetricValueFromURL(t, metricsURL, monitoredMetric)
 		if prevCount != count {
 			t.Logf("%s: %d", monitoredMetric, count)
 		}

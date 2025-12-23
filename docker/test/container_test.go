@@ -31,7 +31,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	testutils "github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 const (
@@ -54,9 +54,9 @@ var commonTestNodeCMD = []string{"run", "db", "committer", "orderer"}
 func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 	t.Parallel()
 
-	credsFactory := testutils.NewCredentialsFactory(t)
+	credsFactory := test.NewCredentialsFactory(t)
 
-	for _, mode := range testutils.ServerModes {
+	for _, mode := range test.ServerModes {
 		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
 			ctx := t.Context()
@@ -106,7 +106,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 					false,
 				),
 			}
-			runtime.SystemConfig.ClientTLS, _ = runtime.CredFactory.CreateClientCredentials(t, mode)
+			runtime.SystemConfig.ClientTLS, _ = credsFactory.CreateClientCredentials(t, mode)
 			runtime.CreateRuntimeClients(ctx, t)
 			runtime.OpenNotificationStream(ctx, t)
 
@@ -115,7 +115,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 
 			runtime.CommittedBlock = sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Parameters{
 				ChannelID: channelName,
-				Client: testutils.NewTLSClientConfig(
+				Client: test.NewTLSClientConfig(
 					runtime.SystemConfig.ClientTLS, runtime.SystemConfig.Endpoints.Sidecar.Server,
 				),
 			}, 0)
@@ -198,7 +198,7 @@ func TestStartTestNode(t *testing.T) {
 	stopAndRemoveContainersByName(ctx, t, createDockerClient(t), committerContainerName)
 	startCommitter(ctx, t, startNodeParameters{
 		node:         committerContainerName,
-		credsFactory: testutils.NewCredentialsFactory(t),
+		credsFactory: test.NewCredentialsFactory(t),
 		tlsMode:      connection.NoneTLSMode,
 		cmd:          append(commonTestNodeCMD, "loadgen"),
 	})
@@ -210,7 +210,7 @@ func TestStartTestNode(t *testing.T) {
 	require.NoError(t, err)
 	committedBlock := sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Parameters{
 		ChannelID: channelName,
-		Client:    testutils.NewInsecureClientConfig(sidecarEndpoint),
+		Client:    test.NewInsecureClientConfig(sidecarEndpoint),
 	}, 0)
 	b, ok := channel.NewReader(ctx, committedBlock).Read()
 	require.True(t, ok)
@@ -296,9 +296,6 @@ func mustGetEndpoint(ctx context.Context, t *testing.T, containerName, servicePo
 }
 
 // requireQueryResults checks that the QueryService returned the expected rows.
-// We must use a protobuf-aware comparator because gRPC unmarshalling populates
-// internal protobuf fields that make normal equality checks fail.
-// protocmp.Transform() strips out protobuf-internal state so that the comparison checks only the actual row data.
 func requireQueryResults(
 	t *testing.T,
 	requiredItems []*committerpb.RowsNamespace,
@@ -307,6 +304,6 @@ func requireQueryResults(
 	t.Helper()
 	require.Len(t, retNamespaces, len(requiredItems))
 	for idx := range retNamespaces {
-		testutils.RequireProtoElementsMatch(t, requiredItems[idx].Rows, retNamespaces[idx].Rows)
+		test.RequireProtoElementsMatch(t, requiredItems[idx].Rows, retNamespaces[idx].Rows)
 	}
 }

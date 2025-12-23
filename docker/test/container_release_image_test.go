@@ -24,7 +24,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
-	testutils "github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 const (
@@ -75,18 +75,18 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	loadgenNode := "loadgen"
 	committerNodes := []string{"verifier", "vc", "query", "coordinator", "sidecar"}
 
-	credsFactory := testutils.NewCredentialsFactory(t)
+	credsFactory := test.NewCredentialsFactory(t)
 	for _, dbType := range []string{dbtest.YugaDBType, dbtest.PostgresDBType} {
 		t.Run(fmt.Sprintf("database:%s", dbType), func(t *testing.T) {
 			t.Parallel()
-			for _, mode := range testutils.ServerModes {
+			for _, mode := range test.ServerModes {
 				t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 					t.Parallel()
 					// Create an isolated network for each test with different tls mode.
 					networkName := fmt.Sprintf("%s_%s", networkPrefixName, uuid.NewString())
-					testutils.CreateDockerNetwork(t, networkName)
+					test.CreateDockerNetwork(t, networkName)
 					t.Cleanup(func() {
-						testutils.RemoveDockerNetwork(t, networkName)
+						test.RemoveDockerNetwork(t, networkName)
 					})
 
 					params := startNodeParameters{

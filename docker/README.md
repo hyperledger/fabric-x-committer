@@ -55,7 +55,7 @@ To control which parts of the system will run, you can use the `run` script as f
 ```shell
 docker run -it --rm icr.io/cbdc/committer-test-node:0.0.2 run [db] [orderer] [committer] [loadgen]
 ```
-And add the ```--insecure``` flag for an insecure run.
+Note: ```--insecure``` flag can be added for an insecure run.
 
 For example, to run it with an existing orderer node:
 ```shell
