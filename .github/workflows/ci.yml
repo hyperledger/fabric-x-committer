@@ -6,15 +6,14 @@ name: CI
 
 on:
   push:
-    branches: [ "**" ]
+    branches: ["**"]
   pull_request:
-    branches: [ "**" ]
+    branches: ["**"]
 
 env:
   DB_DEPLOYMENT: local
 
 jobs:
-
   lint:
     name: Lint and Build
     runs-on: ubuntu-latest
