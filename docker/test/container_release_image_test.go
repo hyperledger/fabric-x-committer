@@ -199,7 +199,6 @@ func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, param
 		config: &container.Config{
 			Image: committerReleaseImage,
 			Cmd: []string{
-				"committer",
 				fmt.Sprintf("start-%s", params.node),
 				"--config",
 				fmt.Sprintf("%s.yaml", configPath),
@@ -245,7 +244,6 @@ func startLoadgenNodeWithReleaseImage(
 		config: &container.Config{
 			Image: loadgenReleaseImage,
 			Cmd: []string{
-				params.node,
 				"start",
 				"--config",
 				fmt.Sprintf("%s.yaml", configPath),
