@@ -21,7 +21,7 @@
 #########################
 
 go_cmd          ?= go
-version         := 0.0.2
+version         := latest
 project_dir     := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 output_dir      ?= $(project_dir)/bin
 arch_output_dir ?= $(project_dir)/archbin
@@ -43,7 +43,7 @@ cmd            ?=
 # An error will occur if neither container engine is installed.
 docker_cmd ?= $(shell command -v docker >/dev/null 2>&1 && echo docker || \
 							echo podman || { echo "Error: Neither Docker nor Podman is installed." >&2; exit 1; })
-image_namespace=icr.io/cbdc
+image_namespace=docker.io/hyperledger
 
 # Set these parameters to compile to a specific os/arch
 # E.g., make build-local os=linux arch=amd64

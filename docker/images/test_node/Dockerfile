@@ -1,12 +1,18 @@
+#
 # Copyright IBM Corp. All Rights Reserved.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+
+###########################################
+# Stage 1: Production runtime image
+###########################################
 FROM postgres:16.9-alpine3.21 AS node
 
 ARG ARCHBIN_PATH
 ARG TARGETOS
 ARG TARGETARCH
+ARG VERSION
 
 ENV CONFIGS_PATH=/root/config
 ENV BINS_PATH=/root/bin
@@ -48,6 +54,16 @@ COPY ./cmd/config/samples $CONFIGS_PATH
 COPY ./bin/sc-genesis-block.proto.bin $CONFIGS_PATH/
 RUN chmod a+x ${BINS_PATH}/*
 
+# Expose ports
 EXPOSE 7050 4001 2114 7001 2117 2110
 
+# OCI metadata labels
+LABEL name="fabric-x-committer-test-node" \
+    maintainer="IBM Research ZRL Decentralized Trust Group" \
+    version="${VERSION}" \
+    description="Preconfigured Hyperledger Fabric-X Committer Node" \
+    license="Apache-2.0" \
+    vendor="IBM"
+
+# Default CMD
 CMD ["run"]

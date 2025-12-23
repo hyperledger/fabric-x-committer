@@ -1,33 +1,48 @@
+#
 # Copyright IBM Corp. All Rights Reserved.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-FROM registry.access.redhat.com/ubi9/ubi-micro:9.4 AS prod
+
+###########################################
+# Stage 1: Production runtime image
+###########################################
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.6 AS prod
+
 ARG BIN
 ARG ARCHBIN_PATH
 ARG TARGETOS
 ARG TARGETARCH
 ARG PORTS
+ARG VERSION=1.0
 
-# --- Create a non-root user (UBI-micro does not include useradd) ---
-USER 10001
+# Add non-root user (10001) using BIN argument
+RUN /usr/sbin/useradd -u 10001 -r -g root -s /sbin/nologin -c "Hyperledger Fabric-X ${BIN} user" ${BIN} && \
+    mkdir -p /home/${BIN} && \
+    chown -R 10001:0 /home/${BIN} && \
+    chmod 0755 /home/${BIN}
 
-# --- Create working directory ---
-WORKDIR /app
-
-# --- Copy the architecture-specific binary ---
+# Copy binaries
 COPY ${ARCHBIN_PATH}/${TARGETOS}-${TARGETARCH}/${BIN} /bin/${BIN}
 
-# --- Expose ports for Kubernetes/OpenShift ---
+# Create fixed entrypoint since args are not replaced
+# within ENTRYPOINT or CMD
+RUN ln -s /bin/${BIN} /bin/entrypoint
+
+# Expose ports
 EXPOSE ${PORTS}
 
-# --- Container metadata (OCI labels) ---
+# OCI metadata labels
 LABEL name="${BIN}" \
-      vendor="IBM" \
-      maintainer="ZRL Decentralized Trust Group" \
-      description="Production-grade ${BIN} microservice running on UBI-micro" \
-      summary="Minimal, secure UBI-micro image for ${BIN}" \
-      license="Apache-2.0"
+    maintainer="IBM Research ZRL Decentralized Trust Group" \
+    version="${VERSION}" \
+    description="Hyperledger Fabric-X ${BIN} packaged in a UBI image" \
+    license="Apache-2.0" \
+    vendor="IBM"
 
-# --- Set runtime entrypoint ---
-ENTRYPOINT /bin/${BIN}
+# Use non-root user and set workdir using BIN argument
+USER 10001
+WORKDIR /home/${BIN}
+
+# Default Entrypoint
+ENTRYPOINT ["/bin/entrypoint"]
