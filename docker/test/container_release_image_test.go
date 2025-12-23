@@ -204,6 +204,7 @@ func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, param
 				fmt.Sprintf("%s.yaml", configPath),
 			},
 			Hostname: params.node,
+			User:     fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
 			Env: []string{
 				"SC_COORDINATOR_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_COORDINATOR_VERIFIER_TLS_MODE=" + params.tlsMode,
@@ -249,6 +250,7 @@ func startLoadgenNodeWithReleaseImage(
 				fmt.Sprintf("%s.yaml", configPath),
 			},
 			Hostname: params.node,
+			User:     fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
 			ExposedPorts: nat.PortSet{
 				loadGenMetricsPort + "/tcp": {},
 			},
