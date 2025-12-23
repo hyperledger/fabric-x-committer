@@ -20,7 +20,7 @@ import (
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -33,7 +33,7 @@ import (
 type (
 	// Client for applying load on the services.
 	Client struct {
-		protoloadgen.UnimplementedLoadGenServiceServer
+		servicepb.UnimplementedLoadGenServiceServer
 		conf        *ClientConfig
 		txStream    *workload.TxStream
 		resources   adapters.ClientResources
@@ -116,7 +116,7 @@ func (c *Client) Run(ctx context.Context) error {
 		return c.txStream.Run(gCtx)
 	})
 
-	workloadSetupTXs := make(chan *protoloadgen.TX, 1)
+	workloadSetupTXs := make(chan *servicepb.LoadGenTx, 1)
 	cs := &workload.StreamWithSetup{
 		BlockSize:        c.conf.LoadProfile.Block.Size,
 		WorkloadSetupTXs: channel.NewReader(gCtx, workloadSetupTXs),
@@ -152,23 +152,23 @@ func (*Client) WaitForReady(context.Context) bool {
 
 // RegisterService registers for the load-gen's GRPC services.
 func (c *Client) RegisterService(server *grpc.Server) {
-	protoloadgen.RegisterLoadGenServiceServer(server, c)
+	servicepb.RegisterLoadGenServiceServer(server, c)
 	healthgrpc.RegisterHealthServer(server, c.healthcheck)
 }
 
 // AppendBatch appends a batch to the stream.
-func (c *Client) AppendBatch(ctx context.Context, batch *protoloadgen.Batch) (*emptypb.Empty, error) {
+func (c *Client) AppendBatch(ctx context.Context, batch *servicepb.LoadGenBatch) (*emptypb.Empty, error) {
 	c.txStream.AppendBatch(ctx, batch.Tx)
 	return nil, nil
 }
 
 // GetLimit reads the stream limit.
-func (c *Client) GetLimit(context.Context, *emptypb.Empty) (*protoloadgen.Limit, error) {
-	return &protoloadgen.Limit{Rate: float64(c.txStream.GetLimit())}, nil
+func (c *Client) GetLimit(context.Context, *emptypb.Empty) (*servicepb.Limit, error) {
+	return &servicepb.Limit{Rate: float64(c.txStream.GetLimit())}, nil
 }
 
 // SetLimit sets the stream limit.
-func (c *Client) SetLimit(_ context.Context, limit *protoloadgen.Limit) (*emptypb.Empty, error) {
+func (c *Client) SetLimit(_ context.Context, limit *servicepb.Limit) (*emptypb.Empty, error) {
 	c.txStream.SetLimit(rate.Limit(limit.Rate))
 	return nil, nil
 }
@@ -210,7 +210,7 @@ func (c *Client) runLimiterServer(ctx context.Context) error {
 }
 
 // submitWorkloadSetupTXs writes the workload setup TXs to the channel, and waits for them to be committed.
-func (c *Client) submitWorkloadSetupTXs(ctx context.Context, txs chan *protoloadgen.TX) error {
+func (c *Client) submitWorkloadSetupTXs(ctx context.Context, txs chan *servicepb.LoadGenTx) error {
 	defer close(txs)
 
 	workloadSetupTXs, err := makeWorkloadSetupTXs(c.conf)
@@ -238,8 +238,8 @@ func (c *Client) submitWorkloadSetupTXs(ctx context.Context, txs chan *protoload
 	return nil
 }
 
-func makeWorkloadSetupTXs(config *ClientConfig) ([]*protoloadgen.TX, error) {
-	workloadSetupTXs := make([]*protoloadgen.TX, 0, 2)
+func makeWorkloadSetupTXs(config *ClientConfig) ([]*servicepb.LoadGenTx, error) {
+	workloadSetupTXs := make([]*servicepb.LoadGenTx, 0, 2)
 	if config.Generate.Config {
 		configTX, err := workload.CreateConfigTx(config.LoadProfile.Transaction.Policy)
 		if err != nil {

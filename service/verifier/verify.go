@@ -17,9 +17,9 @@ import (
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -41,7 +41,7 @@ func newVerifier() *verifier {
 // updatePolicies updates the verifier's policies.
 // We assume no parallel update calls, thus, no lock is required.
 func (v *verifier) updatePolicies(
-	update *protosigverifierservice.Update,
+	update *servicepb.VerifierUpdates,
 ) error {
 	if update == nil || (update.Config == nil && update.NamespacePolicies == nil) {
 		return nil
@@ -83,7 +83,7 @@ func (v *verifier) updatePolicies(
 }
 
 func createVerifiers(
-	update *protosigverifierservice.Update, idDeserializer msp.IdentityDeserializer,
+	update *servicepb.VerifierUpdates, idDeserializer msp.IdentityDeserializer,
 ) (map[string]*signature.NsVerifier, error) {
 	newPolicies := make(map[string]*signature.NsVerifier)
 	if update.Config != nil {
@@ -92,7 +92,7 @@ func createVerifiers(
 		if err != nil {
 			return nil, errors.Join(ErrUpdatePolicies, err)
 		}
-		newPolicies[types.MetaNamespaceID] = nsVerifier
+		newPolicies[committerpb.MetaNamespaceID] = nsVerifier
 	}
 	if update.NamespacePolicies != nil {
 		for _, pd := range update.NamespacePolicies.Policies {
@@ -106,7 +106,7 @@ func createVerifiers(
 	return newPolicies, nil
 }
 
-func (v *verifier) updateBundle(u *protosigverifierservice.Update) error {
+func (v *verifier) updateBundle(u *servicepb.VerifierUpdates) error {
 	if u.Config == nil {
 		return nil
 	}
@@ -123,11 +123,11 @@ func (v *verifier) updateBundle(u *protosigverifierservice.Update) error {
 	return nil
 }
 
-func (v *verifier) verifyRequest(tx *protosigverifierservice.Tx) *protosigverifierservice.Response {
+func (v *verifier) verifyRequest(tx *servicepb.VerifierTx) *servicepb.VerifierResponse {
 	logger.Debugf("Validating TX: %s", &utils.LazyJSON{O: tx})
-	response := &protosigverifierservice.Response{
+	response := &servicepb.VerifierResponse{
 		Ref:    tx.Ref,
-		Status: protoblocktx.Status_COMMITTED,
+		Status: applicationpb.Status_COMMITTED,
 	}
 	// The verifiers might temporarily retain the old map while updatePolicies has already set a new one.
 	// This is acceptable, provided the coordinator sends the validation status to the dependency graph
@@ -136,7 +136,7 @@ func (v *verifier) verifyRequest(tx *protosigverifierservice.Tx) *protosigverifi
 	// containing the latest policy.
 	verifiers := *v.verifiers.Load()
 	for nsIndex, ns := range tx.Tx.Namespaces {
-		if ns.NsId == types.ConfigNamespaceID {
+		if ns.NsId == committerpb.ConfigNamespaceID {
 			// Configuration TX is not signed in the same manner as application TX.
 			// Its signatures are verified by the ordering service.
 			continue
@@ -144,7 +144,7 @@ func (v *verifier) verifyRequest(tx *protosigverifierservice.Tx) *protosigverifi
 		nsVerifier, ok := verifiers[ns.NsId]
 		if !ok {
 			logger.Debugf("No verifier for namespace: '%v'", ns.NsId)
-			response.Status = protoblocktx.Status_ABORTED_SIGNATURE_INVALID
+			response.Status = applicationpb.Status_ABORTED_SIGNATURE_INVALID
 			return response
 		}
 
@@ -158,8 +158,9 @@ func (v *verifier) verifyRequest(tx *protosigverifierservice.Tx) *protosigverifi
 		//       still mark the transaction as invalid due to an MVCC conflict on the
 		//       namespace version, which would reflect the correct validation status.
 		if err := nsVerifier.VerifyNs(tx.Ref.TxId, tx.Tx, nsIndex); err != nil {
-			logger.Debugf("Invalid signature found: '%v', NsId: '%v'", &utils.LazyJSON{O: tx.Ref}, ns.NsId)
-			response.Status = protoblocktx.Status_ABORTED_SIGNATURE_INVALID
+			logger.Debugf("Invalid signature found: '%v', NsId: '%v': %+v",
+				&utils.LazyJSON{O: tx.Ref}, ns.NsId, err)
+			response.Status = applicationpb.Status_ABORTED_SIGNATURE_INVALID
 			return response
 		}
 	}

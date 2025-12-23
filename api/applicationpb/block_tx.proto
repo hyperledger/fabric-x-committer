@@ -1,0 +1,158 @@
+/*
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+*/
+
+syntax = "proto3";
+
+option go_package = "github.com/hyperledger/fabric-x-committer/api/applicationpb";
+
+package applicationpb;
+
+message Tx {
+  // A list of namespaces that define the transaction's scope.
+  repeated TxNamespace namespaces = 1;
+
+  // A list of endorsements.
+  // IMPORTANT: This list MUST be the same size as the namespaces list.
+  // The Endorsement at index i corresponds to the namespace at index i.
+  repeated Endorsements endorsements = 2;
+}
+
+// Represents a namespace within a transaction.
+message TxNamespace {
+    string ns_id = 1;                   // The namespace ID.
+    uint64 ns_version = 2;              // The version of the namespace.
+    repeated Read reads_only = 3;       // List of read only operations within the namespace.
+    repeated ReadWrite read_writes = 4; // List of read-write operations within the namespace.
+    repeated Write blind_writes = 5;    // List of blind write operations within the namespace.
+}
+
+// Represents a read operation.
+message Read {
+    bytes key = 1;               // The key being read.
+    optional uint64 version = 2; // The version of the key being read. Nil version means it doesn't exist.
+}
+
+// Represents a read-write operation.
+message ReadWrite {
+    bytes key = 1;               // The key involved in the read-write operation.
+    optional uint64 version = 2; // The version of the key being read and written. Nil version means it doesn't exist.
+    bytes value = 3;             // The value associated with the key being written.
+}
+
+// Represents a write operation.
+message Write {
+    bytes key = 1;   // The key being written.
+    bytes value = 2; // The value associated with the key being written.
+}
+
+// Endorsements holds all the signatures that correspond to a single namespace
+// in the transaction's namespaces list.
+message Endorsements {
+  // The list of individual signatures for the corresponding namespace.
+  repeated EndorsementWithIdentity endorsements_with_identity = 1;
+}
+
+// EndorsementWithIdentity bundles a single signature with the identity of its creator.
+message EndorsementWithIdentity {
+  // The actual cryptographic signature bytes.
+  bytes endorsement = 1;
+
+  // The identity of the creator who produced the signature, i.e., the endorsement.
+  Identity identity = 2;
+}
+
+message Identity {
+  // The identifier of the associated membership service provider
+  string msp_id = 1;
+
+  oneof creator {
+    // The full raw bytes of the creator's certificate (e.g., an X.509 certificate).
+    bytes certificate = 2;
+
+    // An identifier for a certificate that is pre-stored or known by the committer.
+    string certificate_id = 3;
+  }
+}
+
+// Represents a namespace policy.
+message NamespacePolicy {
+  oneof rule {
+    ThresholdRule threshold_rule = 1;
+    bytes msp_rule = 2; 
+  }
+}
+
+message ThresholdRule {
+    string scheme = 1;      // The scheme for signature verification.
+    bytes public_key = 2; // The public key for signature verification.
+}
+
+message BlockInfo {
+    uint64 number = 1;
+}
+
+message QueryStatus {
+    repeated string txIDs = 1;
+}
+
+message TransactionsStatus {
+    map<string, StatusWithHeight> status = 1;
+}
+
+message StatusWithHeight {
+    Status code = 1;
+    uint64 block_number = 2;
+    uint32 tx_number = 3;
+}
+
+message NamespacePolicies {
+    repeated PolicyItem policies = 1;
+}
+
+message PolicyItem {
+    string namespace = 1;
+    bytes policy = 2;
+    uint64 version = 3;
+}
+
+message ConfigTransaction {
+    bytes envelope = 1;
+    uint64 version = 2;
+}
+
+// Status represents the result of transaction validation.
+// Except for NOT_VALIDATED, all statuses are recorded in the ledger.
+// Some statuses are also stored in the state database which prevent resubmission of the same transaction ID.
+enum Status {
+    // Should never be persisted or reported.
+    NOT_VALIDATED = 0;                                  // Default. The transaction has not been validated yet.
+
+    // Stored in the state database. Prevents submitting a transaction with the same ID.
+    COMMITTED = 1;                                      // Successfully committed and state updated.
+    ABORTED_SIGNATURE_INVALID = 2;                      // Signature is invalid according to the namespace policy.
+    ABORTED_MVCC_CONFLICT = 3;                          // Read-write set conflict.
+
+    // Cannot be stored in the state database because the TX ID cannot be extracted,
+    // or the TX ID entry is already occupied.
+    REJECTED_DUPLICATE_TX_ID = 100;                     // Transaction with the same ID has already been processed.
+    MALFORMED_BAD_ENVELOPE = 101;                       // Cannot unmarshal envelope.
+    MALFORMED_MISSING_TX_ID = 102;                      // Envelope is missing transaction ID.
+
+    // Stored in the state database. Prevents submitting a transaction with the same ID.
+    MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD = 103;       // Unsupported envelope payload type.
+    MALFORMED_BAD_ENVELOPE_PAYLOAD = 104;               // Cannot unmarshal envelope's payload.
+    MALFORMED_TX_ID_CONFLICT = 105;                     // Envelope's TX ID does not match the payload's TX ID.
+    MALFORMED_EMPTY_NAMESPACES = 106;                   // No namespaces provided.
+    MALFORMED_DUPLICATE_NAMESPACE = 107;                // Duplicate namespace detected.
+    MALFORMED_NAMESPACE_ID_INVALID = 108;               // Invalid namespace identifier.
+    MALFORMED_BLIND_WRITES_NOT_ALLOWED = 109;           // Blind writes are not allowed in a namespace transaction.
+    MALFORMED_NO_WRITES = 110;                          // No write operations in the transaction.
+    MALFORMED_EMPTY_KEY = 111;                          // Unset key detected.
+    MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET = 112;    // Duplicate key in the read-write set.
+    MALFORMED_MISSING_SIGNATURE = 113;                  // Number of signatures does not match the number of namespaces.
+    MALFORMED_NAMESPACE_POLICY_INVALID = 114;           // Invalid namespace policy.
+    MALFORMED_CONFIG_TX_INVALID = 115;                  // Invalid configuration transaction.
+}

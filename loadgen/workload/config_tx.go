@@ -7,34 +7,36 @@ SPDX-License-Identifier: Apache-2.0
 package workload
 
 import (
-	"math/rand/v2"
+	"fmt"
+	"maps"
 	"os"
-	"path/filepath"
+	"slices"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-x-common/core/config/configtest"
-	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
-	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen/genesisconfig"
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
+	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/types"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
+	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 )
 
 // ConfigBlock represents the configuration of the config block.
 type ConfigBlock struct {
 	ChannelID                    string
-	OrdererEndpoints             []*ordererconn.Endpoint
+	OrdererEndpoints             []*commontypes.OrdererEndpoint
+	PeerOrganizationCount        uint32
 	MetaNamespaceVerificationKey []byte
 }
 
 // CreateConfigTx creating a config TX.
-func CreateConfigTx(policy *PolicyProfile) (*protoloadgen.TX, error) {
+func CreateConfigTx(policy *PolicyProfile) (*servicepb.LoadGenTx, error) {
 	envelopeBytes, err := CreateConfigEnvelope(policy)
 	if err != nil {
 		return nil, err
@@ -47,13 +49,13 @@ func CreateConfigTx(policy *PolicyProfile) (*protoloadgen.TX, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &protoloadgen.TX{
+	return &servicepb.LoadGenTx{
 		Id: channelHdr.TxId,
-		Tx: &protoblocktx.Tx{
-			Namespaces: []*protoblocktx.TxNamespace{{
-				NsId: types.ConfigNamespaceID,
-				BlindWrites: []*protoblocktx.Write{{
-					Key:   []byte(types.ConfigNamespaceID),
+		Tx: &applicationpb.Tx{
+			Namespaces: []*applicationpb.TxNamespace{{
+				NsId: committerpb.ConfigNamespaceID,
+				BlindWrites: []*applicationpb.Write{{
+					Key:   []byte(committerpb.ConfigNamespaceID),
 					Value: envelopeBytes,
 				}},
 			}},
@@ -83,84 +85,82 @@ func CreateConfigBlock(policy *PolicyProfile) (*common.Block, error) {
 		return block, nil
 	}
 
-	txSigner := NewTxSignerVerifier(policy)
-	policyNamespaceSigner, ok := txSigner.HashSigners[types.MetaNamespaceID]
-	if !ok {
-		return nil, errors.New("no policy namespace signer found; cannot create namespaces")
-	}
+	txEndorser := NewTxEndorserVerifier(policy)
+	metaPolicy := txEndorser.Policy(committerpb.MetaNamespaceID)
 	return CreateDefaultConfigBlock(&ConfigBlock{
-		MetaNamespaceVerificationKey: policyNamespaceSigner.pubKey,
+		MetaNamespaceVerificationKey: metaPolicy.VerificationPolicy().GetThresholdRule().GetPublicKey(),
 		OrdererEndpoints:             policy.OrdererEndpoints,
 		ChannelID:                    policy.ChannelID,
-	}, genesisconfig.TwoOrgsSampleFabricX)
+	}, configtxgen.TwoOrgsSampleFabricX)
 }
 
 // CreateDefaultConfigBlock creates a config block with default values.
 func CreateDefaultConfigBlock(conf *ConfigBlock, profileName string) (*common.Block, error) {
-	configBlock := genesisconfig.Load(profileName, configtest.GetDevConfigDir())
-	tlsCertPath := filepath.Join(configtest.GetDevConfigDir(), "msp", "tlscacerts", "tlsroot.pem")
-	for _, consenter := range configBlock.Orderer.ConsenterMapping {
-		consenter.Identity = tlsCertPath
-		consenter.ClientTLSCert = tlsCertPath
-		consenter.ServerTLSCert = tlsCertPath
-	}
-	// Resetting Arma.Path to an empty string as it isn't needed.
-	configBlock.Orderer.Arma.Path = ""
-
-	if conf.MetaNamespaceVerificationKey == nil {
-		conf.MetaNamespaceVerificationKey, _ = NewHashSignerVerifier(&Policy{
-			Scheme: signature.Ecdsa,
-			Seed:   rand.Int64(),
-		}).GetVerificationKeyAndSigner()
-	}
-	metaPubKeyPath, err := writeTempPem(conf.MetaNamespaceVerificationKey)
+	target, err := os.MkdirTemp("", "cryptogen-temp-*")
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed creating temp dir for config block generation")
 	}
 	defer func() {
-		_ = os.Remove(metaPubKeyPath)
+		_ = os.RemoveAll(target)
 	}()
-	configBlock.Application.MetaNamespaceVerificationKeyPath = metaPubKeyPath
-
-	if len(conf.OrdererEndpoints) > 0 {
-		if len(configBlock.Orderer.Organizations) < 1 {
-			return nil, errors.New("no organizations configured")
-		}
-		sourceOrg := *configBlock.Orderer.Organizations[0]
-		configBlock.Orderer.Organizations = nil
-
-		orgMap := make(map[string]*[]string)
-		for _, e := range conf.OrdererEndpoints {
-			orgEndpoints, ok := orgMap[e.MspID]
-			if !ok {
-				org := sourceOrg
-				org.ID = e.MspID
-				org.Name = e.MspID
-				org.OrdererEndpoints = nil
-				configBlock.Orderer.Organizations = append(configBlock.Orderer.Organizations, &org)
-				orgMap[e.MspID] = &org.OrdererEndpoints
-				orgEndpoints = &org.OrdererEndpoints
-			}
-			*orgEndpoints = append(*orgEndpoints, e.String())
-		}
-	}
-
-	channelID := conf.ChannelID
-	if channelID == "" {
-		channelID = "chan"
-	}
-	block, err := configtxgen.GetOutputBlock(configBlock, channelID)
-	return block, errors.Wrap(err, "failed to get output block")
+	return CreateDefaultConfigBlockWithCrypto(target, conf, profileName)
 }
 
-func writeTempPem(data []byte) (string, error) {
-	tempPem, err := os.CreateTemp("", "*.pem")
-	if err != nil {
-		return "", errors.Wrap(err, "failed to create temp PEM file")
+// CreateDefaultConfigBlockWithCrypto creates a config block with crypto material.
+func CreateDefaultConfigBlockWithCrypto(
+	targetPath string, conf *ConfigBlock, profileName string,
+) (*common.Block, error) {
+	orgs := make([]cryptogen.OrganizationParameters, 0, int(conf.PeerOrganizationCount)+len(conf.OrdererEndpoints))
+
+	ordererOrgsMap := make(map[uint32][]cryptogen.OrdererEndpoint)
+	for _, e := range conf.OrdererEndpoints {
+		ordererOrgsMap[e.ID] = append(ordererOrgsMap[e.ID], cryptogen.OrdererEndpoint{
+			Address: e.Address(),
+			API:     e.API,
+		})
 	}
-	defer func() {
-		_ = tempPem.Close()
-	}()
-	_, err = tempPem.Write(data)
-	return tempPem.Name(), errors.Wrap(err, "failed to write temp PEM file")
+	// We clear the IDs, and let the cryptogen tool to re-assign IDs to the orderer endpoints.
+	ordererOrgs := slices.Collect(maps.Values(ordererOrgsMap))
+
+	if len(ordererOrgs) == 0 {
+		// We need at least one orderer org to create a config block.
+		ordererOrgs = append(ordererOrgs, []cryptogen.OrdererEndpoint{{Address: "localhost:7050"}})
+	}
+
+	for i, endpoints := range ordererOrgs {
+		orgs = append(orgs, cryptogen.OrganizationParameters{
+			Name:             fmt.Sprintf("orderer-org-%d", i),
+			Domain:           fmt.Sprintf("orderer-org-%d.com", i),
+			OrdererEndpoints: endpoints,
+			ConsenterNodes: []cryptogen.Node{{
+				CommonName: fmt.Sprintf("consenter-org-%d", i),
+				Hostname:   fmt.Sprintf("consenter-org-%d.com", i),
+			}},
+		})
+	}
+
+	for i := range conf.PeerOrganizationCount {
+		orgs = append(orgs, cryptogen.OrganizationParameters{
+			Name:   fmt.Sprintf("peer-org-%d", i),
+			Domain: fmt.Sprintf("peer-org-%d.com", i),
+			PeerNodes: []cryptogen.Node{{
+				CommonName: fmt.Sprintf("sidecar-peer-org-%d", i),
+				Hostname:   fmt.Sprintf("sidecar-peer-org-%d.com", i),
+			}},
+		})
+	}
+
+	metaKey := conf.MetaNamespaceVerificationKey
+	if len(metaKey) == 0 {
+		// We must supply a valid meta namespace key.
+		_, metaKey = sigtest.NewKeyPair(signature.Ecdsa)
+	}
+
+	return cryptogen.CreateDefaultConfigBlockWithCrypto(cryptogen.ConfigBlockParameters{
+		TargetPath:                   targetPath,
+		BaseProfile:                  profileName,
+		ChannelID:                    conf.ChannelID,
+		Organizations:                orgs,
+		MetaNamespaceVerificationKey: metaKey,
+	})
 }

@@ -13,8 +13,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -63,7 +63,7 @@ func TestDependencyGraph(t *testing.T) {
 
 	localDepIncomingTxs <- &TransactionBatch{
 		ID:  1,
-		Txs: []*protocoordinatorservice.Tx{t1, t2},
+		Txs: []*servicepb.CoordinatorTx{t1, t2},
 	}
 
 	test.EventuallyIntMetric(t, 1, metrics.dependentTransactionsQueueSize, 5*time.Second, 100*time.Millisecond)
@@ -79,7 +79,7 @@ func TestDependencyGraph(t *testing.T) {
 
 	localDepIncomingTxs <- &TransactionBatch{
 		ID:  2,
-		Txs: []*protocoordinatorservice.Tx{t3, t4},
+		Txs: []*servicepb.CoordinatorTx{t3, t4},
 	}
 
 	test.EventuallyIntMetric(t, 3, metrics.dependentTransactionsQueueSize, 5*time.Second, 100*time.Millisecond)
@@ -136,10 +136,10 @@ func TestDependencyGraph(t *testing.T) {
 	keys = makeTestKeys(t, 10)
 	// t2 depends on t1, t1 depends on t0.
 	t0 := createTxForTest(
-		t, 0, types.ConfigNamespaceID, nil, nil, [][]byte{[]byte(types.ConfigKey)},
+		t, 0, committerpb.ConfigNamespaceID, nil, nil, [][]byte{[]byte(committerpb.ConfigKey)},
 	)
 	t1 = createTxForTest(
-		t, 1, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
+		t, 1, committerpb.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 	)
 	t2 = createTxForTest(
 		t, 2, nsID1ForTest, [][]byte{keys[4], keys[5]}, [][]byte{keys[2], keys[6]}, [][]byte{keys[3], keys[7]},
@@ -147,12 +147,12 @@ func TestDependencyGraph(t *testing.T) {
 
 	localDepIncomingTxs <- &TransactionBatch{
 		ID:  3,
-		Txs: []*protocoordinatorservice.Tx{t0, t1, t2},
+		Txs: []*servicepb.CoordinatorTx{t0, t1, t2},
 	}
 
 	// t3 depends on t2, t1, and t0
 	t3 = createTxForTest(
-		t, 0, types.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
+		t, 0, committerpb.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 	)
 	// t4 depends on t3, t2 and t1
 	t4 = createTxForTest(
@@ -161,7 +161,7 @@ func TestDependencyGraph(t *testing.T) {
 
 	localDepIncomingTxs <- &TransactionBatch{
 		ID:  4,
-		Txs: []*protocoordinatorservice.Tx{t3, t4},
+		Txs: []*servicepb.CoordinatorTx{t3, t4},
 	}
 
 	// only t0 is dependency free

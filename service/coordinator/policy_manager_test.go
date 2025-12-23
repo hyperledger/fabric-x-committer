@@ -11,8 +11,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -23,18 +23,18 @@ func TestPolicyManager(t *testing.T) {
 
 	t.Log("Initial state")
 	update, version0 := pm.getAll()
-	requireUpdateEqual(t, &protosigverifierservice.Update{
-		NamespacePolicies: &protoblocktx.NamespacePolicies{},
+	requireUpdateEqual(t, &servicepb.VerifierUpdates{
+		NamespacePolicies: &applicationpb.NamespacePolicies{},
 	}, update)
 
 	t.Log("Update 1")
 	ns1Policy := makeFakePolicy(t, "ns1", "k1")
 	ns2Policy := makeFakePolicy(t, "ns2", "k2")
-	update1 := &protosigverifierservice.Update{
-		NamespacePolicies: &protoblocktx.NamespacePolicies{
-			Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
+	update1 := &servicepb.VerifierUpdates{
+		NamespacePolicies: &applicationpb.NamespacePolicies{
+			Policies: []*applicationpb.PolicyItem{ns1Policy, ns2Policy},
 		},
-		Config: &protoblocktx.ConfigTransaction{
+		Config: &applicationpb.ConfigTransaction{
 			Envelope: []byte("config1"),
 		},
 	}
@@ -54,9 +54,9 @@ func TestPolicyManager(t *testing.T) {
 
 	t.Log("Update 2")
 	ns2NewPolicy := makeFakePolicy(t, "ns2", "k3")
-	update2 := &protosigverifierservice.Update{
-		NamespacePolicies: &protoblocktx.NamespacePolicies{
-			Policies: []*protoblocktx.PolicyItem{ns2NewPolicy},
+	update2 := &servicepb.VerifierUpdates{
+		NamespacePolicies: &applicationpb.NamespacePolicies{
+			Policies: []*applicationpb.PolicyItem{ns2NewPolicy},
 		},
 	}
 	pm.update(update2)
@@ -70,9 +70,9 @@ func TestPolicyManager(t *testing.T) {
 	require.Equal(t, version2u2, version2u1)
 
 	update, version2u0 := pm.getUpdates(0)
-	expectedAll := &protosigverifierservice.Update{
-		NamespacePolicies: &protoblocktx.NamespacePolicies{
-			Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2NewPolicy},
+	expectedAll := &servicepb.VerifierUpdates{
+		NamespacePolicies: &applicationpb.NamespacePolicies{
+			Policies: []*applicationpb.PolicyItem{ns1Policy, ns2NewPolicy},
 		},
 		Config: update1.Config,
 	}
@@ -84,8 +84,8 @@ func TestPolicyManager(t *testing.T) {
 	require.Equal(t, version2u2, version2ua)
 
 	t.Log("Update 3")
-	update3 := &protosigverifierservice.Update{
-		Config: &protoblocktx.ConfigTransaction{
+	update3 := &servicepb.VerifierUpdates{
+		Config: &applicationpb.ConfigTransaction{
 			Envelope: []byte("config2"),
 		},
 	}
@@ -100,8 +100,8 @@ func TestPolicyManager(t *testing.T) {
 	require.Equal(t, version3u3, version3u2)
 
 	update, version3u1 := pm.getUpdates(1)
-	requireUpdateEqual(t, &protosigverifierservice.Update{
-		NamespacePolicies: &protoblocktx.NamespacePolicies{
+	requireUpdateEqual(t, &servicepb.VerifierUpdates{
+		NamespacePolicies: &applicationpb.NamespacePolicies{
 			Policies: update2.NamespacePolicies.Policies,
 		},
 		Config: update3.Config,
@@ -109,9 +109,9 @@ func TestPolicyManager(t *testing.T) {
 	require.Equal(t, version3u3, version3u1)
 
 	update, version3u0 := pm.getUpdates(0)
-	expectedAll = &protosigverifierservice.Update{
-		NamespacePolicies: &protoblocktx.NamespacePolicies{
-			Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2NewPolicy},
+	expectedAll = &servicepb.VerifierUpdates{
+		NamespacePolicies: &applicationpb.NamespacePolicies{
+			Policies: []*applicationpb.PolicyItem{ns1Policy, ns2NewPolicy},
 		},
 		Config: update3.Config,
 	}
@@ -123,12 +123,12 @@ func TestPolicyManager(t *testing.T) {
 	require.Equal(t, version3ua, version3u3)
 
 	t.Log("Empty updates")
-	pm.update(nil, &protosigverifierservice.Update{})
+	pm.update(nil, &servicepb.VerifierUpdates{})
 	_, versionNoUpdate := pm.getAll()
 	require.Equal(t, version3u3, versionNoUpdate)
 }
 
-func requireUpdateEqual(t *testing.T, expected, actual *protosigverifierservice.Update) {
+func requireUpdateEqual(t *testing.T, expected, actual *servicepb.VerifierUpdates) {
 	t.Helper()
 	if expected == nil {
 		require.Nil(t, actual)
@@ -150,7 +150,7 @@ func requireUpdateEqual(t *testing.T, expected, actual *protosigverifierservice.
 	}
 }
 
-func makeFakePolicy(t *testing.T, ns, key string) *protoblocktx.PolicyItem {
+func makeFakePolicy(t *testing.T, ns, key string) *applicationpb.PolicyItem {
 	t.Helper()
 	return policy.MakePolicy(t, ns, policy.MakeECDSAThresholdRuleNsPolicy([]byte(key)))
 }

@@ -17,9 +17,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -29,9 +29,9 @@ import (
 
 type validatorAndCommitterServiceTestEnvWithClient struct {
 	vcs          []*ValidatorCommitterService
-	commonClient protovcservice.ValidationAndCommitServiceClient
-	clients      []protovcservice.ValidationAndCommitServiceClient
-	streams      []protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient
+	commonClient servicepb.ValidationAndCommitServiceClient
+	clients      []servicepb.ValidationAndCommitServiceClient
+	streams      []servicepb.ValidationAndCommitService_StartValidateAndCommitStreamClient
 	dbEnv        *DatabaseTestEnv
 }
 
@@ -66,9 +66,9 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 
 	vcsTestEnv := &validatorAndCommitterServiceTestEnvWithClient{
 		vcs:          vcs.VCServices,
-		commonClient: protovcservice.NewValidationAndCommitServiceClient(commonConn),
-		clients:      make([]protovcservice.ValidationAndCommitServiceClient, numServices),
-		streams:      make([]protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient, numServices),
+		commonClient: servicepb.NewValidationAndCommitServiceClient(commonConn),
+		clients:      make([]servicepb.ValidationAndCommitServiceClient, numServices),
+		streams:      make([]servicepb.ValidationAndCommitService_StartValidateAndCommitStreamClient, numServices),
 		dbEnv:        vcs.DBEnv,
 	}
 
@@ -102,15 +102,15 @@ func TestCreateConfigAndTables(t *testing.T) {
 	require.NoError(t, err)
 	configID := "create config"
 	configValue := []byte("config")
-	txBatch1 := &protovcservice.Batch{
-		Transactions: []*protovcservice.Tx{{
-			Ref: types.TxRef(configID, 0, 0),
-			Namespaces: []*protoblocktx.TxNamespace{{
-				NsId:      types.ConfigNamespaceID,
+	txBatch1 := &servicepb.VcBatch{
+		Transactions: []*servicepb.VcTx{{
+			Ref: committerpb.TxRef(configID, 0, 0),
+			Namespaces: []*applicationpb.TxNamespace{{
+				NsId:      committerpb.ConfigNamespaceID,
 				NsVersion: 0,
-				BlindWrites: []*protoblocktx.Write{
+				BlindWrites: []*applicationpb.Write{
 					{
-						Key:   []byte(types.ConfigKey),
+						Key:   []byte(committerpb.ConfigKey),
 						Value: []byte("config"),
 					},
 				},
@@ -125,7 +125,7 @@ func TestCreateConfigAndTables(t *testing.T) {
 	require.NotNil(t, txStatus1.Status)
 
 	require.Equal(t,
-		types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 0, 0),
+		servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 0, 0),
 		txStatus1.Status[configID],
 	)
 
@@ -137,13 +137,13 @@ func TestCreateConfigAndTables(t *testing.T) {
 
 	metaID := "create namespace 1"
 	utNsID := "1"
-	txBatch2 := &protovcservice.Batch{
-		Transactions: []*protovcservice.Tx{{
-			Ref: types.TxRef(metaID, 1, 0),
-			Namespaces: []*protoblocktx.TxNamespace{{
-				NsId:      types.MetaNamespaceID,
+	txBatch2 := &servicepb.VcBatch{
+		Transactions: []*servicepb.VcTx{{
+			Ref: committerpb.TxRef(metaID, 1, 0),
+			Namespaces: []*applicationpb.TxNamespace{{
+				NsId:      committerpb.MetaNamespaceID,
 				NsVersion: 0,
-				ReadWrites: []*protoblocktx.ReadWrite{
+				ReadWrites: []*applicationpb.ReadWrite{
 					{
 						Key:   []byte(utNsID),
 						Value: pBytes,
@@ -159,7 +159,7 @@ func TestCreateConfigAndTables(t *testing.T) {
 	require.NotNil(t, txStatus2.Status)
 
 	require.Equal(t,
-		types.NewStatusWithHeight(protoblocktx.Status_COMMITTED, 1, 0),
+		servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 1, 0),
 		txStatus2.Status[metaID],
 	)
 
@@ -198,16 +198,16 @@ func TestValidatorAndCommitterService(t *testing.T) {
 	t.Run("all valid txs", func(t *testing.T) {
 		t.Parallel()
 		env := setup()
-		txBatch := &protovcservice.Batch{
-			Transactions: []*protovcservice.Tx{
+		txBatch := &servicepb.VcBatch{
+			Transactions: []*servicepb.VcTx{
 				// The following 3 TXs test the blind write path, merging to the update path
 				{
-					Ref: types.TxRef("Blind write without value", 1, 1),
-					Namespaces: []*protoblocktx.TxNamespace{
+					Ref: committerpb.TxRef("Blind write without value", 1, 1),
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
 							NsVersion: 0,
-							BlindWrites: []*protoblocktx.Write{
+							BlindWrites: []*applicationpb.Write{
 								{
 									Key: []byte("blind write without value"),
 								},
@@ -216,12 +216,12 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					},
 				},
 				{
-					Ref: types.TxRef("Blind write with value", 1, 2),
-					Namespaces: []*protoblocktx.TxNamespace{
+					Ref: committerpb.TxRef("Blind write with value", 1, 2),
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
 							NsVersion: 0,
-							BlindWrites: []*protoblocktx.Write{
+							BlindWrites: []*applicationpb.Write{
 								{
 									Key:   []byte("Blind write with value"),
 									Value: []byte("value2"),
@@ -231,12 +231,12 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					},
 				},
 				{
-					Ref: types.TxRef("Blind write update existing key", 2, 3),
-					Namespaces: []*protoblocktx.TxNamespace{
+					Ref: committerpb.TxRef("Blind write update existing key", 2, 3),
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
 							NsVersion: 0,
-							BlindWrites: []*protoblocktx.Write{
+							BlindWrites: []*applicationpb.Write{
 								{
 									Key:   []byte("Existing key update"),
 									Value: []byte("new-value"),
@@ -247,12 +247,12 @@ func TestValidatorAndCommitterService(t *testing.T) {
 				},
 				// The following 2 TXs test the new key path
 				{
-					Ref: types.TxRef("New key with value", 2, 4),
-					Namespaces: []*protoblocktx.TxNamespace{
+					Ref: committerpb.TxRef("New key with value", 2, 4),
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
 							NsVersion: 0,
-							ReadWrites: []*protoblocktx.ReadWrite{
+							ReadWrites: []*applicationpb.ReadWrite{
 								{
 									Key:   []byte("New key with value"),
 									Value: []byte("value3"),
@@ -262,12 +262,12 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					},
 				},
 				{
-					Ref: types.TxRef("New key no value", 3, 5),
-					Namespaces: []*protoblocktx.TxNamespace{
+					Ref: committerpb.TxRef("New key no value", 3, 5),
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
 							NsVersion: 0,
-							ReadWrites: []*protoblocktx.ReadWrite{
+							ReadWrites: []*applicationpb.ReadWrite{
 								{
 									Key: []byte("New key no value"),
 								},
@@ -277,16 +277,16 @@ func TestValidatorAndCommitterService(t *testing.T) {
 				},
 				// The following TX tests the update path
 				{
-					Ref: types.TxRef("Existing key", 2, 6),
-					Namespaces: []*protoblocktx.TxNamespace{
+					Ref: committerpb.TxRef("Existing key", 2, 6),
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
 							NsVersion: 0,
-							ReadWrites: []*protoblocktx.ReadWrite{
+							ReadWrites: []*applicationpb.ReadWrite{
 								{
 									Key:     []byte("Existing key"),
 									Value:   []byte("new-value"),
-									Version: types.Version(0),
+									Version: applicationpb.NewVersion(0),
 								},
 							},
 						},
@@ -301,10 +301,10 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		txStatus, err := env.streams[0].Recv()
 		require.NoError(t, err)
 
-		expectedTxStatus := make(map[string]*protoblocktx.StatusWithHeight)
+		expectedTxStatus := make(map[string]*applicationpb.StatusWithHeight)
 		txIDs := make([]string, len(txBatch.Transactions))
 		for i, tx := range txBatch.Transactions {
-			status := types.NewStatusWithHeightFromRef(protoblocktx.Status_COMMITTED, tx.Ref)
+			status := servicepb.NewStatusWithHeightFromRef(applicationpb.Status_COMMITTED, tx.Ref)
 			expectedTxStatus[tx.Ref.TxId] = status
 			txIDs[i] = tx.Ref.TxId
 			assert.EqualExportedValuesf(t, status, txStatus.Status[tx.Ref.TxId], "TX ID: %s", tx.Ref.TxId)
@@ -318,15 +318,15 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		ctx, _ := createContext(t)
 		test.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
 
-		txBatch = &protovcservice.Batch{
-			Transactions: []*protovcservice.Tx{
+		txBatch = &servicepb.VcBatch{
+			Transactions: []*servicepb.VcTx{
 				{
-					Ref: types.TxRef("New key 2 no value", 2, 0),
-					Namespaces: []*protoblocktx.TxNamespace{
+					Ref: committerpb.TxRef("New key 2 no value", 2, 0),
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
 							NsVersion: 0,
-							ReadWrites: []*protoblocktx.ReadWrite{
+							ReadWrites: []*applicationpb.ReadWrite{
 								{
 									Key: []byte("New key 2 no value"),
 								},
@@ -342,7 +342,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		require.Eventually(t, func() bool {
 			txStatus, err = env.streams[0].Recv()
 			require.NoError(t, err)
-			require.Equal(t, protoblocktx.Status_COMMITTED, txStatus.Status["New key 2 no value"].Code)
+			require.Equal(t, applicationpb.Status_COMMITTED, txStatus.Status["New key 2 no value"].Code)
 			return true
 		}, env.vcs[0].timeoutForMinTxBatchSize, 500*time.Millisecond)
 	})
@@ -350,15 +350,15 @@ func TestValidatorAndCommitterService(t *testing.T) {
 	t.Run("invalid tx", func(t *testing.T) {
 		t.Parallel()
 		env := setup()
-		txBatch := &protovcservice.Batch{
-			Transactions: []*protovcservice.Tx{
+		txBatch := &servicepb.VcBatch{
+			Transactions: []*servicepb.VcTx{
 				{
-					Ref: types.TxRef("Namespace version mismatch", 4, 1),
-					Namespaces: []*protoblocktx.TxNamespace{
+					Ref: committerpb.TxRef("Namespace version mismatch", 4, 1),
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
 							NsVersion: 1,
-							BlindWrites: []*protoblocktx.Write{
+							BlindWrites: []*applicationpb.Write{
 								{
 									Key: []byte("blind write without value"),
 								},
@@ -367,18 +367,18 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					},
 				},
 				{
-					Ref: types.TxRef("prelim invalid tx", 5, 2),
-					PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
-						Code: protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
+					Ref: committerpb.TxRef("prelim invalid tx", 5, 2),
+					PrelimInvalidTxStatus: &servicepb.InvalidTxStatus{
+						Code: applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
 					},
 				},
 				{
-					Ref: types.TxRef("invalid new writes", 2, 6),
-					Namespaces: []*protoblocktx.TxNamespace{
+					Ref: committerpb.TxRef("invalid new writes", 2, 6),
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:      "1",
 							NsVersion: 0,
-							ReadWrites: []*protoblocktx.ReadWrite{
+							ReadWrites: []*applicationpb.ReadWrite{
 								{
 									Key:     []byte("Existing key"),
 									Value:   []byte("new-value"),
@@ -389,9 +389,9 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					},
 				},
 				{
-					Ref: types.TxRef("Rejected TX", 2, 7),
-					PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
-						Code: protoblocktx.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
+					Ref: committerpb.TxRef("Rejected TX", 2, 7),
+					PrelimInvalidTxStatus: &servicepb.InvalidTxStatus{
+						Code: applicationpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
 					},
 				},
 			},
@@ -401,17 +401,17 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		txStatus, err := env.streams[0].Recv()
 		require.NoError(t, err)
 
-		expectedStatus := []protoblocktx.Status{
-			protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-			protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
-			protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-			protoblocktx.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
+		expectedStatus := []applicationpb.Status{
+			applicationpb.Status_ABORTED_MVCC_CONFLICT,
+			applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
+			applicationpb.Status_ABORTED_MVCC_CONFLICT,
+			applicationpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
 		}
 
-		expectedTxStatus := make(map[string]*protoblocktx.StatusWithHeight, len(txBatch.Transactions))
+		expectedTxStatus := make(map[string]*applicationpb.StatusWithHeight, len(txBatch.Transactions))
 		txIDs := make([]string, len(txBatch.Transactions))
 		for i, tx := range txBatch.Transactions {
-			expectedTxStatus[tx.Ref.TxId] = types.NewStatusWithHeightFromRef(expectedStatus[i], tx.Ref)
+			expectedTxStatus[tx.Ref.TxId] = servicepb.NewStatusWithHeightFromRef(expectedStatus[i], tx.Ref)
 			txIDs = append(txIDs, tx.Ref.TxId)
 		}
 
@@ -420,7 +420,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus)
 
 		ctx, _ := createContext(t)
-		status, err := env.commonClient.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{TxIDs: txIDs})
+		status, err := env.commonClient.GetTransactionsStatus(ctx, &applicationpb.QueryStatus{TxIDs: txIDs})
 		require.NoError(t, err)
 		require.Equal(t, expectedTxStatus, status.Status)
 	})
@@ -439,7 +439,7 @@ func TestLastCommittedBlockNumber(t *testing.T) {
 		require.Equal(t, uint64(0), nextBlock.Number)
 	}
 
-	_, err := env.commonClient.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 0})
+	_, err := env.commonClient.SetLastCommittedBlockNumber(ctx, &applicationpb.BlockInfo{Number: 0})
 	require.NoError(t, err)
 
 	for i := range numServices {
@@ -476,7 +476,9 @@ func TestGRPCStatusCode(t *testing.T) {
 	}{
 		{
 			name: "SetLastCommittedBlockNumber returns an internal error",
-			fn:   func() (any, error) { return c.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: 1}) },
+			fn: func() (any, error) {
+				return c.SetLastCommittedBlockNumber(ctx, &applicationpb.BlockInfo{Number: 1})
+			},
 		},
 		{
 			name: "GetNextBlockNumberToCommit returns an internal error",
@@ -489,7 +491,7 @@ func TestGRPCStatusCode(t *testing.T) {
 		{
 			name: "GetTransactionsStatus returns an internal error",
 			fn: func() (any, error) {
-				return c.GetTransactionsStatus(ctx, &protoblocktx.QueryStatus{TxIDs: []string{"t1"}})
+				return c.GetTransactionsStatus(ctx, &applicationpb.QueryStatus{TxIDs: []string{"t1"}})
 			},
 		},
 	}
@@ -544,17 +546,17 @@ func TestTransactionResubmission(t *testing.T) {
 	}
 
 	txs := []struct {
-		tx             *protovcservice.Tx
-		expectedStatus protoblocktx.Status
+		tx             *servicepb.VcTx
+		expectedStatus applicationpb.Status
 	}{
 		{
-			tx: &protovcservice.Tx{
-				Ref: types.TxRef("Blind write with value", 1, 2),
-				Namespaces: []*protoblocktx.TxNamespace{
+			tx: &servicepb.VcTx{
+				Ref: committerpb.TxRef("Blind write with value", 1, 2),
+				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "3",
 						NsVersion: 0,
-						BlindWrites: []*protoblocktx.Write{
+						BlindWrites: []*applicationpb.Write{
 							{
 								Key:   []byte("Blind write with value"),
 								Value: []byte("value2"),
@@ -563,16 +565,16 @@ func TestTransactionResubmission(t *testing.T) {
 					},
 				},
 			},
-			expectedStatus: protoblocktx.Status_COMMITTED,
+			expectedStatus: applicationpb.Status_COMMITTED,
 		},
 		{
-			tx: &protovcservice.Tx{
-				Ref: types.TxRef("New key with value", 2, 4),
-				Namespaces: []*protoblocktx.TxNamespace{
+			tx: &servicepb.VcTx{
+				Ref: committerpb.TxRef("New key with value", 2, 4),
+				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "3",
 						NsVersion: 0,
-						ReadWrites: []*protoblocktx.ReadWrite{
+						ReadWrites: []*applicationpb.ReadWrite{
 							{
 								Key:   []byte("New key with value"),
 								Value: []byte("value3"),
@@ -581,16 +583,16 @@ func TestTransactionResubmission(t *testing.T) {
 					},
 				},
 			},
-			expectedStatus: protoblocktx.Status_COMMITTED,
+			expectedStatus: applicationpb.Status_COMMITTED,
 		},
 		{
-			tx: &protovcservice.Tx{
-				Ref: types.TxRef("New key no value", 3, 5),
-				Namespaces: []*protoblocktx.TxNamespace{
+			tx: &servicepb.VcTx{
+				Ref: committerpb.TxRef("New key no value", 3, 5),
+				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "3",
 						NsVersion: 0,
-						ReadWrites: []*protoblocktx.ReadWrite{
+						ReadWrites: []*applicationpb.ReadWrite{
 							{
 								Key: []byte("New key no value"),
 							},
@@ -598,34 +600,34 @@ func TestTransactionResubmission(t *testing.T) {
 					},
 				},
 			},
-			expectedStatus: protoblocktx.Status_COMMITTED,
+			expectedStatus: applicationpb.Status_COMMITTED,
 		},
 		{
-			tx: &protovcservice.Tx{
-				Ref: types.TxRef("invalid sign", 3, 6),
-				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
-					Code: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+			tx: &servicepb.VcTx{
+				Ref: committerpb.TxRef("invalid sign", 3, 6),
+				PrelimInvalidTxStatus: &servicepb.InvalidTxStatus{
+					Code: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
 				},
 			},
-			expectedStatus: protoblocktx.Status_ABORTED_SIGNATURE_INVALID,
+			expectedStatus: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
 		},
 		{
-			tx: &protovcservice.Tx{
-				Ref: types.TxRef("duplicate namespace", 3, 7),
-				PrelimInvalidTxStatus: &protovcservice.InvalidTxStatus{
-					Code: protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
+			tx: &servicepb.VcTx{
+				Ref: committerpb.TxRef("duplicate namespace", 3, 7),
+				PrelimInvalidTxStatus: &servicepb.InvalidTxStatus{
+					Code: applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
 				},
 			},
-			expectedStatus: protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
+			expectedStatus: applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
 		},
 		{
-			tx: &protovcservice.Tx{
-				Ref: types.TxRef("conflict", 3, 8),
-				Namespaces: []*protoblocktx.TxNamespace{
+			tx: &servicepb.VcTx{
+				Ref: committerpb.TxRef("conflict", 3, 8),
+				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "3",
 						NsVersion: 0,
-						ReadWrites: []*protoblocktx.ReadWrite{
+						ReadWrites: []*applicationpb.ReadWrite{
 							{
 								Key: []byte("Existing key"),
 							},
@@ -633,16 +635,16 @@ func TestTransactionResubmission(t *testing.T) {
 					},
 				},
 			},
-			expectedStatus: protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expectedStatus: applicationpb.Status_ABORTED_MVCC_CONFLICT,
 		},
 	}
 
-	txBatch := &protovcservice.Batch{}
-	expectedTxStatus := make(map[string]*protoblocktx.StatusWithHeight)
+	txBatch := &servicepb.VcBatch{}
+	expectedTxStatus := make(map[string]*applicationpb.StatusWithHeight)
 	txIDs := make([]string, len(txs))
 	for i, t := range txs {
 		txBatch.Transactions = append(txBatch.Transactions, t.tx)
-		expectedTxStatus[t.tx.Ref.TxId] = types.NewStatusWithHeightFromRef(t.expectedStatus, t.tx.Ref)
+		expectedTxStatus[t.tx.Ref.TxId] = servicepb.NewStatusWithHeightFromRef(t.expectedStatus, t.tx.Ref)
 		txIDs[i] = t.tx.Ref.TxId
 	}
 
@@ -689,7 +691,7 @@ func TestTransactionResubmission(t *testing.T) {
 	t.Run("same transactions submitted again within the minbatchsize", func(t *testing.T) {
 		t.Parallel()
 		ctx, env := setup()
-		txBatchWithDup := &protovcservice.Batch{}
+		txBatchWithDup := &servicepb.VcBatch{}
 		txBatchWithDup.Transactions = append(txBatchWithDup.Transactions, txBatch.Transactions...)
 		txBatchWithDup.Transactions = append(txBatchWithDup.Transactions, txBatch.Transactions...)
 		require.NoError(t, env.streams[0].Send(txBatchWithDup))
@@ -705,7 +707,7 @@ func TestTransactionResubmission(t *testing.T) {
 	t.Run("same duplicate transactions submitted in parallel to all vcservices", func(t *testing.T) {
 		t.Parallel()
 		ctx, env := setup()
-		txBatchWithDup := &protovcservice.Batch{}
+		txBatchWithDup := &servicepb.VcBatch{}
 		for range 10 {
 			txBatchWithDup.Transactions = append(txBatchWithDup.Transactions, txBatch.Transactions...)
 			txBatchWithDup.Transactions = append(txBatchWithDup.Transactions, txBatch.Transactions...)
@@ -737,7 +739,7 @@ func createValidatorAndCommitClientWithTLS(
 	t *testing.T,
 	ep *connection.Endpoint,
 	tlsCfg connection.TLSConfig,
-) protovcservice.ValidationAndCommitServiceClient {
+) servicepb.ValidationAndCommitServiceClient {
 	t.Helper()
-	return test.CreateClientWithTLS(t, ep, tlsCfg, protovcservice.NewValidationAndCommitServiceClient)
+	return test.CreateClientWithTLS(t, ep, tlsCfg, servicepb.NewValidationAndCommitServiceClient)
 }

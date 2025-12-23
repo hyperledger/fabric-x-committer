@@ -13,8 +13,8 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -23,15 +23,15 @@ import (
 func TestGetUpdatesFromNamespace(t *testing.T) {
 	t.Parallel()
 	t.Log("meta namespace")
-	items := make([]*protoblocktx.ReadWrite, 5)
+	items := make([]*applicationpb.ReadWrite, 5)
 	for i := range items {
-		items[i] = &protoblocktx.ReadWrite{
+		items[i] = &applicationpb.ReadWrite{
 			Key:   fmt.Appendf(nil, "key-%d", i),
 			Value: protoutil.MarshalOrPanic(MakeECDSAThresholdRuleNsPolicy(fmt.Appendf(nil, "value-%d", i))),
 		}
 	}
-	tx := &protoblocktx.TxNamespace{
-		NsId:       types.MetaNamespaceID,
+	tx := &applicationpb.TxNamespace{
+		NsId:       committerpb.MetaNamespaceID,
 		ReadWrites: items,
 	}
 	update := GetUpdatesFromNamespace(tx)
@@ -46,10 +46,10 @@ func TestGetUpdatesFromNamespace(t *testing.T) {
 	t.Log("config namespace")
 
 	expectedValue := []byte("test config")
-	tx = &protoblocktx.TxNamespace{
-		NsId: types.ConfigKey,
-		BlindWrites: []*protoblocktx.Write{{
-			Key:   []byte(types.ConfigKey),
+	tx = &applicationpb.TxNamespace{
+		NsId: committerpb.ConfigKey,
+		BlindWrites: []*applicationpb.Write{{
+			Key:   []byte(committerpb.ConfigKey),
 			Value: expectedValue,
 		}},
 	}
@@ -63,7 +63,7 @@ func TestGetUpdatesFromNamespace(t *testing.T) {
 
 func TestParsePolicyItem(t *testing.T) {
 	t.Parallel()
-	_, verificationKey := sigtest.NewSignatureFactory(signature.Ecdsa).NewKeys()
+	_, verificationKey := sigtest.NewKeyPair(signature.Ecdsa)
 	p := MakeECDSAThresholdRuleNsPolicy(verificationKey)
 
 	for _, ns := range []string{"0", "1"} {
@@ -89,7 +89,7 @@ func TestParsePolicyItem(t *testing.T) {
 	for _, ns := range []string{
 		"", "abc_$", "a-", "go!", "My Namespace", "my name", "ABC_D", "new\nline",
 		"____too_long_namespace_namespace_id_0123456789_0123456789_012",
-		types.MetaNamespaceID, types.ConfigNamespaceID,
+		committerpb.MetaNamespaceID, committerpb.ConfigNamespaceID,
 	} {
 		t.Run(fmt.Sprintf("invalid ns: '%s'", ns), func(t *testing.T) {
 			t.Parallel()

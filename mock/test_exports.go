@@ -12,7 +12,8 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen/genesisconfig"
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
@@ -49,20 +50,16 @@ func StartMockSVServiceFromListWithConfig(
 	})
 }
 
-// StartMockVCService starts a specified number of mock VC service and register cancellation.
-func StartMockVCService(t *testing.T, numService int) (
-	[]*VcService, *test.GrpcServers,
-) {
+// StartMockVCService starts a specified number of mock VC service using the same shared instance.
+// It is used for testing when multiple VC services are required to share the same state.
+func StartMockVCService(t *testing.T, numService int) (*VcService, *test.GrpcServers) {
 	t.Helper()
-	vcServices := make([]*VcService, numService)
-	for i := range numService {
-		vcServices[i] = NewMockVcService()
-	}
+	sharedVC := NewMockVcService()
 
-	vcGrpc := test.StartGrpcServersForTest(t.Context(), t, numService, func(server *grpc.Server, index int) {
-		vcServices[index].RegisterService(server)
+	vcGrpc := test.StartGrpcServersForTest(t.Context(), t, numService, func(server *grpc.Server, _ int) {
+		sharedVC.RegisterService(server)
 	})
-	return vcServices, vcGrpc
+	return sharedVC, vcGrpc
 }
 
 // StartMockVCServiceFromListWithConfig starts a specified number of mock vc service.
@@ -180,14 +177,15 @@ func (e *OrdererTestEnv) SubmitConfigBlock(t *testing.T, conf *workload.ConfigBl
 	if conf.MetaNamespaceVerificationKey == nil {
 		conf.MetaNamespaceVerificationKey = e.TestConfig.MetaNamespaceVerificationKey
 	}
-	configBlock, err := workload.CreateDefaultConfigBlock(conf, genesisconfig.TwoOrgsSampleFabricX)
+	configBlock, err := workload.CreateDefaultConfigBlock(conf, configtxgen.TwoOrgsSampleFabricX)
 	require.NoError(t, err)
-	e.Orderer.SubmitBlock(t.Context(), configBlock)
+	err = e.Orderer.SubmitBlock(t.Context(), configBlock)
+	require.NoError(t, err)
 	return configBlock
 }
 
 // AllEndpoints returns a list of all the endpoints (real, fake, and holders).
-func (e *OrdererTestEnv) AllEndpoints() []*ordererconn.Endpoint {
+func (e *OrdererTestEnv) AllEndpoints() []*commontypes.OrdererEndpoint {
 	return slices.Concat(
 		e.AllRealOrdererEndpoints(),
 		e.AllHolderEndpoints(),
@@ -196,16 +194,16 @@ func (e *OrdererTestEnv) AllEndpoints() []*ordererconn.Endpoint {
 }
 
 // AllRealOrdererEndpoints returns a list of the real orderer endpoints.
-func (e *OrdererTestEnv) AllRealOrdererEndpoints() []*ordererconn.Endpoint {
+func (e *OrdererTestEnv) AllRealOrdererEndpoints() []*commontypes.OrdererEndpoint {
 	return ordererconn.NewEndpoints(0, "org", e.OrdererServers.Configs...)
 }
 
 // AllFakeEndpoints returns a list of the fake orderer endpoints.
-func (e *OrdererTestEnv) AllFakeEndpoints() []*ordererconn.Endpoint {
+func (e *OrdererTestEnv) AllFakeEndpoints() []*commontypes.OrdererEndpoint {
 	return ordererconn.NewEndpoints(0, "org", e.FakeServers.Configs...)
 }
 
 // AllHolderEndpoints returns a list of the holder orderer endpoints.
-func (e *OrdererTestEnv) AllHolderEndpoints() []*ordererconn.Endpoint {
+func (e *OrdererTestEnv) AllHolderEndpoints() []*commontypes.OrdererEndpoint {
 	return ordererconn.NewEndpoints(0, "org", e.HolderServers.Configs...)
 }

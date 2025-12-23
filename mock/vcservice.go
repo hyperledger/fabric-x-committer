@@ -8,6 +8,9 @@ package mock
 
 import (
 	"context"
+	"maps"
+	"math/rand"
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -18,9 +21,8 @@ import (
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
@@ -29,36 +31,38 @@ import (
 // VcService implements the [protovcservice.ValidationAndCommitServiceServer] interface.
 // It is used for testing the client which is the coordinator service.
 type VcService struct {
-	protovcservice.ValidationAndCommitServiceServer
-	txBatchChan        chan *protovcservice.Batch
+	servicepb.ValidationAndCommitServiceServer
 	numBatchesReceived atomic.Uint32
-	nextBlock          atomic.Pointer[protoblocktx.BlockInfo]
-	txsStatus          *fifoCache[*protoblocktx.StatusWithHeight]
+	nextBlock          atomic.Pointer[applicationpb.BlockInfo]
+	txsStatus          *fifoCache[*applicationpb.StatusWithHeight]
 	txsStatusMu        sync.Mutex
 	healthcheck        *health.Server
 	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
-	MockFaultyNodeDropSize int
+	MockFaultyNodeDropSize   int
+	txBatchChannels          map[uint64]chan *servicepb.VcBatch
+	txBatchChannelsMu        sync.Mutex
+	txBatchChannelsIDCounter atomic.Uint64
 }
 
 // NewMockVcService returns a new VcService.
 func NewMockVcService() *VcService {
 	return &VcService{
-		txBatchChan: make(chan *protovcservice.Batch),
-		txsStatus:   newFifoCache[*protoblocktx.StatusWithHeight](defaultTxStatusStorageSize),
-		healthcheck: connection.DefaultHealthCheckService(),
+		txsStatus:       newFifoCache[*applicationpb.StatusWithHeight](defaultTxStatusStorageSize),
+		healthcheck:     connection.DefaultHealthCheckService(),
+		txBatchChannels: make(map[uint64]chan *servicepb.VcBatch),
 	}
 }
 
 // RegisterService registers for the validator-committer's GRPC services.
 func (v *VcService) RegisterService(server *grpc.Server) {
-	protovcservice.RegisterValidationAndCommitServiceServer(server, v)
+	servicepb.RegisterValidationAndCommitServiceServer(server, v)
 	healthgrpc.RegisterHealthServer(server, v.healthcheck)
 }
 
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger.
 func (v *VcService) SetLastCommittedBlockNumber(
 	_ context.Context,
-	lastBlock *protoblocktx.BlockInfo,
+	lastBlock *applicationpb.BlockInfo,
 ) (*emptypb.Empty, error) {
 	lastBlock.Number++
 	v.nextBlock.Store(lastBlock)
@@ -69,7 +73,7 @@ func (v *VcService) SetLastCommittedBlockNumber(
 func (v *VcService) GetNextBlockNumberToCommit(
 	context.Context,
 	*emptypb.Empty,
-) (*protoblocktx.BlockInfo, error) {
+) (*applicationpb.BlockInfo, error) {
 	return v.nextBlock.Load(), nil
 }
 
@@ -77,24 +81,24 @@ func (v *VcService) GetNextBlockNumberToCommit(
 func (*VcService) GetNamespacePolicies(
 	context.Context,
 	*emptypb.Empty,
-) (*protoblocktx.NamespacePolicies, error) {
-	return &protoblocktx.NamespacePolicies{}, nil
+) (*applicationpb.NamespacePolicies, error) {
+	return &applicationpb.NamespacePolicies{}, nil
 }
 
 // GetConfigTransaction is a mock implementation of the protovcservice.GetConfigTransaction.
 func (*VcService) GetConfigTransaction(
 	context.Context,
 	*emptypb.Empty,
-) (*protoblocktx.ConfigTransaction, error) {
-	return &protoblocktx.ConfigTransaction{}, nil
+) (*applicationpb.ConfigTransaction, error) {
+	return &applicationpb.ConfigTransaction{}, nil
 }
 
 // GetTransactionsStatus get the status for a given set of transactions IDs.
 func (v *VcService) GetTransactionsStatus(
 	_ context.Context,
-	query *protoblocktx.QueryStatus,
-) (*protoblocktx.TransactionsStatus, error) {
-	s := &protoblocktx.TransactionsStatus{Status: make(map[string]*protoblocktx.StatusWithHeight)}
+	query *applicationpb.QueryStatus,
+) (*applicationpb.TransactionsStatus, error) {
+	s := &applicationpb.TransactionsStatus{Status: make(map[string]*applicationpb.StatusWithHeight)}
 	v.txsStatusMu.Lock()
 	defer v.txsStatusMu.Unlock()
 	for _, id := range query.TxIDs {
@@ -116,24 +120,39 @@ func (*VcService) SetupSystemTablesAndNamespaces(
 // StartValidateAndCommitStream is the mock implementation of the
 // [protovcservice.ValidationAndCommitServiceServer] interface.
 func (v *VcService) StartValidateAndCommitStream(
-	stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
+	txBatchChan := make(chan *servicepb.VcBatch)
+	vcID := v.txBatchChannelsIDCounter.Add(1)
+
+	v.txBatchChannelsMu.Lock()
+	v.txBatchChannels[vcID] = txBatchChan
+	v.txBatchChannelsMu.Unlock()
+
 	logger.Info("Starting validate and commit stream")
-	defer logger.Info("Closed validate and commit stream")
+	defer func() {
+		logger.Info("Closed validate and commit stream")
+		logger.Info("Removing channel with vcID %s", vcID)
+		v.txBatchChannelsMu.Lock()
+		delete(v.txBatchChannels, vcID)
+		v.txBatchChannelsMu.Unlock()
+	}()
 	g, gCtx := errgroup.WithContext(stream.Context())
 	g.Go(func() error {
-		return v.receiveAndProcessTransactions(gCtx, stream)
+		return v.receiveAndProcessTransactions(gCtx, stream, txBatchChan)
 	})
 	g.Go(func() error {
-		return v.sendTransactionStatus(gCtx, stream)
+		return v.sendTransactionStatus(gCtx, stream, txBatchChan)
 	})
 	return grpcerror.WrapCancelled(g.Wait())
 }
 
 func (v *VcService) receiveAndProcessTransactions(
-	ctx context.Context, stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	ctx context.Context,
+	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	txBatchChan chan *servicepb.VcBatch,
 ) error {
-	txBatchChan := channel.NewWriter(ctx, v.txBatchChan)
+	txBatchChanWriter := channel.NewWriter(ctx, txBatchChan)
 	for ctx.Err() == nil {
 		txBatch, err := stream.Recv()
 		if err != nil {
@@ -148,22 +167,24 @@ func (v *VcService) receiveAndProcessTransactions(
 		}
 
 		v.numBatchesReceived.Add(1)
-		txBatchChan.Write(txBatch)
+		txBatchChanWriter.Write(txBatch)
 	}
 	return errors.Wrap(ctx.Err(), "context ended")
 }
 
 func (v *VcService) sendTransactionStatus(
-	ctx context.Context, stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	ctx context.Context,
+	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamServer,
+	txBatchChan chan *servicepb.VcBatch,
 ) error {
-	txBatchChan := channel.NewReader(ctx, v.txBatchChan)
+	txBatchChanReader := channel.NewReader(ctx, txBatchChan)
 	for ctx.Err() == nil {
-		txBatch, ok := txBatchChan.Read()
+		txBatch, ok := txBatchChanReader.Read()
 		if !ok {
 			break
 		}
-		txsStatus := &protoblocktx.TransactionsStatus{
-			Status: make(map[string]*protoblocktx.StatusWithHeight, len(txBatch.Transactions)-v.MockFaultyNodeDropSize),
+		txsStatus := &applicationpb.TransactionsStatus{
+			Status: make(map[string]*applicationpb.StatusWithHeight, len(txBatch.Transactions)),
 		}
 		v.txsStatusMu.Lock()
 		for i, tx := range txBatch.Transactions {
@@ -171,11 +192,11 @@ func (v *VcService) sendTransactionStatus(
 				// We simulate a faulty node by not responding to the first X TXs.
 				continue
 			}
-			code := protoblocktx.Status_COMMITTED
+			code := applicationpb.Status_COMMITTED
 			if tx.PrelimInvalidTxStatus != nil {
 				code = tx.PrelimInvalidTxStatus.Code
 			}
-			s := types.NewStatusWithHeightFromRef(code, tx.Ref)
+			s := servicepb.NewStatusWithHeightFromRef(code, tx.Ref)
 			txsStatus.Status[tx.Ref.TxId] = s
 			v.txsStatus.addIfNotExist(tx.Ref.TxId, s)
 		}
@@ -196,6 +217,16 @@ func (v *VcService) GetNumBatchesReceived() uint32 {
 // SubmitTransactions enqueues the given transactions to a queue read by status sending goroutine.
 // This methods helps the test code to bypass the stream to submit transactions to the mock
 // vcservice.
-func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *protovcservice.Batch) {
-	channel.NewWriter(ctx, v.txBatchChan).Write(txsBatch)
+func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *servicepb.VcBatch) error {
+	v.txBatchChannelsMu.Lock()
+	channels := slices.Collect(maps.Values(v.txBatchChannels))
+	v.txBatchChannelsMu.Unlock()
+
+	if len(channels) == 0 {
+		return errors.New("Trying to send transactions before channel created (no channels in map)")
+	}
+
+	txBatchChan := channels[rand.Intn(len(channels))]
+	channel.NewWriter(ctx, txBatchChan).Write(txsBatch)
+	return nil
 }

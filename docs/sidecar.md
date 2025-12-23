@@ -418,7 +418,7 @@ block until that block becomes available for delivery from the Sidecar.
 The sidecar exposes an API that allows clients to subscribe to transaction status updates and 
 receive notifications when transactions are either committed or aborted.
 
-From [api/protonotify/notify.proto](/api/protonotify/notify.proto)
+From [api/protonotify/notify.proto](/api/committerpb/notify.proto)
 ```protobuf
 // The notifier service provides API to subscribe to ledger events and receive asynchronous notifications.
 service Notifier {

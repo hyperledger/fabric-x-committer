@@ -13,9 +13,9 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -52,9 +52,9 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	dCtx, dCancel := context.WithCancel(ctx)
 	defer dCancel()
 	g, gCtx := errgroup.WithContext(dCtx)
-	streams := make([]protosigverifierservice.Verifier_StartStreamClient, len(connections))
+	streams := make([]servicepb.Verifier_StartStreamClient, len(connections))
 	for i, conn := range connections {
-		client := protosigverifierservice.NewVerifierClient(conn)
+		client := servicepb.NewVerifierClient(conn)
 		logger.Infof("Opening stream to %s", c.config.Endpoints[i])
 		streams[i], err = client.StartStream(gCtx)
 		if err != nil {
@@ -62,7 +62,7 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 		}
 
 		logger.Infof("Set verification verification policy")
-		err = streams[i].Send(&protosigverifierservice.Batch{Update: updateMsg})
+		err = streams[i].Send(&servicepb.VerifierBatch{Update: updateMsg})
 		if err != nil {
 			return errors.Wrap(err, "failed submitting verification policy")
 		}
@@ -81,35 +81,35 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	return errors.Wrap(g.Wait(), "workload done")
 }
 
-func createUpdate(policy *workload.PolicyProfile) (*protosigverifierservice.Update, error) {
-	txSigner := workload.NewTxSignerVerifier(policy)
+func createUpdate(policy *workload.PolicyProfile) (*servicepb.VerifierUpdates, error) {
+	txEndorser := workload.NewTxEndorserVerifier(policy)
 
 	envelopeBytes, err := workload.CreateConfigEnvelope(policy)
 	if err != nil {
 		return nil, err
 	}
-	updateMsg := &protosigverifierservice.Update{
-		Config: &protoblocktx.ConfigTransaction{
+	updateMsg := &servicepb.VerifierUpdates{
+		Config: &applicationpb.ConfigTransaction{
 			Envelope: envelopeBytes,
 		},
-		NamespacePolicies: &protoblocktx.NamespacePolicies{
-			Policies: make([]*protoblocktx.PolicyItem, 0, len(txSigner.HashSigners)),
+		NamespacePolicies: &applicationpb.NamespacePolicies{
+			Policies: make([]*applicationpb.PolicyItem, 0, len(txEndorser.AllNamespaces())),
 		},
 	}
 
-	for ns, p := range txSigner.HashSigners {
-		if ns == types.MetaNamespaceID {
+	for _, ns := range txEndorser.AllNamespaces() {
+		if ns == committerpb.MetaNamespaceID {
 			continue
 		}
-		policy, err := proto.Marshal(p.GetVerificationPolicy())
+		policyBytes, err := proto.Marshal(txEndorser.Policy(ns).VerificationPolicy())
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to serialize policy")
 		}
 		updateMsg.NamespacePolicies.Policies = append(
 			updateMsg.NamespacePolicies.Policies,
-			&protoblocktx.PolicyItem{
+			&applicationpb.PolicyItem{
 				Namespace: ns,
-				Policy:    policy,
+				Policy:    policyBytes,
 			},
 		)
 	}
@@ -118,7 +118,7 @@ func createUpdate(policy *workload.PolicyProfile) (*protosigverifierservice.Upda
 }
 
 func (c *SvAdapter) receiveStatus(
-	ctx context.Context, stream protosigverifierservice.Verifier_StartStreamClient,
+	ctx context.Context, stream servicepb.Verifier_StartStreamClient,
 ) error {
 	for ctx.Err() == nil {
 		responseBatch, err := stream.Recv()

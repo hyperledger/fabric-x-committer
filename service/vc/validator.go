@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
@@ -38,7 +38,7 @@ type validatedTransactions struct {
 	validTxBlindWrites    transactionToWrites
 	newWrites             transactionToWrites
 	readToTxIDs           readToTransactions
-	invalidTxStatus       map[TxID]protoblocktx.Status
+	invalidTxStatus       map[TxID]applicationpb.Status
 	txIDToHeight          transactionIDToHeight
 }
 
@@ -175,14 +175,14 @@ func (v *validatedTransactions) invalidateTxsOnReadConflicts(nsToReadConflicts n
 				return errors.Newf("read %v not found in readToTransactionIndices", cr)
 			}
 
-			v.updateInvalidTxs(txIDs, protoblocktx.Status_ABORTED_MVCC_CONFLICT)
+			v.updateInvalidTxs(txIDs, applicationpb.Status_ABORTED_MVCC_CONFLICT)
 		}
 	}
 
 	return nil
 }
 
-func (v *validatedTransactions) updateInvalidTxs(txIDs []TxID, status protoblocktx.Status) {
+func (v *validatedTransactions) updateInvalidTxs(txIDs []TxID, status applicationpb.Status) {
 	for _, tID := range txIDs {
 		delete(v.validTxNonBlindWrites, tID)
 		delete(v.validTxBlindWrites, tID)

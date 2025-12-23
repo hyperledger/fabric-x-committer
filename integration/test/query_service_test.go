@@ -14,9 +14,8 @@ import (
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protonotify"
-	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -36,11 +35,11 @@ func TestQueryService(t *testing.T) {
 	t.Cleanup(cancel)
 
 	t.Log("Insert TXs")
-	txIDs := c.MakeAndSendTransactionsToOrderer(t, [][]*protoblocktx.TxNamespace{
+	txIDs := c.MakeAndSendTransactionsToOrderer(t, [][]*applicationpb.TxNamespace{
 		{{
 			NsId:      "1",
 			NsVersion: 0,
-			BlindWrites: []*protoblocktx.Write{
+			BlindWrites: []*applicationpb.Write{
 				{
 					Key:   []byte("k1"),
 					Value: []byte("v1"),
@@ -54,7 +53,7 @@ func TestQueryService(t *testing.T) {
 		{{
 			NsId:      "2",
 			NsVersion: 0,
-			BlindWrites: []*protoblocktx.Write{
+			BlindWrites: []*applicationpb.Write{
 				{
 					Key:   []byte("k3"),
 					Value: []byte("v3"),
@@ -65,28 +64,28 @@ func TestQueryService(t *testing.T) {
 				},
 			},
 		}},
-	}, []protoblocktx.Status{protoblocktx.Status_COMMITTED, protoblocktx.Status_COMMITTED})
+	}, []applicationpb.Status{applicationpb.Status_COMMITTED, applicationpb.Status_COMMITTED})
 	require.Len(t, txIDs, 2)
 
 	t.Log("Query TXs status")
-	status, err := c.QueryServiceClient.GetTransactionStatus(ctx, &protoqueryservice.TxStatusQuery{
+	status, err := c.QueryServiceClient.GetTransactionStatus(ctx, &committerpb.TxStatusQuery{
 		TxIds: txIDs,
 	})
 	require.NoError(t, err)
 	require.Len(t, status.Statuses, len(txIDs))
-	test.RequireProtoElementsMatch(t, []*protonotify.TxStatusEvent{
+	test.RequireProtoElementsMatch(t, []*committerpb.TxStatusEvent{
 		{
 			TxId: txIDs[0],
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
-				Code:        protoblocktx.Status_COMMITTED,
+			StatusWithHeight: &applicationpb.StatusWithHeight{
+				Code:        applicationpb.Status_COMMITTED,
 				TxNumber:    uint32(0),
 				BlockNumber: uint64(2),
 			},
 		},
 		{
 			TxId: txIDs[1],
-			StatusWithHeight: &protoblocktx.StatusWithHeight{
-				Code:        protoblocktx.Status_COMMITTED,
+			StatusWithHeight: &applicationpb.StatusWithHeight{
+				Code:        applicationpb.Status_COMMITTED,
 				TxNumber:    uint32(1),
 				BlockNumber: uint64(2),
 			},
@@ -96,8 +95,8 @@ func TestQueryService(t *testing.T) {
 	t.Log("Query Rows")
 	ret, err := c.QueryServiceClient.GetRows(
 		ctx,
-		&protoqueryservice.Query{
-			Namespaces: []*protoqueryservice.QueryNamespace{
+		&committerpb.Query{
+			Namespaces: []*committerpb.QueryNamespace{
 				{
 					NsId: "1",
 					Keys: [][]byte{
@@ -117,10 +116,10 @@ func TestQueryService(t *testing.T) {
 
 	testItemsVersion := uint64(0)
 
-	requiredItems := []*protoqueryservice.RowsNamespace{
+	requiredItems := []*committerpb.RowsNamespace{
 		{
 			NsId: "1",
-			Rows: []*protoqueryservice.Row{
+			Rows: []*committerpb.Row{
 				{
 					Key:     []byte("k1"),
 					Value:   []byte("v1"),
@@ -135,7 +134,7 @@ func TestQueryService(t *testing.T) {
 		},
 		{
 			NsId: "2",
-			Rows: []*protoqueryservice.Row{
+			Rows: []*committerpb.Row{
 				{
 					Key:     []byte("k3"),
 					Value:   []byte("v3"),
@@ -161,8 +160,8 @@ func TestQueryService(t *testing.T) {
 // equals to the test items that added to the DB.
 func requireQueryResults(
 	t *testing.T,
-	requiredItems []*protoqueryservice.RowsNamespace,
-	retNamespaces []*protoqueryservice.RowsNamespace,
+	requiredItems []*committerpb.RowsNamespace,
+	retNamespaces []*committerpb.RowsNamespace,
 ) {
 	t.Helper()
 	require.Len(t, retNamespaces, len(requiredItems))

@@ -15,17 +15,15 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/protonotify"
-	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
@@ -57,11 +55,11 @@ type (
 		dbEnv *vc.DatabaseTestEnv
 
 		ordererStream      *test.BroadcastStream
-		CoordinatorClient  protocoordinatorservice.CoordinatorClient
-		QueryServiceClient protoqueryservice.QueryServiceClient
+		CoordinatorClient  servicepb.CoordinatorClient
+		QueryServiceClient committerpb.QueryServiceClient
 		sidecarClient      *sidecarclient.Client
-		notifyClient       protonotify.NotifierClient
-		notifyStream       protonotify.Notifier_OpenNotificationStreamClient
+		notifyClient       committerpb.NotifierClient
+		notifyStream       committerpb.Notifier_OpenNotificationStreamClient
 
 		CommittedBlock chan *common.Block
 
@@ -74,16 +72,6 @@ type (
 		LastReceivedBlockNumber uint64
 
 		CredFactory *test.CredentialsFactory
-	}
-
-	// Crypto holds crypto material for a namespace.
-	Crypto struct {
-		Namespace  string
-		Profile    *workload.Policy
-		HashSigner *workload.HashSignerVerifier
-		NsSigner   *sigtest.NsSigner
-		PubKey     []byte
-		PubKeyPath string
 	}
 
 	// Config represents the runtime configuration.
@@ -155,7 +143,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		CommittedBlock:   make(chan *common.Block, 100),
 		seedForCryptoGen: rand.New(rand.NewSource(10)),
 	}
-	c.AddOrUpdateNamespaces(t, types.MetaNamespaceID, workload.GeneratedNamespaceID, "1", "2", "3")
+	c.AddOrUpdateNamespaces(t, committerpb.MetaNamespaceID, workload.DefaultGeneratedNamespaceID, "1", "2", "3")
 
 	t.Log("Making DB env")
 	if conf.DBConnection == nil {
@@ -183,9 +171,12 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	s.Endpoints.Coordinator = ports.allocatePorts(t, 1)[0]
 	s.Endpoints.Sidecar = ports.allocatePorts(t, 1)[0]
 	s.Endpoints.LoadGen = ports.allocatePorts(t, 1)[0]
-	s.Policy.OrdererEndpoints = make([]*ordererconn.Endpoint, len(s.Endpoints.Orderer))
+	s.Policy.OrdererEndpoints = make([]*commontypes.OrdererEndpoint, len(s.Endpoints.Orderer))
 	for i, e := range s.Endpoints.Orderer {
-		s.Policy.OrdererEndpoints[i] = &ordererconn.Endpoint{MspID: "org", Endpoint: *e.Server}
+		s.Policy.OrdererEndpoints[i] = &commontypes.OrdererEndpoint{
+			ID: 0, MspID: "org", Host: e.Server.Host, Port: e.Server.Port,
+			API: []string{commontypes.Broadcast, commontypes.Deliver},
+		}
 	}
 
 	test.LogStruct(t, "System Parameters", s)
@@ -223,15 +214,15 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	c.Sidecar = newProcess(t, cmdSidecar, c.createSystemConfigWithServerTLS(t, s.Endpoints.Sidecar))
 
 	t.Log("Create clients")
-	c.CoordinatorClient = protocoordinatorservice.NewCoordinatorClient(
+	c.CoordinatorClient = servicepb.NewCoordinatorClient(
 		test.NewSecuredConnection(t, s.Endpoints.Coordinator.Server, c.SystemConfig.ClientTLS),
 	)
 
-	c.QueryServiceClient = protoqueryservice.NewQueryServiceClient(
+	c.QueryServiceClient = committerpb.NewQueryServiceClient(
 		test.NewSecuredConnection(t, s.Endpoints.Query.Server, c.SystemConfig.ClientTLS),
 	)
 
-	c.notifyClient = protonotify.NewNotifierClient(
+	c.notifyClient = committerpb.NewNotifierClient(
 		test.NewSecuredConnection(t, s.Endpoints.Sidecar.Server, c.SystemConfig.ClientTLS),
 	)
 
@@ -384,27 +375,27 @@ func (c *CommitterRuntime) CreateNamespacesAndCommit(t *testing.T, namespaces ..
 	require.NoError(t, err)
 	c.MakeAndSendTransactionsToOrderer(
 		t,
-		[][]*protoblocktx.TxNamespace{metaTX.Namespaces},
-		[]protoblocktx.Status{protoblocktx.Status_COMMITTED},
+		[][]*applicationpb.TxNamespace{metaTX.Namespaces},
+		[]applicationpb.Status{applicationpb.Status_COMMITTED},
 	)
 }
 
 // MakeAndSendTransactionsToOrderer creates a block with given transactions, send it to the committer,
 // and verify the result.
 func (c *CommitterRuntime) MakeAndSendTransactionsToOrderer(
-	t *testing.T, txsNs [][]*protoblocktx.TxNamespace, expectedStatus []protoblocktx.Status,
+	t *testing.T, txsNs [][]*applicationpb.TxNamespace, expectedStatus []applicationpb.Status,
 ) []string {
 	t.Helper()
-	txs := make([]*protoloadgen.TX, len(txsNs))
+	txs := make([]*servicepb.LoadGenTx, len(txsNs))
 
 	for i, namespaces := range txsNs {
-		tx := &protoblocktx.Tx{
+		tx := &applicationpb.Tx{
 			Namespaces: namespaces,
 		}
-		if expectedStatus != nil && expectedStatus[i] == protoblocktx.Status_ABORTED_SIGNATURE_INVALID {
-			tx.Endorsements = make([]*protoblocktx.Endorsements, len(namespaces))
+		if expectedStatus != nil && expectedStatus[i] == applicationpb.Status_ABORTED_SIGNATURE_INVALID {
+			tx.Endorsements = make([]*applicationpb.Endorsements, len(namespaces))
 			for nsIdx := range namespaces {
-				tx.Endorsements[nsIdx] = test.CreateEndorsementsForThresholdRule([]byte("dummy"))[0]
+				tx.Endorsements[nsIdx] = sigtest.CreateEndorsementsForThresholdRule([]byte("dummy"))[0]
 			}
 		}
 		txs[i] = c.TxBuilder.MakeTx(tx)
@@ -415,7 +406,7 @@ func (c *CommitterRuntime) MakeAndSendTransactionsToOrderer(
 
 // SendTransactionsToOrderer creates a block with given transactions, send it to the committer, and verify the result.
 func (c *CommitterRuntime) SendTransactionsToOrderer(
-	t *testing.T, txs []*protoloadgen.TX, expectedStatus []protoblocktx.Status,
+	t *testing.T, txs []*servicepb.LoadGenTx, expectedStatus []applicationpb.Status,
 ) []string {
 	t.Helper()
 	expected := &ExpectedStatusInBlock{
@@ -427,8 +418,8 @@ func (c *CommitterRuntime) SendTransactionsToOrderer(
 	}
 
 	if !c.config.CrashTest {
-		err := c.notifyStream.Send(&protonotify.NotificationRequest{
-			TxStatusRequest: &protonotify.TxStatusRequest{
+		err := c.notifyStream.Send(&committerpb.NotificationRequest{
+			TxStatusRequest: &committerpb.TxStatusRequest{
 				TxIds: expected.TxIDs,
 			},
 			Timeout: durationpb.New(3 * time.Minute),
@@ -451,7 +442,7 @@ func (c *CommitterRuntime) SendTransactionsToOrderer(
 // is expected to be the same as in the committed block.
 type ExpectedStatusInBlock struct {
 	TxIDs    []string
-	Statuses []protoblocktx.Status
+	Statuses []applicationpb.Status
 }
 
 // ValidateExpectedResultsInCommittedBlock validates the status of transactions in the committed block.
@@ -491,20 +482,20 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 	statusBytes := blk.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER]
 	actualStatuses := make([]string, len(statusBytes))
 	for i, sB := range statusBytes {
-		actualStatuses[i] = protoblocktx.Status(sB).String()
+		actualStatuses[i] = applicationpb.Status(sB).String()
 	}
 	require.Equal(t, expectedStatuses, actualStatuses)
 
 	c.ensureLastCommittedBlockNumber(t, blk.Header.Number)
 
 	var persistedTxIDs []string
-	persistedTxIDsStatus := make(map[string]*protoblocktx.StatusWithHeight)
-	nonDuplicateTxIDsStatus := make(map[string]*protoblocktx.StatusWithHeight)
-	duplicateTxIDsStatus := make(map[string]*protoblocktx.StatusWithHeight)
+	persistedTxIDsStatus := make(map[string]*applicationpb.StatusWithHeight)
+	nonDuplicateTxIDsStatus := make(map[string]*applicationpb.StatusWithHeight)
+	duplicateTxIDsStatus := make(map[string]*applicationpb.StatusWithHeight)
 	for i, tID := range expected.TxIDs {
 		//nolint:gosec // int -> uint32.
-		s := types.NewStatusWithHeight(expected.Statuses[i], blk.Header.Number, uint32(i))
-		if s.Code == protoblocktx.Status_REJECTED_DUPLICATE_TX_ID {
+		s := servicepb.NewStatusWithHeight(expected.Statuses[i], blk.Header.Number, uint32(i))
+		if s.Code == applicationpb.Status_REJECTED_DUPLICATE_TX_ID {
 			duplicateTxIDsStatus[tID] = s
 		} else {
 			nonDuplicateTxIDsStatus[tID] = s
@@ -533,13 +524,13 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 }
 
 // CountStatus returns the number of transactions with a given tx status.
-func (c *CommitterRuntime) CountStatus(t *testing.T, status protoblocktx.Status) int {
+func (c *CommitterRuntime) CountStatus(t *testing.T, status applicationpb.Status) int {
 	t.Helper()
 	return c.dbEnv.CountStatus(t, status)
 }
 
 // CountAlternateStatus returns the number of transactions not with a given tx status.
-func (c *CommitterRuntime) CountAlternateStatus(t *testing.T, status protoblocktx.Status) int {
+func (c *CommitterRuntime) CountAlternateStatus(t *testing.T, status applicationpb.Status) int {
 	t.Helper()
 	return c.dbEnv.CountAlternateStatus(t, status)
 }

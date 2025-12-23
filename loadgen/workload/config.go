@@ -12,9 +12,10 @@ import (
 	"go.yaml.in/yaml/v3"
 	"golang.org/x/time/rate"
 
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
+
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
-
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
@@ -106,7 +107,7 @@ type PolicyProfile struct {
 	// OrdererEndpoints may specify the endpoints to add to the config block.
 	// If this field is empty, no endpoints will be configured.
 	// If ConfigBlockPath is specified, this value is ignored.
-	OrdererEndpoints []*ordererconn.Endpoint `mapstructure:"orderer-endpoints" yaml:"orderer-endpoints"`
+	OrdererEndpoints []*commontypes.OrdererEndpoint `mapstructure:"orderer-endpoints" yaml:"orderer-endpoints"`
 
 	// ConfigBlockPath may specify the config block to use.
 	// If this field is empty, a default config block will be generated.
@@ -122,7 +123,6 @@ type Policy struct {
 	Scheme signature.Scheme `mapstructure:"scheme" yaml:"scheme"`
 	Seed   int64            `mapstructure:"seed" yaml:"seed"`
 	// KeyPath describes how to find/generate the signature keys.
-	// KeyPath is still not supported.
 	KeyPath *KeyPath `mapstructure:"key-path" yaml:"key-path"`
 }
 

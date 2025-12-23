@@ -15,8 +15,8 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/crypto"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
@@ -25,7 +25,7 @@ import (
 type TxBuilder struct {
 	ChannelID   string
 	EnvSigner   protoutil.Signer
-	TxSigner    *TxSignerVerifier
+	TxEndorser  *TxEndorserVerifier
 	EnvCreator  []byte
 	NonceSource io.Reader
 }
@@ -45,7 +45,7 @@ func NewTxBuilderFromPolicy(policy *PolicyProfile, nonceSource io.Reader) (*TxBu
 	}
 	return &TxBuilder{
 		ChannelID:   policy.ChannelID,
-		TxSigner:    NewTxSignerVerifier(policy),
+		TxEndorser:  NewTxEndorserVerifier(policy),
 		EnvSigner:   envSigner,
 		EnvCreator:  envCreator,
 		NonceSource: nonceSource,
@@ -53,13 +53,13 @@ func NewTxBuilderFromPolicy(policy *PolicyProfile, nonceSource io.Reader) (*TxBu
 }
 
 // MakeTx makes an enveloped TX with the builder's properties.
-func (txb *TxBuilder) MakeTx(tx *protoblocktx.Tx) *protoloadgen.TX {
+func (txb *TxBuilder) MakeTx(tx *applicationpb.Tx) *servicepb.LoadGenTx {
 	return txb.makeTx(nil, tx)
 }
 
 // MakeTxWithID makes an enveloped TX with the builder's properties.
 // It uses the given TX-ID instead of generating a valid one.
-func (txb *TxBuilder) MakeTxWithID(txID string, tx *protoblocktx.Tx) *protoloadgen.TX {
+func (txb *TxBuilder) MakeTxWithID(txID string, tx *applicationpb.Tx) *servicepb.LoadGenTx {
 	return txb.makeTx(&txID, tx)
 }
 
@@ -67,14 +67,14 @@ func (txb *TxBuilder) MakeTxWithID(txID string, tx *protoblocktx.Tx) *protoloadg
 //  1. Generates the signature-header, and TX-ID.
 //  2. Signs the TX:
 //     - If the TX already have a signature, it doesn't re-sign it.
-//     - If TxSigner is given, it is used to sign the TX.
+//     - If TxEndorser is given, it is used to sign the TX.
 //     - Otherwise, it puts empty signatures for all namespaces to ensure well-formed TX.
 //  3. Serializes the envelope's payload.
 //  4. Signs the payload (if EnvSigner is given).
 //  5. Serializes the envelope.
 //
 // Returns a [protoloadgen.TX] with the appropriate values.
-func (txb *TxBuilder) makeTx(optionalTxID *string, blockTx *protoblocktx.Tx) *protoloadgen.TX {
+func (txb *TxBuilder) makeTx(optionalTxID *string, blockTx *applicationpb.Tx) *servicepb.LoadGenTx {
 	//  1. Generates the signature-header, and TX-ID.
 	sigHeader := &common.SignatureHeader{
 		Creator: txb.EnvCreator,
@@ -91,16 +91,16 @@ func (txb *TxBuilder) makeTx(optionalTxID *string, blockTx *protoblocktx.Tx) *pr
 	switch {
 	case len(blockTx.Endorsements) > 0:
 		// If the TX already have a signature, it doesn't re-sign it.
-	case txb.TxSigner != nil:
-		// If TxSigner is given, it is used to sign the TX.
-		txb.TxSigner.Sign(txID, blockTx)
-	case txb.TxSigner == nil:
+	case txb.TxEndorser != nil:
+		// If TxEndorser is given, it is used to sign the TX.
+		txb.TxEndorser.Endorse(txID, blockTx)
+	case txb.TxEndorser == nil:
 		// Otherwise, it puts empty signatures for all namespaces to ensure well-formed TX.
-		blockTx.Endorsements = make([]*protoblocktx.Endorsements, len(blockTx.Namespaces))
+		blockTx.Endorsements = make([]*applicationpb.Endorsements, len(blockTx.Namespaces))
 	}
 
 	//  3. Serializes the envelope's payload.
-	tx := &protoloadgen.TX{
+	tx := &servicepb.LoadGenTx{
 		Id: txID,
 		Tx: blockTx,
 	}

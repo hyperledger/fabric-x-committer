@@ -12,8 +12,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -61,6 +62,9 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 	k2_3 := []byte("key2.3")
 	k2_4 := []byte("key2.4")
 	k2_5 := []byte("key2.5")
+
+	// Shortcut for version pointer.
+	v := applicationpb.NewVersion
 
 	env.dbEnv.populateData(
 		t,
@@ -129,26 +133,26 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				nsToReads: namespaceToReads{
 					"1": &reads{
 						keys:     [][]byte{k1_1, k1_2, k1_5},
-						versions: []*uint64{types.Version(1), types.Version(1), nil},
+						versions: []*uint64{v(1), v(1), nil},
 					},
 					"2": &reads{
 						keys:     [][]byte{k2_1, k2_2, k2_5},
-						versions: []*uint64{types.Version(0), types.Version(0), nil},
+						versions: []*uint64{v(0), v(0), nil},
 					},
-					types.MetaNamespaceID: &reads{
+					committerpb.MetaNamespaceID: &reads{
 						keys:     [][]byte{[]byte("1"), []byte("2")},
-						versions: []*uint64{types.Version(0), types.Version(0)},
+						versions: []*uint64{v(0), v(0)},
 					},
 				},
 				readToTxIDs: readToTransactions{
-					newCmpRead("1", k1_1, types.Version(1)):                          []TxID{"tx1"},
-					newCmpRead("1", k1_2, types.Version(1)):                          []TxID{"tx1"},
-					newCmpRead("1", k1_5, nil):                                       []TxID{"tx2"},
-					newCmpRead("2", k2_1, types.Version(0)):                          []TxID{"tx1"},
-					newCmpRead("2", k2_2, types.Version(0)):                          []TxID{"tx3"},
-					newCmpRead("2", k2_5, nil):                                       []TxID{"tx3"},
-					newCmpRead(types.MetaNamespaceID, []byte("1"), types.Version(0)): []TxID{"tx1", "tx2"},
-					newCmpRead(types.MetaNamespaceID, []byte("2"), types.Version(0)): []TxID{"tx1", "tx3"},
+					newCmpRead("1", k1_1, v(1)):                                []TxID{"tx1"},
+					newCmpRead("1", k1_2, v(1)):                                []TxID{"tx1"},
+					newCmpRead("1", k1_5, nil):                                 []TxID{"tx2"},
+					newCmpRead("2", k2_1, v(0)):                                []TxID{"tx1"},
+					newCmpRead("2", k2_2, v(0)):                                []TxID{"tx3"},
+					newCmpRead("2", k2_5, nil):                                 []TxID{"tx3"},
+					newCmpRead(committerpb.MetaNamespaceID, []byte("1"), v(0)): []TxID{"tx1", "tx2"},
+					newCmpRead(committerpb.MetaNamespaceID, []byte("2"), v(0)): []TxID{"tx1", "tx3"},
 				},
 				txIDToNsNonBlindWrites: transactionToWrites{
 					"tx1": tx1NonBlindWrites,
@@ -158,11 +162,11 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				txIDToNsBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
-				invalidTxIDStatus: make(map[TxID]protoblocktx.Status),
+				invalidTxIDStatus: make(map[TxID]applicationpb.Status),
 				txIDToHeight: transactionIDToHeight{
-					"tx1": types.NewHeight(1, 1),
-					"tx2": types.NewHeight(4, 2),
-					"tx3": types.NewHeight(4, 3),
+					"tx1": servicepb.NewHeight(1, 1),
+					"tx2": servicepb.NewHeight(4, 2),
+					"tx3": servicepb.NewHeight(4, 3),
 				},
 			},
 			expectedValidatedTx: &validatedTransactions{
@@ -174,11 +178,11 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				validTxBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
-				invalidTxStatus: map[TxID]protoblocktx.Status{},
+				invalidTxStatus: map[TxID]applicationpb.Status{},
 				txIDToHeight: transactionIDToHeight{
-					"tx1": types.NewHeight(1, 1),
-					"tx2": types.NewHeight(4, 2),
-					"tx3": types.NewHeight(4, 3),
+					"tx1": servicepb.NewHeight(1, 1),
+					"tx2": servicepb.NewHeight(4, 2),
+					"tx3": servicepb.NewHeight(4, 3),
 				},
 			},
 		},
@@ -188,26 +192,26 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				nsToReads: namespaceToReads{
 					"1": &reads{
 						keys:     [][]byte{k1_1, k1_2, k1_5},
-						versions: []*uint64{types.Version(0), types.Version(0), types.Version(1)},
+						versions: []*uint64{v(0), v(0), v(1)},
 					},
 					"2": &reads{
 						keys:     [][]byte{k2_1, k2_2, k2_5},
 						versions: []*uint64{nil, nil, nil},
 					},
-					types.MetaNamespaceID: &reads{
+					committerpb.MetaNamespaceID: &reads{
 						keys:     [][]byte{[]byte("1"), []byte("2")},
-						versions: []*uint64{types.Version(1), types.Version(1)},
+						versions: []*uint64{v(1), v(1)},
 					},
 				},
 				readToTxIDs: readToTransactions{
-					newCmpRead("1", k1_1, types.Version(0)):                          []TxID{"tx1"},
-					newCmpRead("1", k1_2, types.Version(0)):                          []TxID{"tx1"},
-					newCmpRead("1", k1_5, types.Version(1)):                          []TxID{"tx2"},
-					newCmpRead("2", k2_1, nil):                                       []TxID{"tx1"},
-					newCmpRead("2", k2_2, nil):                                       []TxID{"tx3"},
-					newCmpRead("2", k2_5, nil):                                       []TxID{"tx3"},
-					newCmpRead(types.MetaNamespaceID, []byte("1"), types.Version(1)): []TxID{"tx1", "tx2"},
-					newCmpRead(types.MetaNamespaceID, []byte("2"), types.Version(1)): []TxID{"tx1", "tx2"},
+					newCmpRead("1", k1_1, v(0)):                                []TxID{"tx1"},
+					newCmpRead("1", k1_2, v(0)):                                []TxID{"tx1"},
+					newCmpRead("1", k1_5, v(1)):                                []TxID{"tx2"},
+					newCmpRead("2", k2_1, nil):                                 []TxID{"tx1"},
+					newCmpRead("2", k2_2, nil):                                 []TxID{"tx3"},
+					newCmpRead("2", k2_5, nil):                                 []TxID{"tx3"},
+					newCmpRead(committerpb.MetaNamespaceID, []byte("1"), v(1)): []TxID{"tx1", "tx2"},
+					newCmpRead(committerpb.MetaNamespaceID, []byte("2"), v(1)): []TxID{"tx1", "tx2"},
 				},
 				txIDToNsNonBlindWrites: transactionToWrites{
 					"tx1": tx1NonBlindWrites,
@@ -217,25 +221,25 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				txIDToNsBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
-				invalidTxIDStatus: make(map[TxID]protoblocktx.Status),
+				invalidTxIDStatus: make(map[TxID]applicationpb.Status),
 				txIDToHeight: transactionIDToHeight{
-					"tx1": types.NewHeight(1, 1),
-					"tx2": types.NewHeight(5, 2),
-					"tx3": types.NewHeight(5, 3),
+					"tx1": servicepb.NewHeight(1, 1),
+					"tx2": servicepb.NewHeight(5, 2),
+					"tx3": servicepb.NewHeight(5, 3),
 				},
 			},
 			expectedValidatedTx: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{},
 				validTxBlindWrites:    transactionToWrites{},
-				invalidTxStatus: map[TxID]protoblocktx.Status{
-					"tx1": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-					"tx2": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-					"tx3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+				invalidTxStatus: map[TxID]applicationpb.Status{
+					"tx1": applicationpb.Status_ABORTED_MVCC_CONFLICT,
+					"tx2": applicationpb.Status_ABORTED_MVCC_CONFLICT,
+					"tx3": applicationpb.Status_ABORTED_MVCC_CONFLICT,
 				},
 				txIDToHeight: transactionIDToHeight{
-					"tx1": types.NewHeight(1, 1),
-					"tx2": types.NewHeight(5, 2),
-					"tx3": types.NewHeight(5, 3),
+					"tx1": servicepb.NewHeight(1, 1),
+					"tx2": servicepb.NewHeight(5, 2),
+					"tx3": servicepb.NewHeight(5, 3),
 				},
 			},
 		},
@@ -245,31 +249,31 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				nsToReads: namespaceToReads{
 					"1": &reads{
 						keys:     [][]byte{k1_1, k1_2, k1_5},
-						versions: []*uint64{types.Version(1), types.Version(1), nil},
+						versions: []*uint64{v(1), v(1), nil},
 					},
 					"2": &reads{
 						keys:     [][]byte{k2_1, k2_2, k2_5},
 						versions: []*uint64{nil, nil, nil},
 					},
-					types.MetaNamespaceID: &reads{
+					committerpb.MetaNamespaceID: &reads{
 						keys: [][]byte{
 							[]byte("1"),
 							[]byte("2"),
 							[]byte("2"),
 						},
-						versions: []*uint64{types.Version(0), types.Version(0), types.Version(1)},
+						versions: []*uint64{v(0), v(0), v(1)},
 					},
 				},
 				readToTxIDs: readToTransactions{
-					newCmpRead("1", k1_1, types.Version(1)):                          []TxID{"tx1"},
-					newCmpRead("1", k1_2, types.Version(1)):                          []TxID{"tx1"},
-					newCmpRead("1", k1_5, nil):                                       []TxID{"tx2"},
-					newCmpRead("2", k2_1, nil):                                       []TxID{"tx1"},
-					newCmpRead("2", k2_2, nil):                                       []TxID{"tx3"},
-					newCmpRead("2", k2_5, nil):                                       []TxID{"tx3"},
-					newCmpRead(types.MetaNamespaceID, []byte("1"), types.Version(0)): []TxID{"tx1", "tx2"},
-					newCmpRead(types.MetaNamespaceID, []byte("2"), types.Version(0)): []TxID{"tx1", "tx3"},
-					newCmpRead(types.MetaNamespaceID, []byte("2"), types.Version(1)): []TxID{"tx4"},
+					newCmpRead("1", k1_1, v(1)):                                []TxID{"tx1"},
+					newCmpRead("1", k1_2, v(1)):                                []TxID{"tx1"},
+					newCmpRead("1", k1_5, nil):                                 []TxID{"tx2"},
+					newCmpRead("2", k2_1, nil):                                 []TxID{"tx1"},
+					newCmpRead("2", k2_2, nil):                                 []TxID{"tx3"},
+					newCmpRead("2", k2_5, nil):                                 []TxID{"tx3"},
+					newCmpRead(committerpb.MetaNamespaceID, []byte("1"), v(0)): []TxID{"tx1", "tx2"},
+					newCmpRead(committerpb.MetaNamespaceID, []byte("2"), v(0)): []TxID{"tx1", "tx3"},
+					newCmpRead(committerpb.MetaNamespaceID, []byte("2"), v(1)): []TxID{"tx4"},
 				},
 				txIDToNsNonBlindWrites: transactionToWrites{
 					"tx1": tx1NonBlindWrites,
@@ -279,17 +283,17 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				txIDToNsBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
-				invalidTxIDStatus: map[TxID]protoblocktx.Status{
-					"tx5": protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
-					"tx6": protoblocktx.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
+				invalidTxIDStatus: map[TxID]applicationpb.Status{
+					"tx5": applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
+					"tx6": applicationpb.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
 				},
 				txIDToHeight: transactionIDToHeight{
-					"tx1": types.NewHeight(1, 1),
-					"tx2": types.NewHeight(4, 2),
-					"tx3": types.NewHeight(4, 3),
-					"tx4": types.NewHeight(6, 3),
-					"tx5": types.NewHeight(7, 3),
-					"tx6": types.NewHeight(7, 4),
+					"tx1": servicepb.NewHeight(1, 1),
+					"tx2": servicepb.NewHeight(4, 2),
+					"tx3": servicepb.NewHeight(4, 3),
+					"tx4": servicepb.NewHeight(6, 3),
+					"tx5": servicepb.NewHeight(7, 3),
+					"tx6": servicepb.NewHeight(7, 4),
 				},
 			},
 			expectedValidatedTx: &validatedTransactions{
@@ -297,20 +301,20 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 					"tx2": tx2NonBlindWrites,
 				},
 				validTxBlindWrites: transactionToWrites{},
-				invalidTxStatus: map[TxID]protoblocktx.Status{
-					"tx1": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-					"tx3": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-					"tx4": protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-					"tx5": protoblocktx.Status_MALFORMED_DUPLICATE_NAMESPACE,
-					"tx6": protoblocktx.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
+				invalidTxStatus: map[TxID]applicationpb.Status{
+					"tx1": applicationpb.Status_ABORTED_MVCC_CONFLICT,
+					"tx3": applicationpb.Status_ABORTED_MVCC_CONFLICT,
+					"tx4": applicationpb.Status_ABORTED_MVCC_CONFLICT,
+					"tx5": applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
+					"tx6": applicationpb.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
 				},
 				txIDToHeight: transactionIDToHeight{
-					"tx1": types.NewHeight(1, 1),
-					"tx2": types.NewHeight(4, 2),
-					"tx3": types.NewHeight(4, 3),
-					"tx4": types.NewHeight(6, 3),
-					"tx5": types.NewHeight(7, 3),
-					"tx6": types.NewHeight(7, 4),
+					"tx1": servicepb.NewHeight(1, 1),
+					"tx2": servicepb.NewHeight(4, 2),
+					"tx3": servicepb.NewHeight(4, 3),
+					"tx4": servicepb.NewHeight(6, 3),
+					"tx5": servicepb.NewHeight(7, 3),
+					"tx6": servicepb.NewHeight(7, 4),
 				},
 			},
 		},

@@ -12,7 +12,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -41,7 +41,7 @@ func (c *VcAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 		return errors.Wrapf(connErr, "failed to create connection to validator persisters")
 	}
 	defer connection.CloseConnectionsLog(commonConn)
-	commonClient := protovcservice.NewValidationAndCommitServiceClient(commonConn)
+	commonClient := servicepb.NewValidationAndCommitServiceClient(commonConn)
 	_, setupError := commonClient.SetupSystemTablesAndNamespaces(ctx, nil)
 	if setupError != nil {
 		return errors.Wrap(setupError, "failed to setup system tables and namespaces")
@@ -60,9 +60,9 @@ func (c *VcAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	}
 	defer connection.CloseConnectionsLog(connections...)
 
-	streams := make([]protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient, 0, len(connections))
+	streams := make([]servicepb.ValidationAndCommitService_StartValidateAndCommitStreamClient, 0, len(connections))
 	for _, conn := range connections {
-		client := protovcservice.NewValidationAndCommitServiceClient(conn)
+		client := servicepb.NewValidationAndCommitServiceClient(conn)
 		logger.Info("Opening VC stream")
 		stream, streamErr := client.StartValidateAndCommitStream(ctx)
 		if streamErr != nil {
@@ -88,7 +88,7 @@ func (c *VcAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 }
 
 func (c *VcAdapter) receiveStatus(
-	ctx context.Context, stream protovcservice.ValidationAndCommitService_StartValidateAndCommitStreamClient,
+	ctx context.Context, stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamClient,
 ) error {
 	for ctx.Err() == nil {
 		responseBatch, err := stream.Recv()

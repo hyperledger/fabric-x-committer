@@ -18,8 +18,8 @@ import (
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -34,7 +34,7 @@ var ErrInvalidOrStaleView = errors.New("invalid or stale view")
 type (
 	// Service is a gRPC service that implements the QueryServiceServer interface.
 	Service struct {
-		protoqueryservice.UnimplementedQueryServiceServer
+		committerpb.UnimplementedQueryServiceServer
 		batcher     viewsBatcher
 		config      *Config
 		metrics     *perfMetrics
@@ -91,14 +91,14 @@ func (q *Service) Run(ctx context.Context) error {
 
 // RegisterService registers for the query-service's GRPC services.
 func (q *Service) RegisterService(server *grpc.Server) {
-	protoqueryservice.RegisterQueryServiceServer(server, q)
+	committerpb.RegisterQueryServiceServer(server, q)
 	healthgrpc.RegisterHealthServer(server, q.healthcheck)
 }
 
 // BeginView implements the query-service interface.
 func (q *Service) BeginView(
-	ctx context.Context, params *protoqueryservice.ViewParameters,
-) (*protoqueryservice.View, error) {
+	ctx context.Context, params *committerpb.ViewParameters,
+) (*committerpb.View, error) {
 	q.metrics.requests.WithLabelValues(grpcBeginView).Inc()
 	defer q.requestLatency(grpcBeginView, time.Now())
 
@@ -116,7 +116,7 @@ func (q *Service) BeginView(
 			return nil, err
 		}
 		if q.batcher.makeView(viewID, params) { //nolint:contextcheck // false positive.
-			return &protoqueryservice.View{Id: viewID}, nil
+			return &committerpb.View{Id: viewID}, nil
 		}
 	}
 	return nil, ctx.Err()
@@ -124,8 +124,8 @@ func (q *Service) BeginView(
 
 // EndView implements the query-service interface.
 func (q *Service) EndView(
-	_ context.Context, view *protoqueryservice.View,
-) (*protoqueryservice.View, error) {
+	_ context.Context, view *committerpb.View,
+) (*committerpb.View, error) {
 	q.metrics.requests.WithLabelValues(grpcEndView).Inc()
 	defer q.requestLatency(grpcEndView, time.Now())
 	return view, q.batcher.removeViewID(view.Id)
@@ -133,8 +133,8 @@ func (q *Service) EndView(
 
 // GetRows implements the query-service interface.
 func (q *Service) GetRows(
-	ctx context.Context, query *protoqueryservice.Query,
-) (*protoqueryservice.Rows, error) {
+	ctx context.Context, query *committerpb.Query,
+) (*committerpb.Rows, error) {
 	q.metrics.requests.WithLabelValues(grpcGetRows).Inc()
 
 	for _, ns := range query.Namespaces {
@@ -154,15 +154,15 @@ func (q *Service) GetRows(
 		return nil, err
 	}
 
-	res := &protoqueryservice.Rows{
-		Namespaces: make([]*protoqueryservice.RowsNamespace, len(query.Namespaces)),
+	res := &committerpb.Rows{
+		Namespaces: make([]*committerpb.RowsNamespace, len(query.Namespaces)),
 	}
 	for i, ns := range query.Namespaces {
 		resRows, _, resErr := batches[i].waitForRows(ctx, ns.Keys)
 		if resErr != nil {
 			return nil, resErr
 		}
-		res.Namespaces[i] = &protoqueryservice.RowsNamespace{
+		res.Namespaces[i] = &committerpb.RowsNamespace{
 			NsId: ns.NsId,
 			Rows: resRows,
 		}
@@ -173,8 +173,8 @@ func (q *Service) GetRows(
 
 // GetTransactionStatus implements the query-service interface.
 func (q *Service) GetTransactionStatus(
-	ctx context.Context, query *protoqueryservice.TxStatusQuery,
-) (*protoqueryservice.TxStatusResponse, error) {
+	ctx context.Context, query *committerpb.TxStatusQuery,
+) (*committerpb.TxStatusResponse, error) {
 	q.metrics.requests.WithLabelValues(grpcGetTxStatus).Inc()
 
 	defer q.requestLatency(grpcGetTxStatus, time.Now())
@@ -184,9 +184,9 @@ func (q *Service) GetTransactionStatus(
 		keys[i] = []byte(txID)
 	}
 
-	batches, err := q.assignRequest(ctx, &protoqueryservice.Query{
+	batches, err := q.assignRequest(ctx, &committerpb.Query{
 		View: query.View,
-		Namespaces: []*protoqueryservice.QueryNamespace{{
+		Namespaces: []*committerpb.QueryNamespace{{
 			NsId: txStatusNsID,
 			Keys: keys,
 		}},
@@ -195,7 +195,7 @@ func (q *Service) GetTransactionStatus(
 		return nil, err
 	}
 
-	res := &protoqueryservice.TxStatusResponse{}
+	res := &committerpb.TxStatusResponse{}
 	_, resRows, resErr := batches[0].waitForRows(ctx, keys)
 	if resErr != nil {
 		return nil, resErr
@@ -209,7 +209,7 @@ func (q *Service) GetTransactionStatus(
 func (q *Service) GetNamespacePolicies(
 	ctx context.Context,
 	_ *emptypb.Empty,
-) (*protoblocktx.NamespacePolicies, error) {
+) (*applicationpb.NamespacePolicies, error) {
 	return queryPolicies(ctx, q.batcher.pool)
 }
 
@@ -217,12 +217,12 @@ func (q *Service) GetNamespacePolicies(
 func (q *Service) GetConfigTransaction(
 	ctx context.Context,
 	_ *emptypb.Empty,
-) (*protoblocktx.ConfigTransaction, error) {
+) (*applicationpb.ConfigTransaction, error) {
 	return queryConfig(ctx, q.batcher.pool)
 }
 
 func (q *Service) assignRequest(
-	ctx context.Context, query *protoqueryservice.Query,
+	ctx context.Context, query *committerpb.Query,
 ) ([]*namespaceQueryBatch, error) {
 	defer func(start time.Time) {
 		promutil.Observe(q.metrics.requestAssignmentLatencySeconds, time.Since(start))

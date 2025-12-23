@@ -16,10 +16,9 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
-	"github.com/hyperledger/fabric-x-committer/api/protonotify"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
@@ -29,7 +28,7 @@ type (
 	relay struct {
 		incomingBlockToBeCommitted <-chan *common.Block
 		outgoingCommittedBlock     chan<- *common.Block
-		outgoingStatusUpdates      chan<- []*protonotify.TxStatusEvent
+		outgoingStatusUpdates      chan<- []*committerpb.TxStatusEvent
 
 		// nextBlockNumberToBeReceived denotes the next block number that the sidecar
 		// expects to receive from the orderer. This value is initially extracted from the last committed
@@ -41,19 +40,19 @@ type (
 
 		activeBlocksCount             atomic.Int32
 		blkNumToBlkWithStatus         utils.SyncMap[uint64, *blockWithStatus]
-		txIDToHeight                  utils.SyncMap[string, types.Height]
+		txIDToHeight                  utils.SyncMap[string, servicepb.Height]
 		lastCommittedBlockSetInterval time.Duration
 		waitingTxsSlots               *utils.Slots
 		metrics                       *perfMetrics
 	}
 
 	relayRunConfig struct {
-		coordClient                    protocoordinatorservice.CoordinatorClient
+		coordClient                    servicepb.CoordinatorClient
 		nextExpectedBlockByCoordinator uint64
 		configUpdater                  func(*common.Block)
 		incomingBlockToBeCommitted     <-chan *common.Block
 		outgoingCommittedBlock         chan<- *common.Block
-		outgoingStatusUpdates          chan<- []*protonotify.TxStatusEvent
+		outgoingStatusUpdates          chan<- []*committerpb.TxStatusEvent
 		waitingTxsLimit                int
 	}
 )
@@ -109,7 +108,7 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 		return r.sendBlocksToCoordinator(sCtx, mappedBlockQueue, stream)
 	})
 
-	statusBatch := make(chan *protoblocktx.TransactionsStatus, cap(r.outgoingCommittedBlock))
+	statusBatch := make(chan *applicationpb.TransactionsStatus, cap(r.outgoingCommittedBlock))
 	g.Go(func() error {
 		return receiveStatusFromCoordinator(sCtx, stream, statusBatch)
 	})
@@ -167,19 +166,28 @@ func (r *relay) preProcessBlock(
 		promutil.Observe(r.metrics.blockMappingInRelaySeconds, time.Since(start))
 		if mappedBlock.isConfig {
 			configUpdater(block)
+			// We wait for all previously submitted transactions to be processed by
+			// the committer before submitting the config block.
+			r.waitingTxsSlots.WaitTillEmpty(ctx)
 		}
 
 		txsCount := len(mappedBlock.block.Txs)
 		r.waitingTxsSlots.Acquire(ctx, int64(txsCount))
 		promutil.AddToGauge(r.metrics.waitingTransactionsQueueSize, txsCount)
 		queue.Write(mappedBlock)
+
+		if mappedBlock.isConfig {
+			// we wait for the config block to be processed by the committer
+			// before submitting any other data transactions.
+			r.waitingTxsSlots.WaitTillEmpty(ctx)
+		}
 	}
 }
 
 func (r *relay) sendBlocksToCoordinator(
 	ctx context.Context,
 	mappedBlockQueue <-chan *blockMappingResult,
-	stream protocoordinatorservice.Coordinator_BlockProcessingClient,
+	stream servicepb.Coordinator_BlockProcessingClient,
 ) error {
 	queue := channel.NewReader(ctx, mappedBlockQueue)
 	outgoingCommittedBlock := channel.NewWriter(ctx, r.outgoingCommittedBlock)
@@ -210,8 +218,8 @@ func (r *relay) sendBlocksToCoordinator(
 
 func receiveStatusFromCoordinator(
 	ctx context.Context,
-	stream protocoordinatorservice.Coordinator_BlockProcessingClient,
-	statusBatch chan<- *protoblocktx.TransactionsStatus,
+	stream servicepb.Coordinator_BlockProcessingClient,
+	statusBatch chan<- *applicationpb.TransactionsStatus,
 ) error {
 	txsStatus := channel.NewWriter(ctx, statusBatch)
 	for {
@@ -227,7 +235,7 @@ func receiveStatusFromCoordinator(
 
 func (r *relay) processStatusBatch(
 	ctx context.Context,
-	statusBatch <-chan *protoblocktx.TransactionsStatus,
+	statusBatch <-chan *applicationpb.TransactionsStatus,
 ) error {
 	txsStatus := channel.NewReader(ctx, statusBatch)
 	outgoingCommittedBlock := channel.NewWriter(ctx, r.outgoingCommittedBlock)
@@ -240,7 +248,7 @@ func (r *relay) processStatusBatch(
 
 		txStatusProcessedCount := int64(0)
 		startTime := time.Now()
-		statusReport := make([]*protonotify.TxStatusEvent, 0, len(tStatus.Status))
+		statusReport := make([]*committerpb.TxStatusEvent, 0, len(tStatus.Status))
 		for txID, txStatus := range tStatus.Status {
 			// We cannot use LoadAndDelete(txID) because it may not match the received statues.
 			height, ok := r.txIDToHeight.Load(txID)
@@ -281,7 +289,7 @@ func (r *relay) processStatusBatch(
 			r.txIDToHeight.Delete(txID)
 			txStatusProcessedCount++
 
-			statusReport = append(statusReport, &protonotify.TxStatusEvent{
+			statusReport = append(statusReport, &committerpb.TxStatusEvent{
 				TxId:             txID,
 				StatusWithHeight: txStatus,
 			})
@@ -332,7 +340,7 @@ func (r *relay) processCommittedBlocksInOrder(
 
 func (r *relay) setLastCommittedBlockNumber(
 	ctx context.Context,
-	client protocoordinatorservice.CoordinatorClient,
+	client servicepb.CoordinatorClient,
 	expectedNextBlockToBeCommitted uint64,
 ) error {
 	for {
@@ -356,7 +364,7 @@ func (r *relay) setLastCommittedBlockNumber(
 
 		blkNum := r.nextBlockNumberToBeCommitted.Load() - 1
 		logger.Debugf("Setting the last committed block number: %d", blkNum)
-		_, err := client.SetLastCommittedBlockNumber(ctx, &protoblocktx.BlockInfo{Number: blkNum})
+		_, err := client.SetLastCommittedBlockNumber(ctx, &applicationpb.BlockInfo{Number: blkNum})
 		if err != nil {
 			return errors.Wrapf(err, "failed to set the last committed block number [%d]", blkNum)
 		}

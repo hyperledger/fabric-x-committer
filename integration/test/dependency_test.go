@@ -12,9 +12,8 @@ import (
 
 	"github.com/onsi/gomega"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 )
 
@@ -30,14 +29,14 @@ func testSetup(t *testing.T) *runner.CommitterRuntime {
 	c.Start(t, runner.FullTxPath)
 	c.CreateNamespacesAndCommit(t, "1")
 
-	c.MakeAndSendTransactionsToOrderer(t, [][]*protoblocktx.TxNamespace{{{
+	c.MakeAndSendTransactionsToOrderer(t, [][]*applicationpb.TxNamespace{{{
 		// blind write keys to ns1.
 		NsId:      "1",
 		NsVersion: 0,
-		BlindWrites: []*protoblocktx.Write{{
+		BlindWrites: []*applicationpb.Write{{
 			Key: []byte("k1"),
 		}},
-	}}}, []protoblocktx.Status{protoblocktx.Status_COMMITTED})
+	}}}, []applicationpb.Status{applicationpb.Status_COMMITTED})
 
 	return c
 }
@@ -48,79 +47,79 @@ func TestDependentHappyPath(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		txs      []*protoblocktx.TxNamespace
-		expected []protoblocktx.Status
+		txs      []*applicationpb.TxNamespace
+		expected []applicationpb.Status
 	}{
 		{
 			name: "valid transactions: second tx waits due to write-write conflict",
-			txs: []*protoblocktx.TxNamespace{
+			txs: []*applicationpb.TxNamespace{
 				{ // performs read only, read-write, and blind-write.
-					ReadsOnly: []*protoblocktx.Read{
+					ReadsOnly: []*applicationpb.Read{
 						{
 							Key:     []byte("k3"),
 							Version: nil,
 						},
 					},
-					ReadWrites: []*protoblocktx.ReadWrite{
+					ReadWrites: []*applicationpb.ReadWrite{
 						{
 							Key:     []byte("k1"),
-							Version: types.Version(0),
+							Version: applicationpb.NewVersion(0),
 							Value:   []byte("v2"),
 						},
 					},
-					BlindWrites: []*protoblocktx.Write{
+					BlindWrites: []*applicationpb.Write{
 						{
 							Key: []byte("k4"),
 						},
 					},
 				},
 				{ // performs only blind-write.
-					BlindWrites: []*protoblocktx.Write{
+					BlindWrites: []*applicationpb.Write{
 						{
 							Key: []byte("k4"),
 						},
 					},
 				},
 			},
-			expected: []protoblocktx.Status{protoblocktx.Status_COMMITTED, protoblocktx.Status_COMMITTED},
+			expected: []applicationpb.Status{applicationpb.Status_COMMITTED, applicationpb.Status_COMMITTED},
 		},
 		{
 			name: "valid transactions: second tx waits due to read-write but uses the updated version",
-			txs: []*protoblocktx.TxNamespace{
+			txs: []*applicationpb.TxNamespace{
 				{ // performs read-write and blind-write.
-					ReadWrites: []*protoblocktx.ReadWrite{
+					ReadWrites: []*applicationpb.ReadWrite{
 						{
 							Key:     []byte("k1"),
-							Version: types.Version(1),
+							Version: applicationpb.NewVersion(1),
 							Value:   []byte("v3"),
 						},
 					},
-					BlindWrites: []*protoblocktx.Write{
+					BlindWrites: []*applicationpb.Write{
 						{
 							Key: []byte("k4"),
 						},
 					},
 				},
 				{ // performs only read-write.
-					ReadWrites: []*protoblocktx.ReadWrite{
+					ReadWrites: []*applicationpb.ReadWrite{
 						{
 							Key:     []byte("k1"),
-							Version: types.Version(2),
+							Version: applicationpb.NewVersion(2),
 							Value:   []byte("v4"),
 						},
 					},
 				},
 			},
-			expected: []protoblocktx.Status{protoblocktx.Status_COMMITTED, protoblocktx.Status_COMMITTED},
+			expected: []applicationpb.Status{applicationpb.Status_COMMITTED, applicationpb.Status_COMMITTED},
 		},
 	}
 
 	for _, tt := range tests { //nolint:paralleltest // order is important.
 		t.Run(tt.name, func(t *testing.T) {
-			txs := make([]*protoloadgen.TX, len(tt.txs))
+			txs := make([]*servicepb.LoadGenTx, len(tt.txs))
 			for i, tx := range tt.txs {
-				txs[i] = c.TxBuilder.MakeTx(&protoblocktx.Tx{
-					Namespaces: []*protoblocktx.TxNamespace{
+				txs[i] = c.TxBuilder.MakeTx(&applicationpb.Tx{
+					Namespaces: []*applicationpb.TxNamespace{
 						{
 							NsId:        "1",
 							NsVersion:   0,
@@ -143,59 +142,59 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		readsOnly []*protoblocktx.Read
-		expected  []protoblocktx.Status
+		readsOnly []*applicationpb.Read
+		expected  []applicationpb.Status
 	}{
 		{
 			name: "readOnly version is nil but the committed version is not nil, i.e., state exist",
-			readsOnly: []*protoblocktx.Read{
+			readsOnly: []*applicationpb.Read{
 				{
 					Key: []byte("k1"),
 				},
 			},
-			expected: []protoblocktx.Status{protoblocktx.Status_ABORTED_MVCC_CONFLICT},
+			expected: []applicationpb.Status{applicationpb.Status_ABORTED_MVCC_CONFLICT},
 		},
 		{
 			name: "readOnly version is not nil but the committed version is nil, i.e., state does not exist",
-			readsOnly: []*protoblocktx.Read{
+			readsOnly: []*applicationpb.Read{
 				{
 					Key:     []byte("k2"),
-					Version: types.Version(0),
+					Version: applicationpb.NewVersion(0),
 				},
 			},
-			expected: []protoblocktx.Status{protoblocktx.Status_ABORTED_MVCC_CONFLICT},
+			expected: []applicationpb.Status{applicationpb.Status_ABORTED_MVCC_CONFLICT},
 		},
 		{
 			name: "readOnly version is different from the committed version",
-			readsOnly: []*protoblocktx.Read{
+			readsOnly: []*applicationpb.Read{
 				{
 					Key:     []byte("k1"),
-					Version: types.Version(1),
+					Version: applicationpb.NewVersion(1),
 				},
 			},
-			expected: []protoblocktx.Status{protoblocktx.Status_ABORTED_MVCC_CONFLICT},
+			expected: []applicationpb.Status{applicationpb.Status_ABORTED_MVCC_CONFLICT},
 		},
 		{
 			name: "valid",
-			readsOnly: []*protoblocktx.Read{
+			readsOnly: []*applicationpb.Read{
 				{
 					Key:     []byte("k1"),
-					Version: types.Version(0),
+					Version: applicationpb.NewVersion(0),
 				},
 			},
-			expected: []protoblocktx.Status{protoblocktx.Status_COMMITTED},
+			expected: []applicationpb.Status{applicationpb.Status_COMMITTED},
 		},
 	}
 
 	for _, tt := range tests { //nolint:paralleltest // order is important.
 		t.Run(tt.name, func(t *testing.T) {
-			txs := []*protoloadgen.TX{
-				c.TxBuilder.MakeTx(&protoblocktx.Tx{
-					Namespaces: []*protoblocktx.TxNamespace{{
+			txs := []*servicepb.LoadGenTx{
+				c.TxBuilder.MakeTx(&applicationpb.Tx{
+					Namespaces: []*applicationpb.TxNamespace{{
 						NsId:      "1",
 						NsVersion: 0,
 						ReadsOnly: tt.readsOnly,
-						BlindWrites: []*protoblocktx.Write{{
+						BlindWrites: []*applicationpb.Write{{
 							Key: []byte("k3"),
 						}},
 					}},
@@ -212,48 +211,48 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		txs      [][]*protoblocktx.TxNamespace
-		expected []protoblocktx.Status
+		txs      [][]*applicationpb.TxNamespace
+		expected []applicationpb.Status
 	}{
 		{
 			name: "readWrite version is nil but the committed version is not nil, i.e., state exist",
-			txs: [][]*protoblocktx.TxNamespace{{{
-				ReadWrites: []*protoblocktx.ReadWrite{{
+			txs: [][]*applicationpb.TxNamespace{{{
+				ReadWrites: []*applicationpb.ReadWrite{{
 					Key:     []byte("k1"),
 					Version: nil,
 				}},
 			}}},
-			expected: []protoblocktx.Status{protoblocktx.Status_ABORTED_MVCC_CONFLICT},
+			expected: []applicationpb.Status{applicationpb.Status_ABORTED_MVCC_CONFLICT},
 		},
 		{
 			name: "readWrite version is not nil but the committed version is nil, i.e., state does not exist",
-			txs: [][]*protoblocktx.TxNamespace{{{
-				ReadWrites: []*protoblocktx.ReadWrite{{
+			txs: [][]*applicationpb.TxNamespace{{{
+				ReadWrites: []*applicationpb.ReadWrite{{
 					Key:     []byte("k2"),
-					Version: types.Version(0),
+					Version: applicationpb.NewVersion(0),
 				}},
 			}}},
-			expected: []protoblocktx.Status{protoblocktx.Status_ABORTED_MVCC_CONFLICT},
+			expected: []applicationpb.Status{applicationpb.Status_ABORTED_MVCC_CONFLICT},
 		},
 		{
 			name: "readWrite version is different from the committed version",
-			txs: [][]*protoblocktx.TxNamespace{{{
-				ReadWrites: []*protoblocktx.ReadWrite{{
+			txs: [][]*applicationpb.TxNamespace{{{
+				ReadWrites: []*applicationpb.ReadWrite{{
 					Key:     []byte("k1"),
-					Version: types.Version(1),
+					Version: applicationpb.NewVersion(1),
 				}},
 			}}},
-			expected: []protoblocktx.Status{protoblocktx.Status_ABORTED_MVCC_CONFLICT},
+			expected: []applicationpb.Status{applicationpb.Status_ABORTED_MVCC_CONFLICT},
 		},
 		{
 			name: "valid",
-			txs: [][]*protoblocktx.TxNamespace{{{
-				ReadWrites: []*protoblocktx.ReadWrite{{
+			txs: [][]*applicationpb.TxNamespace{{{
+				ReadWrites: []*applicationpb.ReadWrite{{
 					Key:     []byte("k1"),
-					Version: types.Version(0),
+					Version: applicationpb.NewVersion(0),
 				}},
 			}}},
-			expected: []protoblocktx.Status{protoblocktx.Status_COMMITTED},
+			expected: []applicationpb.Status{applicationpb.Status_COMMITTED},
 		},
 	}
 
@@ -276,77 +275,77 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		txs      [][]*protoblocktx.TxNamespace
-		expected []protoblocktx.Status
+		txs      [][]*applicationpb.TxNamespace
+		expected []applicationpb.Status
 	}{
 		{
 			name: "first transaction invalidates the second",
-			txs: [][]*protoblocktx.TxNamespace{
+			txs: [][]*applicationpb.TxNamespace{
 				{{ // "read-write k1".
-					ReadWrites: []*protoblocktx.ReadWrite{{
+					ReadWrites: []*applicationpb.ReadWrite{{
 						Key:     []byte("k1"),
-						Version: types.Version(0),
+						Version: applicationpb.NewVersion(0),
 					}},
 				}},
 				{{ // read-write k1 but invalid due to the previous tx.
-					ReadWrites: []*protoblocktx.ReadWrite{{
+					ReadWrites: []*applicationpb.ReadWrite{{
 						Key:     []byte("k1"),
-						Version: types.Version(0),
+						Version: applicationpb.NewVersion(0),
 					}},
 				}},
 			},
-			expected: []protoblocktx.Status{
-				protoblocktx.Status_COMMITTED,
-				protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expected: []applicationpb.Status{
+				applicationpb.Status_COMMITTED,
+				applicationpb.Status_ABORTED_MVCC_CONFLICT,
 			},
 		},
 		{
 			name: "as first and second transactions are invalid, the third succeeds",
-			txs: [][]*protoblocktx.TxNamespace{
+			txs: [][]*applicationpb.TxNamespace{
 				{{ // read-write k1 but wrong version v0.
-					ReadWrites: []*protoblocktx.ReadWrite{{
+					ReadWrites: []*applicationpb.ReadWrite{{
 						Key:     []byte("k1"),
-						Version: types.Version(0),
+						Version: applicationpb.NewVersion(0),
 					}},
 				}},
 				{{ // read-write k1 but wrong version v2.
-					ReadWrites: []*protoblocktx.ReadWrite{{
+					ReadWrites: []*applicationpb.ReadWrite{{
 						Key:     []byte("k1"),
-						Version: types.Version(2),
+						Version: applicationpb.NewVersion(2),
 					}},
 				}},
 				{{ // read-write k1 with correct version.
-					ReadWrites: []*protoblocktx.ReadWrite{{
+					ReadWrites: []*applicationpb.ReadWrite{{
 						Key:     []byte("k1"),
-						Version: types.Version(1),
+						Version: applicationpb.NewVersion(1),
 					}},
 				}},
 			},
-			expected: []protoblocktx.Status{
-				protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-				protoblocktx.Status_ABORTED_MVCC_CONFLICT,
-				protoblocktx.Status_COMMITTED,
+			expected: []applicationpb.Status{
+				applicationpb.Status_ABORTED_MVCC_CONFLICT,
+				applicationpb.Status_ABORTED_MVCC_CONFLICT,
+				applicationpb.Status_COMMITTED,
 			},
 		},
 		{
 			name: "first transaction writes non-existing key before the second transaction",
-			txs: [][]*protoblocktx.TxNamespace{
+			txs: [][]*applicationpb.TxNamespace{
 				{{ // read-write k2.
-					ReadWrites: []*protoblocktx.ReadWrite{{
+					ReadWrites: []*applicationpb.ReadWrite{{
 						Key:     []byte("k2"),
 						Version: nil,
 					}},
 				}},
 				{{ // read-write k2 but invalid due to the previous tx.
-					ReadWrites: []*protoblocktx.ReadWrite{{
+					ReadWrites: []*applicationpb.ReadWrite{{
 						Key:     []byte("k2"),
 						Version: nil,
 					}},
 				}},
 			},
-			expected: []protoblocktx.Status{
-				protoblocktx.Status_COMMITTED,
-				protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expected: []applicationpb.Status{
+				applicationpb.Status_COMMITTED,
+				applicationpb.Status_ABORTED_MVCC_CONFLICT,
 			},
 		},
 	}
@@ -370,45 +369,45 @@ func TestWriteWriteConflictsAmongActiveTransactions(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		txs      [][]*protoblocktx.TxNamespace
-		expected []protoblocktx.Status
+		txs      [][]*applicationpb.TxNamespace
+		expected []applicationpb.Status
 	}{
 		{
 			name: "first transaction invalidates the second",
-			txs: [][]*protoblocktx.TxNamespace{
+			txs: [][]*applicationpb.TxNamespace{
 				{{ // blind-write k1.
-					BlindWrites: []*protoblocktx.Write{
+					BlindWrites: []*applicationpb.Write{
 						{
 							Key: []byte("k1"),
 						},
 					},
 				}},
 				{{ // read-write k1 but invalid due to the previous tx.
-					ReadWrites: []*protoblocktx.ReadWrite{
+					ReadWrites: []*applicationpb.ReadWrite{
 						{
 							Key:     []byte("k1"),
-							Version: types.Version(0),
+							Version: applicationpb.NewVersion(0),
 						},
 					},
 				}},
 			},
-			expected: []protoblocktx.Status{
-				protoblocktx.Status_COMMITTED,
-				protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expected: []applicationpb.Status{
+				applicationpb.Status_COMMITTED,
+				applicationpb.Status_ABORTED_MVCC_CONFLICT,
 			},
 		},
 		{
 			name: "first transaction writes non-existing key before the second transaction",
-			txs: [][]*protoblocktx.TxNamespace{
+			txs: [][]*applicationpb.TxNamespace{
 				{{ // blind-write k2.
-					BlindWrites: []*protoblocktx.Write{
+					BlindWrites: []*applicationpb.Write{
 						{
 							Key: []byte("k2"),
 						},
 					},
 				}},
 				{{ // read-write k2 but invalid due to the previous tx.
-					ReadWrites: []*protoblocktx.ReadWrite{
+					ReadWrites: []*applicationpb.ReadWrite{
 						{
 							Key:     []byte("k2"),
 							Version: nil,
@@ -416,9 +415,9 @@ func TestWriteWriteConflictsAmongActiveTransactions(t *testing.T) {
 					},
 				}},
 			},
-			expected: []protoblocktx.Status{
-				protoblocktx.Status_COMMITTED,
-				protoblocktx.Status_ABORTED_MVCC_CONFLICT,
+			expected: []applicationpb.Status{
+				applicationpb.Status_COMMITTED,
+				applicationpb.Status_ABORTED_MVCC_CONFLICT,
 			},
 		},
 	}

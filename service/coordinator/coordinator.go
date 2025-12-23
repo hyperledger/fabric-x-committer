@@ -21,8 +21,8 @@ import (
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protocoordinatorservice"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -38,7 +38,7 @@ type (
 	// Service is responsible for coordinating signature verification, dependency tracking, and
 	// validation and commit of each transaction.
 	Service struct {
-		protocoordinatorservice.UnimplementedCoordinatorServer
+		servicepb.UnimplementedCoordinatorServer
 		dependencyMgr         *dependencygraph.Manager
 		signatureVerifierMgr  *signatureVerifierManager
 		validatorCommitterMgr *validatorCommitterManager
@@ -91,7 +91,7 @@ type (
 		// sender: validator committer manager sends transaction status to this channel. For each validator committer
 		// 	       server, there is a goroutine that sends transaction status to this channel.
 		// receiver: coordinator receives transaction status from this channel and forwards them to the sidecar.
-		vcServiceToCoordinatorTxStatus chan *protoblocktx.TransactionsStatus
+		vcServiceToCoordinatorTxStatus chan *applicationpb.TransactionsStatus
 	}
 )
 
@@ -128,7 +128,7 @@ func NewCoordinatorService(c *Config) *Service {
 		depGraphToSigVerifierFreeTxs:       make(chan dependencygraph.TxNodeBatch, bufSzPerChanForValCommitMgr),
 		sigVerifierToVCServiceValidatedTxs: make(chan dependencygraph.TxNodeBatch, bufSzPerChanForSignVerifierMgr),
 		vcServiceToDepGraphValidatedTxs:    make(chan dependencygraph.TxNodeBatch, bufSzPerChanForValCommitMgr),
-		vcServiceToCoordinatorTxStatus:     make(chan *protoblocktx.TransactionsStatus, bufSzPerChanForValCommitMgr),
+		vcServiceToCoordinatorTxStatus:     make(chan *applicationpb.TransactionsStatus, bufSzPerChanForValCommitMgr),
 	}
 
 	metrics := newPerformanceMetrics()
@@ -244,21 +244,21 @@ func (c *Service) WaitForReady(ctx context.Context) bool {
 
 // RegisterService registers for the coordinator's GRPC services.
 func (c *Service) RegisterService(server *grpc.Server) {
-	protocoordinatorservice.RegisterCoordinatorServer(server, c)
+	servicepb.RegisterCoordinatorServer(server, c)
 	healthgrpc.RegisterHealthServer(server, c.healthcheck)
 }
 
 // GetConfigTransaction get the config transaction from the state DB.
 func (c *Service) GetConfigTransaction(
 	ctx context.Context, _ *emptypb.Empty,
-) (*protoblocktx.ConfigTransaction, error) {
+) (*applicationpb.ConfigTransaction, error) {
 	return c.validatorCommitterMgr.getConfigTransaction(ctx)
 }
 
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger through a vcservice.
 func (c *Service) SetLastCommittedBlockNumber(
 	ctx context.Context,
-	lastBlock *protoblocktx.BlockInfo,
+	lastBlock *applicationpb.BlockInfo,
 ) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, c.validatorCommitterMgr.setLastCommittedBlockNumber(ctx, lastBlock)
 }
@@ -267,7 +267,7 @@ func (c *Service) SetLastCommittedBlockNumber(
 func (c *Service) GetNextBlockNumberToCommit(
 	ctx context.Context,
 	_ *emptypb.Empty,
-) (*protoblocktx.BlockInfo, error) {
+) (*applicationpb.BlockInfo, error) {
 	res, err := c.validatorCommitterMgr.getNextBlockNumberToCommit(ctx)
 	return res, grpcerror.WrapInternalError(err)
 }
@@ -275,8 +275,8 @@ func (c *Service) GetNextBlockNumberToCommit(
 // GetTransactionsStatus returns the status of given transactions identifiers.
 func (c *Service) GetTransactionsStatus(
 	ctx context.Context,
-	q *protoblocktx.QueryStatus,
-) (*protoblocktx.TransactionsStatus, error) {
+	q *applicationpb.QueryStatus,
+) (*applicationpb.TransactionsStatus, error) {
 	return c.validatorCommitterMgr.getTransactionsStatus(ctx, q)
 }
 
@@ -284,20 +284,20 @@ func (c *Service) GetTransactionsStatus(
 func (c *Service) NumberOfWaitingTransactionsForStatus(
 	context.Context,
 	*emptypb.Empty,
-) (*protocoordinatorservice.WaitingTransactions, error) {
+) (*servicepb.WaitingTransactions, error) {
 	if !c.streamActive.TryLock() {
 		return nil, ErrActiveStreamWaitingTransactions
 	}
 	defer c.streamActive.Unlock()
 
-	return &protocoordinatorservice.WaitingTransactions{
+	return &servicepb.WaitingTransactions{
 		Count: c.numWaitingTxsForStatus.Load() - int32(len(c.queues.vcServiceToCoordinatorTxStatus)), //nolint:gosec
 	}, nil
 }
 
 // BlockProcessing receives a stream of blocks from the client and processes them.
 func (c *Service) BlockProcessing(
-	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
+	stream servicepb.Coordinator_BlockProcessingServer,
 ) error {
 	if !c.streamActive.TryLock() {
 		return ErrExistingStreamOrConflictingOp
@@ -336,7 +336,7 @@ func (c *Service) BlockProcessing(
 
 func (c *Service) receiveAndProcessBlock(
 	ctx context.Context,
-	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
+	stream servicepb.Coordinator_BlockProcessingServer,
 ) error {
 	txsBatchForDependencyGraph := channel.NewWriter(ctx, c.queues.coordinatorToDepGraphTxs)
 	txBatchForVcService := channel.NewWriter(ctx, c.queues.sigVerifierToVCServiceValidatedTxs)
@@ -382,7 +382,7 @@ func (c *Service) receiveAndProcessBlock(
 
 func (c *Service) sendTxStatus(
 	ctx context.Context,
-	stream protocoordinatorservice.Coordinator_BlockProcessingServer,
+	stream servicepb.Coordinator_BlockProcessingServer,
 ) error {
 	txsStatus := channel.NewReader(ctx, c.queues.vcServiceToCoordinatorTxStatus)
 	for {

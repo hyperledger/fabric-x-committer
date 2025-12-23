@@ -15,11 +15,12 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -160,7 +161,7 @@ func submit(
 ) {
 	t.Helper()
 	txb := workload.TxBuilder{ChannelID: channelForTest}
-	tx := txb.MakeTx(&protoblocktx.Tx{})
+	tx := txb.MakeTx(&applicationpb.Tx{})
 
 	// We create a new stream for each request to ensure GRPC does not cache the latest state.
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
@@ -169,7 +170,7 @@ func submit(
 	require.NoError(t, err)
 	defer stream.CloseConnections()
 
-	err = stream.SendBatch(workload.MapToEnvelopeBatch(0, []*protoloadgen.TX{tx}))
+	err = stream.SendBatch(workload.MapToEnvelopeBatch(0, []*servicepb.LoadGenTx{tx}))
 	if err != nil {
 		t.Logf("Response error:\n%s", err)
 	}
@@ -231,9 +232,10 @@ func makeConfig(t *testing.T, tlsConfig *connection.TLSConfig) (*mock.Orderer, [
 	servers := make([]test.GrpcServers, idCount)
 	for i, c := range ordererServer.Configs {
 		id := uint32(i % idCount) //nolint:gosec // integer overflow conversion int -> uint32
-		conf.Connection.Endpoints = append(conf.Connection.Endpoints, &ordererconn.Endpoint{
-			ID:       id,
-			Endpoint: c.Endpoint,
+		conf.Connection.Endpoints = append(conf.Connection.Endpoints, &commontypes.OrdererEndpoint{
+			ID:   id,
+			Host: c.Endpoint.Host,
+			Port: c.Endpoint.Port,
 		})
 		s := &servers[id]
 		s.Configs = append(s.Configs, c)

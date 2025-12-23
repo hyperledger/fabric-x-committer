@@ -15,7 +15,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/yugabyte/pgx/v4/pgxpool"
 
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 )
 
 const (
@@ -38,7 +38,7 @@ var (
 	//go:embed create_namespace_tmpl.sql
 	createNamespaceSQLStmt string
 
-	systemNamespaces = []string{types.MetaNamespaceID, types.ConfigNamespaceID}
+	systemNamespaces = []string{committerpb.MetaNamespaceID, committerpb.ConfigNamespaceID}
 )
 
 // NewDatabasePool creates a new pool from a database config.

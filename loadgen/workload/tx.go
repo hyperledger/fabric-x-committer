@@ -9,8 +9,8 @@ package workload
 import (
 	"math/rand"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protoloadgen"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 )
 
@@ -28,15 +28,15 @@ type (
 
 	// Modifier modifies a TX.
 	Modifier interface {
-		Modify(*protoblocktx.Tx)
+		Modify(*applicationpb.Tx)
 	}
 
 	// Key is an alias for byte array.
 	Key = []byte
 )
 
-// GeneratedNamespaceID for now we're only generating transactions for a single namespace.
-const GeneratedNamespaceID = "0"
+// DefaultGeneratedNamespaceID for now we're only generating transactions for a single namespace.
+const DefaultGeneratedNamespaceID = "0"
 
 // newIndependentTxGenerator creates a new valid TX generator given a transaction profile.
 func newIndependentTxGenerator(
@@ -56,39 +56,39 @@ func newIndependentTxGenerator(
 }
 
 // Next generate a new TX.
-func (g *IndependentTxGenerator) Next() *protoloadgen.TX {
+func (g *IndependentTxGenerator) Next() *servicepb.LoadGenTx {
 	readOnly := g.ReadOnlyKeyGenerator.Next()
 	readWrite := g.ReadWriteKeyGenerator.Next()
 	blindWriteKey := g.BlindWriteKeyGenerator.Next()
 
-	ns := &protoblocktx.TxNamespace{
-		NsId:        GeneratedNamespaceID,
+	ns := &applicationpb.TxNamespace{
+		NsId:        DefaultGeneratedNamespaceID,
 		NsVersion:   0,
-		ReadsOnly:   make([]*protoblocktx.Read, len(readOnly)),
-		ReadWrites:  make([]*protoblocktx.ReadWrite, len(readWrite)),
-		BlindWrites: make([]*protoblocktx.Write, len(blindWriteKey)),
+		ReadsOnly:   make([]*applicationpb.Read, len(readOnly)),
+		ReadWrites:  make([]*applicationpb.ReadWrite, len(readWrite)),
+		BlindWrites: make([]*applicationpb.Write, len(blindWriteKey)),
 	}
 
 	for i, key := range readOnly {
-		ns.ReadsOnly[i] = &protoblocktx.Read{Key: key}
+		ns.ReadsOnly[i] = &applicationpb.Read{Key: key}
 	}
 
 	for i, key := range readWrite {
-		ns.ReadWrites[i] = &protoblocktx.ReadWrite{
+		ns.ReadWrites[i] = &applicationpb.ReadWrite{
 			Key:   key,
 			Value: g.ReadWriteValueGenerator.Next(),
 		}
 	}
 
 	for i, key := range blindWriteKey {
-		ns.BlindWrites[i] = &protoblocktx.Write{
+		ns.BlindWrites[i] = &applicationpb.Write{
 			Key:   key,
 			Value: g.BlindWriteValueGenerator.Next(),
 		}
 	}
 
-	tx := &protoblocktx.Tx{
-		Namespaces: []*protoblocktx.TxNamespace{ns},
+	tx := &applicationpb.Tx{
+		Namespaces: []*applicationpb.TxNamespace{ns},
 	}
 	for _, mod := range g.Modifiers {
 		mod.Modify(tx)

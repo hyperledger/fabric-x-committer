@@ -15,8 +15,7 @@ import (
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
 
-	"github.com/hyperledger/fabric-x-committer/api/protonotify"
-	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
@@ -65,7 +64,7 @@ type (
 		//nolint:containedctx // used to restrict jobs to the view timeout.
 		ctx    context.Context
 		cancel context.CancelFunc
-		params *protoqueryservice.ViewParameters
+		params *committerpb.ViewParameters
 
 		// batcher is initialized lazily upon the first query.
 		batcher *batcher
@@ -103,15 +102,15 @@ type (
 
 		// finalized is true once the query is actively executed.
 		finalized    bool
-		result       map[string]*protoqueryservice.Row
-		statusResult map[string]*protonotify.TxStatusEvent
+		result       map[string]*committerpb.Row
+		statusResult map[string]*committerpb.TxStatusEvent
 	}
 )
 
 // makeView attempts to create a view with the given view ID.
 // It returns true if the view ID was not used.
 func (q *viewsBatcher) makeView(
-	viewID string, p *protoqueryservice.ViewParameters,
+	viewID string, p *committerpb.ViewParameters,
 ) bool {
 	ctx, cancel := context.WithTimeout(q.ctx, time.Duration(p.TimeoutMilliseconds)*time.Millisecond) //nolint:gosec
 	v := &viewHolder{
@@ -142,7 +141,7 @@ func (q *viewsBatcher) makeView(
 }
 
 // getBatcher returns the view's assigned batcher, and assigns one if it was not assigned.
-func (q *viewsBatcher) getBatcher(ctx context.Context, view *protoqueryservice.View) (*batcher, error) {
+func (q *viewsBatcher) getBatcher(ctx context.Context, view *committerpb.View) (*batcher, error) {
 	if view == nil {
 		return &q.nonConsistentBatcher, nil
 	}
@@ -215,7 +214,7 @@ func (q *viewsBatcher) updateOrCreateBatcher(
 }
 
 // viewParametersKey outputs a unique key for each parameter's permutation.
-func viewParametersKey(p *protoqueryservice.ViewParameters) int {
+func viewParametersKey(p *committerpb.ViewParameters) int {
 	index := max(minIsoLevel, min(int(p.IsoLevel), maxIsoLevel))
 	if p.NonDeferrable {
 		index |= deferredBit
@@ -224,7 +223,7 @@ func viewParametersKey(p *protoqueryservice.ViewParameters) int {
 }
 
 // makeTxOptions translates view parameters to TxOptions.
-func makeTxOptions(p *protoqueryservice.ViewParameters) *pgx.TxOptions {
+func makeTxOptions(p *committerpb.ViewParameters) *pgx.TxOptions {
 	o := &pgx.TxOptions{
 		AccessMode:     pgx.ReadOnly,
 		IsoLevel:       pgx.Serializable,
@@ -234,13 +233,13 @@ func makeTxOptions(p *protoqueryservice.ViewParameters) *pgx.TxOptions {
 		return o
 	}
 	switch p.IsoLevel {
-	case protoqueryservice.IsoLevel_Serializable:
+	case committerpb.IsoLevel_Serializable:
 		o.IsoLevel = pgx.Serializable
-	case protoqueryservice.IsoLevel_RepeatableRead:
+	case committerpb.IsoLevel_RepeatableRead:
 		o.IsoLevel = pgx.RepeatableRead
-	case protoqueryservice.IsoLevel_ReadCommitted:
+	case committerpb.IsoLevel_ReadCommitted:
 		o.IsoLevel = pgx.ReadCommitted
-	case protoqueryservice.IsoLevel_ReadUncommitted:
+	case committerpb.IsoLevel_ReadUncommitted:
 		o.IsoLevel = pgx.ReadUncommitted
 	}
 	if p.NonDeferrable {
@@ -392,7 +391,7 @@ func (q *namespaceQueryBatch) execute() {
 	m.Inc()
 	defer m.Dec()
 
-	uniqueMap := make(map[string]*protoqueryservice.Row)
+	uniqueMap := make(map[string]*committerpb.Row)
 	var uniqueKeys [][]byte
 	for _, key := range q.keys {
 		strKey := string(key)
@@ -406,8 +405,8 @@ func (q *namespaceQueryBatch) execute() {
 	promutil.ObserveSize(q.metrics.batchQuerySize, len(uniqueKeys))
 
 	start := time.Now()
-	var queryRows []*protoqueryservice.Row
-	var statusRows []*protonotify.TxStatusEvent
+	var queryRows []*committerpb.Row
+	var statusRows []*committerpb.TxStatusEvent
 	if q.nsID != txStatusNsID {
 		queryRows, err = unsafeQueryRows(q.ctx, queryObj, q.nsID, uniqueKeys)
 	} else {
@@ -421,14 +420,14 @@ func (q *namespaceQueryBatch) execute() {
 	promutil.ObserveSize(q.metrics.batchResponseSize, len(queryRows)+len(statusRows))
 
 	if queryRows != nil {
-		q.result = make(map[string]*protoqueryservice.Row)
+		q.result = make(map[string]*committerpb.Row)
 		for _, r := range queryRows {
 			q.result[string(r.Key)] = r
 		}
 	}
 
 	if statusRows != nil {
-		q.statusResult = make(map[string]*protonotify.TxStatusEvent)
+		q.statusResult = make(map[string]*committerpb.TxStatusEvent)
 		for _, r := range statusRows {
 			q.statusResult[r.TxId] = r
 		}
@@ -442,7 +441,7 @@ func (q *namespaceQueryBatch) execute() {
 func (q *namespaceQueryBatch) waitForRows(
 	ctx context.Context,
 	keys [][]byte,
-) (res []*protoqueryservice.Row, statusRes []*protonotify.TxStatusEvent, err error) {
+) (res []*committerpb.Row, statusRes []*committerpb.TxStatusEvent, err error) {
 	// Wait for batch to be finalized or context to be canceled.
 	select {
 	case <-ctx.Done():
@@ -461,7 +460,7 @@ func (q *namespaceQueryBatch) waitForRows(
 
 	// Extract results for requested keys.
 	if q.result != nil {
-		res = make([]*protoqueryservice.Row, 0, len(keys))
+		res = make([]*committerpb.Row, 0, len(keys))
 		for _, key := range keys {
 			// Get result for this key from the batch results.
 			if row, ok := q.result[string(key)]; ok && row != nil {
@@ -470,7 +469,7 @@ func (q *namespaceQueryBatch) waitForRows(
 		}
 	}
 	if q.statusResult != nil {
-		statusRes = make([]*protonotify.TxStatusEvent, 0, len(keys))
+		statusRes = make([]*committerpb.TxStatusEvent, 0, len(keys))
 		for _, key := range keys {
 			// Get result for this key from the batch results.
 			if row, ok := q.statusResult[string(key)]; ok && row != nil {

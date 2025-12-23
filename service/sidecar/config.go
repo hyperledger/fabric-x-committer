@@ -12,9 +12,10 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
-	"github.com/hyperledger/fabric-x-common/internaltools/configtxgen"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
@@ -106,17 +107,17 @@ func OverwriteConfigFromEnvelope(conf *Config, envelope *common.Envelope) error 
 	return nil
 }
 
-func getDeliveryEndpointsFromConfig(bundle *channelconfig.Bundle) ([]*ordererconn.Endpoint, error) {
+func getDeliveryEndpointsFromConfig(bundle *channelconfig.Bundle) ([]*commontypes.OrdererEndpoint, error) {
 	oc, ok := bundle.OrdererConfig()
 	if !ok {
 		return nil, errors.New("could not find orderer config")
 	}
 
-	var endpoints []*ordererconn.Endpoint
+	var endpoints []*commontypes.OrdererEndpoint
 	for orgID, org := range oc.Organizations() {
 		endpointsStr := org.Endpoints()
 		for _, eStr := range endpointsStr {
-			e, err := ordererconn.ParseEndpoint(eStr)
+			e, err := commontypes.ParseOrdererEndpoint(eStr)
 			if err != nil {
 				return nil, err
 			}

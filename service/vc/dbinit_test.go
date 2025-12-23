@@ -13,7 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -22,9 +22,9 @@ func TestDBInit(t *testing.T) {
 	t.Parallel()
 	env := newDatabaseTestEnvWithTablesSetup(t)
 
-	tableName := TableName(types.MetaNamespaceID)
+	tableName := TableName(committerpb.MetaNamespaceID)
 	keys := [][]byte{[]byte("tx1"), []byte("tx2"), []byte("tx3"), []byte("tx4")}
-	ret := env.DB.pool.QueryRow(t.Context(), FmtNsID(insertNsStatesSQLTempl, types.MetaNamespaceID), keys, keys)
+	ret := env.DB.pool.QueryRow(t.Context(), FmtNsID(insertNsStatesSQLTempl, committerpb.MetaNamespaceID), keys, keys)
 	duplicates, err := readArrayResult[[]byte](ret)
 	require.NoError(t, err)
 	require.Empty(t, duplicates)

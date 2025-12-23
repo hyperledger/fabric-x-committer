@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 )
@@ -21,36 +21,35 @@ import (
 func MakePolicy(
 	t *testing.T,
 	ns string,
-	nsPolicy *protoblocktx.NamespacePolicy,
-) *protoblocktx.PolicyItem {
+	nsPolicy *applicationpb.NamespacePolicy,
+) *applicationpb.PolicyItem {
 	t.Helper()
 	nsPolicyBytes, err := proto.Marshal(nsPolicy)
 	require.NoError(t, err)
-	return &protoblocktx.PolicyItem{
+	return &applicationpb.PolicyItem{
 		Namespace: ns,
 		Policy:    nsPolicyBytes,
 	}
 }
 
-// MakePolicyAndNsSigner generates a policyItem and NsSigner.
-func MakePolicyAndNsSigner(
+// MakePolicyAndNsEndorser generates a policyItem and NsEndorser.
+func MakePolicyAndNsEndorser(
 	t *testing.T,
 	ns string,
-) (*protoblocktx.PolicyItem, *sigtest.NsSigner) {
+) (*applicationpb.PolicyItem, *sigtest.NsEndorser) {
 	t.Helper()
-	factory := sigtest.NewSignatureFactory(signature.Ecdsa)
-	signingKey, verificationKey := factory.NewKeys()
-	txSigner, err := factory.NewSigner(signingKey)
+	signingKey, verificationKey := sigtest.NewKeyPair(signature.Ecdsa)
+	txEndorser, err := sigtest.NewNsEndorserFromKey(signature.Ecdsa, signingKey)
 	require.NoError(t, err)
 	p := MakePolicy(t, ns, MakeECDSAThresholdRuleNsPolicy(verificationKey))
-	return p, txSigner
+	return p, txEndorser
 }
 
 // MakeECDSAThresholdRuleNsPolicy generates a namespace policy with threshold rule.
-func MakeECDSAThresholdRuleNsPolicy(publicKey []byte) *protoblocktx.NamespacePolicy {
-	return &protoblocktx.NamespacePolicy{
-		Rule: &protoblocktx.NamespacePolicy_ThresholdRule{
-			ThresholdRule: &protoblocktx.ThresholdRule{
+func MakeECDSAThresholdRuleNsPolicy(publicKey []byte) *applicationpb.NamespacePolicy {
+	return &applicationpb.NamespacePolicy{
+		Rule: &applicationpb.NamespacePolicy_ThresholdRule{
+			ThresholdRule: &applicationpb.ThresholdRule{
 				Scheme: signature.Ecdsa, PublicKey: publicKey,
 			},
 		},

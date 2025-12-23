@@ -10,7 +10,7 @@ import (
 	"math"
 	"math/rand"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoqueryservice"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 )
 
 // QueryGenerator generates a new query for keys.
@@ -36,7 +36,7 @@ func newQueryGenerator(rnd *rand.Rand, keys *ByteArrayGenerator, profile *Profil
 }
 
 // Next generate a new query.
-func (g *QueryGenerator) Next() *protoqueryservice.Query {
+func (g *QueryGenerator) Next() *committerpb.Query {
 	size := g.Size.Next()
 	keys := make([][]byte, 0, size)
 
@@ -50,10 +50,10 @@ func (g *QueryGenerator) Next() *protoqueryservice.Query {
 		})
 	}
 
-	return &protoqueryservice.Query{
-		Namespaces: []*protoqueryservice.QueryNamespace{
+	return &committerpb.Query{
+		Namespaces: []*committerpb.QueryNamespace{
 			{
-				NsId: GeneratedNamespaceID,
+				NsId: DefaultGeneratedNamespaceID,
 				Keys: keys,
 			},
 		},

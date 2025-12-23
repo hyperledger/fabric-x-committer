@@ -16,10 +16,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/protoblocktx"
-	"github.com/hyperledger/fabric-x-committer/api/protosigverifierservice"
-	"github.com/hyperledger/fabric-x-committer/api/protovcservice"
-	"github.com/hyperledger/fabric-x-committer/api/types"
+	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
@@ -27,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -222,14 +222,14 @@ func TestSignatureVerifierWithAllInvalidTxs(t *testing.T) {
 	expectedValidatedTxs := dependencygraph.TxNodeBatch{}
 	for i := range 3 {
 		txNode := &dependencygraph.TransactionNode{
-			Tx: &protovcservice.Tx{
-				Ref: types.TxRef("", uint64(i), uint32(i)), //nolint:gosec
+			Tx: &servicepb.VcTx{
+				Ref: committerpb.TxRef("", uint64(i), uint32(i)), //nolint:gosec
 			},
 		}
 		txBatch = append(txBatch, txNode)
 
 		expectedValidatedTxs = append(expectedValidatedTxs, &dependencygraph.TransactionNode{
-			Tx: &protovcservice.Tx{
+			Tx: &servicepb.VcTx{
 				Ref:                   txNode.Tx.Ref,
 				PrelimInvalidTxStatus: sigInvalidTxStatus,
 			},
@@ -249,15 +249,15 @@ func createTxNodeBatchForTest(
 ) (inputTxBatch, expectedValidatedTxs dependencygraph.TxNodeBatch) {
 	t.Helper()
 
-	ns := []*protoblocktx.TxNamespace{{
-		BlindWrites: []*protoblocktx.Write{{
+	ns := []*applicationpb.TxNamespace{{
+		BlindWrites: []*applicationpb.Write{{
 			Value: utils.MustRead(rand.Reader, valueSize),
 		}},
 	}}
 	for i := range numTxs {
 		txNode := &dependencygraph.TransactionNode{
-			Tx: &protovcservice.Tx{
-				Ref:        types.TxRef("", blkNum, uint32(i)), //nolint:gosec
+			Tx: &servicepb.VcTx{
+				Ref:        committerpb.TxRef("", blkNum, uint32(i)), //nolint:gosec
 				Namespaces: ns,
 			},
 		}
@@ -265,13 +265,13 @@ func createTxNodeBatchForTest(
 		switch i % 2 {
 		case 0:
 			// even number txs are valid.
-			txNode.Endorsements = test.CreateEndorsementsForThresholdRule([]byte("dummy"))
+			txNode.Endorsements = sigtest.CreateEndorsementsForThresholdRule([]byte("dummy"))
 			expectedValidatedTxs = append(expectedValidatedTxs, txNode)
 		case 1:
 			// odd number txs are invalid. No signature means invalid transaction.
 			// we need to create a copy of txNode to add expected status.
 			txNodeWithStatus := &dependencygraph.TransactionNode{
-				Tx: &protovcservice.Tx{
+				Tx: &servicepb.VcTx{
 					Ref:                   txNode.Tx.Ref,
 					Namespaces:            ns,
 					PrelimInvalidTxStatus: sigInvalidTxStatus,
@@ -336,9 +336,9 @@ func TestSignatureVerifierFatalDueToBadPolicy(t *testing.T) {
 	policyUpdateCount := sv.GetPolicyUpdateCounter()
 
 	sv.SetReturnErrorForUpdatePolicies(true)
-	env.policyManager.update(&protosigverifierservice.Update{
-		NamespacePolicies: &protoblocktx.NamespacePolicies{
-			Policies: []*protoblocktx.PolicyItem{{Namespace: "$$$"}},
+	env.policyManager.update(&servicepb.VerifierUpdates{
+		NamespacePolicies: &applicationpb.NamespacePolicies{
+			Policies: []*applicationpb.PolicyItem{{Namespace: "$$$"}},
 		},
 	})
 
@@ -360,13 +360,13 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 	}
 
 	// set verification key
-	ns1Policy, _ := policy.MakePolicyAndNsSigner(t, "ns1")
-	ns2Policy, _ := policy.MakePolicyAndNsSigner(t, "ns2")
-	expectedUpdate := &protosigverifierservice.Update{
-		NamespacePolicies: &protoblocktx.NamespacePolicies{
-			Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2Policy},
+	ns1Policy, _ := policy.MakePolicyAndNsEndorser(t, "ns1")
+	ns2Policy, _ := policy.MakePolicyAndNsEndorser(t, "ns2")
+	expectedUpdate := &servicepb.VerifierUpdates{
+		NamespacePolicies: &applicationpb.NamespacePolicies{
+			Policies: []*applicationpb.PolicyItem{ns1Policy, ns2Policy},
 		},
-		Config: &protoblocktx.ConfigTransaction{
+		Config: &applicationpb.ConfigTransaction{
 			Envelope: []byte("config1"),
 		},
 	}
@@ -382,12 +382,12 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 	env.requireConnectionMetrics(t, 0, connection.Disconnected, 1)
 
 	t.Log("Update policy manager")
-	ns2NewPolicy, _ := policy.MakePolicyAndNsSigner(t, "ns2")
-	expectedSecondUpdate := &protosigverifierservice.Update{
-		NamespacePolicies: &protoblocktx.NamespacePolicies{
-			Policies: []*protoblocktx.PolicyItem{ns2NewPolicy},
+	ns2NewPolicy, _ := policy.MakePolicyAndNsEndorser(t, "ns2")
+	expectedSecondUpdate := &servicepb.VerifierUpdates{
+		NamespacePolicies: &applicationpb.NamespacePolicies{
+			Policies: []*applicationpb.PolicyItem{ns2NewPolicy},
 		},
-		Config: &protoblocktx.ConfigTransaction{
+		Config: &applicationpb.ConfigTransaction{
 			Envelope: []byte("config2"),
 		},
 	}
@@ -412,11 +412,11 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 	env.requireConnectionMetrics(t, 0, connection.Connected, 1)
 	t.Log("New instance is up")
 
-	newExpectedUpdate := &protosigverifierservice.Update{
-		NamespacePolicies: &protoblocktx.NamespacePolicies{
-			Policies: []*protoblocktx.PolicyItem{ns1Policy, ns2NewPolicy},
+	newExpectedUpdate := &servicepb.VerifierUpdates{
+		NamespacePolicies: &applicationpb.NamespacePolicies{
+			Policies: []*applicationpb.PolicyItem{ns1Policy, ns2NewPolicy},
 		},
-		Config: &protoblocktx.ConfigTransaction{
+		Config: &applicationpb.ConfigTransaction{
 			Envelope: []byte("config2"),
 		},
 	}
@@ -428,10 +428,10 @@ func (e *svMgrTestEnv) requireAllUpdate(
 	t *testing.T,
 	svs []*mock.SigVerifier,
 	expectedCount int,
-	expected *protosigverifierservice.Update,
+	expected *servicepb.VerifierUpdates,
 ) {
 	t.Helper()
-	updates := make([][]*protosigverifierservice.Update, len(svs))
+	updates := make([][]*servicepb.VerifierUpdates, len(svs))
 
 	// verify that all mock policy verifiers have the same verification key.
 	require.Eventually(t, func() bool {

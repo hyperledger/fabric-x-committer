@@ -1,0 +1,42 @@
+/*
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+*/
+
+syntax = "proto3";
+
+option go_package = "github.com/hyperledger/fabric-x-committer/api/servicepb";
+
+package servicepb;
+
+import "api/applicationpb/block_tx.proto";
+import "api/servicepb/coordinator.proto";
+
+service Verifier {
+    rpc StartStream(stream VerifierBatch) returns (stream VerifierResponseBatch);
+}
+
+message VerifierBatch {
+    optional VerifierUpdates update = 1;
+    repeated VerifierTx requests = 2;
+}
+
+message VerifierUpdates {
+    optional applicationpb.ConfigTransaction config = 1;
+    optional applicationpb.NamespacePolicies namespace_policies = 2;
+}
+
+message VerifierTx {
+    TxRef ref = 1;
+    applicationpb.Tx tx = 2;
+}
+
+message VerifierResponse {
+    TxRef ref = 1;
+    applicationpb.Status status = 2;
+}
+
+message VerifierResponseBatch {
+    repeated VerifierResponse responses = 1;
+}
