@@ -44,8 +44,8 @@ func (p *startNodeParameters) asNode(node string) startNodeParameters {
 }
 
 const (
-	committerReleaseImage = "docker.io/hyperledger/committer:0.0.2"
-	loadgenReleaseImage   = "docker.io/hyperledger/loadgen:0.0.2"
+	committerReleaseImage = "docker.io/hyperledger/committer:latest"
+	loadgenReleaseImage   = "docker.io/hyperledger/loadgen:latest"
 	containerPrefixName   = "sc_test"
 	networkPrefixName     = containerPrefixName + "_network"
 	genBlockFile          = "sc-genesis-block.proto.bin"

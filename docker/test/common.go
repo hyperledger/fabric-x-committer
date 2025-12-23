@@ -32,7 +32,7 @@ type createAndStartContainerParameters struct {
 }
 
 const (
-	testNodeImage   = "docker.io/hyperledger/committer-test-node:0.0.2"
+	testNodeImage   = "docker.io/hyperledger/committer-test-node:latest"
 	channelName     = "mychannel"
 	monitoredMetric = "loadgen_transaction_committed_total"
 )
