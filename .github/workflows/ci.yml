@@ -36,12 +36,6 @@ jobs:
           # Fetch main to only show new lint issues.
           git fetch -u origin main:main
           make lint
-          # (TODO remove) Debug statements
-          echo "DEBUG STATEMENTS"
-          id -u
-          id -g
-          ls -la cmd/config/samples
-          echo "DONE DEBUG STATEMENTS"
 
       - name: Build
         run: make build
