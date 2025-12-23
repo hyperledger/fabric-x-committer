@@ -59,7 +59,7 @@ EXPOSE 7050 4001 2114 7001 2117 2110
 
 # OCI metadata labels
 LABEL name="fabric-x-committer-test-node" \
-    maintainer="IBM Research ZRL Decentralized Trust Group" \
+    maintainer="IBM Research Decentralized Trust Group" \
     version="${VERSION}" \
     description="Preconfigured Hyperledger Fabric-X Committer Node" \
     license="Apache-2.0" \
