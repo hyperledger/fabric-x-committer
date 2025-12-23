@@ -195,7 +195,7 @@ func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, param
 	t.Helper()
 
 	configPath := filepath.Join(containerConfigPath, params.node)
-	containerUser := fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid())
+	containerUser := "0:0"
 	t.Logf("Starting %s as container with user %s.\n", committerReleaseImage, containerUser)
 	createAndStartContainerAndItsLogs(ctx, t, createAndStartContainerParameters{
 		config: &container.Config{
@@ -243,7 +243,7 @@ func startLoadgenNodeWithReleaseImage(
 	t.Helper()
 
 	configPath := filepath.Join(containerConfigPath, params.node)
-	containerUser := fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid())
+	containerUser := "0:0"
 	t.Logf("Starting %s as container with user %s.\n", loadgenReleaseImage, containerUser)
 	createAndStartContainerAndItsLogs(ctx, t, createAndStartContainerParameters{
 		config: &container.Config{
