@@ -195,6 +195,8 @@ func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, param
 	t.Helper()
 
 	configPath := filepath.Join(containerConfigPath, params.node)
+	containerUser := fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid())
+	t.Logf("Starting %s as container with user %s.\n", committerReleaseImage, containerUser)
 	createAndStartContainerAndItsLogs(ctx, t, createAndStartContainerParameters{
 		config: &container.Config{
 			Image: committerReleaseImage,
@@ -204,7 +206,7 @@ func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, param
 				fmt.Sprintf("%s.yaml", configPath),
 			},
 			Hostname: params.node,
-			User:     fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
+			User:     containerUser,
 			Env: []string{
 				"SC_COORDINATOR_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_COORDINATOR_VERIFIER_TLS_MODE=" + params.tlsMode,
@@ -241,6 +243,8 @@ func startLoadgenNodeWithReleaseImage(
 	t.Helper()
 
 	configPath := filepath.Join(containerConfigPath, params.node)
+	containerUser := fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid())
+	t.Logf("Starting %s as container with user %s.\n", loadgenReleaseImage, containerUser)
 	createAndStartContainerAndItsLogs(ctx, t, createAndStartContainerParameters{
 		config: &container.Config{
 			Image: loadgenReleaseImage,
@@ -250,7 +254,7 @@ func startLoadgenNodeWithReleaseImage(
 				fmt.Sprintf("%s.yaml", configPath),
 			},
 			Hostname: params.node,
-			User:     fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
+			User:     containerUser,
 			ExposedPorts: nat.PortSet{
 				loadGenMetricsPort + "/tcp": {},
 			},
