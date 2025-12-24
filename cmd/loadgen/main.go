@@ -100,7 +100,7 @@ func loadGenGenesisBlock() *cobra.Command {
 			}
 			cmd.SilenceUsage = true
 
-			block, err := workload.CreateConfigBlock(conf.LoadProfile.Transaction.Policy)
+			block, err := workload.CreateConfigBlock(&conf.LoadProfile.Policy)
 			if err != nil {
 				return err
 			}

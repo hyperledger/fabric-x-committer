@@ -30,13 +30,15 @@ type sidecarReceiverParameters struct {
 	ClientConfig *connection.ClientConfig
 }
 
-const committedBlocksQueueSize = 1024
-const statusIdx = int(common.BlockMetadataIndex_TRANSACTIONS_FILTER)
+const (
+	committedBlocksQueueSize = 1024
+	statusIdx                = int(common.BlockMetadataIndex_TRANSACTIONS_FILTER)
+)
 
 // runSidecarReceiver start receiving blocks from the sidecar.
 func runSidecarReceiver(ctx context.Context, params *sidecarReceiverParameters) error {
 	ledgerReceiver, err := sidecarclient.New(&sidecarclient.Parameters{
-		ChannelID: params.Res.Profile.Transaction.Policy.ChannelID,
+		ChannelID: params.Res.Profile.Policy.ChannelID,
 		Client:    params.ClientConfig,
 	})
 	if err != nil {

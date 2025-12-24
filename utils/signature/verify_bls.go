@@ -9,8 +9,6 @@ package signature
 import (
 	"github.com/cockroachdb/errors"
 	"github.com/consensys/gnark-crypto/ecc/bn254"
-	mspi "github.com/hyperledger/fabric-x-common/msp"
-	"github.com/hyperledger/fabric-x-common/protoutil"
 )
 
 var q []bn254.G2Affine
@@ -38,8 +36,8 @@ func newBLSVerifier(key []byte) (*blsVerifier, error) {
 	return &blsVerifier{pk: pk}, nil
 }
 
-// verify a digest given a signature.
-func (v *blsVerifier) verify(digest Digest, signature Signature) error {
+// verifyDigest verifies a digest given a signature.
+func (v *blsVerifier) verifyDigest(digest Digest, signature Signature) error {
 	var sig bn254.G1Affine
 	_, err := sig.SetBytes(signature)
 	if err != nil {
@@ -65,15 +63,4 @@ func (v *blsVerifier) verify(digest Digest, signature Signature) error {
 		return nil
 	}
 	return ErrSignatureMismatch
-}
-
-// EvaluateSignedData takes a set of SignedData and evaluates whether
-// the signatures are valid over the related message.
-func (v *blsVerifier) EvaluateSignedData(signatureSet []*protoutil.SignedData) error {
-	return verifySignedData(signatureSet, v)
-}
-
-// EvaluateIdentities returns nil as it is not applicable for EcdsaTxVerifier.
-func (*blsVerifier) EvaluateIdentities(_ []mspi.Identity) error {
-	return nil
 }

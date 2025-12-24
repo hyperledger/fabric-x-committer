@@ -38,7 +38,8 @@ func eventuallyMetrics(
 }
 
 // DefaultClientConf returns default config values for client testing.
-func DefaultClientConf() *ClientConfig {
+func DefaultClientConf(t *testing.T) *ClientConfig {
+	t.Helper()
 	return &ClientConfig{
 		Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
 		Monitoring: metrics.Config{
@@ -49,19 +50,20 @@ func DefaultClientConf() *ClientConfig {
 			Block: workload.BlockProfile{Size: defaultBlockSize},
 			Transaction: workload.TransactionProfile{
 				ReadWriteCount: workload.NewConstantDistribution(2),
-				Policy: &workload.PolicyProfile{
-					NamespacePolicies: map[string]*workload.Policy{
-						workload.DefaultGeneratedNamespaceID: {
-							Scheme: signature.Ecdsa,
-							Seed:   10,
-						},
-						committerpb.MetaNamespaceID: {
-							Scheme: signature.Ecdsa,
-							Seed:   11,
-						},
+			},
+			Policy: workload.PolicyProfile{
+				NamespacePolicies: map[string]*workload.Policy{
+					workload.DefaultGeneratedNamespaceID: {
+						Scheme: "MSP",
 					},
-					ChannelID: "channel",
+					committerpb.MetaNamespaceID: {
+						Scheme: signature.Ecdsa,
+						Seed:   11,
+					},
 				},
+				ChannelID:             "channel",
+				CryptoMaterialPath:    t.TempDir(),
+				PeerOrganizationCount: 3,
 			},
 			Seed: 12345,
 			// We use small number of workers to reduce the CPU load during tests.

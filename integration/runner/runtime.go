@@ -135,8 +135,9 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 			LoadGenBlockLimit: conf.LoadgenBlockLimit,
 			LoadGenWorkers:    1,
 			Policy: &workload.PolicyProfile{
-				ChannelID:         TestChannelName,
-				NamespacePolicies: make(map[string]*workload.Policy),
+				ChannelID:          TestChannelName,
+				NamespacePolicies:  make(map[string]*workload.Policy),
+				CryptoMaterialPath: t.TempDir(),
 			},
 			Logging: &logging.DefaultConfig,
 		},

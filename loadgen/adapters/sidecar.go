@@ -28,11 +28,20 @@ type (
 )
 
 // NewSidecarAdapter instantiate SidecarAdapter.
-func NewSidecarAdapter(config *SidecarClientConfig, res *ClientResources) *SidecarAdapter {
+func NewSidecarAdapter(config *SidecarClientConfig, res *ClientResources) (*SidecarAdapter, error) {
+	// The sidecar adapter overwrite the orderer endpoints with its own.
+	// We first pre-allocate the ports.
+	for _, s := range config.OrdererServers {
+		_, err := s.PreAllocateListener()
+		if err != nil {
+			return nil, err
+		}
+	}
+	res.Profile.Policy.OrdererEndpoints = ordererconn.NewEndpoints(0, "msp", config.OrdererServers...)
 	return &SidecarAdapter{
 		commonAdapter: commonAdapter{res: res},
 		config:        config,
-	}
+	}, nil
 }
 
 // RunWorkload applies load on the sidecar.
@@ -56,13 +65,7 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 	})
 
 	// The sidecar adapter submits a config block manually.
-	policy := *c.res.Profile.Transaction.Policy
-	policy.OrdererEndpoints = ordererconn.NewEndpoints(0, "msp", c.config.OrdererServers...)
-	configBlock, err := workload.CreateConfigBlock(&policy)
-	if err != nil {
-		return err
-	}
-	if err = orderer.SubmitBlock(ctx, configBlock); err != nil {
+	if err = orderer.SubmitBlock(ctx, c.res.ConfigBlock); err != nil {
 		return err
 	}
 	c.nextBlockNum.Add(1)

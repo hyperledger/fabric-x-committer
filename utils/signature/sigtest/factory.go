@@ -15,6 +15,7 @@ import (
 	"io"
 	"math/big"
 	pseudorand "math/rand"
+	"strings"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
@@ -27,7 +28,7 @@ import (
 // NewKeyPair generate private and public keys.
 // This should only be used for evaluation and testing as it might use non-secure crypto methods.
 func NewKeyPair(scheme signature.Scheme) (signature.PrivateKey, signature.PublicKey) {
-	switch scheme {
+	switch strings.ToUpper(scheme) {
 	case signature.Ecdsa:
 		return ecdsaNewKeyPair()
 	case signature.Bls:
@@ -42,7 +43,7 @@ func NewKeyPair(scheme signature.Scheme) (signature.PrivateKey, signature.Public
 // NewKeyPairWithSeed generate deterministic private and public keys.
 // This should only be used for evaluation and testing as it might use non-secure crypto methods.
 func NewKeyPairWithSeed(scheme signature.Scheme, seed int64) (signature.PrivateKey, signature.PublicKey) {
-	switch scheme {
+	switch strings.ToUpper(scheme) {
 	case signature.Ecdsa:
 		return ecdsaNewKeyPairWithSeed(seed)
 	case signature.Bls:

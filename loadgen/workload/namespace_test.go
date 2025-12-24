@@ -57,7 +57,9 @@ func TestNamespaceGeneratorKeyCreation(t *testing.T) {
 func TestCreateConfigTx(t *testing.T) {
 	t.Parallel()
 	policyProfile := makePolicyProfile(signature.Ecdsa)
-	tx, err := CreateConfigTx(policyProfile)
+	block, err := CreateConfigBlock(policyProfile)
+	require.NoError(t, err)
+	tx, err := CreateConfigTxFromConfigBlock(block)
 	require.NoError(t, err)
 	require.NotNil(t, tx)
 	require.NotEmpty(t, tx.Id)

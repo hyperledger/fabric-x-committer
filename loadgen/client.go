@@ -56,24 +56,34 @@ var logger = logging.New("load-gen-client")
 
 // NewLoadGenClient creates a new client instance.
 func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
-	logger.Infof("Config passed: %s", &utils.LazyJSON{O: conf})
+	logger.Debugf("Config passed: %s", &utils.LazyJSON{O: conf})
 
 	c := &Client{
-		conf:     conf,
-		txStream: workload.NewTxStream(conf.LoadProfile, conf.Stream),
+		conf: conf,
 		resources: adapters.ClientResources{
 			Profile: conf.LoadProfile,
 			Stream:  conf.Stream,
 			Limit:   conf.Limit,
+			Metrics: metrics.NewLoadgenServiceMetrics(&conf.Monitoring),
 		},
 		healthcheck: connection.DefaultHealthCheckService(),
 	}
-	c.resources.Metrics = metrics.NewLoadgenServiceMetrics(&conf.Monitoring)
 
 	adapter, err := getAdapter(&conf.Adapter, &c.resources)
 	if err != nil {
 		return nil, err
 	}
+
+	// We generate the crypto material and block after we create the adapter since the sidecar adapter
+	// modifies the orderer endpoints.
+	c.resources.ConfigBlock, err = workload.CreateConfigBlock(&conf.LoadProfile.Policy)
+	if err != nil {
+		return nil, err
+	}
+
+	// After creating the material, we can create the stream.
+	c.txStream = workload.NewTxStream(conf.LoadProfile, conf.Stream)
+
 	c.adapter = adapter
 	conf.Generate = adapters.PhasesIntersect(conf.Generate, adapter.Supports())
 	return c, nil
@@ -88,7 +98,7 @@ func getAdapter(conf *adapters.AdapterConfig, res *adapters.ClientResources) (Se
 	case conf.OrdererClient != nil:
 		return adapters.NewOrdererAdapter(conf.OrdererClient, res), nil
 	case conf.SidecarClient != nil:
-		return adapters.NewSidecarAdapter(conf.SidecarClient, res), nil
+		return adapters.NewSidecarAdapter(conf.SidecarClient, res)
 	case conf.VerifierClient != nil:
 		return adapters.NewSVAdapter(conf.VerifierClient, res), nil
 	case conf.LoadGenClient != nil:
@@ -213,7 +223,7 @@ func (c *Client) runLimiterServer(ctx context.Context) error {
 func (c *Client) submitWorkloadSetupTXs(ctx context.Context, txs chan *servicepb.LoadGenTx) error {
 	defer close(txs)
 
-	workloadSetupTXs, err := makeWorkloadSetupTXs(c.conf)
+	workloadSetupTXs, err := makeWorkloadSetupTXs(c.conf, &c.resources)
 	if err != nil {
 		return err
 	}
@@ -238,17 +248,17 @@ func (c *Client) submitWorkloadSetupTXs(ctx context.Context, txs chan *servicepb
 	return nil
 }
 
-func makeWorkloadSetupTXs(config *ClientConfig) ([]*servicepb.LoadGenTx, error) {
+func makeWorkloadSetupTXs(config *ClientConfig, res *adapters.ClientResources) ([]*servicepb.LoadGenTx, error) {
 	workloadSetupTXs := make([]*servicepb.LoadGenTx, 0, 2)
 	if config.Generate.Config {
-		configTX, err := workload.CreateConfigTx(config.LoadProfile.Transaction.Policy)
+		configTX, err := workload.CreateConfigTxFromConfigBlock(res.ConfigBlock)
 		if err != nil {
 			return nil, err
 		}
 		workloadSetupTXs = append(workloadSetupTXs, configTX)
 	}
 	if config.Generate.Namespaces {
-		metaNsTX, err := workload.CreateLoadGenNamespacesTX(config.LoadProfile.Transaction.Policy)
+		metaNsTX, err := workload.CreateLoadGenNamespacesTX(&config.LoadProfile.Policy)
 		if err != nil {
 			return nil, err
 		}

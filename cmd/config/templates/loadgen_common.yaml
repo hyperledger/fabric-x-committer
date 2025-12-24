@@ -38,15 +38,15 @@ load-profile:
     read-only-count:
     read-write-count:
       const: 2
-    policy:
-      channel-id: {{ .Policy.ChannelID }}
-      namespace-policies:
-        {{ range $nsID, $element := .Policy.NamespacePolicies }}
-        {{ $nsID }}:
-          scheme: {{ $element.Scheme }}
-          seed: {{ $element.Seed }}
-        {{ end }}
-      config-block-path: {{ .ConfigBlockPath }}
+  policy:
+    channel-id: {{ .Policy.ChannelID }}
+    namespace-policies:
+      {{ range $nsID, $element := .Policy.NamespacePolicies }}
+      {{ $nsID }}:
+        scheme: {{ $element.Scheme }}
+        seed: {{ $element.Seed }}
+      {{ end }}
+    config-block-path: {{ .ConfigBlockPath }}
   query:
     query-size:
     min-invalid-keys-portion:

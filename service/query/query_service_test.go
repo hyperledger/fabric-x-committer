@@ -280,9 +280,12 @@ func TestQueryPolicies(t *testing.T) {
 		delete(expectedNamespaces, p.Namespace)
 		item, parseErr := policy.CreateNamespaceVerifier(p, nil)
 		require.NoError(t, parseErr)
-		p := item.NamespacePolicy.GetThresholdRule()
-		require.NotNil(t, p)
-		require.Equal(t, signature.Ecdsa, p.Scheme)
+		require.NotNil(t, item)
+		pol, parseErr := policy.UnmarshalNamespacePolicy(p.Policy)
+		require.NoError(t, parseErr)
+		rule := pol.GetThresholdRule()
+		require.NotNil(t, rule)
+		require.Equal(t, signature.Ecdsa, rule.Scheme)
 	}
 
 	configTX, err := env.clientConn.GetConfigTransaction(t.Context(), nil)
@@ -358,9 +361,9 @@ func generateNamespacesUnderTest(t *testing.T, namespaces []string) *vc.Database
 	env := vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, 1, test.InsecureTLSConfig)
 	env.SetupSystemTablesAndNamespaces(t.Context(), t)
 
-	clientConf := loadgen.DefaultClientConf()
+	clientConf := loadgen.DefaultClientConf(t)
 	clientConf.Adapter.VCClient = test.NewTLSMultiClientConfig(test.InsecureTLSConfig, env.Endpoints...)
-	policies := &workload.PolicyProfile{
+	policies := workload.PolicyProfile{
 		NamespacePolicies: make(map[string]*workload.Policy, len(namespaces)),
 	}
 	for i, ns := range append(namespaces, committerpb.MetaNamespaceID) {
@@ -369,7 +372,7 @@ func generateNamespacesUnderTest(t *testing.T, namespaces []string) *vc.Database
 			Seed:   int64(i),
 		}
 	}
-	clientConf.LoadProfile.Transaction.Policy = policies
+	clientConf.LoadProfile.Policy = policies
 	clientConf.Generate = adapters.Phases{Config: true, Namespaces: true}
 	client, err := loadgen.NewLoadGenClient(clientConf)
 	require.NoError(t, err)

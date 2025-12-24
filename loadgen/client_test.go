@@ -51,7 +51,7 @@ func TestLoadGenForLoadGen(t *testing.T) {
 			for _, limit := range defaultLimits {
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
-					clientConf := DefaultClientConf()
+					clientConf := DefaultClientConf(t)
 					clientConf.Server.TLS = serverTLSConfig
 					clientConf.Limit = limit
 					// Ensure the client doesn't generate load, but only receives it from the sub client.
@@ -61,7 +61,12 @@ func TestLoadGenForLoadGen(t *testing.T) {
 					_, err := clientConf.Server.PreAllocateListener()
 					require.NoError(t, err)
 
-					subClientConf := DefaultClientConf()
+					subClientConf := DefaultClientConf(t)
+					// We ensure the sub client uses the same crypto material as
+					// the main load generator and the entire system.
+					//nolint:revive // can't break line.
+					subClientConf.LoadProfile.Policy.CryptoMaterialPath = clientConf.LoadProfile.Policy.CryptoMaterialPath
+
 					subClientConf.Adapter.LoadGenClient = test.NewTLSClientConfig(
 						clientTLSConfig, &clientConf.Server.Endpoint,
 					)
@@ -86,7 +91,7 @@ func TestLoadGenForVCService(t *testing.T) {
 			for _, limit := range defaultLimits {
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
-					clientConf := DefaultClientConf()
+					clientConf := DefaultClientConf(t)
 					clientConf.Limit = limit
 					env := vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, 2, serverTLSConfig)
 					clientConf.Adapter.VCClient = test.NewTLSMultiClientConfig(clientTLSConfig, env.Endpoints...)
@@ -106,7 +111,7 @@ func TestLoadGenForSigVerifier(t *testing.T) {
 			for _, limit := range defaultLimits {
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
-					clientConf := DefaultClientConf()
+					clientConf := DefaultClientConf(t)
 					clientConf.Limit = limit
 					clientConf.Adapter.VerifierClient = startVerifiers(t, serverTLSConfig, clientTLSConfig)
 					// Start client
@@ -153,7 +158,7 @@ func TestLoadGenForCoordinator(t *testing.T) {
 			) {
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
-					clientConf := DefaultClientConf()
+					clientConf := DefaultClientConf(t)
 					clientConf.Limit = limit
 					_, sigVerServer := mock.StartMockSVService(t, 1)
 					_, vcServer := mock.StartMockVCService(t, 1)
@@ -197,7 +202,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 			) {
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
-					clientConf := DefaultClientConf()
+					clientConf := DefaultClientConf(t)
 					clientConf.Limit = limit
 					_, coordinatorServer := mock.StartMockCoordinatorService(t)
 
@@ -219,8 +224,8 @@ func TestLoadGenForSidecar(t *testing.T) {
 								Endpoints: ordererconn.NewEndpoints(0, "org", ordererServers...),
 								TLS:       clientTLSConfig,
 							},
-							ChannelID:     clientConf.LoadProfile.Transaction.Policy.ChannelID,
-							Identity:      clientConf.LoadProfile.Transaction.Policy.Identity,
+							ChannelID:     clientConf.LoadProfile.Policy.ChannelID,
+							Identity:      clientConf.LoadProfile.Policy.Identity,
 							ConsensusType: ordererconn.Bft,
 						},
 						LastCommittedBlockSetInterval: 100 * time.Millisecond,
@@ -258,7 +263,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 			for _, limit := range defaultLimits {
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
-					clientConf := DefaultClientConf()
+					clientConf := DefaultClientConf(t)
 					clientConf.Limit = limit
 					numService := 3
 					sc := make([]*connection.ServerConfig, numService)
@@ -279,8 +284,8 @@ func TestLoadGenForOrderer(t *testing.T) {
 								Endpoints: endpoints,
 								TLS:       clientTLSConfig,
 							},
-							ChannelID:     clientConf.LoadProfile.Transaction.Policy.ChannelID,
-							Identity:      clientConf.LoadProfile.Transaction.Policy.Identity,
+							ChannelID:     clientConf.LoadProfile.Policy.ChannelID,
+							Identity:      clientConf.LoadProfile.Policy.Identity,
 							ConsensusType: ordererconn.Bft,
 						},
 						LastCommittedBlockSetInterval: 100 * time.Millisecond,
@@ -302,8 +307,8 @@ func TestLoadGenForOrderer(t *testing.T) {
 
 					// Submit default config block.
 					require.NotNil(t, clientConf.LoadProfile)
-					clientConf.LoadProfile.Transaction.Policy.OrdererEndpoints = endpoints
-					configBlock, err := workload.CreateConfigBlock(clientConf.LoadProfile.Transaction.Policy)
+					clientConf.LoadProfile.Policy.OrdererEndpoints = endpoints
+					configBlock, err := workload.CreateConfigBlock(&clientConf.LoadProfile.Policy)
 					require.NoError(t, err)
 					err = orderer.SubmitBlock(t.Context(), configBlock)
 					require.NoError(t, err)
@@ -328,7 +333,7 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 			t.Parallel()
 			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
 			for _, limit := range defaultLimits {
-				clientConf := DefaultClientConf()
+				clientConf := DefaultClientConf(t)
 				clientConf.Limit = limit
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
@@ -352,8 +357,8 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 					// This is ignored when sidecar isn't used.
 					// We validate the test doesn't break when config block is delivered.
 					require.NotNil(t, clientConf.LoadProfile)
-					clientConf.LoadProfile.Transaction.Policy.OrdererEndpoints = endpoints
-					configBlock, err := workload.CreateConfigBlock(clientConf.LoadProfile.Transaction.Policy)
+					clientConf.LoadProfile.Policy.OrdererEndpoints = endpoints
+					configBlock, err := workload.CreateConfigBlock(&clientConf.LoadProfile.Policy)
 					require.NoError(t, err)
 					err = orderer.SubmitBlock(t.Context(), configBlock)
 					require.NoError(t, err)
@@ -365,8 +370,8 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 								Endpoints: endpoints,
 								TLS:       clientTLSConfig,
 							},
-							ChannelID:     clientConf.LoadProfile.Transaction.Policy.ChannelID,
-							Identity:      clientConf.LoadProfile.Transaction.Policy.Identity,
+							ChannelID:     clientConf.LoadProfile.Policy.ChannelID,
+							Identity:      clientConf.LoadProfile.Policy.Identity,
 							ConsensusType: ordererconn.Bft,
 						},
 						BroadcastParallelism: 5,

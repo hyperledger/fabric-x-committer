@@ -12,6 +12,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -23,10 +25,11 @@ import (
 type (
 	// ClientResources holds client's pre-generated resources to be used by the adapters.
 	ClientResources struct {
-		Metrics *metrics.PerfMetrics
-		Profile *workload.Profile
-		Stream  *workload.StreamOptions
-		Limit   *GenerateLimit
+		Metrics     *metrics.PerfMetrics
+		Profile     *workload.Profile
+		Stream      *workload.StreamOptions
+		ConfigBlock *common.Block
+		Limit       *GenerateLimit
 	}
 
 	// Phases specify the generation phases to enable.

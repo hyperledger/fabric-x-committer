@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc/grpclog"
@@ -28,6 +29,11 @@ var loggerInstance Logger
 // SetupWithConfig updates the logger with the given config.
 func SetupWithConfig(config *Config) {
 	grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, os.Stderr))
+	logSpec := strings.ToUpper(config.Level)
+	if !config.Enabled {
+		logSpec = "FATAL"
+	}
+	flogging.Init(flogging.Config{LogSpec: logSpec})
 	loggerInstance.updateConfig(config)
 }
 

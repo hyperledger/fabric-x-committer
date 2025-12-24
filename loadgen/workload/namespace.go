@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package workload
 
 import (
+	"slices"
+
 	"github.com/cockroachdb/errors"
 	"google.golang.org/protobuf/proto"
 
@@ -32,29 +34,25 @@ func CreateLoadGenNamespacesTX(policy *PolicyProfile) (*servicepb.LoadGenTx, err
 func CreateNamespacesTX(
 	policy *PolicyProfile, metaNamespaceVersion uint64, includeNS ...string,
 ) (*applicationpb.Tx, error) {
-	endorser := NewTxEndorserVerifier(policy)
+	endorser := NewTxEndorser(policy)
 	return CreateNamespacesTxFromEndorser(endorser, metaNamespaceVersion, includeNS...)
 }
 
 // CreateNamespacesTxFromEndorser creating the transaction containing the requested namespaces into the MetaNamespace.
 func CreateNamespacesTxFromEndorser(
-	endorser *TxEndorserVerifier, metaNamespaceVersion uint64, includeNS ...string,
+	endorser *TxEndorser, metaNamespaceVersion uint64, includeNS ...string,
 ) (*applicationpb.Tx, error) {
-	if len(includeNS) == 0 {
-		includeNS = endorser.AllNamespaces()
-	}
-
 	readWrites := make([]*applicationpb.ReadWrite, 0, len(includeNS))
-	for _, ns := range includeNS {
-		if ns == committerpb.MetaNamespaceID {
+	for nsID, nsPolicy := range endorser.VerificationPolicies() {
+		if (len(includeNS) > 0 && !slices.Contains(includeNS, nsID)) || nsID == committerpb.MetaNamespaceID {
 			continue
 		}
-		policyBytes, err := proto.Marshal(endorser.Policy(ns).VerificationPolicy())
+		policyBytes, err := proto.Marshal(nsPolicy)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to serialize namespace policy")
 		}
 		readWrites = append(readWrites, &applicationpb.ReadWrite{
-			Key:   []byte(ns),
+			Key:   []byte(nsID),
 			Value: policyBytes,
 		})
 	}
