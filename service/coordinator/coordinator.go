@@ -254,7 +254,7 @@ func (c *Service) GetConfigTransaction(
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger through a vcservice.
 func (c *Service) SetLastCommittedBlockNumber(
 	ctx context.Context,
-	lastBlock *servicepb.BlockInfo,
+	lastBlock *servicepb.BlockRef,
 ) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, c.validatorCommitterMgr.setLastCommittedBlockNumber(ctx, lastBlock)
 }
@@ -263,7 +263,7 @@ func (c *Service) SetLastCommittedBlockNumber(
 func (c *Service) GetNextBlockNumberToCommit(
 	ctx context.Context,
 	_ *emptypb.Empty,
-) (*servicepb.BlockInfo, error) {
+) (*servicepb.BlockRef, error) {
 	res, err := c.validatorCommitterMgr.getNextBlockNumberToCommit(ctx)
 	return res, grpcerror.WrapInternalError(err)
 }

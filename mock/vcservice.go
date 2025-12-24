@@ -34,7 +34,7 @@ import (
 type VcService struct {
 	servicepb.ValidationAndCommitServiceServer
 	numBatchesReceived atomic.Uint32
-	nextBlock          atomic.Pointer[servicepb.BlockInfo]
+	nextBlock          atomic.Pointer[servicepb.BlockRef]
 	txsStatus          *fifoCache[*servicepb.StatusWithHeight]
 	txsStatusMu        sync.Mutex
 	healthcheck        *health.Server
@@ -63,7 +63,7 @@ func (v *VcService) RegisterService(server *grpc.Server) {
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger.
 func (v *VcService) SetLastCommittedBlockNumber(
 	_ context.Context,
-	lastBlock *servicepb.BlockInfo,
+	lastBlock *servicepb.BlockRef,
 ) (*emptypb.Empty, error) {
 	lastBlock.Number++
 	v.nextBlock.Store(lastBlock)
@@ -74,7 +74,7 @@ func (v *VcService) SetLastCommittedBlockNumber(
 func (v *VcService) GetNextBlockNumberToCommit(
 	context.Context,
 	*emptypb.Empty,
-) (*servicepb.BlockInfo, error) {
+) (*servicepb.BlockRef, error) {
 	return v.nextBlock.Load(), nil
 }
 
@@ -195,7 +195,7 @@ func (v *VcService) sendTransactionStatus(
 			}
 			code := committerpb.Status_COMMITTED
 			if tx.PrelimInvalidTxStatus != nil {
-				code = tx.PrelimInvalidTxStatus.Code
+				code = *tx.PrelimInvalidTxStatus
 			}
 			s := servicepb.NewStatusWithHeightFromRef(code, tx.Ref)
 			txsStatus.Status[tx.Ref.TxId] = s

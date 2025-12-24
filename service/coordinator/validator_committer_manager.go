@@ -136,7 +136,7 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 
 func (vcm *validatorCommitterManager) setLastCommittedBlockNumber(
 	ctx context.Context,
-	lastBlock *servicepb.BlockInfo,
+	lastBlock *servicepb.BlockRef,
 ) error {
 	_, err := vcm.commonClient.SetLastCommittedBlockNumber(ctx, lastBlock)
 	return errors.Wrap(err, "failed setting the last committed block number")
@@ -144,7 +144,7 @@ func (vcm *validatorCommitterManager) setLastCommittedBlockNumber(
 
 func (vcm *validatorCommitterManager) getNextBlockNumberToCommit(
 	ctx context.Context,
-) (*servicepb.BlockInfo, error) {
+) (*servicepb.BlockRef, error) {
 	ret, err := vcm.commonClient.GetNextBlockNumberToCommit(ctx, nil)
 	return ret, errors.Wrap(err, "failed getting the next expected block number")
 }

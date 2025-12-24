@@ -31,7 +31,7 @@ import (
 // Coordinator is a mock coordinator.
 type Coordinator struct {
 	servicepb.CoordinatorServer
-	lastCommittedBlock atomic.Pointer[servicepb.BlockInfo]
+	lastCommittedBlock atomic.Pointer[servicepb.BlockRef]
 	nextBlock          atomic.Uint64
 	streamActive       atomic.Bool
 	numWaitingTxs      atomic.Int32
@@ -72,7 +72,7 @@ func (c *Coordinator) SetConfigTransaction(data []byte) {
 
 // SetLastCommittedBlockNumber sets the last committed block number.
 func (c *Coordinator) SetLastCommittedBlockNumber(
-	_ context.Context, lastBlock *servicepb.BlockInfo,
+	_ context.Context, lastBlock *servicepb.BlockRef,
 ) (*emptypb.Empty, error) {
 	c.lastCommittedBlock.Store(lastBlock)
 	return nil, nil
@@ -82,8 +82,8 @@ func (c *Coordinator) SetLastCommittedBlockNumber(
 func (c *Coordinator) GetNextBlockNumberToCommit(
 	context.Context,
 	*emptypb.Empty,
-) (*servicepb.BlockInfo, error) {
-	return &servicepb.BlockInfo{Number: c.nextBlock.Load()}, nil
+) (*servicepb.BlockRef, error) {
+	return &servicepb.BlockRef{Number: c.nextBlock.Load()}, nil
 }
 
 // GetTransactionsStatus returns the status of given set of transaction identifiers.
@@ -186,7 +186,7 @@ func (c *Coordinator) sendTxsValidationStatus(
 
 		info := scBlock.Rejected
 		for _, tx := range scBlock.Txs {
-			info = append(info, &servicepb.TxStatusInfo{
+			info = append(info, &committerpb.TxStatus{
 				Ref:    tx.Ref,
 				Status: committerpb.Status_COMMITTED,
 			})
@@ -206,7 +206,7 @@ func (c *Coordinator) sendTxsValidationStatus(
 
 func (c *Coordinator) sendTxsStatusChunk(
 	stream servicepb.Coordinator_BlockProcessingServer,
-	txs []*servicepb.TxStatusInfo,
+	txs []*committerpb.TxStatus,
 ) error {
 	b := &servicepb.TransactionsStatus{
 		Status: make(map[string]*servicepb.StatusWithHeight, len(txs)),

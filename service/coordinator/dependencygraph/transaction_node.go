@@ -69,7 +69,7 @@ type (
 )
 
 // newTransactionNode creates a TX node for coordinator's TX.
-func newTransactionNode(tx *servicepb.CoordinatorTx) *TransactionNode {
+func newTransactionNode(tx *servicepb.TxWithRef) *TransactionNode {
 	return &TransactionNode{
 		Tx: &servicepb.VcTx{
 			Ref:        tx.Ref,
@@ -81,11 +81,11 @@ func newTransactionNode(tx *servicepb.CoordinatorTx) *TransactionNode {
 }
 
 // NewRejectedTransactionNode creates a TX node for a rejected TX.
-func NewRejectedTransactionNode(tx *servicepb.TxStatusInfo) *TransactionNode {
+func NewRejectedTransactionNode(tx *committerpb.TxStatus) *TransactionNode {
 	return &TransactionNode{
 		Tx: &servicepb.VcTx{
 			Ref:                   tx.Ref,
-			PrelimInvalidTxStatus: &servicepb.InvalidTxStatus{Code: tx.Status},
+			PrelimInvalidTxStatus: &tx.Status,
 		},
 	}
 }

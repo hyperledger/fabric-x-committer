@@ -500,16 +500,12 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 			},
 			{
-				Ref: committerpb.NewTxRef("tx3", 6, 2),
-				PrelimInvalidTxStatus: &servicepb.InvalidTxStatus{
-					Code: committerpb.Status_MALFORMED_NO_WRITES,
-				},
+				Ref:                   committerpb.NewTxRef("tx3", 6, 2),
+				PrelimInvalidTxStatus: invalidStatus(committerpb.Status_MALFORMED_NO_WRITES),
 			},
 			{
-				Ref: committerpb.NewTxRef("tx4", 5, 2),
-				PrelimInvalidTxStatus: &servicepb.InvalidTxStatus{
-					Code: committerpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
-				},
+				Ref:                   committerpb.NewTxRef("tx4", 5, 2),
+				PrelimInvalidTxStatus: invalidStatus(committerpb.Status_MALFORMED_DUPLICATE_NAMESPACE),
 			},
 			{
 				Ref: committerpb.NewTxRef("tx5", 6, 2),
@@ -730,4 +726,9 @@ func BenchmarkPrepare(b *testing.B) {
 			b.StopTimer()
 		})
 	}
+}
+
+// invalidStatus is a oneliner to create a pointer to the given status.
+func invalidStatus(status committerpb.Status) *committerpb.Status {
+	return &status
 }

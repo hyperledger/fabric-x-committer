@@ -367,10 +367,8 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					},
 				},
 				{
-					Ref: committerpb.NewTxRef("prelim invalid tx", 5, 2),
-					PrelimInvalidTxStatus: &servicepb.InvalidTxStatus{
-						Code: committerpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
-					},
+					Ref:                   committerpb.NewTxRef("prelim invalid tx", 5, 2),
+					PrelimInvalidTxStatus: invalidStatus(committerpb.Status_MALFORMED_DUPLICATE_NAMESPACE),
 				},
 				{
 					Ref: committerpb.NewTxRef("invalid new writes", 2, 6),
@@ -389,10 +387,8 @@ func TestValidatorAndCommitterService(t *testing.T) {
 					},
 				},
 				{
-					Ref: committerpb.NewTxRef("Rejected TX", 2, 7),
-					PrelimInvalidTxStatus: &servicepb.InvalidTxStatus{
-						Code: committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
-					},
+					Ref:                   committerpb.NewTxRef("Rejected TX", 2, 7),
+					PrelimInvalidTxStatus: invalidStatus(committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD),
 				},
 			},
 		}
@@ -439,7 +435,7 @@ func TestLastCommittedBlockNumber(t *testing.T) {
 		require.Equal(t, uint64(0), nextBlock.Number)
 	}
 
-	_, err := env.commonClient.SetLastCommittedBlockNumber(ctx, &servicepb.BlockInfo{Number: 0})
+	_, err := env.commonClient.SetLastCommittedBlockNumber(ctx, &servicepb.BlockRef{Number: 0})
 	require.NoError(t, err)
 
 	for i := range numServices {
@@ -477,7 +473,7 @@ func TestGRPCStatusCode(t *testing.T) {
 		{
 			name: "SetLastCommittedBlockNumber returns an internal error",
 			fn: func() (any, error) {
-				return c.SetLastCommittedBlockNumber(ctx, &servicepb.BlockInfo{Number: 1})
+				return c.SetLastCommittedBlockNumber(ctx, &servicepb.BlockRef{Number: 1})
 			},
 		},
 		{
@@ -604,19 +600,15 @@ func TestTransactionResubmission(t *testing.T) {
 		},
 		{
 			tx: &servicepb.VcTx{
-				Ref: committerpb.NewTxRef("invalid sign", 3, 6),
-				PrelimInvalidTxStatus: &servicepb.InvalidTxStatus{
-					Code: committerpb.Status_ABORTED_SIGNATURE_INVALID,
-				},
+				Ref:                   committerpb.NewTxRef("invalid sign", 3, 6),
+				PrelimInvalidTxStatus: invalidStatus(committerpb.Status_ABORTED_SIGNATURE_INVALID),
 			},
 			expectedStatus: committerpb.Status_ABORTED_SIGNATURE_INVALID,
 		},
 		{
 			tx: &servicepb.VcTx{
-				Ref: committerpb.NewTxRef("duplicate namespace", 3, 7),
-				PrelimInvalidTxStatus: &servicepb.InvalidTxStatus{
-					Code: committerpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
-				},
+				Ref:                   committerpb.NewTxRef("duplicate namespace", 3, 7),
+				PrelimInvalidTxStatus: invalidStatus(committerpb.Status_MALFORMED_DUPLICATE_NAMESPACE),
 			},
 			expectedStatus: committerpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
 		},

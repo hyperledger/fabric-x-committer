@@ -363,7 +363,7 @@ func (r *relay) setLastCommittedBlockNumber(
 
 		blkNum := r.nextBlockNumberToBeCommitted.Load() - 1
 		logger.Debugf("Setting the last committed block number: %d", blkNum)
-		_, err := client.SetLastCommittedBlockNumber(ctx, &servicepb.BlockInfo{Number: blkNum})
+		_, err := client.SetLastCommittedBlockNumber(ctx, &servicepb.BlockRef{Number: blkNum})
 		if err != nil {
 			return errors.Wrapf(err, "failed to set the last committed block number [%d]", blkNum)
 		}
