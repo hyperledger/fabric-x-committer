@@ -17,7 +17,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
@@ -123,11 +122,11 @@ func (v *verifier) updateBundle(u *servicepb.VerifierUpdates) error {
 	return nil
 }
 
-func (v *verifier) verifyRequest(tx *servicepb.VerifierTx) *servicepb.VerifierResponse {
+func (v *verifier) verifyRequest(tx *servicepb.TxWithRef) *committerpb.TxStatus {
 	logger.Debugf("Validating TX: %s", &utils.LazyJSON{O: tx})
-	response := &servicepb.VerifierResponse{
+	response := &committerpb.TxStatus{
 		Ref:    tx.Ref,
-		Status: applicationpb.Status_COMMITTED,
+		Status: committerpb.Status_COMMITTED,
 	}
 	// The verifiers might temporarily retain the old map while updatePolicies has already set a new one.
 	// This is acceptable, provided the coordinator sends the validation status to the dependency graph
@@ -135,7 +134,7 @@ func (v *verifier) verifyRequest(tx *servicepb.VerifierTx) *servicepb.VerifierRe
 	// This ensures that dependent data transactions on these updated namespaces always use the map
 	// containing the latest policy.
 	verifiers := *v.verifiers.Load()
-	for nsIndex, ns := range tx.Tx.Namespaces {
+	for nsIndex, ns := range tx.Content.Namespaces {
 		if ns.NsId == committerpb.ConfigNamespaceID {
 			// Configuration TX is not signed in the same manner as application TX.
 			// Its signatures are verified by the ordering service.
@@ -144,7 +143,7 @@ func (v *verifier) verifyRequest(tx *servicepb.VerifierTx) *servicepb.VerifierRe
 		nsVerifier, ok := verifiers[ns.NsId]
 		if !ok {
 			logger.Debugf("No verifier for namespace: '%v'", ns.NsId)
-			response.Status = applicationpb.Status_ABORTED_SIGNATURE_INVALID
+			response.Status = committerpb.Status_ABORTED_SIGNATURE_INVALID
 			return response
 		}
 
@@ -157,10 +156,10 @@ func (v *verifier) verifyRequest(tx *servicepb.VerifierTx) *servicepb.VerifierRe
 		//       the signatures are valid, the validator-committer service would
 		//       still mark the transaction as invalid due to an MVCC conflict on the
 		//       namespace version, which would reflect the correct validation status.
-		if err := nsVerifier.VerifyNs(tx.Ref.TxId, tx.Tx, nsIndex); err != nil {
+		if err := nsVerifier.VerifyNs(tx.Ref.TxId, tx.Content, nsIndex); err != nil {
 			logger.Debugf("Invalid signature found: '%v', NsId: '%v': %+v",
 				&utils.LazyJSON{O: tx.Ref}, ns.NsId, err)
-			response.Status = applicationpb.Status_ABORTED_SIGNATURE_INVALID
+			response.Status = committerpb.Status_ABORTED_SIGNATURE_INVALID
 			return response
 		}
 	}

@@ -37,7 +37,7 @@ func TestCreateUpdateNamespace(t *testing.T) {
 	tests := []struct {
 		name     string
 		txs      [][]*applicationpb.TxNamespace
-		expected []applicationpb.Status
+		expected []committerpb.Status
 	}{
 		{
 			name: "create namespace ns1",
@@ -49,7 +49,7 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					Value: policyBytesNs1,
 				}},
 			}}},
-			expected: []applicationpb.Status{applicationpb.Status_COMMITTED},
+			expected: []committerpb.Status{committerpb.Status_COMMITTED},
 		},
 		{
 			name: "write to namespace ns1",
@@ -61,7 +61,7 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					Value: []byte("value1"),
 				}},
 			}}},
-			expected: []applicationpb.Status{applicationpb.Status_COMMITTED},
+			expected: []committerpb.Status{committerpb.Status_COMMITTED},
 		},
 		{
 			name: "update namespace ns1",
@@ -109,12 +109,12 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					}},
 				}},
 			},
-			expected: []applicationpb.Status{
-				applicationpb.Status_COMMITTED,
-				applicationpb.Status_COMMITTED,
-				applicationpb.Status_ABORTED_SIGNATURE_INVALID,
-				applicationpb.Status_COMMITTED,
-				applicationpb.Status_ABORTED_MVCC_CONFLICT,
+			expected: []committerpb.Status{
+				committerpb.Status_COMMITTED,
+				committerpb.Status_COMMITTED,
+				committerpb.Status_ABORTED_SIGNATURE_INVALID,
+				committerpb.Status_COMMITTED,
+				committerpb.Status_ABORTED_MVCC_CONFLICT,
 			},
 		},
 		{
@@ -127,7 +127,7 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					Value: []byte("value4"),
 				}},
 			}}},
-			expected: []applicationpb.Status{applicationpb.Status_COMMITTED},
+			expected: []committerpb.Status{committerpb.Status_COMMITTED},
 		},
 	}
 

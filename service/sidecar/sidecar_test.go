@@ -535,7 +535,7 @@ func TestSidecarVerifyBadTxForm(t *testing.T) {
 	extraTxs := env.sendGeneratedTransactions(ctx, t, blockSize-testSize)
 	txs = append(txs, extraTxs...)
 	for range extraTxs {
-		expected = append(expected, applicationpb.Status_COMMITTED)
+		expected = append(expected, committerpb.Status_COMMITTED)
 	}
 	env.requireBlockWithTXsAndStatus(ctx, t, 1, txs, expected)
 }
@@ -612,9 +612,9 @@ func (env *sidecarTestEnv) requireBlockWithTXs(
 	txs []*servicepb.LoadGenTx,
 ) {
 	t.Helper()
-	allValid := make([]applicationpb.Status, len(txs))
+	allValid := make([]committerpb.Status, len(txs))
 	for i := range allValid {
-		allValid[i] = applicationpb.Status_COMMITTED
+		allValid[i] = committerpb.Status_COMMITTED
 	}
 	env.requireBlockWithTXsAndStatus(ctx, t, expectedBlockNumber, txs, allValid)
 }
@@ -625,7 +625,7 @@ func (env *sidecarTestEnv) requireBlockWithTXsAndStatus(
 	t *testing.T,
 	expectedBlockNumber uint64,
 	txs []*servicepb.LoadGenTx,
-	status []applicationpb.Status,
+	status []committerpb.Status,
 ) {
 	t.Helper()
 	require.Len(t, status, len(txs))
@@ -644,7 +644,7 @@ func (env *sidecarTestEnv) requireBlockWithTXsAndStatus(
 	require.GreaterOrEqual(t, len(block.Metadata.Metadata), 3)
 	require.Len(t, block.Metadata.Metadata[2], blockSize)
 	for i, actualStatus := range block.Metadata.Metadata[2] {
-		require.Equalf(t, status[i].String(), applicationpb.Status(actualStatus).String(), "tx index: %d", i)
+		require.Equalf(t, status[i].String(), committerpb.Status(actualStatus).String(), "tx index: %d", i)
 	}
 
 	txIDs := make([]string, len(txs))
@@ -673,24 +673,24 @@ func (env *sidecarTestEnv) requireBlock(
 
 func TestConstructStatuses(t *testing.T) {
 	t.Parallel()
-	statuses := map[string]*applicationpb.StatusWithHeight{
+	statuses := map[string]*servicepb.StatusWithHeight{
 		"tx1": {
-			Code:        applicationpb.Status_COMMITTED,
+			Code:        committerpb.Status_COMMITTED,
 			BlockNumber: 1,
 			TxNumber:    1,
 		},
 		"tx2": {
-			Code:        applicationpb.Status_ABORTED_SIGNATURE_INVALID,
+			Code:        committerpb.Status_ABORTED_SIGNATURE_INVALID,
 			BlockNumber: 1,
 			TxNumber:    3,
 		},
 		"tx3": {
-			Code:        applicationpb.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
+			Code:        committerpb.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
 			BlockNumber: 2,
 			TxNumber:    3,
 		},
 		"tx4": {
-			Code:        applicationpb.Status_COMMITTED,
+			Code:        committerpb.Status_COMMITTED,
 			BlockNumber: 1,
 			TxNumber:    6,
 		},
@@ -702,18 +702,18 @@ func TestConstructStatuses(t *testing.T) {
 		"tx4": servicepb.NewHeight(1, 6),
 	}
 
-	expectedFinalStatuses := []applicationpb.Status{
-		applicationpb.Status_COMMITTED,
-		applicationpb.Status_COMMITTED,
-		applicationpb.Status_COMMITTED,
-		applicationpb.Status_ABORTED_SIGNATURE_INVALID,
-		applicationpb.Status_COMMITTED,
-		applicationpb.Status_REJECTED_DUPLICATE_TX_ID,
-		applicationpb.Status_COMMITTED,
+	expectedFinalStatuses := []committerpb.Status{
+		committerpb.Status_COMMITTED,
+		committerpb.Status_COMMITTED,
+		committerpb.Status_COMMITTED,
+		committerpb.Status_ABORTED_SIGNATURE_INVALID,
+		committerpb.Status_COMMITTED,
+		committerpb.Status_REJECTED_DUPLICATE_TX_ID,
+		committerpb.Status_COMMITTED,
 	}
-	actualFinalStatuses := make([]applicationpb.Status, 7)
+	actualFinalStatuses := make([]committerpb.Status, 7)
 	for _, skippedIdx := range []int{0, 2, 4} {
-		actualFinalStatuses[skippedIdx] = applicationpb.Status_COMMITTED
+		actualFinalStatuses[skippedIdx] = committerpb.Status_COMMITTED
 	}
 	require.NoError(t, fillStatuses(actualFinalStatuses, statuses, expectedHeight))
 	require.Equal(t, expectedFinalStatuses, actualFinalStatuses)

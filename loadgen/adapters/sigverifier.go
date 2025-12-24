@@ -126,9 +126,9 @@ func (c *SvAdapter) receiveStatus(
 			return errors.Wrap(connection.FilterStreamRPCError(err), "failed receiving verification status")
 		}
 
-		logger.Debugf("Received SV batch with %d responses", len(responseBatch.Responses))
-		statusBatch := make([]metrics.TxStatus, len(responseBatch.Responses))
-		for i, response := range responseBatch.Responses {
+		logger.Debugf("Received SV batch with %d responses", len(responseBatch.Status))
+		statusBatch := make([]metrics.TxStatus, len(responseBatch.Status))
+		for i, response := range responseBatch.Status {
 			logger.Debugf("Received Responses: %s", response.Status)
 			statusBatch[i] = metrics.TxStatus{TxID: response.Ref.TxId, Status: response.Status}
 		}
