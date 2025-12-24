@@ -68,7 +68,7 @@ func BenchmarkVerify(b *testing.B) {
 		sk, pk := sigtest.NewKeyPair(scheme)
 		endorser, err := sigtest.NewNsEndorserFromKey(scheme, sk)
 		require.NoError(b, err)
-		v, err := sigtest.NewNsVerifierFromKey(scheme, pk)
+		v, err := signature.NewNsVerifierFromKey(scheme, pk)
 		require.NoError(b, err)
 
 		b.Run(scheme, func(b *testing.B) {

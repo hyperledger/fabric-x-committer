@@ -55,7 +55,8 @@ func (v *verifier) updatePolicies(
 	// While it is unlikely that policy parsing would fail at this stage, it could happen
 	// if the stored policy in the database is corrupted or maliciously altered, or if there is a
 	// bug in the committer that modifies the policy bytes.
-	newVerifiers, err := createVerifiers(update, v.bundle.MSPManager())
+	idDeserializer := v.bundle.MSPManager()
+	newVerifiers, err := createVerifiers(update, idDeserializer)
 	if err != nil {
 		return errors.Join(ErrUpdatePolicies, err)
 	}
@@ -69,9 +70,9 @@ func (v *verifier) updatePolicies(
 		}
 
 		// If there is a config update, the verifier for signature policies must be
-		// recreated to use the latest MSP Manager from the new configuration.
-		if update.Config != nil && nsVerifier.NamespacePolicy.GetMspRule() != nil {
-			nsVerifier, err = signature.NewNsVerifier(nsVerifier.NamespacePolicy, v.bundle.MSPManager())
+		// updated to use the latest MSP Manager from the new configuration.
+		if update.Config != nil {
+			err = nsVerifier.UpdateIdentities(idDeserializer)
 			if err != nil {
 				return err
 			}

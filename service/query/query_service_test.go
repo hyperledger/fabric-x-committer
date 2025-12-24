@@ -280,9 +280,12 @@ func TestQueryPolicies(t *testing.T) {
 		delete(expectedNamespaces, p.Namespace)
 		item, parseErr := policy.CreateNamespaceVerifier(p, nil)
 		require.NoError(t, parseErr)
-		p := item.NamespacePolicy.GetThresholdRule()
-		require.NotNil(t, p)
-		require.Equal(t, signature.Ecdsa, p.Scheme)
+		require.NotNil(t, item)
+		pol, parseErr := policy.UnmarshalNamespacePolicy(p.Policy)
+		require.NoError(t, parseErr)
+		rule := pol.GetThresholdRule()
+		require.NotNil(t, rule)
+		require.Equal(t, signature.Ecdsa, rule.Scheme)
 	}
 
 	configTX, err := env.clientConn.GetConfigTransaction(t.Context(), nil)

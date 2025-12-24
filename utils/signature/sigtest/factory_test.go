@@ -26,7 +26,7 @@ func TestEndToEnd(t *testing.T) {
 		t.Run(scheme, func(t *testing.T) {
 			t.Parallel()
 			priv, pub := NewKeyPair(scheme)
-			v, err := NewNsVerifierFromKey(scheme, pub)
+			v, err := signature.NewNsVerifierFromKey(scheme, pub)
 			require.NoError(t, err)
 			e, err := NewNsEndorserFromKey(scheme, priv)
 			require.NoError(t, err)
@@ -55,7 +55,7 @@ func TestEcdsaPem(t *testing.T) {
 	priv, pub := NewKeyPair(scheme)
 	require.NoError(t, os.WriteFile(pemPath, append(priv, pub...), 0o600))
 
-	v, err := NewNsVerifierFromKey(scheme, pub)
+	v, err := signature.NewNsVerifierFromKey(scheme, pub)
 	require.NoError(t, err)
 	e, err := NewNsEndorserFromKey(scheme, priv)
 	require.NoError(t, err)
@@ -69,7 +69,7 @@ func TestEcdsaPem(t *testing.T) {
 	for key, value := range m {
 		t.Log(key)
 		if strings.Contains(strings.ToLower(key), "public") {
-			pemV, err = NewNsVerifierFromKey(scheme, value)
+			pemV, err = signature.NewNsVerifierFromKey(scheme, value)
 			require.NoError(t, err)
 		}
 		if strings.Contains(strings.ToLower(key), "private") {
