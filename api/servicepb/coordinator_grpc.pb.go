@@ -14,6 +14,7 @@ package servicepb
 import (
 	context "context"
 	applicationpb "github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	committerpb "github.com/hyperledger/fabric-x-committer/api/committerpb"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -41,7 +42,7 @@ type CoordinatorClient interface {
 	BlockProcessing(ctx context.Context, opts ...grpc.CallOption) (Coordinator_BlockProcessingClient, error)
 	SetLastCommittedBlockNumber(ctx context.Context, in *BlockRef, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetNextBlockNumberToCommit(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*BlockRef, error)
-	GetTransactionsStatus(ctx context.Context, in *QueryStatus, opts ...grpc.CallOption) (*TransactionsStatus, error)
+	GetTransactionsStatus(ctx context.Context, in *QueryStatus, opts ...grpc.CallOption) (*committerpb.TxStatusBatch, error)
 	GetConfigTransaction(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*applicationpb.ConfigTransaction, error)
 	NumberOfWaitingTransactionsForStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*WaitingTransactions, error)
 }
@@ -65,7 +66,7 @@ func (c *coordinatorClient) BlockProcessing(ctx context.Context, opts ...grpc.Ca
 
 type Coordinator_BlockProcessingClient interface {
 	Send(*CoordinatorBatch) error
-	Recv() (*TransactionsStatus, error)
+	Recv() (*committerpb.TxStatusBatch, error)
 	grpc.ClientStream
 }
 
@@ -77,8 +78,8 @@ func (x *coordinatorBlockProcessingClient) Send(m *CoordinatorBatch) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *coordinatorBlockProcessingClient) Recv() (*TransactionsStatus, error) {
-	m := new(TransactionsStatus)
+func (x *coordinatorBlockProcessingClient) Recv() (*committerpb.TxStatusBatch, error) {
+	m := new(committerpb.TxStatusBatch)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -103,8 +104,8 @@ func (c *coordinatorClient) GetNextBlockNumberToCommit(ctx context.Context, in *
 	return out, nil
 }
 
-func (c *coordinatorClient) GetTransactionsStatus(ctx context.Context, in *QueryStatus, opts ...grpc.CallOption) (*TransactionsStatus, error) {
-	out := new(TransactionsStatus)
+func (c *coordinatorClient) GetTransactionsStatus(ctx context.Context, in *QueryStatus, opts ...grpc.CallOption) (*committerpb.TxStatusBatch, error) {
+	out := new(committerpb.TxStatusBatch)
 	err := c.cc.Invoke(ctx, Coordinator_GetTransactionsStatus_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -137,7 +138,7 @@ type CoordinatorServer interface {
 	BlockProcessing(Coordinator_BlockProcessingServer) error
 	SetLastCommittedBlockNumber(context.Context, *BlockRef) (*emptypb.Empty, error)
 	GetNextBlockNumberToCommit(context.Context, *emptypb.Empty) (*BlockRef, error)
-	GetTransactionsStatus(context.Context, *QueryStatus) (*TransactionsStatus, error)
+	GetTransactionsStatus(context.Context, *QueryStatus) (*committerpb.TxStatusBatch, error)
 	GetConfigTransaction(context.Context, *emptypb.Empty) (*applicationpb.ConfigTransaction, error)
 	NumberOfWaitingTransactionsForStatus(context.Context, *emptypb.Empty) (*WaitingTransactions, error)
 	mustEmbedUnimplementedCoordinatorServer()
@@ -156,7 +157,7 @@ func (UnimplementedCoordinatorServer) SetLastCommittedBlockNumber(context.Contex
 func (UnimplementedCoordinatorServer) GetNextBlockNumberToCommit(context.Context, *emptypb.Empty) (*BlockRef, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetNextBlockNumberToCommit not implemented")
 }
-func (UnimplementedCoordinatorServer) GetTransactionsStatus(context.Context, *QueryStatus) (*TransactionsStatus, error) {
+func (UnimplementedCoordinatorServer) GetTransactionsStatus(context.Context, *QueryStatus) (*committerpb.TxStatusBatch, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTransactionsStatus not implemented")
 }
 func (UnimplementedCoordinatorServer) GetConfigTransaction(context.Context, *emptypb.Empty) (*applicationpb.ConfigTransaction, error) {
@@ -183,7 +184,7 @@ func _Coordinator_BlockProcessing_Handler(srv interface{}, stream grpc.ServerStr
 }
 
 type Coordinator_BlockProcessingServer interface {
-	Send(*TransactionsStatus) error
+	Send(*committerpb.TxStatusBatch) error
 	Recv() (*CoordinatorBatch, error)
 	grpc.ServerStream
 }
@@ -192,7 +193,7 @@ type coordinatorBlockProcessingServer struct {
 	grpc.ServerStream
 }
 
-func (x *coordinatorBlockProcessingServer) Send(m *TransactionsStatus) error {
+func (x *coordinatorBlockProcessingServer) Send(m *committerpb.TxStatusBatch) error {
 	return x.ServerStream.SendMsg(m)
 }
 

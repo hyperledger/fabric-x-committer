@@ -19,22 +19,6 @@ type Height struct {
 	TxNum    uint32
 }
 
-// NewStatusWithHeight creates a protoblocktx.StatusWithHeight with the given values.
-func NewStatusWithHeight(s committerpb.Status, blkNum uint64, txNum uint32) *StatusWithHeight {
-	return &StatusWithHeight{
-		Code:        s,
-		BlockNumber: blkNum,
-		TxNumber:    txNum,
-	}
-}
-
-// NewStatusWithHeightFromRef creates a protoblocktx.StatusWithHeight with the given values.
-func NewStatusWithHeightFromRef(
-	s committerpb.Status, ref *committerpb.TxRef,
-) *StatusWithHeight {
-	return NewStatusWithHeight(s, ref.BlockNum, ref.TxNum)
-}
-
 // NewHeight constructs a new instance of Height.
 func NewHeight(blockNum uint64, txNum uint32) *Height {
 	return &Height{BlockNum: blockNum, TxNum: txNum}
@@ -58,9 +42,9 @@ func NewHeightFromBytes(b []byte) (*Height, int, error) {
 	return NewHeight(blockNum, uint32(txNum)), n1 + n2, nil //nolint:gosec
 }
 
-// WithStatus creates StatusWithHeight with this height and the given code.
-func (h *Height) WithStatus(code committerpb.Status) *StatusWithHeight {
-	return NewStatusWithHeight(code, h.BlockNum, h.TxNum)
+// WithStatus creates committerpb.TxStatus with this height and the given status.
+func (h *Height) WithStatus(txID string, status committerpb.Status) *committerpb.TxStatus {
+	return committerpb.NewTxStatus(status, txID, h.BlockNum, h.TxNum)
 }
 
 // ToBytes serializes the Height.
@@ -70,38 +54,10 @@ func (h *Height) ToBytes() []byte {
 	return append(blockNumBytes, txNumBytes...)
 }
 
-// Compare returns -1, zero, or +1 based on whether this height is
-// less than, equals to, or greater than the specified height respectively.
-func (h *Height) Compare(h1 *Height) int {
-	switch {
-	case h.BlockNum < h1.BlockNum:
-		return -1
-	case h.BlockNum > h1.BlockNum:
-		return 1
-	case h.TxNum < h1.TxNum:
-		return -1
-	case h.TxNum > h1.TxNum:
-		return 1
-	default:
-		return 0
-	}
-}
-
 // String returns string for printing.
 func (h *Height) String() string {
 	if h == nil {
 		return "<nil>"
 	}
 	return fmt.Sprintf("{BlockNum: %d, TxNum: %d}", h.BlockNum, h.TxNum)
-}
-
-// AreSame returns true if both the heights are either nil or equal.
-func AreSame(h1, h2 *Height) bool {
-	if h1 == nil {
-		return h2 == nil
-	}
-	if h2 == nil {
-		return false
-	}
-	return h1.Compare(h2) == 0
 }

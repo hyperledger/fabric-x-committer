@@ -673,33 +673,17 @@ func (env *sidecarTestEnv) requireBlock(
 
 func TestConstructStatuses(t *testing.T) {
 	t.Parallel()
-	statuses := map[string]*servicepb.StatusWithHeight{
-		"tx1": {
-			Code:        committerpb.Status_COMMITTED,
-			BlockNumber: 1,
-			TxNumber:    1,
-		},
-		"tx2": {
-			Code:        committerpb.Status_ABORTED_SIGNATURE_INVALID,
-			BlockNumber: 1,
-			TxNumber:    3,
-		},
-		"tx3": {
-			Code:        committerpb.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
-			BlockNumber: 2,
-			TxNumber:    3,
-		},
-		"tx4": {
-			Code:        committerpb.Status_COMMITTED,
-			BlockNumber: 1,
-			TxNumber:    6,
-		},
+	statuses := []*committerpb.TxStatus{
+		committerpb.NewTxStatus(committerpb.Status_COMMITTED, "tx1", 1, 1),
+		committerpb.NewTxStatus(committerpb.Status_ABORTED_SIGNATURE_INVALID, "tx2", 1, 3),
+		committerpb.NewTxStatus(committerpb.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED, "tx3", 2, 3),
+		committerpb.NewTxStatus(committerpb.Status_COMMITTED, "tx4", 1, 6),
 	}
-	expectedHeight := map[string]*servicepb.Height{
-		"tx1": servicepb.NewHeight(1, 1),
-		"tx2": servicepb.NewHeight(1, 3),
-		"tx3": servicepb.NewHeight(1, 5),
-		"tx4": servicepb.NewHeight(1, 6),
+	expectedHeight := []*committerpb.TxRef{
+		committerpb.NewTxRef("tx1", 1, 1),
+		committerpb.NewTxRef("tx2", 1, 3),
+		committerpb.NewTxRef("tx3", 1, 5),
+		committerpb.NewTxRef("tx4", 1, 6),
 	}
 
 	expectedFinalStatuses := []committerpb.Status{

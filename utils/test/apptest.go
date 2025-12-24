@@ -13,13 +13,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 )
 
 // StatusRetriever provides implementation retrieve status of given transaction identifiers.
 type StatusRetriever interface {
 	GetTransactionsStatus(context.Context, *servicepb.QueryStatus, ...grpc.CallOption) (
-		*servicepb.TransactionsStatus, error,
+		*committerpb.TxStatusBatch, error,
 	)
 }
 
@@ -31,7 +32,7 @@ func EnsurePersistedTxStatus(
 	t *testing.T,
 	r StatusRetriever,
 	txIDs []string,
-	expected map[string]*servicepb.StatusWithHeight,
+	expected []*committerpb.TxStatus,
 ) {
 	t.Helper()
 	if len(txIDs) == 0 {
@@ -39,5 +40,18 @@ func EnsurePersistedTxStatus(
 	}
 	actualStatus, err := r.GetTransactionsStatus(ctx, &servicepb.QueryStatus{TxIDs: txIDs})
 	require.NoError(t, err)
-	require.EqualExportedValues(t, expected, actualStatus.Status)
+	RequireProtoElementsMatch(t, expected, actualStatus.Status)
+}
+
+// RequireStatus fails if the expected status does not appear in the statuses list.
+func RequireStatus(t require.TestingT, expected *committerpb.TxStatus, statuses []*committerpb.TxStatus) {
+	var actualStatus *committerpb.TxStatus
+	for _, status := range statuses {
+		if status.Ref.TxId == expected.Ref.TxId {
+			actualStatus = status
+			break
+		}
+	}
+	require.NotNil(t, actualStatus)
+	RequireProtoEqual(t, expected, actualStatus)
 }

@@ -16,7 +16,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
-	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
@@ -127,12 +126,7 @@ func (c *SvAdapter) receiveStatus(
 		}
 
 		logger.Debugf("Received SV batch with %d responses", len(responseBatch.Status))
-		statusBatch := make([]metrics.TxStatus, len(responseBatch.Status))
-		for i, response := range responseBatch.Status {
-			logger.Debugf("Received Responses: %s", response.Status)
-			statusBatch[i] = metrics.TxStatus{TxID: response.Ref.TxId, Status: response.Status}
-		}
-		c.res.Metrics.OnReceiveBatch(statusBatch)
+		c.res.Metrics.OnReceiveBatch(toMetricsStatus(responseBatch.Status))
 		if c.res.isReceiveLimit() {
 			return nil
 		}
