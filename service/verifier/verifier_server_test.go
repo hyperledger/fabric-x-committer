@@ -139,9 +139,9 @@ func TestMinimalInput(t *testing.T) {
 	err := stream.Send(&servicepb.VerifierBatch{
 		Update: cp.update,
 		Requests: []*servicepb.VerifierTx{
-			{Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx1},
-			{Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx2},
-			{Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx3},
+			{Ref: committerpb.NewTxRef(fakeTxID, 1, 1), Tx: tx1},
+			{Ref: committerpb.NewTxRef(fakeTxID, 1, 1), Tx: tx2},
+			{Ref: committerpb.NewTxRef(fakeTxID, 1, 1), Tx: tx3},
 		},
 	})
 	require.NoError(t, err)
@@ -217,9 +217,9 @@ func TestSignatureRule(t *testing.T) {
 		requireTestCase(t, stream, &testCase{
 			update: update,
 			req: &servicepb.VerifierTx{
-				Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx1,
+				Ref: committerpb.NewTxRef(fakeTxID, 1, 1), Tx: tx1,
 			},
-			expectedStatus: applicationpb.Status_COMMITTED,
+			expectedStatus: committerpb.Status_COMMITTED,
 		})
 	}
 
@@ -239,9 +239,9 @@ func TestSignatureRule(t *testing.T) {
 	requireTestCase(t, stream, &testCase{
 		update: update,
 		req: &servicepb.VerifierTx{
-			Ref: committerpb.TxRef(fakeTxID, 1, 1), Tx: tx1,
+			Ref: committerpb.NewTxRef(fakeTxID, 1, 1), Tx: tx1,
 		},
-		expectedStatus: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
+		expectedStatus: committerpb.Status_ABORTED_SIGNATURE_INVALID,
 	})
 }
 
@@ -258,7 +258,7 @@ func TestBadSignature(t *testing.T) {
 
 	requireTestCase(t, stream, &testCase{
 		req: &servicepb.VerifierTx{
-			Ref: committerpb.TxRef(fakeTxID, 1, 0),
+			Ref: committerpb.NewTxRef(fakeTxID, 1, 0),
 			Tx: &applicationpb.Tx{
 				Namespaces: []*applicationpb.TxNamespace{{
 					NsId:      "1",
@@ -270,7 +270,7 @@ func TestBadSignature(t *testing.T) {
 				Endorsements: sigtest.CreateEndorsementsForThresholdRule([]byte{0}, []byte{1}, []byte{2}),
 			},
 		},
-		expectedStatus: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
+		expectedStatus: committerpb.Status_ABORTED_SIGNATURE_INVALID,
 	})
 }
 
@@ -354,10 +354,10 @@ func TestUpdatePolicies(t *testing.T) {
 		endorse(t, tx, ns1Signer, ns2Signer)
 		requireTestCase(t, stream, &testCase{
 			req: &servicepb.VerifierTx{
-				Ref: committerpb.TxRef(fakeTxID, 1, 1),
+				Ref: committerpb.NewTxRef(fakeTxID, 1, 1),
 				Tx:  tx,
 			},
-			expectedStatus: applicationpb.Status_COMMITTED,
+			expectedStatus: committerpb.Status_COMMITTED,
 		})
 	})
 }
@@ -407,7 +407,7 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 		endorse(t, tx, append(uniqueNsEndorsers, commonNsEndorsers[i])...)
 		require.NoError(t, stream.Send(&servicepb.VerifierBatch{
 			Requests: []*servicepb.VerifierTx{{
-				Ref: committerpb.TxRef(fakeTxID, 0, 0),
+				Ref: committerpb.NewTxRef(fakeTxID, 0, 0),
 				Tx:  tx,
 			}},
 		}))
@@ -416,7 +416,7 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, txStatus)
 		require.Len(t, txStatus.Responses, 1)
-		if txStatus.Responses[0].Status == applicationpb.Status_COMMITTED {
+		if txStatus.Responses[0].Status == committerpb.Status_COMMITTED {
 			success++
 		}
 	}
@@ -428,17 +428,17 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 	endorse(t, tx, uniqueNsEndorsers...)
 	requireTestCase(t, stream, &testCase{
 		req: &servicepb.VerifierTx{
-			Ref: committerpb.TxRef(fakeTxID, 1, 1),
+			Ref: committerpb.NewTxRef(fakeTxID, 1, 1),
 			Tx:  tx,
 		},
-		expectedStatus: applicationpb.Status_COMMITTED,
+		expectedStatus: committerpb.Status_COMMITTED,
 	})
 }
 
 type testCase struct {
 	update         *servicepb.VerifierUpdates
 	req            *servicepb.VerifierTx
-	expectedStatus applicationpb.Status
+	expectedStatus committerpb.Status
 }
 
 func endorse(t *testing.T, tx *applicationpb.Tx, signers ...*sigtest.NsEndorser) {

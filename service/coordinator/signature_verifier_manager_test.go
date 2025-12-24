@@ -223,7 +223,7 @@ func TestSignatureVerifierWithAllInvalidTxs(t *testing.T) {
 	for i := range 3 {
 		txNode := &dependencygraph.TransactionNode{
 			Tx: &servicepb.VcTx{
-				Ref: committerpb.TxRef("", uint64(i), uint32(i)), //nolint:gosec
+				Ref: committerpb.NewTxRef("", uint64(i), uint32(i)), //nolint:gosec
 			},
 		}
 		txBatch = append(txBatch, txNode)
@@ -257,7 +257,7 @@ func createTxNodeBatchForTest(
 	for i := range numTxs {
 		txNode := &dependencygraph.TransactionNode{
 			Tx: &servicepb.VcTx{
-				Ref:        committerpb.TxRef("", blkNum, uint32(i)), //nolint:gosec
+				Ref:        committerpb.NewTxRef("", blkNum, uint32(i)), //nolint:gosec
 				Namespaces: ns,
 			},
 		}

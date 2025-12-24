@@ -14,7 +14,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
@@ -29,7 +29,7 @@ type transactionCommitter struct {
 	incomingValidatedTransactions <-chan *validatedTransactions
 	// outgoingTransactionsStatus is the channel to which the committer sends the status of the transactions
 	// so that the client can be notified
-	outgoingTransactionsStatus chan<- *applicationpb.TransactionsStatus
+	outgoingTransactionsStatus chan<- *servicepb.TransactionsStatus
 
 	metrics *perfMetrics
 }
@@ -38,7 +38,7 @@ type transactionCommitter struct {
 func newCommitter(
 	db *database,
 	validatedTxs <-chan *validatedTransactions,
-	txsStatus chan<- *applicationpb.TransactionsStatus,
+	txsStatus chan<- *servicepb.TransactionsStatus,
 	metrics *perfMetrics,
 ) *transactionCommitter {
 	logger.Info("Initializing new committer")
@@ -64,7 +64,7 @@ func (c *transactionCommitter) run(ctx context.Context, numWorkers int) error {
 
 func (c *transactionCommitter) commit(ctx context.Context) error {
 	// NOTE: Three retry is adequate for now. We can make it configurable in the future.
-	var txsStatus *applicationpb.TransactionsStatus
+	var txsStatus *servicepb.TransactionsStatus
 	var err error
 
 	incomingValidatedTransactions := channel.NewReader(ctx, c.incomingValidatedTransactions)
@@ -100,7 +100,7 @@ func (c *transactionCommitter) commit(ctx context.Context) error {
 func (c *transactionCommitter) commitTransactions(
 	ctx context.Context,
 	vTx *validatedTransactions,
-) (*applicationpb.TransactionsStatus, error) {
+) (*servicepb.TransactionsStatus, error) {
 	// We eliminate blind writes outside the retry loop to avoid doing it more than once.
 	if err := c.populateVersionsAndCategorizeBlindWrites(ctx, vTx); err != nil {
 		return nil, err
@@ -165,19 +165,19 @@ func (c *transactionCommitter) commitTransactions(
 		if err := vTx.invalidateTxsOnReadConflicts(conflicts); err != nil {
 			return nil, fmt.Errorf("failed to invalidate transactions on read conflicts: %w", err)
 		}
-		vTx.updateInvalidTxs(duplicates, applicationpb.Status_REJECTED_DUPLICATE_TX_ID)
+		vTx.updateInvalidTxs(duplicates, committerpb.Status_REJECTED_DUPLICATE_TX_ID)
 	}
 
 	return nil, errors.Newf("[BUG] commit failed after %d retries", maxRetriesToRemoveAllInvalidTxs)
 }
 
 // prepareStatusForCommit construct transaction status.
-func prepareStatusForCommit(vTx *validatedTransactions) *applicationpb.TransactionsStatus {
-	txCommitStatus := &applicationpb.TransactionsStatus{
-		Status: map[string]*applicationpb.StatusWithHeight{},
+func prepareStatusForCommit(vTx *validatedTransactions) *servicepb.TransactionsStatus {
+	txCommitStatus := &servicepb.TransactionsStatus{
+		Status: map[string]*servicepb.StatusWithHeight{},
 	}
 
-	setStatus := func(txID TxID, status applicationpb.Status) {
+	setStatus := func(txID TxID, status committerpb.Status) {
 		txCommitStatus.Status[string(txID)] = vTx.txIDToHeight[txID].WithStatus(status)
 	}
 
@@ -189,7 +189,7 @@ func prepareStatusForCommit(vTx *validatedTransactions) *applicationpb.Transacti
 		vTx.validTxNonBlindWrites, vTx.validTxBlindWrites, vTx.newWrites,
 	} {
 		for txID := range lst {
-			setStatus(txID, applicationpb.Status_COMMITTED)
+			setStatus(txID, committerpb.Status_COMMITTED)
 		}
 	}
 
@@ -235,12 +235,12 @@ func (c *transactionCommitter) populateVersionsAndCategorizeBlindWrites(
 
 func (c *transactionCommitter) setCorrectStatusForDuplicateTxID(
 	ctx context.Context,
-	txsStatus *applicationpb.TransactionsStatus,
+	txsStatus *servicepb.TransactionsStatus,
 	txIDToHeight transactionIDToHeight,
 ) error {
 	var dupTxIDs [][]byte
 	for id, s := range txsStatus.Status {
-		if s.Code == applicationpb.Status_REJECTED_DUPLICATE_TX_ID {
+		if s.Code == committerpb.Status_REJECTED_DUPLICATE_TX_ID {
 			dupTxIDs = append(dupTxIDs, []byte(id))
 		}
 	}

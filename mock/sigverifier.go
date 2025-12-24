@@ -16,7 +16,6 @@ import (
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
@@ -129,10 +128,10 @@ func (m *SigVerifier) sendResponseBatch(
 				// We simulate a faulty node by not responding to the first X TXs.
 				continue
 			}
-			status := applicationpb.Status_COMMITTED
+			status := committerpb.Status_COMMITTED
 			isConfig := len(req.Tx.Namespaces) == 1 && req.Tx.Namespaces[0].NsId == committerpb.ConfigNamespaceID
 			if len(req.Tx.Endorsements) == 0 && !isConfig {
-				status = applicationpb.Status_ABORTED_SIGNATURE_INVALID
+				status = committerpb.Status_ABORTED_SIGNATURE_INVALID
 			}
 			respBatch.Responses = append(respBatch.Responses, &servicepb.VerifierResponse{
 				Ref:    req.Ref,

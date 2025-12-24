@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -65,7 +66,7 @@ type (
 )
 
 var sigInvalidTxStatus = &servicepb.InvalidTxStatus{
-	Code: applicationpb.Status_ABORTED_SIGNATURE_INVALID,
+	Code: committerpb.Status_ABORTED_SIGNATURE_INVALID,
 }
 
 func newSignatureVerifierManager(config *signVerifierManagerConfig) *signatureVerifierManager {
@@ -324,7 +325,7 @@ func (sv *signatureVerifier) fetchAndDeleteTxBeingValidated(
 			continue
 		}
 		delete(sv.txBeingValidated, k)
-		if resp.Status != applicationpb.Status_COMMITTED {
+		if resp.Status != committerpb.Status_COMMITTED {
 			txNode.Tx.PrelimInvalidTxStatus = &servicepb.InvalidTxStatus{Code: resp.Status}
 		}
 		validatedTxs = append(validatedTxs, txNode)

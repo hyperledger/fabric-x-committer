@@ -14,7 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -23,14 +23,14 @@ import (
 type committerTestEnv struct {
 	c            *transactionCommitter
 	validatedTxs chan *validatedTransactions
-	txStatus     chan *applicationpb.TransactionsStatus
+	txStatus     chan *servicepb.TransactionsStatus
 	dbEnv        *DatabaseTestEnv
 }
 
 func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 	t.Helper()
 	validatedTxs := make(chan *validatedTransactions, 10)
-	txStatus := make(chan *applicationpb.TransactionsStatus, 10)
+	txStatus := make(chan *servicepb.TransactionsStatus, 10)
 
 	dbEnv := newDatabaseTestEnvWithTablesSetup(t)
 	metrics := newVCServiceMetrics()
@@ -87,10 +87,10 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 			state{"2", 3, 1},
 			state{"2", 4, 1},
 		),
-		&applicationpb.TransactionsStatus{
-			Status: map[string]*applicationpb.StatusWithHeight{
-				"tx1": servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 1, 1),
-				"tx2": servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 1, 2),
+		&servicepb.TransactionsStatus{
+			Status: map[string]*servicepb.StatusWithHeight{
+				"tx1": servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, 1, 1),
+				"tx2": servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, 1, 2),
 			},
 		},
 		transactionIDToHeight{
@@ -103,7 +103,7 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 	tests := []struct {
 		name                      string
 		txs                       *validatedTransactions
-		expectedTxStatuses        map[string]*applicationpb.StatusWithHeight
+		expectedTxStatuses        map[string]*servicepb.StatusWithHeight
 		expectedNsRows            namespaceToWrites
 		unexpectedNsRows          namespaceToWrites
 		expectedMaxSeenBlocNumber uint64
@@ -129,15 +129,15 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 						state{"2", 21, 0},
 					),
 				},
-				invalidTxStatus: map[TxID]applicationpb.Status{},
+				invalidTxStatus: map[TxID]committerpb.Status{},
 				txIDToHeight: transactionIDToHeight{
 					"tx-new-1": servicepb.NewHeight(1, 1),
 					"tx-new-2": servicepb.NewHeight(244, 2),
 				},
 			},
-			expectedTxStatuses: map[string]*applicationpb.StatusWithHeight{
-				"tx-new-1": servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 1, 1),
-				"tx-new-2": servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 244, 2),
+			expectedTxStatuses: map[string]*servicepb.StatusWithHeight{
+				"tx-new-1": servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, 1, 1),
+				"tx-new-2": servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, 244, 2),
 			},
 			expectedNsRows: writes(
 				false,
@@ -166,13 +166,13 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 				validTxBlindWrites: transactionToWrites{},
 				newWrites:          transactionToWrites{},
-				invalidTxStatus:    map[TxID]applicationpb.Status{},
+				invalidTxStatus:    map[TxID]committerpb.Status{},
 				txIDToHeight: transactionIDToHeight{
 					"tx-non-blind-1": servicepb.NewHeight(239, 1),
 				},
 			},
-			expectedTxStatuses: map[string]*applicationpb.StatusWithHeight{
-				"tx-non-blind-1": servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 239, 1),
+			expectedTxStatuses: map[string]*servicepb.StatusWithHeight{
+				"tx-non-blind-1": servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, 239, 1),
 			},
 			expectedNsRows: writes(
 				false,
@@ -197,13 +197,13 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 					),
 				},
 				newWrites:       transactionToWrites{},
-				invalidTxStatus: map[TxID]applicationpb.Status{},
+				invalidTxStatus: map[TxID]committerpb.Status{},
 				txIDToHeight: transactionIDToHeight{
 					"tx-blind-1": servicepb.NewHeight(1024, 1),
 				},
 			},
-			expectedTxStatuses: map[string]*applicationpb.StatusWithHeight{
-				"tx-blind-1": servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 1024, 1),
+			expectedTxStatuses: map[string]*servicepb.StatusWithHeight{
+				"tx-blind-1": servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, 1024, 1),
 			},
 			expectedNsRows: writes(
 				false,
@@ -253,10 +253,10 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 						state{"2", 31, 0},
 					),
 				},
-				invalidTxStatus: map[TxID]applicationpb.Status{
-					"tx-conflict-1": applicationpb.Status_ABORTED_MVCC_CONFLICT,
-					"tx-conflict-2": applicationpb.Status_ABORTED_MVCC_CONFLICT,
-					"tx-conflict-3": applicationpb.Status_ABORTED_MVCC_CONFLICT,
+				invalidTxStatus: map[TxID]committerpb.Status{
+					"tx-conflict-1": committerpb.Status_ABORTED_MVCC_CONFLICT,
+					"tx-conflict-2": committerpb.Status_ABORTED_MVCC_CONFLICT,
+					"tx-conflict-3": committerpb.Status_ABORTED_MVCC_CONFLICT,
 				},
 				txIDToHeight: transactionIDToHeight{
 					"tx-all-1":      servicepb.NewHeight(5, 1),
@@ -266,12 +266,12 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 					"tx-conflict-3": servicepb.NewHeight(396, 3),
 				},
 			},
-			expectedTxStatuses: map[string]*applicationpb.StatusWithHeight{
-				"tx-all-1":      servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 5, 1),
-				"tx-all-2":      servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 200, 2),
-				"tx-conflict-1": servicepb.NewStatusWithHeight(applicationpb.Status_ABORTED_MVCC_CONFLICT, 1, 1),
-				"tx-conflict-2": servicepb.NewStatusWithHeight(applicationpb.Status_ABORTED_MVCC_CONFLICT, 396, 2),
-				"tx-conflict-3": servicepb.NewStatusWithHeight(applicationpb.Status_ABORTED_MVCC_CONFLICT, 396, 3),
+			expectedTxStatuses: map[string]*servicepb.StatusWithHeight{
+				"tx-all-1":      servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, 5, 1),
+				"tx-all-2":      servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, 200, 2),
+				"tx-conflict-1": servicepb.NewStatusWithHeight(committerpb.Status_ABORTED_MVCC_CONFLICT, 1, 1),
+				"tx-conflict-2": servicepb.NewStatusWithHeight(committerpb.Status_ABORTED_MVCC_CONFLICT, 396, 2),
+				"tx-conflict-3": servicepb.NewStatusWithHeight(committerpb.Status_ABORTED_MVCC_CONFLICT, 396, 3),
 			},
 			expectedNsRows: writes(
 				false,
@@ -324,8 +324,8 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 						state{"1", 12, 0}, // not violate
 					),
 				},
-				invalidTxStatus: map[TxID]applicationpb.Status{
-					"tx-conflict-4": applicationpb.Status_ABORTED_MVCC_CONFLICT,
+				invalidTxStatus: map[TxID]committerpb.Status{
+					"tx-conflict-4": committerpb.Status_ABORTED_MVCC_CONFLICT,
 				},
 				readToTxIDs: map[comparableRead][]TxID{
 					newCmpRead("1", []byte("key1.10"), nil): {"tx-violate-1"},
@@ -336,10 +336,10 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 					"tx-conflict-4":    servicepb.NewHeight(1000, 3),
 				},
 			},
-			expectedTxStatuses: map[string]*applicationpb.StatusWithHeight{
-				"tx-violate-1":     servicepb.NewStatusWithHeight(applicationpb.Status_ABORTED_MVCC_CONFLICT, 1, 1),
-				"tx-not-violate-1": servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 4, 2),
-				"tx-conflict-4":    servicepb.NewStatusWithHeight(applicationpb.Status_ABORTED_MVCC_CONFLICT, 1000, 3),
+			expectedTxStatuses: map[string]*servicepb.StatusWithHeight{
+				"tx-violate-1":     servicepb.NewStatusWithHeight(committerpb.Status_ABORTED_MVCC_CONFLICT, 1, 1),
+				"tx-not-violate-1": servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, 4, 2),
+				"tx-conflict-4":    servicepb.NewStatusWithHeight(committerpb.Status_ABORTED_MVCC_CONFLICT, 1000, 3),
 			},
 			expectedNsRows: writes(
 				false,
@@ -368,10 +368,10 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 				newWrites: transactionToWrites{
 					"tx1": writes(true, state{"1", 40, 0}),
 				},
-				invalidTxStatus: map[TxID]applicationpb.Status{
-					"tx-conflict-10": applicationpb.Status_ABORTED_MVCC_CONFLICT,
-					"tx-conflict-11": applicationpb.Status_ABORTED_MVCC_CONFLICT,
-					"tx-conflict-12": applicationpb.Status_ABORTED_MVCC_CONFLICT,
+				invalidTxStatus: map[TxID]committerpb.Status{
+					"tx-conflict-10": committerpb.Status_ABORTED_MVCC_CONFLICT,
+					"tx-conflict-11": committerpb.Status_ABORTED_MVCC_CONFLICT,
+					"tx-conflict-12": committerpb.Status_ABORTED_MVCC_CONFLICT,
 				},
 				txIDToHeight: transactionIDToHeight{
 					"tx1":            servicepb.NewHeight(1, 5),
@@ -380,11 +380,11 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 					"tx-conflict-12": servicepb.NewHeight(66000, 3),
 				},
 			},
-			expectedTxStatuses: map[string]*applicationpb.StatusWithHeight{
-				"tx1":            servicepb.NewStatusWithHeight(applicationpb.Status_REJECTED_DUPLICATE_TX_ID, 1, 5),
-				"tx-conflict-10": servicepb.NewStatusWithHeight(applicationpb.Status_ABORTED_MVCC_CONFLICT, 1, 1),
-				"tx-conflict-11": servicepb.NewStatusWithHeight(applicationpb.Status_ABORTED_MVCC_CONFLICT, 4, 2),
-				"tx-conflict-12": servicepb.NewStatusWithHeight(applicationpb.Status_ABORTED_MVCC_CONFLICT, 66000, 3),
+			expectedTxStatuses: map[string]*servicepb.StatusWithHeight{
+				"tx1":            servicepb.NewStatusWithHeight(committerpb.Status_REJECTED_DUPLICATE_TX_ID, 1, 5),
+				"tx-conflict-10": servicepb.NewStatusWithHeight(committerpb.Status_ABORTED_MVCC_CONFLICT, 1, 1),
+				"tx-conflict-11": servicepb.NewStatusWithHeight(committerpb.Status_ABORTED_MVCC_CONFLICT, 4, 2),
+				"tx-conflict-12": servicepb.NewStatusWithHeight(committerpb.Status_ABORTED_MVCC_CONFLICT, 66000, 3),
 			},
 			expectedNsRows: writes(
 				false,
@@ -406,7 +406,7 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 			channel.NewWriter(ctx, env.validatedTxs).Write(tt.txs)
 			txStatus, ok := channel.NewReader(ctx, env.txStatus).Read()
 			require.True(t, ok)
-			require.Equal(t, &applicationpb.TransactionsStatus{Status: tt.expectedTxStatuses}, txStatus)
+			require.Equal(t, &servicepb.TransactionsStatus{Status: tt.expectedTxStatuses}, txStatus)
 			for nsID, expectedRows := range tt.expectedNsRows {
 				env.dbEnv.rowExists(t, nsID, *expectedRows)
 			}

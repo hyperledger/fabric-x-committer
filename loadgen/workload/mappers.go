@@ -78,6 +78,6 @@ func MapToOrdererBlock(blockNum uint64, txs []*servicepb.LoadGenTx) *common.Bloc
 	}
 }
 
-func makeRef(txID string, blockNum uint64, txNum int) *servicepb.TxRef {
-	return committerpb.TxRef(txID, blockNum, uint32(txNum)) //nolint:gosec // int -> uint32.
+func makeRef(txID string, blockNum uint64, txNum int) *committerpb.TxRef {
+	return committerpb.NewTxRef(txID, blockNum, uint32(txNum)) //nolint:gosec // int -> uint32.
 }

@@ -60,7 +60,7 @@ type (
 	statesToBeCommitted struct {
 		updateWrites namespaceToWrites
 		newWrites    namespaceToWrites
-		batchStatus  *applicationpb.TransactionsStatus
+		batchStatus  *servicepb.TransactionsStatus
 		txIDToHeight transactionIDToHeight
 	}
 )
@@ -150,7 +150,7 @@ func (db *database) queryVersionsIfPresent(ctx context.Context, nsID string, que
 	return kToV, nil
 }
 
-func (db *database) getNextBlockNumberToCommit(ctx context.Context) (*applicationpb.BlockInfo, error) {
+func (db *database) getNextBlockNumberToCommit(ctx context.Context) (*servicepb.BlockInfo, error) {
 	var value []byte
 	retryErr := db.retry.Execute(ctx, func() error {
 		r := db.pool.QueryRow(ctx, getMetadataPrepSQLStmt, []byte(lastCommittedBlockNumberKey))
@@ -159,7 +159,7 @@ func (db *database) getNextBlockNumberToCommit(ctx context.Context) (*applicatio
 	if retryErr != nil {
 		return nil, retryErr
 	}
-	res := &applicationpb.BlockInfo{
+	res := &servicepb.BlockInfo{
 		Number: 0, // default: no block has been committed.
 	}
 	if len(value) > 0 {
@@ -168,7 +168,7 @@ func (db *database) getNextBlockNumberToCommit(ctx context.Context) (*applicatio
 	return res, nil
 }
 
-func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *applicationpb.BlockInfo) error {
+func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *servicepb.BlockInfo) error {
 	// NOTE: We can actually batch this transaction with regular user transactions and perform
 	//       a single commit. However, we need to implement special logic to handle cases
 	//       when there are no waiting user transactions. Hence, for simplicity, we are not
@@ -282,7 +282,7 @@ func (db *database) insertTxStatus(
 	heights := make([][]byte, 0, numEntries)
 	for tID, status := range states.batchStatus.Status {
 		// We cannot insert a "duplicate ID" status since we already have a status entry with this ID.
-		if status.Code == applicationpb.Status_REJECTED_DUPLICATE_TX_ID {
+		if status.Code == committerpb.Status_REJECTED_DUPLICATE_TX_ID {
 			continue
 		}
 		ids = append(ids, []byte(tID))
@@ -413,8 +413,8 @@ func (s *statesToBeCommitted) empty() bool {
 func (db *database) readStatusWithHeight(
 	ctx context.Context,
 	txIDs [][]byte,
-) (map[string]*applicationpb.StatusWithHeight, error) {
-	var rows map[string]*applicationpb.StatusWithHeight
+) (map[string]*servicepb.StatusWithHeight, error) {
+	var rows map[string]*servicepb.StatusWithHeight
 	retryErr := db.retry.Execute(ctx, func() error {
 		r, err := db.pool.Query(ctx, queryTxIDsStatusPrepSQLStmt, txIDs)
 		if err != nil {
@@ -423,7 +423,7 @@ func (db *database) readStatusWithHeight(
 		defer r.Close()
 
 		// reset map every retry
-		rows = make(map[string]*applicationpb.StatusWithHeight)
+		rows = make(map[string]*servicepb.StatusWithHeight)
 		for r.Next() {
 			var id []byte
 			var status int32
@@ -438,7 +438,7 @@ func (db *database) readStatusWithHeight(
 				return fmt.Errorf("failed to create height: %w", err)
 			}
 
-			rows[string(id)] = ht.WithStatus(applicationpb.Status(status))
+			rows[string(id)] = ht.WithStatus(committerpb.Status(status))
 		}
 		return errors.Wrap(r.Err(), "error occurred while reading rows")
 	})
