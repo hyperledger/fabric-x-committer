@@ -4,44 +4,40 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package signature
+package applicationpb
 
 import (
 	"crypto/sha256"
 	"encoding/asn1"
 
 	"github.com/cockroachdb/errors"
-
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 )
 
-// DigestTxNamespace digests a transactions for a given namespace index.
-func DigestTxNamespace(txID string, ns *applicationpb.TxNamespace) ([]byte, error) {
-	derBytes, err := ASN1MarshalTxNamespace(txID, ns)
+// ASN1Digest digests a transactions for a given namespace index using ASN1 encoding and SHA256 digest.
+func (ns *TxNamespace) ASN1Digest(txID string) ([]byte, error) {
+	derBytes, err := ns.ASN1Marshal(txID)
 	if err != nil {
 		return nil, err
 	}
-
-	return SHA256Digest(derBytes), nil
+	return digest(derBytes), nil
 }
 
-// SHA256Digest computes the SHA256 digest of the given data.
-func SHA256Digest(data []byte) []byte {
+func digest(data []byte) []byte {
 	h := sha256.New()
 	h.Write(data) //nolint:revive,nolintlint // Hash write never fail.
 	return h.Sum(nil)
 }
 
-// ASN1MarshalTxNamespace marshals a transactions for a given namespace index.
-// It uses the schema described in tx_schema.asn.
-func ASN1MarshalTxNamespace(txID string, ns *applicationpb.TxNamespace) ([]byte, error) {
-	ret, err := asn1.Marshal(*TranslateTx(txID, ns))
+// ASN1Marshal marshals a transactions for a given namespace index.
+// It uses the schema described in asn1_tx_schema.asn.
+func (ns *TxNamespace) ASN1Marshal(txID string) ([]byte, error) {
+	ret, err := asn1.Marshal(*ns.translate(txID))
 	return ret, errors.Wrap(err, "failed to marshal tx namespace")
 }
 
-// TranslateTx translates a TX namespace to a stab struct for tx_schema.asn.
-// Any change to [*applicationpb.Tx] requires a change to this method.
-func TranslateTx(txID string, ns *applicationpb.TxNamespace) *ASN1Namespace {
+// translate translates a TX namespace to a stab struct for asn1_tx_schema.asn.
+// Any change to [Tx] requires a change to this method.
+func (ns *TxNamespace) translate(txID string) *ASN1Namespace {
 	n := ASN1Namespace{
 		TxID:             txID,
 		NamespaceID:      ns.NsId,
@@ -92,9 +88,9 @@ func AsnToProtoVersion(ver int64) *uint64 {
 }
 
 type (
-	// ASN1Namespace is a stab for [applicationpb.Tx] and [applicationpb.TxNamespace].
+	// ASN1Namespace is a stab for [Tx] and [TxNamespace].
 	// Any change to these protobuf requires a change to these structures.
-	// It conforms with tx_schema.asn.
+	// It conforms with asn1_tx_schema.asn.
 	// We force the ASN.1 library to use UTF8 strings to avoid incompatibility with the schema.
 	// If not specified, the library choose to use ASCII (PrintableString) for simple strings,
 	// and UTF8 otherwise.
@@ -106,20 +102,20 @@ type (
 		ReadWrites       []ASN1ReadWrite
 		BlindWrites      []ASN1Write
 	}
-	// ASN1Read is a stab for [applicationpb.Read].
+	// ASN1Read is a stab for [protoblocktx.Read].
 	// Any change to this protobuf requires a change to these structures.
 	ASN1Read struct {
 		Key     []byte
 		Version int64 `asn1:"optional,default:-1"`
 	}
-	// ASN1ReadWrite is a stab for [applicationpb.ReadWrite].
+	// ASN1ReadWrite is a stab for [protoblocktx.ReadWrite].
 	// Any change to this protobuf requires a change to these structures.
 	ASN1ReadWrite struct {
 		Key     []byte
 		Value   []byte
 		Version int64 `asn1:"optional,default:-1"`
 	}
-	// ASN1Write is a stab for [applicationpb.Write].
+	// ASN1Write is a stab for [protoblocktx.Write].
 	// Any change to this protobuf requires a change to these structures.
 	ASN1Write struct {
 		Key   []byte
