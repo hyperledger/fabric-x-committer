@@ -13,6 +13,7 @@ import (
 	"github.com/onsi/gomega"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 )
@@ -36,7 +37,7 @@ func testSetup(t *testing.T) *runner.CommitterRuntime {
 		BlindWrites: []*applicationpb.Write{{
 			Key: []byte("k1"),
 		}},
-	}}}, []applicationpb.Status{applicationpb.Status_COMMITTED})
+	}}}, []committerpb.Status{committerpb.Status_COMMITTED})
 
 	return c
 }
@@ -48,7 +49,7 @@ func TestDependentHappyPath(t *testing.T) {
 	tests := []struct {
 		name     string
 		txs      []*applicationpb.TxNamespace
-		expected []applicationpb.Status
+		expected []committerpb.Status
 	}{
 		{
 			name: "valid transactions: second tx waits due to write-write conflict",
@@ -81,7 +82,7 @@ func TestDependentHappyPath(t *testing.T) {
 					},
 				},
 			},
-			expected: []applicationpb.Status{applicationpb.Status_COMMITTED, applicationpb.Status_COMMITTED},
+			expected: []committerpb.Status{committerpb.Status_COMMITTED, committerpb.Status_COMMITTED},
 		},
 		{
 			name: "valid transactions: second tx waits due to read-write but uses the updated version",
@@ -110,7 +111,7 @@ func TestDependentHappyPath(t *testing.T) {
 					},
 				},
 			},
-			expected: []applicationpb.Status{applicationpb.Status_COMMITTED, applicationpb.Status_COMMITTED},
+			expected: []committerpb.Status{committerpb.Status_COMMITTED, committerpb.Status_COMMITTED},
 		},
 	}
 
@@ -143,7 +144,7 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 	tests := []struct {
 		name      string
 		readsOnly []*applicationpb.Read
-		expected  []applicationpb.Status
+		expected  []committerpb.Status
 	}{
 		{
 			name: "readOnly version is nil but the committed version is not nil, i.e., state exist",
@@ -152,7 +153,7 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 					Key: []byte("k1"),
 				},
 			},
-			expected: []applicationpb.Status{applicationpb.Status_ABORTED_MVCC_CONFLICT},
+			expected: []committerpb.Status{committerpb.Status_ABORTED_MVCC_CONFLICT},
 		},
 		{
 			name: "readOnly version is not nil but the committed version is nil, i.e., state does not exist",
@@ -162,7 +163,7 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 					Version: applicationpb.NewVersion(0),
 				},
 			},
-			expected: []applicationpb.Status{applicationpb.Status_ABORTED_MVCC_CONFLICT},
+			expected: []committerpb.Status{committerpb.Status_ABORTED_MVCC_CONFLICT},
 		},
 		{
 			name: "readOnly version is different from the committed version",
@@ -172,7 +173,7 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 					Version: applicationpb.NewVersion(1),
 				},
 			},
-			expected: []applicationpb.Status{applicationpb.Status_ABORTED_MVCC_CONFLICT},
+			expected: []committerpb.Status{committerpb.Status_ABORTED_MVCC_CONFLICT},
 		},
 		{
 			name: "valid",
@@ -182,7 +183,7 @@ func TestReadOnlyConflictsWithCommittedStates(t *testing.T) {
 					Version: applicationpb.NewVersion(0),
 				},
 			},
-			expected: []applicationpb.Status{applicationpb.Status_COMMITTED},
+			expected: []committerpb.Status{committerpb.Status_COMMITTED},
 		},
 	}
 
@@ -212,7 +213,7 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 	tests := []struct {
 		name     string
 		txs      [][]*applicationpb.TxNamespace
-		expected []applicationpb.Status
+		expected []committerpb.Status
 	}{
 		{
 			name: "readWrite version is nil but the committed version is not nil, i.e., state exist",
@@ -222,7 +223,7 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 					Version: nil,
 				}},
 			}}},
-			expected: []applicationpb.Status{applicationpb.Status_ABORTED_MVCC_CONFLICT},
+			expected: []committerpb.Status{committerpb.Status_ABORTED_MVCC_CONFLICT},
 		},
 		{
 			name: "readWrite version is not nil but the committed version is nil, i.e., state does not exist",
@@ -232,7 +233,7 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 					Version: applicationpb.NewVersion(0),
 				}},
 			}}},
-			expected: []applicationpb.Status{applicationpb.Status_ABORTED_MVCC_CONFLICT},
+			expected: []committerpb.Status{committerpb.Status_ABORTED_MVCC_CONFLICT},
 		},
 		{
 			name: "readWrite version is different from the committed version",
@@ -242,7 +243,7 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 					Version: applicationpb.NewVersion(1),
 				}},
 			}}},
-			expected: []applicationpb.Status{applicationpb.Status_ABORTED_MVCC_CONFLICT},
+			expected: []committerpb.Status{committerpb.Status_ABORTED_MVCC_CONFLICT},
 		},
 		{
 			name: "valid",
@@ -252,7 +253,7 @@ func TestReadWriteConflictsWithCommittedStates(t *testing.T) {
 					Version: applicationpb.NewVersion(0),
 				}},
 			}}},
-			expected: []applicationpb.Status{applicationpb.Status_COMMITTED},
+			expected: []committerpb.Status{committerpb.Status_COMMITTED},
 		},
 	}
 
@@ -276,7 +277,7 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 	tests := []struct {
 		name     string
 		txs      [][]*applicationpb.TxNamespace
-		expected []applicationpb.Status
+		expected []committerpb.Status
 	}{
 		{
 			name: "first transaction invalidates the second",
@@ -294,9 +295,9 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 					}},
 				}},
 			},
-			expected: []applicationpb.Status{
-				applicationpb.Status_COMMITTED,
-				applicationpb.Status_ABORTED_MVCC_CONFLICT,
+			expected: []committerpb.Status{
+				committerpb.Status_COMMITTED,
+				committerpb.Status_ABORTED_MVCC_CONFLICT,
 			},
 		},
 		{
@@ -321,10 +322,10 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 					}},
 				}},
 			},
-			expected: []applicationpb.Status{
-				applicationpb.Status_ABORTED_MVCC_CONFLICT,
-				applicationpb.Status_ABORTED_MVCC_CONFLICT,
-				applicationpb.Status_COMMITTED,
+			expected: []committerpb.Status{
+				committerpb.Status_ABORTED_MVCC_CONFLICT,
+				committerpb.Status_ABORTED_MVCC_CONFLICT,
+				committerpb.Status_COMMITTED,
 			},
 		},
 		{
@@ -343,9 +344,9 @@ func TestReadWriteConflictsAmongActiveTransactions(t *testing.T) {
 					}},
 				}},
 			},
-			expected: []applicationpb.Status{
-				applicationpb.Status_COMMITTED,
-				applicationpb.Status_ABORTED_MVCC_CONFLICT,
+			expected: []committerpb.Status{
+				committerpb.Status_COMMITTED,
+				committerpb.Status_ABORTED_MVCC_CONFLICT,
 			},
 		},
 	}
@@ -370,7 +371,7 @@ func TestWriteWriteConflictsAmongActiveTransactions(t *testing.T) {
 	tests := []struct {
 		name     string
 		txs      [][]*applicationpb.TxNamespace
-		expected []applicationpb.Status
+		expected []committerpb.Status
 	}{
 		{
 			name: "first transaction invalidates the second",
@@ -391,9 +392,9 @@ func TestWriteWriteConflictsAmongActiveTransactions(t *testing.T) {
 					},
 				}},
 			},
-			expected: []applicationpb.Status{
-				applicationpb.Status_COMMITTED,
-				applicationpb.Status_ABORTED_MVCC_CONFLICT,
+			expected: []committerpb.Status{
+				committerpb.Status_COMMITTED,
+				committerpb.Status_ABORTED_MVCC_CONFLICT,
 			},
 		},
 		{
@@ -415,9 +416,9 @@ func TestWriteWriteConflictsAmongActiveTransactions(t *testing.T) {
 					},
 				}},
 			},
-			expected: []applicationpb.Status{
-				applicationpb.Status_COMMITTED,
-				applicationpb.Status_ABORTED_MVCC_CONFLICT,
+			expected: []committerpb.Status{
+				committerpb.Status_COMMITTED,
+				committerpb.Status_ABORTED_MVCC_CONFLICT,
 			},
 		},
 	}

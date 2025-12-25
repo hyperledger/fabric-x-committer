@@ -13,7 +13,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
-	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
@@ -97,12 +96,7 @@ func (c *VcAdapter) receiveStatus(
 		}
 
 		logger.Debugf("Received VC batch with %d items", len(responseBatch.Status))
-
-		statusBatch := make([]metrics.TxStatus, 0, len(responseBatch.Status))
-		for id, status := range responseBatch.Status {
-			statusBatch = append(statusBatch, metrics.TxStatus{TxID: id, Status: status.Code})
-		}
-		c.res.Metrics.OnReceiveBatch(statusBatch)
+		c.res.Metrics.OnReceiveBatch(toMetricsStatus(responseBatch.Status))
 		if c.res.isReceiveLimit() {
 			return nil
 		}

@@ -15,26 +15,23 @@ import (
 
 // MapToCoordinatorBatch creates a Coordinator batch.
 func MapToCoordinatorBatch(blockNum uint64, txs []*servicepb.LoadGenTx) *servicepb.CoordinatorBatch {
-	blockTXs := make([]*servicepb.CoordinatorTx, len(txs))
-	for i, tx := range txs {
-		blockTXs[i] = &servicepb.CoordinatorTx{
-			Ref:     makeRef(tx.Id, blockNum, i),
-			Content: tx.Tx,
-		}
-	}
-	return &servicepb.CoordinatorBatch{Txs: blockTXs}
+	return &servicepb.CoordinatorBatch{Txs: mapToTxWithRefSlice(blockNum, txs)}
 }
 
 // MapToVerifierBatch creates a Verifier batch.
 func MapToVerifierBatch(blockNum uint64, txs []*servicepb.LoadGenTx) *servicepb.VerifierBatch {
-	reqs := make([]*servicepb.VerifierTx, len(txs))
+	return &servicepb.VerifierBatch{Requests: mapToTxWithRefSlice(blockNum, txs)}
+}
+
+func mapToTxWithRefSlice(blockNum uint64, txs []*servicepb.LoadGenTx) []*servicepb.TxWithRef {
+	reqs := make([]*servicepb.TxWithRef, len(txs))
 	for i, tx := range txs {
-		reqs[i] = &servicepb.VerifierTx{
-			Ref: makeRef(tx.Id, blockNum, i),
-			Tx:  tx.Tx,
+		reqs[i] = &servicepb.TxWithRef{
+			Ref:     makeRef(tx.Id, blockNum, i),
+			Content: tx.Tx,
 		}
 	}
-	return &servicepb.VerifierBatch{Requests: reqs}
+	return reqs
 }
 
 // MapToVcBatch creates a VC batch.
@@ -78,6 +75,6 @@ func MapToOrdererBlock(blockNum uint64, txs []*servicepb.LoadGenTx) *common.Bloc
 	}
 }
 
-func makeRef(txID string, blockNum uint64, txNum int) *servicepb.TxRef {
-	return committerpb.TxRef(txID, blockNum, uint32(txNum)) //nolint:gosec // int -> uint32.
+func makeRef(txID string, blockNum uint64, txNum int) *committerpb.TxRef {
+	return committerpb.NewTxRef(txID, blockNum, uint32(txNum)) //nolint:gosec // int -> uint32.
 }

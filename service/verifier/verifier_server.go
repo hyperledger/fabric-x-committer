@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -153,7 +154,7 @@ func (s *Server) handleOutputs(
 		promutil.AddToCounter(s.metrics.VerifierServerOutTxs, len(outputs))
 		promutil.AddToGauge(s.metrics.ActiveRequests, -len(outputs))
 		logger.Debugf("Received output: %v", output)
-		rpcErr := stream.Send(&servicepb.VerifierResponseBatch{Responses: outputs})
+		rpcErr := stream.Send(&committerpb.TxStatusBatch{Status: outputs})
 		if rpcErr != nil {
 			return errors.Wrap(rpcErr, "stream ended")
 		}

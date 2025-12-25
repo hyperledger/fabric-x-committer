@@ -16,7 +16,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -28,7 +27,7 @@ type (
 	relay struct {
 		incomingBlockToBeCommitted <-chan *common.Block
 		outgoingCommittedBlock     chan<- *common.Block
-		outgoingStatusUpdates      chan<- []*committerpb.TxStatusEvent
+		outgoingStatusUpdates      chan<- []*committerpb.TxStatus
 
 		// nextBlockNumberToBeReceived denotes the next block number that the sidecar
 		// expects to receive from the orderer. This value is initially extracted from the last committed
@@ -52,7 +51,7 @@ type (
 		configUpdater                  func(*common.Block)
 		incomingBlockToBeCommitted     <-chan *common.Block
 		outgoingCommittedBlock         chan<- *common.Block
-		outgoingStatusUpdates          chan<- []*committerpb.TxStatusEvent
+		outgoingStatusUpdates          chan<- []*committerpb.TxStatus
 		waitingTxsLimit                int
 	}
 )
@@ -108,7 +107,7 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 		return r.sendBlocksToCoordinator(sCtx, mappedBlockQueue, stream)
 	})
 
-	statusBatch := make(chan *applicationpb.TransactionsStatus, cap(r.outgoingCommittedBlock))
+	statusBatch := make(chan *committerpb.TxStatusBatch, cap(r.outgoingCommittedBlock))
 	g.Go(func() error {
 		return receiveStatusFromCoordinator(sCtx, stream, statusBatch)
 	})
@@ -219,7 +218,7 @@ func (r *relay) sendBlocksToCoordinator(
 func receiveStatusFromCoordinator(
 	ctx context.Context,
 	stream servicepb.Coordinator_BlockProcessingClient,
-	statusBatch chan<- *applicationpb.TransactionsStatus,
+	statusBatch chan<- *committerpb.TxStatusBatch,
 ) error {
 	txsStatus := channel.NewWriter(ctx, statusBatch)
 	for {
@@ -235,7 +234,7 @@ func receiveStatusFromCoordinator(
 
 func (r *relay) processStatusBatch(
 	ctx context.Context,
-	statusBatch <-chan *applicationpb.TransactionsStatus,
+	statusBatch <-chan *committerpb.TxStatusBatch,
 ) error {
 	txsStatus := channel.NewReader(ctx, statusBatch)
 	outgoingCommittedBlock := channel.NewWriter(ctx, r.outgoingCommittedBlock)
@@ -248,11 +247,11 @@ func (r *relay) processStatusBatch(
 
 		txStatusProcessedCount := int64(0)
 		startTime := time.Now()
-		statusReport := make([]*committerpb.TxStatusEvent, 0, len(tStatus.Status))
-		for txID, txStatus := range tStatus.Status {
+		statusReport := make([]*committerpb.TxStatus, 0, len(tStatus.Status))
+		for _, txStatus := range tStatus.Status {
 			// We cannot use LoadAndDelete(txID) because it may not match the received statues.
-			height, ok := r.txIDToHeight.Load(txID)
-			if !ok || txStatus.BlockNumber != height.BlockNum {
+			height, ok := r.txIDToHeight.Load(txStatus.Ref.TxId)
+			if !ok || txStatus.Ref.BlockNum != height.BlockNum {
 				// - Case 1: Block not found.
 				//   Consider a scenario where the connection between the sidecar and the coordinator fails due
 				//   to a network issue—not because the coordinator restarts. Assume the relay has already submitted
@@ -276,23 +275,20 @@ func (r *relay) processStatusBatch(
 				continue
 			}
 
-			blkWithStatus, blkOK := r.blkNumToBlkWithStatus.Load(txStatus.BlockNumber)
+			blkWithStatus, blkOK := r.blkNumToBlkWithStatus.Load(txStatus.Ref.BlockNum)
 			if !blkOK {
 				// This can never occur unless there is a bug in the relay.
-				return errors.Newf("block %d has never been submitted", txStatus.BlockNumber)
+				return errors.Newf("block %d has never been submitted", txStatus.Ref.BlockNum)
 			}
-			err := blkWithStatus.setFinalStatus(height.TxNum, txStatus.Code)
+			err := blkWithStatus.setFinalStatus(height.TxNum, txStatus.Status)
 			if err != nil {
 				// This can never occur unless there is a bug in the relay or the coordinator.
 				return err
 			}
-			r.txIDToHeight.Delete(txID)
+			r.txIDToHeight.Delete(txStatus.Ref.TxId)
 			txStatusProcessedCount++
 
-			statusReport = append(statusReport, &committerpb.TxStatusEvent{
-				TxId:             txID,
-				StatusWithHeight: txStatus,
-			})
+			statusReport = append(statusReport, txStatus)
 		}
 
 		if len(statusReport) > 0 {
@@ -364,7 +360,7 @@ func (r *relay) setLastCommittedBlockNumber(
 
 		blkNum := r.nextBlockNumberToBeCommitted.Load() - 1
 		logger.Debugf("Setting the last committed block number: %d", blkNum)
-		_, err := client.SetLastCommittedBlockNumber(ctx, &applicationpb.BlockInfo{Number: blkNum})
+		_, err := client.SetLastCommittedBlockNumber(ctx, &servicepb.BlockRef{Number: blkNum})
 		if err != nil {
 			return errors.Wrapf(err, "failed to set the last committed block number [%d]", blkNum)
 		}

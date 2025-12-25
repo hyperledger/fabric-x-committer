@@ -16,7 +16,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
-	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
@@ -126,13 +125,8 @@ func (c *SvAdapter) receiveStatus(
 			return errors.Wrap(connection.FilterStreamRPCError(err), "failed receiving verification status")
 		}
 
-		logger.Debugf("Received SV batch with %d responses", len(responseBatch.Responses))
-		statusBatch := make([]metrics.TxStatus, len(responseBatch.Responses))
-		for i, response := range responseBatch.Responses {
-			logger.Debugf("Received Responses: %s", response.Status)
-			statusBatch[i] = metrics.TxStatus{TxID: response.Ref.TxId, Status: response.Status}
-		}
-		c.res.Metrics.OnReceiveBatch(statusBatch)
+		logger.Debugf("Received SV batch with %d responses", len(responseBatch.Status))
+		c.res.Metrics.OnReceiveBatch(toMetricsStatus(responseBatch.Status))
 		if c.res.isReceiveLimit() {
 			return nil
 		}
