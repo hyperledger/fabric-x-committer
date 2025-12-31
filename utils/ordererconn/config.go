@@ -17,7 +17,7 @@ import (
 )
 
 type (
-	// Config defines the static configuration of the orderer client as loaded from YAML file.
+	// Config defines the static configuration of the orderer client as loaded from the YAML file.
 	// It supports connectivity to multiple organization's orderers.
 	Config struct {
 		ConsensusType string                      `mapstructure:"consensus-type"`
