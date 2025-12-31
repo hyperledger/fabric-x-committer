@@ -142,13 +142,13 @@ func (cm *ConnectionManager) Update(orgsMat []*OrganizationMaterial) error { //n
 	allAPIs := []string{anyAPI, Broadcast, Deliver}
 	// We save the endpoints for later processing.
 	var allOrgsEndpoints []*commontypes.OrdererEndpoint
-	for _, orgParams := range orgsMat {
+	for _, org := range orgsMat {
 		orgTLSParams := *cm.tlsParameters
-		orgTLSParams.CACerts = append(orgTLSParams.CACerts, orgParams.CACerts...)
-		for _, id := range append(getAllIDs(orgParams.Endpoints), anyID) {
+		orgTLSParams.CACerts = append(orgTLSParams.CACerts, org.CACerts...)
+		for _, id := range append(getAllIDs(org.Endpoints), anyID) {
 			for _, api := range allAPIs {
 				filter := aggregateFilter(WithAPI(api), WithID(id))
-				endpoints := filterOrdererEndpoints(orgParams.Endpoints, filter)
+				endpoints := filterOrdererEndpoints(org.Endpoints, filter)
 				if len(endpoints) == 0 {
 					continue
 				}
@@ -170,7 +170,7 @@ func (cm *ConnectionManager) Update(orgsMat []*OrganizationMaterial) error { //n
 				connections[filterKey(filter)] = conn
 			}
 		}
-		allOrgsEndpoints = append(allOrgsEndpoints, orgParams.Endpoints...)
+		allOrgsEndpoints = append(allOrgsEndpoints, org.Endpoints...)
 	}
 
 	// We lock once we read internal members.
