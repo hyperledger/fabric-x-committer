@@ -14,12 +14,11 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 )
 
 // StatusRetriever provides implementation retrieve status of given transaction identifiers.
 type StatusRetriever interface {
-	GetTransactionsStatus(context.Context, *servicepb.QueryStatus, ...grpc.CallOption) (
+	GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch, ...grpc.CallOption) (
 		*committerpb.TxStatusBatch, error,
 	)
 }
@@ -38,7 +37,7 @@ func EnsurePersistedTxStatus(
 	if len(txIDs) == 0 {
 		return
 	}
-	actualStatus, err := r.GetTransactionsStatus(ctx, &servicepb.QueryStatus{TxIDs: txIDs})
+	actualStatus, err := r.GetTransactionsStatus(ctx, &committerpb.TxIDsBatch{TxIds: txIDs})
 	require.NoError(t, err)
 	RequireProtoElementsMatch(t, expected, actualStatus.Status)
 }

@@ -270,7 +270,7 @@ func (c *Service) GetNextBlockNumberToCommit(
 // GetTransactionsStatus returns the status of given transactions identifiers.
 func (c *Service) GetTransactionsStatus(
 	ctx context.Context,
-	q *servicepb.QueryStatus,
+	q *committerpb.TxIDsBatch,
 ) (*committerpb.TxStatusBatch, error) {
 	return c.validatorCommitterMgr.getTransactionsStatus(ctx, q)
 }

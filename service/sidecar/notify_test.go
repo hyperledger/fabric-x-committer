@@ -38,7 +38,7 @@ func BenchmarkNotifier(b *testing.B) {
 	for len(requestTxIDs) > 0 {
 		sz := min(batchSize, len(requestTxIDs))
 		requests = append(requests, &committerpb.NotificationRequest{
-			TxStatusRequest: &committerpb.TxStatusRequest{
+			TxStatusRequest: &committerpb.TxIDsBatch{
 				TxIds: txIDs[:sz],
 			},
 			Timeout: durationpb.New(1 * time.Hour),
@@ -107,7 +107,7 @@ func TestNotifierDirect(t *testing.T) {
 	for _, q := range env.notificationQueues {
 		env.requestQueue.Write(&notificationRequest{
 			request: &committerpb.NotificationRequest{
-				TxStatusRequest: &committerpb.TxStatusRequest{
+				TxStatusRequest: &committerpb.TxIDsBatch{
 					TxIds: []string{"1", "2", "3", "4", "5", "5", "5", "5", "6"},
 				},
 				Timeout: durationpb.New(5 * time.Minute),
@@ -174,7 +174,7 @@ func TestNotifierDirect(t *testing.T) {
 	for _, q := range env.notificationQueues {
 		env.requestQueue.Write(&notificationRequest{
 			request: &committerpb.NotificationRequest{
-				TxStatusRequest: &committerpb.TxStatusRequest{
+				TxStatusRequest: &committerpb.TxIDsBatch{
 					TxIds: timeoutIDs,
 				},
 				Timeout: durationpb.New(1 * time.Millisecond),
@@ -235,7 +235,7 @@ func TestNotifierStream(t *testing.T) {
 
 	t.Log("Submitting requests")
 	err = stream.Send(&committerpb.NotificationRequest{
-		TxStatusRequest: &committerpb.TxStatusRequest{
+		TxStatusRequest: &committerpb.TxIDsBatch{
 			TxIds: []string{"1", "2", "3", "4", "5", "5", "5", "5", "6"},
 		},
 		Timeout: durationpb.New(5 * time.Minute),
@@ -274,7 +274,7 @@ func TestNotifierStream(t *testing.T) {
 	t.Log("Submitting requests with short timeout - expecting notifications")
 	timeoutIDs := []string{"5", "6", "7", "8"}
 	err = stream.Send(&committerpb.NotificationRequest{
-		TxStatusRequest: &committerpb.TxStatusRequest{
+		TxStatusRequest: &committerpb.TxIDsBatch{
 			TxIds: timeoutIDs,
 		},
 		Timeout: durationpb.New(1 * time.Millisecond),

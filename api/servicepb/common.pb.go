@@ -126,50 +126,6 @@ func (x *TxWithRef) GetContent() *applicationpb.Tx {
 	return nil
 }
 
-type QueryStatus struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TxIDs         []string               `protobuf:"bytes,1,rep,name=txIDs,proto3" json:"txIDs,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *QueryStatus) Reset() {
-	*x = QueryStatus{}
-	mi := &file_api_servicepb_common_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *QueryStatus) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*QueryStatus) ProtoMessage() {}
-
-func (x *QueryStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_api_servicepb_common_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use QueryStatus.ProtoReflect.Descriptor instead.
-func (*QueryStatus) Descriptor() ([]byte, []int) {
-	return file_api_servicepb_common_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *QueryStatus) GetTxIDs() []string {
-	if x != nil {
-		return x.TxIDs
-	}
-	return nil
-}
-
 var File_api_servicepb_common_proto protoreflect.FileDescriptor
 
 const file_api_servicepb_common_proto_rawDesc = "" +
@@ -179,9 +135,7 @@ const file_api_servicepb_common_proto_rawDesc = "" +
 	"\x06number\x18\x01 \x01(\x04R\x06number\"^\n" +
 	"\tTxWithRef\x12$\n" +
 	"\x03ref\x18\x01 \x01(\v2\x12.committerpb.TxRefR\x03ref\x12+\n" +
-	"\acontent\x18\x02 \x01(\v2\x11.applicationpb.TxR\acontent\"#\n" +
-	"\vQueryStatus\x12\x14\n" +
-	"\x05txIDs\x18\x01 \x03(\tR\x05txIDsB9Z7github.com/hyperledger/fabric-x-committer/api/servicepbb\x06proto3"
+	"\acontent\x18\x02 \x01(\v2\x11.applicationpb.TxR\acontentB9Z7github.com/hyperledger/fabric-x-committer/api/servicepbb\x06proto3"
 
 var (
 	file_api_servicepb_common_proto_rawDescOnce sync.Once
@@ -195,17 +149,16 @@ func file_api_servicepb_common_proto_rawDescGZIP() []byte {
 	return file_api_servicepb_common_proto_rawDescData
 }
 
-var file_api_servicepb_common_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_api_servicepb_common_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_api_servicepb_common_proto_goTypes = []any{
 	(*BlockRef)(nil),          // 0: servicepb.BlockRef
 	(*TxWithRef)(nil),         // 1: servicepb.TxWithRef
-	(*QueryStatus)(nil),       // 2: servicepb.QueryStatus
-	(*committerpb.TxRef)(nil), // 3: committerpb.TxRef
-	(*applicationpb.Tx)(nil),  // 4: applicationpb.Tx
+	(*committerpb.TxRef)(nil), // 2: committerpb.TxRef
+	(*applicationpb.Tx)(nil),  // 3: applicationpb.Tx
 }
 var file_api_servicepb_common_proto_depIdxs = []int32{
-	3, // 0: servicepb.TxWithRef.ref:type_name -> committerpb.TxRef
-	4, // 1: servicepb.TxWithRef.content:type_name -> applicationpb.Tx
+	2, // 0: servicepb.TxWithRef.ref:type_name -> committerpb.TxRef
+	3, // 1: servicepb.TxWithRef.content:type_name -> applicationpb.Tx
 	2, // [2:2] is the sub-list for method output_type
 	2, // [2:2] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
@@ -224,7 +177,7 @@ func file_api_servicepb_common_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_servicepb_common_proto_rawDesc), len(file_api_servicepb_common_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

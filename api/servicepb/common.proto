@@ -24,7 +24,3 @@ message TxWithRef {
     committerpb.TxRef ref = 1;    // The TX reference.
     applicationpb.Tx content = 2; // The TX content.
 }
-
-message QueryStatus {
-    repeated string txIDs = 1;
-}

@@ -435,7 +435,7 @@ func (c *CommitterRuntime) SendTransactionsToOrderer(
 
 	if !c.Config.CrashTest {
 		err := c.NotifyStream.Send(&committerpb.NotificationRequest{
-			TxStatusRequest: &committerpb.TxStatusRequest{
+			TxStatusRequest: &committerpb.TxIDsBatch{
 				TxIds: expected.TxIDs,
 			},
 			Timeout: durationpb.New(3 * time.Minute),
