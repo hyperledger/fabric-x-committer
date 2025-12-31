@@ -9,7 +9,6 @@ package coordinator
 import (
 	"context"
 	"crypto/rand"
-	"maps"
 	"testing"
 	"time"
 
@@ -39,7 +38,7 @@ type vcMgrTestEnv struct {
 	validatorCommitterManager *validatorCommitterManager
 	inputTxs                  chan dependencygraph.TxNodeBatch
 	outputTxs                 chan dependencygraph.TxNodeBatch
-	outputTxsStatus           chan *applicationpb.TransactionsStatus
+	outputTxsStatus           chan *committerpb.TxStatusBatch
 	mockVcService             *mock.VcService
 	mockVCGrpcServers         *test.GrpcServers
 	sigVerTestEnv             *svMgrTestEnv
@@ -52,7 +51,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 
 	inputTxs := make(chan dependencygraph.TxNodeBatch, 10)
 	outputTxs := make(chan dependencygraph.TxNodeBatch, 10)
-	outputTxsStatus := make(chan *applicationpb.TransactionsStatus, 10)
+	outputTxsStatus := make(chan *committerpb.TxStatusBatch, 10)
 
 	vcm := newValidatorCommitterManager(
 		&validatorCommitterManagerConfig{
@@ -124,7 +123,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		outTxsStatus := <-env.outputTxsStatus
 
-		require.Equal(t, expectedTxsStatus.Status, outTxsStatus.Status)
+		test.RequireProtoElementsMatch(t, expectedTxsStatus, outTxsStatus.Status)
 
 		test.EventuallyIntMetric(
 			t, 5, env.validatorCommitterManager.config.metrics.vcserviceTransactionProcessedTotal,
@@ -134,13 +133,13 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 		totalBlocks := 3
 		txPerBlock := 50
 		txBatches := make(dependencygraph.TxNodeBatch, 0, totalBlocks*txPerBlock)
-		expectedTxsStatus = &applicationpb.TransactionsStatus{Status: make(map[string]*applicationpb.StatusWithHeight)}
+		expectedTxsStatus = make([]*committerpb.TxStatus, 0, totalBlocks*txPerBlock)
 
-		for i := range 3 {
+		for i := range totalBlocks {
 			//nolint:gosec // int -> int64
-			txBatch, txStatus := createInputTxsNodeForTest(t, txPerBlock, 1024*1024, uint64(i+2))
-			txBatches = append(txBatches, txBatch...)
-			maps.Copy(expectedTxsStatus.Status, txStatus.Status)
+			curTxBatch, txStatus := createInputTxsNodeForTest(t, txPerBlock, 1024*1024, uint64(i+2))
+			txBatches = append(txBatches, curTxBatch...)
+			expectedTxsStatus = append(expectedTxsStatus, txStatus...)
 		}
 
 		env.inputTxs <- txBatches
@@ -153,10 +152,10 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		outTxsStatus = <-env.outputTxsStatus
 		status := <-env.outputTxsStatus
-		maps.Copy(outTxsStatus.Status, status.Status)
+		outTxsStatus.Status = append(outTxsStatus.Status, status.Status...)
 		status = <-env.outputTxsStatus
-		maps.Copy(outTxsStatus.Status, status.Status)
-		require.Equal(t, expectedTxsStatus.Status, outTxsStatus.Status)
+		outTxsStatus.Status = append(outTxsStatus.Status, status.Status...)
+		test.RequireProtoElementsMatch(t, expectedTxsStatus, outTxsStatus.Status)
 
 		test.EventuallyIntMetric(
 			t, 5+totalBlocks*txPerBlock,
@@ -190,20 +189,10 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 				append(outputTxBatch1, outputTxBatch2...),
 			)
 
-			mergeTxsStatus := func(
-				txsStatus1,
-				txsStatus2 *applicationpb.TransactionsStatus,
-			) map[string]*applicationpb.StatusWithHeight {
-				txsStatus := make(map[string]*applicationpb.StatusWithHeight)
-				maps.Copy(txsStatus, txsStatus1.Status)
-				maps.Copy(txsStatus, txsStatus2.Status)
-				return txsStatus
-			}
-
-			require.Equal(
+			test.RequireProtoElementsMatch(
 				t,
-				mergeTxsStatus(expectedTxsStatus1, expectedTxsStatus2),
-				mergeTxsStatus(outTxsStatus1, outTxsStatus2),
+				append(expectedTxsStatus1, expectedTxsStatus2...),
+				append(outTxsStatus1.Status, outTxsStatus2.Status...),
 			)
 
 			return env.mockVcService.GetNumBatchesReceived() != 0
@@ -231,7 +220,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 		txBatch := []*dependencygraph.TransactionNode{
 			{
 				Tx: &servicepb.VcTx{
-					Ref: committerpb.TxRef("create config", 100, 63),
+					Ref: committerpb.NewTxRef("create config", 100, 63),
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId: committerpb.ConfigNamespaceID,
 						BlindWrites: []*applicationpb.Write{{
@@ -243,7 +232,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 			},
 			{
 				Tx: &servicepb.VcTx{
-					Ref: committerpb.TxRef("create ns 1", 100, 64),
+					Ref: committerpb.NewTxRef("create ns 1", 100, 64),
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId: committerpb.MetaNamespaceID,
 						ReadWrites: []*applicationpb.ReadWrite{{
@@ -259,14 +248,10 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 		outTxsStatus := <-env.outputTxsStatus
 
 		require.Len(t, outTxsStatus.Status, 2)
-		require.Equal(t,
-			servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 100, 63),
-			outTxsStatus.Status["create config"],
-		)
-		require.Equal(t,
-			servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 100, 64),
-			outTxsStatus.Status["create ns 1"],
-		)
+		expectedConfig := committerpb.NewTxStatus(committerpb.Status_COMMITTED, "create config", 100, 63)
+		test.RequireStatus(t, expectedConfig, outTxsStatus.Status)
+		expectedMeta := committerpb.NewTxStatus(committerpb.Status_COMMITTED, "create ns 1", 100, 64)
+		test.RequireStatus(t, expectedMeta, outTxsStatus.Status)
 
 		require.ElementsMatch(t, txBatch, <-env.outputTxs)
 
@@ -319,12 +304,12 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	env.requireConnectionMetrics(t, 0, connection.Connected, 1)
 	env.requireRetriedTxsTotal(t, 4)
 
-	actualTxsStatus := make(map[string]*applicationpb.StatusWithHeight)
+	actualTxsStatus := make([]*committerpb.TxStatus, 0, numTxs)
 	for range 2 {
 		result := <-env.outputTxsStatus
-		maps.Copy(actualTxsStatus, result.Status)
+		actualTxsStatus = append(actualTxsStatus, result.Status...)
 	}
-	require.Equal(t, expectedTxsStatus.Status, actualTxsStatus)
+	test.RequireProtoElementsMatch(t, expectedTxsStatus, actualTxsStatus)
 
 	txProcessedTotalMetric := env.validatorCommitterManager.config.metrics.vcserviceTransactionProcessedTotal
 	txTotal := test.GetIntMetricValue(t, txProcessedTotalMetric)
@@ -334,8 +319,8 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 
 	err := env.mockVcService.SubmitTransactions(ctx, &servicepb.VcBatch{
 		Transactions: []*servicepb.VcTx{
-			{Ref: committerpb.TxRef("untrackedTxID1", 1, 1)},
-			{Ref: committerpb.TxRef("untrackedTxID2", 2, 2)},
+			{Ref: committerpb.NewTxRef("untrackedTxID1", 1, 1)},
+			{Ref: committerpb.NewTxRef("untrackedTxID2", 2, 2)},
 		},
 	})
 	require.NoError(t, err)
@@ -346,20 +331,18 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 }
 
 func createInputTxsNodeForTest(t *testing.T, numTxs, valueSize int, blkNum uint64) (
-	[]*dependencygraph.TransactionNode, *applicationpb.TransactionsStatus,
+	[]*dependencygraph.TransactionNode, []*committerpb.TxStatus,
 ) {
 	t.Helper()
 
 	txsNode := make([]*dependencygraph.TransactionNode, numTxs)
-	expectedTxsStatus := &applicationpb.TransactionsStatus{
-		Status: make(map[string]*applicationpb.StatusWithHeight),
-	}
+	expectedTxsStatus := make([]*committerpb.TxStatus, numTxs)
 
 	for i := range numTxs {
 		id := uuid.NewString()
 		txsNode[i] = &dependencygraph.TransactionNode{
 			Tx: &servicepb.VcTx{
-				Ref: committerpb.TxRef(id, blkNum, uint32(i)), //nolint:gosec
+				Ref: committerpb.NewTxRef(id, blkNum, uint32(i)), //nolint:gosec
 				Namespaces: []*applicationpb.TxNamespace{{
 					BlindWrites: []*applicationpb.Write{{
 						Value: utils.MustRead(rand.Reader, valueSize),
@@ -368,7 +351,7 @@ func createInputTxsNodeForTest(t *testing.T, numTxs, valueSize int, blkNum uint6
 			},
 		}
 		//nolint:gosec // int -> uint32.
-		expectedTxsStatus.Status[id] = servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, blkNum, uint32(i))
+		expectedTxsStatus[i] = committerpb.NewTxStatus(committerpb.Status_COMMITTED, id, blkNum, uint32(i))
 	}
 
 	return txsNode, expectedTxsStatus

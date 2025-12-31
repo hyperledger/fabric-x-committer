@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -180,6 +181,14 @@ func getTXsIDs(txs []*servicepb.LoadGenTx) []string {
 		txIDs[i] = tx.Id
 	}
 	return txIDs
+}
+
+func toMetricsStatus(txStatus []*committerpb.TxStatus) []metrics.TxStatus {
+	statusBatch := make([]metrics.TxStatus, len(txStatus))
+	for i, status := range txStatus {
+		statusBatch[i] = metrics.TxStatus{TxID: status.Ref.TxId, Status: status.Status}
+	}
+	return statusBatch
 }
 
 func (r *ClientResources) isSendLimit() bool {

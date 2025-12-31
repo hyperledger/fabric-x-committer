@@ -14,7 +14,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -29,15 +28,15 @@ type relayTestEnv struct {
 	coordinator                *mock.Coordinator
 	incomingBlockToBeCommitted chan *common.Block
 	committedBlock             chan *common.Block
-	statusQueue                chan []*committerpb.TxStatusEvent
+	statusQueue                chan []*committerpb.TxStatus
 	configBlocks               []*common.Block
 	metrics                    *perfMetrics
 	waitingTxsLimit            int
 }
 
 const (
-	valid     = byte(applicationpb.Status_COMMITTED)
-	duplicate = byte(applicationpb.Status_REJECTED_DUPLICATE_TX_ID)
+	valid     = byte(committerpb.Status_COMMITTED)
+	duplicate = byte(committerpb.Status_REJECTED_DUPLICATE_TX_ID)
 )
 
 func newRelayTestEnv(t *testing.T) *relayTestEnv {
@@ -60,7 +59,7 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 		coordinator:                coord,
 		incomingBlockToBeCommitted: make(chan *common.Block, 10),
 		committedBlock:             make(chan *common.Block, 10),
-		statusQueue:                make(chan []*committerpb.TxStatusEvent, 10),
+		statusQueue:                make(chan []*committerpb.TxStatus, 10),
 		metrics:                    metrics,
 		waitingTxsLimit:            100,
 	}
@@ -109,36 +108,24 @@ func TestRelayNormalBlock(t *testing.T) {
 
 	t.Log("Block #0: Check status in the queue")
 	status0 := relayEnv.readAllStatusQueue(t)
-	test.RequireProtoElementsMatch(t, []*committerpb.TxStatusEvent{
+	test.RequireProtoElementsMatch(t, []*committerpb.TxStatus{
 		{
-			TxId: txIDs0[0],
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 0,
-				TxNumber:    0,
-				Code:        applicationpb.Status_COMMITTED,
-			},
+			Ref:    committerpb.NewTxRef(txIDs0[0], 0, 0),
+			Status: committerpb.Status_COMMITTED,
 		},
 		{
-			TxId: txIDs0[1],
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 0,
-				TxNumber:    1,
-				Code:        applicationpb.Status_COMMITTED,
-			},
+			Ref:    committerpb.NewTxRef(txIDs0[1], 0, 1),
+			Status: committerpb.Status_COMMITTED,
 		},
 		{
-			TxId: txIDs0[2],
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 0,
-				TxNumber:    2,
-				Code:        applicationpb.Status_COMMITTED,
-			},
+			Ref:    committerpb.NewTxRef(txIDs0[2], 0, 2),
+			Status: committerpb.Status_COMMITTED,
 		},
 	}, status0)
 
 	t.Log("Block #0: Check receive metrics")
 	test.RequireIntMetricValue(t, txCount, m.transactionsStatusReceivedTotal.WithLabelValues(
-		applicationpb.Status_COMMITTED.String(),
+		committerpb.Status_COMMITTED.String(),
 	))
 	test.EventuallyIntMetric(t, 0, m.waitingTransactionsQueueSize, 5*time.Second, 10*time.Millisecond)
 	require.Greater(t, test.GetMetricValue(t, m.blockMappingInRelaySeconds), float64(0))
@@ -190,14 +177,10 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 
 	t.Log("Block #0: Check status in the queue")
 	status0 := relayEnv.readAllStatusQueue(t)
-	test.RequireProtoElementsMatch(t, []*committerpb.TxStatusEvent{
+	test.RequireProtoElementsMatch(t, []*committerpb.TxStatus{
 		{
-			TxId: txIDs0[0],
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 0,
-				TxNumber:    0,
-				Code:        applicationpb.Status_COMMITTED,
-			},
+			Ref:    committerpb.NewTxRef(txIDs0[0], 0, 0),
+			Status: committerpb.Status_COMMITTED,
 		},
 	}, status0)
 
@@ -218,22 +201,14 @@ func TestBlockWithDuplicateTransactions(t *testing.T) {
 
 	t.Log("Block #1: Check status in the queue")
 	status1 := relayEnv.readAllStatusQueue(t)
-	test.RequireProtoElementsMatch(t, []*committerpb.TxStatusEvent{
+	test.RequireProtoElementsMatch(t, []*committerpb.TxStatus{
 		{
-			TxId: txIDs1[0],
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 1,
-				TxNumber:    0,
-				Code:        applicationpb.Status_COMMITTED,
-			},
+			Ref:    committerpb.NewTxRef(txIDs1[0], 1, 0),
+			Status: committerpb.Status_COMMITTED,
 		},
 		{
-			TxId: txIDs1[1],
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 1,
-				TxNumber:    1,
-				Code:        applicationpb.Status_COMMITTED,
-			},
+			Ref:    committerpb.NewTxRef(txIDs1[1], 1, 1),
+			Status: committerpb.Status_COMMITTED,
 		},
 	}, status1)
 }
@@ -301,9 +276,9 @@ func TestRelayConfigBlock(t *testing.T) {
 	require.Equal(t, blk2, committedBlock2)
 }
 
-func (e *relayTestEnv) readAllStatusQueue(t *testing.T) []*committerpb.TxStatusEvent {
+func (e *relayTestEnv) readAllStatusQueue(t *testing.T) []*committerpb.TxStatus {
 	t.Helper()
-	var status []*committerpb.TxStatusEvent
+	var status []*committerpb.TxStatus
 	statusQueue := channel.NewReader(t.Context(), e.statusQueue)
 	// We have to read multiple times from the queue because it might split the status report into batches according
 	// to the processing logic.

@@ -13,6 +13,7 @@ import (
 	"github.com/onsi/gomega"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 )
 
@@ -31,7 +32,7 @@ func TestMixOfValidAndInvalidSign(t *testing.T) { //nolint:gocognit
 	tests := []struct {
 		name     string
 		txs      [][]*applicationpb.TxNamespace
-		expected []applicationpb.Status
+		expected []committerpb.Status
 	}{
 		{
 			name: "txs with valid and invalid signs",
@@ -57,11 +58,11 @@ func TestMixOfValidAndInvalidSign(t *testing.T) { //nolint:gocognit
 					}},
 				}},
 			},
-			expected: []applicationpb.Status{
-				applicationpb.Status_COMMITTED,
-				applicationpb.Status_ABORTED_SIGNATURE_INVALID,
-				applicationpb.Status_COMMITTED,
-				applicationpb.Status_ABORTED_SIGNATURE_INVALID,
+			expected: []committerpb.Status{
+				committerpb.Status_COMMITTED,
+				committerpb.Status_ABORTED_SIGNATURE_INVALID,
+				committerpb.Status_COMMITTED,
+				committerpb.Status_ABORTED_SIGNATURE_INVALID,
 			},
 		},
 	}

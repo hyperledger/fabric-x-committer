@@ -14,6 +14,7 @@ package servicepb
 import (
 	context "context"
 	applicationpb "github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	committerpb "github.com/hyperledger/fabric-x-committer/api/committerpb"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -40,9 +41,9 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ValidationAndCommitServiceClient interface {
 	StartValidateAndCommitStream(ctx context.Context, opts ...grpc.CallOption) (ValidationAndCommitService_StartValidateAndCommitStreamClient, error)
-	SetLastCommittedBlockNumber(ctx context.Context, in *applicationpb.BlockInfo, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	GetNextBlockNumberToCommit(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*applicationpb.BlockInfo, error)
-	GetTransactionsStatus(ctx context.Context, in *applicationpb.QueryStatus, opts ...grpc.CallOption) (*applicationpb.TransactionsStatus, error)
+	SetLastCommittedBlockNumber(ctx context.Context, in *BlockRef, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	GetNextBlockNumberToCommit(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*BlockRef, error)
+	GetTransactionsStatus(ctx context.Context, in *committerpb.TxIDsBatch, opts ...grpc.CallOption) (*committerpb.TxStatusBatch, error)
 	GetNamespacePolicies(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*applicationpb.NamespacePolicies, error)
 	GetConfigTransaction(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*applicationpb.ConfigTransaction, error)
 	SetupSystemTablesAndNamespaces(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -67,7 +68,7 @@ func (c *validationAndCommitServiceClient) StartValidateAndCommitStream(ctx cont
 
 type ValidationAndCommitService_StartValidateAndCommitStreamClient interface {
 	Send(*VcBatch) error
-	Recv() (*applicationpb.TransactionsStatus, error)
+	Recv() (*committerpb.TxStatusBatch, error)
 	grpc.ClientStream
 }
 
@@ -79,15 +80,15 @@ func (x *validationAndCommitServiceStartValidateAndCommitStreamClient) Send(m *V
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *validationAndCommitServiceStartValidateAndCommitStreamClient) Recv() (*applicationpb.TransactionsStatus, error) {
-	m := new(applicationpb.TransactionsStatus)
+func (x *validationAndCommitServiceStartValidateAndCommitStreamClient) Recv() (*committerpb.TxStatusBatch, error) {
+	m := new(committerpb.TxStatusBatch)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
 	return m, nil
 }
 
-func (c *validationAndCommitServiceClient) SetLastCommittedBlockNumber(ctx context.Context, in *applicationpb.BlockInfo, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *validationAndCommitServiceClient) SetLastCommittedBlockNumber(ctx context.Context, in *BlockRef, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, ValidationAndCommitService_SetLastCommittedBlockNumber_FullMethodName, in, out, opts...)
 	if err != nil {
@@ -96,8 +97,8 @@ func (c *validationAndCommitServiceClient) SetLastCommittedBlockNumber(ctx conte
 	return out, nil
 }
 
-func (c *validationAndCommitServiceClient) GetNextBlockNumberToCommit(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*applicationpb.BlockInfo, error) {
-	out := new(applicationpb.BlockInfo)
+func (c *validationAndCommitServiceClient) GetNextBlockNumberToCommit(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*BlockRef, error) {
+	out := new(BlockRef)
 	err := c.cc.Invoke(ctx, ValidationAndCommitService_GetNextBlockNumberToCommit_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -105,8 +106,8 @@ func (c *validationAndCommitServiceClient) GetNextBlockNumberToCommit(ctx contex
 	return out, nil
 }
 
-func (c *validationAndCommitServiceClient) GetTransactionsStatus(ctx context.Context, in *applicationpb.QueryStatus, opts ...grpc.CallOption) (*applicationpb.TransactionsStatus, error) {
-	out := new(applicationpb.TransactionsStatus)
+func (c *validationAndCommitServiceClient) GetTransactionsStatus(ctx context.Context, in *committerpb.TxIDsBatch, opts ...grpc.CallOption) (*committerpb.TxStatusBatch, error) {
+	out := new(committerpb.TxStatusBatch)
 	err := c.cc.Invoke(ctx, ValidationAndCommitService_GetTransactionsStatus_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -146,9 +147,9 @@ func (c *validationAndCommitServiceClient) SetupSystemTablesAndNamespaces(ctx co
 // for forward compatibility
 type ValidationAndCommitServiceServer interface {
 	StartValidateAndCommitStream(ValidationAndCommitService_StartValidateAndCommitStreamServer) error
-	SetLastCommittedBlockNumber(context.Context, *applicationpb.BlockInfo) (*emptypb.Empty, error)
-	GetNextBlockNumberToCommit(context.Context, *emptypb.Empty) (*applicationpb.BlockInfo, error)
-	GetTransactionsStatus(context.Context, *applicationpb.QueryStatus) (*applicationpb.TransactionsStatus, error)
+	SetLastCommittedBlockNumber(context.Context, *BlockRef) (*emptypb.Empty, error)
+	GetNextBlockNumberToCommit(context.Context, *emptypb.Empty) (*BlockRef, error)
+	GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch) (*committerpb.TxStatusBatch, error)
 	GetNamespacePolicies(context.Context, *emptypb.Empty) (*applicationpb.NamespacePolicies, error)
 	GetConfigTransaction(context.Context, *emptypb.Empty) (*applicationpb.ConfigTransaction, error)
 	SetupSystemTablesAndNamespaces(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
@@ -162,13 +163,13 @@ type UnimplementedValidationAndCommitServiceServer struct {
 func (UnimplementedValidationAndCommitServiceServer) StartValidateAndCommitStream(ValidationAndCommitService_StartValidateAndCommitStreamServer) error {
 	return status.Errorf(codes.Unimplemented, "method StartValidateAndCommitStream not implemented")
 }
-func (UnimplementedValidationAndCommitServiceServer) SetLastCommittedBlockNumber(context.Context, *applicationpb.BlockInfo) (*emptypb.Empty, error) {
+func (UnimplementedValidationAndCommitServiceServer) SetLastCommittedBlockNumber(context.Context, *BlockRef) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetLastCommittedBlockNumber not implemented")
 }
-func (UnimplementedValidationAndCommitServiceServer) GetNextBlockNumberToCommit(context.Context, *emptypb.Empty) (*applicationpb.BlockInfo, error) {
+func (UnimplementedValidationAndCommitServiceServer) GetNextBlockNumberToCommit(context.Context, *emptypb.Empty) (*BlockRef, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetNextBlockNumberToCommit not implemented")
 }
-func (UnimplementedValidationAndCommitServiceServer) GetTransactionsStatus(context.Context, *applicationpb.QueryStatus) (*applicationpb.TransactionsStatus, error) {
+func (UnimplementedValidationAndCommitServiceServer) GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch) (*committerpb.TxStatusBatch, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTransactionsStatus not implemented")
 }
 func (UnimplementedValidationAndCommitServiceServer) GetNamespacePolicies(context.Context, *emptypb.Empty) (*applicationpb.NamespacePolicies, error) {
@@ -199,7 +200,7 @@ func _ValidationAndCommitService_StartValidateAndCommitStream_Handler(srv interf
 }
 
 type ValidationAndCommitService_StartValidateAndCommitStreamServer interface {
-	Send(*applicationpb.TransactionsStatus) error
+	Send(*committerpb.TxStatusBatch) error
 	Recv() (*VcBatch, error)
 	grpc.ServerStream
 }
@@ -208,7 +209,7 @@ type validationAndCommitServiceStartValidateAndCommitStreamServer struct {
 	grpc.ServerStream
 }
 
-func (x *validationAndCommitServiceStartValidateAndCommitStreamServer) Send(m *applicationpb.TransactionsStatus) error {
+func (x *validationAndCommitServiceStartValidateAndCommitStreamServer) Send(m *committerpb.TxStatusBatch) error {
 	return x.ServerStream.SendMsg(m)
 }
 
@@ -221,7 +222,7 @@ func (x *validationAndCommitServiceStartValidateAndCommitStreamServer) Recv() (*
 }
 
 func _ValidationAndCommitService_SetLastCommittedBlockNumber_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(applicationpb.BlockInfo)
+	in := new(BlockRef)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -233,7 +234,7 @@ func _ValidationAndCommitService_SetLastCommittedBlockNumber_Handler(srv interfa
 		FullMethod: ValidationAndCommitService_SetLastCommittedBlockNumber_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ValidationAndCommitServiceServer).SetLastCommittedBlockNumber(ctx, req.(*applicationpb.BlockInfo))
+		return srv.(ValidationAndCommitServiceServer).SetLastCommittedBlockNumber(ctx, req.(*BlockRef))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -257,7 +258,7 @@ func _ValidationAndCommitService_GetNextBlockNumberToCommit_Handler(srv interfac
 }
 
 func _ValidationAndCommitService_GetTransactionsStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(applicationpb.QueryStatus)
+	in := new(committerpb.TxIDsBatch)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -269,7 +270,7 @@ func _ValidationAndCommitService_GetTransactionsStatus_Handler(srv interface{}, 
 		FullMethod: ValidationAndCommitService_GetTransactionsStatus_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ValidationAndCommitServiceServer).GetTransactionsStatus(ctx, req.(*applicationpb.QueryStatus))
+		return srv.(ValidationAndCommitServiceServer).GetTransactionsStatus(ctx, req.(*committerpb.TxIDsBatch))
 	}
 	return interceptor(ctx, in, info, handler)
 }

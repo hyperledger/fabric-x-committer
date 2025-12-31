@@ -392,14 +392,14 @@ func (c *CommitterRuntime) CreateNamespacesAndCommit(t *testing.T, namespaces ..
 	c.MakeAndSendTransactionsToOrderer(
 		t,
 		[][]*applicationpb.TxNamespace{metaTX.Namespaces},
-		[]applicationpb.Status{applicationpb.Status_COMMITTED},
+		[]committerpb.Status{committerpb.Status_COMMITTED},
 	)
 }
 
 // MakeAndSendTransactionsToOrderer creates a block with given transactions, send it to the committer,
 // and verify the result.
 func (c *CommitterRuntime) MakeAndSendTransactionsToOrderer(
-	t *testing.T, txsNs [][]*applicationpb.TxNamespace, expectedStatus []applicationpb.Status,
+	t *testing.T, txsNs [][]*applicationpb.TxNamespace, expectedStatus []committerpb.Status,
 ) []string {
 	t.Helper()
 	txs := make([]*servicepb.LoadGenTx, len(txsNs))
@@ -408,7 +408,7 @@ func (c *CommitterRuntime) MakeAndSendTransactionsToOrderer(
 		tx := &applicationpb.Tx{
 			Namespaces: namespaces,
 		}
-		if expectedStatus != nil && expectedStatus[i] == applicationpb.Status_ABORTED_SIGNATURE_INVALID {
+		if expectedStatus != nil && expectedStatus[i] == committerpb.Status_ABORTED_SIGNATURE_INVALID {
 			tx.Endorsements = make([]*applicationpb.Endorsements, len(namespaces))
 			for nsIdx := range namespaces {
 				tx.Endorsements[nsIdx] = sigtest.CreateEndorsementsForThresholdRule([]byte("dummy"))[0]
@@ -422,7 +422,7 @@ func (c *CommitterRuntime) MakeAndSendTransactionsToOrderer(
 
 // SendTransactionsToOrderer creates a block with given transactions, send it to the committer, and verify the result.
 func (c *CommitterRuntime) SendTransactionsToOrderer(
-	t *testing.T, txs []*servicepb.LoadGenTx, expectedStatus []applicationpb.Status,
+	t *testing.T, txs []*servicepb.LoadGenTx, expectedStatus []committerpb.Status,
 ) []string {
 	t.Helper()
 	expected := &ExpectedStatusInBlock{
@@ -435,7 +435,7 @@ func (c *CommitterRuntime) SendTransactionsToOrderer(
 
 	if !c.Config.CrashTest {
 		err := c.NotifyStream.Send(&committerpb.NotificationRequest{
-			TxStatusRequest: &committerpb.TxStatusRequest{
+			TxStatusRequest: &committerpb.TxIDsBatch{
 				TxIds: expected.TxIDs,
 			},
 			Timeout: durationpb.New(3 * time.Minute),
@@ -458,7 +458,7 @@ func (c *CommitterRuntime) SendTransactionsToOrderer(
 // is expected to be the same as in the committed block.
 type ExpectedStatusInBlock struct {
 	TxIDs    []string
-	Statuses []applicationpb.Status
+	Statuses []committerpb.Status
 }
 
 // ValidateExpectedResultsInCommittedBlock validates the status of transactions in the committed block.
@@ -498,32 +498,29 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 	statusBytes := blk.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER]
 	actualStatuses := make([]string, len(statusBytes))
 	for i, sB := range statusBytes {
-		actualStatuses[i] = applicationpb.Status(sB).String()
+		actualStatuses[i] = committerpb.Status(sB).String()
 	}
 	require.Equal(t, expectedStatuses, actualStatuses)
 
 	c.ensureLastCommittedBlockNumber(t, blk.Header.Number)
 
 	var persistedTxIDs []string
-	persistedTxIDsStatus := make(map[string]*applicationpb.StatusWithHeight)
-	nonDuplicateTxIDsStatus := make(map[string]*applicationpb.StatusWithHeight)
-	duplicateTxIDsStatus := make(map[string]*applicationpb.StatusWithHeight)
+	persistedTxIDsStatus := make([]*committerpb.TxStatus, 0, len(expected.TxIDs))
+	duplicateTxIDsStatus := make([]*committerpb.TxStatus, 0, len(expected.TxIDs))
 	for i, tID := range expected.TxIDs {
 		//nolint:gosec // int -> uint32.
-		s := servicepb.NewStatusWithHeight(expected.Statuses[i], blk.Header.Number, uint32(i))
-		if s.Code == applicationpb.Status_REJECTED_DUPLICATE_TX_ID {
-			duplicateTxIDsStatus[tID] = s
-		} else {
-			nonDuplicateTxIDsStatus[tID] = s
+		s := committerpb.NewTxStatus(expected.Statuses[i], tID, blk.Header.Number, uint32(i))
+		if s.Status == committerpb.Status_REJECTED_DUPLICATE_TX_ID {
+			duplicateTxIDsStatus = append(duplicateTxIDsStatus, s)
 		}
 
-		if sidecar.IsStatusStoredInDB(s.Code) {
-			persistedTxIDsStatus[tID] = s
+		if sidecar.IsStatusStoredInDB(s.Status) {
+			persistedTxIDsStatus = append(persistedTxIDsStatus, s)
 			persistedTxIDs = append(persistedTxIDs, tID)
 		}
 	}
 
-	c.DBEnv.StatusExistsForNonDuplicateTxID(t, persistedTxIDsStatus)
+	c.DBEnv.StatusExistsForNonDuplicateTxID(t.Context(), t, persistedTxIDsStatus)
 	// For the duplicate txID, neither the status nor the height would match the entry in the
 	// transaction status table.
 	c.DBEnv.StatusExistsWithDifferentHeightForDuplicateTxID(t, duplicateTxIDsStatus)
@@ -540,13 +537,13 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 }
 
 // CountStatus returns the number of transactions with a given tx status.
-func (c *CommitterRuntime) CountStatus(t *testing.T, status applicationpb.Status) int {
+func (c *CommitterRuntime) CountStatus(t *testing.T, status committerpb.Status) int {
 	t.Helper()
 	return c.DBEnv.CountStatus(t, status)
 }
 
 // CountAlternateStatus returns the number of transactions not with a given tx status.
-func (c *CommitterRuntime) CountAlternateStatus(t *testing.T, status applicationpb.Status) int {
+func (c *CommitterRuntime) CountAlternateStatus(t *testing.T, status committerpb.Status) int {
 	t.Helper()
 	return c.DBEnv.CountAlternateStatus(t, status)
 }

@@ -144,7 +144,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 						},
 					},
 				}},
-			}, []applicationpb.Status{applicationpb.Status_COMMITTED})
+			}, []committerpb.Status{committerpb.Status_COMMITTED})
 			require.Len(t, txIDs, 1)
 
 			t.Log("Query Rows")

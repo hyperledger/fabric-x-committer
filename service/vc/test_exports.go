@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
@@ -173,13 +172,13 @@ func NewDatabaseTestEnvFromConnection(t *testing.T, cs *dbtest.Connection, loadB
 }
 
 // CountStatus returns the number of transactions with a given tx status.
-func (env *DatabaseTestEnv) CountStatus(t *testing.T, status applicationpb.Status) int {
+func (env *DatabaseTestEnv) CountStatus(t *testing.T, status committerpb.Status) int {
 	t.Helper()
 	return env.getRowCount(t, fmt.Sprintf("SELECT count(*) FROM tx_status WHERE status = %d", status))
 }
 
 // CountAlternateStatus returns the number of transactions not with a given tx status.
-func (env *DatabaseTestEnv) CountAlternateStatus(t *testing.T, status applicationpb.Status) int {
+func (env *DatabaseTestEnv) CountAlternateStatus(t *testing.T, status committerpb.Status) int {
 	t.Helper()
 	return env.getRowCount(t, fmt.Sprintf("SELECT count(*) FROM tx_status WHERE status != %d", status))
 }
@@ -200,26 +199,25 @@ func (env *DatabaseTestEnv) getRowCount(t *testing.T, query string) int {
 // exist for the corresponding txIDs in the tx_status table, excluding any
 // duplicate txID statuses.
 func (env *DatabaseTestEnv) StatusExistsForNonDuplicateTxID(
+	ctx context.Context,
 	t *testing.T,
-	expectedStatuses map[string]*applicationpb.StatusWithHeight,
+	expectedStatuses []*committerpb.TxStatus,
 ) {
 	t.Helper()
-	var persistedTxIDs [][]byte
-	for id, s := range expectedStatuses {
-		if s.Code < applicationpb.Status_REJECTED_DUPLICATE_TX_ID {
-			persistedTxIDs = append(persistedTxIDs, []byte(id))
+	persistedTxIDs := make([][]byte, 0, len(expectedStatuses))
+	persistedExpectedStatuses := make([]*committerpb.TxStatus, 0, len(expectedStatuses))
+	for _, s := range expectedStatuses {
+		if s.Status < committerpb.Status_REJECTED_DUPLICATE_TX_ID {
+			persistedTxIDs = append(persistedTxIDs, []byte(s.Ref.TxId))
+			persistedExpectedStatuses = append(persistedExpectedStatuses, s)
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	actualRows, err := env.DB.readStatusWithHeight(ctx, persistedTxIDs)
+	actualStatuses, err := env.DB.readStatusWithHeight(ctx, persistedTxIDs)
 	require.NoError(t, err)
-
-	require.Len(t, actualRows, len(persistedTxIDs))
-	for _, tID := range persistedTxIDs {
-		require.EqualExportedValues(t, expectedStatuses[string(tID)], actualRows[string(tID)])
-	}
+	test.RequireProtoElementsMatch(t, persistedExpectedStatuses, actualStatuses)
 }
 
 // StatusExistsWithDifferentHeightForDuplicateTxID ensures that the given
@@ -227,27 +225,31 @@ func (env *DatabaseTestEnv) StatusExistsForNonDuplicateTxID(
 // table for duplicate txID statuses.
 func (env *DatabaseTestEnv) StatusExistsWithDifferentHeightForDuplicateTxID(
 	t *testing.T,
-	expectedStatuses map[string]*applicationpb.StatusWithHeight,
+	expectedStatuses []*committerpb.TxStatus,
 ) {
 	t.Helper()
 	txIDs := make([][]byte, 0, len(expectedStatuses))
-	for id := range expectedStatuses {
-		txIDs = append(txIDs, []byte(id))
+	for _, s := range expectedStatuses {
+		txIDs = append(txIDs, []byte(s.Ref.TxId))
 	}
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
-	actualRows, err := env.DB.readStatusWithHeight(ctx, txIDs)
+	actualTxStatuses, err := env.DB.readStatusWithHeight(ctx, txIDs)
 	require.NoError(t, err)
+	actualTxStatusMap := make(map[string]*committerpb.TxStatus, len(actualTxStatuses))
+	for _, txStatus := range actualTxStatuses {
+		actualTxStatusMap[txStatus.Ref.TxId] = txStatus
+	}
 
-	require.Len(t, actualRows, len(txIDs))
-	for _, tID := range txIDs {
+	require.Len(t, actualTxStatuses, len(expectedStatuses))
+	for _, s := range expectedStatuses {
 		// For the duplicate txID, neither the status nor the height would match the entry in the
 		// transaction status table.
-		txID := string(tID) //nolint:staticcheck // false positive.
-		require.NotEqual(t, expectedStatuses[txID].Code, actualRows[txID].Code)
-		expHeight := servicepb.NewHeight(expectedStatuses[txID].BlockNumber, expectedStatuses[txID].TxNumber)
-		actualHeight := servicepb.NewHeight(actualRows[txID].BlockNumber, actualRows[txID].TxNumber)
+		txID := s.Ref.TxId
+		require.NotEqual(t, s.Status, actualTxStatusMap[txID].Status)
+		expHeight := servicepb.NewHeightFromTxRef(s.Ref)
+		actualHeight := servicepb.NewHeightFromTxRef(actualTxStatusMap[txID].Ref)
 		require.NotEqual(t, expHeight, actualHeight)
 	}
 }
@@ -256,7 +258,7 @@ func (env *DatabaseTestEnv) populateData( //nolint:revive
 	t *testing.T,
 	createNsIDs []string,
 	nsToWrites namespaceToWrites,
-	batchStatus *applicationpb.TransactionsStatus,
+	batchStatus *committerpb.TxStatusBatch,
 	txIDToHeight transactionIDToHeight,
 ) {
 	t.Helper()

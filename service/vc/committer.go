@@ -14,8 +14,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/servicepb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
@@ -29,7 +28,7 @@ type transactionCommitter struct {
 	incomingValidatedTransactions <-chan *validatedTransactions
 	// outgoingTransactionsStatus is the channel to which the committer sends the status of the transactions
 	// so that the client can be notified
-	outgoingTransactionsStatus chan<- *applicationpb.TransactionsStatus
+	outgoingTransactionsStatus chan<- *committerpb.TxStatusBatch
 
 	metrics *perfMetrics
 }
@@ -38,7 +37,7 @@ type transactionCommitter struct {
 func newCommitter(
 	db *database,
 	validatedTxs <-chan *validatedTransactions,
-	txsStatus chan<- *applicationpb.TransactionsStatus,
+	txsStatus chan<- *committerpb.TxStatusBatch,
 	metrics *perfMetrics,
 ) *transactionCommitter {
 	logger.Info("Initializing new committer")
@@ -64,7 +63,7 @@ func (c *transactionCommitter) run(ctx context.Context, numWorkers int) error {
 
 func (c *transactionCommitter) commit(ctx context.Context) error {
 	// NOTE: Three retry is adequate for now. We can make it configurable in the future.
-	var txsStatus *applicationpb.TransactionsStatus
+	var txsStatus *committerpb.TxStatusBatch
 	var err error
 
 	incomingValidatedTransactions := channel.NewReader(ctx, c.incomingValidatedTransactions)
@@ -100,7 +99,7 @@ func (c *transactionCommitter) commit(ctx context.Context) error {
 func (c *transactionCommitter) commitTransactions(
 	ctx context.Context,
 	vTx *validatedTransactions,
-) (*applicationpb.TransactionsStatus, error) {
+) (*committerpb.TxStatusBatch, error) {
 	// We eliminate blind writes outside the retry loop to avoid doing it more than once.
 	if err := c.populateVersionsAndCategorizeBlindWrites(ctx, vTx); err != nil {
 		return nil, err
@@ -165,35 +164,31 @@ func (c *transactionCommitter) commitTransactions(
 		if err := vTx.invalidateTxsOnReadConflicts(conflicts); err != nil {
 			return nil, fmt.Errorf("failed to invalidate transactions on read conflicts: %w", err)
 		}
-		vTx.updateInvalidTxs(duplicates, applicationpb.Status_REJECTED_DUPLICATE_TX_ID)
+		vTx.updateInvalidTxs(duplicates, committerpb.Status_REJECTED_DUPLICATE_TX_ID)
 	}
 
 	return nil, errors.Newf("[BUG] commit failed after %d retries", maxRetriesToRemoveAllInvalidTxs)
 }
 
 // prepareStatusForCommit construct transaction status.
-func prepareStatusForCommit(vTx *validatedTransactions) *applicationpb.TransactionsStatus {
-	txCommitStatus := &applicationpb.TransactionsStatus{
-		Status: map[string]*applicationpb.StatusWithHeight{},
-	}
-
-	setStatus := func(txID TxID, status applicationpb.Status) {
-		txCommitStatus.Status[string(txID)] = vTx.txIDToHeight[txID].WithStatus(status)
-	}
-
-	for txID, status := range vTx.invalidTxStatus {
-		setStatus(txID, status)
-	}
-
-	for _, lst := range []transactionToWrites{
-		vTx.validTxNonBlindWrites, vTx.validTxBlindWrites, vTx.newWrites,
-	} {
+func prepareStatusForCommit(vTx *validatedTransactions) *committerpb.TxStatusBatch {
+	// We first keep all the TX statuses in a map to ensure we only report once per ID.
+	sz := len(vTx.validTxNonBlindWrites) + len(vTx.validTxBlindWrites) + len(vTx.newWrites) + len(vTx.invalidTxStatus)
+	txIDs := make(map[TxID]committerpb.Status, sz)
+	for _, lst := range []transactionToWrites{vTx.validTxNonBlindWrites, vTx.validTxBlindWrites, vTx.newWrites} {
 		for txID := range lst {
-			setStatus(txID, applicationpb.Status_COMMITTED)
+			txIDs[txID] = committerpb.Status_COMMITTED
 		}
 	}
+	for txID, status := range vTx.invalidTxStatus {
+		txIDs[txID] = status
+	}
 
-	return txCommitStatus
+	statuses := make([]*committerpb.TxStatus, 0, len(txIDs))
+	for txID, status := range txIDs {
+		statuses = append(statuses, vTx.txIDToHeight[txID].WithStatus(string(txID), status))
+	}
+	return &committerpb.TxStatusBatch{Status: statuses}
 }
 
 // populateVersionsAndCategorizeBlindWrites fetches the current version of the blind-writes keys, and assigns them
@@ -235,13 +230,15 @@ func (c *transactionCommitter) populateVersionsAndCategorizeBlindWrites(
 
 func (c *transactionCommitter) setCorrectStatusForDuplicateTxID(
 	ctx context.Context,
-	txsStatus *applicationpb.TransactionsStatus,
+	txsStatus *committerpb.TxStatusBatch,
 	txIDToHeight transactionIDToHeight,
 ) error {
 	var dupTxIDs [][]byte
-	for id, s := range txsStatus.Status {
-		if s.Code == applicationpb.Status_REJECTED_DUPLICATE_TX_ID {
-			dupTxIDs = append(dupTxIDs, []byte(id))
+	dupTxIDsIdxMap := make(map[string]int)
+	for i, s := range txsStatus.Status {
+		if s.Status == committerpb.Status_REJECTED_DUPLICATE_TX_ID {
+			dupTxIDs = append(dupTxIDs, []byte(s.Ref.TxId))
+			dupTxIDsIdxMap[s.Ref.TxId] = i
 		}
 	}
 
@@ -258,10 +255,11 @@ func (c *transactionCommitter) setCorrectStatusForDuplicateTxID(
 		return nil
 	}
 
-	for txID, sWithHeight := range idStatusHeight {
-		requiredHeight := servicepb.NewHeight(sWithHeight.BlockNumber, sWithHeight.TxNumber)
-		if servicepb.AreSame(txIDToHeight[TxID(txID)], requiredHeight) {
-			txsStatus.Status[txID] = sWithHeight
+	for _, txStatus := range idStatusHeight {
+		txID := txStatus.Ref.TxId
+		actualHeight := txIDToHeight[TxID(txID)]
+		if txStatus.Ref.IsHeight(actualHeight.BlockNum, actualHeight.TxNum) {
+			txsStatus.Status[dupTxIDsIdxMap[txID]] = txStatus
 		}
 	}
 
