@@ -36,7 +36,7 @@ func NewOrdererAdapter(config *OrdererClientConfig, res *ClientResources) *Order
 
 // RunWorkload applies load on the sidecar.
 func (c *OrdererAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWithSetup) error {
-	client, err := deliver.New(&c.config.Orderer)
+	client, err := deliver.New(&c.config.Orderer, nil)
 	if err != nil {
 		return err
 	}

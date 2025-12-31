@@ -48,9 +48,9 @@ type queryServiceTestEnv struct {
 func TestQuerySecureConnection(t *testing.T) {
 	t.Parallel()
 	test.RunSecureConnectionTest(t,
-		func(t *testing.T, tlsCfg connection.TLSConfig) test.RPCAttempt {
+		func(t *testing.T, serverTLS, clientTLS connection.TLSConfig) test.RPCAttempt {
 			t.Helper()
-			env := newQueryServiceTestEnvWithServerAndClientCreds(t, tlsCfg, test.InsecureTLSConfig)
+			env := newQueryServiceTestEnvWithServerAndClientCreds(t, serverTLS, clientTLS)
 			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
 				t.Helper()
 				client := createQueryClientWithTLS(t, &env.qs.config.Server.Endpoint, cfg)

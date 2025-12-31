@@ -7,11 +7,20 @@
 
 orderer-client:
   orderer:
-    connection:
-      endpoints:
-        {{- range .Endpoints.Orderer }}
-        - id=0,broadcast,deliver,{{ .Server }}
-        {{- end }}
+    organizations:
+      - msp-id: "org0"
+        endpoints:
+          {{- range .Endpoints.Orderer }}
+          - id=0,broadcast,deliver,{{ .Server }}
+          {{- end }}
+        ca-cert-paths:
+          {{- range .ClientTLS.CACertPaths }}
+          - {{ . }}
+          {{- end }}
+    tls:
+      mode: {{ .ClientTLS.Mode }}
+      cert-path: {{ .ClientTLS.CertPath }}
+      key-path: {{ .ClientTLS.KeyPath }}
     consensus-type: BFT
     channel-id: {{ .Policy.ChannelID }}
   broadcast-parallelism: 5

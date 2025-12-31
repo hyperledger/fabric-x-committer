@@ -192,7 +192,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	s.ClientTLS, _ = c.CredFactory.CreateClientCredentials(t, c.Config.TLSMode)
 
 	t.Log("Create processes")
-	c.MockOrderer = newProcess(t, cmdOrderer, s.WithEndpoint(s.Endpoints.Orderer[0]))
+	c.MockOrderer = newProcess(t, cmdOrderer, c.createSystemConfigWithServerTLS(t, s.Endpoints.Orderer[0]))
 	for i, e := range s.Endpoints.Verifier {
 		p := cmdVerifier
 		p.Name = fmt.Sprintf("%s-%d", p.Name, i)
@@ -237,13 +237,16 @@ func (c *CommitterRuntime) CreateRuntimeClients(ctx context.Context, t *testing.
 
 	var err error
 	c.OrdererStream, err = test.NewBroadcastStream(ctx, &ordererconn.Config{
-		Connection: ordererconn.ConnectionConfig{
-			Endpoints: c.SystemConfig.Policy.OrdererEndpoints,
-			TLS:       c.SystemConfig.ClientTLS,
-		},
+		TLS:           test.ToOrdererTLSConfig(c.SystemConfig.ClientTLS),
 		ChannelID:     c.SystemConfig.Policy.ChannelID,
 		Identity:      c.SystemConfig.Policy.Identity,
 		ConsensusType: ordererconn.Bft,
+		Organizations: []*ordererconn.OrganizationConfig{
+			{
+				Endpoints: c.SystemConfig.Policy.OrdererEndpoints,
+				CACerts:   c.SystemConfig.ClientTLS.CACertPaths,
+			},
+		},
 	})
 	require.NoError(t, err)
 	t.Cleanup(c.OrdererStream.CloseConnections)

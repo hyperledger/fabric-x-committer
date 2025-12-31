@@ -4,6 +4,14 @@
 #
 server:
   endpoint: {{ .ServiceEndpoints.Server | default "localhost:0" }}
+  tls:
+    mode: {{ .ServiceTLS.Mode }}
+    cert-path: {{ .ServiceTLS.CertPath }}
+    key-path: {{ .ServiceTLS.KeyPath }}
+    ca-cert-paths:
+      {{- range .ServiceTLS.CACertPaths }}
+      - {{ . }}
+      {{- end }}
 block-size: {{ .BlockSize }}
 block-timeout: {{ .BlockTimeout }}
 config-block-path: {{ .ConfigBlockPath }}

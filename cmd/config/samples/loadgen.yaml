@@ -24,17 +24,23 @@ monitoring:
 orderer-client:
   sidecar-client:
     endpoint: sidecar:4001
-    tls: &clientTLS
+    tls:
       mode: mtls
       cert-path: /client-certs/public-key.pem
       key-path: /client-certs/private-key.pem
       ca-cert-paths:
         - /client-certs/ca-certificate.pem
   orderer:
-    connection:
-      endpoints:
-        - id=0,broadcast,deliver,orderer:7050
-      tls: *clientTLS
+    organizations:
+      - msp-id: "org0"
+        endpoints:
+          - id=0,broadcast,deliver,orderer:7050
+        ca-cert-paths:
+          - /client-certs/ca-certificate.pem
+    tls:
+      mode: mtls
+      cert-path: /client-certs/public-key.pem
+      key-path: /client-certs/private-key.pem
     consensus-type: BFT
     channel-id: mychannel
   # We set low values to reduce the CPU load during tests.

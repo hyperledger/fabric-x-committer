@@ -22,16 +22,17 @@ monitoring:
     endpoint: :2114
 
 orderer:
-  connection:
-    endpoints:
-      - id=0,broadcast,deliver,orderer:7050
-    tls: &clientTLS
-      mode: mtls
-      cert-path: /client-certs/public-key.pem
-      key-path: /client-certs/private-key.pem
+  channel-id: mychannel
+  organizations:
+    - msp-id: "org0"
+      endpoints:
+        - id=0,broadcast,deliver,orderer:7050
       ca-cert-paths:
         - /client-certs/ca-certificate.pem
-  channel-id: mychannel
+  tls:
+    mode: mtls
+    cert-path: /client-certs/public-key.pem
+    key-path: /client-certs/private-key.pem
   # identity:
   #   root-ca-paths:
   #     - /root/config/crypto/ca-certs.pem
@@ -44,7 +45,12 @@ orderer:
   #       Hash: SHA2
 committer:
   endpoint: coordinator:9001
-  tls: *clientTLS
+  tls:
+    mode: mtls
+    cert-path: /client-certs/public-key.pem
+    key-path: /client-certs/private-key.pem
+    ca-cert-paths:
+      - /client-certs/ca-certificate.pem
 ledger:
   path: /root/sc/ledger
 notification:

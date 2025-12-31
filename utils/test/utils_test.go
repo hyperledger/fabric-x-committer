@@ -26,7 +26,7 @@ func TestCheckServerStopped(t *testing.T) {
 	mockSigVer := mock.NewMockSigVerifier()
 	sigVerServers := test.StartGrpcServersForTest(ctx, t, 1, func(server *grpc.Server, _ int) {
 		mockSigVer.RegisterService(server)
-	})
+	}, test.InsecureTLSConfig)
 
 	addr := sigVerServers.Configs[0].Endpoint.Address()
 	require.Eventually(t, func() bool {

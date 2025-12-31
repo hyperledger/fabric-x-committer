@@ -65,56 +65,51 @@ const (
 	defaultBufferSize             = 100
 )
 
-// LoadBootstrapConfig loads the bootstrap config according to the bootstrap method.
-func LoadBootstrapConfig(conf *Config) error {
-	if conf.Bootstrap.GenesisBlockFilePath == "" {
-		return nil
+// LoadOrganizationsFromGenesisBlock loads the genesis-block given bootstrap config.
+func LoadOrganizationsFromGenesisBlock(bootstrap Bootstrap) ([]*ordererconn.OrganizationMaterial, error) {
+	if bootstrap.GenesisBlockFilePath == "" {
+		return nil, nil
 	}
-	return OverwriteConfigFromBlockFile(conf)
-}
-
-// OverwriteConfigFromBlockFile overwrites the orderer connection with fields from the bootstrap config block.
-func OverwriteConfigFromBlockFile(conf *Config) error {
-	configBlock, err := configtxgen.ReadBlock(conf.Bootstrap.GenesisBlockFilePath)
+	configBlock, err := configtxgen.ReadBlock(bootstrap.GenesisBlockFilePath)
 	if err != nil {
-		return errors.Wrap(err, "read config block")
+		return nil, errors.Wrap(err, "read config block")
 	}
-	return OverwriteConfigFromBlock(conf, configBlock)
+	return GetOrganizationsFromConfigBlock(configBlock)
 }
 
-// OverwriteConfigFromBlock overwrites the orderer connection with fields from a config block.
-func OverwriteConfigFromBlock(conf *Config, configBlock *common.Block) error {
+// GetOrganizationsFromConfigBlock retrieve the organization materials from a config block.
+func GetOrganizationsFromConfigBlock(configBlock *common.Block) ([]*ordererconn.OrganizationMaterial, error) {
 	envelope, err := protoutil.ExtractEnvelope(configBlock, 0)
 	if err != nil {
-		return errors.Wrap(err, "failed to extract envelope")
+		return nil, errors.Wrap(err, "failed to extract envelope")
 	}
-	return OverwriteConfigFromEnvelope(conf, envelope)
+	return GetOrganizationsFromEnvelope(envelope)
 }
 
-// OverwriteConfigFromEnvelope overwrites the orderer connection with fields from a config transaction.
+// GetOrganizationsFromEnvelope retrieve the organization materials from a config transaction.
 // For now, it fetches the following:
 // - Orderer endpoints.
-// TODO: Fetch Root CAs.
-func OverwriteConfigFromEnvelope(conf *Config, envelope *common.Envelope) error {
+// - RootCAs per organization.
+func GetOrganizationsFromEnvelope(envelope *common.Envelope) ([]*ordererconn.OrganizationMaterial, error) {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
 	if err != nil {
-		return errors.Wrap(err, "failed to create config bundle")
+		return nil, errors.Wrap(err, "failed to create config bundle")
 	}
-	conf.Orderer.Connection.Endpoints, err = getDeliveryEndpointsFromConfig(bundle)
+	orgsMaterial, err := readOrganizationsFromBundle(bundle)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return orgsMaterial, nil
 }
 
-func getDeliveryEndpointsFromConfig(bundle *channelconfig.Bundle) ([]*commontypes.OrdererEndpoint, error) {
-	oc, ok := bundle.OrdererConfig()
+func readOrganizationsFromBundle(bundle *channelconfig.Bundle) ([]*ordererconn.OrganizationMaterial, error) {
+	ordererCfg, ok := bundle.OrdererConfig()
 	if !ok {
 		return nil, errors.New("could not find orderer config")
 	}
-
-	var endpoints []*commontypes.OrdererEndpoint
-	for orgID, org := range oc.Organizations() {
+	organizationMaterials := make([]*ordererconn.OrganizationMaterial, 0, len(ordererCfg.Organizations()))
+	for orgID, org := range ordererCfg.Organizations() {
+		var endpoints []*commontypes.OrdererEndpoint
 		endpointsStr := org.Endpoints()
 		for _, eStr := range endpointsStr {
 			e, err := commontypes.ParseOrdererEndpoint(eStr)
@@ -124,6 +119,11 @@ func getDeliveryEndpointsFromConfig(bundle *channelconfig.Bundle) ([]*commontype
 			e.MspID = orgID
 			endpoints = append(endpoints, e)
 		}
+		organizationMaterials = append(organizationMaterials, &ordererconn.OrganizationMaterial{
+			MspID:     orgID,
+			Endpoints: endpoints,
+			CACerts:   org.MSP().GetTLSRootCerts(),
+		})
 	}
-	return endpoints, nil
+	return organizationMaterials, nil
 }
