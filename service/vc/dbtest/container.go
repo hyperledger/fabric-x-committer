@@ -32,9 +32,6 @@ const (
 	defaultPostgresImage            = "postgres:16.9-alpine3.21"
 	defaultDBDeploymentTemplateName = "sc_%s_unit_tests"
 
-	defaultHostIP  = "127.0.0.1"
-	defaultPortMap = "7000/tcp"
-
 	// container's Memory and CPU management.
 	gb         = 1 << 30 // gb is the number of bytes needed to represent 1 GB.
 	memorySwap = -1      // memorySwap disable memory swaps (don't store data on disk)

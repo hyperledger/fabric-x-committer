@@ -69,7 +69,7 @@ func TestHasCodeWithGRPCService(t *testing.T) {
 	defer cancel()
 	server := test.StartGrpcServersForTest(ctx, t, 1, func(server *grpc.Server, _ int) {
 		healthgrpc.RegisterHealthServer(server, &healthgrpc.UnimplementedHealthServer{})
-	})
+	}, test.InsecureTLSConfig)
 
 	conn := test.NewInsecureConnectionWithRetry(t, &server.Configs[0].Endpoint, connection.RetryProfile{
 		MaxElapsedTime: 2 * time.Second,

@@ -31,14 +31,23 @@ type (
 	ConnectionManager struct {
 		configVersion atomic.Uint64
 		connections   map[string]*grpc.ClientConn
-		config        *ConnectionConfig
+		endpoints     []*commontypes.OrdererEndpoint
 		lock          sync.Mutex
+		retry         *connection.RetryProfile
+		tlsParameters *connection.TLSMaterials
 	}
 
 	// ConnFilter is used to filter connections.
 	ConnFilter struct {
 		api string
 		id  uint32
+	}
+
+	// openConnectionParameters is the orderer client config with tls parameters already loaded bytes.
+	openConnectionParameters struct {
+		Endpoints []*connection.Endpoint
+		TLS       *connection.TLSMaterials
+		Retry     *connection.RetryProfile
 	}
 )
 
@@ -88,91 +97,118 @@ func aggregateFilter(filters ...ConnFilter) ConnFilter {
 	return k
 }
 
-func filterOrdererEndpoints(endpoints []*commontypes.OrdererEndpoint, filters ...ConnFilter) []*connection.Endpoint {
-	key := aggregateFilter(filters...)
-	result := make([]*connection.Endpoint, 0, len(endpoints))
-	for _, ep := range endpoints {
-		if key.api != anyAPI && !ep.SupportsAPI(key.api) {
-			continue
+// NewConnectionManager constructs a ConnectionManager and initializes its connections.
+// If orgMaterial provided, we update the connection manager accordingly.
+// Else, we are using the organization config.
+func NewConnectionManager(config *Config, orgs []*OrganizationMaterial) (*ConnectionManager, error) {
+	var orgsMaterial []*OrganizationMaterial
+	if len(orgs) > 0 {
+		orgsMaterial = orgs
+	} else {
+		var err error
+		orgsMaterial, err = config.OrganizationsConfigToMaterials()
+		if err != nil {
+			return nil, err
 		}
-		if key.id != anyID && ep.ID != key.id {
-			continue
-		}
-		result = append(result, &connection.Endpoint{Host: ep.Host, Port: ep.Port})
 	}
-	return result
+	tlsParams, err := (&connection.TLSConfig{
+		BaseTLSConfig: config.TLS.BaseTLSConfig,
+	}).ToMaterials()
+	if err != nil {
+		return nil, err
+	}
+	// create connection manager with the config's retry policy and TLS.
+	cm := &ConnectionManager{
+		tlsParameters: tlsParams,
+		retry:         config.Retry,
+	}
+	if err = cm.Update(orgsMaterial); err != nil {
+		return nil, err
+	}
+	return cm, nil
 }
 
-// Update updates the connection configs.
+// Update updates the orderer connections.
 // This will close all connections, forcing the clients to reload.
-func (c *ConnectionManager) Update(config *ConnectionConfig) error {
-	if err := ValidateConnectionConfig(config); err != nil {
+// Complexity is inherent: this function atomically builds and cache connections across organizations.
+func (cm *ConnectionManager) Update(orgsMat []*OrganizationMaterial) error { //nolint:gocognit
+	if err := ValidateOrganizationParameters(orgsMat...); err != nil {
 		return err
 	}
-
 	// We pre create all the connections to ensure correct form.
 	connections := make(map[string]*grpc.ClientConn)
 	// We use a connection cache to avoid opening the same connection multiple times.
 	connCache := make(map[string]*grpc.ClientConn)
 	allAPIs := []string{anyAPI, Broadcast, Deliver}
-	for _, id := range append(getAllIDs(config.Endpoints), anyID) {
-		for _, api := range allAPIs {
-			filter := aggregateFilter(WithAPI(api), WithID(id))
-			endpoints := filterOrdererEndpoints(config.Endpoints, filter)
-			if len(endpoints) == 0 {
-				continue
-			}
-			endpointsKey := makeEndpointsKey(endpoints)
-			conn, connInCache := connCache[endpointsKey]
-			if !connInCache {
-				var err error
-				conn, err = openConnection(config, endpoints)
-				if err != nil {
-					closeConnection(connections)
-					return err
+	// We save the endpoints for later processing.
+	var allOrgsEndpoints []*commontypes.OrdererEndpoint
+	for _, orgParams := range orgsMat {
+		orgTLSParams := *cm.tlsParameters
+		orgTLSParams.CACerts = append(orgTLSParams.CACerts, orgParams.CACerts...)
+		for _, id := range append(getAllIDs(orgParams.Endpoints), anyID) {
+			for _, api := range allAPIs {
+				filter := aggregateFilter(WithAPI(api), WithID(id))
+				endpoints := filterOrdererEndpoints(orgParams.Endpoints, filter)
+				if len(endpoints) == 0 {
+					continue
 				}
-				connCache[endpointsKey] = conn
+				endpointsKey := makeEndpointsKey(endpoints)
+				conn, connInCache := connCache[endpointsKey]
+				if !connInCache {
+					var err error
+					conn, err = openConnection(&openConnectionParameters{
+						Endpoints: endpoints,
+						TLS:       &orgTLSParams,
+						Retry:     cm.retry,
+					})
+					if err != nil {
+						closeConnection(connections)
+						return err
+					}
+					connCache[endpointsKey] = conn
+				}
+				connections[filterKey(filter)] = conn
 			}
-			connections[filterKey(filter)] = conn
 		}
+		allOrgsEndpoints = append(allOrgsEndpoints, orgParams.Endpoints...)
 	}
 
 	// We lock once we read internal members.
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	cm.lock.Lock()
+	defer cm.lock.Unlock()
 
 	// We increase the version early (before closing any connections, but after locking)
 	// to ensure the recovery stage knows about an update.
-	c.configVersion.Add(1)
-	closeConnection(c.connections)
-	c.connections = connections
-	c.config = config
+	cm.configVersion.Add(1)
+	closeConnection(cm.connections)
+	cm.connections = connections
+	cm.endpoints = allOrgsEndpoints
 	return nil
 }
 
 // GetConnection returns a connection given filters.
-func (c *ConnectionManager) GetConnection(filters ...ConnFilter) (*grpc.ClientConn, uint64) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	v := c.configVersion.Load()
-	if c.connections == nil {
+func (cm *ConnectionManager) GetConnection(filters ...ConnFilter) (*grpc.ClientConn, uint64) {
+	cm.lock.Lock()
+	defer cm.lock.Unlock()
+	v := cm.configVersion.Load()
+	if cm.connections == nil {
 		return nil, v
 	}
-	return c.connections[filterKey(filters...)], v
+	return cm.connections[filterKey(filters...)], v
 }
 
 // GetConnectionPerID returns a connection given filters per ID.
-func (c *ConnectionManager) GetConnectionPerID(filters ...ConnFilter) (map[uint32]*grpc.ClientConn, uint64) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+func (cm *ConnectionManager) GetConnectionPerID(filters ...ConnFilter) (map[uint32]*grpc.ClientConn, uint64) {
+	cm.lock.Lock()
+	defer cm.lock.Unlock()
 	ret := make(map[uint32]*grpc.ClientConn)
-	v := c.configVersion.Load()
-	if c.connections == nil {
+	v := cm.configVersion.Load()
+	if cm.connections == nil {
 		return ret, v
 	}
 	filter := aggregateFilter(filters...)
-	for _, id := range getAllIDs(c.config.Endpoints) {
-		conn := c.connections[filterKey(filter, WithID(id))]
+	for _, id := range getAllIDs(cm.endpoints) {
+		conn := cm.connections[filterKey(filter, WithID(id))]
 		if conn != nil {
 			ret[id] = conn
 		}
@@ -189,17 +225,12 @@ func getAllIDs(endpoints []*commontypes.OrdererEndpoint) []uint32 {
 }
 
 func openConnection(
-	conf *ConnectionConfig,
-	endpoints []*connection.Endpoint,
+	params *openConnectionParameters,
 ) (*grpc.ClientConn, error) {
 	// We shuffle the endpoints for load balancing.
-	shuffle(endpoints)
-	logger.Infof("Opening connections to %d endpoints: %v.", len(endpoints), endpoints)
-	return connection.NewLoadBalancedConnection(&connection.MultiClientConfig{
-		Endpoints: endpoints,
-		Retry:     conf.Retry,
-		TLS:       conf.TLS,
-	})
+	shuffle(params.Endpoints)
+	logger.Infof("Opening connections to %d endpoints: %v.", len(params.Endpoints), params.Endpoints)
+	return connection.NewLoadBalancedConnectionForOrderer(params.Endpoints, params.TLS, params.Retry)
 }
 
 func makeEndpointsKey(endpoint []*connection.Endpoint) string {
@@ -212,17 +243,17 @@ func makeEndpointsKey(endpoint []*connection.Endpoint) string {
 }
 
 // CloseConnections closes all the connections.
-func (c *ConnectionManager) CloseConnections() {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	closeConnection(c.connections)
-	c.connections = nil
+func (cm *ConnectionManager) CloseConnections() {
+	cm.lock.Lock()
+	defer cm.lock.Unlock()
+	closeConnection(cm.connections)
+	cm.connections = nil
 }
 
 // IsStale checks if the given OrdererConnectionResiliencyManager is stale.
 // If nil is given, it returns true.
-func (c *ConnectionManager) IsStale(configVersion uint64) bool {
-	return c.configVersion.Load() != configVersion
+func (cm *ConnectionManager) IsStale(configVersion uint64) bool {
+	return cm.configVersion.Load() != configVersion
 }
 
 func closeConnection(connections map[string]*grpc.ClientConn) {
@@ -233,4 +264,19 @@ func closeConnection(connections map[string]*grpc.ClientConn) {
 
 func shuffle[T any](nodes []T) {
 	rand.Shuffle(len(nodes), func(i, j int) { nodes[i], nodes[j] = nodes[j], nodes[i] })
+}
+
+func filterOrdererEndpoints(endpoints []*commontypes.OrdererEndpoint, filters ...ConnFilter) []*connection.Endpoint {
+	key := aggregateFilter(filters...)
+	result := make([]*connection.Endpoint, 0, len(endpoints))
+	for _, ep := range endpoints {
+		if key.api != anyAPI && !ep.SupportsAPI(key.api) {
+			continue
+		}
+		if key.id != anyID && ep.ID != key.id {
+			continue
+		}
+		result = append(result, &connection.Endpoint{Host: ep.Host, Port: ep.Port})
+	}
+	return result
 }

@@ -45,7 +45,7 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 	t.Helper()
 	_, verifier := mock.StartMockSVService(t, 1)
 	_, vc := mock.StartMockVCService(t, 1)
-	_, orderer := mock.StartMockOrderingServices(t, &mock.OrdererConfig{NumService: 1})
+	_, orderer := mock.StartMockOrderingServices(t, &mock.OrdererConfig{NumService: 1}, test.InsecureTLSConfig)
 	_, coordinator := mock.StartMockCoordinatorService(t)
 	conn := dbtest.PrepareTestEnv(t)
 	server := connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig)

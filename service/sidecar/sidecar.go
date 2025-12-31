@@ -53,13 +53,20 @@ type Service struct {
 // New creates a sidecar service.
 func New(c *Config) (*Service, error) {
 	logger.Info("Initializing new sidecar")
-	err := LoadBootstrapConfig(c)
+
+	orgsMaterial, err := LoadOrganizationsFromGenesisBlock(c.Bootstrap)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load shared config: %w", err)
+		return nil, fmt.Errorf("failed to load organizations materials: %w", err)
 	}
 
+	// Temporary workaround.
+	// Once the config-block-with-crypto tool is added, we will call deliver.New(&c.Orderer, orgsMaterial) directly.
+	// For now, we apply this hack to preserve the root CAs loaded from the configuration.
+	// LoadOrganizationsFromGenesisBlock currently returns OrganizationMaterial with unknown root CAs.
+	c.Orderer.UpdateConfigFromOrganizationsMaterial(orgsMaterial)
+
 	// 1. Fetch blocks from the ordering service.
-	ordererClient, err := deliver.New(&c.Orderer)
+	ordererClient, err := deliver.New(&c.Orderer, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create orderer client: %w", err)
 	}
@@ -209,12 +216,23 @@ func (s *Service) recoverCommittedBlocks(ctx context.Context) {
 
 func (s *Service) configUpdater(block *common.Block) {
 	logger.Infof("updating config from block: %d", block.Header.Number)
-	err := OverwriteConfigFromBlock(s.config, block)
+	orgsMaterial, err := GetOrganizationsFromConfigBlock(block)
 	if err != nil {
 		logger.Warnf("failed to load config from block %d: %v", block.Header.Number, err)
 		return
 	}
-	err = s.ordererClient.UpdateConnections(&s.config.Orderer.Connection)
+
+	// Temporary workaround.
+	// Once the config-block-with-crypto tool is added, we will call
+	// s.ordererClient.UpdateConnections(orgsMaterial) directly.
+	// For now, we apply this hack to preserve the root CAs loaded from the configuration.
+	// GetOrganizationsFromConfigBlock currently returns OrganizationMaterial with unknown root CAs.
+	s.config.Orderer.UpdateConfigFromOrganizationsMaterial(orgsMaterial)
+	updatedOrgsMat, err := s.config.Orderer.OrganizationsConfigToMaterials()
+	if err != nil {
+		logger.Warn(err)
+	}
+	err = s.ordererClient.UpdateConnections(updatedOrgsMat)
 	if err != nil {
 		logger.Warnf("failed to update config for block %d: %v", block.Header.Number, err)
 	}
@@ -276,11 +294,22 @@ func (s *Service) recoverConfigTransactionFromStateDB(
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal meta policy envelope: %w", err)
 	}
-	err = OverwriteConfigFromEnvelope(s.config, envelope)
+	orgsMaterial, err := GetOrganizationsFromEnvelope(envelope)
 	if err != nil {
 		return err
 	}
-	err = s.ordererClient.UpdateConnections(&s.config.Orderer.Connection)
+
+	// Temporary workaround.
+	// Once the config-block-with-crypto tool is added, we will call
+	// s.ordererClient.UpdateConnections(orgsMaterial) directly.
+	// For now, we apply this hack to preserve the root CAs loaded from the configuration.
+	// GetOrganizationsFromEnvelope currently returns OrganizationMaterial with unknown root CAs.
+	s.config.Orderer.UpdateConfigFromOrganizationsMaterial(orgsMaterial)
+	updatedOrgsMat, err := s.config.Orderer.OrganizationsConfigToMaterials()
+	if err != nil {
+		return err
+	}
+	err = s.ordererClient.UpdateConnections(updatedOrgsMat)
 	return errors.Wrapf(err, "failed to update connections")
 }
 

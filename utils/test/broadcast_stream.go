@@ -58,13 +58,13 @@ type (
 
 // NewBroadcastStream starts a new broadcast stream (non-production).
 func NewBroadcastStream(ctx context.Context, config *ordererconn.Config) (*BroadcastStream, error) {
-	if err := ordererconn.ValidateConfig(config); err != nil {
-		return nil, errors.Wrap(err, "error validating config")
+	if err := ordererconn.ValidateConsensusType(config); err != nil {
+		return nil, err
 	}
 
-	cm := &ordererconn.ConnectionManager{}
-	if err := cm.Update(&config.Connection); err != nil {
-		return nil, errors.Wrap(err, "error creating connections")
+	cm, err := ordererconn.NewConnectionManager(config, nil)
+	if err != nil {
+		return nil, err
 	}
 
 	stream := &BroadcastStream{ConnectionManager: cm}

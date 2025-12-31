@@ -112,11 +112,12 @@ func StartGrpcServersForTest(
 	t *testing.T,
 	numService int,
 	register func(*grpc.Server, int),
+	serverCreds connection.TLSConfig,
 ) *GrpcServers {
 	t.Helper()
 	sc := make([]*connection.ServerConfig, numService)
 	for i := range sc {
-		sc[i] = connection.NewLocalHostServerWithTLS(InsecureTLSConfig)
+		sc[i] = connection.NewLocalHostServerWithTLS(serverCreds)
 	}
 	return StartGrpcServersWithConfigForTest(ctx, t, sc, register)
 }
@@ -270,11 +271,13 @@ func NewSecuredConnectionWithRetry(
 	retry connection.RetryProfile,
 ) *grpc.ClientConn {
 	t.Helper()
-	clientCreds, err := tlsConfig.ClientCredentials()
+	tlsMaterials, err := tlsConfig.ToMaterials()
+	require.NoError(t, err)
+	tlsCreds, err := tlsMaterials.ClientCredentials()
 	require.NoError(t, err)
 	conn, err := connection.NewConnection(connection.Parameters{
 		Address: endpoint.Address(),
-		Creds:   clientCreds,
+		Creds:   tlsCreds,
 		Retry:   &retry,
 	})
 	require.NoError(t, err)
@@ -430,6 +433,14 @@ func MustCreateEndpoint(value string) *connection.Endpoint {
 		panic(errors.Wrap(err, "could not create endpoint"))
 	}
 	return endpoint
+}
+
+// ToOrdererTLSConfig narrows a full TLSConfig down to an OrdererTLSConfig.
+// It effectively strips out the CA certificates.
+func ToOrdererTLSConfig(c connection.TLSConfig) connection.OrdererTLSConfig {
+	return connection.OrdererTLSConfig{
+		BaseTLSConfig: c.BaseTLSConfig,
+	}
 }
 
 const (

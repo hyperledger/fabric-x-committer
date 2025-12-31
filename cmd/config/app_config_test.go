@@ -31,25 +31,31 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
+	testutils "github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 var (
 	defaultServerTLSConfig = connection.TLSConfig{
-		Mode:     connection.MutualTLSMode,
-		CertPath: "/server-certs/public-key.pem",
-		KeyPath:  "/server-certs/private-key.pem",
+		BaseTLSConfig: connection.BaseTLSConfig{
+			Mode:     connection.MutualTLSMode,
+			CertPath: "/server-certs/public-key.pem",
+			KeyPath:  "/server-certs/private-key.pem",
+		},
 		CACertPaths: []string{
 			"/server-certs/ca-certificate.pem",
 		},
 	}
 	defaultClientTLSConfig = connection.TLSConfig{
-		Mode:     connection.MutualTLSMode,
-		CertPath: "/client-certs/public-key.pem",
-		KeyPath:  "/client-certs/private-key.pem",
+		BaseTLSConfig: connection.BaseTLSConfig{
+			Mode:     connection.MutualTLSMode,
+			CertPath: "/client-certs/public-key.pem",
+			KeyPath:  "/client-certs/private-key.pem",
+		},
 		CACertPaths: []string{
 			"/client-certs/ca-certificate.pem",
 		},
 	}
+	defaultClientCACertificatePaths = defaultClientTLSConfig.CACertPaths
 )
 
 func TestReadConfigSidecar(t *testing.T) {
@@ -65,12 +71,14 @@ func TestReadConfigSidecar(t *testing.T) {
 			Server:     newServerConfig("localhost", 4001),
 			Monitoring: newMonitoringConfig("localhost", 2114),
 			Orderer: ordererconn.Config{
-				Connection: ordererconn.ConnectionConfig{
-					Endpoints: []*commontypes.OrdererEndpoint{
-						newOrdererEndpoint("", "localhost"),
+				ChannelID: "mychannel",
+				Organizations: []*ordererconn.OrganizationConfig{
+					{
+						Endpoints: []*commontypes.OrdererEndpoint{
+							newOrdererEndpoint("", "localhost"),
+						},
 					},
 				},
-				ChannelID: "mychannel",
 			},
 			Committer: &connection.ClientConfig{
 				Endpoint: newEndpoint("localhost", 9001),
@@ -105,13 +113,17 @@ func TestReadConfigSidecar(t *testing.T) {
 			},
 			Monitoring: newMonitoringConfig("", 2114),
 			Orderer: ordererconn.Config{
-				Connection: ordererconn.ConnectionConfig{
-					Endpoints: []*commontypes.OrdererEndpoint{
-						newOrdererEndpoint("", "orderer"),
-					},
-					TLS: defaultClientTLSConfig,
-				},
 				ChannelID: "mychannel",
+				TLS:       testutils.ToOrdererTLSConfig(defaultClientTLSConfig),
+				Organizations: []*ordererconn.OrganizationConfig{
+					{
+						MspID: "org0",
+						Endpoints: []*commontypes.OrdererEndpoint{
+							newOrdererEndpoint("", "orderer"),
+						},
+						CACerts: defaultClientCACertificatePaths,
+					},
+				},
 			},
 			Committer: newClientConfigWithDefaultTLS("coordinator", 9001),
 			Ledger: sidecar.LedgerConfig{
@@ -362,14 +374,18 @@ func TestReadConfigLoadGen(t *testing.T) {
 				OrdererClient: &adapters.OrdererClientConfig{
 					SidecarClient: newClientConfigWithDefaultTLS("sidecar", 4001),
 					Orderer: ordererconn.Config{
-						Connection: ordererconn.ConnectionConfig{
-							Endpoints: []*commontypes.OrdererEndpoint{
-								newOrdererEndpoint("", "orderer"),
-							},
-							TLS: defaultClientTLSConfig,
-						},
 						ChannelID:     "mychannel",
 						ConsensusType: ordererconn.Bft,
+						TLS:           testutils.ToOrdererTLSConfig(defaultClientTLSConfig),
+						Organizations: []*ordererconn.OrganizationConfig{
+							{
+								MspID: "org0",
+								Endpoints: []*commontypes.OrdererEndpoint{
+									newOrdererEndpoint("", "orderer"),
+								},
+								CACerts: defaultClientCACertificatePaths,
+							},
+						},
 					},
 					BroadcastParallelism: 1,
 				},
