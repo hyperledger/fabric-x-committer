@@ -73,8 +73,8 @@ var (
 // Once the config-block-with-crypto tool is added, we will remove this function.
 // For now, it's saving the initialized root CAs we got from the config
 // and uses them for the updated orderer endpoints that arrived from the config block.
-func (c *Config) UpdateConfigFromOrganizationsMaterial(parameters []*OrganizationMaterial) {
-	if len(parameters) == 0 {
+func (c *Config) UpdateConfigFromOrganizationsMaterial(orgsMat []*OrganizationMaterial) {
+	if len(orgsMat) == 0 {
 		return
 	}
 
@@ -83,8 +83,8 @@ func (c *Config) UpdateConfigFromOrganizationsMaterial(parameters []*Organizatio
 		caCerts = c.Organizations[0].CACerts
 	}
 
-	c.Organizations = make([]*OrganizationConfig, 0, len(parameters))
-	for _, p := range parameters {
+	c.Organizations = make([]*OrganizationConfig, 0, len(orgsMat))
+	for _, p := range orgsMat {
 		org := &OrganizationConfig{
 			MspID:   p.MspID,
 			CACerts: caCerts,
@@ -128,8 +128,8 @@ func (oc *OrganizationConfig) toMaterial(tlsMode string) (*OrganizationMaterial,
 	return orgsMaterial, nil
 }
 
-// ValidateOrganizationParameters validate the organization parameters.
-func ValidateOrganizationParameters(organizations ...*OrganizationMaterial) error {
+// ValidateOrganizations validate the organization parameters.
+func ValidateOrganizations(organizations ...*OrganizationMaterial) error {
 	for _, org := range organizations {
 		if org == nil {
 			return ErrEmptyConnectionConfig
@@ -145,7 +145,7 @@ func validateEndpoints(endpoints []*commontypes.OrdererEndpoint) error {
 	if len(endpoints) == 0 {
 		return ErrNoEndpoints
 	}
-	uniqueEndpoints := make(map[string]string, len(endpoints))
+	uniqueEndpoints := make(map[string]string)
 	for _, e := range endpoints {
 		if e.Host == "" || e.Port == 0 {
 			return ErrEmptyEndpoint

@@ -98,8 +98,8 @@ func aggregateFilter(filters ...ConnFilter) ConnFilter {
 }
 
 // NewConnectionManager constructs a ConnectionManager and initializes its connections.
-// If orgMaterial provided, we update the connection manager accordingly.
-// Else, we are using the organization config.
+// If orgMaterial is provided, it updates the connection manager accordingly.
+// Otherwise, it uses the organization configuration.
 func NewConnectionManager(config *Config, orgs []*OrganizationMaterial) (*ConnectionManager, error) {
 	var orgsMaterial []*OrganizationMaterial
 	if len(orgs) > 0 {
@@ -132,7 +132,7 @@ func NewConnectionManager(config *Config, orgs []*OrganizationMaterial) (*Connec
 // This will close all connections, forcing the clients to reload.
 // Complexity is inherent: this function atomically builds and cache connections across organizations.
 func (cm *ConnectionManager) Update(orgsMat []*OrganizationMaterial) error { //nolint:gocognit
-	if err := ValidateOrganizationParameters(orgsMat...); err != nil {
+	if err := ValidateOrganizations(orgsMat...); err != nil {
 		return err
 	}
 	// We pre create all the connections to ensure correct form.
