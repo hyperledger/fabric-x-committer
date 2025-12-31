@@ -206,7 +206,7 @@ func TestSignatureRule(t *testing.T) {
 		}},
 	}
 
-	data, err := signature.ASN1MarshalTxNamespace(fakeTxID, tx1.Namespaces[0])
+	data, err := tx1.Namespaces[0].ASN1Marshal(fakeTxID)
 	require.NoError(t, err)
 
 	for _, certType := range []int{test.CreatorCertificate, test.CreatorID} {

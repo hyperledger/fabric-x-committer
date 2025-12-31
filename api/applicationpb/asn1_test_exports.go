@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package signature
+package applicationpb
 
 import (
 	"encoding/asn1"
@@ -12,14 +12,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 // TestTx represents a test transaction for ASN1 marshalling tests.
 type TestTx struct {
 	ID         string
-	Namespaces []*applicationpb.TxNamespace
+	Namespaces []*TxNamespace
 }
 
 // CommonTestAsnMarshal tests ASN1 marshalling and unmarshalling of the given TXs.
@@ -43,7 +42,7 @@ func CommonTestAsnMarshal(t *testing.T, txs []*TestTx) {
 				translatedNamespace := make([][]byte, len(tx.Namespaces))
 				for i, ns := range tx.Namespaces {
 					var err error
-					translatedNamespace[i], err = ASN1MarshalTxNamespace(tx.ID, ns)
+					translatedNamespace[i], err = ns.ASN1Marshal(tx.ID)
 					require.NoError(t, err)
 				}
 				txID, actualTxNs := reconstructTX(t, translatedNamespace)
@@ -54,9 +53,9 @@ func CommonTestAsnMarshal(t *testing.T, txs []*TestTx) {
 	}
 }
 
-func requireASN1Marshal(t *testing.T, txID string, ns *applicationpb.TxNamespace) []byte {
+func requireASN1Marshal(t *testing.T, txID string, ns *TxNamespace) []byte {
 	t.Helper()
-	translated := TranslateTx(txID, ns)
+	translated := ns.translate(txID)
 
 	// The marshalled object cannot distinguish between empty and nil slice.
 	// So, we convert all nils to empty slices to allow comparison with the unmarshalled object.
@@ -73,10 +72,10 @@ func requireASN1Marshal(t *testing.T, txID string, ns *applicationpb.TxNamespace
 		}
 	}
 
-	derBytes, err := ASN1MarshalTxNamespace(txID, ns)
+	derBytes, err := ns.ASN1Marshal(txID)
 	require.NoError(t, err)
 
-	actual := &ASN1Namespace{}
+	actual := &asn1Namespace{}
 	_, err = asn1.Unmarshal(derBytes, actual)
 	require.NoError(t, err)
 	require.Equal(t, translated, actual)
@@ -85,12 +84,12 @@ func requireASN1Marshal(t *testing.T, txID string, ns *applicationpb.TxNamespace
 
 // reconstructTX unmarshal the given namespaces and reconstruct a TX.
 // Any change to [*applicationpb.Tx] requires a change to this method.
-func reconstructTX(t *testing.T, namespaces [][]byte) (txID string, txNs []*applicationpb.TxNamespace) {
+func reconstructTX(t *testing.T, namespaces [][]byte) (txID string, txNs []*TxNamespace) {
 	t.Helper()
-	txNs = make([]*applicationpb.TxNamespace, len(namespaces))
+	txNs = make([]*TxNamespace, len(namespaces))
 
 	for i, nsDer := range namespaces {
-		translated := &ASN1Namespace{}
+		translated := &asn1Namespace{}
 		_, err := asn1.Unmarshal(nsDer, translated)
 		require.NoError(t, err)
 
@@ -100,32 +99,32 @@ func reconstructTX(t *testing.T, namespaces [][]byte) (txID string, txNs []*appl
 			require.Equal(t, txID, translated.TxID)
 		}
 
-		nsVer := AsnToProtoVersion(translated.NamespaceVersion)
+		nsVer := asnToProtoVersion(translated.NamespaceVersion)
 		require.NotNil(t, nsVer)
-		ns := &applicationpb.TxNamespace{
+		ns := &TxNamespace{
 			NsId:        translated.NamespaceID,
 			NsVersion:   *nsVer,
-			ReadsOnly:   make([]*applicationpb.Read, len(translated.ReadsOnly)),
-			ReadWrites:  make([]*applicationpb.ReadWrite, len(translated.ReadWrites)),
-			BlindWrites: make([]*applicationpb.Write, len(translated.BlindWrites)),
+			ReadsOnly:   make([]*Read, len(translated.ReadsOnly)),
+			ReadWrites:  make([]*ReadWrite, len(translated.ReadWrites)),
+			BlindWrites: make([]*Write, len(translated.BlindWrites)),
 		}
 		txNs[i] = ns
 
 		for j, read := range translated.ReadsOnly {
-			ns.ReadsOnly[j] = &applicationpb.Read{
+			ns.ReadsOnly[j] = &Read{
 				Key:     read.Key,
-				Version: AsnToProtoVersion(read.Version),
+				Version: asnToProtoVersion(read.Version),
 			}
 		}
 		for j, rw := range translated.ReadWrites {
-			ns.ReadWrites[j] = &applicationpb.ReadWrite{
+			ns.ReadWrites[j] = &ReadWrite{
 				Key:     rw.Key,
 				Value:   rw.Value,
-				Version: AsnToProtoVersion(rw.Version),
+				Version: asnToProtoVersion(rw.Version),
 			}
 		}
 		for j, w := range translated.BlindWrites {
-			ns.BlindWrites[j] = &applicationpb.Write{
+			ns.BlindWrites[j] = &Write{
 				Key:   w.Key,
 				Value: w.Value,
 			}
