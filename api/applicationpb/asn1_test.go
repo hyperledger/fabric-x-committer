@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package signature
+package applicationpb
 
 import (
 	"math/rand"
@@ -13,7 +13,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -32,7 +31,7 @@ func FuzzASN1MarshalTxNamespace(f *testing.F) {
 		//nolint:gosec // false positive; safe integer conversion.
 		for _, r := range ns.ReadsOnly {
 			f.Add(
-				"some-tx-id", ns.NsId, ns.NsVersion, ProtoToAsnVersion(r.Version),
+				"some-tx-id", ns.NsId, ns.NsVersion, protoToAsnVersion(r.Version),
 				uint32(len(ns.ReadsOnly)), uint32(len(ns.ReadWrites)), uint32(len(ns.BlindWrites)),
 				i, int64(1234+i),
 			)
@@ -41,7 +40,7 @@ func FuzzASN1MarshalTxNamespace(f *testing.F) {
 		//nolint:gosec // false positive; safe integer conversion.
 		for _, r := range ns.ReadWrites {
 			f.Add(
-				"another-tx-id", ns.NsId, ns.NsVersion, ProtoToAsnVersion(r.Version),
+				"another-tx-id", ns.NsId, ns.NsVersion, protoToAsnVersion(r.Version),
 				uint32(len(ns.ReadsOnly)), uint32(len(ns.ReadWrites)), uint32(len(ns.BlindWrites)),
 				i, int64(1234+i),
 			)
@@ -58,7 +57,7 @@ func FuzzASN1MarshalTxNamespace(f *testing.F) {
 		derBytes := requireASN1Marshal(t, txID, txNs)
 		actualTxID, actualTxNs := reconstructTX(t, [][]byte{derBytes})
 		require.Equal(t, txID, actualTxID)
-		test.RequireProtoElementsMatch(t, []*applicationpb.TxNamespace{txNs}, actualTxNs)
+		test.RequireProtoElementsMatch(t, []*TxNamespace{txNs}, actualTxNs)
 	})
 }
 
@@ -68,34 +67,34 @@ func generateTxNs( //nolint:revive // required parameters.
 	id, nsID string, nsVersion uint64, readVersion int64,
 	rCount, rwCount, wCount uint32,
 	maxSize uint32, seed int64,
-) (txID string, tx *applicationpb.TxNamespace) {
+) (txID string, tx *TxNamespace) {
 	t.Helper()
 	if !utf8.ValidString(id) || !utf8.ValidString(nsID) {
 		t.Skip("invalid UTF8")
 	}
-	tx = &applicationpb.TxNamespace{
+	tx = &TxNamespace{
 		NsId:        nsID,
 		NsVersion:   nsVersion,
-		ReadsOnly:   make([]*applicationpb.Read, rCount),
-		ReadWrites:  make([]*applicationpb.ReadWrite, rwCount),
-		BlindWrites: make([]*applicationpb.Write, wCount),
+		ReadsOnly:   make([]*Read, rCount),
+		ReadWrites:  make([]*ReadWrite, rwCount),
+		BlindWrites: make([]*Write, wCount),
 	}
 	rnd := rand.New(rand.NewSource(seed))
 	for i := range tx.ReadsOnly {
-		tx.ReadsOnly[i] = &applicationpb.Read{
+		tx.ReadsOnly[i] = &Read{
 			Key:     utils.MustRead(rnd, rnd.Intn(int(maxSize))),
-			Version: AsnToProtoVersion(readVersion),
+			Version: asnToProtoVersion(readVersion),
 		}
 	}
 	for i := range tx.ReadWrites {
-		tx.ReadWrites[i] = &applicationpb.ReadWrite{
+		tx.ReadWrites[i] = &ReadWrite{
 			Key:     utils.MustRead(rnd, rnd.Intn(int(maxSize))),
 			Value:   utils.MustRead(rnd, rnd.Intn(int(maxSize))),
-			Version: AsnToProtoVersion(readVersion),
+			Version: asnToProtoVersion(readVersion),
 		}
 	}
 	for i := range tx.BlindWrites {
-		tx.BlindWrites[i] = &applicationpb.Write{
+		tx.BlindWrites[i] = &Write{
 			Key:   utils.MustRead(rnd, rnd.Intn(int(maxSize))),
 			Value: utils.MustRead(rnd, rnd.Intn(int(maxSize))),
 		}
@@ -103,7 +102,7 @@ func generateTxNs( //nolint:revive // required parameters.
 	return id, tx
 }
 
-var txTestCases = []*applicationpb.TxNamespace{
+var txTestCases = []*TxNamespace{
 	{
 		NsId:      "empty",
 		NsVersion: 1,
@@ -111,28 +110,28 @@ var txTestCases = []*applicationpb.TxNamespace{
 	{
 		NsId:      "only reads",
 		NsVersion: 2,
-		ReadsOnly: []*applicationpb.Read{
+		ReadsOnly: []*Read{
 			{
 				Key:     []byte{1},
-				Version: applicationpb.NewVersion(2),
+				Version: NewVersion(2),
 			},
 			{
 				Key:     []byte{3, 4, 5},
-				Version: applicationpb.NewVersion(0),
+				Version: NewVersion(0),
 			},
 		},
 	},
 	{
 		NsId:      "only reads with nil version",
 		NsVersion: 2,
-		ReadsOnly: []*applicationpb.Read{
+		ReadsOnly: []*Read{
 			{
 				Key:     []byte{1},
-				Version: applicationpb.NewVersion(2),
+				Version: NewVersion(2),
 			},
 			{
 				Key:     []byte{3, 4, 5},
-				Version: applicationpb.NewVersion(0),
+				Version: NewVersion(0),
 			},
 			{
 				Key:     []byte{7, 8, 9},
@@ -143,15 +142,15 @@ var txTestCases = []*applicationpb.TxNamespace{
 	{
 		NsId:      "only read-write",
 		NsVersion: 3,
-		ReadWrites: []*applicationpb.ReadWrite{
+		ReadWrites: []*ReadWrite{
 			{
 				Key:     []byte{1},
-				Version: applicationpb.NewVersion(2),
+				Version: NewVersion(2),
 				Value:   []byte{3},
 			},
 			{
 				Key:     []byte{5},
-				Version: applicationpb.NewVersion(0),
+				Version: NewVersion(0),
 				Value:   []byte{6},
 			},
 		},
@@ -159,10 +158,10 @@ var txTestCases = []*applicationpb.TxNamespace{
 	{
 		NsId:      "only read-write with nil value or version",
 		NsVersion: 3,
-		ReadWrites: []*applicationpb.ReadWrite{
+		ReadWrites: []*ReadWrite{
 			{
 				Key:     []byte{1},
-				Version: applicationpb.NewVersion(2),
+				Version: NewVersion(2),
 				Value:   []byte{3},
 			},
 			{
@@ -172,7 +171,7 @@ var txTestCases = []*applicationpb.TxNamespace{
 			},
 			{
 				Key:     []byte{9},
-				Version: applicationpb.NewVersion(3),
+				Version: NewVersion(3),
 				Value:   nil,
 			},
 			{
@@ -185,7 +184,7 @@ var txTestCases = []*applicationpb.TxNamespace{
 	{
 		NsId:      "only blind writes",
 		NsVersion: 4,
-		BlindWrites: []*applicationpb.Write{
+		BlindWrites: []*Write{
 			{
 				Key:   []byte{5},
 				Value: []byte{6, 7},
@@ -199,7 +198,7 @@ var txTestCases = []*applicationpb.TxNamespace{
 	{
 		NsId:      "only blind writes with nil value",
 		NsVersion: 4,
-		BlindWrites: []*applicationpb.Write{
+		BlindWrites: []*Write{
 			{
 				Key:   []byte{5},
 				Value: []byte{6, 7},
@@ -217,29 +216,29 @@ var txTestCases = []*applicationpb.TxNamespace{
 	{
 		NsId:      "all",
 		NsVersion: 5,
-		ReadsOnly: []*applicationpb.Read{
+		ReadsOnly: []*Read{
 			{
 				Key:     []byte{6},
-				Version: applicationpb.NewVersion(7),
+				Version: NewVersion(7),
 			},
 			{
 				Key:     []byte{9, 10, 11},
-				Version: applicationpb.NewVersion(12),
+				Version: NewVersion(12),
 			},
 		},
-		ReadWrites: []*applicationpb.ReadWrite{
+		ReadWrites: []*ReadWrite{
 			{
 				Key:     []byte{100},
-				Version: applicationpb.NewVersion(1),
+				Version: NewVersion(1),
 				Value:   []byte{2},
 			},
 			{
 				Key:     []byte{5},
-				Version: applicationpb.NewVersion(10),
+				Version: NewVersion(10),
 				Value:   []byte{13},
 			},
 		},
-		BlindWrites: []*applicationpb.Write{
+		BlindWrites: []*Write{
 			{
 				Key:   []byte{1, 2, 3},
 				Value: []byte{100, 101, 102},
@@ -253,30 +252,30 @@ var txTestCases = []*applicationpb.TxNamespace{
 	{
 		NsId:      "varying number of items",
 		NsVersion: 6,
-		ReadsOnly: []*applicationpb.Read{
+		ReadsOnly: []*Read{
 			{
 				Key:     []byte{1, 2},
-				Version: applicationpb.NewVersion(3),
+				Version: NewVersion(3),
 			},
 		},
-		ReadWrites: []*applicationpb.ReadWrite{
+		ReadWrites: []*ReadWrite{
 			{
 				Key:     []byte{1},
-				Version: applicationpb.NewVersion(2),
+				Version: NewVersion(2),
 				Value:   []byte{3},
 			},
 			{
 				Key:     []byte{4},
-				Version: applicationpb.NewVersion(5),
+				Version: NewVersion(5),
 				Value:   []byte{6},
 			},
 			{
 				Key:     []byte{7},
-				Version: applicationpb.NewVersion(8),
+				Version: NewVersion(8),
 				Value:   []byte{9},
 			},
 		},
-		BlindWrites: []*applicationpb.Write{
+		BlindWrites: []*Write{
 			{
 				Key:   []byte{10},
 				Value: []byte{12},
@@ -290,7 +289,7 @@ var txTestCases = []*applicationpb.TxNamespace{
 	{
 		NsId:      "varying length",
 		NsVersion: 6,
-		ReadsOnly: []*applicationpb.Read{
+		ReadsOnly: []*Read{
 			{Key: make([]byte, 127)},
 			{Key: make([]byte, 128)},
 			{Key: make([]byte, 129)},

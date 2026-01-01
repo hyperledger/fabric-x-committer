@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package deliver
+package deliver_test
 
 import (
 	"context"
@@ -25,6 +25,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -58,7 +59,7 @@ func TestBroadcastDeliver(t *testing.T) {
 			// We only take the bottom endpoints for now.
 			// Later we take the other endpoints and update the client.
 			conf.Connection.Endpoints = allEndpoints[:6]
-			client, err := New(&conf)
+			client, err := deliver.New(&conf)
 			require.NoError(t, err)
 			t.Cleanup(client.CloseConnections)
 
@@ -67,9 +68,9 @@ func TestBroadcastDeliver(t *testing.T) {
 
 			outputBlocksChan := make(chan *common.Block, 100)
 			go func() {
-				err = client.Deliver(ctx, &Parameters{
+				err = client.Deliver(ctx, &deliver.Parameters{
 					StartBlkNum: 0,
-					EndBlkNum:   MaxBlockNum,
+					EndBlkNum:   deliver.MaxBlockNum,
 					OutputBlock: outputBlocksChan,
 				})
 				assert.ErrorIs(t, err, context.Canceled)

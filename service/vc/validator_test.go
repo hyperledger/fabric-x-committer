@@ -162,7 +162,7 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				txIDToNsBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
-				invalidTxIDStatus: make(map[TxID]applicationpb.Status),
+				invalidTxIDStatus: make(map[TxID]committerpb.Status),
 				txIDToHeight: transactionIDToHeight{
 					"tx1": servicepb.NewHeight(1, 1),
 					"tx2": servicepb.NewHeight(4, 2),
@@ -178,7 +178,7 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				validTxBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
-				invalidTxStatus: map[TxID]applicationpb.Status{},
+				invalidTxStatus: map[TxID]committerpb.Status{},
 				txIDToHeight: transactionIDToHeight{
 					"tx1": servicepb.NewHeight(1, 1),
 					"tx2": servicepb.NewHeight(4, 2),
@@ -221,7 +221,7 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				txIDToNsBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
-				invalidTxIDStatus: make(map[TxID]applicationpb.Status),
+				invalidTxIDStatus: make(map[TxID]committerpb.Status),
 				txIDToHeight: transactionIDToHeight{
 					"tx1": servicepb.NewHeight(1, 1),
 					"tx2": servicepb.NewHeight(5, 2),
@@ -231,10 +231,10 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 			expectedValidatedTx: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{},
 				validTxBlindWrites:    transactionToWrites{},
-				invalidTxStatus: map[TxID]applicationpb.Status{
-					"tx1": applicationpb.Status_ABORTED_MVCC_CONFLICT,
-					"tx2": applicationpb.Status_ABORTED_MVCC_CONFLICT,
-					"tx3": applicationpb.Status_ABORTED_MVCC_CONFLICT,
+				invalidTxStatus: map[TxID]committerpb.Status{
+					"tx1": committerpb.Status_ABORTED_MVCC_CONFLICT,
+					"tx2": committerpb.Status_ABORTED_MVCC_CONFLICT,
+					"tx3": committerpb.Status_ABORTED_MVCC_CONFLICT,
 				},
 				txIDToHeight: transactionIDToHeight{
 					"tx1": servicepb.NewHeight(1, 1),
@@ -283,9 +283,9 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 				txIDToNsBlindWrites: transactionToWrites{
 					"tx3": tx3BlindWrites,
 				},
-				invalidTxIDStatus: map[TxID]applicationpb.Status{
-					"tx5": applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
-					"tx6": applicationpb.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
+				invalidTxIDStatus: map[TxID]committerpb.Status{
+					"tx5": committerpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
+					"tx6": committerpb.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
 				},
 				txIDToHeight: transactionIDToHeight{
 					"tx1": servicepb.NewHeight(1, 1),
@@ -301,12 +301,12 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 					"tx2": tx2NonBlindWrites,
 				},
 				validTxBlindWrites: transactionToWrites{},
-				invalidTxStatus: map[TxID]applicationpb.Status{
-					"tx1": applicationpb.Status_ABORTED_MVCC_CONFLICT,
-					"tx3": applicationpb.Status_ABORTED_MVCC_CONFLICT,
-					"tx4": applicationpb.Status_ABORTED_MVCC_CONFLICT,
-					"tx5": applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
-					"tx6": applicationpb.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
+				invalidTxStatus: map[TxID]committerpb.Status{
+					"tx1": committerpb.Status_ABORTED_MVCC_CONFLICT,
+					"tx3": committerpb.Status_ABORTED_MVCC_CONFLICT,
+					"tx4": committerpb.Status_ABORTED_MVCC_CONFLICT,
+					"tx5": committerpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
+					"tx6": committerpb.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED,
 				},
 				txIDToHeight: transactionIDToHeight{
 					"tx1": servicepb.NewHeight(1, 1),

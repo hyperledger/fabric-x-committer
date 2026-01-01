@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package signature
 
 import (
+	"crypto/sha256"
+
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/common/cauthdsl"
 	"github.com/hyperledger/fabric-x-common/common/policies"
@@ -68,7 +70,7 @@ func (v *NsVerifier) VerifyNs(txID string, tx *applicationpb.Tx, nsIndex int) er
 		return nil
 	}
 
-	data, err := ASN1MarshalTxNamespace(txID, tx.Namespaces[nsIndex])
+	data, err := tx.Namespaces[nsIndex].ASN1Marshal(txID)
 	if err != nil {
 		return err
 	}
@@ -135,7 +137,8 @@ type verifier interface {
 
 func verifySignedData(signatureSet []*protoutil.SignedData, v verifier) error {
 	for _, s := range signatureSet {
-		if err := v.verify(SHA256Digest(s.Data), s.Signature); err != nil {
+		digest := sha256.Sum256(s.Data)
+		if err := v.verify(digest[:], s.Signature); err != nil {
 			return err
 		}
 	}

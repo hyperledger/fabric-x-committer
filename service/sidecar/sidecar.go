@@ -20,7 +20,6 @@ import (
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -44,7 +43,7 @@ type Service struct {
 	coordConn          *grpc.ClientConn
 	blockToBeCommitted chan *common.Block
 	committedBlock     chan *common.Block
-	statusQueue        chan []*committerpb.TxStatusEvent
+	statusQueue        chan []*committerpb.TxStatus
 	config             *Config
 	healthcheck        *health.Server
 	metrics            *perfMetrics
@@ -89,7 +88,7 @@ func New(c *Config) (*Service, error) {
 		metrics:            metrics,
 		blockToBeCommitted: make(chan *common.Block, bufferSize),
 		committedBlock:     make(chan *common.Block, bufferSize),
-		statusQueue:        make(chan []*committerpb.TxStatusEvent, bufferSize),
+		statusQueue:        make(chan []*committerpb.TxStatus, bufferSize),
 	}, nil
 }
 
@@ -348,13 +347,13 @@ func appendMissingBlock(
 	}
 
 	txIDs := make([]string, len(mappedBlock.block.Txs))
-	expectedHeight := make(map[string]*servicepb.Height, len(mappedBlock.block.Txs))
+	expectedHeight := make([]*committerpb.TxRef, len(mappedBlock.block.Txs))
 	for i, tx := range mappedBlock.block.Txs {
 		txIDs[i] = tx.Ref.TxId
-		expectedHeight[tx.Ref.TxId] = servicepb.NewHeightFromTxRef(tx.Ref)
+		expectedHeight[i] = tx.Ref
 	}
 
-	txsStatus, err := client.GetTransactionsStatus(ctx, &applicationpb.QueryStatus{TxIDs: txIDs})
+	txsStatus, err := client.GetTransactionsStatus(ctx, &committerpb.TxIDsBatch{TxIds: txIDs})
 	if err != nil {
 		return errors.Wrap(err, "failed to get transaction status from the coordinator")
 	}
@@ -406,20 +405,24 @@ func waitForIdleCoordinator(ctx context.Context, client servicepb.CoordinatorCli
 }
 
 func fillStatuses(
-	finalStatuses []applicationpb.Status,
-	statuses map[string]*applicationpb.StatusWithHeight,
-	expectedHeight map[string]*servicepb.Height,
+	finalStatuses []committerpb.Status,
+	statuses []*committerpb.TxStatus,
+	expectedHeight []*committerpb.TxRef,
 ) error {
-	for txID, height := range expectedHeight {
-		s, ok := statuses[txID]
+	statusMap := make(map[string]*committerpb.TxStatus, len(statuses))
+	for _, s := range statuses {
+		statusMap[s.Ref.TxId] = s
+	}
+	for _, ref := range expectedHeight {
+		s, ok := statusMap[ref.TxId]
 		if !ok {
-			return errors.Newf("committer should have the status of txID [%s] but it does not", txID)
+			return errors.Newf("committer should have the status of txID [%s] but it does not", ref.TxId)
 		}
-		if servicepb.AreSame(height, servicepb.NewHeight(s.BlockNumber, s.TxNumber)) {
-			finalStatuses[height.TxNum] = s.Code
-			continue
+		if committerpb.AreSameHeight(ref, s.Ref) {
+			finalStatuses[ref.TxNum] = s.Status
+		} else {
+			finalStatuses[ref.TxNum] = committerpb.Status_REJECTED_DUPLICATE_TX_ID
 		}
-		finalStatuses[height.TxNum] = applicationpb.Status_REJECTED_DUPLICATE_TX_ID
 	}
 	return nil
 }
