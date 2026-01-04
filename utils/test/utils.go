@@ -31,6 +31,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
 
 var (
@@ -271,7 +272,7 @@ func NewSecuredConnectionWithRetry(
 	retry connection.RetryProfile,
 ) *grpc.ClientConn {
 	t.Helper()
-	tlsMaterials, err := tlsConfig.ToMaterials()
+	tlsMaterials, err := connection.NewTLSMaterials(tlsConfig)
 	require.NoError(t, err)
 	tlsCreds, err := tlsMaterials.ClientCredentials()
 	require.NoError(t, err)
@@ -435,11 +436,13 @@ func MustCreateEndpoint(value string) *connection.Endpoint {
 	return endpoint
 }
 
-// ToOrdererTLSConfig narrows a full TLSConfig down to an OrdererTLSConfig.
-// It effectively strips out the CA certificates.
-func ToOrdererTLSConfig(c connection.TLSConfig) connection.OrdererTLSConfig {
-	return connection.OrdererTLSConfig{
-		BaseTLSConfig: c.BaseTLSConfig,
+// ToOrdererTLSConfig translates a TLSConfig to an OrdererTLSConfig.
+func ToOrdererTLSConfig(c connection.TLSConfig) ordererconn.OrdererTLSConfig {
+	return ordererconn.OrdererTLSConfig{
+		Mode:              c.Mode,
+		KeyPath:           c.KeyPath,
+		CertPath:          c.CertPath,
+		CommonCACertPaths: c.CACertPaths,
 	}
 }
 

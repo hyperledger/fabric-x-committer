@@ -30,7 +30,7 @@ type (
 var logger = logging.New("broadcast-deliver")
 
 // New creates a broadcast/deliver client. It must be closed to release all the associated connections.
-func New(config *ordererconn.Config, orgsMaterial []*ordererconn.OrganizationMaterial) (*Client, error) {
+func New(config *ordererconn.Config) (*Client, error) {
 	if err := ordererconn.ValidateConsensusType(config); err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ func New(config *ordererconn.Config, orgsMaterial []*ordererconn.OrganizationMat
 		return nil, errors.Wrap(err, "error creating identity signer")
 	}
 
-	cm, err := ordererconn.NewConnectionManager(config, orgsMaterial)
+	cm, err := ordererconn.NewConnectionManager(config)
 	if err != nil {
 		return nil, err
 	}

@@ -118,6 +118,7 @@ func newSidecarTestEnvWithTLS(
 		ChanID: "ch1",
 		Config: &mock.OrdererConfig{
 			NumService: conf.NumService,
+			TLS:        conf.ServerTLS,
 			BlockSize:  blockSize,
 			// We want each block to contain exactly <blockSize> transactions.
 			// Therefore, we set a higher block timeout so that we have enough time to send all the
@@ -125,7 +126,6 @@ func newSidecarTestEnvWithTLS(
 			BlockTimeout:    5 * time.Minute,
 			SendConfigBlock: false,
 		},
-		TLS:        conf.ServerTLS,
 		NumFake:    conf.NumFakeService,
 		NumHolders: conf.NumHolders,
 	})
@@ -137,7 +137,11 @@ func newSidecarTestEnvWithTLS(
 	})
 
 	var genesisBlockFilePath string
-	initOrdererEndpoints := ordererEndpoints
+	initOrdererEndpoints := []*ordererconn.OrganizationConfig{{
+		MspID:     "msp",
+		Endpoints: ordererEndpoints,
+		CACerts:   conf.ClientTLS.CACertPaths,
+	}}
 	if conf.WithConfigBlock {
 		genesisBlockFilePath = filepath.Join(t.TempDir(), "config.block")
 		require.NoError(t, configtxgen.WriteOutputBlock(configBlock, genesisBlockFilePath))
@@ -158,14 +162,9 @@ func newSidecarTestEnvWithTLS(
 			GenesisBlockFilePath: genesisBlockFilePath,
 		},
 		Orderer: ordererconn.Config{
-			ChannelID: ordererEnv.TestConfig.ChanID,
-			TLS:       test.ToOrdererTLSConfig(conf.ClientTLS),
-			Organizations: []*ordererconn.OrganizationConfig{
-				{
-					Endpoints: initOrdererEndpoints,
-					CACerts:   conf.ClientTLS.CACertPaths,
-				},
-			},
+			ChannelID:     ordererEnv.TestConfig.ChanID,
+			TLS:           test.ToOrdererTLSConfig(conf.ClientTLS),
+			Organizations: initOrdererEndpoints,
 		},
 	}
 	sidecar, err := New(sidecarConf)

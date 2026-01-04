@@ -57,7 +57,7 @@ func TestBroadcastDeliver(t *testing.T) {
 			// We only take the bottom endpoints for now.
 			// Later we take the other endpoints and update the client.
 			conf.Organizations[0].Endpoints = allEndpoints[:6]
-			client, err := New(&conf, nil)
+			client, err := New(&conf)
 			require.NoError(t, err)
 			t.Cleanup(client.CloseConnections)
 
@@ -217,9 +217,10 @@ func makeConfig(t *testing.T, serverTLS, clientTLS connection.TLSConfig) (
 
 	ordererService, ordererServer := mock.StartMockOrderingServices(t, &mock.OrdererConfig{
 		NumService:      instanceCount,
+		TLS:             serverTLS,
 		BlockSize:       1,
 		SendConfigBlock: true,
-	}, serverTLS)
+	})
 	require.Len(t, ordererServer.Servers, instanceCount)
 
 	conf := ordererconn.Config{

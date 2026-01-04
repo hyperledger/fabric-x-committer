@@ -61,7 +61,7 @@ func New(config *Parameters) (*Client, error) {
 				CACerts: config.Client.TLS.CACertPaths,
 			},
 		},
-	}, nil)
+	})
 	if err != nil {
 		return nil, err
 	}

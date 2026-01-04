@@ -100,20 +100,13 @@ func aggregateFilter(filters ...ConnFilter) ConnFilter {
 // NewConnectionManager constructs a ConnectionManager and initializes its connections.
 // If orgMaterial is provided, it updates the connection manager accordingly.
 // Otherwise, it uses the organization configuration.
-func NewConnectionManager(config *Config, orgs []*OrganizationMaterial) (*ConnectionManager, error) {
-	var orgsMaterial []*OrganizationMaterial
-	if len(orgs) > 0 {
-		orgsMaterial = orgs
-	} else {
-		var err error
-		orgsMaterial, err = config.OrganizationsConfigToMaterials()
-		if err != nil {
-			return nil, err
-		}
-	}
-	tlsParams, err := (&connection.TLSConfig{
-		BaseTLSConfig: config.TLS.BaseTLSConfig,
-	}).ToMaterials()
+func NewConnectionManager(config *Config) (*ConnectionManager, error) {
+	tlsParams, err := connection.NewTLSMaterials(connection.TLSConfig{
+		Mode:        config.TLS.Mode,
+		CertPath:    config.TLS.CertPath,
+		KeyPath:     config.TLS.KeyPath,
+		CACertPaths: config.TLS.CommonCACertPaths,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -121,6 +114,10 @@ func NewConnectionManager(config *Config, orgs []*OrganizationMaterial) (*Connec
 	cm := &ConnectionManager{
 		tlsParameters: tlsParams,
 		retry:         config.Retry,
+	}
+	orgsMaterial, err := config.OrganizationsConfigToMaterials()
+	if err != nil {
+		return nil, err
 	}
 	if err = cm.Update(orgsMaterial); err != nil {
 		return nil, err

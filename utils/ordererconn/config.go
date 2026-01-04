@@ -20,13 +20,14 @@ type (
 	// Config defines the static configuration of the orderer client as loaded from the YAML file.
 	// It supports connectivity to multiple organization's orderers.
 	Config struct {
-		ConsensusType string                      `mapstructure:"consensus-type"`
-		ChannelID     string                      `mapstructure:"channel-id"`
-		Identity      *IdentityConfig             `mapstructure:"identity"`
-		Retry         *connection.RetryProfile    `mapstructure:"reconnect"`
-		TLS           connection.OrdererTLSConfig `mapstructure:"tls"`
-		Organizations []*OrganizationConfig       `mapstructure:"organizations"`
+		ConsensusType string                   `mapstructure:"consensus-type"`
+		ChannelID     string                   `mapstructure:"channel-id"`
+		Identity      *IdentityConfig          `mapstructure:"identity"`
+		Retry         *connection.RetryProfile `mapstructure:"reconnect"`
+		TLS           OrdererTLSConfig         `mapstructure:"tls"`
+		Organizations []*OrganizationConfig    `mapstructure:"organizations"`
 	}
+
 	// IdentityConfig defines the orderer's MSP.
 	IdentityConfig struct {
 		// MspID indicates to which MSP this client belongs to.
@@ -34,17 +35,30 @@ type (
 		MSPDir string               `mapstructure:"msp-dir" yaml:"msp-dir"`
 		BCCSP  *factory.FactoryOpts `mapstructure:"bccsp" yaml:"bccsp"`
 	}
+
 	// OrganizationConfig contains the MspID (Organization ID), orderer endpoints, and their root CA paths.
 	OrganizationConfig struct {
 		MspID     string                         `mapstructure:"msp-id" yaml:"msp-id"`
 		Endpoints []*commontypes.OrdererEndpoint `mapstructure:"endpoints"`
 		CACerts   []string                       `mapstructure:"ca-cert-paths"`
 	}
+
 	// OrganizationMaterial contains the MspID (Organization ID), orderer endpoints, and their root CAs in bytes.
 	OrganizationMaterial struct {
 		MspID     string
 		Endpoints []*commontypes.OrdererEndpoint
 		CACerts   [][]byte
+	}
+
+	// OrdererTLSConfig is a restricted TLS config for orderer clients.
+	// It reuses the base fields but excludes CA paths.
+	OrdererTLSConfig struct {
+		Mode     string `mapstructure:"mode"`
+		CertPath string `mapstructure:"cert-path"`
+		KeyPath  string `mapstructure:"key-path"`
+		// CommonCACertPaths is a temporaty workaround to inject CA to all organizations.
+		// This will be removed once we read the TLS certificates from the config block.
+		CommonCACertPaths []string `mapstructure:"common-ca-cert-paths"`
 	}
 )
 

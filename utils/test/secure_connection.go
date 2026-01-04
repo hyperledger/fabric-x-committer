@@ -211,11 +211,9 @@ func (scm *CredentialsFactory) createTLSConfig(
 	require.NoError(t, os.WriteFile(caCertificatePath, scm.CertificateAuthority.CertBytes(), 0o600))
 
 	return connection.TLSConfig{
-		BaseTLSConfig: connection.BaseTLSConfig{
-			Mode:     connectionMode,
-			KeyPath:  privateKeyPath,
-			CertPath: publicKeyPath,
-		},
+		Mode:        connectionMode,
+		KeyPath:     privateKeyPath,
+		CertPath:    publicKeyPath,
 		CACertPaths: []string{caCertificatePath},
 	}, tmpDir
 }
