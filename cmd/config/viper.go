@@ -28,7 +28,6 @@ func NewViperWithCoordinatorDefaults() *viper.Viper {
 func NewViperWithSidecarDefaults() *viper.Viper {
 	v := NewViperWithServiceDefault(4001, 2114)
 	v.SetDefault("orderer.channel-id", "mychannel")
-	v.SetDefault("orderer.organizations.endpoints", "id=0,broadcast,deliver,localhost:7050")
 	v.SetDefault("committer.endpoint", "localhost:9001")
 	v.SetDefault("ledger.path", "./ledger/")
 	v.SetDefault("notification.max-timeout", "1m")

@@ -241,8 +241,8 @@ func (c *CommitterRuntime) CreateRuntimeClients(ctx context.Context, t *testing.
 		ChannelID:     c.SystemConfig.Policy.ChannelID,
 		Identity:      c.SystemConfig.Policy.Identity,
 		ConsensusType: ordererconn.Bft,
-		Organizations: []*ordererconn.OrganizationConfig{
-			{
+		Organizations: map[string]*ordererconn.OrganizationConfig{
+			"org": {
 				Endpoints: c.SystemConfig.Policy.OrdererEndpoints,
 				CACerts:   c.SystemConfig.ClientTLS.CACertPaths,
 			},

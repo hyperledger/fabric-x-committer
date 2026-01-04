@@ -27,7 +27,7 @@ orderer:
   channel-id: {{ .Policy.ChannelID }}
   consensus-type: BFT
   organizations:
-    - msp-id: "org0"
+    org0:
       endpoints:
         {{- range .Endpoints.Orderer }}
         - id=0,broadcast,deliver,{{ .Server }}
@@ -40,6 +40,10 @@ orderer:
     mode: {{ .ClientTLS.Mode }}
     cert-path: {{ .ClientTLS.CertPath }}
     key-path: {{ .ClientTLS.KeyPath }}
+    common-ca-cert-paths:
+      {{- range .ClientTLS.CACertPaths }}
+      - {{ . }}
+      {{- end }}
 committer:
   endpoint: {{ .Endpoints.Coordinator.Server }}
   tls:

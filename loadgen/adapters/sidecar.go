@@ -16,7 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type (
@@ -57,7 +57,7 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 
 	// The sidecar adapter submits a config block manually.
 	policy := *c.res.Profile.Transaction.Policy
-	policy.OrdererEndpoints = ordererconn.NewEndpoints(0, "msp", c.config.OrdererServers...)
+	policy.OrdererEndpoints = test.NewOrdererEndpoints(0, c.config.OrdererServers...)
 	configBlock, err := workload.CreateConfigBlock(&policy)
 	if err != nil {
 		return err

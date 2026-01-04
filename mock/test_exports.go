@@ -19,7 +19,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -195,15 +194,15 @@ func (e *OrdererTestEnv) AllEndpoints() []*commontypes.OrdererEndpoint {
 
 // AllRealOrdererEndpoints returns a list of the real orderer endpoints.
 func (e *OrdererTestEnv) AllRealOrdererEndpoints() []*commontypes.OrdererEndpoint {
-	return ordererconn.NewEndpoints(0, "org", e.OrdererServers.Configs...)
+	return test.NewOrdererEndpoints(0, e.OrdererServers.Configs...)
 }
 
 // AllFakeEndpoints returns a list of the fake orderer endpoints.
 func (e *OrdererTestEnv) AllFakeEndpoints() []*commontypes.OrdererEndpoint {
-	return ordererconn.NewEndpoints(0, "org", e.FakeServers.Configs...)
+	return test.NewOrdererEndpoints(0, e.FakeServers.Configs...)
 }
 
 // AllHolderEndpoints returns a list of the holder orderer endpoints.
 func (e *OrdererTestEnv) AllHolderEndpoints() []*commontypes.OrdererEndpoint {
-	return ordererconn.NewEndpoints(0, "org", e.HolderServers.Configs...)
+	return test.NewOrdererEndpoints(0, e.HolderServers.Configs...)
 }

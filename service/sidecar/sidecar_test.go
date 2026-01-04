@@ -137,15 +137,16 @@ func newSidecarTestEnvWithTLS(
 	})
 
 	var genesisBlockFilePath string
-	initOrdererEndpoints := []*ordererconn.OrganizationConfig{{
-		MspID:     "msp",
-		Endpoints: ordererEndpoints,
-		CACerts:   conf.ClientTLS.CACertPaths,
-	}}
+	initOrdererOrganizations := map[string]*ordererconn.OrganizationConfig{
+		"org": {
+			Endpoints: ordererEndpoints,
+			CACerts:   conf.ClientTLS.CACertPaths,
+		},
+	}
 	if conf.WithConfigBlock {
 		genesisBlockFilePath = filepath.Join(t.TempDir(), "config.block")
 		require.NoError(t, configtxgen.WriteOutputBlock(configBlock, genesisBlockFilePath))
-		initOrdererEndpoints = nil
+		initOrdererOrganizations = nil
 	}
 	sidecarConf := &Config{
 		Server:    connection.NewLocalHostServerWithTLS(conf.ServerTLS),
@@ -164,7 +165,7 @@ func newSidecarTestEnvWithTLS(
 		Orderer: ordererconn.Config{
 			ChannelID:     ordererEnv.TestConfig.ChanID,
 			TLS:           test.ToOrdererTLSConfig(conf.ClientTLS),
-			Organizations: initOrdererEndpoints,
+			Organizations: initOrdererOrganizations,
 		},
 	}
 	sidecar, err := New(sidecarConf)
@@ -351,8 +352,8 @@ func TestSidecarConfigRecovery(t *testing.T) {
 	t.Log("Modify the Sidecar config, use illegal host endpoint")
 	// We need to use ilegalEndpoints instead of an empty Endpoints struct,
 	// as the sidecar expects the Endpoints to be non-empty.
-	env.config.Orderer.Organizations = []*ordererconn.OrganizationConfig{
-		{
+	env.config.Orderer.Organizations = map[string]*ordererconn.OrganizationConfig{
+		"org": {
 			Endpoints: []*commontypes.OrdererEndpoint{
 				{Host: "localhost", Port: 9999},
 			},

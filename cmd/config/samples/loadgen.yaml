@@ -32,7 +32,7 @@ orderer-client:
         - /client-certs/ca-certificate.pem
   orderer:
     organizations:
-      - msp-id: "org0"
+      org0:
         endpoints:
           - id=0,broadcast,deliver,orderer:7050
         ca-cert-paths:
@@ -41,6 +41,8 @@ orderer-client:
       mode: mtls
       cert-path: /client-certs/public-key.pem
       key-path: /client-certs/private-key.pem
+      common-ca-cert-paths:
+        - /client-certs/ca-certificate.pem
     consensus-type: BFT
     channel-id: mychannel
   # We set low values to reduce the CPU load during tests.

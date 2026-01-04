@@ -66,11 +66,6 @@ func TestReadConfigSidecar(t *testing.T) {
 			Monitoring: newMonitoringConfig("localhost", 2114),
 			Orderer: ordererconn.Config{
 				ChannelID: "mychannel",
-				Organizations: []*ordererconn.OrganizationConfig{{
-					Endpoints: []*commontypes.OrdererEndpoint{
-						newOrdererEndpoint("", "localhost"),
-					},
-				}},
 			},
 			Committer: &connection.ClientConfig{
 				Endpoint: newEndpoint("localhost", 9001),
@@ -111,13 +106,14 @@ func TestReadConfigSidecar(t *testing.T) {
 					KeyPath:  defaultClientTLSConfig.KeyPath,
 					CertPath: defaultClientTLSConfig.CertPath,
 				},
-				Organizations: []*ordererconn.OrganizationConfig{{
-					MspID: "org0",
-					Endpoints: []*commontypes.OrdererEndpoint{
-						newOrdererEndpoint("", "orderer"),
+				Organizations: map[string]*ordererconn.OrganizationConfig{
+					"org0": {
+						Endpoints: []*commontypes.OrdererEndpoint{
+							newOrdererEndpoint("", "orderer"),
+						},
+						CACerts: defaultClientTLSConfig.CACertPaths,
 					},
-					CACerts: defaultClientTLSConfig.CACertPaths,
-				}},
+				},
 			},
 			Committer: newClientConfigWithDefaultTLS("coordinator", 9001),
 			Ledger: sidecar.LedgerConfig{
@@ -374,13 +370,14 @@ func TestReadConfigLoadGen(t *testing.T) {
 							KeyPath:  defaultClientTLSConfig.KeyPath,
 							CertPath: defaultClientTLSConfig.CertPath,
 						},
-						Organizations: []*ordererconn.OrganizationConfig{{
-							MspID: "org0",
-							Endpoints: []*commontypes.OrdererEndpoint{
-								newOrdererEndpoint("", "orderer"),
+						Organizations: map[string]*ordererconn.OrganizationConfig{
+							"org0": {
+								Endpoints: []*commontypes.OrdererEndpoint{
+									newOrdererEndpoint("", "orderer"),
+								},
+								CACerts: defaultClientTLSConfig.CACertPaths,
 							},
-							CACerts: defaultClientTLSConfig.CACertPaths,
-						}},
+						},
 					},
 					BroadcastParallelism: 1,
 				},

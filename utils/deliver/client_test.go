@@ -53,10 +53,10 @@ func TestBroadcastDeliver(t *testing.T) {
 
 			// Set the orderer client credentials.
 			conf.TLS = test.ToOrdererTLSConfig(clientTLSConfig)
-			allEndpoints := conf.Organizations[0].Endpoints
+			allEndpoints := conf.Organizations["org"].Endpoints
 			// We only take the bottom endpoints for now.
 			// Later we take the other endpoints and update the client.
-			conf.Organizations[0].Endpoints = allEndpoints[:6]
+			conf.Organizations["org"].Endpoints = allEndpoints[:6]
 			client, err := New(&conf)
 			require.NoError(t, err)
 			t.Cleanup(client.CloseConnections)
@@ -136,13 +136,13 @@ func TestBroadcastDeliver(t *testing.T) {
 				unavailable: 2,
 			})
 			t.Log("Update endpoints")
-			conf.Organizations = []*ordererconn.OrganizationConfig{
-				{
+			conf.Organizations = map[string]*ordererconn.OrganizationConfig{
+				"org": {
 					Endpoints: allEndpoints[6:],
 					CACerts:   clientTLSConfig.CACertPaths,
 				},
 			}
-			orgParams, err := conf.OrganizationsConfigToMaterials()
+			orgParams, err := ordererconn.NewOrganizationsMaterials(conf.Organizations, conf.TLS.Mode)
 			require.NoError(t, err)
 			require.NoError(t, client.UpdateConnections(orgParams))
 			submit(t, &conf, outputBlocks, expectedSubmit{
@@ -228,8 +228,8 @@ func makeConfig(t *testing.T, serverTLS, clientTLS connection.TLSConfig) (
 		ConsensusType: ordererconn.Bft,
 		Retry:         &testGrpcRetryProfile,
 		TLS:           test.ToOrdererTLSConfig(clientTLS),
-		Organizations: []*ordererconn.OrganizationConfig{
-			{
+		Organizations: map[string]*ordererconn.OrganizationConfig{
+			"org": {
 				CACerts: clientTLS.CACertPaths,
 			},
 		},
@@ -237,7 +237,7 @@ func makeConfig(t *testing.T, serverTLS, clientTLS connection.TLSConfig) (
 	servers := make([]test.GrpcServers, idCount)
 	for i, c := range ordererServer.Configs {
 		id := uint32(i % idCount) //nolint:gosec // integer overflow conversion int -> uint32
-		conf.Organizations[0].Endpoints = append(conf.Organizations[0].Endpoints, &commontypes.OrdererEndpoint{
+		conf.Organizations["org"].Endpoints = append(conf.Organizations["org"].Endpoints, &commontypes.OrdererEndpoint{
 			ID:   id,
 			Host: c.Endpoint.Host,
 			Port: c.Endpoint.Port,
@@ -250,7 +250,7 @@ func makeConfig(t *testing.T, serverTLS, clientTLS connection.TLSConfig) (
 		require.Lenf(t, s.Configs, serverPerID, "id: %d", i)
 		require.Lenf(t, s.Servers, serverPerID, "id: %d", i)
 	}
-	for i, e := range conf.Organizations[0].Endpoints {
+	for i, e := range conf.Organizations["org"].Endpoints {
 		t.Logf("ENDPOINT [%02d] %s", i, e.String())
 	}
 	return ordererService, servers, conf

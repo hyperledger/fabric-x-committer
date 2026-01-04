@@ -24,7 +24,7 @@ monitoring:
 orderer:
   channel-id: mychannel
   organizations:
-    - msp-id: "org0"
+    org0:
       endpoints:
         - id=0,broadcast,deliver,orderer:7050
       ca-cert-paths:
@@ -33,6 +33,8 @@ orderer:
     mode: mtls
     cert-path: /client-certs/public-key.pem
     key-path: /client-certs/private-key.pem
+    common-ca-cert-paths:
+      - /client-certs/ca-certificate.pem
   # identity:
   #   root-ca-paths:
   #     - /root/config/crypto/ca-certs.pem

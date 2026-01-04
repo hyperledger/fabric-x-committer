@@ -11,6 +11,7 @@ import (
 	"maps"
 	"math"
 	"math/rand"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -37,6 +38,13 @@ type (
 		tlsParameters *connection.TLSMaterials
 	}
 
+	// OrganizationMaterial contains the MspID (Organization ID), orderer endpoints, and their root CAs in bytes.
+	OrganizationMaterial struct {
+		MspID     string
+		Endpoints []*commontypes.OrdererEndpoint
+		CACerts   [][]byte
+	}
+
 	// ConnFilter is used to filter connections.
 	ConnFilter struct {
 		api string
@@ -60,43 +68,6 @@ const (
 	filterAll        = "all"
 )
 
-// WithAPI filters for API.
-func WithAPI(api string) ConnFilter {
-	return ConnFilter{api: api, id: anyID}
-}
-
-// WithID filters for ID.
-func WithID(id uint32) ConnFilter {
-	return ConnFilter{api: anyAPI, id: id}
-}
-
-func filterKey(filters ...ConnFilter) string {
-	f := aggregateFilter(filters...)
-	switch {
-	case f.id == anyID && f.api != anyAPI:
-		return filterAll
-	case f.id == anyID:
-		return fmt.Sprintf("api=%s", f.api)
-	case f.api == anyAPI:
-		return fmt.Sprintf("id=%d", f.id)
-	default:
-		return fmt.Sprintf("api=%s, id=%d", f.api, f.id)
-	}
-}
-
-func aggregateFilter(filters ...ConnFilter) ConnFilter {
-	k := ConnFilter{api: "", id: anyID}
-	for _, f := range filters {
-		if f.api != anyAPI {
-			k.api = f.api
-		}
-		if f.id != anyID {
-			k.id = f.id
-		}
-	}
-	return k
-}
-
 // NewConnectionManager constructs a ConnectionManager and initializes its connections.
 // If orgMaterial is provided, it updates the connection manager accordingly.
 // Otherwise, it uses the organization configuration.
@@ -115,7 +86,7 @@ func NewConnectionManager(config *Config) (*ConnectionManager, error) {
 		tlsParameters: tlsParams,
 		retry:         config.Retry,
 	}
-	orgsMaterial, err := config.OrganizationsConfigToMaterials()
+	orgsMaterial, err := NewOrganizationsMaterials(config.Organizations, config.TLS.Mode)
 	if err != nil {
 		return nil, err
 	}
@@ -213,6 +184,57 @@ func (cm *ConnectionManager) GetConnectionPerID(filters ...ConnFilter) (map[uint
 	return ret, v
 }
 
+// CloseConnections closes all the connections.
+func (cm *ConnectionManager) CloseConnections() {
+	cm.lock.Lock()
+	defer cm.lock.Unlock()
+	closeConnection(cm.connections)
+	cm.connections = nil
+}
+
+// IsStale checks if the given OrdererConnectionResiliencyManager is stale.
+// If nil is given, it returns true.
+func (cm *ConnectionManager) IsStale(configVersion uint64) bool {
+	return cm.configVersion.Load() != configVersion
+}
+
+// WithAPI filters for API.
+func WithAPI(api string) ConnFilter {
+	return ConnFilter{api: api, id: anyID}
+}
+
+// WithID filters for ID.
+func WithID(id uint32) ConnFilter {
+	return ConnFilter{api: anyAPI, id: id}
+}
+
+func filterKey(filters ...ConnFilter) string {
+	f := aggregateFilter(filters...)
+	switch {
+	case f.id == anyID && f.api != anyAPI:
+		return filterAll
+	case f.id == anyID:
+		return fmt.Sprintf("api=%s", f.api)
+	case f.api == anyAPI:
+		return fmt.Sprintf("id=%d", f.id)
+	default:
+		return fmt.Sprintf("api=%s, id=%d", f.api, f.id)
+	}
+}
+
+func aggregateFilter(filters ...ConnFilter) ConnFilter {
+	k := ConnFilter{api: "", id: anyID}
+	for _, f := range filters {
+		if f.api != anyAPI {
+			k.api = f.api
+		}
+		if f.id != anyID {
+			k.id = f.id
+		}
+	}
+	return k
+}
+
 func getAllIDs(endpoints []*commontypes.OrdererEndpoint) []uint32 {
 	ids := make(map[uint32]any)
 	for _, conn := range endpoints {
@@ -239,20 +261,6 @@ func makeEndpointsKey(endpoint []*connection.Endpoint) string {
 	return strings.Join(addresses, ";")
 }
 
-// CloseConnections closes all the connections.
-func (cm *ConnectionManager) CloseConnections() {
-	cm.lock.Lock()
-	defer cm.lock.Unlock()
-	closeConnection(cm.connections)
-	cm.connections = nil
-}
-
-// IsStale checks if the given OrdererConnectionResiliencyManager is stale.
-// If nil is given, it returns true.
-func (cm *ConnectionManager) IsStale(configVersion uint64) bool {
-	return cm.configVersion.Load() != configVersion
-}
-
 func closeConnection(connections map[string]*grpc.ClientConn) {
 	if connections != nil {
 		connection.CloseConnectionsLog(slices.Collect(maps.Values(connections))...)
@@ -276,4 +284,27 @@ func filterOrdererEndpoints(endpoints []*commontypes.OrdererEndpoint, filters ..
 		result = append(result, &connection.Endpoint{Host: ep.Host, Port: ep.Port})
 	}
 	return result
+}
+
+// NewOrganizationsMaterials reads the organizations' materials.
+func NewOrganizationsMaterials(c map[string]*OrganizationConfig, tlsMode string) ([]*OrganizationMaterial, error) {
+	organizationsMaterial := make([]*OrganizationMaterial, 0, len(c))
+	for mspID, orgConfig := range c {
+		orgsMaterial := &OrganizationMaterial{
+			MspID:     mspID,
+			Endpoints: orgConfig.Endpoints,
+		}
+		organizationsMaterial = append(organizationsMaterial, orgsMaterial)
+		if tlsMode == connection.NoneTLSMode || tlsMode == connection.UnmentionedTLSMode {
+			continue
+		}
+		for _, caPath := range orgConfig.CACerts {
+			caBytes, err := os.ReadFile(caPath)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to load CA certificate from %s", caBytes)
+			}
+			orgsMaterial.CACerts = append(orgsMaterial.CACerts, caBytes)
+		}
+	}
+	return organizationsMaterial, nil
 }

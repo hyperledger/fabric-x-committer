@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -452,3 +453,17 @@ const (
 	// CreatorID denotes Creator field in protoblocktx.Identity to contain the digest of x509 certificate.
 	CreatorID = 1
 )
+
+// NewOrdererEndpoints is a helper function to generate a list of Endpoint(s) from ServerConfig(s).
+func NewOrdererEndpoints(id uint32, configs ...*connection.ServerConfig) []*types.OrdererEndpoint {
+	ordererEndpoints := make([]*types.OrdererEndpoint, len(configs))
+	for i, c := range configs {
+		ordererEndpoints[i] = &types.OrdererEndpoint{
+			Host: c.Endpoint.Host,
+			Port: c.Endpoint.Port,
+			ID:   id,
+			API:  []string{ordererconn.Broadcast, ordererconn.Deliver},
+		}
+	}
+	return ordererEndpoints
+}

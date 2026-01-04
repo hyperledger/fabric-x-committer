@@ -228,9 +228,9 @@ func TestLoadGenForSidecar(t *testing.T) {
 							ChannelID:     clientConf.LoadProfile.Transaction.Policy.ChannelID,
 							Identity:      clientConf.LoadProfile.Transaction.Policy.Identity,
 							ConsensusType: ordererconn.Bft,
-							Organizations: []*ordererconn.OrganizationConfig{
-								{
-									Endpoints: ordererconn.NewEndpoints(0, "org", ordererServers...),
+							Organizations: map[string]*ordererconn.OrganizationConfig{
+								"org": {
+									Endpoints: test.NewOrdererEndpoints(0, ordererServers...),
 									CACerts:   clientTLSConfig.CACertPaths,
 								},
 							},
@@ -269,7 +269,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 					)
 					_, coordinatorServer := mock.StartMockCoordinatorService(t)
 
-					endpoints := ordererconn.NewEndpoints(0, "msp", ordererServer.Configs...)
+					endpoints := test.NewOrdererEndpoints(0, ordererServer.Configs...)
 					sidecarConf := &sidecar.Config{
 						Server:                        connection.NewLocalHostServerWithTLS(serverTLSConfig),
 						LastCommittedBlockSetInterval: 100 * time.Millisecond,
@@ -286,8 +286,8 @@ func TestLoadGenForOrderer(t *testing.T) {
 							Identity:      clientConf.LoadProfile.Transaction.Policy.Identity,
 							ConsensusType: ordererconn.Bft,
 							TLS:           test.ToOrdererTLSConfig(clientTLSConfig),
-							Organizations: []*ordererconn.OrganizationConfig{
-								{
+							Organizations: map[string]*ordererconn.OrganizationConfig{
+								"org": {
 									Endpoints: endpoints,
 									CACerts:   clientTLSConfig.CACertPaths,
 								},
@@ -340,7 +340,7 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 						BlockSize:  int(clientConf.LoadProfile.Block.Size), //nolint:gosec // uint64 -> int.
 					})
 
-					endpoints := ordererconn.NewEndpoints(0, "msp", ordererServer.Configs...)
+					endpoints := test.NewOrdererEndpoints(0, ordererServer.Configs...)
 
 					// Submit default config block.
 					// This is ignored when sidecar isn't used.
@@ -359,8 +359,8 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 							Identity:      clientConf.LoadProfile.Transaction.Policy.Identity,
 							ConsensusType: ordererconn.Bft,
 							TLS:           test.ToOrdererTLSConfig(clientTLSConfig),
-							Organizations: []*ordererconn.OrganizationConfig{
-								{
+							Organizations: map[string]*ordererconn.OrganizationConfig{
+								"org": {
 									Endpoints: endpoints,
 									CACerts:   clientTLSConfig.CACertPaths,
 								},

@@ -52,8 +52,8 @@ func New(config *Parameters) (*Client, error) {
 	cm, err := ordererconn.NewConnectionManager(&ordererconn.Config{
 		TLS:   test.ToOrdererTLSConfig(config.Client.TLS),
 		Retry: config.Client.Retry,
-		Organizations: []*ordererconn.OrganizationConfig{
-			{
+		Organizations: map[string]*ordererconn.OrganizationConfig{
+			"org": {
 				Endpoints: []*commontypes.OrdererEndpoint{{
 					Host: config.Client.Endpoint.Host,
 					Port: config.Client.Endpoint.Port,
