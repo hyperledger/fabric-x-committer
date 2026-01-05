@@ -9,14 +9,6 @@ package sidecar
 import (
 	"time"
 
-	"github.com/cockroachdb/errors"
-	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	commontypes "github.com/hyperledger/fabric-x-common/api/types"
-	"github.com/hyperledger/fabric-x-common/common/channelconfig"
-	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
-
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
@@ -64,66 +56,3 @@ const (
 	defaultNotificationMaxTimeout = time.Minute
 	defaultBufferSize             = 100
 )
-
-// LoadOrganizationsFromGenesisBlock loads the genesis-block given bootstrap config.
-func LoadOrganizationsFromGenesisBlock(bootstrap Bootstrap) ([]*ordererconn.OrganizationMaterial, error) {
-	if bootstrap.GenesisBlockFilePath == "" {
-		return nil, nil
-	}
-	configBlock, err := configtxgen.ReadBlock(bootstrap.GenesisBlockFilePath)
-	if err != nil {
-		return nil, errors.Wrap(err, "read config block")
-	}
-	return GetOrganizationsFromConfigBlock(configBlock)
-}
-
-// GetOrganizationsFromConfigBlock retrieve the organization materials from a config block.
-func GetOrganizationsFromConfigBlock(configBlock *common.Block) ([]*ordererconn.OrganizationMaterial, error) {
-	envelope, err := protoutil.ExtractEnvelope(configBlock, 0)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to extract envelope")
-	}
-	return GetOrganizationsFromEnvelope(envelope)
-}
-
-// GetOrganizationsFromEnvelope retrieve the organization materials from a config transaction.
-// For now, it fetches the following:
-// - Orderer endpoints.
-// - RootCAs per organization.
-func GetOrganizationsFromEnvelope(envelope *common.Envelope) ([]*ordererconn.OrganizationMaterial, error) {
-	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create config bundle")
-	}
-	orgsMaterial, err := readOrganizationsFromBundle(bundle)
-	if err != nil {
-		return nil, err
-	}
-	return orgsMaterial, nil
-}
-
-func readOrganizationsFromBundle(bundle *channelconfig.Bundle) ([]*ordererconn.OrganizationMaterial, error) {
-	ordererCfg, ok := bundle.OrdererConfig()
-	if !ok {
-		return nil, errors.New("could not find orderer config")
-	}
-	organizationMaterials := make([]*ordererconn.OrganizationMaterial, 0, len(ordererCfg.Organizations()))
-	for orgID, org := range ordererCfg.Organizations() {
-		var endpoints []*commontypes.OrdererEndpoint
-		endpointsStr := org.Endpoints()
-		for _, eStr := range endpointsStr {
-			e, err := commontypes.ParseOrdererEndpoint(eStr)
-			if err != nil {
-				return nil, err
-			}
-			e.MspID = orgID
-			endpoints = append(endpoints, e)
-		}
-		organizationMaterials = append(organizationMaterials, &ordererconn.OrganizationMaterial{
-			MspID:     orgID,
-			Endpoints: endpoints,
-			CACerts:   org.MSP().GetTLSRootCerts(),
-		})
-	}
-	return organizationMaterials, nil
-}

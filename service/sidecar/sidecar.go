@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -28,6 +29,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
 
 var logger = logging.New("sidecar")
@@ -59,15 +61,19 @@ func New(c *Config) (*Service, error) {
 		return nil, fmt.Errorf("failed to create orderer client: %w", err)
 	}
 
-	orgsMaterial, err := LoadOrganizationsFromGenesisBlock(c.Bootstrap)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load organizations materials: %w", err)
-	}
-	// If bootstrap returns nil, we didn't have any bootstrap information.
-	if orgsMaterial != nil {
-		err = ordererClient.UpdateConnections(orgsMaterial)
-		if err != nil {
-			return nil, err
+	if c.Bootstrap.GenesisBlockFilePath != "" {
+		configBlock, bootErr := configtxgen.ReadBlock(c.Bootstrap.GenesisBlockFilePath)
+		if bootErr != nil {
+			return nil, errors.Wrap(bootErr, "read config block")
+		}
+		orgsMaterial, bootErr := ordererconn.NewOrganizationsMaterialsFromConfigBlock(configBlock)
+		if bootErr != nil {
+			return nil, fmt.Errorf("failed to load organizations materials: %w", bootErr)
+		}
+		// If bootstrap returns nil, we didn't have any bootstrap information.
+		bootErr = ordererClient.UpdateConnections(orgsMaterial)
+		if bootErr != nil {
+			return nil, bootErr
 		}
 	}
 
@@ -216,7 +222,7 @@ func (s *Service) recoverCommittedBlocks(ctx context.Context) {
 
 func (s *Service) configUpdater(block *common.Block) {
 	logger.Infof("updating config from block: %d", block.Header.Number)
-	orgsMaterial, err := GetOrganizationsFromConfigBlock(block)
+	orgsMaterial, err := ordererconn.NewOrganizationsMaterialsFromConfigBlock(block)
 	if err != nil {
 		logger.Warnf("failed to load config from block %d: %v", block.Header.Number, err)
 		return
@@ -283,7 +289,7 @@ func (s *Service) recoverConfigTransactionFromStateDB(
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal meta policy envelope: %w", err)
 	}
-	orgsMaterial, err := GetOrganizationsFromEnvelope(envelope)
+	orgsMaterial, err := ordererconn.NewOrganizationsMaterialsFromEnvelope(envelope)
 	if err != nil {
 		return err
 	}

@@ -11,7 +11,6 @@ import (
 	"maps"
 	"math"
 	"math/rand"
-	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -35,14 +34,7 @@ type (
 		endpoints     []*commontypes.OrdererEndpoint
 		lock          sync.Mutex
 		retry         *connection.RetryProfile
-		tlsParameters *connection.TLSMaterials
-	}
-
-	// OrganizationMaterial contains the MspID (Organization ID), orderer endpoints, and their root CAs in bytes.
-	OrganizationMaterial struct {
-		MspID     string
-		Endpoints []*commontypes.OrdererEndpoint
-		CACerts   [][]byte
+		tls           *connection.TLSMaterials
 	}
 
 	// ConnFilter is used to filter connections.
@@ -69,10 +61,8 @@ const (
 )
 
 // NewConnectionManager constructs a ConnectionManager and initializes its connections.
-// If orgMaterial is provided, it updates the connection manager accordingly.
-// Otherwise, it uses the organization configuration.
 func NewConnectionManager(config *Config) (*ConnectionManager, error) {
-	tlsParams, err := connection.NewTLSMaterials(connection.TLSConfig{
+	tls, err := connection.NewTLSMaterials(connection.TLSConfig{
 		Mode:        config.TLS.Mode,
 		CertPath:    config.TLS.CertPath,
 		KeyPath:     config.TLS.KeyPath,
@@ -83,8 +73,8 @@ func NewConnectionManager(config *Config) (*ConnectionManager, error) {
 	}
 	// create connection manager with the config's retry policy and TLS.
 	cm := &ConnectionManager{
-		tlsParameters: tlsParams,
-		retry:         config.Retry,
+		tls:   tls,
+		retry: config.Retry,
 	}
 	orgsMaterial, err := NewOrganizationsMaterials(config.Organizations, config.TLS.Mode)
 	if err != nil {
@@ -111,8 +101,8 @@ func (cm *ConnectionManager) Update(orgsMat []*OrganizationMaterial) error { //n
 	// We save the endpoints for later processing.
 	var allOrgsEndpoints []*commontypes.OrdererEndpoint
 	for _, org := range orgsMat {
-		orgTLSParams := *cm.tlsParameters
-		orgTLSParams.CACerts = append(orgTLSParams.CACerts, org.CACerts...)
+		orgTLS := *cm.tls
+		orgTLS.CACerts = append(orgTLS.CACerts, org.CACerts...)
 		for _, id := range append(getAllIDs(org.Endpoints), anyID) {
 			for _, api := range allAPIs {
 				filter := aggregateFilter(WithAPI(api), WithID(id))
@@ -126,7 +116,7 @@ func (cm *ConnectionManager) Update(orgsMat []*OrganizationMaterial) error { //n
 					var err error
 					conn, err = openConnection(&openConnectionParameters{
 						Endpoints: endpoints,
-						TLS:       &orgTLSParams,
+						TLS:       &orgTLS,
 						Retry:     cm.retry,
 					})
 					if err != nil {
@@ -284,27 +274,4 @@ func filterOrdererEndpoints(endpoints []*commontypes.OrdererEndpoint, filters ..
 		result = append(result, &connection.Endpoint{Host: ep.Host, Port: ep.Port})
 	}
 	return result
-}
-
-// NewOrganizationsMaterials reads the organizations' materials.
-func NewOrganizationsMaterials(c map[string]*OrganizationConfig, tlsMode string) ([]*OrganizationMaterial, error) {
-	organizationsMaterial := make([]*OrganizationMaterial, 0, len(c))
-	for mspID, orgConfig := range c {
-		orgsMaterial := &OrganizationMaterial{
-			MspID:     mspID,
-			Endpoints: orgConfig.Endpoints,
-		}
-		organizationsMaterial = append(organizationsMaterial, orgsMaterial)
-		if tlsMode == connection.NoneTLSMode || tlsMode == connection.UnmentionedTLSMode {
-			continue
-		}
-		for _, caPath := range orgConfig.CACerts {
-			caBytes, err := os.ReadFile(caPath)
-			if err != nil {
-				return nil, errors.Wrapf(err, "failed to load CA certificate from %s", caBytes)
-			}
-			orgsMaterial.CACerts = append(orgsMaterial.CACerts, caBytes)
-		}
-	}
-	return organizationsMaterial, nil
 }

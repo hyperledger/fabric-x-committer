@@ -55,12 +55,12 @@ type sidecarTestEnv struct {
 }
 
 type sidecarTestConfig struct {
-	NumService      int
-	NumFakeService  int
-	NumHolders      int
-	WithConfigBlock bool
-	ServerTLS       connection.TLSConfig
-	ClientTLS       connection.TLSConfig
+	NumService         int
+	NumFakeService     int
+	NumHolders         int
+	SubmitGenesisBlock bool
+	ServerTLS          connection.TLSConfig
+	ClientTLS          connection.TLSConfig
 }
 
 const (
@@ -76,8 +76,8 @@ func (c *sidecarTestConfig) String() string {
 	if c.NumFakeService > 0 {
 		b = append(b, fmt.Sprintf("fake:%d", c.NumFakeService))
 	}
-	if c.WithConfigBlock {
-		b = append(b, "config-block")
+	if c.SubmitGenesisBlock {
+		b = append(b, "genesis-block")
 	}
 	if len(b) > 0 {
 		return strings.Join(b, ",")
@@ -143,7 +143,7 @@ func newSidecarTestEnvWithTLS(
 			CACerts:   conf.ClientTLS.CACertPaths,
 		},
 	}
-	if conf.WithConfigBlock {
+	if conf.SubmitGenesisBlock {
 		genesisBlockFilePath = filepath.Join(t.TempDir(), "config.block")
 		require.NoError(t, configtxgen.WriteOutputBlock(configBlock, genesisBlockFilePath))
 		initOrdererOrganizations = nil
@@ -231,11 +231,11 @@ func TestSidecar(t *testing.T) {
 			t.Parallel()
 			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
 			for _, conf := range []sidecarTestConfig{
-				{WithConfigBlock: false},
-				{WithConfigBlock: true},
+				{SubmitGenesisBlock: false},
+				{SubmitGenesisBlock: true},
 				{
-					WithConfigBlock: true,
-					NumFakeService:  3,
+					SubmitGenesisBlock: true,
+					NumFakeService:     3,
 				},
 			} {
 				t.Run(conf.String(), func(t *testing.T) {
@@ -254,6 +254,7 @@ func TestSidecar(t *testing.T) {
 }
 
 func TestSidecarConfigUpdate(t *testing.T) {
+	t.Parallel()
 	for _, mode := range test.ServerModes {
 		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
@@ -366,7 +367,7 @@ func TestSidecarConfigRecovery(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(env.sidecar.Close)
 
-	// The Genesis block path is empty since the test didn't set WithConfigBlock:
+	// The Genesis block path is empty since the test didn't set SubmitGenesisBlock:
 	t.Log("Set the coordinator config block to use orderer AllEndpoints.")
 	env.coordinator.SetConfigTransaction(env.configBlock.Data.Data[0])
 
@@ -556,9 +557,9 @@ func TestSidecarVerifyBadTxForm(t *testing.T) {
 	t.Parallel()
 	env := newSidecarTestEnvWithTLS(t,
 		sidecarTestConfig{
-			WithConfigBlock: true,
-			ServerTLS:       test.InsecureTLSConfig,
-			ClientTLS:       test.InsecureTLSConfig,
+			SubmitGenesisBlock: true,
+			ServerTLS:          test.InsecureTLSConfig,
+			ClientTLS:          test.InsecureTLSConfig,
 		},
 	)
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
