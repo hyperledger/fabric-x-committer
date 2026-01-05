@@ -52,22 +52,22 @@ type (
 		Verifier     []*ProcessWithConfig
 		VcService    []*ProcessWithConfig
 
-		dbEnv *vc.DatabaseTestEnv
+		DBEnv *vc.DatabaseTestEnv
 
-		ordererStream      *test.BroadcastStream
+		OrdererStream      *test.BroadcastStream
 		CoordinatorClient  servicepb.CoordinatorClient
 		QueryServiceClient committerpb.QueryServiceClient
-		sidecarClient      *sidecarclient.Client
-		notifyClient       committerpb.NotifierClient
-		notifyStream       committerpb.Notifier_OpenNotificationStreamClient
+		SidecarClient      *sidecarclient.Client
+		NotifyClient       committerpb.NotifierClient
+		NotifyStream       committerpb.Notifier_OpenNotificationStreamClient
 
 		CommittedBlock chan *common.Block
 
 		TxBuilder *workload.TxBuilder
 
-		config *Config
+		Config *Config
 
-		seedForCryptoGen *rand.Rand
+		SeedForCryptoGen *rand.Rand
 
 		LastReceivedBlockNumber uint64
 
@@ -128,7 +128,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	t.Helper()
 
 	c := &CommitterRuntime{
-		config: conf,
+		Config: conf,
 		SystemConfig: config.SystemConfig{
 			BlockSize:         conf.BlockSize,
 			BlockTimeout:      conf.BlockTimeout,
@@ -141,23 +141,23 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 			Logging: &logging.DefaultConfig,
 		},
 		CommittedBlock:   make(chan *common.Block, 100),
-		seedForCryptoGen: rand.New(rand.NewSource(10)),
+		SeedForCryptoGen: rand.New(rand.NewSource(10)),
 	}
 	c.AddOrUpdateNamespaces(t, committerpb.MetaNamespaceID, workload.DefaultGeneratedNamespaceID, "1", "2", "3")
 
 	t.Log("Making DB env")
 	if conf.DBConnection == nil {
-		c.dbEnv = vc.NewDatabaseTestEnv(t)
+		c.DBEnv = vc.NewDatabaseTestEnv(t)
 	} else {
-		c.dbEnv = vc.NewDatabaseTestEnvWithCustomConnection(t, conf.DBConnection)
+		c.DBEnv = vc.NewDatabaseTestEnvWithCustomConnection(t, conf.DBConnection)
 	}
 
 	s := &c.SystemConfig
-	s.DB.Name = c.dbEnv.DBConf.Database
-	s.DB.Password = c.dbEnv.DBConf.Password
-	s.DB.LoadBalance = c.dbEnv.DBConf.LoadBalance
-	s.DB.Endpoints = c.dbEnv.DBConf.Endpoints
-	s.DB.TLS = c.dbEnv.DBConf.TLS
+	s.DB.Name = c.DBEnv.DBConf.Database
+	s.DB.Password = c.DBEnv.DBConf.Password
+	s.DB.LoadBalance = c.DBEnv.DBConf.LoadBalance
+	s.DB.Endpoints = c.DBEnv.DBConf.Endpoints
+	s.DB.TLS = c.DBEnv.DBConf.TLS
 	s.LedgerPath = t.TempDir()
 	s.ConfigBlockPath = filepath.Join(t.TempDir(), "config-block.pb.bin")
 
@@ -189,7 +189,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 
 	t.Log("create TLS manager and clients certificate")
 	c.CredFactory = test.NewCredentialsFactory(t)
-	s.ClientTLS, _ = c.CredFactory.CreateClientCredentials(t, c.config.TLSMode)
+	s.ClientTLS, _ = c.CredFactory.CreateClientCredentials(t, c.Config.TLSMode)
 
 	t.Log("Create processes")
 	c.MockOrderer = newProcess(t, cmdOrderer, s.WithEndpoint(s.Endpoints.Orderer[0]))
@@ -214,36 +214,54 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	c.Sidecar = newProcess(t, cmdSidecar, c.createSystemConfigWithServerTLS(t, s.Endpoints.Sidecar))
 
 	t.Log("Create clients")
+	c.CreateRuntimeClients(t.Context(), t)
+	return c
+}
+
+// CreateRuntimeClients create and set the necessary service's clients.
+func (c *CommitterRuntime) CreateRuntimeClients(ctx context.Context, t *testing.T) {
+	t.Helper()
+	endpoints := c.SystemConfig.Endpoints
+
 	c.CoordinatorClient = servicepb.NewCoordinatorClient(
-		test.NewSecuredConnection(t, s.Endpoints.Coordinator.Server, c.SystemConfig.ClientTLS),
+		test.NewSecuredConnection(t, endpoints.Coordinator.Server, c.SystemConfig.ClientTLS),
 	)
 
 	c.QueryServiceClient = committerpb.NewQueryServiceClient(
-		test.NewSecuredConnection(t, s.Endpoints.Query.Server, c.SystemConfig.ClientTLS),
+		test.NewSecuredConnection(t, endpoints.Query.Server, c.SystemConfig.ClientTLS),
 	)
 
-	c.notifyClient = committerpb.NewNotifierClient(
-		test.NewSecuredConnection(t, s.Endpoints.Sidecar.Server, c.SystemConfig.ClientTLS),
+	c.NotifyClient = committerpb.NewNotifierClient(
+		test.NewSecuredConnection(t, endpoints.Sidecar.Server, c.SystemConfig.ClientTLS),
 	)
 
-	c.ordererStream, err = test.NewBroadcastStream(t.Context(), &ordererconn.Config{
+	var err error
+	c.OrdererStream, err = test.NewBroadcastStream(ctx, &ordererconn.Config{
 		Connection: ordererconn.ConnectionConfig{
-			Endpoints: s.Policy.OrdererEndpoints,
+			Endpoints: c.SystemConfig.Policy.OrdererEndpoints,
+			TLS:       c.SystemConfig.ClientTLS,
 		},
-		ChannelID:     s.Policy.ChannelID,
-		Identity:      s.Policy.Identity,
+		ChannelID:     c.SystemConfig.Policy.ChannelID,
+		Identity:      c.SystemConfig.Policy.Identity,
 		ConsensusType: ordererconn.Bft,
 	})
 	require.NoError(t, err)
-	t.Cleanup(c.ordererStream.CloseConnections)
+	t.Cleanup(c.OrdererStream.CloseConnections)
 
-	c.sidecarClient, err = sidecarclient.New(&sidecarclient.Parameters{
-		ChannelID: s.Policy.ChannelID,
-		Client:    test.NewTLSClientConfig(s.ClientTLS, s.Endpoints.Sidecar.Server),
+	c.SidecarClient, err = sidecarclient.New(&sidecarclient.Parameters{
+		ChannelID: c.SystemConfig.Policy.ChannelID,
+		Client:    test.NewTLSClientConfig(c.SystemConfig.ClientTLS, endpoints.Sidecar.Server),
 	})
 	require.NoError(t, err)
-	t.Cleanup(c.sidecarClient.CloseConnections)
-	return c
+	t.Cleanup(c.SidecarClient.CloseConnections)
+}
+
+// OpenNotificationStream starts a notification stream.
+func (c *CommitterRuntime) OpenNotificationStream(ctx context.Context, t *testing.T) {
+	t.Helper()
+	var err error
+	c.NotifyStream, err = c.NotifyClient.OpenNotificationStream(ctx)
+	require.NoError(t, err)
 }
 
 // Start runs all services and load generator as configured by the serviceFlags.
@@ -275,9 +293,7 @@ func (c *CommitterRuntime) Start(t *testing.T, serviceFlags int) {
 	}
 	if Sidecar&serviceFlags != 0 {
 		c.Sidecar.Restart(t)
-		var err error
-		c.notifyStream, err = c.notifyClient.OpenNotificationStream(t.Context())
-		require.NoError(t, err)
+		c.OpenNotificationStream(t.Context(), t)
 	}
 	if QueryService&serviceFlags != 0 {
 		c.QueryService.Restart(t)
@@ -334,7 +350,7 @@ func (c *CommitterRuntime) startBlockDelivery(t *testing.T) {
 	t.Helper()
 	t.Log("Running delivery client")
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
-		return connection.FilterStreamRPCError(c.sidecarClient.Deliver(ctx, &sidecarclient.DeliverParameters{
+		return connection.FilterStreamRPCError(c.SidecarClient.Deliver(ctx, &sidecarclient.DeliverParameters{
 			EndBlkNum:   deliver.MaxBlockNum,
 			OutputBlock: c.CommittedBlock,
 		}))
@@ -355,7 +371,7 @@ func (c *CommitterRuntime) AddOrUpdateNamespaces(t *testing.T, namespaces ...str
 	for _, ns := range namespaces {
 		c.SystemConfig.Policy.NamespacePolicies[ns] = &workload.Policy{
 			Scheme: signature.Ecdsa,
-			Seed:   c.seedForCryptoGen.Int63(),
+			Seed:   c.SeedForCryptoGen.Int63(),
 		}
 	}
 	var err error
@@ -376,14 +392,14 @@ func (c *CommitterRuntime) CreateNamespacesAndCommit(t *testing.T, namespaces ..
 	c.MakeAndSendTransactionsToOrderer(
 		t,
 		[][]*applicationpb.TxNamespace{metaTX.Namespaces},
-		[]applicationpb.Status{applicationpb.Status_COMMITTED},
+		[]committerpb.Status{committerpb.Status_COMMITTED},
 	)
 }
 
 // MakeAndSendTransactionsToOrderer creates a block with given transactions, send it to the committer,
 // and verify the result.
 func (c *CommitterRuntime) MakeAndSendTransactionsToOrderer(
-	t *testing.T, txsNs [][]*applicationpb.TxNamespace, expectedStatus []applicationpb.Status,
+	t *testing.T, txsNs [][]*applicationpb.TxNamespace, expectedStatus []committerpb.Status,
 ) []string {
 	t.Helper()
 	txs := make([]*servicepb.LoadGenTx, len(txsNs))
@@ -392,7 +408,7 @@ func (c *CommitterRuntime) MakeAndSendTransactionsToOrderer(
 		tx := &applicationpb.Tx{
 			Namespaces: namespaces,
 		}
-		if expectedStatus != nil && expectedStatus[i] == applicationpb.Status_ABORTED_SIGNATURE_INVALID {
+		if expectedStatus != nil && expectedStatus[i] == committerpb.Status_ABORTED_SIGNATURE_INVALID {
 			tx.Endorsements = make([]*applicationpb.Endorsements, len(namespaces))
 			for nsIdx := range namespaces {
 				tx.Endorsements[nsIdx] = sigtest.CreateEndorsementsForThresholdRule([]byte("dummy"))[0]
@@ -406,7 +422,7 @@ func (c *CommitterRuntime) MakeAndSendTransactionsToOrderer(
 
 // SendTransactionsToOrderer creates a block with given transactions, send it to the committer, and verify the result.
 func (c *CommitterRuntime) SendTransactionsToOrderer(
-	t *testing.T, txs []*servicepb.LoadGenTx, expectedStatus []applicationpb.Status,
+	t *testing.T, txs []*servicepb.LoadGenTx, expectedStatus []committerpb.Status,
 ) []string {
 	t.Helper()
 	expected := &ExpectedStatusInBlock{
@@ -417,8 +433,8 @@ func (c *CommitterRuntime) SendTransactionsToOrderer(
 		expected.TxIDs[i] = tx.Id
 	}
 
-	if !c.config.CrashTest {
-		err := c.notifyStream.Send(&committerpb.NotificationRequest{
+	if !c.Config.CrashTest {
+		err := c.NotifyStream.Send(&committerpb.NotificationRequest{
 			TxStatusRequest: &committerpb.TxStatusRequest{
 				TxIds: expected.TxIDs,
 			},
@@ -429,7 +445,7 @@ func (c *CommitterRuntime) SendTransactionsToOrderer(
 		time.Sleep(1 * time.Second)
 	}
 
-	err := c.ordererStream.SendBatch(workload.MapToEnvelopeBatch(0, txs))
+	err := c.OrdererStream.SendBatch(workload.MapToEnvelopeBatch(0, txs))
 	require.NoError(t, err)
 
 	if expectedStatus != nil {
@@ -442,7 +458,7 @@ func (c *CommitterRuntime) SendTransactionsToOrderer(
 // is expected to be the same as in the committed block.
 type ExpectedStatusInBlock struct {
 	TxIDs    []string
-	Statuses []applicationpb.Status
+	Statuses []committerpb.Status
 }
 
 // ValidateExpectedResultsInCommittedBlock validates the status of transactions in the committed block.
@@ -482,20 +498,20 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 	statusBytes := blk.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER]
 	actualStatuses := make([]string, len(statusBytes))
 	for i, sB := range statusBytes {
-		actualStatuses[i] = applicationpb.Status(sB).String()
+		actualStatuses[i] = committerpb.Status(sB).String()
 	}
 	require.Equal(t, expectedStatuses, actualStatuses)
 
 	c.ensureLastCommittedBlockNumber(t, blk.Header.Number)
 
 	var persistedTxIDs []string
-	persistedTxIDsStatus := make(map[string]*applicationpb.StatusWithHeight)
-	nonDuplicateTxIDsStatus := make(map[string]*applicationpb.StatusWithHeight)
-	duplicateTxIDsStatus := make(map[string]*applicationpb.StatusWithHeight)
+	persistedTxIDsStatus := make(map[string]*servicepb.StatusWithHeight)
+	nonDuplicateTxIDsStatus := make(map[string]*servicepb.StatusWithHeight)
+	duplicateTxIDsStatus := make(map[string]*servicepb.StatusWithHeight)
 	for i, tID := range expected.TxIDs {
 		//nolint:gosec // int -> uint32.
 		s := servicepb.NewStatusWithHeight(expected.Statuses[i], blk.Header.Number, uint32(i))
-		if s.Code == applicationpb.Status_REJECTED_DUPLICATE_TX_ID {
+		if s.Code == committerpb.Status_REJECTED_DUPLICATE_TX_ID {
 			duplicateTxIDsStatus[tID] = s
 		} else {
 			nonDuplicateTxIDsStatus[tID] = s
@@ -507,32 +523,32 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 		}
 	}
 
-	c.dbEnv.StatusExistsForNonDuplicateTxID(t, persistedTxIDsStatus)
+	c.DBEnv.StatusExistsForNonDuplicateTxID(t, persistedTxIDsStatus)
 	// For the duplicate txID, neither the status nor the height would match the entry in the
 	// transaction status table.
-	c.dbEnv.StatusExistsWithDifferentHeightForDuplicateTxID(t, duplicateTxIDsStatus)
+	c.DBEnv.StatusExistsWithDifferentHeightForDuplicateTxID(t, duplicateTxIDsStatus)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Minute)
 	defer cancel()
 	test.EnsurePersistedTxStatus(ctx, t, c.CoordinatorClient, persistedTxIDs, persistedTxIDsStatus)
 
-	if len(expected.TxIDs) == 0 || c.config.CrashTest {
+	if len(expected.TxIDs) == 0 || c.Config.CrashTest {
 		return
 	}
 
-	sidecar.RequireNotifications(t, c.notifyStream, blk.Header.Number, expected.TxIDs, expected.Statuses)
+	sidecar.RequireNotifications(t, c.NotifyStream, blk.Header.Number, expected.TxIDs, expected.Statuses)
 }
 
 // CountStatus returns the number of transactions with a given tx status.
-func (c *CommitterRuntime) CountStatus(t *testing.T, status applicationpb.Status) int {
+func (c *CommitterRuntime) CountStatus(t *testing.T, status committerpb.Status) int {
 	t.Helper()
-	return c.dbEnv.CountStatus(t, status)
+	return c.DBEnv.CountStatus(t, status)
 }
 
 // CountAlternateStatus returns the number of transactions not with a given tx status.
-func (c *CommitterRuntime) CountAlternateStatus(t *testing.T, status applicationpb.Status) int {
+func (c *CommitterRuntime) CountAlternateStatus(t *testing.T, status committerpb.Status) int {
 	t.Helper()
-	return c.dbEnv.CountAlternateStatus(t, status)
+	return c.DBEnv.CountAlternateStatus(t, status)
 }
 
 func (c *CommitterRuntime) ensureLastCommittedBlockNumber(t *testing.T, blkNum uint64) {
@@ -565,7 +581,7 @@ func (c *CommitterRuntime) createSystemConfigWithServerTLS(
 ) *config.SystemConfig {
 	t.Helper()
 	serviceCfg := c.SystemConfig
-	serviceCfg.ServiceTLS, _ = c.CredFactory.CreateServerCredentials(t, c.config.TLSMode, endpoints.Server.Host)
+	serviceCfg.ServiceTLS, _ = c.CredFactory.CreateServerCredentials(t, c.Config.TLSMode, endpoints.Server.Host)
 	serviceCfg.ServiceEndpoints = endpoints
 	return &serviceCfg
 }

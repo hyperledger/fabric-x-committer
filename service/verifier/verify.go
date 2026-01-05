@@ -17,7 +17,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
@@ -55,7 +54,8 @@ func (v *verifier) updatePolicies(
 	// While it is unlikely that policy parsing would fail at this stage, it could happen
 	// if the stored policy in the database is corrupted or maliciously altered, or if there is a
 	// bug in the committer that modifies the policy bytes.
-	newVerifiers, err := createVerifiers(update, v.bundle.MSPManager())
+	idDeserializer := v.bundle.MSPManager()
+	newVerifiers, err := createVerifiers(update, idDeserializer)
 	if err != nil {
 		return errors.Join(ErrUpdatePolicies, err)
 	}
@@ -69,9 +69,9 @@ func (v *verifier) updatePolicies(
 		}
 
 		// If there is a config update, the verifier for signature policies must be
-		// recreated to use the latest MSP Manager from the new configuration.
-		if update.Config != nil && nsVerifier.NamespacePolicy.GetMspRule() != nil {
-			nsVerifier, err = signature.NewNsVerifier(nsVerifier.NamespacePolicy, v.bundle.MSPManager())
+		// updated to use the latest MSP Manager from the new configuration.
+		if update.Config != nil {
+			err = nsVerifier.UpdateIdentities(idDeserializer)
 			if err != nil {
 				return err
 			}
@@ -127,7 +127,7 @@ func (v *verifier) verifyRequest(tx *servicepb.VerifierTx) *servicepb.VerifierRe
 	logger.Debugf("Validating TX: %s", &utils.LazyJSON{O: tx})
 	response := &servicepb.VerifierResponse{
 		Ref:    tx.Ref,
-		Status: applicationpb.Status_COMMITTED,
+		Status: committerpb.Status_COMMITTED,
 	}
 	// The verifiers might temporarily retain the old map while updatePolicies has already set a new one.
 	// This is acceptable, provided the coordinator sends the validation status to the dependency graph
@@ -144,7 +144,7 @@ func (v *verifier) verifyRequest(tx *servicepb.VerifierTx) *servicepb.VerifierRe
 		nsVerifier, ok := verifiers[ns.NsId]
 		if !ok {
 			logger.Debugf("No verifier for namespace: '%v'", ns.NsId)
-			response.Status = applicationpb.Status_ABORTED_SIGNATURE_INVALID
+			response.Status = committerpb.Status_ABORTED_SIGNATURE_INVALID
 			return response
 		}
 
@@ -160,7 +160,7 @@ func (v *verifier) verifyRequest(tx *servicepb.VerifierTx) *servicepb.VerifierRe
 		if err := nsVerifier.VerifyNs(tx.Ref.TxId, tx.Tx, nsIndex); err != nil {
 			logger.Debugf("Invalid signature found: '%v', NsId: '%v': %+v",
 				&utils.LazyJSON{O: tx.Ref}, ns.NsId, err)
-			response.Status = applicationpb.Status_ABORTED_SIGNATURE_INVALID
+			response.Status = committerpb.Status_ABORTED_SIGNATURE_INVALID
 			return response
 		}
 	}

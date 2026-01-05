@@ -59,7 +59,7 @@ func newNotifier(bufferSize int, conf *NotificationServiceConfig) *notifier {
 	}
 }
 
-func (n *notifier) run(ctx context.Context, statusQueue chan []*committerpb.TxStatusEvent) error {
+func (n *notifier) run(ctx context.Context, statusQueue chan []*committerpb.TxStatus) error {
 	notifyMap := subscriptionMap(make(map[string]map[*notificationRequest]any))
 	timeoutQueue := make(chan *notificationRequest, cap(n.requestQueue))
 	timeoutQueueCtx := channel.NewWriter(ctx, timeoutQueue)
@@ -142,14 +142,14 @@ func (m subscriptionMap) addRequest(req *notificationRequest) {
 }
 
 // removeAndEnqueueStatusEvents removes TXs from the map and reports the responses to the subscribers.
-func (m subscriptionMap) removeAndEnqueueStatusEvents(status []*committerpb.TxStatusEvent) {
-	respMap := make(map[channel.Writer[*committerpb.NotificationResponse]][]*committerpb.TxStatusEvent)
+func (m subscriptionMap) removeAndEnqueueStatusEvents(status []*committerpb.TxStatus) {
+	respMap := make(map[channel.Writer[*committerpb.NotificationResponse]][]*committerpb.TxStatus)
 	for _, response := range status {
-		reqList, ok := m[response.TxId]
+		reqList, ok := m[response.Ref.TxId]
 		if !ok {
 			continue
 		}
-		delete(m, response.TxId)
+		delete(m, response.Ref.TxId)
 		for req := range reqList {
 			respMap[req.streamEventQueue] = append(respMap[req.streamEventQueue], response)
 			req.pending--

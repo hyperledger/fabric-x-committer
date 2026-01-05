@@ -24,29 +24,12 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
-	testutils "github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
-
-type startNodeParameters struct {
-	credsFactory    *testutils.CredentialsFactory
-	node            string
-	networkName     string
-	tlsMode         string
-	configBlockPath string
-	dbType          string
-	dbPassword      string
-}
-
-func (p *startNodeParameters) asNode(node string) startNodeParameters {
-	params := *p
-	params.node = node
-	return params
-}
 
 const (
 	committerReleaseImage = "docker.io/hyperledger/fabric-x-committer:latest"
 	loadgenReleaseImage   = "docker.io/hyperledger/fabric-x-loadgen:latest"
-	containerPrefixName   = "sc_test"
 	networkPrefixName     = containerPrefixName + "_network"
 	genBlockFile          = "sc-genesis-block.proto.bin"
 	// containerConfigPath is the path to the config directory inside the container.
@@ -92,18 +75,18 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	loadgenNode := "loadgen"
 	committerNodes := []string{"verifier", "vc", "query", "coordinator", "sidecar"}
 
-	credsFactory := testutils.NewCredentialsFactory(t)
+	credsFactory := test.NewCredentialsFactory(t)
 	for _, dbType := range []string{dbtest.YugaDBType, dbtest.PostgresDBType} {
 		t.Run(fmt.Sprintf("database:%s", dbType), func(t *testing.T) {
 			t.Parallel()
-			for _, mode := range testutils.ServerModes {
+			for _, mode := range test.ServerModes {
 				t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 					t.Parallel()
 					// Create an isolated network for each test with different tls mode.
 					networkName := fmt.Sprintf("%s_%s", networkPrefixName, uuid.NewString())
-					testutils.CreateDockerNetwork(t, networkName)
+					test.CreateDockerNetwork(t, networkName)
 					t.Cleanup(func() {
-						testutils.RemoveDockerNetwork(t, networkName)
+						test.RemoveDockerNetwork(t, networkName)
 					})
 
 					params := startNodeParameters{
@@ -309,24 +292,6 @@ func startCommitterNodeWithTestImage(
 		},
 		name: assembleContainerName(params.node, params.tlsMode, params.dbType),
 	})
-}
-
-func assembleContainerName(node, tlsMode, dbType string) string {
-	return fmt.Sprintf("%s_%s_%s_%s", containerPrefixName, node, tlsMode, dbType)
-}
-
-func assembleBinds(t *testing.T, params startNodeParameters, additionalBinds ...string) []string {
-	t.Helper()
-
-	_, serverCredsPath := params.credsFactory.CreateServerCredentials(t, params.tlsMode, params.node)
-	require.NotEmpty(t, serverCredsPath)
-	_, clientCredsPath := params.credsFactory.CreateClientCredentials(t, params.tlsMode)
-	require.NotEmpty(t, clientCredsPath)
-
-	return append([]string{
-		fmt.Sprintf("%s:/server-certs", serverCredsPath),
-		fmt.Sprintf("%s:/client-certs", clientCredsPath),
-	}, additionalBinds...)
 }
 
 // mustGetWD returns the current working directory.

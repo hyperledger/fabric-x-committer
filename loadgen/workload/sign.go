@@ -116,7 +116,7 @@ func NewPolicyEndorserVerifier(profile *Policy) *NsPolicyEndorserVerifier {
 		logger.Debugf("Generating new keys")
 		signingKey, verificationKey = sigtest.NewKeyPairWithSeed(profile.Scheme, profile.Seed)
 	}
-	v, err := sigtest.NewNsVerifierFromKey(profile.Scheme, verificationKey)
+	v, err := signature.NewNsVerifierFromKey(profile.Scheme, verificationKey)
 	utils.Must(err)
 	endorser, err := sigtest.NewNsEndorserFromKey(profile.Scheme, signingKey)
 	utils.Must(err)

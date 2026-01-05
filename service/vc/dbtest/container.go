@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -197,22 +196,6 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 		}
 	}
 
-	if dc.HostIP == "" {
-		dc.HostIP = defaultHostIP
-	}
-
-	if dc.PortMap == "" {
-		dc.PortMap = defaultPortMap
-	}
-
-	if dc.PortBinds == nil {
-		dc.PortBinds = map[docker.Port][]docker.PortBinding{
-			dc.PortMap: {{
-				HostIP:   dc.HostIP,
-				HostPort: strconv.Itoa(dc.HostPort),
-			}},
-		}
-	}
 	if dc.client == nil {
 		dc.client = test.GetDockerClient(t)
 	}

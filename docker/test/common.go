@@ -25,16 +25,35 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-type createAndStartContainerParameters struct {
-	config     *container.Config
-	hostConfig *container.HostConfig
-	name       string
+type (
+	createAndStartContainerParameters struct {
+		config     *container.Config
+		hostConfig *container.HostConfig
+		name       string
+	}
+	startNodeParameters struct {
+		credsFactory    *test.CredentialsFactory
+		node            string
+		networkName     string
+		tlsMode         string
+		configBlockPath string
+		dbType          string
+		dbPassword      string
+		cmd             []string
+	}
+)
+
+func (p *startNodeParameters) asNode(node string) startNodeParameters {
+	params := *p
+	params.node = node
+	return params
 }
 
 const (
-	testNodeImage   = "docker.io/hyperledger/committer-test-node:latest"
-	channelName     = "mychannel"
-	monitoredMetric = "loadgen_transaction_committed_total"
+	channelName         = "mychannel"
+	monitoredMetric     = "loadgen_transaction_committed_total"
+	containerPrefixName = "sc_test"
+	testNodeImage       = "docker.io/hyperledger/committer-test-node:latest"
 )
 
 func createAndStartContainerAndItsLogs(
@@ -147,4 +166,22 @@ func createDockerClient(t *testing.T) *client.Client {
 	require.NoError(t, err)
 	defer connection.CloseConnectionsLog(dockerClient)
 	return dockerClient
+}
+
+func assembleBinds(t *testing.T, params startNodeParameters, additionalBinds ...string) []string {
+	t.Helper()
+
+	_, serverCredsPath := params.credsFactory.CreateServerCredentials(t, params.tlsMode, params.node)
+	require.NotEmpty(t, serverCredsPath)
+	_, clientCredsPath := params.credsFactory.CreateClientCredentials(t, params.tlsMode)
+	require.NotEmpty(t, clientCredsPath)
+
+	return append([]string{
+		fmt.Sprintf("%s:/server-certs", serverCredsPath),
+		fmt.Sprintf("%s:/client-certs", clientCredsPath),
+	}, additionalBinds...)
+}
+
+func assembleContainerName(node, tlsMode, dbType string) string {
+	return fmt.Sprintf("%s_%s_%s_%s", containerPrefixName, node, tlsMode, dbType)
 }

@@ -9,6 +9,23 @@ set -e
 
 ops="${*:-db orderer committer loadgen}"
 
+if [[ "$*" == *"--insecure"* ]]; then
+  # Set TLS mode to none-tls.
+  export SC_COORDINATOR_SERVER_TLS_MODE="none"
+  export SC_COORDINATOR_VERIFIER_TLS_MODE="none"
+  export SC_COORDINATOR_VALIDATOR_COMMITTER_TLS_MODE="none"
+  export SC_QUERY_SERVER_TLS_MODE="none"
+  export SC_SIDECAR_SERVER_TLS_MODE="none"
+  export SC_SIDECAR_COMMITTER_TLS_MODE="none"
+  export SC_SIDECAR_ORDERER_CONNECTION_TLS_MODE="none"
+  export SC_VC_SERVER_TLS_MODE="none"
+  export SC_VERIFIER_SERVER_TLS_MODE="none"
+  export SC_ORDERER_SERVER_TLS_MODE="none"
+  export SC_LOADGEN_ORDERER_CLIENT_ORDERER_CONNECTION_TLS_MODE="none"
+  export SC_LOADGEN_SERVER_TLS_MODE="none"
+  export SC_LOADGEN_ORDERER_CLIENT_SIDECAR_CLIENT_TLS_MODE="none"
+fi
+
 if [[ $ops == *"db"* ]]; then
   export POSTGRES_PASSWORD=yugabyte
   export POSTGRES_USER=yugabyte

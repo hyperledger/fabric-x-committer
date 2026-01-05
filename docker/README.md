@@ -46,7 +46,7 @@ docker push docker-eu.artifactory.swg-devops.com/res-decentralized-trust-team-sc
 
 ## Run Image
 The image contains the binaries, default config files, and default genesis block.
-By default, the test node image will run a full system: DB, mock-orderer, committer, and a simple generated load.
+By default, the test node image will run a full system: DB, mock-orderer, committer, and a simple generated load with mutual tls mode.
 ```shell
 docker run -it --rm icr.io/cbdc/committer-test-node:0.0.2
 ```
@@ -55,6 +55,7 @@ To control which parts of the system will run, you can use the `run` script as f
 ```shell
 docker run -it --rm icr.io/cbdc/committer-test-node:0.0.2 run [db] [orderer] [committer] [loadgen]
 ```
+Note: ```--insecure``` flag can be added for an insecure run.
 
 For example, to run it with an existing orderer node:
 ```shell

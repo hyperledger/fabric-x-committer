@@ -12,66 +12,66 @@ package committerpb;
 
 import "google/protobuf/empty.proto";
 
-import "api/applicationpb/block_tx.proto";
+import "api/applicationpb/config.proto";
 
-import "api/committerpb/notify.proto";
+import "api/committerpb/status.proto";
 
 service QueryService {
-  rpc GetRows(Query) returns (Rows) {};
-  rpc BeginView(ViewParameters) returns (View) {};
-  rpc EndView(View) returns (View) {};
-  rpc GetNamespacePolicies(google.protobuf.Empty) returns (applicationpb.NamespacePolicies) {};
-  rpc GetConfigTransaction(google.protobuf.Empty) returns (applicationpb.ConfigTransaction) {};
-  rpc GetTransactionStatus(TxStatusQuery) returns (TxStatusResponse) {};
+    rpc GetRows(Query) returns (Rows) {};
+    rpc BeginView(ViewParameters) returns (View) {};
+    rpc EndView(View) returns (View) {};
+    rpc GetNamespacePolicies(google.protobuf.Empty) returns (applicationpb.NamespacePolicies) {};
+    rpc GetConfigTransaction(google.protobuf.Empty) returns (applicationpb.ConfigTransaction) {};
+    rpc GetTransactionStatus(TxStatusQuery) returns (TxStatusResponse) {};
 }
 
 message View {
-  string id = 1;
+    string id = 1;
 }
 
 message Query {
-  optional View view = 1;
-  repeated QueryNamespace namespaces = 2;
+    optional View view = 1;
+    repeated QueryNamespace namespaces = 2;
 }
 
 message Rows {
-  repeated RowsNamespace namespaces = 1;
+    repeated RowsNamespace namespaces = 1;
 }
 
 enum IsoLevel {
-  Serializable = 0;
-  RepeatableRead = 1;
-  ReadCommitted = 2;
-  ReadUncommitted = 3;
+    Serializable = 0;
+    RepeatableRead = 1;
+    ReadCommitted = 2;
+    ReadUncommitted = 3;
 }
 
 message ViewParameters {
-  IsoLevel iso_level = 1;          // View's isolation level. Defaults to serializable.
-  bool nonDeferrable = 2;          // Do not defer errors. Defaults deferrable.
-  uint64 timeout_milliseconds = 3; // View's timeout. Zero => maximal value
+    IsoLevel iso_level = 1;          // View's isolation level. Defaults to serializable.
+    bool nonDeferrable = 2;          // Do not defer errors. Defaults deferrable.
+    uint64 timeout_milliseconds = 3; // View's timeout. Zero => maximal value
 }
 
 message QueryNamespace {
-  string ns_id = 1;
-  repeated bytes keys = 2;
+    string ns_id = 1;
+    repeated bytes keys = 2;
 }
 
 message RowsNamespace {
-  string ns_id = 1;
-  repeated Row rows = 2;
+    string ns_id = 1;
+    repeated Row rows = 2;
 }
 
 message Row {
-  bytes key = 1;
-  bytes value = 2;
-  uint64 version = 3;
+    bytes key = 1;
+    bytes value = 2;
+    uint64 version = 3;
 }
 
 message TxStatusQuery {
-  optional View view = 1;
-  repeated string tx_ids = 2;  // List of transaction IDs.
+    optional View view = 1;
+    repeated string tx_ids = 2;  // List of transaction IDs.
 }
 
 message TxStatusResponse {
-  repeated TxStatusEvent statuses = 1;
+    repeated TxStatus statuses = 1;
 }

@@ -110,7 +110,7 @@ func unsafeQueryRows(
 // It may not support concurrent execution, depending on the querier implementation.
 func unsafeQueryTxStatus(
 	ctx context.Context, queryObj querier, txIDs [][]byte,
-) ([]*committerpb.TxStatusEvent, error) {
+) ([]*committerpb.TxStatus, error) {
 	r, err := queryObj.Query(ctx, queryTxIDsStatusStmt, txIDs)
 	if err != nil {
 		return nil, err
@@ -173,8 +173,8 @@ func readQueryRows(r pgx.Rows, expectedSize int) ([]*committerpb.Row, error) {
 	return rows, r.Err()
 }
 
-func readTxStatusRows(r pgx.Rows, expectedSize int) ([]*committerpb.TxStatusEvent, error) {
-	rows := make([]*committerpb.TxStatusEvent, 0, expectedSize)
+func readTxStatusRows(r pgx.Rows, expectedSize int) ([]*committerpb.TxStatus, error) {
+	rows := make([]*committerpb.TxStatus, 0, expectedSize)
 	for r.Next() {
 		var id []byte
 		var status int32
@@ -189,13 +189,9 @@ func readTxStatusRows(r pgx.Rows, expectedSize int) ([]*committerpb.TxStatusEven
 			return nil, errors.Wrap(err, "failed to create height")
 		}
 
-		rows = append(rows, &committerpb.TxStatusEvent{
-			TxId: string(id),
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				Code:        applicationpb.Status(status),
-				BlockNumber: ht.BlockNum,
-				TxNumber:    ht.TxNum,
-			},
+		rows = append(rows, &committerpb.TxStatus{
+			Ref:    committerpb.NewTxRef(string(id), ht.BlockNum, ht.TxNum),
+			Status: committerpb.Status(status),
 		})
 	}
 	return rows, r.Err()

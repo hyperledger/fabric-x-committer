@@ -17,7 +17,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -34,7 +33,7 @@ func BenchmarkNotifier(b *testing.B) {
 
 	batchSize := 4096
 	requests := make([]*committerpb.NotificationRequest, 0, (b.N/batchSize)+1)
-	statuses := make([][]*committerpb.TxStatusEvent, 0, (b.N/batchSize)+1)
+	statuses := make([][]*committerpb.TxStatus, 0, (b.N/batchSize)+1)
 	requestTxIDs := txIDs
 	for len(requestTxIDs) > 0 {
 		sz := min(batchSize, len(requestTxIDs))
@@ -52,9 +51,9 @@ func BenchmarkNotifier(b *testing.B) {
 	})
 	for len(statusTxIDs) > 0 {
 		sz := min(batchSize, len(statusTxIDs))
-		status := make([]*committerpb.TxStatusEvent, sz)
+		status := make([]*committerpb.TxStatus, sz)
 		for i, txID := range statusTxIDs[:sz] {
-			status[i] = &committerpb.TxStatusEvent{TxId: txID}
+			status[i] = &committerpb.TxStatus{Ref: committerpb.NewTxRef(txID, 0, 0)}
 		}
 		statuses = append(statuses, status)
 		statusTxIDs = statusTxIDs[sz:]
@@ -96,7 +95,7 @@ func BenchmarkNotifier(b *testing.B) {
 type notifierTestEnv struct {
 	n                  *notifier
 	requestQueue       channel.Writer[*notificationRequest]
-	statusQueue        channel.Writer[[]*committerpb.TxStatusEvent]
+	statusQueue        channel.Writer[[]*committerpb.TxStatus]
 	notificationQueues []channel.ReaderWriter[*committerpb.NotificationResponse]
 }
 
@@ -125,21 +124,9 @@ func TestNotifierDirect(t *testing.T) {
 	}
 
 	t.Log("Submitting events - expecting notifications")
-	expected := []*committerpb.TxStatusEvent{
-		{
-			TxId: "1",
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 1,
-				TxNumber:    1,
-			},
-		},
-		{
-			TxId: "2",
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 5,
-				TxNumber:    1,
-			},
-		},
+	expected := []*committerpb.TxStatus{
+		{Ref: committerpb.NewTxRef("1", 1, 1)},
+		{Ref: committerpb.NewTxRef("2", 5, 1)},
 	}
 	env.statusQueue.Write(expected)
 	for _, q := range env.notificationQueues {
@@ -158,21 +145,9 @@ func TestNotifierDirect(t *testing.T) {
 	}
 
 	t.Log("Submitting irrelevant events - not expecting notifications")
-	env.statusQueue.Write([]*committerpb.TxStatusEvent{
-		{
-			TxId: "100",
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 1,
-				TxNumber:    1,
-			},
-		},
-		{
-			TxId: "200",
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 5,
-				TxNumber:    1,
-			},
-		},
+	env.statusQueue.Write([]*committerpb.TxStatus{
+		{Ref: committerpb.NewTxRef("100", 1, 1)},
+		{Ref: committerpb.NewTxRef("200", 5, 1)},
 	})
 	time.Sleep(3 * time.Second)
 	for _, q := range env.notificationQueues {
@@ -181,21 +156,9 @@ func TestNotifierDirect(t *testing.T) {
 	}
 
 	t.Log("Submitting more events - expecting notifications")
-	expected = []*committerpb.TxStatusEvent{
-		{
-			TxId: "3",
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 2,
-				TxNumber:    5,
-			},
-		},
-		{
-			TxId: "4",
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 3,
-				TxNumber:    10,
-			},
-		},
+	expected = []*committerpb.TxStatus{
+		{Ref: committerpb.NewTxRef("3", 2, 5)},
+		{Ref: committerpb.NewTxRef("4", 3, 10)},
 	}
 	env.statusQueue.Write(expected)
 	for _, q := range env.notificationQueues {
@@ -228,14 +191,8 @@ func TestNotifierDirect(t *testing.T) {
 	}
 
 	t.Log("Submitting event with duplicate request - expecting single notification")
-	expected = []*committerpb.TxStatusEvent{
-		{
-			TxId: "5",
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 3,
-				TxNumber:    0,
-			},
-		},
+	expected = []*committerpb.TxStatus{
+		{Ref: committerpb.NewTxRef("5", 3, 0)},
 	}
 	env.statusQueue.Write(expected)
 	for _, q := range env.notificationQueues {
@@ -247,28 +204,10 @@ func TestNotifierDirect(t *testing.T) {
 	}
 
 	t.Log("Submitting duplicated event - expecting single notification")
-	expected = []*committerpb.TxStatusEvent{
-		{
-			TxId: "6",
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 4,
-				TxNumber:    0,
-			},
-		},
-		{
-			TxId: "6",
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 4,
-				TxNumber:    1,
-			},
-		},
-		{
-			TxId: "6",
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 4,
-				TxNumber:    2,
-			},
-		},
+	expected = []*committerpb.TxStatus{
+		{Ref: committerpb.NewTxRef("6", 4, 0)},
+		{Ref: committerpb.NewTxRef("6", 4, 1)},
+		{Ref: committerpb.NewTxRef("6", 4, 2)},
 	}
 	env.statusQueue.Write(expected)
 	for _, q := range env.notificationQueues {
@@ -307,21 +246,9 @@ func TestNotifierStream(t *testing.T) {
 	time.Sleep(3 * time.Second)
 
 	t.Log("Submitting events - expecting notifications")
-	expected := []*committerpb.TxStatusEvent{
-		{
-			TxId: "1",
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 1,
-				TxNumber:    1,
-			},
-		},
-		{
-			TxId: "2",
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 5,
-				TxNumber:    1,
-			},
-		},
+	expected := []*committerpb.TxStatus{
+		{Ref: committerpb.NewTxRef("1", 1, 1)},
+		{Ref: committerpb.NewTxRef("2", 5, 1)},
 	}
 	env.statusQueue.Write(expected)
 
@@ -332,21 +259,9 @@ func TestNotifierStream(t *testing.T) {
 	test.RequireProtoElementsMatch(t, expected, res.TxStatusEvents)
 
 	t.Log("Submitting more events - expecting notifications")
-	expected = []*committerpb.TxStatusEvent{
-		{
-			TxId: "3",
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 2,
-				TxNumber:    5,
-			},
-		},
-		{
-			TxId: "4",
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 3,
-				TxNumber:    10,
-			},
-		},
+	expected = []*committerpb.TxStatus{
+		{Ref: committerpb.NewTxRef("3", 2, 5)},
+		{Ref: committerpb.NewTxRef("4", 3, 10)},
 	}
 	env.statusQueue.Write(expected)
 
@@ -376,14 +291,8 @@ func TestNotifierStream(t *testing.T) {
 	require.ElementsMatch(t, timeoutIDs, res.TimeoutTxIds)
 
 	t.Log("Submitting event with duplicate request - expecting single notification")
-	expected = []*committerpb.TxStatusEvent{
-		{
-			TxId: "5",
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 3,
-				TxNumber:    0,
-			},
-		},
+	expected = []*committerpb.TxStatus{
+		{Ref: committerpb.NewTxRef("5", 3, 0)},
 	}
 	env.statusQueue.Write(expected)
 
@@ -394,28 +303,10 @@ func TestNotifierStream(t *testing.T) {
 	test.RequireProtoElementsMatch(t, expected, res.TxStatusEvents)
 
 	t.Log("Submitting duplicated event - expecting single notification")
-	expected = []*committerpb.TxStatusEvent{
-		{
-			TxId: "6",
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 4,
-				TxNumber:    0,
-			},
-		},
-		{
-			TxId: "6",
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 4,
-				TxNumber:    1,
-			},
-		},
-		{
-			TxId: "6",
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				BlockNumber: 4,
-				TxNumber:    2,
-			},
-		},
+	expected = []*committerpb.TxStatus{
+		{Ref: committerpb.NewTxRef("6", 4, 0)},
+		{Ref: committerpb.NewTxRef("6", 4, 1)},
+		{Ref: committerpb.NewTxRef("6", 4, 2)},
 	}
 	env.statusQueue.Write(expected)
 
@@ -432,7 +323,7 @@ func newNotifierTestEnv(tb testing.TB) *notifierTestEnv {
 		n:                  newNotifier(defaultBufferSize, &NotificationServiceConfig{}),
 		notificationQueues: make([]channel.ReaderWriter[*committerpb.NotificationResponse], 5),
 	}
-	statusQueue := make(chan []*committerpb.TxStatusEvent, defaultBufferSize)
+	statusQueue := make(chan []*committerpb.TxStatus, defaultBufferSize)
 	env.requestQueue = channel.NewWriter(tb.Context(), env.n.requestQueue)
 	env.statusQueue = channel.NewWriter(tb.Context(), statusQueue)
 	for i := range env.notificationQueues {

@@ -15,7 +15,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -30,8 +30,10 @@ type sidecarReceiverParameters struct {
 	ClientConfig *connection.ClientConfig
 }
 
-const committedBlocksQueueSize = 1024
-const statusIdx = int(common.BlockMetadataIndex_TRANSACTIONS_FILTER)
+const (
+	committedBlocksQueueSize = 1024
+	statusIdx                = int(common.BlockMetadataIndex_TRANSACTIONS_FILTER)
+)
 
 // runSidecarReceiver start receiving blocks from the sidecar.
 func runSidecarReceiver(ctx context.Context, params *sidecarReceiverParameters) error {
@@ -135,9 +137,9 @@ func mapToStatusBatch(block *common.Block) []metrics.TxStatus {
 			// We can ignore config transactions as we only count data transactions.
 			continue
 		}
-		status := applicationpb.Status_COMMITTED
+		status := committerpb.Status_COMMITTED
 		if len(statusCodes) > i {
-			status = applicationpb.Status(statusCodes[i])
+			status = committerpb.Status(statusCodes[i])
 		}
 		statusBatch = append(statusBatch, metrics.TxStatus{
 			TxID:   channelHeader.TxId,
@@ -154,7 +156,7 @@ func recapStatusCodes(statusCodes []byte) string {
 	for code, count := range codes {
 		items = append(
 			items,
-			fmt.Sprintf("%s x %d", applicationpb.Status(code).String(), count),
+			fmt.Sprintf("%s x %d", committerpb.Status(code).String(), count),
 		)
 	}
 	return strings.Join(items, ", ")
