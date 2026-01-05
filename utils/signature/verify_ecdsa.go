@@ -12,8 +12,6 @@ import (
 	"encoding/pem"
 
 	"github.com/cockroachdb/errors"
-	mspi "github.com/hyperledger/fabric-x-common/msp"
-	"github.com/hyperledger/fabric-x-common/protoutil"
 )
 
 // ecdsaTxVerifier verifies using the ECDSA scheme.
@@ -40,22 +38,11 @@ func newEcdsaVerifier(key []byte) (*ecdsaTxVerifier, error) {
 	return &ecdsaTxVerifier{verificationKey: ecdsaVerificationKey}, nil
 }
 
-// verify a digest given a signature.
-func (v *ecdsaTxVerifier) verify(digest Digest, signature Signature) error {
+// verifyDigest verifies a digest given a signature.
+func (v *ecdsaTxVerifier) verifyDigest(digest Digest, signature Signature) error {
 	valid := ecdsa.VerifyASN1(v.verificationKey, digest, signature)
 	if !valid {
 		return ErrSignatureMismatch
 	}
-	return nil
-}
-
-// EvaluateSignedData takes a set of SignedData and evaluates whether
-// the signatures are valid over the related message.
-func (v *ecdsaTxVerifier) EvaluateSignedData(signatureSet []*protoutil.SignedData) error {
-	return verifySignedData(signatureSet, v)
-}
-
-// EvaluateIdentities returns nil as it is not applicable for EcdsaTxVerifier.
-func (*ecdsaTxVerifier) EvaluateIdentities(_ []mspi.Identity) error {
 	return nil
 }

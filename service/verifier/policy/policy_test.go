@@ -71,7 +71,10 @@ func TestParsePolicyItem(t *testing.T) {
 			pd := MakePolicy(t, ns, p)
 			retP, err := CreateNamespaceVerifier(pd, nil)
 			require.NoError(t, err)
-			test.RequireProtoEqual(t, p, retP.NamespacePolicy)
+			require.NotNil(t, retP)
+			pol, err := UnmarshalNamespacePolicy(pd.Policy)
+			require.NoError(t, err)
+			test.RequireProtoEqual(t, p, pol)
 		})
 	}
 

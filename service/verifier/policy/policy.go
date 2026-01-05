@@ -84,12 +84,21 @@ func CreateNamespaceVerifier(
 		return nil, err
 	}
 
-	pol := &applicationpb.NamespacePolicy{}
-	if err := proto.Unmarshal(pd.Policy, pol); err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal namepsace policy bytes")
+	pol, err := UnmarshalNamespacePolicy(pd.Policy)
+	if err != nil {
+		return nil, err
 	}
-
 	return signature.NewNsVerifier(pol, idDeserializer)
+}
+
+// UnmarshalNamespacePolicy unmarshals namespace policy bytes to a [applicationpb.NamespacePolicy] proto.
+func UnmarshalNamespacePolicy(policyBytes []byte) (*applicationpb.NamespacePolicy, error) {
+	pol := &applicationpb.NamespacePolicy{}
+	err := proto.Unmarshal(policyBytes, pol)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal namespace policy bytes")
+	}
+	return pol, nil
 }
 
 // validateNamespaceIDInPolicy checks that a given namespace fulfills namespace naming conventions.
