@@ -162,7 +162,7 @@ func (e *coordinatorTestEnv) createNamespaces(t *testing.T, blkNum int, nsIDs ..
 
 	blockNum := uint64(blkNum) //nolint:gosec // int -> uint64.
 	blk := &servicepb.CoordinatorBatch{}
-	blk.Txs = append(blk.Txs, &servicepb.CoordinatorTx{
+	blk.Txs = append(blk.Txs, &servicepb.TxWithRef{
 		Ref: committerpb.NewTxRef(uuid.NewString(), blockNum, 0),
 		Content: &applicationpb.Tx{
 			Namespaces: []*applicationpb.TxNamespace{{
@@ -175,7 +175,7 @@ func (e *coordinatorTestEnv) createNamespaces(t *testing.T, blkNum int, nsIDs ..
 		},
 	})
 	for i, nsID := range nsIDs {
-		blk.Txs = append(blk.Txs, &servicepb.CoordinatorTx{
+		blk.Txs = append(blk.Txs, &servicepb.TxWithRef{
 			Ref: committerpb.NewTxRef(uuid.NewString(), blockNum, uint32(i+1)), //nolint:gosec // int -> uint32.
 			Content: &applicationpb.Tx{
 				Namespaces: []*applicationpb.TxNamespace{{
@@ -253,7 +253,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 	pBytes, err := proto.Marshal(policy.MakeECDSAThresholdRuleNsPolicy([]byte("publicKey")))
 	require.NoError(t, err)
 	err = env.csStream.Send(&servicepb.CoordinatorBatch{
-		Txs: []*servicepb.CoordinatorTx{
+		Txs: []*servicepb.TxWithRef{
 			{
 				Ref: committerpb.NewTxRef("tx1", 1, 0),
 				Content: &applicationpb.Tx{
@@ -297,7 +297,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 		committerpb.Status_COMMITTED.String(),
 	))
 
-	_, err = env.coordinator.SetLastCommittedBlockNumber(ctx, &servicepb.BlockInfo{Number: 1})
+	_, err = env.coordinator.SetLastCommittedBlockNumber(ctx, &servicepb.BlockRef{Number: 1})
 	require.NoError(t, err)
 
 	nextBlock, err := env.coordinator.GetNextBlockNumberToCommit(ctx, nil)
@@ -318,7 +318,7 @@ func TestCoordinatorServiceRejectedTx(t *testing.T) {
 	preMetricsValue := test.GetIntMetricValue(t, env.coordinator.metrics.transactionReceivedTotal)
 
 	err := env.csStream.Send(&servicepb.CoordinatorBatch{
-		Rejected: []*servicepb.TxStatusInfo{
+		Rejected: []*committerpb.TxStatus{
 			{
 				Ref:    committerpb.NewTxRef("rejected", 1, 0),
 				Status: committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
@@ -342,7 +342,7 @@ func TestCoordinatorServiceRejectedTx(t *testing.T) {
 		committerpb.Status_COMMITTED.String(),
 	))
 
-	_, err = env.coordinator.SetLastCommittedBlockNumber(ctx, &servicepb.BlockInfo{Number: 1})
+	_, err = env.coordinator.SetLastCommittedBlockNumber(ctx, &servicepb.BlockRef{Number: 1})
 	require.NoError(t, err)
 
 	nextBlock, err := env.coordinator.GetNextBlockNumberToCommit(ctx, nil)
@@ -369,7 +369,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 	// We send a block with a series of TXs with apparent conflicts, but all should be committed successfully if
 	// executed serially.
 	b1 := &servicepb.CoordinatorBatch{
-		Txs: []*servicepb.CoordinatorTx{
+		Txs: []*servicepb.TxWithRef{
 			{
 				Ref: committerpb.NewTxRef("config TX", 0, 0),
 				Content: &applicationpb.Tx{
@@ -541,7 +541,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 	env.createNamespaces(t, 0, "1")
 
 	err := env.csStream.Send(&servicepb.CoordinatorBatch{
-		Txs: []*servicepb.CoordinatorTx{{
+		Txs: []*servicepb.TxWithRef{{
 			Ref: committerpb.NewTxRef("tx1", 1, 0),
 			Content: &applicationpb.Tx{
 				Namespaces: []*applicationpb.TxNamespace{{
@@ -562,7 +562,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 		"tx1": {Code: committerpb.Status_COMMITTED, BlockNumber: 1},
 	}, nil)
 
-	_, err = env.client.SetLastCommittedBlockNumber(ctx, &servicepb.BlockInfo{Number: 1})
+	_, err = env.client.SetLastCommittedBlockNumber(ctx, &servicepb.BlockRef{Number: 1})
 	require.NoError(t, err)
 
 	nextBlock, err := env.client.GetNextBlockNumberToCommit(ctx, nil)
@@ -576,7 +576,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 	nsPolicy, err := proto.Marshal(policy.MakeECDSAThresholdRuleNsPolicy([]byte("publicKey")))
 	require.NoError(t, err)
 	block2 := &servicepb.CoordinatorBatch{
-		Txs: []*servicepb.CoordinatorTx{
+		Txs: []*servicepb.TxWithRef{
 			{
 				Ref: committerpb.NewTxRef("tx2", 2, 0),
 				Content: &applicationpb.Tx{
@@ -643,7 +643,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 
 	// Now, we are sending the full block 2.
 	block2 = &servicepb.CoordinatorBatch{
-		Txs: []*servicepb.CoordinatorTx{
+		Txs: []*servicepb.TxWithRef{
 			{
 				Ref: committerpb.NewTxRef("tx2", 2, 0),
 				Content: &applicationpb.Tx{
@@ -750,7 +750,7 @@ func TestCoordinatorStreamFailureWithSidecar(t *testing.T) {
 	env.createNamespaces(t, 0, "1")
 
 	blk := &servicepb.CoordinatorBatch{
-		Txs: []*servicepb.CoordinatorTx{
+		Txs: []*servicepb.TxWithRef{
 			{
 				Ref: committerpb.NewTxRef("tx1", 1, 0),
 				Content: &applicationpb.Tx{
@@ -954,12 +954,12 @@ func makeTestBlock(txPerBlock int) (
 	*servicepb.CoordinatorBatch, map[string]*servicepb.StatusWithHeight,
 ) {
 	b := &servicepb.CoordinatorBatch{
-		Txs: make([]*servicepb.CoordinatorTx, txPerBlock),
+		Txs: make([]*servicepb.TxWithRef, txPerBlock),
 	}
 	expectedTxsStatus := make(map[string]*servicepb.StatusWithHeight)
 	for i := range txPerBlock {
 		txID := "tx" + strconv.Itoa(rand.Int())
-		b.Txs[i] = &servicepb.CoordinatorTx{
+		b.Txs[i] = &servicepb.TxWithRef{
 			Ref: committerpb.NewTxRef(txID, 0, uint32(i)), //nolint:gosec
 			Content: &applicationpb.Tx{
 				Namespaces: []*applicationpb.TxNamespace{{

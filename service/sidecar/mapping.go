@@ -70,8 +70,8 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb
 	mappedBlock := &blockMappingResult{
 		blockNumber: blockNumber,
 		block: &servicepb.CoordinatorBatch{
-			Txs:      make([]*servicepb.CoordinatorTx, 0, txCount),
-			Rejected: make([]*servicepb.TxStatusInfo, 0, txCount),
+			Txs:      make([]*servicepb.TxWithRef, 0, txCount),
+			Rejected: make([]*committerpb.TxStatus, 0, txCount),
 		},
 		withStatus: &blockWithStatus{
 			block:        block,
@@ -126,7 +126,7 @@ func (b *blockMappingResult) appendTx(txNum uint32, hdr *common.ChannelHeader, t
 	if idAlreadyExists, err := b.addTxIDMapping(txNum, hdr); idAlreadyExists || err != nil {
 		return err
 	}
-	b.block.Txs = append(b.block.Txs, &servicepb.CoordinatorTx{
+	b.block.Txs = append(b.block.Txs, &servicepb.TxWithRef{
 		Ref:     committerpb.NewTxRef(hdr.TxId, b.blockNumber, txNum),
 		Content: tx,
 	})
@@ -143,7 +143,7 @@ func (b *blockMappingResult) rejectTx(
 	if idAlreadyExists, err := b.addTxIDMapping(txNum, hdr); idAlreadyExists || err != nil {
 		return err
 	}
-	b.block.Rejected = append(b.block.Rejected, &servicepb.TxStatusInfo{
+	b.block.Rejected = append(b.block.Rejected, &committerpb.TxStatus{
 		Ref:    committerpb.NewTxRef(hdr.TxId, b.blockNumber, txNum),
 		Status: status,
 	})

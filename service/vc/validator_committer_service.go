@@ -197,7 +197,7 @@ func (vc *ValidatorCommitterService) monitorQueues(ctx context.Context) {
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger.
 func (vc *ValidatorCommitterService) SetLastCommittedBlockNumber(
 	ctx context.Context,
-	lastCommittedBlock *servicepb.BlockInfo,
+	lastCommittedBlock *servicepb.BlockRef,
 ) (*emptypb.Empty, error) {
 	err := vc.db.setLastCommittedBlockNumber(ctx, lastCommittedBlock)
 	logger.ErrorStackTrace(err)
@@ -208,7 +208,7 @@ func (vc *ValidatorCommitterService) SetLastCommittedBlockNumber(
 func (vc *ValidatorCommitterService) GetNextBlockNumberToCommit(
 	ctx context.Context,
 	_ *emptypb.Empty,
-) (*servicepb.BlockInfo, error) {
+) (*servicepb.BlockRef, error) {
 	blkInfo, err := vc.db.getNextBlockNumberToCommit(ctx)
 	logger.ErrorStackTrace(err)
 	return blkInfo, grpcerror.WrapInternalError(err)

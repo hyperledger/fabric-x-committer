@@ -138,10 +138,10 @@ func TestMinimalInput(t *testing.T) {
 
 	err := stream.Send(&servicepb.VerifierBatch{
 		Update: cp.update,
-		Requests: []*servicepb.VerifierTx{
-			{Ref: committerpb.NewTxRef(fakeTxID, 1, 1), Tx: tx1},
-			{Ref: committerpb.NewTxRef(fakeTxID, 1, 1), Tx: tx2},
-			{Ref: committerpb.NewTxRef(fakeTxID, 1, 1), Tx: tx3},
+		Requests: []*servicepb.TxWithRef{
+			{Ref: committerpb.NewTxRef(fakeTxID, 1, 1), Content: tx1},
+			{Ref: committerpb.NewTxRef(fakeTxID, 1, 1), Content: tx2},
+			{Ref: committerpb.NewTxRef(fakeTxID, 1, 1), Content: tx3},
 		},
 	})
 	require.NoError(t, err)
@@ -216,8 +216,8 @@ func TestSignatureRule(t *testing.T) {
 
 		requireTestCase(t, stream, &testCase{
 			update: update,
-			req: &servicepb.VerifierTx{
-				Ref: committerpb.NewTxRef(fakeTxID, 1, 1), Tx: tx1,
+			req: &servicepb.TxWithRef{
+				Ref: committerpb.NewTxRef(fakeTxID, 1, 1), Content: tx1,
 			},
 			expectedStatus: committerpb.Status_COMMITTED,
 		})
@@ -238,8 +238,8 @@ func TestSignatureRule(t *testing.T) {
 
 	requireTestCase(t, stream, &testCase{
 		update: update,
-		req: &servicepb.VerifierTx{
-			Ref: committerpb.NewTxRef(fakeTxID, 1, 1), Tx: tx1,
+		req: &servicepb.TxWithRef{
+			Ref: committerpb.NewTxRef(fakeTxID, 1, 1), Content: tx1,
 		},
 		expectedStatus: committerpb.Status_ABORTED_SIGNATURE_INVALID,
 	})
@@ -257,9 +257,9 @@ func TestBadSignature(t *testing.T) {
 	require.NoError(t, err)
 
 	requireTestCase(t, stream, &testCase{
-		req: &servicepb.VerifierTx{
+		req: &servicepb.TxWithRef{
 			Ref: committerpb.NewTxRef(fakeTxID, 1, 0),
-			Tx: &applicationpb.Tx{
+			Content: &applicationpb.Tx{
 				Namespaces: []*applicationpb.TxNamespace{{
 					NsId:      "1",
 					NsVersion: 0,
@@ -353,9 +353,9 @@ func TestUpdatePolicies(t *testing.T) {
 
 		endorse(t, tx, ns1Signer, ns2Signer)
 		requireTestCase(t, stream, &testCase{
-			req: &servicepb.VerifierTx{
-				Ref: committerpb.NewTxRef(fakeTxID, 1, 1),
-				Tx:  tx,
+			req: &servicepb.TxWithRef{
+				Ref:     committerpb.NewTxRef(fakeTxID, 1, 1),
+				Content: tx,
 			},
 			expectedStatus: committerpb.Status_COMMITTED,
 		})
@@ -406,17 +406,17 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 	for i := range updateCount {
 		endorse(t, tx, append(uniqueNsEndorsers, commonNsEndorsers[i])...)
 		require.NoError(t, stream.Send(&servicepb.VerifierBatch{
-			Requests: []*servicepb.VerifierTx{{
-				Ref: committerpb.NewTxRef(fakeTxID, 0, 0),
-				Tx:  tx,
+			Requests: []*servicepb.TxWithRef{{
+				Ref:     committerpb.NewTxRef(fakeTxID, 0, 0),
+				Content: tx,
 			}},
 		}))
 
 		txStatus, err := stream.Recv()
 		require.NoError(t, err)
 		require.NotNil(t, txStatus)
-		require.Len(t, txStatus.Responses, 1)
-		if txStatus.Responses[0].Status == committerpb.Status_COMMITTED {
+		require.Len(t, txStatus.Status, 1)
+		if txStatus.Status[0].Status == committerpb.Status_COMMITTED {
 			success++
 		}
 	}
@@ -427,9 +427,9 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 	tx = makeTX(ns[:updateCount]...)
 	endorse(t, tx, uniqueNsEndorsers...)
 	requireTestCase(t, stream, &testCase{
-		req: &servicepb.VerifierTx{
-			Ref: committerpb.NewTxRef(fakeTxID, 1, 1),
-			Tx:  tx,
+		req: &servicepb.TxWithRef{
+			Ref:     committerpb.NewTxRef(fakeTxID, 1, 1),
+			Content: tx,
 		},
 		expectedStatus: committerpb.Status_COMMITTED,
 	})
@@ -437,7 +437,7 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 
 type testCase struct {
 	update         *servicepb.VerifierUpdates
-	req            *servicepb.VerifierTx
+	req            *servicepb.TxWithRef
 	expectedStatus committerpb.Status
 }
 
@@ -483,15 +483,15 @@ func requireTestCase(
 	t.Helper()
 	err := stream.Send(&servicepb.VerifierBatch{
 		Update:   tt.update,
-		Requests: []*servicepb.VerifierTx{tt.req},
+		Requests: []*servicepb.TxWithRef{tt.req},
 	})
 	require.NoError(t, err)
 
 	txStatus, err := stream.Recv()
 	require.NoError(t, err)
 	require.NotNil(t, txStatus)
-	require.Len(t, txStatus.Responses, 1)
-	resp := txStatus.Responses[0]
+	require.Len(t, txStatus.Status, 1)
+	resp := txStatus.Status[0]
 	require.NotNil(t, resp)
 	test.RequireProtoEqual(t, tt.req.Ref, resp.Ref)
 	require.Equal(t, tt.expectedStatus.String(), resp.Status.String())
@@ -518,15 +518,15 @@ func readStream(
 	t *testing.T,
 	stream servicepb.Verifier_StartStreamClient,
 	timeout time.Duration,
-) ([]*servicepb.VerifierResponse, bool) {
+) ([]*committerpb.TxStatus, bool) {
 	t.Helper()
-	outputChan := make(chan []*servicepb.VerifierResponse, 1)
+	outputChan := make(chan []*committerpb.TxStatus, 1)
 	ctx, cancel := context.WithTimeout(t.Context(), timeout)
 	defer cancel()
 	go func() {
 		response, err := stream.Recv()
-		if err == nil && response != nil && len(response.Responses) > 0 {
-			channel.NewWriter(ctx, outputChan).Write(response.Responses)
+		if err == nil && response != nil && len(response.Status) > 0 {
+			channel.NewWriter(ctx, outputChan).Write(response.Status)
 		}
 	}()
 	return channel.NewReader(ctx, outputChan).Read()

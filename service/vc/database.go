@@ -150,7 +150,7 @@ func (db *database) queryVersionsIfPresent(ctx context.Context, nsID string, que
 	return kToV, nil
 }
 
-func (db *database) getNextBlockNumberToCommit(ctx context.Context) (*servicepb.BlockInfo, error) {
+func (db *database) getNextBlockNumberToCommit(ctx context.Context) (*servicepb.BlockRef, error) {
 	var value []byte
 	retryErr := db.retry.Execute(ctx, func() error {
 		r := db.pool.QueryRow(ctx, getMetadataPrepSQLStmt, []byte(lastCommittedBlockNumberKey))
@@ -159,7 +159,7 @@ func (db *database) getNextBlockNumberToCommit(ctx context.Context) (*servicepb.
 	if retryErr != nil {
 		return nil, retryErr
 	}
-	res := &servicepb.BlockInfo{
+	res := &servicepb.BlockRef{
 		Number: 0, // default: no block has been committed.
 	}
 	if len(value) > 0 {
@@ -168,7 +168,7 @@ func (db *database) getNextBlockNumberToCommit(ctx context.Context) (*servicepb.
 	return res, nil
 }
 
-func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *servicepb.BlockInfo) error {
+func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *servicepb.BlockRef) error {
 	// NOTE: We can actually batch this transaction with regular user transactions and perform
 	//       a single commit. However, we need to implement special logic to handle cases
 	//       when there are no waiting user transactions. Hence, for simplicity, we are not

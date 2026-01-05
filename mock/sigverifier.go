@@ -119,8 +119,8 @@ func (m *SigVerifier) sendResponseBatch(
 		if !ok {
 			break
 		}
-		respBatch := &servicepb.VerifierResponseBatch{
-			Responses: make([]*servicepb.VerifierResponse, 0, len(reqBatch.Requests)),
+		respBatch := &committerpb.TxStatusBatch{
+			Status: make([]*committerpb.TxStatus, 0, len(reqBatch.Requests)),
 		}
 
 		for i, req := range reqBatch.Requests {
@@ -129,11 +129,12 @@ func (m *SigVerifier) sendResponseBatch(
 				continue
 			}
 			status := committerpb.Status_COMMITTED
-			isConfig := len(req.Tx.Namespaces) == 1 && req.Tx.Namespaces[0].NsId == committerpb.ConfigNamespaceID
-			if len(req.Tx.Endorsements) == 0 && !isConfig {
+			txNs := req.Content.Namespaces
+			isConfig := len(txNs) == 1 && txNs[0].NsId == committerpb.ConfigNamespaceID
+			if len(req.Content.Endorsements) == 0 && !isConfig {
 				status = committerpb.Status_ABORTED_SIGNATURE_INVALID
 			}
-			respBatch.Responses = append(respBatch.Responses, &servicepb.VerifierResponse{
+			respBatch.Status = append(respBatch.Status, &committerpb.TxStatus{
 				Ref:    req.Ref,
 				Status: status,
 			})

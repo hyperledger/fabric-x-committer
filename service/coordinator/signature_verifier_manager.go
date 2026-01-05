@@ -65,9 +65,7 @@ type (
 	}
 )
 
-var sigInvalidTxStatus = &servicepb.InvalidTxStatus{
-	Code: committerpb.Status_ABORTED_SIGNATURE_INVALID,
-}
+var sigInvalidTxStatus = committerpb.Status_ABORTED_SIGNATURE_INVALID
 
 func newSignatureVerifierManager(config *signVerifierManagerConfig) *signatureVerifierManager {
 	logger.Info("Initializing newSignatureVerifierManager")
@@ -208,15 +206,15 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 		logger.Debugf("Batch containing %d TXs was stored in the being validated list", batchSize)
 
 		request := &servicepb.VerifierBatch{
-			Requests: make([]*servicepb.VerifierTx, batchSize),
+			Requests: make([]*servicepb.TxWithRef, batchSize),
 		}
 
 		request.Update, policyVersion = sv.policyManager.getUpdates(policyVersion)
 
 		for idx, txNode := range txBatch {
-			request.Requests[idx] = &servicepb.VerifierTx{
+			request.Requests[idx] = &servicepb.TxWithRef{
 				Ref: txNode.Tx.Ref,
-				Tx: &applicationpb.Tx{
+				Content: &applicationpb.Tx{
 					Namespaces:   txNode.Tx.Namespaces,
 					Endorsements: txNode.Endorsements,
 				},
@@ -254,7 +252,7 @@ func splitAndSendToVerifier(
 		rBatch, ok := blkToBatch[req.Ref.BlockNum]
 		if !ok {
 			rBatch = &servicepb.VerifierBatch{
-				Requests: make([]*servicepb.VerifierTx, 0, len(r.Requests)),
+				Requests: make([]*servicepb.TxWithRef, 0, len(r.Requests)),
 			}
 			blkToBatch[req.Ref.BlockNum] = rBatch
 		}
@@ -296,7 +294,7 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 			return errors.Wrap(err, "receive from stream ended with error")
 		}
 
-		logger.Debugf("New batch came from sv to sv manager, contains %d items", len(response.Responses))
+		logger.Debugf("New batch came from sv to sv manager, contains %d items", len(response.Status))
 
 		validatedTxs := sv.fetchAndDeleteTxBeingValidated(response)
 		if !outputValidatedTxs.Write(validatedTxs) {
@@ -307,18 +305,18 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 			return errors.Wrap(outputValidatedTxs.Context().Err(), "context ended")
 		}
 
-		promutil.AddToCounter(sv.metrics.sigverifierTransactionProcessedTotal, len(response.Responses))
+		promutil.AddToCounter(sv.metrics.sigverifierTransactionProcessedTotal, len(response.Status))
 	}
 }
 
 func (sv *signatureVerifier) fetchAndDeleteTxBeingValidated(
-	response *servicepb.VerifierResponseBatch,
+	response *committerpb.TxStatusBatch,
 ) dependencygraph.TxNodeBatch {
-	validatedTxs := dependencygraph.TxNodeBatch(make([]*dependencygraph.TransactionNode, 0, len(response.Responses)))
+	validatedTxs := dependencygraph.TxNodeBatch(make([]*dependencygraph.TransactionNode, 0, len(response.Status)))
 	// TODO: introduce metrics to measure the lock wait/holding duration.
 	sv.txMu.Lock()
 	defer sv.txMu.Unlock()
-	for _, resp := range response.Responses {
+	for _, resp := range response.Status {
 		k := *servicepb.NewHeightFromTxRef(resp.Ref)
 		txNode, ok := sv.txBeingValidated[k]
 		if !ok {
@@ -326,7 +324,7 @@ func (sv *signatureVerifier) fetchAndDeleteTxBeingValidated(
 		}
 		delete(sv.txBeingValidated, k)
 		if resp.Status != committerpb.Status_COMMITTED {
-			txNode.Tx.PrelimInvalidTxStatus = &servicepb.InvalidTxStatus{Code: resp.Status}
+			txNode.Tx.PrelimInvalidTxStatus = &resp.Status
 		}
 		validatedTxs = append(validatedTxs, txNode)
 	}
