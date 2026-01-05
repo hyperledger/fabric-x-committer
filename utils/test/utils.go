@@ -437,16 +437,6 @@ func MustCreateEndpoint(value string) *connection.Endpoint {
 	return endpoint
 }
 
-// ToOrdererTLSConfig translates a TLSConfig to an OrdererTLSConfig.
-func ToOrdererTLSConfig(c connection.TLSConfig) ordererconn.OrdererTLSConfig {
-	return ordererconn.OrdererTLSConfig{
-		Mode:              c.Mode,
-		KeyPath:           c.KeyPath,
-		CertPath:          c.CertPath,
-		CommonCACertPaths: c.CACertPaths,
-	}
-}
-
 const (
 	// CreatorCertificate denotes Creator field in protoblocktx.Identity to contain x509 certificate.
 	CreatorCertificate = 0

@@ -18,7 +18,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type (
@@ -50,7 +49,7 @@ type (
 // New instantiate a new sidecar client.
 func New(config *Parameters) (*Client, error) {
 	cm, err := ordererconn.NewConnectionManager(&ordererconn.Config{
-		TLS:   test.ToOrdererTLSConfig(config.Client.TLS),
+		TLS:   ordererconn.TLSConfigToOrdererTLSConfig(config.Client.TLS),
 		Retry: config.Client.Retry,
 		Organizations: map[string]*ordererconn.OrganizationConfig{
 			"org": {

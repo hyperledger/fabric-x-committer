@@ -164,7 +164,7 @@ func newSidecarTestEnvWithTLS(
 		},
 		Orderer: ordererconn.Config{
 			ChannelID:     ordererEnv.TestConfig.ChanID,
-			TLS:           test.ToOrdererTLSConfig(conf.ClientTLS),
+			TLS:           ordererconn.TLSConfigToOrdererTLSConfig(conf.ClientTLS),
 			Organizations: initOrdererOrganizations,
 		},
 	}

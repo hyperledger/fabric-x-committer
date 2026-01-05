@@ -47,7 +47,7 @@ type (
 		CertPath string `mapstructure:"cert-path"`
 		KeyPath  string `mapstructure:"key-path"`
 		// CommonCACertPaths is a temporaty workaround to inject CA to all organizations.
-		// This will be removed once we read the TLS certificates from the config block.
+		// TODO: This will be removed once we read the TLS certificates from the config block.
 		CommonCACertPaths []string `mapstructure:"common-ca-cert-paths"`
 	}
 )
@@ -113,4 +113,14 @@ func ValidateConsensusType(c *Config) error {
 		return errors.Newf("unsupported orderer type %s", c.ConsensusType)
 	}
 	return nil
+}
+
+// TLSConfigToOrdererTLSConfig translates a TLSConfig to an OrdererTLSConfig.
+func TLSConfigToOrdererTLSConfig(c connection.TLSConfig) OrdererTLSConfig {
+	return OrdererTLSConfig{
+		Mode:              c.Mode,
+		KeyPath:           c.KeyPath,
+		CertPath:          c.CertPath,
+		CommonCACertPaths: c.CACertPaths,
+	}
 }

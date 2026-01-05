@@ -237,7 +237,7 @@ func (c *CommitterRuntime) CreateRuntimeClients(ctx context.Context, t *testing.
 
 	var err error
 	c.OrdererStream, err = test.NewBroadcastStream(ctx, &ordererconn.Config{
-		TLS:           test.ToOrdererTLSConfig(c.SystemConfig.ClientTLS),
+		TLS:           ordererconn.TLSConfigToOrdererTLSConfig(c.SystemConfig.ClientTLS),
 		ChannelID:     c.SystemConfig.Policy.ChannelID,
 		Identity:      c.SystemConfig.Policy.Identity,
 		ConsensusType: ordererconn.Bft,
