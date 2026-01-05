@@ -34,13 +34,13 @@ type (
 
 	blockWithStatus struct {
 		block        *common.Block
-		txStatus     []applicationpb.Status
+		txStatus     []committerpb.Status
 		pendingCount int
 	}
 )
 
 const (
-	statusNotYetValidated = applicationpb.Status_NOT_VALIDATED
+	statusNotYetValidated = committerpb.Status_NOT_VALIDATED
 	statusIdx             = int(common.BlockMetadataIndex_TRANSACTIONS_FILTER)
 )
 
@@ -70,12 +70,12 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb
 	mappedBlock := &blockMappingResult{
 		blockNumber: blockNumber,
 		block: &servicepb.CoordinatorBatch{
-			Txs:      make([]*servicepb.CoordinatorTx, 0, txCount),
-			Rejected: make([]*servicepb.TxStatusInfo, 0, txCount),
+			Txs:      make([]*servicepb.TxWithRef, 0, txCount),
+			Rejected: make([]*committerpb.TxStatus, 0, txCount),
 		},
 		withStatus: &blockWithStatus{
 			block:        block,
-			txStatus:     make([]applicationpb.Status, txCount),
+			txStatus:     make([]committerpb.Status, txCount),
 			pendingCount: txCount,
 		},
 		txIDToHeight: txIDToHeight,
@@ -94,26 +94,26 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb
 func (b *blockMappingResult) mapMessage(msgIndex uint32, msg []byte) error {
 	data, hdr, envErr := serialization.UnwrapEnvelope(msg)
 	if envErr != nil {
-		return b.rejectNonDBStatusTx(msgIndex, hdr, applicationpb.Status_MALFORMED_BAD_ENVELOPE, envErr.Error())
+		return b.rejectNonDBStatusTx(msgIndex, hdr, committerpb.Status_MALFORMED_BAD_ENVELOPE, envErr.Error())
 	}
 	if hdr.TxId == "" || !utf8.ValidString(hdr.TxId) {
-		return b.rejectNonDBStatusTx(msgIndex, hdr, applicationpb.Status_MALFORMED_MISSING_TX_ID, "no TX ID")
+		return b.rejectNonDBStatusTx(msgIndex, hdr, committerpb.Status_MALFORMED_MISSING_TX_ID, "no TX ID")
 	}
 
 	switch common.HeaderType(hdr.Type) {
 	default:
-		return b.rejectTx(msgIndex, hdr, applicationpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD, "message type")
+		return b.rejectTx(msgIndex, hdr, committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD, "message type")
 	case common.HeaderType_CONFIG:
 		_, err := policy.ParsePolicyFromConfigTx(msg)
 		if err != nil {
-			return b.rejectTx(msgIndex, hdr, applicationpb.Status_MALFORMED_CONFIG_TX_INVALID, err.Error())
+			return b.rejectTx(msgIndex, hdr, committerpb.Status_MALFORMED_CONFIG_TX_INVALID, err.Error())
 		}
 		b.isConfig = true
 		return b.appendTx(msgIndex, hdr, configTx(msg))
 	case common.HeaderType_MESSAGE:
 		tx, err := serialization.UnmarshalTx(data)
 		if err != nil {
-			return b.rejectTx(msgIndex, hdr, applicationpb.Status_MALFORMED_BAD_ENVELOPE_PAYLOAD, err.Error())
+			return b.rejectTx(msgIndex, hdr, committerpb.Status_MALFORMED_BAD_ENVELOPE_PAYLOAD, err.Error())
 		}
 		if status := verifyTxForm(tx); status != statusNotYetValidated {
 			return b.rejectTx(msgIndex, hdr, status, "malformed tx")
@@ -126,8 +126,8 @@ func (b *blockMappingResult) appendTx(txNum uint32, hdr *common.ChannelHeader, t
 	if idAlreadyExists, err := b.addTxIDMapping(txNum, hdr); idAlreadyExists || err != nil {
 		return err
 	}
-	b.block.Txs = append(b.block.Txs, &servicepb.CoordinatorTx{
-		Ref:     committerpb.TxRef(hdr.TxId, b.blockNumber, txNum),
+	b.block.Txs = append(b.block.Txs, &servicepb.TxWithRef{
+		Ref:     committerpb.NewTxRef(hdr.TxId, b.blockNumber, txNum),
 		Content: tx,
 	})
 	debugTx(hdr, "included: %s", hdr.TxId)
@@ -135,7 +135,7 @@ func (b *blockMappingResult) appendTx(txNum uint32, hdr *common.ChannelHeader, t
 }
 
 func (b *blockMappingResult) rejectTx(
-	txNum uint32, hdr *common.ChannelHeader, status applicationpb.Status, reason string,
+	txNum uint32, hdr *common.ChannelHeader, status committerpb.Status, reason string,
 ) error {
 	if !IsStatusStoredInDB(status) {
 		return b.rejectNonDBStatusTx(txNum, hdr, status, reason)
@@ -143,8 +143,8 @@ func (b *blockMappingResult) rejectTx(
 	if idAlreadyExists, err := b.addTxIDMapping(txNum, hdr); idAlreadyExists || err != nil {
 		return err
 	}
-	b.block.Rejected = append(b.block.Rejected, &servicepb.TxStatusInfo{
-		Ref:    committerpb.TxRef(hdr.TxId, b.blockNumber, txNum),
+	b.block.Rejected = append(b.block.Rejected, &committerpb.TxStatus{
+		Ref:    committerpb.NewTxRef(hdr.TxId, b.blockNumber, txNum),
 		Status: status,
 	})
 	debugTx(hdr, "rejected: %s (%s)", &status, reason)
@@ -155,7 +155,7 @@ func (b *blockMappingResult) rejectTx(
 // Namely, statuses for cases where we don't have a TX ID, or there is a TX ID duplication.
 // For such cases, no notification will be given by the notification service.
 func (b *blockMappingResult) rejectNonDBStatusTx(
-	txNum uint32, hdr *common.ChannelHeader, status applicationpb.Status, reason string,
+	txNum uint32, hdr *common.ChannelHeader, status committerpb.Status, reason string,
 ) error {
 	if IsStatusStoredInDB(status) {
 		// This can never occur unless there is a bug in the relay.
@@ -175,12 +175,12 @@ func (b *blockMappingResult) addTxIDMapping(txNum uint32, hdr *common.ChannelHea
 		TxNum:    txNum,
 	})
 	if idAlreadyExists {
-		err = b.rejectNonDBStatusTx(txNum, hdr, applicationpb.Status_REJECTED_DUPLICATE_TX_ID, "duplicate tx")
+		err = b.rejectNonDBStatusTx(txNum, hdr, committerpb.Status_REJECTED_DUPLICATE_TX_ID, "duplicate tx")
 	}
 	return idAlreadyExists, err
 }
 
-func (b *blockWithStatus) setFinalStatus(txNum uint32, status applicationpb.Status) error {
+func (b *blockWithStatus) setFinalStatus(txNum uint32, status committerpb.Status) error {
 	if b.txStatus[txNum] != statusNotYetValidated {
 		// This can never occur unless there is a bug in the relay or the coordinator.
 		return errors.Newf("two results for a TX [blockNum: %d, txNum: %d]", b.block.Header.Number, txNum)
@@ -199,11 +199,11 @@ func (b *blockWithStatus) setStatusMetadataInBlock() {
 }
 
 // IsStatusStoredInDB returns true if the given status code can be stored in the state DB.
-func IsStatusStoredInDB(status applicationpb.Status) bool {
+func IsStatusStoredInDB(status committerpb.Status) bool {
 	switch status {
-	case applicationpb.Status_MALFORMED_BAD_ENVELOPE,
-		applicationpb.Status_MALFORMED_MISSING_TX_ID,
-		applicationpb.Status_REJECTED_DUPLICATE_TX_ID:
+	case committerpb.Status_MALFORMED_BAD_ENVELOPE,
+		committerpb.Status_MALFORMED_MISSING_TX_ID,
+		committerpb.Status_REJECTED_DUPLICATE_TX_ID:
 		return false
 	default:
 		return true
@@ -238,25 +238,25 @@ func configTx(value []byte) *applicationpb.Tx {
 
 // verifyTxForm verifies that a TX is not malformed.
 // It returns status MALFORMED_<reason> if it is malformed, or not-validated otherwise.
-func verifyTxForm(tx *applicationpb.Tx) applicationpb.Status {
+func verifyTxForm(tx *applicationpb.Tx) committerpb.Status {
 	if len(tx.Namespaces) == 0 {
-		return applicationpb.Status_MALFORMED_EMPTY_NAMESPACES
+		return committerpb.Status_MALFORMED_EMPTY_NAMESPACES
 	}
 	if len(tx.Namespaces) != len(tx.Endorsements) {
-		return applicationpb.Status_MALFORMED_MISSING_SIGNATURE
+		return committerpb.Status_MALFORMED_MISSING_SIGNATURE
 	}
 
 	nsIDs := make(map[string]any, len(tx.Namespaces))
 	for _, ns := range tx.Namespaces {
 		// Checks that the application does not submit a config TX.
 		if ns.NsId == committerpb.ConfigNamespaceID || policy.ValidateNamespaceID(ns.NsId) != nil {
-			return applicationpb.Status_MALFORMED_NAMESPACE_ID_INVALID
+			return committerpb.Status_MALFORMED_NAMESPACE_ID_INVALID
 		}
 		if _, ok := nsIDs[ns.NsId]; ok {
-			return applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE
+			return committerpb.Status_MALFORMED_DUPLICATE_NAMESPACE
 		}
 
-		for _, check := range []func(ns *applicationpb.TxNamespace) applicationpb.Status{
+		for _, check := range []func(ns *applicationpb.TxNamespace) committerpb.Status{
 			checkNamespaceFormation, checkMetaNamespace,
 		} {
 			if status := check(ns); status != statusNotYetValidated {
@@ -268,9 +268,9 @@ func verifyTxForm(tx *applicationpb.Tx) applicationpb.Status {
 	return statusNotYetValidated
 }
 
-func checkNamespaceFormation(ns *applicationpb.TxNamespace) applicationpb.Status {
+func checkNamespaceFormation(ns *applicationpb.TxNamespace) committerpb.Status {
 	if len(ns.ReadWrites) == 0 && len(ns.BlindWrites) == 0 {
-		return applicationpb.Status_MALFORMED_NO_WRITES
+		return committerpb.Status_MALFORMED_NO_WRITES
 	}
 
 	keys := make([][]byte, 0, len(ns.ReadsOnly)+len(ns.ReadWrites)+len(ns.BlindWrites))
@@ -286,12 +286,12 @@ func checkNamespaceFormation(ns *applicationpb.TxNamespace) applicationpb.Status
 	return checkKeys(keys)
 }
 
-func checkMetaNamespace(txNs *applicationpb.TxNamespace) applicationpb.Status {
+func checkMetaNamespace(txNs *applicationpb.TxNamespace) committerpb.Status {
 	if txNs.NsId != committerpb.MetaNamespaceID {
 		return statusNotYetValidated
 	}
 	if len(txNs.BlindWrites) > 0 {
-		return applicationpb.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED
+		return committerpb.Status_MALFORMED_BLIND_WRITES_NOT_ALLOWED
 	}
 
 	nsUpdate := make(map[string]any)
@@ -306,15 +306,15 @@ func checkMetaNamespace(txNs *applicationpb.TxNamespace) applicationpb.Status {
 		_, err := policy.CreateNamespaceVerifier(pd, nil)
 		if err != nil {
 			if errors.Is(err, policy.ErrInvalidNamespaceID) {
-				return applicationpb.Status_MALFORMED_NAMESPACE_ID_INVALID
+				return committerpb.Status_MALFORMED_NAMESPACE_ID_INVALID
 			}
-			return applicationpb.Status_MALFORMED_NAMESPACE_POLICY_INVALID
+			return committerpb.Status_MALFORMED_NAMESPACE_POLICY_INVALID
 		}
 		if pd.Namespace == committerpb.MetaNamespaceID {
-			return applicationpb.Status_MALFORMED_NAMESPACE_POLICY_INVALID
+			return committerpb.Status_MALFORMED_NAMESPACE_POLICY_INVALID
 		}
 		if _, ok := nsUpdate[pd.Namespace]; ok {
-			return applicationpb.Status_MALFORMED_NAMESPACE_POLICY_INVALID
+			return committerpb.Status_MALFORMED_NAMESPACE_POLICY_INVALID
 		}
 		nsUpdate[pd.Namespace] = nil
 	}
@@ -322,16 +322,16 @@ func checkMetaNamespace(txNs *applicationpb.TxNamespace) applicationpb.Status {
 }
 
 // checkKeys verifies there are no duplicate keys and no nil keys.
-func checkKeys(keys [][]byte) applicationpb.Status {
+func checkKeys(keys [][]byte) committerpb.Status {
 	uniqueKeys := make(map[string]any, len(keys))
 	for _, k := range keys {
 		if len(k) == 0 {
-			return applicationpb.Status_MALFORMED_EMPTY_KEY
+			return committerpb.Status_MALFORMED_EMPTY_KEY
 		}
 		uniqueKeys[string(k)] = nil
 	}
 	if len(uniqueKeys) != len(keys) {
-		return applicationpb.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET
+		return committerpb.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET
 	}
 	return statusNotYetValidated
 }

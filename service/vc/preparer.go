@@ -49,8 +49,8 @@ type (
 		txIDToNsBlindWrites    transactionToWrites // Maps txIDs to blind writes per namespace.
 		txIDToNsNewWrites      transactionToWrites // Maps txIDs to new writes per namespace.
 
-		invalidTxIDStatus map[TxID]applicationpb.Status // Maps txIDs to the status.
-		txIDToHeight      transactionIDToHeight         // Maps txIDs to height in the blockchain.
+		invalidTxIDStatus map[TxID]committerpb.Status // Maps txIDs to the status.
+		txIDToHeight      transactionIDToHeight       // Maps txIDs to height in the blockchain.
 	}
 
 	transactionIDToHeight map[TxID]*servicepb.Height
@@ -145,7 +145,7 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 			txIDToNsNonBlindWrites: make(transactionToWrites),
 			txIDToNsBlindWrites:    make(transactionToWrites),
 			txIDToNsNewWrites:      make(transactionToWrites),
-			invalidTxIDStatus:      make(map[TxID]applicationpb.Status),
+			invalidTxIDStatus:      make(map[TxID]committerpb.Status),
 			txIDToHeight:           make(transactionIDToHeight),
 		}
 
@@ -167,8 +167,8 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 			// but it will still commit the status only if the txID is not a duplicate.
 			if tx.PrelimInvalidTxStatus != nil {
 				logger.Debugf("Transaction %s marked as preliminarily invalid with status: %v",
-					tx.Ref.TxId, tx.PrelimInvalidTxStatus.Code)
-				prepTxs.invalidTxIDStatus[TxID(tx.Ref.TxId)] = tx.PrelimInvalidTxStatus.Code
+					tx.Ref.TxId, tx.PrelimInvalidTxStatus)
+				prepTxs.invalidTxIDStatus[TxID(tx.Ref.TxId)] = *tx.PrelimInvalidTxStatus
 				continue
 			}
 

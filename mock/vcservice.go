@@ -22,6 +22,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -33,8 +34,8 @@ import (
 type VcService struct {
 	servicepb.ValidationAndCommitServiceServer
 	numBatchesReceived atomic.Uint32
-	nextBlock          atomic.Pointer[applicationpb.BlockInfo]
-	txsStatus          *fifoCache[*applicationpb.StatusWithHeight]
+	nextBlock          atomic.Pointer[servicepb.BlockRef]
+	txsStatus          *fifoCache[*servicepb.StatusWithHeight]
 	txsStatusMu        sync.Mutex
 	healthcheck        *health.Server
 	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
@@ -47,7 +48,7 @@ type VcService struct {
 // NewMockVcService returns a new VcService.
 func NewMockVcService() *VcService {
 	return &VcService{
-		txsStatus:       newFifoCache[*applicationpb.StatusWithHeight](defaultTxStatusStorageSize),
+		txsStatus:       newFifoCache[*servicepb.StatusWithHeight](defaultTxStatusStorageSize),
 		healthcheck:     connection.DefaultHealthCheckService(),
 		txBatchChannels: make(map[uint64]chan *servicepb.VcBatch),
 	}
@@ -62,7 +63,7 @@ func (v *VcService) RegisterService(server *grpc.Server) {
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger.
 func (v *VcService) SetLastCommittedBlockNumber(
 	_ context.Context,
-	lastBlock *applicationpb.BlockInfo,
+	lastBlock *servicepb.BlockRef,
 ) (*emptypb.Empty, error) {
 	lastBlock.Number++
 	v.nextBlock.Store(lastBlock)
@@ -73,7 +74,7 @@ func (v *VcService) SetLastCommittedBlockNumber(
 func (v *VcService) GetNextBlockNumberToCommit(
 	context.Context,
 	*emptypb.Empty,
-) (*applicationpb.BlockInfo, error) {
+) (*servicepb.BlockRef, error) {
 	return v.nextBlock.Load(), nil
 }
 
@@ -96,9 +97,9 @@ func (*VcService) GetConfigTransaction(
 // GetTransactionsStatus get the status for a given set of transactions IDs.
 func (v *VcService) GetTransactionsStatus(
 	_ context.Context,
-	query *applicationpb.QueryStatus,
-) (*applicationpb.TransactionsStatus, error) {
-	s := &applicationpb.TransactionsStatus{Status: make(map[string]*applicationpb.StatusWithHeight)}
+	query *servicepb.QueryStatus,
+) (*servicepb.TransactionsStatus, error) {
+	s := &servicepb.TransactionsStatus{Status: make(map[string]*servicepb.StatusWithHeight)}
 	v.txsStatusMu.Lock()
 	defer v.txsStatusMu.Unlock()
 	for _, id := range query.TxIDs {
@@ -183,8 +184,8 @@ func (v *VcService) sendTransactionStatus(
 		if !ok {
 			break
 		}
-		txsStatus := &applicationpb.TransactionsStatus{
-			Status: make(map[string]*applicationpb.StatusWithHeight, len(txBatch.Transactions)),
+		txsStatus := &servicepb.TransactionsStatus{
+			Status: make(map[string]*servicepb.StatusWithHeight, len(txBatch.Transactions)),
 		}
 		v.txsStatusMu.Lock()
 		for i, tx := range txBatch.Transactions {
@@ -192,9 +193,9 @@ func (v *VcService) sendTransactionStatus(
 				// We simulate a faulty node by not responding to the first X TXs.
 				continue
 			}
-			code := applicationpb.Status_COMMITTED
+			code := committerpb.Status_COMMITTED
 			if tx.PrelimInvalidTxStatus != nil {
-				code = tx.PrelimInvalidTxStatus.Code
+				code = *tx.PrelimInvalidTxStatus
 			}
 			s := servicepb.NewStatusWithHeightFromRef(code, tx.Ref)
 			txsStatus.Status[tx.Ref.TxId] = s

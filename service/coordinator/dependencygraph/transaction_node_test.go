@@ -131,7 +131,7 @@ func createTxNode(t *testing.T, readOnly, readWrite, blindWrite [][]byte) *Trans
 
 func createTxForTest( //nolint: revive
 	_ *testing.T, txNum int, nsID string, readOnly, readWrite, blindWrite [][]byte,
-) *servicepb.CoordinatorTx {
+) *servicepb.TxWithRef {
 	reads := make([]*applicationpb.Read, len(readOnly))
 	for i, k := range readOnly {
 		reads[i] = &applicationpb.Read{Key: k}
@@ -147,8 +147,8 @@ func createTxForTest( //nolint: revive
 		blindWrites[i] = &applicationpb.Write{Key: k}
 	}
 
-	return &servicepb.CoordinatorTx{
-		Ref: committerpb.TxRef(uuid.New().String(), 0, uint32(txNum)), //nolint:gosec // int -> uint32.
+	return &servicepb.TxWithRef{
+		Ref: committerpb.NewTxRef(uuid.New().String(), 0, uint32(txNum)), //nolint:gosec // int -> uint32.
 		Content: &applicationpb.Tx{
 			Namespaces: []*applicationpb.TxNamespace{{
 				NsId:        nsID,
@@ -162,7 +162,7 @@ func createTxForTest( //nolint: revive
 
 func checkNewTxNode(
 	t *testing.T,
-	tx *servicepb.CoordinatorTx,
+	tx *servicepb.TxWithRef,
 	readsWrites *readWriteKeys,
 	txNode *TransactionNode,
 ) {

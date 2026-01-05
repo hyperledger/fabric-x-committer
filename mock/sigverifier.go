@@ -16,7 +16,6 @@ import (
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
@@ -120,8 +119,8 @@ func (m *SigVerifier) sendResponseBatch(
 		if !ok {
 			break
 		}
-		respBatch := &servicepb.VerifierResponseBatch{
-			Responses: make([]*servicepb.VerifierResponse, 0, len(reqBatch.Requests)),
+		respBatch := &committerpb.TxStatusBatch{
+			Status: make([]*committerpb.TxStatus, 0, len(reqBatch.Requests)),
 		}
 
 		for i, req := range reqBatch.Requests {
@@ -129,12 +128,13 @@ func (m *SigVerifier) sendResponseBatch(
 				// We simulate a faulty node by not responding to the first X TXs.
 				continue
 			}
-			status := applicationpb.Status_COMMITTED
-			isConfig := len(req.Tx.Namespaces) == 1 && req.Tx.Namespaces[0].NsId == committerpb.ConfigNamespaceID
-			if len(req.Tx.Endorsements) == 0 && !isConfig {
-				status = applicationpb.Status_ABORTED_SIGNATURE_INVALID
+			status := committerpb.Status_COMMITTED
+			txNs := req.Content.Namespaces
+			isConfig := len(txNs) == 1 && txNs[0].NsId == committerpb.ConfigNamespaceID
+			if len(req.Content.Endorsements) == 0 && !isConfig {
+				status = committerpb.Status_ABORTED_SIGNATURE_INVALID
 			}
-			respBatch.Responses = append(respBatch.Responses, &servicepb.VerifierResponse{
+			respBatch.Status = append(respBatch.Status, &committerpb.TxStatus{
 				Ref:    req.Ref,
 				Status: status,
 			})

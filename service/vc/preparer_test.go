@@ -63,7 +63,7 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 	tx := &servicepb.VcBatch{
 		Transactions: []*servicepb.VcTx{
 			{
-				Ref: committerpb.TxRef("tx1", 1, 1),
+				Ref: committerpb.NewTxRef("tx1", 1, 1),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
@@ -85,7 +85,7 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 				},
 			},
 			{
-				Ref: committerpb.TxRef("tx2", 4, 2),
+				Ref: committerpb.NewTxRef("tx2", 4, 2),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
@@ -142,7 +142,7 @@ func TestPrepareTxWithReadsOnly(t *testing.T) {
 		txIDToNsNonBlindWrites: transactionToWrites{},
 		txIDToNsBlindWrites:    transactionToWrites{},
 		txIDToNsNewWrites:      transactionToWrites{},
-		invalidTxIDStatus:      make(map[TxID]applicationpb.Status),
+		invalidTxIDStatus:      make(map[TxID]committerpb.Status),
 		txIDToHeight: transactionIDToHeight{
 			"tx1": servicepb.NewHeight(1, 1),
 			"tx2": servicepb.NewHeight(4, 2),
@@ -171,7 +171,7 @@ func TestPrepareTxWithBlindWritesOnly(t *testing.T) {
 	tx := &servicepb.VcBatch{
 		Transactions: []*servicepb.VcTx{
 			{
-				Ref: committerpb.TxRef("tx1", 10, 5),
+				Ref: committerpb.NewTxRef("tx1", 10, 5),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
@@ -193,7 +193,7 @@ func TestPrepareTxWithBlindWritesOnly(t *testing.T) {
 				},
 			},
 			{
-				Ref: committerpb.TxRef("tx2", 6, 3),
+				Ref: committerpb.NewTxRef("tx2", 6, 3),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
@@ -245,7 +245,7 @@ func TestPrepareTxWithBlindWritesOnly(t *testing.T) {
 			},
 		},
 		txIDToNsNewWrites: transactionToWrites{},
-		invalidTxIDStatus: make(map[TxID]applicationpb.Status),
+		invalidTxIDStatus: make(map[TxID]committerpb.Status),
 		txIDToHeight: transactionIDToHeight{
 			"tx1": servicepb.NewHeight(10, 5),
 			"tx2": servicepb.NewHeight(6, 3),
@@ -276,7 +276,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 	tx := &servicepb.VcBatch{
 		Transactions: []*servicepb.VcTx{
 			{
-				Ref: committerpb.TxRef("tx1", 7, 4),
+				Ref: committerpb.NewTxRef("tx1", 7, 4),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
@@ -298,7 +298,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 				},
 			},
 			{
-				Ref: committerpb.TxRef("tx2", 7, 5),
+				Ref: committerpb.NewTxRef("tx2", 7, 5),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
@@ -397,7 +397,7 @@ func TestPrepareTxWithReadWritesOnly(t *testing.T) {
 				},
 			},
 		},
-		invalidTxIDStatus: make(map[TxID]applicationpb.Status),
+		invalidTxIDStatus: make(map[TxID]committerpb.Status),
 		txIDToHeight: transactionIDToHeight{
 			"tx1": servicepb.NewHeight(7, 4),
 			"tx2": servicepb.NewHeight(7, 5),
@@ -431,7 +431,7 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 	tx := &servicepb.VcBatch{
 		Transactions: []*servicepb.VcTx{
 			{
-				Ref: committerpb.TxRef("tx1", 8, 0),
+				Ref: committerpb.NewTxRef("tx1", 8, 0),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
@@ -463,7 +463,7 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 			},
 			{
-				Ref: committerpb.TxRef("tx2", 9, 3),
+				Ref: committerpb.NewTxRef("tx2", 9, 3),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
@@ -482,7 +482,7 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 			},
 			{
 				// We ensure no duplicate reads with duplicated TX.
-				Ref: committerpb.TxRef("tx2.2", 9, 4),
+				Ref: committerpb.NewTxRef("tx2.2", 9, 4),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      "1",
@@ -500,19 +500,15 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 			},
 			{
-				Ref: committerpb.TxRef("tx3", 6, 2),
-				PrelimInvalidTxStatus: &servicepb.InvalidTxStatus{
-					Code: applicationpb.Status_MALFORMED_NO_WRITES,
-				},
+				Ref:                   committerpb.NewTxRef("tx3", 6, 2),
+				PrelimInvalidTxStatus: invalidStatus(committerpb.Status_MALFORMED_NO_WRITES),
 			},
 			{
-				Ref: committerpb.TxRef("tx4", 5, 2),
-				PrelimInvalidTxStatus: &servicepb.InvalidTxStatus{
-					Code: applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
-				},
+				Ref:                   committerpb.NewTxRef("tx4", 5, 2),
+				PrelimInvalidTxStatus: invalidStatus(committerpb.Status_MALFORMED_DUPLICATE_NAMESPACE),
 			},
 			{
-				Ref: committerpb.TxRef("tx5", 6, 2),
+				Ref: committerpb.NewTxRef("tx5", 6, 2),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:      committerpb.MetaNamespaceID,
@@ -524,7 +520,7 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 			},
 			{
-				Ref: committerpb.TxRef("tx6", 6, 2),
+				Ref: committerpb.NewTxRef("tx6", 6, 2),
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId: committerpb.ConfigNamespaceID,
@@ -648,9 +644,9 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 				},
 			},
 		},
-		invalidTxIDStatus: map[TxID]applicationpb.Status{
-			"tx3": applicationpb.Status_MALFORMED_NO_WRITES,
-			"tx4": applicationpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
+		invalidTxIDStatus: map[TxID]committerpb.Status{
+			"tx3": committerpb.Status_MALFORMED_NO_WRITES,
+			"tx4": committerpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
 		},
 		txIDToHeight: transactionIDToHeight{
 			"tx1":   servicepb.NewHeight(8, 0),
@@ -730,4 +726,9 @@ func BenchmarkPrepare(b *testing.B) {
 			b.StopTimer()
 		})
 	}
+}
+
+// invalidStatus is a oneliner to create a pointer to the given status.
+func invalidStatus(status committerpb.Status) *committerpb.Status {
+	return &status
 }

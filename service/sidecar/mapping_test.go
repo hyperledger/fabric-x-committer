@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -43,13 +43,13 @@ func TestBlockMapping(t *testing.T) {
 		}
 		expected[i] = statusNotYetValidated
 		expectedBlockSize++
-		if e != applicationpb.Status_COMMITTED {
+		if e != committerpb.Status_COMMITTED {
 			expectedRejected++
 		}
 	}
 	lgTX := txb.MakeTx(txs[0].Tx)
 	txs = append(txs, lgTX)
-	expected = append(expected, applicationpb.Status_REJECTED_DUPLICATE_TX_ID)
+	expected = append(expected, committerpb.Status_REJECTED_DUPLICATE_TX_ID)
 
 	var txIDToHeight utils.SyncMap[string, servicepb.Height]
 	txIDToHeight.Store(lgTX.Id, servicepb.Height{})

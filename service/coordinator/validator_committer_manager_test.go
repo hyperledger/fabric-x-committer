@@ -39,7 +39,7 @@ type vcMgrTestEnv struct {
 	validatorCommitterManager *validatorCommitterManager
 	inputTxs                  chan dependencygraph.TxNodeBatch
 	outputTxs                 chan dependencygraph.TxNodeBatch
-	outputTxsStatus           chan *applicationpb.TransactionsStatus
+	outputTxsStatus           chan *servicepb.TransactionsStatus
 	mockVcService             *mock.VcService
 	mockVCGrpcServers         *test.GrpcServers
 	sigVerTestEnv             *svMgrTestEnv
@@ -52,7 +52,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 
 	inputTxs := make(chan dependencygraph.TxNodeBatch, 10)
 	outputTxs := make(chan dependencygraph.TxNodeBatch, 10)
-	outputTxsStatus := make(chan *applicationpb.TransactionsStatus, 10)
+	outputTxsStatus := make(chan *servicepb.TransactionsStatus, 10)
 
 	vcm := newValidatorCommitterManager(
 		&validatorCommitterManagerConfig{
@@ -134,7 +134,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 		totalBlocks := 3
 		txPerBlock := 50
 		txBatches := make(dependencygraph.TxNodeBatch, 0, totalBlocks*txPerBlock)
-		expectedTxsStatus = &applicationpb.TransactionsStatus{Status: make(map[string]*applicationpb.StatusWithHeight)}
+		expectedTxsStatus = &servicepb.TransactionsStatus{Status: make(map[string]*servicepb.StatusWithHeight)}
 
 		for i := range 3 {
 			//nolint:gosec // int -> int64
@@ -192,9 +192,9 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 			mergeTxsStatus := func(
 				txsStatus1,
-				txsStatus2 *applicationpb.TransactionsStatus,
-			) map[string]*applicationpb.StatusWithHeight {
-				txsStatus := make(map[string]*applicationpb.StatusWithHeight)
+				txsStatus2 *servicepb.TransactionsStatus,
+			) map[string]*servicepb.StatusWithHeight {
+				txsStatus := make(map[string]*servicepb.StatusWithHeight)
 				maps.Copy(txsStatus, txsStatus1.Status)
 				maps.Copy(txsStatus, txsStatus2.Status)
 				return txsStatus
@@ -231,7 +231,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 		txBatch := []*dependencygraph.TransactionNode{
 			{
 				Tx: &servicepb.VcTx{
-					Ref: committerpb.TxRef("create config", 100, 63),
+					Ref: committerpb.NewTxRef("create config", 100, 63),
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId: committerpb.ConfigNamespaceID,
 						BlindWrites: []*applicationpb.Write{{
@@ -243,7 +243,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 			},
 			{
 				Tx: &servicepb.VcTx{
-					Ref: committerpb.TxRef("create ns 1", 100, 64),
+					Ref: committerpb.NewTxRef("create ns 1", 100, 64),
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId: committerpb.MetaNamespaceID,
 						ReadWrites: []*applicationpb.ReadWrite{{
@@ -260,11 +260,11 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		require.Len(t, outTxsStatus.Status, 2)
 		require.Equal(t,
-			servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 100, 63),
+			servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, 100, 63),
 			outTxsStatus.Status["create config"],
 		)
 		require.Equal(t,
-			servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, 100, 64),
+			servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, 100, 64),
 			outTxsStatus.Status["create ns 1"],
 		)
 
@@ -319,7 +319,7 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	env.requireConnectionMetrics(t, 0, connection.Connected, 1)
 	env.requireRetriedTxsTotal(t, 4)
 
-	actualTxsStatus := make(map[string]*applicationpb.StatusWithHeight)
+	actualTxsStatus := make(map[string]*servicepb.StatusWithHeight)
 	for range 2 {
 		result := <-env.outputTxsStatus
 		maps.Copy(actualTxsStatus, result.Status)
@@ -334,8 +334,8 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 
 	err := env.mockVcService.SubmitTransactions(ctx, &servicepb.VcBatch{
 		Transactions: []*servicepb.VcTx{
-			{Ref: committerpb.TxRef("untrackedTxID1", 1, 1)},
-			{Ref: committerpb.TxRef("untrackedTxID2", 2, 2)},
+			{Ref: committerpb.NewTxRef("untrackedTxID1", 1, 1)},
+			{Ref: committerpb.NewTxRef("untrackedTxID2", 2, 2)},
 		},
 	})
 	require.NoError(t, err)
@@ -346,20 +346,20 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 }
 
 func createInputTxsNodeForTest(t *testing.T, numTxs, valueSize int, blkNum uint64) (
-	[]*dependencygraph.TransactionNode, *applicationpb.TransactionsStatus,
+	[]*dependencygraph.TransactionNode, *servicepb.TransactionsStatus,
 ) {
 	t.Helper()
 
 	txsNode := make([]*dependencygraph.TransactionNode, numTxs)
-	expectedTxsStatus := &applicationpb.TransactionsStatus{
-		Status: make(map[string]*applicationpb.StatusWithHeight),
+	expectedTxsStatus := &servicepb.TransactionsStatus{
+		Status: make(map[string]*servicepb.StatusWithHeight),
 	}
 
 	for i := range numTxs {
 		id := uuid.NewString()
 		txsNode[i] = &dependencygraph.TransactionNode{
 			Tx: &servicepb.VcTx{
-				Ref: committerpb.TxRef(id, blkNum, uint32(i)), //nolint:gosec
+				Ref: committerpb.NewTxRef(id, blkNum, uint32(i)), //nolint:gosec
 				Namespaces: []*applicationpb.TxNamespace{{
 					BlindWrites: []*applicationpb.Write{{
 						Value: utils.MustRead(rand.Reader, valueSize),
@@ -368,7 +368,7 @@ func createInputTxsNodeForTest(t *testing.T, numTxs, valueSize int, blkNum uint6
 			},
 		}
 		//nolint:gosec // int -> uint32.
-		expectedTxsStatus.Status[id] = servicepb.NewStatusWithHeight(applicationpb.Status_COMMITTED, blkNum, uint32(i))
+		expectedTxsStatus.Status[id] = servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, blkNum, uint32(i))
 	}
 
 	return txsNode, expectedTxsStatus

@@ -13,6 +13,7 @@ package servicepb
 
 import (
 	context "context"
+	committerpb "github.com/hyperledger/fabric-x-committer/api/committerpb"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -53,7 +54,7 @@ func (c *verifierClient) StartStream(ctx context.Context, opts ...grpc.CallOptio
 
 type Verifier_StartStreamClient interface {
 	Send(*VerifierBatch) error
-	Recv() (*VerifierResponseBatch, error)
+	Recv() (*committerpb.TxStatusBatch, error)
 	grpc.ClientStream
 }
 
@@ -65,8 +66,8 @@ func (x *verifierStartStreamClient) Send(m *VerifierBatch) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *verifierStartStreamClient) Recv() (*VerifierResponseBatch, error) {
-	m := new(VerifierResponseBatch)
+func (x *verifierStartStreamClient) Recv() (*committerpb.TxStatusBatch, error) {
+	m := new(committerpb.TxStatusBatch)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -106,7 +107,7 @@ func _Verifier_StartStream_Handler(srv interface{}, stream grpc.ServerStream) er
 }
 
 type Verifier_StartStreamServer interface {
-	Send(*VerifierResponseBatch) error
+	Send(*committerpb.TxStatusBatch) error
 	Recv() (*VerifierBatch, error)
 	grpc.ServerStream
 }
@@ -115,7 +116,7 @@ type verifierStartStreamServer struct {
 	grpc.ServerStream
 }
 
-func (x *verifierStartStreamServer) Send(m *VerifierResponseBatch) error {
+func (x *verifierStartStreamServer) Send(m *committerpb.TxStatusBatch) error {
 	return x.ServerStream.SendMsg(m)
 }
 

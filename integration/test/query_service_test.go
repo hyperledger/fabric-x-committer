@@ -64,7 +64,7 @@ func TestQueryService(t *testing.T) {
 				},
 			},
 		}},
-	}, []applicationpb.Status{applicationpb.Status_COMMITTED, applicationpb.Status_COMMITTED})
+	}, []committerpb.Status{committerpb.Status_COMMITTED, committerpb.Status_COMMITTED})
 	require.Len(t, txIDs, 2)
 
 	t.Log("Query TXs status")
@@ -73,22 +73,14 @@ func TestQueryService(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Len(t, status.Statuses, len(txIDs))
-	test.RequireProtoElementsMatch(t, []*committerpb.TxStatusEvent{
+	test.RequireProtoElementsMatch(t, []*committerpb.TxStatus{
 		{
-			TxId: txIDs[0],
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				Code:        applicationpb.Status_COMMITTED,
-				TxNumber:    uint32(0),
-				BlockNumber: uint64(2),
-			},
+			Ref:    committerpb.NewTxRef(txIDs[0], 2, 0),
+			Status: committerpb.Status_COMMITTED,
 		},
 		{
-			TxId: txIDs[1],
-			StatusWithHeight: &applicationpb.StatusWithHeight{
-				Code:        applicationpb.Status_COMMITTED,
-				TxNumber:    uint32(1),
-				BlockNumber: uint64(2),
-			},
+			Ref:    committerpb.NewTxRef(txIDs[1], 2, 1),
+			Status: committerpb.Status_COMMITTED,
 		},
 	}, status.Statuses)
 

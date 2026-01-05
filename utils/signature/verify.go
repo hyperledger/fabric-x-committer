@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package signature
 
 import (
+	"strings"
+
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/common/cauthdsl"
 	"github.com/hyperledger/fabric-x-common/common/policies"
@@ -16,54 +18,85 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 )
 
-// NsVerifier verifies a given namespace.
-type NsVerifier struct {
-	verifier        policies.Policy
-	NamespacePolicy *applicationpb.NamespacePolicy
-	idDeserilizer   msp.IdentityDeserializer
+type (
+	// NsVerifier verifies a given namespace.
+	NsVerifier struct {
+		verifier
+	}
+
+	// verifier evaluates signatures and supports updating the identities.
+	verifier interface {
+		Verify(data []byte, endorsements []*applicationpb.EndorsementWithIdentity) error
+		UpdateIdentities(idDeserializer msp.IdentityDeserializer) error
+	}
+
+	// mspVerifier verifies signatures based on an MSP policy.
+	mspVerifier struct {
+		policies.Policy
+		mspRule              []byte
+		identityDeserializer msp.IdentityDeserializer
+	}
+
+	// keyVerifier verifies signatures based on a public key.
+	keyVerifier struct {
+		digestVerifier
+	}
+
+	// digestVerifier verifies a signature against a digest.
+	digestVerifier interface {
+		verifyDigest(Digest, Signature) error
+	}
+)
+
+// NewNsVerifier creates a new namespace verifier from a namespace policy.
+func NewNsVerifier(p *applicationpb.NamespacePolicy, idDeserializer msp.IdentityDeserializer) (*NsVerifier, error) {
+	switch r := p.Rule.(type) {
+	case *applicationpb.NamespacePolicy_ThresholdRule:
+		return NewNsVerifierFromKey(r.ThresholdRule.Scheme, r.ThresholdRule.PublicKey)
+	case *applicationpb.NamespacePolicy_MspRule:
+		return NewNsVerifierFromMsp(r.MspRule, idDeserializer)
+	default:
+		return nil, errors.Newf("policy rule '%v' not supported", p.Rule)
+	}
 }
 
-// NewNsVerifier creates a new namespace verifier according to the implementation scheme.
-func NewNsVerifier(p *applicationpb.NamespacePolicy, idDeserializer msp.IdentityDeserializer) (*NsVerifier, error) {
-	res := &NsVerifier{
-		NamespacePolicy: p,
-		idDeserilizer:   idDeserializer,
+// NewNsVerifierFromMsp creates a new namespace verifier from a msp rule.
+func NewNsVerifierFromMsp(mspRule []byte, idDeserializer msp.IdentityDeserializer) (*NsVerifier, error) {
+	v := &mspVerifier{mspRule: mspRule}
+	err := v.UpdateIdentities(idDeserializer)
+	if err != nil {
+		return nil, err
 	}
+	return &NsVerifier{verifier: v}, nil
+}
+
+// NewNsVerifierFromKey creates a new namespace verifier from a raw key and scheme.
+func NewNsVerifierFromKey(scheme Scheme, key []byte) (*NsVerifier, error) {
 	var err error
-
-	switch r := p.GetRule().(type) {
-	case *applicationpb.NamespacePolicy_ThresholdRule:
-		policy := r.ThresholdRule
-
-		switch policy.Scheme {
-		case NoScheme, "":
-			res.verifier = nil
-		case Ecdsa:
-			res.verifier, err = newEcdsaVerifier(policy.PublicKey)
-		case Bls:
-			res.verifier, err = newBLSVerifier(policy.PublicKey)
-		case Eddsa:
-			res.verifier = &edDSAVerifier{PublicKey: policy.PublicKey}
-		default:
-			return nil, errors.Newf("scheme '%v' not supported", policy.Scheme)
-		}
-	case *applicationpb.NamespacePolicy_MspRule:
-		pp := cauthdsl.NewPolicyProvider(idDeserializer)
-		res.verifier, _, err = pp.NewPolicy(r.MspRule)
+	var v verifier
+	var dv digestVerifier
+	switch strings.ToUpper(scheme) {
+	case NoScheme, "":
+		v = nil
+	case Ecdsa:
+		dv, err = newEcdsaVerifier(key)
+		v = &keyVerifier{digestVerifier: dv}
+	case Bls:
+		dv, err = newBLSVerifier(key)
+		v = &keyVerifier{digestVerifier: dv}
+	case Eddsa:
+		v = &keyVerifier{digestVerifier: &edDSAVerifier{PublicKey: key}}
 	default:
-		return nil, errors.Newf("policy rule '%v' not supported", p.GetRule())
+		return nil, errors.Newf("scheme '%v' not supported", scheme)
 	}
-	return res, err
+	return &NsVerifier{verifier: v}, err
 }
 
 // VerifyNs verifies a transaction's namespace signature.
-//
-//nolint:gocognit // cognitive complexity 30.
 func (v *NsVerifier) VerifyNs(txID string, tx *applicationpb.Tx, nsIndex int) error {
 	if nsIndex < 0 || nsIndex >= len(tx.Namespaces) || nsIndex >= len(tx.Endorsements) {
 		return errors.New("namespace index out of range")
 	}
-
 	if v.verifier == nil {
 		return nil
 	}
@@ -72,72 +105,69 @@ func (v *NsVerifier) VerifyNs(txID string, tx *applicationpb.Tx, nsIndex int) er
 	if err != nil {
 		return err
 	}
+	return v.Verify(data, tx.Endorsements[nsIndex].EndorsementsWithIdentity)
+}
 
-	endorsements := tx.Endorsements[nsIndex].EndorsementsWithIdentity
-	signedData := make([]*protoutil.SignedData, 0, len(endorsements))
+// UpdateIdentities is nop for keyVerifier.
+func (*keyVerifier) UpdateIdentities(msp.IdentityDeserializer) error {
+	return nil
+}
 
-	switch v.NamespacePolicy.GetRule().(type) {
-	case *applicationpb.NamespacePolicy_ThresholdRule:
-		signedData = append(signedData, &protoutil.SignedData{
-			Data:      data,
-			Signature: endorsements[0].Endorsement,
-		})
-	case *applicationpb.NamespacePolicy_MspRule:
-		for _, s := range endorsements {
-			var idBytes []byte
-			switch s.Identity.Creator.(type) {
-			case *applicationpb.Identity_Certificate:
-				cert := s.Identity.GetCertificate()
-				if cert == nil {
-					return errors.New("An empty certificate is provided for the identity")
-				}
-				idBytes, err = msp.NewSerializedIdentity(s.Identity.MspId, cert)
-				if err != nil {
-					return err
-				}
-			case *applicationpb.Identity_CertificateId:
-				certID := s.Identity.GetCertificateId()
-				if certID == "" {
-					return errors.New("An empty certificate ID is provided for the identity")
-				}
+// Verify evaluates the endorsements against the data for keyVerifier.
+func (v *keyVerifier) Verify(data []byte, endorsements []*applicationpb.EndorsementWithIdentity) error {
+	return v.verifyDigest(SHA256Digest(data), endorsements[0].Endorsement)
+}
 
-				identity := v.idDeserilizer.GetKnownDeserializedIdentity(msp.IdentityIdentifier{
-					Mspid: s.Identity.MspId,
-					Id:    certID,
-				})
-				if identity == nil {
-					return errors.Newf("Invalid certificate identity: %s", certID)
-				}
-
-				idBytes, err = identity.Serialize()
-				if err != nil {
-					return errors.Wrapf(err, "invalid certificate identifier: %s", certID)
-				}
-			}
-
-			signedData = append(signedData, &protoutil.SignedData{
-				Data:      data,
-				Identity:  idBytes,
-				Signature: s.Endorsement,
-			})
-		}
-	default:
-		return errors.Newf("policy rule [%v] not supported", v.NamespacePolicy.GetRule())
+// UpdateIdentities updates the identities for mspVerifier.
+func (v *mspVerifier) UpdateIdentities(idDeserializer msp.IdentityDeserializer) error {
+	pp := cauthdsl.NewPolicyProvider(idDeserializer)
+	newVerifier, _, err := pp.NewPolicy(v.mspRule)
+	if err != nil {
+		return errors.Wrap(err, "error updating msp verifier")
 	}
-
-	return v.verifier.EvaluateSignedData(signedData)
+	v.Policy = newVerifier
+	v.identityDeserializer = idDeserializer
+	return nil
 }
 
-// verifier verifies a digest.
-type verifier interface {
-	verify(Digest, Signature) error
-}
-
-func verifySignedData(signatureSet []*protoutil.SignedData, v verifier) error {
-	for _, s := range signatureSet {
-		if err := v.verify(SHA256Digest(s.Data), s.Signature); err != nil {
+// Verify evaluates the endorsements against the data for mspVerifier.
+func (v *mspVerifier) Verify(data []byte, endorsements []*applicationpb.EndorsementWithIdentity) error {
+	signedData := make([]*protoutil.SignedData, len(endorsements))
+	for i, s := range endorsements {
+		idBytes, err := serializeIdentity(s.Identity, v.identityDeserializer)
+		if err != nil {
 			return err
 		}
+		signedData[i] = &protoutil.SignedData{
+			Data:      data,
+			Identity:  idBytes,
+			Signature: s.Endorsement,
+		}
 	}
-	return nil
+	return v.EvaluateSignedData(signedData)
+}
+
+func serializeIdentity(id *applicationpb.Identity, idDeserializer msp.IdentityDeserializer) ([]byte, error) {
+	var idBytes []byte
+	var err error
+	switch creator := id.Creator.(type) {
+	case *applicationpb.Identity_Certificate:
+		if creator.Certificate == nil {
+			return idBytes, errors.New("An empty certificate is provided for the identity")
+		}
+		idBytes, err = msp.NewSerializedIdentity(id.MspId, creator.Certificate)
+	case *applicationpb.Identity_CertificateId:
+		if creator.CertificateId == "" {
+			return idBytes, errors.New("An empty certificate ID is provided for the identity")
+		}
+		identity := idDeserializer.GetKnownDeserializedIdentity(msp.IdentityIdentifier{
+			Mspid: id.MspId,
+			Id:    creator.CertificateId,
+		})
+		if identity == nil {
+			return idBytes, errors.Newf("Invalid certificate identity: %s", creator.CertificateId)
+		}
+		idBytes, err = identity.Serialize()
+	}
+	return idBytes, errors.Wrap(err, "Identity serialization error")
 }

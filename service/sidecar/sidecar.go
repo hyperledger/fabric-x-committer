@@ -20,7 +20,6 @@ import (
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -44,7 +43,7 @@ type Service struct {
 	coordConn          *grpc.ClientConn
 	blockToBeCommitted chan *common.Block
 	committedBlock     chan *common.Block
-	statusQueue        chan []*committerpb.TxStatusEvent
+	statusQueue        chan []*committerpb.TxStatus
 	config             *Config
 	healthcheck        *health.Server
 	metrics            *perfMetrics
@@ -97,7 +96,7 @@ func New(c *Config) (*Service, error) {
 		metrics:            metrics,
 		blockToBeCommitted: make(chan *common.Block, bufferSize),
 		committedBlock:     make(chan *common.Block, bufferSize),
-		statusQueue:        make(chan []*committerpb.TxStatusEvent, bufferSize),
+		statusQueue:        make(chan []*committerpb.TxStatus, bufferSize),
 	}, nil
 }
 
@@ -362,7 +361,7 @@ func appendMissingBlock(
 		expectedHeight[tx.Ref.TxId] = servicepb.NewHeightFromTxRef(tx.Ref)
 	}
 
-	txsStatus, err := client.GetTransactionsStatus(ctx, &applicationpb.QueryStatus{TxIDs: txIDs})
+	txsStatus, err := client.GetTransactionsStatus(ctx, &servicepb.QueryStatus{TxIDs: txIDs})
 	if err != nil {
 		return errors.Wrap(err, "failed to get transaction status from the coordinator")
 	}
@@ -414,8 +413,8 @@ func waitForIdleCoordinator(ctx context.Context, client servicepb.CoordinatorCli
 }
 
 func fillStatuses(
-	finalStatuses []applicationpb.Status,
-	statuses map[string]*applicationpb.StatusWithHeight,
+	finalStatuses []committerpb.Status,
+	statuses map[string]*servicepb.StatusWithHeight,
 	expectedHeight map[string]*servicepb.Height,
 ) error {
 	for txID, height := range expectedHeight {
@@ -427,7 +426,7 @@ func fillStatuses(
 			finalStatuses[height.TxNum] = s.Code
 			continue
 		}
-		finalStatuses[height.TxNum] = applicationpb.Status_REJECTED_DUPLICATE_TX_ID
+		finalStatuses[height.TxNum] = committerpb.Status_REJECTED_DUPLICATE_TX_ID
 	}
 	return nil
 }
