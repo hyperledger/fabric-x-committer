@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -59,7 +60,7 @@ type (
 		clientConfig                   *connection.MultiClientConfig
 		incomingTxsForValidationCommit <-chan dependencygraph.TxNodeBatch
 		outgoingValidatedTxsNode       chan<- dependencygraph.TxNodeBatch
-		outgoingTxsStatus              chan<- *applicationpb.TransactionsStatus
+		outgoingTxsStatus              chan<- *servicepb.TransactionsStatus
 		metrics                        *perfMetrics
 		policyMgr                      *policyManager
 	}
@@ -135,7 +136,7 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 
 func (vcm *validatorCommitterManager) setLastCommittedBlockNumber(
 	ctx context.Context,
-	lastBlock *applicationpb.BlockInfo,
+	lastBlock *servicepb.BlockInfo,
 ) error {
 	_, err := vcm.commonClient.SetLastCommittedBlockNumber(ctx, lastBlock)
 	return errors.Wrap(err, "failed setting the last committed block number")
@@ -143,15 +144,15 @@ func (vcm *validatorCommitterManager) setLastCommittedBlockNumber(
 
 func (vcm *validatorCommitterManager) getNextBlockNumberToCommit(
 	ctx context.Context,
-) (*applicationpb.BlockInfo, error) {
+) (*servicepb.BlockInfo, error) {
 	ret, err := vcm.commonClient.GetNextBlockNumberToCommit(ctx, nil)
 	return ret, errors.Wrap(err, "failed getting the next expected block number")
 }
 
 func (vcm *validatorCommitterManager) getTransactionsStatus(
 	ctx context.Context,
-	query *applicationpb.QueryStatus,
-) (*applicationpb.TransactionsStatus, error) {
+	query *servicepb.QueryStatus,
+) (*servicepb.TransactionsStatus, error) {
 	ret, err := vcm.commonClient.GetTransactionsStatus(ctx, query)
 	return ret, errors.Wrap(err, "failed getting transactions status")
 }
@@ -202,7 +203,7 @@ func (vc *validatorCommitter) sendTransactionsAndForwardStatus(
 	ctx context.Context,
 	inputTxBatch channel.ReaderWriter[dependencygraph.TxNodeBatch],
 	outputValidatedTxsNode channel.Writer[dependencygraph.TxNodeBatch],
-	outputTxsStatus channel.Writer[*applicationpb.TransactionsStatus],
+	outputTxsStatus channel.Writer[*servicepb.TransactionsStatus],
 ) error {
 	defer vc.metrics.vcservicesConnection.Disconnected(vc.conn.CanonicalTarget())
 
@@ -298,7 +299,7 @@ func splitAndSendToVC(
 func (vc *validatorCommitter) receiveStatusAndForwardToOutput(
 	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamClient,
 	outputTxsNode channel.Writer[dependencygraph.TxNodeBatch],
-	outputTxsStatus channel.Writer[*applicationpb.TransactionsStatus],
+	outputTxsStatus channel.Writer[*servicepb.TransactionsStatus],
 ) error {
 	for {
 		txsStatus, err := stream.Recv()
@@ -359,7 +360,7 @@ func (vc *validatorCommitter) recoverPendingTransactions(inputTxsNode channel.Wr
 	inputTxsNode.Write(pendingTxs)
 }
 
-func (vc *validatorCommitter) getTxsAndUpdatePolicies(txsStatus *applicationpb.TransactionsStatus) (
+func (vc *validatorCommitter) getTxsAndUpdatePolicies(txsStatus *servicepb.TransactionsStatus) (
 	[]*dependencygraph.TransactionNode, []string,
 ) {
 	txsNode := make([]*dependencygraph.TransactionNode, 0, len(txsStatus.Status))
@@ -377,7 +378,7 @@ func (vc *validatorCommitter) getTxsAndUpdatePolicies(txsStatus *applicationpb.T
 		}
 		txsNode = append(txsNode, txNode)
 
-		if txStatus.Code != applicationpb.Status_COMMITTED {
+		if txStatus.Code != committerpb.Status_COMMITTED {
 			continue
 		}
 

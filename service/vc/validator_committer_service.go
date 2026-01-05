@@ -19,6 +19,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -47,7 +48,7 @@ type ValidatorCommitterService struct {
 	toPrepareTxs             chan *servicepb.VcBatch
 	preparedTxs              chan *preparedTransactions
 	validatedTxs             chan *validatedTransactions
-	txsStatus                chan *applicationpb.TransactionsStatus
+	txsStatus                chan *servicepb.TransactionsStatus
 	db                       *database
 	metrics                  *perfMetrics
 	minTxBatchSize           int
@@ -89,7 +90,7 @@ func NewValidatorCommitterService(
 	toPrepareTxs := make(chan *servicepb.VcBatch, l.MaxWorkersForPreparer*queueMultiplier)
 	preparedTxs := make(chan *preparedTransactions, l.MaxWorkersForValidator*queueMultiplier)
 	validatedTxs := make(chan *validatedTransactions, queueMultiplier)
-	txsStatus := make(chan *applicationpb.TransactionsStatus, l.MaxWorkersForCommitter*queueMultiplier)
+	txsStatus := make(chan *servicepb.TransactionsStatus, l.MaxWorkersForCommitter*queueMultiplier)
 
 	metrics := newVCServiceMetrics()
 	db, err := newDatabase(ctx, config.Database, metrics)
@@ -196,7 +197,7 @@ func (vc *ValidatorCommitterService) monitorQueues(ctx context.Context) {
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger.
 func (vc *ValidatorCommitterService) SetLastCommittedBlockNumber(
 	ctx context.Context,
-	lastCommittedBlock *applicationpb.BlockInfo,
+	lastCommittedBlock *servicepb.BlockInfo,
 ) (*emptypb.Empty, error) {
 	err := vc.db.setLastCommittedBlockNumber(ctx, lastCommittedBlock)
 	logger.ErrorStackTrace(err)
@@ -207,7 +208,7 @@ func (vc *ValidatorCommitterService) SetLastCommittedBlockNumber(
 func (vc *ValidatorCommitterService) GetNextBlockNumberToCommit(
 	ctx context.Context,
 	_ *emptypb.Empty,
-) (*applicationpb.BlockInfo, error) {
+) (*servicepb.BlockInfo, error) {
 	blkInfo, err := vc.db.getNextBlockNumberToCommit(ctx)
 	logger.ErrorStackTrace(err)
 	return blkInfo, grpcerror.WrapInternalError(err)
@@ -216,8 +217,8 @@ func (vc *ValidatorCommitterService) GetNextBlockNumberToCommit(
 // GetTransactionsStatus gets the status of a given set of transaction IDs.
 func (vc *ValidatorCommitterService) GetTransactionsStatus(
 	ctx context.Context,
-	query *applicationpb.QueryStatus,
-) (*applicationpb.TransactionsStatus, error) {
+	query *servicepb.QueryStatus,
+) (*servicepb.TransactionsStatus, error) {
 	if len(query.TxIDs) == 0 {
 		return nil, grpcerror.WrapInvalidArgument(errors.New("query is empty"))
 	}
@@ -232,7 +233,7 @@ func (vc *ValidatorCommitterService) GetTransactionsStatus(
 		return nil, grpcerror.WrapInternalError(err)
 	}
 
-	return &applicationpb.TransactionsStatus{
+	return &servicepb.TransactionsStatus{
 		Status: txIDsStatus,
 	}, nil
 }
@@ -372,11 +373,11 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 		dup := 0
 		for _, s := range txStatus.Status {
 			switch s.Code {
-			case applicationpb.Status_COMMITTED:
+			case committerpb.Status_COMMITTED:
 				committed++
-			case applicationpb.Status_ABORTED_MVCC_CONFLICT:
+			case committerpb.Status_ABORTED_MVCC_CONFLICT:
 				mvcc++
-			case applicationpb.Status_REJECTED_DUPLICATE_TX_ID:
+			case committerpb.Status_REJECTED_DUPLICATE_TX_ID:
 				dup++
 			}
 		}

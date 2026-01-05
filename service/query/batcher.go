@@ -103,7 +103,7 @@ type (
 		// finalized is true once the query is actively executed.
 		finalized    bool
 		result       map[string]*committerpb.Row
-		statusResult map[string]*committerpb.TxStatusEvent
+		statusResult map[string]*committerpb.TxStatus
 	}
 )
 
@@ -406,7 +406,7 @@ func (q *namespaceQueryBatch) execute() {
 
 	start := time.Now()
 	var queryRows []*committerpb.Row
-	var statusRows []*committerpb.TxStatusEvent
+	var statusRows []*committerpb.TxStatus
 	if q.nsID != txStatusNsID {
 		queryRows, err = unsafeQueryRows(q.ctx, queryObj, q.nsID, uniqueKeys)
 	} else {
@@ -427,9 +427,9 @@ func (q *namespaceQueryBatch) execute() {
 	}
 
 	if statusRows != nil {
-		q.statusResult = make(map[string]*committerpb.TxStatusEvent)
+		q.statusResult = make(map[string]*committerpb.TxStatus)
 		for _, r := range statusRows {
-			q.statusResult[r.TxId] = r
+			q.statusResult[r.Ref.TxId] = r
 		}
 	}
 
@@ -441,7 +441,7 @@ func (q *namespaceQueryBatch) execute() {
 func (q *namespaceQueryBatch) waitForRows(
 	ctx context.Context,
 	keys [][]byte,
-) (res []*committerpb.Row, statusRes []*committerpb.TxStatusEvent, err error) {
+) (res []*committerpb.Row, statusRes []*committerpb.TxStatus, err error) {
 	// Wait for batch to be finalized or context to be canceled.
 	select {
 	case <-ctx.Done():
@@ -469,7 +469,7 @@ func (q *namespaceQueryBatch) waitForRows(
 		}
 	}
 	if q.statusResult != nil {
-		statusRes = make([]*committerpb.TxStatusEvent, 0, len(keys))
+		statusRes = make([]*committerpb.TxStatus, 0, len(keys))
 		for _, key := range keys {
 			// Get result for this key from the batch results.
 			if row, ok := q.statusResult[string(key)]; ok && row != nil {

@@ -21,6 +21,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -30,11 +31,11 @@ import (
 // Coordinator is a mock coordinator.
 type Coordinator struct {
 	servicepb.CoordinatorServer
-	lastCommittedBlock atomic.Pointer[applicationpb.BlockInfo]
+	lastCommittedBlock atomic.Pointer[servicepb.BlockInfo]
 	nextBlock          atomic.Uint64
 	streamActive       atomic.Bool
 	numWaitingTxs      atomic.Int32
-	txsStatus          *fifoCache[*applicationpb.StatusWithHeight]
+	txsStatus          *fifoCache[*servicepb.StatusWithHeight]
 	txsStatusMu        sync.Mutex
 	configTransaction  atomic.Pointer[applicationpb.ConfigTransaction]
 	latency            atomic.Pointer[time.Duration]
@@ -48,7 +49,7 @@ var defaultTxStatusStorageSize = 100_000
 // NewMockCoordinator creates a new mock coordinator.
 func NewMockCoordinator() *Coordinator {
 	return &Coordinator{
-		txsStatus:   newFifoCache[*applicationpb.StatusWithHeight](defaultTxStatusStorageSize),
+		txsStatus:   newFifoCache[*servicepb.StatusWithHeight](defaultTxStatusStorageSize),
 		healthcheck: connection.DefaultHealthCheckService(),
 	}
 }
@@ -71,7 +72,7 @@ func (c *Coordinator) SetConfigTransaction(data []byte) {
 
 // SetLastCommittedBlockNumber sets the last committed block number.
 func (c *Coordinator) SetLastCommittedBlockNumber(
-	_ context.Context, lastBlock *applicationpb.BlockInfo,
+	_ context.Context, lastBlock *servicepb.BlockInfo,
 ) (*emptypb.Empty, error) {
 	c.lastCommittedBlock.Store(lastBlock)
 	return nil, nil
@@ -81,23 +82,23 @@ func (c *Coordinator) SetLastCommittedBlockNumber(
 func (c *Coordinator) GetNextBlockNumberToCommit(
 	context.Context,
 	*emptypb.Empty,
-) (*applicationpb.BlockInfo, error) {
-	return &applicationpb.BlockInfo{Number: c.nextBlock.Load()}, nil
+) (*servicepb.BlockInfo, error) {
+	return &servicepb.BlockInfo{Number: c.nextBlock.Load()}, nil
 }
 
 // GetTransactionsStatus returns the status of given set of transaction identifiers.
 func (c *Coordinator) GetTransactionsStatus(
 	_ context.Context,
-	q *applicationpb.QueryStatus,
-) (*applicationpb.TransactionsStatus, error) {
-	status := make(map[string]*applicationpb.StatusWithHeight, len(q.TxIDs))
+	q *servicepb.QueryStatus,
+) (*servicepb.TransactionsStatus, error) {
+	status := make(map[string]*servicepb.StatusWithHeight, len(q.TxIDs))
 	c.txsStatusMu.Lock()
 	defer c.txsStatusMu.Unlock()
 	for _, txID := range q.TxIDs {
 		v, _ := c.txsStatus.get(txID)
 		status[txID] = v
 	}
-	return &applicationpb.TransactionsStatus{Status: status}, nil
+	return &servicepb.TransactionsStatus{Status: status}, nil
 }
 
 // NumberOfWaitingTransactionsForStatus returns the number of transactions waiting to get the final status.
@@ -187,7 +188,7 @@ func (c *Coordinator) sendTxsValidationStatus(
 		for _, tx := range scBlock.Txs {
 			info = append(info, &servicepb.TxStatusInfo{
 				Ref:    tx.Ref,
-				Status: applicationpb.Status_COMMITTED,
+				Status: committerpb.Status_COMMITTED,
 			})
 		}
 		rand.Shuffle(len(info), func(i, j int) { info[i], info[j] = info[j], info[i] })
@@ -207,8 +208,8 @@ func (c *Coordinator) sendTxsStatusChunk(
 	stream servicepb.Coordinator_BlockProcessingServer,
 	txs []*servicepb.TxStatusInfo,
 ) error {
-	b := &applicationpb.TransactionsStatus{
-		Status: make(map[string]*applicationpb.StatusWithHeight, len(txs)),
+	b := &servicepb.TransactionsStatus{
+		Status: make(map[string]*servicepb.StatusWithHeight, len(txs)),
 	}
 	c.txsStatusMu.Lock()
 	defer c.txsStatusMu.Unlock()

@@ -12,7 +12,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -29,7 +29,7 @@ type (
 
 	receivedBatch struct {
 		batch  *servicepb.LoadGenBatch
-		status applicationpb.Status
+		status committerpb.Status
 	}
 )
 
@@ -60,9 +60,9 @@ func (c *LoadGenAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 		return sendBlocks(dCtx, &c.commonAdapter, txStream, workload.MapToLoadGenBatch,
 			func(batch *servicepb.LoadGenBatch) error {
 				_, appendErr := client.AppendBatch(dCtx, batch)
-				status := applicationpb.Status_COMMITTED
+				status := committerpb.Status_COMMITTED
 				if appendErr != nil {
-					status = applicationpb.Status_NOT_VALIDATED
+					status = committerpb.Status_NOT_VALIDATED
 				}
 				receiveQueueCtx.Write(receivedBatch{
 					batch:  batch,

@@ -91,7 +91,7 @@ type (
 		// sender: validator committer manager sends transaction status to this channel. For each validator committer
 		// 	       server, there is a goroutine that sends transaction status to this channel.
 		// receiver: coordinator receives transaction status from this channel and forwards them to the sidecar.
-		vcServiceToCoordinatorTxStatus chan *applicationpb.TransactionsStatus
+		vcServiceToCoordinatorTxStatus chan *servicepb.TransactionsStatus
 	}
 )
 
@@ -124,7 +124,7 @@ func NewCoordinatorService(c *Config) *Service {
 		depGraphToSigVerifierFreeTxs:       make(chan dependencygraph.TxNodeBatch, bufSzPerChanForValCommitMgr),
 		sigVerifierToVCServiceValidatedTxs: make(chan dependencygraph.TxNodeBatch, bufSzPerChanForSignVerifierMgr),
 		vcServiceToDepGraphValidatedTxs:    make(chan dependencygraph.TxNodeBatch, bufSzPerChanForValCommitMgr),
-		vcServiceToCoordinatorTxStatus:     make(chan *applicationpb.TransactionsStatus, bufSzPerChanForValCommitMgr),
+		vcServiceToCoordinatorTxStatus:     make(chan *servicepb.TransactionsStatus, bufSzPerChanForValCommitMgr),
 	}
 
 	metrics := newPerformanceMetrics()
@@ -254,7 +254,7 @@ func (c *Service) GetConfigTransaction(
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger through a vcservice.
 func (c *Service) SetLastCommittedBlockNumber(
 	ctx context.Context,
-	lastBlock *applicationpb.BlockInfo,
+	lastBlock *servicepb.BlockInfo,
 ) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, c.validatorCommitterMgr.setLastCommittedBlockNumber(ctx, lastBlock)
 }
@@ -263,7 +263,7 @@ func (c *Service) SetLastCommittedBlockNumber(
 func (c *Service) GetNextBlockNumberToCommit(
 	ctx context.Context,
 	_ *emptypb.Empty,
-) (*applicationpb.BlockInfo, error) {
+) (*servicepb.BlockInfo, error) {
 	res, err := c.validatorCommitterMgr.getNextBlockNumberToCommit(ctx)
 	return res, grpcerror.WrapInternalError(err)
 }
@@ -271,8 +271,8 @@ func (c *Service) GetNextBlockNumberToCommit(
 // GetTransactionsStatus returns the status of given transactions identifiers.
 func (c *Service) GetTransactionsStatus(
 	ctx context.Context,
-	q *applicationpb.QueryStatus,
-) (*applicationpb.TransactionsStatus, error) {
+	q *servicepb.QueryStatus,
+) (*servicepb.TransactionsStatus, error) {
 	return c.validatorCommitterMgr.getTransactionsStatus(ctx, q)
 }
 

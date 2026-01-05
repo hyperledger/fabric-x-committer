@@ -64,14 +64,14 @@ func TestConfigUpdate(t *testing.T) {
 
 	sendTXs := func() {
 		txs := make([][]*applicationpb.TxNamespace, blockSize)
-		expected := make([]applicationpb.Status, blockSize)
+		expected := make([]committerpb.Status, blockSize)
 		for i := range blockSize {
 			txs[i] = []*applicationpb.TxNamespace{{
 				NsId:        "1",
 				NsVersion:   0,
 				BlindWrites: []*applicationpb.Write{{Key: []byte(fmt.Sprintf("key-%d", i))}},
 			}}
-			expected[i] = applicationpb.Status_COMMITTED
+			expected[i] = committerpb.Status_COMMITTED
 		}
 		c.MakeAndSendTransactionsToOrderer(t, txs, expected)
 	}
@@ -96,21 +96,21 @@ func TestConfigUpdate(t *testing.T) {
 	}
 	submitConfigBlock(ordererEnv.AllRealOrdererEndpoints())
 	c.ValidateExpectedResultsInCommittedBlock(t, &runner.ExpectedStatusInBlock{
-		Statuses: []applicationpb.Status{applicationpb.Status_COMMITTED},
+		Statuses: []committerpb.Status{committerpb.Status_COMMITTED},
 	})
 
 	// We send the old version and it fails.
 	c.SendTransactionsToOrderer(
 		t,
 		[]*servicepb.LoadGenTx{lgMetaTx},
-		[]applicationpb.Status{applicationpb.Status_ABORTED_SIGNATURE_INVALID},
+		[]committerpb.Status{committerpb.Status_ABORTED_SIGNATURE_INVALID},
 	)
 
 	// We send with the updated key and it works.
 	c.MakeAndSendTransactionsToOrderer(
 		t,
 		[][]*applicationpb.TxNamespace{metaTx.Namespaces},
-		[]applicationpb.Status{applicationpb.Status_COMMITTED},
+		[]committerpb.Status{committerpb.Status_COMMITTED},
 	)
 
 	t.Log("Sanity check")
@@ -119,7 +119,7 @@ func TestConfigUpdate(t *testing.T) {
 	t.Log("Update the sidecar to use a holder orderer group")
 	submitConfigBlock(ordererEnv.AllHolderEndpoints())
 	c.ValidateExpectedResultsInCommittedBlock(t, &runner.ExpectedStatusInBlock{
-		Statuses: []applicationpb.Status{applicationpb.Status_COMMITTED},
+		Statuses: []committerpb.Status{committerpb.Status_COMMITTED},
 	})
 
 	holdingBlock := c.LastReceivedBlockNumber + 2
@@ -153,7 +153,7 @@ func TestConfigUpdate(t *testing.T) {
 	t.Log("We advance the holder by one to allow the config block to pass through, but not other blocks")
 	ordererEnv.Holder.HoldFromBlock.Add(1)
 	c.ValidateExpectedResultsInCommittedBlock(t, &runner.ExpectedStatusInBlock{
-		Statuses: []applicationpb.Status{applicationpb.Status_COMMITTED},
+		Statuses: []committerpb.Status{committerpb.Status_COMMITTED},
 	})
 
 	t.Log("The sidecar should use the non-holding orderer, so the holding should not affect the processing")

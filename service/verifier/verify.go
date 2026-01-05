@@ -17,7 +17,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
@@ -128,7 +127,7 @@ func (v *verifier) verifyRequest(tx *servicepb.VerifierTx) *servicepb.VerifierRe
 	logger.Debugf("Validating TX: %s", &utils.LazyJSON{O: tx})
 	response := &servicepb.VerifierResponse{
 		Ref:    tx.Ref,
-		Status: applicationpb.Status_COMMITTED,
+		Status: committerpb.Status_COMMITTED,
 	}
 	// The verifiers might temporarily retain the old map while updatePolicies has already set a new one.
 	// This is acceptable, provided the coordinator sends the validation status to the dependency graph
@@ -145,7 +144,7 @@ func (v *verifier) verifyRequest(tx *servicepb.VerifierTx) *servicepb.VerifierRe
 		nsVerifier, ok := verifiers[ns.NsId]
 		if !ok {
 			logger.Debugf("No verifier for namespace: '%v'", ns.NsId)
-			response.Status = applicationpb.Status_ABORTED_SIGNATURE_INVALID
+			response.Status = committerpb.Status_ABORTED_SIGNATURE_INVALID
 			return response
 		}
 
@@ -161,7 +160,7 @@ func (v *verifier) verifyRequest(tx *servicepb.VerifierTx) *servicepb.VerifierRe
 		if err := nsVerifier.VerifyNs(tx.Ref.TxId, tx.Tx, nsIndex); err != nil {
 			logger.Debugf("Invalid signature found: '%v', NsId: '%v': %+v",
 				&utils.LazyJSON{O: tx.Ref}, ns.NsId, err)
-			response.Status = applicationpb.Status_ABORTED_SIGNATURE_INVALID
+			response.Status = committerpb.Status_ABORTED_SIGNATURE_INVALID
 			return response
 		}
 	}

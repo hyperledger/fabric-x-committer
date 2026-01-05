@@ -11,7 +11,10 @@ option go_package = "github.com/hyperledger/fabric-x-committer/api/servicepb";
 package servicepb;
 
 import "api/applicationpb/block_tx.proto";
-import "api/servicepb/coordinator.proto";
+import "api/applicationpb/config.proto";
+
+import "api/committerpb/status.proto";
+import "api/committerpb/ref.proto";
 
 service Verifier {
     rpc StartStream(stream VerifierBatch) returns (stream VerifierResponseBatch);
@@ -28,13 +31,13 @@ message VerifierUpdates {
 }
 
 message VerifierTx {
-    TxRef ref = 1;
+    committerpb.TxRef ref = 1;
     applicationpb.Tx tx = 2;
 }
 
 message VerifierResponse {
-    TxRef ref = 1;
-    applicationpb.Status status = 2;
+    committerpb.TxRef ref = 1;
+    committerpb.Status status = 2;
 }
 
 message VerifierResponseBatch {

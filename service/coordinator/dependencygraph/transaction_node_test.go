@@ -148,7 +148,7 @@ func createTxForTest( //nolint: revive
 	}
 
 	return &servicepb.CoordinatorTx{
-		Ref: committerpb.TxRef(uuid.New().String(), 0, uint32(txNum)), //nolint:gosec // int -> uint32.
+		Ref: committerpb.NewTxRef(uuid.New().String(), 0, uint32(txNum)), //nolint:gosec // int -> uint32.
 		Content: &applicationpb.Tx{
 			Namespaces: []*applicationpb.TxNamespace{{
 				NsId:        nsID,

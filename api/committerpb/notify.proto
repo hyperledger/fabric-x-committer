@@ -12,7 +12,7 @@ package committerpb;
 
 import "google/protobuf/duration.proto";
 
-import "api/applicationpb/block_tx.proto";
+import "api/committerpb/status.proto";
 
 // The notifier service provides API to subscribe to ledger events and receive asynchronous notifications.
 service Notifier {
@@ -39,11 +39,6 @@ message TxStatusRequest {
 // NotificationResponse contains a batch of event details.
 // It is pushed to the client via the stream.
 message NotificationResponse {
-    repeated TxStatusEvent tx_status_events = 1; // List of transaction status events.
-    repeated string timeout_tx_ids = 2;          // List of timeout events.
-}
-
-message TxStatusEvent {
-    string tx_id = 1;
-    applicationpb.StatusWithHeight status_with_height = 2;
+    repeated TxStatus tx_status_events = 1; // List of transaction status events.
+    repeated string timeout_tx_ids = 2;     // List of timeout events.
 }
