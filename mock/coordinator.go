@@ -28,7 +28,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 )
 
-// Coordinator is a mock coordinator.
+// Coordinator is a mock implementation of servicepb.CoordinatorServer.
 type Coordinator struct {
 	servicepb.CoordinatorServer
 	lastCommittedBlock atomic.Pointer[servicepb.BlockRef]

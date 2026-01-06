@@ -471,7 +471,7 @@ func TestSidecarRecoveryAfterCoordinatorFailure(t *testing.T) {
 	txs := env.sendGeneratedTransactionsForBlock(ctx, t)
 
 	t.Log("4. Restart the coordinator and validate processing block 11")
-	env.coordinatorServer = mock.StartMockCoordinatorServiceFromListWithConfig(t, env.coordinator,
+	env.coordinatorServer = mock.StartMockCoordinatorServiceServerConfig(t, env.coordinator,
 		env.coordinatorServer.Configs[0])
 
 	monitoring.RequireConnectionMetrics(
@@ -503,7 +503,7 @@ func TestSidecarStartWithoutCoordinator(t *testing.T) {
 	)
 
 	t.Log("Restart the coordinator")
-	env.coordinatorServer = mock.StartMockCoordinatorServiceFromListWithConfig(t, env.coordinator,
+	env.coordinatorServer = mock.StartMockCoordinatorServiceServerConfig(t, env.coordinator,
 		env.coordinatorServer.Configs[0])
 	monitoring.RequireConnectionMetrics(
 		t, coordLabel,

@@ -29,7 +29,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 )
 
-// VcService implements the [protovcservice.ValidationAndCommitServiceServer] interface.
+// VcService is a mock implementation of servicepb.ValidationAndCommitServiceServer.
 // It is used for testing the client which is the coordinator service.
 type VcService struct {
 	servicepb.ValidationAndCommitServiceServer

@@ -43,7 +43,7 @@ type (
 		csStream               servicepb.Coordinator_BlockProcessingClient
 		streamCancel           context.CancelFunc
 		dbEnv                  *vc.DatabaseTestEnv
-		sigVerifiers           []*mock.SigVerifier
+		verifier               *mock.Verifier
 		sigVerifierGrpcServers *test.GrpcServers
 	}
 
@@ -81,7 +81,7 @@ func TestCoordinatorSecureConnection(t *testing.T) {
 
 func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEnv {
 	t.Helper()
-	svs, svServers := mock.StartMockSVService(t, tConfig.numSigService)
+	verifier, svServers := mock.StartMockVerifierService(t, tConfig.numSigService)
 
 	vcServerConfigs := make([]*connection.ServerConfig, 0, tConfig.numVcService)
 	var vcsTestEnv *vc.ValidatorAndCommitterServiceTestEnv
@@ -115,7 +115,7 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 		coordinator:            NewCoordinatorService(c),
 		config:                 c,
 		dbEnv:                  dbEnv,
-		sigVerifiers:           svs,
+		verifier:               verifier,
 		sigVerifierGrpcServers: svServers,
 	}
 }
@@ -890,7 +890,8 @@ func TestWaitingTxsCount(t *testing.T) {
 		}, 1*time.Minute, 100*time.Millisecond))
 	}()
 
-	env.sigVerifiers[0].MockFaultyNodeDropSize = 2
+	verifierStreams := requireStreams(t, env.verifier, 1)
+	verifierStreams[0].MockFaultyNodeDropSize = 2
 	err := env.csStream.Send(b)
 	require.NoError(t, err)
 	isSuccess, ok := success.Read()
@@ -907,11 +908,11 @@ func TestWaitingTxsCount(t *testing.T) {
 		return test.CheckServerStopped(t, env.sigVerifierGrpcServers.Configs[0].Endpoint.Address())
 	}, 4*time.Second, 500*time.Millisecond)
 
-	env.sigVerifiers[0].MockFaultyNodeDropSize = 0
-	env.sigVerifierGrpcServers = mock.StartMockSVServiceFromListWithConfig(
+	verifierStreams[0].MockFaultyNodeDropSize = 0
+	env.sigVerifierGrpcServers = mock.StartMockVerifierServiceFromServerConfig(
 		t,
-		env.sigVerifiers,
-		env.sigVerifierGrpcServers.Configs,
+		env.verifier,
+		env.sigVerifierGrpcServers.Configs...,
 	)
 
 	actualTxsStatus := readTxStatus(t, env.csStream, txPerBlock)

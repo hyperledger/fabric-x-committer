@@ -14,7 +14,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -22,31 +21,22 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-// StartMockSVService starts a specified number of mock verifier service and register cancellation.
-func StartMockSVService(t *testing.T, numService int) (
-	[]*SigVerifier, *test.GrpcServers,
+// StartMockVerifierService starts a specified number of mock verifier service and register cancellation.
+func StartMockVerifierService(t *testing.T, numService int) (
+	*Verifier, *test.GrpcServers,
 ) {
 	t.Helper()
-	mockSigVer := make([]*SigVerifier, numService)
-	for i := range numService {
-		mockSigVer[i] = NewMockSigVerifier()
-	}
-
-	sigVerServers := test.StartGrpcServersForTest(t.Context(), t, len(mockSigVer),
-		func(server *grpc.Server, index int) {
-			mockSigVer[index].RegisterService(server)
-		})
-	return mockSigVer, sigVerServers
+	mockVerifier := NewMockSigVerifier()
+	verifierGrpc := test.StartGrpcServersForTest(t.Context(), t, numService, mockVerifier.RegisterService)
+	return mockVerifier, verifierGrpc
 }
 
-// StartMockSVServiceFromListWithConfig starts a specified number of mock verifier service.
-func StartMockSVServiceFromListWithConfig(
-	t *testing.T, svs []*SigVerifier, sc []*connection.ServerConfig,
+// StartMockVerifierServiceFromServerConfig starts a specified number of mock verifier service.
+func StartMockVerifierServiceFromServerConfig(
+	t *testing.T, verifier *Verifier, sc ...*connection.ServerConfig,
 ) *test.GrpcServers {
 	t.Helper()
-	return test.StartGrpcServersWithConfigForTest(t.Context(), t, sc, func(server *grpc.Server, index int) {
-		svs[index].RegisterService(server)
-	})
+	return test.StartGrpcServersWithConfigForTest(t.Context(), t, verifier.RegisterService, sc...)
 }
 
 // StartMockVCService starts a specified number of mock VC service using the same shared instance.
@@ -54,21 +44,16 @@ func StartMockSVServiceFromListWithConfig(
 func StartMockVCService(t *testing.T, numService int) (*VcService, *test.GrpcServers) {
 	t.Helper()
 	sharedVC := NewMockVcService()
-
-	vcGrpc := test.StartGrpcServersForTest(t.Context(), t, numService, func(server *grpc.Server, _ int) {
-		sharedVC.RegisterService(server)
-	})
+	vcGrpc := test.StartGrpcServersForTest(t.Context(), t, numService, sharedVC.RegisterService)
 	return sharedVC, vcGrpc
 }
 
-// StartMockVCServiceFromListWithConfig starts a specified number of mock vc service.
-func StartMockVCServiceFromListWithConfig(
-	t *testing.T, vcs []*VcService, sc []*connection.ServerConfig,
+// StartMockVCServiceFromServerConfig starts a specified number of mock vc service.
+func StartMockVCServiceFromServerConfig(
+	t *testing.T, vc *VcService, sc ...*connection.ServerConfig,
 ) *test.GrpcServers {
 	t.Helper()
-	return test.StartGrpcServersWithConfigForTest(t.Context(), t, sc, func(server *grpc.Server, index int) {
-		vcs[index].RegisterService(server)
-	})
+	return test.StartGrpcServersWithConfigForTest(t.Context(), t, vc.RegisterService, sc...)
 }
 
 // StartMockCoordinatorService starts a mock coordinator service and registers cancellation.
@@ -77,23 +62,18 @@ func StartMockCoordinatorService(t *testing.T) (
 ) {
 	t.Helper()
 	mockCoordinator := NewMockCoordinator()
-	coordinatorGrpc := test.StartGrpcServersForTest(t.Context(), t, 1, func(server *grpc.Server, _ int) {
-		mockCoordinator.RegisterService(server)
-	})
+	coordinatorGrpc := test.StartGrpcServersForTest(t.Context(), t, 1, mockCoordinator.RegisterService)
 	return mockCoordinator, coordinatorGrpc
 }
 
-// StartMockCoordinatorServiceFromListWithConfig starts a mock coordinator service using the given config.
-func StartMockCoordinatorServiceFromListWithConfig(
+// StartMockCoordinatorServiceServerConfig starts a mock coordinator service using the given config.
+func StartMockCoordinatorServiceServerConfig(
 	t *testing.T,
 	coordService *Coordinator,
 	sc *connection.ServerConfig,
 ) *test.GrpcServers {
 	t.Helper()
-	return test.StartGrpcServersWithConfigForTest(t.Context(), t, []*connection.ServerConfig{sc},
-		func(server *grpc.Server, _ int) {
-			coordService.RegisterService(server)
-		})
+	return test.StartGrpcServersWithConfigForTest(t.Context(), t, coordService.RegisterService, sc)
 }
 
 // StartMockOrderingServices starts a specified number of mock ordering service and register cancellation.
@@ -108,19 +88,12 @@ func StartMockOrderingServices(t *testing.T, conf *OrdererConfig) (
 	}, service.WaitForReady)
 
 	if len(conf.ServerConfigs) == conf.NumService {
-		return service, test.StartGrpcServersWithConfigForTest(
-			t.Context(),
-			t, conf.ServerConfigs, func(server *grpc.Server, _ int) {
-				service.RegisterService(server)
-			},
+		return service, test.StartGrpcServersWithConfigForTest(t.Context(), t, service.RegisterService,
+			conf.ServerConfigs...,
 		)
 	}
 
-	servers := test.StartGrpcServersForTest(
-		t.Context(), t, conf.NumService, func(server *grpc.Server, _ int) {
-			service.RegisterService(server)
-		},
-	)
+	servers := test.StartGrpcServersForTest(t.Context(), t, conf.NumService, service.RegisterService)
 	return service, servers
 }
 
@@ -154,10 +127,8 @@ func NewOrdererTestEnv(t *testing.T, conf *OrdererTestConfig) *OrdererTestEnv {
 		Orderer:        orderer,
 		Holder:         holder,
 		OrdererServers: ordererServers,
-		HolderServers: test.StartGrpcServersForTest(t.Context(), t, conf.NumHolders, func(s *grpc.Server, _ int) {
-			holder.RegisterService(s)
-		}),
-		FakeServers: test.StartGrpcServersForTest(t.Context(), t, conf.NumFake, nil),
+		HolderServers:  test.StartGrpcServersForTest(t.Context(), t, conf.NumHolders, holder.RegisterService),
+		FakeServers:    test.StartGrpcServersForTest(t.Context(), t, conf.NumFake, nil),
 	}
 }
 

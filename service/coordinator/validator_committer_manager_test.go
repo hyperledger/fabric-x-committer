@@ -203,7 +203,8 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 	t.Run("namespace transaction should update signature verifier", func(t *testing.T) {
 		t.Parallel()
 		env := newVcMgrTestEnv(t, 2)
-		for _, mockSvService := range env.sigVerTestEnv.mockSvService {
+		verifierStreams := requireStreams(t, env.sigVerTestEnv.mockVerifier, 2)
+		for _, mockSvService := range verifierStreams {
 			require.Empty(t, mockSvService.GetUpdates())
 		}
 
@@ -296,10 +297,10 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	env.requireConnectionMetrics(t, 0, connection.Disconnected, 1)
 
 	env.mockVcService.MockFaultyNodeDropSize = 0
-	env.mockVCGrpcServers = mock.StartMockVCServiceFromListWithConfig(
+	env.mockVCGrpcServers = mock.StartMockVCServiceFromServerConfig(
 		t,
-		[]*mock.VcService{env.mockVcService},
-		env.mockVCGrpcServers.Configs,
+		env.mockVcService,
+		env.mockVCGrpcServers.Configs...,
 	)
 	env.requireConnectionMetrics(t, 0, connection.Connected, 1)
 	env.requireRetriedTxsTotal(t, 4)
