@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path"
 	"slices"
 
 	"github.com/cockroachdb/errors"
@@ -35,12 +36,9 @@ type ConfigBlock struct {
 	MetaNamespaceVerificationKey []byte
 }
 
-// CreateConfigTx creating a config TX.
-func CreateConfigTx(policy *PolicyProfile) (*servicepb.LoadGenTx, error) {
-	envelopeBytes, err := CreateConfigEnvelope(policy)
-	if err != nil {
-		return nil, err
-	}
+// CreateConfigTxFromConfigBlock creates a config TX.
+func CreateConfigTxFromConfigBlock(block *common.Block) (*servicepb.LoadGenTx, error) {
+	envelopeBytes := block.Data.Data[0]
 	envelope, err := protoutil.GetEnvelopeFromBlock(envelopeBytes)
 	if err != nil {
 		return nil, errors.Wrap(err, "error getting envelope")
@@ -66,44 +64,72 @@ func CreateConfigTx(policy *PolicyProfile) (*servicepb.LoadGenTx, error) {
 	}, nil
 }
 
-// CreateConfigEnvelope creating a meta policy.
-func CreateConfigEnvelope(policy *PolicyProfile) ([]byte, error) {
-	block, err := CreateConfigBlock(policy)
+// CreateConfigBlock creating a config block.
+func CreateConfigBlock(policy *PolicyProfile) (*common.Block, error) {
+	err := prepareCryptoMaterial(policy)
 	if err != nil {
 		return nil, err
 	}
-	return block.Data.Data[0], nil
-}
 
-// CreateConfigBlock creating a config block.
-func CreateConfigBlock(policy *PolicyProfile) (*common.Block, error) {
-	if policy.ConfigBlockPath != "" {
-		block, err := configtxgen.ReadBlock(policy.ConfigBlockPath)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed reading config block from %s", policy.ConfigBlockPath)
-		}
-		return block, nil
+	configBlockPath := policy.ConfigBlockPath
+	if configBlockPath == "" {
+		configBlockPath = path.Join(policy.CryptoMaterialPath, "config-block.pb.bin")
 	}
 
-	txEndorser := NewTxEndorserVerifier(policy)
-	metaPolicy := txEndorser.Policy(committerpb.MetaNamespaceID)
-	return CreateDefaultConfigBlock(&ConfigBlock{
-		MetaNamespaceVerificationKey: metaPolicy.VerificationPolicy().GetThresholdRule().GetPublicKey(),
+	block, err := configtxgen.ReadBlock(configBlockPath)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed reading config block from %s", policy.ConfigBlockPath)
+	}
+	return block, nil
+}
+
+// prepareCryptoMaterial generates the crypto material for a policy if it wasn't generated before.
+func prepareCryptoMaterial(policy *PolicyProfile) error {
+	if policy.CryptoMaterialPath == "" {
+		tempDir, err := makeTemporaryDir()
+		if err != nil {
+			return err
+		}
+		policy.CryptoMaterialPath = tempDir
+	}
+	err := os.MkdirAll(policy.CryptoMaterialPath, 0o750)
+	if err != nil {
+		return errors.Wrap(err, "error creating crypto material folder")
+	}
+
+	configBlockPath := path.Join(policy.CryptoMaterialPath, "config-block.pb.bin")
+	if _, fErr := os.Stat(configBlockPath); fErr == nil {
+		return nil
+	}
+
+	_, metaPolicy := newPolicyEndorser(policy.CryptoMaterialPath, policy.NamespacePolicies[committerpb.MetaNamespaceID])
+	_, err = CreateDefaultConfigBlockWithCrypto(policy.CryptoMaterialPath, &ConfigBlock{
+		MetaNamespaceVerificationKey: metaPolicy.GetThresholdRule().GetPublicKey(),
 		OrdererEndpoints:             policy.OrdererEndpoints,
 		ChannelID:                    policy.ChannelID,
+		PeerOrganizationCount:        policy.PeerOrganizationCount,
 	}, configtxgen.TwoOrgsSampleFabricX)
+	return err
 }
 
 // CreateDefaultConfigBlock creates a config block with default values.
 func CreateDefaultConfigBlock(conf *ConfigBlock, profileName string) (*common.Block, error) {
-	target, err := os.MkdirTemp("", "cryptogen-temp-*")
+	target, err := makeTemporaryDir()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed creating temp dir for config block generation")
+		return nil, err
 	}
 	defer func() {
 		_ = os.RemoveAll(target)
 	}()
 	return CreateDefaultConfigBlockWithCrypto(target, conf, profileName)
+}
+
+func makeTemporaryDir() (string, error) {
+	tempDir, err := os.MkdirTemp("", "sc-loadgen-crypto-*")
+	if err != nil {
+		return "", errors.Wrap(err, "error creating temp dir for crypto-material")
+	}
+	return tempDir, nil
 }
 
 // CreateDefaultConfigBlockWithCrypto creates a config block with crypto material.

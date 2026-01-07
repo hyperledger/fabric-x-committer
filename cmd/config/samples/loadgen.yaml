@@ -48,17 +48,20 @@ load-profile:
   transaction:
     read-write-count:
       const: 2
-    policy:
-      channel-id: mychannel
-      namespace-policies:
-        0:
-          scheme: ECDSA
-          seed: 10
-        _meta:
-          scheme: ECDSA
-          seed: 11
-      orderer-endpoints:
-        - id=0,msp-id=org,broadcast,deliver,orderer:7050
+  policy:
+    channel-id: mychannel
+    namespace-policies:
+      0:
+        # Supported schemes: MSP, ECDSA, EDDSA, and BLS
+        # If MSP is used, the default policy is requiring
+        # endorsement by all peer organizations.
+        scheme: ECDSA
+        seed: 10
+      _meta:
+        scheme: ECDSA
+        seed: 11
+    orderer-endpoints:
+      - id=0,msp-id=org,broadcast,deliver,orderer:7050
   conflicts:
     invalid-signatures: 0.1
   seed: 12345
