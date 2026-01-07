@@ -16,3 +16,8 @@ message TxRef {
     uint32 tx_num = 2;    // Transaction number within the block
     string tx_id = 3;     // Transaction ID within the block.
 }
+
+// A batch of TX IDs.
+message TxIDsBatch {
+    repeated string tx_ids = 1;   // List of transaction IDs.
+}

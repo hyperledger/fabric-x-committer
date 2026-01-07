@@ -409,7 +409,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		env.dbEnv.StatusExistsForNonDuplicateTxID(t.Context(), t, expectedTxStatus)
 
 		ctx, _ := createContext(t)
-		status, err := env.commonClient.GetTransactionsStatus(ctx, &servicepb.QueryStatus{TxIDs: txIDs})
+		status, err := env.commonClient.GetTransactionsStatus(ctx, &committerpb.TxIDsBatch{TxIds: txIDs})
 		require.NoError(t, err)
 		test.RequireProtoElementsMatch(t, expectedTxStatus, status.Status)
 	})
@@ -480,7 +480,7 @@ func TestGRPCStatusCode(t *testing.T) {
 		{
 			name: "GetTransactionsStatus returns an internal error",
 			fn: func() (any, error) {
-				return c.GetTransactionsStatus(ctx, &servicepb.QueryStatus{TxIDs: []string{"t1"}})
+				return c.GetTransactionsStatus(ctx, &committerpb.TxIDsBatch{TxIds: []string{"t1"}})
 			},
 		},
 	}

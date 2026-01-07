@@ -97,12 +97,12 @@ func (*VcService) GetConfigTransaction(
 // GetTransactionsStatus get the status for a given set of transactions IDs.
 func (v *VcService) GetTransactionsStatus(
 	_ context.Context,
-	query *servicepb.QueryStatus,
+	query *committerpb.TxIDsBatch,
 ) (*committerpb.TxStatusBatch, error) {
-	s := &committerpb.TxStatusBatch{Status: make([]*committerpb.TxStatus, len(query.TxIDs))}
+	s := &committerpb.TxStatusBatch{Status: make([]*committerpb.TxStatus, len(query.TxIds))}
 	v.txsStatusMu.Lock()
 	defer v.txsStatusMu.Unlock()
-	for i, id := range query.TxIDs {
+	for i, id := range query.TxIds {
 		if status, ok := v.txsStatus.get(id); ok {
 			s.Status[i] = status
 		}

@@ -30,7 +30,7 @@ const (
 // NotificationRequest is sent by the clients to subscribe to events.
 type NotificationRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
-	TxStatusRequest *TxStatusRequest       `protobuf:"bytes,1,opt,name=tx_status_request,json=txStatusRequest,proto3,oneof" json:"tx_status_request,omitempty"`
+	TxStatusRequest *TxIDsBatch            `protobuf:"bytes,1,opt,name=tx_status_request,json=txStatusRequest,proto3,oneof" json:"tx_status_request,omitempty"`
 	// The timeout duration that applies to ALL the subscriptions in this request.
 	// It is non-strict, i.e., it is possible to receive notifications for this request
 	// after the timeout has passed.
@@ -71,7 +71,7 @@ func (*NotificationRequest) Descriptor() ([]byte, []int) {
 	return file_api_committerpb_notify_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *NotificationRequest) GetTxStatusRequest() *TxStatusRequest {
+func (x *NotificationRequest) GetTxStatusRequest() *TxIDsBatch {
 	if x != nil {
 		return x.TxStatusRequest
 	}
@@ -81,51 +81,6 @@ func (x *NotificationRequest) GetTxStatusRequest() *TxStatusRequest {
 func (x *NotificationRequest) GetTimeout() *durationpb.Duration {
 	if x != nil {
 		return x.Timeout
-	}
-	return nil
-}
-
-// TxStatusRequest details subscription to transaction status event.
-type TxStatusRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TxIds         []string               `protobuf:"bytes,1,rep,name=tx_ids,json=txIds,proto3" json:"tx_ids,omitempty"` // List of transaction IDS to be registered.
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *TxStatusRequest) Reset() {
-	*x = TxStatusRequest{}
-	mi := &file_api_committerpb_notify_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *TxStatusRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*TxStatusRequest) ProtoMessage() {}
-
-func (x *TxStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_committerpb_notify_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use TxStatusRequest.ProtoReflect.Descriptor instead.
-func (*TxStatusRequest) Descriptor() ([]byte, []int) {
-	return file_api_committerpb_notify_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *TxStatusRequest) GetTxIds() []string {
-	if x != nil {
-		return x.TxIds
 	}
 	return nil
 }
@@ -142,7 +97,7 @@ type NotificationResponse struct {
 
 func (x *NotificationResponse) Reset() {
 	*x = NotificationResponse{}
-	mi := &file_api_committerpb_notify_proto_msgTypes[2]
+	mi := &file_api_committerpb_notify_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -154,7 +109,7 @@ func (x *NotificationResponse) String() string {
 func (*NotificationResponse) ProtoMessage() {}
 
 func (x *NotificationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_committerpb_notify_proto_msgTypes[2]
+	mi := &file_api_committerpb_notify_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -167,7 +122,7 @@ func (x *NotificationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NotificationResponse.ProtoReflect.Descriptor instead.
 func (*NotificationResponse) Descriptor() ([]byte, []int) {
-	return file_api_committerpb_notify_proto_rawDescGZIP(), []int{2}
+	return file_api_committerpb_notify_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *NotificationResponse) GetTxStatusEvents() []*TxStatus {
@@ -188,13 +143,11 @@ var File_api_committerpb_notify_proto protoreflect.FileDescriptor
 
 const file_api_committerpb_notify_proto_rawDesc = "" +
 	"\n" +
-	"\x1capi/committerpb/notify.proto\x12\vcommitterpb\x1a\x1egoogle/protobuf/duration.proto\x1a\x1capi/committerpb/status.proto\"\xaf\x01\n" +
-	"\x13NotificationRequest\x12M\n" +
-	"\x11tx_status_request\x18\x01 \x01(\v2\x1c.committerpb.TxStatusRequestH\x00R\x0ftxStatusRequest\x88\x01\x01\x123\n" +
+	"\x1capi/committerpb/notify.proto\x12\vcommitterpb\x1a\x1egoogle/protobuf/duration.proto\x1a\x19api/committerpb/ref.proto\x1a\x1capi/committerpb/status.proto\"\xaa\x01\n" +
+	"\x13NotificationRequest\x12H\n" +
+	"\x11tx_status_request\x18\x01 \x01(\v2\x17.committerpb.TxIDsBatchH\x00R\x0ftxStatusRequest\x88\x01\x01\x123\n" +
 	"\atimeout\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\atimeoutB\x14\n" +
-	"\x12_tx_status_request\"(\n" +
-	"\x0fTxStatusRequest\x12\x15\n" +
-	"\x06tx_ids\x18\x01 \x03(\tR\x05txIds\"}\n" +
+	"\x12_tx_status_request\"}\n" +
 	"\x14NotificationResponse\x12?\n" +
 	"\x10tx_status_events\x18\x01 \x03(\v2\x15.committerpb.TxStatusR\x0etxStatusEvents\x12$\n" +
 	"\x0etimeout_tx_ids\x18\x02 \x03(\tR\ftimeoutTxIds2m\n" +
@@ -213,20 +166,20 @@ func file_api_committerpb_notify_proto_rawDescGZIP() []byte {
 	return file_api_committerpb_notify_proto_rawDescData
 }
 
-var file_api_committerpb_notify_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_api_committerpb_notify_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_api_committerpb_notify_proto_goTypes = []any{
 	(*NotificationRequest)(nil),  // 0: committerpb.NotificationRequest
-	(*TxStatusRequest)(nil),      // 1: committerpb.TxStatusRequest
-	(*NotificationResponse)(nil), // 2: committerpb.NotificationResponse
+	(*NotificationResponse)(nil), // 1: committerpb.NotificationResponse
+	(*TxIDsBatch)(nil),           // 2: committerpb.TxIDsBatch
 	(*durationpb.Duration)(nil),  // 3: google.protobuf.Duration
 	(*TxStatus)(nil),             // 4: committerpb.TxStatus
 }
 var file_api_committerpb_notify_proto_depIdxs = []int32{
-	1, // 0: committerpb.NotificationRequest.tx_status_request:type_name -> committerpb.TxStatusRequest
+	2, // 0: committerpb.NotificationRequest.tx_status_request:type_name -> committerpb.TxIDsBatch
 	3, // 1: committerpb.NotificationRequest.timeout:type_name -> google.protobuf.Duration
 	4, // 2: committerpb.NotificationResponse.tx_status_events:type_name -> committerpb.TxStatus
 	0, // 3: committerpb.Notifier.OpenNotificationStream:input_type -> committerpb.NotificationRequest
-	2, // 4: committerpb.Notifier.OpenNotificationStream:output_type -> committerpb.NotificationResponse
+	1, // 4: committerpb.Notifier.OpenNotificationStream:output_type -> committerpb.NotificationResponse
 	4, // [4:5] is the sub-list for method output_type
 	3, // [3:4] is the sub-list for method input_type
 	3, // [3:3] is the sub-list for extension type_name
@@ -239,6 +192,7 @@ func file_api_committerpb_notify_proto_init() {
 	if File_api_committerpb_notify_proto != nil {
 		return
 	}
+	file_api_committerpb_ref_proto_init()
 	file_api_committerpb_status_proto_init()
 	file_api_committerpb_notify_proto_msgTypes[0].OneofWrappers = []any{}
 	type x struct{}
@@ -247,7 +201,7 @@ func file_api_committerpb_notify_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_committerpb_notify_proto_rawDesc), len(file_api_committerpb_notify_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

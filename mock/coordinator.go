@@ -89,12 +89,12 @@ func (c *Coordinator) GetNextBlockNumberToCommit(
 // GetTransactionsStatus returns the status of given set of transaction identifiers.
 func (c *Coordinator) GetTransactionsStatus(
 	_ context.Context,
-	q *servicepb.QueryStatus,
+	q *committerpb.TxIDsBatch,
 ) (*committerpb.TxStatusBatch, error) {
-	status := make([]*committerpb.TxStatus, len(q.TxIDs))
+	status := make([]*committerpb.TxStatus, len(q.TxIds))
 	c.txsStatusMu.Lock()
 	defer c.txsStatusMu.Unlock()
-	for i, txID := range q.TxIDs {
+	for i, txID := range q.TxIds {
 		v, _ := c.txsStatus.get(txID)
 		status[i] = v
 	}

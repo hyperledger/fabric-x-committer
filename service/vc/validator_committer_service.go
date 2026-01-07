@@ -217,13 +217,13 @@ func (vc *ValidatorCommitterService) GetNextBlockNumberToCommit(
 // GetTransactionsStatus gets the status of a given set of transaction IDs.
 func (vc *ValidatorCommitterService) GetTransactionsStatus(
 	ctx context.Context,
-	query *servicepb.QueryStatus,
+	query *committerpb.TxIDsBatch,
 ) (*committerpb.TxStatusBatch, error) {
-	if len(query.TxIDs) == 0 {
+	if len(query.TxIds) == 0 {
 		return nil, grpcerror.WrapInvalidArgument(errors.New("query is empty"))
 	}
-	txIDs := make([][]byte, len(query.GetTxIDs()))
-	for i, txID := range query.GetTxIDs() {
+	txIDs := make([][]byte, len(query.TxIds))
+	for i, txID := range query.TxIds {
 		txIDs[i] = []byte(txID)
 	}
 
