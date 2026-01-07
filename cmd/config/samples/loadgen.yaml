@@ -52,6 +52,9 @@ load-profile:
     channel-id: mychannel
     namespace-policies:
       0:
+        # Supported schemes: MSP, ECDSA, EDDSA, and BLS
+        # If MSP is used, the default policy is requiring
+        # endorsement by all peer organizations.
         scheme: ECDSA
         seed: 10
       _meta:

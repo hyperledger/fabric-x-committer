@@ -86,9 +86,9 @@ func CreateConfigBlock(policy *PolicyProfile) (*common.Block, error) {
 // prepareCryptoMaterial generates the crypto material for a policy if it wasn't generated before.
 func prepareCryptoMaterial(policy *PolicyProfile) error {
 	if policy.CryptoMaterialPath == "" {
-		tempDir, err := os.MkdirTemp("", "sc-loadgen-crypto-*")
+		tempDir, err := makeTemporaryDir()
 		if err != nil {
-			return errors.Wrap(err, "error creating temp dir for crypto-material")
+			return err
 		}
 		policy.CryptoMaterialPath = tempDir
 	}
@@ -114,14 +114,22 @@ func prepareCryptoMaterial(policy *PolicyProfile) error {
 
 // CreateDefaultConfigBlock creates a config block with default values.
 func CreateDefaultConfigBlock(conf *ConfigBlock, profileName string) (*common.Block, error) {
-	target, err := os.MkdirTemp("", "sc-loadgen-crypto-*")
+	target, err := makeTemporaryDir()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed creating temp dir for config block generation")
+		return nil, err
 	}
 	defer func() {
 		_ = os.RemoveAll(target)
 	}()
 	return CreateDefaultConfigBlockWithCrypto(target, conf, profileName)
+}
+
+func makeTemporaryDir() (string, error) {
+	tempDir, err := os.MkdirTemp("", "sc-loadgen-crypto-*")
+	if err != nil {
+		return "", errors.Wrap(err, "error creating temp dir for crypto-material")
+	}
+	return tempDir, nil
 }
 
 // CreateDefaultConfigBlockWithCrypto creates a config block with crypto material.
