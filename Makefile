@@ -151,8 +151,7 @@ clean: FORCE
 	@rm -rf $(arch_output_dir)
 
 kill-test-docker: FORCE
-	$(docker_cmd) ps -aq -f name=sc_yugabyte_unit_tests | xargs $(docker_cmd) rm -f
-	$(docker_cmd) ps -aq -f name=sc_postgres_unit_tests | xargs $(docker_cmd) rm -f
+	$(docker_cmd) ps -aq -f "name=sc_test" | xargs $(docker_cmd) rm -f
 
 #########################
 # Benchmarks
