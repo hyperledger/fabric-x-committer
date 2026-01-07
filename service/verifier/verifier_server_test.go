@@ -16,7 +16,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
 	commonmsp "github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/stretchr/testify/require"
 
@@ -230,7 +229,7 @@ func TestSignatureRule(t *testing.T) {
 	_, metaTxVerificationKey := sigtest.NewKeyPair(signature.Ecdsa)
 	configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
 		MetaNamespaceVerificationKey: metaTxVerificationKey,
-	}, configtxgen.SampleFabricX)
+	})
 	require.NoError(t, err)
 	update = &servicepb.VerifierUpdates{
 		Config: &applicationpb.ConfigTransaction{
@@ -544,7 +543,7 @@ func defaultCryptoParameters(t *testing.T) cryptoParameters {
 	configBlock, err := workload.CreateDefaultConfigBlockWithCrypto(ret.cryptoPath, &workload.ConfigBlock{
 		MetaNamespaceVerificationKey: metaTxVerificationKey,
 		PeerOrganizationCount:        2,
-	}, configtxgen.TwoOrgsSampleFabricX)
+	})
 	require.NoError(t, err)
 	ret.metaTxEndorser, err = sigtest.NewNsEndorserFromKey(signature.Ecdsa, metaTxSigningKey)
 	require.NoError(t, err)
