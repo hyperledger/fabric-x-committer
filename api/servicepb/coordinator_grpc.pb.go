@@ -42,7 +42,7 @@ type CoordinatorClient interface {
 	BlockProcessing(ctx context.Context, opts ...grpc.CallOption) (Coordinator_BlockProcessingClient, error)
 	SetLastCommittedBlockNumber(ctx context.Context, in *BlockRef, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetNextBlockNumberToCommit(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*BlockRef, error)
-	GetTransactionsStatus(ctx context.Context, in *QueryStatus, opts ...grpc.CallOption) (*committerpb.TxStatusBatch, error)
+	GetTransactionsStatus(ctx context.Context, in *committerpb.TxIDsBatch, opts ...grpc.CallOption) (*committerpb.TxStatusBatch, error)
 	GetConfigTransaction(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*applicationpb.ConfigTransaction, error)
 	NumberOfWaitingTransactionsForStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*WaitingTransactions, error)
 }
@@ -104,7 +104,7 @@ func (c *coordinatorClient) GetNextBlockNumberToCommit(ctx context.Context, in *
 	return out, nil
 }
 
-func (c *coordinatorClient) GetTransactionsStatus(ctx context.Context, in *QueryStatus, opts ...grpc.CallOption) (*committerpb.TxStatusBatch, error) {
+func (c *coordinatorClient) GetTransactionsStatus(ctx context.Context, in *committerpb.TxIDsBatch, opts ...grpc.CallOption) (*committerpb.TxStatusBatch, error) {
 	out := new(committerpb.TxStatusBatch)
 	err := c.cc.Invoke(ctx, Coordinator_GetTransactionsStatus_FullMethodName, in, out, opts...)
 	if err != nil {
@@ -138,7 +138,7 @@ type CoordinatorServer interface {
 	BlockProcessing(Coordinator_BlockProcessingServer) error
 	SetLastCommittedBlockNumber(context.Context, *BlockRef) (*emptypb.Empty, error)
 	GetNextBlockNumberToCommit(context.Context, *emptypb.Empty) (*BlockRef, error)
-	GetTransactionsStatus(context.Context, *QueryStatus) (*committerpb.TxStatusBatch, error)
+	GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch) (*committerpb.TxStatusBatch, error)
 	GetConfigTransaction(context.Context, *emptypb.Empty) (*applicationpb.ConfigTransaction, error)
 	NumberOfWaitingTransactionsForStatus(context.Context, *emptypb.Empty) (*WaitingTransactions, error)
 	mustEmbedUnimplementedCoordinatorServer()
@@ -157,7 +157,7 @@ func (UnimplementedCoordinatorServer) SetLastCommittedBlockNumber(context.Contex
 func (UnimplementedCoordinatorServer) GetNextBlockNumberToCommit(context.Context, *emptypb.Empty) (*BlockRef, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetNextBlockNumberToCommit not implemented")
 }
-func (UnimplementedCoordinatorServer) GetTransactionsStatus(context.Context, *QueryStatus) (*committerpb.TxStatusBatch, error) {
+func (UnimplementedCoordinatorServer) GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch) (*committerpb.TxStatusBatch, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTransactionsStatus not implemented")
 }
 func (UnimplementedCoordinatorServer) GetConfigTransaction(context.Context, *emptypb.Empty) (*applicationpb.ConfigTransaction, error) {
@@ -242,7 +242,7 @@ func _Coordinator_GetNextBlockNumberToCommit_Handler(srv interface{}, ctx contex
 }
 
 func _Coordinator_GetTransactionsStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(QueryStatus)
+	in := new(committerpb.TxIDsBatch)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -254,7 +254,7 @@ func _Coordinator_GetTransactionsStatus_Handler(srv interface{}, ctx context.Con
 		FullMethod: Coordinator_GetTransactionsStatus_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(CoordinatorServer).GetTransactionsStatus(ctx, req.(*QueryStatus))
+		return srv.(CoordinatorServer).GetTransactionsStatus(ctx, req.(*committerpb.TxIDsBatch))
 	}
 	return interceptor(ctx, in, info, handler)
 }

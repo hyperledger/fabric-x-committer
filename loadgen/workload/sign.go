@@ -9,9 +9,16 @@ package workload
 import (
 	"maps"
 	"os"
-	"slices"
+	"path"
+	"path/filepath"
+	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/common/policydsl"
+	"github.com/hyperledger/fabric-x-common/msp"
+	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
@@ -19,139 +26,151 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 var logger = logging.New("load-gen-sign")
 
-type (
-	// TxEndorserVerifier supports endorsing and verifying a TX, given an endorser.
-	TxEndorserVerifier struct {
-		policies map[string]*NsPolicyEndorserVerifier
-	}
-
-	// NsPolicyEndorserVerifier supports endorsing and verifying a TX namespace.
-	NsPolicyEndorserVerifier struct {
-		endorser           *sigtest.NsEndorser
-		verifier           *signature.NsVerifier
-		verificationPolicy *applicationpb.NamespacePolicy
-	}
-)
+// TxEndorser supports endorsing a TX.
+type TxEndorser struct {
+	endorsers map[string]*sigtest.NsEndorser
+	policies  map[string]*applicationpb.NamespacePolicy
+}
 
 var defaultPolicy = Policy{
 	Scheme: signature.Ecdsa,
 }
 
-// NewTxEndorserVerifier creates a new TxEndorserVerifier given a workload profile.
-func NewTxEndorserVerifier(policy *PolicyProfile) *TxEndorserVerifier {
-	endorsers := make(map[string]*NsPolicyEndorserVerifier, len(policy.NamespacePolicies)+2)
-	for nsID, p := range policy.NamespacePolicies {
-		endorsers[nsID] = NewPolicyEndorserVerifier(p)
-	}
-
+// NewTxEndorser creates a new TxEndorser given a workload profile.
+func NewTxEndorser(policy *PolicyProfile) *TxEndorser {
 	// We set default policy to ensure smooth operation even if the user did not specify anything.
+	nsPolicies := policy.NamespacePolicies
 	for _, nsID := range []string{DefaultGeneratedNamespaceID, committerpb.MetaNamespaceID} {
-		if _, ok := endorsers[nsID]; !ok {
-			endorsers[nsID] = NewPolicyEndorserVerifier(&defaultPolicy)
+		if _, ok := nsPolicies[nsID]; !ok {
+			nsPolicies[nsID] = &defaultPolicy
 		}
 	}
 
-	return &TxEndorserVerifier{policies: endorsers}
-}
-
-// AllNamespaces returns all the endorser's supported namespaces.
-func (e *TxEndorserVerifier) AllNamespaces() []string {
-	return slices.Collect(maps.Keys(e.policies))
-}
-
-// Policy returns a namespace policy. It creates one if it does not exist.
-func (e *TxEndorserVerifier) Policy(nsID string) *NsPolicyEndorserVerifier {
-	policyEndorser, ok := e.policies[nsID]
-	if !ok {
-		policyEndorser = NewPolicyEndorserVerifier(&defaultPolicy)
-		e.policies[nsID] = policyEndorser
+	endorsers := make(map[string]*sigtest.NsEndorser, len(nsPolicies))
+	policies := make(map[string]*applicationpb.NamespacePolicy, len(nsPolicies))
+	for nsID, p := range nsPolicies {
+		endorsers[nsID], policies[nsID] = newPolicyEndorser(policy.CryptoMaterialPath, p)
 	}
-	return policyEndorser
+
+	return &TxEndorser{
+		policies:  policies,
+		endorsers: endorsers,
+	}
+}
+
+// VerificationPolicies returns the verification policies.
+func (e *TxEndorser) VerificationPolicies() map[string]*applicationpb.NamespacePolicy {
+	return maps.Clone(e.policies)
 }
 
 // Endorse a TX.
-func (e *TxEndorserVerifier) Endorse(txID string, tx *applicationpb.Tx) {
+func (e *TxEndorser) Endorse(txID string, tx *applicationpb.Tx) {
 	tx.Endorsements = make([]*applicationpb.Endorsements, len(tx.Namespaces))
 	for nsIndex, ns := range tx.Namespaces {
-		signer, ok := e.policies[ns.NsId]
+		signer, ok := e.endorsers[ns.NsId]
 		if !ok {
 			continue
 		}
-		tx.Endorsements[nsIndex] = signer.Endorse(txID, tx, nsIndex)
+		endorsement, err := signer.EndorseTxNs(txID, tx, nsIndex)
+		Must(err)
+		tx.Endorsements[nsIndex] = endorsement
 	}
 }
 
-// Verify an endorsement on the transaction.
-func (e *TxEndorserVerifier) Verify(txID string, tx *applicationpb.Tx) bool {
-	if len(tx.Endorsements) < len(tx.Namespaces) {
-		return false
+// newPolicyEndorser creates a new [sigtest.NsEndorser] and its [applicationpb.NamespacePolicy]
+// given a workload profile and a seed.
+func newPolicyEndorser(cryptoPath string, profile *Policy) (*sigtest.NsEndorser, *applicationpb.NamespacePolicy) {
+	if profile == nil {
+		profile = &defaultPolicy
 	}
+	switch strings.ToUpper(profile.Scheme) {
+	case "MSP":
+		return newPolicyEndorserFromMsp(cryptoPath)
+	default:
+		signingKey, verificationKey := getKeyPair(profile)
+		return newPolicyEndorserFromKey(profile.Scheme, signingKey, verificationKey)
+	}
+}
 
-	for nsIndex, ns := range tx.Namespaces {
-		signer, ok := e.policies[ns.NsId]
-		if !ok || !signer.Verify(txID, tx, nsIndex) {
-			return false
+// newPolicyEndorserFromKey creates a new [sigtest.NsEndorser] and its [applicationpb.NamespacePolicy]
+// given a scheme and a key pair.
+func newPolicyEndorserFromKey(
+	scheme string, signingKey, verificationKey []byte,
+) (*sigtest.NsEndorser, *applicationpb.NamespacePolicy) {
+	endorser, err := sigtest.NewNsEndorserFromKey(scheme, signingKey)
+	utils.Must(err)
+	nsPolicy := &applicationpb.NamespacePolicy{
+		Rule: &applicationpb.NamespacePolicy_ThresholdRule{
+			ThresholdRule: &applicationpb.ThresholdRule{
+				Scheme: scheme, PublicKey: verificationKey,
+			},
+		},
+	}
+	return endorser, nsPolicy
+}
+
+func newPolicyEndorserFromMsp(cryptoPath string) (*sigtest.NsEndorser, *applicationpb.NamespacePolicy) {
+	peerOrgs := path.Join(cryptoPath, cryptogen.PeerOrganizationsDir)
+	dir, err := os.ReadDir(peerOrgs)
+	utils.Must(err)
+	mspDirs := make([]msp.DirLoadParameters, 0, len(dir))
+	for _, dirEntry := range dir {
+		if !dirEntry.IsDir() {
+			continue
 		}
+		orgName := dirEntry.Name()
+		clientName := "client@" + orgName + ".com"
+		mspDirs = append(mspDirs, msp.DirLoadParameters{
+			MspName: orgName,
+			MspDir:  filepath.Join(peerOrgs, orgName, "users", clientName, "msp"),
+		})
 	}
 
-	return true
+	signingIdentities, err := sigtest.GetSigningIdentities(mspDirs...)
+	utils.Must(err)
+
+	endorser, err := sigtest.NewNsEndorserFromMsp(test.CreatorID, mspDirs...)
+	utils.Must(err)
+
+	serializedSigningIdentities := make([][]byte, len(signingIdentities))
+	sigPolicies := make([]*common.SignaturePolicy, len(signingIdentities))
+	for i, si := range signingIdentities {
+		siBytes, serErr := si.Serialize()
+		utils.Must(serErr)
+		serializedSigningIdentities[i] = siBytes
+		sigPolicies[i] = policydsl.SignedBy(int32(i)) //nolint:gosec // safe int -> int32.
+	}
+
+	nsPolicy := &applicationpb.NamespacePolicy{
+		Rule: &applicationpb.NamespacePolicy_MspRule{
+			MspRule: protoutil.MarshalOrPanic(
+				policydsl.Envelope(
+					//nolint:gosec // safe int -> int32.
+					policydsl.NOutOf(int32(len(serializedSigningIdentities)), sigPolicies),
+					serializedSigningIdentities,
+				),
+			),
+		},
+	}
+	return endorser, nsPolicy
 }
 
-// NewPolicyEndorserVerifier creates a new NsPolicyEndorserVerifier given a workload profile and a seed.
-func NewPolicyEndorserVerifier(profile *Policy) *NsPolicyEndorserVerifier {
-	logger.Debugf("sig profile: %v", profile)
-
-	var signingKey signature.PrivateKey
-	var verificationKey signature.PublicKey
+func getKeyPair(profile *Policy) (signingKey signature.PrivateKey, verificationKey signature.PublicKey) {
+	var err error
 	if profile.KeyPath != nil {
 		logger.Infof("Attempting to load keys")
-		var err error
 		signingKey, verificationKey, err = loadKeys(*profile.KeyPath)
 		utils.Must(err)
 	} else {
 		logger.Debugf("Generating new keys")
 		signingKey, verificationKey = sigtest.NewKeyPairWithSeed(profile.Scheme, profile.Seed)
 	}
-	v, err := signature.NewNsVerifierFromKey(profile.Scheme, verificationKey)
-	utils.Must(err)
-	endorser, err := sigtest.NewNsEndorserFromKey(profile.Scheme, signingKey)
-	utils.Must(err)
-
-	return &NsPolicyEndorserVerifier{
-		endorser: endorser,
-		verifier: v,
-		verificationPolicy: &applicationpb.NamespacePolicy{
-			Rule: &applicationpb.NamespacePolicy_ThresholdRule{
-				ThresholdRule: &applicationpb.ThresholdRule{
-					Scheme: profile.Scheme, PublicKey: verificationKey,
-				},
-			},
-		},
-	}
-}
-
-// Endorse a TX.
-func (e *NsPolicyEndorserVerifier) Endorse(txID string, tx *applicationpb.Tx, nsIndex int) *applicationpb.Endorsements {
-	sign, err := e.endorser.EndorseTxNs(txID, tx, nsIndex)
-	Must(err)
-	return sign
-}
-
-// Verify a TX endorsement.
-func (e *NsPolicyEndorserVerifier) Verify(txID string, tx *applicationpb.Tx, nsIndex int) bool {
-	if err := e.verifier.VerifyNs(txID, tx, nsIndex); err != nil {
-		return false
-	}
-	return true
-}
-
-// VerificationPolicy returns the verification policy.
-func (e *NsPolicyEndorserVerifier) VerificationPolicy() *applicationpb.NamespacePolicy {
-	return e.verificationPolicy
+	return signingKey, verificationKey
 }
 
 func loadKeys(keyPath KeyPath) (signingKey signature.PrivateKey, verificationKey signature.PublicKey, err error) {

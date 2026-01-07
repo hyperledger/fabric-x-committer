@@ -607,7 +607,7 @@ func (env *sidecarTestEnv) submitTXs(ctx context.Context, t *testing.T, txs []*s
 		txIDs[i] = tx.Id
 	}
 	err := env.notifyStream.Send(&committerpb.NotificationRequest{
-		TxStatusRequest: &committerpb.TxStatusRequest{
+		TxStatusRequest: &committerpb.TxIDsBatch{
 			TxIds: txIDs,
 		},
 		Timeout: durationpb.New(3 * time.Minute),

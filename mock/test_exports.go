@@ -13,7 +13,6 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
-	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
@@ -176,7 +175,7 @@ func (e *OrdererTestEnv) SubmitConfigBlock(t *testing.T, conf *workload.ConfigBl
 	if conf.MetaNamespaceVerificationKey == nil {
 		conf.MetaNamespaceVerificationKey = e.TestConfig.MetaNamespaceVerificationKey
 	}
-	configBlock, err := workload.CreateDefaultConfigBlock(conf, configtxgen.TwoOrgsSampleFabricX)
+	configBlock, err := workload.CreateDefaultConfigBlock(conf)
 	require.NoError(t, err)
 	err = e.Orderer.SubmitBlock(t.Context(), configBlock)
 	require.NoError(t, err)

@@ -38,7 +38,7 @@ func NewSVAdapter(config *connection.MultiClientConfig, res *ClientResources) *S
 
 // RunWorkload applies load on the SV.
 func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWithSetup) error {
-	updateMsg, err := createUpdate(c.res.Profile.Transaction.Policy)
+	updateMsg, err := createUpdate(c.res)
 	if err != nil {
 		return err
 	}
@@ -80,34 +80,30 @@ func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	return errors.Wrap(g.Wait(), "workload done")
 }
 
-func createUpdate(policy *workload.PolicyProfile) (*servicepb.VerifierUpdates, error) {
-	txEndorser := workload.NewTxEndorserVerifier(policy)
-
-	envelopeBytes, err := workload.CreateConfigEnvelope(policy)
-	if err != nil {
-		return nil, err
-	}
+func createUpdate(res *ClientResources) (*servicepb.VerifierUpdates, error) {
+	txEndorser := workload.NewTxEndorser(&res.Profile.Policy)
+	verPolicies := txEndorser.VerificationPolicies()
 	updateMsg := &servicepb.VerifierUpdates{
 		Config: &applicationpb.ConfigTransaction{
-			Envelope: envelopeBytes,
+			Envelope: res.ConfigBlock.Data.Data[0],
 		},
 		NamespacePolicies: &applicationpb.NamespacePolicies{
-			Policies: make([]*applicationpb.PolicyItem, 0, len(txEndorser.AllNamespaces())),
+			Policies: make([]*applicationpb.PolicyItem, 0, len(verPolicies)),
 		},
 	}
 
-	for _, ns := range txEndorser.AllNamespaces() {
-		if ns == committerpb.MetaNamespaceID {
+	for nsID, nsPolicy := range verPolicies {
+		if nsID == committerpb.MetaNamespaceID {
 			continue
 		}
-		policyBytes, err := proto.Marshal(txEndorser.Policy(ns).VerificationPolicy())
+		policyBytes, err := proto.Marshal(nsPolicy)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to serialize policy")
 		}
 		updateMsg.NamespacePolicies.Policies = append(
 			updateMsg.NamespacePolicies.Policies,
 			&applicationpb.PolicyItem{
-				Namespace: ns,
+				Namespace: nsID,
 				Policy:    policyBytes,
 			},
 		)

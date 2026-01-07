@@ -151,7 +151,7 @@ func (vcm *validatorCommitterManager) getNextBlockNumberToCommit(
 
 func (vcm *validatorCommitterManager) getTransactionsStatus(
 	ctx context.Context,
-	query *servicepb.QueryStatus,
+	query *committerpb.TxIDsBatch,
 ) (*committerpb.TxStatusBatch, error) {
 	ret, err := vcm.commonClient.GetTransactionsStatus(ctx, query)
 	return ret, errors.Wrap(err, "failed getting transactions status")
@@ -313,6 +313,7 @@ func (vc *validatorCommitter) receiveStatusAndForwardToOutput(
 		txsNode, untrackedTxIdx := vc.getTxsAndUpdatePolicies(txsStatus)
 		if len(untrackedTxIdx) > 0 {
 			// untrackedTxIdx can be non-empty only when the coordinator restarts.
+			// Negligible performance impact is fine as this is a rare case.
 			for _, i := range slices.Backward(untrackedTxIdx) {
 				txsStatus.Status = append(txsStatus.Status[:i], txsStatus.Status[i+1:]...)
 			}

@@ -27,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
+	"github.com/hyperledger/fabric-x-committer/utils/apptest"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
@@ -811,7 +812,7 @@ func (e *coordinatorTestEnv) requireStatus(
 	for i, s := range expectedTxStatus {
 		txIDs[i] = s.Ref.TxId
 	}
-	test.EnsurePersistedTxStatus(ctx, t, e.client, txIDs, deduplicateTxStatus(expectedTxStatus, differentPersisted))
+	apptest.EnsurePersistedTxStatus(ctx, t, e.client, txIDs, deduplicateTxStatus(expectedTxStatus, differentPersisted))
 }
 
 // deduplicateTxStatus returns a slice of unique-ID tx-statuses.

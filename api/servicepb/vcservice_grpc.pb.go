@@ -43,7 +43,7 @@ type ValidationAndCommitServiceClient interface {
 	StartValidateAndCommitStream(ctx context.Context, opts ...grpc.CallOption) (ValidationAndCommitService_StartValidateAndCommitStreamClient, error)
 	SetLastCommittedBlockNumber(ctx context.Context, in *BlockRef, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetNextBlockNumberToCommit(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*BlockRef, error)
-	GetTransactionsStatus(ctx context.Context, in *QueryStatus, opts ...grpc.CallOption) (*committerpb.TxStatusBatch, error)
+	GetTransactionsStatus(ctx context.Context, in *committerpb.TxIDsBatch, opts ...grpc.CallOption) (*committerpb.TxStatusBatch, error)
 	GetNamespacePolicies(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*applicationpb.NamespacePolicies, error)
 	GetConfigTransaction(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*applicationpb.ConfigTransaction, error)
 	SetupSystemTablesAndNamespaces(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -106,7 +106,7 @@ func (c *validationAndCommitServiceClient) GetNextBlockNumberToCommit(ctx contex
 	return out, nil
 }
 
-func (c *validationAndCommitServiceClient) GetTransactionsStatus(ctx context.Context, in *QueryStatus, opts ...grpc.CallOption) (*committerpb.TxStatusBatch, error) {
+func (c *validationAndCommitServiceClient) GetTransactionsStatus(ctx context.Context, in *committerpb.TxIDsBatch, opts ...grpc.CallOption) (*committerpb.TxStatusBatch, error) {
 	out := new(committerpb.TxStatusBatch)
 	err := c.cc.Invoke(ctx, ValidationAndCommitService_GetTransactionsStatus_FullMethodName, in, out, opts...)
 	if err != nil {
@@ -149,7 +149,7 @@ type ValidationAndCommitServiceServer interface {
 	StartValidateAndCommitStream(ValidationAndCommitService_StartValidateAndCommitStreamServer) error
 	SetLastCommittedBlockNumber(context.Context, *BlockRef) (*emptypb.Empty, error)
 	GetNextBlockNumberToCommit(context.Context, *emptypb.Empty) (*BlockRef, error)
-	GetTransactionsStatus(context.Context, *QueryStatus) (*committerpb.TxStatusBatch, error)
+	GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch) (*committerpb.TxStatusBatch, error)
 	GetNamespacePolicies(context.Context, *emptypb.Empty) (*applicationpb.NamespacePolicies, error)
 	GetConfigTransaction(context.Context, *emptypb.Empty) (*applicationpb.ConfigTransaction, error)
 	SetupSystemTablesAndNamespaces(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
@@ -169,7 +169,7 @@ func (UnimplementedValidationAndCommitServiceServer) SetLastCommittedBlockNumber
 func (UnimplementedValidationAndCommitServiceServer) GetNextBlockNumberToCommit(context.Context, *emptypb.Empty) (*BlockRef, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetNextBlockNumberToCommit not implemented")
 }
-func (UnimplementedValidationAndCommitServiceServer) GetTransactionsStatus(context.Context, *QueryStatus) (*committerpb.TxStatusBatch, error) {
+func (UnimplementedValidationAndCommitServiceServer) GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch) (*committerpb.TxStatusBatch, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTransactionsStatus not implemented")
 }
 func (UnimplementedValidationAndCommitServiceServer) GetNamespacePolicies(context.Context, *emptypb.Empty) (*applicationpb.NamespacePolicies, error) {
@@ -258,7 +258,7 @@ func _ValidationAndCommitService_GetNextBlockNumberToCommit_Handler(srv interfac
 }
 
 func _ValidationAndCommitService_GetTransactionsStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(QueryStatus)
+	in := new(committerpb.TxIDsBatch)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -270,7 +270,7 @@ func _ValidationAndCommitService_GetTransactionsStatus_Handler(srv interface{}, 
 		FullMethod: ValidationAndCommitService_GetTransactionsStatus_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ValidationAndCommitServiceServer).GetTransactionsStatus(ctx, req.(*QueryStatus))
+		return srv.(ValidationAndCommitServiceServer).GetTransactionsStatus(ctx, req.(*committerpb.TxIDsBatch))
 	}
 	return interceptor(ctx, in, info, handler)
 }

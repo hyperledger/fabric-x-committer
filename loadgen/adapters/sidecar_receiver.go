@@ -38,7 +38,7 @@ const (
 // runSidecarReceiver start receiving blocks from the sidecar.
 func runSidecarReceiver(ctx context.Context, params *sidecarReceiverParameters) error {
 	ledgerReceiver, err := sidecarclient.New(&sidecarclient.Parameters{
-		ChannelID: params.Res.Profile.Transaction.Policy.ChannelID,
+		ChannelID: params.Res.Profile.Policy.ChannelID,
 		Client:    params.ClientConfig,
 	})
 	if err != nil {

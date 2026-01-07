@@ -389,19 +389,19 @@ func TestReadConfigLoadGen(t *testing.T) {
 				Block: workload.BlockProfile{Size: 500},
 				Transaction: workload.TransactionProfile{
 					ReadWriteCount: workload.NewConstantDistribution(2),
-					Policy: &workload.PolicyProfile{
-						ChannelID: "mychannel",
-						NamespacePolicies: map[string]*workload.Policy{
-							workload.DefaultGeneratedNamespaceID: {
-								Scheme: signature.Ecdsa, Seed: 10,
-							},
-							committerpb.MetaNamespaceID: {
-								Scheme: signature.Ecdsa, Seed: 11,
-							},
+				},
+				Policy: workload.PolicyProfile{
+					ChannelID: "mychannel",
+					NamespacePolicies: map[string]*workload.Policy{
+						workload.DefaultGeneratedNamespaceID: {
+							Scheme: signature.Ecdsa, Seed: 10,
 						},
-						OrdererEndpoints: []*commontypes.OrdererEndpoint{
-							newOrdererEndpoint("org", "orderer"),
+						committerpb.MetaNamespaceID: {
+							Scheme: signature.Ecdsa, Seed: 11,
 						},
+					},
+					OrdererEndpoints: []*commontypes.OrdererEndpoint{
+						newOrdererEndpoint("org", "orderer"),
 					},
 				},
 				Conflicts: workload.ConflictProfile{

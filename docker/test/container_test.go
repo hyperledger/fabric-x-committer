@@ -76,7 +76,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			c, err := config.ReadLoadGenYamlAndSetupLogging(v, filepath.Join(localConfigPath, "loadgen.yaml"))
 			require.NoError(t, err)
 			ordererEp := mustGetEndpoint(ctx, t, containerName, mockOrdererPort)
-			c.LoadProfile.Transaction.Policy.OrdererEndpoints = []*commontypes.OrdererEndpoint{
+			c.LoadProfile.Policy.OrdererEndpoints = []*commontypes.OrdererEndpoint{
 				{
 					Host: ordererEp.Host, Port: ordererEp.Port, ID: 0, MspID: "org",
 					API: []string{commontypes.Broadcast, commontypes.Deliver},
@@ -98,7 +98,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 							Server: mustGetEndpoint(ctx, t, containerName, coordinatorServicePort),
 						},
 					},
-					Policy: c.LoadProfile.Transaction.Policy,
+					Policy: &c.LoadProfile.Policy,
 				},
 				DBEnv: vc.NewDatabaseTestEnvFromConnection(
 					t,

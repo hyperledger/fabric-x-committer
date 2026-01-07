@@ -366,7 +366,7 @@ func appendMissingBlock(
 		expectedHeight[i] = tx.Ref
 	}
 
-	txsStatus, err := client.GetTransactionsStatus(ctx, &servicepb.QueryStatus{TxIDs: txIDs})
+	txsStatus, err := client.GetTransactionsStatus(ctx, &committerpb.TxIDsBatch{TxIds: txIDs})
 	if err != nil {
 		return errors.Wrap(err, "failed to get transaction status from the coordinator")
 	}
@@ -422,6 +422,7 @@ func fillStatuses(
 	statuses []*committerpb.TxStatus,
 	expectedHeight []*committerpb.TxRef,
 ) error {
+	// This copy to a map has a negligible performance impact is fine as this is a rare case.
 	statusMap := make(map[string]*committerpb.TxStatus, len(statuses))
 	for _, s := range statuses {
 		statusMap[s.Ref.TxId] = s

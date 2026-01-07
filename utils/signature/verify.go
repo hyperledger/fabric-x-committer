@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package signature
 
 import (
+	"crypto/sha256"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -101,7 +102,7 @@ func (v *NsVerifier) VerifyNs(txID string, tx *applicationpb.Tx, nsIndex int) er
 		return nil
 	}
 
-	data, err := ASN1MarshalTxNamespace(txID, tx.Namespaces[nsIndex])
+	data, err := tx.Namespaces[nsIndex].ASN1Marshal(txID)
 	if err != nil {
 		return err
 	}
@@ -115,7 +116,8 @@ func (*keyVerifier) UpdateIdentities(msp.IdentityDeserializer) error {
 
 // Verify evaluates the endorsements against the data for keyVerifier.
 func (v *keyVerifier) Verify(data []byte, endorsements []*applicationpb.EndorsementWithIdentity) error {
-	return v.verifyDigest(SHA256Digest(data), endorsements[0].Endorsement)
+	digest := sha256.Sum256(data)
+	return v.verifyDigest(digest[:], endorsements[0].Endorsement)
 }
 
 // UpdateIdentities updates the identities for mspVerifier.

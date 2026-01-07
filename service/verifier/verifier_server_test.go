@@ -16,7 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
 	commonmsp "github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
+	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
@@ -163,10 +163,11 @@ func TestSignatureRule(t *testing.T) {
 	require.NoError(t, err)
 
 	mspDirs := make([]commonmsp.DirLoadParameters, 2)
+	peerOrgPath := filepath.Join(cp.cryptoPath, cryptogen.PeerOrganizationsDir)
 	for i, org := range []string{"peer-org-0", "peer-org-1"} {
 		mspDirs[i].MspName = org
 		clientName := "client@" + org + ".com"
-		mspDirs[i].MspDir = filepath.Join(cp.cryptoPath, "peerOrganizations", org, "users", clientName, "msp")
+		mspDirs[i].MspDir = filepath.Join(peerOrgPath, org, "users", clientName, "msp")
 	}
 
 	signingIdentities, err := sigtest.GetSigningIdentities(mspDirs...)
@@ -204,7 +205,7 @@ func TestSignatureRule(t *testing.T) {
 		}},
 	}
 
-	data, err := signature.ASN1MarshalTxNamespace(fakeTxID, tx1.Namespaces[0])
+	data, err := tx1.Namespaces[0].ASN1Marshal(fakeTxID)
 	require.NoError(t, err)
 
 	for _, certType := range []int{test.CreatorCertificate, test.CreatorID} {
@@ -228,7 +229,7 @@ func TestSignatureRule(t *testing.T) {
 	_, metaTxVerificationKey := sigtest.NewKeyPair(signature.Ecdsa)
 	configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
 		MetaNamespaceVerificationKey: metaTxVerificationKey,
-	}, configtxgen.SampleFabricX)
+	})
 	require.NoError(t, err)
 	update = &servicepb.VerifierUpdates{
 		Config: &applicationpb.ConfigTransaction{
@@ -542,7 +543,7 @@ func defaultCryptoParameters(t *testing.T) cryptoParameters {
 	configBlock, err := workload.CreateDefaultConfigBlockWithCrypto(ret.cryptoPath, &workload.ConfigBlock{
 		MetaNamespaceVerificationKey: metaTxVerificationKey,
 		PeerOrganizationCount:        2,
-	}, configtxgen.TwoOrgsSampleFabricX)
+	})
 	require.NoError(t, err)
 	ret.metaTxEndorser, err = sigtest.NewNsEndorserFromKey(signature.Ecdsa, metaTxSigningKey)
 	require.NoError(t, err)

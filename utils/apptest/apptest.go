@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package test
+package apptest
 
 import (
 	"context"
@@ -14,19 +14,19 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/api/committerpb"
-	"github.com/hyperledger/fabric-x-committer/api/servicepb"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 // StatusRetriever provides implementation retrieve status of given transaction identifiers.
 type StatusRetriever interface {
-	GetTransactionsStatus(context.Context, *servicepb.QueryStatus, ...grpc.CallOption) (
+	GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch, ...grpc.CallOption) (
 		*committerpb.TxStatusBatch, error,
 	)
 }
 
 // EnsurePersistedTxStatus fails the test if the given TX IDs does not match the expected status.
 //
-//nolint:revive // maximum number of arguments per function exceeded; max 4 but got 5.
+//nolint:revive,nolintlint // maximum number of arguments per function exceeded; max 4 but got 5.
 func EnsurePersistedTxStatus(
 	ctx context.Context,
 	t *testing.T,
@@ -38,9 +38,9 @@ func EnsurePersistedTxStatus(
 	if len(txIDs) == 0 {
 		return
 	}
-	actualStatus, err := r.GetTransactionsStatus(ctx, &servicepb.QueryStatus{TxIDs: txIDs})
+	actualStatus, err := r.GetTransactionsStatus(ctx, &committerpb.TxIDsBatch{TxIds: txIDs})
 	require.NoError(t, err)
-	RequireProtoElementsMatch(t, expected, actualStatus.Status)
+	test.RequireProtoElementsMatch(t, expected, actualStatus.Status)
 }
 
 // RequireStatus fails if the expected status does not appear in the statuses list.
@@ -53,5 +53,5 @@ func RequireStatus(t require.TestingT, expected *committerpb.TxStatus, statuses 
 		}
 	}
 	require.NotNil(t, actualStatus)
-	RequireProtoEqual(t, expected, actualStatus)
+	test.RequireProtoEqual(t, expected, actualStatus)
 }

@@ -66,7 +66,8 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	v := config.NewViperWithLoadGenDefaults()
 	c, err := config.ReadLoadGenYamlAndSetupLogging(v, filepath.Join(localConfigPath, "loadgen.yaml"))
 	require.NoError(t, err)
-	configBlock, err := workload.CreateConfigBlock(c.LoadProfile.Transaction.Policy)
+	c.LoadProfile.Policy.CryptoMaterialPath = t.TempDir()
+	configBlock, err := workload.CreateConfigBlock(&c.LoadProfile.Policy)
 	require.NoError(t, err)
 	require.NoError(t, configtxgen.WriteOutputBlock(configBlock, configBlockPath))
 

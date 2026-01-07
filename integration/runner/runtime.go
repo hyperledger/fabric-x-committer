@@ -30,6 +30,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
+	"github.com/hyperledger/fabric-x-committer/utils/apptest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
@@ -135,8 +136,9 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 			LoadGenBlockLimit: conf.LoadgenBlockLimit,
 			LoadGenWorkers:    1,
 			Policy: &workload.PolicyProfile{
-				ChannelID:         TestChannelName,
-				NamespacePolicies: make(map[string]*workload.Policy),
+				ChannelID:          TestChannelName,
+				NamespacePolicies:  make(map[string]*workload.Policy),
+				CryptoMaterialPath: t.TempDir(),
 			},
 			Logging: &logging.DefaultConfig,
 		},
@@ -438,7 +440,7 @@ func (c *CommitterRuntime) SendTransactionsToOrderer(
 
 	if !c.Config.CrashTest {
 		err := c.NotifyStream.Send(&committerpb.NotificationRequest{
-			TxStatusRequest: &committerpb.TxStatusRequest{
+			TxStatusRequest: &committerpb.TxIDsBatch{
 				TxIds: expected.TxIDs,
 			},
 			Timeout: durationpb.New(3 * time.Minute),
@@ -530,7 +532,7 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 
 	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Minute)
 	defer cancel()
-	test.EnsurePersistedTxStatus(ctx, t, c.CoordinatorClient, persistedTxIDs, persistedTxIDsStatus)
+	apptest.EnsurePersistedTxStatus(ctx, t, c.CoordinatorClient, persistedTxIDs, persistedTxIDsStatus)
 
 	if len(expected.TxIDs) == 0 || c.Config.CrashTest {
 		return
