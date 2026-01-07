@@ -35,7 +35,7 @@ type VcService struct {
 	servicepb.ValidationAndCommitServiceServer
 	numBatchesReceived atomic.Uint32
 	nextBlock          atomic.Pointer[servicepb.BlockRef]
-	txsStatus          *fifoCache[*servicepb.StatusWithHeight]
+	txsStatus          *fifoCache[*committerpb.TxStatus]
 	txsStatusMu        sync.Mutex
 	healthcheck        *health.Server
 	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
@@ -48,7 +48,7 @@ type VcService struct {
 // NewMockVcService returns a new VcService.
 func NewMockVcService() *VcService {
 	return &VcService{
-		txsStatus:       newFifoCache[*servicepb.StatusWithHeight](defaultTxStatusStorageSize),
+		txsStatus:       newFifoCache[*committerpb.TxStatus](defaultTxStatusStorageSize),
 		healthcheck:     connection.DefaultHealthCheckService(),
 		txBatchChannels: make(map[uint64]chan *servicepb.VcBatch),
 	}
@@ -98,13 +98,13 @@ func (*VcService) GetConfigTransaction(
 func (v *VcService) GetTransactionsStatus(
 	_ context.Context,
 	query *servicepb.QueryStatus,
-) (*servicepb.TransactionsStatus, error) {
-	s := &servicepb.TransactionsStatus{Status: make(map[string]*servicepb.StatusWithHeight)}
+) (*committerpb.TxStatusBatch, error) {
+	s := &committerpb.TxStatusBatch{Status: make([]*committerpb.TxStatus, len(query.TxIDs))}
 	v.txsStatusMu.Lock()
 	defer v.txsStatusMu.Unlock()
-	for _, id := range query.TxIDs {
+	for i, id := range query.TxIDs {
 		if status, ok := v.txsStatus.get(id); ok {
-			s.Status[id] = status
+			s.Status[i] = status
 		}
 	}
 	return s, nil
@@ -184,8 +184,8 @@ func (v *VcService) sendTransactionStatus(
 		if !ok {
 			break
 		}
-		txsStatus := &servicepb.TransactionsStatus{
-			Status: make(map[string]*servicepb.StatusWithHeight, len(txBatch.Transactions)),
+		txsStatus := &committerpb.TxStatusBatch{
+			Status: make([]*committerpb.TxStatus, 0, len(txBatch.Transactions)),
 		}
 		v.txsStatusMu.Lock()
 		for i, tx := range txBatch.Transactions {
@@ -197,8 +197,8 @@ func (v *VcService) sendTransactionStatus(
 			if tx.PrelimInvalidTxStatus != nil {
 				code = *tx.PrelimInvalidTxStatus
 			}
-			s := servicepb.NewStatusWithHeightFromRef(code, tx.Ref)
-			txsStatus.Status[tx.Ref.TxId] = s
+			s := committerpb.NewTxStatusFromRef(tx.Ref, code)
+			txsStatus.Status = append(txsStatus.Status, s)
 			v.txsStatus.addIfNotExist(tx.Ref.TxId, s)
 		}
 		v.txsStatusMu.Unlock()

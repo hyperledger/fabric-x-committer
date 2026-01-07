@@ -48,7 +48,7 @@ type ValidatorCommitterService struct {
 	toPrepareTxs             chan *servicepb.VcBatch
 	preparedTxs              chan *preparedTransactions
 	validatedTxs             chan *validatedTransactions
-	txsStatus                chan *servicepb.TransactionsStatus
+	txsStatus                chan *committerpb.TxStatusBatch
 	db                       *database
 	metrics                  *perfMetrics
 	minTxBatchSize           int
@@ -90,7 +90,7 @@ func NewValidatorCommitterService(
 	toPrepareTxs := make(chan *servicepb.VcBatch, l.MaxWorkersForPreparer*queueMultiplier)
 	preparedTxs := make(chan *preparedTransactions, l.MaxWorkersForValidator*queueMultiplier)
 	validatedTxs := make(chan *validatedTransactions, queueMultiplier)
-	txsStatus := make(chan *servicepb.TransactionsStatus, l.MaxWorkersForCommitter*queueMultiplier)
+	txsStatus := make(chan *committerpb.TxStatusBatch, l.MaxWorkersForCommitter*queueMultiplier)
 
 	metrics := newVCServiceMetrics()
 	db, err := newDatabase(ctx, config.Database, metrics)
@@ -218,7 +218,7 @@ func (vc *ValidatorCommitterService) GetNextBlockNumberToCommit(
 func (vc *ValidatorCommitterService) GetTransactionsStatus(
 	ctx context.Context,
 	query *servicepb.QueryStatus,
-) (*servicepb.TransactionsStatus, error) {
+) (*committerpb.TxStatusBatch, error) {
 	if len(query.TxIDs) == 0 {
 		return nil, grpcerror.WrapInvalidArgument(errors.New("query is empty"))
 	}
@@ -233,9 +233,7 @@ func (vc *ValidatorCommitterService) GetTransactionsStatus(
 		return nil, grpcerror.WrapInternalError(err)
 	}
 
-	return &servicepb.TransactionsStatus{
-		Status: txIDsStatus,
-	}, nil
+	return &committerpb.TxStatusBatch{Status: txIDsStatus}, nil
 }
 
 // GetNamespacePolicies retrieves the policy data from the database.
@@ -372,7 +370,7 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 		mvcc := 0
 		dup := 0
 		for _, s := range txStatus.Status {
-			switch s.Code {
+			switch s.Status { //nolint:revive // default case is not needed.
 			case committerpb.Status_COMMITTED:
 				committed++
 			case committerpb.Status_ABORTED_MVCC_CONFLICT:

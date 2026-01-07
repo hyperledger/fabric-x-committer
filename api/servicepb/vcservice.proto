@@ -21,10 +21,10 @@ import "api/committerpb/ref.proto";
 import "api/servicepb/common.proto";
 
 service ValidationAndCommitService {
-    rpc StartValidateAndCommitStream (stream VcBatch) returns (stream TransactionsStatus);
+    rpc StartValidateAndCommitStream (stream VcBatch) returns (stream committerpb.TxStatusBatch);
     rpc SetLastCommittedBlockNumber (BlockRef) returns (google.protobuf.Empty) {};
     rpc GetNextBlockNumberToCommit (google.protobuf.Empty) returns (BlockRef) {};
-    rpc GetTransactionsStatus (QueryStatus) returns (TransactionsStatus) {};
+    rpc GetTransactionsStatus (QueryStatus) returns (committerpb.TxStatusBatch) {};
     rpc GetNamespacePolicies(google.protobuf.Empty) returns (applicationpb.NamespacePolicies) {};
     rpc GetConfigTransaction(google.protobuf.Empty) returns (applicationpb.ConfigTransaction) {};
     rpc SetupSystemTablesAndNamespaces(google.protobuf.Empty) returns (google.protobuf.Empty) {};

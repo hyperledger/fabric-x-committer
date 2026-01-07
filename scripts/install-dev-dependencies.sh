@@ -8,7 +8,7 @@ set -e
 
 # Versions
 protoc_bin_version="29.3"
-protoc_gen_go_version="v1.33"
+protoc_gen_go_version="v1.36.10"
 protoc_gen_go_grpc_version="v1.3"
 goimports_version="v0.33.0"
 gotestfmt_version="v2.5.0"
