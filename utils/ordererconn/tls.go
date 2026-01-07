@@ -59,9 +59,6 @@ func NewOrganizationsMaterialsFromConfigBlock(configBlock *common.Block) ([]*Org
 }
 
 // NewOrganizationsMaterialsFromEnvelope retrieve the organization materials from a config transaction.
-// For now, it fetches the following:
-// - Orderer endpoints.
-// - RootCAs per organization.
 func NewOrganizationsMaterialsFromEnvelope(envelope *common.Envelope) ([]*OrganizationMaterial, error) {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
 	if err != nil {

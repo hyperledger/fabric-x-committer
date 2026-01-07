@@ -239,7 +239,7 @@ func openConnection(
 	// We shuffle the endpoints for load balancing.
 	shuffle(params.Endpoints)
 	logger.Infof("Opening connections to %d endpoints: %v.", len(params.Endpoints), params.Endpoints)
-	return connection.NewLoadBalancedConnectionForOrderer(params.Endpoints, params.TLS, params.Retry)
+	return connection.NewLoadBalancedConnectionFromMaterials(params.Endpoints, params.TLS, params.Retry)
 }
 
 func makeEndpointsKey(endpoint []*connection.Endpoint) string {

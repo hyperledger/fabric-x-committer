@@ -51,11 +51,7 @@ func NewLocalHostServerWithTLS(creds TLSConfig) *ServerConfig {
 // GrpcServer instantiate a [grpc.Server].
 func (c *ServerConfig) GrpcServer() (*grpc.Server, error) {
 	opts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxMsgSize), grpc.MaxSendMsgSize(maxMsgSize)}
-	tlsMaterials, err := NewTLSMaterials(c.TLS)
-	if err != nil {
-		return nil, err
-	}
-	serverGrpcTransportCreds, err := tlsMaterials.ServerCredentials()
+	serverGrpcTransportCreds, err := c.TLS.ServerCredentials()
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed loading the server's grpc credentials")
 	}

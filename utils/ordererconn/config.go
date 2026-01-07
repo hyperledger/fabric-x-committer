@@ -40,8 +40,7 @@ type (
 		CACerts   []string                       `mapstructure:"ca-cert-paths"`
 	}
 
-	// OrdererTLSConfig is a restricted TLS config for orderer clients.
-	// It reuses the base fields but excludes CA paths.
+	// OrdererTLSConfig is a TLS config for the orderer clients.
 	OrdererTLSConfig struct {
 		Mode     string `mapstructure:"mode"`
 		CertPath string `mapstructure:"cert-path"`

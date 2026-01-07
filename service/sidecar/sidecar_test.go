@@ -258,13 +258,13 @@ func TestSidecarConfigUpdate(t *testing.T) {
 	for _, mode := range test.ServerModes {
 		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
-			sc, cc := test.CreateServerAndClientTLSConfig(t, mode)
+			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
 			env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{
-				NumService: 3, NumHolders: 3, ClientTLS: cc, ServerTLS: sc,
+				NumService: 3, NumHolders: 3, ClientTLS: clientTLSConfig, ServerTLS: serverTLSConfig,
 			})
 			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 			t.Cleanup(cancel)
-			env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, cc)
+			env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, clientTLSConfig)
 			env.requireBlock(ctx, t, 0)
 
 			t.Log("Sanity check")
@@ -321,13 +321,7 @@ func TestSidecarConfigUpdate(t *testing.T) {
 
 func TestSidecarConfigRecovery(t *testing.T) {
 	t.Parallel()
-	env := newSidecarTestEnvWithTLS(t,
-		sidecarTestConfig{
-			NumService: 3,
-			ClientTLS:  test.InsecureTLSConfig,
-			ServerTLS:  test.InsecureTLSConfig,
-		},
-	)
+	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{NumService: 3})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
@@ -382,10 +376,7 @@ func TestSidecarConfigRecovery(t *testing.T) {
 
 func TestSidecarRecovery(t *testing.T) {
 	t.Parallel()
-	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{
-		ClientTLS: test.InsecureTLSConfig,
-		ServerTLS: test.InsecureTLSConfig,
-	})
+	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
@@ -467,10 +458,7 @@ func TestSidecarRecovery(t *testing.T) {
 
 func TestSidecarRecoveryAfterCoordinatorFailure(t *testing.T) {
 	t.Parallel()
-	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{
-		ClientTLS: test.InsecureTLSConfig,
-		ServerTLS: test.InsecureTLSConfig,
-	})
+	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
@@ -515,10 +503,7 @@ func TestSidecarRecoveryAfterCoordinatorFailure(t *testing.T) {
 
 func TestSidecarStartWithoutCoordinator(t *testing.T) {
 	t.Parallel()
-	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{
-		ClientTLS: test.InsecureTLSConfig,
-		ServerTLS: test.InsecureTLSConfig,
-	})
+	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 
@@ -555,13 +540,7 @@ func TestSidecarStartWithoutCoordinator(t *testing.T) {
 
 func TestSidecarVerifyBadTxForm(t *testing.T) {
 	t.Parallel()
-	env := newSidecarTestEnvWithTLS(t,
-		sidecarTestConfig{
-			SubmitGenesisBlock: true,
-			ServerTLS:          test.InsecureTLSConfig,
-			ClientTLS:          test.InsecureTLSConfig,
-		},
-	)
+	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{SubmitGenesisBlock: true})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)

@@ -70,7 +70,6 @@ func New(c *Config) (*Service, error) {
 		if bootErr != nil {
 			return nil, fmt.Errorf("failed to load organizations materials: %w", bootErr)
 		}
-		// If bootstrap returns nil, we didn't have any bootstrap information.
 		bootErr = ordererClient.UpdateConnections(orgsMaterial)
 		if bootErr != nil {
 			return nil, bootErr
