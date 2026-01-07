@@ -50,10 +50,9 @@ func (p *startNodeParameters) asNode(node string) startNodeParameters {
 }
 
 const (
-	channelName         = "mychannel"
-	monitoredMetric     = "loadgen_transaction_committed_total"
-	containerPrefixName = "sc_test"
-	testNodeImage       = "icr.io/cbdc/committer-test-node:0.0.2"
+	channelName     = "mychannel"
+	monitoredMetric = "loadgen_transaction_committed_total"
+	testNodeImage   = "icr.io/cbdc/committer-test-node:0.0.2"
 )
 
 func createAndStartContainerAndItsLogs(
@@ -183,5 +182,5 @@ func assembleBinds(t *testing.T, params startNodeParameters, additionalBinds ...
 }
 
 func assembleContainerName(node, tlsMode, dbType string) string {
-	return fmt.Sprintf("%s_%s_%s_%s", containerPrefixName, node, tlsMode, dbType)
+	return fmt.Sprintf("%s_%s_%s_%s", test.ContainerPrefixName, node, tlsMode, dbType)
 }

@@ -30,7 +30,7 @@ import (
 const (
 	defaultYugabyteImage            = "yugabytedb/yugabyte:2.20.7.0-b58"
 	defaultPostgresImage            = "postgres:16.9-alpine3.21"
-	defaultDBDeploymentTemplateName = "sc_%s_unit_tests"
+	defaultDBDeploymentTemplateName = test.ContainerPrefixName + "_%s_unit_tests"
 
 	defaultHostIP  = "127.0.0.1"
 	defaultPortMap = "7000/tcp"

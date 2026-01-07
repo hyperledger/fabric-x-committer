@@ -14,6 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// ContainerPrefixName is the prefix for test-containers name.
+const ContainerPrefixName = "sc_test"
+
 // CreateDockerNetwork creates a network if it doesn't exist.
 func CreateDockerNetwork(t *testing.T, name string) *docker.Network {
 	t.Helper()
