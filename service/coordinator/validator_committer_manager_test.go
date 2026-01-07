@@ -27,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/apptest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -249,9 +250,9 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		require.Len(t, outTxsStatus.Status, 2)
 		expectedConfig := committerpb.NewTxStatus(committerpb.Status_COMMITTED, "create config", 100, 63)
-		test.RequireStatus(t, expectedConfig, outTxsStatus.Status)
+		apptest.RequireStatus(t, expectedConfig, outTxsStatus.Status)
 		expectedMeta := committerpb.NewTxStatus(committerpb.Status_COMMITTED, "create ns 1", 100, 64)
-		test.RequireStatus(t, expectedMeta, outTxsStatus.Status)
+		apptest.RequireStatus(t, expectedMeta, outTxsStatus.Status)
 
 		require.ElementsMatch(t, txBatch, <-env.outputTxs)
 

@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package sigtest_test
 
 import (
+	"crypto/sha256"
 	"testing"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
@@ -22,6 +23,24 @@ import (
 
 var testedSchemes = append(signature.AllRealSchemes, "MSP")
 
+func BenchmarkMarshal(b *testing.B) {
+	logging.SetupWithConfig(&logging.Config{Enabled: false})
+	txs := workload.GenerateTransactions(b, workload.DefaultProfile(8), b.N)
+
+	resBench := make([][]byte, b.N)
+	errBench := make([]error, b.N)
+
+	b.ResetTimer()
+	for i, tx := range txs {
+		resBench[i], errBench[i] = tx.Tx.Namespaces[0].ASN1Marshal(tx.Id)
+	}
+	b.StopTimer()
+	for i := range b.N {
+		require.NoError(b, errBench[i], "error at index %d", i)
+		require.NotNil(b, resBench[i], "no result at index %d", i)
+	}
+}
+
 func BenchmarkDigest(b *testing.B) {
 	logging.SetupWithConfig(&logging.Config{Enabled: false})
 	txs := workload.GenerateTransactions(b, workload.DefaultProfile(8), b.N)
@@ -31,7 +50,9 @@ func BenchmarkDigest(b *testing.B) {
 
 	b.ResetTimer()
 	for i, tx := range txs {
-		resBench[i], errBench[i] = signature.DigestTxNamespace(tx.Id, tx.Tx.Namespaces[0])
+		resBench[i], errBench[i] = tx.Tx.Namespaces[0].ASN1Marshal(tx.Id)
+		d := sha256.Sum256(resBench[i])
+		resBench[i] = d[:]
 	}
 	b.StopTimer()
 	for i := range b.N {
