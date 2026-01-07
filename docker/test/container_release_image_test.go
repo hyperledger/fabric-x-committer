@@ -30,7 +30,7 @@ import (
 const (
 	committerReleaseImage = "icr.io/cbdc/committer:0.0.2"
 	loadgenReleaseImage   = "icr.io/cbdc/loadgen:0.0.2"
-	networkPrefixName     = containerPrefixName + "_network"
+	networkPrefixName     = test.DockerNamesPrefix + "_network"
 	genBlockFile          = "sc-genesis-block.proto.bin"
 	// containerConfigPath is the path to the config directory inside the container.
 	containerConfigPath = "/root/config"

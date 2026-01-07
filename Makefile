@@ -54,10 +54,10 @@ env            ?= env GOOS=$(os) GOARCH=$(arch)
 build_flags    ?= -buildvcs=false -o
 go_build       ?= $(env) $(go_cmd) build $(build_flags)
 go_test        ?= $(go_cmd) test -json -v -timeout 30m
-proto_path     ?=
+proto_flags    ?=
 
 ifneq ("$(wildcard /usr/include)","")
-    proto_path += "/usr/include"
+    proto_flags += --proto_path="/usr/include"
 endif
 
 arch_output_dir_rel = $(arch_output_dir:${project_dir}/%=%)
@@ -151,8 +151,7 @@ clean: FORCE
 	@rm -rf $(arch_output_dir)
 
 kill-test-docker: FORCE
-	$(docker_cmd) ps -aq -f name=sc_yugabyte_unit_tests | xargs $(docker_cmd) rm -f
-	$(docker_cmd) ps -aq -f name=sc_postgres_unit_tests | xargs $(docker_cmd) rm -f
+	$(docker_cmd) ps -aq -f "name=sc_test" | xargs $(docker_cmd) rm -f
 
 #########################
 # Benchmarks
@@ -182,20 +181,16 @@ bench-sidecar: FORCE
 # Generate protos
 #########################
 
-PROTO_TARGETS ?= $(shell find ./api \
-	 -name '*.proto' -print0 | \
-	 xargs -0 -n 1 dirname | xargs -n 1 basename | \
-	 sort -u | sed -E "s/^(.*)$$/proto-\1/" \
-)
-
-proto: $(PROTO_TARGETS)
-
-proto-%: FORCE
-	@echo "Compiling: $*"
-	@protoc --proto_path="${PWD}" \
-          --proto_path="${proto_path}" \
-          --go-grpc_out=. --go-grpc_opt=paths=source_relative \
-          --go_out=paths=source_relative:. ${PWD}/api/$*/*.proto
+proto: FORCE
+	@echo "Generating protobufs: $(shell find ${project_dir}/api -name '*.proto' -print0 \
+		| xargs -0 -n 1 dirname | xargs -n 1 basename | sort -u)"
+	@protoc \
+	  --go-grpc_out=. \
+	  --go-grpc_opt=paths=source_relative \
+	  --go_out=paths=source_relative:. \
+	  --proto_path="${project_dir}" \
+	  ${proto_flags} \
+	  ${project_dir}/api/*/*.proto
 
 #########################
 # Binaries

@@ -360,10 +360,10 @@ func appendMissingBlock(
 	}
 
 	txIDs := make([]string, len(mappedBlock.block.Txs))
-	expectedHeight := make(map[string]*servicepb.Height, len(mappedBlock.block.Txs))
+	expectedHeight := make([]*committerpb.TxRef, len(mappedBlock.block.Txs))
 	for i, tx := range mappedBlock.block.Txs {
 		txIDs[i] = tx.Ref.TxId
-		expectedHeight[tx.Ref.TxId] = servicepb.NewHeightFromTxRef(tx.Ref)
+		expectedHeight[i] = tx.Ref
 	}
 
 	txsStatus, err := client.GetTransactionsStatus(ctx, &servicepb.QueryStatus{TxIDs: txIDs})
@@ -419,19 +419,23 @@ func waitForIdleCoordinator(ctx context.Context, client servicepb.CoordinatorCli
 
 func fillStatuses(
 	finalStatuses []committerpb.Status,
-	statuses map[string]*servicepb.StatusWithHeight,
-	expectedHeight map[string]*servicepb.Height,
+	statuses []*committerpb.TxStatus,
+	expectedHeight []*committerpb.TxRef,
 ) error {
-	for txID, height := range expectedHeight {
-		s, ok := statuses[txID]
+	statusMap := make(map[string]*committerpb.TxStatus, len(statuses))
+	for _, s := range statuses {
+		statusMap[s.Ref.TxId] = s
+	}
+	for _, ref := range expectedHeight {
+		s, ok := statusMap[ref.TxId]
 		if !ok {
-			return errors.Newf("committer should have the status of txID [%s] but it does not", txID)
+			return errors.Newf("committer should have the status of txID [%s] but it does not", ref.TxId)
 		}
-		if servicepb.AreSame(height, servicepb.NewHeight(s.BlockNumber, s.TxNumber)) {
-			finalStatuses[height.TxNum] = s.Code
-			continue
+		if committerpb.AreSameHeight(ref, s.Ref) {
+			finalStatuses[ref.TxNum] = s.Status
+		} else {
+			finalStatuses[ref.TxNum] = committerpb.Status_REJECTED_DUPLICATE_TX_ID
 		}
-		finalStatuses[height.TxNum] = committerpb.Status_REJECTED_DUPLICATE_TX_ID
 	}
 	return nil
 }

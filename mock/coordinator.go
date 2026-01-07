@@ -35,7 +35,7 @@ type Coordinator struct {
 	nextBlock          atomic.Uint64
 	streamActive       atomic.Bool
 	numWaitingTxs      atomic.Int32
-	txsStatus          *fifoCache[*servicepb.StatusWithHeight]
+	txsStatus          *fifoCache[*committerpb.TxStatus]
 	txsStatusMu        sync.Mutex
 	configTransaction  atomic.Pointer[applicationpb.ConfigTransaction]
 	latency            atomic.Pointer[time.Duration]
@@ -49,7 +49,7 @@ var defaultTxStatusStorageSize = 100_000
 // NewMockCoordinator creates a new mock coordinator.
 func NewMockCoordinator() *Coordinator {
 	return &Coordinator{
-		txsStatus:   newFifoCache[*servicepb.StatusWithHeight](defaultTxStatusStorageSize),
+		txsStatus:   newFifoCache[*committerpb.TxStatus](defaultTxStatusStorageSize),
 		healthcheck: connection.DefaultHealthCheckService(),
 	}
 }
@@ -90,15 +90,15 @@ func (c *Coordinator) GetNextBlockNumberToCommit(
 func (c *Coordinator) GetTransactionsStatus(
 	_ context.Context,
 	q *servicepb.QueryStatus,
-) (*servicepb.TransactionsStatus, error) {
-	status := make(map[string]*servicepb.StatusWithHeight, len(q.TxIDs))
+) (*committerpb.TxStatusBatch, error) {
+	status := make([]*committerpb.TxStatus, len(q.TxIDs))
 	c.txsStatusMu.Lock()
 	defer c.txsStatusMu.Unlock()
-	for _, txID := range q.TxIDs {
+	for i, txID := range q.TxIDs {
 		v, _ := c.txsStatus.get(txID)
-		status[txID] = v
+		status[i] = v
 	}
-	return &servicepb.TransactionsStatus{Status: status}, nil
+	return &committerpb.TxStatusBatch{Status: status}, nil
 }
 
 // NumberOfWaitingTransactionsForStatus returns the number of transactions waiting to get the final status.
@@ -208,14 +208,14 @@ func (c *Coordinator) sendTxsStatusChunk(
 	stream servicepb.Coordinator_BlockProcessingServer,
 	txs []*committerpb.TxStatus,
 ) error {
-	b := &servicepb.TransactionsStatus{
-		Status: make(map[string]*servicepb.StatusWithHeight, len(txs)),
+	b := &committerpb.TxStatusBatch{
+		Status: make([]*committerpb.TxStatus, len(txs)),
 	}
 	c.txsStatusMu.Lock()
 	defer c.txsStatusMu.Unlock()
-	for _, info := range txs {
-		s := servicepb.NewStatusWithHeightFromRef(info.Status, info.Ref)
-		b.Status[info.Ref.TxId] = s
+	for i, info := range txs {
+		s := committerpb.NewTxStatusFromRef(info.Ref, info.Status)
+		b.Status[i] = s
 		c.txsStatus.addIfNotExist(info.Ref.TxId, s)
 	}
 	if err := stream.Send(b); err != nil {

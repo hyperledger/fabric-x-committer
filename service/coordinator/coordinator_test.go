@@ -10,6 +10,7 @@ import (
 	"context"
 	"maps"
 	"math/rand"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -196,18 +197,18 @@ func (e *coordinatorTestEnv) createNamespaces(t *testing.T, blkNum int, nsIDs ..
 
 	err = e.csStream.Send(blk)
 	require.NoError(t, err)
-	status := make(map[string]*servicepb.StatusWithHeight)
+	status := make([]*committerpb.TxStatus, 0, len(nsIDs)+1)
 	require.Eventually(t, func() bool {
-		txStatus, err := e.csStream.Recv()
-		require.NoError(t, err)
+		txStatus, receiveErr := e.csStream.Recv()
+		require.NoError(t, receiveErr)
 		require.NotNil(t, txStatus)
 		require.NotNil(t, txStatus.Status)
-		maps.Insert(status, maps.All(txStatus.Status))
+		status = append(status, txStatus.Status...)
 		return len(status) == len(nsIDs)+1
 	}, 2*time.Minute, 10*time.Millisecond)
 
 	for _, s := range status {
-		require.Equal(t, committerpb.Status_COMMITTED.String(), s.Code.String())
+		require.Equal(t, committerpb.Status_COMMITTED.String(), s.Status.String())
 	}
 }
 
@@ -289,8 +290,8 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 		1*time.Second, 100*time.Millisecond,
 	)
 
-	env.requireStatus(ctx, t, map[string]*servicepb.StatusWithHeight{
-		"tx1": {Code: committerpb.Status_COMMITTED, BlockNumber: 1},
+	env.requireStatus(ctx, t, []*committerpb.TxStatus{
+		committerpb.NewTxStatus(committerpb.Status_COMMITTED, "tx1", 1, 0),
 	}, nil)
 
 	test.RequireIntMetricValue(t, preMetricsValue+1, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
@@ -331,8 +332,8 @@ func TestCoordinatorServiceRejectedTx(t *testing.T) {
 		1*time.Second, 100*time.Millisecond,
 	)
 
-	env.requireStatus(ctx, t, map[string]*servicepb.StatusWithHeight{
-		"rejected": {Code: committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD, BlockNumber: 1},
+	env.requireStatus(ctx, t, []*committerpb.TxStatus{
+		committerpb.NewTxStatus(committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD, "rejected", 1, 0),
 	}, nil)
 
 	test.RequireIntMetricValue(t, 1, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
@@ -481,7 +482,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 
 	status := env.receiveStatus(t, len(b1.Txs))
 	for txID, txStatus := range status {
-		require.Equal(t, committerpb.Status_COMMITTED, txStatus.Code, txID)
+		require.Equal(t, committerpb.Status_COMMITTED, txStatus.Status, txID)
 	}
 	test.RequireIntMetricValue(t, expectedReceived, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
 		committerpb.Status_COMMITTED.String(),
@@ -509,7 +510,7 @@ func TestQueueSize(t *testing.T) {
 	q.depGraphToSigVerifierFreeTxs <- dependencygraph.TxNodeBatch{}
 	q.sigVerifierToVCServiceValidatedTxs <- dependencygraph.TxNodeBatch{}
 	q.vcServiceToDepGraphValidatedTxs <- dependencygraph.TxNodeBatch{}
-	q.vcServiceToCoordinatorTxStatus <- &servicepb.TransactionsStatus{}
+	q.vcServiceToCoordinatorTxStatus <- &committerpb.TxStatusBatch{}
 
 	require.Eventually(t, func() bool {
 		return test.GetIntMetricValue(t, m.sigverifierInputTxBatchQueueSize) == 1 &&
@@ -558,8 +559,8 @@ func TestCoordinatorRecovery(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	env.requireStatus(ctx, t, map[string]*servicepb.StatusWithHeight{
-		"tx1": {Code: committerpb.Status_COMMITTED, BlockNumber: 1},
+	env.requireStatus(ctx, t, []*committerpb.TxStatus{
+		committerpb.NewTxStatus(committerpb.Status_COMMITTED, "tx1", 1, 0),
 	}, nil)
 
 	_, err = env.client.SetLastCommittedBlockNumber(ctx, &servicepb.BlockRef{Number: 1})
@@ -621,13 +622,13 @@ func TestCoordinatorRecovery(t *testing.T) {
 	}
 	require.NoError(t, env.csStream.Send(block2))
 
-	expectedTxStatus := map[string]*servicepb.StatusWithHeight{
-		"tx2":           servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, 2, 0),
-		"mvcc conflict": servicepb.NewStatusWithHeight(committerpb.Status_ABORTED_MVCC_CONFLICT, 2, 2),
-		"tx1":           servicepb.NewStatusWithHeight(committerpb.Status_REJECTED_DUPLICATE_TX_ID, 2, 5),
+	expectedTxStatus := []*committerpb.TxStatus{
+		committerpb.NewTxStatus(committerpb.Status_COMMITTED, "tx2", 2, 0),
+		committerpb.NewTxStatus(committerpb.Status_ABORTED_MVCC_CONFLICT, "mvcc conflict", 2, 2),
+		committerpb.NewTxStatus(committerpb.Status_REJECTED_DUPLICATE_TX_ID, "tx1", 2, 5),
 	}
-	env.requireStatus(ctx, t, expectedTxStatus, map[string]*servicepb.StatusWithHeight{
-		"tx1": servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, 1, 0),
+	env.requireStatus(ctx, t, expectedTxStatus, []*committerpb.TxStatus{
+		committerpb.NewTxStatus(committerpb.Status_COMMITTED, "tx1", 1, 0),
 	})
 
 	cancel()
@@ -639,7 +640,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 	t.Cleanup(cancel)
 	env.startInsecureServiceAndOpenStream(ctx, t)
 
-	env.dbEnv.StatusExistsForNonDuplicateTxID(t, expectedTxStatus)
+	env.dbEnv.StatusExistsForNonDuplicateTxID(ctx, t, expectedTxStatus)
 
 	// Now, we are sending the full block 2.
 	block2 = &servicepb.CoordinatorBatch{
@@ -729,14 +730,14 @@ func TestCoordinatorRecovery(t *testing.T) {
 
 	require.NoError(t, env.csStream.Send(block2))
 
-	env.requireStatus(ctx, t, map[string]*servicepb.StatusWithHeight{
-		"tx2":                 servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, 2, 0),
-		"tx3":                 servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, 2, 1),
-		"mvcc conflict":       servicepb.NewStatusWithHeight(committerpb.Status_ABORTED_MVCC_CONFLICT, 2, 2),
-		"duplicate namespace": servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, 2, 4),
-		"tx1":                 servicepb.NewStatusWithHeight(committerpb.Status_REJECTED_DUPLICATE_TX_ID, 2, 5),
-	}, map[string]*servicepb.StatusWithHeight{
-		"tx1": servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, 1, 0),
+	env.requireStatus(ctx, t, []*committerpb.TxStatus{
+		committerpb.NewTxStatus(committerpb.Status_COMMITTED, "tx2", 2, 0),
+		committerpb.NewTxStatus(committerpb.Status_COMMITTED, "tx3", 2, 1),
+		committerpb.NewTxStatus(committerpb.Status_ABORTED_MVCC_CONFLICT, "mvcc conflict", 2, 2),
+		committerpb.NewTxStatus(committerpb.Status_COMMITTED, "duplicate namespace", 2, 4),
+		committerpb.NewTxStatus(committerpb.Status_REJECTED_DUPLICATE_TX_ID, "tx1", 2, 5),
+	}, []*committerpb.TxStatus{
+		committerpb.NewTxStatus(committerpb.Status_COMMITTED, "tx1", 1, 0),
 	})
 }
 
@@ -768,8 +769,8 @@ func TestCoordinatorStreamFailureWithSidecar(t *testing.T) {
 	}
 	require.NoError(t, env.csStream.Send(blk))
 
-	env.requireStatus(ctx, t, map[string]*servicepb.StatusWithHeight{
-		"tx1": {Code: committerpb.Status_COMMITTED, BlockNumber: 1},
+	env.requireStatus(ctx, t, []*committerpb.TxStatus{
+		committerpb.NewTxStatus(committerpb.Status_COMMITTED, "tx1", 1, 0),
 	}, nil)
 
 	env.streamCancel() // simulate the failure of sidecar
@@ -794,34 +795,47 @@ func TestCoordinatorStreamFailureWithSidecar(t *testing.T) {
 	}
 	blk.Txs[0].Ref.TxId = "tx2"
 	require.NoError(t, env.csStream.Send(blk))
-	env.requireStatus(ctx, t, map[string]*servicepb.StatusWithHeight{
-		"tx2": {Code: committerpb.Status_COMMITTED, BlockNumber: 2},
+	env.requireStatus(ctx, t, []*committerpb.TxStatus{
+		committerpb.NewTxStatus(committerpb.Status_COMMITTED, "tx2", 2, 0),
 	}, nil)
 }
 
 func (e *coordinatorTestEnv) requireStatus(
 	ctx context.Context,
 	t *testing.T,
-	expectedTxStatus, differentPersisted map[string]*servicepb.StatusWithHeight,
+	expectedTxStatus, differentPersisted []*committerpb.TxStatus,
 ) {
 	t.Helper()
-	require.EqualExportedValues(t, expectedTxStatus, e.receiveStatus(t, len(expectedTxStatus)))
-	var txIDs []string //nolint:prealloc
-	for txID := range expectedTxStatus {
-		txIDs = append(txIDs, txID)
+	test.RequireProtoElementsMatch(t, expectedTxStatus, e.receiveStatus(t, len(expectedTxStatus)))
+	txIDs := make([]string, len(expectedTxStatus))
+	for i, s := range expectedTxStatus {
+		txIDs[i] = s.Ref.TxId
 	}
-
-	maps.Copy(expectedTxStatus, differentPersisted)
-	test.EnsurePersistedTxStatus(ctx, t, e.client, txIDs, expectedTxStatus)
+	test.EnsurePersistedTxStatus(ctx, t, e.client, txIDs, deduplicateTxStatus(expectedTxStatus, differentPersisted))
 }
 
-func (e *coordinatorTestEnv) receiveStatus(t *testing.T, count int) map[string]*servicepb.StatusWithHeight {
+// deduplicateTxStatus returns a slice of unique-ID tx-statuses.
+func deduplicateTxStatus(txStatusBatch ...[]*committerpb.TxStatus) []*committerpb.TxStatus {
+	sz := 0
+	for _, s := range txStatusBatch {
+		sz += len(s)
+	}
+	ret := make(map[string]*committerpb.TxStatus, sz)
+	for _, txStatus := range txStatusBatch {
+		for _, s := range txStatus {
+			ret[s.Ref.TxId] = s
+		}
+	}
+	return slices.Collect(maps.Values(ret))
+}
+
+func (e *coordinatorTestEnv) receiveStatus(t *testing.T, count int) []*committerpb.TxStatus {
 	t.Helper()
-	status := make(map[string]*servicepb.StatusWithHeight)
+	status := make([]*committerpb.TxStatus, 0, count)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		txStatus, err := e.csStream.Recv()
 		require.NoError(c, err)
-		maps.Insert(status, maps.All(txStatus.Status))
+		status = append(status, txStatus.Status...)
 		require.Len(c, status, count)
 	}, time.Minute, 500*time.Millisecond)
 	return status
@@ -851,14 +865,8 @@ func TestChunkSizeSentForDepGraph(t *testing.T) {
 		return test.GetIntMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) >= txPerBlock
 	}, 4*time.Second, 100*time.Millisecond)
 
-	actualTxsStatus := make(map[string]*servicepb.StatusWithHeight)
-	for len(actualTxsStatus) < txPerBlock {
-		txStatus, err := env.csStream.Recv()
-		require.NoError(t, err)
-		maps.Copy(actualTxsStatus, txStatus.Status)
-	}
-
-	require.Equal(t, expectedTxsStatus, actualTxsStatus)
+	actualTxsStatus := readTxStatus(t, env.csStream, txPerBlock)
+	test.RequireProtoElementsMatch(t, expectedTxsStatus, actualTxsStatus)
 	test.RequireIntMetricValue(t, txPerBlock, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
 		committerpb.Status_COMMITTED.String(),
 	))
@@ -905,14 +913,8 @@ func TestWaitingTxsCount(t *testing.T) {
 		env.sigVerifierGrpcServers.Configs,
 	)
 
-	actualTxsStatus := make(map[string]*servicepb.StatusWithHeight)
-	for len(actualTxsStatus) < txPerBlock {
-		txStatus, err := env.csStream.Recv()
-		require.NoError(t, err)
-		maps.Copy(actualTxsStatus, txStatus.Status)
-	}
-
-	require.Equal(t, expectedTxsStatus, actualTxsStatus)
+	actualTxsStatus := readTxStatus(t, env.csStream, txPerBlock)
+	test.RequireProtoElementsMatch(t, expectedTxsStatus, actualTxsStatus)
 	test.RequireIntMetricValue(t, txPerBlock, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
 		committerpb.Status_COMMITTED.String(),
 	))
@@ -950,13 +952,24 @@ func fakeConfigForTest(t *testing.T) *Config {
 	}
 }
 
+func readTxStatus(t *testing.T, stream servicepb.Coordinator_BlockProcessingClient, count int) []*committerpb.TxStatus {
+	t.Helper()
+	actualTxsStatus := make([]*committerpb.TxStatus, 0, count)
+	for len(actualTxsStatus) < count {
+		txStatus, err := stream.Recv()
+		require.NoError(t, err)
+		actualTxsStatus = append(actualTxsStatus, txStatus.Status...)
+	}
+	return actualTxsStatus
+}
+
 func makeTestBlock(txPerBlock int) (
-	*servicepb.CoordinatorBatch, map[string]*servicepb.StatusWithHeight,
+	*servicepb.CoordinatorBatch, []*committerpb.TxStatus,
 ) {
 	b := &servicepb.CoordinatorBatch{
 		Txs: make([]*servicepb.TxWithRef, txPerBlock),
 	}
-	expectedTxsStatus := make(map[string]*servicepb.StatusWithHeight)
+	expectedTxsStatus := make([]*committerpb.TxStatus, txPerBlock)
 	for i := range txPerBlock {
 		txID := "tx" + strconv.Itoa(rand.Int())
 		b.Txs[i] = &servicepb.TxWithRef{
@@ -973,7 +986,7 @@ func makeTestBlock(txPerBlock int) (
 			},
 		}
 		//nolint: gosec // int -> uint32.
-		expectedTxsStatus[txID] = servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, 0, uint32(i))
+		expectedTxsStatus[i] = committerpb.NewTxStatus(committerpb.Status_COMMITTED, txID, 0, uint32(i))
 	}
 
 	return b, expectedTxsStatus
