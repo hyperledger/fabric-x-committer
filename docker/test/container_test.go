@@ -195,7 +195,7 @@ func TestStartTestNode(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	containerName := fmt.Sprintf("%s_%s", test.ContainerPrefixName, committerContainerName)
+	containerName := fmt.Sprintf("%s_%s", test.DockerNamesPrefix, committerContainerName)
 	stopAndRemoveContainersByName(ctx, t, createDockerClient(t), containerName)
 	startCommitter(ctx, t, startNodeParameters{
 		node:         containerName,

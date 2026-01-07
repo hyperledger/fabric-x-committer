@@ -30,7 +30,7 @@ import (
 const (
 	defaultYugabyteImage            = "yugabytedb/yugabyte:2.20.7.0-b58"
 	defaultPostgresImage            = "postgres:16.9-alpine3.21"
-	defaultDBDeploymentTemplateName = test.ContainerPrefixName + "_%s_unit_tests"
+	defaultDBDeploymentTemplateName = test.DockerNamesPrefix + "_%s_unit_tests"
 
 	// container's Memory and CPU management.
 	gb         = 1 << 30 // gb is the number of bytes needed to represent 1 GB.

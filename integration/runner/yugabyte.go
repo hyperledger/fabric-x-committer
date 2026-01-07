@@ -122,7 +122,7 @@ func StartYugaCluster(ctx context.Context, t *testing.T, numberOfMasters, number
 
 func (cc *YugaClusterController) createNode(role string) {
 	node := &dbtest.DatabaseContainer{
-		Name:         fmt.Sprintf("%s_yuga-%s-%s", test.ContainerPrefixName, role, uuid.New().String()),
+		Name:         fmt.Sprintf("%s_yuga_%s_%s", test.DockerNamesPrefix, role, uuid.New().String()),
 		Image:        defaultImage,
 		Role:         role,
 		DatabaseType: dbtest.YugaDBType,
