@@ -108,12 +108,12 @@ func prepareCryptoMaterial(policy *PolicyProfile) error {
 		OrdererEndpoints:             policy.OrdererEndpoints,
 		ChannelID:                    policy.ChannelID,
 		PeerOrganizationCount:        policy.PeerOrganizationCount,
-	}, configtxgen.TwoOrgsSampleFabricX)
+	})
 	return err
 }
 
 // CreateDefaultConfigBlock creates a config block with default values.
-func CreateDefaultConfigBlock(conf *ConfigBlock, profileName string) (*common.Block, error) {
+func CreateDefaultConfigBlock(conf *ConfigBlock) (*common.Block, error) {
 	target, err := makeTemporaryDir()
 	if err != nil {
 		return nil, err
@@ -121,7 +121,7 @@ func CreateDefaultConfigBlock(conf *ConfigBlock, profileName string) (*common.Bl
 	defer func() {
 		_ = os.RemoveAll(target)
 	}()
-	return CreateDefaultConfigBlockWithCrypto(target, conf, profileName)
+	return CreateDefaultConfigBlockWithCrypto(target, conf)
 }
 
 func makeTemporaryDir() (string, error) {
@@ -133,9 +133,7 @@ func makeTemporaryDir() (string, error) {
 }
 
 // CreateDefaultConfigBlockWithCrypto creates a config block with crypto material.
-func CreateDefaultConfigBlockWithCrypto(
-	targetPath string, conf *ConfigBlock, profileName string,
-) (*common.Block, error) {
+func CreateDefaultConfigBlockWithCrypto(targetPath string, conf *ConfigBlock) (*common.Block, error) {
 	orgs := make([]cryptogen.OrganizationParameters, 0, int(conf.PeerOrganizationCount)+len(conf.OrdererEndpoints))
 
 	ordererOrgsMap := make(map[uint32][]cryptogen.OrdererEndpoint)
@@ -182,9 +180,13 @@ func CreateDefaultConfigBlockWithCrypto(
 		_, metaKey = sigtest.NewKeyPair(signature.Ecdsa)
 	}
 
+	// We create the config block on the basis of the default Fabric X config profile.
+	// It will use the default parameters defined in this profile (e.g., Policies, OrdererType, etc.).
+	// The generated organizations will use the default parameters taken from the first orderer org defined
+	// in the profile.
 	return cryptogen.CreateDefaultConfigBlockWithCrypto(cryptogen.ConfigBlockParameters{
 		TargetPath:                   targetPath,
-		BaseProfile:                  profileName,
+		BaseProfile:                  configtxgen.SampleFabricX,
 		ChannelID:                    conf.ChannelID,
 		Organizations:                orgs,
 		MetaNamespaceVerificationKey: metaKey,
