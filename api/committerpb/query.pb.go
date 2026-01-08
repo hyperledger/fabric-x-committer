@@ -31,25 +31,28 @@ const (
 type IsoLevel int32
 
 const (
-	IsoLevel_Serializable    IsoLevel = 0
-	IsoLevel_RepeatableRead  IsoLevel = 1
-	IsoLevel_ReadCommitted   IsoLevel = 2
-	IsoLevel_ReadUncommitted IsoLevel = 3
+	IsoLevel_ISO_LEVEL_UNSPECIFIED IsoLevel = 0 // Unspecified level will default to serializable.
+	IsoLevel_SERIALIZABLE          IsoLevel = 1
+	IsoLevel_REPEATABLE_READ       IsoLevel = 2
+	IsoLevel_READ_COMMITTED        IsoLevel = 3
+	IsoLevel_READ_UNCOMMITTED      IsoLevel = 4
 )
 
 // Enum value maps for IsoLevel.
 var (
 	IsoLevel_name = map[int32]string{
-		0: "Serializable",
-		1: "RepeatableRead",
-		2: "ReadCommitted",
-		3: "ReadUncommitted",
+		0: "ISO_LEVEL_UNSPECIFIED",
+		1: "SERIALIZABLE",
+		2: "REPEATABLE_READ",
+		3: "READ_COMMITTED",
+		4: "READ_UNCOMMITTED",
 	}
 	IsoLevel_value = map[string]int32{
-		"Serializable":    0,
-		"RepeatableRead":  1,
-		"ReadCommitted":   2,
-		"ReadUncommitted": 3,
+		"ISO_LEVEL_UNSPECIFIED": 0,
+		"SERIALIZABLE":          1,
+		"REPEATABLE_READ":       2,
+		"READ_COMMITTED":        3,
+		"READ_UNCOMMITTED":      4,
 	}
 )
 
@@ -223,7 +226,7 @@ func (x *Rows) GetNamespaces() []*RowsNamespace {
 type ViewParameters struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	IsoLevel            IsoLevel               `protobuf:"varint,1,opt,name=iso_level,json=isoLevel,proto3,enum=committerpb.IsoLevel" json:"iso_level,omitempty"`        // View's isolation level. Defaults to serializable.
-	NonDeferrable       bool                   `protobuf:"varint,2,opt,name=nonDeferrable,proto3" json:"nonDeferrable,omitempty"`                                        // Do not defer errors. Defaults deferrable.
+	NonDeferrable       bool                   `protobuf:"varint,2,opt,name=non_deferrable,json=nonDeferrable,proto3" json:"non_deferrable,omitempty"`                   // Do not defer errors. Defaults deferrable.
 	TimeoutMilliseconds uint64                 `protobuf:"varint,3,opt,name=timeout_milliseconds,json=timeoutMilliseconds,proto3" json:"timeout_milliseconds,omitempty"` // View's timeout. Zero => maximal value
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
@@ -263,7 +266,7 @@ func (x *ViewParameters) GetIsoLevel() IsoLevel {
 	if x != nil {
 		return x.IsoLevel
 	}
-	return IsoLevel_Serializable
+	return IsoLevel_ISO_LEVEL_UNSPECIFIED
 }
 
 func (x *ViewParameters) GetNonDeferrable() bool {
@@ -556,10 +559,10 @@ const file_api_committerpb_query_proto_rawDesc = "" +
 	"\x04Rows\x12:\n" +
 	"\n" +
 	"namespaces\x18\x01 \x03(\v2\x1a.committerpb.RowsNamespaceR\n" +
-	"namespaces\"\x9d\x01\n" +
+	"namespaces\"\x9e\x01\n" +
 	"\x0eViewParameters\x122\n" +
-	"\tiso_level\x18\x01 \x01(\x0e2\x15.committerpb.IsoLevelR\bisoLevel\x12$\n" +
-	"\rnonDeferrable\x18\x02 \x01(\bR\rnonDeferrable\x121\n" +
+	"\tiso_level\x18\x01 \x01(\x0e2\x15.committerpb.IsoLevelR\bisoLevel\x12%\n" +
+	"\x0enon_deferrable\x18\x02 \x01(\bR\rnonDeferrable\x121\n" +
 	"\x14timeout_milliseconds\x18\x03 \x01(\x04R\x13timeoutMilliseconds\"9\n" +
 	"\x0eQueryNamespace\x12\x13\n" +
 	"\x05ns_id\x18\x01 \x01(\tR\x04nsId\x12\x12\n" +
@@ -576,16 +579,17 @@ const file_api_committerpb_query_proto_rawDesc = "" +
 	"\x06tx_ids\x18\x02 \x03(\tR\x05txIdsB\a\n" +
 	"\x05_view\"E\n" +
 	"\x10TxStatusResponse\x121\n" +
-	"\bstatuses\x18\x01 \x03(\v2\x15.committerpb.TxStatusR\bstatuses*X\n" +
-	"\bIsoLevel\x12\x10\n" +
-	"\fSerializable\x10\x00\x12\x12\n" +
-	"\x0eRepeatableRead\x10\x01\x12\x11\n" +
-	"\rReadCommitted\x10\x02\x12\x13\n" +
-	"\x0fReadUncommitted\x10\x032\xb1\x03\n" +
+	"\bstatuses\x18\x01 \x03(\v2\x15.committerpb.TxStatusR\bstatuses*v\n" +
+	"\bIsoLevel\x12\x19\n" +
+	"\x15ISO_LEVEL_UNSPECIFIED\x10\x00\x12\x10\n" +
+	"\fSERIALIZABLE\x10\x01\x12\x13\n" +
+	"\x0fREPEATABLE_READ\x10\x02\x12\x12\n" +
+	"\x0eREAD_COMMITTED\x10\x03\x12\x14\n" +
+	"\x10READ_UNCOMMITTED\x10\x042\xb6\x03\n" +
 	"\fQueryService\x122\n" +
 	"\aGetRows\x12\x12.committerpb.Query\x1a\x11.committerpb.Rows\"\x00\x12=\n" +
-	"\tBeginView\x12\x1b.committerpb.ViewParameters\x1a\x11.committerpb.View\"\x00\x121\n" +
-	"\aEndView\x12\x11.committerpb.View\x1a\x11.committerpb.View\"\x00\x12R\n" +
+	"\tBeginView\x12\x1b.committerpb.ViewParameters\x1a\x11.committerpb.View\"\x00\x126\n" +
+	"\aEndView\x12\x11.committerpb.View\x1a\x16.google.protobuf.Empty\"\x00\x12R\n" +
 	"\x14GetNamespacePolicies\x12\x16.google.protobuf.Empty\x1a .applicationpb.NamespacePolicies\"\x00\x12R\n" +
 	"\x14GetConfigTransaction\x12\x16.google.protobuf.Empty\x1a .applicationpb.ConfigTransaction\"\x00\x12S\n" +
 	"\x14GetTransactionStatus\x12\x1a.committerpb.TxStatusQuery\x1a\x1d.committerpb.TxStatusResponse\"\x00B;Z9github.com/hyperledger/fabric-x-committer/api/committerpbb\x06proto3"
@@ -636,7 +640,7 @@ var file_api_committerpb_query_proto_depIdxs = []int32{
 	8,  // 12: committerpb.QueryService.GetTransactionStatus:input_type -> committerpb.TxStatusQuery
 	3,  // 13: committerpb.QueryService.GetRows:output_type -> committerpb.Rows
 	1,  // 14: committerpb.QueryService.BeginView:output_type -> committerpb.View
-	1,  // 15: committerpb.QueryService.EndView:output_type -> committerpb.View
+	11, // 15: committerpb.QueryService.EndView:output_type -> google.protobuf.Empty
 	12, // 16: committerpb.QueryService.GetNamespacePolicies:output_type -> applicationpb.NamespacePolicies
 	13, // 17: committerpb.QueryService.GetConfigTransaction:output_type -> applicationpb.ConfigTransaction
 	9,  // 18: committerpb.QueryService.GetTransactionStatus:output_type -> committerpb.TxStatusResponse

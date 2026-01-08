@@ -537,7 +537,7 @@ func makeQuery(it []*items) (query *committerpb.Query, keyCount, querySize int) 
 
 func defaultViewParams(timeout time.Duration) *committerpb.ViewParameters {
 	return &committerpb.ViewParameters{
-		IsoLevel:            committerpb.IsoLevel_RepeatableRead,
+		IsoLevel:            committerpb.IsoLevel_REPEATABLE_READ,
 		NonDeferrable:       false,
 		TimeoutMilliseconds: uint64(timeout.Milliseconds()), //nolint:gosec
 	}

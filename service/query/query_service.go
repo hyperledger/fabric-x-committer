@@ -125,10 +125,10 @@ func (q *Service) BeginView(
 // EndView implements the query-service interface.
 func (q *Service) EndView(
 	_ context.Context, view *committerpb.View,
-) (*committerpb.View, error) {
+) (*emptypb.Empty, error) {
 	q.metrics.requests.WithLabelValues(grpcEndView).Inc()
 	defer q.requestLatency(grpcEndView, time.Now())
-	return view, q.batcher.removeViewID(view.Id)
+	return nil, q.batcher.removeViewID(view.Id)
 }
 
 // GetRows implements the query-service interface.

@@ -1,0 +1,31 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+---
+- disabled_rules:
+    - core::0192::only-leading-comments   # Forbid inline comments
+    - core::0192::has-comments            # Required comment in every service, message, and field
+    - core::0141::forbidden-types         # E.g., uint is forbidden
+    - core::0215::versioned-packages      # E.g., applicationpb.v1
+    - core::0131::method-signature        # A google.api.method_signature annotation should be present
+    - core::0215::foreign-type-reference  # We require foreign types.
+    - core::0127::http-annotation         # HTTP annotations (might be added in the future)
+    - core::0203::field-behavior-required # E.g., [(google.api.field_behavior) = REQUIRED]
+    - core::0123::resource-annotation     # Forces resources annotation (not applicable)
+    # Enforces connection between method names to the request/reposne message name.
+    - core::0136::response-message-name
+    - core::0131::response-message-name
+    - core::0136::request-message-name
+    - core::0131::request-message-name
+    # Grammar related issues (e.g., forbid use "of" and "with").
+    - core::0140::prepositions
+    - core::0136::prepositions
+    - core::0134::synonyms
+    - core::0216::synonyms
+    # Java related issues (might be addressed in the future if required)
+    - core::0191::java-multiple-files
+    - core::0191::java-package
+    - core::0191::java-outer-classnam
+    - core::0191::java-outer-classname
