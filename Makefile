@@ -192,6 +192,15 @@ proto: FORCE
 	  ${proto_flags} \
 	  ${project_dir}/api/*/*.proto
 
+lint-proto: FORCE
+	@echo "Running protobuf linters..."
+	@api-linter \
+		-I="${project_dir}/api" \
+		--config .apilinter.yaml \
+		--set-exit-status \
+		--output-format github \
+		$(shell find ${project_dir}/api -name '*.proto' -exec realpath --relative-to ${project_dir}/api {} \;)
+
 #########################
 # Binaries
 #########################
@@ -254,7 +263,7 @@ build-test-genesis-block: $(output_dir) build-cli-loadgen
 # Linter
 #########################
 
-lint: FORCE
+lint: lint-proto FORCE
 	@echo "Running Go Linters..."
 	golangci-lint run --color=always --new-from-rev=main --timeout=4m
 	@echo "Running SQL Linters..."

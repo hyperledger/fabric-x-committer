@@ -62,7 +62,7 @@ func (c *LoadGenAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 				_, appendErr := client.AppendBatch(dCtx, batch)
 				status := committerpb.Status_COMMITTED
 				if appendErr != nil {
-					status = committerpb.Status_NOT_VALIDATED
+					status = committerpb.Status_STATUS_UNSPECIFIED
 				}
 				receiveQueueCtx.Write(receivedBatch{
 					batch:  batch,

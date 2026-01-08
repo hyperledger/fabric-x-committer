@@ -40,7 +40,7 @@ type (
 )
 
 const (
-	statusNotYetValidated = committerpb.Status_NOT_VALIDATED
+	statusNotYetValidated = committerpb.Status_STATUS_UNSPECIFIED
 	statusIdx             = int(common.BlockMetadataIndex_TRANSACTIONS_FILTER)
 )
 

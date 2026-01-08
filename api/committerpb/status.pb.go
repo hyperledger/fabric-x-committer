@@ -27,13 +27,13 @@ const (
 )
 
 // Status represents the result of transaction validation.
-// Except for NOT_VALIDATED, all statuses are recorded in the ledger.
+// Except for STATUS_UNSPECIFIED, all statuses are recorded in the ledger.
 // Some statuses are also stored in the state database which prevent resubmission of the same transaction ID.
 type Status int32
 
 const (
 	// Should never be persisted or reported.
-	Status_NOT_VALIDATED Status = 0 // Default. The transaction has not been validated yet.
+	Status_STATUS_UNSPECIFIED Status = 0 // Default. The transaction has not been validated yet.
 	// Stored in the state database. Prevents submitting a transaction with the same ID.
 	Status_COMMITTED                 Status = 1 // Successfully committed and state updated.
 	Status_ABORTED_SIGNATURE_INVALID Status = 2 // Signature is invalid according to the namespace policy.
@@ -62,7 +62,7 @@ const (
 // Enum value maps for Status.
 var (
 	Status_name = map[int32]string{
-		0:   "NOT_VALIDATED",
+		0:   "STATUS_UNSPECIFIED",
 		1:   "COMMITTED",
 		2:   "ABORTED_SIGNATURE_INVALID",
 		3:   "ABORTED_MVCC_CONFLICT",
@@ -84,7 +84,7 @@ var (
 		115: "MALFORMED_CONFIG_TX_INVALID",
 	}
 	Status_value = map[string]int32{
-		"NOT_VALIDATED":                             0,
+		"STATUS_UNSPECIFIED":                        0,
 		"COMMITTED":                                 1,
 		"ABORTED_SIGNATURE_INVALID":                 2,
 		"ABORTED_MVCC_CONFLICT":                     3,
@@ -229,7 +229,7 @@ func (x *TxStatus) GetStatus() Status {
 	if x != nil {
 		return x.Status
 	}
-	return Status_NOT_VALIDATED
+	return Status_STATUS_UNSPECIFIED
 }
 
 var File_api_committerpb_status_proto protoreflect.FileDescriptor
@@ -241,9 +241,9 @@ const file_api_committerpb_status_proto_rawDesc = "" +
 	"\x06status\x18\x01 \x03(\v2\x15.committerpb.TxStatusR\x06status\"]\n" +
 	"\bTxStatus\x12$\n" +
 	"\x03ref\x18\x01 \x01(\v2\x12.committerpb.TxRefR\x03ref\x12+\n" +
-	"\x06status\x18\x02 \x01(\x0e2\x13.committerpb.StatusR\x06status*\x83\x05\n" +
-	"\x06Status\x12\x11\n" +
-	"\rNOT_VALIDATED\x10\x00\x12\r\n" +
+	"\x06status\x18\x02 \x01(\x0e2\x13.committerpb.StatusR\x06status*\x88\x05\n" +
+	"\x06Status\x12\x16\n" +
+	"\x12STATUS_UNSPECIFIED\x10\x00\x12\r\n" +
 	"\tCOMMITTED\x10\x01\x12\x1d\n" +
 	"\x19ABORTED_SIGNATURE_INVALID\x10\x02\x12\x19\n" +
 	"\x15ABORTED_MVCC_CONFLICT\x10\x03\x12\x1c\n" +

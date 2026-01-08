@@ -40,7 +40,7 @@ const (
 type QueryServiceClient interface {
 	GetRows(ctx context.Context, in *Query, opts ...grpc.CallOption) (*Rows, error)
 	BeginView(ctx context.Context, in *ViewParameters, opts ...grpc.CallOption) (*View, error)
-	EndView(ctx context.Context, in *View, opts ...grpc.CallOption) (*View, error)
+	EndView(ctx context.Context, in *View, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetNamespacePolicies(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*applicationpb.NamespacePolicies, error)
 	GetConfigTransaction(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*applicationpb.ConfigTransaction, error)
 	GetTransactionStatus(ctx context.Context, in *TxStatusQuery, opts ...grpc.CallOption) (*TxStatusResponse, error)
@@ -72,8 +72,8 @@ func (c *queryServiceClient) BeginView(ctx context.Context, in *ViewParameters, 
 	return out, nil
 }
 
-func (c *queryServiceClient) EndView(ctx context.Context, in *View, opts ...grpc.CallOption) (*View, error) {
-	out := new(View)
+func (c *queryServiceClient) EndView(ctx context.Context, in *View, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, QueryService_EndView_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -114,7 +114,7 @@ func (c *queryServiceClient) GetTransactionStatus(ctx context.Context, in *TxSta
 type QueryServiceServer interface {
 	GetRows(context.Context, *Query) (*Rows, error)
 	BeginView(context.Context, *ViewParameters) (*View, error)
-	EndView(context.Context, *View) (*View, error)
+	EndView(context.Context, *View) (*emptypb.Empty, error)
 	GetNamespacePolicies(context.Context, *emptypb.Empty) (*applicationpb.NamespacePolicies, error)
 	GetConfigTransaction(context.Context, *emptypb.Empty) (*applicationpb.ConfigTransaction, error)
 	GetTransactionStatus(context.Context, *TxStatusQuery) (*TxStatusResponse, error)
@@ -131,7 +131,7 @@ func (UnimplementedQueryServiceServer) GetRows(context.Context, *Query) (*Rows, 
 func (UnimplementedQueryServiceServer) BeginView(context.Context, *ViewParameters) (*View, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method BeginView not implemented")
 }
-func (UnimplementedQueryServiceServer) EndView(context.Context, *View) (*View, error) {
+func (UnimplementedQueryServiceServer) EndView(context.Context, *View) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EndView not implemented")
 }
 func (UnimplementedQueryServiceServer) GetNamespacePolicies(context.Context, *emptypb.Empty) (*applicationpb.NamespacePolicies, error) {
