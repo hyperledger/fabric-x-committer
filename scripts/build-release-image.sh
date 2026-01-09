@@ -26,6 +26,8 @@ function build_image() {
     --build-arg PORTS="${service_ports}"
     --build-arg ARCHBIN_PATH="${arch_bin_dir}"
     --build-arg VERSION="${version}"
+    --build-arg CREATED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    --build-arg REVISION="$(git rev-parse HEAD)"
   )
 
   if [ "${multiplatform}" = true ]; then

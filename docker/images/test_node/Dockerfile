@@ -43,12 +43,15 @@ RUN chmod a+x ${BINS_PATH}/*
 EXPOSE 7050 4001 2114 7001 2117 2110
 
 # OCI metadata labels
-LABEL name="fabric-x-committer-test-node" \
-    maintainer="IBM Research Decentralized Trust Group" \
-    version="${VERSION}" \
-    description="Preconfigured Hyperledger Fabric-X Committer Node" \
-    license="Apache-2.0" \
-    vendor="IBM"
+LABEL org.opencontainers.image.created="${CREATED}" \
+    org.opencontainers.image.description="Hyperledger Fabric-X Committer Test Node." \
+    org.opencontainers.image.licenses="Apache-2.0" \
+    org.opencontainers.image.ref.name="postgres" \
+    org.opencontainers.image.revision="${REVISION}" \
+    org.opencontainers.image.source="https://github.com/hyperledger/fabric-x-committer" \
+    org.opencontainers.image.title="fabric-x-committer-test-node" \
+    org.opencontainers.image.url="https://github.com/hyperledger/fabric-x-committer" \
+    org.opencontainers.image.version="${VERSION}"
 
 # Default CMD
 CMD ["run"]
