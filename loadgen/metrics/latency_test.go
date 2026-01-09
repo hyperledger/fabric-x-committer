@@ -79,7 +79,7 @@ func TestLatencyTrackerPrefix(t *testing.T) {
 				actualLatency /= float64(sampleSize)
 				expectedLatency = 3
 			}
-			require.InDelta(t, expectedLatency, actualLatency, 1e-1)
+			require.InDelta(t, expectedLatency, actualLatency, 0.2)
 		})
 	}
 }

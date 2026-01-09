@@ -66,7 +66,7 @@ func NewTxStream(
 		modifiers = append(modifiers, newSignTxModifier(NewRandFromSeedGenerator(w.seed), profile))
 
 		txGenSeed := NewRandFromSeedGenerator(w.seed)
-		txGen := newIndependentTxGenerator(txGenSeed, w.keyGen, &profile.Transaction, modifiers...)
+		txGen := newIndependentTxGenerator(txGenSeed, w.keyGen, &profile.Transaction, &profile.Policy, modifiers...)
 		txStream.gens = append(txStream.gens, txGen)
 	}
 	return txStream

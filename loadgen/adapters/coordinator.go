@@ -13,7 +13,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
-	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
@@ -86,11 +85,7 @@ func (c *CoordinatorAdapter) receiveStatus(
 		}
 
 		logger.Debugf("Received coordinator status batch with %d items", len(txStatus.Status))
-		statusBatch := make([]metrics.TxStatus, 0, len(txStatus.Status))
-		for id, status := range txStatus.Status {
-			statusBatch = append(statusBatch, metrics.TxStatus{TxID: id, Status: status.Code})
-		}
-		c.res.Metrics.OnReceiveBatch(statusBatch)
+		c.res.Metrics.OnReceiveBatch(toMetricsStatus(txStatus.Status))
 		if c.res.isReceiveLimit() {
 			return nil
 		}

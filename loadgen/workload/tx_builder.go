@@ -25,7 +25,7 @@ import (
 type TxBuilder struct {
 	ChannelID   string
 	EnvSigner   protoutil.Signer
-	TxEndorser  *TxEndorserVerifier
+	TxEndorser  *TxEndorser
 	EnvCreator  []byte
 	NonceSource io.Reader
 }
@@ -45,7 +45,7 @@ func NewTxBuilderFromPolicy(policy *PolicyProfile, nonceSource io.Reader) (*TxBu
 	}
 	return &TxBuilder{
 		ChannelID:   policy.ChannelID,
-		TxEndorser:  NewTxEndorserVerifier(policy),
+		TxEndorser:  NewTxEndorser(policy),
 		EnvSigner:   envSigner,
 		EnvCreator:  envCreator,
 		NonceSource: nonceSource,

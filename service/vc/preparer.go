@@ -167,8 +167,8 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 			// but it will still commit the status only if the txID is not a duplicate.
 			if tx.PrelimInvalidTxStatus != nil {
 				logger.Debugf("Transaction %s marked as preliminarily invalid with status: %v",
-					tx.Ref.TxId, tx.PrelimInvalidTxStatus.Code)
-				prepTxs.invalidTxIDStatus[TxID(tx.Ref.TxId)] = tx.PrelimInvalidTxStatus.Code
+					tx.Ref.TxId, tx.PrelimInvalidTxStatus)
+				prepTxs.invalidTxIDStatus[TxID(tx.Ref.TxId)] = *tx.PrelimInvalidTxStatus
 				continue
 			}
 

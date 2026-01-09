@@ -30,6 +30,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
+	"github.com/hyperledger/fabric-x-committer/utils/apptest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
@@ -135,8 +136,9 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 			LoadGenBlockLimit: conf.LoadgenBlockLimit,
 			LoadGenWorkers:    1,
 			Policy: &workload.PolicyProfile{
-				ChannelID:         TestChannelName,
-				NamespacePolicies: make(map[string]*workload.Policy),
+				ChannelID:          TestChannelName,
+				NamespacePolicies:  make(map[string]*workload.Policy),
+				CryptoMaterialPath: t.TempDir(),
 			},
 			Logging: &logging.DefaultConfig,
 		},
@@ -435,7 +437,7 @@ func (c *CommitterRuntime) SendTransactionsToOrderer(
 
 	if !c.Config.CrashTest {
 		err := c.NotifyStream.Send(&committerpb.NotificationRequest{
-			TxStatusRequest: &committerpb.TxStatusRequest{
+			TxStatusRequest: &committerpb.TxIDsBatch{
 				TxIds: expected.TxIDs,
 			},
 			Timeout: durationpb.New(3 * time.Minute),
@@ -505,32 +507,29 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 	c.ensureLastCommittedBlockNumber(t, blk.Header.Number)
 
 	var persistedTxIDs []string
-	persistedTxIDsStatus := make(map[string]*servicepb.StatusWithHeight)
-	nonDuplicateTxIDsStatus := make(map[string]*servicepb.StatusWithHeight)
-	duplicateTxIDsStatus := make(map[string]*servicepb.StatusWithHeight)
+	persistedTxIDsStatus := make([]*committerpb.TxStatus, 0, len(expected.TxIDs))
+	duplicateTxIDsStatus := make([]*committerpb.TxStatus, 0, len(expected.TxIDs))
 	for i, tID := range expected.TxIDs {
 		//nolint:gosec // int -> uint32.
-		s := servicepb.NewStatusWithHeight(expected.Statuses[i], blk.Header.Number, uint32(i))
-		if s.Code == committerpb.Status_REJECTED_DUPLICATE_TX_ID {
-			duplicateTxIDsStatus[tID] = s
-		} else {
-			nonDuplicateTxIDsStatus[tID] = s
+		s := committerpb.NewTxStatus(expected.Statuses[i], tID, blk.Header.Number, uint32(i))
+		if s.Status == committerpb.Status_REJECTED_DUPLICATE_TX_ID {
+			duplicateTxIDsStatus = append(duplicateTxIDsStatus, s)
 		}
 
-		if sidecar.IsStatusStoredInDB(s.Code) {
-			persistedTxIDsStatus[tID] = s
+		if sidecar.IsStatusStoredInDB(s.Status) {
+			persistedTxIDsStatus = append(persistedTxIDsStatus, s)
 			persistedTxIDs = append(persistedTxIDs, tID)
 		}
 	}
 
-	c.DBEnv.StatusExistsForNonDuplicateTxID(t, persistedTxIDsStatus)
+	c.DBEnv.StatusExistsForNonDuplicateTxID(t.Context(), t, persistedTxIDsStatus)
 	// For the duplicate txID, neither the status nor the height would match the entry in the
 	// transaction status table.
 	c.DBEnv.StatusExistsWithDifferentHeightForDuplicateTxID(t, duplicateTxIDsStatus)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Minute)
 	defer cancel()
-	test.EnsurePersistedTxStatus(ctx, t, c.CoordinatorClient, persistedTxIDs, persistedTxIDsStatus)
+	apptest.EnsurePersistedTxStatus(ctx, t, c.CoordinatorClient, persistedTxIDs, persistedTxIDsStatus)
 
 	if len(expected.TxIDs) == 0 || c.Config.CrashTest {
 		return

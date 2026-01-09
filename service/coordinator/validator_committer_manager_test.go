@@ -9,13 +9,11 @@ package coordinator
 import (
 	"context"
 	"crypto/rand"
-	"maps"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -28,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/apptest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -39,7 +38,7 @@ type vcMgrTestEnv struct {
 	validatorCommitterManager *validatorCommitterManager
 	inputTxs                  chan dependencygraph.TxNodeBatch
 	outputTxs                 chan dependencygraph.TxNodeBatch
-	outputTxsStatus           chan *servicepb.TransactionsStatus
+	outputTxsStatus           chan *committerpb.TxStatusBatch
 	mockVcService             *mock.VcService
 	mockVCGrpcServers         *test.GrpcServers
 	sigVerTestEnv             *svMgrTestEnv
@@ -52,7 +51,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 
 	inputTxs := make(chan dependencygraph.TxNodeBatch, 10)
 	outputTxs := make(chan dependencygraph.TxNodeBatch, 10)
-	outputTxsStatus := make(chan *servicepb.TransactionsStatus, 10)
+	outputTxsStatus := make(chan *committerpb.TxStatusBatch, 10)
 
 	vcm := newValidatorCommitterManager(
 		&validatorCommitterManagerConfig{
@@ -124,7 +123,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		outTxsStatus := <-env.outputTxsStatus
 
-		require.Equal(t, expectedTxsStatus.Status, outTxsStatus.Status)
+		test.RequireProtoElementsMatch(t, expectedTxsStatus, outTxsStatus.Status)
 
 		test.EventuallyIntMetric(
 			t, 5, env.validatorCommitterManager.config.metrics.vcserviceTransactionProcessedTotal,
@@ -134,13 +133,13 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 		totalBlocks := 3
 		txPerBlock := 50
 		txBatches := make(dependencygraph.TxNodeBatch, 0, totalBlocks*txPerBlock)
-		expectedTxsStatus = &servicepb.TransactionsStatus{Status: make(map[string]*servicepb.StatusWithHeight)}
+		expectedTxsStatus = make([]*committerpb.TxStatus, 0, totalBlocks*txPerBlock)
 
-		for i := range 3 {
+		for i := range totalBlocks {
 			//nolint:gosec // int -> int64
-			txBatch, txStatus := createInputTxsNodeForTest(t, txPerBlock, 1024*1024, uint64(i+2))
-			txBatches = append(txBatches, txBatch...)
-			maps.Copy(expectedTxsStatus.Status, txStatus.Status)
+			curTxBatch, txStatus := createInputTxsNodeForTest(t, txPerBlock, 1024*1024, uint64(i+2))
+			txBatches = append(txBatches, curTxBatch...)
+			expectedTxsStatus = append(expectedTxsStatus, txStatus...)
 		}
 
 		env.inputTxs <- txBatches
@@ -153,10 +152,10 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		outTxsStatus = <-env.outputTxsStatus
 		status := <-env.outputTxsStatus
-		maps.Copy(outTxsStatus.Status, status.Status)
+		outTxsStatus.Status = append(outTxsStatus.Status, status.Status...)
 		status = <-env.outputTxsStatus
-		maps.Copy(outTxsStatus.Status, status.Status)
-		require.Equal(t, expectedTxsStatus.Status, outTxsStatus.Status)
+		outTxsStatus.Status = append(outTxsStatus.Status, status.Status...)
+		test.RequireProtoElementsMatch(t, expectedTxsStatus, outTxsStatus.Status)
 
 		test.EventuallyIntMetric(
 			t, 5+totalBlocks*txPerBlock,
@@ -190,20 +189,10 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 				append(outputTxBatch1, outputTxBatch2...),
 			)
 
-			mergeTxsStatus := func(
-				txsStatus1,
-				txsStatus2 *servicepb.TransactionsStatus,
-			) map[string]*servicepb.StatusWithHeight {
-				txsStatus := make(map[string]*servicepb.StatusWithHeight)
-				maps.Copy(txsStatus, txsStatus1.Status)
-				maps.Copy(txsStatus, txsStatus2.Status)
-				return txsStatus
-			}
-
-			require.Equal(
+			test.RequireProtoElementsMatch(
 				t,
-				mergeTxsStatus(expectedTxsStatus1, expectedTxsStatus2),
-				mergeTxsStatus(outTxsStatus1, outTxsStatus2),
+				append(expectedTxsStatus1, expectedTxsStatus2...),
+				append(outTxsStatus1.Status, outTxsStatus2.Status...),
 			)
 
 			return env.mockVcService.GetNumBatchesReceived() != 0
@@ -225,7 +214,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
 			MetaNamespaceVerificationKey: verificationKey,
-		}, configtxgen.TwoOrgsSampleFabricX)
+		})
 		require.NoError(t, err)
 
 		txBatch := []*dependencygraph.TransactionNode{
@@ -259,14 +248,10 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 		outTxsStatus := <-env.outputTxsStatus
 
 		require.Len(t, outTxsStatus.Status, 2)
-		require.Equal(t,
-			servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, 100, 63),
-			outTxsStatus.Status["create config"],
-		)
-		require.Equal(t,
-			servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, 100, 64),
-			outTxsStatus.Status["create ns 1"],
-		)
+		expectedConfig := committerpb.NewTxStatus(committerpb.Status_COMMITTED, "create config", 100, 63)
+		apptest.RequireStatus(t, expectedConfig, outTxsStatus.Status)
+		expectedMeta := committerpb.NewTxStatus(committerpb.Status_COMMITTED, "create ns 1", 100, 64)
+		apptest.RequireStatus(t, expectedMeta, outTxsStatus.Status)
 
 		require.ElementsMatch(t, txBatch, <-env.outputTxs)
 
@@ -319,12 +304,12 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	env.requireConnectionMetrics(t, 0, connection.Connected, 1)
 	env.requireRetriedTxsTotal(t, 4)
 
-	actualTxsStatus := make(map[string]*servicepb.StatusWithHeight)
+	actualTxsStatus := make([]*committerpb.TxStatus, 0, numTxs)
 	for range 2 {
 		result := <-env.outputTxsStatus
-		maps.Copy(actualTxsStatus, result.Status)
+		actualTxsStatus = append(actualTxsStatus, result.Status...)
 	}
-	require.Equal(t, expectedTxsStatus.Status, actualTxsStatus)
+	test.RequireProtoElementsMatch(t, expectedTxsStatus, actualTxsStatus)
 
 	txProcessedTotalMetric := env.validatorCommitterManager.config.metrics.vcserviceTransactionProcessedTotal
 	txTotal := test.GetIntMetricValue(t, txProcessedTotalMetric)
@@ -346,14 +331,12 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 }
 
 func createInputTxsNodeForTest(t *testing.T, numTxs, valueSize int, blkNum uint64) (
-	[]*dependencygraph.TransactionNode, *servicepb.TransactionsStatus,
+	[]*dependencygraph.TransactionNode, []*committerpb.TxStatus,
 ) {
 	t.Helper()
 
 	txsNode := make([]*dependencygraph.TransactionNode, numTxs)
-	expectedTxsStatus := &servicepb.TransactionsStatus{
-		Status: make(map[string]*servicepb.StatusWithHeight),
-	}
+	expectedTxsStatus := make([]*committerpb.TxStatus, numTxs)
 
 	for i := range numTxs {
 		id := uuid.NewString()
@@ -368,7 +351,7 @@ func createInputTxsNodeForTest(t *testing.T, numTxs, valueSize int, blkNum uint6
 			},
 		}
 		//nolint:gosec // int -> uint32.
-		expectedTxsStatus.Status[id] = servicepb.NewStatusWithHeight(committerpb.Status_COMMITTED, blkNum, uint32(i))
+		expectedTxsStatus[i] = committerpb.NewTxStatus(committerpb.Status_COMMITTED, id, blkNum, uint32(i))
 	}
 
 	return txsNode, expectedTxsStatus

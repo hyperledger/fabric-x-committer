@@ -60,7 +60,7 @@ type (
 		clientConfig                   *connection.MultiClientConfig
 		incomingTxsForValidationCommit <-chan dependencygraph.TxNodeBatch
 		outgoingValidatedTxsNode       chan<- dependencygraph.TxNodeBatch
-		outgoingTxsStatus              chan<- *servicepb.TransactionsStatus
+		outgoingTxsStatus              chan<- *committerpb.TxStatusBatch
 		metrics                        *perfMetrics
 		policyMgr                      *policyManager
 	}
@@ -136,7 +136,7 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 
 func (vcm *validatorCommitterManager) setLastCommittedBlockNumber(
 	ctx context.Context,
-	lastBlock *servicepb.BlockInfo,
+	lastBlock *servicepb.BlockRef,
 ) error {
 	_, err := vcm.commonClient.SetLastCommittedBlockNumber(ctx, lastBlock)
 	return errors.Wrap(err, "failed setting the last committed block number")
@@ -144,15 +144,15 @@ func (vcm *validatorCommitterManager) setLastCommittedBlockNumber(
 
 func (vcm *validatorCommitterManager) getNextBlockNumberToCommit(
 	ctx context.Context,
-) (*servicepb.BlockInfo, error) {
+) (*servicepb.BlockRef, error) {
 	ret, err := vcm.commonClient.GetNextBlockNumberToCommit(ctx, nil)
 	return ret, errors.Wrap(err, "failed getting the next expected block number")
 }
 
 func (vcm *validatorCommitterManager) getTransactionsStatus(
 	ctx context.Context,
-	query *servicepb.QueryStatus,
-) (*servicepb.TransactionsStatus, error) {
+	query *committerpb.TxIDsBatch,
+) (*committerpb.TxStatusBatch, error) {
 	ret, err := vcm.commonClient.GetTransactionsStatus(ctx, query)
 	return ret, errors.Wrap(err, "failed getting transactions status")
 }
@@ -203,7 +203,7 @@ func (vc *validatorCommitter) sendTransactionsAndForwardStatus(
 	ctx context.Context,
 	inputTxBatch channel.ReaderWriter[dependencygraph.TxNodeBatch],
 	outputValidatedTxsNode channel.Writer[dependencygraph.TxNodeBatch],
-	outputTxsStatus channel.Writer[*servicepb.TransactionsStatus],
+	outputTxsStatus channel.Writer[*committerpb.TxStatusBatch],
 ) error {
 	defer vc.metrics.vcservicesConnection.Disconnected(vc.conn.CanonicalTarget())
 
@@ -299,7 +299,7 @@ func splitAndSendToVC(
 func (vc *validatorCommitter) receiveStatusAndForwardToOutput(
 	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamClient,
 	outputTxsNode channel.Writer[dependencygraph.TxNodeBatch],
-	outputTxsStatus channel.Writer[*servicepb.TransactionsStatus],
+	outputTxsStatus channel.Writer[*committerpb.TxStatusBatch],
 ) error {
 	for {
 		txsStatus, err := stream.Recv()
@@ -310,10 +310,13 @@ func (vc *validatorCommitter) receiveStatusAndForwardToOutput(
 
 		logger.Debugf("Batch contains %d TX statuses", len(txsStatus.Status))
 
-		txsNode, untrackedTxIDs := vc.getTxsAndUpdatePolicies(txsStatus)
-		for _, txID := range untrackedTxIDs {
-			// untrackedTxIDs can be non-empty only when the coordinator restarts.
-			delete(txsStatus.Status, txID)
+		txsNode, untrackedTxIdx := vc.getTxsAndUpdatePolicies(txsStatus)
+		if len(untrackedTxIdx) > 0 {
+			// untrackedTxIdx can be non-empty only when the coordinator restarts.
+			// Negligible performance impact is fine as this is a rare case.
+			for _, i := range slices.Backward(untrackedTxIdx) {
+				txsStatus.Status = append(txsStatus.Status[:i], txsStatus.Status[i+1:]...)
+			}
 		}
 
 		if len(txsStatus.Status) == 0 {
@@ -360,25 +363,24 @@ func (vc *validatorCommitter) recoverPendingTransactions(inputTxsNode channel.Wr
 	inputTxsNode.Write(pendingTxs)
 }
 
-func (vc *validatorCommitter) getTxsAndUpdatePolicies(txsStatus *servicepb.TransactionsStatus) (
-	[]*dependencygraph.TransactionNode, []string,
+func (vc *validatorCommitter) getTxsAndUpdatePolicies(txsStatus *committerpb.TxStatusBatch) (
+	txsNode []*dependencygraph.TransactionNode, untrackedTxIdx []int,
 ) {
-	txsNode := make([]*dependencygraph.TransactionNode, 0, len(txsStatus.Status))
-	var untrackedTxIDs []string
-	for txID, txStatus := range txsStatus.Status {
-		txNode, ok := vc.txBeingValidated.LoadAndDelete(txID)
+	txsNode = make([]*dependencygraph.TransactionNode, 0, len(txsStatus.Status))
+	for i, txStatus := range txsStatus.Status {
+		txNode, ok := vc.txBeingValidated.LoadAndDelete(txStatus.Ref.TxId)
 		if !ok {
 			// Because the VC manager might submit the same transaction multiple times (for example,
 			// if a VC service fails or the coordinator reconnects to a failed VC service), it could
 			// receive duplicate responses.  However, the txBeingValidated lookup will succeed only once.
 			// Therefore, if the transaction ID is not found in txBeingValidated, we must proceed to
 			// the next status.
-			untrackedTxIDs = append(untrackedTxIDs, txID)
+			untrackedTxIdx = append(untrackedTxIdx, i)
 			continue
 		}
 		txsNode = append(txsNode, txNode)
 
-		if txStatus.Code != committerpb.Status_COMMITTED {
+		if txStatus.Status != committerpb.Status_COMMITTED {
 			continue
 		}
 
@@ -388,5 +390,5 @@ func (vc *validatorCommitter) getTxsAndUpdatePolicies(txsStatus *servicepb.Trans
 		vc.policyMgr.updateFromTx(txNode.Tx.Namespaces)
 	}
 
-	return txsNode, untrackedTxIDs
+	return txsNode, untrackedTxIdx
 }

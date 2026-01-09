@@ -63,7 +63,7 @@ func TestDependencyGraph(t *testing.T) {
 
 	localDepIncomingTxs <- &TransactionBatch{
 		ID:  1,
-		Txs: []*servicepb.CoordinatorTx{t1, t2},
+		Txs: []*servicepb.TxWithRef{t1, t2},
 	}
 
 	test.EventuallyIntMetric(t, 1, metrics.dependentTransactionsQueueSize, 5*time.Second, 100*time.Millisecond)
@@ -79,7 +79,7 @@ func TestDependencyGraph(t *testing.T) {
 
 	localDepIncomingTxs <- &TransactionBatch{
 		ID:  2,
-		Txs: []*servicepb.CoordinatorTx{t3, t4},
+		Txs: []*servicepb.TxWithRef{t3, t4},
 	}
 
 	test.EventuallyIntMetric(t, 3, metrics.dependentTransactionsQueueSize, 5*time.Second, 100*time.Millisecond)
@@ -147,7 +147,7 @@ func TestDependencyGraph(t *testing.T) {
 
 	localDepIncomingTxs <- &TransactionBatch{
 		ID:  3,
-		Txs: []*servicepb.CoordinatorTx{t0, t1, t2},
+		Txs: []*servicepb.TxWithRef{t0, t1, t2},
 	}
 
 	// t3 depends on t2, t1, and t0
@@ -161,7 +161,7 @@ func TestDependencyGraph(t *testing.T) {
 
 	localDepIncomingTxs <- &TransactionBatch{
 		ID:  4,
-		Txs: []*servicepb.CoordinatorTx{t3, t4},
+		Txs: []*servicepb.TxWithRef{t3, t4},
 	}
 
 	// only t0 is dependency free

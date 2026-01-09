@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 const (
@@ -90,7 +91,7 @@ func StartPostgresCluster(ctx context.Context, t *testing.T) (*PostgresClusterCo
 func (cc *PostgresClusterController) addPrimaryNode(ctx context.Context, t *testing.T) *dbtest.DatabaseContainer {
 	t.Helper()
 	node := cc.createNode(postgresNodeCreationParameters{
-		name: fmt.Sprintf("postgres-primary-%s", uuid.New()),
+		name: fmt.Sprintf("%s_postgres_primary_%s", test.DockerNamesPrefix, uuid.New()),
 		role: PrimaryNode,
 		additionalEnvs: []string{
 			"POSTGRESQL_REPLICATION_MODE=master",
@@ -112,7 +113,7 @@ func (cc *PostgresClusterController) addSecondaryNode(ctx context.Context, t *te
 	require.NotNil(t, primary)
 
 	node := cc.createNode(postgresNodeCreationParameters{
-		name: fmt.Sprintf("postgres-secondary-%s", uuid.New()),
+		name: fmt.Sprintf("%s_postgres_secondary_%s", test.DockerNamesPrefix, uuid.New()),
 		role: SecondaryNode,
 		additionalEnvs: []string{
 			"POSTGRESQL_REPLICATION_MODE=slave",

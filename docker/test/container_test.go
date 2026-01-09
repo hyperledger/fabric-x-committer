@@ -76,7 +76,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			c, err := config.ReadLoadGenYamlAndSetupLogging(v, filepath.Join(localConfigPath, "loadgen.yaml"))
 			require.NoError(t, err)
 			ordererEp := mustGetEndpoint(ctx, t, containerName, mockOrdererPort)
-			c.LoadProfile.Transaction.Policy.OrdererEndpoints = []*commontypes.OrdererEndpoint{
+			c.LoadProfile.Policy.OrdererEndpoints = []*commontypes.OrdererEndpoint{
 				{
 					Host: ordererEp.Host, Port: ordererEp.Port, ID: 0, MspID: "org",
 					API: []string{commontypes.Broadcast, commontypes.Deliver},
@@ -98,7 +98,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 							Server: mustGetEndpoint(ctx, t, containerName, coordinatorServicePort),
 						},
 					},
-					Policy: c.LoadProfile.Transaction.Policy,
+					Policy: &c.LoadProfile.Policy,
 				},
 				DBEnv: vc.NewDatabaseTestEnvFromConnection(
 					t,
@@ -195,9 +195,10 @@ func TestStartTestNode(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	stopAndRemoveContainersByName(ctx, t, createDockerClient(t), committerContainerName)
+	containerName := fmt.Sprintf("%s_%s", test.DockerNamesPrefix, committerContainerName)
+	stopAndRemoveContainersByName(ctx, t, createDockerClient(t), containerName)
 	startCommitter(ctx, t, startNodeParameters{
-		node:         committerContainerName,
+		node:         containerName,
 		credsFactory: test.NewCredentialsFactory(t),
 		tlsMode:      connection.NoneTLSMode,
 		cmd:          append(commonTestNodeCMD, "loadgen"),
@@ -205,7 +206,7 @@ func TestStartTestNode(t *testing.T) {
 
 	t.Log("Try to fetch the first block")
 	sidecarEndpoint, err := connection.NewEndpoint(
-		net.JoinHostPort(localhost, getContainerMappedHostPort(ctx, t, committerContainerName, sidecarPort)),
+		net.JoinHostPort(localhost, getContainerMappedHostPort(ctx, t, containerName, sidecarPort)),
 	)
 	require.NoError(t, err)
 	committedBlock := sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Parameters{
@@ -216,7 +217,7 @@ func TestStartTestNode(t *testing.T) {
 	require.True(t, ok)
 	t.Logf("Received block #%d with %d TXs", b.Header.Number, len(b.Data.Data))
 
-	monitorMetric(t, getContainerMappedHostPort(ctx, t, committerContainerName, loadGenMetricsPort))
+	monitorMetric(t, getContainerMappedHostPort(ctx, t, containerName, loadGenMetricsPort))
 }
 
 func startCommitter(ctx context.Context, t *testing.T, params startNodeParameters) {

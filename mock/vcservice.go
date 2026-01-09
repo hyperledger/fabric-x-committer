@@ -34,8 +34,8 @@ import (
 type VcService struct {
 	servicepb.ValidationAndCommitServiceServer
 	numBatchesReceived atomic.Uint32
-	nextBlock          atomic.Pointer[servicepb.BlockInfo]
-	txsStatus          *fifoCache[*servicepb.StatusWithHeight]
+	nextBlock          atomic.Pointer[servicepb.BlockRef]
+	txsStatus          *fifoCache[*committerpb.TxStatus]
 	txsStatusMu        sync.Mutex
 	healthcheck        *health.Server
 	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
@@ -48,7 +48,7 @@ type VcService struct {
 // NewMockVcService returns a new VcService.
 func NewMockVcService() *VcService {
 	return &VcService{
-		txsStatus:       newFifoCache[*servicepb.StatusWithHeight](defaultTxStatusStorageSize),
+		txsStatus:       newFifoCache[*committerpb.TxStatus](defaultTxStatusStorageSize),
 		healthcheck:     connection.DefaultHealthCheckService(),
 		txBatchChannels: make(map[uint64]chan *servicepb.VcBatch),
 	}
@@ -63,7 +63,7 @@ func (v *VcService) RegisterService(server *grpc.Server) {
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger.
 func (v *VcService) SetLastCommittedBlockNumber(
 	_ context.Context,
-	lastBlock *servicepb.BlockInfo,
+	lastBlock *servicepb.BlockRef,
 ) (*emptypb.Empty, error) {
 	lastBlock.Number++
 	v.nextBlock.Store(lastBlock)
@@ -74,7 +74,7 @@ func (v *VcService) SetLastCommittedBlockNumber(
 func (v *VcService) GetNextBlockNumberToCommit(
 	context.Context,
 	*emptypb.Empty,
-) (*servicepb.BlockInfo, error) {
+) (*servicepb.BlockRef, error) {
 	return v.nextBlock.Load(), nil
 }
 
@@ -97,14 +97,14 @@ func (*VcService) GetConfigTransaction(
 // GetTransactionsStatus get the status for a given set of transactions IDs.
 func (v *VcService) GetTransactionsStatus(
 	_ context.Context,
-	query *servicepb.QueryStatus,
-) (*servicepb.TransactionsStatus, error) {
-	s := &servicepb.TransactionsStatus{Status: make(map[string]*servicepb.StatusWithHeight)}
+	query *committerpb.TxIDsBatch,
+) (*committerpb.TxStatusBatch, error) {
+	s := &committerpb.TxStatusBatch{Status: make([]*committerpb.TxStatus, len(query.TxIds))}
 	v.txsStatusMu.Lock()
 	defer v.txsStatusMu.Unlock()
-	for _, id := range query.TxIDs {
+	for i, id := range query.TxIds {
 		if status, ok := v.txsStatus.get(id); ok {
-			s.Status[id] = status
+			s.Status[i] = status
 		}
 	}
 	return s, nil
@@ -184,8 +184,8 @@ func (v *VcService) sendTransactionStatus(
 		if !ok {
 			break
 		}
-		txsStatus := &servicepb.TransactionsStatus{
-			Status: make(map[string]*servicepb.StatusWithHeight, len(txBatch.Transactions)),
+		txsStatus := &committerpb.TxStatusBatch{
+			Status: make([]*committerpb.TxStatus, 0, len(txBatch.Transactions)),
 		}
 		v.txsStatusMu.Lock()
 		for i, tx := range txBatch.Transactions {
@@ -195,10 +195,10 @@ func (v *VcService) sendTransactionStatus(
 			}
 			code := committerpb.Status_COMMITTED
 			if tx.PrelimInvalidTxStatus != nil {
-				code = tx.PrelimInvalidTxStatus.Code
+				code = *tx.PrelimInvalidTxStatus
 			}
-			s := servicepb.NewStatusWithHeightFromRef(code, tx.Ref)
-			txsStatus.Status[tx.Ref.TxId] = s
+			s := committerpb.NewTxStatusFromRef(tx.Ref, code)
+			txsStatus.Status = append(txsStatus.Status, s)
 			v.txsStatus.addIfNotExist(tx.Ref.TxId, s)
 		}
 		v.txsStatusMu.Unlock()

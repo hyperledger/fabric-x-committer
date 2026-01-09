@@ -12,6 +12,7 @@ package committerpb;
 
 import "google/protobuf/duration.proto";
 
+import "api/committerpb/ref.proto";
 import "api/committerpb/status.proto";
 
 // The notifier service provides API to subscribe to ledger events and receive asynchronous notifications.
@@ -21,7 +22,7 @@ service Notifier {
 
 // NotificationRequest is sent by the clients to subscribe to events.
 message NotificationRequest {
-    optional TxStatusRequest tx_status_request = 1;
+    optional TxIDsBatch tx_status_request = 1;
 
     // The timeout duration that applies to ALL the subscriptions in this request.
     // It is non-strict, i.e., it is possible to receive notifications for this request
@@ -29,11 +30,6 @@ message NotificationRequest {
     // If this field is not set or has a default value (zero), the default would be applied as
     // per the committer's configuration.
     google.protobuf.Duration timeout = 2;
-}
-
-// TxStatusRequest details subscription to transaction status event.
-message TxStatusRequest {
-    repeated string tx_ids = 1;  // List of transaction IDS to be registered.
 }
 
 // NotificationResponse contains a batch of event details.

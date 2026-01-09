@@ -361,9 +361,9 @@ func generateNamespacesUnderTest(t *testing.T, namespaces []string) *vc.Database
 	env := vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, 1, test.InsecureTLSConfig)
 	env.SetupSystemTablesAndNamespaces(t.Context(), t)
 
-	clientConf := loadgen.DefaultClientConf()
+	clientConf := loadgen.DefaultClientConf(t)
 	clientConf.Adapter.VCClient = test.NewTLSMultiClientConfig(test.InsecureTLSConfig, env.Endpoints...)
-	policies := &workload.PolicyProfile{
+	policies := workload.PolicyProfile{
 		NamespacePolicies: make(map[string]*workload.Policy, len(namespaces)),
 	}
 	for i, ns := range append(namespaces, committerpb.MetaNamespaceID) {
@@ -372,7 +372,7 @@ func generateNamespacesUnderTest(t *testing.T, namespaces []string) *vc.Database
 			Seed:   int64(i),
 		}
 	}
-	clientConf.LoadProfile.Transaction.Policy = policies
+	clientConf.LoadProfile.Policy = policies
 	clientConf.Generate = adapters.Phases{Config: true, Namespaces: true}
 	client, err := loadgen.NewLoadGenClient(clientConf)
 	require.NoError(t, err)
@@ -537,7 +537,7 @@ func makeQuery(it []*items) (query *committerpb.Query, keyCount, querySize int) 
 
 func defaultViewParams(timeout time.Duration) *committerpb.ViewParameters {
 	return &committerpb.ViewParameters{
-		IsoLevel:            committerpb.IsoLevel_RepeatableRead,
+		IsoLevel:            committerpb.IsoLevel_REPEATABLE_READ,
 		NonDeferrable:       false,
 		TimeoutMilliseconds: uint64(timeout.Milliseconds()), //nolint:gosec
 	}

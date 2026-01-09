@@ -8,11 +8,12 @@ set -e
 
 # Versions
 protoc_bin_version="29.3"
-protoc_gen_go_version="v1.33"
+protoc_gen_go_version="v1.36.10"
 protoc_gen_go_grpc_version="v1.3"
 goimports_version="v0.33.0"
 gotestfmt_version="v2.5.0"
-golang_ci_version="v2.0.2"
+golang_ci_version="v2.7.2"
+api_linter_version="v2.1.0"
 sqlfluff_version="3.4.0"
 
 download_dir=$(mktemp -d -t "sc_dev_depedencies.XXXX")
@@ -40,6 +41,9 @@ go install "golang.org/x/tools/cmd/goimports@${goimports_version}"
 echo
 echo "Installing gotestfmt"
 go install "github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@${gotestfmt_version}"
+echo
+echo "Installing api-linter"
+go install "github.com/googleapis/api-linter/v2/cmd/api-linter@${api_linter_version}"
 
 echo
 echo "Installing golangci-lint"

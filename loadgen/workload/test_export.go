@@ -38,17 +38,17 @@ func DefaultProfile(workers uint32) *Profile {
 		Transaction: TransactionProfile{
 			ReadWriteValueSize: 32,
 			ReadWriteCount:     NewConstantDistribution(2),
-			Policy: &PolicyProfile{
-				NamespacePolicies: map[string]*Policy{
-					DefaultGeneratedNamespaceID: {Scheme: signature.NoScheme},
-					committerpb.MetaNamespaceID: {Scheme: signature.Ecdsa},
-				},
-			},
 		},
 		Query: QueryProfile{
 			QuerySize:             NewConstantDistribution(100),
 			MinInvalidKeysPortion: NewConstantDistribution(0),
 			Shuffle:               false,
+		},
+		Policy: PolicyProfile{
+			NamespacePolicies: map[string]*Policy{
+				DefaultGeneratedNamespaceID: {Scheme: signature.NoScheme},
+				committerpb.MetaNamespaceID: {Scheme: signature.Ecdsa},
+			},
 		},
 		Conflicts: ConflictProfile{
 			InvalidSignatures: Never,

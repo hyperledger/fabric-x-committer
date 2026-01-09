@@ -183,5 +183,5 @@ func assembleBinds(t *testing.T, params startNodeParameters, additionalBinds ...
 }
 
 func assembleContainerName(node, tlsMode, dbType string) string {
-	return fmt.Sprintf("%s_%s_%s_%s", containerPrefixName, node, tlsMode, dbType)
+	return fmt.Sprintf("%s_%s_%s_%s", test.DockerNamesPrefix, node, tlsMode, dbType)
 }

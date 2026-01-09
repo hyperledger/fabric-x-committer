@@ -95,7 +95,7 @@ func (v *NsEndorser) EndorseTxNs(txID string, tx *applicationpb.Tx, nsIdx int) (
 	if v.endorser == nil {
 		return dummyEndorsement, nil
 	}
-	msg, err := signature.ASN1MarshalTxNamespace(txID, tx.Namespaces[nsIdx])
+	msg, err := tx.Namespaces[nsIdx].ASN1Marshal(txID)
 	if err != nil {
 		return nil, err
 	}

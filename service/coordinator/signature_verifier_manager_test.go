@@ -231,7 +231,7 @@ func TestSignatureVerifierWithAllInvalidTxs(t *testing.T) {
 		expectedValidatedTxs = append(expectedValidatedTxs, &dependencygraph.TransactionNode{
 			Tx: &servicepb.VcTx{
 				Ref:                   txNode.Tx.Ref,
-				PrelimInvalidTxStatus: sigInvalidTxStatus,
+				PrelimInvalidTxStatus: &sigInvalidTxStatus,
 			},
 		})
 	}
@@ -274,7 +274,7 @@ func createTxNodeBatchForTest(
 				Tx: &servicepb.VcTx{
 					Ref:                   txNode.Tx.Ref,
 					Namespaces:            ns,
-					PrelimInvalidTxStatus: sigInvalidTxStatus,
+					PrelimInvalidTxStatus: &sigInvalidTxStatus,
 				},
 			}
 			expectedValidatedTxs = append(expectedValidatedTxs, txNodeWithStatus)

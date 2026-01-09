@@ -12,56 +12,28 @@ package servicepb;
 
 import "google/protobuf/empty.proto";
 
-import "api/applicationpb/block_tx.proto";
 import "api/applicationpb/config.proto";
 
 import "api/committerpb/status.proto";
 import "api/committerpb/ref.proto";
 
+import "api/servicepb/common.proto";
+
 service Coordinator {
-    rpc BlockProcessing(stream CoordinatorBatch) returns (stream TransactionsStatus);
-    rpc SetLastCommittedBlockNumber (BlockInfo) returns (google.protobuf.Empty) {};
-    rpc GetNextBlockNumberToCommit (google.protobuf.Empty) returns (BlockInfo) {};
-    rpc GetTransactionsStatus(QueryStatus) returns (TransactionsStatus);
+    rpc BlockProcessing(stream CoordinatorBatch) returns (stream committerpb.TxStatusBatch);
+    rpc SetLastCommittedBlockNumber (BlockRef) returns (google.protobuf.Empty) {};
+    rpc GetNextBlockNumberToCommit (google.protobuf.Empty) returns (BlockRef) {};
+    rpc GetTransactionsStatus(committerpb.TxIDsBatch) returns (committerpb.TxStatusBatch);
     rpc GetConfigTransaction(google.protobuf.Empty) returns (applicationpb.ConfigTransaction) {};
     rpc NumberOfWaitingTransactionsForStatus(google.protobuf.Empty) returns (WaitingTransactions);
 }
 
 // A committer's representation of a block in the blockchain.
 message CoordinatorBatch {
-    repeated CoordinatorTx txs = 1;     // List of transactions within the block.
-    repeated TxStatusInfo rejected = 2; // Rejected transactions.
-}
-
-// A committer's representation of a TX in the blockchain.
-message CoordinatorTx {
-    committerpb.TxRef ref = 1;     // The TX reference.
-    applicationpb.Tx content = 2;  // The TX content.
-}
-
-message TxStatusInfo {
-    committerpb.TxRef ref = 1;      // The TX reference.
-    committerpb.Status status = 2;  // The reject reason.
+    repeated servicepb.TxWithRef txs = 1;       // List of transactions within the block.
+    repeated committerpb.TxStatus rejected = 2; // Rejected transactions.
 }
 
 message WaitingTransactions {
     int32 count = 1;
-}
-
-message TransactionsStatus {
-    map<string, StatusWithHeight> status = 1;
-}
-
-message StatusWithHeight {
-    committerpb.Status code = 1;
-    uint64 block_number = 2;
-    uint32 tx_number = 3;
-}
-
-message BlockInfo {
-    uint64 number = 1;
-}
-
-message QueryStatus {
-    repeated string txIDs = 1;
 }

@@ -30,7 +30,7 @@ import (
 const (
 	committerReleaseImage = "docker.io/hyperledger/fabric-x-committer:latest"
 	loadgenReleaseImage   = "docker.io/hyperledger/fabric-x-loadgen:latest"
-	networkPrefixName     = containerPrefixName + "_network"
+	networkPrefixName     = test.DockerNamesPrefix + "_network"
 	genBlockFile          = "sc-genesis-block.proto.bin"
 	// containerConfigPath is the path to the config directory inside the container.
 	containerConfigPath = "/root/config"
@@ -66,7 +66,8 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	v := config.NewViperWithLoadGenDefaults()
 	c, err := config.ReadLoadGenYamlAndSetupLogging(v, filepath.Join(localConfigPath, "loadgen.yaml"))
 	require.NoError(t, err)
-	configBlock, err := workload.CreateConfigBlock(c.LoadProfile.Transaction.Policy)
+	c.LoadProfile.Policy.CryptoMaterialPath = t.TempDir()
+	configBlock, err := workload.CreateConfigBlock(&c.LoadProfile.Policy)
 	require.NoError(t, err)
 	require.NoError(t, configtxgen.WriteOutputBlock(configBlock, configBlockPath))
 

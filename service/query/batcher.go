@@ -233,13 +233,13 @@ func makeTxOptions(p *committerpb.ViewParameters) *pgx.TxOptions {
 		return o
 	}
 	switch p.IsoLevel {
-	case committerpb.IsoLevel_Serializable:
+	case committerpb.IsoLevel_SERIALIZABLE, committerpb.IsoLevel_ISO_LEVEL_UNSPECIFIED:
 		o.IsoLevel = pgx.Serializable
-	case committerpb.IsoLevel_RepeatableRead:
+	case committerpb.IsoLevel_REPEATABLE_READ:
 		o.IsoLevel = pgx.RepeatableRead
-	case committerpb.IsoLevel_ReadCommitted:
+	case committerpb.IsoLevel_READ_COMMITTED:
 		o.IsoLevel = pgx.ReadCommitted
-	case committerpb.IsoLevel_ReadUncommitted:
+	case committerpb.IsoLevel_READ_UNCOMMITTED:
 		o.IsoLevel = pgx.ReadUncommitted
 	}
 	if p.NonDeferrable {

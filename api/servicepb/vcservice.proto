@@ -18,28 +18,24 @@ import "api/applicationpb/config.proto";
 import "api/committerpb/status.proto";
 import "api/committerpb/ref.proto";
 
-import "api/servicepb/coordinator.proto";
+import "api/servicepb/common.proto";
 
 service ValidationAndCommitService {
-  rpc StartValidateAndCommitStream (stream VcBatch) returns (stream TransactionsStatus);
-  rpc SetLastCommittedBlockNumber (BlockInfo) returns (google.protobuf.Empty) {};
-  rpc GetNextBlockNumberToCommit (google.protobuf.Empty) returns (BlockInfo) {};
-  rpc GetTransactionsStatus (QueryStatus) returns (TransactionsStatus) {};
-  rpc GetNamespacePolicies(google.protobuf.Empty) returns (applicationpb.NamespacePolicies) {};
-  rpc GetConfigTransaction(google.protobuf.Empty) returns (applicationpb.ConfigTransaction) {};
-  rpc SetupSystemTablesAndNamespaces(google.protobuf.Empty) returns (google.protobuf.Empty) {};
+    rpc StartValidateAndCommitStream (stream VcBatch) returns (stream committerpb.TxStatusBatch);
+    rpc SetLastCommittedBlockNumber (BlockRef) returns (google.protobuf.Empty) {};
+    rpc GetNextBlockNumberToCommit (google.protobuf.Empty) returns (BlockRef) {};
+    rpc GetTransactionsStatus (committerpb.TxIDsBatch) returns (committerpb.TxStatusBatch) {};
+    rpc GetNamespacePolicies(google.protobuf.Empty) returns (applicationpb.NamespacePolicies) {};
+    rpc GetConfigTransaction(google.protobuf.Empty) returns (applicationpb.ConfigTransaction) {};
+    rpc SetupSystemTablesAndNamespaces(google.protobuf.Empty) returns (google.protobuf.Empty) {};
 }
 
 message VcBatch {
-  repeated VcTx transactions = 1;
+    repeated VcTx transactions = 1;
 }
 
 message VcTx {
-  committerpb.TxRef ref = 1;
-  repeated applicationpb.TxNamespace namespaces = 2;
-  optional InvalidTxStatus prelim_invalid_tx_status = 3;
-}
-
-message InvalidTxStatus {
-    committerpb.Status code = 1;
+    committerpb.TxRef ref = 1;
+    repeated applicationpb.TxNamespace namespaces = 2;
+    optional committerpb.Status prelim_invalid_tx_status = 3;
 }

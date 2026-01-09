@@ -8,8 +8,6 @@ package coordinator
 
 import (
 	"context"
-	"maps"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -22,6 +20,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -91,7 +90,7 @@ type (
 		// sender: validator committer manager sends transaction status to this channel. For each validator committer
 		// 	       server, there is a goroutine that sends transaction status to this channel.
 		// receiver: coordinator receives transaction status from this channel and forwards them to the sidecar.
-		vcServiceToCoordinatorTxStatus chan *servicepb.TransactionsStatus
+		vcServiceToCoordinatorTxStatus chan *committerpb.TxStatusBatch
 	}
 )
 
@@ -124,7 +123,7 @@ func NewCoordinatorService(c *Config) *Service {
 		depGraphToSigVerifierFreeTxs:       make(chan dependencygraph.TxNodeBatch, bufSzPerChanForValCommitMgr),
 		sigVerifierToVCServiceValidatedTxs: make(chan dependencygraph.TxNodeBatch, bufSzPerChanForSignVerifierMgr),
 		vcServiceToDepGraphValidatedTxs:    make(chan dependencygraph.TxNodeBatch, bufSzPerChanForValCommitMgr),
-		vcServiceToCoordinatorTxStatus:     make(chan *servicepb.TransactionsStatus, bufSzPerChanForValCommitMgr),
+		vcServiceToCoordinatorTxStatus:     make(chan *committerpb.TxStatusBatch, bufSzPerChanForValCommitMgr),
 	}
 
 	metrics := newPerformanceMetrics()
@@ -254,7 +253,7 @@ func (c *Service) GetConfigTransaction(
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger through a vcservice.
 func (c *Service) SetLastCommittedBlockNumber(
 	ctx context.Context,
-	lastBlock *servicepb.BlockInfo,
+	lastBlock *servicepb.BlockRef,
 ) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, c.validatorCommitterMgr.setLastCommittedBlockNumber(ctx, lastBlock)
 }
@@ -263,7 +262,7 @@ func (c *Service) SetLastCommittedBlockNumber(
 func (c *Service) GetNextBlockNumberToCommit(
 	ctx context.Context,
 	_ *emptypb.Empty,
-) (*servicepb.BlockInfo, error) {
+) (*servicepb.BlockRef, error) {
 	res, err := c.validatorCommitterMgr.getNextBlockNumberToCommit(ctx)
 	return res, grpcerror.WrapInternalError(err)
 }
@@ -271,8 +270,8 @@ func (c *Service) GetNextBlockNumberToCommit(
 // GetTransactionsStatus returns the status of given transactions identifiers.
 func (c *Service) GetTransactionsStatus(
 	ctx context.Context,
-	q *servicepb.QueryStatus,
-) (*servicepb.TransactionsStatus, error) {
+	q *committerpb.TxIDsBatch,
+) (*committerpb.TxStatusBatch, error) {
 	return c.validatorCommitterMgr.getTransactionsStatus(ctx, q)
 }
 
@@ -394,10 +393,13 @@ func (c *Service) sendTxStatus(
 
 		logger.Debugf("Batch with %d TX statuses forwarded to output stream.", len(txStatus.Status))
 
-		statusCount := utils.CountAppearances(slices.Collect(maps.Values(txStatus.Status)))
+		statusCount := make(map[committerpb.Status]int)
+		for _, s := range txStatus.Status {
+			statusCount[s.Status]++
+		}
 		m := c.metrics
-		for code, count := range statusCount {
-			promutil.AddToCounter(m.transactionCommittedTotal.WithLabelValues(code.Code.String()), count)
+		for status, count := range statusCount {
+			promutil.AddToCounter(m.transactionCommittedTotal.WithLabelValues(status.String()), count)
 		}
 	}
 }
