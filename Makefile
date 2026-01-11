@@ -53,7 +53,7 @@ multiplatform  ?= false
 env            ?= env GOOS=$(os) GOARCH=$(arch)
 build_flags    ?= -buildvcs=false -o
 go_build       ?= $(env) $(go_cmd) build $(build_flags)
-go_test        ?= $(go_cmd) test -json -v -timeout 30m
+go_test        ?= $(env) $(go_cmd) test -json -v -timeout 30m
 proto_flags    ?=
 
 ifneq ("$(wildcard /usr/include)","")
@@ -181,6 +181,8 @@ bench-sidecar: FORCE
 # Generate protos
 #########################
 
+PROTO_COMMON="$(shell $(env) $(go_cmd) list -m -f '{{.Dir}}' github.com/hyperledger/fabric-x-common)"
+
 proto: FORCE
 	@echo "Generating protobufs: $(shell find ${project_dir}/api -name '*.proto' -print0 \
 		| xargs -0 -n 1 dirname | xargs -n 1 basename | sort -u)"
@@ -189,6 +191,7 @@ proto: FORCE
 	  --go-grpc_opt=paths=source_relative \
 	  --go_out=paths=source_relative:. \
 	  --proto_path="${project_dir}" \
+	  --proto_path="${PROTO_COMMON}" \
 	  ${proto_flags} \
 	  ${project_dir}/api/*/*.proto
 
@@ -196,6 +199,7 @@ lint-proto: FORCE
 	@echo "Running protobuf linters..."
 	@api-linter \
 		-I="${project_dir}/api" \
+		-I="${PROTO_COMMON}" \
 		--config .apilinter.yaml \
 		--set-exit-status \
 		--output-format github \

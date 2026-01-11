@@ -9,7 +9,8 @@ package servicepb
 import (
 	"fmt"
 
-	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
+
 	"github.com/hyperledger/fabric-x-committer/utils"
 )
 

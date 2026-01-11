@@ -12,8 +12,8 @@
 package servicepb
 
 import (
-	applicationpb "github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	committerpb "github.com/hyperledger/fabric-x-committer/api/committerpb"
+	applicationpb "github.com/hyperledger/fabric-x-common/api/applicationpb"
+	committerpb "github.com/hyperledger/fabric-x-common/api/committerpb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"

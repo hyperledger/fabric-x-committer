@@ -10,7 +10,8 @@ import (
 	"fmt"
 	"math/rand"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
+
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 )
 
