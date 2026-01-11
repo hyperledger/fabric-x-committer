@@ -7,10 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 package metrics
 
 import (
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/prometheus/client_golang/prometheus"
 	promgo "github.com/prometheus/client_model/go"
 
-	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )

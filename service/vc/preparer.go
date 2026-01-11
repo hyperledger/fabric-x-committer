@@ -10,10 +10,10 @@ import (
 	"context"
 	"time"
 
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"

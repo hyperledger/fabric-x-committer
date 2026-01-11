@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"

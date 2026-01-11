@@ -10,7 +10,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/hyperledger/fabric-x-committer/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
+
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"

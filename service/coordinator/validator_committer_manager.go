@@ -12,11 +12,11 @@ import (
 	"slices"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/utils"

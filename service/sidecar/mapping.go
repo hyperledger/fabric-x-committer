@@ -12,10 +12,10 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"

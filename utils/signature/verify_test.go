@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	fmsp "github.com/hyperledger/fabric-protos-go-apiv2/msp"
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/common/cauthdsl"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
 	"github.com/hyperledger/fabric-x-common/msp"
@@ -18,7 +19,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"

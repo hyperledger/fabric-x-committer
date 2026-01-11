@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"

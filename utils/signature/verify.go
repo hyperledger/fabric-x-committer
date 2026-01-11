@@ -11,12 +11,11 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/common/cauthdsl"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 )
 
 type (

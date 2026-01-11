@@ -14,9 +14,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 

@@ -10,10 +10,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
