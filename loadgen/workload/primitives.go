@@ -7,10 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package workload
 
 import (
-	"context"
 	"io"
-
-	"golang.org/x/time/rate"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
 )
@@ -83,65 +80,6 @@ type MultiGenerator[T any] struct {
 // Next yields an array of items.
 func (g *MultiGenerator[T]) Next() []T {
 	return GenerateArray(g.Gen, g.Count.Next())
-}
-
-// RateLimiterGenerator pull batch of values from queue and yield them one by one.
-// It limits the generated rate using limiter.
-// It will finish once queue is closed.
-type RateLimiterGenerator[T any] struct {
-	queue   <-chan []T
-	limiter *rate.Limiter
-	items   []T
-}
-
-// NewRateLimiterGenerator create a new instance if RateLimiterGenerator.
-func NewRateLimiterGenerator[T any](queue <-chan []T, limiter *rate.Limiter) *RateLimiterGenerator[T] {
-	return &RateLimiterGenerator[T]{
-		queue:   queue,
-		limiter: limiter,
-	}
-}
-
-// Next yields a value at the required rate.
-func (g *RateLimiterGenerator[T]) Next(ctx context.Context) T {
-	ret := g.NextN(ctx, 1)
-	if len(ret) == 0 {
-		return *new(T)
-	}
-	return ret[0]
-}
-
-// NextN returns the next N values from the generator.
-func (g *RateLimiterGenerator[T]) NextN(ctx context.Context, size int) []T {
-	if g.queue == nil {
-		return nil
-	}
-
-	var fetchedCount int
-	for len(g.items) < size {
-		newBatch, ok := <-g.queue
-		if !ok || len(newBatch) == 0 {
-			g.queue = nil
-			ret := g.items
-			g.items = nil
-			return ret
-		}
-		fetchedCount += len(newBatch)
-		g.items = append(g.items, newBatch...)
-	}
-
-	if fetchedCount > 0 {
-		// We wait according to the limiter.
-		// To reduce contention, we only wait once per call, and only if we fetched new items.
-		err := g.limiter.WaitN(ctx, fetchedCount)
-		if err != nil {
-			logger.Warnf("rate limiter: %v", err)
-		}
-	}
-
-	ret := g.items[:size]
-	g.items = g.items[size:]
-	return ret
 }
 
 // GenerateArray generates an array of items of the requested size given a generator.

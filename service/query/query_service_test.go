@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +21,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v4/pgxpool"
-	"golang.org/x/exp/slices"
 	"google.golang.org/grpc/status"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen"
@@ -422,11 +422,11 @@ func newQueryServiceTestEnv(t *testing.T, opts *queryServiceTestOpts) *queryServ
 		ViewAggregationWindow: time.Minute,
 		MaxViewTimeout:        time.Minute,
 		MaxAggregatedViews:    5,
-		Server:                connection.NewLocalHostServerWithTLS(opts.serverTLS),
+		Server:                connection.NewLocalHostServer(opts.serverTLS),
 		MaxRequestKeys:        opts.maxRequestKeys,
 		Database:              dbConf,
 		Monitoring: monitoring.Config{
-			Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
+			Server: connection.NewLocalHostServer(test.InsecureTLSConfig),
 		},
 	}
 

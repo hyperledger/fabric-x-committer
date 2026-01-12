@@ -218,7 +218,7 @@ func makeConfig(t *testing.T, tlsConfig *connection.TLSConfig) (*mock.Orderer, [
 		sc := make([]*connection.ServerConfig, instanceCount)
 		for i := range sc {
 			creds := *tlsConfig
-			sc[i] = connection.NewLocalHostServerWithTLS(creds)
+			sc[i] = connection.NewLocalHostServer(creds)
 		}
 		config.ServerConfigs = sc
 	}

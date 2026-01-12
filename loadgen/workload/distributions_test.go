@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"slices"
 	"testing"
 
 	"github.com/mitchellh/mapstructure"
@@ -17,7 +18,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.yaml.in/yaml/v3"
 	"golang.org/x/exp/constraints"
-	"golang.org/x/exp/slices"
 )
 
 func makeRand() *rand.Rand {

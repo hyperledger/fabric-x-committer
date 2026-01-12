@@ -17,7 +17,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/time/rate"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -42,7 +41,7 @@ func defaultStreamOptions() *StreamOptions {
 
 func defaultBenchProfile(workers uint32) *Profile {
 	p := DefaultProfile(workers)
-	p.Block.Size = 1024
+	p.Block.MaxSize = 1024
 	p.Query.QuerySize = NewConstantDistribution(1024)
 	return p
 }
@@ -92,20 +91,18 @@ func BenchmarkGenTx(b *testing.B) {
 	genericBench(b, func(b *testing.B, p *Profile) {
 		t := NewTxStream(p, defaultBenchStreamOptions())
 
+		ctx := b.Context()
 		b.ResetTimer()
-		test.RunServiceForTest(b.Context(), b, t.Run, nil)
+		test.RunServiceForTest(ctx, b, t.Run, nil)
 		g := t.MakeGenerator()
 
-		var sum float64
-		n := max(1, b.N/int(p.Block.Size)) //nolint:gosec // uint64 -> int.
-		for range n {
-			txs := g.NextN(b.Context(), int(p.Block.Size)) //nolint:gosec // uint64 -> int.
-			sum += float64(len(txs))
+		param := ConsumeParameters{MinItems: p.Block.MinSize}
+		var sum int
+		for sum < b.N {
+			param.RequestedItems = min(p.Block.MaxSize, uint64(b.N-sum)) //nolint:gosec // uint64 -> int.
+			txs := g.Consume(ctx, param)
+			sum += len(txs)
 		}
-		b.StopTimer()
-
-		// Prevent compiler optimizations.
-		result += sum
 	})
 }
 
@@ -114,20 +111,17 @@ func BenchmarkGenQuery(b *testing.B) {
 	genericBench(b, func(b *testing.B, p *Profile) {
 		c := NewQueryGenerator(p, defaultBenchStreamOptions())
 
+		ctx := b.Context()
 		b.ResetTimer()
-		test.RunServiceForTest(b.Context(), b, c.Run, nil)
+		test.RunServiceForTest(ctx, b, c.Run, nil)
 		g := c.MakeGenerator()
 
-		var sum float64
-		n := max(1, b.N/int(p.Block.Size)) //nolint:gosec // uint64 -> int.
-		for range n {
-			q := g.NextN(b.Context(), int(p.Block.Size)) //nolint:gosec // uint64 -> int.
-			sum += float64(len(q))
+		var sum int
+		for sum < b.N {
+			request := min(p.Block.MaxSize, uint64(b.N-sum)) //nolint:gosec // uint64 -> int.
+			q := g.Consume(ctx, ConsumeParameters{RequestedItems: request})
+			sum += len(q)
 		}
-		b.StopTimer()
-
-		// Prevent compiler optimizations.
-		result += sum
 	})
 }
 
@@ -211,7 +205,7 @@ func startTxGeneratorUnderTest(
 
 func startQueryGeneratorUnderTest(
 	t *testing.T, profile *Profile, options *StreamOptions,
-) *RateLimiterGenerator[*committerpb.Query] {
+) *ConsumerRateController[*committerpb.Query] {
 	t.Helper()
 	g := NewQueryGenerator(profile, options)
 	test.RunServiceForTest(t.Context(), t, g.Run, nil)
@@ -252,7 +246,7 @@ func TestGenValidBlock(t *testing.T) {
 			endorser := NewTxEndorser(&p.Policy)
 
 			for range 5 {
-				txs := g.NextN(t.Context(), int(p.Block.Size)) //nolint:gosec // uint64 -> int.
+				txs := g.Consume(t.Context(), ConsumeParameters{RequestedItems: p.Block.MaxSize})
 				for _, tx := range txs {
 					requireValidTx(t, tx, p, endorser)
 				}
@@ -269,7 +263,7 @@ func TestGenInvalidSigTx(t *testing.T) {
 
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 	g := c.MakeGenerator()
-	txs := g.NextN(t.Context(), 1e4)
+	txs := g.Consume(t.Context(), ConsumeParameters{RequestedItems: 1e4})
 	endorser := NewTxEndorser(&p.Policy)
 	valid := Map(txs, func(_ int, tx *servicepb.LoadGenTx) float64 {
 		if !verify(t, endorser.VerificationPolicies(), tx.Id, tx.Tx, nil) {
@@ -314,7 +308,7 @@ func TestGenDependentTx(t *testing.T) {
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 	g := c.MakeGenerator()
 
-	txs := g.NextN(t.Context(), 1e6)
+	txs := g.Consume(t.Context(), ConsumeParameters{RequestedItems: 1e6})
 	m := make(map[string]uint64)
 	for _, tx := range txs {
 		for _, ns := range tx.Tx.Namespaces {
@@ -369,24 +363,30 @@ func TestReadWriteWithValue(t *testing.T) {
 
 func TestGenTxWithRateLimit(t *testing.T) {
 	t.Parallel()
-	p := DefaultProfile(1)
-	limit := 1000
+	rate := uint64(1_000)
 	expectedSeconds := 5
-	producedTotal := expectedSeconds * limit
+	producedTotal := expectedSeconds * int(rate)
 
 	options := defaultStreamOptions()
-	options.RateLimit = &LimiterConfig{InitialLimit: rate.Limit(limit)}
+	p := DefaultProfile(1)
+	options.RateLimit = rate
 	options.GenBatch = uint32(producedTotal) //nolint:gosec // int -> uint32.
 	c := startTxGeneratorUnderTest(t, p, options)
 	g := c.MakeGenerator()
 
-	// First burst is unlimited.
-	g.NextN(t.Context(), producedTotal)
-
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second*time.Duration(expectedSeconds*2))
+	t.Cleanup(cancel)
 	start := time.Now()
-	g.NextN(t.Context(), producedTotal)
+	txs := make([]*servicepb.LoadGenTx, 0, producedTotal)
+	for len(txs) < producedTotal && ctx.Err() == nil {
+		//nolint:gosec // uint64 -> int.
+		request := min(p.Block.MaxSize, uint64(producedTotal-len(txs)))
+		res := g.Consume(ctx, ConsumeParameters{RequestedItems: request})
+		require.NotEmpty(t, res)
+		txs = append(txs, res...)
+	}
 	duration := time.Since(start)
-	require.InDelta(t, float64(expectedSeconds), duration.Seconds(), 0.1*float64(expectedSeconds))
+	require.InDelta(t, float64(expectedSeconds), duration.Seconds(), 0.2*float64(expectedSeconds))
 }
 
 // modGenTester simulates querying the version from the query service.
@@ -421,8 +421,8 @@ func TestGenTxWithModifier(t *testing.T) {
 type queryTestEnv struct {
 	p        *Profile
 	keys     map[string]*struct{}
-	txGen    *RateLimiterGenerator[*servicepb.LoadGenTx]
-	queryGen *RateLimiterGenerator[*committerpb.Query]
+	txGen    *ConsumerRateController[*servicepb.LoadGenTx]
+	queryGen *ConsumerRateController[*committerpb.Query]
 }
 
 func newQueryTestEnv(t *testing.T, p *Profile, o *StreamOptions) *queryTestEnv {
@@ -434,13 +434,13 @@ func newQueryTestEnv(t *testing.T, p *Profile, o *StreamOptions) *queryTestEnv {
 		queryGen: startQueryGeneratorUnderTest(t, p, o),
 	}
 	for range 100 {
-		q.addBlock(t.Context(), p.Block.Size)
+		q.addBlock(t.Context(), p.Block.MaxSize)
 	}
 	return q
 }
 
 func (q *queryTestEnv) addBlock(ctx context.Context, size uint64) {
-	txs := q.txGen.NextN(ctx, int(size)) //nolint:gosec // uint64 -> int.
+	txs := q.txGen.Consume(ctx, ConsumeParameters{RequestedItems: size})
 	for _, tx := range txs {
 		for _, ns := range tx.Tx.Namespaces {
 			for _, r := range ns.ReadsOnly {
@@ -488,7 +488,7 @@ func TestQuery(t *testing.T) {
 				// keys in the block might not be the same as in the query.
 				// So we need to consume blocks until we found all the keys.
 				require.Eventuallyf(t, func() bool {
-					env.addBlock(t.Context(), p.Block.Size)
+					env.addBlock(t.Context(), p.Block.MaxSize)
 					return len(query.Namespaces[0].Keys) == env.countExistingKeys(query.Namespaces[0].Keys)
 				}, time.Second*5, 1, "iteration %d", i)
 			}

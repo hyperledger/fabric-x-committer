@@ -13,7 +13,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
-	"golang.org/x/time/rate"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -22,21 +21,18 @@ import (
 type (
 	// TxStream yields transactions from the  stream.
 	TxStream struct {
-		stream
-		gens  []*IndependentTxGenerator
-		queue chan []*servicepb.LoadGenTx
+		options        *StreamOptions
+		gens           []*IndependentTxGenerator
+		queue          chan []*servicepb.LoadGenTx
+		rateController *ConsumerRateController[*servicepb.LoadGenTx]
 	}
 
 	// QueryStream generates stream's queries consumers.
 	QueryStream struct {
-		stream
-		gen   []*QueryGenerator
-		queue chan []*committerpb.Query
-	}
-
-	stream struct {
-		options *StreamOptions
-		limiter *rate.Limiter
+		options        *StreamOptions
+		gen            []*QueryGenerator
+		queue          chan []*committerpb.Query
+		rateController *ConsumerRateController[*committerpb.Query]
 	}
 )
 
@@ -51,9 +47,11 @@ func NewTxStream(
 	options *StreamOptions,
 	modifierGenerators ...Generator[Modifier],
 ) *TxStream {
+	queue := make(chan []*servicepb.LoadGenTx, max(options.BuffersSize, 1))
 	txStream := &TxStream{
-		stream: newStream(profile, options),
-		queue:  make(chan []*servicepb.LoadGenTx, max(options.BuffersSize, 1)),
+		options:        options,
+		queue:          queue,
+		rateController: NewConsumerRateController(options.RateLimit, queue),
 	}
 	for _, w := range makeWorkersData(profile) {
 		modifiers := make([]Modifier, 0, len(modifierGenerators)+2)
@@ -90,28 +88,30 @@ func (s *TxStream) AppendBatch(ctx context.Context, batch []*servicepb.LoadGenTx
 	channel.NewWriter(ctx, s.queue).Write(batch)
 }
 
-// GetLimit reads the stream limit.
-func (s *TxStream) GetLimit() rate.Limit {
-	return s.limiter.Limit()
+// GetRate reads the stream limit.
+func (s *TxStream) GetRate() uint64 {
+	return s.rateController.Rate()
 }
 
-// SetLimit sets the stream limit.
-func (s *TxStream) SetLimit(limit rate.Limit) {
-	s.limiter.SetLimit(limit)
+// SetRate sets the stream limit.
+func (s *TxStream) SetRate(rate uint64) {
+	s.rateController.SetRate(rate)
 }
 
 // MakeGenerator creates a new generator that consumes from the stream.
 // Each generator must be used from a single goroutine, but different
 // generators from the same Stream can be used concurrently.
-func (s *TxStream) MakeGenerator() *RateLimiterGenerator[*servicepb.LoadGenTx] {
-	return NewRateLimiterGenerator(s.queue, s.limiter)
+func (s *TxStream) MakeGenerator() *ConsumerRateController[*servicepb.LoadGenTx] {
+	return s.rateController.InstantiateWorker()
 }
 
 // NewQueryGenerator creates workers that generates queries into a queue.
 func NewQueryGenerator(profile *Profile, options *StreamOptions) *QueryStream {
+	queue := make(chan []*committerpb.Query, max(options.BuffersSize, 1))
 	qs := &QueryStream{
-		stream: newStream(profile, options),
-		queue:  make(chan []*committerpb.Query, max(options.BuffersSize, 1)),
+		options:        options,
+		queue:          queue,
+		rateController: NewConsumerRateController(options.RateLimit, queue),
 	}
 	for _, w := range makeWorkersData(profile) {
 		queryGen := newQueryGenerator(NewRandFromSeedGenerator(w.seed), w.keyGen, profile)
@@ -137,8 +137,8 @@ func (s *QueryStream) Run(ctx context.Context) error {
 // MakeGenerator creates a new generator that consumes from the stream.
 // Each generator must be used from a single goroutine, but different
 // generators from the same Stream can be used concurrently.
-func (s *QueryStream) MakeGenerator() *RateLimiterGenerator[*committerpb.Query] {
-	return NewRateLimiterGenerator(s.queue, s.limiter)
+func (s *QueryStream) MakeGenerator() *ConsumerRateController[*committerpb.Query] {
+	return s.rateController.InstantiateWorker()
 }
 
 type workerData struct {
@@ -170,16 +170,5 @@ func ingestBatchesToQueue[T any](ctx context.Context, c chan<- []T, g Generator[
 	}
 	q := channel.NewWriter(ctx, c)
 	for q.Write(batchGen.Next()) {
-	}
-}
-
-func newStream(profile *Profile, options *StreamOptions) stream {
-	// We allow bursting with a full block.
-	// We also need to support bursting with the size of the generated batch
-	// as we fetch the entire batch regardless of the block size.
-	burst := max(int(options.GenBatch), int(profile.Block.Size)) //nolint:gosec // uint64 -> int.
-	return stream{
-		options: options,
-		limiter: NewLimiter(options.RateLimit, burst),
 	}
 }

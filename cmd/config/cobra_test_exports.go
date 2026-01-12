@@ -48,7 +48,7 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 	_, orderer := mock.StartMockOrderingServices(t, &mock.OrdererConfig{NumService: 1})
 	_, coordinator := mock.StartMockCoordinatorService(t)
 	conn := dbtest.PrepareTestEnv(t)
-	server := connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig)
+	server := connection.NewLocalHostServer(test.InsecureTLSConfig)
 	listen, err := server.Listener(t.Context())
 	require.NoError(t, err)
 	connection.CloseConnectionsLog(listen)

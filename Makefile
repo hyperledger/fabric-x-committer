@@ -225,29 +225,45 @@ bench-sidecar: FORCE
 # Generate protos
 #########################
 
-PROTO_COMMON="$(shell $(env) $(go_cmd) list -m -f '{{.Dir}}' github.com/hyperledger/fabric-x-common)"
+PROTO_COMMON_DIR="$(shell $(env) $(go_cmd) list -m -f '{{.Dir}}' github.com/hyperledger/fabric-x-common)"
 
-proto: FORCE
+BUILD_DIR := .build
+PROTOS_API_REPO := https://github.com/googleapis/googleapis.git
+PROTOS_API_DIR := ${BUILD_DIR}/googleapis
+# We depend on this specific file to ensure the repo is actually cloned
+PROTOS_SENTINEL := ${PROTOS_API_DIR}/.git
+
+proto: FORCE $(PROTOS_SENTINEL)
 	@echo "Generating protobufs: $(shell find ${project_dir}/api -name '*.proto' -print0 \
 		| xargs -0 -n 1 dirname | xargs -n 1 basename | sort -u)"
 	@protoc \
+	  --go_out=paths=source_relative:. \
 	  --go-grpc_out=. \
 	  --go-grpc_opt=paths=source_relative \
-	  --go_out=paths=source_relative:. \
+	  --grpc-gateway_out=. \
+	  --grpc-gateway_opt=paths=source_relative \
 	  --proto_path="${project_dir}" \
-	  --proto_path="${PROTO_COMMON}" \
+	  --proto_path="${PROTO_COMMON_DIR}" \
+	  --proto_path="${PROTOS_API_DIR}" \
 	  ${proto_flags} \
 	  ${project_dir}/api/*/*.proto
 
-lint-proto: FORCE
+lint-proto: FORCE $(PROTOS_SENTINEL)
 	@echo "Running protobuf linters..."
 	@api-linter \
 		-I="${project_dir}/api" \
-		-I="${PROTO_COMMON}" \
+		-I="${PROTO_COMMON_DIR}" \
+		-I="${PROTOS_API_DIR}" \
 		--config .apilinter.yaml \
 		--set-exit-status \
 		--output-format github \
 		$(shell find ${project_dir}/api -name '*.proto' | sed 's|${project_dir}/api/||')
+
+$(PROTOS_SENTINEL):
+	@echo "Cloning googleapis..."
+	@mkdir -p ${BUILD_DIR}
+	@rm -rf ${PROTOS_API_DIR} # Ensure we start fresh if re-cloning
+	@git -c advice.detachedHead=false clone --single-branch --depth 1 ${PROTOS_API_REPO} ${PROTOS_API_DIR}
 
 #########################
 # Binaries

@@ -107,7 +107,7 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 		},
 		ChannelBufferSizePerGoroutine: 2000,
 		Monitoring: monitoring.Config{
-			Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
+			Server: connection.NewLocalHostServer(test.InsecureTLSConfig),
 		},
 	}
 
@@ -141,7 +141,7 @@ func (e *coordinatorTestEnv) startServiceWithCreds(
 ) {
 	t.Helper()
 	cs := e.coordinator
-	e.coordinator.config.Server = connection.NewLocalHostServerWithTLS(serverCreds)
+	e.coordinator.config.Server = connection.NewLocalHostServer(serverCreds)
 
 	test.RunServiceAndGrpcForTest(ctx, t, cs, e.coordinator.config.Server)
 }
@@ -971,12 +971,12 @@ func fakeConfigForTest(t *testing.T) *Config {
 	randomEndpoint, err := connection.NewEndpoint("random:1234")
 	require.NoError(t, err)
 	return &Config{
-		Server:             connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
+		Server:             connection.NewLocalHostServer(test.InsecureTLSConfig),
 		Verifier:           *test.NewTLSMultiClientConfig(test.InsecureTLSConfig, randomEndpoint),
 		ValidatorCommitter: *test.NewTLSMultiClientConfig(test.InsecureTLSConfig, randomEndpoint),
 		DependencyGraph:    &DependencyGraphConfig{},
 		Monitoring: monitoring.Config{
-			Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
+			Server: connection.NewLocalHostServer(test.InsecureTLSConfig),
 		},
 	}
 }

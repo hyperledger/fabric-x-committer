@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+# If server is set, a gRPC endpoint is exposed the full load generator's API.
 server:
   endpoint: :8001
   tls:
@@ -10,6 +11,12 @@ server:
     key-path: /server-certs/private-key.pem
     ca-cert-paths:
       - /server-certs/ca-certificate.pem
+# If http-server is set, an HTTP endpoint is exposed to adjust the rate limit at runtime.
+# It exposes the following API:
+# GET  /getRateLimit - Get the rate limit returning a JSON body { "rate": uint64 }.
+# POST /setRateLimit - Sets the rate limit using a JSON body { "rate": uint64 }.
+http-server:
+  endpoint: :6997
 monitoring:
   server:
     endpoint: :2118
@@ -54,8 +61,22 @@ orderer-client:
 load-profile:
   key:
     size: 32
+  # block describes generate block characteristics
+  # (when applying load to the VC or Verifier, blocks are translated to batches).
+  # The generated block size is aimed to be max-size, if the generated
+  # TXs rate is sufficient.
+  # If the generated TXs rate is too low, the block size might
+  # be less than max-size, but at least min-size.
+  # In such case, the block is generated at a preferred rate of preferred-rate.
+  # Blocks wait up to preferred-rate (default: 1 second) before submission.
+  # If a full block is not ready by then, a partial block is
+  # submitted if it meets min-size (default: 1);
+  # otherwise, the system waits until min-size is available.
+  # If the max-size is less than or equal to min-size, preferred-rate is ignored.
   block:
-    size: 500
+    max-size: 500
+    min-size: 10
+    preferred-rate: 1s
   transaction:
     read-write-count:
       const: 2
@@ -80,9 +101,8 @@ load-profile:
   workers: 1
 
 stream:
-  rate-limit:
-    endpoint: :6997
-    initial-limit: 10_000
+  # TXs are released at rate (default: unlimited).
+  rate-limit: 10_000
   # We set low values to reduce the CPU load during tests.
   buffers-size: 10
   gen-batch: 10

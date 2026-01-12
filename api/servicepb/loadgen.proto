@@ -11,13 +11,23 @@ option go_package = "github.com/hyperledger/fabric-x-committer/api/servicepb";
 package servicepb;
 
 import "google/protobuf/empty.proto";
+import "google/api/annotations.proto";
 
 import "api/applicationpb/block_tx.proto";
 
 service LoadGenService {
     rpc AppendBatch(LoadGenBatch) returns (google.protobuf.Empty) {};
-    rpc GetLimit(google.protobuf.Empty) returns (Limit) {};
-    rpc SetLimit(Limit) returns (google.protobuf.Empty);
+    rpc GetRateLimit(google.protobuf.Empty) returns (RateLimit) {
+        option (google.api.http) = {
+            get: "/getRateLimit"
+        };
+    };
+    rpc SetRateLimit(RateLimit) returns (google.protobuf.Empty) {
+        option (google.api.http) = {
+            post: "/setRateLimit"
+            body: "*"
+        };
+    };
 }
 
 message LoadGenBatch {
@@ -32,6 +42,6 @@ message LoadGenTx {
     bytes serialized_envelope = 5;
 }
 
-message Limit {
-    double rate = 1;
+message RateLimit {
+    uint64 rate = 1;
 }

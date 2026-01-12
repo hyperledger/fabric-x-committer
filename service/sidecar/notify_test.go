@@ -222,7 +222,7 @@ func TestNotifierDirect(t *testing.T) {
 func TestNotifierStream(t *testing.T) {
 	t.Parallel()
 	env := newNotifierTestEnv(t)
-	config := connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig)
+	config := connection.NewLocalHostServer(test.InsecureTLSConfig)
 	test.RunGrpcServerForTest(t.Context(), t, config, func(server *grpc.Server) {
 		committerpb.RegisterNotifierServer(server, env.n)
 	})
