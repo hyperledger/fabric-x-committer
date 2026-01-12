@@ -8,9 +8,8 @@ package serialization
 
 import (
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"google.golang.org/protobuf/proto"
-
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
 )
 
 // UnmarshalTx unmarshal data bytes to protoblocktx.Tx.

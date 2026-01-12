@@ -13,13 +13,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/hyperledger/fabric-x-committer/api/applicationpb"
-	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -125,10 +125,10 @@ func (q *Service) BeginView(
 // EndView implements the query-service interface.
 func (q *Service) EndView(
 	_ context.Context, view *committerpb.View,
-) (*committerpb.View, error) {
+) (*emptypb.Empty, error) {
 	q.metrics.requests.WithLabelValues(grpcEndView).Inc()
 	defer q.requestLatency(grpcEndView, time.Now())
-	return view, q.batcher.removeViewID(view.Id)
+	return nil, q.batcher.removeViewID(view.Id)
 }
 
 // GetRows implements the query-service interface.

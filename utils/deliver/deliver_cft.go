@@ -194,11 +194,13 @@ func seekSince(
 		}}}
 	}
 
-	return protoutil.CreateSignedEnvelope(common.HeaderType_DELIVER_SEEK_INFO, channelID, signer, &orderer.SeekInfo{
-		Start: startPosition,
-		Stop: &orderer.SeekPosition{Type: &orderer.SeekPosition_Specified{Specified: &orderer.SeekSpecified{
-			Number: endBlkNum,
-		}}},
-		Behavior: orderer.SeekInfo_BLOCK_UNTIL_READY,
-	}, 0, 0)
+	return protoutil.CreateSignedEnvelopeWithCert(
+		common.HeaderType_DELIVER_SEEK_INFO, channelID, signer, &orderer.SeekInfo{
+			Start: startPosition,
+			Stop: &orderer.SeekPosition{Type: &orderer.SeekPosition_Specified{Specified: &orderer.SeekSpecified{
+				Number: endBlkNum,
+			}}},
+			Behavior: orderer.SeekInfo_BLOCK_UNTIL_READY,
+		}, 0, 0,
+	)
 }

@@ -12,10 +12,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/yugabyte/pgx/v4"
 	"github.com/yugabyte/pgx/v4/pgxpool"
 
-	"github.com/hyperledger/fabric-x-committer/api/committerpb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
@@ -233,13 +233,13 @@ func makeTxOptions(p *committerpb.ViewParameters) *pgx.TxOptions {
 		return o
 	}
 	switch p.IsoLevel {
-	case committerpb.IsoLevel_Serializable:
+	case committerpb.IsoLevel_SERIALIZABLE, committerpb.IsoLevel_ISO_LEVEL_UNSPECIFIED:
 		o.IsoLevel = pgx.Serializable
-	case committerpb.IsoLevel_RepeatableRead:
+	case committerpb.IsoLevel_REPEATABLE_READ:
 		o.IsoLevel = pgx.RepeatableRead
-	case committerpb.IsoLevel_ReadCommitted:
+	case committerpb.IsoLevel_READ_COMMITTED:
 		o.IsoLevel = pgx.ReadCommitted
-	case committerpb.IsoLevel_ReadUncommitted:
+	case committerpb.IsoLevel_READ_UNCOMMITTED:
 		o.IsoLevel = pgx.ReadUncommitted
 	}
 	if p.NonDeferrable {

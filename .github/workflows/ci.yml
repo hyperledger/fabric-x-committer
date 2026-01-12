@@ -27,10 +27,12 @@ jobs:
 
       - name: Lint
         run: |
+          # Applying go.mod tidy rules and downloading dependencies. 
+          go mod tidy
           # Apply automatic formatting.
           gofmt -w .
           goimports -local "github.com/hyperledger/fabric-x-committer" -w .
-          # Re make protobufs, overwriting any formatting
+          # Re make protobufs, overwriting any formatting.
           PATH="$HOME/bin:$PATH" make proto
           # Check if original code changed due to formatting.
           git diff --exit-code
