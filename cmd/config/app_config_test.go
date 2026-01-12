@@ -402,8 +402,12 @@ func TestReadConfigLoadGen(t *testing.T) {
 			},
 			Stream: &workload.StreamOptions{
 				RateLimit: &workload.LimiterConfig{
-					Endpoint:     *newEndpoint("", 6997),
-					InitialLimit: 10_000,
+					Rate:         10_000,
+					MaxBatchWait: time.Second,
+					MinBatchSize: 10,
+					Server: &connection.ServerConfig{
+						Endpoint: *newEndpoint("", 6997),
+					},
 				},
 				BuffersSize: 10,
 				GenBatch:    10,

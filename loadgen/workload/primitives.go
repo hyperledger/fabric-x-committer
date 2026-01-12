@@ -10,8 +10,6 @@ import (
 	"context"
 	"io"
 
-	"golang.org/x/time/rate"
-
 	"github.com/hyperledger/fabric-x-committer/utils"
 )
 
@@ -90,12 +88,12 @@ func (g *MultiGenerator[T]) Next() []T {
 // It will finish once queue is closed.
 type RateLimiterGenerator[T any] struct {
 	queue   <-chan []T
-	limiter *rate.Limiter
+	limiter *RateLimiter
 	items   []T
 }
 
 // NewRateLimiterGenerator create a new instance if RateLimiterGenerator.
-func NewRateLimiterGenerator[T any](queue <-chan []T, limiter *rate.Limiter) *RateLimiterGenerator[T] {
+func NewRateLimiterGenerator[T any](queue <-chan []T, limiter *RateLimiter) *RateLimiterGenerator[T] {
 	return &RateLimiterGenerator[T]{
 		queue:   queue,
 		limiter: limiter,
@@ -113,34 +111,31 @@ func (g *RateLimiterGenerator[T]) Next(ctx context.Context) T {
 
 // NextN returns the next N values from the generator.
 func (g *RateLimiterGenerator[T]) NextN(ctx context.Context, size int) []T {
-	if g.queue == nil {
+	if g.queue == nil || size <= 0 {
 		return nil
 	}
 
-	var fetchedCount int
 	for len(g.items) < size {
 		newBatch, ok := <-g.queue
 		if !ok || len(newBatch) == 0 {
 			g.queue = nil
-			ret := g.items
-			g.items = nil
-			return ret
+			size = len(g.items)
+			break
 		}
-		fetchedCount += len(newBatch)
 		g.items = append(g.items, newBatch...)
 	}
-
-	if fetchedCount > 0 {
-		// We wait according to the limiter.
-		// To reduce contention, we only wait once per call, and only if we fetched new items.
-		err := g.limiter.WaitN(ctx, fetchedCount)
-		if err != nil {
-			logger.Warnf("rate limiter: %v", err)
-		}
+	// We test again for the case the size was adjusted to available items.
+	if size <= 0 {
+		return nil
 	}
 
-	ret := g.items[:size]
-	g.items = g.items[size:]
+	takeSize := g.limiter.Take(ctx, int64(size))
+	if takeSize <= 0 {
+		return nil
+	}
+
+	ret := g.items[:takeSize]
+	g.items = g.items[takeSize:]
 	return ret
 }
 

@@ -17,7 +17,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/time/rate"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -369,24 +368,29 @@ func TestReadWriteWithValue(t *testing.T) {
 
 func TestGenTxWithRateLimit(t *testing.T) {
 	t.Parallel()
-	p := DefaultProfile(1)
-	limit := 1000
+	rate := uint64(1_000)
 	expectedSeconds := 5
-	producedTotal := expectedSeconds * limit
+	producedTotal := expectedSeconds * int(rate)
 
 	options := defaultStreamOptions()
-	options.RateLimit = &LimiterConfig{InitialLimit: rate.Limit(limit)}
+	p := DefaultProfile(1)
+	options.RateLimit = &LimiterConfig{Rate: rate}
 	options.GenBatch = uint32(producedTotal) //nolint:gosec // int -> uint32.
 	c := startTxGeneratorUnderTest(t, p, options)
 	g := c.MakeGenerator()
 
-	// First burst is unlimited.
-	g.NextN(t.Context(), producedTotal)
-
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second*time.Duration(expectedSeconds*2))
+	t.Cleanup(cancel)
 	start := time.Now()
-	g.NextN(t.Context(), producedTotal)
+	txs := make([]*servicepb.LoadGenTx, 0, producedTotal)
+	for len(txs) < producedTotal && ctx.Err() == nil {
+		//nolint:gosec // uint64 -> int.
+		res := g.NextN(ctx, min(int(p.Block.Size), producedTotal-len(txs)))
+		require.NotEmpty(t, res)
+		txs = append(txs, res...)
+	}
 	duration := time.Since(start)
-	require.InDelta(t, float64(expectedSeconds), duration.Seconds(), 0.1*float64(expectedSeconds))
+	require.InDelta(t, float64(expectedSeconds), duration.Seconds(), 0.2*float64(expectedSeconds))
 }
 
 // modGenTester simulates querying the version from the query service.

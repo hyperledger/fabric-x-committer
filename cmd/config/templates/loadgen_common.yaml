@@ -59,8 +59,7 @@ load-profile:
 
 stream:
   rate-limit:
-    endpoint: localhost:0
-    initial-limit: 1000
+    rate: 1_000
   gen-batch: 1
   buffers-size: 1
 

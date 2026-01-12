@@ -10,6 +10,7 @@ set -e
 protoc_bin_version="29.3"
 protoc_gen_go_version="v1.36.10"
 protoc_gen_go_grpc_version="v1.3"
+protoc_gen_grpc_gateway_version="v2.27.4"
 goimports_version="v0.33.0"
 gotestfmt_version="v2.5.0"
 golang_ci_version="v2.7.2"
@@ -35,6 +36,9 @@ go install "google.golang.org/protobuf/cmd/protoc-gen-go@${protoc_gen_go_version
 echo
 echo "Installing protoc-gen-go-grpc"
 go install "google.golang.org/grpc/cmd/protoc-gen-go-grpc@${protoc_gen_go_grpc_version}"
+echo
+echo "Installing protoc-gen-grpc-gateway"
+go install "github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@${protoc_gen_grpc_gateway_version}"
 echo
 echo "Installing goimports"
 go install "golang.org/x/tools/cmd/goimports@${goimports_version}"

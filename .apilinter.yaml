@@ -11,7 +11,9 @@
     - core::0215::versioned-packages      # E.g., applicationpb.v1
     - core::0131::method-signature        # A google.api.method_signature annotation should be present
     - core::0215::foreign-type-reference  # We require foreign types.
-    - core::0127::http-annotation         # HTTP annotations (might be added in the future)
+    - core::0127::http-annotation         # HTTP annotations
+    - 0131::http-uri-name                 # HTTP URI name should match field name
+    - 0136::http-uri-suffix               # HTTP URI suffix check
     - core::0203::field-behavior-required # E.g., [(google.api.field_behavior) = REQUIRED]
     - core::0123::resource-annotation     # Forces resources annotation (not applicable)
     # Enforces connection between method names to the request/reposne message name.

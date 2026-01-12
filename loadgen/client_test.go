@@ -7,16 +7,21 @@ SPDX-License-Identifier: Apache-2.0
 package loadgen
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -457,6 +462,84 @@ func testLoadGenerator(t *testing.T, c *ClientConfig) {
 		require.GreaterOrEqual(t, m.TransactionsSent, c.Limit.Transactions)
 		require.GreaterOrEqual(t, m.TransactionsReceived, c.Limit.Transactions)
 	}
+}
+
+func TestLoadGenRateLimiterServer(t *testing.T) {
+	t.Parallel()
+	clientConf := DefaultClientConf(t)
+	clientConf.Adapter.VerifierClient = startVerifiers(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+	curRate := uint64(100)
+	clientConf.Stream.RateLimit.Rate = curRate
+	// We use small wait to ensure the rate limiter serves in low granularity.
+	clientConf.Stream.RateLimit.MaxBatchWait = 10 * time.Millisecond
+	clientConf.Stream.RateLimit.Server = connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig)
+	client, err := NewLoadGenClient(clientConf)
+	require.NoError(t, err)
+
+	test.RunServiceForTest(t.Context(), t, client.Run, client.WaitForReady)
+	rlEndpoint := &clientConf.Stream.RateLimit.Server.Endpoint
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		require.NotZero(ct, rlEndpoint.Port)
+	}, 10*time.Second, 100*time.Millisecond)
+	t.Logf("limiter endpoint: %v", rlEndpoint)
+
+	requireGetRate := func(rate uint64) {
+		ret := makeRequest(t, "GET", fmt.Sprintf("http://%s/getRateLimit", rlEndpoint), []byte{})
+		var r servicepb.RateLimit
+		marshaler := runtime.JSONPb{}
+		err = marshaler.Unmarshal(ret, &r)
+		require.NoErrorf(t, err, "unable to unmarshal response: %s", string(ret))
+		require.Equal(t, rate, r.Rate)
+	}
+	setRate := func(rate uint64) {
+		body := []byte(fmt.Sprintf(`{"rate":%d}`, rate))
+		makeRequest(t, "POST", fmt.Sprintf("http://%s/setRateLimit", rlEndpoint), body)
+	}
+
+	requireGetRate(curRate)
+	requireEventuallyMeasuredRate(t, client.resources.Metrics, curRate)
+
+	curRate = uint64(1_000)
+	setRate(curRate)
+	requireGetRate(curRate)
+	requireEventuallyMeasuredRate(t, client.resources.Metrics, curRate)
+}
+
+func makeRequest(t *testing.T, method, url string, body []byte) []byte {
+	t.Helper()
+	req, err := http.NewRequest(method, url, bytes.NewBuffer(body))
+	require.NoError(t, err)
+
+	// Use "application/x-protobuf" for binary Protobuf or "application/json" for REST
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer func() {
+		assert.NoError(t, resp.Body.Close())
+	}()
+
+	respBody, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	return respBody
+}
+
+func requireEventuallyMeasuredRate(t *testing.T, m *metrics.PerfMetrics, expectedRate uint64) {
+	t.Helper()
+	prevTime := time.Now()
+	prevState := m.GetState()
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		newTime := time.Now()
+		newState := m.GetState()
+		elapsed := newTime.Sub(prevTime).Seconds()
+		rate := float64(newState.TransactionsSent-prevState.TransactionsSent) / elapsed
+		prevState = newState
+		prevTime = newTime
+		require.InDelta(ct, expectedRate, rate, 0.2*float64(expectedRate))
+	}, 5*time.Second, time.Second)
 }
 
 func limitToString(m *adapters.GenerateLimit) string {
