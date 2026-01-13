@@ -174,7 +174,7 @@ func TestSignatureRule(t *testing.T) {
 	require.NoError(t, err)
 	serializedSigningIdentities := make([][]byte, len(signingIdentities))
 	for i, si := range signingIdentities {
-		siBytes, serErr := si.Serialize()
+		siBytes, serErr := si.SerializeWithCert()
 		require.NoError(t, serErr)
 		serializedSigningIdentities[i] = siBytes
 	}

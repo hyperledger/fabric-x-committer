@@ -10,12 +10,10 @@ import (
 	"encoding/hex"
 	"testing"
 
-	fmsp "github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/common/cauthdsl"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
 	"github.com/hyperledger/fabric-x-common/msp"
-	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
@@ -54,8 +52,10 @@ func TestNsVerifierSignatureRule(t *testing.T) {
 	certBytes := []string{"id0", "id1", "id2", "id3"}
 	identities := make([][]byte, len(mspIDs))
 	knownIdentities := make(map[msp.IdentityIdentifier]msp.Identity)
+	var err error
 	for i, mspID := range mspIDs {
-		identities[i] = protoutil.MarshalOrPanic(&fmsp.SerializedIdentity{Mspid: mspID, IdBytes: []byte(certBytes[i])})
+		identities[i], err = msp.NewSerializedIdentityWithCert(mspID, []byte(certBytes[i]))
+		require.NoError(t, err)
 		idIdentifier := msp.IdentityIdentifier{Mspid: mspID, Id: hex.EncodeToString([]byte(certBytes[i]))}
 		knownIdentities[idIdentifier] = &cauthdsl.MockIdentity{MspID: mspID, IDBytes: []byte(certBytes[i])}
 	}
