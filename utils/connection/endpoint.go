@@ -68,5 +68,5 @@ func NewEndpoint(hostPort string) (*Endpoint, error) {
 
 // NewLocalHost returns a default endpoint "localhost:0".
 func NewLocalHost() *Endpoint {
-	return &Endpoint{Host: "localhost"}
+	return &Endpoint{Host: "127.0.0.1"}
 }
