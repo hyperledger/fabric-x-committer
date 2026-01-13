@@ -10,18 +10,31 @@ orderer-client:
     endpoint: {{ .Endpoints.Sidecar.Server }}
     tls:
       mode: {{ .ClientTLS.Mode }}
-      key-path: {{ .ClientTLS.KeyPath }}
       cert-path: {{ .ClientTLS.CertPath }}
+      key-path: {{ .ClientTLS.KeyPath }}
       ca-cert-paths:
         {{- range .ClientTLS.CACertPaths }}
         - {{ . }}
         {{- end }}
   orderer:
-    connection:
-      endpoints:
-        {{- range .Endpoints.Orderer }}
-        - id=0,broadcast,deliver,{{ .Server }}
-        {{- end }}
+    organizations:
+      org0:
+        endpoints:
+          {{- range .Endpoints.Orderer }}
+          - id=0,broadcast,deliver,{{ .Server }}
+          {{- end }}
+        ca-cert-paths:
+          {{- range .ClientTLS.CACertPaths }}
+          - {{ . }}
+          {{- end }}
+    tls:
+      mode: {{ .ClientTLS.Mode }}
+      cert-path: {{ .ClientTLS.CertPath }}
+      key-path: {{ .ClientTLS.KeyPath }}
+      common-ca-cert-paths:
+        {{- range .ClientTLS.CACertPaths }}
+        - {{ . }}
+        {{- end  }}
     consensus-type: BFT
     channel-id: {{ .Policy.ChannelID }}
   broadcast-parallelism: 5

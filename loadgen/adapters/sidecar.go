@@ -16,7 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type (
@@ -37,7 +37,7 @@ func NewSidecarAdapter(config *SidecarClientConfig, res *ClientResources) (*Side
 			return nil, err
 		}
 	}
-	res.Profile.Policy.OrdererEndpoints = ordererconn.NewEndpoints(0, "msp", config.OrdererServers...)
+	res.Profile.Policy.OrdererEndpoints = test.NewOrdererEndpoints(0, config.OrdererServers...)
 	return &SidecarAdapter{
 		commonAdapter: commonAdapter{res: res},
 		config:        config,

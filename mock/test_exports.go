@@ -18,7 +18,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -35,7 +34,7 @@ func StartMockSVService(t *testing.T, numService int) (
 	sigVerServers := test.StartGrpcServersForTest(t.Context(), t, len(mockSigVer),
 		func(server *grpc.Server, index int) {
 			mockSigVer[index].RegisterService(server)
-		})
+		}, test.InsecureTLSConfig)
 	return mockSigVer, sigVerServers
 }
 
@@ -57,7 +56,7 @@ func StartMockVCService(t *testing.T, numService int) (*VcService, *test.GrpcSer
 
 	vcGrpc := test.StartGrpcServersForTest(t.Context(), t, numService, func(server *grpc.Server, _ int) {
 		sharedVC.RegisterService(server)
-	})
+	}, test.InsecureTLSConfig)
 	return sharedVC, vcGrpc
 }
 
@@ -79,7 +78,7 @@ func StartMockCoordinatorService(t *testing.T) (
 	mockCoordinator := NewMockCoordinator()
 	coordinatorGrpc := test.StartGrpcServersForTest(t.Context(), t, 1, func(server *grpc.Server, _ int) {
 		mockCoordinator.RegisterService(server)
-	})
+	}, test.InsecureTLSConfig)
 	return mockCoordinator, coordinatorGrpc
 }
 
@@ -119,7 +118,7 @@ func StartMockOrderingServices(t *testing.T, conf *OrdererConfig) (
 	servers := test.StartGrpcServersForTest(
 		t.Context(), t, conf.NumService, func(server *grpc.Server, _ int) {
 			service.RegisterService(server)
-		},
+		}, conf.TLS,
 	)
 	return service, servers
 }
@@ -156,8 +155,8 @@ func NewOrdererTestEnv(t *testing.T, conf *OrdererTestConfig) *OrdererTestEnv {
 		OrdererServers: ordererServers,
 		HolderServers: test.StartGrpcServersForTest(t.Context(), t, conf.NumHolders, func(s *grpc.Server, _ int) {
 			holder.RegisterService(s)
-		}),
-		FakeServers: test.StartGrpcServersForTest(t.Context(), t, conf.NumFake, nil),
+		}, conf.Config.TLS),
+		FakeServers: test.StartGrpcServersForTest(t.Context(), t, conf.NumFake, nil, test.InsecureTLSConfig),
 	}
 }
 
@@ -194,15 +193,15 @@ func (e *OrdererTestEnv) AllEndpoints() []*commontypes.OrdererEndpoint {
 
 // AllRealOrdererEndpoints returns a list of the real orderer endpoints.
 func (e *OrdererTestEnv) AllRealOrdererEndpoints() []*commontypes.OrdererEndpoint {
-	return ordererconn.NewEndpoints(0, "org", e.OrdererServers.Configs...)
+	return test.NewOrdererEndpoints(0, e.OrdererServers.Configs...)
 }
 
 // AllFakeEndpoints returns a list of the fake orderer endpoints.
 func (e *OrdererTestEnv) AllFakeEndpoints() []*commontypes.OrdererEndpoint {
-	return ordererconn.NewEndpoints(0, "org", e.FakeServers.Configs...)
+	return test.NewOrdererEndpoints(0, e.FakeServers.Configs...)
 }
 
 // AllHolderEndpoints returns a list of the holder orderer endpoints.
 func (e *OrdererTestEnv) AllHolderEndpoints() []*commontypes.OrdererEndpoint {
-	return ordererconn.NewEndpoints(0, "org", e.HolderServers.Configs...)
+	return test.NewOrdererEndpoints(0, e.HolderServers.Configs...)
 }

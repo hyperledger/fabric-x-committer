@@ -38,13 +38,16 @@ type (
 		// We support both for compatibility with other services.
 		Server           *connection.ServerConfig   `mapstructure:"server"`
 		ServerConfigs    []*connection.ServerConfig `mapstructure:"servers"`
-		NumService       int                        `mapstructure:"num-services"`
 		BlockSize        int                        `mapstructure:"block-size"`
 		BlockTimeout     time.Duration              `mapstructure:"block-timeout"`
 		OutBlockCapacity int                        `mapstructure:"out-block-capacity"`
 		PayloadCacheSize int                        `mapstructure:"payload-cache-size"`
 		ConfigBlockPath  string                     `mapstructure:"config-block-path"`
 		SendConfigBlock  bool                       `mapstructure:"send-config-block"`
+
+		// These fields are only used for internal testing.
+		NumService int
+		TLS        connection.TLSConfig
 	}
 
 	// Orderer supports running multiple mock-orderer services which mocks a consortium.

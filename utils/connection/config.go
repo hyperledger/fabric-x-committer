@@ -8,14 +8,10 @@ package connection
 
 import (
 	"crypto/tls"
-	"crypto/x509"
 	"net"
-	"os"
 	"time"
 
-	"github.com/cockroachdb/errors"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 type (
@@ -70,10 +66,8 @@ type (
 	// For example, If only server-side TLS is required, the certificate pool (certPool) is not built (for a server),
 	// since the relevant certificates paths are defined in the YAML according to the selected mode.
 	TLSConfig struct {
-		Mode string `mapstructure:"mode"`
-		// CertPath is the path to the certificate file (public key).
-		CertPath string `mapstructure:"cert-path"`
-		// KeyPath is the path to the key file (private key).
+		Mode        string   `mapstructure:"mode"`
+		CertPath    string   `mapstructure:"cert-path"`
 		KeyPath     string   `mapstructure:"key-path"`
 		CACertPaths []string `mapstructure:"ca-cert-paths"`
 	}
@@ -90,90 +84,20 @@ const (
 	DefaultTLSMinVersion = tls.VersionTLS12
 )
 
-// ServerCredentials returns the gRPC transport credentials to be used by a server,
-// based on the provided TLS configuration.
-func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error) {
-	switch c.Mode {
-	case NoneTLSMode, UnmentionedTLSMode:
-		return insecure.NewCredentials(), nil
-	case OneSideTLSMode, MutualTLSMode:
-		tlsCfg := &tls.Config{
-			MinVersion: DefaultTLSMinVersion,
-			ClientAuth: tls.NoClientCert,
-		}
-
-		// Load server certificate and key pair (required for both modes)
-		cert, err := tls.LoadX509KeyPair(c.CertPath, c.KeyPath)
-		if err != nil {
-			return nil, errors.Wrapf(err,
-				"failed to load server certificate from %s or private key from %s", c.CertPath, c.KeyPath)
-		}
-		tlsCfg.Certificates = append(tlsCfg.Certificates, cert)
-
-		// Load CA certificate pool (only for mutual TLS)
-		if c.Mode == MutualTLSMode {
-			tlsCfg.ClientCAs, err = buildCertPool(c.CACertPaths)
-			if err != nil {
-				return nil, err
-			}
-			tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
-		}
-
-		return credentials.NewTLS(tlsCfg), nil
-	default:
-		return nil, errors.Newf("unknown TLS mode: %s (valid modes: %s, %s, %s)",
-			c.Mode, NoneTLSMode, OneSideTLSMode, MutualTLSMode)
-	}
-}
-
-// ClientCredentials returns the gRPC transport credentials to be used by a client,
-// based on the provided TLS configuration.
+// ClientCredentials converts TLSConfig into a TLSMaterials struct and generates client creds.
 func (c TLSConfig) ClientCredentials() (credentials.TransportCredentials, error) {
-	switch c.Mode {
-	case NoneTLSMode, UnmentionedTLSMode:
-		return insecure.NewCredentials(), nil
-	case OneSideTLSMode, MutualTLSMode:
-		tlsCfg := &tls.Config{
-			MinVersion: DefaultTLSMinVersion,
-		}
-
-		// Load client certificate and key pair (only for mutual TLS)
-		if c.Mode == MutualTLSMode {
-			cert, err := tls.LoadX509KeyPair(c.CertPath, c.KeyPath)
-			if err != nil {
-				return nil, errors.Wrapf(err,
-					"failed to load client certificate from %s or private key from %s", c.CertPath, c.KeyPath)
-			}
-			tlsCfg.Certificates = append(tlsCfg.Certificates, cert)
-		}
-
-		// Load CA certificate pool (required for both modes)
-		var err error
-		tlsCfg.RootCAs, err = buildCertPool(c.CACertPaths)
-		if err != nil {
-			return nil, err
-		}
-
-		return credentials.NewTLS(tlsCfg), nil
-	default:
-		return nil, errors.Newf("unknown TLS mode: %s (valid modes: %s, %s, %s)",
-			c.Mode, NoneTLSMode, OneSideTLSMode, MutualTLSMode)
+	tlsMaterials, err := NewTLSMaterials(c)
+	if err != nil {
+		return nil, err
 	}
+	return tlsMaterials.ClientCredentials()
 }
 
-func buildCertPool(paths []string) (*x509.CertPool, error) {
-	if len(paths) == 0 {
-		return nil, errors.New("no CA certificates provided")
+// ServerCredentials converts TLSConfig into a TLSMaterials struct and generates server creds.
+func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error) {
+	tlsMaterials, err := NewTLSMaterials(c)
+	if err != nil {
+		return nil, err
 	}
-	certPool := x509.NewCertPool()
-	for _, p := range paths {
-		pemBytes, err := os.ReadFile(p)
-		if err != nil {
-			return nil, errors.Wrapf(err, "while reading CA cert %v", p)
-		}
-		if ok := certPool.AppendCertsFromPEM(pemBytes); !ok {
-			return nil, errors.Errorf("unable to parse CA cert %v", p)
-		}
-	}
-	return certPool, nil
+	return tlsMaterials.ServerCredentials()
 }

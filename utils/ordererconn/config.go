@@ -15,19 +15,15 @@ import (
 )
 
 type (
-	// Config for the orderer-client.
+	// Config defines the static configuration of the orderer client as loaded from the YAML file.
+	// It supports connectivity to multiple organization's orderers.
 	Config struct {
-		Connection    ConnectionConfig `mapstructure:"connection"`
-		ConsensusType string           `mapstructure:"consensus-type"`
-		ChannelID     string           `mapstructure:"channel-id"`
-		Identity      *IdentityConfig  `mapstructure:"identity"`
-	}
-
-	// ConnectionConfig contains the endpoints, CAs, and retry profile.
-	ConnectionConfig struct {
-		Endpoints []*commontypes.OrdererEndpoint `mapstructure:"endpoints"`
-		TLS       connection.TLSConfig           `mapstructure:"tls"`
-		Retry     *connection.RetryProfile       `mapstructure:"reconnect"`
+		ConsensusType string                         `mapstructure:"consensus-type"`
+		ChannelID     string                         `mapstructure:"channel-id"`
+		Identity      *IdentityConfig                `mapstructure:"identity"`
+		Retry         *connection.RetryProfile       `mapstructure:"reconnect"`
+		TLS           OrdererTLSConfig               `mapstructure:"tls"`
+		Organizations map[string]*OrganizationConfig `mapstructure:"organizations"`
 	}
 
 	// IdentityConfig defines the orderer's MSP.
@@ -36,6 +32,22 @@ type (
 		MspID  string               `mapstructure:"msp-id" yaml:"msp-id"`
 		MSPDir string               `mapstructure:"msp-dir" yaml:"msp-dir"`
 		BCCSP  *factory.FactoryOpts `mapstructure:"bccsp" yaml:"bccsp"`
+	}
+
+	// OrganizationConfig contains the MspID (Organization ID), orderer endpoints, and their root CA paths.
+	OrganizationConfig struct {
+		Endpoints []*commontypes.OrdererEndpoint `mapstructure:"endpoints"`
+		CACerts   []string                       `mapstructure:"ca-cert-paths"`
+	}
+
+	// OrdererTLSConfig is a TLS config for the orderer clients.
+	OrdererTLSConfig struct {
+		Mode     string `mapstructure:"mode"`
+		CertPath string `mapstructure:"cert-path"`
+		KeyPath  string `mapstructure:"key-path"`
+		// CommonCACertPaths is a temporaty workaround to inject CA to all organizations.
+		// TODO: This will be removed once we read the TLS certificates from the config block.
+		CommonCACertPaths []string `mapstructure:"common-ca-cert-paths"`
 	}
 )
 
@@ -60,27 +72,25 @@ var (
 	ErrNoEndpoints           = errors.New("no endpoints")
 )
 
-// ValidateConfig validate the configuration.
-func ValidateConfig(c *Config) error {
-	if c.ConsensusType == "" {
-		c.ConsensusType = DefaultConsensus
+// ValidateOrganizations validate the organization parameters.
+func ValidateOrganizations(organizations ...*OrganizationMaterial) error {
+	for _, org := range organizations {
+		if org == nil {
+			return ErrEmptyConnectionConfig
+		}
+		if err := validateEndpoints(org.Endpoints); err != nil {
+			return err
+		}
 	}
-	if c.ConsensusType != Bft && c.ConsensusType != Cft {
-		return errors.Newf("unsupported orderer type %s", c.ConsensusType)
-	}
-	return ValidateConnectionConfig(&c.Connection)
+	return nil
 }
 
-// ValidateConnectionConfig validate the configuration.
-func ValidateConnectionConfig(c *ConnectionConfig) error {
-	if c == nil {
-		return ErrEmptyConnectionConfig
-	}
-	if len(c.Endpoints) == 0 {
+func validateEndpoints(endpoints []*commontypes.OrdererEndpoint) error {
+	if len(endpoints) == 0 {
 		return ErrNoEndpoints
 	}
 	uniqueEndpoints := make(map[string]string)
-	for _, e := range c.Endpoints {
+	for _, e := range endpoints {
 		if e.Host == "" || e.Port == 0 {
 			return ErrEmptyEndpoint
 		}
@@ -91,4 +101,25 @@ func ValidateConnectionConfig(c *ConnectionConfig) error {
 		uniqueEndpoints[target] = e.String()
 	}
 	return nil
+}
+
+// ValidateConsensusType verify and sets the consensus type in case of an unmentioned type.
+func ValidateConsensusType(c *Config) error {
+	if c.ConsensusType == "" {
+		c.ConsensusType = DefaultConsensus
+	}
+	if c.ConsensusType != Bft && c.ConsensusType != Cft {
+		return errors.Newf("unsupported orderer type %s", c.ConsensusType)
+	}
+	return nil
+}
+
+// TLSConfigToOrdererTLSConfig translates a TLSConfig to an OrdererTLSConfig.
+func TLSConfigToOrdererTLSConfig(c connection.TLSConfig) OrdererTLSConfig {
+	return OrdererTLSConfig{
+		Mode:              c.Mode,
+		KeyPath:           c.KeyPath,
+		CertPath:          c.CertPath,
+		CommonCACertPaths: c.CACertPaths,
+	}
 }

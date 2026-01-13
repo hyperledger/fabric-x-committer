@@ -101,8 +101,6 @@ func (b *blockMappingResult) mapMessage(msgIndex uint32, msg []byte) error {
 	}
 
 	switch common.HeaderType(hdr.Type) {
-	default:
-		return b.rejectTx(msgIndex, hdr, committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD, "message type")
 	case common.HeaderType_CONFIG:
 		_, err := policy.ParsePolicyFromConfigTx(msg)
 		if err != nil {
@@ -119,6 +117,8 @@ func (b *blockMappingResult) mapMessage(msgIndex uint32, msg []byte) error {
 			return b.rejectTx(msgIndex, hdr, status, "malformed tx")
 		}
 		return b.appendTx(msgIndex, hdr, tx)
+	default:
+		return b.rejectTx(msgIndex, hdr, committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD, "message type")
 	}
 }
 

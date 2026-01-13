@@ -36,9 +36,11 @@ type (
 		shouldFail       bool
 	}
 
-	// ServerStarter is a function that receives a TLS configuration, starts the server,
+	// ServerStarter is a function that starts the server,
 	// and returns a RPCAttempt function for initiating a client connection and attempting an RPC call.
-	ServerStarter func(t *testing.T, serverTLS connection.TLSConfig) RPCAttempt
+	// It receives the serverTLS config to configure the server, and the client TLS config to configure
+	// the service internal clients if needed.
+	ServerStarter func(t *testing.T, serverTLS, clientTLS connection.TLSConfig) RPCAttempt
 
 	// RPCAttempt is a function returned by ServerStarter that contains the information
 	// needed to start a client connection and attempt an RPC call.
@@ -144,19 +146,21 @@ func RunSecureConnectionTest(
 			t.Parallel()
 			// create server's tls config and start it according to the server tls mode.
 			serverTLS, _ := tlsMgr.CreateServerCredentials(t, tc.serverMode, defaultHostName)
-			rpcAttemptFunc := starter(t, serverTLS)
+			internalClientTLS := baseClientTLS
+			internalClientTLS.Mode = tc.serverMode
+			rpcAttemptFunc := starter(t, serverTLS, internalClientTLS)
 			// for each server secure mode, build the client's test cases.
 			for _, clientTestCase := range tc.cases {
 				t.Run(clientTestCase.testDescription, func(t *testing.T) {
 					t.Parallel()
 
-					cfg := baseClientTLS
-					cfg.Mode = clientTestCase.clientSecureMode
+					clientTLS := baseClientTLS
+					clientTLS.Mode = clientTestCase.clientSecureMode
 
 					ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 					t.Cleanup(cancel)
 
-					err := rpcAttemptFunc(ctx, t, cfg)
+					err := rpcAttemptFunc(ctx, t, clientTLS)
 					if clientTestCase.shouldFail {
 						require.Error(t, err)
 					} else {

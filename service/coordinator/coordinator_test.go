@@ -59,7 +59,7 @@ type (
 func TestCoordinatorSecureConnection(t *testing.T) {
 	t.Parallel()
 	test.RunSecureConnectionTest(t,
-		func(t *testing.T, tlsCfg connection.TLSConfig) test.RPCAttempt {
+		func(t *testing.T, tlsCfg, _ connection.TLSConfig) test.RPCAttempt {
 			t.Helper()
 			env := newCoordinatorTestEnv(t, &testConfig{
 				numSigService: 1,

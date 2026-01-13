@@ -66,9 +66,27 @@ func NewLoadBalancedConnection(config *MultiClientConfig) (*grpc.ClientConn, err
 	if err != nil {
 		return nil, err
 	}
+	return newLoadBalancedConnection(config.Endpoints, tlsCredentials, config.Retry)
+}
 
-	resolverEndpoints := make([]resolver.Endpoint, len(config.Endpoints))
-	for i, e := range config.Endpoints {
+// NewLoadBalancedConnectionFromMaterials creates a connection with load balancing between the endpoints
+// in the given config.
+func NewLoadBalancedConnectionFromMaterials(endpoints []*Endpoint, tlsMaterials *TLSMaterials, retry *RetryProfile,
+) (*grpc.ClientConn, error) {
+	tlsCredentials, err := tlsMaterials.ClientCredentials()
+	if err != nil {
+		return nil, err
+	}
+	return newLoadBalancedConnection(endpoints, tlsCredentials, retry)
+}
+
+func newLoadBalancedConnection(
+	endpoints []*Endpoint,
+	creds credentials.TransportCredentials,
+	retry *RetryProfile,
+) (*grpc.ClientConn, error) {
+	resolverEndpoints := make([]resolver.Endpoint, len(endpoints))
+	for i, e := range endpoints {
 		// we're setting ServerName for each address because each service-instance has its own certificates.
 		resolverEndpoints[i] = resolver.Endpoint{
 			Addresses: []resolver.Address{{Addr: e.Address(), ServerName: e.Host}},
@@ -79,8 +97,8 @@ func NewLoadBalancedConnection(config *MultiClientConfig) (*grpc.ClientConn, err
 
 	return NewConnection(Parameters{
 		Address:  fmt.Sprintf("%s:///%s", r.Scheme(), "method"),
-		Creds:    tlsCredentials,
-		Retry:    config.Retry,
+		Creds:    creds,
+		Retry:    retry,
 		Resolver: r,
 	})
 }

@@ -47,7 +47,7 @@ type cryptoParameters struct {
 func TestVerifierSecureConnection(t *testing.T) {
 	t.Parallel()
 	test.RunSecureConnectionTest(t,
-		func(t *testing.T, tlsCfg connection.TLSConfig) test.RPCAttempt {
+		func(t *testing.T, tlsCfg, _ connection.TLSConfig) test.RPCAttempt {
 			t.Helper()
 			env := newTestState(t, defaultConfigWithTLS(tlsCfg))
 			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {

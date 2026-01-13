@@ -31,8 +31,8 @@ var logger = logging.New("broadcast-deliver")
 
 // New creates a broadcast/deliver client. It must be closed to release all the associated connections.
 func New(config *ordererconn.Config) (*Client, error) {
-	if err := ordererconn.ValidateConfig(config); err != nil {
-		return nil, errors.Wrap(err, "error validating config")
+	if err := ordererconn.ValidateConsensusType(config); err != nil {
+		return nil, err
 	}
 
 	signer, err := ordererconn.NewIdentitySigner(config.Identity)
@@ -40,9 +40,9 @@ func New(config *ordererconn.Config) (*Client, error) {
 		return nil, errors.Wrap(err, "error creating identity signer")
 	}
 
-	cm := &ordererconn.ConnectionManager{}
-	if err = cm.Update(&config.Connection); err != nil {
-		return nil, errors.Wrap(err, "error creating connections")
+	cm, err := ordererconn.NewConnectionManager(config)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Client{
@@ -58,8 +58,8 @@ func (s *Client) CloseConnections() {
 }
 
 // UpdateConnections updates the connection config.
-func (s *Client) UpdateConnections(config *ordererconn.ConnectionConfig) error {
-	return s.connectionManager.Update(config)
+func (s *Client) UpdateConnections(orgsMaterials []*ordererconn.OrganizationMaterial) error {
+	return s.connectionManager.Update(orgsMaterials)
 }
 
 // Deliver starts the block receiver. The call to Deliver blocks until an error occurs or the context is canceled.
