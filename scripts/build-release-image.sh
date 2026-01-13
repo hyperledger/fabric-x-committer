@@ -18,13 +18,16 @@ function build_image() {
   local image_name=$1
   local bin=$2
   local service_ports=$3
-  local manifest_name=${namespace}/${image_name}:${version}
+  local manifest_name=${namespace}/fabric-x-${image_name}:${version}
   local cmd=(
     "${docker_cmd}" build
     -f "${dockerfile_release_dir}/Dockerfile"
     --build-arg BIN="${bin}"
     --build-arg PORTS="${service_ports}"
     --build-arg ARCHBIN_PATH="${arch_bin_dir}"
+    --build-arg VERSION="${version}"
+    --build-arg CREATED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    --build-arg REVISION="$(git rev-parse HEAD)"
   )
 
   if [ "${multiplatform}" = true ]; then

@@ -28,8 +28,8 @@ import (
 )
 
 const (
-	committerReleaseImage = "icr.io/cbdc/committer:0.0.2"
-	loadgenReleaseImage   = "icr.io/cbdc/loadgen:0.0.2"
+	committerReleaseImage = "docker.io/hyperledger/fabric-x-committer:latest"
+	loadgenReleaseImage   = "docker.io/hyperledger/fabric-x-loadgen:latest"
 	networkPrefixName     = test.DockerNamesPrefix + "_network"
 	genBlockFile          = "sc-genesis-block.proto.bin"
 	// containerConfigPath is the path to the config directory inside the container.
@@ -179,16 +179,18 @@ func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, param
 	t.Helper()
 
 	configPath := filepath.Join(containerConfigPath, params.node)
+	containerUser := "0:0"
+	t.Logf("Starting %s as container with user %s.\n", committerReleaseImage, containerUser)
 	createAndStartContainerAndItsLogs(ctx, t, createAndStartContainerParameters{
 		config: &container.Config{
 			Image: committerReleaseImage,
 			Cmd: []string{
-				"committer",
 				fmt.Sprintf("start-%s", params.node),
 				"--config",
 				fmt.Sprintf("%s.yaml", configPath),
 			},
 			Hostname: params.node,
+			User:     containerUser,
 			Env: []string{
 				"SC_COORDINATOR_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_COORDINATOR_VERIFIER_TLS_MODE=" + params.tlsMode,
@@ -225,16 +227,18 @@ func startLoadgenNodeWithReleaseImage(
 	t.Helper()
 
 	configPath := filepath.Join(containerConfigPath, params.node)
+	containerUser := "0:0"
+	t.Logf("Starting %s as container with user %s.\n", loadgenReleaseImage, containerUser)
 	createAndStartContainerAndItsLogs(ctx, t, createAndStartContainerParameters{
 		config: &container.Config{
 			Image: loadgenReleaseImage,
 			Cmd: []string{
-				params.node,
 				"start",
 				"--config",
 				fmt.Sprintf("%s.yaml", configPath),
 			},
 			Hostname: params.node,
+			User:     containerUser,
 			ExposedPorts: nat.PortSet{
 				loadGenMetricsPort + "/tcp": {},
 			},

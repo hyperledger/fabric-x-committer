@@ -50,9 +50,10 @@ func (p *startNodeParameters) asNode(node string) startNodeParameters {
 }
 
 const (
-	channelName     = "mychannel"
-	monitoredMetric = "loadgen_transaction_committed_total"
-	testNodeImage   = "icr.io/cbdc/committer-test-node:0.0.2"
+	channelName         = "mychannel"
+	monitoredMetric     = "loadgen_transaction_committed_total"
+	containerPrefixName = "sc_test"
+	testNodeImage       = "docker.io/hyperledger/committer-test-node:latest"
 )
 
 func createAndStartContainerAndItsLogs(
