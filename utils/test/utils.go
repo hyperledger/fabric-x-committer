@@ -163,17 +163,15 @@ func RunServiceForTest(
 	tb.Cleanup(wg.Wait)
 	dCtx, cancel := context.WithCancel(ctx)
 	tb.Cleanup(cancel)
-	wg.Add(1)
 
 	// We extract caller information to ensure we have sufficient information for debugging.
 	pc, file, no, ok := runtime.Caller(1)
 	require.True(tb, ok)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		defer doneFlag.SignalReady()
 		// We use assert to prevent panicking for cleanup errors.
 		assert.NoErrorf(tb, service(dCtx), "called from %s:%d\n\t%s", file, no, runtime.FuncForPC(pc).Name())
-	}()
+	})
 
 	if waitFunc == nil {
 		return doneFlag

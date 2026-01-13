@@ -21,7 +21,7 @@ type Endpoint struct {
 
 // Empty returns true if no port is assigned.
 func (e *Endpoint) Empty() bool {
-	return e.Port == 0
+	return e.Host == "" && e.Port == 0
 }
 
 // Address returns a string representation of the endpoint's address.

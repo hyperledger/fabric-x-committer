@@ -69,9 +69,21 @@ load-profile:
   workers: 1
 
 stream:
+  # TXs are released at rate (default: unlimited).
+  # Blocks/batches wait up to max-batch-wait (default: 1 second) before submission.
+  # If a full batch is not ready by then, a partial batch is
+  # submitted if it meets min-batch-size (default: 1);
+  # otherwise, the system waits until min-batch-size is available.
   rate-limit:
-    endpoint: :6997
-    initial-limit: 10_000
+    rate: 10_000
+    max-batch-wait: 1s
+    min-batch-size: 10
+    # If server is set, an HTTP endpoint is exposed to adjust the rate at runtime.
+    # It exposes the following API:
+    # GET  /getRateLimit - Get the rate limit returning a JSON body { "rate": uint64 }.
+    # POST /setRateLimit - Sets the rate limit using a JSON body { "rate": uint64 }.
+    server:
+      endpoint: :6997
   # We set low values to reduce the CPU load during tests.
   buffers-size: 10
   gen-batch: 10

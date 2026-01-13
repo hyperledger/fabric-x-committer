@@ -8,9 +8,9 @@ package workload
 
 import (
 	"fmt"
+	"time"
 
 	"go.yaml.in/yaml/v3"
-	"golang.org/x/time/rate"
 
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 
@@ -159,10 +159,17 @@ type StreamOptions struct {
 }
 
 // LimiterConfig is used to create a limiter.
+// TXs are released at Rate (default: unlimited).
+// Blocks/batches wait up to MaxBatchWait (default: 1 second) before submission.
+// If a full batch is not ready by then, a partial batch is
+// submitted if it meets MinBatchSize (default: 1);
+// otherwise, the system waits until MinBatchSize is available.
 type LimiterConfig struct {
-	InitialLimit rate.Limit `mapstructure:"initial-limit"`
-	// Endpoint for a simple http server to set the limiter.
-	Endpoint connection.Endpoint `mapstructure:"endpoint"`
+	Rate         uint64        `mapstructure:"rate"`
+	MaxBatchWait time.Duration `mapstructure:"max-batch-wait"`
+	MinBatchSize uint64        `mapstructure:"min-batch-size"`
+	// Server for an HTTP server to set/get the limiter's rate.
+	Server *connection.ServerConfig `mapstructure:"server"`
 }
 
 // Debug outputs the profile to stdout.

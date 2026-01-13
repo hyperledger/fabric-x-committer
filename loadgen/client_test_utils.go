@@ -70,7 +70,7 @@ func DefaultClientConf(t *testing.T) *ClientConfig {
 			Workers: 1,
 		},
 		Stream: &workload.StreamOptions{
-			RateLimit: &workload.LimiterConfig{InitialLimit: 1_000},
+			RateLimit: &workload.LimiterConfig{Rate: 1_000},
 			// We set low values for the buffer and batch to reduce the CPU load during tests.
 			BuffersSize: 1,
 			GenBatch:    1,
