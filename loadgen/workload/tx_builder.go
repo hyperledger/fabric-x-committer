@@ -38,7 +38,7 @@ func NewTxBuilderFromPolicy(policy *PolicyProfile, nonceSource io.Reader) (*TxBu
 	}
 	var envCreator []byte
 	if envSigner != nil {
-		envCreator, err = envSigner.Serialize()
+		envCreator, err = envSigner.SerializeWithCert()
 		if err != nil {
 			return nil, errors.Wrap(err, "error serializing identity creator")
 		}

@@ -140,7 +140,7 @@ func newPolicyEndorserFromMsp(cryptoPath string) (*sigtest.NsEndorser, *applicat
 	serializedSigningIdentities := make([][]byte, len(signingIdentities))
 	sigPolicies := make([]*common.SignaturePolicy, len(signingIdentities))
 	for i, si := range signingIdentities {
-		siBytes, serErr := si.Serialize()
+		siBytes, serErr := si.SerializeWithCert()
 		utils.Must(serErr)
 		serializedSigningIdentities[i] = siBytes
 		sigPolicies[i] = policydsl.SignedBy(int32(i)) //nolint:gosec // safe int -> int32.
