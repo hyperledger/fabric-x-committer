@@ -167,23 +167,13 @@ func readAndWriteKeys(txNamespaces []*applicationpb.TxNamespace) *readWriteKeys 
 		// namespace in question should be included in the readOnlyKeys of these subsequent normal
 		// transactions. This method establishes a dependency from normal transactions to the namespace
 		// lifecycle transaction, maintaining the correct sequence of operations.
-		// For types.MetaNamespaceID, we introduce dependency to the config key in the config namespace
-		// when creating new namespace. This is to establish a dependency between creating a namespace
-		// and the endorsement policy for this action, that is stored in the config transaction.
-		// To simplify the implementation, we introduce the dependency for any meta namespace transaction,
-		// including updates.
-		var key string
-		switch ns.NsId {
-		case committerpb.MetaNamespaceID:
-			key = constructCompositeKey(committerpb.ConfigNamespaceID, []byte(committerpb.ConfigKey))
-		case committerpb.ConfigNamespaceID:
-			// Meta TX is dependent on the config TX, but not the other way around.
-			// The above dependency for meta TX is sufficed to force an order between config and meta transactions.
-		default:
-			key = constructCompositeKey(committerpb.MetaNamespaceID, []byte(ns.NsId))
-		}
-		if key != "" {
-			readOnlyKeys = append(readOnlyKeys, key)
+		//
+		// We assume configuration transactions are serialized by the sidecar. That is, the sidecar waits
+		// for all previously submitted transactions to be processed before submitting a config block, and
+		// waits for that block to comnitted before sending new transactions. Therefore, we do not need to
+		// track dependencies between meta-namespace and configuration transactions.
+		if ns.NsId != committerpb.MetaNamespaceID && ns.NsId != committerpb.ConfigNamespaceID {
+			readOnlyKeys = append(readOnlyKeys, constructCompositeKey(committerpb.MetaNamespaceID, []byte(ns.NsId)))
 		}
 
 		for _, ro := range ns.ReadsOnly {
