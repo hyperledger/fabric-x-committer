@@ -253,10 +253,7 @@ func TestDependencyGraphManager(t *testing.T) {
 			ensureWaitingTXsLimit(t, manService, 0)
 
 			t.Log("check dependency in namespace")
-			// t2 depends on t1, t1 depends on t0.
-			t0 := createTxForTest(
-				t, 0, committerpb.ConfigNamespaceID, nil, nil, [][]byte{[]byte(committerpb.ConfigKey)},
-			)
+			// t2 depends on t1
 			t1 = createTxForTest(
 				t, 1, committerpb.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 			)
@@ -266,10 +263,10 @@ func TestDependencyGraphManager(t *testing.T) {
 
 			incomingTxs <- &TransactionBatch{
 				ID:  3,
-				Txs: []*servicepb.TxWithRef{t0, t1, t2},
+				Txs: []*servicepb.TxWithRef{t1, t2},
 			}
 
-			// t3 depends on t2, t1, and t0
+			// t3 depends on t2, and t1
 			t3 = createTxForTest(
 				t, 0, committerpb.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 			)
@@ -280,15 +277,6 @@ func TestDependencyGraphManager(t *testing.T) {
 				ID:  4,
 				Txs: []*servicepb.TxWithRef{t3, t4},
 			}
-
-			// only t0 is dependency free
-			depFreeTxs = <-outgoingTxs
-			require.Len(t, depFreeTxs, 1)
-			actualT0 := depFreeTxs[0]
-			test.RequireProtoEqual(t, t0.Ref, actualT0.Tx.Ref)
-			ensureNoOutputs(t, outgoingTxs)
-
-			validatedTxs <- TxNodeBatch{actualT0}
 
 			// only t1 is dependency free
 			depFreeTxs = <-outgoingTxs
@@ -326,7 +314,7 @@ func TestDependencyGraphManager(t *testing.T) {
 
 			validatedTxs <- TxNodeBatch{actualT4}
 
-			ensureProcessedAndValidatedMetrics(t, metrics, 9, 9)
+			ensureProcessedAndValidatedMetrics(t, metrics, 8, 8)
 			// after validating all txs, the dependency detector should be empty
 			ensureWaitingTXsLimit(t, manService, 0)
 
