@@ -271,7 +271,7 @@ func (vc *ValidatorCommitterService) StartValidateAndCommitStream(
 	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
 	if !vc.isStreamActive.CompareAndSwap(false, true) {
-		return utils.ErrActiveStream
+		return grpcerror.WrapFailedPrecondition(utils.ErrActiveStream)
 	}
 	defer vc.isStreamActive.Store(false)
 

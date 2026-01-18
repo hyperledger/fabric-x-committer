@@ -91,7 +91,7 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 	g, gCtx := errgroup.WithContext(rCtx)
 	stream, err := config.coordClient.BlockProcessing(gCtx)
 	if err != nil {
-		return errors.Wrap(err, "failed to open stream for block processing")
+		return logAndWrapCoordinatorError(err, "failed to open stream for block processing")
 	}
 	sCtx := stream.Context()
 
@@ -362,7 +362,8 @@ func (r *relay) setLastCommittedBlockNumber(
 		logger.Debugf("Setting the last committed block number: %d", blkNum)
 		_, err := client.SetLastCommittedBlockNumber(ctx, &servicepb.BlockRef{Number: blkNum})
 		if err != nil {
-			return errors.Wrapf(err, "failed to set the last committed block number [%d]", blkNum)
+			return logAndWrapCoordinatorError(err,
+				fmt.Sprintf("failed to set last committed block number [%d]", blkNum))
 		}
 		expectedNextBlockToBeCommitted = blkNum + 1
 	}

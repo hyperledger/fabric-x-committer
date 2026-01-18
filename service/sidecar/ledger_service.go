@@ -22,6 +22,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 )
@@ -116,14 +117,14 @@ func (s *ledgerService) Deliver(srv peer.Deliver_DeliverServer) error {
 			return nil
 		}
 		if err != nil {
-			return err
+			return grpcerror.WrapInternalError(err)
 		}
 
 		logger.Infof("Received seek info message from %s", addr)
 		status, err := s.deliverBlocks(srv, envelope)
 		if err != nil {
 			logger.Infof("Failed delivering to %s with status %v: %v", addr, status, err)
-			return err
+			return wrapDeliverError(status, err)
 		}
 		logger.Infof("Done delivering to %s", addr)
 
@@ -131,7 +132,7 @@ func (s *ledgerService) Deliver(srv peer.Deliver_DeliverServer) error {
 			Type: &peer.DeliverResponse_Status{Status: status},
 		}); err != nil {
 			logger.Infof("Error sending to %s: %s", addr, err)
-			return err
+			return grpcerror.WrapInternalError(err)
 		}
 	}
 }
@@ -140,14 +141,14 @@ func (s *ledgerService) Deliver(srv peer.Deliver_DeliverServer) error {
 // Deprecated: this method is implemented to have compatibility with Fabric so that the fabric smart client
 // can easily integrate with both FabricX and Fabric. Eventually, this method will be removed.
 func (*ledgerService) DeliverFiltered(peer.Deliver_DeliverFilteredServer) error {
-	return errors.New("method is deprecated")
+	return grpcerror.WrapUnimplemented(errors.New("method is deprecated"))
 }
 
 // DeliverWithPrivateData implements an API in peer.DeliverServer.
 // Deprecated: this method is implemented to have compatibility with Fabric so that the fabric smart client
 // can easily integrate with both FabricX and Fabric. Eventually, this method will be removed.
 func (*ledgerService) DeliverWithPrivateData(peer.Deliver_DeliverWithPrivateDataServer) error {
-	return errors.New("method is deprecated")
+	return grpcerror.WrapUnimplemented(errors.New("method is deprecated"))
 }
 
 // GetBlockHeight returns the height of the block store, i.e., the last committed block + 1. The +1 is needed
@@ -227,5 +228,20 @@ func (s *ledgerService) getCursor(payload []byte) (blockledger.Iterator, uint64,
 		return cursor, stop.Specified.Number, nil
 	default:
 		return nil, 0, errors.New("unknown type")
+	}
+}
+
+// wrapDeliverError wraps deliver errors with appropriate gRPC status codes based on the Fabric status.
+func wrapDeliverError(status common.Status, err error) error {
+	if err == nil {
+		return nil
+	}
+	switch status {
+	case common.Status_BAD_REQUEST:
+		return grpcerror.WrapInvalidArgument(err)
+	case common.Status_NOT_FOUND:
+		return grpcerror.WrapNotFound(err)
+	default:
+		return grpcerror.WrapInternalError(err)
 	}
 }
