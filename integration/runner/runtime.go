@@ -90,6 +90,9 @@ type (
 
 		// CrashTest is true to indicate a service crash is expected, and not a failure.
 		CrashTest bool
+
+		// RateLimit configures rate limiting for services that support it (query, sidecar).
+		RateLimit *connection.RateLimitConfig
 	}
 )
 
@@ -140,7 +143,8 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 				NamespacePolicies:  make(map[string]*workload.Policy),
 				CryptoMaterialPath: t.TempDir(),
 			},
-			Logging: &logging.DefaultConfig,
+			Logging:   &logging.DefaultConfig,
+			RateLimit: conf.RateLimit,
 		},
 		CommittedBlock:   make(chan *common.Block, 100),
 		SeedForCryptoGen: rand.New(rand.NewSource(10)),
