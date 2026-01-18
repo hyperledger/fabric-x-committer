@@ -102,6 +102,7 @@ func TestReadConfigSidecar(t *testing.T) {
 						PermitWithoutStream: false,
 					},
 				},
+				RateLimit: &connection.RateLimitConfig{},
 			},
 			Monitoring: newMonitoringConfig("", 2114),
 			Orderer: ordererconn.Config{
@@ -491,14 +492,16 @@ func newMonitoringConfig(host string, port int) monitoring.Config {
 
 func newServerConfigWithDefaultTLS(port int) *connection.ServerConfig {
 	return &connection.ServerConfig{
-		Endpoint: *newEndpoint("", port),
-		TLS:      defaultServerTLSConfig,
+		Endpoint:  *newEndpoint("", port),
+		TLS:       defaultServerTLSConfig,
+		RateLimit: &connection.RateLimitConfig{},
 	}
 }
 
 func newServerConfig(host string, port int) *connection.ServerConfig {
 	return &connection.ServerConfig{
-		Endpoint: *newEndpoint(host, port),
+		Endpoint:  *newEndpoint(host, port),
+		RateLimit: &connection.RateLimitConfig{},
 	}
 }
 

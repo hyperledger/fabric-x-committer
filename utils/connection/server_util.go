@@ -57,6 +57,15 @@ func (c *ServerConfig) GrpcServer() (*grpc.Server, error) {
 	}
 	opts = append(opts, grpc.Creds(serverGrpcTransportCreds))
 
+	if err := c.RateLimit.Validate(); err != nil {
+		return nil, errors.Wrap(err, "invalid rate limit configuration")
+	}
+	if limiter := NewRateLimiter(c.RateLimit); limiter != nil {
+		opts = append(opts, grpc.UnaryInterceptor(RateLimitInterceptor(limiter)))
+		logger.Infof("Rate limiting enabled: %d requests/second, burst: %d",
+			c.RateLimit.RequestsPerSecond, c.RateLimit.Burst)
+	}
+
 	if c.KeepAlive != nil && c.KeepAlive.Params != nil {
 		opts = append(opts, grpc.KeepaliveParams(keepalive.ServerParameters{
 			MaxConnectionIdle:     c.KeepAlive.Params.MaxConnectionIdle,

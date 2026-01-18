@@ -39,8 +39,20 @@ type (
 		Endpoint  Endpoint               `mapstructure:"endpoint"`
 		TLS       TLSConfig              `mapstructure:"tls"`
 		KeepAlive *ServerKeepAliveConfig `mapstructure:"keep-alive"`
+		RateLimit *RateLimitConfig       `mapstructure:"rate-limit"`
 
 		preAllocatedListener net.Listener
+	}
+
+	// RateLimitConfig describes the rate limiting configuration for unary gRPC endpoints.
+	RateLimitConfig struct {
+		// RequestsPerSecond is the maximum number of requests per second allowed.
+		// Set to 0 or negative to disable rate limiting.
+		RequestsPerSecond int `mapstructure:"requests-per-second"`
+		// Burst is the maximum number of requests allowed in a single burst.
+		// This allows handling sudden spikes of concurrent requests from multiple clients.
+		// Must be greater than 0 and less than or equal to RequestsPerSecond when rate limiting is enabled.
+		Burst int `mapstructure:"burst"`
 	}
 
 	// ServerKeepAliveConfig describes the keep alive parameters.
@@ -176,4 +188,20 @@ func buildCertPool(paths []string) (*x509.CertPool, error) {
 		}
 	}
 	return certPool, nil
+}
+
+// Validate checks that the rate limit configuration is valid.
+func (c *RateLimitConfig) Validate() error {
+	if c == nil || c.RequestsPerSecond <= 0 {
+		// Rate limiting is disabled, no validation needed
+		return nil
+	}
+	if c.Burst <= 0 {
+		return errors.Newf("rate limit burst must be greater than 0 when rate limiting is enabled")
+	}
+	if c.Burst > c.RequestsPerSecond {
+		return errors.Newf("rate limit burst (%d) must be less than or equal to requests-per-second (%d)",
+			c.Burst, c.RequestsPerSecond)
+	}
+	return nil
 }
