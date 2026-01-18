@@ -129,6 +129,62 @@ func TestWrapErrors(t *testing.T) {
 			expectedCode:     codes.InvalidArgument,
 			expectedMsg:      "invalid argument provided",
 		},
+		{
+			name:             "WrapCancelled returns nil for nil input",
+			createFunc:       WrapCancelled,
+			input:            nil,
+			expectedNilError: true,
+		},
+		{
+			name:             "WrapCancelled returns error with Canceled code",
+			createFunc:       WrapCancelled,
+			input:            errors.New("operation cancelled"),
+			expectedNilError: false,
+			expectedCode:     codes.Canceled,
+			expectedMsg:      "operation cancelled",
+		},
+		{
+			name:             "WrapFailedPrecondition returns nil for nil input",
+			createFunc:       WrapFailedPrecondition,
+			input:            nil,
+			expectedNilError: true,
+		},
+		{
+			name:             "WrapFailedPrecondition returns error with FailedPrecondition code",
+			createFunc:       WrapFailedPrecondition,
+			input:            errors.New("system not in required state"),
+			expectedNilError: false,
+			expectedCode:     codes.FailedPrecondition,
+			expectedMsg:      "system not in required state",
+		},
+		{
+			name:             "WrapUnimplemented returns nil for nil input",
+			createFunc:       WrapUnimplemented,
+			input:            nil,
+			expectedNilError: true,
+		},
+		{
+			name:             "WrapUnimplemented returns error with Unimplemented code",
+			createFunc:       WrapUnimplemented,
+			input:            errors.New("method is deprecated"),
+			expectedNilError: false,
+			expectedCode:     codes.Unimplemented,
+			expectedMsg:      "method is deprecated",
+		},
+		{
+			name:             "WrapNotFound returns nil for nil input",
+			createFunc:       WrapNotFound,
+			input:            nil,
+			expectedNilError: true,
+		},
+		{
+			name:             "WrapNotFound returns error with NotFound code",
+			createFunc:       WrapNotFound,
+			input:            errors.New("resource not found"),
+			expectedNilError: false,
+			expectedCode:     codes.NotFound,
+			expectedMsg:      "resource not found",
+		},
 	}
 
 	for _, tc := range tests {
@@ -137,6 +193,66 @@ func TestWrapErrors(t *testing.T) {
 
 			err := tc.createFunc(tc.input)
 			if tc.expectedNilError {
+				require.NoError(t, err)
+				return
+			}
+
+			st, ok := status.FromError(err)
+			require.True(t, ok)
+			require.Equal(t, tc.expectedCode, st.Code())
+			require.Equal(t, tc.expectedMsg, st.Message())
+		})
+	}
+}
+
+func TestWrapWithContext(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		input        error
+		context      string
+		expectedNil  bool
+		expectedCode codes.Code
+		expectedMsg  string
+	}{
+		{
+			name:        "nil error returns nil",
+			input:       nil,
+			context:     "calling downstream",
+			expectedNil: true,
+		},
+		{
+			name:         "gRPC status error preserves code and adds context",
+			input:        status.Error(codes.NotFound, "user not found"),
+			context:      "failed to get user",
+			expectedNil:  false,
+			expectedCode: codes.NotFound,
+			expectedMsg:  "failed to get user: user not found",
+		},
+		{
+			name:         "gRPC status error with different code preserves that code",
+			input:        status.Error(codes.PermissionDenied, "access denied"),
+			context:      "authorization check",
+			expectedNil:  false,
+			expectedCode: codes.PermissionDenied,
+			expectedMsg:  "authorization check: access denied",
+		},
+		{
+			name:         "non-gRPC error wraps as Internal",
+			input:        errors.New("network timeout"),
+			context:      "calling service B",
+			expectedNil:  false,
+			expectedCode: codes.Internal,
+			expectedMsg:  "calling service B: network timeout",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := WrapWithContext(tc.input, tc.context)
+			if tc.expectedNil {
 				require.NoError(t, err)
 				return
 			}

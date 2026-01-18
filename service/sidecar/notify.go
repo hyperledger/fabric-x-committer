@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 )
 
 type (
@@ -115,7 +116,18 @@ func (n *notifier) OpenNotificationStream(stream committerpb.Notifier_OpenNotifi
 		}
 		return gCtx.Err()
 	})
-	return g.Wait()
+	return wrapNotifierError(g.Wait())
+}
+
+// wrapNotifierError wraps notifier errors with appropriate gRPC status codes.
+func wrapNotifierError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return grpcerror.WrapCancelled(err)
+	}
+	return grpcerror.WrapInternalError(err)
 }
 
 func fixTimeout(request *committerpb.NotificationRequest, maxTimeout time.Duration) {

@@ -22,6 +22,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
@@ -139,14 +140,14 @@ func (vcm *validatorCommitterManager) setLastCommittedBlockNumber(
 	lastBlock *servicepb.BlockRef,
 ) error {
 	_, err := vcm.commonClient.SetLastCommittedBlockNumber(ctx, lastBlock)
-	return errors.Wrap(err, "failed setting the last committed block number")
+	return grpcerror.WrapWithContext(err, "failed setting the last committed block number")
 }
 
 func (vcm *validatorCommitterManager) getNextBlockNumberToCommit(
 	ctx context.Context,
 ) (*servicepb.BlockRef, error) {
 	ret, err := vcm.commonClient.GetNextBlockNumberToCommit(ctx, nil)
-	return ret, errors.Wrap(err, "failed getting the next expected block number")
+	return ret, grpcerror.WrapWithContext(err, "failed getting the next expected block number")
 }
 
 func (vcm *validatorCommitterManager) getTransactionsStatus(
@@ -154,21 +155,21 @@ func (vcm *validatorCommitterManager) getTransactionsStatus(
 	query *committerpb.TxIDsBatch,
 ) (*committerpb.TxStatusBatch, error) {
 	ret, err := vcm.commonClient.GetTransactionsStatus(ctx, query)
-	return ret, errors.Wrap(err, "failed getting transactions status")
+	return ret, grpcerror.WrapWithContext(err, "failed getting transactions status")
 }
 
 func (vcm *validatorCommitterManager) getNamespacePolicies(
 	ctx context.Context,
 ) (*applicationpb.NamespacePolicies, error) {
 	ret, err := vcm.commonClient.GetNamespacePolicies(ctx, nil)
-	return ret, errors.Wrap(err, "failed loading policies")
+	return ret, grpcerror.WrapWithContext(err, "failed loading policies")
 }
 
 func (vcm *validatorCommitterManager) getConfigTransaction(
 	ctx context.Context,
 ) (*applicationpb.ConfigTransaction, error) {
 	ret, err := vcm.commonClient.GetConfigTransaction(ctx, nil)
-	return ret, errors.Wrap(err, "failed loading config transaction")
+	return ret, grpcerror.WrapWithContext(err, "failed loading config transaction")
 }
 
 func (vcm *validatorCommitterManager) recoverPolicyManagerFromStateDB(ctx context.Context) error {
