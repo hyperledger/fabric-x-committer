@@ -113,13 +113,13 @@ func (q *Service) BeginView(
 	for ctx.Err() == nil {
 		viewID, err := getUUID()
 		if err != nil {
-			return nil, err
+			return nil, grpcerror.WrapInternalError(err)
 		}
 		if q.batcher.makeView(viewID, params) { //nolint:contextcheck // false positive.
 			return &committerpb.View{Id: viewID}, nil
 		}
 	}
-	return nil, ctx.Err()
+	return nil, grpcerror.WrapCancelled(ctx.Err())
 }
 
 // EndView implements the query-service interface.
@@ -128,7 +128,7 @@ func (q *Service) EndView(
 ) (*emptypb.Empty, error) {
 	q.metrics.requests.WithLabelValues(grpcEndView).Inc()
 	defer q.requestLatency(grpcEndView, time.Now())
-	return nil, q.batcher.removeViewID(view.Id)
+	return nil, grpcerror.WrapFailedPrecondition(q.batcher.removeViewID(view.Id))
 }
 
 // GetRows implements the query-service interface.
@@ -151,7 +151,7 @@ func (q *Service) GetRows(
 
 	batches, err := q.assignRequest(ctx, query)
 	if err != nil {
-		return nil, err
+		return nil, wrapQueryError(err)
 	}
 
 	res := &committerpb.Rows{
@@ -160,7 +160,7 @@ func (q *Service) GetRows(
 	for i, ns := range query.Namespaces {
 		resRows, _, resErr := batches[i].waitForRows(ctx, ns.Keys)
 		if resErr != nil {
-			return nil, resErr
+			return nil, wrapQueryError(resErr)
 		}
 		res.Namespaces[i] = &committerpb.RowsNamespace{
 			NsId: ns.NsId,
@@ -168,7 +168,7 @@ func (q *Service) GetRows(
 		}
 		promutil.AddToCounter(q.metrics.keysResponded, len(resRows))
 	}
-	return res, err
+	return res, nil
 }
 
 // GetTransactionStatus implements the query-service interface.
@@ -192,17 +192,17 @@ func (q *Service) GetTransactionStatus(
 		}},
 	})
 	if err != nil {
-		return nil, err
+		return nil, wrapQueryError(err)
 	}
 
 	res := &committerpb.TxStatusResponse{}
 	_, resRows, resErr := batches[0].waitForRows(ctx, keys)
 	if resErr != nil {
-		return nil, resErr
+		return nil, wrapQueryError(resErr)
 	}
 	res.Statuses = resRows
 	promutil.AddToCounter(q.metrics.keysResponded, len(resRows))
-	return res, err
+	return res, nil
 }
 
 // GetNamespacePolicies implements the query-service interface.
@@ -210,7 +210,8 @@ func (q *Service) GetNamespacePolicies(
 	ctx context.Context,
 	_ *emptypb.Empty,
 ) (*applicationpb.NamespacePolicies, error) {
-	return queryPolicies(ctx, q.batcher.pool)
+	res, err := queryPolicies(ctx, q.batcher.pool)
+	return res, grpcerror.WrapInternalError(err)
 }
 
 // GetConfigTransaction implements the query-service interface.
@@ -218,7 +219,8 @@ func (q *Service) GetConfigTransaction(
 	ctx context.Context,
 	_ *emptypb.Empty,
 ) (*applicationpb.ConfigTransaction, error) {
-	return queryConfig(ctx, q.batcher.pool)
+	res, err := queryConfig(ctx, q.batcher.pool)
+	return res, grpcerror.WrapInternalError(err)
 }
 
 func (q *Service) assignRequest(
@@ -252,4 +254,21 @@ func getUUID() (string, error) {
 
 func (q *Service) requestLatency(method string, start time.Time) {
 	promutil.Observe(q.metrics.requestsLatency.WithLabelValues(method), time.Since(start))
+}
+
+// wrapQueryError wraps query errors with appropriate gRPC status codes.
+func wrapQueryError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(err, ErrInvalidOrStaleView) {
+		return grpcerror.WrapFailedPrecondition(err)
+	}
+
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return grpcerror.WrapCancelled(err)
+	}
+
+	return grpcerror.WrapInternalError(err)
 }
