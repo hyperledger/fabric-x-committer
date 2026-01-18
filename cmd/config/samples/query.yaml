@@ -88,6 +88,13 @@ view-aggregation-window: 100ms   # A new view will be created if the previous vi
 max-aggregated-views: 1024       # A new view will be created if the previous view aggregated this number of views.
 max-view-timeout: 10s            # A view will be closed if it was opened for longer than this time.
 
+# Maximum number of keys allowed in a single query request.
+# This applies to both GetRows (total keys across all namespaces) and
+# GetTransactionStatus (number of transaction IDs).
+# Large key sets can cause high latency, memory spikes, and potential timeouts.
+# Set to 0 to disable the limit (not recommended for production).
+max-request-keys: 10000
+
 logging:
   enabled: true
   development: false

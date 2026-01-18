@@ -43,4 +43,9 @@ type Config struct {
 	ViewAggregationWindow time.Duration            `mapstructure:"view-aggregation-window"`
 	MaxAggregatedViews    int                      `mapstructure:"max-aggregated-views"`
 	MaxViewTimeout        time.Duration            `mapstructure:"max-view-timeout"`
+	// MaxRequestKeys is the maximum number of keys allowed in a single query request.
+	// This applies to both GetRows (total keys across all namespaces) and
+	// GetTransactionStatus (number of transaction IDs).
+	// Set to 0 to disable the limit.
+	MaxRequestKeys int `mapstructure:"max-request-keys"`
 }

@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -34,14 +35,22 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-type queryServiceTestEnv struct {
-	config        *Config
-	qs            *Service
-	ns            []string
-	clientConn    committerpb.QueryServiceClient
-	pool          *pgxpool.Pool
-	disabledViews []string
-}
+type (
+	queryServiceTestEnv struct {
+		config        *Config
+		qs            *Service
+		ns            []string
+		clientConn    committerpb.QueryServiceClient
+		pool          *pgxpool.Pool
+		disabledViews []string
+	}
+
+	queryServiceTestOpts struct {
+		serverTLS      connection.TLSConfig
+		clientTLS      connection.TLSConfig
+		maxRequestKeys int
+	}
+)
 
 // TestQuerySecureConnection verifies the query service gRPC server's behavior
 // under various client TLS configurations.
@@ -50,7 +59,9 @@ func TestQuerySecureConnection(t *testing.T) {
 	test.RunSecureConnectionTest(t,
 		func(t *testing.T, tlsCfg connection.TLSConfig) test.RPCAttempt {
 			t.Helper()
-			env := newQueryServiceTestEnvWithServerAndClientCreds(t, tlsCfg, test.InsecureTLSConfig)
+			env := newQueryServiceTestEnv(t, queryServiceTestOpts{
+				serverTLS: tlsCfg,
+			})
 			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
 				t.Helper()
 				client := createQueryClientWithTLS(t, &env.qs.config.Server.Endpoint, cfg)
@@ -63,7 +74,7 @@ func TestQuerySecureConnection(t *testing.T) {
 
 func TestQuery(t *testing.T) {
 	t.Parallel()
-	env := newQueryServiceTestEnvWithServerAndClientCreds(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+	env := newQueryServiceTestEnv(t)
 	requiredItems := env.makeItems(t)
 	query, _, _ := makeQuery(requiredItems)
 
@@ -146,9 +157,100 @@ func TestQuery(t *testing.T) {
 	})
 }
 
+func TestMaxRequestKeys(t *testing.T) {
+	t.Parallel()
+
+	t.Run("GetRows exceeds limit", func(t *testing.T) {
+		t.Parallel()
+		env := newQueryServiceTestEnv(t, queryServiceTestOpts{
+			maxRequestKeys: 5,
+		})
+		env.makeItems(t)
+
+		// Request with 6 keys across namespaces should fail (limit is 5)
+		query := &committerpb.Query{
+			Namespaces: []*committerpb.QueryNamespace{
+				{NsId: "0", Keys: strToBytes("item1", "item2", "item3")},
+				{NsId: "1", Keys: strToBytes("item1", "item2", "item3")},
+			},
+		}
+		_, err := env.clientConn.GetRows(t.Context(), query)
+		require.Error(t, err)
+		require.ErrorContains(t, err, ErrTooManyKeys.Error())
+		require.ErrorContains(t, err, "requested 6 keys")
+	})
+
+	t.Run("GetRows within limit", func(t *testing.T) {
+		t.Parallel()
+		env := newQueryServiceTestEnv(t, queryServiceTestOpts{
+			maxRequestKeys: 10,
+		})
+		env.makeItems(t)
+
+		// Request with 6 keys should succeed (limit is 10)
+		query := &committerpb.Query{
+			Namespaces: []*committerpb.QueryNamespace{
+				{NsId: "0", Keys: strToBytes("item1", "item2", "item3")},
+				{NsId: "1", Keys: strToBytes("item1", "item2", "item3")},
+			},
+		}
+		ret, err := env.clientConn.GetRows(t.Context(), query)
+		require.NoError(t, err)
+		require.Len(t, ret.Namespaces, 2)
+	})
+
+	t.Run("GetRows no limit when zero", func(t *testing.T) {
+		t.Parallel()
+		env := newQueryServiceTestEnv(t)
+		env.makeItems(t)
+
+		// Request with many keys should succeed when limit is 0 (disabled)
+		query := &committerpb.Query{
+			Namespaces: []*committerpb.QueryNamespace{
+				{NsId: "0", Keys: strToBytes("item1", "item2", "item3", "item4")},
+				{NsId: "1", Keys: strToBytes("item1", "item2", "item3", "item4")},
+				{NsId: "2", Keys: strToBytes("item1", "item2", "item3", "item4")},
+			},
+		}
+		ret, err := env.clientConn.GetRows(t.Context(), query)
+		require.NoError(t, err)
+		require.Len(t, ret.Namespaces, 3)
+	})
+
+	t.Run("GetTransactionStatus exceeds limit", func(t *testing.T) {
+		t.Parallel()
+		env := newQueryServiceTestEnv(t, queryServiceTestOpts{
+			maxRequestKeys: 2,
+		})
+
+		// Request with 3 transaction IDs should fail (limit is 2)
+		_, err := env.clientConn.GetTransactionStatus(t.Context(), &committerpb.TxStatusQuery{
+			TxIds: []string{"tx1", "tx2", "tx3"},
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, ErrTooManyKeys.Error())
+		require.ErrorContains(t, err, "requested 3 keys")
+	})
+
+	t.Run("GetTransactionStatus within limit", func(t *testing.T) {
+		t.Parallel()
+		env := newQueryServiceTestEnv(t, queryServiceTestOpts{
+			maxRequestKeys: 5,
+		})
+
+		// Request with 2 transaction IDs should succeed (limit is 5)
+		ret, err := env.clientConn.GetTransactionStatus(t.Context(), &committerpb.TxStatusQuery{
+			TxIds: []string{"tx1", "tx2"},
+		})
+		require.NoError(t, err)
+		// The transactions don't exist, but the request should be accepted
+		require.Empty(t, ret.Statuses)
+	})
+}
+
 func TestQueryMetrics(t *testing.T) {
 	t.Parallel()
-	env := newQueryServiceTestEnvWithServerAndClientCreds(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+	env := newQueryServiceTestEnv(t)
 	requiredItems := env.makeItems(t)
 	query, keyCount, querySize := makeQuery(requiredItems)
 
@@ -186,7 +288,7 @@ func TestQueryMetrics(t *testing.T) {
 
 func TestQueryWithConsistentView(t *testing.T) {
 	t.Parallel()
-	env := newQueryServiceTestEnvWithServerAndClientCreds(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+	env := newQueryServiceTestEnv(t)
 	requiredItems := env.makeItems(t)
 	query, _, _ := makeQuery(requiredItems)
 
@@ -262,7 +364,7 @@ func TestQueryWithConsistentView(t *testing.T) {
 
 func TestQueryPolicies(t *testing.T) {
 	t.Parallel()
-	env := newQueryServiceTestEnvWithServerAndClientCreds(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+	env := newQueryServiceTestEnv(t)
 
 	policies, err := env.clientConn.GetNamespacePolicies(t.Context(), nil)
 	require.NoError(t, err)
@@ -315,11 +417,21 @@ func encodeBytesForProto(str string) []byte {
 	return decodeString
 }
 
-func newQueryServiceTestEnvWithServerAndClientCreds(
-	t *testing.T,
-	serverTLS, clientTLS connection.TLSConfig,
-) *queryServiceTestEnv {
+func newQueryServiceTestEnv(t *testing.T, options ...queryServiceTestOpts) *queryServiceTestEnv {
 	t.Helper()
+	opts := queryServiceTestOpts{}
+	if len(options) > 0 {
+		opts = options[0]
+	}
+
+	if reflect.DeepEqual(opts.serverTLS, connection.TLSConfig{}) {
+		opts.serverTLS = test.InsecureTLSConfig
+	}
+
+	if reflect.DeepEqual(opts.clientTLS, connection.TLSConfig{}) {
+		opts.clientTLS = test.InsecureTLSConfig
+	}
+
 	t.Log("generating config and namespaces")
 	namespacesToTest := []string{"0", "1", "2"}
 	dbConf := generateNamespacesUnderTest(t, namespacesToTest)
@@ -330,7 +442,8 @@ func newQueryServiceTestEnvWithServerAndClientCreds(
 		ViewAggregationWindow: time.Minute,
 		MaxViewTimeout:        time.Minute,
 		MaxAggregatedViews:    5,
-		Server:                connection.NewLocalHostServerWithTLS(serverTLS),
+		Server:                connection.NewLocalHostServerWithTLS(opts.serverTLS),
+		MaxRequestKeys:        opts.maxRequestKeys,
 		Database:              dbConf,
 		Monitoring: monitoring.Config{
 			Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
@@ -339,7 +452,7 @@ func newQueryServiceTestEnvWithServerAndClientCreds(
 
 	qs := NewQueryService(config)
 	test.RunServiceAndGrpcForTest(t.Context(), t, qs, qs.config.Server)
-	clientConn := createQueryClientWithTLS(t, &qs.config.Server.Endpoint, clientTLS)
+	clientConn := createQueryClientWithTLS(t, &qs.config.Server.Endpoint, opts.clientTLS)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
