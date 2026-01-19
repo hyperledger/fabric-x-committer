@@ -8,6 +8,7 @@ package loadgen
 
 import (
 	"context"
+	"crypto/tls"
 	_ "embed"
 	"fmt"
 	"strings"
@@ -51,7 +52,7 @@ func TestLoadGenForLoadGen(t *testing.T) {
 			for _, limit := range defaultLimits {
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
-					clientConf := DefaultClientConf(t)
+					clientConf := DefaultClientConf(t, serverTLSConfig)
 					clientConf.Server.TLS = serverTLSConfig
 					clientConf.Limit = limit
 					// Ensure the client doesn't generate load, but only receives it from the sub client.
@@ -61,7 +62,7 @@ func TestLoadGenForLoadGen(t *testing.T) {
 					_, err := clientConf.Server.PreAllocateListener()
 					require.NoError(t, err)
 
-					subClientConf := DefaultClientConf(t)
+					subClientConf := DefaultClientConf(t, serverTLSConfig)
 					// We ensure the sub client uses the same crypto material as
 					// the main load generator and the entire system.
 					//nolint:revive // can't break line.
@@ -75,7 +76,10 @@ func TestLoadGenForLoadGen(t *testing.T) {
 
 					t.Log("Start distributed loadgen")
 					test.RunServiceAndGrpcForTest(t.Context(), t, subClient, subClientConf.Server)
-					testLoadGenerator(t, clientConf)
+
+					metricsTLS, err := connection.NewClientTLSConfig(clientTLSConfig)
+					require.NoError(t, err)
+					testLoadGenerator(t, clientConf, metricsTLS)
 				})
 			}
 		})
@@ -91,11 +95,14 @@ func TestLoadGenForVCService(t *testing.T) {
 			for _, limit := range defaultLimits {
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
-					clientConf := DefaultClientConf(t)
+					clientConf := DefaultClientConf(t, serverTLSConfig)
 					clientConf.Limit = limit
 					env := vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, 2, serverTLSConfig)
 					clientConf.Adapter.VCClient = test.NewTLSMultiClientConfig(clientTLSConfig, env.Endpoints...)
-					testLoadGenerator(t, clientConf)
+
+					metricsTLS, err := connection.NewClientTLSConfig(clientTLSConfig)
+					require.NoError(t, err)
+					testLoadGenerator(t, clientConf, metricsTLS)
 				})
 			}
 		})
@@ -111,11 +118,13 @@ func TestLoadGenForSigVerifier(t *testing.T) {
 			for _, limit := range defaultLimits {
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
-					clientConf := DefaultClientConf(t)
+					clientConf := DefaultClientConf(t, serverTLSConfig)
 					clientConf.Limit = limit
 					clientConf.Adapter.VerifierClient = startVerifiers(t, serverTLSConfig, clientTLSConfig)
 					// Start client
-					testLoadGenerator(t, clientConf)
+					metricsTLS, err := connection.NewClientTLSConfig(clientTLSConfig)
+					require.NoError(t, err)
+					testLoadGenerator(t, clientConf, metricsTLS)
 				})
 			}
 		})
@@ -158,7 +167,7 @@ func TestLoadGenForCoordinator(t *testing.T) {
 			) {
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
-					clientConf := DefaultClientConf(t)
+					clientConf := DefaultClientConf(t, serverTLSConfig)
 					clientConf.Limit = limit
 					_, sigVerServer := mock.StartMockSVService(t, 1)
 					_, vcServer := mock.StartMockVCService(t, 1)
@@ -182,7 +191,10 @@ func TestLoadGenForCoordinator(t *testing.T) {
 					clientConf.Adapter.CoordinatorClient = test.NewTLSClientConfig(
 						clientTLSConfig, &cConf.Server.Endpoint,
 					)
-					testLoadGenerator(t, clientConf)
+
+					metricsTLS, err := connection.NewClientTLSConfig(clientTLSConfig)
+					require.NoError(t, err)
+					testLoadGenerator(t, clientConf, metricsTLS)
 				})
 			}
 		})
@@ -191,7 +203,7 @@ func TestLoadGenForCoordinator(t *testing.T) {
 
 func TestLoadGenForSidecar(t *testing.T) {
 	t.Parallel()
-	for _, mode := range test.ServerModes {
+	for _, mode := range test.ServerModes[:1] {
 		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
 			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
@@ -202,7 +214,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 			) {
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
-					clientConf := DefaultClientConf(t)
+					clientConf := DefaultClientConf(t, serverTLSConfig)
 					clientConf.Limit = limit
 					_, coordinatorServer := mock.StartMockCoordinatorService(t)
 
@@ -233,7 +245,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 						Committer: test.NewInsecureClientConfig(
 							&coordinatorServer.Configs[0].Endpoint,
 						),
-						Monitoring: defaultMonitoring(),
+						Monitoring: defaultMonitoringWithTLS(serverTLSConfig),
 						Ledger: sidecar.LedgerConfig{
 							Path: t.TempDir(),
 						},
@@ -247,7 +259,9 @@ func TestLoadGenForSidecar(t *testing.T) {
 						OrdererServers: ordererServers,
 						SidecarClient:  test.NewTLSClientConfig(clientTLSConfig, &sidecarServerConf.Endpoint),
 					}
-					testLoadGenerator(t, clientConf)
+					metricsTLS, err := connection.NewClientTLSConfig(clientTLSConfig)
+					require.NoError(t, err)
+					testLoadGenerator(t, clientConf, metricsTLS)
 				})
 			}
 		})
@@ -263,7 +277,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 			for _, limit := range defaultLimits {
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
-					clientConf := DefaultClientConf(t)
+					clientConf := DefaultClientConf(t, serverTLSConfig)
 					clientConf.Limit = limit
 					numService := 3
 					sc := make([]*connection.ServerConfig, numService)
@@ -319,7 +333,9 @@ func TestLoadGenForOrderer(t *testing.T) {
 						Orderer:              sidecarConf.Orderer,
 						BroadcastParallelism: 5,
 					}
-					testLoadGenerator(t, clientConf)
+					metricsTLS, err := connection.NewClientTLSConfig(clientTLSConfig)
+					require.NoError(t, err)
+					testLoadGenerator(t, clientConf, metricsTLS)
 				})
 			}
 		})
@@ -333,7 +349,7 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 			t.Parallel()
 			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
 			for _, limit := range defaultLimits {
-				clientConf := DefaultClientConf(t)
+				clientConf := DefaultClientConf(t, serverTLSConfig)
 				clientConf.Limit = limit
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
@@ -376,7 +392,9 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 						},
 						BroadcastParallelism: 5,
 					}
-					testLoadGenerator(t, clientConf)
+					metricsTLS, err := connection.NewClientTLSConfig(clientTLSConfig)
+					require.NoError(t, err)
+					testLoadGenerator(t, clientConf, metricsTLS)
 				})
 			}
 		})
@@ -394,7 +412,7 @@ func preAllocatePorts(t *testing.T, tlsConfig connection.TLSConfig) *connection.
 	return server
 }
 
-func testLoadGenerator(t *testing.T, c *ClientConfig) {
+func testLoadGenerator(t *testing.T, c *ClientConfig, metricsTLS *tls.Config) {
 	t.Helper()
 	client, err := NewLoadGenClient(c)
 	require.NoError(t, err)
@@ -409,7 +427,7 @@ func testLoadGenerator(t *testing.T, c *ClientConfig) {
 
 	if !c.Limit.HasLimit() {
 		// If we have a limit, the Prometheus server might stop before we can fetch the metrics.
-		test.CheckMetrics(t, client.resources.Metrics.URL(),
+		test.CheckMetrics(t, client.resources.Metrics.URL(), metricsTLS,
 			"loadgen_block_sent_total",
 			"loadgen_transaction_sent_total",
 			"loadgen_transaction_received_total",

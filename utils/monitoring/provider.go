@@ -47,6 +47,10 @@ func (p *Provider) StartPrometheusServer(
 	ctx context.Context, serverConfig *connection.ServerConfig, monitor ...func(context.Context),
 ) error {
 	logger.Debugf("Creating prometheus server")
+	serverTLSConfig, err := connection.NewServerTLSConfig(serverConfig.TLS)
+	if err != nil {
+		return err
+	}
 	mux := http.NewServeMux()
 	mux.Handle(
 		metricsSubPath,
@@ -60,6 +64,7 @@ func (p *Provider) StartPrometheusServer(
 	server := &http.Server{
 		ReadTimeout: 30 * time.Second,
 		Handler:     mux,
+		TLSConfig:   serverTLSConfig,
 	}
 
 	l, err := serverConfig.Listener(ctx)
@@ -77,7 +82,7 @@ func (p *Provider) StartPrometheusServer(
 	g.Go(func() error {
 		logger.Infof("Prometheus serving on URL: %s", p.url)
 		defer logger.Info("Prometheus stopped serving")
-		return server.Serve(l)
+		return server.ServeTLS(l, serverConfig.TLS.CertPath, serverConfig.TLS.KeyPath)
 	})
 
 	// The following ensures the method does not return before all monitor methods return.

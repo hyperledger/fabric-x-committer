@@ -8,9 +8,7 @@ package connection
 
 import (
 	"crypto/tls"
-	"crypto/x509"
 	"net"
-	"os"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -171,23 +169,6 @@ func (c TLSConfig) ClientCredentials() (credentials.TransportCredentials, error)
 		return nil, errors.Newf("unknown TLS mode: %s (valid modes: %s, %s, %s)",
 			c.Mode, NoneTLSMode, OneSideTLSMode, MutualTLSMode)
 	}
-}
-
-func buildCertPool(paths []string) (*x509.CertPool, error) {
-	if len(paths) == 0 {
-		return nil, errors.New("no CA certificates provided")
-	}
-	certPool := x509.NewCertPool()
-	for _, p := range paths {
-		pemBytes, err := os.ReadFile(p)
-		if err != nil {
-			return nil, errors.Wrapf(err, "while reading CA cert %v", p)
-		}
-		if ok := certPool.AppendCertsFromPEM(pemBytes); !ok {
-			return nil, errors.Errorf("unable to parse CA cert %v", p)
-		}
-	}
-	return certPool, nil
 }
 
 // Validate checks that the rate limit configuration is valid.
