@@ -160,7 +160,7 @@ func TestLoadGenForCoordinator(t *testing.T) {
 					t.Parallel()
 					clientConf := DefaultClientConf(t)
 					clientConf.Limit = limit
-					_, sigVerServer := mock.StartMockSVService(t, 1)
+					_, sigVerServer := mock.StartMockVerifierService(t, 1)
 					_, vcServer := mock.StartMockVCService(t, 1)
 
 					cConf := &coordinator.Config{

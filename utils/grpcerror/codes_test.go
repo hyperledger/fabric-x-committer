@@ -67,7 +67,7 @@ func TestHasCodeWithGRPCService(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
-	server := test.StartGrpcServersForTest(ctx, t, 1, func(server *grpc.Server, _ int) {
+	server := test.StartGrpcServersForTest(ctx, t, 1, func(server *grpc.Server) {
 		healthgrpc.RegisterHealthServer(server, &healthgrpc.UnimplementedHealthServer{})
 	})
 
