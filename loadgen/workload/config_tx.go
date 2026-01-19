@@ -134,32 +134,52 @@ func makeTemporaryDir() (string, error) {
 
 // CreateDefaultConfigBlockWithCrypto creates a config block with crypto material.
 func CreateDefaultConfigBlockWithCrypto(targetPath string, conf *ConfigBlock) (*common.Block, error) {
-	orgs := make([]cryptogen.OrganizationParameters, 0, int(conf.PeerOrganizationCount)+len(conf.OrdererEndpoints))
-
-	ordererOrgsMap := make(map[uint32][]cryptogen.OrdererEndpoint)
+	ordererOrgsMap := make(map[uint32][]*commontypes.OrdererEndpoint)
 	for _, e := range conf.OrdererEndpoints {
-		ordererOrgsMap[e.ID] = append(ordererOrgsMap[e.ID], cryptogen.OrdererEndpoint{
-			Address: e.Address(),
-			API:     e.API,
-		})
+		ordererOrgsMap[e.ID] = append(ordererOrgsMap[e.ID], e)
 	}
 	// We clear the IDs, and let the cryptogen tool to re-assign IDs to the orderer endpoints.
 	ordererOrgs := slices.Collect(maps.Values(ordererOrgsMap))
 
 	if len(ordererOrgs) == 0 {
 		// We need at least one orderer org to create a config block.
-		ordererOrgs = append(ordererOrgs, []cryptogen.OrdererEndpoint{{Address: "localhost:7050"}})
+		ordererOrgs = append(ordererOrgs, []*commontypes.OrdererEndpoint{{Host: "localhost", Port: 7050}})
 	}
 
-	for i, endpoints := range ordererOrgs {
+	orgs := make([]cryptogen.OrganizationParameters, 0, int(conf.PeerOrganizationCount)+len(conf.OrdererEndpoints))
+	for orgIdx, endpoints := range ordererOrgs {
+		ordererEndpoints := make([]cryptogen.OrdererEndpoint, len(endpoints))
+		ordererNodes := make([]cryptogen.Node, len(endpoints))
+		for epIdx, e := range endpoints {
+			var name string
+			switch {
+			case len(e.API) == 1 && e.API[0] == commontypes.Broadcast:
+				name = "router"
+			case len(e.API) == 1 && e.API[0] == commontypes.Deliver:
+				name = "assembler"
+			default:
+				name = "orderer"
+			}
+			commonName := fmt.Sprintf("%s-%d-org-%d", name, epIdx, orgIdx)
+			ordererNodes[epIdx] = cryptogen.Node{
+				CommonName: commonName,
+				Hostname:   fmt.Sprintf("%s.com", commonName),
+				SANS:       []string{e.Host},
+			}
+			ordererEndpoints[epIdx] = cryptogen.OrdererEndpoint{
+				Address: e.Address(),
+				API:     e.API,
+			}
+		}
 		orgs = append(orgs, cryptogen.OrganizationParameters{
-			Name:             fmt.Sprintf("orderer-org-%d", i),
-			Domain:           fmt.Sprintf("orderer-org-%d.com", i),
-			OrdererEndpoints: endpoints,
+			Name:             fmt.Sprintf("orderer-org-%d", orgIdx),
+			Domain:           fmt.Sprintf("orderer-org-%d.com", orgIdx),
+			OrdererEndpoints: ordererEndpoints,
 			ConsenterNodes: []cryptogen.Node{{
-				CommonName: fmt.Sprintf("consenter-org-%d", i),
-				Hostname:   fmt.Sprintf("consenter-org-%d.com", i),
+				CommonName: fmt.Sprintf("consenter-org-%d", orgIdx),
+				Hostname:   fmt.Sprintf("consenter-org-%d.com", orgIdx),
 			}},
+			OrdererNodes: ordererNodes,
 		})
 	}
 

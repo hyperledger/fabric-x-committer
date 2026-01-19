@@ -66,8 +66,8 @@ func StartMockCoordinatorService(t *testing.T) (
 	return mockCoordinator, coordinatorGrpc
 }
 
-// StartMockCoordinatorServiceServerConfig starts a mock coordinator service using the given config.
-func StartMockCoordinatorServiceServerConfig(
+// StartMockCoordinatorServiceFromServerConfig starts a mock coordinator service using the given config.
+func StartMockCoordinatorServiceFromServerConfig(
 	t *testing.T,
 	coordService *Coordinator,
 	sc *connection.ServerConfig,
