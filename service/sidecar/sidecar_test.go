@@ -755,7 +755,9 @@ func makeValidTx(t *testing.T, chanID string) *servicepb.LoadGenTx {
 // (pointing to non-existent or non-member ordering services), ledger recovery would fail.
 func TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery(t *testing.T) {
 	t.Parallel()
-	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{NumService: 3}, test.InsecureTLSConfig)
+	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{
+		NumService: 3, ServerTLS: test.InsecureTLSConfig, ClientTLS: test.InsecureTLSConfig,
+	})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
@@ -790,10 +792,13 @@ func TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery(t *testing.T
 	// These endpoints are unreachable, so if the sidecar tries to fetch blocks
 	// from them without first updating from the coordinator's config transaction,
 	// the recovery will fail.
-	env.config.Orderer.Connection.Endpoints = []*commontypes.OrdererEndpoint{
-		{Host: "localhost", Port: 9999},
+	env.config.Orderer.Organizations = map[string]*ordererconn.OrganizationConfig{
+		"org": {
+			Endpoints: []*commontypes.OrdererEndpoint{
+				{Host: "localhost", Port: 9999},
+			},
+		},
 	}
-
 	t.Log("5. Recreate ledger service to reflect the reset block store")
 	var err error
 	env.sidecar, err = New(&env.config)

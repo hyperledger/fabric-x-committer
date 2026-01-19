@@ -11,6 +11,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/cockroachdb/errors"
+
 	"google.golang.org/grpc/credentials"
 )
 

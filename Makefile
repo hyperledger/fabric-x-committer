@@ -267,7 +267,7 @@ build-test-genesis-block: $(output_dir) build-cli-loadgen
 # Linter
 #########################
 
-lint: lint-proto FORCE
+lint: FORCE
 	@echo "Running Go Linters..."
 	golangci-lint run --color=always --new-from-rev=main --timeout=4m
 	@echo "Running SQL Linters..."
