@@ -747,3 +747,81 @@ func makeValidTx(t *testing.T, chanID string) *servicepb.LoadGenTx {
 		}},
 	})
 }
+
+// TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery verifies that during
+// recovery, the sidecar updates orderer endpoints from the coordinator's config transaction
+// before attempting to recover missing blocks from the ledger store. This ordering is critical
+// because recoverLedgerStore fetches blocks from the orderer, and if endpoints are stale
+// (pointing to non-existent or non-member ordering services), ledger recovery would fail.
+func TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery(t *testing.T) {
+	t.Parallel()
+	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{NumService: 3}, test.InsecureTLSConfig)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
+	env.requireBlock(ctx, t, 0)
+
+	t.Log("1. Commit blocks 1 to 10")
+	for i := range 10 {
+		env.sendTransactionsAndEnsureCommitted(ctx, t, uint64(i+1)) //nolint:gosec
+	}
+
+	t.Log("2. Stop the sidecar service")
+	cancel()
+	require.Eventually(t, func() bool {
+		return test.CheckServerStopped(t, env.config.Server.Endpoint.Address())
+	}, 4*time.Second, 500*time.Millisecond)
+	require.Eventually(t, func() bool {
+		return !env.coordinator.IsStreamActive()
+	}, 2*time.Second, 250*time.Millisecond)
+
+	// Close the sidecar explicitly to release LevelDB resources
+	require.NotNil(t, env.sidecar)
+	env.sidecar.Close()
+
+	t.Log("3. Reset block store to create a gap (simulate ledger behind coordinator)")
+	require.NoError(t, blkstorage.ResetBlockStore(env.config.Ledger.Path))
+
+	newCtx, newCancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(newCancel)
+	checkNextBlockNumberToCommit(newCtx, t, env.coordinator, 11)
+
+	t.Log("4. Modify sidecar config to use stale orderer endpoints")
+	// These endpoints are unreachable, so if the sidecar tries to fetch blocks
+	// from them without first updating from the coordinator's config transaction,
+	// the recovery will fail.
+	env.config.Orderer.Connection.Endpoints = []*commontypes.OrdererEndpoint{
+		{Host: "localhost", Port: 9999},
+	}
+
+	t.Log("5. Recreate ledger service to reflect the reset block store")
+	var err error
+	env.sidecar, err = New(&env.config)
+	require.NoError(t, err)
+	t.Cleanup(env.sidecar.Close)
+	ensureAtLeastHeight(t, env.sidecar.ledgerService, 1) // only block 0 exists
+
+	t.Log("6. Set coordinator's config transaction with correct orderer endpoints")
+	// The coordinator should provide the config block that contains the correct
+	// orderer endpoints. During recovery, the sidecar should fetch this config
+	// and update its orderer connections BEFORE attempting ledger recovery.
+	env.coordinator.SetConfigTransaction(env.configBlock.Data.Data[0])
+
+	t.Log("7. Restart the sidecar")
+	// If orderer endpoints are updated before ledger recovery (correct behavior),
+	// the sidecar will successfully recover the missing blocks (1-10) from the
+	// correct orderer endpoints provided in the config transaction.
+	// If ledger recovery happened before endpoint update (incorrect behavior),
+	// the recovery would fail because it would try to fetch from localhost:9999.
+	// Start the client from block 11 since blocks 0-10 will be recovered.
+	env.startSidecarServiceAndClientAndNotificationStream(newCtx, t, 11, test.InsecureTLSConfig)
+
+	t.Log("8. Verify ledger store was recovered successfully")
+	// The successful recovery of blocks 1-10 proves that orderer endpoints were
+	// updated from the coordinator's config transaction before recoverLedgerStore
+	// was called.
+	ensureAtLeastHeight(t, env.sidecar.ledgerService, 11)
+
+	t.Log("9. Verify normal operation continues with recovered state")
+	env.sendTransactionsAndEnsureCommitted(newCtx, t, 11)
+}

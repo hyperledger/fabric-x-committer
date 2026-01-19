@@ -247,6 +247,7 @@ func (c *Service) RegisterService(server *grpc.Server) {
 func (c *Service) GetConfigTransaction(
 	ctx context.Context, _ *emptypb.Empty,
 ) (*applicationpb.ConfigTransaction, error) {
+	// Error is already wrapped with proper gRPC status code by validatorCommitterMgr.
 	return c.validatorCommitterMgr.getConfigTransaction(ctx)
 }
 
@@ -255,6 +256,7 @@ func (c *Service) SetLastCommittedBlockNumber(
 	ctx context.Context,
 	lastBlock *servicepb.BlockRef,
 ) (*emptypb.Empty, error) {
+	// Error is already wrapped with proper gRPC status code by validatorCommitterMgr.
 	return &emptypb.Empty{}, c.validatorCommitterMgr.setLastCommittedBlockNumber(ctx, lastBlock)
 }
 
@@ -263,8 +265,8 @@ func (c *Service) GetNextBlockNumberToCommit(
 	ctx context.Context,
 	_ *emptypb.Empty,
 ) (*servicepb.BlockRef, error) {
-	res, err := c.validatorCommitterMgr.getNextBlockNumberToCommit(ctx)
-	return res, grpcerror.WrapInternalError(err)
+	// Error is already wrapped with proper gRPC status code by validatorCommitterMgr.
+	return c.validatorCommitterMgr.getNextBlockNumberToCommit(ctx)
 }
 
 // GetTransactionsStatus returns the status of given transactions identifiers.
@@ -272,6 +274,7 @@ func (c *Service) GetTransactionsStatus(
 	ctx context.Context,
 	q *committerpb.TxIDsBatch,
 ) (*committerpb.TxStatusBatch, error) {
+	// Error is already wrapped with proper gRPC status code by validatorCommitterMgr.
 	return c.validatorCommitterMgr.getTransactionsStatus(ctx, q)
 }
 
@@ -281,7 +284,7 @@ func (c *Service) NumberOfWaitingTransactionsForStatus(
 	*emptypb.Empty,
 ) (*servicepb.WaitingTransactions, error) {
 	if !c.streamActive.TryLock() {
-		return nil, ErrActiveStreamWaitingTransactions
+		return nil, grpcerror.WrapFailedPrecondition(ErrActiveStreamWaitingTransactions)
 	}
 	defer c.streamActive.Unlock()
 
@@ -295,7 +298,7 @@ func (c *Service) BlockProcessing(
 	stream servicepb.Coordinator_BlockProcessingServer,
 ) error {
 	if !c.streamActive.TryLock() {
-		return ErrExistingStreamOrConflictingOp
+		return grpcerror.WrapFailedPrecondition(ErrExistingStreamOrConflictingOp)
 	}
 	defer c.streamActive.Unlock()
 

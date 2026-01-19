@@ -63,8 +63,10 @@ jobs:
       - name: Build cross-architecture binaries
         run: make build-arch build-test-genesis-block
 
-      - name: Set image prefix
+      - name: Set image build prefix and metadata
         run: |
+          echo "CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
+          echo "REVISION=$(git rev-parse HEAD)" >> $GITHUB_ENV        
           if [ "$GITHUB_REPOSITORY_OWNER" == "hyperledger" ]; then
            echo "IMAGE_PREFIX=hyperledger" >> $GITHUB_ENV
           else
@@ -88,9 +90,12 @@ jobs:
             BIN=committer
             ARCHBIN_PATH=archbin
             PORTS=4001 2114 9001 2119 5001 2115 6001 2116 7001 2117
+            VERSION=${{ env.VERSION }}
+            CREATED=${{ env.CREATED }}
+            REVISION=${{ env.REVISION }}
           cache-from: type=registry,ref=docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-committer:buildcache
           cache-to: type=registry,ref=docker.io/${{  env.IMAGE_PREFIX  }}/fabric-x-committer:buildcache,mode=max
-        
+
       - name: Build and Push Multi-Platform Docker Image for Loadgen
         uses: docker/build-push-action@v6
         with:
@@ -107,6 +112,9 @@ jobs:
             BIN=loadgen
             ARCHBIN_PATH=archbin
             PORTS=8001 2118
+            VERSION=${{ env.VERSION }}
+            CREATED=${{ env.CREATED }}
+            REVISION=${{ env.REVISION }}
           cache-from: type=registry,ref=docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-loadgen:buildcache
           cache-to: type=registry,ref=docker.io/${{  env.IMAGE_PREFIX  }}/fabric-x-loadgen:buildcache,mode=max
 
@@ -124,5 +132,8 @@ jobs:
             ghcr.io/${{ env.GHCR_PREFIX }}/fabric-x-committer-test-node:latest
           build-args: |
             ARCHBIN_PATH=archbin
+            VERSION=${{ env.VERSION }}
+            CREATED=${{ env.CREATED }}
+            REVISION=${{ env.REVISION }}
           cache-from: type=registry,ref=docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-committer-test-node:buildcache
           cache-to: type=registry,ref=docker.io/${{  env.IMAGE_PREFIX  }}/fabric-x-committer-test-node:buildcache,mode=max

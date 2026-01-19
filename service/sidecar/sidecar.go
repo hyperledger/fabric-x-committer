@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -267,7 +268,7 @@ func (s *Service) recover(ctx context.Context, coordClient servicepb.Coordinator
 
 	blkInfo, err := coordClient.GetNextBlockNumberToCommit(ctx, nil)
 	if err != nil {
-		return 0, errors.Wrap(err, "failed to fetch the next expected block number from coordinator")
+		return 0, logAndWrapCoordinatorError(err, "failed to fetch the next expected block number from coordinator")
 	}
 	logger.Infof("next expected block number by coordinator is %d", blkInfo.Number)
 
@@ -279,7 +280,7 @@ func (s *Service) recoverConfigTransactionFromStateDB(
 ) error {
 	configMsg, err := client.GetConfigTransaction(ctx, nil)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get policies from coordinator")
+		return logAndWrapCoordinatorError(err, "failed to get config transaction from coordinator")
 	}
 	if configMsg == nil || configMsg.Envelope == nil {
 		return nil
@@ -368,7 +369,7 @@ func appendMissingBlock(
 
 	txsStatus, err := client.GetTransactionsStatus(ctx, &committerpb.TxIDsBatch{TxIds: txIDs})
 	if err != nil {
-		return errors.Wrap(err, "failed to get transaction status from the coordinator")
+		return logAndWrapCoordinatorError(err, "failed to get transaction status from coordinator")
 	}
 
 	if err := fillStatuses(mappedBlock.withStatus.txStatus, txsStatus.Status, expectedHeight); err != nil {
@@ -407,7 +408,7 @@ func waitForIdleCoordinator(ctx context.Context, client servicepb.CoordinatorCli
 	for {
 		waitingTxs, err := client.NumberOfWaitingTransactionsForStatus(ctx, nil)
 		if err != nil {
-			return errors.Wrap(err, "failed to get the number of transactions waiting in the coordinator for statuses")
+			return logAndWrapCoordinatorError(err, "failed to get number of waiting transactions from coordinator")
 		}
 		if waitingTxs.Count == 0 {
 			return nil
@@ -439,4 +440,21 @@ func fillStatuses(
 		}
 	}
 	return nil
+}
+
+// logAndWrapCoordinatorError logs the gRPC status code from a coordinator error and wraps it with context.
+// This helps with debugging by providing visibility into the specific gRPC error codes returned by the coordinator.
+func logAndWrapCoordinatorError(err error, contextMsg string) error {
+	if err == nil {
+		return nil
+	}
+
+	st, ok := status.FromError(err)
+	if ok {
+		logger.Errorf("%s: gRPC status code=%s, message=%s", contextMsg, st.Code(), st.Message())
+	} else {
+		logger.Errorf("%s: %v", contextMsg, err)
+	}
+
+	return errors.Wrap(err, contextMsg)
 }

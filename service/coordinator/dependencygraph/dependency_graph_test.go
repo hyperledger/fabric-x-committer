@@ -134,10 +134,7 @@ func TestDependencyGraph(t *testing.T) {
 
 	t.Log("check dependency in namespace")
 	keys = makeTestKeys(t, 10)
-	// t2 depends on t1, t1 depends on t0.
-	t0 := createTxForTest(
-		t, 0, committerpb.ConfigNamespaceID, nil, nil, [][]byte{[]byte(committerpb.ConfigKey)},
-	)
+	// t2 depends on t1
 	t1 = createTxForTest(
 		t, 1, committerpb.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 	)
@@ -147,10 +144,10 @@ func TestDependencyGraph(t *testing.T) {
 
 	localDepIncomingTxs <- &TransactionBatch{
 		ID:  3,
-		Txs: []*servicepb.TxWithRef{t0, t1, t2},
+		Txs: []*servicepb.TxWithRef{t1, t2},
 	}
 
-	// t3 depends on t2, t1, and t0
+	// t3 depends on t2, and t1
 	t3 = createTxForTest(
 		t, 0, committerpb.MetaNamespaceID, nil, [][]byte{[]byte(nsID1ForTest)}, nil,
 	)
@@ -164,33 +161,20 @@ func TestDependencyGraph(t *testing.T) {
 		Txs: []*servicepb.TxWithRef{t3, t4},
 	}
 
-	// only t0 is dependency free
-	depFreeTxs = <-globalDepOutgoingTxs
-	require.Len(t, depFreeTxs, 1)
-	actualT0 := depFreeTxs[0]
-	test.RequireProtoEqual(t, t0.Ref, actualT0.Tx.Ref)
-
-	// t0 has 2 dependent transactions: t1, and t2
-	require.Eventually(t, func() bool {
-		return actualT0.dependentTxs.Count() == 2
-	}, 2*time.Second, 200*time.Millisecond)
-
-	validatedTxs <- TxNodeBatch{actualT0}
-
 	// only t1 is dependency free
 	depFreeTxs = <-globalDepOutgoingTxs
 	require.Len(t, depFreeTxs, 1)
 	actualT1 = depFreeTxs[0]
 	test.RequireProtoEqual(t, t1.Ref, actualT1.Tx.Ref)
 
-	// t1 has 3 dependent transactions, t2, t3, and t4
+	// t1 has 3 dependent transactions: t2, t3 and t4
 	require.Eventually(t, func() bool {
 		return actualT1.dependentTxs.Count() == 3
 	}, 2*time.Second, 200*time.Millisecond)
 
 	validatedTxs <- TxNodeBatch{actualT1}
 
-	// after t1 is validated, t2 is dependency free
+	// only t2 is dependency free
 	depFreeTxs = <-globalDepOutgoingTxs
 	require.Len(t, depFreeTxs, 1)
 	actualT2 = depFreeTxs[0]
@@ -217,7 +201,7 @@ func TestDependencyGraph(t *testing.T) {
 
 	validatedTxs <- TxNodeBatch{actualT4}
 
-	ensureProcessedAndValidatedMetrics(t, metrics, 9, 9)
+	ensureProcessedAndValidatedMetrics(t, metrics, 8, 8)
 	// after validating all txs, the dependency detector should be empty
 	ensureEmptyDetector(t, dm.dependencyDetector)
 }

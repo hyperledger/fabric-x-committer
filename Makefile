@@ -21,7 +21,7 @@
 #########################
 
 go_cmd          ?= go
-version         := 0.0.2
+version         := latest
 project_dir     := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 output_dir      ?= $(project_dir)/bin
 arch_output_dir ?= $(project_dir)/archbin
@@ -43,7 +43,7 @@ cmd            ?=
 # An error will occur if neither container engine is installed.
 docker_cmd ?= $(shell command -v docker >/dev/null 2>&1 && echo docker || \
 							echo podman || { echo "Error: Neither Docker nor Podman is installed." >&2; exit 1; })
-image_namespace=icr.io/cbdc
+image_namespace=docker.io/hyperledger
 
 # Set these parameters to compile to a specific os/arch
 # E.g., make build-local os=linux arch=amd64
@@ -62,7 +62,7 @@ endif
 
 arch_output_dir_rel = $(arch_output_dir:${project_dir}/%=%)
 
-PYTHON_CMD ?= python
+PYTHON_CMD ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/null)
 
 # Set additional parameter to build the test-node for different platforms and push
 # E.g., make multiplatform=true docker_push=true build-test-node-image
@@ -203,7 +203,7 @@ lint-proto: FORCE
 		--config .apilinter.yaml \
 		--set-exit-status \
 		--output-format github \
-		$(shell find ${project_dir}/api -name '*.proto' -exec realpath --relative-to ${project_dir}/api {} \;)
+		$(shell find ${project_dir}/api -name '*.proto' | sed 's|${project_dir}/api/||')
 
 #########################
 # Binaries

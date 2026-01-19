@@ -11,7 +11,11 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/hyperledger/fabric-x-committer/utils/logging"
 )
+
+var logger = logging.New("grpcerror")
 
 // HasCode returns true if the rpcErr holds the given code.
 func HasCode(rpcErr error, code codes.Code) bool {
@@ -50,6 +54,21 @@ func WrapCancelled(err error) error {
 	return wrap(codes.Canceled, err)
 }
 
+// WrapFailedPrecondition creates a grpc error with a [codes.FailedPrecondition] status code for a given error.
+func WrapFailedPrecondition(err error) error {
+	return wrap(codes.FailedPrecondition, err)
+}
+
+// WrapUnimplemented creates a grpc error with a [codes.Unimplemented] status code for a given error.
+func WrapUnimplemented(err error) error {
+	return wrap(codes.Unimplemented, err)
+}
+
+// WrapNotFound creates a grpc error with a [codes.NotFound] status code for a given error.
+func WrapNotFound(err error) error {
+	return wrap(codes.NotFound, err)
+}
+
 func wrap(c codes.Code, err error) error {
 	if err == nil {
 		return nil
@@ -64,4 +83,24 @@ func FilterUnavailableErrorCode(rpcErr error) error {
 		return nil
 	}
 	return rpcErr
+}
+
+// WrapWithContext wraps an error from a downstream gRPC call while preserving the original
+// status code if present. This is useful for middleware services that call other gRPC services
+// and need to pass through errors to upstream clients.
+// If the error is a gRPC status error, it logs the status code and message, preserves the status
+// code and adds context to the message.
+// If the error is not a gRPC status error (e.g., network timeout), it wraps it as Internal.
+func WrapWithContext(err error, context string) error {
+	if err == nil {
+		return nil
+	}
+
+	st, ok := status.FromError(err)
+	if ok {
+		logger.Errorf("%s: gRPC status code=%s, message=%s", context, st.Code(), st.Message())
+		return status.Errorf(st.Code(), "%s: %s", context, st.Message())
+	}
+
+	return status.Errorf(codes.Internal, "%s: %v", context, err)
 }
