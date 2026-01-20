@@ -5,16 +5,55 @@
 #########################
 # Makefile Targets Summary
 #########################
-
-# test: Builds binaries and runs both unit and integration tests
-# clean: Removes all binaries
-# proto: Generates all committer's API protobufs
-# build: Builds all binaries
-# build-arch: Builds all binaries for linux/(<cur-arch> amd64 arm64 s390x)
-# build-docker: Builds all binaries in a docker container
-# docker-builder-run: Executes a command from within a golang docker image.
-# docker-runner-image: Builds the committer docker image containing all binaries
-# lint: Runs golangci-lint
+#
+# Tests:
+#   test                         - Run unit tests (excludes integration and container tests)
+#   test-package-%               - Run tests for a specific package
+#   test-integration             - Run integration tests (excludes DB resiliency tests)
+#   test-integration-db-resiliency - Run DB resiliency integration tests
+#   test-container               - Run container tests
+#   test-core-db                 - Run tests for components that directly talk to the DB
+#   test-requires-db             - Run tests for components that depend on DB layer
+#   test-no-db                   - Run tests that require no DB
+#   test-fuzz                    - Run ASN.1 marshalling fuzz tests
+#   test-cover                   - Run tests with coverage
+#   test-cover-%                 - Run tests with coverage for a specific package
+#   cover-report                 - Generate HTML coverage report
+#   cover-report-%               - Generate HTML coverage report for a specific package
+#
+# Build:
+#   build                        - Build all binaries
+#   build-arch                   - Build binaries for linux/(current-arch amd64 arm64 s390x)
+#   build-arch-%                 - Build binaries for a specific os-arch (e.g., build-arch-linux-amd64)
+#   build-cli-%                  - Build a specific CLI binary
+#   build-docker                 - Build all binaries in a docker container
+#   build-test-node-image        - Build the test node docker image
+#   build-release-image          - Build the release docker image
+#   build-test-genesis-block     - Build the test genesis block
+#
+# Benchmarks:
+#   bench-loadgen                - Run load generation benchmarks
+#   bench-dep                    - Run dependency detector benchmarks
+#   bench-preparer               - Run preparer benchmarks
+#   bench-sign                   - Run signature benchmarks
+#   bench-sidecar                - Run sidecar benchmarks
+#
+# Linting:
+#   lint                         - Run all linters (Go, SQL, proto, license, metrics doc)
+#   lint-proto                   - Run protobuf linters
+#   full-lint                    - Run Go linter on all packages
+#   full-lint-%                  - Run Go linter on a specific package
+#
+# Code Generation:
+#   proto                        - Generate protobuf code
+#   generate-metrics-doc         - Generate metrics reference documentation
+#
+# Documentation:
+#   check-metrics-doc            - Check if metrics documentation is up to date
+#
+# Cleanup:
+#   clean                        - Remove all binaries
+#   kill-test-docker             - Kill test docker containers
 
 #########################
 # Constants
@@ -267,7 +306,7 @@ build-test-genesis-block: $(output_dir) build-cli-loadgen
 # Linter
 #########################
 
-lint: lint-proto FORCE
+lint: check-metrics-doc lint-proto FORCE
 	@echo "Running Go Linters..."
 	golangci-lint run --color=always --new-from-rev=main --timeout=4m
 	@echo "Running SQL Linters..."
@@ -281,6 +320,12 @@ full-lint-%: FORCE
 
 full-lint: FORCE
 	golangci-lint run --color=always --timeout=4m ./...
+
+generate-metrics-doc: FORCE
+	scripts/metrics_doc.sh generate
+
+check-metrics-doc: FORCE
+	scripts/metrics_doc.sh check
 
 # https://www.gnu.org/software/make/manual/html_node/Force-Targets.html
 # If a rule has no prerequisites or recipe, and the target of the rule is a nonexistent file,
