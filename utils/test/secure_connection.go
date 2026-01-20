@@ -48,7 +48,7 @@ type (
 )
 
 const (
-	defaultHostName = "localhost"
+	defaultHostName = "127.0.0.1"
 
 	//nolint:revive // represents the default certificate's names.
 	PrivateKey       = "private-key.pem"

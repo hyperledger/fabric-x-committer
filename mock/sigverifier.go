@@ -8,10 +8,14 @@ package mock
 
 import (
 	"context"
+	"maps"
+	"slices"
+	"sync"
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	commonutils "github.com/hyperledger/fabric-x-common/common/util"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -19,42 +23,103 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 )
 
-// SigVerifier is a mock implementation of the protosignverifierservice.VerifierServer.
-// SigVerifier marks valid and invalid flag as follows:
+// Verifier is a mock implementation of servicepb.VerifierServer.
+// Verifier marks valid and invalid flag as follows:
 // - when the tx has empty signature, it is invalid.
 // - when the tx has non-empty signature, it is valid.
-type SigVerifier struct {
+type Verifier struct {
 	servicepb.UnimplementedVerifierServer
-	updates                    []*servicepb.VerifierUpdates
+	healthcheck *health.Server
+
+	streams          map[uint64]*VerifierStreamState
+	streamsMu        sync.Mutex
+	streamsIDCounter atomic.Uint64
+}
+
+// VerifierStreamState holds the state of a verifier stream.
+type VerifierStreamState struct {
+	index                      uint64
+	serverEndpoint             string
+	clientEndpoint             string
 	requestBatch               chan *servicepb.VerifierBatch
+	updates                    []*servicepb.VerifierUpdates
 	numBlocksReceived          atomic.Uint32
 	returnErrForUpdatePolicies atomic.Bool
 	policyUpdateCounter        atomic.Uint64
-	healthcheck                *health.Server
 	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
 	MockFaultyNodeDropSize int
 }
 
 // NewMockSigVerifier returns a new mock verifier.
-func NewMockSigVerifier() *SigVerifier {
-	return &SigVerifier{
-		requestBatch: make(chan *servicepb.VerifierBatch, 10),
-		healthcheck:  connection.DefaultHealthCheckService(),
+func NewMockSigVerifier() *Verifier {
+	return &Verifier{
+		healthcheck: connection.DefaultHealthCheckService(),
+		streams:     make(map[uint64]*VerifierStreamState),
 	}
 }
 
 // RegisterService registers for the verifier's GRPC services.
-func (m *SigVerifier) RegisterService(server *grpc.Server) {
+func (m *Verifier) RegisterService(server *grpc.Server) {
 	servicepb.RegisterVerifierServer(server, m)
 	healthgrpc.RegisterHealthServer(server, m.healthcheck)
 }
 
-func (m *SigVerifier) updatePolicies(update *servicepb.VerifierUpdates) error {
+// Streams returns the current active streams in the orderer they were created.
+func (m *Verifier) Streams() []*VerifierStreamState {
+	m.streamsMu.Lock()
+	streams := slices.Collect(maps.Values(m.streams))
+	m.streamsMu.Unlock()
+	slices.SortFunc(streams, func(a, b *VerifierStreamState) int {
+		return int(a.index - b.index) //nolint:gosec // required for sorting.
+	})
+	return streams
+}
+
+// StartStream is a mock implementation of the [protosignverifierservice.VerifierServer].
+func (m *Verifier) StartStream(stream servicepb.Verifier_StartStreamServer) error {
+	streamState := &VerifierStreamState{
+		index:          m.streamsIDCounter.Add(1),
+		serverEndpoint: utils.ExtractServerAddress(stream.Context()),
+		clientEndpoint: commonutils.ExtractRemoteAddress(stream.Context()),
+		requestBatch:   make(chan *servicepb.VerifierBatch, 10),
+	}
+
+	m.streamsMu.Lock()
+	m.streams[streamState.index] = streamState
+	m.streamsMu.Unlock()
+
+	logger.Infof("Starting verifier stream on server %s for client %s",
+		streamState.serverEndpoint, streamState.clientEndpoint)
+	defer func() {
+		logger.Info("Closed verifier stream")
+		logger.Infof("Removing stream [%d]", streamState.index)
+		m.streamsMu.Lock()
+		delete(m.streams, streamState.index)
+		m.streamsMu.Unlock()
+	}()
+
+	g, eCtx := errgroup.WithContext(stream.Context())
+	g.Go(func() error {
+		return streamState.receiveRequestBatch(eCtx, stream)
+	})
+	g.Go(func() error {
+		return streamState.sendResponseBatch(eCtx, stream)
+	})
+
+	err := g.Wait()
+	if errors.Is(err, verifier.ErrUpdatePolicies) {
+		return grpcerror.WrapInvalidArgument(err)
+	}
+	return grpcerror.WrapCancelled(err)
+}
+
+func (m *VerifierStreamState) updatePolicies(update *servicepb.VerifierUpdates) error {
 	if update == nil {
 		return nil
 	}
@@ -67,26 +132,7 @@ func (m *SigVerifier) updatePolicies(update *servicepb.VerifierUpdates) error {
 	return nil
 }
 
-// StartStream is a mock implementation of the [protosignverifierservice.VerifierServer].
-func (m *SigVerifier) StartStream(stream servicepb.Verifier_StartStreamServer) error {
-	logger.Info("Starting verifier stream")
-	defer logger.Info("Closed verifier stream")
-	g, eCtx := errgroup.WithContext(stream.Context())
-	g.Go(func() error {
-		return m.receiveRequestBatch(eCtx, stream)
-	})
-	g.Go(func() error {
-		return m.sendResponseBatch(eCtx, stream)
-	})
-
-	err := g.Wait()
-	if errors.Is(err, verifier.ErrUpdatePolicies) {
-		return grpcerror.WrapInvalidArgument(err)
-	}
-	return grpcerror.WrapCancelled(err)
-}
-
-func (m *SigVerifier) receiveRequestBatch(
+func (m *VerifierStreamState) receiveRequestBatch(
 	ctx context.Context,
 	stream servicepb.Verifier_StartStreamServer,
 ) error {
@@ -109,7 +155,7 @@ func (m *SigVerifier) receiveRequestBatch(
 	return errors.Wrap(ctx.Err(), "context ended")
 }
 
-func (m *SigVerifier) sendResponseBatch(
+func (m *VerifierStreamState) sendResponseBatch(
 	ctx context.Context,
 	stream servicepb.Verifier_StartStreamServer,
 ) error {
@@ -148,38 +194,28 @@ func (m *SigVerifier) sendResponseBatch(
 }
 
 // GetNumBlocksReceived returns the number of blocks received by the mock verifier.
-func (m *SigVerifier) GetNumBlocksReceived() uint32 {
+func (m *VerifierStreamState) GetNumBlocksReceived() uint32 {
 	return m.numBlocksReceived.Load()
 }
 
 // GetUpdates returns the updates received.
-func (m *SigVerifier) GetUpdates() []*servicepb.VerifierUpdates {
+func (m *VerifierStreamState) GetUpdates() []*servicepb.VerifierUpdates {
 	return m.updates
 }
 
-// SetReturnErrorForUpdatePolicies configures the SigVerifier to return an error during policy updates.
+// ServerEndpoint returns the stream's server endpoint.
+func (m *VerifierStreamState) ServerEndpoint() string {
+	return m.serverEndpoint
+}
+
+// SetReturnErrorForUpdatePolicies configures the Verifier to return an error during policy updates.
 // When setError is true, the verifier will signal an error during the update policies process.
 // It is a one time event, after which the flag will return to false.
-func (m *SigVerifier) SetReturnErrorForUpdatePolicies(setError bool) {
+func (m *VerifierStreamState) SetReturnErrorForUpdatePolicies(setError bool) {
 	m.returnErrForUpdatePolicies.Store(setError)
 }
 
 // GetPolicyUpdateCounter returns the number of policy updates to check progress.
-func (m *SigVerifier) GetPolicyUpdateCounter() uint64 {
+func (m *VerifierStreamState) GetPolicyUpdateCounter() uint64 {
 	return m.policyUpdateCounter.Load()
-}
-
-// ClearPolicies allows resetting the known policies to mimic a new instance.
-func (m *SigVerifier) ClearPolicies() {
-	m.updates = nil
-}
-
-// SendRequestBatchWithoutStream allows the caller to bypass the stream to send
-// a request batch.
-// Returns true if successful.
-func (m *SigVerifier) SendRequestBatchWithoutStream(
-	ctx context.Context,
-	requestBatch *servicepb.VerifierBatch,
-) bool {
-	return channel.NewWriter(ctx, m.requestBatch).Write(requestBatch)
 }
