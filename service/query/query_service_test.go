@@ -10,7 +10,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -59,9 +58,7 @@ func TestQuerySecureConnection(t *testing.T) {
 	test.RunSecureConnectionTest(t,
 		func(t *testing.T, tlsCfg connection.TLSConfig) test.RPCAttempt {
 			t.Helper()
-			env := newQueryServiceTestEnv(t, queryServiceTestOpts{
-				serverTLS: tlsCfg,
-			})
+			env := newQueryServiceTestEnv(t, &queryServiceTestOpts{serverTLS: tlsCfg})
 			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
 				t.Helper()
 				client := createQueryClientWithTLS(t, &env.qs.config.Server.Endpoint, cfg)
@@ -74,7 +71,7 @@ func TestQuerySecureConnection(t *testing.T) {
 
 func TestQuery(t *testing.T) {
 	t.Parallel()
-	env := newQueryServiceTestEnv(t)
+	env := newQueryServiceTestEnv(t, nil)
 	requiredItems := env.makeItems(t)
 	query, _, _ := makeQuery(requiredItems)
 
@@ -162,9 +159,7 @@ func TestMaxRequestKeys(t *testing.T) {
 
 	t.Run("GetRows exceeds limit", func(t *testing.T) {
 		t.Parallel()
-		env := newQueryServiceTestEnv(t, queryServiceTestOpts{
-			maxRequestKeys: 5,
-		})
+		env := newQueryServiceTestEnv(t, &queryServiceTestOpts{maxRequestKeys: 5})
 		env.makeItems(t)
 
 		// Request with 6 keys across namespaces should fail (limit is 5)
@@ -182,9 +177,7 @@ func TestMaxRequestKeys(t *testing.T) {
 
 	t.Run("GetRows within limit", func(t *testing.T) {
 		t.Parallel()
-		env := newQueryServiceTestEnv(t, queryServiceTestOpts{
-			maxRequestKeys: 10,
-		})
+		env := newQueryServiceTestEnv(t, &queryServiceTestOpts{maxRequestKeys: 10})
 		env.makeItems(t)
 
 		// Request with 6 keys should succeed (limit is 10)
@@ -201,7 +194,7 @@ func TestMaxRequestKeys(t *testing.T) {
 
 	t.Run("GetRows no limit when zero", func(t *testing.T) {
 		t.Parallel()
-		env := newQueryServiceTestEnv(t)
+		env := newQueryServiceTestEnv(t, nil)
 		env.makeItems(t)
 
 		// Request with many keys should succeed when limit is 0 (disabled)
@@ -219,9 +212,7 @@ func TestMaxRequestKeys(t *testing.T) {
 
 	t.Run("GetTransactionStatus exceeds limit", func(t *testing.T) {
 		t.Parallel()
-		env := newQueryServiceTestEnv(t, queryServiceTestOpts{
-			maxRequestKeys: 2,
-		})
+		env := newQueryServiceTestEnv(t, &queryServiceTestOpts{maxRequestKeys: 2})
 
 		// Request with 3 transaction IDs should fail (limit is 2)
 		_, err := env.clientConn.GetTransactionStatus(t.Context(), &committerpb.TxStatusQuery{
@@ -234,9 +225,7 @@ func TestMaxRequestKeys(t *testing.T) {
 
 	t.Run("GetTransactionStatus within limit", func(t *testing.T) {
 		t.Parallel()
-		env := newQueryServiceTestEnv(t, queryServiceTestOpts{
-			maxRequestKeys: 5,
-		})
+		env := newQueryServiceTestEnv(t, &queryServiceTestOpts{maxRequestKeys: 5})
 
 		// Request with 2 transaction IDs should succeed (limit is 5)
 		ret, err := env.clientConn.GetTransactionStatus(t.Context(), &committerpb.TxStatusQuery{
@@ -250,7 +239,7 @@ func TestMaxRequestKeys(t *testing.T) {
 
 func TestQueryMetrics(t *testing.T) {
 	t.Parallel()
-	env := newQueryServiceTestEnv(t)
+	env := newQueryServiceTestEnv(t, nil)
 	requiredItems := env.makeItems(t)
 	query, keyCount, querySize := makeQuery(requiredItems)
 
@@ -288,7 +277,7 @@ func TestQueryMetrics(t *testing.T) {
 
 func TestQueryWithConsistentView(t *testing.T) {
 	t.Parallel()
-	env := newQueryServiceTestEnv(t)
+	env := newQueryServiceTestEnv(t, nil)
 	requiredItems := env.makeItems(t)
 	query, _, _ := makeQuery(requiredItems)
 
@@ -364,7 +353,7 @@ func TestQueryWithConsistentView(t *testing.T) {
 
 func TestQueryPolicies(t *testing.T) {
 	t.Parallel()
-	env := newQueryServiceTestEnv(t)
+	env := newQueryServiceTestEnv(t, nil)
 
 	policies, err := env.clientConn.GetNamespacePolicies(t.Context(), nil)
 	require.NoError(t, err)
@@ -417,19 +406,10 @@ func encodeBytesForProto(str string) []byte {
 	return decodeString
 }
 
-func newQueryServiceTestEnv(t *testing.T, options ...queryServiceTestOpts) *queryServiceTestEnv {
+func newQueryServiceTestEnv(t *testing.T, opts *queryServiceTestOpts) *queryServiceTestEnv {
 	t.Helper()
-	opts := queryServiceTestOpts{}
-	if len(options) > 0 {
-		opts = options[0]
-	}
-
-	if reflect.DeepEqual(opts.serverTLS, connection.TLSConfig{}) {
-		opts.serverTLS = test.InsecureTLSConfig
-	}
-
-	if reflect.DeepEqual(opts.clientTLS, connection.TLSConfig{}) {
-		opts.clientTLS = test.InsecureTLSConfig
+	if opts == nil {
+		opts = &queryServiceTestOpts{}
 	}
 
 	t.Log("generating config and namespaces")
