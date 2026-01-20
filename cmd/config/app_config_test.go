@@ -65,11 +65,6 @@ func TestReadConfigSidecar(t *testing.T) {
 			Server:     newServerConfig("localhost", 4001),
 			Monitoring: newMonitoringConfig("localhost", 2114),
 			Orderer: ordererconn.Config{
-				Connection: ordererconn.ConnectionConfig{
-					Endpoints: []*commontypes.OrdererEndpoint{
-						newOrdererEndpoint("", "localhost"),
-					},
-				},
 				ChannelID: "mychannel",
 			},
 			Committer: &connection.ClientConfig{
@@ -106,9 +101,6 @@ func TestReadConfigSidecar(t *testing.T) {
 			Monitoring: newMonitoringConfig("", 2114),
 			Orderer: ordererconn.Config{
 				Connection: ordererconn.ConnectionConfig{
-					Endpoints: []*commontypes.OrdererEndpoint{
-						newOrdererEndpoint("", "orderer"),
-					},
 					TLS: defaultClientTLSConfig,
 				},
 				ChannelID: "mychannel",
@@ -123,6 +115,9 @@ func TestReadConfigSidecar(t *testing.T) {
 			LastCommittedBlockSetInterval: 5 * time.Second,
 			WaitingTxsLimit:               20_000_000,
 			ChannelBufferSize:             100,
+			Bootstrap: sidecar.Bootstrap{
+				GenesisBlockFilePath: "/root/material/config-block.pb.bin",
+			},
 		},
 	}}
 	for _, test := range tests {
@@ -399,6 +394,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 					OrdererEndpoints: []*commontypes.OrdererEndpoint{
 						newOrdererEndpoint("org", "orderer"),
 					},
+					CryptoMaterialPath: "/root/material",
 				},
 				Conflicts: workload.ConflictProfile{
 					InvalidSignatures: 0.1,

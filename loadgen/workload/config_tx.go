@@ -66,7 +66,7 @@ func CreateConfigTxFromConfigBlock(block *common.Block) (*servicepb.LoadGenTx, e
 
 // CreateConfigBlock creating a config block.
 func CreateConfigBlock(policy *PolicyProfile) (*common.Block, error) {
-	err := prepareCryptoMaterial(policy)
+	err := PrepareCryptoMaterial(policy)
 	if err != nil {
 		return nil, err
 	}
@@ -83,8 +83,8 @@ func CreateConfigBlock(policy *PolicyProfile) (*common.Block, error) {
 	return block, nil
 }
 
-// prepareCryptoMaterial generates the crypto material for a policy if it wasn't generated before.
-func prepareCryptoMaterial(policy *PolicyProfile) error {
+// PrepareCryptoMaterial generates the crypto material for a policy if it wasn't generated before.
+func PrepareCryptoMaterial(policy *PolicyProfile) error {
 	if policy.CryptoMaterialPath == "" {
 		tempDir, err := makeTemporaryDir()
 		if err != nil {

@@ -381,21 +381,24 @@ func (dc *DatabaseContainer) ExecuteCommand(t *testing.T, cmd []string) string {
 	t.Logf("executing %s", strings.Join(cmd, " "))
 
 	var stdout strings.Builder
+	var stderr strings.Builder
 	exec, err := dc.client.CreateExec(docker.CreateExecOptions{
 		Container:    dc.containerID,
 		Cmd:          cmd,
 		AttachStdout: true,
+		AttachStderr: true,
 	})
 	require.NoError(t, err)
 	require.NoError(t, dc.client.StartExec(exec.ID, docker.StartExecOptions{
 		OutputStream: &stdout,
+		ErrorStream:  &stderr,
 		RawTerminal:  false,
 	}))
 
 	inspect, err := dc.client.InspectExec(exec.ID)
-	require.NoError(t, err)
-	require.Zero(t, inspect.ExitCode)
-
+	errOut := stderr.String()
+	require.NoErrorf(t, err, "with stderr: %s", errOut)
+	require.Zero(t, inspect.ExitCode, "with stderr: %s", errOut)
 	return stdout.String()
 }
 
