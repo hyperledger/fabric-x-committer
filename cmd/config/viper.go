@@ -71,6 +71,7 @@ func NewViperWithQueryDefaults() *viper.Viper {
 	v.SetDefault("view-aggregation-window", 100*time.Millisecond)
 	v.SetDefault("max-aggregated-views", 1024)
 	v.SetDefault("max-view-timeout", 10*time.Second)
+	v.SetDefault("max-request-keys", 0) // 0 means no limit
 	return v
 }
 

@@ -311,6 +311,7 @@ func TestReadConfigQuery(t *testing.T) {
 			ViewAggregationWindow: 100 * time.Millisecond,
 			MaxAggregatedViews:    1024,
 			MaxViewTimeout:        10 * time.Second,
+			MaxRequestKeys:        10000,
 		},
 	}}
 

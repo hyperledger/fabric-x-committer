@@ -46,6 +46,8 @@ database:
   retry:
     max-elapsed-time: 1h
 
+max-request-keys: {{ .MaxRequestKeys }}
+
 logging:
   enabled: {{ .Logging.Enabled }}
   level: {{ .Logging.Level }}

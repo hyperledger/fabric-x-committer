@@ -9,9 +9,9 @@ package query
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/google/uuid"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
@@ -28,8 +28,13 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
-// ErrInvalidOrStaleView is returned when attempting to use wrong, stale, or cancelled view.
-var ErrInvalidOrStaleView = errors.New("invalid or stale view")
+var (
+	// ErrInvalidOrStaleView is returned when attempting to use wrong, stale, or cancelled view.
+	ErrInvalidOrStaleView = errors.New("invalid or stale view")
+
+	// ErrTooManyKeys is returned when the number of keys in a request exceeds the configured limit.
+	ErrTooManyKeys = errors.New("request exceeds maximum allowed keys")
+)
 
 type (
 	// Service is a gRPC service that implements the QueryServiceServer interface.
@@ -144,10 +149,16 @@ func (q *Service) GetRows(
 		}
 	}
 
-	defer q.requestLatency(grpcGetRows, time.Now())
+	totalKeys := 0
 	for _, ns := range query.Namespaces {
-		promutil.AddToCounter(q.metrics.keysRequested, len(ns.Keys))
+		totalKeys += len(ns.Keys)
 	}
+	if err := q.validateKeysCount(totalKeys); err != nil {
+		return nil, err
+	}
+
+	defer q.requestLatency(grpcGetRows, time.Now())
+	promutil.AddToCounter(q.metrics.keysRequested, totalKeys)
 
 	batches, err := q.assignRequest(ctx, query)
 	if err != nil {
@@ -176,6 +187,10 @@ func (q *Service) GetTransactionStatus(
 	ctx context.Context, query *committerpb.TxStatusQuery,
 ) (*committerpb.TxStatusResponse, error) {
 	q.metrics.requests.WithLabelValues(grpcGetTxStatus).Inc()
+
+	if err := q.validateKeysCount(len(query.TxIds)); err != nil {
+		return nil, err
+	}
 
 	defer q.requestLatency(grpcGetTxStatus, time.Now())
 
@@ -250,6 +265,15 @@ func getUUID() (string, error) {
 		return "", err
 	}
 	return uuidObj.String(), nil
+}
+
+func (q *Service) validateKeysCount(count int) error {
+	if q.config.MaxRequestKeys > 0 && count > q.config.MaxRequestKeys {
+		return grpcerror.WrapInvalidArgument(
+			errors.Join(ErrTooManyKeys, errors.Newf("requested %d keys, maximum allowed is %d",
+				count, q.config.MaxRequestKeys)))
+	}
+	return nil
 }
 
 func (q *Service) requestLatency(method string, start time.Time) {
