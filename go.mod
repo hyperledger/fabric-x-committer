@@ -19,7 +19,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hyperledger/fabric-lib-go v1.1.3-0.20240523144151-25edd1eaf5f5
 	github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7
-	github.com/hyperledger/fabric-x-common v0.0.0-20260109131417-74e7c6d06351
+	github.com/hyperledger/fabric-x-common v0.0.0-20260119153301-8898987593e4
 	github.com/jackc/puddle v1.3.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/onsi/gomega v1.38.2
