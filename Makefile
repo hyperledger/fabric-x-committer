@@ -99,6 +99,11 @@ ifneq ("$(wildcard /usr/include)","")
     proto_flags += --proto_path="/usr/include"
 endif
 
+# Homebrew paths (Apple Silicon and Intel)
+ifneq ("$(wildcard /opt/homebrew/include)","")
+    proto_flags += --proto_path="/opt/homebrew/include"
+endif
+
 arch_output_dir_rel = $(arch_output_dir:${project_dir}/%=%)
 
 PYTHON_CMD ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/null)
