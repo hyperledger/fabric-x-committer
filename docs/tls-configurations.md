@@ -1,3 +1,8 @@
+<!--
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+-->
 # TLS Configuration for Committer Services
 This guide explains how to configure Transport Layer Security (TLS) for Committer services. TLS ensures secure communication whether a service operates as a **server** (accepting incoming connections) or as a **client** (initiating outbound connections).
 
