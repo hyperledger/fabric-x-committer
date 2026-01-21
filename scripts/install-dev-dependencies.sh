@@ -36,9 +36,8 @@ esac
 protoc_zip_name="protoc-${protoc_bin_version}-${protoc_os}-${protoc_arch}.zip"
 echo "Downloading protoc (${protoc_zip_name}) to ${protoc_zip_download_path}"
 curl -L -o "${protoc_zip_download_path}" "https://github.com/protocolbuffers/protobuf/releases/download/v${protoc_bin_version}/${protoc_zip_name}"
-echo "Extracting protoc to $HOME/bin and $HOME/include"
+echo "Extracting protoc to $HOME/bin"
 unzip -jo "${protoc_zip_download_path}" 'bin/*' -d "$HOME/bin"
-unzip -o "${protoc_zip_download_path}" 'include/*' -d "$HOME"
 rm -rf "${download_dir}"
 
 if which apt >/dev/null 2>&1; then

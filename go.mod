@@ -40,6 +40,15 @@ require (
 	google.golang.org/protobuf v1.36.11
 )
 
+tool (
+	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+	github.com/googleapis/api-linter/v2/cmd/api-linter
+	github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt
+	golang.org/x/tools/cmd/goimports
+	google.golang.org/grpc/cmd/protoc-gen-go-grpc
+	google.golang.org/protobuf/cmd/protoc-gen-go
+)
+
 require (
 	4d63.com/gocheckcompilerdirectives v1.3.0 // indirect
 	4d63.com/gochecknoglobals v0.2.2 // indirect
@@ -325,13 +334,4 @@ require (
 	honnef.co/go/tools v0.6.1 // indirect
 	mvdan.cc/gofumpt v0.9.2 // indirect
 	mvdan.cc/unparam v0.0.0-20251027182757-5beb8c8f8f15 // indirect
-)
-
-tool (
-	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
-	github.com/googleapis/api-linter/v2/cmd/api-linter
-	github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt
-	golang.org/x/tools/cmd/goimports
-	google.golang.org/grpc/cmd/protoc-gen-go-grpc
-	google.golang.org/protobuf/cmd/protoc-gen-go
 )
