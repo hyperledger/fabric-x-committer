@@ -20,11 +20,11 @@ sidecar-client:
     {{- range .Endpoints.Orderer }}
     - endpoint: {{ .Server }}
       tls:
-        mode: {{ .ServiceTLS.Mode }}
-        cert-path: {{ .ServiceTLS.CertPath }}
-        key-path: {{ .ServiceTLS.KeyPath }}
+        mode: {{ $.ServiceTLS.Mode }}
+        cert-path: {{ $.ServiceTLS.CertPath }}
+        key-path: {{ $.ServiceTLS.KeyPath }}
         ca-cert-paths:
-          {{- range .ServiceTLS.CACertPaths }}
+          {{- range $.ServiceTLS.CACertPaths }}
           - {{ . }}
           {{- end }}
     {{- end }}
