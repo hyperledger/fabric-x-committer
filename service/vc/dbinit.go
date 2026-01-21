@@ -46,8 +46,8 @@ func NewDatabasePool(ctx context.Context, config *DatabaseConfig) (*pgxpool.Pool
 	if err != nil {
 		return nil, errors.Wrapf(err, "could not build database connection string")
 	}
-	logger.Infof("DB source: user=%s, db=%s, endpoints=%s, load_balance=%t, tls_mode=%s",
-		config.Username, config.Database, config.EndpointsString(), config.LoadBalance, config.TLS.Mode)
+	logger.Infof("DB source: db=%s, endpoints=%s, load_balance=%t, tls_mode=%s",
+		config.Database, config.EndpointsString(), config.LoadBalance, config.TLS.Mode)
 	poolConfig, err := pgxpool.ParseConfig(connString)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed parsing datasource")
