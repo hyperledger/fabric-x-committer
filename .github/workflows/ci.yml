@@ -3,7 +3,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 name: CI
-
 on:
   push:
     branches: ["**"]
@@ -17,8 +16,20 @@ env:
   DB_DEPLOYMENT: local
 
 jobs:
+  gate:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request' ||
+      github.repository != 'hyperledger/fabric-x-committer' ||
+      startsWith(github.ref, 'refs/heads/main') ||
+      startsWith(github.ref, 'refs/heads/release')
+    steps:
+      - run: echo "CI gate passed"
+
   lint:
     name: Lint and Build
+    needs: [gate]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,6 +58,7 @@ jobs:
 
   unit-test:
     name: Unit Test (non DB)
+    needs: [gate]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,6 +70,7 @@ jobs:
 
   fuzz-test:
     name: Fuzz Test (non DB)
+    needs: [gate]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -69,6 +82,7 @@ jobs:
 
   db-test:
     name: Requires and Core DB Tests (postgres)
+    needs: [gate]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -81,6 +95,7 @@ jobs:
 
   core-db-test:
     name: Core DB Tests (yugabyte)
+    needs: [gate]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -93,6 +108,7 @@ jobs:
 
   integration-test:
     name: Integration Tests (yugabyte)
+    needs: [gate]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -105,6 +121,7 @@ jobs:
 
   db-resiliency-test:
     name: Integration DB Resiliency (container)
+    needs: [gate]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -116,6 +133,7 @@ jobs:
 
   container-test:
     name: Build and test container images
+    needs: [gate]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -127,6 +145,7 @@ jobs:
 
   analyze:
     name: Analyze (${{ matrix.language }})
+    needs: [gate]
     # Runner size impacts CodeQL analysis time. To learn more, please see:
     #   - https://gh.io/recommended-hardware-resources-for-running-codeql
     #   - https://gh.io/supported-runners-and-hardware-resources
