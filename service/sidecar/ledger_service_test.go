@@ -34,7 +34,7 @@ func TestLedgerService(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(ls.close)
 
-	config := connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig)
+	config := connection.NewLocalHostServer(test.InsecureTLSConfig)
 	inputBlock := make(chan *common.Block, 10)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(ls.run(ctx, &ledgerRunConfig{

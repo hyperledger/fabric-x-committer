@@ -73,7 +73,7 @@ func NewValidatorAndCommitServiceTestEnvWithTLS(
 	endpoints := make([]*connection.Endpoint, numServices)
 	for i := range vcservices {
 		config := &Config{
-			Server:   connection.NewLocalHostServerWithTLS(serverCreds),
+			Server:   connection.NewLocalHostServer(serverCreds),
 			Database: dbEnv.DBConf,
 			ResourceLimits: &ResourceLimitsConfig{
 				MaxWorkersForPreparer:             2,
@@ -84,7 +84,7 @@ func NewValidatorAndCommitServiceTestEnvWithTLS(
 				// we are setting the timeout value to 20 seconds
 			},
 			Monitoring: monitoring.Config{
-				Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
+				Server: connection.NewLocalHostServer(test.InsecureTLSConfig),
 			},
 		}
 		vcs, err := NewValidatorCommitterService(initCtx, config)

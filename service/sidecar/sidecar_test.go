@@ -143,7 +143,7 @@ func newSidecarTestEnvWithTLS(
 		initOrdererEndpoints = nil
 	}
 	sidecarConf := &Config{
-		Server: connection.NewLocalHostServerWithTLS(serverCreds),
+		Server: connection.NewLocalHostServer(serverCreds),
 		Orderer: ordererconn.Config{
 			ChannelID: ordererEnv.TestConfig.ChanID,
 			Connection: ordererconn.ConnectionConfig{
@@ -157,7 +157,7 @@ func newSidecarTestEnvWithTLS(
 		LastCommittedBlockSetInterval: 100 * time.Millisecond,
 		WaitingTxsLimit:               1000,
 		Monitoring: monitoring.Config{
-			Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
+			Server: connection.NewLocalHostServer(test.InsecureTLSConfig),
 		},
 		Bootstrap: Bootstrap{
 			GenesisBlockFilePath: genesisBlockFilePath,

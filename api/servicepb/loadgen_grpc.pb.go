@@ -25,9 +25,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LoadGenService_AppendBatch_FullMethodName = "/servicepb.LoadGenService/AppendBatch"
-	LoadGenService_GetLimit_FullMethodName    = "/servicepb.LoadGenService/GetLimit"
-	LoadGenService_SetLimit_FullMethodName    = "/servicepb.LoadGenService/SetLimit"
+	LoadGenService_AppendBatch_FullMethodName  = "/servicepb.LoadGenService/AppendBatch"
+	LoadGenService_GetRateLimit_FullMethodName = "/servicepb.LoadGenService/GetRateLimit"
+	LoadGenService_SetRateLimit_FullMethodName = "/servicepb.LoadGenService/SetRateLimit"
 )
 
 // LoadGenServiceClient is the client API for LoadGenService service.
@@ -35,8 +35,8 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type LoadGenServiceClient interface {
 	AppendBatch(ctx context.Context, in *LoadGenBatch, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	GetLimit(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*Limit, error)
-	SetLimit(ctx context.Context, in *Limit, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	GetRateLimit(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*RateLimit, error)
+	SetRateLimit(ctx context.Context, in *RateLimit, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type loadGenServiceClient struct {
@@ -57,20 +57,20 @@ func (c *loadGenServiceClient) AppendBatch(ctx context.Context, in *LoadGenBatch
 	return out, nil
 }
 
-func (c *loadGenServiceClient) GetLimit(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*Limit, error) {
+func (c *loadGenServiceClient) GetRateLimit(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*RateLimit, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Limit)
-	err := c.cc.Invoke(ctx, LoadGenService_GetLimit_FullMethodName, in, out, cOpts...)
+	out := new(RateLimit)
+	err := c.cc.Invoke(ctx, LoadGenService_GetRateLimit_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *loadGenServiceClient) SetLimit(ctx context.Context, in *Limit, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *loadGenServiceClient) SetRateLimit(ctx context.Context, in *RateLimit, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, LoadGenService_SetLimit_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, LoadGenService_SetRateLimit_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -82,8 +82,8 @@ func (c *loadGenServiceClient) SetLimit(ctx context.Context, in *Limit, opts ...
 // for forward compatibility.
 type LoadGenServiceServer interface {
 	AppendBatch(context.Context, *LoadGenBatch) (*emptypb.Empty, error)
-	GetLimit(context.Context, *emptypb.Empty) (*Limit, error)
-	SetLimit(context.Context, *Limit) (*emptypb.Empty, error)
+	GetRateLimit(context.Context, *emptypb.Empty) (*RateLimit, error)
+	SetRateLimit(context.Context, *RateLimit) (*emptypb.Empty, error)
 	mustEmbedUnimplementedLoadGenServiceServer()
 }
 
@@ -97,11 +97,11 @@ type UnimplementedLoadGenServiceServer struct{}
 func (UnimplementedLoadGenServiceServer) AppendBatch(context.Context, *LoadGenBatch) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method AppendBatch not implemented")
 }
-func (UnimplementedLoadGenServiceServer) GetLimit(context.Context, *emptypb.Empty) (*Limit, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetLimit not implemented")
+func (UnimplementedLoadGenServiceServer) GetRateLimit(context.Context, *emptypb.Empty) (*RateLimit, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetRateLimit not implemented")
 }
-func (UnimplementedLoadGenServiceServer) SetLimit(context.Context, *Limit) (*emptypb.Empty, error) {
-	return nil, status.Error(codes.Unimplemented, "method SetLimit not implemented")
+func (UnimplementedLoadGenServiceServer) SetRateLimit(context.Context, *RateLimit) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetRateLimit not implemented")
 }
 func (UnimplementedLoadGenServiceServer) mustEmbedUnimplementedLoadGenServiceServer() {}
 func (UnimplementedLoadGenServiceServer) testEmbeddedByValue()                        {}
@@ -142,38 +142,38 @@ func _LoadGenService_AppendBatch_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
-func _LoadGenService_GetLimit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _LoadGenService_GetRateLimit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(LoadGenServiceServer).GetLimit(ctx, in)
+		return srv.(LoadGenServiceServer).GetRateLimit(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: LoadGenService_GetLimit_FullMethodName,
+		FullMethod: LoadGenService_GetRateLimit_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LoadGenServiceServer).GetLimit(ctx, req.(*emptypb.Empty))
+		return srv.(LoadGenServiceServer).GetRateLimit(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _LoadGenService_SetLimit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Limit)
+func _LoadGenService_SetRateLimit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RateLimit)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(LoadGenServiceServer).SetLimit(ctx, in)
+		return srv.(LoadGenServiceServer).SetRateLimit(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: LoadGenService_SetLimit_FullMethodName,
+		FullMethod: LoadGenService_SetRateLimit_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LoadGenServiceServer).SetLimit(ctx, req.(*Limit))
+		return srv.(LoadGenServiceServer).SetRateLimit(ctx, req.(*RateLimit))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -190,12 +190,12 @@ var LoadGenService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _LoadGenService_AppendBatch_Handler,
 		},
 		{
-			MethodName: "GetLimit",
-			Handler:    _LoadGenService_GetLimit_Handler,
+			MethodName: "GetRateLimit",
+			Handler:    _LoadGenService_GetRateLimit_Handler,
 		},
 		{
-			MethodName: "SetLimit",
-			Handler:    _LoadGenService_SetLimit_Handler,
+			MethodName: "SetRateLimit",
+			Handler:    _LoadGenService_SetRateLimit_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
