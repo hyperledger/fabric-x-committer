@@ -30,6 +30,8 @@ func NewClientCredentialsFromMaterial(c *TLSMaterials) (credentials.TransportCre
 	return newCredentials(c.CreateClientTLSConfig())
 }
 
+// NewServerCredentialsFromMaterial returns the gRPC transport credentials to be used by a client,
+// based on the provided TLS configuration.
 func NewServerCredentialsFromMaterial(c *TLSMaterials) (credentials.TransportCredentials, error) {
 	return newCredentials(c.CreateServerTLSConfig())
 }
