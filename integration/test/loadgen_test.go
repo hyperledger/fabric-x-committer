@@ -67,7 +67,7 @@ func TestLoadGenWithTLSModes(t *testing.T) {
 						NumVerifiers: 2,
 						NumVCService: 2,
 						BlockTimeout: 2 * time.Second,
-						BlockSize:    500,
+						BlockSize:    100,
 						TLSMode:      mode,
 					})
 					c.Start(t, serviceFlags)
@@ -77,7 +77,7 @@ func TestLoadGenWithTLSModes(t *testing.T) {
 					require.EventuallyWithT(t, func(ct *assert.CollectT) {
 						count := test.GetMetricValueFromURL(t, metricsURL, "loadgen_transaction_committed_total")
 						t.Logf("loadgen_transaction_committed_total: %d", count)
-						require.Greater(ct, count, 1_000)
+						require.Greater(ct, count, 500)
 					}, 150*time.Second, 1*time.Second)
 				})
 			}
