@@ -37,7 +37,7 @@ type (
 		Endpoint  Endpoint               `mapstructure:"endpoint"`
 		TLS       TLSConfig              `mapstructure:"tls"`
 		KeepAlive *ServerKeepAliveConfig `mapstructure:"keep-alive"`
-		RateLimit *RateLimitConfig       `mapstructure:"rate-limit"`
+		RateLimit RateLimitConfig        `mapstructure:"rate-limit"`
 
 		preAllocatedListener net.Listener
 	}
@@ -80,8 +80,10 @@ type (
 	// For example, If only server-side TLS is required, the certificate pool (certPool) is not built (for a server),
 	// since the relevant certificates paths are defined in the YAML according to the selected mode.
 	TLSConfig struct {
-		Mode        string   `mapstructure:"mode"`
-		CertPath    string   `mapstructure:"cert-path"`
+		Mode string `mapstructure:"mode"`
+		// CertPath is the path to the certificate file (public key).
+		CertPath string `mapstructure:"cert-path"`
+		// KeyPath is the path to the key file (private key).
 		KeyPath     string   `mapstructure:"key-path"`
 		CACertPaths []string `mapstructure:"ca-cert-paths"`
 	}
@@ -104,7 +106,7 @@ func (c TLSConfig) ClientCredentials() (credentials.TransportCredentials, error)
 	if err != nil {
 		return nil, err
 	}
-	return tlsMaterials.ClientCredentials()
+	return NewClientCredentialsFromMaterial(tlsMaterials)
 }
 
 // ServerCredentials converts TLSConfig into a TLSMaterials struct and generates server creds.
@@ -113,7 +115,7 @@ func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error)
 	if err != nil {
 		return nil, err
 	}
-	return tlsMaterials.ServerCredentials()
+	return NewServerCredentialsFromMaterial(tlsMaterials)
 }
 
 // Validate checks that the rate limit configuration is valid.

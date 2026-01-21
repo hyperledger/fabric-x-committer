@@ -12,9 +12,8 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/gin-gonic/gin"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"golang.org/x/sync/errgroup"
-	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
@@ -39,6 +38,7 @@ type (
 		resources   adapters.ClientResources
 		adapter     ServiceAdapter
 		healthcheck *health.Server
+		ready       *channel.Ready
 	}
 
 	// ServiceAdapter encapsulates the common interface for adapters.
@@ -67,6 +67,7 @@ func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 			Metrics: metrics.NewLoadgenServiceMetrics(&conf.Monitoring),
 		},
 		healthcheck: connection.DefaultHealthCheckService(),
+		ready:       channel.NewReady(),
 	}
 
 	adapter, err := getAdapter(&conf.Adapter, &c.resources)
@@ -120,15 +121,17 @@ func (c *Client) Run(ctx context.Context) error {
 		return c.resources.Metrics.StartPrometheusServer(gCtx, c.conf.Monitoring.Server)
 	})
 	g.Go(func() error {
-		return c.runLimiterServer(ctx)
+		return c.runHTTPServer(ctx)
 	})
 	g.Go(func() error {
 		return c.txStream.Run(gCtx)
 	})
 
+	defer c.ready.Reset()
+	c.ready.SignalReady()
+
 	workloadSetupTXs := make(chan *servicepb.LoadGenTx, 1)
 	cs := &workload.StreamWithSetup{
-		BlockSize:        c.conf.LoadProfile.Block.Size,
 		WorkloadSetupTXs: channel.NewReader(gCtx, workloadSetupTXs),
 	}
 	if c.conf.Generate.Load {
@@ -156,8 +159,8 @@ func (c *Client) Run(ctx context.Context) error {
 
 // WaitForReady waits for the service resources to initialize, so it is ready to answers requests.
 // If the context ended before the service is ready, returns false.
-func (*Client) WaitForReady(context.Context) bool {
-	return true
+func (c *Client) WaitForReady(ctx context.Context) bool {
+	return c.ready.WaitForReady(ctx)
 }
 
 // RegisterService registers for the load-gen's GRPC services.
@@ -172,51 +175,65 @@ func (c *Client) AppendBatch(ctx context.Context, batch *servicepb.LoadGenBatch)
 	return nil, nil
 }
 
-// GetLimit reads the stream limit.
-func (c *Client) GetLimit(context.Context, *emptypb.Empty) (*servicepb.Limit, error) {
-	return &servicepb.Limit{Rate: float64(c.txStream.GetLimit())}, nil
+// GetRateLimit reads the stream limit.
+func (c *Client) GetRateLimit(context.Context, *emptypb.Empty) (*servicepb.RateLimit, error) {
+	return &servicepb.RateLimit{Rate: c.txStream.GetRate()}, nil
 }
 
-// SetLimit sets the stream limit.
-func (c *Client) SetLimit(_ context.Context, limit *servicepb.Limit) (*emptypb.Empty, error) {
-	c.txStream.SetLimit(rate.Limit(limit.Rate))
+// SetRateLimit sets the stream limit.
+func (c *Client) SetRateLimit(_ context.Context, limit *servicepb.RateLimit) (*emptypb.Empty, error) {
+	c.txStream.SetRate(limit.Rate)
 	return nil, nil
 }
 
-// runLimiterServer starts a simple HTTP server for setting the rate limit.
-func (c *Client) runLimiterServer(ctx context.Context) error {
-	endpoint := c.conf.Stream.RateLimit.Endpoint
-	if endpoint.Empty() {
+// runHTTPServer starts a simple HTTP server for setting the rate limit.
+func (c *Client) runHTTPServer(ctx context.Context) error {
+	serverConfig := c.conf.HTTPServer
+	if serverConfig == nil || serverConfig.Endpoint.Empty() {
 		return nil
 	}
 
-	// start remote-limiter controller.
-	gin.SetMode(gin.ReleaseMode)
-	router := gin.Default()
-	router.POST("/setLimits", func(ginCtx *gin.Context) {
-		logger.Infof("Received limit request.")
-		var request struct {
-			Limit rate.Limit `json:"limit"`
-		}
-		if err := ginCtx.BindJSON(&request); err != nil {
-			logger.Errorf("error deserializing request: %v", err)
-			ginCtx.IndentedJSON(http.StatusBadRequest, request)
-			return
-		}
-		logger.Infof("Setting limit to %.2f", request.Limit)
-		c.txStream.SetLimit(request.Limit)
-		ginCtx.IndentedJSON(http.StatusOK, request)
-	})
-	logger.Infof("Start remote controller listener on %s", endpoint.Address())
+	tlsMaterials, err := connection.NewTLSMaterials(serverConfig.TLS)
+	if err != nil {
+		return err
+	}
+	tlsCfg, err := tlsMaterials.CreateServerTLSConfig()
+	if err != nil {
+		return err
+	}
+
+	mux := runtime.NewServeMux()
+	err = servicepb.RegisterLoadGenServiceHandlerServer(ctx, mux, c)
+	if err != nil {
+		return errors.Wrap(err, "failed to register loadgen service handler")
+	}
+
 	g, gCtx := errgroup.WithContext(ctx)
-	logger.Infof("Serving...")
-	server := &http.Server{Addr: endpoint.Address(), Handler: router, ReadTimeout: time.Minute}
+	ln, err := serverConfig.Listener(ctx)
+	if err != nil {
+		return errors.Wrap(err, "failed to listen")
+	}
+	defer func() {
+		_ = ln.Close()
+	}()
+
+	logger.Infof("Start remote controller server on %s", serverConfig.Endpoint.Address())
+	server := &http.Server{
+		Addr:        ln.Addr().String(),
+		Handler:     mux,
+		ReadTimeout: time.Minute,
+		TLSConfig:   tlsCfg,
+	}
 	g.Go(func() error {
-		return server.ListenAndServe()
+		return server.Serve(ln)
 	})
 	<-gCtx.Done()
 	_ = server.Close()
-	return errors.Wrap(g.Wait(), "remote controller ended")
+	err = g.Wait()
+	if err == nil || errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return errors.Wrap(err, "failed to serve remote controller")
 }
 
 // submitWorkloadSetupTXs writes the workload setup TXs to the channel, and waits for them to be committed.

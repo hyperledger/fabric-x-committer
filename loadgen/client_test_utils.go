@@ -41,13 +41,13 @@ func eventuallyMetrics(
 func DefaultClientConf(t *testing.T) *ClientConfig {
 	t.Helper()
 	return &ClientConfig{
-		Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
+		Server: connection.NewLocalHostServer(test.InsecureTLSConfig),
 		Monitoring: metrics.Config{
 			Config: defaultMonitoring(),
 		},
 		LoadProfile: &workload.Profile{
 			Key:   workload.KeyProfile{Size: 32},
-			Block: workload.BlockProfile{Size: defaultBlockSize},
+			Block: workload.BlockProfile{MaxSize: defaultBlockSize},
 			Transaction: workload.TransactionProfile{
 				ReadWriteCount: workload.NewConstantDistribution(2),
 			},
@@ -70,7 +70,7 @@ func DefaultClientConf(t *testing.T) *ClientConfig {
 			Workers: 1,
 		},
 		Stream: &workload.StreamOptions{
-			RateLimit: &workload.LimiterConfig{InitialLimit: 1_000},
+			RateLimit: 1_000,
 			// We set low values for the buffer and batch to reduce the CPU load during tests.
 			BuffersSize: 1,
 			GenBatch:    1,
@@ -85,6 +85,6 @@ func DefaultClientConf(t *testing.T) *ClientConfig {
 
 func defaultMonitoring() monitoring.Config {
 	return monitoring.Config{
-		Server: connection.NewLocalHostServerWithTLS(test.InsecureTLSConfig),
+		Server: connection.NewLocalHostServer(test.InsecureTLSConfig),
 	}
 }

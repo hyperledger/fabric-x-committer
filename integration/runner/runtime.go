@@ -87,12 +87,13 @@ type (
 		DBConnection *dbtest.Connection
 		// TLS configures the secure level between the components: none | tls | mtls
 		TLSMode string
-
 		// CrashTest is true to indicate a service crash is expected, and not a failure.
 		CrashTest bool
-
 		// RateLimit configures rate limiting for services that support it (query, sidecar).
 		RateLimit *connection.RateLimitConfig
+		// MaxRequestKeys is the maximum number of keys allowed in a single query request.
+		// Set to 0 to disable the limit.
+		MaxRequestKeys int
 	}
 )
 
@@ -138,6 +139,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 			BlockTimeout:      conf.BlockTimeout,
 			LoadGenBlockLimit: conf.LoadgenBlockLimit,
 			LoadGenWorkers:    1,
+			MaxRequestKeys:    conf.MaxRequestKeys,
 			Policy: &workload.PolicyProfile{
 				ChannelID:          TestChannelName,
 				NamespacePolicies:  make(map[string]*workload.Policy),

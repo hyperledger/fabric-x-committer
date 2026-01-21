@@ -9,11 +9,11 @@ package connection
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"os"
 
 	"github.com/cockroachdb/errors"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // TLSMaterials holds the loaded runtime TLS material (certificate, key, CA certs).
@@ -22,6 +22,26 @@ type TLSMaterials struct {
 	Cert    []byte
 	Key     []byte
 	CACerts [][]byte
+}
+
+// NewClientCredentialsFromMaterial returns the gRPC transport credentials to be used by a client,
+// based on the provided TLS configuration.
+func NewClientCredentialsFromMaterial(c *TLSMaterials) (credentials.TransportCredentials, error) {
+	return newCredentials(c.CreateClientTLSConfig())
+}
+
+func NewServerCredentialsFromMaterial(c *TLSMaterials) (credentials.TransportCredentials, error) {
+	return newCredentials(c.CreateServerTLSConfig())
+}
+
+func newCredentials(tlsCfg *tls.Config, err error) (credentials.TransportCredentials, error) {
+	if err != nil {
+		return nil, err
+	}
+	if tlsCfg == nil {
+		return insecure.NewCredentials(), nil
+	}
+	return credentials.NewTLS(tlsCfg), nil
 }
 
 // NewTLSMaterials converts a TLSConfig with path fields into a struct that holds the actual bytes of the certificates.
@@ -59,12 +79,11 @@ func NewTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
 	}, nil
 }
 
-// ServerCredentials returns the gRPC transport credentials to be used by a server,
-// based on the provided TLS configuration.
-func (c *TLSMaterials) ServerCredentials() (credentials.TransportCredentials, error) {
+// CreateServerTLSConfig returns a TLS config to be used by a server.
+func (c *TLSMaterials) CreateServerTLSConfig() (*tls.Config, error) {
 	switch c.Mode {
 	case NoneTLSMode, UnmentionedTLSMode:
-		return insecure.NewCredentials(), nil
+		return nil, nil
 	case OneSideTLSMode, MutualTLSMode:
 		tlsCfg := &tls.Config{
 			MinVersion: DefaultTLSMinVersion,
@@ -87,19 +106,18 @@ func (c *TLSMaterials) ServerCredentials() (credentials.TransportCredentials, er
 			tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
 		}
 
-		return credentials.NewTLS(tlsCfg), nil
+		return tlsCfg, nil
 	default:
 		return nil, errors.Newf("unknown TLS mode: %s (valid modes: %s, %s, %s)",
 			c.Mode, NoneTLSMode, OneSideTLSMode, MutualTLSMode)
 	}
 }
 
-// ClientCredentials returns the gRPC transport credentials to be used by a client,
-// based on the provided TLS configuration.
-func (c *TLSMaterials) ClientCredentials() (credentials.TransportCredentials, error) {
+// CreateClientTLSConfig returns a TLS config to be used by a server.
+func (c *TLSMaterials) CreateClientTLSConfig() (*tls.Config, error) {
 	switch c.Mode {
 	case NoneTLSMode, UnmentionedTLSMode:
-		return insecure.NewCredentials(), nil
+		return nil, nil
 	case OneSideTLSMode, MutualTLSMode:
 		tlsCfg := &tls.Config{
 			MinVersion: DefaultTLSMinVersion,
@@ -121,7 +139,7 @@ func (c *TLSMaterials) ClientCredentials() (credentials.TransportCredentials, er
 			return nil, err
 		}
 
-		return credentials.NewTLS(tlsCfg), nil
+		return tlsCfg, nil
 	default:
 		return nil, errors.Newf("unknown TLS mode: %s (valid modes: %s, %s, %s)",
 			c.Mode, NoneTLSMode, OneSideTLSMode, MutualTLSMode)

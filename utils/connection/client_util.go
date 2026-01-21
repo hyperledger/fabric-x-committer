@@ -73,7 +73,7 @@ func NewLoadBalancedConnection(config *MultiClientConfig) (*grpc.ClientConn, err
 // in the given config.
 func NewLoadBalancedConnectionFromMaterials(endpoints []*Endpoint, tlsMaterials *TLSMaterials, retry *RetryProfile,
 ) (*grpc.ClientConn, error) {
-	tlsCredentials, err := tlsMaterials.ClientCredentials()
+	tlsCredentials, err := NewClientCredentialsFromMaterial(tlsMaterials)
 	if err != nil {
 		return nil, err
 	}

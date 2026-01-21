@@ -18,7 +18,6 @@ type (
 	StreamWithSetup struct {
 		WorkloadSetupTXs channel.Reader[*servicepb.LoadGenTx]
 		TxStream         *TxStream
-		BlockSize        uint64
 	}
 
 	// TxGeneratorWithSetup is a TX generator that first submit TXs from the WorkloadSetupTXs,
@@ -26,7 +25,7 @@ type (
 	// Then, it submits transactions from the tx stream.
 	TxGeneratorWithSetup struct {
 		WorkloadSetupTXs channel.Reader[*servicepb.LoadGenTx]
-		TxGen            *RateLimiterGenerator[*servicepb.LoadGenTx]
+		TxGen            *ConsumerRateController[*servicepb.LoadGenTx]
 	}
 )
 
@@ -39,8 +38,8 @@ func (c *StreamWithSetup) MakeTxGenerator() *TxGeneratorWithSetup {
 	return cg
 }
 
-// Next generate the next TX.
-func (g *TxGeneratorWithSetup) Next(ctx context.Context, size int) []*servicepb.LoadGenTx {
+// Next generates the next TX batch.
+func (g *TxGeneratorWithSetup) Next(ctx context.Context, p BlockProfile) []*servicepb.LoadGenTx {
 	if g.WorkloadSetupTXs != nil {
 		if tx, ok := g.WorkloadSetupTXs.Read(); ok {
 			return []*servicepb.LoadGenTx{tx}
@@ -48,7 +47,11 @@ func (g *TxGeneratorWithSetup) Next(ctx context.Context, size int) []*servicepb.
 		g.WorkloadSetupTXs = nil
 	}
 	if g.TxGen != nil {
-		return g.TxGen.NextN(ctx, size)
+		return g.TxGen.Consume(ctx, ConsumeParameters{
+			RequestedItems: p.MaxSize,
+			MinItems:       p.MinSize,
+			SoftTimeout:    p.PreferredRate,
+		})
 	}
 	return nil
 }

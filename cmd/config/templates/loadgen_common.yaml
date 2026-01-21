@@ -29,7 +29,7 @@ monitoring:
 
 load-profile:
   block:
-    size: {{ .BlockSize }}
+    max-size: {{ .BlockSize }}
   key:
     size: 32
   transaction:
@@ -58,11 +58,9 @@ load-profile:
   workers: {{ .LoadGenWorkers }}
 
 stream:
-  rate-limit:
-    endpoint: localhost:0
-    initial-limit: 1000
-  gen-batch: 1
-  buffers-size: 1
+  rate-limit: 10_000
+  gen-batch: 10
+  buffers-size: 10
 
 generate:
   config: true

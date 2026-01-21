@@ -73,7 +73,6 @@ func (c *OrdererAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 	defer connection.CloseConnectionsLog(streams...)
 
 	for _, stream := range streams {
-		stream := stream
 		g.Go(func() error {
 			return sendBlocks(gCtx, &c.commonAdapter, txStream, workload.MapToEnvelopeBatch, stream.SendBatch)
 		})

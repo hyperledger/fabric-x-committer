@@ -52,6 +52,7 @@ type (
 		LoadGenWorkers    uint64                      // loadgen
 		Logging           *logging.Config             // for all
 		RateLimit         *connection.RateLimitConfig // query, sidecar
+		MaxRequestKeys    int                         // query
 	}
 
 	// SystemEndpoints represents the endpoints of the system.

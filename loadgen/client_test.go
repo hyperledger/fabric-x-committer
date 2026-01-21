@@ -10,13 +10,17 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/gavv/httpexpect/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -127,7 +131,7 @@ func startVerifiers(t *testing.T, serverTLS, clientTLS connection.TLSConfig) *co
 	endpoints := make([]*connection.Endpoint, 2)
 	for i := range endpoints {
 		sConf := &verifier.Config{
-			Server: connection.NewLocalHostServerWithTLS(serverTLS),
+			Server: connection.NewLocalHostServer(serverTLS),
 			ParallelExecutor: verifier.ExecutorConfig{
 				BatchSizeCutoff:   50,
 				BatchTimeCutoff:   10 * time.Millisecond,
@@ -164,7 +168,7 @@ func TestLoadGenForCoordinator(t *testing.T) {
 					_, vcServer := mock.StartMockVCService(t, 1)
 
 					cConf := &coordinator.Config{
-						Server:             connection.NewLocalHostServerWithTLS(serverTLSConfig),
+						Server:             connection.NewLocalHostServer(serverTLSConfig),
 						Monitoring:         defaultMonitoring(),
 						Verifier:           *test.ServerToMultiClientConfig(sigVerServer.Configs...),
 						ValidatorCommitter: *test.ServerToMultiClientConfig(vcServer.Configs...),
@@ -276,7 +280,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 
 					endpoints := test.NewOrdererEndpoints(0, ordererServer.Configs...)
 					sidecarConf := &sidecar.Config{
-						Server:                        connection.NewLocalHostServerWithTLS(serverTLSConfig),
+						Server:                        connection.NewLocalHostServer(serverTLSConfig),
 						LastCommittedBlockSetInterval: 100 * time.Millisecond,
 						WaitingTxsLimit:               5000,
 						Committer: test.NewInsecureClientConfig(
@@ -342,7 +346,7 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 					orderer, ordererServer := mock.StartMockOrderingServices(t, &mock.OrdererConfig{
 						NumService: 3,
 						TLS:        serverTLSConfig,
-						BlockSize:  int(clientConf.LoadProfile.Block.Size), //nolint:gosec // uint64 -> int.
+						BlockSize:  int(clientConf.LoadProfile.Block.MaxSize), //nolint:gosec // uint64 -> int.
 					})
 
 					endpoints := test.NewOrdererEndpoints(0, ordererServer.Configs...)
@@ -382,7 +386,7 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 
 func preAllocatePorts(t *testing.T, tlsConfig connection.TLSConfig) *connection.ServerConfig {
 	t.Helper()
-	server := connection.NewLocalHostServerWithTLS(tlsConfig)
+	server := connection.NewLocalHostServer(tlsConfig)
 	listener, err := server.PreAllocateListener()
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -454,6 +458,64 @@ func testLoadGenerator(t *testing.T, c *ClientConfig) {
 		require.GreaterOrEqual(t, m.TransactionsSent, c.Limit.Transactions)
 		require.GreaterOrEqual(t, m.TransactionsReceived, c.Limit.Transactions)
 	}
+}
+
+func TestLoadGenRateLimiterServer(t *testing.T) {
+	t.Parallel()
+	clientConf := DefaultClientConf(t)
+	clientConf.Adapter.VerifierClient = startVerifiers(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+	curRate := uint64(100)
+	clientConf.Stream.RateLimit = curRate
+	// We use small wait to ensure the rate limiter serves in low granularity.
+	clientConf.LoadProfile.Block.PreferredRate = 10 * time.Millisecond
+	clientConf.LoadProfile.Block.MaxSize = 100
+	clientConf.LoadProfile.Block.MinSize = 1
+	clientConf.HTTPServer = connection.NewLocalHostServer(test.InsecureTLSConfig)
+	client, err := NewLoadGenClient(clientConf)
+	require.NoError(t, err)
+
+	test.RunServiceForTest(t.Context(), t, client.Run, client.WaitForReady)
+	rlEndpoint := &clientConf.HTTPServer.Endpoint
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		require.NotZero(ct, rlEndpoint.Port)
+	}, 10*time.Second, 100*time.Millisecond)
+	t.Logf("limiter endpoint: %v", rlEndpoint)
+
+	e := httpexpect.Default(t, fmt.Sprintf("http://%s", rlEndpoint))
+	requireGetRate := func(rate uint64) {
+		e.GET("/getRateLimit").
+			Expect().
+			Status(http.StatusOK).
+			JSON().Object().ContainsKey("rate").HasValue("rate", strconv.FormatUint(rate, 10))
+	}
+	setRate := func(rate uint64) {
+		e.POST("/setRateLimit").WithJSON(servicepb.RateLimit{
+			Rate: rate,
+		}).Expect().Status(http.StatusOK)
+	}
+
+	requireGetRate(curRate)
+	requireEventuallyMeasuredRate(t, client.resources.Metrics, curRate)
+
+	curRate = uint64(1_000)
+	setRate(curRate)
+	requireGetRate(curRate)
+	requireEventuallyMeasuredRate(t, client.resources.Metrics, curRate)
+}
+
+func requireEventuallyMeasuredRate(t *testing.T, m *metrics.PerfMetrics, expectedRate uint64) {
+	t.Helper()
+	prevTime := time.Now()
+	prevState := m.GetState()
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		newTime := time.Now()
+		newState := m.GetState()
+		elapsed := newTime.Sub(prevTime).Seconds()
+		rate := float64(newState.TransactionsSent-prevState.TransactionsSent) / elapsed
+		prevState = newState
+		prevTime = newTime
+		require.InDelta(ct, expectedRate, rate, 0.2*float64(expectedRate))
+	}, 20*time.Second, 2*time.Second)
 }
 
 func limitToString(m *adapters.GenerateLimit) string {
