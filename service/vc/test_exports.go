@@ -52,27 +52,12 @@ type (
 	}
 )
 
-// DefaultVCTestEnvOpts returns default options for VC test environment.
-func DefaultVCTestEnvOpts() *TestEnvOpts {
-	return &TestEnvOpts{
-		NumServices: 1,
-		ServerCreds: test.InsecureTLSConfig,
-		ResourceLimits: &ResourceLimitsConfig{
-			MaxWorkersForPreparer:             2,
-			MaxWorkersForValidator:            2,
-			MaxWorkersForCommitter:            2,
-			MinTransactionBatchSize:           1,
-			TimeoutForMinTransactionBatchSize: 20 * time.Second,
-		},
-	}
-}
-
 // NewValidatorAndCommitServiceTestEnv creates a new test environment with the given options.
 func NewValidatorAndCommitServiceTestEnv(t *testing.T, opts *TestEnvOpts) *ValidatorAndCommitterServiceTestEnv {
 	t.Helper()
 
 	if opts == nil {
-		opts = DefaultVCTestEnvOpts()
+		opts = defaultVCTestEnvOpts()
 	}
 
 	if opts.NumServices == 0 {
@@ -80,7 +65,7 @@ func NewValidatorAndCommitServiceTestEnv(t *testing.T, opts *TestEnvOpts) *Valid
 	}
 
 	if opts.ResourceLimits == nil {
-		opts.ResourceLimits = DefaultVCTestEnvOpts().ResourceLimits
+		opts.ResourceLimits = defaultVCTestEnvOpts().ResourceLimits
 	}
 
 	if opts.DBEnv == nil {
@@ -117,6 +102,20 @@ func NewValidatorAndCommitServiceTestEnv(t *testing.T, opts *TestEnvOpts) *Valid
 		DBEnv:      opts.DBEnv,
 		Configs:    configs,
 		Endpoints:  endpoints,
+	}
+}
+
+func defaultVCTestEnvOpts() *TestEnvOpts {
+	return &TestEnvOpts{
+		NumServices: 1,
+		ServerCreds: test.InsecureTLSConfig,
+		ResourceLimits: &ResourceLimitsConfig{
+			MaxWorkersForPreparer:             2,
+			MaxWorkersForValidator:            2,
+			MaxWorkersForCommitter:            2,
+			MinTransactionBatchSize:           1,
+			TimeoutForMinTransactionBatchSize: 20 * time.Second,
+		},
 	}
 }
 

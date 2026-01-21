@@ -9,6 +9,7 @@ package vc
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -443,26 +444,23 @@ func TestValidatorAndCommitterService(t *testing.T) {
 
 		require.NoError(t, env.streams[0].Send(configTxBatch))
 
-		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-		t.Cleanup(cancel)
-
 		resultCh := make(chan *committerpb.TxStatusBatch, 1)
-		errCh := make(chan error, 1)
-		go func() {
+		var wg sync.WaitGroup
+		t.Cleanup(wg.Wait)
+		wg.Go(func() {
 			txStatus, err := env.streams[0].Recv()
 			if err != nil {
-				errCh <- err
+				t.Log(err.Error())
+				close(resultCh)
 				return
 			}
 			resultCh <- txStatus
-		}()
+		})
 
 		select {
 		case txStatus := <-resultCh:
 			require.Len(t, txStatus.GetStatus(), 1)
-		case err := <-errCh:
-			t.Fatalf("Receive on stream should have succeeded: %v", err)
-		case <-ctx.Done():
+		case <-time.After(5 * time.Second):
 			t.Fatal("config tx was not processed immediately - batching delay detected")
 		}
 	})
