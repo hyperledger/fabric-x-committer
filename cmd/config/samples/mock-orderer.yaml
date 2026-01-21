@@ -5,6 +5,7 @@
 server:
   endpoint: :7050
   tls:
+    # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
     mode: mtls
     cert-path: /server-certs/public-key.pem
     key-path: /server-certs/private-key.pem

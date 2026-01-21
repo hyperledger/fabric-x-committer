@@ -19,7 +19,6 @@ sidecar-client:
   orderer-servers:
     {{- range .Endpoints.Orderer }}
     - endpoint: {{ .Server }}
-    {{- end }}
       tls:
         mode: {{ .ServiceTLS.Mode }}
         cert-path: {{ .ServiceTLS.CertPath }}
@@ -28,4 +27,5 @@ sidecar-client:
           {{- range .ServiceTLS.CACertPaths }}
           - {{ . }}
           {{- end }}
+    {{- end }}
   channel-id: {{ .Policy.ChannelID }}

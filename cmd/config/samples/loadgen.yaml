@@ -5,6 +5,7 @@
 server:
   endpoint: :8001
   tls:
+    # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
     mode: mtls
     cert-path: /server-certs/public-key.pem
     key-path: /server-certs/private-key.pem
@@ -35,6 +36,7 @@ monitoring:
 orderer-client:
   sidecar-client:
     endpoint: sidecar:4001
+    # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
     tls:
       mode: mtls
       cert-path: /client-certs/public-key.pem
@@ -42,13 +44,17 @@ orderer-client:
       ca-cert-paths:
         - /client-certs/ca-certificate.pem
   orderer:
+    # Organizations map organization MSP IDs to their orderer connection details.
+    # It supports multi-organization deployments where each org has its own orderers and TLS root CAs.
     organizations:
       org0:
         endpoints:
           - id=0,broadcast,deliver,orderer:7050
         ca-cert-paths:
           - /client-certs/ca-certificate.pem
+    # Loadgen uses these TLS credentials when connecting to the orderers as a client.
     tls:
+      # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
       mode: mtls
       cert-path: /client-certs/public-key.pem
       key-path: /client-certs/private-key.pem

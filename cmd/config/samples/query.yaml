@@ -7,6 +7,7 @@ server:
   # The server's endpoint configuration
   endpoint: :7001
   tls:
+    # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
     mode: mtls
     cert-path: /server-certs/public-key.pem
     key-path: /server-certs/private-key.pem
@@ -38,6 +39,7 @@ database:
   password: "yugabyte" # The password for the database
   database: "yugabyte" # The database name
   tls:
+    # Database TLS configuration being built based on the tls mode chosen: none, tls.
     mode: tls
     ca-cert-path: /server-certs/ca-certificate.pem
   max-connections: 10 # The maximum size of the connection pool
