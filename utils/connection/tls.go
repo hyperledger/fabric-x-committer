@@ -9,9 +9,10 @@ package connection
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"os"
+
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	"os"
 
 	"github.com/cockroachdb/errors"
 )
