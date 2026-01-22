@@ -63,6 +63,9 @@ ledger:
   path: /root/sc/ledger
 notification:
   max-timeout: 10m
+  # Maximum number of concurrent notification streams allowed.
+  # Set to 0 for unlimited streams (default).
+  max-concurrent-streams: 0
 
 last-committed-block-set-interval: 5s
 waiting-txs-limit: 20_000_000

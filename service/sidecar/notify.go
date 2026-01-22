@@ -8,6 +8,7 @@ package sidecar
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -28,8 +29,10 @@ type (
 	// Deadlock is prevented by buffered channels and single-threaded processing in run().
 	notifier struct {
 		committerpb.UnimplementedNotifierServer
-		bufferSize int
-		maxTimeout time.Duration
+		bufferSize           int
+		maxTimeout           time.Duration
+		maxConcurrentStreams int
+		activeStreams        atomic.Int32
 		// requestQueue receives requests from users.
 		requestQueue chan *notificationRequest
 	}
@@ -54,9 +57,10 @@ func newNotifier(bufferSize int, conf *NotificationServiceConfig) *notifier {
 		maxTimeout = defaultNotificationMaxTimeout
 	}
 	return &notifier{
-		bufferSize:   bufferSize,
-		maxTimeout:   maxTimeout,
-		requestQueue: make(chan *notificationRequest, bufferSize),
+		bufferSize:           bufferSize,
+		maxTimeout:           maxTimeout,
+		maxConcurrentStreams: conf.MaxConcurrentStreams,
+		requestQueue:         make(chan *notificationRequest, bufferSize),
 	}
 }
 
@@ -86,6 +90,11 @@ func (n *notifier) run(ctx context.Context, statusQueue chan []*committerpb.TxSt
 
 // OpenNotificationStream implements the [protonotify.NotifierServer] API.
 func (n *notifier) OpenNotificationStream(stream committerpb.Notifier_OpenNotificationStreamServer) error {
+	if !n.tryAcquireStream() {
+		return grpcerror.WrapResourceExhausted(errors.New("maximum concurrent notification streams limit reached"))
+	}
+	defer n.releaseStream()
+
 	g, gCtx := errgroup.WithContext(stream.Context())
 	requestQueue := channel.NewWriter(gCtx, n.requestQueue)
 	streamEventQueue := channel.Make[*committerpb.NotificationResponse](gCtx, n.bufferSize)
@@ -117,6 +126,26 @@ func (n *notifier) OpenNotificationStream(stream committerpb.Notifier_OpenNotifi
 		return gCtx.Err()
 	})
 	return wrapNotifierError(g.Wait())
+}
+
+func (n *notifier) tryAcquireStream() bool {
+	if n.maxConcurrentStreams <= 0 {
+		n.activeStreams.Add(1)
+		return true
+	}
+	for {
+		current := n.activeStreams.Load()
+		if int(current) >= n.maxConcurrentStreams {
+			return false
+		}
+		if n.activeStreams.CompareAndSwap(current, current+1) {
+			return true
+		}
+	}
+}
+
+func (n *notifier) releaseStream() {
+	n.activeStreams.Add(-1)
 }
 
 // wrapNotifierError wraps notifier errors with appropriate gRPC status codes.

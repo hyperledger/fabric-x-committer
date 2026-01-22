@@ -57,6 +57,9 @@ type (
 		// MaxTimeout is an upper limit on the request's timeout to prevent resource exhaustion.
 		// If a request doesn't specify a timeout, this value will be used.
 		MaxTimeout time.Duration `mapstructure:"max-timeout"`
+		// MaxConcurrentStreams limits the number of concurrent notification streams.
+		// Set to 0 for unlimited streams.
+		MaxConcurrentStreams int `mapstructure:"max-concurrent-streams"`
 	}
 )
 

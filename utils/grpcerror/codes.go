@@ -69,6 +69,11 @@ func WrapNotFound(err error) error {
 	return wrap(codes.NotFound, err)
 }
 
+// WrapResourceExhausted creates a grpc error with a [codes.ResourceExhausted] status code for a given error.
+func WrapResourceExhausted(err error) error {
+	return wrap(codes.ResourceExhausted, err)
+}
+
 func wrap(c codes.Code, err error) error {
 	if err == nil {
 		return nil
