@@ -51,7 +51,7 @@ type (
 		// After validating this transaction, dependentTxs is used to remove dependencies
 		// from each dependent transaction.
 		dependentTxs utils.SyncMap[*TransactionNode, any]
-		rwKeys       *readWriteKeys
+		rwKeys       readWriteKeys
 
 		// Used by the simple dependency graph.
 		waitForKeysCount uint64
@@ -151,7 +151,7 @@ func (n *TransactionNode) isDependencyFree() bool {
 	return len(n.dependsOnTxs) == 0
 }
 
-func readAndWriteKeys(txNamespaces []*applicationpb.TxNamespace) *readWriteKeys {
+func readAndWriteKeys(txNamespaces []*applicationpb.TxNamespace) readWriteKeys {
 	var readOnlyKeys, writeOnlyKeys, readAndWriteKeys []string //nolint:prealloc
 
 	for _, ns := range txNamespaces {
@@ -189,7 +189,7 @@ func readAndWriteKeys(txNamespaces []*applicationpb.TxNamespace) *readWriteKeys 
 		}
 	}
 
-	return &readWriteKeys{
+	return readWriteKeys{
 		readsOnly:      readOnlyKeys,
 		writesOnly:     writeOnlyKeys,
 		readsAndWrites: readAndWriteKeys,
