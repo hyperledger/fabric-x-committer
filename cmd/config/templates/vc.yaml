@@ -38,8 +38,8 @@ resource-limits:
   max-workers-for-preparer: 1
   max-workers-for-validator: 1
   max-workers-for-committer: 20
-  min-transaction-batch-size: 1
-  timeout-for-min-transaction-batch-size: 2s
+  min-transaction-batch-size: {{ .VCMinTransactionBatchSize | default 1 }}
+  timeout-for-min-transaction-batch-size: {{ .VCTimeoutForMinTransactionBatchSize | default "2s" }}
 
 logging:
   enabled: {{ .Logging.Enabled }}

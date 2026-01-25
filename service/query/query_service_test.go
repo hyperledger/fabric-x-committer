@@ -451,7 +451,7 @@ func newQueryServiceTestEnv(t *testing.T, opts *queryServiceTestOpts) *queryServ
 
 func generateNamespacesUnderTest(t *testing.T, namespaces []string) *vc.DatabaseConfig {
 	t.Helper()
-	env := vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, 1, test.InsecureTLSConfig)
+	env := vc.NewValidatorAndCommitServiceTestEnv(t, nil)
 	env.SetupSystemTablesAndNamespaces(t.Context(), t)
 
 	clientConf := loadgen.DefaultClientConf(t)

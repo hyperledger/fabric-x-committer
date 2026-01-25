@@ -88,7 +88,9 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 	var dbEnv *vc.DatabaseTestEnv
 
 	if !tConfig.mockVcService {
-		vcsTestEnv = vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, tConfig.numVcService, test.InsecureTLSConfig)
+		vcsTestEnv = vc.NewValidatorAndCommitServiceTestEnv(t, &vc.TestEnvOpts{
+			NumServices: tConfig.numVcService,
+		})
 		for _, c := range vcsTestEnv.Configs {
 			vcServerConfigs = append(vcServerConfigs, c.Server)
 		}
@@ -661,7 +663,9 @@ func TestCoordinatorRecovery(t *testing.T) {
 
 	cancel()
 
-	vcEnv := vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, 1, test.InsecureTLSConfig, env.dbEnv)
+	vcEnv := vc.NewValidatorAndCommitServiceTestEnv(t, &vc.TestEnvOpts{
+		DBEnv: env.dbEnv,
+	})
 	env.config.ValidatorCommitter = *test.ServerToMultiClientConfig(vcEnv.Configs[0].Server)
 	env.coordinator = NewCoordinatorService(env.config)
 	ctx, cancel = context.WithTimeout(t.Context(), 2*time.Minute)

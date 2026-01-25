@@ -42,47 +42,48 @@ type (
 		Value   []byte
 		Version uint64
 	}
+
+	// TestEnvOpts contains options for creating a VC test environment.
+	TestEnvOpts struct {
+		NumServices    int
+		ServerCreds    connection.TLSConfig
+		ResourceLimits *ResourceLimitsConfig
+		DBEnv          *DatabaseTestEnv
+	}
 )
 
-// NewValidatorAndCommitServiceTestEnvWithTLS creates a new test environment with a vcservice and a database.
-// It allows TLS with the acceptance of server creds.
-func NewValidatorAndCommitServiceTestEnvWithTLS(
-	t *testing.T,
-	numServices int,
-	serverCreds connection.TLSConfig, // one credentials set for all the vc-services.
-	db ...*DatabaseTestEnv,
-) *ValidatorAndCommitterServiceTestEnv {
+// NewValidatorAndCommitServiceTestEnv creates a new test environment with the given options.
+func NewValidatorAndCommitServiceTestEnv(t *testing.T, opts *TestEnvOpts) *ValidatorAndCommitterServiceTestEnv {
 	t.Helper()
-	require.LessOrEqual(t, len(db), 1)
 
-	var dbEnv *DatabaseTestEnv
-	switch len(db) {
-	case 0:
-		dbEnv = NewDatabaseTestEnv(t)
-	case 1:
-		dbEnv = db[0]
-	default:
-		t.Fatalf("At most one db env can be passed as n argument but received %d envs", len(db))
+	if opts == nil {
+		opts = defaultVCTestEnvOpts()
+	}
+
+	if opts.NumServices == 0 {
+		opts.NumServices = 1
+	}
+
+	if opts.ResourceLimits == nil {
+		opts.ResourceLimits = defaultVCTestEnvOpts().ResourceLimits
+	}
+
+	if opts.DBEnv == nil {
+		opts.DBEnv = NewDatabaseTestEnv(t)
 	}
 
 	initCtx, initCancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(initCancel)
-	vcservices := make([]*ValidatorCommitterService, numServices)
-	configs := make([]*Config, numServices)
 
-	endpoints := make([]*connection.Endpoint, numServices)
+	vcservices := make([]*ValidatorCommitterService, opts.NumServices)
+	configs := make([]*Config, opts.NumServices)
+	endpoints := make([]*connection.Endpoint, opts.NumServices)
+
 	for i := range vcservices {
 		config := &Config{
-			Server:   connection.NewLocalHostServer(serverCreds),
-			Database: dbEnv.DBConf,
-			ResourceLimits: &ResourceLimitsConfig{
-				MaxWorkersForPreparer:             2,
-				MaxWorkersForValidator:            2,
-				MaxWorkersForCommitter:            2,
-				MinTransactionBatchSize:           1,
-				TimeoutForMinTransactionBatchSize: 20 * time.Second, // to avoid flakyness in TestWaitingTxsCount,
-				// we are setting the timeout value to 20 seconds
-			},
+			Server:         connection.NewLocalHostServer(opts.ServerCreds),
+			Database:       opts.DBEnv.DBConf,
+			ResourceLimits: opts.ResourceLimits,
 			Monitoring: monitoring.Config{
 				Server: connection.NewLocalHostServer(test.InsecureTLSConfig),
 			},
@@ -98,9 +99,23 @@ func NewValidatorAndCommitServiceTestEnvWithTLS(
 
 	return &ValidatorAndCommitterServiceTestEnv{
 		VCServices: vcservices,
-		DBEnv:      dbEnv,
+		DBEnv:      opts.DBEnv,
 		Configs:    configs,
 		Endpoints:  endpoints,
+	}
+}
+
+func defaultVCTestEnvOpts() *TestEnvOpts {
+	return &TestEnvOpts{
+		NumServices: 1,
+		ServerCreds: test.InsecureTLSConfig,
+		ResourceLimits: &ResourceLimitsConfig{
+			MaxWorkersForPreparer:             2,
+			MaxWorkersForValidator:            2,
+			MaxWorkersForCommitter:            2,
+			MinTransactionBatchSize:           1,
+			TimeoutForMinTransactionBatchSize: 20 * time.Second,
+		},
 	}
 }
 
