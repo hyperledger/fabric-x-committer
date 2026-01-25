@@ -16,6 +16,9 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"google.golang.org/grpc/peer"
+
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 )
 
 // ErrActiveStream represents the error when attempting to create a new stream while one is already active.
@@ -98,4 +101,9 @@ func ExtractServerAddress(ctx context.Context) string {
 		return ""
 	}
 	return p.LocalAddr.String()
+}
+
+// IsConfigTx returns true if the namespaces indicate a config transaction.
+func IsConfigTx(namespaces []*applicationpb.TxNamespace) bool {
+	return len(namespaces) == 1 && namespaces[0].NsId == committerpb.ConfigNamespaceID
 }

@@ -97,7 +97,9 @@ func TestLoadGenForVCService(t *testing.T) {
 					t.Parallel()
 					clientConf := DefaultClientConf(t)
 					clientConf.Limit = limit
-					env := vc.NewValidatorAndCommitServiceTestEnvWithTLS(t, 2, serverTLSConfig)
+					env := vc.NewValidatorAndCommitServiceTestEnv(t, &vc.TestEnvOpts{
+						NumServices: 2, ServerCreds: serverTLSConfig,
+					})
 					clientConf.Adapter.VCClient = test.NewTLSMultiClientConfig(clientTLSConfig, env.Endpoints...)
 					testLoadGenerator(t, clientConf)
 				})
