@@ -18,8 +18,8 @@ monitoring:
 
 parallel-executor:
   parallelism: 40
-  batch-time-cutoff: 10ms
-  batch-size-cutoff: 50
+  batch-time-cutoff: {{ .VerifierBatchTimeCutoff | default "10ms" }}
+  batch-size-cutoff: {{ .VerifierBatchSizeCutoff | default 50 }}
   channel-buffer-size: 50
 
 logging:

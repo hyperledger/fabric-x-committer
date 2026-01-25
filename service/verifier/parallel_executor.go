@@ -20,10 +20,15 @@ import (
 type (
 	parallelExecutor struct {
 		inputCh        chan *servicepb.TxWithRef
-		outputSingleCh chan *committerpb.TxStatus
+		outputSingleCh chan *verificationOutput
 		outputCh       chan []*committerpb.TxStatus
 		verifier       *verifier
 		config         *ExecutorConfig
+	}
+
+	verificationOutput struct {
+		status   *committerpb.TxStatus
+		isConfig bool
 	}
 )
 
@@ -33,7 +38,7 @@ func newParallelExecutor(config *ExecutorConfig) *parallelExecutor {
 		config:         config,
 		inputCh:        make(chan *servicepb.TxWithRef, channelCapacity),
 		outputCh:       make(chan []*committerpb.TxStatus),
-		outputSingleCh: make(chan *committerpb.TxStatus, channelCapacity),
+		outputSingleCh: make(chan *verificationOutput, channelCapacity),
 		verifier:       newVerifier(),
 	}
 }
@@ -49,7 +54,7 @@ func (e *parallelExecutor) handleChannelInput(ctx context.Context) {
 		logger.Debugf("Received request '%v' with in worker", &utils.LazyJSON{O: input.Ref})
 		output := e.verifier.verifyRequest(input)
 		logger.Debugf("Received output from executor: %v", output)
-		chOut.Write(output)
+		chOut.Write(&verificationOutput{status: output, isConfig: utils.IsConfigTx(input.Content.Namespaces)})
 	}
 }
 
@@ -73,8 +78,12 @@ func (e *parallelExecutor) handleCutoff(ctx context.Context) {
 			cutBatch(1)
 		case output := <-e.outputSingleCh:
 			logger.Debugf("Attempts to emit a batch (response). (buffer size: %d)", len(outputBuffer)+1)
-			outputBuffer = append(outputBuffer, output)
-			cutBatch(e.config.BatchSizeCutoff)
+			outputBuffer = append(outputBuffer, output.status)
+			if output.isConfig {
+				cutBatch(1)
+			} else {
+				cutBatch(e.config.BatchSizeCutoff)
+			}
 		}
 	}
 }
