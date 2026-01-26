@@ -485,7 +485,7 @@ func testLoadGenerator(t *testing.T, c *ClientConfig, metricsTLS *tls.Config) {
 
 func TestLoadGenRateLimiterServer(t *testing.T) {
 	t.Parallel()
-	clientConf := DefaultClientConf(t)
+	clientConf := DefaultClientConf(t, test.InsecureTLSConfig)
 	clientConf.Adapter.VerifierClient = startVerifiers(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
 	curRate := uint64(100)
 	clientConf.Stream.RateLimit = curRate

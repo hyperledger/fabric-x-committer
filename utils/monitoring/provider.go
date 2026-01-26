@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	scheme         = "http://"
+	scheme         = "https://"
 	metricsSubPath = "/metrics"
 )
 
