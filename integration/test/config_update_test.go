@@ -160,3 +160,77 @@ func TestConfigUpdate(t *testing.T) {
 	t.Log("The sidecar should use the non-holding orderer, so the holding should not affect the processing")
 	sendTXs()
 }
+
+// TestConfigBlockImmediateCommit verifies that config blocks are committed immediately,
+// bypassing the normal batching delays configured for the verifier and VC services.
+func TestConfigBlockImmediateCommit(t *testing.T) {
+	t.Parallel()
+	gomega.RegisterTestingT(t)
+
+	c := runner.NewRuntime(t, &runner.Config{
+		NumVerifiers:                        1,
+		NumVCService:                        1,
+		BlockSize:                           100,
+		BlockTimeout:                        5 * time.Minute,
+		CrashTest:                           true,
+		VCMinTransactionBatchSize:           100,
+		VCTimeoutForMinTransactionBatchSize: 1 * time.Hour,
+		VerifierBatchSizeCutoff:             100,
+		VerifierBatchTimeCutoff:             1 * time.Hour,
+	})
+
+	ordererServers := make([]*connection.ServerConfig, len(c.SystemConfig.Endpoints.Orderer))
+	for i, e := range c.SystemConfig.Endpoints.Orderer {
+		ordererServers[i] = &connection.ServerConfig{Endpoint: *e.Server}
+	}
+	ordererEnv := mock.NewOrdererTestEnv(t, &mock.OrdererTestConfig{
+		ChanID: "ch1",
+		Config: &mock.OrdererConfig{
+			ServerConfigs:   ordererServers,
+			NumService:      len(ordererServers),
+			BlockSize:       1, // Each block contains exactly 1 transaction.
+			BlockTimeout:    5 * time.Minute,
+			ConfigBlockPath: c.SystemConfig.ConfigBlockPath,
+			SendConfigBlock: true,
+		},
+		NumHolders: 0,
+	})
+
+	// The Start function internally calls ensureAtLeastLastCommittedBlockNumber(t, 0)
+	// which waits 2 minutes for block 0 to be committed. If config blocks weren't processed
+	// immediately, this would timeout due to the 1-hour batching delays.
+	t.Log("Starting services - block 0 (config block) should be committed immediately")
+	startTime := time.Now()
+	c.Start(t, runner.CommitterTxPath)
+	elapsed := time.Since(startTime)
+	// this time would be higher due to the start of all services and connection establishment.
+	t.Logf("Services started and block 0 committed in %v", elapsed)
+
+	verPolicies := c.TxBuilder.TxEndorser.VerificationPolicies()
+	metaPolicy := verPolicies[committerpb.MetaNamespaceID]
+	submitConfigBlock := func() {
+		ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
+			ChannelID:                    c.SystemConfig.Policy.ChannelID,
+			OrdererEndpoints:             ordererEnv.AllRealOrdererEndpoints(),
+			MetaNamespaceVerificationKey: metaPolicy.GetThresholdRule().GetPublicKey(),
+		})
+	}
+
+	t.Log("Submitting config block (block 1) - should be committed immediately")
+	startTime = time.Now()
+
+	submitConfigBlock()
+
+	const maxWaitTime = 3 * time.Second
+	select {
+	case blk := <-c.CommittedBlock:
+		elapsed = time.Since(startTime)
+		t.Logf("Config block #%d committed in %v", blk.Header.Number, elapsed)
+		require.Equal(t, uint64(1), blk.Header.Number)
+		require.Less(t, elapsed, maxWaitTime)
+	case <-time.After(maxWaitTime):
+		t.Fatalf("Config block was not committed within %v", maxWaitTime)
+	}
+
+	t.Log("Config block was committed immediately, bypassing batching delays")
+}

@@ -43,6 +43,7 @@ func NewServerTLSConfig(c TLSConfig) (*tls.Config, error) {
 			}
 			tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
 		}
+
 		return tlsCfg, nil
 	default:
 		return nil, errors.Newf("unknown TLS mode: %s (valid modes: %s, %s, %s)",

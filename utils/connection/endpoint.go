@@ -19,9 +19,9 @@ type Endpoint struct {
 	Port int    `mapstructure:"port" json:"port,omitempty" yaml:"port,omitempty"`
 }
 
-// Empty returns true if no port is assigned.
+// Empty returns true if no host and no port are assigned.
 func (e *Endpoint) Empty() bool {
-	return e.Port == 0
+	return e.Host == "" && e.Port == 0
 }
 
 // Address returns a string representation of the endpoint's address.
@@ -68,5 +68,5 @@ func NewEndpoint(hostPort string) (*Endpoint, error) {
 
 // NewLocalHost returns a default endpoint "localhost:0".
 func NewLocalHost() *Endpoint {
-	return &Endpoint{Host: "localhost"}
+	return &Endpoint{Host: "127.0.0.1"}
 }

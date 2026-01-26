@@ -8,13 +8,12 @@ package workload
 
 import (
 	"fmt"
+	"time"
 
 	"go.yaml.in/yaml/v3"
-	"golang.org/x/time/rate"
 
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
@@ -47,10 +46,22 @@ type KeyProfile struct {
 	Size uint32 `mapstructure:"size" yaml:"size"`
 }
 
-// BlockProfile describes generate block characteristics.
+// BlockProfile describes generate block characteristics
+// (when applying load to the VC or Verifier, blocks are translated to batches).
+// The generated block size is aimed to be MaxSize, if the generated
+// TXs rate is sufficient.
+// If the generated TXs rate is too low, the block size might
+// be less than MaxSize, but at least MinSize.
+// In such case, the block is generated at a preferred rate of PreferredRate.
+// Blocks wait up to PreferredRate (default: 1 second) before submission.
+// If a full block is not ready by then, a partial block is
+// submitted if it meets MinSize (default: 1);
+// otherwise, the system waits until MinSize is available.
+// If the MaxSize is less than or equal to MinSize, PreferredRate is ignored.
 type BlockProfile struct {
-	// Size of the block
-	Size uint64 `mapstructure:"size" yaml:"size"`
+	MaxSize       uint64        `mapstructure:"max-size" yaml:"max-size"`
+	MinSize       uint64        `mapstructure:"min-size" yaml:"min-size"`
+	PreferredRate time.Duration `mapstructure:"preferred-rate" yaml:"preferred-rate"`
 }
 
 // TransactionProfile describes generate TX characteristics.
@@ -149,20 +160,14 @@ type KeyPath struct {
 // It only contains parameters that do not affect the produced items.
 // However, these parameters might affect the order of the items.
 type StreamOptions struct {
-	// RateLimit directly impacts the rate by limiting it.
-	RateLimit *LimiterConfig `mapstructure:"rate-limit" yaml:"rate-limit"`
 	// GenBatch impacts the rate by batching generated items before inserting then the channel.
 	// This helps overcome the inherit rate limitation of Go channels.
 	GenBatch uint32 `mapstructure:"gen-batch" yaml:"gen-batch"`
 	// BuffersSize impact the rate by masking fluctuation in performance.
 	BuffersSize int `mapstructure:"buffers-size" yaml:"buffers-size"`
-}
-
-// LimiterConfig is used to create a limiter.
-type LimiterConfig struct {
-	InitialLimit rate.Limit `mapstructure:"initial-limit"`
-	// Endpoint for a simple http server to set the limiter.
-	Endpoint connection.Endpoint `mapstructure:"endpoint"`
+	// RateLimit directly impacts the rate by limiting it.
+	// TXs are released at RateLimit (default: unlimited).
+	RateLimit uint64 `mapstructure:"rate-limit" yaml:"rate-limit"`
 }
 
 // Debug outputs the profile to stdout.

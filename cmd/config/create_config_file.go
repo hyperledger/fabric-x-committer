@@ -52,6 +52,15 @@ type (
 		LoadGenWorkers    uint64                      // loadgen
 		Logging           *logging.Config             // for all
 		RateLimit         *connection.RateLimitConfig // query, sidecar
+		MaxRequestKeys    int                         // query
+
+		// VC service batching configuration (for testing).
+		VCMinTransactionBatchSize           int           // vc
+		VCTimeoutForMinTransactionBatchSize time.Duration // vc
+
+		// Verifier batching configuration (for testing).
+		VerifierBatchTimeCutoff time.Duration // verifier
+		VerifierBatchSizeCutoff int           // verifier
 	}
 
 	// SystemEndpoints represents the endpoints of the system.

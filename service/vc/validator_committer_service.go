@@ -342,7 +342,9 @@ func (vc *ValidatorCommitterService) batchReceivedTransactionsAndForwardForProce
 				" Large batch contains %d TXs and the minimum batch size is %d",
 				len(txBatch.Transactions), len(txBatch.Transactions)+len(largerBatch.Transactions),
 				vc.minTxBatchSize)
-			if len(largerBatch.Transactions) >= vc.minTxBatchSize {
+
+			if (len(txBatch.Transactions) == 1 && utils.IsConfigTx(txBatch.Transactions[0].Namespaces)) ||
+				len(largerBatch.Transactions) >= vc.minTxBatchSize {
 				sendLargeBatch()
 			}
 		}

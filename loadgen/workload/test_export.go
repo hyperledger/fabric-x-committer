@@ -27,7 +27,9 @@ func GenerateTransactions(tb testing.TB, p *Profile, count int) []*servicepb.Loa
 	ctx, cancel := context.WithCancel(tb.Context())
 	defer cancel()
 	test.RunServiceForTest(ctx, tb, s.Run, nil)
-	return s.MakeGenerator().NextN(ctx, count)
+	return s.MakeGenerator().Consume(ctx, ConsumeParameters{
+		RequestedItems: uint64(count), //nolint:gosec // int -> uint64.
+	})
 }
 
 // DefaultProfile is used for testing and benchmarking.
@@ -35,7 +37,7 @@ func DefaultProfile(workers uint32) *Profile {
 	return &Profile{
 		Key: KeyProfile{Size: 32},
 		// We use a small block to reduce the CPU load during tests.
-		Block: BlockProfile{Size: 10},
+		Block: BlockProfile{MaxSize: 10},
 		Transaction: TransactionProfile{
 			ReadWriteValueSize: 32,
 			ReadWriteCount:     NewConstantDistribution(2),

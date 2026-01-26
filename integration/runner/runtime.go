@@ -87,12 +87,23 @@ type (
 		DBConnection *dbtest.Connection
 		// TLS configures the secure level between the components: none | tls | mtls
 		TLSMode string
-
 		// CrashTest is true to indicate a service crash is expected, and not a failure.
 		CrashTest bool
-
 		// RateLimit configures rate limiting for services that support it (query, sidecar).
 		RateLimit *connection.RateLimitConfig
+		// MaxRequestKeys is the maximum number of keys allowed in a single query request.
+		// Set to 0 to disable the limit.
+		MaxRequestKeys int
+
+		// VCMinTransactionBatchSize configures the minimum batch size for VC service.
+		VCMinTransactionBatchSize int
+		// VCTimeoutForMinTransactionBatchSize configures the timeout for min batch size
+		VCTimeoutForMinTransactionBatchSize time.Duration
+
+		// VerifierBatchTimeCutoff configures the batch time cutoff for verifier service
+		VerifierBatchTimeCutoff time.Duration
+		// VerifierBatchSizeCutoff configures the batch size cutoff for verifier service.
+		VerifierBatchSizeCutoff int
 	}
 )
 
@@ -138,6 +149,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 			BlockTimeout:      conf.BlockTimeout,
 			LoadGenBlockLimit: conf.LoadgenBlockLimit,
 			LoadGenWorkers:    1,
+			MaxRequestKeys:    conf.MaxRequestKeys,
 			Policy: &workload.PolicyProfile{
 				ChannelID:          TestChannelName,
 				NamespacePolicies:  make(map[string]*workload.Policy),
@@ -145,6 +157,12 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 			},
 			Logging:   &logging.DefaultConfig,
 			RateLimit: conf.RateLimit,
+
+			// Batching configuration for testing.
+			VCMinTransactionBatchSize:           conf.VCMinTransactionBatchSize,
+			VCTimeoutForMinTransactionBatchSize: conf.VCTimeoutForMinTransactionBatchSize,
+			VerifierBatchTimeCutoff:             conf.VerifierBatchTimeCutoff,
+			VerifierBatchSizeCutoff:             conf.VerifierBatchSizeCutoff,
 		},
 		CommittedBlock:   make(chan *common.Block, 100),
 		SeedForCryptoGen: rand.New(rand.NewSource(10)),

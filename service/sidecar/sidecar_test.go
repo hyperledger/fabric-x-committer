@@ -143,7 +143,7 @@ func newSidecarTestEnvWithTLS(
 		initOrdererEndpoints = nil
 	}
 	sidecarConf := &Config{
-		Server: connection.NewLocalHostServerWithTLS(serverCreds),
+		Server: connection.NewLocalHostServer(serverCreds),
 		Orderer: ordererconn.Config{
 			ChannelID: ordererEnv.TestConfig.ChanID,
 			Connection: ordererconn.ConnectionConfig{
@@ -157,7 +157,7 @@ func newSidecarTestEnvWithTLS(
 		LastCommittedBlockSetInterval: 100 * time.Millisecond,
 		WaitingTxsLimit:               1000,
 		Monitoring: monitoring.Config{
-			Server: connection.NewLocalHostServerWithTLS(serverCreds),
+			Server: connection.NewLocalHostServer(serverCreds),
 		},
 		Bootstrap: Bootstrap{
 			GenesisBlockFilePath: genesisBlockFilePath,
@@ -471,7 +471,7 @@ func TestSidecarRecoveryAfterCoordinatorFailure(t *testing.T) {
 	txs := env.sendGeneratedTransactionsForBlock(ctx, t)
 
 	t.Log("4. Restart the coordinator and validate processing block 11")
-	env.coordinatorServer = mock.StartMockCoordinatorServiceFromListWithConfig(t, env.coordinator,
+	env.coordinatorServer = mock.StartMockCoordinatorServiceFromServerConfig(t, env.coordinator,
 		env.coordinatorServer.Configs[0])
 
 	monitoring.RequireConnectionMetrics(
@@ -503,7 +503,7 @@ func TestSidecarStartWithoutCoordinator(t *testing.T) {
 	)
 
 	t.Log("Restart the coordinator")
-	env.coordinatorServer = mock.StartMockCoordinatorServiceFromListWithConfig(t, env.coordinator,
+	env.coordinatorServer = mock.StartMockCoordinatorServiceFromServerConfig(t, env.coordinator,
 		env.coordinatorServer.Configs[0])
 	monitoring.RequireConnectionMetrics(
 		t, coordLabel,

@@ -60,7 +60,15 @@ func eddsaNewKeyPair() (signature.PrivateKey, signature.PublicKey) {
 }
 
 func eddsaNewKeyPairWithSeed(seed int64) (signature.PrivateKey, signature.PublicKey) {
-	return eddsaNewKeyPairWithRand(pseudorand.New(pseudorand.NewSource(seed)))
+	// Derive a deterministic, cryptographically strong byte stream from the seed
+	// using SHAKE256, which implements io.Reader. This preserves determinism for
+	// testing while avoiding use of math/rand as a randomness source.
+	var seedBytes [8]byte
+	binary.BigEndian.PutUint64(seedBytes[:], uint64(seed)) //nolint:gosec // int64 -> uint64
+	sh := sha3.NewShake256()
+	_, err := sh.Write(seedBytes[:])
+	utils.Must(err)
+	return eddsaNewKeyPairWithRand(sh)
 }
 
 func eddsaNewKeyPairWithRand(rnd io.Reader) (signature.PrivateKey, signature.PublicKey) {

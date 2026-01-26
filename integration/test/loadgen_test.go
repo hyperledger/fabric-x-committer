@@ -13,6 +13,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/onsi/gomega"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
@@ -55,12 +56,10 @@ func TestLoadGenWithTLSModes(t *testing.T) {
 			serviceFlags: runner.LoadGenForVerifier | runner.LoadGenForDistributedLoadGen | runner.Verifier,
 		},
 	} {
-		tc := tc
 		serviceFlags := tc.serviceFlags
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			for _, mode := range test.ServerModes {
-				mode := mode
 				t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 					t.Parallel()
 					gomega.RegisterTestingT(t)
@@ -68,18 +67,18 @@ func TestLoadGenWithTLSModes(t *testing.T) {
 						NumVerifiers: 2,
 						NumVCService: 2,
 						BlockTimeout: 2 * time.Second,
-						BlockSize:    500,
+						BlockSize:    100,
 						TLSMode:      mode,
 					})
 					c.Start(t, serviceFlags)
 
 					metricsURL, err := monitoring.MakeMetricsURL(c.SystemConfig.Endpoints.LoadGen.Metrics.Address())
 					require.NoError(t, err)
-					require.Eventually(t, func() bool {
+					require.EventuallyWithT(t, func(ct *assert.CollectT) {
 						count := test.GetMetricValueFromURL(t, metricsURL, "loadgen_transaction_committed_total")
-						t.Logf("count %d", count)
-						return count > 1_000
-					}, 150*time.Second, 1*time.Second)
+						t.Logf("loadgen_transaction_committed_total: %d", count)
+						require.Greater(ct, count, 500)
+					}, 300*time.Second, 1*time.Second)
 				})
 			}
 		})

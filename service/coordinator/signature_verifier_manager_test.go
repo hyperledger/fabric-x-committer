@@ -34,7 +34,7 @@ type svMgrTestEnv struct {
 	signVerifierManager *signatureVerifierManager
 	inputTxBatch        chan dependencygraph.TxNodeBatch
 	outputValidatedTxs  chan dependencygraph.TxNodeBatch
-	mockSvService       []*mock.SigVerifier
+	mockVerifier        *mock.Verifier
 	grpcServers         *test.GrpcServers
 	policyManager       *policyManager
 	curBlockNum         atomic.Uint64
@@ -43,7 +43,7 @@ type svMgrTestEnv struct {
 func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte) *svMgrTestEnv {
 	t.Helper()
 	expectedEndError := string(expectedEndErrorMsg)
-	svs, sc := mock.StartMockSVService(t, numSvService)
+	verifier, sc := mock.StartMockVerifierService(t, numSvService)
 
 	inputTxBatch := make(chan dependencygraph.TxNodeBatch, 10)
 	outputValidatedTxs := make(chan dependencygraph.TxNodeBatch, 10)
@@ -79,7 +79,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 		signVerifierManager: svm,
 		inputTxBatch:        inputTxBatch,
 		outputValidatedTxs:  outputValidatedTxs,
-		mockSvService:       svs,
+		mockVerifier:        verifier,
 		grpcServers:         sc,
 		policyManager:       pm,
 	}
@@ -129,7 +129,7 @@ func (e *svMgrTestEnv) requireRetriedTxsTotal(t *testing.T, expectedRetriedTxsTo
 
 func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
 	t.Parallel()
-	// SigVerifier marks valid and invalid flag as follows:
+	// Verifier marks valid and invalid flag as follows:
 	// - when the block number is even, the even numbered txs are valid and the odd numbered txs are invalid
 	// - when the block number is odd, the even numbered txs are invalid and the odd numbered txs are valid
 	env := newSvMgrTestEnv(t, 1)
@@ -201,8 +201,9 @@ func TestSignatureVerifierManagerWithMultipleVerifiers(t *testing.T) {
 		}
 	}
 
+	verifierStreams := requireStreams(t, env.mockVerifier, 2)
 	totalBlocksReceived := uint32(0)
-	for _, sv := range env.mockSvService {
+	for _, sv := range verifierStreams {
 		// Verify that each service got a reasonable proportion of the requests.
 		totalBlocksReceived += sv.GetNumBlocksReceived()
 		assert.Greater(t, sv.GetNumBlocksReceived(), uint32(0.1*float32(numBlocks)))
@@ -289,7 +290,8 @@ func createTxNodeBatchForTest(
 func TestSignatureVerifierManagerRecovery(t *testing.T) {
 	t.Parallel()
 	env := newSvMgrTestEnv(t, 1)
-	for _, sv := range env.mockSvService {
+	verifierStreams := requireStreams(t, env.mockVerifier, 1)
+	for _, sv := range verifierStreams {
 		sv.MockFaultyNodeDropSize = 4
 	}
 
@@ -313,11 +315,11 @@ func TestSignatureVerifierManagerRecovery(t *testing.T) {
 	}
 	env.requireConnectionMetrics(t, 0, connection.Disconnected, 1)
 
-	for _, sv := range env.mockSvService {
+	for _, sv := range verifierStreams {
 		sv.MockFaultyNodeDropSize = 0
 	}
-	env.grpcServers = mock.StartMockSVServiceFromListWithConfig(
-		t, env.mockSvService, env.grpcServers.Configs,
+	env.grpcServers = mock.StartMockVerifierServiceFromServerConfig(
+		t, env.mockVerifier, env.grpcServers.Configs...,
 	)
 	env.requireConnectionMetrics(t, 0, connection.Connected, 1)
 	env.requireRetriedTxsTotal(t, 4)
@@ -330,7 +332,9 @@ func TestSignatureVerifierFatalDueToBadPolicy(t *testing.T) {
 	t.Parallel()
 	env := newSvMgrTestEnv(t, 1, []byte("failed to update policies")...)
 	env.requireConnectionMetrics(t, 0, connection.Connected, 0)
-	sv := env.mockSvService[0]
+
+	verifierStreams := requireStreams(t, env.mockVerifier, 1)
+	sv := verifierStreams[0]
 
 	// We require initial policy update.
 	policyUpdateCount := sv.GetPolicyUpdateCounter()
@@ -352,9 +356,10 @@ func TestSignatureVerifierFatalDueToBadPolicy(t *testing.T) {
 func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 	t.Parallel()
 	env := newSvMgrTestEnv(t, 3)
+	verifierStreams := requireStreams(t, env.mockVerifier, 3)
 
 	// verify that all mock policy verifiers have empty verification key.
-	for i, mockSv := range env.mockSvService {
+	for i, mockSv := range verifierStreams {
 		env.requireConnectionMetrics(t, i, connection.Connected, 0)
 		require.Empty(t, mockSv.GetUpdates())
 	}
@@ -373,7 +378,7 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 	env.policyManager.update(expectedUpdate)
 
 	t.Log("Verify that all mock policy verifiers have the same verification key")
-	env.requireAllUpdate(t, env.mockSvService, 1, expectedUpdate)
+	env.requireAllUpdate(t, verifierStreams, 1, expectedUpdate)
 
 	t.Log("Stop the service")
 	env.grpcServers.Servers[0].Stop()
@@ -394,20 +399,24 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 
 	env.policyManager.update(expectedSecondUpdate)
 
+	verifierStreams = requireStreams(t, env.mockVerifier, 2)
+	// Ensure the correct server is shutdown.
+	for _, mockSv := range verifierStreams {
+		require.NotEqual(t, env.grpcServers.Configs[0].Endpoint.Address(), mockSv.ServerEndpoint())
+	}
 	t.Log("Verify that all other mock policy verifiers have the same verification key")
-	env.requireAllUpdate(t, env.mockSvService[1:], 2, expectedSecondUpdate)
+	env.requireAllUpdate(t, verifierStreams, 2, expectedSecondUpdate)
 
 	t.Log("Ensure the down SV is not updated")
 	require.Never(t, func() bool {
 		// Process some batches to force progress
 		env.submitTxBatch(t, 1)
-		return len(env.mockSvService[0].GetUpdates()) > 2
+		return len(verifierStreams[0].GetUpdates()) > 2
 	}, 2*time.Second, 1*time.Second)
 
-	t.Log("Clear policies and restart server")
-	env.mockSvService[0].ClearPolicies()
-	env.grpcServers.Servers[0] = mock.StartMockSVServiceFromListWithConfig(
-		t, env.mockSvService[:1], env.grpcServers.Configs[:1],
+	t.Log("Restart server")
+	env.grpcServers.Servers[0] = mock.StartMockVerifierServiceFromServerConfig(
+		t, env.mockVerifier, env.grpcServers.Configs[0],
 	).Servers[0]
 	env.requireConnectionMetrics(t, 0, connection.Connected, 1)
 	t.Log("New instance is up")
@@ -421,12 +430,15 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 		},
 	}
 
-	env.requireAllUpdate(t, env.mockSvService[:1], 1, newExpectedUpdate)
+	verifierStreams = requireStreams(t, env.mockVerifier, 3)
+	// We only check the newest stream (they are ordered by the time they are created).
+	require.Equal(t, env.grpcServers.Configs[0].Endpoint.Address(), verifierStreams[2].ServerEndpoint())
+	env.requireAllUpdate(t, verifierStreams[2:], 1, newExpectedUpdate)
 }
 
 func (e *svMgrTestEnv) requireAllUpdate(
 	t *testing.T,
-	svs []*mock.SigVerifier,
+	svs []*mock.VerifierStreamState,
 	expectedCount int,
 	expected *servicepb.VerifierUpdates,
 ) {
@@ -463,4 +475,14 @@ func (e *svMgrTestEnv) requireAllUpdate(
 		require.Len(t, u, expectedCount)
 		requireUpdateEqual(t, expected, u[expectedCount-1])
 	}
+}
+
+func requireStreams(t *testing.T, mockVerifier *mock.Verifier, expectedNumStreams int) []*mock.VerifierStreamState {
+	t.Helper()
+	var verifierStreams []*mock.VerifierStreamState
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		verifierStreams = mockVerifier.Streams()
+		require.Len(ct, verifierStreams, expectedNumStreams)
+	}, 15*time.Second, 10*time.Millisecond)
+	return verifierStreams
 }

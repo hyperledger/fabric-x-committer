@@ -62,7 +62,7 @@ var knownConnectionIssues = regexp.MustCompile(`(?i)EOF|connection\s+refused|clo
 // NewLoadBalancedConnection creates a connection with load balancing between the endpoints
 // in the given config.
 func NewLoadBalancedConnection(config *MultiClientConfig) (*grpc.ClientConn, error) {
-	tlsCredentials, err := config.TLS.ClientCredentials()
+	tlsCredentials, err := NewClientCredentials(config.TLS)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +87,7 @@ func NewLoadBalancedConnection(config *MultiClientConfig) (*grpc.ClientConn, err
 
 // NewConnectionPerEndpoint creates a list of connections; one for each endpoint in the given config.
 func NewConnectionPerEndpoint(config *MultiClientConfig) ([]*grpc.ClientConn, error) {
-	tlsCreds, err := config.TLS.ClientCredentials()
+	tlsCreds, err := NewClientCredentials(config.TLS)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func NewConnectionPerEndpoint(config *MultiClientConfig) ([]*grpc.ClientConn, er
 
 // NewSingleConnection creates a single connection given a client config.
 func NewSingleConnection(config *ClientConfig) (*grpc.ClientConn, error) {
-	tlsCreds, err := config.TLS.ClientCredentials()
+	tlsCreds, err := NewClientCredentials(config.TLS)
 	if err != nil {
 		return nil, err
 	}

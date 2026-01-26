@@ -130,7 +130,7 @@ func sendBlocks[T any](
 	// Pipeline the mapping process.
 	go func() {
 		defer close(queueRaw)
-		mapToQueue(ctx, c, queueRaw, txStream, mapper, int(c.res.Profile.Block.Size)) //nolint:gosec // uint64 -> int.
+		mapToQueue(ctx, c, queueRaw, txStream, mapper, c.res.Profile.Block)
 	}()
 
 	queue := channel.NewReader(ctx, queueRaw)
@@ -159,12 +159,12 @@ func mapToQueue[T any](
 	queueRaw chan *txsWithMapping[T],
 	txStream *workload.StreamWithSetup,
 	mapper func(uint64, []*servicepb.LoadGenTx) T,
-	blockSize int,
+	blockProfile workload.BlockProfile,
 ) {
 	queue := channel.NewWriter(ctx, queueRaw)
 	txGen := txStream.MakeTxGenerator()
 	for ctx.Err() == nil {
-		txs := txGen.Next(ctx, blockSize)
+		txs := txGen.Next(ctx, blockProfile)
 		if len(txs) == 0 || txs[len(txs)-1] == nil {
 			// Generators return nil when their stream is done.
 			// This indicates that the block generator should also be done.

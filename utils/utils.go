@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package utils
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,10 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"google.golang.org/grpc/peer"
+
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 )
 
 // ErrActiveStream represents the error when attempting to create a new stream while one is already active.
@@ -87,4 +92,18 @@ func CountAppearances[T comparable](items []T) map[T]int {
 		countMap[item]++
 	}
 	return countMap
+}
+
+// ExtractServerAddress returns the stream's server (local) address.
+func ExtractServerAddress(ctx context.Context) string {
+	p, ok := peer.FromContext(ctx)
+	if !ok || p == nil || p.LocalAddr == nil {
+		return ""
+	}
+	return p.LocalAddr.String()
+}
+
+// IsConfigTx returns true if the namespaces indicate a config transaction.
+func IsConfigTx(namespaces []*applicationpb.TxNamespace) bool {
+	return len(namespaces) == 1 && namespaces[0].NsId == committerpb.ConfigNamespaceID
 }
