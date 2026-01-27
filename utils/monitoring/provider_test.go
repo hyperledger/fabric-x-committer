@@ -8,6 +8,8 @@ package monitoring
 
 import (
 	"context"
+	"crypto/tls"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -22,22 +24,29 @@ import (
 )
 
 type metricsProviderTestEnv struct {
-	provider *Provider
+	provider        *Provider
+	clientTLSConfig *tls.Config
 }
 
-func newMetricsProviderTestEnv(t *testing.T) *metricsProviderTestEnv {
+func newMetricsProviderTestEnv(t *testing.T, serverTLS, clientTLS connection.TLSConfig) *metricsProviderTestEnv {
 	t.Helper()
 	p := NewProvider()
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	c := connection.NewLocalHostServer(test.InsecureTLSConfig)
+	c := connection.NewLocalHostServer(serverTLS)
 	go func() {
 		assert.NoError(t, p.StartPrometheusServer(ctx, c))
 	}()
 
-	client := &http.Client{}
+	clientTLSConfig, err := connection.NewClientTLSConfig(clientTLS)
+	require.NoError(t, err)
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: clientTLSConfig,
+		},
+	}
 	defer client.CloseIdleConnections()
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		require.NotEmpty(ct, p.URL())
@@ -49,14 +58,42 @@ func newMetricsProviderTestEnv(t *testing.T) *metricsProviderTestEnv {
 	}, 5*time.Second, 100*time.Millisecond)
 
 	return &metricsProviderTestEnv{
-		provider: p,
+		provider:        p,
+		clientTLSConfig: clientTLSConfig,
+	}
+}
+
+func TestMetricsEnvWithTLSModes(t *testing.T) {
+	t.Parallel()
+	for _, mode := range test.ServerModes {
+		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
+			t.Parallel()
+			serverTLS, clientTLS := test.CreateServerAndClientTLSConfig(t, mode)
+			env := newMetricsProviderTestEnv(t, serverTLS, clientTLS)
+
+			opts := prometheus.CounterOpts{
+				Namespace: "metrics_test",
+				Subsystem: "tls",
+				Name:      "total_count_total",
+				Help:      "The added sum of the counter",
+			}
+			c := env.provider.NewCounter(opts)
+
+			c.Inc()
+			c.Inc()
+
+			test.CheckMetrics(t, env.provider.url, env.clientTLSConfig, "metrics_test_tls_total_count_total 2")
+
+			promutil.AddToCounter(c, 10)
+			test.CheckMetrics(t, env.provider.url, env.clientTLSConfig, "metrics_test_tls_total_count_total 12")
+		})
 	}
 }
 
 func TestCounter(t *testing.T) {
 	t.Parallel()
 
-	env := newMetricsProviderTestEnv(t)
+	env := newMetricsProviderTestEnv(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
 
 	opts := prometheus.CounterOpts{
 		Namespace: "vcservice",
@@ -69,16 +106,16 @@ func TestCounter(t *testing.T) {
 	c.Inc()
 	c.Inc()
 
-	test.CheckMetrics(t, env.provider.url, "vcservice_committed_transaction_total 2")
+	test.CheckMetrics(t, env.provider.url, nil, "vcservice_committed_transaction_total 2")
 
 	promutil.AddToCounter(c, 10)
-	test.CheckMetrics(t, env.provider.url, "vcservice_committed_transaction_total 12")
+	test.CheckMetrics(t, env.provider.url, nil, "vcservice_committed_transaction_total 12")
 }
 
 func TestCounterVec(t *testing.T) {
 	t.Parallel()
 
-	env := newMetricsProviderTestEnv(t)
+	env := newMetricsProviderTestEnv(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
 
 	opts := prometheus.CounterOpts{
 		Namespace: "vcservice",
@@ -93,13 +130,13 @@ func TestCounterVec(t *testing.T) {
 	promutil.AddToCounterVec(cv, []string{"ns_2"}, 1)
 	promutil.AddToCounterVec(cv, []string{"ns_1"}, 1)
 
-	test.CheckMetrics(t, env.provider.url,
+	test.CheckMetrics(t, env.provider.url, nil,
 		`vcservice_preparer_transaction_total{namespace="ns_1"} 2`,
 		`vcservice_preparer_transaction_total{namespace="ns_2"} 1`,
 	)
 
 	v := test.GetMetricValueFromURL(
-		t, env.provider.url, "vcservice_preparer_transaction_total{namespace=\"ns_1\"}",
+		t, env.provider.url, "vcservice_preparer_transaction_total{namespace=\"ns_1\"}", nil,
 	)
 	require.Equal(t, 2, v)
 }
@@ -107,7 +144,7 @@ func TestCounterVec(t *testing.T) {
 func TestNewGuage(t *testing.T) {
 	t.Parallel()
 
-	env := newMetricsProviderTestEnv(t)
+	env := newMetricsProviderTestEnv(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
 
 	opts := prometheus.GaugeOpts{
 		Namespace: "vcservice",
@@ -118,19 +155,19 @@ func TestNewGuage(t *testing.T) {
 	g := env.provider.NewGauge(opts)
 
 	g.Add(10)
-	test.CheckMetrics(t, env.provider.url, "vcservice_preparer_transactions_queued 10")
+	test.CheckMetrics(t, env.provider.url, nil, "vcservice_preparer_transactions_queued 10")
 
 	g.Sub(3)
-	test.CheckMetrics(t, env.provider.url, "vcservice_preparer_transactions_queued 7")
+	test.CheckMetrics(t, env.provider.url, nil, "vcservice_preparer_transactions_queued 7")
 
 	promutil.SetGauge(g, 5)
-	test.CheckMetrics(t, env.provider.url, "vcservice_preparer_transactions_queued 5")
+	test.CheckMetrics(t, env.provider.url, nil, "vcservice_preparer_transactions_queued 5")
 }
 
 func TestNewGuageVec(t *testing.T) {
 	t.Parallel()
 
-	env := newMetricsProviderTestEnv(t)
+	env := newMetricsProviderTestEnv(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
 
 	opts := prometheus.GaugeOpts{
 		Namespace: "vcservice",
@@ -144,7 +181,7 @@ func TestNewGuageVec(t *testing.T) {
 	gv.With(prometheus.Labels{"namespace": "ns_2"}).Add(2)
 	test.CheckMetrics(
 		t,
-		env.provider.url,
+		env.provider.url, nil,
 		`vcservice_committer_transactions_queued{namespace="ns_1"} 7`,
 		`vcservice_committer_transactions_queued{namespace="ns_2"} 2`,
 	)
@@ -152,7 +189,7 @@ func TestNewGuageVec(t *testing.T) {
 	promutil.SetGaugeVec(gv, []string{"ns_1"}, 4)
 	test.CheckMetrics(
 		t,
-		env.provider.url,
+		env.provider.url, nil,
 		`vcservice_committer_transactions_queued{namespace="ns_1"} 4`,
 		`vcservice_committer_transactions_queued{namespace="ns_2"} 2`,
 	)
@@ -161,7 +198,7 @@ func TestNewGuageVec(t *testing.T) {
 func TestNewHistogram(t *testing.T) {
 	t.Parallel()
 
-	env := newMetricsProviderTestEnv(t)
+	env := newMetricsProviderTestEnv(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
 
 	opts := prometheus.HistogramOpts{
 		Namespace: "vcservice",
@@ -176,7 +213,7 @@ func TestNewHistogram(t *testing.T) {
 	promutil.Observe(h, 10*time.Second)
 	test.CheckMetrics(
 		t,
-		env.provider.url,
+		env.provider.url, nil,
 		`vcservice_committer_transactions_duration_seconds_bucket{le="0.5"} 1`,
 		`vcservice_committer_transactions_duration_seconds_bucket{le="1"} 2`,
 		`vcservice_committer_transactions_duration_seconds_bucket{le="10"} 3`,
@@ -186,7 +223,7 @@ func TestNewHistogram(t *testing.T) {
 func TestNewHistogramVec(t *testing.T) {
 	t.Parallel()
 
-	env := newMetricsProviderTestEnv(t)
+	env := newMetricsProviderTestEnv(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
 
 	opts := prometheus.HistogramOpts{
 		Namespace: "vcservice",
@@ -203,7 +240,7 @@ func TestNewHistogramVec(t *testing.T) {
 
 	test.CheckMetrics(
 		t,
-		env.provider.url,
+		env.provider.url, nil,
 		`vcservice_committer_fetch_versions_duration_seconds_bucket{namespace="ns_1",le="0.5"} 1`,
 		`vcservice_committer_fetch_versions_duration_seconds_bucket{namespace="ns_1",le="0.6"} 1`,
 		`vcservice_committer_fetch_versions_duration_seconds_bucket{namespace="ns_1",le="0.7"} 1`,

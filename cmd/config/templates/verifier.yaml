@@ -15,6 +15,14 @@ server:
 monitoring:
   server:
     endpoint: {{ .ServiceEndpoints.Metrics | default "localhost:0" }}
+    tls:
+      mode: {{ .ServiceTLS.Mode }}
+      key-path: {{ .ServiceTLS.KeyPath }}
+      cert-path: {{ .ServiceTLS.CertPath }}
+      ca-cert-paths:
+        {{- range .ServiceTLS.CACertPaths }}
+        - {{ . }}
+        {{- end }}
 
 parallel-executor:
   parallelism: 40

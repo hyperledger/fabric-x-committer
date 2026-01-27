@@ -217,7 +217,9 @@ func TestStartTestNode(t *testing.T) {
 	require.True(t, ok)
 	t.Logf("Received block #%d with %d TXs", b.Header.Number, len(b.Data.Data))
 
-	monitorMetric(t, getContainerMappedHostPort(ctx, t, containerName, loadGenMetricsPort))
+	monitorMetric(t,
+		getContainerMappedHostPort(ctx, t, containerName, loadGenMetricsPort), connection.NoneTLSMode, nil,
+	)
 }
 
 func startCommitter(ctx context.Context, t *testing.T, params startNodeParameters) {
@@ -238,14 +240,20 @@ func startCommitter(ctx context.Context, t *testing.T, params startNodeParameter
 				"SC_COORDINATOR_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_COORDINATOR_VERIFIER_TLS_MODE=" + params.tlsMode,
 				"SC_COORDINATOR_VALIDATOR_COMMITTER_TLS_MODE=" + params.tlsMode,
+				"SC_COORDINATOR_MONITORING_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_QUERY_SERVER_TLS_MODE=" + params.tlsMode,
+				"SC_QUERY_MONITORING_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_SIDECAR_SERVER_TLS_MODE=" + params.tlsMode,
+				"SC_SIDECAR_MONITORING_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_SIDECAR_COMMITTER_TLS_MODE=" + params.tlsMode,
 				"SC_VC_SERVER_TLS_MODE=" + params.tlsMode,
+				"SC_VC_MONITORING_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_VERIFIER_SERVER_TLS_MODE=" + params.tlsMode,
+				"SC_VERIFIER_MONITORING_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_SIDECAR_ORDERER_CONNECTION_TLS_MODE=" + params.tlsMode,
 				"SC_ORDERER_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_LOADGEN_SERVER_TLS_MODE=" + params.tlsMode,
+				"SC_LOADGEN_MONITORING_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_LOADGEN_ORDERER_CLIENT_SIDECAR_CLIENT_TLS_MODE=" + params.tlsMode,
 				"SC_LOADGEN_ORDERER_CLIENT_ORDERER_CONNECTION_TLS_MODE=" + params.tlsMode,
 			},

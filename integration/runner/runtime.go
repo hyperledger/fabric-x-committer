@@ -214,6 +214,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	t.Log("create TLS manager and clients certificate")
 	c.CredFactory = test.NewCredentialsFactory(t)
 	s.ClientTLS, _ = c.CredFactory.CreateClientCredentials(t, c.Config.TLSMode)
+	s.ServiceTLS, _ = c.CredFactory.CreateServerCredentials(t, c.Config.TLSMode, s.Endpoints.LoadGen.Metrics.Host)
 
 	t.Log("Create processes")
 	c.MockOrderer = newProcess(t, cmdOrderer, s.WithEndpoint(s.Endpoints.Orderer[0]))

@@ -23,7 +23,8 @@ import (
 )
 
 const (
-	scheme         = "https://"
+	httpsScheme    = "https://"
+	httpScheme     = "http://"
 	metricsSubPath = "/metrics"
 )
 
@@ -46,7 +47,9 @@ func NewProvider() *Provider {
 func (p *Provider) StartPrometheusServer(
 	ctx context.Context, serverConfig *connection.ServerConfig, monitor ...func(context.Context),
 ) error {
-	logger.Debugf("Creating prometheus server")
+	logger.Infof("Creating prometheus server with TLS mode: %v", serverConfig.TLS.Mode)
+	var securedMetrics bool
+	// Generate TLS configuration from the server config.
 	serverTLSConfig, err := connection.NewServerTLSConfig(serverConfig.TLS)
 	if err != nil {
 		return err
@@ -73,7 +76,7 @@ func (p *Provider) StartPrometheusServer(
 	}
 	defer connection.CloseConnectionsLog(l)
 
-	p.url, err = MakeMetricsURL(l.Addr().String())
+	p.url, securedMetrics, err = MakeMetricsURL(l.Addr().String(), serverConfig.TLS.Mode)
 	if err != nil {
 		return err
 	}
@@ -82,7 +85,10 @@ func (p *Provider) StartPrometheusServer(
 	g.Go(func() error {
 		logger.Infof("Prometheus serving on URL: %s", p.url)
 		defer logger.Info("Prometheus stopped serving")
-		return server.ServeTLS(l, serverConfig.TLS.CertPath, serverConfig.TLS.KeyPath)
+		if securedMetrics {
+			return server.ServeTLS(l, serverConfig.TLS.CertPath, serverConfig.TLS.KeyPath)
+		}
+		return server.Serve(l)
 	})
 
 	// The following ensures the method does not return before all monitor methods return.
@@ -199,7 +205,20 @@ func (p *Provider) Registry() *prometheus.Registry {
 }
 
 // MakeMetricsURL construct the Prometheus metrics URL.
-func MakeMetricsURL(address string) (string, error) {
-	ret, err := url.JoinPath(scheme, address, metricsSubPath)
-	return ret, errors.Wrap(err, "failed to make prometheus URL")
+func MakeMetricsURL(address, tlsMode string) (string, bool, error) {
+	var (
+		err            error
+		ret            string
+		securedMetrics bool
+	)
+	switch tlsMode {
+	case connection.UnmentionedTLSMode, connection.NoneTLSMode:
+		ret, err = url.JoinPath(httpScheme, address, metricsSubPath)
+	case connection.OneSideTLSMode, connection.MutualTLSMode:
+		ret, err = url.JoinPath(httpsScheme, address, metricsSubPath)
+		securedMetrics = true
+	default:
+		err = errors.Newf("unknown TLS mode: %s", tlsMode)
+	}
+	return ret, securedMetrics, errors.Wrap(err, "failed to make prometheus URL")
 }

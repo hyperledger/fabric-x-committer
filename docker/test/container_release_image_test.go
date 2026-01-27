@@ -116,10 +116,14 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					// start the load generator node.
 					startLoadgenNodeWithReleaseImage(ctx, t, params.asNode(loadgenNode))
 
+					metricsClientTLSConfig, _ := credsFactory.CreateClientCredentials(t, mode)
+					metricsTLS, err := connection.NewClientTLSConfig(metricsClientTLSConfig)
+					require.NoError(t, err)
+
 					monitorMetric(t,
 						getContainerMappedHostPort(
 							ctx, t, assembleContainerName("loadgen", mode, dbType), loadGenMetricsPort,
-						),
+						), mode, metricsTLS,
 					)
 				})
 			}
@@ -195,11 +199,16 @@ func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, param
 				"SC_COORDINATOR_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_COORDINATOR_VERIFIER_TLS_MODE=" + params.tlsMode,
 				"SC_COORDINATOR_VALIDATOR_COMMITTER_TLS_MODE=" + params.tlsMode,
+				"SC_COORDINATOR_MONITORING_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_QUERY_SERVER_TLS_MODE=" + params.tlsMode,
+				"SC_QUERY_MONITORING_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_SIDECAR_SERVER_TLS_MODE=" + params.tlsMode,
+				"SC_SIDECAR_MONITORING_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_SIDECAR_COMMITTER_TLS_MODE=" + params.tlsMode,
 				"SC_VC_SERVER_TLS_MODE=" + params.tlsMode,
+				"SC_VC_MONITORING_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_VERIFIER_SERVER_TLS_MODE=" + params.tlsMode,
+				"SC_VERIFIER_MONITORING_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_SIDECAR_ORDERER_CONNECTION_TLS_MODE=" + params.tlsMode,
 				"SC_VC_DATABASE_PASSWORD=" + params.dbPassword,
 				"SC_QUERY_DATABASE_PASSWORD=" + params.dbPassword,
@@ -245,6 +254,7 @@ func startLoadgenNodeWithReleaseImage(
 			Tty: true,
 			Env: []string{
 				"SC_LOADGEN_SERVER_TLS_MODE=" + params.tlsMode,
+				"SC_LOADGEN_MONITORING_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_LOADGEN_ORDERER_CLIENT_SIDECAR_CLIENT_TLS_MODE=" + params.tlsMode,
 				"SC_LOADGEN_ORDERER_CLIENT_ORDERER_CONNECTION_TLS_MODE=" + params.tlsMode,
 			},
