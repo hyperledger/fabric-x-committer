@@ -74,7 +74,7 @@ func TestMetricsEnvWithTLSModes(t *testing.T) {
 			opts := prometheus.CounterOpts{
 				Namespace: "metrics_test",
 				Subsystem: "tls",
-				Name:      "total_count_total",
+				Name:      "count_total",
 				Help:      "The added sum of the counter",
 			}
 			c := env.provider.NewCounter(opts)

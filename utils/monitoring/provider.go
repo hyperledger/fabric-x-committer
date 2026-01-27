@@ -47,7 +47,7 @@ func NewProvider() *Provider {
 func (p *Provider) StartPrometheusServer(
 	ctx context.Context, serverConfig *connection.ServerConfig, monitor ...func(context.Context),
 ) error {
-	logger.Infof("Creating prometheus server with TLS mode: %v", serverConfig.TLS.Mode)
+	logger.Debugf("Creating prometheus server with TLS mode: %v", serverConfig.TLS.Mode)
 	var securedMetrics bool
 	// Generate TLS configuration from the server config.
 	serverTLSConfig, err := connection.NewServerTLSConfig(serverConfig.TLS)
@@ -207,18 +207,18 @@ func (p *Provider) Registry() *prometheus.Registry {
 // MakeMetricsURL construct the Prometheus metrics URL.
 func MakeMetricsURL(address, tlsMode string) (string, bool, error) {
 	var (
-		err            error
-		ret            string
 		securedMetrics bool
+		scheme         string
 	)
 	switch tlsMode {
 	case connection.UnmentionedTLSMode, connection.NoneTLSMode:
-		ret, err = url.JoinPath(httpScheme, address, metricsSubPath)
+		scheme = httpScheme
 	case connection.OneSideTLSMode, connection.MutualTLSMode:
-		ret, err = url.JoinPath(httpsScheme, address, metricsSubPath)
+		scheme = httpsScheme
 		securedMetrics = true
 	default:
-		err = errors.Newf("unknown TLS mode: %s", tlsMode)
+		return "", false, errors.Newf("unknown TLS mode: %s", tlsMode)
 	}
+	ret, err := url.JoinPath(scheme, address, metricsSubPath)
 	return ret, securedMetrics, errors.Wrap(err, "failed to make prometheus URL")
 }

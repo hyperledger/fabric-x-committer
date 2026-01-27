@@ -209,7 +209,7 @@ func TestLoadGenForCoordinator(t *testing.T) {
 
 func TestLoadGenForSidecar(t *testing.T) {
 	t.Parallel()
-	for _, mode := range test.ServerModes[:1] {
+	for _, mode := range test.ServerModes {
 		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
 			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
