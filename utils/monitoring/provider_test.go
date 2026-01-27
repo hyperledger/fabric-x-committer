@@ -82,10 +82,10 @@ func TestMetricsEnvWithTLSModes(t *testing.T) {
 			c.Inc()
 			c.Inc()
 
-			test.CheckMetrics(t, env.provider.url, env.clientTLSConfig, "metrics_test_tls_total_count_total 2")
+			test.CheckMetrics(t, env.provider.url, env.clientTLSConfig, "metrics_test_tls_count_total 2")
 
 			promutil.AddToCounter(c, 10)
-			test.CheckMetrics(t, env.provider.url, env.clientTLSConfig, "metrics_test_tls_total_count_total 12")
+			test.CheckMetrics(t, env.provider.url, env.clientTLSConfig, "metrics_test_tls_count_total 12")
 		})
 	}
 }

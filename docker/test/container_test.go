@@ -43,7 +43,6 @@ const (
 	databasePort           = "5433"
 
 	committerContainerName = "committer"
-	localhost              = "localhost"
 )
 
 var commonTestNodeCMD = []string{"run", "db", "committer", "orderer"}
