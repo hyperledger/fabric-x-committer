@@ -105,9 +105,6 @@ func (d *dependencyDetector) mergeWaitingTx(depDetector *dependencyDetector) {
 // This method is not thread-safe.
 func (d *dependencyDetector) removeWaitingTx(txsNode TxNodeBatch) {
 	for _, txNode := range txsNode {
-		if txNode.rwKeys == nil {
-			return
-		}
 		d.readOnlyKeyToWaitingTxs.remove(txNode.rwKeys.readsOnly, txNode)
 		d.writeOnlyKeyToWaitingTxs.remove(txNode.rwKeys.writesOnly, txNode)
 		d.readWriteKeyToWaitingTxs.remove(txNode.rwKeys.readsAndWrites, txNode)

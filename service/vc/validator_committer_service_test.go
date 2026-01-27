@@ -9,6 +9,7 @@ package vc
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -41,7 +42,7 @@ func TestVCSecureConnection(t *testing.T) {
 	test.RunSecureConnectionTest(t,
 		func(t *testing.T, cfg, _ connection.TLSConfig) test.RPCAttempt {
 			t.Helper()
-			env := NewValidatorAndCommitServiceTestEnvWithTLS(t, 1, cfg)
+			env := NewValidatorAndCommitServiceTestEnv(t, &TestEnvOpts{ServerCreds: cfg})
 			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
 				t.Helper()
 				client := createValidatorAndCommitClientWithTLS(t, &env.Configs[0].Server.Endpoint, cfg)
@@ -54,12 +55,13 @@ func TestVCSecureConnection(t *testing.T) {
 
 func newValidatorAndCommitServiceTestEnvWithClient(
 	t *testing.T,
-	numServices int,
+	opts *TestEnvOpts,
 ) *validatorAndCommitterServiceTestEnvWithClient {
 	t.Helper()
-	vcs := NewValidatorAndCommitServiceTestEnvWithTLS(t, numServices, test.InsecureTLSConfig)
+	vcs := NewValidatorAndCommitServiceTestEnv(t, opts)
 
-	allEndpoints := make([]*connection.Endpoint, len(vcs.Configs))
+	numServices := len(vcs.VCServices)
+	allEndpoints := make([]*connection.Endpoint, numServices)
 	for i, c := range vcs.Configs {
 		allEndpoints[i] = &c.Server.Endpoint
 	}
@@ -97,7 +99,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 
 func TestCreateConfigAndTables(t *testing.T) {
 	t.Parallel()
-	env := newValidatorAndCommitServiceTestEnvWithClient(t, 1)
+	env := newValidatorAndCommitServiceTestEnvWithClient(t, nil)
 	p := policy.MakeECDSAThresholdRuleNsPolicy([]byte("publick-key"))
 	pBytes, err := proto.Marshal(p)
 	require.NoError(t, err)
@@ -181,7 +183,7 @@ func TestCreateConfigAndTables(t *testing.T) {
 func TestValidatorAndCommitterService(t *testing.T) {
 	t.Parallel()
 	setup := func() *validatorAndCommitterServiceTestEnvWithClient {
-		env := newValidatorAndCommitServiceTestEnvWithClient(t, 1)
+		env := newValidatorAndCommitServiceTestEnvWithClient(t, nil)
 		env.dbEnv.populateData(t, []string{"1"}, namespaceToWrites{
 			"1": &namespaceWrites{
 				keys:     [][]byte{[]byte("Existing key"), []byte("Existing key update")},
@@ -414,12 +416,60 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		require.NoError(t, err)
 		test.RequireProtoElementsMatch(t, expectedTxStatus, status.Status)
 	})
+
+	t.Run("config tx returned immediately", func(t *testing.T) {
+		t.Parallel()
+		env := newValidatorAndCommitServiceTestEnvWithClient(t, &TestEnvOpts{
+			ResourceLimits: &ResourceLimitsConfig{
+				MaxWorkersForPreparer:             2,
+				MaxWorkersForValidator:            2,
+				MaxWorkersForCommitter:            2,
+				MinTransactionBatchSize:           100,
+				TimeoutForMinTransactionBatchSize: 1 * time.Hour,
+			},
+		})
+
+		configTxBatch := &servicepb.VcBatch{
+			Transactions: []*servicepb.VcTx{{
+				Ref: committerpb.NewTxRef("config-tx-immediate", 0, 0),
+				Namespaces: []*applicationpb.TxNamespace{{
+					NsId: committerpb.ConfigNamespaceID,
+					BlindWrites: []*applicationpb.Write{{
+						Key:   []byte(committerpb.ConfigKey),
+						Value: []byte("config-value"),
+					}},
+				}},
+			}},
+		}
+
+		require.NoError(t, env.streams[0].Send(configTxBatch))
+
+		resultCh := make(chan *committerpb.TxStatusBatch, 1)
+		var wg sync.WaitGroup
+		t.Cleanup(wg.Wait)
+		wg.Go(func() {
+			txStatus, err := env.streams[0].Recv()
+			if err != nil {
+				t.Log(err.Error())
+				close(resultCh)
+				return
+			}
+			resultCh <- txStatus
+		})
+
+		select {
+		case txStatus := <-resultCh:
+			require.Len(t, txStatus.GetStatus(), 1)
+		case <-time.After(5 * time.Second):
+			t.Fatal("config tx was not processed immediately - batching delay detected")
+		}
+	})
 }
 
 func TestLastCommittedBlockNumber(t *testing.T) {
 	t.Parallel()
 	numServices := 3
-	env := newValidatorAndCommitServiceTestEnvWithClient(t, numServices)
+	env := newValidatorAndCommitServiceTestEnvWithClient(t, &TestEnvOpts{NumServices: numServices})
 
 	ctx, _ := createContext(t)
 	for i := range numServices {
@@ -442,7 +492,7 @@ func TestLastCommittedBlockNumber(t *testing.T) {
 
 func TestGRPCStatusCode(t *testing.T) {
 	t.Parallel()
-	env := newValidatorAndCommitServiceTestEnvWithClient(t, 1)
+	env := newValidatorAndCommitServiceTestEnvWithClient(t, nil)
 	c := env.commonClient
 
 	ctx, _ := createContext(t)
@@ -504,7 +554,7 @@ func requireGRPCErrorCode(t *testing.T, code codes.Code, err error, ret any) {
 
 func TestVCServiceOneActiveStreamOnly(t *testing.T) {
 	t.Parallel()
-	env := newValidatorAndCommitServiceTestEnvWithClient(t, 1)
+	env := newValidatorAndCommitServiceTestEnvWithClient(t, nil)
 
 	require.Eventually(t, func() bool {
 		return env.vcs[0].isStreamActive.Load()
@@ -521,7 +571,7 @@ func TestTransactionResubmission(t *testing.T) {
 	t.Parallel()
 	setup := func() (context.Context, *validatorAndCommitterServiceTestEnvWithClient) {
 		numServices := 3
-		env := newValidatorAndCommitServiceTestEnvWithClient(t, numServices)
+		env := newValidatorAndCommitServiceTestEnvWithClient(t, &TestEnvOpts{NumServices: numServices})
 
 		env.dbEnv.populateData(t, []string{"3"}, namespaceToWrites{
 			"3": &namespaceWrites{
