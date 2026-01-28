@@ -29,17 +29,16 @@ server:
     #   - Must be less than or equal to requests-per-second
     burst: 0
 monitoring:
-  server:
-    endpoint: :2114
-    tls:
-      mode: mtls
-      cert-path: /server-certs/public-key.pem
-      key-path: /server-certs/private-key.pem
-      ca-cert-paths:
-        - /server-certs/ca-certificate.pem
-    rate-limit:
-      requests-per-second: 0
-      burst: 0
+  endpoint: :2114
+  tls:
+    mode: mtls
+    cert-path: /server-certs/public-key.pem
+    key-path: /server-certs/private-key.pem
+    ca-cert-paths:
+      - /server-certs/ca-certificate.pem
+  rate-limit:
+    requests-per-second: 0
+    burst: 0
 
 orderer:
   connection:

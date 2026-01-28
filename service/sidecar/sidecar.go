@@ -105,7 +105,7 @@ func (s *Service) Run(ctx context.Context) error {
 	defer pCancel()
 	// similar to other services, when the prometheus server returns an error, we do not terminate the service.
 	go func() {
-		_ = s.metrics.StartPrometheusServer(pCtx, s.config.Monitoring.Server, s.monitorQueues)
+		_ = s.metrics.StartPrometheusServer(pCtx, s.config.Monitoring, s.monitorQueues)
 	}()
 
 	logger.Infof("Create coordinator client and connect to %s", s.config.Committer.Endpoint)

@@ -20,7 +20,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -80,13 +79,12 @@ func NewValidatorAndCommitServiceTestEnv(t *testing.T, opts *TestEnvOpts) *Valid
 	endpoints := make([]*connection.Endpoint, opts.NumServices)
 
 	for i := range vcservices {
+		serverConfig := connection.NewLocalHostServer(opts.ServerCreds)
 		config := &Config{
-			Server:         connection.NewLocalHostServer(opts.ServerCreds),
+			Server:         serverConfig,
 			Database:       opts.DBEnv.DBConf,
 			ResourceLimits: opts.ResourceLimits,
-			Monitoring: monitoring.Config{
-				Server: connection.NewLocalHostServer(test.InsecureTLSConfig),
-			},
+			Monitoring:     serverConfig,
 		}
 		vcs, err := NewValidatorCommitterService(initCtx, config)
 		require.NoError(t, err)

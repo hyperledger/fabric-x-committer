@@ -17,7 +17,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -43,7 +42,7 @@ func DefaultClientConf(t *testing.T, metricsTLSConfig connection.TLSConfig) *Cli
 	return &ClientConfig{
 		Server: connection.NewLocalHostServer(test.InsecureTLSConfig),
 		Monitoring: metrics.Config{
-			Config: defaultMonitoringWithTLS(metricsTLSConfig),
+			ServerConfig: *connection.NewLocalHostServer(metricsTLSConfig),
 		},
 		LoadProfile: &workload.Profile{
 			Key:   workload.KeyProfile{Size: 32},
@@ -80,15 +79,5 @@ func DefaultClientConf(t *testing.T, metricsTLSConfig connection.TLSConfig) *Cli
 			Namespaces: true,
 			Load:       true,
 		},
-	}
-}
-
-func defaultMonitoring() monitoring.Config {
-	return defaultMonitoringWithTLS(test.InsecureTLSConfig)
-}
-
-func defaultMonitoringWithTLS(tlsConfig connection.TLSConfig) monitoring.Config {
-	return monitoring.Config{
-		Server: connection.NewLocalHostServer(tlsConfig),
 	}
 }

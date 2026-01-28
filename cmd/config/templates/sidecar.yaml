@@ -20,16 +20,15 @@ server:
       min-time: 60s
       permit-without-stream: false
 monitoring:
-  server:
-    endpoint: {{ .ServiceEndpoints.Metrics | default "localhost:0" }}
-    tls:
-      mode: {{ .ServiceTLS.Mode }}
-      key-path: {{ .ServiceTLS.KeyPath }}
-      cert-path: {{ .ServiceTLS.CertPath }}
-      ca-cert-paths:
-        {{- range .ServiceTLS.CACertPaths }}
-        - {{ . }}
-        {{- end }}
+  endpoint: {{ .ServiceEndpoints.Metrics | default "localhost:0" }}
+  tls:
+    mode: {{ .MonitorTLS.Mode }}
+    key-path: {{ .MonitorTLS.KeyPath }}
+    cert-path: {{ .MonitorTLS.CertPath }}
+    ca-cert-paths:
+      {{- range .MonitorTLS.CACertPaths }}
+      - {{ . }}
+      {{- end }}
 
 orderer:
   connection:

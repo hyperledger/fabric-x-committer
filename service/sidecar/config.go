@@ -18,7 +18,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
 
@@ -29,7 +28,7 @@ type (
 	// It may contain the orderer endpoint from which the sidecar pulls blocks.
 	Config struct {
 		Server                        *connection.ServerConfig  `mapstructure:"server"`
-		Monitoring                    monitoring.Config         `mapstructure:"monitoring"`
+		Monitoring                    *connection.ServerConfig  `mapstructure:"monitoring"`
 		Committer                     *connection.ClientConfig  `mapstructure:"committer"`
 		Orderer                       ordererconn.Config        `mapstructure:"orderer"`
 		Ledger                        LedgerConfig              `mapstructure:"ledger"`

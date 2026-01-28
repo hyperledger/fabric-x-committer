@@ -118,7 +118,7 @@ func (c *Client) Run(ctx context.Context) error {
 	defer cancel()
 	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		return c.resources.Metrics.StartPrometheusServer(gCtx, c.conf.Monitoring.Server)
+		return c.resources.Metrics.StartPrometheusServer(gCtx, &c.conf.Monitoring.ServerConfig)
 	})
 	g.Go(func() error {
 		return c.runHTTPServer(ctx)

@@ -28,7 +28,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
-	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
@@ -63,7 +62,7 @@ func TestReadConfigSidecar(t *testing.T) {
 		configFilePath: emptyConfig(t),
 		expectedConfig: &sidecar.Config{
 			Server:     newServerConfig("localhost", 4001),
-			Monitoring: newMonitoringConfig("localhost", 2114),
+			Monitoring: newServerConfig("localhost", 2114),
 			Orderer: ordererconn.Config{
 				Connection: ordererconn.ConnectionConfig{
 					Endpoints: []*commontypes.OrdererEndpoint{
@@ -103,7 +102,7 @@ func TestReadConfigSidecar(t *testing.T) {
 					},
 				},
 			},
-			Monitoring: newMonitoringConfigWithDefaultTLS(2114),
+			Monitoring: newServerConfigWithDefaultTLS(2114),
 			Orderer: ordererconn.Config{
 				Connection: ordererconn.ConnectionConfig{
 					Endpoints: []*commontypes.OrdererEndpoint{
@@ -148,7 +147,7 @@ func TestReadConfigCoordinator(t *testing.T) {
 		configFilePath: emptyConfig(t),
 		expectedConfig: &coordinator.Config{
 			Server:     newServerConfig("localhost", 9001),
-			Monitoring: newMonitoringConfig("localhost", 2119),
+			Monitoring: newServerConfig("localhost", 2119),
 			DependencyGraph: &coordinator.DependencyGraphConfig{
 				NumOfLocalDepConstructors: 1,
 				WaitingTxsLimit:           100_000,
@@ -160,7 +159,7 @@ func TestReadConfigCoordinator(t *testing.T) {
 		configFilePath: "samples/coordinator.yaml",
 		expectedConfig: &coordinator.Config{
 			Server:             newServerConfigWithDefaultTLS(9001),
-			Monitoring:         newMonitoringConfigWithDefaultTLS(2119),
+			Monitoring:         newServerConfigWithDefaultTLS(2119),
 			Verifier:           newMultiClientConfigWithDefaultTLS("verifier", 5001),
 			ValidatorCommitter: newMultiClientConfigWithDefaultTLS("vc", 6001),
 			DependencyGraph: &coordinator.DependencyGraphConfig{
@@ -194,7 +193,7 @@ func TestReadConfigVC(t *testing.T) {
 		configFilePath: emptyConfig(t),
 		expectedConfig: &vc.Config{
 			Server:     newServerConfig("localhost", 6001),
-			Monitoring: newMonitoringConfig("localhost", 2116),
+			Monitoring: newServerConfig("localhost", 2116),
 			Database:   defaultDBConfig(),
 			ResourceLimits: &vc.ResourceLimitsConfig{
 				MaxWorkersForPreparer:             1,
@@ -209,7 +208,7 @@ func TestReadConfigVC(t *testing.T) {
 		configFilePath: "samples/vc.yaml",
 		expectedConfig: &vc.Config{
 			Server:     newServerConfigWithDefaultTLS(6001),
-			Monitoring: newMonitoringConfigWithDefaultTLS(2116),
+			Monitoring: newServerConfigWithDefaultTLS(2116),
 			Database:   defaultSampleDBConfig(),
 			ResourceLimits: &vc.ResourceLimitsConfig{
 				MaxWorkersForPreparer:             1,
@@ -244,7 +243,7 @@ func TestReadConfigVerifier(t *testing.T) {
 		configFilePath: emptyConfig(t),
 		expectedConfig: &verifier.Config{
 			Server:     newServerConfig("localhost", 5001),
-			Monitoring: newMonitoringConfig("localhost", 2115),
+			Monitoring: newServerConfig("localhost", 2115),
 			ParallelExecutor: verifier.ExecutorConfig{
 				Parallelism:       4,
 				BatchSizeCutoff:   50,
@@ -257,7 +256,7 @@ func TestReadConfigVerifier(t *testing.T) {
 		configFilePath: "samples/verifier.yaml",
 		expectedConfig: &verifier.Config{
 			Server:     newServerConfigWithDefaultTLS(5001),
-			Monitoring: newMonitoringConfigWithDefaultTLS(2115),
+			Monitoring: newServerConfigWithDefaultTLS(2115),
 			ParallelExecutor: verifier.ExecutorConfig{
 				BatchSizeCutoff:   50,
 				BatchTimeCutoff:   10 * time.Millisecond,
@@ -290,7 +289,7 @@ func TestReadConfigQuery(t *testing.T) {
 		configFilePath: emptyConfig(t),
 		expectedConfig: &query.Config{
 			Server:                newServerConfig("localhost", 7001),
-			Monitoring:            newMonitoringConfig("localhost", 2117),
+			Monitoring:            newServerConfig("localhost", 2117),
 			Database:              defaultDBConfig(),
 			MinBatchKeys:          1024,
 			MaxBatchWait:          100 * time.Millisecond,
@@ -303,7 +302,7 @@ func TestReadConfigQuery(t *testing.T) {
 		configFilePath: "samples/query.yaml",
 		expectedConfig: &query.Config{
 			Server:                newServerConfigWithDefaultTLS(7001),
-			Monitoring:            newMonitoringConfigWithDefaultTLS(2117),
+			Monitoring:            newServerConfigWithDefaultTLS(2117),
 			Database:              defaultSampleDBConfig(),
 			MinBatchKeys:          1024,
 			MaxBatchWait:          100 * time.Millisecond,
@@ -338,7 +337,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 		expectedConfig: &loadgen.ClientConfig{
 			Server: newServerConfig("localhost", 8001),
 			Monitoring: metrics.Config{
-				Config: newMonitoringConfig("localhost", 2118),
+				ServerConfig: *newServerConfig("localhost", 2118),
 			},
 		},
 	}, {
@@ -348,7 +347,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 			Server:     newServerConfigWithDefaultTLS(8001),
 			HTTPServer: newServerConfig("", 6997),
 			Monitoring: metrics.Config{
-				Config: newMonitoringConfigWithDefaultTLS(2118),
+				ServerConfig: *newServerConfigWithDefaultTLS(2118),
 				Latency: metrics.LatencyConfig{
 					SamplerConfig: metrics.SamplerConfig{
 						Portion: 0.01,
@@ -483,18 +482,6 @@ func newMultiClientConfigWithDefaultTLS(host string, port int) connection.MultiC
 			newEndpoint(host, port),
 		},
 		TLS: defaultClientTLSConfig,
-	}
-}
-
-func newMonitoringConfig(host string, port int) monitoring.Config {
-	return monitoring.Config{
-		Server: newServerConfig(host, port),
-	}
-}
-
-func newMonitoringConfigWithDefaultTLS(port int) monitoring.Config {
-	return monitoring.Config{
-		Server: newServerConfigWithDefaultTLS(port),
 	}
 }
 

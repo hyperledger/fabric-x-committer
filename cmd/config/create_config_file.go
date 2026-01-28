@@ -34,6 +34,8 @@ type (
 
 		// ServiceTLS holds the TLS configuration for a service.
 		ServiceTLS connection.TLSConfig
+		// MonitorTLS holds the TLS configuration for a monitoring server.
+		MonitorTLS connection.TLSConfig
 		// ClientTLS holds the TLS configuration used by a service when acting as a client to other services.
 		ClientTLS connection.TLSConfig
 

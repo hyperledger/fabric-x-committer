@@ -13,16 +13,15 @@ server:
       - {{ . }}
       {{- end }}
 monitoring:
-  server:
-    endpoint: {{ .ServiceEndpoints.Metrics | default "localhost:0" }}
-    tls:
-      mode: {{ .ServiceTLS.Mode }}
-      key-path: {{ .ServiceTLS.KeyPath }}
-      cert-path: {{ .ServiceTLS.CertPath }}
-      ca-cert-paths:
-        {{- range .ServiceTLS.CACertPaths }}
-        - {{ . }}
-        {{- end }}
+  endpoint: {{ .ServiceEndpoints.Metrics | default "localhost:0" }}
+  tls:
+    mode: {{ .ServiceTLS.Mode }}
+    key-path: {{ .ServiceTLS.KeyPath }}
+    cert-path: {{ .ServiceTLS.CertPath }}
+    ca-cert-paths:
+      {{- range .ServiceTLS.CACertPaths }}
+      - {{ . }}
+      {{- end }}
 
 verifier:
   endpoints:

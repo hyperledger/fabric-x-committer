@@ -29,7 +29,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -425,9 +424,7 @@ func newQueryServiceTestEnv(t *testing.T, opts *queryServiceTestOpts) *queryServ
 		Server:                connection.NewLocalHostServer(opts.serverTLS),
 		MaxRequestKeys:        opts.maxRequestKeys,
 		Database:              dbConf,
-		Monitoring: monitoring.Config{
-			Server: connection.NewLocalHostServer(test.InsecureTLSConfig),
-		},
+		Monitoring:            connection.NewLocalHostServer(test.InsecureTLSConfig),
 	}
 
 	qs := NewQueryService(config)

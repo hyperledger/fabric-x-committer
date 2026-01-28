@@ -184,7 +184,7 @@ func (c *Service) Run(ctx context.Context) error {
 	g, eCtx := errgroup.WithContext(canCtx)
 
 	g.Go(func() error {
-		_ = c.metrics.StartPrometheusServer(eCtx, c.config.Monitoring.Server, c.monitorQueues)
+		_ = c.metrics.StartPrometheusServer(eCtx, c.config.Monitoring, c.monitorQueues)
 		// We don't return error here to avoid stopping the service due to monitoring error.
 		// But we use the errgroup to ensure the method returns only when the server exits.
 		return nil

@@ -47,7 +47,7 @@ func NewProvider() *Provider {
 func (p *Provider) StartPrometheusServer(
 	ctx context.Context, serverConfig *connection.ServerConfig, monitor ...func(context.Context),
 ) error {
-	logger.Debugf("Creating prometheus server with TLS mode: %v", serverConfig.TLS.Mode)
+	logger.Infof("Creating prometheus server with TLS mode: %v", serverConfig.TLS.Mode)
 	var securedMetrics bool
 	// Generate TLS configuration from the server config.
 	serverTLSConfig, err := connection.NewServerTLSConfig(serverConfig.TLS)
@@ -210,6 +210,7 @@ func MakeMetricsURL(address, tlsMode string) (string, bool, error) {
 		securedMetrics bool
 		scheme         string
 	)
+	logger.Infof("tls-mode-metricsURL: %v", tlsMode)
 	switch tlsMode {
 	case connection.UnmentionedTLSMode, connection.NoneTLSMode:
 		scheme = httpScheme
