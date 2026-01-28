@@ -98,6 +98,8 @@ const (
 	DefaultTLSMinVersion = tls.VersionTLS12
 )
 
+// Enabled reports whether TLS is configured to be active.
+// It returns true if the mode is set to either OneSideTLSMode or MutualTLSMode.
 func (c *TLSConfig) Enabled() bool {
 	return c.Mode == OneSideTLSMode || c.Mode == MutualTLSMode
 }

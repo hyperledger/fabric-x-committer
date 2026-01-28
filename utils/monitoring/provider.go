@@ -206,9 +206,9 @@ func (p *Provider) Registry() *prometheus.Registry {
 
 // MakeMetricsURL construct the Prometheus metrics URL.
 // based on the secure level, we set the url scheme to http or https.
-func MakeMetricsURL(address string, tls *tls.Config) (string, error) {
+func MakeMetricsURL(address string, tlsConf *tls.Config) (string, error) {
 	scheme := httpScheme
-	if tls != nil {
+	if tlsConf != nil {
 		scheme = httpsScheme
 	}
 	ret, err := url.JoinPath(scheme, address, metricsSubPath)
