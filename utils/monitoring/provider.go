@@ -47,7 +47,7 @@ func NewProvider() *Provider {
 func (p *Provider) StartPrometheusServer(
 	ctx context.Context, serverConfig *connection.ServerConfig, monitor ...func(context.Context),
 ) error {
-	logger.Infof("Creating prometheus server with TLS mode: %v", serverConfig.TLS.Mode)
+	logger.Debugf("Creating prometheus server with TLS mode: %v", serverConfig.TLS.Mode)
 	var securedMetrics bool
 	// Generate TLS configuration from the server config.
 	serverTLSConfig, err := connection.NewServerTLSConfig(serverConfig.TLS)
