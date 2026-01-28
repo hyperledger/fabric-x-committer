@@ -545,6 +545,7 @@ func limitToString(m *adapters.GenerateLimit) string {
 }
 
 func mustGetTLSConfig(t *testing.T, tlsConfig connection.TLSConfig) *tls.Config {
+	t.Helper()
 	clientTLSConfig, err := connection.NewClientTLSConfig(tlsConfig)
 	require.NoError(t, err)
 	return clientTLSConfig
