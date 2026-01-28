@@ -15,11 +15,11 @@ server:
 monitoring:
   endpoint: {{ .ServiceEndpoints.Metrics | default "localhost:0" }}
   tls:
-    mode: {{ .ServiceTLS.Mode }}
-    key-path: {{ .ServiceTLS.KeyPath }}
-    cert-path: {{ .ServiceTLS.CertPath }}
+    mode: {{ .MonitorTLS.Mode }}
+    key-path: {{ .MonitorTLS.KeyPath }}
+    cert-path: {{ .MonitorTLS.CertPath }}
     ca-cert-paths:
-      {{- range .ServiceTLS.CACertPaths }}
+      {{- range .MonitorTLS.CACertPaths }}
       - {{ . }}
       {{- end }}
 
