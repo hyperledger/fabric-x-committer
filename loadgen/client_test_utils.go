@@ -37,12 +37,12 @@ func eventuallyMetrics(
 }
 
 // DefaultClientConf returns default config values for client testing.
-func DefaultClientConf(t *testing.T, metricsTLSConfig connection.TLSConfig) *ClientConfig {
+func DefaultClientConf(t *testing.T, metricsTLS connection.TLSConfig) *ClientConfig {
 	t.Helper()
 	return &ClientConfig{
 		Server: connection.NewLocalHostServer(test.InsecureTLSConfig),
 		Monitoring: metrics.Config{
-			ServerConfig: *connection.NewLocalHostServer(metricsTLSConfig),
+			ServerConfig: *connection.NewLocalHostServer(metricsTLS),
 		},
 		LoadProfile: &workload.Profile{
 			Key:   workload.KeyProfile{Size: 32},

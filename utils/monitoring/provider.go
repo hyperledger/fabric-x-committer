@@ -8,6 +8,7 @@ package monitoring
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -47,8 +48,7 @@ func NewProvider() *Provider {
 func (p *Provider) StartPrometheusServer(
 	ctx context.Context, serverConfig *connection.ServerConfig, monitor ...func(context.Context),
 ) error {
-	logger.Debugf("Creating prometheus server with TLS mode: %v", serverConfig.TLS.Mode)
-	var securedMetrics bool
+	logger.Debugf("Creating prometheus server with secure mode: %v", serverConfig.TLS.Mode)
 	// Generate TLS configuration from the server config.
 	serverTLSConfig, err := connection.NewServerTLSConfig(serverConfig.TLS)
 	if err != nil {
@@ -76,7 +76,7 @@ func (p *Provider) StartPrometheusServer(
 	}
 	defer connection.CloseConnectionsLog(l)
 
-	p.url, securedMetrics, err = MakeMetricsURL(l.Addr().String(), serverConfig.TLS.Mode)
+	p.url, err = MakeMetricsURL(l.Addr().String(), serverTLSConfig)
 	if err != nil {
 		return err
 	}
@@ -85,7 +85,7 @@ func (p *Provider) StartPrometheusServer(
 	g.Go(func() error {
 		logger.Infof("Prometheus serving on URL: %s", p.url)
 		defer logger.Info("Prometheus stopped serving")
-		if securedMetrics {
+		if serverConfig.TLS.Enabled() {
 			return server.ServeTLS(l, serverConfig.TLS.CertPath, serverConfig.TLS.KeyPath)
 		}
 		return server.Serve(l)
@@ -205,21 +205,12 @@ func (p *Provider) Registry() *prometheus.Registry {
 }
 
 // MakeMetricsURL construct the Prometheus metrics URL.
-func MakeMetricsURL(address, tlsMode string) (string, bool, error) {
-	var (
-		securedMetrics bool
-		scheme         string
-	)
-	logger.Infof("tls-mode-metricsURL: %v", tlsMode)
-	switch tlsMode {
-	case connection.UnmentionedTLSMode, connection.NoneTLSMode:
-		scheme = httpScheme
-	case connection.OneSideTLSMode, connection.MutualTLSMode:
+// based on the secure level, we set the url scheme to http or https.
+func MakeMetricsURL(address string, tls *tls.Config) (string, error) {
+	scheme := httpScheme
+	if tls != nil {
 		scheme = httpsScheme
-		securedMetrics = true
-	default:
-		return "", false, errors.Newf("unknown TLS mode: %s", tlsMode)
 	}
 	ret, err := url.JoinPath(scheme, address, metricsSubPath)
-	return ret, securedMetrics, errors.Wrap(err, "failed to make prometheus URL")
+	return ret, errors.Wrap(err, "failed to make prometheus URL")
 }

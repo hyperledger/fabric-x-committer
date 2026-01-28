@@ -80,7 +80,7 @@ func TestLoadGenForLoadGen(t *testing.T) {
 
 					t.Log("Start distributed loadgen")
 					test.RunServiceAndGrpcForTest(t.Context(), t, subClient, subClientConf.Server)
-					testLoadGenerator(t, clientConf, mustGetTLSConfig(t, clientTLSConfig))
+					testLoadGenerator(t, clientConf, test.MustGetTLSConfig(t, clientTLSConfig))
 				})
 			}
 		})
@@ -102,7 +102,7 @@ func TestLoadGenForVCService(t *testing.T) {
 						NumServices: 2, ServerCreds: serverTLSConfig,
 					})
 					clientConf.Adapter.VCClient = test.NewTLSMultiClientConfig(clientTLSConfig, env.Endpoints...)
-					testLoadGenerator(t, clientConf, mustGetTLSConfig(t, clientTLSConfig))
+					testLoadGenerator(t, clientConf, test.MustGetTLSConfig(t, clientTLSConfig))
 				})
 			}
 		})
@@ -122,7 +122,7 @@ func TestLoadGenForSigVerifier(t *testing.T) {
 					clientConf.Limit = limit
 					clientConf.Adapter.VerifierClient = startVerifiers(t, serverTLSConfig, clientTLSConfig)
 					// Start client
-					testLoadGenerator(t, clientConf, mustGetTLSConfig(t, clientTLSConfig))
+					testLoadGenerator(t, clientConf, test.MustGetTLSConfig(t, clientTLSConfig))
 				})
 			}
 		})
@@ -190,7 +190,7 @@ func TestLoadGenForCoordinator(t *testing.T) {
 					clientConf.Adapter.CoordinatorClient = test.NewTLSClientConfig(
 						clientTLSConfig, &cConf.Server.Endpoint,
 					)
-					testLoadGenerator(t, clientConf, mustGetTLSConfig(t, clientTLSConfig))
+					testLoadGenerator(t, clientConf, test.MustGetTLSConfig(t, clientTLSConfig))
 				})
 			}
 		})
@@ -255,7 +255,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 						OrdererServers: ordererServers,
 						SidecarClient:  test.NewTLSClientConfig(clientTLSConfig, &sidecarServerConf.Endpoint),
 					}
-					testLoadGenerator(t, clientConf, mustGetTLSConfig(t, clientTLSConfig))
+					testLoadGenerator(t, clientConf, test.MustGetTLSConfig(t, clientTLSConfig))
 				})
 			}
 		})
@@ -327,9 +327,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 						Orderer:              sidecarConf.Orderer,
 						BroadcastParallelism: 5,
 					}
-					metricsTLS, err := connection.NewClientTLSConfig(clientTLSConfig)
-					require.NoError(t, err)
-					testLoadGenerator(t, clientConf, metricsTLS)
+					testLoadGenerator(t, clientConf, test.MustGetTLSConfig(t, clientTLSConfig))
 				})
 			}
 		})
@@ -386,7 +384,7 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 						},
 						BroadcastParallelism: 5,
 					}
-					testLoadGenerator(t, clientConf, mustGetTLSConfig(t, clientTLSConfig))
+					testLoadGenerator(t, clientConf, test.MustGetTLSConfig(t, clientTLSConfig))
 				})
 			}
 		})
@@ -542,11 +540,4 @@ func limitToString(m *adapters.GenerateLimit) string {
 		return "<empty>"
 	}
 	return strings.Join(out, ",")
-}
-
-func mustGetTLSConfig(t *testing.T, tlsConfig connection.TLSConfig) *tls.Config {
-	t.Helper()
-	clientTLSConfig, err := connection.NewClientTLSConfig(tlsConfig)
-	require.NoError(t, err)
-	return clientTLSConfig
 }

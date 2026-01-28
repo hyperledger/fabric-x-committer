@@ -8,6 +8,7 @@ package test
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -434,3 +435,11 @@ const (
 	// CreatorID denotes Creator field in protoblocktx.Identity to contain the digest of x509 certificate.
 	CreatorID = 1
 )
+
+// MustGetTLSConfig creates a tls.Config from a connection.TLSConfig while ensuring no error return from that process.
+func MustGetTLSConfig(t *testing.T, tlsConfig connection.TLSConfig) *tls.Config {
+	t.Helper()
+	clientTLSConfig, err := connection.NewClientTLSConfig(tlsConfig)
+	require.NoError(t, err)
+	return clientTLSConfig
+}

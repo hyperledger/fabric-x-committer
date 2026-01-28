@@ -89,9 +89,9 @@ func createAndStartContainerAndItsLogs(
 	}()
 }
 
-func monitorMetric(t *testing.T, metricsPort, tlsMode string, clientTLS *tls.Config) {
+func monitorMetric(t *testing.T, metricsPort string, metricsTLS *tls.Config) {
 	t.Helper()
-	metricsURL, _, err := monitoring.MakeMetricsURL(net.JoinHostPort(localhost, metricsPort), tlsMode)
+	metricsURL, err := monitoring.MakeMetricsURL(net.JoinHostPort(localhost, metricsPort), metricsTLS)
 	require.NoError(t, err)
 
 	t.Logf("Check the load generator metrics from: %s", metricsURL)
@@ -99,7 +99,7 @@ func monitorMetric(t *testing.T, metricsPort, tlsMode string, clientTLS *tls.Con
 	// We log only if there are changes to avoid spamming the log.
 	prevCount := -1
 	require.Eventually(t, func() bool {
-		count := test.GetMetricValueFromURL(t, metricsURL, monitoredMetric, clientTLS)
+		count := test.GetMetricValueFromURL(t, metricsURL, monitoredMetric, metricsTLS)
 		if prevCount != count {
 			t.Logf("%s: %d", monitoredMetric, count)
 		}

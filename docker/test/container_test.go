@@ -216,9 +216,7 @@ func TestStartTestNode(t *testing.T) {
 	require.True(t, ok)
 	t.Logf("Received block #%d with %d TXs", b.Header.Number, len(b.Data.Data))
 
-	monitorMetric(t,
-		getContainerMappedHostPort(ctx, t, containerName, loadGenMetricsPort), connection.NoneTLSMode, nil,
-	)
+	monitorMetric(t, getContainerMappedHostPort(ctx, t, containerName, loadGenMetricsPort), nil)
 }
 
 func startCommitter(ctx context.Context, t *testing.T, params startNodeParameters) {

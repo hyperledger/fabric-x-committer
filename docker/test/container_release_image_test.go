@@ -117,13 +117,10 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					startLoadgenNodeWithReleaseImage(ctx, t, params.asNode(loadgenNode))
 
 					metricsClientTLSConfig, _ := credsFactory.CreateClientCredentials(t, mode)
-					metricsTLS, err := connection.NewClientTLSConfig(metricsClientTLSConfig)
-					require.NoError(t, err)
-
 					monitorMetric(t,
 						getContainerMappedHostPort(
 							ctx, t, assembleContainerName("loadgen", mode, dbType), loadGenMetricsPort,
-						), mode, metricsTLS,
+						), test.MustGetTLSConfig(t, metricsClientTLSConfig),
 					)
 				})
 			}

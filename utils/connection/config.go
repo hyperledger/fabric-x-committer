@@ -98,6 +98,10 @@ const (
 	DefaultTLSMinVersion = tls.VersionTLS12
 )
 
+func (c *TLSConfig) Enabled() bool {
+	return c.Mode == OneSideTLSMode || c.Mode == MutualTLSMode
+}
+
 // Validate checks that the rate limit configuration is valid.
 func (c *RateLimitConfig) Validate() error {
 	if c == nil || c.RequestsPerSecond <= 0 {
