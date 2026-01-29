@@ -27,11 +27,11 @@ server:
 monitoring:
   endpoint: {{ .ServiceEndpoints.Metrics | default "localhost:0" }}
   tls:
-    mode: {{ .MonitorTLS.Mode }}
-    key-path: {{ .MonitorTLS.KeyPath }}
-    cert-path: {{ .MonitorTLS.CertPath }}
+    mode: {{ .MetricsTLS.Mode }}
+    key-path: {{ .MetricsTLS.KeyPath }}
+    cert-path: {{ .MetricsTLS.CertPath }}
     ca-cert-paths:
-      {{- range .MonitorTLS.CACertPaths }}
+      {{- range .MetricsTLS.CACertPaths }}
       - {{ . }}
       {{- end }}
 
