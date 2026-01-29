@@ -37,8 +37,6 @@ monitoring:
 
 orderer:
   connection:
-    endpoints:
-      - id=0,broadcast,deliver,orderer:7050
     tls: &clientTLS
       mode: mtls
       cert-path: /client-certs/public-key.pem
@@ -63,6 +61,9 @@ ledger:
   path: /root/sc/ledger
 notification:
   max-timeout: 10m
+
+bootstrap:
+  genesis-block-file-path: /root/material/config-block.pb.bin
 
 last-committed-block-set-interval: 5s
 waiting-txs-limit: 20_000_000
