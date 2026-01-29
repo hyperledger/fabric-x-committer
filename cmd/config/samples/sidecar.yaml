@@ -78,6 +78,9 @@ ledger:
 notification:
   max-timeout: 10m
 
+bootstrap:
+  genesis-block-file-path: /root/material/config-block.pb.bin
+
 last-committed-block-set-interval: 5s
 waiting-txs-limit: 20_000_000
 channel-buffer-size: 100

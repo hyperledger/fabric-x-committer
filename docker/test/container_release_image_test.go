@@ -16,7 +16,6 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/go-connections/nat"
 	"github.com/google/uuid"
-	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
@@ -31,9 +30,10 @@ const (
 	committerReleaseImage = "docker.io/hyperledger/fabric-x-committer:latest"
 	loadgenReleaseImage   = "docker.io/hyperledger/fabric-x-loadgen:latest"
 	networkPrefixName     = test.DockerNamesPrefix + "_network"
-	genBlockFile          = "sc-genesis-block.proto.bin"
 	// containerConfigPath is the path to the config directory inside the container.
 	containerConfigPath = "/root/config"
+	// containerMaterialPath is the path to the material directory inside the container.
+	containerMaterialPath = "/root/material"
 	// localConfigPath is the path to the sample YAML configuration of each service.
 	localConfigPath = "../../cmd/config/samples"
 
@@ -62,14 +62,12 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	ctx := t.Context()
 
 	t.Log("creating config-block")
-	configBlockPath := filepath.Join(t.TempDir(), genBlockFile)
 	v := config.NewViperWithLoadGenDefaults()
 	c, err := config.ReadLoadGenYamlAndSetupLogging(v, filepath.Join(localConfigPath, "loadgen.yaml"))
 	require.NoError(t, err)
 	c.LoadProfile.Policy.CryptoMaterialPath = t.TempDir()
-	configBlock, err := workload.CreateConfigBlock(&c.LoadProfile.Policy)
+	err = workload.PrepareCryptoMaterial(&c.LoadProfile.Policy)
 	require.NoError(t, err)
-	require.NoError(t, configtxgen.WriteOutputBlock(configBlock, configBlockPath))
 
 	dbNode := "db"
 	ordererNode := "orderer"
@@ -91,11 +89,11 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					})
 
 					params := startNodeParameters{
-						credsFactory:    credsFactory,
-						networkName:     networkName,
-						tlsMode:         mode,
-						configBlockPath: configBlockPath,
-						dbType:          dbType,
+						credsFactory: credsFactory,
+						networkName:  networkName,
+						tlsMode:      mode,
+						materialPath: c.LoadProfile.Policy.CryptoMaterialPath,
+						dbType:       dbType,
 					}
 
 					for _, node := range append(committerNodes, dbNode, ordererNode, loadgenNode) {
@@ -212,6 +210,7 @@ func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, param
 				fmt.Sprintf("%s.yaml:/%s.yaml",
 					filepath.Join(mustGetWD(t), localConfigPath, params.node), configPath,
 				),
+				fmt.Sprintf("%s:%s", params.materialPath, containerMaterialPath),
 			),
 		},
 		name: assembleContainerName(params.node, params.tlsMode, params.dbType),
@@ -288,7 +287,7 @@ func startCommitterNodeWithTestImage(
 		hostConfig: &container.HostConfig{
 			NetworkMode: container.NetworkMode(params.networkName),
 			Binds: assembleBinds(t, params,
-				fmt.Sprintf("%s:/%s", params.configBlockPath, filepath.Join(containerConfigPath, genBlockFile)),
+				fmt.Sprintf("%s:%s", params.materialPath, containerMaterialPath),
 			),
 		},
 		name: assembleContainerName(params.node, params.tlsMode, params.dbType),

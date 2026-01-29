@@ -29,7 +29,6 @@
 #   build-docker                 - Build all binaries in a docker container
 #   build-test-node-image        - Build the test node docker image
 #   build-release-image          - Build the release docker image
-#   build-test-genesis-block     - Build the test genesis block
 #
 # Benchmarks:
 #   bench-loadgen                - Run load generation benchmarks
@@ -305,7 +304,7 @@ build-docker: FORCE $(cache_dir) $(mod_cache_dir)
     make build output_dir=$(output_dir) env="$(env)"
 	scripts/amend-permissions.sh "$(cache_dir)" "$(mod_cache_dir)"
 
-build-test-node-image: build-arch build-test-genesis-block
+build-test-node-image: build-arch
 	${docker_cmd} build $(docker_build_flags) \
 		-f $(dockerfile_test_node_dir)/Dockerfile \
 		-t ${image_namespace}/committer-test-node:${version} \
@@ -315,13 +314,6 @@ build-test-node-image: build-arch build-test-genesis-block
 build-release-image: build-arch
 	./scripts/build-release-image.sh \
 		$(docker_cmd) $(version) $(image_namespace) $(dockerfile_release_dir) $(multiplatform) $(arch_output_dir_rel)
-
-build-test-genesis-block: $(output_dir) build-cli-loadgen
-	@# We load the env from the Dockerfile to use them to generate the config block.
-	env -v $(shell grep '^ENV' $(dockerfile_test_node_dir)/Dockerfile | cut -d' ' -f2- | xargs) \
-		bin/loadgen make-genesis-block \
-		-c "$(project_dir)/cmd/config/samples/loadgen.yaml" \
-		>"$(output_dir)/sc-genesis-block.proto.bin"
 
 #########################
 # Linter

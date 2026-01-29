@@ -15,7 +15,7 @@ server:
 block-size: 1024
 block-timeout: 30s
 send-config-block: true
-config-block-path: /root/config/sc-genesis-block.proto.bin
+config-block-path: /root/material/config-block.pb.bin
 
 logging:
   development: true

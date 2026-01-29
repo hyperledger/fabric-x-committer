@@ -61,7 +61,7 @@ jobs:
         run: scripts/install-dev-dependencies.sh
 
       - name: Build cross-architecture binaries
-        run: make build-arch build-test-genesis-block
+        run: make build-arch
 
       - name: Set image build prefix and metadata
         run: |

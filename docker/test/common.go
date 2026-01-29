@@ -18,6 +18,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -32,14 +33,14 @@ type (
 		name       string
 	}
 	startNodeParameters struct {
-		credsFactory    *test.CredentialsFactory
-		node            string
-		networkName     string
-		tlsMode         string
-		configBlockPath string
-		dbType          string
-		dbPassword      string
-		cmd             []string
+		credsFactory *test.CredentialsFactory
+		node         string
+		networkName  string
+		tlsMode      string
+		materialPath string
+		dbType       string
+		dbPassword   string
+		cmd          []string
 	}
 )
 
@@ -50,10 +51,9 @@ func (p *startNodeParameters) asNode(node string) startNodeParameters {
 }
 
 const (
-	channelName         = "mychannel"
-	monitoredMetric     = "loadgen_transaction_committed_total"
-	containerPrefixName = "sc_test"
-	testNodeImage       = "docker.io/hyperledger/committer-test-node:latest"
+	channelName     = "mychannel"
+	monitoredMetric = "loadgen_transaction_committed_total"
+	testNodeImage   = "docker.io/hyperledger/committer-test-node:latest"
 )
 
 func createAndStartContainerAndItsLogs(
@@ -150,7 +150,11 @@ func getContainerMappedHostPort(
 	ctx context.Context, t *testing.T, containerName, containerPort string,
 ) string {
 	t.Helper()
-	info, err := createDockerClient(t).ContainerInspect(ctx, containerName)
+	c := createDockerClient(t)
+	defer func() {
+		assert.NoError(t, c.Close())
+	}()
+	info, err := c.ContainerInspect(ctx, containerName)
 	require.NoError(t, err)
 	require.NotNil(t, info)
 	portKey := nat.Port(fmt.Sprintf("%s/tcp", containerPort))

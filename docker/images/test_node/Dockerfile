@@ -15,6 +15,7 @@ ARG TARGETARCH
 ARG VERSION
 
 ENV CONFIGS_PATH=/root/config
+ENV MATERIAL_PATH=/root/material
 ENV BINS_PATH=/root/bin
 ENV PATH="$BINS_PATH:$PATH"
 
@@ -26,6 +27,7 @@ ENV SC_VC_DATABASE_ENDPOINTS=localhost:5433
 ENV SC_SIDECAR_COMMITTER_ENDPOINT=localhost:9001
 ENV SC_SIDECAR_ORDERER_ORGANIZATIONS_ORG0_ENDPOINTS="id=0,broadcast,deliver,localhost:7050"
 ENV SC_LOADGEN_ORDERER_CLIENT_ORDERER_ORGANIZATIONS_ORG0_ENDPOINTS="id=0,broadcast,deliver,localhost:7050"
+# This variable defines the Orderer endpoints in the generated genesis block.
 ENV SC_LOADGEN_LOAD_PROFILE_POLICY_ORDERER_ENDPOINTS="id=0,msp-id=org,broadcast,deliver,localhost:7050"
 ENV SC_LOADGEN_ORDERER_CLIENT_SIDECAR_CLIENT_ENDPOINT=localhost:4001
 
@@ -36,8 +38,11 @@ ENV SC_QUERY_DATABASE_TLS_MODE="none"
 COPY ${ARCHBIN_PATH}/${TARGETOS}-${TARGETARCH}/* ${BINS_PATH}/
 COPY ./docker/images/test_node/run ${BINS_PATH}/
 COPY ./cmd/config/samples $CONFIGS_PATH
-COPY ./bin/sc-genesis-block.proto.bin $CONFIGS_PATH/
 RUN chmod a+x ${BINS_PATH}/*
+
+# Generate the genesis block and the crypto material for the test-container.
+# This includes private keys, public keys, TLS keys, etc.
+RUN ${BINS_PATH}/loadgen make-material -c "${CONFIGS_PATH}/loadgen.yaml"
 
 # Expose ports
 EXPOSE 7050 4001 2114 7001 2117 2110

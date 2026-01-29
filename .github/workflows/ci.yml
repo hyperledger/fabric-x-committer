@@ -112,7 +112,7 @@ jobs:
       - run: make test-integration-db-resiliency
 
   container-test:
-    name: Build and test all-in-one test image (container)
+    name: Build and test container images
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
