@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"fmt"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -26,6 +27,7 @@ import (
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
@@ -46,12 +48,13 @@ type (
 		ConfigBlockPath  string                     `mapstructure:"config-block-path"`
 		SendConfigBlock  bool                       `mapstructure:"send-config-block"`
 
-		// this field is only used for internal testing.
+		// TestServerParameters is only used for internal testing.
 		TestServerParameters test.StartServerParameters
 	}
 
 	// Orderer supports running multiple mock-orderer services which mocks a consortium.
 	Orderer struct {
+		streamStateManager[OrdererStreamState, PartyState]
 		config      *OrdererConfig
 		configBlock *common.Block
 		inEnvs      chan *common.Envelope
@@ -61,15 +64,16 @@ type (
 		healthcheck *health.Server
 	}
 
-	// HoldingOrderer allows holding a block.
-	HoldingOrderer struct {
-		*Orderer
-		HoldFromBlock atomic.Uint64
+	// OrdererStreamState holds the streams state.
+	OrdererStreamState struct {
+		StreamInfo
+		*PartyState
 	}
 
-	holdingStream struct {
-		ab.AtomicBroadcast_DeliverServer
-		holdBlock *atomic.Uint64
+	// PartyState holds the shared state of all streams of a party.
+	PartyState struct {
+		PartyID       uint32
+		HoldFromBlock atomic.Uint64
 	}
 
 	blockCache struct {
@@ -136,7 +140,7 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 			return nil, errors.Wrap(err, "failed to read config block")
 		}
 	}
-	numServices := max(config.TestServerParameters.NumService, len(config.ServerConfigs))
+	numServices := max(1, config.TestServerParameters.NumService, len(config.ServerConfigs))
 	return &Orderer{
 		config:      config,
 		configBlock: configBlock,
@@ -150,11 +154,13 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 
 // Broadcast receives TXs and returns ACKs.
 func (o *Orderer) Broadcast(stream ab.AtomicBroadcast_BroadcastServer) error {
-	addr := util.ExtractRemoteAddress(stream.Context())
-	logger.Infof("Starting broadcast with %s", addr)
-	defer logger.Infof("Finished broadcast with %s", addr)
+	streamCtx := stream.Context()
+	clientAddr := util.ExtractRemoteAddress(streamCtx)
+	serverAddr := utils.ExtractServerAddress(streamCtx)
+	logger.Infof("Starting broadcast on server [%s] with client [%s]", serverAddr, clientAddr)
+	defer logger.Infof("Finished broadcast on server [%s] with client [%s]", serverAddr, clientAddr)
 
-	inEnvs := channel.NewWriter(stream.Context(), o.inEnvs)
+	inEnvs := channel.NewWriter(streamCtx, o.inEnvs)
 	for {
 		env, err := stream.Recv()
 		if err != nil {
@@ -173,16 +179,25 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 	if streamErr != nil {
 		return streamErr //nolint:wrapcheck // already a GRPC error.
 	}
-	start, end, seekErr := readSeekInfo(env)
+	seekInfo, seekErr := readSeekInfo(env)
+	if seekErr != nil {
+		return grpcerror.WrapInvalidArgument(seekErr)
+	}
+	start, end, seekErr := parseSeekInfoStartStop(seekInfo)
 	if seekErr != nil {
 		return grpcerror.WrapInvalidArgument(seekErr)
 	}
 
-	addr := util.ExtractRemoteAddress(stream.Context())
-	logger.Infof("Starting delivery with %s [%d -> %d]", addr, start, end)
-	defer logger.Infof("Finished delivery with %s", addr)
-
 	ctx := stream.Context()
+	state := o.registerStream(ctx, func(info StreamInfo, p *PartyState) *OrdererStreamState {
+		return &OrdererStreamState{
+			StreamInfo: info,
+			PartyState: p,
+		}
+	})
+	logger.Infof("Mock Orderer starting deliver on server [%s], party [%d], from block %d",
+		state.ServerEndpoint, state.PartyID, start)
+
 	// Ensures releasing the waiters when this context ends.
 	stop := o.cache.releaseAfter(ctx)
 	defer stop()
@@ -190,71 +205,81 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 	var prevBlock *common.Block
 	for i := start; i <= end && ctx.Err() == nil; i++ {
 		b, err := o.cache.getBlock(ctx, i)
-		if errors.Is(err, ErrLostBlock) {
-			// We send an empty block for the sake of the delivery progress.
-			b = &common.Block{Data: &common.BlockData{}}
-			addBlockHeader(prevBlock, b)
-		} else if err != nil {
+		if err != nil && !errors.Is(err, ErrLostBlock) {
 			return grpcerror.WrapCancelled(err)
 		}
-		if err = stream.Send(&ab.DeliverResponse{Type: &ab.DeliverResponse_Block{Block: b}}); err != nil {
+		if b == nil {
+			logger.Warnf("Lost block. Sending an empty block for the sake of the delivery progress.")
+			b = &common.Block{Data: &common.BlockData{}}
+			addBlockHeader(prevBlock, b)
+		}
+		msg := state.prepareResponse(ctx, b)
+		if msg == nil {
+			break
+		}
+		if err = stream.Send(msg); err != nil {
 			return err //nolint:wrapcheck // already a GRPC error.
 		}
-		logger.Debugf("Emitted block %d", b.Header.Number)
+		logger.Debugf("Emitted block [#%d] by %s", b.Header.Number, state)
 		prevBlock = b
 	}
 	return grpcerror.WrapCancelled(ctx.Err())
 }
 
-// Deliver calls Orderer.Deliver, but with a holding stream.
-func (o *HoldingOrderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
-	return o.Orderer.Deliver(&holdingStream{
-		AtomicBroadcast_DeliverServer: stream,
-		holdBlock:                     &o.HoldFromBlock,
-	})
-}
+func (s *OrdererStreamState) prepareResponse(ctx context.Context, block *common.Block) *ab.DeliverResponse {
+	blockNumber := block.Header.Number
 
-// Release blocks.
-func (o *HoldingOrderer) Release() {
-	o.HoldFromBlock.Store(math.MaxUint64)
-}
-
-// RegisterService registers for the orderer's GRPC services.
-func (o *HoldingOrderer) RegisterService(server *grpc.Server) {
-	ab.RegisterAtomicBroadcastServer(server, o)
-	healthgrpc.RegisterHealthServer(server, o.healthcheck)
-}
-
-func (s *holdingStream) Send(msg *ab.DeliverResponse) error {
-	block, ok := msg.Type.(*ab.DeliverResponse_Block)
-	if ok {
-		// A simple busy wait loop is sufficient here.
-		for block.Block.Header.Number >= s.holdBlock.Load() {
-			logger.Infof("Holding block: %d (up to %d)", block.Block.Header.Number, s.holdBlock.Load())
-			select {
-			case <-s.Context().Done():
-				return nil
-			case <-time.NewTimer(time.Second).C:
-			}
+	// Block holding: a simple busy wait loop is sufficient here.
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	logHolding := false
+	for s.shouldHold(blockNumber) {
+		if !logHolding {
+			logger.Infof("Holding block: %d by %s", blockNumber, s)
+			logHolding = true
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-tick.C:
 		}
 	}
-	//nolint:wrapcheck // This is a mock for an external method.
-	return s.AtomicBroadcast_DeliverServer.Send(msg)
+	if logHolding {
+		logger.Infof("Releasing block: %d (up to %d) by %s",
+			blockNumber, s.HoldFromBlock.Load(), s)
+	}
+	return &ab.DeliverResponse{Type: &ab.DeliverResponse_Block{Block: block}}
 }
 
-func readSeekInfo(env *common.Envelope) (start, end uint64, err error) {
-	start = 0
-	end = math.MaxUint64
+func (s *OrdererStreamState) shouldHold(blockNumber uint64) bool {
+	holdValue := s.HoldFromBlock.Load()
+	if holdValue == 0 {
+		// To avoid manual initialization, we assume "0" means not initialized.
+		return false
+	}
+	return blockNumber >= holdValue
+}
 
+// String outputs a human-readable identifier for this stream.
+func (s *OrdererStreamState) String() string {
+	return fmt.Sprintf("{party [%d] stream [%d]}", s.PartyID, s.Index)
+}
+
+func readSeekInfo(env *common.Envelope) (seekInfo *ab.SeekInfo, err error) {
 	payload, err := protoutil.UnmarshalPayload(env.Payload)
 	if err != nil {
-		return start, end, errors.Wrap(err, "failed unmarshalling payload")
+		return nil, errors.Wrap(err, "failed unmarshalling payload")
 	}
-	seekInfo := &ab.SeekInfo{}
+	seekInfo = &ab.SeekInfo{}
 	if err = proto.Unmarshal(payload.Data, seekInfo); err != nil {
-		return start, end, errors.Wrap(err, "failed unmarshalling seek info")
+		return nil, errors.Wrap(err, "failed unmarshalling seek info")
 	}
+	return seekInfo, nil
+}
 
+func parseSeekInfoStartStop(seekInfo *ab.SeekInfo) (start, end uint64, err error) {
+	start = 0
+	end = math.MaxUint64
 	if startMsg := seekInfo.Start.GetSpecified(); startMsg != nil {
 		start = startMsg.Number
 	}
