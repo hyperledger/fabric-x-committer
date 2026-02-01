@@ -53,11 +53,8 @@ func TestConfigUpdate(t *testing.T) {
 			ConfigBlockPath: c.SystemConfig.ConfigBlockPath,
 			SendConfigBlock: true,
 		},
-		NumHolders: 1,
 	})
 	t.Log(c.SystemConfig.Endpoints.Orderer)
-	t.Log(ordererEnv.AllRealOrdererEndpoints())
-
 	c.Start(t, runner.CommitterTxPath)
 
 	c.CreateNamespacesAndCommit(t, "1")
@@ -95,7 +92,7 @@ func TestConfigUpdate(t *testing.T) {
 			MetaNamespaceVerificationKey: metaPolicy.GetThresholdRule().GetPublicKey(),
 		})
 	}
-	submitConfigBlock(ordererEnv.AllRealOrdererEndpoints())
+	submitConfigBlock(ordererEnv.AllRealEndpoints())
 	c.ValidateExpectedResultsInCommittedBlock(t, &runner.ExpectedStatusInBlock{
 		Statuses: []committerpb.Status{committerpb.Status_COMMITTED},
 	})
@@ -118,17 +115,26 @@ func TestConfigUpdate(t *testing.T) {
 	sendTXs()
 
 	t.Log("Update the sidecar to use a holder orderer group")
-	submitConfigBlock(ordererEnv.AllHolderEndpoints())
+	allEndpoints := ordererEnv.AllRealEndpoints()
+	holdingEndpoints, nonHoldingEndpoints := allEndpoints[:1], allEndpoints[1:]
+	holdingEndpoint := holdingEndpoints[0].Address()
+	submitConfigBlock(holdingEndpoints)
 	c.ValidateExpectedResultsInCommittedBlock(t, &runner.ExpectedStatusInBlock{
 		Statuses: []committerpb.Status{committerpb.Status_COMMITTED},
 	})
 
-	holdingBlock := c.LastReceivedBlockNumber + 2
-	t.Logf("Holding block #%d", holdingBlock)
-	ordererEnv.Holder.HoldFromBlock.Store(holdingBlock)
+	t.Log("Validate only the holder stream remains")
+	mock.RequireStreams(t, ordererEnv.Orderer, 1)
+	mock.RequireStreamsWithEndpoints(t, ordererEnv.Orderer, 1, holdingEndpoint)
 
 	t.Log("Restart sidecar to check that it restarts using the holding orderer")
 	c.Sidecar.Restart(t)
+	mock.RequireStreams(t, ordererEnv.Orderer, 1)
+	holdingStream := mock.RequireStreamsWithEndpoints(t, ordererEnv.Orderer, 1, holdingEndpoint)[0]
+
+	holdingBlock := c.NextExpectedBlockNumber + 1
+	t.Logf("Holding block #%d", holdingBlock)
+	holdingStream.HoldFromBlock.Store(holdingBlock)
 
 	t.Log("Sanity check")
 	sendTXs()
@@ -137,10 +143,10 @@ func TestConfigUpdate(t *testing.T) {
 	// We submit the config that returns to the non-holding orderer.
 	// But it should not be processed as the sidecar should have switched to the holding
 	// orderer.
-	submitConfigBlock(ordererEnv.AllRealOrdererEndpoints())
+	submitConfigBlock(nonHoldingEndpoints)
 	select {
 	case <-c.CommittedBlock:
-		t.Fatal("the sidecar cannot receive blocks since its orderer holds them")
+		t.Fatal("The sidecar should not receive blocks since its orderer holds them")
 	case <-time.After(30 * time.Second):
 		t.Log("Fantastic")
 	}
@@ -152,12 +158,13 @@ func TestConfigUpdate(t *testing.T) {
 	require.Equal(t, holdingBlock, nextBlock.Number)
 
 	t.Log("We advance the holder by one to allow the config block to pass through, but not other blocks")
-	ordererEnv.Holder.HoldFromBlock.Add(1)
+	holdingStream.HoldFromBlock.Add(1)
 	c.ValidateExpectedResultsInCommittedBlock(t, &runner.ExpectedStatusInBlock{
 		Statuses: []committerpb.Status{committerpb.Status_COMMITTED},
 	})
 
 	t.Log("The sidecar should use the non-holding orderer, so the holding should not affect the processing")
+	mock.RequireStreamsWithEndpoints(t, ordererEnv.Orderer, 0, holdingEndpoint)
 	sendTXs()
 }
 
@@ -193,7 +200,6 @@ func TestConfigBlockImmediateCommit(t *testing.T) {
 			ConfigBlockPath: c.SystemConfig.ConfigBlockPath,
 			SendConfigBlock: true,
 		},
-		NumHolders: 0,
 	})
 
 	// The Start function internally calls ensureAtLeastLastCommittedBlockNumber(t, 0)
@@ -211,7 +217,7 @@ func TestConfigBlockImmediateCommit(t *testing.T) {
 	submitConfigBlock := func() {
 		ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
 			ChannelID:                    c.SystemConfig.Policy.ChannelID,
-			OrdererEndpoints:             ordererEnv.AllRealOrdererEndpoints(),
+			OrdererEndpoints:             ordererEnv.AllRealEndpoints(),
 			MetaNamespaceVerificationKey: metaPolicy.GetThresholdRule().GetPublicKey(),
 		})
 	}
