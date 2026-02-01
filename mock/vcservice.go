@@ -8,9 +8,7 @@ package mock
 
 import (
 	"context"
-	"maps"
 	"math/rand"
-	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -29,28 +27,34 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 )
 
-// VcService is a mock implementation of servicepb.ValidationAndCommitServiceServer.
-// It is used for testing the client which is the coordinator service.
-type VcService struct {
-	servicepb.ValidationAndCommitServiceServer
-	numBatchesReceived atomic.Uint32
-	nextBlock          atomic.Pointer[servicepb.BlockRef]
-	txsStatus          *fifoCache[*committerpb.TxStatus]
-	txsStatusMu        sync.Mutex
-	healthcheck        *health.Server
-	// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
-	MockFaultyNodeDropSize   int
-	txBatchChannels          map[uint64]chan *servicepb.VcBatch
-	txBatchChannelsMu        sync.Mutex
-	txBatchChannelsIDCounter atomic.Uint64
-}
+type (
+	// VcService is a mock implementation of servicepb.ValidationAndCommitServiceServer.
+	// It is used for testing the client which is the coordinator service.
+	VcService struct {
+		servicepb.ValidationAndCommitServiceServer
+		streamStateManager[VCStreamState, any]
+		nextBlock   atomic.Pointer[servicepb.BlockRef]
+		txsStatus   *fifoCache[*committerpb.TxStatus]
+		txsStatusMu sync.Mutex
+		healthcheck *health.Server
+		// NumBatchesReceived is the number of batches received by VcService.
+		NumBatchesReceived atomic.Uint32
+		// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
+		MockFaultyNodeDropSize int
+	}
+
+	// VCStreamState holds the stream's batch queue.
+	VCStreamState struct {
+		StreamInfo
+		q chan *servicepb.VcBatch
+	}
+)
 
 // NewMockVcService returns a new VcService.
 func NewMockVcService() *VcService {
 	return &VcService{
-		txsStatus:       newFifoCache[*committerpb.TxStatus](defaultTxStatusStorageSize),
-		healthcheck:     connection.DefaultHealthCheckService(),
-		txBatchChannels: make(map[uint64]chan *servicepb.VcBatch),
+		txsStatus:   newFifoCache[*committerpb.TxStatus](defaultTxStatusStorageSize),
+		healthcheck: connection.DefaultHealthCheckService(),
 	}
 }
 
@@ -123,27 +127,19 @@ func (*VcService) SetupSystemTablesAndNamespaces(
 func (v *VcService) StartValidateAndCommitStream(
 	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
-	txBatchChan := make(chan *servicepb.VcBatch)
-	vcID := v.txBatchChannelsIDCounter.Add(1)
-
-	v.txBatchChannelsMu.Lock()
-	v.txBatchChannels[vcID] = txBatchChan
-	v.txBatchChannelsMu.Unlock()
-
-	logger.Info("Starting validate and commit stream")
-	defer func() {
-		logger.Info("Closed validate and commit stream")
-		logger.Info("Removing channel with vcID %s", vcID)
-		v.txBatchChannelsMu.Lock()
-		delete(v.txBatchChannels, vcID)
-		v.txBatchChannelsMu.Unlock()
-	}()
 	g, gCtx := errgroup.WithContext(stream.Context())
+	state := v.registerStream(gCtx, func(info StreamInfo, _ *any) *VCStreamState {
+		return &VCStreamState{
+			StreamInfo: info,
+			q:          make(chan *servicepb.VcBatch),
+		}
+	})
+
 	g.Go(func() error {
-		return v.receiveAndProcessTransactions(gCtx, stream, txBatchChan)
+		return v.receiveAndProcessTransactions(gCtx, stream, state.q)
 	})
 	g.Go(func() error {
-		return v.sendTransactionStatus(gCtx, stream, txBatchChan)
+		return v.sendTransactionStatus(gCtx, stream, state.q)
 	})
 	return grpcerror.WrapCancelled(g.Wait())
 }
@@ -167,7 +163,7 @@ func (v *VcService) receiveAndProcessTransactions(
 			}
 		}
 
-		v.numBatchesReceived.Add(1)
+		v.NumBatchesReceived.Add(1)
 		txBatchChanWriter.Write(txBatch)
 	}
 	return errors.Wrap(ctx.Err(), "context ended")
@@ -210,24 +206,16 @@ func (v *VcService) sendTransactionStatus(
 	return errors.Wrap(ctx.Err(), "context ended")
 }
 
-// GetNumBatchesReceived returns the number of batches received by VcService.
-func (v *VcService) GetNumBatchesReceived() uint32 {
-	return v.numBatchesReceived.Load()
-}
-
 // SubmitTransactions enqueues the given transactions to a queue read by status sending goroutine.
-// This methods helps the test code to bypass the stream to submit transactions to the mock
-// vcservice.
+// This method helps the test code to bypass the stream to submit transactions to the mock vcservice.
 func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *servicepb.VcBatch) error {
-	v.txBatchChannelsMu.Lock()
-	channels := slices.Collect(maps.Values(v.txBatchChannels))
-	v.txBatchChannelsMu.Unlock()
+	states := v.Streams()
 
-	if len(channels) == 0 {
+	if len(states) == 0 {
 		return errors.New("Trying to send transactions before channel created (no channels in map)")
 	}
 
-	txBatchChan := channels[rand.Intn(len(channels))]
-	channel.NewWriter(ctx, txBatchChan).Write(txsBatch)
+	s := states[rand.Intn(len(states))]
+	channel.NewWriter(ctx, s.q).Write(txsBatch)
 	return nil
 }
