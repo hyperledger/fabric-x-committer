@@ -10,9 +10,11 @@ import (
 	"context"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -100,10 +102,8 @@ func StartMockOrderingServices(t *testing.T, conf *OrdererConfig) (
 // OrdererTestEnv allows starting fake and holder services in addition to the regular mock orderer services.
 type OrdererTestEnv struct {
 	Orderer        *Orderer
-	Holder         *HoldingOrderer
 	OrdererServers *test.GrpcServers
 	FakeServers    *test.GrpcServers
-	HolderServers  *test.GrpcServers
 	TestConfig     *OrdererTestConfig
 }
 
@@ -112,7 +112,6 @@ type OrdererTestConfig struct {
 	ChanID                       string
 	Config                       *OrdererConfig
 	NumFake                      int
-	NumHolders                   int
 	MetaNamespaceVerificationKey []byte
 }
 
@@ -120,14 +119,10 @@ type OrdererTestConfig struct {
 func NewOrdererTestEnv(t *testing.T, conf *OrdererTestConfig) *OrdererTestEnv {
 	t.Helper()
 	orderer, ordererServers := StartMockOrderingServices(t, conf.Config)
-	holder := &HoldingOrderer{Orderer: orderer}
-	holder.Release()
 	return &OrdererTestEnv{
 		TestConfig:     conf,
 		Orderer:        orderer,
-		Holder:         holder,
 		OrdererServers: ordererServers,
-		HolderServers:  test.StartGrpcServersForTest(t.Context(), t, conf.NumHolders, holder.RegisterService),
 		FakeServers:    test.StartGrpcServersForTest(t.Context(), t, conf.NumFake, nil),
 	}
 }
@@ -156,15 +151,11 @@ func (e *OrdererTestEnv) SubmitConfigBlock(t *testing.T, conf *workload.ConfigBl
 
 // AllEndpoints returns a list of all the endpoints (real, fake, and holders).
 func (e *OrdererTestEnv) AllEndpoints() []*commontypes.OrdererEndpoint {
-	return slices.Concat(
-		e.AllRealOrdererEndpoints(),
-		e.AllHolderEndpoints(),
-		e.AllFakeEndpoints(),
-	)
+	return slices.Concat(e.AllRealEndpoints(), e.AllFakeEndpoints())
 }
 
-// AllRealOrdererEndpoints returns a list of the real orderer endpoints.
-func (e *OrdererTestEnv) AllRealOrdererEndpoints() []*commontypes.OrdererEndpoint {
+// AllRealEndpoints returns a list of the real orderer endpoints.
+func (e *OrdererTestEnv) AllRealEndpoints() []*commontypes.OrdererEndpoint {
 	return ordererconn.NewEndpoints(0, "org", e.OrdererServers.Configs...)
 }
 
@@ -173,7 +164,33 @@ func (e *OrdererTestEnv) AllFakeEndpoints() []*commontypes.OrdererEndpoint {
 	return ordererconn.NewEndpoints(0, "org", e.FakeServers.Configs...)
 }
 
-// AllHolderEndpoints returns a list of the holder orderer endpoints.
-func (e *OrdererTestEnv) AllHolderEndpoints() []*commontypes.OrdererEndpoint {
-	return ordererconn.NewEndpoints(0, "org", e.HolderServers.Configs...)
+// StreamFetcher is used by RequireStreams/RequireStreamsWithEndpoints.
+type StreamFetcher[T any] interface {
+	Streams() []*T
+	StreamsByEndpoints(endpoint ...string) []*T
+}
+
+// RequireStreams ensures that there are a specified number of active streams.
+func RequireStreams[T any, S StreamFetcher[T]](t *testing.T, manager S, expectedNumStreams int,
+) []*T {
+	t.Helper()
+	var states []*T
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		states = manager.Streams()
+		require.Len(ct, states, expectedNumStreams)
+	}, time.Minute, 10*time.Millisecond)
+	return states
+}
+
+// RequireStreamsWithEndpoints ensures that there are a specified number of active streams via a specified endpoint.
+func RequireStreamsWithEndpoints[T any, S StreamFetcher[T]](
+	t *testing.T, manager S, expectedNumStreams int, endpoints ...string,
+) []*T {
+	t.Helper()
+	var states []*T
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		states = manager.StreamsByEndpoints(endpoints...)
+		require.Len(ct, states, expectedNumStreams)
+	}, time.Minute, 10*time.Millisecond)
+	return states
 }

@@ -62,17 +62,12 @@ type (
 		NotifyClient       committerpb.NotifierClient
 		NotifyStream       committerpb.Notifier_OpenNotificationStreamClient
 
-		CommittedBlock chan *common.Block
-
-		TxBuilder *workload.TxBuilder
-
-		Config *Config
-
-		SeedForCryptoGen *rand.Rand
-
-		LastReceivedBlockNumber uint64
-
-		CredFactory *test.CredentialsFactory
+		CommittedBlock          chan *common.Block
+		TxBuilder               *workload.TxBuilder
+		Config                  *Config
+		SeedForCryptoGen        *rand.Rand
+		NextExpectedBlockNumber uint64
+		CredFactory             *test.CredentialsFactory
 	}
 
 	// Config represents the runtime configuration.
@@ -188,7 +183,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	t.Log("Allocating ports")
 	ports := portAllocator{}
 	defer ports.close()
-	s.Endpoints.Orderer = ports.allocatePorts(t, 1)
+	s.Endpoints.Orderer = ports.allocatePorts(t, 3)
 	s.Endpoints.Verifier = ports.allocatePorts(t, conf.NumVerifiers)
 	s.Endpoints.VCService = ports.allocatePorts(t, conf.NumVCService)
 	s.Endpoints.Query = ports.allocatePorts(t, 1)[0]
@@ -496,9 +491,9 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 			return
 		}
 	case <-time.After(2 * time.Minute):
-		t.Fatalf("Timed out waiting for block #%d", c.LastReceivedBlockNumber+1)
+		t.Fatalf("Timed out waiting for block #%d", c.NextExpectedBlockNumber)
 	}
-	c.LastReceivedBlockNumber = blk.Header.Number
+	c.NextExpectedBlockNumber = blk.Header.Number + 1
 	t.Logf("Got block #%d", blk.Header.Number)
 
 	for txNum, txEnv := range blk.Data.Data {

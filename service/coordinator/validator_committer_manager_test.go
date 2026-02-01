@@ -203,7 +203,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 	t.Run("namespace transaction should update signature verifier", func(t *testing.T) {
 		t.Parallel()
 		env := newVcMgrTestEnv(t, 2)
-		verifierStreams := requireStreams(t, env.sigVerTestEnv.mockVerifier, 2)
+		verifierStreams := mock.RequireStreams(t, env.sigVerTestEnv.mockVerifier, 2)
 		for _, mockSvService := range verifierStreams {
 			require.Empty(t, mockSvService.GetUpdates())
 		}

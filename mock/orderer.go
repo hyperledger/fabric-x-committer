@@ -49,6 +49,7 @@ type (
 
 	// Orderer supports running multiple mock-orderer services which mocks a consortium.
 	Orderer struct {
+		streamStateManager[OrdererStreamState]
 		config      *OrdererConfig
 		configBlock *common.Block
 		inEnvs      chan *common.Envelope
@@ -58,15 +59,9 @@ type (
 		healthcheck *health.Server
 	}
 
-	// HoldingOrderer allows holding a block.
-	HoldingOrderer struct {
-		*Orderer
+	// OrdererStreamState holds the state of an orderer stream.
+	OrdererStreamState struct {
 		HoldFromBlock atomic.Uint64
-	}
-
-	holdingStream struct {
-		ab.AtomicBroadcast_DeliverServer
-		holdBlock *atomic.Uint64
 	}
 
 	blockCache struct {
@@ -167,6 +162,11 @@ func (o *Orderer) Broadcast(stream ab.AtomicBroadcast_BroadcastServer) error {
 
 // Deliver receives a seek request and returns a stream of the orderered blocks.
 func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
+	s := &OrdererStreamState{}
+	s.HoldFromBlock.Store(math.MaxUint64)
+	state := o.allocateStream(stream.Context(), s)
+	defer o.releaseStream(state)
+
 	env, streamErr := stream.Recv()
 	if streamErr != nil {
 		return streamErr //nolint:wrapcheck // already a GRPC error.
@@ -176,10 +176,6 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 		return grpcerror.WrapInvalidArgument(seekErr)
 	}
 
-	addr := util.ExtractRemoteAddress(stream.Context())
-	logger.Infof("Starting delivery with %s [%d -> %d]", addr, start, end)
-	defer logger.Infof("Finished delivery with %s", addr)
-
 	ctx := stream.Context()
 	// Ensures releasing the waiters when this context ends.
 	stop := o.cache.releaseAfter(ctx)
@@ -188,14 +184,19 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 	var prevBlock *common.Block
 	for i := start; i <= end && ctx.Err() == nil; i++ {
 		b, err := o.cache.getBlock(ctx, i)
-		if errors.Is(err, ErrLostBlock) {
-			// We send an empty block for the sake of the delivery progress.
-			b = &common.Block{Data: &common.BlockData{}}
-			addBlockHeader(prevBlock, b)
-		} else if err != nil {
+		if err != nil && !errors.Is(err, ErrLostBlock) {
 			return grpcerror.WrapCancelled(err)
 		}
-		if err = stream.Send(&ab.DeliverResponse{Type: &ab.DeliverResponse_Block{Block: b}}); err != nil {
+		if b == nil {
+			// Lost block. We send an empty block for the sake of the delivery progress.
+			b = &common.Block{Data: &common.BlockData{}}
+			addBlockHeader(prevBlock, b)
+		}
+		msg := s.prepareResponse(ctx, b)
+		if msg == nil {
+			break
+		}
+		if err = stream.Send(msg); err != nil {
 			return err //nolint:wrapcheck // already a GRPC error.
 		}
 		logger.Debugf("Emitted block %d", b.Header.Number)
@@ -204,40 +205,28 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 	return grpcerror.WrapCancelled(ctx.Err())
 }
 
-// Deliver calls Orderer.Deliver, but with a holding stream.
-func (o *HoldingOrderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
-	return o.Orderer.Deliver(&holdingStream{
-		AtomicBroadcast_DeliverServer: stream,
-		holdBlock:                     &o.HoldFromBlock,
-	})
-}
+func (s *OrdererStreamState) prepareResponse(ctx context.Context, block *common.Block) *ab.DeliverResponse {
+	blockNumber := block.Header.Number
 
-// Release blocks.
-func (o *HoldingOrderer) Release() {
-	o.HoldFromBlock.Store(math.MaxUint64)
-}
-
-// RegisterService registers for the orderer's GRPC services.
-func (o *HoldingOrderer) RegisterService(server *grpc.Server) {
-	ab.RegisterAtomicBroadcastServer(server, o)
-	healthgrpc.RegisterHealthServer(server, o.healthcheck)
-}
-
-func (s *holdingStream) Send(msg *ab.DeliverResponse) error {
-	block, ok := msg.Type.(*ab.DeliverResponse_Block)
-	if ok {
-		// A simple busy wait loop is sufficient here.
-		for block.Block.Header.Number >= s.holdBlock.Load() {
-			logger.Infof("Holding block: %d (up to %d)", block.Block.Header.Number, s.holdBlock.Load())
-			select {
-			case <-s.Context().Done():
-				return nil
-			case <-time.NewTimer(time.Second).C:
-			}
+	// Block holding: a simple busy wait loop is sufficient here.
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	logHolding := false
+	for blockNumber >= s.HoldFromBlock.Load() {
+		if !logHolding {
+			logger.Infof("Holding block: %d (up to %d)", blockNumber, s.HoldFromBlock.Load())
+			logHolding = true
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-tick.C:
 		}
 	}
-	//nolint:wrapcheck // This is a mock for an external method.
-	return s.AtomicBroadcast_DeliverServer.Send(msg)
+	if logHolding {
+		logger.Infof("Releasing block: %d (up to %d)", blockNumber, s.HoldFromBlock.Load())
+	}
+	return &ab.DeliverResponse{Type: &ab.DeliverResponse_Block{Block: block}}
 }
 
 func readSeekInfo(env *common.Envelope) (start, end uint64, err error) {
