@@ -10,22 +10,22 @@ This guide explains how to configure Transport Layer Security (TLS) for Committe
 Each service configuration may include a `tls` section. This section defines the TLS mode and the filesystem paths to the required certificate files.
 
 ### Parameters
-> Note: In this document, “CA certificates” refer to **TLS root CA certificates** used to verify a peer’s **TLS certificate**.
+> Note: In this document, “CA certificates” refer to TLS root CA certificates used to verify the TLS certificate of a component (e.g., sidecar, coordinator, verifier, committer, query) acting as a server or client.
 
-| Field | Type | Description                                                                                   |
-| :--- | :--- |:----------------------------------------------------------------------------------------------|
-| **`mode`** | String | TLS operation mode: `none`, `tls`, `mtls`. Determines how credentials are built and enforced. |
-| **`cert-path`** | String | Path to the server/client TLS certificate (public key).                                       |
-| **`key-path`** | String | Path to the server/client TLS private key.                                                    |
-| **`ca-cert-paths`** | List | Paths to **TLS root CA certificates** used to verify the peer’s TLS certificate.              |
+| Field | Type | Description                                                                                                                                                    |
+| :--- | :--- |:---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **`mode`** | String | TLS operation mode: `none`, `tls`, `mtls`. Determines how credentials are built and enforced.                                                                  |
+| **`cert-path`** | String | Path to the server/client TLS certificate (public key).                                                                                                        |
+| **`key-path`** | String | Path to the server/client TLS private key.                                                                                                                     |
+| **`ca-cert-paths`** | List | Paths to **TLS root CA certificates** used to verify the server's certificate (when acting as a client) or the client's certificate (when acting as a server). |
 
 ### Modes explanation
 
-| Mode       | Description                                                                                                                                                          |
-|:-----------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **`none`** | Starts the server with insecure.NewCredentials().                                                                                                                    |
-| **`tls`**  | Requires only the server certificate and its private key. The client has to verify them using the root CA that created them (client don't present any certificates). |
-| **`mtls`** | Both sides of the connection must present valid certificates. The peer's certificate is verified against the trusted CAs defined in ca-cert-paths.                   |
+| Mode       | Description                                                                                                                                                                             |
+|:-----------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **`none`** | Starts the server with insecure.NewCredentials().                                                                                                                                       |
+| **`tls`**  | Requires only the server certificate and its private key. The client has to verify the server's certificate using the root CA that issued it (client doesn't present any certificates).|
+| **`mtls`** | Both sides of the connection must present valid certificates. The component's certificate is verified against the trusted CAs defined in ca-cert-paths.                                 |
 
 
 ## Configuration Examples
@@ -37,8 +37,9 @@ Use this configuration when the service is acting as a server (accepting incomin
 tls:
   # starts the service with mutual tls.
   mode: mtls
-  # loading certificates to present to the client.
+  # the public certificate presented to the client to establish identity.
   cert-path: /server-certs/public-key.pem
+  # the private key used to sign the handshake, proving ownership of the certificate.
   key-path: /server-certs/private-key.pem
   # the root CA certificates that verify the client's credentials.
   ca-cert-paths:
@@ -52,8 +53,9 @@ Use this configuration when the service is acting as a client (initiating secure
 tls:
   # client starts with mutual tls.
   mode: mtls
-  # loading the certificates to present to server.
+  # the public certificate presented to the server to establish identity.
   cert-path: /client-certs/public-key.pem
+  # the private key used to sign the handshake, proving ownership of the certificate.
   key-path: /client-certs/private-key.pem
   # the root CA certificates that verify the server's credentials.
   ca-cert-paths:
