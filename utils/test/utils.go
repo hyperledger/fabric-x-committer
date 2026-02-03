@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,6 +33,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
 
 var (
@@ -113,11 +115,12 @@ func StartGrpcServersForTest(
 	t *testing.T,
 	numService int,
 	register func(*grpc.Server),
+	serverCreds connection.TLSConfig,
 ) *GrpcServers {
 	t.Helper()
 	sc := make([]*connection.ServerConfig, numService)
 	for i := range sc {
-		sc[i] = connection.NewLocalHostServer(InsecureTLSConfig)
+		sc[i] = connection.NewLocalHostServer(serverCreds)
 	}
 	return StartGrpcServersWithConfigForTest(ctx, t, register, sc...)
 }
@@ -267,7 +270,7 @@ func NewSecuredConnectionWithRetry(
 	retry connection.RetryProfile,
 ) *grpc.ClientConn {
 	t.Helper()
-	clientCreds, err := connection.NewClientCredentials(tlsConfig)
+	clientCreds, err := tlsConfig.ClientCredentials()
 	require.NoError(t, err)
 	conn, err := connection.NewConnection(connection.Parameters{
 		Address: endpoint.Address(),
@@ -436,10 +439,26 @@ const (
 	CreatorID = 1
 )
 
+// NewOrdererEndpoints is a helper function to generate a list of Endpoint(s) from ServerConfig(s).
+func NewOrdererEndpoints(id uint32, configs ...*connection.ServerConfig) []*types.OrdererEndpoint {
+	ordererEndpoints := make([]*types.OrdererEndpoint, len(configs))
+	for i, c := range configs {
+		ordererEndpoints[i] = &types.OrdererEndpoint{
+			Host: c.Endpoint.Host,
+			Port: c.Endpoint.Port,
+			ID:   id,
+			API:  []string{ordererconn.Broadcast, ordererconn.Deliver},
+		}
+	}
+	return ordererEndpoints
+}
+
 // MustGetTLSConfig creates a tls.Config from a connection.TLSConfig while ensuring no error return from that process.
 func MustGetTLSConfig(t *testing.T, tlsConfig connection.TLSConfig) *tls.Config {
 	t.Helper()
-	clientTLSConfig, err := connection.NewClientTLSConfig(tlsConfig)
+	tlsMaterials, err := connection.NewTLSMaterials(tlsConfig)
+	require.NoError(t, err)
+	clientTLSConfig, err := tlsMaterials.CreateClientTLSConfig()
 	require.NoError(t, err)
 	return clientTLSConfig
 }

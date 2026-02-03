@@ -73,8 +73,11 @@ func TestLoadGenWithTLSModes(t *testing.T) {
 					})
 					c.Start(t, serviceFlags)
 
-					metricsClientTLSConfig, err := connection.NewClientTLSConfig(c.SystemConfig.ClientTLS)
+					metricsMaterials, err := connection.NewTLSMaterials(c.SystemConfig.ClientTLS)
 					require.NoError(t, err)
+					metricsClientTLSConfig, err := metricsMaterials.CreateClientTLSConfig()
+					require.NoError(t, err)
+
 					metricsURL, err := monitoring.MakeMetricsURL(
 						c.SystemConfig.Endpoints.LoadGen.Metrics.Address(), metricsClientTLSConfig,
 					)

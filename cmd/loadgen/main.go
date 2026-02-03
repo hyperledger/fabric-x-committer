@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/spf13/cobra"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
@@ -43,7 +42,7 @@ func loadgenCmd() *cobra.Command {
 
 	cmd.AddCommand(config.VersionCmd())
 	cmd.AddCommand(loadGenCMD())
-	cmd.AddCommand(loadGenGenesisBlock())
+	cmd.AddCommand(loadGenMaterial())
 	return cmd
 }
 
@@ -86,12 +85,12 @@ func loadGenCMD() *cobra.Command {
 	return cmd
 }
 
-func loadGenGenesisBlock() *cobra.Command {
+func loadGenMaterial() *cobra.Command {
 	v := config.NewViperWithLoadGenDefaults()
 	var configPath string
 	cmd := &cobra.Command{
-		Use:   "make-genesis-block",
-		Short: "Generates the genesis block and writes it to the standard output.",
+		Use:   "make-material",
+		Short: "Generates the crypto material and genesis block to the output folder.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			conf, err := config.ReadLoadGenYamlAndSetupLogging(v, configPath)
@@ -100,16 +99,13 @@ func loadGenGenesisBlock() *cobra.Command {
 			}
 			cmd.SilenceUsage = true
 
-			block, err := workload.CreateConfigBlock(&conf.LoadProfile.Policy)
+			cmd.Printf("Generating crypto material...\n")
+			err = workload.PrepareCryptoMaterial(&conf.LoadProfile.Policy)
 			if err != nil {
 				return err
 			}
-			blockBytes, err := protoutil.Marshal(block)
-			if err != nil {
-				return err
-			}
-			_, err = cmd.OutOrStdout().Write(blockBytes)
-			return err
+			cmd.Printf("Crypto material path: %s\n", conf.LoadProfile.Policy.CryptoMaterialPath)
+			return nil
 		},
 	}
 	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))

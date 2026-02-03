@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"google.golang.org/grpc/credentials"
 )
 
 type (
@@ -98,12 +99,6 @@ const (
 	DefaultTLSMinVersion = tls.VersionTLS12
 )
 
-// Enabled reports whether TLS is configured to be active.
-// It returns true if the mode is set to either OneSideTLSMode or MutualTLSMode.
-func (c *TLSConfig) Enabled() bool {
-	return c.Mode == OneSideTLSMode || c.Mode == MutualTLSMode
-}
-
 // Validate checks that the rate limit configuration is valid.
 func (c *RateLimitConfig) Validate() error {
 	if c == nil || c.RequestsPerSecond <= 0 {
@@ -118,4 +113,28 @@ func (c *RateLimitConfig) Validate() error {
 			c.Burst, c.RequestsPerSecond)
 	}
 	return nil
+}
+
+// Enabled reports whether TLS is configured to be active.
+// It returns true if the mode is set to either OneSideTLSMode or MutualTLSMode.
+func (c TLSConfig) Enabled() bool {
+	return c.Mode == OneSideTLSMode || c.Mode == MutualTLSMode
+}
+
+// ClientCredentials converts TLSConfig into a TLSMaterials struct and generates client creds.
+func (c TLSConfig) ClientCredentials() (credentials.TransportCredentials, error) {
+	tlsMaterials, err := NewTLSMaterials(c)
+	if err != nil {
+		return nil, err
+	}
+	return NewClientCredentialsFromMaterial(tlsMaterials)
+}
+
+// ServerCredentials converts TLSConfig into a TLSMaterials struct and generates server creds.
+func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error) {
+	tlsMaterials, err := NewTLSMaterials(c)
+	if err != nil {
+		return nil, err
+	}
+	return NewServerCredentialsFromMaterial(tlsMaterials)
 }

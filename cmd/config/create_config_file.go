@@ -153,10 +153,3 @@ func CreateTempConfigFromTemplate(t *testing.T, cmdTemplate string, conf *System
 	CreateConfigFromTemplate(t, cmdTemplate, outputConfigFilePath, conf)
 	return outputConfigFilePath
 }
-
-// WithEndpoint creates a new SystemConfig with a modified ServerEndpoint and MetricsEndpoint.
-func (c *SystemConfig) WithEndpoint(e ServiceEndpoints) *SystemConfig {
-	s := *c
-	s.ServiceEndpoints = e
-	return &s
-}

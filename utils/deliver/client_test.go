@@ -50,15 +50,14 @@ func TestBroadcastDeliver(t *testing.T) {
 			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
 
 			// We use a short retry grpc-config to shorten the test time.
-			ordererService, servers, conf := makeConfig(t, &serverTLSConfig)
+			ordererService, servers, conf := makeConfig(t, serverTLSConfig, clientTLSConfig)
 
 			// Set the orderer client credentials.
-			conf.Connection.TLS = clientTLSConfig
-			allEndpoints := conf.Connection.Endpoints
-
+			conf.TLS = ordererconn.TLSConfigToOrdererTLSConfig(clientTLSConfig)
+			allEndpoints := conf.Organizations["org"].Endpoints
 			// We only take the bottom endpoints for now.
 			// Later we take the other endpoints and update the client.
-			conf.Connection.Endpoints = allEndpoints[:6]
+			conf.Organizations["org"].Endpoints = allEndpoints[:6]
 			client, err := deliver.New(&conf)
 			require.NoError(t, err)
 			t.Cleanup(client.CloseConnections)
@@ -137,10 +136,16 @@ func TestBroadcastDeliver(t *testing.T) {
 				success:     1,
 				unavailable: 2,
 			})
-
 			t.Log("Update endpoints")
-			conf.Connection.Endpoints = allEndpoints[6:]
-			require.NoError(t, client.UpdateConnections(&conf.Connection))
+			conf.Organizations = map[string]*ordererconn.OrganizationConfig{
+				"org": {
+					Endpoints: allEndpoints[6:],
+					CACerts:   clientTLSConfig.CACertPaths,
+				},
+			}
+			orgParams, err := ordererconn.NewOrganizationsMaterials(conf.Organizations, conf.TLS.Mode)
+			require.NoError(t, err)
+			require.NoError(t, client.UpdateConnections(orgParams))
 			submit(t, &conf, outputBlocks, expectedSubmit{
 				success: 3,
 			})
@@ -201,7 +206,9 @@ func submit(
 	require.Equal(t, tx.Id, hdr.TxId)
 }
 
-func makeConfig(t *testing.T, tlsConfig *connection.TLSConfig) (*mock.Orderer, []test.GrpcServers, ordererconn.Config) {
+func makeConfig(t *testing.T, serverTLS, clientTLS connection.TLSConfig) (
+	*mock.Orderer, []test.GrpcServers, ordererconn.Config,
+) {
 	t.Helper()
 
 	idCount := 3
@@ -209,31 +216,29 @@ func makeConfig(t *testing.T, tlsConfig *connection.TLSConfig) (*mock.Orderer, [
 	instanceCount := idCount * serverPerID
 	t.Logf("Instance count: %d; idCount: %d", instanceCount, idCount)
 
-	config := &mock.OrdererConfig{
+	ordererService, ordererServer := mock.StartMockOrderingServices(t, &mock.OrdererConfig{
 		NumService:      instanceCount,
+		TLS:             serverTLS,
 		BlockSize:       1,
 		SendConfigBlock: true,
-	}
-	if tlsConfig != nil {
-		sc := make([]*connection.ServerConfig, instanceCount)
-		for i := range sc {
-			creds := *tlsConfig
-			sc[i] = connection.NewLocalHostServer(creds)
-		}
-		config.ServerConfigs = sc
-	}
-	ordererService, ordererServer := mock.StartMockOrderingServices(t, config)
+	})
 	require.Len(t, ordererServer.Servers, instanceCount)
 
 	conf := ordererconn.Config{
 		ChannelID:     channelForTest,
 		ConsensusType: ordererconn.Bft,
-		Connection:    ordererconn.ConnectionConfig{Retry: &testGrpcRetryProfile},
+		Retry:         &testGrpcRetryProfile,
+		TLS:           ordererconn.TLSConfigToOrdererTLSConfig(clientTLS),
+		Organizations: map[string]*ordererconn.OrganizationConfig{
+			"org": {
+				CACerts: clientTLS.CACertPaths,
+			},
+		},
 	}
 	servers := make([]test.GrpcServers, idCount)
 	for i, c := range ordererServer.Configs {
 		id := uint32(i % idCount) //nolint:gosec // integer overflow conversion int -> uint32
-		conf.Connection.Endpoints = append(conf.Connection.Endpoints, &commontypes.OrdererEndpoint{
+		conf.Organizations["org"].Endpoints = append(conf.Organizations["org"].Endpoints, &commontypes.OrdererEndpoint{
 			ID:   id,
 			Host: c.Endpoint.Host,
 			Port: c.Endpoint.Port,
@@ -246,7 +251,7 @@ func makeConfig(t *testing.T, tlsConfig *connection.TLSConfig) (*mock.Orderer, [
 		require.Lenf(t, s.Configs, serverPerID, "id: %d", i)
 		require.Lenf(t, s.Servers, serverPerID, "id: %d", i)
 	}
-	for i, e := range conf.Connection.Endpoints {
+	for i, e := range conf.Organizations["org"].Endpoints {
 		t.Logf("ENDPOINT [%02d] %s", i, e.String())
 	}
 	return ordererService, servers, conf

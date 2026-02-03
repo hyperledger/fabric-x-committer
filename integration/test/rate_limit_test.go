@@ -46,7 +46,7 @@ func TestRateLimit(t *testing.T) {
 		// Create a connection without retry policy to observe rate limiting behavior.
 		// The default test connection has a retry policy that includes RESOURCE_EXHAUSTED,
 		// which would mask the rate limit behavior by automatically retrying failed requests.
-		clientCreds, err := connection.NewClientCredentials(c.SystemConfig.ClientTLS)
+		clientCreds, err := c.SystemConfig.ClientTLS.ClientCredentials()
 		require.NoError(t, err)
 		conn, err := grpc.NewClient(
 			c.SystemConfig.Endpoints.Query.Server.Address(),

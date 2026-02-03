@@ -9,14 +9,6 @@ package sidecar
 import (
 	"time"
 
-	"github.com/cockroachdb/errors"
-	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	commontypes "github.com/hyperledger/fabric-x-common/api/types"
-	"github.com/hyperledger/fabric-x-common/common/channelconfig"
-	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
-
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
@@ -63,66 +55,3 @@ const (
 	defaultNotificationMaxTimeout = time.Minute
 	defaultBufferSize             = 100
 )
-
-// LoadBootstrapConfig loads the bootstrap config according to the bootstrap method.
-func LoadBootstrapConfig(conf *Config) error {
-	if conf.Bootstrap.GenesisBlockFilePath == "" {
-		return nil
-	}
-	return OverwriteConfigFromBlockFile(conf)
-}
-
-// OverwriteConfigFromBlockFile overwrites the orderer connection with fields from the bootstrap config block.
-func OverwriteConfigFromBlockFile(conf *Config) error {
-	configBlock, err := configtxgen.ReadBlock(conf.Bootstrap.GenesisBlockFilePath)
-	if err != nil {
-		return errors.Wrap(err, "read config block")
-	}
-	return OverwriteConfigFromBlock(conf, configBlock)
-}
-
-// OverwriteConfigFromBlock overwrites the orderer connection with fields from a config block.
-func OverwriteConfigFromBlock(conf *Config, configBlock *common.Block) error {
-	envelope, err := protoutil.ExtractEnvelope(configBlock, 0)
-	if err != nil {
-		return errors.Wrap(err, "failed to extract envelope")
-	}
-	return OverwriteConfigFromEnvelope(conf, envelope)
-}
-
-// OverwriteConfigFromEnvelope overwrites the orderer connection with fields from a config transaction.
-// For now, it fetches the following:
-// - Orderer endpoints.
-// TODO: Fetch Root CAs.
-func OverwriteConfigFromEnvelope(conf *Config, envelope *common.Envelope) error {
-	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
-	if err != nil {
-		return errors.Wrap(err, "failed to create config bundle")
-	}
-	conf.Orderer.Connection.Endpoints, err = getDeliveryEndpointsFromConfig(bundle)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func getDeliveryEndpointsFromConfig(bundle *channelconfig.Bundle) ([]*commontypes.OrdererEndpoint, error) {
-	oc, ok := bundle.OrdererConfig()
-	if !ok {
-		return nil, errors.New("could not find orderer config")
-	}
-
-	var endpoints []*commontypes.OrdererEndpoint
-	for orgID, org := range oc.Organizations() {
-		endpointsStr := org.Endpoints()
-		for _, eStr := range endpointsStr {
-			e, err := commontypes.ParseOrdererEndpoint(eStr)
-			if err != nil {
-				return nil, err
-			}
-			e.MspID = orgID
-			endpoints = append(endpoints, e)
-		}
-	}
-	return endpoints, nil
-}

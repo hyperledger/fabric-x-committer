@@ -217,26 +217,26 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	s.MetricsTLS, _ = c.CredFactory.CreateServerCredentials(t, c.Config.TLSMode, s.Endpoints.LoadGen.Metrics.Host)
 
 	t.Log("Create processes")
-	c.MockOrderer = newProcess(t, cmdOrderer, s.WithEndpoint(s.Endpoints.Orderer[0]))
+	c.MockOrderer = newProcess(t, cmdOrderer, c.systemConfigWithServerTLS(t, *s, s.Endpoints.Orderer[0]))
 	for i, e := range s.Endpoints.Verifier {
 		p := cmdVerifier
 		p.Name = fmt.Sprintf("%s-%d", p.Name, i)
 		// we generate different keys for each verifier.
-		c.Verifier = append(c.Verifier, newProcess(t, p, c.createSystemConfigWithServerTLS(t, e)))
+		c.Verifier = append(c.Verifier, newProcess(t, p, c.systemConfigWithServerTLS(t, *s, e)))
 	}
 
 	for i, e := range s.Endpoints.VCService {
 		p := cmdVC
 		p.Name = fmt.Sprintf("%s-%d", p.Name, i)
 		// we generate different keys for each vc-service.
-		c.VcService = append(c.VcService, newProcess(t, p, c.createSystemConfigWithServerTLS(t, e)))
+		c.VcService = append(c.VcService, newProcess(t, p, c.systemConfigWithServerTLS(t, *s, e)))
 	}
 
-	c.Coordinator = newProcess(t, cmdCoordinator, c.createSystemConfigWithServerTLS(t, s.Endpoints.Coordinator))
+	c.Coordinator = newProcess(t, cmdCoordinator, c.systemConfigWithServerTLS(t, *s, s.Endpoints.Coordinator))
 
-	c.QueryService = newProcess(t, cmdQuery, c.createSystemConfigWithServerTLS(t, s.Endpoints.Query))
+	c.QueryService = newProcess(t, cmdQuery, c.systemConfigWithServerTLS(t, *s, s.Endpoints.Query))
 
-	c.Sidecar = newProcess(t, cmdSidecar, c.createSystemConfigWithServerTLS(t, s.Endpoints.Sidecar))
+	c.Sidecar = newProcess(t, cmdSidecar, c.systemConfigWithServerTLS(t, *s, s.Endpoints.Sidecar))
 
 	t.Log("Create clients")
 	c.CreateRuntimeClients(t.Context(), t)
@@ -262,13 +262,16 @@ func (c *CommitterRuntime) CreateRuntimeClients(ctx context.Context, t *testing.
 
 	var err error
 	c.OrdererStream, err = test.NewBroadcastStream(ctx, &ordererconn.Config{
-		Connection: ordererconn.ConnectionConfig{
-			Endpoints: c.SystemConfig.Policy.OrdererEndpoints,
-			TLS:       c.SystemConfig.ClientTLS,
-		},
+		TLS:           ordererconn.TLSConfigToOrdererTLSConfig(c.SystemConfig.ClientTLS),
 		ChannelID:     c.SystemConfig.Policy.ChannelID,
 		Identity:      c.SystemConfig.Policy.Identity,
 		ConsensusType: ordererconn.Bft,
+		Organizations: map[string]*ordererconn.OrganizationConfig{
+			"org": {
+				Endpoints: c.SystemConfig.Policy.OrdererEndpoints,
+				CACerts:   c.SystemConfig.ClientTLS.CACertPaths,
+			},
+		},
 	})
 	require.NoError(t, err)
 	t.Cleanup(c.OrdererStream.CloseConnections)
@@ -362,12 +365,12 @@ func (c *CommitterRuntime) startLoadGen(t *testing.T, serviceFlags int) {
 	if isDist {
 		s.LoadGenWorkers = 0
 	}
-	newProcess(t, loadGenParams, c.createSystemConfigWithServerTLS(t, s.Endpoints.LoadGen)).Restart(t)
+	newProcess(t, loadGenParams, c.systemConfigWithServerTLS(t, s, s.Endpoints.LoadGen)).Restart(t)
 	if isDist {
 		s.LoadGenWorkers = 1
 		loadGenParams.Name = "dist-loadgen"
 		loadGenParams.Template = config.TemplateLoadGenDistributedLoadGenClient
-		newProcess(t, loadGenParams, s.WithEndpoint(config.ServiceEndpoints{})).Restart(t)
+		newProcess(t, loadGenParams, systemConfigWithEndpoint(s, config.ServiceEndpoints{})).Restart(t)
 	}
 }
 
@@ -597,15 +600,21 @@ func (c *CommitterRuntime) ensureAtLeastLastCommittedBlockNumber(t *testing.T, b
 	}, 2*time.Minute, 250*time.Millisecond)
 }
 
-func (c *CommitterRuntime) createSystemConfigWithServerTLS(
+func (c *CommitterRuntime) systemConfigWithServerTLS(
 	t *testing.T,
+	systemConf config.SystemConfig,
 	endpoints config.ServiceEndpoints,
 ) *config.SystemConfig {
 	t.Helper()
-	serviceCfg := c.SystemConfig
-	serviceCfg.ServiceTLS, _ = c.CredFactory.CreateServerCredentials(t, c.Config.TLSMode, endpoints.Server.Host)
-	serviceCfg.ServiceEndpoints = endpoints
-	return &serviceCfg
+	s := systemConfigWithEndpoint(systemConf, endpoints)
+	s.ServiceTLS, _ = c.CredFactory.CreateServerCredentials(t, c.Config.TLSMode, endpoints.Server.Host)
+	return s
+}
+
+// systemConfigWithEndpoint creates a new SystemConfig with a modified ServerEndpoint and MetricsEndpoint.
+func systemConfigWithEndpoint(systemConf config.SystemConfig, e config.ServiceEndpoints) *config.SystemConfig {
+	systemConf.ServiceEndpoints = e
+	return &systemConf
 }
 
 func isMoreThanOneBitSet(bits int) bool {

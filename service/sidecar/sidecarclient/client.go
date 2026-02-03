@@ -48,16 +48,20 @@ type (
 
 // New instantiate a new sidecar client.
 func New(config *Parameters) (*Client, error) {
-	cm := &ordererconn.ConnectionManager{}
-	connConfig := &ordererconn.ConnectionConfig{
-		Endpoints: []*commontypes.OrdererEndpoint{{
-			Host: config.Client.Endpoint.Host,
-			Port: config.Client.Endpoint.Port,
-		}},
+	cm, err := ordererconn.NewConnectionManager(&ordererconn.Config{
+		TLS:   ordererconn.TLSConfigToOrdererTLSConfig(config.Client.TLS),
 		Retry: config.Client.Retry,
-		TLS:   config.Client.TLS,
-	}
-	if err := cm.Update(connConfig); err != nil {
+		Organizations: map[string]*ordererconn.OrganizationConfig{
+			"org": {
+				Endpoints: []*commontypes.OrdererEndpoint{{
+					Host: config.Client.Endpoint.Host,
+					Port: config.Client.Endpoint.Port,
+				}},
+				CACerts: config.Client.TLS.CACertPaths,
+			},
+		},
+	})
+	if err != nil {
 		return nil, err
 	}
 	return &Client{
