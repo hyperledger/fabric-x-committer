@@ -224,16 +224,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 					}
 					// Start server under test
 					sidecarConf := &sidecar.Config{
-						Server: sidecarServerConf,
-						Orderer: ordererconn.Config{
-							Connection: ordererconn.ConnectionConfig{
-								Endpoints: ordererconn.NewEndpoints(0, "org", ordererServers...),
-								TLS:       clientTLSConfig,
-							},
-							ChannelID:     clientConf.LoadProfile.Policy.ChannelID,
-							Identity:      clientConf.LoadProfile.Policy.Identity,
-							ConsensusType: ordererconn.Bft,
-						},
+						Server:                        sidecarServerConf,
 						LastCommittedBlockSetInterval: 100 * time.Millisecond,
 						WaitingTxsLimit:               5000,
 						Committer: test.NewInsecureClientConfig(
@@ -242,6 +233,18 @@ func TestLoadGenForSidecar(t *testing.T) {
 						Monitoring: defaultMonitoring(),
 						Ledger: sidecar.LedgerConfig{
 							Path: t.TempDir(),
+						},
+						Orderer: ordererconn.Config{
+							TLS:           ordererconn.TLSConfigToOrdererTLSConfig(clientTLSConfig),
+							ChannelID:     clientConf.LoadProfile.Policy.ChannelID,
+							Identity:      clientConf.LoadProfile.Policy.Identity,
+							ConsensusType: ordererconn.Bft,
+							Organizations: map[string]*ordererconn.OrganizationConfig{
+								"org": {
+									Endpoints: test.NewOrdererEndpoints(0, ordererServers...),
+									CACerts:   clientTLSConfig.CACertPaths,
+								},
+							},
 						},
 					}
 					service, err := sidecar.New(sidecarConf)
@@ -271,29 +274,15 @@ func TestLoadGenForOrderer(t *testing.T) {
 					t.Parallel()
 					clientConf := DefaultClientConf(t)
 					clientConf.Limit = limit
-					numService := 3
-					sc := make([]*connection.ServerConfig, numService)
-					for i := range sc {
-						sc[i] = connection.NewLocalHostServer(serverTLSConfig)
-					}
 					// Start dependencies
 					orderer, ordererServer := mock.StartMockOrderingServices(
-						t, &mock.OrdererConfig{ServerConfigs: sc, NumService: numService, BlockSize: 100},
+						t, &mock.OrdererConfig{NumService: 3, TLS: serverTLSConfig, BlockSize: 100},
 					)
 					_, coordinatorServer := mock.StartMockCoordinatorService(t)
 
-					endpoints := ordererconn.NewEndpoints(0, "msp", ordererServer.Configs...)
+					endpoints := test.NewOrdererEndpoints(0, ordererServer.Configs...)
 					sidecarConf := &sidecar.Config{
-						Server: connection.NewLocalHostServer(serverTLSConfig),
-						Orderer: ordererconn.Config{
-							Connection: ordererconn.ConnectionConfig{
-								Endpoints: endpoints,
-								TLS:       clientTLSConfig,
-							},
-							ChannelID:     clientConf.LoadProfile.Policy.ChannelID,
-							Identity:      clientConf.LoadProfile.Policy.Identity,
-							ConsensusType: ordererconn.Bft,
-						},
+						Server:                        connection.NewLocalHostServer(serverTLSConfig),
 						LastCommittedBlockSetInterval: 100 * time.Millisecond,
 						WaitingTxsLimit:               5000,
 						Committer: test.NewInsecureClientConfig(
@@ -302,6 +291,18 @@ func TestLoadGenForOrderer(t *testing.T) {
 						Monitoring: defaultMonitoring(),
 						Ledger: sidecar.LedgerConfig{
 							Path: t.TempDir(),
+						},
+						Orderer: ordererconn.Config{
+							ChannelID:     clientConf.LoadProfile.Policy.ChannelID,
+							Identity:      clientConf.LoadProfile.Policy.Identity,
+							ConsensusType: ordererconn.Bft,
+							TLS:           ordererconn.TLSConfigToOrdererTLSConfig(clientTLSConfig),
+							Organizations: map[string]*ordererconn.OrganizationConfig{
+								"org": {
+									Endpoints: endpoints,
+									CACerts:   clientTLSConfig.CACertPaths,
+								},
+							},
 						},
 					}
 
@@ -343,21 +344,14 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 				clientConf.Limit = limit
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
-					numService := 3
-					sc := make([]*connection.ServerConfig, numService)
-					for i := range sc {
-						sc[i] = connection.NewLocalHostServer(serverTLSConfig)
-					}
 					// Start dependencies
-					orderer, ordererServer := mock.StartMockOrderingServices(
-						t, &mock.OrdererConfig{
-							ServerConfigs: sc,
-							NumService:    numService,
-							BlockSize:     int(clientConf.LoadProfile.Block.MaxSize), //nolint:gosec // uint64 -> int.
-						},
-					)
+					orderer, ordererServer := mock.StartMockOrderingServices(t, &mock.OrdererConfig{
+						NumService: 3,
+						TLS:        serverTLSConfig,
+						BlockSize:  int(clientConf.LoadProfile.Block.MaxSize), //nolint:gosec // uint64 -> int.
+					})
 
-					endpoints := ordererconn.NewEndpoints(0, "msp", ordererServer.Configs...)
+					endpoints := test.NewOrdererEndpoints(0, ordererServer.Configs...)
 
 					// Submit default config block.
 					// This is ignored when sidecar isn't used.
@@ -372,13 +366,16 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 					// Start client
 					clientConf.Adapter.OrdererClient = &adapters.OrdererClientConfig{
 						Orderer: ordererconn.Config{
-							Connection: ordererconn.ConnectionConfig{
-								Endpoints: endpoints,
-								TLS:       clientTLSConfig,
-							},
 							ChannelID:     clientConf.LoadProfile.Policy.ChannelID,
 							Identity:      clientConf.LoadProfile.Policy.Identity,
 							ConsensusType: ordererconn.Bft,
+							TLS:           ordererconn.TLSConfigToOrdererTLSConfig(clientTLSConfig),
+							Organizations: map[string]*ordererconn.OrganizationConfig{
+								"org": {
+									Endpoints: endpoints,
+									CACerts:   clientTLSConfig.CACertPaths,
+								},
+							},
 						},
 						BroadcastParallelism: 5,
 					}

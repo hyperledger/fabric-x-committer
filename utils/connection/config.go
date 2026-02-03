@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+
+	"google.golang.org/grpc/credentials"
 )
 
 type (
@@ -97,6 +99,24 @@ const (
 	// DefaultTLSMinVersion is the minimum version required to achieve secure connections.
 	DefaultTLSMinVersion = tls.VersionTLS12
 )
+
+// ClientCredentials converts TLSConfig into a TLSMaterials struct and generates client creds.
+func (c TLSConfig) ClientCredentials() (credentials.TransportCredentials, error) {
+	tlsMaterials, err := NewTLSMaterials(c)
+	if err != nil {
+		return nil, err
+	}
+	return NewClientCredentialsFromMaterial(tlsMaterials)
+}
+
+// ServerCredentials converts TLSConfig into a TLSMaterials struct and generates server creds.
+func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error) {
+	tlsMaterials, err := NewTLSMaterials(c)
+	if err != nil {
+		return nil, err
+	}
+	return NewServerCredentialsFromMaterial(tlsMaterials)
+}
 
 // Validate checks that the rate limit configuration is valid.
 func (c *RateLimitConfig) Validate() error {

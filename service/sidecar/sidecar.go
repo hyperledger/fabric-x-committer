@@ -16,6 +16,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -29,6 +30,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
 
 var logger = logging.New("sidecar")
@@ -53,15 +55,26 @@ type Service struct {
 // New creates a sidecar service.
 func New(c *Config) (*Service, error) {
 	logger.Info("Initializing new sidecar")
-	err := LoadBootstrapConfig(c)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load shared config: %w", err)
-	}
 
 	// 1. Fetch blocks from the ordering service.
 	ordererClient, err := deliver.New(&c.Orderer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create orderer client: %w", err)
+	}
+
+	if c.Bootstrap.GenesisBlockFilePath != "" {
+		configBlock, bootErr := configtxgen.ReadBlock(c.Bootstrap.GenesisBlockFilePath)
+		if bootErr != nil {
+			return nil, errors.Wrap(bootErr, "read config block")
+		}
+		orgsMaterial, bootErr := ordererconn.NewOrganizationsMaterialsFromConfigBlock(configBlock)
+		if bootErr != nil {
+			return nil, fmt.Errorf("failed to load organizations materials: %w", bootErr)
+		}
+		bootErr = ordererClient.UpdateConnections(orgsMaterial)
+		if bootErr != nil {
+			return nil, bootErr
+		}
 	}
 
 	// 2. Relay the blocks to committer and receive the transaction status.
@@ -209,12 +222,12 @@ func (s *Service) recoverCommittedBlocks(ctx context.Context) {
 
 func (s *Service) configUpdater(block *common.Block) {
 	logger.Infof("updating config from block: %d", block.Header.Number)
-	err := OverwriteConfigFromBlock(s.config, block)
+	orgsMaterial, err := ordererconn.NewOrganizationsMaterialsFromConfigBlock(block)
 	if err != nil {
 		logger.Warnf("failed to load config from block %d: %v", block.Header.Number, err)
 		return
 	}
-	err = s.ordererClient.UpdateConnections(&s.config.Orderer.Connection)
+	err = s.ordererClient.UpdateConnections(orgsMaterial)
 	if err != nil {
 		logger.Warnf("failed to update config for block %d: %v", block.Header.Number, err)
 	}
@@ -276,11 +289,11 @@ func (s *Service) recoverConfigTransactionFromStateDB(
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal meta policy envelope: %w", err)
 	}
-	err = OverwriteConfigFromEnvelope(s.config, envelope)
+	orgsMaterial, err := ordererconn.NewOrganizationsMaterialsFromEnvelope(envelope)
 	if err != nil {
 		return err
 	}
-	err = s.ordererClient.UpdateConnections(&s.config.Orderer.Connection)
+	err = s.ordererClient.UpdateConnections(orgsMaterial)
 	return errors.Wrapf(err, "failed to update connections")
 }
 

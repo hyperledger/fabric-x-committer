@@ -56,9 +56,9 @@ type (
 func TestQuerySecureConnection(t *testing.T) {
 	t.Parallel()
 	test.RunSecureConnectionTest(t,
-		func(t *testing.T, tlsCfg connection.TLSConfig) test.RPCAttempt {
+		func(t *testing.T, serverTLS, clientTLS connection.TLSConfig) test.RPCAttempt {
 			t.Helper()
-			env := newQueryServiceTestEnv(t, &queryServiceTestOpts{serverTLS: tlsCfg})
+			env := newQueryServiceTestEnv(t, &queryServiceTestOpts{serverTLS: serverTLS, clientTLS: clientTLS})
 			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
 				t.Helper()
 				client := createQueryClientWithTLS(t, &env.qs.config.Server.Endpoint, cfg)

@@ -40,7 +40,7 @@ type validatorAndCommitterServiceTestEnvWithClient struct {
 func TestVCSecureConnection(t *testing.T) {
 	t.Parallel()
 	test.RunSecureConnectionTest(t,
-		func(t *testing.T, cfg connection.TLSConfig) test.RPCAttempt {
+		func(t *testing.T, cfg, _ connection.TLSConfig) test.RPCAttempt {
 			t.Helper()
 			env := NewValidatorAndCommitServiceTestEnv(t, &TestEnvOpts{ServerCreds: cfg})
 			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {

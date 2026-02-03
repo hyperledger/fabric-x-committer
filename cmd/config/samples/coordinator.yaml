@@ -5,6 +5,7 @@
 server:
   endpoint: :9001
   tls:
+    # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
     mode: mtls
     cert-path: /server-certs/public-key.pem
     key-path: /server-certs/private-key.pem
@@ -29,6 +30,7 @@ verifier:
   endpoints:
     - verifier:5001
   tls: &ClientTLS
+    # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
     mode: mtls
     cert-path: /client-certs/public-key.pem
     key-path: /client-certs/private-key.pem

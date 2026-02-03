@@ -159,7 +159,7 @@ test-integration-db-resiliency: build
 
 # Tests the all-in-one docker image.
 test-container: build-test-node-image build-release-image
-	$(go_cmd) test -v -timeout 30m ./docker/...
+	@$(go_test) ./docker/... | gotestfmt ${GO_TEST_FMT_FLAGS}
 
 # Tests for components that directly talk to the DB, where different DBs might affect behaviour.
 test-core-db: build
