@@ -8,6 +8,7 @@ package sidecar
 
 import (
 	"fmt"
+	"sync/atomic"
 	"unicode/utf8"
 
 	"github.com/cockroachdb/errors"
@@ -35,7 +36,7 @@ type (
 	blockWithStatus struct {
 		block        *common.Block
 		txStatus     []committerpb.Status
-		pendingCount int
+		pendingCount atomic.Int32
 	}
 )
 
@@ -74,12 +75,13 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb
 			Rejected: make([]*committerpb.TxStatus, 0, txCount),
 		},
 		withStatus: &blockWithStatus{
-			block:        block,
-			txStatus:     make([]committerpb.Status, txCount),
-			pendingCount: txCount,
+			block:    block,
+			txStatus: make([]committerpb.Status, txCount),
 		},
 		txIDToHeight: txIDToHeight,
 	}
+	mappedBlock.withStatus.pendingCount.Store(int32(txCount)) //nolint:gosec // int -> int32
+
 	for msgIndex, msg := range block.Data.Data {
 		logger.Debugf("Mapping transaction [blk,tx] = [%d,%d]", blockNumber, msgIndex)
 		err := mappedBlock.mapMessage(uint32(msgIndex), msg) //nolint:gosec // int -> uint32.
@@ -186,7 +188,7 @@ func (b *blockWithStatus) setFinalStatus(txNum uint32, status committerpb.Status
 		return errors.Newf("two results for a TX [blockNum: %d, txNum: %d]", b.block.Header.Number, txNum)
 	}
 	b.txStatus[txNum] = status
-	b.pendingCount--
+	b.pendingCount.Add(-1)
 	return nil
 }
 
