@@ -372,10 +372,12 @@ func TestReadConfigLoadGen(t *testing.T) {
 						ChannelID:     "mychannel",
 						ConsensusType: ordererconn.Bft,
 						TLS: ordererconn.OrdererTLSConfig{
-							Mode:              defaultClientTLSConfig.Mode,
-							KeyPath:           defaultClientTLSConfig.KeyPath,
-							CertPath:          defaultClientTLSConfig.CertPath,
-							CommonCACertPaths: defaultClientTLSConfig.CACertPaths,
+							Mode:     defaultClientTLSConfig.Mode,
+							KeyPath:  defaultClientTLSConfig.KeyPath,
+							CertPath: defaultClientTLSConfig.CertPath,
+							CommonCACertPaths: append(defaultClientTLSConfig.CACertPaths,
+								"/client-certs/orderer-creds-ca.pem",
+							),
 						},
 						Organizations: map[string]*ordererconn.OrganizationConfig{
 							"org0": {

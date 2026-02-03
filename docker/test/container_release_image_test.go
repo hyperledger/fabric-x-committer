@@ -43,6 +43,13 @@ const (
 	containerPathForYugabytePassword = "/root/var/data/yugabyted_credentials.txt" //nolint:gosec
 
 	defaultDBPort = "5433"
+
+	ordererOrganizations = "ordererOrganizations"
+	orderers             = "orderers"
+	tls                  = "tls"
+	// because the orderer endpoint implementing both deliver and client interfaces,
+	// its credentials are set into the path below.
+	org0ServerPaths = ordererOrganizations + "/orderer-org-0/" + orderers + "/orderer-0-org-0/" + tls
 )
 
 // enforcePostgresSSLAndReloadConfigScript enforces SSL-only client connections to a PostgreSQL
@@ -74,6 +81,10 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	loadgenNode := "loadgen"
 	committerNodes := []string{"verifier", "vc", "query", "coordinator", "sidecar"}
 
+	// save the orderer's server credentials generated a head.
+	// we create only one orderer instance.
+	ordererServerCreds := filepath.Join(c.LoadProfile.Policy.CryptoMaterialPath, org0ServerPaths)
+
 	credsFactory := test.NewCredentialsFactory(t)
 	for _, dbType := range []string{dbtest.YugaDBType, dbtest.PostgresDBType} {
 		t.Run(fmt.Sprintf("database:%s", dbType), func(t *testing.T) {
@@ -89,11 +100,12 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					})
 
 					params := startNodeParameters{
-						credsFactory: credsFactory,
-						networkName:  networkName,
-						tlsMode:      mode,
-						materialPath: c.LoadProfile.Policy.CryptoMaterialPath,
-						dbType:       dbType,
+						credsFactory:           credsFactory,
+						networkName:            networkName,
+						tlsMode:                mode,
+						materialPath:           c.LoadProfile.Policy.CryptoMaterialPath,
+						dbType:                 dbType,
+						ordererServerCredsPath: ordererServerCreds,
 					}
 
 					for _, node := range append(committerNodes, dbNode, ordererNode, loadgenNode) {
@@ -260,6 +272,9 @@ func startLoadgenNodeWithReleaseImage(
 				fmt.Sprintf("%s.yaml:/%s.yaml",
 					filepath.Join(mustGetWD(t), localConfigPath, params.node), configPath,
 				),
+				fmt.Sprintf("%s:/client-certs/orderer-creds-ca.pem",
+					filepath.Join(params.ordererServerCredsPath, "ca.crt"),
+				),
 			),
 		},
 		name: assembleContainerName(params.node, params.tlsMode, params.dbType),
@@ -288,6 +303,14 @@ func startCommitterNodeWithTestImage(
 			NetworkMode: container.NetworkMode(params.networkName),
 			Binds: assembleBinds(t, params,
 				fmt.Sprintf("%s:%s", params.materialPath, containerMaterialPath),
+				// we mount them one by one because we already created a volume
+				// named "/server-certs" inside the container.
+				fmt.Sprintf("%s:/server-certs/public-key.pem",
+					filepath.Join(params.ordererServerCredsPath, "server.crt"),
+				),
+				fmt.Sprintf("%s:/server-certs/private-key.pem",
+					filepath.Join(params.ordererServerCredsPath, "server.key"),
+				),
 			),
 		},
 		name: assembleContainerName(params.node, params.tlsMode, params.dbType),
