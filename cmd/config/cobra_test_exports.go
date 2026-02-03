@@ -43,10 +43,10 @@ type CommandTest struct {
 // StartDefaultSystem starts a system with mocks for CMD testing.
 func StartDefaultSystem(t *testing.T) SystemConfig {
 	t.Helper()
-	_, verifier := mock.StartMockVerifierService(t, 1)
-	_, vc := mock.StartMockVCService(t, 1)
+	_, verifier := mock.StartMockVerifierService(t, 1, test.InsecureTLSConfig)
+	_, vc := mock.StartMockVCService(t, 1, test.InsecureTLSConfig)
 	_, orderer := mock.StartMockOrderingServices(t, &mock.OrdererConfig{NumService: 1})
-	_, coordinator := mock.StartMockCoordinatorService(t)
+	_, coordinator := mock.StartMockCoordinatorService(t, test.InsecureTLSConfig)
 	conn := dbtest.PrepareTestEnv(t)
 	server := connection.NewLocalHostServer(test.InsecureTLSConfig)
 	listen, err := server.Listener(t.Context())

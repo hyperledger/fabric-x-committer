@@ -21,13 +21,13 @@ import (
 )
 
 // StartMockVerifierService starts a specified number of mock verifier service and register cancellation.
-func StartMockVerifierService(t *testing.T, numService int) (
+func StartMockVerifierService(t *testing.T, numService int, tlsConfig connection.TLSConfig) (
 	*Verifier, *test.GrpcServers,
 ) {
 	t.Helper()
 	mockVerifier := NewMockSigVerifier()
 	verifierGrpc := test.StartGrpcServersForTest(
-		t.Context(), t, numService, mockVerifier.RegisterService, test.InsecureTLSConfig,
+		t.Context(), t, numService, mockVerifier.RegisterService, tlsConfig,
 	)
 	return mockVerifier, verifierGrpc
 }
@@ -42,10 +42,10 @@ func StartMockVerifierServiceFromServerConfig(
 
 // StartMockVCService starts a specified number of mock VC service using the same shared instance.
 // It is used for testing when multiple VC services are required to share the same state.
-func StartMockVCService(t *testing.T, numService int) (*VcService, *test.GrpcServers) {
+func StartMockVCService(t *testing.T, numService int, tlsConfig connection.TLSConfig) (*VcService, *test.GrpcServers) {
 	t.Helper()
 	sharedVC := NewMockVcService()
-	vcGrpc := test.StartGrpcServersForTest(t.Context(), t, numService, sharedVC.RegisterService, test.InsecureTLSConfig)
+	vcGrpc := test.StartGrpcServersForTest(t.Context(), t, numService, sharedVC.RegisterService, tlsConfig)
 	return sharedVC, vcGrpc
 }
 
@@ -58,13 +58,13 @@ func StartMockVCServiceFromServerConfig(
 }
 
 // StartMockCoordinatorService starts a mock coordinator service and registers cancellation.
-func StartMockCoordinatorService(t *testing.T) (
+func StartMockCoordinatorService(t *testing.T, tlsConfig connection.TLSConfig) (
 	*Coordinator, *test.GrpcServers,
 ) {
 	t.Helper()
 	mockCoordinator := NewMockCoordinator()
 	coordinatorGrpc := test.StartGrpcServersForTest(
-		t.Context(), t, 1, mockCoordinator.RegisterService, test.InsecureTLSConfig,
+		t.Context(), t, 1, mockCoordinator.RegisterService, tlsConfig,
 	)
 	return mockCoordinator, coordinatorGrpc
 }

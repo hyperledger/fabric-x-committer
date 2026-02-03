@@ -41,7 +41,7 @@ const (
 
 func newRelayTestEnv(t *testing.T) *relayTestEnv {
 	t.Helper()
-	coord, coordinatorServer := mock.StartMockCoordinatorService(t)
+	coord, coordinatorServer := mock.StartMockCoordinatorService(t, test.InsecureTLSConfig)
 	coordinatorEndpoint := coordinatorServer.Configs[0].Endpoint
 
 	metrics := newPerformanceMetrics()

@@ -46,7 +46,7 @@ type vcMgrTestEnv struct {
 
 func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 	t.Helper()
-	vcs, servers := mock.StartMockVCService(t, numVCService)
+	vcs, servers := mock.StartMockVCService(t, numVCService, test.InsecureTLSConfig)
 	svEnv := newSvMgrTestEnv(t, 2)
 
 	inputTxs := make(chan dependencygraph.TxNodeBatch, 10)
@@ -55,7 +55,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 
 	vcm := newValidatorCommitterManager(
 		&validatorCommitterManagerConfig{
-			clientConfig:                   test.ServerToMultiClientConfig(servers.Configs...),
+			clientConfig:                   test.ServerToMultiClientConfig(test.InsecureTLSConfig, servers.Configs...),
 			incomingTxsForValidationCommit: inputTxs,
 			outgoingValidatedTxsNode:       outputTxs,
 			outgoingTxsStatus:              outputTxsStatus,

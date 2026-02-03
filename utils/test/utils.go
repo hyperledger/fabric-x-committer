@@ -60,13 +60,17 @@ func FailHandler(t *testing.T) {
 	})
 }
 
-// ServerToMultiClientConfig is used to create a multi client configuration from existing server(s).
-func ServerToMultiClientConfig(servers ...*connection.ServerConfig) *connection.MultiClientConfig {
+// ServerToMultiClientConfig is used to create a multi client configuration from existing server(s)
+// given a client TLS configuration.
+func ServerToMultiClientConfig(
+	clientTLS connection.TLSConfig, servers ...*connection.ServerConfig,
+) *connection.MultiClientConfig {
 	endpoints := make([]*connection.Endpoint, len(servers))
 	for i, server := range servers {
 		endpoints[i] = &server.Endpoint
 	}
 	return &connection.MultiClientConfig{
+		TLS:       clientTLS,
 		Endpoints: endpoints,
 	}
 }
