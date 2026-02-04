@@ -7,8 +7,8 @@ server:
   tls:
     # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
     mode: mtls
-    cert-path: /server-certs/public-key.pem
-    key-path: /server-certs/private-key.pem
+    cert-path: /server-certs/orderer-public-key.pem
+    key-path: /server-certs/orderer-private-key.pem
     ca-cert-paths:
       - /server-certs/ca-certificate.pem
 

@@ -52,6 +52,8 @@ var (
 	}
 )
 
+const ordererRootCA = "/client-certs/orderer-creds-ca.pem"
+
 func TestReadConfigSidecar(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -372,19 +374,17 @@ func TestReadConfigLoadGen(t *testing.T) {
 						ChannelID:     "mychannel",
 						ConsensusType: ordererconn.Bft,
 						TLS: ordererconn.OrdererTLSConfig{
-							Mode:     defaultClientTLSConfig.Mode,
-							KeyPath:  defaultClientTLSConfig.KeyPath,
-							CertPath: defaultClientTLSConfig.CertPath,
-							CommonCACertPaths: append(defaultClientTLSConfig.CACertPaths,
-								"/client-certs/orderer-creds-ca.pem",
-							),
+							Mode:              defaultClientTLSConfig.Mode,
+							KeyPath:           defaultClientTLSConfig.KeyPath,
+							CertPath:          defaultClientTLSConfig.CertPath,
+							CommonCACertPaths: defaultClientTLSConfig.CACertPaths,
 						},
 						Organizations: map[string]*ordererconn.OrganizationConfig{
 							"org0": {
 								Endpoints: []*commontypes.OrdererEndpoint{
 									newOrdererEndpoint("", "orderer"),
 								},
-								CACerts: defaultClientTLSConfig.CACertPaths,
+								CACerts: []string{ordererRootCA},
 							},
 						},
 					},

@@ -47,9 +47,7 @@ const (
 	ordererOrganizations = "ordererOrganizations"
 	orderers             = "orderers"
 	tls                  = "tls"
-	// because the orderer endpoint implementing both deliver and client interfaces,
-	// its credentials are set into the path below.
-	org0ServerPaths = ordererOrganizations + "/orderer-org-0/" + orderers + "/orderer-0-org-0/" + tls
+	org0Orderer0TLSPath  = ordererOrganizations + "/orderer-org-0/" + orderers + "/orderer-0-org-0/" + tls
 )
 
 // enforcePostgresSSLAndReloadConfigScript enforces SSL-only client connections to a PostgreSQL
@@ -81,9 +79,9 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	loadgenNode := "loadgen"
 	committerNodes := []string{"verifier", "vc", "query", "coordinator", "sidecar"}
 
-	// save the orderer's server credentials generated a head.
-	// we create only one orderer instance.
-	ordererServerCreds := filepath.Join(c.LoadProfile.Policy.CryptoMaterialPath, org0ServerPaths)
+	// hold the orderer's server credentials generated in advance.
+	// we start only one orderer instance.
+	ordererServerCreds := filepath.Join(c.LoadProfile.Policy.CryptoMaterialPath, org0Orderer0TLSPath)
 
 	credsFactory := test.NewCredentialsFactory(t)
 	for _, dbType := range []string{dbtest.YugaDBType, dbtest.PostgresDBType} {
@@ -272,6 +270,7 @@ func startLoadgenNodeWithReleaseImage(
 				fmt.Sprintf("%s.yaml:/%s.yaml",
 					filepath.Join(mustGetWD(t), localConfigPath, params.node), configPath,
 				),
+				// load into the loadgen the root CA that generated the orderer's TLS certificates.
 				fmt.Sprintf("%s:/client-certs/orderer-creds-ca.pem",
 					filepath.Join(params.ordererServerCredsPath, "ca.crt"),
 				),
@@ -303,12 +302,10 @@ func startCommitterNodeWithTestImage(
 			NetworkMode: container.NetworkMode(params.networkName),
 			Binds: assembleBinds(t, params,
 				fmt.Sprintf("%s:%s", params.materialPath, containerMaterialPath),
-				// we mount them one by one because we already created a volume
-				// named "/server-certs" inside the container.
-				fmt.Sprintf("%s:/server-certs/public-key.pem",
+				fmt.Sprintf("%s:/server-certs/orderer-public-key.pem",
 					filepath.Join(params.ordererServerCredsPath, "server.crt"),
 				),
-				fmt.Sprintf("%s:/server-certs/private-key.pem",
+				fmt.Sprintf("%s:/server-certs/orderer-private-key.pem",
 					filepath.Join(params.ordererServerCredsPath, "server.key"),
 				),
 			),

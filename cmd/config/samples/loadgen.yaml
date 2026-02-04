@@ -58,7 +58,7 @@ orderer-client:
         endpoints:
           - id=0,broadcast,deliver,orderer:7050
         ca-cert-paths:
-          - /client-certs/ca-certificate.pem
+          - /client-certs/orderer-creds-ca.pem
     # Loadgen uses these TLS credentials when connecting to the orderers as a client.
     tls:
       # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
@@ -67,7 +67,6 @@ orderer-client:
       key-path: /client-certs/private-key.pem
       common-ca-cert-paths:
         - /client-certs/ca-certificate.pem
-        - /client-certs/orderer-creds-ca.pem
     consensus-type: BFT
     channel-id: mychannel
   # We set low values to reduce the CPU load during tests.
