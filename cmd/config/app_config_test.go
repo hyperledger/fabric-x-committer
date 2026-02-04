@@ -119,7 +119,8 @@ func TestReadConfigSidecar(t *testing.T) {
 			},
 			Committer: newClientConfigWithDefaultTLS("coordinator", 9001),
 			Ledger: sidecar.LedgerConfig{
-				Path: "/root/sc/ledger",
+				Path:         "/root/sc/ledger",
+				SyncInterval: 100,
 			},
 			Notification: sidecar.NotificationServiceConfig{
 				MaxTimeout: 10 * time.Minute,

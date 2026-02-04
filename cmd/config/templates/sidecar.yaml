@@ -64,6 +64,7 @@ committer:
 
 ledger:
   path: {{ .LedgerPath }}
+  sync-interval: 100
 
 notification:
   max-timeout: 10m

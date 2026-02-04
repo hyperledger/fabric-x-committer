@@ -41,6 +41,10 @@ type (
 	// LedgerConfig holds the ledger path.
 	LedgerConfig struct {
 		Path string `mapstructure:"path"`
+		// SyncInterval controls how often the block store fsyncs to durable storage.
+		// A value of N means every Nth block triggers a full sync; intermediate
+		// blocks are written without fsync. A value of 0 or 1 means every block is synced.
+		SyncInterval uint64 `mapstructure:"sync-interval"`
 	}
 
 	// NotificationServiceConfig holds the parameters for notifications.

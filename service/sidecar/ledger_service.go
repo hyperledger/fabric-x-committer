@@ -30,10 +30,11 @@ import (
 type (
 	// ledgerService implements peer.DeliverServer.
 	ledgerService struct {
-		ledger                       blockledger.ReadWriter
+		ledger                       *fileledger.FileLedger
 		ledgerProvider               blockledger.Factory
 		channelID                    string
 		nextToBeCommittedBlockNumber uint64
+		syncInterval                 uint64
 		metrics                      *perfMetrics
 	}
 
@@ -44,16 +45,21 @@ type (
 )
 
 // newLedgerService creates a new ledger service.
-func newLedgerService(channelID, ledgerDir string, metrics *perfMetrics) (*ledgerService, error) {
+func newLedgerService(channelID, ledgerDir string, syncInterval uint64, metrics *perfMetrics) (*ledgerService, error) {
 	logger.Infof("Create ledger files for channel %s under %s", channelID, ledgerDir)
 	factory, err := fileledger.New(ledgerDir, &disabled.Provider{})
 	if err != nil {
 		return nil, err
 	}
 
-	ledger, err := factory.GetOrCreate(channelID)
+	rw, err := factory.GetOrCreate(channelID)
 	if err != nil {
 		return nil, err
+	}
+
+	ledger, ok := rw.(*fileledger.FileLedger)
+	if !ok {
+		return nil, errors.New("unexpected ledger implementation type")
 	}
 
 	return &ledgerService{
@@ -61,11 +67,16 @@ func newLedgerService(channelID, ledgerDir string, metrics *perfMetrics) (*ledge
 		ledgerProvider:               factory,
 		channelID:                    channelID,
 		nextToBeCommittedBlockNumber: ledger.Height(),
+		syncInterval:                 syncInterval,
 		metrics:                      metrics,
 	}, nil
 }
 
 // run starts the ledger service. The call to run blocks until an error occurs or the context is canceled.
+// When syncInterval > 1, intermediate blocks are written without fsync (AppendNoSync) and every
+// Nth block triggers a full sync (Append). This reduces per-block fsync overhead while bounding
+// the number of blocks that could be lost on crash (recoverable from the orderer).
+// File rollovers always force a sync regardless of the interval (handled in the block store).
 func (s *ledgerService) run(ctx context.Context, config *ledgerRunConfig) error {
 	inputBlock := channel.NewReader(ctx, config.IncomingCommittedBlock)
 	for {
@@ -91,13 +102,22 @@ func (s *ledgerService) run(ctx context.Context, config *ledgerRunConfig) error 
 
 		logger.Debugf("Appending block %d to ledger.", block.Header.Number)
 		start := time.Now()
-		if err := s.ledger.Append(block); err != nil {
+		if err := s.appendBlock(block); err != nil {
 			return err
 		}
 		promutil.Observe(s.metrics.appendBlockToLedgerSeconds, time.Since(start))
 		promutil.SetUint64Gauge(s.metrics.blockHeight, block.Header.Number+1)
 		logger.Debugf("Appended block %d to ledger.", block.Header.Number)
 	}
+}
+
+// appendBlock appends a block to the ledger. It uses AppendNoSync for intermediate
+// blocks and Append (with fsync) every syncInterval blocks.
+func (s *ledgerService) appendBlock(block *common.Block) error {
+	if s.syncInterval <= 1 || (block.Header.Number+1)%s.syncInterval == 0 {
+		return s.ledger.Append(block)
+	}
+	return s.ledger.AppendNoSync(block)
 }
 
 // close releases the ledger directory.
