@@ -113,7 +113,9 @@ func newSidecarTestEnvWithTLS(
 	conf sidecarTestConfig,
 ) *sidecarTestEnv {
 	t.Helper()
-	coordinator, coordinatorServer := mock.StartMockCoordinatorService(t, conf.ServerTLS)
+	coordinator, coordinatorServer := mock.StartMockCoordinatorService(t, mock.StartMockOpts{
+		TLSConfig: conf.ServerTLS,
+	})
 	ordererEnv := mock.NewOrdererTestEnv(t, &mock.OrdererTestConfig{
 		ChanID: "ch1",
 		Config: &mock.OrdererConfig{

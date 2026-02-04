@@ -43,7 +43,10 @@ type svMgrTestEnv struct {
 func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte) *svMgrTestEnv {
 	t.Helper()
 	expectedEndError := string(expectedEndErrorMsg)
-	verifier, sc := mock.StartMockVerifierService(t, numSvService, test.InsecureTLSConfig)
+	verifier, sc := mock.StartMockVerifierService(t, mock.StartMockOpts{
+		NumService: numSvService,
+		TLSConfig:  test.InsecureTLSConfig,
+	})
 
 	inputTxBatch := make(chan dependencygraph.TxNodeBatch, 10)
 	outputValidatedTxs := make(chan dependencygraph.TxNodeBatch, 10)

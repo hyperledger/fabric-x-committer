@@ -46,7 +46,10 @@ type vcMgrTestEnv struct {
 
 func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 	t.Helper()
-	vcs, servers := mock.StartMockVCService(t, numVCService, test.InsecureTLSConfig)
+	vcs, servers := mock.StartMockVCService(t, mock.StartMockOpts{
+		NumService: numVCService,
+		TLSConfig:  test.InsecureTLSConfig,
+	})
 	svEnv := newSvMgrTestEnv(t, 2)
 
 	inputTxs := make(chan dependencygraph.TxNodeBatch, 10)

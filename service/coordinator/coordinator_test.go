@@ -54,8 +54,8 @@ type (
 		numVcService  int
 		mockVcService bool
 
-		serversTLS connection.TLSConfig
-		clientsTLS connection.TLSConfig
+		initialServerTLS connection.TLSConfig
+		initialClientTLS connection.TLSConfig
 	}
 )
 
@@ -67,11 +67,11 @@ func TestCoordinatorSecureConnection(t *testing.T) {
 		func(t *testing.T, serverTLSCfg, clientTLSCfg connection.TLSConfig) test.RPCAttempt {
 			t.Helper()
 			env := newCoordinatorTestEnv(t, &testConfig{
-				numSigService: 1,
-				numVcService:  1,
-				mockVcService: true,
-				serversTLS:    serverTLSCfg,
-				clientsTLS:    clientTLSCfg,
+				numSigService:    1,
+				numVcService:     1,
+				mockVcService:    true,
+				initialServerTLS: serverTLSCfg,
+				initialClientTLS: clientTLSCfg,
 			})
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 			t.Cleanup(cancel)
@@ -88,7 +88,11 @@ func TestCoordinatorSecureConnection(t *testing.T) {
 
 func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEnv {
 	t.Helper()
-	verifier, svServers := mock.StartMockVerifierService(t, tConfig.numSigService, tConfig.serversTLS)
+
+	verifier, svServers := mock.StartMockVerifierService(t, mock.StartMockOpts{
+		NumService: tConfig.numSigService,
+		TLSConfig:  tConfig.initialServerTLS,
+	})
 
 	vcServerConfigs := make([]*connection.ServerConfig, 0, tConfig.numVcService)
 	var vcsTestEnv *vc.ValidatorAndCommitterServiceTestEnv
@@ -97,20 +101,23 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 	if !tConfig.mockVcService {
 		vcsTestEnv = vc.NewValidatorAndCommitServiceTestEnv(t, &vc.TestEnvOpts{
 			NumServices: tConfig.numVcService,
-			ServerCreds: tConfig.serversTLS,
+			ServerCreds: tConfig.initialServerTLS,
 		})
 		for _, c := range vcsTestEnv.Configs {
 			vcServerConfigs = append(vcServerConfigs, c.Server)
 		}
 		dbEnv = vcsTestEnv.GetDBEnv()
 	} else {
-		_, vcServers := mock.StartMockVCService(t, tConfig.numVcService, tConfig.serversTLS)
+		_, vcServers := mock.StartMockVCService(t, mock.StartMockOpts{
+			NumService: tConfig.numVcService,
+			TLSConfig:  tConfig.initialServerTLS,
+		})
 		vcServerConfigs = vcServers.Configs
 	}
 
 	c := &Config{
-		Verifier:           *test.ServerToMultiClientConfig(tConfig.clientsTLS, svServers.Configs...),
-		ValidatorCommitter: *test.ServerToMultiClientConfig(tConfig.clientsTLS, vcServerConfigs...),
+		Verifier:           *test.ServerToMultiClientConfig(tConfig.initialClientTLS, svServers.Configs...),
+		ValidatorCommitter: *test.ServerToMultiClientConfig(tConfig.initialClientTLS, vcServerConfigs...),
 		DependencyGraph: &DependencyGraphConfig{
 			NumOfLocalDepConstructors: 3,
 			WaitingTxsLimit:           10,
@@ -127,8 +134,8 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 		dbEnv:                  dbEnv,
 		verifier:               verifier,
 		sigVerifierGrpcServers: svServers,
-		serverTLS:              tConfig.serversTLS,
-		clientTLS:              tConfig.clientsTLS,
+		serverTLS:              tConfig.initialServerTLS,
+		clientTLS:              tConfig.initialClientTLS,
 	}
 }
 

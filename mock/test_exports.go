@@ -20,14 +20,19 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
+type StartMockOpts struct {
+	TLSConfig  connection.TLSConfig
+	NumService int
+}
+
 // StartMockVerifierService starts a specified number of mock verifier service and register cancellation.
-func StartMockVerifierService(t *testing.T, numService int, tlsConfig connection.TLSConfig) (
+func StartMockVerifierService(t *testing.T, settings StartMockOpts) (
 	*Verifier, *test.GrpcServers,
 ) {
 	t.Helper()
 	mockVerifier := NewMockSigVerifier()
 	verifierGrpc := test.StartGrpcServersForTest(
-		t.Context(), t, numService, mockVerifier.RegisterService, tlsConfig,
+		t.Context(), t, settings.NumService, mockVerifier.RegisterService, settings.TLSConfig,
 	)
 	return mockVerifier, verifierGrpc
 }
@@ -42,10 +47,12 @@ func StartMockVerifierServiceFromServerConfig(
 
 // StartMockVCService starts a specified number of mock VC service using the same shared instance.
 // It is used for testing when multiple VC services are required to share the same state.
-func StartMockVCService(t *testing.T, numService int, tlsConfig connection.TLSConfig) (*VcService, *test.GrpcServers) {
+func StartMockVCService(t *testing.T, settings StartMockOpts) (*VcService, *test.GrpcServers) {
 	t.Helper()
 	sharedVC := NewMockVcService()
-	vcGrpc := test.StartGrpcServersForTest(t.Context(), t, numService, sharedVC.RegisterService, tlsConfig)
+	vcGrpc := test.StartGrpcServersForTest(
+		t.Context(), t, settings.NumService, sharedVC.RegisterService, settings.TLSConfig,
+	)
 	return sharedVC, vcGrpc
 }
 
@@ -58,13 +65,13 @@ func StartMockVCServiceFromServerConfig(
 }
 
 // StartMockCoordinatorService starts a mock coordinator service and registers cancellation.
-func StartMockCoordinatorService(t *testing.T, tlsConfig connection.TLSConfig) (
+func StartMockCoordinatorService(t *testing.T, settings StartMockOpts) (
 	*Coordinator, *test.GrpcServers,
 ) {
 	t.Helper()
 	mockCoordinator := NewMockCoordinator()
 	coordinatorGrpc := test.StartGrpcServersForTest(
-		t.Context(), t, 1, mockCoordinator.RegisterService, tlsConfig,
+		t.Context(), t, 1, mockCoordinator.RegisterService, settings.TLSConfig,
 	)
 	return mockCoordinator, coordinatorGrpc
 }
