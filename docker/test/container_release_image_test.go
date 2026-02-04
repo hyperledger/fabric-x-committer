@@ -47,7 +47,8 @@ const (
 	ordererOrganizations = "ordererOrganizations"
 	orderers             = "orderers"
 	tls                  = "tls"
-	org0Orderer0TLSPath  = ordererOrganizations + "/orderer-org-0/" + orderers + "/orderer-0-org-0/" + tls
+	// org0Orderer0TLSPath specifies the location of the generated TLS certificates used by orderer0 of org 0.
+	org0Orderer0TLSPath = ordererOrganizations + "/orderer-org-0/" + orderers + "/orderer-0-org-0/" + tls
 )
 
 // enforcePostgresSSLAndReloadConfigScript enforces SSL-only client connections to a PostgreSQL
