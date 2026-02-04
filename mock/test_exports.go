@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
+// StartMockOpts defines the options for starting mock services.
 type StartMockOpts struct {
 	TLSConfig  connection.TLSConfig
 	NumService int
