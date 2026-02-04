@@ -94,62 +94,70 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb
 }
 
 func (b *blockMappingResult) mapMessage(msgIndex uint32, msg []byte) error {
-	data, hdr, envErr := serialization.UnwrapEnvelope(msg)
+	// UnwrapEnvelopeLite extracts only HeaderType, TxID, and Data from the envelope
+	// by scanning the protobuf wire format directly. Unlike UnwrapEnvelope, which
+	// fully deserializes all nested proto messages and validates every field, this
+	// skips unused ChannelHeader fields (version, timestamp, channel_id, epoch,
+	// extension, tls_cert_hash) and the Header's signature_header. Corruption in
+	// those fields will go undetected. This is acceptable because the committer
+	// does not use them, and for the same reason, they are not validated in the
+	// sidecar. TODO: remove unused fields from the ChannelHeader proto.
+	envLite, envErr := serialization.UnwrapEnvelopeLite(msg)
 	if envErr != nil {
-		return b.rejectNonDBStatusTx(msgIndex, hdr, committerpb.Status_MALFORMED_BAD_ENVELOPE, envErr.Error())
+		return b.rejectNonDBStatusTx(msgIndex, envLite, committerpb.Status_MALFORMED_BAD_ENVELOPE, envErr.Error())
 	}
-	if hdr.TxId == "" || !utf8.ValidString(hdr.TxId) {
-		return b.rejectNonDBStatusTx(msgIndex, hdr, committerpb.Status_MALFORMED_MISSING_TX_ID, "no TX ID")
+	if envLite.TxID == "" || !utf8.ValidString(envLite.TxID) {
+		return b.rejectNonDBStatusTx(msgIndex, envLite, committerpb.Status_MALFORMED_MISSING_TX_ID, "no TX ID")
 	}
 
-	switch common.HeaderType(hdr.Type) {
+	switch common.HeaderType(envLite.HeaderType) {
 	case common.HeaderType_CONFIG:
 		_, err := policy.ParsePolicyFromConfigTx(msg)
 		if err != nil {
-			return b.rejectTx(msgIndex, hdr, committerpb.Status_MALFORMED_CONFIG_TX_INVALID, err.Error())
+			return b.rejectTx(msgIndex, envLite, committerpb.Status_MALFORMED_CONFIG_TX_INVALID, err.Error())
 		}
 		b.isConfig = true
-		return b.appendTx(msgIndex, hdr, configTx(msg))
+		return b.appendTx(msgIndex, envLite, configTx(msg))
 	case common.HeaderType_MESSAGE:
-		tx, err := serialization.UnmarshalTx(data)
+		tx, err := serialization.UnmarshalTx(envLite.Data)
 		if err != nil {
-			return b.rejectTx(msgIndex, hdr, committerpb.Status_MALFORMED_BAD_ENVELOPE_PAYLOAD, err.Error())
+			return b.rejectTx(msgIndex, envLite, committerpb.Status_MALFORMED_BAD_ENVELOPE_PAYLOAD, err.Error())
 		}
 		if status := verifyTxForm(tx); status != statusNotYetValidated {
-			return b.rejectTx(msgIndex, hdr, status, "malformed tx")
+			return b.rejectTx(msgIndex, envLite, status, "malformed tx")
 		}
-		return b.appendTx(msgIndex, hdr, tx)
+		return b.appendTx(msgIndex, envLite, tx)
 	default:
-		return b.rejectTx(msgIndex, hdr, committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD, "message type")
+		return b.rejectTx(msgIndex, envLite, committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD, "message type")
 	}
 }
 
-func (b *blockMappingResult) appendTx(txNum uint32, hdr *common.ChannelHeader, tx *applicationpb.Tx) error {
-	if idAlreadyExists, err := b.addTxIDMapping(txNum, hdr); idAlreadyExists || err != nil {
+func (b *blockMappingResult) appendTx(txNum uint32, envLite *serialization.EnvelopeLite, tx *applicationpb.Tx) error {
+	if idAlreadyExists, err := b.addTxIDMapping(txNum, envLite); idAlreadyExists || err != nil {
 		return err
 	}
 	b.block.Txs = append(b.block.Txs, &servicepb.TxWithRef{
-		Ref:     committerpb.NewTxRef(hdr.TxId, b.blockNumber, txNum),
+		Ref:     committerpb.NewTxRef(envLite.TxID, b.blockNumber, txNum),
 		Content: tx,
 	})
-	debugTx(hdr, "included: %s", hdr.TxId)
+	debugTx(envLite, "included: %s", envLite.TxID)
 	return nil
 }
 
 func (b *blockMappingResult) rejectTx(
-	txNum uint32, hdr *common.ChannelHeader, status committerpb.Status, reason string,
+	txNum uint32, envLite *serialization.EnvelopeLite, status committerpb.Status, reason string,
 ) error {
 	if !IsStatusStoredInDB(status) {
-		return b.rejectNonDBStatusTx(txNum, hdr, status, reason)
+		return b.rejectNonDBStatusTx(txNum, envLite, status, reason)
 	}
-	if idAlreadyExists, err := b.addTxIDMapping(txNum, hdr); idAlreadyExists || err != nil {
+	if idAlreadyExists, err := b.addTxIDMapping(txNum, envLite); idAlreadyExists || err != nil {
 		return err
 	}
 	b.block.Rejected = append(b.block.Rejected, &committerpb.TxStatus{
-		Ref:    committerpb.NewTxRef(hdr.TxId, b.blockNumber, txNum),
+		Ref:    committerpb.NewTxRef(envLite.TxID, b.blockNumber, txNum),
 		Status: status,
 	})
-	debugTx(hdr, "rejected: %s (%s)", &status, reason)
+	debugTx(envLite, "rejected: %s (%s)", &status, reason)
 	return nil
 }
 
@@ -157,7 +165,7 @@ func (b *blockMappingResult) rejectTx(
 // Namely, statuses for cases where we don't have a TX ID, or there is a TX ID duplication.
 // For such cases, no notification will be given by the notification service.
 func (b *blockMappingResult) rejectNonDBStatusTx(
-	txNum uint32, hdr *common.ChannelHeader, status committerpb.Status, reason string,
+	txNum uint32, envLite *serialization.EnvelopeLite, status committerpb.Status, reason string,
 ) error {
 	if IsStatusStoredInDB(status) {
 		// This can never occur unless there is a bug in the relay.
@@ -167,17 +175,19 @@ func (b *blockMappingResult) rejectNonDBStatusTx(
 	if err != nil {
 		return err
 	}
-	debugTx(hdr, "excluded: %s (%s)", &status, reason)
+	debugTx(envLite, "excluded: %s (%s)", &status, reason)
 	return nil
 }
 
-func (b *blockMappingResult) addTxIDMapping(txNum uint32, hdr *common.ChannelHeader) (idAlreadyExists bool, err error) {
-	_, idAlreadyExists = b.txIDToHeight.LoadOrStore(hdr.TxId, servicepb.Height{
+func (b *blockMappingResult) addTxIDMapping(txNum uint32, envLite *serialization.EnvelopeLite) (
+	idAlreadyExists bool, err error,
+) {
+	_, idAlreadyExists = b.txIDToHeight.LoadOrStore(envLite.TxID, servicepb.Height{
 		BlockNum: b.blockNumber,
 		TxNum:    txNum,
 	})
 	if idAlreadyExists {
-		err = b.rejectNonDBStatusTx(txNum, hdr, committerpb.Status_REJECTED_DUPLICATE_TX_ID, "duplicate tx")
+		err = b.rejectNonDBStatusTx(txNum, envLite, committerpb.Status_REJECTED_DUPLICATE_TX_ID, "duplicate tx")
 	}
 	return idAlreadyExists, err
 }
@@ -212,15 +222,15 @@ func IsStatusStoredInDB(status committerpb.Status) bool {
 	}
 }
 
-func debugTx(channelHdr *common.ChannelHeader, format string, a ...any) {
+func debugTx(envLite *serialization.EnvelopeLite, format string, a ...any) {
 	if logger.Level() > zapcore.DebugLevel {
 		return
 	}
 	hdr := "<no-header>"
 	txID := "<no-id>"
-	if channelHdr != nil {
-		hdr = common.HeaderType(channelHdr.Type).String()
-		txID = channelHdr.TxId
+	if envLite != nil {
+		hdr = common.HeaderType(envLite.HeaderType).String()
+		txID = envLite.TxID
 	}
 	logger.Debugf("TX type [%s] ID [%s]: %s", hdr, txID, fmt.Sprintf(format, a...))
 }
