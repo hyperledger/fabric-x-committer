@@ -5,6 +5,8 @@ SPDX-License-Identifier: Apache-2.0
 -->
 # Fabric-X Committer
 
+[![Coverage Status](https://coveralls.io/repos/github/hyperledger/fabric-x-committer/badge.svg?branch=main)](https://coveralls.io/github/hyperledger/fabric-x-committer?branch=main)
+
 ## Setup and Testing
 
 See [setup](docs/setup.md) for details on prerequisites and quick start guide.
