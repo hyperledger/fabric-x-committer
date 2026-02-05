@@ -428,7 +428,7 @@ func TestNotifierTryAcquireStreamConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	for range 20 {
 		wg.Go(func() {
-			if n.tryAcquireStream() {
+			if n.tryAcquireStream(t.Context()) {
 				successCount.Add(1)
 			}
 		})
@@ -443,5 +443,5 @@ func TestNotifierTryAcquireStreamConcurrent(t *testing.T) {
 		n.releaseStream()
 	}
 	require.Equal(t, int32(0), n.activeStreams.Load())
-	require.True(t, n.tryAcquireStream())
+	require.True(t, n.tryAcquireStream(t.Context()))
 }
