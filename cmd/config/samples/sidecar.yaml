@@ -77,6 +77,9 @@ ledger:
   path: /root/sc/ledger
 notification:
   max-timeout: 10m
+  # Maximum number of concurrent notification streams allowed.
+  # Set to 0 for unlimited streams (default).
+  max-concurrent-streams: 0
 
 bootstrap:
   genesis-block-file-path: /root/material/config-block.pb.bin

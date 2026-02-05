@@ -14,7 +14,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/msp"
-	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/utils/certificate"
 
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -67,17 +67,12 @@ func NewNsEndorserFromMsp(certType int, mspDirs ...msp.DirLoadParameters) (*NsEn
 	}
 	for i, id := range identities {
 		e.mspIDs[i] = []byte(id.GetMSPIdentifier())
-		serializedIDBytes, err := id.Serialize()
-		if err != nil {
-			return nil, errors.Wrap(err, "serializing default signing identity")
-		}
-		serializedID, err := protoutil.UnmarshalSerializedIdentity(serializedIDBytes)
+		idBytes, err := id.GetCertificatePEM()
 		if err != nil {
 			return nil, err
 		}
-		idBytes := serializedID.IdBytes
 		if certType == test.CreatorID {
-			idBytes, err = DigestPemContent(idBytes, bccsp.SHA256)
+			idBytes, err = certificate.DigestPemContent(idBytes, bccsp.SHA256)
 			if err != nil {
 				return nil, err
 			}
