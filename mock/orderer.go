@@ -125,6 +125,9 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 	if config.PayloadCacheSize == 0 {
 		config.PayloadCacheSize = defaultConfig.PayloadCacheSize
 	}
+	if config.TestServerParameters.NumService == 0 && len(config.ServerConfigs) == 0 {
+		config.TestServerParameters.NumService = defaultConfig.TestServerParameters.NumService
+	}
 	configBlock := defaultConfigBlock
 	if config.ConfigBlockPath != "" {
 		var err error
