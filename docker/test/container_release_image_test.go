@@ -24,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 )
 
 const (
@@ -44,11 +45,9 @@ const (
 
 	defaultDBPort = "5433"
 
-	ordererOrganizations = "ordererOrganizations"
-	orderers             = "orderers"
-	tls                  = "tls"
 	// org0Orderer0TLSPath specifies the location of the generated TLS certificates used by orderer0 of org 0.
-	org0Orderer0TLSPath = ordererOrganizations + "/orderer-org-0/" + orderers + "/orderer-0-org-0/" + tls
+	org0Orderer0TLSPath = cryptogen.OrdererOrganizationsDir +
+		"/orderer-org-0/" + cryptogen.OrdererNodesDir + "/orderer-0-org-0/" + cryptogen.TLSDir
 )
 
 // enforcePostgresSSLAndReloadConfigScript enforces SSL-only client connections to a PostgreSQL
@@ -99,12 +98,12 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					})
 
 					params := startNodeParameters{
-						credsFactory:           credsFactory,
-						networkName:            networkName,
-						tlsMode:                mode,
-						materialPath:           c.LoadProfile.Policy.CryptoMaterialPath,
-						dbType:                 dbType,
-						ordererServerCredsPath: ordererServerCreds,
+						credsFactory:       credsFactory,
+						networkName:        networkName,
+						tlsMode:            mode,
+						materialPath:       c.LoadProfile.Policy.CryptoMaterialPath,
+						dbType:             dbType,
+						ordererCACredsPath: ordererServerCreds,
 					}
 
 					for _, node := range append(committerNodes, dbNode, ordererNode, loadgenNode) {
@@ -272,8 +271,8 @@ func startLoadgenNodeWithReleaseImage(
 					filepath.Join(mustGetWD(t), localConfigPath, params.node), configPath,
 				),
 				// load into the loadgen the root CA that generated the orderer's TLS certificates.
-				fmt.Sprintf("%s:/client-certs/orderer-creds-ca.pem",
-					filepath.Join(params.ordererServerCredsPath, "ca.crt"),
+				fmt.Sprintf("%s:/client-certs/orderer-ca-certificate.pem",
+					filepath.Join(params.ordererCACredsPath, "ca.crt"),
 				),
 			),
 		},
@@ -304,10 +303,10 @@ func startCommitterNodeWithTestImage(
 			Binds: assembleBinds(t, params,
 				fmt.Sprintf("%s:%s", params.materialPath, containerMaterialPath),
 				fmt.Sprintf("%s:/server-certs/public-key.pem",
-					filepath.Join(params.ordererServerCredsPath, "server.crt"),
+					filepath.Join(params.ordererCACredsPath, "server.crt"),
 				),
 				fmt.Sprintf("%s:/server-certs/private-key.pem",
-					filepath.Join(params.ordererServerCredsPath, "server.key"),
+					filepath.Join(params.ordererCACredsPath, "server.key"),
 				),
 			),
 		},
