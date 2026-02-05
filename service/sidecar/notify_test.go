@@ -85,7 +85,7 @@ func BenchmarkNotifier(b *testing.B) {
 	for notifiedCount < expectedCount {
 		res, ok := q.ReadWithTimeout(5 * time.Minute)
 		if !ok {
-			b.Fatalf("expected notification")
+			b.Fatal("expected notification")
 		}
 		notifiedCount += len(res.TxStatusEvents)
 	}
