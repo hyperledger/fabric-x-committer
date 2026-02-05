@@ -52,6 +52,8 @@ var (
 	}
 )
 
+const ordererRootCA = "/client-certs/orderer-ca-certificate.pem"
+
 func TestReadConfigSidecar(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -382,7 +384,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 								Endpoints: []*commontypes.OrdererEndpoint{
 									newOrdererEndpoint("", "orderer"),
 								},
-								CACerts: defaultClientTLSConfig.CACertPaths,
+								CACerts: []string{ordererRootCA},
 							},
 						},
 					},
