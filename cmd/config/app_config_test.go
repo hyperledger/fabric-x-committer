@@ -52,7 +52,7 @@ var (
 	}
 )
 
-const ordererRootCA = "/client-certs/orderer-creds-ca.pem"
+const ordererRootCA = "/client-certs/orderer-ca-certificate.pem"
 
 func TestReadConfigSidecar(t *testing.T) {
 	t.Parallel()
