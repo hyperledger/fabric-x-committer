@@ -119,7 +119,7 @@ func newSidecarTestEnvWithTLS(
 	ordererEnv := mock.NewOrdererTestEnv(t, &mock.OrdererTestConfig{
 		ChanID: "ch1",
 		Config: &mock.OrdererConfig{
-			Params: test.StartServerParameters{
+			TestServerParameters: test.StartServerParameters{
 				TLSConfig:  conf.ServerTLS,
 				NumService: conf.NumService,
 			},

@@ -286,7 +286,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 					orderer, ordererServer := mock.StartMockOrderingServices(
 						t, &mock.OrdererConfig{
 							BlockSize: 100,
-							Params: test.StartServerParameters{
+							TestServerParameters: test.StartServerParameters{
 								NumService: 3,
 								TLSConfig:  serverTLSConfig,
 							},
@@ -363,7 +363,7 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 					t.Parallel()
 					// Start dependencies
 					orderer, ordererServer := mock.StartMockOrderingServices(t, &mock.OrdererConfig{
-						Params: test.StartServerParameters{
+						TestServerParameters: test.StartServerParameters{
 							NumService: 3,
 							TLSConfig:  serverTLSConfig,
 						},

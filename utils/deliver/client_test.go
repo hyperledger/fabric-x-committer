@@ -217,7 +217,7 @@ func makeConfig(t *testing.T, serverTLS, clientTLS connection.TLSConfig) (
 	t.Logf("Instance count: %d; idCount: %d", instanceCount, idCount)
 
 	ordererService, ordererServer := mock.StartMockOrderingServices(t, &mock.OrdererConfig{
-		Params: test.StartServerParameters{
+		TestServerParameters: test.StartServerParameters{
 			NumService: instanceCount,
 			TLSConfig:  serverTLS,
 		},

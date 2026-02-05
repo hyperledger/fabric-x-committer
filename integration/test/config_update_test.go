@@ -22,7 +22,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 const blockSize = 1
@@ -52,9 +51,6 @@ func TestConfigUpdate(t *testing.T) {
 			BlockTimeout:    5 * time.Minute,
 			ConfigBlockPath: c.SystemConfig.ConfigBlockPath,
 			SendConfigBlock: true,
-			Params: test.StartServerParameters{
-				NumService: len(ordererServers),
-			},
 		},
 		NumHolders: 1,
 	})
@@ -194,9 +190,6 @@ func TestConfigBlockImmediateCommit(t *testing.T) {
 			BlockTimeout:    5 * time.Minute,
 			ConfigBlockPath: c.SystemConfig.ConfigBlockPath,
 			SendConfigBlock: true,
-			Params: test.StartServerParameters{
-				NumService: len(ordererServers),
-			},
 		},
 		NumHolders: 0,
 	})

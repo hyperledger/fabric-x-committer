@@ -89,13 +89,14 @@ func StartMockOrderingServices(t *testing.T, conf *OrdererConfig) (
 		return connection.FilterStreamRPCError(service.Run(ctx))
 	}, service.WaitForReady)
 
-	if len(conf.ServerConfigs) == conf.Params.NumService {
+	if len(conf.ServerConfigs) > 0 {
+		require.Zero(t, conf.TestServerParameters.NumService)
 		return service, test.StartGrpcServersWithConfigForTest(t.Context(), t, service.RegisterService,
 			conf.ServerConfigs...,
 		)
 	}
 
-	servers := test.StartGrpcServersForTest(t.Context(), t, conf.Params, service.RegisterService)
+	servers := test.StartGrpcServersForTest(t.Context(), t, conf.TestServerParameters, service.RegisterService)
 	return service, servers
 }
 
@@ -132,7 +133,7 @@ func NewOrdererTestEnv(t *testing.T, conf *OrdererTestConfig) *OrdererTestEnv {
 		HolderServers: test.StartGrpcServersForTest(
 			t.Context(), t, test.StartServerParameters{
 				NumService: conf.NumHolders,
-				TLSConfig:  conf.Config.Params.TLSConfig,
+				TLSConfig:  conf.Config.TestServerParameters.TLSConfig,
 			}, holder.RegisterService,
 		),
 		FakeServers: test.StartGrpcServersForTest(

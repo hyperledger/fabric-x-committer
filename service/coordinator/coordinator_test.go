@@ -54,8 +54,8 @@ type (
 		numVcService  int
 		mockVcService bool
 
-		ServerTLS connection.TLSConfig
-		ClientTLS connection.TLSConfig
+		serverTLS connection.TLSConfig
+		clientTLS connection.TLSConfig
 	}
 )
 
@@ -70,8 +70,8 @@ func TestCoordinatorSecureConnection(t *testing.T) {
 				numSigService: 1,
 				numVcService:  1,
 				mockVcService: true,
-				ServerTLS:     serverTLSCfg,
-				ClientTLS:     clientTLSCfg,
+				serverTLS:     serverTLSCfg,
+				clientTLS:     clientTLSCfg,
 			})
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 			t.Cleanup(cancel)
@@ -91,7 +91,7 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 
 	verifier, svServers := mock.StartMockVerifierService(t, test.StartServerParameters{
 		NumService: tConfig.numSigService,
-		TLSConfig:  tConfig.ServerTLS,
+		TLSConfig:  tConfig.serverTLS,
 	})
 
 	vcServerConfigs := make([]*connection.ServerConfig, 0, tConfig.numVcService)
@@ -101,7 +101,7 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 	if !tConfig.mockVcService {
 		vcsTestEnv = vc.NewValidatorAndCommitServiceTestEnv(t, &vc.TestEnvOpts{
 			NumServices: tConfig.numVcService,
-			ServerCreds: tConfig.ServerTLS,
+			ServerCreds: tConfig.serverTLS,
 		})
 		for _, c := range vcsTestEnv.Configs {
 			vcServerConfigs = append(vcServerConfigs, c.Server)
@@ -110,14 +110,14 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 	} else {
 		_, vcServers := mock.StartMockVCService(t, test.StartServerParameters{
 			NumService: tConfig.numVcService,
-			TLSConfig:  tConfig.ServerTLS,
+			TLSConfig:  tConfig.serverTLS,
 		})
 		vcServerConfigs = vcServers.Configs
 	}
 
 	c := &Config{
-		Verifier:           *test.ServerToMultiClientConfig(tConfig.ClientTLS, svServers.Configs...),
-		ValidatorCommitter: *test.ServerToMultiClientConfig(tConfig.ClientTLS, vcServerConfigs...),
+		Verifier:           *test.ServerToMultiClientConfig(tConfig.clientTLS, svServers.Configs...),
+		ValidatorCommitter: *test.ServerToMultiClientConfig(tConfig.clientTLS, vcServerConfigs...),
 		DependencyGraph: &DependencyGraphConfig{
 			NumOfLocalDepConstructors: 3,
 			WaitingTxsLimit:           10,
@@ -134,8 +134,8 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 		dbEnv:                  dbEnv,
 		verifier:               verifier,
 		sigVerifierGrpcServers: svServers,
-		serverTLS:              tConfig.ServerTLS,
-		clientTLS:              tConfig.ClientTLS,
+		serverTLS:              tConfig.serverTLS,
+		clientTLS:              tConfig.clientTLS,
 	}
 }
 
