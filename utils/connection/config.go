@@ -99,22 +99,6 @@ const (
 	DefaultTLSMinVersion = tls.VersionTLS12
 )
 
-// Validate checks that the rate limit configuration is valid.
-func (c *RateLimitConfig) Validate() error {
-	if c == nil || c.RequestsPerSecond <= 0 {
-		// Rate limiting is disabled, no validation needed
-		return nil
-	}
-	if c.Burst <= 0 {
-		return errors.Newf("rate limit burst must be greater than 0 when rate limiting is enabled")
-	}
-	if c.Burst > c.RequestsPerSecond {
-		return errors.Newf("rate limit burst (%d) must be less than or equal to requests-per-second (%d)",
-			c.Burst, c.RequestsPerSecond)
-	}
-	return nil
-}
-
 // Enabled reports whether TLS is configured to be active.
 // It returns true if the mode is set to either OneSideTLSMode or MutualTLSMode.
 func (c TLSConfig) Enabled() bool {
@@ -137,4 +121,20 @@ func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error)
 		return nil, err
 	}
 	return NewServerCredentialsFromMaterial(tlsMaterials)
+}
+
+// Validate checks that the rate limit configuration is valid.
+func (c *RateLimitConfig) Validate() error {
+	if c == nil || c.RequestsPerSecond <= 0 {
+		// Rate limiting is disabled, no validation needed
+		return nil
+	}
+	if c.Burst <= 0 {
+		return errors.Newf("rate limit burst must be greater than 0 when rate limiting is enabled")
+	}
+	if c.Burst > c.RequestsPerSecond {
+		return errors.Newf("rate limit burst (%d) must be less than or equal to requests-per-second (%d)",
+			c.Burst, c.RequestsPerSecond)
+	}
+	return nil
 }
