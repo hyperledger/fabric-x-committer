@@ -10,6 +10,8 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -85,7 +87,7 @@ func BenchmarkNotifier(b *testing.B) {
 	for notifiedCount < expectedCount {
 		res, ok := q.ReadWithTimeout(5 * time.Minute)
 		if !ok {
-			b.Fatalf("expected notification")
+			b.Fatal("expected notification")
 		}
 		notifiedCount += len(res.TxStatusEvents)
 	}
@@ -318,9 +320,13 @@ func TestNotifierStream(t *testing.T) {
 }
 
 func newNotifierTestEnv(tb testing.TB) *notifierTestEnv {
+	return newNotifierTestEnvWithConfig(tb, &NotificationServiceConfig{})
+}
+
+func newNotifierTestEnvWithConfig(tb testing.TB, conf *NotificationServiceConfig) *notifierTestEnv {
 	tb.Helper()
 	env := &notifierTestEnv{
-		n:                  newNotifier(defaultBufferSize, &NotificationServiceConfig{}),
+		n:                  newNotifier(defaultBufferSize, conf),
 		notificationQueues: make([]channel.ReaderWriter[*committerpb.NotificationResponse], 5),
 	}
 	statusQueue := make(chan []*committerpb.TxStatus, defaultBufferSize)
@@ -334,4 +340,108 @@ func newNotifierTestEnv(tb testing.TB) *notifierTestEnv {
 		return connection.FilterStreamRPCError(env.n.run(ctx, statusQueue))
 	}, nil)
 	return env
+}
+
+func TestNotifierMaxConcurrentStreams(t *testing.T) {
+	t.Parallel()
+	maxStreams := 2
+	env := newNotifierTestEnvWithConfig(t, &NotificationServiceConfig{
+		MaxConcurrentStreams: maxStreams,
+	})
+
+	config := connection.NewLocalHostServer(test.InsecureTLSConfig)
+	test.RunGrpcServerForTest(t.Context(), t, config, func(server *grpc.Server) {
+		committerpb.RegisterNotifierServer(server, env.n)
+	})
+	endpoint := &config.Endpoint
+	conn := test.NewInsecureConnectionWithRetry(t, endpoint, connection.RetryProfile{
+		MaxElapsedTime: 3 * time.Second,
+	})
+	client := committerpb.NewNotifierClient(conn)
+
+	nr := &committerpb.NotificationRequest{
+		TxStatusRequest: &committerpb.TxIDsBatch{TxIds: []string{"tx"}},
+		Timeout:         durationpb.New(100 * time.Millisecond),
+	}
+	streamSucceeds := func(stream committerpb.Notifier_OpenNotificationStreamClient) {
+		require.NoError(t, stream.Send(nr))
+		_, err := stream.Recv()
+		require.NoError(t, err)
+	}
+	streamFails := func(stream committerpb.Notifier_OpenNotificationStreamClient) {
+		if err := stream.Send(nr); err == nil {
+			_, err := stream.Recv()
+			require.ErrorContains(t, err, "ResourceExhausted")
+		}
+	}
+
+	t.Log("Opening streams up to the limit")
+	streams := make([]committerpb.Notifier_OpenNotificationStreamClient, maxStreams)
+	for i := range maxStreams {
+		stream, err := client.OpenNotificationStream(t.Context())
+		require.NoError(t, err)
+		streams[i] = stream
+	}
+
+	t.Log("Verifying streams are functional")
+	for _, stream := range streams {
+		streamSucceeds(stream)
+	}
+
+	t.Log("Attempting to open stream beyond the limit - should fail")
+	thirdStream, err := client.OpenNotificationStream(t.Context())
+	require.NoError(t, err) // stream creation should not error immediately
+	streamFails(thirdStream)
+
+	t.Log("Closing one stream should allow a new one")
+	require.NoError(t, streams[0].CloseSend())
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	newStream, err := client.OpenNotificationStream(t.Context())
+	require.NoError(t, err)
+	streamSucceeds(newStream)
+
+	t.Log("Closing all streams")
+	for _, s := range []committerpb.Notifier_OpenNotificationStreamClient{streams[1], newStream} {
+		require.NoError(t, s.CloseSend())
+	}
+
+	t.Log("Opening many streams with unlimited config")
+	env.n.maxConcurrentStreams = 0
+	for range 10 {
+		stream, err := client.OpenNotificationStream(t.Context())
+		require.NoError(t, err)
+		streamSucceeds(stream)
+	}
+}
+
+func TestNotifierTryAcquireStreamConcurrent(t *testing.T) {
+	t.Parallel()
+	n := newNotifier(defaultBufferSize, &NotificationServiceConfig{
+		MaxConcurrentStreams: 5,
+	})
+
+	t.Log("Concurrent acquire should respect limits")
+	successCount := atomic.Int32{}
+	var wg sync.WaitGroup
+	for range 20 {
+		wg.Go(func() {
+			if n.tryAcquireStream(t.Context()) {
+				successCount.Add(1)
+			}
+		})
+	}
+	wg.Wait()
+
+	require.Equal(t, int32(5), successCount.Load())
+	require.Equal(t, int32(5), n.activeStreams.Load())
+
+	t.Log("Release all and reacquire")
+	for range successCount.Load() {
+		n.releaseStream()
+	}
+	require.Equal(t, int32(0), n.activeStreams.Load())
+	require.True(t, n.tryAcquireStream(t.Context()))
 }

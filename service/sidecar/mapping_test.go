@@ -69,5 +69,6 @@ func TestBlockMapping(t *testing.T) {
 	require.Equal(t, expectedBlockSize+1, txIDToHeight.Count())
 	require.Len(t, mappedBlock.block.Txs, expectedBlockSize-expectedRejected)
 	require.Len(t, mappedBlock.block.Rejected, expectedRejected)
-	require.Equal(t, expectedBlockSize, mappedBlock.withStatus.pendingCount)
+	//nolint:gosec // int -> int32
+	require.Equal(t, int32(expectedBlockSize), mappedBlock.withStatus.pendingCount.Load())
 }

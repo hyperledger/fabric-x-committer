@@ -9,6 +9,7 @@ package sidecar
 import (
 	"context"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -43,6 +44,9 @@ type (
 		lastCommittedBlockSetInterval time.Duration
 		waitingTxsSlots               *utils.Slots
 		metrics                       *perfMetrics
+		// committedBlockMu protects processCommittedBlocksInOrder from concurrent execution
+		// by sendBlocksToCoordinator and processStatusBatch goroutines.
+		committedBlockMu sync.Mutex
 	}
 
 	relayRunConfig struct {
@@ -201,7 +205,7 @@ func (r *relay) sendBlocksToCoordinator(
 		r.blkNumToBlkWithStatus.Store(mappedBlock.blockNumber, mappedBlock.withStatus)
 		r.activeBlocksCount.Add(1)
 
-		if mappedBlock.withStatus.pendingCount == 0 {
+		if mappedBlock.withStatus.pendingCount.Load() == 0 {
 			r.processCommittedBlocksInOrder(ctx, outgoingCommittedBlock)
 		}
 
@@ -306,6 +310,9 @@ func (r *relay) processCommittedBlocksInOrder(
 	ctx context.Context,
 	outgoingCommittedBlock channel.Writer[*common.Block],
 ) {
+	r.committedBlockMu.Lock()
+	defer r.committedBlockMu.Unlock()
+
 	for ctx.Err() == nil {
 		nextBlockNumberToBeCommitted := r.nextBlockNumberToBeCommitted.Load()
 		blkWithStatus, exists := r.blkNumToBlkWithStatus.Load(nextBlockNumberToBeCommitted)
@@ -313,7 +320,7 @@ func (r *relay) processCommittedBlocksInOrder(
 			logger.Debugf("Next block [%d] to be committed is not in progress", nextBlockNumberToBeCommitted)
 			return
 		}
-		if blkWithStatus.pendingCount > 0 {
+		if blkWithStatus.pendingCount.Load() > 0 {
 			return
 		}
 		logger.Debugf("Next block [%d] has been committed", nextBlockNumberToBeCommitted)

@@ -135,40 +135,11 @@ func (v *mspVerifier) UpdateIdentities(idDeserializer msp.IdentityDeserializer) 
 func (v *mspVerifier) Verify(data []byte, endorsements []*applicationpb.EndorsementWithIdentity) error {
 	signedData := make([]*protoutil.SignedData, len(endorsements))
 	for i, s := range endorsements {
-		idBytes, err := serializeIdentity(s.Identity, v.identityDeserializer)
-		if err != nil {
-			return err
-		}
 		signedData[i] = &protoutil.SignedData{
 			Data:      data,
-			Identity:  idBytes,
+			Identity:  s.Identity,
 			Signature: s.Endorsement,
 		}
 	}
 	return v.EvaluateSignedData(signedData)
-}
-
-func serializeIdentity(id *applicationpb.Identity, idDeserializer msp.IdentityDeserializer) ([]byte, error) {
-	var idBytes []byte
-	var err error
-	switch creator := id.Creator.(type) {
-	case *applicationpb.Identity_Certificate:
-		if creator.Certificate == nil {
-			return idBytes, errors.New("An empty certificate is provided for the identity")
-		}
-		idBytes, err = msp.NewSerializedIdentity(id.MspId, creator.Certificate)
-	case *applicationpb.Identity_CertificateId:
-		if creator.CertificateId == "" {
-			return idBytes, errors.New("An empty certificate ID is provided for the identity")
-		}
-		identity := idDeserializer.GetKnownDeserializedIdentity(msp.IdentityIdentifier{
-			Mspid: id.MspId,
-			Id:    creator.CertificateId,
-		})
-		if identity == nil {
-			return idBytes, errors.Newf("Invalid certificate identity: %s", creator.CertificateId)
-		}
-		idBytes, err = identity.Serialize()
-	}
-	return idBytes, errors.Wrap(err, "Identity serialization error")
 }

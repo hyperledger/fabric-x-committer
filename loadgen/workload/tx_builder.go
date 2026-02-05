@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/common/crypto"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -24,7 +25,7 @@ import (
 // TxBuilder is a convenient way to create an enveloped TX.
 type TxBuilder struct {
 	ChannelID   string
-	EnvSigner   protoutil.Signer
+	EnvSigner   identity.Signer
 	TxEndorser  *TxEndorser
 	EnvCreator  []byte
 	NonceSource io.Reader
