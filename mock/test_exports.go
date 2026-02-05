@@ -20,21 +20,13 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-// StartMockOpts defines the options for starting mock services.
-type StartMockOpts struct {
-	TLSConfig  connection.TLSConfig
-	NumService int
-}
-
 // StartMockVerifierService starts a specified number of mock verifier service and register cancellation.
-func StartMockVerifierService(t *testing.T, settings StartMockOpts) (
+func StartMockVerifierService(t *testing.T, p test.StartServerParameters) (
 	*Verifier, *test.GrpcServers,
 ) {
 	t.Helper()
 	mockVerifier := NewMockSigVerifier()
-	verifierGrpc := test.StartGrpcServersForTest(
-		t.Context(), t, settings.NumService, mockVerifier.RegisterService, settings.TLSConfig,
-	)
+	verifierGrpc := test.StartGrpcServersForTest(t.Context(), t, p, mockVerifier.RegisterService)
 	return mockVerifier, verifierGrpc
 }
 
@@ -48,12 +40,10 @@ func StartMockVerifierServiceFromServerConfig(
 
 // StartMockVCService starts a specified number of mock VC service using the same shared instance.
 // It is used for testing when multiple VC services are required to share the same state.
-func StartMockVCService(t *testing.T, settings StartMockOpts) (*VcService, *test.GrpcServers) {
+func StartMockVCService(t *testing.T, p test.StartServerParameters) (*VcService, *test.GrpcServers) {
 	t.Helper()
 	sharedVC := NewMockVcService()
-	vcGrpc := test.StartGrpcServersForTest(
-		t.Context(), t, settings.NumService, sharedVC.RegisterService, settings.TLSConfig,
-	)
+	vcGrpc := test.StartGrpcServersForTest(t.Context(), t, p, sharedVC.RegisterService)
 	return sharedVC, vcGrpc
 }
 
@@ -66,13 +56,14 @@ func StartMockVCServiceFromServerConfig(
 }
 
 // StartMockCoordinatorService starts a mock coordinator service and registers cancellation.
-func StartMockCoordinatorService(t *testing.T, settings StartMockOpts) (
+func StartMockCoordinatorService(t *testing.T, p test.StartServerParameters) (
 	*Coordinator, *test.GrpcServers,
 ) {
 	t.Helper()
+	p.NumService = 1
 	mockCoordinator := NewMockCoordinator()
 	coordinatorGrpc := test.StartGrpcServersForTest(
-		t.Context(), t, 1, mockCoordinator.RegisterService, settings.TLSConfig,
+		t.Context(), t, p, mockCoordinator.RegisterService,
 	)
 	return mockCoordinator, coordinatorGrpc
 }
@@ -98,13 +89,13 @@ func StartMockOrderingServices(t *testing.T, conf *OrdererConfig) (
 		return connection.FilterStreamRPCError(service.Run(ctx))
 	}, service.WaitForReady)
 
-	if len(conf.ServerConfigs) == conf.NumService {
+	if len(conf.ServerConfigs) == conf.Params.NumService {
 		return service, test.StartGrpcServersWithConfigForTest(t.Context(), t, service.RegisterService,
 			conf.ServerConfigs...,
 		)
 	}
 
-	servers := test.StartGrpcServersForTest(t.Context(), t, conf.NumService, service.RegisterService, conf.TLS)
+	servers := test.StartGrpcServersForTest(t.Context(), t, conf.Params, service.RegisterService)
 	return service, servers
 }
 
@@ -139,9 +130,16 @@ func NewOrdererTestEnv(t *testing.T, conf *OrdererTestConfig) *OrdererTestEnv {
 		Holder:         holder,
 		OrdererServers: ordererServers,
 		HolderServers: test.StartGrpcServersForTest(
-			t.Context(), t, conf.NumHolders, holder.RegisterService, conf.Config.TLS,
+			t.Context(), t, test.StartServerParameters{
+				NumService: conf.NumHolders,
+				TLSConfig:  conf.Config.Params.TLSConfig,
+			}, holder.RegisterService,
 		),
-		FakeServers: test.StartGrpcServersForTest(t.Context(), t, conf.NumFake, nil, test.InsecureTLSConfig),
+		FakeServers: test.StartGrpcServersForTest(
+			t.Context(), t, test.StartServerParameters{
+				NumService: conf.NumFake,
+			}, nil,
+		),
 	}
 }
 

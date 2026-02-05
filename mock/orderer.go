@@ -29,6 +29,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type (
@@ -45,9 +46,8 @@ type (
 		ConfigBlockPath  string                     `mapstructure:"config-block-path"`
 		SendConfigBlock  bool                       `mapstructure:"send-config-block"`
 
-		// These fields are only used for internal testing.
-		NumService int
-		TLS        connection.TLSConfig
+		// this field is only used for internal testing.
+		Params test.StartServerParameters
 	}
 
 	// Orderer supports running multiple mock-orderer services which mocks a consortium.
@@ -84,11 +84,13 @@ var (
 	ErrLostBlock = errors.New("lost block")
 
 	defaultConfig = OrdererConfig{
-		NumService:       1,
 		BlockSize:        100,
 		BlockTimeout:     100 * time.Millisecond,
 		OutBlockCapacity: 1024,
 		PayloadCacheSize: 1024,
+		Params: test.StartServerParameters{
+			NumService: 1,
+		},
 	}
 	defaultConfigBlock = &common.Block{
 		Header: &common.BlockHeader{
@@ -118,10 +120,10 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 		config.BlockTimeout = defaultConfig.BlockTimeout
 	}
 	if len(config.ServerConfigs) > 0 {
-		config.NumService = len(config.ServerConfigs)
+		config.Params.NumService = len(config.ServerConfigs)
 	}
-	if config.NumService == 0 {
-		config.NumService = defaultConfig.NumService
+	if config.Params.NumService == 0 {
+		config.Params.NumService = defaultConfig.Params.NumService
 	}
 	if config.OutBlockCapacity == 0 {
 		config.OutBlockCapacity = defaultConfig.OutBlockCapacity
@@ -141,7 +143,7 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 	return &Orderer{
 		config:      config,
 		configBlock: configBlock,
-		inEnvs:      make(chan *common.Envelope, config.NumService*config.BlockSize*config.OutBlockCapacity),
+		inEnvs:      make(chan *common.Envelope, config.Params.NumService*config.BlockSize*config.OutBlockCapacity),
 		inBlocks:    make(chan *common.Block, config.BlockSize*config.OutBlockCapacity),
 		cutBlock:    make(chan any),
 		cache:       newBlockCache(config.OutBlockCapacity),
