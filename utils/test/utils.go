@@ -48,6 +48,12 @@ type (
 		Servers []*grpc.Server
 		Configs []*connection.ServerConfig
 	}
+
+	// StartServerParameters defines the parameters for starting servers.
+	StartServerParameters struct {
+		TLSConfig  connection.TLSConfig
+		NumService int
+	}
 )
 
 // FailHandler registers a [gomega] fail handler.
@@ -60,13 +66,17 @@ func FailHandler(t *testing.T) {
 	})
 }
 
-// ServerToMultiClientConfig is used to create a multi client configuration from existing server(s).
-func ServerToMultiClientConfig(servers ...*connection.ServerConfig) *connection.MultiClientConfig {
+// ServerToMultiClientConfig is used to create a multi client configuration from existing server(s)
+// given a client TLS configuration.
+func ServerToMultiClientConfig(
+	clientTLS connection.TLSConfig, servers ...*connection.ServerConfig,
+) *connection.MultiClientConfig {
 	endpoints := make([]*connection.Endpoint, len(servers))
 	for i, server := range servers {
 		endpoints[i] = &server.Endpoint
 	}
 	return &connection.MultiClientConfig{
+		TLS:       clientTLS,
 		Endpoints: endpoints,
 	}
 }
@@ -112,14 +122,13 @@ func RunGrpcServerForTest(
 func StartGrpcServersForTest(
 	ctx context.Context,
 	t *testing.T,
-	numService int,
+	p StartServerParameters,
 	register func(*grpc.Server),
-	serverCreds connection.TLSConfig,
 ) *GrpcServers {
 	t.Helper()
-	sc := make([]*connection.ServerConfig, numService)
+	sc := make([]*connection.ServerConfig, p.NumService)
 	for i := range sc {
-		sc[i] = connection.NewLocalHostServer(serverCreds)
+		sc[i] = connection.NewLocalHostServer(p.TLSConfig)
 	}
 	return StartGrpcServersWithConfigForTest(ctx, t, register, sc...)
 }

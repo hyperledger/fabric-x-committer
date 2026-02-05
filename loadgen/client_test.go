@@ -166,14 +166,19 @@ func TestLoadGenForCoordinator(t *testing.T) {
 					t.Parallel()
 					clientConf := DefaultClientConf(t)
 					clientConf.Limit = limit
-					_, sigVerServer := mock.StartMockVerifierService(t, 1)
-					_, vcServer := mock.StartMockVCService(t, 1)
+
+					mockSettings := test.StartServerParameters{
+						NumService: 1,
+						TLSConfig:  serverTLSConfig,
+					}
+					_, sigVerServer := mock.StartMockVerifierService(t, mockSettings)
+					_, vcServer := mock.StartMockVCService(t, mockSettings)
 
 					cConf := &coordinator.Config{
 						Server:             connection.NewLocalHostServer(serverTLSConfig),
 						Monitoring:         defaultMonitoring(),
-						Verifier:           *test.ServerToMultiClientConfig(sigVerServer.Configs...),
-						ValidatorCommitter: *test.ServerToMultiClientConfig(vcServer.Configs...),
+						Verifier:           *test.ServerToMultiClientConfig(clientTLSConfig, sigVerServer.Configs...),
+						ValidatorCommitter: *test.ServerToMultiClientConfig(clientTLSConfig, vcServer.Configs...),
 						DependencyGraph: &coordinator.DependencyGraphConfig{
 							NumOfLocalDepConstructors: 1,
 							WaitingTxsLimit:           100_000,
@@ -210,7 +215,9 @@ func TestLoadGenForSidecar(t *testing.T) {
 					t.Parallel()
 					clientConf := DefaultClientConf(t)
 					clientConf.Limit = limit
-					_, coordinatorServer := mock.StartMockCoordinatorService(t)
+					_, coordinatorServer := mock.StartMockCoordinatorService(t, test.StartServerParameters{
+						TLSConfig: serverTLSConfig,
+					})
 
 					// When using the sidecar adapter, the load generator and the sidecar
 					// should have each other's endpoints.
@@ -227,7 +234,8 @@ func TestLoadGenForSidecar(t *testing.T) {
 						Server:                        sidecarServerConf,
 						LastCommittedBlockSetInterval: 100 * time.Millisecond,
 						WaitingTxsLimit:               5000,
-						Committer: test.NewInsecureClientConfig(
+						Committer: test.NewTLSClientConfig(
+							clientTLSConfig,
 							&coordinatorServer.Configs[0].Endpoint,
 						),
 						Monitoring: defaultMonitoring(),
@@ -276,16 +284,25 @@ func TestLoadGenForOrderer(t *testing.T) {
 					clientConf.Limit = limit
 					// Start dependencies
 					orderer, ordererServer := mock.StartMockOrderingServices(
-						t, &mock.OrdererConfig{NumService: 3, TLS: serverTLSConfig, BlockSize: 100},
+						t, &mock.OrdererConfig{
+							BlockSize: 100,
+							TestServerParameters: test.StartServerParameters{
+								NumService: 3,
+								TLSConfig:  serverTLSConfig,
+							},
+						},
 					)
-					_, coordinatorServer := mock.StartMockCoordinatorService(t)
+					_, coordinatorServer := mock.StartMockCoordinatorService(t, test.StartServerParameters{
+						TLSConfig: serverTLSConfig,
+					})
 
 					endpoints := test.NewOrdererEndpoints(0, ordererServer.Configs...)
 					sidecarConf := &sidecar.Config{
 						Server:                        connection.NewLocalHostServer(serverTLSConfig),
 						LastCommittedBlockSetInterval: 100 * time.Millisecond,
 						WaitingTxsLimit:               5000,
-						Committer: test.NewInsecureClientConfig(
+						Committer: test.NewTLSClientConfig(
+							clientTLSConfig,
 							&coordinatorServer.Configs[0].Endpoint,
 						),
 						Monitoring: defaultMonitoring(),
@@ -346,9 +363,11 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 					t.Parallel()
 					// Start dependencies
 					orderer, ordererServer := mock.StartMockOrderingServices(t, &mock.OrdererConfig{
-						NumService: 3,
-						TLS:        serverTLSConfig,
-						BlockSize:  int(clientConf.LoadProfile.Block.MaxSize), //nolint:gosec // uint64 -> int.
+						TestServerParameters: test.StartServerParameters{
+							NumService: 3,
+							TLSConfig:  serverTLSConfig,
+						},
+						BlockSize: int(clientConf.LoadProfile.Block.MaxSize), //nolint:gosec // uint64 -> int.
 					})
 
 					endpoints := test.NewOrdererEndpoints(0, ordererServer.Configs...)

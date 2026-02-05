@@ -44,7 +44,6 @@ func TestConfigUpdate(t *testing.T) {
 		ChanID: "ch1",
 		Config: &mock.OrdererConfig{
 			ServerConfigs: ordererServers,
-			NumService:    len(ordererServers),
 			BlockSize:     blockSize,
 			// We want each block to contain exactly <blockSize> transactions.
 			// Therefore, we set a higher block timeout so that we have enough time to send all the
@@ -187,7 +186,6 @@ func TestConfigBlockImmediateCommit(t *testing.T) {
 		ChanID: "ch1",
 		Config: &mock.OrdererConfig{
 			ServerConfigs:   ordererServers,
-			NumService:      len(ordererServers),
 			BlockSize:       1, // Each block contains exactly 1 transaction.
 			BlockTimeout:    5 * time.Minute,
 			ConfigBlockPath: c.SystemConfig.ConfigBlockPath,
