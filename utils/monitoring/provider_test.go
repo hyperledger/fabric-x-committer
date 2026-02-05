@@ -107,6 +107,7 @@ func newMetricsProviderTestEnv(t *testing.T, serverTLS, clientTLS connection.TLS
 }
 
 func runCounterTest(t *testing.T, env *metricsProviderTestEnv) {
+	t.Helper()
 	c := env.provider.NewCounter(prometheus.CounterOpts{
 		Namespace: "vcservice",
 		Subsystem: "committed",
@@ -124,6 +125,7 @@ func runCounterTest(t *testing.T, env *metricsProviderTestEnv) {
 }
 
 func runCounterVecTest(t *testing.T, env *metricsProviderTestEnv) {
+	t.Helper()
 	cv := env.provider.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "vcservice",
 		Subsystem: "preparer",
@@ -145,6 +147,7 @@ func runCounterVecTest(t *testing.T, env *metricsProviderTestEnv) {
 }
 
 func runGaugeTest(t *testing.T, env *metricsProviderTestEnv) {
+	t.Helper()
 	g := env.provider.NewGauge(prometheus.GaugeOpts{
 		Namespace: "vcservice",
 		Subsystem: "preparer",
@@ -163,6 +166,7 @@ func runGaugeTest(t *testing.T, env *metricsProviderTestEnv) {
 }
 
 func runGaugeVecTest(t *testing.T, env *metricsProviderTestEnv) {
+	t.Helper()
 	gv := env.provider.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "vcservice",
 		Subsystem: "committer",
@@ -185,6 +189,7 @@ func runGaugeVecTest(t *testing.T, env *metricsProviderTestEnv) {
 }
 
 func runHistogramTest(t *testing.T, env *metricsProviderTestEnv) {
+	t.Helper()
 	h := env.provider.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "vcservice",
 		Subsystem: "committer",
@@ -203,6 +208,7 @@ func runHistogramTest(t *testing.T, env *metricsProviderTestEnv) {
 }
 
 func runHistogramVecTest(t *testing.T, env *metricsProviderTestEnv) {
+	t.Helper()
 	hv := env.provider.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "vcservice",
 		Subsystem: "committer",
