@@ -49,7 +49,7 @@ func (cc *DBClusterController) getNodesConnectionsByRole(
 	t.Helper()
 	endpoints := make([]*connection.Endpoint, 0, len(cc.nodes))
 	for _, node := range cc.IterNodesByRole(role) {
-		endpoints = append(endpoints, node.GetContainerConnectionDetails(t))
+		endpoints = append(endpoints, node.GetHostMappedEndpoint(t))
 	}
 	return dbtest.NewConnection(endpoints...)
 }
@@ -66,7 +66,7 @@ func (cc *DBClusterController) getNodesConnections(t *testing.T) *dbtest.Connect
 	t.Helper()
 	endpoints := make([]*connection.Endpoint, len(cc.nodes))
 	for i, node := range cc.nodes {
-		endpoints[i] = node.GetContainerConnectionDetails(t)
+		endpoints[i] = node.GetHostMappedEndpoint(t)
 	}
 
 	return dbtest.NewConnection(endpoints...)

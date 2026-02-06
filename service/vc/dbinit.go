@@ -15,6 +15,8 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/yugabyte/pgx/v4/pgxpool"
+
+	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
 )
 
 const (
@@ -55,6 +57,8 @@ func NewDatabasePool(ctx context.Context, config *DatabaseConfig) (*pgxpool.Pool
 
 	poolConfig.MaxConns = config.MaxConnections
 	poolConfig.MinConns = config.MinConnections
+
+	dbconn.ConfigureConnReadDeadline(poolConfig)
 
 	var pool *pgxpool.Pool
 	if retryErr := config.Retry.Execute(ctx, func() error {

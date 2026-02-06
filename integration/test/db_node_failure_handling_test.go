@@ -8,6 +8,7 @@ package test
 
 import (
 	"context"
+	"runtime"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 )
 
 const (
+	linuxOS = "linux"
 	// Tablet is a tablet (data node) in the cluster.
 	Tablet = 1 << iota
 	// NonLeaderMaster is a master node that does not hold the leader role.
@@ -29,7 +31,13 @@ const (
 )
 
 func TestDBResiliencyYugabyteScenarios(t *testing.T) {
-	t.Parallel()
+	// Parallel is only enabled on Linux. On macOS each subtest spins up a
+	// 6-container YugabyteDB cluster (3 masters + 3 tablets). Running multiple
+	// clusters concurrently exhausts Docker Desktop resources and causes
+	// container startup timeouts.
+	if runtime.GOOS == linuxOS {
+		t.Parallel()
+	}
 
 	for _, sc := range []struct {
 		name   string
@@ -58,7 +66,9 @@ func TestDBResiliencyYugabyteScenarios(t *testing.T) {
 	} {
 		scenario := sc
 		t.Run(scenario.name, func(t *testing.T) {
-			t.Parallel()
+			if runtime.GOOS == linuxOS {
+				t.Parallel()
+			}
 			clusterController, clusterConnection := runner.StartYugaCluster(createInitContext(t), t, 3, 3)
 			c := registerAndCreateRuntime(t, clusterConnection)
 			waitForCommittedTxs(t, c, 10_000)
@@ -77,7 +87,10 @@ func TestDBResiliencyYugabyteScenarios(t *testing.T) {
 }
 
 func TestDBResiliencyPrimaryPostgresNodeCrash(t *testing.T) {
-	t.Parallel()
+	// See TestDBResiliencyYugabyteScenarios for why parallel is Linux-only.
+	if runtime.GOOS == linuxOS {
+		t.Parallel()
+	}
 
 	clusterController, clusterConnection := runner.StartPostgresCluster(createInitContext(t), t)
 
@@ -90,7 +103,10 @@ func TestDBResiliencyPrimaryPostgresNodeCrash(t *testing.T) {
 }
 
 func TestDBResiliencySecondaryPostgresNodeCrash(t *testing.T) {
-	t.Parallel()
+	// See TestDBResiliencyYugabyteScenarios for why parallel is Linux-only.
+	if runtime.GOOS == linuxOS {
+		t.Parallel()
+	}
 
 	clusterController, clusterConnection := runner.StartPostgresCluster(createInitContext(t), t)
 
@@ -131,9 +147,12 @@ func waitForCommittedTxs(t *testing.T, c *runner.CommitterRuntime, waitForCount 
 	require.Zero(t, c.CountAlternateStatus(t, committerpb.Status_COMMITTED))
 }
 
+// createInitContext returns a context with a timeout covering the full cluster
+// lifecycle: container image pulls, sequential startup of 6 nodes (on macOS),
+// transaction processing, node removal, and recovery verification.
 func createInitContext(t *testing.T) context.Context {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Minute)
 	t.Cleanup(cancel)
 
 	return ctx
