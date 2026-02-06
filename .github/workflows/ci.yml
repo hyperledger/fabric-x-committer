@@ -5,9 +5,9 @@
 name: CI
 on:
   push:
-    branches: ["**"]
+    branches: [ "**" ]
   pull_request:
-    branches: ["**"]
+    branches: [ "**" ]
 
 permissions:
   contents: read
@@ -29,7 +29,7 @@ jobs:
 
   lint:
     name: Lint and Build
-    needs: [gate]
+    needs: [ gate ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,7 +58,7 @@ jobs:
 
   unit-test:
     name: Unit Test (non DB)
-    needs: [gate]
+    needs: [ gate ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -66,11 +66,18 @@ jobs:
         with:
           go-version-file: go.mod
       - run: scripts/install-dev-dependencies.sh
-      - run: make test-no-db
+      - run: make test_flags="-coverprofile=coverage.profile -coverpkg=./..." test-no-db
+      - run: scripts/test-coverage-filter-files.sh
+      - name: Send coverage
+        uses: shogo82148/actions-goveralls@v1
+        with:
+          path-to-profile: coverage.profile
+          flag-name: unit-test
+          parallel: true
 
   fuzz-test:
     name: Fuzz Test (non DB)
-    needs: [gate]
+    needs: [ gate ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -82,7 +89,7 @@ jobs:
 
   db-test:
     name: Requires and Core DB Tests (postgres)
-    needs: [gate]
+    needs: [ gate ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -91,11 +98,18 @@ jobs:
           go-version-file: go.mod
       - run: scripts/install-dev-dependencies.sh
       - run: scripts/get-and-start-postgres.sh
-      - run: make test-requires-db test-core-db
+      - run: make test_flags="-coverprofile=coverage.profile -coverpkg=./..." test-all-db
+      - run: scripts/test-coverage-filter-files.sh
+      - name: Send coverage
+        uses: shogo82148/actions-goveralls@v1
+        with:
+          path-to-profile: coverage.profile
+          flag-name: db-test
+          parallel: true
 
   core-db-test:
     name: Core DB Tests (yugabyte)
-    needs: [gate]
+    needs: [ gate ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -108,7 +122,7 @@ jobs:
 
   integration-test:
     name: Integration Tests (yugabyte)
-    needs: [gate]
+    needs: [ gate ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -121,7 +135,7 @@ jobs:
 
   db-resiliency-test:
     name: Integration DB Resiliency (container)
-    needs: [gate]
+    needs: [ gate ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -133,7 +147,7 @@ jobs:
 
   container-test:
     name: Build and test container images
-    needs: [gate]
+    needs: [ gate ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -143,9 +157,20 @@ jobs:
       - run: scripts/install-dev-dependencies.sh
       - run: make test-container
 
+  coveralls:
+    name: Indicate completion to coveralls.io
+    needs:
+      - unit-test
+      - db-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: coverallsapp/github-action@v2
+        with:
+          parallel-finished: true
+
   analyze:
     name: Analyze (${{ matrix.language }})
-    needs: [gate]
+    needs: [ gate ]
     # Runner size impacts CodeQL analysis time. To learn more, please see:
     #   - https://gh.io/recommended-hardware-resources-for-running-codeql
     #   - https://gh.io/supported-runners-and-hardware-resources

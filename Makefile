@@ -15,6 +15,7 @@
 #   test-core-db                 - Run tests for components that directly talk to the DB
 #   test-requires-db             - Run tests for components that depend on DB layer
 #   test-no-db                   - Run tests that require no DB
+#   test-all-db                  - Run core-db and required-db tests
 #   test-fuzz                    - Run ASN.1 marshalling fuzz tests
 #   test-cover                   - Run tests with coverage
 #   test-cover-%                 - Run tests with coverage for a specific package
@@ -91,7 +92,8 @@ multiplatform  ?= false
 env            ?= env GOOS=$(os) GOARCH=$(arch)
 build_flags    ?= -buildvcs=false -o
 go_build       ?= $(env) $(go_cmd) build $(build_flags)
-go_test        ?= $(env) $(go_cmd) test -json -v -timeout 30m
+test_flags     ?=
+go_test        ?= $(env) $(go_cmd) test -json -v -timeout 30m $(test_flags)
 proto_flags    ?=
 
 ifneq ("$(wildcard /usr/include)","")
@@ -177,17 +179,18 @@ test-fuzz: build
 test-no-db: build
 	@$(go_test) ${NO_DB_PACKAGES} | gotestfmt ${GO_TEST_FMT_FLAGS}
 
-test-cover: build
-	$(go_cmd) test -v -coverprofile=coverage.profile ./...
+# Tests for components that depend on the DB layer, and ones that are agnostic to the specific DB used.
+test-all-db: build
+	@$(go_test) ${REQUIRES_DB_PACKAGES} ${COR_DB_PACKAGES} | gotestfmt ${GO_TEST_FMT_FLAGS}
 
-test-cover-%: build
-	$(go_cmd) test -v -coverprofile=$*.coverage.profile "./$*/..."
+# Runs test coverage analysis. It uses same tests that will be covered by the CI.
+test-cover: build
+	@$(go_cmd) test -v -coverprofile=coverage.profile -coverpkg=./... \
+		${NO_DB_PACKAGES} ${REQUIRES_DB_PACKAGES} ${COR_DB_PACKAGES}
+	@scripts/test-coverage-filter-files.sh
 
 cover-report: FORCE
 	$(go_cmd) tool cover -html=coverage.profile
-
-cover-report-%: FORCE
-	$(go_cmd) tool cover -html=$*.coverage.profile
 
 clean: FORCE
 	@rm -rf $(output_dir)
