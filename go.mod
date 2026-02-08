@@ -21,7 +21,7 @@ require (
 	github.com/hyperledger/fabric-lib-go v1.1.3-0.20240523144151-25edd1eaf5f5
 	github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7
 	github.com/hyperledger/fabric-x-common v0.1.1-0.20260216150441-176bf35d12fb
-	github.com/jackc/puddle v1.3.0
+	github.com/jackc/puddle/v2 v2.2.2
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/onsi/gomega v1.38.2
 	github.com/prometheus/client_golang v1.20.5
@@ -30,7 +30,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
 	github.com/tedsuo/ifrit v0.0.0-20230516164442-7862c310ad26
-	github.com/yugabyte/pgx/v4 v4.14.8
+	github.com/yugabyte/pgx/v5 v5.7.6-yb-1
 	go.uber.org/zap v1.27.0
 	go.yaml.in/yaml/v3 v3.0.4
 	golang.org/x/crypto v0.47.0
@@ -187,13 +187,9 @@ require (
 	github.com/hyperledger/fabric-amcl v0.0.0-20230602173724-9e02669dceb2 // indirect
 	github.com/imkira/go-interpol v1.1.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
-	github.com/jackc/pgconn v1.14.3 // indirect
-	github.com/jackc/pgio v1.0.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
-	github.com/jackc/pgproto3/v2 v2.3.3 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/pgtype v1.14.3 // indirect
+	github.com/jackc/pgx/v5 v5.8.0 // indirect
 	github.com/jgautheron/goconst v1.8.2 // indirect
 	github.com/jingyugao/rowserrcheck v1.1.1 // indirect
 	github.com/jjti/go-spancheck v0.6.5 // indirect

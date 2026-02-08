@@ -15,7 +15,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	"github.com/yugabyte/pgx/v4/pgxpool"
+	"github.com/yugabyte/pgx/v5/pgxpool"
 
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
 )
@@ -67,8 +67,13 @@ func NewDatabasePool(ctx context.Context, config *DatabaseConfig) (*pgxpool.Pool
 
 	var pool *pgxpool.Pool
 	if retryErr := config.Retry.Execute(ctx, func() error {
-		pool, err = pgxpool.ConnectConfig(ctx, poolConfig)
-		return errors.Wrap(err, "failed to create a connection pool")
+		pool, err = pgxpool.NewWithConfig(ctx, poolConfig)
+		if err != nil {
+			return errors.Wrap(err, "failed to create a connection pool")
+		}
+		// NewWithConfig creates the pool lazily without connecting, so we ping to
+		// verify connectivity eagerly and let the retry loop handle transient failures.
+		return errors.Wrap(pool.Ping(ctx), "failed to create a connection pool")
 	}); retryErr != nil {
 		return nil, retryErr
 	}

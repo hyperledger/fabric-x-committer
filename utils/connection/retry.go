@@ -15,8 +15,8 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/cockroachdb/errors"
-	"github.com/jackc/puddle"
-	"github.com/yugabyte/pgx/v4/pgxpool"
+	"github.com/jackc/puddle/v2"
+	"github.com/yugabyte/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 )
 
