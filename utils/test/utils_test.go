@@ -19,7 +19,7 @@ import (
 func TestCheckServerStopped(t *testing.T) {
 	t.Parallel()
 
-	_, sigVerServers := mock.StartMockVerifierService(t, 1)
+	_, sigVerServers := mock.StartMockVerifierService(t, test.StartServerParameters{NumService: 1})
 
 	addr := sigVerServers.Configs[0].Endpoint.Address()
 	require.Eventually(t, func() bool {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/msp"
 
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -89,17 +90,12 @@ func CreateEndorsementsForSignatureRule(
 	for i, sig := range signatures {
 		eid := &applicationpb.EndorsementWithIdentity{
 			Endorsement: sig,
-			Identity: &applicationpb.Identity{
-				MspId: string(mspIDs[i]),
-			},
 		}
 		switch creatorType {
 		case test.CreatorCertificate:
-			eid.Identity.Creator = &applicationpb.Identity_Certificate{Certificate: certBytesOrID[i]}
+			eid.Identity = msppb.NewIdentity(string(mspIDs[i]), certBytesOrID[i])
 		case test.CreatorID:
-			eid.Identity.Creator = &applicationpb.Identity_CertificateId{
-				CertificateId: hex.EncodeToString(certBytesOrID[i]),
-			}
+			eid.Identity = msppb.NewIdentityWithIDOfCert(string(mspIDs[i]), hex.EncodeToString(certBytesOrID[i]))
 		}
 
 		set.EndorsementsWithIdentity = append(set.EndorsementsWithIdentity, eid)

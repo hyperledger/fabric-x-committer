@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -27,7 +28,7 @@ type (
 	// If one connection fails, it will try to connect to another one.
 	CftClient struct {
 		ConnectionManager *ordererconn.ConnectionManager
-		Signer            protoutil.Signer
+		Signer            identity.SignerSerializer
 		ChannelID         string
 		StreamCreator     func(ctx context.Context, conn grpc.ClientConnInterface) (Stream, error)
 	}
@@ -177,7 +178,7 @@ func seekSince(
 	startBlockNumber int64,
 	endBlkNum uint64,
 	channelID string,
-	signer protoutil.Signer,
+	signer identity.SignerSerializer,
 ) (*common.Envelope, error) {
 	var startPosition *orderer.SeekPosition
 	switch startBlockNumber {
@@ -194,7 +195,7 @@ func seekSince(
 		}}}
 	}
 
-	return protoutil.CreateSignedEnvelopeWithCert(
+	return protoutil.CreateSignedEnvelope(
 		common.HeaderType_DELIVER_SEEK_INFO, channelID, signer, &orderer.SeekInfo{
 			Start: startPosition,
 			Stop: &orderer.SeekPosition{Type: &orderer.SeekPosition_Specified{Specified: &orderer.SeekSpecified{

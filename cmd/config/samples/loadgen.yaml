@@ -63,7 +63,7 @@ orderer-client:
         endpoints:
           - id=0,broadcast,deliver,orderer:7050
         ca-cert-paths:
-          - /client-certs/ca-certificate.pem
+          - /client-certs/orderer-ca-certificate.pem
     # Loadgen uses these TLS credentials when connecting to the orderers as a client.
     tls:
       # TLS configuration being built based on the tls mode chosen: none, tls, mtls.

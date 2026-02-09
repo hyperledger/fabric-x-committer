@@ -113,13 +113,17 @@ func newSidecarTestEnvWithTLS(
 	conf sidecarTestConfig,
 ) *sidecarTestEnv {
 	t.Helper()
-	coordinator, coordinatorServer := mock.StartMockCoordinatorService(t)
+	coordinator, coordinatorServer := mock.StartMockCoordinatorService(t, test.StartServerParameters{
+		TLSConfig: conf.ServerTLS,
+	})
 	ordererEnv := mock.NewOrdererTestEnv(t, &mock.OrdererTestConfig{
 		ChanID: "ch1",
 		Config: &mock.OrdererConfig{
-			NumService: conf.NumService,
-			TLS:        conf.ServerTLS,
-			BlockSize:  blockSize,
+			TestServerParameters: test.StartServerParameters{
+				TLSConfig:  conf.ServerTLS,
+				NumService: conf.NumService,
+			},
+			BlockSize: blockSize,
 			// We want each block to contain exactly <blockSize> transactions.
 			// Therefore, we set a higher block timeout so that we have enough time to send all the
 			// transactions to the orderer and create a block.
@@ -150,7 +154,7 @@ func newSidecarTestEnvWithTLS(
 	}
 	sidecarConf := &Config{
 		Server:    connection.NewLocalHostServer(conf.ServerTLS),
-		Committer: test.NewInsecureClientConfig(&coordinatorServer.Configs[0].Endpoint),
+		Committer: test.NewTLSClientConfig(conf.ClientTLS, &coordinatorServer.Configs[0].Endpoint),
 		Ledger: LedgerConfig{
 			Path: t.TempDir(),
 		},

@@ -15,6 +15,7 @@
 #   test-core-db                 - Run tests for components that directly talk to the DB
 #   test-requires-db             - Run tests for components that depend on DB layer
 #   test-no-db                   - Run tests that require no DB
+#   test-all-db                  - Run core-db and required-db tests
 #   test-fuzz                    - Run ASN.1 marshalling fuzz tests
 #   test-cover                   - Run tests with coverage
 #   test-cover-%                 - Run tests with coverage for a specific package
@@ -91,7 +92,8 @@ multiplatform  ?= false
 env            ?= env GOOS=$(os) GOARCH=$(arch)
 build_flags    ?= -buildvcs=false -o
 go_build       ?= $(env) $(go_cmd) build $(build_flags)
-go_test        ?= $(env) $(go_cmd) test -json -v -timeout 30m
+test_flags     ?=
+go_test        ?= $(env) $(go_cmd) test -json -v -timeout 30m $(test_flags)
 proto_flags    ?=
 
 ifneq ("$(wildcard /usr/include)","")
@@ -177,21 +179,23 @@ test-fuzz: build
 test-no-db: build
 	@$(go_test) ${NO_DB_PACKAGES} | gotestfmt ${GO_TEST_FMT_FLAGS}
 
-test-cover: build
-	$(go_cmd) test -v -coverprofile=coverage.profile ./...
+# Tests for components that depend on the DB layer, and ones that are agnostic to the specific DB used.
+test-all-db: build
+	@$(go_test) ${REQUIRES_DB_PACKAGES} ${COR_DB_PACKAGES} | gotestfmt ${GO_TEST_FMT_FLAGS}
 
-test-cover-%: build
-	$(go_cmd) test -v -coverprofile=$*.coverage.profile "./$*/..."
+# Runs test coverage analysis. It uses same tests that will be covered by the CI.
+test-cover: build
+	@$(go_cmd) test -v -coverprofile=coverage.profile -coverpkg=./... \
+		${NO_DB_PACKAGES} ${REQUIRES_DB_PACKAGES} ${COR_DB_PACKAGES}
+	@scripts/test-coverage-filter-files.sh
 
 cover-report: FORCE
 	$(go_cmd) tool cover -html=coverage.profile
 
-cover-report-%: FORCE
-	$(go_cmd) tool cover -html=$*.coverage.profile
-
 clean: FORCE
 	@rm -rf $(output_dir)
 	@rm -rf $(arch_output_dir)
+	@rm -rf $(BUILD_DIR)
 
 kill-test-docker: FORCE
 	$(docker_cmd) ps -aq -f "name=sc_test" | xargs $(docker_cmd) rm -f
@@ -227,12 +231,31 @@ bench-sidecar: FORCE
 PROTO_COMMON_DIR="$(shell $(env) $(go_cmd) list -m -f '{{.Dir}}' github.com/hyperledger/fabric-x-common)"
 
 BUILD_DIR := .build
-PROTOS_API_REPO := https://github.com/googleapis/googleapis.git
-PROTOS_API_DIR := ${BUILD_DIR}/googleapis
-# We depend on this specific file to ensure the repo is actually cloned
-PROTOS_SENTINEL := ${PROTOS_API_DIR}/.git
 
-proto: FORCE $(PROTOS_SENTINEL)
+# Fabric protos cloning for lint-proto (msp/msp_config.proto dependency)
+fabric_protos_tag ?= $(shell $(go_cmd) list -m -f '{{.Version}}' github.com/hyperledger/fabric-protos-go-apiv2)
+FABRIC_PROTOS_REPO := https://github.com/hyperledger/fabric-protos.git
+FABRIC_PROTOS_DIR := ${BUILD_DIR}/fabric-protos@${fabric_protos_tag}
+FABRIC_PROTOS_SENTINEL := ${FABRIC_PROTOS_DIR}/.git
+
+# Google APIs cloning for proto generation (google/api/annotations.proto dependency)
+GOOGLE_PROTOS_REPO := https://github.com/googleapis/googleapis.git
+GOOGLE_PROTOS_DIR := ${BUILD_DIR}/googleapis
+GOOGLE_PROTOS_SENTINEL := ${GOOGLE_PROTOS_DIR}/.git
+
+$(FABRIC_PROTOS_SENTINEL):
+	@echo "Cloning fabric-protos@${fabric_protos_tag}..."
+	@mkdir -p ${BUILD_DIR}
+	@git -c advice.detachedHead=false clone --branch ${fabric_protos_tag} \
+		--depth 1 ${FABRIC_PROTOS_REPO} ${FABRIC_PROTOS_DIR}
+
+$(GOOGLE_PROTOS_SENTINEL):
+	@echo "Cloning googleapis..."
+	@mkdir -p ${BUILD_DIR}
+	@rm -rf ${GOOGLE_PROTOS_DIR}
+	@git -c advice.detachedHead=false clone --single-branch --depth 1 ${GOOGLE_PROTOS_REPO} ${GOOGLE_PROTOS_DIR}
+
+proto: FORCE $(GOOGLE_PROTOS_SENTINEL) $(FABRIC_PROTOS_SENTINEL)
 	@echo "Generating protobufs: $(shell find ${project_dir}/api -name '*.proto' -print0 \
 		| xargs -0 -n 1 dirname | xargs -n 1 basename | sort -u)"
 	@protoc \
@@ -243,26 +266,22 @@ proto: FORCE $(PROTOS_SENTINEL)
 	  --grpc-gateway_opt=paths=source_relative \
 	  --proto_path="${project_dir}" \
 	  --proto_path="${PROTO_COMMON_DIR}" \
-	  --proto_path="${PROTOS_API_DIR}" \
+	  --proto_path="${GOOGLE_PROTOS_DIR}" \
+	  --proto_path="${FABRIC_PROTOS_DIR}" \
 	  ${proto_flags} \
 	  ${project_dir}/api/*/*.proto
 
-lint-proto: FORCE $(PROTOS_SENTINEL)
+lint-proto: FORCE $(GOOGLE_PROTOS_SENTINEL) $(FABRIC_PROTOS_SENTINEL)
 	@echo "Running protobuf linters..."
 	@api-linter \
 		-I="${project_dir}/api" \
 		-I="${PROTO_COMMON_DIR}" \
-		-I="${PROTOS_API_DIR}" \
+		-I="${GOOGLE_PROTOS_DIR}" \
+		-I="${FABRIC_PROTOS_DIR}" \
 		--config .apilinter.yaml \
 		--set-exit-status \
 		--output-format github \
 		$(shell find ${project_dir}/api -name '*.proto' | sed 's|${project_dir}/api/||')
-
-$(PROTOS_SENTINEL):
-	@echo "Cloning googleapis..."
-	@mkdir -p ${BUILD_DIR}
-	@rm -rf ${PROTOS_API_DIR} # Ensure we start fresh if re-cloning
-	@git -c advice.detachedHead=false clone --single-branch --depth 1 ${PROTOS_API_REPO} ${PROTOS_API_DIR}
 
 #########################
 # Binaries

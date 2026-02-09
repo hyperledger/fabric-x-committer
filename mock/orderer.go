@@ -29,6 +29,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type (
@@ -45,9 +46,8 @@ type (
 		ConfigBlockPath  string                     `mapstructure:"config-block-path"`
 		SendConfigBlock  bool                       `mapstructure:"send-config-block"`
 
-		// These fields are only used for internal testing.
-		NumService int
-		TLS        connection.TLSConfig
+		// this field is only used for internal testing.
+		TestServerParameters test.StartServerParameters
 	}
 
 	// Orderer supports running multiple mock-orderer services which mocks a consortium.
@@ -84,11 +84,13 @@ var (
 	ErrLostBlock = errors.New("lost block")
 
 	defaultConfig = OrdererConfig{
-		NumService:       1,
 		BlockSize:        100,
 		BlockTimeout:     100 * time.Millisecond,
 		OutBlockCapacity: 1024,
 		PayloadCacheSize: 1024,
+		TestServerParameters: test.StartServerParameters{
+			NumService: 1,
+		},
 	}
 	defaultConfigBlock = &common.Block{
 		Header: &common.BlockHeader{
@@ -117,17 +119,14 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 	if config.BlockTimeout.Abs() == 0 {
 		config.BlockTimeout = defaultConfig.BlockTimeout
 	}
-	if len(config.ServerConfigs) > 0 {
-		config.NumService = len(config.ServerConfigs)
-	}
-	if config.NumService == 0 {
-		config.NumService = defaultConfig.NumService
-	}
 	if config.OutBlockCapacity == 0 {
 		config.OutBlockCapacity = defaultConfig.OutBlockCapacity
 	}
 	if config.PayloadCacheSize == 0 {
 		config.PayloadCacheSize = defaultConfig.PayloadCacheSize
+	}
+	if config.TestServerParameters.NumService == 0 && len(config.ServerConfigs) == 0 {
+		config.TestServerParameters.NumService = defaultConfig.TestServerParameters.NumService
 	}
 	configBlock := defaultConfigBlock
 	if config.ConfigBlockPath != "" {
@@ -137,11 +136,11 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 			return nil, errors.Wrap(err, "failed to read config block")
 		}
 	}
-
+	numServices := max(config.TestServerParameters.NumService, len(config.ServerConfigs))
 	return &Orderer{
 		config:      config,
 		configBlock: configBlock,
-		inEnvs:      make(chan *common.Envelope, config.NumService*config.BlockSize*config.OutBlockCapacity),
+		inEnvs:      make(chan *common.Envelope, numServices*config.BlockSize*config.OutBlockCapacity),
 		inBlocks:    make(chan *common.Block, config.BlockSize*config.OutBlockCapacity),
 		cutBlock:    make(chan any),
 		cache:       newBlockCache(config.OutBlockCapacity),
