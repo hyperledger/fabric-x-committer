@@ -18,7 +18,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 const defaultBlockSize = 500
@@ -37,12 +36,12 @@ func eventuallyMetrics(
 }
 
 // DefaultClientConf returns default config values for client testing.
-func DefaultClientConf(t *testing.T, metricsTLS connection.TLSConfig) *ClientConfig {
+func DefaultClientConf(t *testing.T, serverTLS connection.TLSConfig) *ClientConfig {
 	t.Helper()
 	return &ClientConfig{
-		Server: connection.NewLocalHostServer(test.InsecureTLSConfig),
+		Server: connection.NewLocalHostServer(serverTLS),
 		Monitoring: metrics.Config{
-			ServerConfig: *connection.NewLocalHostServer(metricsTLS),
+			ServerConfig: *connection.NewLocalHostServer(serverTLS),
 		},
 		LoadProfile: &workload.Profile{
 			Key:   workload.KeyProfile{Size: 32},

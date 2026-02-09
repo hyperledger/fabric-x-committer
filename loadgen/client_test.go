@@ -57,7 +57,6 @@ func TestLoadGenForLoadGen(t *testing.T) {
 				t.Run(limitToString(limit), func(t *testing.T) {
 					t.Parallel()
 					clientConf := DefaultClientConf(t, serverTLSConfig)
-					clientConf.Server.TLS = serverTLSConfig
 					clientConf.Limit = limit
 					// Ensure the client doesn't generate load, but only receives it from the sub client.
 					clientConf.LoadProfile.Workers = 0
