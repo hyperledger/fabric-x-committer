@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package monitoring
 
 import (
-	"sync/atomic"
+	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -29,7 +29,7 @@ type (
 	ConnectionMetrics struct {
 		Status       *prometheus.GaugeVec
 		FailureTotal *prometheus.CounterVec
-		connected    atomic.Bool
+		connected    sync.Map // tracks connected grpc targets using map[string]any
 	}
 )
 
@@ -42,13 +42,13 @@ const (
 // Connected observed connected.
 func (m *ConnectionMetrics) Connected(grpcTarget string) {
 	promutil.SetGaugeVec(m.Status, []string{grpcTarget}, connection.Connected)
-	m.connected.Store(true)
+	m.connected.Store(grpcTarget, nil)
 }
 
 // Disconnected observe disconnected. The failure count is increased only if the status was connected.
 func (m *ConnectionMetrics) Disconnected(grpcTarget string) {
 	promutil.SetGaugeVec(m.Status, []string{grpcTarget}, connection.Disconnected)
-	if m.connected.CompareAndSwap(true, false) {
+	if _, loaded := m.connected.LoadAndDelete(grpcTarget); loaded {
 		promutil.AddToCounterVec(m.FailureTotal, []string{grpcTarget}, 1)
 	}
 }
