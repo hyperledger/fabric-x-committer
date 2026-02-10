@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS ns_${NAMESPACE_ID}
     key     BYTEA                    NOT NULL PRIMARY KEY,
     value   BYTEA  DEFAULT NULL,
     version BIGINT DEFAULT 0::BIGINT NOT NULL CHECK (version >= 0)
-);
+)${SPLIT_INTO_TABLETS};
 
 CREATE OR REPLACE FUNCTION insert_ns_${NAMESPACE_ID}(
     IN _keys BYTEA[],

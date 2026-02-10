@@ -24,15 +24,16 @@ type Config struct {
 
 // DatabaseConfig is the configuration for the database.
 type DatabaseConfig struct {
-	Endpoints      []*connection.Endpoint   `mapstructure:"endpoints"`
-	Username       string                   `mapstructure:"username"`
-	Password       string                   `mapstructure:"password"`
-	Database       string                   `mapstructure:"database"`
-	MaxConnections int32                    `mapstructure:"max-connections"`
-	MinConnections int32                    `mapstructure:"min-connections"`
-	LoadBalance    bool                     `mapstructure:"load-balance"`
-	Retry          *connection.RetryProfile `mapstructure:"retry"`
-	TLS            dbconn.DatabaseTLSConfig `mapstructure:"tls"`
+	Endpoints            []*connection.Endpoint   `mapstructure:"endpoints"`
+	Username             string                   `mapstructure:"username"`
+	Password             string                   `mapstructure:"password"`
+	Database             string                   `mapstructure:"database"`
+	MaxConnections       int32                    `mapstructure:"max-connections"`
+	MinConnections       int32                    `mapstructure:"min-connections"`
+	LoadBalance          bool                     `mapstructure:"load-balance"`
+	Retry                *connection.RetryProfile `mapstructure:"retry"`
+	TLS                  dbconn.DatabaseTLSConfig `mapstructure:"tls"`
+	TablePreSplitTablets int                      `mapstructure:"table-pre-split-tablets"`
 }
 
 // DataSourceName returns the data source name of the database.
