@@ -79,13 +79,16 @@ func TestLoadGenForLoadGen(t *testing.T) {
 
 					t.Log("Start distributed loadgen")
 					subCtx, subCancel := context.WithCancel(t.Context())
+					t.Cleanup(subCancel)
 					subDone := test.RunServiceAndGrpcForTest(subCtx, t, subClient, subClientConf.Server)
-					testLoadGenerator(t, clientConf)
 					// Stop the sub-client before test cleanup tears down the main server.
 					// Without this, the main server's gRPC Stop runs first (LIFO cleanup order),
 					// causing the sub-client to hit "connection reset by peer" on in-flight RPCs.
-					subCancel()
-					subDone.WaitForReady(t.Context())
+					t.Cleanup(func() {
+						subCancel()
+						subDone.WaitForReady(t.Context())
+					})
+					testLoadGenerator(t, clientConf)
 				})
 			}
 		})
