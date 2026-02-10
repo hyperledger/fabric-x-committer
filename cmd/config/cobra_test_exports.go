@@ -23,7 +23,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
-	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -50,11 +49,11 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 	_, vc := mock.StartMockVCService(t, serverParams)
 	_, orderer := mock.StartMockOrderingServices(t, &mock.OrdererConfig{TestServerParameters: serverParams})
 	_, coordinator := mock.StartMockCoordinatorService(t, serverParams)
-	conn := dbtest.PrepareTestEnv(t)
 	server := connection.NewLocalHostServer(test.InsecureTLSConfig)
 	listen, err := server.Listener(t.Context())
 	require.NoError(t, err)
 	connection.CloseConnectionsLog(listen)
+
 	return SystemConfig{
 		ThisService: ServiceConfig{
 			GrpcEndpoint: &server.Endpoint,
@@ -66,8 +65,8 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 			Coordinator: ServiceConfig{GrpcEndpoint: &coordinator.Configs[0].Endpoint},
 		},
 		DB: DatabaseConfig{
-			Name:        conn.Database,
-			Endpoints:   conn.Endpoints,
+			Name:        "dummy_test_db",
+			Endpoints:   []*connection.Endpoint{connection.CreateEndpointHP("localhost", "5433")},
 			LoadBalance: false,
 		},
 		Policy: &workload.PolicyProfile{

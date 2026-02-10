@@ -106,24 +106,29 @@ type DatabaseContainer struct {
 // StartContainer runs a DB container, if no specific container details provided, default values will be set.
 func (dc *DatabaseContainer) StartContainer(ctx context.Context, t *testing.T) {
 	t.Helper()
-
-	dc.initDefaults(t)
-
-	dc.createContainer(ctx, t)
-
-	// Starts the container
-	err := dc.client.StartContainerWithContext(dc.containerID, nil, ctx)
-	var containerAlreadyRunning *docker.ContainerAlreadyRunning
-	if errors.As(err, &containerAlreadyRunning) {
-		t.Log("Container is already running")
-		return
-	}
-	require.NoError(t, err)
+	require.NoError(t, dc.start(ctx))
 }
 
-func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
-	t.Helper()
+func (dc *DatabaseContainer) start(ctx context.Context) error {
+	if err := dc.initDefaults(); err != nil {
+		return err
+	}
 
+	if err := dc.createContainer(ctx); err != nil {
+		return err
+	}
+
+	err := dc.client.StartContainerWithContext(dc.containerID, nil, ctx)
+	var containerAlreadyRunning *docker.ContainerAlreadyRunning
+	if err != nil && !errors.As(err, &containerAlreadyRunning) {
+		return errors.Wrap(err, "starting container")
+	}
+
+	go dc.streamLogs()
+	return nil
+}
+
+func (dc *DatabaseContainer) initDefaults() error { //nolint:gocognit
 	switch dc.DatabaseType {
 	case YugaDBType:
 		if dc.Image == "" {
@@ -133,7 +138,9 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 		if dc.Cmd == nil {
 			dc.Cmd = YugabyteCMD
 			if dc.TLSConfig != nil {
-				require.NotEmpty(t, dc.Hostname)
+				if dc.Hostname == "" {
+					return errors.New("hostname is required for TLS-enabled YugabyteDB")
+				}
 				dc.Cmd = append(dc.Cmd, "--secure", "--certs_dir=/creds", "--advertise_address", dc.Hostname)
 			} else {
 				dc.Cmd = append(dc.Cmd, "--insecure")
@@ -145,7 +152,9 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 		}
 
 		if dc.TLSConfig != nil {
-			require.NotEmpty(t, dc.TLSConfig.CACertPaths)
+			if len(dc.TLSConfig.CACertPaths) == 0 {
+				return errors.New("CA cert paths required for TLS-enabled YugabyteDB")
+			}
 			dc.Binds = append(dc.Binds,
 				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CertPath, yugabytePublicKeyFileName),
 				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.KeyPath, yugabytePrivateKeyFileName),
@@ -183,7 +192,15 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 			}
 		}
 	default:
-		t.Fatalf("Unsupported database type: %s", dc.DatabaseType)
+		return errors.Newf("unsupported database type: %s", dc.DatabaseType)
+	}
+
+	// Expose the DB port to the host when no explicit port bindings were
+	// configured by the caller.  On macOS (and any non-Linux Docker host)
+	// container IPs are not routable from the host, so a host port mapping
+	// is required for the test client to reach the database.
+	if dc.PortBinds == nil {
+		dc.ExposePort(dc.DbPort.Port())
 	}
 
 	if dc.Name == "" {
@@ -194,35 +211,34 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 	}
 
 	if dc.client == nil {
-		dc.client = test.GetDockerClient(t)
+		client, err := docker.NewClientFromEnv()
+		if err != nil {
+			return errors.Wrap(err, "creating docker client")
+		}
+		dc.client = client
 	}
+
+	return nil
 }
 
-// createContainer attempts to create a container instance, or attach to an existing one.
-func (dc *DatabaseContainer) createContainer(ctx context.Context, t *testing.T) {
-	t.Helper()
-	// If container exists, we don't have to create it.
-	err := dc.findContainer(t)
-	if err == nil {
-		return
-	}
-
+func (dc *DatabaseContainer) createContainer(ctx context.Context) error {
 	// Pull the image only if it doesn't exist locally. This avoids
 	// unnecessary Docker Hub requests that count against the rate limit.
 	imageRef := dc.Image
 	if dc.Tag != "" {
 		imageRef += ":" + dc.Tag
 	}
-	if _, err = dc.client.InspectImage(imageRef); err != nil {
-		require.NoError(t, dc.client.PullImage(docker.PullImageOptions{
+	if _, err := dc.client.InspectImage(imageRef); err != nil {
+		if pullErr := dc.client.PullImage(docker.PullImageOptions{
 			Context:      ctx,
 			Repository:   dc.Image,
 			Tag:          dc.Tag,
 			OutputStream: os.Stdout,
-		}, docker.AuthConfiguration{}))
+		}, docker.AuthConfiguration{}); pullErr != nil {
+			return errors.Wrap(pullErr, "pulling image")
+		}
 	}
 
-	// Create the container instance
 	container, err := dc.client.CreateContainer(
 		docker.CreateContainerOptions{
 			Context: ctx,
@@ -244,35 +260,11 @@ func (dc *DatabaseContainer) createContainer(ctx context.Context, t *testing.T) 
 			},
 		},
 	)
-
-	// If container created successfully, finish.
-	if err == nil {
-		dc.containerID = container.ID
-		return
+	if err != nil {
+		return errors.Wrap(err, "creating container")
 	}
-	require.ErrorIs(t, err, docker.ErrContainerAlreadyExists)
-
-	// Try to find it again.
-	require.NoError(t, dc.findContainer(t))
-}
-
-// findContainer looks up a container with the same name.
-func (dc *DatabaseContainer) findContainer(t *testing.T) error {
-	t.Helper()
-	allContainers, err := dc.client.ListContainers(docker.ListContainersOptions{All: true})
-	require.NoError(t, err, "could not load containers.")
-
-	names := make([]string, 0, len(allContainers))
-	for _, c := range allContainers {
-		for _, n := range c.Names {
-			names = append(names, n)
-			if n == dc.Name || n == fmt.Sprintf("/%s", dc.Name) {
-				dc.containerID = c.ID
-				return nil
-			}
-		}
-	}
-	return errors.Errorf("cannot find container '%s'. Containers: %v", dc.Name, names)
+	dc.containerID = container.ID
+	return nil
 }
 
 // GetConnectionOptions inspect the container and fetches the available connection options.
@@ -346,10 +338,9 @@ func (dc *DatabaseContainer) GetHostMappedEndpoint(t *testing.T) *connection.End
 	return connection.CreateEndpointHP(hostIP, bindings[0].HostPort)
 }
 
-// streamLogs streams the container output to the requested stream.
-func (dc *DatabaseContainer) streamLogs(t *testing.T) {
-	t.Helper()
-	logOptions := docker.LogsOptions{
+// streamLogs streams the container output to stdout/stderr.
+func (dc *DatabaseContainer) streamLogs() {
+	_ = dc.client.Logs(docker.LogsOptions{
 		Context:      context.Background(),
 		Container:    dc.containerID,
 		Follow:       true,
@@ -357,9 +348,7 @@ func (dc *DatabaseContainer) streamLogs(t *testing.T) {
 		OutputStream: os.Stdout,
 		Stderr:       true,
 		Stdout:       true,
-	}
-
-	assert.NoError(t, dc.client.Logs(logOptions))
+	})
 }
 
 // GetContainerLogs return the output of the DatabaseContainer.

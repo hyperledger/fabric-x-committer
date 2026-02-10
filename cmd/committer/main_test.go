@@ -12,13 +12,28 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
+	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 )
 
 //nolint:paralleltest // Cannot parallelize due to logger.
 func TestCommitterCMD(t *testing.T) {
+	require.NoError(t, dbtest.SetupSharedContainer())
+	t.Cleanup(dbtest.CleanupSharedContainer)
+
 	s := config.StartDefaultSystem(t)
 	s.Services.Orderer[0] = s.ThisService
+
+	// The real VC service (start-vc) and query service (start-query)
+	// connects to the database on startup, so we override the
+	// dummy DB config with a real connection.
+	conn := dbtest.PrepareTestEnv(t)
+	s.DB = config.DatabaseConfig{
+		Name:      conn.Database,
+		Endpoints: conn.Endpoints,
+	}
 	commonTests := []config.CommandTest{
 		{
 			Name:         "print version",
