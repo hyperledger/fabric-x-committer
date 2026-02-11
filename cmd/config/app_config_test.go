@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/stretchr/testify/require"
 
@@ -406,9 +405,6 @@ func TestReadConfigLoadGen(t *testing.T) {
 					NamespacePolicies: map[string]*workload.Policy{
 						workload.DefaultGeneratedNamespaceID: {
 							Scheme: signature.Ecdsa, Seed: 10,
-						},
-						committerpb.MetaNamespaceID: {
-							Scheme: signature.Ecdsa, Seed: 11,
 						},
 					},
 					OrdererEndpoints: []*commontypes.OrdererEndpoint{

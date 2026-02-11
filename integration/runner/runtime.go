@@ -151,9 +151,10 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 			LoadGenWorkers:    1,
 			MaxRequestKeys:    conf.MaxRequestKeys,
 			Policy: &workload.PolicyProfile{
-				ChannelID:          TestChannelName,
-				NamespacePolicies:  make(map[string]*workload.Policy),
-				CryptoMaterialPath: t.TempDir(),
+				ChannelID:             TestChannelName,
+				NamespacePolicies:     make(map[string]*workload.Policy),
+				CryptoMaterialPath:    t.TempDir(),
+				PeerOrganizationCount: 2,
 			},
 			Logging:   &logging.DefaultConfig,
 			RateLimit: conf.RateLimit,
@@ -167,7 +168,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		CommittedBlock:   make(chan *common.Block, 100),
 		SeedForCryptoGen: rand.New(rand.NewSource(10)),
 	}
-	c.AddOrUpdateNamespaces(t, committerpb.MetaNamespaceID, workload.DefaultGeneratedNamespaceID, "1", "2", "3")
+	c.AddOrUpdateNamespaces(t, workload.DefaultGeneratedNamespaceID, "1", "2", "3")
 
 	t.Log("Making DB env")
 	if conf.DBConnection == nil {
@@ -209,6 +210,13 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	configBlock, err := workload.CreateConfigBlock(s.Policy)
 	require.NoError(t, err)
 	err = configtxgen.WriteOutputBlock(configBlock, s.ConfigBlockPath)
+	require.NoError(t, err)
+
+	// Meta-namespace uses LifecycleEndorsement policy (MSP-based) from the config block,
+	// so it must be endorsed with MSP identities, not ECDSA keys.
+	// This must be set after CreateConfigBlock which generates the crypto material.
+	s.Policy.NamespacePolicies[committerpb.MetaNamespaceID] = &workload.Policy{Scheme: "MSP"}
+	c.TxBuilder, err = workload.NewTxBuilderFromPolicy(s.Policy, nil)
 	require.NoError(t, err)
 
 	t.Log("create TLS manager and clients certificate")

@@ -213,9 +213,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 		pBytes, err := proto.Marshal(p)
 		require.NoError(t, err)
 
-		configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
-			MetaNamespaceVerificationKey: verificationKey,
-		})
+		configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{})
 		require.NoError(t, err)
 
 		txBatch := []*dependencygraph.TransactionNode{

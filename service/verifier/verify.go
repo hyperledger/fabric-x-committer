@@ -55,7 +55,7 @@ func (v *verifier) updatePolicies(
 	// if the stored policy in the database is corrupted or maliciously altered, or if there is a
 	// bug in the committer that modifies the policy bytes.
 	idDeserializer := v.bundle.MSPManager()
-	newVerifiers, err := createVerifiers(update, idDeserializer)
+	newVerifiers, err := createVerifiers(update, v.bundle, idDeserializer)
 	if err != nil {
 		return errors.Join(ErrUpdatePolicies, err)
 	}
@@ -83,12 +83,13 @@ func (v *verifier) updatePolicies(
 }
 
 func createVerifiers(
-	update *servicepb.VerifierUpdates, idDeserializer msp.IdentityDeserializer,
+	update *servicepb.VerifierUpdates,
+	bundle *channelconfig.Bundle,
+	idDeserializer msp.IdentityDeserializer,
 ) (map[string]*signature.NsVerifier, error) {
 	newPolicies := make(map[string]*signature.NsVerifier)
 	if update.Config != nil {
-		// TODO: Support signature rule for meta namespace policy.
-		nsVerifier, err := policy.ParsePolicyFromConfigTx(update.Config.Envelope)
+		nsVerifier, err := policy.ParseLifecycleEndorsementPolicy(bundle)
 		if err != nil {
 			return nil, errors.Join(ErrUpdatePolicies, err)
 		}

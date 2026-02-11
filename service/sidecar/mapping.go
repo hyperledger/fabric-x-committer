@@ -104,8 +104,7 @@ func (b *blockMappingResult) mapMessage(msgIndex uint32, msg []byte) error {
 
 	switch common.HeaderType(hdr.Type) {
 	case common.HeaderType_CONFIG:
-		_, err := policy.ParsePolicyFromConfigTx(msg)
-		if err != nil {
+		if err := policy.ValidateConfigTx(msg); err != nil {
 			return b.rejectTx(msgIndex, hdr, committerpb.Status_MALFORMED_CONFIG_TX_INVALID, err.Error())
 		}
 		b.isConfig = true

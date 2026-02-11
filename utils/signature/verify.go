@@ -18,6 +18,9 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 )
 
+// TODO: Move channelPolicyVerifier, mspPolicyVerifier, and keyVerifier to their own files.
+//       It is difficult to read the current file due to the interleaving of methods from different objects.
+
 type (
 	// NsVerifier verifies a given namespace.
 	NsVerifier struct {
@@ -28,6 +31,14 @@ type (
 	verifier interface {
 		Verify(data []byte, endorsements []*applicationpb.EndorsementWithIdentity) error
 		UpdateIdentities(idDeserializer msp.IdentityDeserializer) error
+	}
+
+	// channelPolicyVerifier verifies signatures using a pre-resolved channel policy (e.g., LifecycleEndorsement).
+	// It could be combined with mspVerifier since both evaluate MSP-based policies, but UpdateIdentities
+	// is not applicable here — the policy is already fully resolved from the channel config bundle.
+	// Keeping it separate avoids adding no-op or conditional logic to mspVerifier.
+	channelPolicyVerifier struct {
+		policies.Policy
 	}
 
 	// mspVerifier verifies signatures based on an MSP policy.
@@ -68,6 +79,12 @@ func NewNsVerifierFromMsp(mspRule []byte, idDeserializer msp.IdentityDeserialize
 		return nil, err
 	}
 	return &NsVerifier{verifier: v}, nil
+}
+
+// NewNsVerifierFromChannelPolicy creates a new namespace verifier from a pre-resolved channel policy
+// (e.g., LifecycleEndorsement).
+func NewNsVerifierFromChannelPolicy(p policies.Policy) *NsVerifier {
+	return &NsVerifier{verifier: &channelPolicyVerifier{Policy: p}}
 }
 
 // NewNsVerifierFromKey creates a new namespace verifier from a raw key and scheme.
@@ -133,6 +150,22 @@ func (v *mspVerifier) UpdateIdentities(idDeserializer msp.IdentityDeserializer) 
 
 // Verify evaluates the endorsements against the data for mspVerifier.
 func (v *mspVerifier) Verify(data []byte, endorsements []*applicationpb.EndorsementWithIdentity) error {
+	return evaluateEndorsements(v.Policy, data, endorsements)
+}
+
+// UpdateIdentities is a no-op for policyVerifier because the policy is pre-resolved from the bundle
+// and replaced entirely on config updates.
+func (*channelPolicyVerifier) UpdateIdentities(msp.IdentityDeserializer) error {
+	return nil
+}
+
+// Verify evaluates the endorsements against the data for policyVerifier.
+func (v *channelPolicyVerifier) Verify(data []byte, endorsements []*applicationpb.EndorsementWithIdentity) error {
+	return evaluateEndorsements(v.Policy, data, endorsements)
+}
+
+// evaluateEndorsements constructs SignedData from endorsements and evaluates them against a policy.
+func evaluateEndorsements(p policies.Policy, data []byte, endorsements []*applicationpb.EndorsementWithIdentity) error {
 	signedData := make([]*protoutil.SignedData, len(endorsements))
 	for i, s := range endorsements {
 		signedData[i] = &protoutil.SignedData{
@@ -141,5 +174,5 @@ func (v *mspVerifier) Verify(data []byte, endorsements []*applicationpb.Endorsem
 			Signature: s.Endorsement,
 		}
 	}
-	return v.EvaluateSignedData(signedData)
+	return p.EvaluateSignedData(signedData)
 }

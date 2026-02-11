@@ -10,11 +10,15 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/api/msppb"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
 
+	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -108,4 +112,93 @@ func TestParsePolicyItem(t *testing.T) {
 		_, err := CreateNamespaceVerifier(pd, nil)
 		require.Error(t, err)
 	})
+}
+
+func TestParseLifecycleEndorsementPolicy(t *testing.T) {
+	t.Parallel()
+
+	t.Run("valid bundle returns verifier", func(t *testing.T) {
+		t.Parallel()
+		bundle, cryptoPath := createTestBundle(t)
+
+		verifier, err := ParseLifecycleEndorsementPolicy(bundle)
+		require.NoError(t, err)
+		require.NotNil(t, verifier)
+
+		// Verify it accepts a valid MSP endorsement.
+		endorser, _ := workload.NewPolicyEndorserFromMsp(cryptoPath)
+		require.NoError(t, err)
+
+		tx := &applicationpb.Tx{
+			Namespaces: []*applicationpb.TxNamespace{{
+				NsId:        committerpb.MetaNamespaceID,
+				BlindWrites: []*applicationpb.Write{{Key: []byte("test")}},
+			}},
+		}
+		endorsements, err := endorser.EndorseTxNs("tx-1", tx, 0)
+		require.NoError(t, err)
+		tx.Endorsements = []*applicationpb.Endorsements{endorsements}
+
+		require.NoError(t, verifier.VerifyNs("tx-1", tx, 0))
+	})
+
+	t.Run("rejects invalid endorsement", func(t *testing.T) {
+		t.Parallel()
+		bundle, _ := createTestBundle(t)
+
+		verifier, err := ParseLifecycleEndorsementPolicy(bundle)
+		require.NoError(t, err)
+
+		// Use a valid Identity proto but from an unknown MSP,
+		// so the MSP manager can deserialize it but the policy won't be satisfied.
+		tx := &applicationpb.Tx{
+			Namespaces: []*applicationpb.TxNamespace{{
+				NsId:        committerpb.MetaNamespaceID,
+				BlindWrites: []*applicationpb.Write{{Key: []byte("test")}},
+			}},
+			Endorsements: []*applicationpb.Endorsements{{
+				EndorsementsWithIdentity: []*applicationpb.EndorsementWithIdentity{{
+					Identity:    msppb.NewIdentity("unknown-org", []byte("unknown-cert")),
+					Endorsement: []byte("bad-sig"),
+				}},
+			}},
+		}
+
+		require.Error(t, verifier.VerifyNs("tx-1", tx, 0))
+	})
+}
+
+func TestValidateConfigTx(t *testing.T) {
+	t.Parallel()
+
+	t.Run("valid config tx", func(t *testing.T) {
+		t.Parallel()
+		configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
+			PeerOrganizationCount: 1,
+		})
+		require.NoError(t, err)
+		require.NoError(t, ValidateConfigTx(configBlock.Data.Data[0]))
+	})
+
+	t.Run("invalid envelope", func(t *testing.T) {
+		t.Parallel()
+		err := ValidateConfigTx([]byte("not-an-envelope"))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "error unmarshalling envelope")
+	})
+}
+
+func createTestBundle(t *testing.T) (*channelconfig.Bundle, string) {
+	t.Helper()
+	cryptoPath := t.TempDir()
+	configBlock, err := workload.CreateDefaultConfigBlockWithCrypto(cryptoPath, &workload.ConfigBlock{
+		PeerOrganizationCount: 2,
+	})
+	require.NoError(t, err)
+
+	envelope, err := protoutil.UnmarshalEnvelope(configBlock.Data.Data[0])
+	require.NoError(t, err)
+	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
+	require.NoError(t, err)
+	return bundle, cryptoPath
 }
