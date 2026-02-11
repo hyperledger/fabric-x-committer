@@ -325,6 +325,7 @@ func (c *Service) BlockProcessing(
 			" forward the status to client")
 		if err := c.sendTxStatus(eCtx, stream); err != nil {
 			logger.Warnf("stream to the coordinator is ending with an error: %v", err)
+			return err
 		}
 		return nil
 	})

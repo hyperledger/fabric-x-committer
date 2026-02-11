@@ -70,11 +70,6 @@ func (c *CoordinatorAdapter) RunWorkload(ctx context.Context, txStream *workload
 	return errors.Wrap(g.Wait(), "workload done")
 }
 
-// Progress a submitted block indicates progress for the coordinator as it guaranteed to preserve the order.
-func (c *CoordinatorAdapter) Progress() uint64 {
-	return c.nextBlockNum.Load()
-}
-
 func (c *CoordinatorAdapter) receiveStatus(
 	ctx context.Context, stream servicepb.Coordinator_BlockProcessingClient,
 ) error {
