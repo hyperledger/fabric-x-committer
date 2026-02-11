@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/yugabyte/pgx/v4/pgxpool"
+	"github.com/yugabyte/pgx/v5/pgxpool"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
@@ -88,9 +88,11 @@ func (c *Connection) open(ctx context.Context) (*pgxpool.Pool, error) {
 	poolConfig.MaxConns = 1
 	poolConfig.MinConns = 1
 
+	dbconn.ConfigureConnReadDeadline(poolConfig)
+
 	var pool *pgxpool.Pool
 	if retryErr := defaultRetry.Execute(ctx, func() error {
-		pool, err = pgxpool.ConnectConfig(ctx, poolConfig)
+		pool, err = pgxpool.NewWithConfig(ctx, poolConfig)
 		return err
 	}); retryErr != nil {
 		return nil, errors.Wrapf(err, "error making pool: %s", c.endpointsString())

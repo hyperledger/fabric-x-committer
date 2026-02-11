@@ -9,7 +9,6 @@ package runner
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"testing"
 
 	"github.com/google/uuid"
@@ -65,10 +64,6 @@ type (
 // and returns its connection properties.
 func StartPostgresCluster(ctx context.Context, t *testing.T) (*PostgresClusterController, *dbtest.Connection) {
 	t.Helper()
-
-	if runtime.GOOS != linuxOS {
-		t.Skip("Container IP access not supported on non-linux Docker")
-	}
 
 	cluster := &PostgresClusterController{}
 
@@ -140,6 +135,9 @@ func (cc *PostgresClusterController) createNode(
 			"ALLOW_EMPTY_PASSWORD=yes",
 		}, nodeCreationOpts.additionalEnvs...),
 	}
+	// Expose the PostgreSQL port via host port mapping so the test client
+	// can connect through a host-accessible address on all platforms.
+	node.ExposePort("5432")
 	cc.nodes = append(cc.nodes, node)
 
 	return node

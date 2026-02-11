@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	"github.com/yugabyte/pgx/v4"
-	"github.com/yugabyte/pgx/v4/pgxpool"
+	"github.com/yugabyte/pgx/v5"
+	"github.com/yugabyte/pgx/v5/pgxpool"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
