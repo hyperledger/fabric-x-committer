@@ -80,6 +80,10 @@ func (p *Provider) StartPrometheusServer(
 	}
 	defer connection.CloseConnectionsLog(l)
 
+	if serverTLSConfig != nil {
+		l = tls.NewListener(l, serverTLSConfig)
+	}
+
 	p.url, err = MakeMetricsURL(l.Addr().String(), serverTLSConfig)
 	if err != nil {
 		return err
@@ -89,9 +93,6 @@ func (p *Provider) StartPrometheusServer(
 	g.Go(func() error {
 		logger.Infof("Prometheus serving on URL: %s", p.url)
 		defer logger.Info("Prometheus stopped serving")
-		if serverConfig.TLS.Enabled() {
-			return server.ServeTLS(l, serverConfig.TLS.CertPath, serverConfig.TLS.KeyPath)
-		}
 		return server.Serve(l)
 	})
 

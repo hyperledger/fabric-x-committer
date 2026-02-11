@@ -463,9 +463,12 @@ func NewOrdererEndpoints(id uint32, configs ...*connection.ServerConfig) []*type
 }
 
 // MustGetTLSConfig creates a tls.Config from a connection.TLSConfig while ensuring no error return from that process.
-func MustGetTLSConfig(t *testing.T, tlsConfig connection.TLSConfig) *tls.Config {
+func MustGetTLSConfig(t *testing.T, tlsConfig *connection.TLSConfig) *tls.Config {
 	t.Helper()
-	tlsMaterials, err := connection.NewTLSMaterials(tlsConfig)
+	if tlsConfig == nil {
+		return nil
+	}
+	tlsMaterials, err := connection.NewTLSMaterials(*tlsConfig)
 	require.NoError(t, err)
 	clientTLSConfig, err := tlsMaterials.CreateClientTLSConfig()
 	require.NoError(t, err)

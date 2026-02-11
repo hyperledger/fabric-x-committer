@@ -8,7 +8,6 @@ package loadgen
 
 import (
 	"context"
-	"crypto/tls"
 	_ "embed"
 	"fmt"
 	"net/http"
@@ -79,7 +78,7 @@ func TestLoadGenForLoadGen(t *testing.T) {
 
 					t.Log("Start distributed loadgen")
 					test.RunServiceAndGrpcForTest(t.Context(), t, subClient, subClientConf.Server)
-					testLoadGenerator(t, clientConf, test.MustGetTLSConfig(t, clientTLSConfig))
+					testLoadGenerator(t, clientConf, &clientTLSConfig)
 				})
 			}
 		})
@@ -101,7 +100,7 @@ func TestLoadGenForVCService(t *testing.T) {
 						NumServices: 2, ServerCreds: serverTLSConfig,
 					})
 					clientConf.Adapter.VCClient = test.NewTLSMultiClientConfig(clientTLSConfig, env.Endpoints...)
-					testLoadGenerator(t, clientConf, test.MustGetTLSConfig(t, clientTLSConfig))
+					testLoadGenerator(t, clientConf, &clientTLSConfig)
 				})
 			}
 		})
@@ -121,7 +120,7 @@ func TestLoadGenForSigVerifier(t *testing.T) {
 					clientConf.Limit = limit
 					clientConf.Adapter.VerifierClient = startVerifiers(t, serverTLSConfig, clientTLSConfig)
 					// Start client
-					testLoadGenerator(t, clientConf, test.MustGetTLSConfig(t, clientTLSConfig))
+					testLoadGenerator(t, clientConf, &clientTLSConfig)
 				})
 			}
 		})
@@ -194,7 +193,7 @@ func TestLoadGenForCoordinator(t *testing.T) {
 					clientConf.Adapter.CoordinatorClient = test.NewTLSClientConfig(
 						clientTLSConfig, &cConf.Server.Endpoint,
 					)
-					testLoadGenerator(t, clientConf, test.MustGetTLSConfig(t, clientTLSConfig))
+					testLoadGenerator(t, clientConf, &clientTLSConfig)
 				})
 			}
 		})
@@ -265,7 +264,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 						OrdererServers: ordererServers,
 						SidecarClient:  test.NewTLSClientConfig(clientTLSConfig, &sidecarServerConf.Endpoint),
 					}
-					testLoadGenerator(t, clientConf, test.MustGetTLSConfig(t, clientTLSConfig))
+					testLoadGenerator(t, clientConf, &clientTLSConfig)
 				})
 			}
 		})
@@ -344,7 +343,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 						Orderer:              sidecarConf.Orderer,
 						BroadcastParallelism: 5,
 					}
-					testLoadGenerator(t, clientConf, test.MustGetTLSConfig(t, clientTLSConfig))
+					testLoadGenerator(t, clientConf, &clientTLSConfig)
 				})
 			}
 		})
@@ -399,7 +398,7 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 						},
 						BroadcastParallelism: 5,
 					}
-					testLoadGenerator(t, clientConf, test.MustGetTLSConfig(t, clientTLSConfig))
+					testLoadGenerator(t, clientConf, &clientTLSConfig)
 				})
 			}
 		})
@@ -417,7 +416,7 @@ func preAllocatePorts(t *testing.T, tlsConfig connection.TLSConfig) *connection.
 	return server
 }
 
-func testLoadGenerator(t *testing.T, c *ClientConfig, metricsTLS *tls.Config) {
+func testLoadGenerator(t *testing.T, c *ClientConfig, metricsTLS *connection.TLSConfig) {
 	t.Helper()
 	client, err := NewLoadGenClient(c)
 	require.NoError(t, err)
@@ -432,7 +431,7 @@ func testLoadGenerator(t *testing.T, c *ClientConfig, metricsTLS *tls.Config) {
 
 	if !c.Limit.HasLimit() {
 		// If we have a limit, the Prometheus server might stop before we can fetch the metrics.
-		test.CheckMetrics(t, client.resources.Metrics.URL(), metricsTLS,
+		test.CheckMetrics(t, client.resources.Metrics.URL(), test.MustGetTLSConfig(t, metricsTLS),
 			"loadgen_block_sent_total",
 			"loadgen_transaction_sent_total",
 			"loadgen_transaction_received_total",

@@ -8,7 +8,6 @@ package test
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -91,9 +90,12 @@ func createAndStartContainerAndItsLogs(
 	}()
 }
 
-func monitorMetric(t *testing.T, metricsPort string, metricsTLS *tls.Config) {
+func monitorMetric(t *testing.T, metricsPort string, metricsTLS *connection.TLSConfig) {
 	t.Helper()
-	metricsURL, err := monitoring.MakeMetricsURL(net.JoinHostPort(localhost, metricsPort), metricsTLS)
+
+	tlsConf := test.MustGetTLSConfig(t, metricsTLS)
+
+	metricsURL, err := monitoring.MakeMetricsURL(net.JoinHostPort(localhost, metricsPort), tlsConf)
 	require.NoError(t, err)
 
 	t.Logf("Check the load generator metrics from: %s", metricsURL)
@@ -101,7 +103,7 @@ func monitorMetric(t *testing.T, metricsPort string, metricsTLS *tls.Config) {
 	// We log only if there are changes to avoid spamming the log.
 	prevCount := -1
 	require.Eventually(t, func() bool {
-		count := test.GetMetricValueFromURL(t, metricsURL, monitoredMetric, metricsTLS)
+		count := test.GetMetricValueFromURL(t, metricsURL, monitoredMetric, tlsConf)
 		if prevCount != count {
 			t.Logf("%s: %d", monitoredMetric, count)
 		}

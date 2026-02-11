@@ -128,7 +128,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					monitorMetric(t,
 						getContainerMappedHostPort(
 							ctx, t, assembleContainerName("loadgen", mode, dbType), loadGenMetricsPort,
-						), test.MustGetTLSConfig(t, metricsClientTLSConfig),
+						), &metricsClientTLSConfig,
 					)
 				})
 			}
