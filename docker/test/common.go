@@ -55,6 +55,7 @@ const (
 	channelName     = "mychannel"
 	monitoredMetric = "loadgen_transaction_committed_total"
 	testNodeImage   = "docker.io/hyperledger/committer-test-node:latest"
+	localhost       = "localhost"
 )
 
 func createAndStartContainerAndItsLogs(
@@ -89,9 +90,12 @@ func createAndStartContainerAndItsLogs(
 	}()
 }
 
-func monitorMetric(t *testing.T, metricsPort string) {
+func monitorMetric(t *testing.T, metricsPort string, metricsTLS *connection.TLSConfig) {
 	t.Helper()
-	metricsURL, err := monitoring.MakeMetricsURL(net.JoinHostPort("localhost", metricsPort))
+
+	tlsConf := test.MustGetTLSConfig(t, metricsTLS)
+
+	metricsURL, err := monitoring.MakeMetricsURL(net.JoinHostPort(localhost, metricsPort), tlsConf)
 	require.NoError(t, err)
 
 	t.Logf("Check the load generator metrics from: %s", metricsURL)
@@ -99,7 +103,7 @@ func monitorMetric(t *testing.T, metricsPort string) {
 	// We log only if there are changes to avoid spamming the log.
 	prevCount := -1
 	require.Eventually(t, func() bool {
-		count := test.GetMetricValueFromURL(t, metricsURL, monitoredMetric)
+		count := test.GetMetricValueFromURL(t, metricsURL, monitoredMetric, tlsConf)
 		if prevCount != count {
 			t.Logf("%s: %d", monitoredMetric, count)
 		}
@@ -176,7 +180,7 @@ func createDockerClient(t *testing.T) *client.Client {
 func assembleBinds(t *testing.T, params startNodeParameters, additionalBinds ...string) []string {
 	t.Helper()
 
-	_, serverCredsPath := params.credsFactory.CreateServerCredentials(t, params.tlsMode, params.node)
+	_, serverCredsPath := params.credsFactory.CreateServerCredentials(t, params.tlsMode, params.node, localhost)
 	require.NotEmpty(t, serverCredsPath)
 	_, clientCredsPath := params.credsFactory.CreateClientCredentials(t, params.tlsMode)
 	require.NotEmpty(t, clientCredsPath)

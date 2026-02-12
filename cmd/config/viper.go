@@ -84,10 +84,10 @@ func NewViperWithLoadGenDefaults() *viper.Viper {
 func NewViperWithServiceDefault(servicePort, monitoringPort int) *viper.Viper {
 	v := NewViperWithLoggingDefault()
 	v.SetDefault("server.endpoint", &connection.Endpoint{Host: "localhost", Port: servicePort})
-	v.SetDefault("monitoring.server.endpoint", &connection.Endpoint{Host: "localhost", Port: monitoringPort})
+	v.SetDefault("monitoring.endpoint", &connection.Endpoint{Host: "localhost", Port: monitoringPort})
 	// Rate limiting disabled by default (0 = disabled)
 	v.SetDefault("server.rate-limit", &connection.RateLimitConfig{})
-	v.SetDefault("monitoring.server.rate-limit", &connection.RateLimitConfig{})
+	v.SetDefault("monitoring.rate-limit", &connection.RateLimitConfig{})
 	return v
 }
 

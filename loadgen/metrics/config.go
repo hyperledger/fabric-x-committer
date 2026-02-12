@@ -7,12 +7,12 @@ SPDX-License-Identifier: Apache-2.0
 package metrics
 
 import (
-	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 // Config describes the load generator metrics.
 // It adds latency tracker to the common metrics configurations.
 type Config struct {
-	monitoring.Config `mapstructure:",squash" yaml:",inline"`
-	Latency           LatencyConfig `mapstructure:"latency" yaml:"latency"`
+	connection.ServerConfig `mapstructure:",squash" yaml:",inline"`
+	Latency                 LatencyConfig `mapstructure:"latency" yaml:"latency"`
 }

@@ -12,19 +12,24 @@ server:
     ca-cert-paths:
       - /server-certs/ca-certificate.pem
 monitoring:
-  server:
-    endpoint: :2115
-    # Rate limiting configuration for unary gRPC endpoints.
-    # Uses a token bucket algorithm to limit the number of requests per second.
-    rate-limit:
-      # Maximum number of requests per second allowed.
-      # Set to 0 to disable rate limiting.
-      requests-per-second: 0
-      # Maximum number of requests allowed in a single burst.
-      # When rate limiting is enabled (requests-per-second > 0):
-      #   - Must be greater than 0
-      #   - Must be less than or equal to requests-per-second
-      burst: 0
+  endpoint: :2115
+  tls:
+    mode: mtls
+    cert-path: /server-certs/public-key.pem
+    key-path: /server-certs/private-key.pem
+    ca-cert-paths:
+      - /server-certs/ca-certificate.pem
+  # Rate limiting configuration for unary gRPC endpoints.
+  # Uses a token bucket algorithm to limit the number of requests per second.
+  rate-limit:
+    # Maximum number of requests per second allowed.
+    # Set to 0 to disable rate limiting.
+    requests-per-second: 0
+    # Maximum number of requests allowed in a single burst.
+    # When rate limiting is enabled (requests-per-second > 0):
+    #   - Must be greater than 0
+    #   - Must be less than or equal to requests-per-second
+    burst: 0
 
 parallel-executor:
   batch-size-cutoff: 50

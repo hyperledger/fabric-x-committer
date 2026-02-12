@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package test
 
 import (
+	"crypto/tls"
 	"io"
 	"math"
 	"net/http"
@@ -22,18 +23,18 @@ import (
 )
 
 // CheckMetrics checks the metrics endpoint for the expected metrics.
-func CheckMetrics(t *testing.T, url string, expectedMetrics ...string) {
+func CheckMetrics(t *testing.T, url string, tlsConfig *tls.Config, expectedMetrics ...string) {
 	t.Helper()
-	metricsOutput := getMetricsFromURL(t, url)
+	metricsOutput := getMetricsFromURL(t, url, tlsConfig)
 	for _, expected := range expectedMetrics {
 		require.Contains(t, metricsOutput, expected)
 	}
 }
 
 // GetMetricValueFromURL reads the metrics endpoint and fetch the value of a specific metric.
-func GetMetricValueFromURL(t *testing.T, url, metricName string) int {
+func GetMetricValueFromURL(t *testing.T, url, metricName string, tlsConfig *tls.Config) int {
 	t.Helper()
-	metricsOutput := getMetricsFromURL(t, url)
+	metricsOutput := getMetricsFromURL(t, url, tlsConfig)
 	r, err := regexp.Compile(`(?m)^` + metricName + `\s+([\d.]+)`)
 	require.NoError(t, err)
 	m := r.FindStringSubmatch(metricsOutput)
@@ -42,9 +43,13 @@ func GetMetricValueFromURL(t *testing.T, url, metricName string) int {
 	return int(math.Round(val))
 }
 
-func getMetricsFromURL(t *testing.T, url string) string {
+func getMetricsFromURL(t *testing.T, url string, tlsConfig *tls.Config) string {
 	t.Helper()
-	client := &http.Client{}
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: tlsConfig,
+		},
+	}
 	defer client.CloseIdleConnections()
 	var val string
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {

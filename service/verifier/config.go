@@ -10,14 +10,13 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
 
 type (
 	// Config describes the signature verifier parameters.
 	Config struct {
 		Server           *connection.ServerConfig `mapstructure:"server" yaml:"server"`
-		Monitoring       monitoring.Config        `mapstructure:"monitoring" yaml:"monitoring"`
+		Monitoring       *connection.ServerConfig `mapstructure:"monitoring" yaml:"monitoring"`
 		ParallelExecutor ExecutorConfig           `mapstructure:"parallel-executor" yaml:"parallel-executor"`
 	}
 

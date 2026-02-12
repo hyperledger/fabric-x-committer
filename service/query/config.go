@@ -11,7 +11,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
 
 // Config is the configuration for the query service.
@@ -36,7 +35,7 @@ import (
 // If there are no more available connections, queries will wait until such connection is available.
 type Config struct {
 	Server                *connection.ServerConfig `mapstructure:"server"`
-	Monitoring            monitoring.Config        `mapstructure:"monitoring"`
+	Monitoring            *connection.ServerConfig `mapstructure:"monitoring"`
 	Database              *vc.DatabaseConfig       `mapstructure:"database"`
 	MinBatchKeys          int                      `mapstructure:"min-batch-keys"`
 	MaxBatchWait          time.Duration            `mapstructure:"max-batch-wait"`

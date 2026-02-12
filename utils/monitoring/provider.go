@@ -8,6 +8,7 @@ package monitoring
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -23,7 +24,8 @@ import (
 )
 
 const (
-	scheme         = "http://"
+	httpsScheme    = "https://"
+	httpScheme     = "http://"
 	metricsSubPath = "/metrics"
 )
 
@@ -46,7 +48,16 @@ func NewProvider() *Provider {
 func (p *Provider) StartPrometheusServer(
 	ctx context.Context, serverConfig *connection.ServerConfig, monitor ...func(context.Context),
 ) error {
-	logger.Debugf("Creating prometheus server")
+	logger.Debugf("Creating prometheus server with secure mode: %v", serverConfig.TLS.Mode)
+	// Generate TLS configuration from the server config.
+	serverMaterials, err := connection.NewTLSMaterials(serverConfig.TLS)
+	if err != nil {
+		return errors.Wrap(err, "failed to create TLS materials for prometheus server")
+	}
+	serverTLSConfig, err := serverMaterials.CreateServerTLSConfig()
+	if err != nil {
+		return err
+	}
 	mux := http.NewServeMux()
 	mux.Handle(
 		metricsSubPath,
@@ -60,6 +71,7 @@ func (p *Provider) StartPrometheusServer(
 	server := &http.Server{
 		ReadTimeout: 30 * time.Second,
 		Handler:     mux,
+		TLSConfig:   serverTLSConfig,
 	}
 
 	l, err := serverConfig.Listener(ctx)
@@ -68,7 +80,11 @@ func (p *Provider) StartPrometheusServer(
 	}
 	defer connection.CloseConnectionsLog(l)
 
-	p.url, err = MakeMetricsURL(l.Addr().String())
+	if serverTLSConfig != nil {
+		l = tls.NewListener(l, serverTLSConfig)
+	}
+
+	p.url, err = MakeMetricsURL(l.Addr().String(), serverTLSConfig)
 	if err != nil {
 		return err
 	}
@@ -194,7 +210,12 @@ func (p *Provider) Registry() *prometheus.Registry {
 }
 
 // MakeMetricsURL construct the Prometheus metrics URL.
-func MakeMetricsURL(address string) (string, error) {
+// based on the secure level, we set the url scheme to http or https.
+func MakeMetricsURL(address string, tlsConf *tls.Config) (string, error) {
+	scheme := httpScheme
+	if tlsConf != nil {
+		scheme = httpsScheme
+	}
 	ret, err := url.JoinPath(scheme, address, metricsSubPath)
 	return ret, errors.Wrap(err, "failed to make prometheus URL")
 }

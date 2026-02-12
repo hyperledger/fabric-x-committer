@@ -17,8 +17,15 @@ server:
       {{- end }}
 
 monitoring:
-  server:
-    endpoint: {{ .ServiceEndpoints.Metrics | default "localhost:0" }}
+  endpoint: {{ .ServiceEndpoints.Metrics | default "localhost:0" }}
+  tls:
+    mode: {{ .MetricsTLS.Mode }}
+    key-path: {{ .MetricsTLS.KeyPath }}
+    cert-path: {{ .MetricsTLS.CertPath }}
+    ca-cert-paths:
+      {{- range .MetricsTLS.CACertPaths }}
+      - {{ . }}
+      {{- end }}
   latency:
     sampler:
       portion: 0.01

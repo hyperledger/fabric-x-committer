@@ -8,7 +8,6 @@ package coordinator
 
 import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
 
 type (
@@ -18,7 +17,7 @@ type (
 		Verifier           connection.MultiClientConfig `mapstructure:"verifier"`
 		ValidatorCommitter connection.MultiClientConfig `mapstructure:"validator-committer"`
 		DependencyGraph    *DependencyGraphConfig       `mapstructure:"dependency-graph"`
-		Monitoring         monitoring.Config            `mapstructure:"monitoring"`
+		Monitoring         *connection.ServerConfig     `mapstructure:"monitoring"`
 		// ChannelBufferSizePerGoroutine defines the buffer size per go-routine.
 		ChannelBufferSizePerGoroutine int `mapstructure:"per-channel-buffer-size-per-goroutine"`
 	}

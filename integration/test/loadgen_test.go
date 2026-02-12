@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -72,10 +73,19 @@ func TestLoadGenWithTLSModes(t *testing.T) {
 					})
 					c.Start(t, serviceFlags)
 
-					metricsURL, err := monitoring.MakeMetricsURL(c.SystemConfig.Endpoints.LoadGen.Metrics.Address())
+					metricsMaterials, err := connection.NewTLSMaterials(c.SystemConfig.ClientTLS)
+					require.NoError(t, err)
+					metricsClientTLSConfig, err := metricsMaterials.CreateClientTLSConfig()
+					require.NoError(t, err)
+
+					metricsURL, err := monitoring.MakeMetricsURL(
+						c.SystemConfig.Endpoints.LoadGen.Metrics.Address(), metricsClientTLSConfig,
+					)
 					require.NoError(t, err)
 					require.EventuallyWithT(t, func(ct *assert.CollectT) {
-						count := test.GetMetricValueFromURL(t, metricsURL, "loadgen_transaction_committed_total")
+						count := test.GetMetricValueFromURL(
+							t, metricsURL, "loadgen_transaction_committed_total", metricsClientTLSConfig,
+						)
 						t.Logf("loadgen_transaction_committed_total: %d", count)
 						require.Greater(ct, count, 500)
 					}, 300*time.Second, 1*time.Second)

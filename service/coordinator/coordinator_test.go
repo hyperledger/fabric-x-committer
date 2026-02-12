@@ -30,7 +30,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/apptest"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -123,9 +122,7 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 			WaitingTxsLimit:           10,
 		},
 		ChannelBufferSizePerGoroutine: 2000,
-		Monitoring: monitoring.Config{
-			Server: connection.NewLocalHostServer(test.InsecureTLSConfig),
-		},
+		Monitoring:                    connection.NewLocalHostServer(test.InsecureTLSConfig),
 	}
 
 	return &coordinatorTestEnv{
@@ -996,9 +993,7 @@ func fakeConfigForTest(t *testing.T) *Config {
 		Verifier:           *test.NewTLSMultiClientConfig(test.InsecureTLSConfig, randomEndpoint),
 		ValidatorCommitter: *test.NewTLSMultiClientConfig(test.InsecureTLSConfig, randomEndpoint),
 		DependencyGraph:    &DependencyGraphConfig{},
-		Monitoring: monitoring.Config{
-			Server: connection.NewLocalHostServer(test.InsecureTLSConfig),
-		},
+		Monitoring:         connection.NewLocalHostServer(test.InsecureTLSConfig),
 	}
 }
 
