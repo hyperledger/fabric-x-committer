@@ -30,7 +30,7 @@ func TestLedgerService(t *testing.T) {
 	channelID := "ch1"
 
 	metrics := newPerformanceMetrics()
-	ls, err := newLedgerService(channelID, ledgerPath, metrics)
+	ls, err := newLedgerService(channelID, ledgerPath, 0, metrics)
 	require.NoError(t, err)
 	t.Cleanup(ls.close)
 

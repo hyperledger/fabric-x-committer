@@ -80,6 +80,10 @@ committer:
       - /client-certs/ca-certificate.pem
 ledger:
   path: /root/sc/ledger
+  # How often the block store fsyncs to durable storage. Every Nth block triggers
+  # a full sync; intermediate blocks are written without fsync. Set to 0 or 1 to
+  # sync every block. Un-synced blocks are recoverable from the orderer on crash.
+  sync-interval: 100
 notification:
   max-timeout: 10m
   # Maximum number of concurrent notification streams allowed.
