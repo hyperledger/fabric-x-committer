@@ -10,6 +10,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -26,6 +27,10 @@ const (
 
 	// nsIDTemplatePlaceholder is used as a template placeholder for SQL queries.
 	nsIDTemplatePlaceholder = "${NAMESPACE_ID}"
+
+	// splitIntoTabletsPlaceholder is replaced with "SPLIT INTO N TABLETS" for YugabyteDB
+	// or removed entirely for PostgreSQL (when tablets is 0 or unset).
+	splitIntoTabletsPlaceholder = "${SPLIT_INTO_TABLETS}"
 
 	// tableNameTempl is the template for the table name for each namespace.
 	tableNameTempl = "ns_" + nsIDTemplatePlaceholder
@@ -71,12 +76,13 @@ func NewDatabasePool(ctx context.Context, config *DatabaseConfig) (*pgxpool.Pool
 // TODO: merge this file with database.go.
 func (db *database) setupSystemTablesAndNamespaces(ctx context.Context) error {
 	logger.Info("Created tx status table, metadata table, and its methods.")
-	if execErr := db.retry.ExecuteSQL(ctx, db.pool, dbInitSQLStmt); execErr != nil {
+	if execErr := db.retry.ExecuteSQL(ctx, db.pool,
+		fmtSplitIntoTablets(dbInitSQLStmt, db.tablePreSplitTablets)); execErr != nil {
 		return fmt.Errorf("failed to create system tables and functions: %w", execErr)
 	}
 
 	for _, nsID := range systemNamespaces {
-		execErr := createNsTables(nsID, func(q string) error {
+		execErr := createNsTables(nsID, db.tablePreSplitTablets, func(q string) error {
 			return db.retry.ExecuteSQL(ctx, db.pool, q)
 		})
 		if execErr != nil {
@@ -87,8 +93,9 @@ func (db *database) setupSystemTablesAndNamespaces(ctx context.Context) error {
 	return nil
 }
 
-func createNsTables(nsID string, queryFunc func(q string) error) error {
+func createNsTables(nsID string, tablets int, queryFunc func(q string) error) error {
 	query := FmtNsID(createNamespaceSQLStmt, nsID)
+	query = fmtSplitIntoTablets(query, tablets)
 	if err := queryFunc(query); err != nil {
 		return errors.Wrapf(err, "failed to create table and functions for namespace [%s] with query [%s]",
 			nsID, query)
@@ -104,4 +111,15 @@ func FmtNsID(sqlTemplate, namespaceID string) string {
 // TableName returns the table name for the given namespace.
 func TableName(nsID string) string {
 	return FmtNsID(tableNameTempl, nsID)
+}
+
+// fmtSplitIntoTablets replaces the split-into-tablets placeholder in an SQL template string.
+// When tablets > 0, it replaces the placeholder with "SPLIT INTO N TABLETS" (YugabyteDB).
+// When tablets is 0 or unset, the placeholder is removed, producing standard PostgreSQL-compatible SQL.
+func fmtSplitIntoTablets(sqlTemplate string, tablets int) string {
+	if tablets > 0 {
+		return strings.ReplaceAll(sqlTemplate, splitIntoTabletsPlaceholder,
+			" SPLIT INTO "+strconv.Itoa(tablets)+" TABLETS")
+	}
+	return strings.ReplaceAll(sqlTemplate, splitIntoTabletsPlaceholder, "")
 }

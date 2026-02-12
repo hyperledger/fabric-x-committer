@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -49,9 +50,10 @@ var ErrMetadataEmpty = errors.New("metadata value is empty")
 type (
 	// database handles the database operations.
 	database struct {
-		pool    *pgxpool.Pool
-		metrics *perfMetrics
-		retry   *connection.RetryProfile
+		pool                 *pgxpool.Pool
+		metrics              *perfMetrics
+		retry                *connection.RetryProfile
+		tablePreSplitTablets int
 	}
 
 	// keyToVersion is a map from key to version.
@@ -89,11 +91,38 @@ func newDatabase(ctx context.Context, config *DatabaseConfig, metrics *perfMetri
 		}
 	}()
 
+	tablePreSplitTablets := config.TablePreSplitTablets
+	if tablePreSplitTablets > 0 {
+		isYugabyte, err := isYugabyteDB(ctx, pool)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to detect database type")
+		}
+
+		if !isYugabyte {
+			logger.Info("PostgreSQL detected; ignoring table-pre-split-tablets configuration")
+			tablePreSplitTablets = 0
+		} else {
+			logger.Infof("YugabyteDB detected; tables will be pre-split into %d tablets", tablePreSplitTablets)
+		}
+	}
+
 	return &database{
-		pool:    pool,
-		metrics: metrics,
-		retry:   config.Retry,
+		pool:                 pool,
+		metrics:              metrics,
+		retry:                config.Retry,
+		tablePreSplitTablets: tablePreSplitTablets,
 	}, nil
+}
+
+// isYugabyteDB queries the database version string to determine whether the backend is YugabyteDB.
+// YugabyteDB's version() output contains "-YB-" (e.g., "PostgreSQL 11.2-YB-2.20.1.0 ..."),
+// which distinguishes it from standard PostgreSQL.
+func isYugabyteDB(ctx context.Context, pool *pgxpool.Pool) (bool, error) {
+	var version string
+	if err := pool.QueryRow(ctx, "SELECT version()").Scan(&version); err != nil {
+		return false, errors.Wrap(err, "failed to query database version")
+	}
+	return strings.Contains(version, "-YB-"), nil
 }
 
 func (db *database) close() {
@@ -254,7 +283,8 @@ func (db *database) writeStatesByGroup(
 		return conflicts, nil, nil
 	}
 
-	if err = createTablesAndFunctionsForNamespaces(ctx, tx, states.newWrites[committerpb.MetaNamespaceID]); err != nil {
+	if err = createTablesAndFunctionsForNamespaces(ctx, tx,
+		states.newWrites[committerpb.MetaNamespaceID], db.tablePreSplitTablets); err != nil {
 		return nil, nil, fmt.Errorf("failed to create tables and functions for new namespaces: %w", err)
 	}
 
@@ -370,7 +400,7 @@ func (db *database) updateStates(ctx context.Context, tx pgx.Tx, nsToWrites name
 	return nil
 }
 
-func createTablesAndFunctionsForNamespaces(ctx context.Context, tx pgx.Tx, newNs *namespaceWrites) error {
+func createTablesAndFunctionsForNamespaces(ctx context.Context, tx pgx.Tx, newNs *namespaceWrites, tablets int) error {
 	if newNs == nil {
 		return nil
 	}
@@ -380,7 +410,7 @@ func createTablesAndFunctionsForNamespaces(ctx context.Context, tx pgx.Tx, newNs
 
 		tableName := TableName(nsID)
 		logger.Infof("Creating table [%s] and required functions for namespace [%s]", tableName, ns)
-		err := createNsTables(nsID, func(q string) error {
+		err := createNsTables(nsID, tablets, func(q string) error {
 			_, execErr := tx.Exec(ctx, q)
 			return execErr
 		})
