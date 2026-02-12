@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS metadata
 (
     key   BYTEA NOT NULL PRIMARY KEY,
     value BYTEA
-);
+)${SPLIT_INTO_TABLETS};
 
 INSERT INTO metadata
 VALUES ('last committed block number', NULL)
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS tx_status
     tx_id  BYTEA NOT NULL PRIMARY KEY,
     status INTEGER,
     height BYTEA NOT NULL
-);
+)${SPLIT_INTO_TABLETS};
 
 CREATE OR REPLACE FUNCTION insert_tx_status(
     IN _tx_ids BYTEA[],

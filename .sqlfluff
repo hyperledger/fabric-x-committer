@@ -6,7 +6,7 @@
 
 # Supported dialects https://docs.sqlfluff.com/en/stable/perma/dialects.html
 # Or run 'sqlfluff dialects'
-dialect = snowflake
+dialect = postgres
 
 # One of [raw|jinja|python|placeholder]
 templater = placeholder
@@ -15,7 +15,8 @@ templater = placeholder
 # See https://docs.sqlfluff.com/en/stable/perma/rule_disabling.html
 # AM04 (ambiguous.column_count) and ST06 (structure.column_order) are
 # two of the more controversial rules included to illustrate usage.
-exclude_rules = ambiguous.column_count, structure.column_order, LT01, LT02
+# RF04 is excluded because we use reserved keywords as column names (key, value, references)
+exclude_rules = ambiguous.column_count, structure.column_order, LT01, LT02, RF04
 
 # The standard max_line_length is 80 in line with the convention of
 # other tools and several style guides. Many projects however prefer
@@ -38,7 +39,7 @@ project_dir = ./
 [sqlfluff:indentation]
 # While implicit indents are not enabled by default. Many of the
 # SQLFluff maintainers do use them in their projects.
-allow_implicit_indents = True
+implicit_indents = allow
 
 [sqlfluff:rules:aliasing.length]
 min_alias_length = 3
@@ -73,6 +74,11 @@ preferred_not_equal_style = c_style
 
 [sqlfluff:templater:placeholder]
 param_regex = \$\{(?P<param_name>[\w_]+)\}
+# SQL templates use Go embed + strings.ReplaceAll at runtime (see service/vc/dbinit.go).
+# These placeholder values produce valid PostgreSQL so sqlfluff can parse and lint the templates.
+NAMESPACE_ID = placeholder_namespace
+# Empty: strips YugabyteDB-specific "SPLIT INTO N TABLETS" clause, leaving standard PostgreSQL.
+SPLIT_INTO_TABLETS =
 
 [sqlfluff:rules]
 allow_scalar = True

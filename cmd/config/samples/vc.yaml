@@ -41,6 +41,16 @@ database:
   max-connections: 10 # The maximum size of the connection pool
   min-connections: 5 # The minimum size of the connection pool.
   load-balance: false # Should be enabled for DB cluster.
+
+  # Number of tablets to pre-split each table into at creation time (YugabyteDB only).
+  # Pre-splitting distributes a table's data across multiple tablet servers from the start,
+  # preventing the "hot tablet" bottleneck where a single tablet handles all initial writes
+  # before YugabyteDB's automatic splitting kicks in, which causes unpredictable latency spikes.
+  # Recommended value: set to the number of tablet servers in the cluster, or a small multiple
+  # of it (e.g., 1x-2x the number of tservers), so each tserver gets an equal share of tablets.
+  # For example, with 3 tservers, set table-pre-split-tablets to 3 or 6.
+  # When the underlying database is PostgreSQL, this setting is automatically ignored even if set.
+  table-pre-split-tablets: 0
   retry: # The exponential backoff retry strategy for database operation.
          # This strategy increases the delay between retry attempts exponentially.
          # When using YugabyteDB as the backend, it is needed to handle retryable errors.

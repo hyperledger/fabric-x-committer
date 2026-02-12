@@ -304,6 +304,27 @@ func TestDBCommit(t *testing.T) {
 	dbEnv.rowExists(t, "4", *nsToWrites["4"])
 }
 
+func TestNewDatabaseTabletsWithDetection(t *testing.T) {
+	t.Parallel()
+	env := NewDatabaseTestEnv(t)
+
+	// Detect the actual DB type to know what to assert.
+	actuallyYugabyte, err := isYugabyteDB(t.Context(), env.DB.pool)
+	require.NoError(t, err)
+
+	env.DBConf.TablePreSplitTablets = 5
+
+	db, err := newDatabase(t.Context(), env.DBConf, newVCServiceMetrics())
+	require.NoError(t, err)
+	t.Cleanup(db.close)
+
+	expectedTablePreSplitTablets := env.DBConf.TablePreSplitTablets
+	if !actuallyYugabyte {
+		expectedTablePreSplitTablets = 0
+	}
+	require.Equal(t, expectedTablePreSplitTablets, db.tablePreSplitTablets)
+}
+
 func commit(t *testing.T, dbEnv *DatabaseTestEnv, states *statesToBeCommitted) {
 	t.Helper()
 	require.NoError(t, dbEnv.DBConf.Retry.Execute(t.Context(), func() error {
