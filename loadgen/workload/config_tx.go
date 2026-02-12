@@ -24,16 +24,13 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
-	"github.com/hyperledger/fabric-x-committer/utils/signature"
-	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 )
 
 // ConfigBlock represents the configuration of the config block.
 type ConfigBlock struct {
-	ChannelID                    string
-	OrdererEndpoints             []*commontypes.OrdererEndpoint
-	PeerOrganizationCount        uint32
-	MetaNamespaceVerificationKey []byte
+	ChannelID             string
+	OrdererEndpoints      []*commontypes.OrdererEndpoint
+	PeerOrganizationCount uint32
 }
 
 // CreateConfigTxFromConfigBlock creates a config TX.
@@ -102,12 +99,10 @@ func PrepareCryptoMaterial(policy *PolicyProfile) error {
 		return nil
 	}
 
-	_, metaPolicy := newPolicyEndorser(policy.CryptoMaterialPath, policy.NamespacePolicies[committerpb.MetaNamespaceID])
 	_, err = CreateDefaultConfigBlockWithCrypto(policy.CryptoMaterialPath, &ConfigBlock{
-		MetaNamespaceVerificationKey: metaPolicy.GetThresholdRule().GetPublicKey(),
-		OrdererEndpoints:             policy.OrdererEndpoints,
-		ChannelID:                    policy.ChannelID,
-		PeerOrganizationCount:        policy.PeerOrganizationCount,
+		OrdererEndpoints:      policy.OrdererEndpoints,
+		ChannelID:             policy.ChannelID,
+		PeerOrganizationCount: policy.PeerOrganizationCount,
 	})
 	return err
 }
@@ -194,21 +189,14 @@ func CreateDefaultConfigBlockWithCrypto(targetPath string, conf *ConfigBlock) (*
 		})
 	}
 
-	metaKey := conf.MetaNamespaceVerificationKey
-	if len(metaKey) == 0 {
-		// We must supply a valid meta namespace key.
-		_, metaKey = sigtest.NewKeyPair(signature.Ecdsa)
-	}
-
 	// We create the config block on the basis of the default Fabric X config profile.
 	// It will use the default parameters defined in this profile (e.g., Policies, OrdererType, etc.).
 	// The generated organizations will use the default parameters taken from the first orderer org defined
 	// in the profile.
 	return cryptogen.CreateDefaultConfigBlockWithCrypto(cryptogen.ConfigBlockParameters{
-		TargetPath:                   targetPath,
-		BaseProfile:                  configtxgen.SampleFabricX,
-		ChannelID:                    conf.ChannelID,
-		Organizations:                orgs,
-		MetaNamespaceVerificationKey: metaKey,
+		TargetPath:    targetPath,
+		BaseProfile:   configtxgen.SampleFabricX,
+		ChannelID:     conf.ChannelID,
+		Organizations: orgs,
 	})
 }

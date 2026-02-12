@@ -54,6 +54,8 @@ load-profile:
         seed: {{ $element.Seed }}
       {{ end }}
     config-block-path: {{ .ConfigBlockPath }}
+    crypto-material-path: {{ .Policy.CryptoMaterialPath }}
+    peer-organization-count: {{ .Policy.PeerOrganizationCount }}
   query:
     query-size:
     min-invalid-keys-portion:

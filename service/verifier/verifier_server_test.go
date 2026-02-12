@@ -9,16 +9,13 @@ package verifier
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
-	commonmsp "github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -161,13 +158,7 @@ func TestSignatureRule(t *testing.T) {
 	err = stream.Send(&servicepb.VerifierBatch{Update: cp.update})
 	require.NoError(t, err)
 
-	mspDirs := make([]commonmsp.DirLoadParameters, 2)
-	peerOrgPath := filepath.Join(cp.cryptoPath, cryptogen.PeerOrganizationsDir)
-	for i, org := range []string{"peer-org-0", "peer-org-1"} {
-		mspDirs[i].MspName = org
-		clientName := "client@" + org + ".com"
-		mspDirs[i].MspDir = filepath.Join(peerOrgPath, org, "users", clientName, "msp")
-	}
+	mspDirs := workload.PeerOrgMspDirs(cp.cryptoPath)
 
 	signingIdentities, err := sigtest.GetSigningIdentities(mspDirs...)
 	require.NoError(t, err)
@@ -225,10 +216,7 @@ func TestSignatureRule(t *testing.T) {
 
 	// Update the config block to have SampleFabricX profile instead of
 	// the default TwoOrgsSampleFabricX.
-	_, metaTxVerificationKey := sigtest.NewKeyPair(signature.Ecdsa)
-	configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
-		MetaNamespaceVerificationKey: metaTxVerificationKey,
-	})
+	configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{})
 	require.NoError(t, err)
 	update = &servicepb.VerifierUpdates{
 		Config: &applicationpb.ConfigTransaction{
@@ -538,13 +526,13 @@ func defaultCryptoParameters(t *testing.T) cryptoParameters {
 		cryptoPath: t.TempDir(),
 	}
 
-	metaTxSigningKey, metaTxVerificationKey := sigtest.NewKeyPair(signature.Ecdsa)
 	configBlock, err := workload.CreateDefaultConfigBlockWithCrypto(ret.cryptoPath, &workload.ConfigBlock{
-		MetaNamespaceVerificationKey: metaTxVerificationKey,
-		PeerOrganizationCount:        2,
+		PeerOrganizationCount: 2,
 	})
 	require.NoError(t, err)
-	ret.metaTxEndorser, err = sigtest.NewNsEndorserFromKey(signature.Ecdsa, metaTxSigningKey)
+
+	// Meta-namespace uses LifecycleEndorsement policy (MSP-based) from the config block.
+	ret.metaTxEndorser, _ = workload.NewPolicyEndorserFromMsp(ret.cryptoPath)
 	require.NoError(t, err)
 
 	dataTxSigningKey, dataTxVerificationKey := sigtest.NewKeyPair(signature.Ecdsa)
