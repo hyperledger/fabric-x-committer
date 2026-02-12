@@ -28,16 +28,6 @@ type metricsProviderTestEnv struct {
 	clientTLSConfig *tls.Config
 }
 
-func (e *metricsProviderTestEnv) checkMetrics(t *testing.T, expected ...string) {
-	t.Helper()
-	test.CheckMetrics(t, e.provider.URL(), e.clientTLSConfig, expected...)
-}
-
-func (e *metricsProviderTestEnv) getMetricValue(t *testing.T, metricNameWithLabels string) int {
-	t.Helper()
-	return test.GetMetricValueFromURL(t, e.provider.URL(), metricNameWithLabels, e.clientTLSConfig)
-}
-
 func TestCounterWithTLSModes(t *testing.T) {
 	t.Parallel()
 
@@ -230,4 +220,14 @@ func newMetricsProviderTestEnv(t *testing.T, serverTLS, clientTLS connection.TLS
 		provider:        p,
 		clientTLSConfig: clientTLSConfig,
 	}
+}
+
+func (e *metricsProviderTestEnv) checkMetrics(t *testing.T, expected ...string) {
+	t.Helper()
+	test.CheckMetrics(t, e.provider.URL(), e.clientTLSConfig, expected...)
+}
+
+func (e *metricsProviderTestEnv) getMetricValue(t *testing.T, metricNameWithLabels string) int {
+	t.Helper()
+	return test.GetMetricValueFromURL(t, e.provider.URL(), metricNameWithLabels, e.clientTLSConfig)
 }
