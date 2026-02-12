@@ -143,7 +143,7 @@ func CreateDefaultConfigBlockWithCrypto(targetPath string, conf *ConfigBlock) (*
 
 	orgs := make([]cryptogen.OrganizationParameters, 0, int(conf.PeerOrganizationCount)+len(conf.OrdererEndpoints))
 	for orgIdx, endpoints := range ordererOrgs {
-		ordererEndpoints := make([]cryptogen.OrdererEndpoint, len(endpoints))
+		ordererEndpoints := make([]*commontypes.OrdererEndpoint, len(endpoints))
 		ordererNodes := make([]cryptogen.Node, len(endpoints))
 		for epIdx, e := range endpoints {
 			var name string
@@ -161,10 +161,7 @@ func CreateDefaultConfigBlockWithCrypto(targetPath string, conf *ConfigBlock) (*
 				Hostname:   fmt.Sprintf("%s.com", commonName),
 				SANS:       []string{e.Host},
 			}
-			ordererEndpoints[epIdx] = cryptogen.OrdererEndpoint{
-				Address: e.Address(),
-				API:     e.API,
-			}
+			ordererEndpoints[epIdx] = e
 		}
 		orgs = append(orgs, cryptogen.OrganizationParameters{
 			Name:             fmt.Sprintf("orderer-org-%d", orgIdx),
@@ -193,7 +190,7 @@ func CreateDefaultConfigBlockWithCrypto(targetPath string, conf *ConfigBlock) (*
 	// It will use the default parameters defined in this profile (e.g., Policies, OrdererType, etc.).
 	// The generated organizations will use the default parameters taken from the first orderer org defined
 	// in the profile.
-	return cryptogen.CreateDefaultConfigBlockWithCrypto(cryptogen.ConfigBlockParameters{
+	return cryptogen.CreateOrExtendConfigBlockWithCrypto(cryptogen.ConfigBlockParameters{
 		TargetPath:    targetPath,
 		BaseProfile:   configtxgen.SampleFabricX,
 		ChannelID:     conf.ChannelID,
