@@ -10,7 +10,7 @@ YUGA_DIR=${YUGA_DIR:="$HOME/bin/yugabyte"}
 if [ ! -d "$YUGA_DIR" ]; then
   echo "Downloading and extracting YugabyteDB"
   mkdir -p "$YUGA_DIR"
-  curl https://downloads.yugabyte.com/releases/2.20.7.0/yugabyte-2.20.7.0-b58-linux-x86_64.tar.gz |
+  curl https://downloads.yugabyte.com/releases/2025.2.0.1/yugabyte-2025.2.0.1-b1-linux-x86_64.tar.gz |
     tar --strip=1 -xz -C "$YUGA_DIR"
 
   cd "$YUGA_DIR" || exit 1
