@@ -28,8 +28,10 @@ import (
 )
 
 const (
-	defaultYugabyteImage            = "yugabytedb/yugabyte:2025.2.0.1-b1"
-	defaultPostgresImage            = "postgres:16.9-alpine3.21"
+	defaultYugabyteImage = "yugabytedb/yugabyte:2025.2.0.1-b1"
+	// DefaultPostgresImage is the official PostgreSQL image used across unit and integration tests.
+	// Must match the version in scripts/get-and-start-postgres.sh.
+	DefaultPostgresImage            = "postgres:16.9-alpine3.21"
 	defaultDBDeploymentTemplateName = test.DockerNamesPrefix + "_%s_unit_tests"
 
 	// container's Memory and CPU management.
@@ -84,6 +86,7 @@ type DatabaseContainer struct {
 	Tag          string
 	Role         string
 	Cmd          []string
+	Entrypoint   []string
 	Env          []string
 	Binds        []string
 	HostPort     int
@@ -154,7 +157,7 @@ func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
 		}
 	case PostgresDBType:
 		if dc.Image == "" {
-			dc.Image = defaultPostgresImage
+			dc.Image = DefaultPostgresImage
 		}
 
 		if dc.Env == nil {
@@ -228,10 +231,11 @@ func (dc *DatabaseContainer) createContainer(ctx context.Context, t *testing.T) 
 			Context: ctx,
 			Name:    dc.Name,
 			Config: &docker.Config{
-				Image:    dc.Image,
-				Cmd:      dc.Cmd,
-				Env:      dc.Env,
-				Hostname: dc.Hostname,
+				Image:      dc.Image,
+				Cmd:        dc.Cmd,
+				Entrypoint: dc.Entrypoint,
+				Env:        dc.Env,
+				Hostname:   dc.Hostname,
 			},
 			HostConfig: &docker.HostConfig{
 				AutoRemove:   dc.AutoRm,
