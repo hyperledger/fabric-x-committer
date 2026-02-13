@@ -184,6 +184,48 @@ func TestNewHistogramVec(t *testing.T) {
 	)
 }
 
+func TestPprofEndpoints(t *testing.T) {
+	t.Parallel()
+
+	env := newMetricsProviderTestEnv(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: env.clientTLSConfig,
+		},
+	}
+	defer client.CloseIdleConnections()
+
+	// Extract base URL from metrics URL (remove /metrics path)
+	baseURL := env.provider.url[:len(env.provider.url)-len(metricsSubPath)]
+
+	tests := []struct {
+		name string
+		path string
+	}{
+		{name: "Index", path: "/debug/pprof/"},
+		{name: "Cmdline", path: "/debug/pprof/cmdline"},
+		{name: "Profile", path: "/debug/pprof/profile?seconds=1"},
+		{name: "Symbol", path: "/debug/pprof/symbol"},
+		{name: "Heap", path: "/debug/pprof/heap"},
+		{name: "Goroutine", path: "/debug/pprof/goroutine"},
+		{name: "Allocs", path: "/debug/pprof/allocs"},
+		{name: "Block", path: "/debug/pprof/block"},
+		{name: "Mutex", path: "/debug/pprof/mutex"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			resp, err := client.Get(baseURL + tt.path)
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			require.NoError(t, resp.Body.Close())
+		})
+	}
+}
+
 func newMetricsProviderTestEnv(t *testing.T, serverTLS, clientTLS connection.TLSConfig) *metricsProviderTestEnv {
 	t.Helper()
 	p := NewProvider()

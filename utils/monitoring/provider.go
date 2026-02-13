@@ -11,6 +11,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"net/http/pprof"
 	"net/url"
 	"time"
 
@@ -27,6 +28,7 @@ const (
 	httpsScheme    = "https://"
 	httpScheme     = "http://"
 	metricsSubPath = "/metrics"
+	pprofSubPath   = "/debug/pprof/"
 )
 
 // Provider is a prometheus metrics provider.
@@ -68,6 +70,20 @@ func (p *Provider) StartPrometheusServer(
 			},
 		),
 	)
+
+	// Register pprof handlers for profiling.
+	// Note: We must explicitly register these handlers because we're using a custom ServeMux.
+	// The net/http/pprof package's init() function only registers handlers on http.DefaultServeMux,
+	// which we're not using. Simply importing the package is insufficient for custom muxes.
+	//
+	// The Index handler dynamically serves all runtime profiles (heap, goroutine, allocs, block,
+	// mutex, threadcreate, etc.) without requiring explicit registration. Only special handlers
+	// (cmdline, profile, symbol, trace) need to be registered separately.
+	mux.HandleFunc(pprofSubPath, pprof.Index)
+	mux.HandleFunc(pprofSubPath+"cmdline", pprof.Cmdline)
+	mux.HandleFunc(pprofSubPath+"profile", pprof.Profile)
+	mux.HandleFunc(pprofSubPath+"symbol", pprof.Symbol)
+	mux.HandleFunc(pprofSubPath+"trace", pprof.Trace)
 	server := &http.Server{
 		ReadTimeout: 30 * time.Second,
 		Handler:     mux,
