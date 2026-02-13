@@ -50,9 +50,5 @@ dependency-graph:
 per-channel-buffer-size-per-goroutine: 10
 
 logging:
-  enabled: {{ .Logging.Enabled }}
-  level: {{ .Logging.Level }}
-  caller: {{ .Logging.Caller }}
-  development: {{ .Logging.Development }}
-  output: {{ .Logging.Output }}
-  name: coordinator
+  logSpec: {{ .Logging.LogSpec }}
+  format: {{ .Logging.Format }}

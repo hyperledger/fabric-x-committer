@@ -286,7 +286,9 @@ func (env *DatabaseTestEnv) populateData( //nolint:revive
 		})
 		require.Empty(t, conflicts)
 		require.Empty(t, duplicate)
-		logger.WarnStackTrace(err)
+		if err != nil {
+			logger.Warnf("%+v", err)
+		}
 		return err
 	}))
 

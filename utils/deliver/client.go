@@ -10,11 +10,11 @@ import (
 	"context"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"google.golang.org/grpc"
 
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
 
@@ -27,7 +27,7 @@ type (
 	}
 )
 
-var logger = logging.New("broadcast-deliver")
+var logger = flogging.MustGetLogger("broadcast-deliver")
 
 // New creates a broadcast/deliver client. It must be closed to release all the associated connections.
 func New(config *ordererconn.Config) (*Client, error) {

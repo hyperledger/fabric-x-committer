@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -22,12 +23,11 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 func BenchmarkNotifier(b *testing.B) {
-	logging.SetupWithConfig(&logging.Config{Enabled: false})
+	flogging.Init(flogging.Config{LogSpec: "fatal"})
 	txIDs := make([]string, b.N)
 	for i := range txIDs {
 		txIDs[i] = fmt.Sprintf("%064d", i)

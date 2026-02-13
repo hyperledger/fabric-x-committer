@@ -68,7 +68,7 @@ type (
 )
 
 func (s *statesToBeCommitted) Debug() {
-	if logger.Level() > zapcore.DebugLevel {
+	if !logger.IsEnabledFor(zapcore.DebugLevel) {
 		return
 	}
 	logger.Debugf("total states: %d\n\tupdate: %d\n\twrites: %d\n\tbatch status: %d",

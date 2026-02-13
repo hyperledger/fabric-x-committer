@@ -9,13 +9,12 @@ package grpcerror
 import (
 	"slices"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 )
 
-var logger = logging.New("grpcerror")
+var logger = flogging.MustGetLogger("grpcerror")
 
 // HasCode returns true if the rpcErr holds the given code.
 func HasCode(rpcErr error, code codes.Code) bool {

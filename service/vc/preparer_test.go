@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/require"
@@ -18,7 +19,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -683,7 +683,7 @@ func requireEqualMapOfLists[K comparable, V any](t *testing.T, expected, actual 
 
 //nolint:gocognit // single method for simplicity.
 func BenchmarkPrepare(b *testing.B) {
-	logging.SetupWithConfig(&logging.Config{Enabled: false})
+	flogging.Init(flogging.Config{LogSpec: "fatal"})
 
 	// Parameters
 	batchSize := 1024

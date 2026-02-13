@@ -18,7 +18,5 @@ send-config-block: true
 config-block-path: /root/material/config-block.pb.bin
 
 logging:
-  development: true
-  enabled: true
-  level: INFO
-  name: orderer
+  logSpec: "info"
+  format: "%{color}%{time:2006-01-02 15:04:05.000 MST} [%{module}] %{shortfunc} -> %{level:.4s}%{color:reset} %{message}"

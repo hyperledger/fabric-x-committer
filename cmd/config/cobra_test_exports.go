@@ -9,6 +9,7 @@ package config
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,7 +27,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -86,14 +87,14 @@ func UnitTestRunner(
 	t.Helper()
 	// Set new logger with the config setup.
 	loggerPath := filepath.Clean(path.Join(t.TempDir(), "logger-output.txt"))
-	logConfig := &logging.Config{
-		Enabled:     true,
-		Level:       logging.Debug,
-		Caller:      true,
-		Development: true,
-		Output:      loggerPath,
+	logFile, err := os.OpenFile(loggerPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logFile.Close() })
+	logConfig := &flogging.Config{
+		LogSpec: "debug",
+		Writer:  io.MultiWriter(os.Stderr, logFile),
 	}
-	logging.SetupWithConfig(logConfig)
+	flogging.Init(*logConfig)
 	test.System.Logging = logConfig
 
 	args := test.Args

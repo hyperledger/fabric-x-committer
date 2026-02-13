@@ -18,12 +18,12 @@ import (
 
 	sprig "github.com/go-task/slim-sprig/v3"
 	"github.com/google/uuid"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 )
 
 type (
@@ -49,7 +49,7 @@ type (
 		LoadGenBlockLimit uint64                      // loadgen
 		LoadGenTXLimit    uint64                      // loadgen
 		LoadGenWorkers    uint64                      // loadgen
-		Logging           *logging.Config             // for all
+		Logging           *flogging.Config            // for all
 		RateLimit         *connection.RateLimitConfig // query, sidecar
 		MaxRequestKeys    int                         // query
 

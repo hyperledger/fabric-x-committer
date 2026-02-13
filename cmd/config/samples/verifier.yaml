@@ -38,7 +38,5 @@ parallel-executor:
   parallelism: 40
 
 logging:
-  enabled: true
-  development: false
-  level: INFO
-  name: verifier
+  logSpec: "info"
+  format: "%{color}%{time:2006-01-02 15:04:05.000 MST} [%{module}] %{shortfunc} -> %{level:.4s}%{color:reset} %{message}"

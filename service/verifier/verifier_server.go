@@ -10,6 +10,7 @@ import (
 	"context"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -20,7 +21,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
@@ -33,7 +33,7 @@ type Server struct {
 }
 
 var (
-	logger = logging.New("verifier")
+	logger = flogging.MustGetLogger("verifier")
 
 	// ErrUpdatePolicies is returned when UpdatePolicies fails to parse a given policy.
 	ErrUpdatePolicies = errors.New("failed to update policies")

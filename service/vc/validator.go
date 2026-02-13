@@ -43,7 +43,7 @@ type validatedTransactions struct {
 }
 
 func (v *validatedTransactions) Debug() {
-	if logger.Level() > zapcore.DebugLevel {
+	if !logger.IsEnabledFor(zapcore.DebugLevel) {
 		return
 	}
 	logger.Debugf("total validated: %d\n\t"+
@@ -152,7 +152,7 @@ func (v *transactionValidator) validateReads(
 }
 
 func (p *preparedTransactions) Debug() {
-	if logger.Level() > zapcore.DebugLevel {
+	if !logger.IsEnabledFor(zapcore.DebugLevel) {
 		return
 	}
 	logger.Debugf("total prepared: %d\n\tvalid non-blind writes: %d\n\t"+

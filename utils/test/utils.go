@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/assert"
@@ -32,7 +33,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
 
@@ -253,11 +253,8 @@ func CheckServerStopped(t *testing.T, addr string) bool {
 
 // SetupDebugging can be added for development to tests that required additional debugging info.
 func SetupDebugging() {
-	logging.SetupWithConfig(&logging.Config{
-		Enabled:     true,
-		Level:       logging.Debug,
-		Caller:      true,
-		Development: true,
+	flogging.Init(flogging.Config{
+		LogSpec: "debug",
 	})
 }
 

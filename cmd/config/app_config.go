@@ -14,7 +14,9 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/spf13/viper"
+	"google.golang.org/grpc/grpclog"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen"
 	"github.com/hyperledger/fabric-x-committer/mock"
@@ -24,10 +26,9 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 )
 
-var logger = logging.New("config reader")
+var logger = flogging.MustGetLogger("config-reader")
 
 // ReadSidecarYamlAndSetupLogging reading the YAML config file of the sidecar.
 func ReadSidecarYamlAndSetupLogging(v *viper.Viper, configPath string) (*sidecar.Config, error) {
@@ -86,12 +87,13 @@ func ReadYamlAndSetupLogging(v *viper.Viper, configPath, servicePrefix string, c
 	setupEnv(v, servicePrefix)
 
 	loggingWrapper := struct {
-		Logging *logging.Config `mapstructure:"logging"`
+		Logging *flogging.Config `mapstructure:"logging"`
 	}{}
 	if err = unmarshal(v, &loggingWrapper); err != nil {
 		return err
 	}
-	logging.SetupWithConfig(loggingWrapper.Logging)
+	grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, os.Stderr))
+	flogging.Init(*loggingWrapper.Logging)
 	return unmarshal(v, c)
 }
 

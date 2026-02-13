@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
@@ -23,13 +24,12 @@ import (
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-var logger = logging.New("load-gen-sign")
+var logger = flogging.MustGetLogger("load-gen-sign")
 
 // TxEndorser supports endorsing a TX.
 type TxEndorser struct {

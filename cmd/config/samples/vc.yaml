@@ -57,9 +57,9 @@ database:
   # When the underlying database is PostgreSQL, this setting is automatically ignored even if set.
   table-pre-split-tablets: 0
   retry: # The exponential backoff retry strategy for database operation.
-         # This strategy increases the delay between retry attempts exponentially.
-         # When using YugabyteDB as the backend, it is needed to handle retryable errors.
-         # https://support.yugabyte.com/hc/en-us/articles/4409627048461-How-to-Troubleshoot-Database-Transaction-Retryable-Errors
+    # This strategy increases the delay between retry attempts exponentially.
+    # When using YugabyteDB as the backend, it is needed to handle retryable errors.
+    # https://support.yugabyte.com/hc/en-us/articles/4409627048461-How-to-Troubleshoot-Database-Transaction-Retryable-Errors
 
     # initial-interval: Specifies the duration of the first backoff interval.
     # This is the time to wait before the first retry attempt.
@@ -103,7 +103,5 @@ resource-limits:
   timeout-for-min-transaction-batch-size: 2s
 
 logging:
-  development: false
-  enabled: true
-  level: INFO
-  name: VC
+  logSpec: "info"
+  format: "%{color}%{time:2006-01-02 15:04:05.000 MST} [%{module}] %{shortfunc} -> %{level:.4s}%{color:reset} %{message}"

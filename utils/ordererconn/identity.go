@@ -8,13 +8,13 @@ package ordererconn
 
 import (
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/msp"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 )
 
-var logger = logging.New("orderer-connection")
+var logger = flogging.MustGetLogger("orderer-connection")
 
 // NewIdentitySigner instantiate a signer for the given identity.
 func NewIdentitySigner(config *IdentityConfig) (msp.SigningIdentity, error) { //nolint:ireturn,nolintlint // bug.

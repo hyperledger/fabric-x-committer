@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 )
 
 // NewViperWithCoordinatorDefaults returns a viper instance with the coordinator default values.
@@ -94,9 +93,8 @@ func NewViperWithServiceDefault(servicePort, monitoringPort int) *viper.Viper {
 // NewViperWithLoggingDefault returns a viper instance with the logging default values.
 func NewViperWithLoggingDefault() *viper.Viper {
 	v := viper.New()
-	v.SetDefault("logging.development", "false")
-	v.SetDefault("logging.enabled", "true")
-	v.SetDefault("logging.level", logging.Info)
+	v.SetDefault("logging.logSpec", "info")
+	v.SetDefault("logging.format", "")
 	return v
 }
 

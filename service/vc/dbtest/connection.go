@@ -12,14 +12,14 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/yugabyte/pgx/v5/pgxpool"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 )
 
-var logger = logging.New("db connection")
+var logger = flogging.MustGetLogger("db-connection")
 
 const (
 	defaultUsername = "yugabyte"

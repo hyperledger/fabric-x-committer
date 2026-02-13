@@ -212,7 +212,7 @@ func IsStatusStoredInDB(status committerpb.Status) bool {
 }
 
 func debugTx(channelHdr *common.ChannelHeader, format string, a ...any) {
-	if logger.Level() > zapcore.DebugLevel {
+	if !logger.IsEnabledFor(zapcore.DebugLevel) {
 		return
 	}
 	hdr := "<no-header>"
