@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+---
 server:
   endpoint: :9001
   tls:
@@ -34,9 +35,8 @@ monitoring:
 verifier:
   endpoints:
     - verifier:5001
-  tls:
-    &ClientTLS # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
-    mode: mtls
+  tls: &ClientTLS
+    mode: mtls  # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
     cert-path: /client-certs/public-key.pem
     key-path: /client-certs/private-key.pem
     ca-cert-paths:
@@ -53,4 +53,7 @@ dependency-graph:
 
 logging:
   logSpec: "info"
-  format: "%{color}%{time:2006-01-02 15:04:05.000 MST} [%{module}] %{shortfunc} -> %{level:.4s}%{color:reset} %{message}"
+  format: >-
+    %{color}%{time:2006-01-02 15:04:05.000 MST} [%{module}] %{shortfunc}
+    -> %{level:.4s}%{color:reset} %{message}
+

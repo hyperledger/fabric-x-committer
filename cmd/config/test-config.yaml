@@ -2,7 +2,9 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+---
 int-flag: 1
 string-flag: default-value
 bool-flag: false
 duration-flag: 1s
+

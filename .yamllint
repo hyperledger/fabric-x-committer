@@ -1,0 +1,19 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+extends: default
+
+ignore:
+  - .build/
+  - cmd/config/templates/
+
+rules:
+  line-length:
+    max: 120
+    allow-non-breakable-words: true
+  truthy: disable
+  comments-indentation: disable
+  empty-lines:
+    max-end: 1

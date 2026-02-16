@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+---
 apiVersion: 1
 
 datasources:
@@ -11,3 +12,4 @@ datasources:
     isDefault: true
     access: proxy
     editable: true
+

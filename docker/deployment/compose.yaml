@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+---
 version: "3.8"
 
 services:
@@ -66,3 +67,4 @@ services:
       - ../../cmd/config/sample/sidecar.yaml:/config.yaml
       - ./scripts/run-app.sh:/docker-entrypoint.sh
     entrypoint: ./docker-entrypoint.sh
+

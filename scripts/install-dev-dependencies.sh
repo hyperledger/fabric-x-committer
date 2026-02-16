@@ -40,10 +40,21 @@ echo "Extracting protoc to $HOME/bin"
 unzip -jo "${protoc_zip_download_path}" 'bin/*' -d "$HOME/bin"
 rm -rf "${download_dir}"
 
-if which apt >/dev/null 2>&1; then
-  # Required for "duration" protobuf.
-  sudo apt install -y libprotobuf-dev
-fi
+# Install platform-specific packages
+echo
+echo "Installing platform-specific packages"
+case "$(uname -s)" in
+Linux*)
+  if which apt >/dev/null 2>&1; then
+    sudo apt install -y libprotobuf-dev yamllint
+  else
+    ${PYTHON_CMD:-python3} -m pip install yamllint
+  fi
+  ;;
+Darwin*)
+  brew install protobuf yamllint
+  ;;
+esac
 
 echo
 echo "Installing Go tools from go.mod tool directives"
@@ -51,4 +62,4 @@ go install tool
 
 echo
 echo "Installing sqlfluff"
-${PYTHON_CMD:-python} -m pip install "sqlfluff==${sqlfluff_version}"
+${PYTHON_CMD:-python3} -m pip install "sqlfluff==${sqlfluff_version}"

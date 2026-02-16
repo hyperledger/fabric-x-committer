@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+---
 # If server is set, a gRPC endpoint is exposed the full load generator's API.
 server:
   endpoint: :8001
@@ -130,6 +131,7 @@ stream:
   # We set low values to reduce the CPU load during tests.
   buffers-size: 10
   gen-batch: 10
+
 generate:
   namespaces: true
   load: true
@@ -148,4 +150,7 @@ limit:
 
 logging:
   logSpec: "info"
-  format: "%{color}%{time:2006-01-02 15:04:05.000 MST} [%{module}] %{shortfunc} -> %{level:.4s}%{color:reset} %{message}"
+  format: >-
+    %{color}%{time:2006-01-02 15:04:05.000 MST} [%{module}] %{shortfunc}
+    -> %{level:.4s}%{color:reset} %{message}
+

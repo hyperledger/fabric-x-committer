@@ -341,6 +341,7 @@ build-release-image: build-arch
 lint: check-metrics-doc lint-proto FORCE
 	@echo "Running Go Linters..."
 	golangci-lint run --color=always --new-from-rev=main --timeout=4m
+	scripts/lint.sh $(go_cmd)
 	@echo "Running SQL Linters..."
 	git ls-files '*.sql' | sort -u | ${PYTHON_CMD} -m sqlfluff lint --dialect postgres
 	@echo "Running License Header Linters..."
