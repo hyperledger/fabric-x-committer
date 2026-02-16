@@ -88,6 +88,8 @@ func (c *Connection) open(ctx context.Context) (*pgxpool.Pool, error) {
 	poolConfig.MaxConns = 1
 	poolConfig.MinConns = 1
 
+	dbconn.ConfigureConnReadDeadline(poolConfig)
+
 	var pool *pgxpool.Pool
 	if retryErr := defaultRetry.Execute(ctx, func() error {
 		pool, err = pgxpool.ConnectConfig(ctx, poolConfig)

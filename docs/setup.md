@@ -126,7 +126,7 @@ Example: Start Yugabyte via docker
 docker run --name sc_yugabyte_unit_tests \
   --platform linux/amd64 \
   -p 5433:5433 \
-  -d yugabytedb/yugabyte:2.20.2.3-b2 \
+  -d yugabytedb/yugabyte:2025.2.0.1-b1 \
   bin/yugabyted start \
   --background=false \
   --advertise_address=0.0.0.0 \
