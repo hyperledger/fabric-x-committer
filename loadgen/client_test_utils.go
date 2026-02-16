@@ -12,8 +12,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/hyperledger/fabric-x-common/api/committerpb"
-
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -52,9 +50,6 @@ func DefaultClientConf(t *testing.T, serverTLS connection.TLSConfig) *ClientConf
 			Policy: workload.PolicyProfile{
 				NamespacePolicies: map[string]*workload.Policy{
 					workload.DefaultGeneratedNamespaceID: {
-						Scheme: "MSP",
-					},
-					committerpb.MetaNamespaceID: {
 						Scheme: "MSP",
 					},
 				},

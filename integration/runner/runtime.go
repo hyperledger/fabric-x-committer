@@ -168,8 +168,6 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		CommittedBlock:   make(chan *common.Block, 100),
 		SeedForCryptoGen: rand.New(rand.NewSource(10)),
 	}
-	c.AddOrUpdateNamespaces(t, workload.DefaultGeneratedNamespaceID, "1", "2", "3")
-
 	t.Log("Making DB env")
 	if conf.DBConnection == nil {
 		c.DBEnv = vc.NewDatabaseTestEnv(t)
@@ -212,12 +210,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	err = configtxgen.WriteOutputBlock(configBlock, s.ConfigBlockPath)
 	require.NoError(t, err)
 
-	// Meta-namespace uses LifecycleEndorsement policy (MSP-based) from the config block,
-	// so it must be endorsed with MSP identities, not ECDSA keys.
-	// This must be set after CreateConfigBlock which generates the crypto material.
-	s.Policy.NamespacePolicies[committerpb.MetaNamespaceID] = &workload.Policy{Scheme: "MSP"}
-	c.TxBuilder, err = workload.NewTxBuilderFromPolicy(s.Policy, nil)
-	require.NoError(t, err)
+	c.AddOrUpdateNamespaces(t, workload.DefaultGeneratedNamespaceID, "1", "2", "3")
 
 	t.Log("create TLS manager and clients certificate")
 	c.CredFactory = test.NewCredentialsFactory(t)

@@ -15,7 +15,6 @@ import (
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
-	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -54,8 +53,7 @@ func (v *verifier) updatePolicies(
 	// While it is unlikely that policy parsing would fail at this stage, it could happen
 	// if the stored policy in the database is corrupted or maliciously altered, or if there is a
 	// bug in the committer that modifies the policy bytes.
-	idDeserializer := v.bundle.MSPManager()
-	newVerifiers, err := createVerifiers(update, v.bundle, idDeserializer)
+	newVerifiers, err := createVerifiers(update, v.bundle)
 	if err != nil {
 		return errors.Join(ErrUpdatePolicies, err)
 	}
@@ -71,7 +69,7 @@ func (v *verifier) updatePolicies(
 		// If there is a config update, the verifier for signature policies must be
 		// updated to use the latest MSP Manager from the new configuration.
 		if update.Config != nil {
-			err = nsVerifier.UpdateIdentities(idDeserializer)
+			err = nsVerifier.UpdateIdentities(v.bundle.MSPManager())
 			if err != nil {
 				return err
 			}
@@ -85,8 +83,8 @@ func (v *verifier) updatePolicies(
 func createVerifiers(
 	update *servicepb.VerifierUpdates,
 	bundle *channelconfig.Bundle,
-	idDeserializer msp.IdentityDeserializer,
 ) (map[string]*signature.NsVerifier, error) {
+	idDeserializer := bundle.MSPManager()
 	newPolicies := make(map[string]*signature.NsVerifier)
 	if update.Config != nil {
 		nsVerifier, err := policy.ParseLifecycleEndorsementPolicy(bundle)

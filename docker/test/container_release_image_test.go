@@ -282,6 +282,8 @@ func startLoadgenNodeWithReleaseImage(
 				fmt.Sprintf("%s:/client-certs/orderer-ca-certificate.pem",
 					filepath.Join(params.ordererCACredsPath, "ca.crt"),
 				),
+				// Mount the crypto material for MSP-based endorsement of the meta namespace.
+				fmt.Sprintf("%s:%s", params.materialPath, containerMaterialPath),
 			),
 		},
 		name: assembleContainerName(params.node, params.tlsMode, params.dbType),

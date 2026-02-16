@@ -33,6 +33,9 @@ type TxBuilder struct {
 
 // NewTxBuilderFromPolicy instantiate a TxBuilder from a given policy profile.
 func NewTxBuilderFromPolicy(policy *PolicyProfile, nonceSource io.Reader) (*TxBuilder, error) {
+	if err := policy.Validate(); err != nil {
+		return nil, err
+	}
 	envSigner, err := ordererconn.NewIdentitySigner(policy.Identity)
 	if err != nil {
 		return nil, err

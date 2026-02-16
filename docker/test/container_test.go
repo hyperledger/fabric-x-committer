@@ -26,6 +26,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
+	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
@@ -73,6 +74,11 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			// We do this in each subtest to avoid race conditions.
 			v := config.NewViperWithLoadGenDefaults()
 			c, err := config.ReadLoadGenYamlAndSetupLogging(v, filepath.Join(localConfigPath, "loadgen.yaml"))
+			require.NoError(t, err)
+			// Override the container-internal crypto path with a host temp dir
+			// so the MSP-based meta namespace endorser can read peer org material.
+			c.LoadProfile.Policy.CryptoMaterialPath = t.TempDir()
+			err = workload.PrepareCryptoMaterial(&c.LoadProfile.Policy)
 			require.NoError(t, err)
 			ordererEp := mustGetEndpoint(ctx, t, containerName, mockOrdererPort)
 			c.LoadProfile.Policy.OrdererEndpoints = []*commontypes.OrdererEndpoint{

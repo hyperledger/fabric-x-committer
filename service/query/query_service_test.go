@@ -453,16 +453,14 @@ func generateNamespacesUnderTest(t *testing.T, namespaces []string) *vc.Database
 
 	clientConf := loadgen.DefaultClientConf(t, test.InsecureTLSConfig)
 	clientConf.Adapter.VCClient = test.NewTLSMultiClientConfig(test.InsecureTLSConfig, env.Endpoints...)
-	policies := workload.PolicyProfile{
-		NamespacePolicies: make(map[string]*workload.Policy, len(namespaces)),
-	}
-	for i, ns := range append(namespaces, committerpb.MetaNamespaceID) {
-		policies.NamespacePolicies[ns] = &workload.Policy{
+	nsPolicies := make(map[string]*workload.Policy, len(namespaces))
+	for i, ns := range namespaces {
+		nsPolicies[ns] = &workload.Policy{
 			Scheme: signature.Ecdsa,
 			Seed:   int64(i),
 		}
 	}
-	clientConf.LoadProfile.Policy = policies
+	clientConf.LoadProfile.Policy.NamespacePolicies = nsPolicies
 	clientConf.Generate = adapters.Phases{Config: true, Namespaces: true}
 	client, err := loadgen.NewLoadGenClient(clientConf)
 	require.NoError(t, err)

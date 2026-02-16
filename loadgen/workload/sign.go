@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -47,10 +48,15 @@ func NewTxEndorser(policy *PolicyProfile) *TxEndorser {
 			nsPolicies[nsID] = &defaultPolicy
 		}
 	}
-	endorsers := make(map[string]*sigtest.NsEndorser, len(nsPolicies))
-	policies := make(map[string]*applicationpb.NamespacePolicy, len(nsPolicies))
+	endorsers := make(map[string]*sigtest.NsEndorser, len(nsPolicies)+1)
+	policies := make(map[string]*applicationpb.NamespacePolicy, len(nsPolicies)+1)
 	for nsID, p := range nsPolicies {
 		endorsers[nsID], policies[nsID] = newPolicyEndorser(policy.CryptoMaterialPath, p)
+	}
+
+	if policy.CryptoMaterialPath != "" {
+		endorsers[committerpb.MetaNamespaceID], policies[committerpb.MetaNamespaceID] = newPolicyEndorser(
+			policy.CryptoMaterialPath, &Policy{Scheme: "MSP"})
 	}
 
 	return &TxEndorser{
