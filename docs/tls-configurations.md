@@ -63,7 +63,7 @@ tls:
 ```
 
 ### Monitoring Configuration
-When configuring TLS for the monitoring service, it operates as a server (accepting incoming connections from monitoring clients). Therefore, the TLS configuration includes the server certificate, private key, and CA certificates used to verify client credentials in demand.
+When configuring TLS for the monitoring service, it operates as a server (accepting incoming connections from monitoring clients). Therefore, the TLS configuration includes the identity of the service (certificate and private key), and CA certificates used to verify client credentials in demand.
 
 ```yaml 
 monitoring:
