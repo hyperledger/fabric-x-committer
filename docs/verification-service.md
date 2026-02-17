@@ -113,24 +113,7 @@ The service employs a batching strategy to optimize performance:
 
 ## 5. Configuration
 
-The Verification Service is configured through a YAML file with the following key parameters:
-
-```yaml
-server:
-  address: ":5001"  # Network address for the gRPC server
-
-monitoring:
-  server:
-    address: ":2115"  # Address for Prometheus metrics
-
-parallel-executor:
-  parallelism: 8  # Number of worker goroutines
-  batch-size-cutoff: 100  # Minimum batch size for responses
-  batch-time-cutoff: 10ms  # Maximum wait time for batching
-  channel-buffer-size: 1000  # Size of channel buffers
-```
-
-### Configuration Parameters
+The Verification Service requires the following configuration settings, provided in a YAML [configuration file](/cmd/config/samples/verifier.yaml):
 
 - **Server**: Network configuration for the gRPC server, including address and port.
 - **Monitoring**: Configuration for the Prometheus metrics server.
