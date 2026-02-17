@@ -69,11 +69,13 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 				cmd:          commonTestNodeCMD,
 			})
 
-			// Retrieve the policy from the loadgen configuration that matches the config-block policy.
-			// We do this in each subtest to avoid race conditions.
 			v := config.NewViperWithLoadGenDefaults()
 			c, err := config.ReadLoadGenYamlAndSetupLogging(v, filepath.Join(localConfigPath, "loadgen.yaml"))
 			require.NoError(t, err)
+			// Copy the container's crypto material to the host so the test
+			// endorses meta namespace transactions with the same MSP the verifier
+			// expects (from the config block's lifecycle endorsement policy).
+			c.LoadProfile.Policy.CryptoMaterialPath = copyCryptoMaterialFromContainer(ctx, t, containerName)
 			ordererEp := mustGetEndpoint(ctx, t, containerName, mockOrdererPort)
 			c.LoadProfile.Policy.OrdererEndpoints = []*commontypes.OrdererEndpoint{
 				{

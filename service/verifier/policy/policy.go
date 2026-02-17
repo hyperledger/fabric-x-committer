@@ -28,23 +28,32 @@ type KeyValue interface {
 	GetValue() []byte
 }
 
-// maxNamespaceIDLength defines the maximum number of characters allowed for namespace IDs.
-// PostgreSQL limits identifiers to NAMEDATALEN-1, where NAMEDATALEL=64.
-// The namespace tables have the prefix 'ns_', thus there are 60 characters remaining.
-// See: https://www.postgresql.org/docs/current/sql-syntax-lexical.html
-const maxNamespaceIDLength = 60
+const (
+	// maxNamespaceIDLength defines the maximum number of characters allowed for namespace IDs.
+	// PostgreSQL limits identifiers to NAMEDATALEN-1, where NAMEDATALEL=64.
+	// The namespace tables have the prefix 'ns_', thus there are 60 characters remaining.
+	// See: https://www.postgresql.org/docs/current/sql-syntax-lexical.html
+	maxNamespaceIDLength = 60
 
-// validNamespaceID describes the allowed characters in a namespace ID.
-// The name may contain letters, digits, or underscores.
-// PostgreSQL requires the name to begin with a letter. This is ensured by our namespace table prefix.
-// In addition, we restrict to lowercase letters as PostgreSQL converts does not distinguish between upper/lower case.
-// See: https://www.postgresql.org/docs/current/sql-syntax-lexical.html
-// The regexp is wrapped with "^...$" to ensure we only match the entire string (namespace ID).
-// We use the flags: i - ignore case, s - single line.
-var validNamespaceID = regexp.MustCompile(`^[a-z0-9_]+$`)
+	// lifecycleEndorsementPolicyPath is the channel policy path for lifecycle operations.
+	// This ImplicitMeta policy evaluates org-level Endorsement policies via the MSP.
+	lifecycleEndorsementPolicyPath = "/Channel/Application/LifecycleEndorsement"
+)
 
-// ErrInvalidNamespaceID is returned when the namespace ID cannot be parsed.
-var ErrInvalidNamespaceID = errors.New("invalid namespace ID")
+var (
+	// validNamespaceID describes the allowed characters in a namespace ID.
+	// The name may contain letters, digits, or underscores.
+	// PostgreSQL requires the name to begin with a letter. This is ensured by our namespace table prefix.
+	// In addition, we restrict to lowercase letters as PostgreSQL converts does not distinguish between
+	// upper/lower case.
+	// See: https://www.postgresql.org/docs/current/sql-syntax-lexical.html
+	// The regexp is wrapped with "^...$" to ensure we only match the entire string (namespace ID).
+	// We use the flags: i - ignore case, s - single line.
+	validNamespaceID = regexp.MustCompile(`^[a-z0-9_]+$`)
+
+	// ErrInvalidNamespaceID is returned when the namespace ID cannot be parsed.
+	ErrInvalidNamespaceID = errors.New("invalid namespace ID")
+)
 
 // GetUpdatesFromNamespace translates a namespace TX to policy updates.
 func GetUpdatesFromNamespace(nsTx *applicationpb.TxNamespace) *servicepb.VerifierUpdates {
@@ -72,7 +81,9 @@ func GetUpdatesFromNamespace(nsTx *applicationpb.TxNamespace) *servicepb.Verifie
 				}
 			}
 		}
+	default:
 	}
+
 	return nil
 }
 
@@ -126,35 +137,26 @@ func ValidateNamespaceID(nsID string) error {
 	return nil
 }
 
-// ParsePolicyFromConfigTx parses the meta namespace policy from a config transaction.
-func ParsePolicyFromConfigTx(value []byte) (*signature.NsVerifier, error) {
+// ValidateConfigTx validates that a config transaction envelope can be parsed into a valid bundle
+// with a LifecycleEndorsement policy.
+func ValidateConfigTx(value []byte) error {
 	envelope, err := protoutil.UnmarshalEnvelope(value)
 	if err != nil {
-		return nil, errors.Wrap(err, "error unmarshalling envelope")
+		return errors.Wrap(err, "error unmarshalling envelope")
 	}
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
 	if err != nil {
-		return nil, errors.Wrap(err, "error parsing config")
+		return errors.Wrap(err, "error parsing config")
 	}
-	ac, ok := bundle.ApplicationConfig()
-	if !ok {
-		return nil, errors.New("application configuration is missing")
-	}
-	acx, ok := ac.(*channelconfig.ApplicationConfig)
-	if !ok {
-		return nil, errors.New("application configuration of incorrect type")
-	}
-	key := acx.MetaNamespaceVerificationKey()
-	// We use existing proto here to avoid introducing new ones.
-	// So we encode the key schema as the identifier.
-	// This will be replaced in the future with a generic policy mechanism.
+	_, err = ParseLifecycleEndorsementPolicy(bundle)
+	return err
+}
 
-	return signature.NewNsVerifier(&applicationpb.NamespacePolicy{
-		Rule: &applicationpb.NamespacePolicy_ThresholdRule{
-			ThresholdRule: &applicationpb.ThresholdRule{
-				Scheme:    key.KeyIdentifier,
-				PublicKey: key.KeyMaterial,
-			},
-		},
-	}, nil)
+// ParseLifecycleEndorsementPolicy extracts the LifecycleEndorsement policy from the channel config bundle.
+func ParseLifecycleEndorsementPolicy(bundle *channelconfig.Bundle) (*signature.NsVerifier, error) {
+	p, ok := bundle.PolicyManager().GetPolicy(lifecycleEndorsementPolicyPath)
+	if !ok {
+		return nil, errors.New("LifecycleEndorsement policy not found in channel config")
+	}
+	return signature.NewNsVerifierFromChannelPolicy(p), nil
 }

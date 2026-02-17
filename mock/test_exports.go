@@ -112,11 +112,10 @@ type OrdererTestEnv struct {
 
 // OrdererTestConfig describes the configuration for OrdererTestEnv.
 type OrdererTestConfig struct {
-	ChanID                       string
-	Config                       *OrdererConfig
-	NumFake                      int
-	NumHolders                   int
-	MetaNamespaceVerificationKey []byte
+	ChanID     string
+	Config     *OrdererConfig
+	NumFake    int
+	NumHolders int
 }
 
 // NewOrdererTestEnv creates and starts a new OrdererTestEnv.
@@ -155,9 +154,6 @@ func (e *OrdererTestEnv) SubmitConfigBlock(t *testing.T, conf *workload.ConfigBl
 	}
 	if len(conf.OrdererEndpoints) == 0 {
 		conf.OrdererEndpoints = e.AllEndpoints()
-	}
-	if conf.MetaNamespaceVerificationKey == nil {
-		conf.MetaNamespaceVerificationKey = e.TestConfig.MetaNamespaceVerificationKey
 	}
 	configBlock, err := workload.CreateDefaultConfigBlock(conf)
 	require.NoError(t, err)

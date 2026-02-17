@@ -37,24 +37,26 @@ type TxEndorser struct {
 	policies  map[string]*applicationpb.NamespacePolicy
 }
 
-var defaultPolicy = Policy{
-	Scheme: signature.Ecdsa,
-}
+var defaultPolicy = Policy{Scheme: signature.Ecdsa}
 
 // NewTxEndorser creates a new TxEndorser given a workload profile.
 func NewTxEndorser(policy *PolicyProfile) *TxEndorser {
 	// We set default policy to ensure smooth operation even if the user did not specify anything.
 	nsPolicies := policy.NamespacePolicies
-	for _, nsID := range []string{DefaultGeneratedNamespaceID, committerpb.MetaNamespaceID} {
+	for _, nsID := range []string{DefaultGeneratedNamespaceID} {
 		if _, ok := nsPolicies[nsID]; !ok {
 			nsPolicies[nsID] = &defaultPolicy
 		}
 	}
-
-	endorsers := make(map[string]*sigtest.NsEndorser, len(nsPolicies))
-	policies := make(map[string]*applicationpb.NamespacePolicy, len(nsPolicies))
+	endorsers := make(map[string]*sigtest.NsEndorser, len(nsPolicies)+1)
+	policies := make(map[string]*applicationpb.NamespacePolicy, len(nsPolicies)+1)
 	for nsID, p := range nsPolicies {
 		endorsers[nsID], policies[nsID] = newPolicyEndorser(policy.CryptoMaterialPath, p)
+	}
+
+	if policy.CryptoMaterialPath != "" {
+		endorsers[committerpb.MetaNamespaceID], policies[committerpb.MetaNamespaceID] = newPolicyEndorser(
+			policy.CryptoMaterialPath, &Policy{Scheme: "MSP"})
 	}
 
 	return &TxEndorser{
@@ -90,7 +92,7 @@ func newPolicyEndorser(cryptoPath string, profile *Policy) (*sigtest.NsEndorser,
 	}
 	switch strings.ToUpper(profile.Scheme) {
 	case "MSP":
-		return newPolicyEndorserFromMsp(cryptoPath)
+		return NewPolicyEndorserFromMsp(cryptoPath)
 	default:
 		signingKey, verificationKey := getKeyPair(profile)
 		return newPolicyEndorserFromKey(profile.Scheme, signingKey, verificationKey)
@@ -114,22 +116,10 @@ func newPolicyEndorserFromKey(
 	return endorser, nsPolicy
 }
 
-func newPolicyEndorserFromMsp(cryptoPath string) (*sigtest.NsEndorser, *applicationpb.NamespacePolicy) {
-	peerOrgs := path.Join(cryptoPath, cryptogen.PeerOrganizationsDir)
-	dir, err := os.ReadDir(peerOrgs)
-	utils.Must(err)
-	mspDirs := make([]msp.DirLoadParameters, 0, len(dir))
-	for _, dirEntry := range dir {
-		if !dirEntry.IsDir() {
-			continue
-		}
-		orgName := dirEntry.Name()
-		clientName := "client@" + orgName + ".com"
-		mspDirs = append(mspDirs, msp.DirLoadParameters{
-			MspName: orgName,
-			MspDir:  filepath.Join(peerOrgs, orgName, "users", clientName, "msp"),
-		})
-	}
+// NewPolicyEndorserFromMsp creates an MSP-based endorser and namespace policy from the
+// peer organization crypto material under cryptoPath.
+func NewPolicyEndorserFromMsp(cryptoPath string) (*sigtest.NsEndorser, *applicationpb.NamespacePolicy) {
+	mspDirs := PeerOrgMspDirs(cryptoPath)
 
 	signingIdentities, err := sigtest.GetSigningIdentities(mspDirs...)
 	utils.Must(err)
@@ -158,6 +148,27 @@ func newPolicyEndorserFromMsp(cryptoPath string) (*sigtest.NsEndorser, *applicat
 		},
 	}
 	return endorser, nsPolicy
+}
+
+// PeerOrgMspDirs reads the peer organizations directory under cryptoPath and returns
+// the MSP directory parameters for each organization's client user.
+func PeerOrgMspDirs(cryptoPath string) []msp.DirLoadParameters {
+	peerOrgs := path.Join(cryptoPath, cryptogen.PeerOrganizationsDir)
+	dir, err := os.ReadDir(peerOrgs)
+	utils.Must(err)
+	mspDirs := make([]msp.DirLoadParameters, 0, len(dir))
+	for _, dirEntry := range dir {
+		if !dirEntry.IsDir() {
+			continue
+		}
+		orgName := dirEntry.Name()
+		clientName := "client@" + orgName + ".com"
+		mspDirs = append(mspDirs, msp.DirLoadParameters{
+			MspName: orgName,
+			MspDir:  filepath.Join(peerOrgs, orgName, "users", clientName, "msp"),
+		})
+	}
+	return mspDirs
 }
 
 func getKeyPair(profile *Policy) (signingKey signature.PrivateKey, verificationKey signature.PublicKey) {

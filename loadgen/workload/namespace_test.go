@@ -16,7 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
-var namespacesUnderTest = []string{DefaultGeneratedNamespaceID, "1", "2", committerpb.MetaNamespaceID}
+var namespacesUnderTest = []string{DefaultGeneratedNamespaceID, "1", "2"}
 
 // TestNamespaceGeneratorKeyCreation verifies that the signers that created by the
 // namespace-generator are the same given the same seed number.
@@ -72,7 +72,7 @@ func getReadWritesFromNamespaceTx(t *testing.T, tx *applicationpb.Tx) []*applica
 	require.NotNil(t, tx)
 	require.Len(t, tx.Namespaces, 1)
 	require.Equal(t, committerpb.MetaNamespaceID, tx.Namespaces[0].NsId)
-	require.Len(t, tx.Namespaces[0].ReadWrites, len(namespacesUnderTest)-1)
+	require.Len(t, tx.Namespaces[0].ReadWrites, len(namespacesUnderTest))
 	return tx.Namespaces[0].ReadWrites
 }
 

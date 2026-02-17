@@ -12,6 +12,8 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
@@ -135,6 +137,18 @@ type PolicyProfile struct {
 	// PeerOrganizationCount may specify the number of peer organizations to generate if the CryptoMaterialPath
 	// is not provided.
 	PeerOrganizationCount uint32 `mapstructure:"peer-organization-count"`
+}
+
+// Validate checks that the PolicyProfile does not contain invalid entries.
+// System namespaces (meta and config) must not be provided explicitly;
+// their policies are derived from the config block.
+func (p *PolicyProfile) Validate() error {
+	for _, sysNs := range []string{committerpb.MetaNamespaceID, committerpb.ConfigNamespaceID} {
+		if _, ok := p.NamespacePolicies[sysNs]; ok {
+			return errors.Newf("system namespace %q must not be provided in the policy profile", sysNs)
+		}
+	}
+	return nil
 }
 
 // Policy describes how to sign/verify a TX.

@@ -7,11 +7,14 @@ SPDX-License-Identifier: Apache-2.0
 package test
 
 import (
+	"archive/tar"
 	"context"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -59,6 +62,8 @@ const (
 	// localhostIP is the numeric form of localhost, required by Docker's PortBinding.HostIP
 	// which calls netip.ParseAddr and rejects hostnames.
 	localhostIP = "127.0.0.1"
+	// containerMaterialPath is the path to the material directory inside the container.
+	containerMaterialPath = "/root/material"
 )
 
 func createAndStartContainerAndItsLogs(
@@ -196,4 +201,44 @@ func assembleBinds(t *testing.T, params startNodeParameters, additionalBinds ...
 
 func assembleContainerName(node, tlsMode, dbType string) string {
 	return fmt.Sprintf("%s_%s_%s_%s", test.DockerNamesPrefix, node, tlsMode, dbType)
+}
+
+func copyCryptoMaterialFromContainer(ctx context.Context, t *testing.T, containerName string) string {
+	t.Helper()
+
+	dockerClient := createDockerClient(t)
+	reader, _, err := dockerClient.CopyFromContainer(ctx, containerName, containerMaterialPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, reader.Close())
+	})
+
+	hostDir := t.TempDir()
+	tr := tar.NewReader(reader)
+	for {
+		header, tErr := tr.Next()
+		if tErr == io.EOF {
+			break
+		}
+		require.NoError(t, tErr)
+		// Prevent directory traversal (Zip Slip) immediately after reading the entry.
+		if strings.Contains(header.Name, "..") || strings.HasPrefix(header.Name, "/") {
+			t.Fatalf("tar entry %q contains path traversal", header.Name)
+		}
+		target := filepath.Join(hostDir, header.Name[len("material/"):])
+		switch header.Typeflag {
+		case tar.TypeDir:
+			require.NoError(t, os.MkdirAll(target, os.FileMode(header.Mode))) //nolint:gosec // int64 > int32
+		case tar.TypeReg:
+			require.NoError(t, os.MkdirAll(filepath.Dir(target), 0o750))
+			//nolint:gosec // int64 > int32
+			f, fErr := os.OpenFile(target, os.O_CREATE|os.O_WRONLY, os.FileMode(header.Mode))
+			require.NoError(t, fErr)
+			_, fErr = io.Copy(f, tr) //nolint:gosec
+			require.NoError(t, fErr)
+			require.NoError(t, f.Close())
+		default:
+		}
+	}
+	return hostDir
 }

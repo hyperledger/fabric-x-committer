@@ -151,9 +151,10 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 			LoadGenWorkers:    1,
 			MaxRequestKeys:    conf.MaxRequestKeys,
 			Policy: &workload.PolicyProfile{
-				ChannelID:          TestChannelName,
-				NamespacePolicies:  make(map[string]*workload.Policy),
-				CryptoMaterialPath: t.TempDir(),
+				ChannelID:             TestChannelName,
+				NamespacePolicies:     make(map[string]*workload.Policy),
+				CryptoMaterialPath:    t.TempDir(),
+				PeerOrganizationCount: 2,
 			},
 			Logging:   &logging.DefaultConfig,
 			RateLimit: conf.RateLimit,
@@ -167,8 +168,6 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		CommittedBlock:   make(chan *common.Block, 100),
 		SeedForCryptoGen: rand.New(rand.NewSource(10)),
 	}
-	c.AddOrUpdateNamespaces(t, committerpb.MetaNamespaceID, workload.DefaultGeneratedNamespaceID, "1", "2", "3")
-
 	t.Log("Making DB env")
 	if conf.DBConnection == nil {
 		c.DBEnv = vc.NewDatabaseTestEnv(t)
@@ -210,6 +209,8 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	require.NoError(t, err)
 	err = configtxgen.WriteOutputBlock(configBlock, s.ConfigBlockPath)
 	require.NoError(t, err)
+
+	c.AddOrUpdateNamespaces(t, workload.DefaultGeneratedNamespaceID, "1", "2", "3")
 
 	t.Log("create TLS manager and clients certificate")
 	c.CredFactory = test.NewCredentialsFactory(t)

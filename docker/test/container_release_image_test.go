@@ -33,8 +33,6 @@ const (
 	networkPrefixName     = test.DockerNamesPrefix + "_network"
 	// containerConfigPath is the path to the config directory inside the container.
 	containerConfigPath = "/root/config"
-	// containerMaterialPath is the path to the material directory inside the container.
-	containerMaterialPath = "/root/material"
 	// localConfigPath is the path to the sample YAML configuration of each service.
 	localConfigPath = "../../cmd/config/samples"
 
@@ -282,6 +280,8 @@ func startLoadgenNodeWithReleaseImage(
 				fmt.Sprintf("%s:/client-certs/orderer-ca-certificate.pem",
 					filepath.Join(params.ordererCACredsPath, "ca.crt"),
 				),
+				// Mount the crypto material for MSP-based endorsement of the meta namespace.
+				fmt.Sprintf("%s:%s", params.materialPath, containerMaterialPath),
 			),
 		},
 		name: assembleContainerName(params.node, params.tlsMode, params.dbType),
