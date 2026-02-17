@@ -186,13 +186,19 @@ A sample configuration structure is defined in the `Config` type within the quer
 
 ```go
 type Config struct {
-    Server                *connection.ServerConfig
-    Database              *vc.DatabaseConfig
-    MinBatchKeys          int
-    MaxBatchWait          time.Duration
-    ViewAggregationWindow time.Duration
-    MaxAggregatedViews    int
-    MaxViewTimeout        time.Duration
+   Server                *connection.ServerConfig
+   Monitoring            *connection.ServerConfig
+   Database              *vc.DatabaseConfig     
+   MinBatchKeys          int                    
+   MaxBatchWait          time.Duration          
+   ViewAggregationWindow time.Duration         
+   MaxAggregatedViews    int                    
+   MaxViewTimeout        time.Duration         
+   // MaxRequestKeys is the maximum number of keys allowed in a single query request.
+   // This applies to both GetRows (total keys across all namespaces) and
+   // GetTransactionStatus (number of transaction IDs).
+   // Set to 0 to disable the limit.
+   MaxRequestKeys int
 }
 ```
 

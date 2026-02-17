@@ -3,7 +3,7 @@ Copyright IBM Corp. All Rights Reserved.
 
 SPDX-License-Identifier: Apache-2.0
 -->
-# TLS Configuration for Committer Services
+# TLS Configuration for Committer Services and their Monitoring service
 This guide explains how to configure Transport Layer Security (TLS) for Committer services. TLS ensures secure communication whether a service operates as a **server** (accepting incoming connections) or as a **client** (initiating outbound connections).
 
 ## Configuration Structure
@@ -60,6 +60,20 @@ tls:
   # the root CA certificates that verify the server's credentials.
   ca-cert-paths:
     - /client-certs/ca-certificate.pem
+```
+
+### Monitoring Configuration
+When configuring TLS for the monitoring service, it operates as a server (accepting incoming connections from monitoring clients). Therefore, the TLS configuration includes the identity of the service (certificate and private key), and CA certificates used to verify client credentials in demand.
+
+```yaml 
+monitoring:
+  endpoint: :2117
+  tls:
+    mode: mtls
+    cert-path: /server-certs/public-key.pem
+    key-path: /server-certs/private-key.pem
+    ca-cert-paths:
+      - /server-certs/ca-certificate.pem
 ```
 
 ## Orderer Client TLS
