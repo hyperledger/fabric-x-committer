@@ -72,10 +72,9 @@ func TestQuerySecureConnection(t *testing.T) {
 func TestQuery(t *testing.T) {
 	t.Parallel()
 	env := newQueryServiceTestEnv(t, nil)
-	requiredItems := env.makeItems(t)
+	requiredItems := env.insertSampleKeysValueItems(t)
 	query, _, _ := makeQuery(requiredItems)
-	txIDs := env.makeTXs(t)
-	statusQuery := &committerpb.TxStatusQuery{TxIds: txIDs}
+	txIDs := env.insertSampleTxsStatus(t)
 	expectedStatus := make([]*committerpb.TxStatus, len(txIDs))
 	for i, txID := range txIDs {
 		expectedStatus[i] = &committerpb.TxStatus{
@@ -109,34 +108,11 @@ func TestQuery(t *testing.T) {
 		test.RequireProtoElementsMatch(t, expectedStatus, ret)
 	})
 
-	t.Run("Query GetRows interface", func(t *testing.T) {
-		t.Parallel()
-		ret, err := env.qs.GetRows(t.Context(), query)
-		require.NoError(t, err)
-		requireResults(t, requiredItems, ret.Namespaces)
-	})
-
-	t.Run("Query GetTransactionStatus interface", func(t *testing.T) {
-		t.Parallel()
-		ret, err := env.qs.GetTransactionStatus(t.Context(), statusQuery)
-		require.NoError(t, err)
-		require.NotNil(t, ret)
-		test.RequireProtoElementsMatch(t, expectedStatus, ret.Statuses)
-	})
-
 	t.Run("Query GetRows client", func(t *testing.T) {
 		t.Parallel()
 		ret, err := env.clientConn.GetRows(t.Context(), query)
 		require.NoError(t, err)
 		requireResults(t, requiredItems, ret.Namespaces)
-	})
-
-	t.Run("Query GetTransactionStatus client", func(t *testing.T) {
-		t.Parallel()
-		ret, err := env.clientConn.GetTransactionStatus(t.Context(), statusQuery)
-		require.NoError(t, err)
-		require.NotNil(t, ret)
-		test.RequireProtoElementsMatch(t, expectedStatus, ret.Statuses)
 	})
 
 	t.Run("Query GetRows bad namespace ID", func(t *testing.T) {
@@ -206,7 +182,7 @@ func TestMaxRequestKeys(t *testing.T) {
 	t.Run("GetRows exceeds limit", func(t *testing.T) {
 		t.Parallel()
 		env := newQueryServiceTestEnv(t, &queryServiceTestOpts{maxRequestKeys: 5})
-		env.makeItems(t)
+		env.insertSampleKeysValueItems(t)
 
 		// Request with 6 keys across namespaces should fail (limit is 5)
 		query := &committerpb.Query{
@@ -224,7 +200,7 @@ func TestMaxRequestKeys(t *testing.T) {
 	t.Run("GetRows within limit", func(t *testing.T) {
 		t.Parallel()
 		env := newQueryServiceTestEnv(t, &queryServiceTestOpts{maxRequestKeys: 10})
-		env.makeItems(t)
+		env.insertSampleKeysValueItems(t)
 
 		// Request with 6 keys should succeed (limit is 10)
 		query := &committerpb.Query{
@@ -241,7 +217,7 @@ func TestMaxRequestKeys(t *testing.T) {
 	t.Run("GetRows no limit when zero", func(t *testing.T) {
 		t.Parallel()
 		env := newQueryServiceTestEnv(t, nil)
-		env.makeItems(t)
+		env.insertSampleKeysValueItems(t)
 
 		// Request with many keys should succeed when limit is 0 (disabled)
 		query := &committerpb.Query{
@@ -286,7 +262,7 @@ func TestMaxRequestKeys(t *testing.T) {
 func TestQueryMetrics(t *testing.T) {
 	t.Parallel()
 	env := newQueryServiceTestEnv(t, nil)
-	requiredItems := env.makeItems(t)
+	requiredItems := env.insertSampleKeysValueItems(t)
 	query, keyCount, querySize := makeQuery(requiredItems)
 
 	t.Log("Query GetRows client with view")
@@ -324,7 +300,7 @@ func TestQueryMetrics(t *testing.T) {
 func TestQueryWithConsistentView(t *testing.T) {
 	t.Parallel()
 	env := newQueryServiceTestEnv(t, nil)
-	requiredItems := env.makeItems(t)
+	requiredItems := env.insertSampleKeysValueItems(t)
 	query, _, _ := makeQuery(requiredItems)
 
 	client := env.clientConn
@@ -642,7 +618,7 @@ func (q *queryServiceTestEnv) endView(
 	q.disabledViews = append(q.disabledViews, view.Id)
 }
 
-func (q *queryServiceTestEnv) makeItems(t *testing.T) []*items {
+func (q *queryServiceTestEnv) insertSampleKeysValueItems(t *testing.T) []*items {
 	t.Helper()
 	requiredItems := make([]*items, len(q.ns))
 	for i, ns := range q.ns {
@@ -657,7 +633,7 @@ func (q *queryServiceTestEnv) makeItems(t *testing.T) []*items {
 	return requiredItems
 }
 
-func (q *queryServiceTestEnv) makeTXs(t *testing.T) []string {
+func (q *queryServiceTestEnv) insertSampleTxsStatus(t *testing.T) []string {
 	t.Helper()
 	txIDs := make([]string, 10)
 	byteTXIDs := make([][]byte, len(txIDs))
