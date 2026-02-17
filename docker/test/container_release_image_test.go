@@ -270,7 +270,7 @@ func startLoadgenNodeWithReleaseImage(
 			NetworkMode: container.NetworkMode(params.networkName),
 			PortBindings: nat.PortMap{
 				loadGenMetricsPort + "/tcp": []nat.PortBinding{{
-					HostIP:   "localhost",
+					HostIP:   localhostIP,
 					HostPort: "0", // auto port assign
 				}},
 			},

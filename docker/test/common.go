@@ -56,6 +56,9 @@ const (
 	monitoredMetric = "loadgen_transaction_committed_total"
 	testNodeImage   = "docker.io/hyperledger/committer-test-node:latest"
 	localhost       = "localhost"
+	// localhostIP is the numeric form of localhost, required by Docker's PortBinding.HostIP
+	// which calls netip.ParseAddr and rejects hostnames.
+	localhostIP = "127.0.0.1"
 )
 
 func createAndStartContainerAndItsLogs(

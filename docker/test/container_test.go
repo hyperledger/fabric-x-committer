@@ -262,27 +262,27 @@ func startCommitter(ctx context.Context, t *testing.T, params startNodeParameter
 			PortBindings: nat.PortMap{
 				// sidecar port binding
 				sidecarPort + "/tcp": []nat.PortBinding{{
-					HostIP:   localhost,
+					HostIP:   localhostIP,
 					HostPort: "0", // auto port assign
 				}},
 				mockOrdererPort + "/tcp": []nat.PortBinding{{
-					HostIP:   localhost,
+					HostIP:   localhostIP,
 					HostPort: "0", // auto port assign
 				}},
 				loadGenMetricsPort + "/tcp": []nat.PortBinding{{
-					HostIP:   localhost,
+					HostIP:   localhostIP,
 					HostPort: "0", // auto port assign
 				}},
 				queryServicePort + "/tcp": []nat.PortBinding{{
-					HostIP:   localhost,
+					HostIP:   localhostIP,
 					HostPort: "0", // auto port assign
 				}},
 				coordinatorServicePort + "/tcp": []nat.PortBinding{{
-					HostIP:   localhost,
+					HostIP:   localhostIP,
 					HostPort: "0", // auto port assign
 				}},
 				databasePort + "/tcp": []nat.PortBinding{{
-					HostIP:   localhost,
+					HostIP:   localhostIP,
 					HostPort: "0", // auto port assign
 				}},
 			},
