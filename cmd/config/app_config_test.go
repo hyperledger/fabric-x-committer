@@ -410,7 +410,8 @@ func TestReadConfigLoadGen(t *testing.T) {
 					OrdererEndpoints: []*commontypes.OrdererEndpoint{
 						newOrdererEndpoint("org", "orderer"),
 					},
-					CryptoMaterialPath: "/root/material",
+					PeerOrganizationCount: 2,
+					CryptoMaterialPath:    "/root/material",
 				},
 				Conflicts: workload.ConflictProfile{
 					InvalidSignatures: 0.1,

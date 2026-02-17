@@ -66,7 +66,7 @@ output_dir      ?= $(project_dir)/bin
 arch_output_dir ?= $(project_dir)/archbin
 cache_dir       ?= $(shell $(go_cmd) env GOCACHE)
 mod_cache_dir   ?= $(shell $(go_cmd) env GOMODCACHE)
-go_version      ?= 1.24.3
+go_version      ?= 1.25.5
 golang_image    ?= golang:$(go_version)-bookworm
 
 dockerfile_base_dir       ?= $(project_dir)/docker/images
