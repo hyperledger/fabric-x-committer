@@ -23,6 +23,7 @@ import (
 	"github.com/yugabyte/pgx/v4/pgxpool"
 	"google.golang.org/grpc/status"
 
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen"
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -73,6 +74,15 @@ func TestQuery(t *testing.T) {
 	env := newQueryServiceTestEnv(t, nil)
 	requiredItems := env.makeItems(t)
 	query, _, _ := makeQuery(requiredItems)
+	txIDs := env.makeTXs(t)
+	statusQuery := &committerpb.TxStatusQuery{TxIds: txIDs}
+	expectedStatus := make([]*committerpb.TxStatus, len(txIDs))
+	for i, txID := range txIDs {
+		expectedStatus[i] = &committerpb.TxStatus{
+			Ref:    committerpb.NewTxRef(txID, 0, uint32(i)), //nolint:gosec // int -> uint32.
+			Status: committerpb.Status_COMMITTED,
+		}
+	}
 
 	for i, qNs := range query.Namespaces {
 		expectedItem := requiredItems[i]
@@ -88,6 +98,17 @@ func TestQuery(t *testing.T) {
 		})
 	}
 
+	t.Run("Query internal status", func(t *testing.T) {
+		t.Parallel()
+		byteTXIDs := make([][]byte, len(txIDs))
+		for i, id := range txIDs {
+			byteTXIDs[i] = []byte(id)
+		}
+		ret, err := unsafeQueryTxStatus(t.Context(), env.pool, byteTXIDs)
+		require.NoError(t, err)
+		test.RequireProtoElementsMatch(t, expectedStatus, ret)
+	})
+
 	t.Run("Query GetRows interface", func(t *testing.T) {
 		t.Parallel()
 		ret, err := env.qs.GetRows(t.Context(), query)
@@ -95,11 +116,27 @@ func TestQuery(t *testing.T) {
 		requireResults(t, requiredItems, ret.Namespaces)
 	})
 
+	t.Run("Query GetTransactionStatus interface", func(t *testing.T) {
+		t.Parallel()
+		ret, err := env.qs.GetTransactionStatus(t.Context(), statusQuery)
+		require.NoError(t, err)
+		require.NotNil(t, ret)
+		test.RequireProtoElementsMatch(t, expectedStatus, ret.Statuses)
+	})
+
 	t.Run("Query GetRows client", func(t *testing.T) {
 		t.Parallel()
 		ret, err := env.clientConn.GetRows(t.Context(), query)
 		require.NoError(t, err)
 		requireResults(t, requiredItems, ret.Namespaces)
+	})
+
+	t.Run("Query GetTransactionStatus client", func(t *testing.T) {
+		t.Parallel()
+		ret, err := env.clientConn.GetTransactionStatus(t.Context(), statusQuery)
+		require.NoError(t, err)
+		require.NotNil(t, ret)
+		test.RequireProtoElementsMatch(t, expectedStatus, ret.Statuses)
 	})
 
 	t.Run("Query GetRows bad namespace ID", func(t *testing.T) {
@@ -110,6 +147,16 @@ func TestQuery(t *testing.T) {
 		require.Error(t, err)
 		require.Nil(t, ret)
 		require.Contains(t, err.Error(), policy.ErrInvalidNamespaceID.Error())
+	})
+
+	t.Run("Query GetTransactionStatus with non existing TX ID", func(t *testing.T) {
+		t.Parallel()
+		ret, err := env.clientConn.GetTransactionStatus(t.Context(), &committerpb.TxStatusQuery{
+			TxIds: append(txIDs, "bad-id"),
+		})
+		require.NoError(t, err)
+		require.NotNil(t, ret)
+		test.RequireProtoElementsMatch(t, expectedStatus, ret.Statuses)
 	})
 
 	t.Run("Query GetRows client with view", func(t *testing.T) {
@@ -608,6 +655,24 @@ func (q *queryServiceTestEnv) makeItems(t *testing.T) []*items {
 		q.insert(t, requiredItems[i])
 	}
 	return requiredItems
+}
+
+func (q *queryServiceTestEnv) makeTXs(t *testing.T) []string {
+	t.Helper()
+	txIDs := make([]string, 10)
+	byteTXIDs := make([][]byte, len(txIDs))
+	statuses := make([]int64, len(txIDs))
+	heights := make([][]byte, len(txIDs))
+	for i := range txIDs {
+		txIDs[i] = fmt.Sprintf("tx-%d", i)
+		byteTXIDs[i] = []byte(txIDs[i])
+		statuses[i] = int64(committerpb.Status_COMMITTED)
+		heights[i] = servicepb.NewHeight(0, uint32(i)).ToBytes() //nolint:gosec // int -> uint32.
+	}
+	query := `select insert_tx_status($1::bytea[], $2::integer[], $3::bytea[]);`
+	_, err := q.pool.Exec(t.Context(), query, byteTXIDs, statuses, heights)
+	require.NoError(t, err)
+	return txIDs
 }
 
 func makeQuery(it []*items) (query *committerpb.Query, keyCount, querySize int) {
