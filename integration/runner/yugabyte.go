@@ -224,6 +224,16 @@ func (cc *YugaClusterController) startNodes(ctx context.Context, t *testing.T) {
 		require.Equal(ct, expectedTablets, strings.Count(cc.runYBAdmin(t, "list_all_tablet_servers"), "ALIVE"))
 	}, time.Minute, time.Millisecond*500)
 
+	// Set the cluster-level placement policy to ensure the load balancer
+	// targets the correct RF for all tables, including system.transactions.
+	// If the master leader created system.transactions with RF=2 (because
+	// the third tserver hadn't registered yet), this policy tells the load
+	// balancer to add the missing replica once it detects the under-replicated
+	// table. Note: modify_placement_info (cluster-level) works for
+	// system.transactions, unlike modify_table_placement_info (table-level)
+	// which YugabyteDB explicitly blocks.
+	cc.setClusterPlacementPolicy(t)
+
 	// Verify the global transaction table was created with the expected RF.
 	// This catches the race condition early instead of letting the test
 	// stall for minutes when a tserver is later removed.
@@ -245,15 +255,29 @@ func (cc *YugaClusterController) getLeaderMasterName(t *testing.T) string {
 	return found[1]
 }
 
+func (cc *YugaClusterController) setClusterPlacementPolicy(t *testing.T) {
+	t.Helper()
+	if cc.replicationFactor <= 1 {
+		return
+	}
+
+	cc.runYBAdmin(t,
+		"modify_placement_info", "cloud1.datacenter1.rack1",
+		fmt.Sprintf("%d", cc.replicationFactor),
+	)
+}
+
 func (cc *YugaClusterController) verifyTransactionTableRF(t *testing.T) {
 	t.Helper()
 	if cc.replicationFactor <= 1 {
 		return
 	}
-	output := cc.runYBAdmin(t, "list_tablets", "system", "transactions", "0", "include_followers")
-	for _, n := range cc.IterNodesByRole(TabletNode) {
-		require.Contains(t, output, n.Name)
-	}
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		output := cc.runYBAdmin(t, "list_tablets", "system", "transactions", "0", "include_followers")
+		for _, n := range cc.IterNodesByRole(TabletNode) {
+			assert.Contains(ct, output, n.Name)
+		}
+	}, 2*time.Minute, 500*time.Millisecond)
 }
 
 func (cc *YugaClusterController) listAllMasters(t *testing.T) string {
