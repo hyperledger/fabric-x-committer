@@ -13,6 +13,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -297,6 +298,33 @@ func createConfigBlockForTest(t *testing.T) *common.Block {
 	block, err := workload.CreateConfigBlock(&workload.PolicyProfile{})
 	require.NoError(t, err)
 	return block
+}
+
+// newBlockStoreWithBlocks creates a blockStore pre-populated with numBlocks chained blocks.
+// Each block carries valid transaction metadata. Returns the blockStore and per-block txIDs.
+func newBlockStoreWithBlocks(t *testing.T, channelID string, numBlocks int) (*blockStore, [][3]string) {
+	t.Helper()
+
+	bs, err := newBlockStore(channelID, t.TempDir(), 0, newPerformanceMetrics())
+	require.NoError(t, err)
+	t.Cleanup(bs.close)
+
+	valid := byte(committerpb.Status_COMMITTED)
+	metadata := &common.BlockMetadata{
+		Metadata: [][]byte{nil, nil, {valid, valid, valid}},
+	}
+
+	var prevHash []byte
+	allTxIDs := make([][3]string, numBlocks)
+	for i := range numBlocks {
+		blk, txIDs := createBlockForTest(t, uint64(i), prevHash) //nolint:gosec
+		blk.Metadata = metadata
+		require.NoError(t, bs.ledger.Append(blk))
+		prevHash = protoutil.BlockHeaderHash(blk.Header)
+		allTxIDs[i] = txIDs
+	}
+
+	return bs, allTxIDs
 }
 
 // createBlockForTest creates sample block with three txIDs.
