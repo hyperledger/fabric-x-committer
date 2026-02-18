@@ -84,6 +84,11 @@ func TestLedgerService(t *testing.T) {
 	inputBlock <- blk2
 	ensureAtLeastHeight(t, ls, 3)
 	require.Equal(t, 3, test.GetIntMetricValue(t, metrics.blockHeight))
+
+	// TODO: appendBlock forces fsync (Append) for single-tx blocks since they may be config blocks,
+	//       but we cannot verify Append vs AppendNoSync here because the ledger field is a concrete
+	//       *fileledger.FileLedger (not an interface). To properly test this, the ledger dependency
+	//       would need to be behind an interface so we can assert which method was called.
 }
 
 // ensureAtLeastHeight checks if the ledger is at or above the specified height.
