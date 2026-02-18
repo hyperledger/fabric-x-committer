@@ -71,7 +71,11 @@ func mockOrdererCMD() *cobra.Command {
 			if err != nil {
 				return errors.Wrap(err, "failed to create mock ordering service")
 			}
-			return connection.StartService(cmd.Context(), service, append(conf.ServerConfigs, conf.Server)...)
+			serverConfigs := conf.ServerConfigs
+			if conf.Server != nil && !conf.Server.Endpoint.Empty() {
+				serverConfigs = append(serverConfigs, conf.Server)
+			}
+			return connection.StartService(cmd.Context(), service, serverConfigs...)
 		},
 	}
 	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))

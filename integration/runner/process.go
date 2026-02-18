@@ -91,9 +91,12 @@ func newProcess(
 	t *testing.T,
 	cmdParams CmdParameters,
 	conf *config.SystemConfig,
+	thisService config.ServiceConfig,
 ) *ProcessWithConfig {
 	t.Helper()
-	configFilePath := config.CreateTempConfigFromTemplate(t, cmdParams.Template, conf)
+	s := *conf
+	s.ThisService = thisService
+	configFilePath := config.CreateTempConfigFromTemplate(t, cmdParams.Template, &s)
 	p := &ProcessWithConfig{
 		params:         cmdParams,
 		configFilePath: configFilePath,

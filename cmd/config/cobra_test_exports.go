@@ -56,14 +56,14 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 	require.NoError(t, err)
 	connection.CloseConnectionsLog(listen)
 	return SystemConfig{
-		ServiceEndpoints: ServiceEndpoints{
-			Server: &server.Endpoint,
+		ThisService: ServiceConfig{
+			GrpcEndpoint: &server.Endpoint,
 		},
-		Endpoints: SystemEndpoints{
-			Verifier:    []ServiceEndpoints{{Server: &verifier.Configs[0].Endpoint}},
-			VCService:   []ServiceEndpoints{{Server: &vc.Configs[0].Endpoint}},
-			Orderer:     []ServiceEndpoints{{Server: &orderer.Configs[0].Endpoint}},
-			Coordinator: ServiceEndpoints{Server: &coordinator.Configs[0].Endpoint},
+		Services: SystemServices{
+			Verifier:    []ServiceConfig{{GrpcEndpoint: &verifier.Configs[0].Endpoint}},
+			VCService:   []ServiceConfig{{GrpcEndpoint: &vc.Configs[0].Endpoint}},
+			Orderer:     []ServiceConfig{{GrpcEndpoint: &orderer.Configs[0].Endpoint}},
+			Coordinator: ServiceConfig{GrpcEndpoint: &coordinator.Configs[0].Endpoint},
 		},
 		DB: DatabaseConfig{
 			Name:        conn.Database,

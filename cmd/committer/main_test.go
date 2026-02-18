@@ -18,7 +18,7 @@ import (
 //nolint:paralleltest // Cannot parallelize due to logger.
 func TestCommitterCMD(t *testing.T) {
 	s := config.StartDefaultSystem(t)
-	s.Endpoints.Orderer[0] = s.ServiceEndpoints
+	s.Services.Orderer[0] = s.ThisService
 	commonTests := []config.CommandTest{
 		{
 			Name:         "print version",
@@ -67,7 +67,7 @@ func TestCommitterCMD(t *testing.T) {
 				{
 					Name:              "start",
 					Args:              []string{serviceCase.Command},
-					CmdLoggerOutputs:  []string{"Serving", s.ServiceEndpoints.Server.String()},
+					CmdLoggerOutputs:  []string{"Serving", s.ThisService.GrpcEndpoint.String()},
 					CmdStdOutput:      fmt.Sprintf("Starting %v", serviceCase.Name),
 					UseConfigTemplate: serviceCase.Template,
 					System:            s,

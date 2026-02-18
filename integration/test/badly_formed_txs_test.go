@@ -24,8 +24,6 @@ func TestBadlyFormedTxs(t *testing.T) {
 	// We pre-build the test cases to get the test size, which we use as the block size.
 	_, e := sidecar.MalformedTxTestCases(&workload.TxBuilder{})
 	c := runner.NewRuntime(t, &runner.Config{
-		NumVerifiers: 2,
-		NumVCService: 2,
 		BlockSize:    uint64(len(e)),
 		BlockTimeout: 1 * time.Second,
 	})

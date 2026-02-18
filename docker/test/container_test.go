@@ -88,15 +88,15 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 				SeedForCryptoGen: rand.New(rand.NewSource(10)),
 				Config:           &runner.Config{},
 				SystemConfig: config.SystemConfig{
-					Endpoints: config.SystemEndpoints{
-						Sidecar: config.ServiceEndpoints{
-							Server: mustGetEndpoint(ctx, t, containerName, sidecarPort),
+					Services: config.SystemServices{
+						Sidecar: config.ServiceConfig{
+							GrpcEndpoint: mustGetEndpoint(ctx, t, containerName, sidecarPort),
 						},
-						Query: config.ServiceEndpoints{
-							Server: mustGetEndpoint(ctx, t, containerName, queryServicePort),
+						Query: config.ServiceConfig{
+							GrpcEndpoint: mustGetEndpoint(ctx, t, containerName, queryServicePort),
 						},
-						Coordinator: config.ServiceEndpoints{
-							Server: mustGetEndpoint(ctx, t, containerName, coordinatorServicePort),
+						Coordinator: config.ServiceConfig{
+							GrpcEndpoint: mustGetEndpoint(ctx, t, containerName, coordinatorServicePort),
 						},
 					},
 					Policy: &c.LoadProfile.Policy,
@@ -117,7 +117,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			runtime.CommittedBlock = sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Parameters{
 				ChannelID: channelName,
 				Client: test.NewTLSClientConfig(
-					runtime.SystemConfig.ClientTLS, runtime.SystemConfig.Endpoints.Sidecar.Server,
+					runtime.SystemConfig.ClientTLS, runtime.SystemConfig.Services.Sidecar.GrpcEndpoint,
 				),
 			}, 0)
 

@@ -28,8 +28,6 @@ func TestRateLimit(t *testing.T) {
 	t.Parallel()
 
 	c := runner.NewRuntime(t, &runner.Config{
-		NumVerifiers: 1,
-		NumVCService: 1,
 		BlockTimeout: 2 * time.Second,
 		RateLimit: &connection.RateLimitConfig{
 			RequestsPerSecond: 2,
@@ -49,7 +47,7 @@ func TestRateLimit(t *testing.T) {
 		clientCreds, err := c.SystemConfig.ClientTLS.ClientCredentials()
 		require.NoError(t, err)
 		conn, err := grpc.NewClient(
-			c.SystemConfig.Endpoints.Query.Server.Address(),
+			c.SystemConfig.Services.Query.GrpcEndpoint.Address(),
 			grpc.WithTransportCredentials(clientCreds),
 		)
 		require.NoError(t, err)
@@ -64,7 +62,7 @@ func TestRateLimit(t *testing.T) {
 		// Create a connection with the default retry policy.
 		// The retry policy includes RESOURCE_EXHAUSTED, so rate-limited requests
 		// will be automatically retried and should eventually succeed.
-		conn := test.NewSecuredConnection(t, c.SystemConfig.Endpoints.Query.Server, c.SystemConfig.ClientTLS)
+		conn := test.NewSecuredConnection(t, c.SystemConfig.Services.Query.GrpcEndpoint, c.SystemConfig.ClientTLS)
 
 		successCount, rateLimitedCount, otherErrorCount := makeParallelRequests(
 			t, numParallelRequests, conn, 30*time.Second)

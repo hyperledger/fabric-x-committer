@@ -23,8 +23,6 @@ func TestCreateUpdateNamespace(t *testing.T) {
 	t.Parallel()
 	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{
-		NumVerifiers: 2,
-		NumVCService: 2,
 		BlockTimeout: 2 * time.Second,
 	})
 	c.Start(t, runner.FullTxPath)

@@ -33,16 +33,14 @@ func newConfigTestEnv(t *testing.T, numHolders int) (
 	gomega.RegisterTestingT(t)
 
 	c := runner.NewRuntime(t, &runner.Config{
-		NumVerifiers: 2,
-		NumVCService: 2,
 		BlockSize:    100,
 		BlockTimeout: 2 * time.Second,
 		CrashTest:    true,
 	})
 
-	ordererServers := make([]*connection.ServerConfig, len(c.SystemConfig.Endpoints.Orderer))
-	for i, e := range c.SystemConfig.Endpoints.Orderer {
-		ordererServers[i] = &connection.ServerConfig{Endpoint: *e.Server}
+	ordererServers := make([]*connection.ServerConfig, len(c.SystemConfig.Services.Orderer))
+	for i, e := range c.SystemConfig.Services.Orderer {
+		ordererServers[i] = &connection.ServerConfig{Endpoint: *e.GrpcEndpoint}
 	}
 
 	ordererEnv := mock.NewOrdererTestEnv(t, &mock.OrdererTestConfig{
@@ -259,8 +257,6 @@ func TestConfigBlockImmediateCommit(t *testing.T) {
 	gomega.RegisterTestingT(t)
 
 	c := runner.NewRuntime(t, &runner.Config{
-		NumVerifiers:                        1,
-		NumVCService:                        1,
 		BlockSize:                           100,
 		BlockTimeout:                        5 * time.Minute,
 		CrashTest:                           true,
@@ -270,9 +266,9 @@ func TestConfigBlockImmediateCommit(t *testing.T) {
 		VerifierBatchTimeCutoff:             1 * time.Hour,
 	})
 
-	ordererServers := make([]*connection.ServerConfig, len(c.SystemConfig.Endpoints.Orderer))
-	for i, e := range c.SystemConfig.Endpoints.Orderer {
-		ordererServers[i] = &connection.ServerConfig{Endpoint: *e.Server}
+	ordererServers := make([]*connection.ServerConfig, len(c.SystemConfig.Services.Orderer))
+	for i, e := range c.SystemConfig.Services.Orderer {
+		ordererServers[i] = &connection.ServerConfig{Endpoint: *e.GrpcEndpoint}
 	}
 	ordererEnv := mock.NewOrdererTestEnv(t, &mock.OrdererTestConfig{
 		ChanID: "ch1",

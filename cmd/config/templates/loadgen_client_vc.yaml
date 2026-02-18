@@ -7,8 +7,8 @@
 
 vc-client:
   endpoints:
-    {{- range .Endpoints.VCService }}
-    - {{ .Server }}
+    {{- range .Services.VCService }}
+    - {{ .GrpcEndpoint }}
     {{- end }}
   tls:
     mode: {{ .ClientTLS.Mode }}

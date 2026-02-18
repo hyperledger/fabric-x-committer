@@ -6,7 +6,7 @@
 # It should be complimented by the common load generator configuration.
 
 loadgen-client:
-  endpoint: {{ .Endpoints.LoadGen.Server }}
+  endpoint: {{ .Services.LoadGen.GrpcEndpoint }}
   tls:
     mode: {{ .ClientTLS.Mode }}
     key-path: {{ .ClientTLS.KeyPath }}

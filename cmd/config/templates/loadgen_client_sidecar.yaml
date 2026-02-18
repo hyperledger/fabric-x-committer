@@ -7,7 +7,7 @@
 
 sidecar-client:
   sidecar-client:
-    endpoint: {{ .Endpoints.Sidecar.Server }}
+    endpoint: {{ .Services.Sidecar.GrpcEndpoint }}
     tls:
       mode: {{ .ClientTLS.Mode }}
       cert-path: {{ .ClientTLS.CertPath }}
@@ -17,14 +17,14 @@ sidecar-client:
         - {{ . }}
         {{- end }}
   orderer-servers:
-    {{- range .Endpoints.Orderer }}
-    - endpoint: {{ .Server }}
+    {{- range .Services.Orderer }}
+    - endpoint: {{ .GrpcEndpoint }}
       tls:
-        mode: {{ $.ServiceTLS.Mode }}
-        cert-path: {{ $.ServiceTLS.CertPath }}
-        key-path: {{ $.ServiceTLS.KeyPath }}
+        mode: {{ .GrpcTLS.Mode }}
+        cert-path: {{ .GrpcTLS.CertPath }}
+        key-path: {{ .GrpcTLS.KeyPath }}
         ca-cert-paths:
-          {{- range $.ServiceTLS.CACertPaths }}
+          {{- range .GrpcTLS.CACertPaths }}
           - {{ . }}
           {{- end }}
     {{- end }}
