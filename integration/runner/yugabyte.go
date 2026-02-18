@@ -223,6 +223,11 @@ func (cc *YugaClusterController) startNodes(ctx context.Context, t *testing.T) {
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		require.Equal(ct, expectedTablets, strings.Count(cc.runYBAdmin(t, "list_all_tablet_servers"), "ALIVE"))
 	}, time.Minute, time.Millisecond*500)
+
+	// Verify the global transaction table was created with the expected RF.
+	// This catches the race condition early instead of letting the test
+	// stall for minutes when a tserver is later removed.
+	cc.verifyTransactionTableRF(t)
 }
 
 func (cc *YugaClusterController) getMasterAddresses() string {
@@ -238,6 +243,17 @@ func (cc *YugaClusterController) getLeaderMasterName(t *testing.T) string {
 	found := leaderRegex.FindStringSubmatch(cc.listAllMasters(t))
 	require.Greater(t, len(found), 1)
 	return found[1]
+}
+
+func (cc *YugaClusterController) verifyTransactionTableRF(t *testing.T) {
+	t.Helper()
+	if cc.replicationFactor <= 1 {
+		return
+	}
+	output := cc.runYBAdmin(t, "list_tablets", "system", "transactions", "0", "include_followers")
+	for _, n := range cc.IterNodesByRole(TabletNode) {
+		require.Contains(t, output, n.Name)
+	}
 }
 
 func (cc *YugaClusterController) listAllMasters(t *testing.T) string {
@@ -292,6 +308,11 @@ func nodeConfig(t *testing.T, params nodeConfigParameters) []string {
 			"--master_addresses", params.masterAddresses,
 			// Desired number of replicas for system and user tables.
 			fmt.Sprintf("--replication_factor=%d", params.replicationFactor),
+			// Tell the master to wait for at least RF tservers before
+			// creating the transaction status table. This controls
+			// the background task code path; the leader initialization
+			// path is covered by starting tservers before masters.
+			fmt.Sprintf("--txn_table_wait_min_ts_count=%d", params.replicationFactor),
 		)
 	case TabletNode:
 		return append(nodeCommonConfig("yb-tserver", params.nodeName, tabletPort),
@@ -313,6 +334,14 @@ func nodeConfig(t *testing.T, params nodeConfigParameters) []string {
 			// YugabyteDB falls back to repeatable read for read committed
 			// transactions, which changes concurrency behavior.
 			"--yb_enable_read_committed_isolation=true",
+			// Reduce heartbeat interval from the default 1000ms to 200ms.
+			// The master leader creates system.transactions shortly after
+			// leader election, using RF = min(registered_tservers, cluster_RF).
+			// A faster heartbeat gives each tserver ~5x more registration
+			// attempts in the narrow window between master leader election
+			// and table creation, preventing the RF from being set lower
+			// than expected.
+			"--heartbeat_interval_ms=200",
 		)
 	default:
 		t.Fatalf("unknown role provided: %s", params.role)
