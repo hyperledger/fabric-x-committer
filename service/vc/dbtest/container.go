@@ -119,9 +119,6 @@ func (dc *DatabaseContainer) StartContainer(ctx context.Context, t *testing.T) {
 		return
 	}
 	require.NoError(t, err)
-
-	// Stream logs to stdout/stderr
-	go dc.streamLogs(t)
 }
 
 func (dc *DatabaseContainer) initDefaults(t *testing.T) { //nolint:gocognit
