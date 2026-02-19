@@ -114,7 +114,9 @@ func (s *ledgerService) run(ctx context.Context, config *ledgerRunConfig) error 
 // appendBlock appends a block to the ledger. It uses AppendNoSync for intermediate
 // blocks and Append (with fsync) every syncInterval blocks.
 func (s *ledgerService) appendBlock(block *common.Block) error {
-	if s.syncInterval <= 1 || (block.Header.Number+1)%s.syncInterval == 0 {
+	// When the block contains a single transaction, it may be a config block, so we append synchronously
+	// to the block store.
+	if s.syncInterval <= 1 || (block.Header.Number+1)%s.syncInterval == 0 || len(block.Data.Data) == 1 {
 		return s.ledger.Append(block)
 	}
 	return s.ledger.AppendNoSync(block)
