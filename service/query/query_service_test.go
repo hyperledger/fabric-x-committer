@@ -20,7 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
-	"github.com/yugabyte/pgx/v4/pgxpool"
+	"github.com/yugabyte/pgx/v5/pgxpool"
 	"google.golang.org/grpc/status"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
