@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/grpclog"
 
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
+	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 )
 
 func TestMain(m *testing.M) {
@@ -43,5 +44,6 @@ func TestMain(m *testing.M) {
 
 	// Waiting a seconds solves a bug where the binaries are not yet accessible by the filesystem.
 	time.Sleep(time.Second)
-	os.Exit(m.Run())
+
+	dbtest.RunTestMain(m)
 }
