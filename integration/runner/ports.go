@@ -17,6 +17,8 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
+// allocateServices allocates service configurations with default counts if not specified.
+// Defaults: 3 orderers, 2 verifiers, 2 VC services, 1 each for other services.
 func allocateServices(t *testing.T, conf *Config, credFactory *test.CredentialsFactory) config.SystemServices {
 	t.Helper()
 	if conf.NumOrderers <= 0 {

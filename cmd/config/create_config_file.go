@@ -29,7 +29,8 @@ import (
 type (
 	// SystemConfig represents the configuration of the one of the committer's components.
 	SystemConfig struct {
-		// ThisService the current instance service config.
+		// ThisService holds the configuration for the current service instance being configured.
+		// This is populated at runtime with the specific service's endpoints and TLS settings.
 		ThisService ServiceConfig
 
 		// ClientTLS holds the TLS configuration used by a service when acting as a client to other services.
@@ -61,7 +62,7 @@ type (
 		VerifierBatchSizeCutoff int           // verifier
 	}
 
-	// SystemServices represents the endpoints of the system.
+	// SystemServices holds all configurations for the system services.
 	SystemServices struct {
 		Verifier    []ServiceConfig
 		VCService   []ServiceConfig
@@ -72,7 +73,7 @@ type (
 		LoadGen     ServiceConfig
 	}
 
-	// ServiceConfig stores the server and metrics endpoints and TLS for a service.
+	// ServiceConfig stores the service's server and metrics endpoints, along with their TLS configuration.
 	ServiceConfig struct {
 		GrpcEndpoint    *connection.Endpoint
 		MetricsEndpoint *connection.Endpoint
