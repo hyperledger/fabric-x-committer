@@ -79,7 +79,7 @@ func TestLoadGenWithTLSModes(t *testing.T) {
 					require.NoError(t, err)
 
 					metricsURL, err := monitoring.MakeMetricsURL(
-						c.SystemConfig.Endpoints.LoadGen.Metrics.Address(), metricsClientTLSConfig,
+						c.SystemConfig.Services.LoadGen.MetricsEndpoint.Address(), metricsClientTLSConfig,
 					)
 					require.NoError(t, err)
 					require.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -99,8 +99,6 @@ func TestLoadGenCommitterWithLimit(t *testing.T) {
 	t.Parallel()
 	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{
-		NumVerifiers: 2,
-		NumVCService: 2,
 		BlockTimeout: 2 * time.Second,
 		BlockSize:    500,
 	})

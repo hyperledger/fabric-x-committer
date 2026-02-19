@@ -121,7 +121,6 @@ func registerAndCreateRuntime(t *testing.T, clusterConnection *dbtest.Connection
 	t.Helper()
 	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{
-		NumVerifiers: 2,
 		NumVCService: 2,
 		BlockTimeout: 2 * time.Second,
 		BlockSize:    500,

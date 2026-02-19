@@ -7,7 +7,7 @@
 
 orderer-client:
   sidecar-client:
-    endpoint: {{ .Endpoints.Sidecar.Server }}
+    endpoint: {{ .Services.Sidecar.GrpcEndpoint }}
     tls:
       mode: {{ .ClientTLS.Mode }}
       cert-path: {{ .ClientTLS.CertPath }}
@@ -20,8 +20,8 @@ orderer-client:
     organizations:
       org0:
         endpoints:
-          {{- range .Endpoints.Orderer }}
-          - id=0,broadcast,deliver,{{ .Server }}
+          {{- range .Services.Orderer }}
+          - id=0,broadcast,deliver,{{ .GrpcEndpoint }}
           {{- end }}
         ca-cert-paths:
           {{- range .ClientTLS.CACertPaths }}

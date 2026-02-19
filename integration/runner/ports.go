@@ -17,22 +17,45 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-type portAllocator struct {
-	listeners []net.Listener
-}
-
-// allocatePorts finds a range of available ports.
-func (p *portAllocator) allocatePorts(t *testing.T, count int) []config.ServiceEndpoints {
+// allocateServices allocates service configurations with default counts if not specified.
+// Defaults: 3 orderers, 2 verifiers, 2 VC services, 1 each for other services.
+func allocateServices(t *testing.T, conf *Config, credFactory *test.CredentialsFactory) config.SystemServices {
 	t.Helper()
-	endpoints := make([]config.ServiceEndpoints, count)
-	for i := range endpoints {
-		endpoints[i].Server = p.allocate(t)
-		endpoints[i].Metrics = p.allocate(t)
+	s := serviceAllocator{credFactory: credFactory, tlsMode: conf.TLSMode}
+	defer s.close()
+	return config.SystemServices{
+		Orderer:     s.allocateService(t, conf.NumOrderers),
+		Verifier:    s.allocateService(t, conf.NumVerifiers),
+		VCService:   s.allocateService(t, conf.NumVCService),
+		Query:       s.allocateService(t, 1)[0],
+		Coordinator: s.allocateService(t, 1)[0],
+		Sidecar:     s.allocateService(t, 1)[0],
+		LoadGen:     s.allocateService(t, 1)[0],
 	}
-	return endpoints
 }
 
-func (p *portAllocator) allocate(t *testing.T) *connection.Endpoint {
+type serviceAllocator struct {
+	credFactory *test.CredentialsFactory
+	tlsMode     string
+	listeners   []net.Listener
+}
+
+// allocateService finds a range of available ports.
+func (p *serviceAllocator) allocateService(t *testing.T, count int) []config.ServiceConfig {
+	t.Helper()
+	require.Positive(t, count)
+	serviceConfigs := make([]config.ServiceConfig, count)
+	for i := range serviceConfigs {
+		conf := &serviceConfigs[i]
+		conf.GrpcEndpoint = p.allocateEndpoint(t)
+		conf.MetricsEndpoint = p.allocateEndpoint(t)
+		conf.GrpcTLS, _ = p.credFactory.CreateServerCredentials(t, p.tlsMode, conf.GrpcEndpoint.Host)
+		conf.MetricsTLS, _ = p.credFactory.CreateServerCredentials(t, p.tlsMode, conf.MetricsEndpoint.Host)
+	}
+	return serviceConfigs
+}
+
+func (p *serviceAllocator) allocateEndpoint(t *testing.T) *connection.Endpoint {
 	t.Helper()
 	s := connection.NewLocalHostServer(test.InsecureTLSConfig)
 	listener, err := s.Listener(t.Context())
@@ -42,7 +65,7 @@ func (p *portAllocator) allocate(t *testing.T) *connection.Endpoint {
 }
 
 // close releases the ports to be used for their intended purpose.
-func (p *portAllocator) close() {
+func (p *serviceAllocator) close() {
 	connection.CloseConnectionsLog(p.listeners...)
 	p.listeners = nil
 }

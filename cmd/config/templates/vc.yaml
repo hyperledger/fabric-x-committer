@@ -3,23 +3,23 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 server:
-  endpoint: {{ .ServiceEndpoints.Server | default "localhost:0" }}
+  endpoint: {{ .ThisService.GrpcEndpoint | default "localhost:0" }}
   tls:
-    mode: {{ .ServiceTLS.Mode }}
-    key-path: {{ .ServiceTLS.KeyPath }}
-    cert-path: {{ .ServiceTLS.CertPath }}
+    mode: {{ .ThisService.GrpcTLS.Mode }}
+    key-path: {{ .ThisService.GrpcTLS.KeyPath }}
+    cert-path: {{ .ThisService.GrpcTLS.CertPath }}
     ca-cert-paths:
-      {{- range .ServiceTLS.CACertPaths }}
+      {{- range .ThisService.GrpcTLS.CACertPaths }}
       - {{ . }}
       {{- end }}
 monitoring:
-  endpoint: {{ .ServiceEndpoints.Metrics | default "localhost:0" }}
+  endpoint: {{ .ThisService.MetricsEndpoint | default "localhost:0" }}
   tls:
-    mode: {{ .MetricsTLS.Mode }}
-    key-path: {{ .MetricsTLS.KeyPath }}
-    cert-path: {{ .MetricsTLS.CertPath }}
+    mode: {{ .ThisService.MetricsTLS.Mode }}
+    key-path: {{ .ThisService.MetricsTLS.KeyPath }}
+    cert-path: {{ .ThisService.MetricsTLS.CertPath }}
     ca-cert-paths:
-      {{- range .MetricsTLS.CACertPaths }}
+      {{- range .ThisService.MetricsTLS.CACertPaths }}
       - {{ . }}
       {{- end }}
 

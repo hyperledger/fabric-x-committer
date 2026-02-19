@@ -7,8 +7,8 @@
 
 verifier-client:
   endpoints:
-    {{- range .Endpoints.Verifier }}
-    - {{ .Server }}
+    {{- range .Services.Verifier }}
+    - {{ .GrpcEndpoint }}
     {{- end }}
   tls:
     mode: {{ .ClientTLS.Mode }}

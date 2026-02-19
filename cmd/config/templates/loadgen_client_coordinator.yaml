@@ -6,7 +6,7 @@
 # It should be complimented by the common load generator configuration.
 
 coordinator-client:
-  endpoint: {{ .Endpoints.Coordinator.Server }}
+  endpoint: {{ .Services.Coordinator.GrpcEndpoint }}
   tls:
     mode: {{ .ClientTLS.Mode }}
     key-path: {{ .ClientTLS.KeyPath }}

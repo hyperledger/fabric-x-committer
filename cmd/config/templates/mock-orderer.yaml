@@ -2,16 +2,18 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-server:
-  endpoint: {{ .ServiceEndpoints.Server | default "localhost:0" }}
-  tls:
-    mode: {{ .ServiceTLS.Mode }}
-    cert-path: {{ .ServiceTLS.CertPath }}
-    key-path: {{ .ServiceTLS.KeyPath }}
-    ca-cert-paths:
-      {{- range .ServiceTLS.CACertPaths }}
-      - {{ . }}
-      {{- end }}
+servers:
+  {{- range .Services.Orderer }}
+  - endpoint: {{ .GrpcEndpoint }}
+    tls:
+      mode: {{ .GrpcTLS.Mode }}
+      cert-path: {{ .GrpcTLS.CertPath }}
+      key-path: {{ .GrpcTLS.KeyPath }}
+      ca-cert-paths:
+        {{- range .GrpcTLS.CACertPaths }}
+        - {{ . }}
+        {{- end }}
+  {{- end }}
 block-size: {{ .BlockSize }}
 block-timeout: {{ .BlockTimeout }}
 config-block-path: {{ .ConfigBlockPath }}

@@ -29,19 +29,16 @@ import (
 type (
 	// SystemConfig represents the configuration of the one of the committer's components.
 	SystemConfig struct {
-		// Instance endpoints.
-		ServiceEndpoints ServiceEndpoints
+		// ThisService holds the configuration for the current service instance being configured.
+		// This is populated at runtime with the specific service's endpoints and TLS settings.
+		ThisService ServiceConfig
 
-		// ServiceTLS holds the TLS configuration for a service.
-		ServiceTLS connection.TLSConfig
-		// MetricsTLS holds the TLS configuration for a monitoring server.
-		MetricsTLS connection.TLSConfig
 		// ClientTLS holds the TLS configuration used by a service when acting as a client to other services.
 		ClientTLS connection.TLSConfig
 
 		// System's resources.
-		Endpoints SystemEndpoints
-		DB        DatabaseConfig
+		Services SystemServices
+		DB       DatabaseConfig
 
 		// Per service configurations.
 		BlockSize         uint64                      // orderer, loadgen
@@ -65,21 +62,23 @@ type (
 		VerifierBatchSizeCutoff int           // verifier
 	}
 
-	// SystemEndpoints represents the endpoints of the system.
-	SystemEndpoints struct {
-		Verifier    []ServiceEndpoints
-		VCService   []ServiceEndpoints
-		Orderer     []ServiceEndpoints
-		Coordinator ServiceEndpoints
-		Sidecar     ServiceEndpoints
-		Query       ServiceEndpoints
-		LoadGen     ServiceEndpoints
+	// SystemServices holds all configurations for the system services.
+	SystemServices struct {
+		Verifier    []ServiceConfig
+		VCService   []ServiceConfig
+		Orderer     []ServiceConfig
+		Coordinator ServiceConfig
+		Sidecar     ServiceConfig
+		Query       ServiceConfig
+		LoadGen     ServiceConfig
 	}
 
-	// ServiceEndpoints stores the server and metrics endpoints for a service.
-	ServiceEndpoints struct {
-		Server  *connection.Endpoint
-		Metrics *connection.Endpoint
+	// ServiceConfig stores the service's server and metrics endpoints, along with their TLS configuration.
+	ServiceConfig struct {
+		GrpcEndpoint    *connection.Endpoint
+		MetricsEndpoint *connection.Endpoint
+		GrpcTLS         connection.TLSConfig
+		MetricsTLS      connection.TLSConfig
 	}
 
 	// DatabaseConfig represents the used DB.

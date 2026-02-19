@@ -77,6 +77,7 @@ type (
 
 	// Config represents the runtime configuration.
 	Config struct {
+		NumOrderers       int
 		NumVerifiers      int
 		NumVCService      int
 		BlockSize         uint64
@@ -142,6 +143,20 @@ const (
 func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	t.Helper()
 
+	if conf.NumOrderers <= 0 {
+		conf.NumOrderers = 1
+	}
+	if conf.NumVerifiers <= 0 {
+		conf.NumVerifiers = 1
+	}
+	if conf.NumVCService <= 0 {
+		conf.NumVCService = 1
+	}
+
+	t.Log("create TLS manager and clients certificate")
+	credFactory := test.NewCredentialsFactory(t)
+	clientTLS, _ := credFactory.CreateClientCredentials(t, conf.TLSMode)
+
 	c := &CommitterRuntime{
 		Config: conf,
 		SystemConfig: config.SystemConfig{
@@ -158,6 +173,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 			},
 			Logging:   &logging.DefaultConfig,
 			RateLimit: conf.RateLimit,
+			ClientTLS: clientTLS,
 
 			// Batching configuration for testing.
 			VCMinTransactionBatchSize:           conf.VCMinTransactionBatchSize,
@@ -167,6 +183,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		},
 		CommittedBlock:   make(chan *common.Block, 100),
 		SeedForCryptoGen: rand.New(rand.NewSource(10)),
+		CredFactory:      credFactory,
 	}
 	t.Log("Making DB env")
 	if conf.DBConnection == nil {
@@ -184,20 +201,12 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	s.LedgerPath = t.TempDir()
 	s.ConfigBlockPath = filepath.Join(t.TempDir(), "config-block.pb.bin")
 
-	t.Log("Allocating ports")
-	ports := portAllocator{}
-	defer ports.close()
-	s.Endpoints.Orderer = ports.allocatePorts(t, 1)
-	s.Endpoints.Verifier = ports.allocatePorts(t, conf.NumVerifiers)
-	s.Endpoints.VCService = ports.allocatePorts(t, conf.NumVCService)
-	s.Endpoints.Query = ports.allocatePorts(t, 1)[0]
-	s.Endpoints.Coordinator = ports.allocatePorts(t, 1)[0]
-	s.Endpoints.Sidecar = ports.allocatePorts(t, 1)[0]
-	s.Endpoints.LoadGen = ports.allocatePorts(t, 1)[0]
-	s.Policy.OrdererEndpoints = make([]*commontypes.OrdererEndpoint, len(s.Endpoints.Orderer))
-	for i, e := range s.Endpoints.Orderer {
+	t.Log("Allocating services endpoints, ports, and TLS credentials")
+	s.Services = allocateServices(t, conf, credFactory)
+	s.Policy.OrdererEndpoints = make([]*commontypes.OrdererEndpoint, len(s.Services.Orderer))
+	for i, e := range s.Services.Orderer {
 		s.Policy.OrdererEndpoints[i] = &commontypes.OrdererEndpoint{
-			ID: 0, MspID: "org", Host: e.Server.Host, Port: e.Server.Port,
+			ID: 0, MspID: "org", Host: e.GrpcEndpoint.Host, Port: e.GrpcEndpoint.Port,
 			API: []string{commontypes.Broadcast, commontypes.Deliver},
 		}
 	}
@@ -212,32 +221,25 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 
 	c.AddOrUpdateNamespaces(t, workload.DefaultGeneratedNamespaceID, "1", "2", "3")
 
-	t.Log("create TLS manager and clients certificate")
-	c.CredFactory = test.NewCredentialsFactory(t)
-	s.ClientTLS, _ = c.CredFactory.CreateClientCredentials(t, c.Config.TLSMode)
-	s.MetricsTLS, _ = c.CredFactory.CreateServerCredentials(t, c.Config.TLSMode, s.Endpoints.LoadGen.Metrics.Host)
-
 	t.Log("Create processes")
-	c.MockOrderer = newProcess(t, cmdOrderer, c.systemConfigWithServerTLS(t, *s, s.Endpoints.Orderer[0]))
-	for i, e := range s.Endpoints.Verifier {
+	c.MockOrderer = newProcess(t, cmdOrderer, s, s.Services.Orderer[0])
+	for i, service := range s.Services.Verifier {
 		p := cmdVerifier
 		p.Name = fmt.Sprintf("%s-%d", p.Name, i)
 		// we generate different keys for each verifier.
-		c.Verifier = append(c.Verifier, newProcess(t, p, c.systemConfigWithServerTLS(t, *s, e)))
+		c.Verifier = append(c.Verifier, newProcess(t, p, s, service))
 	}
 
-	for i, e := range s.Endpoints.VCService {
+	for i, service := range s.Services.VCService {
 		p := cmdVC
 		p.Name = fmt.Sprintf("%s-%d", p.Name, i)
 		// we generate different keys for each vc-service.
-		c.VcService = append(c.VcService, newProcess(t, p, c.systemConfigWithServerTLS(t, *s, e)))
+		c.VcService = append(c.VcService, newProcess(t, p, s, service))
 	}
 
-	c.Coordinator = newProcess(t, cmdCoordinator, c.systemConfigWithServerTLS(t, *s, s.Endpoints.Coordinator))
-
-	c.QueryService = newProcess(t, cmdQuery, c.systemConfigWithServerTLS(t, *s, s.Endpoints.Query))
-
-	c.Sidecar = newProcess(t, cmdSidecar, c.systemConfigWithServerTLS(t, *s, s.Endpoints.Sidecar))
+	c.Coordinator = newProcess(t, cmdCoordinator, s, s.Services.Coordinator)
+	c.QueryService = newProcess(t, cmdQuery, s, s.Services.Query)
+	c.Sidecar = newProcess(t, cmdSidecar, s, s.Services.Sidecar)
 
 	t.Log("Create clients")
 	c.CreateRuntimeClients(t.Context(), t)
@@ -247,18 +249,18 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 // CreateRuntimeClients create and set the necessary service's clients.
 func (c *CommitterRuntime) CreateRuntimeClients(ctx context.Context, t *testing.T) {
 	t.Helper()
-	endpoints := c.SystemConfig.Endpoints
+	services := c.SystemConfig.Services
 
 	c.CoordinatorClient = servicepb.NewCoordinatorClient(
-		test.NewSecuredConnection(t, endpoints.Coordinator.Server, c.SystemConfig.ClientTLS),
+		test.NewSecuredConnection(t, services.Coordinator.GrpcEndpoint, c.SystemConfig.ClientTLS),
 	)
 
 	c.QueryServiceClient = committerpb.NewQueryServiceClient(
-		test.NewSecuredConnection(t, endpoints.Query.Server, c.SystemConfig.ClientTLS),
+		test.NewSecuredConnection(t, services.Query.GrpcEndpoint, c.SystemConfig.ClientTLS),
 	)
 
 	c.NotifyClient = committerpb.NewNotifierClient(
-		test.NewSecuredConnection(t, endpoints.Sidecar.Server, c.SystemConfig.ClientTLS),
+		test.NewSecuredConnection(t, services.Sidecar.GrpcEndpoint, c.SystemConfig.ClientTLS),
 	)
 
 	var err error
@@ -279,7 +281,7 @@ func (c *CommitterRuntime) CreateRuntimeClients(ctx context.Context, t *testing.
 
 	c.SidecarClient, err = sidecarclient.New(&sidecarclient.Parameters{
 		ChannelID: c.SystemConfig.Policy.ChannelID,
-		Client:    test.NewTLSClientConfig(c.SystemConfig.ClientTLS, endpoints.Sidecar.Server),
+		Client:    test.NewTLSClientConfig(c.SystemConfig.ClientTLS, services.Sidecar.GrpcEndpoint),
 	})
 	require.NoError(t, err)
 	t.Cleanup(c.SidecarClient.CloseConnections)
@@ -366,12 +368,12 @@ func (c *CommitterRuntime) startLoadGen(t *testing.T, serviceFlags int) {
 	if isDist {
 		s.LoadGenWorkers = 0
 	}
-	newProcess(t, loadGenParams, c.systemConfigWithServerTLS(t, s, s.Endpoints.LoadGen)).Restart(t)
+	newProcess(t, loadGenParams, &s, s.Services.LoadGen).Restart(t)
 	if isDist {
 		s.LoadGenWorkers = 1
 		loadGenParams.Name = "dist-loadgen"
 		loadGenParams.Template = config.TemplateLoadGenDistributedLoadGenClient
-		newProcess(t, loadGenParams, systemConfigWithEndpoint(s, config.ServiceEndpoints{})).Restart(t)
+		newProcess(t, loadGenParams, &s, config.ServiceConfig{}).Restart(t)
 	}
 }
 
@@ -599,23 +601,6 @@ func (c *CommitterRuntime) ensureAtLeastLastCommittedBlockNumber(t *testing.T, b
 		require.NotNil(ct, nextBlock)
 		require.Greater(ct, nextBlock.Number, blkNum)
 	}, 2*time.Minute, 250*time.Millisecond)
-}
-
-func (c *CommitterRuntime) systemConfigWithServerTLS(
-	t *testing.T,
-	systemConf config.SystemConfig,
-	endpoints config.ServiceEndpoints,
-) *config.SystemConfig {
-	t.Helper()
-	s := systemConfigWithEndpoint(systemConf, endpoints)
-	s.ServiceTLS, _ = c.CredFactory.CreateServerCredentials(t, c.Config.TLSMode, endpoints.Server.Host)
-	return s
-}
-
-// systemConfigWithEndpoint creates a new SystemConfig with a modified ServerEndpoint and MetricsEndpoint.
-func systemConfigWithEndpoint(systemConf config.SystemConfig, e config.ServiceEndpoints) *config.SystemConfig {
-	systemConf.ServiceEndpoints = e
-	return &systemConf
 }
 
 func isMoreThanOneBitSet(bits int) bool {

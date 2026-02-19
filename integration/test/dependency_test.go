@@ -22,8 +22,6 @@ func testSetup(t *testing.T) *runner.CommitterRuntime {
 	t.Helper()
 	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{
-		NumVerifiers: 2,
-		NumVCService: 2,
 		BlockSize:    5,
 		BlockTimeout: 2 * time.Second,
 	})
