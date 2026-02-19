@@ -42,7 +42,9 @@ type Service struct {
 	ordererClient      *deliver.Client
 	relay              *relay
 	notifier           *notifier
-	ledgerService      *ledgerService
+	blockStore         *blockStore
+	blockDelivery      *blockDelivery
+	blockQuery         *blockQuery
 	coordConn          *grpc.ClientConn
 	blockToBeCommitted chan *common.Block
 	committedBlock     chan *common.Block
@@ -82,10 +84,10 @@ func New(c *Config) (*Service, error) {
 	relayService := newRelay(c.LastCommittedBlockSetInterval, metrics)
 
 	// 3. Deliver the block with status to client.
-	logger.Infof("Create ledger service for channel %s", c.Orderer.ChannelID)
-	ledgerService, err := newLedgerService(c.Orderer.ChannelID, c.Ledger.Path, c.Ledger.SyncInterval, metrics)
+	logger.Infof("Create block store for channel %s", c.Orderer.ChannelID)
+	blockStore, err := newBlockStore(c.Orderer.ChannelID, c.Ledger.Path, c.Ledger.SyncInterval, metrics)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create ledger: %w", err)
+		return nil, fmt.Errorf("failed to create block store: %w", err)
 	}
 
 	bufferSize := c.ChannelBufferSize
@@ -96,7 +98,9 @@ func New(c *Config) (*Service, error) {
 		ordererClient:      ordererClient,
 		relay:              relayService,
 		notifier:           newNotifier(bufferSize, &c.Notification),
-		ledgerService:      ledgerService,
+		blockStore:         blockStore,
+		blockDelivery:      newBlockDelivery(blockStore, c.Orderer.ChannelID),
+		blockQuery:         newBlockQuery(blockStore.store),
 		healthcheck:        connection.DefaultHealthCheckService(),
 		config:             c,
 		metrics:            metrics,
@@ -138,7 +142,7 @@ func (s *Service) Run(ctx context.Context) error {
 	// Such errors require human interaction to resolve the ledger discrepancy.
 	g.Go(func() error {
 		// Deliver the block with status to clients.
-		return s.ledgerService.run(gCtx, &ledgerRunConfig{
+		return s.blockStore.run(gCtx, &blockStoreRunConfig{
 			IncomingCommittedBlock: s.committedBlock,
 		})
 	})
@@ -162,8 +166,9 @@ func (s *Service) Run(ctx context.Context) error {
 
 // RegisterService registers for the sidecar's GRPC services.
 func (s *Service) RegisterService(server *grpc.Server) {
-	peer.RegisterDeliverServer(server, s.ledgerService)
+	peer.RegisterDeliverServer(server, s.blockDelivery)
 	committerpb.RegisterNotifierServer(server, s.notifier)
+	committerpb.RegisterBlockQueryServiceServer(server, s.blockQuery)
 	healthgrpc.RegisterHealthServer(server, s.healthcheck)
 }
 
@@ -302,7 +307,7 @@ func (s *Service) recoverLedgerStore(
 	client servicepb.CoordinatorClient,
 	stateDBHeight uint64,
 ) error {
-	blockStoreHeight := s.ledgerService.GetBlockHeight()
+	blockStoreHeight := s.blockStore.GetBlockHeight()
 	if blockStoreHeight >= stateDBHeight {
 		// NOTE: The block store height can be greater than the state database height.
 		//       This occurs because the last committed block number is updated in the state
@@ -401,7 +406,7 @@ func (s *Service) monitorQueues(ctx context.Context) {
 
 // Close closes the ledger.
 func (s *Service) Close() {
-	s.ledgerService.close()
+	s.blockStore.close()
 }
 
 func waitForIdleCoordinator(ctx context.Context, client servicepb.CoordinatorClient) error {

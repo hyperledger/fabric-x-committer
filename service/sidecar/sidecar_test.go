@@ -422,17 +422,19 @@ func TestSidecarRecovery(t *testing.T) {
 	//       are expected to be executed only when the process is fully
 	//       shut down. Consequently, when the block store object is
 	//       recreated, it reads the current height from disk. Therefore,
-	//       we reset the ledger service object so that its in-memory data
+	//       we reset the block store object so that its in-memory data
 	//       structure reflects the correct height.
 	var err error
-	env.sidecar.ledgerService, err = newLedgerService(
+	env.sidecar.blockStore, err = newBlockStore(
 		env.config.Orderer.ChannelID,
 		env.config.Ledger.Path,
 		0,
 		newPerformanceMetrics(),
 	)
 	require.NoError(t, err)
-	ensureAtLeastHeight(t, env.sidecar.ledgerService, 1) // back to block 0
+	env.sidecar.blockDelivery = newBlockDelivery(env.sidecar.blockStore, env.config.Orderer.ChannelID)
+	env.sidecar.blockQuery = newBlockQuery(env.sidecar.blockStore.store)
+	ensureAtLeastHeight(t, env.sidecar.blockStore, 1) // back to block 0
 
 	t.Log("4. Make coordinator not idle to ensure sidecar is waiting")
 	env.coordinator.SetWaitingTxsCount(10)
@@ -442,20 +444,20 @@ func TestSidecarRecovery(t *testing.T) {
 
 	t.Log("6. Recovery should not happen when coordinator is not idle.")
 	require.Never(t, func() bool {
-		return env.sidecar.ledgerService.GetBlockHeight() > 1
+		return env.sidecar.blockStore.GetBlockHeight() > 1
 	}, 3*time.Second, 1*time.Second)
 
 	t.Log("7. Make coordinator idle")
 	env.coordinator.SetWaitingTxsCount(0)
 
 	t.Log("8. Blockstore would recover lost blocks")
-	ensureAtLeastHeight(t, env.sidecar.ledgerService, 11)
+	ensureAtLeastHeight(t, env.sidecar.blockStore, 11)
 
 	t.Log("9. Send the next expected block by the coordinator.")
 	env.sendTransactionsAndEnsureCommitted(ctx2, t, 11)
 
 	checkNextBlockNumberToCommit(ctx2, t, env.coordinator, 12)
-	ensureAtLeastHeight(t, env.sidecar.ledgerService, 12)
+	ensureAtLeastHeight(t, env.sidecar.blockStore, 12)
 	cancel2()
 }
 
@@ -682,7 +684,7 @@ func (env *sidecarTestEnv) requireBlock(
 ) *common.Block {
 	t.Helper()
 	checkNextBlockNumberToCommit(ctx, t, env.coordinator, expectedBlockNumber+1)
-	ensureAtLeastHeight(t, env.sidecar.ledgerService, expectedBlockNumber+1)
+	ensureAtLeastHeight(t, env.sidecar.blockStore, expectedBlockNumber+1)
 
 	block, ok := channel.NewReader(ctx, env.committedBlock).Read()
 	require.True(t, ok)
@@ -807,7 +809,7 @@ func TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery(t *testing.T
 	env.sidecar, err = New(&env.config)
 	require.NoError(t, err)
 	t.Cleanup(env.sidecar.Close)
-	ensureAtLeastHeight(t, env.sidecar.ledgerService, 1) // only block 0 exists
+	ensureAtLeastHeight(t, env.sidecar.blockStore, 1) // only block 0 exists
 
 	t.Log("6. Set coordinator's config transaction with correct orderer endpoints")
 	// The coordinator should provide the config block that contains the correct
@@ -828,7 +830,7 @@ func TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery(t *testing.T
 	// The successful recovery of blocks 1-10 proves that orderer endpoints were
 	// updated from the coordinator's config transaction before recoverLedgerStore
 	// was called.
-	ensureAtLeastHeight(t, env.sidecar.ledgerService, 11)
+	ensureAtLeastHeight(t, env.sidecar.blockStore, 11)
 
 	t.Log("9. Verify normal operation continues with recovered state")
 	env.sendTransactionsAndEnsureCommitted(newCtx, t, 11)

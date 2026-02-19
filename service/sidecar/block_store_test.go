@@ -24,25 +24,27 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-func TestLedgerService(t *testing.T) {
+func TestBlockStoreAndDelivery(t *testing.T) {
 	t.Parallel()
 	ledgerPath := t.TempDir()
 	channelID := "ch1"
 
 	metrics := newPerformanceMetrics()
-	ls, err := newLedgerService(channelID, ledgerPath, 0, metrics)
+	bs, err := newBlockStore(channelID, ledgerPath, 0, metrics)
 	require.NoError(t, err)
-	t.Cleanup(ls.close)
+	t.Cleanup(bs.close)
+
+	bd := newBlockDelivery(bs, channelID)
 
 	config := connection.NewLocalHostServer(test.InsecureTLSConfig)
 	inputBlock := make(chan *common.Block, 10)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
-		return connection.FilterStreamRPCError(ls.run(ctx, &ledgerRunConfig{
+		return connection.FilterStreamRPCError(bs.run(ctx, &blockStoreRunConfig{
 			IncomingCommittedBlock: inputBlock,
 		}))
 	}, nil)
 	test.RunGrpcServerForTest(t.Context(), t, config, func(server *grpc.Server) {
-		peer.RegisterDeliverServer(server, ls)
+		peer.RegisterDeliverServer(server, bd)
 	})
 
 	// NOTE: if we start the delivery client without even the 0'th block, it would
@@ -55,9 +57,9 @@ func TestLedgerService(t *testing.T) {
 	}
 	blk0.Metadata = metadata
 
-	require.Zero(t, ls.GetBlockHeight())
+	require.Zero(t, bs.GetBlockHeight())
 	inputBlock <- blk0
-	ensureAtLeastHeight(t, ls, 1)
+	ensureAtLeastHeight(t, bs, 1)
 	require.Equal(t, 1, test.GetIntMetricValue(t, metrics.blockHeight))
 	require.Greater(t, test.GetMetricValue(t, metrics.appendBlockToLedgerSeconds), float64(0))
 
@@ -73,7 +75,7 @@ func TestLedgerService(t *testing.T) {
 	inputBlock <- blk1
 	inputBlock <- blk2
 
-	ensureAtLeastHeight(t, ls, 3)
+	ensureAtLeastHeight(t, bs, 3)
 	require.Equal(t, 3, test.GetIntMetricValue(t, metrics.blockHeight))
 	for i := range 3 {
 		blk := <-receivedBlocksFromLedgerService
@@ -82,7 +84,7 @@ func TestLedgerService(t *testing.T) {
 
 	// if we input the already stored block, it would simply skip.
 	inputBlock <- blk2
-	ensureAtLeastHeight(t, ls, 3)
+	ensureAtLeastHeight(t, bs, 3)
 	require.Equal(t, 3, test.GetIntMetricValue(t, metrics.blockHeight))
 
 	// TODO: appendBlock forces fsync (Append) for single-tx blocks since they may be config blocks,
@@ -92,7 +94,7 @@ func TestLedgerService(t *testing.T) {
 }
 
 // ensureAtLeastHeight checks if the ledger is at or above the specified height.
-func ensureAtLeastHeight(t *testing.T, s *ledgerService, height uint64) {
+func ensureAtLeastHeight(t *testing.T, s *blockStore, height uint64) {
 	t.Helper()
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		require.GreaterOrEqual(ct, s.GetBlockHeight(), height)
