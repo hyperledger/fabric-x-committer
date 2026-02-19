@@ -33,6 +33,7 @@ func newConfigTestEnv(t *testing.T, numHolders int) (
 	gomega.RegisterTestingT(t)
 
 	c := runner.NewRuntime(t, &runner.Config{
+		NumOrderers:  3,
 		BlockSize:    100,
 		BlockTimeout: 2 * time.Second,
 		CrashTest:    true,

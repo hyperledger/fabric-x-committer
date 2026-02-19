@@ -37,6 +37,8 @@ func TestCrashWhenIdle(t *testing.T) {
 	t.Parallel()
 	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{
+		NumVerifiers: 2,
+		NumVCService: 2,
 		// We use a single TX per block to ensure we always get "all" the expected TXs in one block.
 		BlockSize:    1,
 		BlockTimeout: 2 * time.Second,
@@ -103,6 +105,8 @@ func TestCrashWhenNonIdle(t *testing.T) {
 	t.Parallel()
 	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{
+		NumVerifiers:      2,
+		NumVCService:      2,
 		BlockSize:         500,
 		BlockTimeout:      120 * time.Second,
 		LoadgenBlockLimit: 300,

@@ -21,15 +21,6 @@ import (
 // Defaults: 3 orderers, 2 verifiers, 2 VC services, 1 each for other services.
 func allocateServices(t *testing.T, conf *Config, credFactory *test.CredentialsFactory) config.SystemServices {
 	t.Helper()
-	if conf.NumOrderers <= 0 {
-		conf.NumOrderers = 3
-	}
-	if conf.NumVerifiers <= 0 {
-		conf.NumVerifiers = 2
-	}
-	if conf.NumVCService <= 0 {
-		conf.NumVCService = 2
-	}
 	s := serviceAllocator{credFactory: credFactory, tlsMode: conf.TLSMode}
 	defer s.close()
 	return config.SystemServices{

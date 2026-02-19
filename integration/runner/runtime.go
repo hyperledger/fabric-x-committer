@@ -143,6 +143,16 @@ const (
 func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	t.Helper()
 
+	if conf.NumOrderers <= 0 {
+		conf.NumOrderers = 1
+	}
+	if conf.NumVerifiers <= 0 {
+		conf.NumVerifiers = 1
+	}
+	if conf.NumVCService <= 0 {
+		conf.NumVCService = 1
+	}
+
 	t.Log("create TLS manager and clients certificate")
 	credFactory := test.NewCredentialsFactory(t)
 	clientTLS, _ := credFactory.CreateClientCredentials(t, conf.TLSMode)
