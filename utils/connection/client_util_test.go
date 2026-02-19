@@ -22,10 +22,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/grpclog"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
-	"github.com/hyperledger/fabric-x-committer/api/servicepb"
-	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -44,19 +43,18 @@ func TestGRPCRetry(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	vcGrpc := test.RunGrpcServerForTest(ctx, t, serverConfig, mock.NewMockVcService().RegisterService)
+	test.RunGrpcServerForTest(ctx, t, serverConfig, nil)
 
 	t.Log("Connecting")
 	conn := test.NewInsecureConnection(t, &serverConfig.Endpoint)
-	client := servicepb.NewValidationAndCommitServiceClient(conn)
+	client := healthgrpc.NewHealthClient(conn)
 
 	t.Log("Sanity check")
-	_, err := client.GetNamespacePolicies(ctx, nil)
+	_, err := client.Check(ctx, nil)
 	require.NoError(t, err)
 
 	t.Log("Stopping the grpc server")
 	cancel()
-	vcGrpc.Stop()
 	test.CheckServerStopped(t, serverConfig.Endpoint.Address())
 
 	// We override the context to avoid mistakenly using the previous one.
@@ -65,25 +63,24 @@ func TestGRPCRetry(t *testing.T) {
 	go func() {
 		time.Sleep(30 * time.Second)
 		t.Log("Service is starting")
-		test.RunGrpcServerForTest(ctx, t, serverConfig, mock.NewMockVcService().RegisterService)
+		test.RunGrpcServerForTest(ctx, t, serverConfig, nil)
 	}()
 
 	t.Log("Attempting to connect with default GRPC config")
-	_, err = client.GetNamespacePolicies(ctx, nil)
+	_, err = client.Check(ctx, nil)
 	require.NoError(t, err)
 
 	conn2 := test.NewInsecureConnectionWithRetry(t, &serverConfig.Endpoint, connection.RetryProfile{
 		MaxElapsedTime: 2 * time.Second,
 	})
-	client2 := servicepb.NewValidationAndCommitServiceClient(conn2)
+	client2 := healthgrpc.NewHealthClient(conn2)
 
 	t.Log("Sanity check with lower timeout")
-	_, err = client2.GetNamespacePolicies(ctx, nil)
+	_, err = client2.Check(ctx, nil)
 	require.NoError(t, err)
 
 	t.Log("Stopping the grpc server")
 	cancel()
-	vcGrpc.Stop()
 	test.CheckServerStopped(t, serverConfig.Endpoint.Address())
 
 	// We override the context to avoid mistakenly using the previous one.
@@ -93,11 +90,11 @@ func TestGRPCRetry(t *testing.T) {
 	go func() {
 		time.Sleep(30 * time.Second)
 		t.Log("Service is starting")
-		test.RunGrpcServerForTest(ctx, t, serverConfig, mock.NewMockVcService().RegisterService)
+		test.RunGrpcServerForTest(ctx, t, serverConfig, nil)
 	}()
 
 	t.Log("Attempting to connect again with lower timeout")
-	_, err = client2.GetNamespacePolicies(ctx, nil)
+	_, err = client2.Check(ctx, nil)
 	require.Error(t, err)
 }
 
@@ -115,14 +112,14 @@ func TestGRPCRetryMultiEndpoints(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	test.RunGrpcServerForTest(ctx, t, serverConfig, mock.NewMockVcService().RegisterService)
+	test.RunGrpcServerForTest(ctx, t, serverConfig, nil)
 
 	t.Log("Connecting")
 	conn := test.NewInsecureConnection(t, &serverConfig.Endpoint)
-	client := servicepb.NewValidationAndCommitServiceClient(conn)
+	client := healthgrpc.NewHealthClient(conn)
 
 	t.Log("Sanity check")
-	_, err := client.GetNamespacePolicies(ctx, nil)
+	_, err := client.Check(ctx, nil)
 	require.NoError(t, err)
 
 	t.Log("Creating fake service address")
@@ -141,10 +138,10 @@ func TestGRPCRetryMultiEndpoints(t *testing.T) {
 		&fakeServerConfig.Endpoint,
 		&serverConfig.Endpoint,
 	})
-	multiClient := servicepb.NewValidationAndCommitServiceClient(multiConn)
+	multiClient := healthgrpc.NewHealthClient(multiConn)
 	for i := range 100 {
 		t.Logf("Fetch attempt: %d", i)
-		_, err = multiClient.GetNamespacePolicies(ctx, nil)
+		_, err = multiClient.Check(ctx, nil)
 		require.NoError(t, err)
 	}
 }
