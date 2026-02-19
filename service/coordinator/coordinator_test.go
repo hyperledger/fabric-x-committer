@@ -935,7 +935,7 @@ func TestWaitingTxsCount(t *testing.T) {
 		}, 1*time.Minute, 100*time.Millisecond))
 	}()
 
-	verifierStreams := requireStreams(t, env.verifier, 1)
+	verifierStreams := mock.RequireStreams(t, env.verifier, 1)
 	verifierStreams[0].MockFaultyNodeDropSize = 2
 	err := env.csStream.Send(b)
 	require.NoError(t, err)
