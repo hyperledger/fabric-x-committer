@@ -8,6 +8,7 @@ package sidecar
 
 import (
 	"io"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -17,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 )
@@ -25,6 +27,12 @@ import (
 type blockDelivery struct {
 	blockStore *blockStore
 	channelID  string
+}
+
+var blockReadyRetryProfile = connection.RetryProfile{
+	InitialInterval: 100 * time.Millisecond,
+	Multiplier:      1.5,
+	MaxInterval:     3 * time.Second,
 }
 
 func newBlockDelivery(bs *blockStore, channelID string) *blockDelivery {
@@ -92,20 +100,40 @@ func (s *blockDelivery) deliverBlocks(
 		return common.Status_NOT_FOUND, errors.New("channel not found")
 	}
 
-	cursor, stopNum, err := s.getCursor(payload.Data)
+	seekInfo, err := readSeekInfo(payload.Data)
 	if err != nil {
 		return common.Status_BAD_REQUEST, err
 	}
+	cursor, stopNum, err := s.getCursor(seekInfo)
+	if err != nil {
+		return common.Status_BAD_REQUEST, err
+	}
+	defer cursor.Close()
 	logger.Debugf("Received seekInfo.")
 
-	for srv.Context().Err() == nil {
-		block, status := cursor.Next()
+	ctx := srv.Context()
 
+	if seekInfo.Behavior == ab.SeekInfo_BLOCK_UNTIL_READY {
+		// We use a retry backoff here to avoid busy waiting when blocks are not yet available.
+		err = blockReadyRetryProfile.Execute(ctx, func() error {
+			if s.blockStore.ledger.Height() > 0 {
+				return nil
+			}
+			return errors.New("Blocks not yet available")
+		})
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	for ctx.Err() == nil {
+		block, status := cursor.Next()
 		if status != common.Status_SUCCESS {
 			return status, nil
 		}
 
-		if err := srv.Send(&peer.DeliverResponse{Type: &peer.DeliverResponse_Block{Block: block}}); err != nil {
+		err = srv.Send(&peer.DeliverResponse{Type: &peer.DeliverResponse_Block{Block: block}})
+		if err != nil {
 			return common.Status_INTERNAL_SERVER_ERROR, errors.Wrap(err, "error sending response")
 		}
 		logger.Infof("Successfully sent block %d:%d to client.", block.Header.Number, len(block.Data.Data))
@@ -117,15 +145,7 @@ func (s *blockDelivery) deliverBlocks(
 	return common.Status_SUCCESS, nil
 }
 
-func (s *blockDelivery) getCursor(payload []byte) (blockledger.Iterator, uint64, error) {
-	seekInfo := &ab.SeekInfo{}
-	if err := proto.Unmarshal(payload, seekInfo); err != nil {
-		return nil, 0, errors.New("malformed seekInfo payload")
-	}
-	if seekInfo.Start == nil || seekInfo.Stop == nil {
-		return nil, 0, errors.New("seekInfo missing start or stop")
-	}
-
+func (s *blockDelivery) getCursor(seekInfo *ab.SeekInfo) (blockledger.Iterator, uint64, error) {
 	cursor, number := s.blockStore.ledger.Iterator(seekInfo.Start)
 
 	switch stop := seekInfo.Stop.Type.(type) {
@@ -141,12 +161,13 @@ func (s *blockDelivery) getCursor(payload []byte) (blockledger.Iterator, uint64,
 		}
 		return cursor, s.blockStore.ledger.Height() - 1, nil
 	case *ab.SeekPosition_Specified:
-
 		if stop.Specified.Number < number {
+			cursor.Close()
 			return nil, 0, errors.New("start number greater than stop number")
 		}
 		return cursor, stop.Specified.Number, nil
 	default:
+		cursor.Close()
 		return nil, 0, errors.New("unknown type")
 	}
 }
@@ -164,4 +185,15 @@ func wrapDeliverError(status common.Status, err error) error {
 	default:
 		return grpcerror.WrapInternalError(err)
 	}
+}
+
+func readSeekInfo(payload []byte) (*ab.SeekInfo, error) {
+	seekInfo := &ab.SeekInfo{}
+	if err := proto.Unmarshal(payload, seekInfo); err != nil {
+		return nil, errors.New("malformed seekInfo payload")
+	}
+	if seekInfo.Start == nil || seekInfo.Stop == nil {
+		return nil, errors.New("seekInfo missing start or stop")
+	}
+	return seekInfo, nil
 }
