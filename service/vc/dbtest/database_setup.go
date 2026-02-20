@@ -119,7 +119,9 @@ func PrepareTestEnvWithConnection(t *testing.T, conn *Connection) *Connection {
 		//nolint:usetesting // t.Context is finishing right after the test resulting in context.Deadline error.
 		cleanUpCtx, cleanUpCancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cleanUpCancel()
-		logger.WarnStackTrace(dropConn.execute(cleanUpCtx, fmt.Sprintf(dropDBSQLTempl, dbName)))
+		if err := dropConn.execute(cleanUpCtx, fmt.Sprintf(dropDBSQLTempl, dbName)); err != nil {
+			logger.Warnf("%+v", err)
+		}
 	})
 	conn.Database = dbName
 	return conn

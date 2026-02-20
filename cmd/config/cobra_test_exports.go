@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,7 +25,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -83,16 +83,23 @@ func UnitTestRunner(
 	test CommandTest,
 ) {
 	t.Helper()
-	// Set new logger with the config setup.
+	// Redirect os.Stderr to a file so we can capture log output for assertions.
+	// flogging defaults to os.Stderr when Config.Writer is nil. By pointing os.Stderr
+	// at a file, both the initial Init here and any subsequent Init calls (e.g., from
+	// ReadYamlAndSetupLogging during service startup) write to the same file.
 	loggerPath := filepath.Clean(path.Join(t.TempDir(), "logger-output.txt"))
-	logConfig := &logging.Config{
-		Enabled:     true,
-		Level:       logging.Debug,
-		Caller:      true,
-		Development: true,
-		Output:      loggerPath,
+	logFile, err := os.OpenFile(loggerPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	require.NoError(t, err)
+	origStderr := os.Stderr
+	os.Stderr = logFile
+	t.Cleanup(func() {
+		os.Stderr = origStderr
+		_ = logFile.Close()
+	})
+	logConfig := &flogging.Config{
+		LogSpec: "debug",
 	}
-	logging.SetupWithConfig(logConfig)
+	flogging.Init(*logConfig)
 	test.System.Logging = logConfig
 
 	args := test.Args
@@ -115,7 +122,7 @@ func UnitTestRunner(
 		wg.Wait()
 	})
 
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 
 	wg.Add(1)

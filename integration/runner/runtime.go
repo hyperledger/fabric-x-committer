@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
@@ -33,7 +34,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/apptest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -171,7 +171,9 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 				CryptoMaterialPath:    t.TempDir(),
 				PeerOrganizationCount: 2,
 			},
-			Logging:   &logging.DefaultConfig,
+			Logging: &flogging.Config{
+				LogSpec: "info",
+			},
 			RateLimit: conf.RateLimit,
 			ClientTLS: clientTLS,
 

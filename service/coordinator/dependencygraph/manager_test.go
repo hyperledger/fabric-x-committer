@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,7 +20,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -31,7 +31,7 @@ type batchWithLatency struct {
 
 //nolint:gocognit // single method for simplicity.
 func BenchmarkDependencyGraph(b *testing.B) {
-	logging.SetupWithConfig(&logging.Config{Enabled: false})
+	flogging.Init(flogging.Config{LogSpec: "fatal"})
 
 	// Parameters
 	latency := 10 * time.Second

@@ -11,20 +11,20 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
 var testedSchemes = append(signature.AllRealSchemes, "MSP")
 
 func BenchmarkMarshal(b *testing.B) {
-	logging.SetupWithConfig(&logging.Config{Enabled: false})
+	flogging.Init(flogging.Config{LogSpec: "fatal"})
 	txs := workload.GenerateTransactions(b, workload.DefaultProfile(8), b.N)
 
 	resBench := make([][]byte, b.N)
@@ -42,7 +42,7 @@ func BenchmarkMarshal(b *testing.B) {
 }
 
 func BenchmarkDigest(b *testing.B) {
-	logging.SetupWithConfig(&logging.Config{Enabled: false})
+	flogging.Init(flogging.Config{LogSpec: "fatal"})
 	txs := workload.GenerateTransactions(b, workload.DefaultProfile(8), b.N)
 
 	resBench := make([][]byte, b.N)
@@ -62,7 +62,7 @@ func BenchmarkDigest(b *testing.B) {
 }
 
 func BenchmarkSign(b *testing.B) {
-	logging.SetupWithConfig(&logging.Config{Enabled: false})
+	flogging.Init(flogging.Config{LogSpec: "fatal"})
 	for _, scheme := range testedSchemes {
 		b.Run(scheme, func(b *testing.B) {
 			policy, _ := makePolicy(b, scheme)
@@ -85,7 +85,7 @@ func BenchmarkSign(b *testing.B) {
 }
 
 func BenchmarkVerify(b *testing.B) {
-	logging.SetupWithConfig(&logging.Config{Enabled: false})
+	flogging.Init(flogging.Config{LogSpec: "fatal"})
 	for _, scheme := range testedSchemes {
 		b.Run(scheme, func(b *testing.B) {
 			policy, block := makePolicy(b, scheme)

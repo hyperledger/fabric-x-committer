@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+---
 # Configuration for the server
 server:
   # The server's endpoint configuration
@@ -39,21 +40,22 @@ monitoring:
 database:
   endpoints:
     - db:5433
-  username: "yugabyte" # The username for the database
+  username: "yugabyte"  # The username for the database
   # TODO: pass password via environment variable
-  password: "yugabyte" # The password for the database
-  database: "yugabyte" # The database name
+  password: "yugabyte"  # The password for the database
+  database: "yugabyte"  # The database name
   tls:
     # Database TLS configuration being built based on the tls mode chosen: none, tls.
     mode: tls
     ca-cert-path: /server-certs/ca-certificate.pem
-  max-connections: 10 # The maximum size of the connection pool
-  min-connections: 5 # The minimum size of the connection pool
-  load-balance: false # Should be enabled for DB cluster
-  retry: # The exponential backoff retry strategy for database operation.
+  max-connections: 10  # The maximum size of the connection pool
+  min-connections: 5  # The minimum size of the connection pool
+  load-balance: false  # Should be enabled for DB cluster
+  retry:  # The exponential backoff retry strategy for database operation.
     # This strategy increases the delay between retry attempts exponentially.
     # When using YugabyteDB as the backend, it is needed to handle retryable errors.
-    # https://support.yugabyte.com/hc/en-us/articles/4409627048461-How-to-Troubleshoot-Database-Transaction-Retryable-Errors
+    # https://support.yugabyte.com/hc/en-us/articles/
+    # 4409627048461-How-to-Troubleshoot-Database-Transaction-Retryable-Errors
 
     # initial-interval: Specifies the duration of the first backoff interval.
     # This is the time to wait before the first retry attempt.
@@ -89,11 +91,11 @@ database:
     max-elapsed-time: 15m
 
 # Resource limit configurations
-min-batch-keys: 1024             # A batch will execute once it accumulated this number of keys.
-max-batch-wait: 100ms            # A batch will execute once it waited this much time.
-view-aggregation-window: 100ms   # A new view will be created if the previous view was created before this much time.
-max-aggregated-views: 1024       # A new view will be created if the previous view aggregated this number of views.
-max-view-timeout: 10s            # A view will be closed if it was opened for longer than this time.
+min-batch-keys: 1024  # A batch will execute once it accumulated this number of keys.
+max-batch-wait: 100ms  # A batch will execute once it waited this much time.
+view-aggregation-window: 100ms  # A new view will be created if the previous view was created before this much time.
+max-aggregated-views: 1024  # A new view will be created if the previous view aggregated this number of views.
+max-view-timeout: 10s  # A view will be closed if it was opened for longer than this time.
 
 # Maximum number of keys allowed in a single query request.
 # This applies to both GetRows (total keys across all namespaces) and
@@ -103,7 +105,8 @@ max-view-timeout: 10s            # A view will be closed if it was opened for lo
 max-request-keys: 10000
 
 logging:
-  enabled: true
-  development: false
-  level: INFO
-  name: query
+  logSpec: "info"
+  format: >-
+    %{color}%{time:2006-01-02 15:04:05.000 MST} [%{module}] %{shortfunc}
+    -> %{level:.4s}%{color:reset} %{message}
+

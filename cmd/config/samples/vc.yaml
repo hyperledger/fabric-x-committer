@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+---
 # Configuration for the server
 server:
   # The server's endpoint configuration
@@ -35,17 +36,17 @@ monitoring:
 database:
   endpoints:
     - db:5433
-  username: "yugabyte" # The username for the database
+  username: "yugabyte"  # The username for the database
   # TODO: pass password via environment variable
-  password: "yugabyte" # The password for the database
-  database: "yugabyte" # The database name
+  password: "yugabyte"  # The password for the database
+  database: "yugabyte"  # The database name
   tls:
     # Database TLS configuration being built based on the tls mode chosen: none, tls.
     mode: tls
     ca-cert-path: /server-certs/ca-certificate.pem
-  max-connections: 10 # The maximum size of the connection pool
-  min-connections: 5 # The minimum size of the connection pool.
-  load-balance: false # Should be enabled for DB cluster.
+  max-connections: 10  # The maximum size of the connection pool
+  min-connections: 5  # The minimum size of the connection pool.
+  load-balance: false  # Should be enabled for DB cluster.
 
   # Number of tablets to pre-split each table into at creation time (YugabyteDB only).
   # Pre-splitting distributes a table's data across multiple tablet servers from the start,
@@ -56,10 +57,11 @@ database:
   # For example, with 3 tservers, set table-pre-split-tablets to 3 or 6.
   # When the underlying database is PostgreSQL, this setting is automatically ignored even if set.
   table-pre-split-tablets: 0
-  retry: # The exponential backoff retry strategy for database operation.
-         # This strategy increases the delay between retry attempts exponentially.
-         # When using YugabyteDB as the backend, it is needed to handle retryable errors.
-         # https://support.yugabyte.com/hc/en-us/articles/4409627048461-How-to-Troubleshoot-Database-Transaction-Retryable-Errors
+  retry:  # The exponential backoff retry strategy for database operation.
+    # This strategy increases the delay between retry attempts exponentially.
+    # When using YugabyteDB as the backend, it is needed to handle retryable errors.
+    # https://support.yugabyte.com/hc/en-us/articles/
+    # 4409627048461-How-to-Troubleshoot-Database-Transaction-Retryable-Errors
 
     # initial-interval: Specifies the duration of the first backoff interval.
     # This is the time to wait before the first retry attempt.
@@ -96,14 +98,15 @@ database:
 
 # Resource limit configurations
 resource-limits:
-  max-workers-for-preparer: 1 # Maximum number of workers for the preparer
-  max-workers-for-validator: 1 # Maximum number of workers for the validator
-  max-workers-for-committer: 20 # Maximum number of workers for the committer
+  max-workers-for-preparer: 1  # Maximum number of workers for the preparer
+  max-workers-for-validator: 1  # Maximum number of workers for the validator
+  max-workers-for-committer: 20  # Maximum number of workers for the committer
   min-transaction-batch-size: 1
   timeout-for-min-transaction-batch-size: 2s
 
 logging:
-  development: false
-  enabled: true
-  level: INFO
-  name: VC
+  logSpec: "info"
+  format: >-
+    %{color}%{time:2006-01-02 15:04:05.000 MST} [%{module}] %{shortfunc}
+    -> %{level:.4s}%{color:reset} %{message}
+

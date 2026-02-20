@@ -6,6 +6,6 @@ SPDX-License-Identifier: Apache-2.0
 
 package mock
 
-import "github.com/hyperledger/fabric-x-committer/utils/logging"
+import "github.com/hyperledger/fabric-lib-go/common/flogging"
 
-var logger = logging.New("mock")
+var logger = flogging.MustGetLogger("mock")

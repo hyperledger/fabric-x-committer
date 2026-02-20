@@ -11,15 +11,15 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
-var logger = logging.New("dependencygraph")
+var logger = flogging.MustGetLogger("dependencygraph")
 
 type (
 	// localDependencyConstructor construct dependencies between a given set of transactions

@@ -9,17 +9,17 @@ package sidecar
 import (
 	"testing"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 )
 
 func BenchmarkMapBlock(b *testing.B) {
-	logging.SetupWithConfig(&logging.Config{Enabled: false})
+	flogging.Init(flogging.Config{LogSpec: "fatal"})
 	txs := workload.GenerateTransactions(b, workload.DefaultProfile(8), b.N)
 	block := workload.MapToOrdererBlock(1, txs)
 

@@ -9,13 +9,13 @@ package metrics
 import (
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 )
 
-var logger = logging.New("tracker")
+var logger = flogging.MustGetLogger("tracker")
 
 // latencyReceiverSender is used to track TX E2E latency.
 type latencyReceiverSender struct {

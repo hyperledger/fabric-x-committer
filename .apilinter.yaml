@@ -14,7 +14,7 @@
     - core::0127::http-annotation         # HTTP annotations
     - 0131::http-uri-name                 # HTTP URI name should match field name
     - 0136::http-uri-suffix               # HTTP URI suffix check
-    - core::0203::field-behavior-required # E.g., [(google.api.field_behavior) = REQUIRED]
+    - core::0203::field-behavior-required  # E.g., [(google.api.field_behavior) = REQUIRED]
     - core::0123::resource-annotation     # Forces resources annotation (not applicable)
     # Enforces connection between method names to the request/reposne message name.
     - core::0136::response-message-name
@@ -31,3 +31,4 @@
     - core::0191::java-package
     - core::0191::java-outer-classnam
     - core::0191::java-outer-classname
+

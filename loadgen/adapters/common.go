@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 
@@ -19,7 +20,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 )
 
 type (
@@ -66,7 +66,7 @@ type (
 )
 
 var (
-	logger = logging.New("load-gen-adapters")
+	logger = flogging.MustGetLogger("load-gen-adapters")
 
 	// ErrInvalidAdapterConfig indicates that none of the adapter's config were given.
 	ErrInvalidAdapterConfig = errors.New("invalid config passed")

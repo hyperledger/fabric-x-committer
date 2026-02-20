@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -26,7 +27,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 )
 
 type (
@@ -52,7 +52,7 @@ type (
 	}
 )
 
-var logger = logging.New("load-gen-client")
+var logger = flogging.MustGetLogger("load-gen-client")
 
 // NewLoadGenClient creates a new client instance.
 func NewLoadGenClient(conf *ClientConfig) (*Client, error) {

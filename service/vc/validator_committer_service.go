@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
@@ -25,11 +26,10 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
-	"github.com/hyperledger/fabric-x-committer/utils/logging"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
-var logger = logging.New("validator and committer service")
+var logger = flogging.MustGetLogger("validator-committer")
 
 // ValidatorCommitterService is the service that receives transactions from the client, prepares them,
 // validates them and commits them to the database.
@@ -95,7 +95,7 @@ func NewValidatorCommitterService(
 	metrics := newVCServiceMetrics()
 	db, err := newDatabase(ctx, config.Database, metrics)
 	if err != nil {
-		logger.ErrorStackTrace(err)
+		logger.Errorf("%+v", err)
 		return nil, err
 	}
 
@@ -200,7 +200,9 @@ func (vc *ValidatorCommitterService) SetLastCommittedBlockNumber(
 	lastCommittedBlock *servicepb.BlockRef,
 ) (*emptypb.Empty, error) {
 	err := vc.db.setLastCommittedBlockNumber(ctx, lastCommittedBlock)
-	logger.ErrorStackTrace(err)
+	if err != nil {
+		logger.Errorf("%+v", err)
+	}
 	return nil, grpcerror.WrapInternalError(err)
 }
 
@@ -210,7 +212,9 @@ func (vc *ValidatorCommitterService) GetNextBlockNumberToCommit(
 	_ *emptypb.Empty,
 ) (*servicepb.BlockRef, error) {
 	blkInfo, err := vc.db.getNextBlockNumberToCommit(ctx)
-	logger.ErrorStackTrace(err)
+	if err != nil {
+		logger.Errorf("%+v", err)
+	}
 	return blkInfo, grpcerror.WrapInternalError(err)
 }
 
@@ -229,7 +233,7 @@ func (vc *ValidatorCommitterService) GetTransactionsStatus(
 
 	txIDsStatus, err := vc.db.readStatusWithHeight(ctx, txIDs)
 	if err != nil {
-		logger.ErrorStackTrace(err)
+		logger.Errorf("%+v", err)
 		return nil, grpcerror.WrapInternalError(err)
 	}
 
@@ -242,7 +246,9 @@ func (vc *ValidatorCommitterService) GetNamespacePolicies(
 	_ *emptypb.Empty,
 ) (*applicationpb.NamespacePolicies, error) {
 	policies, err := vc.db.readNamespacePolicies(ctx)
-	logger.ErrorStackTrace(err)
+	if err != nil {
+		logger.Errorf("%+v", err)
+	}
 	return policies, grpcerror.WrapInternalError(err)
 }
 
@@ -252,7 +258,9 @@ func (vc *ValidatorCommitterService) GetConfigTransaction(
 	_ *emptypb.Empty,
 ) (*applicationpb.ConfigTransaction, error) {
 	policies, err := vc.db.readConfigTX(ctx)
-	logger.ErrorStackTrace(err)
+	if err != nil {
+		logger.Errorf("%+v", err)
+	}
 	return policies, grpcerror.WrapInternalError(err)
 }
 
@@ -288,7 +296,9 @@ func (vc *ValidatorCommitterService) StartValidateAndCommitStream(
 	})
 
 	err := g.Wait()
-	logger.ErrorStackTrace(err)
+	if err != nil {
+		logger.Errorf("%+v", err)
+	}
 	return grpcerror.WrapInternalError(err)
 }
 

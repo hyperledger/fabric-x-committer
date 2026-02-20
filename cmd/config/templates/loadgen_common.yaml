@@ -88,9 +88,5 @@ limit:
   transactions: {{ .LoadGenTXLimit }}
 
 logging:
-  enabled: {{ .Logging.Enabled }}
-  level: {{ .Logging.Level }}
-  caller: {{ .Logging.Caller }}
-  development: {{ .Logging.Development }}
-  output: {{ .Logging.Output }}
-  name: loadgen
+  logSpec: {{ .Logging.LogSpec }}
+  format: {{ .Logging.Format }}
