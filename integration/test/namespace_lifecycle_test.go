@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 )
 
@@ -137,4 +138,25 @@ func TestCreateUpdateNamespace(t *testing.T) {
 			c.MakeAndSendTransactionsToOrderer(t, tt.txs, tt.expected)
 		})
 	}
+
+	t.Run("empty endorsements", func(t *testing.T) {
+		tx := &applicationpb.Tx{
+			Namespaces: []*applicationpb.TxNamespace{{
+				NsId:      "1",
+				NsVersion: 2,
+				BlindWrites: []*applicationpb.Write{{
+					Key:   []byte("key5"),
+					Value: []byte("value5"),
+				}},
+			}},
+			Endorsements: []*applicationpb.Endorsements{{
+				EndorsementsWithIdentity: []*applicationpb.EndorsementWithIdentity{},
+			}},
+		}
+		lgTx := c.TxBuilder.MakeTx(tx)
+		c.SendTransactionsToOrderer(t,
+			[]*servicepb.LoadGenTx{lgTx},
+			[]committerpb.Status{committerpb.Status_MALFORMED_MISSING_SIGNATURE},
+		)
+	})
 }

@@ -132,6 +132,9 @@ func (*keyVerifier) UpdateIdentities(msp.IdentityDeserializer) error {
 
 // Verify evaluates the endorsements against the data for keyVerifier.
 func (v *keyVerifier) Verify(data []byte, endorsements []*applicationpb.EndorsementWithIdentity) error {
+	if len(endorsements) == 0 {
+		return errors.New("no endorsements provided for key-based verification")
+	}
 	digest := sha256.Sum256(data)
 	return v.verifyDigest(digest[:], endorsements[0].Endorsement)
 }
@@ -166,8 +169,14 @@ func (v *channelPolicyVerifier) Verify(data []byte, endorsements []*applicationp
 
 // evaluateEndorsements constructs SignedData from endorsements and evaluates them against a policy.
 func evaluateEndorsements(p policies.Policy, data []byte, endorsements []*applicationpb.EndorsementWithIdentity) error {
+	if len(endorsements) == 0 {
+		return errors.New("no endorsements provided for MSP-based verification")
+	}
 	signedData := make([]*protoutil.SignedData, len(endorsements))
 	for i, s := range endorsements {
+		if s.Identity == nil {
+			return errors.New("endorsement has nil identity")
+		}
 		signedData[i] = &protoutil.SignedData{
 			Data:      data,
 			Identity:  s.Identity,
