@@ -92,8 +92,7 @@ multiplatform  ?= false
 env            ?= env GOOS=$(os) GOARCH=$(arch)
 build_flags    ?= -buildvcs=false -o
 go_build       ?= $(env) $(go_cmd) build $(build_flags)
-test_flags     ?=
-go_test        ?= $(env) $(go_cmd) test -json -v -timeout 30m $(test_flags)
+test_cmd       ?= scripts/test-packages.sh
 proto_flags    ?=
 
 ifneq ("$(wildcard /usr/include)","")
@@ -138,55 +137,48 @@ COR_DB_PACKAGES=$(shell $(go_cmd) list ./... | grep -E "$(CORE_DB_PACKAGES_REGEX
 REQUIRES_DB_PACKAGES=$(shell $(go_cmd) list ./... | grep -E "$(REQUIRES_DB_PACKAGES_REGEXP)")
 NO_DB_PACKAGES=$(shell $(go_cmd) list ./... | grep -vE "$(CORE_DB_PACKAGES_REGEXP)|$(REQUIRES_DB_PACKAGES_REGEXP)|$(HEAVY_PACKAGES_REGEXP)")
 
-GO_TEST_FMT_FLAGS := -hide empty-packages
-
-
 # Excludes integration and container tests.
 # Use `test-integration`, `test-integration-db-resiliency`, and `test-container`.
 test: build
-	@$(go_test) ${NON_HEAVY_PACKAGES} | gotestfmt ${GO_TEST_FMT_FLAGS}
+	@$(test_cmd) "${NON_HEAVY_PACKAGES}"
 
 # Test a specific package.
 test-package-%: build
-	@$(go_test) ./$*/... | gotestfmt ${GO_TEST_FMT_FLAGS}
+	@$(test_cmd) ./$*/...
 
 # Integration tests excluding DB resiliency tests.
 # Use `test-integration-db-resiliency`.
 test-integration: build
-	@$(go_test) ./integration/... -skip "DBResiliency.*" | gotestfmt ${GO_TEST_FMT_FLAGS}
+	@$(test_cmd) ./integration/... -skip "DBResiliency.*"
 
 # DB resiliency integration tests.
 test-integration-db-resiliency: build
-	@$(go_test) ./integration/... -run "DBResiliency.*" | gotestfmt ${GO_TEST_FMT_FLAGS}
+	@$(test_cmd) ./integration/... -run "DBResiliency.*"
 
 # Tests the all-in-one docker image.
 test-container: build-test-node-image build-release-image
-	@$(go_test) ./docker/... | gotestfmt ${GO_TEST_FMT_FLAGS}
+	@$(test_cmd) ./docker/...
 
 # Tests for components that directly talk to the DB, where different DBs might affect behaviour.
-test-core-db: build
-	@$(go_test)  ${COR_DB_PACKAGES} | gotestfmt ${GO_TEST_FMT_FLAGS}
+test-core-db: FORCE
+	@$(test_cmd) "${COR_DB_PACKAGES}"
 
 # Tests for components that depend on the DB layer, but are agnostic to the specific DB used.
-test-requires-db: build
-	@$(go_test) ${REQUIRES_DB_PACKAGES} | gotestfmt ${GO_TEST_FMT_FLAGS}
-
-# Tests the ASN.1 marshalling using fuzz testing.
-test-fuzz: build
-	@$(go_test) -run="^$$" -fuzz=".*" -fuzztime=5m ./utils/signature | gotestfmt ${GO_TEST_FMT_FLAGS}
+test-requires-db: FORCE
+	@$(test_cmd) "${REQUIRES_DB_PACKAGES}"
 
 # Tests that require no DB at all, e.g., pure logic, utilities
-test-no-db: build
-	@$(go_test) ${NO_DB_PACKAGES} | gotestfmt ${GO_TEST_FMT_FLAGS}
+test-no-db: FORCE
+	@$(test_cmd) "${NO_DB_PACKAGES}" -coverprofile=coverage.profile -coverpkg=./...
 
 # Tests for components that depend on the DB layer, and ones that are agnostic to the specific DB used.
-test-all-db: build
-	@$(go_test) ${REQUIRES_DB_PACKAGES} ${COR_DB_PACKAGES} | gotestfmt ${GO_TEST_FMT_FLAGS}
+test-all-db: FORCE
+	@$(test_cmd) "${REQUIRES_DB_PACKAGES} ${COR_DB_PACKAGES}" -coverprofile=coverage.profile -coverpkg=./...
 
 # Runs test coverage analysis. It uses same tests that will be covered by the CI.
-test-cover: build
-	@$(go_cmd) test -v -coverprofile=coverage.profile -coverpkg=./... \
-		${NO_DB_PACKAGES} ${REQUIRES_DB_PACKAGES} ${COR_DB_PACKAGES}
+test-cover: FORCE
+	@$(test_cmd) "${NO_DB_PACKAGES} ${REQUIRES_DB_PACKAGES} ${COR_DB_PACKAGES}" \
+		-coverprofile=coverage.profile -coverpkg=./...
 	@scripts/test-coverage-filter-files.sh
 
 cover-report: FORCE

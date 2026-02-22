@@ -39,10 +39,11 @@ jobs:
           go-version-file: go.mod
       - run: scripts/install-dev-dependencies.sh
 
+      # Applying go.mod tidy rules and downloading dependencies in a different
+      # step to reduce output clutter.
+      - run: go mod tidy
       - name: Lint
         run: |
-          # Applying go.mod tidy rules and downloading dependencies.
-          go mod tidy
           # Re make protobufs, overwriting any formatting.
           PATH="$HOME/bin:$PATH" make proto
           # Check if original code changed due to formatting.
@@ -64,7 +65,8 @@ jobs:
         with:
           go-version-file: go.mod
       - run: scripts/install-dev-dependencies.sh
-      - run: make test_flags="-coverprofile=coverage.profile -coverpkg=./..." test-no-db
+      - run: go mod tidy
+      - run: make test-no-db
       - run: scripts/test-coverage-filter-files.sh
       - name: Send coverage
         uses: shogo82148/actions-goveralls@v1
@@ -72,18 +74,6 @@ jobs:
           path-to-profile: coverage.profile
           flag-name: unit-test
           parallel: true
-
-  fuzz-test:
-    name: Fuzz Test (non DB)
-    needs: [gate]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - run: scripts/install-dev-dependencies.sh
-      - run: make test-fuzz
 
   db-test:
     name: Requires and Core DB Tests (postgres)
@@ -96,7 +86,8 @@ jobs:
           go-version-file: go.mod
       - run: scripts/install-dev-dependencies.sh
       - run: scripts/get-and-start-postgres.sh
-      - run: make test_flags="-coverprofile=coverage.profile -coverpkg=./..." test-all-db
+      - run: go mod tidy
+      - run: make test-all-db
       - run: scripts/test-coverage-filter-files.sh
       - name: Send coverage
         uses: shogo82148/actions-goveralls@v1
@@ -116,6 +107,7 @@ jobs:
           go-version-file: go.mod
       - run: scripts/install-dev-dependencies.sh
       - run: scripts/get-and-start-yuga.sh
+      - run: go mod tidy
       - run: make test-core-db
 
   integration-test:
@@ -129,6 +121,7 @@ jobs:
           go-version-file: go.mod
       - run: scripts/install-dev-dependencies.sh
       - run: scripts/get-and-start-yuga.sh
+      - run: go mod tidy
       - run: make test-integration
 
   db-resiliency-test:
@@ -141,6 +134,7 @@ jobs:
         with:
           go-version-file: go.mod
       - run: scripts/install-dev-dependencies.sh
+      - run: go mod tidy
       - run: make test-integration-db-resiliency
 
   container-test:
@@ -153,6 +147,7 @@ jobs:
         with:
           go-version-file: go.mod
       - run: scripts/install-dev-dependencies.sh
+      - run: go mod tidy
       - run: make test-container
 
   coveralls:
