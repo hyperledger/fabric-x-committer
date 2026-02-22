@@ -33,7 +33,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/apptest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -384,7 +383,6 @@ func (c *CommitterRuntime) startBlockDelivery(t *testing.T) {
 	t.Log("Running delivery client")
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(c.SidecarClient.Deliver(ctx, &sidecarclient.DeliverParameters{
-			EndBlkNum:   deliver.MaxBlockNum,
 			OutputBlock: c.CommittedBlock,
 		}))
 	}, func(ctx context.Context) bool {

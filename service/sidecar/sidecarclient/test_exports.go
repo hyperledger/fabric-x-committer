@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -23,7 +22,7 @@ func StartSidecarClient(
 	ctx context.Context,
 	t *testing.T,
 	config *Parameters,
-	startBlkNum int64,
+	startBlkNum uint64,
 ) chan *common.Block {
 	t.Helper()
 	receivedBlocksFromLedgerService := make(chan *common.Block, 10)
@@ -32,9 +31,8 @@ func StartSidecarClient(
 	test.RunServiceForTest(ctx, t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(deliverClient.Deliver(ctx,
 			&DeliverParameters{
-				StartBlkNum: startBlkNum,
-				EndBlkNum:   deliver.MaxBlockNum,
-				OutputBlock: receivedBlocksFromLedgerService,
+				NextBlockNum: startBlkNum,
+				OutputBlock:  receivedBlocksFromLedgerService,
 			},
 		))
 	}, nil)

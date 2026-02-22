@@ -35,9 +35,8 @@ type (
 	// DeliverParameters needed for deliver to run.
 	// This is copy of deliver.Parameters to allow easy divergence in the future.
 	DeliverParameters struct {
-		StartBlkNum int64
-		EndBlkNum   uint64
-		OutputBlock chan<- *common.Block
+		NextBlockNum uint64
+		OutputBlock  chan<- *common.Block
 	}
 
 	// ledgerDeliverStream implements deliver.Stream.
@@ -91,9 +90,8 @@ func (c *Client) CloseConnections() {
 // This is a wrapper for CftClient.Deliver to allow easy divergence in the future.
 func (c *Client) Deliver(ctx context.Context, config *DeliverParameters) error {
 	return c.CftClient.Deliver(ctx, &deliver.Parameters{
-		StartBlkNum: config.StartBlkNum,
-		EndBlkNum:   config.EndBlkNum,
-		OutputBlock: config.OutputBlock,
+		NextBlockNum: config.NextBlockNum,
+		OutputBlock:  config.OutputBlock,
 	})
 }
 

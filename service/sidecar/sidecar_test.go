@@ -185,7 +185,7 @@ func newSidecarTestEnvWithTLS(
 func (env *sidecarTestEnv) startSidecarServiceAndClientAndNotificationStream(
 	ctx context.Context,
 	t *testing.T,
-	startBlkNum int64,
+	startBlkNum uint64,
 	sidecarClientCreds connection.TLSConfig,
 ) {
 	t.Helper()
@@ -202,7 +202,7 @@ func (env *sidecarTestEnv) startSidecarService(ctx context.Context, t *testing.T
 func (env *sidecarTestEnv) startSidecarClient(
 	ctx context.Context,
 	t *testing.T,
-	startBlkNum int64,
+	startBlkNum uint64,
 	sidecarClientCreds connection.TLSConfig,
 ) {
 	t.Helper()

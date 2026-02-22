@@ -68,9 +68,8 @@ func TestBroadcastDeliver(t *testing.T) {
 			outputBlocksChan := make(chan *common.Block, 100)
 			go func() {
 				err = client.Deliver(ctx, &deliver.Parameters{
-					StartBlkNum: 0,
-					EndBlkNum:   deliver.MaxBlockNum,
-					OutputBlock: outputBlocksChan,
+					NextBlockNum: 0,
+					OutputBlock:  outputBlocksChan,
 				})
 				assert.ErrorIs(t, err, context.Canceled)
 			}()

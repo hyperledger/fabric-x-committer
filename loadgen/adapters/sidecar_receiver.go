@@ -46,7 +46,6 @@ func runSidecarReceiver(ctx context.Context, params *sidecarReceiverParameters) 
 	}
 	return runDeliveryReceiver(ctx, params.Res, func(gCtx context.Context, committedBlock chan *common.Block) error {
 		return ledgerReceiver.Deliver(gCtx, &sidecarclient.DeliverParameters{
-			EndBlkNum:   deliver.MaxBlockNum,
 			OutputBlock: committedBlock,
 		})
 	})
@@ -56,7 +55,6 @@ func runSidecarReceiver(ctx context.Context, params *sidecarReceiverParameters) 
 func runOrdererReceiver(ctx context.Context, res *ClientResources, client *deliver.Client) error {
 	return runDeliveryReceiver(ctx, res, func(gCtx context.Context, committedBlock chan *common.Block) error {
 		return client.Deliver(gCtx, &deliver.Parameters{
-			EndBlkNum:   deliver.MaxBlockNum,
 			OutputBlock: committedBlock,
 		})
 	})
