@@ -209,6 +209,30 @@ func TestWrapErrors(t *testing.T) {
 	}
 }
 
+func TestWrapResourceExhaustedOrCancelled(t *testing.T) {
+	t.Parallel()
+
+	t.Run("active context returns ResourceExhausted", func(t *testing.T) {
+		t.Parallel()
+		err := WrapResourceExhaustedOrCancelled(t.Context(), errors.New("too many streams"))
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.ResourceExhausted, st.Code())
+		require.Equal(t, "too many streams", st.Message())
+	})
+
+	t.Run("cancelled context returns Canceled", func(t *testing.T) {
+		t.Parallel()
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		err := WrapResourceExhaustedOrCancelled(ctx, errors.New("too many streams"))
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Canceled, st.Code())
+		require.Equal(t, context.Canceled.Error(), st.Message())
+	})
+}
+
 func TestWrapWithContext(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

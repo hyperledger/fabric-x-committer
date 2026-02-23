@@ -134,18 +134,16 @@ func (q *Service) BeginView(
 		if err != nil {
 			return nil, grpcerror.WrapInternalError(err)
 		}
-		if err = q.batcher.makeView(ctx, viewID, params); err == nil {
+		err = q.batcher.makeView(ctx, viewID, params)
+		if err == nil {
 			return &committerpb.View{Id: viewID}, nil
 		}
 		if errors.Is(err, errViewIDCollision) {
 			continue
 		}
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, grpcerror.WrapCancelled(err)
-		}
 		if errors.Is(err, ErrTooManyActiveViews) {
-			return nil, grpcerror.WrapResourceExhausted(
-				errors.Wrapf(ErrTooManyActiveViews, "limit %d", q.config.MaxActiveViews),
+			return nil, grpcerror.WrapResourceExhaustedOrCancelled(ctx,
+				errors.Wrapf(err, "limit %d", q.config.MaxActiveViews),
 			)
 		}
 		return nil, grpcerror.WrapInternalError(err)

@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/durationpb"
 
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -409,7 +410,7 @@ func TestNotifierMaxConcurrentStreams(t *testing.T) {
 	}
 
 	t.Log("Opening many streams with unlimited config")
-	env.n.streamLimiter.SetLimit(0)
+	env.n.streamLimiter = utils.NewConcurrencyLimiter(0)
 	for range 10 {
 		stream, err := client.OpenNotificationStream(t.Context())
 		require.NoError(t, err)
@@ -428,7 +429,7 @@ func TestNotifierTryAcquireStreamConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	for range 20 {
 		wg.Go(func() {
-			if n.streamLimiter.TryAcquire(t.Context()) == nil {
+			if n.streamLimiter.TryAcquire(t.Context()) {
 				successCount.Add(1)
 			}
 		})
@@ -443,18 +444,5 @@ func TestNotifierTryAcquireStreamConcurrent(t *testing.T) {
 		n.streamLimiter.Release()
 	}
 	require.Equal(t, int64(0), n.streamLimiter.Load())
-	require.NoError(t, n.streamLimiter.TryAcquire(t.Context()))
-}
-
-func TestNotifierTryAcquireStreamContextCanceled(t *testing.T) {
-	t.Parallel()
-	n := newNotifier(defaultBufferSize, &NotificationServiceConfig{
-		MaxConcurrentStreams: 1,
-	})
-
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	err := n.streamLimiter.TryAcquire(ctx)
-	require.ErrorIs(t, err, context.Canceled)
-	require.Equal(t, int64(0), n.streamLimiter.Load())
+	require.True(t, n.streamLimiter.TryAcquire(t.Context()))
 }

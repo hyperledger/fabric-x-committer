@@ -92,11 +92,8 @@ func (n *notifier) run(ctx context.Context, statusQueue chan []*committerpb.TxSt
 
 // OpenNotificationStream implements the [protonotify.NotifierServer] API.
 func (n *notifier) OpenNotificationStream(stream committerpb.Notifier_OpenNotificationStreamServer) error {
-	if err := n.streamLimiter.TryAcquire(stream.Context()); err != nil {
-		if errors.Is(err, utils.ErrConcurrencyLimitReached) {
-			return grpcerror.WrapResourceExhausted(ErrTooManyNotificationStreams)
-		}
-		return grpcerror.WrapCancelled(err)
+	if !n.streamLimiter.TryAcquire(stream.Context()) {
+		return grpcerror.WrapResourceExhaustedOrCancelled(stream.Context(), ErrTooManyNotificationStreams)
 	}
 	defer n.streamLimiter.Release()
 

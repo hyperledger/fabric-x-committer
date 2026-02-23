@@ -330,7 +330,7 @@ func TestMaxActiveViews(t *testing.T) {
 	})
 }
 
-func TestMakeViewContextCanceled(t *testing.T) {
+func TestMakeViewLimitReached(t *testing.T) {
 	t.Parallel()
 
 	vb := &viewsBatcher{
@@ -341,12 +341,11 @@ func TestMakeViewContextCanceled(t *testing.T) {
 	}
 	params := defaultViewParams(time.Minute)
 
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
+	require.True(t, vb.viewLimiter.TryAcquire(t.Context()))
 
-	err := vb.makeView(ctx, "view-id", params)
-	require.ErrorIs(t, err, context.Canceled)
-	require.Equal(t, int64(0), vb.viewLimiter.Load())
+	err := vb.makeView(t.Context(), "view-id", params)
+	require.ErrorIs(t, err, ErrTooManyActiveViews)
+	require.Equal(t, int64(1), vb.viewLimiter.Load())
 }
 
 func TestQueryMetrics(t *testing.T) {

@@ -115,20 +115,9 @@ type (
 func (q *viewsBatcher) makeView(
 	ctx context.Context, viewID string, p *committerpb.ViewParameters,
 ) error {
-	acquireErr := q.viewLimiter.TryAcquire(ctx)
-	if acquireErr != nil {
-		if errors.Is(acquireErr, utils.ErrConcurrencyLimitReached) {
-			return ErrTooManyActiveViews
-		}
-		return acquireErr
+	if !q.viewLimiter.TryAcquire(ctx) {
+		return ErrTooManyActiveViews
 	}
-
-	releaseViewSlot := false
-	defer func() {
-		if releaseViewSlot {
-			q.viewLimiter.Release()
-		}
-	}()
 
 	viewCtx, cancel := context.WithTimeout(q.ctx, time.Duration(p.TimeoutMilliseconds)*time.Millisecond) //nolint:gosec
 	v := &viewHolder{
@@ -138,7 +127,7 @@ func (q *viewsBatcher) makeView(
 	}
 	if _, loaded := q.viewIDToViewHolder.LoadOrStore(viewID, v); loaded {
 		cancel()
-		releaseViewSlot = true
+		q.viewLimiter.Release()
 		return errViewIDCollision
 	}
 

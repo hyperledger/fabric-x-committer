@@ -142,10 +142,10 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 	tlsConfig, _ := params.credsFactory.CreateServerCredentials(t, params.tlsMode, params.node)
 
 	node := &dbtest.DatabaseContainer{
-		Name:         assembleContainerName(params.node, params.tlsMode, params.dbType),
 		DatabaseType: params.dbType,
 		Network:      params.networkName,
 		Hostname:     params.node,
+		DbPort:       defaultDBPort,
 		TLSConfig:    &tlsConfig,
 	}
 
