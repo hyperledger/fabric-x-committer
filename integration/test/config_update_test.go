@@ -211,7 +211,7 @@ func TestConfigUpdateOrdererEndpoints(t *testing.T) {
 	holdingEndpoints, nonHoldingEndpoints := allEndpoints[:1], allEndpoints[1:]
 	holdingEndpoint := holdingEndpoints[0].Address()
 	holdingState := &mock.PartyState{PartyID: 1}
-	ordererEnv.Orderer.RegisterSharedState(holdingEndpoint, holdingState)
+	ordererEnv.Orderer.RegisterPartyState(holdingEndpoint, holdingState)
 	submitConfigBlock(holdingEndpoints)
 	c.ValidateExpectedResultsInCommittedBlock(t, &runner.ExpectedStatusInBlock{
 		Statuses: []committerpb.Status{committerpb.Status_COMMITTED},

@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package mock
 
 import (
+	"cmp"
 	"context"
 	"maps"
 	"slices"
@@ -22,14 +23,15 @@ type (
 	// streamStateManager is a helper struct to be embedded in the mock services.
 	// It helps manage the open streams, detect the number of active stream, and
 	// to which endpoint each client connected to.
-	// In addition, it allows configuring a shared, persistent state between multiple streams
-	// according to the stream's server endpoint.
-	// This allows uniform behavior for each mock server.
-	streamStateManager[T, S any] struct {
-		streamIndexMap                   map[uint64]*internalStreamState[T]
-		streamEndpointPersistentStateMap map[string]*S
-		streamsMu                        sync.Mutex
-		streamsIDCounter                 atomic.Uint64
+	streamStateManager[T any] struct {
+		indexToStreamState map[uint64]*internalStreamState[T]
+		streamsMu          sync.Mutex
+		streamsIDCounter   atomic.Uint64
+	}
+
+	internalStreamState[T any] struct {
+		info  StreamInfo
+		state *T
 	}
 
 	// StreamInfo holds the information of a mock stream.
@@ -38,15 +40,10 @@ type (
 		ServerEndpoint string
 		ClientEndpoint string
 	}
-
-	internalStreamState[T any] struct {
-		info  StreamInfo
-		state *T
-	}
 )
 
-// Streams returns the current active streams in the orderer they were created.
-func (s *streamStateManager[T, S]) Streams() []*T {
+// StreamsStates returns the current active streams in the orderer they were created.
+func (s *streamStateManager[T]) StreamsStates() []*T {
 	streams := s.internalStreams()
 	states := make([]*T, len(streams))
 	for i, stream := range streams {
@@ -55,9 +52,9 @@ func (s *streamStateManager[T, S]) Streams() []*T {
 	return states
 }
 
-// StreamsByEndpoints returns the current active streams that was accessed using one of the specific endpoints,
-// in the orderer they were created.
-func (s *streamStateManager[T, S]) StreamsByEndpoints(endpoints ...string) []*T {
+// StreamsStatesByServerEndpoints returns the current active streams that was accessed using
+// one of the specific endpoints, in the orderer they were created.
+func (s *streamStateManager[T]) StreamsStatesByServerEndpoints(endpoints ...string) []*T {
 	streams := s.internalStreams()
 	states := make([]*T, 0, len(streams))
 	for _, stream := range streams {
@@ -68,29 +65,20 @@ func (s *streamStateManager[T, S]) StreamsByEndpoints(endpoints ...string) []*T 
 	return states
 }
 
-func (s *streamStateManager[T, S]) RegisterSharedState(address string, sharedState *S) {
+func (s *streamStateManager[T]) internalStreams() []*internalStreamState[T] {
 	s.streamsMu.Lock()
 	defer s.streamsMu.Unlock()
-	if s.streamEndpointPersistentStateMap == nil {
-		s.streamEndpointPersistentStateMap = make(map[string]*S)
-	}
-	s.streamEndpointPersistentStateMap[address] = sharedState
-}
-
-func (s *streamStateManager[T, S]) internalStreams() []*internalStreamState[T] {
-	s.streamsMu.Lock()
-	defer s.streamsMu.Unlock()
-	if s.streamIndexMap == nil {
+	if s.indexToStreamState == nil {
 		return nil
 	}
-	streams := slices.Collect(maps.Values(s.streamIndexMap))
+	streams := slices.Collect(maps.Values(s.indexToStreamState))
 	slices.SortFunc(streams, func(a, b *internalStreamState[T]) int {
-		return int(a.info.Index) - int(b.info.Index) //nolint:gosec // required for sorting.
+		return cmp.Compare(a.info.Index, b.info.Index)
 	})
 	return streams
 }
 
-func (s *streamStateManager[T, S]) registerStream(streamCtx context.Context, factory func(StreamInfo, *S) *T) *T {
+func (s *streamStateManager[T]) registerStream(streamCtx context.Context, factory func(StreamInfo) *T) *T {
 	info := StreamInfo{
 		Index:          s.streamsIDCounter.Add(1),
 		ServerEndpoint: utils.ExtractServerAddress(streamCtx),
@@ -100,7 +88,7 @@ func (s *streamStateManager[T, S]) registerStream(streamCtx context.Context, fac
 		logger.Infof("Closing stream [%d]", info.Index)
 		s.streamsMu.Lock()
 		defer s.streamsMu.Unlock()
-		delete(s.streamIndexMap, info.Index)
+		delete(s.indexToStreamState, info.Index)
 	})
 
 	logger.Infof("Registering stream [%d] on server %s for client %s",
@@ -108,18 +96,10 @@ func (s *streamStateManager[T, S]) registerStream(streamCtx context.Context, fac
 
 	s.streamsMu.Lock()
 	defer s.streamsMu.Unlock()
-	if s.streamIndexMap == nil {
-		s.streamIndexMap = make(map[uint64]*internalStreamState[T])
+	if s.indexToStreamState == nil {
+		s.indexToStreamState = make(map[uint64]*internalStreamState[T])
 	}
-	if s.streamEndpointPersistentStateMap == nil {
-		s.streamEndpointPersistentStateMap = make(map[string]*S)
-	}
-	sharedState, loaded := s.streamEndpointPersistentStateMap[info.ServerEndpoint]
-	if !loaded {
-		sharedState = new(S)
-		s.streamEndpointPersistentStateMap[info.ServerEndpoint] = sharedState
-	}
-	state := factory(info, sharedState)
-	s.streamIndexMap[info.Index] = &internalStreamState[T]{info: info, state: state}
+	state := factory(info)
+	s.indexToStreamState[info.Index] = &internalStreamState[T]{info: info, state: state}
 	return state
 }

@@ -31,7 +31,7 @@ type (
 	// - when the tx has non-empty signature, it is valid.
 	Verifier struct {
 		servicepb.UnimplementedVerifierServer
-		streamStateManager[VerifierStreamState, any]
+		streamStateManager[VerifierStreamState]
 		healthcheck *health.Server
 	}
 
@@ -71,7 +71,7 @@ func (m *Verifier) RegisterService(server *grpc.Server) {
 // StartStream is a mock implementation of the [protosignverifierservice.VerifierServer].
 func (m *Verifier) StartStream(stream servicepb.Verifier_StartStreamServer) error {
 	g, eCtx := errgroup.WithContext(stream.Context())
-	state := m.registerStream(eCtx, func(info StreamInfo, _ *any) *VerifierStreamState {
+	state := m.registerStream(eCtx, func(info StreamInfo) *VerifierStreamState {
 		return &VerifierStreamState{
 			StreamInfo:   info,
 			requestBatch: make(chan *servicepb.VerifierBatch, 10),

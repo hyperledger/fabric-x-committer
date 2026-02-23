@@ -54,14 +54,15 @@ type (
 
 	// Orderer supports running multiple mock-orderer services which mocks a consortium.
 	Orderer struct {
-		streamStateManager[OrdererStreamState, PartyState]
-		config      *OrdererConfig
-		configBlock *common.Block
-		inEnvs      chan *common.Envelope
-		inBlocks    chan *common.Block
-		cutBlock    chan any
-		cache       *blockCache
-		healthcheck *health.Server
+		streamStateManager[OrdererStreamState]
+		endpointToPartyState utils.SyncMap[string, *PartyState]
+		config               *OrdererConfig
+		configBlock          *common.Block
+		inEnvs               chan *common.Envelope
+		inBlocks             chan *common.Block
+		cutBlock             chan any
+		cache                *blockCache
+		healthcheck          *health.Server
 	}
 
 	// OrdererStreamState holds the streams state.
@@ -71,6 +72,8 @@ type (
 	}
 
 	// PartyState holds the shared state of all streams of a party.
+	// HoldFromBlock will hold the blocks starting from this number.
+	// If HoldFromBlock is 0, no blocks will be held.
 	PartyState struct {
 		PartyID       uint32
 		HoldFromBlock atomic.Uint64
@@ -189,10 +192,11 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 	}
 
 	ctx := stream.Context()
-	state := o.registerStream(ctx, func(info StreamInfo, p *PartyState) *OrdererStreamState {
+	state := o.registerStream(ctx, func(info StreamInfo) *OrdererStreamState {
+		partyState, _ := o.endpointToPartyState.LoadOrStore(info.ServerEndpoint, &PartyState{})
 		return &OrdererStreamState{
 			StreamInfo: info,
-			PartyState: p,
+			PartyState: partyState,
 		}
 	})
 	logger.Infof("Mock Orderer starting deliver on server [%s], party [%d], from block %d",
@@ -224,6 +228,14 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 		prevBlock = b
 	}
 	return grpcerror.WrapCancelled(ctx.Err())
+}
+
+// RegisterPartyState registered a persistent party state for the server.
+// It allows configuring a shared, persistent party state between multiple streams
+// according to the stream's server endpoint.
+// This allows uniform behavior for each mock server.
+func (o *Orderer) RegisterPartyState(address string, partyState *PartyState) {
+	o.endpointToPartyState.Store(address, partyState)
 }
 
 func (s *OrdererStreamState) prepareResponse(ctx context.Context, block *common.Block) *ab.DeliverResponse {

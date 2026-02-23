@@ -320,9 +320,9 @@ func TestOrdererStreamingAPI(t *testing.T) {
 	t.Log("Register parties")
 	p1 := PartyState{PartyID: 1}
 	p2 := PartyState{PartyID: 2}
-	o.RegisterSharedState(addr0, &p1)
-	o.RegisterSharedState(addr1, &p1)
-	o.RegisterSharedState(addr2, &p2)
+	o.RegisterPartyState(addr0, &p1)
+	o.RegisterPartyState(addr1, &p1)
+	o.RegisterPartyState(addr2, &p2)
 
 	s0 = startStream(t, ep0)
 	streamState0 := RequireStreamsWithEndpoints(t, o, 1, addr0)

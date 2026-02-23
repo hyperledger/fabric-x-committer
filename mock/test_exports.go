@@ -169,8 +169,8 @@ func (e *OrdererTestEnv) AllFakeEndpoints() []*commontypes.OrdererEndpoint {
 
 // StreamFetcher is used by RequireStreams/RequireStreamsWithEndpoints.
 type StreamFetcher[T any] interface {
-	Streams() []*T
-	StreamsByEndpoints(endpoint ...string) []*T
+	StreamsStates() []*T
+	StreamsStatesByServerEndpoints(endpoint ...string) []*T
 }
 
 // RequireStreams ensures that there are a specified number of active streams.
@@ -179,7 +179,7 @@ func RequireStreams[T any, S StreamFetcher[T]](t *testing.T, manager S, expected
 	t.Helper()
 	var states []*T
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		states = manager.Streams()
+		states = manager.StreamsStates()
 		require.Len(ct, states, expectedNumStreams)
 	}, time.Minute, 10*time.Millisecond)
 	return states
@@ -192,7 +192,7 @@ func RequireStreamsWithEndpoints[T any, S StreamFetcher[T]](
 	t.Helper()
 	var states []*T
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		states = manager.StreamsByEndpoints(endpoints...)
+		states = manager.StreamsStatesByServerEndpoints(endpoints...)
 		require.Len(ct, states, expectedNumStreams)
 	}, time.Minute, 10*time.Millisecond)
 	return states

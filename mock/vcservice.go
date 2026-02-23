@@ -32,7 +32,7 @@ type (
 	// It is used for testing the client which is the coordinator service.
 	VcService struct {
 		servicepb.ValidationAndCommitServiceServer
-		streamStateManager[VCStreamState, any]
+		streamStateManager[VCStreamState]
 		nextBlock   atomic.Pointer[servicepb.BlockRef]
 		txsStatus   *fifoCache[*committerpb.TxStatus]
 		txsStatusMu sync.Mutex
@@ -128,7 +128,7 @@ func (v *VcService) StartValidateAndCommitStream(
 	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamServer,
 ) error {
 	g, gCtx := errgroup.WithContext(stream.Context())
-	state := v.registerStream(gCtx, func(info StreamInfo, _ *any) *VCStreamState {
+	state := v.registerStream(gCtx, func(info StreamInfo) *VCStreamState {
 		return &VCStreamState{
 			StreamInfo: info,
 			q:          make(chan *servicepb.VcBatch),
@@ -209,7 +209,7 @@ func (v *VcService) sendTransactionStatus(
 // SubmitTransactions enqueues the given transactions to a queue read by status sending goroutine.
 // This method helps the test code to bypass the stream to submit transactions to the mock vcservice.
 func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *servicepb.VcBatch) error {
-	states := v.Streams()
+	states := v.StreamsStates()
 
 	if len(states) == 0 {
 		return errors.New("Trying to send transactions before channel created (no channels in map)")

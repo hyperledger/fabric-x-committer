@@ -133,9 +133,9 @@ func (m *SyncMap[K, V]) Count() int {
 	return count
 }
 
-func makeReturn[T any](v any, retOK bool) (value T, ok bool) { //nolint:revive // not a control flag.
-	if !retOK || v == nil {
-		return value, retOK
+func makeReturn[T any](v any, retOK bool) (value T, ok bool) {
+	if v != nil {
+		value = v.(T) //nolint:errcheck,revive,forcetypeassert // all values are of type T.
 	}
-	return v.(T), true //nolint:errcheck,revive,forcetypeassert // all values are of type T.
+	return value, retOK
 }
