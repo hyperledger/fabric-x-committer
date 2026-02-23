@@ -750,6 +750,7 @@ func makeValidTx(t *testing.T, chanID string) *servicepb.LoadGenTx {
 			NsVersion:   0,
 			BlindWrites: []*applicationpb.Write{{Key: utils.MustRead(rand.Reader, 32)}},
 		}},
+		Endorsements: dummyEndorsements(1),
 	})
 }
 

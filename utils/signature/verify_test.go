@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/common/cauthdsl"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
 	"github.com/hyperledger/fabric-x-common/msp"
@@ -44,6 +45,53 @@ func TestNsVerifierThresholdRule(t *testing.T) {
 	require.NoError(t, err)
 	tx1.Endorsements = []*applicationpb.Endorsements{endorsement}
 	require.NoError(t, nsVerifier.VerifyNs(fakeTxID, tx1, 0))
+
+	tx1.Endorsements = []*applicationpb.Endorsements{{
+		EndorsementsWithIdentity: []*applicationpb.EndorsementWithIdentity{},
+	}}
+	err = nsVerifier.VerifyNs(fakeTxID, tx1, 0)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no endorsements provided")
+}
+
+func TestNsVerifierInvalidIdentities(t *testing.T) {
+	t.Parallel()
+	pItem, _ := policy.MakePolicyAndNsEndorser(t, "1")
+	pol := &applicationpb.NamespacePolicy{}
+	require.NoError(t, proto.Unmarshal(pItem.Policy, pol))
+	nsVerifier, err := signature.NewNsVerifier(pol, nil)
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name     string
+		identity *msppb.Identity
+	}{
+		{name: "nil identity", identity: nil},
+		{name: "empty identity struct", identity: &msppb.Identity{}},
+		{name: "identity with only MspId", identity: &msppb.Identity{MspId: "hello"}},
+		{name: "identity with unknown MspId and cert", identity: msppb.NewIdentity("hello", []byte("rand"))},
+		{name: "identity with empty MspId and cert", identity: msppb.NewIdentity("", []byte("rand"))},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tx := &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
+					NsId:       "1",
+					NsVersion:  1,
+					ReadWrites: []*applicationpb.ReadWrite{{Key: []byte("k1"), Value: []byte("v1")}},
+				}},
+				Endorsements: []*applicationpb.Endorsements{{
+					EndorsementsWithIdentity: []*applicationpb.EndorsementWithIdentity{{
+						Endorsement: []byte("sign"),
+						Identity:    tc.identity,
+					}},
+				}},
+			}
+			err := nsVerifier.VerifyNs(fakeTxID, tx, 0)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "signature mismatch")
+		})
+	}
 }
 
 func TestNsVerifierPolicyBased(t *testing.T) {

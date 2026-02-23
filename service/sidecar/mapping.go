@@ -243,8 +243,8 @@ func verifyTxForm(tx *applicationpb.Tx) committerpb.Status {
 	if len(tx.Namespaces) == 0 {
 		return committerpb.Status_MALFORMED_EMPTY_NAMESPACES
 	}
-	if len(tx.Namespaces) != len(tx.Endorsements) {
-		return committerpb.Status_MALFORMED_MISSING_SIGNATURE
+	if status := checkEndorsements(tx); status != statusNotYetValidated {
+		return status
 	}
 
 	nsIDs := make(map[string]any, len(tx.Namespaces))
@@ -265,6 +265,27 @@ func verifyTxForm(tx *applicationpb.Tx) committerpb.Status {
 			}
 		}
 		nsIDs[ns.NsId] = nil
+	}
+	return statusNotYetValidated
+}
+
+func checkEndorsements(tx *applicationpb.Tx) committerpb.Status {
+	if len(tx.Namespaces) != len(tx.Endorsements) {
+		return committerpb.Status_MALFORMED_MISSING_SIGNATURE
+	}
+	for _, e := range tx.Endorsements {
+		if e == nil || len(e.EndorsementsWithIdentity) == 0 {
+			return committerpb.Status_MALFORMED_MISSING_SIGNATURE
+		}
+		for _, ei := range e.EndorsementsWithIdentity {
+			if ei == nil || len(ei.Endorsement) == 0 {
+				return committerpb.Status_MALFORMED_MISSING_SIGNATURE
+			}
+		}
+		// Note: we do not validate the Identity field here because the sidecar does not know
+		// whether the namespace uses an MSP rule or a threshold rule for endorsement.
+		// Threshold rules do not require an identity. Identity validation is left to the
+		// signature verifier, which has the policy context to determine what is required.
 	}
 	return statusNotYetValidated
 }
