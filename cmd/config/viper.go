@@ -65,12 +65,15 @@ func NewViperWithVCDefaults() *viper.Viper {
 func NewViperWithQueryDefaults() *viper.Viper {
 	v := NewViperWithServiceDefault(7001, 2117)
 	defaultDBFlags(v)
+	v.SetDefault("server.rate-limit.requests-per-second", 5000)
+	v.SetDefault("server.rate-limit.burst", 1000)
 	v.SetDefault("min-batch-keys", 1024)
 	v.SetDefault("max-batch-wait", 100*time.Millisecond)
 	v.SetDefault("view-aggregation-window", 100*time.Millisecond)
 	v.SetDefault("max-aggregated-views", 1024)
+	v.SetDefault("max-active-views", 4096)
 	v.SetDefault("max-view-timeout", 10*time.Second)
-	v.SetDefault("max-request-keys", 0) // 0 means no limit
+	v.SetDefault("max-request-keys", 10000)
 	return v
 }
 

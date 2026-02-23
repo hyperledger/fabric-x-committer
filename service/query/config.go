@@ -41,6 +41,7 @@ type Config struct {
 	MaxBatchWait          time.Duration            `mapstructure:"max-batch-wait"`
 	ViewAggregationWindow time.Duration            `mapstructure:"view-aggregation-window"`
 	MaxAggregatedViews    int                      `mapstructure:"max-aggregated-views"`
+	MaxActiveViews        int                      `mapstructure:"max-active-views"`
 	MaxViewTimeout        time.Duration            `mapstructure:"max-view-timeout"`
 	// MaxRequestKeys is the maximum number of keys allowed in a single query request.
 	// This applies to both GetRows (total keys across all namespaces) and

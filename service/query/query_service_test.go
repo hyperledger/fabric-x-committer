@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v5/pgxpool"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -29,6 +30,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -48,6 +50,7 @@ type (
 		serverTLS      connection.TLSConfig
 		clientTLS      connection.TLSConfig
 		maxRequestKeys int
+		maxActiveViews int
 	}
 )
 
@@ -214,6 +217,32 @@ func TestMaxRequestKeys(t *testing.T) {
 		require.Len(t, ret.Namespaces, 2)
 	})
 
+	t.Run("GetRows empty keys rejected", func(t *testing.T) {
+		t.Parallel()
+		env := newQueryServiceTestEnv(t, &queryServiceTestOpts{maxRequestKeys: 10})
+		env.insertSampleKeysValueItems(t)
+
+		_, err := env.clientConn.GetRows(t.Context(), &committerpb.Query{
+			Namespaces: []*committerpb.QueryNamespace{
+				{NsId: "0", Keys: [][]byte{}},
+			},
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, ErrEmptyKeys.Error())
+	})
+
+	t.Run("GetRows empty namespaces rejected", func(t *testing.T) {
+		t.Parallel()
+		env := newQueryServiceTestEnv(t, &queryServiceTestOpts{maxRequestKeys: 10})
+		env.insertSampleKeysValueItems(t)
+
+		_, err := env.clientConn.GetRows(t.Context(), &committerpb.Query{
+			Namespaces: []*committerpb.QueryNamespace{},
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, ErrEmptyNamespaces.Error())
+	})
+
 	t.Run("GetRows no limit when zero", func(t *testing.T) {
 		t.Parallel()
 		env := newQueryServiceTestEnv(t, nil)
@@ -257,6 +286,67 @@ func TestMaxRequestKeys(t *testing.T) {
 		// The transactions don't exist, but the request should be accepted
 		require.Empty(t, ret.Statuses)
 	})
+
+	t.Run("GetTransactionStatus empty tx ids rejected", func(t *testing.T) {
+		t.Parallel()
+		env := newQueryServiceTestEnv(t, &queryServiceTestOpts{maxRequestKeys: 5})
+
+		_, err := env.clientConn.GetTransactionStatus(t.Context(), &committerpb.TxStatusQuery{
+			TxIds: []string{},
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, ErrEmptyTxIDs.Error())
+	})
+}
+
+func TestMaxActiveViews(t *testing.T) {
+	t.Parallel()
+
+	t.Run("BeginView rejected when active views reach max", func(t *testing.T) {
+		t.Parallel()
+		env := newQueryServiceTestEnv(t, &queryServiceTestOpts{maxActiveViews: 1})
+
+		view, err := env.clientConn.BeginView(t.Context(), defaultViewParams(time.Minute))
+		require.NoError(t, err)
+		require.NotNil(t, view)
+
+		_, err = env.clientConn.BeginView(t.Context(), defaultViewParams(time.Minute))
+		require.Error(t, err)
+		st := status.Convert(err)
+		require.Equal(t, codes.ResourceExhausted, st.Code())
+		require.Contains(t, st.Message(), "active view limit")
+
+		env.endView(t, env.clientConn, view)
+	})
+
+	t.Run("BeginView succeeds after EndView frees capacity", func(t *testing.T) {
+		t.Parallel()
+		env := newQueryServiceTestEnv(t, &queryServiceTestOpts{maxActiveViews: 1})
+
+		view := env.beginView(t, env.clientConn, defaultViewParams(time.Minute))
+		env.endView(t, env.clientConn, view)
+
+		env.beginView(t, env.clientConn, defaultViewParams(time.Minute))
+	})
+}
+
+func TestMakeViewContextCanceled(t *testing.T) {
+	t.Parallel()
+
+	vb := &viewsBatcher{
+		ctx:         t.Context(),
+		config:      &Config{MaxActiveViews: 1},
+		metrics:     newQueryServiceMetrics(),
+		viewLimiter: utils.NewConcurrencyLimiter(1),
+	}
+	params := defaultViewParams(time.Minute)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	err := vb.makeView(ctx, "view-id", params)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, int64(0), vb.viewLimiter.Load())
 }
 
 func TestQueryMetrics(t *testing.T) {
@@ -444,6 +534,7 @@ func newQueryServiceTestEnv(t *testing.T, opts *queryServiceTestOpts) *queryServ
 		ViewAggregationWindow: time.Minute,
 		MaxViewTimeout:        time.Minute,
 		MaxAggregatedViews:    5,
+		MaxActiveViews:        opts.maxActiveViews,
 		Server:                connection.NewLocalHostServer(opts.serverTLS),
 		MaxRequestKeys:        opts.maxRequestKeys,
 		Database:              dbConf,

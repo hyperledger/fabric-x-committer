@@ -409,7 +409,7 @@ func TestNotifierMaxConcurrentStreams(t *testing.T) {
 	}
 
 	t.Log("Opening many streams with unlimited config")
-	env.n.maxConcurrentStreams = 0
+	env.n.streamLimiter.SetLimit(0)
 	for range 10 {
 		stream, err := client.OpenNotificationStream(t.Context())
 		require.NoError(t, err)
@@ -428,7 +428,7 @@ func TestNotifierTryAcquireStreamConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	for range 20 {
 		wg.Go(func() {
-			if n.tryAcquireStream(t.Context()) {
+			if n.streamLimiter.TryAcquire(t.Context()) == nil {
 				successCount.Add(1)
 			}
 		})
@@ -436,12 +436,25 @@ func TestNotifierTryAcquireStreamConcurrent(t *testing.T) {
 	wg.Wait()
 
 	require.Equal(t, int32(5), successCount.Load())
-	require.Equal(t, int32(5), n.activeStreams.Load())
+	require.Equal(t, int64(5), n.streamLimiter.Load())
 
 	t.Log("Release all and reacquire")
 	for range successCount.Load() {
-		n.releaseStream()
+		n.streamLimiter.Release()
 	}
-	require.Equal(t, int32(0), n.activeStreams.Load())
-	require.True(t, n.tryAcquireStream(t.Context()))
+	require.Equal(t, int64(0), n.streamLimiter.Load())
+	require.NoError(t, n.streamLimiter.TryAcquire(t.Context()))
+}
+
+func TestNotifierTryAcquireStreamContextCanceled(t *testing.T) {
+	t.Parallel()
+	n := newNotifier(defaultBufferSize, &NotificationServiceConfig{
+		MaxConcurrentStreams: 1,
+	})
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	err := n.streamLimiter.TryAcquire(ctx)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, int64(0), n.streamLimiter.Load())
 }

@@ -15,6 +15,7 @@ GO_CMD="${1:-go}"
 EXIT_CODE=0
 
 ALL_GO=$(git ls-files '*.go' | grep -v '.pb.go')
+ALL_YAML=$(git ls-files '*.yml' '*.yaml')
 
 echo "Running goimports..."
 # shellcheck disable=SC2086
@@ -35,8 +36,10 @@ if [[ -n "$BAD_FUMPT" ]]; then
 fi
 
 echo "Running yamllint..."
-if ! yamllint .; then
-  EXIT_CODE=1
+if [[ -n "$ALL_YAML" ]]; then
+  if ! yamllint $ALL_YAML; then
+    EXIT_CODE=1
+  fi
 fi
 
 exit $EXIT_CODE
