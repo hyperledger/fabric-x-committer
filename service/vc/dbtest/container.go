@@ -315,7 +315,7 @@ func (dc *DatabaseContainer) ExposePort(port string) {
 	if dc.PortBinds == nil {
 		dc.PortBinds = make(map[docker.Port][]docker.PortBinding)
 	}
-	dc.PortBinds[p] = []docker.PortBinding{{HostIP: "0.0.0.0", HostPort: ""}}
+	dc.PortBinds[p] = []docker.PortBinding{{HostIP: "0.0.0.0", HostPort: "0"}}
 }
 
 // GetHostMappedEndpoint inspects the container and returns a host-accessible endpoint
