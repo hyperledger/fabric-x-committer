@@ -195,7 +195,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 				append(outTxsStatus1.Status, outTxsStatus2.Status...),
 			)
 
-			return env.mockVcService.GetNumBatchesReceived() != 0
+			return env.mockVcService.NumBatchesReceived.Load() != 0
 		}, 4*time.Second, 100*time.Millisecond)
 		ensureZeroWaitingTxs(env)
 	})
@@ -203,9 +203,9 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 	t.Run("namespace transaction should update signature verifier", func(t *testing.T) {
 		t.Parallel()
 		env := newVcMgrTestEnv(t, 2)
-		verifierStreams := requireStreams(t, env.sigVerTestEnv.mockVerifier, 2)
+		verifierStreams := mock.RequireStreams(t, env.sigVerTestEnv.mockVerifier, 2)
 		for _, mockSvService := range verifierStreams {
-			require.Empty(t, mockSvService.GetUpdates())
+			require.Empty(t, mockSvService.Updates)
 		}
 
 		_, verificationKey := sigtest.NewKeyPair(signature.Ecdsa)
