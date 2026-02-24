@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
@@ -22,7 +23,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
-	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
@@ -85,12 +85,17 @@ func (q *Service) Run(ctx context.Context) error {
 	}
 	defer pool.Close()
 
+	var limitter *semaphore.Weighted
+	if q.config.MaxActiveViews > 0 {
+		limitter = semaphore.NewWeighted(int64(q.config.MaxActiveViews))
+	}
+
 	q.batcher = viewsBatcher{
 		ctx:         ctx,
 		config:      q.config,
 		metrics:     q.metrics,
 		pool:        pool,
-		viewLimiter: utils.NewConcurrencyLimiter(q.config.MaxActiveViews),
+		viewLimiter: limitter,
 		nonConsistentBatcher: batcher{
 			ctx: ctx,
 			cancel: func() {
@@ -134,7 +139,7 @@ func (q *Service) BeginView(
 		if err != nil {
 			return nil, grpcerror.WrapInternalError(err)
 		}
-		err = q.batcher.makeView(ctx, viewID, params)
+		err = q.batcher.makeView(viewID, params)
 		if err == nil {
 			return &committerpb.View{Id: viewID}, nil
 		}

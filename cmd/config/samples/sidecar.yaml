@@ -19,6 +19,9 @@ server:
     enforcement-policy:
       min-time: 60s
       permit-without-stream: false
+  # Maximum number of concurrent streaming RPCs (Deliver + Notification) allowed.
+  # Shared across all stream types. Set to 0 to disable the limit.
+  max-concurrent-streams: 10
   # Rate limiting configuration for unary gRPC endpoints.
   # Uses a token bucket algorithm to limit the number of requests per second.
   rate-limit:
