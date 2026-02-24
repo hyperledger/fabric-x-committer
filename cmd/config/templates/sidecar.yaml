@@ -30,6 +30,9 @@ server:
     # Must be greater than 0 and less than or equal to requests-per-second.
     burst: {{ .RateLimit.Burst }}
   {{- end }}
+  {{- if .MaxConcurrentStreams }}
+  max-concurrent-streams: {{ .MaxConcurrentStreams }}
+  {{- end }}
 monitoring:
   endpoint: {{ .ThisService.MetricsEndpoint | default "localhost:0" }}
   tls:
@@ -87,7 +90,6 @@ ledger:
 
 notification:
   max-timeout: 10m
-  max-concurrent-streams: 0  # 0 = unlimited
 
 last-committed-block-set-interval: 5s
 waiting-txs-limit: 20_000_000

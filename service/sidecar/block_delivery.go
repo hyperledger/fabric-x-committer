@@ -85,7 +85,7 @@ func (*blockDelivery) DeliverWithPrivateData(peer.Deliver_DeliverWithPrivateData
 	return grpcerror.WrapUnimplemented(errors.New("method is deprecated"))
 }
 
-func (s *blockDelivery) deliverBlocks(
+func (s *blockDelivery) deliverBlocks( //nolint:gocognit
 	srv peer.Deliver_DeliverServer,
 	envelope *common.Envelope,
 ) (common.Status, error) {
@@ -127,7 +127,7 @@ func (s *blockDelivery) deliverBlocks(
 	}
 
 	for ctx.Err() == nil {
-		block, status := cursor.Next()
+		block, status := cursor.Next(ctx)
 		if status != common.Status_SUCCESS {
 			return status, nil
 		}

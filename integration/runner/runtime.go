@@ -87,6 +87,9 @@ type (
 		// MaxRequestKeys is the maximum number of keys allowed in a single query request.
 		// Set to 0 to disable the limit.
 		MaxRequestKeys int
+		// MaxConcurrentStreams limits concurrent streaming RPCs (Deliver + Notification)
+		// on the sidecar. Set to 0 to use the viper default.
+		MaxConcurrentStreams int
 
 		// VCMinTransactionBatchSize configures the minimum batch size for VC service.
 		VCMinTransactionBatchSize int
@@ -166,8 +169,9 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 			Logging: &flogging.Config{
 				LogSpec: "info",
 			},
-			RateLimit: conf.RateLimit,
-			ClientTLS: clientTLS,
+			RateLimit:            conf.RateLimit,
+			MaxConcurrentStreams: conf.MaxConcurrentStreams,
+			ClientTLS:            clientTLS,
 
 			// Batching configuration for testing.
 			VCMinTransactionBatchSize:           conf.VCMinTransactionBatchSize,

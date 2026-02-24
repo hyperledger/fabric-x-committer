@@ -13,10 +13,13 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/status"
 )
 
 const tcpProtocol = "tcp"
@@ -57,13 +60,21 @@ func (c *ServerConfig) GrpcServer() (*grpc.Server, error) {
 	}
 	opts = append(opts, grpc.Creds(serverGrpcTransportCreds))
 
-	if err := c.RateLimit.Validate(); err != nil {
-		return nil, errors.Wrap(err, "invalid rate limit configuration")
-	}
-	if limiter := NewRateLimiter(&c.RateLimit); limiter != nil {
+	if c.RateLimit.RequestsPerSecond > 0 {
+		if err := c.RateLimit.Validate(); err != nil {
+			return nil, errors.Wrap(err, "invalid rate limit configuration")
+		}
+
+		limiter := NewRateLimiter(&c.RateLimit)
 		opts = append(opts, grpc.UnaryInterceptor(RateLimitInterceptor(limiter)))
 		logger.Infof("Rate limiting enabled: %d requests/second, burst: %d",
 			c.RateLimit.RequestsPerSecond, c.RateLimit.Burst)
+	}
+
+	if c.MaxConcurrentStreams > 0 {
+		sem := semaphore.NewWeighted(int64(c.MaxConcurrentStreams))
+		opts = append(opts, grpc.StreamInterceptor(StreamConcurrencyInterceptor(sem)))
+		logger.Infof("Stream concurrency limit enabled: %d max concurrent streams", c.MaxConcurrentStreams)
 	}
 
 	if c.KeepAlive != nil && c.KeepAlive.Params != nil {
@@ -194,4 +205,16 @@ func DefaultHealthCheckService() *health.Server {
 	healthcheck := health.NewServer()
 	healthcheck.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
 	return healthcheck
+}
+
+// StreamConcurrencyInterceptor returns a gRPC StreamServerInterceptor that limits the number of
+// concurrently active streaming RPCs using a weighted semaphore.
+func StreamConcurrencyInterceptor(sem *semaphore.Weighted) grpc.StreamServerInterceptor {
+	return func(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		if !sem.TryAcquire(1) {
+			return status.Error(codes.ResourceExhausted, "max concurrent streams limit reached")
+		}
+		defer sem.Release(1)
+		return handler(srv, ss)
+	}
 }
