@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -39,46 +40,97 @@ func TestRateLimit(t *testing.T) {
 
 	numParallelRequests := 5
 
-	t.Run("WithoutRetry_ReturnsResourceExhausted", func(t *testing.T) {
-		t.Parallel()
-		// Create a connection without retry policy to observe rate limiting behavior.
-		// The default test connection has a retry policy that includes RESOURCE_EXHAUSTED,
-		// which would mask the rate limit behavior by automatically retrying failed requests.
-		clientCreds, err := c.SystemConfig.ClientTLS.ClientCredentials()
-		require.NoError(t, err)
-		conn, err := grpc.NewClient(
-			c.SystemConfig.Services.Query.GrpcEndpoint.Address(),
-			grpc.WithTransportCredentials(clientCreds),
-		)
-		require.NoError(t, err)
-		t.Cleanup(func() { _ = conn.Close() })
+	tests := []struct {
+		name             string
+		endpoint         connection.WithAddress
+		useRetry         bool
+		requestFn        func(ctx context.Context, conn *grpc.ClientConn) error
+		expectAllSucceed bool
+		timeout          time.Duration
+	}{
+		{
+			name:     "Query_WithoutRetry_ReturnsResourceExhausted",
+			endpoint: c.SystemConfig.Services.Query.GrpcEndpoint,
+			requestFn: func(ctx context.Context, conn *grpc.ClientConn) error {
+				_, err := committerpb.NewQueryServiceClient(conn).GetTransactionStatus(ctx, &committerpb.TxStatusQuery{
+					TxIds: []string{"test-tx-id"},
+				})
+				return err
+			},
+			timeout: 10 * time.Second,
+		},
+		{
+			name:     "Query_WithRetry_AllRequestsSucceed",
+			endpoint: c.SystemConfig.Services.Query.GrpcEndpoint,
+			useRetry: true,
+			requestFn: func(ctx context.Context, conn *grpc.ClientConn) error {
+				_, err := committerpb.NewQueryServiceClient(conn).GetNamespacePolicies(ctx, &emptypb.Empty{})
+				return err
+			},
+			expectAllSucceed: true,
+			timeout:          30 * time.Second,
+		},
+		{
+			name:     "Sidecar_WithoutRetry_ReturnsResourceExhausted",
+			endpoint: c.SystemConfig.Services.Sidecar.GrpcEndpoint,
+			requestFn: func(ctx context.Context, conn *grpc.ClientConn) error {
+				_, err := committerpb.NewBlockQueryServiceClient(conn).GetBlockchainInfo(ctx, &emptypb.Empty{})
+				return err
+			},
+			timeout: 10 * time.Second,
+		},
+		{
+			name:     "Sidecar_WithRetry_ReturnsResourceExhausted",
+			endpoint: c.SystemConfig.Services.Sidecar.GrpcEndpoint,
+			useRetry: true,
+			requestFn: func(ctx context.Context, conn *grpc.ClientConn) error {
+				_, err := committerpb.NewBlockQueryServiceClient(conn).GetBlockByNumber(ctx, &committerpb.BlockNumber{})
+				return err
+			},
+			expectAllSucceed: true,
+			timeout:          30 * time.Second,
+		},
+	}
 
-		_, rateLimitedCount, _ := makeParallelRequests(t, numParallelRequests, conn, 10*time.Second)
-		require.Positive(t, rateLimitedCount)
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	t.Run("WithRetry_AllRequestsSucceed", func(t *testing.T) {
-		t.Parallel()
-		// Create a connection with the default retry policy.
-		// The retry policy includes RESOURCE_EXHAUSTED, so rate-limited requests
-		// will be automatically retried and should eventually succeed.
-		conn := test.NewSecuredConnection(t, c.SystemConfig.Services.Query.GrpcEndpoint, c.SystemConfig.ClientTLS)
+			var conn *grpc.ClientConn
+			if tt.useRetry {
+				// The default retry policy includes RESOURCE_EXHAUSTED, so rate-limited
+				// requests will be automatically retried and should eventually succeed.
+				conn = test.NewSecuredConnection(t, tt.endpoint, c.SystemConfig.ClientTLS)
+			} else {
+				// Create a connection without retry policy to observe rate limiting directly.
+				clientCreds, err := c.SystemConfig.ClientTLS.ClientCredentials()
+				require.NoError(t, err)
+				conn, err = grpc.NewClient(tt.endpoint.Address(), grpc.WithTransportCredentials(clientCreds))
+				require.NoError(t, err)
+				t.Cleanup(func() { _ = conn.Close() })
+			}
 
-		successCount, rateLimitedCount, otherErrorCount := makeParallelRequests(
-			t, numParallelRequests, conn, 30*time.Second)
+			successCount, rateLimitedCount, otherErrorCount := makeParallelRequests(
+				t, numParallelRequests, conn, tt.requestFn, tt.timeout)
 
-		// With retry policy, all requests should eventually succeed
-		require.Equal(t, int32(numParallelRequests), successCount) //nolint:gosec // int to int32
-		require.Equal(t, int32(0), rateLimitedCount+otherErrorCount)
-	})
+			if tt.expectAllSucceed {
+				require.Equal(t, int32(numParallelRequests), successCount) //nolint:gosec // int to int32
+				require.Equal(t, int32(0), rateLimitedCount+otherErrorCount)
+			} else {
+				require.Positive(t, rateLimitedCount)
+			}
+		})
+	}
 }
 
-func makeParallelRequests(t *testing.T, numParallelRequests int, conn *grpc.ClientConn, timeout time.Duration) (
-	success, rateLimited, otherErrors int32,
-) {
+func makeParallelRequests( //nolint:revive // argument-limit 5 but limit is 4
+	t *testing.T,
+	numParallelRequests int,
+	conn *grpc.ClientConn,
+	requestFn func(ctx context.Context, conn *grpc.ClientConn) error,
+	timeout time.Duration,
+) (success, rateLimited, otherErrors int32) {
 	t.Helper()
-
-	client := committerpb.NewQueryServiceClient(conn)
 
 	var successCount, rateLimitedCount, otherErrorCount atomic.Int32
 	var wg sync.WaitGroup
@@ -89,9 +141,7 @@ func makeParallelRequests(t *testing.T, numParallelRequests int, conn *grpc.Clie
 	for range numParallelRequests {
 		wg.Go(
 			func() {
-				_, err := client.GetTransactionStatus(reqCtx, &committerpb.TxStatusQuery{
-					TxIds: []string{"test-tx-id"},
-				})
+				err := requestFn(reqCtx, conn)
 				if err == nil {
 					successCount.Add(1)
 					return
