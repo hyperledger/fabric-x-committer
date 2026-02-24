@@ -304,6 +304,16 @@ func TestFilterStreamRPCError(t *testing.T) {
 		// This returns either codes.Canceled or codes.Unavailable (EOF).
 		requireNoWrappedError(t, err)
 	})
+
+	t.Run("connection reset by peer", func(t *testing.T) {
+		t.Parallel()
+		// Synthetic error matching the exact gRPC message observed when a server
+		// sends a TCP RST before the client-side context cancellation propagates.
+		err := status.Error(codes.Unavailable,
+			"error reading from server: read tcp 127.0.0.1:56918->127.0.0.1:41275: read: connection reset by peer",
+		)
+		requireNoWrappedError(t, err)
+	})
 }
 
 func requireNoWrappedError(t *testing.T, err error) {

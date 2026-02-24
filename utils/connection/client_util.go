@@ -56,7 +56,9 @@ type (
 
 var logger = flogging.MustGetLogger("grpc-connection")
 
-var knownConnectionIssues = regexp.MustCompile(`(?i)EOF|connection\s+refused|closed\s+network\s+connection`)
+var knownConnectionIssues = regexp.MustCompile(
+	`(?i)EOF|connection\s+refused|closed\s+network\s+connection|connection\s+reset`,
+)
 
 // NewLoadBalancedConnection creates a connection with load balancing between the endpoints
 // in the given config.
