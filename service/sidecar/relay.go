@@ -30,11 +30,6 @@ type (
 		outgoingCommittedBlock     chan<- *common.Block
 		outgoingStatusUpdates      chan<- []*committerpb.TxStatus
 
-		// nextBlockNumberToBeReceived denotes the next block number that the sidecar
-		// expects to receive from the orderer. This value is initially extracted from the last committed
-		// block number in the ledger, then incremented.
-		// The sidecar queries the coordinator for this value before starting to pull blocks from the ordering service.
-		nextBlockNumberToBeReceived atomic.Uint64
 		// nextBlockNumberToBeCommitted denotes the next block number of to be committed.
 		nextBlockNumberToBeCommitted atomic.Uint64
 
@@ -78,7 +73,6 @@ func newRelay(
 
 // run starts the relay service. The call to run blocks until an error occurs or the context is canceled.
 func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolint:contextcheck // false positive
-	r.nextBlockNumberToBeReceived.Store(config.nextExpectedBlockByCoordinator)
 	r.nextBlockNumberToBeCommitted.Store(config.nextExpectedBlockByCoordinator)
 	r.incomingBlockToBeCommitted = config.incomingBlockToBeCommitted
 	r.outgoingCommittedBlock = config.outgoingCommittedBlock
@@ -137,28 +131,13 @@ func (r *relay) preProcessBlock(
 	done := context.AfterFunc(ctx, r.waitingTxsSlots.Broadcast)
 	defer done()
 
-	for {
+	for ctx.Err() == nil {
 		block, ok := incomingBlockToBeCommitted.Read()
 		if !ok {
-			return errors.Wrap(ctx.Err(), "context ended")
+			break
 		}
-		if block.Header == nil {
-			logger.Warn("Received a block without header")
-			continue
-		}
+		// The delivery client guarantees a block with a header and in the correct order.
 		logger.Debugf("Block %d arrived in the relay", block.Header.Number)
-
-		blockNum := block.Header.Number
-		swapped := r.nextBlockNumberToBeReceived.CompareAndSwap(blockNum, blockNum+1)
-		if !swapped {
-			errMsg := fmt.Sprintf(
-				"sidecar expects block [%d] but received block [%d]",
-				r.nextBlockNumberToBeReceived.Load(),
-				blockNum,
-			)
-			logger.Error(errMsg)
-			return errors.New(errMsg)
-		}
 
 		start := time.Now()
 		mappedBlock, err := mapBlock(block, &r.txIDToHeight)
@@ -185,6 +164,7 @@ func (r *relay) preProcessBlock(
 			r.waitingTxsSlots.WaitTillEmpty(ctx)
 		}
 	}
+	return errors.Wrap(ctx.Err(), "context ended")
 }
 
 func (r *relay) sendBlocksToCoordinator(

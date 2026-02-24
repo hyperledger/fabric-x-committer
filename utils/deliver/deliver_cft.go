@@ -35,9 +35,8 @@ type (
 
 	// Parameters needed for deliver to run.
 	Parameters struct {
-		StartBlkNum int64
-		EndBlkNum   uint64
-		OutputBlock chan<- *common.Block
+		NextBlockNum uint64
+		OutputBlock  chan<- *common.Block
 	}
 
 	// Stream requires the following interface.
@@ -57,10 +56,6 @@ var defaultRetryProfile = connection.RetryProfile{}
 // The value of config.StartBlkNum is updated with the latest block number.
 func (c *CftClient) Deliver(ctx context.Context, p *Parameters) error {
 	for ctx.Err() == nil {
-		if p.StartBlkNum > 0 && uint64(p.StartBlkNum) > p.EndBlkNum {
-			logger.Infof("Deliver finished successfully")
-			return nil
-		}
 		err := c.receiveFromBlockDeliverer(ctx, p)
 		logger.Warnf("Error receiving blocks: %v", err)
 	}
@@ -133,8 +128,8 @@ func (c *CftClient) getConnection(ctx context.Context) (*grpc.ClientConn, error)
 func (c *CftClient) deliverRelay(
 	ctx context.Context, stream Stream, p *Parameters,
 ) (common.Status, error) {
-	logger.Infof("Sending seek request from block %d on channel %s.", p.StartBlkNum, c.ChannelID)
-	seekEnv, seekErr := seekSince(p.StartBlkNum, p.EndBlkNum, c.ChannelID, c.Signer)
+	logger.Infof("Sending seek request from block %d on channel %s.", p.NextBlockNum, c.ChannelID)
+	seekEnv, seekErr := seekSince(p.NextBlockNum, c.ChannelID, c.Signer)
 	if seekErr != nil {
 		return 0, errors.Wrap(seekErr, "failed to create seek request")
 	}
@@ -153,9 +148,18 @@ func (c *CftClient) deliverRelay(
 			return *status, nil
 		}
 
-		//nolint:gosec // integer overflow conversion uint64 -> int64
-		p.StartBlkNum = int64(block.Header.Number) + 1
-		logger.Debugf("next expected block number is %d", p.StartBlkNum)
+		// We make minimal verifications to ensure we receive blocks in order.
+		// This allows us to restart the connection from the next expected block upon failure.
+		if block == nil || block.Header == nil {
+			return 0, errors.New("received nil block or with nil header")
+		}
+		if block.Header.Number != p.NextBlockNum {
+			return 0, errors.Errorf("received block number %d != %d (expected)",
+				block.Header.Number, p.NextBlockNum)
+		}
+
+		p.NextBlockNum = block.Header.Number + 1
+		logger.Debugf("next expected block number is %d", p.NextBlockNum)
 		outputBlock.Write(block)
 	}
 	return 0, errors.Wrap(ctx.Err(), "context ended")
@@ -164,44 +168,22 @@ func (c *CftClient) deliverRelay(
 // TODO: We have seek info only for the orderer but not for the ledger service. It needs
 //       to implemented as fabric ledger also allows different seek info.
 
-const (
-	seekSinceOldestBlock = -2
-	seekSinceNewestBlock = -1
-)
-
-var (
-	oldest = &orderer.SeekPosition{Type: &orderer.SeekPosition_Oldest{Oldest: &orderer.SeekOldest{}}}
-	newest = &orderer.SeekPosition{Type: &orderer.SeekPosition_Newest{Newest: &orderer.SeekNewest{}}}
-)
-
 func seekSince(
-	startBlockNumber int64,
-	endBlkNum uint64,
+	startBlockNumber uint64,
 	channelID string,
 	signer identity.SignerSerializer,
 ) (*common.Envelope, error) {
-	var startPosition *orderer.SeekPosition
-	switch startBlockNumber {
-	case seekSinceOldestBlock:
-		startPosition = oldest
-	case seekSinceNewestBlock:
-		startPosition = newest
-	default:
-		if startBlockNumber < -2 {
-			return nil, errors.New("wrong seek value")
-		}
-		startPosition = &orderer.SeekPosition{Type: &orderer.SeekPosition_Specified{Specified: &orderer.SeekSpecified{
-			Number: uint64(startBlockNumber), //nolint:gosec // integer overflow conversion int64 -> uint64
-		}}}
-	}
-
 	return protoutil.CreateSignedEnvelope(
 		common.HeaderType_DELIVER_SEEK_INFO, channelID, signer, &orderer.SeekInfo{
-			Start: startPosition,
-			Stop: &orderer.SeekPosition{Type: &orderer.SeekPosition_Specified{Specified: &orderer.SeekSpecified{
-				Number: endBlkNum,
-			}}},
+			Start:    seekPosition(startBlockNumber),
+			Stop:     seekPosition(MaxBlockNum),
 			Behavior: orderer.SeekInfo_BLOCK_UNTIL_READY,
 		}, 0, 0,
 	)
+}
+
+func seekPosition(blockNumber uint64) *orderer.SeekPosition {
+	return &orderer.SeekPosition{Type: &orderer.SeekPosition_Specified{Specified: &orderer.SeekSpecified{
+		Number: blockNumber,
+	}}}
 }

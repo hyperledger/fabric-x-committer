@@ -90,23 +90,21 @@ func New(c *Config) (*Service, error) {
 		return nil, fmt.Errorf("failed to create block store: %w", err)
 	}
 
-	bufferSize := c.ChannelBufferSize
-	if bufferSize <= 0 {
-		bufferSize = defaultBufferSize
+	if c.ChannelBufferSize <= 0 {
+		c.ChannelBufferSize = defaultBufferSize
 	}
 	return &Service{
-		ordererClient:      ordererClient,
-		relay:              relayService,
-		notifier:           newNotifier(bufferSize, &c.Notification),
-		blockStore:         blockStore,
-		blockDelivery:      newBlockDelivery(blockStore, c.Orderer.ChannelID),
-		blockQuery:         newBlockQuery(blockStore.store),
-		healthcheck:        connection.DefaultHealthCheckService(),
-		config:             c,
-		metrics:            metrics,
-		blockToBeCommitted: make(chan *common.Block, bufferSize),
-		committedBlock:     make(chan *common.Block, bufferSize),
-		statusQueue:        make(chan []*committerpb.TxStatus, bufferSize),
+		ordererClient:  ordererClient,
+		relay:          relayService,
+		notifier:       newNotifier(c.ChannelBufferSize, &c.Notification),
+		blockStore:     blockStore,
+		blockDelivery:  newBlockDelivery(blockStore, c.Orderer.ChannelID),
+		blockQuery:     newBlockQuery(blockStore.store),
+		healthcheck:    connection.DefaultHealthCheckService(),
+		config:         c,
+		metrics:        metrics,
+		committedBlock: make(chan *common.Block, c.ChannelBufferSize),
+		statusQueue:    make(chan []*committerpb.TxStatus, c.ChannelBufferSize),
 	}, nil
 }
 
@@ -155,7 +153,6 @@ func (s *Service) Run(ctx context.Context) error {
 		return connection.Sustain(gCtx, func() error {
 			defer func() {
 				s.recoverCommittedBlocks(gCtx)
-				s.blockToBeCommitted = make(chan *common.Block, 100) // We should drop all enqueued block if any.
 			}()
 			return s.sendBlocksAndReceiveStatus(gCtx, coordClient)
 		})
@@ -187,19 +184,21 @@ func (s *Service) sendBlocksAndReceiveStatus(
 
 	g, gCtx := errgroup.WithContext(ctx)
 
+	// We drop all enqueued block if any before starting a new session.
+	s.blockToBeCommitted = make(chan *common.Block, s.config.ChannelBufferSize)
+
 	// NOTE: ordererClient.Deliver and relay.Run must always return an error on exist.
 	g.Go(func() error {
 		logger.Info("Fetch blocks from the ordering service and write them on s.blockToBeCommitted.")
-		err := s.ordererClient.Deliver(gCtx, &deliver.Parameters{
-			StartBlkNum: int64(nextBlockNum), //nolint:gosec
-			EndBlkNum:   deliver.MaxBlockNum,
-			OutputBlock: s.blockToBeCommitted,
+		deliverErr := s.ordererClient.Deliver(gCtx, &deliver.Parameters{
+			NextBlockNum: nextBlockNum,
+			OutputBlock:  s.blockToBeCommitted,
 		})
-		if errors.Is(err, context.Canceled) {
+		if errors.Is(deliverErr, context.Canceled) {
 			// A context may be cancelled due to a relay error, thus it is not critical error.
-			return errors.Wrap(err, "context is canceled")
+			return errors.Wrap(deliverErr, "context is canceled")
 		}
-		return errors.Join(connection.ErrNonRetryable, err)
+		return errors.Join(connection.ErrNonRetryable, deliverErr)
 	})
 
 	g.Go(func() error {
@@ -320,29 +319,36 @@ func (s *Service) recoverLedgerStore(
 	logger.Infof("ledger store is [%d] blocks behind the state database in the committer",
 		numOfBlocksPendingInBlockStore)
 
-	g, gCtx := errgroup.WithContext(ctx)
+	cCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	g, gCtx := errgroup.WithContext(cCtx)
+
 	blockCh := make(chan *common.Block, numOfBlocksPendingInBlockStore)
-	committedBlocks := channel.NewWriter(ctx, s.committedBlock)
 
 	g.Go(func() error {
-		logger.Infof("starting delivery service with the orderer to receive block %d to %d",
-			blockStoreHeight, stateDBHeight-1)
-		return s.ordererClient.Deliver(gCtx, &deliver.Parameters{
-			StartBlkNum: int64(blockStoreHeight), //nolint:gosec
-			EndBlkNum:   stateDBHeight - 1,
-			OutputBlock: blockCh,
+		logger.Infof("starting delivery service with the orderer to receive block %d", blockStoreHeight)
+		deliverErr := s.ordererClient.Deliver(gCtx, &deliver.Parameters{
+			NextBlockNum: blockStoreHeight,
+			OutputBlock:  blockCh,
 		})
+		if errors.Is(deliverErr, context.Canceled) {
+			return nil
+		}
+		return deliverErr
 	})
 
 	g.Go(func() error {
+		defer cancel()
+		blocks := channel.NewReader(gCtx, blockCh)
+		committedBlocks := channel.NewWriter(ctx, s.committedBlock)
 		for range numOfBlocksPendingInBlockStore {
-			select {
-			case <-gCtx.Done():
+			blk, ok := blocks.Read()
+			if !ok {
 				return gCtx.Err()
-			case blk := <-blockCh:
-				if err := appendMissingBlock(gCtx, client, blk, committedBlocks); err != nil {
-					return err
-				}
+			}
+			appendErr := appendMissingBlock(gCtx, client, blk, committedBlocks)
+			if appendErr != nil {
+				return appendErr
 			}
 		}
 		logger.Infof("successfully recover ledger store by adding [%d] missing blocks", numOfBlocksPendingInBlockStore)
