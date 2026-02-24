@@ -12,14 +12,14 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 
 // DBClusterController is a class that facilitates the manipulation of a DB cluster,
 // with its nodes running in Docker containers.
 type DBClusterController struct {
-	nodes []*dbtest.DatabaseContainer
+	nodes []*testdb.DatabaseContainer
 }
 
 const linuxOS = "linux"
@@ -45,36 +45,36 @@ func (cc *DBClusterController) StopAndRemoveSingleNodeByIndex(t *testing.T, inde
 func (cc *DBClusterController) getNodesConnectionsByRole(
 	t *testing.T,
 	role string,
-) *dbtest.Connection {
+) *testdb.Connection {
 	t.Helper()
 	endpoints := make([]*connection.Endpoint, 0, len(cc.nodes))
 	for _, node := range cc.IterNodesByRole(role) {
 		endpoints = append(endpoints, node.GetHostMappedEndpoint(t))
 	}
-	return dbtest.NewConnection(endpoints...)
+	return testdb.NewConnection(endpoints...)
 }
 
 // GetSingleNodeByRole returns the first node that matches the requested role in the cluster.
-func (cc *DBClusterController) GetSingleNodeByRole(role string) (*dbtest.DatabaseContainer, int) {
+func (cc *DBClusterController) GetSingleNodeByRole(role string) (*testdb.DatabaseContainer, int) {
 	for idx, node := range cc.IterNodesByRole(role) {
 		return node, idx
 	}
 	return nil, 0
 }
 
-func (cc *DBClusterController) getNodesConnections(t *testing.T) *dbtest.Connection {
+func (cc *DBClusterController) getNodesConnections(t *testing.T) *testdb.Connection {
 	t.Helper()
 	endpoints := make([]*connection.Endpoint, len(cc.nodes))
 	for i, node := range cc.nodes {
 		endpoints[i] = node.GetHostMappedEndpoint(t)
 	}
 
-	return dbtest.NewConnection(endpoints...)
+	return testdb.NewConnection(endpoints...)
 }
 
 // IterNodesByRole returns an iterator over the cluster's nodes that match the given role.
-func (cc *DBClusterController) IterNodesByRole(role string) iter.Seq2[int, *dbtest.DatabaseContainer] {
-	return func(yield func(int, *dbtest.DatabaseContainer) bool) {
+func (cc *DBClusterController) IterNodesByRole(role string) iter.Seq2[int, *testdb.DatabaseContainer] {
+	return func(yield func(int, *testdb.DatabaseContainer) bool) {
 		for idx, node := range cc.nodes {
 			if node.Role == role {
 				if !yield(idx, node) {

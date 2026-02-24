@@ -9,8 +9,6 @@ package workload
 import (
 	"maps"
 	"os"
-	"path"
-	"path/filepath"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -19,21 +17,20 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
-	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
-	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
+	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
 var logger = flogging.MustGetLogger("load-gen-sign")
 
 // TxEndorser supports endorsing a TX.
 type TxEndorser struct {
-	endorsers map[string]*sigtest.NsEndorser
+	endorsers map[string]*testsig.NsEndorser
 	policies  map[string]*applicationpb.NamespacePolicy
 }
 
@@ -48,7 +45,7 @@ func NewTxEndorser(policy *PolicyProfile) *TxEndorser {
 			nsPolicies[nsID] = &defaultPolicy
 		}
 	}
-	endorsers := make(map[string]*sigtest.NsEndorser, len(nsPolicies)+1)
+	endorsers := make(map[string]*testsig.NsEndorser, len(nsPolicies)+1)
 	policies := make(map[string]*applicationpb.NamespacePolicy, len(nsPolicies)+1)
 	for nsID, p := range nsPolicies {
 		endorsers[nsID], policies[nsID] = newPolicyEndorser(policy.CryptoMaterialPath, p)
@@ -84,9 +81,9 @@ func (e *TxEndorser) Endorse(txID string, tx *applicationpb.Tx) {
 	}
 }
 
-// newPolicyEndorser creates a new [sigtest.NsEndorser] and its [applicationpb.NamespacePolicy]
+// newPolicyEndorser creates a new [testsig.NsEndorser] and its [applicationpb.NamespacePolicy]
 // given a workload profile and a seed.
-func newPolicyEndorser(cryptoPath string, profile *Policy) (*sigtest.NsEndorser, *applicationpb.NamespacePolicy) {
+func newPolicyEndorser(cryptoPath string, profile *Policy) (*testsig.NsEndorser, *applicationpb.NamespacePolicy) {
 	if profile == nil {
 		profile = &defaultPolicy
 	}
@@ -99,12 +96,12 @@ func newPolicyEndorser(cryptoPath string, profile *Policy) (*sigtest.NsEndorser,
 	}
 }
 
-// newPolicyEndorserFromKey creates a new [sigtest.NsEndorser] and its [applicationpb.NamespacePolicy]
+// newPolicyEndorserFromKey creates a new [testsig.NsEndorser] and its [applicationpb.NamespacePolicy]
 // given a scheme and a key pair.
 func newPolicyEndorserFromKey(
 	scheme string, signingKey, verificationKey []byte,
-) (*sigtest.NsEndorser, *applicationpb.NamespacePolicy) {
-	endorser, err := sigtest.NewNsEndorserFromKey(scheme, signingKey)
+) (*testsig.NsEndorser, *applicationpb.NamespacePolicy) {
+	endorser, err := testsig.NewNsEndorserFromKey(scheme, signingKey)
 	utils.Must(err)
 	nsPolicy := &applicationpb.NamespacePolicy{
 		Rule: &applicationpb.NamespacePolicy_ThresholdRule{
@@ -118,13 +115,10 @@ func newPolicyEndorserFromKey(
 
 // NewPolicyEndorserFromMsp creates an MSP-based endorser and namespace policy from the
 // peer organization crypto material under cryptoPath.
-func NewPolicyEndorserFromMsp(cryptoPath string) (*sigtest.NsEndorser, *applicationpb.NamespacePolicy) {
-	mspDirs := PeerOrgMspDirs(cryptoPath)
-
-	signingIdentities, err := sigtest.GetSigningIdentities(mspDirs...)
+func NewPolicyEndorserFromMsp(cryptoPath string) (*testsig.NsEndorser, *applicationpb.NamespacePolicy) {
+	signingIdentities, err := testcrypto.GetPeersIdentities(cryptoPath)
 	utils.Must(err)
-
-	endorser, err := sigtest.NewNsEndorserFromMsp(test.CreatorID, mspDirs...)
+	endorser, err := testsig.NewNsEndorserFromMsp(test.CreatorID, signingIdentities...)
 	utils.Must(err)
 
 	serializedSigningIdentities := make([][]byte, len(signingIdentities))
@@ -150,27 +144,6 @@ func NewPolicyEndorserFromMsp(cryptoPath string) (*sigtest.NsEndorser, *applicat
 	return endorser, nsPolicy
 }
 
-// PeerOrgMspDirs reads the peer organizations directory under cryptoPath and returns
-// the MSP directory parameters for each organization's client user.
-func PeerOrgMspDirs(cryptoPath string) []msp.DirLoadParameters {
-	peerOrgs := path.Join(cryptoPath, cryptogen.PeerOrganizationsDir)
-	dir, err := os.ReadDir(peerOrgs)
-	utils.Must(err)
-	mspDirs := make([]msp.DirLoadParameters, 0, len(dir))
-	for _, dirEntry := range dir {
-		if !dirEntry.IsDir() {
-			continue
-		}
-		orgName := dirEntry.Name()
-		clientName := "client@" + orgName + ".com"
-		mspDirs = append(mspDirs, msp.DirLoadParameters{
-			MspName: orgName,
-			MspDir:  filepath.Join(peerOrgs, orgName, "users", clientName, "msp"),
-		})
-	}
-	return mspDirs
-}
-
 func getKeyPair(profile *Policy) (signingKey signature.PrivateKey, verificationKey signature.PublicKey) {
 	var err error
 	if profile.KeyPath != nil {
@@ -179,7 +152,7 @@ func getKeyPair(profile *Policy) (signingKey signature.PrivateKey, verificationK
 		utils.Must(err)
 	} else {
 		logger.Debugf("Generating new keys")
-		signingKey, verificationKey = sigtest.NewKeyPairWithSeed(profile.Scheme, profile.Seed)
+		signingKey, verificationKey = testsig.NewKeyPairWithSeed(profile.Scheme, profile.Seed)
 	}
 	return signingKey, verificationKey
 }
@@ -205,7 +178,7 @@ func loadKeys(keyPath KeyPath) (signingKey signature.PrivateKey, verificationKey
 	}
 
 	if keyPath.SignCertificate != "" && utils.FileExists(keyPath.SignCertificate) {
-		verificationKey, err = sigtest.GetSerializedKeyFromCert(keyPath.SignCertificate)
+		verificationKey, err = testsig.GetSerializedKeyFromCert(keyPath.SignCertificate)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err,
 				"could not read sign cert from %s", keyPath.SignCertificate,

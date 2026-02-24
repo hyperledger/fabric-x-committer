@@ -20,8 +20,8 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
-	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
 const fakeTxID = "fake-id"
@@ -126,7 +126,7 @@ func TestNsVerifierPolicyBased(t *testing.T) {
 	}
 
 	validEndorsements := func(creatorType int) []*applicationpb.Endorsements {
-		return []*applicationpb.Endorsements{sigtest.CreateEndorsementsForSignatureRule(
+		return []*applicationpb.Endorsements{testsig.CreateEndorsementsForSignatureRule(
 			toByteArray("sig0"),
 			toByteArray(mspID),
 			toByteArray(certID),
@@ -136,7 +136,7 @@ func TestNsVerifierPolicyBased(t *testing.T) {
 
 	unknownIdentity, err := msp.NewSerializedIdentity("unknown-msp", []byte("unknown-cert"))
 	require.NoError(t, err)
-	invalidEndorsements := []*applicationpb.Endorsements{sigtest.CreateEndorsementsForSignatureRule(
+	invalidEndorsements := []*applicationpb.Endorsements{testsig.CreateEndorsementsForSignatureRule(
 		toByteArray("bad-sig"),
 		toByteArray("unknown-msp"),
 		[][]byte{unknownIdentity},
@@ -206,7 +206,7 @@ func TestNsVerifierPolicyBased(t *testing.T) {
 		for _, creatorType := range []int{test.CreatorCertificate, test.CreatorID} {
 			// org0, org3, and org1 sign — satisfies first OR branch.
 			require.NoError(t, verifier.VerifyNs(fakeTxID, makeTx([]*applicationpb.Endorsements{
-				sigtest.CreateEndorsementsForSignatureRule(
+				testsig.CreateEndorsementsForSignatureRule(
 					toByteArray("s0", "s3", "s1"),
 					toByteArray("org0", "org3", "org1"),
 					toByteArray("id0", "id3", "id1"),
@@ -216,7 +216,7 @@ func TestNsVerifierPolicyBased(t *testing.T) {
 
 			// org0, org3, and org2 sign — satisfies second OR branch.
 			require.NoError(t, verifier.VerifyNs(fakeTxID, makeTx([]*applicationpb.Endorsements{
-				sigtest.CreateEndorsementsForSignatureRule(
+				testsig.CreateEndorsementsForSignatureRule(
 					toByteArray("s0", "s3", "s2"),
 					toByteArray("org0", "org3", "org2"),
 					toByteArray("id0", "id3", "id2"),
@@ -226,7 +226,7 @@ func TestNsVerifierPolicyBased(t *testing.T) {
 
 			// org0 and org3 only — missing org1 or org2.
 			require.ErrorContains(t, verifier.VerifyNs(fakeTxID, makeTx([]*applicationpb.Endorsements{
-				sigtest.CreateEndorsementsForSignatureRule(
+				testsig.CreateEndorsementsForSignatureRule(
 					toByteArray("s0", "s3"),
 					toByteArray("org0", "org3"),
 					toByteArray("id0", "id3"),

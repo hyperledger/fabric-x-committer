@@ -26,12 +26,12 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/apptest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
-	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testapp"
+	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
 type vcMgrTestEnv struct {
@@ -208,7 +208,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 			require.Empty(t, mockSvService.Updates)
 		}
 
-		_, verificationKey := sigtest.NewKeyPair(signature.Ecdsa)
+		_, verificationKey := testsig.NewKeyPair(signature.Ecdsa)
 		p := policy.MakeECDSAThresholdRuleNsPolicy(verificationKey)
 		pBytes, err := proto.Marshal(p)
 		require.NoError(t, err)
@@ -248,9 +248,9 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		require.Len(t, outTxsStatus.Status, 2)
 		expectedConfig := committerpb.NewTxStatus(committerpb.Status_COMMITTED, "create config", 100, 63)
-		apptest.RequireStatus(t, expectedConfig, outTxsStatus.Status)
+		testapp.RequireStatus(t, expectedConfig, outTxsStatus.Status)
 		expectedMeta := committerpb.NewTxStatus(committerpb.Status_COMMITTED, "create ns 1", 100, 64)
-		apptest.RequireStatus(t, expectedMeta, outTxsStatus.Status)
+		testapp.RequireStatus(t, expectedMeta, outTxsStatus.Status)
 
 		require.ElementsMatch(t, txBatch, <-env.outputTxs)
 

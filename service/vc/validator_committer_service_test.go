@@ -23,10 +23,10 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/apptest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testapp"
 )
 
 type validatorAndCommitterServiceTestEnvWithClient struct {
@@ -128,7 +128,7 @@ func TestCreateConfigAndTables(t *testing.T) {
 	require.NotNil(t, txStatus1.Status)
 
 	expectedConfig := committerpb.NewTxStatus(committerpb.Status_COMMITTED, configID, 0, 0)
-	apptest.RequireStatus(t, expectedConfig, txStatus1.Status)
+	testapp.RequireStatus(t, expectedConfig, txStatus1.Status)
 
 	ctx, _ := createContext(t)
 	tx, err := env.dbEnv.DB.readConfigTX(ctx)
@@ -160,7 +160,7 @@ func TestCreateConfigAndTables(t *testing.T) {
 	require.NotNil(t, txStatus2.Status)
 
 	expectedMeta := committerpb.NewTxStatus(committerpb.Status_COMMITTED, metaID, 1, 0)
-	apptest.RequireStatus(t, expectedMeta, txStatus2.Status)
+	testapp.RequireStatus(t, expectedMeta, txStatus2.Status)
 
 	policies, err := env.dbEnv.DB.readNamespacePolicies(ctx)
 	require.NoError(t, err)
@@ -313,7 +313,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		env.dbEnv.StatusExistsForNonDuplicateTxID(t.Context(), t, expectedTxStatus)
 
 		ctx, _ := createContext(t)
-		apptest.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
+		testapp.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
 
 		noKey2TxRef := committerpb.NewTxRef("New key 2 no value", 2, 0)
 		txBatch = &servicepb.VcBatch{
@@ -339,7 +339,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		require.EventuallyWithT(t, func(ct *assert.CollectT) {
 			txStatus, err = env.streams[0].Recv()
 			require.NoError(t, err)
-			apptest.RequireStatus(ct, expectedStatus, txStatus.Status)
+			testapp.RequireStatus(ct, expectedStatus, txStatus.Status)
 		}, env.vcs[0].timeoutForMinTxBatchSize, 500*time.Millisecond)
 	})
 
@@ -703,7 +703,7 @@ func TestTransactionResubmission(t *testing.T) {
 			env.dbEnv.StatusExistsForNonDuplicateTxID(ctx, t, expectedTxStatus)
 		}
 
-		apptest.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
+		testapp.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
 	})
 
 	t.Run("same transactions submitted again while previous submission is not yet committed", func(t *testing.T) {
@@ -718,7 +718,7 @@ func TestTransactionResubmission(t *testing.T) {
 			test.RequireProtoElementsMatch(t, expectedTxStatus, txStatus.Status)
 		}
 		env.dbEnv.StatusExistsForNonDuplicateTxID(ctx, t, expectedTxStatus)
-		apptest.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
+		testapp.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
 	})
 
 	t.Run("same transactions submitted again within the minbatchsize", func(t *testing.T) {
@@ -734,7 +734,7 @@ func TestTransactionResubmission(t *testing.T) {
 		test.RequireProtoElementsMatch(t, expectedTxStatus, txStatus.Status)
 
 		env.dbEnv.StatusExistsForNonDuplicateTxID(ctx, t, expectedTxStatus)
-		apptest.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
+		testapp.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
 	})
 
 	t.Run("same duplicate transactions submitted in parallel to all vcservices", func(t *testing.T) {
@@ -756,7 +756,7 @@ func TestTransactionResubmission(t *testing.T) {
 			test.RequireProtoElementsMatch(t, expectedTxStatus, txStatus.Status)
 		}
 		env.dbEnv.StatusExistsForNonDuplicateTxID(ctx, t, expectedTxStatus)
-		apptest.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
+		testapp.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
 	})
 }
 

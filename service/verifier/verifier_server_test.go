@@ -24,8 +24,9 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
-	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
+	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
 const (
@@ -36,8 +37,8 @@ const (
 type cryptoParameters struct {
 	cryptoPath     string
 	update         *servicepb.VerifierUpdates
-	metaTxEndorser *sigtest.NsEndorser
-	dataTxEndorser *sigtest.NsEndorser
+	metaTxEndorser *testsig.NsEndorser
+	dataTxEndorser *testsig.NsEndorser
 }
 
 func TestVerifierSecureConnection(t *testing.T) {
@@ -158,9 +159,7 @@ func TestSignatureRule(t *testing.T) {
 	err = stream.Send(&servicepb.VerifierBatch{Update: cp.update})
 	require.NoError(t, err)
 
-	mspDirs := workload.PeerOrgMspDirs(cp.cryptoPath)
-
-	signingIdentities, err := sigtest.GetSigningIdentities(mspDirs...)
+	signingIdentities, err := testcrypto.GetPeersIdentities(cp.cryptoPath)
 	require.NoError(t, err)
 	serializedSigningIdentities := make([][]byte, len(signingIdentities))
 	for i, si := range signingIdentities {
@@ -199,7 +198,7 @@ func TestSignatureRule(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, certType := range []int{test.CreatorCertificate, test.CreatorID} {
-		signer, signerErr := sigtest.NewNsEndorserFromMsp(certType, mspDirs...)
+		signer, signerErr := testsig.NewNsEndorserFromMsp(certType, signingIdentities...)
 		require.NoError(t, signerErr)
 		sig, signerErr := signer.Endorse(data)
 		require.NoError(t, signerErr)
@@ -255,7 +254,7 @@ func TestBadSignature(t *testing.T) {
 						{Key: make([]byte, 0)},
 					},
 				}},
-				Endorsements: sigtest.CreateEndorsementsForThresholdRule([]byte{0}, []byte{1}, []byte{2}),
+				Endorsements: testsig.CreateEndorsementsForThresholdRule([]byte{0}, []byte{1}, []byte{2}),
 			},
 		},
 		expectedStatus: committerpb.Status_ABORTED_SIGNATURE_INVALID,
@@ -367,8 +366,8 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 
 	// Each policy update will update a unique namespace, and the common namespace.
 	updateCount := len(ns) - 1
-	uniqueNsEndorsers := make([]*sigtest.NsEndorser, updateCount)
-	commonNsEndorsers := make([]*sigtest.NsEndorser, updateCount)
+	uniqueNsEndorsers := make([]*testsig.NsEndorser, updateCount)
+	commonNsEndorsers := make([]*testsig.NsEndorser, updateCount)
 	for i := range updateCount {
 		uniqueNsPolicy, uniqueNsEndorser := makePolicyItem(t, ns[i])
 		uniqueNsEndorsers[i] = uniqueNsEndorser
@@ -429,7 +428,7 @@ type testCase struct {
 	expectedStatus committerpb.Status
 }
 
-func endorse(t *testing.T, tx *applicationpb.Tx, signers ...*sigtest.NsEndorser) {
+func endorse(t *testing.T, tx *applicationpb.Tx, signers ...*testsig.NsEndorser) {
 	t.Helper()
 	tx.Endorsements = make([]*applicationpb.Endorsements, len(signers))
 	for i, s := range signers {
@@ -455,10 +454,10 @@ func makeTX(namespaces ...string) *applicationpb.Tx {
 	return tx
 }
 
-func makePolicyItem(t *testing.T, ns string) (*applicationpb.PolicyItem, *sigtest.NsEndorser) {
+func makePolicyItem(t *testing.T, ns string) (*applicationpb.PolicyItem, *testsig.NsEndorser) {
 	t.Helper()
-	signingKey, verificationKey := sigtest.NewKeyPair(signature.Ecdsa)
-	txEndorser, err := sigtest.NewNsEndorserFromKey(signature.Ecdsa, signingKey)
+	signingKey, verificationKey := testsig.NewKeyPair(signature.Ecdsa)
+	txEndorser, err := testsig.NewNsEndorserFromKey(signature.Ecdsa, signingKey)
 	require.NoError(t, err)
 	return policy.MakePolicy(t, ns, policy.MakeECDSAThresholdRuleNsPolicy(verificationKey)), txEndorser
 }
@@ -535,8 +534,8 @@ func defaultCryptoParameters(t *testing.T) cryptoParameters {
 	ret.metaTxEndorser, _ = workload.NewPolicyEndorserFromMsp(ret.cryptoPath)
 	require.NoError(t, err)
 
-	dataTxSigningKey, dataTxVerificationKey := sigtest.NewKeyPair(signature.Ecdsa)
-	ret.dataTxEndorser, err = sigtest.NewNsEndorserFromKey(signature.Ecdsa, dataTxSigningKey)
+	dataTxSigningKey, dataTxVerificationKey := testsig.NewKeyPair(signature.Ecdsa)
+	ret.dataTxEndorser, err = testsig.NewNsEndorserFromKey(signature.Ecdsa, dataTxSigningKey)
 	require.NoError(t, err)
 	ret.update = &servicepb.VerifierUpdates{
 		Config: &applicationpb.ConfigTransaction{

@@ -94,7 +94,7 @@ func PrepareCryptoMaterial(policy *PolicyProfile) error {
 		return errors.Wrap(err, "error creating crypto material folder")
 	}
 
-	configBlockPath := path.Join(policy.CryptoMaterialPath, "config-block.pb.bin")
+	configBlockPath := path.Join(policy.CryptoMaterialPath, cryptogen.ConfigBlockFileName)
 	if _, fErr := os.Stat(configBlockPath); fErr == nil {
 		return nil
 	}

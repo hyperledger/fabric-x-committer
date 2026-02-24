@@ -18,8 +18,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 
 const (
@@ -65,7 +65,7 @@ type PostgresClusterController struct {
 // accessed 2026-02-13), omitting production concerns unnecessary for short-lived test clusters:
 // WAL archiving (archive_mode/archive_command), replication slots, synchronous replication,
 // and restore_command — since we use pg_basebackup -Xs for gapless WAL streaming.
-func StartPostgresCluster(ctx context.Context, t *testing.T) (*PostgresClusterController, *dbtest.Connection) {
+func StartPostgresCluster(ctx context.Context, t *testing.T) (*PostgresClusterController, *testdb.Connection) {
 	t.Helper()
 
 	networkName := fmt.Sprintf("sc_pg_net_%s", uuid.NewString())
@@ -96,13 +96,13 @@ func StartPostgresCluster(ctx context.Context, t *testing.T) (*PostgresClusterCo
 func (cc *PostgresClusterController) addPrimaryNode(ctx context.Context, t *testing.T) {
 	t.Helper()
 
-	node := &dbtest.DatabaseContainer{
+	node := &testdb.DatabaseContainer{
 		Name:         fmt.Sprintf("%s_postgres_primary_%s", test.DockerNamesPrefix, uuid.New()),
 		Role:         PrimaryNode,
-		Image:        dbtest.DefaultPostgresImage,
-		DatabaseType: dbtest.PostgresDBType,
+		Image:        testdb.DefaultPostgresImage,
+		DatabaseType: testdb.PostgresDBType,
 		Network:      cc.networkName,
-		// We use "yugabyte" as the superuser to match dbtest.NewConnection(),
+		// We use "yugabyte" as the superuser to match testdb.NewConnection(),
 		// which hardcodes this username for both YugabyteDB and PostgreSQL.
 		Env: []string{
 			"POSTGRES_USER=yugabyte",
@@ -140,11 +140,11 @@ func (cc *PostgresClusterController) addSecondaryNode(ctx context.Context, t *te
 	primary, _ := cc.GetSingleNodeByRole(PrimaryNode)
 	require.NotNil(t, primary)
 
-	node := &dbtest.DatabaseContainer{
+	node := &testdb.DatabaseContainer{
 		Name:         fmt.Sprintf("%s_postgres_secondary_%s", test.DockerNamesPrefix, uuid.New()),
 		Role:         SecondaryNode,
-		Image:        dbtest.DefaultPostgresImage,
-		DatabaseType: dbtest.PostgresDBType,
+		Image:        testdb.DefaultPostgresImage,
+		DatabaseType: testdb.PostgresDBType,
 		Network:      cc.networkName,
 		Entrypoint:   []string{"bash", "-c", secondaryStartupScript, "bash", primary.Name},
 	}
@@ -152,14 +152,14 @@ func (cc *PostgresClusterController) addSecondaryNode(ctx context.Context, t *te
 	cc.nodes = append(cc.nodes, node)
 
 	node.StartContainer(ctx, t)
-	node.EnsureNodeReadinessByLogs(t, dbtest.SecondaryPostgresNodeReadinessOutput)
+	node.EnsureNodeReadinessByLogs(t, testdb.SecondaryPostgresNodeReadinessOutput)
 }
 
-func ensurePostgresFullyReady(t *testing.T, node *dbtest.DatabaseContainer) {
+func ensurePostgresFullyReady(t *testing.T, node *testdb.DatabaseContainer) {
 	t.Helper()
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		output := node.GetContainerLogs(t)
-		count := strings.Count(output, dbtest.PostgresReadinesssOutput)
+		count := strings.Count(output, testdb.PostgresReadinesssOutput)
 		require.GreaterOrEqual(ct, count, 2)
 	}, 45*time.Second, 250*time.Millisecond)
 }

@@ -9,9 +9,9 @@ package vc
 import (
 	"testing"
 
-	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
+	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 
 func TestMain(m *testing.M) {
-	dbtest.RunTestMain(m)
+	testdb.RunTestMain(m)
 }

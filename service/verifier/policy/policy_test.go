@@ -20,8 +20,8 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
-	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
 func TestGetUpdatesFromNamespace(t *testing.T) {
@@ -67,7 +67,7 @@ func TestGetUpdatesFromNamespace(t *testing.T) {
 
 func TestParsePolicyItem(t *testing.T) {
 	t.Parallel()
-	_, verificationKey := sigtest.NewKeyPair(signature.Ecdsa)
+	_, verificationKey := testsig.NewKeyPair(signature.Ecdsa)
 	p := MakeECDSAThresholdRuleNsPolicy(verificationKey)
 
 	for _, ns := range []string{"0", "1"} {

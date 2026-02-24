@@ -20,8 +20,8 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
-	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
 // RequireNotifications verifies that the expected notification were received.
@@ -299,7 +299,7 @@ func defaultNsInvalidPolicy() []byte {
 }
 
 func defaultNsValidPolicy() []byte {
-	_, verificationKey := sigtest.NewKeyPair(signature.Ecdsa)
+	_, verificationKey := testsig.NewKeyPair(signature.Ecdsa)
 	return protoutil.MarshalOrPanic(policy.MakeECDSAThresholdRuleNsPolicy(verificationKey))
 }
 

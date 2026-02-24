@@ -116,7 +116,7 @@ func TestLoadGenForVCService(t *testing.T) {
 	}
 }
 
-func TestLoadGenForSigVerifier(t *testing.T) {
+func TestLoadGenForVerifier(t *testing.T) {
 	t.Parallel()
 	for _, mode := range test.ServerModes {
 		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {

@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package sigtest_test
+package testsig_test
 
 import (
 	"crypto/sha256"

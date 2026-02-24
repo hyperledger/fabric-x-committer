@@ -14,7 +14,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
-	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
+	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
 // MakePolicy generates a policy item from a namespace policy.
@@ -36,10 +36,10 @@ func MakePolicy(
 func MakePolicyAndNsEndorser(
 	t *testing.T,
 	ns string,
-) (*applicationpb.PolicyItem, *sigtest.NsEndorser) {
+) (*applicationpb.PolicyItem, *testsig.NsEndorser) {
 	t.Helper()
-	signingKey, verificationKey := sigtest.NewKeyPair(signature.Ecdsa)
-	txEndorser, err := sigtest.NewNsEndorserFromKey(signature.Ecdsa, signingKey)
+	signingKey, verificationKey := testsig.NewKeyPair(signature.Ecdsa)
+	txEndorser, err := testsig.NewNsEndorserFromKey(signature.Ecdsa, signingKey)
 	require.NoError(t, err)
 	p := MakePolicy(t, ns, MakeECDSAThresholdRuleNsPolicy(verificationKey))
 	return p, txEndorser
