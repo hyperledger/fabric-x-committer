@@ -19,6 +19,9 @@ server:
     enforcement-policy:
       min-time: 60s
       permit-without-stream: false
+  {{- if .MaxConcurrentStreams }}
+  max-concurrent-streams: {{ .MaxConcurrentStreams }}
+  {{- end }}
 monitoring:
   endpoint: {{ .ThisService.MetricsEndpoint | default "localhost:0" }}
   tls:

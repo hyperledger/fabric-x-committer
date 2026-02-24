@@ -33,10 +33,11 @@ type (
 
 	// ServerConfig describes the connection parameter for a server.
 	ServerConfig struct {
-		Endpoint  Endpoint               `mapstructure:"endpoint"`
-		TLS       TLSConfig              `mapstructure:"tls"`
-		KeepAlive *ServerKeepAliveConfig `mapstructure:"keep-alive"`
-		RateLimit RateLimitConfig        `mapstructure:"rate-limit"`
+		Endpoint             Endpoint               `mapstructure:"endpoint"`
+		TLS                  TLSConfig              `mapstructure:"tls"`
+		KeepAlive            *ServerKeepAliveConfig `mapstructure:"keep-alive"`
+		RateLimit            RateLimitConfig        `mapstructure:"rate-limit"`
+		MaxConcurrentStreams int                    `mapstructure:"max-concurrent-streams"`
 
 		preAllocatedListener net.Listener
 	}
@@ -119,10 +120,6 @@ func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error)
 
 // Validate checks that the rate limit configuration is valid.
 func (c *RateLimitConfig) Validate() error {
-	if c == nil || c.RequestsPerSecond <= 0 {
-		// Rate limiting is disabled, no validation needed
-		return nil
-	}
 	if c.Burst <= 0 {
 		return errors.Newf("rate limit burst must be greater than 0 when rate limiting is enabled")
 	}

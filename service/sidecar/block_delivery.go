@@ -85,7 +85,7 @@ func (*blockDelivery) DeliverWithPrivateData(peer.Deliver_DeliverWithPrivateData
 	return grpcerror.WrapUnimplemented(errors.New("method is deprecated"))
 }
 
-func (s *blockDelivery) deliverBlocks(
+func (s *blockDelivery) deliverBlocks( //nolint:gocognit
 	srv peer.Deliver_DeliverServer,
 	envelope *common.Envelope,
 ) (common.Status, error) {
@@ -127,6 +127,9 @@ func (s *blockDelivery) deliverBlocks(
 	}
 
 	for ctx.Err() == nil {
+		// cursor.Next() is blocking till the next block is available and does not
+		// respect the context cancellation. This requires refactoring to the blockStore
+		// in fabric-x-common.
 		block, status := cursor.Next()
 		if status != common.Status_SUCCESS {
 			return status, nil
