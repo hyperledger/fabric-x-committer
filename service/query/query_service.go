@@ -22,6 +22,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
@@ -34,6 +35,18 @@ var (
 
 	// ErrTooManyKeys is returned when the number of keys in a request exceeds the configured limit.
 	ErrTooManyKeys = errors.New("request exceeds maximum allowed keys")
+
+	// ErrEmptyNamespaces is returned when a query request does not contain any namespaces.
+	ErrEmptyNamespaces = errors.New("query namespaces must not be empty")
+
+	// ErrEmptyKeys is returned when a namespace query does not contain any keys.
+	ErrEmptyKeys = errors.New("query namespace keys must not be empty")
+
+	// ErrEmptyTxIDs is returned when a transaction status query has no transaction IDs.
+	ErrEmptyTxIDs = errors.New("transaction status query tx_ids must not be empty")
+
+	// ErrTooManyActiveViews is returned when the number of active views exceeds the configured limit.
+	ErrTooManyActiveViews = errors.New("active view limit exceeded")
 )
 
 type (
@@ -73,10 +86,11 @@ func (q *Service) Run(ctx context.Context) error {
 	defer pool.Close()
 
 	q.batcher = viewsBatcher{
-		ctx:     ctx,
-		config:  q.config,
-		metrics: q.metrics,
-		pool:    pool,
+		ctx:         ctx,
+		config:      q.config,
+		metrics:     q.metrics,
+		pool:        pool,
+		viewLimiter: utils.NewConcurrencyLimiter(q.config.MaxActiveViews),
 		nonConsistentBatcher: batcher{
 			ctx: ctx,
 			cancel: func() {
@@ -120,9 +134,19 @@ func (q *Service) BeginView(
 		if err != nil {
 			return nil, grpcerror.WrapInternalError(err)
 		}
-		if q.batcher.makeView(viewID, params) { //nolint:contextcheck // false positive.
+		err = q.batcher.makeView(ctx, viewID, params)
+		if err == nil {
 			return &committerpb.View{Id: viewID}, nil
 		}
+		if errors.Is(err, errViewIDCollision) {
+			continue
+		}
+		if errors.Is(err, ErrTooManyActiveViews) {
+			return nil, grpcerror.WrapResourceExhaustedOrCancelled(ctx,
+				errors.Wrapf(err, "limit %d", q.config.MaxActiveViews),
+			)
+		}
+		return nil, grpcerror.WrapInternalError(err)
 	}
 	return nil, grpcerror.WrapCancelled(ctx.Err())
 }
@@ -142,10 +166,17 @@ func (q *Service) GetRows(
 ) (*committerpb.Rows, error) {
 	q.metrics.requests.WithLabelValues(grpcGetRows).Inc()
 
+	if len(query.Namespaces) == 0 {
+		return nil, grpcerror.WrapInvalidArgument(ErrEmptyNamespaces)
+	}
+
 	for _, ns := range query.Namespaces {
 		err := policy.ValidateNamespaceID(ns.NsId)
 		if err != nil {
 			return nil, grpcerror.WrapInvalidArgument(err)
+		}
+		if len(ns.Keys) == 0 {
+			return nil, grpcerror.WrapInvalidArgument(errors.Wrapf(ErrEmptyKeys, "namespace %s", ns.NsId))
 		}
 	}
 
@@ -187,6 +218,10 @@ func (q *Service) GetTransactionStatus(
 	ctx context.Context, query *committerpb.TxStatusQuery,
 ) (*committerpb.TxStatusResponse, error) {
 	q.metrics.requests.WithLabelValues(grpcGetTxStatus).Inc()
+
+	if len(query.TxIds) == 0 {
+		return nil, grpcerror.WrapInvalidArgument(ErrEmptyTxIDs)
+	}
 
 	if err := q.validateKeysCount(len(query.TxIds)); err != nil {
 		return nil, err

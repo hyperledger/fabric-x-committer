@@ -31,6 +31,8 @@ const (
 	txStatusNsID = "$tx_status$"
 )
 
+var errViewIDCollision = errors.New("view ID collision")
+
 // viewsBatcher is designed to allow maximal concurrency between requests.
 // It uses lock-free structures to ensure minimal contention.
 // batcher aggregates queries.
@@ -58,6 +60,7 @@ type (
 		viewIDToViewHolder            utils.SyncMap[string, *viewHolder]
 		viewParametersToLatestBatcher utils.SyncMap[int, *batcher]
 		nonConsistentBatcher          batcher
+		viewLimiter                   *utils.ConcurrencyLimiter
 	}
 	viewHolder struct {
 		m sync.Mutex
@@ -108,25 +111,31 @@ type (
 )
 
 // makeView attempts to create a view with the given view ID.
-// It returns true if the view ID was not used.
+// It returns errViewIDCollision if the view ID is already used.
 func (q *viewsBatcher) makeView(
-	viewID string, p *committerpb.ViewParameters,
-) bool {
-	ctx, cancel := context.WithTimeout(q.ctx, time.Duration(p.TimeoutMilliseconds)*time.Millisecond) //nolint:gosec
+	ctx context.Context, viewID string, p *committerpb.ViewParameters,
+) error {
+	if !q.viewLimiter.TryAcquire(ctx) {
+		return ErrTooManyActiveViews
+	}
+
+	viewCtx, cancel := context.WithTimeout(q.ctx, time.Duration(p.TimeoutMilliseconds)*time.Millisecond) //nolint:gosec
 	v := &viewHolder{
-		ctx:    ctx,
+		ctx:    viewCtx,
 		cancel: cancel,
 		params: p,
 	}
 	if _, loaded := q.viewIDToViewHolder.LoadOrStore(viewID, v); loaded {
 		cancel()
-		return false
+		q.viewLimiter.Release()
+		return errViewIDCollision
 	}
 
 	m := q.metrics.processingSessions.WithLabelValues(sessionViews)
 	m.Inc()
-	context.AfterFunc(ctx, func() {
+	context.AfterFunc(viewCtx, func() { //nolint:contextcheck // callback intentionally tied to viewCtx lifecycle.
 		m.Dec()
+		q.viewLimiter.Release()
 		q.viewIDToViewHolder.CompareAndDelete(viewID, v)
 
 		v.m.Lock()
@@ -137,7 +146,7 @@ func (q *viewsBatcher) makeView(
 			b.leave()
 		}
 	})
-	return true
+	return nil
 }
 
 // getBatcher returns the view's assigned batcher, and assigns one if it was not assigned.

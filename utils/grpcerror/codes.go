@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package grpcerror
 
 import (
+	"context"
 	"slices"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
@@ -70,6 +71,15 @@ func WrapNotFound(err error) error {
 
 // WrapResourceExhausted creates a grpc error with a [codes.ResourceExhausted] status code for a given error.
 func WrapResourceExhausted(err error) error {
+	return wrap(codes.ResourceExhausted, err)
+}
+
+// WrapResourceExhaustedOrCancelled returns a [codes.Canceled] gRPC error if the context is done,
+// otherwise returns a [codes.ResourceExhausted] gRPC error.
+func WrapResourceExhaustedOrCancelled(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return wrap(codes.Canceled, ctx.Err())
+	}
 	return wrap(codes.ResourceExhausted, err)
 }
 

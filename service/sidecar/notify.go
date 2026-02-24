@@ -8,7 +8,6 @@ package sidecar
 
 import (
 	"context"
-	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -16,6 +15,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/durationpb"
 
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 )
@@ -29,10 +29,9 @@ type (
 	// Deadlock is prevented by buffered channels and single-threaded processing in run().
 	notifier struct {
 		committerpb.UnimplementedNotifierServer
-		bufferSize           int
-		maxTimeout           time.Duration
-		maxConcurrentStreams int
-		activeStreams        atomic.Int32
+		bufferSize    int
+		maxTimeout    time.Duration
+		streamLimiter *utils.ConcurrencyLimiter
 		// requestQueue receives requests from users.
 		requestQueue chan *notificationRequest
 	}
@@ -51,16 +50,19 @@ type (
 	subscriptionMap map[string]map[*notificationRequest]any
 )
 
+// ErrTooManyNotificationStreams indicates the notifier reached the configured concurrent stream limit.
+var ErrTooManyNotificationStreams = errors.New("maximum concurrent notification streams limit reached")
+
 func newNotifier(bufferSize int, conf *NotificationServiceConfig) *notifier {
 	maxTimeout := conf.MaxTimeout
 	if maxTimeout <= 0 {
 		maxTimeout = defaultNotificationMaxTimeout
 	}
 	return &notifier{
-		bufferSize:           bufferSize,
-		maxTimeout:           maxTimeout,
-		maxConcurrentStreams: conf.MaxConcurrentStreams,
-		requestQueue:         make(chan *notificationRequest, bufferSize),
+		bufferSize:    bufferSize,
+		maxTimeout:    maxTimeout,
+		streamLimiter: utils.NewConcurrencyLimiter(conf.MaxConcurrentStreams),
+		requestQueue:  make(chan *notificationRequest, bufferSize),
 	}
 }
 
@@ -90,10 +92,10 @@ func (n *notifier) run(ctx context.Context, statusQueue chan []*committerpb.TxSt
 
 // OpenNotificationStream implements the [protonotify.NotifierServer] API.
 func (n *notifier) OpenNotificationStream(stream committerpb.Notifier_OpenNotificationStreamServer) error {
-	if !n.tryAcquireStream(stream.Context()) {
-		return grpcerror.WrapResourceExhausted(errors.New("maximum concurrent notification streams limit reached"))
+	if !n.streamLimiter.TryAcquire(stream.Context()) {
+		return grpcerror.WrapResourceExhaustedOrCancelled(stream.Context(), ErrTooManyNotificationStreams)
 	}
-	defer n.releaseStream()
+	defer n.streamLimiter.Release()
 
 	g, gCtx := errgroup.WithContext(stream.Context())
 	requestQueue := channel.NewWriter(gCtx, n.requestQueue)
@@ -126,28 +128,6 @@ func (n *notifier) OpenNotificationStream(stream committerpb.Notifier_OpenNotifi
 		return gCtx.Err()
 	})
 	return wrapNotifierError(g.Wait())
-}
-
-func (n *notifier) tryAcquireStream(ctx context.Context) bool {
-	if n.maxConcurrentStreams <= 0 {
-		n.activeStreams.Add(1)
-		return true
-	}
-	for ctx.Err() == nil {
-		current := n.activeStreams.Load()
-		if int(current) >= n.maxConcurrentStreams {
-			return false
-		}
-		if n.activeStreams.CompareAndSwap(current, current+1) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func (n *notifier) releaseStream() {
-	n.activeStreams.Add(-1)
 }
 
 // wrapNotifierError wraps notifier errors with appropriate gRPC status codes.

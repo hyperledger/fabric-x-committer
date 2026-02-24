@@ -295,14 +295,22 @@ func TestReadConfigQuery(t *testing.T) {
 		name:           "default",
 		configFilePath: emptyConfig(t),
 		expectedConfig: &query.Config{
-			Server:                newServerConfig("localhost", 7001),
+			Server: &connection.ServerConfig{
+				Endpoint: *newEndpoint("localhost", 7001),
+				RateLimit: connection.RateLimitConfig{
+					RequestsPerSecond: 5000,
+					Burst:             1000,
+				},
+			},
 			Monitoring:            newServerConfig("localhost", 2117),
 			Database:              defaultDBConfig(),
 			MinBatchKeys:          1024,
 			MaxBatchWait:          100 * time.Millisecond,
 			ViewAggregationWindow: 100 * time.Millisecond,
 			MaxAggregatedViews:    1024,
+			MaxActiveViews:        4096,
 			MaxViewTimeout:        10 * time.Second,
+			MaxRequestKeys:        10000,
 		},
 	}, {
 		name:           "sample",
@@ -315,6 +323,7 @@ func TestReadConfigQuery(t *testing.T) {
 			MaxBatchWait:          100 * time.Millisecond,
 			ViewAggregationWindow: 100 * time.Millisecond,
 			MaxAggregatedViews:    1024,
+			MaxActiveViews:        4096,
 			MaxViewTimeout:        10 * time.Second,
 			MaxRequestKeys:        10000,
 		},
