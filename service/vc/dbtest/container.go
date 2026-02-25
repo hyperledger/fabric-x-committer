@@ -10,9 +10,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -308,14 +310,29 @@ func (dc *DatabaseContainer) GetContainerConnectionDetails(
 }
 
 // ExposePort adds a host port mapping for the given container port (e.g. "5433")
-// with an auto-assigned host port. This allows the test client to reach the
-// container through a host-accessible address on all platforms.
+// using a pre-allocated ephemeral host port.
 func (dc *DatabaseContainer) ExposePort(port string) {
 	p := docker.Port(port + "/tcp")
 	if dc.PortBinds == nil {
 		dc.PortBinds = make(map[docker.Port][]docker.PortBinding)
 	}
-	dc.PortBinds[p] = []docker.PortBinding{{HostIP: "0.0.0.0", HostPort: "0"}}
+	dc.PortBinds[p] = []docker.PortBinding{{HostIP: "0.0.0.0", HostPort: freePort()}}
+}
+
+func freePort() string {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "0"
+	}
+	defer func() {
+		_ = l.Close()
+	}()
+
+	addr, ok := l.Addr().(*net.TCPAddr)
+	if !ok {
+		return "0"
+	}
+	return strconv.Itoa(addr.Port)
 }
 
 // GetHostMappedEndpoint inspects the container and returns a host-accessible endpoint
