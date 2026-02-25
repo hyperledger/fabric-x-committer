@@ -74,6 +74,7 @@ jobs:
           path-to-profile: coverage.profile
           flag-name: unit-test
           parallel: true
+        continue-on-error: true
 
   db-test:
     name: Requires and Core DB Tests (postgres)
@@ -95,6 +96,7 @@ jobs:
           path-to-profile: coverage.profile
           flag-name: db-test
           parallel: true
+        continue-on-error: true
 
   core-db-test:
     name: Core DB Tests (yugabyte)
@@ -160,6 +162,7 @@ jobs:
       - uses: coverallsapp/github-action@v2
         with:
           parallel-finished: true
+        continue-on-error: true
 
   analyze:
     name: Analyze (${{ matrix.language }})
