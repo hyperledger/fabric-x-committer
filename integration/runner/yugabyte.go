@@ -21,8 +21,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 
 type (
@@ -72,7 +72,7 @@ var leaderRegex = regexp.MustCompile(`(?m)^[^\n]*[ \t]+(\S+):\d+[ \t]+[^\n]+[ \t
 // StartYugaCluster creates a Yugabyte cluster in a Docker environment
 // and returns its connection properties.
 func StartYugaCluster(ctx context.Context, t *testing.T, numberOfMasters, numberOfTablets uint) (
-	*YugaClusterController, *dbtest.Connection,
+	*YugaClusterController, *testdb.Connection,
 ) {
 	t.Helper()
 
@@ -126,11 +126,11 @@ func StartYugaCluster(ctx context.Context, t *testing.T, numberOfMasters, number
 }
 
 func (cc *YugaClusterController) createNode(role string) {
-	node := &dbtest.DatabaseContainer{
+	node := &testdb.DatabaseContainer{
 		Name:         fmt.Sprintf("%s_yuga_%s_%s", test.DockerNamesPrefix, role, uuid.New().String()),
 		Image:        defaultImage,
 		Role:         role,
-		DatabaseType: dbtest.YugaDBType,
+		DatabaseType: testdb.YugaDBType,
 		// All nodes join the same Docker network so they can resolve each
 		// other by container name for inter-node RPC (Raft, heartbeats).
 		Network: cc.networkName,
@@ -213,7 +213,7 @@ func (cc *YugaClusterController) startNodes(ctx context.Context, t *testing.T) {
 	// Wait for each tserver to finish bootstrapping (syncing data to disk).
 	// Until this completes, the tserver is not ready to serve SQL queries.
 	for _, n := range cc.IterNodesByRole(TabletNode) {
-		n.EnsureNodeReadinessByLogs(t, dbtest.YugabyteTabletNodeReadinessOutput)
+		n.EnsureNodeReadinessByLogs(t, testdb.YugabyteTabletNodeReadinessOutput)
 	}
 
 	// Wait for all tservers to register with the master via heartbeats.

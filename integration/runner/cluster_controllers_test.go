@@ -14,8 +14,8 @@ import (
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 
 func TestDBResiliencyYugabyteClusterController(t *testing.T) {
@@ -31,7 +31,7 @@ func TestDBResiliencyYugabyteClusterController(t *testing.T) {
 		ensureContainersRemoval(t, containersIDs)
 	})
 
-	dbtest.ConnectAndQueryTest(t, conn)
+	testdb.ConnectAndQueryTest(t, conn)
 	require.Equal(t, 6, cc.GetClusterSize())
 
 	cc.StopAndRemoveSingleNodeByRole(t, TabletNode)
@@ -51,7 +51,7 @@ func TestDBResiliencyPostgresClusterController(t *testing.T) {
 		ensureContainersRemoval(t, containersIDs)
 	})
 
-	dbtest.ConnectAndQueryTest(t, conn)
+	testdb.ConnectAndQueryTest(t, conn)
 	require.Equal(t, 2, cc.GetClusterSize())
 
 	cc.StopAndRemoveSingleNodeByRole(t, SecondaryNode)

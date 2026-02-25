@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package sigtest
+package testsig
 
 import (
 	"math/big"
@@ -52,18 +52,14 @@ func NewNsEndorserFromKey(scheme signature.Scheme, key []byte) (*NsEndorser, err
 	return &NsEndorser{endorser: e}, err
 }
 
-// NewNsEndorserFromMsp creates a new NsEndorser using identities loaded from MSP directories.
+// NewNsEndorserFromMsp creates a new NsEndorser using identities.
 // This endorser will create an endorsement for each MSP provided.
-func NewNsEndorserFromMsp(certType int, mspDirs ...msp.DirLoadParameters) (*NsEndorser, error) {
-	identities, idErr := GetSigningIdentities(mspDirs...)
-	if idErr != nil {
-		return nil, idErr
-	}
+func NewNsEndorserFromMsp(certType int, identities ...msp.SigningIdentity) (*NsEndorser, error) {
 	e := &mspEndorser{
 		certType:   certType,
 		identities: identities,
-		mspIDs:     make([][]byte, len(mspDirs)),
-		certsBytes: make([][]byte, len(mspDirs)),
+		mspIDs:     make([][]byte, len(identities)),
+		certsBytes: make([][]byte, len(identities)),
 	}
 	for i, id := range identities {
 		e.mspIDs[i] = []byte(id.GetMSPIdentifier())
@@ -95,20 +91,4 @@ func (v *NsEndorser) EndorseTxNs(txID string, tx *applicationpb.Tx, nsIdx int) (
 		return nil, err
 	}
 	return v.Endorse(msg)
-}
-
-// GetSigningIdentities loads signing identities from the given MSP directories.
-func GetSigningIdentities(mspDirs ...msp.DirLoadParameters) ([]msp.SigningIdentity, error) {
-	identities := make([]msp.SigningIdentity, len(mspDirs))
-	for i, mspDir := range mspDirs {
-		localMsp, err := msp.LoadLocalMspDir(mspDir)
-		if err != nil {
-			return nil, err
-		}
-		identities[i], err = localMsp.GetDefaultSigningIdentity()
-		if err != nil {
-			return nil, errors.Wrap(err, "loading signing identity")
-		}
-	}
-	return identities, nil
 }

@@ -28,10 +28,10 @@ import (
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
-	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 
 const (
@@ -60,7 +60,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			t.Parallel()
 			ctx := t.Context()
 
-			containerName := assembleContainerName(committerContainerName, mode, dbtest.PostgresDBType)
+			containerName := assembleContainerName(committerContainerName, mode, testdb.PostgresDBType)
 			stopAndRemoveContainersByName(ctx, t, createDockerClient(t), containerName)
 			startCommitter(ctx, t, startNodeParameters{
 				node:         containerName,
@@ -103,7 +103,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 				},
 				DBEnv: vc.NewDatabaseTestEnvFromConnection(
 					t,
-					dbtest.NewConnection(mustGetEndpoint(ctx, t, containerName, databasePort)),
+					testdb.NewConnection(mustGetEndpoint(ctx, t, containerName, databasePort)),
 					false,
 				),
 			}

@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package dbtest
+package testdb
 
 import (
 	"context"
@@ -14,10 +14,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ConnectAndQueryTest is an exported function for testing purpose.
-func ConnectAndQueryTest(t *testing.T, connections *Connection) {
+func TestDefaultStartAndQuery(t *testing.T) {
+	t.Parallel()
+	if getDBDeploymentFromEnv() != deploymentLocal {
+		t.Skip("the requested database is not local, " +
+			"so, it will be skipped and tested in TestContainerStartAndQuery.")
+	}
+	StartAndQuery(t)
+}
+
+func TestContainerStartAndQuery(t *testing.T) {
+	t.Skip("This test can run manually when needed")
+	for _, tc := range []string{"postgres", "yugabyte"} {
+		testCase := tc
+		t.Run(testCase, func(t *testing.T) {
+			t.Setenv(deploymentTypeEnv, "container")
+			t.Setenv(databaseTypeEnv, testCase)
+			StartAndQuery(t)
+		})
+	}
+}
+
+func StartAndQuery(t *testing.T) {
 	t.Helper()
-	connSettings := PrepareTestEnvWithConnection(t, connections)
+	connSettings := PrepareTestEnv(t)
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
 

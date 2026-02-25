@@ -18,9 +18,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
-	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 
 const (
@@ -140,20 +140,20 @@ type DatabaseTestEnv struct {
 func NewDatabaseTestEnv(t *testing.T) *DatabaseTestEnv {
 	t.Helper()
 	// default parameters set.
-	return NewDatabaseTestEnvFromConnection(t, dbtest.PrepareTestEnv(t), false)
+	return NewDatabaseTestEnvFromConnection(t, testdb.PrepareTestEnv(t), false)
 }
 
 // NewDatabaseTestEnvWithCustomConnection creates a new db test environment given a db connection.
-func NewDatabaseTestEnvWithCustomConnection(t *testing.T, dbConnections *dbtest.Connection) *DatabaseTestEnv {
+func NewDatabaseTestEnvWithCustomConnection(t *testing.T, dbConnections *testdb.Connection) *DatabaseTestEnv {
 	t.Helper()
 	require.NotNil(t, dbConnections)
 	return NewDatabaseTestEnvFromConnection(
-		t, dbtest.PrepareTestEnvWithConnection(t, dbConnections), dbConnections.LoadBalance,
+		t, testdb.PrepareTestEnvWithConnection(t, dbConnections), dbConnections.LoadBalance,
 	)
 }
 
 // NewDatabaseTestEnvFromConnection creates a new db test environment given a db connection without preparations.
-func NewDatabaseTestEnvFromConnection(t *testing.T, cs *dbtest.Connection, loadBalance bool) *DatabaseTestEnv {
+func NewDatabaseTestEnvFromConnection(t *testing.T, cs *testdb.Connection, loadBalance bool) *DatabaseTestEnv {
 	t.Helper()
 	config := &DatabaseConfig{
 		Endpoints:      cs.Endpoints,

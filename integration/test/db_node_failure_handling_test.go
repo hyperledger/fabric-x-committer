@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
-	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
+	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 
 const (
@@ -117,7 +117,7 @@ func TestDBResiliencySecondaryPostgresNodeCrash(t *testing.T) {
 	waitForCommittedTxs(t, c, 15_000)
 }
 
-func registerAndCreateRuntime(t *testing.T, clusterConnection *dbtest.Connection) *runner.CommitterRuntime {
+func registerAndCreateRuntime(t *testing.T, clusterConnection *testdb.Connection) *runner.CommitterRuntime {
 	t.Helper()
 	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{

@@ -30,14 +30,14 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
-	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
-	"github.com/hyperledger/fabric-x-committer/utils/apptest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
-	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testapp"
+	"github.com/hyperledger/fabric-x-committer/utils/testdb"
+	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
 type (
@@ -84,7 +84,7 @@ type (
 		LoadgenBlockLimit uint64
 
 		// DBConnection configures the runtime to operate with a custom database connection.
-		DBConnection *dbtest.Connection
+		DBConnection *testdb.Connection
 		// TLS configures the secure level between the components: none | tls | mtls
 		TLSMode string
 		// CrashTest is true to indicate a service crash is expected, and not a failure.
@@ -442,7 +442,7 @@ func (c *CommitterRuntime) MakeAndSendTransactionsToOrderer(
 		if expectedStatus != nil && expectedStatus[i] == committerpb.Status_ABORTED_SIGNATURE_INVALID {
 			tx.Endorsements = make([]*applicationpb.Endorsements, len(namespaces))
 			for nsIdx := range namespaces {
-				tx.Endorsements[nsIdx] = sigtest.CreateEndorsementsForThresholdRule([]byte("dummy"))[0]
+				tx.Endorsements[nsIdx] = testsig.CreateEndorsementsForThresholdRule([]byte("dummy"))[0]
 			}
 		}
 		txs[i] = c.TxBuilder.MakeTx(tx)
@@ -558,7 +558,7 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 
 	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Minute)
 	defer cancel()
-	apptest.EnsurePersistedTxStatus(ctx, t, c.CoordinatorClient, persistedTxIDs, persistedTxIDsStatus)
+	testapp.EnsurePersistedTxStatus(ctx, t, c.CoordinatorClient, persistedTxIDs, persistedTxIDsStatus)
 
 	if len(expected.TxIDs) == 0 || c.Config.CrashTest {
 		return

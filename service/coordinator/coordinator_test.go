@@ -27,11 +27,11 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
-	"github.com/hyperledger/fabric-x-committer/utils/apptest"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/signature/sigtest"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testapp"
+	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
 type (
@@ -513,7 +513,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 
 	for _, b := range []*servicepb.CoordinatorBatch{b0, b1} {
 		for _, tx := range b.Txs {
-			tx.Content.Endorsements = sigtest.CreateEndorsementsForThresholdRule([]byte("dummy"))
+			tx.Content.Endorsements = testsig.CreateEndorsementsForThresholdRule([]byte("dummy"))
 		}
 
 		expectedReceived := test.GetIntMetricValue(t, env.coordinator.metrics.transactionReceivedTotal) + len(b.Txs)
@@ -727,7 +727,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 							Key: []byte("key3"),
 						}},
 					}},
-					Endorsements: sigtest.CreateEndorsementsForThresholdRule([]byte("dummy")),
+					Endorsements: testsig.CreateEndorsementsForThresholdRule([]byte("dummy")),
 				},
 			},
 			{
@@ -808,7 +808,7 @@ func TestCoordinatorStreamFailureWithSidecar(t *testing.T) {
 							Key: []byte("key1"),
 						}},
 					}},
-					Endorsements: sigtest.CreateEndorsementsForThresholdRule([]byte("dummy")),
+					Endorsements: testsig.CreateEndorsementsForThresholdRule([]byte("dummy")),
 				},
 			},
 		},
@@ -857,7 +857,7 @@ func (e *coordinatorTestEnv) requireStatus(
 	for i, s := range expectedTxStatus {
 		txIDs[i] = s.Ref.TxId
 	}
-	apptest.EnsurePersistedTxStatus(ctx, t, e.client, txIDs, deduplicateTxStatus(expectedTxStatus, differentPersisted))
+	testapp.EnsurePersistedTxStatus(ctx, t, e.client, txIDs, deduplicateTxStatus(expectedTxStatus, differentPersisted))
 }
 
 // deduplicateTxStatus returns a slice of unique-ID tx-statuses.
@@ -1027,7 +1027,7 @@ func makeTestBlock(txPerBlock int) (
 						Key: []byte("key" + strconv.Itoa(i)),
 					}},
 				}},
-				Endorsements: sigtest.CreateEndorsementsForThresholdRule([]byte("dummy")),
+				Endorsements: testsig.CreateEndorsementsForThresholdRule([]byte("dummy")),
 			},
 		}
 		//nolint: gosec // int -> uint32.

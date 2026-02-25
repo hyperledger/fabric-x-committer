@@ -21,10 +21,10 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
-	"github.com/hyperledger/fabric-x-committer/service/vc/dbtest"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 
 const (
@@ -82,7 +82,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	ordererServerCreds := filepath.Join(c.LoadProfile.Policy.CryptoMaterialPath, org0Orderer0TLSPath)
 
 	credsFactory := test.NewCredentialsFactory(t)
-	for _, dbType := range []string{dbtest.YugaDBType, dbtest.PostgresDBType} {
+	for _, dbType := range []string{testdb.YugaDBType, testdb.PostgresDBType} {
 		t.Run(fmt.Sprintf("database:%s", dbType), func(t *testing.T) {
 			t.Parallel()
 			for _, mode := range test.ServerModes {
@@ -141,7 +141,7 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 
 	tlsConfig, _ := params.credsFactory.CreateServerCredentials(t, params.tlsMode, params.node)
 
-	node := &dbtest.DatabaseContainer{
+	node := &testdb.DatabaseContainer{
 		DatabaseType: params.dbType,
 		Network:      params.networkName,
 		Hostname:     params.node,
@@ -164,15 +164,15 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 
 	// post start container tweaking
 	switch node.DatabaseType {
-	case dbtest.YugaDBType:
+	case testdb.YugaDBType:
 		// Must run after node startup to ensure proper root ownership and permissions for the TLS certificate files.
 		node.ExecuteCommand(t, []string{"bash", "-c", "chown root:root /creds/*"})
-		node.EnsureNodeReadinessByLogs(t, dbtest.YugabytedReadinessOutput)
+		node.EnsureNodeReadinessByLogs(t, testdb.YugabytedReadinessOutput)
 		conn.Password = node.ReadPasswordFromContainer(t, containerPathForYugabytePassword)
-	case dbtest.PostgresDBType:
+	case testdb.PostgresDBType:
 		// Must run after node startup to ensure proper root ownership and permissions for the TLS certificate files.
 		node.ExecuteCommand(t, []string{"bash", "-c", "chown postgres:postgres /creds/*"})
-		node.EnsureNodeReadinessByLogs(t, dbtest.PostgresReadinesssOutput)
+		node.EnsureNodeReadinessByLogs(t, testdb.PostgresReadinesssOutput)
 		node.ExecuteCommand(t, enforcePostgresSSLAndReloadConfigScript)
 	default:
 		t.Fatalf("Unsupported database type: %s", node.DatabaseType)

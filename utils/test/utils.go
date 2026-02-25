@@ -106,12 +106,10 @@ func RunGrpcServerForTest(
 	var wg sync.WaitGroup
 	tb.Cleanup(wg.Wait)
 	tb.Cleanup(server.Stop)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		// We use assert to prevent panicking for cleanup errors.
 		assert.NoError(tb, server.Serve(listener))
-	}()
+	})
 
 	_ = context.AfterFunc(ctx, func() {
 		server.Stop()
