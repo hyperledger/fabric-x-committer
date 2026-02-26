@@ -62,7 +62,7 @@ orderer:
       - /client-certs/ca-certificate.pem
   identity:
     msp-id: peer-org-0
-    msp-dir: /root/material/peerOrganizations/peer-org-0/users/client@peer-org-0.com/msp
+    msp-dir: /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/msp
     bccsp:
       Default: SW
       SW:
@@ -90,7 +90,7 @@ notification:
   max-concurrent-streams: 0
 
 bootstrap:
-  genesis-block-file-path: /root/material/config-block.pb.bin
+  genesis-block-file-path: /root/artifacts/config-block.pb.bin
 
 last-committed-block-set-interval: 5s
 waiting-txs-limit: 20_000_000

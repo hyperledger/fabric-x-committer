@@ -75,14 +75,14 @@ func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 		return nil, err
 	}
 
-	// We generate the crypto material and block after we create the adapter since the sidecar adapter
+	// We generate the crypto artifacts and block after we create the adapter since the sidecar adapter
 	// modifies the orderer endpoints.
-	c.resources.ConfigBlock, err = workload.CreateConfigBlock(&conf.LoadProfile.Policy)
+	c.resources.ConfigBlock, err = workload.CreateOrLoadConfigBlockWithCrypto(&conf.LoadProfile.Policy)
 	if err != nil {
 		return nil, err
 	}
 
-	// After creating the material, we can create the stream.
+	// After creating the artifacts, we can create the stream.
 	c.txStream = workload.NewTxStream(conf.LoadProfile, conf.Stream)
 
 	c.adapter = adapter

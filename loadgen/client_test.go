@@ -71,9 +71,9 @@ func TestLoadGenForLoadGen(t *testing.T) {
 			require.NoError(t, err)
 
 			subClientConf := DefaultClientConf(t, serverTLSConfig)
-			// We ensure the sub client uses the same crypto material as
+			// We ensure the sub client uses the same crypto artifacts as
 			// the main load generator and the entire system.
-			subClientConf.LoadProfile.Policy.CryptoMaterialPath = clientConf.LoadProfile.Policy.CryptoMaterialPath
+			subClientConf.LoadProfile.Policy.ArtifactsPath = clientConf.LoadProfile.Policy.ArtifactsPath
 
 			subClientConf.Adapter.LoadGenClient = test.NewTLSClientConfig(
 				clientTLSConfig, &clientConf.Server.Endpoint,
@@ -313,7 +313,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 			// Submit default config block.
 			require.NotNil(t, clientConf.LoadProfile)
 			clientConf.LoadProfile.Policy.OrdererEndpoints = endpoints
-			configBlock, err := workload.CreateConfigBlock(&clientConf.LoadProfile.Policy)
+			configBlock, err := workload.CreateOrExtendConfigBlockWithCrypto(&clientConf.LoadProfile.Policy)
 			require.NoError(t, err)
 			err = orderer.SubmitBlock(t.Context(), configBlock)
 			require.NoError(t, err)
@@ -351,7 +351,7 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 			// We validate the test doesn't break when config block is delivered.
 			require.NotNil(t, clientConf.LoadProfile)
 			clientConf.LoadProfile.Policy.OrdererEndpoints = endpoints
-			configBlock, err := workload.CreateConfigBlock(&clientConf.LoadProfile.Policy)
+			configBlock, err := workload.CreateOrExtendConfigBlockWithCrypto(&clientConf.LoadProfile.Policy)
 			require.NoError(t, err)
 			err = orderer.SubmitBlock(t.Context(), configBlock)
 			require.NoError(t, err)

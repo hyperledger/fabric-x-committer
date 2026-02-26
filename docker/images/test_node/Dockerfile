@@ -15,7 +15,7 @@ ARG TARGETARCH
 ARG VERSION
 
 ENV CONFIGS_PATH=/root/config
-ENV MATERIAL_PATH=/root/material
+ENV ARTIFACTS_PATH=/root/artifacts
 ENV BINS_PATH=/root/bin
 ENV PATH="$BINS_PATH:$PATH"
 
@@ -40,9 +40,9 @@ COPY ./docker/images/test_node/run ${BINS_PATH}/
 COPY ./cmd/config/samples $CONFIGS_PATH
 RUN chmod a+x ${BINS_PATH}/*
 
-# Generate the genesis block and the crypto material for the test-container.
+# Generate the genesis block and the crypto artifacts for the test-container.
 # This includes private keys, public keys, TLS keys, etc.
-RUN ${BINS_PATH}/loadgen make-material -c "${CONFIGS_PATH}/loadgen.yaml"
+RUN ${BINS_PATH}/loadgen make-artifacts -c "${CONFIGS_PATH}/loadgen.yaml"
 
 # Expose ports
 EXPOSE 7050 4001 2114 7001 2117 2110

@@ -64,7 +64,7 @@ orderer:
       {{- end }}
   identity:
     msp-id: peer-org-0
-    msp-dir: {{ .Policy.CryptoMaterialPath }}/peerOrganizations/peer-org-0/users/client@peer-org-0.com/msp
+    msp-dir: {{ .Policy.ArtifactsPath }}/peerOrganizations/peer-org-0/users/client@peer-org-0.com/msp
     bccsp:
       Default: SW
       SW:
@@ -94,7 +94,7 @@ waiting-txs-limit: 20_000_000
 channel-buffer-size: 100
 
 bootstrap:
-  genesis-block-file-path: {{ .ConfigBlockPath }}
+  genesis-block-file-path: "{{ .Policy.ArtifactsPath }}/config-block.pb.bin"
 
 logging:
   logSpec: {{ .Logging.LogSpec }}

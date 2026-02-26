@@ -42,7 +42,7 @@ func loadgenCmd() *cobra.Command {
 
 	cmd.AddCommand(config.VersionCmd())
 	cmd.AddCommand(loadGenCMD())
-	cmd.AddCommand(loadGenMaterial())
+	cmd.AddCommand(loadGenArtifacts())
 	return cmd
 }
 
@@ -85,12 +85,12 @@ func loadGenCMD() *cobra.Command {
 	return cmd
 }
 
-func loadGenMaterial() *cobra.Command {
+func loadGenArtifacts() *cobra.Command {
 	v := config.NewViperWithLoadGenDefaults()
 	var configPath string
 	cmd := &cobra.Command{
-		Use:   "make-material",
-		Short: "Generates the crypto material and genesis block to the output folder.",
+		Use:   "make-artifacts",
+		Short: "Generates the crypto artifacts and genesis block to the output folder.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			conf, err := config.ReadLoadGenYamlAndSetupLogging(v, configPath)
@@ -99,12 +99,12 @@ func loadGenMaterial() *cobra.Command {
 			}
 			cmd.SilenceUsage = true
 
-			cmd.Printf("Generating crypto material...\n")
-			err = workload.PrepareCryptoMaterial(&conf.LoadProfile.Policy)
+			cmd.Printf("Generating crypto artifacts and config block...\n")
+			_, err = workload.CreateOrExtendConfigBlockWithCrypto(&conf.LoadProfile.Policy)
 			if err != nil {
 				return err
 			}
-			cmd.Printf("Crypto material path: %s\n", conf.LoadProfile.Policy.CryptoMaterialPath)
+			cmd.Printf("Artifacts path: %s\n", conf.LoadProfile.Policy.ArtifactsPath)
 			return nil
 		},
 	}

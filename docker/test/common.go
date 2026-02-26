@@ -13,6 +13,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -40,7 +41,7 @@ type (
 		node               string
 		networkName        string
 		tlsMode            string
-		materialPath       string
+		artifactsPath      string
 		dbType             string
 		dbPassword         string
 		ordererCACredsPath string
@@ -62,8 +63,8 @@ const (
 	// localhostIP is the numeric form of localhost, required by Docker's PortBinding.HostIP
 	// which calls netip.ParseAddr and rejects hostnames.
 	localhostIP = "127.0.0.1"
-	// containerMaterialPath is the path to the material directory inside the container.
-	containerMaterialPath = "/root/material"
+	// containerArtifactsPath is the path to the artifacts directory inside the container.
+	containerArtifactsPath = "/root/artifacts"
 )
 
 func createAndStartContainerAndItsLogs(
@@ -203,15 +204,17 @@ func assembleContainerName(node, tlsMode, dbType string) string {
 	return fmt.Sprintf("%s_%s_%s_%s", test.DockerNamesPrefix, node, tlsMode, dbType)
 }
 
-func copyCryptoMaterialFromContainer(ctx context.Context, t *testing.T, containerName string) string {
+func copyArtifactsFromContainer(ctx context.Context, t *testing.T, containerName string) string {
 	t.Helper()
 
 	dockerClient := createDockerClient(t)
-	reader, _, err := dockerClient.CopyFromContainer(ctx, containerName, containerMaterialPath)
+	reader, _, err := dockerClient.CopyFromContainer(ctx, containerName, containerArtifactsPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		assert.NoError(t, reader.Close())
 	})
+
+	artifactsPrefixSize := len(path.Base(containerArtifactsPath)) + 1
 
 	hostDir := t.TempDir()
 	tr := tar.NewReader(reader)
@@ -225,7 +228,7 @@ func copyCryptoMaterialFromContainer(ctx context.Context, t *testing.T, containe
 		if strings.Contains(header.Name, "..") || strings.HasPrefix(header.Name, "/") {
 			t.Fatalf("tar entry %q contains path traversal", header.Name)
 		}
-		target := filepath.Join(hostDir, header.Name[len("material/"):])
+		target := filepath.Join(hostDir, header.Name[artifactsPrefixSize:])
 		switch header.Typeflag {
 		case tar.TypeDir:
 			require.NoError(t, os.MkdirAll(target, os.FileMode(header.Mode))) //nolint:gosec // int64 > int32

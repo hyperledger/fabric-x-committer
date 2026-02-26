@@ -130,7 +130,7 @@ func TestReadConfigSidecar(t *testing.T) {
 			WaitingTxsLimit:               20_000_000,
 			ChannelBufferSize:             100,
 			Bootstrap: sidecar.Bootstrap{
-				GenesisBlockFilePath: "/root/material/config-block.pb.bin",
+				GenesisBlockFilePath: "/root/artifacts/config-block.pb.bin",
 			},
 		},
 	}}
@@ -423,7 +423,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 						newOrdererEndpoint("org", "orderer"),
 					},
 					PeerOrganizationCount: 2,
-					CryptoMaterialPath:    "/root/material",
+					ArtifactsPath:         "/root/artifacts",
 				},
 				Conflicts: workload.ConflictProfile{
 					InvalidSignatures: 0.1,
@@ -534,7 +534,7 @@ func newEndpoint(host string, port int) *connection.Endpoint {
 func newIdentityConfig() *ordererconn.IdentityConfig {
 	return &ordererconn.IdentityConfig{
 		MspID:  "peer-org-0",
-		MSPDir: "/root/material/peerOrganizations/peer-org-0/users/client@peer-org-0.com/msp",
+		MSPDir: "/root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/msp",
 		BCCSP: &factory.FactoryOpts{
 			Default: "SW",
 			SW: &factory.SwOpts{

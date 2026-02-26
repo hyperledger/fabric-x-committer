@@ -21,6 +21,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
@@ -173,7 +174,7 @@ func TestValidateConfigTx(t *testing.T) {
 
 	t.Run("valid config tx", func(t *testing.T) {
 		t.Parallel()
-		configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
+		configBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(t.TempDir(), &testcrypto.ConfigBlock{
 			PeerOrganizationCount: 1,
 		})
 		require.NoError(t, err)
@@ -191,7 +192,7 @@ func TestValidateConfigTx(t *testing.T) {
 func createTestBundle(t *testing.T) (*channelconfig.Bundle, string) {
 	t.Helper()
 	cryptoPath := t.TempDir()
-	configBlock, err := workload.CreateDefaultConfigBlockWithCrypto(cryptoPath, &workload.ConfigBlock{
+	configBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(cryptoPath, &testcrypto.ConfigBlock{
 		PeerOrganizationCount: 2,
 	})
 	require.NoError(t, err)
