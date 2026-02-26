@@ -46,15 +46,14 @@ load-profile:
       const: 2
   policy:
     channel-id: {{ .Policy.ChannelID }}
+    crypto-material-path: {{ .Policy.CryptoMaterialPath }}
+    peer-organization-count: {{ .Policy.PeerOrganizationCount }}
     namespace-policies:
       {{ range $nsID, $element := .Policy.NamespacePolicies }}
       {{ $nsID }}:
         scheme: {{ $element.Scheme }}
         seed: {{ $element.Seed }}
       {{ end }}
-    config-block-path: {{ .ConfigBlockPath }}
-    crypto-material-path: {{ .Policy.CryptoMaterialPath }}
-    peer-organization-count: {{ .Policy.PeerOrganizationCount }}
   query:
     query-size:
     min-invalid-keys-portion:

@@ -220,8 +220,8 @@ func makeConfig(t *testing.T, serverTLS, clientTLS connection.TLSConfig) (
 			NumService: instanceCount,
 			TLSConfig:  serverTLS,
 		},
-		BlockSize:       1,
-		SendConfigBlock: true,
+		BlockSize:        1,
+		SendGenesisBlock: true,
 	})
 	require.Len(t, ordererServer.Servers, instanceCount)
 

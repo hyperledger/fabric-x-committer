@@ -77,7 +77,7 @@ func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 
 	// We generate the crypto material and block after we create the adapter since the sidecar adapter
 	// modifies the orderer endpoints.
-	c.resources.ConfigBlock, err = workload.CreateConfigBlock(&conf.LoadProfile.Policy)
+	c.resources.ConfigBlock, err = workload.CreateOrLoadConfigBlockWithCrypto(&conf.LoadProfile.Policy)
 	if err != nil {
 		return nil, err
 	}

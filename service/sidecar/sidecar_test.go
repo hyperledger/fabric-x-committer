@@ -40,6 +40,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 type sidecarTestEnv struct {
@@ -126,14 +127,14 @@ func newSidecarTestEnvWithTLS(
 			// We want each block to contain exactly <blockSize> transactions.
 			// Therefore, we set a higher block timeout so that we have enough time to send all the
 			// transactions to the orderer and create a block.
-			BlockTimeout:    5 * time.Minute,
-			SendConfigBlock: false,
+			BlockTimeout:     5 * time.Minute,
+			SendGenesisBlock: false,
 		},
 		NumFake: conf.NumFakeService,
 	})
 
 	ordererEndpoints := ordererEnv.AllEndpoints()
-	configBlock := ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
+	configBlock := ordererEnv.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
 		OrdererEndpoints: ordererEndpoints,
 		ChannelID:        ordererEnv.TestConfig.ChanID,
 	})
@@ -273,7 +274,7 @@ func TestSidecarConfigUpdate(t *testing.T) {
 			expectedBlock++
 
 			submitConfigBlock := func(endpoints []*commontypes.OrdererEndpoint) {
-				env.ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
+				env.ordererEnv.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
 					OrdererEndpoints: endpoints,
 				})
 			}

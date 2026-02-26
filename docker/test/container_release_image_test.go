@@ -69,7 +69,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	c, err := config.ReadLoadGenYamlAndSetupLogging(v, filepath.Join(localConfigPath, "loadgen.yaml"))
 	require.NoError(t, err)
 	c.LoadProfile.Policy.CryptoMaterialPath = t.TempDir()
-	err = workload.PrepareCryptoMaterial(&c.LoadProfile.Policy)
+	_, err = workload.CreateOrExtendConfigBlockWithCrypto(&c.LoadProfile.Policy)
 	require.NoError(t, err)
 
 	dbNode := "db"

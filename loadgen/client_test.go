@@ -341,7 +341,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 					// Submit default config block.
 					require.NotNil(t, clientConf.LoadProfile)
 					clientConf.LoadProfile.Policy.OrdererEndpoints = endpoints
-					configBlock, err := workload.CreateConfigBlock(&clientConf.LoadProfile.Policy)
+					configBlock, err := workload.CreateOrExtendConfigBlockWithCrypto(&clientConf.LoadProfile.Policy)
 					require.NoError(t, err)
 					err = orderer.SubmitBlock(t.Context(), configBlock)
 					require.NoError(t, err)
@@ -386,7 +386,7 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 					// We validate the test doesn't break when config block is delivered.
 					require.NotNil(t, clientConf.LoadProfile)
 					clientConf.LoadProfile.Policy.OrdererEndpoints = endpoints
-					configBlock, err := workload.CreateConfigBlock(&clientConf.LoadProfile.Policy)
+					configBlock, err := workload.CreateOrExtendConfigBlockWithCrypto(&clientConf.LoadProfile.Policy)
 					require.NoError(t, err)
 					err = orderer.SubmitBlock(t.Context(), configBlock)
 					require.NoError(t, err)

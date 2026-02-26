@@ -21,7 +21,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
-	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
@@ -31,6 +30,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testapp"
+	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
@@ -213,7 +213,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 		pBytes, err := proto.Marshal(p)
 		require.NoError(t, err)
 
-		configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{})
+		configBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(t.TempDir(), &testcrypto.ConfigBlock{})
 		require.NoError(t, err)
 
 		txBatch := []*dependencygraph.TransactionNode{

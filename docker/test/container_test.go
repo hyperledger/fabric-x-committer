@@ -72,16 +72,19 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			v := config.NewViperWithLoadGenDefaults()
 			c, err := config.ReadLoadGenYamlAndSetupLogging(v, filepath.Join(localConfigPath, "loadgen.yaml"))
 			require.NoError(t, err)
+
 			// Copy the container's crypto material to the host so the test
 			// endorses meta namespace transactions with the same MSP the verifier
 			// expects (from the config block's lifecycle endorsement policy).
 			c.LoadProfile.Policy.CryptoMaterialPath = copyCryptoMaterialFromContainer(ctx, t, containerName)
 			ordererEp := mustGetEndpoint(ctx, t, containerName, mockOrdererPort)
-			c.LoadProfile.Policy.OrdererEndpoints = []*commontypes.OrdererEndpoint{
-				{
-					Host: ordererEp.Host, Port: ordererEp.Port, ID: 0, MspID: "org",
-					API: []string{commontypes.Broadcast, commontypes.Deliver},
-				},
+			c.LoadProfile.Policy.OrdererEndpoints = []*commontypes.OrdererEndpoint{{
+				Host: ordererEp.Host, Port: ordererEp.Port, ID: 0, MspID: "org",
+				API: []string{commontypes.Broadcast, commontypes.Deliver},
+			}}
+
+			getServerConfig := func(servicePort string) config.ServiceConfig {
+				return config.ServiceConfig{GrpcEndpoint: mustGetEndpoint(ctx, t, containerName, servicePort)}
 			}
 			runtime := runner.CommitterRuntime{
 				CredFactory:      credsFactory,
@@ -89,15 +92,9 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 				Config:           &runner.Config{},
 				SystemConfig: config.SystemConfig{
 					Services: config.SystemServices{
-						Sidecar: config.ServiceConfig{
-							GrpcEndpoint: mustGetEndpoint(ctx, t, containerName, sidecarPort),
-						},
-						Query: config.ServiceConfig{
-							GrpcEndpoint: mustGetEndpoint(ctx, t, containerName, queryServicePort),
-						},
-						Coordinator: config.ServiceConfig{
-							GrpcEndpoint: mustGetEndpoint(ctx, t, containerName, coordinatorServicePort),
-						},
+						Sidecar:     getServerConfig(sidecarPort),
+						Query:       getServerConfig(queryServicePort),
+						Coordinator: getServerConfig(coordinatorServicePort),
 					},
 					Policy: &c.LoadProfile.Policy,
 				},

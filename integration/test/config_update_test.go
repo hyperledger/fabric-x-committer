@@ -22,6 +22,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 const blockSize = 1
@@ -52,9 +53,9 @@ func newConfigTestEnv(t *testing.T) (
 			// We want each block to contain exactly <blockSize> transactions.
 			// Therefore, we set a higher block timeout so that we have enough time to send all the
 			// transactions to the orderer and create a block.
-			BlockTimeout:    5 * time.Minute,
-			ConfigBlockPath: c.SystemConfig.ConfigBlockPath,
-			SendConfigBlock: true,
+			BlockTimeout:       5 * time.Minute,
+			CryptoMaterialPath: c.SystemConfig.Policy.CryptoMaterialPath,
+			SendGenesisBlock:   true,
 		},
 	})
 
@@ -112,7 +113,7 @@ func TestConfigUpdateLifecyclePolicy(t *testing.T) {
 	// Bump PeerOrganizationCount from 2 to 4 so the LifecycleEndorsement policy
 	// structurally changes. This proves the verifier loads the updated policy,
 	// not just that NsVersion matches.
-	configBlock, err := workload.CreateDefaultConfigBlockWithCrypto(configCryptoPath, &workload.ConfigBlock{
+	configBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(configCryptoPath, &testcrypto.ConfigBlock{
 		ChannelID:             c.SystemConfig.Policy.ChannelID,
 		OrdererEndpoints:      ordererEnv.AllRealEndpoints(),
 		PeerOrganizationCount: 4,
@@ -199,7 +200,7 @@ func TestConfigUpdateOrdererEndpoints(t *testing.T) {
 	sendTXs()
 
 	submitConfigBlock := func(endpoints []*commontypes.OrdererEndpoint) {
-		ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
+		ordererEnv.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
 			ChannelID:             c.SystemConfig.Policy.ChannelID,
 			OrdererEndpoints:      endpoints,
 			PeerOrganizationCount: c.SystemConfig.Policy.PeerOrganizationCount,
@@ -226,7 +227,7 @@ func TestConfigUpdateOrdererEndpoints(t *testing.T) {
 	mock.RequireStreams(t, ordererEnv.Orderer, 1)
 	mock.RequireStreamsWithEndpoints(t, ordererEnv.Orderer, 1, holdingEndpoint)
 
-	holdingBlock := c.LastReceivedBlockNumber + 2
+	holdingBlock := c.NextExpectedBlockNumber + 1
 	t.Logf("Holding block #%d", holdingBlock)
 	holdingState.HoldFromBlock.Store(holdingBlock)
 
@@ -285,11 +286,11 @@ func TestConfigBlockImmediateCommit(t *testing.T) {
 	ordererEnv := mock.NewOrdererTestEnv(t, &mock.OrdererTestConfig{
 		ChanID: "ch1",
 		Config: &mock.OrdererConfig{
-			ServerConfigs:   ordererServers,
-			BlockSize:       1, // Each block contains exactly 1 transaction.
-			BlockTimeout:    5 * time.Minute,
-			ConfigBlockPath: c.SystemConfig.ConfigBlockPath,
-			SendConfigBlock: true,
+			ServerConfigs:      ordererServers,
+			BlockSize:          1, // Each block contains exactly 1 transaction.
+			BlockTimeout:       5 * time.Minute,
+			CryptoMaterialPath: c.SystemConfig.Policy.CryptoMaterialPath,
+			SendGenesisBlock:   true,
 		},
 	})
 
@@ -304,7 +305,7 @@ func TestConfigBlockImmediateCommit(t *testing.T) {
 	t.Logf("Services started and block 0 committed in %v", elapsed)
 
 	submitConfigBlock := func() {
-		ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
+		ordererEnv.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
 			ChannelID:             c.SystemConfig.Policy.ChannelID,
 			OrdererEndpoints:      ordererEnv.AllRealEndpoints(),
 			PeerOrganizationCount: c.SystemConfig.Policy.PeerOrganizationCount,

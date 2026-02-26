@@ -100,7 +100,7 @@ func loadGenMaterial() *cobra.Command {
 			cmd.SilenceUsage = true
 
 			cmd.Printf("Generating crypto material...\n")
-			err = workload.PrepareCryptoMaterial(&conf.LoadProfile.Policy)
+			_, err = workload.CreateOrExtendConfigBlockWithCrypto(&conf.LoadProfile.Policy)
 			if err != nil {
 				return err
 			}
