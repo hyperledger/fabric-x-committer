@@ -36,10 +36,11 @@ if [[ -n "$BAD_FUMPT" ]]; then
 fi
 
 echo "Running yamllint..."
-if [[ -n "$ALL_YAML" ]]; then
-  if ! yamllint $ALL_YAML; then
-    EXIT_CODE=1
-  fi
+BAD_YAML=$(yamllint $ALL_YAML)
+if [[ -n "$BAD_YAML" ]]; then
+  echo "yamllint check failed:"
+  echo "$BAD_YAML"
+  EXIT_CODE=1
 fi
 
 exit $EXIT_CODE
