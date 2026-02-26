@@ -10,8 +10,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"runtime"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -38,12 +36,11 @@ import (
 
 type (
 	queryServiceTestEnv struct {
-		config        *Config
-		qs            *Service
-		ns            []string
-		clientConn    committerpb.QueryServiceClient
-		pool          *pgxpool.Pool
-		disabledViews []string
+		config     *Config
+		qs         *Service
+		ns         []string
+		clientConn committerpb.QueryServiceClient
+		pool       *pgxpool.Pool
 	}
 
 	queryServiceTestOpts struct {
@@ -683,17 +680,10 @@ func (q *queryServiceTestEnv) beginView(
 	require.NoError(t, err)
 	require.NotNil(t, view)
 	require.NotEmpty(t, view.Id)
-	_, file, line, _ := runtime.Caller(1)
-	t.Cleanup(func() {
-		if slices.Contains(q.disabledViews, view.Id) {
-			return
-		}
-		//nolint:usetesting // t.Context() is dead at cleanup.
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		t.Cleanup(cancel)
-		_, err = client.EndView(ctx, view)
-		require.NoErrorf(t, connection.FilterStreamRPCError(err), "view created in %s:%d", file, line)
-	})
+
+	// beginView creates a view and returns it. No explicit cleanup is registered because views are
+	// automatically cleaned up when the service context is cancelled (via context.AfterFunc in makeView).
+	// The service context is derived from t.Context(), which Go cancels before t.Cleanup runs.
 	return view
 }
 
@@ -705,7 +695,6 @@ func (q *queryServiceTestEnv) endView(
 	t.Helper()
 	_, err := client.EndView(t.Context(), view)
 	require.NoError(t, err)
-	q.disabledViews = append(q.disabledViews, view.Id)
 }
 
 func (q *queryServiceTestEnv) insertSampleKeysValueItems(t *testing.T) []*items {
