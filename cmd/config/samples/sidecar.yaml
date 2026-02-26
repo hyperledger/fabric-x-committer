@@ -60,18 +60,14 @@ orderer:
     key-path: /client-certs/private-key.pem
     common-ca-cert-paths:
       - /client-certs/ca-certificate.pem
-      # identity:
-      #   root-ca-paths:
-      #     - /root/config/crypto/ca-certs.pem
-      #   msp-dir: >-
-      #     /root/config/crypto/peerOrganizations/defaultpeerorg.example.com/
-      #     peers/peerservice-machine1.defaultpeerorg.example.com/msp
-      #   msp-id: DefaultPeerOrgMSP
-      #   bccsp:
-      #     Default: SW
-      #     SW:
-      #       Security: 256
-      #       Hash: SHA2
+  identity:
+    msp-id: peer-org-0
+    msp-dir: /root/material/peerOrganizations/peer-org-0/users/client@peer-org-0.com/msp
+    bccsp:
+      Default: SW
+      SW:
+        Security: 256
+        Hash: SHA2
 committer:
   endpoint: coordinator:9001
   tls:

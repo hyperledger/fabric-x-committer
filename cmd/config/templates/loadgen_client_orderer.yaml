@@ -34,7 +34,15 @@ orderer-client:
       common-ca-cert-paths:
         {{- range .ClientTLS.CACertPaths }}
         - {{ . }}
-        {{- end  }}
+        {{- end }}
     consensus-type: BFT
     channel-id: {{ .Policy.ChannelID }}
+    identity:
+      msp-id: peer-org-0
+      msp-dir: {{ .Policy.CryptoMaterialPath }}/peerOrganizations/peer-org-0/users/client@peer-org-0.com/msp
+      bccsp:
+        Default: SW
+        SW:
+          Security: 256
+          Hash: SHA2
   broadcast-parallelism: 5

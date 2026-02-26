@@ -62,6 +62,14 @@ orderer:
       {{- range .ClientTLS.CACertPaths }}
       - {{ . }}
       {{- end }}
+  identity:
+    msp-id: peer-org-0
+    msp-dir: {{ .Policy.CryptoMaterialPath }}/peerOrganizations/peer-org-0/users/client@peer-org-0.com/msp
+    bccsp:
+      Default: SW
+      SW:
+        Security: 256
+        Hash: SHA2
 committer:
   endpoint: {{ .Services.Coordinator.GrpcEndpoint }}
   tls:
