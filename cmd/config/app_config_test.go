@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/stretchr/testify/require"
 
@@ -115,6 +116,7 @@ func TestReadConfigSidecar(t *testing.T) {
 						CACerts: defaultClientTLSConfig.CACertPaths,
 					},
 				},
+				Identity: newIdentityConfig(),
 			},
 			Committer: newClientConfigWithDefaultTLS("coordinator", 9001),
 			Ledger: sidecar.LedgerConfig{
@@ -381,6 +383,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 					Orderer: ordererconn.Config{
 						ChannelID:     "mychannel",
 						ConsensusType: ordererconn.Bft,
+						Identity:      newIdentityConfig(),
 						TLS: ordererconn.OrdererTLSConfig{
 							Mode:              defaultClientTLSConfig.Mode,
 							KeyPath:           defaultClientTLSConfig.KeyPath,
@@ -525,6 +528,20 @@ func newEndpoint(host string, port int) *connection.Endpoint {
 	return &connection.Endpoint{
 		Host: host,
 		Port: port,
+	}
+}
+
+func newIdentityConfig() *ordererconn.IdentityConfig {
+	return &ordererconn.IdentityConfig{
+		MspID:  "peer-org-0",
+		MSPDir: "/root/material/peerOrganizations/peer-org-0/users/client@peer-org-0.com/msp",
+		BCCSP: &factory.FactoryOpts{
+			Default: "SW",
+			SW: &factory.SwOpts{
+				Hash:     "SHA2",
+				Security: 256,
+			},
+		},
 	}
 }
 

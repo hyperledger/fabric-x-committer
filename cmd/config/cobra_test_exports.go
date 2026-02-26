@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -54,6 +55,16 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 	require.NoError(t, err)
 	connection.CloseConnectionsLog(listen)
 
+	ordererEp := orderer.Configs[0].Endpoint
+	policy := &workload.PolicyProfile{
+		CryptoMaterialPath:    t.TempDir(),
+		ChannelID:             "channel1",
+		OrdererEndpoints:      []*commontypes.OrdererEndpoint{{Host: ordererEp.Host, Port: ordererEp.Port}},
+		PeerOrganizationCount: 1,
+	}
+	_, err = workload.CreateConfigBlock(policy)
+	require.NoError(t, err)
+
 	return SystemConfig{
 		ThisService: ServiceConfig{
 			GrpcEndpoint: &server.Endpoint,
@@ -69,9 +80,7 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 			Endpoints:   []*connection.Endpoint{connection.CreateEndpointHP("localhost", "5433")},
 			LoadBalance: false,
 		},
-		Policy: &workload.PolicyProfile{
-			ChannelID: "channel1",
-		},
+		Policy:     policy,
 		LedgerPath: t.TempDir(),
 	}
 }
@@ -127,8 +136,8 @@ func UnitTestRunner(
 
 	wg.Add(1)
 	go func() {
-		t.Log("Starting command")
-		defer t.Log("Command exited")
+		t.Logf("Starting command: %s", args[0])
+		defer t.Logf("Command exited: %s", args[0])
 		defer wg.Done()
 		_, err := cmd.ExecuteContextC(ctx)
 		err = connection.FilterStreamRPCError(err)

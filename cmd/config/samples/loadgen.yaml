@@ -75,6 +75,14 @@ orderer-client:
         - /client-certs/ca-certificate.pem
     consensus-type: BFT
     channel-id: mychannel
+    identity:
+      msp-id: peer-org-0
+      msp-dir: /root/material/peerOrganizations/peer-org-0/users/client@peer-org-0.com/msp
+      bccsp:
+        Default: SW
+        SW:
+          Security: 256
+          Hash: SHA2
   # We set low values to reduce the CPU load during tests.
   broadcast-parallelism: 1
 
