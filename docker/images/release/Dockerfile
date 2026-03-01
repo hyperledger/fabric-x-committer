@@ -27,7 +27,7 @@ RUN /usr/sbin/useradd -u 10001 -r -g root -s /sbin/nologin -c "Hyperledger Fabri
     chmod 0755 /home/${BIN}
 
 # Copy binaries
-COPY ${ARCHBIN_PATH}/${TARGETOS}-${TARGETARCH}/${BIN} /bin/${BIN}
+COPY ${ARCHBIN_PATH}/${TARGETOS}/${TARGETARCH}/${BIN} /bin/${BIN}
 
 # Create fixed entrypoint since args are not replaced
 # within ENTRYPOINT or CMD
