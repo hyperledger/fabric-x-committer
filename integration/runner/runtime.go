@@ -10,7 +10,6 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -19,7 +18,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
-	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -61,17 +59,12 @@ type (
 		NotifyClient       committerpb.NotifierClient
 		NotifyStream       committerpb.Notifier_OpenNotificationStreamClient
 
-		CommittedBlock chan *common.Block
-
-		TxBuilder *workload.TxBuilder
-
-		Config *Config
-
-		SeedForCryptoGen *rand.Rand
-
-		LastReceivedBlockNumber uint64
-
-		CredFactory *test.CredentialsFactory
+		CommittedBlock          chan *common.Block
+		TxBuilder               *workload.TxBuilder
+		Config                  *Config
+		SeedForCryptoGen        *rand.Rand
+		NextExpectedBlockNumber uint64
+		CredFactory             *test.CredentialsFactory
 	}
 
 	// Config represents the runtime configuration.
@@ -200,14 +193,13 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	s.DB.Endpoints = c.DBEnv.DBConf.Endpoints
 	s.DB.TLS = c.DBEnv.DBConf.TLS
 	s.LedgerPath = t.TempDir()
-	s.ConfigBlockPath = filepath.Join(t.TempDir(), "config-block.pb.bin")
 
 	t.Log("Allocating services endpoints, ports, and TLS credentials")
 	s.Services = allocateServices(t, conf, credFactory)
 	s.Policy.OrdererEndpoints = make([]*commontypes.OrdererEndpoint, len(s.Services.Orderer))
 	for i, e := range s.Services.Orderer {
 		s.Policy.OrdererEndpoints[i] = &commontypes.OrdererEndpoint{
-			ID: 0, MspID: "org", Host: e.GrpcEndpoint.Host, Port: e.GrpcEndpoint.Port,
+			ID: 0, Host: e.GrpcEndpoint.Host, Port: e.GrpcEndpoint.Port,
 			API: []string{commontypes.Broadcast, commontypes.Deliver},
 		}
 	}
@@ -215,9 +207,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	test.LogStruct(t, "System Parameters", s)
 
 	t.Log("Creating config block")
-	configBlock, err := workload.CreateConfigBlock(s.Policy)
-	require.NoError(t, err)
-	err = configtxgen.WriteOutputBlock(configBlock, s.ConfigBlockPath)
+	_, err := workload.CreateOrExtendConfigBlockWithCrypto(s.Policy)
 	require.NoError(t, err)
 
 	c.AddOrUpdateNamespaces(t, workload.DefaultGeneratedNamespaceID, "1", "2", "3")
@@ -255,11 +245,9 @@ func (c *CommitterRuntime) CreateRuntimeClients(ctx context.Context, t *testing.
 	c.CoordinatorClient = servicepb.NewCoordinatorClient(
 		test.NewSecuredConnection(t, services.Coordinator.GrpcEndpoint, c.SystemConfig.ClientTLS),
 	)
-
 	c.QueryServiceClient = committerpb.NewQueryServiceClient(
 		test.NewSecuredConnection(t, services.Query.GrpcEndpoint, c.SystemConfig.ClientTLS),
 	)
-
 	c.NotifyClient = committerpb.NewNotifierClient(
 		test.NewSecuredConnection(t, services.Sidecar.GrpcEndpoint, c.SystemConfig.ClientTLS),
 	)
@@ -503,9 +491,9 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 			return
 		}
 	case <-time.After(2 * time.Minute):
-		t.Fatalf("Timed out waiting for block #%d", c.LastReceivedBlockNumber+1)
+		t.Fatalf("Timed out waiting for block #%d", c.NextExpectedBlockNumber)
 	}
-	c.LastReceivedBlockNumber = blk.Header.Number
+	c.NextExpectedBlockNumber = blk.Header.Number + 1
 	t.Logf("Got block #%d", blk.Header.Number)
 
 	for txNum, txEnv := range blk.Data.Data {

@@ -17,9 +17,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 // StartMockVerifierService starts a specified number of mock verifier service and register cancellation.
@@ -134,10 +134,10 @@ func NewOrdererTestEnv(t *testing.T, conf *OrdererTestConfig) *OrdererTestEnv {
 }
 
 // SubmitConfigBlock creates and submits a config block.
-func (e *OrdererTestEnv) SubmitConfigBlock(t *testing.T, conf *workload.ConfigBlock) *common.Block {
+func (e *OrdererTestEnv) SubmitConfigBlock(t *testing.T, conf *testcrypto.ConfigBlock) *common.Block {
 	t.Helper()
 	if conf == nil {
-		conf = &workload.ConfigBlock{}
+		conf = &testcrypto.ConfigBlock{}
 	}
 	if conf.ChannelID == "" {
 		conf.ChannelID = e.TestConfig.ChanID
@@ -145,7 +145,7 @@ func (e *OrdererTestEnv) SubmitConfigBlock(t *testing.T, conf *workload.ConfigBl
 	if len(conf.OrdererEndpoints) == 0 {
 		conf.OrdererEndpoints = e.AllEndpoints()
 	}
-	configBlock, err := workload.CreateDefaultConfigBlock(conf)
+	configBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(t.TempDir(), conf)
 	require.NoError(t, err)
 	err = e.Orderer.SubmitBlock(t.Context(), configBlock)
 	require.NoError(t, err)

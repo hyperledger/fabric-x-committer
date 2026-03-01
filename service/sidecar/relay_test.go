@@ -17,11 +17,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
-	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 type relayTestEnv struct {
@@ -295,7 +295,7 @@ func (e *relayTestEnv) readAllStatusQueue(t *testing.T) []*committerpb.TxStatus 
 
 func createConfigBlockForTest(t *testing.T) *common.Block {
 	t.Helper()
-	block, err := workload.CreateConfigBlock(&workload.PolicyProfile{})
+	block, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(t.TempDir(), &testcrypto.ConfigBlock{})
 	require.NoError(t, err)
 	return block
 }

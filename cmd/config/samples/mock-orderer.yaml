@@ -15,8 +15,8 @@ server:
 
 block-size: 1024
 block-timeout: 30s
-send-config-block: true
-config-block-path: /root/material/config-block.pb.bin
+send-genesis-block: true
+crypto-material-path: /root/material
 
 logging:
   logSpec: "info"

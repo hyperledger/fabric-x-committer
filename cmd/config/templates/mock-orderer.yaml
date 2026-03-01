@@ -16,8 +16,8 @@ servers:
   {{- end }}
 block-size: {{ .BlockSize }}
 block-timeout: {{ .BlockTimeout }}
-config-block-path: {{ .ConfigBlockPath }}
-send-config-block: true
+crypto-material-path: {{ .Policy.CryptoMaterialPath }}
+send-genesis-block: true
 
 logging:
   logSpec: {{ .Logging.LogSpec }}

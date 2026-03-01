@@ -62,7 +62,7 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 		OrdererEndpoints:      []*commontypes.OrdererEndpoint{{Host: ordererEp.Host, Port: ordererEp.Port}},
 		PeerOrganizationCount: 1,
 	}
-	_, err = workload.CreateConfigBlock(policy)
+	_, err = workload.CreateOrExtendConfigBlockWithCrypto(policy)
 	require.NoError(t, err)
 
 	return SystemConfig{

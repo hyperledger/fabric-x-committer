@@ -94,7 +94,7 @@ waiting-txs-limit: 20_000_000
 channel-buffer-size: 100
 
 bootstrap:
-  genesis-block-file-path: {{ .ConfigBlockPath }}
+  genesis-block-file-path: "{{ .Policy.CryptoMaterialPath }}/config-block.pb.bin"
 
 logging:
   logSpec: {{ .Logging.LogSpec }}

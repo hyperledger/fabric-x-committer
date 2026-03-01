@@ -129,7 +129,7 @@ func TestOrderer(t *testing.T) {
 		BlockTimeout:     time.Hour,
 		OutBlockCapacity: 10,
 		PayloadCacheSize: 10,
-		SendConfigBlock:  true,
+		SendGenesisBlock: true,
 	})
 	require.NoError(t, err)
 
@@ -255,8 +255,8 @@ func TestOrderer(t *testing.T) {
 func TestOrdererStreamingAPI(t *testing.T) {
 	t.Parallel()
 	o, err := NewMockOrderer(&OrdererConfig{
-		BlockSize:       1,
-		SendConfigBlock: false,
+		BlockSize:        1,
+		SendGenesisBlock: false,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, o)

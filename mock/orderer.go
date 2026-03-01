@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"math"
+	"path"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
+	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
@@ -39,14 +41,14 @@ type (
 	OrdererConfig struct {
 		// Server and ServerConfigs sets the used serving endpoints.
 		// We support both for compatibility with other services.
-		Server           *connection.ServerConfig   `mapstructure:"server"`
-		ServerConfigs    []*connection.ServerConfig `mapstructure:"servers"`
-		BlockSize        int                        `mapstructure:"block-size"`
-		BlockTimeout     time.Duration              `mapstructure:"block-timeout"`
-		OutBlockCapacity int                        `mapstructure:"out-block-capacity"`
-		PayloadCacheSize int                        `mapstructure:"payload-cache-size"`
-		ConfigBlockPath  string                     `mapstructure:"config-block-path"`
-		SendConfigBlock  bool                       `mapstructure:"send-config-block"`
+		Server             *connection.ServerConfig   `mapstructure:"server"`
+		ServerConfigs      []*connection.ServerConfig `mapstructure:"servers"`
+		BlockSize          int                        `mapstructure:"block-size"`
+		BlockTimeout       time.Duration              `mapstructure:"block-timeout"`
+		OutBlockCapacity   int                        `mapstructure:"out-block-capacity"`
+		PayloadCacheSize   int                        `mapstructure:"payload-cache-size"`
+		CryptoMaterialPath string                     `mapstructure:"crypto-material-path"`
+		SendGenesisBlock   bool                       `mapstructure:"send-genesis-block"`
 
 		// TestServerParameters is only used for internal testing.
 		TestServerParameters test.StartServerParameters
@@ -57,7 +59,7 @@ type (
 		streamStateManager[OrdererStreamState]
 		endpointToPartyState utils.SyncMap[string, *PartyState]
 		config               *OrdererConfig
-		configBlock          *common.Block
+		genesisBlock         *common.Block
 		inEnvs               chan *common.Envelope
 		inBlocks             chan *common.Block
 		cutBlock             chan any
@@ -135,23 +137,24 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 	if config.TestServerParameters.NumService == 0 && len(config.ServerConfigs) == 0 {
 		config.TestServerParameters.NumService = defaultConfig.TestServerParameters.NumService
 	}
-	configBlock := defaultConfigBlock
-	if config.ConfigBlockPath != "" {
+	genesisBlock := defaultConfigBlock
+	if len(config.CryptoMaterialPath) > 0 {
 		var err error
-		configBlock, err = configtxgen.ReadBlock(config.ConfigBlockPath)
+		configBlockPath := path.Join(config.CryptoMaterialPath, cryptogen.ConfigBlockFileName)
+		genesisBlock, err = configtxgen.ReadBlock(configBlockPath)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to read config block")
 		}
 	}
 	numServices := max(1, config.TestServerParameters.NumService, len(config.ServerConfigs))
 	return &Orderer{
-		config:      config,
-		configBlock: configBlock,
-		inEnvs:      make(chan *common.Envelope, numServices*config.BlockSize*config.OutBlockCapacity),
-		inBlocks:    make(chan *common.Block, config.BlockSize*config.OutBlockCapacity),
-		cutBlock:    make(chan any),
-		cache:       newBlockCache(config.OutBlockCapacity),
-		healthcheck: connection.DefaultHealthCheckService(),
+		config:       config,
+		genesisBlock: genesisBlock,
+		inEnvs:       make(chan *common.Envelope, numServices*config.BlockSize*config.OutBlockCapacity),
+		inBlocks:     make(chan *common.Block, config.BlockSize*config.OutBlockCapacity),
+		cutBlock:     make(chan any),
+		cache:        newBlockCache(config.OutBlockCapacity),
+		healthcheck:  connection.DefaultHealthCheckService(),
 	}, nil
 }
 
@@ -199,8 +202,7 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 			PartyState: partyState,
 		}
 	})
-	logger.Infof("Mock Orderer starting deliver on server [%s], party [%d], from block %d",
-		state.ServerEndpoint, state.PartyID, start)
+	logger.Infof("Mock Orderer starting deliver from block [#%d] by %s", start, state)
 
 	// Ensures releasing the waiters when this context ends.
 	stop := o.cache.releaseAfter(ctx)
@@ -323,8 +325,8 @@ func (o *Orderer) Run(ctx context.Context) error {
 	}
 
 	// Submit the config block.
-	if o.config.SendConfigBlock {
-		sendBlock(o.configBlock)
+	if o.config.SendGenesisBlock {
+		sendBlock(o.genesisBlock)
 	}
 
 	data := make([][]byte, 0, o.config.BlockSize)
