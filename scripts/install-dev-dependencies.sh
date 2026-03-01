@@ -45,8 +45,9 @@ echo
 echo "Installing platform-specific packages"
 case "$(uname -s)" in
 Linux*)
-  if which apt >/dev/null 2>&1; then
-    sudo apt install -y libprotobuf-dev yamllint
+  if which apt-get >/dev/null 2>&1; then
+    sudo apt-get update
+    sudo apt-get install -y libprotobuf-dev yamllint
   else
     ${PYTHON_CMD:-python3} -m pip install yamllint
   fi
