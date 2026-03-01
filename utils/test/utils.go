@@ -55,6 +55,12 @@ type (
 		TLSConfig  connection.TLSConfig
 		NumService int
 	}
+
+	runGrpcServerParameters struct {
+		serverConfig *connection.ServerConfig
+		createServer func() (*grpc.Server, error)
+		register     func(*grpc.Server)
+	}
 )
 
 // FailHandler registers a [gomega] fail handler.
@@ -92,16 +98,53 @@ func RunGrpcServerForTest(
 	ctx context.Context, tb testing.TB, serverConfig *connection.ServerConfig, register func(server *grpc.Server),
 ) *grpc.Server {
 	tb.Helper()
-	listener, err := serverConfig.Listener(ctx)
+	return runGrpcServerInternal(ctx, tb,
+		runGrpcServerParameters{
+			serverConfig: serverConfig,
+			createServer: serverConfig.GrpcServer,
+			register: func(s *grpc.Server) {
+				if register != nil {
+					register(s)
+				} else {
+					healthgrpc.RegisterHealthServer(s, connection.DefaultHealthCheckService())
+				}
+			},
+		})
+}
+
+// RunDynamicGrpcServerForTest starts a GRPC server using a register method.
+// It handles the cleanup of the GRPC server at the end of a test, and ensure the test is ended
+// only when the GRPC server is down.
+// It also updates the server config endpoint port to the actual port if the configuration
+// did not specify a port.
+// The method asserts that the GRPC server did not end with failure.
+func RunDynamicGrpcServerForTest(
+	ctx context.Context, tb testing.TB, serverConfig *connection.ServerConfig, service connection.DynamicService,
+) *grpc.Server {
+	tb.Helper()
+	return runGrpcServerInternal(ctx, tb, runGrpcServerParameters{
+		serverConfig: serverConfig,
+		createServer: func() (*grpc.Server, error) {
+			return serverConfig.DynamicGrpcServer(service.GetDynamicRootCAs)
+		},
+		register: service.RegisterService,
+	})
+}
+
+// runGrpcServerInternal handles the shared listener setup, server execution,
+// and cleanup lifecycle for test servers.
+func runGrpcServerInternal(
+	ctx context.Context,
+	tb testing.TB,
+	params runGrpcServerParameters,
+) *grpc.Server {
+	tb.Helper()
+	listener, err := params.serverConfig.Listener(ctx)
 	require.NoError(tb, err)
-	server, err := serverConfig.GrpcServer()
+	server, err := params.createServer()
 	require.NoError(tb, err)
 
-	if register != nil {
-		register(server)
-	} else {
-		healthgrpc.RegisterHealthServer(server, connection.DefaultHealthCheckService())
-	}
+	params.register(server)
 
 	var wg sync.WaitGroup
 	tb.Cleanup(wg.Wait)
@@ -193,7 +236,7 @@ func RunServiceForTest(
 }
 
 // RunServiceAndGrpcForTest combines running a service and its GRPC server.
-// It is intended for services that implements the Service API (i.e., command line services).
+// It is intended for services that implement the Service API (i.e., command line services).
 func RunServiceAndGrpcForTest(
 	ctx context.Context,
 	t *testing.T,
@@ -207,6 +250,22 @@ func RunServiceAndGrpcForTest(
 	for _, server := range serverConfig {
 		RunGrpcServerForTest(ctx, t, server, service.RegisterService)
 	}
+	return doneFlag
+}
+
+// RunDynamicServiceAndGrpcForTest combines running a service and its GRPC server.
+// It is intended for services that implement the DynamicService API (i.e., command line services).
+func RunDynamicServiceAndGrpcForTest(
+	ctx context.Context,
+	t *testing.T,
+	service connection.DynamicService,
+	serverConfig *connection.ServerConfig,
+) *channel.Ready {
+	t.Helper()
+	doneFlag := RunServiceForTest(ctx, t, func(ctx context.Context) error {
+		return connection.FilterStreamRPCError(service.Run(ctx))
+	}, service.WaitForReady)
+	RunDynamicGrpcServerForTest(ctx, t, serverConfig, service)
 	return doneFlag
 }
 

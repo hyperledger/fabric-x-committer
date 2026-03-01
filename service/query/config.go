@@ -48,4 +48,9 @@ type Config struct {
 	// GetTransactionStatus (number of transaction IDs).
 	// Set to 0 to disable the limit.
 	MaxRequestKeys int `mapstructure:"max-request-keys"`
+
+	// CaFetchInterval defines how long the query service caches root CA certificates
+	// before refreshing them from the database.
+	// This prevents excessive database queries when multiple clients connect simultaneously.
+	CAFetchInterval time.Duration `mapstructure:"ca-fetch-interval"`
 }

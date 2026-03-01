@@ -104,6 +104,12 @@ max-view-timeout: 10s  # A view will be closed if it was opened for longer than 
 # Set to 0 to disable the limit (not recommended for production).
 max-request-keys: 10000
 
+
+# ca-fetch-interval defines how long the query service caches root CA certificates
+# before refreshing them from the database.
+# This prevents excessive database queries when multiple clients connect simultaneously.
+ca-fetch-interval: 10s
+
 logging:
   logSpec: "info"
   format: >-

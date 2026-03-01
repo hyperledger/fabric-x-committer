@@ -9,6 +9,7 @@ package connection
 import (
 	"crypto/tls"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -115,6 +116,19 @@ func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error)
 		return nil, err
 	}
 	return NewServerCredentialsFromMaterial(tlsMaterials)
+}
+
+// DynamicServerCredentials creates gRPC transport credentials with dynamic CA support.
+// Converts TLSConfig paths into TLSMaterials and generates credentials that use
+// GetConfigForClient callback to merge static and dynamic CAs on each TLS handshake.
+func (c TLSConfig) DynamicServerCredentials(
+	getDynamicFunc func() *atomic.Pointer[[][]byte],
+) (credentials.TransportCredentials, error) {
+	tlsMaterials, err := NewTLSMaterials(c)
+	if err != nil {
+		return nil, err
+	}
+	return newCredentials(tlsMaterials.CreateDynamicServerTLSConfig(getDynamicFunc))
 }
 
 // Validate checks that the rate limit configuration is valid.

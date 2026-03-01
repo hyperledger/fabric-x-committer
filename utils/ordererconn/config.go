@@ -45,7 +45,7 @@ type (
 		Mode     string `mapstructure:"mode"`
 		CertPath string `mapstructure:"cert-path"`
 		KeyPath  string `mapstructure:"key-path"`
-		// CommonCACertPaths is a temporaty workaround to inject CA to all organizations.
+		// CommonCACertPaths is a temporary workaround to inject CA to all organizations.
 		// TODO: This will be removed once we read the TLS certificates from the config block.
 		CommonCACertPaths []string `mapstructure:"common-ca-cert-paths"`
 	}

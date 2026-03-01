@@ -9,12 +9,16 @@ package query
 import (
 	"context"
 	"crypto/rand"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/google/uuid"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
@@ -25,9 +29,12 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/dynamictls"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
+
+var logger = flogging.MustGetLogger("query-service")
 
 var (
 	// ErrInvalidOrStaleView is returned when attempting to use wrong, stale, or cancelled view.
@@ -58,16 +65,30 @@ type (
 		metrics     *perfMetrics
 		ready       *channel.Ready
 		healthcheck *health.Server
+
+		// Dynamic CA management fields: dynamicRootCAs provides atomic, restart-free certificate
+		// rotation; lastCAFetch tracks the last refresh to a throttle database load; and
+		// refreshMutex implements a double-check locking pattern to prevent redundant,
+		// concurrent refresh operations during connection spikes.
+		dynamicRootCAs atomic.Pointer[[][]byte]
+		lastCAFetch    atomic.Int64
+		refreshMutex   sync.Mutex
 	}
 )
+
+// caFetchTimeout is the maximum time allowed for a single CA certificate fetch from the database tryout.
+// On failure, the existing CAs are kept and the next incoming connection will immediately retry.
+// This timeout prevents a slow or unresponsive database from blocking TLS handshakes indefinitely.
+const caFetchTimeout = 15 * time.Second
 
 // NewQueryService create a new QueryService given a configuration.
 func NewQueryService(config *Config) *Service {
 	return &Service{
-		config:      config,
-		metrics:     newQueryServiceMetrics(),
-		ready:       channel.NewReady(),
-		healthcheck: connection.DefaultHealthCheckService(),
+		config:         config,
+		metrics:        newQueryServiceMetrics(),
+		ready:          channel.NewReady(),
+		healthcheck:    connection.DefaultHealthCheckService(),
+		dynamicRootCAs: atomic.Pointer[[][]byte]{},
 	}
 }
 
@@ -112,6 +133,71 @@ func (q *Service) Run(ctx context.Context) error {
 func (q *Service) RegisterService(server *grpc.Server) {
 	committerpb.RegisterQueryServiceServer(server, q)
 	healthgrpc.RegisterHealthServer(server, q.healthcheck)
+}
+
+// GetDynamicRootCAs returns the current CA certificates for the query service's gRPC server.
+// It caches the CAs and only refreshes them periodically to avoid excessive database queries.
+func (q *Service) GetDynamicRootCAs() *atomic.Pointer[[][]byte] {
+	now := time.Now().Unix()
+	lastFetch := q.lastCAFetch.Load()
+
+	if lastFetch == 0 || (now-lastFetch) > q.config.CAFetchInterval.Nanoseconds() {
+		q.refreshDynamicRootCAs()
+	}
+
+	return &q.dynamicRootCAs
+}
+
+// refreshDynamicRootCAs uses a double-check locking pattern to ensure only one
+// goroutine performs the expensive config fetch.
+// Concurrent callers arriving during a refresh will block on the mutex and skip the fetch once released.
+func (q *Service) refreshDynamicRootCAs() {
+	// Acquire mutex to ensure only one goroutine performs the refresh at a time.
+	// This prevents a problem where multiple of concurrent client
+	// connections could each trigger a separate database query for the same config block.
+	q.refreshMutex.Lock()
+	defer q.refreshMutex.Unlock()
+
+	// Double-check pattern: After acquiring the lock, verify that another goroutine
+	// hasn't already completed the refresh while waiting for the lock.
+	now := time.Now().Unix()
+	lastFetch := q.lastCAFetch.Load()
+	if lastFetch != 0 && (now-lastFetch) <= q.config.CAFetchInterval.Nanoseconds() {
+		// Another goroutine just refreshed the CAs while waiting for the lock.
+		// The data is fresh, so we can skip the database query.
+		return
+	}
+
+	logger.Debug("Refreshing dynamic root CAs from config transaction")
+
+	// TODO: Add version optimization, We don't need to read the config-block entirely, only the version.
+	ctx, cancel := context.WithTimeout(context.Background(), caFetchTimeout)
+	defer cancel()
+
+	configTx, err := q.GetConfigTransaction(ctx, nil)
+	if err != nil {
+		logger.Warnf("Failed to fetch config transaction for dynamic CAs: %v", err)
+		return // Keep existing CAs
+	}
+
+	envelope, err := protoutil.UnmarshalEnvelope(configTx.Envelope)
+	if err != nil {
+		logger.Warnf("Failed to unmarshal config envelope: %v", err)
+		return // Keep existing CAs
+	}
+
+	rootCAs, err := dynamictls.NewOrganizationsFromEnvelope(envelope)
+	if err != nil {
+		logger.Warnf("Failed to extract root CAs from config: %v", err)
+		return // Keep existing CAs
+	}
+
+	if len(rootCAs) == 0 {
+		logger.Warn("no CA certificates found in config block")
+	}
+	q.dynamicRootCAs.Store(&rootCAs)
+	q.lastCAFetch.Store(time.Now().UnixNano())
+	logger.Debugf("Refreshed %d root CAs from config transaction", len(rootCAs))
 }
 
 // BeginView implements the query-service interface.
