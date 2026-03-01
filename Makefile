@@ -27,9 +27,8 @@
 #   build-arch                   - Build binaries for linux/(current-arch amd64 arm64 s390x)
 #   build-arch-%                 - Build binaries for a specific os-arch (e.g., build-arch-linux-amd64)
 #   build-cli-%                  - Build a specific CLI binary
-#   build-docker                 - Build all binaries in a docker container
-#   build-test-node-image        - Build the test node docker image
-#   build-release-image          - Build the release docker image
+#   build-%-image                - Build a docker image (test-node or release)
+#   build-with-docker            - Build all binaries in a docker container
 #
 # Benchmarks:
 #   bench-loadgen                - Run load generation benchmarks
@@ -59,19 +58,21 @@
 # Constants
 #########################
 
-go_cmd          ?= go
-version         := latest
-project_dir     := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-output_dir      ?= $(project_dir)/bin
-arch_output_dir ?= $(project_dir)/archbin
-cache_dir       ?= $(shell $(go_cmd) env GOCACHE)
-mod_cache_dir   ?= $(shell $(go_cmd) env GOMODCACHE)
-go_version      ?= 1.25.5
-golang_image    ?= golang:$(go_version)-bookworm
+go_cmd           ?= go
+version          := latest
+project_path     := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+output_dir       := bin
+arch_output_dir  := archbin
+output_path      ?= $(project_path)/$(output_dir)
+arch_output_path ?= $(project_path)/$(arch_output_dir)
+cache_path       ?= $(shell $(go_cmd) env GOCACHE)
+mod_cache_path   ?= $(shell $(go_cmd) env GOMODCACHE)
+go_version       ?= 1.25.5
+golang_image     ?= golang:$(go_version)-bookworm
 
-dockerfile_base_dir       ?= $(project_dir)/docker/images
-dockerfile_test_node_dir  ?= $(dockerfile_base_dir)/test_node
-dockerfile_release_dir    ?= $(dockerfile_base_dir)/release
+dockerfile_base_path       ?= $(project_path)/docker/images
+dockerfile_test_node_path  ?= $(dockerfile_base_path)/test_node
+dockerfile_release_path    ?= $(dockerfile_base_path)/release
 
 # Set this parameter when running docker-builder-run
 # E.g., make docker-builder-run cmd="make build-local"
@@ -86,14 +87,13 @@ image_namespace=docker.io/hyperledger
 
 # Set these parameters to compile to a specific os/arch
 # E.g., make build-local os=linux arch=amd64
-os             ?= $(shell $(go_cmd) env GOOS)
-arch           ?= $(shell $(go_cmd) env GOARCH)
-multiplatform  ?= false
-env            ?= env GOOS=$(os) GOARCH=$(arch)
-build_flags    ?= -buildvcs=false -o
-go_build       ?= $(env) $(go_cmd) build $(build_flags)
-test_cmd       ?= scripts/test-packages.sh
-proto_flags    ?=
+os              ?= $(shell $(go_cmd) env GOOS)
+arch            ?= $(shell $(go_cmd) env GOARCH)
+multiplatform   ?= false
+env             ?= env GOOS=$(os) GOARCH=$(arch)
+build_flags     ?= -buildvcs=false -o
+test_cmd        ?= scripts/test-packages.sh
+proto_flags     ?=
 
 ifneq ("$(wildcard /usr/include)","")
     proto_flags += --proto_path="/usr/include"
@@ -103,8 +103,6 @@ endif
 ifneq ("$(wildcard /opt/homebrew/include)","")
     proto_flags += --proto_path="/opt/homebrew/include"
 endif
-
-arch_output_dir_rel = $(arch_output_dir:${project_dir}/%=%)
 
 PYTHON_CMD ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/null)
 
@@ -185,8 +183,8 @@ cover-report: FORCE
 	$(go_cmd) tool cover -html=coverage.profile
 
 clean: FORCE
-	@rm -rf $(output_dir)
-	@rm -rf $(arch_output_dir)
+	@rm -rf $(output_path)
+	@rm -rf $(arch_output_path)
 	@rm -rf $(BUILD_DIR)
 
 kill-test-docker: FORCE
@@ -220,35 +218,35 @@ bench-sidecar: FORCE
 # Generate protos
 #########################
 
-PROTO_COMMON_DIR="$(shell $(env) $(go_cmd) list -m -f '{{.Dir}}' github.com/hyperledger/fabric-x-common)"
+PROTO_COMMON_PATH="$(shell $(env) $(go_cmd) list -m -f '{{.Dir}}' github.com/hyperledger/fabric-x-common)"
 
 BUILD_DIR := .build
 
 # Fabric protos cloning for lint-proto (msp/msp_config.proto dependency)
 fabric_protos_tag ?= $(shell $(go_cmd) list -m -f '{{.Version}}' github.com/hyperledger/fabric-protos-go-apiv2)
 FABRIC_PROTOS_REPO := https://github.com/hyperledger/fabric-protos.git
-FABRIC_PROTOS_DIR := ${BUILD_DIR}/fabric-protos@${fabric_protos_tag}
-FABRIC_PROTOS_SENTINEL := ${FABRIC_PROTOS_DIR}/.git
+FABRIC_PROTOS_PATH := ${BUILD_DIR}/fabric-protos@${fabric_protos_tag}
+FABRIC_PROTOS_SENTINEL := ${FABRIC_PROTOS_PATH}/.git
 
 # Google APIs cloning for proto generation (google/api/annotations.proto dependency)
 GOOGLE_PROTOS_REPO := https://github.com/googleapis/googleapis.git
-GOOGLE_PROTOS_DIR := ${BUILD_DIR}/googleapis
-GOOGLE_PROTOS_SENTINEL := ${GOOGLE_PROTOS_DIR}/.git
+GOOGLE_PROTOS_PATH := ${BUILD_DIR}/googleapis
+GOOGLE_PROTOS_SENTINEL := ${GOOGLE_PROTOS_PATH}/.git
 
 $(FABRIC_PROTOS_SENTINEL):
 	@echo "Cloning fabric-protos@${fabric_protos_tag}..."
 	@mkdir -p ${BUILD_DIR}
 	@git -c advice.detachedHead=false clone --branch ${fabric_protos_tag} \
-		--depth 1 ${FABRIC_PROTOS_REPO} ${FABRIC_PROTOS_DIR}
+		--depth 1 ${FABRIC_PROTOS_REPO} ${FABRIC_PROTOS_PATH}
 
 $(GOOGLE_PROTOS_SENTINEL):
 	@echo "Cloning googleapis..."
 	@mkdir -p ${BUILD_DIR}
-	@rm -rf ${GOOGLE_PROTOS_DIR}
-	@git -c advice.detachedHead=false clone --single-branch --depth 1 ${GOOGLE_PROTOS_REPO} ${GOOGLE_PROTOS_DIR}
+	@rm -rf ${GOOGLE_PROTOS_PATH}
+	@git -c advice.detachedHead=false clone --single-branch --depth 1 ${GOOGLE_PROTOS_REPO} ${GOOGLE_PROTOS_PATH}
 
 proto: FORCE $(GOOGLE_PROTOS_SENTINEL) $(FABRIC_PROTOS_SENTINEL)
-	@echo "Generating protobufs: $(shell find ${project_dir}/api -name '*.proto' -print0 \
+	@echo "Generating protobufs: $(shell find ${project_path}/api -name '*.proto' -print0 \
 		| xargs -0 -n 1 dirname | xargs -n 1 basename | sort -u)"
 	@protoc \
 	  --go_out=paths=source_relative:. \
@@ -256,75 +254,84 @@ proto: FORCE $(GOOGLE_PROTOS_SENTINEL) $(FABRIC_PROTOS_SENTINEL)
 	  --go-grpc_opt=paths=source_relative \
 	  --grpc-gateway_out=. \
 	  --grpc-gateway_opt=paths=source_relative \
-	  --proto_path="${project_dir}" \
-	  --proto_path="${PROTO_COMMON_DIR}" \
-	  --proto_path="${GOOGLE_PROTOS_DIR}" \
-	  --proto_path="${FABRIC_PROTOS_DIR}" \
+	  --proto_path="${project_path}" \
+	  --proto_path="${PROTO_COMMON_PATH}" \
+	  --proto_path="${GOOGLE_PROTOS_PATH}" \
+	  --proto_path="${FABRIC_PROTOS_PATH}" \
 	  ${proto_flags} \
-	  ${project_dir}/api/*/*.proto
+	  ${project_path}/api/*/*.proto
 
 lint-proto: FORCE $(GOOGLE_PROTOS_SENTINEL) $(FABRIC_PROTOS_SENTINEL)
 	@echo "Running protobuf linters..."
 	@api-linter \
-		-I="${project_dir}/api" \
-		-I="${PROTO_COMMON_DIR}" \
-		-I="${GOOGLE_PROTOS_DIR}" \
-		-I="${FABRIC_PROTOS_DIR}" \
+		-I="${project_path}/api" \
+		-I="${PROTO_COMMON_PATH}" \
+		-I="${GOOGLE_PROTOS_PATH}" \
+		-I="${FABRIC_PROTOS_PATH}" \
 		--config .apilinter.yaml \
 		--set-exit-status \
 		--output-format github \
-		$(shell find ${project_dir}/api -name '*.proto' | sed 's|${project_dir}/api/||')
+		$(shell find ${project_path}/api -name '*.proto' | sed 's|${project_path}/api/||')
 
 #########################
 # Binaries
 #########################
 
-$(output_dir):
-	mkdir -p "$(output_dir)"
+GIT_FILES:=$(shell git ls-files)
+CLI_TOOLS:=committer loadgen mock
+BUILD_TARGETS=$(foreach tool,$(CLI_TOOLS),$(output_dir)/$(tool))
+BUILD_ARCH=$(arch) amd64 arm64 s390x
+ARCH_BUILD_TARGETS=$(foreach tool,$(CLI_TOOLS),$(foreach arch,$(BUILD_ARCH),$(arch_output_dir)/linux/$(arch)/$(tool)))
 
-$(cache_dir) $(mod_cache_dir):
-	# Use the host local gocache and gomodcache folder to avoid rebuilding and re-downloading every time
-	mkdir -p "$(cache_dir)" "$(mod_cache_dir)"
+build: $(BUILD_TARGETS)
 
-BUILD_TARGETS=build-cli-committer build-cli-loadgen build-cli-mock
+build-arch: $(ARCH_BUILD_TARGETS)
 
-build: $(output_dir) $(BUILD_TARGETS)
+build-arch-%: $(foreach arch,$(BUILD_ARCH),$(arch_output_dir)/linux/$(arch)/%)
+	@# This comment is required for the rule to work properly.
 
-build-arch: build-arch-linux-$(arch) build-arch-linux-amd64 build-arch-linux-arm64 build-arch-linux-s390x
+build-cli-%: $(output_dir)/%
+	@# This comment is required for the rule to work properly.
 
-build-arch-%: FORCE
-	@CGO_ENABLED=0 make \
-		os=$(word 1, $(subst -, ,$*)) \
-		arch=$(word 2, $(subst -, ,$*)) \
-		output_dir=$(arch_output_dir)/$* \
-		build_flags="-ldflags '-w -s' $(build_flags)" \
-		build
+build-%-image: $(BUILD_DIR)/%-image
+	@# This comment is required for the rule to work properly.
 
-build-cli-%: FORCE $(output_dir)
-	$(go_build) "$(output_dir)/$*" "./cmd/$*"
+$(output_dir)/%: $(GIT_FILES)
+	@mkdir -p "$(output_path)"
+	$(env) $(go_cmd) build $(build_flags) "$(output_path)/$*" "./cmd/$*"
 
-build-docker: FORCE $(cache_dir) $(mod_cache_dir)
-	$(docker_cmd) run --rm -it \
-	  --mount "type=bind,source=$(project_dir),target=$(project_dir)" \
-	  --mount "type=bind,source=$(cache_dir),target=$(cache_dir)" \
-	  --mount "type=bind,source=$(mod_cache_dir),target=$(mod_cache_dir)" \
-	  --workdir $(project_dir) \
-	  --env GOCACHE="$(cache_dir)" \
-	  --env GOMODCACHE="$(mod_cache_dir)" \
-	  $(golang_image) \
-    make build output_dir=$(output_dir) env="$(env)"
-	scripts/amend-permissions.sh "$(cache_dir)" "$(mod_cache_dir)"
+$(arch_output_dir)/%: $(GIT_FILES)
+	@mkdir -p $(arch_output_path)/$(shell dirname $*)
+	env CGO_ENABLED=0 GOOS=$(word 1, $(subst /, ,$*)) GOARCH=$(word 2, $(subst /, ,$*)) $(go_cmd) build -ldflags '-w -s' $(build_flags) "$(arch_output_path)/$*" "./cmd/$(shell basename $*)"
 
-build-test-node-image: build-arch
+$(BUILD_DIR)/test-node-image: $(ARCH_BUILD_TARGETS)
 	${docker_cmd} build $(docker_build_flags) \
-		-f $(dockerfile_test_node_dir)/Dockerfile \
+		-f $(dockerfile_test_node_path)/Dockerfile \
 		-t ${image_namespace}/committer-test-node:${version} \
-		--build-arg ARCHBIN_PATH=${arch_output_dir_rel} \
+		--build-arg ARCHBIN_PATH=${arch_output_dir} \
 		. $(docker_push_arg)
+	@mkdir -p ${BUILD_DIR}
+	@touch $@
 
-build-release-image: build-arch
+$(BUILD_DIR)/release-image: $(ARCH_BUILD_TARGETS)
 	./scripts/build-release-image.sh \
-		$(docker_cmd) $(version) $(image_namespace) $(dockerfile_release_dir) $(multiplatform) $(arch_output_dir_rel)
+    	$(docker_cmd) $(version) $(image_namespace) $(dockerfile_release_path) $(multiplatform) $(arch_output_dir)
+	@mkdir -p ${BUILD_DIR}
+	@touch $@
+
+build-with-docker: FORCE
+	@# Use the host local gocache and gomodcache folder to avoid rebuilding and re-downloading every time
+	@mkdir -p "$(cache_path)" "$(mod_cache_path)"
+	$(docker_cmd) run --rm -it \
+	  --mount "type=bind,source=$(project_path),target=$(project_path)" \
+	  --mount "type=bind,source=$(cache_path),target=$(cache_path)" \
+	  --mount "type=bind,source=$(mod_cache_path),target=$(mod_cache_path)" \
+	  --workdir $(project_path) \
+	  --env GOCACHE="$(cache_path)" \
+	  --env GOMODCACHE="$(mod_cache_path)" \
+	  $(golang_image) \
+      make build output_dir=$(output_path) env="$(env)"
+	scripts/amend-permissions.sh "$(cache_path)" "$(mod_cache_path)"
 
 #########################
 # Linter

@@ -10,7 +10,6 @@
 *.dylib
 bin
 archbin
-.build
 
 # Test binary, built with `go test -c`
 *.test
@@ -33,6 +32,7 @@ docker/runner/out
 .idea
 .vscode
 .build
+.bob
 *coverage.profile
 
 # Log files produced by the tests

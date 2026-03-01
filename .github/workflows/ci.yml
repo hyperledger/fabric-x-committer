@@ -150,6 +150,7 @@ jobs:
           go-version-file: go.mod
       - run: scripts/install-dev-dependencies.sh
       - run: go mod tidy
+      - run: make build-test-node-image build-release-image
       - run: make test-container
 
   coveralls:

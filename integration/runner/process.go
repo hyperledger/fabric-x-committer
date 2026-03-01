@@ -15,9 +15,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/tedsuo/ifrit"
-	"github.com/tedsuo/ifrit/ginkgomon"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type (
@@ -130,24 +130,5 @@ func (p *ProcessWithConfig) Restart(t *testing.T) {
 	dir, err := os.Getwd()
 	require.NoError(t, err)
 	c.Dir = path.Clean(path.Join(dir, "../.."))
-	p.process = Run(c, p.params.Name, "")
-}
-
-// Run executes the specified command and returns the corresponding process.
-// It is important to note that the underlying invocation function (Invoke)
-// returns only when either process.Ready or process.Wait has been read.
-// Consequently, the caller only needs to read process.Wait to wait for the
-// process to complete and capture any errors that may have occurred during execution.
-//
-//nolint:ireturn
-func Run(cmd *exec.Cmd, name, startCheck string) ifrit.Process {
-	return ifrit.Invoke(ginkgomon.New(ginkgomon.Config{
-		Command:           cmd,
-		Name:              name,
-		AnsiColorCode:     "",
-		StartCheck:        startCheck,
-		StartCheckTimeout: 0,
-		Cleanup: func() {
-		},
-	}))
+	p.process = test.Run(c, p.params.Name, "")
 }

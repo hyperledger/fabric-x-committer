@@ -11,21 +11,18 @@ import (
 	"log"
 	"os"
 	"testing"
-	"time"
 
 	"google.golang.org/grpc/grpclog"
 
 	"github.com/hyperledger/fabric-x-committer/utils/test"
-	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 
 func TestMain(m *testing.M) {
 	grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, os.Stderr))
-	err := test.Make("build")
+	err := test.Make("build-test-node-image", "build-release-image")
 	if err != nil {
+		//nolint:revive // false positive.
 		log.Fatal(err)
 	}
-	// Waiting a seconds solves a bug where the binaries are not yet accessible by the filesystem.
-	time.Sleep(2 * time.Second)
-	testdb.RunTestMain(m)
+	m.Run()
 }
