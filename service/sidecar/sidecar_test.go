@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/google/uuid"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
@@ -42,29 +43,34 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-type sidecarTestEnv struct {
-	config            Config
-	coordinator       *mock.Coordinator
-	coordinatorServer *test.GrpcServers
-	ordererEnv        *mock.OrdererTestEnv
+type (
+	sidecarTestEnv struct {
+		config            Config
+		coordinator       *mock.Coordinator
+		coordinatorServer *test.GrpcServers
+		ordererEnv        *mock.OrdererTestEnv
 
-	sidecar        *Service
-	committedBlock chan *common.Block
-	configBlock    *common.Block
-	notifyStream   committerpb.Notifier_OpenNotificationStreamClient
-}
+		sidecar             *Service
+		committedBlock      chan *common.Block
+		configBlock         *common.Block
+		cryptoMaterialsPath string
+		notifyStream        committerpb.Notifier_OpenNotificationStreamClient
+	}
 
-type sidecarTestConfig struct {
-	NumService         int
-	NumFakeService     int
-	SubmitGenesisBlock bool
-	ServerTLS          connection.TLSConfig
-	ClientTLS          connection.TLSConfig
-}
+	sidecarTestConfig struct {
+		NumService         int
+		NumFakeService     int
+		SubmitGenesisBlock bool
+		NumberOfPeers      uint32
+		ServerTLS          connection.TLSConfig
+		ClientTLS          connection.TLSConfig
+	}
+)
 
 const (
 	blockSize              = 100
 	expectedProcessingTime = 30 * time.Second
+	testContextTimeout     = 2 * time.Minute
 )
 
 func (c *sidecarTestConfig) String() string {
@@ -107,6 +113,95 @@ func TestSidecarSecureConnection(t *testing.T) {
 	)
 }
 
+// TestSidecarWithDynamicRootCAs verifies that the Sidecar correctly maintaining a static set of Root CAs
+// // from a YAML configuration while dynamically updating additional Root CAs from the configuration blocks.
+//
+// Test Workflow:
+//
+//  1. Initial State: Load TLS materials for N organizations (Peer) and a persistent
+//     set of credentials (YAML). Verify all can connect to the Query Service.
+//
+//  2. Dynamic Update: Submit a new configuration block that replaces the
+//     original organizations peers with new ones.
+//
+//  3. Negative Verification: Verify that the old Peer-based clients are now
+//     rejected because their specific Root CAs were removed during the config update.
+//
+//  4. Static verification: Verify that the YAML-based clients can still
+//     connect. This confirms that the Query Service's dynamic update mechanism
+//     correctly preserved the static "YAML" root CAs and did not flush them.
+func TestSidecarWithDynamicRootCAs(t *testing.T) {
+	t.Parallel()
+	serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, connection.MutualTLSMode)
+
+	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{
+		NumberOfPeers: 2, NumService: 3, ClientTLS: clientTLSConfig, ServerTLS: serverTLSConfig,
+	})
+
+	ctx, cancel := context.WithTimeout(t.Context(), testContextTimeout)
+	defer cancel()
+
+	env.startSidecarService(ctx, t)
+
+	// Build the configs from client@[org].
+	clientsTLS := test.BuildClientTLSConfigsPerOrg(t, env.cryptoMaterialsPath, clientTLSConfig)
+
+	// Helper to attempt a connection and return an error.
+	// We use this inside Eventually.
+	checkConnection := func(tlsCfg connection.TLSConfig) error {
+		// The client also verifies the sidecar's credential, and it needs the sidecar's credentials root CA for that.
+		tlsCfg.CACertPaths = append(tlsCfg.CACertPaths, serverTLSConfig.CACertPaths...)
+
+		conn, err := connection.NewSingleConnection(&connection.ClientConfig{
+			Endpoint: &env.sidecar.config.Server.Endpoint,
+			TLS:      tlsCfg,
+		})
+		if err != nil {
+			return err
+		}
+		defer conn.Close() //nolint:errcheck
+
+		callCtx, callCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer callCancel()
+
+		_, err = peer.NewDeliverClient(conn).Deliver(callCtx)
+		return err
+	}
+
+	t.Logf("number of peers: %d, number of YAMLs: %d", len(clientsTLS.Peer), len(clientsTLS.YAML))
+	errorTemplate := "Initial connection failed for %s"
+	for name, cfg := range clientsTLS.Peer {
+		require.NoError(t, checkConnection(cfg), errorTemplate, name)
+	}
+	for name, cfg := range clientsTLS.YAML {
+		require.NoError(t, checkConnection(cfg), errorTemplate, name)
+	}
+
+	t.Log("Submitting new config block which removes ONLY old peer organizations")
+	env.ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
+		OrdererEndpoints:      env.ordererEnv.AllEndpoints(),
+		ChannelID:             env.ordererEnv.TestConfig.ChanID,
+		PeerOrganizationCount: 1, // Invalidates previous organizations.
+	})
+
+	t.Logf("number of peers: %d", len(clientsTLS.Peer))
+	require.Eventually(t, func() bool {
+		for _, cfg := range clientsTLS.Peer {
+			if err := checkConnection(cfg); err == nil {
+				// If any old peer still connects, the update hasn't propagated yet.
+				return false
+			}
+		}
+		return true
+	}, 30*time.Second, 500*time.Millisecond, "Sidecar should have revoked old Peer Org CAs")
+
+	t.Logf("number of YAMLs: %d", len(clientsTLS.YAML))
+	// Ensure YAML configs still work (they shouldn't have been affected)
+	for name, cfg := range clientsTLS.YAML {
+		require.NoError(t, checkConnection(cfg), "YAML client %s lost connection after dynamic update", name)
+	}
+}
+
 func newSidecarTestEnvWithTLS(
 	t *testing.T,
 	conf sidecarTestConfig,
@@ -132,11 +227,18 @@ func newSidecarTestEnvWithTLS(
 		NumFake: conf.NumFakeService,
 	})
 
+	if conf.NumberOfPeers == 0 {
+		conf.NumberOfPeers = 1
+	}
 	ordererEndpoints := ordererEnv.AllEndpoints()
-	configBlock := ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
-		OrdererEndpoints: ordererEndpoints,
-		ChannelID:        ordererEnv.TestConfig.ChanID,
+	cryptoMaterialsPath := t.TempDir()
+	configBlock, err := workload.CreateDefaultConfigBlockWithCrypto(cryptoMaterialsPath, &workload.ConfigBlock{
+		OrdererEndpoints:      ordererEndpoints,
+		ChannelID:             ordererEnv.TestConfig.ChanID,
+		PeerOrganizationCount: conf.NumberOfPeers,
 	})
+	require.NoError(t, err)
+	require.NoError(t, ordererEnv.Orderer.SubmitBlock(t.Context(), configBlock))
 
 	var genesisBlockFilePath string
 	initOrdererOrganizations := map[string]*ordererconn.OrganizationConfig{
@@ -173,12 +275,13 @@ func newSidecarTestEnvWithTLS(
 	t.Cleanup(sidecar.Close)
 
 	return &sidecarTestEnv{
-		sidecar:           sidecar,
-		coordinator:       coordinator,
-		coordinatorServer: coordinatorServer,
-		ordererEnv:        ordererEnv,
-		config:            *sidecarConf,
-		configBlock:       configBlock,
+		sidecar:             sidecar,
+		coordinator:         coordinator,
+		coordinatorServer:   coordinatorServer,
+		ordererEnv:          ordererEnv,
+		config:              *sidecarConf,
+		configBlock:         configBlock,
+		cryptoMaterialsPath: cryptoMaterialsPath,
 	}
 }
 
@@ -196,7 +299,7 @@ func (env *sidecarTestEnv) startSidecarServiceAndClientAndNotificationStream(
 
 func (env *sidecarTestEnv) startSidecarService(ctx context.Context, t *testing.T) {
 	t.Helper()
-	test.RunServiceAndGrpcForTest(ctx, t, env.sidecar, env.config.Server)
+	test.RunDynamicServiceAndGrpcForTest(ctx, t, env.sidecar, env.config.Server)
 }
 
 func (env *sidecarTestEnv) startSidecarClient(
@@ -242,7 +345,7 @@ func TestSidecar(t *testing.T) {
 					t.Parallel()
 					conf.ServerTLS, conf.ClientTLS = serverTLSConfig, clientTLSConfig
 					env := newSidecarTestEnvWithTLS(t, conf)
-					ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+					ctx, cancel := context.WithTimeout(t.Context(), testContextTimeout)
 					t.Cleanup(cancel)
 					env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, clientTLSConfig)
 					env.requireBlock(ctx, t, 0)
@@ -262,7 +365,7 @@ func TestSidecarConfigUpdate(t *testing.T) {
 			env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{
 				NumService: 3, ClientTLS: clientTLSConfig, ServerTLS: serverTLSConfig,
 			})
-			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+			ctx, cancel := context.WithTimeout(t.Context(), testContextTimeout)
 			t.Cleanup(cancel)
 			env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, clientTLSConfig)
 			env.requireBlock(ctx, t, 0)
@@ -330,7 +433,7 @@ func TestSidecarConfigUpdate(t *testing.T) {
 func TestSidecarConfigRecovery(t *testing.T) {
 	t.Parallel()
 	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{NumService: 3})
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), testContextTimeout)
 	t.Cleanup(cancel)
 	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
 	env.requireBlock(ctx, t, 0)
@@ -349,7 +452,7 @@ func TestSidecarConfigRecovery(t *testing.T) {
 	env.sidecar.Close()
 
 	// Create a new context for the remaining operations
-	newCtx, newCancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	newCtx, newCancel := context.WithTimeout(t.Context(), testContextTimeout)
 	t.Cleanup(newCancel)
 
 	t.Log("Modify the Sidecar config, use illegal host endpoint")
@@ -385,7 +488,7 @@ func TestSidecarConfigRecovery(t *testing.T) {
 func TestSidecarRecovery(t *testing.T) {
 	t.Parallel()
 	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{})
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), testContextTimeout)
 	t.Cleanup(cancel)
 	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
 	env.requireBlock(ctx, t, 0)
@@ -418,7 +521,7 @@ func TestSidecarRecovery(t *testing.T) {
 	//       falls behind the state database by removing blocks.
 	t.Log("3. Remove all blocks from the ledger except block 0")
 	require.NoError(t, blkstorage.ResetBlockStore(env.config.Ledger.Path))
-	ctx2, cancel2 := context.WithTimeout(t.Context(), 2*time.Minute)
+	ctx2, cancel2 := context.WithTimeout(t.Context(), testContextTimeout)
 	t.Cleanup(cancel2)
 	checkNextBlockNumberToCommit(ctx2, t, env.coordinator, 11)
 
@@ -470,7 +573,7 @@ func TestSidecarRecovery(t *testing.T) {
 func TestSidecarRecoveryAfterCoordinatorFailure(t *testing.T) {
 	t.Parallel()
 	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{})
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), testContextTimeout)
 	t.Cleanup(cancel)
 	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
 	env.requireBlock(ctx, t, 0)
@@ -515,7 +618,7 @@ func TestSidecarRecoveryAfterCoordinatorFailure(t *testing.T) {
 func TestSidecarStartWithoutCoordinator(t *testing.T) {
 	t.Parallel()
 	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{})
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), testContextTimeout)
 	t.Cleanup(cancel)
 
 	t.Log("Stop the coordinator")
@@ -552,7 +655,7 @@ func TestSidecarStartWithoutCoordinator(t *testing.T) {
 func TestSidecarVerifyBadTxForm(t *testing.T) {
 	t.Parallel()
 	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{SubmitGenesisBlock: true})
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), testContextTimeout)
 	t.Cleanup(cancel)
 	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
 	env.requireBlock(ctx, t, 0)
@@ -770,7 +873,7 @@ func TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery(t *testing.T
 	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{
 		NumService: 3, ServerTLS: test.InsecureTLSConfig, ClientTLS: test.InsecureTLSConfig,
 	})
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), testContextTimeout)
 	t.Cleanup(cancel)
 	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
 	env.requireBlock(ctx, t, 0)
@@ -796,7 +899,7 @@ func TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery(t *testing.T
 	t.Log("3. Reset block store to create a gap (simulate ledger behind coordinator)")
 	require.NoError(t, blkstorage.ResetBlockStore(env.config.Ledger.Path))
 
-	newCtx, newCancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	newCtx, newCancel := context.WithTimeout(t.Context(), testContextTimeout)
 	t.Cleanup(newCancel)
 	checkNextBlockNumberToCommit(newCtx, t, env.coordinator, 11)
 

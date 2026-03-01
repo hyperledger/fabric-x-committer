@@ -145,3 +145,48 @@ tls:
   ca-cert-path: /server-certs/ca-certificate.pem
 
 ```
+
+## Dynamic CA Certificate Rotation
+
+Some services support **dynamic root CA certificate rotation** — the ability to update
+the set of trusted client CA certificates at runtime, without restarting the service.
+This is useful in multi-organization deployments where new organizations may join the
+channel after the service has started.
+
+### How it works
+
+Services that support dynamic CAs read the current set of trusted root CA certificates
+from the **config block** stored in the state database or directly from the config block. These certificates are
+merged with the static CAs defined in `ca-cert-paths` and applied on every new TLS
+handshake via the `GetConfigForClient` callback.
+
+This means:
+- Existing connections are **not affected** when CAs are updated.
+- New connections will use the **latest merged CA set** (static YAML CAs + dynamic config-block CAs).
+- No service restart is required when a new organization's CA is added to the channel.
+
+> Note: Dynamic CA support only applies when the server TLS mode is `mtls`.
+> For `tls` or `none` modes, the standard static TLS configuration is used.
+
+### Services with dynamic CA support
+
+| Service | Dynamic CA source |
+|---------|------------------|
+| **Sidecar** | Updated from config blocks received from the orderer. Applied immediately when a config block is processed. |
+| **Query Service** | Periodically fetched from the config transaction in the state database. Refresh interval is controlled by `ca-fetch-interval`. |
+
+### Query Service: `ca-fetch-interval`
+
+The query service caches the dynamic CAs and refreshes them on a configurable interval
+to avoid excessive database queries when multiple clients connect simultaneously.
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| **`ca-fetch-interval`** | Duration | How often the query service refreshes root CA certificates from the config transaction. Default: `10s`. |
+
+```yaml
+# ca-fetch-interval defines how often the query service refreshes root CA certificates
+# from the config transaction in the state database.
+# Increase this value to reduce database load in stable deployments.
+# Decrease it to pick up new organization CAs more quickly.
+ca-fetch-interval: 10s
