@@ -29,13 +29,6 @@ type (
 		CertificateAuthority tlsgen.CA
 	}
 
-	// testCase define a secure connection test case.
-	testCase struct {
-		testDescription  string
-		clientSecureMode string
-		shouldFail       bool
-	}
-
 	// ServerStarter is a function that starts the server,
 	// and returns a RPCAttempt function for initiating a client connection and attempting an RPC call.
 	// It receives the serverTLS config to configure the server, and the client TLS config to configure
@@ -104,69 +97,45 @@ mTLS        |      connect     |        can't connect        |     can't connect
 TLS         |      connect     |           connect           |     can't connect
 None        | can't connect    |        can't connect        |       connect.
 */
-func RunSecureConnectionTest(
-	t *testing.T,
-	starter ServerStarter,
-) {
+func RunSecureConnectionTest(t *testing.T, starter ServerStarter) {
 	t.Helper()
 	// create server and client credentials
 	tlsMgr := NewCredentialsFactory(t)
-	// create a base TLS configuration for the client
-	baseClientTLS, _ := tlsMgr.CreateClientCredentials(t, connection.NoneTLSMode)
 	for _, tc := range []struct {
 		serverMode string
-		cases      []testCase
+		clientMode string
+		shouldFail bool
 	}{
-		{
-			serverMode: connection.MutualTLSMode,
-			cases: []testCase{
-				{"client mTLS", connection.MutualTLSMode, false},
-				{"client with one sided TLS", connection.OneSideTLSMode, true},
-				{"client no TLS", connection.NoneTLSMode, true},
-			},
-		},
-		{
-			serverMode: connection.OneSideTLSMode,
-			cases: []testCase{
-				{"client mTLS", connection.MutualTLSMode, false},
-				{"client with one sided TLS", connection.OneSideTLSMode, false},
-				{"client no TLS", connection.NoneTLSMode, true},
-			},
-		},
-		{
-			serverMode: connection.NoneTLSMode,
-			cases: []testCase{
-				{"client mTLS", connection.MutualTLSMode, true},
-				{"client with one sided TLS", connection.OneSideTLSMode, true},
-				{"client no TLS", connection.NoneTLSMode, false},
-			},
-		},
+		// Server MTLS mode test cases.
+		{connection.MutualTLSMode, connection.MutualTLSMode, false},
+		{connection.MutualTLSMode, connection.OneSideTLSMode, true},
+		{connection.MutualTLSMode, connection.NoneTLSMode, true},
+		// Server TLS mode test cases.
+		{connection.OneSideTLSMode, connection.MutualTLSMode, false},
+		{connection.OneSideTLSMode, connection.OneSideTLSMode, false},
+		{connection.OneSideTLSMode, connection.NoneTLSMode, true},
+		// Server unsecure mode test cases.
+		{connection.NoneTLSMode, connection.MutualTLSMode, true},
+		{connection.NoneTLSMode, connection.OneSideTLSMode, true},
+		{connection.NoneTLSMode, connection.NoneTLSMode, false},
 	} {
-		t.Run(fmt.Sprintf("server-tls:%s", tc.serverMode), func(t *testing.T) {
+		// for each server secure mode, build the client's test cases.
+		t.Run(fmt.Sprintf("server:%s client:%s", tc.serverMode, tc.clientMode), func(t *testing.T) {
 			t.Parallel()
 			// create server's tls config and start it according to the server tls mode.
 			serverTLS, _ := tlsMgr.CreateServerCredentials(t, tc.serverMode, defaultHostName)
-			internalClientTLS := baseClientTLS
-			internalClientTLS.Mode = tc.serverMode
+			internalClientTLS, _ := tlsMgr.CreateClientCredentials(t, tc.serverMode)
 			rpcAttemptFunc := starter(t, serverTLS, internalClientTLS)
-			// for each server secure mode, build the client's test cases.
-			for _, clientTestCase := range tc.cases {
-				t.Run(clientTestCase.testDescription, func(t *testing.T) {
-					t.Parallel()
 
-					clientTLS := baseClientTLS
-					clientTLS.Mode = clientTestCase.clientSecureMode
+			ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+			t.Cleanup(cancel)
 
-					ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
-					t.Cleanup(cancel)
-
-					err := rpcAttemptFunc(ctx, t, clientTLS)
-					if clientTestCase.shouldFail {
-						require.Error(t, err)
-					} else {
-						require.NoError(t, err)
-					}
-				})
+			clientTLS, _ := tlsMgr.CreateClientCredentials(t, tc.clientMode)
+			err := rpcAttemptFunc(ctx, t, clientTLS)
+			if tc.shouldFail {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}
