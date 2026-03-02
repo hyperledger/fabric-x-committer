@@ -137,21 +137,24 @@ func (q *Service) RegisterService(server *grpc.Server) {
 
 // GetDynamicRootCAs returns the current CA certificates for the query service's gRPC server.
 // It caches the CAs and only refreshes them periodically to avoid excessive database queries.
-func (q *Service) GetDynamicRootCAs() *atomic.Pointer[[][]byte] {
+func (q *Service) GetDynamicRootCAs(ctx context.Context) [][]byte {
 	now := time.Now().Unix()
 	lastFetch := q.lastCAFetch.Load()
 
 	if lastFetch == 0 || (now-lastFetch) > q.config.CAFetchInterval.Nanoseconds() {
-		q.refreshDynamicRootCAs()
+		q.refreshDynamicRootCAs(ctx)
 	}
 
-	return &q.dynamicRootCAs
+	if v := q.dynamicRootCAs.Load(); v != nil {
+		return *v
+	}
+	return nil
 }
 
 // refreshDynamicRootCAs uses a double-check locking pattern to ensure only one
 // goroutine performs the expensive config fetch.
 // Concurrent callers arriving during a refresh will block on the mutex and skip the fetch once released.
-func (q *Service) refreshDynamicRootCAs() {
+func (q *Service) refreshDynamicRootCAs(ctx context.Context) {
 	// Acquire mutex to ensure only one goroutine performs the refresh at a time.
 	// This prevents a problem where multiple of concurrent client
 	// connections could each trigger a separate database query for the same config block.
@@ -171,7 +174,7 @@ func (q *Service) refreshDynamicRootCAs() {
 	logger.Debug("Refreshing dynamic root CAs from config transaction")
 
 	// TODO: Add version optimization, We don't need to read the config-block entirely, only the version.
-	ctx, cancel := context.WithTimeout(context.Background(), caFetchTimeout)
+	ctx, cancel := context.WithTimeout(ctx, caFetchTimeout)
 	defer cancel()
 
 	configTx, err := q.GetConfigTransaction(ctx, nil)

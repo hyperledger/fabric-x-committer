@@ -10,7 +10,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"os"
-	"sync/atomic"
 
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -32,7 +31,7 @@ type TLSMaterials struct {
 // This enables certificate rotation without service restart.
 // Note: Only applies to MutualTLSMode. For other modes, returns standard server TLS config.
 func (m *TLSMaterials) CreateDynamicServerTLSConfig(
-	getDynamicFunc func() *atomic.Pointer[[][]byte],
+	getDynamicFunc func() [][]byte,
 ) (*tls.Config, error) {
 	tlsConfig, err := m.CreateServerTLSConfig()
 	if err != nil {
@@ -43,9 +42,13 @@ func (m *TLSMaterials) CreateDynamicServerTLSConfig(
 	}
 
 	tlsConfig.GetConfigForClient = func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
-		caCerts := m.GetDynamicCACerts(getDynamicFunc())
-		logger.Debugf("New client connection: %v, with %d root CAs", chi.Conn.RemoteAddr(), len(caCerts))
-		certPool, err := buildCertPool(caCerts)
+		dynamicRootCAs := getDynamicFunc()
+		newCaCert := make([][]byte, len(m.CACerts)+len(dynamicRootCAs))
+		copy(newCaCert, m.CACerts)
+		copy(newCaCert[len(m.CACerts):], dynamicRootCAs)
+
+		logger.Debugf("New client connection: %v, with %d root CAs", chi.Conn.RemoteAddr(), len(newCaCert))
+		certPool, err := buildCertPool(newCaCert)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to build cert pool for client CAs")
 		}
@@ -63,19 +66,11 @@ func (m *TLSMaterials) CreateDynamicServerTLSConfig(
 // GetDynamicCACerts atomically reads and merges static and dynamic CA certificates.
 // If dynamicRootCAs is nil, returns only the static CAs from YAML configuration.
 // This allows services to opt-out of dynamic CA support by returning nil from GetDynamicRootCAs().
-func (m *TLSMaterials) GetDynamicCACerts(dynamicRootCAs *atomic.Pointer[[][]byte]) [][]byte {
-	if dynamicRootCAs == nil {
-		return m.CACerts
-	}
-
-	if v := dynamicRootCAs.Load(); v != nil {
-		result := make([][]byte, len(m.CACerts)+len(*v))
-		copy(result, m.CACerts)
-		copy(result[len(m.CACerts):], *v)
-		return result
-	}
-	// Fallback to initial CAs
-	return m.CACerts
+func (m *TLSMaterials) GetDynamicCACerts(dynamicRootCAs [][]byte) [][]byte {
+	result := make([][]byte, len(m.CACerts)+len(dynamicRootCAs))
+	copy(result, m.CACerts)
+	copy(result[len(m.CACerts):], dynamicRootCAs)
+	return result
 }
 
 // NewClientCredentialsFromMaterial returns the gRPC transport credentials to be used by a client,

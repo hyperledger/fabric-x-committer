@@ -9,7 +9,6 @@ package connection
 import (
 	"context"
 	"net"
-	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -44,7 +43,7 @@ type (
 		// GetDynamicRootCAs returns a pointer to the atomic pointer containing dynamic root CA certificates.
 		// This method is called during TLS handshake (via GetConfigForClient) to retrieve the current
 		// set of trusted root CAs for client certificate validation.
-		GetDynamicRootCAs() *atomic.Pointer[[][]byte]
+		GetDynamicRootCAs(ctx context.Context) [][]byte
 	}
 )
 
@@ -209,7 +208,10 @@ func RunGrpcDynamicServer(
 	if err != nil {
 		return err
 	}
-	server, err := serverConfig.DynamicGrpcServer(service.GetDynamicRootCAs)
+	//server, err := serverConfig.DynamicGrpcServer(service.GetDynamicRootCAs)
+	server, err := serverConfig.DynamicGrpcServer(func() [][]byte {
+		return service.GetDynamicRootCAs(ctx) // Uses captured service context
+	})
 	if err != nil {
 		return errors.Wrapf(err, "failed creating grpc server")
 	}
@@ -237,7 +239,7 @@ func (c *ServerConfig) GrpcServer() (*grpc.Server, error) {
 // DynamicGrpcServer instantiates a gRPC server with dynamic CA certificate support.
 // The server uses GetConfigForClient TLS callback to merge static
 // (YAML) and dynamic (config block) CAs on each connection.
-func (c *ServerConfig) DynamicGrpcServer(getDynamicFunc func() *atomic.Pointer[[][]byte]) (*grpc.Server, error) {
+func (c *ServerConfig) DynamicGrpcServer(getDynamicFunc func() [][]byte) (*grpc.Server, error) {
 	creds, err := c.TLS.DynamicServerCredentials(getDynamicFunc)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed loading the server's grpc credentials")

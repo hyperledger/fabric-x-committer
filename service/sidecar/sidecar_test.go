@@ -41,6 +41,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 type (
@@ -144,7 +145,7 @@ func TestSidecarWithDynamicRootCAs(t *testing.T) {
 	env.startSidecarService(ctx, t)
 
 	// Build the configs from client@[org].
-	clientsTLS := test.BuildClientTLSConfigsPerOrg(t, env.cryptoMaterialsPath, clientTLSConfig)
+	clientsTLS := testcrypto.BuildClientTLSConfigsPerOrg(t, env.cryptoMaterialsPath, clientTLSConfig)
 
 	// Helper to attempt a connection and return an error.
 	// We use this inside Eventually.

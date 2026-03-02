@@ -129,8 +129,11 @@ func New(c *Config) (*Service, error) {
 // GetDynamicRootCAs returns a pointer to the atomic pointer containing dynamic root CA certificates.
 // The sidecar updates these CAs when processing config blocks from the orderer, enabling
 // certificate rotation without a service restart.
-func (s *Service) GetDynamicRootCAs() *atomic.Pointer[[][]byte] {
-	return &s.dynamicCACerts
+func (s *Service) GetDynamicRootCAs(_ context.Context) [][]byte {
+	if v := s.dynamicCACerts.Load(); v != nil {
+		return *v
+	}
+	return nil
 }
 
 // WaitForReady wait for sidecar to be ready to be exposed as gRPC service.

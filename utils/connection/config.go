@@ -9,7 +9,6 @@ package connection
 import (
 	"crypto/tls"
 	"net"
-	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -122,7 +121,7 @@ func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error)
 // Converts TLSConfig paths into TLSMaterials and generates credentials that use
 // GetConfigForClient callback to merge static and dynamic CAs on each TLS handshake.
 func (c TLSConfig) DynamicServerCredentials(
-	getDynamicFunc func() *atomic.Pointer[[][]byte],
+	getDynamicFunc func() [][]byte,
 ) (credentials.TransportCredentials, error) {
 	tlsMaterials, err := NewTLSMaterials(c)
 	if err != nil {

@@ -34,6 +34,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 type (
@@ -516,7 +517,7 @@ func TestQueryServiceWithDynamicRootCAs(t *testing.T) {
 	require.NoError(t, err)
 
 	// Build client configs from the crypto materials
-	clientsTLS := test.BuildClientTLSConfigsPerOrg(t, cryptoMaterialsPath, clientTLSConfig)
+	clientsTLS := testcrypto.BuildClientTLSConfigsPerOrg(t, cryptoMaterialsPath, clientTLSConfig)
 
 	// Helper to attempt a connection and return an error
 	checkConnection := func(tlsCfg connection.TLSConfig) error {
