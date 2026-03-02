@@ -19,10 +19,9 @@ import (
 
 func TestMain(m *testing.M) {
 	grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, os.Stderr))
-	err := test.Make("build-test-node-image", "build-release-image")
+	err := test.Make("build-image-test-node", "build-image-release")
 	if err != nil {
-		//nolint:revive // false positive.
-		log.Fatal(err)
+		log.Fatal(err) //nolint:revive,nolintlint // false positive.
 	}
 	m.Run()
 }

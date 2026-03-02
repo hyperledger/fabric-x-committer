@@ -9,7 +9,7 @@
 *.so
 *.dylib
 bin
-archbin
+release
 
 # Test binary, built with `go test -c`
 *.test

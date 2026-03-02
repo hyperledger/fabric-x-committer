@@ -24,10 +24,10 @@
 #
 # Build:
 #   build                        - Build all binaries
-#   build-arch                   - Build binaries for linux/(current-arch amd64 arm64 s390x)
-#   build-arch-%                 - Build binaries for a specific os-arch (e.g., build-arch-linux-amd64)
-#   build-cli-%                  - Build a specific CLI binary
-#   build-%-image                - Build a docker image (test-node or release)
+#   build-release                - Build release binaries for linux/(current-arch amd64 arm64 s390x)
+#   build-release                - Build release binaries for a specific os-arch (e.g., build-arch-linux-amd64)
+#   build-cmd-%                  - Build a specific CMD binary
+#   build-image-%                - Build a docker image (test-node or release)
 #   build-with-docker            - Build all binaries in a docker container
 #
 # Benchmarks:
@@ -58,17 +58,17 @@
 # Constants
 #########################
 
-go_cmd           ?= go
-version          := latest
-project_path     := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-output_dir       := bin
-arch_output_dir  := archbin
-output_path      ?= $(project_path)/$(output_dir)
-arch_output_path ?= $(project_path)/$(arch_output_dir)
-cache_path       ?= $(shell $(go_cmd) env GOCACHE)
-mod_cache_path   ?= $(shell $(go_cmd) env GOMODCACHE)
-go_version       ?= 1.25.5
-golang_image     ?= golang:$(go_version)-bookworm
+go_cmd              ?= go
+version             := latest
+project_path        := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+bin_dir             ?= bin
+release_dir         ?= release
+bin_path            ?= $(project_path)/$(bin_dir)
+release_path        ?= $(project_path)/$(release_dir)
+cache_path          ?= $(shell $(go_cmd) env GOCACHE)
+mod_cache_path      ?= $(shell $(go_cmd) env GOMODCACHE)
+go_version          ?= $(shell $(go_cmd) list -m -f '{{.GoVersion}}')
+golang_image        ?= golang:$(go_version)-bookworm
 
 dockerfile_base_path       ?= $(project_path)/docker/images
 dockerfile_test_node_path  ?= $(dockerfile_base_path)/test_node
@@ -87,14 +87,14 @@ image_namespace=docker.io/hyperledger
 
 # Set these parameters to compile to a specific os/arch
 # E.g., make build-local os=linux arch=amd64
-os               ?= $(shell $(go_cmd) env GOOS)
-arch             ?= $(shell $(go_cmd) env GOARCH)
-multiplatform    ?= false
-env              ?= env GOOS=$(os) GOARCH=$(arch)
-build_flags      ?= -buildvcs=false
-arch_build_flags ?= $(build_flags) -ldflags '-w -s'
-test_cmd         ?= scripts/test-packages.sh
-proto_flags      ?=
+os                  ?= $(shell $(go_cmd) env GOOS)
+arch                ?= $(shell $(go_cmd) env GOARCH)
+multiplatform       ?= false
+env                 ?= env GOOS=$(os) GOARCH=$(arch)
+build_flags         ?= -buildvcs=false
+release_build_flags ?= $(build_flags) -ldflags '-w -s'
+test_cmd            ?= scripts/test-packages.sh
+proto_flags         ?=
 
 ifneq ("$(wildcard /usr/include)","")
     proto_flags += --proto_path="/usr/include"
@@ -108,7 +108,7 @@ endif
 PYTHON_CMD ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/null)
 
 # Set additional parameter to build the test-node for different platforms and push
-# E.g., make multiplatform=true docker_push=true build-test-node-image
+# E.g., make multiplatform=true docker_push=true build-image-test-node
 docker_build_flags=--quiet
 ifeq "$(multiplatform)" "true"
 	docker_build_flags+=--platform linux/amd64,linux/arm64
@@ -155,7 +155,7 @@ test-integration-db-resiliency: build
 	@$(test_cmd) ./integration/... -run "DBResiliency.*"
 
 # Tests the all-in-one docker image.
-test-container: build-test-node-image build-release-image
+test-container: build-image-test-node build-image-release
 	@$(test_cmd) ./docker/...
 
 # Tests for components that directly talk to the DB, where different DBs might affect behaviour.
@@ -184,8 +184,8 @@ cover-report: FORCE
 	$(go_cmd) tool cover -html=coverage.profile
 
 clean: FORCE
-	@rm -rf $(output_path)
-	@rm -rf $(arch_output_path)
+	@rm -rf $(bin_path)
+	@rm -rf $(release_path)
 	@rm -rf $(BUILD_DIR)
 
 kill-test-docker: FORCE
@@ -278,52 +278,59 @@ lint-proto: FORCE $(GOOGLE_PROTOS_SENTINEL) $(FABRIC_PROTOS_SENTINEL)
 # Binaries
 #########################
 
-GIT_FILES:=$(shell git ls-files)
+TRACKED_FILES ?= $(shell git ls-files)
 CLI_TOOLS:=committer loadgen mock
-BUILD_TARGETS=$(foreach tool,$(CLI_TOOLS),$(output_dir)/$(tool))
+BUILD_TARGETS=$(foreach tool,$(CLI_TOOLS),$(bin_dir)/$(tool))
 BUILD_ARCH=$(arch) amd64 arm64 s390x
-ARCH_BUILD_TARGETS=$(foreach tool,$(CLI_TOOLS),$(foreach arch,$(BUILD_ARCH),$(arch_output_dir)/linux/$(arch)/$(tool)))
+RELEASE_BUILD_TARGETS=$(foreach tool,$(CLI_TOOLS),$(foreach arch,$(BUILD_ARCH),$(release_dir)/linux-$(arch)/$(tool)))
+
+# Helper function to produce the cross-compile env vars from a release/<os>-<arch>/<cmd> target stem.
+release_env = CGO_ENABLED=0 \
+	GOOS=$(word 1,$(subst -, ,$(notdir $(patsubst %/,%,$(dir $(1)))))) \
+	GOARCH=$(word 2,$(subst -, ,$(notdir $(patsubst %/,%,$(dir $(1))))))
 
 build: $(BUILD_TARGETS)
 
-build-arch: $(ARCH_BUILD_TARGETS)
+build-release: $(RELEASE_BUILD_TARGETS)
 
-build-arch-%: $(foreach arch,$(BUILD_ARCH),$(arch_output_dir)/linux/$(arch)/%)
+build-release-%: $(foreach arch,$(BUILD_ARCH),$(release_dir)/linux-$(arch)/%)
 	@# This comment is required for the rule to work properly.
 
-build-cli-%: $(output_dir)/%
+build-cmd-%: $(bin_dir)/%
 	@# This comment is required for the rule to work properly.
 
-build-%-image: $(BUILD_DIR)/%-image
+build-image-%: $(BUILD_DIR)/%-image
 	@# This comment is required for the rule to work properly.
 
-$(output_dir)/%: $(GIT_FILES)
-	@mkdir -p "$(output_path)"
-	$(env) $(go_cmd) build $(build_flags) -o "$(output_path)/$*" "./cmd/$*"
+$(bin_dir)/%: $(TRACKED_FILES)
+	@mkdir -p "$(bin_path)"
+	$(env) $(go_cmd) build $(build_flags) -o "$(bin_path)/$*" "./cmd/$*"
 
-$(arch_output_dir)/%: $(GIT_FILES)
-	@mkdir -p $(arch_output_path)/$(shell dirname $*)
-	env CGO_ENABLED=0 GOOS=$(word 1, $(subst /, ,$*)) GOARCH=$(word 2, $(subst /, ,$*)) $(go_cmd) build $(arch_build_flags) -o "$(arch_output_path)/$*" "./cmd/$(shell basename $*)"
+$(release_dir)/%: $(TRACKED_FILES)
+	@mkdir -p $(release_path)/$(shell dirname $*)
+	env $(call release_env,$*) $(go_cmd) build $(release_build_flags) -o "$(release_path)/$*" "./cmd/$(notdir $*)"
 
-$(BUILD_DIR)/test-node-image: $(ARCH_BUILD_TARGETS)
+$(BUILD_DIR)/test-node-image: $(RELEASE_BUILD_TARGETS)
 	${docker_cmd} build $(docker_build_flags) \
 		-f $(dockerfile_test_node_path)/Dockerfile \
 		-t ${image_namespace}/committer-test-node:${version} \
-		--build-arg ARCHBIN_PATH=${arch_output_dir} \
+		--build-arg SRC_BIN_PATH=${release_dir} \
 		. $(docker_push_arg)
 	@mkdir -p ${BUILD_DIR}
 	@touch $@
 
-$(BUILD_DIR)/release-image: $(ARCH_BUILD_TARGETS)
+$(BUILD_DIR)/release-image: $(RELEASE_BUILD_TARGETS)
 	./scripts/build-release-image.sh \
-    	$(docker_cmd) $(version) $(image_namespace) $(dockerfile_release_path) $(multiplatform) $(arch_output_dir)
+    	$(docker_cmd) $(version) $(image_namespace) $(dockerfile_release_path) $(multiplatform) $(release_dir)
 	@mkdir -p ${BUILD_DIR}
 	@touch $@
 
 build-with-docker: FORCE
 	@# Use the host local gocache and gomodcache folder to avoid rebuilding and re-downloading every time
-	@mkdir -p "$(cache_path)" "$(mod_cache_path)"
-	$(docker_cmd) run --rm -it \
+	@mkdir -p "$(cache_path)" "$(mod_cache_path)" "$(bin_path)"
+	@# We pass TRACKED_FILES from the host to avoid running git inside the container
+    # which may fail with 'dubious ownership' errors when the repo is owned by a different user.
+	@$(docker_cmd) run --rm -it \
 	  --mount "type=bind,source=$(project_path),target=$(project_path)" \
 	  --mount "type=bind,source=$(cache_path),target=$(cache_path)" \
 	  --mount "type=bind,source=$(mod_cache_path),target=$(mod_cache_path)" \
@@ -331,7 +338,7 @@ build-with-docker: FORCE
 	  --env GOCACHE="$(cache_path)" \
 	  --env GOMODCACHE="$(mod_cache_path)" \
 	  $(golang_image) \
-      make build output_dir=$(output_path) env="$(env)"
+      make build TRACKED_FILES="$(TRACKED_FILES)" bin_dir=$(bin_dir) env="$(env)"
 	scripts/amend-permissions.sh "$(cache_path)" "$(mod_cache_path)"
 
 #########################
