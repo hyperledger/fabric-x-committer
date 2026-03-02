@@ -14,10 +14,11 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/stretchr/testify/require"
+
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 // GetPeersIdentities returns the peers' identities from a crypto path.

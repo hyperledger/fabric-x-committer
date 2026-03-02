@@ -208,7 +208,6 @@ func RunGrpcDynamicServer(
 	if err != nil {
 		return err
 	}
-	//server, err := serverConfig.DynamicGrpcServer(service.GetDynamicRootCAs)
 	server, err := serverConfig.DynamicGrpcServer(func() [][]byte {
 		return service.GetDynamicRootCAs(ctx) // Uses captured service context
 	})
