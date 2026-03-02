@@ -48,12 +48,12 @@ func NewTxEndorser(policy *PolicyProfile) *TxEndorser {
 	endorsers := make(map[string]*testsig.NsEndorser, len(nsPolicies)+1)
 	policies := make(map[string]*applicationpb.NamespacePolicy, len(nsPolicies)+1)
 	for nsID, p := range nsPolicies {
-		endorsers[nsID], policies[nsID] = newPolicyEndorser(policy.CryptoMaterialPath, p)
+		endorsers[nsID], policies[nsID] = newPolicyEndorser(policy.ArtifactsPath, p)
 	}
 
-	if policy.CryptoMaterialPath != "" {
+	if policy.ArtifactsPath != "" {
 		endorsers[committerpb.MetaNamespaceID], policies[committerpb.MetaNamespaceID] = newPolicyEndorser(
-			policy.CryptoMaterialPath, &Policy{Scheme: "MSP"})
+			policy.ArtifactsPath, &Policy{Scheme: "MSP"})
 	}
 
 	return &TxEndorser{
@@ -114,9 +114,9 @@ func newPolicyEndorserFromKey(
 }
 
 // NewPolicyEndorserFromMsp creates an MSP-based endorser and namespace policy from the
-// peer organization crypto material under cryptoPath.
-func NewPolicyEndorserFromMsp(cryptoPath string) (*testsig.NsEndorser, *applicationpb.NamespacePolicy) {
-	signingIdentities, err := testcrypto.GetPeersIdentities(cryptoPath)
+// peer organization crypto artifacts under artifactsPath.
+func NewPolicyEndorserFromMsp(artifactsPath string) (*testsig.NsEndorser, *applicationpb.NamespacePolicy) {
+	signingIdentities, err := testcrypto.GetPeersIdentities(artifactsPath)
 	utils.Must(err)
 	endorser, err := testsig.NewNsEndorserFromMsp(test.CreatorID, signingIdentities...)
 	utils.Must(err)

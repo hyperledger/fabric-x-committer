@@ -179,7 +179,7 @@ func TestSidecarWithDynamicRootCAs(t *testing.T) {
 	}
 
 	t.Log("Submitting new config block which removes ONLY old peer organizations")
-	env.ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
+	env.ordererEnv.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
 		OrdererEndpoints:      env.ordererEnv.AllEndpoints(),
 		ChannelID:             env.ordererEnv.TestConfig.ChanID,
 		PeerOrganizationCount: 1, // Invalidates previous organizations.
@@ -222,8 +222,8 @@ func newSidecarTestEnvWithTLS(
 			// We want each block to contain exactly <blockSize> transactions.
 			// Therefore, we set a higher block timeout so that we have enough time to send all the
 			// transactions to the orderer and create a block.
-			BlockTimeout:    5 * time.Minute,
-			SendConfigBlock: false,
+			BlockTimeout:     5 * time.Minute,
+			SendGenesisBlock: false,
 		},
 		NumFake: conf.NumFakeService,
 	})
@@ -233,7 +233,7 @@ func newSidecarTestEnvWithTLS(
 	}
 	ordererEndpoints := ordererEnv.AllEndpoints()
 	cryptoMaterialsPath := t.TempDir()
-	configBlock, err := workload.CreateDefaultConfigBlockWithCrypto(cryptoMaterialsPath, &workload.ConfigBlock{
+	configBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(cryptoMaterialsPath, &testcrypto.ConfigBlock{
 		OrdererEndpoints:      ordererEndpoints,
 		ChannelID:             ordererEnv.TestConfig.ChanID,
 		PeerOrganizationCount: conf.NumberOfPeers,
@@ -377,7 +377,7 @@ func TestSidecarConfigUpdate(t *testing.T) {
 			expectedBlock++
 
 			submitConfigBlock := func(endpoints []*commontypes.OrdererEndpoint) {
-				env.ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
+				env.ordererEnv.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
 					OrdererEndpoints: endpoints,
 				})
 			}

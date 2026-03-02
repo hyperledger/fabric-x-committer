@@ -12,7 +12,7 @@ version=$2
 namespace=$3
 dockerfile_release_dir=$4
 multiplatform=$5
-arch_bin_dir=$6
+src_bin_dir=$6
 
 function build_image() {
   local image_name=$1
@@ -24,7 +24,7 @@ function build_image() {
     -f "${dockerfile_release_dir}/Dockerfile"
     --build-arg BIN="${bin}"
     --build-arg PORTS="${service_ports}"
-    --build-arg ARCHBIN_PATH="${arch_bin_dir}"
+    --build-arg SRC_BIN_PATH="${src_bin_dir}"
     --build-arg VERSION="${version}"
     --build-arg CREATED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     --build-arg REVISION="$(git rev-parse HEAD)"

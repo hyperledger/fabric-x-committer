@@ -215,7 +215,7 @@ func TestSignatureRule(t *testing.T) {
 
 	// Update the config block to have SampleFabricX profile instead of
 	// the default TwoOrgsSampleFabricX.
-	configBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{})
+	configBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(t.TempDir(), &testcrypto.ConfigBlock{})
 	require.NoError(t, err)
 	update = &servicepb.VerifierUpdates{
 		Config: &applicationpb.ConfigTransaction{
@@ -525,7 +525,7 @@ func defaultCryptoParameters(t *testing.T) cryptoParameters {
 		cryptoPath: t.TempDir(),
 	}
 
-	configBlock, err := workload.CreateDefaultConfigBlockWithCrypto(ret.cryptoPath, &workload.ConfigBlock{
+	configBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(ret.cryptoPath, &testcrypto.ConfigBlock{
 		PeerOrganizationCount: 2,
 	})
 	require.NoError(t, err)

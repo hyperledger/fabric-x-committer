@@ -62,7 +62,7 @@ jobs:
         run: scripts/install-dev-dependencies.sh
 
       - name: Build cross-architecture binaries
-        run: make build-arch
+        run: make build-release
 
       - name: Set image build prefix and metadata
         run: |

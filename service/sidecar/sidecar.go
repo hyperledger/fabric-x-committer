@@ -107,7 +107,7 @@ func New(c *Config) (*Service, error) {
 		}
 		orgsMaterial, bootErr := ordererconn.NewOrganizationsMaterialsFromConfigBlock(configBlock)
 		if bootErr != nil {
-			return nil, errors.Wrap(bootErr, "failed to load organizations materials")
+			return nil, errors.Wrap(bootErr, "failed to load organizations artifacts")
 		}
 		bootErr = ordererClient.UpdateConnections(orgsMaterial)
 		if bootErr != nil {

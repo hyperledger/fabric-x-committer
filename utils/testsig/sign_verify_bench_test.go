@@ -127,10 +127,10 @@ func makePolicy(b *testing.B, scheme string) (*workload.PolicyProfile, *common.B
 				Seed:   10,
 			},
 		},
-		CryptoMaterialPath:    b.TempDir(),
+		ArtifactsPath:         b.TempDir(),
 		PeerOrganizationCount: 3,
 	}
-	block, err := workload.CreateConfigBlock(policy)
+	block, err := workload.CreateOrExtendConfigBlockWithCrypto(policy)
 	require.NoError(b, err)
 	return policy, block
 }

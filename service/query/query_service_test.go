@@ -496,9 +496,9 @@ func TestQueryServiceWithDynamicRootCAs(t *testing.T) {
 
 	// Create initial config block with peer organizations
 	cryptoMaterialsPath := t.TempDir()
-	configBlock, err := workload.CreateDefaultConfigBlockWithCrypto(
+	configBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(
 		cryptoMaterialsPath,
-		&workload.ConfigBlock{
+		&testcrypto.ConfigBlock{
 			ChannelID:             "testchannel",
 			PeerOrganizationCount: 1,
 		},
@@ -543,7 +543,7 @@ func TestQueryServiceWithDynamicRootCAs(t *testing.T) {
 		require.NoError(t, checkConnection(cfg), errorTemplate, name)
 	}
 	t.Log("Submitting new config block which removes ONLY old peer organizations")
-	newConfigBlock, err := workload.CreateDefaultConfigBlock(&workload.ConfigBlock{
+	newConfigBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto("", &testcrypto.ConfigBlock{
 		ChannelID:             "testchannel",
 		PeerOrganizationCount: 1, // Invalidates previous organizations
 	})

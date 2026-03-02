@@ -54,7 +54,7 @@ func DefaultClientConf(t *testing.T, serverTLS connection.TLSConfig) *ClientConf
 					},
 				},
 				ChannelID:             "channel",
-				CryptoMaterialPath:    t.TempDir(),
+				ArtifactsPath:         t.TempDir(),
 				PeerOrganizationCount: 3,
 			},
 			Seed: 12345,

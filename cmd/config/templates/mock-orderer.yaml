@@ -16,8 +16,8 @@ servers:
   {{- end }}
 block-size: {{ .BlockSize }}
 block-timeout: {{ .BlockTimeout }}
-config-block-path: {{ .ConfigBlockPath }}
-send-config-block: true
+artifacts-path: {{ .Policy.ArtifactsPath }}
+send-genesis-block: true
 
 logging:
   logSpec: {{ .Logging.LogSpec }}
