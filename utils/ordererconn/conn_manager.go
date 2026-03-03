@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package ordererconn
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"maps"
 	"math"
@@ -142,6 +143,17 @@ func (cm *ConnectionManager) Update(orgsMat []*OrganizationMaterial) error { //n
 	cm.connections = connections
 	cm.endpoints = allOrgsEndpoints
 	return nil
+}
+
+// GetTLSCertHash returns the hash of the TLS certificate used by the connection manager.
+func (cm *ConnectionManager) GetTLSCertHash() []byte {
+	cm.lock.Lock()
+	defer cm.lock.Unlock()
+	if cm.tls == nil || len(cm.tls.Cert) == 0 {
+		return nil
+	}
+	sum := sha256.Sum256(cm.tls.Cert)
+	return sum[:]
 }
 
 // GetConnection returns a connection given filters.
