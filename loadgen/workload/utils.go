@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package workload
 
 import (
+	"cmp"
 	"math"
 	"math/rand"
 
@@ -14,7 +15,7 @@ import (
 )
 
 // Clip returns the given value, clipped between the given boundaries.
-func Clip[T constraints.Ordered](value, low, high T) T {
+func Clip[T cmp.Ordered](value, low, high T) T {
 	return min(high, max(low, value))
 }
 

@@ -589,7 +589,7 @@ func releaseCacheAfterTimeout(
 
 func makeEnv(i int) *common.Envelope {
 	return &common.Envelope{
-		Payload:   []byte(fmt.Sprintf("%d", i)),
+		Payload:   fmt.Appendf(nil, "%d", i),
 		Signature: []byte("sig"),
 	}
 }
@@ -612,6 +612,6 @@ func makeBlockData(i uint64) *common.Block {
 
 func makeEnvelopePayload(i int) *common.Envelope {
 	return &common.Envelope{
-		Payload: []byte(fmt.Sprintf("%d", i)),
+		Payload: fmt.Appendf(nil, "%d", i),
 	}
 }

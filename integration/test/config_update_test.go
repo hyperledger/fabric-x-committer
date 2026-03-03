@@ -69,7 +69,7 @@ func newConfigTestEnv(t *testing.T) (
 			txs[i] = []*applicationpb.TxNamespace{{
 				NsId:        "1",
 				NsVersion:   0,
-				BlindWrites: []*applicationpb.Write{{Key: []byte(fmt.Sprintf("key-%d", i))}},
+				BlindWrites: []*applicationpb.Write{{Key: fmt.Appendf(nil, "key-%d", i)}},
 			}}
 			expected[i] = committerpb.Status_COMMITTED
 		}

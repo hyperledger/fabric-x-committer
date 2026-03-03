@@ -11,6 +11,7 @@ import (
 	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha3"
 	"encoding/binary"
 	"io"
 	"math/big"
@@ -19,7 +20,6 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
-	"golang.org/x/crypto/sha3"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -65,7 +65,7 @@ func eddsaNewKeyPairWithSeed(seed int64) (signature.PrivateKey, signature.Public
 	// testing while avoiding use of math/rand as a randomness source.
 	var seedBytes [8]byte
 	binary.BigEndian.PutUint64(seedBytes[:], uint64(seed)) //nolint:gosec // int64 -> uint64
-	sh := sha3.NewShake256()
+	sh := sha3.NewSHAKE256()
 	_, err := sh.Write(seedBytes[:])
 	utils.Must(err)
 	return eddsaNewKeyPairWithRand(sh)
@@ -117,9 +117,10 @@ func ecdsaNewKeyPairWithSeed(seed int64) (signature.PrivateKey, signature.Public
 	seedBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(seedBytes, uint64(seed)) //nolint:gosec // integer overflow conversion int64 -> uint64
 
-	hash := sha3.New256()
-	hash.Write(seedBytes)
-	privateKey := new(big.Int).SetBytes(hash.Sum(nil))
+	hasher := sha3.New256()
+	_, err := hasher.Write(seedBytes)
+	utils.Must(err)
+	privateKey := new(big.Int).SetBytes(hasher.Sum(nil))
 
 	privateKey.Mod(privateKey, curve.Params().N)
 	if privateKey.Sign() == 0 {

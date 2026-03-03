@@ -501,11 +501,11 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 			},
 			{
 				Ref:                   committerpb.NewTxRef("tx3", 6, 2),
-				PrelimInvalidTxStatus: invalidStatus(committerpb.Status_MALFORMED_NO_WRITES),
+				PrelimInvalidTxStatus: new(committerpb.Status_MALFORMED_NO_WRITES),
 			},
 			{
 				Ref:                   committerpb.NewTxRef("tx4", 5, 2),
-				PrelimInvalidTxStatus: invalidStatus(committerpb.Status_MALFORMED_DUPLICATE_NAMESPACE),
+				PrelimInvalidTxStatus: new(committerpb.Status_MALFORMED_DUPLICATE_NAMESPACE),
 			},
 			{
 				Ref: committerpb.NewTxRef("tx5", 6, 2),
@@ -689,7 +689,6 @@ func BenchmarkPrepare(b *testing.B) {
 	batchSize := 1024
 
 	for _, w := range []int{1, 2, 4, 8} {
-		w := w
 		b.Run(fmt.Sprintf("w=%d", w), func(b *testing.B) {
 			txBatch := make(chan *servicepb.VcBatch, 8)
 			preparedTxs := make(chan *preparedTransactions, 8)
@@ -729,6 +728,8 @@ func BenchmarkPrepare(b *testing.B) {
 }
 
 // invalidStatus is a oneliner to create a pointer to the given status.
+//
+//go:fix inline
 func invalidStatus(status committerpb.Status) *committerpb.Status {
-	return &status
+	return new(status)
 }

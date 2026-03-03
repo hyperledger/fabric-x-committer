@@ -179,7 +179,6 @@ func StartService(
 	}
 
 	for _, server := range serverConfigs {
-		server := server
 		g.Go(func() error {
 			// If the GRPC servers stop, there is no reason to continue the service.
 			defer cancel()

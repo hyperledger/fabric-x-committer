@@ -215,7 +215,6 @@ func startQueryGeneratorUnderTest(
 func TestGenValidTx(t *testing.T) {
 	t.Parallel()
 	for _, p := range testTxProfiles() {
-		p := p
 		onlyReadWrite := p.Transaction.ReadOnlyCount == nil
 		t.Run(fmt.Sprintf(
 			"workers:%d-onlyReadWrite:%v", p.Workers, onlyReadWrite,
@@ -235,7 +234,6 @@ func TestGenValidTx(t *testing.T) {
 func TestGenValidBlock(t *testing.T) {
 	t.Parallel()
 	for _, p := range testTxProfiles() {
-		p := p
 		onlyReadWrite := p.Transaction.ReadOnlyCount == nil
 		t.Run(fmt.Sprintf(
 			"workers:%d-onlyReadWrite:%v", p.Workers, onlyReadWrite,
@@ -477,7 +475,6 @@ func (q *queryTestEnv) countExistingKeys(keys [][]byte) int {
 func TestQuery(t *testing.T) {
 	t.Parallel()
 	for _, p := range testWorkersProfiles() {
-		p := p
 		t.Run(fmt.Sprintf("workers:%d", p.Workers), func(t *testing.T) {
 			t.Parallel()
 			env := newQueryTestEnv(t, p, defaultStreamOptions())
@@ -499,7 +496,6 @@ func TestQuery(t *testing.T) {
 func TestQueryWithInvalid(t *testing.T) {
 	t.Parallel()
 	for _, portion := range []float64{0.1, 0.5, 0.7} {
-		portion := portion
 		t.Run(fmt.Sprintf("invalid-portion:%.1f", portion), func(t *testing.T) {
 			t.Parallel()
 			p := DefaultProfile(1)

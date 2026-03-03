@@ -364,7 +364,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 				},
 				{
 					Ref:                   committerpb.NewTxRef("prelim invalid tx", 5, 2),
-					PrelimInvalidTxStatus: invalidStatus(committerpb.Status_MALFORMED_DUPLICATE_NAMESPACE),
+					PrelimInvalidTxStatus: new(committerpb.Status_MALFORMED_DUPLICATE_NAMESPACE),
 				},
 				{
 					Ref: committerpb.NewTxRef("invalid new writes", 2, 6),
@@ -384,7 +384,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 				},
 				{
 					Ref:                   committerpb.NewTxRef("Rejected TX", 2, 7),
-					PrelimInvalidTxStatus: invalidStatus(committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD),
+					PrelimInvalidTxStatus: new(committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD),
 				},
 			},
 		}
@@ -645,14 +645,14 @@ func TestTransactionResubmission(t *testing.T) {
 		{
 			tx: &servicepb.VcTx{
 				Ref:                   committerpb.NewTxRef("invalid sign", 3, 6),
-				PrelimInvalidTxStatus: invalidStatus(committerpb.Status_ABORTED_SIGNATURE_INVALID),
+				PrelimInvalidTxStatus: new(committerpb.Status_ABORTED_SIGNATURE_INVALID),
 			},
 			expectedStatus: committerpb.Status_ABORTED_SIGNATURE_INVALID,
 		},
 		{
 			tx: &servicepb.VcTx{
 				Ref:                   committerpb.NewTxRef("duplicate namespace", 3, 7),
-				PrelimInvalidTxStatus: invalidStatus(committerpb.Status_MALFORMED_DUPLICATE_NAMESPACE),
+				PrelimInvalidTxStatus: new(committerpb.Status_MALFORMED_DUPLICATE_NAMESPACE),
 			},
 			expectedStatus: committerpb.Status_MALFORMED_DUPLICATE_NAMESPACE,
 		},
