@@ -84,6 +84,7 @@ func NewConnectionManager(config *Config) (*ConnectionManager, error) {
 	}
 	for _, org := range orgsMaterial {
 		staticCACerts = append(staticCACerts, org.CACerts...)
+		org.CACerts = nil // clear CACerts to avoid duplication with staticCACerts
 	}
 
 	// Create connection manager with the config's retry policy, TLS, and static CA certs.
