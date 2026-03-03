@@ -82,6 +82,7 @@ func CreateOrExtendConfigBlockWithCrypto(targetPath string, conf *ConfigBlock) (
 			PeerNodes: []cryptogen.Node{{
 				CommonName: fmt.Sprintf("sidecar-peer-org-%d", i),
 				Hostname:   fmt.Sprintf("sidecar-peer-org-%d.com", i),
+				SANS:       []string{"localhost"},
 			}},
 		})
 	}
