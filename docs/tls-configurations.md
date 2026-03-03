@@ -88,7 +88,7 @@ When a service connects to the ordering service, it acts as a **TLS client**. In
 | :--- | :--- | :--- |
 | **`orderer.organizations`** | Map | Maps organization MSP IDs to their orderer connection details (endpoints + TLS root CAs). |
 | **`orderer.organizations.<mspid>.endpoints`** | List | Orderer endpoints for the organization (e.g., `id=0,broadcast,deliver,orderer:7050`). |
-| **`orderer.organizations.<mspid>.ca-cert-paths`** | List | Paths to **TLS root CA certificates** used to verify that org's orderers' TLS certificates. |
+| **`orderer.organizations.<mspid>.ca-cert-paths`** | List | Paths to **TLS root CA certificates** used to verify that org’s orderers’ TLS certificates. |
 | **`orderer.tls.mode`** | String | TLS operation mode for the client connection to orderers: `none`, `tls`, `mtls`. |
 | **`orderer.tls.cert-path`** | String | Path to the **client TLS certificate** (public key). Required for `mtls`. |
 | **`orderer.tls.key-path`** | String | Path to the **client TLS private key**. Required for `mtls`. |
