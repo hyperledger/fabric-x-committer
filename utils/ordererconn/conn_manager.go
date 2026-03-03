@@ -93,7 +93,7 @@ func NewConnectionManager(config *Config) (*ConnectionManager, error) {
 		staticCACerts: staticCACerts,
 	}
 
-	if err = cm.Update(nil); err != nil {
+	if err = cm.Update(orgsMaterial); err != nil {
 		return nil, err
 	}
 	return cm, nil

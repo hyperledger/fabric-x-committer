@@ -191,7 +191,7 @@ func CreateServerAndClientTLSConfig(t *testing.T, tlsMode string) (
 ) {
 	t.Helper()
 	credsFactory := NewCredentialsFactory(t)
-	clientTLSConfig, _ = credsFactory.CreateServerCredentials(t, tlsMode, defaultHostName)
-	serverTLSConfig, _ = credsFactory.CreateClientCredentials(t, tlsMode)
-	return clientTLSConfig, serverTLSConfig
+	serverTLSConfig, _ = credsFactory.CreateServerCredentials(t, tlsMode, defaultHostName)
+	clientTLSConfig, _ = credsFactory.CreateClientCredentials(t, tlsMode)
+	return serverTLSConfig, clientTLSConfig
 }
