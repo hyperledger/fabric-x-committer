@@ -131,9 +131,7 @@ func RunDynamicGrpcServerForTest(
 	return runGrpcServerInternal(ctx, tb, runGrpcServerParameters{
 		serverConfig: serverConfig,
 		createServer: func() (*grpc.Server, error) {
-			return serverConfig.DynamicGrpcServer(func() [][]byte {
-				return service.GetDynamicRootCAs(ctx)
-			})
+			return serverConfig.DynamicGrpcServer(service.GetDynamicRootCAs)
 		},
 		register: service.RegisterService,
 	})

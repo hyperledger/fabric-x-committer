@@ -145,7 +145,7 @@ func TestSidecarWithDynamicRootCAs(t *testing.T) {
 	env.startSidecarService(ctx, t)
 
 	// Build the configs from client@[org].
-	clientsTLS := testcrypto.BuildClientTLSConfigsPerOrg(t, env.cryptoMaterialsPath, clientTLSConfig)
+	clientsTLS := testcrypto.BuildClientTLSConfigsPerOrg(t, env.cryptoMaterialsPath)
 
 	// Helper to attempt a connection and return an error.
 	// We use this inside Eventually.
@@ -169,14 +169,12 @@ func TestSidecarWithDynamicRootCAs(t *testing.T) {
 		return err
 	}
 
-	t.Logf("number of peers: %d, number of YAMLs: %d", len(clientsTLS.Peer), len(clientsTLS.YAML))
+	t.Logf("number of peers: %d", len(clientsTLS.Peer))
 	errorTemplate := "Initial connection failed for %s"
 	for name, cfg := range clientsTLS.Peer {
 		require.NoError(t, checkConnection(cfg), errorTemplate, name)
 	}
-	for name, cfg := range clientsTLS.YAML {
-		require.NoError(t, checkConnection(cfg), errorTemplate, name)
-	}
+	require.NoError(t, checkConnection(clientTLSConfig), errorTemplate, "YAML")
 
 	t.Log("Submitting new config block which removes ONLY old peer organizations")
 	env.ordererEnv.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
@@ -196,11 +194,8 @@ func TestSidecarWithDynamicRootCAs(t *testing.T) {
 		return true
 	}, 30*time.Second, 500*time.Millisecond, "Sidecar should have revoked old Peer Org CAs")
 
-	t.Logf("number of YAMLs: %d", len(clientsTLS.YAML))
 	// Ensure YAML configs still work (they shouldn't have been affected)
-	for name, cfg := range clientsTLS.YAML {
-		require.NoError(t, checkConnection(cfg), "YAML client %s lost connection after dynamic update", name)
-	}
+	require.NoError(t, checkConnection(clientTLSConfig), errorTemplate, "YAML")
 }
 
 func newSidecarTestEnvWithTLS(

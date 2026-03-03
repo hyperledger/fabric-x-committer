@@ -93,11 +93,10 @@ func GetMspDirs(targetPath string) []*msp.DirLoadParameters {
 // We use this struct for the TestWithDynamicRootCAs.
 type ClientTLSConfigsPerOrg struct {
 	Peer map[string]connection.TLSConfig
-	YAML map[string]connection.TLSConfig
 }
 
 // BuildClientTLSConfigsPerOrg builds TLS configs using only the "client" user.
-func BuildClientTLSConfigsPerOrg(t *testing.T, root string, yamlConfig connection.TLSConfig) *ClientTLSConfigsPerOrg {
+func BuildClientTLSConfigsPerOrg(t *testing.T, root string) *ClientTLSConfigsPerOrg {
 	t.Helper()
 
 	peerRoot := filepath.Join(root, cryptogen.PeerOrganizationsDir)
@@ -108,7 +107,6 @@ func BuildClientTLSConfigsPerOrg(t *testing.T, root string, yamlConfig connectio
 	if err != nil {
 		return &ClientTLSConfigsPerOrg{
 			Peer: make(map[string]connection.TLSConfig),
-			YAML: make(map[string]connection.TLSConfig),
 		}
 	}
 
@@ -153,8 +151,5 @@ func BuildClientTLSConfigsPerOrg(t *testing.T, root string, yamlConfig connectio
 
 	return &ClientTLSConfigsPerOrg{
 		Peer: peerConfigs,
-		YAML: map[string]connection.TLSConfig{
-			"org0": yamlConfig,
-		},
 	}
 }

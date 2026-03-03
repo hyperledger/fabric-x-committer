@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package connection
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"os"
@@ -31,7 +32,7 @@ type TLSMaterials struct {
 // This enables certificate rotation without service restart.
 // Note: Only applies to MutualTLSMode. For other modes, returns standard server TLS config.
 func (m *TLSMaterials) CreateDynamicServerTLSConfig(
-	getDynamicFunc func() [][]byte,
+	getDynamicFunc func(ctx context.Context) [][]byte,
 ) (*tls.Config, error) {
 	tlsConfig, err := m.CreateServerTLSConfig()
 	if err != nil {
@@ -42,7 +43,7 @@ func (m *TLSMaterials) CreateDynamicServerTLSConfig(
 	}
 
 	tlsConfig.GetConfigForClient = func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
-		dynamicRootCAs := getDynamicFunc()
+		dynamicRootCAs := getDynamicFunc(chi.Context())
 		newCaCert := make([][]byte, len(m.CACerts)+len(dynamicRootCAs))
 		copy(newCaCert, m.CACerts)
 		copy(newCaCert[len(m.CACerts):], dynamicRootCAs)

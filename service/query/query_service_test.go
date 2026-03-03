@@ -517,7 +517,7 @@ func TestQueryServiceWithDynamicRootCAs(t *testing.T) {
 	require.NoError(t, err)
 
 	// Build client configs from the crypto materials
-	clientsTLS := testcrypto.BuildClientTLSConfigsPerOrg(t, cryptoMaterialsPath, clientTLSConfig)
+	clientsTLS := testcrypto.BuildClientTLSConfigsPerOrg(t, cryptoMaterialsPath)
 
 	// Helper to attempt a connection and return an error
 	checkConnection := func(tlsCfg connection.TLSConfig) error {
@@ -533,15 +533,14 @@ func TestQueryServiceWithDynamicRootCAs(t *testing.T) {
 		return beginErr
 	}
 
-	t.Logf("number of peers: %d, number of YAMLs: %d", len(clientsTLS.Peer), len(clientsTLS.YAML))
+	t.Logf("number of peers: %d", len(clientsTLS.Peer))
 	errorTemplate := "Initial connection failed for %s"
 
 	for name, cfg := range clientsTLS.Peer {
 		require.NoError(t, checkConnection(cfg), errorTemplate, name)
 	}
-	for name, cfg := range clientsTLS.YAML {
-		require.NoError(t, checkConnection(cfg), errorTemplate, name)
-	}
+	require.NoError(t, checkConnection(clientTLSConfig), errorTemplate, "YAML")
+
 	t.Log("Submitting new config block which removes ONLY old peer organizations")
 	newConfigBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(t.TempDir(), &testcrypto.ConfigBlock{
 		ChannelID:             "testchannel",
@@ -572,11 +571,8 @@ func TestQueryServiceWithDynamicRootCAs(t *testing.T) {
 		return true
 	}, 30*time.Second, 500*time.Millisecond, "Query Service should have revoked old Peer Org CAs")
 
-	t.Logf("number of YAMLs: %d", len(clientsTLS.YAML))
 	// Ensure YAML configs still work (they shouldn't have been affected)
-	for name, cfg := range clientsTLS.YAML {
-		require.NoError(t, checkConnection(cfg), "YAML client %s lost connection after dynamic update", name)
-	}
+	require.NoError(t, checkConnection(clientTLSConfig), errorTemplate, "YAML")
 }
 
 func TestQueryPolicies(t *testing.T) {
@@ -655,7 +651,7 @@ func newQueryServiceTestEnv(t *testing.T, opts *queryServiceTestOpts) *queryServ
 		MaxRequestKeys:        opts.maxRequestKeys,
 		Database:              dbConf,
 		Monitoring:            connection.NewLocalHostServer(test.InsecureTLSConfig),
-		CAFetchInterval:       3 * time.Second,
+		ACLRefreshInterval:    3 * time.Second,
 	}
 
 	qs := NewQueryService(config)

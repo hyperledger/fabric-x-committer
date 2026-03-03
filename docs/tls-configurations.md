@@ -181,12 +181,12 @@ The query service caches the dynamic CAs and refreshes them on a configurable in
 to avoid excessive database queries when multiple clients connect simultaneously.
 
 | Field | Type | Description |
-| :--- | :--- | :--- |
-| **`ca-fetch-interval`** | Duration | How often the query service refreshes root CA certificates from the config transaction. Default: `10s`. |
+|:---| :--- | :--- |
+| **`acl-refresh-interval`** | Duration | How often the query service refreshes configuration data (such as root CA certificates) from the config transaction. Default: `10s`. Future: Will also control ACL refresh rate. |
 
 ```yaml
-# ca-fetch-interval defines how often the query service refreshes root CA certificates
-# from the config transaction in the state database.
+# acl-refresh-interval defines how often the query service refreshes configuration data
+# (such as root CA certificates) from the config transaction in the state database.
 # Increase this value to reduce database load in stable deployments.
 # Decrease it to pick up new organization CAs more quickly.
-ca-fetch-interval: 10s
+config-refresh-interval: 200ms

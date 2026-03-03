@@ -70,6 +70,11 @@ type (
 		// rotation; lastCAFetch tracks the last refresh to a throttle database load; and
 		// refreshMutex implements a double-check locking pattern to prevent redundant,
 		// concurrent refresh operations during connection spikes.
+		//
+		// Design note: We use atomic operations for reads and a mutex only for writings.
+		// This lock-free read pattern ensures clients read are not serialized,
+		// while the mutex in refreshDynamicRootCAs
+		// guarantees only one goroutine performs the expensive DB fetch at a time and writes it.
 		dynamicRootCAs atomic.Pointer[[][]byte]
 		lastCAFetch    atomic.Int64
 		refreshMutex   sync.Mutex
@@ -141,7 +146,7 @@ func (q *Service) GetDynamicRootCAs(ctx context.Context) [][]byte {
 	now := time.Now().Unix()
 	lastFetch := q.lastCAFetch.Load()
 
-	if lastFetch == 0 || (now-lastFetch) > q.config.CAFetchInterval.Nanoseconds() {
+	if lastFetch == 0 || (now-lastFetch) > q.config.ACLRefreshInterval.Nanoseconds() {
 		q.refreshDynamicRootCAs(ctx)
 	}
 
@@ -165,7 +170,7 @@ func (q *Service) refreshDynamicRootCAs(ctx context.Context) {
 	// hasn't already completed the refresh while waiting for the lock.
 	now := time.Now().Unix()
 	lastFetch := q.lastCAFetch.Load()
-	if lastFetch != 0 && (now-lastFetch) <= q.config.CAFetchInterval.Nanoseconds() {
+	if lastFetch != 0 && (now-lastFetch) <= q.config.ACLRefreshInterval.Nanoseconds() {
 		// Another goroutine just refreshed the CAs while waiting for the lock.
 		// The data is fresh, so we can skip the database query.
 		return
@@ -177,7 +182,7 @@ func (q *Service) refreshDynamicRootCAs(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, caFetchTimeout)
 	defer cancel()
 
-	configTx, err := q.GetConfigTransaction(ctx, nil)
+	configTx, err := q.getConfigTransactionInternal(ctx)
 	if err != nil {
 		logger.Warnf("Failed to fetch config transaction for dynamic CAs: %v", err)
 		return // Keep existing CAs
@@ -358,8 +363,14 @@ func (q *Service) GetConfigTransaction(
 	ctx context.Context,
 	_ *emptypb.Empty,
 ) (*applicationpb.ConfigTransaction, error) {
-	res, err := queryConfig(ctx, q.batcher.pool)
+	res, err := q.getConfigTransactionInternal(ctx)
 	return res, grpcerror.WrapInternalError(err)
+}
+
+// getConfigTransactionInternal fetches the config transaction from the database without gRPC error wrapping.
+// This is used internally by refreshDynamicRootCAs to avoid unnecessary gRPC error conversion.
+func (q *Service) getConfigTransactionInternal(ctx context.Context) (*applicationpb.ConfigTransaction, error) {
+	return queryConfig(ctx, q.batcher.pool)
 }
 
 func (q *Service) assignRequest(

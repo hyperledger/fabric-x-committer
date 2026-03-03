@@ -105,10 +105,10 @@ max-view-timeout: 10s  # A view will be closed if it was opened for longer than 
 max-request-keys: 10000
 
 
-# ca-fetch-interval defines how long the query service caches root CA certificates
-# before refreshing them from the database.
+# acl-refresh-interval defines how long the query service caches configuration data
+# before refreshing it from the database.
 # This prevents excessive database queries when multiple clients connect simultaneously.
-ca-fetch-interval: 10s
+acl-refresh-interval: 200ms
 
 logging:
   logSpec: "info"

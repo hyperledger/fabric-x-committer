@@ -313,7 +313,7 @@ func TestReadConfigQuery(t *testing.T) {
 			MaxActiveViews:        4096,
 			MaxViewTimeout:        10 * time.Second,
 			MaxRequestKeys:        10000,
-			CAFetchInterval:       10 * time.Second,
+			ACLRefreshInterval:    200 * time.Millisecond,
 		},
 	}, {
 		name:           "sample",
@@ -329,7 +329,7 @@ func TestReadConfigQuery(t *testing.T) {
 			MaxActiveViews:        4096,
 			MaxViewTimeout:        10 * time.Second,
 			MaxRequestKeys:        10000,
-			CAFetchInterval:       10 * time.Second,
+			ACLRefreshInterval:    200 * time.Millisecond,
 		},
 	}}
 
