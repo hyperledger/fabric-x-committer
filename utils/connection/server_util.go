@@ -208,6 +208,7 @@ func RunGrpcDynamicServer(
 	if err != nil {
 		return err
 	}
+	//nolint:contextcheck // Context is properly used via chi.Context() in TLS handshake callback
 	server, err := serverConfig.DynamicGrpcServer(service.GetDynamicRootCAs)
 	if err != nil {
 		return errors.Wrapf(err, "failed creating grpc server")
