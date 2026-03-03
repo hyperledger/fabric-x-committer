@@ -81,7 +81,7 @@ func NewConnectionManager(config *Config) (*ConnectionManager, error) {
 	var staticCACerts [][]byte
 	orgsMaterial, err := NewOrganizationsMaterials(config.Organizations, config.TLS.Mode)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to create organizations materials")
 	}
 	for _, org := range orgsMaterial {
 		staticCACerts = append(staticCACerts, org.CACerts...)
@@ -94,7 +94,7 @@ func NewConnectionManager(config *Config) (*ConnectionManager, error) {
 		staticCACerts: staticCACerts,
 	}
 
-	if err = cm.Update(orgsMaterial); err != nil {
+	if err = cm.Update(nil); err != nil {
 		return nil, err
 	}
 	return cm, nil
@@ -118,8 +118,7 @@ func (cm *ConnectionManager) Update(orgsMat []*OrganizationMaterial) error { //n
 		orgTLS := *cm.tls
 		// Always append static CA certs from YAML config first, then dynamic CA certs from config block.
 		// This ensures that static CA certs are preserved across config block updates for all organizations.
-		orgTLS.CACerts = append(orgTLS.CACerts, cm.staticCACerts...)
-		orgTLS.CACerts = append(orgTLS.CACerts, org.CACerts...)
+		orgTLS.CACerts = append(append(orgTLS.CACerts, cm.staticCACerts...), org.CACerts...)
 		for _, id := range append(getAllIDs(org.Endpoints), anyID) {
 			for _, api := range allAPIs {
 				filter := aggregateFilter(WithAPI(api), WithID(id))
