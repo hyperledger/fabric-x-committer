@@ -36,8 +36,7 @@ type (
 		retry         *connection.RetryProfile
 		tls           *connection.TLSMaterials
 		// staticCACerts holds the static CA certificates from the initial YAML configuration.
-		// These are preserved across config block updates and appended to all organizations'
-		// CA certificates to ensure connectivity even when config blocks provide different CAs.
+		// These are preserved across config block updates and appended to all organizations' CA certificates.
 		staticCACerts [][]byte
 	}
 
