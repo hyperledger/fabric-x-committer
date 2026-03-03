@@ -35,9 +35,11 @@ var (
 //   - op returns an error wrapping ErrNonRetryable (permanent failure).
 //   - The context ctx is cancelled.
 //   - The internal backoff strategy times out (via ErrRetryTimeout).
-func Sustain(ctx context.Context, op func() error) error {
-	p := &RetryProfile{} // TODO: initialize retry from config.
-	b := p.NewBackoff()
+func Sustain(ctx context.Context, r *RetryProfile, op func() error) error {
+	if r == nil {
+		r = &RetryProfile{}
+	}
+	b := r.NewBackoff()
 
 	for ctx.Err() == nil {
 		opErr := op()
