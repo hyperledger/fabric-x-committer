@@ -135,7 +135,7 @@ func TestParseSigningKey(t *testing.T) {
 	t.Run("nil block returns error", func(t *testing.T) {
 		t.Parallel()
 		_, err := ParseSigningKey([]byte("not a pem"))
-		require.ErrorContains(t, err, "nil block")
+		require.ErrorContains(t, err, "cannot decode PEM block content")
 	})
 
 	t.Run("unknown block type returns error", func(t *testing.T) {
