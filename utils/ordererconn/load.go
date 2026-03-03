@@ -25,8 +25,11 @@ type (
 	}
 )
 
+// ErrNotConfigBlock is returned when the block is not a config block.
+var ErrNotConfigBlock = errors.New("the block is not a config block")
+
 // LoadConfigBlockFromFile loads a config block from a file.
-// If the block is not a config block, nil will be returned without an error.
+// If the block is not a config block, ErrNotConfigBlock will be returned.
 func LoadConfigBlockFromFile(blockPath string) (*ConfigBlockMaterial, error) {
 	configBlock, err := configtxgen.ReadBlock(blockPath)
 	if err != nil {
@@ -36,32 +39,27 @@ func LoadConfigBlockFromFile(blockPath string) (*ConfigBlockMaterial, error) {
 }
 
 // LoadConfigBlock attempts to read a config block from the given block.
-// If the block is not a config block, nil will be returned without an error.
+// If the block is not a config block, ErrNotConfigBlock will be returned.
 func LoadConfigBlock(block *common.Block) (*ConfigBlockMaterial, error) {
-	if block == nil || block.Data == nil {
-		return nil, nil
-	}
 	// We expect config blocks to have exactly one transaction, with a valid payload.
-	if len(block.Data.Data) != 1 {
-		return nil, nil
+	if block == nil || block.Data == nil || len(block.Data.Data) != 1 {
+		return nil, ErrNotConfigBlock
 	}
 	configTx, err := protoutil.GetEnvelopeFromBlock(block.Data.Data[0])
 	if err != nil {
-		return nil, nil //nolint:nilerr // We don't care if the block content is not a config block.
+		return nil, errors.Join(ErrNotConfigBlock, err)
 	}
+
 	payload, err := protoutil.UnmarshalPayload(configTx.Payload)
 	if err != nil {
-		return nil, nil //nolint:nilerr // We don't care if the block content is not a config block.
+		return nil, errors.Join(ErrNotConfigBlock, err)
 	}
 	if payload.Header == nil {
-		return nil, nil
+		return nil, ErrNotConfigBlock
 	}
 	chHead, err := protoutil.UnmarshalChannelHeader(payload.Header.ChannelHeader)
-	if err != nil {
-		return nil, nil //nolint:nilerr // We don't care if the block content is not a config block.
-	}
-	if chHead.Type != int32(common.HeaderType_CONFIG) {
-		return nil, nil
+	if err != nil || chHead.Type != int32(common.HeaderType_CONFIG) {
+		return nil, errors.Join(ErrNotConfigBlock, err)
 	}
 
 	// This is a config block. Let's parse it.

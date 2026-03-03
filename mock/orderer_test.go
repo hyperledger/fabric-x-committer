@@ -268,8 +268,7 @@ func (f *blockFetcher) requireGetBlock(
 	f.expectedBlock++
 
 	if block.Header.Number > 0 {
-		err = f.verifier(block.Header, block.Metadata)
-		require.NoError(t, err)
+		require.NoError(t, f.verifier(block.Header, block.Metadata))
 	}
 
 	ret := make([]*common.Envelope, expectedSize)
