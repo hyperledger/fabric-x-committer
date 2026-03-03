@@ -44,12 +44,11 @@ type (
 		Address() string
 	}
 
-	// Parameters contain connection parameters.
-	Parameters struct {
+	// ClientParameters contain connection parameters.
+	ClientParameters struct {
 		Address        string
 		Creds          credentials.TransportCredentials
 		Retry          *RetryProfile
-		Resolver       *manual.Resolver
 		AdditionalOpts []grpc.DialOption
 	}
 )
@@ -86,6 +85,14 @@ func newLoadBalancedConnection(
 	creds credentials.TransportCredentials,
 	retry *RetryProfile,
 ) (*grpc.ClientConn, error) {
+	if len(endpoints) == 1 {
+		return NewConnection(ClientParameters{
+			Address: endpoints[0].Address(),
+			Retry:   retry,
+			Creds:   creds,
+		})
+	}
+
 	resolverEndpoints := make([]resolver.Endpoint, len(endpoints))
 	for i, e := range endpoints {
 		// we're setting ServerName for each address because each service-instance has its own certificates.
@@ -96,11 +103,13 @@ func newLoadBalancedConnection(
 	r := manual.NewBuilderWithScheme(scResolverSchema)
 	r.UpdateState(resolver.State{Endpoints: resolverEndpoints})
 
-	return NewConnection(Parameters{
-		Address:  fmt.Sprintf("%s:///%s", r.Scheme(), "method"),
-		Creds:    creds,
-		Retry:    retry,
-		Resolver: r,
+	// Create a meaningful target string for debugging by joining all endpoint addresses.
+	targetName := AddressString(endpoints...)
+	return NewConnection(ClientParameters{
+		Address:        fmt.Sprintf("%s:///%s", r.Scheme(), targetName),
+		Creds:          creds,
+		Retry:          retry,
+		AdditionalOpts: []grpc.DialOption{grpc.WithResolvers(r)},
 	})
 }
 
@@ -112,7 +121,7 @@ func NewConnectionPerEndpoint(config *MultiClientConfig) ([]*grpc.ClientConn, er
 	}
 	connections := make([]*grpc.ClientConn, len(config.Endpoints))
 	for i, e := range config.Endpoints {
-		connections[i], err = NewConnection(Parameters{
+		connections[i], err = NewConnection(ClientParameters{
 			Address: e.Address(),
 			Creds:   tlsCreds,
 			Retry:   config.Retry,
@@ -131,7 +140,7 @@ func NewSingleConnection(config *ClientConfig) (*grpc.ClientConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewConnection(Parameters{
+	return NewConnection(ClientParameters{
 		Address: config.Endpoint.Address(),
 		Creds:   tlsCreds,
 		Retry:   config.Retry,
@@ -140,8 +149,8 @@ func NewSingleConnection(config *ClientConfig) (*grpc.ClientConn, error) {
 
 // NewConnection creates a connection with the given parameters.
 // It will not attempt to create a connection with the remote.
-func NewConnection(p Parameters) (*grpc.ClientConn, error) {
-	dialOpts := []grpc.DialOption{
+func NewConnection(p ClientParameters) (*grpc.ClientConn, error) {
+	dialOpts := append([]grpc.DialOption{
 		grpc.WithDefaultServiceConfig(p.Retry.MakeGrpcRetryPolicyJSON()),
 		grpc.WithTransportCredentials(p.Creds),
 		grpc.WithDefaultCallOptions(
@@ -149,15 +158,11 @@ func NewConnection(p Parameters) (*grpc.ClientConn, error) {
 			grpc.MaxCallSendMsgSize(maxMsgSize),
 		),
 		grpc.WithMaxCallAttempts(defaultGrpcMaxAttempts),
-	}
-	if p.Resolver != nil {
-		dialOpts = append(dialOpts, grpc.WithResolvers(p.Resolver))
-	}
-	dialOpts = append(dialOpts, p.AdditionalOpts...)
+	}, p.AdditionalOpts...)
 
 	cc, err := grpc.NewClient(p.Address, dialOpts...)
 	if err != nil {
-		logger.Errorf("Error openning connection to %s: %v", p.Address, err)
+		logger.Errorf("Error opening connection to %s: %v", p.Address, err)
 		return nil, errors.Wrap(err, "error connecting to grpc")
 	}
 	return cc, nil

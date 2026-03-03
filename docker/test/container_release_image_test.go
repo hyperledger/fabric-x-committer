@@ -68,8 +68,8 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	v := config.NewViperWithLoadGenDefaults()
 	c, err := config.ReadLoadGenYamlAndSetupLogging(v, filepath.Join(localConfigPath, "loadgen.yaml"))
 	require.NoError(t, err)
-	c.LoadProfile.Policy.CryptoMaterialPath = t.TempDir()
-	err = workload.PrepareCryptoMaterial(&c.LoadProfile.Policy)
+	c.LoadProfile.Policy.ArtifactsPath = t.TempDir()
+	_, err = workload.CreateOrExtendConfigBlockWithCrypto(&c.LoadProfile.Policy)
 	require.NoError(t, err)
 
 	dbNode := "db"
@@ -79,7 +79,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 
 	// hold the orderer's server credentials generated in advance.
 	// we start only one orderer instance.
-	ordererServerCreds := filepath.Join(c.LoadProfile.Policy.CryptoMaterialPath, org0Orderer0TLSPath)
+	ordererServerCreds := filepath.Join(c.LoadProfile.Policy.ArtifactsPath, org0Orderer0TLSPath)
 
 	credsFactory := test.NewCredentialsFactory(t)
 	for _, dbType := range []string{testdb.YugaDBType, testdb.PostgresDBType} {
@@ -99,7 +99,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 						credsFactory:       credsFactory,
 						networkName:        networkName,
 						tlsMode:            mode,
-						materialPath:       c.LoadProfile.Policy.CryptoMaterialPath,
+						artifactsPath:      c.LoadProfile.Policy.ArtifactsPath,
 						dbType:             dbType,
 						ordererCACredsPath: ordererServerCreds,
 					}
@@ -225,7 +225,7 @@ func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, param
 				fmt.Sprintf("%s.yaml:/%s.yaml",
 					filepath.Join(mustGetWD(t), localConfigPath, params.node), configPath,
 				),
-				fmt.Sprintf("%s:%s", params.materialPath, containerMaterialPath),
+				fmt.Sprintf("%s:%s", params.artifactsPath, containerArtifactsPath),
 			),
 		},
 		name: assembleContainerName(params.node, params.tlsMode, params.dbType),
@@ -280,8 +280,8 @@ func startLoadgenNodeWithReleaseImage(
 				fmt.Sprintf("%s:/client-certs/orderer-ca-certificate.pem",
 					filepath.Join(params.ordererCACredsPath, "ca.crt"),
 				),
-				// Mount the crypto material for MSP-based endorsement of the meta namespace.
-				fmt.Sprintf("%s:%s", params.materialPath, containerMaterialPath),
+				// Mount the crypto artifacts for MSP-based endorsement of the meta namespace.
+				fmt.Sprintf("%s:%s", params.artifactsPath, containerArtifactsPath),
 			),
 		},
 		name: assembleContainerName(params.node, params.tlsMode, params.dbType),
@@ -309,7 +309,7 @@ func startCommitterNodeWithTestImage(
 		hostConfig: &container.HostConfig{
 			NetworkMode: container.NetworkMode(params.networkName),
 			Binds: assembleBinds(t, params,
-				fmt.Sprintf("%s:%s", params.materialPath, containerMaterialPath),
+				fmt.Sprintf("%s:%s", params.artifactsPath, containerArtifactsPath),
 				fmt.Sprintf("%s:/server-certs/public-key.pem",
 					filepath.Join(params.ordererCACredsPath, "server.crt"),
 				),

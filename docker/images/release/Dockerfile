@@ -10,7 +10,7 @@
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.6 AS prod
 
 ARG BIN
-ARG ARCHBIN_PATH
+ARG SRC_BIN_PATH
 ARG TARGETOS
 ARG TARGETARCH
 ARG PORTS
@@ -27,7 +27,7 @@ RUN /usr/sbin/useradd -u 10001 -r -g root -s /sbin/nologin -c "Hyperledger Fabri
     chmod 0755 /home/${BIN}
 
 # Copy binaries
-COPY ${ARCHBIN_PATH}/${TARGETOS}-${TARGETARCH}/${BIN} /bin/${BIN}
+COPY ${SRC_BIN_PATH}/${TARGETOS}-${TARGETARCH}/${BIN} /bin/${BIN}
 
 # Create fixed entrypoint since args are not replaced
 # within ENTRYPOINT or CMD

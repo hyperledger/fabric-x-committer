@@ -10,6 +10,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/common/ledger/blkstorage"
@@ -17,6 +18,9 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 )
+
+// ErrEmptyTxID is returned when a transaction ID query is called with an empty tx_id.
+var ErrEmptyTxID = errors.New("tx_id must not be empty")
 
 // blockQuery implements committerpb.BlockQueryServiceServer by delegating
 // read-only queries directly to the underlying block store.
@@ -50,6 +54,9 @@ func (s *blockQuery) GetBlockByNumber(_ context.Context, req *committerpb.BlockN
 
 // GetBlockByTxID retrieves the block that contains the specified transaction.
 func (s *blockQuery) GetBlockByTxID(_ context.Context, req *committerpb.TxID) (*common.Block, error) {
+	if req.GetTxId() == "" {
+		return nil, grpcerror.WrapInvalidArgument(ErrEmptyTxID)
+	}
 	block, err := s.store.RetrieveBlockByTxID(req.GetTxId())
 	if err != nil {
 		return nil, wrapQueryError(err)
@@ -59,6 +66,9 @@ func (s *blockQuery) GetBlockByTxID(_ context.Context, req *committerpb.TxID) (*
 
 // GetTxByID retrieves the transaction envelope for the specified transaction ID.
 func (s *blockQuery) GetTxByID(_ context.Context, req *committerpb.TxID) (*common.Envelope, error) {
+	if req.GetTxId() == "" {
+		return nil, grpcerror.WrapInvalidArgument(ErrEmptyTxID)
+	}
 	envelope, err := s.store.RetrieveTxByID(req.GetTxId())
 	if err != nil {
 		return nil, wrapQueryError(err)

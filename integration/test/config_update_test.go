@@ -22,6 +22,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 const blockSize = 1
@@ -52,9 +53,9 @@ func newConfigTestEnv(t *testing.T) (
 			// We want each block to contain exactly <blockSize> transactions.
 			// Therefore, we set a higher block timeout so that we have enough time to send all the
 			// transactions to the orderer and create a block.
-			BlockTimeout:    5 * time.Minute,
-			ConfigBlockPath: c.SystemConfig.ConfigBlockPath,
-			SendConfigBlock: true,
+			BlockTimeout:     5 * time.Minute,
+			ArtifactsPath:    c.SystemConfig.Policy.ArtifactsPath,
+			SendGenesisBlock: true,
 		},
 	})
 
@@ -106,13 +107,13 @@ func TestConfigUpdateLifecyclePolicy(t *testing.T) {
 	t.Log("Sanity check")
 	sendTXs()
 
-	// Submit a config block update with new crypto material (4 peer orgs)
+	// Submit a config block update with new crypto artifacts (4 peer orgs)
 	t.Log("Submit config block update")
 	configCryptoPath := t.TempDir()
 	// Bump PeerOrganizationCount from 2 to 4 so the LifecycleEndorsement policy
 	// structurally changes. This proves the verifier loads the updated policy,
 	// not just that NsVersion matches.
-	configBlock, err := workload.CreateDefaultConfigBlockWithCrypto(configCryptoPath, &workload.ConfigBlock{
+	configBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(configCryptoPath, &testcrypto.ConfigBlock{
 		ChannelID:             c.SystemConfig.Policy.ChannelID,
 		OrdererEndpoints:      ordererEnv.AllRealEndpoints(),
 		PeerOrganizationCount: 4,
@@ -132,7 +133,7 @@ func TestConfigUpdateLifecyclePolicy(t *testing.T) {
 	// in _meta at version 0, we set ReadWrite.Version so the VC treats these as
 	// updates (not inserts, which would hit a unique-violation conflict).
 	updatedEndorser, _ := workload.NewPolicyEndorserFromMsp(configCryptoPath)
-	staleEndorser, _ := workload.NewPolicyEndorserFromMsp(c.SystemConfig.Policy.CryptoMaterialPath)
+	staleEndorser, _ := workload.NewPolicyEndorserFromMsp(c.SystemConfig.Policy.ArtifactsPath)
 
 	setReadWriteVersions := func(tx *applicationpb.Tx, ver uint64) {
 		for _, rw := range tx.Namespaces[0].ReadWrites {
@@ -199,7 +200,7 @@ func TestConfigUpdateOrdererEndpoints(t *testing.T) {
 	sendTXs()
 
 	submitConfigBlock := func(endpoints []*commontypes.OrdererEndpoint) {
-		ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
+		ordererEnv.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
 			ChannelID:             c.SystemConfig.Policy.ChannelID,
 			OrdererEndpoints:      endpoints,
 			PeerOrganizationCount: c.SystemConfig.Policy.PeerOrganizationCount,
@@ -226,7 +227,7 @@ func TestConfigUpdateOrdererEndpoints(t *testing.T) {
 	mock.RequireStreams(t, ordererEnv.Orderer, 1)
 	mock.RequireStreamsWithEndpoints(t, ordererEnv.Orderer, 1, holdingEndpoint)
 
-	holdingBlock := c.LastReceivedBlockNumber + 2
+	holdingBlock := c.NextExpectedBlockNumber + 1
 	t.Logf("Holding block #%d", holdingBlock)
 	holdingState.HoldFromBlock.Store(holdingBlock)
 
@@ -285,11 +286,11 @@ func TestConfigBlockImmediateCommit(t *testing.T) {
 	ordererEnv := mock.NewOrdererTestEnv(t, &mock.OrdererTestConfig{
 		ChanID: "ch1",
 		Config: &mock.OrdererConfig{
-			ServerConfigs:   ordererServers,
-			BlockSize:       1, // Each block contains exactly 1 transaction.
-			BlockTimeout:    5 * time.Minute,
-			ConfigBlockPath: c.SystemConfig.ConfigBlockPath,
-			SendConfigBlock: true,
+			ServerConfigs:    ordererServers,
+			BlockSize:        1, // Each block contains exactly 1 transaction.
+			BlockTimeout:     5 * time.Minute,
+			ArtifactsPath:    c.SystemConfig.Policy.ArtifactsPath,
+			SendGenesisBlock: true,
 		},
 	})
 
@@ -304,7 +305,7 @@ func TestConfigBlockImmediateCommit(t *testing.T) {
 	t.Logf("Services started and block 0 committed in %v", elapsed)
 
 	submitConfigBlock := func() {
-		ordererEnv.SubmitConfigBlock(t, &workload.ConfigBlock{
+		ordererEnv.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
 			ChannelID:             c.SystemConfig.Policy.ChannelID,
 			OrdererEndpoints:      ordererEnv.AllRealEndpoints(),
 			PeerOrganizationCount: c.SystemConfig.Policy.PeerOrganizationCount,
