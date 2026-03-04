@@ -21,19 +21,20 @@ import (
 
 func BenchmarkMapBlock(b *testing.B) {
 	flogging.Init(flogging.Config{LogSpec: "fatal"})
-	blockSize := 500
-	b.Run(fmt.Sprintf("txs=%d", blockSize), func(b *testing.B) {
-		txs := workload.GenerateTransactions(b, nil, blockSize)
-		block := workload.MapToOrdererBlock(1, txs)
-		b.ResetTimer()
-		for b.Loop() {
-			var txIDToHeight utils.SyncMap[string, servicepb.Height]
-			_, err := mapBlock(block, &txIDToHeight)
-			if err != nil {
-				b.Fatal(err)
+	for _, blockSize := range []int{100, 500, 1000} {
+		b.Run(fmt.Sprintf("txs=%d", blockSize), func(b *testing.B) {
+			txs := workload.GenerateTransactions(b, nil, blockSize)
+			block := workload.MapToOrdererBlock(1, txs)
+			b.ResetTimer()
+			for b.Loop() {
+				var txIDToHeight utils.SyncMap[string, servicepb.Height]
+				_, err := mapBlock(block, &txIDToHeight)
+				if err != nil {
+					b.Fatal(err)
+				}
 			}
-		}
-	})
+		})
+	}
 }
 
 func TestBlockMapping(t *testing.T) {
