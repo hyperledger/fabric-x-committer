@@ -663,10 +663,10 @@ func (env *sidecarTestEnv) requireBlockWithTXsAndStatus(
 	require.NotNil(t, block.Data)
 	require.Len(t, block.Data.Data, blockSize)
 	for i, msg := range block.Data.Data {
-		payload, hdr, err := serialization.UnwrapEnvelope(msg)
+		envLite, err := serialization.UnwrapEnvelope(msg)
 		require.NoError(t, err)
-		require.Equal(t, txs[i].Id, hdr.TxId)
-		tx, err := serialization.UnmarshalTx(payload)
+		require.Equal(t, txs[i].Id, envLite.TxID)
+		tx, err := serialization.UnmarshalTx(envLite.Data)
 		require.NoError(t, err)
 		require.True(t, proto.Equal(txs[i].Tx, tx))
 	}

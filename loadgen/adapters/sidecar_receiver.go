@@ -126,12 +126,12 @@ func mapToStatusBatch(block *common.Block) []metrics.TxStatus {
 
 	statusBatch := make([]metrics.TxStatus, 0, blockSize)
 	for i, data := range block.Data.Data {
-		_, channelHeader, err := serialization.UnwrapEnvelope(data)
+		envLite, err := serialization.UnwrapEnvelope(data)
 		if err != nil {
 			logger.Warnf("Failed to unmarshal envelope: %v", err)
 			continue
 		}
-		if common.HeaderType(channelHeader.Type) == common.HeaderType_CONFIG {
+		if common.HeaderType(envLite.HeaderType) == common.HeaderType_CONFIG {
 			// We can ignore config transactions as we only count data transactions.
 			continue
 		}
@@ -140,7 +140,7 @@ func mapToStatusBatch(block *common.Block) []metrics.TxStatus {
 			status = committerpb.Status(statusCodes[i])
 		}
 		statusBatch = append(statusBatch, metrics.TxStatus{
-			TxID:   channelHeader.TxId,
+			TxID:   envLite.TxID,
 			Status: status,
 		})
 	}

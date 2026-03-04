@@ -7,26 +7,56 @@ SPDX-License-Identifier: Apache-2.0
 package serialization
 
 import (
+	"unicode/utf8"
+
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"google.golang.org/protobuf/encoding/protowire"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-common/protoutil"
+
+	"github.com/hyperledger/fabric-x-committer/api/serializationpb"
 )
 
-// UnwrapEnvelope deserialize an envelope.
-func UnwrapEnvelope(message []byte) ([]byte, *common.ChannelHeader, error) {
-	envelope, err := protoutil.GetEnvelopeFromBlock(message)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "error parsing envelope")
+// EnvelopeLite holds the minimal fields extracted from a protobuf Envelope.
+type EnvelopeLite struct {
+	HeaderType int32
+	TxID       string
+	Data       []byte
+}
+
+// UnwrapEnvelope extracts HeaderType, TxID, and payload Data from a serialized
+// Envelope using proto.Unmarshal with projection protos that declare only the
+// fields the committer needs. Unknown fields (channel_id, timestamp, epoch, etc.)
+// are silently skipped by proto.Unmarshal, making this function's acceptance
+// semantics identical to UnwrapEnvelopeLite's wire scanning.
+func UnwrapEnvelope(message []byte) (*EnvelopeLite, error) {
+	var env serializationpb.EnvelopeLiteProto
+	if err := proto.Unmarshal(message, &env); err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal envelope")
 	}
 
-	payload, channelHdr, err := ParseEnvelope(envelope)
-	if err != nil {
-		return nil, nil, err
+	var payload serializationpb.PayloadLite
+	if err := proto.Unmarshal(env.Payload, &payload); err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal payload")
 	}
 
-	return payload.Data, channelHdr, nil
+	var header serializationpb.HeaderLite
+	if err := proto.Unmarshal(payload.Header, &header); err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal header")
+	}
+
+	var chdr serializationpb.ChannelHeaderLite
+	if err := proto.Unmarshal(header.ChannelHeader, &chdr); err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal channel header")
+	}
+
+	return &EnvelopeLite{
+		HeaderType: chdr.Type,
+		TxID:       chdr.TxId,
+		Data:       payload.Data,
+	}, nil
 }
 
 // ParseEnvelope parse the envelope content.
@@ -51,19 +81,10 @@ func ParseEnvelope(envelope *common.Envelope) (*common.Payload, *common.ChannelH
 	return payload, channelHdr, nil
 }
 
-// EnvelopeLite holds the minimal fields extracted from a protobuf Envelope
-// without performing full deserialization.
-type EnvelopeLite struct {
-	HeaderType int32
-	TxID       string
-	Data       []byte
-}
-
 // UnwrapEnvelopeLite extracts HeaderType, TxID, and payload Data from a
 // serialized Envelope by walking the protobuf wire format directly, instead
 // of performing 3 chained proto.Unmarshal calls (Envelope → Payload → ChannelHeader)
-// like UnwrapEnvelope does. This reduces allocations and improves the performance
-// by 4x.
+// like UnwrapEnvelope does. This reduces allocations and improves performance.
 //
 // The function navigates through the following nested proto messages,
 // extracting only the fields it needs (marked with ←) and skipping the rest:
@@ -142,109 +163,143 @@ type EnvelopeLite struct {
 // matches the field numbers from the proto definitions above, and skips
 // everything else.
 func UnwrapEnvelopeLite(message []byte) (*EnvelopeLite, error) {
-	// Step 1: Read the Envelope. The input bytes are a serialized Envelope message.
-	// We need field 1 (payload) -- extractBytesField scans for field 1 with bytes wire type and returns its value.
+	// Step 1: Read the Envelope. We need field 1 (payload).
 	payloadBytes, err := extractBytesField(message, 1)
-	if err != nil || payloadBytes == nil {
-		return nil, errors.New("failed to extract payload from envelope")
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse envelope")
 	}
 
-	// Step 2: Read the Payload. We need two fields from it:
-	//   field 1 (header) and field 2 (data).
-	// Note: This scans payloadBytes twice (once per field). A single-pass loop
-	// that extracts both fields simultaneously is ~5 ns faster, but the payload
-	// is small enough that the difference is negligible. We chose to reuse
-	// extractBytesField for simplicity.
+	// Step 2: Read the Payload. We need field 1 (header) and field 2 (data).
 	headerBytes, err := extractBytesField(payloadBytes, 1)
-	if err != nil || headerBytes == nil {
-		return nil, errors.New("missing header in payload")
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse payload")
 	}
-	// Data may be absent (nil) if the Payload has no data — that's valid.
 	dataBytes, err := extractBytesField(payloadBytes, 2)
 	if err != nil {
-		return nil, errors.New("invalid data in payload")
+		return nil, errors.Wrap(err, "failed to parse payload data")
 	}
 
 	// Step 3: Read the Header. We need field 1 (channel_header).
 	channelHeaderBytes, err := extractBytesField(headerBytes, 1)
 	if err != nil {
-		return nil, errors.New("failed to extract channel header")
-	}
-	// When all ChannelHeader fields are zero/default, proto3 omits the field entirely,
-	// so channelHeaderBytes is nil. This is valid and means Type=0 and TxID="".
-	if channelHeaderBytes == nil {
-		return &EnvelopeLite{Data: dataBytes}, nil
+		return nil, errors.Wrap(err, "failed to parse header")
 	}
 
 	// Step 4: Read the ChannelHeader. We need field 1 (type) and field 5 (tx_id).
-	// After extracting field 1, we advance past its value so the subsequent
-	// search for field 5 doesn't revisit it. This is safe because protobuf
-	// serializers write fields in field-number order.
 	var headerType int32
-	remaining := channelHeaderBytes
 	raw, err := extractField(channelHeaderBytes, 1, protowire.VarintType)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to parse channel header type")
+		return nil, errors.Wrap(err, "failed to parse channel header")
 	}
 	if raw != nil {
 		v, n := protowire.ConsumeVarint(raw)
-		if n < 0 {
+		if n <= 0 {
 			return nil, errors.New("invalid varint for type field")
 		}
 		headerType = int32(v) //nolint:gosec // uint64 -> int32
-		remaining = raw[n:]
 	}
 
-	txIDBytes, err := extractBytesField(remaining, 5)
+	txID, err := extractStringField(channelHeaderBytes, 5)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse channel header tx_id")
 	}
 
 	return &EnvelopeLite{
 		HeaderType: headerType,
-		TxID:       string(txIDBytes),
+		TxID:       txID,
 		Data:       dataBytes,
 	}, nil
 }
 
+// maxValidFieldNumber is the largest field number allowed by the protobuf spec.
+// proto.Unmarshal rejects fields outside the range [1, 2^29-1].
+const maxValidFieldNumber protowire.Number = 1<<29 - 1
+
 // extractBytesField scans for targetField with bytes wire type and returns
-// its decoded content. Returns (nil, nil) if the field is not found.
+// its decoded content. Returns nil if the field is absent or zero-length
+// (matching proto3 semantics where both represent the default value).
+// Returns an error only if the wire format is invalid.
 func extractBytesField(b []byte, targetField protowire.Number) ([]byte, error) {
 	raw, err := extractField(b, targetField, protowire.BytesType)
-	if err != nil || raw == nil {
+	if err != nil {
 		return nil, err
+	}
+	if raw == nil {
+		return nil, nil
 	}
 	val, n := protowire.ConsumeBytes(raw)
 	if n < 0 {
-		return nil, errors.New("invalid protobuf bytes field")
+		return nil, errors.New("invalid length-delimited field")
 	}
 	return val, nil
 }
 
-// extractField scans a protobuf wire-format message for the first occurrence
-// of targetField with the given expectedType. It returns the unconsumed slice
-// starting at the field's value, so the caller can decode it with the
-// appropriate protowire.ConsumeXxx function.
+// extractField scans for the last occurrence of targetField with expectedType,
+// returning the unconsumed slice starting at the field's value. Returns nil
+// if not found. Returns an error only if the wire format is invalid.
 func extractField(b []byte, targetField protowire.Number, expectedType protowire.Type) ([]byte, error) {
+	var lastMatch []byte
+	err := scanField(b, targetField, expectedType, func(b []byte) error {
+		lastMatch = b
+		return nil
+	})
+	return lastMatch, err
+}
+
+// extractStringField scans for targetField and returns its value as a string,
+// validating UTF-8 for ALL occurrences of the field (not just the last one).
+// This matches proto.Unmarshal's behavior of rejecting the entire message if
+// any occurrence of a string field contains invalid UTF-8.
+func extractStringField(b []byte, targetField protowire.Number) (string, error) {
+	var lastMatch string
+	err := scanField(b, targetField, protowire.BytesType, func(b []byte) error {
+		val, n := protowire.ConsumeBytes(b)
+		if n < 0 {
+			return errors.New("invalid length-delimited field")
+		}
+		if !utf8.Valid(val) {
+			return errors.New("string field contains invalid UTF-8")
+		}
+		lastMatch = string(val)
+		return nil
+	})
+	return lastMatch, err
+}
+
+// scanField iterates a protobuf wire-format message and calls onMatch(b) for
+// each occurrence of targetField with the given targetType, where b is the
+// unconsumed slice starting at the field's value. It validates the entire
+// wire structure, rejecting malformed data even in non-target fields.
+//
+// The full scan (rather than returning on first match) is intentional:
+// the protobuf spec does not guarantee field ordering — while proto.Marshal
+// writes fields in ascending order, proto.Unmarshal accepts any order and
+// uses last-writer-wins for duplicate scalar fields. We match that behavior.
+func scanField(b []byte, targetField protowire.Number, targetType protowire.Type, onMatch func(b []byte) error) error {
 	for len(b) > 0 {
 		num, wtype, n := protowire.ConsumeTag(b)
 		if n < 0 {
-			return nil, errors.New("invalid protobuf tag")
+			return errors.New("invalid protobuf tag")
 		}
 		b = b[n:]
 
-		if num == targetField {
-			if wtype != expectedType {
-				return nil, errors.Newf("field %d: expected wire type %d, got %d", targetField, expectedType, wtype)
-			}
-			return b, nil
+		if num < 1 || num > maxValidFieldNumber {
+			return errors.New("protobuf field number out of range")
 		}
 
+		if num == targetField && wtype == targetType {
+			if err := onMatch(b); err != nil {
+				return err
+			}
+		}
+
+		// Skip fields we don't need, including fields with the right number but
+		// wrong wire type (matching proto3's lenient decoding behavior).
 		vn := protowire.ConsumeFieldValue(num, wtype, b)
 		if vn < 0 {
-			return nil, errors.New("invalid protobuf field value")
+			return errors.New("invalid protobuf field value")
 		}
 		b = b[vn:]
 	}
-	return nil, nil
+	return nil
 }
