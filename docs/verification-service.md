@@ -78,6 +78,9 @@ Policies can be updated through two mechanisms:
 
 The service uses a lock-free design with an atomic pointer to update the policy map without blocking ongoing verifications.
 
+For a detailed guide on namespace policy types (threshold rules and MSP rules), cached identities,
+and policy lifecycle, see [Namespace Policy](namespace-policy.md).
+
 ### Verification Process
 
 The verification process follows these steps:
