@@ -30,9 +30,10 @@ server:
     # Must be greater than 0 and less than or equal to requests-per-second.
     burst: {{ .RateLimit.Burst }}
   {{- end }}
-  {{- if .MaxConcurrentStreams }}
-  max-concurrent-streams: {{ .MaxConcurrentStreams }}
-  {{- end }}
+  # Maximum number of concurrent streaming RPCs (Deliver + Notification).
+  # Set to 0 for unlimited streams (default behavior if not specified).
+  # If not set here, uses the viper default of 10.
+  max-concurrent-streams: {{ .MaxConcurrentStreams | default 0 }}
 monitoring:
   endpoint: {{ .ThisService.MetricsEndpoint | default "localhost:0" }}
   tls:

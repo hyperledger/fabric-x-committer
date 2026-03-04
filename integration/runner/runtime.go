@@ -88,7 +88,8 @@ type (
 		// Set to 0 to disable the limit.
 		MaxRequestKeys int
 		// MaxConcurrentStreams limits concurrent streaming RPCs (Deliver + Notification)
-		// on the sidecar. Set to 0 to use the viper default.
+		// on the sidecar. Set to 0 for unlimited streams (default behavior).
+		// If not explicitly set in config, viper default of 10 is used.
 		MaxConcurrentStreams int
 
 		// VCMinTransactionBatchSize configures the minimum batch size for VC service.
