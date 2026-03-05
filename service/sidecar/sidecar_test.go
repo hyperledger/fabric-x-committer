@@ -157,6 +157,9 @@ func newSidecarTestEnvWithTLS(
 		Ledger: LedgerConfig{
 			Path: t.TempDir(),
 		},
+		Notification: NotificationServiceConfig{
+			MaxTxIDsPerRequest: blockSize * 2,
+		},
 		LastCommittedBlockSetInterval: 100 * time.Millisecond,
 		WaitingTxsLimit:               1000,
 		Monitoring:                    connection.NewLocalHostServer(conf.ServerTLS),
