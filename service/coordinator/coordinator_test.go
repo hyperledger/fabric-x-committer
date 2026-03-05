@@ -16,11 +16,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hyperledger/fabric-x-common/api/applicationpb"
-	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/mock"
@@ -913,9 +914,14 @@ func TestChunkSizeSentForDepGraph(t *testing.T) {
 
 	actualTxsStatus := readTxStatus(t, env.csStream, txPerBlock)
 	test.RequireProtoElementsMatch(t, expectedTxsStatus, actualTxsStatus)
-	test.RequireIntMetricValue(t, txPerBlock, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
-		committerpb.Status_COMMITTED.String(),
-	))
+
+	// Wait for all transactions to be committed before checking the metric
+	// This handles the race condition where restarted verifier may not have processed all txs yet
+	require.Eventually(t, func() bool {
+		return test.GetIntMetricValue(t, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
+			committerpb.Status_COMMITTED.String(),
+		)) == txPerBlock
+	}, 4*time.Second, 100*time.Millisecond, "expected %d committed transactions", txPerBlock)
 }
 
 func TestWaitingTxsCount(t *testing.T) {
