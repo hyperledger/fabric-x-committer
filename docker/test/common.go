@@ -196,6 +196,7 @@ func assembleBinds(t *testing.T, params startNodeParameters, additionalBinds ...
 
 	return append([]string{
 		fmt.Sprintf("%s:/server-certs", serverCredsPath),
+		fmt.Sprintf("%s:/orderer-certs", serverCredsPath),
 		fmt.Sprintf("%s:/client-certs", clientCredsPath),
 	}, additionalBinds...)
 }

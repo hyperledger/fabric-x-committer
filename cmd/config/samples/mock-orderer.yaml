@@ -8,10 +8,10 @@ server:
   tls:
     # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
     mode: mtls
-    cert-path: /server-certs/public-key.pem
-    key-path: /server-certs/private-key.pem
+    cert-path: /orderer-certs/public-key.pem
+    key-path: /orderer-certs/private-key.pem
     ca-cert-paths:
-      - /server-certs/ca-certificate.pem
+      - /orderer-certs/ca-certificate.pem
 
 block-size: 1024
 block-timeout: 30s
