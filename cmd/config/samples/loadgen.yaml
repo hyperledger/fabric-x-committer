@@ -71,8 +71,6 @@ orderer-client:
       mode: mtls
       cert-path: /client-certs/public-key.pem
       key-path: /client-certs/private-key.pem
-      common-ca-cert-paths:
-        - /client-certs/ca-certificate.pem
     consensus-type: BFT
     channel-id: mychannel
     identity:

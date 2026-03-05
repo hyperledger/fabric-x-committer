@@ -147,9 +147,12 @@ func newSidecarTestEnvWithTLS(
 		},
 	}
 	if conf.SubmitGenesisBlock {
+		// We are not setting initOrdererOrganizations to nil because we need it to keep the first root CA static.
+		// The config block will add new root CAs which we append to the static one.
+		// Because we start the mock-orderer with the initial root CA's server creds, we need to keep it as it is.
+		// initOrdererOrganizations = nil
 		genesisBlockFilePath = filepath.Join(t.TempDir(), "config.block")
 		require.NoError(t, configtxgen.WriteOutputBlock(configBlock, genesisBlockFilePath))
-		initOrdererOrganizations = nil
 	}
 	sidecarConf := &Config{
 		Server:    connection.NewLocalHostServer(conf.ServerTLS),

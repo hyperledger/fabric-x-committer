@@ -31,10 +31,6 @@ orderer-client:
       mode: {{ .ClientTLS.Mode }}
       cert-path: {{ .ClientTLS.CertPath }}
       key-path: {{ .ClientTLS.KeyPath }}
-      common-ca-cert-paths:
-        {{- range .ClientTLS.CACertPaths }}
-        - {{ . }}
-        {{- end }}
     consensus-type: BFT
     channel-id: {{ .Policy.ChannelID }}
     identity:

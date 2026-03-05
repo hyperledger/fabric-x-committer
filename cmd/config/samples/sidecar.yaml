@@ -61,8 +61,6 @@ orderer:
     mode: mtls
     cert-path: /client-certs/public-key.pem
     key-path: /client-certs/private-key.pem
-    common-ca-cert-paths:
-      - /client-certs/ca-certificate.pem
   identity:
     msp-id: peer-org-0
     msp-dir: /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/msp
