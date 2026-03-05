@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package sidecar
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
@@ -20,15 +21,20 @@ import (
 
 func BenchmarkMapBlock(b *testing.B) {
 	flogging.Init(flogging.Config{LogSpec: "fatal"})
-	txs := workload.GenerateTransactions(b, workload.DefaultProfile(8), b.N)
-	block := workload.MapToOrdererBlock(1, txs)
-
-	var txIDToHeight utils.SyncMap[string, servicepb.Height]
-	b.ResetTimer()
-	mappedBlock, err := mapBlock(block, &txIDToHeight)
-	b.StopTimer()
-	require.NoError(b, err, "This can never occur unless there is a bug in the relay.")
-	require.NotNil(b, mappedBlock)
+	for _, blockSize := range []int{100, 500, 1000} {
+		b.Run(fmt.Sprintf("txs=%d", blockSize), func(b *testing.B) {
+			txs := workload.GenerateTransactions(b, workload.DefaultProfile(8), blockSize)
+			block := workload.MapToOrdererBlock(1, txs)
+			b.ResetTimer()
+			for b.Loop() {
+				var txIDToHeight utils.SyncMap[string, servicepb.Height]
+				_, err := mapBlock(block, &txIDToHeight)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
 }
 
 func TestBlockMapping(t *testing.T) {
