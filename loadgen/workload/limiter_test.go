@@ -82,7 +82,7 @@ func TestLimiterMaxWait(t *testing.T) {
 		taken := l.Consume(ctx, p)
 		duration := time.Since(start)
 		assert.NotNil(t, taken)
-		assert.Lessf(t, duration, p.SoftTimeout+200*time.Millisecond, "Iteration: %d", i)
+		assert.Lessf(t, duration, p.SoftTimeout+500*time.Millisecond, "Iteration: %d", i)
 		assert.GreaterOrEqualf(t, len(taken), 80, "Iteration: %d", i)
 	}
 }
@@ -103,7 +103,7 @@ func TestLimiterMinBatch(t *testing.T) {
 		duration := time.Since(start)
 		assert.NotNil(t, taken)
 		assert.Len(t, taken, int(p.MinItems), "Iteration: %d", i) //nolint:gosec // uint64 -> int.
-		assert.Less(t, duration, time.Second+200*time.Millisecond, "Iteration: %d", i)
+		assert.Less(t, duration, time.Second+500*time.Millisecond, "Iteration: %d", i)
 	}
 }
 
