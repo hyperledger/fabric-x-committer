@@ -16,6 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
@@ -194,7 +195,7 @@ func (o *StreamOptions) Debug() {
 
 func debug(title string, val any) {
 	d, err := yaml.Marshal(val)
-	Must(err)
+	utils.Must(err)
 	fmt.Println("############################################################")
 	fmt.Printf("# %s\n", title)
 	fmt.Println("############################################################")

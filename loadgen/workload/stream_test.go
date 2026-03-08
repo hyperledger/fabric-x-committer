@@ -109,7 +109,7 @@ func BenchmarkGenTx(b *testing.B) {
 func BenchmarkGenQuery(b *testing.B) {
 	//nolint:thelper // false positive.
 	genericBench(b, func(b *testing.B, p *Profile) {
-		c := NewQueryGenerator(p, defaultBenchStreamOptions())
+		c := NewQueryStream(p, defaultBenchStreamOptions())
 
 		ctx := b.Context()
 		b.ResetTimer()
@@ -207,7 +207,7 @@ func startQueryGeneratorUnderTest(
 	t *testing.T, profile *Profile, options *StreamOptions,
 ) *ConsumerRateController[*committerpb.Query] {
 	t.Helper()
-	g := NewQueryGenerator(profile, options)
+	g := NewQueryStream(profile, options)
 	test.RunServiceForTest(t.Context(), t, g.Run, nil)
 	return g.MakeGenerator()
 }
@@ -552,7 +552,7 @@ func TestQueryShuffle(t *testing.T) {
 
 func TestAsnMarshal(t *testing.T) {
 	t.Parallel()
-	loadGenTxs := GenerateTransactions(t, DefaultProfile(8), 128)
+	loadGenTxs := GenerateTransactions(t, nil, 128)
 	txs := make([]*applicationpb.TestTx, len(loadGenTxs))
 	for i, tx := range loadGenTxs {
 		txs[i] = &applicationpb.TestTx{

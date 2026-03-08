@@ -7,27 +7,24 @@ SPDX-License-Identifier: Apache-2.0
 package workload
 
 import (
-	"context"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-// GenerateTransactions is used for benchmarking.
+// GenerateTransactions is used for benchmarking and tests.
 func GenerateTransactions(tb testing.TB, p *Profile, count int) []*servicepb.LoadGenTx {
 	tb.Helper()
-	s := NewTxStream(p, &StreamOptions{
-		BuffersSize: 1024,
-		GenBatch:    4096,
-	})
-	ctx, cancel := context.WithCancel(tb.Context())
-	defer cancel()
-	test.RunServiceForTest(ctx, tb, s.Run, nil)
-	return s.MakeGenerator().Consume(ctx, ConsumeParameters{
-		RequestedItems: uint64(count), //nolint:gosec // int -> uint64.
-	})
+	if p == nil {
+		p = DefaultProfile(1)
+	}
+	p.Workers = 1
+	g := newIndependentTxGenerators(p)
+	require.Len(tb, g, 1)
+	return GenerateArray(g[0], count)
 }
 
 // DefaultProfile is used for testing and benchmarking.

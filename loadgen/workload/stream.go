@@ -8,7 +8,6 @@ package workload
 
 import (
 	"context"
-	"math/rand"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
@@ -36,38 +35,19 @@ type (
 	}
 )
 
-// NewTxStream creates workers that generates transactions into a queue and apply the modifiers.
-// Each worker will have a unique instance of the modifier to avoid concurrency issues.
-// The modifiers will be applied in the order they are given.
-// A transaction modifier can modify any of its fields to adjust the workload.
-// For example, a modifier can query the database for the read-set versions to simulate a real transaction.
-// The signature modifier is applied last so all previous modifications will be signed correctly.
+// NewTxStream creates a stream that generates transactions in batches into a queue.
 func NewTxStream(
 	profile *Profile,
 	options *StreamOptions,
 	modifierGenerators ...Generator[Modifier],
 ) *TxStream {
 	queue := make(chan []*servicepb.LoadGenTx, max(options.BuffersSize, 1))
-	txStream := &TxStream{
+	return &TxStream{
 		options:        options,
 		queue:          queue,
+		gens:           newIndependentTxGenerators(profile, modifierGenerators...),
 		rateController: NewConsumerRateController(options.RateLimit, queue),
 	}
-	for _, w := range makeWorkersData(profile) {
-		modifiers := make([]Modifier, 0, len(modifierGenerators)+2)
-		if len(profile.Conflicts.Dependencies) > 0 {
-			modifiers = append(modifiers, newTxDependenciesModifier(NewRandFromSeedGenerator(w.seed), profile))
-		}
-		for _, mod := range modifierGenerators {
-			modifiers = append(modifiers, mod.Next())
-		}
-		modifiers = append(modifiers, newSignTxModifier(NewRandFromSeedGenerator(w.seed), profile))
-
-		txGenSeed := NewRandFromSeedGenerator(w.seed)
-		txGen := newIndependentTxGenerator(txGenSeed, w.keyGen, &profile.Transaction, &profile.Policy, modifiers...)
-		txStream.gens = append(txStream.gens, txGen)
-	}
-	return txStream
 }
 
 // Run starts the stream workers.
@@ -105,19 +85,15 @@ func (s *TxStream) MakeGenerator() *ConsumerRateController[*servicepb.LoadGenTx]
 	return s.rateController.InstantiateWorker()
 }
 
-// NewQueryGenerator creates workers that generates queries into a queue.
-func NewQueryGenerator(profile *Profile, options *StreamOptions) *QueryStream {
+// NewQueryStream creates a stream that generates queries into a queue.
+func NewQueryStream(profile *Profile, options *StreamOptions) *QueryStream {
 	queue := make(chan []*committerpb.Query, max(options.BuffersSize, 1))
-	qs := &QueryStream{
+	return &QueryStream{
 		options:        options,
 		queue:          queue,
+		gen:            newIndependentQueryGenerators(profile),
 		rateController: NewConsumerRateController(options.RateLimit, queue),
 	}
-	for _, w := range makeWorkersData(profile) {
-		queryGen := newQueryGenerator(NewRandFromSeedGenerator(w.seed), w.keyGen, profile)
-		qs.gen = append(qs.gen, queryGen)
-	}
-	return qs
 }
 
 // Run starts the workers.
@@ -139,28 +115,6 @@ func (s *QueryStream) Run(ctx context.Context) error {
 // generators from the same Stream can be used concurrently.
 func (s *QueryStream) MakeGenerator() *ConsumerRateController[*committerpb.Query] {
 	return s.rateController.InstantiateWorker()
-}
-
-type workerData struct {
-	seed   *rand.Rand
-	keyGen *ByteArrayGenerator
-}
-
-func makeWorkersData(profile *Profile) []workerData {
-	seedGen := rand.New(rand.NewSource(profile.Seed))
-	workers := make([]workerData, profile.Workers)
-	for i := range workers {
-		seed := NewRandFromSeedGenerator(seedGen)
-		// Each worker has a unique seed to generate keys in addition the seed for the other content.
-		// This allows reproducing the generated keys regardless of the other generated content.
-		// It is useful when generating transactions, and later generating queries for the same keys.
-		keySeed := NewRandFromSeedGenerator(seed)
-		workers[i] = workerData{
-			seed:   seed,
-			keyGen: &ByteArrayGenerator{Size: profile.Key.Size, Source: keySeed},
-		}
-	}
-	return workers
 }
 
 func ingestBatchesToQueue[T any](ctx context.Context, c chan<- []T, g Generator[T], batchSize int) {

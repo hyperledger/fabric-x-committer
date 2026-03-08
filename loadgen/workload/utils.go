@@ -9,7 +9,6 @@ package workload
 import (
 	"cmp"
 	"math"
-	"math/rand"
 
 	"golang.org/x/exp/constraints"
 )
@@ -59,16 +58,4 @@ func Map[T, K any](arr []T, mapper func(index int, value T) K) []K {
 		ret[i] = mapper(i, v)
 	}
 	return ret
-}
-
-// NewRandFromSeedGenerator creates a new random generator using a generated seed.
-func NewRandFromSeedGenerator(seedRnd *rand.Rand) *rand.Rand {
-	return rand.New(rand.NewSource(seedRnd.Int63()))
-}
-
-// Must panics in case of an error.
-func Must(err error) {
-	if err != nil {
-		panic(err)
-	}
 }
