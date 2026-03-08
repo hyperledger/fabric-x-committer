@@ -372,3 +372,15 @@ func (env *DatabaseTestEnv) rowNotExists(t *testing.T, nsID string, keys [][]byt
 			key, string(valVer.Value), valVer.Version)
 	}
 }
+
+// BulkImport bulk-loads namespace state into the database using the COPY protocol.
+// This is intended for use by the snapshot bootstrap workflow and its tests.
+func (env *DatabaseTestEnv) BulkImport(
+	t *testing.T,
+	data []*BulkImportData,
+) *BulkImportResult {
+	t.Helper()
+	result, err := env.DB.bulkImport(t.Context(), data)
+	require.NoError(t, err)
+	return result
+}
