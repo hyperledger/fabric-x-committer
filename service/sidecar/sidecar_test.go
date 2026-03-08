@@ -439,8 +439,8 @@ func TestSidecarRecovery(t *testing.T) {
 		newPerformanceMetrics(),
 	)
 	require.NoError(t, err)
-	env.sidecar.blockDelivery = newBlockDelivery(env.sidecar.blockStore, env.config.Orderer.ChannelID)
-	env.sidecar.blockQuery = newBlockQuery(env.sidecar.blockStore.store)
+	env.sidecar.blockDelivery = newBlockDelivery(env.sidecar.blockStore)
+	env.sidecar.blockQuery = newBlockQuery(env.sidecar.blockStore)
 	ensureAtLeastHeight(t, env.sidecar.blockStore, 1) // back to block 0
 
 	t.Log("4. Make coordinator not idle to ensure sidecar is waiting")
