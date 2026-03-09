@@ -32,7 +32,7 @@ func TestBlockDelivery(t *testing.T) {
 	config := connection.NewLocalHostServer(test.InsecureTLSConfig)
 	test.RunGrpcServerForTest(t.Context(), t, config,
 		func(server *grpc.Server) {
-			peer.RegisterDeliverServer(server, newBlockDelivery(bs, channelID))
+			peer.RegisterDeliverServer(server, newBlockDelivery(bs))
 		})
 	conn := test.NewInsecureConnection(t, &config.Endpoint)
 	deliverClient := peer.NewDeliverClient(conn)

@@ -61,7 +61,6 @@ func TestConstDist(t *testing.T) {
 	})
 
 	for _, val := range []int{-1, 0, 1, 2, 10} {
-		val := val
 		t.Run(fmt.Sprintf("generate:%d", val), func(t *testing.T) {
 			t.Parallel()
 			d := NewConstantDistribution(float64(val))

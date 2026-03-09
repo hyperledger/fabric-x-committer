@@ -53,7 +53,7 @@ func SerializeSigningKey(key *ecdsa.PrivateKey) ([]byte, error) {
 func ParseSigningKey(keyContent []byte) (*ecdsa.PrivateKey, error) {
 	block, _ := pem.Decode(keyContent)
 	if block == nil {
-		return nil, errors.New("nil block")
+		return nil, errors.New("cannot decode PEM block content")
 	}
 	switch block.Type {
 	case "PRIVATE KEY":

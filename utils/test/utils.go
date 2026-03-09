@@ -112,9 +112,16 @@ func RunGrpcServerForTest(
 	var wg sync.WaitGroup
 	tb.Cleanup(wg.Wait)
 	tb.Cleanup(server.Stop)
+
+	// The parent error capture the caller stack trace,
+	// which helps track the server origin when debugging test failures.
+	parentErr := errors.New("parent stack context")
 	wg.Go(func() {
 		// We use assert to prevent panicking for cleanup errors.
-		assert.NoError(tb, server.Serve(listener))
+		serveErr := server.Serve(listener)
+		if serveErr != nil && !errors.Is(serveErr, grpc.ErrServerStopped) {
+			assert.NoError(tb, errors.WithSecondaryError(serveErr, parentErr))
+		}
 	})
 
 	_ = context.AfterFunc(ctx, func() {

@@ -30,6 +30,10 @@ server:
     # Must be greater than 0 and less than or equal to requests-per-second.
     burst: {{ .RateLimit.Burst }}
   {{- end }}
+  # Maximum number of concurrent streaming RPCs (Deliver + Notification).
+  # Set to 0 for unlimited streams (default behavior if not specified).
+  # If not set here, uses the viper default of 10.
+  max-concurrent-streams: {{ .MaxConcurrentStreams | default 0 }}
 monitoring:
   endpoint: {{ .ThisService.MetricsEndpoint | default "localhost:0" }}
   tls:
@@ -87,7 +91,6 @@ ledger:
 
 notification:
   max-timeout: 10m
-  max-concurrent-streams: 0  # 0 = unlimited
 
 last-committed-block-set-interval: 5s
 waiting-txs-limit: 20_000_000

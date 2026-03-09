@@ -27,14 +27,13 @@ import (
 func TestBlockStoreAndDelivery(t *testing.T) {
 	t.Parallel()
 	ledgerPath := t.TempDir()
-	channelID := "ch1"
 
 	metrics := newPerformanceMetrics()
-	bs, err := newBlockStore(channelID, ledgerPath, 0, metrics)
+	bs, err := newBlockStore("ch1", ledgerPath, 0, metrics)
 	require.NoError(t, err)
 	t.Cleanup(bs.close)
 
-	bd := newBlockDelivery(bs, channelID)
+	bd := newBlockDelivery(bs)
 
 	config := connection.NewLocalHostServer(test.InsecureTLSConfig)
 	inputBlock := make(chan *common.Block, 10)
@@ -64,7 +63,7 @@ func TestBlockStoreAndDelivery(t *testing.T) {
 	require.Greater(t, test.GetMetricValue(t, metrics.appendBlockToLedgerSeconds), float64(0))
 
 	receivedBlocksFromLedgerService := sidecarclient.StartSidecarClient(t.Context(), t, &sidecarclient.Parameters{
-		ChannelID: channelID,
+		ChannelID: bs.channelID,
 		Client:    test.NewInsecureClientConfig(&config.Endpoint),
 	}, 0)
 

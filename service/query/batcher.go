@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/yugabyte/pgx/v5"
 	"github.com/yugabyte/pgx/v5/pgxpool"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
@@ -60,7 +61,7 @@ type (
 		viewIDToViewHolder            utils.SyncMap[string, *viewHolder]
 		viewParametersToLatestBatcher utils.SyncMap[int, *batcher]
 		nonConsistentBatcher          batcher
-		viewLimiter                   *utils.ConcurrencyLimiter
+		viewLimiter                   *semaphore.Weighted
 	}
 	viewHolder struct {
 		m sync.Mutex
@@ -112,10 +113,8 @@ type (
 
 // makeView attempts to create a view with the given view ID.
 // It returns errViewIDCollision if the view ID is already used.
-func (q *viewsBatcher) makeView(
-	ctx context.Context, viewID string, p *committerpb.ViewParameters,
-) error {
-	if !q.viewLimiter.TryAcquire(ctx) {
+func (q *viewsBatcher) makeView(viewID string, p *committerpb.ViewParameters) error {
+	if q.viewLimiter != nil && !q.viewLimiter.TryAcquire(1) {
 		return ErrTooManyActiveViews
 	}
 
@@ -127,7 +126,9 @@ func (q *viewsBatcher) makeView(
 	}
 	if _, loaded := q.viewIDToViewHolder.LoadOrStore(viewID, v); loaded {
 		cancel()
-		q.viewLimiter.Release()
+		if q.viewLimiter != nil {
+			q.viewLimiter.Release(1)
+		}
 		return errViewIDCollision
 	}
 
@@ -135,7 +136,9 @@ func (q *viewsBatcher) makeView(
 	m.Inc()
 	context.AfterFunc(viewCtx, func() { //nolint:contextcheck // callback intentionally tied to viewCtx lifecycle.
 		m.Dec()
-		q.viewLimiter.Release()
+		if q.viewLimiter != nil {
+			q.viewLimiter.Release(1)
+		}
 		q.viewIDToViewHolder.CompareAndDelete(viewID, v)
 
 		v.m.Lock()

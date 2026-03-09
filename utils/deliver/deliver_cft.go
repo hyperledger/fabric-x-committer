@@ -31,6 +31,7 @@ type (
 		Signer            identity.SignerSerializer
 		ChannelID         string
 		StreamCreator     func(ctx context.Context, conn grpc.ClientConnInterface) (Stream, error)
+		TLSCertHash       []byte
 	}
 
 	// Parameters needed for deliver to run.
@@ -129,7 +130,7 @@ func (c *CftClient) deliverRelay(
 	ctx context.Context, stream Stream, p *Parameters,
 ) (common.Status, error) {
 	logger.Infof("Sending seek request from block %d on channel %s.", p.NextBlockNum, c.ChannelID)
-	seekEnv, seekErr := seekSince(p.NextBlockNum, c.ChannelID, c.Signer)
+	seekEnv, seekErr := seekSince(p.NextBlockNum, c.ChannelID, c.Signer, c.TLSCertHash)
 	if seekErr != nil {
 		return 0, errors.Wrap(seekErr, "failed to create seek request")
 	}
@@ -172,13 +173,14 @@ func seekSince(
 	startBlockNumber uint64,
 	channelID string,
 	signer identity.SignerSerializer,
+	tlsCertHash []byte,
 ) (*common.Envelope, error) {
-	return protoutil.CreateSignedEnvelope(
+	return protoutil.CreateSignedEnvelopeWithTLSBinding(
 		common.HeaderType_DELIVER_SEEK_INFO, channelID, signer, &orderer.SeekInfo{
 			Start:    seekPosition(startBlockNumber),
 			Stop:     seekPosition(MaxBlockNum),
 			Behavior: orderer.SeekInfo_BLOCK_UNTIL_READY,
-		}, 0, 0,
+		}, 0, 0, tlsCertHash,
 	)
 }
 

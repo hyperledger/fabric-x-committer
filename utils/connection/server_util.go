@@ -60,10 +60,16 @@ func (c *ServerConfig) GrpcServer() (*grpc.Server, error) {
 	if err := c.RateLimit.Validate(); err != nil {
 		return nil, errors.Wrap(err, "invalid rate limit configuration")
 	}
+
 	if limiter := NewRateLimiter(&c.RateLimit); limiter != nil {
 		opts = append(opts, grpc.UnaryInterceptor(RateLimitInterceptor(limiter)))
 		logger.Infof("Rate limiting enabled: %d requests/second, burst: %d",
 			c.RateLimit.RequestsPerSecond, c.RateLimit.Burst)
+	}
+
+	if sem := NewConcurrencyLimit(c.MaxConcurrentStreams); sem != nil {
+		opts = append(opts, grpc.StreamInterceptor(StreamConcurrencyInterceptor(sem)))
+		logger.Infof("Stream concurrency limit enabled: %d max concurrent streams", c.MaxConcurrentStreams)
 	}
 
 	if c.KeepAlive != nil && c.KeepAlive.Params != nil {
@@ -179,7 +185,6 @@ func StartService(
 	}
 
 	for _, server := range serverConfigs {
-		server := server
 		g.Go(func() error {
 			// If the GRPC servers stop, there is no reason to continue the service.
 			defer cancel()
