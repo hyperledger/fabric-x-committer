@@ -35,11 +35,9 @@ func TestSlotsAcquireAndRelease(t *testing.T) {
 
 	t.Log("acquire 10 slots in background but available is < 1")
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		w.Acquire(ctx, 10)
-	}()
+	})
 
 	require.Never(t, func() bool {
 		return w.Load(t) < 0

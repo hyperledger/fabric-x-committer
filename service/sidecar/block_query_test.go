@@ -26,7 +26,7 @@ func TestBlockQuery(t *testing.T) {
 	bs, txIDs := newBlockStoreWithBlocks(t, "ch1", 2)
 
 	// Create the query service and register on a gRPC server.
-	queryService := newBlockQuery(bs.store)
+	queryService := newBlockQuery(bs)
 
 	config := connection.NewLocalHostServer(test.InsecureTLSConfig)
 	test.RunGrpcServerForTest(t.Context(), t, config, func(server *grpc.Server) {
@@ -64,6 +64,13 @@ func TestBlockQuery(t *testing.T) {
 		require.Equal(t, uint64(1), block.GetHeader().GetNumber())
 	})
 
+	t.Run("GetBlockByTxID_EmptyTxID", func(t *testing.T) {
+		t.Parallel()
+		_, err := client.GetBlockByTxID(t.Context(), &committerpb.TxID{TxId: ""})
+		require.ErrorContains(t, err, "tx_id must not be empty")
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+	})
+
 	t.Run("GetBlockByTxID_NotFound", func(t *testing.T) {
 		t.Parallel()
 		_, err := client.GetBlockByTxID(t.Context(), &committerpb.TxID{TxId: "nonexistent"})
@@ -76,6 +83,13 @@ func TestBlockQuery(t *testing.T) {
 		envelope, err := client.GetTxByID(t.Context(), &committerpb.TxID{TxId: txIDs[0][0]})
 		require.NoError(t, err)
 		require.NotNil(t, envelope)
+	})
+
+	t.Run("GetTxByID_EmptyTxID", func(t *testing.T) {
+		t.Parallel()
+		_, err := client.GetTxByID(t.Context(), &committerpb.TxID{TxId: ""})
+		require.ErrorContains(t, err, "tx_id must not be empty")
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
 	})
 
 	t.Run("GetTxByID_NotFound", func(t *testing.T) {

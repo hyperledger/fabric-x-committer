@@ -75,7 +75,7 @@ func New(c *Config) (*Service, error) {
 
 	// 3. Deliver the block with status to client.
 	logger.Infof("Create block store for channel %s", c.Orderer.ChannelID)
-	blockStore, err := newBlockStore(c.Orderer.ChannelID, c.Ledger.Path, c.Ledger.SyncInterval, metrics)
+	blockStoreInstance, err := newBlockStore(c.Orderer.ChannelID, c.Ledger.Path, c.Ledger.SyncInterval, metrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create block store: %w", err)
 	}
@@ -88,9 +88,9 @@ func New(c *Config) (*Service, error) {
 		ordererClient:  ordererClient,
 		relay:          relayService,
 		notifier:       newNotifier(c.ChannelBufferSize, &c.Notification),
-		blockStore:     blockStore,
-		blockDelivery:  newBlockDelivery(blockStore, c.Orderer.ChannelID),
-		blockQuery:     newBlockQuery(blockStore.store),
+		blockStore:     blockStoreInstance,
+		blockDelivery:  newBlockDelivery(blockStoreInstance),
+		blockQuery:     newBlockQuery(blockStoreInstance),
 		healthcheck:    connection.DefaultHealthCheckService(),
 		config:         c,
 		metrics:        metrics,
@@ -178,7 +178,8 @@ func (s *Service) Run(ctx context.Context) error {
 	})
 
 	g.Go(func() error {
-		return connection.Sustain(gCtx, func() error {
+		// TODO: initialize retry from config.
+		return connection.Sustain(gCtx, nil, func() error {
 			defer func() {
 				s.recoverCommittedBlocks(gCtx)
 			}()

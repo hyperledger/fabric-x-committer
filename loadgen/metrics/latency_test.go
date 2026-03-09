@@ -31,7 +31,6 @@ func TestLatencyTrackerPrefix(t *testing.T) {
 	for _, conf := range []SamplerConfig{
 		{Portion: 0}, {Portion: 1}, {Portion: 0.1}, {Portion: 0.01}, {Prefix: "0"}, {Prefix: "00"},
 	} {
-		conf := conf
 		t.Run(fmt.Sprintf("%v", &utils.LazyJSON{O: conf}), func(t *testing.T) {
 			t.Parallel()
 			p := monitoring.NewProvider()

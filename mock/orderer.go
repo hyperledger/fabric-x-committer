@@ -21,8 +21,8 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/util"
+	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -33,7 +33,9 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 type (
@@ -59,9 +61,9 @@ type (
 		streamStateManager[OrdererStreamState]
 		endpointToPartyState utils.SyncMap[string, *PartyState]
 		config               *OrdererConfig
-		genesisBlock         *common.Block
+		genesisBlock         BlockWithConsenters
 		inEnvs               chan *common.Envelope
-		inBlocks             chan *common.Block
+		inBlocks             chan *BlockWithConsenters
 		cutBlock             chan any
 		cache                *blockCache
 		healthcheck          *health.Server
@@ -71,14 +73,25 @@ type (
 	OrdererStreamState struct {
 		StreamInfo
 		*PartyState
+		DataBlockStream bool
 	}
 
 	// PartyState holds the shared state of all streams of a party.
 	// HoldFromBlock will hold the blocks starting from this number.
 	// If HoldFromBlock is 0, no blocks will be held.
+	// ReplaceBlock holds the blocks to replace, with the block number as the key.
+	// This behavior is permanent until the entry is removed from the ReplaceBlock map.
 	PartyState struct {
 		PartyID       uint32
 		HoldFromBlock atomic.Uint64
+		ReplaceBlock  utils.SyncMap[uint64, *common.Block]
+	}
+
+	// BlockWithConsenters is used to submit a new config block with its consenters.
+	BlockWithConsenters struct {
+		Block             *common.Block
+		ConsenterMetadata []byte
+		ConsenterSigners  []msp.SigningIdentity
 	}
 
 	blockCache struct {
@@ -137,13 +150,20 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 	if config.TestServerParameters.NumService == 0 && len(config.ServerConfigs) == 0 {
 		config.TestServerParameters.NumService = defaultConfig.TestServerParameters.NumService
 	}
-	genesisBlock := defaultConfigBlock
+	genesisBlock := BlockWithConsenters{Block: defaultConfigBlock}
 	if len(config.ArtifactsPath) > 0 {
-		var err error
 		configBlockPath := path.Join(config.ArtifactsPath, cryptogen.ConfigBlockFileName)
-		genesisBlock, err = configtxgen.ReadBlock(configBlockPath)
+		block, err := ordererconn.LoadConfigBlockFromFile(configBlockPath)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to read config block")
+			return nil, err
+		}
+		consenters, err := testcrypto.GetConsenterIdentities(config.ArtifactsPath)
+		if err != nil {
+			return nil, err
+		}
+		genesisBlock = BlockWithConsenters{
+			Block:            block.ConfigBlock,
+			ConsenterSigners: consenters,
 		}
 	}
 	numServices := max(1, config.TestServerParameters.NumService, len(config.ServerConfigs))
@@ -151,7 +171,7 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 		config:       config,
 		genesisBlock: genesisBlock,
 		inEnvs:       make(chan *common.Envelope, numServices*config.BlockSize*config.OutBlockCapacity),
-		inBlocks:     make(chan *common.Block, config.BlockSize*config.OutBlockCapacity),
+		inBlocks:     make(chan *BlockWithConsenters, config.BlockSize*config.OutBlockCapacity),
 		cutBlock:     make(chan any),
 		cache:        newBlockCache(config.OutBlockCapacity),
 		healthcheck:  connection.DefaultHealthCheckService(),
@@ -198,8 +218,9 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 	state := o.registerStream(ctx, func(info StreamInfo) *OrdererStreamState {
 		partyState, _ := o.endpointToPartyState.LoadOrStore(info.ServerEndpoint, &PartyState{})
 		return &OrdererStreamState{
-			StreamInfo: info,
-			PartyState: partyState,
+			StreamInfo:      info,
+			PartyState:      partyState,
+			DataBlockStream: seekInfo.ContentType == ab.SeekInfo_BLOCK,
 		}
 	})
 	logger.Infof("Mock Orderer starting deliver from block [#%d] by %s", start, state)
@@ -208,7 +229,7 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 	stop := o.cache.releaseAfter(ctx)
 	defer stop()
 
-	var prevBlock *common.Block
+	var p testcrypto.BlockPrepareParameters
 	for i := start; i <= end && ctx.Err() == nil; i++ {
 		b, err := o.cache.getBlock(ctx, i)
 		if err != nil && !errors.Is(err, ErrLostBlock) {
@@ -217,7 +238,7 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 		if b == nil {
 			logger.Warnf("Lost block. Sending an empty block for the sake of the delivery progress.")
 			b = &common.Block{Data: &common.BlockData{}}
-			addBlockHeader(prevBlock, b)
+			testcrypto.PrepareBlockHeaderAndMetadata(b, p)
 		}
 		msg := state.prepareResponse(ctx, b)
 		if msg == nil {
@@ -227,7 +248,7 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 			return err //nolint:wrapcheck // already a GRPC error.
 		}
 		logger.Debugf("Emitted block [#%d] by %s", b.Header.Number, state)
-		prevBlock = b
+		p.PrevBlock = b
 	}
 	return grpcerror.WrapCancelled(ctx.Err())
 }
@@ -262,6 +283,22 @@ func (s *OrdererStreamState) prepareResponse(ctx context.Context, block *common.
 		logger.Infof("Releasing block: %d (up to %d) by %s",
 			blockNumber, s.HoldFromBlock.Load(), s)
 	}
+
+	// Block manipulation.
+	altBlock, loaded := s.ReplaceBlock.Load(blockNumber)
+	if loaded {
+		logger.Infof("Replacing block: %d by %s", blockNumber, s)
+		block = altBlock
+	}
+
+	// Headers only.
+	if !s.DataBlockStream && !protoutil.IsConfigBlock(block) {
+		block = &common.Block{
+			Header:   block.Header,
+			Metadata: block.Metadata,
+		}
+	}
+
 	return &ab.DeliverResponse{Type: &ab.DeliverResponse_Block{Block: block}}
 }
 
@@ -276,7 +313,11 @@ func (s *OrdererStreamState) shouldHold(blockNumber uint64) bool {
 
 // String outputs a human-readable identifier for this stream.
 func (s *OrdererStreamState) String() string {
-	return fmt.Sprintf("{party [%d] stream [%d]}", s.PartyID, s.Index)
+	kind := "headers"
+	if s.DataBlockStream {
+		kind = "data"
+	}
+	return fmt.Sprintf("{party [%d] stream [%d] (%s)}", s.PartyID, s.Index, kind)
 }
 
 func readSeekInfo(env *common.Envelope) (seekInfo *ab.SeekInfo, err error) {
@@ -312,21 +353,38 @@ func (o *Orderer) Run(ctx context.Context) error {
 	stop := o.cache.releaseAfter(ctx)
 	defer stop()
 
+	// We add the signers after submitting the genesis block as Fabric's orderer
+	// does not sign the genesis block.
+	blockParams := testcrypto.BlockPrepareParameters{}
 	tick := time.NewTicker(o.config.BlockTimeout)
-	var prevBlock *common.Block
 	sendBlock := func(b *common.Block) {
 		if b == nil {
 			return
 		}
-		addBlockHeader(prevBlock, b)
+		testcrypto.PrepareBlockHeaderAndMetadata(b, blockParams)
 		o.cache.addBlock(ctx, b)
+		blockParams.PrevBlock = b
+
+		if protoutil.IsConfigBlock(b) {
+			blockParams.LastConfigBlockIndex = b.Header.Number
+		}
+
 		tick.Reset(o.config.BlockTimeout)
-		prevBlock = b
+	}
+	sendBlockWithConsenters := func(b *BlockWithConsenters) {
+		// The block is signed with OLD signers, then we update the signers.
+		sendBlock(b.Block)
+		if len(b.ConsenterSigners) > 0 {
+			blockParams.ConsenterSigners = b.ConsenterSigners
+		}
+		if len(b.ConsenterMetadata) > 0 {
+			blockParams.ConsenterMetadata = b.ConsenterMetadata
+		}
 	}
 
 	// Submit the config block.
 	if o.config.SendGenesisBlock {
-		sendBlock(o.genesisBlock)
+		sendBlockWithConsenters(&o.genesisBlock)
 	}
 
 	data := make([][]byte, 0, o.config.BlockSize)
@@ -344,7 +402,7 @@ func (o *Orderer) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return errors.Wrapf(ctx.Err(), "context ended")
 		case b := <-o.inBlocks:
-			sendBlock(b)
+			sendBlockWithConsenters(b)
 		case <-o.cutBlock:
 			sendBlockData("external")
 		case <-tick.C:
@@ -375,8 +433,17 @@ func (o *Orderer) RegisterService(server *grpc.Server) {
 // SubmitBlock allows submitting blocks directly for testing other packages.
 // The block header will be replaced with a generated header.
 func (o *Orderer) SubmitBlock(ctx context.Context, b *common.Block) error {
-	if !channel.NewWriter(ctx, o.inBlocks).Write(b) {
+	if !channel.NewWriter(ctx, o.inBlocks).Write(&BlockWithConsenters{Block: b}) {
 		return errors.Wrapf(ctx.Err(), "failed to submit block")
+	}
+	return nil
+}
+
+// SubmitBlockWithConsenters allows submitting config-blocks (with crypto) directly for testing other packages.
+// The block header will be replaced with a generated header.
+func (o *Orderer) SubmitBlockWithConsenters(ctx context.Context, newConfig *BlockWithConsenters) error {
+	if !channel.NewWriter(ctx, o.inBlocks).Write(newConfig) {
+		return errors.Wrapf(ctx.Err(), "failed to submit new config")
 	}
 	return nil
 }
@@ -397,20 +464,6 @@ func (o *Orderer) GetBlock(ctx context.Context, blockNum uint64) (*common.Block,
 // CutBlock allows forcing block cut for testing other packages.
 func (o *Orderer) CutBlock(ctx context.Context) bool {
 	return channel.NewWriter(ctx, o.cutBlock).Write(nil)
-}
-
-func addBlockHeader(prevBlock, curBlock *common.Block) {
-	var blockNumber uint64
-	var previousHash []byte
-	if prevBlock != nil {
-		blockNumber = prevBlock.Header.Number + 1
-		previousHash = protoutil.BlockHeaderHash(prevBlock.Header)
-	}
-	curBlock.Header = &common.BlockHeader{
-		Number:       blockNumber,
-		DataHash:     protoutil.ComputeBlockDataHash(curBlock.Data),
-		PreviousHash: previousHash,
-	}
 }
 
 func newBlockCache(size int) *blockCache {

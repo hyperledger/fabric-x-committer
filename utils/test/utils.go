@@ -156,9 +156,16 @@ func runGrpcServerInternal(
 	var wg sync.WaitGroup
 	tb.Cleanup(wg.Wait)
 	tb.Cleanup(server.Stop)
+
+	// The parent error capture the caller stack trace,
+	// which helps track the server origin when debugging test failures.
+	parentErr := errors.New("parent stack context")
 	wg.Go(func() {
 		// We use assert to prevent panicking for cleanup errors.
-		assert.NoError(tb, server.Serve(listener))
+		serveErr := server.Serve(listener)
+		if serveErr != nil && !errors.Is(serveErr, grpc.ErrServerStopped) {
+			assert.NoError(tb, errors.WithSecondaryError(serveErr, parentErr))
+		}
 	})
 
 	_ = context.AfterFunc(ctx, func() {
@@ -342,7 +349,7 @@ func NewSecuredConnectionWithRetry(
 	t.Helper()
 	clientCreds, err := tlsConfig.ClientCredentials()
 	require.NoError(t, err)
-	conn, err := connection.NewConnection(connection.Parameters{
+	conn, err := connection.NewConnection(connection.ClientParameters{
 		Address: endpoint.Address(),
 		Creds:   clientCreds,
 		Retry:   &retry,
@@ -365,7 +372,7 @@ func NewInsecureConnectionWithRetry(
 	t *testing.T, endpoint connection.WithAddress, retry connection.RetryProfile,
 ) *grpc.ClientConn {
 	t.Helper()
-	conn, err := connection.NewConnection(connection.Parameters{
+	conn, err := connection.NewConnection(connection.ClientParameters{
 		Address: endpoint.Address(),
 		Creds:   insecure.NewCredentials(),
 		Retry:   &retry,

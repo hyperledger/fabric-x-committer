@@ -75,6 +75,7 @@ func (s *Client) Deliver(ctx context.Context, p *Parameters) error {
 			ConnectionManager: s.connectionManager,
 			Signer:            s.signer,
 			ChannelID:         s.config.ChannelID,
+			TLSCertHash:       s.connectionManager.GetTLSCertHash(),
 			StreamCreator: func(ctx context.Context, conn grpc.ClientConnInterface) (Stream, error) {
 				client, err := ab.NewAtomicBroadcastClient(conn).Deliver(ctx)
 				if err != nil {

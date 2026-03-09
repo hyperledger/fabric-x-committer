@@ -15,14 +15,16 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v5/pgxpool"
+	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen"
@@ -30,7 +32,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
-	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -337,15 +338,14 @@ func TestMakeViewLimitReached(t *testing.T) {
 		ctx:         t.Context(),
 		config:      &Config{MaxActiveViews: 1},
 		metrics:     newQueryServiceMetrics(),
-		viewLimiter: utils.NewConcurrencyLimiter(1),
+		viewLimiter: semaphore.NewWeighted(1),
 	}
 	params := defaultViewParams(time.Minute)
 
-	require.True(t, vb.viewLimiter.TryAcquire(t.Context()))
+	require.True(t, vb.viewLimiter.TryAcquire(1))
 
-	err := vb.makeView(t.Context(), "view-id", params)
+	err := vb.makeView("view-id", params)
 	require.ErrorIs(t, err, ErrTooManyActiveViews)
-	require.Equal(t, int64(1), vb.viewLimiter.Load())
 }
 
 func TestQueryMetrics(t *testing.T) {

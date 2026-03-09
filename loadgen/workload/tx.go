@@ -39,25 +39,37 @@ type (
 // DefaultGeneratedNamespaceID for now we're only generating transactions for a single namespace.
 const DefaultGeneratedNamespaceID = "0"
 
-// newIndependentTxGenerator creates a new valid TX generator given a transaction profile.
-func newIndependentTxGenerator(
-	rnd *rand.Rand,
-	keys *ByteArrayGenerator,
-	txProfile *TransactionProfile,
-	policyProfile *PolicyProfile,
-	modifiers ...Modifier,
-) *IndependentTxGenerator {
-	txb, err := NewTxBuilderFromPolicy(policyProfile, rnd)
-	utils.Must(err)
-	return &IndependentTxGenerator{
-		TxBuilder:                txb,
-		ReadOnlyKeyGenerator:     multiKeyGenerator(rnd, keys, txProfile.ReadOnlyCount),
-		ReadWriteKeyGenerator:    multiKeyGenerator(rnd, keys, txProfile.ReadWriteCount),
-		BlindWriteKeyGenerator:   multiKeyGenerator(rnd, keys, txProfile.BlindWriteCount),
-		ReadWriteValueGenerator:  valueGenerator(rnd, txProfile.ReadWriteValueSize),
-		BlindWriteValueGenerator: valueGenerator(rnd, txProfile.BlindWriteValueSize),
-		Modifiers:                modifiers,
+// newIndependentTxGenerators creates workers that generates independent transactions and apply the modifiers.
+// Each worker will have a unique instance of the modifier to avoid concurrency issues.
+// The modifiers will be applied in the order they are given.
+// A transaction modifier can modify any of its fields to adjust the workload.
+// For example, a modifier can query the database for the read-set versions to simulate a real transaction.
+// The signature modifier is applied last so all previous modifications will be signed correctly.
+func newIndependentTxGenerators(profile *Profile, extraModifiers ...Generator[Modifier]) []*IndependentTxGenerator {
+	seeders, keyGens := newSeedersAndKeyGens(profile)
+	gens := make([]*IndependentTxGenerator, len(seeders))
+	for i, s := range seeders {
+		modifiers := make([]Modifier, 0, len(extraModifiers)+2)
+		if len(profile.Conflicts.Dependencies) > 0 {
+			modifiers = append(modifiers, newTxDependenciesModifier(s.nextSeed(), profile))
+		}
+		for _, mod := range extraModifiers {
+			modifiers = append(modifiers, mod.Next())
+		}
+		modifiers = append(modifiers, newSignTxModifier(s.nextSeed(), profile))
+		txb, err := NewTxBuilderFromPolicy(&profile.Policy, s.nextSeed())
+		utils.Must(err)
+		gens[i] = &IndependentTxGenerator{
+			TxBuilder:                txb,
+			ReadOnlyKeyGenerator:     multiKeyGenerator(s.nextSeed(), keyGens[i], profile.Transaction.ReadOnlyCount),
+			ReadWriteKeyGenerator:    multiKeyGenerator(s.nextSeed(), keyGens[i], profile.Transaction.ReadWriteCount),
+			BlindWriteKeyGenerator:   multiKeyGenerator(s.nextSeed(), keyGens[i], profile.Transaction.BlindWriteCount),
+			ReadWriteValueGenerator:  valueGenerator(s.nextSeed(), profile.Transaction.ReadWriteValueSize),
+			BlindWriteValueGenerator: valueGenerator(s.nextSeed(), profile.Transaction.BlindWriteValueSize),
+			Modifiers:                modifiers,
+		}
 	}
+	return gens
 }
 
 // Next generate a new TX.

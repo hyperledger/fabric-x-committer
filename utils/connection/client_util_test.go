@@ -138,6 +138,9 @@ func TestGRPCRetryMultiEndpoints(t *testing.T) {
 		&fakeServerConfig.Endpoint,
 		&serverConfig.Endpoint,
 	})
+	require.Contains(t, multiConn.Target(), fakeServerConfig.Endpoint.Address())
+	require.Contains(t, multiConn.Target(), serverConfig.Endpoint.Address())
+
 	multiClient := healthgrpc.NewHealthClient(multiConn)
 	for i := range 100 {
 		t.Logf("Fetch attempt: %d", i)

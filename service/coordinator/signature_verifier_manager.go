@@ -109,7 +109,8 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 
 		g.Go(func() error {
 			// error should never occur unless there is a bug or malicious activity. Hence, it is fine to crash for now.
-			return connection.Sustain(eCtx, func() error {
+			// TODO: initialize retry from config.
+			return connection.Sustain(eCtx, nil, func() error {
 				defer sv.recoverPendingTransactions(txBatchQueue)
 				return sv.sendTransactionsAndForwardStatus(
 					eCtx,

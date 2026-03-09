@@ -15,13 +15,17 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 func TestAddEnvelopeToCache(t *testing.T) {
@@ -120,16 +124,39 @@ func TestBlockCache(t *testing.T) {
 	require.Equal(t, uint64(11), block.Header.Number)
 }
 
+func TestDefaultGenesisBlock(t *testing.T) {
+	t.Parallel()
+	require.True(t, protoutil.IsConfigBlock(defaultConfigBlock))
+}
+
+type blockFetcher struct {
+	expectedBlock uint64
+	verifier      protoutil.BlockVerifierFunc
+}
+
 // TestOrderer tests just the testing functionality.
 // It does not validate the streaming API.
 func TestOrderer(t *testing.T) {
 	t.Parallel()
+	artifactsPath := t.TempDir()
+	genesisBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(artifactsPath, &testcrypto.ConfigBlock{
+		ChannelID:             "test-channel",
+		OrdererEndpoints:      []*types.OrdererEndpoint{{ID: 0, Host: "localhost", Port: 7050}},
+		PeerOrganizationCount: 1,
+	})
+	require.NoError(t, err)
+	f := &blockFetcher{
+		expectedBlock: 0,
+		verifier:      getVerifier(t, genesisBlock),
+	}
+
 	o, err := NewMockOrderer(&OrdererConfig{
 		BlockSize:        3,
 		BlockTimeout:     time.Hour,
 		OutBlockCapacity: 10,
 		PayloadCacheSize: 10,
 		SendGenesisBlock: true,
+		ArtifactsPath:    artifactsPath,
 	})
 	require.NoError(t, err)
 
@@ -139,69 +166,31 @@ func TestOrderer(t *testing.T) {
 		return connection.FilterStreamRPCError(o.Run(ctx))
 	}, o.WaitForReady)
 
-	var expectedBlock uint64
-
 	t.Log("Config block")
-	block, err := o.GetBlock(ctx, expectedBlock)
-	require.NoError(t, err)
-	require.NotNil(t, block)
-	require.Equal(t, expectedBlock, block.Header.Number)
-	require.Equal(t, defaultConfigBlock.Data.Data, block.Data.Data)
-
-	expectedBlock++
+	block, _ := f.requireGetBlock(ctx, t, o, 1)
+	test.RequireProtoEqual(t, genesisBlock, block)
 
 	t.Log("Get wait and fail")
 	waitCtx, waitCancel := context.WithTimeout(ctx, 3*time.Second)
 	t.Cleanup(waitCancel)
-	block, err = o.GetBlock(waitCtx, expectedBlock)
+	block, err = o.GetBlock(waitCtx, f.expectedBlock)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Nil(t, block)
 
 	t.Log("Insert block and get it")
-	sentBlock := makeBlockData(expectedBlock)
+	sentBlock := makeBlockData(f.expectedBlock)
 	require.NoError(t, o.SubmitBlock(ctx, sentBlock))
-
-	block, err = o.GetBlock(ctx, expectedBlock)
-	require.NoError(t, err)
-	require.NotNil(t, block)
-	require.Equal(t, expectedBlock, block.Header.Number)
+	block, _ = f.requireGetBlock(ctx, t, o, 1)
 	require.Equal(t, sentBlock.Data.Data, block.Data.Data)
 
-	expectedBlock++
-
 	t.Log("Submit env and force cut")
-	sentEnv := makeEnvelopePayload(1)
-	require.True(t, o.SubmitEnv(ctx, sentEnv))
-
-	require.True(t, o.CutBlock(ctx))
-
-	block, err = o.GetBlock(ctx, expectedBlock)
-	require.NoError(t, err)
-	require.NotNil(t, block)
-	require.Equal(t, expectedBlock, block.Header.Number)
-	require.Len(t, block.Data.Data, 1)
-	env, err := protoutil.UnmarshalEnvelope(block.Data.Data[0])
-	require.NoError(t, err)
-	require.Equal(t, sentEnv.Payload, env.Payload)
-
-	expectedBlock++
-
-	t.Log("Submit env and force cut")
-	sentEnv1 := makeEnvelopePayload(2)
-	require.True(t, o.SubmitEnv(ctx, sentEnv1))
-
-	require.True(t, o.CutBlock(ctx))
-
-	block, err = o.GetBlock(ctx, expectedBlock)
-	require.NoError(t, err)
-	require.NotNil(t, block)
-	require.Equal(t, expectedBlock, block.Header.Number)
-	require.Len(t, block.Data.Data, 1)
-	env1, err := protoutil.UnmarshalEnvelope(block.Data.Data[0])
-	require.NoError(t, err)
-	require.Equal(t, sentEnv1.Payload, env1.Payload)
-
-	expectedBlock++
+	for i := range 3 {
+		sentEnv := makeEnvelopePayload(i + 1)
+		require.True(t, o.SubmitEnv(ctx, sentEnv))
+		require.True(t, o.CutBlock(ctx))
+		_, e := f.requireGetBlock(ctx, t, o, 1)
+		require.Equal(t, sentEnv.Payload, e[0].Payload)
+	}
 
 	t.Log("Size cut")
 	ctx, cancel = context.WithTimeout(t.Context(), time.Minute)
@@ -210,25 +199,17 @@ func TestOrderer(t *testing.T) {
 		require.True(t, o.SubmitEnv(ctx, makeEnvelopePayload(i+10)))
 	}
 
-	block, err = o.GetBlock(ctx, expectedBlock)
-	require.NoError(t, err)
-	require.NotNil(t, block)
-	require.Equal(t, expectedBlock, block.Header.Number)
-	require.Len(t, block.Data.Data, 3)
-	for i, data := range block.Data.Data {
-		e, uErr := protoutil.UnmarshalEnvelope(data)
-		require.NoError(t, uErr)
+	_, envs := f.requireGetBlock(ctx, t, o, 3)
+	for i, e := range envs {
 		require.Equal(t, makeEnvelopePayload(i+10).Payload, e.Payload)
 	}
-
-	expectedBlock++
 
 	t.Log("Timeout cut")
 	require.True(t, o.SubmitEnv(ctx, makeEnvelopePayload(20)))
 
 	waitCtx, waitCancel = context.WithTimeout(ctx, 3*time.Second)
 	t.Cleanup(waitCancel)
-	block, err = o.GetBlock(waitCtx, expectedBlock)
+	block, err = o.GetBlock(waitCtx, f.expectedBlock)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Nil(t, block)
 
@@ -237,18 +218,85 @@ func TestOrderer(t *testing.T) {
 
 	require.True(t, o.CutBlock(ctx))
 	// We ignore one block.
-	expectedBlock++
+	f.expectedBlock++
 
 	require.True(t, o.SubmitEnv(ctx, makeEnvelopePayload(30)))
 
-	block, err = o.GetBlock(ctx, expectedBlock)
+	_, e := f.requireGetBlock(ctx, t, o, 1)
+	require.Equal(t, makeEnvelopePayload(30).Payload, e[0].Payload)
+
+	t.Log("New config block")
+	newConfigBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(artifactsPath, &testcrypto.ConfigBlock{
+		ChannelID: "test-channel",
+		OrdererEndpoints: []*types.OrdererEndpoint{
+			{ID: 0, Host: "localhost", Port: 7050},
+			{ID: 1, Host: "localhost", Port: 7050},
+			{ID: 2, Host: "localhost", Port: 7050},
+		},
+		PeerOrganizationCount: 1,
+	})
+	require.NoError(t, err)
+	consenters, err := testcrypto.GetConsenterIdentities(artifactsPath)
+	require.NoError(t, err)
+	err = o.SubmitBlockWithConsenters(ctx, &BlockWithConsenters{
+		Block:            newConfigBlock,
+		ConsenterSigners: consenters,
+	})
+	require.NoError(t, err)
+
+	block, _ = f.requireGetBlock(ctx, t, o, 1)
+	test.RequireProtoEqual(t, newConfigBlock, block)
+
+	t.Log("Submit block with new config and verify it is verified with the new config")
+	f.verifier = getVerifier(t, newConfigBlock)
+	require.NoError(t, o.SubmitBlock(ctx, makeBlockData(f.expectedBlock)))
+	block, _ = f.requireGetBlock(ctx, t, o, 1)
+	lastConfigIndex, err := protoutil.GetLastConfigIndexFromBlock(block)
+	require.NoError(t, err)
+	require.Equal(t, newConfigBlock.Header.Number, lastConfigIndex)
+}
+
+func (f *blockFetcher) requireGetBlock(
+	ctx context.Context, t *testing.T, o *Orderer, expectedSize int,
+) (*common.Block, []*common.Envelope) {
+	t.Helper()
+	block, err := o.GetBlock(ctx, f.expectedBlock)
 	require.NoError(t, err)
 	require.NotNil(t, block)
-	require.Equal(t, expectedBlock, block.Header.Number)
-	require.Len(t, block.Data.Data, 1)
-	e, err := protoutil.UnmarshalEnvelope(block.Data.Data[0])
+	require.Equal(t, f.expectedBlock, block.Header.Number)
+	require.Len(t, block.Data.Data, expectedSize)
+	f.expectedBlock++
+
+	if block.Header.Number > 0 {
+		require.NoError(t, f.verifier(block.Header, block.Metadata))
+	}
+
+	ret := make([]*common.Envelope, expectedSize)
+	for i, data := range block.Data.Data {
+		e, uErr := protoutil.UnmarshalEnvelope(data)
+		require.NoError(t, uErr)
+		ret[i] = e
+	}
+	return block, ret
+}
+
+func getVerifier(t *testing.T, block *common.Block) protoutil.BlockVerifierFunc {
+	t.Helper()
+	configBlock, err := ordererconn.LoadConfigBlock(block)
 	require.NoError(t, err)
-	require.Equal(t, makeEnvelopePayload(30).Payload, e.Payload)
+	require.NotNil(t, configBlock)
+
+	policy, exists := configBlock.Bundle.PolicyManager().GetPolicy(policies.BlockValidation)
+	require.True(t, exists)
+
+	oc, ok := configBlock.Bundle.OrdererConfig()
+	require.True(t, ok)
+
+	bftEnabled := configBlock.Bundle.ChannelConfig().Capabilities().ConsensusTypeBFT()
+	require.True(t, bftEnabled)
+	consenters := oc.Consenters()
+
+	return protoutil.BlockSignatureVerifier(bftEnabled, consenters, policy)
 }
 
 // TestOrdererStreamingAPI tests the streaming API and the stream state registry.
@@ -256,7 +304,7 @@ func TestOrdererStreamingAPI(t *testing.T) {
 	t.Parallel()
 	o, err := NewMockOrderer(&OrdererConfig{
 		BlockSize:        1,
-		SendGenesisBlock: false,
+		SendGenesisBlock: true,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, o)
@@ -283,20 +331,20 @@ func TestOrdererStreamingAPI(t *testing.T) {
 	addr2 := ep2.Address()
 
 	t.Log("Open streams - 1 per endpoint")
-	s0 := startStream(t, ep0)
+	s0 := startStream(t, ep0, ab.SeekInfo_BLOCK)
 	RequireStreams(t, o, 1)
 	RequireStreamsWithEndpoints(t, o, 1, addr0)
 
-	s1 := startStream(t, ep1)
+	s1 := startStream(t, ep1, ab.SeekInfo_BLOCK)
 	RequireStreams(t, o, 2)
 	RequireStreamsWithEndpoints(t, o, 1, addr1)
 
-	s2 := startStream(t, ep2)
+	s2 := startStream(t, ep2, ab.SeekInfo_BLOCK)
 	RequireStreams(t, o, 3)
 	RequireStreamsWithEndpoints(t, o, 1, addr2)
 
 	t.Log("Open a second stream for endpoint")
-	s3 := startStream(t, ep2)
+	s3 := startStream(t, ep2, ab.SeekInfo_BLOCK)
 	RequireStreams(t, o, 4)
 	RequireStreamsWithEndpoints(t, o, 2, addr2)
 
@@ -324,20 +372,31 @@ func TestOrdererStreamingAPI(t *testing.T) {
 	o.RegisterPartyState(addr1, &p1)
 	o.RegisterPartyState(addr2, &p2)
 
-	s0 = startStream(t, ep0)
+	s0 = startStream(t, ep0, ab.SeekInfo_BLOCK)
 	streamState0 := RequireStreamsWithEndpoints(t, o, 1, addr0)
 	require.Len(t, streamState0, 1)
 	require.EqualValues(t, 1, streamState0[0].PartyID)
+	require.True(t, streamState0[0].DataBlockStream)
 
-	s1 = startStream(t, ep1)
+	s1 = startStream(t, ep1, ab.SeekInfo_BLOCK)
 	streamState1 := RequireStreamsWithEndpoints(t, o, 1, addr1)
 	require.Len(t, streamState1, 1)
 	require.EqualValues(t, 1, streamState1[0].PartyID)
+	require.True(t, streamState1[0].DataBlockStream)
 
-	s2 = startStream(t, ep2)
+	s2 = startStream(t, ep2, ab.SeekInfo_BLOCK)
 	streamState2 := RequireStreamsWithEndpoints(t, o, 1, addr2)
 	require.Len(t, streamState2, 1)
 	require.EqualValues(t, 2, streamState2[0].PartyID)
+	require.True(t, streamState2[0].DataBlockStream)
+
+	t.Log("Get genesis block")
+	for _, stream := range []*streamTestData{s0, s1, s2} {
+		b, ok := channel.NewReader(t.Context(), stream.output).ReadWithTimeout(10 * time.Second)
+		require.True(t, ok)
+		require.NotNil(t, b)
+		require.EqualValues(t, 0, b.Header.Number)
+	}
 
 	t.Log("Send and receive block (sanity check)")
 	channel.NewWriter(t.Context(), s0.input).Write(&common.Envelope{Payload: []byte{1}})
@@ -345,14 +404,16 @@ func TestOrdererStreamingAPI(t *testing.T) {
 		b, ok := channel.NewReader(t.Context(), stream.output).ReadWithTimeout(10 * time.Second)
 		require.True(t, ok)
 		require.NotNil(t, b)
+		require.EqualValues(t, 1, b.Header.Number)
 	}
 
 	t.Log("Hold party 1")
-	p1.HoldFromBlock.Store(1)
+	p1.HoldFromBlock.Store(2)
 	channel.NewWriter(t.Context(), s1.input).Write(&common.Envelope{Payload: []byte{2}})
 	b, ok := channel.NewReader(t.Context(), s2.output).ReadWithTimeout(10 * time.Second)
 	require.True(t, ok)
 	require.NotNil(t, b)
+	require.EqualValues(t, 2, b.Header.Number)
 	select {
 	case <-t.Context().Done():
 		t.Fatal("Context ended")
@@ -370,17 +431,66 @@ func TestOrdererStreamingAPI(t *testing.T) {
 		b, ok = channel.NewReader(t.Context(), stream.output).ReadWithTimeout(10 * time.Second)
 		require.True(t, ok)
 		require.NotNil(t, b)
+		require.EqualValues(t, 2, b.Header.Number)
 	}
 
-	p2.HoldFromBlock.Store(2)
+	p2.HoldFromBlock.Store(3)
 	channel.NewWriter(t.Context(), s2.input).Write(&common.Envelope{Payload: []byte{3}})
 	for _, stream := range []*streamTestData{s0, s1} {
 		b, ok = channel.NewReader(t.Context(), stream.output).ReadWithTimeout(10 * time.Second)
 		require.True(t, ok)
 		require.NotNil(t, b)
+		require.EqualValues(t, 3, b.Header.Number)
 	}
 	_, ok = channel.NewReader(t.Context(), s2.output).ReadWithTimeout(10 * time.Second)
 	require.False(t, ok)
+
+	t.Log("Replace party 2 block and release")
+	fakeBlock := makeBlockData(10)
+	fakeBlock.Header = &common.BlockHeader{Number: 195, DataHash: []byte{1, 2, 3}}
+	p2.ReplaceBlock.Store(3, fakeBlock)
+	p2.HoldFromBlock.Store(4)
+	b, ok = channel.NewReader(t.Context(), s2.output).ReadWithTimeout(10 * time.Second)
+	require.True(t, ok)
+	require.NotNil(t, b)
+	test.RequireProtoEqual(t, fakeBlock, b)
+
+	t.Log("Headers only stream")
+	s2.cancel()
+	RequireStreamsWithEndpoints(t, o, 0, addr2)
+
+	s2 = startStream(t, ep2, ab.SeekInfo_HEADER_WITH_SIG)
+	streamState2 = RequireStreamsWithEndpoints(t, o, 1, addr2)
+	require.Len(t, streamState2, 1)
+	require.EqualValues(t, 2, streamState2[0].PartyID)
+	require.False(t, streamState2[0].DataBlockStream)
+
+	t.Log("Config block should arrive with the data")
+	b, ok = channel.NewReader(t.Context(), s2.output).ReadWithTimeout(10 * time.Second)
+	require.True(t, ok)
+	require.NotNil(t, b)
+	require.NotNil(t, b.Header)
+	require.EqualValues(t, 0, b.Header.Number)
+	require.NotNil(t, b.Data)
+	require.NotEmpty(t, b.Data.Data)
+
+	t.Log("Data block should arrive with only header")
+	for i := range 2 {
+		b, ok = channel.NewReader(t.Context(), s2.output).ReadWithTimeout(10 * time.Second)
+		require.True(t, ok)
+		require.NotNil(t, b)
+		require.NotNil(t, b.Header)
+		require.EqualValues(t, i+1, b.Header.Number)
+		require.Nil(t, b.Data)
+	}
+
+	t.Log("Receive the fake block with only header and verify the correct header")
+	b, ok = channel.NewReader(t.Context(), s2.output).ReadWithTimeout(10 * time.Second)
+	require.True(t, ok)
+	require.NotNil(t, b)
+	require.Nil(t, b.Data)
+	require.NotNil(t, b.Header)
+	test.RequireProtoEqual(t, fakeBlock.Header, b.Header)
 }
 
 type streamTestData struct {
@@ -390,7 +500,7 @@ type streamTestData struct {
 }
 
 //nolint:gocognit // cognitive complexity 18 is questionable.
-func startStream(t *testing.T, endpoint connection.Endpoint) *streamTestData {
+func startStream(t *testing.T, endpoint connection.Endpoint, contentType ab.SeekInfo_SeekContentType) *streamTestData {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
@@ -402,13 +512,10 @@ func startStream(t *testing.T, endpoint connection.Endpoint) *streamTestData {
 	require.NoError(t, err)
 	seekEnv, seekErr := protoutil.CreateSignedEnvelope(
 		common.HeaderType_DELIVER_SEEK_INFO, "", nil, &ab.SeekInfo{
-			Start: &ab.SeekPosition{Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{
-				Number: 0,
-			}}},
-			Stop: &ab.SeekPosition{Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{
-				Number: 1_000,
-			}}},
-			Behavior: ab.SeekInfo_BLOCK_UNTIL_READY,
+			Start:       seekPosition(0),
+			Stop:        seekPosition(1_000),
+			Behavior:    ab.SeekInfo_BLOCK_UNTIL_READY,
+			ContentType: contentType,
 		}, 0, 0,
 	)
 	require.NoError(t, seekErr)
@@ -463,6 +570,12 @@ func startStream(t *testing.T, endpoint connection.Endpoint) *streamTestData {
 	}
 }
 
+func seekPosition(i uint64) *ab.SeekPosition {
+	return &ab.SeekPosition{Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{
+		Number: i,
+	}}}
+}
+
 func releaseCacheAfterTimeout(
 	parentCtx context.Context, t *testing.T, cache *blockCache, timeout time.Duration,
 ) context.Context {
@@ -476,7 +589,7 @@ func releaseCacheAfterTimeout(
 
 func makeEnv(i int) *common.Envelope {
 	return &common.Envelope{
-		Payload:   []byte(fmt.Sprintf("%d", i)),
+		Payload:   fmt.Appendf(nil, "%d", i),
 		Signature: []byte("sig"),
 	}
 }
@@ -492,13 +605,13 @@ func makeBlockNumber(i int) *common.Block {
 func makeBlockData(i uint64) *common.Block {
 	return &common.Block{
 		Data: &common.BlockData{
-			Data: [][]byte{[]byte(fmt.Sprintf("%d", i))},
+			Data: [][]byte{protoutil.MarshalOrPanic(makeEnvelopePayload(int(i)))}, //nolint:gosec // int -> uint64.
 		},
 	}
 }
 
 func makeEnvelopePayload(i int) *common.Envelope {
 	return &common.Envelope{
-		Payload: []byte(fmt.Sprintf("%d", i)),
+		Payload: fmt.Appendf(nil, "%d", i),
 	}
 }

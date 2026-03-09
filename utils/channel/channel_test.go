@@ -43,13 +43,11 @@ func TestChannel(t *testing.T) {
 		require.Equal(t, d, val)
 
 		wg := sync.WaitGroup{}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			val, ok = c.Read()
 			assert.False(t, ok)
 			assert.Nil(t, val)
-		}()
+		})
 
 		// Make sure we are waiting on the channel.
 		time.Sleep(time.Second)
@@ -68,11 +66,9 @@ func TestChannel(t *testing.T) {
 		require.True(t, c.Write(d))
 
 		wg := sync.WaitGroup{}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			assert.False(t, c.Write(d))
-		}()
+		})
 
 		// Make sure we are waiting on the channel.
 		time.Sleep(time.Second)
@@ -101,11 +97,9 @@ func TestChannel(t *testing.T) {
 		require.Equal(t, d, val)
 
 		wg := sync.WaitGroup{}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			assert.False(t, c.Write(d))
-		}()
+		})
 
 		// Make sure we are waiting on the channel.
 		time.Sleep(time.Second)

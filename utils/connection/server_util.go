@@ -250,13 +250,15 @@ func (c *ServerConfig) createGrpcServer(creds credentials.TransportCredentials) 
 	opts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxMsgSize), grpc.MaxSendMsgSize(maxMsgSize)}
 	opts = append(opts, grpc.Creds(creds))
 
-	if err := c.RateLimit.Validate(); err != nil {
-		return nil, errors.Wrap(err, "invalid rate limit configuration")
-	}
 	if limiter := NewRateLimiter(&c.RateLimit); limiter != nil {
 		opts = append(opts, grpc.UnaryInterceptor(RateLimitInterceptor(limiter)))
 		logger.Infof("Rate limiting enabled: %d requests/second, burst: %d",
 			c.RateLimit.RequestsPerSecond, c.RateLimit.Burst)
+	}
+
+	if sem := NewConcurrencyLimit(c.MaxConcurrentStreams); sem != nil {
+		opts = append(opts, grpc.StreamInterceptor(StreamConcurrencyInterceptor(sem)))
+		logger.Infof("Stream concurrency limit enabled: %d max concurrent streams", c.MaxConcurrentStreams)
 	}
 
 	if c.KeepAlive != nil && c.KeepAlive.Params != nil {

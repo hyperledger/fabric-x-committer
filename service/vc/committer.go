@@ -9,6 +9,7 @@ package vc
 import (
 	"context"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -180,9 +181,7 @@ func prepareStatusForCommit(vTx *validatedTransactions) *committerpb.TxStatusBat
 			txIDs[txID] = committerpb.Status_COMMITTED
 		}
 	}
-	for txID, status := range vTx.invalidTxStatus {
-		txIDs[txID] = status
-	}
+	maps.Copy(txIDs, vTx.invalidTxStatus)
 
 	statuses := make([]*committerpb.TxStatus, 0, len(txIDs))
 	for txID, status := range txIDs {
