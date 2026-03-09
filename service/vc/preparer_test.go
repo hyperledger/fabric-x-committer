@@ -501,7 +501,7 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 			},
 			{
 				Ref:                   committerpb.NewTxRef("tx3", 6, 2),
-				PrelimInvalidTxStatus: committerpb.Status_MALFORMED_NO_WRITES),
+				PrelimInvalidTxStatus: new(committerpb.Status_MALFORMED_NO_WRITES),
 			},
 			{
 				Ref:                   committerpb.NewTxRef("tx4", 5, 2),
