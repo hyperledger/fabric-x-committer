@@ -25,11 +25,11 @@ type QueryGenerator struct {
 
 // newIndependentQueryGenerators creates workers that generates independent queries.
 func newIndependentQueryGenerators(profile *Profile) []*QueryGenerator {
-	seeders := newSeedersWithKeys(profile)
+	seeders, keyGens := newSeedersAndKeyGens(profile)
 	gens := make([]*QueryGenerator, len(seeders))
 	for i, s := range seeders {
 		gens[i] = &QueryGenerator{
-			ValidKeyGenerator:   s.keyGen,
+			ValidKeyGenerator:   keyGens[i],
 			InvalidKeyGenerator: &ByteArrayGenerator{Size: profile.Key.Size, Source: s.nextSeed()},
 			Size:                profile.Query.QuerySize.MakeIntGenerator(s.nextSeed()),
 			InvalidPortion:      profile.Query.MinInvalidKeysPortion.MakeGenerator(s.nextSeed()),

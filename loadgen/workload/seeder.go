@@ -8,30 +8,25 @@ package workload
 
 import "math/rand"
 
-type (
-	seeder struct {
-		seed *rand.Rand
-	}
-	seederWithKeys struct {
-		seeder
-		keyGen *ByteArrayGenerator
-	}
-)
+type seeder struct {
+	seed *rand.Rand
+}
 
-func newSeedersWithKeys(profile *Profile) []seederWithKeys {
+// newSeedersAndKeyGens creates a list of seeder and key generators (1 for each worker).
+// Each worker has a unique seed to generate keys in addition the seed for the other content.
+// This allows reproducing the generated keys regardless of the other generated content.
+// It is useful when generating transactions, and later generating queries for the same keys.
+func newSeedersAndKeyGens(profile *Profile) ([]seeder, []*ByteArrayGenerator) {
 	s := seeder{seed: rand.New(rand.NewSource(profile.Seed))}
-	seeders := make([]seederWithKeys, profile.Workers)
-	for i := range seeders {
-		// Each worker has a unique seed to generate keys in addition the seed for the other content.
-		// This allows reproducing the generated keys regardless of the other generated content.
-		// It is useful when generating transactions, and later generating queries for the same keys.
-		workerSg := seeder{seed: s.nextSeed()}
-		seeders[i] = seederWithKeys{
-			seeder: workerSg,
-			keyGen: &ByteArrayGenerator{Size: profile.Key.Size, Source: workerSg.nextSeed()},
-		}
+	keyGens := make([]*ByteArrayGenerator, profile.Workers)
+	for i := range profile.Workers {
+		keyGens[i] = &ByteArrayGenerator{Size: profile.Key.Size, Source: s.nextSeed()}
 	}
-	return seeders
+	seeders := make([]seeder, profile.Workers)
+	for i := range profile.Workers {
+		seeders[i].seed = s.nextSeed()
+	}
+	return seeders, keyGens
 }
 
 func (w *seeder) nextSeed() *rand.Rand {

@@ -46,7 +46,7 @@ const DefaultGeneratedNamespaceID = "0"
 // For example, a modifier can query the database for the read-set versions to simulate a real transaction.
 // The signature modifier is applied last so all previous modifications will be signed correctly.
 func newIndependentTxGenerators(profile *Profile, extraModifiers ...Generator[Modifier]) []*IndependentTxGenerator {
-	seeders := newSeedersWithKeys(profile)
+	seeders, keyGens := newSeedersAndKeyGens(profile)
 	gens := make([]*IndependentTxGenerator, len(seeders))
 	for i, s := range seeders {
 		modifiers := make([]Modifier, 0, len(extraModifiers)+2)
@@ -61,9 +61,9 @@ func newIndependentTxGenerators(profile *Profile, extraModifiers ...Generator[Mo
 		utils.Must(err)
 		gens[i] = &IndependentTxGenerator{
 			TxBuilder:                txb,
-			ReadOnlyKeyGenerator:     multiKeyGenerator(s.nextSeed(), s.keyGen, profile.Transaction.ReadOnlyCount),
-			ReadWriteKeyGenerator:    multiKeyGenerator(s.nextSeed(), s.keyGen, profile.Transaction.ReadWriteCount),
-			BlindWriteKeyGenerator:   multiKeyGenerator(s.nextSeed(), s.keyGen, profile.Transaction.BlindWriteCount),
+			ReadOnlyKeyGenerator:     multiKeyGenerator(s.nextSeed(), keyGens[i], profile.Transaction.ReadOnlyCount),
+			ReadWriteKeyGenerator:    multiKeyGenerator(s.nextSeed(), keyGens[i], profile.Transaction.ReadWriteCount),
+			BlindWriteKeyGenerator:   multiKeyGenerator(s.nextSeed(), keyGens[i], profile.Transaction.BlindWriteCount),
 			ReadWriteValueGenerator:  valueGenerator(s.nextSeed(), profile.Transaction.ReadWriteValueSize),
 			BlindWriteValueGenerator: valueGenerator(s.nextSeed(), profile.Transaction.BlindWriteValueSize),
 			Modifiers:                modifiers,
