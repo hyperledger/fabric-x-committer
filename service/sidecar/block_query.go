@@ -13,7 +13,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	"github.com/hyperledger/fabric-x-common/common/ledger/blkstorage"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
@@ -26,16 +25,16 @@ var ErrEmptyTxID = errors.New("tx_id must not be empty")
 // read-only queries directly to the underlying block store.
 type blockQuery struct {
 	committerpb.UnimplementedBlockQueryServiceServer
-	store *blkstorage.BlockStore
+	blockStore *blockStore
 }
 
-func newBlockQuery(store *blkstorage.BlockStore) *blockQuery {
-	return &blockQuery{store: store}
+func newBlockQuery(bs *blockStore) *blockQuery {
+	return &blockQuery{blockStore: bs}
 }
 
 // GetBlockchainInfo returns the current blockchain height and hash metadata.
 func (s *blockQuery) GetBlockchainInfo(_ context.Context, _ *emptypb.Empty) (*common.BlockchainInfo, error) {
-	info, err := s.store.GetBlockchainInfo()
+	info, err := s.blockStore.store.GetBlockchainInfo()
 	if err != nil {
 		logger.Errorf("GetBlockchainInfo failed: %v", err)
 		return nil, grpcerror.WrapInternalError(err)
@@ -45,7 +44,7 @@ func (s *blockQuery) GetBlockchainInfo(_ context.Context, _ *emptypb.Empty) (*co
 
 // GetBlockByNumber retrieves a block by its sequence number.
 func (s *blockQuery) GetBlockByNumber(_ context.Context, req *committerpb.BlockNumber) (*common.Block, error) {
-	block, err := s.store.RetrieveBlockByNumber(req.GetNumber())
+	block, err := s.blockStore.store.RetrieveBlockByNumber(req.GetNumber())
 	if err != nil {
 		return nil, wrapQueryError(err)
 	}
@@ -57,7 +56,7 @@ func (s *blockQuery) GetBlockByTxID(_ context.Context, req *committerpb.TxID) (*
 	if req.GetTxId() == "" {
 		return nil, grpcerror.WrapInvalidArgument(ErrEmptyTxID)
 	}
-	block, err := s.store.RetrieveBlockByTxID(req.GetTxId())
+	block, err := s.blockStore.store.RetrieveBlockByTxID(req.GetTxId())
 	if err != nil {
 		return nil, wrapQueryError(err)
 	}
@@ -69,7 +68,7 @@ func (s *blockQuery) GetTxByID(_ context.Context, req *committerpb.TxID) (*commo
 	if req.GetTxId() == "" {
 		return nil, grpcerror.WrapInvalidArgument(ErrEmptyTxID)
 	}
-	envelope, err := s.store.RetrieveTxByID(req.GetTxId())
+	envelope, err := s.blockStore.store.RetrieveTxByID(req.GetTxId())
 	if err != nil {
 		return nil, wrapQueryError(err)
 	}

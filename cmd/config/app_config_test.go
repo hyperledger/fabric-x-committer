@@ -63,7 +63,10 @@ func TestReadConfigSidecar(t *testing.T) {
 		name:           "default",
 		configFilePath: emptyConfig(t),
 		expectedConfig: &sidecar.Config{
-			Server:     newServerConfig("localhost", 4001),
+			Server: &connection.ServerConfig{
+				Endpoint:             *newEndpoint("localhost", 4001),
+				MaxConcurrentStreams: 10,
+			},
 			Monitoring: newServerConfig("localhost", 2114),
 			Orderer: ordererconn.Config{
 				ChannelID: "mychannel",
@@ -98,6 +101,7 @@ func TestReadConfigSidecar(t *testing.T) {
 						PermitWithoutStream: false,
 					},
 				},
+				MaxConcurrentStreams: 10,
 			},
 			Monitoring: newServerConfigWithDefaultTLS(2114),
 			Orderer: ordererconn.Config{

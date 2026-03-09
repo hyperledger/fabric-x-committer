@@ -15,7 +15,6 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 )
@@ -29,9 +28,8 @@ type (
 	// Deadlock is prevented by buffered channels and single-threaded processing in run().
 	notifier struct {
 		committerpb.UnimplementedNotifierServer
-		bufferSize    int
-		maxTimeout    time.Duration
-		streamLimiter *utils.ConcurrencyLimiter
+		bufferSize int
+		maxTimeout time.Duration
 		// requestQueue receives requests from users.
 		requestQueue chan *notificationRequest
 	}
@@ -50,19 +48,15 @@ type (
 	subscriptionMap map[string]map[*notificationRequest]any
 )
 
-// ErrTooManyNotificationStreams indicates the notifier reached the configured concurrent stream limit.
-var ErrTooManyNotificationStreams = errors.New("maximum concurrent notification streams limit reached")
-
 func newNotifier(bufferSize int, conf *NotificationServiceConfig) *notifier {
 	maxTimeout := conf.MaxTimeout
 	if maxTimeout <= 0 {
 		maxTimeout = defaultNotificationMaxTimeout
 	}
 	return &notifier{
-		bufferSize:    bufferSize,
-		maxTimeout:    maxTimeout,
-		streamLimiter: utils.NewConcurrencyLimiter(conf.MaxConcurrentStreams),
-		requestQueue:  make(chan *notificationRequest, bufferSize),
+		bufferSize:   bufferSize,
+		maxTimeout:   maxTimeout,
+		requestQueue: make(chan *notificationRequest, bufferSize),
 	}
 }
 
@@ -92,11 +86,6 @@ func (n *notifier) run(ctx context.Context, statusQueue chan []*committerpb.TxSt
 
 // OpenNotificationStream implements the [protonotify.NotifierServer] API.
 func (n *notifier) OpenNotificationStream(stream committerpb.Notifier_OpenNotificationStreamServer) error {
-	if !n.streamLimiter.TryAcquire(stream.Context()) {
-		return grpcerror.WrapResourceExhaustedOrCancelled(stream.Context(), ErrTooManyNotificationStreams)
-	}
-	defer n.streamLimiter.Release()
-
 	g, gCtx := errgroup.WithContext(stream.Context())
 	requestQueue := channel.NewWriter(gCtx, n.requestQueue)
 	streamEventQueue := channel.Make[*committerpb.NotificationResponse](gCtx, n.bufferSize)

@@ -20,7 +20,7 @@ import (
 
 func BenchmarkMapBlock(b *testing.B) {
 	flogging.Init(flogging.Config{LogSpec: "fatal"})
-	txs := workload.GenerateTransactions(b, workload.DefaultProfile(8), b.N)
+	txs := workload.GenerateTransactions(b, nil, b.N)
 	block := workload.MapToOrdererBlock(1, txs)
 
 	var txIDToHeight utils.SyncMap[string, servicepb.Height]

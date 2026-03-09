@@ -37,7 +37,7 @@ func durationDecoder(dataType, targetType reflect.Type, rawData any) (result any
 
 func endpointDecoder(dataType, targetType reflect.Type, rawData any) (result any, err error) {
 	stringData, ok := viperutil.GetStringData(dataType, rawData)
-	if !ok || targetType != reflect.TypeOf(connection.Endpoint{}) {
+	if !ok || targetType != reflect.TypeFor[connection.Endpoint]() {
 		return rawData, nil
 	}
 	endpoint, err := connection.NewEndpoint(stringData)
@@ -46,7 +46,7 @@ func endpointDecoder(dataType, targetType reflect.Type, rawData any) (result any
 
 func serverDecoder(dataType, targetType reflect.Type, rawData any) (result any, err error) {
 	stringData, ok := viperutil.GetStringData(dataType, rawData)
-	if !ok || targetType != reflect.TypeOf(connection.ServerConfig{}) {
+	if !ok || targetType != reflect.TypeFor[connection.ServerConfig]() {
 		return rawData, nil
 	}
 	endpoint, err := connection.NewEndpoint(stringData)

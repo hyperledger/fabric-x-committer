@@ -89,7 +89,7 @@ jobs:
             ghcr.io/${{ env.GHCR_PREFIX }}/fabric-x-committer:latest
           build-args: |
             BIN=committer
-            ARCHBIN_PATH=archbin
+            SRC_BIN_PATH=release
             PORTS=4001 2114 9001 2119 5001 2115 6001 2116 7001 2117
             VERSION=${{ env.VERSION }}
             CREATED=${{ env.CREATED }}
@@ -111,7 +111,7 @@ jobs:
             ghcr.io/${{ env.GHCR_PREFIX }}/fabric-x-loadgen:latest
           build-args: |
             BIN=loadgen
-            ARCHBIN_PATH=archbin
+            SRC_BIN_PATH=release
             PORTS=8001 2118
             VERSION=${{ env.VERSION }}
             CREATED=${{ env.CREATED }}
@@ -132,7 +132,7 @@ jobs:
             ghcr.io/${{ env.GHCR_PREFIX }}/fabric-x-committer-test-node:${{ env.VERSION }}
             ghcr.io/${{ env.GHCR_PREFIX }}/fabric-x-committer-test-node:latest
           build-args: |
-            ARCHBIN_PATH=archbin
+            SRC_BIN_PATH=release
             VERSION=${{ env.VERSION }}
             CREATED=${{ env.CREATED }}
             REVISION=${{ env.REVISION }}

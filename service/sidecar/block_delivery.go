@@ -26,7 +26,6 @@ import (
 // blockDelivery implements peer.DeliverServer by streaming blocks from a blockStore.
 type blockDelivery struct {
 	blockStore *blockStore
-	channelID  string
 }
 
 var blockReadyRetryProfile = connection.RetryProfile{
@@ -35,8 +34,8 @@ var blockReadyRetryProfile = connection.RetryProfile{
 	MaxInterval:     3 * time.Second,
 }
 
-func newBlockDelivery(bs *blockStore, channelID string) *blockDelivery {
-	return &blockDelivery{blockStore: bs, channelID: channelID}
+func newBlockDelivery(bs *blockStore) *blockDelivery {
+	return &blockDelivery{blockStore: bs}
 }
 
 // Deliver delivers the requested blocks.
@@ -85,7 +84,7 @@ func (*blockDelivery) DeliverWithPrivateData(peer.Deliver_DeliverWithPrivateData
 	return grpcerror.WrapUnimplemented(errors.New("method is deprecated"))
 }
 
-func (s *blockDelivery) deliverBlocks(
+func (s *blockDelivery) deliverBlocks( //nolint:gocognit
 	srv peer.Deliver_DeliverServer,
 	envelope *common.Envelope,
 ) (common.Status, error) {
@@ -94,7 +93,7 @@ func (s *blockDelivery) deliverBlocks(
 		return common.Status_BAD_REQUEST, errors.Wrap(err, "error parsing envelope")
 	}
 
-	if chdr.ChannelId != s.channelID {
+	if chdr.ChannelId != s.blockStore.channelID {
 		// Note, we log this at DEBUG because SDKs will poll waiting for channels to be created
 		// So we would expect our log to be somewhat flooded with these
 		return common.Status_NOT_FOUND, errors.New("channel not found")
@@ -127,7 +126,7 @@ func (s *blockDelivery) deliverBlocks(
 	}
 
 	for ctx.Err() == nil {
-		block, status := cursor.Next()
+		block, status := cursor.Next(ctx)
 		if status != common.Status_SUCCESS {
 			return status, nil
 		}
