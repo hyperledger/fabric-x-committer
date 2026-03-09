@@ -5,21 +5,35 @@
 ---
 # Configuration for the server
 server:
-  # The server's endpoint configuration
+  # The gRPC endpoint where the validator-committer service listens for validation
+  # and commit requests from the coordinator via bidirectional streaming.
+  # Format: host:port or :port (binds to all interfaces).
   endpoint: :6001
   tls:
-    # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
+    # TLS mode for server connections: 'none' (no TLS), 'tls' (server auth only),
+    # or 'mtls' (mutual TLS with client cert verification).
     mode: mtls
+    # Path to the server's TLS certificate file (public key).
     cert-path: /server-certs/public-key.pem
+    # Path to the server's TLS private key file.
     key-path: /server-certs/private-key.pem
+    # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
       - /server-certs/ca-certificate.pem
+# Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
 monitoring:
+  # The endpoint where Prometheus metrics and pprof profiling are exposed.
+  # Format: host:port or :port (binds to all interfaces).
   endpoint: :2116
   tls:
+    # TLS mode for monitoring endpoint: 'none' (no TLS), 'tls' (server auth only),
+    # or 'mtls' (mutual TLS with client cert verification).
     mode: mtls
+    # Path to the server's TLS certificate file (public key).
     cert-path: /server-certs/public-key.pem
+    # Path to the server's TLS private key file.
     key-path: /server-certs/private-key.pem
+    # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
       - /server-certs/ca-certificate.pem
   # Rate limiting configuration for unary gRPC endpoints.
@@ -33,20 +47,34 @@ monitoring:
     #   - Must be greater than 0
     #   - Must be less than or equal to requests-per-second
     burst: 0
+# Database connection configuration
 database:
+  # List of database endpoints to connect to. For YugabyteDB clusters, list all nodes.
+  # Format: host:port for each endpoint.
   endpoints:
     - db:5433
-  username: "yugabyte"  # The username for the database
-  # TODO: pass password via environment variable
-  password: "yugabyte"  # The password for the database
-  database: "yugabyte"  # The database name
+  # Database username for authentication.
+  username: "yugabyte"
+  # Database password for authentication.
+  # TODO: pass password via environment variable for better security.
+  password: "yugabyte"
+  # Database name to connect to.
+  database: "yugabyte"
   tls:
-    # Database TLS configuration being built based on the tls mode chosen: none, tls.
+    # TLS mode for database connections: 'none' (no TLS) or 'tls' (server auth with CA verification).
+    # Note: Database connections do not support mutual TLS (mtls).
     mode: tls
+    # Path to the CA certificate file for verifying the database server's certificate.
     ca-cert-path: /server-certs/ca-certificate.pem
-  max-connections: 10  # The maximum size of the connection pool
-  min-connections: 5  # The minimum size of the connection pool.
-  load-balance: false  # Should be enabled for DB cluster.
+  # Maximum size of the database connection pool. Limits concurrent database operations.
+  # Should be tuned based on database capacity and expected transaction load.
+  max-connections: 10
+  # Minimum size of the database connection pool. Keeps connections warm for faster operations.
+  # Should be less than or equal to max-connections.
+  min-connections: 5
+  # Enable load balancing across multiple database endpoints. Should be enabled for
+  # YugabyteDB clusters to distribute operations across nodes. Set to false for single-node deployments.
+  load-balance: false
 
   # Number of tablets to pre-split each table into at creation time (YugabyteDB only).
   # Pre-splitting distributes a table's data across multiple tablet servers from the start,
@@ -98,14 +126,36 @@ database:
 
 # Resource limit configurations
 resource-limits:
-  max-workers-for-preparer: 1  # Maximum number of workers for the preparer
-  max-workers-for-validator: 1  # Maximum number of workers for the validator
-  max-workers-for-committer: 20  # Maximum number of workers for the committer
+  # Number of goroutines that prepare transactions for validation by extracting
+  # read/write sets and organizing data structures. Preparation is CPU-bound.
+  # Higher values enable parallel preparation but increase CPU and memory usage.
+  max-workers-for-preparer: 1
+  # Number of goroutines that perform MVCC validation checks against the current state.
+  # Validation is database-bound. Higher values enable parallel validation but increase
+  # database connection usage and contention.
+  max-workers-for-validator: 1
+  # Number of goroutines that commit validated transactions to the database using
+  # stored procedures. Committing is database-bound. Higher values improve commit
+  # throughput but increase database load and connection usage. Should be tuned
+  # based on database capacity.
+  max-workers-for-committer: 20
+  # Minimum number of transactions that must accumulate before processing a batch
+  # through the validation pipeline. Larger batches improve database efficiency
+  # through bulk operations but increase latency. Set to 1 for lowest latency.
   min-transaction-batch-size: 1
+  # Maximum time to wait for a batch to reach min-transaction-batch-size before
+  # processing it anyway. Ensures timely processing under low transaction rates.
+  # Balances latency vs. batching efficiency.
   timeout-for-min-transaction-batch-size: 2s
 
+# Logging configuration
 logging:
+  # Log level specification. Can be a single level (e.g., "info", "debug") or
+  # module-specific levels (e.g., "info,vc=debug").
+  # Valid levels: debug, info, warning, error, panic, fatal.
   logSpec: "info"
+  # Log message format template. Supports color codes, timestamps, module names,
+  # function names, and log levels. See fabric-lib-go/common/flogging for details.
   format: >-
     %{color}%{time:2006-01-02 15:04:05.000 MST} [%{module}] %{shortfunc}
     -> %{level:.4s}%{color:reset} %{message}
