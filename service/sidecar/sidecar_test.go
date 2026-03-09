@@ -149,8 +149,18 @@ func newSidecarTestEnvWithTLS(
 	if conf.SubmitGenesisBlock {
 		// We are not setting initOrdererOrganizations to nil because we need it to keep the first root CA static.
 		// The config block will add new root CAs which we append to the static one.
-		// Because we start the mock-orderer with the initial root CA's server creds, we need to keep it as it is.
-		// initOrdererOrganizations = nil
+		// Because we start the mock-orderer with the initial root CA's server creds, we need to keep it as it is,
+		// and replace the endpoints only with fake one.
+		// The necessary endpoints will be retrieved from the config block.
+		//initOrdererOrganizations = nil
+		initOrdererOrganizations["org"].Endpoints = []*commontypes.OrdererEndpoint{
+			{
+				Host: "dummy_host",
+				Port: 1111,
+				ID:   0,
+				API:  []string{ordererconn.Broadcast, ordererconn.Deliver},
+			},
+		}
 		genesisBlockFilePath = filepath.Join(t.TempDir(), "config.block")
 		require.NoError(t, configtxgen.WriteOutputBlock(configBlock, genesisBlockFilePath))
 	}
