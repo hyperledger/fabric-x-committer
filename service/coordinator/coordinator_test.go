@@ -917,11 +917,12 @@ func TestChunkSizeSentForDepGraph(t *testing.T) {
 
 	// Wait for all transactions to be committed before checking the metric
 	// This handles the race condition where restarted verifier may not have processed all txs yet
-	require.Eventually(t, func() bool {
-		return test.GetIntMetricValue(t, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		actual := test.GetIntMetricValue(t, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
 			committerpb.Status_COMMITTED.String(),
-		)) == txPerBlock
-	}, 4*time.Second, 100*time.Millisecond, "expected %d committed transactions", txPerBlock)
+		))
+		assert.Equal(c, txPerBlock, actual, "committed transactions count")
+	}, 4*time.Second, 100*time.Millisecond)
 }
 
 func TestWaitingTxsCount(t *testing.T) {
