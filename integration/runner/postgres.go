@@ -39,7 +39,7 @@ var (
 
 	// primaryReplicationCommands configures the primary for streaming replication:
 	// create a dedicated replication role, allow replication in pg_hba.conf, and reload.
-	// $PGDATA is /var/lib/postgresql/data in the official image.
+	// $PGDATA varies by PostgreSQL version (e.g. /var/lib/postgresql/18/docker in PG18).
 	primaryReplicationCommands = [][]string{
 		{"psql", "-U", "yugabyte", "-c", "CREATE ROLE repl_user WITH REPLICATION LOGIN PASSWORD 'repl_password';"},
 		{"sh", "-c", `echo "host replication repl_user all md5" >> "$PGDATA/pg_hba.conf"`},

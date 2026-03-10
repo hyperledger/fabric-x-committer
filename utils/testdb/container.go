@@ -33,7 +33,7 @@ const (
 	defaultYugabyteImage = "yugabytedb/yugabyte:2025.2.0.1-b1"
 	// DefaultPostgresImage is the official PostgreSQL image used across unit and integration tests.
 	// Must match the version in scripts/get-and-start-postgres.sh.
-	DefaultPostgresImage            = "postgres:16.9-alpine3.21"
+	DefaultPostgresImage            = "postgres:18.3-alpine3.23"
 	defaultDBDeploymentTemplateName = test.DockerNamesPrefix + "_%s_unit_tests"
 
 	// container's Memory and CPU management.

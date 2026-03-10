@@ -50,11 +50,14 @@ const (
 
 // enforcePostgresSSLAndReloadConfigScript enforces SSL-only client connections to a PostgreSQL
 // instance by updating pg_hba.conf and reloads its server configuration without restarting the instance.
+// Uses $PGDATA so it works across PostgreSQL versions (16 uses /var/lib/postgresql/data,
+// 18+ uses /var/lib/postgresql/<major>/docker).
 var enforcePostgresSSLAndReloadConfigScript = []string{
 	"sh", "-c",
-	`sed -i 's/^host all all all scram-sha-256$/hostssl all all 0.0.0.0\/0 scram-sha-256/' ` +
-		`/var/lib/postgresql/data/pg_hba.conf`,
-	`psql -U yugabyte -c "SELECT pg_reload_conf();"`,
+	`while ! psql -U yugabyte -c "SELECT 1" 2>/dev/null; do sleep 0.1; done && ` +
+		`sed -i 's/^host all all all scram-sha-256$/hostssl all all 0.0.0.0\/0 scram-sha-256/' ` +
+		`"$PGDATA/pg_hba.conf" && ` +
+		`psql -U yugabyte -c "SELECT pg_reload_conf();"`,
 }
 
 // TestCommitterReleaseImagesWithTLS runs the committer components in different Docker containers with different TLS

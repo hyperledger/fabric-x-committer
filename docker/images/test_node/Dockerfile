@@ -7,7 +7,7 @@
 ###########################################
 # Stage 1: Production runtime image
 ###########################################
-FROM postgres:16.9-alpine3.21 AS node
+FROM postgres:18.3-alpine3.23 AS node
 
 ARG SRC_BIN_PATH
 ARG TARGETOS
