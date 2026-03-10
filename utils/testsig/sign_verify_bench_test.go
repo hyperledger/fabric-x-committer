@@ -25,7 +25,7 @@ var testedSchemes = append(signature.AllRealSchemes, "MSP")
 
 func BenchmarkMarshal(b *testing.B) {
 	flogging.Init(flogging.Config{LogSpec: "fatal"})
-	txs := workload.GenerateTransactions(b, workload.DefaultProfile(8), b.N)
+	txs := workload.GenerateTransactions(b, nil, b.N)
 
 	resBench := make([][]byte, b.N)
 	errBench := make([]error, b.N)
@@ -43,7 +43,7 @@ func BenchmarkMarshal(b *testing.B) {
 
 func BenchmarkDigest(b *testing.B) {
 	flogging.Init(flogging.Config{LogSpec: "fatal"})
-	txs := workload.GenerateTransactions(b, workload.DefaultProfile(8), b.N)
+	txs := workload.GenerateTransactions(b, nil, b.N)
 
 	resBench := make([][]byte, b.N)
 	errBench := make([]error, b.N)
@@ -69,7 +69,7 @@ func BenchmarkSign(b *testing.B) {
 			endorser := workload.NewTxEndorser(policy)
 
 			// We generate the TXs with a generic policy and add the endorsements as part of the benchmark.
-			txs := workload.GenerateTransactions(b, workload.DefaultProfile(8), b.N)
+			txs := workload.GenerateTransactions(b, nil, b.N)
 
 			b.ResetTimer()
 			for _, tx := range txs {
@@ -95,7 +95,7 @@ func BenchmarkVerify(b *testing.B) {
 			require.NoError(b, err)
 
 			// We generate the TXs with the given policy endorsements.
-			profile := workload.DefaultProfile(8)
+			profile := workload.DefaultProfile(1)
 			profile.Policy = *policy
 			txs := workload.GenerateTransactions(b, profile, b.N)
 

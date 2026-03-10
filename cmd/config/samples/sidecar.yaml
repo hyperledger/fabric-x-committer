@@ -88,6 +88,8 @@ ledger:
   sync-interval: 100
 notification:
   max-timeout: 10m
+  max-active-tx-ids: 100_000
+  max-tx-ids-per-request: 1000
 
 bootstrap:
   genesis-block-file-path: /root/artifacts/config-block.pb.bin

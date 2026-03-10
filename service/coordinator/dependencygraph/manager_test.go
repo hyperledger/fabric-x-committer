@@ -56,7 +56,7 @@ func BenchmarkDependencyGraph(b *testing.B) {
 	for _, keyCount := range testKeysCount {
 		b.Run(fmt.Sprintf("%d-keys", keyCount), func(b *testing.B) {
 			for idx, dep := range testDependencies {
-				p := workload.DefaultProfile(8)
+				p := workload.DefaultProfile(1)
 				name := "no-dep"
 				if idx > 0 {
 					p.Conflicts.Dependencies = []workload.DependencyDescription{dep}

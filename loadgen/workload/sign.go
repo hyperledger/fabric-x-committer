@@ -76,7 +76,7 @@ func (e *TxEndorser) Endorse(txID string, tx *applicationpb.Tx) {
 			continue
 		}
 		endorsement, err := signer.EndorseTxNs(txID, tx, nsIndex)
-		Must(err)
+		utils.Must(err)
 		tx.Endorsements[nsIndex] = endorsement
 	}
 }

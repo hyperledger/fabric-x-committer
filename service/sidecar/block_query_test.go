@@ -26,7 +26,7 @@ func TestBlockQuery(t *testing.T) {
 	bs, txIDs := newBlockStoreWithBlocks(t, "ch1", 2)
 
 	// Create the query service and register on a gRPC server.
-	queryService := newBlockQuery(bs.store)
+	queryService := newBlockQuery(bs)
 
 	config := connection.NewLocalHostServer(test.InsecureTLSConfig)
 	test.RunGrpcServerForTest(t.Context(), t, config, func(server *grpc.Server) {

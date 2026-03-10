@@ -698,7 +698,7 @@ func BenchmarkPrepare(b *testing.B) {
 				return p.run(ctx, w)
 			}, nil)
 
-			txPoll := workload.GenerateTransactions(b, workload.DefaultProfile(8), max(b.N*3, batchSize*3))
+			txPoll := workload.GenerateTransactions(b, nil, max(b.N*3, batchSize*3))
 
 			inCtx := channel.NewWriter(b.Context(), txBatch)
 			outCtx := channel.NewReader(b.Context(), preparedTxs)

@@ -23,16 +23,21 @@ type QueryGenerator struct {
 	Shuffle             bool
 }
 
-// newIndependentTxGenerator creates a new QueryGenerator.
-func newQueryGenerator(rnd *rand.Rand, keys *ByteArrayGenerator, profile *Profile) *QueryGenerator {
-	return &QueryGenerator{
-		ValidKeyGenerator:   keys,
-		InvalidKeyGenerator: &ByteArrayGenerator{Size: profile.Key.Size, Source: rnd},
-		Size:                profile.Query.QuerySize.MakeIntGenerator(rnd),
-		InvalidPortion:      profile.Query.MinInvalidKeysPortion.MakeGenerator(rnd),
-		ShuffleRnd:          rnd,
-		Shuffle:             profile.Query.Shuffle,
+// newIndependentQueryGenerators creates workers that generates independent queries.
+func newIndependentQueryGenerators(profile *Profile) []*QueryGenerator {
+	seeders, keyGens := newSeedersAndKeyGens(profile)
+	gens := make([]*QueryGenerator, len(seeders))
+	for i, s := range seeders {
+		gens[i] = &QueryGenerator{
+			ValidKeyGenerator:   keyGens[i],
+			InvalidKeyGenerator: &ByteArrayGenerator{Size: profile.Key.Size, Source: s.nextSeed()},
+			Size:                profile.Query.QuerySize.MakeIntGenerator(s.nextSeed()),
+			InvalidPortion:      profile.Query.MinInvalidKeysPortion.MakeGenerator(s.nextSeed()),
+			ShuffleRnd:          s.nextSeed(),
+			Shuffle:             profile.Query.Shuffle,
+		}
 	}
+	return gens
 }
 
 // Next generate a new query.
