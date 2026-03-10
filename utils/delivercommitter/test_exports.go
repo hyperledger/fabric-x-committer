@@ -23,8 +23,8 @@ func Start(ctx context.Context, t *testing.T, conf *connection.ClientConfig, sta
 	t.Helper()
 	receivedBlocksFromLedgerService := make(chan *common.Block, 10)
 	test.RunServiceForTest(ctx, t, func(ctx context.Context) error {
-		return connection.FilterStreamRPCError(ToChannel(ctx, Parameters{
-			Client:       conf,
+		return connection.FilterStreamRPCError(ToQueue(ctx, Parameters{
+			ClientConfig: conf,
 			OutputBlock:  receivedBlocksFromLedgerService,
 			NextBlockNum: startBlockNum,
 		}))

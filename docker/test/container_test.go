@@ -111,7 +111,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			// Adding namespace policy and creating transaction builder
 			runtime.AddOrUpdateNamespaces(t, "1")
 
-			runtime.CommittedBlock = delivercommitter.Start(ctx, t, runtime.SidecarClient, 0)
+			runtime.CommittedBlock = delivercommitter.Start(ctx, t, runtime.SidecarClientConfig, 0)
 
 			t.Log("Try to fetch the first block")
 			b, ok := channel.NewReader(ctx, runtime.CommittedBlock).Read()

@@ -22,23 +22,23 @@ import (
 
 // Parameters needed for deliver to run.
 type Parameters struct {
-	Client       *connection.ClientConfig
+	ClientConfig *connection.ClientConfig
 	NextBlockNum uint64
 	OutputBlock  chan<- *common.Block
 }
 
-// ToChannel start receiving blocks starting from NextBlockNum to outputBlock.
-func ToChannel(ctx context.Context, cdp Parameters) error {
+// ToQueue start receiving blocks starting from NextBlockNum to outputBlock.
+func ToQueue(ctx context.Context, cdp Parameters) error {
 	cm, err := ordererconn.NewConnectionManager(&ordererconn.Config{
-		TLS:   ordererconn.TLSConfigToOrdererTLSConfig(cdp.Client.TLS),
-		Retry: cdp.Client.Retry,
+		TLS:   ordererconn.TLSConfigToOrdererTLSConfig(cdp.ClientConfig.TLS),
+		Retry: cdp.ClientConfig.Retry,
 		Organizations: map[string]*ordererconn.OrganizationConfig{
 			"org": {
 				Endpoints: []*commontypes.OrdererEndpoint{{
-					Host: cdp.Client.Endpoint.Host,
-					Port: cdp.Client.Endpoint.Port,
+					Host: cdp.ClientConfig.Endpoint.Host,
+					Port: cdp.ClientConfig.Endpoint.Port,
 				}},
-				CACerts: cdp.Client.TLS.CACertPaths,
+				CACerts: cdp.ClientConfig.TLS.CACertPaths,
 			},
 		},
 	})

@@ -38,9 +38,9 @@ const (
 // runSidecarReceiver start receiving blocks from the sidecar.
 func runSidecarReceiver(ctx context.Context, params *sidecarReceiverParameters) error {
 	return runDeliveryReceiver(ctx, params.Res, func(gCtx context.Context, committedBlock chan *common.Block) error {
-		return delivercommitter.ToChannel(gCtx, delivercommitter.Parameters{
-			Client:      params.ClientConfig,
-			OutputBlock: committedBlock,
+		return delivercommitter.ToQueue(gCtx, delivercommitter.Parameters{
+			ClientConfig: params.ClientConfig,
+			OutputBlock:  committedBlock,
 		})
 	})
 }
