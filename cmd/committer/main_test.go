@@ -32,6 +32,8 @@ func TestCommitterCMD(t *testing.T) {
 	conn := testdb.PrepareTestEnv(t)
 	s.DB = config.DatabaseConfig{
 		Name:      conn.Database,
+		Username:  conn.User,
+		Password:  conn.Password,
 		Endpoints: conn.Endpoints,
 	}
 	commonTests := []config.CommandTest{
@@ -67,7 +69,7 @@ func TestCommitterCMD(t *testing.T) {
 		{Command: "start-coordinator", Name: config.CoordinatorName, Template: config.TemplateCoordinator},
 		{Command: "start-vc", Name: config.VcName, Template: config.TemplateVC},
 		{Command: "start-verifier", Name: config.VerifierName, Template: config.TemplateVerifier},
-		{Command: "start-query", Name: config.QueryName, Template: config.TemplateVerifier},
+		{Command: "start-query", Name: config.QueryName, Template: config.TemplateQueryService},
 	} {
 		t.Run(serviceCase.Name, func(t *testing.T) {
 			cases := []config.CommandTest{

@@ -28,6 +28,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 
 type (
@@ -53,6 +54,20 @@ func (p *startNodeParameters) asNode(node string) startNodeParameters {
 	params := *p
 	params.node = node
 	return params
+}
+
+func (p startNodeParameters) dbUsername() string {
+	if p.dbType == testdb.PostgresDBType {
+		return "postgres"
+	}
+	return "yugabyte"
+}
+
+func (p startNodeParameters) dbDefaultDatabase() string {
+	if p.dbType == testdb.PostgresDBType {
+		return "postgres"
+	}
+	return "yugabyte"
 }
 
 const (

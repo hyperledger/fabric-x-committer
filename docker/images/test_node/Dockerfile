@@ -31,6 +31,15 @@ ENV SC_LOADGEN_ORDERER_CLIENT_ORDERER_ORGANIZATIONS_ORG0_ENDPOINTS="id=0,broadca
 ENV SC_LOADGEN_LOAD_PROFILE_POLICY_ORDERER_ENDPOINTS="id=0,msp-id=org,broadcast,deliver,localhost:7050"
 ENV SC_LOADGEN_ORDERER_CLIENT_SIDECAR_CLIENT_ENDPOINT=localhost:4001
 
+# Override default database credentials (YAML samples default to "yugabyte"
+# which is correct for YugabyteDB but not for the PostgreSQL base image).
+ENV SC_VC_DATABASE_USERNAME="postgres"
+ENV SC_VC_DATABASE_PASSWORD="postgres"
+ENV SC_VC_DATABASE_DATABASE="postgres"
+ENV SC_QUERY_DATABASE_USERNAME="postgres"
+ENV SC_QUERY_DATABASE_PASSWORD="postgres"
+ENV SC_QUERY_DATABASE_DATABASE="postgres"
+
 # Disable TLS usage for db.
 ENV SC_VC_DATABASE_TLS_MODE="none"
 ENV SC_QUERY_DATABASE_TLS_MODE="none"

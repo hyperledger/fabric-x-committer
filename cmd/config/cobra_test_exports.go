@@ -75,11 +75,7 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 			Orderer:     []ServiceConfig{{GrpcEndpoint: &orderer.Configs[0].Endpoint}},
 			Coordinator: ServiceConfig{GrpcEndpoint: &coordinator.Configs[0].Endpoint},
 		},
-		DB: DatabaseConfig{
-			Name:        "dummy_test_db",
-			Endpoints:   []*connection.Endpoint{connection.CreateEndpointHP("localhost", "5433")},
-			LoadBalance: false,
-		},
+		DB:         defaultTestDBConfig(),
 		Policy:     policy,
 		LedgerPath: t.TempDir(),
 	}
@@ -168,6 +164,21 @@ func UnitTestRunner(
 	}
 	for _, m := range getMissing(test, &cmdStdOut, loggerPath) {
 		t.Logf("Missing: %s", m)
+	}
+}
+
+// defaultTestDBConfig returns DB config with credentials matching the DB_TYPE env var.
+// Defaults to "yugabyte" when DB_TYPE is unset (YugabyteDB), "postgres" when DB_TYPE=postgres.
+func defaultTestDBConfig() DatabaseConfig {
+	username := "yugabyte"
+	if strings.EqualFold(os.Getenv("DB_TYPE"), "postgres") {
+		username = "postgres"
+	}
+	return DatabaseConfig{
+		Name:        "dummy_test_db",
+		Username:    username,
+		Endpoints:   []*connection.Endpoint{connection.CreateEndpointHP("localhost", "5433")},
+		LoadBalance: false,
 	}
 }
 
