@@ -5,8 +5,7 @@
 ---
 # Configuration for the server
 server:
-  # The gRPC endpoint where the query service listens for state query requests
-  # (GetRows, GetTransactionStatus) from clients.
+  # The gRPC endpoint where the query service listens for state query requests from clients.
   # Format: host:port or :port (binds to all interfaces).
   endpoint: :7001
   tls:
@@ -53,8 +52,8 @@ monitoring:
 
 # Database connection configuration
 database:
-  # List of database endpoints to connect to. For YugabyteDB clusters, list all nodes.
-  # Format: host:port for each endpoint.
+  # List of database endpoints to connect to. Multiple endpoints can be specified
+  # for YugabyteDB clusters or PostgreSQL replicas. Format: host:port for each endpoint.
   endpoints:
     - db:5433
   # Database username for authentication.
@@ -118,7 +117,9 @@ database:
     # Format: string representing a duration (e.g., "15m", "1h").
     max-elapsed-time: 15m
 
-# Resource limit configurations
+# Resource limit configurations.
+# The following limits prevent unbounded memory growth and resource leaks.
+
 # Minimum number of keys that must accumulate in a batch before executing the query
 # against the database. Batching reduces database round-trips and improves efficiency.
 # Queries wait up to max-batch-wait for the batch to fill.
@@ -133,7 +134,6 @@ max-batch-wait: 100ms
 view-aggregation-window: 100ms
 # Maximum number of views that can be aggregated together. Once reached, a new
 # aggregated view is created even if within the view-aggregation-window.
-# Prevents unbounded memory growth.
 max-aggregated-views: 1024
 # Maximum number of concurrently active (batched) views. When reached, new BeginView
 # requests are rejected with RESOURCE_EXHAUSTED. Set to 0 to disable the limit.

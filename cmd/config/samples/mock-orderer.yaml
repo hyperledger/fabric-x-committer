@@ -36,9 +36,11 @@ out-block-capacity: 1024
 # to detect and discard duplicate transactions based on payload hash. Set to the expected
 # maximum number of unique in-flight transactions.
 payload-cache-size: 1024
-# Controls whether to send the genesis block (block 0) to clients when they first
-# connect via the Deliver API. Required for proper blockchain initialization.
-# Set to false if clients should start from block 1.
+# Controls whether the mock orderer submits the genesis block (block 0) to its
+# block cache on startup. When true, the genesis block is delivered to clients
+# via the Deliver API. When false, the genesis block is not added to the cache
+# and consumers are expected to bootstrap it through other means (e.g., the
+# sidecar's bootstrap.genesis-block-file-path).
 send-genesis-block: true
 # Directory path where the mock orderer reads the genesis block (config-block.pb.bin)
 # and cryptographic materials needed for operation. If not provided, a default

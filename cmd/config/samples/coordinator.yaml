@@ -63,7 +63,8 @@ verifier:
     # List of paths to CA certificate files for verifying server certificates.
     ca-cert-paths:
       - /client-certs/ca-certificate.pem
-  # reconnect:  # Optional exponential backoff retry for gRPC reconnections.
+  # Optional exponential backoff retry for gRPC reconnections. Default:
+  # reconnect:
   #   initial-interval: 500ms
   #   randomization-factor: 0.5
   #   multiplier: 1.5
@@ -75,7 +76,8 @@ validator-committer:
   endpoints:
     - vc:6001
   tls: *ClientTLS
-  # reconnect:  # Optional exponential backoff retry for gRPC reconnections.
+  # Optional exponential backoff retry for gRPC reconnections. Default:
+  # reconnect:
   #   initial-interval: 500ms
   #   randomization-factor: 0.5
   #   multiplier: 1.5

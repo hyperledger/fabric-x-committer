@@ -3,9 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 ---
-# If server is set, a gRPC endpoint is exposed the full load generator's API.
 # The gRPC endpoint where the load generator exposes its full API for
-# programmatic control of load generation.
+# programmatic control of load generation. Optional: if not set, no gRPC endpoint is exposed.
 server:
   endpoint: :8001
   tls:
@@ -19,11 +18,10 @@ server:
     # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
       - /server-certs/ca-certificate.pem
-# If http-server is set, an HTTP endpoint is exposed to adjust the rate limit at runtime.
+# The HTTP endpoint for runtime rate limit adjustments.
 # It exposes the following API:
 # GET  /getRateLimit - Get the rate limit returning a JSON body { "rate": uint64 }.
 # POST /setRateLimit - Sets the rate limit using a JSON body { "rate": uint64 }.
-# The HTTP endpoint for runtime rate limit adjustments via GET/POST /getRateLimit and /setRateLimit.
 http-server:
   endpoint: :6997
 # Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
@@ -270,6 +268,10 @@ stream:
   gen-batch: 10
 
 generate:
+  # Controls whether the loadgen generates a config transaction during the config phase.
+  # When false, the config transaction is expected to be submitted outside the loadgen.
+  # Ignored by the coordinator, VC, and verifier adapters.
+  config: false
   # Controls whether to generate namespace creation transactions during the namespaces phase.
   # Required for new deployments to set up the namespace structure before generating regular load.
   namespaces: true
