@@ -22,6 +22,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -37,15 +38,14 @@ type (
 		name       string
 	}
 	startNodeParameters struct {
-		credsFactory       *test.CredentialsFactory
-		node               string
-		networkName        string
-		tlsMode            string
-		artifactsPath      string
-		dbType             string
-		dbPassword         string
-		ordererCACredsPath string
-		cmd                []string
+		credsFactory  *test.CredentialsFactory
+		node          string
+		networkName   string
+		tlsMode       string
+		artifactsPath string
+		dbType        string
+		dbPassword    string
+		cmd           []string
 	}
 )
 
@@ -191,13 +191,9 @@ func assembleBinds(t *testing.T, params startNodeParameters, additionalBinds ...
 
 	_, serverCredsPath := params.credsFactory.CreateServerCredentials(t, params.tlsMode, params.node, localhost)
 	require.NotEmpty(t, serverCredsPath)
-	_, clientCredsPath := params.credsFactory.CreateClientCredentials(t, params.tlsMode)
-	require.NotEmpty(t, clientCredsPath)
 
 	return append([]string{
 		fmt.Sprintf("%s:/server-certs", serverCredsPath),
-		fmt.Sprintf("%s:/orderer-certs", serverCredsPath),
-		fmt.Sprintf("%s:/client-certs", clientCredsPath),
 	}, additionalBinds...)
 }
 
@@ -245,4 +241,18 @@ func copyArtifactsFromContainer(ctx context.Context, t *testing.T, containerName
 		}
 	}
 	return hostDir
+}
+
+func createClientTLSConfig(mode, artifactsPath string) connection.TLSConfig {
+	return connection.TLSConfig{
+		Mode: mode,
+		CertPath: filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, "peer-org-0",
+			cryptogen.UsersDir, "client@peer-org-0.com", cryptogen.TLSDir, "client.crt"),
+		KeyPath: filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, "peer-org-0",
+			cryptogen.UsersDir, "client@peer-org-0.com", cryptogen.TLSDir, "client.key"),
+		CACertPaths: []string{
+			filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, "peer-org-0",
+				cryptogen.PeerNodesDir, "sidecar-peer-org-0", cryptogen.TLSDir, "ca.crt"),
+		},
+	}
 }

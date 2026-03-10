@@ -14,8 +14,10 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
-	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/stretchr/testify/require"
+
+	commontypes "github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen"
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
@@ -34,24 +36,30 @@ import (
 
 var (
 	defaultServerTLSConfig = connection.TLSConfig{
-		Mode:     connection.MutualTLSMode,
-		CertPath: "/server-certs/public-key.pem",
-		KeyPath:  "/server-certs/private-key.pem",
+		Mode: connection.MutualTLSMode,
+		CertPath: filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, "peer-org-0",
+			cryptogen.PeerNodesDir, "sidecar-peer-org-0", cryptogen.TLSDir, "server.crt"),
+		KeyPath: filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, "peer-org-0",
+			cryptogen.PeerNodesDir, "sidecar-peer-org-0", cryptogen.TLSDir, "server.key"),
 		CACertPaths: []string{
-			"/server-certs/ca-certificate.pem",
+			filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, "peer-org-0",
+				cryptogen.UsersDir, "client@peer-org-0.com", cryptogen.TLSDir, "ca.crt"),
 		},
 	}
 	defaultClientTLSConfig = connection.TLSConfig{
-		Mode:     connection.MutualTLSMode,
-		CertPath: "/client-certs/public-key.pem",
-		KeyPath:  "/client-certs/private-key.pem",
+		Mode: connection.MutualTLSMode,
+		CertPath: filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, "peer-org-0",
+			cryptogen.UsersDir, "client@peer-org-0.com", cryptogen.TLSDir, "client.crt"),
+		KeyPath: filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, "peer-org-0",
+			cryptogen.UsersDir, "client@peer-org-0.com", cryptogen.TLSDir, "client.key"),
 		CACertPaths: []string{
-			"/client-certs/ca-certificate.pem",
+			filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, "peer-org-0",
+				cryptogen.PeerNodesDir, "sidecar-peer-org-0", cryptogen.TLSDir, "ca.crt"),
 		},
 	}
 )
 
-const ordererRootCA = "/client-certs/orderer-ca-certificate.pem"
+const artifactsPath = "/root/artifacts"
 
 func TestReadConfigSidecar(t *testing.T) {
 	t.Parallel()
@@ -107,17 +115,19 @@ func TestReadConfigSidecar(t *testing.T) {
 			Orderer: ordererconn.Config{
 				ChannelID: "mychannel",
 				TLS: ordererconn.OrdererTLSConfig{
-					Mode:              defaultClientTLSConfig.Mode,
-					KeyPath:           defaultClientTLSConfig.KeyPath,
-					CertPath:          defaultClientTLSConfig.CertPath,
-					CommonCACertPaths: defaultClientTLSConfig.CACertPaths,
+					Mode:     defaultClientTLSConfig.Mode,
+					KeyPath:  defaultClientTLSConfig.KeyPath,
+					CertPath: defaultClientTLSConfig.CertPath,
+					CommonCACertPaths: []string{filepath.Join(artifactsPath, cryptogen.OrdererOrganizationsDir,
+						"orderer-org-0", cryptogen.OrdererNodesDir, "orderer-0-org-0", cryptogen.TLSDir, "ca.crt")},
 				},
 				Organizations: map[string]*ordererconn.OrganizationConfig{
 					"org0": {
 						Endpoints: []*commontypes.OrdererEndpoint{
 							newOrdererEndpoint("", "orderer"),
 						},
-						CACerts: defaultClientTLSConfig.CACertPaths,
+						CACerts: []string{filepath.Join(artifactsPath, cryptogen.OrdererOrganizationsDir,
+							"orderer-org-0", cryptogen.OrdererNodesDir, "orderer-0-org-0", cryptogen.TLSDir, "ca.crt")},
 					},
 				},
 				Identity: newIdentityConfig(),
@@ -389,17 +399,21 @@ func TestReadConfigLoadGen(t *testing.T) {
 						ConsensusType: ordererconn.Bft,
 						Identity:      newIdentityConfig(),
 						TLS: ordererconn.OrdererTLSConfig{
-							Mode:              defaultClientTLSConfig.Mode,
-							KeyPath:           defaultClientTLSConfig.KeyPath,
-							CertPath:          defaultClientTLSConfig.CertPath,
-							CommonCACertPaths: defaultClientTLSConfig.CACertPaths,
+							Mode:     defaultClientTLSConfig.Mode,
+							KeyPath:  defaultClientTLSConfig.KeyPath,
+							CertPath: defaultClientTLSConfig.CertPath,
+							CommonCACertPaths: []string{filepath.Join(artifactsPath, cryptogen.OrdererOrganizationsDir,
+								"orderer-org-0", cryptogen.OrdererNodesDir,
+								"orderer-0-org-0", cryptogen.TLSDir, "ca.crt")},
 						},
 						Organizations: map[string]*ordererconn.OrganizationConfig{
 							"org0": {
 								Endpoints: []*commontypes.OrdererEndpoint{
 									newOrdererEndpoint("", "orderer"),
 								},
-								CACerts: []string{ordererRootCA},
+								CACerts: []string{filepath.Join(artifactsPath, cryptogen.OrdererOrganizationsDir,
+									"orderer-org-0", cryptogen.OrdererNodesDir,
+									"orderer-0-org-0", cryptogen.TLSDir, "ca.crt")},
 							},
 						},
 					},

@@ -10,10 +10,10 @@ server:
   tls:
     # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
     mode: mtls
-    cert-path: /server-certs/public-key.pem
-    key-path: /server-certs/private-key.pem
+    cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar-peer-org-0/tls/server.crt
+    key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar-peer-org-0/tls/server.key
     ca-cert-paths:
-      - /server-certs/ca-certificate.pem
+      - /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/ca.crt
   # Rate limiting configuration for unary gRPC endpoints.
   # Uses a token bucket algorithm to limit the number of requests per second.
   rate-limit:
@@ -29,10 +29,10 @@ monitoring:
   endpoint: :2117
   tls:
     mode: mtls
-    cert-path: /server-certs/public-key.pem
-    key-path: /server-certs/private-key.pem
+    cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar-peer-org-0/tls/server.crt
+    key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar-peer-org-0/tls/server.key
     ca-cert-paths:
-      - /server-certs/ca-certificate.pem
+      - /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/ca.crt
   rate-limit:
     requests-per-second: 0
     burst: 0

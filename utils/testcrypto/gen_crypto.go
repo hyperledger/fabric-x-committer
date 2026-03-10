@@ -82,7 +82,11 @@ func CreateOrExtendConfigBlockWithCrypto(targetPath string, conf *ConfigBlock) (
 			PeerNodes: []cryptogen.Node{{
 				CommonName: fmt.Sprintf("sidecar-peer-org-%d", i),
 				Hostname:   fmt.Sprintf("sidecar-peer-org-%d.com", i),
-				SANS:       []string{"localhost"},
+				// Test environments use a shared peer certificate for all services.
+				// To support TLS connections between services using Docker DNS names
+				// (e.g., coordinator connecting to vc), we include all service names
+				// in the certificate's Subject Alternative Names (SANs).
+				SANS: []string{"localhost", "verifier", "vc", "coordinator", "query", "sidecar", "orderer", "db"},
 			}},
 		})
 	}
