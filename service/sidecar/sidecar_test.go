@@ -32,10 +32,10 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
-	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/delivercommitter"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
@@ -210,10 +210,8 @@ func (env *sidecarTestEnv) startSidecarClient(
 	sidecarClientCreds connection.TLSConfig,
 ) {
 	t.Helper()
-	env.committedBlock = sidecarclient.StartSidecarClient(ctx, t, &sidecarclient.Parameters{
-		ChannelID: env.config.Orderer.ChannelID,
-		Client:    test.NewTLSClientConfig(sidecarClientCreds, &env.config.Server.Endpoint),
-	}, startBlkNum)
+	committerClient := test.NewTLSClientConfig(sidecarClientCreds, &env.config.Server.Endpoint)
+	env.committedBlock = delivercommitter.Start(ctx, t, committerClient, startBlkNum)
 }
 
 func (env *sidecarTestEnv) startNotificationStream(
@@ -436,7 +434,6 @@ func TestSidecarRecovery(t *testing.T) {
 	//       structure reflects the correct height.
 	var err error
 	env.sidecar.blockStore, err = newBlockStore(
-		env.config.Orderer.ChannelID,
 		env.config.Ledger.Path,
 		0,
 		newPerformanceMetrics(),
