@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -26,6 +27,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -47,6 +49,14 @@ var (
 	InsecureTLSConfig connection.TLSConfig
 	// defaultGrpcRetryProfile defines the retry policy for a gRPC client connection.
 	defaultGrpcRetryProfile connection.RetryProfile
+
+	// ClientTLSPath is the path to organization 0's TLS client credentials in the crypto materials directory.
+	ClientTLSPath = filepath.Join(cryptogen.PeerOrganizationsDir, "peer-org-0",
+		cryptogen.UsersDir, "client@peer-org-0.com", cryptogen.TLSDir)
+
+	// OrdererTLSPath is the path to organization 0's orderer TLS credentials in the crypto materials directory.
+	OrdererTLSPath = filepath.Join(cryptogen.OrdererOrganizationsDir,
+		"orderer-org-0", cryptogen.OrdererNodesDir, "orderer-0-org-0", cryptogen.TLSDir)
 )
 
 type (
@@ -519,4 +529,34 @@ func Make(rules ...string) error {
 		makeRun.Signal(os.Kill)
 		return errors.New("make command timed out")
 	}
+}
+
+// CreateClientTLSConfig creates a client TLS config with CA certificates matching the target server.
+func CreateClientTLSConfig(artifactsPath, connectToService, mode string) connection.TLSConfig {
+	return connection.TLSConfig{
+		Mode:     mode,
+		CertPath: filepath.Join(artifactsPath, ClientTLSPath, "client.crt"),
+		KeyPath:  filepath.Join(artifactsPath, ClientTLSPath, "client.key"),
+		CACertPaths: []string{
+			filepath.Join(artifactsPath, serviceTLSPathFromArtifacts(connectToService), "ca.crt"),
+		},
+	}
+}
+
+// CreateServerTLSConfig creates a server TLS config with certificates loaded from the artifact path.
+func CreateServerTLSConfig(artifactsPath, serviceName, mode string) connection.TLSConfig {
+	return connection.TLSConfig{
+		Mode:     mode,
+		CertPath: filepath.Join(artifactsPath, serviceTLSPathFromArtifacts(serviceName), "server.crt"),
+		KeyPath:  filepath.Join(artifactsPath, serviceTLSPathFromArtifacts(serviceName), "server.key"),
+		CACertPaths: []string{
+			filepath.Join(artifactsPath, ClientTLSPath, "ca.crt"),
+		},
+	}
+}
+
+// serviceTLSPathFromArtifacts returns the path to the service's TLS certificate directory in the artifacts.
+func serviceTLSPathFromArtifacts(serviceName string) string {
+	return filepath.Join(cryptogen.PeerOrganizationsDir, "peer-org-0",
+		cryptogen.PeerNodesDir, serviceName, cryptogen.TLSDir)
 }

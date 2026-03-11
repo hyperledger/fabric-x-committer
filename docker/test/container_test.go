@@ -104,7 +104,16 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 					false,
 				),
 			}
-			runtime.SystemConfig.ClientTLS, _ = credsFactory.CreateClientCredentials(t, mode)
+
+			// We don't need to create a separate client TLS config for each service for a couple of reasons:
+			// 1. All services belong to the same organization and use the same root CA.
+			// 2. All services run on the local machine.
+			runtime.SystemConfig.ClientTLS = test.CreateClientTLSConfig(
+				c.LoadProfile.Policy.ArtifactsPath, "sidecar", mode,
+			)
+			runtime.SystemConfig.ClientTLS.CACertPaths = append(runtime.SystemConfig.ClientTLS.CACertPaths,
+				filepath.Join(c.LoadProfile.Policy.ArtifactsPath, test.OrdererTLSPath, "ca.crt"))
+
 			runtime.CreateRuntimeClients(ctx, t)
 			runtime.OpenNotificationStream(ctx, t)
 

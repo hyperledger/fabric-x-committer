@@ -38,15 +38,14 @@ type (
 		name       string
 	}
 	startNodeParameters struct {
-		credsFactory       *test.CredentialsFactory
-		node               string
-		networkName        string
-		tlsMode            string
-		artifactsPath      string
-		dbType             string
-		dbPassword         string
-		ordererCACredsPath string
-		cmd                []string
+		credsFactory  *test.CredentialsFactory
+		node          string
+		networkName   string
+		tlsMode       string
+		artifactsPath string
+		dbType        string
+		dbPassword    string
+		cmd           []string
 	}
 )
 
@@ -71,7 +70,6 @@ func (p startNodeParameters) dbDefaultDatabase() string {
 }
 
 const (
-	channelName     = "mychannel"
 	monitoredMetric = "loadgen_transaction_committed_total"
 	testNodeImage   = "docker.io/hyperledger/committer-test-node:latest"
 	localhost       = "localhost"
@@ -206,12 +204,9 @@ func assembleBinds(t *testing.T, params startNodeParameters, additionalBinds ...
 
 	_, serverCredsPath := params.credsFactory.CreateServerCredentials(t, params.tlsMode, params.node, localhost)
 	require.NotEmpty(t, serverCredsPath)
-	_, clientCredsPath := params.credsFactory.CreateClientCredentials(t, params.tlsMode)
-	require.NotEmpty(t, clientCredsPath)
 
 	return append([]string{
 		fmt.Sprintf("%s:/server-certs", serverCredsPath),
-		fmt.Sprintf("%s:/client-certs", clientCredsPath),
 	}, additionalBinds...)
 }
 

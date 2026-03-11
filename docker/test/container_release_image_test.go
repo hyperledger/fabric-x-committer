@@ -16,7 +16,6 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/go-connections/nat"
 	"github.com/google/uuid"
-	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
@@ -42,10 +41,6 @@ const (
 	containerPathForYugabytePassword = "/root/var/data/yugabyted_credentials.txt" //nolint:gosec
 
 	defaultDBPort = "5433"
-
-	// org0Orderer0TLSPath specifies the location of the generated TLS certificates used by orderer0 of org 0.
-	org0Orderer0TLSPath = cryptogen.OrdererOrganizationsDir +
-		"/orderer-org-0/" + cryptogen.OrdererNodesDir + "/orderer-0-org-0/" + cryptogen.TLSDir
 )
 
 // enforcePostgresSSLAndReloadConfigScript enforces SSL-only client connections to a PostgreSQL
@@ -80,10 +75,6 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	loadgenNode := "loadgen"
 	committerNodes := []string{"verifier", "vc", "query", "coordinator", "sidecar"}
 
-	// hold the orderer's server credentials generated in advance.
-	// we start only one orderer instance.
-	ordererServerCreds := filepath.Join(c.LoadProfile.Policy.ArtifactsPath, org0Orderer0TLSPath)
-
 	credsFactory := test.NewCredentialsFactory(t)
 	for _, dbType := range []string{testdb.YugaDBType, testdb.PostgresDBType} {
 		t.Run(fmt.Sprintf("database:%s", dbType), func(t *testing.T) {
@@ -99,12 +90,11 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					})
 
 					params := startNodeParameters{
-						credsFactory:       credsFactory,
-						networkName:        networkName,
-						tlsMode:            mode,
-						artifactsPath:      c.LoadProfile.Policy.ArtifactsPath,
-						dbType:             dbType,
-						ordererCACredsPath: ordererServerCreds,
+						credsFactory:  credsFactory,
+						networkName:   networkName,
+						tlsMode:       mode,
+						artifactsPath: c.LoadProfile.Policy.ArtifactsPath,
+						dbType:        dbType,
 					}
 
 					for _, node := range append(committerNodes, dbNode, ordererNode, loadgenNode) {
@@ -125,7 +115,10 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					// start the load generator node.
 					startLoadgenNodeWithReleaseImage(ctx, t, params.asNode(loadgenNode))
 
-					metricsClientTLSConfig, _ := credsFactory.CreateClientCredentials(t, mode)
+					metricsClientTLSConfig := test.CreateClientTLSConfig(
+						c.LoadProfile.Policy.ArtifactsPath, "loadgen", mode,
+					)
+
 					monitorMetric(t,
 						getContainerMappedHostPort(
 							ctx, t, assembleContainerName("loadgen", mode, dbType), loadGenMetricsPort,
@@ -282,10 +275,6 @@ func startLoadgenNodeWithReleaseImage(
 				fmt.Sprintf("%s.yaml:/%s.yaml",
 					filepath.Join(mustGetWD(t), localConfigPath, params.node), configPath,
 				),
-				// load into the loadgen the root CA that generated the orderer's TLS certificates.
-				fmt.Sprintf("%s:/client-certs/orderer-ca-certificate.pem",
-					filepath.Join(params.ordererCACredsPath, "ca.crt"),
-				),
 				// Mount the crypto artifacts for MSP-based endorsement of the meta namespace.
 				fmt.Sprintf("%s:%s", params.artifactsPath, containerArtifactsPath),
 			),
@@ -316,12 +305,6 @@ func startCommitterNodeWithTestImage(
 			NetworkMode: container.NetworkMode(params.networkName),
 			Binds: assembleBinds(t, params,
 				fmt.Sprintf("%s:%s", params.artifactsPath, containerArtifactsPath),
-				fmt.Sprintf("%s:/server-certs/public-key.pem",
-					filepath.Join(params.ordererCACredsPath, "server.crt"),
-				),
-				fmt.Sprintf("%s:/server-certs/private-key.pem",
-					filepath.Join(params.ordererCACredsPath, "server.key"),
-				),
 			),
 		},
 		name: assembleContainerName(params.node, params.tlsMode, params.dbType),
