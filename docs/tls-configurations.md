@@ -92,7 +92,6 @@ When a service connects to the ordering service, it acts as a **TLS client**. In
 | **`orderer.tls.mode`** | String | TLS operation mode for the client connection to orderers: `none`, `tls`, `mtls`. |
 | **`orderer.tls.cert-path`** | String | Path to the **client TLS certificate** (public key). Required for `mtls`. |
 | **`orderer.tls.key-path`** | String | Path to the **client TLS private key**. Required for `mtls`. |
-| **`orderer.tls.common-ca-cert-paths`** | List | Paths to shared **TLS root CA certificates** used to verify orderer TLS certificates across organizations. |
 
 ### Orderer client configuration example
 
@@ -118,10 +117,6 @@ orderer:
     # Client certificate/key (required for mtls).
     cert-path: /client-certs/public-key.pem
     key-path: /client-certs/private-key.pem
-
-    # Additional TLS root CA certificates shared across orgs (used to verify orderer TLS certificates).
-    common-ca-cert-paths:
-      - /client-certs/ca-certificate.pem
 ```
 
 
