@@ -78,7 +78,9 @@ func TestReadConfigSidecar(t *testing.T) {
 				Path: "./ledger/",
 			},
 			Notification: sidecar.NotificationServiceConfig{
-				MaxTimeout: time.Minute,
+				MaxTimeout:         time.Minute,
+				MaxActiveTxIDs:     100_000,
+				MaxTxIDsPerRequest: 1000,
 			},
 			LastCommittedBlockSetInterval: 3 * time.Second,
 			WaitingTxsLimit:               100_000,
@@ -128,7 +130,9 @@ func TestReadConfigSidecar(t *testing.T) {
 				SyncInterval: 100,
 			},
 			Notification: sidecar.NotificationServiceConfig{
-				MaxTimeout: 10 * time.Minute,
+				MaxTimeout:         10 * time.Minute,
+				MaxActiveTxIDs:     100_000,
+				MaxTxIDsPerRequest: 1000,
 			},
 			LastCommittedBlockSetInterval: 5 * time.Second,
 			WaitingTxsLimit:               20_000_000,

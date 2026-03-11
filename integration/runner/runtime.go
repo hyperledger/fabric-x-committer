@@ -26,9 +26,9 @@ import (
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
-	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/delivercommitter"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -52,12 +52,12 @@ type (
 
 		DBEnv *vc.DatabaseTestEnv
 
-		OrdererStream      *test.BroadcastStream
-		CoordinatorClient  servicepb.CoordinatorClient
-		QueryServiceClient committerpb.QueryServiceClient
-		SidecarClient      *sidecarclient.Client
-		NotifyClient       committerpb.NotifierClient
-		NotifyStream       committerpb.Notifier_OpenNotificationStreamClient
+		OrdererStream       *test.BroadcastStream
+		CoordinatorClient   servicepb.CoordinatorClient
+		QueryServiceClient  committerpb.QueryServiceClient
+		SidecarClientConfig *connection.ClientConfig
+		NotifyClient        committerpb.NotifierClient
+		NotifyStream        committerpb.Notifier_OpenNotificationStreamClient
 
 		CommittedBlock          chan *common.Block
 		TxBuilder               *workload.TxBuilder
@@ -273,12 +273,7 @@ func (c *CommitterRuntime) CreateRuntimeClients(ctx context.Context, t *testing.
 	require.NoError(t, err)
 	t.Cleanup(c.OrdererStream.CloseConnections)
 
-	c.SidecarClient, err = sidecarclient.New(&sidecarclient.Parameters{
-		ChannelID: c.SystemConfig.Policy.ChannelID,
-		Client:    test.NewTLSClientConfig(c.SystemConfig.ClientTLS, services.Sidecar.GrpcEndpoint),
-	})
-	require.NoError(t, err)
-	t.Cleanup(c.SidecarClient.CloseConnections)
+	c.SidecarClientConfig = test.NewTLSClientConfig(c.SystemConfig.ClientTLS, services.Sidecar.GrpcEndpoint)
 }
 
 // OpenNotificationStream starts a notification stream.
@@ -375,8 +370,9 @@ func (c *CommitterRuntime) startBlockDelivery(t *testing.T) {
 	t.Helper()
 	t.Log("Running delivery client")
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
-		return connection.FilterStreamRPCError(c.SidecarClient.Deliver(ctx, &sidecarclient.DeliverParameters{
-			OutputBlock: c.CommittedBlock,
+		return connection.FilterStreamRPCError(delivercommitter.ToQueue(ctx, delivercommitter.Parameters{
+			ClientConfig: c.SidecarClientConfig,
+			OutputBlock:  c.CommittedBlock,
 		}))
 	}, func(ctx context.Context) bool {
 		select {

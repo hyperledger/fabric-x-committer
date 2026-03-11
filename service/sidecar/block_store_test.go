@@ -19,8 +19,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/delivercommitter"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -29,7 +29,7 @@ func TestBlockStoreAndDelivery(t *testing.T) {
 	ledgerPath := t.TempDir()
 
 	metrics := newPerformanceMetrics()
-	bs, err := newBlockStore("ch1", ledgerPath, 0, metrics)
+	bs, err := newBlockStore(ledgerPath, 0, metrics)
 	require.NoError(t, err)
 	t.Cleanup(bs.close)
 
@@ -62,10 +62,8 @@ func TestBlockStoreAndDelivery(t *testing.T) {
 	require.Equal(t, 1, test.GetIntMetricValue(t, metrics.blockHeight))
 	require.Greater(t, test.GetMetricValue(t, metrics.appendBlockToLedgerSeconds), float64(0))
 
-	receivedBlocksFromLedgerService := sidecarclient.StartSidecarClient(t.Context(), t, &sidecarclient.Parameters{
-		ChannelID: bs.channelID,
-		Client:    test.NewInsecureClientConfig(&config.Endpoint),
-	}, 0)
+	committerClient := test.NewInsecureClientConfig(&config.Endpoint)
+	receivedBlocksFromLedgerService := delivercommitter.Start(t.Context(), t, committerClient, 0)
 
 	blk1, _ := createBlockForTest(t, 1, protoutil.BlockHeaderHash(blk0.Header))
 	blk1.Metadata = metadata

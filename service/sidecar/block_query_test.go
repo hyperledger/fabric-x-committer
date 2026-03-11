@@ -23,7 +23,7 @@ import (
 func TestBlockQuery(t *testing.T) {
 	t.Parallel()
 
-	bs, txIDs := newBlockStoreWithBlocks(t, "ch1", 2)
+	bs, txIDs := newBlockStoreWithBlocks(t, 2)
 
 	// Create the query service and register on a gRPC server.
 	queryService := newBlockQuery(bs)
