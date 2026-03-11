@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package connection
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"os"
@@ -23,6 +24,54 @@ type TLSMaterials struct {
 	Cert    []byte
 	Key     []byte
 	CACerts [][]byte
+}
+
+// CreateDynamicServerTLSConfig returns a TLS config with dynamic CA certificate support.
+// It uses GetConfigForClient callback to merge static CAs (from YAML) with dynamic CAs
+// (from config blocks) on each TLS handshake.
+// This enables certificate rotation without service restart.
+// Note: Only applies to MutualTLSMode. For other modes, returns standard server TLS config.
+func (m *TLSMaterials) CreateDynamicServerTLSConfig(
+	getDynamicFunc func(ctx context.Context) [][]byte,
+) (*tls.Config, error) {
+	tlsConfig, err := m.CreateServerTLSConfig()
+	if err != nil {
+		return nil, errors.Newf("failed to create base server TLS config: %v", err)
+	}
+	if m.Mode != MutualTLSMode {
+		return tlsConfig, nil
+	}
+
+	tlsConfig.GetConfigForClient = func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
+		dynamicRootCAs := getDynamicFunc(chi.Context())
+		newCaCert := make([][]byte, len(m.CACerts)+len(dynamicRootCAs))
+		copy(newCaCert, m.CACerts)
+		copy(newCaCert[len(m.CACerts):], dynamicRootCAs)
+
+		logger.Debugf("New client connection: %v, with %d root CAs", chi.Conn.RemoteAddr(), len(newCaCert))
+		certPool, err := buildCertPool(newCaCert)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to build cert pool for client CAs")
+		}
+		cfg := &tls.Config{
+			MinVersion:   DefaultTLSMinVersion,
+			Certificates: tlsConfig.Certificates,
+			ClientCAs:    certPool,
+			ClientAuth:   tls.RequireAndVerifyClientCert,
+		}
+		return cfg, nil
+	}
+	return tlsConfig, nil
+}
+
+// GetDynamicCACerts atomically reads and merges static and dynamic CA certificates.
+// If dynamicRootCAs is nil, returns only the static CAs from YAML configuration.
+// This allows services to opt-out of dynamic CA support by returning nil from GetDynamicRootCAs().
+func (m *TLSMaterials) GetDynamicCACerts(dynamicRootCAs [][]byte) [][]byte {
+	result := make([][]byte, len(m.CACerts)+len(dynamicRootCAs))
+	copy(result, m.CACerts)
+	copy(result[len(m.CACerts):], dynamicRootCAs)
+	return result
 }
 
 // NewClientCredentialsFromMaterial returns the gRPC transport credentials to be used by a client,
@@ -83,8 +132,8 @@ func NewTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
 }
 
 // CreateServerTLSConfig returns a TLS config to be used by a server.
-func (c *TLSMaterials) CreateServerTLSConfig() (*tls.Config, error) {
-	switch c.Mode {
+func (m *TLSMaterials) CreateServerTLSConfig() (*tls.Config, error) {
+	switch m.Mode {
 	case NoneTLSMode, UnmentionedTLSMode:
 		return nil, nil
 	case OneSideTLSMode, MutualTLSMode:
@@ -94,15 +143,15 @@ func (c *TLSMaterials) CreateServerTLSConfig() (*tls.Config, error) {
 		}
 
 		// Load server certificate and key pair (required for both modes)
-		cert, err := tls.X509KeyPair(c.Cert, c.Key)
+		cert, err := tls.X509KeyPair(m.Cert, m.Key)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to load server certificates")
 		}
 		tlsCfg.Certificates = append(tlsCfg.Certificates, cert)
 
 		// Load CA certificate pool (only for mutual TLS)
-		if c.Mode == MutualTLSMode {
-			tlsCfg.ClientCAs, err = buildCertPool(c.CACerts)
+		if m.Mode == MutualTLSMode {
+			tlsCfg.ClientCAs, err = buildCertPool(m.CACerts)
 			if err != nil {
 				return nil, err
 			}
@@ -112,13 +161,13 @@ func (c *TLSMaterials) CreateServerTLSConfig() (*tls.Config, error) {
 		return tlsCfg, nil
 	default:
 		return nil, errors.Newf("unknown TLS mode: %s (valid modes: %s, %s, %s)",
-			c.Mode, NoneTLSMode, OneSideTLSMode, MutualTLSMode)
+			m.Mode, NoneTLSMode, OneSideTLSMode, MutualTLSMode)
 	}
 }
 
 // CreateClientTLSConfig returns a TLS config to be used by a server.
-func (c *TLSMaterials) CreateClientTLSConfig() (*tls.Config, error) {
-	switch c.Mode {
+func (m *TLSMaterials) CreateClientTLSConfig() (*tls.Config, error) {
+	switch m.Mode {
 	case NoneTLSMode, UnmentionedTLSMode:
 		return nil, nil
 	case OneSideTLSMode, MutualTLSMode:
@@ -127,8 +176,8 @@ func (c *TLSMaterials) CreateClientTLSConfig() (*tls.Config, error) {
 		}
 
 		// Load client certificate and key pair (only for mutual TLS)
-		if c.Mode == MutualTLSMode {
-			cert, err := tls.X509KeyPair(c.Cert, c.Key)
+		if m.Mode == MutualTLSMode {
+			cert, err := tls.X509KeyPair(m.Cert, m.Key)
 			if err != nil {
 				return nil, errors.Wrapf(err, "failed to load client certificates")
 			}
@@ -137,7 +186,7 @@ func (c *TLSMaterials) CreateClientTLSConfig() (*tls.Config, error) {
 
 		// Load CA certificate pool (required for both modes)
 		var err error
-		tlsCfg.RootCAs, err = buildCertPool(c.CACerts)
+		tlsCfg.RootCAs, err = buildCertPool(m.CACerts)
 		if err != nil {
 			return nil, err
 		}
@@ -145,7 +194,7 @@ func (c *TLSMaterials) CreateClientTLSConfig() (*tls.Config, error) {
 		return tlsCfg, nil
 	default:
 		return nil, errors.Newf("unknown TLS mode: %s (valid modes: %s, %s, %s)",
-			c.Mode, NoneTLSMode, OneSideTLSMode, MutualTLSMode)
+			m.Mode, NoneTLSMode, OneSideTLSMode, MutualTLSMode)
 	}
 }
 
