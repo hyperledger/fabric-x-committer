@@ -52,10 +52,16 @@ type (
 		// MaxTimeout is an upper limit on the request's timeout to prevent resource exhaustion.
 		// If a request doesn't specify a timeout, this value will be used.
 		MaxTimeout time.Duration `mapstructure:"max-timeout"`
+		// MaxActiveTxIDs is the global limit on total active txID subscriptions across all streams.
+		MaxActiveTxIDs int `mapstructure:"max-active-tx-ids"`
+		// MaxTxIDsPerRequest is the maximum number of txIDs allowed in a single notification request.
+		MaxTxIDsPerRequest int `mapstructure:"max-tx-ids-per-request"`
 	}
 )
 
 const (
 	defaultNotificationMaxTimeout = time.Minute
 	defaultBufferSize             = 100
+	defaultMaxActiveTxIDs         = 100_000
+	defaultMaxTxIDsPerRequest     = 1000
 )

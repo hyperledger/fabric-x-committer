@@ -17,11 +17,11 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
-	"github.com/hyperledger/fabric-x-committer/service/sidecar/sidecarclient"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
+	"github.com/hyperledger/fabric-x-committer/utils/delivercommitter"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 )
 
@@ -37,16 +37,10 @@ const (
 
 // runSidecarReceiver start receiving blocks from the sidecar.
 func runSidecarReceiver(ctx context.Context, params *sidecarReceiverParameters) error {
-	ledgerReceiver, err := sidecarclient.New(&sidecarclient.Parameters{
-		ChannelID: params.Res.Profile.Policy.ChannelID,
-		Client:    params.ClientConfig,
-	})
-	if err != nil {
-		return err
-	}
 	return runDeliveryReceiver(ctx, params.Res, func(gCtx context.Context, committedBlock chan *common.Block) error {
-		return ledgerReceiver.Deliver(gCtx, &sidecarclient.DeliverParameters{
-			OutputBlock: committedBlock,
+		return delivercommitter.ToQueue(gCtx, delivercommitter.Parameters{
+			ClientConfig: params.ClientConfig,
+			OutputBlock:  committedBlock,
 		})
 	})
 }

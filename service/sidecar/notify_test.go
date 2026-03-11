@@ -217,6 +217,31 @@ func TestNotifierDirect(t *testing.T) {
 		require.Empty(t, res.TimeoutTxIds)
 		test.RequireProtoElementsMatch(t, expected[:1], res.TxStatusEvents)
 	}
+
+	t.Log("Submitting request exceeding per-request limit - expecting rejection")
+	perRequestLimit := env.n.maxTxIDsPerRequest
+	overLimitTxIDs := make([]string, perRequestLimit+1)
+	for i := range overLimitTxIDs {
+		overLimitTxIDs[i] = fmt.Sprintf("over-%d", i)
+	}
+	for _, q := range env.notificationQueues {
+		env.requestQueue.Write(&notificationRequest{
+			request: &committerpb.NotificationRequest{
+				TxStatusRequest: &committerpb.TxIDsBatch{
+					TxIds: overLimitTxIDs,
+				},
+				Timeout: durationpb.New(5 * time.Minute),
+			},
+			streamEventQueue: q,
+		})
+	}
+	for _, q := range env.notificationQueues {
+		res, ok := q.ReadWithTimeout(10 * time.Second)
+		require.True(t, ok)
+		require.NotNil(t, res.RejectedTxIds)
+		require.ElementsMatch(t, overLimitTxIDs, res.RejectedTxIds.TxIds)
+		require.Contains(t, res.RejectedTxIds.Reason, fmt.Sprintf("max allowed is %d", perRequestLimit))
+	}
 }
 
 func TestNotifierStream(t *testing.T) {
@@ -317,7 +342,85 @@ func TestNotifierStream(t *testing.T) {
 	test.RequireProtoElementsMatch(t, expected[:1], res.TxStatusEvents)
 }
 
+func TestNotifierGlobalLimit(t *testing.T) {
+	t.Parallel()
+
+	env := newNotifierTestEnvWithConfig(t, &NotificationServiceConfig{
+		MaxActiveTxIDs:     5,
+		MaxTxIDsPerRequest: 10,
+	})
+	q := env.notificationQueues[0]
+
+	submitRequest := func(timeout time.Duration, txIDs ...string) {
+		env.requestQueue.Write(&notificationRequest{
+			request: &committerpb.NotificationRequest{
+				TxStatusRequest: &committerpb.TxIDsBatch{TxIds: txIDs},
+				Timeout:         durationpb.New(timeout),
+			},
+			streamEventQueue: q,
+		})
+	}
+
+	requireRejected := func(expectedTxIDs []string) {
+		t.Helper()
+		res, ok := q.ReadWithTimeout(10 * time.Second)
+		require.True(t, ok)
+		require.NotNil(t, res.RejectedTxIds)
+		require.ElementsMatch(t, expectedTxIDs, res.RejectedTxIds.TxIds)
+		require.Contains(t, res.RejectedTxIds.Reason, "active tx IDs limit reached")
+	}
+
+	// First request: 3 txIDs, fits within limit.
+	submitRequest(5*time.Minute, "1", "2", "3")
+
+	// Second request: 4 unique txIDs (with duplicates), only 2 slots remain.
+	// Duplicates are skipped before checking slots, so "4" and "5" are accepted, "6" and "7" rejected.
+	// FIFO processing of the request queue guarantees the first request is handled before this one.
+	submitRequest(5*time.Minute, "4", "4", "5", "5", "6", "7")
+	requireRejected([]string{"6", "7"})
+
+	// Third request: all slots still full, fully rejected.
+	submitRequest(5*time.Minute, "6", "7")
+	requireRejected([]string{"6", "7"})
+
+	// Fulfil the 2 accepted txIDs from the second request.
+	env.statusQueue.Write([]*committerpb.TxStatus{
+		{Ref: committerpb.NewTxRef("4", 1, 0)},
+		{Ref: committerpb.NewTxRef("5", 1, 1)},
+	})
+
+	res, ok := q.ReadWithTimeout(10 * time.Second)
+	require.True(t, ok)
+	require.Nil(t, res.RejectedTxIds)
+	require.Len(t, res.TxStatusEvents, 2)
+
+	// Timeout frees slots: fill remaining slots with a short timeout request.
+	submitRequest(1*time.Millisecond, "t1", "t2")
+
+	// Wait for timeout notification — this confirms the slots have been freed.
+	res, ok = q.ReadWithTimeout(10 * time.Second)
+	require.True(t, ok)
+	require.ElementsMatch(t, []string{"t1", "t2"}, res.TimeoutTxIds)
+
+	// Now 2 slots freed by timeout + 2 freed by status = 4 free (1 still held by "1","2","3" minus fulfilled).
+	// "1","2","3" are still active from the first request. So 2 slots are available.
+	// New request with 2 txIDs should be fully accepted (no rejection).
+	submitRequest(5*time.Minute, "6", "7")
+
+	// Fulfil to confirm they were accepted.
+	env.statusQueue.Write([]*committerpb.TxStatus{
+		{Ref: committerpb.NewTxRef("6", 2, 0)},
+		{Ref: committerpb.NewTxRef("7", 2, 1)},
+	})
+
+	res, ok = q.ReadWithTimeout(10 * time.Second)
+	require.True(t, ok)
+	require.Nil(t, res.RejectedTxIds)
+	require.Len(t, res.TxStatusEvents, 2)
+}
+
 func newNotifierTestEnv(tb testing.TB) *notifierTestEnv {
+	tb.Helper()
 	return newNotifierTestEnvWithConfig(tb, &NotificationServiceConfig{})
 }
 

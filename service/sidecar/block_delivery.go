@@ -88,15 +88,9 @@ func (s *blockDelivery) deliverBlocks( //nolint:gocognit
 	srv peer.Deliver_DeliverServer,
 	envelope *common.Envelope,
 ) (common.Status, error) {
-	payload, chdr, err := serialization.ParseEnvelope(envelope)
+	payload, _, err := serialization.ParseEnvelope(envelope)
 	if err != nil {
 		return common.Status_BAD_REQUEST, errors.Wrap(err, "error parsing envelope")
-	}
-
-	if chdr.ChannelId != s.blockStore.channelID {
-		// Note, we log this at DEBUG because SDKs will poll waiting for channels to be created
-		// So we would expect our log to be somewhat flooded with these
-		return common.Status_NOT_FOUND, errors.New("channel not found")
 	}
 
 	seekInfo, err := readSeekInfo(payload.Data)
