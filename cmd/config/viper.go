@@ -30,6 +30,8 @@ func NewViperWithSidecarDefaults() *viper.Viper {
 	v.SetDefault("committer.endpoint", "localhost:9001")
 	v.SetDefault("ledger.path", "./ledger/")
 	v.SetDefault("notification.max-timeout", "1m")
+	v.SetDefault("notification.max-active-tx-ids", 100_000)
+	v.SetDefault("notification.max-tx-ids-per-request", 1000)
 	v.SetDefault("last-committed-block-set-interval", "3s")
 	v.SetDefault("waiting-txs-limit", 100_000)
 	v.SetDefault("channel-buffer-size", 100)

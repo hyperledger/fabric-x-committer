@@ -8,7 +8,6 @@ package sidecar
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -27,7 +26,6 @@ type (
 		ledger                       *fileledger.FileLedger
 		store                        *blkstorage.BlockStore
 		storeProvider                *blkstorage.BlockStoreProvider
-		channelID                    string
 		nextToBeCommittedBlockNumber uint64
 		syncInterval                 uint64
 		metrics                      *perfMetrics
@@ -39,9 +37,11 @@ type (
 	}
 )
 
+const committerChannelID = "fabric-x-committer"
+
 // newBlockStore creates a new block store.
-func newBlockStore(channelID, ledgerDir string, syncInterval uint64, metrics *perfMetrics) (*blockStore, error) {
-	logger.Infof("Create block store for channel %s under %s", channelID, ledgerDir)
+func newBlockStore(ledgerDir string, syncInterval uint64, metrics *perfMetrics) (*blockStore, error) {
+	logger.Infof("Create block store under %s", ledgerDir)
 
 	provider, err := blkstorage.NewProvider(
 		blkstorage.NewConf(ledgerDir, -1),
@@ -54,21 +54,19 @@ func newBlockStore(channelID, ledgerDir string, syncInterval uint64, metrics *pe
 		&disabled.Provider{},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create block store provider: %w", err)
+		return nil, errors.Wrap(err, "failed to create block store provider")
 	}
 
-	store, err := provider.Open(channelID)
+	store, err := provider.Open(committerChannelID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open block store for channel %s: %w", channelID, err)
+		return nil, errors.Wrap(err, "failed to open block store")
 	}
 
 	ledger := fileledger.NewFileLedger(store)
-
 	return &blockStore{
 		ledger:                       ledger,
 		store:                        store,
 		storeProvider:                provider,
-		channelID:                    channelID,
 		nextToBeCommittedBlockNumber: ledger.Height(),
 		syncInterval:                 syncInterval,
 		metrics:                      metrics,

@@ -84,8 +84,7 @@ func New(c *Config) (*Service, error) {
 	relayService := newRelay(c.LastCommittedBlockSetInterval, metrics)
 
 	// 3. Deliver the block with status to client.
-	logger.Infof("Create block store for channel %s", c.Orderer.ChannelID)
-	blockStoreInstance, err := newBlockStore(c.Orderer.ChannelID, c.Ledger.Path, c.Ledger.SyncInterval, metrics)
+	blockStoreInstance, err := newBlockStore(c.Ledger.Path, c.Ledger.SyncInterval, metrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create block store: %w", err)
 	}

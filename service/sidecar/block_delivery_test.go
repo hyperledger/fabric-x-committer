@@ -12,6 +12,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -25,8 +26,7 @@ import (
 func TestBlockDelivery(t *testing.T) {
 	t.Parallel()
 
-	channelID := "ch1"
-	bs, _ := newBlockStoreWithBlocks(t, channelID, 3)
+	bs, _ := newBlockStoreWithBlocks(t, 3)
 
 	// Register block delivery on a gRPC server.
 	config := connection.NewLocalHostServer(test.InsecureTLSConfig)
@@ -42,7 +42,7 @@ func TestBlockDelivery(t *testing.T) {
 		stream, err := deliverClient.Deliver(t.Context())
 		require.NoError(t, err)
 
-		env := seekEnvelope(t, channelID, 1, 2)
+		env := seekEnvelope(t, 1, 2)
 		require.NoError(t, stream.Send(env))
 
 		// Should receive block 1, then block 2, then a SUCCESS status.
@@ -62,7 +62,7 @@ func TestBlockDelivery(t *testing.T) {
 		stream, err := deliverClient.Deliver(t.Context())
 		require.NoError(t, err)
 
-		env := seekEnvelope(t, channelID, 0, 0)
+		env := seekEnvelope(t, 0, 0)
 		require.NoError(t, stream.Send(env))
 
 		resp, err := stream.Recv()
@@ -72,19 +72,6 @@ func TestBlockDelivery(t *testing.T) {
 		statusResp, err := stream.Recv()
 		require.NoError(t, err)
 		require.Equal(t, common.Status_SUCCESS, statusResp.GetStatus())
-	})
-
-	t.Run("DeliverWrongChannel", func(t *testing.T) {
-		t.Parallel()
-		stream, err := deliverClient.Deliver(t.Context())
-		require.NoError(t, err)
-
-		env := seekEnvelope(t, "wrong-channel", 0, 0)
-		require.NoError(t, stream.Send(env))
-
-		_, err = stream.Recv()
-		require.Error(t, err)
-		require.Equal(t, codes.NotFound, status.Code(err))
 	})
 
 	t.Run("DeliverFiltered", func(t *testing.T) {
@@ -110,12 +97,39 @@ func TestBlockDelivery(t *testing.T) {
 	})
 }
 
+// newBlockStoreWithBlocks creates a blockStore pre-populated with numBlocks chained blocks.
+// Each block carries valid transaction metadata. Returns the blockStore and per-block txIDs.
+func newBlockStoreWithBlocks(t *testing.T, numBlocks int) (*blockStore, [][3]string) {
+	t.Helper()
+
+	bs, err := newBlockStore(t.TempDir(), 0, newPerformanceMetrics())
+	require.NoError(t, err)
+	t.Cleanup(bs.close)
+
+	valid := byte(committerpb.Status_COMMITTED)
+	metadata := &common.BlockMetadata{
+		Metadata: [][]byte{nil, nil, {valid, valid, valid}},
+	}
+
+	var prevHash []byte
+	allTxIDs := make([][3]string, numBlocks)
+	for i := range numBlocks {
+		blk, txIDs := createBlockForTest(t, uint64(i), prevHash) //nolint:gosec
+		blk.Metadata = metadata
+		require.NoError(t, bs.ledger.Append(blk))
+		prevHash = protoutil.BlockHeaderHash(blk.Header)
+		allTxIDs[i] = txIDs
+	}
+
+	return bs, allTxIDs
+}
+
 // seekEnvelope creates a signed deliver envelope requesting blocks [start, stop].
-func seekEnvelope(t *testing.T, channelID string, start, stop uint64) *common.Envelope {
+func seekEnvelope(t *testing.T, start, stop uint64) *common.Envelope {
 	t.Helper()
 	env, err := protoutil.CreateSignedEnvelope(
 		common.HeaderType_DELIVER_SEEK_INFO,
-		channelID,
+		"",
 		nil, // no signer needed — the sidecar doesn't verify deliver request signatures.
 		&ab.SeekInfo{
 			Start:    &ab.SeekPosition{Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{Number: start}}},
