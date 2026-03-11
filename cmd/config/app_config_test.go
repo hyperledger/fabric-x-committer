@@ -476,7 +476,7 @@ func defaultSampleDBConfig() *vc.DatabaseConfig {
 		Database:  "yugabyte",
 		TLS: dbconn.DatabaseTLSConfig{
 			Mode:       connection.OneSideTLSMode,
-			CACertPath: "/server-certs/ca-certificate.pem",
+			CACertPath: "/root/artifacts/peerOrganizations/peer-org-0/peers/db/tls/ca.crt",
 		},
 		MaxConnections: 10,
 		MinConnections: 5,

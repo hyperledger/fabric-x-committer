@@ -543,11 +543,12 @@ func CreateClientTLSConfig(artifactsPath, connectToService, mode string) connect
 	}
 }
 
-func CreateServerTLSConfig(artifactsPath, ServiceName, mode string) connection.TLSConfig {
+// CreateServerTLSConfig creates a server TLS config with certificates loaded from the artifact path.
+func CreateServerTLSConfig(artifactsPath, serviceName, mode string) connection.TLSConfig {
 	return connection.TLSConfig{
 		Mode:     mode,
-		CertPath: filepath.Join(artifactsPath, serviceTLSPathFromArtifacts(ServiceName), "server.crt"),
-		KeyPath:  filepath.Join(artifactsPath, serviceTLSPathFromArtifacts(ServiceName), "server.key"),
+		CertPath: filepath.Join(artifactsPath, serviceTLSPathFromArtifacts(serviceName), "server.crt"),
+		KeyPath:  filepath.Join(artifactsPath, serviceTLSPathFromArtifacts(serviceName), "server.key"),
 		CACertPaths: []string{
 			filepath.Join(artifactsPath, ClientTLSPath, "ca.crt"),
 		},
