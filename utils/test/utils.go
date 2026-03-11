@@ -538,13 +538,24 @@ func CreateClientTLSConfig(artifactsPath, connectToService, mode string) connect
 		CertPath: filepath.Join(artifactsPath, ClientTLSPath, "client.crt"),
 		KeyPath:  filepath.Join(artifactsPath, ClientTLSPath, "client.key"),
 		CACertPaths: []string{
-			filepath.Join(artifactsPath, ServiceTLSPathFromArtifacts(connectToService), "ca.crt"),
+			filepath.Join(artifactsPath, serviceTLSPathFromArtifacts(connectToService), "ca.crt"),
 		},
 	}
 }
 
-// ServiceTLSPathFromArtifacts returns the path to the service's TLS certificate directory in the artifacts.
-func ServiceTLSPathFromArtifacts(serviceName string) string {
+func CreateServerTLSConfig(artifactsPath, ServiceName, mode string) connection.TLSConfig {
+	return connection.TLSConfig{
+		Mode:     mode,
+		CertPath: filepath.Join(artifactsPath, serviceTLSPathFromArtifacts(ServiceName), "server.crt"),
+		KeyPath:  filepath.Join(artifactsPath, serviceTLSPathFromArtifacts(ServiceName), "server.key"),
+		CACertPaths: []string{
+			filepath.Join(artifactsPath, ClientTLSPath, "ca.crt"),
+		},
+	}
+}
+
+// serviceTLSPathFromArtifacts returns the path to the service's TLS certificate directory in the artifacts.
+func serviceTLSPathFromArtifacts(serviceName string) string {
 	return filepath.Join(cryptogen.PeerOrganizationsDir, "peer-org-0",
 		cryptogen.PeerNodesDir, serviceName, cryptogen.TLSDir)
 }

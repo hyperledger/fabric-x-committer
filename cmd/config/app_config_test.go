@@ -85,7 +85,7 @@ func TestReadConfigSidecar(t *testing.T) {
 		expectedConfig: &sidecar.Config{
 			Server: &connection.ServerConfig{
 				Endpoint: *newEndpoint("", 4001),
-				TLS:      createServerTLSConfig("sidecar"),
+				TLS:      test.CreateServerTLSConfig(artifactsPath, "sidecar", connection.MutualTLSMode),
 				KeepAlive: &connection.ServerKeepAliveConfig{
 					Params: &connection.ServerKeepAliveParamsConfig{
 						Time:    300 * time.Second,
@@ -135,13 +135,13 @@ func TestReadConfigSidecar(t *testing.T) {
 			},
 		},
 	}}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			v := NewViperWithSidecarDefaults()
-			c, err := ReadSidecarYamlAndSetupLogging(v, tt.configFilePath)
+			c, err := ReadSidecarYamlAndSetupLogging(v, tc.configFilePath)
 			require.NoError(t, err)
-			require.Equal(t, tt.expectedConfig, c)
+			require.Equal(t, tc.expectedConfig, c)
 		})
 	}
 }
@@ -180,13 +180,13 @@ func TestReadConfigCoordinator(t *testing.T) {
 		},
 	}}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			v := NewViperWithCoordinatorDefaults()
-			c, err := ReadCoordinatorYamlAndSetupLogging(v, tt.configFilePath)
+			c, err := ReadCoordinatorYamlAndSetupLogging(v, tc.configFilePath)
 			require.NoError(t, err)
-			require.Equal(t, tt.expectedConfig, c)
+			require.Equal(t, tc.expectedConfig, c)
 		})
 	}
 }
@@ -229,13 +229,13 @@ func TestReadConfigVC(t *testing.T) {
 		},
 	}}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			v := NewViperWithVCDefaults()
-			c, err := ReadVCYamlAndSetupLogging(v, tt.configFilePath)
+			c, err := ReadVCYamlAndSetupLogging(v, tc.configFilePath)
 			require.NoError(t, err)
-			require.Equal(t, tt.expectedConfig, c)
+			require.Equal(t, tc.expectedConfig, c)
 		})
 	}
 }
@@ -274,13 +274,13 @@ func TestReadConfigVerifier(t *testing.T) {
 		},
 	}}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			v := NewViperWithVerifierDefaults()
-			c, err := ReadVerifierYamlAndSetupLogging(v, tt.configFilePath)
+			c, err := ReadVerifierYamlAndSetupLogging(v, tc.configFilePath)
 			require.NoError(t, err)
-			require.Equal(t, tt.expectedConfig, c)
+			require.Equal(t, tc.expectedConfig, c)
 		})
 	}
 }
@@ -329,13 +329,13 @@ func TestReadConfigQuery(t *testing.T) {
 		},
 	}}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			v := NewViperWithQueryDefaults()
-			c, err := ReadQueryYamlAndSetupLogging(v, tt.configFilePath)
+			c, err := ReadQueryYamlAndSetupLogging(v, tc.configFilePath)
 			require.NoError(t, err)
-			require.Equal(t, tt.expectedConfig, c)
+			require.Equal(t, tc.expectedConfig, c)
 		})
 	}
 }
@@ -443,13 +443,13 @@ func TestReadConfigLoadGen(t *testing.T) {
 		},
 	}}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			v := NewViperWithLoadGenDefaults()
-			c, err := ReadLoadGenYamlAndSetupLogging(v, tt.configFilePath)
+			c, err := ReadLoadGenYamlAndSetupLogging(v, tc.configFilePath)
 			require.NoError(t, err)
-			require.Equal(t, tt.expectedConfig, c)
+			require.Equal(t, tc.expectedConfig, c)
 		})
 	}
 }
@@ -510,7 +510,7 @@ func newMultiClientConfigWithDefaultTLS(host string, port int) connection.MultiC
 func newServerConfigWithDefaultTLS(serviceName string, port int) *connection.ServerConfig {
 	return &connection.ServerConfig{
 		Endpoint: *newEndpoint("", port),
-		TLS:      createServerTLSConfig(serviceName),
+		TLS:      test.CreateServerTLSConfig(artifactsPath, serviceName, connection.MutualTLSMode),
 	}
 }
 
@@ -556,15 +556,4 @@ func emptyConfig(t *testing.T) string {
 	configPath := filepath.Clean(path.Join(t.TempDir(), "empty.yaml"))
 	require.NoError(t, os.WriteFile(configPath, []byte{}, 0o660))
 	return configPath
-}
-
-func createServerTLSConfig(serviceName string) connection.TLSConfig {
-	return connection.TLSConfig{
-		Mode:     connection.MutualTLSMode,
-		CertPath: filepath.Join(artifactsPath, test.ServiceTLSPathFromArtifacts(serviceName), "server.crt"),
-		KeyPath:  filepath.Join(artifactsPath, test.ServiceTLSPathFromArtifacts(serviceName), "server.key"),
-		CACertPaths: []string{
-			filepath.Join(artifactsPath, test.ClientTLSPath, "ca.crt"),
-		},
-	}
 }

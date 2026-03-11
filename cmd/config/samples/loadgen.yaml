@@ -21,6 +21,8 @@ http-server:
   endpoint: :6997
 monitoring:
   endpoint: :2118
+  # Monitoring TLS configuration should/could be different from the GRPC server TLS
+  # to only allow authorized admins to monitor the service's metrics.
   tls: *tlsConfig
   # Rate limiting configuration for unary gRPC endpoints.
   # Uses a token bucket algorithm to limit the number of requests per second.

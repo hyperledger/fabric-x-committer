@@ -16,6 +16,8 @@ server:
       - /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/ca.crt
 monitoring:
   endpoint: :2116
+  # Monitoring TLS configuration should/could be different from the GRPC server TLS
+  # to only allow authorized admins to monitor the service's metrics.
   tls: *tlsConfig
   # Rate limiting configuration for unary gRPC endpoints.
   # Uses a token bucket algorithm to limit the number of requests per second.
@@ -38,7 +40,7 @@ database:
   tls:
     # Database TLS configuration being built based on the tls mode chosen: none, tls.
     mode: tls
-    ca-cert-path: /server-certs/ca-certificate.pem
+    ca-cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/db/tls/ca.crt
   max-connections: 10  # The maximum size of the connection pool
   min-connections: 5  # The minimum size of the connection pool.
   load-balance: false  # Should be enabled for DB cluster.

@@ -80,13 +80,13 @@ func CreateOrExtendConfigBlockWithCrypto(targetPath string, conf *ConfigBlock) (
 			Name:   fmt.Sprintf("peer-org-%d", i),
 			Domain: fmt.Sprintf("peer-org-%d.com", i),
 			PeerNodes: []cryptogen.Node{
-				{CommonName: "verifier", Hostname: "verifier", SANS: []string{"localhost", "verifier"}},
-				{CommonName: "vc", Hostname: "vc", SANS: []string{"localhost", "vc"}},
-				{CommonName: "coordinator", Hostname: "coordinator", SANS: []string{"localhost", "coordinator"}},
-				{CommonName: "query", Hostname: "query", SANS: []string{"localhost", "query"}},
-				{CommonName: "sidecar", Hostname: "sidecar", SANS: []string{"localhost", "sidecar"}},
-				{CommonName: "loadgen", Hostname: "loadgen", SANS: []string{"localhost", "loadgen"}},
-				{CommonName: "db", Hostname: "db", SANS: []string{"localhost", "db"}},
+				newPeer("verifier"),
+				newPeer("vc"),
+				newPeer("coordinator"),
+				newPeer("query"),
+				newPeer("sidecar"),
+				newPeer("loadgen"),
+				newPeer("db"),
 			},
 		})
 	}
@@ -106,4 +106,12 @@ func CreateOrExtendConfigBlockWithCrypto(targetPath string, conf *ConfigBlock) (
 		ChannelID:     conf.ChannelID,
 		Organizations: orgs,
 	})
+}
+
+func newPeer(name string) cryptogen.Node {
+	return cryptogen.Node{
+		CommonName: name,
+		Hostname:   name,
+		SANS:       []string{"localhost"},
+	}
 }

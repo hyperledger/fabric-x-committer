@@ -35,6 +35,8 @@ server:
     burst: 0
 monitoring:
   endpoint: :2114
+  # Monitoring TLS configuration should/could be different from the GRPC server TLS
+  # to only allow authorized admins to monitor the service's metrics.
   tls: *tlsConfig
   rate-limit:
     requests-per-second: 0

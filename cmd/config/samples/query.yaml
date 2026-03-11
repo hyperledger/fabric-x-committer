@@ -27,6 +27,8 @@ server:
     burst: 0
 monitoring:
   endpoint: :2117
+  # Monitoring TLS configuration should/could be different from the GRPC server TLS
+  # to only allow authorized admins to monitor the service's metrics.
   tls: *tlsConfig
   rate-limit:
     requests-per-second: 0
@@ -42,7 +44,7 @@ database:
   tls:
     # Database TLS configuration being built based on the tls mode chosen: none, tls.
     mode: tls
-    ca-cert-path: /server-certs/ca-certificate.pem
+    ca-cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/db/tls/ca.crt
   max-connections: 10  # The maximum size of the connection pool
   min-connections: 5  # The minimum size of the connection pool
   load-balance: false  # Should be enabled for DB cluster
