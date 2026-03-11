@@ -60,7 +60,7 @@ database:
     # Note: Database connections do not support mutual TLS (mtls).
     mode: tls
     # Path to the CA certificate file for verifying the database server's certificate.
-    ca-cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/db/tls/ca.crt
+    ca-cert-path: /server-certs/ca-certificate.pem
   # Maximum size of the database connection pool. Limits concurrent database operations.
   # Should be tuned based on database capacity and expected query load.
   max-connections: 10

@@ -75,6 +75,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	loadgenNode := "loadgen"
 	committerNodes := []string{"verifier", "vc", "query", "coordinator", "sidecar"}
 
+	credsFactory := test.NewCredentialsFactory(t)
 	for _, dbType := range []string{testdb.YugaDBType, testdb.PostgresDBType} {
 		t.Run(fmt.Sprintf("database:%s", dbType), func(t *testing.T) {
 			t.Parallel()
@@ -89,6 +90,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					})
 
 					params := startNodeParameters{
+						credsFactory:  credsFactory,
 						networkName:   networkName,
 						tlsMode:       mode,
 						artifactsPath: c.LoadProfile.Policy.ArtifactsPath,
@@ -133,7 +135,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNodeParameters) string {
 	t.Helper()
 
-	tlsConfig := test.CreateServerTLSConfig(params.artifactsPath, "db", params.tlsMode)
+	tlsConfig, _ := params.credsFactory.CreateServerCredentials(t, params.tlsMode, params.node)
 
 	node := &testdb.DatabaseContainer{
 		DatabaseType: params.dbType,
@@ -159,6 +161,8 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 	// post start container tweaking
 	switch node.DatabaseType {
 	case testdb.YugaDBType:
+		// Must run after node startup to ensure proper root ownership and permissions for the TLS certificate files.
+		node.ExecuteCommand(t, []string{"bash", "-c", "chown root:root /creds/*"})
 		node.EnsureNodeReadinessByLogs(t, testdb.YugabytedReadinessOutput)
 		conn.Password = node.ReadPasswordFromContainer(t, containerPathForYugabytePassword)
 	case testdb.PostgresDBType:
@@ -216,12 +220,12 @@ func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, param
 		},
 		hostConfig: &container.HostConfig{
 			NetworkMode: container.NetworkMode(params.networkName),
-			Binds: []string{
+			Binds: assembleBinds(t, params,
 				fmt.Sprintf("%s.yaml:/%s.yaml",
 					filepath.Join(mustGetWD(t), localConfigPath, params.node), configPath,
 				),
 				fmt.Sprintf("%s:%s", params.artifactsPath, containerArtifactsPath),
-			},
+			),
 		},
 		name: assembleContainerName(params.node, params.tlsMode, params.dbType),
 	})
@@ -267,13 +271,13 @@ func startLoadgenNodeWithReleaseImage(
 					HostPort: "0", // auto port assign
 				}},
 			},
-			Binds: []string{
+			Binds: assembleBinds(t, params,
 				fmt.Sprintf("%s.yaml:/%s.yaml",
 					filepath.Join(mustGetWD(t), localConfigPath, params.node), configPath,
 				),
 				// Mount the crypto artifacts for MSP-based endorsement of the meta namespace.
 				fmt.Sprintf("%s:%s", params.artifactsPath, containerArtifactsPath),
-			},
+			),
 		},
 		name: assembleContainerName(params.node, params.tlsMode, params.dbType),
 	})
@@ -299,9 +303,9 @@ func startCommitterNodeWithTestImage(
 		},
 		hostConfig: &container.HostConfig{
 			NetworkMode: container.NetworkMode(params.networkName),
-			Binds: []string{
+			Binds: assembleBinds(t, params,
 				fmt.Sprintf("%s:%s", params.artifactsPath, containerArtifactsPath),
-			},
+			),
 		},
 		name: assembleContainerName(params.node, params.tlsMode, params.dbType),
 	})

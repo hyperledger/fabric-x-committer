@@ -63,9 +63,10 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			containerName := assembleContainerName(committerContainerName, mode, testdb.PostgresDBType)
 			stopAndRemoveContainersByName(ctx, t, createDockerClient(t), containerName)
 			startCommitter(ctx, t, startNodeParameters{
-				node:    containerName,
-				tlsMode: mode,
-				cmd:     commonTestNodeCMD,
+				node:         containerName,
+				credsFactory: credsFactory,
+				tlsMode:      mode,
+				cmd:          commonTestNodeCMD,
 			})
 
 			v := config.NewViperWithLoadGenDefaults()
@@ -199,9 +200,10 @@ func TestStartTestNode(t *testing.T) {
 	containerName := fmt.Sprintf("%s_%s", test.DockerNamesPrefix, committerContainerName)
 	stopAndRemoveContainersByName(ctx, t, createDockerClient(t), containerName)
 	startCommitter(ctx, t, startNodeParameters{
-		node:    containerName,
-		tlsMode: connection.NoneTLSMode,
-		cmd:     append(commonTestNodeCMD, "loadgen"),
+		node:         containerName,
+		credsFactory: test.NewCredentialsFactory(t),
+		tlsMode:      connection.NoneTLSMode,
+		cmd:          append(commonTestNodeCMD, "loadgen"),
 	})
 
 	t.Log("Try to fetch the first block")
@@ -285,6 +287,8 @@ func startCommitter(ctx context.Context, t *testing.T, params startNodeParameter
 					HostPort: "0", // auto port assign
 				}},
 			},
+			// we create the credentials for the servers with "localhost" SNI.
+			Binds: assembleBinds(t, params.asNode(localhost)),
 		},
 		name: params.node,
 	})
