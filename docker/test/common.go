@@ -22,7 +22,6 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
-	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -241,18 +240,4 @@ func copyArtifactsFromContainer(ctx context.Context, t *testing.T, containerName
 		}
 	}
 	return hostDir
-}
-
-func createClientTLSConfig(mode, artifactsPath string) connection.TLSConfig {
-	return connection.TLSConfig{
-		Mode: mode,
-		CertPath: filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, "peer-org-0",
-			cryptogen.UsersDir, "client@peer-org-0.com", cryptogen.TLSDir, "client.crt"),
-		KeyPath: filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, "peer-org-0",
-			cryptogen.UsersDir, "client@peer-org-0.com", cryptogen.TLSDir, "client.key"),
-		CACertPaths: []string{
-			filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, "peer-org-0",
-				cryptogen.PeerNodesDir, "sidecar-peer-org-0", cryptogen.TLSDir, "ca.crt"),
-		},
-	}
 }

@@ -14,10 +14,9 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
-	"github.com/stretchr/testify/require"
-
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
+	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen"
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
@@ -32,32 +31,18 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-var (
-	defaultServerTLSConfig = connection.TLSConfig{
-		Mode: connection.MutualTLSMode,
-		CertPath: filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, "peer-org-0",
-			cryptogen.PeerNodesDir, "sidecar-peer-org-0", cryptogen.TLSDir, "server.crt"),
-		KeyPath: filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, "peer-org-0",
-			cryptogen.PeerNodesDir, "sidecar-peer-org-0", cryptogen.TLSDir, "server.key"),
-		CACertPaths: []string{
-			filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, "peer-org-0",
-				cryptogen.UsersDir, "client@peer-org-0.com", cryptogen.TLSDir, "ca.crt"),
-		},
-	}
-	defaultClientTLSConfig = connection.TLSConfig{
-		Mode: connection.MutualTLSMode,
-		CertPath: filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, "peer-org-0",
-			cryptogen.UsersDir, "client@peer-org-0.com", cryptogen.TLSDir, "client.crt"),
-		KeyPath: filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, "peer-org-0",
-			cryptogen.UsersDir, "client@peer-org-0.com", cryptogen.TLSDir, "client.key"),
-		CACertPaths: []string{
-			filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, "peer-org-0",
-				cryptogen.PeerNodesDir, "sidecar-peer-org-0", cryptogen.TLSDir, "ca.crt"),
-		},
-	}
-)
+var defaultClientTLSConfig = connection.TLSConfig{
+	Mode:     connection.MutualTLSMode,
+	CertPath: filepath.Join(artifactsPath, test.ClientTLSPath, "client.crt"),
+	KeyPath:  filepath.Join(artifactsPath, test.ClientTLSPath, "client.key"),
+	CACertPaths: []string{
+		filepath.Join(artifactsPath, filepath.Join(cryptogen.PeerOrganizationsDir, "peer-org-0",
+			cryptogen.PeerNodesDir, "sidecar-peer-org-0", cryptogen.TLSDir), "ca.crt"),
+	},
+}
 
 const artifactsPath = "/root/artifacts"
 
@@ -98,7 +83,7 @@ func TestReadConfigSidecar(t *testing.T) {
 		expectedConfig: &sidecar.Config{
 			Server: &connection.ServerConfig{
 				Endpoint: *newEndpoint("", 4001),
-				TLS:      defaultServerTLSConfig,
+				TLS:      createServerTLSConfig("sidecar"),
 				KeepAlive: &connection.ServerKeepAliveConfig{
 					Params: &connection.ServerKeepAliveParamsConfig{
 						Time:    300 * time.Second,
@@ -111,23 +96,21 @@ func TestReadConfigSidecar(t *testing.T) {
 				},
 				MaxConcurrentStreams: 10,
 			},
-			Monitoring: newServerConfigWithDefaultTLS(2114),
+			Monitoring: newServerConfigWithDefaultTLS("sidecar", 2114),
 			Orderer: ordererconn.Config{
 				ChannelID: "mychannel",
 				TLS: ordererconn.OrdererTLSConfig{
-					Mode:     defaultClientTLSConfig.Mode,
-					KeyPath:  defaultClientTLSConfig.KeyPath,
-					CertPath: defaultClientTLSConfig.CertPath,
-					CommonCACertPaths: []string{filepath.Join(artifactsPath, cryptogen.OrdererOrganizationsDir,
-						"orderer-org-0", cryptogen.OrdererNodesDir, "orderer-0-org-0", cryptogen.TLSDir, "ca.crt")},
+					Mode:              defaultClientTLSConfig.Mode,
+					KeyPath:           defaultClientTLSConfig.KeyPath,
+					CertPath:          defaultClientTLSConfig.CertPath,
+					CommonCACertPaths: []string{filepath.Join(artifactsPath, test.OrdererTLSPath, "ca.crt")},
 				},
 				Organizations: map[string]*ordererconn.OrganizationConfig{
 					"org0": {
 						Endpoints: []*commontypes.OrdererEndpoint{
 							newOrdererEndpoint("", "orderer"),
 						},
-						CACerts: []string{filepath.Join(artifactsPath, cryptogen.OrdererOrganizationsDir,
-							"orderer-org-0", cryptogen.OrdererNodesDir, "orderer-0-org-0", cryptogen.TLSDir, "ca.crt")},
+						CACerts: []string{filepath.Join(artifactsPath, test.OrdererTLSPath, "ca.crt")},
 					},
 				},
 				Identity: newIdentityConfig(),
@@ -181,8 +164,8 @@ func TestReadConfigCoordinator(t *testing.T) {
 		name:           "sample",
 		configFilePath: "samples/coordinator.yaml",
 		expectedConfig: &coordinator.Config{
-			Server:             newServerConfigWithDefaultTLS(9001),
-			Monitoring:         newServerConfigWithDefaultTLS(2119),
+			Server:             newServerConfigWithDefaultTLS("coordinator", 9001),
+			Monitoring:         newServerConfigWithDefaultTLS("coordinator", 2119),
 			Verifier:           newMultiClientConfigWithDefaultTLS("verifier", 5001),
 			ValidatorCommitter: newMultiClientConfigWithDefaultTLS("vc", 6001),
 			DependencyGraph: &coordinator.DependencyGraphConfig{
@@ -193,8 +176,7 @@ func TestReadConfigCoordinator(t *testing.T) {
 		},
 	}}
 
-	for _, test := range tests {
-		tt := test
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			v := NewViperWithCoordinatorDefaults()
@@ -230,8 +212,8 @@ func TestReadConfigVC(t *testing.T) {
 		name:           "sample",
 		configFilePath: "samples/vc.yaml",
 		expectedConfig: &vc.Config{
-			Server:     newServerConfigWithDefaultTLS(6001),
-			Monitoring: newServerConfigWithDefaultTLS(2116),
+			Server:     newServerConfigWithDefaultTLS("vc", 6001),
+			Monitoring: newServerConfigWithDefaultTLS("vc", 2116),
 			Database:   defaultSampleDBConfig(),
 			ResourceLimits: &vc.ResourceLimitsConfig{
 				MaxWorkersForPreparer:             1,
@@ -243,8 +225,7 @@ func TestReadConfigVC(t *testing.T) {
 		},
 	}}
 
-	for _, test := range tests {
-		tt := test
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			v := NewViperWithVCDefaults()
@@ -278,8 +259,8 @@ func TestReadConfigVerifier(t *testing.T) {
 		name:           "sample",
 		configFilePath: "samples/verifier.yaml",
 		expectedConfig: &verifier.Config{
-			Server:     newServerConfigWithDefaultTLS(5001),
-			Monitoring: newServerConfigWithDefaultTLS(2115),
+			Server:     newServerConfigWithDefaultTLS("verifier", 5001),
+			Monitoring: newServerConfigWithDefaultTLS("verifier", 2115),
 			ParallelExecutor: verifier.ExecutorConfig{
 				BatchSizeCutoff:   50,
 				BatchTimeCutoff:   10 * time.Millisecond,
@@ -289,8 +270,7 @@ func TestReadConfigVerifier(t *testing.T) {
 		},
 	}}
 
-	for _, test := range tests {
-		tt := test
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			v := NewViperWithVerifierDefaults()
@@ -332,8 +312,8 @@ func TestReadConfigQuery(t *testing.T) {
 		name:           "sample",
 		configFilePath: "samples/query.yaml",
 		expectedConfig: &query.Config{
-			Server:                newServerConfigWithDefaultTLS(7001),
-			Monitoring:            newServerConfigWithDefaultTLS(2117),
+			Server:                newServerConfigWithDefaultTLS("query", 7001),
+			Monitoring:            newServerConfigWithDefaultTLS("query", 2117),
 			Database:              defaultSampleDBConfig(),
 			MinBatchKeys:          1024,
 			MaxBatchWait:          100 * time.Millisecond,
@@ -345,8 +325,7 @@ func TestReadConfigQuery(t *testing.T) {
 		},
 	}}
 
-	for _, test := range tests {
-		tt := test
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			v := NewViperWithQueryDefaults()
@@ -376,10 +355,10 @@ func TestReadConfigLoadGen(t *testing.T) {
 		name:           "sample",
 		configFilePath: "samples/loadgen.yaml",
 		expectedConfig: &loadgen.ClientConfig{
-			Server:     newServerConfigWithDefaultTLS(8001),
+			Server:     newServerConfigWithDefaultTLS("loadgen", 8001),
 			HTTPServer: newServerConfig("", 6997),
 			Monitoring: metrics.Config{
-				ServerConfig: *newServerConfigWithDefaultTLS(2118),
+				ServerConfig: *newServerConfigWithDefaultTLS("loadgen", 2118),
 				Latency: metrics.LatencyConfig{
 					SamplerConfig: metrics.SamplerConfig{
 						Portion: 0.01,
@@ -399,21 +378,17 @@ func TestReadConfigLoadGen(t *testing.T) {
 						ConsensusType: ordererconn.Bft,
 						Identity:      newIdentityConfig(),
 						TLS: ordererconn.OrdererTLSConfig{
-							Mode:     defaultClientTLSConfig.Mode,
-							KeyPath:  defaultClientTLSConfig.KeyPath,
-							CertPath: defaultClientTLSConfig.CertPath,
-							CommonCACertPaths: []string{filepath.Join(artifactsPath, cryptogen.OrdererOrganizationsDir,
-								"orderer-org-0", cryptogen.OrdererNodesDir,
-								"orderer-0-org-0", cryptogen.TLSDir, "ca.crt")},
+							Mode:              defaultClientTLSConfig.Mode,
+							KeyPath:           defaultClientTLSConfig.KeyPath,
+							CertPath:          defaultClientTLSConfig.CertPath,
+							CommonCACertPaths: []string{filepath.Join(artifactsPath, test.OrdererTLSPath, "ca.crt")},
 						},
 						Organizations: map[string]*ordererconn.OrganizationConfig{
 							"org0": {
 								Endpoints: []*commontypes.OrdererEndpoint{
 									newOrdererEndpoint("", "orderer"),
 								},
-								CACerts: []string{filepath.Join(artifactsPath, cryptogen.OrdererOrganizationsDir,
-									"orderer-org-0", cryptogen.OrdererNodesDir,
-									"orderer-0-org-0", cryptogen.TLSDir, "ca.crt")},
+								CACerts: []string{filepath.Join(artifactsPath, test.OrdererTLSPath, "ca.crt")},
 							},
 						},
 					},
@@ -464,8 +439,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 		},
 	}}
 
-	for _, test := range tests {
-		tt := test
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			v := NewViperWithLoadGenDefaults()
@@ -516,7 +490,7 @@ func defaultSampleDBConfig() *vc.DatabaseConfig {
 func newClientConfigWithDefaultTLS(host string, port int) *connection.ClientConfig {
 	return &connection.ClientConfig{
 		Endpoint: newEndpoint(host, port),
-		TLS:      defaultClientTLSConfig,
+		TLS:      test.CreateClientTLSConfig(artifactsPath, host, connection.MutualTLSMode),
 	}
 }
 
@@ -525,14 +499,14 @@ func newMultiClientConfigWithDefaultTLS(host string, port int) connection.MultiC
 		Endpoints: []*connection.Endpoint{
 			newEndpoint(host, port),
 		},
-		TLS: defaultClientTLSConfig,
+		TLS: test.CreateClientTLSConfig(artifactsPath, host, connection.MutualTLSMode),
 	}
 }
 
-func newServerConfigWithDefaultTLS(port int) *connection.ServerConfig {
+func newServerConfigWithDefaultTLS(serviceName string, port int) *connection.ServerConfig {
 	return &connection.ServerConfig{
 		Endpoint: *newEndpoint("", port),
-		TLS:      defaultServerTLSConfig,
+		TLS:      createServerTLSConfig(serviceName),
 	}
 }
 
@@ -578,4 +552,15 @@ func emptyConfig(t *testing.T) string {
 	configPath := filepath.Clean(path.Join(t.TempDir(), "empty.yaml"))
 	require.NoError(t, os.WriteFile(configPath, []byte{}, 0o660))
 	return configPath
+}
+
+func createServerTLSConfig(serviceName string) connection.TLSConfig {
+	return connection.TLSConfig{
+		Mode:     connection.MutualTLSMode,
+		CertPath: filepath.Join(artifactsPath, test.ServiceTLSPathFromArtifacts(serviceName), "server.crt"),
+		KeyPath:  filepath.Join(artifactsPath, test.ServiceTLSPathFromArtifacts(serviceName), "server.key"),
+		CACertPaths: []string{
+			filepath.Join(artifactsPath, test.ClientTLSPath, "ca.crt"),
+		},
+	}
 }

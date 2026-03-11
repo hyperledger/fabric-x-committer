@@ -5,21 +5,16 @@
 ---
 server:
   endpoint: :9001
-  tls:
+  tls: &tlsConfig
     # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
     mode: mtls
-    cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar-peer-org-0/tls/server.crt
-    key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar-peer-org-0/tls/server.key
+    cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/coordinator/tls/server.crt
+    key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/coordinator/tls/server.key
     ca-cert-paths:
       - /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/ca.crt
 monitoring:
   endpoint: :2119
-  tls:
-    mode: mtls
-    cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar-peer-org-0/tls/server.crt
-    key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar-peer-org-0/tls/server.key
-    ca-cert-paths:
-      - /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/ca.crt
+  tls: *tlsConfig
   # Rate limiting configuration for unary gRPC endpoints.
   # Uses a token bucket algorithm to limit the number of requests per second.
   rate-limit:
@@ -35,16 +30,21 @@ monitoring:
 verifier:
   endpoints:
     - verifier:5001
-  tls: &ClientTLS
+  tls:
     mode: mtls  # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
-    cert-path: /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/client.crt
-    key-path: /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/client.key
+    cert-path: &clientCertPath /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/client.crt
+    key-path: &clientKeyPath /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/client.key
     ca-cert-paths:
-      - /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar-peer-org-0/tls/ca.crt
+      - /root/artifacts/peerOrganizations/peer-org-0/peers/verifier/tls/ca.crt
 validator-committer:
   endpoints:
     - vc:6001
-  tls: *ClientTLS
+  tls:
+    mode: mtls  # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
+    cert-path: *clientCertPath
+    key-path: *clientKeyPath
+    ca-cert-paths:
+      - /root/artifacts/peerOrganizations/peer-org-0/peers/vc/tls/ca.crt
 
 dependency-graph:
   num-of-local-dep-constructors: 1

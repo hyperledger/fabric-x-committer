@@ -7,11 +7,11 @@
 server:
   # The server's endpoint configuration
   endpoint: :7001
-  tls:
+  tls: &tlsConfig
     # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
     mode: mtls
-    cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar-peer-org-0/tls/server.crt
-    key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar-peer-org-0/tls/server.key
+    cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/query/tls/server.crt
+    key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/query/tls/server.key
     ca-cert-paths:
       - /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/ca.crt
   # Rate limiting configuration for unary gRPC endpoints.
@@ -27,12 +27,7 @@ server:
     burst: 0
 monitoring:
   endpoint: :2117
-  tls:
-    mode: mtls
-    cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar-peer-org-0/tls/server.crt
-    key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar-peer-org-0/tls/server.key
-    ca-cert-paths:
-      - /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/ca.crt
+  tls: *tlsConfig
   rate-limit:
     requests-per-second: 0
     burst: 0

@@ -19,12 +19,10 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/go-connections/nat"
-	"github.com/stretchr/testify/require"
-
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
-	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
+	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
@@ -107,10 +105,14 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 				),
 			}
 
-			runtime.SystemConfig.ClientTLS = createClientTLSConfig(mode, c.LoadProfile.Policy.ArtifactsPath)
+			// We don't need to create a separate client TLS config for each service for a couple of reasons:
+			// 1. All services belong to the same organization and use the same root CA.
+			// 2. All services run on the local machine.
+			runtime.SystemConfig.ClientTLS = test.CreateClientTLSConfig(
+				c.LoadProfile.Policy.ArtifactsPath, "sidecar", mode,
+			)
 			runtime.SystemConfig.ClientTLS.CACertPaths = append(runtime.SystemConfig.ClientTLS.CACertPaths,
-				filepath.Join(c.LoadProfile.Policy.ArtifactsPath, cryptogen.OrdererOrganizationsDir, "orderer-org-0",
-					cryptogen.OrdererNodesDir, "orderer-0-org-0", cryptogen.TLSDir, "ca.crt"))
+				filepath.Join(c.LoadProfile.Policy.ArtifactsPath, test.OrdererTLSPath, "ca.crt"))
 
 			runtime.CreateRuntimeClients(ctx, t)
 			runtime.OpenNotificationStream(ctx, t)

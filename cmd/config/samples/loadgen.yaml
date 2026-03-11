@@ -6,11 +6,11 @@
 # If server is set, a gRPC endpoint is exposed the full load generator's API.
 server:
   endpoint: :8001
-  tls:
+  tls: &tlsConfig
     # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
     mode: mtls
-    cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar-peer-org-0/tls/server.crt
-    key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar-peer-org-0/tls/server.key
+    cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/loadgen/tls/server.crt
+    key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/loadgen/tls/server.key
     ca-cert-paths:
       - /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/ca.crt
 # If http-server is set, an HTTP endpoint is exposed to adjust the rate limit at runtime.
@@ -21,12 +21,7 @@ http-server:
   endpoint: :6997
 monitoring:
   endpoint: :2118
-  tls:
-    mode: mtls
-    cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar-peer-org-0/tls/server.crt
-    key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar-peer-org-0/tls/server.key
-    ca-cert-paths:
-      - /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/ca.crt
+  tls: *tlsConfig
   # Rate limiting configuration for unary gRPC endpoints.
   # Uses a token bucket algorithm to limit the number of requests per second.
   rate-limit:
@@ -52,10 +47,10 @@ orderer-client:
     # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
     tls:
       mode: mtls
-      cert-path: /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/client.crt
-      key-path: /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/client.key
+      cert-path: &clientCertPath /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/client.crt
+      key-path: &clientKeyPath /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/client.key
       ca-cert-paths:
-        - /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar-peer-org-0/tls/ca.crt
+        - /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar/tls/ca.crt
   orderer:
     # Organizations map organization MSP IDs to their orderer connection details.
     # It supports multi-organization deployments where each org has its own orderers and TLS root CAs.
@@ -63,16 +58,15 @@ orderer-client:
       org0:
         endpoints:
           - id=0,broadcast,deliver,orderer:7050
-        ca-cert-paths:
+        ca-cert-paths: &ordererRootCAs
           - /root/artifacts/ordererOrganizations/orderer-org-0/orderers/orderer-0-org-0/tls/ca.crt
     # Loadgen uses these TLS credentials when connecting to the orderers as a client.
     tls:
       # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
       mode: mtls
-      cert-path: /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/client.crt
-      key-path: /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/client.key
-      common-ca-cert-paths:
-        - /root/artifacts/ordererOrganizations/orderer-org-0/orderers/orderer-0-org-0/tls/ca.crt
+      cert-path: *clientCertPath
+      key-path: *clientKeyPath
+      common-ca-cert-paths: *ordererRootCAs
     consensus-type: BFT
     channel-id: mychannel
     identity:

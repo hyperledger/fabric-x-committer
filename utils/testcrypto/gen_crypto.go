@@ -79,15 +79,15 @@ func CreateOrExtendConfigBlockWithCrypto(targetPath string, conf *ConfigBlock) (
 		orgs = append(orgs, cryptogen.OrganizationParameters{
 			Name:   fmt.Sprintf("peer-org-%d", i),
 			Domain: fmt.Sprintf("peer-org-%d.com", i),
-			PeerNodes: []cryptogen.Node{{
-				CommonName: fmt.Sprintf("sidecar-peer-org-%d", i),
-				Hostname:   fmt.Sprintf("sidecar-peer-org-%d.com", i),
-				// Test environments use a shared peer certificate for all services.
-				// To support TLS connections between services using Docker DNS names
-				// (e.g., coordinator connecting to vc), we include all service names
-				// in the certificate's Subject Alternative Names (SANs).
-				SANS: []string{"localhost", "verifier", "vc", "coordinator", "query", "sidecar", "orderer", "db"},
-			}},
+			PeerNodes: []cryptogen.Node{
+				{CommonName: "verifier", Hostname: "verifier", SANS: []string{"localhost", "verifier"}},
+				{CommonName: "vc", Hostname: "vc", SANS: []string{"localhost", "vc"}},
+				{CommonName: "coordinator", Hostname: "coordinator", SANS: []string{"localhost", "coordinator"}},
+				{CommonName: "query", Hostname: "query", SANS: []string{"localhost", "query"}},
+				{CommonName: "sidecar", Hostname: "sidecar", SANS: []string{"localhost", "sidecar"}},
+				{CommonName: "loadgen", Hostname: "loadgen", SANS: []string{"localhost", "loadgen"}},
+				{CommonName: "db", Hostname: "db", SANS: []string{"localhost", "db"}},
+			},
 		})
 	}
 
