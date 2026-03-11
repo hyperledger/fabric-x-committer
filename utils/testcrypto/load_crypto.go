@@ -9,10 +9,14 @@ package testcrypto
 import (
 	"os"
 	"path"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
+
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
 
 // GetPeersIdentities returns the peers' identities from a crypto path.
@@ -81,4 +85,30 @@ func GetMspDirs(targetPath string) []*msp.DirLoadParameters {
 		})
 	}
 	return mspDirs
+}
+
+// GetOrdererConnConfig returns the configuration for an orderer connection using the config block and peer
+// organizations in tha artifacts path.
+func GetOrdererConnConfig(artifactsPath string, clientTLSConfig connection.TLSConfig) ordererconn.Config {
+	peerMsp := GetPeersMspDirs(artifactsPath)
+	var id *ordererconn.IdentityConfig
+	if len(peerMsp) > 0 {
+		id = &ordererconn.IdentityConfig{
+			MspID:  peerMsp[0].MspName,
+			MSPDir: peerMsp[0].MspDir,
+			BCCSP:  peerMsp[0].CspConf,
+		}
+	}
+	return ordererconn.Config{
+		FaultToleranceLevel:      ordererconn.BFT,
+		TLS:                      ordererconn.TLSConfigToOrdererTLSConfig(clientTLSConfig),
+		LastKnownConfigBlockPath: path.Join(artifactsPath, cryptogen.ConfigBlockFileName),
+		Retry: &connection.RetryProfile{
+			InitialInterval: 10 * time.Millisecond,
+			MaxInterval:     100 * time.Millisecond,
+			Multiplier:      2,
+			MaxElapsedTime:  time.Second,
+		},
+		Identity: id,
+	}
 }

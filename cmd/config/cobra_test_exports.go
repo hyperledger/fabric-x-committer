@@ -48,14 +48,18 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 	}
 	_, verifier := mock.StartMockVerifierService(t, serverParams)
 	_, vc := mock.StartMockVCService(t, serverParams)
-	_, orderer := mock.StartMockOrderingServices(t, &mock.OrdererConfig{TestServerParameters: serverParams})
+	orderer := mock.NewOrdererTestEnv(t, &mock.OrdererTestParameters{
+		OrdererConfig: &mock.OrdererConfig{
+			SendGenesisBlock: true,
+		},
+	})
 	_, coordinator := mock.StartMockCoordinatorService(t, serverParams)
 	server := connection.NewLocalHostServer(test.InsecureTLSConfig)
 	listen, err := server.Listener(t.Context())
 	require.NoError(t, err)
 	connection.CloseConnectionsLog(listen)
 
-	ordererEp := orderer.Configs[0].Endpoint
+	ordererEp := orderer.AllServerConfig[0].Endpoint
 	policy := &workload.PolicyProfile{
 		ArtifactsPath:         t.TempDir(),
 		ChannelID:             "channel1",
@@ -72,7 +76,7 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 		Services: SystemServices{
 			Verifier:    []ServiceConfig{{GrpcEndpoint: &verifier.Configs[0].Endpoint}},
 			VCService:   []ServiceConfig{{GrpcEndpoint: &vc.Configs[0].Endpoint}},
-			Orderer:     []ServiceConfig{{GrpcEndpoint: &orderer.Configs[0].Endpoint}},
+			Orderer:     []ServiceConfig{{GrpcEndpoint: &ordererEp}},
 			Coordinator: ServiceConfig{GrpcEndpoint: &coordinator.Configs[0].Endpoint},
 		},
 		DB:         defaultTestDBConfig(),

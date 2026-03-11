@@ -89,12 +89,13 @@ type (
 	}
 )
 
+// usage: TLS configuration modes.
 const (
-	//nolint:revive // usage: TLS configuration modes.
 	UnmentionedTLSMode = ""
 	NoneTLSMode        = "none"
 	OneSideTLSMode     = "tls"
 	MutualTLSMode      = "mtls"
+	DefaultTLSMode     = NoneTLSMode
 
 	// DefaultTLSMinVersion is the minimum version required to achieve secure connections.
 	DefaultTLSMinVersion = tls.VersionTLS12

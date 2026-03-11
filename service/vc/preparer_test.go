@@ -726,10 +726,3 @@ func BenchmarkPrepare(b *testing.B) {
 		})
 	}
 }
-
-// invalidStatus is a oneliner to create a pointer to the given status.
-//
-//go:fix inline
-func invalidStatus(status committerpb.Status) *committerpb.Status {
-	return new(status)
-}

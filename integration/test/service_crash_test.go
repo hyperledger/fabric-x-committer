@@ -14,6 +14,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/onsi/gomega"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
@@ -139,19 +140,19 @@ func TestCrashWhenNonIdle(t *testing.T) {
 	// After all failure scenarios are executed, we should ensure that
 	// a few more transactions are being committed.
 	count := c.CountStatus(t, committerpb.Status_COMMITTED)
-	require.Eventually(t, func() bool {
-		return c.CountStatus(t, committerpb.Status_COMMITTED) > count
-	}, 30*time.Second, 1*time.Millisecond)
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		require.Greater(ct, c.CountStatus(t, committerpb.Status_COMMITTED), count)
+	}, time.Minute, 1*time.Millisecond)
 
 	// 1. Block 0 holds the config transaction.
 	// 2. Block 1 holds namespace creation transaction.
 	actualCountedBlocks := c.SystemConfig.LoadGenBlockLimit - 1  // block 0 is not counted in the limit
 	totalTxs := c.SystemConfig.BlockSize*actualCountedBlocks + 2 // we add 2 txs (config tx and namespace tx).
-	require.Eventually(t, func() bool {
-		count := c.CountStatus(t, committerpb.Status_COMMITTED)
-		t.Logf("count: %d, expected: %d", count, totalTxs)
-		return count == int(totalTxs) //nolint:gosec
-	}, 300*time.Second, 1*time.Second)
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		curCount := c.CountStatus(t, committerpb.Status_COMMITTED)
+		t.Logf("count: %d, expected: %d", curCount, totalTxs)
+		require.EqualValues(ct, totalTxs, curCount)
+	}, 5*time.Minute, 1*time.Second)
 }
 
 func stopServices(t *testing.T, c *runner.CommitterRuntime, serviceNames []string) {

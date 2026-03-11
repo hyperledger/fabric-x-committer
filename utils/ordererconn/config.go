@@ -7,26 +7,36 @@ SPDX-License-Identifier: Apache-2.0
 package ordererconn
 
 import (
+	"strings"
+	"time"
+
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
-	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 type (
-	// Config defines the static configuration of the orderer client as loaded from the YAML file.
-	// It supports connectivity to multiple organization's orderers.
+	// Config defines the static configuration of the orderer as loaded from the YAML file.
 	Config struct {
-		ConsensusType string                         `mapstructure:"consensus-type"`
-		ChannelID     string                         `mapstructure:"channel-id"`
-		Identity      *IdentityConfig                `mapstructure:"identity"`
-		Retry         *connection.RetryProfile       `mapstructure:"reconnect"`
-		TLS           OrdererTLSConfig               `mapstructure:"tls"`
-		Organizations map[string]*OrganizationConfig `mapstructure:"organizations"`
+		FaultToleranceLevel string                   `mapstructure:"fault-tolerance-level"`
+		TLS                 OrdererTLSConfig         `mapstructure:"tls"`
+		Retry               *connection.RetryProfile `mapstructure:"reconnect"`
+		// LastKnownConfigBlockPath is the path for the last known config block.
+		// We fetch the orderer endpoints, CA certificates, and channel-ID from this block.
+		// This block might be newer than the block used for verification, to allow using
+		// the most up-to-date orderer connection data.
+		LastKnownConfigBlockPath string `mapstructure:"last-known-config-block-path"`
+
+		// The following parameters only applies to delivery.
+		Identity                *IdentityConfig `mapstructure:"identity"`
+		BlockWithholdingTimeout time.Duration   `mapstructure:"block-withholding-timeout"`
+		SuspicionGracePeriod    time.Duration   `mapstructure:"suspicion-grace-period"`
+		LivenessCheckInterval   time.Duration   `mapstructure:"liveness-check-interval"`
+		MaxBlocksAhead          uint64          `mapstructure:"max-blocks-ahead"`
 	}
 
-	// IdentityConfig defines the orderer's MSP.
+	// IdentityConfig defines the orderer's client MSP.
 	IdentityConfig struct {
 		// MspID indicates to which MSP this client belongs to.
 		MspID  string               `mapstructure:"msp-id" yaml:"msp-id"`
@@ -34,92 +44,43 @@ type (
 		BCCSP  *factory.FactoryOpts `mapstructure:"bccsp" yaml:"bccsp"`
 	}
 
-	// OrganizationConfig contains the MspID (Organization ID), orderer endpoints, and their root CA paths.
-	OrganizationConfig struct {
-		Endpoints []*commontypes.OrdererEndpoint `mapstructure:"endpoints"`
-		CACerts   []string                       `mapstructure:"ca-cert-paths"`
-	}
-
 	// OrdererTLSConfig is a TLS config for the orderer clients.
 	OrdererTLSConfig struct {
 		Mode     string `mapstructure:"mode"`
 		CertPath string `mapstructure:"cert-path"`
 		KeyPath  string `mapstructure:"key-path"`
-		// CommonCACertPaths is a temporaty workaround to inject CA to all organizations.
+		// CommonCACertPaths is a temporary workaround to inject CA to all organizations.
 		// TODO: This will be removed once we read the TLS certificates from the config block.
 		CommonCACertPaths []string `mapstructure:"common-ca-cert-paths"`
 	}
 )
 
+// Fault tolerance levels.
+// BFT (byzantine fault tolerance):
+//   - For delivery: verifies blocks and monitors for block withholding.
+//   - For broadcast: submit transactions to multiple orderers and waits for acknowledgments from a quorum.
+//
+// CFT (crash fault tolerance):
+//   - For delivery: verifies blocks.
+//   - For broadcast: submits transactions to a single orderer.
+//
+// UnspecifiedFT (empty string) defaults to the DefaultFT, which is the highest fault tolerance level (BFT).
 const (
-	// Cft client support for crash fault tolerance.
-	Cft = "CFT"
-	// Bft client support for byzantine fault tolerance.
-	Bft = "BFT"
-	// DefaultConsensus default fault tolerance.
-	DefaultConsensus = Cft
-
-	// Broadcast support by endpoint.
-	Broadcast = "broadcast"
-	// Deliver support by endpoint.
-	Deliver = "deliver"
+	UnspecifiedFT = ""
+	BFT           = "BFT"
+	CFT           = "CFT"
+	DefaultFT     = BFT
 )
 
-// Errors that may be returned when updating a configuration.
-var (
-	ErrEmptyConnectionConfig = errors.New("empty connection config")
-	ErrEmptyEndpoint         = errors.New("empty endpoint")
-	ErrNoEndpoints           = errors.New("no endpoints")
-)
-
-// ValidateOrganizations validate the organization parameters.
-func ValidateOrganizations(organizations ...*OrganizationMaterial) error {
-	for _, org := range organizations {
-		if org == nil {
-			return ErrEmptyConnectionConfig
-		}
-		if err := validateEndpoints(org.Endpoints); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func validateEndpoints(endpoints []*commontypes.OrdererEndpoint) error {
-	if len(endpoints) == 0 {
-		return ErrNoEndpoints
-	}
-	uniqueEndpoints := make(map[string]string)
-	for _, e := range endpoints {
-		if e.Host == "" || e.Port == 0 {
-			return ErrEmptyEndpoint
-		}
-		target := e.Address()
-		if other, ok := uniqueEndpoints[target]; ok {
-			return errors.Newf("endpoint [%s] specified multiple times: %s, %s", target, other, e.String())
-		}
-		uniqueEndpoints[target] = e.String()
-	}
-	return nil
-}
-
-// ValidateConsensusType verify and sets the consensus type in case of an unmentioned type.
-func ValidateConsensusType(c *Config) error {
-	if c.ConsensusType == "" {
-		c.ConsensusType = DefaultConsensus
-	}
-	if c.ConsensusType != Bft && c.ConsensusType != Cft {
-		return errors.Newf("unsupported orderer type %s", c.ConsensusType)
-	}
-	return nil
-}
-
-// TLSConfigToOrdererTLSConfig translates a TLSConfig to an OrdererTLSConfig.
-func TLSConfigToOrdererTLSConfig(c connection.TLSConfig) OrdererTLSConfig {
-	return OrdererTLSConfig{
-		Mode:              c.Mode,
-		KeyPath:           c.KeyPath,
-		CertPath:          c.CertPath,
-		CommonCACertPaths: c.CACertPaths,
+// GetFaultToleranceLevel verify and returns the fault tolerance level.
+func GetFaultToleranceLevel(ftLevel string) (string, error) {
+	ftLevel = strings.ToUpper(ftLevel)
+	switch ftLevel {
+	case BFT, CFT:
+		return ftLevel, nil
+	case UnspecifiedFT:
+		return DefaultFT, nil
+	default:
+		return ftLevel, errors.Newf("invalid fault tolerance level: '%s'", ftLevel)
 	}
 }

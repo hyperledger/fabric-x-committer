@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"path"
 	"path/filepath"
 	"testing"
 	"time"
@@ -22,14 +23,18 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
+	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
+	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/delivercommitter"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
@@ -76,16 +81,23 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			// Copy the container's crypto artifacts to the host so the test
 			// endorses meta namespace transactions with the same MSP the verifier
 			// expects (from the config block's lifecycle endorsement policy).
-			c.LoadProfile.Policy.ArtifactsPath = copyArtifactsFromContainer(ctx, t, containerName)
+			// We need to re-create a fake config block with alternative orderer endpoints because
+			// we need to connect via the container's mapped ports, which are different from the endpoints
+			// in the original config block created by the test node (with localhost and static ports).
+			artifactsPath := copyArtifactsFromContainer(ctx, t, containerName)
+			c.LoadProfile.Policy.ArtifactsPath = artifactsPath
 			ordererEp := mustGetEndpoint(ctx, t, containerName, mockOrdererPort)
 			c.LoadProfile.Policy.OrdererEndpoints = []*commontypes.OrdererEndpoint{{
-				Host: ordererEp.Host, Port: ordererEp.Port, ID: 0, MspID: "org",
+				Host: ordererEp.Host, Port: ordererEp.Port, ID: 0,
 				API: []string{commontypes.Broadcast, commontypes.Deliver},
 			}}
+			_, err = workload.CreateOrExtendConfigBlockWithCrypto(&c.LoadProfile.Policy)
+			require.NoError(t, err)
 
 			getServerConfig := func(servicePort string) config.ServiceConfig {
 				return config.ServiceConfig{GrpcEndpoint: mustGetEndpoint(ctx, t, containerName, servicePort)}
 			}
+			clientTLS, _ := credsFactory.CreateClientCredentials(t, mode)
 			runtime := runner.CommitterRuntime{
 				CredFactory:      credsFactory,
 				SeedForCryptoGen: rand.New(rand.NewSource(10)),
@@ -103,8 +115,15 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 					testdb.NewConnection(testdb.PostgresDBType, mustGetEndpoint(ctx, t, containerName, databasePort)),
 					false,
 				),
+				OrdererEnv: &mock.OrdererTestEnv{
+					OrdererConnConfig: ordererconn.Config{
+						TLS:                      ordererconn.TLSConfigToOrdererTLSConfig(clientTLS),
+						FaultToleranceLevel:      ordererconn.CFT,
+						LastKnownConfigBlockPath: path.Join(artifactsPath, cryptogen.ConfigBlockFileName),
+					},
+				},
 			}
-			runtime.SystemConfig.ClientTLS, _ = credsFactory.CreateClientCredentials(t, mode)
+			runtime.SystemConfig.ClientTLS = clientTLS
 			runtime.CreateRuntimeClients(ctx, t)
 			runtime.OpenNotificationStream(ctx, t)
 

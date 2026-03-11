@@ -282,17 +282,17 @@ func (f *blockFetcher) requireGetBlock(
 
 func getVerifier(t *testing.T, block *common.Block) protoutil.BlockVerifierFunc {
 	t.Helper()
-	configBlock, err := ordererconn.LoadConfigBlock(block)
+	configMaterial, err := ordererconn.LoadConfigBlock(block)
 	require.NoError(t, err)
-	require.NotNil(t, configBlock)
+	require.NotNil(t, configMaterial)
 
-	policy, exists := configBlock.Bundle.PolicyManager().GetPolicy(policies.BlockValidation)
+	policy, exists := configMaterial.Bundle.PolicyManager().GetPolicy(policies.BlockValidation)
 	require.True(t, exists)
 
-	oc, ok := configBlock.Bundle.OrdererConfig()
+	oc, ok := configMaterial.Bundle.OrdererConfig()
 	require.True(t, ok)
 
-	bftEnabled := configBlock.Bundle.ChannelConfig().Capabilities().ConsensusTypeBFT()
+	bftEnabled := configMaterial.Bundle.ChannelConfig().Capabilities().ConsensusTypeBFT()
 	require.True(t, bftEnabled)
 	consenters := oc.Consenters()
 

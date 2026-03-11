@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -37,7 +36,6 @@ type Coordinator struct {
 	numWaitingTxs      atomic.Int32
 	txsStatus          *fifoCache[*committerpb.TxStatus]
 	txsStatusMu        sync.Mutex
-	configTransaction  atomic.Pointer[applicationpb.ConfigTransaction]
 	latency            atomic.Pointer[time.Duration]
 	healthcheck        *health.Server
 }
@@ -58,16 +56,6 @@ func NewMockCoordinator() *Coordinator {
 func (c *Coordinator) RegisterService(server *grpc.Server) {
 	servicepb.RegisterCoordinatorServer(server, c)
 	healthgrpc.RegisterHealthServer(server, c.healthcheck)
-}
-
-// GetConfigTransaction return the latest configuration transaction.
-func (c *Coordinator) GetConfigTransaction(context.Context, *emptypb.Empty) (*applicationpb.ConfigTransaction, error) {
-	return c.configTransaction.Load(), nil
-}
-
-// SetConfigTransaction stores the given envelope data as the current config transaction.
-func (c *Coordinator) SetConfigTransaction(data []byte) {
-	c.configTransaction.Store(&applicationpb.ConfigTransaction{Envelope: data})
 }
 
 // SetLastCommittedBlockNumber sets the last committed block number.

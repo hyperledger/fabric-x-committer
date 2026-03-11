@@ -47,7 +47,6 @@ type (
 	relayRunConfig struct {
 		coordClient                    servicepb.CoordinatorClient
 		nextExpectedBlockByCoordinator uint64
-		configUpdater                  func(*common.Block)
 		incomingBlockToBeCommitted     <-chan *common.Block
 		outgoingCommittedBlock         chan<- *common.Block
 		outgoingStatusUpdates          chan<- []*committerpb.TxStatus
@@ -99,7 +98,7 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 
 	mappedBlockQueue := make(chan *blockMappingResult, cap(r.incomingBlockToBeCommitted))
 	g.Go(func() error {
-		return r.preProcessBlock(sCtx, mappedBlockQueue, config.configUpdater)
+		return r.preProcessBlock(sCtx, mappedBlockQueue)
 	})
 	g.Go(func() error {
 		return r.sendBlocksToCoordinator(sCtx, mappedBlockQueue, stream)
@@ -123,7 +122,6 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 func (r *relay) preProcessBlock(
 	ctx context.Context,
 	mappedBlockQueue chan<- *blockMappingResult,
-	configUpdater func(*common.Block),
 ) error {
 	incomingBlockToBeCommitted := channel.NewReader(ctx, r.incomingBlockToBeCommitted)
 	queue := channel.NewWriter(ctx, mappedBlockQueue)
@@ -147,7 +145,6 @@ func (r *relay) preProcessBlock(
 		}
 		promutil.Observe(r.metrics.blockMappingInRelaySeconds, time.Since(start))
 		if mappedBlock.isConfig {
-			configUpdater(block)
 			// We wait for all previously submitted transactions to be processed by
 			// the committer before submitting the config block.
 			r.waitingTxsSlots.WaitTillEmpty(ctx)

@@ -29,7 +29,6 @@ type relayTestEnv struct {
 	incomingBlockToBeCommitted chan *common.Block
 	committedBlock             chan *common.Block
 	statusQueue                chan []*committerpb.TxStatus
-	configBlocks               []*common.Block
 	metrics                    *perfMetrics
 	waitingTxsLimit            int
 }
@@ -69,13 +68,10 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 		return connection.FilterStreamRPCError(relayService.run(ctx, &relayRunConfig{
 			coordClient:                    client,
 			nextExpectedBlockByCoordinator: 0,
-			configUpdater: func(block *common.Block) {
-				env.configBlocks = append(env.configBlocks, block)
-			},
-			incomingBlockToBeCommitted: env.incomingBlockToBeCommitted,
-			outgoingCommittedBlock:     env.committedBlock,
-			outgoingStatusUpdates:      env.statusQueue,
-			waitingTxsLimit:            env.waitingTxsLimit,
+			incomingBlockToBeCommitted:     env.incomingBlockToBeCommitted,
+			outgoingCommittedBlock:         env.committedBlock,
+			outgoingStatusUpdates:          env.statusQueue,
+			waitingTxsLimit:                env.waitingTxsLimit,
 		}))
 	}, nil)
 	return env
@@ -269,8 +265,6 @@ func TestRelayConfigBlock(t *testing.T) {
 	require.NotNil(t, committedBlock1.Metadata)
 	require.Greater(t, len(committedBlock1.Metadata.Metadata), statusIdx)
 	require.Equal(t, []byte{valid}, committedBlock1.Metadata.Metadata[statusIdx])
-	require.Len(t, relayEnv.configBlocks, 1)
-	require.Equal(t, configBlk, relayEnv.configBlocks[0])
 
 	committedBlock2 := <-relayEnv.committedBlock
 	require.Equal(t, blk2, committedBlock2)

@@ -11,7 +11,6 @@ import (
 	"crypto/rand"
 	_ "embed"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -21,9 +20,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/common/ledger/blkstorage"
-	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -37,76 +34,33 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/delivercommitter"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 type sidecarTestEnv struct {
+	*mock.OrdererTestEnv
 	config            Config
 	coordinator       *mock.Coordinator
 	coordinatorServer *test.GrpcServers
-	ordererEnv        *mock.OrdererTestEnv
 
 	sidecar        *Service
 	committedBlock chan *common.Block
-	configBlock    *common.Block
 	notifyStream   committerpb.Notifier_OpenNotificationStreamClient
 }
 
 type sidecarTestConfig struct {
-	NumService         int
-	NumFakeService     int
-	SubmitGenesisBlock bool
-	ServerTLS          connection.TLSConfig
-	ClientTLS          connection.TLSConfig
+	NumIDs        uint32
+	InitialNumIDs uint32
+	ServerTLS     connection.TLSConfig
+	ClientTLS     connection.TLSConfig
 }
 
 const (
 	blockSize              = 100
 	expectedProcessingTime = 30 * time.Second
 )
-
-func (c *sidecarTestConfig) String() string {
-	var b []string
-	if c.NumService > 1 {
-		b = append(b, fmt.Sprintf("services:%d", c.NumService))
-	}
-	if c.NumFakeService > 0 {
-		b = append(b, fmt.Sprintf("fake:%d", c.NumFakeService))
-	}
-	if c.SubmitGenesisBlock {
-		b = append(b, "genesis-block")
-	}
-	if len(b) > 0 {
-		return strings.Join(b, ",")
-	}
-	return "default"
-}
-
-func TestSidecarSecureConnection(t *testing.T) {
-	t.Parallel()
-	test.RunSecureConnectionTest(t,
-		func(t *testing.T, serverCreds, clientCreds connection.TLSConfig) test.RPCAttempt {
-			t.Helper()
-			env := newSidecarTestEnvWithTLS(
-				t,
-				sidecarTestConfig{NumService: 1, ServerTLS: serverCreds, ClientTLS: clientCreds},
-			)
-			env.startSidecarService(t.Context(), t)
-			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
-				t.Helper()
-				env.startSidecarClient(ctx, t, 0, cfg)
-				committerBlock := channel.NewReader(ctx, env.committedBlock)
-				if _, ok := committerBlock.Read(); !ok {
-					return errors.New("failed to read committed block")
-				}
-				return nil
-			}
-		},
-	)
-}
 
 func newSidecarTestEnvWithTLS(
 	t *testing.T,
@@ -116,41 +70,23 @@ func newSidecarTestEnvWithTLS(
 	coordinator, coordinatorServer := mock.StartMockCoordinatorService(t, test.StartServerParameters{
 		TLSConfig: conf.ServerTLS,
 	})
-	ordererEnv := mock.NewOrdererTestEnv(t, &mock.OrdererTestConfig{
-		ChanID: "ch1",
-		Config: &mock.OrdererConfig{
-			TestServerParameters: test.StartServerParameters{
-				TLSConfig:  conf.ServerTLS,
-				NumService: conf.NumService,
-			},
+	ordererEnv := mock.NewOrdererTestEnv(t, &mock.OrdererTestParameters{
+		ChanID:        "ch1",
+		NumIDs:        conf.NumIDs,
+		InitialNumIDs: conf.InitialNumIDs,
+		ServerPerID:   1,
+		OrdererConfig: &mock.OrdererConfig{
 			BlockSize: blockSize,
 			// We want each block to contain exactly <blockSize> transactions.
 			// Therefore, we set a higher block timeout so that we have enough time to send all the
 			// transactions to the orderer and create a block.
 			BlockTimeout:     5 * time.Minute,
-			SendGenesisBlock: false,
+			SendGenesisBlock: true,
 		},
-		NumFake: conf.NumFakeService,
+		ServerTLSConfig: conf.ServerTLS,
+		ClientTLSConfig: conf.ClientTLS,
 	})
 
-	ordererEndpoints := ordererEnv.AllEndpoints()
-	configBlock := ordererEnv.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
-		OrdererEndpoints: ordererEndpoints,
-		ChannelID:        ordererEnv.TestConfig.ChanID,
-	})
-
-	var genesisBlockFilePath string
-	initOrdererOrganizations := map[string]*ordererconn.OrganizationConfig{
-		"org": {
-			Endpoints: ordererEndpoints,
-			CACerts:   conf.ClientTLS.CACertPaths,
-		},
-	}
-	if conf.SubmitGenesisBlock {
-		genesisBlockFilePath = filepath.Join(t.TempDir(), "config.block")
-		require.NoError(t, configtxgen.WriteOutputBlock(configBlock, genesisBlockFilePath))
-		initOrdererOrganizations = nil
-	}
 	sidecarConf := &Config{
 		Server:    connection.NewLocalHostServer(conf.ServerTLS),
 		Committer: test.NewTLSClientConfig(conf.ClientTLS, &coordinatorServer.Configs[0].Endpoint),
@@ -163,26 +99,18 @@ func newSidecarTestEnvWithTLS(
 		LastCommittedBlockSetInterval: 100 * time.Millisecond,
 		WaitingTxsLimit:               1000,
 		Monitoring:                    connection.NewLocalHostServer(conf.ServerTLS),
-		Bootstrap: Bootstrap{
-			GenesisBlockFilePath: genesisBlockFilePath,
-		},
-		Orderer: ordererconn.Config{
-			ChannelID:     ordererEnv.TestConfig.ChanID,
-			TLS:           ordererconn.TLSConfigToOrdererTLSConfig(conf.ClientTLS),
-			Organizations: initOrdererOrganizations,
-		},
+		Orderer:                       ordererEnv.OrdererConnConfig,
 	}
 	sidecar, err := New(sidecarConf)
 	require.NoError(t, err)
 	t.Cleanup(sidecar.Close)
 
 	return &sidecarTestEnv{
+		OrdererTestEnv:    ordererEnv,
 		sidecar:           sidecar,
 		coordinator:       coordinator,
 		coordinatorServer: coordinatorServer,
-		ordererEnv:        ordererEnv,
 		config:            *sidecarConf,
-		configBlock:       configBlock,
 	}
 }
 
@@ -226,31 +154,53 @@ func (env *sidecarTestEnv) startNotificationStream(
 	require.NoError(t, err)
 }
 
+func TestSidecarSecureConnection(t *testing.T) {
+	t.Parallel()
+	test.RunSecureConnectionTest(t,
+		func(t *testing.T, serverCreds, clientCreds connection.TLSConfig) test.RPCAttempt {
+			t.Helper()
+			env := newSidecarTestEnvWithTLS(
+				t,
+				sidecarTestConfig{ServerTLS: serverCreds, ClientTLS: clientCreds},
+			)
+			env.startSidecarService(t.Context(), t)
+			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
+				t.Helper()
+				env.startSidecarClient(ctx, t, 0, cfg)
+				committerBlock := channel.NewReader(ctx, env.committedBlock)
+				if _, ok := committerBlock.Read(); !ok {
+					return errors.New("failed to read committed block")
+				}
+				return nil
+			}
+		},
+	)
+}
+
 func TestSidecar(t *testing.T) {
 	t.Parallel()
-	for _, mode := range test.ServerModes {
-		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
+	for _, tc := range []struct {
+		tlsMode string
+		numIDs  uint32
+	}{
+		{tlsMode: connection.NoneTLSMode, numIDs: 1},
+		{tlsMode: connection.OneSideTLSMode, numIDs: 1},
+		{tlsMode: connection.MutualTLSMode, numIDs: 1},
+		{tlsMode: connection.MutualTLSMode, numIDs: 3},
+	} {
+		t.Run(fmt.Sprintf("tls-mode:%s IDs:%d", tc.tlsMode, tc.numIDs), func(t *testing.T) {
 			t.Parallel()
-			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
-			for _, conf := range []sidecarTestConfig{
-				{SubmitGenesisBlock: false},
-				{SubmitGenesisBlock: true},
-				{
-					SubmitGenesisBlock: true,
-					NumFakeService:     3,
-				},
-			} {
-				t.Run(conf.String(), func(t *testing.T) {
-					t.Parallel()
-					conf.ServerTLS, conf.ClientTLS = serverTLSConfig, clientTLSConfig
-					env := newSidecarTestEnvWithTLS(t, conf)
-					ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
-					t.Cleanup(cancel)
-					env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, clientTLSConfig)
-					env.requireBlock(ctx, t, 0)
-					env.sendTransactionsAndEnsureCommitted(ctx, t, 1)
-				})
-			}
+			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, tc.tlsMode)
+			env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{
+				NumIDs:    tc.numIDs,
+				ClientTLS: clientTLSConfig,
+				ServerTLS: serverTLSConfig,
+			})
+			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+			t.Cleanup(cancel)
+			env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, clientTLSConfig)
+			env.requireBlock(ctx, t, 0)
+			env.sendTransactionsAndEnsureCommitted(ctx, t, 1)
 		})
 	}
 }
@@ -262,7 +212,7 @@ func TestSidecarConfigUpdate(t *testing.T) {
 			t.Parallel()
 			serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, mode)
 			env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{
-				NumService: 3, ClientTLS: clientTLSConfig, ServerTLS: serverTLSConfig,
+				NumIDs: 3, ClientTLS: clientTLSConfig, ServerTLS: serverTLSConfig,
 			})
 			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 			t.Cleanup(cancel)
@@ -274,23 +224,16 @@ func TestSidecarConfigUpdate(t *testing.T) {
 			env.sendTransactionsAndEnsureCommitted(ctx, t, expectedBlock)
 			expectedBlock++
 
-			submitConfigBlock := func(endpoints []*commontypes.OrdererEndpoint) {
-				env.ordererEnv.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
-					OrdererEndpoints: endpoints,
-				})
-			}
-
-			t.Log("Update the sidecar to use a second orderer group")
-			allEndpoints := env.ordererEnv.AllRealEndpoints()
-			holdingEndpoints, nonHoldingEndpoints := allEndpoints[:1], allEndpoints[1:]
+			t.Log("Update the sidecar to use a holding orderer group")
+			holdingEndpoints, nonHoldingEndpoints := env.AllEndpoints[:1], env.AllEndpoints[1:]
 			holdingEndpoint := holdingEndpoints[0].Address()
-			submitConfigBlock(holdingEndpoints)
+			env.SubmitConfigBlock(t, &testcrypto.ConfigBlock{OrdererEndpoints: holdingEndpoints})
 			env.requireBlock(ctx, t, expectedBlock)
 			expectedBlock++
 
 			t.Log("Validate only the holder stream remains")
-			mock.RequireStreams(t, env.ordererEnv.Orderer, 1)
-			holdingStream := mock.RequireStreamsWithEndpoints(t, env.ordererEnv.Orderer, 1, holdingEndpoint)[0]
+			mock.RequireStreams(t, env.Orderer, 1)
+			holdingStream := mock.RequireStreamsWithEndpoints(t, env.Orderer, 1, holdingEndpoint)[0]
 			holdingStream.HoldFromBlock.Store(expectedBlock + 1)
 
 			t.Log("Sanity check")
@@ -301,7 +244,7 @@ func TestSidecarConfigUpdate(t *testing.T) {
 			// We submit the config that returns to the non-holding orderer.
 			// But it should not be processed as the sidecar should have switched to the holding
 			// orderer.
-			submitConfigBlock(nonHoldingEndpoints)
+			env.SubmitConfigBlock(t, &testcrypto.ConfigBlock{OrdererEndpoints: nonHoldingEndpoints})
 			select {
 			case <-ctx.Done():
 				t.Fatal("context deadline exceeded")
@@ -323,7 +266,7 @@ func TestSidecarConfigUpdate(t *testing.T) {
 			expectedBlock++
 
 			t.Log("The sidecar should use the non-holding orderer, so the holding should not affect the processing")
-			mock.RequireStreamsWithEndpoints(t, env.ordererEnv.Orderer, 0, holdingEndpoint)
+			mock.RequireStreamsWithEndpoints(t, env.Orderer, 0, holdingEndpoint)
 			env.sendTransactionsAndEnsureCommitted(ctx, t, expectedBlock)
 		})
 	}
@@ -331,11 +274,18 @@ func TestSidecarConfigUpdate(t *testing.T) {
 
 func TestSidecarConfigRecovery(t *testing.T) {
 	t.Parallel()
-	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{NumService: 3})
+	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{NumIDs: 3, InitialNumIDs: 1})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
+	t.Log("Waiting for the genesis block")
 	env.requireBlock(ctx, t, 0)
+
+	t.Log("Submit a second config block with all the endpoints")
+	env.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
+		OrdererEndpoints: env.AllEndpoints,
+	})
+	env.requireBlock(ctx, t, 1)
 
 	t.Log("Stop the sidecar service and ledger service")
 	cancel()
@@ -350,38 +300,30 @@ func TestSidecarConfigRecovery(t *testing.T) {
 	require.NotNil(t, env.sidecar)
 	env.sidecar.Close()
 
+	t.Log("Stop all servers of party 0 (initial ID)")
+	env.StopServersOfID(0)
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		for _, ep := range env.EndpointsOfID(0) {
+			require.True(ct, test.CheckServerStopped(t, ep.Address()))
+		}
+	}, 4*time.Second, 500*time.Millisecond)
+
 	// Create a new context for the remaining operations
 	newCtx, newCancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(newCancel)
 
-	t.Log("Modify the Sidecar config, use illegal host endpoint")
-	// We need to use ilegalEndpoints instead of an empty Endpoints struct,
-	// as the sidecar expects the Endpoints to be non-empty.
-	env.config.Orderer.Organizations = map[string]*ordererconn.OrganizationConfig{
-		"org": {
-			Endpoints: []*commontypes.OrdererEndpoint{
-				{Host: "localhost", Port: 9999},
-			},
-		},
-	}
-
 	var err error
-	t.Log("Create a new sidecar with the new configuration")
+	t.Log("Create a new sidecar with the old configuration (only party 0)")
 	env.sidecar, err = New(&env.config)
 	require.NoError(t, err)
 	t.Cleanup(env.sidecar.Close)
 
-	// The Genesis block path is empty since the test didn't set SubmitGenesisBlock:
-	t.Log("Set the coordinator config block to use orderer AllEndpoints.")
-	env.coordinator.SetConfigTransaction(env.configBlock.Data.Data[0])
-
 	t.Log("Start the new sidecar")
-	env.startSidecarServiceAndClientAndNotificationStream(newCtx, t, 0, test.InsecureTLSConfig)
-
-	env.requireBlock(newCtx, t, 0)
+	env.startSidecarServiceAndClientAndNotificationStream(newCtx, t, 2, test.InsecureTLSConfig)
 
 	// Now we can send transactions with the new configuration
-	env.sendTransactionsAndEnsureCommitted(newCtx, t, 1)
+	t.Log("Sanity check: send additional block")
+	env.sendTransactionsAndEnsureCommitted(newCtx, t, 2)
 }
 
 func TestSidecarRecovery(t *testing.T) {
@@ -552,12 +494,12 @@ func TestSidecarStartWithoutCoordinator(t *testing.T) {
 
 func TestSidecarVerifyBadTxForm(t *testing.T) {
 	t.Parallel()
-	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{SubmitGenesisBlock: true})
+	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
 	env.requireBlock(ctx, t, 0)
-	txs, expected := MalformedTxTestCases(&workload.TxBuilder{ChannelID: env.ordererEnv.TestConfig.ChanID})
+	txs, expected := MalformedTxTestCases(&workload.TxBuilder{ChannelID: env.ChanID})
 	testSize := len(expected)
 	t.Logf("sending %d malformed txs", testSize)
 	env.submitTXs(ctx, t, txs)
@@ -605,7 +547,7 @@ func (env *sidecarTestEnv) sendGeneratedTransactions(
 	t.Helper()
 	txs := make([]*servicepb.LoadGenTx, count)
 	for i := range txs {
-		txs[i] = makeValidTx(t, env.ordererEnv.TestConfig.ChanID)
+		txs[i] = makeValidTx(t, env.ChanID)
 	}
 	env.submitTXs(ctx, t, txs)
 	return txs
@@ -630,7 +572,7 @@ func (env *sidecarTestEnv) submitTXs(ctx context.Context, t *testing.T, txs []*s
 	time.Sleep(1 * time.Second)
 
 	for i, tx := range workload.MapToEnvelopeBatch(0, txs) {
-		ok := env.ordererEnv.Orderer.SubmitEnv(ctx, tx)
+		ok := env.Orderer.SubmitEnv(ctx, tx)
 		require.True(t, ok, "tx %d", i)
 	}
 }
@@ -768,20 +710,27 @@ func makeValidTx(t *testing.T, chanID string) *servicepb.LoadGenTx {
 // (pointing to non-existent or non-member ordering services), ledger recovery would fail.
 func TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery(t *testing.T) {
 	t.Parallel()
+	// We start with only one orderer, and later add the others.
+	// The initial one is blocked, so if we start from it, we can never receive the new config block.
 	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{
-		NumService: 3, ServerTLS: test.InsecureTLSConfig, ClientTLS: test.InsecureTLSConfig,
+		NumIDs: 3, InitialNumIDs: 1, ServerTLS: test.InsecureTLSConfig, ClientTLS: test.InsecureTLSConfig,
 	})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
 	env.requireBlock(ctx, t, 0)
 
-	t.Log("1. Commit blocks 1 to 10")
+	t.Log("Send a config block with all the endpoints")
+	env.SubmitConfigBlock(t, &testcrypto.ConfigBlock{OrdererEndpoints: env.AllEndpoints})
+	env.requireBlock(ctx, t, 1)
+	env.PartyStates[0].HoldFromBlock.Store(1)
+
+	t.Log("Commit 10 blocks")
 	for i := range 10 {
-		env.sendTransactionsAndEnsureCommitted(ctx, t, uint64(i+1)) //nolint:gosec
+		env.sendTransactionsAndEnsureCommitted(ctx, t, uint64(i+2)) //nolint:gosec
 	}
 
-	t.Log("2. Stop the sidecar service")
+	t.Log("Stop the sidecar service")
 	cancel()
 	require.Eventually(t, func() bool {
 		return test.CheckServerStopped(t, env.config.Server.Endpoint.Address())
@@ -790,56 +739,27 @@ func TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery(t *testing.T
 		return !env.coordinator.IsStreamActive()
 	}, 2*time.Second, 250*time.Millisecond)
 
-	// Close the sidecar explicitly to release LevelDB resources
 	require.NotNil(t, env.sidecar)
-	env.sidecar.Close()
-
-	t.Log("3. Reset block store to create a gap (simulate ledger behind coordinator)")
-	require.NoError(t, blkstorage.ResetBlockStore(env.config.Ledger.Path))
 
 	newCtx, newCancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(newCancel)
-	checkNextBlockNumberToCommit(newCtx, t, env.coordinator, 11)
+	checkNextBlockNumberToCommit(newCtx, t, env.coordinator, 12)
 
-	t.Log("4. Modify sidecar config to use stale orderer endpoints")
-	// These endpoints are unreachable, so if the sidecar tries to fetch blocks
-	// from them without first updating from the coordinator's config transaction,
-	// the recovery will fail.
-	env.config.Orderer.Organizations = map[string]*ordererconn.OrganizationConfig{
-		"org": {
-			Endpoints: []*commontypes.OrdererEndpoint{
-				{Host: "localhost", Port: 9999},
-			},
-		},
-	}
-	t.Log("5. Recreate ledger service to reflect the reset block store")
-	var err error
-	env.sidecar, err = New(&env.config)
-	require.NoError(t, err)
-	t.Cleanup(env.sidecar.Close)
-	ensureAtLeastHeight(t, env.sidecar.blockStore, 1) // only block 0 exists
-
-	t.Log("6. Set coordinator's config transaction with correct orderer endpoints")
-	// The coordinator should provide the config block that contains the correct
-	// orderer endpoints. During recovery, the sidecar should fetch this config
-	// and update its orderer connections BEFORE attempting ledger recovery.
-	env.coordinator.SetConfigTransaction(env.configBlock.Data.Data[0])
-
-	t.Log("7. Restart the sidecar")
+	t.Log("Restart the sidecar")
 	// If orderer endpoints are updated before ledger recovery (correct behavior),
 	// the sidecar will successfully recover the missing blocks (1-10) from the
 	// correct orderer endpoints provided in the config transaction.
 	// If ledger recovery happened before endpoint update (incorrect behavior),
 	// the recovery would fail because it would try to fetch from localhost:9999.
 	// Start the client from block 11 since blocks 0-10 will be recovered.
-	env.startSidecarServiceAndClientAndNotificationStream(newCtx, t, 11, test.InsecureTLSConfig)
+	env.startSidecarServiceAndClientAndNotificationStream(newCtx, t, 12, test.InsecureTLSConfig)
 
-	t.Log("8. Verify ledger store was recovered successfully")
+	t.Log("Verify ledger store was recovered successfully")
 	// The successful recovery of blocks 1-10 proves that orderer endpoints were
 	// updated from the coordinator's config transaction before recoverLedgerStore
 	// was called.
-	ensureAtLeastHeight(t, env.sidecar.blockStore, 11)
+	ensureAtLeastHeight(t, env.sidecar.blockStore, 12)
 
-	t.Log("9. Verify normal operation continues with recovered state")
-	env.sendTransactionsAndEnsureCommitted(newCtx, t, 11)
+	t.Log("Verify normal operation continues with recovered state")
+	env.sendTransactionsAndEnsureCommitted(newCtx, t, 12)
 }

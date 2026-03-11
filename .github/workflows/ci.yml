@@ -45,9 +45,9 @@ jobs:
       - run: go mod tidy
       - name: Lint
         run: |
-          # Re make protobufs, overwriting any formatting.
-          PATH="$HOME/bin:$PATH" make proto
-          # Check if original code changed due to formatting.
+          # Re make protobufs, and mocks.
+          PATH="$HOME/bin:$PATH" make proto mocks
+          # Check if original code changed due to generated code.
           git diff --exit-code
           # Fetch main to only show new lint issues.
           git fetch -u origin main:main

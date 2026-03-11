@@ -12,12 +12,9 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
-	commontypes "github.com/hyperledger/fabric-x-common/api/types"
-	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 )
 
 // Parameters needed for deliver to run.
@@ -27,40 +24,26 @@ type Parameters struct {
 	OutputBlock  chan<- *common.Block
 }
 
-// ToQueue start receiving blocks starting from NextBlockNum to outputBlock.
+// ToQueue connects to a committer delivery server and delivers the stream to a queue (go channel).
+// It returns when an error occurs or when the context is done.
+// It will attempt to reconnect on errors.
 func ToQueue(ctx context.Context, cdp Parameters) error {
-	cm, err := ordererconn.NewConnectionManager(&ordererconn.Config{
-		TLS:   ordererconn.TLSConfigToOrdererTLSConfig(cdp.ClientConfig.TLS),
-		Retry: cdp.ClientConfig.Retry,
-		Organizations: map[string]*ordererconn.OrganizationConfig{
-			"org": {
-				Endpoints: []*commontypes.OrdererEndpoint{{
-					Host: cdp.ClientConfig.Endpoint.Host,
-					Port: cdp.ClientConfig.Endpoint.Port,
-				}},
-				CACerts: cdp.ClientConfig.TLS.CACertPaths,
-			},
-		},
-	})
+	conn, err := connection.NewSingleConnection(cdp.ClientConfig)
 	if err != nil {
 		return err
 	}
-	defer cm.CloseConnections()
-	c := deliver.CftClient{
-		ConnectionManager: cm,
-		StreamCreator: func(ctx context.Context, conn grpc.ClientConnInterface) (
-			deliver.Stream, error,
-		) {
-			client, err := peer.NewDeliverClient(conn).Deliver(ctx)
-			if err != nil {
-				return nil, err
-			}
-			return &ledgerDeliverStream{client}, nil
-		},
-	}
-	return c.Deliver(ctx, &deliver.Parameters{
+	defer connection.CloseConnectionsLog(conn)
+	client := peer.NewDeliverClient(conn)
+	return deliver.ToQueue(ctx, deliver.Parameters{
 		NextBlockNum: cdp.NextBlockNum,
 		OutputBlock:  cdp.OutputBlock,
+		StreamCreator: func(ctx context.Context) (deliver.Streamer, error) {
+			deliverStream, deliverErr := client.Deliver(ctx)
+			if deliverErr != nil {
+				return nil, deliverErr
+			}
+			return &ledgerDeliverStream{Deliver_DeliverClient: deliverStream}, nil
+		},
 	})
 }
 

@@ -7,16 +7,8 @@
 
 orderer-client:
   orderer:
-    organizations:
-      org0:
-        endpoints:
-          {{- range .Services.Orderer }}
-          - id=0,broadcast,deliver,{{ .GrpcEndpoint }}
-          {{- end }}
-        ca-cert-paths:
-          {{- range .ClientTLS.CACertPaths }}
-          - {{ . }}
-          {{- end }}
+    fault-tolerance-level: BFT
+    last-known-config-block-path: "{{ .Policy.ArtifactsPath }}/config-block.pb.bin"
     tls:
       mode: {{ .ClientTLS.Mode }}
       cert-path: {{ .ClientTLS.CertPath }}
@@ -25,8 +17,6 @@ orderer-client:
         {{- range .ClientTLS.CACertPaths }}
         - {{ . }}
         {{- end }}
-    consensus-type: BFT
-    channel-id: {{ .Policy.ChannelID }}
     identity:
       msp-id: peer-org-0
       msp-dir: {{ .Policy.ArtifactsPath }}/peerOrganizations/peer-org-0/users/client@peer-org-0.com/msp

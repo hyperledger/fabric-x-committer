@@ -51,8 +51,6 @@ var (
 	}
 )
 
-const ordererRootCA = "/client-certs/orderer-ca-certificate.pem"
-
 func TestReadConfigSidecar(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -68,9 +66,6 @@ func TestReadConfigSidecar(t *testing.T) {
 				MaxConcurrentStreams: 10,
 			},
 			Monitoring: newServerConfig("localhost", 2114),
-			Orderer: ordererconn.Config{
-				ChannelID: "mychannel",
-			},
 			Committer: &connection.ClientConfig{
 				Endpoint: newEndpoint("localhost", 9001),
 			},
@@ -107,22 +102,15 @@ func TestReadConfigSidecar(t *testing.T) {
 			},
 			Monitoring: newServerConfigWithDefaultTLS(2114),
 			Orderer: ordererconn.Config{
-				ChannelID: "mychannel",
+				FaultToleranceLevel:      ordererconn.BFT,
+				LastKnownConfigBlockPath: "/root/artifacts/config-block.pb.bin",
+				Identity:                 newIdentityConfig(),
 				TLS: ordererconn.OrdererTLSConfig{
 					Mode:              defaultClientTLSConfig.Mode,
 					KeyPath:           defaultClientTLSConfig.KeyPath,
 					CertPath:          defaultClientTLSConfig.CertPath,
 					CommonCACertPaths: defaultClientTLSConfig.CACertPaths,
 				},
-				Organizations: map[string]*ordererconn.OrganizationConfig{
-					"org0": {
-						Endpoints: []*commontypes.OrdererEndpoint{
-							newOrdererEndpoint("", "orderer"),
-						},
-						CACerts: defaultClientTLSConfig.CACertPaths,
-					},
-				},
-				Identity: newIdentityConfig(),
 			},
 			Committer: newClientConfigWithDefaultTLS("coordinator", 9001),
 			Ledger: sidecar.LedgerConfig{
@@ -137,9 +125,6 @@ func TestReadConfigSidecar(t *testing.T) {
 			LastCommittedBlockSetInterval: 5 * time.Second,
 			WaitingTxsLimit:               20_000_000,
 			ChannelBufferSize:             100,
-			Bootstrap: sidecar.Bootstrap{
-				GenesisBlockFilePath: "/root/artifacts/config-block.pb.bin",
-			},
 		},
 	}}
 	for _, tt := range tests {
@@ -389,22 +374,14 @@ func TestReadConfigLoadGen(t *testing.T) {
 				OrdererClient: &adapters.OrdererClientConfig{
 					SidecarClient: newClientConfigWithDefaultTLS("sidecar", 4001),
 					Orderer: ordererconn.Config{
-						ChannelID:     "mychannel",
-						ConsensusType: ordererconn.Bft,
-						Identity:      newIdentityConfig(),
+						FaultToleranceLevel:      ordererconn.BFT,
+						LastKnownConfigBlockPath: "/root/artifacts/config-block.pb.bin",
+						Identity:                 newIdentityConfig(),
 						TLS: ordererconn.OrdererTLSConfig{
 							Mode:              defaultClientTLSConfig.Mode,
 							KeyPath:           defaultClientTLSConfig.KeyPath,
 							CertPath:          defaultClientTLSConfig.CertPath,
 							CommonCACertPaths: defaultClientTLSConfig.CACertPaths,
-						},
-						Organizations: map[string]*ordererconn.OrganizationConfig{
-							"org0": {
-								Endpoints: []*commontypes.OrdererEndpoint{
-									newOrdererEndpoint("", "orderer"),
-								},
-								CACerts: []string{ordererRootCA},
-							},
 						},
 					},
 					BroadcastParallelism: 1,

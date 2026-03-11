@@ -14,7 +14,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
-	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -242,14 +241,6 @@ func (c *Service) WaitForReady(ctx context.Context) bool {
 func (c *Service) RegisterService(server *grpc.Server) {
 	servicepb.RegisterCoordinatorServer(server, c)
 	healthgrpc.RegisterHealthServer(server, c.healthcheck)
-}
-
-// GetConfigTransaction get the config transaction from the state DB.
-func (c *Service) GetConfigTransaction(
-	ctx context.Context, _ *emptypb.Empty,
-) (*applicationpb.ConfigTransaction, error) {
-	// Error is already wrapped with proper gRPC status code by validatorCommitterMgr.
-	return c.validatorCommitterMgr.getConfigTransaction(ctx)
 }
 
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger through a vcservice.

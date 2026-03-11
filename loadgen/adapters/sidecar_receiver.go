@@ -20,8 +20,9 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/delivercommitter"
+	"github.com/hyperledger/fabric-x-committer/utils/deliverorderer"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 )
 
@@ -46,10 +47,12 @@ func runSidecarReceiver(ctx context.Context, params *sidecarReceiverParameters) 
 }
 
 // runOrdererReceiver start receiving blocks from the orderer.
-func runOrdererReceiver(ctx context.Context, res *ClientResources, client *deliver.Client) error {
+func runOrdererReceiver(ctx context.Context, res *ClientResources, c *ordererconn.Config) error {
 	return runDeliveryReceiver(ctx, res, func(gCtx context.Context, committedBlock chan *common.Block) error {
-		return client.Deliver(gCtx, &deliver.Parameters{
-			OutputBlock: committedBlock,
+		return deliverorderer.ToQueueWithNoFT(gCtx, deliverorderer.NoFTParameters{
+			ClientConfig: c,
+			OutputBlock:  committedBlock,
+			NextBlockNum: 0,
 		})
 	})
 }

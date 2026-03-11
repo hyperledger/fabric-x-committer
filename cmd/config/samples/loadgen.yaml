@@ -85,25 +85,12 @@ orderer-client:
         - /client-certs/ca-certificate.pem
   # Direct orderer connection configuration (alternative to sidecar-client)
   orderer:
-    # Organizations map organization MSP IDs to their orderer connection details.
-    # It supports multi-organization deployments where each org has its own orderers and TLS root CAs.
-    # Each organization can have multiple orderer endpoints with different capabilities (broadcast, deliver).
-    organizations:
-      # Organization identifier (key can be any string, typically matches MSP ID).
-      # Each organization entry contains its orderer endpoints and CA certificates.
-      org0:
-        # List of orderer endpoints for this organization.
-        # Format: id=<num>,broadcast,deliver,<host>:<port>
-        # - id: Unique orderer identifier within the organization
-        # - broadcast: Endpoint supports transaction submission
-        # - deliver: Endpoint supports block delivery
-        # - host:port: Network address of the orderer
-        endpoints:
-          - id=0,broadcast,deliver,orderer:7050
-        # List of paths to CA certificate files for verifying orderer certificates.
-        # Each organization can have its own CA certificates.
-        ca-cert-paths:
-          - /client-certs/orderer-ca-certificate.pem
+    # Fault tolerance level of the ordering service: 'BFT' (Byzantine Fault Tolerant) or 'CFT'.
+    # Affects how the loadgen interacts with the orderer.
+    fault-tolerance-level: BFT
+    # Path to the last known config block file, used to obtain the latest endpoints and TLS credentials
+    # of the Orderer parties.
+    last-known-config-block-path: /root/artifacts/config-block.pb.bin
     # Loadgen uses these TLS credentials when connecting to the orderers as a client.
     tls:
       # TLS mode for orderer client connections: 'none' (no TLS), 'tls' (server auth only),
@@ -117,11 +104,6 @@ orderer-client:
       # These are in addition to organization-specific CA certificates.
       common-ca-cert-paths:
         - /client-certs/ca-certificate.pem
-    # Consensus type of the ordering service: 'BFT' (Byzantine Fault Tolerant) or 'Raft'.
-    # Affects how the loadgen interacts with the orderer.
-    consensus-type: BFT
-    # The channel ID for which transactions are generated and submitted.
-    channel-id: mychannel
     # Identity configuration for signing transactions and connecting to orderers.
     identity:
       # MSP (Membership Service Provider) ID identifying the organization.

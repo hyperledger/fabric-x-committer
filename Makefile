@@ -36,6 +36,7 @@
 #   bench-preparer               - Run preparer benchmarks
 #   bench-sign                   - Run signature benchmarks
 #   bench-sidecar                - Run sidecar benchmarks
+#   bench-deliver                - Run delivery benchmarks
 #
 # Linting:
 #   lint                         - Run all linters (Go, SQL, proto, license, metrics doc)
@@ -46,6 +47,7 @@
 # Code Generation:
 #   proto                        - Generate protobuf code
 #   generate-metrics-doc         - Generate metrics reference documentation
+#   mocks                        - Generate mocks
 #
 # Documentation:
 #   check-metrics-doc            - Check if metrics documentation is up to date
@@ -215,8 +217,12 @@ bench-sign: FORCE
 bench-sidecar: FORCE
 	$(go_cmd) test ./service/sidecar/... -bench "Benchmark.*" -run "^$$" | awk -f scripts/bench-tx-per-sec.awk
 
+# Run deliver benchmarks with added op/sec column.
+bench-deliver: FORCE
+	$(go_cmd) test ./utils/deliverorderer/... -bench "Benchmark.*" -run "^$$" | awk -f scripts/bench-tx-per-sec.awk
+
 #########################
-# Generate protos
+# Code Generation
 #########################
 
 PROTO_COMMON_PATH="$(shell $(env) $(go_cmd) list -m -f '{{.Dir}}' github.com/hyperledger/fabric-x-common)"
@@ -273,6 +279,10 @@ lint-proto: FORCE $(GOOGLE_PROTOS_SENTINEL) $(FABRIC_PROTOS_SENTINEL)
 		--set-exit-status \
 		--output-format github \
 		$(shell find ${project_path}/api -name '*.proto' | sed 's|${project_path}/api/||')
+
+# Generate testing mocks
+mocks: FORCE
+	@COUNTERFEITER_NO_GENERATE_WARNING=true go generate ./...
 
 #########################
 # Binaries

@@ -49,10 +49,12 @@ func newCredentials(tlsCfg *tls.Config, err error) (credentials.TransportCredent
 
 // NewTLSMaterials converts a TLSConfig with path fields into a struct that holds the actual bytes of the certificates.
 func NewTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
-	if c.Mode == NoneTLSMode || c.Mode == UnmentionedTLSMode {
-		return &TLSMaterials{
-			Mode: c.Mode,
-		}, nil
+	mode := c.Mode
+	if mode == UnmentionedTLSMode {
+		mode = DefaultTLSMode
+	}
+	if mode == NoneTLSMode {
+		return &TLSMaterials{Mode: mode}, nil
 	}
 
 	certBytes, err := os.ReadFile(c.CertPath)
@@ -75,7 +77,7 @@ func NewTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
 	}
 
 	return &TLSMaterials{
-		Mode:    c.Mode,
+		Mode:    mode,
 		Cert:    certBytes,
 		Key:     keyBytes,
 		CACerts: caCertBytes,

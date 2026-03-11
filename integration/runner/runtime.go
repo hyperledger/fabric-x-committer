@@ -17,19 +17,19 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
+	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
+	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/delivercommitter"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -50,9 +50,10 @@ type (
 		Verifier     []*ProcessWithConfig
 		VcService    []*ProcessWithConfig
 
-		DBEnv *vc.DatabaseTestEnv
+		DBEnv      *vc.DatabaseTestEnv
+		OrdererEnv *mock.OrdererTestEnv
 
-		OrdererStream       *test.BroadcastStream
+		OrdererStream       *adapters.BroadcastStream
 		CoordinatorClient   servicepb.CoordinatorClient
 		QueryServiceClient  committerpb.QueryServiceClient
 		SidecarClientConfig *connection.ClientConfig
@@ -152,6 +153,25 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	t.Log("create TLS manager and clients certificate")
 	credFactory := test.NewCredentialsFactory(t)
 	clientTLS, _ := credFactory.CreateClientCredentials(t, conf.TLSMode)
+	ordererServiceTLS, _ := credFactory.CreateServerCredentials(t, conf.TLSMode, "127.0.0.1")
+
+	ordererEnv := mock.NewOrdererTestEnv(t, &mock.OrdererTestParameters{
+		NumIDs:                3,
+		ServerPerID:           2,
+		PeerOrganizationCount: 2,
+		ChanID:                TestChannelName,
+		ClientTLSConfig:       clientTLS,
+		ServerTLSConfig:       ordererServiceTLS,
+		// The following OrdererConfig is used only by the config update tests.
+		OrdererConfig: &mock.OrdererConfig{
+			BlockSize:        1, // Each block contains exactly 1 transaction.
+			BlockTimeout:     5 * time.Minute,
+			SendGenesisBlock: true,
+		},
+	})
+	// We stop the orderer servers to allow the integration tests to start the mock orderer
+	// using the binary.
+	defer ordererEnv.StopServers()
 
 	c := &CommitterRuntime{
 		Config: conf,
@@ -162,10 +182,11 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 			LoadGenWorkers:    1,
 			MaxRequestKeys:    conf.MaxRequestKeys,
 			Policy: &workload.PolicyProfile{
-				ChannelID:             TestChannelName,
 				NamespacePolicies:     make(map[string]*workload.Policy),
-				ArtifactsPath:         t.TempDir(),
-				PeerOrganizationCount: 2,
+				ChannelID:             ordererEnv.ChanID,
+				OrdererEndpoints:      ordererEnv.AllEndpoints,
+				PeerOrganizationCount: ordererEnv.PeerOrganizationCount,
+				ArtifactsPath:         ordererEnv.ArtifactsPath,
 			},
 			Logging: &flogging.Config{
 				LogSpec: "info",
@@ -183,6 +204,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		CommittedBlock:   make(chan *common.Block, 100),
 		SeedForCryptoGen: rand.New(rand.NewSource(10)),
 		CredFactory:      credFactory,
+		OrdererEnv:       ordererEnv,
 	}
 	t.Log("Making DB env")
 	if conf.DBConnection == nil {
@@ -202,19 +224,13 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 
 	t.Log("Allocating services endpoints, ports, and TLS credentials")
 	s.Services = allocateServices(t, conf, credFactory)
-	s.Policy.OrdererEndpoints = make([]*commontypes.OrdererEndpoint, len(s.Services.Orderer))
-	for i, e := range s.Services.Orderer {
-		s.Policy.OrdererEndpoints[i] = &commontypes.OrdererEndpoint{
-			ID: 0, Host: e.GrpcEndpoint.Host, Port: e.GrpcEndpoint.Port,
-			API: []string{commontypes.Broadcast, commontypes.Deliver},
-		}
+	s.Services.Orderer = make([]config.ServiceConfig, len(c.OrdererEnv.AllServerConfig))
+	for i, serverConf := range c.OrdererEnv.AllServerConfig {
+		s.Services.Orderer[i].GrpcEndpoint = &serverConf.Endpoint
+		s.Services.Orderer[i].GrpcTLS = serverConf.TLS
 	}
 
 	test.LogStruct(t, "System Parameters", s)
-
-	t.Log("Creating config block")
-	_, err := workload.CreateOrExtendConfigBlockWithCrypto(s.Policy)
-	require.NoError(t, err)
 
 	c.AddOrUpdateNamespaces(t, workload.DefaultGeneratedNamespaceID, "1", "2", "3")
 
@@ -257,20 +273,8 @@ func (c *CommitterRuntime) CreateRuntimeClients(ctx context.Context, t *testing.
 	c.NotifyClient = committerpb.NewNotifierClient(
 		test.NewSecuredConnection(t, services.Sidecar.GrpcEndpoint, c.SystemConfig.ClientTLS),
 	)
-
 	var err error
-	c.OrdererStream, err = test.NewBroadcastStream(ctx, &ordererconn.Config{
-		TLS:           ordererconn.TLSConfigToOrdererTLSConfig(c.SystemConfig.ClientTLS),
-		ChannelID:     c.SystemConfig.Policy.ChannelID,
-		Identity:      c.SystemConfig.Policy.Identity,
-		ConsensusType: ordererconn.Bft,
-		Organizations: map[string]*ordererconn.OrganizationConfig{
-			"org": {
-				Endpoints: c.SystemConfig.Policy.OrdererEndpoints,
-				CACerts:   c.SystemConfig.ClientTLS.CACertPaths,
-			},
-		},
-	})
+	c.OrdererStream, err = adapters.NewBroadcastStream(ctx, &c.OrdererEnv.OrdererConnConfig)
 	require.NoError(t, err)
 	t.Cleanup(c.OrdererStream.CloseConnections)
 

@@ -14,8 +14,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/deliver"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type (
@@ -36,12 +34,6 @@ func NewOrdererAdapter(config *OrdererClientConfig, res *ClientResources) *Order
 
 // RunWorkload applies load on the sidecar.
 func (c *OrdererAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWithSetup) error {
-	client, err := deliver.New(&c.config.Orderer)
-	if err != nil {
-		return err
-	}
-	defer client.CloseConnections()
-
 	dCtx, dCancel := context.WithCancel(ctx)
 	defer dCancel()
 	g, gCtx := errgroup.WithContext(dCtx)
@@ -50,7 +42,7 @@ func (c *OrdererAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 		(c.config.SidecarClient.Endpoint.Empty()) {
 		g.Go(func() error {
 			defer dCancel() // We stop sending if we can't track the received items.
-			return runOrdererReceiver(gCtx, c.res, client)
+			return runOrdererReceiver(gCtx, c.res, &c.config.Orderer)
 		})
 	} else {
 		g.Go(func() error {
@@ -62,9 +54,10 @@ func (c *OrdererAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 		})
 	}
 
-	streams := make([]*test.BroadcastStream, c.config.BroadcastParallelism)
+	streams := make([]*BroadcastStream, c.config.BroadcastParallelism)
 	for i := range streams {
-		streams[i], err = test.NewBroadcastStream(gCtx, &c.config.Orderer)
+		var err error
+		streams[i], err = NewBroadcastStream(gCtx, &c.config.Orderer)
 		if err != nil {
 			connection.CloseConnectionsLog(streams[:i]...)
 			return err
@@ -72,6 +65,7 @@ func (c *OrdererAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 	}
 	defer connection.CloseConnectionsLog(streams...)
 
+	logger.Infof("Starting sending blocks with %d streams", len(streams))
 	for _, stream := range streams {
 		g.Go(func() error {
 			return sendBlocks(gCtx, &c.commonAdapter, txStream, workload.MapToEnvelopeBatch, stream.SendBatch)

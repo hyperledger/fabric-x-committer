@@ -153,7 +153,7 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 	genesisBlock := BlockWithConsenters{Block: defaultConfigBlock}
 	if len(config.ArtifactsPath) > 0 {
 		configBlockPath := path.Join(config.ArtifactsPath, cryptogen.ConfigBlockFileName)
-		block, err := ordererconn.LoadConfigBlockFromFile(configBlockPath)
+		configMaterial, err := ordererconn.LoadConfigBlockFromFile(configBlockPath)
 		if err != nil {
 			return nil, err
 		}
@@ -162,7 +162,7 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 			return nil, err
 		}
 		genesisBlock = BlockWithConsenters{
-			Block:            block.ConfigBlock,
+			Block:            configMaterial.ConfigBlock,
 			ConsenterSigners: consenters,
 		}
 	}
@@ -485,7 +485,7 @@ func (c *blockCache) releaseAfter(ctx context.Context) (stop func() bool) {
 // addBlock returns true if the block was inserted.
 // It may fail if the context ends.
 func (c *blockCache) addBlock(ctx context.Context, b *common.Block) bool {
-	blockIndex := int(b.Header.Number) % len(c.storage) //nolint:gosec // integer overflow conversion uint64 -> int
+	blockIndex := b.Header.Number % uint64(len(c.storage))
 
 	c.mu.L.Lock()
 	defer c.mu.L.Unlock()
@@ -504,7 +504,7 @@ func (c *blockCache) addBlock(ctx context.Context, b *common.Block) bool {
 }
 
 func (c *blockCache) getBlock(ctx context.Context, blockNum uint64) (*common.Block, error) {
-	blockIndex := int(blockNum) % len(c.storage) //nolint:gosec // integer overflow conversion uint64 -> int
+	blockIndex := blockNum % uint64(len(c.storage))
 
 	c.mu.L.Lock()
 	defer c.mu.L.Unlock()
