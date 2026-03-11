@@ -19,7 +19,8 @@ import (
 // DBClusterController is a class that facilitates the manipulation of a DB cluster,
 // with its nodes running in Docker containers.
 type DBClusterController struct {
-	nodes []*testdb.DatabaseContainer
+	dbType string
+	nodes  []*testdb.DatabaseContainer
 }
 
 const linuxOS = "linux"
@@ -51,7 +52,7 @@ func (cc *DBClusterController) getNodesConnectionsByRole(
 	for _, node := range cc.IterNodesByRole(role) {
 		endpoints = append(endpoints, node.GetHostMappedEndpoint(t))
 	}
-	return testdb.NewConnection(endpoints...)
+	return testdb.NewConnection(cc.dbType, endpoints...)
 }
 
 // GetSingleNodeByRole returns the first node that matches the requested role in the cluster.
@@ -69,7 +70,7 @@ func (cc *DBClusterController) getNodesConnections(t *testing.T) *testdb.Connect
 		endpoints[i] = node.GetHostMappedEndpoint(t)
 	}
 
-	return testdb.NewConnection(endpoints...)
+	return testdb.NewConnection(cc.dbType, endpoints...)
 }
 
 // IterNodesByRole returns an iterator over the cluster's nodes that match the given role.

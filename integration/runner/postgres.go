@@ -34,16 +34,16 @@ const (
 var (
 	// postgresSecondaryPromotionCommand promotes a standby to read-write primary.
 	postgresSecondaryPromotionCommand = []string{
-		"psql", "-U", "yugabyte", "-c", "SELECT pg_promote();",
+		"psql", "-U", "postgres", "-c", "SELECT pg_promote();",
 	}
 
 	// primaryReplicationCommands configures the primary for streaming replication:
 	// create a dedicated replication role, allow replication in pg_hba.conf, and reload.
-	// $PGDATA is /var/lib/postgresql/data in the official image.
+	// $PGDATA varies by PostgreSQL version (e.g. /var/lib/postgresql/18/docker in PG18).
 	primaryReplicationCommands = [][]string{
-		{"psql", "-U", "yugabyte", "-c", "CREATE ROLE repl_user WITH REPLICATION LOGIN PASSWORD 'repl_password';"},
+		{"psql", "-U", "postgres", "-c", "CREATE ROLE repl_user WITH REPLICATION LOGIN PASSWORD 'repl_password';"},
 		{"sh", "-c", `echo "host replication repl_user all md5" >> "$PGDATA/pg_hba.conf"`},
-		{"psql", "-U", "yugabyte", "-c", "SELECT pg_reload_conf();"},
+		{"psql", "-U", "postgres", "-c", "SELECT pg_reload_conf();"},
 	}
 
 	// secondaryStartupScript is passed to bash -c with the primary host as $1.
@@ -75,7 +75,8 @@ func StartPostgresCluster(ctx context.Context, t *testing.T) (*PostgresClusterCo
 	})
 
 	cluster := &PostgresClusterController{
-		networkName: networkName,
+		DBClusterController: DBClusterController{dbType: testdb.PostgresDBType},
+		networkName:         networkName,
 	}
 
 	t.Log("starting postgres cluster")
@@ -102,11 +103,8 @@ func (cc *PostgresClusterController) addPrimaryNode(ctx context.Context, t *test
 		Image:        testdb.DefaultPostgresImage,
 		DatabaseType: testdb.PostgresDBType,
 		Network:      cc.networkName,
-		// We use "yugabyte" as the superuser to match testdb.NewConnection(),
-		// which hardcodes this username for both YugabyteDB and PostgreSQL.
 		Env: []string{
-			"POSTGRES_USER=yugabyte",
-			"POSTGRES_PASSWORD=yugabyte",
+			"POSTGRES_PASSWORD=postgres",
 		},
 		// Enable WAL streaming replication so secondaries can connect.
 		Cmd: []string{

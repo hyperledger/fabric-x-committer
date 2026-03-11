@@ -193,6 +193,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 
 	s := &c.SystemConfig
 	s.DB.Name = c.DBEnv.DBConf.Database
+	s.DB.Username = c.DBEnv.DBConf.Username
 	s.DB.Password = c.DBEnv.DBConf.Password
 	s.DB.LoadBalance = c.DBEnv.DBConf.LoadBalance
 	s.DB.Endpoints = c.DBEnv.DBConf.Endpoints

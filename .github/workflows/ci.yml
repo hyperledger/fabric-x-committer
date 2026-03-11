@@ -15,6 +15,7 @@ permissions:
 
 env:
   DB_DEPLOYMENT: local
+  DB_TYPE: postgres
 
 jobs:
   gate:

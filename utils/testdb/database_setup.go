@@ -173,7 +173,7 @@ func startAndConnect(ctx context.Context, t *testing.T) *Connection {
 		require.NotNil(t, sharedContainer)
 		connOptions = sharedContainer.GetConnectionOptions(ctx, t)
 	case deploymentLocal:
-		connOptions = NewConnection(connection.CreateEndpointHP("localhost", defaultLocalDBPort))
+		connOptions = NewConnection(getDBTypeFromEnv(), connection.CreateEndpointHP("localhost", defaultLocalDBPort))
 	default:
 		t.Logf("unknown db deployment type: %s", dbDeployment)
 		return nil
