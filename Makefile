@@ -368,10 +368,10 @@ check-metrics-doc: FORCE
 	scripts/metrics_doc.sh check
 
 generate-sample-tree: build FORCE
-	scripts/loadgen_artifacts_doc.sh generate $(project_path)
+	$(PYTHON_CMD) scripts/loadgen_artifacts_doc.py generate $(project_path)
 
 check-sample-tree: build FORCE
-	scripts/loadgen_artifacts_doc.sh check $(project_path)
+	$(PYTHON_CMD) scripts/loadgen_artifacts_doc.py check $(project_path)
 
 # https://www.gnu.org/software/make/manual/html_node/Force-Targets.html
 # If a rule has no prerequisites or recipe, and the target of the rule is a nonexistent file,
