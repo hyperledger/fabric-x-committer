@@ -408,7 +408,7 @@ func (c *CommitterRuntime) CreateNamespacesAndCommit(t *testing.T, namespaces ..
 	}
 
 	t.Logf("Creating namespaces: %v", namespaces)
-	metaTX, err := workload.CreateNamespacesTX(c.SystemConfig.Policy, 0, namespaces...)
+	metaTX, err := workload.CreateNamespacesTxFromEndorser(c.TxBuilder.TxEndorser, 0, namespaces...)
 	require.NoError(t, err)
 	c.MakeAndSendTransactionsToOrderer(
 		t,

@@ -11,7 +11,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
@@ -145,49 +144,30 @@ func NewPolicyEndorserFromMsp(artifactsPath string) (*testsig.NsEndorser, *appli
 }
 
 func getKeyPair(profile *Policy) (signingKey signature.PrivateKey, verificationKey signature.PublicKey) {
-	var err error
-	if profile.KeyPath != nil {
-		logger.Infof("Attempting to load keys")
-		signingKey, verificationKey, err = loadKeys(*profile.KeyPath)
-		utils.Must(err)
-	} else {
+	if profile.KeyPath == nil {
 		logger.Debugf("Generating new keys")
-		signingKey, verificationKey = testsig.NewKeyPairWithSeed(profile.Scheme, profile.Seed)
+		return testsig.NewKeyPairWithSeed(profile.Scheme, profile.Seed)
 	}
+
+	k := profile.KeyPath
+	var err error
+
+	logger.Infof("Loading signing key from file '%s'.", k.SigningKey)
+	signingKey, err = os.ReadFile(k.SigningKey)
+	utils.Mustf(err, "could not read signing key from %s", k.SigningKey)
+
+	switch {
+	case k.VerificationKey != "" && utils.FileExists(k.VerificationKey):
+		logger.Infof("Loading verification key from file '%s'.", k.VerificationKey)
+		verificationKey, err = os.ReadFile(k.VerificationKey)
+		utils.Mustf(err, "could not read public key from %s", k.VerificationKey)
+	case k.SignCertificate != "" && utils.FileExists(k.SignCertificate):
+		logger.Infof("Loading sign certiticate from file '%s'.", k.SignCertificate)
+		verificationKey, err = testsig.GetSerializedKeyFromCert(k.SignCertificate)
+		utils.Mustf(err, "could not read sign cert from %s", k.SignCertificate)
+	default:
+		panic("could not find verification key or sign certificate")
+	}
+
 	return signingKey, verificationKey
-}
-
-func loadKeys(keyPath KeyPath) (signingKey signature.PrivateKey, verificationKey signature.PublicKey, err error) {
-	signingKey, err = os.ReadFile(keyPath.SigningKey)
-	if err != nil {
-		return nil, nil, errors.Wrapf(err,
-			"could not read private key from %s", keyPath.SigningKey,
-		)
-	}
-
-	if keyPath.VerificationKey != "" && utils.FileExists(keyPath.VerificationKey) {
-		verificationKey, err = os.ReadFile(keyPath.VerificationKey)
-		if err != nil {
-			return nil, nil, errors.Wrapf(err,
-				"could not read public key from %s", keyPath.VerificationKey,
-			)
-		}
-		logger.Infof("Loaded private key and verification key from files %s and %s.",
-			keyPath.SigningKey, keyPath.VerificationKey)
-		return signingKey, verificationKey, nil
-	}
-
-	if keyPath.SignCertificate != "" && utils.FileExists(keyPath.SignCertificate) {
-		verificationKey, err = testsig.GetSerializedKeyFromCert(keyPath.SignCertificate)
-		if err != nil {
-			return nil, nil, errors.Wrapf(err,
-				"could not read sign cert from %s", keyPath.SignCertificate,
-			)
-		}
-		logger.Infof("Sign cert and key found in files %s/%s. Importing...",
-			keyPath.SignCertificate, keyPath.SigningKey)
-		return signingKey, verificationKey, nil
-	}
-
-	return nil, nil, errors.New("could not find verification key or sign certificate")
 }
