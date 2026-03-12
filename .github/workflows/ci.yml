@@ -45,7 +45,7 @@ jobs:
       - run: go mod tidy
       - name: Lint
         run: |
-          # Re make protobufs, overwriting any formatting.
+          # Re generate auto-generated code.
           PATH="$HOME/bin:$PATH" make proto
           # Check if original code changed due to formatting.
           git diff --exit-code
