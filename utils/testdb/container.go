@@ -136,6 +136,27 @@ func (dc *DatabaseContainer) initDefaults() error { //nolint:gocognit
 			dc.Image = defaultYugabyteImage
 		}
 
+		if dc.Cmd == nil {
+			dc.Cmd = YugabyteCMD
+			if dc.TLSConfig != nil {
+				if dc.Hostname == "" {
+					return errors.New("hostname is required for TLS-enabled YugabyteDB")
+				}
+				certDir := "/yb-creds"
+				dc.Entrypoint = []string{"bash", "-c"}
+
+				ybCmd := fmt.Sprintf("%s --secure --certs_dir=%s --advertise_address %s",
+					strings.Join(YugabyteCMD, " "), certDir, dc.Hostname)
+
+				dc.Cmd = []string{
+					"mkdir -p " + certDir + " && cp /creds/* " + certDir + "/ && " +
+						"chown root:root " + certDir + "/* && exec " + ybCmd,
+				}
+			} else {
+				dc.Cmd = append(dc.Cmd, "--insecure")
+			}
+		}
+
 		if dc.DbPort == "" {
 			dc.DbPort = docker.Port(fmt.Sprintf("%s/tcp", yugaDBPort))
 		}
@@ -144,31 +165,11 @@ func (dc *DatabaseContainer) initDefaults() error { //nolint:gocognit
 			if len(dc.TLSConfig.CACertPaths) == 0 {
 				return errors.New("CA cert paths required for TLS-enabled YugabyteDB")
 			}
-			if dc.Hostname == "" {
-				return errors.New("hostname is required for TLS-enabled YugabyteDB")
-			}
 			dc.Binds = append(dc.Binds,
 				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CertPath, yugabytePublicKeyFileName),
 				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.KeyPath, yugabytePrivateKeyFileName),
 				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CACertPaths[0], yugabyteCACertificateFileName),
 			)
-
-			// Copy bind-mounted certs to a local directory
-			// and chown them, preventing ownership changes from propagating to the host.
-			certDir := "/yb-creds"
-			dc.Entrypoint = []string{"bash", "-c"}
-
-			// Build the Yugabyte command
-			ybCmd := strings.Join(YugabyteCMD, " ") + " --secure --certs_dir=" + certDir + " --advertise_address " + dc.Hostname
-
-			dc.Cmd = []string{
-				"mkdir -p " + certDir + " && cp /creds/* " + certDir + "/ && " +
-					"chown root:root " + certDir + "/* && exec " + ybCmd,
-			}
-		} else {
-			if dc.Cmd == nil {
-				dc.Cmd = append(YugabyteCMD, "--insecure")
-			}
 		}
 	case PostgresDBType:
 		if dc.Image == "" {
