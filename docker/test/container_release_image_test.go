@@ -135,7 +135,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNodeParameters) string {
 	t.Helper()
 
-	tlsConfig, _ := params.credsFactory.CreateServerCredentials(t, params.tlsMode, params.node)
+	tlsConfig := test.CreateServerTLSConfig(params.artifactsPath, params.node, params.tlsMode)
 
 	node := &testdb.DatabaseContainer{
 		DatabaseType: params.dbType,

@@ -50,8 +50,8 @@ var (
 	// defaultGrpcRetryProfile defines the retry policy for a gRPC client connection.
 	defaultGrpcRetryProfile connection.RetryProfile
 
-	// orgRootCA is the path to organization 0's TLS client credentials in the crypto materials directory.
-	orgRootCA = filepath.Join(cryptogen.PeerOrganizationsDir, "peer-org-0",
+	// OrgRootCA is the path to organization 0's TLS client credentials in the crypto materials directory.
+	OrgRootCA = filepath.Join(cryptogen.PeerOrganizationsDir, "peer-org-0",
 		cryptogen.MSPDir, cryptogen.TLSCaCertsDir, "tlspeer-org-0-CA-cert.pem")
 
 	// OrdererTLSPath is the path to organization 0's orderer TLS credentials in the crypto materials directory.
@@ -538,7 +538,7 @@ func CreateServerTLSConfig(artifactsPath, serviceName, mode string) connection.T
 		CertPath: filepath.Join(artifactsPath, serviceTLSPathFromArtifacts(serviceName), "server.crt"),
 		KeyPath:  filepath.Join(artifactsPath, serviceTLSPathFromArtifacts(serviceName), "server.key"),
 		CACertPaths: []string{
-			filepath.Join(artifactsPath, orgRootCA),
+			filepath.Join(artifactsPath, OrgRootCA),
 		},
 	}
 }

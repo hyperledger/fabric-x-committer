@@ -86,6 +86,7 @@ func CreateOrExtendConfigBlockWithCrypto(targetPath string, conf *ConfigBlock) (
 				newPeer("query"),
 				newPeer("sidecar"),
 				newPeer("loadgen"),
+				newPeer("db"),
 			},
 		})
 	}

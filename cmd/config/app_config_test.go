@@ -115,7 +115,7 @@ func TestReadConfigSidecar(t *testing.T) {
 				},
 				Identity: newIdentityConfig(),
 			},
-			Committer: newClientConfigWithDefaultTLS("coordinator", 9001),
+			Committer: newClientConfigWithDefaultTLS("coordinator", "sidecar", 9001),
 			Ledger: sidecar.LedgerConfig{
 				Path:         "/root/sc/ledger",
 				SyncInterval: 100,
@@ -168,8 +168,8 @@ func TestReadConfigCoordinator(t *testing.T) {
 		expectedConfig: &coordinator.Config{
 			Server:             newServerConfigWithDefaultTLS("coordinator", 9001),
 			Monitoring:         newServerConfigWithDefaultTLS("coordinator", 2119),
-			Verifier:           newMultiClientConfigWithDefaultTLS("verifier", 5001),
-			ValidatorCommitter: newMultiClientConfigWithDefaultTLS("vc", 6001),
+			Verifier:           newMultiClientConfigWithDefaultTLS("verifier", "coordinator", 5001),
+			ValidatorCommitter: newMultiClientConfigWithDefaultTLS("vc", "coordinator", 6001),
 			DependencyGraph: &coordinator.DependencyGraphConfig{
 				NumOfLocalDepConstructors: 1,
 				WaitingTxsLimit:           100_000,
@@ -374,7 +374,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 			},
 			Adapter: adapters.AdapterConfig{
 				OrdererClient: &adapters.OrdererClientConfig{
-					SidecarClient: newClientConfigWithDefaultTLS("sidecar", 4001),
+					SidecarClient: newClientConfigWithDefaultTLS("sidecar", "loadgen", 4001),
 					Orderer: ordererconn.Config{
 						ChannelID:     "mychannel",
 						ConsensusType: ordererconn.Bft,
@@ -474,7 +474,7 @@ func defaultSampleDBConfig() *vc.DatabaseConfig {
 		Database:  "yugabyte",
 		TLS: dbconn.DatabaseTLSConfig{
 			Mode:       connection.OneSideTLSMode,
-			CACertPath: "/server-certs/ca-certificate.pem",
+			CACertPath: filepath.Join(artifactsPath, test.OrgRootCA),
 		},
 		MaxConnections: 10,
 		MinConnections: 5,
@@ -489,19 +489,19 @@ func defaultSampleDBConfig() *vc.DatabaseConfig {
 	}
 }
 
-func newClientConfigWithDefaultTLS(host string, port int) *connection.ClientConfig {
+func newClientConfigWithDefaultTLS(host, fromService string, port int) *connection.ClientConfig {
 	return &connection.ClientConfig{
 		Endpoint: newEndpoint(host, port),
-		TLS:      test.CreateServerTLSConfig(artifactsPath, host, connection.MutualTLSMode),
+		TLS:      test.CreateServerTLSConfig(artifactsPath, fromService, connection.MutualTLSMode),
 	}
 }
 
-func newMultiClientConfigWithDefaultTLS(host string, port int) connection.MultiClientConfig {
+func newMultiClientConfigWithDefaultTLS(host, fromService string, port int) connection.MultiClientConfig {
 	return connection.MultiClientConfig{
 		Endpoints: []*connection.Endpoint{
 			newEndpoint(host, port),
 		},
-		TLS: test.CreateServerTLSConfig(artifactsPath, host, connection.MutualTLSMode),
+		TLS: test.CreateServerTLSConfig(artifactsPath, fromService, connection.MutualTLSMode),
 	}
 }
 
