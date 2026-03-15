@@ -115,16 +115,9 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			runtime.SystemConfig.ClientTLS = test.CreateServerTLSConfig(
 				c.LoadProfile.Policy.ArtifactsPath, "sidecar", mode,
 			)
-
-			// creating an orderer client TLS configuration using its server TLS credentials.
-			runtime.SystemConfig.OrdererClientTLS = &connection.TLSConfig{
-				Mode:     mode,
-				CertPath: filepath.Join(c.LoadProfile.Policy.ArtifactsPath, test.OrdererTLSPath, "server.crt"),
-				KeyPath:  filepath.Join(c.LoadProfile.Policy.ArtifactsPath, test.OrdererTLSPath, "server.key"),
-				CACertPaths: []string{
-					filepath.Join(c.LoadProfile.Policy.ArtifactsPath, test.OrdererTLSPath, "ca.crt"),
-				},
-			}
+			runtime.SystemConfig.ClientTLS.CACertPaths = append(runtime.SystemConfig.ClientTLS.CACertPaths,
+				filepath.Join(c.LoadProfile.Policy.ArtifactsPath, test.OrdererTLSPath, "ca.crt"),
+			)
 
 			runtime.CreateRuntimeClients(ctx, t)
 			runtime.OpenNotificationStream(ctx, t)

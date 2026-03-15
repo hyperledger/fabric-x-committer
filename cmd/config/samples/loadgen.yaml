@@ -66,15 +66,7 @@ orderer-client:
     endpoint: sidecar:4001
     # TLS mode for sidecar client connections: 'none' (no TLS), 'tls' (server auth only),
     # or 'mtls' (mutual TLS with client cert verification).
-    tls:
-      mode: mtls
-      # Path to the client's TLS certificate file (public key) for authentication.
-      cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar/tls/server.crt
-      # Path to the client's TLS private key file.
-      key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar/tls/server.key
-      # List of paths to CA certificate files for verifying server certificates.
-      ca-cert-paths:
-        - /root/artifacts/peerOrganizations/peer-org-0/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
+    tls: *tlsConfig
   # Direct orderer connection configuration (alternative to sidecar-client)
   orderer:
     # Organizations map organization MSP IDs to their orderer connection details.

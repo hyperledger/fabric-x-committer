@@ -44,17 +44,7 @@ verifier:
   # across verifier instances.
   endpoints:
     - verifier:5001
-  tls:
-    # TLS mode for client connections to verifier: 'none' (no TLS), 'tls' (server auth only),
-    # or 'mtls' (mutual TLS with client cert verification).
-    mode: mtls
-    # Path to the client's TLS certificate file (public key) for authentication.
-    cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/verifier/tls/server.crt
-    # Path to the client's TLS private key file.
-    key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/verifier/tls/server.key
-    # List of paths to CA certificate files for verifying server certificates.
-    ca-cert-paths:
-      - /root/artifacts/peerOrganizations/peer-org-0/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
+  tls: *tlsConfig
   # Optional exponential backoff retry for gRPC reconnections. Default:
   # reconnect:
   #   initial-interval: 500ms
@@ -67,17 +57,7 @@ validator-committer:
   # load distribution across VC instances.
   endpoints:
     - vc:6001
-  tls:
-    # TLS mode for client connections to validator-committer: 'none' (no TLS), 'tls' (server auth only),
-    # or 'mtls' (mutual TLS with client cert verification).
-    mode: mtls
-    # Path to the client's TLS certificate file (public key) for authentication.
-    cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/vc/tls/server.crt
-    # Path to the client's TLS private key file.
-    key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/vc/tls/server.key
-    # List of paths to CA certificate files for verifying server certificates.
-    ca-cert-paths:
-      - /root/artifacts/peerOrganizations/peer-org-0/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
+  tls: *tlsConfig
   # Optional exponential backoff retry for gRPC reconnections. Default:
   # reconnect:
   #   initial-interval: 500ms

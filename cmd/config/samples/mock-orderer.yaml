@@ -19,6 +19,8 @@ server:
     # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
       - /root/artifacts/ordererOrganizations/orderer-org-0/orderers/orderer-0-org-0/tls/ca.crt
+      - /root/artifacts/peerOrganizations/peer-org-0/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
+      - /root/artifacts/peerOrganizations/peer-org-1/msp/tlscacerts/tlspeer-org-1-CA-cert.pem
 
 # Maximum number of transactions to include in each block. Blocks are cut when
 # this size is reached or when the block-timeout expires, whichever comes first.

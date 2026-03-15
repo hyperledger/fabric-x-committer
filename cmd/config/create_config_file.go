@@ -36,10 +36,6 @@ type (
 		// ClientTLS holds the TLS configuration used by a service when acting as a client to other services.
 		ClientTLS connection.TLSConfig
 
-		// OrdererClientTLS holds the TLS configuration used to connect to an Orderer server.
-		// If it's not set, we fall back to the ClientTLS configuration.
-		OrdererClientTLS *connection.TLSConfig
-
 		// System's resources.
 		Services SystemServices
 		DB       DatabaseConfig

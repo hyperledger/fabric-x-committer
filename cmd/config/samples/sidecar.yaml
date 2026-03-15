@@ -114,17 +114,7 @@ committer:
   # Endpoint of the coordinator service to send blocks and receive transaction statuses.
   # Format: host:port.
   endpoint: coordinator:9001
-  tls:
-    # TLS mode for coordinator client connections: 'none' (no TLS), 'tls' (server auth only),
-    # or 'mtls' (mutual TLS with client cert verification).
-    mode: mtls
-    # Path to the client's TLS certificate file (public key) for authentication.
-    cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/coordinator/tls/server.crt
-    # Path to the client's TLS private key file.
-    key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/coordinator/tls/server.key
-    # List of paths to CA certificate files for verifying server certificates.
-    ca-cert-paths:
-      - /root/artifacts/peerOrganizations/peer-org-0/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
+  tls: *tlsConfig
   # reconnect:  # Optional exponential backoff retry for coordinator gRPC reconnections.
   #   initial-interval: 500ms
   #   randomization-factor: 0.5
