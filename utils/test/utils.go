@@ -50,9 +50,9 @@ var (
 	// defaultGrpcRetryProfile defines the retry policy for a gRPC client connection.
 	defaultGrpcRetryProfile connection.RetryProfile
 
-	// ClientTLSPath is the path to organization 0's TLS client credentials in the crypto materials directory.
-	ClientTLSPath = filepath.Join(cryptogen.PeerOrganizationsDir, "peer-org-0",
-		cryptogen.UsersDir, "client@peer-org-0.com", cryptogen.TLSDir)
+	// orgRootCA is the path to organization 0's TLS client credentials in the crypto materials directory.
+	orgRootCA = filepath.Join(cryptogen.PeerOrganizationsDir, "peer-org-0",
+		cryptogen.MSPDir, cryptogen.TLSCaCertsDir, "tlspeer-org-0-CA-cert.pem")
 
 	// OrdererTLSPath is the path to organization 0's orderer TLS credentials in the crypto materials directory.
 	OrdererTLSPath = filepath.Join(cryptogen.OrdererOrganizationsDir,
@@ -531,18 +531,6 @@ func Make(rules ...string) error {
 	}
 }
 
-// CreateClientTLSConfig creates a client TLS config with CA certificates matching the target server.
-func CreateClientTLSConfig(artifactsPath, connectToService, mode string) connection.TLSConfig {
-	return connection.TLSConfig{
-		Mode:     mode,
-		CertPath: filepath.Join(artifactsPath, ClientTLSPath, "client.crt"),
-		KeyPath:  filepath.Join(artifactsPath, ClientTLSPath, "client.key"),
-		CACertPaths: []string{
-			filepath.Join(artifactsPath, serviceTLSPathFromArtifacts(connectToService), "ca.crt"),
-		},
-	}
-}
-
 // CreateServerTLSConfig creates a server TLS config with certificates loaded from the artifact path.
 func CreateServerTLSConfig(artifactsPath, serviceName, mode string) connection.TLSConfig {
 	return connection.TLSConfig{
@@ -550,7 +538,7 @@ func CreateServerTLSConfig(artifactsPath, serviceName, mode string) connection.T
 		CertPath: filepath.Join(artifactsPath, serviceTLSPathFromArtifacts(serviceName), "server.crt"),
 		KeyPath:  filepath.Join(artifactsPath, serviceTLSPathFromArtifacts(serviceName), "server.key"),
 		CACertPaths: []string{
-			filepath.Join(artifactsPath, ClientTLSPath, "ca.crt"),
+			filepath.Join(artifactsPath, orgRootCA),
 		},
 	}
 }

@@ -108,11 +108,23 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			// We don't need to create a separate client TLS config for each service for a couple of reasons:
 			// 1. All services belong to the same organization and use the same root CA.
 			// 2. All services run on the local machine.
-			runtime.SystemConfig.ClientTLS = test.CreateClientTLSConfig(
+			// Note: We could create a dedicated sidecar and query
+			// client TLS configurations using the peer organization's client credentials at
+			// /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/*
+			// However, for simplicity in this test, we reuse the server credentials are mentioned above.
+			runtime.SystemConfig.ClientTLS = test.CreateServerTLSConfig(
 				c.LoadProfile.Policy.ArtifactsPath, "sidecar", mode,
 			)
-			runtime.SystemConfig.ClientTLS.CACertPaths = append(runtime.SystemConfig.ClientTLS.CACertPaths,
-				filepath.Join(c.LoadProfile.Policy.ArtifactsPath, test.OrdererTLSPath, "ca.crt"))
+
+			// creating an orderer client TLS configuration using its server TLS credentials.
+			runtime.SystemConfig.OrdererClientTLS = &connection.TLSConfig{
+				Mode:     mode,
+				CertPath: filepath.Join(c.LoadProfile.Policy.ArtifactsPath, test.OrdererTLSPath, "server.crt"),
+				KeyPath:  filepath.Join(c.LoadProfile.Policy.ArtifactsPath, test.OrdererTLSPath, "server.key"),
+				CACertPaths: []string{
+					filepath.Join(c.LoadProfile.Policy.ArtifactsPath, test.OrdererTLSPath, "ca.crt"),
+				},
+			}
 
 			runtime.CreateRuntimeClients(ctx, t)
 			runtime.OpenNotificationStream(ctx, t)

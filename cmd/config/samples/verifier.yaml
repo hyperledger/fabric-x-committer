@@ -18,7 +18,7 @@ server:
     key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/verifier/tls/server.key
     # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
-      - /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/ca.crt
+      - /root/artifacts/peerOrganizations/peer-org-0/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
 # Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
 monitoring:
   # The endpoint where Prometheus metrics and pprof profiling are exposed.

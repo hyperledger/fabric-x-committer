@@ -258,23 +258,31 @@ func (c *CommitterRuntime) CreateRuntimeClients(ctx context.Context, t *testing.
 		test.NewSecuredConnection(t, services.Sidecar.GrpcEndpoint, c.SystemConfig.ClientTLS),
 	)
 
+	c.SidecarClientConfig = test.NewTLSClientConfig(c.SystemConfig.ClientTLS, services.Sidecar.GrpcEndpoint)
+
+	// Default to the general ClientTLS configuration.
+	ordererClientTLSConfig := c.SystemConfig.ClientTLS
+	// Override with dedicated Orderer credentials if they exist.
+	if c.SystemConfig.OrdererClientTLS != nil {
+		ordererClientTLSConfig = *c.SystemConfig.OrdererClientTLS
+	}
+
 	var err error
 	c.OrdererStream, err = test.NewBroadcastStream(ctx, &ordererconn.Config{
-		TLS:           ordererconn.TLSConfigToOrdererTLSConfig(c.SystemConfig.ClientTLS),
+		TLS:           ordererconn.TLSConfigToOrdererTLSConfig(ordererClientTLSConfig),
 		ChannelID:     c.SystemConfig.Policy.ChannelID,
 		Identity:      c.SystemConfig.Policy.Identity,
 		ConsensusType: ordererconn.Bft,
 		Organizations: map[string]*ordererconn.OrganizationConfig{
 			"org": {
 				Endpoints: c.SystemConfig.Policy.OrdererEndpoints,
-				CACerts:   c.SystemConfig.ClientTLS.CACertPaths,
+				CACerts:   ordererClientTLSConfig.CACertPaths,
 			},
 		},
 	})
 	require.NoError(t, err)
 	t.Cleanup(c.OrdererStream.CloseConnections)
 
-	c.SidecarClientConfig = test.NewTLSClientConfig(c.SystemConfig.ClientTLS, services.Sidecar.GrpcEndpoint)
 }
 
 // OpenNotificationStream starts a notification stream.

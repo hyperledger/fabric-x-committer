@@ -18,7 +18,7 @@ server:
     key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/query/tls/server.key
     # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
-      - /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/ca.crt
+      - /root/artifacts/peerOrganizations/peer-org-0/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
   # Rate limiting configuration for unary gRPC endpoints.
   # Uses a token bucket algorithm to limit the number of requests per second.
   rate-limit:

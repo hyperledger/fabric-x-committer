@@ -115,7 +115,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					// start the load generator node.
 					startLoadgenNodeWithReleaseImage(ctx, t, params.asNode(loadgenNode))
 
-					metricsClientTLSConfig := test.CreateClientTLSConfig(
+					metricsClientTLSConfig := test.CreateServerTLSConfig(
 						c.LoadProfile.Policy.ArtifactsPath, "loadgen", mode,
 					)
 

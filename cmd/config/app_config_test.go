@@ -15,7 +15,6 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
-	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen"
@@ -34,13 +33,12 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-var defaultClientTLSConfig = connection.TLSConfig{
+var defaultOrdererClientTLSConfig = connection.TLSConfig{
 	Mode:     connection.MutualTLSMode,
-	CertPath: filepath.Join(artifactsPath, test.ClientTLSPath, "client.crt"),
-	KeyPath:  filepath.Join(artifactsPath, test.ClientTLSPath, "client.key"),
+	CertPath: filepath.Join(artifactsPath, test.OrdererTLSPath, "server.crt"),
+	KeyPath:  filepath.Join(artifactsPath, test.OrdererTLSPath, "server.key"),
 	CACertPaths: []string{
-		filepath.Join(artifactsPath, filepath.Join(cryptogen.PeerOrganizationsDir, "peer-org-0",
-			cryptogen.PeerNodesDir, "sidecar-peer-org-0", cryptogen.TLSDir), "ca.crt"),
+		filepath.Join(artifactsPath, test.OrdererTLSPath, "ca.crt"),
 	},
 }
 
@@ -102,17 +100,17 @@ func TestReadConfigSidecar(t *testing.T) {
 			Orderer: ordererconn.Config{
 				ChannelID: "mychannel",
 				TLS: ordererconn.OrdererTLSConfig{
-					Mode:              defaultClientTLSConfig.Mode,
-					KeyPath:           defaultClientTLSConfig.KeyPath,
-					CertPath:          defaultClientTLSConfig.CertPath,
-					CommonCACertPaths: []string{filepath.Join(artifactsPath, test.OrdererTLSPath, "ca.crt")},
+					Mode:              defaultOrdererClientTLSConfig.Mode,
+					KeyPath:           defaultOrdererClientTLSConfig.KeyPath,
+					CertPath:          defaultOrdererClientTLSConfig.CertPath,
+					CommonCACertPaths: defaultOrdererClientTLSConfig.CACertPaths,
 				},
 				Organizations: map[string]*ordererconn.OrganizationConfig{
 					"org0": {
 						Endpoints: []*commontypes.OrdererEndpoint{
 							newOrdererEndpoint("", "orderer"),
 						},
-						CACerts: []string{filepath.Join(artifactsPath, test.OrdererTLSPath, "ca.crt")},
+						CACerts: defaultOrdererClientTLSConfig.CACertPaths,
 					},
 				},
 				Identity: newIdentityConfig(),
@@ -382,17 +380,17 @@ func TestReadConfigLoadGen(t *testing.T) {
 						ConsensusType: ordererconn.Bft,
 						Identity:      newIdentityConfig(),
 						TLS: ordererconn.OrdererTLSConfig{
-							Mode:              defaultClientTLSConfig.Mode,
-							KeyPath:           defaultClientTLSConfig.KeyPath,
-							CertPath:          defaultClientTLSConfig.CertPath,
-							CommonCACertPaths: []string{filepath.Join(artifactsPath, test.OrdererTLSPath, "ca.crt")},
+							Mode:              defaultOrdererClientTLSConfig.Mode,
+							KeyPath:           defaultOrdererClientTLSConfig.KeyPath,
+							CertPath:          defaultOrdererClientTLSConfig.CertPath,
+							CommonCACertPaths: defaultOrdererClientTLSConfig.CACertPaths,
 						},
 						Organizations: map[string]*ordererconn.OrganizationConfig{
 							"org0": {
 								Endpoints: []*commontypes.OrdererEndpoint{
 									newOrdererEndpoint("", "orderer"),
 								},
-								CACerts: []string{filepath.Join(artifactsPath, test.OrdererTLSPath, "ca.crt")},
+								CACerts: defaultOrdererClientTLSConfig.CACertPaths,
 							},
 						},
 					},
@@ -494,7 +492,7 @@ func defaultSampleDBConfig() *vc.DatabaseConfig {
 func newClientConfigWithDefaultTLS(host string, port int) *connection.ClientConfig {
 	return &connection.ClientConfig{
 		Endpoint: newEndpoint(host, port),
-		TLS:      test.CreateClientTLSConfig(artifactsPath, host, connection.MutualTLSMode),
+		TLS:      test.CreateServerTLSConfig(artifactsPath, host, connection.MutualTLSMode),
 	}
 }
 
@@ -503,7 +501,7 @@ func newMultiClientConfigWithDefaultTLS(host string, port int) connection.MultiC
 		Endpoints: []*connection.Endpoint{
 			newEndpoint(host, port),
 		},
-		TLS: test.CreateClientTLSConfig(artifactsPath, host, connection.MutualTLSMode),
+		TLS: test.CreateServerTLSConfig(artifactsPath, host, connection.MutualTLSMode),
 	}
 }
 

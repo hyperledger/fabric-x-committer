@@ -18,7 +18,7 @@ server:
     key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/coordinator/tls/server.key
     # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
-      - /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/ca.crt
+      - /root/artifacts/peerOrganizations/peer-org-0/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
 # Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
 monitoring:
   # The endpoint where Prometheus metrics and pprof profiling are exposed.
@@ -49,12 +49,12 @@ verifier:
     # or 'mtls' (mutual TLS with client cert verification).
     mode: mtls
     # Path to the client's TLS certificate file (public key) for authentication.
-    cert-path: &clientCertPath /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/client.crt
+    cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/verifier/tls/server.crt
     # Path to the client's TLS private key file.
-    key-path: &clientKeyPath /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/client.key
+    key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/verifier/tls/server.key
     # List of paths to CA certificate files for verifying server certificates.
     ca-cert-paths:
-      - /root/artifacts/peerOrganizations/peer-org-0/peers/verifier/tls/ca.crt
+      - /root/artifacts/peerOrganizations/peer-org-0/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
   # Optional exponential backoff retry for gRPC reconnections. Default:
   # reconnect:
   #   initial-interval: 500ms
@@ -68,11 +68,16 @@ validator-committer:
   endpoints:
     - vc:6001
   tls:
-    mode: mtls  # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
-    cert-path: *clientCertPath
-    key-path: *clientKeyPath
+    # TLS mode for client connections to validator-committer: 'none' (no TLS), 'tls' (server auth only),
+    # or 'mtls' (mutual TLS with client cert verification).
+    mode: mtls
+    # Path to the client's TLS certificate file (public key) for authentication.
+    cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/vc/tls/server.crt
+    # Path to the client's TLS private key file.
+    key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/vc/tls/server.key
+    # List of paths to CA certificate files for verifying server certificates.
     ca-cert-paths:
-      - /root/artifacts/peerOrganizations/peer-org-0/peers/vc/tls/ca.crt
+      - /root/artifacts/peerOrganizations/peer-org-0/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
   # Optional exponential backoff retry for gRPC reconnections. Default:
   # reconnect:
   #   initial-interval: 500ms
