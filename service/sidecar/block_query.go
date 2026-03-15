@@ -8,11 +8,11 @@ package sidecar
 
 import (
 	"context"
-	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/common/ledger/blkstorage"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
@@ -75,15 +75,8 @@ func (s *blockQuery) GetTxByID(_ context.Context, req *committerpb.TxID) (*commo
 	return envelope, nil
 }
 
-// NOTE: This is fragile — we rely on matching error message substrings ("no such",
-// "not available") because the blkstorage package does not return a typed NotFound
-// error. If the blockstore changes its error messages, this will silently misclassify
-// not-found errors as internal errors. The proper fix is to update the blockstore to
-// return a sentinel error type (e.g., blkstorage.ErrNotFound) that we can match with
-// errors.Is instead of string matching.
 func wrapQueryError(err error) error {
-	msg := err.Error()
-	if strings.Contains(msg, "no such") || strings.Contains(msg, "not available") {
+	if errors.Is(err, blkstorage.ErrNotFound) {
 		return grpcerror.WrapNotFound(err)
 	}
 	logger.Errorf("Unexpected block store error: %v", err)
