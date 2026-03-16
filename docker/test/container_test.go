@@ -110,7 +110,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			//   /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/*
 			//
 			// However, for simplicity in this test, we reuse the server credentials mentioned above.
-			runtime.SystemConfig.ClientTLS = test.CreateServerTLSConfig(
+			runtime.SystemConfig.ClientTLS = test.NewServiceTLSConfig(
 				c.LoadProfile.Policy.ArtifactsPath, "sidecar", mode,
 			)
 			runtime.SystemConfig.ClientTLS.CACertPaths = append(runtime.SystemConfig.ClientTLS.CACertPaths,

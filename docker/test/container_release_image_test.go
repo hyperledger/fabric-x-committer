@@ -113,7 +113,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					// start the load generator node.
 					startLoadgenNodeWithReleaseImage(ctx, t, params.asNode(loadgenNode))
 
-					metricsClientTLSConfig := test.CreateServerTLSConfig(
+					metricsClientTLSConfig := test.NewServiceTLSConfig(
 						c.LoadProfile.Policy.ArtifactsPath, "loadgen", mode,
 					)
 
@@ -133,7 +133,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNodeParameters) string {
 	t.Helper()
 
-	tlsConfig := test.CreateServerTLSConfig(params.artifactsPath, params.node, params.tlsMode)
+	tlsConfig := test.NewServiceTLSConfig(params.artifactsPath, params.node, params.tlsMode)
 
 	node := &testdb.DatabaseContainer{
 		DatabaseType: params.dbType,

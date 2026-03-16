@@ -41,7 +41,7 @@ var ordererRootCAs = []string{
 
 func TestReadConfigSidecar(t *testing.T) {
 	t.Parallel()
-	sidecarTLSCreds := test.CreateServerTLSConfig(artifactsPath, "sidecar", connection.MutualTLSMode)
+	sidecarTLSCreds := test.NewServiceTLSConfig(artifactsPath, "sidecar", connection.MutualTLSMode)
 	tests := []struct {
 		name           string
 		configFilePath string
@@ -335,7 +335,7 @@ func TestReadConfigQuery(t *testing.T) {
 
 func TestReadConfigLoadGen(t *testing.T) {
 	t.Parallel()
-	loadgenTLSCreds := test.CreateServerTLSConfig(artifactsPath, "loadgen", connection.MutualTLSMode)
+	loadgenTLSCreds := test.NewServiceTLSConfig(artifactsPath, "loadgen", connection.MutualTLSMode)
 	tests := []struct {
 		name           string
 		configFilePath string
@@ -487,7 +487,7 @@ func defaultSampleDBConfig() *vc.DatabaseConfig {
 func newClientConfigWithDefaultTLS(host, fromService string, port int) *connection.ClientConfig {
 	return &connection.ClientConfig{
 		Endpoint: newEndpoint(host, port),
-		TLS:      test.CreateServerTLSConfig(artifactsPath, fromService, connection.MutualTLSMode),
+		TLS:      test.NewServiceTLSConfig(artifactsPath, fromService, connection.MutualTLSMode),
 	}
 }
 
@@ -496,14 +496,14 @@ func newMultiClientConfigWithDefaultTLS(host, fromService string, port int) conn
 		Endpoints: []*connection.Endpoint{
 			newEndpoint(host, port),
 		},
-		TLS: test.CreateServerTLSConfig(artifactsPath, fromService, connection.MutualTLSMode),
+		TLS: test.NewServiceTLSConfig(artifactsPath, fromService, connection.MutualTLSMode),
 	}
 }
 
 func newServerConfigWithDefaultTLS(serviceName string, port int) *connection.ServerConfig {
 	return &connection.ServerConfig{
 		Endpoint: *newEndpoint("", port),
-		TLS:      test.CreateServerTLSConfig(artifactsPath, serviceName, connection.MutualTLSMode),
+		TLS:      test.NewServiceTLSConfig(artifactsPath, serviceName, connection.MutualTLSMode),
 	}
 }
 
