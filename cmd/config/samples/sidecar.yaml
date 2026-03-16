@@ -80,8 +80,7 @@ orderer:
       ca-cert-paths:
         - /root/artifacts/ordererOrganizations/orderer-org-0/orderers/orderer-0-org-0/tls/ca.crt
   # Sidecar uses these TLS credentials when connecting to the orderers as a client.
-  tls:
-    <<: *tlsConfig
+  tls: *tlsConfig
   # reconnect:  # Optional exponential backoff retry for orderer gRPC reconnections.
   #   initial-interval: 500ms
   #   randomization-factor: 0.5

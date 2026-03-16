@@ -89,8 +89,7 @@ orderer-client:
         ca-cert-paths:
           - /root/artifacts/ordererOrganizations/orderer-org-0/orderers/orderer-0-org-0/tls/ca.crt
     # Loadgen uses these TLS credentials when connecting to the orderers as a client.
-    tls:
-      <<: *tlsConfig
+    tls: *tlsConfig
     # Consensus type of the ordering service: 'BFT' (Byzantine Fault Tolerant) or 'Raft'.
     # Affects how the loadgen interacts with the orderer.
     consensus-type: BFT
