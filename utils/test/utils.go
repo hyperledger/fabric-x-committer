@@ -534,18 +534,14 @@ func Make(rules ...string) error {
 // CreateServerTLSConfig creates a server TLS configuration with certificates loaded from the artifact path.
 // This function constructs paths to TLS certificates for a given service within the peer organization structure.
 func CreateServerTLSConfig(artifactsPath, serviceName, mode string) connection.TLSConfig {
+	subPath := filepath.Join(cryptogen.PeerOrganizationsDir, "peer-org-0",
+		cryptogen.PeerNodesDir, serviceName, cryptogen.TLSDir)
 	return connection.TLSConfig{
 		Mode:     mode,
-		CertPath: filepath.Join(artifactsPath, serviceTLSPathFromArtifacts(serviceName), "server.crt"),
-		KeyPath:  filepath.Join(artifactsPath, serviceTLSPathFromArtifacts(serviceName), "server.key"),
+		CertPath: filepath.Join(artifactsPath, subPath, "server.crt"),
+		KeyPath:  filepath.Join(artifactsPath, subPath, "server.key"),
 		CACertPaths: []string{
 			filepath.Join(artifactsPath, OrgRootCA),
 		},
 	}
-}
-
-// serviceTLSPathFromArtifacts returns the path to the service's TLS certificate directory in the artifacts.
-func serviceTLSPathFromArtifacts(serviceName string) string {
-	return filepath.Join(cryptogen.PeerOrganizationsDir, "peer-org-0",
-		cryptogen.PeerNodesDir, serviceName, cryptogen.TLSDir)
 }
