@@ -148,9 +148,13 @@ func (dc *DatabaseContainer) initDefaults() error { //nolint:gocognit
 				ybCmd := fmt.Sprintf("%s --secure --certs_dir=%s --advertise_address %s",
 					strings.Join(YugabyteCMD, " "), certDir, dc.Hostname)
 
+				// Use 'set -e' to exit immediately if any command fails, ensuring proper error propagation
 				dc.Cmd = []string{
-					"mkdir -p " + certDir + " && cp /creds/* " + certDir + "/ && " +
-						"chown root:root " + certDir + "/* && exec " + ybCmd,
+					"set -e && " +
+						"mkdir -p " + certDir + " && " +
+						"cp /creds/* " + certDir + "/ && " +
+						"chown root:root " + certDir + "/* && " +
+						"exec " + ybCmd,
 				}
 			} else {
 				dc.Cmd = append(dc.Cmd, "--insecure")

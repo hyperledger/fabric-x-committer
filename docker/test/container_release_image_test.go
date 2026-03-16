@@ -159,7 +159,9 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 	// post start container tweaking
 	switch node.DatabaseType {
 	case testdb.YugaDBType:
-		// Cert ownership is handled by copying and bind-mounted certs to a local directory.
+		// Certificate ownership is handled by copying bind-mounted certificates to a local directory
+		// within the container (/yb-creds) to ensure proper root ownership and permissions.
+		// This avoids permission issues that can occur with directly mounted volumes.
 		node.EnsureNodeReadinessByLogs(t, testdb.YugabytedReadinessOutput)
 		conn.Password = node.ReadPasswordFromContainer(t, containerPathForYugabytePassword)
 	case testdb.PostgresDBType:

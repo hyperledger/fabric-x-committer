@@ -531,7 +531,8 @@ func Make(rules ...string) error {
 	}
 }
 
-// CreateServerTLSConfig creates a server TLS config with certificates loaded from the artifact path.
+// CreateServerTLSConfig creates a server TLS configuration with certificates loaded from the artifact path.
+// This function constructs paths to TLS certificates for a given service within the peer organization structure.
 func CreateServerTLSConfig(artifactsPath, serviceName, mode string) connection.TLSConfig {
 	return connection.TLSConfig{
 		Mode:     mode,
