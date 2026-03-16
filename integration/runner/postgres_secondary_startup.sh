@@ -15,7 +15,7 @@ set -eu
 primary_host="$1"
 
 # Wait for the primary to accept connections.
-until pg_isready -h "$primary_host" -U yugabyte; do sleep 1; done
+until pg_isready -h "$primary_host" -U postgres; do sleep 1; done
 
 # Prepare an empty PGDATA owned by the postgres OS user.
 mkdir -p /var/lib/postgresql/data

@@ -88,8 +88,9 @@ func StartYugaCluster(ctx context.Context, t *testing.T, numberOfMasters, number
 	}
 
 	cluster := &YugaClusterController{
-		replicationFactor: rf,
-		networkName:       fmt.Sprintf("%s%s", networkPrefix, uuid.NewString()),
+		DBClusterController: DBClusterController{dbType: testdb.YugaDBType},
+		replicationFactor:   rf,
+		networkName:         fmt.Sprintf("%s%s", networkPrefix, uuid.NewString()),
 	}
 	// A dedicated Docker network enables container-to-container communication
 	// via container names (Docker DNS). Masters and tservers use each other's

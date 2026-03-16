@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -33,7 +32,7 @@ const (
 	defaultYugabyteImage = "yugabytedb/yugabyte:2025.2.0.1-b1"
 	// DefaultPostgresImage is the official PostgreSQL image used across unit and integration tests.
 	// Must match the version in scripts/get-and-start-postgres.sh.
-	DefaultPostgresImage            = "postgres:16.9-alpine3.21"
+	DefaultPostgresImage            = "postgres:18.3-alpine3.23"
 	defaultDBDeploymentTemplateName = test.DockerNamesPrefix + "_%s_unit_tests"
 
 	// container's Memory and CPU management.
@@ -170,8 +169,7 @@ func (dc *DatabaseContainer) initDefaults() error { //nolint:gocognit
 
 		if dc.Env == nil {
 			dc.Env = []string{
-				"POSTGRES_PASSWORD=yugabyte",
-				"POSTGRES_USER=yugabyte",
+				"POSTGRES_PASSWORD=postgres",
 			}
 		}
 
@@ -184,13 +182,25 @@ func (dc *DatabaseContainer) initDefaults() error { //nolint:gocognit
 				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CertPath, postgresPublicKeyFileName),
 				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.KeyPath, postgresPrivateKeyFileName),
 			)
+			// Copy bind-mounted certs to a container-local directory with correct
+			// ownership before PG starts. Docker Desktop and Podman Desktop run
+			// containers inside a Linux VM; bind-mounted files cannot be chown'd
+			// from within the container because the VM's filesystem layer does
+			// not propagate ownership changes back to the host.
+			// PostgreSQL requires ssl_key_file to be owned by the server's OS
+			// user (postgres) with mode 0600, so we copy to a writable path.
+			certDir := "/pg-creds"
+			keyFile := certDir + "/" + postgresPrivateKeyFileName
+			certFile := certDir + "/" + postgresPublicKeyFileName
+			dc.Entrypoint = []string{"sh", "-c"}
 			dc.Cmd = []string{
-				// Configure PostgreSQL to run in secure mode
-				// and listen for incoming connections on a chosen port.
-				"-c", fmt.Sprintf("port=%s", dc.DbPort),
-				"-c", "ssl=on",
-				"-c", fmt.Sprintf("ssl_cert_file=%s", filepath.Join("/creds", postgresPublicKeyFileName)),
-				"-c", fmt.Sprintf("ssl_key_file=%s", filepath.Join("/creds", postgresPrivateKeyFileName)),
+				"mkdir -p " + certDir + " && cp /creds/* " + certDir + "/ && " +
+					"chown postgres:postgres " + certDir + "/* && chmod 600 " + keyFile + " && " +
+					"exec docker-entrypoint.sh postgres" +
+					" -c port=" + dc.DbPort.Port() +
+					" -c ssl=on" +
+					" -c ssl_cert_file=" + certFile +
+					" -c ssl_key_file=" + keyFile,
 			}
 		}
 	default:
@@ -285,7 +295,7 @@ func (dc *DatabaseContainer) GetConnectionOptions(ctx context.Context, t *testin
 		endpoints = append(endpoints, connection.CreateEndpointHP(p.HostIP, p.HostPort))
 	}
 
-	return NewConnection(endpoints...)
+	return NewConnection(dc.DatabaseType, endpoints...)
 }
 
 // GetContainerConnectionDetails inspect the container and fetches its connection to an endpoint.

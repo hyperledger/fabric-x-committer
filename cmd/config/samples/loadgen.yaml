@@ -3,28 +3,41 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 ---
-# If server is set, a gRPC endpoint is exposed the full load generator's API.
+# The gRPC endpoint where the load generator exposes its full API for
+# programmatic control of load generation. Optional: if not set, no gRPC endpoint is exposed.
 server:
   endpoint: :8001
   tls:
-    # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
+    # TLS mode for server connections: 'none' (no TLS), 'tls' (server auth only),
+    # or 'mtls' (mutual TLS with client cert verification).
     mode: mtls
+    # Path to the server's TLS certificate file (public key).
     cert-path: /server-certs/public-key.pem
+    # Path to the server's TLS private key file.
     key-path: /server-certs/private-key.pem
+    # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
       - /server-certs/ca-certificate.pem
-# If http-server is set, an HTTP endpoint is exposed to adjust the rate limit at runtime.
+# The HTTP endpoint for runtime rate limit adjustments.
 # It exposes the following API:
 # GET  /getRateLimit - Get the rate limit returning a JSON body { "rate": uint64 }.
 # POST /setRateLimit - Sets the rate limit using a JSON body { "rate": uint64 }.
 http-server:
   endpoint: :6997
+# Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
 monitoring:
+  # The endpoint where Prometheus metrics and pprof profiling are exposed.
+  # Format: host:port or :port (binds to all interfaces).
   endpoint: :2118
   tls:
+    # TLS mode for monitoring endpoint: 'none' (no TLS), 'tls' (server auth only),
+    # or 'mtls' (mutual TLS with client cert verification).
     mode: mtls
+    # Path to the server's TLS certificate file (public key).
     cert-path: /server-certs/public-key.pem
+    # Path to the server's TLS private key file.
     key-path: /server-certs/private-key.pem
+    # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
       - /server-certs/ca-certificate.pem
   # Rate limiting configuration for unary gRPC endpoints.
@@ -38,54 +51,98 @@ monitoring:
     #   - Must be greater than 0
     #   - Must be less than or equal to requests-per-second
     burst: 0
+  # Latency tracking configuration for measuring transaction processing times.
   latency:
     sampler:
+      # Portion of transactions to sample for latency measurement (0.0 to 1.0).
+      # Lower values reduce overhead but may miss outliers. 0.01 = 1% sampling.
       portion: 0.01
     buckets:
+      # Distribution type for latency histogram buckets: 'uniform' (equal width) or 'exponential'.
       distribution: uniform
+      # Maximum latency value to track. Latencies above this are counted in overflow bucket.
       max-latency: 5s
+      # Number of histogram buckets for latency distribution analysis.
       bucket-count: 1000
 
+# Orderer client configuration for submitting transactions
 orderer-client:
+  # Sidecar client configuration (alternative to direct orderer connection)
   sidecar-client:
+    # Endpoint of the sidecar service to connect to for block delivery.
+    # Format: host:port.
     endpoint: sidecar:4001
-    # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
+    # TLS mode for sidecar client connections: 'none' (no TLS), 'tls' (server auth only),
+    # or 'mtls' (mutual TLS with client cert verification).
     tls:
       mode: mtls
+      # Path to the client's TLS certificate file (public key) for authentication.
       cert-path: /client-certs/public-key.pem
+      # Path to the client's TLS private key file.
       key-path: /client-certs/private-key.pem
+      # List of paths to CA certificate files for verifying server certificates.
       ca-cert-paths:
         - /client-certs/ca-certificate.pem
+  # Direct orderer connection configuration (alternative to sidecar-client)
   orderer:
     # Organizations map organization MSP IDs to their orderer connection details.
     # It supports multi-organization deployments where each org has its own orderers and TLS root CAs.
+    # Each organization can have multiple orderer endpoints with different capabilities (broadcast, deliver).
     organizations:
+      # Organization identifier (key can be any string, typically matches MSP ID).
+      # Each organization entry contains its orderer endpoints and CA certificates.
       org0:
+        # List of orderer endpoints for this organization.
+        # Format: id=<num>,broadcast,deliver,<host>:<port>
+        # - id: Unique orderer identifier within the organization
+        # - broadcast: Endpoint supports transaction submission
+        # - deliver: Endpoint supports block delivery
+        # - host:port: Network address of the orderer
         endpoints:
           - id=0,broadcast,deliver,orderer:7050
+        # List of paths to CA certificate files for verifying orderer certificates.
+        # Each organization can have its own CA certificates.
         ca-cert-paths:
           - /client-certs/orderer-ca-certificate.pem
     # Loadgen uses these TLS credentials when connecting to the orderers as a client.
     tls:
-      # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
+      # TLS mode for orderer client connections: 'none' (no TLS), 'tls' (server auth only),
+      # or 'mtls' (mutual TLS with client cert verification).
       mode: mtls
+      # Path to the client's TLS certificate file (public key) for authentication.
       cert-path: /client-certs/public-key.pem
+      # Path to the client's TLS private key file.
       key-path: /client-certs/private-key.pem
+    # Consensus type of the ordering service: 'BFT' (Byzantine Fault Tolerant) or 'Raft'.
+    # Affects how the loadgen interacts with the orderer.
     consensus-type: BFT
+    # The channel ID for which transactions are generated and submitted.
     channel-id: mychannel
+    # Identity configuration for signing transactions and connecting to orderers.
     identity:
+      # MSP (Membership Service Provider) ID identifying the organization.
       msp-id: peer-org-0
+      # Path to the MSP directory containing certificates and keys.
+      # Standard Fabric MSP structure with signcerts/, keystore/, cacerts/, etc.
       msp-dir: /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/msp
+      # BCCSP (Blockchain Crypto Service Provider) configuration for cryptographic operations.
       bccsp:
+        # Default crypto provider: 'SW' (software) or 'PKCS11' (hardware security module).
         Default: SW
         SW:
+          # Security level in bits (256 for ECDSA P-256, 384 for P-384).
           Security: 256
+          # Hash algorithm: 'SHA2' or 'SHA3'.
           Hash: SHA2
+  # Number of parallel goroutines for broadcasting transactions to the orderer.
+  # Higher values increase throughput but consume more resources.
   # We set low values to reduce the CPU load during tests.
   broadcast-parallelism: 1
 
+# Load profile configuration defining transaction characteristics and generation parameters
 load-profile:
   key:
+    # Size of generated keys in bytes. Affects transaction payload size and storage requirements.
     size: 32
   # block describes generate block characteristics
   # (when applying load to the VC or Verifier, blocks are translated to batches).
@@ -103,18 +160,63 @@ load-profile:
     max-size: 500
     min-size: 10
     preferred-rate: 1s
+  # Transaction structure configuration.
+  # Each transaction can contain three types of key operations:
+  #   - read-only: Reads a key without writing (version is nil).
+  #   - read-write: Reads and writes a key (read version is nil).
+  #   - blind-write (write-count): Writes a key without reading it first.
+  # The count for each type is specified using a distribution (see below).
+  # Supported distributions:
+  #   const: N                          - Exactly N operations.
+  #   uniform: {min: M, max: N}         - Uniformly distributed between M and N.
+  #   normal: {mean: M, std: S}         - Normal distribution with mean M and std S.
+  #   bernoulli: P                      - 1 with probability P, 0 otherwise.
+  #   discrete: [{value: V, probability: P}, ...] - Discrete distribution.
   transaction:
+    # Size in bytes of the value written for each read-write operation (0 means nil value).
+    # read-write-value-size: 0
+    # Size in bytes of the value written for each blind-write operation (0 means nil value).
+    # blind-write-value-size: 0
+    # Number of read-only operations per transaction.
+    # read-only-count:
+    #   const: 0
+    # Number of read-write operations per transaction.
     read-write-count:
       const: 2
+    # Number of blind-write operations per transaction.
+    # write-count:
+    #   const: 0
+  # Policy configuration for transaction endorsement and validation
   policy:
+    # Channel ID for which transactions are generated. Must match the target blockchain channel.
     channel-id: mychannel
+    # Namespace-specific endorsement policies. Key is namespace ID (0 for default namespace).
+    # Each namespace can have different signature schemes and endorsement requirements.
+    # System namespaces (meta and config) must not be specified; their policies are derived
+    # from the config block automatically.
+    #
+    # Supported schemes:
+    #   ECDSA, EDDSA, BLS - Use synthetic identities generated from 'seed' (or loaded from 'key-path').
+    #                        No Fabric PKI required. Useful for performance testing.
+    #   MSP               - Uses Fabric's standard endorsement with signing identities loaded from
+    #                        artifacts-path. Requires all peer organizations to sign. The 'seed' and
+    #                        'key-path' fields are ignored when using MSP.
     namespace-policies:
+      # Example: synthetic ECDSA signatures (no Fabric PKI needed)
       0:
-        # Supported schemes: MSP, ECDSA, EDDSA, and BLS
-        # If MSP is used, the default policy is requiring
-        # endorsement by all peer organizations.
         scheme: ECDSA
+        # Random seed for generating synthetic identities. Ensures reproducible key generation.
         seed: 10
+        # key-path:  # Optional: load keys from files instead of generating from seed.
+        #   signing-key: /path/to/signing.key
+        #   verification-key: /path/to/verification.key
+        #   sign-certificate: /path/to/cert.pem
+      # Example: MSP-based endorsement (requires artifacts-path with crypto materials)
+      # 1:
+      #   scheme: MSP
+    # Orderer endpoint specifications for transaction submission.
+    # Format: id=<num>,msp-id=<org>,broadcast,deliver,<host>:<port>
+    # Capabilities: 'broadcast' (submit txs), 'deliver' (receive blocks).
     orderer-endpoints:
       - id=0,msp-id=org,broadcast,deliver,orderer:7050
     # peer-organization-count specifies how many peer organizations to generate.
@@ -125,21 +227,52 @@ load-profile:
     # which will be printed by the loadgen CLI tool.
     # If this path does not exist, or it is empty, the artifacts will be generated into it.
     artifacts-path: /root/artifacts
+  # Conflict and error injection configuration for testing system resilience.
   conflicts:
+    # Fraction of transactions to generate with invalid signatures (0.0 to 1.0).
+    # Used to test signature verification and error handling. 0.1 = 10% invalid.
     invalid-signatures: 0.1
+    # Dependencies inject read-write conflicts between transactions to test MVCC validation.
+    # Each dependency type is an independent Bernoulli trial applied per transaction.
+    # 'src' and 'dst' specify the operation types that create the dependency:
+    #   "read", "write", or "read-write" (both read and write the same key).
+    # 'gap' controls the distance (in transaction count) between dependent transactions.
+    # dependencies:
+    #   - probability: 0.05   # 5% of transactions will have this dependency
+    #     gap:
+    #       const: 1          # Dependent transaction is the immediately next one
+    #     src: read-write     # Source transaction reads and writes a key
+    #     dst: read-write     # Destination transaction reads and writes the same key
+  # Random seed for reproducible transaction generation. Same seed produces same transaction sequence.
   seed: 12345
+  # Number of worker goroutines for parallel transaction generation.
+  # Higher values increase generation throughput but consume more CPU.
   # We set low values to reduce the CPU load during tests.
   workers: 1
 
 stream:
-  # TXs are released at rate (default: unlimited).
+  # Maximum number of transactions per second that the load generator will produce.
+  # Set to 0 for unlimited rate. This directly controls the transaction generation throughput.
   rate-limit: 10_000
-  # We set low values to reduce the CPU load during tests.
+  # Size of internal channel buffers used in the transaction generation pipeline.
+  # Larger buffers mask performance fluctuations and improve throughput but increase
+  # memory usage and latency. We set low values to reduce the CPU load during tests.
   buffers-size: 10
+  # Number of transactions generated in each batch by worker goroutines before
+  # inserting into channels. Batching helps overcome Go channel rate limitations.
+  # Larger batches improve efficiency but may increase latency variance.
   gen-batch: 10
 
 generate:
+  # Controls whether the loadgen generates a config transaction during the config phase.
+  # When false, the config transaction is expected to be submitted outside the loadgen.
+  # Ignored by the coordinator, VC, and verifier adapters.
+  config: false
+  # Controls whether to generate namespace creation transactions during the namespaces phase.
+  # Required for new deployments to set up the namespace structure before generating regular load.
   namespaces: true
+  # Controls whether to generate regular transaction load during the load phase.
+  # Can be disabled if only namespace setup or config updates are needed.
   load: true
 
 # The stopping condition for generating load according to the collected metrics.
@@ -154,8 +287,14 @@ limit:
   blocks: 0
   transactions: 50_000
 
+# Logging configuration
 logging:
+  # Log level specification. Can be a single level (e.g., "info", "debug") or
+  # module-specific levels (e.g., "info,loadgen=debug").
+  # Valid levels: debug, info, warning, error, panic, fatal.
   logSpec: "info"
+  # Log message format template. Supports color codes, timestamps, module names,
+  # function names, and log levels. See fabric-lib-go/common/flogging for details.
   format: >-
     %{color}%{time:2006-01-02 15:04:05.000 MST} [%{module}] %{shortfunc}
     -> %{level:.4s}%{color:reset} %{message}

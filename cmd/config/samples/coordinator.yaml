@@ -3,21 +3,36 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 ---
+# The gRPC endpoint where the coordinator service listens for incoming
+# connections from the sidecar service.
+# Format: host:port or :port (binds to all interfaces).
 server:
   endpoint: :9001
   tls:
-    # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
+    # TLS mode for server connections: 'none' (no TLS), 'tls' (server auth only),
+    # or 'mtls' (mutual TLS with client cert verification).
     mode: mtls
+    # Path to the server's TLS certificate file (public key).
     cert-path: /server-certs/public-key.pem
+    # Path to the server's TLS private key file.
     key-path: /server-certs/private-key.pem
+    # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
       - /server-certs/ca-certificate.pem
+# Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
 monitoring:
+  # The endpoint where Prometheus metrics and pprof profiling are exposed.
+  # Format: host:port or :port (binds to all interfaces).
   endpoint: :2119
   tls:
+    # TLS mode for monitoring endpoint: 'none' (no TLS), 'tls' (server auth only),
+    # or 'mtls' (mutual TLS with client cert verification).
     mode: mtls
+    # Path to the server's TLS certificate file (public key).
     cert-path: /server-certs/public-key.pem
+    # Path to the server's TLS private key file.
     key-path: /server-certs/private-key.pem
+    # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
       - /server-certs/ca-certificate.pem
   # Rate limiting configuration for unary gRPC endpoints.
@@ -33,26 +48,66 @@ monitoring:
     burst: 0
 
 verifier:
+  # List of verifier service endpoints. Multiple endpoints enable load distribution
+  # across verifier instances.
   endpoints:
     - verifier:5001
   tls: &ClientTLS
-    mode: mtls  # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
+    # TLS mode for client connections to verifier: 'none' (no TLS), 'tls' (server auth only),
+    # or 'mtls' (mutual TLS with client cert verification).
+    mode: mtls
+    # Path to the client's TLS certificate file (public key) for authentication.
     cert-path: /client-certs/public-key.pem
+    # Path to the client's TLS private key file.
     key-path: /client-certs/private-key.pem
+    # List of paths to CA certificate files for verifying server certificates.
     ca-cert-paths:
       - /client-certs/ca-certificate.pem
+  # Optional exponential backoff retry for gRPC reconnections. Default:
+  # reconnect:
+  #   initial-interval: 500ms
+  #   randomization-factor: 0.5
+  #   multiplier: 1.5
+  #   max-interval: 10s
+  #   max-elapsed-time: 15m
 validator-committer:
+  # List of validator-committer (VC) service endpoints. Multiple endpoints enable
+  # load distribution across VC instances.
   endpoints:
     - vc:6001
   tls: *ClientTLS
+  # Optional exponential backoff retry for gRPC reconnections. Default:
+  # reconnect:
+  #   initial-interval: 500ms
+  #   randomization-factor: 0.5
+  #   multiplier: 1.5
+  #   max-interval: 10s
+  #   max-elapsed-time: 15m
 
 dependency-graph:
+  # Number of transaction batches that can be processed in parallel to construct
+  # batch-level (local) dependency graphs. Higher values enable parallel processing
+  # of multiple batches but increase CPU usage.
   num-of-local-dep-constructors: 1
+  # Maximum number of transactions allowed in the global dependency graph.
+  # This limit indirectly controls memory utilization. When reached, the
+  # coordinator applies backpressure to upstream services.
   waiting-txs-limit: 100_000
-  per-channel-buffer-size-per-goroutine: 10
 
+# Base buffer size per goroutine/endpoint for internal channels. The actual
+# buffer size is calculated as this value multiplied by the number of endpoints
+# (for verifier/validator-committer managers) or the number of local dependency
+# constructors. Larger values reduce contention but increase memory usage proportionally.
+per-channel-buffer-size-per-goroutine: 10
+
+# Logging configuration
 logging:
+  # Log level specification. Can be a single level (e.g., "info", "debug") or
+  # module-specific levels (e.g., "info,coordinator=debug").
+  # Valid levels: debug, info, warning, error, panic, fatal.
   logSpec: "info"
+  # Log message format template. Supports color codes, timestamps, module names,
+  # function names, and log levels. See fabric-lib-go/common/flogging for details.
   format: >-
     %{color}%{time:2006-01-02 15:04:05.000 MST} [%{module}] %{shortfunc}
     -> %{level:.4s}%{color:reset} %{message}

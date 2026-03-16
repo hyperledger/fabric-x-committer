@@ -3,21 +3,36 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 ---
+# The gRPC endpoint where the signature verification service listens for transaction
+# signature verification requests from the coordinator.
+# Format: host:port or :port (binds to all interfaces).
 server:
   endpoint: :5001
   tls:
-    # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
+    # TLS mode for server connections: 'none' (no TLS), 'tls' (server auth only),
+    # or 'mtls' (mutual TLS with client cert verification).
     mode: mtls
+    # Path to the server's TLS certificate file (public key).
     cert-path: /server-certs/public-key.pem
+    # Path to the server's TLS private key file.
     key-path: /server-certs/private-key.pem
+    # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
       - /server-certs/ca-certificate.pem
+# Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
 monitoring:
+  # The endpoint where Prometheus metrics and pprof profiling are exposed.
+  # Format: host:port or :port (binds to all interfaces).
   endpoint: :2115
   tls:
+    # TLS mode for monitoring endpoint: 'none' (no TLS), 'tls' (server auth only),
+    # or 'mtls' (mutual TLS with client cert verification).
     mode: mtls
+    # Path to the server's TLS certificate file (public key).
     cert-path: /server-certs/public-key.pem
+    # Path to the server's TLS private key file.
     key-path: /server-certs/private-key.pem
+    # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
       - /server-certs/ca-certificate.pem
   # Rate limiting configuration for unary gRPC endpoints.
@@ -33,13 +48,32 @@ monitoring:
     burst: 0
 
 parallel-executor:
+  # Minimum number of verification responses to collect before emitting a batch result.
+  # Larger batches improve verification efficiency through parallel processing
+  # across multiple goroutines. Batches are processed when this size is reached
+  # or batch-time-cutoff expires, whichever comes first.
   batch-size-cutoff: 50
+  # Maximum time to wait for a batch to reach batch-size-cutoff before processing
+  # it anyway. Ensures low latency even when signature arrival rate is low.
+  # Balances latency vs. batching efficiency.
   batch-time-cutoff: 10ms
+  # Buffer size for internal channels used in the signature verification pipeline.
+  # Larger buffers reduce channel contention and improve throughput but increase
+  # memory usage.
   channel-buffer-size: 50
+  # Number of goroutines used to verify signatures in parallel within each batch.
+  # Should be tuned based on CPU core count and signature verification workload.
+  # Higher values improve throughput on multi-core systems but increase CPU usage.
   parallelism: 40
 
+# Logging configuration
 logging:
+  # Log level specification. Can be a single level (e.g., "info", "debug") or
+  # module-specific levels (e.g., "info,verifier=debug").
+  # Valid levels: debug, info, warning, error, panic, fatal.
   logSpec: "info"
+  # Log message format template. Supports color codes, timestamps, module names,
+  # function names, and log levels. See fabric-lib-go/common/flogging for details.
   format: >-
     %{color}%{time:2006-01-02 15:04:05.000 MST} [%{module}] %{shortfunc}
     -> %{level:.4s}%{color:reset} %{message}

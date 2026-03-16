@@ -22,12 +22,17 @@ import (
 var logger = flogging.MustGetLogger("db-connection")
 
 const (
-	defaultUsername = "yugabyte"
-	defaultPassword = "yugabyte"
-
 	createDBSQLTempl = "CREATE DATABASE %s;"
 	dropDBSQLTempl   = "DROP DATABASE IF EXISTS %s WITH (FORCE);"
 )
+
+// defaultCredentials returns the default username and password for the given database type.
+func defaultCredentials(dbType string) (user, password string) {
+	if dbType == PostgresDBType {
+		return "postgres", "postgres"
+	}
+	return "yugabyte", "yugabyte"
+}
 
 // defaultRetry is used for tests.
 var defaultRetry = &connection.RetryProfile{
@@ -47,13 +52,13 @@ type Connection struct {
 	TLS         dbconn.DatabaseTLSConfig
 }
 
-// NewConnection returns a connection parameters with the specified host:port, and the default values
-// for the other parameters.
-func NewConnection(endpoints ...*connection.Endpoint) *Connection {
+// NewConnection returns connection parameters with DB-type-specific default credentials.
+func NewConnection(dbType string, endpoints ...*connection.Endpoint) *Connection {
+	user, password := defaultCredentials(dbType)
 	return &Connection{
 		Endpoints: endpoints,
-		User:      defaultUsername,
-		Password:  defaultPassword,
+		User:      user,
+		Password:  password,
 	}
 }
 

@@ -5,13 +5,18 @@
 ---
 # Configuration for the server
 server:
-  # The server's endpoint configuration
+  # The gRPC endpoint where the query service listens for state query requests from clients.
+  # Format: host:port or :port (binds to all interfaces).
   endpoint: :7001
   tls:
-    # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
+    # TLS mode for server connections: 'none' (no TLS), 'tls' (server auth only),
+    # or 'mtls' (mutual TLS with client cert verification).
     mode: mtls
+    # Path to the server's TLS certificate file (public key).
     cert-path: /server-certs/public-key.pem
+    # Path to the server's TLS private key file.
     key-path: /server-certs/private-key.pem
+    # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
       - /server-certs/ca-certificate.pem
   # Rate limiting configuration for unary gRPC endpoints.
@@ -25,32 +30,54 @@ server:
     #   - Must be greater than 0
     #   - Must be less than or equal to requests-per-second
     burst: 0
+# Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
 monitoring:
+  # The endpoint where Prometheus metrics and pprof profiling are exposed.
+  # Format: host:port or :port (binds to all interfaces).
   endpoint: :2117
   tls:
+    # TLS mode for monitoring endpoint: 'none' (no TLS), 'tls' (server auth only),
+    # or 'mtls' (mutual TLS with client cert verification).
     mode: mtls
+    # Path to the server's TLS certificate file (public key).
     cert-path: /server-certs/public-key.pem
+    # Path to the server's TLS private key file.
     key-path: /server-certs/private-key.pem
+    # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
       - /server-certs/ca-certificate.pem
   rate-limit:
     requests-per-second: 0
     burst: 0
 
+# Database connection configuration
 database:
+  # List of database endpoints to connect to. Multiple endpoints can be specified
+  # for YugabyteDB clusters or PostgreSQL replicas. Format: host:port for each endpoint.
   endpoints:
     - db:5433
-  username: "yugabyte"  # The username for the database
-  # TODO: pass password via environment variable
-  password: "yugabyte"  # The password for the database
-  database: "yugabyte"  # The database name
+  # Database username for authentication.
+  username: "yugabyte"
+  # Database password for authentication.
+  # TODO: pass password via environment variable for better security.
+  password: "yugabyte"
+  # Database name to connect to.
+  database: "yugabyte"
   tls:
-    # Database TLS configuration being built based on the tls mode chosen: none, tls.
+    # TLS mode for database connections: 'none' (no TLS) or 'tls' (server auth with CA verification).
+    # Note: Database connections do not support mutual TLS (mtls).
     mode: tls
+    # Path to the CA certificate file for verifying the database server's certificate.
     ca-cert-path: /server-certs/ca-certificate.pem
-  max-connections: 10  # The maximum size of the connection pool
-  min-connections: 5  # The minimum size of the connection pool
-  load-balance: false  # Should be enabled for DB cluster
+  # Maximum size of the database connection pool. Limits concurrent database operations.
+  # Should be tuned based on database capacity and expected query load.
+  max-connections: 10
+  # Minimum size of the database connection pool. Keeps connections warm for faster queries.
+  # Should be less than or equal to max-connections.
+  min-connections: 5
+  # Enable load balancing across multiple database endpoints. Should be enabled for
+  # YugabyteDB clusters to distribute queries across nodes. Set to false for single-node deployments.
+  load-balance: false
   retry:  # The exponential backoff retry strategy for database operation.
     # This strategy increases the delay between retry attempts exponentially.
     # When using YugabyteDB as the backend, it is needed to handle retryable errors.
@@ -90,12 +117,31 @@ database:
     # Format: string representing a duration (e.g., "15m", "1h").
     max-elapsed-time: 15m
 
-# Resource limit configurations
-min-batch-keys: 1024  # A batch will execute once it accumulated this number of keys.
-max-batch-wait: 100ms  # A batch will execute once it waited this much time.
-view-aggregation-window: 100ms  # A new view will be created if the previous view was created before this much time.
-max-aggregated-views: 1024  # A new view will be created if the previous view aggregated this number of views.
-max-view-timeout: 10s  # A view will be closed if it was opened for longer than this time.
+# Resource limit configurations.
+# The following limits prevent unbounded memory growth and resource leaks.
+
+# Minimum number of keys that must accumulate in a batch before executing the query
+# against the database. Batching reduces database round-trips and improves efficiency.
+# Queries wait up to max-batch-wait for the batch to fill.
+min-batch-keys: 1024
+# Maximum time to wait for a batch to reach min-batch-keys before executing it anyway.
+# Lower values reduce query latency but may decrease batching efficiency. Queries may
+# wait longer if no database connections are available.
+max-batch-wait: 100ms
+# Time window for aggregating multiple views with the same parameters into a single
+# batched view. Views created within this window are processed together to reduce
+# database load. Larger windows improve batching but increase latency.
+view-aggregation-window: 100ms
+# Maximum number of views that can be aggregated together. Once reached, a new
+# aggregated view is created even if within the view-aggregation-window.
+max-aggregated-views: 1024
+# Maximum number of concurrently active (batched) views. When reached, new BeginView
+# requests are rejected with RESOURCE_EXHAUSTED. Set to 0 to disable the limit.
+max-active-views: 4096
+# Maximum lifetime of a view from creation to completion of its last query.
+# Views exceeding this timeout are aborted to prevent resource leaks.
+# Includes query execution time.
+max-view-timeout: 10s
 
 # Maximum number of keys allowed in a single query request.
 # This applies to both GetRows (total keys across all namespaces) and
@@ -104,8 +150,14 @@ max-view-timeout: 10s  # A view will be closed if it was opened for longer than 
 # Set to 0 to disable the limit (not recommended for production).
 max-request-keys: 10000
 
+# Logging configuration
 logging:
+  # Log level specification. Can be a single level (e.g., "info", "debug") or
+  # module-specific levels (e.g., "info,query=debug").
+  # Valid levels: debug, info, warning, error, panic, fatal.
   logSpec: "info"
+  # Log message format template. Supports color codes, timestamps, module names,
+  # function names, and log levels. See fabric-lib-go/common/flogging for details.
   format: >-
     %{color}%{time:2006-01-02 15:04:05.000 MST} [%{module}] %{shortfunc}
     -> %{level:.4s}%{color:reset} %{message}

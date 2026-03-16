@@ -100,7 +100,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 				},
 				DBEnv: vc.NewDatabaseTestEnvFromConnection(
 					t,
-					testdb.NewConnection(mustGetEndpoint(ctx, t, containerName, databasePort)),
+					testdb.NewConnection(testdb.PostgresDBType, mustGetEndpoint(ctx, t, containerName, databasePort)),
 					false,
 				),
 			}

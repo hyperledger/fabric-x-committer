@@ -3,23 +3,58 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 ---
+# The gRPC endpoint where the mock orderer listens for broadcast and deliver
+# requests from clients, mimicking a Fabric-X orderer for testing purposes.
+# Format: host:port or :port (binds to all interfaces).
 server:
   endpoint: :7050
   tls:
-    # TLS configuration being built based on the tls mode chosen: none, tls, mtls.
+    # TLS mode for server connections: 'none' (no TLS), 'tls' (server auth only),
+    # or 'mtls' (mutual TLS with client cert verification).
     mode: mtls
+    # Path to the server's TLS certificate file (public key).
     cert-path: /server-certs/public-key.pem
+    # Path to the server's TLS private key file.
     key-path: /server-certs/private-key.pem
+    # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
       - /server-certs/ca-certificate.pem
 
+# Maximum number of transactions to include in each block. Blocks are cut when
+# this size is reached or when the block-timeout expires, whichever comes first.
 block-size: 1024
+# Maximum time to wait before cutting a block, even if block-size hasn't been reached.
+# Ensures timely block production under low transaction rates. The timer resets after
+# each block is cut.
 block-timeout: 30s
+# Capacity of the internal block cache (ring buffer). Determines how many blocks
+# are kept in memory for delivery to clients. If a client falls behind by more than
+# this many blocks, older blocks are overwritten and the client receives empty
+# placeholder blocks. Must be large enough to accommodate slow consumers.
+out-block-capacity: 1024
+# Size of the deduplication cache for incoming envelopes. Uses a FIFO eviction policy
+# to detect and discard duplicate transactions based on payload hash. Set to the expected
+# maximum number of unique in-flight transactions.
+payload-cache-size: 1024
+# Controls whether the mock orderer submits the genesis block (block 0) to its
+# block cache on startup. When true, the genesis block is delivered to clients
+# via the Deliver API. When false, the genesis block is not added to the cache
+# and consumers are expected to bootstrap it through other means (e.g., the
+# sidecar's bootstrap.genesis-block-file-path).
 send-genesis-block: true
+# Directory path where the mock orderer reads the genesis block (config-block.pb.bin)
+# and cryptographic materials needed for operation. If not provided, a default
+# config block is used.
 artifacts-path: /root/artifacts
 
+# Logging configuration
 logging:
+  # Log level specification. Can be a single level (e.g., "info", "debug") or
+  # module-specific levels (e.g., "info,mock=debug").
+  # Valid levels: debug, info, warning, error, panic, fatal.
   logSpec: "info"
+  # Log message format template. Supports color codes, timestamps, module names,
+  # function names, and log levels. See fabric-lib-go/common/flogging for details.
   format: >-
     %{color}%{time:2006-01-02 15:04:05.000 MST} [%{module}] %{shortfunc}
     -> %{level:.4s}%{color:reset} %{message}

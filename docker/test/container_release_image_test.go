@@ -50,11 +50,14 @@ const (
 
 // enforcePostgresSSLAndReloadConfigScript enforces SSL-only client connections to a PostgreSQL
 // instance by updating pg_hba.conf and reloads its server configuration without restarting the instance.
+// Uses $PGDATA so it works across PostgreSQL versions (16 uses /var/lib/postgresql/data,
+// 18+ uses /var/lib/postgresql/<major>/docker).
 var enforcePostgresSSLAndReloadConfigScript = []string{
 	"sh", "-c",
-	`sed -i 's/^host all all all scram-sha-256$/hostssl all all 0.0.0.0\/0 scram-sha-256/' ` +
-		`/var/lib/postgresql/data/pg_hba.conf`,
-	`psql -U yugabyte -c "SELECT pg_reload_conf();"`,
+	`while ! pg_isready -p ` + defaultDBPort + ` -q; do sleep 0.1; done && ` +
+		`sed -i 's/^host all all all scram-sha-256$/hostssl all all 0.0.0.0\/0 scram-sha-256/' ` +
+		`"$PGDATA/pg_hba.conf" && ` +
+		`psql -U postgres -p ` + defaultDBPort + ` -c "SELECT pg_reload_conf();"`,
 }
 
 // TestCommitterReleaseImagesWithTLS runs the committer components in different Docker containers with different TLS
@@ -170,8 +173,7 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 		node.EnsureNodeReadinessByLogs(t, testdb.YugabytedReadinessOutput)
 		conn.Password = node.ReadPasswordFromContainer(t, containerPathForYugabytePassword)
 	case testdb.PostgresDBType:
-		// Must run after node startup to ensure proper root ownership and permissions for the TLS certificate files.
-		node.ExecuteCommand(t, []string{"bash", "-c", "chown postgres:postgres /creds/*"})
+		// Cert ownership is handled by the entrypoint wrapper in container.go.
 		node.EnsureNodeReadinessByLogs(t, testdb.PostgresReadinesssOutput)
 		node.ExecuteCommand(t, enforcePostgresSSLAndReloadConfigScript)
 	default:
@@ -216,6 +218,10 @@ func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, param
 				"SC_SIDECAR_ORDERER_TLS_MODE=" + params.tlsMode,
 				"SC_VC_DATABASE_PASSWORD=" + params.dbPassword,
 				"SC_QUERY_DATABASE_PASSWORD=" + params.dbPassword,
+				"SC_VC_DATABASE_USERNAME=" + params.dbUsername(),
+				"SC_QUERY_DATABASE_USERNAME=" + params.dbUsername(),
+				"SC_VC_DATABASE_DATABASE=" + params.dbDefaultDatabase(),
+				"SC_QUERY_DATABASE_DATABASE=" + params.dbDefaultDatabase(),
 			},
 			Tty: true,
 		},

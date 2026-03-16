@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package ordererconn
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"maps"
 	"math"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -36,6 +36,7 @@ type (
 		lock          sync.Mutex
 		retry         *connection.RetryProfile
 		tls           *connection.TLSMaterials
+		tlsCertHash   []byte
 		// staticCACerts holds the static CA certificates from the initial YAML configuration.
 		// These are preserved across config block updates and appended to all organizations' CA certificates.
 		staticCACerts [][]byte
@@ -75,6 +76,14 @@ func NewConnectionManager(config *Config) (*ConnectionManager, error) {
 		return nil, err
 	}
 
+	var tlsCertHash []byte
+	if tls.Mode == connection.MutualTLSMode {
+		tlsCertHash, err = protoutil.HashTLSCertificate(tls.Cert)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Collect all static CA certificates from the YAML configuration across all organizations.
 	// These will be preserved and appended to all organizations' CA certificates across
 	// config block updates to ensure connectivity.
@@ -92,6 +101,7 @@ func NewConnectionManager(config *Config) (*ConnectionManager, error) {
 	cm := &ConnectionManager{
 		tls:           tls,
 		retry:         config.Retry,
+		tlsCertHash:   tlsCertHash,
 		staticCACerts: staticCACerts,
 	}
 
@@ -163,13 +173,7 @@ func (cm *ConnectionManager) Update(orgsMat []*OrganizationMaterial) error { //n
 
 // GetTLSCertHash returns the hash of the TLS certificate used by the connection manager.
 func (cm *ConnectionManager) GetTLSCertHash() []byte {
-	cm.lock.Lock()
-	defer cm.lock.Unlock()
-	if cm.tls == nil || len(cm.tls.Cert) == 0 {
-		return nil
-	}
-	sum := sha256.Sum256(cm.tls.Cert)
-	return sum[:]
+	return cm.tlsCertHash
 }
 
 // GetConnection returns a connection given filters.
