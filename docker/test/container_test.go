@@ -101,15 +101,6 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 				),
 			}
 
-			// We don't need to create a separate client TLS config for each service for a couple of reasons:
-			// 1. All services belong to the same organization and use the same root CA.
-			// 2. All services run on the local machine.
-			//
-			// Note: We could create dedicated sidecar and query client TLS configurations using
-			// the peer organization's client credentials at:
-			//   /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/tls/*
-			//
-			// However, for simplicity in this test, we reuse the server credentials mentioned above.
 			runtime.SystemConfig.ClientTLS = test.NewServiceTLSConfig(
 				c.LoadProfile.Policy.ArtifactsPath, "sidecar", mode,
 			)
