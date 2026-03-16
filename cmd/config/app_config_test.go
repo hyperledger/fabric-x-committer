@@ -96,10 +96,9 @@ func TestReadConfigSidecar(t *testing.T) {
 			Orderer: ordererconn.Config{
 				ChannelID: "mychannel",
 				TLS: ordererconn.OrdererTLSConfig{
-					Mode:              sidecarTLSCreds.Mode,
-					KeyPath:           sidecarTLSCreds.KeyPath,
-					CertPath:          sidecarTLSCreds.CertPath,
-					CommonCACertPaths: ordererRootCAs,
+					Mode:     sidecarTLSCreds.Mode,
+					KeyPath:  sidecarTLSCreds.KeyPath,
+					CertPath: sidecarTLSCreds.CertPath,
 				},
 				Organizations: map[string]*ordererconn.OrganizationConfig{
 					"org0": {
@@ -377,10 +376,9 @@ func TestReadConfigLoadGen(t *testing.T) {
 						ConsensusType: ordererconn.Bft,
 						Identity:      newIdentityConfig(),
 						TLS: ordererconn.OrdererTLSConfig{
-							Mode:              loadgenTLSCreds.Mode,
-							KeyPath:           loadgenTLSCreds.KeyPath,
-							CertPath:          loadgenTLSCreds.CertPath,
-							CommonCACertPaths: ordererRootCAs,
+							Mode:     loadgenTLSCreds.Mode,
+							KeyPath:  loadgenTLSCreds.KeyPath,
+							CertPath: loadgenTLSCreds.CertPath,
 						},
 						Organizations: map[string]*ordererconn.OrganizationConfig{
 							"org0": {
