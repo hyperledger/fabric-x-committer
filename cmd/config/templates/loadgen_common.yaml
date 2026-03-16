@@ -26,6 +26,7 @@ monitoring:
       - {{ . }}
       {{- end }}
   latency:
+    max-tracked-txs: 10_000
     sampler:
       portion: 0.01
     buckets:

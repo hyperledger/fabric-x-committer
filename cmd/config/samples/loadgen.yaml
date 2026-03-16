@@ -45,6 +45,9 @@ monitoring:
     burst: 0
   # Latency tracking configuration for measuring transaction processing times.
   latency:
+    # Maximal number of TX entries to hold in memory when tracking TXs latency.
+    # This size will be pre allocated, thus it is important to use a sensible value.
+    max-tracked-txs: 10_000
     sampler:
       # Portion of transactions to sample for latency measurement (0.0 to 1.0).
       # Lower values reduce overhead but may miss outliers. 0.01 = 1% sampling.

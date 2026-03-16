@@ -86,26 +86,6 @@ func NewLoadgenServiceMetrics(c *Config) *PerfMetrics {
 	}
 }
 
-func newLatencyReceiverSender(p *monitoring.Provider, conf *LatencyConfig) *latencyReceiverSender {
-	buckets := conf.BucketConfig.Buckets()
-	sampler := &conf.SamplerConfig
-	return &latencyReceiverSender{
-		validLatency: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loadgen",
-			Name:      "valid_transaction_latency_seconds",
-			Help:      "Latency of transactions in seconds",
-			Buckets:   buckets,
-		}),
-		invalidLatency: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loadgen",
-			Name:      "invalid_transaction_latency_seconds",
-			Help:      "Latency of invalid transactions in seconds",
-			Buckets:   buckets,
-		}),
-		txSampler: sampler.TxSampler(),
-	}
-}
-
 // GetState returns the number of committed transactions.
 func (c *PerfMetrics) GetState() MetricState {
 	return MetricState{
@@ -121,7 +101,7 @@ func (c *PerfMetrics) GetState() MetricState {
 func getCounterValue(c prometheus.Counter) uint64 {
 	gm := promgo.Metric{}
 	if err := c.Write(&gm); err != nil {
-		logger.Infof("Failed reading counter value: %v", err)
+		logger.Warnf("Failed reading counter value: %v", err)
 		return 0
 	}
 	return uint64(gm.Counter.GetValue())
@@ -137,12 +117,6 @@ func (c *PerfMetrics) OnSendBatch(txIDs []string) {
 	for _, txID := range txIDs {
 		c.latencyTracker.onSendTransaction(txID)
 	}
-}
-
-// OnSendTransaction is a function that increments the transaction sent total and calls the latency tracker.
-func (c *PerfMetrics) OnSendTransaction(txID string) {
-	promutil.AddToCounter(c.transactionSentTotal, 1)
-	c.latencyTracker.onSendTransaction(txID)
 }
 
 // OnReceiveBatch increments the transaction received total and calls the latency tracker.
