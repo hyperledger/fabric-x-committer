@@ -75,7 +75,6 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	loadgenNode := "loadgen"
 	committerNodes := []string{"verifier", "vc", "query", "coordinator", "sidecar"}
 
-	credsFactory := test.NewCredentialsFactory(t)
 	for _, dbType := range []string{testdb.YugaDBType, testdb.PostgresDBType} {
 		t.Run(fmt.Sprintf("database:%s", dbType), func(t *testing.T) {
 			t.Parallel()
@@ -90,7 +89,6 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					})
 
 					params := startNodeParameters{
-						credsFactory:  credsFactory,
 						networkName:   networkName,
 						tlsMode:       mode,
 						artifactsPath: c.LoadProfile.Policy.ArtifactsPath,
@@ -219,12 +217,12 @@ func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, param
 		},
 		hostConfig: &container.HostConfig{
 			NetworkMode: container.NetworkMode(params.networkName),
-			Binds: assembleBinds(t, params,
+			Binds: []string{
 				fmt.Sprintf("%s.yaml:/%s.yaml",
 					filepath.Join(mustGetWD(t), localConfigPath, params.node), configPath,
 				),
 				fmt.Sprintf("%s:%s", params.artifactsPath, containerArtifactsPath),
-			),
+			},
 		},
 		name: assembleContainerName(params.node, params.tlsMode, params.dbType),
 	})
@@ -270,13 +268,13 @@ func startLoadgenNodeWithReleaseImage(
 					HostPort: "0", // auto port assign
 				}},
 			},
-			Binds: assembleBinds(t, params,
+			Binds: []string{
 				fmt.Sprintf("%s.yaml:/%s.yaml",
 					filepath.Join(mustGetWD(t), localConfigPath, params.node), configPath,
 				),
 				// Mount the crypto artifacts for MSP-based endorsement of the meta namespace.
 				fmt.Sprintf("%s:%s", params.artifactsPath, containerArtifactsPath),
-			),
+			},
 		},
 		name: assembleContainerName(params.node, params.tlsMode, params.dbType),
 	})
@@ -302,9 +300,9 @@ func startCommitterNodeWithTestImage(
 		},
 		hostConfig: &container.HostConfig{
 			NetworkMode: container.NetworkMode(params.networkName),
-			Binds: assembleBinds(t, params,
+			Binds: []string{
 				fmt.Sprintf("%s:%s", params.artifactsPath, containerArtifactsPath),
-			),
+			},
 		},
 		name: assembleContainerName(params.node, params.tlsMode, params.dbType),
 	})

@@ -182,7 +182,6 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		},
 		CommittedBlock:   make(chan *common.Block, 100),
 		SeedForCryptoGen: rand.New(rand.NewSource(10)),
-		CredFactory:      credFactory,
 	}
 	t.Log("Making DB env")
 	if conf.DBConnection == nil {
