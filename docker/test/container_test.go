@@ -53,8 +53,6 @@ var commonTestNodeCMD = []string{"run", "db", "committer", "orderer"}
 func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 	t.Parallel()
 
-	credsFactory := test.NewCredentialsFactory(t)
-
 	for _, mode := range test.ServerModes {
 		t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 			t.Parallel()
@@ -63,10 +61,9 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			containerName := assembleContainerName(committerContainerName, mode, testdb.PostgresDBType)
 			stopAndRemoveContainersByName(ctx, t, createDockerClient(t), containerName)
 			startCommitter(ctx, t, startNodeParameters{
-				node:         containerName,
-				credsFactory: credsFactory,
-				tlsMode:      mode,
-				cmd:          commonTestNodeCMD,
+				node:    containerName,
+				tlsMode: mode,
+				cmd:     commonTestNodeCMD,
 			})
 
 			v := config.NewViperWithLoadGenDefaults()
@@ -87,7 +84,6 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 				return config.ServiceConfig{GrpcEndpoint: mustGetEndpoint(ctx, t, containerName, servicePort)}
 			}
 			runtime := runner.CommitterRuntime{
-				CredFactory:      credsFactory,
 				SeedForCryptoGen: rand.New(rand.NewSource(10)),
 				Config:           &runner.Config{},
 				SystemConfig: config.SystemConfig{
@@ -104,7 +100,14 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 					false,
 				),
 			}
-			runtime.SystemConfig.ClientTLS, _ = credsFactory.CreateClientCredentials(t, mode)
+
+			runtime.SystemConfig.ClientTLS = test.NewServiceTLSConfig(
+				c.LoadProfile.Policy.ArtifactsPath, "sidecar", mode,
+			)
+			runtime.SystemConfig.ClientTLS.CACertPaths = append(runtime.SystemConfig.ClientTLS.CACertPaths,
+				filepath.Join(c.LoadProfile.Policy.ArtifactsPath, test.OrdererRootCATLSPath),
+			)
+
 			runtime.CreateRuntimeClients(ctx, t)
 			runtime.OpenNotificationStream(ctx, t)
 
@@ -191,10 +194,9 @@ func TestStartTestNode(t *testing.T) {
 	containerName := fmt.Sprintf("%s_%s", test.DockerNamesPrefix, committerContainerName)
 	stopAndRemoveContainersByName(ctx, t, createDockerClient(t), containerName)
 	startCommitter(ctx, t, startNodeParameters{
-		node:         containerName,
-		credsFactory: test.NewCredentialsFactory(t),
-		tlsMode:      connection.NoneTLSMode,
-		cmd:          append(commonTestNodeCMD, "loadgen"),
+		node:    containerName,
+		tlsMode: connection.NoneTLSMode,
+		cmd:     append(commonTestNodeCMD, "loadgen"),
 	})
 
 	t.Log("Try to fetch the first block")
@@ -278,8 +280,6 @@ func startCommitter(ctx context.Context, t *testing.T, params startNodeParameter
 					HostPort: "0", // auto port assign
 				}},
 			},
-			// we create the credentials for the servers with "localhost" SNI.
-			Binds: assembleBinds(t, params.asNode(localhost)),
 		},
 		name: params.node,
 	})

@@ -8,33 +8,25 @@
 # Format: host:port or :port (binds to all interfaces).
 server:
   endpoint: :5001
-  tls:
+  tls: &tlsConfig
     # TLS mode for server connections: 'none' (no TLS), 'tls' (server auth only),
     # or 'mtls' (mutual TLS with client cert verification).
     mode: mtls
     # Path to the server's TLS certificate file (public key).
-    cert-path: /server-certs/public-key.pem
+    cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/verifier/tls/server.crt
     # Path to the server's TLS private key file.
-    key-path: /server-certs/private-key.pem
+    key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/verifier/tls/server.key
     # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
-      - /server-certs/ca-certificate.pem
+      - /root/artifacts/peerOrganizations/peer-org-0/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
 # Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
 monitoring:
   # The endpoint where Prometheus metrics and pprof profiling are exposed.
   # Format: host:port or :port (binds to all interfaces).
   endpoint: :2115
-  tls:
-    # TLS mode for monitoring endpoint: 'none' (no TLS), 'tls' (server auth only),
-    # or 'mtls' (mutual TLS with client cert verification).
-    mode: mtls
-    # Path to the server's TLS certificate file (public key).
-    cert-path: /server-certs/public-key.pem
-    # Path to the server's TLS private key file.
-    key-path: /server-certs/private-key.pem
-    # List of paths to CA certificate files for verifying client certificates (required for mtls).
-    ca-cert-paths:
-      - /server-certs/ca-certificate.pem
+  # Monitoring TLS configuration should/could be different from the GRPC server TLS
+  # to only allow authorized admins to monitor the service's metrics.
+  tls: *tlsConfig
   # Rate limiting configuration for unary gRPC endpoints.
   # Uses a token bucket algorithm to limit the number of requests per second.
   rate-limit:

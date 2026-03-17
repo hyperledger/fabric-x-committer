@@ -30,14 +30,6 @@ func CreateLoadGenNamespacesTX(policy *PolicyProfile) (*servicepb.LoadGenTx, err
 	return txb.MakeTx(tx), nil
 }
 
-// CreateNamespacesTX creating the transaction containing the requested namespaces into the MetaNamespace.
-func CreateNamespacesTX(
-	policy *PolicyProfile, metaNamespaceVersion uint64, includeNS ...string,
-) (*applicationpb.Tx, error) {
-	endorser := NewTxEndorser(policy)
-	return CreateNamespacesTxFromEndorser(endorser, metaNamespaceVersion, includeNS...)
-}
-
 // CreateNamespacesTxFromEndorser creating the transaction containing the requested namespaces into the MetaNamespace.
 func CreateNamespacesTxFromEndorser(
 	endorser *TxEndorser, metaNamespaceVersion uint64, includeNS ...string,

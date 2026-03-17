@@ -9,33 +9,25 @@ server:
   # and commit requests from the coordinator via bidirectional streaming.
   # Format: host:port or :port (binds to all interfaces).
   endpoint: :6001
-  tls:
+  tls: &tlsConfig
     # TLS mode for server connections: 'none' (no TLS), 'tls' (server auth only),
     # or 'mtls' (mutual TLS with client cert verification).
     mode: mtls
     # Path to the server's TLS certificate file (public key).
-    cert-path: /server-certs/public-key.pem
+    cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/vc/tls/server.crt
     # Path to the server's TLS private key file.
-    key-path: /server-certs/private-key.pem
+    key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/vc/tls/server.key
     # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
-      - /server-certs/ca-certificate.pem
+      - /root/artifacts/peerOrganizations/peer-org-0/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
 # Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
 monitoring:
   # The endpoint where Prometheus metrics and pprof profiling are exposed.
   # Format: host:port or :port (binds to all interfaces).
   endpoint: :2116
-  tls:
-    # TLS mode for monitoring endpoint: 'none' (no TLS), 'tls' (server auth only),
-    # or 'mtls' (mutual TLS with client cert verification).
-    mode: mtls
-    # Path to the server's TLS certificate file (public key).
-    cert-path: /server-certs/public-key.pem
-    # Path to the server's TLS private key file.
-    key-path: /server-certs/private-key.pem
-    # List of paths to CA certificate files for verifying client certificates (required for mtls).
-    ca-cert-paths:
-      - /server-certs/ca-certificate.pem
+  # Monitoring TLS configuration should/could be different from the GRPC server TLS
+  # to only allow authorized admins to monitor the service's metrics.
+  tls: *tlsConfig
   # Rate limiting configuration for unary gRPC endpoints.
   # Uses a token bucket algorithm to limit the number of requests per second.
   rate-limit:
@@ -65,7 +57,7 @@ database:
     # Note: Database connections do not support mutual TLS (mtls).
     mode: tls
     # Path to the CA certificate file for verifying the database server's certificate.
-    ca-cert-path: /server-certs/ca-certificate.pem
+    ca-cert-path: /root/artifacts/peerOrganizations/peer-org-0/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
   # Maximum size of the database connection pool. Limits concurrent database operations.
   # Should be tuned based on database capacity and expected transaction load.
   max-connections: 10

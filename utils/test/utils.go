@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -26,6 +27,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -47,6 +49,14 @@ var (
 	InsecureTLSConfig connection.TLSConfig
 	// defaultGrpcRetryProfile defines the retry policy for a gRPC client connection.
 	defaultGrpcRetryProfile connection.RetryProfile
+
+	// OrgRootCA is the path to organization 0's TLS client credentials in the crypto materials directory.
+	OrgRootCA = filepath.Join(cryptogen.PeerOrganizationsDir, "peer-org-0",
+		cryptogen.MSPDir, cryptogen.TLSCaCertsDir, "tlspeer-org-0-CA-cert.pem")
+
+	// OrdererRootCATLSPath is the path to organization 0's orderer TLS credentials in the crypto materials directory.
+	OrdererRootCATLSPath = filepath.Join(cryptogen.OrdererOrganizationsDir,
+		"orderer-org-0", cryptogen.MSPDir, cryptogen.TLSCaCertsDir, "tlsorderer-org-0-CA-cert.pem")
 )
 
 type (
@@ -518,5 +528,20 @@ func Make(rules ...string) error {
 	case <-time.After(3 * time.Minute):
 		makeRun.Signal(os.Kill)
 		return errors.New("make command timed out")
+	}
+}
+
+// NewServiceTLSConfig creates a server TLS configuration with certificates loaded from the artifact path.
+// This function constructs paths to TLS certificates for a given service within the peer organization structure.
+func NewServiceTLSConfig(artifactsPath, serviceName, mode string) connection.TLSConfig {
+	subPath := filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, "peer-org-0",
+		cryptogen.PeerNodesDir, serviceName, cryptogen.TLSDir)
+	return connection.TLSConfig{
+		Mode:     mode,
+		CertPath: filepath.Join(subPath, "server.crt"),
+		KeyPath:  filepath.Join(subPath, "server.key"),
+		CACertPaths: []string{
+			filepath.Join(artifactsPath, OrgRootCA),
+		},
 	}
 }

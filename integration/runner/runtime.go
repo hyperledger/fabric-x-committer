@@ -182,7 +182,6 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		},
 		CommittedBlock:   make(chan *common.Block, 100),
 		SeedForCryptoGen: rand.New(rand.NewSource(10)),
-		CredFactory:      credFactory,
 	}
 	t.Log("Making DB env")
 	if conf.DBConnection == nil {
@@ -408,7 +407,7 @@ func (c *CommitterRuntime) CreateNamespacesAndCommit(t *testing.T, namespaces ..
 	}
 
 	t.Logf("Creating namespaces: %v", namespaces)
-	metaTX, err := workload.CreateNamespacesTX(c.SystemConfig.Policy, 0, namespaces...)
+	metaTX, err := workload.CreateNamespacesTxFromEndorser(c.TxBuilder.TxEndorser, 0, namespaces...)
 	require.NoError(t, err)
 	c.MakeAndSendTransactionsToOrderer(
 		t,

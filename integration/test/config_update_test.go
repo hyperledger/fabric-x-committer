@@ -92,7 +92,7 @@ func TestConfigUpdateLifecyclePolicy(t *testing.T) {
 	sendTXs()
 
 	// Meta-namespace uses LifecycleEndorsement (MSP-based) from the config block.
-	metaTx, err := workload.CreateNamespacesTX(c.SystemConfig.Policy, 0, "2", "3")
+	metaTx, err := workload.CreateNamespacesTxFromEndorser(c.TxBuilder.TxEndorser, 0, "2", "3")
 	require.NoError(t, err)
 
 	// TxBuilder adds valid MSP endorsements via TxEndorser.
@@ -145,7 +145,7 @@ func TestConfigUpdateLifecyclePolicy(t *testing.T) {
 	// The endorser satisfies the new 4-org policy, but the stale NsVersion causes
 	// an MVCC conflict against _config (now at version 1).
 	t.Log("Case 1: updated endorser + stale config version → MVCC conflict")
-	staleVersionMetaTx, err := workload.CreateNamespacesTX(c.SystemConfig.Policy, 0, "2", "3")
+	staleVersionMetaTx, err := workload.CreateNamespacesTxFromEndorser(c.TxBuilder.TxEndorser, 0, "2", "3")
 	require.NoError(t, err)
 	setReadWriteVersions(staleVersionMetaTx, 0)
 	staleVersionTx := &applicationpb.Tx{Namespaces: staleVersionMetaTx.Namespaces}
@@ -161,7 +161,7 @@ func TestConfigUpdateLifecyclePolicy(t *testing.T) {
 	// The NsVersion matches _config, but the 2-org endorser no longer satisfies
 	// the updated 4-org LifecycleEndorsement policy → signature invalid.
 	t.Log("Case 2: stale endorser + current config version → signature invalid")
-	staleEndorserMetaTx, err := workload.CreateNamespacesTX(c.SystemConfig.Policy, 1, "2", "3")
+	staleEndorserMetaTx, err := workload.CreateNamespacesTxFromEndorser(c.TxBuilder.TxEndorser, 1, "2", "3")
 	require.NoError(t, err)
 	setReadWriteVersions(staleEndorserMetaTx, 0)
 	staleEndorserTx := &applicationpb.Tx{Namespaces: staleEndorserMetaTx.Namespaces}
@@ -176,7 +176,7 @@ func TestConfigUpdateLifecyclePolicy(t *testing.T) {
 	// Case 3: Updated endorser (4-org) + correct NsVersion (1).
 	// Both the policy and version gates pass → committed.
 	t.Log("Case 3: updated endorser + current config version → committed")
-	freshMetaTx, err := workload.CreateNamespacesTX(c.SystemConfig.Policy, 1, "2", "3")
+	freshMetaTx, err := workload.CreateNamespacesTxFromEndorser(c.TxBuilder.TxEndorser, 1, "2", "3")
 	require.NoError(t, err)
 	setReadWriteVersions(freshMetaTx, 0)
 	freshTx := &applicationpb.Tx{Namespaces: freshMetaTx.Namespaces}

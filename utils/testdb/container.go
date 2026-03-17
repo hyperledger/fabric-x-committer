@@ -48,6 +48,8 @@ const (
 	// SecondaryPostgresNodeReadinessOutput is the output indicating that a secondary PostgreSQL node is ready.
 	SecondaryPostgresNodeReadinessOutput = "started streaming WAL from primary"
 
+	yugabyteCertDir = "/yb-creds"
+
 	// Represents the required database TLS certificate files name.
 	yugabytePublicKeyFileName     = "node.db.crt"
 	yugabytePrivateKeyFileName    = "node.db.key"
@@ -142,7 +144,19 @@ func (dc *DatabaseContainer) initDefaults() error { //nolint:gocognit
 				if dc.Hostname == "" {
 					return errors.New("hostname is required for TLS-enabled YugabyteDB")
 				}
-				dc.Cmd = append(dc.Cmd, "--secure", "--certs_dir=/creds", "--advertise_address", dc.Hostname)
+				dc.Entrypoint = []string{"bash", "-c"}
+
+				ybCmd := fmt.Sprintf("%s --secure --certs_dir=%s --advertise_address %s",
+					strings.Join(YugabyteCMD, " "), yugabyteCertDir, dc.Hostname)
+
+				// Use 'set -e' to exit immediately if any command fails, ensuring proper error propagation
+				dc.Cmd = []string{
+					"set -e && " +
+						"mkdir -p " + yugabyteCertDir + " && " +
+						"cp /creds/* " + yugabyteCertDir + "/ && " +
+						"chown root:root " + yugabyteCertDir + "/* && " +
+						"exec " + ybCmd,
+				}
 			} else {
 				dc.Cmd = append(dc.Cmd, "--insecure")
 			}

@@ -10,6 +10,8 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -21,6 +23,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
 // result is used to prevent compiler optimizations.
@@ -178,7 +181,8 @@ func testWorkersProfiles() (profiles []*Profile) {
 	return profiles
 }
 
-func testTxProfiles() (profiles []*Profile) {
+func testTxProfiles(t *testing.T) (profiles []*Profile) {
+	t.Helper()
 	for _, onlyReadWrite := range []bool{true, false} {
 		for _, p := range testWorkersProfiles() {
 			if !onlyReadWrite {
@@ -191,7 +195,31 @@ func testTxProfiles() (profiles []*Profile) {
 			profiles = append(profiles, p)
 		}
 	}
-	return profiles
+
+	// Adding test cases with user keys.
+	tmpDir := t.TempDir()
+
+	sigKey, verKey := testsig.NewKeyPair(signature.Ecdsa)
+	sigPath := KeyPath{
+		SigningKey:      filepath.Join(tmpDir, "signing.key"),
+		VerificationKey: filepath.Join(tmpDir, "verification.key"),
+	}
+	require.NoError(t, os.WriteFile(sigPath.SigningKey, sigKey, 0o600))
+	require.NoError(t, os.WriteFile(sigPath.VerificationKey, verKey, 0o600))
+	sigProfile := DefaultProfile(1)
+	sigProfile.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].KeyPath = &sigPath
+
+	sigWithCertKey, cert := testsig.EcdsaNewKeyPairWithCert()
+	sigWithCertPath := KeyPath{
+		SigningKey:      filepath.Join(tmpDir, "signing-with-cert.key"),
+		SignCertificate: filepath.Join(tmpDir, "cert.pem"),
+	}
+	require.NoError(t, os.WriteFile(sigWithCertPath.SigningKey, sigWithCertKey, 0o600))
+	require.NoError(t, os.WriteFile(sigWithCertPath.SignCertificate, cert, 0o600))
+	sigWithCertProfile := DefaultProfile(1)
+	sigWithCertProfile.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].KeyPath = &sigWithCertPath
+
+	return append(profiles, sigProfile, sigWithCertProfile)
 }
 
 func startTxGeneratorUnderTest(
@@ -214,11 +242,8 @@ func startQueryGeneratorUnderTest(
 
 func TestGenValidTx(t *testing.T) {
 	t.Parallel()
-	for _, p := range testTxProfiles() {
-		onlyReadWrite := p.Transaction.ReadOnlyCount == nil
-		t.Run(fmt.Sprintf(
-			"workers:%d-onlyReadWrite:%v", p.Workers, onlyReadWrite,
-		), func(t *testing.T) {
+	for _, p := range testTxProfiles(t) {
+		t.Run(profileTestName(p), func(t *testing.T) {
 			t.Parallel()
 			c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 			g := c.MakeGenerator()
@@ -233,11 +258,8 @@ func TestGenValidTx(t *testing.T) {
 
 func TestGenValidBlock(t *testing.T) {
 	t.Parallel()
-	for _, p := range testTxProfiles() {
-		onlyReadWrite := p.Transaction.ReadOnlyCount == nil
-		t.Run(fmt.Sprintf(
-			"workers:%d-onlyReadWrite:%v", p.Workers, onlyReadWrite,
-		), func(t *testing.T) {
+	for _, p := range testTxProfiles(t) {
+		t.Run(profileTestName(p), func(t *testing.T) {
 			t.Parallel()
 			c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 			g := c.MakeGenerator()
@@ -251,6 +273,19 @@ func TestGenValidBlock(t *testing.T) {
 			}
 		})
 	}
+}
+
+func profileTestName(p *Profile) string {
+	onlyReadWrite := p.Transaction.ReadOnlyCount == nil
+	key := "no-key"
+	policy := p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID]
+	if policy.KeyPath != nil && policy.KeyPath.VerificationKey != "" {
+		key = "verification-key"
+	}
+	if policy.KeyPath != nil && policy.KeyPath.SignCertificate != "" {
+		key = "signing-certificate"
+	}
+	return fmt.Sprintf("workers:%d-onlyReadWrite:%v-%s", p.Workers, onlyReadWrite, key)
 }
 
 func TestGenInvalidSigTx(t *testing.T) {

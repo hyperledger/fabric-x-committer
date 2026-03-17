@@ -8,33 +8,25 @@
 # Format: host:port or :port (binds to all interfaces).
 server:
   endpoint: :9001
-  tls:
+  tls: &tlsConfig
     # TLS mode for server connections: 'none' (no TLS), 'tls' (server auth only),
     # or 'mtls' (mutual TLS with client cert verification).
     mode: mtls
     # Path to the server's TLS certificate file (public key).
-    cert-path: /server-certs/public-key.pem
+    cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/coordinator/tls/server.crt
     # Path to the server's TLS private key file.
-    key-path: /server-certs/private-key.pem
+    key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/coordinator/tls/server.key
     # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
-      - /server-certs/ca-certificate.pem
+      - /root/artifacts/peerOrganizations/peer-org-0/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
 # Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
 monitoring:
   # The endpoint where Prometheus metrics and pprof profiling are exposed.
   # Format: host:port or :port (binds to all interfaces).
   endpoint: :2119
-  tls:
-    # TLS mode for monitoring endpoint: 'none' (no TLS), 'tls' (server auth only),
-    # or 'mtls' (mutual TLS with client cert verification).
-    mode: mtls
-    # Path to the server's TLS certificate file (public key).
-    cert-path: /server-certs/public-key.pem
-    # Path to the server's TLS private key file.
-    key-path: /server-certs/private-key.pem
-    # List of paths to CA certificate files for verifying client certificates (required for mtls).
-    ca-cert-paths:
-      - /server-certs/ca-certificate.pem
+  # Monitoring TLS configuration should/could be different from the GRPC server TLS
+  # to only allow authorized admins to monitor the service's metrics.
+  tls: *tlsConfig
   # Rate limiting configuration for unary gRPC endpoints.
   # Uses a token bucket algorithm to limit the number of requests per second.
   rate-limit:
@@ -52,17 +44,7 @@ verifier:
   # across verifier instances.
   endpoints:
     - verifier:5001
-  tls: &ClientTLS
-    # TLS mode for client connections to verifier: 'none' (no TLS), 'tls' (server auth only),
-    # or 'mtls' (mutual TLS with client cert verification).
-    mode: mtls
-    # Path to the client's TLS certificate file (public key) for authentication.
-    cert-path: /client-certs/public-key.pem
-    # Path to the client's TLS private key file.
-    key-path: /client-certs/private-key.pem
-    # List of paths to CA certificate files for verifying server certificates.
-    ca-cert-paths:
-      - /client-certs/ca-certificate.pem
+  tls: *tlsConfig
   # Optional exponential backoff retry for gRPC reconnections. Default:
   # reconnect:
   #   initial-interval: 500ms
@@ -75,7 +57,7 @@ validator-committer:
   # load distribution across VC instances.
   endpoints:
     - vc:6001
-  tls: *ClientTLS
+  tls: *tlsConfig
   # Optional exponential backoff retry for gRPC reconnections. Default:
   # reconnect:
   #   initial-interval: 500ms

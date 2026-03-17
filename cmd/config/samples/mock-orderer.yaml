@@ -13,12 +13,15 @@ server:
     # or 'mtls' (mutual TLS with client cert verification).
     mode: mtls
     # Path to the server's TLS certificate file (public key).
-    cert-path: /server-certs/public-key.pem
+    cert-path: /root/artifacts/ordererOrganizations/orderer-org-0/orderers/orderer-0-org-0/tls/server.crt
     # Path to the server's TLS private key file.
-    key-path: /server-certs/private-key.pem
+    key-path: /root/artifacts/ordererOrganizations/orderer-org-0/orderers/orderer-0-org-0/tls/server.key
     # List of paths to CA certificate files for verifying client certificates (required for mtls).
+    # TODO: Remove peer's CA-Certs as these will be loaded from the config block.
     ca-cert-paths:
-      - /server-certs/ca-certificate.pem
+      - /root/artifacts/ordererOrganizations/orderer-org-0/msp/tlscacerts/tlsorderer-org-0-CA-cert.pem
+      - /root/artifacts/peerOrganizations/peer-org-0/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
+      - /root/artifacts/peerOrganizations/peer-org-1/msp/tlscacerts/tlspeer-org-1-CA-cert.pem
 
 # Maximum number of transactions to include in each block. Blocks are cut when
 # this size is reached or when the block-timeout expires, whichever comes first.
