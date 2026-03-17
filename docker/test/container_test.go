@@ -105,7 +105,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 				c.LoadProfile.Policy.ArtifactsPath, "sidecar", mode,
 			)
 			runtime.SystemConfig.ClientTLS.CACertPaths = append(runtime.SystemConfig.ClientTLS.CACertPaths,
-				filepath.Join(c.LoadProfile.Policy.ArtifactsPath, test.OrdererTLSPath, "ca.crt"),
+				filepath.Join(c.LoadProfile.Policy.ArtifactsPath, test.OrdererRootCATLSPath),
 			)
 
 			runtime.CreateRuntimeClients(ctx, t)

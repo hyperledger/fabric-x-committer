@@ -36,7 +36,7 @@ import (
 const artifactsPath = "/root/artifacts"
 
 var ordererRootCAs = []string{
-	filepath.Join(artifactsPath, test.OrdererTLSPath, "ca.crt"),
+	filepath.Join(artifactsPath, test.OrdererRootCATLSPath),
 }
 
 func TestReadConfigSidecar(t *testing.T) {

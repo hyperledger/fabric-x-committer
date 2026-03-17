@@ -54,9 +54,9 @@ var (
 	OrgRootCA = filepath.Join(cryptogen.PeerOrganizationsDir, "peer-org-0",
 		cryptogen.MSPDir, cryptogen.TLSCaCertsDir, "tlspeer-org-0-CA-cert.pem")
 
-	// OrdererTLSPath is the path to organization 0's orderer TLS credentials in the crypto materials directory.
-	OrdererTLSPath = filepath.Join(cryptogen.OrdererOrganizationsDir,
-		"orderer-org-0", cryptogen.OrdererNodesDir, "orderer-0-org-0", cryptogen.TLSDir)
+	// OrdererRootCATLSPath is the path to organization 0's orderer TLS credentials in the crypto materials directory.
+	OrdererRootCATLSPath = filepath.Join(cryptogen.OrdererOrganizationsDir,
+		"orderer-org-0", cryptogen.MSPDir, cryptogen.TLSCaCertsDir, "tlsorderer-org-0-CA-cert.pem")
 )
 
 type (
