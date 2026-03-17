@@ -7,16 +7,12 @@ SPDX-License-Identifier: Apache-2.0
 package workload
 
 import (
-	"fmt"
 	"time"
-
-	"go.yaml.in/yaml/v3"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 
-	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
@@ -181,24 +177,4 @@ type StreamOptions struct {
 	// RateLimit directly impacts the rate by limiting it.
 	// TXs are released at RateLimit (default: unlimited).
 	RateLimit uint64 `mapstructure:"rate-limit" yaml:"rate-limit"`
-}
-
-// Debug outputs the profile to stdout.
-func (p *Profile) Debug() {
-	debug("Profile", p)
-}
-
-// Debug outputs the stream configuration to stdout.
-func (o *StreamOptions) Debug() {
-	debug("Stream Config", o)
-}
-
-func debug(title string, val any) {
-	d, err := yaml.Marshal(val)
-	utils.Must(err)
-	fmt.Println("############################################################")
-	fmt.Printf("# %s\n", title)
-	fmt.Println("############################################################")
-	fmt.Println(string(d))
-	fmt.Println("############################################################")
 }
