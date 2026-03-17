@@ -110,19 +110,92 @@ The generated directory structure contains all necessary cryptographic materials
     │   │   ├── knowncerts
     │   │   │   ├── Admin@peer-org-0.com-cert.pem
     │   │   │   ├── client@peer-org-0.com-cert.pem
-    │   │   │   └── sidecar-peer-org-0-cert.pem
+    │   │   │   ├── coordinator-cert.pem
+    │   │   │   ├── db-cert.pem
+    │   │   │   ├── loadgen-cert.pem
+    │   │   │   ├── query-cert.pem
+    │   │   │   ├── sidecar-cert.pem
+    │   │   │   ├── vc-cert.pem
+    │   │   │   └── verifier-cert.pem
     │   │   └── tlscacerts/tlspeer-org-0-CA-cert.pem
-    │   ├── peers/sidecar-peer-org-0
-    │   │   ├── tls
-    │   │   │   ├── ca.crt
-    │   │   │   ├── server.crt
-    │   │   │   └── server.key
-    │   │   └── msp
-    │   │       ├── admincerts/Admin@peer-org-0.com-cert.pem
-    │   │       ├── cacerts/peer-org-0-CA-cert.pem
-    │   │       ├── keystore/priv_sk
-    │   │       ├── signcerts/sidecar-peer-org-0-cert.pem
-    │   │       └── tlscacerts/tlspeer-org-0-CA-cert.pem
+    │   ├── peers
+    │   │   ├── coordinator
+    │   │   │   ├── tls
+    │   │   │   │   ├── ca.crt
+    │   │   │   │   ├── server.crt
+    │   │   │   │   └── server.key
+    │   │   │   └── msp
+    │   │   │       ├── admincerts/Admin@peer-org-0.com-cert.pem
+    │   │   │       ├── cacerts/peer-org-0-CA-cert.pem
+    │   │   │       ├── keystore/priv_sk
+    │   │   │       ├── signcerts/coordinator-cert.pem
+    │   │   │       └── tlscacerts/tlspeer-org-0-CA-cert.pem
+    │   │   ├── db
+    │   │   │   ├── tls
+    │   │   │   │   ├── ca.crt
+    │   │   │   │   ├── server.crt
+    │   │   │   │   └── server.key
+    │   │   │   └── msp
+    │   │   │       ├── admincerts/Admin@peer-org-0.com-cert.pem
+    │   │   │       ├── cacerts/peer-org-0-CA-cert.pem
+    │   │   │       ├── keystore/priv_sk
+    │   │   │       ├── signcerts/db-cert.pem
+    │   │   │       └── tlscacerts/tlspeer-org-0-CA-cert.pem
+    │   │   ├── loadgen
+    │   │   │   ├── tls
+    │   │   │   │   ├── ca.crt
+    │   │   │   │   ├── server.crt
+    │   │   │   │   └── server.key
+    │   │   │   └── msp
+    │   │   │       ├── admincerts/Admin@peer-org-0.com-cert.pem
+    │   │   │       ├── cacerts/peer-org-0-CA-cert.pem
+    │   │   │       ├── keystore/priv_sk
+    │   │   │       ├── signcerts/loadgen-cert.pem
+    │   │   │       └── tlscacerts/tlspeer-org-0-CA-cert.pem
+    │   │   ├── query
+    │   │   │   ├── tls
+    │   │   │   │   ├── ca.crt
+    │   │   │   │   ├── server.crt
+    │   │   │   │   └── server.key
+    │   │   │   └── msp
+    │   │   │       ├── admincerts/Admin@peer-org-0.com-cert.pem
+    │   │   │       ├── cacerts/peer-org-0-CA-cert.pem
+    │   │   │       ├── keystore/priv_sk
+    │   │   │       ├── signcerts/query-cert.pem
+    │   │   │       └── tlscacerts/tlspeer-org-0-CA-cert.pem
+    │   │   ├── sidecar
+    │   │   │   ├── tls
+    │   │   │   │   ├── ca.crt
+    │   │   │   │   ├── server.crt
+    │   │   │   │   └── server.key
+    │   │   │   └── msp
+    │   │   │       ├── admincerts/Admin@peer-org-0.com-cert.pem
+    │   │   │       ├── cacerts/peer-org-0-CA-cert.pem
+    │   │   │       ├── keystore/priv_sk
+    │   │   │       ├── signcerts/sidecar-cert.pem
+    │   │   │       └── tlscacerts/tlspeer-org-0-CA-cert.pem
+    │   │   ├── vc
+    │   │   │   ├── tls
+    │   │   │   │   ├── ca.crt
+    │   │   │   │   ├── server.crt
+    │   │   │   │   └── server.key
+    │   │   │   └── msp
+    │   │   │       ├── admincerts/Admin@peer-org-0.com-cert.pem
+    │   │   │       ├── cacerts/peer-org-0-CA-cert.pem
+    │   │   │       ├── keystore/priv_sk
+    │   │   │       ├── signcerts/vc-cert.pem
+    │   │   │       └── tlscacerts/tlspeer-org-0-CA-cert.pem
+    │   │   └── verifier
+    │   │       ├── tls
+    │   │       │   ├── ca.crt
+    │   │       │   ├── server.crt
+    │   │       │   └── server.key
+    │   │       └── msp
+    │   │           ├── admincerts/Admin@peer-org-0.com-cert.pem
+    │   │           ├── cacerts/peer-org-0-CA-cert.pem
+    │   │           ├── keystore/priv_sk
+    │   │           ├── signcerts/verifier-cert.pem
+    │   │           └── tlscacerts/tlspeer-org-0-CA-cert.pem
     │   └── users
     │       ├── Admin@peer-org-0.com
     │       │   ├── tls
@@ -159,19 +232,92 @@ The generated directory structure contains all necessary cryptographic materials
         │   ├── knowncerts
         │   │   ├── Admin@peer-org-1.com-cert.pem
         │   │   ├── client@peer-org-1.com-cert.pem
-        │   │   └── sidecar-peer-org-1-cert.pem
+        │   │   ├── coordinator-cert.pem
+        │   │   ├── db-cert.pem
+        │   │   ├── loadgen-cert.pem
+        │   │   ├── query-cert.pem
+        │   │   ├── sidecar-cert.pem
+        │   │   ├── vc-cert.pem
+        │   │   └── verifier-cert.pem
         │   └── tlscacerts/tlspeer-org-1-CA-cert.pem
-        ├── peers/sidecar-peer-org-1
-        │   ├── tls
-        │   │   ├── ca.crt
-        │   │   ├── server.crt
-        │   │   └── server.key
-        │   └── msp
-        │       ├── admincerts/Admin@peer-org-1.com-cert.pem
-        │       ├── cacerts/peer-org-1-CA-cert.pem
-        │       ├── keystore/priv_sk
-        │       ├── signcerts/sidecar-peer-org-1-cert.pem
-        │       └── tlscacerts/tlspeer-org-1-CA-cert.pem
+        ├── peers
+        │   ├── coordinator
+        │   │   ├── tls
+        │   │   │   ├── ca.crt
+        │   │   │   ├── server.crt
+        │   │   │   └── server.key
+        │   │   └── msp
+        │   │       ├── admincerts/Admin@peer-org-1.com-cert.pem
+        │   │       ├── cacerts/peer-org-1-CA-cert.pem
+        │   │       ├── keystore/priv_sk
+        │   │       ├── signcerts/coordinator-cert.pem
+        │   │       └── tlscacerts/tlspeer-org-1-CA-cert.pem
+        │   ├── db
+        │   │   ├── tls
+        │   │   │   ├── ca.crt
+        │   │   │   ├── server.crt
+        │   │   │   └── server.key
+        │   │   └── msp
+        │   │       ├── admincerts/Admin@peer-org-1.com-cert.pem
+        │   │       ├── cacerts/peer-org-1-CA-cert.pem
+        │   │       ├── keystore/priv_sk
+        │   │       ├── signcerts/db-cert.pem
+        │   │       └── tlscacerts/tlspeer-org-1-CA-cert.pem
+        │   ├── loadgen
+        │   │   ├── tls
+        │   │   │   ├── ca.crt
+        │   │   │   ├── server.crt
+        │   │   │   └── server.key
+        │   │   └── msp
+        │   │       ├── admincerts/Admin@peer-org-1.com-cert.pem
+        │   │       ├── cacerts/peer-org-1-CA-cert.pem
+        │   │       ├── keystore/priv_sk
+        │   │       ├── signcerts/loadgen-cert.pem
+        │   │       └── tlscacerts/tlspeer-org-1-CA-cert.pem
+        │   ├── query
+        │   │   ├── tls
+        │   │   │   ├── ca.crt
+        │   │   │   ├── server.crt
+        │   │   │   └── server.key
+        │   │   └── msp
+        │   │       ├── admincerts/Admin@peer-org-1.com-cert.pem
+        │   │       ├── cacerts/peer-org-1-CA-cert.pem
+        │   │       ├── keystore/priv_sk
+        │   │       ├── signcerts/query-cert.pem
+        │   │       └── tlscacerts/tlspeer-org-1-CA-cert.pem
+        │   ├── sidecar
+        │   │   ├── tls
+        │   │   │   ├── ca.crt
+        │   │   │   ├── server.crt
+        │   │   │   └── server.key
+        │   │   └── msp
+        │   │       ├── admincerts/Admin@peer-org-1.com-cert.pem
+        │   │       ├── cacerts/peer-org-1-CA-cert.pem
+        │   │       ├── keystore/priv_sk
+        │   │       ├── signcerts/sidecar-cert.pem
+        │   │       └── tlscacerts/tlspeer-org-1-CA-cert.pem
+        │   ├── vc
+        │   │   ├── tls
+        │   │   │   ├── ca.crt
+        │   │   │   ├── server.crt
+        │   │   │   └── server.key
+        │   │   └── msp
+        │   │       ├── admincerts/Admin@peer-org-1.com-cert.pem
+        │   │       ├── cacerts/peer-org-1-CA-cert.pem
+        │   │       ├── keystore/priv_sk
+        │   │       ├── signcerts/vc-cert.pem
+        │   │       └── tlscacerts/tlspeer-org-1-CA-cert.pem
+        │   └── verifier
+        │       ├── tls
+        │       │   ├── ca.crt
+        │       │   ├── server.crt
+        │       │   └── server.key
+        │       └── msp
+        │           ├── admincerts/Admin@peer-org-1.com-cert.pem
+        │           ├── cacerts/peer-org-1-CA-cert.pem
+        │           ├── keystore/priv_sk
+        │           ├── signcerts/verifier-cert.pem
+        │           └── tlscacerts/tlspeer-org-1-CA-cert.pem
         └── users
             ├── Admin@peer-org-1.com
             │   ├── tls
