@@ -94,7 +94,7 @@ env                 ?= env GOOS=$(os) GOARCH=$(arch)
 build_flags         ?= -buildvcs=false
 release_build_flags ?= $(build_flags) -ldflags '-w -s'
 test_flags          ?=
-test_cmd            ?= scripts/test-packages.sh $(test_flags)
+test_cmd            ?= scripts/test-packages.sh
 proto_flags         ?=
 
 ifneq ("$(wildcard /usr/include)","")
@@ -161,24 +161,24 @@ test-container: build-image-test-node build-image-release
 
 # Tests for components that directly talk to the DB, where different DBs might affect behaviour.
 test-core-db: FORCE
-	@$(test_cmd) "${COR_DB_PACKAGES}"
+	@$(test_cmd) "${COR_DB_PACKAGES}" $(test_flags)
 
 # Tests for components that depend on the DB layer, but are agnostic to the specific DB used.
 test-requires-db: FORCE
-	@$(test_cmd) "${REQUIRES_DB_PACKAGES}"
+	@$(test_cmd) "${REQUIRES_DB_PACKAGES}" $(test_flags)
 
 # Tests that require no DB at all, e.g., pure logic, utilities
 test-no-db: FORCE
-	@$(test_cmd) "${NO_DB_PACKAGES}" -coverprofile=coverage.profile -coverpkg=./...
+	@$(test_cmd) "${NO_DB_PACKAGES}" $(test_flags) -coverprofile=coverage.profile -coverpkg=./...
 
 # Tests for components that depend on the DB layer, and ones that are agnostic to the specific DB used.
 test-all-db: FORCE
-	@$(test_cmd) "${REQUIRES_DB_PACKAGES} ${COR_DB_PACKAGES}" -coverprofile=coverage.profile -coverpkg=./...
+	@$(test_cmd) "${REQUIRES_DB_PACKAGES} ${COR_DB_PACKAGES}" $(test_flags) -coverprofile=coverage.profile -coverpkg=./...
 
 # Runs test coverage analysis. It uses same tests that will be covered by the CI.
 test-cover: FORCE
 	@$(test_cmd) "${NO_DB_PACKAGES} ${REQUIRES_DB_PACKAGES} ${COR_DB_PACKAGES}" \
-		-coverprofile=coverage.profile -coverpkg=./...
+		$(test_flags) -coverprofile=coverage.profile -coverpkg=./...
 	@scripts/test-coverage-filter-files.sh
 
 cover-report: FORCE
