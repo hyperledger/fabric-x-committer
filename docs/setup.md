@@ -113,16 +113,16 @@ The project uses Go's race detector to catch data race conditions during test ex
 
 #### Enabling Race Detection Locally
 
-To run tests with race detection enabled locally:
+To run tests with race detection enabled locally, pass the `-race` flag via the `test_flags` variable:
 
 ```shell
-ENABLE_RACE=true make test-*
+make test-* test_flags="-race"
 ```
 
 #### Disabling Race Detection in CI
 
-If you need to temporarily disable race detection in CI, you can set `ENABLE_RACE=false` 
-in the workflow environment variables.
+If you need to temporarily disable race detection in CI (not recommended), 
+remove the `test_flags="-race"` parameter from the make commands in `.github/workflows/ci.yml`.
 
 ## Golang Development Dependencies Installation
 

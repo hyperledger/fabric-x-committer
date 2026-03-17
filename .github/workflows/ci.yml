@@ -60,8 +60,6 @@ jobs:
     name: Unit Test (non DB)
     needs: [gate]
     runs-on: ubuntu-latest
-    env:
-      ENABLE_RACE: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -69,7 +67,7 @@ jobs:
           go-version-file: go.mod
       - run: scripts/install-dev-dependencies.sh
       - run: go mod tidy
-      - run: make test-no-db
+      - run: make test-no-db test_flags="-race"
       - run: scripts/test-coverage-filter-files.sh
       - name: Send coverage
         uses: shogo82148/actions-goveralls@v1
@@ -83,8 +81,6 @@ jobs:
     name: Requires and Core DB Tests (postgres)
     needs: [gate]
     runs-on: ubuntu-latest
-    env:
-      ENABLE_RACE: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -93,7 +89,7 @@ jobs:
       - run: scripts/install-dev-dependencies.sh
       - run: scripts/get-and-start-postgres.sh
       - run: go mod tidy
-      - run: make test-all-db
+      - run: make test-all-db test_flags="-race"
       - run: scripts/test-coverage-filter-files.sh
       - name: Send coverage
         uses: shogo82148/actions-goveralls@v1
@@ -107,8 +103,6 @@ jobs:
     name: Core DB Tests (yugabyte)
     needs: [gate]
     runs-on: ubuntu-latest
-    env:
-      ENABLE_RACE: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -117,7 +111,7 @@ jobs:
       - run: scripts/install-dev-dependencies.sh
       - run: scripts/get-and-start-yuga.sh
       - run: go mod tidy
-      - run: make test-core-db
+      - run: make test-core-db test_flags="-race"
 
   integration-test:
     name: Integration Tests (yugabyte)

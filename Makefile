@@ -93,7 +93,8 @@ multiplatform       ?= false
 env                 ?= env GOOS=$(os) GOARCH=$(arch)
 build_flags         ?= -buildvcs=false
 release_build_flags ?= $(build_flags) -ldflags '-w -s'
-test_cmd            ?= scripts/test-packages.sh
+test_flags          ?=
+test_cmd            ?= scripts/test-packages.sh $(test_flags)
 proto_flags         ?=
 
 ifneq ("$(wildcard /usr/include)","")
