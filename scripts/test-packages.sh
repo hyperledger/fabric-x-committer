@@ -26,5 +26,12 @@
 packages="$1"
 shift
 
+# Enable race detection if ENABLE_RACE is set to true
+race_flag=""
+if [ "${ENABLE_RACE:-false}" = "true" ]; then
+    race_flag="-race"
+    echo "Race detection enabled"
+fi
+
 echo "Running test for packages: ${packages}"
-gotestsum --rerun-fails=0 --format dots --packages "${packages}" -- -v -timeout 30m "$@"
+gotestsum --rerun-fails=0 --format dots --packages "${packages}" -- -v -timeout 30m ${race_flag} "$@"

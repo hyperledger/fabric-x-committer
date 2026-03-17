@@ -60,6 +60,8 @@ jobs:
     name: Unit Test (non DB)
     needs: [gate]
     runs-on: ubuntu-latest
+    env:
+      ENABLE_RACE: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -81,6 +83,8 @@ jobs:
     name: Requires and Core DB Tests (postgres)
     needs: [gate]
     runs-on: ubuntu-latest
+    env:
+      ENABLE_RACE: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -103,6 +107,8 @@ jobs:
     name: Core DB Tests (yugabyte)
     needs: [gate]
     runs-on: ubuntu-latest
+    env:
+      ENABLE_RACE: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
