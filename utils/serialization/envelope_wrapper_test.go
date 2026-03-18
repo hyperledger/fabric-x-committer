@@ -6,13 +6,14 @@ SPDX-License-Identifier: Apache-2.0
 package serialization_test
 
 import (
-	"bytes"
 	"testing"
 	"unicode/utf8"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/hyperledger/fabric-x-common/protoutil"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
@@ -106,30 +107,48 @@ func TestUnwrapEnvelopeBadInput(t *testing.T) {
 // Run: go test -fuzz=FuzzUnwrapEnvelopeLiteConsistency -fuzztime=30s ./utils/serialization/.
 func FuzzUnwrapEnvelopeLiteConsistency(f *testing.F) {
 	seeds := []struct {
-		headerType int32
-		txID       string
-		data       []byte
-		channelID  string
-		signature  []byte
-		sigHeader  []byte
+		headerType  int32
+		txID        string
+		data        []byte
+		channelID   string
+		signature   []byte
+		version     int32
+		tsSeconds   int64
+		tsNanos     int32
+		epoch       uint64
+		extension   []byte
+		tlsCertHash []byte
+		creator     []byte
+		nonce       []byte
 	}{
-		{0, "", nil, "", nil, nil},
-		{int32(common.HeaderType_MESSAGE), "tx-1", []byte("hello"), "ch1", nil, nil},
-		{int32(common.HeaderType_CONFIG), "tx-cfg", []byte("cfg"), "ch2", []byte("sig"), []byte("sighdr")},
+		{0, "", nil, "", nil, 0, 0, 0, 0, nil, nil, nil, nil},
+		{
+			int32(common.HeaderType_MESSAGE), "tx-1", []byte("hello"), "ch1", nil,
+			1, 1710000000, 123456789, 0, nil, nil, []byte("creator1"), []byte("nonce1"),
+		},
+		{
+			int32(common.HeaderType_CONFIG), "tx-cfg", []byte("cfg"), "ch2", []byte("sig"),
+			2, 1710000001, 0, 1, []byte("ext-cfg"), []byte("tls-hash"), []byte("creator2"), []byte("nonce2"),
+		},
 		{
 			int32(common.HeaderType_ENDORSER_TRANSACTION), "tx-end", make([]byte, 1024), "ch3",
-			make([]byte, 72), make([]byte, 64),
+			make([]byte, 72),
+			1, 1710000002, 999999999, 42, make([]byte, 256), make([]byte, 32),
+			make([]byte, 128), make([]byte, 24),
 		},
-		{3, "", []byte("d"), "", nil, nil},                  // non-zero type, empty txID
-		{0, "tx-zero-type", []byte("d"), "", nil, nil},      // zero type, non-empty txID
-		{1, string(make([]byte, 512)), nil, "ch", nil, nil}, // large txID
+		{3, "", []byte("d"), "", nil, 0, 0, 0, 0, nil, nil, nil, nil},
+		{0, "tx-zero-type", []byte("d"), "", nil, 0, 0, 0, 0, nil, nil, nil, nil},
+		{1, string(make([]byte, 512)), nil, "ch", nil, 0, 0, 0, 0, nil, nil, nil, nil},
 	}
 	for _, s := range seeds {
-		f.Add(s.headerType, s.txID, s.data, s.channelID, s.signature, s.sigHeader)
+		f.Add(s.headerType, s.txID, s.data, s.channelID, s.signature,
+			s.version, s.tsSeconds, s.tsNanos, s.epoch, s.extension, s.tlsCertHash,
+			s.creator, s.nonce)
 	}
 
 	f.Fuzz(func(t *testing.T, headerType int32, txID string, data []byte, channelID string,
-		signature, sigHeader []byte,
+		signature []byte, version int32, tsSeconds int64, tsNanos int32, epoch uint64,
+		extension, tlsCertHash, creator, nonce []byte,
 	) {
 		if !utf8.ValidString(txID) || !utf8.ValidString(channelID) {
 			t.Skip("skipping invalid UTF-8 input")
@@ -139,11 +158,19 @@ func FuzzUnwrapEnvelopeLiteConsistency(f *testing.F) {
 			Payload: protoutil.MarshalOrPanic(&common.Payload{
 				Header: &common.Header{
 					ChannelHeader: protoutil.MarshalOrPanic(&common.ChannelHeader{
-						Type:      headerType,
-						TxId:      txID,
-						ChannelId: channelID,
+						Type:        headerType,
+						Version:     version,
+						Timestamp:   &timestamppb.Timestamp{Seconds: tsSeconds, Nanos: tsNanos},
+						ChannelId:   channelID,
+						TxId:        txID,
+						Epoch:       epoch,
+						Extension:   extension,
+						TlsCertHash: tlsCertHash,
 					}),
-					SignatureHeader: sigHeader,
+					SignatureHeader: protoutil.MarshalOrPanic(&common.SignatureHeader{
+						Creator: creator,
+						Nonce:   nonce,
+					}),
 				},
 				Data: data,
 			}),
@@ -300,7 +327,7 @@ func TestLoadgenEnvelopeConsistency(t *testing.T) {
 }
 
 func BenchmarkUnwrapEnvelope(b *testing.B) {
-	envelopes := loadgenEnvelopes(b, 1024)
+	envelopes := loadgenEnvelopes(b, b.N)
 	b.ResetTimer()
 	i := 0
 	for b.Loop() {
@@ -313,7 +340,7 @@ func BenchmarkUnwrapEnvelope(b *testing.B) {
 }
 
 func BenchmarkUnwrapEnvelopeLite(b *testing.B) {
-	envelopes := loadgenEnvelopes(b, 1024)
+	envelopes := loadgenEnvelopes(b, b.N)
 	b.ResetTimer()
 	i := 0
 	for b.Loop() {
@@ -329,7 +356,7 @@ func BenchmarkUnwrapEnvelopeLite(b *testing.B) {
 // generator, matching how the sidecar benchmark produces test data.
 func loadgenEnvelopes(tb testing.TB, count int) [][]byte {
 	tb.Helper()
-	txs := workload.GenerateTransactions(tb, workload.DefaultProfile(8), count)
+	txs := workload.GenerateTransactions(tb, nil, count)
 	block := workload.MapToOrdererBlock(1, txs)
 	return block.Data.Data
 }
@@ -351,9 +378,8 @@ func assertLiteMatchesOriginal(t *testing.T, envelope []byte) {
 
 // assertConsistent verifies that two EnvelopeLite results are identical:
 // both must error or both must succeed with equal field values.
-//
-//nolint:revive // max arguments 4 but got 5
-func assertConsistent(t *testing.T, origResult *serialization.EnvelopeLite, origErr error,
+func assertConsistent( //nolint:revive // argument-limit
+	t *testing.T, origResult *serialization.EnvelopeLite, origErr error,
 	liteResult *serialization.EnvelopeLite, liteErr error,
 ) {
 	t.Helper()
@@ -364,6 +390,6 @@ func assertConsistent(t *testing.T, origResult *serialization.EnvelopeLite, orig
 	require.NoError(t, liteErr, "lite failed but original succeeded")
 	require.Equal(t, origResult.HeaderType, liteResult.HeaderType)
 	require.Equal(t, origResult.TxID, liteResult.TxID)
-	require.True(t, bytes.Equal(origResult.Data, liteResult.Data),
+	require.Equal(t, origResult.Data, liteResult.Data,
 		"Data mismatch: original=%v, lite=%v", origResult.Data, liteResult.Data)
 }

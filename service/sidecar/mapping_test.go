@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/require"
 
@@ -31,18 +32,36 @@ func BenchmarkMapBlock(b *testing.B) {
 	require.NoError(b, err, "This can never occur unless there is a bug in the relay.")
 	require.NotNil(b, mappedBlock)
 	flogging.Init(flogging.Config{LogSpec: "fatal"})
-	for _, blockSize := range []int{100, 500, 1000} {
+	for _, blockSize := range []int{100, 1000, 5000, 10000} {
 		b.Run(fmt.Sprintf("txs=%d", blockSize), func(b *testing.B) {
-			txs := workload.GenerateTransactions(b, nil, blockSize)
-			block := workload.MapToOrdererBlock(1, txs)
+			// Generate b.N total TXs so each iteration processes a unique block,
+			// avoiding cache/locality effects from reusing the same block.
+			// Pad to ensure at least one full block.
+			totalTxs := b.N
+			if totalTxs < blockSize {
+				totalTxs = blockSize
+			}
+			allTxs := workload.GenerateTransactions(b, nil, totalTxs)
+
+			// Pre-split into blocks of blockSize.
+			numBlocks := len(allTxs) / blockSize
+			blocks := make([]*common.Block, numBlocks)
+			for i := range blocks {
+				txSlice := allTxs[i*blockSize : (i+1)*blockSize]
+				blocks[i] = workload.MapToOrdererBlock(uint64(i), txSlice)
+			}
+
 			b.ResetTimer()
+			blockIdx := 0
 			for b.Loop() {
 				var txIDToHeight utils.SyncMap[string, servicepb.Height]
-				_, err := mapBlock(block, &txIDToHeight)
+				_, err := mapBlock(blocks[blockIdx%numBlocks], &txIDToHeight)
 				if err != nil {
 					b.Fatal(err)
 				}
+				blockIdx++
 			}
+			b.ReportMetric(float64(b.N*blockSize)/b.Elapsed().Seconds(), "tx/s")
 		})
 	}
 }

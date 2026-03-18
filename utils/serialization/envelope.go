@@ -254,6 +254,9 @@ func extractStringField(b []byte, targetField protowire.Number) (string, error) 
 	var lastMatch string
 	err := scanField(b, targetField, protowire.BytesType, func(b []byte) error {
 		val, n := protowire.ConsumeBytes(b)
+		// protowire.ConsumeTag returns a negative error code on failure, and on success,
+		// it returns the number of bytes consumed (which is always >= 1).
+		// Hence, n can never be zero.
 		if n < 0 {
 			return errors.New("invalid length-delimited field")
 		}
