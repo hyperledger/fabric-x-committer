@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package config
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"path"
@@ -85,7 +84,7 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 func UnitTestRunner(
 	t *testing.T,
 	cmd *cobra.Command,
-	test CommandTest,
+	cmdTest CommandTest,
 ) {
 	t.Helper()
 	// Redirect os.Stderr to a file so we can capture log output for assertions.
@@ -105,18 +104,18 @@ func UnitTestRunner(
 		LogSpec: "debug",
 	}
 	flogging.Init(*logConfig)
-	test.System.Logging = logConfig
+	cmdTest.System.Logging = logConfig
 
-	args := test.Args
-	if test.UseConfigTemplate != "" {
-		configPath := CreateTempConfigFromTemplate(t, test.UseConfigTemplate, &test.System)
+	args := cmdTest.Args
+	if cmdTest.UseConfigTemplate != "" {
+		configPath := CreateTempConfigFromTemplate(t, cmdTest.UseConfigTemplate, &cmdTest.System)
 		args = append(args, "--config", configPath)
 	}
 	cmd.SetArgs(args)
 
 	// Creating new buffers for the cmd stdout and stderr and redirect the CMD output.
-	var cmdStdOut bytes.Buffer
-	var cmdStdErr bytes.Buffer
+	var cmdStdOut test.SafeBuffer
+	var cmdStdErr test.SafeBuffer
 	cmd.SetOut(&cmdStdOut)
 	cmd.SetErr(&cmdStdErr)
 
@@ -137,15 +136,15 @@ func UnitTestRunner(
 		defer wg.Done()
 		_, err := cmd.ExecuteContextC(ctx)
 		err = connection.FilterStreamRPCError(err)
-		if test.Err == nil {
+		if cmdTest.Err == nil {
 			assert.NoError(t, err)
 		} else if assert.Error(t, err) {
-			assert.Equal(t, test.Err.Error(), err.Error())
+			assert.Equal(t, cmdTest.Err.Error(), err.Error())
 		}
 	}()
 
 	assert.Eventually(t, func() bool {
-		return len(getMissing(test, &cmdStdOut, loggerPath)) == 0
+		return len(getMissing(cmdTest, cmdStdOut.String(), loggerPath)) == 0
 	}, 10*time.Minute, 500*time.Millisecond)
 
 	t.Log("Stopping command, and waiting for finish")
@@ -162,7 +161,7 @@ func UnitTestRunner(
 	if err == nil {
 		t.Log("LOG:\n", string(logOut))
 	}
-	for _, m := range getMissing(test, &cmdStdOut, loggerPath) {
+	for _, m := range getMissing(cmdTest, cmdStdOut.String(), loggerPath) {
 		t.Logf("Missing: %s", m)
 	}
 }
@@ -182,18 +181,18 @@ func defaultTestDBConfig() DatabaseConfig {
 	}
 }
 
-func getMissing(test CommandTest, cmdStdOut *bytes.Buffer, loggerPath string) (missing []string) {
-	if test.CmdStdOutput != "" && !strings.Contains(cmdStdOut.String(), test.CmdStdOutput) {
-		missing = append(missing, test.CmdStdOutput)
+func getMissing(cmdTest CommandTest, cmdStdOut, loggerPath string) (missing []string) {
+	if cmdTest.CmdStdOutput != "" && !strings.Contains(cmdStdOut, cmdTest.CmdStdOutput) {
+		missing = append(missing, cmdTest.CmdStdOutput)
 	}
-	if len(test.CmdLoggerOutputs) == 0 {
+	if len(cmdTest.CmdLoggerOutputs) == 0 {
 		return missing
 	}
 	logOut, err := os.ReadFile(loggerPath)
 	if err != nil {
 		return append(missing, loggerPath)
 	}
-	for _, loggerLine := range test.CmdLoggerOutputs {
+	for _, loggerLine := range cmdTest.CmdLoggerOutputs {
 		if !strings.Contains(string(logOut), loggerLine) {
 			missing = append(missing, loggerLine)
 		}
