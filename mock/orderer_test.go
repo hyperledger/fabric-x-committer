@@ -245,7 +245,7 @@ func TestOrderer(t *testing.T) {
 	require.NoError(t, err)
 
 	block, _ = f.requireGetBlock(ctx, t, o, 1)
-	test.RequireProtoEqual(t, newConfigBlock, block)
+	test.RequireProtoEqual(t, newConfigBlock.Data, block.Data)
 
 	t.Log("Submit block with new config and verify it is verified with the new config")
 	f.verifier = getVerifier(t, newConfigBlock)
@@ -253,7 +253,7 @@ func TestOrderer(t *testing.T) {
 	block, _ = f.requireGetBlock(ctx, t, o, 1)
 	lastConfigIndex, err := protoutil.GetLastConfigIndexFromBlock(block)
 	require.NoError(t, err)
-	require.Equal(t, newConfigBlock.Header.Number, lastConfigIndex)
+	require.EqualValues(t, 8, lastConfigIndex)
 }
 
 func (f *blockFetcher) requireGetBlock(

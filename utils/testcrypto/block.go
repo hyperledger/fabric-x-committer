@@ -13,6 +13,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"google.golang.org/protobuf/proto"
 )
 
 var logger = flogging.MustGetLogger("testcrypto")
@@ -28,7 +29,8 @@ type BlockPrepareParameters struct {
 }
 
 // PrepareBlockHeaderAndMetadata adds a valid header and metadata to the block.
-func PrepareBlockHeaderAndMetadata(block *common.Block, p BlockPrepareParameters) {
+func PrepareBlockHeaderAndMetadata(block *common.Block, p BlockPrepareParameters) *common.Block {
+	block = proto.CloneOf(block)
 	var blockNumber uint64
 	var previousHash []byte
 	if p.PrevBlock != nil {
@@ -98,4 +100,5 @@ func PrepareBlockHeaderAndMetadata(block *common.Block, p BlockPrepareParameters
 		Value:      ordererMetadataBytes,
 		Signatures: sigs,
 	})
+	return block
 }
