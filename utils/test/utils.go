@@ -274,9 +274,7 @@ func CheckServerStopped(t *testing.T, addr string) bool {
 
 // SetupDebugging can be added for development to tests that required additional debugging info.
 func SetupDebugging() {
-	flogging.Init(flogging.Config{
-		LogSpec: "debug",
-	})
+	flogging.ActivateSpec("debug:grpc=error")
 }
 
 // NewSecuredConnection creates the default connection with given transport credentials.

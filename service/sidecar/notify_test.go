@@ -25,7 +25,7 @@ import (
 )
 
 func BenchmarkNotifier(b *testing.B) {
-	flogging.Init(flogging.Config{LogSpec: "fatal"})
+	flogging.ActivateSpec("fatal")
 	txIDs := make([]string, b.N)
 	for i := range txIDs {
 		txIDs[i] = fmt.Sprintf("%064d", i)

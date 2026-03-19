@@ -8,10 +8,9 @@ package serialization_test
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/test"

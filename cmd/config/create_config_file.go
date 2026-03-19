@@ -48,7 +48,7 @@ type (
 		LoadGenBlockLimit    uint64                      // loadgen
 		LoadGenTXLimit       uint64                      // loadgen
 		LoadGenWorkers       uint64                      // loadgen
-		Logging              *flogging.Config            // for all
+		Logging              flogging.Config             // for all
 		RateLimit            *connection.RateLimitConfig // query, sidecar
 		MaxRequestKeys       int                         // query
 		MaxConcurrentStreams int                         // sidecar

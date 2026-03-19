@@ -167,8 +167,8 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 				ArtifactsPath:         t.TempDir(),
 				PeerOrganizationCount: 2,
 			},
-			Logging: &flogging.Config{
-				LogSpec: "info",
+			Logging: flogging.Config{
+				LogSpec: "info:grpc=error",
 			},
 			RateLimit:            conf.RateLimit,
 			MaxConcurrentStreams: conf.MaxConcurrentStreams,

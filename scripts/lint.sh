@@ -19,7 +19,7 @@ ALL_YAML=$(git ls-files '*.yml' '*.yaml')
 
 echo "Running goimports..."
 # shellcheck disable=SC2086
-BAD_IMPORTS=$($GO_CMD tool goimports -l $ALL_GO)
+BAD_IMPORTS=$($GO_CMD tool goimports -local "$(${GO_CMD} list -m)" -l $ALL_GO)
 if [[ -n "$BAD_IMPORTS" ]]; then
   echo "goimports check failed:"
   echo "$BAD_IMPORTS"

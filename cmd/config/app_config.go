@@ -16,7 +16,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/spf13/viper"
-	"google.golang.org/grpc/grpclog"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen"
 	"github.com/hyperledger/fabric-x-committer/mock"
@@ -92,7 +91,6 @@ func ReadYamlAndSetupLogging(v *viper.Viper, configPath, servicePrefix string, c
 	if err = unmarshal(v, &loggingWrapper); err != nil {
 		return err
 	}
-	grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, os.Stderr))
 	flogging.Init(*loggingWrapper.Logging)
 	return unmarshal(v, c)
 }

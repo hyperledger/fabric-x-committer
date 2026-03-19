@@ -100,11 +100,12 @@ func UnitTestRunner(
 		os.Stderr = origStderr
 		_ = logFile.Close()
 	})
-	logConfig := &flogging.Config{
-		LogSpec: "debug",
-	}
-	flogging.Init(*logConfig)
-	cmdTest.System.Logging = logConfig
+	testLogSpec := "debug:grpc=error"
+	flogging.ActivateSpec(testLogSpec)
+	t.Cleanup(func() {
+		flogging.ActivateSpec("info:grpc=error")
+	})
+	cmdTest.System.Logging.LogSpec = testLogSpec
 
 	args := cmdTest.Args
 	if cmdTest.UseConfigTemplate != "" {

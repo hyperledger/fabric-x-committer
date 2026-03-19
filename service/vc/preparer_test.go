@@ -683,7 +683,7 @@ func requireEqualMapOfLists[K comparable, V any](t *testing.T, expected, actual 
 
 //nolint:gocognit // single method for simplicity.
 func BenchmarkPrepare(b *testing.B) {
-	flogging.Init(flogging.Config{LogSpec: "fatal"})
+	flogging.ActivateSpec("fatal")
 
 	// Parameters
 	batchSize := 1024

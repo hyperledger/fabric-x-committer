@@ -24,7 +24,7 @@ import (
 var testedSchemes = append(signature.AllRealSchemes, "MSP")
 
 func BenchmarkMarshal(b *testing.B) {
-	flogging.Init(flogging.Config{LogSpec: "fatal"})
+	flogging.ActivateSpec("fatal")
 	txs := workload.GenerateTransactions(b, nil, b.N)
 
 	resBench := make([][]byte, b.N)
@@ -42,7 +42,7 @@ func BenchmarkMarshal(b *testing.B) {
 }
 
 func BenchmarkDigest(b *testing.B) {
-	flogging.Init(flogging.Config{LogSpec: "fatal"})
+	flogging.ActivateSpec("fatal")
 	txs := workload.GenerateTransactions(b, nil, b.N)
 
 	resBench := make([][]byte, b.N)
@@ -62,7 +62,7 @@ func BenchmarkDigest(b *testing.B) {
 }
 
 func BenchmarkSign(b *testing.B) {
-	flogging.Init(flogging.Config{LogSpec: "fatal"})
+	flogging.ActivateSpec("fatal")
 	for _, scheme := range testedSchemes {
 		b.Run(scheme, func(b *testing.B) {
 			policy, _ := makePolicy(b, scheme)
@@ -85,7 +85,7 @@ func BenchmarkSign(b *testing.B) {
 }
 
 func BenchmarkVerify(b *testing.B) {
-	flogging.Init(flogging.Config{LogSpec: "fatal"})
+	flogging.ActivateSpec("fatal")
 	for _, scheme := range testedSchemes {
 		b.Run(scheme, func(b *testing.B) {
 			policy, block := makePolicy(b, scheme)
