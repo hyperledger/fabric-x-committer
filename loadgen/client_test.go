@@ -464,14 +464,19 @@ func TestLoadGenRateLimiterServer(t *testing.T) {
 	clientConf.LoadProfile.Block.MaxSize = 100
 	clientConf.LoadProfile.Block.MinSize = 1
 	clientConf.HTTPServer = test.NewLocalHostServer(test.InsecureTLSConfig)
+
+	// Pre-allocate listener to bind port synchronously and avoid data race.
+	l, err := clientConf.HTTPServer.PreAllocateListener()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = l.Close()
+	})
 	client, err := NewLoadGenClient(clientConf)
 	require.NoError(t, err)
 
 	test.RunServiceForTest(t.Context(), t, client.Run, client.WaitForReady)
 	rlEndpoint := &clientConf.HTTPServer.Endpoint
-	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.NotZero(ct, rlEndpoint.Port)
-	}, 10*time.Second, 100*time.Millisecond)
+	require.NotZero(t, rlEndpoint.Port)
 	t.Logf("limiter endpoint: %v", rlEndpoint)
 
 	e := httpexpect.Default(t, fmt.Sprintf("http://%s", rlEndpoint))
