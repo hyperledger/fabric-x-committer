@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"net/url"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -34,7 +35,7 @@ const (
 // Provider is a prometheus metrics provider.
 type Provider struct {
 	registry *prometheus.Registry
-	url      string
+	url      atomic.Pointer[string]
 }
 
 var logger = flogging.MustGetLogger("monitoring")
@@ -100,14 +101,15 @@ func (p *Provider) StartPrometheusServer(
 		l = tls.NewListener(l, serverTLSConfig)
 	}
 
-	p.url, err = MakeMetricsURL(l.Addr().String(), serverTLSConfig)
+	metricsURL, err := MakeMetricsURL(l.Addr().String(), serverTLSConfig)
 	if err != nil {
 		return err
 	}
+	p.url.Store(&metricsURL)
 
 	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		logger.Infof("Prometheus serving on URL: %s", p.url)
+		logger.Infof("Prometheus serving on URL: %s", metricsURL)
 		defer logger.Info("Prometheus stopped serving")
 		return server.Serve(l)
 	})
@@ -139,7 +141,11 @@ func (p *Provider) StartPrometheusServer(
 
 // URL returns the prometheus server URL.
 func (p *Provider) URL() string {
-	return p.url
+	metricsURL := p.url.Load()
+	if metricsURL != nil {
+		return *metricsURL
+	}
+	return ""
 }
 
 // NewCounter creates a new prometheus counter.

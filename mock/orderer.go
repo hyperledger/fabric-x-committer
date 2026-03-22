@@ -237,8 +237,7 @@ func (o *Orderer) Deliver(stream ab.AtomicBroadcast_DeliverServer) error {
 		}
 		if b == nil {
 			logger.Warnf("Lost block. Sending an empty block for the sake of the delivery progress.")
-			b = &common.Block{Data: &common.BlockData{}}
-			testcrypto.PrepareBlockHeaderAndMetadata(b, p)
+			b = testcrypto.PrepareBlockHeaderAndMetadata(&common.Block{Data: &common.BlockData{}}, p)
 		}
 		msg := state.prepareResponse(ctx, b)
 		if msg == nil {
@@ -361,7 +360,7 @@ func (o *Orderer) Run(ctx context.Context) error {
 		if b == nil {
 			return
 		}
-		testcrypto.PrepareBlockHeaderAndMetadata(b, blockParams)
+		b = testcrypto.PrepareBlockHeaderAndMetadata(b, blockParams)
 		o.cache.addBlock(ctx, b)
 		blockParams.PrevBlock = b
 

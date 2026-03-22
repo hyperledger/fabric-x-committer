@@ -84,6 +84,7 @@ type (
 	// DatabaseConfig represents the used DB.
 	DatabaseConfig struct {
 		Name        string
+		Username    string
 		Password    string
 		LoadBalance bool
 		Endpoints   []*connection.Endpoint

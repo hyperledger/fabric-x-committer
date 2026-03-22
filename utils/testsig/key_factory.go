@@ -12,11 +12,15 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha3"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/binary"
+	"encoding/pem"
 	"io"
 	"math/big"
 	pseudorand "math/rand"
 	"strings"
+	"time"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
@@ -138,4 +142,24 @@ func ecdsaNewKeyPairWithSeed(seed int64) (signature.PrivateKey, signature.Public
 	serializedPublicKey, err := SerializeVerificationKey(&pk.PublicKey)
 	utils.Must(err)
 	return serializedPrivateKey, serializedPublicKey
+}
+
+// EcdsaNewKeyPairWithCert generates an ECDSA key with a matching certificate.
+func EcdsaNewKeyPairWithCert() (signature.PrivateKey, []byte) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	utils.Must(err)
+	serializedPrivateKey, err := SerializeSigningKey(privateKey)
+	utils.Must(err)
+
+	// Create a self-signed certificate
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{Organization: []string{"Test"}},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(time.Hour * 24),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+	}
+	certBytes, err := x509.CreateCertificate(rand.Reader, template, template, &privateKey.PublicKey, privateKey)
+	utils.Must(err)
+	return serializedPrivateKey, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
 }

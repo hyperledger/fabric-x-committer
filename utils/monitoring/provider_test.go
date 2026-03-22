@@ -197,7 +197,8 @@ func TestPprofEndpoints(t *testing.T) {
 	defer client.CloseIdleConnections()
 
 	// Extract base URL from metrics URL (remove /metrics path)
-	baseURL := env.provider.url[:len(env.provider.url)-len(metricsSubPath)]
+	metricsURL := env.provider.URL()
+	baseURL := metricsURL[:len(metricsURL)-len(metricsSubPath)]
 
 	tests := []struct {
 		name string

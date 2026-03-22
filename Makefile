@@ -345,7 +345,7 @@ build-with-docker: FORCE
 # Linter
 #########################
 
-lint: check-metrics-doc lint-proto FORCE
+lint: check-metrics-doc check-sample-tree lint-proto FORCE
 	@echo "Running Go Linters..."
 	golangci-lint run --color=always --new-from-rev=main --timeout=4m
 	scripts/lint.sh $(go_cmd)
@@ -366,6 +366,12 @@ generate-metrics-doc: FORCE
 
 check-metrics-doc: FORCE
 	scripts/metrics_doc.sh check
+
+generate-sample-tree: build FORCE
+	$(PYTHON_CMD) scripts/loadgen_artifacts_doc.py generate $(project_path)
+
+check-sample-tree: build FORCE
+	$(PYTHON_CMD) scripts/loadgen_artifacts_doc.py check $(project_path)
 
 # https://www.gnu.org/software/make/manual/html_node/Force-Targets.html
 # If a rule has no prerequisites or recipe, and the target of the rule is a nonexistent file,

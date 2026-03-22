@@ -28,7 +28,7 @@ database:
     {{- range .DB.Endpoints }}
     - {{ . }}
     {{- end }}
-  username: "yugabyte"
+  username: {{ .DB.Username }}
   # TODO: pass password via environment variable
   password: {{ .DB.Password }}
   database: {{ .DB.Name }}

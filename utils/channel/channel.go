@@ -9,6 +9,7 @@ package channel
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -46,10 +47,16 @@ type (
 
 	// Ready supports waiting for readiness and notifying of readiness.
 	// It also supports closing to release waiters.
+	// Ready uses atomic pointer indirection to allow safe Reset() while other
+	// goroutines may be waiting on the channels. This prevents race conditions
+	// when the internal state is replaced.
 	Ready struct {
+		ready atomic.Pointer[ready]
+	}
+	ready struct {
 		ready  chan any
 		closed chan any
-		once   *sync.Once
+		once   sync.Once
 	}
 
 	//nolint:containedctx // holding the context is required.
@@ -150,30 +157,42 @@ func (c *channel[T]) Write(value T) bool {
 
 // NewReady instantiate a new Ready.
 func NewReady() *Ready {
-	return &Ready{
+	r := &Ready{}
+	r.ready.Store(newReady())
+	return r
+}
+
+func newReady() *ready {
+	return &ready{
 		ready:  make(chan any),
 		closed: make(chan any),
-		once:   &sync.Once{},
 	}
 }
 
 // Reset resets the object to be reused.
 func (r *Ready) Reset() {
-	r.Close()
-	*r = *NewReady()
+	rr := r.ready.Load()
+	rr.once.Do(func() {
+		close(rr.closed)
+	})
+	// We only set a new internal ready to replace the one we closed.
+	// If another process already replaced it, we can continue.
+	r.ready.CompareAndSwap(rr, newReady())
 }
 
 // SignalReady signals readiness.
 func (r *Ready) SignalReady() {
-	r.once.Do(func() {
-		close(r.ready)
+	rr := r.ready.Load()
+	rr.once.Do(func() {
+		close(rr.ready)
 	})
 }
 
 // Close notifies of closing.
 func (r *Ready) Close() {
-	r.once.Do(func() {
-		close(r.closed)
+	rr := r.ready.Load()
+	rr.once.Do(func() {
+		close(rr.closed)
 	})
 }
 
@@ -187,12 +206,13 @@ func (r *Ready) WaitForReady(ctx context.Context) bool {
 // or false if one of them is closed or the context ended before that.
 func WaitForAllReady(ctx context.Context, ready ...*Ready) bool {
 	for _, r := range ready {
+		rr := r.ready.Load()
 		select {
 		case <-ctx.Done():
 			return false
-		case <-r.closed:
+		case <-rr.closed:
 			return false
-		case <-r.ready:
+		case <-rr.ready:
 		}
 	}
 	return true

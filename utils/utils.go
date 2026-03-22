@@ -62,6 +62,13 @@ func Must(err error, msg ...string) {
 	}
 }
 
+// Mustf panics given an error.
+func Mustf(err error, format string, args ...any) {
+	if err != nil {
+		panic(errors.Wrapf(err, format, args...))
+	}
+}
+
 // MustRead reads a byte array of the given size from the source.
 // It panics if the read fails, or cannot read the requested size.
 // "crypto/rand" and "math/rand" never fail and always returns the correct length.

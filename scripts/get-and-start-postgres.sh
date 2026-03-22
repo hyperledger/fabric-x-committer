@@ -6,11 +6,10 @@
 #
 
 echo "Downloading Postgres"
-docker pull postgres:16.9-alpine3.21
+docker pull postgres:18.3-alpine3.23
 
 echo "Running Postgres container"
 docker run --name sc_test_postgres_unit_tests \
-  -e POSTGRES_PASSWORD=yugabyte \
-  -e POSTGRES_USER=yugabyte \
+  -e POSTGRES_PASSWORD=postgres \
   -p 5433:5432 \
-  -d postgres:16.9-alpine3.21
+  -d postgres:18.3-alpine3.23
