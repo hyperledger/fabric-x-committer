@@ -12,7 +12,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
+	"github.com/cenkalti/backoff/v5"
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -128,7 +128,7 @@ func (c *ServerConfig) Listener(ctx context.Context) (net.Listener, error) {
 // using exponential backoff. Non-port-conflict errors are treated as permanent failures
 // and will not be retried. The retry behavior is controlled by the listenRetry profile.
 func ListenRetryExecute(ctx context.Context, f func() error) error {
-	return listenRetry.Execute(ctx, func() error {
+	return retry.Execute(ctx, &listenRetry, func() error {
 		err := f()
 		switch {
 		case err == nil:
@@ -138,7 +138,7 @@ func ListenRetryExecute(ctx context.Context, f func() error) error {
 			return errors.Wrap(err, "port conflict")
 		default:
 			// Not a port conflict - return permanent error to stop retrying.
-			return &backoff.PermanentError{Err: errors.Wrap(err, "creating listener")}
+			return backoff.Permanent(errors.Wrap(err, "creating listener"))
 		}
 	})
 }

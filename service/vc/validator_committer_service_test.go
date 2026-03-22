@@ -175,10 +175,9 @@ func TestCreateConfigAndTables(t *testing.T) {
 	rows, err := env.dbEnv.DB.pool.Query(ctx, fmt.Sprintf("select key, value from %s", TableName(utNsID)))
 	require.NoError(t, err)
 	defer rows.Close()
-	keys, values, err := readTwoItems[[]byte, []byte](rows)
+	keysValues, err := readTwoItems[[]byte, []byte](rows)
 	require.NoError(t, err)
-	require.Empty(t, keys)
-	require.Empty(t, values)
+	require.Empty(t, keysValues)
 }
 
 func TestValidatorAndCommitterService(t *testing.T) {

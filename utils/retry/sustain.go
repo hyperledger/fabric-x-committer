@@ -8,15 +8,12 @@ package retry
 
 import (
 	"context"
-	"time"
 
-	"github.com/cenkalti/backoff/v4"
+	"github.com/cenkalti/backoff/v5"
 	"github.com/cockroachdb/errors"
 )
 
 var (
-	// ErrRetryTimeout is returned if the retry attempts were exhausted due to timeout.
-	ErrRetryTimeout = errors.New("retry timed out")
 	// ErrNonRetryable represents an error that should not trigger a retry.
 	// It's used to wrap an underlying error condition when an operation
 	// fails and retrying would be useless.
@@ -43,39 +40,24 @@ var (
 //   - The context ctx is cancelled (returns context error),
 //   - The backoff strategy times out after MaxElapsedTime of continuous ErrBackOff errors.
 func Sustain(ctx context.Context, p *Profile, op func() error) error {
-	b := p.NewBackoff()
+	p = p.WithDefaults()
 
 	for ctx.Err() == nil {
-		opErr := op()
-		logger.Warnf("Sustained operation error: %s", opErr)
-		if errors.Is(opErr, ErrNonRetryable) {
-			return opErr
-		}
-		if !errors.Is(opErr, ErrBackOff) {
-			b.Reset()
-		}
-		if err := WaitForNextBackOffDuration(ctx, b); err != nil {
+		_, err := executeWithResult(ctx, p, func() (any, error) {
+			err := op()
+			if err == nil {
+				err = errors.New("sustained operation ended unexpectedly")
+			}
+			if !errors.Is(err, ErrBackOff) {
+				return nil, backoff.Permanent(err)
+			}
+			return nil, errors.WithMessage(err, "sustained operation error")
+		})
+
+		if errors.Is(err, ErrNonRetryable) {
 			return err
 		}
 	}
 
 	return errors.Wrap(ctx.Err(), "context has been cancelled")
-}
-
-// WaitForNextBackOffDuration waits for the next backoff duration.
-// It stops if the context ends.
-// If the backoff should stop, it returns ErrRetryTimeout.
-func WaitForNextBackOffDuration(ctx context.Context, b *backoff.ExponentialBackOff) error {
-	waitTime := b.NextBackOff()
-	if waitTime == backoff.Stop {
-		return ErrRetryTimeout
-	}
-
-	logger.Infof("Waiting [%v] before retrying", waitTime)
-	select {
-	case <-ctx.Done():
-	case <-time.After(waitTime):
-	}
-
-	return nil
 }

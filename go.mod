@@ -7,7 +7,7 @@ module github.com/hyperledger/fabric-x-committer
 go 1.26
 
 require (
-	github.com/cenkalti/backoff/v4 v4.3.0
+	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/cockroachdb/errors v1.12.0
 	github.com/consensys/gnark-crypto v0.19.2
 	github.com/docker/docker v28.5.2+incompatible
