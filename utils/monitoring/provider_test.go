@@ -239,7 +239,7 @@ func newMetricsProviderTestEnv(t *testing.T, serverTLS, clientTLS connection.TLS
 		assert.NoError(t, p.StartPrometheusServer(ctx, c))
 	}()
 
-	clientMaterials, err := connection.NewTLSMaterials(clientTLS)
+	clientMaterials, err := connection.NewClientTLSMaterials(clientTLS)
 	require.NoError(t, err)
 	clientTLSConfig, err := clientMaterials.CreateClientTLSConfig()
 	require.NoError(t, err)

@@ -193,7 +193,7 @@ func (c *Client) runHTTPServer(ctx context.Context) error {
 		return nil
 	}
 
-	tlsMaterials, err := connection.NewTLSMaterials(serverConfig.TLS)
+	tlsMaterials, err := connection.NewServerTLSMaterials(serverConfig.TLS)
 	if err != nil {
 		return err
 	}
