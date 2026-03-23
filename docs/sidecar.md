@@ -416,192 +416,14 @@ block until that block becomes available for delivery from the Sidecar.
 ## 6. Notification Service
 
 The Sidecar exposes a Notification Service that allows clients to subscribe to transaction status
-updates and receive asynchronous notifications when transactions are either committed or aborted.
-This is the primary mechanism for clients that submit transactions asynchronously to the Ordering
-Service to learn the outcome of their transactions, without polling or scanning the entire block stream.
+updates and receive asynchronous notifications when transactions are committed, rejected, or aborted.
 
-The Notification Service uses a bidirectional gRPC stream: clients send subscription requests
-containing transaction IDs of interest, and the server pushes status responses as transactions
-complete. Multiple subscription requests can be sent on the same stream.
+For client usage documentation including API definitions, code examples, and configuration,
+see [Notification Service — Client Usage Guide](notification-service.md).
 
-**a. API Definition**
+This section describes the internal architecture of the notification service.
 
-The Notification Service is defined as a bidirectional streaming RPC:
-
-From [fabric-x-common/api/committerpb](https://github.com/hyperledger/fabric-x-common)
-```protobuf
-service Notifier {
-    rpc OpenNotificationStream (stream NotificationRequest) returns (stream NotificationResponse);
-}
-```
-
-The client sends `NotificationRequest` messages, each containing a batch of transaction IDs to watch
-and a timeout:
-
-```protobuf
-message NotificationRequest {
-    TxIDsBatch tx_status_request = 1;  // List of transaction IDs to subscribe to
-    google.protobuf.Duration timeout = 2;  // Timeout for this request
-}
-
-message TxIDsBatch {
-    repeated string tx_ids = 1;
-}
-```
-
-The server responds with `NotificationResponse` messages containing either status events for
-completed transactions or a list of transaction IDs that timed out:
-
-```protobuf
-message NotificationResponse {
-    repeated TxStatus tx_status_events = 1;  // Statuses for completed transactions
-    repeated string timeout_tx_ids = 2;  // Transaction IDs that timed out
-}
-
-message TxStatus {
-    TxRef ref = 1;
-    Status status = 2;
-}
-
-message TxRef {
-    string tx_id = 1;
-    uint64 block_num = 2;
-    uint32 tx_num = 3;
-}
-```
-
-**b. Creating a Notification Client**
-
-The client creates a gRPC connection to the Sidecar and obtains a `NotifierClient`:
-
-From [fabric-x-common/api/committerpb](https://github.com/hyperledger/fabric-x-common)
-```go
-func NewNotifierClient(cc grpc.ClientConnInterface) NotifierClient {
-    return &notifierClient{cc}
-}
-
-type NotifierClient interface {
-    OpenNotificationStream(ctx context.Context, opts ...grpc.CallOption) (
-        Notifier_OpenNotificationStreamClient, error,
-    )
-}
-```
-
-Usage:
-```go
-conn, err := grpc.NewClient(sidecarEndpoint, dialOpts...)
-client := committerpb.NewNotifierClient(conn)
-```
-
-**c. Subscribing to Transaction Status Updates**
-
-Once the stream is opened, the client sends a `NotificationRequest` with the transaction IDs
-to watch and a timeout value:
-
-```go
-stream, err := client.OpenNotificationStream(ctx)
-if err != nil {
-    return err
-}
-
-err = stream.Send(&committerpb.NotificationRequest{
-    TxStatusRequest: &committerpb.TxIDsBatch{
-        TxIds: []string{"txID-1", "txID-2", "txID-3"},
-    },
-    Timeout: durationpb.New(3 * time.Minute),
-})
-```
-
-**Timeout semantics:**
-- Each request carries its own timeout, independent of other requests on the same stream.
-- The server enforces an upper bound (`max-timeout`, default: 1 minute, configurable).
-  If the client-specified timeout exceeds `max-timeout`, it is capped to `max-timeout`.
-  If the client sends zero or a negative value, the server uses `max-timeout`.
-- When the timeout expires and some subscribed transaction IDs have not yet completed,
-  the server responds with those IDs in the `timeout_tx_ids` field.
-
-Multiple `NotificationRequest` messages can be sent on the same stream. Each request is
-tracked independently with its own timeout.
-
-**d. Receiving Notifications**
-
-The client receives `NotificationResponse` messages by calling `Recv()` on the stream.
-Each response contains one of two payloads:
-
-1. **`TxStatusEvents`** — A batch of statuses for transactions that have completed
-   (committed or aborted). Each `TxStatus` includes the transaction ID, block number,
-   transaction index within the block, and the final status code.
-
-2. **`TimeoutTxIds`** — A list of transaction IDs from a request whose timeout expired
-   before the transactions completed.
-
-```go
-for {
-    res, err := stream.Recv()
-    if err != nil {
-        return err
-    }
-
-    if len(res.TxStatusEvents) > 0 {
-        for _, txStatus := range res.TxStatusEvents {
-            fmt.Printf("TX %s: status=%v block=%d txNum=%d\n",
-                txStatus.Ref.TxId,
-                txStatus.Status,
-                txStatus.Ref.BlockNum,
-                txStatus.Ref.TxNum,
-            )
-        }
-    }
-
-    if len(res.TimeoutTxIds) > 0 {
-        fmt.Printf("Timed out waiting for: %v\n", res.TimeoutTxIds)
-    }
-}
-```
-
-Responses are batched per stream for efficiency — if multiple subscribed transaction IDs
-complete in the same coordinator status update, they are grouped into a single
-`NotificationResponse`.
-
-**e. Recommended Client Pattern**
-
-To avoid missing notifications, clients should follow this sequence:
-
-1. **Open the notification stream and subscribe** to the transaction IDs of interest.
-2. **Then submit the transaction** to the Ordering Service.
-
-This ordering matters because if a transaction completes before the subscription is
-registered, no notification will be sent for it.
-
-If the notification stream breaks (e.g., sidecar restart) or the timeout expires before
-the transaction completes, the client should fall back to the Block Query API to check
-the transaction status.
-
-**f. Concurrency Limits**
-
-The Notification Service shares the server's `max-concurrent-streams` limit (default: 10)
-with the Block Delivery streams (Section 5). Both stream types compete for the same pool
-of stream slots.
-
-When the limit is reached, new stream requests are rejected with a gRPC `ResourceExhausted`
-status code. Clients should handle this error with appropriate backoff and retry logic.
-
-**g. Configuration**
-
-The following configuration options in `sidecar.yaml` control notification behavior:
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `notification.max-timeout` | `1m` | Upper limit on per-request timeout. Client timeouts are capped to this value. |
-| `server.max-concurrent-streams` | `10` | Maximum concurrent streaming RPCs across all stream types (Deliver + Notification). |
-
-Sample configuration:
-```yaml
-notification:
-  max-timeout: 10m
-```
-
-**h. Internal Architecture**
+### Internal Architecture
 
 The notifier is implemented as a single-threaded event loop in `run()`
 ([service/sidecar/notify.go](/service/sidecar/notify.go)). This design eliminates
@@ -610,13 +432,14 @@ happen in a single goroutine via a `select` loop over three channels:
 
 - **`requestQueue`**: Subscription requests from client streams.
 - **`statusQueue`**: Transaction status batches from the relay service (which receives
-  them from the Coordinator).
+  them from the Coordinator). This includes statuses for committed, aborted, and
+  rejected transactions (e.g., `REJECTED_DUPLICATE_TX_ID`, `MALFORMED_BAD_ENVELOPE`).
 - **`timeoutQueue`**: Requests whose timeout timers have fired.
 
 Subscriptions are tracked in a `subscriptionMap` that maps each transaction ID to the
 set of `notificationRequest` objects watching it. When a status update arrives for a
-transaction ID, all subscribers watching that ID are notified and the entry is removed
-from the map.
+transaction ID — whether it is committed, aborted, or rejected — all subscribers watching
+that ID are notified and the entry is removed from the map.
 
 Each client stream gets its own buffered `streamEventQueue` channel. This per-stream
 buffer ensures that a slow consumer on one stream does not block status dispatch to
