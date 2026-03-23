@@ -11,6 +11,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 // Config is the configuration for the validator-committer service.
@@ -30,7 +31,7 @@ type DatabaseConfig struct {
 	MaxConnections       int32                    `mapstructure:"max-connections"`
 	MinConnections       int32                    `mapstructure:"min-connections"`
 	LoadBalance          bool                     `mapstructure:"load-balance"`
-	Retry                *connection.RetryProfile `mapstructure:"retry"`
+	Retry                *retry.Profile           `mapstructure:"retry"`
 	TLS                  dbconn.DatabaseTLSConfig `mapstructure:"tls"`
 	TablePreSplitTablets int                      `mapstructure:"table-pre-split-tablets"`
 }

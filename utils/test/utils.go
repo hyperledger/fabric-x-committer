@@ -43,13 +43,14 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 var (
 	// InsecureTLSConfig defines an empty tls config.
 	InsecureTLSConfig connection.TLSConfig
 	// defaultGrpcRetryProfile defines the retry policy for a gRPC client connection.
-	defaultGrpcRetryProfile connection.RetryProfile
+	defaultGrpcRetryProfile retry.Profile
 
 	// OrgRootCA is the path to organization 0's TLS client credentials in the crypto materials directory.
 	OrgRootCA = filepath.Join(cryptogen.PeerOrganizationsDir, "peer-org-0",
@@ -293,7 +294,7 @@ func NewSecuredConnectionWithRetry(
 	t *testing.T,
 	endpoint connection.WithAddress,
 	tlsConfig connection.TLSConfig,
-	retry connection.RetryProfile,
+	retryProfile retry.Profile,
 ) *grpc.ClientConn {
 	t.Helper()
 	clientCreds, err := tlsConfig.ClientCredentials()
@@ -301,7 +302,7 @@ func NewSecuredConnectionWithRetry(
 	conn, err := connection.NewConnection(connection.ClientParameters{
 		Address: endpoint.Address(),
 		Creds:   clientCreds,
-		Retry:   &retry,
+		Retry:   &retryProfile,
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -318,13 +319,13 @@ func NewInsecureConnection(t *testing.T, endpoint connection.WithAddress) *grpc.
 
 // NewInsecureConnectionWithRetry creates the default dial config with insecure credentials.
 func NewInsecureConnectionWithRetry(
-	t *testing.T, endpoint connection.WithAddress, retry connection.RetryProfile,
+	t *testing.T, endpoint connection.WithAddress, retryProfile retry.Profile,
 ) *grpc.ClientConn {
 	t.Helper()
 	conn, err := connection.NewConnection(connection.ClientParameters{
 		Address: endpoint.Address(),
 		Creds:   insecure.NewCredentials(),
-		Retry:   &retry,
+		Retry:   &retryProfile,
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() {

@@ -18,8 +18,8 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 )
 
@@ -28,7 +28,7 @@ type blockDelivery struct {
 	blockStore *blockStore
 }
 
-var blockReadyRetryProfile = connection.RetryProfile{
+var blockReadyRetryProfile = retry.Profile{
 	InitialInterval: 100 * time.Millisecond,
 	Multiplier:      1.5,
 	MaxInterval:     3 * time.Second,

@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package connection
+package retry
 
 import (
 	"context"
@@ -28,18 +28,22 @@ var (
 	ErrBackOff = errors.New("backoff required before retrying")
 )
 
-// Sustain attempts to keep an operation `op` running successfully against the connection,
-// handling transient issues (like ErrBackOff) via retry with backoff.
+// Sustain attempts to keep a continuous operation `op` running indefinitely.
+// Unlike Execute which retries until success, Sustain is designed for long-running operations
+// that should continue running until explicitly stopped or a permanent failure occurs.
 //
-// It stops retrying if:
-//   - op returns an error wrapping ErrNonRetryable (permanent failure).
-//   - The context ctx is cancelled.
-//   - The internal backoff strategy times out (via ErrRetryTimeout).
-func Sustain(ctx context.Context, r *RetryProfile, op func() error) error {
-	if r == nil {
-		r = &RetryProfile{}
-	}
-	b := r.NewBackoff()
+// Operation Behavior:
+//   - If op returns nil: Operation is running smoothly, Sustain resets backoff and retries immediately
+//   - If op returns ErrBackOff: Transient error, Sustain applies exponential backoff before retrying
+//   - If op returns ErrNonRetryable: Permanent failure, Sustain stops and returns the error
+//   - If op returns any other error: Retries immediately (treated as transient)
+//
+// Sustain stops and returns when:
+//   - op returns an error wrapping ErrNonRetryable (permanent failure),
+//   - The context ctx is cancelled (returns context error),
+//   - The backoff strategy times out after MaxElapsedTime of continuous ErrBackOff errors.
+func Sustain(ctx context.Context, p *Profile, op func() error) error {
+	b := p.NewBackoff()
 
 	for ctx.Err() == nil {
 		opErr := op()

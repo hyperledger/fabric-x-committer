@@ -19,8 +19,8 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 type (
@@ -51,7 +51,7 @@ type (
 // MaxBlockNum is used for endless deliver.
 const MaxBlockNum uint64 = math.MaxUint64
 
-var defaultRetryProfile = connection.RetryProfile{}
+var defaultRetryProfile = retry.Profile{}
 
 // Deliver start receiving blocks starting from config.StartBlkNum to config.OutputBlock.
 // The value of config.StartBlkNum is updated with the latest block number.
@@ -97,8 +97,8 @@ func (c *CftClient) receiveFromBlockDeliverer(ctx context.Context, p *Parameters
 
 		logger.Infof("Deliver failed with status: %s", status.String())
 		// This is a workaround for the case when the start block is not yet available.
-		backoffErr := connection.WaitForNextBackOffDuration(sCtx, deliverRetry)
-		if errors.Is(backoffErr, connection.ErrRetryTimeout) {
+		backoffErr := retry.WaitForNextBackOffDuration(sCtx, deliverRetry)
+		if errors.Is(backoffErr, retry.ErrRetryTimeout) {
 			return backoffErr
 		}
 	}
@@ -117,8 +117,8 @@ func (c *CftClient) getConnection(ctx context.Context) (*grpc.ClientConn, error)
 			return conn, nil
 		}
 		logger.Infof("No available connection to deliver block")
-		backoffErr := connection.WaitForNextBackOffDuration(ctx, getConnRetry)
-		if errors.Is(backoffErr, connection.ErrRetryTimeout) {
+		backoffErr := retry.WaitForNextBackOffDuration(ctx, getConnRetry)
+		if errors.Is(backoffErr, retry.ErrRetryTimeout) {
 			return nil, errors.Join(ordererconn.ErrNoConnections, backoffErr)
 		}
 	}

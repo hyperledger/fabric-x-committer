@@ -18,6 +18,7 @@ import (
 	"github.com/yugabyte/pgx/v5/pgxpool"
 
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 const (
@@ -85,14 +86,14 @@ func NewDatabasePool(ctx context.Context, config *DatabaseConfig) (*pgxpool.Pool
 // TODO: merge this file with database.go.
 func (db *database) setupSystemTablesAndNamespaces(ctx context.Context) error {
 	logger.Info("Created tx status table, metadata table, and its methods.")
-	if execErr := db.retry.ExecuteSQL(ctx, db.pool,
+	if execErr := retry.ExecuteSQL(ctx, db.retry, db.pool,
 		fmtSplitIntoTablets(dbInitSQLStmt, db.tablePreSplitTablets)); execErr != nil {
 		return fmt.Errorf("failed to create system tables and functions: %w", execErr)
 	}
 
 	for _, nsID := range systemNamespaces {
 		execErr := createNsTables(nsID, db.tablePreSplitTablets, func(q string) error {
-			return db.retry.ExecuteSQL(ctx, db.pool, q)
+			return retry.ExecuteSQL(ctx, db.retry, db.pool, q)
 		})
 		if execErr != nil {
 			return execErr

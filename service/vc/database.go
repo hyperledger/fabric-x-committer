@@ -22,8 +22,8 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 const (
@@ -52,7 +52,7 @@ type (
 	database struct {
 		pool                 *pgxpool.Pool
 		metrics              *perfMetrics
-		retry                *connection.RetryProfile
+		retry                *retry.Profile
 		tablePreSplitTablets int
 	}
 
@@ -211,7 +211,7 @@ func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *serv
 	//       and standard comparison operators.
 	v := make([]byte, 8)
 	binary.BigEndian.PutUint64(v, bInfo.Number)
-	return db.retry.ExecuteSQL(ctx, db.pool, setMetadataPrepSQLStmt, []byte(lastCommittedBlockNumberKey), v)
+	return retry.ExecuteSQL(ctx, db.retry, db.pool, setMetadataPrepSQLStmt, []byte(lastCommittedBlockNumberKey), v)
 }
 
 // commit commits the writes to the database.
