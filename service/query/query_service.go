@@ -9,6 +9,7 @@ package query
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -66,18 +67,20 @@ type (
 		ready       *channel.Ready
 		healthcheck *health.Server
 
-		// Dynamic CA management fields: dynamicRootCAs provides atomic, restart-free certificate
-		// rotation; lastCAFetch tracks the last refresh to a throttle database load; and
-		// refreshMutex implements a double-check locking pattern to prevent redundant,
+		// Dynamic TLS configuration management: tlsConfig stores the complete pre-configured
+		// tls.Config with merged static + dynamic CAs; staticCACerts holds the static CAs
+		// from YAML config; lastCAFetch tracks the last refresh to throttle database load;
+		// and refreshMutex implements a double-check locking pattern to prevent redundant
 		// concurrent refresh operations during connection spikes.
 		//
 		// Design note: We use atomic operations for reads and a mutex only for writings.
-		// This lock-free read pattern ensures clients read are not serialized,
-		// while the mutex in refreshDynamicRootCAs
-		// guarantees only one goroutine performs the expensive DB fetch at a time and writes it.
-		dynamicRootCAs atomic.Pointer[[][]byte]
-		lastCAFetch    atomic.Int64
-		refreshMutex   sync.Mutex
+		// This lock-free read pattern ensures client reads are not serialized,
+		// while the mutex in refreshDynamicRootCAs guarantees only one goroutine
+		// performs the expensive DB fetch and config update at a time.
+		tlsConfig     atomic.Pointer[*tls.Config]
+		staticCACerts [][]byte
+		lastCAFetch   atomic.Int64
+		refreshMutex  sync.Mutex
 	}
 )
 
@@ -87,14 +90,28 @@ type (
 const caFetchTimeout = 15 * time.Second
 
 // NewQueryService create a new QueryService given a configuration.
-func NewQueryService(config *Config) *Service {
-	return &Service{
-		config:         config,
-		metrics:        newQueryServiceMetrics(),
-		ready:          channel.NewReady(),
-		healthcheck:    connection.DefaultHealthCheckService(),
-		dynamicRootCAs: atomic.Pointer[[][]byte]{},
+func NewQueryService(config *Config) (*Service, error) {
+	tlsMaterials, err := connection.NewTLSMaterials(config.Server.TLS)
+	if err != nil {
+		return nil, err
 	}
+	tlsConfig, err := tlsMaterials.CreateServerTLSConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	service := &Service{
+		config:        config,
+		metrics:       newQueryServiceMetrics(),
+		ready:         channel.NewReady(),
+		healthcheck:   connection.DefaultHealthCheckService(),
+		tlsConfig:     atomic.Pointer[*tls.Config]{},
+		staticCACerts: tlsMaterials.CACerts,
+	}
+
+	service.tlsConfig.Store(&tlsConfig)
+
+	return service, nil
 }
 
 // WaitForReady waits for the service resources to initialize, so it is ready to answers requests.
@@ -145,24 +162,24 @@ func (q *Service) RegisterService(server *grpc.Server) {
 	healthgrpc.RegisterHealthServer(server, q.healthcheck)
 }
 
-// GetDynamicRootCAs returns the current CA certificates for the query service's gRPC server.
-// It caches the CAs and only refreshes them periodically to avoid excessive database queries.
-func (q *Service) GetDynamicRootCAs(ctx context.Context) [][]byte {
-	now := time.Now().Unix()
+// GetDynamicTLSConfig returns the pre-configured tls.Config with merged static + dynamic CAs.
+// It caches the config and only refreshes it periodically to avoid excessive database queries.
+func (q *Service) GetDynamicTLSConfig(ctx context.Context) *tls.Config {
+	now := time.Now().UnixNano()
 	lastFetch := q.lastCAFetch.Load()
 
 	if lastFetch == 0 || (now-lastFetch) > q.config.ACLRefreshInterval.Nanoseconds() {
 		q.refreshDynamicRootCAs(ctx)
 	}
 
-	if v := q.dynamicRootCAs.Load(); v != nil {
+	if v := q.tlsConfig.Load(); v != nil {
 		return *v
 	}
 	return nil
 }
 
 // refreshDynamicRootCAs uses a double-check locking pattern to ensure only one
-// goroutine performs the expensive config fetch.
+// goroutine performs the expensive config fetch and tls.Config update.
 // Concurrent callers arriving during a refresh will block on the mutex and skip the fetch once released.
 func (q *Service) refreshDynamicRootCAs(ctx context.Context) {
 	// Acquire mutex to ensure only one goroutine performs the refresh at a time.
@@ -173,7 +190,7 @@ func (q *Service) refreshDynamicRootCAs(ctx context.Context) {
 
 	// Double-check pattern: After acquiring the lock, verify that another goroutine
 	// hasn't already completed the refresh while waiting for the lock.
-	now := time.Now().Unix()
+	now := time.Now().UnixNano()
 	lastFetch := q.lastCAFetch.Load()
 	if lastFetch != 0 && (now-lastFetch) <= q.config.ACLRefreshInterval.Nanoseconds() {
 		// Another goroutine just refreshed the CAs while waiting for the lock.
@@ -190,27 +207,47 @@ func (q *Service) refreshDynamicRootCAs(ctx context.Context) {
 	configTx, err := q.getConfigTransactionInternal(ctx)
 	if err != nil {
 		logger.Warnf("Failed to fetch config transaction for dynamic CAs: %v", err)
-		return // Keep existing CAs
+		return // Keep existing config
 	}
 
 	envelope, err := protoutil.UnmarshalEnvelope(configTx.Envelope)
 	if err != nil {
 		logger.Warnf("Failed to unmarshal config envelope: %v", err)
-		return // Keep existing CAs
+		return // Keep existing config
 	}
 
-	rootCAs, err := dynamictls.NewOrganizationsFromEnvelope(envelope)
+	dynamicCAs, err := dynamictls.NewOrganizationsFromEnvelope(envelope)
 	if err != nil {
 		logger.Warnf("Failed to extract root CAs from config: %v", err)
-		return // Keep existing CAs
+		return // Keep existing config
 	}
 
-	if len(rootCAs) == 0 {
+	if len(dynamicCAs) == 0 {
 		logger.Warn("no CA certificates found in config block")
 	}
-	q.dynamicRootCAs.Store(&rootCAs)
+
+	mergedCAs := connection.MergeCACerts(q.staticCACerts, dynamicCAs)
+	certPool, err := connection.BuildCertPoolFromBytes(mergedCAs)
+	if err != nil {
+		logger.Warnf("Failed to build cert pool: %v", err)
+		return // Keep existing config
+	}
+
+	// Clone current config and update ClientCAs
+	currentConfig := q.tlsConfig.Load()
+	if currentConfig == nil {
+		logger.Warn("No current TLS config to update")
+		return
+	}
+
+	newConfig := (*currentConfig).Clone()
+	newConfig.ClientCAs = certPool
+
+	// Store the updated config atomically
+	q.tlsConfig.Store(&newConfig)
 	q.lastCAFetch.Store(time.Now().UnixNano())
-	logger.Debugf("Refreshed %d root CAs from config transaction", len(rootCAs))
+	logger.Debugf("Refreshed and built TLS config with %d total CAs (%d static + %d dynamic)",
+		len(mergedCAs), len(q.staticCACerts), len(dynamicCAs))
 }
 
 // BeginView implements the query-service interface.

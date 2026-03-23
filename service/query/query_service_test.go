@@ -654,7 +654,8 @@ func newQueryServiceTestEnv(t *testing.T, opts *queryServiceTestOpts) *queryServ
 		ACLRefreshInterval:    3 * time.Second,
 	}
 
-	qs := NewQueryService(config)
+	qs, err := NewQueryService(config)
+	require.NoError(t, err)
 	test.RunDynamicServiceAndGrpcForTest(t.Context(), t, qs, qs.config.Server)
 	clientConn := createQueryClientWithTLS(t, &qs.config.Server.Endpoint, opts.clientTLS)
 

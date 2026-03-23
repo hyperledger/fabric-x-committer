@@ -8,6 +8,7 @@ package sidecar
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -55,8 +56,10 @@ type Service struct {
 	healthcheck        *health.Server
 	metrics            *perfMetrics
 
-	// dynamicCACerts holds the CA certificates for the sidecar's gRPC server.
-	dynamicCACerts atomic.Pointer[[][]byte] // *[][]byte
+	// tlsConfig holds the complete pre-configured tls.Config with merged static + dynamic CAs.
+	// staticCACerts holds the static CAs from YAML config for merging with dynamic CAs.
+	tlsConfig     atomic.Pointer[*tls.Config]
+	staticCACerts [][]byte
 }
 
 // New creates a sidecar service.
@@ -83,6 +86,17 @@ func New(c *Config) (*Service, error) {
 		c.ChannelBufferSize = defaultBufferSize
 	}
 
+	tlsMaterials, err := connection.NewTLSMaterials(c.Server.TLS)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create TLS materials: %w", err)
+	}
+
+	// Create initial tls.Config with static CAs
+	tlsConfig, err := tlsMaterials.CreateServerTLSConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create initial TLS config: %w", err)
+	}
+
 	sidecarService := &Service{
 		ordererClient:  ordererClient,
 		relay:          relayService,
@@ -95,8 +109,11 @@ func New(c *Config) (*Service, error) {
 		metrics:        metrics,
 		committedBlock: make(chan *common.Block, c.ChannelBufferSize),
 		statusQueue:    make(chan []*committerpb.TxStatus, c.ChannelBufferSize),
-		dynamicCACerts: atomic.Pointer[[][]byte]{},
+		tlsConfig:      atomic.Pointer[*tls.Config]{},
+		staticCACerts:  tlsMaterials.CACerts,
 	}
+
+	sidecarService.tlsConfig.Store(&tlsConfig)
 
 	if c.Bootstrap.GenesisBlockFilePath != "" {
 		logger.Debug("updating orderer connections from genesis-block")
@@ -125,11 +142,11 @@ func New(c *Config) (*Service, error) {
 	return sidecarService, nil
 }
 
-// GetDynamicRootCAs returns a pointer to the atomic pointer containing dynamic root CA certificates.
-// The sidecar updates these CAs when processing config blocks from the orderer, enabling
+// GetDynamicTLSConfig returns the pre-configured tls.Config with merged static + dynamic CAs.
+// The sidecar updates this config when processing config blocks from the orderer, enabling
 // certificate rotation without a service restart.
-func (s *Service) GetDynamicRootCAs(_ context.Context) [][]byte {
-	if v := s.dynamicCACerts.Load(); v != nil {
+func (s *Service) GetDynamicTLSConfig(_ context.Context) *tls.Config {
+	if v := s.tlsConfig.Load(); v != nil {
 		return *v
 	}
 	return nil
@@ -401,15 +418,33 @@ func (s *Service) recoverLedgerStore(
 	return errors.Wrap(g.Wait(), "failed to recover the ledger store")
 }
 
-// updateCACertificates atomically updates the dynamic root CA certificates.
-func (s *Service) updateCACertificates(newCAs [][]byte) {
-	if len(newCAs) == 0 {
+// updateCACertificates atomically updates the TLS config with merged static + dynamic CAs.
+func (s *Service) updateCACertificates(dynamicCAs [][]byte) {
+	if len(dynamicCAs) == 0 {
 		logger.Warn("no CA certificates found in config block")
 	}
 
-	// Atomically update the CA certificates
-	s.dynamicCACerts.Store(&newCAs)
-	logger.Debugf("updated %d CA certificates", len(newCAs))
+	mergedCAs := connection.MergeCACerts(s.staticCACerts, dynamicCAs)
+	certPool, err := connection.BuildCertPoolFromBytes(mergedCAs)
+	if err != nil {
+		logger.Warnf("Failed to build cert pool: %v", err)
+		return // Keep existing config
+	}
+
+	// Clone current config and update ClientCAs
+	currentConfig := s.tlsConfig.Load()
+	if currentConfig == nil {
+		logger.Warn("No current TLS config to update")
+		return
+	}
+
+	newConfig := (*currentConfig).Clone()
+	newConfig.ClientCAs = certPool
+
+	// Store the updated config atomically
+	s.tlsConfig.Store(&newConfig)
+	logger.Debugf("Updated TLS config with %d total CAs (%d static + %d dynamic)",
+		len(mergedCAs), len(s.staticCACerts), len(dynamicCAs))
 }
 
 func appendMissingBlock(

@@ -121,15 +121,15 @@ func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error)
 
 // DynamicServerCredentials creates gRPC transport credentials with dynamic CA support.
 // Converts TLSConfig paths into TLSMaterials and generates credentials that use
-// GetConfigForClient callback to merge static and dynamic CAs on each TLS handshake.
+// GetConfigForClient callback to load pre-built CertPools on each TLS handshake.
 func (c TLSConfig) DynamicServerCredentials(
-	getDynamicCAsFunc func(ctx context.Context) [][]byte,
+	getDynamicConfigFunc func(ctx context.Context) *tls.Config,
 ) (credentials.TransportCredentials, error) {
 	tlsMaterials, err := NewTLSMaterials(c)
 	if err != nil {
 		return nil, err
 	}
-	return newCredentials(tlsMaterials.CreateDynamicServerTLSConfig(getDynamicCAsFunc))
+	return newCredentials(tlsMaterials.CreateDynamicServerTLSConfig(getDynamicConfigFunc))
 }
 
 // Validate checks that the rate limit configuration is valid.

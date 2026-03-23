@@ -142,7 +142,7 @@ func RunDynamicGrpcServerForTest(
 		serverConfig: serverConfig,
 		//nolint:contextcheck // Context is properly used via chi.Context() in TLS handshake callback
 		createServer: func() (*grpc.Server, error) {
-			return serverConfig.DynamicGrpcServer(service.GetDynamicRootCAs)
+			return serverConfig.DynamicGrpcServer(service.GetDynamicTLSConfig)
 		},
 		register: service.RegisterService,
 	})

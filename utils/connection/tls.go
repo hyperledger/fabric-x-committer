@@ -12,10 +12,9 @@ import (
 	"crypto/x509"
 	"os"
 
+	"github.com/cockroachdb/errors"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-
-	"github.com/cockroachdb/errors"
 )
 
 // TLSMaterials holds the loaded runtime TLS material (certificate, key, CA certs).
@@ -27,12 +26,11 @@ type TLSMaterials struct {
 }
 
 // CreateDynamicServerTLSConfig returns a TLS config with dynamic CA certificate support.
-// It uses GetConfigForClient callback to merge static CAs (from YAML) with dynamic CAs
-// (from config blocks) on each TLS handshake.
+// It uses GetConfigForClient callback to retrieve the pre-configured tls.Config from services.
 // This enables certificate rotation without service restart.
 // Note: Only applies to MutualTLSMode. For other modes, returns standard server TLS config.
 func (m *TLSMaterials) CreateDynamicServerTLSConfig(
-	getDynamicFunc func(ctx context.Context) [][]byte,
+	getDynamicFunc func(ctx context.Context) *tls.Config,
 ) (*tls.Config, error) {
 	tlsConfig, err := m.CreateServerTLSConfig()
 	if err != nil {
@@ -43,22 +41,17 @@ func (m *TLSMaterials) CreateDynamicServerTLSConfig(
 	}
 
 	tlsConfig.GetConfigForClient = func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
-		dynamicRootCAs := getDynamicFunc(chi.Context())
-		newCaCert := make([][]byte, len(m.CACerts)+len(dynamicRootCAs))
-		copy(newCaCert, m.CACerts)
-		copy(newCaCert[len(m.CACerts):], dynamicRootCAs)
+		// Load pre-configured tls.Config from service (atomic read, very fast)
+		// Service has already merged static + dynamic CAs into ClientCAs
+		cfg := getDynamicFunc(chi.Context())
 
-		logger.Debugf("New client connection: %v, with %d root CAs", chi.Conn.RemoteAddr(), len(newCaCert))
-		certPool, err := buildCertPool(newCaCert)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to build cert pool for client CAs")
+		if cfg == nil {
+			// Fallback to base config if service returns nil
+			logger.Debugf("New client connection: %v, using base config", chi.Conn.RemoteAddr())
+			return tlsConfig, nil
 		}
-		cfg := &tls.Config{
-			MinVersion:   DefaultTLSMinVersion,
-			Certificates: tlsConfig.Certificates,
-			ClientCAs:    certPool,
-			ClientAuth:   tls.RequireAndVerifyClientCert,
-		}
+
+		logger.Debugf("New client connection: %v, using service's pre-configured TLS config", chi.Conn.RemoteAddr())
 		return cfg, nil
 	}
 	return tlsConfig, nil
@@ -209,4 +202,30 @@ func buildCertPool(rootCAs [][]byte) (*x509.CertPool, error) {
 		}
 	}
 	return certPool, nil
+}
+
+// BuildCertPoolFromBytes builds an x509.CertPool from PEM-encoded certificate bytes.
+// This is a public helper for services to pre-build their dynamic CertPools.
+// Returns nil if rootCAs is empty or nil (allows services to opt-out of dynamic CAs).
+func BuildCertPoolFromBytes(rootCAs [][]byte) (*x509.CertPool, error) {
+	if len(rootCAs) == 0 {
+		return nil, nil
+	}
+	return buildCertPool(rootCAs)
+}
+
+// MergeCACerts merges static and dynamic CA certificate bytes into a single slice.
+// This is a helper for services to prepare CA bytes before building a CertPool.
+func MergeCACerts(staticCAs, dynamicCAs [][]byte) [][]byte {
+	if len(dynamicCAs) == 0 {
+		return staticCAs
+	}
+	if len(staticCAs) == 0 {
+		return dynamicCAs
+	}
+
+	merged := make([][]byte, 0, len(staticCAs)+len(dynamicCAs))
+	merged = append(merged, staticCAs...)
+	merged = append(merged, dynamicCAs...)
+	return merged
 }

@@ -8,6 +8,7 @@ package connection
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 	"time"
 
@@ -40,10 +41,11 @@ type (
 	DynamicService interface {
 		Service
 
-		// GetDynamicRootCAs returns a pointer to the atomic pointer containing dynamic root CA certificates.
-		// This method is called during TLS handshake (via GetConfigForClient) to retrieve the current
-		// set of trusted root CAs for client certificate validation.
-		GetDynamicRootCAs(ctx context.Context) [][]byte
+		// GetDynamicTLSConfig returns a pre-configured tls.Config with merged CAs.
+		// This method is called during TLS handshake (via GetConfigForClient) to retrieve
+		// the complete TLS configuration with both static YAML CAs and dynamic config-block CAs.
+		// The returned config should be ready to use directly in TLS handshakes.
+		GetDynamicTLSConfig(ctx context.Context) *tls.Config
 	}
 )
 
@@ -209,7 +211,7 @@ func RunGrpcDynamicServer(
 		return err
 	}
 	//nolint:contextcheck // Context is properly used via chi.Context() in TLS handshake callback
-	server, err := serverConfig.DynamicGrpcServer(service.GetDynamicRootCAs)
+	server, err := serverConfig.DynamicGrpcServer(service.GetDynamicTLSConfig)
 	if err != nil {
 		return errors.Wrapf(err, "failed creating grpc server")
 	}
@@ -235,9 +237,9 @@ func (c *ServerConfig) GrpcServer() (*grpc.Server, error) {
 }
 
 // DynamicGrpcServer instantiates a gRPC server with dynamic CA certificate support.
-// The server uses GetConfigForClient TLS callback to merge static
-// (YAML) and dynamic (config block) CAs on each connection.
-func (c *ServerConfig) DynamicGrpcServer(getDynamicFunc func(ctx context.Context) [][]byte) (*grpc.Server, error) {
+// The server uses GetConfigForClient TLS callback to load pre-configured tls.Config on each connection.
+// Services must pre-build and cache their complete tls.Config, returning it via getDynamicFunc.
+func (c *ServerConfig) DynamicGrpcServer(getDynamicFunc func(ctx context.Context) *tls.Config) (*grpc.Server, error) {
 	creds, err := c.TLS.DynamicServerCredentials(getDynamicFunc)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed loading the server's grpc credentials")

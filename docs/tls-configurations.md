@@ -164,9 +164,18 @@ This means:
 - Existing connections are **not affected** when CAs are updated.
 - New connections will use the **latest merged CA set** (static YAML CAs + dynamic config-block CAs).
 - No service restart is required when a new organization's CA is added to the channel.
+- TLS handshakes are extremely fast (just atomic pointer load, no cryptographic operations).
 
 > Note: Dynamic CA support only applies when the server TLS mode is `mtls`.
 > For `tls` or `none` modes, the standard static TLS configuration is used.
+
+### Performance Characteristics
+
+| Operation | Frequency | Cost |
+|-----------|-----------|-----|
+| **TLS Handshake** | Every connection | Very fast (atomic load + config clone) |
+| **CA Update** | Rare (config block changes) | One-time CertPool build |
+| **DB Query** (Query Service) | Once per ACLRefreshInterval |
 
 ### Services with dynamic CA support
 

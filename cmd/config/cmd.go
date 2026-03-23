@@ -212,8 +212,10 @@ func QueryCMD(use string) *cobra.Command {
 			cmd.SilenceUsage = true
 			cmd.Printf("Starting %v\n", QueryName)
 			defer cmd.Printf("%v ended\n", QueryName)
-
-			qs := query.NewQueryService(conf)
+			qs, err := query.NewQueryService(conf)
+			if err != nil {
+				return errors.Wrap(err, "failed to create query service")
+			}
 			return connection.StartDynamicService(cmd.Context(), qs, conf.Server)
 		},
 	}
