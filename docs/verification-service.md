@@ -170,8 +170,7 @@ how hashing is applied:
 
 - **Threshold rules**: The committer computes `SHA256` explicitly and calls `verifyDigest(digest, sig)`.
 - **MSP rules**: The committer passes the raw ASN.1 bytes to the MSP's `identity.Verify(msg, sig)`,
-  which internally computes `SHA256(msg)` before ECDSA verification (for Ed25519, the full message
-  is used without hashing, matching Ed25519's specification).
+  which internally computes `SHA256(msg)` before verification.
 
 ### Threshold Rule Verification
 
