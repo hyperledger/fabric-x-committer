@@ -284,7 +284,6 @@ func AddressString[T WithAddress](addresses ...T) string {
 //	(2) DEADLINE_EXCEEDED	Operation took too long (deadline passed).
 //	(3) RESOURCE_EXHAUSTED	Some resource (e.g., quota) has been exhausted; the operation cannot proceed.
 func MakeGrpcRetryPolicyJSON(p *retry.Profile) string {
-	// We initialize a backoff object to fetch the default values.
 	p = p.WithDefaults()
 
 	// We put limits on the values to ensure correct values.

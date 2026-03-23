@@ -505,7 +505,7 @@ func TestGRPCStatusCode(t *testing.T) {
 	})
 
 	env.vcs[0].db.pool.Close()
-	env.vcs[0].db.retry = &retry.Profile{
+	env.vcs[0].db.retryProfile = &retry.Profile{
 		InitialInterval: 100 * time.Millisecond,
 		MaxInterval:     1 * time.Second,
 		MaxElapsedTime:  3 * time.Second,

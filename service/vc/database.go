@@ -52,7 +52,7 @@ type (
 	database struct {
 		pool                 *pgxpool.Pool
 		metrics              *perfMetrics
-		retry                *retry.Profile
+		retryProfile         *retry.Profile
 		tablePreSplitTablets int
 	}
 
@@ -109,7 +109,7 @@ func newDatabase(ctx context.Context, config *DatabaseConfig, metrics *perfMetri
 	return &database{
 		pool:                 pool,
 		metrics:              metrics,
-		retry:                config.Retry,
+		retryProfile:         config.Retry,
 		tablePreSplitTablets: tablePreSplitTablets,
 	}, nil
 }
@@ -181,8 +181,8 @@ func (db *database) queryVersionsIfPresent(ctx context.Context, nsID string, que
 
 func (db *database) getNextBlockNumberToCommit(ctx context.Context) (*servicepb.BlockRef, error) {
 	var value []byte
-	retryErr := db.retry.Execute(ctx, func() error {
-		r := db.pool.QueryRow(ctx, getMetadataPrepSQLStmt, []byte(lastCommittedBlockNumberKey))
+	retryErr := db.retryProfile.Execute(ctx, func() error {
+		r := db.pool.QueryRow(ctx, getMetadataPrepSQLStmt, lastCommittedBlockNumberKey)
 		return errors.Wrap(r.Scan(&value), "failed to get the last committed block number")
 	})
 	if retryErr != nil {
@@ -211,7 +211,7 @@ func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *serv
 	//       and standard comparison operators.
 	v := make([]byte, 8)
 	binary.BigEndian.PutUint64(v, bInfo.Number)
-	return retry.ExecuteSQL(ctx, db.retry, db.pool, setMetadataPrepSQLStmt, []byte(lastCommittedBlockNumberKey), v)
+	return retry.ExecuteSQL(ctx, db.retryProfile, db.pool, setMetadataPrepSQLStmt, lastCommittedBlockNumberKey, v)
 }
 
 // commit commits the writes to the database.
@@ -444,7 +444,7 @@ func (db *database) readStatusWithHeight(
 	ctx context.Context,
 	txIDs [][]byte,
 ) (rows []*committerpb.TxStatus, retryErr error) {
-	retryErr = db.retry.Execute(ctx, func() error {
+	retryErr = db.retryProfile.Execute(ctx, func() error {
 		r, err := db.pool.Query(ctx, queryTxIDsStatusPrepSQLStmt, txIDs)
 		if err != nil {
 			return errors.Wrap(err, "failed to query txIDs from the table [tx_status]")
@@ -510,7 +510,7 @@ func (db *database) readConfigTX(ctx context.Context) (*applicationpb.ConfigTran
 func retryQueryAndReadArrayResult[T any](
 	ctx context.Context, db *database, query string, args ...any,
 ) (items []T, retryErr error) {
-	retryErr = db.retry.Execute(ctx, func() error {
+	retryErr = db.retryProfile.Execute(ctx, func() error {
 		row := db.pool.QueryRow(ctx, query, args...)
 		var readErr error
 		items, readErr = readArrayResult[T](row)
@@ -525,7 +525,7 @@ func retryQueryAndReadArrayResult[T any](
 func retryQueryAndReadTwoItems[T1, T2 any](
 	ctx context.Context, db *database, query string, args ...any,
 ) (items1 []T1, items2 []T2, err error) {
-	retryErr := db.retry.Execute(ctx, func() error {
+	retryErr := db.retryProfile.Execute(ctx, func() error {
 		rows, queryErr := db.pool.Query(ctx, query, args...)
 		if queryErr != nil {
 			return errors.Wrapf(queryErr, "failed to query rows: query [%s]", query)

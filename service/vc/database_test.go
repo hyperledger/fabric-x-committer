@@ -243,7 +243,7 @@ func TestDBCommit(t *testing.T) {
 	t.Parallel()
 	dbEnv := newDatabaseTestEnvWithTablesSetup(t)
 
-	require.Equal(t, dbEnv.DBConf.Retry, dbEnv.DB.retry)
+	require.Equal(t, dbEnv.DBConf.Retry, dbEnv.DB.retryProfile)
 
 	dbEnv.populateData(
 		t,
