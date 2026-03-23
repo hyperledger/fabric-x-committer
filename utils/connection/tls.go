@@ -49,6 +49,11 @@ func newCredentials(tlsCfg *tls.Config, err error) (credentials.TransportCredent
 
 // NewServerTLSMaterials converts a server TLSConfig with path fields into a struct
 // that holds the actual bytes of the certificates.
+//
+// Certificate loading behavior by mode:
+//   - none/unmentioned: No certificates loaded
+//   - tls (one-way): Loads server cert + key only (CA certs NOT loaded)
+//   - mtls (mutual): Loads server cert + key + CA certs for client verification
 func NewServerTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
 	materials := &TLSMaterials{Mode: c.Mode}
 
@@ -88,6 +93,11 @@ func NewServerTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
 
 // NewClientTLSMaterials converts a client TLSConfig with path fields into a struct
 // that holds the actual bytes of the certificates.
+//
+// Certificate loading behavior by mode:
+//   - none/unmentioned: No certificates loaded
+//   - tls (one-way): Loads CA certs only for server verification (client cert + key NOT loaded)
+//   - mtls (mutual): Loads CA certs + client cert + key for mutual authentication
 func NewClientTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
 	materials := &TLSMaterials{Mode: c.Mode}
 
