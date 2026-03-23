@@ -415,24 +415,41 @@ block until that block becomes available for delivery from the Sidecar.
 
 ## 6. Notification Service
 
-The sidecar exposes an API that allows clients to subscribe to transaction status updates and 
-receive notifications when transactions are either committed or aborted.
+The Sidecar exposes a Notification Service that allows clients to subscribe to transaction status
+updates and receive asynchronous notifications when transactions are committed, rejected, or aborted.
 
-From [api/protonotify/notify.proto](/api/committerpb/notify.proto)
-```protobuf
-// The notifier service provides API to subscribe to ledger events and receive asynchronous notifications.
-service Notifier {
-    rpc OpenNotificationStream (stream NotificationRequest) returns (stream NotificationResponse);
-}
-```
+For client usage documentation including API definitions, code examples, and configuration,
+see [Notification Service — Client Usage Guide](notification-service.md).
 
-Once a stream is established, the client can send a `NotificationRequest` containing a list of transaction IDs 
-and a timeout value. The sidecar responds with a `NotificationResponse`, which includes batches of transactions
-and their corresponding commit statuses for the subscribed transaction IDs. If the timeout expires before some 
-of the transactions complete, the response will include the IDs of the transactions that timed out.
+This section describes the internal architecture of the notification service.
 
-Note that if a transaction has already completed before the notification request is submitted, 
-no notification will be sent for it.
+### Internal Architecture
+
+The notifier is implemented as a single-threaded event loop in `run()`
+([service/sidecar/notify.go](/service/sidecar/notify.go)). This design eliminates
+the need for locks — all subscription tracking, status dispatch, and timeout handling
+happen in a single goroutine via a `select` loop over three channels:
+
+- **`requestQueue`**: Subscription requests from client streams.
+- **`statusQueue`**: Transaction status batches from the relay service (which receives
+  them from the Coordinator). This includes statuses for committed, aborted, and
+  rejected transactions (e.g., `REJECTED_DUPLICATE_TX_ID`, `MALFORMED_BAD_ENVELOPE`).
+- **`timeoutQueue`**: Requests whose timeout timers have fired.
+
+Subscriptions are tracked in a `subscriptionMap` that maps each transaction ID to the
+set of `notificationRequest` objects watching it. When a status update arrives for a
+transaction ID — whether it is committed, aborted, or rejected — all subscribers watching
+that ID are notified and the entry is removed from the map.
+
+Each client stream gets its own buffered `streamEventQueue` channel. This per-stream
+buffer ensures that a slow consumer on one stream does not block status dispatch to
+other streams. The buffer size defaults to 100 and is derived from the
+`channel-buffer-size` configuration.
+
+Timeouts are managed using `time.AfterFunc` — each subscription request gets its own
+timer. When a timer fires, the request is moved to the `timeoutQueue`, and any
+remaining unmatched transaction IDs for that request are reported back to the client
+as `TimeoutTxIds`.
 
 ## 7. Failure and Recovery
 

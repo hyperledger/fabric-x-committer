@@ -99,7 +99,7 @@ type DatabaseContainer struct {
 	NetToIP      map[string]*docker.EndpointConfig
 	AutoRm       bool
 	// TLSConfig holds the node TLS certificates.
-	// If TLSConfig isn't available (is nil), we fallback to insecure mode.
+	// If TLSConfig isn't available (is nil), we fall back to insecure mode.
 	TLSConfig *connection.TLSConfig
 
 	client      *docker.Client
@@ -121,9 +121,15 @@ func (dc *DatabaseContainer) start(ctx context.Context) error {
 		return err
 	}
 
-	err := dc.client.StartContainerWithContext(dc.containerID, nil, ctx)
-	var containerAlreadyRunning *docker.ContainerAlreadyRunning
-	if err != nil && !errors.As(err, &containerAlreadyRunning) {
+	err := connection.ListenRetryExecute(ctx, func() error {
+		err := dc.client.StartContainerWithContext(dc.containerID, nil, ctx)
+		var containerAlreadyRunning *docker.ContainerAlreadyRunning
+		if err != nil && !errors.As(err, &containerAlreadyRunning) {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		return errors.Wrap(err, "starting container")
 	}
 
@@ -265,32 +271,32 @@ func (dc *DatabaseContainer) createContainer(ctx context.Context) error {
 		}
 	}
 
-	container, err := dc.client.CreateContainer(
-		docker.CreateContainerOptions{
-			Context: ctx,
-			Name:    dc.Name,
-			Config: &docker.Config{
-				Image:      dc.Image,
-				Cmd:        dc.Cmd,
-				Entrypoint: dc.Entrypoint,
-				Env:        dc.Env,
-				Hostname:   dc.Hostname,
-			},
-			HostConfig: &docker.HostConfig{
-				AutoRemove:   dc.AutoRm,
-				PortBindings: dc.PortBinds,
-				NetworkMode:  dc.Network,
-				Binds:        dc.Binds,
-				Memory:       4 * gb,
-				MemorySwap:   memorySwap,
-			},
+	dockerOptions := docker.CreateContainerOptions{
+		Context: ctx,
+		Name:    dc.Name,
+		Config: &docker.Config{
+			Image:      dc.Image,
+			Cmd:        dc.Cmd,
+			Entrypoint: dc.Entrypoint,
+			Env:        dc.Env,
+			Hostname:   dc.Hostname,
 		},
-	)
-	if err != nil {
-		return errors.Wrap(err, "creating container")
+		HostConfig: &docker.HostConfig{
+			AutoRemove:   dc.AutoRm,
+			PortBindings: dc.PortBinds,
+			NetworkMode:  dc.Network,
+			Binds:        dc.Binds,
+			Memory:       4 * gb,
+			MemorySwap:   memorySwap,
+		},
 	}
-	dc.containerID = container.ID
-	return nil
+	return connection.ListenRetryExecute(ctx, func() error {
+		container, err := dc.client.CreateContainer(dockerOptions)
+		if container != nil {
+			dc.containerID = container.ID
+		}
+		return err
+	})
 }
 
 // GetConnectionOptions inspect the container and fetches the available connection options.
@@ -302,13 +308,12 @@ func (dc *DatabaseContainer) GetConnectionOptions(ctx context.Context, t *testin
 	})
 	require.NoError(t, err)
 
-	endpoints := []*connection.Endpoint{
-		dc.GetContainerConnectionDetails(t),
+	portBindings := container.NetworkSettings.Ports[dc.DbPort]
+	endpoints := make([]*connection.Endpoint, 0, len(portBindings)+1)
+	endpoints = append(endpoints, dc.GetContainerConnectionDetails(t))
+	for _, p := range portBindings {
+		endpoints = append(endpoints, test.NewEndpoint(t, p.HostIP, p.HostPort))
 	}
-	for _, p := range container.NetworkSettings.Ports[dc.DbPort] {
-		endpoints = append(endpoints, connection.CreateEndpointHP(p.HostIP, p.HostPort))
-	}
-
 	return NewConnection(dc.DatabaseType, endpoints...)
 }
 
@@ -326,11 +331,11 @@ func (dc *DatabaseContainer) GetContainerConnectionDetails(
 	ipAddress := container.NetworkSettings.IPAddress
 	require.NotNil(t, ipAddress)
 	if dc.Network != "" {
-		net, ok := container.NetworkSettings.Networks[dc.Network]
+		containerNet, ok := container.NetworkSettings.Networks[dc.Network]
 		require.True(t, ok)
-		ipAddress = net.IPAddress
+		ipAddress = containerNet.IPAddress
 	}
-	return connection.CreateEndpointHP(ipAddress, dc.DbPort.Port())
+	return test.NewEndpoint(t, ipAddress, dc.DbPort.Port())
 }
 
 // ExposePort adds a host port mapping for the given container port (e.g. "5433")
@@ -376,7 +381,7 @@ func (dc *DatabaseContainer) GetHostMappedEndpoint(t *testing.T) *connection.End
 	if hostIP == "0.0.0.0" {
 		hostIP = "127.0.0.1"
 	}
-	return connection.CreateEndpointHP(hostIP, bindings[0].HostPort)
+	return test.NewEndpoint(t, hostIP, bindings[0].HostPort)
 }
 
 // streamLogs streams the container output to stdout/stderr.

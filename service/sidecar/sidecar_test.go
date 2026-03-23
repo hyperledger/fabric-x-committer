@@ -249,7 +249,7 @@ func newSidecarTestEnvWithTLS(
 		initOrdererOrganizations = nil
 	}
 	sidecarConf := &Config{
-		Server:    connection.NewLocalHostServer(conf.ServerTLS),
+		Server:    test.NewLocalHostServer(conf.ServerTLS),
 		Committer: test.NewTLSClientConfig(conf.ClientTLS, &coordinatorServer.Configs[0].Endpoint),
 		Ledger: LedgerConfig{
 			Path: t.TempDir(),
@@ -259,7 +259,7 @@ func newSidecarTestEnvWithTLS(
 		},
 		LastCommittedBlockSetInterval: 100 * time.Millisecond,
 		WaitingTxsLimit:               1000,
-		Monitoring:                    connection.NewLocalHostServer(conf.ServerTLS),
+		Monitoring:                    test.NewLocalHostServer(conf.ServerTLS),
 		Bootstrap: Bootstrap{
 			GenesisBlockFilePath: genesisBlockFilePath,
 		},

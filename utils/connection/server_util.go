@@ -10,8 +10,10 @@ import (
 	"context"
 	"crypto/tls"
 	"net"
+	"regexp"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -19,6 +21,8 @@ import (
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
+
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 const tcpProtocol = "tcp"
@@ -49,19 +53,20 @@ type (
 	}
 )
 
-var listenRetry = RetryProfile{
-	InitialInterval: 50 * time.Millisecond,
-	MaxInterval:     500 * time.Millisecond,
-	MaxElapsedTime:  2 * time.Minute,
-}
-
-// NewLocalHostServer returns a default server config with endpoint "localhost:0" given server credentials.
-func NewLocalHostServer(creds TLSConfig) *ServerConfig {
-	return &ServerConfig{
-		Endpoint: *NewLocalHost(),
-		TLS:      creds,
+var (
+	// listenRetry is the acceptable retry profile if port conflicts occur.
+	// This handles the race condition where another process claims a pre-assigned port.
+	// This will retry with the same port, waiting for it to become available.
+	listenRetry = retry.Profile{
+		InitialInterval: 50 * time.Millisecond,
+		MaxInterval:     500 * time.Millisecond,
+		MaxElapsedTime:  2 * time.Minute,
 	}
-}
+
+	// portConflictRegex is the compiled regular expression
+	// to efficiently detect port binding conflict errors.
+	portConflictRegex = regexp.MustCompile(`(?i)(address\s+already\s+in\s+use|port\s+is\s+already\s+allocated)`)
+)
 
 // StartService runs a service, waits until it is ready, and register the gRPC server(s).
 // It will stop if either the service ended or its respective gRPC server.
@@ -137,17 +142,12 @@ func (c *ServerConfig) Listener(ctx context.Context) (net.Listener, error) {
 		return c.preAllocatedListener, nil
 	}
 
-	var err error
 	var listener net.Listener
-	if c.Endpoint.Port == 0 {
+	err := ListenRetryExecute(ctx, func() error {
+		var err error
 		listener, err = net.Listen(tcpProtocol, c.Endpoint.Address())
-	} else {
-		err = listenRetry.Execute(ctx, func() error {
-			var listenErr error
-			listener, listenErr = net.Listen(tcpProtocol, c.Endpoint.Address())
-			return listenErr
-		})
-	}
+		return err
+	})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to listen")
 	}
@@ -161,6 +161,26 @@ func (c *ServerConfig) Listener(ctx context.Context) (net.Listener, error) {
 
 	logger.Infof("Listening on: %s://%s", tcpProtocol, c.Endpoint.String())
 	return listener, nil
+}
+
+// ListenRetryExecute executes the provided function with retry logic for port binding conflicts.
+// It automatically retries when port conflicts are detected (e.g., "address already in use"),
+// using exponential backoff. Non-port-conflict errors are treated as permanent failures
+// and will not be retried. The retry behavior is controlled by the listenRetry profile.
+func ListenRetryExecute(ctx context.Context, f func() error) error {
+	return listenRetry.Execute(ctx, func() error {
+		err := f()
+		switch {
+		case err == nil:
+			return nil
+		case portConflictRegex.MatchString(err.Error()):
+			// Port conflict - will retry with backoff.
+			return errors.Wrap(err, "port conflict")
+		default:
+			// Not a port conflict - return permanent error to stop retrying.
+			return &backoff.PermanentError{Err: errors.Wrap(err, "creating listener")}
+		}
+	})
 }
 
 // PreAllocateListener is used to allocate a port and bind to ahead of the server initialization.

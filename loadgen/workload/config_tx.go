@@ -15,7 +15,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -57,7 +56,7 @@ func CreateOrLoadConfigBlockWithCrypto(policy *PolicyProfile) (*common.Block, er
 	if policy.ArtifactsPath != "" {
 		configBlockPath := path.Join(policy.ArtifactsPath, cryptogen.ConfigBlockFileName)
 		if _, fErr := os.Stat(configBlockPath); fErr == nil {
-			block, err := configtxgen.ReadBlock(configBlockPath)
+			block, err := protoutil.ReadBlockFromFile(configBlockPath)
 			return block, errors.Wrapf(err, "failed reading config block from %s", configBlockPath)
 		}
 	}

@@ -18,14 +18,13 @@ import (
 	"github.com/yugabyte/pgx/v5/pgxpool"
 
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 const (
 	setMetadataPrepSQLStmt      = "UPDATE metadata SET value = $2 WHERE key = $1;"
 	getMetadataPrepSQLStmt      = "SELECT value FROM metadata WHERE key = $1;"
 	queryTxIDsStatusPrepSQLStmt = "SELECT tx_id, status, height FROM tx_status WHERE tx_id = ANY($1);"
-
-	lastCommittedBlockNumberKey = "last committed block number"
 
 	// nsIDTemplatePlaceholder is used as a template placeholder for SQL queries.
 	nsIDTemplatePlaceholder = "${NAMESPACE_ID}"
@@ -45,6 +44,8 @@ var (
 	createNamespaceSQLStmt string
 
 	systemNamespaces = []string{committerpb.MetaNamespaceID, committerpb.ConfigNamespaceID}
+
+	lastCommittedBlockNumberKey = []byte("last committed block number")
 )
 
 // NewDatabasePool creates a new pool from a database config.
@@ -85,14 +86,14 @@ func NewDatabasePool(ctx context.Context, config *DatabaseConfig) (*pgxpool.Pool
 // TODO: merge this file with database.go.
 func (db *database) setupSystemTablesAndNamespaces(ctx context.Context) error {
 	logger.Info("Created tx status table, metadata table, and its methods.")
-	if execErr := db.retry.ExecuteSQL(ctx, db.pool,
+	if execErr := retry.ExecuteSQL(ctx, db.retryProfile, db.pool,
 		fmtSplitIntoTablets(dbInitSQLStmt, db.tablePreSplitTablets)); execErr != nil {
 		return fmt.Errorf("failed to create system tables and functions: %w", execErr)
 	}
 
 	for _, nsID := range systemNamespaces {
 		execErr := createNsTables(nsID, db.tablePreSplitTablets, func(q string) error {
-			return db.retry.ExecuteSQL(ctx, db.pool, q)
+			return retry.ExecuteSQL(ctx, db.retryProfile, db.pool, q)
 		})
 		if execErr != nil {
 			return execErr

@@ -49,7 +49,7 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 	_, vc := mock.StartMockVCService(t, serverParams)
 	_, orderer := mock.StartMockOrderingServices(t, &mock.OrdererConfig{TestServerParameters: serverParams})
 	_, coordinator := mock.StartMockCoordinatorService(t, serverParams)
-	server := connection.NewLocalHostServer(test.InsecureTLSConfig)
+	server := test.NewLocalHostServer(test.InsecureTLSConfig)
 	listen, err := server.Listener(t.Context())
 	require.NoError(t, err)
 	connection.CloseConnectionsLog(listen)
@@ -100,11 +100,12 @@ func UnitTestRunner(
 		os.Stderr = origStderr
 		_ = logFile.Close()
 	})
-	logConfig := &flogging.Config{
-		LogSpec: "debug",
-	}
-	flogging.Init(*logConfig)
-	cmdTest.System.Logging = logConfig
+	testLogSpec := "debug:grpc=error"
+	flogging.ActivateSpec(testLogSpec)
+	t.Cleanup(func() {
+		flogging.ActivateSpec("info:grpc=error")
+	})
+	cmdTest.System.Logging.LogSpec = testLogSpec
 
 	args := cmdTest.Args
 	if cmdTest.UseConfigTemplate != "" {
@@ -176,7 +177,7 @@ func defaultTestDBConfig() DatabaseConfig {
 	return DatabaseConfig{
 		Name:        "dummy_test_db",
 		Username:    username,
-		Endpoints:   []*connection.Endpoint{connection.CreateEndpointHP("localhost", "5433")},
+		Endpoints:   []*connection.Endpoint{{Host: "localhost", Port: 5433}},
 		LoadBalance: false,
 	}
 }

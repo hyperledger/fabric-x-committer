@@ -19,7 +19,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -34,6 +33,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/dynamictls"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 var logger = flogging.MustGetLogger("sidecar")
@@ -49,7 +49,7 @@ type Service struct {
 	blockDelivery      *blockDelivery
 	blockQuery         *blockQuery
 	coordConn          *grpc.ClientConn
-	blockToBeCommitted chan *common.Block
+	blockToBeCommitted atomic.Pointer[chan *common.Block]
 	committedBlock     chan *common.Block
 	statusQueue        chan []*committerpb.TxStatus
 	config             *Config
@@ -117,13 +117,13 @@ func New(c *Config) (*Service, error) {
 
 	if c.Bootstrap.GenesisBlockFilePath != "" {
 		logger.Debug("updating orderer connections from genesis-block")
-		configBlock, bootErr := configtxgen.ReadBlock(c.Bootstrap.GenesisBlockFilePath)
+		configBlock, bootErr := protoutil.ReadBlockFromFile(c.Bootstrap.GenesisBlockFilePath)
 		if bootErr != nil {
 			return nil, errors.Wrap(bootErr, "read config block")
 		}
 		orgsMaterial, bootErr := ordererconn.NewOrganizationsMaterialsFromConfigBlock(configBlock)
 		if bootErr != nil {
-			return nil, errors.Wrap(bootErr, "failed to load organizations artifacts")
+			return nil, fmt.Errorf("failed to load organizations artifacts: %w", bootErr)
 		}
 		bootErr = ordererClient.UpdateConnections(orgsMaterial)
 		if bootErr != nil {
@@ -195,7 +195,7 @@ func (s *Service) Run(ctx context.Context) error {
 
 	g.Go(func() error {
 		// TODO: initialize retry from config.
-		return connection.Sustain(gCtx, nil, func() error {
+		return retry.Sustain(gCtx, nil, func() error {
 			defer func() {
 				s.recoverCommittedBlocks(gCtx)
 			}()
@@ -221,7 +221,7 @@ func (s *Service) sendBlocksAndReceiveStatus(
 	defer s.metrics.coordConnection.Disconnected(s.coordConn.CanonicalTarget())
 	nextBlockNum, err := s.recover(ctx, coordClient)
 	if err != nil {
-		return errors.Join(connection.ErrBackOff, err)
+		return errors.Join(retry.ErrBackOff, err)
 	}
 
 	// if the recovery is successful, the connection is established.
@@ -230,20 +230,20 @@ func (s *Service) sendBlocksAndReceiveStatus(
 	g, gCtx := errgroup.WithContext(ctx)
 
 	// We drop all enqueued block if any before starting a new session.
-	s.blockToBeCommitted = make(chan *common.Block, s.config.ChannelBufferSize)
+	s.blockToBeCommitted.Store(new(make(chan *common.Block, s.config.ChannelBufferSize)))
 
 	// NOTE: ordererClient.Deliver and relay.Run must always return an error on exist.
 	g.Go(func() error {
 		logger.Info("Fetch blocks from the ordering service and write them on s.blockToBeCommitted.")
 		deliverErr := s.ordererClient.Deliver(gCtx, &deliver.Parameters{
 			NextBlockNum: nextBlockNum,
-			OutputBlock:  s.blockToBeCommitted,
+			OutputBlock:  *s.blockToBeCommitted.Load(),
 		})
 		if errors.Is(deliverErr, context.Canceled) {
 			// A context may be cancelled due to a relay error, thus it is not critical error.
 			return errors.Wrap(deliverErr, "context is canceled")
 		}
-		return errors.Join(connection.ErrNonRetryable, deliverErr)
+		return errors.Join(retry.ErrNonRetryable, deliverErr)
 	})
 
 	g.Go(func() error {
@@ -252,7 +252,7 @@ func (s *Service) sendBlocksAndReceiveStatus(
 			coordClient:                    coordClient,
 			nextExpectedBlockByCoordinator: nextBlockNum,
 			configUpdater:                  s.configUpdater,
-			incomingBlockToBeCommitted:     s.blockToBeCommitted,
+			incomingBlockToBeCommitted:     *s.blockToBeCommitted.Load(),
 			outgoingCommittedBlock:         s.committedBlock,
 			outgoingStatusUpdates:          s.statusQueue,
 			waitingTxsLimit:                s.config.WaitingTxsLimit,
@@ -494,7 +494,10 @@ func (s *Service) monitorQueues(ctx context.Context) {
 		case <-ticker.C:
 		}
 
-		promutil.SetGauge(m.yetToBeCommittedBlocksQueueSize, len(s.blockToBeCommitted))
+		blockToBeCommittedChan := s.blockToBeCommitted.Load()
+		if blockToBeCommittedChan != nil {
+			promutil.SetGauge(m.yetToBeCommittedBlocksQueueSize, len(*blockToBeCommittedChan))
+		}
 		promutil.SetGauge(m.committedBlocksQueueSize, len(s.committedBlock))
 	}
 }

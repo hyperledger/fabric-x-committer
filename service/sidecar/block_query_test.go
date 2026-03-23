@@ -16,7 +16,6 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -28,7 +27,7 @@ func TestBlockQuery(t *testing.T) {
 	// Create the query service and register on a gRPC server.
 	queryService := newBlockQuery(bs)
 
-	config := connection.NewLocalHostServer(test.InsecureTLSConfig)
+	config := test.NewLocalHostServer(test.InsecureTLSConfig)
 	test.RunGrpcServerForTest(t.Context(), t, config, func(server *grpc.Server) {
 		committerpb.RegisterBlockQueryServiceServer(server, queryService)
 	})

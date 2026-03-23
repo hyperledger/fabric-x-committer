@@ -27,11 +27,12 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-var testGrpcRetryProfile = connection.RetryProfile{
+var testGrpcRetryProfile = retry.Profile{
 	InitialInterval: 10 * time.Millisecond,
 	MaxInterval:     100 * time.Millisecond,
 	Multiplier:      2,

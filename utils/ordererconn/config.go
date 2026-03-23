@@ -12,6 +12,7 @@ import (
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 type (
@@ -21,7 +22,7 @@ type (
 		ConsensusType string                         `mapstructure:"consensus-type"`
 		ChannelID     string                         `mapstructure:"channel-id"`
 		Identity      *IdentityConfig                `mapstructure:"identity"`
-		Retry         *connection.RetryProfile       `mapstructure:"reconnect"`
+		Retry         *retry.Profile                 `mapstructure:"reconnect"`
 		TLS           OrdererTLSConfig               `mapstructure:"tls"`
 		Organizations map[string]*OrganizationConfig `mapstructure:"organizations"`
 	}

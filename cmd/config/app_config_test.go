@@ -29,6 +29,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -457,7 +458,7 @@ func defaultDBConfig() *vc.DatabaseConfig {
 		Database:       "yugabyte",
 		MaxConnections: 20,
 		MinConnections: 1,
-		Retry: &connection.RetryProfile{
+		Retry: &retry.Profile{
 			MaxElapsedTime: 10 * time.Minute,
 		},
 	}
@@ -476,7 +477,7 @@ func defaultSampleDBConfig() *vc.DatabaseConfig {
 		MaxConnections: 10,
 		MinConnections: 5,
 		LoadBalance:    false,
-		Retry: &connection.RetryProfile{
+		Retry: &retry.Profile{
 			InitialInterval:     500 * time.Millisecond,
 			RandomizationFactor: 0.5,
 			Multiplier:          1.5,

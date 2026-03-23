@@ -8,11 +8,14 @@ package connection
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
@@ -22,6 +25,8 @@ import (
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/resolver/manual"
 	"google.golang.org/grpc/status"
+
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 const (
@@ -48,7 +53,7 @@ type (
 	ClientParameters struct {
 		Address        string
 		Creds          credentials.TransportCredentials
-		Retry          *RetryProfile
+		Retry          *retry.Profile
 		AdditionalOpts []grpc.DialOption
 	}
 )
@@ -71,24 +76,25 @@ func NewLoadBalancedConnection(config *MultiClientConfig) (*grpc.ClientConn, err
 
 // NewLoadBalancedConnectionFromMaterials creates a connection with load balancing between the endpoints
 // in the given config.
-func NewLoadBalancedConnectionFromMaterials(endpoints []*Endpoint, tlsMaterials *TLSMaterials, retry *RetryProfile,
+func NewLoadBalancedConnectionFromMaterials(
+	endpoints []*Endpoint, tlsMaterials *TLSMaterials, retryProfile *retry.Profile,
 ) (*grpc.ClientConn, error) {
 	tlsCredentials, err := NewClientCredentialsFromMaterial(tlsMaterials)
 	if err != nil {
 		return nil, err
 	}
-	return newLoadBalancedConnection(endpoints, tlsCredentials, retry)
+	return newLoadBalancedConnection(endpoints, tlsCredentials, retryProfile)
 }
 
 func newLoadBalancedConnection(
 	endpoints []*Endpoint,
 	creds credentials.TransportCredentials,
-	retry *RetryProfile,
+	retryProfile *retry.Profile,
 ) (*grpc.ClientConn, error) {
 	if len(endpoints) == 1 {
 		return NewConnection(ClientParameters{
 			Address: endpoints[0].Address(),
-			Retry:   retry,
+			Retry:   retryProfile,
 			Creds:   creds,
 		})
 	}
@@ -108,7 +114,7 @@ func newLoadBalancedConnection(
 	return NewConnection(ClientParameters{
 		Address:        fmt.Sprintf("%s:///%s", r.Scheme(), targetName),
 		Creds:          creds,
-		Retry:          retry,
+		Retry:          retryProfile,
 		AdditionalOpts: []grpc.DialOption{grpc.WithResolvers(r)},
 	})
 }
@@ -151,7 +157,7 @@ func NewSingleConnection(config *ClientConfig) (*grpc.ClientConn, error) {
 // It will not attempt to create a connection with the remote.
 func NewConnection(p ClientParameters) (*grpc.ClientConn, error) {
 	dialOpts := append([]grpc.DialOption{
-		grpc.WithDefaultServiceConfig(p.Retry.MakeGrpcRetryPolicyJSON()),
+		grpc.WithDefaultServiceConfig(MakeGrpcRetryPolicyJSON(p.Retry)),
 		grpc.WithTransportCredentials(p.Creds),
 		grpc.WithDefaultCallOptions(
 			grpc.MaxCallRecvMsgSize(maxMsgSize),
@@ -268,4 +274,67 @@ func AddressString[T WithAddress](addresses ...T) string {
 		listOfAddresses[i] = address.Address()
 	}
 	return strings.Join(listOfAddresses, ",")
+}
+
+// MakeGrpcRetryPolicyJSON defines the retry policy for a gRPC client connection.
+// The retry policy applies to all subsequent gRPC calls made through the client connection.
+// Our GRPC retry policy is applicable only for the following status codes:
+//
+//	(1) UNAVAILABLE	The service is currently unavailable (e.g., transient network issue, server down).
+//	(2) DEADLINE_EXCEEDED	Operation took too long (deadline passed).
+//	(3) RESOURCE_EXHAUSTED	Some resource (e.g., quota) has been exhausted; the operation cannot proceed.
+func MakeGrpcRetryPolicyJSON(p *retry.Profile) string {
+	p = p.WithDefaults()
+
+	// We put limits on the values to ensure correct values.
+	initialInterval := max(p.InitialInterval.Seconds(), time.Nanosecond.Seconds())
+	maxInterval := max(p.MaxInterval.Seconds(), initialInterval)
+	multiplier := max(p.Multiplier, 1.0001)
+	maxElapsedTimeSeconds := max(p.MaxElapsedTime.Seconds(), maxInterval)
+	ret := map[string]any{
+		"loadBalancingConfig": []map[string]any{{
+			"round_robin": make(map[string]any),
+		}},
+		"methodConfig": []map[string]any{{
+			// Setting an empty name sets the default for all methods.
+			"name": []any{make(map[string]any)},
+			"retryPolicy": map[string]any{
+				"maxAttempts":       CalcMaxAttempts(initialInterval, maxInterval, multiplier, maxElapsedTimeSeconds),
+				"initialBackoff":    formatSeconds(initialInterval),
+				"maxBackoff":        formatSeconds(maxInterval),
+				"backoffMultiplier": multiplier,
+				"retryableStatusCodes": []string{
+					"UNAVAILABLE",
+					"DEADLINE_EXCEEDED",
+					"RESOURCE_EXHAUSTED",
+				},
+			},
+		}},
+	}
+	jsonString, err := json.MarshalIndent(ret, "", "  ")
+	if err != nil {
+		logger.Warnf("failed to marshal retry profile to JSON: %s", err)
+		return "{}"
+	}
+	return string(jsonString)
+}
+
+// CalcMaxAttempts calculates the number of attempts given the following parameters:
+// - initialInterval > 0
+// - maxInterval     >= i
+// - multiplier      > 1
+// - maxElapsedTime > i.
+func CalcMaxAttempts(initialInterval, maxInterval, multiplier, maxElapsedTime float64) int {
+	nextBackoffInterval := initialInterval
+	var estimatedElapsedTime float64
+	var attempts int
+	for attempts = 0; estimatedElapsedTime <= maxElapsedTime; attempts++ {
+		estimatedElapsedTime += nextBackoffInterval
+		nextBackoffInterval = min(nextBackoffInterval*multiplier, maxInterval)
+	}
+	return attempts
+}
+
+func formatSeconds(sec float64) string {
+	return fmt.Sprintf("%ss", strconv.FormatFloat(sec, 'f', -1, 64))
 }

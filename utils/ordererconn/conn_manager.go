@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 type (
@@ -34,7 +35,7 @@ type (
 		connections   map[string]*grpc.ClientConn
 		endpoints     []*commontypes.OrdererEndpoint
 		lock          sync.Mutex
-		retry         *connection.RetryProfile
+		retry         *retry.Profile
 		tls           *connection.TLSMaterials
 		tlsCertHash   []byte
 	}
@@ -49,7 +50,7 @@ type (
 	openConnectionParameters struct {
 		Endpoints []*connection.Endpoint
 		TLS       *connection.TLSMaterials
-		Retry     *connection.RetryProfile
+		Retry     *retry.Profile
 	}
 )
 

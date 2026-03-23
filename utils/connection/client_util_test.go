@@ -11,21 +11,21 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/grpclog"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -33,13 +33,13 @@ import (
 func TestGRPCRetry(t *testing.T) {
 	// We start GRPC logging for this test to allow visibility into the retry process.
 	// This change prevents us from running this test in parallel to others.
-	grpclog.SetLoggerV2(grpclog.NewLoggerV2(os.Stderr, io.Discard, os.Stderr))
+	flogging.ActivateSpec("info:grpc=debug")
 	t.Cleanup(func() {
-		grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, os.Stderr))
+		flogging.ActivateSpec("info:grpc=error")
 	})
 
 	t.Log("Starting service")
-	serverConfig := connection.NewLocalHostServer(test.InsecureTLSConfig)
+	serverConfig := test.NewLocalHostServer(test.InsecureTLSConfig)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -70,7 +70,7 @@ func TestGRPCRetry(t *testing.T) {
 	_, err = client.Check(ctx, nil)
 	require.NoError(t, err)
 
-	conn2 := test.NewInsecureConnectionWithRetry(t, &serverConfig.Endpoint, connection.RetryProfile{
+	conn2 := test.NewInsecureConnectionWithRetry(t, &serverConfig.Endpoint, retry.Profile{
 		MaxElapsedTime: 2 * time.Second,
 	})
 	client2 := healthgrpc.NewHealthClient(conn2)
@@ -102,13 +102,13 @@ func TestGRPCRetry(t *testing.T) {
 func TestGRPCRetryMultiEndpoints(t *testing.T) {
 	// We start GRPC logging for this test to allow visibility into the retry process.
 	// This change prevents us from running this test in parallel to others.
-	grpclog.SetLoggerV2(grpclog.NewLoggerV2(os.Stderr, io.Discard, os.Stderr))
+	flogging.ActivateSpec("info:grpc=debug")
 	t.Cleanup(func() {
-		grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, os.Stderr))
+		flogging.ActivateSpec("info:grpc=error")
 	})
 
 	t.Log("Starting service")
-	serverConfig := connection.NewLocalHostServer(test.InsecureTLSConfig)
+	serverConfig := test.NewLocalHostServer(test.InsecureTLSConfig)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -123,7 +123,7 @@ func TestGRPCRetryMultiEndpoints(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Log("Creating fake service address")
-	fakeServerConfig := connection.NewLocalHostServer(test.InsecureTLSConfig)
+	fakeServerConfig := test.NewLocalHostServer(test.InsecureTLSConfig)
 	l, err := fakeServerConfig.Listener(t.Context())
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -365,4 +365,58 @@ func TestCloseConnections(t *testing.T) {
 		}
 		require.NoError(t, connection.CloseConnections(closers...))
 	})
+}
+
+func TestGrpcRetryJSON(t *testing.T) {
+	t.Parallel()
+	templateExpectedJSON := `
+	{
+	  "loadBalancingConfig": [{"round_robin": {}}],
+	  "methodConfig": [{
+		"name": [{}],
+		"retryPolicy": {
+		  "maxAttempts": %d,
+		  "backoffMultiplier": 1.5,
+		  "initialBackoff": "0.5s",
+		  "maxBackoff": "10s",
+		  "retryableStatusCodes": ["UNAVAILABLE", "DEADLINE_EXCEEDED", "RESOURCE_EXHAUSTED"]
+		}
+	  }]
+	}`
+	for _, tt := range []struct {
+		maxElapsedTime   time.Duration
+		expectedAttempts int
+	}{
+		{maxElapsedTime: 0, expectedAttempts: 96},
+		{maxElapsedTime: 15 * time.Second, expectedAttempts: 7},
+	} {
+		t.Run(fmt.Sprintf("maxElapsed=%s", tt.maxElapsedTime), func(t *testing.T) {
+			t.Parallel()
+			profile := retry.Profile{MaxElapsedTime: tt.maxElapsedTime}
+			jsonRaw := connection.MakeGrpcRetryPolicyJSON(&profile)
+			require.JSONEq(t, fmt.Sprintf(templateExpectedJSON, tt.expectedAttempts), jsonRaw)
+		})
+	}
+}
+
+func TestCalcMaxAttempts(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		i, a, m, t float64
+		n          int
+	}{
+		{i: 1, a: 3, m: 2, t: 3, n: 3},  // 0 + 1 + 2         = 3
+		{i: 1, a: 3, m: 2, t: 6, n: 4},  // 0 + 1 + 2 + 3     = 6
+		{i: 1, a: 3, m: 2, t: 9, n: 5},  // 0 + 1 + 2 + 3 + 3 = 9
+		{i: 1, a: 16, m: 2, t: 7, n: 4}, // 0 + 1 + 2 + 4     = 7
+	} {
+		for _, e := range []float64{0, 1} {
+			tc := tc
+			tc.t += e
+			t.Run(fmt.Sprintf("%+v", tc), func(t *testing.T) {
+				t.Parallel()
+				require.Equal(t, tc.n, connection.CalcMaxAttempts(tc.i, tc.a, tc.m, tc.t))
+			})
+		}
+	}
 }

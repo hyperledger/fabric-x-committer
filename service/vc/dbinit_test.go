@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 func TestDBInit(t *testing.T) {
@@ -82,13 +82,11 @@ func TestRetry(t *testing.T) {
 	pool, err := NewDatabasePool(
 		ctx,
 		&DatabaseConfig{
-			Endpoints: []*connection.Endpoint{
-				test.MustCreateEndpoint(":1234"),
-			},
+			Endpoints:      []*connection.Endpoint{{Port: 1234}},
 			Username:       "name",
 			Password:       "pwd",
 			MaxConnections: 5,
-			Retry: &connection.RetryProfile{
+			Retry: &retry.Profile{
 				MaxElapsedTime: 10 * time.Second,
 			},
 		})

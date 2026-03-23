@@ -93,7 +93,7 @@ multiplatform       ?= false
 env                 ?= env GOOS=$(os) GOARCH=$(arch)
 build_flags         ?= -buildvcs=false
 release_build_flags ?= $(build_flags) -ldflags '-w -s'
-test_cmd            ?= scripts/test-packages.sh
+test_flags          ?=
 proto_flags         ?=
 
 ifneq ("$(wildcard /usr/include)","")
@@ -136,48 +136,60 @@ COR_DB_PACKAGES=$(shell $(go_cmd) list ./... | grep -E "$(CORE_DB_PACKAGES_REGEX
 REQUIRES_DB_PACKAGES=$(shell $(go_cmd) list ./... | grep -E "$(REQUIRES_DB_PACKAGES_REGEXP)")
 NO_DB_PACKAGES=$(shell $(go_cmd) list ./... | grep -vE "$(CORE_DB_PACKAGES_REGEXP)|$(REQUIRES_DB_PACKAGES_REGEXP)|$(HEAVY_PACKAGES_REGEXP)")
 
+# Uses "gotestsum" to summerize the output.
+# * "--rerun-fails=0" is used to re-run failed test (once).
+#   The re-run serves two purposes.
+#     1. Conveniently show the failed test at the end along with their output, to allow easy debugging.
+#     2. Mitigate flaky tests.
+# * "--format dots" is used to print a "." for passed test, and "x" for a failed test.
+#   This reduces the output clutter.
+#   Failed tests output will be showed at the end when they re-run.
+#   Successful tests' output is not shown.
+# * "--packages ${packages}" is required to support "--rerun-fails=0".
+test_method = gotestsum --rerun-fails=0 --format dots --packages "$(1)" -- -v -timeout 30m $(test_flags) $(2)
+test_method_with_coverage = $(call test_method, $(1), $(2) -coverprofile=coverage.profile -coverpkg=./...)
+
 # Excludes integration and container tests.
 # Use `test-integration`, `test-integration-db-resiliency`, and `test-container`.
 test: build
-	@$(test_cmd) "${NON_HEAVY_PACKAGES}"
+	@$(call test_method, ${NON_HEAVY_PACKAGES})
 
 # Test a specific package.
 test-package-%: build
-	@$(test_cmd) ./$*/...
+	@$(call test_method, ./$*/...)
 
 # Integration tests excluding DB resiliency tests.
 # Use `test-integration-db-resiliency`.
 test-integration: build
-	@$(test_cmd) ./integration/... -skip "DBResiliency.*"
+	@$(call test_method, ./integration/..., -skip "DBResiliency.*")
 
 # DB resiliency integration tests.
 test-integration-db-resiliency: build
-	@$(test_cmd) ./integration/... -run "DBResiliency.*"
+	@$(call test_method, ./integration/..., -run "DBResiliency.*")
 
 # Tests the all-in-one docker image.
 test-container: build-image-test-node build-image-release
-	@$(test_cmd) ./docker/...
+	@$(call test_method, ./docker/...)
 
 # Tests for components that directly talk to the DB, where different DBs might affect behaviour.
 test-core-db: FORCE
-	@$(test_cmd) "${COR_DB_PACKAGES}"
+	@$(call test_method, ${COR_DB_PACKAGES})
 
 # Tests for components that depend on the DB layer, but are agnostic to the specific DB used.
 test-requires-db: FORCE
-	@$(test_cmd) "${REQUIRES_DB_PACKAGES}"
+	@$(call test_method, ${REQUIRES_DB_PACKAGES})
 
 # Tests that require no DB at all, e.g., pure logic, utilities
 test-no-db: FORCE
-	@$(test_cmd) "${NO_DB_PACKAGES}" -coverprofile=coverage.profile -coverpkg=./...
+	@$(call test_method_with_coverage, ${NO_DB_PACKAGES})
 
 # Tests for components that depend on the DB layer, and ones that are agnostic to the specific DB used.
 test-all-db: FORCE
-	@$(test_cmd) "${REQUIRES_DB_PACKAGES} ${COR_DB_PACKAGES}" -coverprofile=coverage.profile -coverpkg=./...
+	@$(call test_method_with_coverage, ${REQUIRES_DB_PACKAGES} ${COR_DB_PACKAGES})
 
 # Runs test coverage analysis. It uses same tests that will be covered by the CI.
 test-cover: FORCE
-	@$(test_cmd) "${NO_DB_PACKAGES} ${REQUIRES_DB_PACKAGES} ${COR_DB_PACKAGES}" \
-		-coverprofile=coverage.profile -coverpkg=./...
+	@$(call test_method_with_coverage, ${NO_DB_PACKAGES} ${REQUIRES_DB_PACKAGES} ${COR_DB_PACKAGES})
 	@scripts/test-coverage-filter-files.sh
 
 cover-report: FORCE

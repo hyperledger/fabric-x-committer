@@ -13,7 +13,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/configtx"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 )
 
 type (
@@ -31,7 +30,7 @@ var ErrNotConfigBlock = errors.New("the block is not a config block")
 // LoadConfigBlockFromFile loads a config block from a file.
 // If the block is not a config block, ErrNotConfigBlock will be returned.
 func LoadConfigBlockFromFile(blockPath string) (*ConfigBlockMaterial, error) {
-	configBlock, err := configtxgen.ReadBlock(blockPath)
+	configBlock, err := protoutil.ReadBlockFromFile(blockPath)
 	if err != nil {
 		return nil, err
 	}

@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -42,13 +43,14 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 var (
 	// InsecureTLSConfig defines an empty tls config.
 	InsecureTLSConfig connection.TLSConfig
 	// defaultGrpcRetryProfile defines the retry policy for a gRPC client connection.
-	defaultGrpcRetryProfile connection.RetryProfile
+	defaultGrpcRetryProfile retry.Profile
 
 	// OrgRootCA is the path to organization 0's TLS client credentials in the crypto materials directory.
 	OrgRootCA = filepath.Join(cryptogen.PeerOrganizationsDir, "peer-org-0",
@@ -194,7 +196,7 @@ func StartGrpcServersForTest(
 	t.Helper()
 	sc := make([]*connection.ServerConfig, p.NumService)
 	for i := range sc {
-		sc[i] = connection.NewLocalHostServer(p.TLSConfig)
+		sc[i] = NewLocalHostServer(p.TLSConfig)
 	}
 	return StartGrpcServersWithConfigForTest(ctx, t, register, sc...)
 }
@@ -334,9 +336,7 @@ func CheckServerStopped(t *testing.T, addr string) bool {
 
 // SetupDebugging can be added for development to tests that required additional debugging info.
 func SetupDebugging() {
-	flogging.Init(flogging.Config{
-		LogSpec: "debug",
-	})
+	flogging.ActivateSpec("debug:grpc=error")
 }
 
 // NewSecuredConnection creates the default connection with given transport credentials.
@@ -354,7 +354,7 @@ func NewSecuredConnectionWithRetry(
 	t *testing.T,
 	endpoint connection.WithAddress,
 	tlsConfig connection.TLSConfig,
-	retry connection.RetryProfile,
+	retryProfile retry.Profile,
 ) *grpc.ClientConn {
 	t.Helper()
 	clientCreds, err := tlsConfig.ClientCredentials()
@@ -362,7 +362,7 @@ func NewSecuredConnectionWithRetry(
 	conn, err := connection.NewConnection(connection.ClientParameters{
 		Address: endpoint.Address(),
 		Creds:   clientCreds,
-		Retry:   &retry,
+		Retry:   &retryProfile,
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -379,13 +379,13 @@ func NewInsecureConnection(t *testing.T, endpoint connection.WithAddress) *grpc.
 
 // NewInsecureConnectionWithRetry creates the default dial config with insecure credentials.
 func NewInsecureConnectionWithRetry(
-	t *testing.T, endpoint connection.WithAddress, retry connection.RetryProfile,
+	t *testing.T, endpoint connection.WithAddress, retryProfile retry.Profile,
 ) *grpc.ClientConn {
 	t.Helper()
 	conn, err := connection.NewConnection(connection.ClientParameters{
 		Address: endpoint.Address(),
 		Creds:   insecure.NewCredentials(),
-		Retry:   &retry,
+		Retry:   &retryProfile,
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -509,16 +509,6 @@ func flattenEndpoint(in map[string]any) *connection.Endpoint {
 	return &connection.Endpoint{Host: hostStr, Port: int(portFloat)}
 }
 
-// MustCreateEndpoint parses an endpoint from an address string.
-// It panics if it fails to parse.
-func MustCreateEndpoint(value string) *connection.Endpoint {
-	endpoint, err := connection.NewEndpoint(value)
-	if err != nil {
-		panic(errors.Wrap(err, "could not create endpoint"))
-	}
-	return endpoint
-}
-
 const (
 	// CreatorCertificate denotes Creator field in protoblocktx.Identity to contain x509 certificate.
 	CreatorCertificate = 0
@@ -603,5 +593,21 @@ func NewServiceTLSConfig(artifactsPath, serviceName, mode string) connection.TLS
 		CACertPaths: []string{
 			filepath.Join(artifactsPath, OrgRootCA),
 		},
+	}
+}
+
+// NewEndpoint creates an endpoint from give host and port (as string).
+func NewEndpoint(t *testing.T, host, port string) *connection.Endpoint {
+	t.Helper()
+	convertedPort, err := strconv.Atoi(port)
+	require.NoError(t, err, "could not convert port to integer")
+	return &connection.Endpoint{Host: host, Port: convertedPort}
+}
+
+// NewLocalHostServer returns a default server config with endpoint "localhost:0" given server credentials.
+func NewLocalHostServer(creds connection.TLSConfig) *connection.ServerConfig {
+	return &connection.ServerConfig{
+		Endpoint: connection.Endpoint{Host: "127.0.0.1"},
+		TLS:      creds,
 	}
 }
