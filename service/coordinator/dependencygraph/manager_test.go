@@ -31,7 +31,7 @@ type batchWithLatency struct {
 
 //nolint:gocognit // single method for simplicity.
 func BenchmarkDependencyGraph(b *testing.B) {
-	flogging.Init(flogging.Config{LogSpec: "fatal"})
+	flogging.ActivateSpec("fatal")
 
 	// Parameters
 	latency := 10 * time.Second
