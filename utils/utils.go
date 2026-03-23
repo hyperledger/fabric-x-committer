@@ -15,10 +15,9 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
-	"google.golang.org/grpc/peer"
-
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"google.golang.org/grpc/peer"
 )
 
 // ErrActiveStream represents the error when attempting to create a new stream while one is already active.

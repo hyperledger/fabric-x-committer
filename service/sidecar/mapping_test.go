@@ -19,7 +19,7 @@ import (
 )
 
 func BenchmarkMapBlock(b *testing.B) {
-	flogging.Init(flogging.Config{LogSpec: "fatal"})
+	flogging.ActivateSpec("fatal")
 	txs := workload.GenerateTransactions(b, nil, b.N)
 	block := workload.MapToOrdererBlock(1, txs)
 

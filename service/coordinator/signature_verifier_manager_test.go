@@ -184,7 +184,7 @@ func TestSignatureVerifierManagerWithMultipleVerifiers(t *testing.T) {
 	env := newSvMgrTestEnv(t, 2)
 
 	numTxs := 1
-	numBlocks := 10_000
+	numBlocks := uint64(10_000)
 	expectedValidatedTxs := make([]dependencygraph.TxNodeBatch, numBlocks)
 	for i := range numBlocks {
 		expectedValidatedTxs[i] = env.submitTxBatch(t, numTxs)
@@ -202,13 +202,13 @@ func TestSignatureVerifierManagerWithMultipleVerifiers(t *testing.T) {
 	}
 
 	verifierStreams := mock.RequireStreams(t, env.mockVerifier, 2)
-	totalBlocksReceived := uint32(0)
+	totalBlocksReceived := uint64(0)
 	for _, sv := range verifierStreams {
 		// Verify that each service got a reasonable proportion of the requests.
 		totalBlocksReceived += sv.NumBlocksReceived.Load()
-		assert.Greater(t, sv.NumBlocksReceived.Load(), uint32(0.1*float32(numBlocks)))
+		assert.Greater(t, sv.NumBlocksReceived.Load(), uint64(0.1*float32(numBlocks)))
 	}
-	require.Equal(t, uint32(numBlocks), totalBlocksReceived)
+	require.Equal(t, numBlocks, totalBlocksReceived)
 
 	for _, sv := range env.signVerifierManager.signVerifier {
 		sv.txMu.Lock()
@@ -292,7 +292,7 @@ func TestSignatureVerifierManagerRecovery(t *testing.T) {
 	env := newSvMgrTestEnv(t, 1)
 	verifierStreams := mock.RequireStreams(t, env.mockVerifier, 1)
 	for _, sv := range verifierStreams {
-		sv.MockFaultyNodeDropSize = 4
+		sv.MockFaultyNodeDropSize.Store(4)
 	}
 
 	env.requireConnectionMetrics(t, 0, connection.Connected, 0)
@@ -316,7 +316,7 @@ func TestSignatureVerifierManagerRecovery(t *testing.T) {
 	env.requireConnectionMetrics(t, 0, connection.Disconnected, 1)
 
 	for _, sv := range verifierStreams {
-		sv.MockFaultyNodeDropSize = 0
+		sv.MockFaultyNodeDropSize.Store(0)
 	}
 	env.grpcServers = mock.StartMockVerifierServiceFromServerConfig(
 		t, env.mockVerifier, env.grpcServers.Configs...,
@@ -361,7 +361,7 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 	// verify that all mock policy verifiers have empty verification key.
 	for i, mockSv := range verifierStreams {
 		env.requireConnectionMetrics(t, i, connection.Connected, 0)
-		require.Empty(t, mockSv.Updates)
+		require.Empty(t, *mockSv.Updates.Load())
 	}
 
 	// set verification key
@@ -424,7 +424,7 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 	require.Never(t, func() bool {
 		// Process some batches to force progress
 		env.submitTxBatch(t, 1)
-		return len(verifierStreams[0].Updates) > 2
+		return len(*verifierStreams[0].Updates.Load()) > 2
 	}, 2*time.Second, 1*time.Second)
 
 	t.Log("Restart server")
@@ -474,7 +474,7 @@ func (e *svMgrTestEnv) requireAllUpdate(
 				continue
 			}
 
-			u := sv.Updates
+			u := *sv.Updates.Load()
 			if len(u) < expectedCount {
 				isDone = false
 				continue

@@ -205,7 +205,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 		env := newVcMgrTestEnv(t, 2)
 		verifierStreams := mock.RequireStreams(t, env.sigVerTestEnv.mockVerifier, 2)
 		for _, mockSvService := range verifierStreams {
-			require.Empty(t, mockSvService.Updates)
+			require.Empty(t, *mockSvService.Updates.Load())
 		}
 
 		_, verificationKey := testsig.NewKeyPair(signature.Ecdsa)

@@ -11,7 +11,6 @@ import (
 	_ "embed"
 	"fmt"
 	"math/rand"
-	"net"
 	"path/filepath"
 	"testing"
 	"time"
@@ -200,10 +199,7 @@ func TestStartTestNode(t *testing.T) {
 	})
 
 	t.Log("Try to fetch the first block")
-	sidecarEndpoint, err := connection.NewEndpoint(
-		net.JoinHostPort(localhost, getContainerMappedHostPort(ctx, t, containerName, sidecarPort)),
-	)
-	require.NoError(t, err)
+	sidecarEndpoint := mustGetEndpoint(ctx, t, containerName, sidecarPort)
 	committerClient := test.NewInsecureClientConfig(sidecarEndpoint)
 	committedBlock := delivercommitter.Start(ctx, t, committerClient, 0)
 	b, ok := channel.NewReader(ctx, committedBlock).Read()
@@ -287,11 +283,7 @@ func startCommitter(ctx context.Context, t *testing.T, params startNodeParameter
 
 func mustGetEndpoint(ctx context.Context, t *testing.T, containerName, servicePort string) *connection.Endpoint {
 	t.Helper()
-	ep, err := connection.NewEndpoint(
-		net.JoinHostPort(localhost, getContainerMappedHostPort(ctx, t, containerName, servicePort)),
-	)
-	require.NoError(t, err)
-	return ep
+	return test.NewEndpoint(t, localhost, getContainerMappedHostPort(ctx, t, containerName, servicePort))
 }
 
 // requireQueryResults checks that the QueryService returned the expected rows.

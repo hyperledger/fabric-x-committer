@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -150,7 +151,7 @@ func StartGrpcServersForTest(
 	t.Helper()
 	sc := make([]*connection.ServerConfig, p.NumService)
 	for i := range sc {
-		sc[i] = connection.NewLocalHostServer(p.TLSConfig)
+		sc[i] = NewLocalHostServer(p.TLSConfig)
 	}
 	return StartGrpcServersWithConfigForTest(ctx, t, register, sc...)
 }
@@ -274,9 +275,7 @@ func CheckServerStopped(t *testing.T, addr string) bool {
 
 // SetupDebugging can be added for development to tests that required additional debugging info.
 func SetupDebugging() {
-	flogging.Init(flogging.Config{
-		LogSpec: "debug",
-	})
+	flogging.ActivateSpec("debug:grpc=error")
 }
 
 // NewSecuredConnection creates the default connection with given transport credentials.
@@ -449,16 +448,6 @@ func flattenEndpoint(in map[string]any) *connection.Endpoint {
 	return &connection.Endpoint{Host: hostStr, Port: int(portFloat)}
 }
 
-// MustCreateEndpoint parses an endpoint from an address string.
-// It panics if it fails to parse.
-func MustCreateEndpoint(value string) *connection.Endpoint {
-	endpoint, err := connection.NewEndpoint(value)
-	if err != nil {
-		panic(errors.Wrap(err, "could not create endpoint"))
-	}
-	return endpoint
-}
-
 const (
 	// CreatorCertificate denotes Creator field in protoblocktx.Identity to contain x509 certificate.
 	CreatorCertificate = 0
@@ -543,5 +532,21 @@ func NewServiceTLSConfig(artifactsPath, serviceName, mode string) connection.TLS
 		CACertPaths: []string{
 			filepath.Join(artifactsPath, OrgRootCA),
 		},
+	}
+}
+
+// NewEndpoint creates an endpoint from give host and port (as string).
+func NewEndpoint(t *testing.T, host, port string) *connection.Endpoint {
+	t.Helper()
+	convertedPort, err := strconv.Atoi(port)
+	require.NoError(t, err, "could not convert port to integer")
+	return &connection.Endpoint{Host: host, Port: convertedPort}
+}
+
+// NewLocalHostServer returns a default server config with endpoint "localhost:0" given server credentials.
+func NewLocalHostServer(creds connection.TLSConfig) *connection.ServerConfig {
+	return &connection.ServerConfig{
+		Endpoint: connection.Endpoint{Host: "127.0.0.1"},
+		TLS:      creds,
 	}
 }

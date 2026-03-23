@@ -531,10 +531,10 @@ func newQueryServiceTestEnv(t *testing.T, opts *queryServiceTestOpts) *queryServ
 		MaxViewTimeout:        time.Minute,
 		MaxAggregatedViews:    5,
 		MaxActiveViews:        opts.maxActiveViews,
-		Server:                connection.NewLocalHostServer(opts.serverTLS),
+		Server:                test.NewLocalHostServer(opts.serverTLS),
 		MaxRequestKeys:        opts.maxRequestKeys,
 		Database:              dbConf,
-		Monitoring:            connection.NewLocalHostServer(test.InsecureTLSConfig),
+		Monitoring:            test.NewLocalHostServer(test.InsecureTLSConfig),
 	}
 
 	qs := NewQueryService(config)

@@ -57,7 +57,7 @@ func (p *serviceAllocator) allocateService(t *testing.T, count int) []config.Ser
 
 func (p *serviceAllocator) allocateEndpoint(t *testing.T) *connection.Endpoint {
 	t.Helper()
-	s := connection.NewLocalHostServer(test.InsecureTLSConfig)
+	s := test.NewLocalHostServer(test.InsecureTLSConfig)
 	listener, err := s.Listener(t.Context())
 	require.NoError(t, err)
 	p.listeners = append(p.listeners, listener)

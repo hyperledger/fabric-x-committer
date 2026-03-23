@@ -7,20 +7,15 @@ SPDX-License-Identifier: Apache-2.0
 package test
 
 import (
-	"io"
 	"log"
-	"os"
 	"testing"
 	"time"
-
-	"google.golang.org/grpc/grpclog"
 
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 
 func TestMain(m *testing.M) {
-	grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, os.Stderr))
 	err := test.Make("build")
 	if err != nil {
 		log.Fatal(err)
