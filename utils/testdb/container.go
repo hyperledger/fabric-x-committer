@@ -302,13 +302,11 @@ func (dc *DatabaseContainer) GetConnectionOptions(ctx context.Context, t *testin
 	})
 	require.NoError(t, err)
 
-	endpoints := []*connection.Endpoint{
-		dc.GetContainerConnectionDetails(t),
-	}
+	endpoints := make([]*connection.Endpoint, 0, len(container.NetworkSettings.Ports)+1)
+	endpoints = append(endpoints, dc.GetContainerConnectionDetails(t))
 	for _, p := range container.NetworkSettings.Ports[dc.DbPort] {
-		endpoints = append(endpoints, connection.CreateEndpointHP(p.HostIP, p.HostPort))
+		endpoints = append(endpoints, test.NewEndpoint(t, p.HostIP, p.HostPort))
 	}
-
 	return NewConnection(dc.DatabaseType, endpoints...)
 }
 
@@ -326,11 +324,11 @@ func (dc *DatabaseContainer) GetContainerConnectionDetails(
 	ipAddress := container.NetworkSettings.IPAddress
 	require.NotNil(t, ipAddress)
 	if dc.Network != "" {
-		net, ok := container.NetworkSettings.Networks[dc.Network]
+		containerNet, ok := container.NetworkSettings.Networks[dc.Network]
 		require.True(t, ok)
-		ipAddress = net.IPAddress
+		ipAddress = containerNet.IPAddress
 	}
-	return connection.CreateEndpointHP(ipAddress, dc.DbPort.Port())
+	return test.NewEndpoint(t, ipAddress, dc.DbPort.Port())
 }
 
 // ExposePort adds a host port mapping for the given container port (e.g. "5433")
@@ -376,7 +374,7 @@ func (dc *DatabaseContainer) GetHostMappedEndpoint(t *testing.T) *connection.End
 	if hostIP == "0.0.0.0" {
 		hostIP = "127.0.0.1"
 	}
-	return connection.CreateEndpointHP(hostIP, bindings[0].HostPort)
+	return test.NewEndpoint(t, hostIP, bindings[0].HostPort)
 }
 
 // streamLogs streams the container output to stdout/stderr.

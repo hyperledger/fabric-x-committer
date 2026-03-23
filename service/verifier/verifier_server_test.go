@@ -552,14 +552,14 @@ func defaultCryptoParameters(t *testing.T) cryptoParameters {
 
 func defaultConfigWithTLS(tlsConfig connection.TLSConfig) *Config {
 	return &Config{
-		Server: connection.NewLocalHostServer(tlsConfig),
+		Server: test.NewLocalHostServer(tlsConfig),
 		ParallelExecutor: ExecutorConfig{
 			BatchSizeCutoff:   3,
 			BatchTimeCutoff:   1 * time.Hour,
 			Parallelism:       3,
 			ChannelBufferSize: 1,
 		},
-		Monitoring: connection.NewLocalHostServer(test.InsecureTLSConfig),
+		Monitoring: test.NewLocalHostServer(test.InsecureTLSConfig),
 	}
 }
 

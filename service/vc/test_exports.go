@@ -80,10 +80,10 @@ func NewValidatorAndCommitServiceTestEnv(t *testing.T, opts *TestEnvOpts) *Valid
 
 	for i := range vcservices {
 		config := &Config{
-			Server:         connection.NewLocalHostServer(opts.ServerCreds),
+			Server:         test.NewLocalHostServer(opts.ServerCreds),
 			Database:       opts.DBEnv.DBConf,
 			ResourceLimits: opts.ResourceLimits,
-			Monitoring:     connection.NewLocalHostServer(test.InsecureTLSConfig),
+			Monitoring:     test.NewLocalHostServer(test.InsecureTLSConfig),
 		}
 		vcs, err := NewValidatorCommitterService(initCtx, config)
 		require.NoError(t, err)

@@ -130,8 +130,8 @@ func startVerifiers(t *testing.T, serverTLS, clientTLS connection.TLSConfig) *co
 	endpoints := make([]*connection.Endpoint, 2)
 	for i := range endpoints {
 		sConf := &verifier.Config{
-			Server:     connection.NewLocalHostServer(serverTLS),
-			Monitoring: connection.NewLocalHostServer(serverTLS),
+			Server:     test.NewLocalHostServer(serverTLS),
+			Monitoring: test.NewLocalHostServer(serverTLS),
 			ParallelExecutor: verifier.ExecutorConfig{
 				BatchSizeCutoff:   50,
 				BatchTimeCutoff:   10 * time.Millisecond,
@@ -168,8 +168,8 @@ func TestLoadGenForCoordinator(t *testing.T) {
 			_, vcServer := mock.StartMockVCService(t, mockSettings)
 
 			cConf := &coordinator.Config{
-				Server:             connection.NewLocalHostServer(serverTLSConfig),
-				Monitoring:         connection.NewLocalHostServer(serverTLSConfig),
+				Server:             test.NewLocalHostServer(serverTLSConfig),
+				Monitoring:         test.NewLocalHostServer(serverTLSConfig),
 				Verifier:           *test.ServerToMultiClientConfig(clientTLSConfig, sigVerServer.Configs...),
 				ValidatorCommitter: *test.ServerToMultiClientConfig(clientTLSConfig, vcServer.Configs...),
 				DependencyGraph: &coordinator.DependencyGraphConfig{
@@ -226,7 +226,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 					clientTLSConfig,
 					&coordinatorServer.Configs[0].Endpoint,
 				),
-				Monitoring: connection.NewLocalHostServer(serverTLSConfig),
+				Monitoring: test.NewLocalHostServer(serverTLSConfig),
 				Ledger: sidecar.LedgerConfig{
 					Path: t.TempDir(),
 				},
@@ -279,14 +279,14 @@ func TestLoadGenForOrderer(t *testing.T) {
 
 			endpoints := test.NewOrdererEndpoints(0, ordererServer.Configs...)
 			sidecarConf := &sidecar.Config{
-				Server:                        connection.NewLocalHostServer(serverTLSConfig),
+				Server:                        test.NewLocalHostServer(serverTLSConfig),
 				LastCommittedBlockSetInterval: 100 * time.Millisecond,
 				WaitingTxsLimit:               5000,
 				Committer: test.NewTLSClientConfig(
 					clientTLSConfig,
 					&coordinatorServer.Configs[0].Endpoint,
 				),
-				Monitoring: connection.NewLocalHostServer(serverTLSConfig),
+				Monitoring: test.NewLocalHostServer(serverTLSConfig),
 				Ledger: sidecar.LedgerConfig{
 					Path: t.TempDir(),
 				},
@@ -379,7 +379,7 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 
 func preAllocatePorts(t *testing.T, tlsConfig connection.TLSConfig) *connection.ServerConfig {
 	t.Helper()
-	server := connection.NewLocalHostServer(tlsConfig)
+	server := test.NewLocalHostServer(tlsConfig)
 	listener, err := server.PreAllocateListener()
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -463,7 +463,7 @@ func TestLoadGenRateLimiterServer(t *testing.T) {
 	clientConf.LoadProfile.Block.PreferredRate = 10 * time.Millisecond
 	clientConf.LoadProfile.Block.MaxSize = 100
 	clientConf.LoadProfile.Block.MinSize = 1
-	clientConf.HTTPServer = connection.NewLocalHostServer(test.InsecureTLSConfig)
+	clientConf.HTTPServer = test.NewLocalHostServer(test.InsecureTLSConfig)
 	client, err := NewLoadGenClient(clientConf)
 	require.NoError(t, err)
 

@@ -39,7 +39,7 @@ func TestGRPCRetry(t *testing.T) {
 	})
 
 	t.Log("Starting service")
-	serverConfig := connection.NewLocalHostServer(test.InsecureTLSConfig)
+	serverConfig := test.NewLocalHostServer(test.InsecureTLSConfig)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -108,7 +108,7 @@ func TestGRPCRetryMultiEndpoints(t *testing.T) {
 	})
 
 	t.Log("Starting service")
-	serverConfig := connection.NewLocalHostServer(test.InsecureTLSConfig)
+	serverConfig := test.NewLocalHostServer(test.InsecureTLSConfig)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -123,7 +123,7 @@ func TestGRPCRetryMultiEndpoints(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Log("Creating fake service address")
-	fakeServerConfig := connection.NewLocalHostServer(test.InsecureTLSConfig)
+	fakeServerConfig := test.NewLocalHostServer(test.InsecureTLSConfig)
 	l, err := fakeServerConfig.Listener(t.Context())
 	require.NoError(t, err)
 	t.Cleanup(func() {

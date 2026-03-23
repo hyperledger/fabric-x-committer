@@ -49,7 +49,7 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 	_, vc := mock.StartMockVCService(t, serverParams)
 	_, orderer := mock.StartMockOrderingServices(t, &mock.OrdererConfig{TestServerParameters: serverParams})
 	_, coordinator := mock.StartMockCoordinatorService(t, serverParams)
-	server := connection.NewLocalHostServer(test.InsecureTLSConfig)
+	server := test.NewLocalHostServer(test.InsecureTLSConfig)
 	listen, err := server.Listener(t.Context())
 	require.NoError(t, err)
 	connection.CloseConnectionsLog(listen)
@@ -176,7 +176,7 @@ func defaultTestDBConfig() DatabaseConfig {
 	return DatabaseConfig{
 		Name:        "dummy_test_db",
 		Username:    username,
-		Endpoints:   []*connection.Endpoint{connection.CreateEndpointHP("localhost", "5433")},
+		Endpoints:   []*connection.Endpoint{{Host: "localhost", Port: 5433}},
 		LoadBalance: false,
 	}
 }

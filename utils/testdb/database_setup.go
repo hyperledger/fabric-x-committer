@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 const (
@@ -173,7 +173,7 @@ func startAndConnect(ctx context.Context, t *testing.T) *Connection {
 		require.NotNil(t, sharedContainer)
 		connOptions = sharedContainer.GetConnectionOptions(ctx, t)
 	case deploymentLocal:
-		connOptions = NewConnection(getDBTypeFromEnv(), connection.CreateEndpointHP("localhost", defaultLocalDBPort))
+		connOptions = NewConnection(getDBTypeFromEnv(), test.NewEndpoint(t, "localhost", defaultLocalDBPort))
 	default:
 		t.Logf("unknown db deployment type: %s", dbDeployment)
 		return nil

@@ -123,7 +123,7 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 			WaitingTxsLimit:           10,
 		},
 		ChannelBufferSizePerGoroutine: 2000,
-		Monitoring:                    connection.NewLocalHostServer(test.InsecureTLSConfig),
+		Monitoring:                    test.NewLocalHostServer(test.InsecureTLSConfig),
 	}
 
 	return &coordinatorTestEnv{
@@ -157,7 +157,7 @@ func (e *coordinatorTestEnv) startService(
 ) {
 	t.Helper()
 	cs := e.coordinator
-	e.coordinator.config.Server = connection.NewLocalHostServer(e.serverTLS)
+	e.coordinator.config.Server = test.NewLocalHostServer(e.serverTLS)
 
 	test.RunServiceAndGrpcForTest(ctx, t, cs, e.coordinator.config.Server)
 }
@@ -890,7 +890,14 @@ func (e *coordinatorTestEnv) receiveStatus(t *testing.T, count int) []*committer
 
 func TestConnectionReadyWithTimeout(t *testing.T) {
 	t.Parallel()
-	c := NewCoordinatorService(fakeConfigForTest(t))
+	randomEndpoint := &connection.Endpoint{Host: "random", Port: 1234}
+	c := NewCoordinatorService(&Config{
+		Server:             test.NewLocalHostServer(test.InsecureTLSConfig),
+		Verifier:           *test.NewTLSMultiClientConfig(test.InsecureTLSConfig, randomEndpoint),
+		ValidatorCommitter: *test.NewTLSMultiClientConfig(test.InsecureTLSConfig, randomEndpoint),
+		DependencyGraph:    &DependencyGraphConfig{},
+		Monitoring:         test.NewLocalHostServer(test.InsecureTLSConfig),
+	})
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	t.Cleanup(cancel)
 	require.False(t, c.WaitForReady(ctx))
@@ -989,19 +996,6 @@ func TestWaitingTxsCount(t *testing.T) {
 		}
 		return wTxs.GetCount() == 0
 	}, 2*time.Second, 100*time.Millisecond)
-}
-
-func fakeConfigForTest(t *testing.T) *Config {
-	t.Helper()
-	randomEndpoint, err := connection.NewEndpoint("random:1234")
-	require.NoError(t, err)
-	return &Config{
-		Server:             connection.NewLocalHostServer(test.InsecureTLSConfig),
-		Verifier:           *test.NewTLSMultiClientConfig(test.InsecureTLSConfig, randomEndpoint),
-		ValidatorCommitter: *test.NewTLSMultiClientConfig(test.InsecureTLSConfig, randomEndpoint),
-		DependencyGraph:    &DependencyGraphConfig{},
-		Monitoring:         connection.NewLocalHostServer(test.InsecureTLSConfig),
-	}
 }
 
 func readTxStatus(t *testing.T, stream servicepb.Coordinator_BlockProcessingClient, count int) []*committerpb.TxStatus {

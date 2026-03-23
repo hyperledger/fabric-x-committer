@@ -40,14 +40,6 @@ var listenRetry = RetryProfile{
 	MaxElapsedTime:  2 * time.Minute,
 }
 
-// NewLocalHostServer returns a default server config with endpoint "localhost:0" given server credentials.
-func NewLocalHostServer(creds TLSConfig) *ServerConfig {
-	return &ServerConfig{
-		Endpoint: *NewLocalHost(),
-		TLS:      creds,
-	}
-}
-
 // GrpcServer instantiate a [grpc.Server].
 func (c *ServerConfig) GrpcServer() (*grpc.Server, error) {
 	opts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxMsgSize), grpc.MaxSendMsgSize(maxMsgSize)}
