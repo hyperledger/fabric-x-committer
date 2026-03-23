@@ -122,11 +122,11 @@ func (v *transactionValidator) validate(ctx context.Context) error {
 		}
 
 		promutil.Observe(v.metrics.validatorTxBatchLatencySeconds, time.Since(start))
-		outgoingValidatedTransactions.Write(vTxs)
-
-		logger.Debugf("Validator sent batch validated TXs to the committer (%d non blide writes and %d blind writes)",
+		logger.Debugf("Sending batch validated TXs (%d non blind writes and %d blind writes)",
 			len(vTxs.validTxNonBlindWrites), len(vTxs.validTxBlindWrites))
 		vTxs.Debug()
+		// After this point, vTxs is owned by the committer - DO NOT ACCESS.
+		outgoingValidatedTransactions.Write(vTxs)
 	}
 }
 
