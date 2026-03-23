@@ -200,9 +200,9 @@ func submit(
 	require.True(t, ok)
 	require.NotNil(t, b)
 	require.Len(t, b.Data.Data, 1)
-	envLite, err := serialization.UnwrapEnvelope(b.Data.Data[0])
+	_, hdr, err := serialization.UnwrapEnvelope(b.Data.Data[0])
 	require.NoError(t, err)
-	require.Equal(t, tx.Id, envLite.TxID)
+	require.Equal(t, tx.Id, hdr.TxId)
 }
 
 func makeConfig(t *testing.T, serverTLS, clientTLS connection.TLSConfig) (

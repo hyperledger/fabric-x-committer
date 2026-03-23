@@ -498,15 +498,15 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 	t.Logf("Got block #%d", blk.Header.Number)
 
 	for txNum, txEnv := range blk.Data.Data {
-		envLite, err := serialization.UnwrapEnvelope(txEnv)
+		txBytes, hdr, err := serialization.UnwrapEnvelope(txEnv)
 		require.NoError(t, err)
-		require.NotNil(t, envLite)
-		if envLite.HeaderType == int32(common.HeaderType_CONFIG) {
+		require.NotNil(t, hdr)
+		if hdr.Type == int32(common.HeaderType_CONFIG) {
 			continue
 		}
-		_, err = serialization.UnmarshalTx(envLite.Data)
+		_, err = serialization.UnmarshalTx(txBytes)
 		require.NoError(t, err)
-		require.Equal(t, expected.TxIDs[txNum], envLite.TxID)
+		require.Equal(t, expected.TxIDs[txNum], hdr.TxId)
 	}
 
 	expectedStatuses := make([]string, len(expected.Statuses))

@@ -48,6 +48,7 @@ func BenchmarkMapBlock(b *testing.B) {
 			blocks := make([]*common.Block, numBlocks)
 			for i := range blocks {
 				txSlice := allTxs[i*blockSize : (i+1)*blockSize]
+				//nolint:gosec // i is a non-negative slice index
 				blocks[i] = workload.MapToOrdererBlock(uint64(i), txSlice)
 			}
 
