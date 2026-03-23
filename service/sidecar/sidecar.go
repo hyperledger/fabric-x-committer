@@ -433,7 +433,7 @@ func (s *Service) updateCACertificates(dynamicCAs [][]byte) {
 
 	// Clone current config and update ClientCAs
 	currentConfig := s.tlsConfig.Load()
-	if currentConfig == nil {
+	if currentConfig == nil || *currentConfig == nil {
 		logger.Warn("No current TLS config to update")
 		return
 	}

@@ -235,7 +235,7 @@ func (q *Service) refreshDynamicRootCAs(ctx context.Context) {
 
 	// Clone current config and update ClientCAs
 	currentConfig := q.tlsConfig.Load()
-	if currentConfig == nil {
+	if currentConfig == nil || *currentConfig == nil {
 		logger.Warn("No current TLS config to update")
 		return
 	}
