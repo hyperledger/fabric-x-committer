@@ -17,14 +17,11 @@ SPDX-License-Identifier: Apache-2.0
     - [MSP Principals](#msp-principals)
     - [Policy Combinators](#policy-combinators)
     - [Examples](#examples)
-    - [Verification Flow](#verification-flow)
 5. [Cached Identities](#5-cached-identities)
-    - [Problem](#problem)
-    - [Protocol Flow](#protocol-flow)
     - [Wire Format](#wire-format)
+    - [Provisioning](#provisioning)
 6. [Policy Lifecycle](#6-policy-lifecycle)
     - [Creating Namespace Policies](#creating-namespace-policies)
-    - [Policy Propagation](#policy-propagation)
     - [Namespace ID Constraints](#namespace-id-constraints)
 
 ## 1. Overview
@@ -45,15 +42,15 @@ Fabric-X supports two types of namespace policies:
 
 ### Fabric vs Fabric-X Comparison
 
-| Concept | Hyperledger Fabric | Fabric-X |
-|---------|-------------------|----------|
-| State isolation unit | Chaincode | Namespace |
-| Policy binding | Per chaincode, per collection, or per key | Per namespace |
-| Simple policy | Not available — all policies use `SignaturePolicyEnvelope` | **Threshold Rule**: raw public key + scheme |
-| Complex policy | `SignaturePolicyEnvelope` with AND/OR/OutOf | **MSP Rule**: same `SignaturePolicyEnvelope` structure |
-| Channel-level policy | ImplicitMeta (e.g., `MAJORITY Endorsement`) | Same — used for lifecycle operations only |
-| Identity in endorsement | Full X.509 certificate | Full certificate **or** cached identity ID |
-| Policy location | Chaincode definition or key-level metadata | `_meta` namespace transactions |
+| Concept                | Hyperledger Fabric                                         | Fabric-X                                              |
+|------------------------|------------------------------------------------------------|-------------------------------------------------------|
+| State isolation unit   | Chaincode                                                  | Namespace                                             |
+| Policy binding         | Per chaincode, per collection, or per key                  | Per namespace                                         |
+| Simple policy          | Not available — all policies use `SignaturePolicyEnvelope`  | **Threshold Rule**: raw public key + scheme           |
+| Complex policy         | `SignaturePolicyEnvelope` with AND/OR/OutOf                | **MSP Rule**: same `SignaturePolicyEnvelope` structure |
+| Channel-level policy   | ImplicitMeta (e.g., `MAJORITY Endorsement`)                | Same — used for lifecycle operations only             |
+| Identity in endorsement| Full X.509 certificate                                     | Full certificate **or** cached identity ID            |
+| Policy location        | Chaincode definition or key-level metadata                 | `_meta` namespace transactions                        |
 
 **Key difference:** Fabric requires the full MSP infrastructure even for single-signer namespaces.
 Fabric-X adds the **Threshold Rule** as a lightweight alternative — a raw public key is sufficient,
@@ -61,7 +58,6 @@ bypassing certificate parsing, MSP deserialization, and policy evaluation entire
 
 ## 2. Endorsement Structure
 
-Before diving into policy types, it's important to understand how endorsements are structured on the wire.
 Every transaction carries one `Endorsements` message per namespace it touches, and each contains a list
 of individual `EndorsementWithIdentity` entries:
 
@@ -84,22 +80,13 @@ message Identity {
 }
 ```
 
-The namespace data is first ASN.1 DER-encoded via `TxNamespace.ASN1Marshal(txID)` to produce a
-deterministic byte sequence. Both policy types then verify an ECDSA/BLS signature over
-`SHA256(ASN1_bytes)` — the difference is **where** the hashing happens:
-
-- **Threshold rules**: The committer computes `SHA256` explicitly and calls `verifyDigest(digest, sig)`.
-- **MSP rules**: The committer passes the raw ASN.1 bytes to the MSP's `identity.Verify(msg, sig)`,
-  which internally computes `SHA256(msg)` before ECDSA verification (for Ed25519, the full message
-  is used without hashing, matching Ed25519's specification).
-
 The two policy types use `EndorsementWithIdentity` differently:
 
-| Field | Threshold Rule | MSP Rule |
-|-------|---------------|----------|
-| `endorsement` | ECDSA/BLS/EdDSA signature (same signing input in both cases) | Same — signature over namespace data |
-| `identity` | **Ignored** — the public key is in the policy itself, so no identity is needed | **Required** — must carry an `Identity` with either a full certificate or cached ID, used to resolve the signer against MSP principals |
-| Entries per namespace | Exactly 1 | One per endorsing organization that signed |
+| Field                  | Threshold Rule                                                       | MSP Rule                                                                     |
+|------------------------|----------------------------------------------------------------------|------------------------------------------------------------------------------|
+| `endorsement`          | ECDSA/BLS/EdDSA signature over namespace data                       | Same — signature over namespace data                                         |
+| `identity`             | **Ignored** — the public key is in the policy itself                 | **Required** — must carry a full certificate or cached ID                    |
+| Entries per namespace  | Exactly 1                                                            | One per endorsing organization that signed                                   |
 
 **Why this design:** Threshold rules identify the signer through the policy (a single known public key),
 so the endorsement only needs the signature bytes. MSP rules must match each signature to an MSP
@@ -135,11 +122,11 @@ message ThresholdRule {
 
 ### Supported Signature Schemes
 
-| Scheme | Key Format | Signature Format | Notes |
-|--------|-----------|-----------------|-------|
-| **ECDSA** | PEM-encoded EC public key | ASN.1 DER-encoded (r, s) | Standard choice. Compatible with existing PKI and X.509 certificates. |
-| **BLS** | bn254 curve point | bn254 pairing signature | Useful for aggregate signatures. Uses `consensys/gnark-crypto`. |
-| **EdDSA** | Ed25519 public key (32 bytes) | Ed25519 signature (64 bytes) | Fast verification, deterministic signatures, fixed-size keys. |
+| Scheme    | Key Format                     | Signature Format               | Notes                                                                       |
+|-----------|--------------------------------|--------------------------------|-----------------------------------------------------------------------------|
+| **ECDSA** | PEM-encoded EC public key      | ASN.1 DER-encoded (r, s)      | Standard choice. Compatible with existing PKI and X.509 certificates.       |
+| **BLS**   | bn254 curve point              | bn254 pairing signature        | Useful for aggregate signatures. Uses `consensys/gnark-crypto`.             |
+| **EdDSA** | Ed25519 public key (32 bytes)  | Ed25519 signature (64 bytes)   | Fast verification, deterministic signatures, fixed-size keys.               |
 
 ECDSA is the recommended default. BLS and EdDSA are available for specialized use cases
 (aggregate signatures and high-throughput verification, respectively).
@@ -164,11 +151,6 @@ policy := &applicationpb.NamespacePolicy{
 }
 ```
 
-**Verification behavior:** The verifier ASN.1-encodes the namespace data, computes `SHA256` of the result,
-and verifies the signature against the configured public key. As described in
-[§2](#2-endorsement-structure), the `Identity` field is ignored — only the `Endorsement`
-(signature bytes) is used, since the public key is already embedded in the policy.
-
 **Limitation:** Threshold rules support exactly one signer. If your namespace requires endorsement from
 multiple parties (e.g., "both Org1 and Org2 must sign"), use a fine-grained MSP rule instead.
 
@@ -188,22 +170,22 @@ governance policies like "2 out of 3 organizations must endorse" or "Org1's admi
 
 An MSP principal defines an identity requirement — a constraint that an endorser's identity must satisfy.
 
-| Principal Type | Description | Example |
-|---------------|-------------|---------|
-| **ROLE** | Identity must belong to a specific MSP with a specific role | `Org1MSP.MEMBER`, `Org2MSP.ADMIN` |
-| **ORGANIZATION_UNIT** | Identity must have a specific organizational unit | `Org1MSP.client` (via NodeOUs) |
-| **IDENTITY** | Identity must match a specific certificate exactly | Exact cert match |
-| **COMBINED** | Identity must satisfy ALL listed principals simultaneously | `Org1MSP.ADMIN AND Org1MSP.client` |
+| Principal Type           | Description                                                | Example                            |
+|--------------------------|------------------------------------------------------------|------------------------------------|
+| **ROLE**                 | Identity must belong to a specific MSP with a specific role| `Org1MSP.MEMBER`, `Org2MSP.ADMIN`  |
+| **ORGANIZATION_UNIT**    | Identity must have a specific organizational unit          | `Org1MSP.client` (via NodeOUs)     |
+| **IDENTITY**             | Identity must match a specific certificate exactly         | Exact cert match                   |
+| **COMBINED**             | Identity must satisfy ALL listed principals simultaneously | `Org1MSP.ADMIN AND Org1MSP.client` |
 
 **Supported roles:**
 
-| Role | Description |
-|------|-------------|
-| `MEMBER` | Any valid identity in the MSP |
-| `ADMIN` | Administrative identity |
-| `CLIENT` | Client identity (requires NodeOUs enabled) |
-| `PEER` | Peer identity (requires NodeOUs enabled) |
-| `ORDERER` | Orderer identity (requires NodeOUs enabled) |
+| Role      | Description                                  |
+|-----------|----------------------------------------------|
+| `MEMBER`  | Any valid identity in the MSP                |
+| `ADMIN`   | Administrative identity                      |
+| `CLIENT`  | Client identity (requires NodeOUs enabled)   |
+| `PEER`    | Peer identity (requires NodeOUs enabled)     |
+| `ORDERER` | Orderer identity (requires NodeOUs enabled)  |
 
 ### Policy Combinators
 
@@ -215,11 +197,11 @@ The policy tree is built from two node types:
 
 AND and OR are syntactic sugar over NOutOf:
 
-| Expression | Equivalent NOutOf | Meaning |
-|-----------|-------------------|---------|
-| `AND(A, B)` | `NOutOf(2, [A, B])` | Both A and B must be satisfied |
-| `OR(A, B)` | `NOutOf(1, [A, B])` | At least one of A or B must be satisfied |
-| `OutOf(2, A, B, C)` | `NOutOf(2, [A, B, C])` | At least 2 of the 3 must be satisfied |
+| Expression          | Equivalent NOutOf         | Meaning                                    |
+|---------------------|---------------------------|--------------------------------------------|
+| `AND(A, B)`         | `NOutOf(2, [A, B])`      | Both A and B must be satisfied             |
+| `OR(A, B)`          | `NOutOf(1, [A, B])`      | At least one of A or B must be satisfied   |
+| `OutOf(2, A, B, C)` | `NOutOf(2, [A, B, C])`   | At least 2 of the 3 must be satisfied      |
 
 The `SignaturePolicyEnvelope` protobuf separates the identity definitions (flat array) from the
 policy logic (recursive tree). Leaf nodes reference identities by index:
@@ -298,20 +280,6 @@ rule: NOutOf(2, [
 ])
 ```
 
-### Verification Flow
-
-When a transaction arrives at the Verification Service with an MSP rule namespace:
-
-1. The verifier extracts the endorsements for the namespace from `tx.Endorsements[nsIndex]`.
-2. Each endorsement's `Identity` field is deserialized through the MSP's `IdentityDeserializer`.
-3. The deserialized identities are paired with their signatures to form `SignedData` entries.
-4. The `SignaturePolicyEnvelope` rule tree is evaluated against the `SignedData` set.
-5. If the policy is satisfied, the namespace verification succeeds.
-
-**Important:** Signatures are consumed in order during evaluation. A single endorser cannot satisfy
-two distinct principal requirements, even if their identity matches both. Each `SignedBy` leaf
-consumes one signature from the set.
-
 ### Channel Policies for Lifecycle Operations
 
 Namespace creation and updates (transactions in the `_meta` namespace) are not governed by per-namespace
@@ -322,66 +290,21 @@ must endorse lifecycle changes.
 
 ## 5. Cached Identities
 
-### Problem
+In standard Fabric, every endorsement carries the full X.509 certificate of the signer (~1KB in PEM format).
+Cached identities allow endorsers to send a short identity ID instead, reducing bandwidth from ~1KB to ~80 bytes
+per endorsement.
 
-In standard Fabric, every endorsement carries the full X.509 certificate of the signer.
-A typical X.509 certificate is approximately 1KB in PEM format. For a transaction endorsed by 3
-organizations, that's ~3KB of identity data per transaction — just for certificates.
+### Wire Format
 
-At Fabric-X's target throughput of 200,000+ TPS, this translates to ~600 MB/s of bandwidth consumed
-solely by identity data. The Verification Service must also parse and deserialize each certificate
-on every transaction, adding CPU overhead.
+The `Identity` message in each `EndorsementWithIdentity` uses one of two formats:
 
-### How It Works
+| Field                    | Certificate Format                       | Cached ID Format                           |
+|--------------------------|------------------------------------------|--------------------------------------------|
+| `msp_id`                 | `"Org1MSP"`                              | `"Org1MSP"`                                |
+| `creator`                | `certificate`: full X.509 cert (~1KB)    | `certificate_id`: hex SHA256 string (64 chars) |
+| Bandwidth per endorsement| ~1,000 bytes                             | ~80 bytes                                  |
 
-Cached identities (also called **known identities**) are provisioned through the channel config block,
-not through a runtime registration protocol. Each organization's MSP folder includes a `knowncerts/`
-directory containing the certificates of its known endorsers. These certificates are included in the
-`FabricMSPConfig.known_certs` field of the channel configuration:
-
-```protobuf
-message FabricMSPConfig {
-    // ... other fields ...
-    repeated bytes known_certs = 12;  // Pre-registered endorser certificates
-}
-```
-
-When the MSP initializes (or updates via a config block), it calls `setupKnownCerts()` which:
-
-1. Parses each certificate from `known_certs`.
-2. Computes `hex(SHA256(cert.Raw))` where `cert.Raw` is the DER-encoded certificate bytes (not PEM).
-3. Stores the deserialized identity in a map keyed by `IdentityIdentifier{Mspid, Id}`.
-
-```
-┌──────────────────┐        ┌──────────────────┐        ┌──────────────────────┐
-│ Config Block     │        │   MSP Setup      │        │  Transaction Flow   │
-│ (channel cfg)    │        │                  │        │                     │
-└────────┬─────────┘        └────────┬─────────┘        └───────────┬──────────┘
-         │                           │                              │
-         │  FabricMSPConfig with     │                              │
-         │  known_certs: [cert1,     │                              │
-         │                cert2]     │                              │
-         │ ────────────────────────► │                              │
-         │                           │                              │
-         │                           │  setupKnownCerts():          │
-         │                           │  For each cert:              │
-         │                           │    id = hex(SHA256(cert.Raw))│
-         │                           │    map[{mspId, id}] = cert   │
-         │                           │                              │
-         │                           │  Endorser uses cert ID       │
-         │                           │  in endorsements:            │
-         │                           │ ◄────────────────────────────│
-         │                           │                              │
-         │                           │  GetKnownDeserializedIdentity│
-         │                           │  resolves id → full identity │
-         │                           │                              │
-         │                           │  Verify signature + policy   │
-         │                           │ ────────────────────────────►│
-         └───────────────────────────┴──────────────────────────────┘
-```
-
-**Endorsement with Cached ID**: When endorsing transactions, the signer includes the identity ID
-instead of the full certificate:
+**Endorsement with cached ID:**
 
 ```go
 // Without caching — full certificate (~1KB)
@@ -391,33 +314,31 @@ eid.Identity = msppb.NewIdentity("Org1MSP", certPEMBytes)
 eid.Identity = msppb.NewIdentityWithIDOfCert("Org1MSP", certIDHex)
 ```
 
-**Resolution at verification time**: When the Verification Service encounters a `certificate_id`
-in an endorsement's `Identity`, the `ToSerializedIdentity()` utility resolves it by calling
-`GetKnownDeserializedIdentity()` on the MSP. If the ID is not found in the known identities map,
-verification fails. If found, the full deserialized identity is used for signature verification
-and policy evaluation.
+The identity ID is computed as `hex(SHA256(cert.Raw))` where `cert.Raw` is the DER-encoded certificate
+bytes (not PEM).
 
-**Config updates**: When a new config block arrives (e.g., adding a new endorser certificate to
-`known_certs`), the MSP is re-initialized and `UpdateIdentities()` is called on MSP-rule verifiers
-to refresh the identity deserializer with the latest known identity mappings.
+### Provisioning
 
-### Wire Format
+Cached identities are provisioned through the channel configuration. Each organization's MSP folder
+includes a `knowncerts/` directory containing the certificates of its known endorsers. These
+certificates are included in the `FabricMSPConfig.known_certs` field:
 
-The `Identity` message in each `EndorsementWithIdentity` uses one of two formats:
+```protobuf
+message FabricMSPConfig {
+    // ... other fields ...
+    repeated bytes known_certs = 12;  // Pre-registered endorser certificates
+}
+```
 
-| Field | Certificate Format | Cached ID Format |
-|-------|-------------------|------------------|
-| `msp_id` | `"Org1MSP"` | `"Org1MSP"` |
-| `creator` | `certificate`: full X.509 cert in PEM (~1KB) | `certificate_id`: hex SHA256 string (64 chars) |
-| Bandwidth per endorsement | ~1,000 bytes | ~80 bytes |
-| CPU at verifier | Parse PEM + deserialize cert | Map lookup by ID |
+Add endorser certificates to the `knowncerts/` directory in the organization's MSP folder before
+generating the channel configuration. The endorser computes its own certificate ID using the same
+`hex(SHA256(cert.Raw))` formula to include in endorsements.
 
-**When to use:** Cached identities are recommended for all production deployments where the same
+When a new config block arrives (e.g., adding a new endorser certificate to `known_certs`), the MSP
+is re-initialized with the updated identity mappings.
+
+**Recommendation:** Cached identities are recommended for all production deployments where the same
 signers endorse transactions repeatedly. The bandwidth savings compound with TPS and endorser count.
-
-**Provisioning:** Add endorser certificates to the `knowncerts/` directory in the organization's
-MSP folder before generating the channel configuration. The endorser computes its own certificate ID
-using the same `hex(SHA256(cert.Raw))` formula to include in endorsements.
 
 ## 6. Policy Lifecycle
 
@@ -429,80 +350,19 @@ A meta namespace transaction contains key-value pairs where:
 - **Key**: The namespace ID (e.g., `"my_namespace"`)
 - **Value**: Serialized `NamespacePolicy` protobuf (either a ThresholdRule or MspRule)
 
-When the Validator-Committer commits a meta namespace transaction, the Coordinator extracts the
-policy updates and distributes them to the Verification Service.
-
-### Policy Propagation
-
-Policy updates flow through the system as follows:
-
-```
-┌────────────┐  ┌─────────────┐  ┌───────────────┐  ┌───────────────────────┐
-│  Sidecar   │  │ Coordinator │  │  Validator-   │  │ Verification Service  │
-│            │  │             │  │ Committer(VC) │  │                       │
-└──────┬─────┘  └──────┬──────┘  └────────┬──────┘  └─────────────┬─────────┘
-       │               │                  │                       │
-       │ TXs from      │                  │                       │
-       │ _meta block   │                  │                       │
-       │ ────────────► │                  │                       │
-       │               │                  │                       │
-       │               │ Forward _meta TX │                       │
-       │               │ for validation   │                       │
-       │               │ and commit       │                       │
-       │               │ ───────────────► │                       │
-       │               │                  │                       │
-       │               │                  │ Validate + commit     │
-       │               │                  │ _meta TX to state DB  │
-       │               │                  │                       │
-       │               │ COMMITTED status │                       │
-       │               │ ◄─────────────── │                       │
-       │               │                  │                       │
-       │               │ Extract policy   │                       │
-       │               │ from _meta TX    │                       │
-       │               │ (updateFromTx)   │                       │
-       │               │                  │                       │
-       │               │ VerifierUpdates  │                       │
-       │               │ (piggybacked on  │                       │
-       │               │  next verifier   │                       │
-       │               │  batch)          │                       │
-       │               │ ─────────────────┼─────────────────────► │
-       │               │                  │                       │
-       │               │                  │                       │ Atomic pointer swap:
-       │               │                  │                       │ merge new policies
-       │               │                  │                       │ with existing map
-       │               │                  │                       │
-       └───────────────┴──────────────────┴───────────────────────┘
-```
-
-1. The Sidecar receives a block containing a meta namespace transaction from the Ordering Service,
-   validates its formation (block and transaction format checks), and forwards the transactions to the Coordinator.
-   See [sidecar.md](sidecar.md) for the full block ingestion flow.
-2. The Coordinator forwards the `_meta` transaction to the Validator-Committer for validation and commit.
-3. The Validator-Committer validates and commits the `_meta` transaction to the state database,
-   then returns `COMMITTED` status to the Coordinator.
-4. **Only upon receiving `COMMITTED` status**, the Coordinator extracts policy items from the
-   committed transaction's namespaces via `GetUpdatesFromNamespace()` and updates the local
-   policy manager (`policyManager.updateFromTx()`).
-5. The updated policies are wrapped in a `VerifierUpdates` message and piggybacked onto the
-   next verification batch sent to the Verification Service.
-6. The Verification Service parses the new policies, merges them with the existing policy map,
-   and atomically swaps the pointer — no locks, no blocking of concurrent verifications.
-
-**Ordering guarantee:** The Coordinator updates the policy manager **before** releasing dependent
-transactions from the dependency graph. This ensures that data transactions targeting a newly
-created namespace are not freed for signature verification until the correct policy is available
-in the policy manager, which will be sent to the Verification Service with the next batch.
+Meta namespace transactions are governed by the channel-level LifecycleEndorsement policy (see
+[§4, Channel Policies](#channel-policies-for-lifecycle-operations)).
 
 ### Namespace ID Constraints
 
 Namespace IDs must satisfy the following constraints:
 
-| Constraint | Rule |
-|-----------|------|
-| **Length** | 1 to 60 characters |
+| Constraint             | Rule                                                          |
+|------------------------|---------------------------------------------------------------|
+| **Length**             | 1 to 60 characters                                           |
 | **Allowed characters** | Lowercase letters (`a-z`), digits (`0-9`), underscores (`_`) |
-| **Pattern** | `^[a-z0-9_]+$` |
-| **Reserved names** | `_meta` and `_config` cannot be used as namespace IDs |
+| **Pattern**            | `^[a-z0-9_]+$`                                               |
+| **Reserved names**     | `_meta` and `_config` cannot be used as namespace IDs         |
 
 The 60-character limit derives from PostgreSQL's identifier length limit (`NAMEDATALEN - 1 = 63`),
 minus the 3-character `ns_` prefix used for namespace tables in the state database.

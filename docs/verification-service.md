@@ -20,7 +20,13 @@ SPDX-License-Identifier: Apache-2.0
 5. [Configuration](#5-configuration)
 6. [Monitoring and Metrics](#6-monitoring-and-metrics)
 7. [Error Handling and Recovery](#7-error-handling-and-recovery)
-8. [Implementation Details](#8-implementation-details)
+8. [Namespace Policy Verification](#8-namespace-policy-verification)
+    - [Signing Input](#signing-input)
+    - [Threshold Rule Verification](#threshold-rule-verification)
+    - [MSP Rule Verification](#msp-rule-verification)
+    - [Cached Identity Resolution](#cached-identity-resolution)
+    - [Policy Propagation](#policy-propagation)
+9. [Implementation Details](#9-implementation-details)
     - [Core Components](#core-components)
     - [Transaction Flow](#transaction-flow)
     - [Policy Management](#policy-management)
@@ -79,7 +85,8 @@ Policies can be updated through two mechanisms:
 The service uses a lock-free design with an atomic pointer to update the policy map without blocking ongoing verifications.
 
 For a detailed guide on namespace policy types (threshold rules and MSP rules), cached identities,
-and policy lifecycle, see [Namespace Policy](namespace-policy.md).
+and policy lifecycle, see [Namespace Policy](namespace-policy.md). For internal verification mechanics
+(signing input, identity resolution, policy propagation), see [§8](#8-namespace-policy-verification).
 
 ### Verification Process
 
@@ -149,7 +156,150 @@ The Verification Service implements robust error handling to ensure reliable ope
 3. **Context Cancellation**: The service properly handles context cancellation to ensure clean shutdown.
 4. **Graceful Shutdown**: When the service is shutting down, it allows in-flight operations to complete or time out.
 
-## 8. Implementation Details
+## 8. Namespace Policy Verification
+
+For usage documentation on namespace policy types (threshold rules, MSP rules), protobuf structures,
+and examples, see [namespace-policy.md](namespace-policy.md). This section covers the internal
+verification mechanics.
+
+### Signing Input
+
+The namespace data is first ASN.1 DER-encoded via `TxNamespace.ASN1Marshal(txID)` to produce a
+deterministic byte sequence. Both policy types verify signatures over this data, but differ in
+how hashing is applied:
+
+- **Threshold rules**: The committer computes `SHA256` explicitly and calls `verifyDigest(digest, sig)`.
+- **MSP rules**: The committer passes the raw ASN.1 bytes to the MSP's `identity.Verify(msg, sig)`,
+  which internally computes `SHA256(msg)` before ECDSA verification (for Ed25519, the full message
+  is used without hashing, matching Ed25519's specification).
+
+### Threshold Rule Verification
+
+The verifier ASN.1-encodes the namespace data, computes `SHA256` of the result,
+and verifies the signature against the configured public key. The `Identity` field in the
+endorsement is ignored — only the `Endorsement` (signature bytes) is used, since the public key
+is already embedded in the policy.
+
+### MSP Rule Verification
+
+When a transaction arrives at the Verification Service with an MSP rule namespace:
+
+1. The verifier extracts the endorsements for the namespace from `tx.Endorsements[nsIndex]`.
+2. Each endorsement's `Identity` field is deserialized through the MSP's `IdentityDeserializer`.
+3. The deserialized identities are paired with their signatures to form `SignedData` entries.
+4. The `SignaturePolicyEnvelope` rule tree is evaluated against the `SignedData` set.
+5. If the policy is satisfied, the namespace verification succeeds.
+
+**Important:** Signatures are consumed in order during evaluation. A single endorser cannot satisfy
+two distinct principal requirements, even if their identity matches both. Each `SignedBy` leaf
+consumes one signature from the set.
+
+### Cached Identity Resolution
+
+When the MSP initializes (or updates via a config block), it calls `setupKnownCerts()` which:
+
+1. Parses each certificate from `known_certs`.
+2. Computes `hex(SHA256(cert.Raw))` where `cert.Raw` is the DER-encoded certificate bytes (not PEM).
+3. Stores the deserialized identity in a map keyed by `IdentityIdentifier{Mspid, Id}`.
+
+```
+┌──────────────────┐        ┌──────────────────┐        ┌──────────────────────┐
+│ Config Block     │        │   MSP Setup      │        │  Transaction Flow    │
+│ (channel cfg)    │        │                  │        │                      │
+└────────┬─────────┘        └────────┬─────────┘        └───────────┬──────────┘
+         │                           │                              │
+         │  FabricMSPConfig with     │                              │
+         │  known_certs: [cert1,     │                              │
+         │                cert2]     │                              │
+         │ ────────────────────────► │                              │
+         │                           │                              │
+         │                           │  setupKnownCerts():          │
+         │                           │  For each cert:              │
+         │                           │    id = hex(SHA256(cert.Raw))│
+         │                           │    map[{mspId, id}] = cert   │
+         │                           │                              │
+         │                           │  Endorser uses cert ID       │
+         │                           │  in endorsements:            │
+         │                           │ ◄────────────────────────────│
+         │                           │                              │
+         │                           │  GetKnownDeserializedIdentity│
+         │                           │  resolves id → full identity │
+         │                           │                              │
+         │                           │  Verify signature + policy   │
+         │                           │ ────────────────────────────►│
+         └───────────────────────────┴──────────────────────────────┘
+```
+
+When the Verification Service encounters a `certificate_id` in an endorsement's `Identity`,
+the `ToSerializedIdentity()` utility resolves it by calling `GetKnownDeserializedIdentity()` on the MSP.
+If the ID is not found in the known identities map, verification fails. If found, the full deserialized
+identity is used for signature verification and policy evaluation.
+
+When a new config block arrives, the MSP is re-initialized and `UpdateIdentities()` is called on
+MSP-rule verifiers to refresh the identity deserializer with the latest known identity mappings.
+
+### Policy Propagation
+
+Policy updates flow through the system as follows:
+
+```
+┌────────────┐  ┌─────────────┐  ┌───────────────┐  ┌───────────────────────┐
+│  Sidecar   │  │ Coordinator │  │  Validator-   │  │ Verification Service  │
+│            │  │             │  │ Committer(VC) │  │                       │
+└──────┬─────┘  └──────┬──────┘  └────────┬──────┘  └─────────────┬─────────┘
+       │               │                  │                       │
+       │ TXs from      │                  │                       │
+       │ _meta block   │                  │                       │
+       │ ────────────► │                  │                       │
+       │               │                  │                       │
+       │               │ Forward _meta TX │                       │
+       │               │ for validation   │                       │
+       │               │ and commit       │                       │
+       │               │ ───────────────► │                       │
+       │               │                  │                       │
+       │               │                  │ Validate + commit     │
+       │               │                  │ _meta TX to state DB  │
+       │               │                  │                       │
+       │               │ COMMITTED status │                       │
+       │               │ ◄─────────────── │                       │
+       │               │                  │                       │
+       │               │ Extract policy   │                       │
+       │               │ from _meta TX    │                       │
+       │               │ (updateFromTx)   │                       │
+       │               │                  │                       │
+       │               │ VerifierUpdates  │                       │
+       │               │ (piggybacked on  │                       │
+       │               │  next verifier   │                       │
+       │               │  batch)          │                       │
+       │               │ ─────────────────┼─────────────────────► │
+       │               │                  │                       │
+       │               │                  │                       │ Atomic pointer swap:
+       │               │                  │                       │ merge new policies
+       │               │                  │                       │ with existing map
+       │               │                  │                       │
+       └───────────────┴──────────────────┴───────────────────────┘
+```
+
+1. The Sidecar receives a block containing a meta namespace transaction from the Ordering Service,
+   validates its formation (block and transaction format checks), and forwards the transactions to the Coordinator.
+   See [sidecar.md](sidecar.md) for the full block ingestion flow.
+2. The Coordinator forwards the `_meta` transaction to the Validator-Committer for validation and commit.
+3. The Validator-Committer validates and commits the `_meta` transaction to the state database,
+   then returns `COMMITTED` status to the Coordinator.
+4. **Only upon receiving `COMMITTED` status**, the Coordinator extracts policy items from the
+   committed transaction's namespaces via `GetUpdatesFromNamespace()` and updates the local
+   policy manager (`policyManager.updateFromTx()`).
+5. The updated policies are wrapped in a `VerifierUpdates` message and piggybacked onto the
+   next verification batch sent to the Verification Service.
+6. The Verification Service parses the new policies, merges them with the existing policy map,
+   and atomically swaps the pointer — no locks, no blocking of concurrent verifications.
+
+**Ordering guarantee:** The Coordinator updates the policy manager **before** releasing dependent
+transactions from the dependency graph. This ensures that data transactions targeting a newly
+created namespace are not freed for signature verification until the correct policy is available
+in the policy manager, which will be sent to the Verification Service with the next batch.
+
+## 9. Implementation Details
 
 ### Core Components
 
