@@ -46,19 +46,34 @@ monitoring:
   # Latency tracking configuration for measuring transaction processing times.
   latency:
     # Maximal number of TX entries to hold in memory when tracking TXs latency.
-    # This size will be pre allocated, thus it is important to use a sensible value.
+    # This size will be pre-allocated (~1 MB for 10,000 entries), thus it is important
+    # to use a sensible value. Hash collisions may cause some measurements to be lost
+    # if this value is too small relative to the sampling rate. Recommended: 10,000 for
+    # 1-10% sampling rates.
     max-tracked-txs: 10_000
     sampler:
       # Portion of transactions to sample for latency measurement (0.0 to 1.0).
       # Lower values reduce overhead but may miss outliers. 0.01 = 1% sampling.
+      # Used when prefix is not set.
       portion: 0.01
+      # Prefix to filter transactions for latency sampling. Only transactions with keys
+      # starting with this prefix will be sampled. Leave empty or comment out to use portion-based sampling.
+      # prefix: TX_ID_PREFIX
     buckets:
-      # Distribution type for latency histogram buckets: 'uniform' (equal width) or 'exponential'.
+      # Distribution type for latency histogram buckets:
+      #   'uniform' - Equal width buckets from 0 to max-latency
+      #   'exponential' - Exponentially increasing bucket widths
+      #   'fixed' - Custom bucket boundaries specified in 'values' field
       distribution: uniform
       # Maximum latency value to track. Latencies above this are counted in overflow bucket.
+      # Used with 'uniform' and 'exponential' distributions. Ignored when distribution is 'fixed'.
       max-latency: 5s
       # Number of histogram buckets for latency distribution analysis.
+      # Used with 'uniform' and 'exponential' distributions. Ignored when distribution is 'fixed'.
       bucket-count: 1000
+      # Custom bucket boundaries in seconds. Only used when distribution is 'fixed'.
+      # Example: [0.001, 0.01, 0.1, 1.0, 5.0] creates buckets for <1ms, 1-10ms, 10-100ms, 100ms-1s, 1-5s, >5s
+      # values: [0.001, 0.01, 0.1, 1.0, 5.0]
 
 # Orderer client configuration for submitting transactions
 orderer-client:

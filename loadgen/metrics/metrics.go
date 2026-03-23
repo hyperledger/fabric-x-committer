@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package metrics
 
 import (
+	"time"
+
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/prometheus/client_golang/prometheus"
 	promgo "github.com/prometheus/client_model/go"
@@ -26,6 +28,8 @@ type (
 		transactionReceivedTotal  prometheus.Counter
 		transactionCommittedTotal prometheus.Counter
 		transactionAbortedTotal   prometheus.Counter
+		validLatency              prometheus.Histogram
+		invalidLatency            prometheus.Histogram
 
 		latencyTracker *latencyReceiverSender
 	}
@@ -50,8 +54,10 @@ type (
 // NewLoadgenServiceMetrics creates a new PerfMetrics instance.
 func NewLoadgenServiceMetrics(c *Config) *PerfMetrics {
 	p := monitoring.NewProvider()
+	latencyTracker := newLatencyReceiverSender(&c.Latency)
 	return &PerfMetrics{
-		Provider: p,
+		Provider:       p,
+		latencyTracker: latencyTracker,
 		blockSentTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: "loadgen",
 			Name:      "block_sent_total",
@@ -82,7 +88,18 @@ func NewLoadgenServiceMetrics(c *Config) *PerfMetrics {
 			Name:      "transaction_aborted_total",
 			Help:      "Total number of transaction abort statuses received by the block generator",
 		}),
-		latencyTracker: newLatencyReceiverSender(p, &c.Latency),
+		validLatency: p.NewHistogram(prometheus.HistogramOpts{
+			Namespace: "loadgen",
+			Name:      "valid_transaction_latency_seconds",
+			Help:      "Latency of valid transactions in seconds",
+			Buckets:   latencyTracker.buckets,
+		}),
+		invalidLatency: p.NewHistogram(prometheus.HistogramOpts{
+			Namespace: "loadgen",
+			Name:      "invalid_transaction_latency_seconds",
+			Help:      "Latency of invalid transactions in seconds",
+			Buckets:   latencyTracker.buckets,
+		}),
 	}
 }
 
@@ -132,7 +149,18 @@ func (c *PerfMetrics) OnReceiveBatch(batch []TxStatus) {
 		if success {
 			successCount++
 		}
-		c.latencyTracker.onReceiveTransaction(b.TxID, success)
+		tx := c.latencyTracker.onReceiveTransaction(b.TxID)
+		if tx == nil {
+			continue
+		}
+
+		logger.Debugf("Tracked transaction %s returned with status: %v", b.TxID, success)
+		duration := time.Since(tx.created).Seconds()
+		if success {
+			c.validLatency.Observe(duration)
+		} else {
+			c.invalidLatency.Observe(duration)
+		}
 	}
 	promutil.AddToCounter(c.transactionCommittedTotal, successCount)
 	promutil.AddToCounter(c.transactionAbortedTotal, len(batch)-successCount)

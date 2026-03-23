@@ -59,6 +59,7 @@ EOF
   generate_service_doc "Verifier" "service/verifier/metrics.go"
   generate_service_doc "Validator-Committer" "service/vc/metrics.go"
   generate_service_doc "Query Service" "service/query/metrics.go"
+  generate_service_doc "Load Generator" "loadgen/metrics/metrics.go"
 
   cat <<'EOF'
 ---
@@ -67,7 +68,7 @@ EOF
 
 case "$1" in
 "check")
-  if [ -n "$(diff -u <(generate_doc) "${metrics_doc}")" ]; then
+  if [ -n "$(diff -u <(generate_doc | markdownfmt) "${metrics_doc}")" ]; then
     echo "The metrics reference documentation is out of date."
     echo "Please run '$0 generate' to update the documentation."
     exit 1
@@ -75,7 +76,7 @@ case "$1" in
   ;;
 
 "generate")
-  generate_doc >"${metrics_doc}"
+  generate_doc | markdownfmt >"${metrics_doc}"
   ;;
 
 *)

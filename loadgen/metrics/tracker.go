@@ -15,9 +15,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
-	"github.com/prometheus/client_golang/prometheus"
-
-	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
 
 var logger = flogging.MustGetLogger("tracker")
@@ -25,9 +22,8 @@ var logger = flogging.MustGetLogger("tracker")
 type (
 	// latencyReceiverSender is used to track TX E2E latency.
 	latencyReceiverSender struct {
-		validLatency   prometheus.Histogram
-		invalidLatency prometheus.Histogram
 		txSampler      KeyTracingSampler
+		buckets        []float64
 		latencyTracker []atomic.Pointer[trackedTX]
 		// hashSeed must be different from the one used in the tx sampler to
 		// ensure uniform distribution of TXs in the latencyTracker array.
@@ -45,7 +41,7 @@ const (
 	portionEps float64 = 1e-16
 )
 
-func newLatencyReceiverSender(p *monitoring.Provider, conf *LatencyConfig) *latencyReceiverSender {
+func newLatencyReceiverSender(conf *LatencyConfig) *latencyReceiverSender {
 	buckets := newBuckets(&conf.BucketConfig)
 	txSampler := sampleNothing
 	maxTrackedTXs := uint64(0)
@@ -54,19 +50,8 @@ func newLatencyReceiverSender(p *monitoring.Provider, conf *LatencyConfig) *late
 		maxTrackedTXs = max(1, conf.SamplerConfig.MaxTrackedTXs)
 	}
 	return &latencyReceiverSender{
-		validLatency: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loadgen",
-			Name:      "valid_transaction_latency_seconds",
-			Help:      "Latency of transactions in seconds",
-			Buckets:   buckets,
-		}),
-		invalidLatency: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loadgen",
-			Name:      "invalid_transaction_latency_seconds",
-			Help:      "Latency of invalid transactions in seconds",
-			Buckets:   buckets,
-		}),
 		txSampler:      txSampler,
+		buckets:        buckets,
 		latencyTracker: make([]atomic.Pointer[trackedTX], maxTrackedTXs),
 		hashSeed:       maphash.MakeSeed(),
 	}
@@ -77,29 +62,27 @@ func (c *latencyReceiverSender) onSendTransaction(txID string) {
 	if !c.txSampler(txID) {
 		return
 	}
-	idx := maphash.String(c.hashSeed, txID) % uint64(len(c.latencyTracker))
-	c.latencyTracker[idx].Store(&trackedTX{id: txID, created: time.Now()})
+	c.latencyTracker[c.txIdx(txID)].Store(&trackedTX{id: txID, created: time.Now()})
 }
 
 // onReceiveTransaction is called when a TX is received.
-//
-//nolint:revive // parameter 'success' seems to be a control flag, but it is not.
-func (c *latencyReceiverSender) onReceiveTransaction(txID string, success bool) {
+func (c *latencyReceiverSender) onReceiveTransaction(txID string) *trackedTX {
 	if !c.txSampler(txID) {
-		return
+		return nil
 	}
-	idx := maphash.String(c.hashSeed, txID) % uint64(len(c.latencyTracker))
-	tx := c.latencyTracker[idx].Load()
+	tx := c.latencyTracker[c.txIdx(txID)].Load()
 	if tx == nil || tx.id != txID {
-		return
+		return nil
 	}
-	logger.Debugf("Tracked transaction %s returned with status: %v", txID, success)
-	duration := time.Since(tx.created).Seconds()
-	if success {
-		c.validLatency.Observe(duration)
-	} else {
-		c.invalidLatency.Observe(duration)
-	}
+	return tx
+}
+
+// txIdx uses hash-based indexing with replacement strategy: if a collision occurs,
+// the new TX overwrites the old one. This trades some measurement accuracy
+// for guaranteed bounded memory and lock-free operation. With MaxTrackedTXs=10,000
+// and typical sampling rates (1-10%), collision probability is low.
+func (c *latencyReceiverSender) txIdx(txID string) uint64 {
+	return maphash.String(c.hashSeed, txID) % uint64(len(c.latencyTracker))
 }
 
 // newBuckets returns a list of buckets for latency monitoring.

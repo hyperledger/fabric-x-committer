@@ -17,8 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 //nolint:gocognit // cognitive complexity 24 > 15
@@ -33,8 +31,7 @@ func TestLatencyTrackerPrefix(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%v", &utils.LazyJSON{O: conf}), func(t *testing.T) {
 			t.Parallel()
-			p := monitoring.NewProvider()
-			l := newLatencyReceiverSender(p, &LatencyConfig{
+			l := newLatencyReceiverSender(&LatencyConfig{
 				BucketConfig: BucketConfig{
 					Distribution: BucketUniform,
 					MaxLatency:   10 * time.Second,
@@ -49,17 +46,21 @@ func TestLatencyTrackerPrefix(t *testing.T) {
 
 			var sampleSize int
 			wg := sync.WaitGroup{}
-			for i, key := range keys {
+			for _, key := range keys {
 				isSampled := l.txSampler(key)
 				if isSampled {
 					sampleSize++
 				}
 				wg.Go(func() {
 					l.onSendTransaction(key)
+					waitTime := time.Duration((rand.Float64()*4 + 1) * float64(time.Second))
 					if isSampled {
-						time.Sleep(time.Duration((rand.Float64()*4 + 1) * float64(time.Second)))
+						time.Sleep(waitTime)
 					}
-					l.onReceiveTransaction(key, i%2 == 0)
+					tx := l.onReceiveTransaction(key)
+					if tx != nil {
+						require.InEpsilon(t, waitTime, time.Since(tx.created), float64(500*time.Millisecond))
+					}
 				})
 			}
 			wg.Wait()
@@ -73,15 +74,6 @@ func TestLatencyTrackerPrefix(t *testing.T) {
 			default:
 				require.Equal(t, 0, sampleSize)
 			}
-
-			actualValidLatency := test.GetMetricValue(t, l.validLatency)
-			actualInvalidLatency := test.GetMetricValue(t, l.invalidLatency)
-			expectedLatency := math.NaN()
-			if sampleSize > 0 {
-				expectedLatency = 3
-			}
-			require.InDelta(t, expectedLatency, actualValidLatency, 0.2)
-			require.InDelta(t, expectedLatency, actualInvalidLatency, 0.2)
 		})
 	}
 }
