@@ -41,9 +41,9 @@ type (
 		requestBatch chan *servicepb.VerifierBatch
 
 		// Updates contains all the updates received.
-		Updates []*servicepb.VerifierUpdates
+		Updates atomic.Pointer[[]*servicepb.VerifierUpdates]
 		// NumBlocksReceived is the number of blocks received by the mock verifier.
-		NumBlocksReceived atomic.Uint32
+		NumBlocksReceived atomic.Uint64
 		// PolicyUpdateCounter is the number of policy updates, used to check progress.
 		PolicyUpdateCounter atomic.Uint64
 		// ReturnErrForUpdatePolicies configures the Verifier to return an error during policy updates.
@@ -51,7 +51,7 @@ type (
 		// It is a one time event, after which the flag will return to false.
 		ReturnErrForUpdatePolicies atomic.Bool
 		// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
-		MockFaultyNodeDropSize int
+		MockFaultyNodeDropSize atomic.Uint64
 	}
 )
 
@@ -72,10 +72,12 @@ func (m *Verifier) RegisterService(server *grpc.Server) {
 func (m *Verifier) StartStream(stream servicepb.Verifier_StartStreamServer) error {
 	g, eCtx := errgroup.WithContext(stream.Context())
 	state := m.registerStream(eCtx, func(info StreamInfo) *VerifierStreamState {
-		return &VerifierStreamState{
+		s := &VerifierStreamState{
 			StreamInfo:   info,
 			requestBatch: make(chan *servicepb.VerifierBatch, 10),
 		}
+		s.Updates.Store(new([]*servicepb.VerifierUpdates))
+		return s
 	})
 
 	g.Go(func() error {
@@ -100,7 +102,12 @@ func (m *VerifierStreamState) updatePolicies(update *servicepb.VerifierUpdates) 
 	if m.ReturnErrForUpdatePolicies.CompareAndSwap(true, false) {
 		return errors.Wrap(verifier.ErrUpdatePolicies, "failed to update the policies")
 	}
-	m.Updates = append(m.Updates, update)
+	var updated bool
+	for !updated {
+		updateList := m.Updates.Load()
+		updated = m.Updates.CompareAndSwap(updateList, new(append(*updateList, update)))
+	}
+
 	logger.Info("policies has been updated")
 	return nil
 }
@@ -143,7 +150,8 @@ func (m *VerifierStreamState) sendResponseBatch(
 		}
 
 		for i, req := range reqBatch.Requests {
-			if i < m.MockFaultyNodeDropSize {
+			//nolint:gosec // i is always positive.
+			if uint64(i) < m.MockFaultyNodeDropSize.Load() {
 				// We simulate a faulty node by not responding to the first X TXs.
 				continue
 			}

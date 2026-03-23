@@ -950,7 +950,7 @@ func TestWaitingTxsCount(t *testing.T) {
 	}()
 
 	verifierStreams := mock.RequireStreams(t, env.verifier, 1)
-	verifierStreams[0].MockFaultyNodeDropSize = 2
+	verifierStreams[0].MockFaultyNodeDropSize.Store(2)
 	err := env.csStream.Send(b)
 	require.NoError(t, err)
 	isSuccess, ok := success.Read()
@@ -967,7 +967,7 @@ func TestWaitingTxsCount(t *testing.T) {
 		return test.CheckServerStopped(t, env.sigVerifierGrpcServers.Configs[0].Endpoint.Address())
 	}, 4*time.Second, 500*time.Millisecond)
 
-	verifierStreams[0].MockFaultyNodeDropSize = 0
+	verifierStreams[0].MockFaultyNodeDropSize.Store(0)
 	env.sigVerifierGrpcServers = mock.StartMockVerifierServiceFromServerConfig(
 		t,
 		env.verifier,
