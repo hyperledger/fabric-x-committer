@@ -35,7 +35,7 @@ func TestBlockStoreAndDelivery(t *testing.T) {
 
 	bd := newBlockDelivery(bs)
 
-	config := connection.NewLocalHostServer(test.InsecureTLSConfig)
+	config := test.NewLocalHostServer(test.InsecureTLSConfig)
 	inputBlock := make(chan *common.Block, 10)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(bs.run(ctx, &blockStoreRunConfig{

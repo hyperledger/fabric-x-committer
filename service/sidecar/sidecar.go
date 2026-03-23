@@ -9,6 +9,7 @@ package sidecar
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -17,7 +18,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/protoutil"
-	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -46,7 +46,7 @@ type Service struct {
 	blockDelivery      *blockDelivery
 	blockQuery         *blockQuery
 	coordConn          *grpc.ClientConn
-	blockToBeCommitted chan *common.Block
+	blockToBeCommitted atomic.Pointer[chan *common.Block]
 	committedBlock     chan *common.Block
 	statusQueue        chan []*committerpb.TxStatus
 	config             *Config
@@ -65,7 +65,7 @@ func New(c *Config) (*Service, error) {
 	}
 
 	if c.Bootstrap.GenesisBlockFilePath != "" {
-		configBlock, bootErr := configtxgen.ReadBlock(c.Bootstrap.GenesisBlockFilePath)
+		configBlock, bootErr := protoutil.ReadBlockFromFile(c.Bootstrap.GenesisBlockFilePath)
 		if bootErr != nil {
 			return nil, errors.Wrap(bootErr, "read config block")
 		}
@@ -185,14 +185,14 @@ func (s *Service) sendBlocksAndReceiveStatus(
 	g, gCtx := errgroup.WithContext(ctx)
 
 	// We drop all enqueued block if any before starting a new session.
-	s.blockToBeCommitted = make(chan *common.Block, s.config.ChannelBufferSize)
+	s.blockToBeCommitted.Store(new(make(chan *common.Block, s.config.ChannelBufferSize)))
 
 	// NOTE: ordererClient.Deliver and relay.Run must always return an error on exist.
 	g.Go(func() error {
 		logger.Info("Fetch blocks from the ordering service and write them on s.blockToBeCommitted.")
 		deliverErr := s.ordererClient.Deliver(gCtx, &deliver.Parameters{
 			NextBlockNum: nextBlockNum,
-			OutputBlock:  s.blockToBeCommitted,
+			OutputBlock:  *s.blockToBeCommitted.Load(),
 		})
 		if errors.Is(deliverErr, context.Canceled) {
 			// A context may be cancelled due to a relay error, thus it is not critical error.
@@ -207,7 +207,7 @@ func (s *Service) sendBlocksAndReceiveStatus(
 			coordClient:                    coordClient,
 			nextExpectedBlockByCoordinator: nextBlockNum,
 			configUpdater:                  s.configUpdater,
-			incomingBlockToBeCommitted:     s.blockToBeCommitted,
+			incomingBlockToBeCommitted:     *s.blockToBeCommitted.Load(),
 			outgoingCommittedBlock:         s.committedBlock,
 			outgoingStatusUpdates:          s.statusQueue,
 			waitingTxsLimit:                s.config.WaitingTxsLimit,
@@ -405,7 +405,10 @@ func (s *Service) monitorQueues(ctx context.Context) {
 		case <-ticker.C:
 		}
 
-		promutil.SetGauge(m.yetToBeCommittedBlocksQueueSize, len(s.blockToBeCommitted))
+		blockToBeCommittedChan := s.blockToBeCommitted.Load()
+		if blockToBeCommittedChan != nil {
+			promutil.SetGauge(m.yetToBeCommittedBlocksQueueSize, len(*blockToBeCommittedChan))
+		}
 		promutil.SetGauge(m.committedBlocksQueueSize, len(s.committedBlock))
 	}
 }

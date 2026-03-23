@@ -147,7 +147,7 @@ logging:
   # Log level specification. Can be a single level (e.g., "info", "debug") or
   # module-specific levels (e.g., "info,query=debug").
   # Valid levels: debug, info, warning, error, panic, fatal.
-  logSpec: "info"
+  logSpec: info:grpc=error
   # Log message format template. Supports color codes, timestamps, module names,
   # function names, and log levels. See fabric-lib-go/common/flogging for details.
   format: >-

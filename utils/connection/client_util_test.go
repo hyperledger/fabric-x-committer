@@ -11,17 +11,16 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/grpclog"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
@@ -33,13 +32,13 @@ import (
 func TestGRPCRetry(t *testing.T) {
 	// We start GRPC logging for this test to allow visibility into the retry process.
 	// This change prevents us from running this test in parallel to others.
-	grpclog.SetLoggerV2(grpclog.NewLoggerV2(os.Stderr, io.Discard, os.Stderr))
+	flogging.ActivateSpec("info:grpc=debug")
 	t.Cleanup(func() {
-		grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, os.Stderr))
+		flogging.ActivateSpec("info:grpc=error")
 	})
 
 	t.Log("Starting service")
-	serverConfig := connection.NewLocalHostServer(test.InsecureTLSConfig)
+	serverConfig := test.NewLocalHostServer(test.InsecureTLSConfig)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -102,13 +101,13 @@ func TestGRPCRetry(t *testing.T) {
 func TestGRPCRetryMultiEndpoints(t *testing.T) {
 	// We start GRPC logging for this test to allow visibility into the retry process.
 	// This change prevents us from running this test in parallel to others.
-	grpclog.SetLoggerV2(grpclog.NewLoggerV2(os.Stderr, io.Discard, os.Stderr))
+	flogging.ActivateSpec("info:grpc=debug")
 	t.Cleanup(func() {
-		grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, os.Stderr))
+		flogging.ActivateSpec("info:grpc=error")
 	})
 
 	t.Log("Starting service")
-	serverConfig := connection.NewLocalHostServer(test.InsecureTLSConfig)
+	serverConfig := test.NewLocalHostServer(test.InsecureTLSConfig)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -123,7 +122,7 @@ func TestGRPCRetryMultiEndpoints(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Log("Creating fake service address")
-	fakeServerConfig := connection.NewLocalHostServer(test.InsecureTLSConfig)
+	fakeServerConfig := test.NewLocalHostServer(test.InsecureTLSConfig)
 	l, err := fakeServerConfig.Listener(t.Context())
 	require.NoError(t, err)
 	t.Cleanup(func() {

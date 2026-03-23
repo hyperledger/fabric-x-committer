@@ -19,7 +19,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -29,7 +28,7 @@ func TestBlockDelivery(t *testing.T) {
 	bs, _ := newBlockStoreWithBlocks(t, 3)
 
 	// Register block delivery on a gRPC server.
-	config := connection.NewLocalHostServer(test.InsecureTLSConfig)
+	config := test.NewLocalHostServer(test.InsecureTLSConfig)
 	test.RunGrpcServerForTest(t.Context(), t, config,
 		func(server *grpc.Server) {
 			peer.RegisterDeliverServer(server, newBlockDelivery(bs))
