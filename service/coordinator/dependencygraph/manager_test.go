@@ -174,7 +174,7 @@ func TestDependencyGraphManager(t *testing.T) {
 			outgoingTxs := make(chan TxNodeBatch, 10)
 			validatedTxs := make(chan TxNodeBatch, 10)
 
-			manService, metrics := startManager(t, manType, &Parameters{
+			metrics := startManager(t, manType, &Parameters{
 				IncomingTxs:               incomingTxs,
 				OutgoingDepFreeTxsNode:    outgoingTxs,
 				IncomingValidatedTxsNode:  validatedTxs,
@@ -250,7 +250,7 @@ func TestDependencyGraphManager(t *testing.T) {
 
 			ensureProcessedAndValidatedMetrics(t, metrics, 4, 4)
 			// after validating all txs, the dependency detector should be empty
-			ensureWaitingTXsLimit(t, manService, 0)
+			ensureWaitingTXsLimit(t, metrics, 0)
 
 			t.Log("check dependency in namespace")
 			// t2 depends on t1
@@ -316,7 +316,7 @@ func TestDependencyGraphManager(t *testing.T) {
 
 			ensureProcessedAndValidatedMetrics(t, metrics, 8, 8)
 			// after validating all txs, the dependency detector should be empty
-			ensureWaitingTXsLimit(t, manService, 0)
+			ensureWaitingTXsLimit(t, metrics, 0)
 
 			t.Log("check waiting TX limit")
 			txs := make([]*servicepb.TxWithRef, waitingTXsLimit+1)
@@ -341,48 +341,35 @@ func TestDependencyGraphManager(t *testing.T) {
 			require.Len(t, depFreeTxs, len(txs))
 			ensureNoOutputs(t, outgoingTxs)
 
-			ensureWaitingTXsLimit(t, manService, len(txs))
-			ensureNeverGreaterWaitingTXsLimit(t, manService, len(txs))
+			ensureWaitingTXsLimit(t, metrics, len(txs))
+			ensureNeverGreaterWaitingTXsLimit(t, metrics, len(txs))
 
 			validatedTxs <- depFreeTxs
 			depFreeTxs = <-outgoingTxs
 			require.Len(t, depFreeTxs, len(txs2))
 			ensureNoOutputs(t, outgoingTxs)
 
-			ensureWaitingTXsLimit(t, manService, len(txs2))
-			ensureNeverGreaterWaitingTXsLimit(t, manService, len(txs2))
+			ensureWaitingTXsLimit(t, metrics, len(txs2))
+			ensureNeverGreaterWaitingTXsLimit(t, metrics, len(txs2))
 
 			validatedTxs <- depFreeTxs
-			ensureWaitingTXsLimit(t, manService, 0)
+			ensureWaitingTXsLimit(t, metrics, 0)
 		})
 	}
 }
 
-func ensureWaitingTXsLimit(t *testing.T, m any, expectedValue int) {
+func ensureWaitingTXsLimit(t *testing.T, metrics *perfMetrics, expectedValue int) {
 	t.Helper()
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, expectedValue, getWaitingTXs(t, m))
+		require.Equal(ct, expectedValue, test.GetIntMetricValue(t, metrics.gdgWaitingTxQueueSize))
 	}, 5*time.Second, 100*time.Millisecond)
 }
 
-func ensureNeverGreaterWaitingTXsLimit(t *testing.T, m any, expectedValue int) {
+func ensureNeverGreaterWaitingTXsLimit(t *testing.T, metrics *perfMetrics, expectedValue int) {
 	t.Helper()
 	require.Never(t, func() bool {
-		return getWaitingTXs(t, m) > expectedValue
+		return test.GetIntMetricValue(t, metrics.gdgWaitingTxQueueSize) > expectedValue
 	}, 5*time.Second, 100*time.Millisecond)
-}
-
-func getWaitingTXs(t *testing.T, m any) int {
-	t.Helper()
-	switch mt := m.(type) {
-	case *Manager:
-		d := mt.globalDepManager
-		return d.waitingTxsLimit - int(d.waitingTxsSlots.Load(t))
-	case *SimpleManager:
-		return mt.waitingTXs
-	default:
-		return -1
-	}
 }
 
 func ensureNoOutputs(t *testing.T, outgoingTxs <-chan TxNodeBatch) {
@@ -395,7 +382,7 @@ func ensureNoOutputs(t *testing.T, outgoingTxs <-chan TxNodeBatch) {
 	}
 }
 
-func startManager(tb testing.TB, kind string, p *Parameters) (any, *perfMetrics) {
+func startManager(tb testing.TB, kind string, p *Parameters) *perfMetrics {
 	tb.Helper()
 	var manService interface {
 		Run(context.Context)
@@ -411,11 +398,11 @@ func startManager(tb testing.TB, kind string, p *Parameters) (any, *perfMetrics)
 		manService = m
 		metrics = m.metrics
 	default:
-		return nil, nil
+		return nil
 	}
 	test.RunServiceForTest(tb.Context(), tb, func(ctx context.Context) error {
 		manService.Run(ctx)
 		return nil
 	}, nil)
-	return manService, metrics
+	return metrics
 }
