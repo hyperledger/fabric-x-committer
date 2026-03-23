@@ -31,6 +31,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 var logger = flogging.MustGetLogger("sidecar")
@@ -150,7 +151,7 @@ func (s *Service) Run(ctx context.Context) error {
 
 	g.Go(func() error {
 		// TODO: initialize retry from config.
-		return connection.Sustain(gCtx, nil, func() error {
+		return retry.Sustain(gCtx, nil, func() error {
 			defer func() {
 				s.recoverCommittedBlocks(gCtx)
 			}()
@@ -176,7 +177,7 @@ func (s *Service) sendBlocksAndReceiveStatus(
 	defer s.metrics.coordConnection.Disconnected(s.coordConn.CanonicalTarget())
 	nextBlockNum, err := s.recover(ctx, coordClient)
 	if err != nil {
-		return errors.Join(connection.ErrBackOff, err)
+		return errors.Join(retry.ErrBackOff, err)
 	}
 
 	// if the recovery is successful, the connection is established.
@@ -198,7 +199,7 @@ func (s *Service) sendBlocksAndReceiveStatus(
 			// A context may be cancelled due to a relay error, thus it is not critical error.
 			return errors.Wrap(deliverErr, "context is canceled")
 		}
-		return errors.Join(connection.ErrNonRetryable, deliverErr)
+		return errors.Join(retry.ErrNonRetryable, deliverErr)
 	})
 
 	g.Go(func() error {

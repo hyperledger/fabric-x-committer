@@ -25,6 +25,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 type (
@@ -110,7 +111,7 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 		g.Go(func() error {
 			// error should never occur unless there is a bug or malicious activity. Hence, it is fine to crash for now.
 			// TODO: initialize retry from config.
-			return connection.Sustain(eCtx, nil, func() error {
+			return retry.Sustain(eCtx, nil, func() error {
 				defer sv.recoverPendingTransactions(txBatchQueue)
 				return sv.sendTransactionsAndForwardStatus(
 					eCtx,
@@ -169,7 +170,7 @@ func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
 
 	stream, err := sv.client.StartStream(gCtx)
 	if err != nil {
-		return errors.Join(connection.ErrBackOff, err)
+		return errors.Join(retry.ErrBackOff, err)
 	}
 
 	// if the stream is started, the connection is established.
@@ -289,7 +290,7 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 				// While it is unlikely that svm would send an invalid policy, it could happen
 				// if the stored policy in the database is corrupted or maliciously altered, or
 				// if there is a bug in the committer that modifies the policy bytes.
-				return errors.Join(connection.ErrNonRetryable, err)
+				return errors.Join(retry.ErrNonRetryable, err)
 			}
 			// The stream ended or the SVM was closed.
 			return errors.Wrap(err, "receive from stream ended with error")

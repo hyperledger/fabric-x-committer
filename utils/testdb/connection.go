@@ -17,6 +17,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 var logger = flogging.MustGetLogger("db-connection")
@@ -35,7 +36,7 @@ func defaultCredentials(dbType string) (user, password string) {
 }
 
 // defaultRetry is used for tests.
-var defaultRetry = &connection.RetryProfile{
+var defaultRetry = &retry.Profile{
 	// MaxElapsedTime is the duration allocated for the retry mechanism during the database initialization process.
 	MaxElapsedTime: 5 * time.Minute,
 	// InitialInterval is the starting wait time interval that increases every retry attempt.
@@ -145,5 +146,5 @@ func (c *Connection) execute(ctx context.Context, stmt string) error {
 		return err
 	}
 	defer pool.Close()
-	return defaultRetry.ExecuteSQL(ctx, pool, stmt)
+	return retry.ExecuteSQL(ctx, defaultRetry, pool, stmt)
 }

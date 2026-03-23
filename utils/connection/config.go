@@ -13,22 +13,24 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"google.golang.org/grpc/credentials"
+
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 type (
 	// MultiClientConfig contains the endpoints, TLS config, and retry profile.
 	// This config allows the support of number of different endpoints to multiple service instances.
 	MultiClientConfig struct {
-		Endpoints []*Endpoint   `mapstructure:"endpoints" yaml:"endpoints"`
-		TLS       TLSConfig     `mapstructure:"tls"       yaml:"tls"`
-		Retry     *RetryProfile `mapstructure:"reconnect" yaml:"reconnect"`
+		Endpoints []*Endpoint    `mapstructure:"endpoints" yaml:"endpoints"`
+		TLS       TLSConfig      `mapstructure:"tls"       yaml:"tls"`
+		Retry     *retry.Profile `mapstructure:"reconnect" yaml:"reconnect"`
 	}
 
 	// ClientConfig contains a single endpoint, TLS config, and retry profile.
 	ClientConfig struct {
-		Endpoint *Endpoint     `mapstructure:"endpoint"  yaml:"endpoint"`
-		TLS      TLSConfig     `mapstructure:"tls"       yaml:"tls"`
-		Retry    *RetryProfile `mapstructure:"reconnect" yaml:"reconnect"`
+		Endpoint *Endpoint      `mapstructure:"endpoint"  yaml:"endpoint"`
+		TLS      TLSConfig      `mapstructure:"tls"       yaml:"tls"`
+		Retry    *retry.Profile `mapstructure:"reconnect" yaml:"reconnect"`
 	}
 
 	// ServerConfig describes the connection parameter for a server.

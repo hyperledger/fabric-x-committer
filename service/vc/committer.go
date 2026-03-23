@@ -141,7 +141,7 @@ func (c *transactionCommitter) commitTransactions(
 			duplicates []TxID
 			err        error
 		)
-		if retryErr := c.db.retry.Execute(ctx, func() error {
+		if retryErr := c.db.retryProfile.Execute(ctx, func() error {
 			conflicts, duplicates, err = c.db.commit(ctx, info)
 			return err
 		}); retryErr != nil {

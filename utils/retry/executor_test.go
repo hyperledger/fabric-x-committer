@@ -4,10 +4,9 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package connection
+package retry
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -21,7 +20,7 @@ func TestNewBackoff(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name                        string
-		profile                     *RetryProfile
+		profile                     *Profile
 		expectedInitialInterval     time.Duration
 		expectedRandomizationFactor float64
 		expectedMultiplier          float64
@@ -39,7 +38,7 @@ func TestNewBackoff(t *testing.T) {
 		},
 		{
 			name: "custom",
-			profile: &RetryProfile{
+			profile: &Profile{
 				InitialInterval:     10 * time.Millisecond,
 				RandomizationFactor: 0.2,
 				Multiplier:          2.0,
@@ -57,6 +56,13 @@ func TestNewBackoff(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			p := tt.profile.WithDefaults()
+			assert.InEpsilon(t, tt.expectedInitialInterval, p.InitialInterval, 0)
+			assert.InEpsilon(t, tt.expectedRandomizationFactor, p.RandomizationFactor, 0)
+			assert.InEpsilon(t, tt.expectedMultiplier, p.Multiplier, 0)
+			assert.Equal(t, tt.expectedMaxInterval, p.MaxInterval)
+			assert.Equal(t, tt.expectedMaxElapsedTime, p.MaxElapsedTime)
+
 			b := tt.profile.NewBackoff()
 			assert.InEpsilon(t, tt.expectedInitialInterval, b.InitialInterval, 0)
 			assert.InEpsilon(t, tt.expectedRandomizationFactor, b.RandomizationFactor, 0)
@@ -72,7 +78,7 @@ func TestExecute(t *testing.T) {
 	t.Parallel()
 	type testCase struct {
 		name                   string
-		profile                *RetryProfile
+		profile                *Profile
 		failUntil              int // parameter for makeOp: negative means always fail
 		expectedCallCount      int // expected number of calls if the op eventually succeeds;
 		expectError            bool
@@ -82,7 +88,7 @@ func TestExecute(t *testing.T) {
 	tests := []testCase{
 		{
 			name: "Success",
-			profile: &RetryProfile{
+			profile: &Profile{
 				InitialInterval: 1 * time.Millisecond,
 				MaxInterval:     100 * time.Millisecond,
 				MaxElapsedTime:  1 * time.Second,
@@ -93,7 +99,7 @@ func TestExecute(t *testing.T) {
 		},
 		{
 			name: "Failure",
-			profile: &RetryProfile{
+			profile: &Profile{
 				InitialInterval: 10 * time.Millisecond,
 				MaxInterval:     500 * time.Millisecond,
 				MaxElapsedTime:  5 * time.Second,
@@ -115,7 +121,7 @@ func TestExecute(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			op, callCount := makeOp(tc.failUntil)
-			err := tc.profile.Execute(t.Context(), op)
+			err := Execute(t.Context(), tc.profile, op)
 			if tc.expectError {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.expectedErrorSubstring)
@@ -123,38 +129,6 @@ func TestExecute(t *testing.T) {
 				require.NoError(t, err)
 				assert.Equal(t, tc.expectedCallCount, *callCount)
 			}
-		})
-	}
-}
-
-func TestGrpcRetryJSON(t *testing.T) {
-	t.Parallel()
-	templateExpectedJSON := `
-	{
-	  "loadBalancingConfig": [{"round_robin": {}}],
-	  "methodConfig": [{
-		"name": [{}],
-		"retryPolicy": {
-		  "maxAttempts": %d,
-		  "backoffMultiplier": 1.5,
-		  "initialBackoff": "0.5s",
-		  "maxBackoff": "10s",
-		  "retryableStatusCodes": ["UNAVAILABLE", "DEADLINE_EXCEEDED", "RESOURCE_EXHAUSTED"]
-		}
-	  }]
-	}`
-	for _, tt := range []struct {
-		maxElapsedTime   time.Duration
-		expectedAttempts int
-	}{
-		{maxElapsedTime: 0, expectedAttempts: 96},
-		{maxElapsedTime: 15 * time.Second, expectedAttempts: 7},
-	} {
-		t.Run(fmt.Sprintf("maxElapsed=%s", tt.maxElapsedTime), func(t *testing.T) {
-			t.Parallel()
-			profile := RetryProfile{MaxElapsedTime: tt.maxElapsedTime}
-			jsonRaw := profile.MakeGrpcRetryPolicyJSON()
-			require.JSONEq(t, fmt.Sprintf(templateExpectedJSON, tt.expectedAttempts), jsonRaw)
 		})
 	}
 }
@@ -172,26 +146,4 @@ func makeOp(failUntil int) (func() error, *int) {
 		return nil
 	}
 	return op, &callCount
-}
-
-func TestCalcMaxAttempts(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct {
-		i, a, m, t float64
-		n          int
-	}{
-		{i: 1, a: 3, m: 2, t: 3, n: 3},  // 0 + 1 + 2         = 3
-		{i: 1, a: 3, m: 2, t: 6, n: 4},  // 0 + 1 + 2 + 3     = 6
-		{i: 1, a: 3, m: 2, t: 9, n: 5},  // 0 + 1 + 2 + 3 + 3 = 9
-		{i: 1, a: 16, m: 2, t: 7, n: 4}, // 0 + 1 + 2 + 4     = 7
-	} {
-		for _, e := range []float64{0, 1} {
-			tc := tc
-			tc.t += e
-			t.Run(fmt.Sprintf("%+v", tc), func(t *testing.T) {
-				t.Parallel()
-				require.Equal(t, tc.n, calcMaxAttempts(tc.i, tc.a, tc.m, tc.t))
-			})
-		}
-	}
 }

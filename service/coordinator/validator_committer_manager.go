@@ -24,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 const streamEndErrWrap = "sending to stream ended with an error"
@@ -120,7 +121,7 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 
 		g.Go(func() error {
 			// TODO: initialize retry from config.
-			return connection.Sustain(eCtx, nil, func() (err error) {
+			return retry.Sustain(eCtx, nil, func() (err error) {
 				defer vc.recoverPendingTransactions(txBatchQueue)
 				return vc.sendTransactionsAndForwardStatus(
 					eCtx,
@@ -213,7 +214,7 @@ func (vc *validatorCommitter) sendTransactionsAndForwardStatus(
 
 	stream, err := vc.client.StartValidateAndCommitStream(gCtx)
 	if err != nil {
-		return errors.Join(connection.ErrBackOff, err)
+		return errors.Join(retry.ErrBackOff, err)
 	}
 
 	// if the stream is started, the connection has been established.

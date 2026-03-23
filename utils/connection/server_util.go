@@ -19,6 +19,8 @@ import (
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
+
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 const tcpProtocol = "tcp"
@@ -40,7 +42,7 @@ var (
 	// listenRetry is the acceptable retry profile if port conflicts occur.
 	// This handles the race condition where another process claims a pre-assigned port.
 	// This will retry with the same port, waiting for it to become available.
-	listenRetry = RetryProfile{
+	listenRetry = retry.Profile{
 		InitialInterval: 50 * time.Millisecond,
 		MaxInterval:     500 * time.Millisecond,
 		MaxElapsedTime:  2 * time.Minute,

@@ -18,7 +18,7 @@ import (
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -75,7 +75,7 @@ func TestHasCodeWithGRPCService(t *testing.T) {
 			healthgrpc.RegisterHealthServer(server, &healthgrpc.UnimplementedHealthServer{})
 		})
 
-	conn := test.NewInsecureConnectionWithRetry(t, &server.Configs[0].Endpoint, connection.RetryProfile{
+	conn := test.NewInsecureConnectionWithRetry(t, &server.Configs[0].Endpoint, retry.Profile{
 		MaxElapsedTime: 2 * time.Second,
 	})
 

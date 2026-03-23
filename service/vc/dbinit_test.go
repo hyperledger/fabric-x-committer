@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 func TestDBInit(t *testing.T) {
@@ -85,7 +86,7 @@ func TestRetry(t *testing.T) {
 			Username:       "name",
 			Password:       "pwd",
 			MaxConnections: 5,
-			Retry: &connection.RetryProfile{
+			Retry: &retry.Profile{
 				MaxElapsedTime: 10 * time.Second,
 			},
 		})
