@@ -28,17 +28,13 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 const artifactsPath = "/root/artifacts"
-
-var ordererRootCAs = []string{
-	filepath.Join(artifactsPath, test.OrdererRootCATLSPath),
-}
 
 func TestReadConfigSidecar(t *testing.T) {
 	t.Parallel()
@@ -56,9 +52,6 @@ func TestReadConfigSidecar(t *testing.T) {
 				MaxConcurrentStreams: 10,
 			},
 			Monitoring: newServerConfig("localhost", 2114),
-			Orderer: ordererconn.Config{
-				ChannelID: "mychannel",
-			},
 			Committer: &connection.ClientConfig{
 				Endpoint: newEndpoint("localhost", 9001),
 			},
@@ -94,22 +87,15 @@ func TestReadConfigSidecar(t *testing.T) {
 				MaxConcurrentStreams: 10,
 			},
 			Monitoring: newServerConfigWithDefaultTLS("sidecar", 2114),
-			Orderer: ordererconn.Config{
-				ChannelID: "mychannel",
-				TLS: ordererconn.OrdererTLSConfig{
+			Orderer: ordererdial.Config{
+				FaultToleranceLevel:        ordererdial.BFT,
+				LatestKnownConfigBlockPath: "/root/artifacts/config-block.pb.bin",
+				Identity:                   newIdentityConfig(),
+				TLS: ordererdial.TLSConfig{
 					Mode:     sidecarTLSCreds.Mode,
 					KeyPath:  sidecarTLSCreds.KeyPath,
 					CertPath: sidecarTLSCreds.CertPath,
 				},
-				Organizations: map[string]*ordererconn.OrganizationConfig{
-					"org0": {
-						Endpoints: []*commontypes.OrdererEndpoint{
-							newOrdererEndpoint("", "orderer"),
-						},
-						CACerts: ordererRootCAs,
-					},
-				},
-				Identity: newIdentityConfig(),
 			},
 			Committer: newClientConfigWithDefaultTLS("coordinator", "sidecar", 9001),
 			Ledger: sidecar.LedgerConfig{
@@ -124,9 +110,6 @@ func TestReadConfigSidecar(t *testing.T) {
 			LastCommittedBlockSetInterval: 5 * time.Second,
 			WaitingTxsLimit:               20_000_000,
 			ChannelBufferSize:             100,
-			Bootstrap: sidecar.Bootstrap{
-				GenesisBlockFilePath: "/root/artifacts/config-block.pb.bin",
-			},
 		},
 	}}
 	for _, tc := range tests {
@@ -372,22 +355,14 @@ func TestReadConfigLoadGen(t *testing.T) {
 			Adapter: adapters.AdapterConfig{
 				OrdererClient: &adapters.OrdererClientConfig{
 					SidecarClient: newClientConfigWithDefaultTLS("sidecar", "loadgen", 4001),
-					Orderer: ordererconn.Config{
-						ChannelID:     "mychannel",
-						ConsensusType: ordererconn.Bft,
-						Identity:      newIdentityConfig(),
-						TLS: ordererconn.OrdererTLSConfig{
+					Orderer: ordererdial.Config{
+						FaultToleranceLevel:        ordererdial.BFT,
+						LatestKnownConfigBlockPath: "/root/artifacts/config-block.pb.bin",
+						Identity:                   newIdentityConfig(),
+						TLS: ordererdial.TLSConfig{
 							Mode:     loadgenTLSCreds.Mode,
 							KeyPath:  loadgenTLSCreds.KeyPath,
 							CertPath: loadgenTLSCreds.CertPath,
-						},
-						Organizations: map[string]*ordererconn.OrganizationConfig{
-							"org0": {
-								Endpoints: []*commontypes.OrdererEndpoint{
-									newOrdererEndpoint("", "orderer"),
-								},
-								CACerts: ordererRootCAs,
-							},
 						},
 					},
 					BroadcastParallelism: 1,
@@ -521,8 +496,8 @@ func newEndpoint(host string, port int) *connection.Endpoint {
 	}
 }
 
-func newIdentityConfig() *ordererconn.IdentityConfig {
-	return &ordererconn.IdentityConfig{
+func newIdentityConfig() *ordererdial.IdentityConfig {
+	return &ordererdial.IdentityConfig{
 		MspID:  "peer-org-0",
 		MSPDir: "/root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/msp",
 		BCCSP: &factory.FactoryOpts{

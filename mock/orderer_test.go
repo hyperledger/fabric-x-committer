@@ -16,6 +16,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/assert"
@@ -23,7 +24,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
@@ -285,17 +285,17 @@ func (f *blockFetcher) requireGetBlock(
 
 func getVerifier(t *testing.T, block *common.Block) protoutil.BlockVerifierFunc {
 	t.Helper()
-	configBlock, err := ordererconn.LoadConfigBlock(block)
+	configMaterial, err := channelconfig.LoadConfigBlockMaterial(block)
 	require.NoError(t, err)
-	require.NotNil(t, configBlock)
+	require.NotNil(t, configMaterial)
 
-	policy, exists := configBlock.Bundle.PolicyManager().GetPolicy(policies.BlockValidation)
+	policy, exists := configMaterial.Bundle.PolicyManager().GetPolicy(policies.BlockValidation)
 	require.True(t, exists)
 
-	oc, ok := configBlock.Bundle.OrdererConfig()
+	oc, ok := configMaterial.Bundle.OrdererConfig()
 	require.True(t, ok)
 
-	bftEnabled := configBlock.Bundle.ChannelConfig().Capabilities().ConsensusTypeBFT()
+	bftEnabled := configMaterial.Bundle.ChannelConfig().Capabilities().ConsensusTypeBFT()
 	require.True(t, bftEnabled)
 	consenters := oc.Consenters()
 

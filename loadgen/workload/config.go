@@ -13,7 +13,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
@@ -127,7 +127,7 @@ type PolicyProfile struct {
 
 	// ChannelID and Identity are used to create the TX envelop.
 	ChannelID string                      `mapstructure:"channel-id"`
-	Identity  *ordererconn.IdentityConfig `mapstructure:"identity"`
+	Identity  *ordererdial.IdentityConfig `mapstructure:"identity"`
 
 	// PeerOrganizationCount may specify the number of peer organizations to generate if the ArtifactsPath
 	// is not provided.

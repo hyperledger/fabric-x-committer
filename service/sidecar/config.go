@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 )
 
 type (
@@ -22,20 +22,13 @@ type (
 		Server                        *connection.ServerConfig  `mapstructure:"server"`
 		Monitoring                    *connection.ServerConfig  `mapstructure:"monitoring"`
 		Committer                     *connection.ClientConfig  `mapstructure:"committer"`
-		Orderer                       ordererconn.Config        `mapstructure:"orderer"`
+		Orderer                       ordererdial.Config        `mapstructure:"orderer"`
 		Ledger                        LedgerConfig              `mapstructure:"ledger"`
 		Notification                  NotificationServiceConfig `mapstructure:"notification"`
 		LastCommittedBlockSetInterval time.Duration             `mapstructure:"last-committed-block-set-interval"`
 		WaitingTxsLimit               int                       `mapstructure:"waiting-txs-limit"`
 		// ChannelBufferSize is the buffer size that will be used to queue blocks, requests, and statuses.
-		ChannelBufferSize int       `mapstructure:"channel-buffer-size"`
-		Bootstrap         Bootstrap `mapstructure:"bootstrap"`
-	}
-	// Bootstrap configures how to obtain the bootstrap configuration.
-	Bootstrap struct {
-		// GenesisBlockFilePath is the path for the genesis block.
-		// If omitted, the local configuration will be used.
-		GenesisBlockFilePath string `mapstructure:"genesis-block-file-path" yaml:"genesis-block-file-path,omitempty"`
+		ChannelBufferSize int `mapstructure:"channel-buffer-size"`
 	}
 
 	// LedgerConfig holds the ledger path.

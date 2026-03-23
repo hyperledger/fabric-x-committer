@@ -8,7 +8,6 @@ package mock
 
 import (
 	"context"
-	"math/rand"
 	"sync"
 	"sync/atomic"
 
@@ -22,6 +21,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
@@ -215,7 +215,7 @@ func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *servicepb.
 		return errors.New("Trying to send transactions before channel created (no channels in map)")
 	}
 
-	s := states[rand.Intn(len(states))]
+	s := states[utils.RandIntN(uint64(len(states)))]
 	channel.NewWriter(ctx, s.q).Write(txsBatch)
 	return nil
 }

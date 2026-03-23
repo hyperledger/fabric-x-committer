@@ -34,14 +34,11 @@ import (
 	"github.com/tedsuo/ifrit"
 	"github.com/tedsuo/ifrit/ginkgomon"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/status"
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
@@ -223,25 +220,6 @@ func RunServiceAndGrpcForTest(
 	}
 	return doneFlag
 }
-
-// WaitUntilGrpcServerIsReady uses the health check API to check a service readiness.
-func WaitUntilGrpcServerIsReady(
-	ctx context.Context,
-	t *testing.T,
-	conn grpc.ClientConnInterface,
-) {
-	t.Helper()
-	if conn == nil {
-		return
-	}
-	healthClient := healthgrpc.NewHealthClient(conn)
-	res, err := healthClient.Check(ctx, nil, grpc.WaitForReady(true))
-	assert.NotEqual(t, codes.Canceled, status.Code(err))
-	require.NoError(t, err)
-	require.Equal(t, healthgrpc.HealthCheckResponse_SERVING, res.Status)
-}
-
-//nolint:revive // maximum number of arguments per function exceeded; max 4 but got 5.
 
 // CheckServerStopped returns true if the grpc server listening on a
 // given address has been stopped.
@@ -453,7 +431,7 @@ func NewOrdererEndpoints(id uint32, configs ...*connection.ServerConfig) []*type
 			Host: c.Endpoint.Host,
 			Port: c.Endpoint.Port,
 			ID:   id,
-			API:  []string{ordererconn.Broadcast, ordererconn.Deliver},
+			API:  []string{types.Broadcast, types.Deliver},
 		}
 	}
 	return ordererEndpoints
@@ -470,6 +448,18 @@ func MustGetTLSConfig(t *testing.T, tlsConfig *connection.TLSConfig) *tls.Config
 	clientTLSConfig, err := tlsMaterials.CreateClientTLSConfig()
 	require.NoError(t, err)
 	return clientTLSConfig
+}
+
+// NewPreAllocatedLocalHostServer create a localhost server config with a pre allocated listener and port.
+func NewPreAllocatedLocalHostServer(t *testing.T, tlsConfig connection.TLSConfig) *connection.ServerConfig {
+	t.Helper()
+	server := NewLocalHostServer(tlsConfig)
+	listener, err := server.PreAllocateListener(t.Context())
+	t.Cleanup(func() {
+		_ = listener.Close()
+	})
+	require.NoError(t, err)
+	return server
 }
 
 // Run executes the specified command and returns the corresponding process.
