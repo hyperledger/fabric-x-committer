@@ -103,6 +103,13 @@ To execute the tests, use:
 make test
 ```
 
+### Race Detection
+
+The project uses Go's race detector to catch data race conditions during test execution. Race detection is:
+
+- **Enabled by default in CI and local development** for unit tests (test-no-db, test-all-db)
+- **Not enabled for integration and container tests** to avoid excessive slowdown
+
 ## Golang Development Dependencies Installation
 
 ```shell

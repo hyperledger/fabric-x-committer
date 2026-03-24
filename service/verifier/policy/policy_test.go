@@ -40,6 +40,7 @@ func TestGetUpdatesFromNamespace(t *testing.T) {
 		ReadWrites: items,
 	}
 	update := GetUpdatesFromNamespace(tx)
+	require.NotNil(t, update)
 	require.NotNil(t, update.GetNamespacePolicies())
 	require.Nil(t, update.Config)
 	require.Len(t, update.NamespacePolicies.Policies, len(items))
@@ -117,6 +118,9 @@ func TestParsePolicyItem(t *testing.T) {
 
 func TestParseLifecycleEndorsementPolicy(t *testing.T) {
 	t.Parallel()
+
+	// Initialize factory before parallel subtests to avoid data race
+	require.NotNil(t, factory.GetDefault())
 
 	t.Run("valid bundle returns verifier", func(t *testing.T) {
 		t.Parallel()

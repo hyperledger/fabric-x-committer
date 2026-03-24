@@ -457,11 +457,11 @@ func TestLoadGenRateLimiterServer(t *testing.T) {
 	t.Parallel()
 	clientConf := DefaultClientConf(t, test.InsecureTLSConfig)
 	clientConf.Adapter.VerifierClient = startVerifiers(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
-	curRate := uint64(100)
+	curRate := uint64(10)
 	clientConf.Stream.RateLimit = curRate
 	// We use small wait to ensure the rate limiter serves in low granularity.
 	clientConf.LoadProfile.Block.PreferredRate = 10 * time.Millisecond
-	clientConf.LoadProfile.Block.MaxSize = 100
+	clientConf.LoadProfile.Block.MaxSize = 10
 	clientConf.LoadProfile.Block.MinSize = 1
 	clientConf.HTTPServer = test.NewLocalHostServer(test.InsecureTLSConfig)
 
@@ -495,7 +495,7 @@ func TestLoadGenRateLimiterServer(t *testing.T) {
 	requireGetRate(curRate)
 	requireEventuallyMeasuredRate(t, client.resources.Metrics, curRate)
 
-	curRate = uint64(1_000)
+	curRate = uint64(50)
 	setRate(curRate)
 	requireGetRate(curRate)
 	requireEventuallyMeasuredRate(t, client.resources.Metrics, curRate)
