@@ -38,6 +38,9 @@ type (
 		retry         *retry.Profile
 		tls           *connection.TLSMaterials
 		tlsCertHash   []byte
+		// staticCACerts holds the static CA certificates from the initial YAML configuration.
+		// These are preserved across config block updates and appended to all organizations' CA certificates.
+		staticCACerts [][]byte
 	}
 
 	// ConnFilter is used to filter connections.
@@ -66,10 +69,9 @@ const (
 // NewConnectionManager constructs a ConnectionManager and initializes its connections.
 func NewConnectionManager(config *Config) (*ConnectionManager, error) {
 	tls, err := connection.NewTLSMaterials(connection.TLSConfig{
-		Mode:        config.TLS.Mode,
-		CertPath:    config.TLS.CertPath,
-		KeyPath:     config.TLS.KeyPath,
-		CACertPaths: config.TLS.CommonCACertPaths,
+		Mode:     config.TLS.Mode,
+		CertPath: config.TLS.CertPath,
+		KeyPath:  config.TLS.KeyPath,
 	})
 	if err != nil {
 		return nil, err
@@ -83,16 +85,27 @@ func NewConnectionManager(config *Config) (*ConnectionManager, error) {
 		}
 	}
 
-	// create connection manager with the config's retry policy and TLS.
-	cm := &ConnectionManager{
-		tls:         tls,
-		tlsCertHash: tlsCertHash,
-		retry:       config.Retry,
-	}
+	// Collect all static CA certificates from the YAML configuration across all organizations.
+	// These will be preserved and appended to all organizations' CA certificates across
+	// config block updates to ensure connectivity.
+	var staticCACerts [][]byte
 	orgsMaterial, err := NewOrganizationsMaterials(config.Organizations, config.TLS.Mode)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to create organizations materials")
 	}
+	for _, org := range orgsMaterial {
+		staticCACerts = append(staticCACerts, org.CACerts...)
+		org.CACerts = nil // clear CACerts to avoid duplication with staticCACerts
+	}
+
+	// Create connection manager with the config's retry policy, TLS, and static CA certs.
+	cm := &ConnectionManager{
+		tls:           tls,
+		retry:         config.Retry,
+		tlsCertHash:   tlsCertHash,
+		staticCACerts: staticCACerts,
+	}
+
 	if err = cm.Update(orgsMaterial); err != nil {
 		return nil, err
 	}
@@ -115,7 +128,9 @@ func (cm *ConnectionManager) Update(orgsMat []*OrganizationMaterial) error { //n
 	var allOrgsEndpoints []*commontypes.OrdererEndpoint
 	for _, org := range orgsMat {
 		orgTLS := *cm.tls
-		orgTLS.CACerts = append(orgTLS.CACerts, org.CACerts...)
+		// Always append static CA certs from YAML config first, then dynamic CA certs from config block.
+		// This ensures that static CA certs are preserved across config block updates for all organizations.
+		orgTLS.CACerts = append(append(orgTLS.CACerts, cm.staticCACerts...), org.CACerts...)
 		for _, id := range append(getAllIDs(org.Endpoints), anyID) {
 			for _, api := range allAPIs {
 				filter := aggregateFilter(WithAPI(api), WithID(id))

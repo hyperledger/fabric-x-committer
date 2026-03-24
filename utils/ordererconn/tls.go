@@ -41,7 +41,7 @@ func NewOrganizationsMaterials(orgs map[string]*OrganizationConfig, tlsMode stri
 		for _, caPath := range orgConfig.CACerts {
 			caBytes, err := os.ReadFile(caPath)
 			if err != nil {
-				return nil, errors.Wrapf(err, "failed to load CA certificate from %s", caBytes)
+				return nil, errors.Wrapf(err, "failed to load CA certificate from %s", caPath)
 			}
 			orgsMaterial.CACerts = append(orgsMaterial.CACerts, caBytes)
 		}

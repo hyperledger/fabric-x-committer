@@ -62,10 +62,6 @@ orderer:
     mode: {{ .ClientTLS.Mode }}
     cert-path: {{ .ClientTLS.CertPath }}
     key-path: {{ .ClientTLS.KeyPath }}
-    common-ca-cert-paths:
-      {{- range .ClientTLS.CACertPaths }}
-      - {{ . }}
-      {{- end }}
   identity:
     msp-id: peer-org-0
     msp-dir: {{ .Policy.ArtifactsPath }}/peerOrganizations/peer-org-0/users/client@peer-org-0.com/msp

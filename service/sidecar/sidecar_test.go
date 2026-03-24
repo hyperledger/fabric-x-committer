@@ -147,9 +147,19 @@ func newSidecarTestEnvWithTLS(
 		},
 	}
 	if conf.SubmitGenesisBlock {
+		// Preserve initOrdererOrganizations to maintain the initial, static root CA
+		// required by the mock-orderer's server credentials.
+		// Future config blocks will append new root CAs to this static one.
+		// We only replace the existing endpoints with dummy values here, as the
+		// actual routing endpoints will be dynamically retrieved from the config block.
+		initOrdererOrganizations["org"].Endpoints = []*commontypes.OrdererEndpoint{
+			{
+				Host: "dummy_host",
+				Port: 1111,
+			},
+		}
 		genesisBlockFilePath = filepath.Join(t.TempDir(), "config.block")
 		require.NoError(t, configtxgen.WriteOutputBlock(configBlock, genesisBlockFilePath))
-		initOrdererOrganizations = nil
 	}
 	sidecarConf := &Config{
 		Server:    test.NewLocalHostServer(conf.ServerTLS),
