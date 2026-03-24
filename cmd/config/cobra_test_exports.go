@@ -123,26 +123,23 @@ func UnitTestRunner(
 	wg := &sync.WaitGroup{}
 	t.Cleanup(func() {
 		t.Log("Waiting for command to finish")
-		defer t.Log("Command finished")
 		wg.Wait()
 	})
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	wg.Add(1)
-	go func() {
+	wg.Go(func() {
 		t.Logf("Starting command: %s", args[0])
 		defer t.Logf("Command exited: %s", args[0])
-		defer wg.Done()
-		_, err := cmd.ExecuteContextC(ctx)
-		err = connection.FilterStreamRPCError(err)
+		_, execErr := cmd.ExecuteContextC(ctx)
+		execErr = connection.FilterStreamRPCError(execErr)
 		if cmdTest.Err == nil {
-			assert.NoError(t, err)
-		} else if assert.Error(t, err) {
-			assert.Equal(t, cmdTest.Err.Error(), err.Error())
+			assert.NoError(t, execErr)
+		} else if assert.Error(t, execErr) {
+			assert.Equal(t, cmdTest.Err.Error(), execErr.Error())
 		}
-	}()
+	})
 
 	assert.Eventually(t, func() bool {
 		return len(getMissing(cmdTest, cmdStdOut.String(), loggerPath)) == 0
