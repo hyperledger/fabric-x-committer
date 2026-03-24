@@ -275,8 +275,8 @@ func TestBlsSignatureVerificationErrors(t *testing.T) {
 	t.Parallel()
 
 	_, pub := testsig.NewKeyPair(signature.Bls)
-	verifier, err := signature.NewNsVerifierFromKey(signature.Bls, pub)
-	require.NoError(t, err)
+	verifier, verErr := signature.NewNsVerifierFromKey(signature.Bls, pub)
+	require.NoError(t, verErr)
 
 	tx := &applicationpb.Tx{
 		Namespaces: []*applicationpb.TxNamespace{{
@@ -296,7 +296,7 @@ func TestBlsSignatureVerificationErrors(t *testing.T) {
 				}},
 			}},
 		}
-		err = verifier.VerifyNs("txid", txBad, 0)
+		err := verifier.VerifyNs("txid", txBad, 0)
 		require.ErrorContains(t, err, "cannot set G1 from signature bytes")
 	})
 
@@ -312,7 +312,7 @@ func TestBlsSignatureVerificationErrors(t *testing.T) {
 				}},
 			}},
 		}
-		err = verifier.VerifyNs("txid", txBad, 0)
+		err := verifier.VerifyNs("txid", txBad, 0)
 		require.ErrorIs(t, err, signature.ErrSignatureMismatch)
 	})
 }
