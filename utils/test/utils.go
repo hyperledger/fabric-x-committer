@@ -29,7 +29,6 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
-	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tedsuo/ifrit"
@@ -74,16 +73,6 @@ type (
 		NumService int
 	}
 )
-
-// FailHandler registers a [gomega] fail handler.
-func FailHandler(t *testing.T) {
-	t.Helper()
-	gomega.RegisterFailHandler(func(message string, _ ...int) {
-		t.Helper()
-		t.Errorf("received error message: %s", message)
-		t.FailNow()
-	})
-}
 
 // ServerToMultiClientConfig is used to create a multi client configuration from existing server(s)
 // given a client TLS configuration.
