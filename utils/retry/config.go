@@ -10,7 +10,9 @@ SPDX-License-Identifier: Apache-2.0
 // and error handling semantics. It offers several retry strategies:
 //
 //   - Execute: Retries an operation until it succeeds or times out
+//   - ExecuteWithResult: Generic version that returns a result on success
 //   - ExecuteSQL: Specialized retry for SQL operations
+//   - WaitForCondition: Polls a condition until it becomes true
 //   - Sustain: Keeps a long-running operation alive, restarting on transient failures
 //
 // The package defines special error types to control retry behavior:
@@ -49,10 +51,9 @@ SPDX-License-Identifier: Apache-2.0
 package retry
 
 import (
-	"context"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
+	"github.com/cenkalti/backoff/v5"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 )
 
@@ -127,16 +128,7 @@ func (p *Profile) NewBackoff() *backoff.ExponentialBackOff {
 		RandomizationFactor: pp.RandomizationFactor,
 		Multiplier:          pp.Multiplier,
 		MaxInterval:         pp.MaxInterval,
-		MaxElapsedTime:      pp.MaxElapsedTime,
-		Clock:               backoff.SystemClock,
 	}
-	b.Stop = backoff.Stop // -1 to stop retries
 	b.Reset()
 	return b
-}
-
-// Execute executes the given operation repeatedly until it succeeds or a timeout occurs.
-// It returns nil on success, or the error returned by the final attempt on timeout.
-func (p *Profile) Execute(ctx context.Context, o backoff.Operation) error {
-	return Execute(ctx, p, o)
 }

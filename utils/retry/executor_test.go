@@ -7,11 +7,15 @@ SPDX-License-Identifier: Apache-2.0
 package retry
 
 import (
+	"bytes"
+	"context"
+	"os"
+	"regexp"
 	"testing"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -68,8 +72,6 @@ func TestNewBackoff(t *testing.T) {
 			assert.InEpsilon(t, tt.expectedRandomizationFactor, b.RandomizationFactor, 0)
 			assert.InEpsilon(t, tt.expectedMultiplier, b.Multiplier, 0)
 			assert.Equal(t, tt.expectedMaxInterval, b.MaxInterval)
-			assert.Equal(t, tt.expectedMaxElapsedTime, b.MaxElapsedTime)
-			assert.Equal(t, backoff.Stop, b.Stop)
 		})
 	}
 }
@@ -131,6 +133,63 @@ func TestExecute(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestExecuteLogLevel is used to manually verify the log output is using the correct
+// method name when logging.
+//
+//nolint:paralleltest // We cannot run in parallel because we modify the logger.
+func TestExecuteLogLevel(t *testing.T) {
+	var b bytes.Buffer
+	flogging.SetWriter(&b)
+	t.Cleanup(func() {
+		flogging.SetWriter(os.Stderr)
+	})
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	t.Cleanup(cancel)
+	err := Execute(ctx, nil, func() error {
+		time.Sleep(10 * time.Millisecond)
+		return errors.New("Execute error")
+	})
+	require.Error(t, err)
+
+	ctx, cancel = context.WithTimeout(t.Context(), time.Second)
+	t.Cleanup(cancel)
+	_, err = ExecuteWithResult(ctx, nil, func() (any, error) {
+		time.Sleep(10 * time.Millisecond)
+		return nil, errors.New("ExecuteWithResult error")
+	})
+	require.Error(t, err)
+
+	ctx, cancel = context.WithTimeout(t.Context(), time.Second)
+	t.Cleanup(cancel)
+	res := WaitForCondition(ctx, nil, func() bool {
+		time.Sleep(10 * time.Millisecond)
+		return false
+	})
+	require.False(t, res)
+
+	ctx, cancel = context.WithTimeout(t.Context(), time.Second)
+	t.Cleanup(cancel)
+	err = Sustain(ctx, nil, func() error {
+		time.Sleep(10 * time.Millisecond)
+		return errors.Wrap(ErrNonRetryable, "Sustain error")
+	})
+	require.Error(t, err)
+
+	// Regain ownership over the buffer.
+	flogging.SetWriter(os.Stderr)
+
+	output := b.String()
+	t.Log(output)
+
+	// Remove the color codes from the log output.
+	output = regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(output, "")
+	require.Contains(t, output, "[retry] TestExecuteLogLevel -> Execute error")
+	require.Contains(t, output, "[retry] TestExecuteLogLevel -> ExecuteWithResult error")
+	require.Contains(t, output, "[retry] TestExecuteLogLevel -> condition not satisfied")
+	require.Contains(t, output, "[retry] TestExecuteLogLevel -> Sustain error")
 }
 
 // makeOp returns an operation and a pointer to a call counter.

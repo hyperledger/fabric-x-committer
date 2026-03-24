@@ -51,7 +51,7 @@ type (
 // MaxBlockNum is used for endless deliver.
 const MaxBlockNum uint64 = math.MaxUint64
 
-var defaultRetryProfile = retry.Profile{}
+var defaultRetryProfile retry.Profile
 
 // Deliver start receiving blocks starting from config.StartBlkNum to config.OutputBlock.
 // The value of config.StartBlkNum is updated with the latest block number.
@@ -84,25 +84,15 @@ func (c *CftClient) receiveFromBlockDeliverer(ctx context.Context, p *Parameters
 	addr := util.ExtractRemoteAddress(stream.Context())
 	logger.Infof("Deliver connected to %s", addr)
 
-	deliverRetry := defaultRetryProfile.NewBackoff()
-	for sCtx.Err() == nil {
-		status, err := c.deliverRelay(sCtx, stream, p)
-		if err != nil {
-			return err
-		}
-		if status == common.Status_SUCCESS {
-			// Indication that the seek range is fully delivered.
-			return nil
-		}
-
-		logger.Infof("Deliver failed with status: %s", status.String())
-		// This is a workaround for the case when the start block is not yet available.
-		backoffErr := retry.WaitForNextBackOffDuration(sCtx, deliverRetry)
-		if errors.Is(backoffErr, retry.ErrRetryTimeout) {
-			return backoffErr
-		}
+	status, err := c.deliverRelay(sCtx, stream, p)
+	if err != nil {
+		return err
 	}
-	return nil
+	if status == common.Status_SUCCESS {
+		// Indication that the seek range is fully delivered.
+		return nil
+	}
+	return errors.Newf("deliver failed with status: %s", status.String())
 }
 
 // getConnection returns a connection to a delivery service.
@@ -110,19 +100,14 @@ func (c *CftClient) receiveFromBlockDeliverer(ctx context.Context, p *Parameters
 // If the endpoints haven't changed, the manager will return the exact same connection.
 // If no connection available, we wait and try again.
 func (c *CftClient) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
-	getConnRetry := defaultRetryProfile.NewBackoff()
-	for ctx.Err() == nil {
+	return retry.ExecuteWithResult(ctx, &defaultRetryProfile, func() (*grpc.ClientConn, error) {
 		conn, _ := c.ConnectionManager.GetConnection(ordererconn.WithAPI(ordererconn.Deliver))
 		if conn != nil {
 			return conn, nil
 		}
 		logger.Infof("No available connection to deliver block")
-		backoffErr := retry.WaitForNextBackOffDuration(ctx, getConnRetry)
-		if errors.Is(backoffErr, retry.ErrRetryTimeout) {
-			return nil, errors.Join(ordererconn.ErrNoConnections, backoffErr)
-		}
-	}
-	return nil, errors.Join(ordererconn.ErrNoConnections, ctx.Err())
+		return nil, ordererconn.ErrNoConnections
+	})
 }
 
 // deliverRelay initiate a new seek request and relays the delivered blocks to the output channel.

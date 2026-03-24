@@ -96,14 +96,10 @@ func (c *Connection) open(ctx context.Context) (*pgxpool.Pool, error) {
 
 	dbconn.ConfigureConnReadDeadline(poolConfig)
 
-	var pool *pgxpool.Pool
-	if retryErr := defaultRetry.Execute(ctx, func() error {
-		pool, err = pgxpool.NewWithConfig(ctx, poolConfig)
-		return err
-	}); retryErr != nil {
-		return nil, errors.Wrapf(err, "error making pool: %s", c.endpointsString())
-	}
-	return pool, nil
+	pool, retryErr := retry.ExecuteWithResult(ctx, defaultRetry, func() (*pgxpool.Pool, error) {
+		return pgxpool.NewWithConfig(ctx, poolConfig)
+	})
+	return pool, errors.Wrapf(retryErr, "error making pool: %s", c.endpointsString())
 }
 
 // waitForReady repeatably checks readiness until positive response arrives.
