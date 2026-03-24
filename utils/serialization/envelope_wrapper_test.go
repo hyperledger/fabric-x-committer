@@ -192,26 +192,22 @@ func TestLoadgenEnvelopeConsistency(t *testing.T) {
 func BenchmarkUnwrapEnvelope(b *testing.B) {
 	envelopes := loadgenEnvelopes(b, b.N)
 	b.ResetTimer()
-	i := 0
-	for b.Loop() {
-		_, _, err := serialization.UnwrapEnvelope(envelopes[i%len(envelopes)])
+	for _, env := range envelopes {
+		_, _, err := serialization.UnwrapEnvelope(env)
 		if err != nil {
 			b.Fatal(err)
 		}
-		i++
 	}
 }
 
 func BenchmarkUnwrapEnvelopeLite(b *testing.B) {
 	envelopes := loadgenEnvelopes(b, b.N)
 	b.ResetTimer()
-	i := 0
-	for b.Loop() {
-		_, err := serialization.UnwrapEnvelopeLite(envelopes[i%len(envelopes)])
+	for _, env := range envelopes {
+		_, err := serialization.UnwrapEnvelopeLite(env)
 		if err != nil {
 			b.Fatal(err)
 		}
-		i++
 	}
 }
 

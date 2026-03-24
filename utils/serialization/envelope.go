@@ -190,66 +190,6 @@ func UnwrapEnvelopeLite(message []byte) (*EnvelopeLite, error) {
 	}, nil
 }
 
-// extractBytesField scans for targetField with bytes wire type and returns
-// its decoded content. Returns nil if the field is absent.
-// Returns an error only if the wire format is invalid before the target field.
-func extractBytesField(b []byte, targetField protowire.Number) ([]byte, error) {
-	for len(b) > 0 {
-		// protowire.ConsumeXXX functions return a negative error code on failure.
-		// On success, they return the number of bytes consumed (always >= 1),
-		// so n is never zero.
-		num, wtype, n := protowire.ConsumeTag(b)
-		if n < 0 {
-			return nil, errors.New("invalid protobuf tag")
-		}
-		b = b[n:]
-
-		if num == targetField && wtype == protowire.BytesType {
-			val, vn := protowire.ConsumeBytes(b)
-			if vn < 0 {
-				return nil, errors.New("invalid length-delimited field")
-			}
-			return val, nil
-		}
-
-		vn := protowire.ConsumeFieldValue(num, wtype, b)
-		if vn < 0 {
-			return nil, errors.New("invalid protobuf field value")
-		}
-		b = b[vn:]
-	}
-	return nil, nil
-}
-
-// extractVarintField scans for targetField with varint wire type and returns
-// its value. Returns 0 if the field is absent (matching proto3 default).
-// Returns an error only if the wire format is invalid before the target field.
-func extractVarintField(b []byte, targetField protowire.Number) (uint64, error) {
-	for len(b) > 0 {
-		// See extractBytesField for why n is never zero.
-		num, wtype, n := protowire.ConsumeTag(b)
-		if n < 0 {
-			return 0, errors.New("invalid protobuf tag")
-		}
-		b = b[n:]
-
-		if num == targetField && wtype == protowire.VarintType {
-			v, vn := protowire.ConsumeVarint(b)
-			if vn < 0 {
-				return 0, errors.New("invalid varint field")
-			}
-			return v, nil
-		}
-
-		vn := protowire.ConsumeFieldValue(num, wtype, b)
-		if vn < 0 {
-			return 0, errors.New("invalid protobuf field value")
-		}
-		b = b[vn:]
-	}
-	return 0, nil
-}
-
 // extractStringField scans for targetField with bytes wire type and returns
 // its value as a string. Returns "" if the field is absent.
 // Returns an error if the wire format is invalid or the value is not valid UTF-8.
@@ -262,4 +202,62 @@ func extractStringField(b []byte, targetField protowire.Number) (string, error) 
 		return "", errors.New("string field contains invalid UTF-8")
 	}
 	return string(val), nil
+}
+
+// extractBytesField scans for targetField with bytes wire type and returns
+// its decoded content. Returns nil if the field is absent.
+// Returns an error only if the wire format is invalid before the target field.
+func extractBytesField(b []byte, targetField protowire.Number) ([]byte, error) {
+	b, err := findField(b, targetField, protowire.BytesType)
+	if b == nil || err != nil {
+		return nil, err
+	}
+	val, vn := protowire.ConsumeBytes(b)
+	if vn < 0 {
+		return nil, errors.New("invalid length-delimited field")
+	}
+	return val, nil
+}
+
+// extractVarintField scans for targetField with varint wire type and returns
+// its value. Returns 0 if the field is absent (matching proto3 default).
+// Returns an error only if the wire format is invalid before the target field.
+func extractVarintField(b []byte, targetField protowire.Number) (uint64, error) {
+	b, err := findField(b, targetField, protowire.VarintType)
+	if b == nil || err != nil {
+		return 0, err
+	}
+	v, vn := protowire.ConsumeVarint(b)
+	if vn < 0 {
+		return 0, errors.New("invalid varint field")
+	}
+	return v, nil
+}
+
+// findField scans for targetField with the given wire type and returns the
+// remaining buffer positioned at the start of the field's value.
+// Returns nil if the field is absent.
+// Returns an error only if the wire format is invalid before the target field.
+func findField(b []byte, targetField protowire.Number, targetType protowire.Type) ([]byte, error) {
+	for len(b) > 0 {
+		// protowire.ConsumeXXX functions return a negative error code on failure.
+		// On success, they return the number of bytes consumed (always >= 1),
+		// so n is never zero.
+		num, wtype, n := protowire.ConsumeTag(b)
+		if n < 0 {
+			return nil, errors.New("invalid protobuf tag")
+		}
+		b = b[n:]
+
+		if num == targetField && wtype == targetType {
+			return b, nil
+		}
+
+		vn := protowire.ConsumeFieldValue(num, wtype, b)
+		if vn < 0 {
+			return nil, errors.New("invalid protobuf field value")
+		}
+		b = b[vn:]
+	}
+	return nil, nil
 }
