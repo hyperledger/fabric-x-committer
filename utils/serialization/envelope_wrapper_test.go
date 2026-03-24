@@ -163,8 +163,8 @@ func FuzzUnwrapEnvelopeLiteNoPanic(f *testing.F) {
 	f.Add([]byte("not a protobuf"))
 	f.Add([]byte{0x0a, 0x00})
 
-	f.Fuzz(func(_ *testing.T, data []byte) {
-		_, _ = serialization.UnwrapEnvelopeLite(data) // checking for panics only
+	f.Fuzz(func(t *testing.T, data []byte) {
+		assertLiteMatchesOriginal(t, data)
 	})
 }
 
@@ -198,6 +198,7 @@ func BenchmarkUnwrapEnvelope(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+	b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "tx/s")
 }
 
 func BenchmarkUnwrapEnvelopeLite(b *testing.B) {
@@ -209,6 +210,7 @@ func BenchmarkUnwrapEnvelopeLite(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+	b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "tx/s")
 }
 
 // loadgenEnvelopes generates realistic serialized envelopes using the load

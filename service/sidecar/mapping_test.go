@@ -20,7 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 )
 
-func BenchmarkMapBlock(b *testing.B) {
+func BenchmarkMapOneBlock(b *testing.B) {
 	flogging.ActivateSpec("fatal")
 	txs := workload.GenerateTransactions(b, nil, b.N)
 	block := workload.MapToOrdererBlock(1, txs)
@@ -31,9 +31,12 @@ func BenchmarkMapBlock(b *testing.B) {
 	b.StopTimer()
 	require.NoError(b, err, "This can never occur unless there is a bug in the relay.")
 	require.NotNil(b, mappedBlock)
-	flogging.Init(flogging.Config{LogSpec: "fatal"})
+}
+
+func BenchmarkMapBlockSize(b *testing.B) {
+	flogging.ActivateSpec("fatal")
 	for _, blockSize := range []int{100, 1000, 5000, 10000} {
-		b.Run(fmt.Sprintf("txs=%d", blockSize), func(b *testing.B) {
+		b.Run(fmt.Sprintf("blockSize=%d", blockSize), func(b *testing.B) {
 			// Generate b.N total TXs so each iteration processes a unique block,
 			// avoiding cache/locality effects from reusing the same block.
 			// Pad to ensure at least one full block.
@@ -62,7 +65,7 @@ func BenchmarkMapBlock(b *testing.B) {
 				}
 				blockIdx++
 			}
-			b.ReportMetric(float64(b.N*blockSize)/b.Elapsed().Seconds(), "tx/s")
+			b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "tx/s")
 		})
 	}
 }
