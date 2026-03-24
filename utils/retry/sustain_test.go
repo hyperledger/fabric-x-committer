@@ -20,11 +20,12 @@ func TestSustain(t *testing.T) {
 
 	// Cases where operation runs continuously until context cancellation
 	for _, tc := range []struct {
-		name         string
-		operation    func(callCount uint64) error
-		profile      *Profile
-		cancelAfter  time.Duration
-		minCallCount uint64
+		name          string
+		operation     func(callCount uint64) error
+		profile       *Profile
+		cancelAfter   time.Duration
+		minCallCount  uint64
+		errorContains string
 	}{
 		{
 			name:      "operation runs continuously returning nil until context cancelled",
@@ -33,8 +34,9 @@ func TestSustain(t *testing.T) {
 				InitialInterval: 10 * time.Millisecond,
 				MaxElapsedTime:  100 * time.Millisecond,
 			},
-			cancelAfter:  50 * time.Millisecond,
-			minCallCount: 2,
+			cancelAfter:   50 * time.Millisecond,
+			minCallCount:  2,
+			errorContains: "context has been cancelled",
 		},
 		{
 			name: "operation recovers from backoff errors and continues running",
@@ -48,8 +50,9 @@ func TestSustain(t *testing.T) {
 				InitialInterval: 10 * time.Millisecond,
 				MaxElapsedTime:  500 * time.Millisecond,
 			},
-			cancelAfter:  200 * time.Millisecond,
-			minCallCount: 4,
+			cancelAfter:   200 * time.Millisecond,
+			minCallCount:  4,
+			errorContains: "context has been cancelled",
 		},
 		{
 			name: "operation recovers from backoff errors and continues running and than back offs again",
@@ -63,8 +66,9 @@ func TestSustain(t *testing.T) {
 				InitialInterval: 10 * time.Millisecond,
 				MaxElapsedTime:  500 * time.Millisecond,
 			},
-			cancelAfter:  200 * time.Millisecond,
-			minCallCount: 4,
+			cancelAfter:   200 * time.Millisecond,
+			minCallCount:  4,
+			errorContains: "context has been cancelled",
 		},
 		{
 			name: "other errors retry immediately without backoff",
@@ -78,8 +82,22 @@ func TestSustain(t *testing.T) {
 				InitialInterval: 10 * time.Millisecond,
 				MaxElapsedTime:  500 * time.Millisecond,
 			},
-			cancelAfter:  400 * time.Millisecond,
-			minCallCount: 4,
+			cancelAfter:   400 * time.Millisecond,
+			minCallCount:  4,
+			errorContains: "context has been cancelled",
+		},
+		{
+			name: "max time elapsed before context cancelled",
+			operation: func(uint64) error {
+				return errors.Wrap(ErrBackOff, "transient error")
+			},
+			profile: &Profile{
+				InitialInterval: 10 * time.Millisecond,
+				MaxElapsedTime:  100 * time.Millisecond,
+			},
+			cancelAfter:   time.Second,
+			minCallCount:  2,
+			errorContains: "transient error",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -95,7 +113,7 @@ func TestSustain(t *testing.T) {
 			})
 
 			// Should run continuously until cancelled by context.
-			require.ErrorContains(t, err, "context")
+			require.ErrorContains(t, err, tc.errorContains)
 			require.GreaterOrEqual(t, callCount, tc.minCallCount)
 		})
 	}

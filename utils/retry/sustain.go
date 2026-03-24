@@ -54,6 +54,13 @@ func Sustain(ctx context.Context, p *Profile, op func() error) error {
 			return nil, errors.WithMessage(err, "sustained operation error")
 		})
 
+		// The above call should retry whenever ErrBackOff is returned.
+		// Thus, if the returned error is ErrBackOff, it means we reached the
+		// maximal attempts (MaxElapsedTime).
+		if errors.Is(err, ErrBackOff) {
+			return err
+		}
+
 		if errors.Is(err, ErrNonRetryable) {
 			return err
 		}

@@ -174,15 +174,14 @@ func (db *database) queryVersionsIfPresent(ctx context.Context, nsID string, que
 	start := time.Now()
 	query := FmtNsID(queryVersionsSQLTempl, nsID)
 
-	foundKeysVersions, err := retryQueryAndReadTwoItems[[]byte, int64](ctx, db, query, queryKeys)
+	foundKeys, foundVersions, err := retryQueryAndReadTwoItems[[]byte, int64](ctx, db, query, queryKeys)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get keys' version from namespace [%s]: %w", nsID, err)
 	}
 
 	kToV := make(keyToVersion)
-	for _, keyVersion := range foundKeysVersions {
-		//nolint:gosec // DB table is constraint to non-negative value.
-		kToV[string(keyVersion.item1)] = uint64(keyVersion.item2)
+	for i, key := range foundKeys {
+		kToV[string(key)] = uint64(foundVersions[i]) //nolint:gosec // DB table is constraint to non-negative value.
 	}
 	promutil.Observe(db.metrics.databaseTxBatchQueryVersionLatencySeconds, time.Since(start))
 
@@ -483,33 +482,33 @@ func (db *database) readStatusWithHeight(
 }
 
 func (db *database) readNamespacePolicies(ctx context.Context) (*applicationpb.NamespacePolicies, error) {
-	keysValues, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, db, queryPoliciesSQLStmt)
+	keys, values, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, db, queryPoliciesSQLStmt)
 	if err != nil {
 		metaTable := TableName(committerpb.MetaNamespaceID)
 		return nil, fmt.Errorf("failed to read the policies from table [%s]: %w", metaTable, err)
 	}
 	policy := &applicationpb.NamespacePolicies{
-		Policies: make([]*applicationpb.PolicyItem, len(keysValues)),
+		Policies: make([]*applicationpb.PolicyItem, len(keys)),
 	}
 
-	for i, keyValue := range keysValues {
+	for i, key := range keys {
 		policy.Policies[i] = &applicationpb.PolicyItem{
-			Namespace: string(keyValue.item1),
-			Policy:    keyValue.item2,
+			Namespace: string(key),
+			Policy:    values[i],
 		}
 	}
 	return policy, nil
 }
 
 func (db *database) readConfigTX(ctx context.Context) (*applicationpb.ConfigTransaction, error) {
-	keysValues, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, db, queryConfigSQLStmt)
+	_, values, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, db, queryConfigSQLStmt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the config transaction from table [%s]: %w",
 			TableName(committerpb.ConfigNamespaceID), err)
 	}
 	configTX := &applicationpb.ConfigTransaction{}
-	for _, v := range keysValues {
-		configTX.Envelope = v.item2
+	for _, v := range values {
+		configTX.Envelope = v
 	}
 	return configTX, nil
 }
@@ -529,28 +528,37 @@ func retryQueryAndReadArrayResult[T any](
 
 func retryQueryAndReadTwoItems[T1, T2 any](
 	ctx context.Context, db *database, query string, args ...any,
-) ([]tuple[T1, T2], error) {
-	return retry.ExecuteWithResult(ctx, db.retryProfile, func() ([]tuple[T1, T2], error) {
+) ([]T1, []T2, error) {
+	res, err := retry.ExecuteWithResult(ctx, db.retryProfile, func() (*tuple[[]T1, []T2], error) {
 		rows, queryErr := db.pool.Query(ctx, query, args...)
 		if queryErr != nil {
 			return nil, errors.Wrapf(queryErr, "query rows: query [%s]", query)
 		}
 		defer rows.Close()
-		items, readErr := readTwoItems[T1, T2](rows)
-		return items, errors.Wrapf(readErr, "read rows from the query [%s] results", query)
+		items1, items2, readErr := readTwoItems[T1, T2](rows)
+		return &tuple[[]T1, []T2]{
+			item1: items1,
+			item2: items2,
+		}, errors.Wrapf(readErr, "read rows from the query [%s] results", query)
 	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return res.item1, res.item2, nil
 }
 
 // readTwoItems reads two items from given rows.
-func readTwoItems[T1, T2 any](r pgx.Rows) (items []tuple[T1, T2], err error) {
+func readTwoItems[T1, T2 any](r pgx.Rows) (items1 []T1, items2 []T2, err error) {
 	for r.Next() {
-		var i tuple[T1, T2]
-		if scanErr := r.Scan(&i.item1, &i.item2); scanErr != nil {
-			return nil, errors.Wrap(scanErr, "failed while scanning a row")
+		var i1 T1
+		var i2 T2
+		if err := r.Scan(&i1, &i2); err != nil {
+			return nil, nil, errors.Wrap(err, "failed while scanning a row")
 		}
-		items = append(items, i)
+		items1 = append(items1, i1)
+		items2 = append(items2, i2)
 	}
-	return items, errors.Wrap(r.Err(), "failed while reading from rows")
+	return items1, items2, errors.Wrap(r.Err(), "failed while reading from rows")
 }
 
 func readArrayResult[T any](r pgx.Row) (res []T, err error) {

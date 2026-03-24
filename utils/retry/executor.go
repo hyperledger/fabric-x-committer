@@ -45,7 +45,7 @@ func ExecuteSQL(ctx context.Context, p *Profile, e executor, sqlStmt string, arg
 	_, err := executeWithResult(ctx, p, func() (any, error) {
 		_, err := e.Exec(ctx, sqlStmt, args...)
 		return nil, errors.Wrapf(err, "failed to execute the SQL statement [%s]", sqlStmt)
-	})
+	}, puddle.ErrClosedPool)
 	return err
 }
 
@@ -67,7 +67,9 @@ func WaitForCondition(ctx context.Context, p *Profile, condition func() bool) bo
 // It returns the result of the operation on success, or an error on timeout.
 // This is a generic version that can return any type T.
 // We skip 4 callers for logging to always report the calling method.
-func executeWithResult[T any](ctx context.Context, p *Profile, operation func() (T, error)) (T, error) {
+func executeWithResult[T any](
+	ctx context.Context, p *Profile, operation func() (T, error), terminalErrors ...error,
+) (T, error) {
 	p = p.WithDefaults()
 	return backoff.Retry(ctx, func() (T, error) {
 		res, err := operation()
@@ -75,8 +77,10 @@ func executeWithResult[T any](ctx context.Context, p *Profile, operation func() 
 			logger.WithOptions(zap.AddCallerSkip(4)).Warn(err)
 		}
 		// We identify common cases where retry isn't useful.
-		if errors.Is(err, puddle.ErrClosedPool) {
-			err = backoff.Permanent(err)
+		for _, isErr := range terminalErrors {
+			if errors.Is(err, isErr) {
+				err = backoff.Permanent(err)
+			}
 		}
 		return res, err
 	}, backoff.WithBackOff(p.NewBackoff()), backoff.WithMaxElapsedTime(p.MaxElapsedTime))
