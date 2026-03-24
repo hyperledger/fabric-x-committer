@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -69,7 +70,7 @@ func TestGRPCRetry(t *testing.T) {
 	_, err = client.Check(ctx, nil)
 	require.NoError(t, err)
 
-	conn2 := test.NewInsecureConnectionWithRetry(t, &serverConfig.Endpoint, connection.RetryProfile{
+	conn2 := test.NewInsecureConnectionWithRetry(t, &serverConfig.Endpoint, retry.Profile{
 		MaxElapsedTime: 2 * time.Second,
 	})
 	client2 := healthgrpc.NewHealthClient(conn2)
@@ -364,4 +365,58 @@ func TestCloseConnections(t *testing.T) {
 		}
 		require.NoError(t, connection.CloseConnections(closers...))
 	})
+}
+
+func TestGrpcRetryJSON(t *testing.T) {
+	t.Parallel()
+	templateExpectedJSON := `
+	{
+	  "loadBalancingConfig": [{"round_robin": {}}],
+	  "methodConfig": [{
+		"name": [{}],
+		"retryPolicy": {
+		  "maxAttempts": %d,
+		  "backoffMultiplier": 1.5,
+		  "initialBackoff": "0.5s",
+		  "maxBackoff": "10s",
+		  "retryableStatusCodes": ["UNAVAILABLE", "DEADLINE_EXCEEDED", "RESOURCE_EXHAUSTED"]
+		}
+	  }]
+	}`
+	for _, tt := range []struct {
+		maxElapsedTime   time.Duration
+		expectedAttempts int
+	}{
+		{maxElapsedTime: 0, expectedAttempts: 96},
+		{maxElapsedTime: 15 * time.Second, expectedAttempts: 7},
+	} {
+		t.Run(fmt.Sprintf("maxElapsed=%s", tt.maxElapsedTime), func(t *testing.T) {
+			t.Parallel()
+			profile := retry.Profile{MaxElapsedTime: tt.maxElapsedTime}
+			jsonRaw := connection.MakeGrpcRetryPolicyJSON(&profile)
+			require.JSONEq(t, fmt.Sprintf(templateExpectedJSON, tt.expectedAttempts), jsonRaw)
+		})
+	}
+}
+
+func TestCalcMaxAttempts(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		i, a, m, t float64
+		n          int
+	}{
+		{i: 1, a: 3, m: 2, t: 3, n: 3},  // 0 + 1 + 2         = 3
+		{i: 1, a: 3, m: 2, t: 6, n: 4},  // 0 + 1 + 2 + 3     = 6
+		{i: 1, a: 3, m: 2, t: 9, n: 5},  // 0 + 1 + 2 + 3 + 3 = 9
+		{i: 1, a: 16, m: 2, t: 7, n: 4}, // 0 + 1 + 2 + 4     = 7
+	} {
+		for _, e := range []float64{0, 1} {
+			tc := tc
+			tc.t += e
+			t.Run(fmt.Sprintf("%+v", tc), func(t *testing.T) {
+				t.Parallel()
+				require.Equal(t, tc.n, connection.CalcMaxAttempts(tc.i, tc.a, tc.m, tc.t))
+			})
+		}
+	}
 }

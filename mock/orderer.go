@@ -60,13 +60,17 @@ type (
 	Orderer struct {
 		streamStateManager[OrdererStreamState]
 		endpointToPartyState utils.SyncMap[string, *PartyState]
-		config               *OrdererConfig
 		genesisBlock         BlockWithConsenters
 		inEnvs               chan *common.Envelope
 		inBlocks             chan *BlockWithConsenters
 		cutBlock             chan any
 		cache                *blockCache
 		healthcheck          *health.Server
+
+		// config uses atomic.Pointer to allow safe concurrent reads by the Run() goroutine
+		// while supporting runtime updates (e.g., BlockTimeout changes in tests).
+		// Always use Load() to read and Store() to update the entire config struct.
+		config atomic.Pointer[OrdererConfig]
 	}
 
 	// OrdererStreamState holds the streams state.
@@ -167,15 +171,16 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 		}
 	}
 	numServices := max(1, config.TestServerParameters.NumService, len(config.ServerConfigs))
-	return &Orderer{
-		config:       config,
+	o := &Orderer{
 		genesisBlock: genesisBlock,
 		inEnvs:       make(chan *common.Envelope, numServices*config.BlockSize*config.OutBlockCapacity),
 		inBlocks:     make(chan *BlockWithConsenters, config.BlockSize*config.OutBlockCapacity),
 		cutBlock:     make(chan any),
 		cache:        newBlockCache(config.OutBlockCapacity),
 		healthcheck:  connection.DefaultHealthCheckService(),
-	}, nil
+	}
+	o.config.Store(config)
+	return o, nil
 }
 
 // Broadcast receives TXs and returns ACKs.
@@ -355,7 +360,7 @@ func (o *Orderer) Run(ctx context.Context) error {
 	// We add the signers after submitting the genesis block as Fabric's orderer
 	// does not sign the genesis block.
 	blockParams := testcrypto.BlockPrepareParameters{}
-	tick := time.NewTicker(o.config.BlockTimeout)
+	tick := time.NewTicker(o.config.Load().BlockTimeout)
 	sendBlock := func(b *common.Block) {
 		if b == nil {
 			return
@@ -368,7 +373,7 @@ func (o *Orderer) Run(ctx context.Context) error {
 			blockParams.LastConfigBlockIndex = b.Header.Number
 		}
 
-		tick.Reset(o.config.BlockTimeout)
+		tick.Reset(o.config.Load().BlockTimeout)
 	}
 	sendBlockWithConsenters := func(b *BlockWithConsenters) {
 		// The block is signed with OLD signers, then we update the signers.
@@ -382,20 +387,20 @@ func (o *Orderer) Run(ctx context.Context) error {
 	}
 
 	// Submit the config block.
-	if o.config.SendGenesisBlock {
+	if o.config.Load().SendGenesisBlock {
 		sendBlockWithConsenters(&o.genesisBlock)
 	}
 
-	data := make([][]byte, 0, o.config.BlockSize)
+	data := make([][]byte, 0, o.config.Load().BlockSize)
 	sendBlockData := func(reason string) {
 		if len(data) == 0 {
 			return
 		}
 		logger.Debugf("block with [%d] txs has been cut (%s)", len(data), reason)
 		sendBlock(&common.Block{Data: &common.BlockData{Data: data}})
-		data = make([][]byte, 0, o.config.BlockSize)
+		data = make([][]byte, 0, o.config.Load().BlockSize)
 	}
-	envCache := newFifoCache[any](o.config.PayloadCacheSize)
+	envCache := newFifoCache[any](o.config.Load().PayloadCacheSize)
 	for {
 		select {
 		case <-ctx.Done():
@@ -411,7 +416,7 @@ func (o *Orderer) Run(ctx context.Context) error {
 				continue
 			}
 			data = append(data, protoutil.MarshalOrPanic(env))
-			if len(data) >= o.config.BlockSize {
+			if len(data) >= o.config.Load().BlockSize {
 				sendBlockData("size")
 			}
 		}

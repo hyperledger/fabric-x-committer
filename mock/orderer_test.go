@@ -214,7 +214,10 @@ func TestOrderer(t *testing.T) {
 	require.Nil(t, block)
 
 	// We manually override this config, so it will be used after the next cut.
-	o.config.BlockTimeout = time.Second
+	oldCfg := o.config.Load()
+	newCfg := *oldCfg // Create a copy of the config struct
+	newCfg.BlockTimeout = time.Second
+	o.config.Store(&newCfg)
 
 	require.True(t, o.CutBlock(ctx))
 	// We ignore one block.

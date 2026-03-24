@@ -25,6 +25,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testapp"
 )
@@ -504,7 +505,7 @@ func TestGRPCStatusCode(t *testing.T) {
 	})
 
 	env.vcs[0].db.pool.Close()
-	env.vcs[0].db.retry = &connection.RetryProfile{
+	env.vcs[0].db.retryProfile = &retry.Profile{
 		InitialInterval: 100 * time.Millisecond,
 		MaxInterval:     1 * time.Second,
 		MaxElapsedTime:  3 * time.Second,

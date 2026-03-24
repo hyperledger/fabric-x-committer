@@ -81,7 +81,7 @@ func GetMetricValue(t *testing.T, m prometheus.Metric) float64 {
 	case gm.Summary != nil:
 		return gm.Summary.GetSampleSum()
 	case gm.Histogram != nil:
-		return gm.Histogram.GetSampleSum()
+		return gm.Histogram.GetSampleSum() / float64(gm.Histogram.GetSampleCount())
 	default:
 		require.Fail(t, "unsupported metric")
 		return 0

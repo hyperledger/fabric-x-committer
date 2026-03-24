@@ -29,7 +29,6 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
-	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tedsuo/ifrit"
@@ -43,13 +42,14 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 var (
 	// InsecureTLSConfig defines an empty tls config.
 	InsecureTLSConfig connection.TLSConfig
 	// defaultGrpcRetryProfile defines the retry policy for a gRPC client connection.
-	defaultGrpcRetryProfile connection.RetryProfile
+	defaultGrpcRetryProfile retry.Profile
 
 	// OrgRootCA is the path to organization 0's TLS client credentials in the crypto materials directory.
 	OrgRootCA = filepath.Join(cryptogen.PeerOrganizationsDir, "peer-org-0",
@@ -73,16 +73,6 @@ type (
 		NumService int
 	}
 )
-
-// FailHandler registers a [gomega] fail handler.
-func FailHandler(t *testing.T) {
-	t.Helper()
-	gomega.RegisterFailHandler(func(message string, _ ...int) {
-		t.Helper()
-		t.Errorf("received error message: %s", message)
-		t.FailNow()
-	})
-}
 
 // ServerToMultiClientConfig is used to create a multi client configuration from existing server(s)
 // given a client TLS configuration.
@@ -293,7 +283,7 @@ func NewSecuredConnectionWithRetry(
 	t *testing.T,
 	endpoint connection.WithAddress,
 	tlsConfig connection.TLSConfig,
-	retry connection.RetryProfile,
+	retryProfile retry.Profile,
 ) *grpc.ClientConn {
 	t.Helper()
 	clientCreds, err := tlsConfig.ClientCredentials()
@@ -301,7 +291,7 @@ func NewSecuredConnectionWithRetry(
 	conn, err := connection.NewConnection(connection.ClientParameters{
 		Address: endpoint.Address(),
 		Creds:   clientCreds,
-		Retry:   &retry,
+		Retry:   &retryProfile,
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -318,13 +308,13 @@ func NewInsecureConnection(t *testing.T, endpoint connection.WithAddress) *grpc.
 
 // NewInsecureConnectionWithRetry creates the default dial config with insecure credentials.
 func NewInsecureConnectionWithRetry(
-	t *testing.T, endpoint connection.WithAddress, retry connection.RetryProfile,
+	t *testing.T, endpoint connection.WithAddress, retryProfile retry.Profile,
 ) *grpc.ClientConn {
 	t.Helper()
 	conn, err := connection.NewConnection(connection.ClientParameters{
 		Address: endpoint.Address(),
 		Creds:   insecure.NewCredentials(),
-		Retry:   &retry,
+		Retry:   &retryProfile,
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() {

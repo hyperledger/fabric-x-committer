@@ -19,6 +19,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
@@ -164,7 +165,7 @@ func NewDatabaseTestEnvFromConnection(t *testing.T, cs *testdb.Connection, loadB
 		MinConnections: 1,
 		LoadBalance:    loadBalance,
 		TLS:            cs.TLS,
-		Retry: &connection.RetryProfile{
+		Retry: &retry.Profile{
 			MaxElapsedTime:  5 * time.Minute,
 			InitialInterval: time.Duration(rand.Intn(900)+100) * time.Millisecond,
 		},
@@ -199,7 +200,7 @@ func (env *DatabaseTestEnv) CountAlternateStatus(t *testing.T, status committerp
 func (env *DatabaseTestEnv) getRowCount(t *testing.T, query string) int {
 	t.Helper()
 	var count int
-	require.NoError(t, env.DB.retry.Execute(t.Context(), func() error {
+	require.NoError(t, env.DB.retryProfile.Execute(t.Context(), func() error {
 		row := env.DB.pool.QueryRow(t.Context(), query)
 		return row.Scan(&count)
 	}))
@@ -280,7 +281,7 @@ func (env *DatabaseTestEnv) populateData( //nolint:revive
 		nsWrites.append([]byte(nsID), nil, 0)
 	}
 
-	require.NoError(t, env.DB.retry.Execute(t.Context(), func() error {
+	require.NoError(t, env.DB.retryProfile.Execute(t.Context(), func() error {
 		conflicts, duplicate, err := env.DB.commit(t.Context(), &statesToBeCommitted{
 			newWrites: newNsIDsWrites, batchStatus: batchStatus, txIDToHeight: txIDToHeight,
 		})
@@ -309,7 +310,7 @@ SELECT _key, _value, _version
 FROM UNNEST($1::bytea[], $2::bytea[], $3::bigint[]) AS t(_key, _value, _version);
 `
 		query := FmtNsID(insertQuery, nsID)
-		require.NoError(t, env.DB.retry.ExecuteSQL(t.Context(), env.DB.pool, query,
+		require.NoError(t, retry.ExecuteSQL(t.Context(), env.DB.retryProfile, env.DB.pool, query,
 			writes.keys, writes.values, writes.versions,
 		))
 	}

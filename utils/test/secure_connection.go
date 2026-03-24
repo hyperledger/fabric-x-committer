@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 type (
@@ -151,7 +152,7 @@ func CreateClientWithTLS[T any](
 	protoClient func(grpc.ClientConnInterface) T,
 ) T {
 	t.Helper()
-	conn := NewSecuredConnectionWithRetry(t, endpoint, tlsCfg, connection.RetryProfile{
+	conn := NewSecuredConnectionWithRetry(t, endpoint, tlsCfg, retry.Profile{
 		// prevents secure connection tests from hanging until the context times out.
 		MaxElapsedTime: 3 * time.Second,
 	})
