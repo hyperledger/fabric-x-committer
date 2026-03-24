@@ -7,9 +7,11 @@ SPDX-License-Identifier: Apache-2.0
 package sidecar
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/require"
 
@@ -18,7 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 )
 
-func BenchmarkMapBlock(b *testing.B) {
+func BenchmarkMapOneBlock(b *testing.B) {
 	flogging.ActivateSpec("fatal")
 	txs := workload.GenerateTransactions(b, nil, b.N)
 	block := workload.MapToOrdererBlock(1, txs)
@@ -29,6 +31,43 @@ func BenchmarkMapBlock(b *testing.B) {
 	b.StopTimer()
 	require.NoError(b, err, "This can never occur unless there is a bug in the relay.")
 	require.NotNil(b, mappedBlock)
+}
+
+func BenchmarkMapBlockSize(b *testing.B) {
+	flogging.ActivateSpec("fatal")
+	for _, blockSize := range []int{100, 1000, 5000, 10000} {
+		b.Run(fmt.Sprintf("blockSize=%d", blockSize), func(b *testing.B) {
+			// Generate b.N total TXs so each iteration processes a unique block,
+			// avoiding cache/locality effects from reusing the same block.
+			// Pad to ensure at least one full block.
+			totalTxs := b.N
+			if totalTxs < blockSize {
+				totalTxs = blockSize
+			}
+			allTxs := workload.GenerateTransactions(b, nil, totalTxs)
+
+			// Pre-split into blocks of blockSize.
+			numBlocks := len(allTxs) / blockSize
+			blocks := make([]*common.Block, numBlocks)
+			for i := range blocks {
+				txSlice := allTxs[i*blockSize : (i+1)*blockSize]
+				//nolint:gosec // i is a non-negative slice index
+				blocks[i] = workload.MapToOrdererBlock(uint64(i), txSlice)
+			}
+
+			b.ResetTimer()
+			blockIdx := 0
+			for b.Loop() {
+				var txIDToHeight utils.SyncMap[string, servicepb.Height]
+				_, err := mapBlock(blocks[blockIdx%numBlocks], &txIDToHeight)
+				if err != nil {
+					b.Fatal(err)
+				}
+				blockIdx++
+			}
+			b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "tx/s")
+		})
+	}
 }
 
 func TestBlockMapping(t *testing.T) {

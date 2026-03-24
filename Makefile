@@ -36,6 +36,7 @@
 #   bench-preparer               - Run preparer benchmarks
 #   bench-sign                   - Run signature benchmarks
 #   bench-sidecar                - Run sidecar benchmarks
+#   bench-serialization          - Run serialization benchmarks
 #
 # Linting:
 #   lint                         - Run all linters (Go, SQL, proto, license, metrics doc)
@@ -226,6 +227,10 @@ bench-sign: FORCE
 # Run sidecar benchmarks with added op/sec column.
 bench-sidecar: FORCE
 	$(go_cmd) test ./service/sidecar/... -bench "Benchmark.*" -run "^$$" | awk -f scripts/bench-tx-per-sec.awk
+
+# Run serialization benchmarks.
+bench-serialization: FORCE
+	$(go_cmd) test ./utils/serialization/... -bench "Benchmark.*" -run "^$$"
 
 #########################
 # Generate protos
