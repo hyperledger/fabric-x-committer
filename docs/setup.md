@@ -107,22 +107,8 @@ make test
 
 The project uses Go's race detector to catch data race conditions during test execution. Race detection is:
 
-- **Enabled by default in CI** for unit tests (test-no-db, test-requires-db, test-core-db, test-all-db)
-- **Disabled by default for local development** to maintain fast test execution
+- **Enabled by default in CI and local development** for unit tests (test-no-db, test-all-db)
 - **Not enabled for integration and container tests** to avoid excessive slowdown
-
-#### Enabling Race Detection Locally
-
-To run tests with race detection enabled locally, pass the `-race` flag via the `test_flags` variable:
-
-```shell
-make test-* test_flags="-race"
-```
-
-#### Disabling Race Detection in CI
-
-If you need to temporarily disable race detection in CI (not recommended), 
-remove the `test_flags="-race"` parameter from the make commands in `.github/workflows/ci.yml`.
 
 ## Golang Development Dependencies Installation
 

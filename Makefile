@@ -181,11 +181,11 @@ test-requires-db: FORCE
 
 # Tests that require no DB at all, e.g., pure logic, utilities
 test-no-db: FORCE
-	@$(call test_method_with_coverage, ${NO_DB_PACKAGES})
+	@$(call test_method_with_coverage, ${NO_DB_PACKAGES}, -race)
 
 # Tests for components that depend on the DB layer, and ones that are agnostic to the specific DB used.
 test-all-db: FORCE
-	@$(call test_method_with_coverage, ${REQUIRES_DB_PACKAGES} ${COR_DB_PACKAGES})
+	@$(call test_method_with_coverage, ${REQUIRES_DB_PACKAGES} ${COR_DB_PACKAGES}, -race)
 
 # Runs test coverage analysis. It uses same tests that will be covered by the CI.
 test-cover: FORCE
