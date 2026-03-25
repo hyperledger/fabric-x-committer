@@ -47,39 +47,92 @@ func newCredentials(tlsCfg *tls.Config, err error) (credentials.TransportCredent
 	return credentials.NewTLS(tlsCfg), nil
 }
 
-// NewTLSMaterials converts a TLSConfig with path fields into a struct that holds the actual bytes of the certificates.
-func NewTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
-	if c.Mode == NoneTLSMode || c.Mode == UnmentionedTLSMode {
-		return &TLSMaterials{
-			Mode: c.Mode,
-		}, nil
-	}
+// NewServerTLSMaterials converts a server TLSConfig with path fields into a struct
+// that holds the actual bytes of the certificates.
+//
+// Certificate loading behavior by mode:
+//   - none/unmentioned: No certificates loaded
+//   - tls (one-way): Loads server cert + key only (CA certs NOT loaded)
+//   - mtls (mutual): Loads server cert + key + CA certs for client verification
+func NewServerTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
+	materials := &TLSMaterials{Mode: c.Mode}
 
-	certBytes, err := os.ReadFile(c.CertPath)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to load certificate from %s", c.CertPath)
-	}
+	switch c.Mode {
+	case NoneTLSMode, UnmentionedTLSMode:
+		return materials, nil
 
-	keyBytes, err := os.ReadFile(c.KeyPath)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to load private key from %s", c.KeyPath)
-	}
-
-	caCertBytes := make([][]byte, 0, len(c.CACertPaths))
-	for _, caCertPath := range c.CACertPaths {
-		caBytes, err := os.ReadFile(caCertPath)
+	case OneSideTLSMode, MutualTLSMode:
+		var err error
+		materials.Cert, err = os.ReadFile(c.CertPath)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to load root CA cert from %s", caCertPath)
+			return nil, errors.Wrapf(err, "failed to load certificate from %s", c.CertPath)
 		}
-		caCertBytes = append(caCertBytes, caBytes)
-	}
 
-	return &TLSMaterials{
-		Mode:    c.Mode,
-		Cert:    certBytes,
-		Key:     keyBytes,
-		CACerts: caCertBytes,
-	}, nil
+		materials.Key, err = os.ReadFile(c.KeyPath)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to load private key from %s", c.KeyPath)
+		}
+
+		if c.Mode == MutualTLSMode {
+			materials.CACerts = make([][]byte, 0, len(c.CACertPaths))
+			for _, path := range c.CACertPaths {
+				caBytes, err := os.ReadFile(path)
+				if err != nil {
+					return nil, errors.Wrapf(err, "failed to load root CA cert from %s", path)
+				}
+				materials.CACerts = append(materials.CACerts, caBytes)
+			}
+		}
+		return materials, nil
+
+	default:
+		return nil, errors.Newf("unknown TLS mode: %s (valid: %s, %s, %s)",
+			c.Mode, NoneTLSMode, OneSideTLSMode, MutualTLSMode)
+	}
+}
+
+// NewClientTLSMaterials converts a client TLSConfig with path fields into a struct
+// that holds the actual bytes of the certificates.
+//
+// Certificate loading behavior by mode:
+//   - none/unmentioned: No certificates loaded
+//   - tls (one-way): Loads CA certs only for server verification (client cert + key NOT loaded)
+//   - mtls (mutual): Loads CA certs + client cert + key for mutual authentication
+func NewClientTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
+	materials := &TLSMaterials{Mode: c.Mode}
+
+	switch c.Mode {
+	case NoneTLSMode, UnmentionedTLSMode:
+		return materials, nil
+
+	case OneSideTLSMode, MutualTLSMode:
+		materials.CACerts = make([][]byte, 0, len(c.CACertPaths))
+		for _, path := range c.CACertPaths {
+			caBytes, err := os.ReadFile(path)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to load root CA cert from %s", path)
+			}
+			materials.CACerts = append(materials.CACerts, caBytes)
+		}
+
+		if c.Mode == MutualTLSMode {
+			var err error
+			materials.Cert, err = os.ReadFile(c.CertPath)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to load client certificate from %s", c.CertPath)
+			}
+
+			materials.Key, err = os.ReadFile(c.KeyPath)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to load client private key from %s", c.KeyPath)
+			}
+		}
+		return materials, nil
+
+	default:
+		return nil, errors.Newf("unknown TLS mode: %s (valid: %s, %s, %s)",
+			c.Mode, NoneTLSMode, OneSideTLSMode, MutualTLSMode)
+	}
 }
 
 // CreateServerTLSConfig returns a TLS config to be used by a server.

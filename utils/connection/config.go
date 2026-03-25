@@ -104,7 +104,7 @@ const (
 
 // ClientCredentials converts TLSConfig into a TLSMaterials struct and generates client creds.
 func (c TLSConfig) ClientCredentials() (credentials.TransportCredentials, error) {
-	tlsMaterials, err := NewTLSMaterials(c)
+	tlsMaterials, err := NewClientTLSMaterials(c)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +113,7 @@ func (c TLSConfig) ClientCredentials() (credentials.TransportCredentials, error)
 
 // ServerCredentials converts TLSConfig into a TLSMaterials struct and generates server creds.
 func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error) {
-	tlsMaterials, err := NewTLSMaterials(c)
+	tlsMaterials, err := NewServerTLSMaterials(c)
 	if err != nil {
 		return nil, err
 	}

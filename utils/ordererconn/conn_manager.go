@@ -65,7 +65,7 @@ const (
 
 // NewConnectionManager constructs a ConnectionManager and initializes its connections.
 func NewConnectionManager(config *Config) (*ConnectionManager, error) {
-	tls, err := connection.NewTLSMaterials(connection.TLSConfig{
+	tls, err := connection.NewClientTLSMaterials(connection.TLSConfig{
 		Mode:        config.TLS.Mode,
 		CertPath:    config.TLS.CertPath,
 		KeyPath:     config.TLS.KeyPath,
