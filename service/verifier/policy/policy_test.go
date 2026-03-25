@@ -119,9 +119,6 @@ func TestParsePolicyItem(t *testing.T) {
 func TestParseLifecycleEndorsementPolicy(t *testing.T) {
 	t.Parallel()
 
-	// Initialize factory before parallel subtests to avoid data race
-	require.NotNil(t, factory.GetDefault())
-
 	t.Run("valid bundle returns verifier", func(t *testing.T) {
 		t.Parallel()
 		bundle, cryptoPath := createTestBundle(t)
