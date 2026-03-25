@@ -15,12 +15,14 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v5/pgxpool"
 	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 
@@ -33,6 +35,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 type (
@@ -459,6 +462,119 @@ func TestQueryWithConsistentView(t *testing.T) {
 	env.endView(t, client, view3)
 }
 
+// TestQueryServiceWithDynamicRootCAs verifies that the Query Service correctly maintaining a static set of Root CAs
+// from a YAML configuration while dynamically updating additional Root CAs from the configuration blocks.
+//
+// Test Workflow:
+//
+//  1. Initial State: Load TLS materials for N organizations (Peer) and a persistent
+//     set of credentials (YAML). Verify all can connect to the Query Service.
+//
+//  2. Dynamic Update: Submit a new configuration block that replaces the
+//     original organizations peers with new ones.
+//
+//  3. Negative Verification: Verify that the old Peer-based clients are now
+//     rejected because their specific Root CAs were removed during the config update.
+//
+//  4. Static verification: Verify that the YAML-based clients can still
+//     connect. This confirms that the Query Service's dynamic update mechanism
+//     correctly preserved the static "YAML" root CAs and did not flush them.
+func TestQueryServiceWithDynamicRootCAs(t *testing.T) {
+	t.Parallel()
+
+	// Setup: Create server and client TLS configs
+	serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, connection.MutualTLSMode)
+
+	// Create query service test environment
+	env := newQueryServiceTestEnv(t, &queryServiceTestOpts{
+		serverTLS: serverTLSConfig,
+		clientTLS: clientTLSConfig,
+	})
+
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	defer cancel()
+
+	// Create initial config block with peer organizations
+	cryptoMaterialsPath := t.TempDir()
+	configBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(
+		cryptoMaterialsPath,
+		&testcrypto.ConfigBlock{
+			ChannelID:             "testchannel",
+			PeerOrganizationCount: 1,
+		},
+	)
+	require.NoError(t, err)
+
+	// Store initial config in database
+	envelope, err := protoutil.ExtractEnvelope(configBlock, 0)
+	require.NoError(t, err)
+	envelopeBytes, err := proto.Marshal(envelope)
+	require.NoError(t, err)
+
+	_, err = env.pool.Exec(ctx,
+		fmt.Sprintf("UPDATE ns_%s SET value = $1 WHERE key = $2", committerpb.ConfigNamespaceID),
+		envelopeBytes, []byte(committerpb.ConfigNamespaceID))
+	require.NoError(t, err)
+
+	// Build client configs from the crypto materials
+	clientsTLS := testcrypto.BuildClientTLSConfigsPerOrg(t, cryptoMaterialsPath)
+
+	// Helper to attempt a connection and return an error
+	checkConnection := func(tlsCfg connection.TLSConfig) error {
+		// The client also verifies the query service's credential,
+		// and it needs the service's credentials root CA for that.
+		tlsCfg.CACertPaths = append(tlsCfg.CACertPaths, serverTLSConfig.CACertPaths...)
+		client := createQueryClientWithTLS(t, &env.qs.config.Server.Endpoint, tlsCfg)
+
+		callCtx, callCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer callCancel()
+
+		_, beginErr := client.BeginView(callCtx, defaultViewParams(time.Minute))
+		return beginErr
+	}
+
+	t.Logf("number of peers: %d", len(clientsTLS.Peer))
+	errorTemplate := "Initial connection failed for %s"
+
+	for name, cfg := range clientsTLS.Peer {
+		require.NoError(t, checkConnection(cfg), errorTemplate, name)
+	}
+	require.NoError(t, checkConnection(clientTLSConfig), errorTemplate, "YAML")
+
+	t.Log("Submitting new config block which removes ONLY old peer organizations")
+	newConfigBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(t.TempDir(), &testcrypto.ConfigBlock{
+		ChannelID:             "testchannel",
+		PeerOrganizationCount: 1, // Invalidates previous organizations
+	})
+	require.NoError(t, err)
+
+	// Update config in database
+	newEnvelope, err := protoutil.ExtractEnvelope(newConfigBlock, 0)
+	require.NoError(t, err)
+	newEnvelopeBytes, err := proto.Marshal(newEnvelope)
+	require.NoError(t, err)
+
+	_, err = env.pool.Exec(ctx,
+		fmt.Sprintf("UPDATE ns_%s SET value = $1 WHERE key = $2", committerpb.ConfigNamespaceID),
+		newEnvelopeBytes, []byte(committerpb.ConfigNamespaceID))
+	require.NoError(t, err)
+
+	env.qs.lastCAFetch.Store(0)
+	t.Logf("number of peers: %d", len(clientsTLS.Peer))
+	require.Eventually(t, func() bool {
+		for _, cfg := range clientsTLS.Peer {
+			if err := checkConnection(cfg); err == nil {
+				// If any old peer still connects, the update hasn't propagated yet
+				return false
+			}
+		}
+		return true
+	}, 30*time.Second, 500*time.Millisecond, "Query Service should have revoked old Peer Org CAs")
+
+	// Ensure YAML configs still work (they shouldn't have been affected)
+	require.NoError(t, checkConnection(clientTLSConfig), errorTemplate, "YAML")
+}
+
 func TestQueryPolicies(t *testing.T) {
 	t.Parallel()
 	env := newQueryServiceTestEnv(t, nil)
@@ -535,10 +651,12 @@ func newQueryServiceTestEnv(t *testing.T, opts *queryServiceTestOpts) *queryServ
 		MaxRequestKeys:        opts.maxRequestKeys,
 		Database:              dbConf,
 		Monitoring:            test.NewLocalHostServer(test.InsecureTLSConfig),
+		ACLRefreshInterval:    3 * time.Second,
 	}
 
-	qs := NewQueryService(config)
-	test.RunServiceAndGrpcForTest(t.Context(), t, qs, qs.config.Server)
+	qs, err := NewQueryService(config)
+	require.NoError(t, err)
+	test.RunDynamicServiceAndGrpcForTest(t.Context(), t, qs, qs.config.Server)
 	clientConn := createQueryClientWithTLS(t, &qs.config.Server.Endpoint, opts.clientTLS)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)

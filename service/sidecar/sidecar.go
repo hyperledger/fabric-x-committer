@@ -8,6 +8,7 @@ package sidecar
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -29,6 +30,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
+	"github.com/hyperledger/fabric-x-committer/utils/dynamictls"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
@@ -53,6 +55,11 @@ type Service struct {
 	config             *Config
 	healthcheck        *health.Server
 	metrics            *perfMetrics
+
+	// tlsConfig holds the complete pre-configured tls.Config with merged static + dynamic CAs.
+	// staticCACerts holds the static CAs from YAML config for merging with dynamic CAs.
+	tlsConfig     atomic.Pointer[*tls.Config]
+	staticCACerts [][]byte
 }
 
 // New creates a sidecar service.
@@ -63,21 +70,6 @@ func New(c *Config) (*Service, error) {
 	ordererClient, err := deliver.New(&c.Orderer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create orderer client: %w", err)
-	}
-
-	if c.Bootstrap.GenesisBlockFilePath != "" {
-		configBlock, bootErr := protoutil.ReadBlockFromFile(c.Bootstrap.GenesisBlockFilePath)
-		if bootErr != nil {
-			return nil, errors.Wrap(bootErr, "read config block")
-		}
-		orgsMaterial, bootErr := ordererconn.NewOrganizationsMaterialsFromConfigBlock(configBlock)
-		if bootErr != nil {
-			return nil, fmt.Errorf("failed to load organizations artifacts: %w", bootErr)
-		}
-		bootErr = ordererClient.UpdateConnections(orgsMaterial)
-		if bootErr != nil {
-			return nil, bootErr
-		}
 	}
 
 	// 2. Relay the blocks to committer and receive the transaction status.
@@ -93,7 +85,19 @@ func New(c *Config) (*Service, error) {
 	if c.ChannelBufferSize <= 0 {
 		c.ChannelBufferSize = defaultBufferSize
 	}
-	return &Service{
+
+	tlsMaterials, err := connection.NewTLSMaterials(c.Server.TLS)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create TLS materials: %w", err)
+	}
+
+	// Create initial tls.Config with static CAs
+	tlsConfig, err := tlsMaterials.CreateServerTLSConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create initial TLS config: %w", err)
+	}
+
+	sidecarService := &Service{
 		ordererClient:  ordererClient,
 		relay:          relayService,
 		notifier:       newNotifier(c.ChannelBufferSize, &c.Notification),
@@ -105,7 +109,47 @@ func New(c *Config) (*Service, error) {
 		metrics:        metrics,
 		committedBlock: make(chan *common.Block, c.ChannelBufferSize),
 		statusQueue:    make(chan []*committerpb.TxStatus, c.ChannelBufferSize),
-	}, nil
+		tlsConfig:      atomic.Pointer[*tls.Config]{},
+		staticCACerts:  tlsMaterials.CACerts,
+	}
+
+	sidecarService.tlsConfig.Store(&tlsConfig)
+
+	if c.Bootstrap.GenesisBlockFilePath != "" {
+		logger.Debug("updating orderer connections from genesis-block")
+		configBlock, bootErr := protoutil.ReadBlockFromFile(c.Bootstrap.GenesisBlockFilePath)
+		if bootErr != nil {
+			return nil, errors.Wrap(bootErr, "read config block")
+		}
+		orgsMaterial, bootErr := ordererconn.NewOrganizationsMaterialsFromConfigBlock(configBlock)
+		if bootErr != nil {
+			return nil, fmt.Errorf("failed to load organizations artifacts: %w", bootErr)
+		}
+		bootErr = ordererClient.UpdateConnections(orgsMaterial)
+		if bootErr != nil {
+			return nil, bootErr
+		}
+
+		// reading application root CAs and add it to the YAML root CAs setup.
+		logger.Debug("updating acceptable client CAs from genesis-block")
+		rootCAs, bootErr := dynamictls.NewApplicationRootCAsFromConfigBlock(configBlock)
+		if bootErr != nil {
+			return nil, errors.Wrap(bootErr, "failed to load application root CAs")
+		}
+		sidecarService.updateCACertificates(rootCAs)
+	}
+
+	return sidecarService, nil
+}
+
+// GetDynamicTLSConfig returns the pre-configured tls.Config with merged static + dynamic CAs.
+// The sidecar updates this config when processing config blocks from the orderer, enabling
+// certificate rotation without a service restart.
+func (s *Service) GetDynamicTLSConfig(_ context.Context) *tls.Config {
+	if v := s.tlsConfig.Load(); v != nil {
+		return *v
+	}
+	return nil
 }
 
 // WaitForReady wait for sidecar to be ready to be exposed as gRPC service.
@@ -236,6 +280,13 @@ func (s *Service) configUpdater(block *common.Block) {
 	if err != nil {
 		logger.Warnf("failed to update config for block %d: %v", block.Header.Number, err)
 	}
+
+	logger.Debug("updating sidecar's acceptable CAs from the config-block")
+	rootCAs, err := dynamictls.NewApplicationRootCAsFromConfigBlock(block)
+	if err != nil {
+		logger.Warnf("failed to load CA certificates from block %d: %v", block.Header.Number, err)
+	}
+	s.updateCACertificates(rootCAs)
 }
 
 func (s *Service) recover(ctx context.Context, coordClient servicepb.CoordinatorClient) (uint64, error) {
@@ -298,8 +349,16 @@ func (s *Service) recoverConfigTransactionFromStateDB(
 	if err != nil {
 		return err
 	}
-	err = s.ordererClient.UpdateConnections(orgsMaterial)
-	return errors.Wrapf(err, "failed to update connections")
+	if err = s.ordererClient.UpdateConnections(orgsMaterial); err != nil {
+		return errors.Wrapf(err, "failed to update connections")
+	}
+	logger.Debug("updating sidecar's acceptable CAs from the database")
+	rootCAs, err := dynamictls.NewOrganizationsFromEnvelope(envelope)
+	if err != nil {
+		return err
+	}
+	s.updateCACertificates(rootCAs)
+	return nil
 }
 
 func (s *Service) recoverLedgerStore(
@@ -357,6 +416,35 @@ func (s *Service) recoverLedgerStore(
 	})
 
 	return errors.Wrap(g.Wait(), "failed to recover the ledger store")
+}
+
+// updateCACertificates atomically updates the TLS config with merged static + dynamic CAs.
+func (s *Service) updateCACertificates(dynamicCAs [][]byte) {
+	if len(dynamicCAs) == 0 {
+		logger.Warn("no CA certificates found in config block")
+	}
+
+	mergedCAs := connection.MergeCACerts(s.staticCACerts, dynamicCAs)
+	certPool, err := connection.BuildCertPoolFromBytes(mergedCAs)
+	if err != nil {
+		logger.Warnf("Failed to build cert pool: %v", err)
+		return // Keep existing config
+	}
+
+	// Clone current config and update ClientCAs
+	currentConfig := s.tlsConfig.Load()
+	if currentConfig == nil || *currentConfig == nil {
+		logger.Warn("No current TLS config to update")
+		return
+	}
+
+	newConfig := (*currentConfig).Clone()
+	newConfig.ClientCAs = certPool
+
+	// Store the updated config atomically
+	s.tlsConfig.Store(&newConfig)
+	logger.Debugf("Updated TLS config with %d total CAs (%d static + %d dynamic)",
+		len(mergedCAs), len(s.staticCACerts), len(dynamicCAs))
 }
 
 func appendMissingBlock(

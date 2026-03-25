@@ -9,12 +9,17 @@ package query
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/google/uuid"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -25,9 +30,12 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/dynamictls"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
+
+var logger = flogging.MustGetLogger("query-service")
 
 var (
 	// ErrInvalidOrStaleView is returned when attempting to use wrong, stale, or cancelled view.
@@ -58,17 +66,52 @@ type (
 		metrics     *perfMetrics
 		ready       *channel.Ready
 		healthcheck *health.Server
+
+		// Dynamic TLS configuration management: tlsConfig stores the complete pre-configured
+		// tls.Config with merged static + dynamic CAs; staticCACerts holds the static CAs
+		// from YAML config; lastCAFetch tracks the last refresh to throttle database load;
+		// and refreshMutex implements a double-check locking pattern to prevent redundant
+		// concurrent refresh operations during connection spikes.
+		//
+		// Design note: We use atomic operations for reads and a mutex only for writings.
+		// This lock-free read pattern ensures client reads are not serialized,
+		// while the mutex in refreshDynamicRootCAs guarantees only one goroutine
+		// performs the expensive DB fetch and config update at a time.
+		tlsConfig     atomic.Pointer[*tls.Config]
+		staticCACerts [][]byte
+		lastCAFetch   atomic.Int64
+		refreshMutex  sync.Mutex
 	}
 )
 
+// caFetchTimeout is the maximum time allowed for a single CA certificate fetch from the database tryout.
+// On failure, the existing CAs are kept and the next incoming connection will immediately retry.
+// This timeout prevents a slow or unresponsive database from blocking TLS handshakes indefinitely.
+const caFetchTimeout = 15 * time.Second
+
 // NewQueryService create a new QueryService given a configuration.
-func NewQueryService(config *Config) *Service {
-	return &Service{
-		config:      config,
-		metrics:     newQueryServiceMetrics(),
-		ready:       channel.NewReady(),
-		healthcheck: connection.DefaultHealthCheckService(),
+func NewQueryService(config *Config) (*Service, error) {
+	tlsMaterials, err := connection.NewTLSMaterials(config.Server.TLS)
+	if err != nil {
+		return nil, err
 	}
+	tlsConfig, err := tlsMaterials.CreateServerTLSConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	service := &Service{
+		config:        config,
+		metrics:       newQueryServiceMetrics(),
+		ready:         channel.NewReady(),
+		healthcheck:   connection.DefaultHealthCheckService(),
+		tlsConfig:     atomic.Pointer[*tls.Config]{},
+		staticCACerts: tlsMaterials.CACerts,
+	}
+
+	service.tlsConfig.Store(&tlsConfig)
+
+	return service, nil
 }
 
 // WaitForReady waits for the service resources to initialize, so it is ready to answers requests.
@@ -117,6 +160,94 @@ func (q *Service) Run(ctx context.Context) error {
 func (q *Service) RegisterService(server *grpc.Server) {
 	committerpb.RegisterQueryServiceServer(server, q)
 	healthgrpc.RegisterHealthServer(server, q.healthcheck)
+}
+
+// GetDynamicTLSConfig returns the pre-configured tls.Config with merged static + dynamic CAs.
+// It caches the config and only refreshes it periodically to avoid excessive database queries.
+func (q *Service) GetDynamicTLSConfig(ctx context.Context) *tls.Config {
+	now := time.Now().UnixNano()
+	lastFetch := q.lastCAFetch.Load()
+
+	if lastFetch == 0 || (now-lastFetch) > q.config.ACLRefreshInterval.Nanoseconds() {
+		q.refreshDynamicRootCAs(ctx)
+	}
+
+	if v := q.tlsConfig.Load(); v != nil {
+		return *v
+	}
+	return nil
+}
+
+// refreshDynamicRootCAs uses a double-check locking pattern to ensure only one
+// goroutine performs the expensive config fetch and tls.Config update.
+// Concurrent callers arriving during a refresh will block on the mutex and skip the fetch once released.
+func (q *Service) refreshDynamicRootCAs(ctx context.Context) {
+	// Acquire mutex to ensure only one goroutine performs the refresh at a time.
+	// This prevents a problem where multiple of concurrent client
+	// connections could each trigger a separate database query for the same config block.
+	q.refreshMutex.Lock()
+	defer q.refreshMutex.Unlock()
+
+	// Double-check pattern: After acquiring the lock, verify that another goroutine
+	// hasn't already completed the refresh while waiting for the lock.
+	now := time.Now().UnixNano()
+	lastFetch := q.lastCAFetch.Load()
+	if lastFetch != 0 && (now-lastFetch) <= q.config.ACLRefreshInterval.Nanoseconds() {
+		// Another goroutine just refreshed the CAs while waiting for the lock.
+		// The data is fresh, so we can skip the database query.
+		return
+	}
+
+	logger.Debug("Refreshing dynamic root CAs from config transaction")
+
+	// TODO: Add version optimization, We don't need to read the config-block entirely, only the version.
+	ctx, cancel := context.WithTimeout(ctx, caFetchTimeout)
+	defer cancel()
+
+	configTx, err := q.getConfigTransactionInternal(ctx)
+	if err != nil {
+		logger.Warnf("Failed to fetch config transaction for dynamic CAs: %v", err)
+		return // Keep existing config
+	}
+
+	envelope, err := protoutil.UnmarshalEnvelope(configTx.Envelope)
+	if err != nil {
+		logger.Warnf("Failed to unmarshal config envelope: %v", err)
+		return // Keep existing config
+	}
+
+	dynamicCAs, err := dynamictls.NewOrganizationsFromEnvelope(envelope)
+	if err != nil {
+		logger.Warnf("Failed to extract root CAs from config: %v", err)
+		return // Keep existing config
+	}
+
+	if len(dynamicCAs) == 0 {
+		logger.Warn("no CA certificates found in config block")
+	}
+
+	mergedCAs := connection.MergeCACerts(q.staticCACerts, dynamicCAs)
+	certPool, err := connection.BuildCertPoolFromBytes(mergedCAs)
+	if err != nil {
+		logger.Warnf("Failed to build cert pool: %v", err)
+		return // Keep existing config
+	}
+
+	// Clone current config and update ClientCAs
+	currentConfig := q.tlsConfig.Load()
+	if currentConfig == nil || *currentConfig == nil {
+		logger.Warn("No current TLS config to update")
+		return
+	}
+
+	newConfig := (*currentConfig).Clone()
+	newConfig.ClientCAs = certPool
+
+	// Store the updated config atomically
+	q.tlsConfig.Store(&newConfig)
+	q.lastCAFetch.Store(time.Now().UnixNano())
+	logger.Debugf("Refreshed and built TLS config with %d total CAs (%d static + %d dynamic)",
+		len(mergedCAs), len(q.staticCACerts), len(dynamicCAs))
 }
 
 // BeginView implements the query-service interface.
@@ -274,8 +405,14 @@ func (q *Service) GetConfigTransaction(
 	ctx context.Context,
 	_ *emptypb.Empty,
 ) (*applicationpb.ConfigTransaction, error) {
-	res, err := queryConfig(ctx, q.batcher.pool)
+	res, err := q.getConfigTransactionInternal(ctx)
 	return res, grpcerror.WrapInternalError(err)
+}
+
+// getConfigTransactionInternal fetches the config transaction from the database without gRPC error wrapping.
+// This is used internally by refreshDynamicRootCAs to avoid unnecessary gRPC error conversion.
+func (q *Service) getConfigTransactionInternal(ctx context.Context) (*applicationpb.ConfigTransaction, error) {
+	return queryConfig(ctx, q.batcher.pool)
 }
 
 func (q *Service) assignRequest(

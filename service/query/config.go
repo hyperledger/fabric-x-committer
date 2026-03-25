@@ -48,4 +48,9 @@ type Config struct {
 	// GetTransactionStatus (number of transaction IDs).
 	// Set to 0 to disable the limit.
 	MaxRequestKeys int `mapstructure:"max-request-keys"`
+
+	// ACLRefreshInterval defines how long the query service caches configuration data
+	// (such as root CA certificates) before refreshing it from the database.
+	// This prevents excessive database queries when multiple clients connect simultaneously.
+	ACLRefreshInterval time.Duration `mapstructure:"acl-refresh-interval"`
 }
