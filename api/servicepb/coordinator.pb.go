@@ -12,7 +12,6 @@
 package servicepb
 
 import (
-	applicationpb "github.com/hyperledger/fabric-x-common/api/applicationpb"
 	committerpb "github.com/hyperledger/fabric-x-common/api/committerpb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -130,18 +129,17 @@ var File_api_servicepb_coordinator_proto protoreflect.FileDescriptor
 
 const file_api_servicepb_coordinator_proto_rawDesc = "" +
 	"\n" +
-	"\x1fapi/servicepb/coordinator.proto\x12\tservicepb\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1eapi/applicationpb/config.proto\x1a\x1capi/committerpb/status.proto\x1a\x19api/committerpb/ref.proto\x1a\x1aapi/servicepb/common.proto\"m\n" +
+	"\x1fapi/servicepb/coordinator.proto\x12\tservicepb\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1capi/committerpb/status.proto\x1a\x19api/committerpb/ref.proto\x1a\x1aapi/servicepb/common.proto\"m\n" +
 	"\x10CoordinatorBatch\x12&\n" +
 	"\x03txs\x18\x01 \x03(\v2\x14.servicepb.TxWithRefR\x03txs\x121\n" +
 	"\brejected\x18\x02 \x03(\v2\x15.committerpb.TxStatusR\brejected\"+\n" +
 	"\x13WaitingTransactions\x12\x14\n" +
-	"\x05count\x18\x01 \x01(\x05R\x05count2\xfa\x03\n" +
+	"\x05count\x18\x01 \x01(\x05R\x05count2\xa6\x03\n" +
 	"\vCoordinator\x12N\n" +
 	"\x0fBlockProcessing\x12\x1b.servicepb.CoordinatorBatch\x1a\x1a.committerpb.TxStatusBatch(\x010\x01\x12L\n" +
 	"\x1bSetLastCommittedBlockNumber\x12\x13.servicepb.BlockRef\x1a\x16.google.protobuf.Empty\"\x00\x12K\n" +
 	"\x1aGetNextBlockNumberToCommit\x12\x16.google.protobuf.Empty\x1a\x13.servicepb.BlockRef\"\x00\x12L\n" +
-	"\x15GetTransactionsStatus\x12\x17.committerpb.TxIDsBatch\x1a\x1a.committerpb.TxStatusBatch\x12R\n" +
-	"\x14GetConfigTransaction\x12\x16.google.protobuf.Empty\x1a .applicationpb.ConfigTransaction\"\x00\x12^\n" +
+	"\x15GetTransactionsStatus\x12\x17.committerpb.TxIDsBatch\x1a\x1a.committerpb.TxStatusBatch\x12^\n" +
 	"$NumberOfWaitingTransactionsForStatus\x12\x16.google.protobuf.Empty\x1a\x1e.servicepb.WaitingTransactionsB9Z7github.com/hyperledger/fabric-x-committer/api/servicepbb\x06proto3"
 
 var (
@@ -158,15 +156,14 @@ func file_api_servicepb_coordinator_proto_rawDescGZIP() []byte {
 
 var file_api_servicepb_coordinator_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_api_servicepb_coordinator_proto_goTypes = []any{
-	(*CoordinatorBatch)(nil),                // 0: servicepb.CoordinatorBatch
-	(*WaitingTransactions)(nil),             // 1: servicepb.WaitingTransactions
-	(*TxWithRef)(nil),                       // 2: servicepb.TxWithRef
-	(*committerpb.TxStatus)(nil),            // 3: committerpb.TxStatus
-	(*BlockRef)(nil),                        // 4: servicepb.BlockRef
-	(*emptypb.Empty)(nil),                   // 5: google.protobuf.Empty
-	(*committerpb.TxIDsBatch)(nil),          // 6: committerpb.TxIDsBatch
-	(*committerpb.TxStatusBatch)(nil),       // 7: committerpb.TxStatusBatch
-	(*applicationpb.ConfigTransaction)(nil), // 8: applicationpb.ConfigTransaction
+	(*CoordinatorBatch)(nil),          // 0: servicepb.CoordinatorBatch
+	(*WaitingTransactions)(nil),       // 1: servicepb.WaitingTransactions
+	(*TxWithRef)(nil),                 // 2: servicepb.TxWithRef
+	(*committerpb.TxStatus)(nil),      // 3: committerpb.TxStatus
+	(*BlockRef)(nil),                  // 4: servicepb.BlockRef
+	(*emptypb.Empty)(nil),             // 5: google.protobuf.Empty
+	(*committerpb.TxIDsBatch)(nil),    // 6: committerpb.TxIDsBatch
+	(*committerpb.TxStatusBatch)(nil), // 7: committerpb.TxStatusBatch
 }
 var file_api_servicepb_coordinator_proto_depIdxs = []int32{
 	2, // 0: servicepb.CoordinatorBatch.txs:type_name -> servicepb.TxWithRef
@@ -175,16 +172,14 @@ var file_api_servicepb_coordinator_proto_depIdxs = []int32{
 	4, // 3: servicepb.Coordinator.SetLastCommittedBlockNumber:input_type -> servicepb.BlockRef
 	5, // 4: servicepb.Coordinator.GetNextBlockNumberToCommit:input_type -> google.protobuf.Empty
 	6, // 5: servicepb.Coordinator.GetTransactionsStatus:input_type -> committerpb.TxIDsBatch
-	5, // 6: servicepb.Coordinator.GetConfigTransaction:input_type -> google.protobuf.Empty
-	5, // 7: servicepb.Coordinator.NumberOfWaitingTransactionsForStatus:input_type -> google.protobuf.Empty
-	7, // 8: servicepb.Coordinator.BlockProcessing:output_type -> committerpb.TxStatusBatch
-	5, // 9: servicepb.Coordinator.SetLastCommittedBlockNumber:output_type -> google.protobuf.Empty
-	4, // 10: servicepb.Coordinator.GetNextBlockNumberToCommit:output_type -> servicepb.BlockRef
-	7, // 11: servicepb.Coordinator.GetTransactionsStatus:output_type -> committerpb.TxStatusBatch
-	8, // 12: servicepb.Coordinator.GetConfigTransaction:output_type -> applicationpb.ConfigTransaction
-	1, // 13: servicepb.Coordinator.NumberOfWaitingTransactionsForStatus:output_type -> servicepb.WaitingTransactions
-	8, // [8:14] is the sub-list for method output_type
-	2, // [2:8] is the sub-list for method input_type
+	5, // 6: servicepb.Coordinator.NumberOfWaitingTransactionsForStatus:input_type -> google.protobuf.Empty
+	7, // 7: servicepb.Coordinator.BlockProcessing:output_type -> committerpb.TxStatusBatch
+	5, // 8: servicepb.Coordinator.SetLastCommittedBlockNumber:output_type -> google.protobuf.Empty
+	4, // 9: servicepb.Coordinator.GetNextBlockNumberToCommit:output_type -> servicepb.BlockRef
+	7, // 10: servicepb.Coordinator.GetTransactionsStatus:output_type -> committerpb.TxStatusBatch
+	1, // 11: servicepb.Coordinator.NumberOfWaitingTransactionsForStatus:output_type -> servicepb.WaitingTransactions
+	7, // [7:12] is the sub-list for method output_type
+	2, // [2:7] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
 	2, // [2:2] is the sub-list for extension extendee
 	0, // [0:2] is the sub-list for field type_name

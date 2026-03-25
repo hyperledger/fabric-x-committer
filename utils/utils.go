@@ -8,9 +8,12 @@ package utils
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
+	pseudorand "math/rand"
 	"os"
 	"strings"
 
@@ -112,4 +115,17 @@ func ExtractServerAddress(ctx context.Context) string {
 // IsConfigTx returns true if the namespaces indicate a config transaction.
 func IsConfigTx(namespaces []*applicationpb.TxNamespace) bool {
 	return len(namespaces) == 1 && namespaces[0].NsId == committerpb.ConfigNamespaceID
+}
+
+// RandIntN returns a true random (crypto/rand) number in the range [0, n).
+// If it fails to read the crypto/rand stream, it falls back to a pseudo random number generator.
+func RandIntN(n uint64) uint64 {
+	// crypto/rand works with big.Int.
+	var maxNumber big.Int
+	maxNumber.SetUint64(n)
+	res, _ := rand.Int(rand.Reader, &maxNumber)
+	if res == nil {
+		return uint64(pseudorand.Intn(int(n))) //nolint:gosec // fallback.
+	}
+	return res.Uint64()
 }

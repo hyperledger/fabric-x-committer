@@ -49,6 +49,13 @@ type (
 		Address() string
 	}
 
+	// ClientMaterial contains the parameters to create a connection.
+	ClientMaterial struct {
+		Endpoints []*Endpoint
+		TLS       TLSMaterials
+		Retry     *retry.Profile
+	}
+
 	// ClientParameters contain connection parameters.
 	ClientParameters struct {
 		Address        string
@@ -64,43 +71,55 @@ var knownConnectionIssues = regexp.MustCompile(
 	`(?i)EOF|connection\s+refused|closed\s+network\s+connection|connection\s+reset`,
 )
 
+// NewClientMaterial creates a connection material from a client config.
+func NewClientMaterial(config *MultiClientConfig) (*ClientMaterial, error) {
+	tls, err := NewClientTLSMaterials(config.TLS)
+	if err != nil {
+		return nil, err
+	}
+	return &ClientMaterial{
+		Endpoints: config.Endpoints,
+		Retry:     config.Retry,
+		TLS:       *tls,
+	}, nil
+}
+
 // NewLoadBalancedConnection creates a connection with load balancing between the endpoints
 // in the given config.
 func NewLoadBalancedConnection(config *MultiClientConfig) (*grpc.ClientConn, error) {
-	tlsCredentials, err := config.TLS.ClientCredentials()
+	m, err := NewClientMaterial(config)
 	if err != nil {
 		return nil, err
 	}
-	return newLoadBalancedConnection(config.Endpoints, tlsCredentials, config.Retry)
+	return m.NewLoadBalancedConnection()
 }
 
-// NewLoadBalancedConnectionFromMaterials creates a connection with load balancing between the endpoints
-// in the given config.
-func NewLoadBalancedConnectionFromMaterials(
-	endpoints []*Endpoint, tlsMaterials *TLSMaterials, retryProfile *retry.Profile,
-) (*grpc.ClientConn, error) {
-	tlsCredentials, err := NewClientCredentialsFromMaterial(tlsMaterials)
+// NewConnectionPerEndpoint creates a list of connections; one for each endpoint in the given config.
+func NewConnectionPerEndpoint(config *MultiClientConfig) ([]*grpc.ClientConn, error) {
+	m, err := NewClientMaterial(config)
 	if err != nil {
 		return nil, err
 	}
-	return newLoadBalancedConnection(endpoints, tlsCredentials, retryProfile)
+	return m.NewConnectionPerEndpoint()
 }
 
-func newLoadBalancedConnection(
-	endpoints []*Endpoint,
-	creds credentials.TransportCredentials,
-	retryProfile *retry.Profile,
-) (*grpc.ClientConn, error) {
-	if len(endpoints) == 1 {
+// NewLoadBalancedConnection creates a connection with load balancing between the endpoints.
+func (m *ClientMaterial) NewLoadBalancedConnection() (*grpc.ClientConn, error) {
+	tlsCredentials, err := NewClientCredentialsFromMaterial(&m.TLS)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(m.Endpoints) == 1 {
 		return NewConnection(ClientParameters{
-			Address: endpoints[0].Address(),
-			Retry:   retryProfile,
-			Creds:   creds,
+			Address: m.Endpoints[0].Address(),
+			Retry:   m.Retry,
+			Creds:   tlsCredentials,
 		})
 	}
 
-	resolverEndpoints := make([]resolver.Endpoint, len(endpoints))
-	for i, e := range endpoints {
+	resolverEndpoints := make([]resolver.Endpoint, len(m.Endpoints))
+	for i, e := range m.Endpoints {
 		// we're setting ServerName for each address because each service-instance has its own certificates.
 		resolverEndpoints[i] = resolver.Endpoint{
 			Addresses: []resolver.Address{{Addr: e.Address(), ServerName: e.Host}},
@@ -110,27 +129,27 @@ func newLoadBalancedConnection(
 	r.UpdateState(resolver.State{Endpoints: resolverEndpoints})
 
 	// Create a meaningful target string for debugging by joining all endpoint addresses.
-	targetName := AddressString(endpoints...)
+	targetName := AddressString(m.Endpoints...)
 	return NewConnection(ClientParameters{
 		Address:        fmt.Sprintf("%s:///%s", r.Scheme(), targetName),
-		Creds:          creds,
-		Retry:          retryProfile,
+		Creds:          tlsCredentials,
+		Retry:          m.Retry,
 		AdditionalOpts: []grpc.DialOption{grpc.WithResolvers(r)},
 	})
 }
 
-// NewConnectionPerEndpoint creates a list of connections; one for each endpoint in the given config.
-func NewConnectionPerEndpoint(config *MultiClientConfig) ([]*grpc.ClientConn, error) {
-	tlsCreds, err := config.TLS.ClientCredentials()
+// NewConnectionPerEndpoint creates a list of connections; one for each endpoint.
+func (m *ClientMaterial) NewConnectionPerEndpoint() ([]*grpc.ClientConn, error) {
+	tlsCreds, err := NewClientCredentialsFromMaterial(&m.TLS)
 	if err != nil {
 		return nil, err
 	}
-	connections := make([]*grpc.ClientConn, len(config.Endpoints))
-	for i, e := range config.Endpoints {
+	connections := make([]*grpc.ClientConn, len(m.Endpoints))
+	for i, e := range m.Endpoints {
 		connections[i], err = NewConnection(ClientParameters{
 			Address: e.Address(),
 			Creds:   tlsCreds,
-			Retry:   config.Retry,
+			Retry:   m.Retry,
 		})
 		if err != nil {
 			CloseConnectionsLog(connections[:i]...)

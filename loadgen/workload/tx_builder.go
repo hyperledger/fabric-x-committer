@@ -19,7 +19,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 )
 
 // TxBuilder is a convenient way to create an enveloped TX.
@@ -36,7 +36,7 @@ func NewTxBuilderFromPolicy(policy *PolicyProfile, nonceSource io.Reader) (*TxBu
 	if err := policy.Validate(); err != nil {
 		return nil, err
 	}
-	envSigner, err := ordererconn.NewIdentitySigner(policy.Identity)
+	envSigner, err := ordererdial.NewIdentitySigner(policy.Identity)
 	if err != nil {
 		return nil, err
 	}

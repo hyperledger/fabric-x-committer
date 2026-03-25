@@ -55,10 +55,14 @@ func newCredentials(tlsCfg *tls.Config, err error) (credentials.TransportCredent
 //   - tls (one-way): Loads server cert + key only (CA certs NOT loaded)
 //   - mtls (mutual): Loads server cert + key + CA certs for client verification
 func NewServerTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
-	materials := &TLSMaterials{Mode: c.Mode}
+	mode := c.Mode
+	if mode == UnmentionedTLSMode {
+		mode = DefaultTLSMode
+	}
+	materials := &TLSMaterials{Mode: mode}
 
-	switch c.Mode {
-	case NoneTLSMode, UnmentionedTLSMode:
+	switch mode {
+	case NoneTLSMode:
 		return materials, nil
 
 	case OneSideTLSMode, MutualTLSMode:
@@ -73,7 +77,7 @@ func NewServerTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
 			return nil, errors.Wrapf(err, "failed to load private key from %s", c.KeyPath)
 		}
 
-		if c.Mode == MutualTLSMode {
+		if mode == MutualTLSMode {
 			materials.CACerts = make([][]byte, 0, len(c.CACertPaths))
 			for _, path := range c.CACertPaths {
 				caBytes, err := os.ReadFile(path)
@@ -87,7 +91,7 @@ func NewServerTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
 
 	default:
 		return nil, errors.Newf("unknown TLS mode: %s (valid: %s, %s, %s)",
-			c.Mode, NoneTLSMode, OneSideTLSMode, MutualTLSMode)
+			mode, NoneTLSMode, OneSideTLSMode, MutualTLSMode)
 	}
 }
 
@@ -99,10 +103,14 @@ func NewServerTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
 //   - tls (one-way): Loads CA certs only for server verification (client cert + key NOT loaded)
 //   - mtls (mutual): Loads CA certs + client cert + key for mutual authentication
 func NewClientTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
-	materials := &TLSMaterials{Mode: c.Mode}
+	mode := c.Mode
+	if mode == UnmentionedTLSMode {
+		mode = DefaultTLSMode
+	}
+	materials := &TLSMaterials{Mode: mode}
 
-	switch c.Mode {
-	case NoneTLSMode, UnmentionedTLSMode:
+	switch mode {
+	case NoneTLSMode:
 		return materials, nil
 
 	case OneSideTLSMode, MutualTLSMode:
@@ -115,7 +123,7 @@ func NewClientTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
 			materials.CACerts = append(materials.CACerts, caBytes)
 		}
 
-		if c.Mode == MutualTLSMode {
+		if mode == MutualTLSMode {
 			var err error
 			materials.Cert, err = os.ReadFile(c.CertPath)
 			if err != nil {
@@ -131,7 +139,7 @@ func NewClientTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
 
 	default:
 		return nil, errors.Newf("unknown TLS mode: %s (valid: %s, %s, %s)",
-			c.Mode, NoneTLSMode, OneSideTLSMode, MutualTLSMode)
+			mode, NoneTLSMode, OneSideTLSMode, MutualTLSMode)
 	}
 }
 

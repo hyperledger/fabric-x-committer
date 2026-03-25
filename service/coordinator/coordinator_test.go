@@ -9,7 +9,7 @@ package coordinator
 import (
 	"context"
 	"maps"
-	"math/rand"
+	"math"
 	"slices"
 	"strconv"
 	"testing"
@@ -28,6 +28,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -1017,7 +1018,7 @@ func makeTestBlock(txPerBlock int) (
 	}
 	expectedTxsStatus := make([]*committerpb.TxStatus, txPerBlock)
 	for i := range txPerBlock {
-		txID := "tx" + strconv.Itoa(rand.Int())
+		txID := "tx" + strconv.FormatUint(utils.RandIntN(math.MaxUint64), 16)
 		b.Txs[i] = &servicepb.TxWithRef{
 			Ref: committerpb.NewTxRef(txID, 0, uint32(i)), //nolint:gosec
 			Content: &applicationpb.Tx{

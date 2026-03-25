@@ -14,7 +14,7 @@ GO_CMD="${1:-go}"
 
 EXIT_CODE=0
 
-ALL_GO=$(git ls-files '*.go' | grep -v '.pb.go')
+ALL_GO=$(git ls-files '*.go' | grep -v '.pb.go' | grep -v '_mock_test.go')
 ALL_YAML=$(git ls-files '*.yml' '*.yaml')
 
 echo "Running goimports..."

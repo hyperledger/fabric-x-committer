@@ -28,4 +28,3 @@ sidecar-client:
           - {{ . }}
           {{- end }}
     {{- end }}
-  channel-id: {{ .Policy.ChannelID }}
