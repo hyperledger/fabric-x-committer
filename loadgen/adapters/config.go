@@ -32,6 +32,7 @@ type (
 	}
 
 	// SidecarClientConfig is a struct that contains the configuration for the sidecar client.
+	// OrdererServers config must correlate with the orderer endpoints of the policy.
 	SidecarClientConfig struct {
 		SidecarClient  *connection.ClientConfig   `mapstructure:"sidecar-client"`
 		OrdererServers []*connection.ServerConfig `mapstructure:"orderer-servers"`

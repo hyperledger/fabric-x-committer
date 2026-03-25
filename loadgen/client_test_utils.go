@@ -51,7 +51,7 @@ func DefaultClientConf(t *testing.T, serverTLS connection.TLSConfig) *ClientConf
 			Policy: workload.PolicyProfile{
 				NamespacePolicies: map[string]*workload.Policy{
 					workload.DefaultGeneratedNamespaceID: {
-						Scheme: "MSP",
+						Scheme: workload.PolicyMSP,
 					},
 				},
 				ChannelID:             "channel",

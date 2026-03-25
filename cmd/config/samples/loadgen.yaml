@@ -173,14 +173,26 @@ load-profile:
     # from the config block automatically.
     #
     # Supported schemes:
+    #   MSP (default)     - Uses Fabric's standard endorsement with signing identities.
+    #                        If 'msp-identities' is provided, they will be used for endorsement.
+    #                        Otherwise, they are loaded from 'artifacts-path'.
+    #                        It requires all provided identities to sign (all peer organizations
+    #                        if loaded form the 'artifacts-path').
+    #                        The 'seed' and 'key-path' fields are ignored when using MSP.
     #   ECDSA, EDDSA, BLS - Use synthetic identities generated from 'seed' (or loaded from 'key-path').
     #                        No Fabric PKI required. Useful for performance testing.
-    #   MSP               - Uses Fabric's standard endorsement with signing identities loaded from
-    #                        artifacts-path. Requires all peer organizations to sign. The 'seed' and
-    #                        'key-path' fields are ignored when using MSP.
+    #                        The 'msp-identities' field is ignored when using these.
     namespace-policies:
-      # Example: synthetic ECDSA signatures (no Fabric PKI needed)
+      # Example: MSP-based endorsement (requires 'artifacts-path' with crypto materials).
       0:
+        scheme: MSP
+      #  msp-identities:  # Optional: load signing identities from local MSP instead of loading from 'artifacts-path'.
+      #    - msp-id: org-1
+      #      msp-dir: /path/to/org-1/msp
+      #    - msp-id: org-2
+      #      msp-dir: /path/to/org-2/msp
+      # Example: synthetic ECDSA signatures (no Fabric PKI needed).
+      1:
         scheme: ECDSA
         # Random seed for generating synthetic identities. Ensures reproducible key generation.
         seed: 10
@@ -188,14 +200,11 @@ load-profile:
         #   signing-key: /path/to/signing.key
         #   verification-key: /path/to/verification.key
         #   sign-certificate: /path/to/cert.pem
-      # Example: MSP-based endorsement (requires artifacts-path with crypto materials)
-      # 1:
-      #   scheme: MSP
     # Orderer endpoint specifications for transaction submission.
-    # Format: id=<num>,msp-id=<org>,broadcast,deliver,<host>:<port>
+    # Format: id=<num>,broadcast,deliver,<host>:<port>
     # Capabilities: 'broadcast' (submit txs), 'deliver' (receive blocks).
     orderer-endpoints:
-      - id=0,msp-id=org,broadcast,deliver,orderer:7050
+      - id=0,broadcast,deliver,orderer:7050
     # peer-organization-count specifies how many peer organizations to generate.
     # Required for MSP-based lifecycle endorsement policies on the meta namespace.
     peer-organization-count: 2
