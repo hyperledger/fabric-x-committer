@@ -21,23 +21,23 @@ import (
 )
 
 type (
-	// SvAdapter applies load on the SV.
-	SvAdapter struct {
+	// VerifierAdapter applies load on the SV.
+	VerifierAdapter struct {
 		commonAdapter
 		config *connection.MultiClientConfig
 	}
 )
 
-// NewSVAdapter instantiate SvAdapter.
-func NewSVAdapter(config *connection.MultiClientConfig, res *ClientResources) *SvAdapter {
-	return &SvAdapter{
+// NewVerifierAdapter instantiate VerifierAdapter.
+func NewVerifierAdapter(config *connection.MultiClientConfig, res *ClientResources) *VerifierAdapter {
+	return &VerifierAdapter{
 		commonAdapter: commonAdapter{res: res},
 		config:        config,
 	}
 }
 
 // RunWorkload applies load on the SV.
-func (c *SvAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWithSetup) error {
+func (c *VerifierAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWithSetup) error {
 	updateMsg, err := createUpdate(c.res)
 	if err != nil {
 		return err
@@ -111,7 +111,7 @@ func createUpdate(res *ClientResources) (*servicepb.VerifierUpdates, error) {
 	return updateMsg, nil
 }
 
-func (c *SvAdapter) receiveStatus(
+func (c *VerifierAdapter) receiveStatus(
 	ctx context.Context, stream servicepb.Verifier_StartStreamClient,
 ) error {
 	for ctx.Err() == nil {

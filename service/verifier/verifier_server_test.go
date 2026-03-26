@@ -527,7 +527,7 @@ func defaultCryptoParameters(t *testing.T) cryptoParameters {
 	require.NoError(t, err)
 
 	// Meta-namespace uses LifecycleEndorsement policy (MSP-based) from the config block.
-	ret.metaTxEndorser, _ = workload.NewPolicyEndorserFromMsp(ret.cryptoPath)
+	ret.metaTxEndorser = workload.NewPolicyEndorserFromMsp(t, ret.cryptoPath)
 	require.NoError(t, err)
 
 	dataTxSigningKey, dataTxVerificationKey := testsig.NewKeyPair(signature.Ecdsa)

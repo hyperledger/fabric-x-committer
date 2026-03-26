@@ -75,8 +75,8 @@ func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 		return nil, err
 	}
 
-	// We generate the crypto artifacts and block after we create the adapter since the sidecar adapter
-	// modifies the orderer endpoints.
+	// Generate the crypto artifacts and config block.
+	// This can be redundant in some cases, but we create it anyway to avoid specialized use cases.
 	c.resources.ConfigBlock, err = workload.CreateOrLoadConfigBlockWithCrypto(&conf.LoadProfile.Policy)
 	if err != nil {
 		return nil, err
@@ -101,7 +101,7 @@ func getAdapter(conf *adapters.AdapterConfig, res *adapters.ClientResources) (Se
 	case conf.SidecarClient != nil:
 		return adapters.NewSidecarAdapter(conf.SidecarClient, res)
 	case conf.VerifierClient != nil:
-		return adapters.NewSVAdapter(conf.VerifierClient, res), nil
+		return adapters.NewVerifierAdapter(conf.VerifierClient, res), nil
 	case conf.LoadGenClient != nil:
 		return adapters.NewLoadGenAdapter(conf.LoadGenClient, res), nil
 	default:

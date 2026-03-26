@@ -11,6 +11,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
+	"github.com/hyperledger/fabric-x-committer/utils/testsig"
+
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
@@ -53,4 +56,14 @@ func DefaultProfile(workers uint32) *Profile {
 		Seed:    249822374033311501,
 		Workers: workers,
 	}
+}
+
+// NewPolicyEndorserFromMsp creates an MSP-based endorser and namespace policy from the
+// peer organization crypto artifacts under artifactsPath.
+func NewPolicyEndorserFromMsp(tb testing.TB, artifactsPath string) *testsig.NsEndorser {
+	tb.Helper()
+	signingIdentities, err := testcrypto.GetPeersIdentities(artifactsPath)
+	require.NoError(tb, err)
+	endorser, _ := newPolicyEndorserFromIdentities(signingIdentities)
+	return endorser
 }
