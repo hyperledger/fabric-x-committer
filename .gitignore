@@ -32,7 +32,9 @@ docker/runner/out
 .idea
 .vscode
 .build
-.bob
+.bob/*
+!.bob/rules/
+!.bob/commands/
 *coverage.profile
 *coverage.html
 
