@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package main
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/cockroachdb/errors"
@@ -22,67 +21,61 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
-func startCMD() *cobra.Command {
+// healthcheckCMD creates the "healthcheck" parent command with all service subcommands.
+func healthcheckCMD() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "start",
-		Short: "Start a service.",
+		Use:   "healthcheck",
+		Short: "Check if a service is healthy.",
 	}
 	for _, name := range []string{sidecarService, coordinatorService, vcService, verifierService, queryService} {
-		cmd.AddCommand(startServiceCommand(name))
+		cmd.AddCommand(healthcheckServiceCommand(name))
 	}
 	return cmd
 }
 
-func startServiceCommand(name string) *cobra.Command {
+func healthcheckServiceCommand(name string) *cobra.Command {
 	var configPath string
 	cmd := &cobra.Command{
 		Use:          name,
-		Short:        fmt.Sprintf("Starts %v.", serviceNames[name]),
+		Short:        fmt.Sprintf("Check %v health.", serviceNames[name]),
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cmd.Printf("Starting %v\n", serviceNames[name])
-			defer cmd.Printf("%v ended\n", serviceNames[name])
-			return startService(cmd.Context(), name, configPath)
+			return runHealthCheck(cmd, name, configPath)
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)
 	return cmd
 }
 
-func startService(ctx context.Context, name, configPath string) error {
+// runHealthCheck reads the service config, performs a gRPC health check, and prints the result.
+func runHealthCheck(cmd *cobra.Command, name, configPath string) error {
 	conf, err := readConfig(name, configPath)
 	if err != nil {
 		return err
 	}
 
+	var server *connection.ServerConfig
 	switch c := conf.(type) {
 	case *sidecar.Config:
-		service, err := sidecar.New(c)
-		if err != nil {
-			return errors.Wrap(err, "failed to create sidecar service")
-		}
-		defer service.Close()
-		return connection.StartService(ctx, service, c.Server)
-
+		server = c.Server
 	case *coordinator.Config:
-		return connection.StartService(ctx, coordinator.NewCoordinatorService(c), c.Server)
-
+		server = c.Server
 	case *vc.Config:
-		service, err := vc.NewValidatorCommitterService(ctx, c)
-		if err != nil {
-			return errors.Wrap(err, "failed to create validator committer service")
-		}
-		defer service.Close()
-		return connection.StartService(ctx, service, c.Server)
-
+		server = c.Server
 	case *verifier.Config:
-		return connection.StartService(ctx, verifier.New(c), c.Server)
-
+		server = c.Server
 	case *query.Config:
-		return connection.StartService(ctx, query.NewQueryService(c), c.Server)
-
+		server = c.Server
 	default:
 		return errors.Newf("unknown config type: %T", conf)
 	}
+
+	displayName := serviceNames[name]
+	if err := connection.RunHealthCheck(cmd.Context(), server.Endpoint, server.TLS); err != nil {
+		cmd.PrintErrf("%s: NOT SERVING: %v\n", displayName, err)
+		return err
+	}
+	cmd.Printf("%s: SERVING\n", displayName)
+	return nil
 }

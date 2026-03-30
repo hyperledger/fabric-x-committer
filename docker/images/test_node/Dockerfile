@@ -45,7 +45,7 @@ ENV SC_VC_DATABASE_TLS_MODE="none"
 ENV SC_QUERY_DATABASE_TLS_MODE="none"
 
 COPY ${SRC_BIN_PATH}/${TARGETOS}-${TARGETARCH}/* ${BINS_PATH}/
-COPY ./docker/images/test_node/run ${BINS_PATH}/
+COPY ./docker/images/test_node/run ./docker/images/test_node/healthcheck ${BINS_PATH}/
 COPY ./cmd/config/samples $CONFIGS_PATH
 RUN chmod a+x ${BINS_PATH}/*
 

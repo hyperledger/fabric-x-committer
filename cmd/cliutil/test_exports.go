@@ -35,6 +35,7 @@ type CommandTest struct {
 	Args              []string
 	CmdLoggerOutputs  []string
 	CmdStdOutput      string
+	CmdStdErrOutput   string
 	Err               error
 	UseConfigTemplate string
 	System            config.SystemConfig
@@ -147,7 +148,7 @@ func UnitTestRunner(
 	})
 
 	assert.Eventually(t, func() bool {
-		return len(getMissing(cmdTest, cmdStdOut.String(), loggerPath)) == 0
+		return len(getMissing(cmdTest, cmdStdOut.String(), cmdStdErr.String(), loggerPath)) == 0
 	}, 10*time.Minute, 500*time.Millisecond)
 
 	t.Log("Stopping command, and waiting for finish")
@@ -164,7 +165,7 @@ func UnitTestRunner(
 	if err == nil {
 		t.Log("LOG:\n", string(logOut))
 	}
-	for _, m := range getMissing(cmdTest, cmdStdOut.String(), loggerPath) {
+	for _, m := range getMissing(cmdTest, cmdStdOut.String(), cmdStdErr.String(), loggerPath) {
 		t.Logf("Missing: %s", m)
 	}
 }
@@ -184,9 +185,12 @@ func defaultTestDBConfig() config.DatabaseConfig {
 	}
 }
 
-func getMissing(cmdTest CommandTest, cmdStdOut, loggerPath string) (missing []string) {
+func getMissing(cmdTest CommandTest, cmdStdOut, cmdStdErr, loggerPath string) (missing []string) {
 	if cmdTest.CmdStdOutput != "" && !strings.Contains(cmdStdOut, cmdTest.CmdStdOutput) {
 		missing = append(missing, cmdTest.CmdStdOutput)
+	}
+	if cmdTest.CmdStdErrOutput != "" && !strings.Contains(cmdStdErr, cmdTest.CmdStdErrOutput) {
+		missing = append(missing, cmdTest.CmdStdErrOutput)
 	}
 	if len(cmdTest.CmdLoggerOutputs) == 0 {
 		return missing
