@@ -64,6 +64,6 @@ func NewPolicyEndorserFromMsp(tb testing.TB, artifactsPath string) *testsig.NsEn
 	tb.Helper()
 	signingIdentities, err := testcrypto.GetPeersIdentities(artifactsPath)
 	require.NoError(tb, err)
-	endorser, _ := newPolicyEndorserFromIdentities(signingIdentities)
+	endorser, _ := newPolicyEndorserFromMSP(signingIdentities)
 	return endorser
 }

@@ -187,10 +187,10 @@ load-profile:
       0:
         scheme: MSP
       #  msp-identities:  # Optional: load signing identities from local MSP instead of loading from 'artifacts-path'.
-      #    - msp-id: org-1
-      #      msp-dir: /path/to/org-1/msp
-      #    - msp-id: org-2
-      #      msp-dir: /path/to/org-2/msp
+      #    - msp-id: peer-org-0
+      #      msp-dir: /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/msp
+      #    - msp-id: peer-org-1
+      #      msp-dir: /root/artifacts/peerOrganizations/peer-org-1/users/client@peer-org-1.com/msp
       # Example: synthetic ECDSA signatures (no Fabric PKI needed).
       1:
         scheme: ECDSA

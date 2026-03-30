@@ -84,13 +84,13 @@ func (e *TxEndorser) Endorse(txID string, tx *applicationpb.Tx) {
 //
 // For other schemes (ECDSA, EDDSA, BLS):
 //   - Generates or loads a key pair based on policy.Seed or policy.KeyPath.
-func newPolicyEndorser(cryptoPath string, policy *Policy) (*testsig.NsEndorser, *applicationpb.NamespacePolicy) {
+func newPolicyEndorser(artifactsPath string, policy *Policy) (*testsig.NsEndorser, *applicationpb.NamespacePolicy) {
 	if policy == nil {
 		policy = &Policy{}
 	}
 	scheme := getPolicyScheme(policy)
 	switch scheme {
-	case PolicyMSP:
+	case PolicySchemeMSP:
 		var mspDirectories []*msp.DirLoadParameters
 		switch {
 		case len(policy.MSPIdentities) > 0:
@@ -98,15 +98,17 @@ func newPolicyEndorser(cryptoPath string, policy *Policy) (*testsig.NsEndorser, 
 			for i, id := range policy.MSPIdentities {
 				mspDirectories[i] = &msp.DirLoadParameters{MspName: id.MspID, MspDir: id.MSPDir, CspConf: id.BCCSP}
 			}
-		case len(cryptoPath) > 0:
-			mspDirectories = testcrypto.GetPeersMspDirs(cryptoPath)
+		case len(artifactsPath) > 0:
+			mspDirectories = testcrypto.GetPeersMspDirs(artifactsPath)
 		default:
 			logger.Warn("MSP scheme configured but no identities provided")
 			// No identities. No endorsement required.
+			// Valid for test scenarios where no endorsement is needed.
+			// When evaluating production deployments, MSPIdentities or ArtifactsPath must be provided.
 		}
 		signingIdentities, err := testcrypto.GetSigningIdentities(mspDirectories...)
 		utils.Must(err)
-		return newPolicyEndorserFromIdentities(signingIdentities)
+		return newPolicyEndorserFromMSP(signingIdentities)
 	default:
 		signingKey, verificationKey := getKeyPair(policy)
 		endorser, err := testsig.NewNsEndorserFromKey(scheme, signingKey)
@@ -122,8 +124,8 @@ func newPolicyEndorser(cryptoPath string, policy *Policy) (*testsig.NsEndorser, 
 	}
 }
 
-// newPolicyEndorserFromIdentities creates an MSP-based endorser and namespace policy from the given identities.
-func newPolicyEndorserFromIdentities(signingIdentities []msp.SigningIdentity) (
+// newPolicyEndorserFromMSP creates an MSP-based endorser and namespace policy from the given identities.
+func newPolicyEndorserFromMSP(signingIdentities []msp.SigningIdentity) (
 	*testsig.NsEndorser, *applicationpb.NamespacePolicy,
 ) {
 	endorser, err := testsig.NewNsEndorserFromMsp(test.CreatorID, signingIdentities...)

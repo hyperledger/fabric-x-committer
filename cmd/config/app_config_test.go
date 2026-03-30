@@ -381,7 +381,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 				Policy: workload.PolicyProfile{
 					ChannelID: "mychannel",
 					NamespacePolicies: map[string]*workload.Policy{
-						workload.DefaultGeneratedNamespaceID: {Scheme: workload.PolicyMSP},
+						workload.DefaultGeneratedNamespaceID: {Scheme: workload.PolicySchemeMSP},
 						"1":                                  {Scheme: signature.Ecdsa, Seed: 10},
 					},
 					OrdererEndpoints: []*commontypes.OrdererEndpoint{{

@@ -20,9 +20,9 @@ import (
 
 // Defines Policy.Scheme.
 const (
-	PolicyMSP          = "MSP"
-	PolicyDefault      = PolicyMSP
-	PolicyNotMentioned = ""
+	PolicySchemeMSP         = "MSP"
+	PolicySchemeDefault     = PolicySchemeMSP
+	PolicySchemeUnspecified = ""
 )
 
 // Profile describes the generated workload characteristics.
@@ -189,19 +189,19 @@ func (p *PolicyProfile) Validate() error {
 			committerpb.ConfigNamespaceID)
 	}
 
-	if getPolicyScheme(p.NamespacePolicies[committerpb.MetaNamespaceID]) != PolicyMSP {
-		return errors.Newf("system namespace %q must use scheme %q", committerpb.MetaNamespaceID, PolicyMSP)
+	if getPolicyScheme(p.NamespacePolicies[committerpb.MetaNamespaceID]) != PolicySchemeMSP {
+		return errors.Newf("system namespace %q must use scheme %q", committerpb.MetaNamespaceID, PolicySchemeMSP)
 	}
 	return nil
 }
 
 func getPolicyScheme(policy *Policy) string {
 	if policy == nil {
-		return PolicyDefault
+		return PolicySchemeDefault
 	}
 	scheme := strings.ToUpper(policy.Scheme)
-	if scheme == PolicyNotMentioned {
-		return PolicyDefault
+	if scheme == PolicySchemeUnspecified {
+		return PolicySchemeDefault
 	}
 	return scheme
 }

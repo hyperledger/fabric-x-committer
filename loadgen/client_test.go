@@ -486,7 +486,7 @@ func clientConfigWithOrdererForTestCase(t *testing.T, tc loadGenTestCase) (
 		peerIdentities := getMSPIdentities(t, e.ArtifactsPath)
 		for _, nsID := range []string{workload.DefaultGeneratedNamespaceID, committerpb.MetaNamespaceID} {
 			policy.NamespacePolicies[nsID] = &workload.Policy{
-				Scheme:        workload.PolicyMSP,
+				Scheme:        workload.PolicySchemeMSP,
 				MSPIdentities: peerIdentities,
 			}
 		}

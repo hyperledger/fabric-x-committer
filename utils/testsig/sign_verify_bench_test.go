@@ -21,7 +21,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
-var testedSchemes = append(signature.AllRealSchemes, workload.PolicyMSP)
+var testedSchemes = append(signature.AllRealSchemes, workload.PolicySchemeMSP)
 
 func BenchmarkMarshal(b *testing.B) {
 	flogging.ActivateSpec("fatal")
