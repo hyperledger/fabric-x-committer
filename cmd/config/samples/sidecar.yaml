@@ -63,22 +63,14 @@ monitoring:
 
 # Orderer connection configuration for fetching blocks
 orderer:
-  # Consensus type of the ordering service: 'BFT' (Byzantine Fault Tolerant) or 'CFT' (Crash Fault Tolerant / Raft).
-  # Defaults to 'CFT' if not specified. Affects how the sidecar interacts with orderers.
-  # consensus-type: CFT
-  # The channel ID from which to fetch blocks.
-  channel-id: mychannel
-  # Organizations map organization MSP IDs to their orderer connection details.
-  # It supports multi-organization deployments where each org has its own orderers and TLS root CAs.
-  # Each organization can have multiple orderer endpoints with different capabilities (broadcast, deliver).
-  organizations:
-    org0:
-      endpoints:
-        - id=0,broadcast,deliver,orderer:7050
-      # List of paths to CA certificate files for verifying orderer certificates.
-      # Each organization can have its own CA certificates.
-      ca-cert-paths:
-        - /root/artifacts/ordererOrganizations/orderer-org-0/msp/tlscacerts/tlsorderer-org-0-CA-cert.pem
+  # Fault tolerance level of the ordering service: 'BFT' (Byzantine Fault Tolerant) or 'CFT'.
+  # Affects how the sidecar interacts with the orderer.
+  fault-tolerance-level: BFT
+  # Path to the latest known config block file, used to obtain the latest endpoints and TLS credentials
+  # of the Orderer parties.
+  # It can be the genesis config block (required for new deployments).
+  # But it can also be used to bootstrap a deployment with a stale ledger.
+  latest-known-config-block-path: /root/artifacts/config-block.pb.bin
   # Sidecar uses these TLS credentials when connecting to the orderers as a client.
   tls: *tlsConfig
   # reconnect:  # Optional exponential backoff retry for orderer gRPC reconnections.
@@ -126,12 +118,6 @@ notification:
   max-timeout: 10m
   max-active-tx-ids: 100_000
   max-tx-ids-per-request: 1000
-
-bootstrap:
-  # Path to the genesis block file (config block) used to initialize the ledger on
-  # first startup. Required for new deployments. If the ledger already exists,
-  # this parameter is ignored.
-  genesis-block-file-path: /root/artifacts/config-block.pb.bin
 
 # How often the sidecar updates the coordinator with the last committed block number.
 # More frequent updates improve coordinator accuracy for dependency resolution but

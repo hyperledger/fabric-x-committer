@@ -74,7 +74,6 @@ func TestNoVerificationKeySet(t *testing.T) {
 
 func TestNoInput(t *testing.T) {
 	t.Parallel()
-	test.FailHandler(t)
 	c := newTestState(t, defaultConfigWithTLS(test.InsecureTLSConfig))
 
 	stream, _ := c.Client.StartStream(t.Context())
@@ -89,7 +88,6 @@ func TestNoInput(t *testing.T) {
 
 func TestMinimalInput(t *testing.T) {
 	t.Parallel()
-	test.FailHandler(t)
 	c := newTestState(t, defaultConfigWithTLS(test.InsecureTLSConfig))
 
 	stream, _ := c.Client.StartStream(t.Context())
@@ -263,7 +261,6 @@ func TestBadSignature(t *testing.T) {
 
 func TestUpdatePolicies(t *testing.T) {
 	t.Parallel()
-	test.FailHandler(t)
 	c := newTestState(t, defaultConfigQuickCutoff())
 
 	ns1 := "ns1"
@@ -351,7 +348,6 @@ func TestUpdatePolicies(t *testing.T) {
 
 func TestMultipleUpdatePolicies(t *testing.T) {
 	t.Parallel()
-	test.FailHandler(t)
 	c := newTestState(t, defaultConfigQuickCutoff())
 
 	ns := make([]string, 101)

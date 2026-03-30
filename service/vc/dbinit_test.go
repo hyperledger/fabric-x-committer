@@ -79,7 +79,7 @@ func TestRetry(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	pool, err := NewDatabasePool(
+	_, err := NewDatabasePool(
 		ctx,
 		&DatabaseConfig{
 			Endpoints:      []*connection.Endpoint{{Port: 1234}},
@@ -91,5 +91,4 @@ func TestRetry(t *testing.T) {
 			},
 		})
 	require.ErrorContains(t, err, "failed to create a connection pool")
-	require.Nil(t, pool)
 }

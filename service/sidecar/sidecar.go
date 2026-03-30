@@ -29,10 +29,8 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/deliver"
-	"github.com/hyperledger/fabric-x-committer/utils/dynamictls"
+	"github.com/hyperledger/fabric-x-committer/utils/deliverorderer"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
@@ -42,7 +40,7 @@ var logger = flogging.MustGetLogger("sidecar")
 // it aggregates the transaction status and forwards the validated block to clients who have
 // registered on the ledger server.
 type Service struct {
-	ordererClient      *deliver.Client
+	deliveryParams     deliverorderer.Parameters
 	relay              *relay
 	notifier           *notifier
 	blockStore         *blockStore
@@ -55,21 +53,16 @@ type Service struct {
 	config             *Config
 	healthcheck        *health.Server
 	metrics            *perfMetrics
-
-	// tlsConfig holds the complete pre-configured tls.Config with merged static + dynamic CAs.
-	// staticCACerts holds the static CAs from YAML config for merging with dynamic CAs.
-	tlsConfig     atomic.Pointer[*tls.Config]
-	staticCACerts [][]byte
 }
 
 // New creates a sidecar service.
 func New(c *Config) (*Service, error) {
 	logger.Info("Initializing new sidecar")
 
-	// 1. Fetch blocks from the ordering service.
-	ordererClient, err := deliver.New(&c.Orderer)
+	// 1. Load the delivery parameters for the ordering service.
+	deliveryParams, err := deliverorderer.LoadParametersFromConfig(&c.Orderer)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create orderer client: %w", err)
+		return nil, err
 	}
 
 	// 2. Relay the blocks to committer and receive the transaction status.
@@ -86,7 +79,7 @@ func New(c *Config) (*Service, error) {
 		c.ChannelBufferSize = defaultBufferSize
 	}
 
-	tlsMaterials, err := connection.NewTLSMaterials(c.Server.TLS)
+	tlsMaterials, err := connection.NewServerTLSMaterials(c.Server.TLS)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create TLS materials: %w", err)
 	}
@@ -98,7 +91,7 @@ func New(c *Config) (*Service, error) {
 	}
 
 	sidecarService := &Service{
-		ordererClient:  ordererClient,
+		deliveryParams: deliveryParams,
 		relay:          relayService,
 		notifier:       newNotifier(c.ChannelBufferSize, &c.Notification),
 		blockStore:     blockStoreInstance,
@@ -109,35 +102,10 @@ func New(c *Config) (*Service, error) {
 		metrics:        metrics,
 		committedBlock: make(chan *common.Block, c.ChannelBufferSize),
 		statusQueue:    make(chan []*committerpb.TxStatus, c.ChannelBufferSize),
-		tlsConfig:      atomic.Pointer[*tls.Config]{},
-		staticCACerts:  tlsMaterials.CACerts,
 	}
 
-	sidecarService.tlsConfig.Store(&tlsConfig)
-
-	if c.Bootstrap.GenesisBlockFilePath != "" {
-		logger.Debug("updating orderer connections from genesis-block")
-		configBlock, bootErr := protoutil.ReadBlockFromFile(c.Bootstrap.GenesisBlockFilePath)
-		if bootErr != nil {
-			return nil, errors.Wrap(bootErr, "read config block")
-		}
-		orgsMaterial, bootErr := ordererconn.NewOrganizationsMaterialsFromConfigBlock(configBlock)
-		if bootErr != nil {
-			return nil, fmt.Errorf("failed to load organizations artifacts: %w", bootErr)
-		}
-		bootErr = ordererClient.UpdateConnections(orgsMaterial)
-		if bootErr != nil {
-			return nil, bootErr
-		}
-
-		// reading application root CAs and add it to the YAML root CAs setup.
-		logger.Debug("updating acceptable client CAs from genesis-block")
-		rootCAs, bootErr := dynamictls.NewApplicationRootCAsFromConfigBlock(configBlock)
-		if bootErr != nil {
-			return nil, errors.Wrap(bootErr, "failed to load application root CAs")
-		}
-		sidecarService.updateCACertificates(rootCAs)
-	}
+	relayService.tlsConfig.Store(&tlsConfig)
+	relayService.staticCACerts = tlsMaterials.CACerts
 
 	return sidecarService, nil
 }
@@ -146,7 +114,7 @@ func New(c *Config) (*Service, error) {
 // The sidecar updates this config when processing config blocks from the orderer, enabling
 // certificate rotation without a service restart.
 func (s *Service) GetDynamicTLSConfig(_ context.Context) *tls.Config {
-	if v := s.tlsConfig.Load(); v != nil {
+	if v := s.relay.tlsConfig.Load(); v != nil {
 		return *v
 	}
 	return nil
@@ -230,20 +198,12 @@ func (s *Service) sendBlocksAndReceiveStatus(
 	g, gCtx := errgroup.WithContext(ctx)
 
 	// We drop all enqueued block if any before starting a new session.
-	s.blockToBeCommitted.Store(new(make(chan *common.Block, s.config.ChannelBufferSize)))
+	blocksToBeCommitted := make(chan *common.Block, s.config.ChannelBufferSize)
+	s.blockToBeCommitted.Store(new(blocksToBeCommitted))
 
-	// NOTE: ordererClient.Deliver and relay.Run must always return an error on exist.
+	// NOTE: deliver.s.startDelivery and relay.Run must always return an error on exist.
 	g.Go(func() error {
-		logger.Info("Fetch blocks from the ordering service and write them on s.blockToBeCommitted.")
-		deliverErr := s.ordererClient.Deliver(gCtx, &deliver.Parameters{
-			NextBlockNum: nextBlockNum,
-			OutputBlock:  *s.blockToBeCommitted.Load(),
-		})
-		if errors.Is(deliverErr, context.Canceled) {
-			// A context may be cancelled due to a relay error, thus it is not critical error.
-			return errors.Wrap(deliverErr, "context is canceled")
-		}
-		return errors.Join(retry.ErrNonRetryable, deliverErr)
+		return s.startDelivery(gCtx, blocksToBeCommitted, nextBlockNum)
 	})
 
 	g.Go(func() error {
@@ -251,8 +211,7 @@ func (s *Service) sendBlocksAndReceiveStatus(
 		return s.relay.run(gCtx, &relayRunConfig{
 			coordClient:                    coordClient,
 			nextExpectedBlockByCoordinator: nextBlockNum,
-			configUpdater:                  s.configUpdater,
-			incomingBlockToBeCommitted:     *s.blockToBeCommitted.Load(),
+			incomingBlockToBeCommitted:     blocksToBeCommitted,
 			outgoingCommittedBlock:         s.committedBlock,
 			outgoingStatusUpdates:          s.statusQueue,
 			waitingTxsLimit:                s.config.WaitingTxsLimit,
@@ -267,26 +226,6 @@ func (s *Service) recoverCommittedBlocks(ctx context.Context) {
 		logger.Infof("Waiting for committed block queue: %d", len(s.committedBlock))
 		time.Sleep(100 * time.Millisecond)
 	}
-}
-
-func (s *Service) configUpdater(block *common.Block) {
-	logger.Infof("updating config from block: %d", block.Header.Number)
-	orgsMaterial, err := ordererconn.NewOrganizationsMaterialsFromConfigBlock(block)
-	if err != nil {
-		logger.Warnf("failed to load config from block %d: %v", block.Header.Number, err)
-		return
-	}
-	err = s.ordererClient.UpdateConnections(orgsMaterial)
-	if err != nil {
-		logger.Warnf("failed to update config for block %d: %v", block.Header.Number, err)
-	}
-
-	logger.Debug("updating sidecar's acceptable CAs from the config-block")
-	rootCAs, err := dynamictls.NewApplicationRootCAsFromConfigBlock(block)
-	if err != nil {
-		logger.Warnf("failed to load CA certificates from block %d: %v", block.Header.Number, err)
-	}
-	s.updateCACertificates(rootCAs)
 }
 
 func (s *Service) recover(ctx context.Context, coordClient servicepb.CoordinatorClient) (uint64, error) {
@@ -315,50 +254,13 @@ func (s *Service) recover(ctx context.Context, coordClient servicepb.Coordinator
 		return 0, err
 	}
 
-	// We should update the orderer endpoints first, before recovering the ledger
-	// store. Otherwise, the `recoverLedgerStore` function might try to fetch blocks
-	// from non-existent or non-member ordering services.
-	if err := s.recoverConfigTransactionFromStateDB(ctx, coordClient); err != nil {
-		return 0, err
-	}
-
 	blkInfo, err := coordClient.GetNextBlockNumberToCommit(ctx, nil)
 	if err != nil {
 		return 0, logAndWrapCoordinatorError(err, "failed to fetch the next expected block number from coordinator")
 	}
-	logger.Infof("next expected block number by coordinator is %d", blkInfo.Number)
+	logger.Infof("Next expected block number by coordinator is %d", blkInfo.Number)
 
 	return blkInfo.Number, s.recoverLedgerStore(ctx, coordClient, blkInfo.Number)
-}
-
-func (s *Service) recoverConfigTransactionFromStateDB(
-	ctx context.Context, client servicepb.CoordinatorClient,
-) error {
-	configMsg, err := client.GetConfigTransaction(ctx, nil)
-	if err != nil {
-		return logAndWrapCoordinatorError(err, "failed to get config transaction from coordinator")
-	}
-	if configMsg == nil || configMsg.Envelope == nil {
-		return nil
-	}
-	envelope, err := protoutil.UnmarshalEnvelope(configMsg.Envelope)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal meta policy envelope: %w", err)
-	}
-	orgsMaterial, err := ordererconn.NewOrganizationsMaterialsFromEnvelope(envelope)
-	if err != nil {
-		return err
-	}
-	if err = s.ordererClient.UpdateConnections(orgsMaterial); err != nil {
-		return errors.Wrapf(err, "failed to update connections")
-	}
-	logger.Debug("updating sidecar's acceptable CAs from the database")
-	rootCAs, err := dynamictls.NewOrganizationsFromEnvelope(envelope)
-	if err != nil {
-		return err
-	}
-	s.updateCACertificates(rootCAs)
-	return nil
 }
 
 func (s *Service) recoverLedgerStore(
@@ -386,15 +288,7 @@ func (s *Service) recoverLedgerStore(
 	blockCh := make(chan *common.Block, numOfBlocksPendingInBlockStore)
 
 	g.Go(func() error {
-		logger.Infof("starting delivery service with the orderer to receive block %d", blockStoreHeight)
-		deliverErr := s.ordererClient.Deliver(gCtx, &deliver.Parameters{
-			NextBlockNum: blockStoreHeight,
-			OutputBlock:  blockCh,
-		})
-		if errors.Is(deliverErr, context.Canceled) {
-			return nil
-		}
-		return deliverErr
+		return s.startDelivery(gCtx, blockCh, blockStoreHeight)
 	})
 
 	g.Go(func() error {
@@ -418,33 +312,69 @@ func (s *Service) recoverLedgerStore(
 	return errors.Wrap(g.Wait(), "failed to recover the ledger store")
 }
 
-// updateCACertificates atomically updates the TLS config with merged static + dynamic CAs.
-func (s *Service) updateCACertificates(dynamicCAs [][]byte) {
-	if len(dynamicCAs) == 0 {
-		logger.Warn("no CA certificates found in config block")
-	}
-
-	mergedCAs := connection.MergeCACerts(s.staticCACerts, dynamicCAs)
-	certPool, err := connection.BuildCertPoolFromBytes(mergedCAs)
+// startDelivery fetches blocks from the ordering service and write them to a channel.
+func (s *Service) startDelivery(ctx context.Context, output chan<- *common.Block, nextBlockNum uint64) error {
+	lastBlock, nextBlockVerificationConfig, err := s.getPrevBlockAndItsConfig(nextBlockNum)
 	if err != nil {
-		logger.Warnf("Failed to build cert pool: %v", err)
-		return // Keep existing config
+		return err
 	}
 
-	// Clone current config and update ClientCAs
-	currentConfig := s.tlsConfig.Load()
-	if currentConfig == nil || *currentConfig == nil {
-		logger.Warn("No current TLS config to update")
-		return
+	latestConfig := nextBlockVerificationConfig
+	blockStoreHeight := s.blockStore.GetBlockHeight()
+	if blockStoreHeight > nextBlockNum {
+		_, latestConfig, err = s.getPrevBlockAndItsConfig(blockStoreHeight)
+		if err != nil {
+			return err
+		}
 	}
 
-	newConfig := (*currentConfig).Clone()
-	newConfig.ClientCAs = certPool
+	logger.Infof("Staring delivery from block [%d]", nextBlockNum)
+	p := s.deliveryParams
+	p.OutputBlock = output
+	p.LastBlock = lastBlock
+	p.NextBlockVerificationConfig = nextBlockVerificationConfig
+	p.LatestKnownConfig = deliverorderer.MaxBlock(p.LatestKnownConfig, latestConfig)
+	sessionInfo, deliverErr := deliverorderer.ToQueue(ctx, p)
 
-	// Store the updated config atomically
-	s.tlsConfig.Store(&newConfig)
-	logger.Debugf("Updated TLS config with %d total CAs (%d static + %d dynamic)",
-		len(mergedCAs), len(s.staticCACerts), len(dynamicCAs))
+	// The session's latest config block is updated to be the latest config block seen so far.
+	// This includes:
+	//  - the config block from the YAML (s.deliveryParam),
+	//  - the config block from the ledger (latestConfig),
+	//  - and the latest config block from the previous delivery runs (session.LatestKnownConfig).
+	// This ensures we won't miss a crucial config-block that updated all the endpoints and/or the credentials.
+	if sessionInfo != nil {
+		s.deliveryParams.LatestKnownConfig = sessionInfo.LatestKnownConfig
+	}
+
+	if errors.Is(deliverErr, context.Canceled) {
+		// A context may be canceled due to a relay error, thus it is not critical error.
+		return errors.Wrap(deliverErr, "context is canceled")
+	}
+	return errors.Join(retry.ErrNonRetryable, deliverErr)
+}
+
+func (s *Service) getPrevBlockAndItsConfig(nextBlockNum uint64) (blk, configBlk *common.Block, err error) {
+	if nextBlockNum == 0 {
+		return nil, nil, nil
+	}
+	blk, err = s.blockStore.store.RetrieveBlockByNumber(nextBlockNum - 1)
+	if err != nil {
+		return nil, nil, err
+	}
+	configBlockIdx, err := protoutil.GetLastConfigIndexFromBlock(blk)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to get config index from block [%d]", nextBlockNum-1)
+	}
+	logger.Infof("Block [%d] config block number: %d", nextBlockNum-1, configBlockIdx)
+	if configBlockIdx == blk.Header.Number {
+		// Config blocks may point to itself.
+		return blk, blk, nil
+	}
+	configBlk, err = s.blockStore.store.RetrieveBlockByNumber(configBlockIdx)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to get config block [%d]", configBlockIdx)
+	}
+	return blk, configBlk, nil
 }
 
 func appendMissingBlock(

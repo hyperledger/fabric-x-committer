@@ -51,20 +51,10 @@ func (m *TLSMaterials) CreateDynamicServerTLSConfig(
 			return tlsConfig, nil
 		}
 
-		logger.Debugf("New client connection: %v, using service's pre-configured TLS config", chi.Conn.RemoteAddr())
+		logger.Debug("New client connection: %v, using service's pre-configured TLS config", chi.Conn.RemoteAddr())
 		return cfg, nil
 	}
 	return tlsConfig, nil
-}
-
-// GetDynamicCACerts atomically reads and merges static and dynamic CA certificates.
-// If dynamicRootCAs is nil, returns only the static CAs from YAML configuration.
-// This allows services to opt-out of dynamic CA support by returning nil from GetDynamicRootCAs().
-func (m *TLSMaterials) GetDynamicCACerts(dynamicRootCAs [][]byte) [][]byte {
-	result := make([][]byte, len(m.CACerts)+len(dynamicRootCAs))
-	copy(result, m.CACerts)
-	copy(result[len(m.CACerts):], dynamicRootCAs)
-	return result
 }
 
 // NewClientCredentialsFromMaterial returns the gRPC transport credentials to be used by a client,
@@ -89,39 +79,100 @@ func newCredentials(tlsCfg *tls.Config, err error) (credentials.TransportCredent
 	return credentials.NewTLS(tlsCfg), nil
 }
 
-// NewTLSMaterials converts a TLSConfig with path fields into a struct that holds the actual bytes of the certificates.
-func NewTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
-	if c.Mode == NoneTLSMode || c.Mode == UnmentionedTLSMode {
-		return &TLSMaterials{
-			Mode: c.Mode,
-		}, nil
+// NewServerTLSMaterials converts a server TLSConfig with path fields into a struct
+// that holds the actual bytes of the certificates.
+//
+// Certificate loading behavior by mode:
+//   - none/unmentioned: No certificates loaded
+//   - tls (one-way): Loads server cert + key only (CA certs NOT loaded)
+//   - mtls (mutual): Loads server cert + key + CA certs for client verification
+func NewServerTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
+	mode := c.Mode
+	if mode == UnmentionedTLSMode {
+		mode = DefaultTLSMode
 	}
+	materials := &TLSMaterials{Mode: mode}
 
-	certBytes, err := os.ReadFile(c.CertPath)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to load certificate from %s", c.CertPath)
-	}
+	switch mode {
+	case NoneTLSMode:
+		return materials, nil
 
-	keyBytes, err := os.ReadFile(c.KeyPath)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to load private key from %s", c.KeyPath)
-	}
-
-	caCertBytes := make([][]byte, 0, len(c.CACertPaths))
-	for _, caCertPath := range c.CACertPaths {
-		caBytes, err := os.ReadFile(caCertPath)
+	case OneSideTLSMode, MutualTLSMode:
+		var err error
+		materials.Cert, err = os.ReadFile(c.CertPath)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to load root CA cert from %s", caCertPath)
+			return nil, errors.Wrapf(err, "failed to load certificate from %s", c.CertPath)
 		}
-		caCertBytes = append(caCertBytes, caBytes)
-	}
 
-	return &TLSMaterials{
-		Mode:    c.Mode,
-		Cert:    certBytes,
-		Key:     keyBytes,
-		CACerts: caCertBytes,
-	}, nil
+		materials.Key, err = os.ReadFile(c.KeyPath)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to load private key from %s", c.KeyPath)
+		}
+
+		if mode == MutualTLSMode {
+			materials.CACerts = make([][]byte, 0, len(c.CACertPaths))
+			for _, path := range c.CACertPaths {
+				caBytes, err := os.ReadFile(path)
+				if err != nil {
+					return nil, errors.Wrapf(err, "failed to load root CA cert from %s", path)
+				}
+				materials.CACerts = append(materials.CACerts, caBytes)
+			}
+		}
+		return materials, nil
+
+	default:
+		return nil, errors.Newf("unknown TLS mode: %s (valid: %s, %s, %s)",
+			mode, NoneTLSMode, OneSideTLSMode, MutualTLSMode)
+	}
+}
+
+// NewClientTLSMaterials converts a client TLSConfig with path fields into a struct
+// that holds the actual bytes of the certificates.
+//
+// Certificate loading behavior by mode:
+//   - none/unmentioned: No certificates loaded
+//   - tls (one-way): Loads CA certs only for server verification (client cert + key NOT loaded)
+//   - mtls (mutual): Loads CA certs + client cert + key for mutual authentication
+func NewClientTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
+	mode := c.Mode
+	if mode == UnmentionedTLSMode {
+		mode = DefaultTLSMode
+	}
+	materials := &TLSMaterials{Mode: mode}
+
+	switch mode {
+	case NoneTLSMode:
+		return materials, nil
+
+	case OneSideTLSMode, MutualTLSMode:
+		materials.CACerts = make([][]byte, 0, len(c.CACertPaths))
+		for _, path := range c.CACertPaths {
+			caBytes, err := os.ReadFile(path)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to load root CA cert from %s", path)
+			}
+			materials.CACerts = append(materials.CACerts, caBytes)
+		}
+
+		if mode == MutualTLSMode {
+			var err error
+			materials.Cert, err = os.ReadFile(c.CertPath)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to load client certificate from %s", c.CertPath)
+			}
+
+			materials.Key, err = os.ReadFile(c.KeyPath)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to load client private key from %s", c.KeyPath)
+			}
+		}
+		return materials, nil
+
+	default:
+		return nil, errors.Newf("unknown TLS mode: %s (valid: %s, %s, %s)",
+			mode, NoneTLSMode, OneSideTLSMode, MutualTLSMode)
+	}
 }
 
 // CreateServerTLSConfig returns a TLS config to be used by a server.

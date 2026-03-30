@@ -91,7 +91,7 @@ const caFetchTimeout = 15 * time.Second
 
 // NewQueryService create a new QueryService given a configuration.
 func NewQueryService(config *Config) (*Service, error) {
-	tlsMaterials, err := connection.NewTLSMaterials(config.Server.TLS)
+	tlsMaterials, err := connection.NewServerTLSMaterials(config.Server.TLS)
 	if err != nil {
 		return nil, err
 	}

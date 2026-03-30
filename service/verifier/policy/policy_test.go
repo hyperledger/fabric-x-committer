@@ -40,6 +40,7 @@ func TestGetUpdatesFromNamespace(t *testing.T) {
 		ReadWrites: items,
 	}
 	update := GetUpdatesFromNamespace(tx)
+	require.NotNil(t, update)
 	require.NotNil(t, update.GetNamespacePolicies())
 	require.Nil(t, update.Config)
 	require.Len(t, update.NamespacePolicies.Policies, len(items))

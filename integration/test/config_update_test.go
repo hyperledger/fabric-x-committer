@@ -13,7 +13,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
 
@@ -21,14 +20,14 @@ import (
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 const blockSize = 1
 
 func newConfigTestEnv(t *testing.T) (
-	*runner.CommitterRuntime, *mock.OrdererTestEnv, func(),
+	*runner.CommitterRuntime, func(),
 ) {
 	t.Helper()
 	gomega.RegisterTestingT(t)
@@ -39,25 +38,7 @@ func newConfigTestEnv(t *testing.T) (
 		BlockTimeout: 2 * time.Second,
 		CrashTest:    true,
 	})
-
-	ordererServers := make([]*connection.ServerConfig, len(c.SystemConfig.Services.Orderer))
-	for i, e := range c.SystemConfig.Services.Orderer {
-		ordererServers[i] = &connection.ServerConfig{Endpoint: *e.GrpcEndpoint}
-	}
-
-	ordererEnv := mock.NewOrdererTestEnv(t, &mock.OrdererTestConfig{
-		ChanID: "ch1",
-		Config: &mock.OrdererConfig{
-			ServerConfigs: ordererServers,
-			BlockSize:     blockSize,
-			// We want each block to contain exactly <blockSize> transactions.
-			// Therefore, we set a higher block timeout so that we have enough time to send all the
-			// transactions to the orderer and create a block.
-			BlockTimeout:     5 * time.Minute,
-			ArtifactsPath:    c.SystemConfig.Policy.ArtifactsPath,
-			SendGenesisBlock: true,
-		},
-	})
+	c.OrdererEnv.StartServers(t)
 
 	c.Start(t, runner.CommitterTxPath)
 	c.CreateNamespacesAndCommit(t, "1")
@@ -76,7 +57,7 @@ func newConfigTestEnv(t *testing.T) (
 		c.MakeAndSendTransactionsToOrderer(t, txs, expected)
 	}
 
-	return c, ordererEnv, sendTXs
+	return c, sendTXs
 }
 
 // TestConfigUpdateLifecyclePolicy verifies that the LifecycleEndorsement policy is
@@ -86,7 +67,7 @@ func newConfigTestEnv(t *testing.T) (
 //  3. Updated endorser + correct NsVersion → committed (both gates pass)
 func TestConfigUpdateLifecyclePolicy(t *testing.T) {
 	t.Parallel()
-	c, ordererEnv, sendTXs := newConfigTestEnv(t)
+	c, sendTXs := newConfigTestEnv(t)
 
 	t.Log("Sanity check")
 	sendTXs()
@@ -107,20 +88,15 @@ func TestConfigUpdateLifecyclePolicy(t *testing.T) {
 	t.Log("Sanity check")
 	sendTXs()
 
-	// Submit a config block update with new crypto artifacts (4 peer orgs)
-	t.Log("Submit config block update")
-	configCryptoPath := t.TempDir()
+	t.Log("Submit a config block update with new crypto artifacts (4 peer orgs)")
+	staleEndorser, _ := workload.NewPolicyEndorserFromMsp(c.SystemConfig.Policy.ArtifactsPath)
 	// Bump PeerOrganizationCount from 2 to 4 so the LifecycleEndorsement policy
 	// structurally changes. This proves the verifier loads the updated policy,
 	// not just that NsVersion matches.
-	configBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(configCryptoPath, &testcrypto.ConfigBlock{
-		ChannelID:             c.SystemConfig.Policy.ChannelID,
-		OrdererEndpoints:      ordererEnv.AllRealEndpoints(),
+	c.OrdererEnv.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
+		OrdererEndpoints:      c.OrdererEnv.AllEndpoints,
 		PeerOrganizationCount: 4,
 	})
-	require.NoError(t, err)
-	err = ordererEnv.Orderer.SubmitBlock(t.Context(), configBlock)
-	require.NoError(t, err)
 	c.ValidateExpectedResultsInCommittedBlock(t, &runner.ExpectedStatusInBlock{
 		Statuses: []committerpb.Status{committerpb.Status_COMMITTED},
 	})
@@ -132,9 +108,7 @@ func TestConfigUpdateLifecyclePolicy(t *testing.T) {
 	// We reuse namespaces "2" and "3" that were already created. Since the keys exist
 	// in _meta at version 0, we set ReadWrite.Version so the VC treats these as
 	// updates (not inserts, which would hit a unique-violation conflict).
-	updatedEndorser, _ := workload.NewPolicyEndorserFromMsp(configCryptoPath)
-	staleEndorser, _ := workload.NewPolicyEndorserFromMsp(c.SystemConfig.Policy.ArtifactsPath)
-
+	updatedEndorser, _ := workload.NewPolicyEndorserFromMsp(c.SystemConfig.Policy.ArtifactsPath)
 	setReadWriteVersions := func(tx *applicationpb.Tx, ver uint64) {
 		for _, rw := range tx.Namespaces[0].ReadWrites {
 			rw.Version = &ver
@@ -194,42 +168,36 @@ func TestConfigUpdateLifecyclePolicy(t *testing.T) {
 // update can switch back.
 func TestConfigUpdateOrdererEndpoints(t *testing.T) {
 	t.Parallel()
-	c, ordererEnv, sendTXs := newConfigTestEnv(t)
+	c, sendTXs := newConfigTestEnv(t)
 
 	t.Log("Sanity check")
 	sendTXs()
 
-	submitConfigBlock := func(endpoints []*commontypes.OrdererEndpoint) {
-		ordererEnv.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
-			ChannelID:             c.SystemConfig.Policy.ChannelID,
-			OrdererEndpoints:      endpoints,
-			PeerOrganizationCount: c.SystemConfig.Policy.PeerOrganizationCount,
-		})
-	}
-
 	t.Log("Update the sidecar to use a holder orderer group")
-	allEndpoints := ordererEnv.AllRealEndpoints()
+	allEndpoints := c.OrdererEnv.AllEndpoints
 	holdingEndpoints, nonHoldingEndpoints := allEndpoints[:1], allEndpoints[1:]
 	holdingEndpoint := holdingEndpoints[0].Address()
 	holdingState := &mock.PartyState{PartyID: 1}
-	ordererEnv.Orderer.RegisterPartyState(holdingEndpoint, holdingState)
-	submitConfigBlock(holdingEndpoints)
+	c.OrdererEnv.Orderer.RegisterPartyState(holdingEndpoint, holdingState)
+	c.OrdererEnv.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
+		OrdererEndpoints: holdingEndpoints,
+	})
 	c.ValidateExpectedResultsInCommittedBlock(t, &runner.ExpectedStatusInBlock{
 		Statuses: []committerpb.Status{committerpb.Status_COMMITTED},
 	})
 
 	t.Log("Validate only the holder stream remains")
-	mock.RequireStreams(t, ordererEnv.Orderer, 1)
-	mock.RequireStreamsWithEndpoints(t, ordererEnv.Orderer, 1, holdingEndpoint)
+	mock.RequireStreams(t, c.OrdererEnv.Orderer, 1)
+	mock.RequireStreamsWithEndpoints(t, c.OrdererEnv.Orderer, 1, holdingEndpoint)
 
 	t.Log("Restart sidecar to check that it restarts using the holding orderer")
 	c.Sidecar.Restart(t)
-	mock.RequireStreams(t, ordererEnv.Orderer, 1)
-	mock.RequireStreamsWithEndpoints(t, ordererEnv.Orderer, 1, holdingEndpoint)
+	mock.RequireStreams(t, c.OrdererEnv.Orderer, 1)
+	holdingStream := mock.RequireStreamsWithEndpoints(t, c.OrdererEnv.Orderer, 1, holdingEndpoint)[0]
 
 	holdingBlock := c.NextExpectedBlockNumber + 1
 	t.Logf("Holding block #%d", holdingBlock)
-	holdingState.HoldFromBlock.Store(holdingBlock)
+	holdingStream.HoldFromBlock.Store(holdingBlock)
 
 	t.Log("Sanity check")
 	sendTXs()
@@ -238,7 +206,9 @@ func TestConfigUpdateOrdererEndpoints(t *testing.T) {
 	// We submit the config that returns to the non-holding orderer.
 	// But it should not be processed as the sidecar should have switched to the holding
 	// orderer.
-	submitConfigBlock(nonHoldingEndpoints)
+	c.OrdererEnv.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
+		OrdererEndpoints: nonHoldingEndpoints,
+	})
 	select {
 	case <-c.CommittedBlock:
 		t.Fatal("The sidecar should not receive blocks since its orderer holds them")
@@ -253,13 +223,13 @@ func TestConfigUpdateOrdererEndpoints(t *testing.T) {
 	require.Equal(t, holdingBlock, nextBlock.Number)
 
 	t.Log("We advance the holder by one to allow the config block to pass through, but not other blocks")
-	holdingState.HoldFromBlock.Add(1)
+	holdingStream.HoldFromBlock.Add(1)
 	c.ValidateExpectedResultsInCommittedBlock(t, &runner.ExpectedStatusInBlock{
 		Statuses: []committerpb.Status{committerpb.Status_COMMITTED},
 	})
 
 	t.Log("The sidecar should use the non-holding orderer, so the holding should not affect the processing")
-	mock.RequireStreamsWithEndpoints(t, ordererEnv.Orderer, 0, holdingEndpoint)
+	mock.RequireStreamsWithEndpoints(t, c.OrdererEnv.Orderer, 0, holdingEndpoint)
 	sendTXs()
 }
 
@@ -278,25 +248,12 @@ func TestConfigBlockImmediateCommit(t *testing.T) {
 		VerifierBatchSizeCutoff:             100,
 		VerifierBatchTimeCutoff:             1 * time.Hour,
 	})
-
-	ordererServers := make([]*connection.ServerConfig, len(c.SystemConfig.Services.Orderer))
-	for i, e := range c.SystemConfig.Services.Orderer {
-		ordererServers[i] = &connection.ServerConfig{Endpoint: *e.GrpcEndpoint}
-	}
-	ordererEnv := mock.NewOrdererTestEnv(t, &mock.OrdererTestConfig{
-		ChanID: "ch1",
-		Config: &mock.OrdererConfig{
-			ServerConfigs:    ordererServers,
-			BlockSize:        1, // Each block contains exactly 1 transaction.
-			BlockTimeout:     5 * time.Minute,
-			ArtifactsPath:    c.SystemConfig.Policy.ArtifactsPath,
-			SendGenesisBlock: true,
-		},
-	})
+	ordererEnv := c.OrdererEnv
+	ordererEnv.StartServers(t)
 
 	// The Start function internally calls ensureAtLeastLastCommittedBlockNumber(t, 0)
 	// which waits 2 minutes for block 0 to be committed. If config blocks weren't processed
-	// immediately, this would timeout due to the 1-hour batching delays.
+	// immediately, this would time out due to the 1-hour batching delays.
 	t.Log("Starting services - block 0 (config block) should be committed immediately")
 	startTime := time.Now()
 	c.Start(t, runner.CommitterTxPath)
@@ -304,29 +261,19 @@ func TestConfigBlockImmediateCommit(t *testing.T) {
 	// this time would be higher due to the start of all services and connection establishment.
 	t.Logf("Services started and block 0 committed in %v", elapsed)
 
-	submitConfigBlock := func() {
-		ordererEnv.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
-			ChannelID:             c.SystemConfig.Policy.ChannelID,
-			OrdererEndpoints:      ordererEnv.AllRealEndpoints(),
-			PeerOrganizationCount: c.SystemConfig.Policy.PeerOrganizationCount,
-		})
-	}
-
 	t.Log("Submitting config block (block 1) - should be committed immediately")
 	startTime = time.Now()
 
-	submitConfigBlock()
+	ordererEnv.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
+		OrdererEndpoints: ordererEnv.AllEndpoints,
+	})
 
 	const maxWaitTime = 3 * time.Second
-	select {
-	case blk := <-c.CommittedBlock:
-		elapsed = time.Since(startTime)
-		t.Logf("Config block #%d committed in %v", blk.Header.Number, elapsed)
-		require.Equal(t, uint64(1), blk.Header.Number)
-		require.Less(t, elapsed, maxWaitTime)
-	case <-time.After(maxWaitTime):
-		t.Fatalf("Config block was not committed within %v", maxWaitTime)
-	}
-
+	elapsed = time.Since(startTime)
+	blk, ok := channel.NewReader(t.Context(), c.CommittedBlock).ReadWithTimeout(maxWaitTime)
+	require.Truef(t, ok, "Config block was not committed within %v", maxWaitTime)
+	t.Logf("Config block #%d committed in %v", blk.Header.Number, elapsed)
+	require.Equal(t, uint64(1), blk.Header.Number)
+	require.Less(t, elapsed, maxWaitTime)
 	t.Log("Config block was committed immediately, bypassing batching delays")
 }

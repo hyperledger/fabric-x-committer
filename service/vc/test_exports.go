@@ -9,7 +9,6 @@ package vc
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -165,10 +164,7 @@ func NewDatabaseTestEnvFromConnection(t *testing.T, cs *testdb.Connection, loadB
 		MinConnections: 1,
 		LoadBalance:    loadBalance,
 		TLS:            cs.TLS,
-		Retry: &retry.Profile{
-			MaxElapsedTime:  5 * time.Minute,
-			InitialInterval: time.Duration(rand.Intn(900)+100) * time.Millisecond,
-		},
+		Retry:          testdb.DefaultRetry,
 	}
 
 	m := newVCServiceMetrics()
@@ -199,12 +195,12 @@ func (env *DatabaseTestEnv) CountAlternateStatus(t *testing.T, status committerp
 // queryRow execute a single-row query and return the result.
 func (env *DatabaseTestEnv) getRowCount(t *testing.T, query string) int {
 	t.Helper()
-	var count int
-	require.NoError(t, env.DB.retryProfile.Execute(t.Context(), func() error {
+	count, err := retry.ExecuteWithResult(t.Context(), env.DB.retryProfile, func() (int, error) {
+		var count int
 		row := env.DB.pool.QueryRow(t.Context(), query)
-		return row.Scan(&count)
-	}))
-
+		return count, row.Scan(&count)
+	})
+	require.NoError(t, err)
 	return count
 }
 
@@ -281,15 +277,11 @@ func (env *DatabaseTestEnv) populateData( //nolint:revive
 		nsWrites.append([]byte(nsID), nil, 0)
 	}
 
-	require.NoError(t, env.DB.retryProfile.Execute(t.Context(), func() error {
-		conflicts, duplicate, err := env.DB.commit(t.Context(), &statesToBeCommitted{
+	require.NoError(t, retry.Execute(t.Context(), env.DB.retryProfile, func() error {
+		res, err := env.DB.commit(t.Context(), &statesToBeCommitted{
 			newWrites: newNsIDsWrites, batchStatus: batchStatus, txIDToHeight: txIDToHeight,
 		})
-		require.Empty(t, conflicts)
-		require.Empty(t, duplicate)
-		if err != nil {
-			logger.Warnf("%+v", err)
-		}
+		require.Nil(t, res)
 		return err
 	}))
 

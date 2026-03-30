@@ -202,14 +202,6 @@ func (r *ClientResources) isSendLimit() bool {
 		isReachedLimit(state.TransactionsSent, r.Limit.Transactions)
 }
 
-func (r *ClientResources) isTXSendLimit() bool {
-	if r.Limit == nil || r.Limit.Transactions == 0 {
-		return false
-	}
-	state := r.Metrics.GetState()
-	return isReachedLimit(state.TransactionsSent, r.Limit.Transactions)
-}
-
 func (r *ClientResources) isReceiveLimit() bool {
 	if !r.Limit.HasLimit() {
 		return false

@@ -8,6 +8,7 @@ package sidecar
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -21,6 +22,8 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/dynamictls"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
@@ -42,12 +45,16 @@ type (
 		// committedBlockMu protects processCommittedBlocksInOrder from concurrent execution
 		// by sendBlocksToCoordinator and processStatusBatch goroutines.
 		committedBlockMu sync.Mutex
+
+		// tlsConfig holds the complete pre-configured tls.Config with merged static + dynamic CAs.
+		// staticCACerts holds the static CAs from YAML config for merging with dynamic CAs.
+		tlsConfig     atomic.Pointer[*tls.Config]
+		staticCACerts [][]byte
 	}
 
 	relayRunConfig struct {
 		coordClient                    servicepb.CoordinatorClient
 		nextExpectedBlockByCoordinator uint64
-		configUpdater                  func(*common.Block)
 		incomingBlockToBeCommitted     <-chan *common.Block
 		outgoingCommittedBlock         chan<- *common.Block
 		outgoingStatusUpdates          chan<- []*committerpb.TxStatus
@@ -99,7 +106,7 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 
 	mappedBlockQueue := make(chan *blockMappingResult, cap(r.incomingBlockToBeCommitted))
 	g.Go(func() error {
-		return r.preProcessBlock(sCtx, mappedBlockQueue, config.configUpdater)
+		return r.preProcessBlock(sCtx, mappedBlockQueue)
 	})
 	g.Go(func() error {
 		return r.sendBlocksToCoordinator(sCtx, mappedBlockQueue, stream)
@@ -123,7 +130,6 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 func (r *relay) preProcessBlock(
 	ctx context.Context,
 	mappedBlockQueue chan<- *blockMappingResult,
-	configUpdater func(*common.Block),
 ) error {
 	incomingBlockToBeCommitted := channel.NewReader(ctx, r.incomingBlockToBeCommitted)
 	queue := channel.NewWriter(ctx, mappedBlockQueue)
@@ -147,7 +153,17 @@ func (r *relay) preProcessBlock(
 		}
 		promutil.Observe(r.metrics.blockMappingInRelaySeconds, time.Since(start))
 		if mappedBlock.isConfig {
-			configUpdater(block)
+
+			// reading application root CAs and add it to the YAML root CAs setup.
+			logger.Debug("updating acceptable client CAs from config block")
+			rootCAs, bootErr := dynamictls.NewApplicationRootCAsFromConfigBlock(block)
+			if bootErr != nil {
+				logger.Warnf("failed to load application root CAs: %v", bootErr)
+			} else {
+				// Only update CAs if extraction succeeded
+				r.updateCACertificates(rootCAs)
+			}
+
 			// We wait for all previously submitted transactions to be processed by
 			// the committer before submitting the config block.
 			r.waitingTxsSlots.WaitTillEmpty(ctx)
@@ -354,4 +370,37 @@ func (r *relay) setLastCommittedBlockNumber(
 		}
 		expectedNextBlockToBeCommitted = blkNum + 1
 	}
+}
+
+// updateCACertificates atomically updates the TLS config with static CAs + latest dynamic CAs.
+// This replaces any previous dynamic CAs with the new ones from the config block,
+// while preserving the static CAs from the YAML configuration.
+func (r *relay) updateCACertificates(dynamicCAs [][]byte) {
+	if len(dynamicCAs) == 0 {
+		logger.Warn("no CA certificates found in config block")
+	}
+
+	// Merge static CAs (from YAML) with new dynamic CAs (from config block).
+	// This replaces any previous dynamic CAs.
+	mergedCAs := connection.MergeCACerts(r.staticCACerts, dynamicCAs)
+	certPool, err := connection.BuildCertPoolFromBytes(mergedCAs)
+	if err != nil {
+		logger.Warnf("Failed to build cert pool: %v", err)
+		return // Keep existing config
+	}
+
+	// Clone current config and update ClientCAs
+	currentConfig := r.tlsConfig.Load()
+	if currentConfig == nil || *currentConfig == nil {
+		logger.Warn("No current TLS config to update")
+		return
+	}
+
+	newConfig := (*currentConfig).Clone()
+	newConfig.ClientCAs = certPool
+
+	// Store the updated config atomically
+	r.tlsConfig.Store(&newConfig)
+	logger.Infof("Updated TLS config with %d total CAs (%d static + %d dynamic)",
+		len(mergedCAs), len(r.staticCACerts), len(dynamicCAs))
 }

@@ -18,7 +18,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/yugabyte/pgx/v5"
 	"github.com/yugabyte/pgx/v5/pgxpool"
-	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -64,6 +63,16 @@ type (
 		newWrites    namespaceToWrites
 		batchStatus  *committerpb.TxStatusBatch
 		txIDToHeight transactionIDToHeight
+	}
+
+	commitResult struct {
+		conflicts  namespaceToReads
+		duplicates []TxID
+	}
+
+	tuple[T1, T2 any] struct {
+		item1 T1
+		item2 T2
 	}
 )
 
@@ -180,10 +189,10 @@ func (db *database) queryVersionsIfPresent(ctx context.Context, nsID string, que
 }
 
 func (db *database) getNextBlockNumberToCommit(ctx context.Context) (*servicepb.BlockRef, error) {
-	var value []byte
-	retryErr := db.retryProfile.Execute(ctx, func() error {
+	value, retryErr := retry.ExecuteWithResult(ctx, db.retryProfile, func() ([]byte, error) {
 		r := db.pool.QueryRow(ctx, getMetadataPrepSQLStmt, lastCommittedBlockNumberKey)
-		return errors.Wrap(r.Scan(&value), "failed to get the last committed block number")
+		var v []byte
+		return v, errors.Wrap(r.Scan(&v), "failed to get the last committed block number")
 	})
 	if retryErr != nil {
 		return nil, retryErr
@@ -215,10 +224,10 @@ func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *serv
 }
 
 // commit commits the writes to the database.
-func (db *database) commit(ctx context.Context, states *statesToBeCommitted) (namespaceToReads, []TxID, error) {
+func (db *database) commit(ctx context.Context, states *statesToBeCommitted) (*commitResult, error) {
 	start := time.Now()
 	if states.empty() {
-		return nil, nil, nil
+		return nil, nil
 	}
 
 	// We want to commit all the writes to all namespaces or none at all,
@@ -226,35 +235,35 @@ func (db *database) commit(ctx context.Context, states *statesToBeCommitted) (na
 	// logic will be very complicated.
 	tx, rollBackFunc, err := db.beginTx(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// This will be executed if an error occurs. If transaction is committed, this will be a no-op.
 	defer rollBackFunc()
 
-	conflicts, duplicates, err := db.writeStatesByGroup(ctx, tx, states)
+	res, err := db.writeStatesByGroup(ctx, tx, states)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to write states: %w", err)
+		return nil, fmt.Errorf("failed to write states: %w", err)
 	}
-	if !conflicts.empty() || len(duplicates) > 0 {
+	if res != nil {
 		// rollback
-		return conflicts, duplicates, nil
+		return res, nil
 	}
 
 	err = tx.Commit(ctx)
 	promutil.Observe(db.metrics.databaseTxBatchCommitLatencySeconds, time.Since(start))
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to perform the final commit on the database transaction")
+		return nil, errors.Wrap(err, "failed to perform the final commit on the database transaction")
 	}
 
-	return nil, nil, nil
+	return nil, nil
 }
 
 func (db *database) writeStatesByGroup(
 	ctx context.Context,
 	tx pgx.Tx,
 	states *statesToBeCommitted,
-) (namespaceToReads, []TxID, error) {
+) (*commitResult, error) {
 	// Because the coordinator might submit duplicate transactions during connection issues,
 	// we must insert transaction IDs first. This allows us to detect conflicts early,
 	// as another vcservice instance might have already committed the same transaction.
@@ -263,37 +272,37 @@ func (db *database) writeStatesByGroup(
 	// to the readToTxIDs map, but inserting the IDs upfront is a cleaner solution.
 	duplicates, err := db.insertTxStatus(ctx, tx, states)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to insert transactions status: %w", err)
+		return nil, fmt.Errorf("failed to insert transactions status: %w", err)
 	}
 
 	if len(duplicates) > 0 {
 		// Since a duplicate ID causes a rollback, we fail fast.
 		logger.Debugf("%d duplicate keys were found", len(duplicates))
-		return nil, duplicates, nil
+		return &commitResult{duplicates: duplicates}, nil
 	}
 
 	conflicts, err := db.insertStates(ctx, tx, states.newWrites)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to insert states: %w", err)
+		return nil, fmt.Errorf("failed to insert states: %w", err)
 	}
 
 	if !conflicts.empty() {
 		// Since a conflicts causes a rollback, we fail fast.
 		logger.Debugf("%d read conflicts were found", len(conflicts))
-		return conflicts, nil, nil
+		return &commitResult{conflicts: conflicts}, nil
 	}
 
 	if err = createTablesAndFunctionsForNamespaces(ctx, tx,
 		states.newWrites[committerpb.MetaNamespaceID], db.tablePreSplitTablets); err != nil {
-		return nil, nil, fmt.Errorf("failed to create tables and functions for new namespaces: %w", err)
+		return nil, fmt.Errorf("failed to create tables and functions for new namespaces: %w", err)
 	}
 
 	// Updates cannot have a conflicts because their versions are validated beforehand.
 	if err = db.updateStates(ctx, tx, states.updateWrites); err != nil {
-		return nil, nil, fmt.Errorf("failed to execute updates: %w", err)
+		return nil, fmt.Errorf("failed to execute updates: %w", err)
 	}
 
-	return nil, nil, nil
+	return nil, nil
 }
 
 func (db *database) insertTxStatus(
@@ -443,36 +452,33 @@ func (s *statesToBeCommitted) empty() bool {
 func (db *database) readStatusWithHeight(
 	ctx context.Context,
 	txIDs [][]byte,
-) (rows []*committerpb.TxStatus, retryErr error) {
-	retryErr = db.retryProfile.Execute(ctx, func() error {
-		r, err := db.pool.Query(ctx, queryTxIDsStatusPrepSQLStmt, txIDs)
-		if err != nil {
-			return errors.Wrap(err, "failed to query txIDs from the table [tx_status]")
+) ([]*committerpb.TxStatus, error) {
+	return retry.ExecuteWithResult(ctx, db.retryProfile, func() ([]*committerpb.TxStatus, error) {
+		r, queryErr := db.pool.Query(ctx, queryTxIDsStatusPrepSQLStmt, txIDs)
+		if queryErr != nil {
+			return nil, errors.Wrap(queryErr, "query txIDs from the table [tx_status]")
 		}
 		defer r.Close()
 
-		// reset every retry
-		rows = make([]*committerpb.TxStatus, 0, len(txIDs))
+		rows := make([]*committerpb.TxStatus, 0, len(txIDs))
 		for r.Next() {
 			var id []byte
 			var status int32
 			var height []byte
 
-			if err = r.Scan(&id, &status, &height); err != nil {
-				return errors.Wrapf(err, "failed to read rows from the query [%s] result", queryTxIDsStatusPrepSQLStmt)
+			if err := r.Scan(&id, &status, &height); err != nil {
+				return nil, errors.Wrapf(err, "read rows from the query [%s] result", queryTxIDsStatusPrepSQLStmt)
 			}
 
 			ht, _, err := servicepb.NewHeightFromBytes(height)
 			if err != nil {
-				return fmt.Errorf("failed to create height: %w", err)
+				return nil, fmt.Errorf("create height: %w", err)
 			}
 
 			rows = append(rows, ht.WithStatus(string(id), committerpb.Status(status)))
 		}
-		return errors.Wrap(r.Err(), "error occurred while reading rows")
+		return rows, errors.Wrap(r.Err(), "reading rows")
 	})
-
-	return rows, retryErr
 }
 
 func (db *database) readNamespacePolicies(ctx context.Context) (*applicationpb.NamespacePolicies, error) {
@@ -509,36 +515,36 @@ func (db *database) readConfigTX(ctx context.Context) (*applicationpb.ConfigTran
 
 func retryQueryAndReadArrayResult[T any](
 	ctx context.Context, db *database, query string, args ...any,
-) (items []T, retryErr error) {
-	retryErr = db.retryProfile.Execute(ctx, func() error {
+) ([]T, error) {
+	return retry.ExecuteWithResult(ctx, db.retryProfile, func() ([]T, error) {
 		row := db.pool.QueryRow(ctx, query, args...)
-		var readErr error
-		items, readErr = readArrayResult[T](row)
+		items, readErr := readArrayResult[T](row)
 		if readErr != nil {
-			logger.Debugf("failed attempt: %s", readErr)
+			logger.Debugf("attempt: %s", readErr)
 		}
-		return errors.Wrapf(readErr, "failed to read rows from the query [%s] results", query)
+		return items, errors.Wrapf(readErr, "read rows from the query [%s] results", query)
 	})
-	return items, retryErr
 }
 
 func retryQueryAndReadTwoItems[T1, T2 any](
 	ctx context.Context, db *database, query string, args ...any,
-) (items1 []T1, items2 []T2, err error) {
-	retryErr := db.retryProfile.Execute(ctx, func() error {
+) ([]T1, []T2, error) {
+	res, err := retry.ExecuteWithResult(ctx, db.retryProfile, func() (*tuple[[]T1, []T2], error) {
 		rows, queryErr := db.pool.Query(ctx, query, args...)
 		if queryErr != nil {
-			return errors.Wrapf(queryErr, "failed to query rows: query [%s]", query)
+			return nil, errors.Wrapf(queryErr, "query rows: query [%s]", query)
 		}
 		defer rows.Close()
-		var readErr error
-		items1, items2, readErr = readTwoItems[T1, T2](rows)
-		if readErr != nil {
-			logger.WithOptions(zap.AddCallerSkip(8)).Debugf("failed attempt: %s", readErr)
-		}
-		return errors.Wrapf(readErr, "failed to read rows from the query [%s] results", query)
+		items1, items2, readErr := readTwoItems[T1, T2](rows)
+		return &tuple[[]T1, []T2]{
+			item1: items1,
+			item2: items2,
+		}, errors.Wrapf(readErr, "read rows from the query [%s] results", query)
 	})
-	return items1, items2, retryErr
+	if err != nil {
+		return nil, nil, err
+	}
+	return res.item1, res.item2, nil
 }
 
 // readTwoItems reads two items from given rows.

@@ -47,14 +47,18 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 	}
 	_, verifier := mock.StartMockVerifierService(t, serverParams)
 	_, vc := mock.StartMockVCService(t, serverParams)
-	_, orderer := mock.StartMockOrderingServices(t, &mock.OrdererConfig{TestServerParameters: serverParams})
+	orderer := mock.NewOrdererTestEnv(t, &mock.OrdererTestParameters{
+		OrdererConfig: &mock.OrdererConfig{
+			SendGenesisBlock: true,
+		},
+	})
 	_, coordinator := mock.StartMockCoordinatorService(t, serverParams)
 	server := test.NewLocalHostServer(test.InsecureTLSConfig)
 	listen, err := server.Listener(t.Context())
 	require.NoError(t, err)
 	connection.CloseConnectionsLog(listen)
 
-	ordererEp := orderer.Configs[0].Endpoint
+	ordererEp := orderer.AllServerConfig[0].Endpoint
 	policy := &workload.PolicyProfile{
 		ArtifactsPath:         t.TempDir(),
 		ChannelID:             "channel1",
@@ -71,7 +75,7 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 		Services: SystemServices{
 			Verifier:    []ServiceConfig{{GrpcEndpoint: &verifier.Configs[0].Endpoint}},
 			VCService:   []ServiceConfig{{GrpcEndpoint: &vc.Configs[0].Endpoint}},
-			Orderer:     []ServiceConfig{{GrpcEndpoint: &orderer.Configs[0].Endpoint}},
+			Orderer:     []ServiceConfig{{GrpcEndpoint: &ordererEp}},
 			Coordinator: ServiceConfig{GrpcEndpoint: &coordinator.Configs[0].Endpoint},
 		},
 		DB:         defaultTestDBConfig(),
@@ -123,26 +127,23 @@ func UnitTestRunner(
 	wg := &sync.WaitGroup{}
 	t.Cleanup(func() {
 		t.Log("Waiting for command to finish")
-		defer t.Log("Command finished")
 		wg.Wait()
 	})
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	wg.Add(1)
-	go func() {
+	wg.Go(func() {
 		t.Logf("Starting command: %s", args[0])
 		defer t.Logf("Command exited: %s", args[0])
-		defer wg.Done()
-		_, err := cmd.ExecuteContextC(ctx)
-		err = connection.FilterStreamRPCError(err)
+		_, execErr := cmd.ExecuteContextC(ctx)
+		execErr = connection.FilterStreamRPCError(execErr)
 		if cmdTest.Err == nil {
-			assert.NoError(t, err)
-		} else if assert.Error(t, err) {
-			assert.Equal(t, cmdTest.Err.Error(), err.Error())
+			assert.NoError(t, execErr)
+		} else if assert.Error(t, execErr) {
+			assert.Equal(t, cmdTest.Err.Error(), execErr.Error())
 		}
-	}()
+	})
 
 	assert.Eventually(t, func() bool {
 		return len(getMissing(cmdTest, cmdStdOut.String(), loggerPath)) == 0

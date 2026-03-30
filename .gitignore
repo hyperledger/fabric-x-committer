@@ -32,8 +32,11 @@ docker/runner/out
 .idea
 .vscode
 .build
-.bob
+.bob/*
+!.bob/rules/
+!.bob/commands/
 *coverage.profile
+*coverage.html
 
 # Log files produced by the tests
 test/**/*.log

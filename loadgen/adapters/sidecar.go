@@ -32,7 +32,7 @@ func NewSidecarAdapter(config *SidecarClientConfig, res *ClientResources) (*Side
 	// The sidecar adapter overwrite the orderer endpoints with its own.
 	// We first pre-allocate the ports.
 	for _, s := range config.OrdererServers {
-		_, err := s.PreAllocateListener()
+		_, err := s.PreAllocateListener(context.Background())
 		if err != nil {
 			return nil, err
 		}
@@ -51,10 +51,14 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 	}
 	orderer, err := mock.NewMockOrderer(&mock.OrdererConfig{
 		ServerConfigs: c.config.OrdererServers,
+		ArtifactsPath: c.res.Profile.Policy.ArtifactsPath,
+		// The sidecar adapter submits a config block manually.
+		SendGenesisBlock: true,
 	})
 	if err != nil {
 		return err
 	}
+	c.NextBlockNum()
 
 	dCtx, dCancel := context.WithCancel(ctx)
 	defer dCancel()
@@ -63,12 +67,6 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 	g.Go(func() error {
 		return connection.StartService(gCtx, orderer, c.config.OrdererServers...)
 	})
-
-	// The sidecar adapter submits a config block manually.
-	if err = orderer.SubmitBlock(ctx, c.res.ConfigBlock); err != nil {
-		return err
-	}
-	c.nextBlockNum.Add(1)
 
 	g.Go(func() error {
 		defer dCancel() // We stop sending if we can't track the received items.

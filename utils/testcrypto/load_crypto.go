@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/msp"
@@ -19,6 +20,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 // GetPeersIdentities returns the peers' identities from a crypto path.
@@ -87,6 +90,32 @@ func GetMspDirs(targetPath string) []*msp.DirLoadParameters {
 		})
 	}
 	return mspDirs
+}
+
+// GetOrdererConnConfig returns the configuration for an orderer connection using the config block and peer
+// organizations in tha artifacts path.
+func GetOrdererConnConfig(artifactsPath string, clientTLSConfig connection.TLSConfig) ordererdial.Config {
+	peerMsp := GetPeersMspDirs(artifactsPath)
+	var id *ordererdial.IdentityConfig
+	if len(peerMsp) > 0 {
+		id = &ordererdial.IdentityConfig{
+			MspID:  peerMsp[0].MspName,
+			MSPDir: peerMsp[0].MspDir,
+			BCCSP:  peerMsp[0].CspConf,
+		}
+	}
+	return ordererdial.Config{
+		FaultToleranceLevel:        ordererdial.BFT,
+		TLS:                        ordererdial.TLSConfigToOrdererTLSConfig(clientTLSConfig),
+		LatestKnownConfigBlockPath: path.Join(artifactsPath, cryptogen.ConfigBlockFileName),
+		Retry: &retry.Profile{
+			InitialInterval: 10 * time.Millisecond,
+			MaxInterval:     100 * time.Millisecond,
+			Multiplier:      2,
+			MaxElapsedTime:  time.Second,
+		},
+		Identity: id,
+	}
 }
 
 // ClientTLSConfigsPerOrg holds each organization's representative TLS config for future client creation.

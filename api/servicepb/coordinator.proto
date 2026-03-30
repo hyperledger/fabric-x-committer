@@ -12,8 +12,6 @@ package servicepb;
 
 import "google/protobuf/empty.proto";
 
-import "api/applicationpb/config.proto";
-
 import "api/committerpb/status.proto";
 import "api/committerpb/ref.proto";
 
@@ -24,7 +22,6 @@ service Coordinator {
     rpc SetLastCommittedBlockNumber (BlockRef) returns (google.protobuf.Empty) {};
     rpc GetNextBlockNumberToCommit (google.protobuf.Empty) returns (BlockRef) {};
     rpc GetTransactionsStatus(committerpb.TxIDsBatch) returns (committerpb.TxStatusBatch);
-    rpc GetConfigTransaction(google.protobuf.Empty) returns (applicationpb.ConfigTransaction) {};
     rpc NumberOfWaitingTransactionsForStatus(google.protobuf.Empty) returns (WaitingTransactions);
 }
 

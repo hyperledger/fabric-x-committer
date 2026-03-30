@@ -92,12 +92,13 @@ type (
 	}
 )
 
+// usage: TLS configuration modes.
 const (
-	//nolint:revive // usage: TLS configuration modes.
 	UnmentionedTLSMode = ""
 	NoneTLSMode        = "none"
 	OneSideTLSMode     = "tls"
 	MutualTLSMode      = "mtls"
+	DefaultTLSMode     = NoneTLSMode
 
 	// DefaultTLSMinVersion is the minimum version required to achieve secure connections.
 	DefaultTLSMinVersion = tls.VersionTLS12
@@ -105,7 +106,7 @@ const (
 
 // ClientCredentials converts TLSConfig into a TLSMaterials struct and generates client creds.
 func (c TLSConfig) ClientCredentials() (credentials.TransportCredentials, error) {
-	tlsMaterials, err := NewTLSMaterials(c)
+	tlsMaterials, err := NewClientTLSMaterials(c)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +115,7 @@ func (c TLSConfig) ClientCredentials() (credentials.TransportCredentials, error)
 
 // ServerCredentials converts TLSConfig into a TLSMaterials struct and generates server creds.
 func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error) {
-	tlsMaterials, err := NewTLSMaterials(c)
+	tlsMaterials, err := NewServerTLSMaterials(c)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +128,7 @@ func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error)
 func (c TLSConfig) DynamicServerCredentials(
 	getDynamicConfigFunc func(ctx context.Context) *tls.Config,
 ) (credentials.TransportCredentials, error) {
-	tlsMaterials, err := NewTLSMaterials(c)
+	tlsMaterials, err := NewServerTLSMaterials(c)
 	if err != nil {
 		return nil, err
 	}

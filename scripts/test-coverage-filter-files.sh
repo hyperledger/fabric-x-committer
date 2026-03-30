@@ -16,7 +16,6 @@ sed -i -E -f - coverage.profile <<EOF
 /main\.go/d
 # Generated files (e.g., mocks, protobuf) may contain unused methods.
 /\.pb(\.gw)?\.go/d
-/\.mock\.go/d
 # Test files that are included in non-test files.
 /test_exports?\.go/d
 /utils\/test\//d

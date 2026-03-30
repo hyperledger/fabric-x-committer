@@ -29,20 +29,16 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
-	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tedsuo/ifrit"
 	"github.com/tedsuo/ifrit/ginkgomon"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/status"
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
@@ -80,16 +76,6 @@ type (
 		register     func(*grpc.Server)
 	}
 )
-
-// FailHandler registers a [gomega] fail handler.
-func FailHandler(t *testing.T) {
-	t.Helper()
-	gomega.RegisterFailHandler(func(message string, _ ...int) {
-		t.Helper()
-		t.Errorf("received error message: %s", message)
-		t.FailNow()
-	})
-}
 
 // ServerToMultiClientConfig is used to create a multi client configuration from existing server(s)
 // given a client TLS configuration.
@@ -294,25 +280,6 @@ func RunDynamicServiceAndGrpcForTest(
 	RunDynamicGrpcServerForTest(ctx, t, serverConfig, service)
 	return doneFlag
 }
-
-// WaitUntilGrpcServerIsReady uses the health check API to check a service readiness.
-func WaitUntilGrpcServerIsReady(
-	ctx context.Context,
-	t *testing.T,
-	conn grpc.ClientConnInterface,
-) {
-	t.Helper()
-	if conn == nil {
-		return
-	}
-	healthClient := healthgrpc.NewHealthClient(conn)
-	res, err := healthClient.Check(ctx, nil, grpc.WaitForReady(true))
-	assert.NotEqual(t, codes.Canceled, status.Code(err))
-	require.NoError(t, err)
-	require.Equal(t, healthgrpc.HealthCheckResponse_SERVING, res.Status)
-}
-
-//nolint:revive // maximum number of arguments per function exceeded; max 4 but got 5.
 
 // CheckServerStopped returns true if the grpc server listening on a
 // given address has been stopped.
@@ -524,7 +491,7 @@ func NewOrdererEndpoints(id uint32, configs ...*connection.ServerConfig) []*type
 			Host: c.Endpoint.Host,
 			Port: c.Endpoint.Port,
 			ID:   id,
-			API:  []string{ordererconn.Broadcast, ordererconn.Deliver},
+			API:  []string{types.Broadcast, types.Deliver},
 		}
 	}
 	return ordererEndpoints
@@ -536,11 +503,23 @@ func MustGetTLSConfig(t *testing.T, tlsConfig *connection.TLSConfig) *tls.Config
 	if tlsConfig == nil {
 		return nil
 	}
-	tlsMaterials, err := connection.NewTLSMaterials(*tlsConfig)
+	tlsMaterials, err := connection.NewClientTLSMaterials(*tlsConfig)
 	require.NoError(t, err)
 	clientTLSConfig, err := tlsMaterials.CreateClientTLSConfig()
 	require.NoError(t, err)
 	return clientTLSConfig
+}
+
+// NewPreAllocatedLocalHostServer create a localhost server config with a pre allocated listener and port.
+func NewPreAllocatedLocalHostServer(t *testing.T, tlsConfig connection.TLSConfig) *connection.ServerConfig {
+	t.Helper()
+	server := NewLocalHostServer(tlsConfig)
+	listener, err := server.PreAllocateListener(t.Context())
+	t.Cleanup(func() {
+		_ = listener.Close()
+	})
+	require.NoError(t, err)
+	return server
 }
 
 // Run executes the specified command and returns the corresponding process.

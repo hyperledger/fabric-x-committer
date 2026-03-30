@@ -8,7 +8,7 @@ package adapters
 
 import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 )
 
 type (
@@ -24,7 +24,7 @@ type (
 
 	// OrdererClientConfig is a struct that contains the configuration for the orderer client.
 	OrdererClientConfig struct {
-		Orderer              ordererconn.Config `mapstructure:"orderer"`
+		Orderer              ordererdial.Config `mapstructure:"orderer"`
 		BroadcastParallelism int                `mapstructure:"broadcast-parallelism"`
 		// SidecarClient is used to deliver status from the sidecar.
 		// If omitted, we will fetch directly from the orderer.

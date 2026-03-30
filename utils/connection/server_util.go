@@ -13,7 +13,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
+	"github.com/cenkalti/backoff/v5"
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -168,7 +168,7 @@ func (c *ServerConfig) Listener(ctx context.Context) (net.Listener, error) {
 // using exponential backoff. Non-port-conflict errors are treated as permanent failures
 // and will not be retried. The retry behavior is controlled by the listenRetry profile.
 func ListenRetryExecute(ctx context.Context, f func() error) error {
-	return listenRetry.Execute(ctx, func() error {
+	return retry.Execute(ctx, &listenRetry, func() error {
 		err := f()
 		switch {
 		case err == nil:
@@ -178,20 +178,30 @@ func ListenRetryExecute(ctx context.Context, f func() error) error {
 			return errors.Wrap(err, "port conflict")
 		default:
 			// Not a port conflict - return permanent error to stop retrying.
-			return &backoff.PermanentError{Err: errors.Wrap(err, "creating listener")}
+			return backoff.Permanent(errors.Wrap(err, "creating listener"))
 		}
 	})
 }
 
 // PreAllocateListener is used to allocate a port and bind to ahead of the server initialization.
 // It stores the listener object internally to be reused on subsequent calls to Listener().
-func (c *ServerConfig) PreAllocateListener() (net.Listener, error) {
-	listener, err := c.Listener(context.Background())
+func (c *ServerConfig) PreAllocateListener(ctx context.Context) (net.Listener, error) {
+	listener, err := c.Listener(ctx)
 	if err != nil {
 		return nil, err
 	}
 	c.preAllocatedListener = listener
 	return listener, nil
+}
+
+// ClosePreAllocatedListener closed the pre allocated listener if exists.
+func (c *ServerConfig) ClosePreAllocatedListener() error {
+	if c.preAllocatedListener == nil {
+		return nil
+	}
+	listener := c.preAllocatedListener
+	c.preAllocatedListener = nil
+	return listener.Close()
 }
 
 // RunGrpcServer runs a server and returns error if failed.

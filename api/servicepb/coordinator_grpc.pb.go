@@ -13,7 +13,6 @@ package servicepb
 
 import (
 	context "context"
-	applicationpb "github.com/hyperledger/fabric-x-common/api/applicationpb"
 	committerpb "github.com/hyperledger/fabric-x-common/api/committerpb"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
@@ -31,7 +30,6 @@ const (
 	Coordinator_SetLastCommittedBlockNumber_FullMethodName          = "/servicepb.Coordinator/SetLastCommittedBlockNumber"
 	Coordinator_GetNextBlockNumberToCommit_FullMethodName           = "/servicepb.Coordinator/GetNextBlockNumberToCommit"
 	Coordinator_GetTransactionsStatus_FullMethodName                = "/servicepb.Coordinator/GetTransactionsStatus"
-	Coordinator_GetConfigTransaction_FullMethodName                 = "/servicepb.Coordinator/GetConfigTransaction"
 	Coordinator_NumberOfWaitingTransactionsForStatus_FullMethodName = "/servicepb.Coordinator/NumberOfWaitingTransactionsForStatus"
 )
 
@@ -43,7 +41,6 @@ type CoordinatorClient interface {
 	SetLastCommittedBlockNumber(ctx context.Context, in *BlockRef, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetNextBlockNumberToCommit(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*BlockRef, error)
 	GetTransactionsStatus(ctx context.Context, in *committerpb.TxIDsBatch, opts ...grpc.CallOption) (*committerpb.TxStatusBatch, error)
-	GetConfigTransaction(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*applicationpb.ConfigTransaction, error)
 	NumberOfWaitingTransactionsForStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*WaitingTransactions, error)
 }
 
@@ -98,16 +95,6 @@ func (c *coordinatorClient) GetTransactionsStatus(ctx context.Context, in *commi
 	return out, nil
 }
 
-func (c *coordinatorClient) GetConfigTransaction(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*applicationpb.ConfigTransaction, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(applicationpb.ConfigTransaction)
-	err := c.cc.Invoke(ctx, Coordinator_GetConfigTransaction_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *coordinatorClient) NumberOfWaitingTransactionsForStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*WaitingTransactions, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(WaitingTransactions)
@@ -126,7 +113,6 @@ type CoordinatorServer interface {
 	SetLastCommittedBlockNumber(context.Context, *BlockRef) (*emptypb.Empty, error)
 	GetNextBlockNumberToCommit(context.Context, *emptypb.Empty) (*BlockRef, error)
 	GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch) (*committerpb.TxStatusBatch, error)
-	GetConfigTransaction(context.Context, *emptypb.Empty) (*applicationpb.ConfigTransaction, error)
 	NumberOfWaitingTransactionsForStatus(context.Context, *emptypb.Empty) (*WaitingTransactions, error)
 	mustEmbedUnimplementedCoordinatorServer()
 }
@@ -149,9 +135,6 @@ func (UnimplementedCoordinatorServer) GetNextBlockNumberToCommit(context.Context
 }
 func (UnimplementedCoordinatorServer) GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch) (*committerpb.TxStatusBatch, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetTransactionsStatus not implemented")
-}
-func (UnimplementedCoordinatorServer) GetConfigTransaction(context.Context, *emptypb.Empty) (*applicationpb.ConfigTransaction, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetConfigTransaction not implemented")
 }
 func (UnimplementedCoordinatorServer) NumberOfWaitingTransactionsForStatus(context.Context, *emptypb.Empty) (*WaitingTransactions, error) {
 	return nil, status.Error(codes.Unimplemented, "method NumberOfWaitingTransactionsForStatus not implemented")
@@ -238,24 +221,6 @@ func _Coordinator_GetTransactionsStatus_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Coordinator_GetConfigTransaction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(CoordinatorServer).GetConfigTransaction(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Coordinator_GetConfigTransaction_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(CoordinatorServer).GetConfigTransaction(ctx, req.(*emptypb.Empty))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _Coordinator_NumberOfWaitingTransactionsForStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -292,10 +257,6 @@ var Coordinator_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetTransactionsStatus",
 			Handler:    _Coordinator_GetTransactionsStatus_Handler,
-		},
-		{
-			MethodName: "GetConfigTransaction",
-			Handler:    _Coordinator_GetConfigTransaction_Handler,
 		},
 		{
 			MethodName: "NumberOfWaitingTransactionsForStatus",

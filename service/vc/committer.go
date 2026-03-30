@@ -18,6 +18,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 // transactionCommitter is responsible for committing the transactions.
@@ -136,19 +137,14 @@ func (c *transactionCommitter) commitTransactions(
 			txIDToHeight: vTx.txIDToHeight,
 		}
 
-		var (
-			conflicts  namespaceToReads
-			duplicates []TxID
-			err        error
-		)
-		if retryErr := c.db.retryProfile.Execute(ctx, func() error {
-			conflicts, duplicates, err = c.db.commit(ctx, info)
-			return err
-		}); retryErr != nil {
-			return nil, err
+		res, retryErr := retry.ExecuteWithResult(ctx, c.db.retryProfile, func() (*commitResult, error) {
+			return c.db.commit(ctx, info)
+		})
+		if retryErr != nil {
+			return nil, retryErr
 		}
 
-		if conflicts.empty() && len(duplicates) == 0 {
+		if res == nil {
 			// NOTE: If a submitted transaction is invalid for multiple reasons, including a duplicate
 			//       transaction ID, the committer prioritizes Status_ABORTED_DUPLICATE_TXID over any other
 			//       invalid status code. Even if a previously committed transaction is resubmitted (regardless
@@ -162,10 +158,10 @@ func (c *transactionCommitter) commitTransactions(
 			return info.batchStatus, nil
 		}
 
-		if err := vTx.invalidateTxsOnReadConflicts(conflicts); err != nil {
+		if err := vTx.invalidateTxsOnReadConflicts(res.conflicts); err != nil {
 			return nil, fmt.Errorf("failed to invalidate transactions on read conflicts: %w", err)
 		}
-		vTx.updateInvalidTxs(duplicates, committerpb.Status_REJECTED_DUPLICATE_TX_ID)
+		vTx.updateInvalidTxs(res.duplicates, committerpb.Status_REJECTED_DUPLICATE_TX_ID)
 	}
 
 	return nil, errors.Newf("[BUG] commit failed after %d retries", maxRetriesToRemoveAllInvalidTxs)

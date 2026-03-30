@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -33,7 +34,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
-	"github.com/hyperledger/fabric-x-committer/utils/ordererconn"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
@@ -60,13 +60,17 @@ type (
 	Orderer struct {
 		streamStateManager[OrdererStreamState]
 		endpointToPartyState utils.SyncMap[string, *PartyState]
-		config               *OrdererConfig
 		genesisBlock         BlockWithConsenters
 		inEnvs               chan *common.Envelope
 		inBlocks             chan *BlockWithConsenters
 		cutBlock             chan any
 		cache                *blockCache
 		healthcheck          *health.Server
+
+		// config uses atomic.Pointer to allow safe concurrent reads by the Run() goroutine
+		// while supporting runtime updates (e.g., BlockTimeout changes in tests).
+		// Always use Load() to read and Store() to update the entire config struct.
+		config atomic.Pointer[OrdererConfig]
 	}
 
 	// OrdererStreamState holds the streams state.
@@ -153,7 +157,7 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 	genesisBlock := BlockWithConsenters{Block: defaultConfigBlock}
 	if len(config.ArtifactsPath) > 0 {
 		configBlockPath := path.Join(config.ArtifactsPath, cryptogen.ConfigBlockFileName)
-		block, err := ordererconn.LoadConfigBlockFromFile(configBlockPath)
+		configMaterial, err := channelconfig.LoadConfigBlockMaterialFromFile(configBlockPath)
 		if err != nil {
 			return nil, err
 		}
@@ -162,20 +166,21 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 			return nil, err
 		}
 		genesisBlock = BlockWithConsenters{
-			Block:            block.ConfigBlock,
+			Block:            configMaterial.ConfigBlock,
 			ConsenterSigners: consenters,
 		}
 	}
 	numServices := max(1, config.TestServerParameters.NumService, len(config.ServerConfigs))
-	return &Orderer{
-		config:       config,
+	o := &Orderer{
 		genesisBlock: genesisBlock,
 		inEnvs:       make(chan *common.Envelope, numServices*config.BlockSize*config.OutBlockCapacity),
 		inBlocks:     make(chan *BlockWithConsenters, config.BlockSize*config.OutBlockCapacity),
 		cutBlock:     make(chan any),
 		cache:        newBlockCache(config.OutBlockCapacity),
 		healthcheck:  connection.DefaultHealthCheckService(),
-	}, nil
+	}
+	o.config.Store(config)
+	return o, nil
 }
 
 // Broadcast receives TXs and returns ACKs.
@@ -355,7 +360,7 @@ func (o *Orderer) Run(ctx context.Context) error {
 	// We add the signers after submitting the genesis block as Fabric's orderer
 	// does not sign the genesis block.
 	blockParams := testcrypto.BlockPrepareParameters{}
-	tick := time.NewTicker(o.config.BlockTimeout)
+	tick := time.NewTicker(o.config.Load().BlockTimeout)
 	sendBlock := func(b *common.Block) {
 		if b == nil {
 			return
@@ -368,7 +373,7 @@ func (o *Orderer) Run(ctx context.Context) error {
 			blockParams.LastConfigBlockIndex = b.Header.Number
 		}
 
-		tick.Reset(o.config.BlockTimeout)
+		tick.Reset(o.config.Load().BlockTimeout)
 	}
 	sendBlockWithConsenters := func(b *BlockWithConsenters) {
 		// The block is signed with OLD signers, then we update the signers.
@@ -382,20 +387,20 @@ func (o *Orderer) Run(ctx context.Context) error {
 	}
 
 	// Submit the config block.
-	if o.config.SendGenesisBlock {
+	if o.config.Load().SendGenesisBlock {
 		sendBlockWithConsenters(&o.genesisBlock)
 	}
 
-	data := make([][]byte, 0, o.config.BlockSize)
+	data := make([][]byte, 0, o.config.Load().BlockSize)
 	sendBlockData := func(reason string) {
 		if len(data) == 0 {
 			return
 		}
 		logger.Debugf("block with [%d] txs has been cut (%s)", len(data), reason)
 		sendBlock(&common.Block{Data: &common.BlockData{Data: data}})
-		data = make([][]byte, 0, o.config.BlockSize)
+		data = make([][]byte, 0, o.config.Load().BlockSize)
 	}
-	envCache := newFifoCache[any](o.config.PayloadCacheSize)
+	envCache := newFifoCache[any](o.config.Load().PayloadCacheSize)
 	for {
 		select {
 		case <-ctx.Done():
@@ -411,7 +416,7 @@ func (o *Orderer) Run(ctx context.Context) error {
 				continue
 			}
 			data = append(data, protoutil.MarshalOrPanic(env))
-			if len(data) >= o.config.BlockSize {
+			if len(data) >= o.config.Load().BlockSize {
 				sendBlockData("size")
 			}
 		}
@@ -484,7 +489,7 @@ func (c *blockCache) releaseAfter(ctx context.Context) (stop func() bool) {
 // addBlock returns true if the block was inserted.
 // It may fail if the context ends.
 func (c *blockCache) addBlock(ctx context.Context, b *common.Block) bool {
-	blockIndex := int(b.Header.Number) % len(c.storage) //nolint:gosec // integer overflow conversion uint64 -> int
+	blockIndex := b.Header.Number % uint64(len(c.storage))
 
 	c.mu.L.Lock()
 	defer c.mu.L.Unlock()
@@ -503,7 +508,7 @@ func (c *blockCache) addBlock(ctx context.Context, b *common.Block) bool {
 }
 
 func (c *blockCache) getBlock(ctx context.Context, blockNum uint64) (*common.Block, error) {
-	blockIndex := int(blockNum) % len(c.storage) //nolint:gosec // integer overflow conversion uint64 -> int
+	blockIndex := blockNum % uint64(len(c.storage))
 
 	c.mu.L.Lock()
 	defer c.mu.L.Unlock()

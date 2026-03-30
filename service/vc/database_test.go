@@ -14,6 +14,8 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v5/pgxpool"
+
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 const (
@@ -327,8 +329,8 @@ func TestNewDatabaseTabletsWithDetection(t *testing.T) {
 
 func commit(t *testing.T, dbEnv *DatabaseTestEnv, states *statesToBeCommitted) {
 	t.Helper()
-	require.NoError(t, dbEnv.DBConf.Retry.Execute(t.Context(), func() error {
-		_, _, err := dbEnv.DB.commit(t.Context(), states)
+	require.NoError(t, retry.Execute(t.Context(), dbEnv.DBConf.Retry, func() error {
+		_, err := dbEnv.DB.commit(t.Context(), states)
 		return err
 	}))
 }
