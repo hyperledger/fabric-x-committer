@@ -14,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/hyperledger/fabric-x-committer/cmd/cliutil"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
@@ -23,7 +24,7 @@ func TestCommitterCMD(t *testing.T) {
 	require.NoError(t, testdb.SetupSharedContainer())
 	t.Cleanup(testdb.CleanupSharedContainer)
 
-	s := config.StartDefaultSystem(t)
+	s := cliutil.StartDefaultSystem(t)
 	s.Services.Orderer[0] = s.ThisService
 
 	// The real VC service (start-vc) and query service (start-query)
@@ -36,11 +37,11 @@ func TestCommitterCMD(t *testing.T) {
 		Password:  conn.Password,
 		Endpoints: conn.Endpoints,
 	}
-	commonTests := []config.CommandTest{
+	commonTests := []cliutil.CommandTest{
 		{
 			Name:         "print version",
 			Args:         []string{"version"},
-			CmdStdOutput: config.FullCommitterVersion(),
+			CmdStdOutput: cliutil.FullCommitterVersion(),
 		},
 		{
 			Name: "trailing flag args for version",
@@ -50,50 +51,45 @@ func TestCommitterCMD(t *testing.T) {
 		{
 			Name: "trailing command args for version",
 			Args: []string{"version", "test"},
-			Err:  fmt.Errorf(`unknown command "test" for "%v version"`, config.CommitterName),
+			Err:  fmt.Errorf(`unknown command "test" for "%v version"`, cliutil.CommitterName),
 		},
 	}
 	for _, test := range commonTests {
 		tc := test
 		t.Run(test.Name, func(t *testing.T) {
-			config.UnitTestRunner(t, committerCMD(), tc)
+			cliutil.UnitTestRunner(t, committerCMD(), tc)
 		})
 	}
 
 	for _, serviceCase := range []struct {
-		Command  []string
-		Name     string
-		Template string
+		Cmd   []string
+		Name  string
+		Templ string
 	}{
-		{Command: []string{"start", "sidecar"}, Name: config.SidecarName, Template: config.TemplateSidecar},
-		{Command: []string{"start", "coordinator"}, Name: config.CoordinatorName, Template: config.TemplateCoordinator},
-		{Command: []string{"start", "vc"}, Name: config.VcName, Template: config.TemplateVC},
-		{Command: []string{"start", "verifier"}, Name: config.VerifierName, Template: config.TemplateVerifier},
-		{Command: []string{"start", "query"}, Name: config.QueryName, Template: config.TemplateQueryService},
+		{Cmd: []string{"start", sidecarService}, Name: serviceNames[sidecarService], Templ: config.TemplateSidecar},
+		{
+			Cmd: []string{"start", coordinatorService}, Name: serviceNames[coordinatorService],
+			Templ: config.TemplateCoordinator,
+		},
+		{Cmd: []string{"start", vcService}, Name: serviceNames[vcService], Templ: config.TemplateVC},
+		{Cmd: []string{"start", verifierService}, Name: serviceNames[verifierService], Templ: config.TemplateVerifier},
+		{Cmd: []string{"start", queryService}, Name: serviceNames[queryService], Templ: config.TemplateQueryService},
 	} {
 		t.Run(serviceCase.Name, func(t *testing.T) {
-			cases := []config.CommandTest{
-				{
-					Name:              "start with endpoint",
-					Args:              append(serviceCase.Command, "--endpoint", "localhost:8003"),
-					CmdLoggerOutputs:  []string{"Serving", "localhost:8003"},
-					CmdStdOutput:      fmt.Sprintf("Starting %v", serviceCase.Name),
-					UseConfigTemplate: serviceCase.Template,
-					System:            s,
-				},
+			cases := []cliutil.CommandTest{
 				{
 					Name:              "start",
-					Args:              serviceCase.Command,
+					Args:              serviceCase.Cmd,
 					CmdLoggerOutputs:  []string{"Serving", s.ThisService.GrpcEndpoint.String()},
 					CmdStdOutput:      fmt.Sprintf("Starting %v", serviceCase.Name),
-					UseConfigTemplate: serviceCase.Template,
+					UseConfigTemplate: serviceCase.Templ,
 					System:            s,
 				},
 			}
 			for _, test := range cases {
 				tc := test
 				t.Run(test.Name, func(t *testing.T) {
-					config.UnitTestRunner(t, committerCMD(), tc)
+					cliutil.UnitTestRunner(t, committerCMD(), tc)
 				})
 			}
 		})

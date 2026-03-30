@@ -12,11 +12,12 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/hyperledger/fabric-x-committer/cmd/cliutil"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/loadgen"
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
-	"github.com/hyperledger/fabric-x-committer/utils"
+
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
@@ -40,7 +41,7 @@ func loadgenCmd() *cobra.Command {
 		Short: fmt.Sprintf("%v is a load generator for Fabric-X committer.", serviceName),
 	}
 
-	cmd.AddCommand(config.VersionCmd())
+	cmd.AddCommand(cliutil.VersionCmd())
 	cmd.AddCommand(loadGenCMD())
 	cmd.AddCommand(loadGenArtifacts())
 	return cmd
@@ -78,7 +79,7 @@ func loadGenCMD() *cobra.Command {
 			return connection.StartService(cmd.Context(), client, conf.Server)
 		},
 	}
-	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))
+	cliutil.SetDefaultFlags(cmd, &configPath)
 	p := cmd.PersistentFlags()
 	p.BoolVar(&onlyNamespace, "only-namespace", false, "only run namespace generation")
 	p.BoolVar(&onlyWorkload, "only-workload", false, "only run workload generation")
@@ -108,6 +109,6 @@ func loadGenArtifacts() *cobra.Command {
 			return nil
 		},
 	}
-	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))
+	cliutil.SetDefaultFlags(cmd, &configPath)
 	return cmd
 }

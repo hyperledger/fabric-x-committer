@@ -12,8 +12,24 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/hyperledger/fabric-x-committer/cmd/config"
+	"github.com/hyperledger/fabric-x-committer/cmd/cliutil"
 )
+
+const (
+	sidecarService     = "sidecar"
+	coordinatorService = "coordinator"
+	vcService          = "vc"
+	verifierService    = "verifier"
+	queryService       = "query"
+)
+
+var serviceNames = map[string]string{
+	sidecarService:     "Sidecar",
+	coordinatorService: "Coordinator",
+	vcService:          "Validator-Committer",
+	verifierService:    "Verifier",
+	queryService:       "Query-Service",
+}
 
 func main() {
 	cmd := committerCMD()
@@ -26,10 +42,10 @@ func main() {
 
 func committerCMD() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   config.CommitterName,
-		Short: fmt.Sprintf("Fabric-X %s.", config.CommitterName),
+		Use:   cliutil.CommitterName,
+		Short: fmt.Sprintf("Fabric-X %s.", cliutil.CommitterName),
 	}
-	cmd.AddCommand(config.VersionCmd())
-	cmd.AddCommand(config.StartCMD())
+	cmd.AddCommand(cliutil.VersionCmd())
+	cmd.AddCommand(startCMD())
 	return cmd
 }
