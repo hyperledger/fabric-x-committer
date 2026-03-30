@@ -54,35 +54,40 @@ Ground every finding in evidence. Before posting any comment:
 **Chain of Thought:** Write analysis to `PR_<NUMBER>_REVIEW.md` first:
 1. Read diff → Write analysis with findings, evidence locations, and confidence levels
 2. Re-read and remove false positives
-3. Only then generate `gh api` commands
+3. Present the review to the user and **ask for explicit permission** before posting any comments to GitHub
+4. Only post `gh` commands after the user approves
 
 ## Review Process
 
 ### 1. Fetch PR Information
 
 ```bash
-gh pr view <PR_NUMBER> --repo <OWNER/REPO> --json title,body,files,commits
-gh pr diff <PR_NUMBER> --repo <OWNER/REPO>
+gh pr view <PR_NUMBER> --repo hyperledger/fabric-x-committer --json title,body,files,commits
+gh pr diff <PR_NUMBER> --repo hyperledger/fabric-x-committer
 ```
 
 ### 2. Create Local Review Document
 
-Write `PR_<NUMBER>_REVIEW.md` with: Summary, Scope Creep Check, Compliance Check (against `@guidelines.md` and `@AGENTS.md`), File-by-File Analysis, Architecture Impact, Security Analysis, Configuration Impact, Performance Considerations, Migration Strategy, Testing Recommendations, Documentation Impact.
+Write `PR_<NUMBER>_REVIEW.md` with: Summary, Scope Creep Check, Compliance Check (against `@guidelines.md`, `@AGENTS.md`, and `.bob/rules`), File-by-File Analysis, Architecture Impact, Security Analysis, Configuration Impact, Performance Considerations, Migration Strategy, Testing Recommendations, Documentation Impact.
 
-### 3. Post Summary Comment
+### 3. Request Permission to Post
+
+Present the review document to the user and ask: **"Ready to post this review to GitHub? (yes/no)"**. Do NOT proceed to steps 4-5 until the user explicitly approves. The user may request changes to the review before posting.
+
+### 4. Post Summary Comment
 
 ```bash
-gh pr review <PR_NUMBER> --repo <OWNER/REPO> --comment --body "<REVIEW_SUMMARY>"
+gh pr review <PR_NUMBER> --repo hyperledger/fabric-x-committer --comment --body "<REVIEW_SUMMARY>"
 ```
 
-### 4. Post Inline Comments
+### 5. Post Inline Comments
 
 **Always batch all inline comments into a single API call.** Never post comments one by one — one review submission with all comments creates a cohesive review and avoids spamming the PR timeline with separate notifications.
 
 For 1-2 short comments without special characters, use `--field`:
 
 ```bash
-gh api --method POST /repos/<OWNER>/<REPO>/pulls/<PR_NUMBER>/reviews \
+gh api --method POST /repos/hyperledger/fabric-x-committer/pulls/<PR_NUMBER>/reviews \
   --field event=COMMENT \
   --field body='<REVIEW_DESCRIPTION>' \
   --field 'comments[][path]=<FILE_PATH>' \
@@ -115,7 +120,7 @@ For 3+ comments, suggestion blocks, `<details>` tags, or special characters, wri
 ```
 
 ```bash
-gh api -X POST /repos/<OWNER>/<REPO>/pulls/<PR_NUMBER>/reviews --input /tmp/review_payload.json
+gh api -X POST /repos/hyperledger/fabric-x-committer/pulls/<PR_NUMBER>/reviews --input /tmp/review_payload.json
 ```
 
 ## Review Scope and Prioritization
