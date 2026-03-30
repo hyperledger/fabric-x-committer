@@ -23,12 +23,10 @@
 #   cover-report-%               - Generate HTML coverage report for a specific package
 #
 # Build:
-#   build                        - Build all binaries
-#   build-release                - Build release binaries for linux/(current-arch amd64 arm64 s390x)
-#   build-release                - Build release binaries for a specific os-arch (e.g., build-arch-linux-amd64)
-#   build-cmd-%                  - Build a specific CMD binary
+#   build                        - Build all CMDs
+#   build-release                - Build release CMDs for linux/(current-arch amd64 arm64 s390x)
 #   build-image-%                - Build a docker image (test-node or release)
-#   build-with-docker            - Build all binaries in a docker container
+#   build-with-docker            - Build all CMDs in a docker container
 #
 # Benchmarks:
 #   bench-loadgen                - Run load generation benchmarks
@@ -306,37 +304,36 @@ mocks: FORCE
 #########################
 
 TRACKED_FILES ?= $(shell git ls-files)
-CLI_TOOLS:=committer loadgen mock
-BUILD_TARGETS=$(foreach tool,$(CLI_TOOLS),$(bin_dir)/$(tool))
+# We use the committer CMD as a marker for the rest of the CMDs to simplify the build rules.
+BUILD_CMD:=committer
 BUILD_ARCH=$(arch) amd64 arm64 s390x
-RELEASE_BUILD_TARGETS=$(foreach tool,$(CLI_TOOLS),$(foreach arch,$(BUILD_ARCH),$(release_dir)/linux-$(arch)/$(tool)))
+DEV_BUILD_TARGET=$(bin_dir)/$(BUILD_CMD)
+RELEASE_BUILD_TARGETS=$(foreach arch,$(BUILD_ARCH),$(release_dir)/linux-$(arch)/$(BUILD_CMD))
 
-# Helper function to produce the cross-compile env vars from a release/<os>-<arch>/<cmd> target stem.
-release_env = CGO_ENABLED=0 \
-	GOOS=$(word 1,$(subst -, ,$(notdir $(patsubst %/,%,$(dir $(1)))))) \
-	GOARCH=$(word 2,$(subst -, ,$(notdir $(patsubst %/,%,$(dir $(1))))))
+# Build the CMDs for local development.
+# This build will not trigger if no files where changed since the last build.
+build: $(DEV_BUILD_TARGET)
 
-build: $(BUILD_TARGETS)
-
+# Build CMDs for release images.
+# This build will not trigger if no files where changed since the last build.
 build-release: $(RELEASE_BUILD_TARGETS)
 
-build-release-%: $(foreach arch,$(BUILD_ARCH),$(release_dir)/linux-$(arch)/%)
-	@# This comment is required for the rule to work properly.
-
-build-cmd-%: $(bin_dir)/%
-	@# This comment is required for the rule to work properly.
-
+# Build images (test-node-image or release-image).
+# This build will not trigger if no files where changed since the last build.
 build-image-%: $(BUILD_DIR)/%-image
 	@# This comment is required for the rule to work properly.
 
-$(bin_dir)/%: $(TRACKED_FILES)
+# Target rule to build all the development CMDs.
+$(DEV_BUILD_TARGET): $(TRACKED_FILES)
 	@mkdir -p "$(bin_path)"
-	$(env) $(go_cmd) build $(build_flags) -o "$(bin_path)/$*" "./cmd/$*"
+	$(env) $(go_cmd) build $(build_flags) -o "$(bin_path)/" ./cmd/...
 
-$(release_dir)/%: $(TRACKED_FILES)
-	@mkdir -p $(release_path)/$(shell dirname $*)
-	env $(call release_env,$*) $(go_cmd) build $(release_build_flags) -o "$(release_path)/$*" "./cmd/$(notdir $*)"
+# Target rule to build all the release CMDs for a given arch.
+$(release_dir)/linux-%/$(BUILD_CMD): $(TRACKED_FILES)
+	@mkdir -p $(release_path)/linux-$*
+	env CGO_ENABLED=0 GOOS=linux GOARCH=$* $(go_cmd) build $(release_build_flags) -o "$(release_path)/linux-$*/" ./cmd/...
 
+# Build test node image helper.
 $(BUILD_DIR)/test-node-image: $(RELEASE_BUILD_TARGETS)
 	${docker_cmd} build $(docker_build_flags) \
 		-f $(dockerfile_test_node_path)/Dockerfile \
@@ -346,17 +343,19 @@ $(BUILD_DIR)/test-node-image: $(RELEASE_BUILD_TARGETS)
 	@mkdir -p ${BUILD_DIR}
 	@touch $@
 
+# Build release images helper.
 $(BUILD_DIR)/release-image: $(RELEASE_BUILD_TARGETS)
 	./scripts/build-release-image.sh \
     	$(docker_cmd) $(version) $(image_namespace) $(dockerfile_release_path) $(multiplatform) $(release_dir)
 	@mkdir -p ${BUILD_DIR}
 	@touch $@
 
+# Build CMDs inside a docker.
+# Note: Use the host local gocache and gomodcache folder to avoid rebuilding and re-downloading every time
+# Note: We pass TRACKED_FILES from the host to avoid running git inside the container
+#       which may fail with 'dubious ownership' errors when the repo is owned by a different user.
 build-with-docker: FORCE
-	@# Use the host local gocache and gomodcache folder to avoid rebuilding and re-downloading every time
 	@mkdir -p "$(cache_path)" "$(mod_cache_path)" "$(bin_path)"
-	@# We pass TRACKED_FILES from the host to avoid running git inside the container
-    # which may fail with 'dubious ownership' errors when the repo is owned by a different user.
 	@$(docker_cmd) run --rm -it \
 	  --mount "type=bind,source=$(project_path),target=$(project_path)" \
 	  --mount "type=bind,source=$(cache_path),target=$(cache_path)" \
