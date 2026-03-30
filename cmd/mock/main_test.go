@@ -44,19 +44,19 @@ func TestMockCMD(t *testing.T) {
 	}
 
 	for _, serviceCase := range []struct {
-		Command  string
+		Command  []string
 		Name     string
 		Template string
 	}{
-		{Command: "start-vc", Name: mockVcName, Template: config.TemplateVC},
-		{Command: "start-verifier", Name: mockVerifierName, Template: config.TemplateVerifier},
-		{Command: "start-orderer", Name: mockOrdererName, Template: config.TemplateMockOrderer},
+		{Command: []string{"start", "vc"}, Name: mockVcName, Template: config.TemplateVC},
+		{Command: []string{"start", "verifier"}, Name: mockVerifierName, Template: config.TemplateVerifier},
+		{Command: []string{"start", "orderer"}, Name: mockOrdererName, Template: config.TemplateMockOrderer},
 	} {
 		t.Run(serviceCase.Name, func(t *testing.T) {
 			cases := []config.CommandTest{
 				{
 					Name:              "start with endpoint",
-					Args:              []string{serviceCase.Command, "--endpoint", "localhost:8004"},
+					Args:              append(serviceCase.Command, "--endpoint", "localhost:8004"),
 					CmdLoggerOutputs:  []string{"Serving", "localhost:8004"},
 					CmdStdOutput:      fmt.Sprintf("Starting %v", serviceCase.Name),
 					UseConfigTemplate: serviceCase.Template,
@@ -64,7 +64,7 @@ func TestMockCMD(t *testing.T) {
 				},
 				{
 					Name:              "start",
-					Args:              []string{serviceCase.Command},
+					Args:              serviceCase.Command,
 					CmdLoggerOutputs:  []string{"Serving", s.ThisService.GrpcEndpoint.String()},
 					CmdStdOutput:      fmt.Sprintf("Starting %v", serviceCase.Name),
 					UseConfigTemplate: serviceCase.Template,

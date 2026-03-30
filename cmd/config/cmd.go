@@ -53,12 +53,26 @@ func FullCommitterVersion() string {
 	return fmt.Sprintf("%s version %s %s/%s", CommitterName, CommitterVersion, runtime.GOOS, runtime.GOARCH)
 }
 
-// SidecarCMD creates a sidecar command.
-func SidecarCMD(use string) *cobra.Command {
+// StartCMD creates the "start" parent command with all service subcommands.
+func StartCMD() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "start",
+		Short: "Start a service.",
+	}
+	cmd.AddCommand(StartSidecar())
+	cmd.AddCommand(StartCoordinator())
+	cmd.AddCommand(StartVC())
+	cmd.AddCommand(StartVerifier())
+	cmd.AddCommand(StartQuery())
+	return cmd
+}
+
+// StartSidecar creates the start sidecar command.
+func StartSidecar() *cobra.Command {
 	v := NewViperWithSidecarDefaults()
 	var configPath string
 	cmd := &cobra.Command{
-		Use:   use,
+		Use:   "sidecar",
 		Short: fmt.Sprintf("Starts %v.", SidecarName),
 		Long:  fmt.Sprintf("%v links between the system services.", SidecarName),
 		Args:  cobra.NoArgs,
@@ -93,12 +107,12 @@ func SidecarCMD(use string) *cobra.Command {
 	return cmd
 }
 
-// CoordinatorCMD creates a coordinator command.
-func CoordinatorCMD(use string) *cobra.Command {
+// StartCoordinator creates the start coordinator command.
+func StartCoordinator() *cobra.Command {
 	v := NewViperWithCoordinatorDefaults()
 	var configPath string
 	cmd := &cobra.Command{
-		Use:   use,
+		Use:   "coordinator",
 		Short: fmt.Sprintf("Starts %v.", CoordinatorName),
 		Long:  fmt.Sprintf("%v is a transaction flow coordinator.", CoordinatorName),
 		Args:  cobra.NoArgs,
@@ -119,12 +133,12 @@ func CoordinatorCMD(use string) *cobra.Command {
 	return cmd
 }
 
-// VcCMD creates a validator-committer command.
-func VcCMD(use string) *cobra.Command {
+// StartVC creates the start validator-committer command.
+func StartVC() *cobra.Command {
 	v := NewViperWithVCDefaults()
 	var configPath string
 	cmd := &cobra.Command{
-		Use:   use,
+		Use:   "vc",
 		Short: fmt.Sprintf("Starts %v.", VcName),
 		Long:  fmt.Sprintf("%v is a validator and committer service.", VcName),
 		Args:  cobra.NoArgs,
@@ -149,12 +163,12 @@ func VcCMD(use string) *cobra.Command {
 	return cmd
 }
 
-// VerifierCMD creates a verifier command.
-func VerifierCMD(use string) *cobra.Command {
+// StartVerifier creates the start verifier command.
+func StartVerifier() *cobra.Command {
 	v := NewViperWithVerifierDefaults()
 	var configPath string
 	cmd := &cobra.Command{
-		Use:   use,
+		Use:   "verifier",
 		Short: fmt.Sprintf("Starts %v.", VerifierName),
 		Long:  fmt.Sprintf("%v verifies the transaction's form and signatures.", VerifierName),
 		Args:  cobra.NoArgs,
@@ -195,12 +209,12 @@ func VerifierCMD(use string) *cobra.Command {
 	return cmd
 }
 
-// QueryCMD creates a query command.
-func QueryCMD(use string) *cobra.Command {
+// StartQuery creates the start query command.
+func StartQuery() *cobra.Command {
 	v := NewViperWithQueryDefaults()
 	var configPath string
 	cmd := &cobra.Command{
-		Use:   use,
+		Use:   "query",
 		Short: fmt.Sprintf("Starts %v.", QueryName),
 		Long:  fmt.Sprintf("%v is a service to query the state.", QueryName),
 		Args:  cobra.NoArgs,

@@ -61,21 +61,21 @@ func TestCommitterCMD(t *testing.T) {
 	}
 
 	for _, serviceCase := range []struct {
-		Command  string
+		Command  []string
 		Name     string
 		Template string
 	}{
-		{Command: "start-sidecar", Name: config.SidecarName, Template: config.TemplateSidecar},
-		{Command: "start-coordinator", Name: config.CoordinatorName, Template: config.TemplateCoordinator},
-		{Command: "start-vc", Name: config.VcName, Template: config.TemplateVC},
-		{Command: "start-verifier", Name: config.VerifierName, Template: config.TemplateVerifier},
-		{Command: "start-query", Name: config.QueryName, Template: config.TemplateQueryService},
+		{Command: []string{"start", "sidecar"}, Name: config.SidecarName, Template: config.TemplateSidecar},
+		{Command: []string{"start", "coordinator"}, Name: config.CoordinatorName, Template: config.TemplateCoordinator},
+		{Command: []string{"start", "vc"}, Name: config.VcName, Template: config.TemplateVC},
+		{Command: []string{"start", "verifier"}, Name: config.VerifierName, Template: config.TemplateVerifier},
+		{Command: []string{"start", "query"}, Name: config.QueryName, Template: config.TemplateQueryService},
 	} {
 		t.Run(serviceCase.Name, func(t *testing.T) {
 			cases := []config.CommandTest{
 				{
 					Name:              "start with endpoint",
-					Args:              []string{serviceCase.Command, "--endpoint", "localhost:8003"},
+					Args:              append(serviceCase.Command, "--endpoint", "localhost:8003"),
 					CmdLoggerOutputs:  []string{"Serving", "localhost:8003"},
 					CmdStdOutput:      fmt.Sprintf("Starting %v", serviceCase.Name),
 					UseConfigTemplate: serviceCase.Template,
@@ -83,7 +83,7 @@ func TestCommitterCMD(t *testing.T) {
 				},
 				{
 					Name:              "start",
-					Args:              []string{serviceCase.Command},
+					Args:              serviceCase.Command,
 					CmdLoggerOutputs:  []string{"Serving", s.ThisService.GrpcEndpoint.String()},
 					CmdStdOutput:      fmt.Sprintf("Starting %v", serviceCase.Name),
 					UseConfigTemplate: serviceCase.Template,

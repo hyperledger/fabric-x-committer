@@ -43,18 +43,27 @@ func mockCMD() *cobra.Command {
 		Short: "Fabric-X services mock.",
 	}
 	cmd.AddCommand(config.VersionCmd())
-	cmd.AddCommand(mockOrdererCMD())
-	cmd.AddCommand(mockCoordinatorCMD())
-	cmd.AddCommand(mockVerifierCMD())
-	cmd.AddCommand(mockVcCMD())
+	cmd.AddCommand(mockStartCMD())
 	return cmd
 }
 
-func mockOrdererCMD() *cobra.Command {
+func mockStartCMD() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "start",
+		Short: "Start a mock service.",
+	}
+	cmd.AddCommand(startMockOrderer())
+	cmd.AddCommand(startMockCoordinator())
+	cmd.AddCommand(startMockVerifier())
+	cmd.AddCommand(startMockVC())
+	return cmd
+}
+
+func startMockOrderer() *cobra.Command {
 	v := config.NewViperWithLoggingDefault()
 	var configPath string
 	cmd := &cobra.Command{
-		Use:   "start-orderer",
+		Use:   "orderer",
 		Short: fmt.Sprintf("Starts %v.", mockOrdererName),
 		Long:  fmt.Sprintf("%v is a mock ordering service.", mockOrdererName),
 		Args:  cobra.NoArgs,
@@ -82,11 +91,11 @@ func mockOrdererCMD() *cobra.Command {
 	return cmd
 }
 
-func mockCoordinatorCMD() *cobra.Command {
+func startMockCoordinator() *cobra.Command {
 	v := config.NewViperWithCoordinatorDefaults()
 	var configPath string
 	cmd := &cobra.Command{
-		Use:   "start-coordinator",
+		Use:   "coordinator",
 		Short: fmt.Sprintf("Starts %v", mockCoordinatorName),
 		Long:  fmt.Sprintf("%v is a mock coordinator service.", mockCoordinatorName),
 		Args:  cobra.NoArgs,
@@ -107,12 +116,11 @@ func mockCoordinatorCMD() *cobra.Command {
 	return cmd
 }
 
-//nolint:dupl // similar to mockVcCMD.
-func mockVerifierCMD() *cobra.Command {
+func startMockVerifier() *cobra.Command {
 	v := config.NewViperWithVerifierDefaults()
 	var configPath string
 	cmd := &cobra.Command{
-		Use:   "start-verifier",
+		Use:   "verifier",
 		Short: fmt.Sprintf("Starts %v", mockVerifierName),
 		Long:  fmt.Sprintf("%v is a mock signature verification service.", mockVerifierName),
 		Args:  cobra.NoArgs,
@@ -133,12 +141,11 @@ func mockVerifierCMD() *cobra.Command {
 	return cmd
 }
 
-//nolint:dupl // similar to mockVerifierCMD.
-func mockVcCMD() *cobra.Command {
+func startMockVC() *cobra.Command {
 	v := config.NewViperWithVCDefaults()
 	var configPath string
 	cmd := &cobra.Command{
-		Use:   "start-vc",
+		Use:   "vc",
 		Short: fmt.Sprintf("Starts %v.", mockVcName),
 		Long:  fmt.Sprintf("%v is a mock validator and committer service.", mockVcName),
 		Args:  cobra.NoArgs,
