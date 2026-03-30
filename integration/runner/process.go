@@ -32,7 +32,7 @@ type (
 	CmdParameters struct {
 		Name     string
 		Bin      string
-		Arg      string
+		Args     []string
 		Template string
 	}
 )
@@ -47,43 +47,43 @@ var (
 	cmdOrderer = CmdParameters{
 		Name:     "orderer",
 		Bin:      mockCMD,
-		Arg:      "start-orderer",
+		Args:     []string{"start", "orderer"},
 		Template: config.TemplateMockOrderer,
 	}
 	cmdVerifier = CmdParameters{
 		Name:     "verifier",
 		Bin:      committerCMD,
-		Arg:      "start-verifier",
+		Args:     []string{"start", "verifier"},
 		Template: config.TemplateVerifier,
 	}
 	cmdVC = CmdParameters{
 		Name:     "vc",
 		Bin:      committerCMD,
-		Arg:      "start-vc",
+		Args:     []string{"start", "vc"},
 		Template: config.TemplateVC,
 	}
 	cmdCoordinator = CmdParameters{
 		Name:     "coordinator",
 		Bin:      committerCMD,
-		Arg:      "start-coordinator",
+		Args:     []string{"start", "coordinator"},
 		Template: config.TemplateCoordinator,
 	}
 	cmdSidecar = CmdParameters{
 		Name:     "sidecar",
 		Bin:      committerCMD,
-		Arg:      "start-sidecar",
+		Args:     []string{"start", "sidecar"},
 		Template: config.TemplateSidecar,
 	}
 	cmdQuery = CmdParameters{
 		Name:     "query",
 		Bin:      committerCMD,
-		Arg:      "start-query",
+		Args:     []string{"start", "query"},
 		Template: config.TemplateQueryService,
 	}
 	cmdLoadGen = CmdParameters{
 		Name: "loadgen",
 		Bin:  loadgenCMD,
-		Arg:  "start",
+		Args: []string{"start"},
 	}
 )
 
@@ -126,7 +126,7 @@ func (p *ProcessWithConfig) Restart(t *testing.T) {
 	t.Helper()
 	p.Stop(t)
 	cmdPath := path.Join("bin", p.params.Bin)
-	c := exec.Command(cmdPath, p.params.Arg, "--config", p.configFilePath)
+	c := exec.Command(cmdPath, append(p.params.Args, "--config", p.configFilePath)...)
 	dir, err := os.Getwd()
 	require.NoError(t, err)
 	c.Dir = path.Clean(path.Join(dir, "../.."))

@@ -30,10 +30,6 @@ func committerCMD() *cobra.Command {
 		Short: fmt.Sprintf("Fabric-X %s.", config.CommitterName),
 	}
 	cmd.AddCommand(config.VersionCmd())
-	cmd.AddCommand(config.SidecarCMD("start-sidecar"))
-	cmd.AddCommand(config.CoordinatorCMD("start-coordinator"))
-	cmd.AddCommand(config.VcCMD("start-vc"))
-	cmd.AddCommand(config.VerifierCMD("start-verifier"))
-	cmd.AddCommand(config.QueryCMD("start-query"))
+	cmd.AddCommand(config.StartCMD())
 	return cmd
 }
