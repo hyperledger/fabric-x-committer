@@ -8,6 +8,7 @@ package coordinator
 
 import (
 	"context"
+	"crypto/tls"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -241,6 +242,11 @@ func (c *Service) WaitForReady(ctx context.Context) bool {
 func (c *Service) RegisterService(server *grpc.Server) {
 	servicepb.RegisterCoordinatorServer(server, c)
 	healthgrpc.RegisterHealthServer(server, c.healthcheck)
+}
+
+// GetDynamicTLSConfig returns nil as this service does not support dynamic CA updates.
+func (*Service) GetDynamicTLSConfig(_ context.Context) *tls.Config {
+	return nil
 }
 
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger through a vcservice.

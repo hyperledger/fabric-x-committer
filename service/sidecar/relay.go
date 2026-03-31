@@ -153,17 +153,15 @@ func (r *relay) preProcessBlock(
 		}
 		promutil.Observe(r.metrics.blockMappingInRelaySeconds, time.Since(start))
 		if mappedBlock.isConfig {
-
-			// reading application root CAs and add it to the YAML root CAs setup.
-			logger.Debug("updating acceptable client CAs from config block")
+			// Reading application root CAs and add it to the YAML root CAs setup.
+			logger.Debug("Updating sidecar's acceptable client CAs from config block")
 			rootCAs, bootErr := dynamictls.NewApplicationRootCAsFromConfigBlock(block)
 			if bootErr != nil {
-				logger.Warnf("failed to load application root CAs: %v", bootErr)
+				logger.Warnf("Failed to load application root CAs: %v", bootErr)
 			} else {
 				// Only update CAs if extraction succeeded
 				r.updateCACertificates(rootCAs)
 			}
-
 			// We wait for all previously submitted transactions to be processed by
 			// the committer before submitting the config block.
 			r.waitingTxsSlots.WaitTillEmpty(ctx)
@@ -401,6 +399,6 @@ func (r *relay) updateCACertificates(dynamicCAs [][]byte) {
 
 	// Store the updated config atomically
 	r.tlsConfig.Store(&newConfig)
-	logger.Infof("Updated TLS config with %d total CAs (%d static + %d dynamic)",
+	logger.Infof("Updated TLS config with %d total CAs (%d from yaml + %d from config-block)",
 		len(mergedCAs), len(r.staticCACerts), len(dynamicCAs))
 }

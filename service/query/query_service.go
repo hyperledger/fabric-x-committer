@@ -95,7 +95,7 @@ func NewQueryService(config *Config) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	tlsConfig, err := tlsMaterials.CreateServerTLSConfig()
+	tlsConfig, err := tlsMaterials.CreateServerTLSConfig(nil)
 	if err != nil {
 		return nil, err
 	}
@@ -200,11 +200,11 @@ func (q *Service) refreshDynamicRootCAs(ctx context.Context) {
 
 	logger.Debug("Refreshing dynamic root CAs from config transaction")
 
-	// TODO: Add version optimization, We don't need to read the config-block entirely, only the version.
+	// TODO: Add version optimization, We don't need to read the config-block if it didn't change.
 	ctx, cancel := context.WithTimeout(ctx, caFetchTimeout)
 	defer cancel()
 
-	configTx, err := q.getConfigTransactionInternal(ctx)
+	configTx, err := q.GetConfigTransaction(ctx, nil)
 	if err != nil {
 		logger.Warnf("Failed to fetch config transaction for dynamic CAs: %v", err)
 		return // Keep existing config
@@ -405,14 +405,8 @@ func (q *Service) GetConfigTransaction(
 	ctx context.Context,
 	_ *emptypb.Empty,
 ) (*applicationpb.ConfigTransaction, error) {
-	res, err := q.getConfigTransactionInternal(ctx)
+	res, err := queryConfig(ctx, q.batcher.pool)
 	return res, grpcerror.WrapInternalError(err)
-}
-
-// getConfigTransactionInternal fetches the config transaction from the database without gRPC error wrapping.
-// This is used internally by refreshDynamicRootCAs to avoid unnecessary gRPC error conversion.
-func (q *Service) getConfigTransactionInternal(ctx context.Context) (*applicationpb.ConfigTransaction, error) {
-	return queryConfig(ctx, q.batcher.pool)
 }
 
 func (q *Service) assignRequest(

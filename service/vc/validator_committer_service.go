@@ -8,6 +8,7 @@ package vc
 
 import (
 	"context"
+	"crypto/tls"
 	"sync/atomic"
 	"time"
 
@@ -175,6 +176,11 @@ func (*ValidatorCommitterService) WaitForReady(context.Context) bool {
 func (vc *ValidatorCommitterService) RegisterService(server *grpc.Server) {
 	servicepb.RegisterValidationAndCommitServiceServer(server, vc)
 	healthgrpc.RegisterHealthServer(server, vc.healthcheck)
+}
+
+// GetDynamicTLSConfig returns nil as this service does not support dynamic CA updates.
+func (*ValidatorCommitterService) GetDynamicTLSConfig(_ context.Context) *tls.Config {
+	return nil
 }
 
 func (vc *ValidatorCommitterService) monitorQueues(ctx context.Context) {

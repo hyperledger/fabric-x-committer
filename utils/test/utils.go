@@ -75,6 +75,11 @@ type (
 		createServer func() (*grpc.Server, error)
 		register     func(*grpc.Server)
 	}
+
+	ServerOptions struct {
+		Register     func(server *grpc.Server)
+		GetTLSConfig func(info *tls.ClientHelloInfo) (*tls.Config, error)
+	}
 )
 
 // ServerToMultiClientConfig is used to create a multi client configuration from existing server(s)
@@ -90,86 +95,6 @@ func ServerToMultiClientConfig(
 		TLS:       clientTLS,
 		Endpoints: endpoints,
 	}
-}
-
-// RunGrpcServerForTest starts a GRPC server using a register method.
-// It handles the cleanup of the GRPC server at the end of a test, and ensure the test is ended
-// only when the GRPC server is down.
-// It also updates the server config endpoint port to the actual port if the configuration
-// did not specify a port.
-// The method asserts that the GRPC server did not end with failure.
-func RunGrpcServerForTest(
-	ctx context.Context, tb testing.TB, serverConfig *connection.ServerConfig, register func(server *grpc.Server),
-) *grpc.Server {
-	tb.Helper()
-	return runGrpcServerInternal(ctx, tb,
-		runGrpcServerParameters{
-			serverConfig: serverConfig,
-			createServer: serverConfig.GrpcServer,
-			register: func(s *grpc.Server) {
-				if register != nil {
-					register(s)
-				} else {
-					healthgrpc.RegisterHealthServer(s, connection.DefaultHealthCheckService())
-				}
-			},
-		})
-}
-
-// RunDynamicGrpcServerForTest starts a GRPC server using a register method.
-// It handles the cleanup of the GRPC server at the end of a test, and ensure the test is ended
-// only when the GRPC server is down.
-// It also updates the server config endpoint port to the actual port if the configuration
-// did not specify a port.
-// The method asserts that the GRPC server did not end with failure.
-func RunDynamicGrpcServerForTest(
-	ctx context.Context, tb testing.TB, serverConfig *connection.ServerConfig, service connection.DynamicService,
-) *grpc.Server {
-	tb.Helper()
-	return runGrpcServerInternal(ctx, tb, runGrpcServerParameters{
-		serverConfig: serverConfig,
-		//nolint:contextcheck // Context is properly used via chi.Context() in TLS handshake callback
-		createServer: func() (*grpc.Server, error) {
-			return serverConfig.DynamicGrpcServer(service.GetDynamicTLSConfig)
-		},
-		register: service.RegisterService,
-	})
-}
-
-// runGrpcServerInternal handles the shared listener setup, server execution,
-// and cleanup lifecycle for test servers.
-func runGrpcServerInternal(
-	ctx context.Context,
-	tb testing.TB,
-	params runGrpcServerParameters,
-) *grpc.Server {
-	tb.Helper()
-	listener, err := params.serverConfig.Listener(ctx)
-	require.NoError(tb, err)
-	server, err := params.createServer()
-	require.NoError(tb, err)
-
-	params.register(server)
-
-	var wg sync.WaitGroup
-	tb.Cleanup(wg.Wait)
-	tb.Cleanup(server.Stop)
-
-	// The parent error capture the caller stack trace,
-	// which helps track the server origin when debugging test failures.
-	parentErr := errors.New("parent stack context")
-	wg.Go(func() {
-		// We use assert to prevent panicking for cleanup errors.
-		serveErr := server.Serve(listener)
-		if serveErr != nil && !errors.Is(serveErr, grpc.ErrServerStopped) {
-			assert.NoError(tb, errors.WithSecondaryError(serveErr, parentErr))
-		}
-	})
-
-	_ = context.AfterFunc(ctx, func() {
-		server.Stop()
-	})
-	return server
 }
 
 // StartGrpcServersForTest starts multiple GRPC servers with a default configuration.
@@ -266,19 +191,91 @@ func RunServiceAndGrpcForTest(
 }
 
 // RunDynamicServiceAndGrpcForTest combines running a service and its GRPC server.
-// It is intended for services that implement the DynamicService API (i.e., command line services).
+// It is intended for services that support dynamic CA updates (i.e., sidecar and query services).
 func RunDynamicServiceAndGrpcForTest(
 	ctx context.Context,
 	t *testing.T,
-	service connection.DynamicService,
+	service connection.Service,
 	serverConfig *connection.ServerConfig,
 ) *channel.Ready {
 	t.Helper()
 	doneFlag := RunServiceForTest(ctx, t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(service.Run(ctx))
 	}, service.WaitForReady)
-	RunDynamicGrpcServerForTest(ctx, t, serverConfig, service)
+
+	runGrpcServerInternal(ctx, t, runGrpcServerParameters{
+		serverConfig: serverConfig,
+		//nolint:contextcheck // Context is properly used via chi.Context() in TLS handshake callback
+		createServer: func() (*grpc.Server, error) {
+			return serverConfig.GrpcServer(service.GetDynamicTLSConfig)
+		},
+		register: service.RegisterService,
+	})
+
 	return doneFlag
+}
+
+// RunGrpcServerForTest starts a GRPC server using a register method.
+// It handles the cleanup of the GRPC server at the end of a test, and ensure the test is ended
+// only when the GRPC server is down.
+// It also updates the server config endpoint port to the actual port if the configuration
+// did not specify a port.
+// The method asserts that the GRPC server did not end with failure.
+func RunGrpcServerForTest(
+	ctx context.Context, tb testing.TB, serverConfig *connection.ServerConfig, register func(server *grpc.Server),
+) *grpc.Server {
+	tb.Helper()
+	return runGrpcServerInternal(ctx, tb,
+		runGrpcServerParameters{
+			serverConfig: serverConfig,
+			createServer: func() (*grpc.Server, error) {
+				return serverConfig.GrpcServer(nil)
+			},
+			register: func(s *grpc.Server) {
+				if register != nil {
+					register(s)
+				} else {
+					healthgrpc.RegisterHealthServer(s, connection.DefaultHealthCheckService())
+				}
+			},
+		},
+	)
+}
+
+// runGrpcServerInternal handles the shared listener setup, server execution,
+// and cleanup lifecycle for test servers.
+func runGrpcServerInternal(
+	ctx context.Context,
+	tb testing.TB,
+	params runGrpcServerParameters,
+) *grpc.Server {
+	tb.Helper()
+	listener, err := params.serverConfig.Listener(ctx)
+	require.NoError(tb, err)
+	server, err := params.createServer()
+	require.NoError(tb, err)
+
+	params.register(server)
+
+	var wg sync.WaitGroup
+	tb.Cleanup(wg.Wait)
+	tb.Cleanup(server.Stop)
+
+	// The parent error capture the caller stack trace,
+	// which helps track the server origin when debugging test failures.
+	parentErr := errors.New("parent stack context")
+	wg.Go(func() {
+		// We use assert to prevent panicking for cleanup errors.
+		serveErr := server.Serve(listener)
+		if serveErr != nil && !errors.Is(serveErr, grpc.ErrServerStopped) {
+			assert.NoError(tb, errors.WithSecondaryError(serveErr, parentErr))
+		}
+	})
+
+	_ = context.AfterFunc(ctx, func() {
+		server.Stop()
+	})
+	return server
 }
 
 // CheckServerStopped returns true if the grpc server listening on a

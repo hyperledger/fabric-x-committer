@@ -100,7 +100,7 @@ func mockCoordinatorCMD() *cobra.Command {
 			defer cmd.Printf("%v ended\n", mockVerifierName)
 
 			service := mock.NewMockCoordinator()
-			return connection.RunGrpcServer(cmd.Context(), conf.Server, service.RegisterService)
+			return connection.RunGrpcServerWithRegister(cmd.Context(), conf.Server, service.RegisterService)
 		},
 	}
 	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))
@@ -126,7 +126,7 @@ func mockVerifierCMD() *cobra.Command {
 			defer cmd.Printf("%v ended\n", mockVerifierName)
 
 			sv := mock.NewMockSigVerifier()
-			return connection.RunGrpcServer(cmd.Context(), conf.Server, sv.RegisterService)
+			return connection.RunGrpcServerWithRegister(cmd.Context(), conf.Server, sv.RegisterService)
 		},
 	}
 	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))
@@ -152,7 +152,7 @@ func mockVcCMD() *cobra.Command {
 			defer cmd.Printf("%v ended\n", mockVcName)
 
 			vcs := mock.NewMockVcService()
-			return connection.RunGrpcServer(cmd.Context(), conf.Server, vcs.RegisterService)
+			return connection.RunGrpcServerWithRegister(cmd.Context(), conf.Server, vcs.RegisterService)
 		},
 	}
 	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))

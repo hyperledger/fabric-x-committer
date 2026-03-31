@@ -773,27 +773,27 @@ func TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery(t *testing.T
 //
 // Test Workflow:
 //
-//  1. Initial Setup: Start the Sidecar with 2 peer organizations (peer-org-0, peer-org-1).
+//  1. Initial Setup: Start the Sidecar with three peer organizations (peer-org-0, peer-org-1).
 //     Verify that clients from both organizations can connect successfully.
 //
 //  2. Dynamic Update: Submit a new configuration block that reduces the number of
-//     peer organizations from 2 to 1 (only peer-org-0 remains). This removes peer-org-1
-//     from the channel configuration, effectively revoking its credentials.
+//     peer organizations from three to one (only peer-org-0 remains).
+//     This removes peer-org-1 and peer-org-2 from the channel configuration,
+//     effectively revoking its credentials.
 //
-//  3. Negative Verification: Verify that old peer-org-1 clients are now rejected
+//  3. Negative Verification: Verify that old peer-org-1, peer-org-2 clients are now rejected
 //     because their organization was removed from the config. We skip peer-org-0
-//     because the crypto generation is deterministic - the regenerated peer-org-0
-//     has identical credentials to the original, so we cannot test revocation for it.
+//     because the new config-block made the sidecar trust it.
 //
 //  4. Static Verification: Verify that the YAML-based clients can still connect.
 //     This confirms that the Sidecar's dynamic update mechanism correctly preserved
-//     the static "YAML" root CAs and did not flush them.
+//     the static YAML root CAs and did not flush them.
 func TestSidecarWithDynamicRootCAs(t *testing.T) {
 	t.Parallel()
 	serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, connection.MutualTLSMode)
 
 	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{
-		NumberOfPeers: 2, NumIDs: 1, ClientTLS: clientTLSConfig, ServerTLS: serverTLSConfig,
+		NumberOfPeers: 3, NumIDs: 1, ClientTLS: clientTLSConfig, ServerTLS: serverTLSConfig,
 	})
 	ctx, cancel := context.WithTimeout(t.Context(), testContextTimeout)
 	defer cancel()
@@ -836,8 +836,6 @@ func TestSidecarWithDynamicRootCAs(t *testing.T) {
 	// This is critical for testing dynamic TLS updates - without fresh crypto, organizations
 	// might share the same Root CA, causing the test to pass incorrectly.
 	env.OrdererTestEnv.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
-		OrdererEndpoints:      env.OrdererTestEnv.AllEndpoints,
-		ChannelID:             env.OrdererTestEnv.ChanID,
 		PeerOrganizationCount: 1, // Reduce to 1 peer organization (peer-org-0 only)
 	})
 

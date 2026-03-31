@@ -17,7 +17,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
@@ -37,15 +36,9 @@ type (
 		WaitForReady(ctx context.Context) bool
 		// RegisterService registers the supported APIs for this service.
 		RegisterService(server *grpc.Server)
-	}
-
-	// DynamicService extends Service with dynamic root CA certificate support.
-	// Services implementing this interface can update their trusted root CAs at runtime
-	// without a restart, enabling certificate rotation from config blocks.
-	DynamicService interface {
-		Service
-
-		// GetDynamicTLSConfig returns a pre-configured tls.Config with merged CAs.
+		// GetDynamicTLSConfig returns a pre-configured tls.Config for services
+		// that support dynamic CA updates.
+		// Services without dynamic CAs support return nil.
 		// This method is called during TLS handshake (via GetConfigForClient) to retrieve
 		// the complete TLS configuration with both static YAML CAs and dynamic config-block CAs.
 		// The returned config should be ready to use directly in TLS handshakes.
@@ -96,42 +89,9 @@ func StartService(
 		g.Go(func() error {
 			// If the GRPC servers stop, there is no reason to continue the service.
 			defer cancel()
-			return RunGrpcServer(gCtx, server, service.RegisterService)
+			return RunGrpcServer(gCtx, server, service)
 		})
 	}
-	return g.Wait()
-}
-
-// StartDynamicService runs a service with dynamic CA certificate support which
-// enables certificate rotation without a service restart.
-// Note: Only supports single server configuration. Use StartService for multiple servers.
-func StartDynamicService(
-	ctx context.Context,
-	service DynamicService,
-	serverConfig *ServerConfig,
-) error {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	g, gCtx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		// If the service stops, there is no reason to continue the GRPC server.
-		defer cancel()
-		return service.Run(gCtx)
-	})
-
-	ctxTimeout, cancelTimeout := context.WithTimeout(gCtx, 5*time.Minute) // TODO: make this configurable.
-	defer cancelTimeout()
-	if !service.WaitForReady(ctxTimeout) {
-		cancel()
-		return errors.Wrapf(g.Wait(), "service is not ready")
-	}
-
-	g.Go(func() error {
-		// If the GRPC servers stop, there is no reason to continue the service.
-		defer cancel()
-		return RunGrpcDynamicServer(gCtx, serverConfig, service)
-	})
 	return g.Wait()
 }
 
@@ -208,40 +168,14 @@ func (c *ServerConfig) ClosePreAllocatedListener() error {
 func RunGrpcServer(
 	ctx context.Context,
 	serverConfig *ServerConfig,
-	register func(server *grpc.Server),
-) error {
-	listener, err := serverConfig.Listener(ctx)
-	if err != nil {
-		return err
-	}
-	server, err := serverConfig.GrpcServer()
-	if err != nil {
-		return errors.Wrapf(err, "failed creating grpc server")
-	}
-	register(server)
-
-	g, gCtx := errgroup.WithContext(ctx)
-	logger.Infof("Serving...")
-	g.Go(func() error {
-		return server.Serve(listener)
-	})
-	<-gCtx.Done()
-	server.Stop()
-	return g.Wait()
-}
-
-// RunGrpcDynamicServer runs a gRPC server with dynamic CA certificate support.
-func RunGrpcDynamicServer(
-	ctx context.Context,
-	serverConfig *ServerConfig,
-	service DynamicService,
+	service Service,
 ) error {
 	listener, err := serverConfig.Listener(ctx)
 	if err != nil {
 		return err
 	}
 	//nolint:contextcheck // Context is properly used via chi.Context() in TLS handshake callback
-	server, err := serverConfig.DynamicGrpcServer(service.GetDynamicTLSConfig)
+	server, err := serverConfig.GrpcServer(service.GetDynamicTLSConfig)
 	if err != nil {
 		return errors.Wrapf(err, "failed creating grpc server")
 	}
@@ -257,28 +191,42 @@ func RunGrpcDynamicServer(
 	return g.Wait()
 }
 
-// GrpcServer instantiate a [grpc.Server].
-func (c *ServerConfig) GrpcServer() (*grpc.Server, error) {
-	creds, err := c.TLS.ServerCredentials()
+// RunGrpcServerWithRegister runs a server with a custom register function.
+// This is useful for standalone servers that don't implement the full Service interface.
+func RunGrpcServerWithRegister(
+	ctx context.Context,
+	serverConfig *ServerConfig,
+	register func(server *grpc.Server),
+) error {
+	listener, err := serverConfig.Listener(ctx)
+	if err != nil {
+		return err
+	}
+	server, err := serverConfig.GrpcServer(nil)
+	if err != nil {
+		return errors.Wrapf(err, "failed creating grpc server")
+	}
+	register(server)
+
+	g, gCtx := errgroup.WithContext(ctx)
+	logger.Infof("Serving...")
+	g.Go(func() error {
+		return server.Serve(listener)
+	})
+	<-gCtx.Done()
+	server.Stop()
+	return g.Wait()
+}
+
+// GrpcServer instantiates a gRPC server with the provided configuration.
+// If getDynamicFunc is provided, enables dynamic CA certificate support using GetConfigForClient callback.
+// Pass nil for getDynamicFunc to use static configuration only.
+func (c *ServerConfig) GrpcServer(getDynamicFunc func(ctx context.Context) *tls.Config) (*grpc.Server, error) {
+	creds, err := c.TLS.ServerCredentials(getDynamicFunc)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed loading the server's grpc credentials")
 	}
-	return c.createGrpcServer(creds)
-}
 
-// DynamicGrpcServer instantiates a gRPC server with dynamic CA certificate support.
-// The server uses GetConfigForClient TLS callback to load pre-configured tls.Config on each connection.
-// Services must pre-build and cache their complete tls.Config, returning it via getDynamicFunc.
-func (c *ServerConfig) DynamicGrpcServer(getDynamicFunc func(ctx context.Context) *tls.Config) (*grpc.Server, error) {
-	creds, err := c.TLS.DynamicServerCredentials(getDynamicFunc)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed loading the server's grpc credentials")
-	}
-	return c.createGrpcServer(creds)
-}
-
-// createGrpcServer creates a gRPC server with common configuration.
-func (c *ServerConfig) createGrpcServer(creds credentials.TransportCredentials) (*grpc.Server, error) {
 	opts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxMsgSize), grpc.MaxSendMsgSize(maxMsgSize)}
 	opts = append(opts, grpc.Creds(creds))
 

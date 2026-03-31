@@ -76,7 +76,7 @@ func SidecarCMD(use string) *cobra.Command {
 				return errors.Wrap(err, "failed to create sidecar service")
 			}
 			defer service.Close()
-			return connection.StartDynamicService(cmd.Context(), service, conf.Server)
+			return connection.StartService(cmd.Context(), service, conf.Server)
 		},
 	}
 	utils.Must(SetDefaultFlags(v, cmd, &configPath))
@@ -216,7 +216,7 @@ func QueryCMD(use string) *cobra.Command {
 			if err != nil {
 				return errors.Wrap(err, "failed to create query service")
 			}
-			return connection.StartDynamicService(cmd.Context(), qs, conf.Server)
+			return connection.StartService(cmd.Context(), qs, conf.Server)
 		},
 	}
 	utils.Must(SetDefaultFlags(v, cmd, &configPath))

@@ -157,36 +157,26 @@ channel after the service has started.
 
 Services that support dynamic CAs read the current set of trusted root CA certificates
 from the **config block** stored in the state database or directly from the config block. These certificates are
-merged with the static CAs defined in `ca-cert-paths` and applied on every new TLS
-handshake via the `GetConfigForClient` callback.
+merged with the static CAs defined in `ca-cert-paths`.
 
 This means:
 - Existing connections are **not affected** when CAs are updated.
 - New connections will use the **latest merged CA set** (static YAML CAs + dynamic config-block CAs).
 - No service restart is required when a new organization's CA is added to the channel.
-- TLS handshakes are extremely fast (just atomic pointer load, no cryptographic operations).
 
 > Note: Dynamic CA support only applies when the server TLS mode is `mtls`.
 > For `tls` or `none` modes, the standard static TLS configuration is used.
 
-### Performance Characteristics
-
-| Operation | Frequency | Cost |
-|-----------|-----------|-----|
-| **TLS Handshake** | Every connection | Very fast (atomic load + config clone) |
-| **CA Update** | Rare (config block changes) | One-time CertPool build |
-| **DB Query** (Query Service) | Once per ACLRefreshInterval |
-
 ### Services with dynamic CA support
 
-| Service | Dynamic CA source |
-|---------|------------------|
-| **Sidecar** | Updated from config blocks received from the orderer. Applied immediately when a config block is processed. |
+| Service | Dynamic CA source                                                                                                             |
+|---------|-------------------------------------------------------------------------------------------------------------------------------|
+| **Sidecar** | Updated from config blocks received from the orderer. Applied immediately when a config block is processed and verified.      |
 | **Query Service** | Periodically fetched from the config transaction in the state database. Refresh interval is controlled by `ca-fetch-interval`. |
 
 ### Query Service: `ca-fetch-interval`
 
-The query service caches the dynamic CAs and refreshes them on a configurable interval
+The query service caches the tls.Config and refreshes it on a configurable interval
 to avoid excessive database queries when multiple clients connect simultaneously.
 
 | Field | Type | Description |

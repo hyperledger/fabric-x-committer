@@ -25,34 +25,35 @@ type TLSMaterials struct {
 	CACerts [][]byte
 }
 
-// CreateDynamicServerTLSConfig returns a TLS config with dynamic CA certificate support.
-// It uses GetConfigForClient callback to retrieve the pre-configured tls.Config from services.
-// This enables certificate rotation without service restart.
-// Note: Only applies to MutualTLSMode. For other modes, returns standard server TLS config.
-func (m *TLSMaterials) CreateDynamicServerTLSConfig(
+// CreateServerTLSConfig returns a TLS config for the server.
+// If getDynamicFunc is provided and mode is MutualTLS, it enables dynamic CA certificate support
+// using GetConfigForClient callback.
+// This enables certificate rotation without a service restart.
+// Pass nil for getDynamicFunc to use static configuration only.
+func (m *TLSMaterials) CreateServerTLSConfig(
 	getDynamicFunc func(ctx context.Context) *tls.Config,
 ) (*tls.Config, error) {
-	tlsConfig, err := m.CreateServerTLSConfig()
+	tlsConfig, err := m.createBasicServerTLSConfig()
 	if err != nil {
 		return nil, errors.Newf("failed to create base server TLS config: %v", err)
 	}
-	if m.Mode != MutualTLSMode {
-		return tlsConfig, nil
-	}
 
-	tlsConfig.GetConfigForClient = func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
-		// Load pre-configured tls.Config from service (atomic read, very fast)
-		// Service has already merged static + dynamic CAs into ClientCAs
-		cfg := getDynamicFunc(chi.Context())
+	// Only enable dynamic CA support for MutualTLS mode when a function is provided
+	if m.Mode == MutualTLSMode && getDynamicFunc != nil {
+		tlsConfig.GetConfigForClient = func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
+			// Load pre-configured tls.Config from service.
+			// The Service has already merged static + dynamic CAs into ClientCAs
+			cfg := getDynamicFunc(chi.Context())
 
-		if cfg == nil {
-			// Fallback to base config if service returns nil
-			logger.Debugf("New client connection: %v, using base config", chi.Conn.RemoteAddr())
-			return tlsConfig, nil
+			if cfg == nil {
+				// Fallback to base config if service returns nil
+				logger.Debugf("Client connection: %v, using base config", chi.Conn.RemoteAddr())
+				return tlsConfig, nil
+			}
+
+			logger.Debugf("Client connection: %v, using pre-configured config", chi.Conn.RemoteAddr())
+			return cfg, nil
 		}
-
-		logger.Debug("New client connection: %v, using service's pre-configured TLS config", chi.Conn.RemoteAddr())
-		return cfg, nil
 	}
 	return tlsConfig, nil
 }
@@ -61,12 +62,6 @@ func (m *TLSMaterials) CreateDynamicServerTLSConfig(
 // based on the provided TLS configuration.
 func NewClientCredentialsFromMaterial(c *TLSMaterials) (credentials.TransportCredentials, error) {
 	return newCredentials(c.CreateClientTLSConfig())
-}
-
-// NewServerCredentialsFromMaterial returns the gRPC transport credentials to be used by a client,
-// based on the provided TLS configuration.
-func NewServerCredentialsFromMaterial(c *TLSMaterials) (credentials.TransportCredentials, error) {
-	return newCredentials(c.CreateServerTLSConfig())
 }
 
 func newCredentials(tlsCfg *tls.Config, err error) (credentials.TransportCredentials, error) {
@@ -175,8 +170,9 @@ func NewClientTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
 	}
 }
 
-// CreateServerTLSConfig returns a TLS config to be used by a server.
-func (m *TLSMaterials) CreateServerTLSConfig() (*tls.Config, error) {
+// createBasicServerTLSConfig creates the base server TLS configuration without dynamic CA support.
+// This is an internal helper used by CreateServerTLSConfig.
+func (m *TLSMaterials) createBasicServerTLSConfig() (*tls.Config, error) {
 	switch m.Mode {
 	case NoneTLSMode, UnmentionedTLSMode:
 		return nil, nil

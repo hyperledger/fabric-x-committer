@@ -467,7 +467,7 @@ func TestQueryWithConsistentView(t *testing.T) {
 //
 // Test Workflow:
 //
-//  1. Initial State: Load TLS materials for N organizations (Peer) and a persistent
+//  1. Initial State: Load TLS materials for two organizations (Peer) and a persistent
 //     set of credentials (YAML). Verify all can connect to the Query Service.
 //
 //  2. Dynamic Update: Submit a new configuration block that replaces the
@@ -478,7 +478,7 @@ func TestQueryWithConsistentView(t *testing.T) {
 //
 //  4. Static verification: Verify that the YAML-based clients can still
 //     connect. This confirms that the Query Service's dynamic update mechanism
-//     correctly preserved the static "YAML" root CAs and did not flush them.
+//     correctly preserved the static YAML root CAs and did not flush them.
 func TestQueryServiceWithDynamicRootCAs(t *testing.T) {
 	t.Parallel()
 
@@ -500,7 +500,7 @@ func TestQueryServiceWithDynamicRootCAs(t *testing.T) {
 		cryptoMaterialsPath,
 		&testcrypto.ConfigBlock{
 			ChannelID:             "testchannel",
-			PeerOrganizationCount: 1,
+			PeerOrganizationCount: 2,
 		},
 	)
 	require.NoError(t, err)
@@ -544,7 +544,7 @@ func TestQueryServiceWithDynamicRootCAs(t *testing.T) {
 	t.Log("Submitting new config block which removes ONLY old peer organizations")
 	newConfigBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(t.TempDir(), &testcrypto.ConfigBlock{
 		ChannelID:             "testchannel",
-		PeerOrganizationCount: 1, // Invalidates previous organizations
+		PeerOrganizationCount: 2, // Invalidates previous organizations
 	})
 	require.NoError(t, err)
 

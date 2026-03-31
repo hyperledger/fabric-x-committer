@@ -85,12 +85,15 @@ func New(c *Config) (*Service, error) {
 	}
 
 	// Create initial tls.Config with static CAs
-	tlsConfig, err := tlsMaterials.CreateServerTLSConfig()
+	tlsConfig, err := tlsMaterials.CreateServerTLSConfig(nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create initial TLS config: %w", err)
 	}
 
-	sidecarService := &Service{
+	relayService.tlsConfig.Store(&tlsConfig)
+	relayService.staticCACerts = tlsMaterials.CACerts
+
+	return &Service{
 		deliveryParams: deliveryParams,
 		relay:          relayService,
 		notifier:       newNotifier(c.ChannelBufferSize, &c.Notification),
@@ -102,12 +105,7 @@ func New(c *Config) (*Service, error) {
 		metrics:        metrics,
 		committedBlock: make(chan *common.Block, c.ChannelBufferSize),
 		statusQueue:    make(chan []*committerpb.TxStatus, c.ChannelBufferSize),
-	}
-
-	relayService.tlsConfig.Store(&tlsConfig)
-	relayService.staticCACerts = tlsMaterials.CACerts
-
-	return sidecarService, nil
+	}, nil
 }
 
 // GetDynamicTLSConfig returns the pre-configured tls.Config with merged static + dynamic CAs.

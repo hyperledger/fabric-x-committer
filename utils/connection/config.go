@@ -113,26 +113,17 @@ func (c TLSConfig) ClientCredentials() (credentials.TransportCredentials, error)
 	return NewClientCredentialsFromMaterial(tlsMaterials)
 }
 
-// ServerCredentials converts TLSConfig into a TLSMaterials struct and generates server creds.
-func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error) {
-	tlsMaterials, err := NewServerTLSMaterials(c)
-	if err != nil {
-		return nil, err
-	}
-	return NewServerCredentialsFromMaterial(tlsMaterials)
-}
-
-// DynamicServerCredentials creates gRPC transport credentials with dynamic CA support.
-// Converts TLSConfig paths into TLSMaterials and generates credentials that use
-// GetConfigForClient callback to load pre-built CertPools on each TLS handshake.
-func (c TLSConfig) DynamicServerCredentials(
-	getDynamicConfigFunc func(ctx context.Context) *tls.Config,
+// ServerCredentials creates gRPC transport credentials for a server.
+// Converts TLSConfig paths into TLSMaterials and generates credentials.
+// If getDynamicConfigFunc is provided, enables dynamic CA certificate support.
+// Pass nil for getDynamicConfigFunc to use static configuration only.
+func (c TLSConfig) ServerCredentials(getDynamicConfigFunc func(ctx context.Context) *tls.Config,
 ) (credentials.TransportCredentials, error) {
 	tlsMaterials, err := NewServerTLSMaterials(c)
 	if err != nil {
 		return nil, err
 	}
-	return newCredentials(tlsMaterials.CreateDynamicServerTLSConfig(getDynamicConfigFunc))
+	return newCredentials(tlsMaterials.CreateServerTLSConfig(getDynamicConfigFunc))
 }
 
 // Validate checks that the rate limit configuration is valid.

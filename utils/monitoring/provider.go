@@ -57,7 +57,7 @@ func (p *Provider) StartPrometheusServer(
 	if err != nil {
 		return errors.Wrap(err, "failed to create TLS materials for prometheus server")
 	}
-	serverTLSConfig, err := serverMaterials.CreateServerTLSConfig()
+	serverTLSConfig, err := serverMaterials.CreateServerTLSConfig(nil)
 	if err != nil {
 		return err
 	}
