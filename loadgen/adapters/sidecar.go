@@ -16,7 +16,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type (
@@ -29,15 +28,6 @@ type (
 
 // NewSidecarAdapter instantiate SidecarAdapter.
 func NewSidecarAdapter(config *SidecarClientConfig, res *ClientResources) (*SidecarAdapter, error) {
-	// The sidecar adapter overwrite the orderer endpoints with its own.
-	// We first pre-allocate the ports.
-	for _, s := range config.OrdererServers {
-		_, err := s.PreAllocateListener(context.Background())
-		if err != nil {
-			return nil, err
-		}
-	}
-	res.Profile.Policy.OrdererEndpoints = test.NewOrdererEndpoints(0, config.OrdererServers...)
 	return &SidecarAdapter{
 		commonAdapter: commonAdapter{res: res},
 		config:        config,

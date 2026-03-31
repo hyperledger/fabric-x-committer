@@ -89,7 +89,7 @@ func TestConfigUpdateLifecyclePolicy(t *testing.T) {
 	sendTXs()
 
 	t.Log("Submit a config block update with new crypto artifacts (4 peer orgs)")
-	staleEndorser, _ := workload.NewPolicyEndorserFromMsp(c.SystemConfig.Policy.ArtifactsPath)
+	staleEndorser := workload.NewPolicyEndorserFromMsp(t, c.SystemConfig.Policy.ArtifactsPath)
 	// Bump PeerOrganizationCount from 2 to 4 so the LifecycleEndorsement policy
 	// structurally changes. This proves the verifier loads the updated policy,
 	// not just that NsVersion matches.
@@ -108,7 +108,7 @@ func TestConfigUpdateLifecyclePolicy(t *testing.T) {
 	// We reuse namespaces "2" and "3" that were already created. Since the keys exist
 	// in _meta at version 0, we set ReadWrite.Version so the VC treats these as
 	// updates (not inserts, which would hit a unique-violation conflict).
-	updatedEndorser, _ := workload.NewPolicyEndorserFromMsp(c.SystemConfig.Policy.ArtifactsPath)
+	updatedEndorser := workload.NewPolicyEndorserFromMsp(t, c.SystemConfig.Policy.ArtifactsPath)
 	setReadWriteVersions := func(tx *applicationpb.Tx, ver uint64) {
 		for _, rw := range tx.Namespaces[0].ReadWrites {
 			rw.Version = &ver

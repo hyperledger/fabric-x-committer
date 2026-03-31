@@ -17,19 +17,23 @@ import (
 	"time"
 
 	"github.com/gavv/httpexpect/v2"
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
+	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 const (
@@ -38,22 +42,26 @@ const (
 )
 
 type loadGenTestCase struct {
-	serverTLSMode string
-	limit         *adapters.GenerateLimit
+	serverTLSMode    string
+	limit            *adapters.GenerateLimit
+	useMSPIdentities bool
 }
 
 // We can enforce exact limits only for the sidecar and the coordinator.
 // The other adapters runs concurrent workers that might overshoot.
 // So we test both requirements together and enforce that the result is greater.
-var testCases = []loadGenTestCase{
-	{serverTLSMode: connection.MutualTLSMode},
-	{serverTLSMode: connection.OneSideTLSMode},
-	{serverTLSMode: connection.NoneTLSMode},
-	{serverTLSMode: connection.NoneTLSMode, limit: &adapters.GenerateLimit{}},
-	{serverTLSMode: connection.NoneTLSMode, limit: &adapters.GenerateLimit{
-		Blocks: 5, Transactions: 5 * defaultBlockSize,
-	}},
-}
+var (
+	testCases = []loadGenTestCase{
+		{serverTLSMode: connection.MutualTLSMode},
+		{serverTLSMode: connection.OneSideTLSMode},
+		{serverTLSMode: connection.NoneTLSMode},
+		{serverTLSMode: connection.NoneTLSMode, limit: &adapters.GenerateLimit{}},
+		{serverTLSMode: connection.NoneTLSMode, limit: &adapters.GenerateLimit{
+			Blocks: 5, Transactions: 5 * defaultBlockSize,
+		}},
+	}
+	ordererTestCases = append(testCases, loadGenTestCase{serverTLSMode: connection.NoneTLSMode, useMSPIdentities: true})
+)
 
 func TestLoadGenForLoadGen(t *testing.T) {
 	t.Parallel()
@@ -192,7 +200,7 @@ func TestLoadGenForCoordinator(t *testing.T) {
 func TestLoadGenForSidecar(t *testing.T) {
 	t.Parallel()
 	for _, tc := range append(
-		testCases,
+		ordererTestCases,
 		loadGenTestCase{limit: &adapters.GenerateLimit{Blocks: 5}},
 		loadGenTestCase{limit: &adapters.GenerateLimit{
 			Transactions: 5*defaultBlockSize + 1, // +1 for the meta namespace TX.
@@ -245,7 +253,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 
 func TestLoadGenForOrderer(t *testing.T) {
 	t.Parallel()
-	for _, tc := range testCases {
+	for _, tc := range ordererTestCases {
 		t.Run(loadGenTestCaseName(tc), func(t *testing.T) {
 			t.Parallel()
 			e, clientConf := clientConfigWithOrdererForTestCase(t, tc)
@@ -289,7 +297,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 
 func TestLoadGenForOnlyOrderer(t *testing.T) {
 	t.Parallel()
-	for _, tc := range testCases {
+	for _, tc := range ordererTestCases {
 		t.Run(loadGenTestCaseName(tc), func(t *testing.T) {
 			t.Parallel()
 			e, clientConf := clientConfigWithOrdererForTestCase(t, tc)
@@ -458,20 +466,31 @@ func clientConfigWithOrdererForTestCase(t *testing.T, tc loadGenTestCase) (
 ) {
 	t.Helper()
 	clientConf, serverTLSConfig, clientTLSConfig := clientConfigForTestCase(t, tc)
+	policy := &clientConf.LoadProfile.Policy
 	e = mock.NewOrdererTestEnv(t, &mock.OrdererTestParameters{
 		NumIDs:                3,
-		PeerOrganizationCount: clientConf.LoadProfile.Policy.PeerOrganizationCount,
-		ChanID:                clientConf.LoadProfile.Policy.ChannelID,
+		PeerOrganizationCount: policy.PeerOrganizationCount,
+		ChanID:                policy.ChannelID,
 		OrdererConfig: &mock.OrdererConfig{
 			//nolint:gosec // uint64 -> int.
 			BlockSize:        int(clientConf.LoadProfile.Block.MaxSize),
 			SendGenesisBlock: true,
 		},
-		ArtifactsPath:   clientConf.LoadProfile.Policy.ArtifactsPath,
+		ArtifactsPath:   policy.ArtifactsPath,
 		ServerTLSConfig: serverTLSConfig,
 		ClientTLSConfig: clientTLSConfig,
 	})
-	clientConf.LoadProfile.Policy.OrdererEndpoints = e.AllEndpoints
+
+	policy.OrdererEndpoints = e.AllEndpoints
+	if tc.useMSPIdentities {
+		peerIdentities := getMSPIdentities(t, e.ArtifactsPath)
+		for _, nsID := range []string{workload.DefaultGeneratedNamespaceID, committerpb.MetaNamespaceID} {
+			policy.NamespacePolicies[nsID] = &workload.Policy{
+				Scheme:        workload.PolicySchemeMSP,
+				MSPIdentities: peerIdentities,
+			}
+		}
+	}
 	return e, clientConf
 }
 
@@ -490,5 +509,24 @@ func loadGenTestCaseName(tc loadGenTestCase) string {
 			limit = strings.Join(out, ",")
 		}
 	}
-	return fmt.Sprintf("tls:%s limit:%s", tc.serverTLSMode, limit)
+	return fmt.Sprintf("tls:%s limit:%s msp-ids:%v", tc.serverTLSMode, limit, tc.useMSPIdentities)
+}
+
+func getMSPIdentities(t *testing.T, artifactsPath string) []ordererdial.IdentityConfig {
+	t.Helper()
+
+	// Get MSP directories from the artifacts path.
+	mspDirs := testcrypto.GetPeersMspDirs(artifactsPath)
+	require.NotEmpty(t, mspDirs, "MSP directories should not be empty")
+
+	// Convert to IdentityConfig format.
+	mspIdentities := make([]ordererdial.IdentityConfig, len(mspDirs))
+	for i, mspDir := range mspDirs {
+		mspIdentities[i] = ordererdial.IdentityConfig{
+			MspID:  mspDir.MspName,
+			MSPDir: mspDir.MspDir,
+			BCCSP:  mspDir.CspConf,
+		}
+	}
+	return mspIdentities
 }

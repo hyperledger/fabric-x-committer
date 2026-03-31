@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package workload
 
 import (
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -15,6 +16,13 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
+)
+
+// Defines Policy.Scheme.
+const (
+	PolicySchemeMSP         = "MSP"
+	PolicySchemeDefault     = PolicySchemeMSP
+	PolicySchemeUnspecified = ""
 )
 
 // Profile describes the generated workload characteristics.
@@ -134,28 +142,19 @@ type PolicyProfile struct {
 	PeerOrganizationCount uint32 `mapstructure:"peer-organization-count"`
 }
 
-// Validate checks that the PolicyProfile does not contain invalid entries.
-// System namespaces (meta and config) must not be provided explicitly;
-// their policies are derived from the config block.
-func (p *PolicyProfile) Validate() error {
-	for _, sysNs := range []string{committerpb.MetaNamespaceID, committerpb.ConfigNamespaceID} {
-		if _, ok := p.NamespacePolicies[sysNs]; ok {
-			return errors.Newf("system namespace %q must not be provided in the policy profile", sysNs)
-		}
-	}
-	return nil
-}
-
 // Policy describes how to sign/verify a TX.
 // It supports a signing with a raw signing key, or via a local MSP.
 // Scheme can be a valid signature schemes (NONE, ECDSA, BLS, or EDDSA) or MSP to indicate using a local MSP.
-// When Scheme is not MSP, we generate a key using the given Seed, or loading one if KeyPath is given.
-// When Scheme is MSP, we load the signing identities from the ArtifactsPath, ignoring Seed and KeyPath.
+// When Scheme is not MSP, we generate a key using the given Seed, or loading one if KeyPath is given,
+// ignoring MSPIdentities.
+// When Scheme is MSP, we load the signing identities from MSPIdentities, ignoring Seed and KeyPath.
 // In such case, we use the default rule, which state that all peer organization should sign.
+// If MSPIdentities is not provided, we load the signing identities from ArtifactsPath.
 type Policy struct {
-	Scheme  signature.Scheme `mapstructure:"scheme" yaml:"scheme"`
-	Seed    int64            `mapstructure:"seed" yaml:"seed"`
-	KeyPath *KeyPath         `mapstructure:"key-path" yaml:"key-path"`
+	Scheme        signature.Scheme             `mapstructure:"scheme" yaml:"scheme"`
+	Seed          int64                        `mapstructure:"seed" yaml:"seed"`
+	KeyPath       *KeyPath                     `mapstructure:"key-path" yaml:"key-path"`
+	MSPIdentities []ordererdial.IdentityConfig `mapstructure:"msp-identities" yaml:"msp-identities"`
 }
 
 // KeyPath describes how to find/generate the signature keys.
@@ -177,4 +176,32 @@ type StreamOptions struct {
 	// RateLimit directly impacts the rate by limiting it.
 	// TXs are released at RateLimit (default: unlimited).
 	RateLimit uint64 `mapstructure:"rate-limit" yaml:"rate-limit"`
+}
+
+// Validate checks that the PolicyProfile does not contain invalid entries.
+// System namespace "_config" must not be provided explicitly as it is not a real namespace.
+// System namespace "_meta" can be derived from the artifacts' path when given.
+// But it can be provided explicitly if desired.
+// If provided explicitly, it must use a MSP rule.
+func (p *PolicyProfile) Validate() error {
+	if _, ok := p.NamespacePolicies[committerpb.ConfigNamespaceID]; ok {
+		return errors.Newf("system namespace %q must not be provided in the policy profile",
+			committerpb.ConfigNamespaceID)
+	}
+
+	if getPolicyScheme(p.NamespacePolicies[committerpb.MetaNamespaceID]) != PolicySchemeMSP {
+		return errors.Newf("system namespace %q must use scheme %q", committerpb.MetaNamespaceID, PolicySchemeMSP)
+	}
+	return nil
+}
+
+func getPolicyScheme(policy *Policy) string {
+	if policy == nil {
+		return PolicySchemeDefault
+	}
+	scheme := strings.ToUpper(policy.Scheme)
+	if scheme == PolicySchemeUnspecified {
+		return PolicySchemeDefault
+	}
+	return scheme
 }

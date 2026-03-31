@@ -44,15 +44,15 @@ if [[ $ops == *"db"* ]]; then
 fi
 
 if [[ $ops == *"orderer"* ]]; then
-  "$BINS_PATH/mock"      start-orderer     --config "$CONFIGS_PATH/mock-orderer.yaml" &
+  "$BINS_PATH/mock"      start orderer     --config "$CONFIGS_PATH/mock-orderer.yaml" &
 fi
 
 if [[ $ops == *"committer"* ]]; then
-  "$BINS_PATH/committer" start-verifier    --config "$CONFIGS_PATH/verifier.yaml" &
-  "$BINS_PATH/committer" start-vc          --config "$CONFIGS_PATH/vc.yaml" &
-  "$BINS_PATH/committer" start-query       --config "$CONFIGS_PATH/query.yaml" &
-  "$BINS_PATH/committer" start-coordinator --config "$CONFIGS_PATH/coordinator.yaml" &
-  "$BINS_PATH/committer" start-sidecar     --config "$CONFIGS_PATH/sidecar.yaml" &
+  "$BINS_PATH/committer" start verifier    --config "$CONFIGS_PATH/verifier.yaml" &
+  "$BINS_PATH/committer" start vc          --config "$CONFIGS_PATH/vc.yaml" &
+  "$BINS_PATH/committer" start query       --config "$CONFIGS_PATH/query.yaml" &
+  "$BINS_PATH/committer" start coordinator --config "$CONFIGS_PATH/coordinator.yaml" &
+  "$BINS_PATH/committer" start sidecar     --config "$CONFIGS_PATH/sidecar.yaml" &
 fi
 
 if [[ $ops == *"loadgen"* ]]; then

@@ -12,18 +12,19 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/hyperledger/fabric-x-committer/cmd/cliutil"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 )
 
 //nolint:paralleltest // Cannot parallelize due to logger.
 func TestMockCMD(t *testing.T) {
-	s := config.StartDefaultSystem(t)
+	s := cliutil.StartDefaultSystem(t)
 	s.Services.Orderer[0] = s.ThisService
-	commonTests := []config.CommandTest{
+	commonTests := []cliutil.CommandTest{
 		{
 			Name:         "print version",
 			Args:         []string{"version"},
-			CmdStdOutput: config.FullCommitterVersion(),
+			CmdStdOutput: cliutil.FullCommitterVersion(),
 		},
 		{
 			Name: "trailing flag args for version",
@@ -39,32 +40,24 @@ func TestMockCMD(t *testing.T) {
 	for _, test := range commonTests {
 		tc := test
 		t.Run(test.Name, func(t *testing.T) {
-			config.UnitTestRunner(t, mockCMD(), tc)
+			cliutil.UnitTestRunner(t, mockCMD(), tc)
 		})
 	}
 
 	for _, serviceCase := range []struct {
-		Command  string
+		Command  []string
 		Name     string
 		Template string
 	}{
-		{Command: "start-vc", Name: mockVcName, Template: config.TemplateVC},
-		{Command: "start-verifier", Name: mockVerifierName, Template: config.TemplateVerifier},
-		{Command: "start-orderer", Name: mockOrdererName, Template: config.TemplateMockOrderer},
+		{Command: []string{"start", "vc"}, Name: mockVcName, Template: config.TemplateVC},
+		{Command: []string{"start", "verifier"}, Name: mockVerifierName, Template: config.TemplateVerifier},
+		{Command: []string{"start", "orderer"}, Name: mockOrdererName, Template: config.TemplateMockOrderer},
 	} {
 		t.Run(serviceCase.Name, func(t *testing.T) {
-			cases := []config.CommandTest{
-				{
-					Name:              "start with endpoint",
-					Args:              []string{serviceCase.Command, "--endpoint", "localhost:8004"},
-					CmdLoggerOutputs:  []string{"Serving", "localhost:8004"},
-					CmdStdOutput:      fmt.Sprintf("Starting %v", serviceCase.Name),
-					UseConfigTemplate: serviceCase.Template,
-					System:            s,
-				},
+			cases := []cliutil.CommandTest{
 				{
 					Name:              "start",
-					Args:              []string{serviceCase.Command},
+					Args:              serviceCase.Command,
 					CmdLoggerOutputs:  []string{"Serving", s.ThisService.GrpcEndpoint.String()},
 					CmdStdOutput:      fmt.Sprintf("Starting %v", serviceCase.Name),
 					UseConfigTemplate: serviceCase.Template,
@@ -74,7 +67,7 @@ func TestMockCMD(t *testing.T) {
 			for _, test := range cases {
 				tc := test
 				t.Run(test.Name, func(t *testing.T) {
-					config.UnitTestRunner(t, mockCMD(), tc)
+					cliutil.UnitTestRunner(t, mockCMD(), tc)
 				})
 			}
 		})

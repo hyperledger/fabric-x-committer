@@ -383,13 +383,15 @@ func TestReadConfigLoadGen(t *testing.T) {
 				Policy: workload.PolicyProfile{
 					ChannelID: "mychannel",
 					NamespacePolicies: map[string]*workload.Policy{
-						workload.DefaultGeneratedNamespaceID: {
-							Scheme: signature.Ecdsa, Seed: 10,
-						},
+						workload.DefaultGeneratedNamespaceID: {Scheme: workload.PolicySchemeMSP},
+						"1":                                  {Scheme: signature.Ecdsa, Seed: 10},
 					},
-					OrdererEndpoints: []*commontypes.OrdererEndpoint{
-						newOrdererEndpoint("org", "orderer"),
-					},
+					OrdererEndpoints: []*commontypes.OrdererEndpoint{{
+						ID:   0,
+						Host: "orderer",
+						Port: 7050,
+						API:  []string{commontypes.Broadcast, commontypes.Deliver},
+					}},
 					PeerOrganizationCount: 2,
 					ArtifactsPath:         "/root/artifacts",
 				},
@@ -509,16 +511,6 @@ func newIdentityConfig() *ordererdial.IdentityConfig {
 				Security: 256,
 			},
 		},
-	}
-}
-
-func newOrdererEndpoint(mspID, host string) *commontypes.OrdererEndpoint {
-	return &commontypes.OrdererEndpoint{
-		ID:    0,
-		MspID: mspID,
-		Host:  host,
-		Port:  7050,
-		API:   []string{commontypes.Broadcast, commontypes.Deliver},
 	}
 }
 

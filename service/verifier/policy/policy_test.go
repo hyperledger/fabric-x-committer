@@ -128,7 +128,7 @@ func TestParseLifecycleEndorsementPolicy(t *testing.T) {
 		require.NotNil(t, verifier)
 
 		// Verify it accepts a valid MSP endorsement.
-		endorser, _ := workload.NewPolicyEndorserFromMsp(cryptoPath)
+		endorser := workload.NewPolicyEndorserFromMsp(t, cryptoPath)
 		require.NoError(t, err)
 
 		tx := &applicationpb.Tx{

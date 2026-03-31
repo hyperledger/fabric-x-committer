@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package config
+package cliutil
 
 import (
 	"context"
@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -36,11 +37,11 @@ type CommandTest struct {
 	CmdStdOutput      string
 	Err               error
 	UseConfigTemplate string
-	System            SystemConfig
+	System            config.SystemConfig
 }
 
 // StartDefaultSystem starts a system with mocks for CMD testing.
-func StartDefaultSystem(t *testing.T) SystemConfig {
+func StartDefaultSystem(t *testing.T) config.SystemConfig {
 	t.Helper()
 	serverParams := test.StartServerParameters{
 		NumService: 1,
@@ -68,15 +69,15 @@ func StartDefaultSystem(t *testing.T) SystemConfig {
 	_, err = workload.CreateOrExtendConfigBlockWithCrypto(policy)
 	require.NoError(t, err)
 
-	return SystemConfig{
-		ThisService: ServiceConfig{
+	return config.SystemConfig{
+		ThisService: config.ServiceConfig{
 			GrpcEndpoint: &server.Endpoint,
 		},
-		Services: SystemServices{
-			Verifier:    []ServiceConfig{{GrpcEndpoint: &verifier.Configs[0].Endpoint}},
-			VCService:   []ServiceConfig{{GrpcEndpoint: &vc.Configs[0].Endpoint}},
-			Orderer:     []ServiceConfig{{GrpcEndpoint: &ordererEp}},
-			Coordinator: ServiceConfig{GrpcEndpoint: &coordinator.Configs[0].Endpoint},
+		Services: config.SystemServices{
+			Verifier:    []config.ServiceConfig{{GrpcEndpoint: &verifier.Configs[0].Endpoint}},
+			VCService:   []config.ServiceConfig{{GrpcEndpoint: &vc.Configs[0].Endpoint}},
+			Orderer:     []config.ServiceConfig{{GrpcEndpoint: &ordererEp}},
+			Coordinator: config.ServiceConfig{GrpcEndpoint: &coordinator.Configs[0].Endpoint},
 		},
 		DB:         defaultTestDBConfig(),
 		Policy:     policy,
@@ -113,7 +114,7 @@ func UnitTestRunner(
 
 	args := cmdTest.Args
 	if cmdTest.UseConfigTemplate != "" {
-		configPath := CreateTempConfigFromTemplate(t, cmdTest.UseConfigTemplate, &cmdTest.System)
+		configPath := config.CreateTempConfigFromTemplate(t, cmdTest.UseConfigTemplate, &cmdTest.System)
 		args = append(args, "--config", configPath)
 	}
 	cmd.SetArgs(args)
@@ -170,12 +171,12 @@ func UnitTestRunner(
 
 // defaultTestDBConfig returns DB config with credentials matching the DB_TYPE env var.
 // Defaults to "yugabyte" when DB_TYPE is unset (YugabyteDB), "postgres" when DB_TYPE=postgres.
-func defaultTestDBConfig() DatabaseConfig {
+func defaultTestDBConfig() config.DatabaseConfig {
 	username := "yugabyte"
 	if strings.EqualFold(os.Getenv("DB_TYPE"), "postgres") {
 		username = "postgres"
 	}
-	return DatabaseConfig{
+	return config.DatabaseConfig{
 		Name:        "dummy_test_db",
 		Username:    username,
 		Endpoints:   []*connection.Endpoint{{Host: "localhost", Port: 5433}},

@@ -9,13 +9,13 @@ package workload
 import (
 	"maps"
 	"os"
-	"strings"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
+	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -33,26 +33,20 @@ type TxEndorser struct {
 	policies  map[string]*applicationpb.NamespacePolicy
 }
 
-var defaultPolicy = Policy{Scheme: signature.Ecdsa}
-
 // NewTxEndorser creates a new TxEndorser given a workload profile.
 func NewTxEndorser(policy *PolicyProfile) *TxEndorser {
 	// We set default policy to ensure smooth operation even if the user did not specify anything.
-	nsPolicies := policy.NamespacePolicies
-	for _, nsID := range []string{DefaultGeneratedNamespaceID} {
+	// We clone the map to avoid modifying the input policy as this can cause data races.
+	nsPolicies := maps.Clone(policy.NamespacePolicies)
+	for _, nsID := range []string{DefaultGeneratedNamespaceID, committerpb.MetaNamespaceID} {
 		if _, ok := nsPolicies[nsID]; !ok {
-			nsPolicies[nsID] = &defaultPolicy
+			nsPolicies[nsID] = nil
 		}
 	}
-	endorsers := make(map[string]*testsig.NsEndorser, len(nsPolicies)+1)
-	policies := make(map[string]*applicationpb.NamespacePolicy, len(nsPolicies)+1)
+	endorsers := make(map[string]*testsig.NsEndorser, len(nsPolicies))
+	policies := make(map[string]*applicationpb.NamespacePolicy, len(nsPolicies))
 	for nsID, p := range nsPolicies {
 		endorsers[nsID], policies[nsID] = newPolicyEndorser(policy.ArtifactsPath, p)
-	}
-
-	if policy.ArtifactsPath != "" {
-		endorsers[committerpb.MetaNamespaceID], policies[committerpb.MetaNamespaceID] = newPolicyEndorser(
-			policy.ArtifactsPath, &Policy{Scheme: "MSP"})
 	}
 
 	return &TxEndorser{
@@ -81,42 +75,59 @@ func (e *TxEndorser) Endorse(txID string, tx *applicationpb.Tx) {
 }
 
 // newPolicyEndorser creates a new [testsig.NsEndorser] and its [applicationpb.NamespacePolicy]
-// given a workload profile and a seed.
-func newPolicyEndorser(cryptoPath string, profile *Policy) (*testsig.NsEndorser, *applicationpb.NamespacePolicy) {
-	if profile == nil {
-		profile = &defaultPolicy
+// given a workload profile and a policy configuration.
+//
+// For MSP scheme:
+//   - If policy.MSPIdentities is provided, uses those identities,
+//   - Otherwise, loads identities from cryptoPath,
+//   - If neither is available, creates an endorser with no identities.
+//
+// For other schemes (ECDSA, EDDSA, BLS):
+//   - Generates or loads a key pair based on policy.Seed or policy.KeyPath.
+func newPolicyEndorser(artifactsPath string, policy *Policy) (*testsig.NsEndorser, *applicationpb.NamespacePolicy) {
+	if policy == nil {
+		policy = &Policy{}
 	}
-	switch strings.ToUpper(profile.Scheme) {
-	case "MSP":
-		return NewPolicyEndorserFromMsp(cryptoPath)
+	scheme := getPolicyScheme(policy)
+	switch scheme {
+	case PolicySchemeMSP:
+		var mspDirectories []*msp.DirLoadParameters
+		switch {
+		case len(policy.MSPIdentities) > 0:
+			mspDirectories = make([]*msp.DirLoadParameters, len(policy.MSPIdentities))
+			for i, id := range policy.MSPIdentities {
+				mspDirectories[i] = &msp.DirLoadParameters{MspName: id.MspID, MspDir: id.MSPDir, CspConf: id.BCCSP}
+			}
+		case len(artifactsPath) > 0:
+			mspDirectories = testcrypto.GetPeersMspDirs(artifactsPath)
+		default:
+			logger.Warn("MSP scheme configured but no identities provided")
+			// No identities. No endorsement required.
+			// Valid for test scenarios where no endorsement is needed.
+			// When evaluating production deployments, MSPIdentities or ArtifactsPath must be provided.
+		}
+		signingIdentities, err := testcrypto.GetSigningIdentities(mspDirectories...)
+		utils.Must(err)
+		return newPolicyEndorserFromMSP(signingIdentities)
 	default:
-		signingKey, verificationKey := getKeyPair(profile)
-		return newPolicyEndorserFromKey(profile.Scheme, signingKey, verificationKey)
-	}
-}
-
-// newPolicyEndorserFromKey creates a new [testsig.NsEndorser] and its [applicationpb.NamespacePolicy]
-// given a scheme and a key pair.
-func newPolicyEndorserFromKey(
-	scheme string, signingKey, verificationKey []byte,
-) (*testsig.NsEndorser, *applicationpb.NamespacePolicy) {
-	endorser, err := testsig.NewNsEndorserFromKey(scheme, signingKey)
-	utils.Must(err)
-	nsPolicy := &applicationpb.NamespacePolicy{
-		Rule: &applicationpb.NamespacePolicy_ThresholdRule{
-			ThresholdRule: &applicationpb.ThresholdRule{
-				Scheme: scheme, PublicKey: verificationKey,
+		signingKey, verificationKey := getKeyPair(policy)
+		endorser, err := testsig.NewNsEndorserFromKey(scheme, signingKey)
+		utils.Must(err)
+		nsPolicy := &applicationpb.NamespacePolicy{
+			Rule: &applicationpb.NamespacePolicy_ThresholdRule{
+				ThresholdRule: &applicationpb.ThresholdRule{
+					Scheme: scheme, PublicKey: verificationKey,
+				},
 			},
-		},
+		}
+		return endorser, nsPolicy
 	}
-	return endorser, nsPolicy
 }
 
-// NewPolicyEndorserFromMsp creates an MSP-based endorser and namespace policy from the
-// peer organization crypto artifacts under artifactsPath.
-func NewPolicyEndorserFromMsp(artifactsPath string) (*testsig.NsEndorser, *applicationpb.NamespacePolicy) {
-	signingIdentities, err := testcrypto.GetPeersIdentities(artifactsPath)
-	utils.Must(err)
+// newPolicyEndorserFromMSP creates an MSP-based endorser and namespace policy from the given identities.
+func newPolicyEndorserFromMSP(signingIdentities []msp.SigningIdentity) (
+	*testsig.NsEndorser, *applicationpb.NamespacePolicy,
+) {
 	endorser, err := testsig.NewNsEndorserFromMsp(test.CreatorID, signingIdentities...)
 	utils.Must(err)
 
