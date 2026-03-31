@@ -833,9 +833,8 @@ func TestSidecarWithDynamicRootCAs(t *testing.T) {
 
 	t.Log("Submitting new config block which removes old peer organizations")
 	// Use SubmitConfigBlock to ensure each organization gets a unique Root CA.
-	// This is critical for testing dynamic TLS updates - without fresh crypto, organizations
-	// might share the same Root CA, causing the test to pass incorrectly.
-	env.OrdererTestEnv.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
+	// This is critical for testing dynamic TLS updates.
+	env.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
 		PeerOrganizationCount: 1, // Reduce to 1 peer organization (peer-org-0 only)
 	})
 

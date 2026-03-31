@@ -203,6 +203,7 @@ func (c *Client) runHTTPServer(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	//nolint:contextcheck // Since getDynamicFunc is nil, context will be used.
 	tlsCfg, err := tlsMaterials.CreateServerTLSConfig(nil)
 	if err != nil {
 		return err

@@ -202,6 +202,7 @@ func RunGrpcServerWithRegister(
 	if err != nil {
 		return err
 	}
+	//nolint:contextcheck // Since getDynamicFunc is nil, context will be used.
 	server, err := serverConfig.GrpcServer(nil)
 	if err != nil {
 		return errors.Wrapf(err, "failed creating grpc server")

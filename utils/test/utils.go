@@ -75,11 +75,6 @@ type (
 		createServer func() (*grpc.Server, error)
 		register     func(*grpc.Server)
 	}
-
-	ServerOptions struct {
-		Register     func(server *grpc.Server)
-		GetTLSConfig func(info *tls.ClientHelloInfo) (*tls.Config, error)
-	}
 )
 
 // ServerToMultiClientConfig is used to create a multi client configuration from existing server(s)
@@ -228,6 +223,7 @@ func RunGrpcServerForTest(
 	return runGrpcServerInternal(ctx, tb,
 		runGrpcServerParameters{
 			serverConfig: serverConfig,
+			//nolint:contextcheck // Since getDynamicFunc is nil, context will be used.
 			createServer: func() (*grpc.Server, error) {
 				return serverConfig.GrpcServer(nil)
 			},

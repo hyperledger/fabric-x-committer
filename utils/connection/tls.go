@@ -38,7 +38,7 @@ func (m *TLSMaterials) CreateServerTLSConfig(
 		return nil, errors.Newf("failed to create base server TLS config: %v", err)
 	}
 
-	// Only enable dynamic CA support for MutualTLS mode when a function is provided
+	// Only enable dynamic CA support for MutualTLS mode when a function is provided.
 	if m.Mode == MutualTLSMode && getDynamicFunc != nil {
 		tlsConfig.GetConfigForClient = func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
 			// Load pre-configured tls.Config from service.
