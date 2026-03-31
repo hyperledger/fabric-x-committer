@@ -23,6 +23,22 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
+const (
+	sidecarService     = "sidecar"
+	coordinatorService = "coordinator"
+	vcService          = "vc"
+	verifierService    = "verifier"
+	queryService       = "query"
+)
+
+var serviceNames = map[string]string{
+	sidecarService:     "Sidecar",
+	coordinatorService: "Coordinator",
+	vcService:          "Validator-Committer",
+	verifierService:    "Verifier",
+	queryService:       "Query-Service",
+}
+
 func startCMD() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "start",

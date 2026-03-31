@@ -15,22 +15,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/cmd/cliutil"
 )
 
-const (
-	sidecarService     = "sidecar"
-	coordinatorService = "coordinator"
-	vcService          = "vc"
-	verifierService    = "verifier"
-	queryService       = "query"
-)
-
-var serviceNames = map[string]string{
-	sidecarService:     "Sidecar",
-	coordinatorService: "Coordinator",
-	vcService:          "Validator-Committer",
-	verifierService:    "Verifier",
-	queryService:       "Query-Service",
-}
-
 func main() {
 	cmd := committerCMD()
 	// On failure, Cobra prints the usage message and error string, so we only
