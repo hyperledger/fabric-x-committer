@@ -63,7 +63,7 @@ type (
 		genesisBlock         BlockWithConsenters
 		inEnvs               chan *common.Envelope
 		inBlocks             chan *BlockWithConsenters
-		cutBlock             chan any
+		cutBlock             chan *channel.Ready
 		cache                *blockCache
 		healthcheck          *health.Server
 
@@ -175,7 +175,7 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 		genesisBlock: genesisBlock,
 		inEnvs:       make(chan *common.Envelope, numServices*config.BlockSize*config.OutBlockCapacity),
 		inBlocks:     make(chan *BlockWithConsenters, config.BlockSize*config.OutBlockCapacity),
-		cutBlock:     make(chan any),
+		cutBlock:     make(chan *channel.Ready),
 		cache:        newBlockCache(config.OutBlockCapacity),
 		healthcheck:  connection.DefaultHealthCheckService(),
 	}
@@ -401,24 +401,41 @@ func (o *Orderer) Run(ctx context.Context) error {
 		data = make([][]byte, 0, o.config.Load().BlockSize)
 	}
 	envCache := newFifoCache[any](o.config.Load().PayloadCacheSize)
+	collectEnv := func(env *common.Envelope) {
+		if !addEnvelope(envCache, env) {
+			return
+		}
+		data = append(data, protoutil.MarshalOrPanic(env))
+		if len(data) >= o.config.Load().BlockSize {
+			sendBlockData("size")
+		}
+	}
+	// drainEnvs processes all buffered envelopes before a block cut,
+	// ensuring envelopes submitted before the cut signal are included.
+	drainEnvs := func() {
+		for {
+			select {
+			case env := <-o.inEnvs:
+				collectEnv(env)
+			default:
+				return
+			}
+		}
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return errors.Wrapf(ctx.Err(), "context ended")
 		case b := <-o.inBlocks:
 			sendBlockWithConsenters(b)
-		case <-o.cutBlock:
+		case done := <-o.cutBlock:
+			drainEnvs()
 			sendBlockData("external")
+			done.SignalReady()
 		case <-tick.C:
 			sendBlockData("timeout")
 		case env := <-o.inEnvs:
-			if !addEnvelope(envCache, env) {
-				continue
-			}
-			data = append(data, protoutil.MarshalOrPanic(env))
-			if len(data) >= o.config.Load().BlockSize {
-				sendBlockData("size")
-			}
+			collectEnv(env)
 		}
 	}
 }
@@ -466,8 +483,14 @@ func (o *Orderer) GetBlock(ctx context.Context, blockNum uint64) (*common.Block,
 }
 
 // CutBlock allows forcing block cut for testing other packages.
+// It blocks until the cut is complete, ensuring all previously submitted
+// envelopes are included in the cut block.
 func (o *Orderer) CutBlock(ctx context.Context) bool {
-	return channel.NewWriter(ctx, o.cutBlock).Write(nil)
+	done := channel.NewReady()
+	if !channel.NewWriter(ctx, o.cutBlock).Write(done) {
+		return false
+	}
+	return done.WaitForReady(ctx)
 }
 
 func newBlockCache(size int) *blockCache {
