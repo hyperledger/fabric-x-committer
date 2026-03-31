@@ -12,18 +12,19 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/hyperledger/fabric-x-committer/cmd/cliutil"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 )
 
 //nolint:paralleltest // Cannot parallelize due to logger.
 func TestMockCMD(t *testing.T) {
-	s := config.StartDefaultSystem(t)
+	s := cliutil.StartDefaultSystem(t)
 	s.Services.Orderer[0] = s.ThisService
-	commonTests := []config.CommandTest{
+	commonTests := []cliutil.CommandTest{
 		{
 			Name:         "print version",
 			Args:         []string{"version"},
-			CmdStdOutput: config.FullCommitterVersion(),
+			CmdStdOutput: cliutil.FullCommitterVersion(),
 		},
 		{
 			Name: "trailing flag args for version",
@@ -39,7 +40,7 @@ func TestMockCMD(t *testing.T) {
 	for _, test := range commonTests {
 		tc := test
 		t.Run(test.Name, func(t *testing.T) {
-			config.UnitTestRunner(t, mockCMD(), tc)
+			cliutil.UnitTestRunner(t, mockCMD(), tc)
 		})
 	}
 
@@ -53,15 +54,7 @@ func TestMockCMD(t *testing.T) {
 		{Command: []string{"start", "orderer"}, Name: mockOrdererName, Template: config.TemplateMockOrderer},
 	} {
 		t.Run(serviceCase.Name, func(t *testing.T) {
-			cases := []config.CommandTest{
-				{
-					Name:              "start with endpoint",
-					Args:              append(serviceCase.Command, "--endpoint", "localhost:8004"),
-					CmdLoggerOutputs:  []string{"Serving", "localhost:8004"},
-					CmdStdOutput:      fmt.Sprintf("Starting %v", serviceCase.Name),
-					UseConfigTemplate: serviceCase.Template,
-					System:            s,
-				},
+			cases := []cliutil.CommandTest{
 				{
 					Name:              "start",
 					Args:              serviceCase.Command,
@@ -74,7 +67,7 @@ func TestMockCMD(t *testing.T) {
 			for _, test := range cases {
 				tc := test
 				t.Run(test.Name, func(t *testing.T) {
-					config.UnitTestRunner(t, mockCMD(), tc)
+					cliutil.UnitTestRunner(t, mockCMD(), tc)
 				})
 			}
 		})

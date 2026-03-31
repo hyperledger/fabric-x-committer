@@ -13,9 +13,9 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 
+	"github.com/hyperledger/fabric-x-committer/cmd/cliutil"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/mock"
-	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
@@ -42,7 +42,7 @@ func mockCMD() *cobra.Command {
 		Use:   mockCmdName,
 		Short: "Fabric-X services mock.",
 	}
-	cmd.AddCommand(config.VersionCmd())
+	cmd.AddCommand(cliutil.VersionCmd())
 	cmd.AddCommand(mockStartCMD())
 	return cmd
 }
@@ -87,7 +87,7 @@ func startMockOrderer() *cobra.Command {
 			return connection.StartService(cmd.Context(), service, serverConfigs...)
 		},
 	}
-	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))
+	cliutil.SetDefaultFlags(cmd, &configPath)
 	return cmd
 }
 
@@ -112,7 +112,7 @@ func startMockCoordinator() *cobra.Command {
 			return connection.RunGrpcServer(cmd.Context(), conf.Server, service.RegisterService)
 		},
 	}
-	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))
+	cliutil.SetDefaultFlags(cmd, &configPath)
 	return cmd
 }
 
@@ -137,7 +137,7 @@ func startMockVerifier() *cobra.Command {
 			return connection.RunGrpcServer(cmd.Context(), conf.Server, sv.RegisterService)
 		},
 	}
-	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))
+	cliutil.SetDefaultFlags(cmd, &configPath)
 	return cmd
 }
 
@@ -162,6 +162,6 @@ func startMockVC() *cobra.Command {
 			return connection.RunGrpcServer(cmd.Context(), conf.Server, vcs.RegisterService)
 		},
 	}
-	utils.Must(config.SetDefaultFlags(v, cmd, &configPath))
+	cliutil.SetDefaultFlags(cmd, &configPath)
 	return cmd
 }
