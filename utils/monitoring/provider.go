@@ -57,8 +57,7 @@ func (p *Provider) StartPrometheusServer(
 	if err != nil {
 		return errors.Wrap(err, "failed to create TLS materials for prometheus server")
 	}
-	//nolint:contextcheck // Since getDynamicFunc is nil, context will be used.
-	serverTLSConfig, err := serverMaterials.CreateServerTLSConfig(nil)
+	serverTLSConfig, err := serverMaterials.CreateBasicServerTLSConfig()
 	if err != nil {
 		return err
 	}

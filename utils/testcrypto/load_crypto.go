@@ -118,14 +118,14 @@ func GetOrdererConnConfig(artifactsPath string, clientTLSConfig connection.TLSCo
 	}
 }
 
-// ClientTLSConfigsPerOrg holds each organization's representative TLS config for future client creation.
+// PerOrgTLSConfig holds each organization's representative TLS config for future client creation.
 // We use this struct for the TestWithDynamicRootCAs.
-type ClientTLSConfigsPerOrg struct {
+type PerOrgTLSConfig struct {
 	Peer map[string]connection.TLSConfig
 }
 
 // BuildClientTLSConfigsPerOrg builds TLS configs using only the "client" user.
-func BuildClientTLSConfigsPerOrg(t *testing.T, root string) *ClientTLSConfigsPerOrg {
+func BuildClientTLSConfigsPerOrg(t *testing.T, root string) *PerOrgTLSConfig {
 	t.Helper()
 
 	peerRoot := filepath.Join(root, cryptogen.PeerOrganizationsDir)
@@ -134,7 +134,7 @@ func BuildClientTLSConfigsPerOrg(t *testing.T, root string) *ClientTLSConfigsPer
 	orgEntries, err := os.ReadDir(peerRoot)
 	// If the path doesn't exist, return empty maps to avoid nil pointer issues
 	if err != nil {
-		return &ClientTLSConfigsPerOrg{
+		return &PerOrgTLSConfig{
 			Peer: make(map[string]connection.TLSConfig),
 		}
 	}
@@ -178,7 +178,7 @@ func BuildClientTLSConfigsPerOrg(t *testing.T, root string) *ClientTLSConfigsPer
 		}
 	}
 
-	return &ClientTLSConfigsPerOrg{
+	return &PerOrgTLSConfig{
 		Peer: peerConfigs,
 	}
 }

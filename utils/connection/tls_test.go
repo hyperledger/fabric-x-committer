@@ -72,7 +72,7 @@ func TestNewServerAndClientTLSMaterials(t *testing.T) {
 				require.NoError(t, err, "error while creating TLS materials")
 				requireMaterials(t, m, tc.expectKeys)
 
-				_, err = m.CreateServerTLSConfig(nil)
+				_, err = m.CreateBasicServerTLSConfig()
 				require.NoError(t, err)
 			})
 		}

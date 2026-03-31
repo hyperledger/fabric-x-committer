@@ -652,6 +652,7 @@ func newQueryServiceTestEnv(t *testing.T, opts *queryServiceTestOpts) *queryServ
 		Database:              dbConf,
 		Monitoring:            test.NewLocalHostServer(test.InsecureTLSConfig),
 		ACLRefreshInterval:    3 * time.Second,
+		CAFetchTimeout:        15 * time.Second,
 	}
 
 	qs, err := NewQueryService(config)

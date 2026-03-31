@@ -47,8 +47,8 @@ type (
 		committedBlockMu sync.Mutex
 
 		// tlsConfig holds the complete pre-configured tls.Config with merged static + dynamic CAs.
+		tlsConfig atomic.Pointer[*tls.Config]
 		// staticCACerts holds the static CAs from YAML config for merging with dynamic CAs.
-		tlsConfig     atomic.Pointer[*tls.Config]
 		staticCACerts [][]byte
 	}
 
@@ -75,6 +75,7 @@ func newRelay(
 	return &relay{
 		lastCommittedBlockSetInterval: lastCommittedBlockSetInterval,
 		metrics:                       metrics,
+		tlsConfig:                     atomic.Pointer[*tls.Config]{},
 	}
 }
 
@@ -154,12 +155,13 @@ func (r *relay) preProcessBlock(
 		promutil.Observe(r.metrics.blockMappingInRelaySeconds, time.Since(start))
 		if mappedBlock.isConfig {
 			// Reading application root CAs and add it to the YAML root CAs setup.
+			// This happens for all config blocks regardless of TLS mode (none/tls/mtls).
 			logger.Debug("Updating sidecar's acceptable client CAs from config block")
 			rootCAs, bootErr := dynamictls.NewApplicationRootCAsFromConfigBlock(block)
 			if bootErr != nil {
 				logger.Warnf("Failed to load application root CAs: %v", bootErr)
 			} else {
-				// Only update CAs if extraction succeeded
+				// Only update CAs if extraction succeeded.
 				r.updateCACertificates(rootCAs)
 			}
 			// We wait for all previously submitted transactions to be processed by
@@ -373,25 +375,27 @@ func (r *relay) setLastCommittedBlockNumber(
 // updateCACertificates atomically updates the TLS config with static CAs + latest dynamic CAs.
 // This replaces any previous dynamic CAs with the new ones from the config block,
 // while preserving the static CAs from the YAML configuration.
+//
+// Note: This method is called for every config block regardless of TLS mode, as the relay is TLS mode agnostic.
+// The nil check below handles cases where TLS is not enabled.
 func (r *relay) updateCACertificates(dynamicCAs [][]byte) {
-	if len(dynamicCAs) == 0 {
-		logger.Warn("no CA certificates found in config block")
+	// Relay processes config blocks in all TLS modes (none/tls/mtls).
+	// In none mode, CreateBasicServerTLSConfig() returns nil, but the relay still calls
+	// updateCACertificates() for every config block.
+	// This check prevents nil pointer dereference and unnecessary processing when TLS is not enabled.
+	currentConfig := r.tlsConfig.Load()
+	if currentConfig == nil || *currentConfig == nil {
+		logger.Warn("No current TLS config to update")
+		return
 	}
 
 	// Merge static CAs (from YAML) with new dynamic CAs (from config block).
 	// This replaces any previous dynamic CAs.
 	mergedCAs := connection.MergeCACerts(r.staticCACerts, dynamicCAs)
-	certPool, err := connection.BuildCertPoolFromBytes(mergedCAs)
+	certPool, err := connection.BuildCertPool(mergedCAs)
 	if err != nil {
 		logger.Warnf("Failed to build cert pool: %v", err)
 		return // Keep existing config
-	}
-
-	// Clone current config and update ClientCAs
-	currentConfig := r.tlsConfig.Load()
-	if currentConfig == nil || *currentConfig == nil {
-		logger.Warn("No current TLS config to update")
-		return
 	}
 
 	newConfig := (*currentConfig).Clone()
@@ -399,6 +403,6 @@ func (r *relay) updateCACertificates(dynamicCAs [][]byte) {
 
 	// Store the updated config atomically
 	r.tlsConfig.Store(&newConfig)
-	logger.Infof("Updated TLS config with %d total CAs (%d from yaml + %d from config-block)",
+	logger.Debugf("Updated TLS config with %d total CAs (%d from yaml + %d from config block)",
 		len(mergedCAs), len(r.staticCACerts), len(dynamicCAs))
 }

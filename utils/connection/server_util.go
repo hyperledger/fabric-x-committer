@@ -174,7 +174,8 @@ func RunGrpcServer(
 	if err != nil {
 		return err
 	}
-	//nolint:contextcheck // Context is properly used via chi.Context() in TLS handshake callback
+
+	//nolint:contextcheck // Context from chi.Context() is passed to getDynamicTLSConfig during TLS handshake.
 	server, err := serverConfig.GrpcServer(service.GetDynamicTLSConfig)
 	if err != nil {
 		return errors.Wrapf(err, "failed creating grpc server")
@@ -202,7 +203,7 @@ func RunGrpcServerWithRegister(
 	if err != nil {
 		return err
 	}
-	//nolint:contextcheck // Since getDynamicFunc is nil, context will be used.
+	//nolint:contextcheck // Since getDynamicTLSFunc is nil, context will not be used.
 	server, err := serverConfig.GrpcServer(nil)
 	if err != nil {
 		return errors.Wrapf(err, "failed creating grpc server")
@@ -220,10 +221,10 @@ func RunGrpcServerWithRegister(
 }
 
 // GrpcServer instantiates a gRPC server with the provided configuration.
-// If getDynamicFunc is provided, enables dynamic CA certificate support using GetConfigForClient callback.
-// Pass nil for getDynamicFunc to use static configuration only.
-func (c *ServerConfig) GrpcServer(getDynamicFunc func(ctx context.Context) *tls.Config) (*grpc.Server, error) {
-	creds, err := c.TLS.ServerCredentials(getDynamicFunc)
+// If getDynamicTLSFunc is provided, enables dynamic CA certificate support using GetConfigForClient callback.
+// Pass nil for getDynamicTLSFunc to use static configuration only.
+func (c *ServerConfig) GrpcServer(getDynamicTLSFunc func(ctx context.Context) *tls.Config) (*grpc.Server, error) {
+	creds, err := c.TLS.ServerCredentials(getDynamicTLSFunc)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed loading the server's grpc credentials")
 	}

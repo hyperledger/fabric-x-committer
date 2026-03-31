@@ -147,6 +147,9 @@ max-request-keys: 10000
 # This prevents excessive database queries when multiple clients connect simultaneously.
 acl-refresh-interval: 200ms
 
+# ca-fetch-timeout defines the maximum time to wait for fetching CA certificates from the database during TLS handshake.
+ca-fetch-timeout: 15s
+
 # Logging configuration
 logging:
   # Log level specification. Can be a single level (e.g., "info", "debug") or

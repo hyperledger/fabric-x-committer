@@ -50,7 +50,9 @@ type Config struct {
 	MaxRequestKeys int `mapstructure:"max-request-keys"`
 
 	// ACLRefreshInterval defines how long the query service caches configuration data
-	// (such as root CA certificates) before refreshing it from the database.
+	// before refreshing it from the database.
 	// This prevents excessive database queries when multiple clients connect simultaneously.
 	ACLRefreshInterval time.Duration `mapstructure:"acl-refresh-interval"`
+	// CaFetchTimeout defines the timeout for fetching CA certificates from the database.
+	CAFetchTimeout time.Duration `mapstructure:"ca-fetch-timeout"`
 }

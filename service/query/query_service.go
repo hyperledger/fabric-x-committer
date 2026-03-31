@@ -84,18 +84,13 @@ type (
 	}
 )
 
-// caFetchTimeout is the maximum time allowed for a single CA certificate fetch from the database tryout.
-// On failure, the existing CAs are kept and the next incoming connection will immediately retry.
-// This timeout prevents a slow or unresponsive database from blocking TLS handshakes indefinitely.
-const caFetchTimeout = 15 * time.Second
-
 // NewQueryService create a new QueryService given a configuration.
 func NewQueryService(config *Config) (*Service, error) {
 	tlsMaterials, err := connection.NewServerTLSMaterials(config.Server.TLS)
 	if err != nil {
 		return nil, err
 	}
-	tlsConfig, err := tlsMaterials.CreateServerTLSConfig(nil)
+	tlsConfig, err := tlsMaterials.CreateBasicServerTLSConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -108,9 +103,7 @@ func NewQueryService(config *Config) (*Service, error) {
 		tlsConfig:     atomic.Pointer[*tls.Config]{},
 		staticCACerts: tlsMaterials.CACerts,
 	}
-
 	service.tlsConfig.Store(&tlsConfig)
-
 	return service, nil
 }
 
@@ -200,11 +193,18 @@ func (q *Service) refreshDynamicRootCAs(ctx context.Context) {
 
 	logger.Debug("Refreshing dynamic root CAs from config transaction")
 
-	// TODO: Add version optimization, We don't need to read the config-block if it didn't change.
-	ctx, cancel := context.WithTimeout(ctx, caFetchTimeout)
+	// Early exit if TLS is not configured (should not happen
+	// since this method is only called during TLS handshake, but safe to verify)
+	currentConfig := q.tlsConfig.Load()
+	if currentConfig == nil || *currentConfig == nil {
+		logger.Warn("No current TLS config to update")
+		return
+	}
+
+	queryContext, cancel := context.WithTimeout(ctx, q.config.CAFetchTimeout)
 	defer cancel()
 
-	configTx, err := q.GetConfigTransaction(ctx, nil)
+	configTx, err := q.GetConfigTransaction(queryContext, nil)
 	if err != nil {
 		logger.Warnf("Failed to fetch config transaction for dynamic CAs: %v", err)
 		return // Keep existing config
@@ -222,22 +222,11 @@ func (q *Service) refreshDynamicRootCAs(ctx context.Context) {
 		return // Keep existing config
 	}
 
-	if len(dynamicCAs) == 0 {
-		logger.Warn("no CA certificates found in config block")
-	}
-
 	mergedCAs := connection.MergeCACerts(q.staticCACerts, dynamicCAs)
-	certPool, err := connection.BuildCertPoolFromBytes(mergedCAs)
+	certPool, err := connection.BuildCertPool(mergedCAs)
 	if err != nil {
 		logger.Warnf("Failed to build cert pool: %v", err)
 		return // Keep existing config
-	}
-
-	// Clone current config and update ClientCAs
-	currentConfig := q.tlsConfig.Load()
-	if currentConfig == nil || *currentConfig == nil {
-		logger.Warn("No current TLS config to update")
-		return
 	}
 
 	newConfig := (*currentConfig).Clone()

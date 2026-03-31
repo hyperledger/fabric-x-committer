@@ -114,7 +114,7 @@ func startService(ctx context.Context, name, configPath string) error {
 		}
 		service, err := query.NewQueryService(conf)
 		if err != nil {
-			return errors.Wrap(err, "failed to create sidecar service")
+			return errors.Wrap(err, "failed to create query service")
 		}
 		return connection.StartService(ctx, service, conf.Server)
 
