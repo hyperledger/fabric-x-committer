@@ -69,6 +69,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 				tlsMode: mode,
 				cmd:     commonTestNodeCMD,
 			})
+			waitForContainerHealthy(ctx, t, containerName)
 
 			v := config.NewViperWithLoadGenDefaults()
 			c, err := config.ReadLoadGenYamlAndSetupLogging(v, filepath.Join(localConfigPath, "loadgen.yaml"))
@@ -213,6 +214,7 @@ func TestStartTestNode(t *testing.T) {
 		tlsMode: connection.NoneTLSMode,
 		cmd:     append(commonTestNodeCMD, "loadgen"),
 	})
+	waitForContainerHealthy(ctx, t, containerName)
 
 	t.Log("Try to fetch the first block")
 	sidecarEndpoint := mustGetEndpoint(ctx, t, containerName, sidecarPort)
@@ -260,6 +262,13 @@ func startCommitter(ctx context.Context, t *testing.T, params startNodeParameter
 				"SC_LOADGEN_MONITORING_TLS_MODE=" + params.tlsMode,
 				"SC_LOADGEN_ORDERER_CLIENT_SIDECAR_CLIENT_TLS_MODE=" + params.tlsMode,
 				"SC_LOADGEN_ORDERER_CLIENT_ORDERER_TLS_MODE=" + params.tlsMode,
+			},
+			Healthcheck: &container.HealthConfig{
+				Test:        []string{"CMD", "healthcheck"},
+				Interval:    2 * time.Second,
+				Timeout:     5 * time.Second,
+				StartPeriod: 30 * time.Second,
+				Retries:     30,
 			},
 			Tty: true,
 		},
