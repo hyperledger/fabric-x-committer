@@ -377,13 +377,14 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 	}
 	env.policyManager.update(expectedUpdate)
 
-	t.Log("Verify that all mock policy verifiers have the same verification key")
-	env.requireAllUpdate(t, verifierStreams, 1, expectedUpdate)
-
 	// Drain the output channel in the background to prevent signVerifier goroutines from blocking
-	// on channel writes after requireAllUpdate fills it up. Without this, goroutines stuck on
-	// Write() never reach Recv(), so they can't detect server failures via broken streams.
+	// on channel writes. Without this, goroutines stuck on Write() never reach Recv(), so they
+	// can't detect server failures via broken streams. Starting the drain before requireAllUpdate
+	// ensures signVerifiers never block on Write during batch processing, keeping them responsive
+	// to stream errors when the server is stopped later.
+	drainReady := channel.NewReady()
 	go func() {
+		drainReady.SignalReady()
 		for {
 			select {
 			case <-t.Context().Done():
@@ -392,6 +393,10 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 			}
 		}
 	}()
+	require.True(t, drainReady.WaitForReady(t.Context()))
+
+	t.Log("Verify that all mock policy verifiers have the same verification key")
+	env.requireAllUpdate(t, verifierStreams, 1, expectedUpdate)
 
 	t.Log("Stop the service")
 	env.grpcServers.Servers[0].Stop()
