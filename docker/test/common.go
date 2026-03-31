@@ -202,6 +202,21 @@ func assembleContainerName(node, tlsMode, dbType string) string {
 	return fmt.Sprintf("%s_%s_%s_%s", test.DockerNamesPrefix, node, tlsMode, dbType)
 }
 
+// waitForContainerHealthy waits until Docker reports the container as healthy.
+func waitForContainerHealthy(ctx context.Context, t *testing.T, containerName string) {
+	t.Helper()
+	dockerClient := createDockerClient(t)
+	t.Logf("Waiting for %s to be healthy", containerName)
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+		assert.NoError(ct, err)
+		if inspect.State.Health != nil {
+			assert.Equal(ct, "healthy", inspect.State.Health.Status)
+		}
+	}, 3*time.Minute, 500*time.Millisecond, "%s did not become healthy", containerName)
+	t.Logf("%s is healthy", containerName)
+}
+
 func copyArtifactsFromContainer(ctx context.Context, t *testing.T, containerName string) string {
 	t.Helper()
 

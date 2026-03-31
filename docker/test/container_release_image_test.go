@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/go-connections/nat"
@@ -109,6 +110,10 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					// start the committer nodes.
 					for _, node := range committerNodes {
 						startCommitterNodeWithReleaseImage(ctx, t, params.asNode(node))
+					}
+					// Wait for each committer node to be healthy.
+					for _, node := range committerNodes {
+						waitForContainerHealthy(ctx, t, assembleContainerName(node, mode, dbType))
 					}
 					// start the load generator node.
 					startLoadgenNodeWithReleaseImage(ctx, t, params.asNode(loadgenNode))
@@ -215,6 +220,16 @@ func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, param
 				"SC_QUERY_DATABASE_USERNAME=" + params.dbUsername(),
 				"SC_VC_DATABASE_DATABASE=" + params.dbDefaultDatabase(),
 				"SC_QUERY_DATABASE_DATABASE=" + params.dbDefaultDatabase(),
+			},
+			Healthcheck: &container.HealthConfig{
+				Test: []string{
+					"CMD", "/bin/entrypoint", "healthcheck", params.node,
+					"--config", fmt.Sprintf("%s.yaml", configPath),
+				},
+				Interval:    2 * time.Second,
+				Timeout:     5 * time.Second,
+				StartPeriod: 30 * time.Second,
+				Retries:     30,
 			},
 			Tty: true,
 		},

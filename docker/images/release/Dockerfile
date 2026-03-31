@@ -51,5 +51,8 @@ LABEL org.opencontainers.image.created="${CREATED}" \
 USER 10001
 WORKDIR /home/${BIN}
 
+# Health check: configure in docker-compose.yml or orchestrator with:
+#   HEALTHCHECK CMD ["/bin/entrypoint", "healthcheck", "<service>", "--config", "<config-path>"]
+
 # Default Entrypoint
 ENTRYPOINT ["/bin/entrypoint"]
