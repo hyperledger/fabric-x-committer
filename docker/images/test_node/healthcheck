@@ -7,7 +7,7 @@
 
 set -e
 
-"$BINS_PATH/committer" healthcheck sidecar     --config "$CONFIGS_PATH/sidecar.yaml"
+"$BINS_PATH/committer" healthcheck sidecar      --config "$CONFIGS_PATH/sidecar.yaml"
 "$BINS_PATH/committer" healthcheck coordinator  --config "$CONFIGS_PATH/coordinator.yaml"
 "$BINS_PATH/committer" healthcheck vc           --config "$CONFIGS_PATH/vc.yaml"
 "$BINS_PATH/committer" healthcheck verifier     --config "$CONFIGS_PATH/verifier.yaml"

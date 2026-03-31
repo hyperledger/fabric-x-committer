@@ -59,36 +59,34 @@ func TestHealthcheckCMD(t *testing.T) {
 	})
 	notServingSystem := newSystemConfig(&notServingConfig.Endpoint)
 
-	serviceCases := []struct {
-		Service string
-		Name    string
-		Templ   string
+	for _, sc := range []struct {
+		service string
+		name    string
+		templ   string
 	}{
-		{Service: sidecarService, Name: serviceNames[sidecarService], Templ: config.TemplateSidecar},
-		{Service: coordinatorService, Name: serviceNames[coordinatorService], Templ: config.TemplateCoordinator},
-		{Service: vcService, Name: serviceNames[vcService], Templ: config.TemplateVC},
-		{Service: verifierService, Name: serviceNames[verifierService], Templ: config.TemplateVerifier},
-		{Service: queryService, Name: serviceNames[queryService], Templ: config.TemplateQueryService},
-	}
-
-	for _, sc := range serviceCases {
-		t.Run(fmt.Sprintf("%s/serving", sc.Name), func(t *testing.T) {
+		{service: sidecarService, name: serviceNames[sidecarService], templ: config.TemplateSidecar},
+		{service: coordinatorService, name: serviceNames[coordinatorService], templ: config.TemplateCoordinator},
+		{service: vcService, name: serviceNames[vcService], templ: config.TemplateVC},
+		{service: verifierService, name: serviceNames[verifierService], templ: config.TemplateVerifier},
+		{service: queryService, name: serviceNames[queryService], templ: config.TemplateQueryService},
+	} {
+		t.Run(fmt.Sprintf("%s/serving", sc.name), func(t *testing.T) {
 			cliutil.UnitTestRunner(t, committerCMD(), cliutil.CommandTest{
 				Name:              "healthcheck",
-				Args:              []string{"healthcheck", sc.Service},
-				CmdStdOutput:      fmt.Sprintf("%s: SERVING", sc.Name),
-				UseConfigTemplate: sc.Templ,
+				Args:              []string{"healthcheck", sc.service},
+				CmdStdOutput:      fmt.Sprintf("%s: SERVING", sc.name),
+				UseConfigTemplate: sc.templ,
 				System:            servingSystem,
 			})
 		})
 
-		t.Run(fmt.Sprintf("%s/not-serving", sc.Name), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s/not-serving", sc.name), func(t *testing.T) {
 			cliutil.UnitTestRunner(t, committerCMD(), cliutil.CommandTest{
 				Name:              "healthcheck",
-				Args:              []string{"healthcheck", sc.Service},
-				CmdStdErrOutput:   fmt.Sprintf("%s: NOT SERVING", sc.Name),
+				Args:              []string{"healthcheck", sc.service},
+				CmdStdErrOutput:   fmt.Sprintf("%s: NOT SERVING", sc.name),
 				Err:               errors.New("service is NOT_SERVING"),
-				UseConfigTemplate: sc.Templ,
+				UseConfigTemplate: sc.templ,
 				System:            notServingSystem,
 			})
 		})
