@@ -356,6 +356,11 @@ func (env *DatabaseTestEnv) rowExists(t *testing.T, nsID string, exp namespaceWr
 	}
 }
 
+// NewStateImporterForTest creates a StateImporter backed by the test environment's database.
+func (env *DatabaseTestEnv) NewStateImporterForTest() *StateImporter {
+	return NewStateImporter(env.DB)
+}
+
 func (env *DatabaseTestEnv) rowNotExists(t *testing.T, nsID string, keys [][]byte) {
 	t.Helper()
 	actualRows := env.FetchKeys(t, nsID, keys)
