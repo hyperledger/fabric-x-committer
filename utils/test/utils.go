@@ -39,6 +39,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/grpcservice"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
@@ -208,7 +209,7 @@ func RunServiceForTest(
 func RunServiceAndGrpcForTest(
 	ctx context.Context,
 	t *testing.T,
-	service connection.Service,
+	service grpcservice.Service,
 	serverConfig ...*connection.ServerConfig,
 ) *channel.Ready {
 	t.Helper()
