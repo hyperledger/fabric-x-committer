@@ -681,7 +681,6 @@ func requireEqualMapOfLists[K comparable, V any](t *testing.T, expected, actual 
 	}
 }
 
-//nolint:gocognit // single method for simplicity.
 func BenchmarkPrepare(b *testing.B) {
 	flogging.ActivateSpec("fatal")
 
@@ -698,7 +697,7 @@ func BenchmarkPrepare(b *testing.B) {
 				return p.run(ctx, w)
 			}, nil)
 
-			txPoll := workload.GenerateTransactions(b, nil, max(b.N*3, batchSize*3))
+			txPoll := workload.GenerateTransactions(b, nil, max(b.N, batchSize))
 
 			inCtx := channel.NewWriter(b.Context(), txBatch)
 			outCtx := channel.NewReader(b.Context(), preparedTxs)
@@ -706,10 +705,12 @@ func BenchmarkPrepare(b *testing.B) {
 			// Generates the load to the preparer's queue.
 			go func() {
 				var i uint64
-				for b.Context().Err() == nil && len(txPoll) > 0 {
-					take := min(batchSize, len(txPoll))
+				remaining := b.N
+				for b.Context().Err() == nil && remaining > 0 {
+					take := min(batchSize, len(txPoll), remaining)
 					inCtx.Write(workload.MapToVcBatch(i, txPoll[:take]))
 					txPoll = txPoll[take:]
+					remaining -= take
 					i++
 				}
 			}()
@@ -723,6 +724,7 @@ func BenchmarkPrepare(b *testing.B) {
 				total += len(batch.txIDToHeight)
 			}
 			b.StopTimer()
+			test.ReportTxPerSecond(b)
 		})
 	}
 }
