@@ -18,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 func BenchmarkMapOneBlock(b *testing.B) {
@@ -29,6 +30,7 @@ func BenchmarkMapOneBlock(b *testing.B) {
 	b.ResetTimer()
 	mappedBlock, err := mapBlock(block, &txIDToHeight)
 	b.StopTimer()
+	test.ReportTxPerSecond(b)
 	require.NoError(b, err, "This can never occur unless there is a bug in the relay.")
 	require.NotNil(b, mappedBlock)
 }
@@ -65,7 +67,7 @@ func BenchmarkMapBlockSize(b *testing.B) {
 				}
 				blockIdx++
 			}
-			b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "tx/s")
+			test.ReportTxPerSecond(b)
 		})
 	}
 }

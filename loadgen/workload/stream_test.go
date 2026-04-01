@@ -103,6 +103,7 @@ func BenchmarkGenTx(b *testing.B) {
 			txs := g.Consume(ctx, param)
 			sum += len(txs)
 		}
+		test.ReportTxPerSecond(b)
 	})
 }
 

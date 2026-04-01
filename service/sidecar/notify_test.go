@@ -101,6 +101,7 @@ func BenchmarkNotifier(b *testing.B) {
 		notifiedCount += len(res.TxStatusEvents)
 	}
 	b.StopTimer()
+	test.ReportTxPerSecond(b)
 }
 
 type notifierTestEnv struct {

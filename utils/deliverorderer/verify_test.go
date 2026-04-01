@@ -23,6 +23,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 func BenchmarkVerifyBlock(b *testing.B) {
@@ -48,6 +49,7 @@ func BenchmarkVerifyBlock(b *testing.B) {
 				require.NoError(b, verErr)
 			}
 			b.StopTimer()
+			test.ReportTxPerSecond(b)
 		})
 	}
 }

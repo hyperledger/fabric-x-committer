@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 //nolint:gocognit // cognitive complexity 24 > 15
@@ -89,6 +90,7 @@ func BenchmarkLatencyTrackerPortion(b *testing.B) {
 			for _, txID := range txIDs {
 				sampler(txID)
 			}
+			test.ReportTxPerSecond(b)
 		})
 	}
 }
