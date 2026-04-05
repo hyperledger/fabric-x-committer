@@ -43,3 +43,6 @@ test/**/*.log
 
 .DS_Store
 venv
+
+# MkDocs build output
+site/
