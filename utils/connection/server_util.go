@@ -35,6 +35,10 @@ type (
 		WaitForReady(ctx context.Context) bool
 		// RegisterService registers the supported APIs for this service.
 		RegisterService(server *grpc.Server)
+		// StartMonitoringServer starts the Prometheus monitoring server.
+		// This method blocks until the server exits or the context is cancelled.
+		// Monitoring server errors are logged but do not cause the service to stop.
+		StartMonitoringServer(ctx context.Context)
 	}
 )
 
@@ -192,6 +196,9 @@ func RunGrpcServer(
 
 // StartService runs a service, waits until it is ready, and register the gRPC server(s).
 // It will stop if either the service ended or its respective gRPC server.
+// The monitoring server is started before the gRPC servers to ensure metrics are ready
+// when the first request arrives, preventing a race condition where early requests could
+// execute before metrics are initialized.
 func StartService(
 	ctx context.Context,
 	service Service,
@@ -201,6 +208,14 @@ func StartService(
 	defer cancel()
 
 	g, gCtx := errgroup.WithContext(ctx)
+
+	// Start monitoring server first (in background).
+	// Monitoring errors are logged but do not stop the service.
+	g.Go(func() error {
+		service.StartMonitoringServer(gCtx)
+		return nil
+	})
+
 	g.Go(func() error {
 		// If the service stops, there is no reason to continue the GRPC server.
 		defer cancel()

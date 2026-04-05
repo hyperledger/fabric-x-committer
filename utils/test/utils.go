@@ -27,7 +27,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
-	"github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -205,6 +204,8 @@ func RunServiceForTest(
 
 // RunServiceAndGrpcForTest combines running a service and its GRPC server.
 // It is intended for services that implements the Service API (i.e., command line services).
+// The monitoring server is started first to ensure metrics are ready before the gRPC server
+// starts accepting requests.
 func RunServiceAndGrpcForTest(
 	ctx context.Context,
 	t *testing.T,
@@ -212,6 +213,14 @@ func RunServiceAndGrpcForTest(
 	serverConfig ...*connection.ServerConfig,
 ) *channel.Ready {
 	t.Helper()
+
+	// Start monitoring server with proper lifecycle management.
+	// RunServiceForTest ensures the goroutine is tracked and cleaned up when test ends.
+	_ = RunServiceForTest(ctx, t, func(ctx context.Context) error {
+		service.StartMonitoringServer(ctx)
+		return nil
+	}, func(context.Context) bool { return true })
+
 	doneFlag := RunServiceForTest(ctx, t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(service.Run(ctx))
 	}, service.WaitForReady)
@@ -422,20 +431,6 @@ const (
 	// CreatorID denotes Creator field in protoblocktx.Identity to contain the digest of x509 certificate.
 	CreatorID = 1
 )
-
-// NewOrdererEndpoints is a helper function to generate a list of Endpoint(s) from ServerConfig(s).
-func NewOrdererEndpoints(id uint32, configs ...*connection.ServerConfig) []*types.OrdererEndpoint {
-	ordererEndpoints := make([]*types.OrdererEndpoint, len(configs))
-	for i, c := range configs {
-		ordererEndpoints[i] = &types.OrdererEndpoint{
-			Host: c.Endpoint.Host,
-			Port: c.Endpoint.Port,
-			ID:   id,
-			API:  []string{types.Broadcast, types.Deliver},
-		}
-	}
-	return ordererEndpoints
-}
 
 // MustGetTLSConfig creates a tls.Config from a connection.TLSConfig while ensuring no error return from that process.
 func MustGetTLSConfig(t *testing.T, tlsConfig *connection.TLSConfig) *tls.Config {

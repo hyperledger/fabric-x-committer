@@ -49,11 +49,18 @@ func New(config *Config) *Server {
 	}
 }
 
-// Run the verifier background service.
-func (s *Server) Run(ctx context.Context) error {
+// StartMonitoringServer starts the Prometheus monitoring server.
+// This method blocks until the server exits or the context is cancelled.
+// Monitoring server errors are logged but do not cause the service to stop.
+func (s *Server) StartMonitoringServer(ctx context.Context) {
 	_ = s.metrics.Provider.StartPrometheusServer(ctx, s.config.Monitoring)
-	// We don't return error here to avoid stopping the service due to monitoring error.
-	// But we use the errgroup to ensure the method returns only when the server exits.
+}
+
+// Run the verifier background service.
+// The verifier does not have its own background workers, so it stays alive until the
+// service context is cancelled.
+func (s *Server) Run(ctx context.Context) error {
+	<-ctx.Done()
 	return nil
 }
 

@@ -109,6 +109,13 @@ func getAdapter(conf *adapters.AdapterConfig, res *adapters.ClientResources) (Se
 	}
 }
 
+// StartMonitoringServer starts the Prometheus monitoring server.
+// This method blocks until the server exits or the context is cancelled.
+// Monitoring server errors are logged but do not cause the service to stop.
+func (c *Client) StartMonitoringServer(ctx context.Context) {
+	_ = c.resources.Metrics.StartPrometheusServer(ctx, &c.conf.Monitoring.ServerConfig)
+}
+
 // Run applies load on the service.
 func (c *Client) Run(ctx context.Context) error {
 	logger.Infof("Starting workload generation")
@@ -117,9 +124,6 @@ func (c *Client) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	g, gCtx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		return c.resources.Metrics.StartPrometheusServer(gCtx, &c.conf.Monitoring.ServerConfig)
-	})
 	g.Go(func() error {
 		return c.runHTTPServer(ctx)
 	})
