@@ -8,6 +8,7 @@ package loadgen
 
 import (
 	"context"
+	"crypto/tls"
 	"net/http"
 	"time"
 
@@ -169,6 +170,11 @@ func (c *Client) RegisterService(server *grpc.Server) {
 	healthgrpc.RegisterHealthServer(server, c.healthcheck)
 }
 
+// GetDynamicTLSConfig returns nil as this service does not support dynamic CA updates.
+func (*Client) GetDynamicTLSConfig(_ context.Context) *tls.Config {
+	return nil
+}
+
 // AppendBatch appends a batch to the stream.
 func (c *Client) AppendBatch(ctx context.Context, batch *servicepb.LoadGenBatch) (*emptypb.Empty, error) {
 	c.txStream.AppendBatch(ctx, batch.Tx)
@@ -197,7 +203,7 @@ func (c *Client) runHTTPServer(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	tlsCfg, err := tlsMaterials.CreateServerTLSConfig()
+	tlsCfg, err := tlsMaterials.CreateBasicServerTLSConfig()
 	if err != nil {
 		return err
 	}

@@ -8,6 +8,7 @@ package sidecar
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -77,6 +78,21 @@ func New(c *Config) (*Service, error) {
 	if c.ChannelBufferSize <= 0 {
 		c.ChannelBufferSize = defaultBufferSize
 	}
+
+	tlsMaterials, err := connection.NewServerTLSMaterials(c.Server.TLS)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create TLS materials: %w", err)
+	}
+
+	// Create initial tls.Config with static CAs
+	tlsConfig, err := tlsMaterials.CreateBasicServerTLSConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create initial TLS config: %w", err)
+	}
+
+	relayService.tlsConfig.Store(&tlsConfig)
+	relayService.staticCACerts = tlsMaterials.CACerts
+
 	return &Service{
 		deliveryParams: deliveryParams,
 		relay:          relayService,
@@ -90,6 +106,16 @@ func New(c *Config) (*Service, error) {
 		committedBlock: make(chan *common.Block, c.ChannelBufferSize),
 		statusQueue:    make(chan []*committerpb.TxStatus, c.ChannelBufferSize),
 	}, nil
+}
+
+// GetDynamicTLSConfig returns the pre-configured tls.Config with merged static + dynamic CAs.
+// The sidecar updates this config when processing config blocks from the orderer, enabling
+// certificate rotation without a service restart.
+func (s *Service) GetDynamicTLSConfig(_ context.Context) *tls.Config {
+	if v := s.relay.tlsConfig.Load(); v != nil {
+		return *v
+	}
+	return nil
 }
 
 // WaitForReady wait for sidecar to be ready to be exposed as gRPC service.

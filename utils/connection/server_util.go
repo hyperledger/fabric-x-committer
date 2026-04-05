@@ -8,6 +8,7 @@ package connection
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 	"regexp"
 	"time"
@@ -26,7 +27,7 @@ import (
 const tcpProtocol = "tcp"
 
 type (
-	// Service describes the method that are required for a service to run.
+	// Service describes the methods that are required for a service to run.
 	Service interface {
 		// Run executes the service until the context is done.
 		Run(ctx context.Context) error
@@ -35,6 +36,13 @@ type (
 		WaitForReady(ctx context.Context) bool
 		// RegisterService registers the supported APIs for this service.
 		RegisterService(server *grpc.Server)
+		// GetDynamicTLSConfig returns a pre-configured tls.Config for services
+		// that support dynamic CA updates.
+		// Services without dynamic CAs support return nil.
+		// This method is called during TLS handshake (via GetConfigForClient) to retrieve
+		// the complete TLS configuration with both static YAML CAs and dynamic config-block CAs.
+		// The returned config should be ready to use directly in TLS handshakes.
+		GetDynamicTLSConfig(ctx context.Context) *tls.Config
 	}
 )
 
@@ -53,46 +61,38 @@ var (
 	portConflictRegex = regexp.MustCompile(`(?i)(address\s+already\s+in\s+use|port\s+is\s+already\s+allocated)`)
 )
 
-// GrpcServer instantiate a [grpc.Server].
-func (c *ServerConfig) GrpcServer() (*grpc.Server, error) {
-	opts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxMsgSize), grpc.MaxSendMsgSize(maxMsgSize)}
-	serverGrpcTransportCreds, err := c.TLS.ServerCredentials()
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed loading the server's grpc credentials")
-	}
-	opts = append(opts, grpc.Creds(serverGrpcTransportCreds))
+// StartService runs a service, waits until it is ready, and register the gRPC server(s).
+// It will stop if either the service ended or its respective gRPC server.
+func StartService(
+	ctx context.Context,
+	service Service,
+	serverConfigs ...*ServerConfig,
+) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	if err := c.RateLimit.Validate(); err != nil {
-		return nil, errors.Wrap(err, "invalid rate limit configuration")
+	g, gCtx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		// If the service stops, there is no reason to continue the GRPC server.
+		defer cancel()
+		return service.Run(gCtx)
+	})
+
+	ctxTimeout, cancelTimeout := context.WithTimeout(gCtx, 5*time.Minute) // TODO: make this configurable.
+	defer cancelTimeout()
+	if !service.WaitForReady(ctxTimeout) {
+		cancel()
+		return errors.Wrapf(g.Wait(), "service is not ready")
 	}
 
-	if limiter := NewRateLimiter(&c.RateLimit); limiter != nil {
-		opts = append(opts, grpc.UnaryInterceptor(RateLimitInterceptor(limiter)))
-		logger.Infof("Rate limiting enabled: %d requests/second, burst: %d",
-			c.RateLimit.RequestsPerSecond, c.RateLimit.Burst)
+	for _, server := range serverConfigs {
+		g.Go(func() error {
+			// If the GRPC servers stop, there is no reason to continue the service.
+			defer cancel()
+			return RunGrpcServer(gCtx, server, service)
+		})
 	}
-
-	if sem := NewConcurrencyLimit(c.MaxConcurrentStreams); sem != nil {
-		opts = append(opts, grpc.StreamInterceptor(StreamConcurrencyInterceptor(sem)))
-		logger.Infof("Stream concurrency limit enabled: %d max concurrent streams", c.MaxConcurrentStreams)
-	}
-
-	if c.KeepAlive != nil && c.KeepAlive.Params != nil {
-		opts = append(opts, grpc.KeepaliveParams(keepalive.ServerParameters{
-			MaxConnectionIdle:     c.KeepAlive.Params.MaxConnectionIdle,
-			MaxConnectionAge:      c.KeepAlive.Params.MaxConnectionAge,
-			MaxConnectionAgeGrace: c.KeepAlive.Params.MaxConnectionAgeGrace,
-			Time:                  c.KeepAlive.Params.Time,
-			Timeout:               c.KeepAlive.Params.Timeout,
-		}))
-	}
-	if c.KeepAlive != nil && c.KeepAlive.EnforcementPolicy != nil {
-		opts = append(opts, grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-			MinTime:             c.KeepAlive.EnforcementPolicy.MinTime,
-			PermitWithoutStream: c.KeepAlive.EnforcementPolicy.PermitWithoutStream,
-		}))
-	}
-	return grpc.NewServer(opts...), nil
+	return g.Wait()
 }
 
 // Listener instantiate a [net.Listener] and updates the config port with the effective port.
@@ -168,13 +168,43 @@ func (c *ServerConfig) ClosePreAllocatedListener() error {
 func RunGrpcServer(
 	ctx context.Context,
 	serverConfig *ServerConfig,
+	service Service,
+) error {
+	listener, err := serverConfig.Listener(ctx)
+	if err != nil {
+		return err
+	}
+
+	//nolint:contextcheck // Context from chi.Context() is passed to getDynamicTLSConfig during TLS handshake.
+	server, err := serverConfig.GrpcServer(service.GetDynamicTLSConfig)
+	if err != nil {
+		return errors.Wrapf(err, "failed creating grpc server")
+	}
+	service.RegisterService(server)
+
+	g, gCtx := errgroup.WithContext(ctx)
+	logger.Infof("Serving...")
+	g.Go(func() error {
+		return server.Serve(listener)
+	})
+	<-gCtx.Done()
+	server.Stop()
+	return g.Wait()
+}
+
+// RunGrpcServerWithRegister runs a server with a custom register function.
+// This is useful for standalone servers that don't implement the full Service interface.
+func RunGrpcServerWithRegister(
+	ctx context.Context,
+	serverConfig *ServerConfig,
 	register func(server *grpc.Server),
 ) error {
 	listener, err := serverConfig.Listener(ctx)
 	if err != nil {
 		return err
 	}
-	server, err := serverConfig.GrpcServer()
+	//nolint:contextcheck // Since getDynamicTLSFunc is nil, context will not be used.
+	server, err := serverConfig.GrpcServer(nil)
 	if err != nil {
 		return errors.Wrapf(err, "failed creating grpc server")
 	}
@@ -190,38 +220,45 @@ func RunGrpcServer(
 	return g.Wait()
 }
 
-// StartService runs a service, waits until it is ready, and register the gRPC server(s).
-// It will stop if either the service ended or its respective gRPC server.
-func StartService(
-	ctx context.Context,
-	service Service,
-	serverConfigs ...*ServerConfig,
-) error {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	g, gCtx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		// If the service stops, there is no reason to continue the GRPC server.
-		defer cancel()
-		return service.Run(gCtx)
-	})
-
-	ctxTimeout, cancelTimeout := context.WithTimeout(gCtx, 5*time.Minute) // TODO: make this configurable.
-	defer cancelTimeout()
-	if !service.WaitForReady(ctxTimeout) {
-		cancel()
-		return errors.Wrapf(g.Wait(), "service is not ready")
+// GrpcServer instantiates a gRPC server with the provided configuration.
+// If getDynamicTLSFunc is provided, enables dynamic CA certificate support using GetConfigForClient callback.
+// Pass nil for getDynamicTLSFunc to use static configuration only.
+func (c *ServerConfig) GrpcServer(getDynamicTLSFunc func(ctx context.Context) *tls.Config) (*grpc.Server, error) {
+	creds, err := c.TLS.ServerCredentials(getDynamicTLSFunc)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed loading the server's grpc credentials")
 	}
 
-	for _, server := range serverConfigs {
-		g.Go(func() error {
-			// If the GRPC servers stop, there is no reason to continue the service.
-			defer cancel()
-			return RunGrpcServer(gCtx, server, service.RegisterService)
-		})
+	opts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxMsgSize), grpc.MaxSendMsgSize(maxMsgSize)}
+	opts = append(opts, grpc.Creds(creds))
+
+	if limiter := NewRateLimiter(&c.RateLimit); limiter != nil {
+		opts = append(opts, grpc.UnaryInterceptor(RateLimitInterceptor(limiter)))
+		logger.Infof("Rate limiting enabled: %d requests/second, burst: %d",
+			c.RateLimit.RequestsPerSecond, c.RateLimit.Burst)
 	}
-	return g.Wait()
+
+	if sem := NewConcurrencyLimit(c.MaxConcurrentStreams); sem != nil {
+		opts = append(opts, grpc.StreamInterceptor(StreamConcurrencyInterceptor(sem)))
+		logger.Infof("Stream concurrency limit enabled: %d max concurrent streams", c.MaxConcurrentStreams)
+	}
+
+	if c.KeepAlive != nil && c.KeepAlive.Params != nil {
+		opts = append(opts, grpc.KeepaliveParams(keepalive.ServerParameters{
+			MaxConnectionIdle:     c.KeepAlive.Params.MaxConnectionIdle,
+			MaxConnectionAge:      c.KeepAlive.Params.MaxConnectionAge,
+			MaxConnectionAgeGrace: c.KeepAlive.Params.MaxConnectionAgeGrace,
+			Time:                  c.KeepAlive.Params.Time,
+			Timeout:               c.KeepAlive.Params.Timeout,
+		}))
+	}
+	if c.KeepAlive != nil && c.KeepAlive.EnforcementPolicy != nil {
+		opts = append(opts, grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime:             c.KeepAlive.EnforcementPolicy.MinTime,
+			PermitWithoutStream: c.KeepAlive.EnforcementPolicy.PermitWithoutStream,
+		}))
+	}
+	return grpc.NewServer(opts...), nil
 }
 
 // DefaultHealthCheckService returns a health-check service that returns SERVING for all services.

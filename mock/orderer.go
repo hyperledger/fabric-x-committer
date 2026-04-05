@@ -9,6 +9,7 @@ package mock
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"math"
@@ -432,6 +433,11 @@ func (*Orderer) WaitForReady(context.Context) bool {
 func (o *Orderer) RegisterService(server *grpc.Server) {
 	ab.RegisterAtomicBroadcastServer(server, o)
 	healthgrpc.RegisterHealthServer(server, o.healthcheck)
+}
+
+// GetDynamicTLSConfig returns nil as this service does not support dynamic CA updates.
+func (*Orderer) GetDynamicTLSConfig(_ context.Context) *tls.Config {
+	return nil
 }
 
 // SubmitBlock allows submitting blocks directly for testing other packages.

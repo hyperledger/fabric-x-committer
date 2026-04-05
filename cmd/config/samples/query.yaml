@@ -142,6 +142,14 @@ max-view-timeout: 10s
 # Set to 0 to disable the limit (not recommended for production).
 max-request-keys: 10000
 
+# acl-refresh-interval defines how long the query service caches configuration data
+# before refreshing it from the database.
+# This prevents excessive database queries when multiple clients connect simultaneously.
+acl-refresh-interval: 200ms
+
+# ca-fetch-timeout defines the maximum time to wait for fetching CA certificates from the database during TLS handshake.
+ca-fetch-timeout: 15s
+
 # Logging configuration
 logging:
   # Log level specification. Can be a single level (e.g., "info", "debug") or

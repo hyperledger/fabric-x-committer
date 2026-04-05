@@ -145,3 +145,54 @@ tls:
   ca-cert-path: /server-certs/ca-certificate.pem
 
 ```
+
+## Dynamic CA Certificate Rotation
+
+Some services support **dynamic root CA certificate rotation** — the ability to update
+the set of trusted client CA certificates at runtime, without restarting the service.
+
+### How it works
+
+Services that support dynamic CAs read the current set of trusted root CA certificates
+from the **config block**.
+These certificates are merged with the YAML CAs defined in `ca-cert-paths`.
+
+This means:
+- Existing connections are **not affected** when CAs are updated.
+- New connections will use the **latest merged CA set** (static YAML CAs + dynamic config-block CAs).
+- No service restart is required when a new organization's CA is added to the channel.
+
+> **Note:** Dynamic CA support only applies when the server TLS mode is `mtls`.
+> For `tls` or `none` modes, the standard static TLS configuration is used.
+
+### Services with dynamic CA support
+
+| Service | Dynamic CA source |
+|---------|-------------------|
+| **Sidecar** | Updated from config blocks received from the orderer. Applied immediately when a config block is processed, regardless of TLS mode (none/tls/mtls). When TLS is disabled, the update is skipped gracefully. |
+| **Query Service** | Periodically fetched from the config transaction in the state database during TLS handshake. Refresh interval is controlled by `acl-refresh-interval`. |
+
+### Query Service: Configuration Fields
+
+The query service caches the tls.Config and refreshes it on a configurable interval
+to avoid excessive database queries when multiple clients connect simultaneously.
+
+| Field | Type | Description |
+|:---| :--- |:--- |
+| **`acl-refresh-interval`** | Duration | How often the query service refreshes configuration data (such as root CA certificates) from the config transaction. Default: `200ms`. |
+| **`ca-fetch-timeout`** | Duration | Maximum time to wait when fetching CA certificates from the database during TLS handshake. Default: `15s`. |
+
+**Example configuration:**
+
+```yaml
+# acl-refresh-interval defines how often the query service refreshes configuration data
+# (such as root CA certificates) from the config transaction in the state database.
+# Increase this value to reduce database load in stable deployments.
+# Decrease it to pick up new organization CAs more quickly.
+acl-refresh-interval: 200ms
+
+# ca-fetch-timeout defines the maximum time to wait for fetching CA certificates
+# from the database during TLS handshake. Prevents indefinite blocking if a database
+# is slow or unavailable.
+ca-fetch-timeout: 15s
+```

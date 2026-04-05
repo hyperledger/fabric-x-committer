@@ -80,7 +80,11 @@ func startService(ctx context.Context, name, configPath string) error {
 		return connection.StartService(ctx, verifier.New(c), c.Server)
 
 	case *query.Config:
-		return connection.StartService(ctx, query.NewQueryService(c), c.Server)
+		service, err := query.NewQueryService(c)
+		if err != nil {
+			return errors.Wrap(err, "failed to create query service")
+		}
+		return connection.StartService(ctx, service, c.Server)
 
 	default:
 		return errors.Newf("unknown config type: %T", conf)
