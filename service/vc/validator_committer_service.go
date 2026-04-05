@@ -66,13 +66,6 @@ type ValidatorCommitterService struct {
 	isStreamActive atomic.Bool
 }
 
-// Limits is the struct that contains the limits of the service.
-type Limits struct {
-	MaxWorkersForPreparer  int
-	MaxWorkersForValidator int
-	MaxWorkersForCommitter int
-}
-
 // NewValidatorCommitterService creates a new ValidatorCommitterService.
 // It creates the preparer, the validator and the committer.
 // It also creates the channels that are used to communicate between the preparer, the validator and the committer.
