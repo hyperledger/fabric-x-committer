@@ -208,33 +208,33 @@ kill-test-docker: FORCE
 # Benchmarks
 #########################
 
-# Run a load generation benchmarks with added TX/sec column.
+# Run load generation benchmarks.
 bench-loadgen: FORCE
-	$(go_cmd) test ./loadgen/... -bench "Benchmark.*" -run="^$$" | awk -f scripts/bench-tx-per-sec.awk
+	$(go_cmd) test ./loadgen/... -bench "Benchmark.*" -run="^$$"
 
-# Run dependency detector benchmarks with added op/sec column.
+# Run dependency detector benchmarks.
 bench-dep: FORCE
-	$(go_cmd) test ./service/coordinator/dependencygraph/... -timeout 60m -bench "BenchmarkDependencyGraph.*" -run="^$$" | awk -f scripts/bench-tx-per-sec.awk
+	$(go_cmd) test ./service/coordinator/dependencygraph/... -timeout 60m -bench "BenchmarkDependencyGraph.*" -run="^$$"
 
-# Run dependency detector benchmarks with added op/sec column.
+# Run preparer benchmarks.
 bench-preparer: FORCE
-	$(go_cmd) test ./service/vc/... -bench "BenchmarkPrepare.*" -run "^$$" | awk -f scripts/bench-tx-per-sec.awk
+	$(go_cmd) test ./service/vc/... -bench "BenchmarkPrepare.*" -run "^$$"
 
-# Run signature benchmarks with added op/sec column.
+# Run signature benchmarks.
 bench-sign: FORCE
-	$(go_cmd) test ./utils/signature/... -bench ".*" -run "^$$" | awk -f scripts/bench-tx-per-sec.awk
+	$(go_cmd) test ./utils/signature/... -bench ".*" -run "^$$"
 
-# Run sidecar benchmarks with added op/sec column.
+# Run sidecar benchmarks.
 bench-sidecar: FORCE
-	$(go_cmd) test ./service/sidecar/... -bench "Benchmark.*" -run "^$$" | awk -f scripts/bench-tx-per-sec.awk
+	$(go_cmd) test ./service/sidecar/... -bench "Benchmark.*" -run "^$$"
 
 # Run serialization benchmarks.
 bench-serialization: FORCE
 	$(go_cmd) test ./utils/serialization/... -bench "Benchmark.*" -run "^$$"
 
-# Run deliver benchmarks with added op/sec column.
+# Run deliver benchmarks.
 bench-deliver: FORCE
-	$(go_cmd) test ./utils/deliverorderer/... -bench "Benchmark.*" -run "^$$" | awk -f scripts/bench-tx-per-sec.awk
+	$(go_cmd) test ./utils/deliverorderer/... -bench "Benchmark.*" -run "^$$"
 
 #########################
 # Code Generation
