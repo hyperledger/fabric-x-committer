@@ -14,7 +14,6 @@ import (
 
 	"github.com/cenkalti/backoff/v5"
 	"github.com/cockroachdb/errors"
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
@@ -24,19 +23,6 @@ import (
 )
 
 const tcpProtocol = "tcp"
-
-type (
-	// Service describes the method that are required for a service to run.
-	Service interface {
-		// Run executes the service until the context is done.
-		Run(ctx context.Context) error
-		// WaitForReady waits for the service resources to initialize.
-		// If the context ended before the service is ready, returns false.
-		WaitForReady(ctx context.Context) bool
-		// RegisterService registers the supported APIs for this service.
-		RegisterService(server *grpc.Server)
-	}
-)
 
 var (
 	// listenRetry is the acceptable retry profile if port conflicts occur.
@@ -162,66 +148,6 @@ func (c *ServerConfig) ClosePreAllocatedListener() error {
 	listener := c.preAllocatedListener
 	c.preAllocatedListener = nil
 	return listener.Close()
-}
-
-// RunGrpcServer runs a server and returns error if failed.
-func RunGrpcServer(
-	ctx context.Context,
-	serverConfig *ServerConfig,
-	register func(server *grpc.Server),
-) error {
-	listener, err := serverConfig.Listener(ctx)
-	if err != nil {
-		return err
-	}
-	server, err := serverConfig.GrpcServer()
-	if err != nil {
-		return errors.Wrapf(err, "failed creating grpc server")
-	}
-	register(server)
-
-	g, gCtx := errgroup.WithContext(ctx)
-	logger.Infof("Serving...")
-	g.Go(func() error {
-		return server.Serve(listener)
-	})
-	<-gCtx.Done()
-	server.Stop()
-	return g.Wait()
-}
-
-// StartService runs a service, waits until it is ready, and register the gRPC server(s).
-// It will stop if either the service ended or its respective gRPC server.
-func StartService(
-	ctx context.Context,
-	service Service,
-	serverConfigs ...*ServerConfig,
-) error {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	g, gCtx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		// If the service stops, there is no reason to continue the GRPC server.
-		defer cancel()
-		return service.Run(gCtx)
-	})
-
-	ctxTimeout, cancelTimeout := context.WithTimeout(gCtx, 5*time.Minute) // TODO: make this configurable.
-	defer cancelTimeout()
-	if !service.WaitForReady(ctxTimeout) {
-		cancel()
-		return errors.Wrapf(g.Wait(), "service is not ready")
-	}
-
-	for _, server := range serverConfigs {
-		g.Go(func() error {
-			// If the GRPC servers stop, there is no reason to continue the service.
-			defer cancel()
-			return RunGrpcServer(gCtx, server, service.RegisterService)
-		})
-	}
-	return g.Wait()
 }
 
 // DefaultHealthCheckService returns a health-check service that returns SERVING for all services.
