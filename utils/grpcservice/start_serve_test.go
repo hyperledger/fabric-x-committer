@@ -76,16 +76,13 @@ func TestStartAndServe(t *testing.T) {
 		serverConfig := test.NewLocalHostServer(test.InsecureTLSConfig)
 		svc := newStubService()
 
-		cancel, wait := startInBackground(t, svc, serverConfig)
+		startInBackground(t, svc, serverConfig)
 
 		waitCtx, waitCancel := context.WithTimeout(t.Context(), 10*time.Second)
 		t.Cleanup(waitCancel)
 		require.True(t, svc.running.WaitForReady(waitCtx), "service did not start running")
 		require.True(t, svc.ready.WaitForReady(waitCtx), "WaitForReady was not called")
 		requireHealthy(t, serverConfig)
-
-		cancel()
-		wait()
 	})
 
 	t.Run("stops when service is not ready", func(t *testing.T) {
@@ -105,13 +102,10 @@ func TestStartAndServe(t *testing.T) {
 		serverConfig1 := test.NewLocalHostServer(test.InsecureTLSConfig)
 		serverConfig2 := test.NewLocalHostServer(test.InsecureTLSConfig)
 
-		cancel, wait := startInBackground(t, newStubService(), serverConfig1, serverConfig2)
+		startInBackground(t, newStubService(), serverConfig1, serverConfig2)
 
 		requireHealthy(t, serverConfig1)
 		requireHealthy(t, serverConfig2)
-
-		cancel()
-		wait()
 	})
 }
 
@@ -125,12 +119,11 @@ func requireHealthy(t *testing.T, sc *connection.ServerConfig) {
 }
 
 // startInBackground calls StartAndServe in a background goroutine.
-// Returns cancel to stop, and wait to block until it returns (asserts no error).
 // Pre-allocates listeners so Endpoint.Port is set before any goroutine starts,
 // avoiding a data race between Listener()'s port assignment and test reads.
 func startInBackground(
 	t *testing.T, service grpcservice.Service, serverConfigs ...*connection.ServerConfig,
-) (cancel context.CancelFunc, wait func()) {
+) {
 	t.Helper()
 
 	for _, sc := range serverConfigs {
@@ -146,10 +139,5 @@ func startInBackground(
 		return grpcservice.StartAndServe(gCtx, service, serverConfigs...)
 	})
 
-	// We generally prefer not to return functions. However, to avoid code duplication
-	// for trivial logic, we make an exception here.
-	return cancel, func() {
-		t.Helper()
-		assert.NoError(t, g.Wait())
-	}
+	t.Cleanup(func() { cancel(); assert.NoError(t, g.Wait()) })
 }
