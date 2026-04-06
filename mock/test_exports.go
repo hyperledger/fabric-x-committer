@@ -230,11 +230,10 @@ func (e *OrdererTestEnv) StartServers(t *testing.T) {
 	// Create servers with application CAs merged in
 	grpcServers := make([]*grpc.Server, len(e.AllServerConfig))
 	for i, sc := range e.AllServerConfig {
-		grpcServers[i] = test.RunGrpcServerForTestWithAdditionalCAs(
-			t.Context(), t, sc, e.Orderer.RegisterService, e.Orderer.applicationCAs,
+		grpcServers[i] = test.RunGrpcServerForTest(
+			t.Context(), t, sc, e.Orderer.RegisterService, e.Orderer.applicationCAs...,
 		)
 	}
-
 	require.Len(t, grpcServers, len(e.AllServerConfig))
 	e.AllServers = grpcServers
 }

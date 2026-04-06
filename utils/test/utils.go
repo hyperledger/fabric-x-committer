@@ -91,55 +91,16 @@ func ServerToMultiClientConfig(
 // did not specify a port.
 // The method asserts that the GRPC server did not end with failure.
 func RunGrpcServerForTest(
-	ctx context.Context, tb testing.TB, serverConfig *connection.ServerConfig, register func(server *grpc.Server),
+	ctx context.Context,
+	tb testing.TB,
+	serverConfig *connection.ServerConfig,
+	register func(server *grpc.Server),
+	additionalCAs ...[]byte,
 ) *grpc.Server {
 	tb.Helper()
 	listener, err := serverConfig.Listener(ctx)
 	require.NoError(tb, err)
-	server, err := serverConfig.GrpcServer()
-	require.NoError(tb, err)
-
-	if register != nil {
-		register(server)
-	} else {
-		healthgrpc.RegisterHealthServer(server, connection.DefaultHealthCheckService())
-	}
-
-	var wg sync.WaitGroup
-	tb.Cleanup(wg.Wait)
-	tb.Cleanup(server.Stop)
-
-	// The parent error capture the caller stack trace,
-	// which helps track the server origin when debugging test failures.
-	parentErr := errors.New("parent stack context")
-	wg.Go(func() {
-		// We use assert to prevent panicking for cleanup errors.
-		serveErr := server.Serve(listener)
-		if serveErr != nil && !errors.Is(serveErr, grpc.ErrServerStopped) {
-			assert.NoError(tb, errors.WithSecondaryError(serveErr, parentErr))
-		}
-	})
-
-	_ = context.AfterFunc(ctx, func() {
-		server.Stop()
-	})
-	return server
-}
-
-// RunGrpcServerForTestWithAdditionalCAs runs a GRPC server for testing with additional CA certificate bytes.
-// This is useful when CA certificates come from multiple sources (e.g., YAML config + config blocks).
-func RunGrpcServerForTestWithAdditionalCAs(
-	ctx context.Context,
-	tb testing.TB,
-	sc *connection.ServerConfig,
-	register func(*grpc.Server),
-	additionalCAs [][]byte,
-) *grpc.Server {
-	tb.Helper()
-	listener, err := sc.Listener(ctx)
-	require.NoError(tb, err)
-
-	server, err := sc.GrpcServerWithAdditionalCAs(additionalCAs)
+	server, err := serverConfig.GrpcServer(additionalCAs...)
 	require.NoError(tb, err)
 
 	if register != nil {

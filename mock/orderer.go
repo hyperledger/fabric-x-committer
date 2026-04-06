@@ -160,7 +160,6 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 	}
 	genesisBlock := BlockWithConsenters{Block: defaultConfigBlock}
 	var applicationCAs [][]byte
-
 	if len(config.ArtifactsPath) > 0 {
 		configBlockPath := path.Join(config.ArtifactsPath, cryptogen.ConfigBlockFileName)
 		configMaterial, err := channelconfig.LoadConfigBlockMaterialFromFile(configBlockPath)
@@ -175,12 +174,10 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 			Block:            configMaterial.ConfigBlock,
 			ConsenterSigners: consenters,
 		}
-
-		// Load application MSP root CAs from the config block.
-		// These will be used when creating gRPC servers.
-		applicationCAs = loadApplicationCAsFromConfigBlock(configMaterial.ConfigBlock)
+		// Load application root CAs from the config block.
+		// These will be used when creating the gRPC servers.
+		applicationCAs = getApplicationCAsFromConfigBlock(configMaterial.ConfigBlock)
 	}
-
 	numServices := max(1, config.TestServerParameters.NumService, len(config.ServerConfigs))
 	o := &Orderer{
 		genesisBlock:   genesisBlock,
@@ -193,78 +190,6 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 	}
 	o.config.Store(config)
 	return o, nil
-}
-
-// loadApplicationCAsFromConfigBlock extracts application MSP root CAs from the config block.
-//
-// This function enables the mock orderer to automatically accept mTLS connections from
-// all application (peer) organizations by loading their CA certificates from the config block,
-// eliminating the need to manually list peer CA certificates in the YAML configuration.
-//
-// Orderers are shared infrastructure that serve all organizations in a channel, so they must
-// trust CA certificates from all peer organizations to allow any peer to submit transactions.
-//
-// If extraction fails, a warning is logged and nil is returned to allow the orderer to work
-// with static configuration only (backward compatibility).
-//
-// Returns:
-//   - A slice of CA certificate bytes from all application organizations, or nil if extraction fails
-func loadApplicationCAsFromConfigBlock(configBlock *common.Block) [][]byte {
-	// Extract all application MSP root CAs from the config block.
-	appCAs, err := NewApplicationRootCAsFromConfigBlock(configBlock)
-	if err != nil {
-		// If we can't extract application CAs, log a warning but don't fail.
-		// This allows the orderer to work with static configuration only.
-		logger.Warnf("Failed to extract application CAs from config block: %v", err)
-		return nil
-	}
-
-	if len(appCAs) == 0 {
-		logger.Debug("No application CAs found in config block")
-		return nil
-	}
-
-	logger.Infof("Loaded %d application CA certificate(s) from config block", len(appCAs))
-	return appCAs
-}
-
-// NewApplicationRootCAsFromConfigBlock retrieves the root CA certificates of all application orgs from a config block.
-// This function uses channelconfig.LoadConfigBlockMaterial() to parse the config block and extract
-// TLS root CA certificates from all application (peer) organizations. These certificates are used to
-// verify mTLS connections from application clients (e.g., sidecars) to the orderer.
-//
-// Orderers are shared infrastructure that serve all organizations in a channel, so they must
-// trust CA certificates from all peer organizations to allow any peer to submit transactions.
-//
-// This implementation reuses the same config parsing logic as the sidecar/deliverorderer for consistency.
-//
-// Returns:
-//   - A slice of CA certificate bytes (PEM-encoded) from all application organizations
-//   - An error if the config block is nil, malformed, or doesn't contain application configuration
-func NewApplicationRootCAsFromConfigBlock(configBlock *common.Block) ([][]byte, error) {
-	if configBlock == nil {
-		return nil, errors.New("config block is nil")
-	}
-
-	logger.Debug("Loading config block material to extract application root CAs")
-	configMaterial, err := channelconfig.LoadConfigBlockMaterial(configBlock)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to load config block material")
-	}
-
-	if len(configMaterial.ApplicationOrganizations) == 0 {
-		return nil, errors.New("no application organizations found in config block")
-	}
-
-	var allCAs [][]byte
-	for _, appOrg := range configMaterial.ApplicationOrganizations {
-		allCAs = append(allCAs, appOrg.CACerts...)
-	}
-
-	logger.Infof("Extracted %d CA certificate(s) from %d application organization(s)",
-		len(allCAs), len(configMaterial.ApplicationOrganizations))
-
-	return allCAs, nil
 }
 
 // Broadcast receives TXs and returns ACKs.
@@ -562,6 +487,13 @@ func newBlockCache(size int) *blockCache {
 	}
 }
 
+// GetConfigBlockCAs returns the application root CAs loaded from the config block at initialization.
+// We do not export the field directly to avoid unintended modifications,
+// as these CAs are used when creating the gRPC servers.
+func (o *Orderer) GetConfigBlockCAs() [][]byte {
+	return o.applicationCAs
+}
+
 func (c *blockCache) releaseAfter(ctx context.Context) (stop func() bool) {
 	return context.AfterFunc(ctx, func() {
 		c.mu.L.Lock()
@@ -625,4 +557,40 @@ func addEnvelope(c *fifoCache[any], e *common.Envelope) bool {
 	digestRaw := sha256.Sum256(e.Payload)
 	digest := base64.StdEncoding.EncodeToString(digestRaw[:])
 	return c.addIfNotExist(digest, nil)
+}
+
+// getApplicationCAsFromConfigBlock retrieves the root CA certificates of all organizations from a config block.
+func getApplicationCAsFromConfigBlock(configBlock *common.Block) [][]byte {
+	if configBlock == nil {
+		logger.Warn("Failed to extract application CAs from config block: config block is nil")
+		return nil
+	}
+
+	logger.Debug("Loading config block material to extract application root CAs")
+	configMaterial, err := channelconfig.LoadConfigBlockMaterial(configBlock)
+	if err != nil {
+		// static config fallback
+		logger.Warnf("Failed to extract application CAs from config block: %v", err)
+		return nil
+	}
+
+	if len(configMaterial.ApplicationOrganizations) == 0 {
+		logger.Debug("No application organizations found in config block")
+		return nil
+	}
+
+	var allCAs [][]byte
+	for _, appOrg := range configMaterial.ApplicationOrganizations {
+		allCAs = append(allCAs, appOrg.CACerts...)
+	}
+
+	if len(allCAs) == 0 {
+		logger.Debug("No application CAs found in config block")
+		return nil
+	}
+
+	logger.Infof("Loaded %d application CA certificate(s) from %d application organization(s)",
+		len(allCAs), len(configMaterial.ApplicationOrganizations))
+
+	return allCAs
 }

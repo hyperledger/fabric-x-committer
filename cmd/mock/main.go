@@ -84,7 +84,9 @@ func startMockOrderer() *cobra.Command {
 			if conf.Server != nil && !conf.Server.Endpoint.Empty() {
 				serverConfigs = append(serverConfigs, conf.Server)
 			}
-			return connection.StartService(cmd.Context(), service, serverConfigs...)
+			return connection.StartServiceWithAdditionalCAs(
+				cmd.Context(), service, serverConfigs, service.GetConfigBlockCAs()...,
+			)
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)

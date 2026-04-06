@@ -53,16 +53,11 @@ var (
 	portConflictRegex = regexp.MustCompile(`(?i)(address\s+already\s+in\s+use|port\s+is\s+already\s+allocated)`)
 )
 
-// GrpcServer instantiate a [grpc.Server].
-func (c *ServerConfig) GrpcServer() (*grpc.Server, error) {
-	return c.GrpcServerWithAdditionalCAs(nil)
-}
-
-// GrpcServerWithAdditionalCAs instantiates a [grpc.Server] with additional CA certificate bytes
+// GrpcServer instantiates a [grpc.Server] with additional CA certificate bytes
 // merged with those from the TLS configuration.
 // This is useful when CA certificates come from
 // multiple sources (e.g., YAML config + config blocks).
-func (c *ServerConfig) GrpcServerWithAdditionalCAs(additionalCAs [][]byte) (*grpc.Server, error) {
+func (c *ServerConfig) GrpcServer(additionalCAs ...[]byte) (*grpc.Server, error) {
 	opts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxMsgSize), grpc.MaxSendMsgSize(maxMsgSize)}
 	serverGrpcTransportCreds, err := c.TLS.ServerCredentials(additionalCAs...)
 	if err != nil {
@@ -172,38 +167,24 @@ func (c *ServerConfig) ClosePreAllocatedListener() error {
 	return listener.Close()
 }
 
-// RunGrpcServer runs a server and returns error if failed.
-func RunGrpcServer(
-	ctx context.Context,
-	serverConfig *ServerConfig,
-	register func(server *grpc.Server),
-) error {
-	listener, err := serverConfig.Listener(ctx)
-	if err != nil {
-		return err
-	}
-	server, err := serverConfig.GrpcServer()
-	if err != nil {
-		return errors.Wrapf(err, "failed creating grpc server")
-	}
-	register(server)
-
-	g, gCtx := errgroup.WithContext(ctx)
-	logger.Infof("Serving...")
-	g.Go(func() error {
-		return server.Serve(listener)
-	})
-	<-gCtx.Done()
-	server.Stop()
-	return g.Wait()
-}
-
-// StartService runs a service, waits until it is ready, and register the gRPC server(s).
+// StartService runs a service, waits until it is ready, and register the gRPC server(s)
 // It will stop if either the service ended or its respective gRPC server.
 func StartService(
 	ctx context.Context,
 	service Service,
 	serverConfigs ...*ServerConfig,
+) error {
+	return StartServiceWithAdditionalCAs(ctx, service, serverConfigs)
+}
+
+// StartServiceWithAdditionalCAs runs a service, waits until it is ready, and register the gRPC server(s) with the
+// given set of additional root CAs.
+// It will stop if either the service ended or its respective gRPC server.
+func StartServiceWithAdditionalCAs(
+	ctx context.Context,
+	service Service,
+	serverConfigs []*ServerConfig,
+	additionalCAs ...[]byte,
 ) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -226,9 +207,36 @@ func StartService(
 		g.Go(func() error {
 			// If the GRPC servers stop, there is no reason to continue the service.
 			defer cancel()
-			return RunGrpcServer(gCtx, server, service.RegisterService)
+			return RunGrpcServer(gCtx, server, service.RegisterService, additionalCAs...)
 		})
 	}
+	return g.Wait()
+}
+
+// RunGrpcServer runs a server and returns error if failed.
+func RunGrpcServer(
+	ctx context.Context,
+	serverConfig *ServerConfig,
+	register func(server *grpc.Server),
+	additionalCAs ...[]byte,
+) error {
+	listener, err := serverConfig.Listener(ctx)
+	if err != nil {
+		return err
+	}
+	server, err := serverConfig.GrpcServer(additionalCAs...)
+	if err != nil {
+		return errors.Wrapf(err, "failed creating grpc server")
+	}
+	register(server)
+
+	g, gCtx := errgroup.WithContext(ctx)
+	logger.Infof("Serving...")
+	g.Go(func() error {
+		return server.Serve(listener)
+	})
+	<-gCtx.Done()
+	server.Stop()
 	return g.Wait()
 }
 
