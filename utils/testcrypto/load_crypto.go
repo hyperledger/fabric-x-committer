@@ -9,6 +9,8 @@ package testcrypto
 import (
 	"os"
 	"path"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -112,4 +114,72 @@ func GetOrdererConnConfig(artifactsPath string, clientTLSConfig connection.TLSCo
 		},
 		Identity: id,
 	}
+}
+
+// PerOrgTLSConfig holds each organization's representative TLS config for future client creation.
+// We use this struct for the TestWithDynamicRootCAs.
+type PerOrgTLSConfig struct {
+	Peer map[string]connection.TLSConfig
+}
+
+// BuildClientTLSConfigsPerOrg builds TLS configs using only the "client" user.
+func BuildClientTLSConfigsPerOrg(root string) (*PerOrgTLSConfig, error) {
+	peerConfigs := make(map[string]connection.TLSConfig)
+	peerRoot := filepath.Join(root, cryptogen.PeerOrganizationsDir)
+
+	orgEntries, err := os.ReadDir(peerRoot)
+	// If the path doesn't exist, return empty maps to avoid nil pointer issues
+	if err != nil {
+		return nil, errors.Newf("failed to read peer organizations dir: %v", peerRoot)
+	}
+
+	// go over all peer organizations
+	for _, orgEntry := range orgEntries {
+		if !orgEntry.IsDir() {
+			continue
+		}
+
+		orgName := orgEntry.Name()
+		usersDir := filepath.Join(peerRoot, orgName, cryptogen.UsersDir)
+
+		// Extracted the inner loop logic to a helper function
+		clientUser, err := getClientUser(usersDir)
+		if err != nil {
+			return nil, errors.Newf("org %s: %w", orgName, err)
+		}
+
+		// Define paths relative to the selected client user
+		clientTLSDir := filepath.Join(usersDir, clientUser, cryptogen.TLSDir)
+		peerConfigs[orgName] = connection.TLSConfig{
+			Mode:        connection.MutualTLSMode,
+			CertPath:    filepath.Join(clientTLSDir, "client.crt"),
+			KeyPath:     filepath.Join(clientTLSDir, "client.key"),
+			CACertPaths: []string{filepath.Join(clientTLSDir, "ca.crt")},
+		}
+	}
+
+	return &PerOrgTLSConfig{
+		Peer: peerConfigs,
+	}, nil
+}
+
+// getClientUser scans the directory and returns the first client user directory name.
+func getClientUser(usersDir string) (string, error) {
+	userEntries, err := os.ReadDir(usersDir)
+	if err != nil {
+		return "", errors.Newf("missing or failed to read users dir: %e", err)
+	}
+
+	for _, u := range userEntries {
+		if !u.IsDir() {
+			continue
+		}
+
+		name := u.Name()
+		if len(name) >= 6 && strings.EqualFold(name[:6], "client") {
+			return name, nil
+		}
+	}
+
+	return "", errors.Newf("no 'client' user directory found under %s", usersDir)
 }

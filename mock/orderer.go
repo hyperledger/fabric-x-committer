@@ -67,6 +67,10 @@ type (
 		cache                *blockCache
 		healthcheck          *health.Server
 
+		// applicationCAs holds CA certificate bytes loaded from config blocks at initialization.
+		// These are merged with static CAs from ServerConfig.TLS.CACertPaths when creating servers.
+		applicationCAs [][]byte
+
 		// config uses atomic.Pointer to allow safe concurrent reads by the Run() goroutine
 		// while supporting runtime updates (e.g., BlockTimeout changes in tests).
 		// Always use Load() to read and Store() to update the entire config struct.
@@ -155,6 +159,8 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 		config.TestServerParameters.NumService = defaultConfig.TestServerParameters.NumService
 	}
 	genesisBlock := BlockWithConsenters{Block: defaultConfigBlock}
+	var applicationCAs [][]byte
+
 	if len(config.ArtifactsPath) > 0 {
 		configBlockPath := path.Join(config.ArtifactsPath, cryptogen.ConfigBlockFileName)
 		configMaterial, err := channelconfig.LoadConfigBlockMaterialFromFile(configBlockPath)
@@ -169,18 +175,96 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 			Block:            configMaterial.ConfigBlock,
 			ConsenterSigners: consenters,
 		}
+
+		// Load application MSP root CAs from the config block.
+		// These will be used when creating gRPC servers.
+		applicationCAs = loadApplicationCAsFromConfigBlock(configMaterial.ConfigBlock)
 	}
+
 	numServices := max(1, config.TestServerParameters.NumService, len(config.ServerConfigs))
 	o := &Orderer{
-		genesisBlock: genesisBlock,
-		inEnvs:       make(chan *common.Envelope, numServices*config.BlockSize*config.OutBlockCapacity),
-		inBlocks:     make(chan *BlockWithConsenters, config.BlockSize*config.OutBlockCapacity),
-		cutBlock:     make(chan any),
-		cache:        newBlockCache(config.OutBlockCapacity),
-		healthcheck:  connection.DefaultHealthCheckService(),
+		genesisBlock:   genesisBlock,
+		applicationCAs: applicationCAs,
+		inEnvs:         make(chan *common.Envelope, numServices*config.BlockSize*config.OutBlockCapacity),
+		inBlocks:       make(chan *BlockWithConsenters, config.BlockSize*config.OutBlockCapacity),
+		cutBlock:       make(chan any),
+		cache:          newBlockCache(config.OutBlockCapacity),
+		healthcheck:    connection.DefaultHealthCheckService(),
 	}
 	o.config.Store(config)
 	return o, nil
+}
+
+// loadApplicationCAsFromConfigBlock extracts application MSP root CAs from the config block.
+//
+// This function enables the mock orderer to automatically accept mTLS connections from
+// all application (peer) organizations by loading their CA certificates from the config block,
+// eliminating the need to manually list peer CA certificates in the YAML configuration.
+//
+// Orderers are shared infrastructure that serve all organizations in a channel, so they must
+// trust CA certificates from all peer organizations to allow any peer to submit transactions.
+//
+// If extraction fails, a warning is logged and nil is returned to allow the orderer to work
+// with static configuration only (backward compatibility).
+//
+// Returns:
+//   - A slice of CA certificate bytes from all application organizations, or nil if extraction fails
+func loadApplicationCAsFromConfigBlock(configBlock *common.Block) [][]byte {
+	// Extract all application MSP root CAs from the config block.
+	appCAs, err := NewApplicationRootCAsFromConfigBlock(configBlock)
+	if err != nil {
+		// If we can't extract application CAs, log a warning but don't fail.
+		// This allows the orderer to work with static configuration only.
+		logger.Warnf("Failed to extract application CAs from config block: %v", err)
+		return nil
+	}
+
+	if len(appCAs) == 0 {
+		logger.Debug("No application CAs found in config block")
+		return nil
+	}
+
+	logger.Infof("Loaded %d application CA certificate(s) from config block", len(appCAs))
+	return appCAs
+}
+
+// NewApplicationRootCAsFromConfigBlock retrieves the root CA certificates of all application orgs from a config block.
+// This function uses channelconfig.LoadConfigBlockMaterial() to parse the config block and extract
+// TLS root CA certificates from all application (peer) organizations. These certificates are used to
+// verify mTLS connections from application clients (e.g., sidecars) to the orderer.
+//
+// Orderers are shared infrastructure that serve all organizations in a channel, so they must
+// trust CA certificates from all peer organizations to allow any peer to submit transactions.
+//
+// This implementation reuses the same config parsing logic as the sidecar/deliverorderer for consistency.
+//
+// Returns:
+//   - A slice of CA certificate bytes (PEM-encoded) from all application organizations
+//   - An error if the config block is nil, malformed, or doesn't contain application configuration
+func NewApplicationRootCAsFromConfigBlock(configBlock *common.Block) ([][]byte, error) {
+	if configBlock == nil {
+		return nil, errors.New("config block is nil")
+	}
+
+	logger.Debug("Loading config block material to extract application root CAs")
+	configMaterial, err := channelconfig.LoadConfigBlockMaterial(configBlock)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to load config block material")
+	}
+
+	if len(configMaterial.ApplicationOrganizations) == 0 {
+		return nil, errors.New("no application organizations found in config block")
+	}
+
+	var allCAs [][]byte
+	for _, appOrg := range configMaterial.ApplicationOrganizations {
+		allCAs = append(allCAs, appOrg.CACerts...)
+	}
+
+	logger.Infof("Extracted %d CA certificate(s) from %d application organization(s)",
+		len(allCAs), len(configMaterial.ApplicationOrganizations))
+
+	return allCAs, nil
 }
 
 // Broadcast receives TXs and returns ACKs.

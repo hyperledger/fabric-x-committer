@@ -227,11 +227,16 @@ func NewOrdererTestEnv(t *testing.T, p *OrdererTestParameters) *OrdererTestEnv {
 // StartServers starts the servers for the orderer and maps them to their respective IDs.
 func (e *OrdererTestEnv) StartServers(t *testing.T) {
 	t.Helper()
-	allServers := test.StartGrpcServersWithConfigForTest(
-		t.Context(), t, e.Orderer.RegisterService, e.AllServerConfig...,
-	)
-	require.Len(t, allServers.Servers, len(e.AllServerConfig))
-	e.AllServers = allServers.Servers
+	// Create servers with application CAs merged in
+	grpcServers := make([]*grpc.Server, len(e.AllServerConfig))
+	for i, sc := range e.AllServerConfig {
+		grpcServers[i] = test.RunGrpcServerForTestWithAdditionalCAs(
+			t.Context(), t, sc, e.Orderer.RegisterService, e.Orderer.applicationCAs,
+		)
+	}
+
+	require.Len(t, grpcServers, len(e.AllServerConfig))
+	e.AllServers = grpcServers
 }
 
 // StopServers stops the servers and closes their pre allocated listeners.

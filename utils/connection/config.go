@@ -113,10 +113,13 @@ func (c TLSConfig) ClientCredentials() (credentials.TransportCredentials, error)
 }
 
 // ServerCredentials converts TLSConfig into a TLSMaterials struct and generates server creds.
-func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error) {
+func (c TLSConfig) ServerCredentials(additionalCAs ...[]byte) (credentials.TransportCredentials, error) {
 	tlsMaterials, err := NewServerTLSMaterials(c)
 	if err != nil {
 		return nil, err
+	}
+	if len(additionalCAs) > 0 && tlsMaterials.Mode == MutualTLSMode {
+		tlsMaterials.CACerts = append(tlsMaterials.CACerts, additionalCAs...)
 	}
 	return NewServerCredentialsFromMaterial(tlsMaterials)
 }
