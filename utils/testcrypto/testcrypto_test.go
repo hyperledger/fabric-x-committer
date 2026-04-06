@@ -452,6 +452,22 @@ func TestMspDirectoryRetrieval(t *testing.T) {
 		}
 	})
 
+	t.Run("peer MSP directories without domain suffix", func(t *testing.T) {
+		t.Parallel()
+		cryptoPath := t.TempDir()
+		peerOrgPath := filepath.Join(cryptoPath, cryptogen.PeerOrganizationsDir)
+
+		// Simulate crypto generated with Domain: "peer-org-0" (no .com).
+		// Org directory uses Name, user directory uses "client@<Domain>".
+		userMspDir := filepath.Join(peerOrgPath, "peer-org-0", "users", "client@peer-org-0", "msp")
+		require.NoError(t, os.MkdirAll(userMspDir, 0o750))
+
+		mspDirs := GetPeersMspDirs(cryptoPath)
+		require.Len(t, mspDirs, 1)
+		require.Equal(t, "peer-org-0", mspDirs[0].MspName)
+		require.Equal(t, userMspDir, mspDirs[0].MspDir)
+	})
+
 	t.Run("edge cases", func(t *testing.T) {
 		t.Parallel()
 
