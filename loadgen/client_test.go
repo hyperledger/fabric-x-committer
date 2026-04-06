@@ -350,9 +350,13 @@ func testLoadGenerator(t *testing.T, c *ClientConfig, metricsTLS *connection.TLS
 	eventuallyMetrics(t, client.resources.Metrics, func(m metrics.MetricState) bool {
 		return m.TransactionsSent > defaultExpectedTXs &&
 			m.TransactionsReceived > defaultExpectedTXs &&
-			m.TransactionsCommitted > defaultExpectedTXs &&
-			m.TransactionsAborted == 0
+			m.TransactionsCommitted > defaultExpectedTXs
 	})
+
+	// Check after throughput is reached, not as part of the polling condition.
+	// Including this in eventuallyMetrics would cause the condition to never
+	// satisfy if even a single transaction is aborted during the entire run.
+	require.Zero(t, client.resources.Metrics.GetState().TransactionsAborted, "unexpected aborted transactions")
 
 	if !c.Limit.HasLimit() {
 		return
