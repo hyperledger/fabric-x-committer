@@ -16,7 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/cmd/cliutil"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/mock"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/grpcservice"
 )
 
 const (
@@ -84,7 +84,7 @@ func startMockOrderer() *cobra.Command {
 			if conf.Server != nil && !conf.Server.Endpoint.Empty() {
 				serverConfigs = append(serverConfigs, conf.Server)
 			}
-			return connection.StartServiceWithAdditionalCAs(
+			return grpcservice.StartAndServeWithAdditionalCAs(
 				cmd.Context(), service, serverConfigs, service.GetConfigBlockCAs()...,
 			)
 		},
@@ -111,7 +111,7 @@ func startMockCoordinator() *cobra.Command {
 			defer cmd.Printf("%v ended\n", mockVerifierName)
 
 			service := mock.NewMockCoordinator()
-			return connection.RunGrpcServer(cmd.Context(), conf.Server, service.RegisterService)
+			return grpcservice.Serve(cmd.Context(), service, conf.Server)
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)
@@ -136,7 +136,7 @@ func startMockVerifier() *cobra.Command {
 			defer cmd.Printf("%v ended\n", mockVerifierName)
 
 			sv := mock.NewMockSigVerifier()
-			return connection.RunGrpcServer(cmd.Context(), conf.Server, sv.RegisterService)
+			return grpcservice.Serve(cmd.Context(), sv, conf.Server)
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)
@@ -161,7 +161,7 @@ func startMockVC() *cobra.Command {
 			defer cmd.Printf("%v ended\n", mockVcName)
 
 			vcs := mock.NewMockVcService()
-			return connection.RunGrpcServer(cmd.Context(), conf.Server, vcs.RegisterService)
+			return grpcservice.Serve(cmd.Context(), vcs, conf.Server)
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)

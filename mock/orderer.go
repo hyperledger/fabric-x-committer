@@ -56,12 +56,20 @@ type (
 		TestServerParameters test.StartServerParameters
 	}
 
+	// envelopeEntry wraps an envelope with an optional synchronization signal.
+	// Broadcast (gRPC) sends entries without done (async, buffered for throughput).
+	// SubmitEnv (test helper) sends entries with done (sync, blocks until collected).
+	envelopeEntry struct {
+		env  *common.Envelope
+		done *channel.Ready
+	}
+
 	// Orderer supports running multiple mock-orderer services which mocks a consortium.
 	Orderer struct {
 		streamStateManager[OrdererStreamState]
 		endpointToPartyState utils.SyncMap[string, *PartyState]
 		genesisBlock         BlockWithConsenters
-		inEnvs               chan *common.Envelope
+		inEnvs               chan envelopeEntry
 		inBlocks             chan *BlockWithConsenters
 		cutBlock             chan any
 		cache                *blockCache
@@ -182,7 +190,7 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 	o := &Orderer{
 		genesisBlock:   genesisBlock,
 		applicationCAs: applicationCAs,
-		inEnvs:         make(chan *common.Envelope, numServices*config.BlockSize*config.OutBlockCapacity),
+		inEnvs:         make(chan envelopeEntry, numServices*config.BlockSize*config.OutBlockCapacity),
 		inBlocks:       make(chan *BlockWithConsenters, config.BlockSize*config.OutBlockCapacity),
 		cutBlock:       make(chan any),
 		cache:          newBlockCache(config.OutBlockCapacity),
@@ -206,7 +214,7 @@ func (o *Orderer) Broadcast(stream ab.AtomicBroadcast_BroadcastServer) error {
 		if err != nil {
 			return err //nolint:wrapcheck // already a GRPC error.
 		}
-		inEnvs.Write(env)
+		inEnvs.Write(newEnvelopeEntry(env))
 		if err = stream.Send(&repsSuccess); err != nil {
 			return err //nolint:wrapcheck // already a GRPC error.
 		}
@@ -420,11 +428,12 @@ func (o *Orderer) Run(ctx context.Context) error {
 			sendBlockData("external")
 		case <-tick.C:
 			sendBlockData("timeout")
-		case env := <-o.inEnvs:
-			if !addEnvelope(envCache, env) {
+		case entry := <-o.inEnvs:
+			entry.signal()
+			if !addEnvelope(envCache, entry.env) {
 				continue
 			}
-			data = append(data, protoutil.MarshalOrPanic(env))
+			data = append(data, protoutil.MarshalOrPanic(entry.env))
 			if len(data) >= o.config.Load().BlockSize {
 				sendBlockData("size")
 			}
@@ -462,8 +471,13 @@ func (o *Orderer) SubmitBlockWithConsenters(ctx context.Context, newConfig *Bloc
 }
 
 // SubmitEnv allows submitting envelops directly for testing other packages.
+// It blocks until the envelope is collected by the Run goroutine.
 func (o *Orderer) SubmitEnv(ctx context.Context, e *common.Envelope) bool {
-	return channel.NewWriter(ctx, o.inEnvs).Write(e)
+	env := newEnvelopeEntry(e)
+	if !channel.NewWriter(ctx, o.inEnvs).Write(env) {
+		return false
+	}
+	return env.done.WaitForReady(ctx)
 }
 
 // GetBlock allows fetching blocks directly for testing other packages.
@@ -477,6 +491,19 @@ func (o *Orderer) GetBlock(ctx context.Context, blockNum uint64) (*common.Block,
 // CutBlock allows forcing block cut for testing other packages.
 func (o *Orderer) CutBlock(ctx context.Context) bool {
 	return channel.NewWriter(ctx, o.cutBlock).Write(nil)
+}
+
+func newEnvelopeEntry(e *common.Envelope) envelopeEntry {
+	return envelopeEntry{
+		env:  e,
+		done: channel.NewReady(),
+	}
+}
+
+func (e envelopeEntry) signal() {
+	if e.done != nil {
+		e.done.SignalReady()
+	}
 }
 
 func newBlockCache(size int) *blockCache {
