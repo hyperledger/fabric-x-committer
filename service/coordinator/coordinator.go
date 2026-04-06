@@ -179,8 +179,8 @@ func NewCoordinatorService(c *Config) *Service {
 // StartMonitoringServer starts the Prometheus monitoring server.
 // This method blocks until the server exits or the context is cancelled.
 // Monitoring server errors are logged but do not cause the service to stop.
-func (c *Service) StartMonitoringServer(ctx context.Context) {
-	_ = c.metrics.StartPrometheusServer(ctx, c.config.Monitoring, c.monitorQueues)
+func (c *Service) StartMonitoringServer(ctx context.Context) error {
+	return c.metrics.StartPrometheusServer(ctx, c.config.Monitoring, c.monitorQueues)
 }
 
 // Run starts each manager in the coordinator service.

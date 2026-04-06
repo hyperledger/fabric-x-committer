@@ -66,13 +66,6 @@ type ValidatorCommitterService struct {
 	isStreamActive atomic.Bool
 }
 
-// Limits is the struct that contains the limits of the service.
-type Limits struct {
-	MaxWorkersForPreparer  int
-	MaxWorkersForValidator int
-	MaxWorkersForCommitter int
-}
-
 // NewValidatorCommitterService creates a new ValidatorCommitterService.
 // It creates the preparer, the validator and the committer.
 // It also creates the channels that are used to communicate between the preparer, the validator and the committer.
@@ -122,9 +115,9 @@ func NewValidatorCommitterService(
 // StartMonitoringServer starts the Prometheus monitoring server.
 // This method blocks until the server exits or the context is cancelled.
 // Monitoring server errors are logged but do not cause the service to stop.
-func (vc *ValidatorCommitterService) StartMonitoringServer(ctx context.Context) {
+func (vc *ValidatorCommitterService) StartMonitoringServer(ctx context.Context) error {
 	logger.Info("Starting Prometheus monitoring server")
-	_ = vc.metrics.StartPrometheusServer(ctx, vc.config.Monitoring, vc.monitorQueues)
+	return vc.metrics.StartPrometheusServer(ctx, vc.config.Monitoring, vc.monitorQueues)
 }
 
 // Run starts the validator and committer service.

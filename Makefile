@@ -51,6 +51,9 @@
 # Documentation:
 #   check-metrics-doc            - Check if metrics documentation is up to date
 #
+# CI:
+#   ci-local                     - Run the full CI test flow locally
+#
 # Cleanup:
 #   clean                        - Remove all binaries
 #   kill-test-docker             - Kill test docker containers
@@ -202,7 +205,12 @@ clean: FORCE
 	@rm -rf $(BUILD_DIR)
 
 kill-test-docker: FORCE
-	$(docker_cmd) ps -aq -f "name=sc_test" | xargs $(docker_cmd) rm -f
+	@ids=$$($(docker_cmd) ps -aq -f "name=sc_test"); \
+	if [ -n "$$ids" ]; then $(docker_cmd) rm -f $$ids; fi
+
+# Run the full CI test flow locally. Manages postgres and yugabyte lifecycle automatically.
+ci-local: FORCE
+	@bash scripts/ci-local.sh
 
 #########################
 # Benchmarks

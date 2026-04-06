@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,6 +37,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/grpcservice"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
@@ -209,17 +209,14 @@ func RunServiceForTest(
 func RunServiceAndGrpcForTest(
 	ctx context.Context,
 	t *testing.T,
-	service connection.Service,
+	service grpcservice.Service,
 	serverConfig ...*connection.ServerConfig,
 ) *channel.Ready {
 	t.Helper()
 
 	// Start monitoring server with proper lifecycle management.
 	// RunServiceForTest ensures the goroutine is tracked and cleaned up when test ends.
-	_ = RunServiceForTest(ctx, t, func(ctx context.Context) error {
-		service.StartMonitoringServer(ctx)
-		return nil
-	}, func(context.Context) bool { return true })
+	_ = RunServiceForTest(ctx, t, service.StartMonitoringServer, func(context.Context) bool { return true })
 
 	doneFlag := RunServiceForTest(ctx, t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(service.Run(ctx))
@@ -248,11 +245,6 @@ func CheckServerStopped(t *testing.T, addr string) bool {
 	}
 	_ = conn.Close()
 	return false
-}
-
-// SetupDebugging can be added for development to tests that required additional debugging info.
-func SetupDebugging() {
-	flogging.ActivateSpec("debug:grpc=error")
 }
 
 // NewSecuredConnection creates the default connection with given transport credentials.

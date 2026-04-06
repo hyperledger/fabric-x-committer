@@ -8,6 +8,7 @@ package main
 
 import (
 	_ "embed"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -36,43 +37,43 @@ func TestCommitterCMD(t *testing.T) {
 		Password:  conn.Password,
 		Endpoints: conn.Endpoints,
 	}
-	//commonTests := []cliutil.CommandTest{
-	//	{
-	//		Name:         "print version",
-	//		Args:         []string{"version"},
-	//		CmdStdOutput: cliutil.FullCommitterVersion(),
-	//	},
-	//	{
-	//		Name: "trailing flag args for version",
-	//		Args: []string{"version", "--test"},
-	//		Err:  errors.New("unknown flag: --test"),
-	//	},
-	//	{
-	//		Name: "trailing command args for version",
-	//		Args: []string{"version", "test"},
-	//		Err:  fmt.Errorf(`unknown command "test" for "%v version"`, cliutil.CommitterName),
-	//	},
-	//}
-	//for _, test := range commonTests {
-	//	tc := test
-	//	t.Run(test.Name, func(t *testing.T) {
-	//		cliutil.UnitTestRunner(t, committerCMD(), tc)
-	//	})
-	//}
+	commonTests := []cliutil.CommandTest{
+		{
+			Name:         "print version",
+			Args:         []string{"version"},
+			CmdStdOutput: cliutil.FullCommitterVersion(),
+		},
+		{
+			Name: "trailing flag args for version",
+			Args: []string{"version", "--test"},
+			Err:  errors.New("unknown flag: --test"),
+		},
+		{
+			Name: "trailing command args for version",
+			Args: []string{"version", "test"},
+			Err:  fmt.Errorf(`unknown command "test" for "%v version"`, cliutil.CommitterName),
+		},
+	}
+	for _, test := range commonTests {
+		tc := test
+		t.Run(test.Name, func(t *testing.T) {
+			cliutil.UnitTestRunner(t, committerCMD(), tc)
+		})
+	}
 
 	for _, serviceCase := range []struct {
 		Cmd   []string
 		Name  string
 		Templ string
 	}{
-		//{Cmd: []string{"start", sidecarService}, Name: serviceNames[sidecarService], Templ: config.TemplateSidecar},
-		//{
-		//	Cmd: []string{"start", coordinatorService}, Name: serviceNames[coordinatorService],
-		//	Templ: config.TemplateCoordinator,
-		//},
-		//{Cmd: []string{"start", vcService}, Name: serviceNames[vcService], Templ: config.TemplateVC},
+		{Cmd: []string{"start", sidecarService}, Name: serviceNames[sidecarService], Templ: config.TemplateSidecar},
+		{
+			Cmd: []string{"start", coordinatorService}, Name: serviceNames[coordinatorService],
+			Templ: config.TemplateCoordinator,
+		},
+		{Cmd: []string{"start", vcService}, Name: serviceNames[vcService], Templ: config.TemplateVC},
 		{Cmd: []string{"start", verifierService}, Name: serviceNames[verifierService], Templ: config.TemplateVerifier},
-		//{Cmd: []string{"start", queryService}, Name: serviceNames[queryService], Templ: config.TemplateQueryService},
+		{Cmd: []string{"start", queryService}, Name: serviceNames[queryService], Templ: config.TemplateQueryService},
 	} {
 		t.Run(serviceCase.Name, func(t *testing.T) {
 			cases := []cliutil.CommandTest{
