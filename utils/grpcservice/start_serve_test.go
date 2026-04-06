@@ -51,6 +51,10 @@ func (*stubService) RegisterService(server *grpc.Server) {
 	healthgrpc.RegisterHealthServer(server, connection.DefaultHealthCheckService())
 }
 
+func (*stubService) StartMonitoringServer(_ context.Context) error {
+	return nil
+}
+
 // slowReadyService blocks WaitForReady until context expires.
 type slowReadyService struct{}
 
@@ -66,6 +70,10 @@ func (*slowReadyService) WaitForReady(ctx context.Context) bool {
 
 func (*slowReadyService) RegisterService(server *grpc.Server) {
 	healthgrpc.RegisterHealthServer(server, connection.DefaultHealthCheckService())
+}
+
+func (*slowReadyService) StartMonitoringServer(_ context.Context) error {
+	return nil
 }
 
 func TestStartAndServe(t *testing.T) {
