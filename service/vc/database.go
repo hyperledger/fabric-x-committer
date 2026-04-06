@@ -43,9 +43,6 @@ const (
 	queryConfigSQLStmt = "SELECT key, value from ns_" + committerpb.ConfigNamespaceID + ";"
 )
 
-// ErrMetadataEmpty indicates that a requested metadata value is empty or not found.
-var ErrMetadataEmpty = errors.New("metadata value is empty")
-
 type (
 	// database handles the database operations.
 	database struct {

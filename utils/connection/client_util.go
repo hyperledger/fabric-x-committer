@@ -238,19 +238,19 @@ func FilterStreamRPCError(rpcErr error) error {
 		return nil
 	}
 
-	if IsStreamEnd(rpcErr) {
+	if isStreamEnd(rpcErr) {
 		return nil
 	}
 	return rpcErr
 }
 
-// IsStreamEnd returns true if an RPC error indicates stream end.
-func IsStreamEnd(rpcErr error) bool {
+// isStreamEnd returns true if an RPC error indicates stream end.
+func isStreamEnd(rpcErr error) bool {
 	if rpcErr == nil {
 		return false
 	}
 
-	if IsStreamContextEnd(rpcErr) {
+	if isStreamContextEnd(rpcErr) {
 		return true
 	}
 
@@ -267,8 +267,8 @@ func IsStreamEnd(rpcErr error) bool {
 	return false
 }
 
-// IsStreamContextEnd returns true if an RPC error indicates stream context end.
-func IsStreamContextEnd(rpcErr error) bool {
+// isStreamContextEnd returns true if an RPC error indicates stream context end.
+func isStreamContextEnd(rpcErr error) bool {
 	if rpcErr == nil {
 		return false
 	}
