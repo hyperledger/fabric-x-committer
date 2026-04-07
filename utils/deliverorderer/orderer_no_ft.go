@@ -42,7 +42,7 @@ func ToQueueWithNoFT(ctx context.Context, noFtParams NoFTParameters) error {
 		return err
 	}
 
-	m := ordererdial.NewClientMaterial(configMaterial, ordererdial.Parameters{
+	m := ordererdial.NewDialInfo(configMaterial, ordererdial.Parameters{
 		API:   types.Deliver,
 		TLS:   params.TLS,
 		Retry: params.Retry,

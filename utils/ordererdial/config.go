@@ -83,9 +83,9 @@ func GetFaultToleranceLevel(ftLevel string) (string, error) {
 	}
 }
 
-// NewTLSMaterials is a wrapper for [connection.NewTLSMaterials] with the orderer's config.
-func NewTLSMaterials(c TLSConfig) (*connection.TLSMaterials, error) {
-	return connection.NewClientTLSMaterials(connection.TLSConfig{
+// NewTLSCredentials is a wrapper for [connection.NewClientTLSCredentials] with the orderer's config.
+func NewTLSCredentials(c TLSConfig) (*connection.TLSCredentials, error) {
+	return connection.NewClientTLSCredentials(connection.TLSConfig{
 		Mode:        c.Mode,
 		KeyPath:     c.KeyPath,
 		CertPath:    c.CertPath,

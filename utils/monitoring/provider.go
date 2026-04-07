@@ -53,11 +53,11 @@ func (p *Provider) StartPrometheusServer(
 ) error {
 	logger.Debugf("Creating prometheus server with secure mode: %v", serverConfig.TLS.Mode)
 	// Generate TLS configuration from the server config.
-	serverMaterials, err := connection.NewServerTLSMaterials(serverConfig.TLS)
+	serverCreds, err := connection.NewServerTLSCredentials(serverConfig.TLS)
 	if err != nil {
-		return errors.Wrap(err, "failed to create TLS materials for prometheus server")
+		return errors.Wrap(err, "failed to create TLS credentials for prometheus server")
 	}
-	serverTLSConfig, err := serverMaterials.CreateServerTLSConfig()
+	serverTLSConfig, err := serverCreds.CreateServerTLSConfig()
 	if err != nil {
 		return err
 	}

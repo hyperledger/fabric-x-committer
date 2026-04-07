@@ -78,7 +78,7 @@ type (
 	// and the system will unnecessarily switch between orderers.
 	Parameters struct {
 		FaultToleranceLevel string
-		TLS                 connection.TLSMaterials
+		TLS                 connection.TLSCredentials
 		TLSCertHash         []byte
 		Retry               *retry.Profile
 		Signer              identity.SignerSerializer
@@ -107,7 +107,7 @@ const DefaultSuspicionGracePeriodPerBlock = time.Second
 
 // LoadParametersFromConfig returns orderer delivery parameters and channel-ID from a given config.
 func LoadParametersFromConfig(c *ordererdial.Config) (p Parameters, err error) {
-	tls, err := ordererdial.NewTLSMaterials(c.TLS)
+	tls, err := ordererdial.NewTLSCredentials(c.TLS)
 	if err != nil {
 		return p, err
 	}

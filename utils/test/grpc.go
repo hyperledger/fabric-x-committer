@@ -423,9 +423,9 @@ func MustGetTLSConfig(t *testing.T, tlsConfig *connection.TLSConfig) *tls.Config
 	if tlsConfig == nil {
 		return nil
 	}
-	tlsMaterials, err := connection.NewClientTLSMaterials(*tlsConfig)
+	tlsCreds, err := connection.NewClientTLSCredentials(*tlsConfig)
 	require.NoError(t, err)
-	clientTLSConfig, err := tlsMaterials.CreateClientTLSConfig()
+	clientTLSConfig, err := tlsCreds.CreateClientTLSConfig()
 	require.NoError(t, err)
 	return clientTLSConfig
 }
