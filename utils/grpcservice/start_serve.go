@@ -88,7 +88,7 @@ func Serve(ctx context.Context, service Service, serverConfig *connection.Server
 	if err != nil {
 		return err
 	}
-
+	//nolint:contextcheck // Context from chi.Context() is passed to GetTLSConfig during TLS handshake.
 	server, err := serverConfig.GrpcServer(service.GetTLSConfig)
 	if err != nil {
 		return errors.Wrapf(err, "failed creating grpc server")
@@ -105,6 +105,7 @@ func MockServe(ctx context.Context, service Registerer, serverConfig *connection
 	if err != nil {
 		return err
 	}
+	//nolint:contextcheck // Since GetTLSConfig is nil, context will not be used.
 	server, err := serverConfig.GrpcServer(nil)
 	if err != nil {
 		return errors.Wrapf(err, "failed creating grpc server")

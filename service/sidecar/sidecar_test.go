@@ -132,7 +132,7 @@ func (env *sidecarTestEnv) startSidecarServiceAndClientAndNotificationStream(
 
 func (env *sidecarTestEnv) startSidecarService(ctx context.Context, t *testing.T) {
 	t.Helper()
-	test.RunDynamicServiceAndGrpcForTest(ctx, t, env.sidecar, env.config.Server)
+	test.RunServiceAndGrpcForTest(ctx, t, env.sidecar, env.config.Server)
 }
 
 func (env *sidecarTestEnv) startSidecarClient(

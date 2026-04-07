@@ -657,7 +657,7 @@ func newQueryServiceTestEnv(t *testing.T, opts *queryServiceTestOpts) *queryServ
 
 	qs, err := NewQueryService(config)
 	require.NoError(t, err)
-	test.RunDynamicServiceAndGrpcForTest(t.Context(), t, qs, qs.config.Server)
+	test.RunServiceAndGrpcForTest(t.Context(), t, qs, qs.config.Server)
 	clientConn := createQueryClientWithTLS(t, &qs.config.Server.Endpoint, opts.clientTLS)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
