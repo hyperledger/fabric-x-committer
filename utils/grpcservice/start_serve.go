@@ -105,7 +105,7 @@ func MockServe(ctx context.Context, service Registerer, serverConfig *connection
 	if err != nil {
 		return err
 	}
-	//nolint:contextcheck // Since GetTLSConfig is nil, context will not be used.
+	//nolint:contextcheck // Since GetTLSConfig function is nil, context will not be used.
 	server, err := serverConfig.GrpcServer(nil)
 	if err != nil {
 		return errors.Wrapf(err, "failed creating grpc server")

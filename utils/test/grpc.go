@@ -204,7 +204,7 @@ func RunGrpcServerForTest(
 	return runGrpcServerInternal(ctx, tb,
 		runGrpcServerParameters{
 			serverConfig: serverConfig,
-			//nolint:contextcheck // Since GetTLSConfig is nil, context will not be used.
+			//nolint:contextcheck // Since GetTLSConfig function is nil, context will not be used.
 			createServer: func() (*grpc.Server, error) {
 				return serverConfig.GrpcServer(nil)
 			},
