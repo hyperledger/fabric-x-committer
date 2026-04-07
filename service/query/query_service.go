@@ -155,9 +155,9 @@ func (q *Service) RegisterService(server *grpc.Server) {
 	healthgrpc.RegisterHealthServer(server, q.healthcheck)
 }
 
-// GetDynamicTLSConfig returns the pre-configured tls.Config with merged static + dynamic CAs.
+// GetTLSConfig returns the pre-configured tls.Config with merged static + dynamic CAs.
 // It caches the config and only refreshes it periodically to avoid excessive database queries.
-func (q *Service) GetDynamicTLSConfig(ctx context.Context) *tls.Config {
+func (q *Service) GetTLSConfig(ctx context.Context) *tls.Config {
 	now := time.Now().UnixNano()
 	lastFetch := q.lastCAFetch.Load()
 

@@ -133,8 +133,8 @@ var (
 	templateLoadGenDistributedLoadGenClient string
 )
 
-// CreateConfigFromTemplate creates a config file using template yaml and writes it to the outputPath.
-func CreateConfigFromTemplate(t *testing.T, templateString, outputPath string, conf *SystemConfig) {
+// createConfigFromTemplate creates a config file using template yaml and writes it to the outputPath.
+func createConfigFromTemplate(t *testing.T, templateString, outputPath string, conf *SystemConfig) {
 	t.Helper()
 	tmpl := template.New("").Funcs(sprig.FuncMap())
 	tmpl, err := tmpl.Parse(templateString)
@@ -150,6 +150,6 @@ func CreateConfigFromTemplate(t *testing.T, templateString, outputPath string, c
 func CreateTempConfigFromTemplate(t *testing.T, cmdTemplate string, conf *SystemConfig) string {
 	t.Helper()
 	outputConfigFilePath := path.Join(t.TempDir(), fmt.Sprintf("config-%s.yaml", uuid.NewString()))
-	CreateConfigFromTemplate(t, cmdTemplate, outputConfigFilePath, conf)
+	createConfigFromTemplate(t, cmdTemplate, outputConfigFilePath, conf)
 	return outputConfigFilePath
 }

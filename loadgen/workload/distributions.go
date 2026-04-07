@@ -49,13 +49,13 @@ func (d *Distribution) MakeGenerator(rnd *rand.Rand) Generator[float64] {
 	}
 	switch {
 	case d.Uniform != nil:
-		return &UniformGenerator{
+		return &uniformGenerator{
 			Rnd: rnd,
 			Min: d.Uniform.Min,
 			Max: d.Uniform.Max,
 		}
 	case d.Normal != nil:
-		return &NormalGenerator{
+		return &normalGenerator{
 			Rnd:  rnd,
 			Mean: d.Normal.Mean,
 			Std:  d.Normal.Std,
@@ -125,25 +125,25 @@ func NewBernoulliDistribution(probability Probability) *Distribution {
 	return &Distribution{Bernoulli: probability}
 }
 
-// UniformGenerator generates values with a uniform distribution.
-type UniformGenerator struct {
+// uniformGenerator generates values with a uniform distribution.
+type uniformGenerator struct {
 	Rnd      *rand.Rand
 	Min, Max float64
 }
 
 // Next yields the next uniform value.
-func (d *UniformGenerator) Next() float64 {
+func (d *uniformGenerator) Next() float64 {
 	return d.Rnd.Float64()*(d.Max-d.Min) + d.Min
 }
 
-// NormalGenerator generates values with a normal distribution.
-type NormalGenerator struct {
+// normalGenerator generates values with a normal distribution.
+type normalGenerator struct {
 	Rnd       *rand.Rand
 	Mean, Std float64
 }
 
 // Next yields the next normal value.
-func (d *NormalGenerator) Next() float64 {
+func (d *normalGenerator) Next() float64 {
 	return d.Rnd.NormFloat64()*d.Std + d.Mean
 }
 

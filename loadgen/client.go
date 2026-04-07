@@ -170,8 +170,8 @@ func (c *Client) RegisterService(server *grpc.Server) {
 	healthgrpc.RegisterHealthServer(server, c.healthcheck)
 }
 
-// GetDynamicTLSConfig returns nil as this service does not support dynamic CA updates.
-func (*Client) GetDynamicTLSConfig(_ context.Context) *tls.Config {
+// GetTLSConfig returns nil as this service does not support dynamic CA updates.
+func (*Client) GetTLSConfig(_ context.Context) *tls.Config {
 	return nil
 }
 

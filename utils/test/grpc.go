@@ -26,8 +26,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
-	"github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,6 +37,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/grpcservice"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
@@ -172,7 +171,7 @@ func RunServiceForTest(
 func RunServiceAndGrpcForTest(
 	ctx context.Context,
 	t *testing.T,
-	service connection.Service,
+	service grpcservice.Service,
 	serverConfig ...*connection.ServerConfig,
 ) *channel.Ready {
 	t.Helper()
@@ -182,31 +181,6 @@ func RunServiceAndGrpcForTest(
 	for _, server := range serverConfig {
 		RunGrpcServerForTest(ctx, t, server, service.RegisterService)
 	}
-	return doneFlag
-}
-
-// RunDynamicServiceAndGrpcForTest combines running a service and its GRPC server.
-// It is intended for services that support dynamic CA updates (i.e., sidecar and query services).
-func RunDynamicServiceAndGrpcForTest(
-	ctx context.Context,
-	t *testing.T,
-	service connection.Service,
-	serverConfig *connection.ServerConfig,
-) *channel.Ready {
-	t.Helper()
-	doneFlag := RunServiceForTest(ctx, t, func(ctx context.Context) error {
-		return connection.FilterStreamRPCError(service.Run(ctx))
-	}, service.WaitForReady)
-
-	runGrpcServerInternal(ctx, t, runGrpcServerParameters{
-		serverConfig: serverConfig,
-		//nolint:contextcheck // Context from chi.Context() is passed to getDynamicTLSConfig during TLS handshake.
-		createServer: func() (*grpc.Server, error) {
-			return serverConfig.GrpcServer(service.GetDynamicTLSConfig)
-		},
-		register: service.RegisterService,
-	})
-
 	return doneFlag
 }
 
@@ -236,6 +210,31 @@ func RunGrpcServerForTest(
 			},
 		},
 	)
+}
+
+// RunDynamicServiceAndGrpcForTest combines running a service and its GRPC server.
+// It is intended for services that support dynamic CA updates (i.e., sidecar and query services).
+func RunDynamicServiceAndGrpcForTest(
+	ctx context.Context,
+	t *testing.T,
+	service grpcservice.Service,
+	serverConfig *connection.ServerConfig,
+) *channel.Ready {
+	t.Helper()
+	doneFlag := RunServiceForTest(ctx, t, func(ctx context.Context) error {
+		return connection.FilterStreamRPCError(service.Run(ctx))
+	}, service.WaitForReady)
+
+	runGrpcServerInternal(ctx, t, runGrpcServerParameters{
+		serverConfig: serverConfig,
+		//nolint:contextcheck // Context from chi.Context() is passed to getDynamicTLSConfig during TLS handshake.
+		createServer: func() (*grpc.Server, error) {
+			return serverConfig.GrpcServer(service.GetTLSConfig)
+		},
+		register: service.RegisterService,
+	})
+
+	return doneFlag
 }
 
 // runGrpcServerInternal handles the shared listener setup, server execution,
@@ -292,11 +291,6 @@ func CheckServerStopped(t *testing.T, addr string) bool {
 	}
 	_ = conn.Close()
 	return false
-}
-
-// SetupDebugging can be added for development to tests that required additional debugging info.
-func SetupDebugging() {
-	flogging.ActivateSpec("debug:grpc=error")
 }
 
 // NewSecuredConnection creates the default connection with given transport credentials.
@@ -475,20 +469,6 @@ const (
 	// CreatorID denotes Creator field in protoblocktx.Identity to contain the digest of x509 certificate.
 	CreatorID = 1
 )
-
-// NewOrdererEndpoints is a helper function to generate a list of Endpoint(s) from ServerConfig(s).
-func NewOrdererEndpoints(id uint32, configs ...*connection.ServerConfig) []*types.OrdererEndpoint {
-	ordererEndpoints := make([]*types.OrdererEndpoint, len(configs))
-	for i, c := range configs {
-		ordererEndpoints[i] = &types.OrdererEndpoint{
-			Host: c.Endpoint.Host,
-			Port: c.Endpoint.Port,
-			ID:   id,
-			API:  []string{types.Broadcast, types.Deliver},
-		}
-	}
-	return ordererEndpoints
-}
 
 // MustGetTLSConfig creates a tls.Config from a connection.TLSConfig while ensuring no error return from that process.
 func MustGetTLSConfig(t *testing.T, tlsConfig *connection.TLSConfig) *tls.Config {

@@ -108,10 +108,10 @@ func New(c *Config) (*Service, error) {
 	}, nil
 }
 
-// GetDynamicTLSConfig returns the pre-configured tls.Config with merged static + dynamic CAs.
+// GetTLSConfig returns the pre-configured tls.Config with merged static + dynamic CAs.
 // The sidecar updates this config when processing config blocks from the orderer, enabling
 // certificate rotation without a service restart.
-func (s *Service) GetDynamicTLSConfig(_ context.Context) *tls.Config {
+func (s *Service) GetTLSConfig(_ context.Context) *tls.Config {
 	if v := s.relay.tlsConfig.Load(); v != nil {
 		return *v
 	}

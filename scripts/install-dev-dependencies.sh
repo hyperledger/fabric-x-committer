@@ -61,6 +61,13 @@ echo
 echo "Installing Go tools from go.mod tool directives"
 go install tool
 
+# golangci-lint is installed separately (not via go.mod tool directive)
+# to avoid pulling GPL-licensed dependencies into the module graph.
+golangci_lint_version="v2.8.0"
+echo
+echo "Installing golangci-lint ${golangci_lint_version}"
+go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${golangci_lint_version}"
+
 echo
 echo "Installing sqlfluff"
 ${PYTHON_CMD:-python3} -m pip install "sqlfluff==${sqlfluff_version}"

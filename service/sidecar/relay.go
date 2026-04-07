@@ -162,7 +162,7 @@ func (r *relay) preProcessBlock(
 				logger.Warnf("Failed to load application root CAs: %v", bootErr)
 			} else {
 				// Only update CAs if extraction succeeded.
-				r.updateCACertificates(rootCAs)
+				r.updateTLSConfig(rootCAs)
 			}
 			// We wait for all previously submitted transactions to be processed by
 			// the committer before submitting the config block.
@@ -372,16 +372,16 @@ func (r *relay) setLastCommittedBlockNumber(
 	}
 }
 
-// updateCACertificates atomically updates the TLS config with static CAs + latest dynamic CAs.
+// updateTLSConfig atomically updates the TLS config with static CAs + latest dynamic CAs.
 // This replaces any previous dynamic CAs with the new ones from the config block,
 // while preserving the static CAs from the YAML configuration.
 //
 // Note: This method is called for every config block regardless of TLS mode, as the relay is TLS mode agnostic.
 // The nil check below handles cases where TLS is not enabled.
-func (r *relay) updateCACertificates(dynamicCAs [][]byte) {
+func (r *relay) updateTLSConfig(dynamicCAs [][]byte) {
 	// Relay processes config blocks in all TLS modes (none/tls/mtls).
 	// In none mode, CreateBasicServerTLSConfig() returns nil, but the relay still calls
-	// updateCACertificates() for every config block.
+	// updateTLSConfig() for every config block.
 	// This check prevents nil pointer dereference and unnecessary processing when TLS is not enabled.
 	currentConfig := r.tlsConfig.Load()
 	if currentConfig == nil || *currentConfig == nil {

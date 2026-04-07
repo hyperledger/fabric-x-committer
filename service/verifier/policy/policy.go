@@ -22,12 +22,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
-// KeyValue represents any key/value implementation.
-type KeyValue interface {
-	GetKey() []byte
-	GetValue() []byte
-}
-
 const (
 	// maxNamespaceIDLength defines the maximum number of characters allowed for namespace IDs.
 	// PostgreSQL limits identifiers to NAMEDATALEN-1, where NAMEDATALEL=64.

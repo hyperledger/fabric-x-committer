@@ -16,7 +16,7 @@ import (
 
 // NewViperWithCoordinatorDefaults returns a viper instance with the coordinator default values.
 func NewViperWithCoordinatorDefaults() *viper.Viper {
-	v := NewViperWithServiceDefault(9001, 2119)
+	v := newViperWithServiceDefault(9001, 2119)
 	v.SetDefault("dependency-graph.num-of-local-dep-constructors", 1)
 	v.SetDefault("dependency-graph.waiting-txs-limit", 100_000)
 	v.SetDefault("per-channel-buffer-size-per-goroutine", 10)
@@ -25,7 +25,7 @@ func NewViperWithCoordinatorDefaults() *viper.Viper {
 
 // NewViperWithSidecarDefaults returns a viper instance with the sidecar default values.
 func NewViperWithSidecarDefaults() *viper.Viper {
-	v := NewViperWithServiceDefault(4001, 2114)
+	v := newViperWithServiceDefault(4001, 2114)
 	v.SetDefault("committer.endpoint", "localhost:9001")
 	v.SetDefault("ledger.path", "./ledger/")
 	v.SetDefault("notification.max-timeout", "1m")
@@ -40,7 +40,7 @@ func NewViperWithSidecarDefaults() *viper.Viper {
 
 // NewViperWithVerifierDefaults returns a viper instance with the verifier default values.
 func NewViperWithVerifierDefaults() *viper.Viper {
-	v := NewViperWithServiceDefault(5001, 2115)
+	v := newViperWithServiceDefault(5001, 2115)
 	v.SetDefault("parallel-executor.parallelism", 4)
 	v.SetDefault("parallel-executor.batch-time-cutoff", "500ms")
 	v.SetDefault("parallel-executor.batch-size-cutoff", 50)
@@ -50,7 +50,7 @@ func NewViperWithVerifierDefaults() *viper.Viper {
 
 // NewViperWithVCDefaults returns a viper instance with the VC default values.
 func NewViperWithVCDefaults() *viper.Viper {
-	v := NewViperWithServiceDefault(6001, 2116)
+	v := newViperWithServiceDefault(6001, 2116)
 	defaultDBFlags(v)
 	// defaults for ResourceLimitsConfig
 	limitPrefix := "resource-limits."
@@ -64,7 +64,7 @@ func NewViperWithVCDefaults() *viper.Viper {
 
 // NewViperWithQueryDefaults returns a viper instance with the query-service default values.
 func NewViperWithQueryDefaults() *viper.Viper {
-	v := NewViperWithServiceDefault(7001, 2117)
+	v := newViperWithServiceDefault(7001, 2117)
 	defaultDBFlags(v)
 	v.SetDefault("server.rate-limit.requests-per-second", 5000)
 	v.SetDefault("server.rate-limit.burst", 1000)
@@ -82,11 +82,11 @@ func NewViperWithQueryDefaults() *viper.Viper {
 
 // NewViperWithLoadGenDefaults returns a viper instance with the load generator default values.
 func NewViperWithLoadGenDefaults() *viper.Viper {
-	return NewViperWithServiceDefault(8001, 2118)
+	return newViperWithServiceDefault(8001, 2118)
 }
 
-// NewViperWithServiceDefault returns a viper instance with a service default values.
-func NewViperWithServiceDefault(servicePort, monitoringPort int) *viper.Viper {
+// newViperWithServiceDefault returns a viper instance with a service default values.
+func newViperWithServiceDefault(servicePort, monitoringPort int) *viper.Viper {
 	v := NewViperWithLoggingDefault()
 	v.SetDefault("server.endpoint", &connection.Endpoint{Host: "localhost", Port: servicePort})
 	v.SetDefault("monitoring.endpoint", &connection.Endpoint{Host: "localhost", Port: monitoringPort})

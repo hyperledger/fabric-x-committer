@@ -15,7 +15,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/grpcservice"
 )
 
 type (
@@ -55,7 +55,7 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 	g, gCtx := errgroup.WithContext(dCtx)
 
 	g.Go(func() error {
-		return connection.StartService(gCtx, orderer, c.config.OrdererServers...)
+		return grpcservice.StartAndServe(gCtx, orderer, c.config.OrdererServers...)
 	})
 
 	g.Go(func() error {
