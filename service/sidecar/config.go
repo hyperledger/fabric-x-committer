@@ -19,16 +19,18 @@ type (
 	// and the config of ledger service, and the orderer setup.
 	// It may contain the orderer endpoint from which the sidecar pulls blocks.
 	Config struct {
-		Server                        *connection.ServerConfig  `mapstructure:"server"`
-		Monitoring                    *connection.ServerConfig  `mapstructure:"monitoring"`
-		Committer                     *connection.ClientConfig  `mapstructure:"committer"`
-		Orderer                       ordererdial.Config        `mapstructure:"orderer"`
-		Ledger                        LedgerConfig              `mapstructure:"ledger"`
-		Notification                  NotificationServiceConfig `mapstructure:"notification"`
-		LastCommittedBlockSetInterval time.Duration             `mapstructure:"last-committed-block-set-interval"`
-		WaitingTxsLimit               int                       `mapstructure:"waiting-txs-limit"`
+		Server     *connection.ServerConfig `mapstructure:"server"`
+		Monitoring *connection.ServerConfig `mapstructure:"monitoring"`
+		Committer  *connection.ClientConfig `mapstructure:"committer"`
+		Orderer    ordererdial.Config       `mapstructure:"orderer"`
+		Ledger     LedgerConfig             `mapstructure:"ledger"`
+		// LastCommittedBlockSetInterval is the interval at which the sidecar updates
+		// the coordinator with the last committed block.
+		LastCommittedBlockSetInterval time.Duration `mapstructure:"last-committed-block-set-interval" validate:"required,gt=0"` //nolint:lll,revive
+		WaitingTxsLimit               int           `mapstructure:"waiting-txs-limit" validate:"required,gt=0"`
 		// ChannelBufferSize is the buffer size that will be used to queue blocks, requests, and statuses.
-		ChannelBufferSize int `mapstructure:"channel-buffer-size"`
+		ChannelBufferSize int                       `mapstructure:"channel-buffer-size" validate:"required,gt=0"`
+		Notification      NotificationServiceConfig `mapstructure:"notification"`
 	}
 
 	// LedgerConfig holds the ledger path.
@@ -44,17 +46,23 @@ type (
 	NotificationServiceConfig struct {
 		// MaxTimeout is an upper limit on the request's timeout to prevent resource exhaustion.
 		// If a request doesn't specify a timeout, this value will be used.
-		MaxTimeout time.Duration `mapstructure:"max-timeout"`
+		MaxTimeout time.Duration `mapstructure:"max-timeout" validate:"required,gt=0"`
 		// MaxActiveTxIDs is the global limit on total active txID subscriptions across all streams.
-		MaxActiveTxIDs int `mapstructure:"max-active-tx-ids"`
+		MaxActiveTxIDs int `mapstructure:"max-active-tx-ids" validate:"required,gt=0"`
 		// MaxTxIDsPerRequest is the maximum number of txIDs allowed in a single notification request.
-		MaxTxIDsPerRequest int `mapstructure:"max-tx-ids-per-request"`
+		MaxTxIDsPerRequest int `mapstructure:"max-tx-ids-per-request" validate:"required,gt=0"`
 	}
 )
 
+// Default configuration values for the sidecar service.
 const (
-	defaultNotificationMaxTimeout = time.Minute
-	defaultBufferSize             = 100
-	defaultMaxActiveTxIDs         = 100_000
-	defaultMaxTxIDsPerRequest     = 1000
+	DefaultServerPort                    = 4001
+	DefaultMonitoringPort                = 2114
+	DefaultNotificationMaxTimeout        = time.Minute
+	DefaultBufferSize                    = 100
+	DefaultMaxActiveTxIDs                = 100_000
+	DefaultMaxTxIDsPerRequest            = 1000
+	DefaultLastCommittedBlockSetInterval = 5 * time.Second
+	DefaultWaitingTxsLimit               = 100_000
+	DefaultMaxConcurrentStreams          = 10
 )

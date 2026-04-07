@@ -37,6 +37,7 @@ server:
   # Maximum number of concurrent streaming RPCs (Deliver + Notification) allowed per
   # client connection. Limits resource usage but may cause connection failures if clients
   # need more streams. Set to 0 for unlimited (not recommended in production).
+  # Default: 10
   max-concurrent-streams: 10
   # Rate limiting configuration for unary gRPC endpoints.
   # Uses a token bucket algorithm to limit the number of requests per second.
@@ -79,6 +80,8 @@ orderer:
   #   multiplier: 1.5
   #   max-interval: 10s
   #   max-elapsed-time: 15m
+  # Grace period per block to wait before suspecting an orderer node is faulty.
+  suspicion-grace-period: 1s
   # Identity configuration for authenticating with orderers and signing requests.
   identity:
     # MSP ID of the organization this sidecar represents.
@@ -115,21 +118,27 @@ notification:
   # Maximum time a client notification subscription can remain idle before being
   # automatically closed. Prevents resource leaks from abandoned subscriptions.
   # If a client doesn't specify a timeout, this value is used.
+  # Default: 1m
   max-timeout: 10m
+  # Default: 100000
   max-active-tx-ids: 100_000
+  # Default: 1000
   max-tx-ids-per-request: 1000
 
 # How often the sidecar updates the coordinator with the last committed block number.
 # More frequent updates improve coordinator accuracy for dependency resolution but
 # increase network traffic and coordinator load.
+# Default: 5s
 last-committed-block-set-interval: 5s
 # Maximum number of transactions that have been sent to the coordinator and are
 # waiting for their status response. When reached, the sidecar applies backpressure
 # to the orderer connection by pausing block fetching. Prevents memory exhaustion under high load.
+# Default: 100000
 waiting-txs-limit: 20_000_000
 # Buffer size for internal Go channels used in the block processing pipeline
 # (block delivery, status updates, notifications). Larger buffers improve throughput
 # by reducing channel contention but increase memory usage.
+# Default: 100
 channel-buffer-size: 100
 
 # Logging configuration

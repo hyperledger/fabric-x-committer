@@ -117,8 +117,8 @@ func ToQueue(ctx context.Context, odp Parameters) (*SessionInfo, error) {
 }
 
 func newFTDelivery(odp Parameters) (*ftDelivery, error) {
-	if odp.SuspicionGracePeriodPerBlock == 0 {
-		odp.SuspicionGracePeriodPerBlock = DefaultSuspicionGracePeriodPerBlock
+	if odp.SuspicionGracePeriodPerBlock <= 0 {
+		return nil, errors.New("SuspicionGracePeriodPerBlock must be positive")
 	}
 
 	ftLevel, ftErr := ordererdial.GetFaultToleranceLevel(odp.FaultToleranceLevel)

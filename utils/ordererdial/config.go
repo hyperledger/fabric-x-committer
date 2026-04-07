@@ -31,15 +31,15 @@ type (
 
 		// The following parameters only applies to delivery.
 		Identity                     *IdentityConfig `mapstructure:"identity"`
-		SuspicionGracePeriodPerBlock time.Duration   `mapstructure:"suspicion-grace-period-per-block"`
+		SuspicionGracePeriodPerBlock time.Duration   `mapstructure:"suspicion-grace-period"`
 	}
 
 	// IdentityConfig defines the orderer's client MSP.
 	IdentityConfig struct {
 		// MspID indicates to which MSP this client belongs to.
-		MspID  string               `mapstructure:"msp-id" yaml:"msp-id"`
-		MSPDir string               `mapstructure:"msp-dir" yaml:"msp-dir"`
-		BCCSP  *factory.FactoryOpts `mapstructure:"bccsp" yaml:"bccsp"`
+		MspID  string               `mapstructure:"msp-id"`
+		MSPDir string               `mapstructure:"msp-dir"`
+		BCCSP  *factory.FactoryOpts `mapstructure:"bccsp"`
 	}
 
 	// TLSConfig is a TLS config for the orderer clients.

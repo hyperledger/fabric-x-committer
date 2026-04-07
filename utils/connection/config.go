@@ -21,16 +21,16 @@ type (
 	// MultiClientConfig contains the endpoints, TLS config, and retry profile.
 	// This config allows the support of number of different endpoints to multiple service instances.
 	MultiClientConfig struct {
-		Endpoints []*Endpoint    `mapstructure:"endpoints" yaml:"endpoints"`
-		TLS       TLSConfig      `mapstructure:"tls"       yaml:"tls"`
-		Retry     *retry.Profile `mapstructure:"reconnect" yaml:"reconnect"`
+		Endpoints []*Endpoint    `mapstructure:"endpoints"`
+		TLS       TLSConfig      `mapstructure:"tls"`
+		Retry     *retry.Profile `mapstructure:"reconnect"`
 	}
 
 	// ClientConfig contains a single endpoint, TLS config, and retry profile.
 	ClientConfig struct {
-		Endpoint *Endpoint      `mapstructure:"endpoint"  yaml:"endpoint"`
-		TLS      TLSConfig      `mapstructure:"tls"       yaml:"tls"`
-		Retry    *retry.Profile `mapstructure:"reconnect" yaml:"reconnect"`
+		Endpoint *Endpoint      `mapstructure:"endpoint"`
+		TLS      TLSConfig      `mapstructure:"tls"`
+		Retry    *retry.Profile `mapstructure:"reconnect"`
 	}
 
 	// ServerConfig describes the connection parameter for a server.
@@ -39,7 +39,7 @@ type (
 		TLS                  TLSConfig              `mapstructure:"tls"`
 		KeepAlive            *ServerKeepAliveConfig `mapstructure:"keep-alive"`
 		RateLimit            RateLimitConfig        `mapstructure:"rate-limit"`
-		MaxConcurrentStreams int                    `mapstructure:"max-concurrent-streams"`
+		MaxConcurrentStreams int                    `mapstructure:"max-concurrent-streams" validate:"gte=0"`
 
 		preAllocatedListener net.Listener
 	}

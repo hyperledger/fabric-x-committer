@@ -95,6 +95,9 @@ orderer-client:
     latest-known-config-block-path: /root/artifacts/config-block.pb.bin
     # Loadgen uses these TLS credentials when connecting to the orderers as a client.
     tls: *tlsConfig
+    # Suspicion grace period per block for the orderer delivery stream.
+    # If the stream doesn't catch up within this period multiplied by the block gap, it is suspected as faulty.
+    suspicion-grace-period: 1s
     # Identity configuration for signing transactions and connecting to orderers.
     identity:
       # MSP (Membership Service Provider) ID identifying the organization.

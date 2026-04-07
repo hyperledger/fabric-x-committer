@@ -346,6 +346,7 @@ func TestNotifierGlobalLimit(t *testing.T) {
 	t.Parallel()
 
 	env := newNotifierTestEnvWithConfig(t, &NotificationServiceConfig{
+		MaxTimeout:         DefaultNotificationMaxTimeout,
 		MaxActiveTxIDs:     5,
 		MaxTxIDsPerRequest: 10,
 	})
@@ -421,16 +422,20 @@ func TestNotifierGlobalLimit(t *testing.T) {
 
 func newNotifierTestEnv(tb testing.TB) *notifierTestEnv {
 	tb.Helper()
-	return newNotifierTestEnvWithConfig(tb, &NotificationServiceConfig{})
+	return newNotifierTestEnvWithConfig(tb, &NotificationServiceConfig{
+		MaxTimeout:         DefaultNotificationMaxTimeout,
+		MaxActiveTxIDs:     DefaultMaxActiveTxIDs,
+		MaxTxIDsPerRequest: DefaultMaxTxIDsPerRequest,
+	})
 }
 
 func newNotifierTestEnvWithConfig(tb testing.TB, conf *NotificationServiceConfig) *notifierTestEnv {
 	tb.Helper()
 	env := &notifierTestEnv{
-		n:                  newNotifier(defaultBufferSize, conf),
+		n:                  newNotifier(DefaultBufferSize, conf),
 		notificationQueues: make([]channel.ReaderWriter[*committerpb.NotificationResponse], 5),
 	}
-	statusQueue := make(chan []*committerpb.TxStatus, defaultBufferSize)
+	statusQueue := make(chan []*committerpb.TxStatus, DefaultBufferSize)
 	env.requestQueue = channel.NewWriter(tb.Context(), env.n.requestQueue)
 	env.statusQueue = channel.NewWriter(tb.Context(), statusQueue)
 	for i := range env.notificationQueues {

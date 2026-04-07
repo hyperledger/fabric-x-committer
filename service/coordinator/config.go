@@ -16,15 +16,24 @@ type (
 		Server             *connection.ServerConfig     `mapstructure:"server"`
 		Verifier           connection.MultiClientConfig `mapstructure:"verifier"`
 		ValidatorCommitter connection.MultiClientConfig `mapstructure:"validator-committer"`
-		DependencyGraph    *DependencyGraphConfig       `mapstructure:"dependency-graph"`
+		DependencyGraph    *DependencyGraphConfig       `mapstructure:"dependency-graph" validate:"required"`
 		Monitoring         *connection.ServerConfig     `mapstructure:"monitoring"`
 		// ChannelBufferSizePerGoroutine defines the buffer size per go-routine.
-		ChannelBufferSizePerGoroutine int `mapstructure:"per-channel-buffer-size-per-goroutine"`
+		ChannelBufferSizePerGoroutine int `mapstructure:"per-channel-buffer-size-per-goroutine" validate:"required,gt=0"` //nolint:lll,revive
 	}
 
 	// DependencyGraphConfig is the configuration for dependency graph manager. It contains resource limits.
 	DependencyGraphConfig struct {
-		NumOfLocalDepConstructors int `mapstructure:"num-of-local-dep-constructors"`
-		WaitingTxsLimit           int `mapstructure:"waiting-txs-limit"`
+		NumOfLocalDepConstructors int `mapstructure:"num-of-local-dep-constructors" validate:"required,gt=0"`
+		WaitingTxsLimit           int `mapstructure:"waiting-txs-limit" validate:"required,gt=0"`
 	}
+)
+
+// Default configuration values for the coordinator service.
+const (
+	DefaultServerPort                    = 9001
+	DefaultMonitoringPort                = 2119
+	DefaultNumOfLocalDepConstructors     = 1
+	DefaultWaitingTxsLimit               = 100_000
+	DefaultChannelBufferSizePerGoroutine = 10
 )
