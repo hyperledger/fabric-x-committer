@@ -203,7 +203,7 @@ func (c *Client) runHTTPServer(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	tlsCfg, err := tlsMaterials.CreateBasicServerTLSConfig()
+	tlsCfg, err := tlsMaterials.CreateServerTLSConfig(nil)
 	if err != nil {
 		return err
 	}

@@ -379,7 +379,7 @@ func (r *relay) setLastCommittedBlockNumber(
 // The nil check below handles cases where TLS is not enabled.
 func (r *relay) updateTLSConfig(dynamicCAs [][]byte) {
 	// Relay processes config blocks in all TLS modes (none/tls/mtls).
-	// In none mode, CreateBasicServerTLSConfig() returns nil, but the relay still calls
+	// In none mode, createBasicServerTLSConfig() returns nil, but the relay still calls
 	// updateTLSConfig() for every config block.
 	// This check prevents nil pointer dereference and unnecessary processing when TLS is not enabled.
 	currentConfig := r.tlsConfig.Load()

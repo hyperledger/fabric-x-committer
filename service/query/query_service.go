@@ -89,7 +89,7 @@ func NewQueryService(config *Config) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	tlsConfig, err := tlsMaterials.CreateBasicServerTLSConfig()
+	tlsConfig, err := tlsMaterials.CreateServerTLSConfig(nil)
 	if err != nil {
 		return nil, err
 	}

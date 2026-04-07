@@ -145,7 +145,7 @@ func NewClientTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
 func (m *TLSMaterials) CreateServerTLSConfig(
 	getDynamicTLSFunc func(ctx context.Context) *tls.Config,
 ) (*tls.Config, error) {
-	tlsConfig, err := m.CreateBasicServerTLSConfig()
+	tlsConfig, err := m.createBasicServerTLSConfig()
 	if err != nil {
 		return nil, errors.Newf("failed to create base server TLS config: %v", err)
 	}
@@ -170,9 +170,9 @@ func (m *TLSMaterials) CreateServerTLSConfig(
 	return tlsConfig, nil
 }
 
-// CreateBasicServerTLSConfig creates the base server TLS configuration without dynamic CA support.
+// createBasicServerTLSConfig creates the base server TLS configuration without dynamic CA support.
 // This is an internal helper used by CreateServerTLSConfig.
-func (m *TLSMaterials) CreateBasicServerTLSConfig() (*tls.Config, error) {
+func (m *TLSMaterials) createBasicServerTLSConfig() (*tls.Config, error) {
 	switch m.Mode {
 	case NoneTLSMode, UnmentionedTLSMode:
 		return nil, nil

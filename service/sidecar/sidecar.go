@@ -85,7 +85,7 @@ func New(c *Config) (*Service, error) {
 	}
 
 	// Create initial tls.Config with static CAs
-	tlsConfig, err := tlsMaterials.CreateBasicServerTLSConfig()
+	tlsConfig, err := tlsMaterials.CreateServerTLSConfig(nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create initial TLS config: %w", err)
 	}
