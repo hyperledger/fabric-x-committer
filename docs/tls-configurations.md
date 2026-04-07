@@ -148,7 +148,7 @@ tls:
 
 ## Dynamic CA Certificate Rotation
 
-Some services support **dynamic root CA certificate rotation** — the ability to update
+The Query and Sidecar services support **dynamic root CA certificate rotation** — the ability to update
 the set of trusted client CA certificates at runtime, without restarting the service.
 
 ### How it works
@@ -162,15 +162,15 @@ This means:
 - New connections will use the **latest merged CA set** (static YAML CAs + dynamic config-block CAs).
 - No service restart is required when a new organization's CA is added to the channel.
 
-> **Note:** Dynamic CA support only applies when the server TLS mode is `mtls`.
+> **Note:** Dynamic root CAs support applies only when the server TLS mode is `mtls`.
 > For `tls` or `none` modes, the standard static TLS configuration is used.
 
 ### Services with dynamic CA support
 
-| Service | Dynamic CA source |
-|---------|-------------------|
+| Service | Dynamic CA source                                                                                                                                                                                           |
+|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Sidecar** | Updated from config blocks received from the orderer. Applied immediately when a config block is processed, regardless of TLS mode (none/tls/mtls). When TLS is disabled, the update is skipped gracefully. |
-| **Query Service** | Periodically fetched from the config transaction in the state database during TLS handshake. Refresh interval is controlled by `acl-refresh-interval`. |
+| **Query Service** | Periodically fetched from the config transaction in the state database during TLS handshake. Refresh interval is controlled by `acl-refresh-interval`.                                                      |
 
 ### Query Service: Configuration Fields
 
