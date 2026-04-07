@@ -91,7 +91,7 @@ func New(c *Config) (*Service, error) {
 	}
 
 	relayService.tlsConfig.Store(&tlsConfig)
-	relayService.staticCACerts = tlsMaterials.CACerts
+	relayService.rootCAsInConfig = tlsMaterials.CACerts
 
 	return &Service{
 		deliveryParams: deliveryParams,

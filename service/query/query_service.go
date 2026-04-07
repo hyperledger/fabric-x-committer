@@ -30,7 +30,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/dynamictls"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
@@ -68,7 +67,7 @@ type (
 		healthcheck *health.Server
 
 		// Dynamic TLS configuration management: tlsConfig stores the complete pre-configured
-		// tls.Config with merged static + dynamic CAs; staticCACerts holds the static CAs
+		// tls.Config with merged static + dynamic CAs; rootCAsInConfig holds the root CAs
 		// from YAML config; lastCAFetch tracks the last refresh to throttle database load;
 		// and refreshMutex implements a double-check locking pattern to prevent redundant
 		// concurrent refresh operations during connection spikes.
@@ -77,10 +76,10 @@ type (
 		// This lock-free read pattern ensures client reads are not serialized,
 		// while the mutex in refreshDynamicRootCAs guarantees only one goroutine
 		// performs the expensive DB fetch and config update at a time.
-		tlsConfig     atomic.Pointer[*tls.Config]
-		staticCACerts [][]byte
-		lastCAFetch   atomic.Int64
-		refreshMutex  sync.Mutex
+		tlsConfig       atomic.Pointer[*tls.Config]
+		rootCAsInConfig [][]byte
+		lastCAFetch     atomic.Int64
+		refreshMutex    sync.Mutex
 	}
 )
 
@@ -96,12 +95,12 @@ func NewQueryService(config *Config) (*Service, error) {
 	}
 
 	service := &Service{
-		config:        config,
-		metrics:       newQueryServiceMetrics(),
-		ready:         channel.NewReady(),
-		healthcheck:   connection.DefaultHealthCheckService(),
-		tlsConfig:     atomic.Pointer[*tls.Config]{},
-		staticCACerts: tlsMaterials.CACerts,
+		config:          config,
+		metrics:         newQueryServiceMetrics(),
+		ready:           channel.NewReady(),
+		healthcheck:     connection.DefaultHealthCheckService(),
+		tlsConfig:       atomic.Pointer[*tls.Config]{},
+		rootCAsInConfig: tlsMaterials.CACerts,
 	}
 	service.tlsConfig.Store(&tlsConfig)
 	return service, nil
@@ -216,13 +215,13 @@ func (q *Service) refreshDynamicRootCAs(ctx context.Context) {
 		return // Keep existing config
 	}
 
-	dynamicCAs, err := dynamictls.NewOrganizationsFromEnvelope(envelope)
+	dynamicCAs, err := connection.GetOrganizationsFromEnvelope(envelope)
 	if err != nil {
 		logger.Warnf("Failed to extract root CAs from config: %v", err)
 		return // Keep existing config
 	}
 
-	mergedCAs := connection.MergeCACerts(q.staticCACerts, dynamicCAs)
+	mergedCAs := connection.MergeCACerts(q.rootCAsInConfig, dynamicCAs)
 	certPool, err := connection.BuildCertPool(mergedCAs)
 	if err != nil {
 		logger.Warnf("Failed to build cert pool: %v", err)
@@ -236,7 +235,7 @@ func (q *Service) refreshDynamicRootCAs(ctx context.Context) {
 	q.tlsConfig.Store(&newConfig)
 	q.lastCAFetch.Store(time.Now().UnixNano())
 	logger.Debugf("Refreshed and built TLS config with %d total CAs (%d static + %d dynamic)",
-		len(mergedCAs), len(q.staticCACerts), len(dynamicCAs))
+		len(mergedCAs), len(q.rootCAsInConfig), len(dynamicCAs))
 }
 
 // BeginView implements the query-service interface.

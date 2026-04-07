@@ -23,7 +23,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/dynamictls"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
@@ -48,8 +47,8 @@ type (
 
 		// tlsConfig holds the complete pre-configured tls.Config with merged static + dynamic CAs.
 		tlsConfig atomic.Pointer[*tls.Config]
-		// staticCACerts holds the static CAs from YAML config for merging with dynamic CAs.
-		staticCACerts [][]byte
+		// rootCAsInConfig holds the CAs from YAML config for merging with dynamic CAs.
+		rootCAsInConfig [][]byte
 	}
 
 	relayRunConfig struct {
@@ -157,7 +156,7 @@ func (r *relay) preProcessBlock(
 			// Reading application root CAs and add it to the YAML root CAs setup.
 			// This happens for all config blocks regardless of TLS mode (none/tls/mtls).
 			logger.Debug("Updating sidecar's acceptable client CAs from config block")
-			rootCAs, bootErr := dynamictls.NewApplicationRootCAsFromConfigBlock(block)
+			rootCAs, bootErr := connection.GetApplicationRootCAsFromConfigBlock(block)
 			if bootErr != nil {
 				logger.Warnf("Failed to load application root CAs: %v", bootErr)
 			} else {
@@ -391,7 +390,7 @@ func (r *relay) updateTLSConfig(dynamicCAs [][]byte) {
 
 	// Merge static CAs (from YAML) with new dynamic CAs (from config block).
 	// This replaces any previous dynamic CAs.
-	mergedCAs := connection.MergeCACerts(r.staticCACerts, dynamicCAs)
+	mergedCAs := connection.MergeCACerts(r.rootCAsInConfig, dynamicCAs)
 	certPool, err := connection.BuildCertPool(mergedCAs)
 	if err != nil {
 		logger.Warnf("Failed to build cert pool: %v", err)
@@ -404,5 +403,5 @@ func (r *relay) updateTLSConfig(dynamicCAs [][]byte) {
 	// Store the updated config atomically
 	r.tlsConfig.Store(&newConfig)
 	logger.Debugf("Updated TLS config with %d total CAs (%d from yaml + %d from config block)",
-		len(mergedCAs), len(r.staticCACerts), len(dynamicCAs))
+		len(mergedCAs), len(r.rootCAsInConfig), len(dynamicCAs))
 }
