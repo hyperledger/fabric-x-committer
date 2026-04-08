@@ -40,9 +40,9 @@ var (
 )
 
 // GrpcServer instantiate a [grpc.Server].
-func (c *ServerConfig) GrpcServer() (*grpc.Server, error) {
+func (c *ServerConfig) GrpcServer(tlsProvider TLSConfigProvider) (*grpc.Server, error) {
 	opts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxMsgSize), grpc.MaxSendMsgSize(maxMsgSize)}
-	serverGrpcTransportCreds, err := c.TLS.ServerCredentials()
+	serverGrpcTransportCreds, err := c.serverCredentials(tlsProvider)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed loading the server's grpc credentials")
 	}

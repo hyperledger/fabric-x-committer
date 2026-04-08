@@ -257,9 +257,9 @@ func TestFilterStreamRPCError(t *testing.T) {
 
 	t.Run("client ctx timeout", func(t *testing.T) {
 		t.Parallel()
+		env := newFilterTestEnv(t)
 		clientCtx, clientCancel := context.WithTimeout(t.Context(), time.Second)
 		t.Cleanup(clientCancel)
-		env := newFilterTestEnv(t)
 		deliver, err := env.client.Deliver(clientCtx)
 		require.NoError(t, err)
 		time.Sleep(time.Second)

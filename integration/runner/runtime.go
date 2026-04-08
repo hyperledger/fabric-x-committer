@@ -102,6 +102,14 @@ type (
 		VerifierBatchTimeCutoff time.Duration
 		// VerifierBatchSizeCutoff configures the batch size cutoff for verifier service.
 		VerifierBatchSizeCutoff int
+
+		// QueryTLSRefreshInterval configures how often the query service polls the DB
+		// for config block updates to refresh dynamic TLS CA certificates.
+		QueryTLSRefreshInterval time.Duration
+
+		// PeerOrganizationCount is the number of peer organizations in the genesis config block.
+		// Defaults to 2 if not set.
+		PeerOrganizationCount uint32
 	}
 )
 
@@ -163,7 +171,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	ordererEnv := mock.NewOrdererTestEnv(t, &mock.OrdererTestParameters{
 		NumIDs:                3,
 		ServerPerID:           2,
-		PeerOrganizationCount: 2,
+		PeerOrganizationCount: max(2, conf.PeerOrganizationCount),
 		ChanID:                TestChannelName,
 		ClientTLSConfig:       clientTLS,
 		ServerTLSConfig:       ordererServiceTLS,
@@ -205,6 +213,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 			VCTimeoutForMinTransactionBatchSize: conf.VCTimeoutForMinTransactionBatchSize,
 			VerifierBatchTimeCutoff:             conf.VerifierBatchTimeCutoff,
 			VerifierBatchSizeCutoff:             conf.VerifierBatchSizeCutoff,
+			QueryTLSRefreshInterval:             conf.QueryTLSRefreshInterval,
 		},
 		CommittedBlock:   make(chan *common.Block, 100),
 		SeedForCryptoGen: rand.New(rand.NewSource(10)),

@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/google/uuid"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/semaphore"
@@ -28,6 +29,8 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
+
+var logger = flogging.MustGetLogger("query")
 
 var (
 	// ErrInvalidOrStaleView is returned when attempting to use wrong, stale, or cancelled view.
@@ -58,16 +61,20 @@ type (
 		metrics     *perfMetrics
 		ready       *channel.Ready
 		healthcheck *health.Server
+		tlsUpdater  connection.TLSCertUpdater
 	}
 )
 
 // NewQueryService create a new QueryService given a configuration.
-func NewQueryService(config *Config) *Service {
+// The tlsUpdater is optional; when non-nil, it is used to push updated
+// root CA certificates read from the database.
+func NewQueryService(config *Config, tlsUpdater connection.TLSCertUpdater) *Service {
 	return &Service{
 		config:      config,
 		metrics:     newQueryServiceMetrics(),
 		ready:       channel.NewReady(),
 		healthcheck: connection.DefaultHealthCheckService(),
+		tlsUpdater:  tlsUpdater,
 	}
 }
 
@@ -106,6 +113,10 @@ func (q *Service) Run(ctx context.Context) error {
 		},
 	}
 	q.ready.SignalReady()
+
+	// TLS refresh runs as a standalone goroutine rather than in an errgroup because
+	// a transient failure to read config from the DB should not stop the query service.
+	go q.refreshTLSFromDB(ctx, pool)
 
 	_ = q.metrics.StartPrometheusServer(ctx, q.config.Monitoring)
 	// We don't use the error here as we avoid stopping the service due to monitoring error.
@@ -318,6 +329,62 @@ func (q *Service) validateKeysCount(count int) error {
 
 func (q *Service) requestLatency(method string, start time.Time) {
 	promutil.Observe(q.metrics.requestsLatency.WithLabelValues(method), time.Since(start))
+}
+
+// refreshTLSFromDB periodically polls the database for the config transaction
+// and updates the dynamic TLS CA certificates only when the config version changes.
+func (q *Service) refreshTLSFromDB(ctx context.Context, pool querier) {
+	if q.tlsUpdater == nil {
+		return
+	}
+
+	var lastVersion uint64
+	seen := false
+
+	// tryRefresh attempts a single refresh. Errors are logged but not returned,
+	// as this is a background polling loop that should continue on transient failures.
+	tryRefresh := func() {
+		configTX, err := queryConfig(ctx, pool)
+		if err != nil {
+			logger.Errorf("Failed to read config transaction from DB: %v", err)
+			return
+		}
+
+		if len(configTX.Envelope) == 0 || (seen && configTX.Version == lastVersion) {
+			return
+		}
+
+		certs, err := connection.ExtractAppTLSCAsFromEnvelope(configTX.Envelope)
+		if err != nil {
+			logger.Errorf("Failed to extract TLS CAs from config envelope: %v", err)
+			return
+		}
+
+		if err := q.tlsUpdater.SetClientRootCAs(certs); err != nil {
+			logger.Errorf("Failed to update dynamic TLS: %v", err)
+			return
+		}
+
+		seen = true
+		lastVersion = configTX.Version
+		logger.Infof("Updated dynamic TLS with %d CA certificates from config version %d", len(certs), lastVersion)
+	}
+
+	// Attempt immediate refresh at startup to pick up existing config without waiting the
+	// full polling interval.
+	tryRefresh()
+
+	ticker := time.NewTicker(q.config.TLSRefreshInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			tryRefresh()
+		}
+	}
 }
 
 // wrapQueryError wraps query errors with appropriate gRPC status codes.

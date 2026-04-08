@@ -29,6 +29,7 @@ type (
 		incomingBlockToBeCommitted <-chan *common.Block
 		outgoingCommittedBlock     chan<- *common.Block
 		outgoingStatusUpdates      chan<- []*committerpb.TxStatus
+		outgoingConfigBlocks       chan<- *common.Block
 
 		// nextBlockNumberToBeCommitted denotes the next block number of to be committed.
 		nextBlockNumberToBeCommitted atomic.Uint64
@@ -50,6 +51,7 @@ type (
 		incomingBlockToBeCommitted     <-chan *common.Block
 		outgoingCommittedBlock         chan<- *common.Block
 		outgoingStatusUpdates          chan<- []*committerpb.TxStatus
+		outgoingConfigBlocks           chan<- *common.Block
 		waitingTxsLimit                int
 	}
 )
@@ -71,6 +73,7 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 	r.incomingBlockToBeCommitted = config.incomingBlockToBeCommitted
 	r.outgoingCommittedBlock = config.outgoingCommittedBlock
 	r.outgoingStatusUpdates = config.outgoingStatusUpdates
+	r.outgoingConfigBlocks = config.outgoingConfigBlocks
 	r.blkNumToBlkWithStatus.Clear()
 	r.txIDToHeight.Clear()
 	r.waitingTxsSlots = utils.NewSlots(int64(config.waitingTxsLimit))
@@ -120,6 +123,7 @@ func (r *relay) preProcessBlock(
 ) error {
 	incomingBlockToBeCommitted := channel.NewReader(ctx, r.incomingBlockToBeCommitted)
 	queue := channel.NewWriter(ctx, mappedBlockQueue)
+	configBlocks := channel.NewWriter(ctx, r.outgoingConfigBlocks)
 
 	done := context.AfterFunc(ctx, r.waitingTxsSlots.Broadcast)
 	defer done()
@@ -143,6 +147,7 @@ func (r *relay) preProcessBlock(
 			// We wait for all previously submitted transactions to be processed by
 			// the committer before submitting the config block.
 			r.waitingTxsSlots.WaitTillEmpty(ctx)
+			configBlocks.Write(block)
 		}
 
 		txsCount := len(mappedBlock.block.Txs)

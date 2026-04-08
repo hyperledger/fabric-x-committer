@@ -8,3 +8,6 @@
 {{ include "database" . | indent 0 }}
 
 max-request-keys: {{ .MaxRequestKeys }}
+{{- if .QueryTLSRefreshInterval }}
+tls-refresh-interval: {{ .QueryTLSRefreshInterval }}
+{{- end }}
