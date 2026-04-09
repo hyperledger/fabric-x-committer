@@ -75,7 +75,7 @@ dependency-graph:
   # Maximum number of transactions allowed in the global dependency graph.
   # This limit indirectly controls memory utilization. When reached, the
   # coordinator applies backpressure to upstream services.
-  # Default: 100000
+  # Default: 100,000
   waiting-txs-limit: 100_000
 
 # Base buffer size per goroutine/endpoint for internal channels. The actual

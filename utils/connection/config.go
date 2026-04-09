@@ -82,7 +82,7 @@ type (
 	// For example, If only server-side TLS is required, the certificate pool (certPool) is not built (for a server),
 	// since the relevant certificates paths are defined in the YAML according to the selected mode.
 	TLSConfig struct {
-		Mode string `mapstructure:"mode"`
+		Mode string `mapstructure:"mode" validate:"omitempty,oneof=tls mtls none"`
 		// CertPath is the path to the certificate file (public key).
 		CertPath string `mapstructure:"cert-path"`
 		// KeyPath is the path to the key file (private key).

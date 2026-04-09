@@ -368,7 +368,6 @@ func TestReadConfigLoadGen(t *testing.T) {
 							KeyPath:  loadgenTLSCreds.KeyPath,
 							CertPath: loadgenTLSCreds.CertPath,
 						},
-						SuspicionGracePeriodPerBlock: time.Second,
 					},
 					BroadcastParallelism: 1,
 				},

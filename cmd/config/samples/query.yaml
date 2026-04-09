@@ -24,13 +24,13 @@ server:
   rate-limit:
     # Maximum number of requests per second allowed.
     # Set to 0 to disable rate limiting.
-    # Default: 5000
+    # Default: 5,000
     requests-per-second: 0
     # Maximum number of requests allowed in a single burst.
     # When rate limiting is enabled (requests-per-second > 0):
     #   - Must be greater than 0
     #   - Must be less than or equal to requests-per-second
-    # Default: 1000
+    # Default: 1,000
     burst: 0
 # Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
 monitoring:
@@ -124,7 +124,7 @@ database:
 # Minimum number of keys that must accumulate in a batch before executing the query
 # against the database. Batching reduces database round-trips and improves efficiency.
 # Queries wait up to max-batch-wait for the batch to fill.
-# Default: 1024
+# Default: 1,024
 min-batch-keys: 1024
 # Maximum time to wait for a batch to reach min-batch-keys before executing it anyway.
 # Lower values reduce query latency but may decrease batching efficiency. Queries may
@@ -138,11 +138,11 @@ max-batch-wait: 100ms
 view-aggregation-window: 100ms
 # Maximum number of views that can be aggregated together. Once reached, a new
 # aggregated view is created even if within the view-aggregation-window.
-# Default: 1024
+# Default: 1,024
 max-aggregated-views: 1024
 # Maximum number of concurrently active (batched) views. When reached, new BeginView
 # requests are rejected with RESOURCE_EXHAUSTED. Set to 0 to disable the limit.
-# Default: 4096
+# Default: 4,096
 max-active-views: 4096
 # Maximum lifetime of a view from creation to completion of its last query.
 # Views exceeding this timeout are aborted to prevent resource leaks.
@@ -155,7 +155,7 @@ max-view-timeout: 10s
 # GetTransactionStatus (number of transaction IDs).
 # Large key sets can cause high latency, memory spikes, and potential timeouts.
 # Set to 0 to disable the limit (not recommended for production).
-# Default: 10000
+# Default: 10,000
 max-request-keys: 10000
 
 # Logging configuration

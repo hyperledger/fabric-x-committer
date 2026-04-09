@@ -41,7 +41,7 @@ func NewViperWithSidecarDefaults() *viper.Viper {
 	v.SetDefault("waiting-txs-limit", sidecar.DefaultWaitingTxsLimit)
 	v.SetDefault("channel-buffer-size", sidecar.DefaultBufferSize)
 	v.SetDefault("server.max-concurrent-streams", sidecar.DefaultMaxConcurrentStreams)
-	v.SetDefault("orderer.suspicion-grace-period", deliverorderer.DefaultSuspicionGracePeriodPerBlock)
+	v.SetDefault("orderer.suspicion-grace-period-per-block", deliverorderer.DefaultSuspicionGracePeriodPerBlock)
 	return v
 }
 

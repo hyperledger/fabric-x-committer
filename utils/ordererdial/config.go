@@ -20,7 +20,7 @@ import (
 type (
 	// Config defines the static configuration of the orderer as loaded from the YAML file.
 	Config struct {
-		FaultToleranceLevel string         `mapstructure:"fault-tolerance-level"`
+		FaultToleranceLevel string         `mapstructure:"fault-tolerance-level" validate:"omitempty,oneof=CFT BFT"`
 		TLS                 TLSConfig      `mapstructure:"tls"`
 		Retry               *retry.Profile `mapstructure:"reconnect"`
 		// LatestKnownConfigBlockPath is the path for the latest known config block.
@@ -31,7 +31,7 @@ type (
 
 		// The following parameters only applies to delivery.
 		Identity                     *IdentityConfig `mapstructure:"identity"`
-		SuspicionGracePeriodPerBlock time.Duration   `mapstructure:"suspicion-grace-period"`
+		SuspicionGracePeriodPerBlock time.Duration   `mapstructure:"suspicion-grace-period-per-block"`
 	}
 
 	// IdentityConfig defines the orderer's client MSP.
@@ -44,7 +44,7 @@ type (
 
 	// TLSConfig is a TLS config for the orderer clients.
 	TLSConfig struct {
-		Mode     string `mapstructure:"mode"`
+		Mode     string `mapstructure:"mode" validate:"omitempty,oneof=tls mtls none"`
 		CertPath string `mapstructure:"cert-path"`
 		KeyPath  string `mapstructure:"key-path"`
 		// CommonCACertPaths is a temporary workaround to inject CA to all organizations.

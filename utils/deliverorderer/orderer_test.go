@@ -176,10 +176,9 @@ func TestNewOrdererDeliverEdgeCases(t *testing.T) {
 	t.Run("invalid FaultToleranceLevel", func(t *testing.T) {
 		t.Parallel()
 		_, err := deliverorderer.ToQueue(cancelledContext, deliverorderer.Parameters{
-			FaultToleranceLevel:          "invalid",
-			TLS:                          *tls,
-			OutputBlock:                  make(chan *common.Block, 10),
-			SuspicionGracePeriodPerBlock: time.Second,
+			FaultToleranceLevel: "invalid",
+			TLS:                 *tls,
+			OutputBlock:         make(chan *common.Block, 10),
 		})
 		require.ErrorContains(t, err, "invalid fault tolerance level")
 	})
