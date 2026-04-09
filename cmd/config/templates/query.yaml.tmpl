@@ -2,9 +2,9 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-# Configuration for the server
 {{ include "service" . | indent 0 }}
 {{ include "rateLimit" . | indent 2 }}
+
 {{ include "database" . | indent 0 }}
 
 max-request-keys: {{ .MaxRequestKeys }}

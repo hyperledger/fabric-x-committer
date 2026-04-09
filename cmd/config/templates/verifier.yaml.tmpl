@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 {{ include "service" . | indent 0 }}
+
 parallel-executor:
   parallelism: 40
   batch-time-cutoff: {{ .VerifierBatchTimeCutoff | default "10ms" }}

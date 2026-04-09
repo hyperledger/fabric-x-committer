@@ -11,10 +11,8 @@
       min-time: 60s
       permit-without-stream: false
 {{ include "rateLimit" . | indent 2 }}
-  # Maximum number of concurrent streaming RPCs (Deliver + Notification).
-  # Set to 0 for unlimited streams (default behavior if not specified).
-  # If not set here, uses the viper default of 10.
   max-concurrent-streams: {{ .MaxConcurrentStreams | default 0 }}
+
 {{ include "ordererDialConfig" . | indent 0 }}
 
 committer:
