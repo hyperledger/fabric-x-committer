@@ -10,18 +10,25 @@ SPDX-License-Identifier: Apache-2.0
 
 The following Sidecar metrics are exported for consumption by Prometheus.
 
-| Name                                                       | Type      | Labels | Description                                                                  |
-|------------------------------------------------------------|-----------|--------|------------------------------------------------------------------------------|
-| sidecar_grpc_coordinator_sent_transaction_total            | counter   |        | Total number of transactions sent to the coordinator service.                |
-| sidecar_grpc_coordinator_received_transaction_status_total | counter   | status | Total number of transactions statuses received from the coordinator service. |
-| sidecar_relay_block_mapping_seconds                        | histogram |        | Time spent mapping a received block to an internal block.                    |
-| sidecar_relay_mapped_block_processing_seconds              | histogram |        | Time spent processing an internal block and sending it to the coordinator.   |
-| sidecar_relay_transaction_status_batch_processing_seconds  | histogram |        | Time spent processing a received status batch from the coordinator.          |
-| sidecar_relay_waiting_transactions_queue_size              | gauge     |        | Total number of transactions waiting at the relay for statuses.              |
-| sidecar_relay_input_block_queue_size                       | gauge     |        | Size of the input block queue of the relay service.                          |
-| sidecar_relay_output_committed_block_queue_size            | gauge     |        | Size of the output committed block queue of the relay service.               |
-| sidecar_ledger_append_block_seconds                        | histogram |        | Time spent appending a block to the ledger.                                  |
-| sidecar_ledger_block_height                                | gauge     |        | The current block height of the ledger.                                      |
+| Name                                                       | Type      | Labels | Description                                                                      |
+|------------------------------------------------------------|-----------|--------|----------------------------------------------------------------------------------|
+| sidecar_grpc_coordinator_sent_transaction_total            | counter   |        | Total number of transactions sent to the coordinator service.                    |
+| sidecar_grpc_coordinator_received_transaction_status_total | counter   | status | Total number of transactions statuses received from the coordinator service.     |
+| sidecar_relay_block_mapping_seconds                        | histogram |        | Time spent mapping a received block to an internal block.                        |
+| sidecar_relay_mapped_block_processing_seconds              | histogram |        | Time spent processing an internal block and sending it to the coordinator.       |
+| sidecar_relay_transaction_status_batch_processing_seconds  | histogram |        | Time spent processing a received status batch from the coordinator.              |
+| sidecar_relay_waiting_transactions_queue_size              | gauge     |        | Total number of transactions waiting at the relay for statuses.                  |
+| sidecar_relay_input_block_queue_size                       | gauge     |        | Size of the input block queue of the relay service.                              |
+| sidecar_relay_output_committed_block_queue_size            | gauge     |        | Size of the output committed block queue of the relay service.                   |
+| sidecar_ledger_append_block_seconds                        | histogram |        | Time spent appending a block to the ledger.                                      |
+| sidecar_ledger_block_height                                | gauge     |        | The current block height of the ledger.                                          |
+| sidecar_relay_transaction_in_total                         | counter   |        | Total number of transactions received from the orderer.                          |
+| sidecar_relay_transaction_out_total                        | counter   |        | Total number of transaction statuses processed from the coordinator.             |
+| sidecar_notifier_active_streams                            | gauge     |        | Number of active notification streams.                                           |
+| sidecar_notifier_pending_tx_ids                            | gauge     |        | Number of pending (txID, request) subscriptions waiting for status notification. |
+| sidecar_notifier_unique_pending_tx_ids                     | gauge     |        | Number of unique transaction IDs pending across all requests.                    |
+| sidecar_notifier_tx_ids_status_deliveries_total            | counter   |        | Total number of transaction IDs' status deliveries to clients.                   |
+| sidecar_notifier_tx_ids_timeout_deliveries_total           | counter   |        | Total number of transaction IDs' timeout deliveries to clients.                  |
 
 ## Coordinator Metrics
 

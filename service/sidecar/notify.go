@@ -18,6 +18,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
 type (
@@ -33,6 +34,7 @@ type (
 		maxTimeout         time.Duration
 		maxActiveTxIDs     int
 		maxTxIDsPerRequest int
+		metrics            *perfMetrics
 		// requestQueue receives requests from users.
 		requestQueue chan *notificationRequest
 	}
@@ -55,12 +57,13 @@ type (
 	}
 )
 
-func newNotifier(bufferSize int, conf *NotificationServiceConfig) *notifier {
+func newNotifier(bufferSize int, conf *NotificationServiceConfig, metrics *perfMetrics) *notifier {
 	return &notifier{
 		bufferSize:         bufferSize,
 		maxTimeout:         conf.MaxTimeout,
 		maxActiveTxIDs:     conf.MaxActiveTxIDs,
 		maxTxIDsPerRequest: conf.MaxTxIDsPerRequest,
+		metrics:            metrics,
 		requestQueue:       make(chan *notificationRequest, bufferSize),
 	}
 }
@@ -98,24 +101,39 @@ func (n *notifier) run(ctx context.Context, statusQueue chan []*committerpb.TxSt
 			// Global active limit: accept what fits, reject the rest. Unlike the per-request limit,
 			// the global limit depends on factors outside the client's control (other streams,
 			// pending subscriptions), so partial acceptance is more appropriate.
-			if rejected := notifyMap.addRequest(req); len(rejected) > 0 {
+			rejected, uniqueNew := notifyMap.addRequest(req)
+			if len(rejected) > 0 {
 				reject(req, rejected, "active tx IDs limit reached")
 			}
+			promutil.AddToGauge(n.metrics.notifierPendingTxIDs, req.pending)
+			promutil.AddToGauge(n.metrics.notifierUniquePendingTxIDs, uniqueNew)
 			if req.pending > 0 {
 				req.timer = time.AfterFunc(req.request.Timeout.AsDuration(), func() {
 					timeoutQueueCtx.Write(req)
 				})
 			}
 		case status := <-statusQueue:
-			notifyMap.removeAndEnqueueStatusEvents(status)
+			pendingTxIDsRemoved, uniquePendingTxIDsRemoved := notifyMap.removeAndEnqueueStatusEvents(status)
+			n.recordRemovals(pendingTxIDsRemoved, uniquePendingTxIDsRemoved)
+			promutil.AddToCounter(n.metrics.notifierTxIDsStatusDeliveries, pendingTxIDsRemoved)
 		case req := <-timeoutQueue:
-			notifyMap.removeAndEnqueueTimeoutEvents(req)
+			pendingTxIDsRemoved, uniquePendingTxIDsRemoved := notifyMap.removeAndEnqueueTimeoutEvents(req)
+			n.recordRemovals(pendingTxIDsRemoved, uniquePendingTxIDsRemoved)
+			promutil.AddToCounter(n.metrics.notifierTxIDsTimeoutDeliveries, pendingTxIDsRemoved)
 		}
 	}
 }
 
+func (n *notifier) recordRemovals(pendingTxIDsRemoved, uniquePendingTxIDsRemoved int) {
+	promutil.AddToGauge(n.metrics.notifierPendingTxIDs, -pendingTxIDsRemoved)
+	promutil.AddToGauge(n.metrics.notifierUniquePendingTxIDs, -uniquePendingTxIDsRemoved)
+}
+
 // OpenNotificationStream implements the [protonotify.NotifierServer] API.
 func (n *notifier) OpenNotificationStream(stream committerpb.Notifier_OpenNotificationStreamServer) error {
+	n.metrics.notifierActiveStreams.Inc()
+	defer n.metrics.notifierActiveStreams.Dec()
+
 	g, gCtx := errgroup.WithContext(stream.Context())
 	requestQueue := channel.NewWriter(gCtx, n.requestQueue)
 	streamEventQueue := channel.Make[*committerpb.NotificationResponse](gCtx, n.bufferSize)
@@ -169,8 +187,9 @@ func fixTimeout(request *committerpb.NotificationRequest, maxTimeout time.Durati
 }
 
 // addRequest adds tx IDs from the request to the subscriptions up to available slots.
-// It returns any tx IDs that were rejected due to the limit being reached.
-func (m *subscriptions) addRequest(req *notificationRequest) []string {
+// It returns any tx IDs that were rejected due to the limit being reached,
+// and the number of new unique txIDs added to the map.
+func (m *subscriptions) addRequest(req *notificationRequest) (rejected []string, uniqueNew int) {
 	txIDs := req.request.TxStatusRequest.GetTxIds()
 	for i, id := range txIDs {
 		requests, ok := m.txIDToRequests[id]
@@ -180,21 +199,25 @@ func (m *subscriptions) addRequest(req *notificationRequest) []string {
 			}
 		}
 		if m.availableSlots <= 0 {
-			return txIDs[i:]
+			return txIDs[i:], uniqueNew
 		}
 		if !ok {
 			requests = make(map[*notificationRequest]any)
 			m.txIDToRequests[id] = requests
+			uniqueNew++
 		}
 		requests[req] = nil
 		req.pending++
 		m.availableSlots--
 	}
-	return nil
+	return nil, uniqueNew
 }
 
 // removeAndEnqueueStatusEvents removes TXs from the subscriptions and reports the responses to the subscribers.
-func (m *subscriptions) removeAndEnqueueStatusEvents(status []*committerpb.TxStatus) {
+// Returns the number of pending txIDs removed across all requests, and the number of unique txIDs removed from the map.
+func (m *subscriptions) removeAndEnqueueStatusEvents(
+	status []*committerpb.TxStatus,
+) (pendingTxIDsRemoved, uniquePendingTxIDsRemoved int) {
 	respMap := make(map[channel.Writer[*committerpb.NotificationResponse]][]*committerpb.TxStatus)
 	for _, response := range status {
 		reqList, ok := m.txIDToRequests[response.Ref.TxId]
@@ -202,10 +225,12 @@ func (m *subscriptions) removeAndEnqueueStatusEvents(status []*committerpb.TxSta
 			continue
 		}
 		delete(m.txIDToRequests, response.Ref.TxId)
+		uniquePendingTxIDsRemoved++
 		for req := range reqList {
 			respMap[req.streamEventQueue] = append(respMap[req.streamEventQueue], response)
 			req.pending--
 			m.availableSlots++
+			pendingTxIDsRemoved++
 			if req.pending == 0 {
 				req.timer.Stop()
 			}
@@ -216,24 +241,33 @@ func (m *subscriptions) removeAndEnqueueStatusEvents(status []*committerpb.TxSta
 			TxStatusEvents: response,
 		})
 	}
+	return pendingTxIDsRemoved, uniquePendingTxIDsRemoved
 }
 
 // removeAndEnqueueTimeoutEvents removes a request from the subscriptions, and
 // reports the timed out TX IDs for this request.
-func (m *subscriptions) removeAndEnqueueTimeoutEvents(req *notificationRequest) {
+// Returns the number of pending txIDs removed for this request, and the number of unique txIDs removed from the map.
+func (m *subscriptions) removeAndEnqueueTimeoutEvents(
+	req *notificationRequest,
+) (pendingTxIDsRemoved, uniquePendingTxIDsRemoved int) {
 	txIDs := make([]string, 0, len(req.request.TxStatusRequest.TxIds))
 	for _, id := range req.request.TxStatusRequest.TxIds {
 		requests, ok := m.txIDToRequests[id]
 		if !ok {
 			continue
 		}
-		txIDs = append(txIDs, id)
+		// Check that this request is actually subscribed to this txID before appending.
+		// A txID may exist in the map from other subscribers but not from this request
+		// (e.g., if it was rejected by the global active limit).
 		if _, ok = requests[req]; !ok {
 			continue
 		}
+		txIDs = append(txIDs, id)
+		pendingTxIDsRemoved++
 		m.availableSlots++
 		if len(requests) == 1 {
 			delete(m.txIDToRequests, id)
+			uniquePendingTxIDsRemoved++
 		} else {
 			delete(requests, req)
 		}
@@ -241,4 +275,5 @@ func (m *subscriptions) removeAndEnqueueTimeoutEvents(req *notificationRequest) 
 	req.streamEventQueue.Write(&committerpb.NotificationResponse{
 		TimeoutTxIds: txIDs,
 	})
+	return pendingTxIDsRemoved, uniquePendingTxIDsRemoved
 }

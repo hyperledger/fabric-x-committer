@@ -146,6 +146,7 @@ func (r *relay) preProcessBlock(
 		}
 
 		txsCount := len(mappedBlock.block.Txs)
+		promutil.AddToCounter(r.metrics.transactionInThroughput, txsCount)
 		r.waitingTxsSlots.Acquire(ctx, int64(txsCount))
 		promutil.AddToGauge(r.metrics.waitingTransactionsQueueSize, txsCount)
 		queue.Write(mappedBlock)
@@ -271,6 +272,7 @@ func (r *relay) processStatusBatch(
 			outgoingStatusUpdates.Write(statusReport)
 		}
 
+		promutil.AddToCounter(r.metrics.transactionOutThroughput, int(txStatusProcessedCount))
 		r.waitingTxsSlots.Release(txStatusProcessedCount)
 		promutil.AddToGauge(r.metrics.waitingTransactionsQueueSize, -int(txStatusProcessedCount))
 		r.processCommittedBlocksInOrder(ctx, outgoingCommittedBlock)
