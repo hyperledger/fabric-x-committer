@@ -94,17 +94,17 @@ type (
 
 // Config templates.
 var (
-	//go:embed templates/coordinator.yaml
+	//go:embed templates/coordinator.yaml.tmpl
 	TemplateCoordinator string
-	//go:embed templates/mock-orderer.yaml
+	//go:embed templates/mock-orderer.yaml.tmpl
 	TemplateMockOrderer string
-	//go:embed templates/query.yaml
+	//go:embed templates/query.yaml.tmpl
 	TemplateQueryService string
-	//go:embed templates/sidecar.yaml
+	//go:embed templates/sidecar.yaml.tmpl
 	TemplateSidecar string
-	//go:embed templates/vc.yaml
+	//go:embed templates/vc.yaml.tmpl
 	TemplateVC string
-	//go:embed templates/verifier.yaml
+	//go:embed templates/verifier.yaml.tmpl
 	TemplateVerifier string
 
 	TemplateLoadGenOnlyOrderer              = templateLoadGenOnlyOrdererClient + templateLoadGenCommon
@@ -115,21 +115,21 @@ var (
 	TemplateLoadGenVerifier                 = templateLoadGenVerifierClient + templateLoadGenCommon
 	TemplateLoadGenDistributedLoadGenClient = templateLoadGenDistributedLoadGenClient + templateLoadGenCommon
 
-	//go:embed templates/loadgen_common.yaml
+	//go:embed templates/loadgen_shared.yaml.tmpl
 	templateLoadGenCommon string
-	//go:embed templates/loadgen_client_only_orderer.yaml
+	//go:embed templates/loadgen_only_orderer.yaml.tmpl
 	templateLoadGenOnlyOrdererClient string
-	//go:embed templates/loadgen_client_orderer.yaml
+	//go:embed templates/loadgen_orderer.yaml.tmpl
 	templateLoadGenOrdererClient string
-	//go:embed templates/loadgen_client_sidecar.yaml
+	//go:embed templates/loadgen_committer.yaml.tmpl
 	templateLoadGenCommitterClient string
-	//go:embed templates/loadgen_client_coordinator.yaml
+	//go:embed templates/loadgen_coordinator.yaml.tmpl
 	templateLoadGenCoordinatorClient string
-	//go:embed templates/loadgen_client_vc.yaml
+	//go:embed templates/loadgen_vc.yaml.tmpl
 	templateLoadGenVCClient string
-	//go:embed templates/loadgen_client_verifier.yaml
+	//go:embed templates/loadgen_verifier.yaml.tmpl
 	templateLoadGenVerifierClient string
-	//go:embed templates/loadgen_client_distributed_loadgen.yaml
+	//go:embed templates/loadgen_distributed.yaml.tmpl
 	templateLoadGenDistributedLoadGenClient string
 )
 
