@@ -160,7 +160,7 @@ func TestNewOrdererDeliverEdgeCases(t *testing.T) {
 	require.NoError(t, confErr)
 
 	serverTLSConfig, _ := test.CreateServerAndClientTLSConfig(t, connection.MutualTLSMode)
-	tls, tlsErr := connection.NewClientTLSMaterials(serverTLSConfig)
+	tls, tlsErr := connection.NewClientTLSCredentials(serverTLSConfig)
 	require.NoError(t, tlsErr)
 
 	invalidBlock := &common.Block{

@@ -103,22 +103,22 @@ const (
 	DefaultTLSMinVersion = tls.VersionTLS12
 )
 
-// ClientCredentials converts TLSConfig into a TLSMaterials struct and generates client creds.
+// ClientCredentials converts TLSConfig into a TLSCredentials struct and generates client creds.
 func (c TLSConfig) ClientCredentials() (credentials.TransportCredentials, error) {
-	tlsMaterials, err := NewClientTLSMaterials(c)
+	tlsCreds, err := NewClientTLSCredentials(c)
 	if err != nil {
 		return nil, err
 	}
-	return NewClientCredentialsFromMaterial(tlsMaterials)
+	return NewClientGRPCTransportCredentials(tlsCreds)
 }
 
-// ServerCredentials converts TLSConfig into a TLSMaterials struct and generates server creds.
+// ServerCredentials converts TLSConfig into a TLSCredentials struct and generates server creds.
 func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error) {
-	tlsMaterials, err := NewServerTLSMaterials(c)
+	tlsCreds, err := NewServerTLSCredentials(c)
 	if err != nil {
 		return nil, err
 	}
-	return NewServerCredentialsFromMaterial(tlsMaterials)
+	return NewServerGRPCTransportCredentials(tlsCreds)
 }
 
 // Validate checks that the rate limit configuration is valid.
