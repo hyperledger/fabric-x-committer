@@ -56,29 +56,11 @@ type (
 )
 
 func newNotifier(bufferSize int, conf *NotificationServiceConfig) *notifier {
-	// TODO: Define all defaults in cmd/config so Viper handles them directly.
-	//	     Otherwise, we are unnecessarily maintaining defaults in two locations.
-	//       Removing local defaults might require tests to pass explicit configurations,
-	//       which helps prevent default divergence. To ensure consistency, we could
-	//       export default values from here for cmd/config to use, or only set them
-	//       here if a "second line of defense" is strictly necessary.
-	maxTimeout := conf.MaxTimeout
-	if maxTimeout <= 0 {
-		maxTimeout = defaultNotificationMaxTimeout
-	}
-	maxActiveTxIDs := conf.MaxActiveTxIDs
-	if maxActiveTxIDs <= 0 {
-		maxActiveTxIDs = defaultMaxActiveTxIDs
-	}
-	maxTxIDsPerRequest := conf.MaxTxIDsPerRequest
-	if maxTxIDsPerRequest <= 0 {
-		maxTxIDsPerRequest = defaultMaxTxIDsPerRequest
-	}
 	return &notifier{
 		bufferSize:         bufferSize,
-		maxTimeout:         maxTimeout,
-		maxActiveTxIDs:     maxActiveTxIDs,
-		maxTxIDsPerRequest: maxTxIDsPerRequest,
+		maxTimeout:         conf.MaxTimeout,
+		maxActiveTxIDs:     conf.MaxActiveTxIDs,
+		maxTxIDsPerRequest: conf.MaxTxIDsPerRequest,
 		requestQueue:       make(chan *notificationRequest, bufferSize),
 	}
 }

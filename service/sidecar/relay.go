@@ -54,16 +54,11 @@ type (
 	}
 )
 
-const defaultLastCommittedBlockSetInterval = 5 * time.Second
-
 func newRelay(
 	lastCommittedBlockSetInterval time.Duration,
 	metrics *perfMetrics,
 ) *relay {
 	logger.Info("Initializing new relay")
-	if lastCommittedBlockSetInterval == 0 {
-		lastCommittedBlockSetInterval = defaultLastCommittedBlockSetInterval
-	}
 	return &relay{
 		lastCommittedBlockSetInterval: lastCommittedBlockSetInterval,
 		metrics:                       metrics,

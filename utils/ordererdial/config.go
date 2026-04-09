@@ -20,7 +20,7 @@ import (
 type (
 	// Config defines the static configuration of the orderer as loaded from the YAML file.
 	Config struct {
-		FaultToleranceLevel string         `mapstructure:"fault-tolerance-level"`
+		FaultToleranceLevel string         `mapstructure:"fault-tolerance-level" validate:"omitempty,oneof=CFT BFT"`
 		TLS                 TLSConfig      `mapstructure:"tls"`
 		Retry               *retry.Profile `mapstructure:"reconnect"`
 		// LatestKnownConfigBlockPath is the path for the latest known config block.
@@ -37,14 +37,14 @@ type (
 	// IdentityConfig defines the orderer's client MSP.
 	IdentityConfig struct {
 		// MspID indicates to which MSP this client belongs to.
-		MspID  string               `mapstructure:"msp-id" yaml:"msp-id"`
-		MSPDir string               `mapstructure:"msp-dir" yaml:"msp-dir"`
-		BCCSP  *factory.FactoryOpts `mapstructure:"bccsp" yaml:"bccsp"`
+		MspID  string               `mapstructure:"msp-id"`
+		MSPDir string               `mapstructure:"msp-dir"`
+		BCCSP  *factory.FactoryOpts `mapstructure:"bccsp"`
 	}
 
 	// TLSConfig is a TLS config for the orderer clients.
 	TLSConfig struct {
-		Mode     string `mapstructure:"mode"`
+		Mode     string `mapstructure:"mode" validate:"omitempty,oneof=tls mtls none"`
 		CertPath string `mapstructure:"cert-path"`
 		KeyPath  string `mapstructure:"key-path"`
 		// CommonCACertPaths is a temporary workaround to inject CA to all organizations.
