@@ -3,12 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Configuration for the server
-server:
-{{ include "endpointWithTLS" (dict "Endpoint" (.ThisService.GrpcEndpoint | default "localhost:0") "TLS" .ThisService.GrpcTLS) | indent 2 }}
+{{ include "service" . | indent 0 }}
 {{ include "rateLimit" . | indent 2 }}
 {{ include "database" . | indent 0 }}
 
 max-request-keys: {{ .MaxRequestKeys }}
-
-{{ include "monitoring" . | indent 0 }}
-{{ include "logging" . | indent 0 }}

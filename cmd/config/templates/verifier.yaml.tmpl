@@ -2,14 +2,9 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-server:
-{{ include "endpointWithTLS" (dict "Endpoint" (.ThisService.GrpcEndpoint | default "localhost:0") "TLS" .ThisService.GrpcTLS) | indent 2 }}
-
+{{ include "service" . | indent 0 }}
 parallel-executor:
   parallelism: 40
   batch-time-cutoff: {{ .VerifierBatchTimeCutoff | default "10ms" }}
   batch-size-cutoff: {{ .VerifierBatchSizeCutoff | default 50 }}
   channel-buffer-size: 50
-
-{{ include "monitoring" . | indent 0 }}
-{{ include "logging" . | indent 0 }}

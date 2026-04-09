@@ -2,8 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-server:
-{{ include "endpointWithTLS" (dict "Endpoint" (.ThisService.GrpcEndpoint | default "localhost:0") "TLS" .ThisService.GrpcTLS) | indent 2 }}
+{{ include "service" . | indent 0 }}
 verifier:
 {{ include "endpointListWithSharedTLS" (dict "Servers" .Services.Verifier "TLS" .ClientTLS) | indent 2 }}
 validator-committer:
@@ -14,6 +13,3 @@ dependency-graph:
   waiting-txs-limit: 100_000
   # Add monitoring configuration here if applicable
 per-channel-buffer-size-per-goroutine: 10
-
-{{ include "monitoring" . | indent 0 }}
-{{ include "logging" . | indent 0 }}

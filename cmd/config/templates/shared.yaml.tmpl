@@ -13,7 +13,8 @@ Templates:
   monitoring                    -- metrics/monitoring server config (endpoint + TLS)
   logging                       -- log spec and format
   rateLimit                     -- optional rate-limit config for gRPC endpoints
-  ordererClientConfig           -- orderer client-side TLS and identity config
+  service                       -- combined logging + monitoring + server (endpoint + TLS)
+  ordererDialConfig             -- orderer dial/connection config (TLS + identity)
   database                      -- database connection config (endpoints, credentials, TLS, pooling)
 
 Go's template only accepts a single data argument. Some templates need multiple
@@ -63,6 +64,14 @@ logging:
   format: {{ .Logging.Format }}
 {{- end }}
 
+{{- /* {{ include "service" . | indent 0 }} */ -}}
+{{- define "service" }}
+{{ include "logging" . | indent 0 }}
+{{ include "monitoring" . | indent 0 }}
+server:
+{{ include "endpointWithTLS" (dict "Endpoint" (.ThisService.GrpcEndpoint | default "localhost:0") "TLS" .ThisService.GrpcTLS) | indent 2 }}
+{{- end }}
+
 {{- /* {{ include "rateLimit" . | indent 2 }} */ -}}
 {{- define "rateLimit" }}
 {{- if .RateLimit }}
@@ -72,8 +81,8 @@ rate-limit:
 {{- end }}
 {{- end }}
 
-{{- /* {{ include "ordererClientConfig" . | indent 0 }} */ -}}
-{{- define "ordererClientConfig" }}
+{{- /* {{ include "ordererDialConfig" . | indent 0 }} */ -}}
+{{- define "ordererDialConfig" }}
 orderer:
   fault-tolerance-level: BFT
   latest-known-config-block-path: "{{ .Policy.ArtifactsPath }}/config-block.pb.bin"

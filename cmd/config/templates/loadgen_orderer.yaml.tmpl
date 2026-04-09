@@ -5,6 +5,6 @@
 orderer-client:
   sidecar-client:
 {{ include "endpointWithTLS" (dict "Endpoint" .Services.Sidecar.GrpcEndpoint "TLS" .ClientTLS) | indent 4 }}
-{{ include "ordererClientConfig" . | indent 2 }}
+{{ include "ordererDialConfig" . | indent 2 }}
   broadcast-parallelism: 5
 {{ include "loadgenConfig" . | indent 0 }}

@@ -2,8 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-server:
-{{ include "endpointWithTLS" (dict "Endpoint" (.ThisService.GrpcEndpoint | default "localhost:0") "TLS" .ThisService.GrpcTLS) | indent 2 }}
+{{ include "service" . | indent 0 }}
 {{ include "database" . | indent 0 }}
 
 resource-limits:
@@ -12,6 +11,3 @@ resource-limits:
   max-workers-for-committer: 20
   min-transaction-batch-size: {{ .VCMinTransactionBatchSize | default 1 }}
   timeout-for-min-transaction-batch-size: {{ .VCTimeoutForMinTransactionBatchSize | default "2s" }}
-
-{{ include "monitoring" . | indent 0 }}
-{{ include "logging" . | indent 0 }}

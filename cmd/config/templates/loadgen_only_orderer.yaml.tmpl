@@ -3,6 +3,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 orderer-client:
-{{ include "ordererClientConfig" . | indent 2 }}
+{{ include "ordererDialConfig" . | indent 2 }}
   broadcast-parallelism: 5
 {{ include "loadgenConfig" . | indent 0 }}
