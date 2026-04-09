@@ -8,7 +8,6 @@ package connection
 
 import (
 	"context"
-	"crypto/tls"
 	"net"
 	"regexp"
 	"time"
@@ -41,11 +40,11 @@ var (
 )
 
 // GrpcServer instantiates a gRPC server with the provided configuration.
-// If getTLSConfigFunc is provided, enables dynamic CA certificate support using GetConfigForClient callback.
-// Pass nil for getTLSConfigFunc to use static configuration only.
-func (c *ServerConfig) GrpcServer(getTLSConfigFunc func(ctx context.Context) *tls.Config) (*grpc.Server, error) {
+// If dynamicService is provided, enables dynamic CA certificate support using GetConfigForClient callback.
+// Pass nil for dynamicService to use static configuration only.
+func (c *ServerConfig) GrpcServer(dynamicService DynamicTLSService) (*grpc.Server, error) {
 	opts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxMsgSize), grpc.MaxSendMsgSize(maxMsgSize)}
-	serverGrpcTransportCreds, err := c.TLS.ServerCredentials(getTLSConfigFunc)
+	serverGrpcTransportCreds, err := c.TLS.ServerCredentials(dynamicService)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed loading the server's grpc credentials")
 	}

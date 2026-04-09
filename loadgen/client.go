@@ -8,7 +8,6 @@ package loadgen
 
 import (
 	"context"
-	"crypto/tls"
 	"net/http"
 	"time"
 
@@ -168,11 +167,6 @@ func (c *Client) WaitForReady(ctx context.Context) bool {
 func (c *Client) RegisterService(server *grpc.Server) {
 	servicepb.RegisterLoadGenServiceServer(server, c)
 	healthgrpc.RegisterHealthServer(server, c.healthcheck)
-}
-
-// GetTLSConfig returns nil as this service does not support dynamic CA updates.
-func (*Client) GetTLSConfig(_ context.Context) *tls.Config {
-	return nil
 }
 
 // AppendBatch appends a batch to the stream.

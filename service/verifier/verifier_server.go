@@ -8,7 +8,6 @@ package verifier
 
 import (
 	"context"
-	"crypto/tls"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
@@ -68,11 +67,6 @@ func (*Server) WaitForReady(context.Context) bool {
 func (s *Server) RegisterService(server *grpc.Server) {
 	servicepb.RegisterVerifierServer(server, s)
 	healthgrpc.RegisterHealthServer(server, s.healthcheck)
-}
-
-// GetTLSConfig returns nil as this service does not support dynamic CA updates.
-func (*Server) GetTLSConfig(_ context.Context) *tls.Config {
-	return nil
 }
 
 // StartStream starts a verification stream.

@@ -46,7 +46,7 @@ type (
 		committedBlockMu sync.Mutex
 
 		// tlsConfig holds the complete pre-configured tls.Config with merged static + dynamic CAs.
-		tlsConfig atomic.Pointer[*tls.Config]
+		tlsConfig atomic.Pointer[tls.Config]
 		// rootCAsInConfig holds the CAs from YAML config for merging with dynamic CAs.
 		rootCAsInConfig [][]byte
 	}
@@ -74,7 +74,7 @@ func newRelay(
 	return &relay{
 		lastCommittedBlockSetInterval: lastCommittedBlockSetInterval,
 		metrics:                       metrics,
-		tlsConfig:                     atomic.Pointer[*tls.Config]{},
+		tlsConfig:                     atomic.Pointer[tls.Config]{},
 	}
 }
 
@@ -378,12 +378,8 @@ func (r *relay) setLastCommittedBlockNumber(
 // Note: This method is called for every config block regardless of TLS mode, as the relay is TLS mode agnostic.
 // The nil check below handles cases where TLS is not enabled.
 func (r *relay) updateTLSConfig(dynamicCAs [][]byte) {
-	// Relay processes config blocks in all TLS modes (none/tls/mtls).
-	// In none mode, createBasicServerTLSConfig() returns nil, but the relay still calls
-	// updateTLSConfig() for every config block.
-	// This check prevents nil pointer dereference and unnecessary processing when TLS is not enabled.
 	currentConfig := r.tlsConfig.Load()
-	if currentConfig == nil || *currentConfig == nil {
+	if currentConfig == nil {
 		logger.Warn("No current TLS config to update")
 		return
 	}
@@ -397,11 +393,11 @@ func (r *relay) updateTLSConfig(dynamicCAs [][]byte) {
 		return // Keep existing config
 	}
 
-	newConfig := (*currentConfig).Clone()
+	newConfig := currentConfig.Clone()
 	newConfig.ClientCAs = certPool
 
 	// Store the updated config atomically
-	r.tlsConfig.Store(&newConfig)
+	r.tlsConfig.Store(newConfig)
 	logger.Debugf("Updated TLS config with %d total CAs (%d from yaml + %d from config block)",
 		len(mergedCAs), len(r.rootCAsInConfig), len(dynamicCAs))
 }

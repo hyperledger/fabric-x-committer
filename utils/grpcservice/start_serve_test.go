@@ -8,7 +8,6 @@ package grpcservice_test
 
 import (
 	"context"
-	"crypto/tls"
 	"testing"
 	"time"
 
@@ -52,19 +51,11 @@ func (*stubService) RegisterService(server *grpc.Server) {
 	healthgrpc.RegisterHealthServer(server, connection.DefaultHealthCheckService())
 }
 
-func (*stubService) GetTLSConfig(_ context.Context) *tls.Config {
-	return nil
-}
-
 // slowReadyService blocks WaitForReady until context expires.
 type slowReadyService struct{}
 
 func (*slowReadyService) Run(ctx context.Context) error {
 	<-ctx.Done()
-	return nil
-}
-
-func (*slowReadyService) GetTLSConfig(_ context.Context) *tls.Config {
 	return nil
 }
 

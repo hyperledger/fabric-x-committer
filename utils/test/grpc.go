@@ -178,12 +178,19 @@ func RunServiceAndGrpcForTest(
 	doneFlag := RunServiceForTest(ctx, t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(service.Run(ctx))
 	}, service.WaitForReady)
+
+	// Check if service supports dynamic TLS using type assertion
+	var dynamicService connection.DynamicTLSService
+	if ds, ok := service.(connection.DynamicTLSService); ok {
+		dynamicService = ds
+	}
+
 	for _, server := range serverConfig {
 		runGrpcServerInternal(ctx, t, runGrpcServerParameters{
 			serverConfig: server,
 			//nolint:contextcheck // Context from chi.Context() is passed to GetTLSConfig during TLS handshake.
 			createServer: func() (*grpc.Server, error) {
-				return server.GrpcServer(service.GetTLSConfig)
+				return server.GrpcServer(dynamicService)
 			},
 			register: service.RegisterService,
 		})

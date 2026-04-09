@@ -8,7 +8,6 @@ package grpcservice
 
 import (
 	"context"
-	"crypto/tls"
 	"net"
 	"time"
 
@@ -26,7 +25,6 @@ var logger = flogging.MustGetLogger("grpcservice")
 // and register on a gRPC server.
 type Service interface {
 	Registerer
-	TLSConfigRefresher
 	// Run executes the service until the context is done.
 	Run(ctx context.Context) error
 	// WaitForReady waits for the service resources to initialize.
@@ -37,17 +35,6 @@ type Service interface {
 // Registerer is for services that register on a gRPC server.
 type Registerer interface {
 	RegisterService(server *grpc.Server)
-}
-
-// TLSConfigRefresher is for services that provide dynamic CA certificate support for TLS handshakes.
-type TLSConfigRefresher interface {
-	// GetTLSConfig returns a pre-configured tls.Config for services
-	// that support dynamic CA updates.
-	// Services without dynamic CAs support return nil.
-	// This method is called during TLS handshake (via GetConfigForClient) to retrieve
-	// the complete TLS configuration with both static YAML CAs and dynamic config-block CAs.
-	// The returned config should be ready to use directly in TLS handshakes.
-	GetTLSConfig(ctx context.Context) *tls.Config
 }
 
 // StartAndServe runs a full lifecycle service: starts the service, waits for it
@@ -88,8 +75,14 @@ func Serve(ctx context.Context, service Service, serverConfig *connection.Server
 	if err != nil {
 		return err
 	}
+	// Check if service supports dynamic TLS using type assertion
+	var dynamicService connection.DynamicTLSService
+	if ds, ok := service.(connection.DynamicTLSService); ok {
+		dynamicService = ds
+	}
+
 	//nolint:contextcheck // Context from chi.Context() is passed to GetTLSConfig during TLS handshake.
-	server, err := serverConfig.GrpcServer(service.GetTLSConfig)
+	server, err := serverConfig.GrpcServer(dynamicService)
 	if err != nil {
 		return errors.Wrapf(err, "failed creating grpc server")
 	}
@@ -105,7 +98,7 @@ func MockServe(ctx context.Context, service Registerer, serverConfig *connection
 	if err != nil {
 		return err
 	}
-	//nolint:contextcheck // Since GetTLSConfig function is nil, context will not be used.
+	//nolint:contextcheck // Mock services don't support dynamic TLS, so nil is passed.
 	server, err := serverConfig.GrpcServer(nil)
 	if err != nil {
 		return errors.Wrapf(err, "failed creating grpc server")

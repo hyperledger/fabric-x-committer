@@ -33,9 +33,11 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
+	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 
 type (
@@ -511,10 +513,9 @@ func TestQueryServiceWithDynamicRootCAs(t *testing.T) {
 	envelopeBytes, err := proto.Marshal(envelope)
 	require.NoError(t, err)
 
-	_, err = env.pool.Exec(ctx,
+	require.NoError(t, retry.ExecuteSQL(ctx, testdb.DefaultRetry, env.pool,
 		fmt.Sprintf("UPDATE ns_%s SET value = $1 WHERE key = $2", committerpb.ConfigNamespaceID),
-		envelopeBytes, []byte(committerpb.ConfigNamespaceID))
-	require.NoError(t, err)
+		envelopeBytes, []byte(committerpb.ConfigNamespaceID)))
 
 	// Build client configs from the crypto materials
 	clientsTLS := testcrypto.BuildClientTLSConfigsPerOrg(t, cryptoMaterialsPath)
@@ -554,10 +555,9 @@ func TestQueryServiceWithDynamicRootCAs(t *testing.T) {
 	newEnvelopeBytes, err := proto.Marshal(newEnvelope)
 	require.NoError(t, err)
 
-	_, err = env.pool.Exec(ctx,
+	require.NoError(t, retry.ExecuteSQL(ctx, testdb.DefaultRetry, env.pool,
 		fmt.Sprintf("UPDATE ns_%s SET value = $1 WHERE key = $2", committerpb.ConfigNamespaceID),
-		newEnvelopeBytes, []byte(committerpb.ConfigNamespaceID))
-	require.NoError(t, err)
+		newEnvelopeBytes, []byte(committerpb.ConfigNamespaceID)))
 
 	env.qs.lastCAFetch.Store(0)
 	t.Logf("number of peers: %d", len(clientsTLS.Peer))

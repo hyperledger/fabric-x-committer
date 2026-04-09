@@ -90,7 +90,7 @@ func New(c *Config) (*Service, error) {
 		return nil, fmt.Errorf("failed to create initial TLS config: %w", err)
 	}
 
-	relayService.tlsConfig.Store(&tlsConfig)
+	relayService.tlsConfig.Store(tlsConfig)
 	relayService.rootCAsInConfig = tlsMaterials.CACerts
 
 	return &Service{
@@ -112,10 +112,7 @@ func New(c *Config) (*Service, error) {
 // The sidecar updates this config when processing config blocks from the orderer, enabling
 // certificate rotation without a service restart.
 func (s *Service) GetTLSConfig(_ context.Context) *tls.Config {
-	if v := s.relay.tlsConfig.Load(); v != nil {
-		return *v
-	}
-	return nil
+	return s.relay.tlsConfig.Load()
 }
 
 // WaitForReady wait for sidecar to be ready to be exposed as gRPC service.
