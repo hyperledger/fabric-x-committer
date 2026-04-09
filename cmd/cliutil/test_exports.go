@@ -12,7 +12,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +20,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -126,34 +126,41 @@ func UnitTestRunner(
 	cmd.SetOut(&cmdStdOut)
 	cmd.SetErr(&cmdStdErr)
 
-	wg := &sync.WaitGroup{}
-	t.Cleanup(func() {
-		t.Log("Waiting for command to finish")
-		wg.Wait()
-	})
-
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	wg.Go(func() {
+	g, ctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
 		t.Logf("Starting command: %s", args[0])
 		defer t.Logf("Command exited: %s", args[0])
+		defer cancel()
 		_, execErr := cmd.ExecuteContextC(ctx)
-		execErr = connection.FilterStreamRPCError(execErr)
-		if cmdTest.Err == nil {
-			assert.NoError(t, execErr)
-		} else if assert.Error(t, execErr) {
-			assert.Equal(t, cmdTest.Err.Error(), execErr.Error())
-		}
+		return connection.FilterStreamRPCError(execErr)
 	})
 
 	assert.Eventually(t, func() bool {
-		return len(getMissing(cmdTest, cmdStdOut.String(), cmdStdErr.String(), loggerPath)) == 0
-	}, 10*time.Minute, 500*time.Millisecond)
+		if len(missingExpectedOutputs(cmdTest, cmdStdOut.String(), cmdStdErr.String(), loggerPath)) == 0 {
+			return true
+		}
+		// If the context is done (command exited or timed out) but expected
+		// outputs are still missing, fail fast — they will never appear.
+		select {
+		case <-ctx.Done():
+			t.Fatalf("Command exited before expected output appeared.\nSTD ERR: %s\nSTD OUT: %s",
+				cmdStdErr.String(), cmdStdOut.String())
+		default:
+		}
+		return false
+	}, 2*time.Minute, 500*time.Millisecond)
 
 	t.Log("Stopping command, and waiting for finish")
 	cancel()
-	wg.Wait()
+	execErr := g.Wait()
+	if cmdTest.Err == nil {
+		assert.NoError(t, execErr)
+	} else if assert.Error(t, execErr) {
+		assert.Equal(t, cmdTest.Err.Error(), execErr.Error())
+	}
 	if !t.Failed() {
 		return
 	}
@@ -165,7 +172,7 @@ func UnitTestRunner(
 	if err == nil {
 		t.Log("LOG:\n", string(logOut))
 	}
-	for _, m := range getMissing(cmdTest, cmdStdOut.String(), cmdStdErr.String(), loggerPath) {
+	for _, m := range missingExpectedOutputs(cmdTest, cmdStdOut.String(), cmdStdErr.String(), loggerPath) {
 		t.Logf("Missing: %s", m)
 	}
 }
@@ -185,21 +192,21 @@ func defaultTestDBConfig() config.DatabaseConfig {
 	}
 }
 
-func getMissing(cmdTest CommandTest, cmdStdOut, cmdStdErr, loggerPath string) (missing []string) {
-	if cmdTest.CmdStdOutput != "" && !strings.Contains(cmdStdOut, cmdTest.CmdStdOutput) {
-		missing = append(missing, cmdTest.CmdStdOutput)
+func missingExpectedOutputs(expected CommandTest, stdout, stderr, logFilePath string) (missing []string) {
+	if expected.CmdStdOutput != "" && !strings.Contains(stdout, expected.CmdStdOutput) {
+		missing = append(missing, expected.CmdStdOutput)
 	}
-	if cmdTest.CmdStdErrOutput != "" && !strings.Contains(cmdStdErr, cmdTest.CmdStdErrOutput) {
-		missing = append(missing, cmdTest.CmdStdErrOutput)
+	if expected.CmdStdErrOutput != "" && !strings.Contains(stderr, expected.CmdStdErrOutput) {
+		missing = append(missing, expected.CmdStdErrOutput)
 	}
-	if len(cmdTest.CmdLoggerOutputs) == 0 {
+	if len(expected.CmdLoggerOutputs) == 0 {
 		return missing
 	}
-	logOut, err := os.ReadFile(loggerPath)
+	logOut, err := os.ReadFile(logFilePath)
 	if err != nil {
-		return append(missing, loggerPath)
+		return append(missing, logFilePath)
 	}
-	for _, loggerLine := range cmdTest.CmdLoggerOutputs {
+	for _, loggerLine := range expected.CmdLoggerOutputs {
 		if !strings.Contains(string(logOut), loggerLine) {
 			missing = append(missing, loggerLine)
 		}
