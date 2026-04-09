@@ -113,20 +113,20 @@ func (n *notifier) run(ctx context.Context, statusQueue chan []*committerpb.TxSt
 				})
 			}
 		case status := <-statusQueue:
-			removed, uniqueRemoved := notifyMap.removeAndEnqueueStatusEvents(status)
-			n.recordRemovals(removed, uniqueRemoved)
-			promutil.AddToCounter(n.metrics.notifierTxIDsStatusDeliveries, removed)
+			pendingTxIDsRemoved, uniquePendingTxIDsRemoved := notifyMap.removeAndEnqueueStatusEvents(status)
+			n.recordRemovals(pendingTxIDsRemoved, uniquePendingTxIDsRemoved)
+			promutil.AddToCounter(n.metrics.notifierTxIDsStatusDeliveries, pendingTxIDsRemoved)
 		case req := <-timeoutQueue:
-			removed, uniqueRemoved := notifyMap.removeAndEnqueueTimeoutEvents(req)
-			n.recordRemovals(removed, uniqueRemoved)
-			promutil.AddToCounter(n.metrics.notifierTxIDsTimeoutDeliveries, removed)
+			pendingTxIDsRemoved, uniquePendingTxIDsRemoved := notifyMap.removeAndEnqueueTimeoutEvents(req)
+			n.recordRemovals(pendingTxIDsRemoved, uniquePendingTxIDsRemoved)
+			promutil.AddToCounter(n.metrics.notifierTxIDsTimeoutDeliveries, pendingTxIDsRemoved)
 		}
 	}
 }
 
-func (n *notifier) recordRemovals(removed, uniqueRemoved int) {
-	promutil.AddToGauge(n.metrics.notifierPendingTxIDs, -removed)
-	promutil.AddToGauge(n.metrics.notifierUniquePendingTxIDs, -uniqueRemoved)
+func (n *notifier) recordRemovals(pendingTxIDsRemoved, uniquePendingTxIDsRemoved int) {
+	promutil.AddToGauge(n.metrics.notifierPendingTxIDs, -pendingTxIDsRemoved)
+	promutil.AddToGauge(n.metrics.notifierUniquePendingTxIDs, -uniquePendingTxIDsRemoved)
 }
 
 // OpenNotificationStream implements the [protonotify.NotifierServer] API.
@@ -135,7 +135,7 @@ func (n *notifier) OpenNotificationStream(stream committerpb.Notifier_OpenNotifi
 	defer n.metrics.notifierActiveStreams.Dec()
 
 	g, gCtx := errgroup.WithContext(stream.Context())
-	globalRequestQueue := channel.NewWriter(gCtx, n.requestQueue)
+	requestQueue := channel.NewWriter(gCtx, n.requestQueue)
 	streamEventQueue := channel.Make[*committerpb.NotificationResponse](gCtx, n.bufferSize)
 
 	g.Go(func() error {
@@ -145,7 +145,7 @@ func (n *notifier) OpenNotificationStream(stream committerpb.Notifier_OpenNotifi
 				return errors.Wrap(err, "error receiving request")
 			}
 			fixTimeout(req, n.maxTimeout)
-			globalRequestQueue.Write(&notificationRequest{
+			requestQueue.Write(&notificationRequest{
 				request:          req,
 				streamEventQueue: streamEventQueue,
 			})
@@ -214,8 +214,10 @@ func (m *subscriptions) addRequest(req *notificationRequest) (rejected []string,
 }
 
 // removeAndEnqueueStatusEvents removes TXs from the subscriptions and reports the responses to the subscribers.
-// Returns the number of (txID, request) subscriptions enqueued and the number of unique txIDs removed from the map.
-func (m *subscriptions) removeAndEnqueueStatusEvents(status []*committerpb.TxStatus) (removed, uniqueRemoved int) {
+// Returns the number of pending txIDs removed across all requests, and the number of unique txIDs removed from the map.
+func (m *subscriptions) removeAndEnqueueStatusEvents(
+	status []*committerpb.TxStatus,
+) (pendingTxIDsRemoved, uniquePendingTxIDsRemoved int) {
 	respMap := make(map[channel.Writer[*committerpb.NotificationResponse]][]*committerpb.TxStatus)
 	for _, response := range status {
 		reqList, ok := m.txIDToRequests[response.Ref.TxId]
@@ -223,12 +225,12 @@ func (m *subscriptions) removeAndEnqueueStatusEvents(status []*committerpb.TxSta
 			continue
 		}
 		delete(m.txIDToRequests, response.Ref.TxId)
-		uniqueRemoved++
+		uniquePendingTxIDsRemoved++
 		for req := range reqList {
 			respMap[req.streamEventQueue] = append(respMap[req.streamEventQueue], response)
 			req.pending--
 			m.availableSlots++
-			removed++
+			pendingTxIDsRemoved++
 			if req.pending == 0 {
 				req.timer.Stop()
 			}
@@ -239,13 +241,15 @@ func (m *subscriptions) removeAndEnqueueStatusEvents(status []*committerpb.TxSta
 			TxStatusEvents: response,
 		})
 	}
-	return removed, uniqueRemoved
+	return pendingTxIDsRemoved, uniquePendingTxIDsRemoved
 }
 
 // removeAndEnqueueTimeoutEvents removes a request from the subscriptions, and
 // reports the timed out TX IDs for this request.
-// Returns the number of enqueued (txID, request) subscriptions and the number of unique txIDs removed from the map.
-func (m *subscriptions) removeAndEnqueueTimeoutEvents(req *notificationRequest) (removed, uniqueRemoved int) {
+// Returns the number of pending txIDs removed for this request, and the number of unique txIDs removed from the map.
+func (m *subscriptions) removeAndEnqueueTimeoutEvents(
+	req *notificationRequest,
+) (pendingTxIDsRemoved, uniquePendingTxIDsRemoved int) {
 	txIDs := make([]string, 0, len(req.request.TxStatusRequest.TxIds))
 	for _, id := range req.request.TxStatusRequest.TxIds {
 		requests, ok := m.txIDToRequests[id]
@@ -259,11 +263,11 @@ func (m *subscriptions) removeAndEnqueueTimeoutEvents(req *notificationRequest) 
 			continue
 		}
 		txIDs = append(txIDs, id)
-		removed++
+		pendingTxIDsRemoved++
 		m.availableSlots++
 		if len(requests) == 1 {
 			delete(m.txIDToRequests, id)
-			uniqueRemoved++
+			uniquePendingTxIDsRemoved++
 		} else {
 			delete(requests, req)
 		}
@@ -271,5 +275,5 @@ func (m *subscriptions) removeAndEnqueueTimeoutEvents(req *notificationRequest) 
 	req.streamEventQueue.Write(&committerpb.NotificationResponse{
 		TimeoutTxIds: txIDs,
 	})
-	return removed, uniqueRemoved
+	return pendingTxIDsRemoved, uniquePendingTxIDsRemoved
 }
