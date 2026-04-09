@@ -26,7 +26,6 @@ type (
 		params         CmdParameters
 		process        ifrit.Process
 		configFilePath string
-		exitCh         chan error
 	}
 
 	// CmdParameters holds the parameters for a command.
@@ -116,7 +115,7 @@ func (p *ProcessWithConfig) Stop(t *testing.T) {
 	}
 	p.process.Signal(os.Kill)
 	select {
-	case <-p.exitCh:
+	case <-p.process.Wait():
 	case <-time.After(30 * time.Second):
 		t.Errorf("Process [%s] did not terminate after 30 seconds", p.params.Name)
 	}
@@ -126,14 +125,12 @@ func (p *ProcessWithConfig) Stop(t *testing.T) {
 // requireRunning fails the test immediately if the process has already exited.
 func (p *ProcessWithConfig) requireRunning(t *testing.T) {
 	t.Helper()
-	if p == nil || p.exitCh == nil {
+	if p == nil || p.process == nil {
 		return
 	}
 
 	select {
-	case err := <-p.exitCh:
-		// Put the error back so subsequent calls also see it.
-		p.exitCh <- err
+	case err := <-p.process.Wait():
 		t.Fatalf("Process [%s] exited unexpectedly: %v", p.params.Name, err)
 	default:
 	}
@@ -149,9 +146,4 @@ func (p *ProcessWithConfig) Restart(t *testing.T) {
 	require.NoError(t, err)
 	c.Dir = path.Clean(path.Join(dir, "../.."))
 	p.process = test.Run(c, p.params.Name, "")
-
-	p.exitCh = make(chan error, 1)
-	go func() {
-		p.exitCh <- <-p.process.Wait()
-	}()
 }

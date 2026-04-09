@@ -12,7 +12,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +20,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -126,47 +126,41 @@ func UnitTestRunner(
 	cmd.SetOut(&cmdStdOut)
 	cmd.SetErr(&cmdStdErr)
 
-	wg := &sync.WaitGroup{}
-	t.Cleanup(func() {
-		t.Log("Waiting for command to finish")
-		wg.Wait()
-	})
-
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	cmdDone := make(chan any)
-	wg.Go(func() {
+	g, ctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
 		t.Logf("Starting command: %s", args[0])
 		defer t.Logf("Command exited: %s", args[0])
-		defer close(cmdDone)
+		defer cancel()
 		_, execErr := cmd.ExecuteContextC(ctx)
-		execErr = connection.FilterStreamRPCError(execErr)
-		if cmdTest.Err == nil {
-			assert.NoError(t, execErr)
-		} else if assert.Error(t, execErr) {
-			assert.Equal(t, cmdTest.Err.Error(), execErr.Error())
-		}
+		return connection.FilterStreamRPCError(execErr)
 	})
 
 	assert.Eventually(t, func() bool {
 		if len(missingExpectedOutputs(cmdTest, cmdStdOut.String(), cmdStdErr.String(), loggerPath)) == 0 {
 			return true
 		}
-		// If the command has already exited but expected outputs are still missing,
-		// fail fast — they will never appear.
+		// If the context is done (command exited or timed out) but expected
+		// outputs are still missing, fail fast — they will never appear.
 		select {
-		case <-cmdDone:
+		case <-ctx.Done():
 			t.Fatalf("Command exited before expected output appeared.\nSTD ERR: %s\nSTD OUT: %s",
 				cmdStdErr.String(), cmdStdOut.String())
 		default:
 		}
 		return false
-	}, 10*time.Minute, 500*time.Millisecond)
+	}, 2*time.Minute, 500*time.Millisecond)
 
 	t.Log("Stopping command, and waiting for finish")
 	cancel()
-	wg.Wait()
+	execErr := g.Wait()
+	if cmdTest.Err == nil {
+		assert.NoError(t, execErr)
+	} else if assert.Error(t, execErr) {
+		assert.Equal(t, cmdTest.Err.Error(), execErr.Error())
+	}
 	if !t.Failed() {
 		return
 	}
