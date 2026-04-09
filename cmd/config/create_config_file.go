@@ -10,10 +10,11 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
-	"html/template"
 	"os"
 	"path"
+	"strings"
 	"testing"
+	"text/template"
 	"time"
 
 	sprig "github.com/go-task/slim-sprig/v3"
@@ -94,6 +95,11 @@ type (
 
 // Config templates.
 var (
+	//go:embed templates/shared.yaml.tmpl
+	templateShared string
+	//go:embed templates/loadgen_shared.yaml.tmpl
+	templateLoadGenShared string
+
 	//go:embed templates/coordinator.yaml.tmpl
 	TemplateCoordinator string
 	//go:embed templates/mock-orderer.yaml.tmpl
@@ -107,37 +113,42 @@ var (
 	//go:embed templates/verifier.yaml.tmpl
 	TemplateVerifier string
 
-	TemplateLoadGenOnlyOrderer              = templateLoadGenOnlyOrdererClient + templateLoadGenCommon
-	TemplateLoadGenOrderer                  = templateLoadGenOrdererClient + templateLoadGenCommon
-	TemplateLoadGenCommitter                = templateLoadGenCommitterClient + templateLoadGenCommon
-	TemplateLoadGenCoordinator              = templateLoadGenCoordinatorClient + templateLoadGenCommon
-	TemplateLoadGenVC                       = templateLoadGenVCClient + templateLoadGenCommon
-	TemplateLoadGenVerifier                 = templateLoadGenVerifierClient + templateLoadGenCommon
-	TemplateLoadGenDistributedLoadGenClient = templateLoadGenDistributedLoadGenClient + templateLoadGenCommon
-
-	//go:embed templates/loadgen_shared.yaml.tmpl
-	templateLoadGenCommon string
 	//go:embed templates/loadgen_only_orderer.yaml.tmpl
-	templateLoadGenOnlyOrdererClient string
+	TemplateLoadGenOnlyOrderer string
 	//go:embed templates/loadgen_orderer.yaml.tmpl
-	templateLoadGenOrdererClient string
+	TemplateLoadGenOrderer string
 	//go:embed templates/loadgen_committer.yaml.tmpl
-	templateLoadGenCommitterClient string
+	TemplateLoadGenCommitter string
 	//go:embed templates/loadgen_coordinator.yaml.tmpl
-	templateLoadGenCoordinatorClient string
+	TemplateLoadGenCoordinator string
 	//go:embed templates/loadgen_vc.yaml.tmpl
-	templateLoadGenVCClient string
+	TemplateLoadGenVC string
 	//go:embed templates/loadgen_verifier.yaml.tmpl
-	templateLoadGenVerifierClient string
+	TemplateLoadGenVerifier string
 	//go:embed templates/loadgen_distributed.yaml.tmpl
-	templateLoadGenDistributedLoadGenClient string
+	TemplateLoadGenDistributedLoadGenClient string
 )
 
 // createConfigFromTemplate creates a config file using template yaml and writes it to the outputPath.
+// It parses both shared block files (shared.yaml.tmpl and loadgen_shared.yaml.tmpl) before the main template.
 func createConfigFromTemplate(t *testing.T, templateString, outputPath string, conf *SystemConfig) {
 	t.Helper()
 	tmpl := template.New("").Funcs(sprig.FuncMap())
-	tmpl, err := tmpl.Parse(templateString)
+
+	tmpl.Funcs(template.FuncMap{
+		"include": func(name string, data any) (string, error) {
+			var buf bytes.Buffer
+			err := tmpl.ExecuteTemplate(&buf, name, data)
+			return strings.TrimSpace(buf.String()), err
+		},
+	})
+
+	var err error
+	for _, shared := range []string{templateShared, templateLoadGenShared} {
+		tmpl, err = tmpl.Parse(shared)
+		require.NoError(t, err)
+	}
+	tmpl, err = tmpl.Parse(templateString)
 	require.NoError(t, err)
 
 	var renderedConfig bytes.Buffer
