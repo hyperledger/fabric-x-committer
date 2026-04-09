@@ -3,45 +3,11 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 server:
-  endpoint: {{ .ThisService.GrpcEndpoint | default "localhost:0" }}
-  tls:
-    mode: {{ .ThisService.GrpcTLS.Mode }}
-    key-path: {{ .ThisService.GrpcTLS.KeyPath }}
-    cert-path: {{ .ThisService.GrpcTLS.CertPath }}
-    ca-cert-paths:
-      {{- range .ThisService.GrpcTLS.CACertPaths }}
-      - {{ . }}
-      {{- end }}
-monitoring:
-  endpoint: {{ .ThisService.MetricsEndpoint | default "localhost:0" }}
-  tls:
-    mode: {{ .ThisService.MetricsTLS.Mode }}
-    key-path: {{ .ThisService.MetricsTLS.KeyPath }}
-    cert-path: {{ .ThisService.MetricsTLS.CertPath }}
-    ca-cert-paths:
-      {{- range .ThisService.MetricsTLS.CACertPaths }}
-      - {{ . }}
-      {{- end }}
-
+{{ include "endpointWithTLS" (dict "Endpoint" (.ThisService.GrpcEndpoint | default "localhost:0") "TLS" .ThisService.GrpcTLS) | indent 2 }}
 verifier:
-  endpoints:
-    {{- range .Services.Verifier }}
-    - {{ .GrpcEndpoint }}
-    {{- end }}
-  tls: &ClientCreds
-    mode: {{ .ClientTLS.Mode }}
-    key-path: {{ .ClientTLS.KeyPath }}
-    cert-path: {{ .ClientTLS.CertPath }}
-    ca-cert-paths:
-      {{- range .ClientTLS.CACertPaths }}
-      - {{ . }}
-      {{- end }}
+{{ include "endpointListWithSharedTLS" (dict "Servers" .Services.Verifier "TLS" .ClientTLS) | indent 2 }}
 validator-committer:
-  endpoints:
-   {{- range .Services.VCService }}
-    - {{ .GrpcEndpoint }}
-   {{- end }}
-  tls: *ClientCreds
+{{ include "endpointListWithSharedTLS" (dict "Servers" .Services.VCService "TLS" .ClientTLS) | indent 2 }}
 
 dependency-graph:
   num-of-local-dep-constructors: 1
@@ -49,6 +15,5 @@ dependency-graph:
   # Add monitoring configuration here if applicable
 per-channel-buffer-size-per-goroutine: 10
 
-logging:
-  logSpec: {{ .Logging.LogSpec }}
-  format: {{ .Logging.Format }}
+{{ include "monitoring" . | indent 0 }}
+{{ include "logging" . | indent 0 }}

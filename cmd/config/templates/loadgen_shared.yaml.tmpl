@@ -1,30 +1,19 @@
 # Copyright IBM Corp. All Rights Reserved.
 #
 # SPDX-License-Identifier: Apache-2.0
-#
-# This is a partial template. It contains only the common parts of the load generator's configurations.
-# It should be complimented by the client adapter configuration.
 
+{{- /*
+Shared template blocks for loadgen config templates.
+
+Templates:
+  loadgenConfig -- server, monitoring (with latency), load-profile, stream, generate, limit, and logging
+*/ -}}
+
+{{- /* {{ include "loadgenConfig" . | indent 0 }} */ -}}
+{{- define "loadgenConfig" }}
 server:
-  endpoint: {{ .ThisService.GrpcEndpoint | default "localhost:0" }}
-  tls:
-    mode: {{ .ThisService.GrpcTLS.Mode }}
-    key-path: {{ .ThisService.GrpcTLS.KeyPath }}
-    cert-path: {{ .ThisService.GrpcTLS.CertPath }}
-    ca-cert-paths:
-      {{- range .ThisService.GrpcTLS.CACertPaths }}
-      - {{ . }}
-      {{- end }}
-monitoring:
-  endpoint: {{ .ThisService.MetricsEndpoint | default "localhost:0" }}
-  tls:
-    mode: {{ .ThisService.MetricsTLS.Mode }}
-    key-path: {{ .ThisService.MetricsTLS.KeyPath }}
-    cert-path: {{ .ThisService.MetricsTLS.CertPath }}
-    ca-cert-paths:
-      {{- range .ThisService.MetricsTLS.CACertPaths }}
-      - {{ . }}
-      {{- end }}
+{{ include "endpointWithTLS" (dict "Endpoint" (.ThisService.GrpcEndpoint | default "localhost:0") "TLS" .ThisService.GrpcTLS) | indent 2 }}
+{{ include "monitoring" . | indent 0 }}
   latency:
     max-tracked-txs: 10_000
     sampler:
@@ -66,7 +55,6 @@ load-profile:
   workers: {{ .LoadGenWorkers }}
 
 stream:
-  # Low rate limit prevents overloading the machine in tests.
   rate-limit: 1_000
   gen-batch: 10
   buffers-size: 10
@@ -76,18 +64,9 @@ generate:
   namespaces: true
   load: true
 
-# The stopping condition for generating load according to the collected metrics.
-# Zero value indicate no limit.
-# The limit on the number of TXs is applied at block granularity. I.e., more TXs might be created than expected
-# if a block overshot.
-# The load generator stops when both requirements are met, i.e., one of them might overshoot.
-# For the orderer adapter, the blocks limit is ignored for broadcasting as we don't track submitted blocks.
-# For adapters that use concurrent submitters, we cannot enforce exact limits.
-# The sidecar and coordinator adapters are sequential, so they don't have these issues.
 limit:
   blocks: {{ .LoadGenBlockLimit }}
   transactions: {{ .LoadGenTXLimit }}
 
-logging:
-  logSpec: {{ .Logging.LogSpec }}
-  format: {{ .Logging.Format }}
+{{ include "logging" . | indent 0 }}
+{{- end }}

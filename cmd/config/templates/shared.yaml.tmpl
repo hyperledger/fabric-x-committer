@@ -1,0 +1,118 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+{{- /*
+Shared template blocks used across all service and loadgen config templates.
+All defines are at 0-indent and must be called via: {{ include "name" . | indent N }}
+
+Templates:
+  tlsConfig                     -- TLS config block; accepts a TLS struct directly
+  endpointWithTLS               -- endpoint and TLS config; accepts dict with "Endpoint" and "TLS" keys
+  endpointListWithSharedTLS     -- list of endpoints with shared TLS; accepts dict with "Servers" and "TLS" keys
+  monitoring                    -- metrics/monitoring server config (endpoint + TLS)
+  logging                       -- log spec and format
+  rateLimit                     -- optional rate-limit config for gRPC endpoints
+  ordererClientConfig           -- orderer client-side TLS and identity config
+  database                      -- database connection config (endpoints, credentials, TLS, pooling)
+
+Go's template only accepts a single data argument. Some templates need multiple
+values (e.g., both an endpoint and a TLS config). "dict" creates an inline map so we
+can pass multiple values as one argument:
+  dict "Endpoint" .ThisService.GrpcEndpoint "TLS" .ThisService.GrpcTLS
+produces {"Endpoint": ..., "TLS": ...}, accessible inside the template as .Endpoint and .TLS.
+*/ -}}
+
+{{- /* {{ include "tlsConfig" .ClientTLS | indent 2 }} */ -}}
+{{- define "tlsConfig" }}
+tls:
+  mode: {{ .Mode }}
+  key-path: {{ .KeyPath }}
+  cert-path: {{ .CertPath }}
+  ca-cert-paths:
+    {{- range .CACertPaths }}
+    - {{ . }}
+    {{- end }}
+{{- end }}
+
+{{- /* {{ include "endpointWithTLS" (dict "Endpoint" .ThisService.GrpcEndpoint "TLS" .ThisService.GrpcTLS) | indent 2 }} */ -}}
+{{- define "endpointWithTLS" }}
+endpoint: {{ .Endpoint }}
+{{ include "tlsConfig" .TLS | indent 0 }}
+{{- end }}
+
+{{- /* {{ include "endpointListWithSharedTLS" (dict "Servers" .Services.Verifier "TLS" .ClientTLS) | indent 2 }} */ -}}
+{{- define "endpointListWithSharedTLS" }}
+endpoints:
+  {{- range .Servers }}
+  - {{ .GrpcEndpoint }}
+  {{- end }}
+{{ include "tlsConfig" .TLS | indent 0 }}
+{{- end }}
+
+{{- /* {{ include "monitoring" . | indent 0 }} */ -}}
+{{- define "monitoring" }}
+monitoring:
+{{ include "endpointWithTLS" (dict "Endpoint" (.ThisService.MetricsEndpoint | default "localhost:0") "TLS" .ThisService.MetricsTLS) | indent 2 }}
+{{- end }}
+
+{{- /* {{ include "logging" . | indent 0 }} */ -}}
+{{- define "logging" }}
+logging:
+  logSpec: {{ .Logging.LogSpec }}
+  format: {{ .Logging.Format }}
+{{- end }}
+
+{{- /* {{ include "rateLimit" . | indent 2 }} */ -}}
+{{- define "rateLimit" }}
+{{- if .RateLimit }}
+rate-limit:
+  requests-per-second: {{ .RateLimit.RequestsPerSecond }}
+  burst: {{ .RateLimit.Burst }}
+{{- end }}
+{{- end }}
+
+{{- /* {{ include "ordererClientConfig" . | indent 0 }} */ -}}
+{{- define "ordererClientConfig" }}
+orderer:
+  fault-tolerance-level: BFT
+  latest-known-config-block-path: "{{ .Policy.ArtifactsPath }}/config-block.pb.bin"
+  tls:
+    mode: {{ .ClientTLS.Mode }}
+    cert-path: {{ .ClientTLS.CertPath }}
+    key-path: {{ .ClientTLS.KeyPath }}
+    common-ca-cert-paths:
+      {{- range .ClientTLS.CACertPaths }}
+      - {{ . }}
+      {{- end }}
+  identity:
+    msp-id: peer-org-0
+    msp-dir: {{ .Policy.ArtifactsPath }}/peerOrganizations/peer-org-0/users/client@peer-org-0.com/msp
+    bccsp:
+      Default: SW
+      SW:
+        Security: 256
+        Hash: SHA2
+{{- end }}
+
+
+{{- /* {{ include "database" . | indent 0 }} */ -}}
+{{- define "database" }}
+database:
+  endpoints:
+    {{- range .DB.Endpoints }}
+    - {{ . }}
+    {{- end }}
+  username: {{ .DB.Username }}
+  # TODO: pass password via environment variable
+  password: {{ .DB.Password }}
+  database: {{ .DB.Name }}
+  load-balance: {{ .DB.LoadBalance }}
+  tls:
+    mode: {{ .DB.TLS.Mode }}
+    ca-cert-path: {{ .DB.TLS.CACertPath }}
+  max-connections: 10
+  min-connections: 5
+  retry:
+    max-elapsed-time: 1h
+{{- end }}

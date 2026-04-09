@@ -5,20 +5,12 @@
 servers:
   {{- range .Services.Orderer }}
   - endpoint: {{ .GrpcEndpoint }}
-    tls:
-      mode: {{ .GrpcTLS.Mode }}
-      cert-path: {{ .GrpcTLS.CertPath }}
-      key-path: {{ .GrpcTLS.KeyPath }}
-      ca-cert-paths:
-        {{- range .GrpcTLS.CACertPaths }}
-        - {{ . }}
-        {{- end }}
+{{ include "tlsConfig" .GrpcTLS | indent 4 }}
   {{- end }}
+
 block-size: {{ .BlockSize }}
 block-timeout: {{ .BlockTimeout }}
 artifacts-path: {{ .Policy.ArtifactsPath }}
 send-genesis-block: true
 
-logging:
-  logSpec: {{ .Logging.LogSpec }}
-  format: {{ .Logging.Format }}
+{{ include "logging" . | indent 0 }}
