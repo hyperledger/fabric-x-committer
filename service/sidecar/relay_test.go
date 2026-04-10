@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
@@ -43,7 +44,7 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 	coord, coordinatorServer := mock.StartMockCoordinatorService(t, test.StartServerParameters{})
 	coordinatorEndpoint := coordinatorServer.Configs[0].Endpoint
 
-	metrics := newPerformanceMetrics()
+	metrics := newPerformanceMetrics(monitoring.NewMetricsProvider())
 	relayService := newRelay(
 		time.Second,
 		metrics,

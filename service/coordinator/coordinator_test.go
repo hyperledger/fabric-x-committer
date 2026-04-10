@@ -31,6 +31,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testapp"
 	"github.com/hyperledger/fabric-x-committer/utils/testsig"
@@ -128,7 +129,7 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 	}
 
 	return &coordinatorTestEnv{
-		coordinator:            NewCoordinatorService(c),
+		coordinator:            NewCoordinatorService(c, monitoring.NewMetricsProvider()),
 		config:                 c,
 		dbEnv:                  dbEnv,
 		verifier:               verifier,
@@ -548,7 +549,7 @@ func TestQueueSize(t *testing.T) {
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: true})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	go env.coordinator.monitorQueues(ctx)
+	go func() { _ = env.coordinator.monitorQueues(ctx) }()
 
 	q := env.coordinator.queues
 	m := env.coordinator.metrics
@@ -683,7 +684,7 @@ func TestCoordinatorRecovery(t *testing.T) {
 		ServerCreds: env.serverTLS,
 	})
 	env.config.ValidatorCommitter = *test.ServerToMultiClientConfig(env.clientTLS, vcEnv.Configs[0].Server)
-	env.coordinator = NewCoordinatorService(env.config)
+	env.coordinator = NewCoordinatorService(env.config, monitoring.NewMetricsProvider())
 	ctx, cancel = context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	env.startServiceAndOpenStream(ctx, t)
@@ -898,7 +899,7 @@ func TestConnectionReadyWithTimeout(t *testing.T) {
 		ValidatorCommitter: *test.NewTLSMultiClientConfig(test.InsecureTLSConfig, randomEndpoint),
 		DependencyGraph:    &DependencyGraphConfig{},
 		Monitoring:         test.NewLocalHostServer(test.InsecureTLSConfig),
-	})
+	}, monitoring.NewMetricsProvider())
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	t.Cleanup(cancel)
 	require.False(t, c.WaitForReady(ctx))

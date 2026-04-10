@@ -26,5 +26,5 @@ type Parameters struct {
 	// that can be waiting at the dependency manager.
 	WaitingTxsLimit int
 	// PrometheusMetricsProvider is the provider for Prometheus metrics.
-	PrometheusMetricsProvider *monitoring.Provider
+	PrometheusMetricsProvider *monitoring.MetricsProvider
 }

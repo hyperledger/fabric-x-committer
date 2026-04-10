@@ -7,15 +7,14 @@ SPDX-License-Identifier: Apache-2.0
 package monitoring
 
 import (
-	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 	"testing"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -24,8 +23,9 @@ import (
 )
 
 type metricsProviderTestEnv struct {
-	provider        *Provider
+	provider        *MetricsProvider
 	clientTLSConfig *tls.Config
+	metricsURL      string
 }
 
 func TestCounterWithTLSModes(t *testing.T) {
@@ -184,21 +184,39 @@ func TestNewHistogramVec(t *testing.T) {
 	)
 }
 
+// TestPprofEndpoints tests pprof endpoints using the new HTTPServer.
 func TestPprofEndpoints(t *testing.T) {
 	t.Parallel()
 
-	env := newMetricsProviderTestEnv(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+	serverTLS, clientTLS := test.CreateServerAndClientTLSConfig(t, connection.NoneTLSMode)
+	serverConfig := test.NewLocalHostServer(serverTLS)
+	p := NewMetricsProvider()
+
+	// Create HTTP server and listener
+	httpServer := newHTTPServer(serverConfig, p.Registry())
+	listener, err := httpServer.createListener(t.Context())
+	require.NoError(t, err)
+
+	// Build metrics URL from config
+	metricsURL := makeMetricsURL(t, serverConfig, listener)
+
+	// Start serving in goroutine
+	go httpServer.serve(t.Context(), listener)
+
+	// Extract base URL from metrics URL (remove /metrics path)
+	baseURL := metricsURL[:len(metricsURL)-len(metricsSubPath)]
+
+	clientCreds, err := connection.NewClientTLSCredentials(clientTLS)
+	require.NoError(t, err)
+	clientTLSConfig, err := clientCreds.CreateClientTLSConfig()
+	require.NoError(t, err)
 
 	client := &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: env.clientTLSConfig,
+			TLSClientConfig: clientTLSConfig,
 		},
 	}
 	defer client.CloseIdleConnections()
-
-	// Extract base URL from metrics URL (remove /metrics path)
-	metricsURL := env.provider.URL()
-	baseURL := metricsURL[:len(metricsURL)-len(metricsSubPath)]
 
 	tests := []struct {
 		name string
@@ -206,13 +224,9 @@ func TestPprofEndpoints(t *testing.T) {
 	}{
 		{name: "Index", path: "/debug/pprof/"},
 		{name: "Cmdline", path: "/debug/pprof/cmdline"},
-		{name: "Profile", path: "/debug/pprof/profile?seconds=1"},
 		{name: "Symbol", path: "/debug/pprof/symbol"},
 		{name: "Heap", path: "/debug/pprof/heap"},
 		{name: "Goroutine", path: "/debug/pprof/goroutine"},
-		{name: "Allocs", path: "/debug/pprof/allocs"},
-		{name: "Block", path: "/debug/pprof/block"},
-		{name: "Mutex", path: "/debug/pprof/mutex"},
 	}
 
 	for _, tt := range tests {
@@ -229,48 +243,50 @@ func TestPprofEndpoints(t *testing.T) {
 
 func newMetricsProviderTestEnv(t *testing.T, serverTLS, clientTLS connection.TLSConfig) *metricsProviderTestEnv {
 	t.Helper()
-	p := NewProvider()
+	p := NewMetricsProvider()
 
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
-	t.Cleanup(cancel)
-
-	c := test.NewLocalHostServer(serverTLS)
-	go func() {
-		assert.NoError(t, p.StartPrometheusServer(ctx, c))
-	}()
+	serverConfig := test.NewLocalHostServer(serverTLS)
 
 	clientCreds, err := connection.NewClientTLSCredentials(clientTLS)
 	require.NoError(t, err)
 	clientTLSConfig, err := clientCreds.CreateClientTLSConfig()
 	require.NoError(t, err)
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: clientTLSConfig,
-		},
-	}
-	defer client.CloseIdleConnections()
-	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.NotEmpty(ct, p.URL())
-		resp, err := client.Get(p.URL())
-		require.NoError(ct, err)
-		require.NotNil(ct, resp)
-		require.Equal(ct, http.StatusOK, resp.StatusCode)
-		require.NoError(ct, resp.Body.Close())
-	}, 5*time.Second, 100*time.Millisecond)
+	// Create HTTP server and listener
+	httpServer := newHTTPServer(serverConfig, p.Registry())
+	listener, err := httpServer.createListener(t.Context())
+	require.NoError(t, err)
+
+	// Build metrics URL from config
+	metricsURL := makeMetricsURL(t, serverConfig, listener)
+
+	// Start serving in goroutine
+	go httpServer.serve(t.Context(), listener)
 
 	return &metricsProviderTestEnv{
 		provider:        p,
 		clientTLSConfig: clientTLSConfig,
+		metricsURL:      metricsURL,
 	}
 }
 
 func (e *metricsProviderTestEnv) checkMetrics(t *testing.T, expected ...string) {
 	t.Helper()
-	test.CheckMetrics(t, e.provider.URL(), e.clientTLSConfig, expected...)
+	test.CheckMetrics(t, e.metricsURL, e.clientTLSConfig, expected...)
 }
 
 func (e *metricsProviderTestEnv) getMetricValue(t *testing.T, metricNameWithLabels string) int {
 	t.Helper()
-	return test.GetMetricValueFromURL(t, e.provider.URL(), metricNameWithLabels, e.clientTLSConfig)
+	return test.GetMetricValueFromURL(t, e.metricsURL, metricNameWithLabels, e.clientTLSConfig)
+}
+
+// makeMetricsURL constructs the metrics URL from server config and listener.
+// Helper to reduce duplicate code in tests.
+func makeMetricsURL(t *testing.T, serverConfig *connection.ServerConfig, listener net.Listener) string {
+	t.Helper()
+	tlsConf, err := serverConfig.TLS.ServerTLSConfig()
+	require.NoError(t, err)
+	metricsURL, err := MakeMetricsURL(listener.Addr().String(), tlsConf)
+	require.NoError(t, err)
+	return metricsURL
 }

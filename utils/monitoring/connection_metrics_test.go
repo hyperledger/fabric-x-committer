@@ -19,7 +19,7 @@ func TestConnectionMetrics(t *testing.T) {
 	t.Parallel()
 
 	newConnectionMetrics := func() *ConnectionMetrics {
-		p := NewProvider()
+		p := NewMetricsProvider()
 		return p.NewConnectionMetrics(ConnectionMetricsOpts{})
 	}
 	target := "localhost:7051"

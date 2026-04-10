@@ -104,7 +104,7 @@ func newSidecarTestEnvWithTLS(
 		Monitoring:                    test.NewLocalHostServer(conf.ServerTLS),
 		Orderer:                       ordererEnv.OrdererConnConfig,
 	}
-	sidecar, err := New(sidecarConf)
+	sidecar, err := New(sidecarConf, monitoring.NewMetricsProvider())
 	require.NoError(t, err)
 	t.Cleanup(sidecar.Close)
 
@@ -317,7 +317,7 @@ func TestSidecarConfigRecovery(t *testing.T) {
 
 	var err error
 	t.Log("Create a new sidecar with the old configuration (only party 0)")
-	env.sidecar, err = New(&env.config)
+	env.sidecar, err = New(&env.config, monitoring.NewMetricsProvider())
 	require.NoError(t, err)
 	t.Cleanup(env.sidecar.Close)
 
@@ -381,7 +381,7 @@ func TestSidecarRecovery(t *testing.T) {
 	env.sidecar.blockStore, err = newBlockStore(
 		env.config.Ledger.Path,
 		0,
-		newPerformanceMetrics(),
+		newPerformanceMetrics(monitoring.NewMetricsProvider()),
 	)
 	require.NoError(t, err)
 	env.sidecar.blockDelivery = newBlockDelivery(env.sidecar.blockStore)

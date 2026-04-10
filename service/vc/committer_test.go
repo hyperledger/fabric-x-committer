@@ -17,6 +17,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -33,7 +34,7 @@ func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 	txStatus := make(chan *committerpb.TxStatusBatch, 10)
 
 	dbEnv := newDatabaseTestEnvWithTablesSetup(t)
-	metrics := newVCServiceMetrics()
+	metrics := newVCServiceMetrics(monitoring.NewMetricsProvider())
 	c := newCommitter(dbEnv.DB, validatedTxs, txStatus, metrics)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return c.run(ctx, 1)

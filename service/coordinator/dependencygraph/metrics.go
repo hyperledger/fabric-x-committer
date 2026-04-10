@@ -15,7 +15,7 @@ import (
 var bucket = []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}
 
 type perfMetrics struct {
-	provider *monitoring.Provider
+	mp *monitoring.MetricsProvider
 
 	// queue sizes
 	ldgInputTxBatchQueueSize prometheus.Gauge
@@ -45,47 +45,47 @@ type perfMetrics struct {
 	dependentTransactionsQueueSize prometheus.Gauge
 }
 
-func newPerformanceMetrics(p *monitoring.Provider) *perfMetrics {
+func newPerformanceMetrics(mp *monitoring.MetricsProvider) *perfMetrics {
 	return &perfMetrics{
-		provider: p,
-		ldgInputTxBatchQueueSize: p.NewGauge(prometheus.GaugeOpts{
+		mp: mp,
+		ldgInputTxBatchQueueSize: mp.NewGauge(prometheus.GaugeOpts{
 			Namespace: "coordinator",
 			Subsystem: "local_dependency_graph",
 			Name:      "input_tx_batch_queue_size",
 			Help:      "Size of the input transaction batch queue of the local dependency graph manager",
 		}),
-		gdgInputTxBatchQueueSize: p.NewGauge(prometheus.GaugeOpts{
+		gdgInputTxBatchQueueSize: mp.NewGauge(prometheus.GaugeOpts{
 			Namespace: "coordinator",
 			Subsystem: "global_dependency_graph",
 			Name:      "input_tx_batch_queue_size",
 			Help:      "Size of the input transaction batch queue of the global dependency graph manager",
 		}),
-		gdgWaitingTxQueueSize: p.NewGauge(prometheus.GaugeOpts{
+		gdgWaitingTxQueueSize: mp.NewGauge(prometheus.GaugeOpts{
 			Namespace: "coordinator",
 			Subsystem: "global_dependency_graph",
 			Name:      "size",
 			Help: "Size of the global dependency graph manager in terms " +
 				"of the number of transactions waiting to be processed",
 		}),
-		ldgTxProcessedTotal: p.NewCounter(prometheus.CounterOpts{
+		ldgTxProcessedTotal: mp.NewCounter(prometheus.CounterOpts{
 			Namespace: "coordinator",
 			Subsystem: "local_dependency_graph",
 			Name:      "tx_processed_total",
 			Help:      "Total number of new transactions processed by the local dependency graph manager",
 		}),
-		gdgTxProcessedTotal: p.NewCounter(prometheus.CounterOpts{
+		gdgTxProcessedTotal: mp.NewCounter(prometheus.CounterOpts{
 			Namespace: "coordinator",
 			Subsystem: "global_dependency_graph",
 			Name:      "tx_processed_total",
 			Help:      "Total number of new transactions processed by the global dependency graph manager",
 		}),
-		gdgValidatedTxProcessedTotal: p.NewCounter(prometheus.CounterOpts{
+		gdgValidatedTxProcessedTotal: mp.NewCounter(prometheus.CounterOpts{
 			Namespace: "coordinator",
 			Subsystem: "global_dependency_graph",
 			Name:      "validated_tx_processed_total",
 			Help:      "Total number of validated transactions processed by the global dependency graph manager",
 		}),
-		gdgConstructionSeconds: p.NewHistogram(prometheus.HistogramOpts{
+		gdgConstructionSeconds: mp.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "coordinator",
 			Subsystem: "global_dependency_graph",
 			Name:      "construction_seconds",
@@ -93,7 +93,7 @@ func newPerformanceMetrics(p *monitoring.Provider) *perfMetrics {
 				"in the global dependency graph manager",
 			Buckets: bucket,
 		}),
-		gdgConstructorWaitForLockSeconds: p.NewHistogram(prometheus.HistogramOpts{
+		gdgConstructorWaitForLockSeconds: mp.NewHistogram(prometheus.HistogramOpts{
 			Namespace:   "coordinator",
 			Subsystem:   "global_dependency_graph",
 			Name:        "constructor_wait_for_lock_seconds",
@@ -101,14 +101,14 @@ func newPerformanceMetrics(p *monitoring.Provider) *perfMetrics {
 			ConstLabels: map[string]string{},
 			Buckets:     bucket,
 		}),
-		gdgAddTxToGraphSeconds: p.NewHistogram(prometheus.HistogramOpts{
+		gdgAddTxToGraphSeconds: mp.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "coordinator",
 			Subsystem: "global_dependency_graph",
 			Name:      "add_tx_batch_to_graph_seconds",
 			Help:      "Time spent adding a transaction batch to the graph in the global dependency graph manager",
 			Buckets:   bucket,
 		}),
-		gdgUpdateDependencyDetectorSeconds: p.NewHistogram(prometheus.HistogramOpts{
+		gdgUpdateDependencyDetectorSeconds: mp.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "coordinator",
 			Subsystem: "global_dependency_graph",
 			Name:      "update_dependency_detector_seconds",
@@ -116,7 +116,7 @@ func newPerformanceMetrics(p *monitoring.Provider) *perfMetrics {
 				"in the global dependency graph manager",
 			Buckets: bucket,
 		}),
-		gdgValidatedTxProcessingSeconds: p.NewHistogram(prometheus.HistogramOpts{
+		gdgValidatedTxProcessingSeconds: mp.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "coordinator",
 			Subsystem: "global_dependency_graph",
 			Name:      "validated_tx_batch_processing_seconds",
@@ -124,7 +124,7 @@ func newPerformanceMetrics(p *monitoring.Provider) *perfMetrics {
 				"dependency graph manager",
 			Buckets: bucket,
 		}),
-		gdgValidatedTxProcessorWaitForLockSeconds: p.NewHistogram(prometheus.HistogramOpts{
+		gdgValidatedTxProcessorWaitForLockSeconds: mp.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "coordinator",
 			Subsystem: "global_dependency_graph",
 			Name:      "validated_tx_batch_processor_wait_for_lock_seconds",
@@ -132,7 +132,7 @@ func newPerformanceMetrics(p *monitoring.Provider) *perfMetrics {
 				"processor of the global dependency graph manager",
 			Buckets: bucket,
 		}),
-		gdgRemoveDependentsOfValidatedTxSeconds: p.NewHistogram(prometheus.HistogramOpts{
+		gdgRemoveDependentsOfValidatedTxSeconds: mp.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "coordinator",
 			Subsystem: "global_dependency_graph",
 			Name:      "remove_dependents_of_validated_tx_batch_seconds",
@@ -140,21 +140,21 @@ func newPerformanceMetrics(p *monitoring.Provider) *perfMetrics {
 				"in the global dependency graph manager",
 			Buckets: bucket,
 		}),
-		gdgAddFreedTxSeconds: p.NewHistogram(prometheus.HistogramOpts{
+		gdgAddFreedTxSeconds: mp.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "coordinator",
 			Subsystem: "global_dependency_graph",
 			Name:      "add_freed_tx_batch_seconds",
 			Help:      "Time spent adding a freed transaction batch to a queue in the global dependency graph manager",
 			Buckets:   bucket,
 		}),
-		gdgOutputFreedTxSeconds: p.NewHistogram(prometheus.HistogramOpts{
+		gdgOutputFreedTxSeconds: mp.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "coordinator",
 			Subsystem: "global_dependency_graph",
 			Name:      "output_freed_tx_batch_seconds",
 			Help:      "Time spent outputting a freed transaction batch in the global dependency graph manager",
 			Buckets:   bucket,
 		}),
-		dependentTransactionsQueueSize: p.NewGauge(prometheus.GaugeOpts{
+		dependentTransactionsQueueSize: mp.NewGauge(prometheus.GaugeOpts{
 			Namespace: "coordinator",
 			Subsystem: "dependency_graph",
 			Name:      "dependent_transactions_queue_size",

@@ -21,6 +21,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -479,7 +480,7 @@ func newNotifierTestEnv(tb testing.TB, numOfClients int) *notifierTestEnv {
 
 func newNotifierTestEnvWithConfig(tb testing.TB, numOfClients int, conf *NotificationServiceConfig) *notifierTestEnv {
 	tb.Helper()
-	metrics := newPerformanceMetrics()
+	metrics := newPerformanceMetrics(monitoring.NewMetricsProvider())
 	env := &notifierTestEnv{
 		n:              newNotifier(DefaultBufferSize, conf, metrics),
 		metrics:        metrics,

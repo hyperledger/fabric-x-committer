@@ -59,7 +59,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 			incomingTxsForValidationCommit: inputTxs,
 			outgoingValidatedTxsNode:       outputTxs,
 			outgoingTxsStatus:              outputTxsStatus,
-			metrics:                        newPerformanceMetrics(),
+			metrics:                        newPerformanceMetrics(monitoring.NewMetricsProvider()),
 			policyMgr:                      svEnv.policyManager,
 		},
 	)

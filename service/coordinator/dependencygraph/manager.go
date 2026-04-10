@@ -13,6 +13,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
+	"github.com/hyperledger/fabric-x-committer/utils/periodic"
 )
 
 // Manager is the main component of the dependency graph module.
@@ -58,8 +59,7 @@ func (m *Manager) Run(ctx context.Context) {
 	g, gCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		m.monitorQueues(gCtx)
-		return nil
+		return m.monitorQueues(gCtx)
 	})
 
 	g.Go(func() error {
@@ -75,17 +75,14 @@ func (m *Manager) Run(ctx context.Context) {
 	_ = g.Wait()
 }
 
-func (m *Manager) monitorQueues(ctx context.Context) {
+func (m *Manager) monitorQueues(ctx context.Context) error {
 	// TODO: make sampling time configurable
-	ticker := time.NewTicker(100 * time.Millisecond)
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
+	for range periodic.Ticker(ctx, 100*time.Millisecond) {
+		if ctx.Err() != nil {
+			break
 		}
-
 		promutil.SetGauge(m.metrics.ldgInputTxBatchQueueSize, len(m.localDepConstructor.incomingTransactions))
 		promutil.SetGauge(m.metrics.gdgInputTxBatchQueueSize, len(m.globalDepManager.incomingTransactionsNode))
 	}
+	return ctx.Err()
 }

@@ -16,6 +16,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -32,7 +33,7 @@ func newValidatorTestEnv(t *testing.T) *validatorTestEnv {
 	validatedTxs := make(chan *validatedTransactions, 10)
 
 	dbEnv := newDatabaseTestEnvWithTablesSetup(t)
-	metrics := newVCServiceMetrics()
+	metrics := newVCServiceMetrics(monitoring.NewMetricsProvider())
 	v := newValidator(dbEnv.DB, preparedTxs, validatedTxs, metrics)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return v.run(ctx, 1)

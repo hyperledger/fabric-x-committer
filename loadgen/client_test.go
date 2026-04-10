@@ -31,6 +31,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
@@ -84,7 +85,7 @@ func TestLoadGenForLoadGen(t *testing.T) {
 			subClientConf.Adapter.LoadGenClient = test.NewTLSClientConfig(
 				clientTLSConfig, &clientConf.Server.Endpoint,
 			)
-			subClient, err := NewLoadGenClient(subClientConf)
+			subClient, err := NewLoadGenClient(subClientConf, monitoring.NewMetricsProvider())
 			require.NoError(t, err)
 
 			t.Log("Start distributed loadgen")
@@ -146,7 +147,7 @@ func startVerifiers(t *testing.T, serverTLS, clientTLS connection.TLSConfig) *co
 			},
 		}
 
-		service := verifier.New(sConf)
+		service := verifier.New(sConf, monitoring.NewMetricsProvider())
 		test.RunGrpcServerForTest(t.Context(), t, sConf.Server, service.RegisterService)
 		endpoints[i] = &sConf.Server.Endpoint
 	}
@@ -185,7 +186,7 @@ func TestLoadGenForCoordinator(t *testing.T) {
 				ChannelBufferSizePerGoroutine: 10,
 			}
 
-			service := coordinator.NewCoordinatorService(cConf)
+			service := coordinator.NewCoordinatorService(cConf, monitoring.NewMetricsProvider())
 			test.RunServiceAndGrpcForTest(t.Context(), t, service, cConf.Server)
 
 			// Start client
@@ -243,7 +244,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 				},
 				Orderer: e.OrdererConnConfig,
 			}
-			service, err := sidecar.New(sidecarConf)
+			service, err := sidecar.New(sidecarConf, monitoring.NewMetricsProvider())
 			require.NoError(t, err)
 			t.Cleanup(service.Close)
 			test.RunServiceAndGrpcForTest(t.Context(), t, service, sidecarConf.Server)
@@ -291,7 +292,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 			}
 
 			// Start sidecar.
-			service, err := sidecar.New(sidecarConf)
+			service, err := sidecar.New(sidecarConf, monitoring.NewMetricsProvider())
 			require.NoError(t, err)
 			t.Cleanup(service.Close)
 			test.RunServiceAndGrpcForTest(t.Context(), t, service, sidecarConf.Server)
@@ -337,7 +338,7 @@ func preAllocatePorts(t *testing.T, tlsConfig connection.TLSConfig) *connection.
 
 func testLoadGenerator(t *testing.T, c *ClientConfig, metricsTLS *connection.TLSConfig) {
 	t.Helper()
-	client, err := NewLoadGenClient(c)
+	client, err := NewLoadGenClient(c, monitoring.NewMetricsProvider())
 	require.NoError(t, err)
 
 	ready := test.RunServiceAndGrpcForTest(t.Context(), t, client, client.conf.Server)
@@ -349,14 +350,8 @@ func testLoadGenerator(t *testing.T, c *ClientConfig, metricsTLS *connection.TLS
 	})
 
 	if !c.Limit.HasLimit() {
-		// If we have a limit, the Prometheus server might stop before we can fetch the metrics.
-		test.CheckMetrics(t, client.resources.Metrics.URL(), test.MustGetTLSConfig(t, metricsTLS),
-			"loadgen_block_sent_total",
-			"loadgen_transaction_sent_total",
-			"loadgen_transaction_received_total",
-			"loadgen_valid_transaction_latency_seconds",
-			"loadgen_invalid_transaction_latency_seconds",
-		)
+		// Note: Prometheus metrics endpoint check removed as metrics are now served by HTTPServer
+		// started from the cmd layer (cmd/loadgen/main.go), not from loadgen.Client.Run()
 	}
 
 	eventuallyMetrics(t, client.resources.Metrics, func(m metrics.MetricState) bool {
@@ -422,7 +417,7 @@ func TestLoadGenRateLimiterServer(t *testing.T) {
 	t.Cleanup(func() {
 		_ = l.Close()
 	})
-	client, err := NewLoadGenClient(clientConf)
+	client, err := NewLoadGenClient(clientConf, monitoring.NewMetricsProvider())
 	require.NoError(t, err)
 
 	test.RunServiceForTest(t.Context(), t, client.Run, client.WaitForReady)

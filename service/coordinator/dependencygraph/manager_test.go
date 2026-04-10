@@ -87,7 +87,7 @@ func BenchmarkDependencyGraph(b *testing.B) {
 								IncomingValidatedTxsNode:  val,
 								NumOfLocalDepConstructors: tc.workers,
 								WaitingTxsLimit:           20_000_000,
-								PrometheusMetricsProvider: monitoring.NewProvider(),
+								PrometheusMetricsProvider: monitoring.NewMetricsProvider(),
 							})
 
 							txPoll := workload.GenerateTransactions(b, p, max(b.N*3, batchSize*3))
@@ -180,7 +180,7 @@ func TestDependencyGraphManager(t *testing.T) {
 				IncomingValidatedTxsNode:  validatedTxs,
 				NumOfLocalDepConstructors: 2,
 				WaitingTxsLimit:           waitingTXsLimit,
-				PrometheusMetricsProvider: monitoring.NewProvider(),
+				PrometheusMetricsProvider: monitoring.NewMetricsProvider(),
 			})
 
 			t.Log("check reads and writes dependency tracking")

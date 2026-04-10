@@ -27,7 +27,9 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
+	"github.com/hyperledger/fabric-x-committer/utils/periodic"
 )
 
 var logger = flogging.MustGetLogger("coordinator")
@@ -105,7 +107,7 @@ var (
 )
 
 // NewCoordinatorService creates a new coordinator service.
-func NewCoordinatorService(c *Config) *Service {
+func NewCoordinatorService(c *Config, metricsProvider *monitoring.MetricsProvider) *Service {
 	// We need to calculate the buffer size for each channel based on the number of goroutines accessing the channel
 	// in each manager. For sign verifier manager and validator committer manager, we have a goroutine per server to
 	// read from and write to the channel. Hence, we define a buffer size for each manager by multiplying the number
@@ -125,7 +127,7 @@ func NewCoordinatorService(c *Config) *Service {
 		vcServiceToCoordinatorTxStatus:     make(chan *committerpb.TxStatusBatch, bufSzPerChanForValCommitMgr),
 	}
 
-	metrics := newPerformanceMetrics()
+	metrics := newPerformanceMetrics(metricsProvider)
 
 	depMgr := dependencygraph.NewManager(
 		&dependencygraph.Parameters{
@@ -134,7 +136,7 @@ func NewCoordinatorService(c *Config) *Service {
 			IncomingValidatedTxsNode:  queues.vcServiceToDepGraphValidatedTxs,
 			NumOfLocalDepConstructors: c.DependencyGraph.NumOfLocalDepConstructors,
 			WaitingTxsLimit:           c.DependencyGraph.WaitingTxsLimit,
-			PrometheusMetricsProvider: metrics.Provider,
+			PrometheusMetricsProvider: metrics.MetricsProvider,
 		},
 	)
 
@@ -183,10 +185,7 @@ func (c *Service) Run(ctx context.Context) error {
 	g, eCtx := errgroup.WithContext(canCtx)
 
 	g.Go(func() error {
-		_ = c.metrics.StartPrometheusServer(eCtx, c.config.Monitoring, c.monitorQueues)
-		// We don't return error here to avoid stopping the service due to monitoring error.
-		// But we use the errgroup to ensure the method returns only when the server exits.
-		return nil
+		return c.monitorQueues(eCtx)
 	})
 
 	g.Go(func() error {
@@ -400,16 +399,12 @@ func (c *Service) sendTxStatus(
 	}
 }
 
-func (c *Service) monitorQueues(ctx context.Context) {
+func (c *Service) monitorQueues(ctx context.Context) error {
 	// TODO: make sampling time configurable
-	ticker := time.NewTicker(100 * time.Millisecond)
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
+	for range periodic.Ticker(ctx, 100*time.Millisecond) {
+		if ctx.Err() != nil {
+			break
 		}
-
 		m := c.metrics
 		q := c.queues
 		promutil.SetGauge(m.sigverifierInputTxBatchQueueSize, len(q.depGraphToSigVerifierFreeTxs))
@@ -417,4 +412,5 @@ func (c *Service) monitorQueues(ctx context.Context) {
 		promutil.SetGauge(m.vcserviceOutputValidatedTxBatchQueueSize, len(q.vcServiceToDepGraphValidatedTxs))
 		promutil.SetGauge(m.vcserviceOutputTxStatusBatchQueueSize, len(q.vcServiceToCoordinatorTxStatus))
 	}
+	return ctx.Err()
 }

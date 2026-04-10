@@ -21,6 +21,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/delivercommitter"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -28,7 +29,7 @@ func TestBlockStoreAndDelivery(t *testing.T) {
 	t.Parallel()
 	ledgerPath := t.TempDir()
 
-	metrics := newPerformanceMetrics()
+	metrics := newPerformanceMetrics(monitoring.NewMetricsProvider())
 	bs, err := newBlockStore(ledgerPath, 0, metrics)
 	require.NoError(t, err)
 	t.Cleanup(bs.close)

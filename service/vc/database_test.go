@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v5/pgxpool"
 
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
@@ -316,7 +317,7 @@ func TestNewDatabaseTabletsWithDetection(t *testing.T) {
 
 	env.DBConf.TablePreSplitTablets = 5
 
-	db, err := newDatabase(t.Context(), env.DBConf, newVCServiceMetrics())
+	db, err := newDatabase(t.Context(), env.DBConf, newVCServiceMetrics(monitoring.NewMetricsProvider()))
 	require.NoError(t, err)
 	t.Cleanup(db.close)
 

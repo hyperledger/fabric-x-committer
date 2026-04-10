@@ -121,6 +121,16 @@ func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error)
 	return NewServerGRPCTransportCredentials(tlsCreds)
 }
 
+// ServerTLSConfig converts TLSConfig into a *tls.Config for use with HTTP servers.
+// This is a convenience method that wraps NewServerTLSCredentials and CreateServerTLSConfig.
+func (c TLSConfig) ServerTLSConfig() (*tls.Config, error) {
+	tlsCreds, err := NewServerTLSCredentials(c)
+	if err != nil {
+		return nil, err
+	}
+	return tlsCreds.CreateServerTLSConfig()
+}
+
 // Validate checks that the rate limit configuration is valid.
 func (c *RateLimitConfig) Validate() error {
 	if c == nil || c.RequestsPerSecond == 0 {

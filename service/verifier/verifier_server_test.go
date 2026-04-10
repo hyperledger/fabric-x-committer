@@ -23,6 +23,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
@@ -488,7 +489,7 @@ type State struct {
 
 func newTestState(t *testing.T, config *Config) *State {
 	t.Helper()
-	service := New(config)
+	service := New(config, monitoring.NewMetricsProvider())
 	test.RunServiceAndGrpcForTest(t.Context(), t, service, config.Server)
 
 	return &State{

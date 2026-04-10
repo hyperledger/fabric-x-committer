@@ -31,6 +31,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -334,7 +335,7 @@ func TestMakeViewLimitReached(t *testing.T) {
 	vb := &viewsBatcher{
 		ctx:         t.Context(),
 		config:      &Config{MaxActiveViews: 1},
-		metrics:     newQueryServiceMetrics(),
+		metrics:     newQueryServiceMetrics(monitoring.NewMetricsProvider()),
 		viewLimiter: semaphore.NewWeighted(1),
 	}
 	params := defaultViewParams(time.Minute)
@@ -537,7 +538,7 @@ func newQueryServiceTestEnv(t *testing.T, opts *queryServiceTestOpts) *queryServ
 		Monitoring:            test.NewLocalHostServer(test.InsecureTLSConfig),
 	}
 
-	qs := NewQueryService(config)
+	qs := NewQueryService(config, monitoring.NewMetricsProvider())
 	test.RunServiceAndGrpcForTest(t.Context(), t, qs, qs.config.Server)
 	clientConn := createQueryClientWithTLS(t, &qs.config.Server.Endpoint, opts.clientTLS)
 
@@ -572,7 +573,7 @@ func generateNamespacesUnderTest(t *testing.T, namespaces []string) *vc.Database
 	}
 	clientConf.LoadProfile.Policy.NamespacePolicies = nsPolicies
 	clientConf.Generate = adapters.Phases{Config: true, Namespaces: true}
-	client, err := loadgen.NewLoadGenClient(clientConf)
+	client, err := loadgen.NewLoadGenClient(clientConf, monitoring.NewMetricsProvider())
 	require.NoError(t, err)
 	err = client.Run(t.Context())
 	require.NoError(t, connection.FilterStreamRPCError(err))
