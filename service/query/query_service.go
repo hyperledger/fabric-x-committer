@@ -34,7 +34,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
-var logger = flogging.MustGetLogger("query-service")
+var logger = flogging.MustGetLogger("query")
 
 var (
 	// ErrInvalidOrStaleView is returned when attempting to use wrong, stale, or cancelled view.
@@ -87,22 +87,21 @@ type (
 
 // NewQueryService create a new QueryService given a configuration.
 func NewQueryService(config *Config) (*Service, error) {
-	tlsMaterials, err := connection.NewServerTLSMaterials(config.Server.TLS)
+	tlsCredentials, err := connection.NewServerTLSCredentials(config.Server.TLS)
 	if err != nil {
 		return nil, err
 	}
-	tlsConfig, err := tlsMaterials.CreateServerTLSConfig(nil)
+	tlsConfig, err := tlsCredentials.CreateStaticTLSConfig()
 	if err != nil {
 		return nil, err
 	}
-
 	service := &Service{
 		config:          config,
 		metrics:         newQueryServiceMetrics(),
 		ready:           channel.NewReady(),
 		healthcheck:     connection.DefaultHealthCheckService(),
 		tlsConfig:       atomic.Pointer[tls.Config]{},
-		rootCAsInConfig: tlsMaterials.CACerts,
+		rootCAsInConfig: tlsCredentials.CACerts,
 	}
 	service.tlsConfig.Store(tlsConfig)
 	return service, nil

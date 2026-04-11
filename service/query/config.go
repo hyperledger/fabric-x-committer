@@ -36,23 +36,40 @@ import (
 type Config struct {
 	Server                *connection.ServerConfig `mapstructure:"server"`
 	Monitoring            *connection.ServerConfig `mapstructure:"monitoring"`
-	Database              *vc.DatabaseConfig       `mapstructure:"database"`
-	MinBatchKeys          int                      `mapstructure:"min-batch-keys"`
-	MaxBatchWait          time.Duration            `mapstructure:"max-batch-wait"`
-	ViewAggregationWindow time.Duration            `mapstructure:"view-aggregation-window"`
-	MaxAggregatedViews    int                      `mapstructure:"max-aggregated-views"`
-	MaxActiveViews        int                      `mapstructure:"max-active-views"`
-	MaxViewTimeout        time.Duration            `mapstructure:"max-view-timeout"`
+	Database              *vc.DatabaseConfig       `mapstructure:"database" validate:"required"`
+	MinBatchKeys          int                      `mapstructure:"min-batch-keys" validate:"required,gt=0"`
+	MaxBatchWait          time.Duration            `mapstructure:"max-batch-wait" validate:"required,gt=0"`
+	ViewAggregationWindow time.Duration            `mapstructure:"view-aggregation-window" validate:"required,gt=0"`
+	MaxAggregatedViews    int                      `mapstructure:"max-aggregated-views" validate:"required,gt=0"`
+	MaxActiveViews        int                      `mapstructure:"max-active-views" validate:"gte=0"`
+	MaxViewTimeout        time.Duration            `mapstructure:"max-view-timeout" validate:"required,gt=0"`
 	// MaxRequestKeys is the maximum number of keys allowed in a single query request.
 	// This applies to both GetRows (total keys across all namespaces) and
 	// GetTransactionStatus (number of transaction IDs).
 	// Set to 0 to disable the limit.
-	MaxRequestKeys int `mapstructure:"max-request-keys"`
+	MaxRequestKeys int `mapstructure:"max-request-keys" validate:"gte=0"`
 
 	// ACLRefreshInterval defines how long the query service caches configuration data
 	// before refreshing it from the database.
 	// This prevents excessive database queries when multiple clients connect simultaneously.
-	ACLRefreshInterval time.Duration `mapstructure:"acl-refresh-interval"`
+	ACLRefreshInterval time.Duration `mapstructure:"acl-refresh-interval" validate:"gte=0"`
 	// CaFetchTimeout defines the timeout for fetching CA certificates from the database.
-	CAFetchTimeout time.Duration `mapstructure:"ca-fetch-timeout"`
+	CAFetchTimeout time.Duration `mapstructure:"ca-fetch-timeout" validate:"gte=0"`
 }
+
+// Default configuration values for the query service.
+const (
+	DefaultServerPort            = 7001
+	DefaultMonitoringPort        = 2117
+	DefaultRequestsPerSecond     = 5000
+	DefaultBurst                 = 1000
+	DefaultMinBatchKeys          = 1024
+	DefaultMaxBatchWait          = 100 * time.Millisecond
+	DefaultViewAggregationWindow = 100 * time.Millisecond
+	DefaultMaxAggregatedViews    = 1024
+	DefaultMaxActiveViews        = 4096
+	DefaultMaxViewTimeout        = 10 * time.Second
+	DefaultMaxRequestKeys        = 10000
+	DefaultACLRefreshInterval    = 200 * time.Millisecond
+	DefaultCAFetchTimeout        = 15 * time.Second
+)

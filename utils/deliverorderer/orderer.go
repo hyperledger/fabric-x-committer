@@ -66,7 +66,7 @@ type (
 	// when accessing shared state between startSingleDeliveryStream() and processBlocks().
 	streamExecutionParams struct {
 		deliver.Parameters
-		connMaterial *connection.ClientMaterial
+		dialInfo *connection.DialInfo
 	}
 )
 
@@ -117,13 +117,13 @@ func ToQueue(ctx context.Context, odp Parameters) (*SessionInfo, error) {
 }
 
 func newFTDelivery(odp Parameters) (*ftDelivery, error) {
-	if odp.SuspicionGracePeriodPerBlock == 0 {
-		odp.SuspicionGracePeriodPerBlock = DefaultSuspicionGracePeriodPerBlock
-	}
-
 	ftLevel, ftErr := ordererdial.GetFaultToleranceLevel(odp.FaultToleranceLevel)
 	if ftErr != nil {
 		return nil, ftErr
+	}
+
+	if ftLevel == ordererdial.BFT && odp.SuspicionGracePeriodPerBlock <= 0 {
+		return nil, errors.New("SuspicionGracePeriodPerBlock must be positive for BFT")
 	}
 
 	// We use the maximum between all the provided config blocks.
@@ -310,7 +310,7 @@ func (d *ftDelivery) checkBlockWithholding() error {
 // CRITICAL: This also updates d.curDataBlockSourceID before goroutines spawn to prevent
 // race conditions with getProcessingState() which reads this field.
 func (d *ftDelivery) initStreams() (dataWorker streamExecutionParams, headerWorkers []streamExecutionParams) {
-	m := ordererdial.NewClientMaterial(d.latestConfig.ConfigBlockMaterial, ordererdial.Parameters{
+	m := ordererdial.NewDialInfo(d.latestConfig.ConfigBlockMaterial, ordererdial.Parameters{
 		API:   types.Deliver,
 		TLS:   d.params.TLS,
 		Retry: d.params.Retry,
@@ -335,28 +335,28 @@ func (d *ftDelivery) initStreams() (dataWorker streamExecutionParams, headerWork
 	headerSourceParameters.NextBlockNum = d.headerOnlyStream.nextBlockNum
 
 	// If not monitoring block withholding or only one party, create single data worker.
-	if !d.monitorBlockWithholding || len(m.PartyIDToMaterial) < 2 {
+	if !d.monitorBlockWithholding || len(m.PartyIDToDialInfo) < 2 {
 		return streamExecutionParams{
-			Parameters:   dataSourceParameters,
-			connMaterial: m.Joint,
+			Parameters: dataSourceParameters,
+			dialInfo:   m.Joint,
 		}, nil
 	}
 
 	// Create worker params for data stream + all header-only streams.
 	dataWorker = streamExecutionParams{
-		Parameters:   dataSourceParameters,
-		connMaterial: m.PartyIDToMaterial[d.curDataBlockSourceID],
+		Parameters: dataSourceParameters,
+		dialInfo:   m.PartyIDToDialInfo[d.curDataBlockSourceID],
 	}
-	headerWorkers = make([]streamExecutionParams, 0, len(m.PartyIDToMaterial)-1)
-	for id, connMaterial := range m.PartyIDToMaterial {
+	headerWorkers = make([]streamExecutionParams, 0, len(m.PartyIDToDialInfo)-1)
+	for id, dialInfo := range m.PartyIDToDialInfo {
 		if id == d.curDataBlockSourceID {
 			continue
 		}
 		p := headerSourceParameters
 		p.SourceID = id
 		headerWorkers = append(headerWorkers, streamExecutionParams{
-			Parameters:   p,
-			connMaterial: connMaterial,
+			Parameters: p,
+			dialInfo:   dialInfo,
 		})
 	}
 	return dataWorker, headerWorkers
@@ -364,12 +364,12 @@ func (d *ftDelivery) initStreams() (dataWorker streamExecutionParams, headerWork
 
 // pickDataBlockStreamID returns one of the parties.
 // It prefers the party that delivered the latest block.
-func (d *ftDelivery) pickDataBlockStreamID(m *ordererdial.ClientMaterial) uint32 {
-	if !d.monitorBlockWithholding || len(m.PartyIDToMaterial) < 2 {
+func (d *ftDelivery) pickDataBlockStreamID(m *ordererdial.DialInfo) uint32 {
+	if !d.monitorBlockWithholding || len(m.PartyIDToDialInfo) < 2 {
 		return 0
 	}
 
-	parties := slices.Collect(maps.Keys(m.PartyIDToMaterial))
+	parties := slices.Collect(maps.Keys(m.PartyIDToDialInfo))
 
 	// We start the delivery with the most advanced source as the data block source.
 	// If the headers only stream is ahead, and it uses the latest config block (as expected),
@@ -413,7 +413,7 @@ func startSingleDeliveryStream(ctx context.Context, params streamExecutionParams
 	}
 	workerErr := errors.NewWithDepthf(0, "[%s] delivery worker [ID:%d] ended", workerType, params.SourceID)
 
-	conn, connErr := params.connMaterial.NewLoadBalancedConnection()
+	conn, connErr := params.dialInfo.NewLoadBalancedConnection()
 	if connErr != nil {
 		logger.Errorf("%s with error: %v", workerErr, connErr)
 		return errors.Join(workerErr, connErr)

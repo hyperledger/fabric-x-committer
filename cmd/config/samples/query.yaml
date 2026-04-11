@@ -24,11 +24,13 @@ server:
   rate-limit:
     # Maximum number of requests per second allowed.
     # Set to 0 to disable rate limiting.
+    # Default: 5,000
     requests-per-second: 0
     # Maximum number of requests allowed in a single burst.
     # When rate limiting is enabled (requests-per-second > 0):
     #   - Must be greater than 0
     #   - Must be less than or equal to requests-per-second
+    # Default: 1,000
     burst: 0
 # Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
 monitoring:
@@ -63,9 +65,11 @@ database:
     ca-cert-path: /root/artifacts/peerOrganizations/peer-org-0/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
   # Maximum size of the database connection pool. Limits concurrent database operations.
   # Should be tuned based on database capacity and expected query load.
+  # Default: 20
   max-connections: 10
   # Minimum size of the database connection pool. Keeps connections warm for faster queries.
   # Should be less than or equal to max-connections.
+  # Default: 1
   min-connections: 5
   # Enable load balancing across multiple database endpoints. Should be enabled for
   # YugabyteDB clusters to distribute queries across nodes. Set to false for single-node deployments.
@@ -79,6 +83,7 @@ database:
     # initial-interval: Specifies the duration of the first backoff interval.
     # This is the time to wait before the first retry attempt.
     # Format: string representing a duration (e.g., "500ms", "1s", "2.5s").
+    # Default: 500ms
     initial-interval: 500ms
 
     # randomization-factor: Controls the amount of randomness (jitter) applied to each backoff interval.
@@ -87,18 +92,21 @@ database:
     # A factor of 0 means no randomization. A factor of 0.5 means the actual interval
     # can vary by +/- 50% of the calculated interval.
     # Must be between 0 and 1.
+    # Default: 0.5
     randomization-factor: 0.5
 
     # multiplier: The factor by which the backoff interval increases after each failed attempt.
     # The next interval (before randomization) is calculated as: current_interval * multiplier.
     # A value of 1.5 means each subsequent interval will be 50% longer than the previous one.
     # Must be >= 1.
+    # Default: 1.5
     multiplier: 1.5
 
     # max-interval: Sets the absolute maximum duration for any single backoff interval.
     # Even if the calculated interval (initial_interval * multiplier^n) exceeds this value,
     # the interval used (before randomization) will be capped at max-interval.
     # Format: string representing a duration (e.g., "60s", "1m", "5m").
+    # Default: 10s
     max-interval: 60s
 
     # max-elapsed-time: The maximum total time allowed for retries since the operation first began.
@@ -107,6 +115,7 @@ database:
     # Setting this to "0" means there is no time limit, and retries will continue
     # indefinitely until successful.
     # Format: string representing a duration (e.g., "15m", "1h").
+    # Default: 15m
     max-elapsed-time: 15m
 
 # Resource limit configurations.
@@ -115,24 +124,30 @@ database:
 # Minimum number of keys that must accumulate in a batch before executing the query
 # against the database. Batching reduces database round-trips and improves efficiency.
 # Queries wait up to max-batch-wait for the batch to fill.
+# Default: 1,024
 min-batch-keys: 1024
 # Maximum time to wait for a batch to reach min-batch-keys before executing it anyway.
 # Lower values reduce query latency but may decrease batching efficiency. Queries may
 # wait longer if no database connections are available.
+# Default: 100ms
 max-batch-wait: 100ms
 # Time window for aggregating multiple views with the same parameters into a single
 # batched view. Views created within this window are processed together to reduce
 # database load. Larger windows improve batching but increase latency.
+# Default: 100ms
 view-aggregation-window: 100ms
 # Maximum number of views that can be aggregated together. Once reached, a new
 # aggregated view is created even if within the view-aggregation-window.
+# Default: 1,024
 max-aggregated-views: 1024
 # Maximum number of concurrently active (batched) views. When reached, new BeginView
 # requests are rejected with RESOURCE_EXHAUSTED. Set to 0 to disable the limit.
+# Default: 4,096
 max-active-views: 4096
 # Maximum lifetime of a view from creation to completion of its last query.
 # Views exceeding this timeout are aborted to prevent resource leaks.
 # Includes query execution time.
+# Default: 10s
 max-view-timeout: 10s
 
 # Maximum number of keys allowed in a single query request.
@@ -140,6 +155,7 @@ max-view-timeout: 10s
 # GetTransactionStatus (number of transaction IDs).
 # Large key sets can cause high latency, memory spikes, and potential timeouts.
 # Set to 0 to disable the limit (not recommended for production).
+# Default: 10,000
 max-request-keys: 10000
 
 # acl-refresh-interval defines how long the query service caches configuration data

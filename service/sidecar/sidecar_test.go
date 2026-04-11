@@ -98,10 +98,13 @@ func newSidecarTestEnvWithTLS(
 			Path: t.TempDir(),
 		},
 		Notification: NotificationServiceConfig{
+			MaxTimeout:         DefaultNotificationMaxTimeout,
+			MaxActiveTxIDs:     DefaultMaxActiveTxIDs,
 			MaxTxIDsPerRequest: blockSize * 2,
 		},
 		LastCommittedBlockSetInterval: 100 * time.Millisecond,
 		WaitingTxsLimit:               1000,
+		ChannelBufferSize:             DefaultBufferSize,
 		Monitoring:                    test.NewLocalHostServer(conf.ServerTLS),
 		Orderer:                       ordererEnv.OrdererConnConfig,
 	}

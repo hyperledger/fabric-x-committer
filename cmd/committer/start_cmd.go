@@ -80,7 +80,7 @@ func startService(ctx context.Context, name, configPath string) error {
 		return grpcservice.StartAndServe(ctx, verifier.New(c), c.Server)
 
 	case *query.Config:
-		service, err := query.NewQueryService(c) //nolint:contextcheck // false positive
+		service, err := query.NewQueryService(c)
 		if err != nil {
 			return errors.Wrap(err, "failed to create query service")
 		}

@@ -27,13 +27,13 @@ type (
 	}
 )
 
-// TestNewServerAndClientTLSMaterials verifies that TLSConfig can be loaded into TLSMaterials and converted
+// TestNewServerAndClientTLSCredentials verifies that TLSConfig can be loaded into TLSCredentials and converted
 // to tls.Config with the correct certificates for each mode.
-func TestNewServerAndClientTLSMaterials(t *testing.T) {
+func TestNewServerAndClientTLSCredentials(t *testing.T) {
 	t.Parallel()
 	p := setupTestFiles(t)
 
-	t.Run("server materials", func(t *testing.T) {
+	t.Run("server credentials", func(t *testing.T) {
 		t.Parallel()
 		for _, tc := range []struct {
 			name       string
@@ -68,17 +68,17 @@ func TestNewServerAndClientTLSMaterials(t *testing.T) {
 				t.Parallel()
 				cfg := tc.setupCfg(tc.mode)
 
-				m, err := NewServerTLSMaterials(cfg)
-				require.NoError(t, err, "error while creating TLS materials")
-				requireMaterials(t, m, tc.expectKeys)
+				m, err := NewServerTLSCredentials(cfg)
+				require.NoError(t, err, "error while creating TLS credentials")
+				requireCredentials(t, m, tc.expectKeys)
 
-				_, err = m.CreateServerTLSConfig(nil)
+				_, err = m.CreateStaticTLSConfig()
 				require.NoError(t, err)
 			})
 		}
 	})
 
-	t.Run("client materials", func(t *testing.T) {
+	t.Run("client credentials", func(t *testing.T) {
 		t.Parallel()
 		for _, tc := range []struct {
 			name       string
@@ -113,9 +113,9 @@ func TestNewServerAndClientTLSMaterials(t *testing.T) {
 				t.Parallel()
 				cfg := tc.setupCfg(tc.mode)
 
-				m, err := NewClientTLSMaterials(cfg)
-				require.NoError(t, err, "error while creating TLS materials")
-				requireMaterials(t, m, tc.expectKeys)
+				m, err := NewClientTLSCredentials(cfg)
+				require.NoError(t, err, "error while creating TLS credentials")
+				requireCredentials(t, m, tc.expectKeys)
 
 				_, err = m.CreateClientTLSConfig()
 				require.NoError(t, err)
@@ -146,7 +146,7 @@ func setupTestFiles(t *testing.T) testPaths {
 	return paths
 }
 
-func requireMaterials(t *testing.T, m *TLSMaterials, e expect) {
+func requireCredentials(t *testing.T, m *TLSCredentials, e expect) {
 	t.Helper()
 	require.Equal(t, e.cert, m.Cert != nil, "cert presence mismatch")
 	require.Equal(t, e.key, m.Key != nil, "key presence mismatch")

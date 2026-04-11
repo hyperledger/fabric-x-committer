@@ -160,7 +160,7 @@ func TestNewOrdererDeliverEdgeCases(t *testing.T) {
 	require.NoError(t, confErr)
 
 	serverTLSConfig, _ := test.CreateServerAndClientTLSConfig(t, connection.MutualTLSMode)
-	tls, tlsErr := connection.NewClientTLSMaterials(serverTLSConfig)
+	tls, tlsErr := connection.NewClientTLSCredentials(serverTLSConfig)
 	require.NoError(t, tlsErr)
 
 	invalidBlock := &common.Block{
@@ -186,12 +186,13 @@ func TestNewOrdererDeliverEdgeCases(t *testing.T) {
 	t.Run("invalid LastBlock", func(t *testing.T) {
 		t.Parallel()
 		_, err := deliverorderer.ToQueue(cancelledContext, deliverorderer.Parameters{
-			FaultToleranceLevel:         ordererdial.BFT,
-			TLS:                         *tls,
-			OutputBlock:                 make(chan *common.Block, 10),
-			LatestKnownConfig:           configBlock,
-			NextBlockVerificationConfig: configBlock,
-			LastBlock:                   invalidBlock, // Invalid block
+			FaultToleranceLevel:          ordererdial.BFT,
+			TLS:                          *tls,
+			OutputBlock:                  make(chan *common.Block, 10),
+			SuspicionGracePeriodPerBlock: time.Second,
+			LatestKnownConfig:            configBlock,
+			NextBlockVerificationConfig:  configBlock,
+			LastBlock:                    invalidBlock, // Invalid block
 		})
 		require.ErrorContains(t, err, "error loading last block")
 	})
@@ -199,11 +200,12 @@ func TestNewOrdererDeliverEdgeCases(t *testing.T) {
 	t.Run("invalid LatestKnownConfig", func(t *testing.T) {
 		t.Parallel()
 		_, err := deliverorderer.ToQueue(cancelledContext, deliverorderer.Parameters{
-			FaultToleranceLevel:         ordererdial.BFT,
-			TLS:                         *tls,
-			OutputBlock:                 make(chan *common.Block, 10),
-			LatestKnownConfig:           invalidBlock, // Invalid config
-			NextBlockVerificationConfig: configBlock,
+			FaultToleranceLevel:          ordererdial.BFT,
+			TLS:                          *tls,
+			OutputBlock:                  make(chan *common.Block, 10),
+			SuspicionGracePeriodPerBlock: time.Second,
+			LatestKnownConfig:            invalidBlock, // Invalid config
+			NextBlockVerificationConfig:  configBlock,
 		})
 		require.ErrorContains(t, err, "error loading last known config")
 	})
@@ -211,11 +213,12 @@ func TestNewOrdererDeliverEdgeCases(t *testing.T) {
 	t.Run("invalid NextBlockVerificationConfig", func(t *testing.T) {
 		t.Parallel()
 		_, err := deliverorderer.ToQueue(cancelledContext, deliverorderer.Parameters{
-			FaultToleranceLevel:         ordererdial.BFT,
-			TLS:                         *tls,
-			OutputBlock:                 make(chan *common.Block, 10),
-			LatestKnownConfig:           configBlock,
-			NextBlockVerificationConfig: invalidBlock, // Invalid config
+			FaultToleranceLevel:          ordererdial.BFT,
+			TLS:                          *tls,
+			OutputBlock:                  make(chan *common.Block, 10),
+			SuspicionGracePeriodPerBlock: time.Second,
+			LatestKnownConfig:            configBlock,
+			NextBlockVerificationConfig:  invalidBlock, // Invalid config
 		})
 		require.ErrorContains(t, err, "error loading next block verification config")
 	})
@@ -236,11 +239,12 @@ func TestNewOrdererDeliverEdgeCases(t *testing.T) {
 		configBlock3.Header.Number = 3
 
 		_, err := deliverorderer.ToQueue(cancelledContext, deliverorderer.Parameters{
-			FaultToleranceLevel:         ordererdial.BFT,
-			TLS:                         *tls,
-			OutputBlock:                 make(chan *common.Block, 10),
-			NextBlockVerificationConfig: configBlock3,
-			LastBlock:                   lastBlock,
+			FaultToleranceLevel:          ordererdial.BFT,
+			TLS:                          *tls,
+			OutputBlock:                  make(chan *common.Block, 10),
+			SuspicionGracePeriodPerBlock: time.Second,
+			NextBlockVerificationConfig:  configBlock3,
+			LastBlock:                    lastBlock,
 		})
 		require.ErrorContains(t, err, "config block number [3] is ahead of the next expected block [2]")
 	})

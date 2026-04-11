@@ -75,7 +75,7 @@ func Serve(ctx context.Context, service Service, serverConfig *connection.Server
 	if err != nil {
 		return err
 	}
-	// Check if service supports dynamic TLS using type assertion
+	// Check if the service supports dynamic TLS using type assertion
 	var dynamicService connection.DynamicTLSService
 	if ds, ok := service.(connection.DynamicTLSService); ok {
 		dynamicService = ds

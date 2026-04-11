@@ -193,11 +193,11 @@ func (c *Client) runHTTPServer(ctx context.Context) error {
 		return nil
 	}
 
-	tlsMaterials, err := connection.NewServerTLSMaterials(serverConfig.TLS)
+	tlsCreds, err := connection.NewServerTLSCredentials(serverConfig.TLS)
 	if err != nil {
 		return err
 	}
-	tlsCfg, err := tlsMaterials.CreateServerTLSConfig(nil) //nolint:contextcheck // false positive.
+	tlsCfg, err := tlsCreds.CreateStaticTLSConfig()
 	if err != nil {
 		return err
 	}

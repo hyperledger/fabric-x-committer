@@ -44,18 +44,22 @@ parallel-executor:
   # Larger batches improve verification efficiency through parallel processing
   # across multiple goroutines. Batches are processed when this size is reached
   # or batch-time-cutoff expires, whichever comes first.
+  # Default: 50
   batch-size-cutoff: 50
   # Maximum time to wait for a batch to reach batch-size-cutoff before processing
   # it anyway. Ensures low latency even when signature arrival rate is low.
   # Balances latency vs. batching efficiency.
+  # Default: 500ms
   batch-time-cutoff: 10ms
   # Buffer size for internal channels used in the signature verification pipeline.
   # Larger buffers reduce channel contention and improve throughput but increase
   # memory usage.
+  # Default: 50
   channel-buffer-size: 50
   # Number of goroutines used to verify signatures in parallel within each batch.
   # Should be tuned based on CPU core count and signature verification workload.
   # Higher values improve throughput on multi-core systems but increase CPU usage.
+  # Default: 4
   parallelism: 40
 
 # Logging configuration

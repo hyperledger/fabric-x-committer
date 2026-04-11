@@ -60,9 +60,11 @@ database:
     ca-cert-path: /root/artifacts/peerOrganizations/peer-org-0/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
   # Maximum size of the database connection pool. Limits concurrent database operations.
   # Should be tuned based on database capacity and expected transaction load.
+  # Default: 20
   max-connections: 10
   # Minimum size of the database connection pool. Keeps connections warm for faster operations.
   # Should be less than or equal to max-connections.
+  # Default: 1
   min-connections: 5
   # Enable load balancing across multiple database endpoints. Should be enabled for
   # YugabyteDB clusters to distribute operations across nodes. Set to false for single-node deployments.
@@ -86,6 +88,7 @@ database:
     # initial-interval: Specifies the duration of the first backoff interval.
     # This is the time to wait before the first retry attempt.
     # Format: string representing a duration (e.g., "500ms", "1s", "2.5s").
+    # Default: 500ms
     initial-interval: 500ms
 
     # randomization-factor: Controls the amount of randomness (jitter) applied to each backoff interval.
@@ -94,18 +97,21 @@ database:
     # A factor of 0 means no randomization. A factor of 0.5 means the actual interval
     # can vary by +/- 50% of the calculated interval.
     # Must be between 0 and 1.
+    # Default: 0.5
     randomization-factor: 0.5
 
     # multiplier: The factor by which the backoff interval increases after each failed attempt.
     # The next interval (before randomization) is calculated as: current_interval * multiplier.
     # A value of 1.5 means each subsequent interval will be 50% longer than the previous one.
     # Must be >= 1.
+    # Default: 1.5
     multiplier: 1.5
 
     # max-interval: Sets the absolute maximum duration for any single backoff interval.
     # Even if the calculated interval (initial_interval * multiplier^n) exceeds this value,
     # the interval used (before randomization) will be capped at max-interval.
     # Format: string representing a duration (e.g., "60s", "1m", "5m").
+    # Default: 10s
     max-interval: 60s
 
     # max-elapsed-time: The maximum total time allowed for retries since the operation first began.
@@ -114,6 +120,7 @@ database:
     # Setting this to "0" means there is no time limit, and retries will continue
     # indefinitely until successful.
     # Format: string representing a duration (e.g., "15m", "1h").
+    # Default: 15m
     max-elapsed-time: 15m
 
 # Resource limit configurations
@@ -121,23 +128,28 @@ resource-limits:
   # Number of goroutines that prepare transactions for validation by extracting
   # read/write sets and organizing data structures. Preparation is CPU-bound.
   # Higher values enable parallel preparation but increase CPU and memory usage.
+  # Default: 1
   max-workers-for-preparer: 1
   # Number of goroutines that perform MVCC validation checks against the current state.
   # Validation is database-bound. Higher values enable parallel validation but increase
   # database connection usage and contention.
+  # Default: 1
   max-workers-for-validator: 1
   # Number of goroutines that commit validated transactions to the database using
   # stored procedures. Committing is database-bound. Higher values improve commit
   # throughput but increase database load and connection usage. Should be tuned
   # based on database capacity.
+  # Default: 20
   max-workers-for-committer: 20
   # Minimum number of transactions that must accumulate before processing a batch
   # through the validation pipeline. Larger batches improve database efficiency
   # through bulk operations but increase latency. Set to 1 for lowest latency.
+  # Default: 1
   min-transaction-batch-size: 1
   # Maximum time to wait for a batch to reach min-transaction-batch-size before
   # processing it anyway. Ensures timely processing under low transaction rates.
   # Balances latency vs. batching efficiency.
+  # Default: 5s
   timeout-for-min-transaction-batch-size: 2s
 
 # Logging configuration

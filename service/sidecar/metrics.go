@@ -35,6 +35,17 @@ type perfMetrics struct {
 
 	appendBlockToLedgerSeconds prometheus.Histogram
 	blockHeight                prometheus.Gauge
+
+	// throughput metrics
+	transactionInThroughput  prometheus.Counter
+	transactionOutThroughput prometheus.Counter
+
+	// notifier metrics
+	notifierActiveStreams          prometheus.Gauge
+	notifierPendingTxIDs           prometheus.Gauge
+	notifierUniquePendingTxIDs     prometheus.Gauge
+	notifierTxIDsStatusDeliveries  prometheus.Counter
+	notifierTxIDsTimeoutDeliveries prometheus.Counter
 }
 
 func newPerformanceMetrics() *perfMetrics {
@@ -110,6 +121,48 @@ func newPerformanceMetrics() *perfMetrics {
 			Subsystem: "ledger",
 			Name:      "block_height",
 			Help:      "The current block height of the ledger.",
+		}),
+		transactionInThroughput: p.NewCounter(prometheus.CounterOpts{
+			Namespace: "sidecar",
+			Subsystem: "relay",
+			Name:      "transaction_in_total",
+			Help:      "Total number of transactions received from the orderer.",
+		}),
+		transactionOutThroughput: p.NewCounter(prometheus.CounterOpts{
+			Namespace: "sidecar",
+			Subsystem: "relay",
+			Name:      "transaction_out_total",
+			Help:      "Total number of transaction statuses processed from the coordinator.",
+		}),
+		notifierActiveStreams: p.NewGauge(prometheus.GaugeOpts{
+			Namespace: "sidecar",
+			Subsystem: "notifier",
+			Name:      "active_streams",
+			Help:      "Number of active notification streams.",
+		}),
+		notifierPendingTxIDs: p.NewGauge(prometheus.GaugeOpts{
+			Namespace: "sidecar",
+			Subsystem: "notifier",
+			Name:      "pending_tx_ids",
+			Help:      "Number of pending (txID, request) subscriptions waiting for status notification.",
+		}),
+		notifierUniquePendingTxIDs: p.NewGauge(prometheus.GaugeOpts{
+			Namespace: "sidecar",
+			Subsystem: "notifier",
+			Name:      "unique_pending_tx_ids",
+			Help:      "Number of unique transaction IDs pending across all requests.",
+		}),
+		notifierTxIDsStatusDeliveries: p.NewCounter(prometheus.CounterOpts{
+			Namespace: "sidecar",
+			Subsystem: "notifier",
+			Name:      "tx_ids_status_deliveries_total",
+			Help:      "Total number of transaction IDs' status deliveries to clients.",
+		}),
+		notifierTxIDsTimeoutDeliveries: p.NewCounter(prometheus.CounterOpts{
+			Namespace: "sidecar",
+			Subsystem: "notifier",
+			Name:      "tx_ids_timeout_deliveries_total",
+			Help:      "Total number of transaction IDs' timeout deliveries to clients.",
 		}),
 	}
 }

@@ -75,17 +75,13 @@ func New(c *Config) (*Service, error) {
 		return nil, fmt.Errorf("failed to create block store: %w", err)
 	}
 
-	if c.ChannelBufferSize <= 0 {
-		c.ChannelBufferSize = defaultBufferSize
-	}
-
-	tlsMaterials, err := connection.NewServerTLSMaterials(c.Server.TLS)
+	tlsMaterials, err := connection.NewServerTLSCredentials(c.Server.TLS)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create TLS materials: %w", err)
 	}
 
 	// Create initial tls.Config with static CAs
-	tlsConfig, err := tlsMaterials.CreateServerTLSConfig(nil)
+	tlsConfig, err := tlsMaterials.CreateStaticTLSConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create initial TLS config: %w", err)
 	}
@@ -96,7 +92,7 @@ func New(c *Config) (*Service, error) {
 	return &Service{
 		deliveryParams: deliveryParams,
 		relay:          relayService,
-		notifier:       newNotifier(c.ChannelBufferSize, &c.Notification),
+		notifier:       newNotifier(c.ChannelBufferSize, &c.Notification, metrics),
 		blockStore:     blockStoreInstance,
 		blockDelivery:  newBlockDelivery(blockStoreInstance),
 		blockQuery:     newBlockQuery(blockStoreInstance),

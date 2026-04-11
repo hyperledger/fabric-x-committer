@@ -1,0 +1,14 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+{{ include "service" . | indent 0 }}
+
+{{ include "database" . | indent 0 }}
+
+resource-limits:
+  max-workers-for-preparer: 1
+  max-workers-for-validator: 1
+  max-workers-for-committer: 20
+  min-transaction-batch-size: {{ .VCMinTransactionBatchSize | default 1 }}
+  timeout-for-min-transaction-batch-size: {{ .VCTimeoutForMinTransactionBatchSize | default "2s" }}

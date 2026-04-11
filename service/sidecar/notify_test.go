@@ -59,8 +59,8 @@ func BenchmarkNotifier(b *testing.B) {
 		statusTxIDs = statusTxIDs[sz:]
 	}
 
-	env := newNotifierTestEnv(b)
-	q := env.notificationQueues[0]
+	env := newNotifierTestEnv(b, 5)
+	q := env.responseQueues[0]
 
 	// We benchmark a full cycle, adding TX IDs, removing them, and getting the notifications.
 	b.ResetTimer()
@@ -93,18 +93,26 @@ func BenchmarkNotifier(b *testing.B) {
 }
 
 type notifierTestEnv struct {
-	n                  *notifier
-	requestQueue       channel.Writer[*notificationRequest]
-	statusQueue        channel.Writer[[]*committerpb.TxStatus]
-	notificationQueues []channel.ReaderWriter[*committerpb.NotificationResponse]
+	n              *notifier
+	metrics        *perfMetrics
+	requestQueue   channel.Writer[*notificationRequest]
+	statusQueue    channel.Writer[[]*committerpb.TxStatus]
+	responseQueues []channel.ReaderWriter[*committerpb.NotificationResponse]
 }
 
 func TestNotifierDirect(t *testing.T) {
 	t.Parallel()
-	env := newNotifierTestEnv(t)
+	env := newNotifierTestEnv(t, 5)
+	m := env.metrics
+
+	// Initial metrics should be zero
+	test.RequireIntMetricValue(t, 0, m.notifierPendingTxIDs)
+	test.RequireIntMetricValue(t, 0, m.notifierUniquePendingTxIDs)
+	test.RequireIntMetricValue(t, 0, m.notifierTxIDsStatusDeliveries)
+	test.RequireIntMetricValue(t, 0, m.notifierTxIDsTimeoutDeliveries)
 
 	t.Log("Submitting requests")
-	for _, q := range env.notificationQueues {
+	for _, q := range env.responseQueues {
 		env.requestQueue.Write(&notificationRequest{
 			request: &committerpb.NotificationRequest{
 				TxStatusRequest: &committerpb.TxIDsBatch{
@@ -118,10 +126,15 @@ func TestNotifierDirect(t *testing.T) {
 
 	t.Log("No events - not expecting notifications")
 	time.Sleep(3 * time.Second)
-	for _, q := range env.notificationQueues {
+	for _, q := range env.responseQueues {
 		_, ok := q.ReadWithTimeout(10 * time.Millisecond)
 		require.False(t, ok, "should not receive notification")
 	}
+
+	// Verify pending txIDs: 5 queues * 6 unique txIDs = 30 pending subscriptions
+	// Unique pending: only 6 unique txIDs across all queues (first request adds 6, rest add 0)
+	test.RequireIntMetricValue(t, 30, m.notifierPendingTxIDs)
+	test.RequireIntMetricValue(t, 6, m.notifierUniquePendingTxIDs)
 
 	t.Log("Submitting events - expecting notifications")
 	expected := []*committerpb.TxStatus{
@@ -129,7 +142,7 @@ func TestNotifierDirect(t *testing.T) {
 		{Ref: committerpb.NewTxRef("2", 5, 1)},
 	}
 	env.statusQueue.Write(expected)
-	for _, q := range env.notificationQueues {
+	for _, q := range env.responseQueues {
 		res, ok := q.ReadWithTimeout(10 * time.Second)
 		require.True(t, ok)
 		require.NotNil(t, res)
@@ -137,9 +150,15 @@ func TestNotifierDirect(t *testing.T) {
 		test.RequireProtoElementsMatch(t, expected, res.TxStatusEvents)
 	}
 
+	// Verify metrics: 2 statuses delivered to 5 queues = 10 deliveries, pending 30-10=20
+	// Unique pending: 6-2=4 (txIDs "1" and "2" removed from map)
+	test.RequireIntMetricValue(t, 20, m.notifierPendingTxIDs)
+	test.RequireIntMetricValue(t, 4, m.notifierUniquePendingTxIDs)
+	test.RequireIntMetricValue(t, 10, m.notifierTxIDsStatusDeliveries)
+
 	t.Log("Not expecting more notifications")
 	time.Sleep(3 * time.Second)
-	for _, q := range env.notificationQueues {
+	for _, q := range env.responseQueues {
 		_, ok := q.ReadWithTimeout(10 * time.Millisecond)
 		require.False(t, ok, "should not receive notification")
 	}
@@ -150,7 +169,7 @@ func TestNotifierDirect(t *testing.T) {
 		{Ref: committerpb.NewTxRef("200", 5, 1)},
 	})
 	time.Sleep(3 * time.Second)
-	for _, q := range env.notificationQueues {
+	for _, q := range env.responseQueues {
 		_, ok := q.ReadWithTimeout(10 * time.Millisecond)
 		require.False(t, ok, "should not receive notification")
 	}
@@ -161,7 +180,7 @@ func TestNotifierDirect(t *testing.T) {
 		{Ref: committerpb.NewTxRef("4", 3, 10)},
 	}
 	env.statusQueue.Write(expected)
-	for _, q := range env.notificationQueues {
+	for _, q := range env.responseQueues {
 		res, ok := q.Read()
 		require.True(t, ok)
 		require.NotNil(t, res)
@@ -169,9 +188,15 @@ func TestNotifierDirect(t *testing.T) {
 		test.RequireProtoElementsMatch(t, expected, res.TxStatusEvents)
 	}
 
+	// Verify metrics: 2 more statuses to 5 queues = 10 more deliveries, pending 20-10=10
+	// Unique pending: 4-2=2 (txIDs "3" and "4" removed from map, "5" and "6" remain)
+	test.RequireIntMetricValue(t, 10, m.notifierPendingTxIDs)
+	test.RequireIntMetricValue(t, 2, m.notifierUniquePendingTxIDs)
+	test.RequireIntMetricValue(t, 20, m.notifierTxIDsStatusDeliveries)
+
 	t.Log("Submitting requests with short timeout - expecting notifications")
 	timeoutIDs := []string{"5", "6", "7", "8"}
-	for _, q := range env.notificationQueues {
+	for _, q := range env.responseQueues {
 		env.requestQueue.Write(&notificationRequest{
 			request: &committerpb.NotificationRequest{
 				TxStatusRequest: &committerpb.TxIDsBatch{
@@ -182,7 +207,7 @@ func TestNotifierDirect(t *testing.T) {
 			streamEventQueue: q,
 		})
 	}
-	for _, q := range env.notificationQueues {
+	for _, q := range env.responseQueues {
 		res, ok := q.ReadWithTimeout(10 * time.Second)
 		require.True(t, ok)
 		require.NotNil(t, res)
@@ -190,18 +215,31 @@ func TestNotifierDirect(t *testing.T) {
 		require.ElementsMatch(t, timeoutIDs, res.TimeoutTxIds)
 	}
 
+	// Verify timeout metrics: 4 txIDs timed out for 5 queues = 20 timeout deliveries
+	// pending was 10 + 5*4 = 30, now 30-20 = 10 (original "5" and "6" still pending)
+	// Unique pending: was 2+2=4 (first timeout req added "7", "8"), now 4-2=2 ("7", "8" fully removed)
+	test.RequireIntMetricValue(t, 10, m.notifierPendingTxIDs)
+	test.RequireIntMetricValue(t, 2, m.notifierUniquePendingTxIDs)
+	test.RequireIntMetricValue(t, 20, m.notifierTxIDsTimeoutDeliveries)
+
 	t.Log("Submitting event with duplicate request - expecting single notification")
 	expected = []*committerpb.TxStatus{
 		{Ref: committerpb.NewTxRef("5", 3, 0)},
 	}
 	env.statusQueue.Write(expected)
-	for _, q := range env.notificationQueues {
+	for _, q := range env.responseQueues {
 		res, ok := q.Read()
 		require.True(t, ok)
 		require.NotNil(t, res)
 		require.Empty(t, res.TimeoutTxIds)
 		test.RequireProtoElementsMatch(t, expected, res.TxStatusEvents)
 	}
+
+	// Verify metrics: 1 status to 5 queues = 5 deliveries, pending 10-5=5
+	// Unique pending: 2-1=1 (txID "5" removed, "6" remains)
+	test.RequireIntMetricValue(t, 5, m.notifierPendingTxIDs)
+	test.RequireIntMetricValue(t, 1, m.notifierUniquePendingTxIDs)
+	test.RequireIntMetricValue(t, 25, m.notifierTxIDsStatusDeliveries)
 
 	t.Log("Submitting duplicated event - expecting single notification")
 	expected = []*committerpb.TxStatus{
@@ -210,7 +248,7 @@ func TestNotifierDirect(t *testing.T) {
 		{Ref: committerpb.NewTxRef("6", 4, 2)},
 	}
 	env.statusQueue.Write(expected)
-	for _, q := range env.notificationQueues {
+	for _, q := range env.responseQueues {
 		res, ok := q.Read()
 		require.True(t, ok)
 		require.NotNil(t, res)
@@ -218,13 +256,19 @@ func TestNotifierDirect(t *testing.T) {
 		test.RequireProtoElementsMatch(t, expected[:1], res.TxStatusEvents)
 	}
 
+	// Final metrics: 1 more status to 5 queues = 5 more deliveries, pending 5-5=0
+	// Unique pending: 1-1=0 (txID "6" removed, all done)
+	test.RequireIntMetricValue(t, 0, m.notifierPendingTxIDs)
+	test.RequireIntMetricValue(t, 0, m.notifierUniquePendingTxIDs)
+	test.RequireIntMetricValue(t, 30, m.notifierTxIDsStatusDeliveries)
+
 	t.Log("Submitting request exceeding per-request limit - expecting rejection")
 	perRequestLimit := env.n.maxTxIDsPerRequest
 	overLimitTxIDs := make([]string, perRequestLimit+1)
 	for i := range overLimitTxIDs {
 		overLimitTxIDs[i] = fmt.Sprintf("over-%d", i)
 	}
-	for _, q := range env.notificationQueues {
+	for _, q := range env.responseQueues {
 		env.requestQueue.Write(&notificationRequest{
 			request: &committerpb.NotificationRequest{
 				TxStatusRequest: &committerpb.TxIDsBatch{
@@ -235,7 +279,7 @@ func TestNotifierDirect(t *testing.T) {
 			streamEventQueue: q,
 		})
 	}
-	for _, q := range env.notificationQueues {
+	for _, q := range env.responseQueues {
 		res, ok := q.ReadWithTimeout(10 * time.Second)
 		require.True(t, ok)
 		require.NotNil(t, res.RejectedTxIds)
@@ -246,7 +290,8 @@ func TestNotifierDirect(t *testing.T) {
 
 func TestNotifierStream(t *testing.T) {
 	t.Parallel()
-	env := newNotifierTestEnv(t)
+	env := newNotifierTestEnv(t, 5)
+	m := env.metrics
 	config := test.NewLocalHostServer(test.InsecureTLSConfig)
 	test.RunGrpcServerForTest(t.Context(), t, config, func(server *grpc.Server) {
 		committerpb.RegisterNotifierServer(server, env.n)
@@ -257,6 +302,9 @@ func TestNotifierStream(t *testing.T) {
 
 	stream, err := client.OpenNotificationStream(t.Context())
 	require.NoError(t, err)
+
+	// Verify active stream metric
+	test.EventuallyIntMetric(t, 1, m.notifierActiveStreams, 5*time.Second, 100*time.Millisecond)
 
 	t.Log("Submitting requests")
 	err = stream.Send(&committerpb.NotificationRequest{
@@ -345,11 +393,12 @@ func TestNotifierStream(t *testing.T) {
 func TestNotifierGlobalLimit(t *testing.T) {
 	t.Parallel()
 
-	env := newNotifierTestEnvWithConfig(t, &NotificationServiceConfig{
+	env := newNotifierTestEnvWithConfig(t, 1, &NotificationServiceConfig{
+		MaxTimeout:         DefaultNotificationMaxTimeout,
 		MaxActiveTxIDs:     5,
 		MaxTxIDsPerRequest: 10,
 	})
-	q := env.notificationQueues[0]
+	q := env.responseQueues[0]
 
 	submitRequest := func(timeout time.Duration, txIDs ...string) {
 		env.requestQueue.Write(&notificationRequest{
@@ -419,22 +468,28 @@ func TestNotifierGlobalLimit(t *testing.T) {
 	require.Len(t, res.TxStatusEvents, 2)
 }
 
-func newNotifierTestEnv(tb testing.TB) *notifierTestEnv {
+func newNotifierTestEnv(tb testing.TB, numOfClients int) *notifierTestEnv {
 	tb.Helper()
-	return newNotifierTestEnvWithConfig(tb, &NotificationServiceConfig{})
+	return newNotifierTestEnvWithConfig(tb, numOfClients, &NotificationServiceConfig{
+		MaxTimeout:         DefaultNotificationMaxTimeout,
+		MaxActiveTxIDs:     DefaultMaxActiveTxIDs,
+		MaxTxIDsPerRequest: DefaultMaxTxIDsPerRequest,
+	})
 }
 
-func newNotifierTestEnvWithConfig(tb testing.TB, conf *NotificationServiceConfig) *notifierTestEnv {
+func newNotifierTestEnvWithConfig(tb testing.TB, numOfClients int, conf *NotificationServiceConfig) *notifierTestEnv {
 	tb.Helper()
+	metrics := newPerformanceMetrics()
 	env := &notifierTestEnv{
-		n:                  newNotifier(defaultBufferSize, conf),
-		notificationQueues: make([]channel.ReaderWriter[*committerpb.NotificationResponse], 5),
+		n:              newNotifier(DefaultBufferSize, conf, metrics),
+		metrics:        metrics,
+		responseQueues: make([]channel.ReaderWriter[*committerpb.NotificationResponse], numOfClients),
 	}
-	statusQueue := make(chan []*committerpb.TxStatus, defaultBufferSize)
+	statusQueue := make(chan []*committerpb.TxStatus, DefaultBufferSize)
 	env.requestQueue = channel.NewWriter(tb.Context(), env.n.requestQueue)
 	env.statusQueue = channel.NewWriter(tb.Context(), statusQueue)
-	for i := range env.notificationQueues {
-		env.notificationQueues[i] = channel.Make[*committerpb.NotificationResponse](tb.Context(), 10)
+	for i := range env.responseQueues {
+		env.responseQueues[i] = channel.Make[*committerpb.NotificationResponse](tb.Context(), 10)
 	}
 
 	test.RunServiceForTest(tb.Context(), tb, func(ctx context.Context) error {

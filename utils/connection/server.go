@@ -41,7 +41,6 @@ var (
 
 // GrpcServer instantiates a gRPC server with the provided configuration.
 // If dynamicService is provided, enables dynamic CA certificate support using GetConfigForClient callback.
-// Pass nil for dynamicService to use static configuration only.
 func (c *ServerConfig) GrpcServer(dynamicService DynamicTLSService) (*grpc.Server, error) {
 	opts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxMsgSize), grpc.MaxSendMsgSize(maxMsgSize)}
 	serverGrpcTransportCreds, err := c.TLS.ServerCredentials(dynamicService)
