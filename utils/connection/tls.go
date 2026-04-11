@@ -19,9 +19,9 @@ import (
 
 type (
 	// DynamicTLSService is an optional interface for services that support dynamic CA certificate updates.
-	// Services implementing this interface can refresh their TLS configuration without restart.
+	// Services implementing this interface can refresh their TLS configuration without a restart.
 	DynamicTLSService interface {
-		// GetTLSConfig returns a pre-configured tls.Config with merged static + dynamic CAs.
+		// GetTLSConfig returns a pre-configured tls.Config with merged CAs from YAML config and dynamic CAs.
 		// Returns nil if the service doesn't support dynamic CAs or TLS is not configured.
 		GetTLSConfig(ctx context.Context) *tls.Config
 	}

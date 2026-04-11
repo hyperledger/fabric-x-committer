@@ -45,7 +45,7 @@ type (
 		// by sendBlocksToCoordinator and processStatusBatch goroutines.
 		committedBlockMu sync.Mutex
 
-		// tlsConfig holds the complete pre-configured tls.Config with merged static + dynamic CAs.
+		// tlsConfig holds the complete pre-configured tls.Config with CAs from YAML config + dynamic CAs.
 		tlsConfig atomic.Pointer[tls.Config]
 		// rootCAsInConfig holds the CAs from YAML config for merging with dynamic CAs.
 		rootCAsInConfig [][]byte
@@ -155,7 +155,7 @@ func (r *relay) preProcessBlock(
 			if bootErr != nil {
 				logger.Warnf("Failed to load application root CAs: %v", bootErr)
 			} else {
-				// Only update CAs if extraction succeeded.
+				// Update only if CAs extraction succeeded.
 				r.updateTLSConfig(rootCAs)
 			}
 			// We wait for all previously submitted transactions to be processed by
@@ -368,12 +368,9 @@ func (r *relay) setLastCommittedBlockNumber(
 	}
 }
 
-// updateTLSConfig atomically updates the TLS config with static CAs + latest dynamic CAs.
+// updateTLSConfig atomically updates the TLS config with root CAs from YAML config + latest dynamic CAs.
 // This replaces any previous dynamic CAs with the new ones from the config block,
 // while preserving the static CAs from the YAML configuration.
-//
-// Note: This method is called for every config block regardless of TLS mode, as the relay is TLS mode agnostic.
-// The nil check below handles cases where TLS is not enabled.
 func (r *relay) updateTLSConfig(dynamicCAs [][]byte) {
 	currentConfig := r.tlsConfig.Load()
 	if currentConfig == nil {

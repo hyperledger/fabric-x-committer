@@ -66,7 +66,7 @@ type (
 		healthcheck *health.Server
 
 		// Dynamic TLS configuration management: tlsConfig stores the complete pre-configured
-		// tls.Config with merged static + dynamic CAs; rootCAsInConfig holds the root CAs
+		// tls.Config with CAs from YAML config + dynamic CAs; rootCAsInConfig holds the root CAs
 		// from YAML config; lastCAFetch tracks the last refresh to throttle database load;
 		// lastConfigVersion tracks the config block version to avoid rebuilding TLS config
 		// when the version hasn't changed; and refreshMutex implements a double-check locking
@@ -154,7 +154,7 @@ func (q *Service) RegisterService(server *grpc.Server) {
 	healthgrpc.RegisterHealthServer(server, q.healthcheck)
 }
 
-// GetTLSConfig returns the pre-configured tls.Config with merged static + dynamic CAs.
+// GetTLSConfig returns the pre-configured tls.Config with CAs from YAML config + dynamic CAs.
 // It caches the config and only refreshes it periodically to avoid excessive database queries.
 func (q *Service) GetTLSConfig(ctx context.Context) *tls.Config {
 	now := time.Now().UnixNano()
@@ -208,7 +208,7 @@ func (q *Service) refreshDynamicRootCAs(ctx context.Context) {
 
 	// Check if config version has changed - if not, skip expensive cert pool rebuild
 	lastVersion := q.lastConfigVersion.Load()
-	if lastVersion != 0 && configTx.Version == lastVersion {
+	if lastVersion != 0 && configTx.GetVersion() == lastVersion {
 		logger.Debugf("Config version %d unchanged, skipping TLS config rebuild", configTx.Version)
 		q.lastCAFetch.Store(time.Now().UnixNano())
 		return
@@ -232,7 +232,7 @@ func (q *Service) refreshDynamicRootCAs(ctx context.Context) {
 
 	// Store the updated config and version atomically
 	q.tlsConfig.Store(newConfig)
-	q.lastConfigVersion.Store(configTx.Version)
+	q.lastConfigVersion.Store(configTx.GetVersion())
 	q.lastCAFetch.Store(time.Now().UnixNano())
 	logger.Debugf("Refreshed and built TLS config with %d total CAs (%d static + %d dynamic) for config version %d",
 		len(mergedCAs), len(q.rootCAsInConfig), len(dynamicCAs), configTx.Version)
