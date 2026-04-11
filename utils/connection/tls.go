@@ -7,34 +7,37 @@ SPDX-License-Identifier: Apache-2.0
 package connection
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"os"
 
+	"github.com/cockroachdb/errors"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-
-	"github.com/cockroachdb/errors"
 )
 
-// TLSCredentials holds the loaded runtime TLS credentials (certificate, key, CA certs).
-type TLSCredentials struct {
-	Mode    string
-	Cert    []byte
-	Key     []byte
-	CACerts [][]byte
-}
+type (
+	// DynamicTLSService is an optional interface for services that support dynamic CA certificate updates.
+	// Services implementing this interface can refresh their TLS configuration without a restart.
+	DynamicTLSService interface {
+		// GetTLSConfig returns a pre-configured tls.Config with merged CAs from YAML config and dynamic CAs.
+		// Returns nil if the service doesn't support dynamic CAs or TLS is not configured.
+		GetTLSConfig(ctx context.Context) *tls.Config
+	}
+	// TLSCredentials holds the loaded runtime TLS credentials (certificate, key, CA certs).
+	TLSCredentials struct {
+		Mode    string
+		Cert    []byte
+		Key     []byte
+		CACerts [][]byte
+	}
+)
 
 // NewClientGRPCTransportCredentials returns the gRPC transport credentials to be used by a client,
 // based on the provided TLS credentials.
 func NewClientGRPCTransportCredentials(c *TLSCredentials) (credentials.TransportCredentials, error) {
 	return newCredentials(c.CreateClientTLSConfig())
-}
-
-// NewServerGRPCTransportCredentials returns the gRPC transport credentials to be used by a server,
-// based on the provided TLS credentials.
-func NewServerGRPCTransportCredentials(c *TLSCredentials) (credentials.TransportCredentials, error) {
-	return newCredentials(c.CreateServerTLSConfig())
 }
 
 func newCredentials(tlsCfg *tls.Config, err error) (credentials.TransportCredentials, error) {
@@ -143,8 +146,38 @@ func NewClientTLSCredentials(c TLSConfig) (*TLSCredentials, error) {
 	}
 }
 
-// CreateServerTLSConfig returns a TLS config to be used by a server.
-func (c *TLSCredentials) CreateServerTLSConfig() (*tls.Config, error) {
+// CreateServerTLSConfig returns a TLS config for the server.
+// If dynamicService is provided and mode is MutualTLS, it enables dynamic CA certificate support
+// using GetConfigForClient callback.
+// This enables certificate rotation without a service restart.
+func (c *TLSCredentials) CreateServerTLSConfig(dynamicService DynamicTLSService) (*tls.Config, error) {
+	tlsConfig, err := c.CreateStaticTLSConfig()
+	if err != nil {
+		return nil, errors.Newf("failed to create base server TLS config: %v", err)
+	}
+
+	// Only enable dynamic CA support for MutualTLS mode and if dynamicService is provided.
+	if c.Mode == MutualTLSMode && dynamicService != nil {
+		tlsConfig.GetConfigForClient = func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
+			// Load pre-configured tls.Config from service.
+			// The Service has already merged static + dynamic CAs into ClientCAs
+			cfg := dynamicService.GetTLSConfig(chi.Context())
+
+			if cfg == nil {
+				// Fallback to base config if service returns nil
+				logger.Debugf("Client connection: %v, using base config", chi.Conn.RemoteAddr())
+				return tlsConfig, nil
+			}
+
+			logger.Debugf("Client connection: %v, using pre-configured config", chi.Conn.RemoteAddr())
+			return cfg, nil
+		}
+	}
+	return tlsConfig, nil
+}
+
+// CreateStaticTLSConfig creates a static server TLS configuration without dynamic CA support.
+func (c *TLSCredentials) CreateStaticTLSConfig() (*tls.Config, error) {
 	switch c.Mode {
 	case NoneTLSMode, UnmentionedTLSMode:
 		return nil, nil
@@ -163,7 +196,7 @@ func (c *TLSCredentials) CreateServerTLSConfig() (*tls.Config, error) {
 
 		// Load CA certificate pool (only for mutual TLS)
 		if c.Mode == MutualTLSMode {
-			tlsCfg.ClientCAs, err = buildCertPool(c.CACerts)
+			tlsCfg.ClientCAs, err = BuildCertPool(c.CACerts)
 			if err != nil {
 				return nil, err
 			}
@@ -198,7 +231,7 @@ func (c *TLSCredentials) CreateClientTLSConfig() (*tls.Config, error) {
 
 		// Load CA certificate pool (required for both modes)
 		var err error
-		tlsCfg.RootCAs, err = buildCertPool(c.CACerts)
+		tlsCfg.RootCAs, err = BuildCertPool(c.CACerts)
 		if err != nil {
 			return nil, err
 		}
@@ -210,7 +243,8 @@ func (c *TLSCredentials) CreateClientTLSConfig() (*tls.Config, error) {
 	}
 }
 
-func buildCertPool(rootCAs [][]byte) (*x509.CertPool, error) {
+// BuildCertPool creates a x509.CertPool from a slice of CA certificate bytes.
+func BuildCertPool(rootCAs [][]byte) (*x509.CertPool, error) {
 	if len(rootCAs) == 0 {
 		return nil, errors.New("no CA certificates provided")
 	}
@@ -221,4 +255,20 @@ func buildCertPool(rootCAs [][]byte) (*x509.CertPool, error) {
 		}
 	}
 	return certPool, nil
+}
+
+// MergeCACerts merges static and dynamic CA certificate bytes into a single slice.
+// This is a helper for services to prepare CA bytes before building a CertPool.
+func MergeCACerts(staticCAs, dynamicCAs [][]byte) [][]byte {
+	if len(dynamicCAs) == 0 {
+		return staticCAs
+	}
+	if len(staticCAs) == 0 {
+		return dynamicCAs
+	}
+
+	merged := make([][]byte, 0, len(staticCAs)+len(dynamicCAs))
+	merged = append(merged, staticCAs...)
+	merged = append(merged, dynamicCAs...)
+	return merged
 }

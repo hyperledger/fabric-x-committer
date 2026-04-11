@@ -292,6 +292,8 @@ func TestReadConfigQuery(t *testing.T) {
 			MaxActiveViews:        query.DefaultMaxActiveViews,
 			MaxViewTimeout:        query.DefaultMaxViewTimeout,
 			MaxRequestKeys:        query.DefaultMaxRequestKeys,
+			ACLRefreshInterval:    query.DefaultACLRefreshInterval,
+			CAFetchTimeout:        query.DefaultCAFetchTimeout,
 		},
 	}, {
 		name:           "sample",
@@ -307,6 +309,8 @@ func TestReadConfigQuery(t *testing.T) {
 			MaxActiveViews:        query.DefaultMaxActiveViews,
 			MaxViewTimeout:        query.DefaultMaxViewTimeout,
 			MaxRequestKeys:        query.DefaultMaxRequestKeys,
+			ACLRefreshInterval:    query.DefaultACLRefreshInterval,
+			CAFetchTimeout:        query.DefaultCAFetchTimeout,
 		},
 	}}
 

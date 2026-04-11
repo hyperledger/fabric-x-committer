@@ -8,6 +8,7 @@ package grpcservice
 
 import (
 	"context"
+	"net"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -68,21 +69,48 @@ func StartAndServe(ctx context.Context, service Service, serverConfigs ...*conne
 }
 
 // Serve creates a gRPC server and listener from the config, registers the
-// service, and serves until the context is done. For services that only
-// implement Registerer (e.g., mock services without Run/WaitForReady).
-func Serve(ctx context.Context, service Registerer, serverConfig *connection.ServerConfig) error {
+// service, and serves until the context is done. This is for services that implement the full Service interface.
+func Serve(ctx context.Context, service Service, serverConfig *connection.ServerConfig) error {
 	listener, err := serverConfig.Listener(ctx)
 	if err != nil {
 		return err
 	}
-	server, err := serverConfig.GrpcServer()
+	// Check if the service supports dynamic TLS using type assertion
+	var dynamicService connection.DynamicTLSService
+	if ds, ok := service.(connection.DynamicTLSService); ok {
+		dynamicService = ds
+	}
+
+	//nolint:contextcheck // Context from chi.Context() is passed to GetTLSConfig during TLS handshake.
+	server, err := serverConfig.GrpcServer(dynamicService)
 	if err != nil {
 		return errors.Wrapf(err, "failed creating grpc server")
 	}
 	service.RegisterService(server)
+	return runServer(ctx, server, listener)
+}
 
-	g, gCtx := errgroup.WithContext(ctx)
+// MockServe creates a gRPC server and listener from the config, registers the
+// service, and serves until the context is done. For services that only
+// implement Registerer (e.g., mock services without Run/WaitForReady).
+func MockServe(ctx context.Context, service Registerer, serverConfig *connection.ServerConfig) error {
+	listener, err := serverConfig.Listener(ctx)
+	if err != nil {
+		return err
+	}
+	//nolint:contextcheck // Mock services don't support dynamic TLS, so nil is passed.
+	server, err := serverConfig.GrpcServer(nil)
+	if err != nil {
+		return errors.Wrapf(err, "failed creating grpc server")
+	}
+	service.RegisterService(server)
+	return runServer(ctx, server, listener)
+}
+
+// runServer handles the blocking execution and graceful shutdown of a configured gRPC server.
+func runServer(ctx context.Context, server *grpc.Server, listener net.Listener) error {
 	logger.Infof("Serving...")
+	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
 		return server.Serve(listener)
 	})

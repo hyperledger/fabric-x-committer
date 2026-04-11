@@ -72,7 +72,7 @@ func TestNewServerAndClientTLSCredentials(t *testing.T) {
 				require.NoError(t, err, "error while creating TLS credentials")
 				requireCredentials(t, m, tc.expectKeys)
 
-				_, err = m.CreateServerTLSConfig()
+				_, err = m.CreateStaticTLSConfig()
 				require.NoError(t, err)
 			})
 		}

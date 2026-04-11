@@ -8,6 +8,7 @@ package sidecar
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -21,6 +22,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
@@ -42,6 +44,11 @@ type (
 		// committedBlockMu protects processCommittedBlocksInOrder from concurrent execution
 		// by sendBlocksToCoordinator and processStatusBatch goroutines.
 		committedBlockMu sync.Mutex
+
+		// tlsConfig holds the complete pre-configured tls.Config with CAs from YAML config + dynamic CAs.
+		tlsConfig atomic.Pointer[tls.Config]
+		// rootCAsInConfig holds the CAs from YAML config for merging with dynamic CAs.
+		rootCAsInConfig [][]byte
 	}
 
 	relayRunConfig struct {
@@ -62,6 +69,7 @@ func newRelay(
 	return &relay{
 		lastCommittedBlockSetInterval: lastCommittedBlockSetInterval,
 		metrics:                       metrics,
+		tlsConfig:                     atomic.Pointer[tls.Config]{},
 	}
 }
 
@@ -140,6 +148,16 @@ func (r *relay) preProcessBlock(
 		}
 		promutil.Observe(r.metrics.blockMappingInRelaySeconds, time.Since(start))
 		if mappedBlock.isConfig {
+			// Reading application root CAs and add it to the YAML root CAs setup.
+			// This happens for all config blocks regardless of TLS mode (none/tls/mtls).
+			logger.Debug("Updating sidecar's acceptable client CAs from config block")
+			rootCAs, bootErr := connection.GetApplicationRootCAsFromEnvelopeBytes(block.Data.Data[0])
+			if bootErr != nil {
+				logger.Warnf("Failed to load application root CAs: %v", bootErr)
+			} else {
+				// Update only if CAs extraction succeeded.
+				r.updateTLSConfig(rootCAs)
+			}
 			// We wait for all previously submitted transactions to be processed by
 			// the committer before submitting the config block.
 			r.waitingTxsSlots.WaitTillEmpty(ctx)
@@ -348,4 +366,32 @@ func (r *relay) setLastCommittedBlockNumber(
 		}
 		expectedNextBlockToBeCommitted = blkNum + 1
 	}
+}
+
+// updateTLSConfig atomically updates the TLS config with root CAs from YAML config + latest dynamic CAs.
+// This replaces any previous dynamic CAs with the new ones from the config block,
+// while preserving the static CAs from the YAML configuration.
+func (r *relay) updateTLSConfig(dynamicCAs [][]byte) {
+	currentConfig := r.tlsConfig.Load()
+	if currentConfig == nil {
+		logger.Warn("No current TLS config to update")
+		return
+	}
+
+	// Merge static CAs (from YAML) with new dynamic CAs (from config block).
+	// This replaces any previous dynamic CAs.
+	mergedCAs := connection.MergeCACerts(r.rootCAsInConfig, dynamicCAs)
+	certPool, err := connection.BuildCertPool(mergedCAs)
+	if err != nil {
+		logger.Warnf("Failed to build cert pool: %v", err)
+		return // Keep existing config
+	}
+
+	newConfig := currentConfig.Clone()
+	newConfig.ClientCAs = certPool
+
+	// Store the updated config atomically
+	r.tlsConfig.Store(newConfig)
+	logger.Debugf("Updated TLS config with %d total CAs (%d from yaml + %d from config block)",
+		len(mergedCAs), len(r.rootCAsInConfig), len(dynamicCAs))
 }

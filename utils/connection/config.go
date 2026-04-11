@@ -113,12 +113,14 @@ func (c TLSConfig) ClientCredentials() (credentials.TransportCredentials, error)
 }
 
 // ServerCredentials converts TLSConfig into a TLSCredentials struct and generates server creds.
-func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error) {
-	tlsCreds, err := NewServerTLSCredentials(c)
+// If dynamicService is provided, it enables dynamic CA certificate support.
+func (c TLSConfig) ServerCredentials(dynamicService DynamicTLSService,
+) (credentials.TransportCredentials, error) {
+	tlsCredentials, err := NewServerTLSCredentials(c)
 	if err != nil {
 		return nil, err
 	}
-	return NewServerGRPCTransportCredentials(tlsCreds)
+	return newCredentials(tlsCredentials.CreateServerTLSConfig(dynamicService))
 }
 
 // Validate checks that the rate limit configuration is valid.

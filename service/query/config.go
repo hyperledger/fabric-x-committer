@@ -48,6 +48,13 @@ type Config struct {
 	// GetTransactionStatus (number of transaction IDs).
 	// Set to 0 to disable the limit.
 	MaxRequestKeys int `mapstructure:"max-request-keys" validate:"gte=0"`
+
+	// ACLRefreshInterval defines how long the query service caches configuration data
+	// before a new connection can trigger a refresh from the database.
+	// This prevents excessive database queries when multiple clients connect simultaneously.
+	ACLRefreshInterval time.Duration `mapstructure:"acl-refresh-interval" validate:"gte=0"`
+	// CaFetchTimeout defines the timeout for fetching CA certificates from the database.
+	CAFetchTimeout time.Duration `mapstructure:"ca-fetch-timeout" validate:"gte=0"`
 }
 
 // Default configuration values for the query service.
@@ -63,4 +70,6 @@ const (
 	DefaultMaxActiveViews        = 4096
 	DefaultMaxViewTimeout        = 10 * time.Second
 	DefaultMaxRequestKeys        = 10000
+	DefaultACLRefreshInterval    = 200 * time.Millisecond
+	DefaultCAFetchTimeout        = 15 * time.Second
 )

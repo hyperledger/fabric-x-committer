@@ -39,10 +39,11 @@ var (
 	portConflictRegex = regexp.MustCompile(`(?i)(address\s+already\s+in\s+use|port\s+is\s+already\s+allocated)`)
 )
 
-// GrpcServer instantiate a [grpc.Server].
-func (c *ServerConfig) GrpcServer() (*grpc.Server, error) {
+// GrpcServer instantiates a gRPC server with the provided configuration.
+// If dynamicService is provided, enables dynamic CA certificate support using GetConfigForClient callback.
+func (c *ServerConfig) GrpcServer(dynamicService DynamicTLSService) (*grpc.Server, error) {
 	opts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxMsgSize), grpc.MaxSendMsgSize(maxMsgSize)}
-	serverGrpcTransportCreds, err := c.TLS.ServerCredentials()
+	serverGrpcTransportCreds, err := c.TLS.ServerCredentials(dynamicService)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed loading the server's grpc credentials")
 	}

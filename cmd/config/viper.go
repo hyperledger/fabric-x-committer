@@ -82,6 +82,8 @@ func NewViperWithQueryDefaults() *viper.Viper {
 	v.SetDefault("max-active-views", query.DefaultMaxActiveViews)
 	v.SetDefault("max-view-timeout", query.DefaultMaxViewTimeout)
 	v.SetDefault("max-request-keys", query.DefaultMaxRequestKeys)
+	v.SetDefault("acl-refresh-interval", query.DefaultACLRefreshInterval)
+	v.SetDefault("ca-fetch-timeout", query.DefaultCAFetchTimeout)
 	return v
 }
 

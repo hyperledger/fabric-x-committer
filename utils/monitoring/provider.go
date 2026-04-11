@@ -57,7 +57,7 @@ func (p *Provider) StartPrometheusServer(
 	if err != nil {
 		return errors.Wrap(err, "failed to create TLS credentials for prometheus server")
 	}
-	serverTLSConfig, err := serverCreds.CreateServerTLSConfig()
+	serverTLSConfig, err := serverCreds.CreateStaticTLSConfig()
 	if err != nil {
 		return err
 	}
