@@ -9,24 +9,18 @@ package connection
 import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 )
 
-// GetApplicationRootCAsFromConfigBlock retrieves the root CA certificates of all application orgs from a config block.
-func GetApplicationRootCAsFromConfigBlock(configBlock *common.Block) ([][]byte, error) {
-	logger.Debug("reading application root CAs from config block")
-	envelope, err := protoutil.ExtractEnvelope(configBlock, 0)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to extract envelope")
-	}
-	return GetOrganizationsFromEnvelope(envelope)
-}
-
-// GetOrganizationsFromEnvelope retrieves the root CA certificates of all application orgs from a config transaction.
-func GetOrganizationsFromEnvelope(envelope *common.Envelope) ([][]byte, error) {
+// GetApplicationRootCAsFromEnvelopeBytes extracts the TLS root certificates of all application orgs
+// from a configuration envelope.
+func GetApplicationRootCAsFromEnvelopeBytes(envelopeBytes []byte) ([][]byte, error) {
 	logger.Debug("reading application root CAs from envelope")
+	envelope, err := protoutil.UnmarshalEnvelope(envelopeBytes)
+	if err != nil {
+		return nil, err
+	}
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create config bundle")

@@ -19,7 +19,6 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	"github.com/hyperledger/fabric-x-common/protoutil"
 	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -215,13 +214,7 @@ func (q *Service) refreshDynamicRootCAs(ctx context.Context) {
 		return
 	}
 
-	envelope, err := protoutil.UnmarshalEnvelope(configTx.Envelope)
-	if err != nil {
-		logger.Warnf("Failed to unmarshal config envelope: %v", err)
-		return // Keep existing config
-	}
-
-	dynamicCAs, err := connection.GetOrganizationsFromEnvelope(envelope)
+	dynamicCAs, err := connection.GetApplicationRootCAsFromEnvelopeBytes(configTx.GetEnvelope())
 	if err != nil {
 		logger.Warnf("Failed to extract root CAs from config: %v", err)
 		return // Keep existing config

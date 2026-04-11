@@ -151,7 +151,7 @@ func (r *relay) preProcessBlock(
 			// Reading application root CAs and add it to the YAML root CAs setup.
 			// This happens for all config blocks regardless of TLS mode (none/tls/mtls).
 			logger.Debug("Updating sidecar's acceptable client CAs from config block")
-			rootCAs, bootErr := connection.GetApplicationRootCAsFromConfigBlock(block)
+			rootCAs, bootErr := connection.GetApplicationRootCAsFromEnvelopeBytes(block.Data.Data[0])
 			if bootErr != nil {
 				logger.Warnf("Failed to load application root CAs: %v", bootErr)
 			} else {

@@ -177,10 +177,10 @@ This means:
 The query service caches the tls.Config and refreshes it on a configurable interval
 to avoid excessive database queries when multiple clients connect simultaneously.
 
-| Field | Type | Description |
-|:---| :--- |:--- |
-| **`acl-refresh-interval`** | Duration | How often the query service refreshes configuration data (such as root CA certificates) from the config transaction. Default: `200ms`. |
-| **`ca-fetch-timeout`** | Duration | Maximum time to wait when fetching CA certificates from the database during TLS handshake. Default: `15s`. |
+| Field | Type | Description                                                                                                                                                             |
+|:---| :--- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **`acl-refresh-interval`** | Duration | How often the query service refreshes configuration data (such as root CA certificates) from the config transaction (triggered at client connection). Default: `200ms`. |
+| **`ca-fetch-timeout`** | Duration | Maximum time to wait when fetching CA certificates from the database during TLS handshake. Default: `15s`.                                                              |
 
 **Example configuration:**
 
