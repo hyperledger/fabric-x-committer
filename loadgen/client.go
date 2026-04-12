@@ -111,7 +111,6 @@ func getAdapter(conf *adapters.AdapterConfig, res *adapters.ClientResources) (Se
 
 // StartMonitoringServer starts the Prometheus monitoring server.
 // This method blocks until the server exits or the context is canceled.
-// Monitoring server errors are logged but do not cause the service to stop.
 func (c *Client) StartMonitoringServer(ctx context.Context) error {
 	return c.resources.Metrics.StartPrometheusServer(ctx, &c.conf.Monitoring.ServerConfig)
 }

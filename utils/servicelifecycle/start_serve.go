@@ -31,7 +31,6 @@ type Service interface {
 	WaitForReady(ctx context.Context) bool
 	// StartMonitoringServer starts the Prometheus monitoring server.
 	// This method blocks until the server exits or the context is canceled.
-	// Monitoring server errors are logged but do not cause the service to stop.
 	StartMonitoringServer(ctx context.Context) error
 }
 

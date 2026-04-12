@@ -91,7 +91,6 @@ func New(c *Config) (*Service, error) {
 
 // StartMonitoringServer starts the Prometheus monitoring server.
 // This method blocks until the server exits or the context is cancelled.
-// Monitoring server errors are logged but do not cause the service to stop.
 func (s *Service) StartMonitoringServer(ctx context.Context) error {
 	return s.metrics.StartPrometheusServer(ctx, s.config.Monitoring, s.monitorQueues)
 }

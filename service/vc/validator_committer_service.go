@@ -114,7 +114,6 @@ func NewValidatorCommitterService(
 
 // StartMonitoringServer starts the Prometheus monitoring server.
 // This method blocks until the server exits or the context is canceled.
-// Monitoring server errors are logged but do not cause the service to stop.
 func (vc *ValidatorCommitterService) StartMonitoringServer(ctx context.Context) error {
 	return vc.metrics.StartPrometheusServer(ctx, vc.config.Monitoring, vc.monitorQueues)
 }
