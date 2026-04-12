@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package grpcservice_test
+package servicelifecycle_test
 
 import (
 	"context"
@@ -19,11 +19,11 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/grpcservice"
+	"github.com/hyperledger/fabric-x-committer/utils/servicelifecycle"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-// stubService implements grpcservice.Service with a health check server.
+// stubService implements servicelifecycle.Service with a health check server.
 type stubService struct {
 	ready   *channel.Ready
 	running *channel.Ready
@@ -100,7 +100,7 @@ func TestStartAndServe(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		t.Cleanup(cancel)
 
-		err := grpcservice.StartAndServe(ctx, &slowReadyService{}, serverConfig)
+		err := servicelifecycle.StartAndServe(ctx, &slowReadyService{}, serverConfig)
 		require.NoError(t, err)
 		assert.Equal(t, 0, serverConfig.Endpoint.Port, "server should not have started")
 	})
@@ -130,7 +130,7 @@ func requireHealthy(t *testing.T, sc *connection.ServerConfig) {
 // Pre-allocates listeners so Endpoint.Port is set before any goroutine starts,
 // avoiding a data race between Listener()'s port assignment and test reads.
 func startInBackground(
-	t *testing.T, service grpcservice.Service, serverConfigs ...*connection.ServerConfig,
+	t *testing.T, service servicelifecycle.Service, serverConfigs ...*connection.ServerConfig,
 ) {
 	t.Helper()
 
@@ -144,7 +144,7 @@ func startInBackground(
 
 	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		return grpcservice.StartAndServe(gCtx, service, serverConfigs...)
+		return servicelifecycle.StartAndServe(gCtx, service, serverConfigs...)
 	})
 
 	t.Cleanup(func() { cancel(); assert.NoError(t, g.Wait()) })

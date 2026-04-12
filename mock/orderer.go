@@ -438,9 +438,8 @@ func (*Orderer) WaitForReady(context.Context) bool {
 }
 
 // StartMonitoringServer is a no-op for the mock orderer as it doesn't have monitoring.
-// This method is required to implement the connection.Service interface.
+// This method is required to implement the servicelifecycle.Service interface.
 func (*Orderer) StartMonitoringServer(context.Context) error {
-	// Mock orderer doesn't have a monitoring server
 	return nil
 }
 

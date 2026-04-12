@@ -19,7 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
-	"github.com/hyperledger/fabric-x-committer/utils/grpcservice"
+	"github.com/hyperledger/fabric-x-committer/utils/servicelifecycle"
 )
 
 func startCMD() *cobra.Command {
@@ -63,10 +63,10 @@ func startService(ctx context.Context, name, configPath string) error {
 			return errors.Wrap(err, "failed to create sidecar service")
 		}
 		defer service.Close()
-		return grpcservice.StartAndServe(ctx, service, c.Server)
+		return servicelifecycle.StartAndServe(ctx, service, c.Server)
 
 	case *coordinator.Config:
-		return grpcservice.StartAndServe(ctx, coordinator.NewCoordinatorService(c), c.Server)
+		return servicelifecycle.StartAndServe(ctx, coordinator.NewCoordinatorService(c), c.Server)
 
 	case *vc.Config:
 		service, err := vc.NewValidatorCommitterService(ctx, c)
@@ -74,13 +74,13 @@ func startService(ctx context.Context, name, configPath string) error {
 			return errors.Wrap(err, "failed to create validator committer service")
 		}
 		defer service.Close()
-		return grpcservice.StartAndServe(ctx, service, c.Server)
+		return servicelifecycle.StartAndServe(ctx, service, c.Server)
 
 	case *verifier.Config:
-		return grpcservice.StartAndServe(ctx, verifier.New(c), c.Server)
+		return servicelifecycle.StartAndServe(ctx, verifier.New(c), c.Server)
 
 	case *query.Config:
-		return grpcservice.StartAndServe(ctx, query.NewQueryService(c), c.Server)
+		return servicelifecycle.StartAndServe(ctx, query.NewQueryService(c), c.Server)
 
 	default:
 		return errors.Newf("unknown config type: %T", conf)
