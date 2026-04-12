@@ -30,7 +30,7 @@ type Service interface {
 	// If the context ended before the service is ready, returns false.
 	WaitForReady(ctx context.Context) bool
 	// StartMonitoringServer starts the Prometheus monitoring server.
-	// This method blocks until the server exits or the context is cancelled.
+	// This method blocks until the server exits or the context is canceled.
 	// Monitoring server errors are logged but do not cause the service to stop.
 	StartMonitoringServer(ctx context.Context) error
 }
@@ -50,7 +50,6 @@ func StartAndServe(ctx context.Context, service Service, serverConfigs ...*conne
 	g, gCtx := errgroup.WithContext(ctx)
 
 	// Start monitoring server first (in background).
-	// Monitoring errors are logged but do not stop the service.
 	g.Go(func() error {
 		return service.StartMonitoringServer(gCtx)
 	})

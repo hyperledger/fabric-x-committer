@@ -72,7 +72,7 @@ func NewQueryService(config *Config) *Service {
 }
 
 // StartMonitoringServer starts the Prometheus monitoring server.
-// This method blocks until the server exits or the context is cancelled.
+// This method blocks until the server exits or the context is canceled.
 // Monitoring server errors are logged but do not cause the service to stop.
 func (q *Service) StartMonitoringServer(ctx context.Context) error {
 	return q.metrics.StartPrometheusServer(ctx, q.config.Monitoring)
