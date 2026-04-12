@@ -55,7 +55,7 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 	g, gCtx := errgroup.WithContext(dCtx)
 
 	g.Go(func() error {
-		return grpcservice.StartAndServe(gCtx, orderer, c.config.OrdererServers...)
+		return grpcservice.StartAndServe(gCtx, orderer, nil, c.config.OrdererServers...)
 	})
 
 	g.Go(func() error {

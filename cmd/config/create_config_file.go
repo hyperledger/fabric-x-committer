@@ -42,17 +42,18 @@ type (
 		DB       DatabaseConfig
 
 		// Per service configurations.
-		BlockSize            uint64                      // orderer, loadgen
-		BlockTimeout         time.Duration               // orderer
-		LedgerPath           string                      // sidecar
-		Policy               *workload.PolicyProfile     // loadgen
-		LoadGenBlockLimit    uint64                      // loadgen
-		LoadGenTXLimit       uint64                      // loadgen
-		LoadGenWorkers       uint64                      // loadgen
-		Logging              flogging.Config             // for all
-		RateLimit            *connection.RateLimitConfig // query, sidecar
-		MaxRequestKeys       int                         // query
-		MaxConcurrentStreams int                         // sidecar
+		BlockSize               uint64                      // orderer, loadgen
+		BlockTimeout            time.Duration               // orderer
+		LedgerPath              string                      // sidecar
+		Policy                  *workload.PolicyProfile     // loadgen
+		LoadGenBlockLimit       uint64                      // loadgen
+		LoadGenTXLimit          uint64                      // loadgen
+		LoadGenWorkers          uint64                      // loadgen
+		Logging                 flogging.Config             // for all
+		RateLimit               *connection.RateLimitConfig // query, sidecar
+		MaxRequestKeys          int                         // query
+		QueryTLSRefreshInterval time.Duration               // query
+		MaxConcurrentStreams    int                         // sidecar
 
 		// VC service batching configuration (for testing).
 		VCMinTransactionBatchSize           int           // vc

@@ -48,6 +48,9 @@ type Config struct {
 	// GetTransactionStatus (number of transaction IDs).
 	// Set to 0 to disable the limit.
 	MaxRequestKeys int `mapstructure:"max-request-keys" validate:"gte=0"`
+	// TLSRefreshInterval is the interval at which the query service polls the database
+	// for config block updates to refresh TLS CA certificates. Defaults to 1 minute.
+	TLSRefreshInterval time.Duration `mapstructure:"tls-refresh-interval" validate:"gt=0"`
 }
 
 // Default configuration values for the query service.
@@ -63,4 +66,5 @@ const (
 	DefaultMaxActiveViews        = 4096
 	DefaultMaxViewTimeout        = 10 * time.Second
 	DefaultMaxRequestKeys        = 10000
+	DefaultTLSRefreshInterval    = time.Minute
 )

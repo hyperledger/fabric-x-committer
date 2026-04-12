@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcservice"
 )
 
@@ -58,15 +59,19 @@ func startService(ctx context.Context, name, configPath string) error {
 
 	switch c := conf.(type) {
 	case *sidecar.Config:
-		service, err := sidecar.New(c)
+		tlsUpdater, tlsProvider, err := newDynamicTLS(c.Server)
+		if err != nil {
+			return err
+		}
+		service, err := sidecar.New(c, tlsUpdater)
 		if err != nil {
 			return errors.Wrap(err, "failed to create sidecar service")
 		}
 		defer service.Close()
-		return grpcservice.StartAndServe(ctx, service, c.Server)
+		return grpcservice.StartAndServe(ctx, service, tlsProvider, c.Server)
 
 	case *coordinator.Config:
-		return grpcservice.StartAndServe(ctx, coordinator.NewCoordinatorService(c), c.Server)
+		return grpcservice.StartAndServe(ctx, coordinator.NewCoordinatorService(c), nil, c.Server)
 
 	case *vc.Config:
 		service, err := vc.NewValidatorCommitterService(ctx, c)
@@ -74,15 +79,39 @@ func startService(ctx context.Context, name, configPath string) error {
 			return errors.Wrap(err, "failed to create validator committer service")
 		}
 		defer service.Close()
-		return grpcservice.StartAndServe(ctx, service, c.Server)
+		return grpcservice.StartAndServe(ctx, service, nil, c.Server)
 
 	case *verifier.Config:
-		return grpcservice.StartAndServe(ctx, verifier.New(c), c.Server)
+		return grpcservice.StartAndServe(ctx, verifier.New(c), nil, c.Server)
 
 	case *query.Config:
-		return grpcservice.StartAndServe(ctx, query.NewQueryService(c), c.Server)
+		tlsUpdater, tlsProvider, err := newDynamicTLS(c.Server)
+		if err != nil {
+			return err
+		}
+		return grpcservice.StartAndServe(ctx, query.NewQueryService(c, tlsUpdater), tlsProvider, c.Server)
 
 	default:
 		return errors.Newf("unknown config type: %T", conf)
 	}
+}
+
+// newDynamicTLS returns the TLS interfaces separately to avoid the Go
+// nil-interface trap: a nil *DynamicTLS assigned to an interface becomes a
+// non-nil interface wrapping a nil pointer, which passes != nil checks but
+// panics on method calls. Returning interfaces directly ensures that when
+// TLS is disabled, callers receive true nil values.
+func newDynamicTLS(
+	serverConfig *connection.ServerConfig,
+) (connection.TLSCertUpdater, connection.TLSConfigProvider, error) {
+	if serverConfig == nil || serverConfig.TLS.Mode != connection.MutualTLSMode {
+		return nil, nil, nil
+	}
+
+	dynamicTLS, err := connection.NewDynamicTLSFromConfig(serverConfig.TLS)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to create dynamic TLS config")
+	}
+
+	return dynamicTLS, dynamicTLS, nil
 }

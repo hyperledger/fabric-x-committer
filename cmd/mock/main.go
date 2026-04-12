@@ -84,7 +84,7 @@ func startMockOrderer() *cobra.Command {
 			if conf.Server != nil && !conf.Server.Endpoint.Empty() {
 				serverConfigs = append(serverConfigs, conf.Server)
 			}
-			return grpcservice.StartAndServe(cmd.Context(), service, serverConfigs...)
+			return grpcservice.StartAndServe(cmd.Context(), service, nil, serverConfigs...)
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)
@@ -109,7 +109,7 @@ func startMockCoordinator() *cobra.Command {
 			defer cmd.Printf("%v ended\n", mockVerifierName)
 
 			service := mock.NewMockCoordinator()
-			return grpcservice.Serve(cmd.Context(), service, conf.Server)
+			return grpcservice.Serve(cmd.Context(), service, conf.Server, nil)
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)
@@ -134,7 +134,7 @@ func startMockVerifier() *cobra.Command {
 			defer cmd.Printf("%v ended\n", mockVerifierName)
 
 			sv := mock.NewMockSigVerifier()
-			return grpcservice.Serve(cmd.Context(), sv, conf.Server)
+			return grpcservice.Serve(cmd.Context(), sv, conf.Server, nil)
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)
@@ -159,7 +159,7 @@ func startMockVC() *cobra.Command {
 			defer cmd.Printf("%v ended\n", mockVcName)
 
 			vcs := mock.NewMockVcService()
-			return grpcservice.Serve(cmd.Context(), vcs, conf.Server)
+			return grpcservice.Serve(cmd.Context(), vcs, conf.Server, nil)
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)

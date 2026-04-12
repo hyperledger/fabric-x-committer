@@ -290,7 +290,9 @@ func (e *relayTestEnv) readAllStatusQueue(t *testing.T) []*committerpb.TxStatus 
 
 func createConfigBlockForTest(t *testing.T) *common.Block {
 	t.Helper()
-	block, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(t.TempDir(), &testcrypto.ConfigBlock{})
+	block, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(t.TempDir(), &testcrypto.ConfigBlock{
+		PeerOrganizationCount: 1,
+	})
 	require.NoError(t, err)
 	return block
 }

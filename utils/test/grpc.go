@@ -97,7 +97,7 @@ func RunGrpcServerForTest(
 	tb.Helper()
 	listener, err := serverConfig.Listener(ctx)
 	require.NoError(tb, err)
-	server, err := serverConfig.GrpcServer()
+	server, err := serverConfig.GrpcServer(nil)
 	require.NoError(tb, err)
 
 	if register != nil {
@@ -492,6 +492,22 @@ func NewServiceTLSConfig(artifactsPath, serviceName, mode string) connection.TLS
 		CACertPaths: []string{
 			filepath.Join(artifactsPath, OrgRootCA),
 		},
+	}
+}
+
+// OrgClientTLSConfig creates a mutual TLS client configuration using a specific
+// peer organization's TLS client certificate. The serverCACertPaths are the CA
+// certs needed to verify the server (typically from the CredentialsFactory).
+func OrgClientTLSConfig(artifactsPath string, orgIndex int, serverCACertPaths []string) connection.TLSConfig {
+	orgName := fmt.Sprintf("peer-org-%d", orgIndex)
+	orgDomain := fmt.Sprintf("peer-org-%d.com", orgIndex)
+	tlsDir := filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, orgName,
+		cryptogen.UsersDir, fmt.Sprintf("client@%s", orgDomain), cryptogen.TLSDir)
+	return connection.TLSConfig{
+		Mode:        connection.MutualTLSMode,
+		CertPath:    filepath.Join(tlsDir, "client.crt"),
+		KeyPath:     filepath.Join(tlsDir, "client.key"),
+		CACertPaths: serverCACertPaths,
 	}
 }
 

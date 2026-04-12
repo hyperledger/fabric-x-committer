@@ -243,7 +243,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 				},
 				Orderer: e.OrdererConnConfig,
 			}
-			service, err := sidecar.New(sidecarConf)
+			service, err := sidecar.New(sidecarConf, nil)
 			require.NoError(t, err)
 			t.Cleanup(service.Close)
 			test.RunServiceAndGrpcForTest(t.Context(), t, service, sidecarConf.Server)
@@ -291,7 +291,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 			}
 
 			// Start sidecar.
-			service, err := sidecar.New(sidecarConf)
+			service, err := sidecar.New(sidecarConf, nil)
 			require.NoError(t, err)
 			t.Cleanup(service.Close)
 			test.RunServiceAndGrpcForTest(t.Context(), t, service, sidecarConf.Server)
