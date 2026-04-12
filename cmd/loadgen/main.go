@@ -18,7 +18,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 
-	"github.com/hyperledger/fabric-x-committer/utils/grpcservice"
+	"github.com/hyperledger/fabric-x-committer/utils/servicelifecycle"
 )
 
 const (
@@ -76,7 +76,7 @@ func loadGenCMD() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return grpcservice.StartAndServe(cmd.Context(), client, conf.Server)
+			return servicelifecycle.StartAndServe(cmd.Context(), client, conf.Server)
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)

@@ -112,21 +112,17 @@ func NewValidatorCommitterService(
 	return vc, nil
 }
 
+// StartMonitoringServer starts the Prometheus monitoring server.
+// This method blocks until the server exits or the context is canceled.
+func (vc *ValidatorCommitterService) StartMonitoringServer(ctx context.Context) error {
+	return vc.metrics.StartPrometheusServer(ctx, vc.config.Monitoring, vc.monitorQueues)
+}
+
 // Run starts the validator and committer service.
 func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 	logger.Info("Starting ValidatorCommitterService")
 	defer vc.Close()
 	g, eCtx := errgroup.WithContext(ctx)
-
-	g.Go(func() error {
-		logger.Info("Starting Prometheus monitoring server")
-		_ = vc.metrics.StartPrometheusServer(
-			eCtx, vc.config.Monitoring, vc.monitorQueues,
-		)
-		// We don't return error here to avoid stopping the service due to monitoring error.
-		// But we use the errgroup to ensure the method returns only when the server exits.
-		return nil
-	})
 
 	g.Go(func() error {
 		logger.Info("Starting transaction batching and forwarding process")

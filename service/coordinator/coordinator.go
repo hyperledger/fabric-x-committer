@@ -176,18 +176,17 @@ func NewCoordinatorService(c *Config) *Service {
 	}
 }
 
+// StartMonitoringServer starts the Prometheus monitoring server.
+// This method blocks until the server exits or the context is canceled.
+func (c *Service) StartMonitoringServer(ctx context.Context) error {
+	return c.metrics.StartPrometheusServer(ctx, c.config.Monitoring, c.monitorQueues)
+}
+
 // Run starts each manager in the coordinator service.
 func (c *Service) Run(ctx context.Context) error {
 	canCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	g, eCtx := errgroup.WithContext(canCtx)
-
-	g.Go(func() error {
-		_ = c.metrics.StartPrometheusServer(eCtx, c.config.Monitoring, c.monitorQueues)
-		// We don't return error here to avoid stopping the service due to monitoring error.
-		// But we use the errgroup to ensure the method returns only when the server exits.
-		return nil
-	})
 
 	g.Go(func() error {
 		logger.Info("Starting dependency graph manager")

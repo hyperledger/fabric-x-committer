@@ -89,6 +89,12 @@ func New(c *Config) (*Service, error) {
 	}, nil
 }
 
+// StartMonitoringServer starts the Prometheus monitoring server.
+// This method blocks until the server exits or the context is cancelled.
+func (s *Service) StartMonitoringServer(ctx context.Context) error {
+	return s.metrics.StartPrometheusServer(ctx, s.config.Monitoring, s.monitorQueues)
+}
+
 // WaitForReady wait for sidecar to be ready to be exposed as gRPC service.
 // If the context ended before the service is ready, returns false.
 func (*Service) WaitForReady(context.Context) bool {
@@ -99,10 +105,6 @@ func (*Service) WaitForReady(context.Context) bool {
 func (s *Service) Run(ctx context.Context) error {
 	pCtx, pCancel := context.WithCancel(ctx)
 	defer pCancel()
-	// similar to other services, when the prometheus server returns an error, we do not terminate the service.
-	go func() {
-		_ = s.metrics.StartPrometheusServer(pCtx, s.config.Monitoring, s.monitorQueues)
-	}()
 
 	logger.Infof("Create coordinator client and connect to %s", s.config.Committer.Endpoint)
 	conn, connErr := connection.NewSingleConnection(s.config.Committer)

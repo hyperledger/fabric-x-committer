@@ -37,8 +37,8 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/grpcservice"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
+	"github.com/hyperledger/fabric-x-committer/utils/servicelifecycle"
 )
 
 var (
@@ -204,13 +204,20 @@ func RunServiceForTest(
 
 // RunServiceAndGrpcForTest combines running a service and its GRPC server.
 // It is intended for services that implements the Service API (i.e., command line services).
+// The monitoring server is started first to ensure metrics are ready before the gRPC server
+// starts accepting requests.
 func RunServiceAndGrpcForTest(
 	ctx context.Context,
 	t *testing.T,
-	service grpcservice.Service,
+	service servicelifecycle.Service,
 	serverConfig ...*connection.ServerConfig,
 ) *channel.Ready {
 	t.Helper()
+
+	// Start the monitoring server with proper lifecycle management.
+	// RunServiceForTest ensures the goroutine is tracked and cleaned up when the test ends.
+	_ = RunServiceForTest(ctx, t, service.StartMonitoringServer, func(context.Context) bool { return true })
+
 	doneFlag := RunServiceForTest(ctx, t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(service.Run(ctx))
 	}, service.WaitForReady)

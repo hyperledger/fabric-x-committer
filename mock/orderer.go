@@ -437,6 +437,12 @@ func (*Orderer) WaitForReady(context.Context) bool {
 	return true
 }
 
+// StartMonitoringServer is a no-op for the mock orderer as it doesn't have monitoring.
+// This method is required to implement the servicelifecycle.Service interface.
+func (*Orderer) StartMonitoringServer(context.Context) error {
+	return nil
+}
+
 // RegisterService registers for the orderer's GRPC services.
 func (o *Orderer) RegisterService(server *grpc.Server) {
 	ab.RegisterAtomicBroadcastServer(server, o)

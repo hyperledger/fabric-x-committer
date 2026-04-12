@@ -71,13 +71,19 @@ func NewQueryService(config *Config) *Service {
 	}
 }
 
+// StartMonitoringServer starts the Prometheus monitoring server.
+// This method blocks until the server exits or the context is canceled.
+func (q *Service) StartMonitoringServer(ctx context.Context) error {
+	return q.metrics.StartPrometheusServer(ctx, q.config.Monitoring)
+}
+
 // WaitForReady waits for the service resources to initialize, so it is ready to answers requests.
 // If the context ended before the service is ready, returns false.
 func (q *Service) WaitForReady(ctx context.Context) bool {
 	return q.ready.WaitForReady(ctx)
 }
 
-// Run starts the Prometheus server.
+// Run starts the query service.
 func (q *Service) Run(ctx context.Context) error {
 	pool, poolErr := vc.NewDatabasePool(ctx, q.config.Database)
 	if poolErr != nil {
@@ -107,8 +113,8 @@ func (q *Service) Run(ctx context.Context) error {
 	}
 	q.ready.SignalReady()
 
-	_ = q.metrics.StartPrometheusServer(ctx, q.config.Monitoring)
-	// We don't use the error here as we avoid stopping the service due to monitoring error.
+	// Monitoring server is now started externally by connection.StartService()
+	// Just wait for context cancellation
 	<-ctx.Done()
 	return nil
 }

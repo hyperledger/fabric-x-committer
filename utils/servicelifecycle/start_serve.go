@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package grpcservice
+package servicelifecycle
 
 import (
 	"context"
@@ -29,6 +29,9 @@ type Service interface {
 	// WaitForReady waits for the service resources to initialize.
 	// If the context ended before the service is ready, returns false.
 	WaitForReady(ctx context.Context) bool
+	// StartMonitoringServer starts the Prometheus monitoring server.
+	// This method blocks until the server exits or the context is canceled.
+	StartMonitoringServer(ctx context.Context) error
 }
 
 // Registerer is for services that register on a gRPC server.
@@ -44,6 +47,12 @@ func StartAndServe(ctx context.Context, service Service, serverConfigs ...*conne
 	defer cancel()
 
 	g, gCtx := errgroup.WithContext(ctx)
+
+	// Start monitoring server first (in background).
+	g.Go(func() error {
+		return service.StartMonitoringServer(gCtx)
+	})
+
 	g.Go(func() error {
 		// If the service stops, there is no reason to continue the GRPC server.
 		defer cancel()
