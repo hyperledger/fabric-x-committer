@@ -1,0 +1,7 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+vc-client:
+{{ include "endpointListWithSharedTLS" (dict "Servers" .Services.VCService "TLS" .ClientTLS) | indent 2 }}
+{{ include "loadgenConfig" . | indent 0 }}

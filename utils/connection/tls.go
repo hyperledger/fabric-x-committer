@@ -17,23 +17,23 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// TLSMaterials holds the loaded runtime TLS material (certificate, key, CA certs).
-type TLSMaterials struct {
+// TLSCredentials holds the loaded runtime TLS credentials (certificate, key, CA certs).
+type TLSCredentials struct {
 	Mode    string
 	Cert    []byte
 	Key     []byte
 	CACerts [][]byte
 }
 
-// NewClientCredentialsFromMaterial returns the gRPC transport credentials to be used by a client,
-// based on the provided TLS configuration.
-func NewClientCredentialsFromMaterial(c *TLSMaterials) (credentials.TransportCredentials, error) {
+// NewClientGRPCTransportCredentials returns the gRPC transport credentials to be used by a client,
+// based on the provided TLS credentials.
+func NewClientGRPCTransportCredentials(c *TLSCredentials) (credentials.TransportCredentials, error) {
 	return newCredentials(c.CreateClientTLSConfig())
 }
 
-// NewServerCredentialsFromMaterial returns the gRPC transport credentials to be used by a client,
-// based on the provided TLS configuration.
-func NewServerCredentialsFromMaterial(c *TLSMaterials) (credentials.TransportCredentials, error) {
+// NewServerGRPCTransportCredentials returns the gRPC transport credentials to be used by a server,
+// based on the provided TLS credentials.
+func NewServerGRPCTransportCredentials(c *TLSCredentials) (credentials.TransportCredentials, error) {
 	return newCredentials(c.CreateServerTLSConfig())
 }
 
@@ -47,47 +47,47 @@ func newCredentials(tlsCfg *tls.Config, err error) (credentials.TransportCredent
 	return credentials.NewTLS(tlsCfg), nil
 }
 
-// NewServerTLSMaterials converts a server TLSConfig with path fields into a struct
+// NewServerTLSCredentials converts a server TLSConfig with path fields into a struct
 // that holds the actual bytes of the certificates.
 //
 // Certificate loading behavior by mode:
 //   - none/unmentioned: No certificates loaded
 //   - tls (one-way): Loads server cert + key only (CA certs NOT loaded)
 //   - mtls (mutual): Loads server cert + key + CA certs for client verification
-func NewServerTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
+func NewServerTLSCredentials(c TLSConfig) (*TLSCredentials, error) {
 	mode := c.Mode
 	if mode == UnmentionedTLSMode {
 		mode = DefaultTLSMode
 	}
-	materials := &TLSMaterials{Mode: mode}
+	creds := &TLSCredentials{Mode: mode}
 
 	switch mode {
 	case NoneTLSMode:
-		return materials, nil
+		return creds, nil
 
 	case OneSideTLSMode, MutualTLSMode:
 		var err error
-		materials.Cert, err = os.ReadFile(c.CertPath)
+		creds.Cert, err = os.ReadFile(c.CertPath)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to load certificate from %s", c.CertPath)
 		}
 
-		materials.Key, err = os.ReadFile(c.KeyPath)
+		creds.Key, err = os.ReadFile(c.KeyPath)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to load private key from %s", c.KeyPath)
 		}
 
 		if mode == MutualTLSMode {
-			materials.CACerts = make([][]byte, 0, len(c.CACertPaths))
+			creds.CACerts = make([][]byte, 0, len(c.CACertPaths))
 			for _, path := range c.CACertPaths {
 				caBytes, err := os.ReadFile(path)
 				if err != nil {
 					return nil, errors.Wrapf(err, "failed to load root CA cert from %s", path)
 				}
-				materials.CACerts = append(materials.CACerts, caBytes)
+				creds.CACerts = append(creds.CACerts, caBytes)
 			}
 		}
-		return materials, nil
+		return creds, nil
 
 	default:
 		return nil, errors.Newf("unknown TLS mode: %s (valid: %s, %s, %s)",
@@ -95,47 +95,47 @@ func NewServerTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
 	}
 }
 
-// NewClientTLSMaterials converts a client TLSConfig with path fields into a struct
+// NewClientTLSCredentials converts a client TLSConfig with path fields into a struct
 // that holds the actual bytes of the certificates.
 //
 // Certificate loading behavior by mode:
 //   - none/unmentioned: No certificates loaded
 //   - tls (one-way): Loads CA certs only for server verification (client cert + key NOT loaded)
 //   - mtls (mutual): Loads CA certs + client cert + key for mutual authentication
-func NewClientTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
+func NewClientTLSCredentials(c TLSConfig) (*TLSCredentials, error) {
 	mode := c.Mode
 	if mode == UnmentionedTLSMode {
 		mode = DefaultTLSMode
 	}
-	materials := &TLSMaterials{Mode: mode}
+	creds := &TLSCredentials{Mode: mode}
 
 	switch mode {
 	case NoneTLSMode:
-		return materials, nil
+		return creds, nil
 
 	case OneSideTLSMode, MutualTLSMode:
-		materials.CACerts = make([][]byte, 0, len(c.CACertPaths))
+		creds.CACerts = make([][]byte, 0, len(c.CACertPaths))
 		for _, path := range c.CACertPaths {
 			caBytes, err := os.ReadFile(path)
 			if err != nil {
 				return nil, errors.Wrapf(err, "failed to load root CA cert from %s", path)
 			}
-			materials.CACerts = append(materials.CACerts, caBytes)
+			creds.CACerts = append(creds.CACerts, caBytes)
 		}
 
 		if mode == MutualTLSMode {
 			var err error
-			materials.Cert, err = os.ReadFile(c.CertPath)
+			creds.Cert, err = os.ReadFile(c.CertPath)
 			if err != nil {
 				return nil, errors.Wrapf(err, "failed to load client certificate from %s", c.CertPath)
 			}
 
-			materials.Key, err = os.ReadFile(c.KeyPath)
+			creds.Key, err = os.ReadFile(c.KeyPath)
 			if err != nil {
 				return nil, errors.Wrapf(err, "failed to load client private key from %s", c.KeyPath)
 			}
 		}
-		return materials, nil
+		return creds, nil
 
 	default:
 		return nil, errors.Newf("unknown TLS mode: %s (valid: %s, %s, %s)",
@@ -144,7 +144,7 @@ func NewClientTLSMaterials(c TLSConfig) (*TLSMaterials, error) {
 }
 
 // CreateServerTLSConfig returns a TLS config to be used by a server.
-func (c *TLSMaterials) CreateServerTLSConfig() (*tls.Config, error) {
+func (c *TLSCredentials) CreateServerTLSConfig() (*tls.Config, error) {
 	switch c.Mode {
 	case NoneTLSMode, UnmentionedTLSMode:
 		return nil, nil
@@ -178,7 +178,7 @@ func (c *TLSMaterials) CreateServerTLSConfig() (*tls.Config, error) {
 }
 
 // CreateClientTLSConfig returns a TLS config to be used by a server.
-func (c *TLSMaterials) CreateClientTLSConfig() (*tls.Config, error) {
+func (c *TLSCredentials) CreateClientTLSConfig() (*tls.Config, error) {
 	switch c.Mode {
 	case NoneTLSMode, UnmentionedTLSMode:
 		return nil, nil

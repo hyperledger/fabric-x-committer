@@ -119,6 +119,21 @@ func (p *ProcessWithConfig) Stop(t *testing.T) {
 	case <-time.After(30 * time.Second):
 		t.Errorf("Process [%s] did not terminate after 30 seconds", p.params.Name)
 	}
+	p.process = nil
+}
+
+// requireRunning fails the test immediately if the process has already exited.
+func (p *ProcessWithConfig) requireRunning(t *testing.T) {
+	t.Helper()
+	if p == nil || p.process == nil {
+		return
+	}
+
+	select {
+	case err := <-p.process.Wait():
+		t.Fatalf("Process [%s] exited unexpectedly: %v", p.params.Name, err)
+	default:
+	}
 }
 
 // Restart stops the process if it is running and then starts it.

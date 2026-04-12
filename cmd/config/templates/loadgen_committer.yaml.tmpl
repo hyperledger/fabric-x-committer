@@ -1,0 +1,13 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+sidecar-client:
+  sidecar-client:
+{{ include "endpointWithTLS" (dict "Endpoint" .Services.Sidecar.GrpcEndpoint "TLS" .ClientTLS) | indent 4 }}
+  orderer-servers:
+    {{- range .Services.Orderer }}
+    - endpoint: {{ .GrpcEndpoint }}
+{{ include "tlsConfig" .GrpcTLS | indent 6 }}
+    {{- end }}
+{{ include "loadgenConfig" . | indent 0 }}

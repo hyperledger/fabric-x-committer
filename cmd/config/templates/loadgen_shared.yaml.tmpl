@@ -1,0 +1,72 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+{{- /*
+Shared template blocks for loadgen config templates.
+
+Templates:
+  loadgenConfig -- server, monitoring (with latency), load-profile, stream, generate, limit, and logging
+*/ -}}
+
+{{- /* {{ include "loadgenConfig" . | indent 0 }} */ -}}
+{{- define "loadgenConfig" }}
+server:
+{{ include "endpointWithTLS" (dict "Endpoint" (.ThisService.GrpcEndpoint | default "localhost:0") "TLS" .ThisService.GrpcTLS) | indent 2 }}
+{{ include "monitoring" . | indent 0 }}
+  latency:
+    max-tracked-txs: 10_000
+    sampler:
+      portion: 0.01
+    buckets:
+      distribution: uniform
+      max-latency: 5s
+      bucket-count: 1000
+
+load-profile:
+  block:
+    max-size: {{ .BlockSize }}
+  key:
+    size: 32
+  transaction:
+    read-write-value-size:
+    blind-write-value-size:
+    read-only-count:
+    read-write-count:
+      const: 2
+  policy:
+    channel-id: {{ .Policy.ChannelID }}
+    artifacts-path: {{ .Policy.ArtifactsPath }}
+    peer-organization-count: {{ .Policy.PeerOrganizationCount }}
+    namespace-policies:
+      {{ range $nsID, $element := .Policy.NamespacePolicies }}
+      {{ $nsID }}:
+        scheme: {{ $element.Scheme }}
+        seed: {{ $element.Seed }}
+      {{ end }}
+  query:
+    query-size:
+    min-invalid-keys-portion:
+    shuffle: false
+  conflicts:
+    invalid-signatures: 0
+    dependencies:
+  seed: 12345
+  workers: {{ .LoadGenWorkers }}
+
+stream:
+  rate-limit: 1_000
+  gen-batch: 10
+  buffers-size: 10
+
+generate:
+  config: true
+  namespaces: true
+  load: true
+
+limit:
+  blocks: {{ .LoadGenBlockLimit }}
+  transactions: {{ .LoadGenTXLimit }}
+
+{{ include "logging" . | indent 0 }}
+{{- end }}

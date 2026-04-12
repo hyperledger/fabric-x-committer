@@ -50,7 +50,7 @@ type (
 
 // NewBroadcastStream starts a new broadcast stream (non-production).
 func NewBroadcastStream(ctx context.Context, config *ordererdial.Config) (Broadcaster, error) {
-	tls, err := ordererdial.NewTLSMaterials(config.TLS)
+	tls, err := ordererdial.NewTLSCredentials(config.TLS)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func NewBroadcastStream(ctx context.Context, config *ordererdial.Config) (Broadc
 	if err != nil {
 		return nil, err
 	}
-	m := ordererdial.NewClientMaterial(configMaterial, ordererdial.Parameters{
+	m := ordererdial.NewDialInfo(configMaterial, ordererdial.Parameters{
 		API:   commontypes.Broadcast,
 		TLS:   *tls,
 		Retry: config.Retry,
@@ -72,8 +72,8 @@ func NewBroadcastStream(ctx context.Context, config *ordererdial.Config) (Broadc
 		return newCFTBroadcaster(ctx, m.Joint)
 	}
 
-	streams := make(map[uint32]*cftBroadcaster, len(m.PartyIDToMaterial))
-	for id, mPerID := range m.PartyIDToMaterial {
+	streams := make(map[uint32]*cftBroadcaster, len(m.PartyIDToDialInfo))
+	for id, mPerID := range m.PartyIDToDialInfo {
 		streams[id], err = newCFTBroadcaster(ctx, mPerID)
 		if err != nil {
 			return nil, errors.Join(err, connection.CloseConnections(slices.Collect(maps.Values(streams))...))
@@ -83,9 +83,9 @@ func NewBroadcastStream(ctx context.Context, config *ordererdial.Config) (Broadc
 }
 
 func newCFTBroadcaster(
-	ctx context.Context, m *connection.ClientMaterial,
+	ctx context.Context, d *connection.DialInfo,
 ) (*cftBroadcaster, error) {
-	conn, err := m.NewLoadBalancedConnection()
+	conn, err := d.NewLoadBalancedConnection()
 	if err != nil {
 		return nil, err
 	}

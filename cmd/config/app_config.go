@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/go-playground/validator/v10"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/spf13/viper"
 
@@ -27,7 +28,10 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 )
 
-var logger = flogging.MustGetLogger("config-reader")
+var (
+	logger   = flogging.MustGetLogger("config-reader")
+	validate = validator.New()
+)
 
 // ReadSidecarYamlAndSetupLogging reading the YAML config file of the sidecar.
 func ReadSidecarYamlAndSetupLogging(v *viper.Viper, configPath string) (*sidecar.Config, error) {
@@ -95,10 +99,13 @@ func ReadYamlAndSetupLogging(v *viper.Viper, configPath, servicePrefix string, c
 	return unmarshal(v, c)
 }
 
-// unmarshal populate a config object.
+// unmarshal populate a config object and validate it.
 func unmarshal(v *viper.Viper, c any) error {
 	defer logger.Debugf("Decoded config: %s", &utils.LazyJSON{O: c})
-	return errors.Wrap(v.Unmarshal(c, decoderHook()), "error decoding config")
+	if err := v.Unmarshal(c, decoderHook()); err != nil {
+		return errors.Wrap(err, "error decoding config")
+	}
+	return errors.Wrap(validate.Struct(c), "error validating config")
 }
 
 // setupEnv enables setting configuration via environment variables.
