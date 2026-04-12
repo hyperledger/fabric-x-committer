@@ -11,10 +11,13 @@ import (
 	"strconv"
 )
 
+// DefaultHost is the default hostname used for service endpoints.
+const DefaultHost = "localhost"
+
 // Endpoint describes a remote endpoint.
 type Endpoint struct {
-	Host string `mapstructure:"host" json:"host,omitempty" yaml:"host,omitempty"`
-	Port int    `mapstructure:"port" json:"port,omitempty" yaml:"port,omitempty"`
+	Host string `mapstructure:"host"`
+	Port int    `mapstructure:"port"`
 }
 
 // Empty returns true if no host and no port are assigned.

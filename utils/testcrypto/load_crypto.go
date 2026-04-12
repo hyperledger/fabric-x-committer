@@ -9,6 +9,7 @@ package testcrypto
 import (
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -47,12 +48,20 @@ func GetSigningIdentities(mspDirs ...*msp.DirLoadParameters) ([]msp.SigningIdent
 }
 
 // GetPeersMspDirs returns the peers' MSP directory path.
+// It discovers the client user directory by scanning the users/ directory
+// for an entry matching "client@*", rather than assuming a specific domain suffix.
 func GetPeersMspDirs(cryptoPath string) []*msp.DirLoadParameters {
 	peerOrgPath := path.Join(cryptoPath, cryptogen.PeerOrganizationsDir)
 	peerMspDirs := GetMspDirs(peerOrgPath)
 	for _, mspItem := range peerMspDirs {
-		clientName := "client@" + mspItem.MspName + ".com"
-		mspItem.MspDir = path.Join(mspItem.MspDir, "users", clientName, "msp")
+		usersDir := path.Join(mspItem.MspDir, "users")
+		entries, _ := os.ReadDir(usersDir)
+		for _, entry := range entries {
+			if entry.IsDir() && strings.HasPrefix(entry.Name(), "client@") {
+				mspItem.MspDir = path.Join(usersDir, entry.Name(), "msp")
+				break
+			}
+		}
 	}
 	return peerMspDirs
 }
@@ -110,6 +119,7 @@ func GetOrdererConnConfig(artifactsPath string, clientTLSConfig connection.TLSCo
 			Multiplier:      2,
 			MaxElapsedTime:  time.Second,
 		},
-		Identity: id,
+		Identity:                     id,
+		SuspicionGracePeriodPerBlock: time.Second,
 	}
 }

@@ -1,0 +1,8 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+orderer-client:
+{{ include "ordererDialConfig" . | indent 2 }}
+  broadcast-parallelism: 5
+{{ include "loadgenConfig" . | indent 0 }}

@@ -227,10 +227,16 @@ func TestLoadGenForSidecar(t *testing.T) {
 				Server:                        sidecarServerConf,
 				LastCommittedBlockSetInterval: 100 * time.Millisecond,
 				WaitingTxsLimit:               5000,
+				ChannelBufferSize:             sidecar.DefaultBufferSize,
 				Committer: test.NewTLSClientConfig(
 					e.ClientTLSConfig,
 					&coordinatorServer.Configs[0].Endpoint,
 				),
+				Notification: sidecar.NotificationServiceConfig{
+					MaxTimeout:         sidecar.DefaultNotificationMaxTimeout,
+					MaxActiveTxIDs:     sidecar.DefaultMaxActiveTxIDs,
+					MaxTxIDsPerRequest: sidecar.DefaultMaxTxIDsPerRequest,
+				},
 				Monitoring: test.NewLocalHostServer(e.ServerTLSConfig),
 				Ledger: sidecar.LedgerConfig{
 					Path: t.TempDir(),
@@ -267,10 +273,16 @@ func TestLoadGenForOrderer(t *testing.T) {
 				Server:                        test.NewLocalHostServer(e.ServerTLSConfig),
 				LastCommittedBlockSetInterval: 100 * time.Millisecond,
 				WaitingTxsLimit:               5000,
+				ChannelBufferSize:             sidecar.DefaultBufferSize,
 				Committer: test.NewTLSClientConfig(
 					e.ClientTLSConfig,
 					&coordinatorServer.Configs[0].Endpoint,
 				),
+				Notification: sidecar.NotificationServiceConfig{
+					MaxTimeout:         sidecar.DefaultNotificationMaxTimeout,
+					MaxActiveTxIDs:     sidecar.DefaultMaxActiveTxIDs,
+					MaxTxIDsPerRequest: sidecar.DefaultMaxTxIDsPerRequest,
+				},
 				Monitoring: test.NewLocalHostServer(e.ServerTLSConfig),
 				Ledger: sidecar.LedgerConfig{
 					Path: t.TempDir(),

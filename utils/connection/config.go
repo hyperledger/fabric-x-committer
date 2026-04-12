@@ -21,16 +21,16 @@ type (
 	// MultiClientConfig contains the endpoints, TLS config, and retry profile.
 	// This config allows the support of number of different endpoints to multiple service instances.
 	MultiClientConfig struct {
-		Endpoints []*Endpoint    `mapstructure:"endpoints" yaml:"endpoints"`
-		TLS       TLSConfig      `mapstructure:"tls"       yaml:"tls"`
-		Retry     *retry.Profile `mapstructure:"reconnect" yaml:"reconnect"`
+		Endpoints []*Endpoint    `mapstructure:"endpoints"`
+		TLS       TLSConfig      `mapstructure:"tls"`
+		Retry     *retry.Profile `mapstructure:"reconnect"`
 	}
 
 	// ClientConfig contains a single endpoint, TLS config, and retry profile.
 	ClientConfig struct {
-		Endpoint *Endpoint      `mapstructure:"endpoint"  yaml:"endpoint"`
-		TLS      TLSConfig      `mapstructure:"tls"       yaml:"tls"`
-		Retry    *retry.Profile `mapstructure:"reconnect" yaml:"reconnect"`
+		Endpoint *Endpoint      `mapstructure:"endpoint"`
+		TLS      TLSConfig      `mapstructure:"tls"`
+		Retry    *retry.Profile `mapstructure:"reconnect"`
 	}
 
 	// ServerConfig describes the connection parameter for a server.
@@ -39,7 +39,7 @@ type (
 		TLS                  TLSConfig              `mapstructure:"tls"`
 		KeepAlive            *ServerKeepAliveConfig `mapstructure:"keep-alive"`
 		RateLimit            RateLimitConfig        `mapstructure:"rate-limit"`
-		MaxConcurrentStreams int                    `mapstructure:"max-concurrent-streams"`
+		MaxConcurrentStreams int                    `mapstructure:"max-concurrent-streams" validate:"gte=0"`
 
 		preAllocatedListener net.Listener
 	}
@@ -82,7 +82,7 @@ type (
 	// For example, If only server-side TLS is required, the certificate pool (certPool) is not built (for a server),
 	// since the relevant certificates paths are defined in the YAML according to the selected mode.
 	TLSConfig struct {
-		Mode string `mapstructure:"mode"`
+		Mode string `mapstructure:"mode" validate:"omitempty,oneof=tls mtls none"`
 		// CertPath is the path to the certificate file (public key).
 		CertPath string `mapstructure:"cert-path"`
 		// KeyPath is the path to the key file (private key).
@@ -103,22 +103,22 @@ const (
 	DefaultTLSMinVersion = tls.VersionTLS12
 )
 
-// ClientCredentials converts TLSConfig into a TLSMaterials struct and generates client creds.
+// ClientCredentials converts TLSConfig into a TLSCredentials struct and generates client creds.
 func (c TLSConfig) ClientCredentials() (credentials.TransportCredentials, error) {
-	tlsMaterials, err := NewClientTLSMaterials(c)
+	tlsCreds, err := NewClientTLSCredentials(c)
 	if err != nil {
 		return nil, err
 	}
-	return NewClientCredentialsFromMaterial(tlsMaterials)
+	return NewClientGRPCTransportCredentials(tlsCreds)
 }
 
-// ServerCredentials converts TLSConfig into a TLSMaterials struct and generates server creds.
+// ServerCredentials converts TLSConfig into a TLSCredentials struct and generates server creds.
 func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error) {
-	tlsMaterials, err := NewServerTLSMaterials(c)
+	tlsCreds, err := NewServerTLSCredentials(c)
 	if err != nil {
 		return nil, err
 	}
-	return NewServerCredentialsFromMaterial(tlsMaterials)
+	return NewServerGRPCTransportCredentials(tlsCreds)
 }
 
 // Validate checks that the rate limit configuration is valid.

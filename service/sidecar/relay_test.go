@@ -90,6 +90,7 @@ func TestRelayNormalBlock(t *testing.T) {
 	relayEnv.incomingBlockToBeCommitted <- blk0
 
 	t.Log("Block #0: Check submit metrics")
+	test.EventuallyIntMetric(t, txCount, m.transactionInThroughput, 5*time.Second, 10*time.Millisecond)
 	test.EventuallyIntMetric(t, txCount, m.transactionsSentTotal, 5*time.Second, 10*time.Millisecond)
 	test.EventuallyIntMetric(t, txCount, m.waitingTransactionsQueueSize, 5*time.Second, 10*time.Millisecond)
 	require.Equal(t, int64(relayEnv.waitingTxsLimit-txCount), relayEnv.relay.waitingTxsSlots.Load(t))
@@ -123,6 +124,7 @@ func TestRelayNormalBlock(t *testing.T) {
 	test.RequireIntMetricValue(t, txCount, m.transactionsStatusReceivedTotal.WithLabelValues(
 		committerpb.Status_COMMITTED.String(),
 	))
+	test.RequireIntMetricValue(t, txCount, m.transactionOutThroughput)
 	test.EventuallyIntMetric(t, 0, m.waitingTransactionsQueueSize, 5*time.Second, 10*time.Millisecond)
 	require.Greater(t, test.GetMetricValue(t, m.blockMappingInRelaySeconds), float64(0))
 	require.Greater(t, test.GetMetricValue(t, m.mappedBlockProcessingInRelaySeconds), float64(0))

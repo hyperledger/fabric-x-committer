@@ -74,13 +74,10 @@ func New(c *Config) (*Service, error) {
 		return nil, fmt.Errorf("failed to create block store: %w", err)
 	}
 
-	if c.ChannelBufferSize <= 0 {
-		c.ChannelBufferSize = defaultBufferSize
-	}
 	return &Service{
 		deliveryParams: deliveryParams,
 		relay:          relayService,
-		notifier:       newNotifier(c.ChannelBufferSize, &c.Notification),
+		notifier:       newNotifier(c.ChannelBufferSize, &c.Notification, metrics),
 		blockStore:     blockStoreInstance,
 		blockDelivery:  newBlockDelivery(blockStoreInstance),
 		blockQuery:     newBlockQuery(blockStoreInstance),

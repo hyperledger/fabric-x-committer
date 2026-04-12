@@ -70,11 +70,11 @@ var logger = flogging.MustGetLogger("retry")
 //   - Creating/dropping tables immediately after creating a database.
 //     See: https://github.com/yugabyte/yugabyte-db/issues/14519.
 type Profile struct {
-	InitialInterval     time.Duration `mapstructure:"initial-interval" yaml:"initial-interval"`
-	RandomizationFactor float64       `mapstructure:"randomization-factor" yaml:"randomization-factor"`
-	Multiplier          float64       `mapstructure:"multiplier" yaml:"multiplier"`
-	MaxInterval         time.Duration `mapstructure:"max-interval" yaml:"max-interval"`
-	MaxElapsedTime      time.Duration `mapstructure:"max-elapsed-time" yaml:"max-elapsed-time"`
+	InitialInterval     time.Duration `mapstructure:"initial-interval"`
+	RandomizationFactor float64       `mapstructure:"randomization-factor"`
+	Multiplier          float64       `mapstructure:"multiplier"`
+	MaxInterval         time.Duration `mapstructure:"max-interval"`
+	MaxElapsedTime      time.Duration `mapstructure:"max-elapsed-time"`
 }
 
 const (

@@ -596,11 +596,27 @@ func (c *CommitterRuntime) ensureAtLeastLastCommittedBlockNumber(t *testing.T, b
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		c.requireAllServicesAreRunning(t)
 		nextBlock, err := c.CoordinatorClient.GetNextBlockNumberToCommit(ctx, nil)
 		require.NoError(ct, err)
 		require.NotNil(ct, nextBlock)
 		require.Greater(ct, nextBlock.Number, blkNum)
 	}, 2*time.Minute, 250*time.Millisecond)
+}
+
+// requireAllServicesAreRunning fails the test if any managed process has exited unexpectedly.
+func (c *CommitterRuntime) requireAllServicesAreRunning(t *testing.T) {
+	t.Helper()
+	c.MockOrderer.requireRunning(t)
+	c.Coordinator.requireRunning(t)
+	c.Sidecar.requireRunning(t)
+	c.QueryService.requireRunning(t)
+	for _, p := range c.Verifier {
+		p.requireRunning(t)
+	}
+	for _, p := range c.VcService {
+		p.requireRunning(t)
+	}
 }
 
 func isMoreThanOneBitSet(bits int) bool {

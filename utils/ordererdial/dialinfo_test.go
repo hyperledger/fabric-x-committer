@@ -101,7 +101,7 @@ func TestOrdererConnectionMaterial(t *testing.T) {
 			name:      "TLS mode server includes CA certs",
 			endpoints: nil,
 			params: ordererdial.Parameters{
-				TLS: connection.TLSMaterials{Mode: connection.OneSideTLSMode},
+				TLS: connection.TLSCredentials{Mode: connection.OneSideTLSMode},
 				API: commontypes.Deliver,
 			},
 			expectedJointEndpointCount: 1,
@@ -113,7 +113,7 @@ func TestOrdererConnectionMaterial(t *testing.T) {
 			name:      "mTLS mode server includes CA certs",
 			endpoints: nil,
 			params: ordererdial.Parameters{
-				TLS: connection.TLSMaterials{Mode: connection.MutualTLSMode},
+				TLS: connection.TLSCredentials{Mode: connection.MutualTLSMode},
 				API: commontypes.Deliver,
 			},
 			expectedJointEndpointCount: 1,
@@ -125,17 +125,17 @@ func TestOrdererConnectionMaterial(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			material := createConfigBlockMaterial(t, 1, tc.endpoints)
-			connMaterial := ordererdial.NewClientMaterial(material, tc.params)
-			require.NotNil(t, connMaterial)
-			require.Len(t, connMaterial.Joint.Endpoints, tc.expectedJointEndpointCount)
-			require.ElementsMatch(t, tc.expectedIDs, slices.Collect(maps.Keys(connMaterial.PartyIDToMaterial)))
-			for _, m := range connMaterial.PartyIDToMaterial {
-				require.Len(t, m.Endpoints, tc.expectedEndpointCountPerID)
+			dialInfo := ordererdial.NewDialInfo(material, tc.params)
+			require.NotNil(t, dialInfo)
+			require.Len(t, dialInfo.Joint.Endpoints, tc.expectedJointEndpointCount)
+			require.ElementsMatch(t, tc.expectedIDs, slices.Collect(maps.Keys(dialInfo.PartyIDToDialInfo)))
+			for _, di := range dialInfo.PartyIDToDialInfo {
+				require.Len(t, di.Endpoints, tc.expectedEndpointCountPerID)
 			}
 			if tc.expectCACerts {
-				require.NotEmpty(t, connMaterial.Joint.TLS.CACerts)
+				require.NotEmpty(t, dialInfo.Joint.TLS.CACerts)
 			} else {
-				require.Empty(t, connMaterial.Joint.TLS.CACerts)
+				require.Empty(t, dialInfo.Joint.TLS.CACerts)
 			}
 		})
 	}
@@ -157,7 +157,7 @@ func TestOrdererConnectionMaterialShuffling(t *testing.T) {
 	})
 
 	params := ordererdial.Parameters{
-		TLS: connection.TLSMaterials{Mode: connection.NoneTLSMode},
+		TLS: connection.TLSCredentials{Mode: connection.NoneTLSMode},
 		API: commontypes.Deliver,
 	}
 
@@ -166,15 +166,15 @@ func TestOrdererConnectionMaterialShuffling(t *testing.T) {
 	for i := range uint32(3) {
 		perIDOrders[i] = make(map[string]any)
 	}
-	firstCall := ordererdial.NewClientMaterial(material, params)
+	firstCall := ordererdial.NewDialInfo(material, params)
 	for range 10 {
-		connMaterial := ordererdial.NewClientMaterial(material, params)
-		require.ElementsMatch(t, firstCall.Joint.Endpoints, connMaterial.Joint.Endpoints)
+		dialInfo := ordererdial.NewDialInfo(material, params)
+		require.ElementsMatch(t, firstCall.Joint.Endpoints, dialInfo.Joint.Endpoints)
 
-		jointOrders[connection.AddressString(connMaterial.Joint.Endpoints...)] = nil
-		for id, m := range connMaterial.PartyIDToMaterial {
-			require.ElementsMatch(t, firstCall.PartyIDToMaterial[id].Endpoints, m.Endpoints)
-			perIDOrders[id][connection.AddressString(m.Endpoints...)] = nil
+		jointOrders[connection.AddressString(dialInfo.Joint.Endpoints...)] = nil
+		for id, di := range dialInfo.PartyIDToDialInfo {
+			require.ElementsMatch(t, firstCall.PartyIDToDialInfo[id].Endpoints, di.Endpoints)
+			perIDOrders[id][connection.AddressString(di.Endpoints...)] = nil
 		}
 	}
 
@@ -192,28 +192,28 @@ func TestParameterPropagation(t *testing.T) {
 		{ID: 0, Host: "orderer2.example.com", Port: 7051},
 	})
 	retryProfile := &retry.Profile{MaxElapsedTime: 30}
-	tlsMaterials := connection.TLSMaterials{
+	tlsCreds := connection.TLSCredentials{
 		Mode:    connection.OneSideTLSMode,
 		Cert:    []byte("fake-cert"),
 		Key:     []byte("fake-key"),
 		CACerts: [][]byte{[]byte("fake-ca-cert")},
 	}
 	params := ordererdial.Parameters{
-		TLS:   tlsMaterials,
+		TLS:   tlsCreds,
 		Retry: retryProfile,
 		API:   commontypes.Deliver,
 	}
-	connMaterial := ordererdial.NewClientMaterial(material, params)
-	require.Equal(t, retryProfile, connMaterial.Joint.Retry)
-	for _, mat := range connMaterial.PartyIDToMaterial {
-		require.Equal(t, retryProfile, mat.Retry)
+	dialInfo := ordererdial.NewDialInfo(material, params)
+	require.Equal(t, retryProfile, dialInfo.Joint.Retry)
+	for _, di := range dialInfo.PartyIDToDialInfo {
+		require.Equal(t, retryProfile, di.Retry)
 	}
-	require.Equal(t, connection.OneSideTLSMode, connMaterial.Joint.TLS.Mode)
-	for _, mat := range connMaterial.PartyIDToMaterial {
-		require.Equal(t, tlsMaterials.Mode, mat.TLS.Mode)
-		require.Equal(t, tlsMaterials.Cert, mat.TLS.Cert)
-		require.Equal(t, tlsMaterials.Key, mat.TLS.Key)
-		require.Contains(t, mat.TLS.CACerts, tlsMaterials.CACerts[0])
+	require.Equal(t, connection.OneSideTLSMode, dialInfo.Joint.TLS.Mode)
+	for _, di := range dialInfo.PartyIDToDialInfo {
+		require.Equal(t, tlsCreds.Mode, di.TLS.Mode)
+		require.Equal(t, tlsCreds.Cert, di.TLS.Cert)
+		require.Equal(t, tlsCreds.Key, di.TLS.Key)
+		require.Contains(t, di.TLS.CACerts, tlsCreds.CACerts[0])
 	}
 }
 

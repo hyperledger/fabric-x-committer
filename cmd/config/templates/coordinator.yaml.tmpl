@@ -1,0 +1,15 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+{{ include "service" . | indent 0 }}
+
+verifier:
+{{ include "endpointListWithSharedTLS" (dict "Servers" .Services.Verifier "TLS" .ClientTLS) | indent 2 }}
+validator-committer:
+{{ include "endpointListWithSharedTLS" (dict "Servers" .Services.VCService "TLS" .ClientTLS) | indent 2 }}
+
+dependency-graph:
+  num-of-local-dep-constructors: 1
+  waiting-txs-limit: 100_000
+per-channel-buffer-size-per-goroutine: 10

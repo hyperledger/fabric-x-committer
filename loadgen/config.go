@@ -13,6 +13,12 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
+// Default configuration values for the load generator.
+const (
+	DefaultServerPort     = 8001
+	DefaultMonitoringPort = 2118
+)
+
 type (
 	// ClientConfig is a struct that contains the configuration for the client.
 	ClientConfig struct {

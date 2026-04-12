@@ -1,0 +1,30 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+{{ include "service" . | indent 0 }}
+  keep-alive:
+    params:
+      time: 300s
+      timeout: 600s
+    enforcement-policy:
+      min-time: 60s
+      permit-without-stream: false
+{{ include "rateLimit" . | indent 2 }}
+  max-concurrent-streams: {{ .MaxConcurrentStreams | default 0 }}
+
+{{ include "ordererDialConfig" . | indent 0 }}
+
+committer:
+{{ include "endpointWithTLS" (dict "Endpoint" .Services.Coordinator.GrpcEndpoint "TLS" .ClientTLS) | indent 2 }}
+
+ledger:
+  path: {{ .LedgerPath }}
+  sync-interval: 100
+
+notification:
+  max-timeout: 10m
+
+last-committed-block-set-interval: 5s
+waiting-txs-limit: 20_000_000
+channel-buffer-size: 100
