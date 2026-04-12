@@ -39,10 +39,13 @@ var (
 	portConflictRegex = regexp.MustCompile(`(?i)(address\s+already\s+in\s+use|port\s+is\s+already\s+allocated)`)
 )
 
-// GrpcServer instantiate a [grpc.Server].
-func (c *ServerConfig) GrpcServer() (*grpc.Server, error) {
+// GrpcServer instantiates a [grpc.Server] with additional CA certificate bytes
+// merged with those from the TLS configuration.
+// This is useful when CA certificates come from
+// multiple sources (e.g., YAML config + config blocks).
+func (c *ServerConfig) GrpcServer(additionalCAs ...[]byte) (*grpc.Server, error) {
 	opts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxMsgSize), grpc.MaxSendMsgSize(maxMsgSize)}
-	serverGrpcTransportCreds, err := c.TLS.ServerCredentials()
+	serverGrpcTransportCreds, err := c.TLS.ServerCredentials(additionalCAs...)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed loading the server's grpc credentials")
 	}

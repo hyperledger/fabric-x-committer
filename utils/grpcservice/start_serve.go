@@ -40,6 +40,16 @@ type Registerer interface {
 // to be ready, then creates and serves gRPC server(s). Stops everything
 // if either the service or any server exits.
 func StartAndServe(ctx context.Context, service Service, serverConfigs ...*connection.ServerConfig) error {
+	return StartAndServeWithAdditionalCAs(ctx, service, serverConfigs, nil)
+}
+
+// StartAndServeWithAdditionalCAs runs a full lifecycle service: starts the service, waits for it
+// to be ready, then creates and serves gRPC server(s). Stops everything
+// if either the service or any server exits.
+// Optional additionalCAs can be provided to merge with the server's configured CAs.
+func StartAndServeWithAdditionalCAs(
+	ctx context.Context, service Service, serverConfigs []*connection.ServerConfig, additionalCAs [][]byte,
+) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -61,7 +71,7 @@ func StartAndServe(ctx context.Context, service Service, serverConfigs ...*conne
 		g.Go(func() error {
 			// If the GRPC servers stop, there is no reason to continue the service.
 			defer cancel()
-			return Serve(gCtx, service, sc)
+			return Serve(gCtx, service, sc, additionalCAs...)
 		})
 	}
 	return g.Wait()
@@ -70,12 +80,14 @@ func StartAndServe(ctx context.Context, service Service, serverConfigs ...*conne
 // Serve creates a gRPC server and listener from the config, registers the
 // service, and serves until the context is done. For services that only
 // implement Registerer (e.g., mock services without Run/WaitForReady).
-func Serve(ctx context.Context, service Registerer, serverConfig *connection.ServerConfig) error {
+func Serve(
+	ctx context.Context, service Registerer, serverConfig *connection.ServerConfig, additionalCAs ...[]byte,
+) error {
 	listener, err := serverConfig.Listener(ctx)
 	if err != nil {
 		return err
 	}
-	server, err := serverConfig.GrpcServer()
+	server, err := serverConfig.GrpcServer(additionalCAs...)
 	if err != nil {
 		return errors.Wrapf(err, "failed creating grpc server")
 	}

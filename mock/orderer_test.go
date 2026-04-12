@@ -618,3 +618,73 @@ func makeEnvelopePayload(i int) *common.Envelope {
 		Payload: fmt.Appendf(nil, "%d", i),
 	}
 }
+
+func TestNewMockOrdererWithApplicationCAs(t *testing.T) {
+	t.Parallel()
+
+	peerOrgCount := uint32(2)
+	serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, connection.MutualTLSMode)
+	// Create test environment with peer organizations
+	env := NewOrdererTestEnv(t, &OrdererTestParameters{
+		ChanID:                "test-channel",
+		NumIDs:                2,
+		ServerPerID:           2,
+		PeerOrganizationCount: peerOrgCount,
+		ServerTLSConfig:       serverTLSConfig,
+		OrdererConfig: &OrdererConfig{
+			BlockSize:        10,
+			BlockTimeout:     time.Second,
+			OutBlockCapacity: 100,
+			PayloadCacheSize: 100,
+		},
+	})
+
+	// Verify that application CAs were loaded from config block
+	require.Len(t, env.Orderer.applicationCAs, int(peerOrgCount),
+		"Should have loaded %d CA certificates from config block", peerOrgCount)
+
+	// Build client TLS configs for each peer organization with mutual TLS.
+	clientTLSConfigs, err := testcrypto.BuildClientTLSConfigsPerOrg(env.ArtifactsPath)
+	require.NoError(t, err)
+
+	// Verify we can actually connect from each peer organization using the loaded CAs
+	for orgName, tlsConfig := range clientTLSConfigs.Peer {
+		t.Run(fmt.Sprintf("connect_from_%s", orgName), func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+
+			// Add the root CA of the orderer's certificates.
+			tlsConfig.CACertPaths = append(tlsConfig.CACertPaths, clientTLSConfig.CACertPaths...)
+
+			// Create connection with peer org's TLS config
+			conn, err := connection.NewSingleConnection(&connection.ClientConfig{
+				Endpoint: &env.AllServerConfig[0].Endpoint,
+				TLS:      tlsConfig,
+			})
+			require.NoError(t, err, "Should create connection from peer org %s", orgName)
+			defer conn.Close() //nolint:errcheck
+
+			// Establish a deliver stream to force the TLS handshake
+			client := ab.NewAtomicBroadcastClient(conn)
+			stream, err := client.Deliver(ctx)
+			require.NoError(t, err, "Should create deliver stream from peer org %s", orgName)
+
+			// Send a seek request to actually establish the connection.
+			// We don't verify the response as we're only testing the TLS handshake.
+			seekEnv, err := protoutil.CreateSignedEnvelope(
+				common.HeaderType_DELIVER_SEEK_INFO, env.ChanID, nil, &ab.SeekInfo{
+					Start: &ab.SeekPosition{
+						Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{Number: 0}},
+					},
+					Stop: &ab.SeekPosition{
+						Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{Number: 0}},
+					},
+					Behavior: ab.SeekInfo_BLOCK_UNTIL_READY,
+				}, 0, 0,
+			)
+			require.NoError(t, err)
+			require.NoError(t, stream.Send(seekEnv), "Should send seek request from peer org %s", orgName)
+		})
+	}
+}

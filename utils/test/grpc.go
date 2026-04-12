@@ -92,12 +92,16 @@ func ServerToMultiClientConfig(
 // did not specify a port.
 // The method asserts that the GRPC server did not end with failure.
 func RunGrpcServerForTest(
-	ctx context.Context, tb testing.TB, serverConfig *connection.ServerConfig, register func(server *grpc.Server),
+	ctx context.Context,
+	tb testing.TB,
+	serverConfig *connection.ServerConfig,
+	register func(server *grpc.Server),
+	additionalCAs ...[]byte,
 ) *grpc.Server {
 	tb.Helper()
 	listener, err := serverConfig.Listener(ctx)
 	require.NoError(tb, err)
-	server, err := serverConfig.GrpcServer()
+	server, err := serverConfig.GrpcServer(additionalCAs...)
 	require.NoError(tb, err)
 
 	if register != nil {

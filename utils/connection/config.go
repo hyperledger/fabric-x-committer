@@ -112,11 +112,14 @@ func (c TLSConfig) ClientCredentials() (credentials.TransportCredentials, error)
 	return NewClientGRPCTransportCredentials(tlsCreds)
 }
 
-// ServerCredentials converts TLSConfig into a TLSCredentials struct and generates server creds.
-func (c TLSConfig) ServerCredentials() (credentials.TransportCredentials, error) {
+// ServerCredentials converts TLSConfig into a TLSMaterials struct and generates server creds.
+func (c TLSConfig) ServerCredentials(additionalCAs ...[]byte) (credentials.TransportCredentials, error) {
 	tlsCreds, err := NewServerTLSCredentials(c)
 	if err != nil {
 		return nil, err
+	}
+	if len(additionalCAs) > 0 && tlsCreds.Mode == MutualTLSMode {
+		tlsCreds.CACerts = append(tlsCreds.CACerts, additionalCAs...)
 	}
 	return NewServerGRPCTransportCredentials(tlsCreds)
 }
