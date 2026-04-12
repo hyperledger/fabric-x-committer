@@ -85,7 +85,7 @@ func startMockOrderer() *cobra.Command {
 				serverConfigs = append(serverConfigs, conf.Server)
 			}
 			return grpcservice.StartAndServeWithAdditionalCAs(
-				cmd.Context(), service, serverConfigs, service.GetConfigBlockCAs()...,
+				cmd.Context(), service, serverConfigs, service.GetConfigBlockCAs(),
 			)
 		},
 	}

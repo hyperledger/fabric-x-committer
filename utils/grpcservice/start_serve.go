@@ -40,14 +40,15 @@ type Registerer interface {
 // to be ready, then creates and serves gRPC server(s). Stops everything
 // if either the service or any server exits.
 func StartAndServe(ctx context.Context, service Service, serverConfigs ...*connection.ServerConfig) error {
-	return StartAndServeWithAdditionalCAs(ctx, service, serverConfigs)
+	return StartAndServeWithAdditionalCAs(ctx, service, serverConfigs, nil)
 }
 
 // StartAndServeWithAdditionalCAs runs a full lifecycle service: starts the service, waits for it
 // to be ready, then creates and serves gRPC server(s). Stops everything
 // if either the service or any server exits.
+// Optional additionalCAs can be provided to merge with the server's configured CAs.
 func StartAndServeWithAdditionalCAs(
-	ctx context.Context, service Service, serverConfigs []*connection.ServerConfig, additionalCAs ...[]byte,
+	ctx context.Context, service Service, serverConfigs []*connection.ServerConfig, additionalCAs [][]byte,
 ) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()

@@ -514,11 +514,15 @@ func newBlockCache(size int) *blockCache {
 	}
 }
 
-// GetConfigBlockCAs returns the application root CAs loaded from the config block at initialization.
-// We do not export the field directly to avoid unintended modifications,
-// as these CAs are used when creating the gRPC servers.
+// GetConfigBlockCAs returns a copy of the application root CAs loaded from the config block at initialization.
+// Returns a defensive copy to prevent unintended modifications to the internal slice.
 func (o *Orderer) GetConfigBlockCAs() [][]byte {
-	return o.applicationCAs
+	if len(o.applicationCAs) == 0 {
+		return nil
+	}
+	result := make([][]byte, len(o.applicationCAs))
+	copy(result, o.applicationCAs)
+	return result
 }
 
 func (c *blockCache) releaseAfter(ctx context.Context) (stop func() bool) {

@@ -670,7 +670,8 @@ func TestNewMockOrdererWithApplicationCAs(t *testing.T) {
 			stream, err := client.Deliver(ctx)
 			require.NoError(t, err, "Should create deliver stream from peer org %s", orgName)
 
-			// Send a seek request to actually establish the connection
+			// Send a seek request to actually establish the connection.
+			// We don't verify the response as we're only testing the TLS handshake.
 			seekEnv, err := protoutil.CreateSignedEnvelope(
 				common.HeaderType_DELIVER_SEEK_INFO, env.ChanID, nil, &ab.SeekInfo{
 					Start: &ab.SeekPosition{

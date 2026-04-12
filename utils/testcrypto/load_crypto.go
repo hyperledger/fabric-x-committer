@@ -125,8 +125,8 @@ func GetOrdererConnConfig(artifactsPath string, clientTLSConfig connection.TLSCo
 	}
 }
 
-// PerOrgTLSConfig holds each organization's representative TLS config for future client creation.
-// We use this struct for the TestWithDynamicRootCAs.
+// PerOrgTLSConfig holds each organization's representative TLS config for client creation.
+// Used in tests that verify dynamic CA loading from config blocks.
 type PerOrgTLSConfig struct {
 	Peer map[string]connection.TLSConfig
 }
@@ -139,10 +139,10 @@ func BuildClientTLSConfigsPerOrg(root string) (*PerOrgTLSConfig, error) {
 	orgEntries, err := os.ReadDir(peerRoot)
 	// If the path doesn't exist, return empty maps to avoid nil pointer issues
 	if err != nil {
-		return nil, errors.Newf("failed to read peer organizations dir: %v", peerRoot)
+		return nil, errors.Wrapf(err, "failed to read peer organizations dir: %s", peerRoot)
 	}
 
-	// go over all peer organizations
+	// Go over all peer organizations
 	for _, orgEntry := range orgEntries {
 		if !orgEntry.IsDir() {
 			continue
@@ -151,10 +151,10 @@ func BuildClientTLSConfigsPerOrg(root string) (*PerOrgTLSConfig, error) {
 		orgName := orgEntry.Name()
 		usersDir := filepath.Join(peerRoot, orgName, cryptogen.UsersDir)
 
-		// Extracted the inner loop logic to a helper function
+		// Find the first client user in the organization
 		clientUser, err := getClientUser(usersDir)
 		if err != nil {
-			return nil, errors.Newf("org %s: %w", orgName, err)
+			return nil, errors.Wrapf(err, "org %s", orgName)
 		}
 
 		// Define paths relative to the selected client user
@@ -176,7 +176,7 @@ func BuildClientTLSConfigsPerOrg(root string) (*PerOrgTLSConfig, error) {
 func getClientUser(usersDir string) (string, error) {
 	userEntries, err := os.ReadDir(usersDir)
 	if err != nil {
-		return "", errors.Newf("missing or failed to read users dir: %e", err)
+		return "", errors.Wrapf(err, "missing or failed to read users dir")
 	}
 
 	for _, u := range userEntries {
