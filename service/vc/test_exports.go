@@ -18,6 +18,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
@@ -85,7 +86,7 @@ func NewValidatorAndCommitServiceTestEnv(t *testing.T, opts *TestEnvOpts) *Valid
 			ResourceLimits: opts.ResourceLimits,
 			Monitoring:     test.NewLocalHostServer(test.InsecureTLSConfig),
 		}
-		vcs, err := NewValidatorCommitterService(initCtx, config)
+		vcs, err := NewValidatorCommitterService(initCtx, config, monitoring.NewMetricsProvider())
 		require.NoError(t, err)
 		t.Cleanup(vcs.Close)
 		test.RunServiceAndGrpcForTest(t.Context(), t, vcs, config.Server)
@@ -167,7 +168,7 @@ func NewDatabaseTestEnvFromConnection(t *testing.T, cs *testdb.Connection, loadB
 		Retry:          testdb.DefaultRetry,
 	}
 
-	m := newVCServiceMetrics()
+	m := newVCServiceMetrics(monitoring.NewMetricsProvider())
 	sCtx, sCancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(sCancel)
 	dbObject, err := newDatabase(sCtx, config, m)

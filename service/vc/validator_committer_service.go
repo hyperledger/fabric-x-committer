@@ -26,7 +26,9 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
+	"github.com/hyperledger/fabric-x-committer/utils/periodic"
 )
 
 var logger = flogging.MustGetLogger("validator-committer")
@@ -73,6 +75,7 @@ type ValidatorCommitterService struct {
 func NewValidatorCommitterService(
 	ctx context.Context,
 	config *Config,
+	metricsProvider *monitoring.MetricsProvider,
 ) (*ValidatorCommitterService, error) {
 	logger.Info("Initializing new validator committer service.")
 	l := config.ResourceLimits
@@ -85,7 +88,7 @@ func NewValidatorCommitterService(
 	validatedTxs := make(chan *validatedTransactions, queueMultiplier)
 	txsStatus := make(chan *committerpb.TxStatusBatch, l.MaxWorkersForCommitter*queueMultiplier)
 
-	metrics := newVCServiceMetrics()
+	metrics := newVCServiceMetrics(metricsProvider)
 	db, err := newDatabase(ctx, config.Database, metrics)
 	if err != nil {
 		logger.Errorf("%+v", err)
@@ -119,13 +122,8 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 	g, eCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		logger.Info("Starting Prometheus monitoring server")
-		_ = vc.metrics.StartPrometheusServer(
-			eCtx, vc.config.Monitoring, vc.monitorQueues,
-		)
-		// We don't return error here to avoid stopping the service due to monitoring error.
-		// But we use the errgroup to ensure the method returns only when the server exits.
-		return nil
+		logger.Info("Starting queue monitoring")
+		return vc.monitorQueues(eCtx)
 	})
 
 	g.Go(func() error {
@@ -170,21 +168,18 @@ func (vc *ValidatorCommitterService) RegisterService(server *grpc.Server) {
 	healthgrpc.RegisterHealthServer(server, vc.healthcheck)
 }
 
-func (vc *ValidatorCommitterService) monitorQueues(ctx context.Context) {
+func (vc *ValidatorCommitterService) monitorQueues(ctx context.Context) error {
 	// TODO: make sampling time configurable
-	ticker := time.NewTicker(250 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
+	for range periodic.Ticker(ctx, 250*time.Millisecond) {
+		if ctx.Err() != nil {
+			break
 		}
 		promutil.SetGauge(vc.metrics.preparerInputQueueSize, len(vc.toPrepareTxs))
 		promutil.SetGauge(vc.metrics.validatorInputQueueSize, len(vc.preparedTxs))
 		promutil.SetGauge(vc.metrics.committerInputQueueSize, len(vc.validatedTxs))
 		promutil.SetGauge(vc.metrics.txStatusOutputQueueSize, len(vc.txsStatus))
 	}
+	return ctx.Err()
 }
 
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger.

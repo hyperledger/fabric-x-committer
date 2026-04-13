@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -101,7 +102,7 @@ func TestBlockDelivery(t *testing.T) {
 func newBlockStoreWithBlocks(t *testing.T, numBlocks int) (*blockStore, [][3]string) {
 	t.Helper()
 
-	bs, err := newBlockStore(t.TempDir(), 0, newPerformanceMetrics())
+	bs, err := newBlockStore(t.TempDir(), 0, newPerformanceMetrics(monitoring.NewMetricsProvider()))
 	require.NoError(t, err)
 	t.Cleanup(bs.close)
 

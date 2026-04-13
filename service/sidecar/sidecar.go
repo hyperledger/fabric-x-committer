@@ -29,7 +29,9 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliverorderer"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
+	"github.com/hyperledger/fabric-x-committer/utils/periodic"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
@@ -55,7 +57,7 @@ type Service struct {
 }
 
 // New creates a sidecar service.
-func New(c *Config) (*Service, error) {
+func New(c *Config, metricsProvider *monitoring.MetricsProvider) (*Service, error) {
 	logger.Info("Initializing new sidecar")
 
 	// 1. Load the delivery parameters for the ordering service.
@@ -65,7 +67,7 @@ func New(c *Config) (*Service, error) {
 	}
 
 	// 2. Relay the blocks to committer and receive the transaction status.
-	metrics := newPerformanceMetrics()
+	metrics := newPerformanceMetrics(metricsProvider)
 	relayService := newRelay(c.LastCommittedBlockSetInterval, metrics)
 
 	// 3. Deliver the block with status to client.
@@ -99,10 +101,6 @@ func (*Service) WaitForReady(context.Context) bool {
 func (s *Service) Run(ctx context.Context) error {
 	pCtx, pCancel := context.WithCancel(ctx)
 	defer pCancel()
-	// similar to other services, when the prometheus server returns an error, we do not terminate the service.
-	go func() {
-		_ = s.metrics.StartPrometheusServer(pCtx, s.config.Monitoring, s.monitorQueues)
-	}()
 
 	logger.Infof("Create coordinator client and connect to %s", s.config.Committer.Endpoint)
 	conn, connErr := connection.NewSingleConnection(s.config.Committer)
@@ -119,6 +117,9 @@ func (s *Service) Run(ctx context.Context) error {
 	// The following runs independently of the coordinator connection lifecycle.
 	// gCtx will be cancelled if these stopped processing due to ledger error.
 	// Such errors require human interaction to resolve the ledger discrepancy.
+	g.Go(func() error {
+		return s.monitorQueues(gCtx)
+	})
 	g.Go(func() error {
 		// Deliver the block with status to clients.
 		return s.blockStore.run(gCtx, &blockStoreRunConfig{
@@ -383,22 +384,19 @@ func appendMissingBlock(
 	return nil
 }
 
-func (s *Service) monitorQueues(ctx context.Context) {
-	ticker := time.NewTicker(100 * time.Millisecond)
-	m := s.metrics
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
+func (s *Service) monitorQueues(ctx context.Context) error {
+	for range periodic.Ticker(ctx, 100*time.Millisecond) {
+		if ctx.Err() != nil {
+			break
 		}
-
+		m := s.metrics
 		blockToBeCommittedChan := s.blockToBeCommitted.Load()
 		if blockToBeCommittedChan != nil {
 			promutil.SetGauge(m.yetToBeCommittedBlocksQueueSize, len(*blockToBeCommittedChan))
 		}
 		promutil.SetGauge(m.committedBlocksQueueSize, len(s.committedBlock))
 	}
+	return ctx.Err()
 }
 
 // Close closes the ledger.

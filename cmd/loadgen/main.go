@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 
 	"github.com/hyperledger/fabric-x-committer/utils/grpcservice"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
 
 const (
@@ -72,7 +73,16 @@ func loadGenCMD() *cobra.Command {
 				conf.Generate = adapters.Phases{Load: true}
 			}
 
-			client, err := loadgen.NewLoadGenClient(conf)
+			// Create provider and start monitoring server
+			provider := monitoring.NewMetricsProvider()
+			err = monitoring.StartHTTPServer(
+				cmd.Context(), &conf.Monitoring.ServerConfig, provider.Registry(),
+			)
+			if err != nil {
+				return err
+			}
+
+			client, err := loadgen.NewLoadGenClient(conf, provider)
 			if err != nil {
 				return err
 			}

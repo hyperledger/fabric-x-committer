@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -32,7 +33,7 @@ func newPrepareTestEnv(t *testing.T) *prepareTestEnv {
 	t.Helper()
 	txBatch := make(chan *servicepb.VcBatch, 10)
 	preparedTxs := make(chan *preparedTransactions, 10)
-	metrics := newVCServiceMetrics()
+	metrics := newVCServiceMetrics(monitoring.NewMetricsProvider())
 	p := newPreparer(txBatch, preparedTxs, metrics)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return p.run(ctx, 1)
@@ -692,7 +693,7 @@ func BenchmarkPrepare(b *testing.B) {
 		b.Run(fmt.Sprintf("w=%d", w), func(b *testing.B) {
 			txBatch := make(chan *servicepb.VcBatch, 8)
 			preparedTxs := make(chan *preparedTransactions, 8)
-			metrics := newVCServiceMetrics()
+			metrics := newVCServiceMetrics(monitoring.NewMetricsProvider())
 			p := newPreparer(txBatch, preparedTxs, metrics)
 			test.RunServiceForTest(b.Context(), b, func(ctx context.Context) error {
 				return p.run(ctx, w)

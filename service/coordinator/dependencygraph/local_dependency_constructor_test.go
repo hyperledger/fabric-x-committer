@@ -31,7 +31,7 @@ func newLocalDependencyConstructorTestEnv(t *testing.T) *localDependencyConstruc
 	inComingTxs := make(chan *TransactionBatch, 5)
 	outGoingTxs := make(chan *transactionNodeBatch, 5)
 
-	metrics := newPerformanceMetrics(monitoring.NewProvider())
+	metrics := newPerformanceMetrics(monitoring.NewMetricsProvider())
 	ldc := newLocalDependencyConstructor(inComingTxs, outGoingTxs, metrics)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		ldc.run(ctx, 5)

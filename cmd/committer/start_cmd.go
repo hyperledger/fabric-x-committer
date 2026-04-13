@@ -11,6 +11,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/cobra"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/cliutil"
@@ -19,7 +20,9 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcservice"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
 
 func startCMD() *cobra.Command {
@@ -56,9 +59,14 @@ func startService(ctx context.Context, name, configPath string) error {
 		return err
 	}
 
+	metricsProvider := monitoring.NewMetricsProvider()
+	if err := startMonitoringServer(ctx, conf, metricsProvider.Registry()); err != nil {
+		return err
+	}
+
 	switch c := conf.(type) {
 	case *sidecar.Config:
-		service, err := sidecar.New(c)
+		service, err := sidecar.New(c, metricsProvider)
 		if err != nil {
 			return errors.Wrap(err, "failed to create sidecar service")
 		}
@@ -66,10 +74,10 @@ func startService(ctx context.Context, name, configPath string) error {
 		return grpcservice.StartAndServe(ctx, service, c.Server)
 
 	case *coordinator.Config:
-		return grpcservice.StartAndServe(ctx, coordinator.NewCoordinatorService(c), c.Server)
+		return grpcservice.StartAndServe(ctx, coordinator.NewCoordinatorService(c, metricsProvider), c.Server)
 
 	case *vc.Config:
-		service, err := vc.NewValidatorCommitterService(ctx, c)
+		service, err := vc.NewValidatorCommitterService(ctx, c, metricsProvider)
 		if err != nil {
 			return errors.Wrap(err, "failed to create validator committer service")
 		}
@@ -77,12 +85,30 @@ func startService(ctx context.Context, name, configPath string) error {
 		return grpcservice.StartAndServe(ctx, service, c.Server)
 
 	case *verifier.Config:
-		return grpcservice.StartAndServe(ctx, verifier.New(c), c.Server)
+		return grpcservice.StartAndServe(ctx, verifier.New(c, metricsProvider), c.Server)
 
 	case *query.Config:
-		return grpcservice.StartAndServe(ctx, query.NewQueryService(c), c.Server)
+		return grpcservice.StartAndServe(ctx, query.NewQueryService(c, metricsProvider), c.Server)
 
 	default:
 		return errors.Newf("unknown config type: %T", conf)
 	}
+}
+
+func startMonitoringServer(ctx context.Context, conf any, registry *prometheus.Registry) error {
+	var monitoringConf *connection.ServerConfig
+	switch c := conf.(type) {
+	case *sidecar.Config:
+		monitoringConf = c.Monitoring
+	case *coordinator.Config:
+		monitoringConf = c.Monitoring
+	case *vc.Config:
+		monitoringConf = c.Monitoring
+	case *verifier.Config:
+		monitoringConf = c.Monitoring
+	case *query.Config:
+		monitoringConf = c.Monitoring
+	}
+
+	return monitoring.StartHTTPServer(ctx, monitoringConf, registry)
 }

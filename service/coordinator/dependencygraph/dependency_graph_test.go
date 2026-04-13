@@ -25,7 +25,7 @@ func TestDependencyGraph(t *testing.T) {
 	localDepIncomingTxs := make(chan *TransactionBatch, 10)
 	localDepOutgoingTxs := make(chan *transactionNodeBatch, 10)
 
-	metrics := newPerformanceMetrics(monitoring.NewProvider())
+	metrics := newPerformanceMetrics(monitoring.NewMetricsProvider())
 	ldc := newLocalDependencyConstructor(localDepIncomingTxs, localDepOutgoingTxs, metrics)
 
 	globalDepOutgoingTxs := make(chan TxNodeBatch, 10)

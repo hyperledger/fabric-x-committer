@@ -7,191 +7,70 @@ SPDX-License-Identifier: Apache-2.0
 package monitoring
 
 import (
-	"context"
-	"crypto/tls"
 	"fmt"
-	"net/http"
-	"net/http/pprof"
-	"net/url"
-	"sync/atomic"
-	"time"
 
-	"github.com/cockroachdb/errors"
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"golang.org/x/sync/errgroup"
-
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
-const (
-	httpsScheme    = "https://"
-	httpScheme     = "http://"
-	metricsSubPath = "/metrics"
-	pprofSubPath   = "/debug/pprof/"
-)
-
-// Provider is a prometheus metrics provider.
-type Provider struct {
+// MetricsProvider is a prometheus metrics provider.
+type MetricsProvider struct {
 	registry *prometheus.Registry
-	url      atomic.Pointer[string]
 }
 
-var logger = flogging.MustGetLogger("monitoring")
-
-// NewProvider creates a new prometheus metrics provider.
-func NewProvider() *Provider {
-	return &Provider{registry: prometheus.NewRegistry()}
+// NewMetricsProvider creates a new prometheus metrics provider.
+func NewMetricsProvider() *MetricsProvider {
+	return &MetricsProvider{registry: prometheus.NewRegistry()}
 }
 
-// StartPrometheusServer starts a prometheus server.
-// It also starts the given monitoring methods. Their context will cancel once the server is cancelled.
-// This method returns once the server is shutdown and all monitoring methods returns.
-func (p *Provider) StartPrometheusServer(
-	ctx context.Context, serverConfig *connection.ServerConfig, monitor ...func(context.Context),
-) error {
-	logger.Debugf("Creating prometheus server with secure mode: %v", serverConfig.TLS.Mode)
-	// Generate TLS configuration from the server config.
-	serverCreds, err := connection.NewServerTLSCredentials(serverConfig.TLS)
-	if err != nil {
-		return errors.Wrap(err, "failed to create TLS credentials for prometheus server")
-	}
-	serverTLSConfig, err := serverCreds.CreateServerTLSConfig()
-	if err != nil {
-		return err
-	}
-	mux := http.NewServeMux()
-	mux.Handle(
-		metricsSubPath,
-		promhttp.HandlerFor(
-			p.Registry(),
-			promhttp.HandlerOpts{
-				Registry: p.Registry(),
-			},
-		),
-	)
-
-	// Register pprof handlers for profiling.
-	// Note: We must explicitly register these handlers because we're using a custom ServeMux.
-	// The net/http/pprof package's init() function only registers handlers on http.DefaultServeMux,
-	// which we're not using. Simply importing the package is insufficient for custom muxes.
-	//
-	// The Index handler dynamically serves all runtime profiles (heap, goroutine, allocs, block,
-	// mutex, threadcreate, etc.) without requiring explicit registration. Only special handlers
-	// (cmdline, profile, symbol, trace) need to be registered separately.
-	mux.HandleFunc(pprofSubPath, pprof.Index)
-	mux.HandleFunc(pprofSubPath+"cmdline", pprof.Cmdline)
-	mux.HandleFunc(pprofSubPath+"profile", pprof.Profile)
-	mux.HandleFunc(pprofSubPath+"symbol", pprof.Symbol)
-	mux.HandleFunc(pprofSubPath+"trace", pprof.Trace)
-	server := &http.Server{
-		ReadTimeout: 30 * time.Second,
-		Handler:     mux,
-		TLSConfig:   serverTLSConfig,
-	}
-
-	l, err := serverConfig.Listener(ctx)
-	if err != nil {
-		return err
-	}
-	defer connection.CloseConnectionsLog(l)
-
-	if serverTLSConfig != nil {
-		l = tls.NewListener(l, serverTLSConfig)
-	}
-
-	metricsURL, err := MakeMetricsURL(l.Addr().String(), serverTLSConfig)
-	if err != nil {
-		return err
-	}
-	p.url.Store(&metricsURL)
-
-	g, gCtx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		logger.Infof("Prometheus serving on URL: %s", metricsURL)
-		defer logger.Info("Prometheus stopped serving")
-		return server.Serve(l)
-	})
-
-	// The following ensures the method does not return before all monitor methods return.
-	for _, m := range monitor {
-		g.Go(func() error {
-			m(gCtx)
-			return nil
-		})
-	}
-
-	// The following ensures the method does not return before the close procedure is complete.
-	stopAfter := context.AfterFunc(ctx, func() {
-		g.Go(func() error {
-			if errClose := server.Close(); err != nil {
-				return errors.Wrap(errClose, "failed to close prometheus server")
-			}
-			return nil
-		})
-	})
-	defer stopAfter()
-
-	if err = g.Wait(); !errors.Is(err, http.ErrServerClosed) {
-		return errors.Wrap(err, "prometheus server stopped with an error")
-	}
-	return nil
-}
-
-// URL returns the prometheus server URL.
-func (p *Provider) URL() string {
-	metricsURL := p.url.Load()
-	if metricsURL != nil {
-		return *metricsURL
-	}
-	return ""
+// Registry returns the prometheus registry.
+func (p *MetricsProvider) Registry() *prometheus.Registry {
+	return p.registry
 }
 
 // NewCounter creates a new prometheus counter.
-func (p *Provider) NewCounter(opts prometheus.CounterOpts) prometheus.Counter {
+func (p *MetricsProvider) NewCounter(opts prometheus.CounterOpts) prometheus.Counter {
 	c := prometheus.NewCounter(opts)
 	p.registry.MustRegister(c)
 	return c
 }
 
 // NewCounterVec creates a new prometheus counter vector.
-func (p *Provider) NewCounterVec(opts prometheus.CounterOpts, labels []string) *prometheus.CounterVec {
+func (p *MetricsProvider) NewCounterVec(opts prometheus.CounterOpts, labels []string) *prometheus.CounterVec {
 	cv := prometheus.NewCounterVec(opts, labels)
 	p.registry.MustRegister(cv)
 	return cv
 }
 
 // NewGauge creates a new prometheus gauge.
-func (p *Provider) NewGauge(opts prometheus.GaugeOpts) prometheus.Gauge {
+func (p *MetricsProvider) NewGauge(opts prometheus.GaugeOpts) prometheus.Gauge {
 	g := prometheus.NewGauge(opts)
 	p.registry.MustRegister(g)
 	return g
 }
 
 // NewGaugeVec creates a new prometheus gauge vector.
-func (p *Provider) NewGaugeVec(opts prometheus.GaugeOpts, labels []string) *prometheus.GaugeVec {
+func (p *MetricsProvider) NewGaugeVec(opts prometheus.GaugeOpts, labels []string) *prometheus.GaugeVec {
 	gv := prometheus.NewGaugeVec(opts, labels)
 	p.registry.MustRegister(gv)
 	return gv
 }
 
 // NewHistogram creates a new prometheus histogram.
-func (p *Provider) NewHistogram(opts prometheus.HistogramOpts) prometheus.Histogram {
+func (p *MetricsProvider) NewHistogram(opts prometheus.HistogramOpts) prometheus.Histogram {
 	h := prometheus.NewHistogram(opts)
 	p.registry.MustRegister(h)
 	return h
 }
 
 // NewHistogramVec creates a new prometheus histogram vector.
-func (p *Provider) NewHistogramVec(opts prometheus.HistogramOpts, labels []string) *prometheus.HistogramVec {
+func (p *MetricsProvider) NewHistogramVec(opts prometheus.HistogramOpts, labels []string) *prometheus.HistogramVec {
 	hv := prometheus.NewHistogramVec(opts, labels)
 	p.registry.MustRegister(hv)
 	return hv
 }
 
 // NewThroughputCounter creates a new prometheus throughput counter.
-func (p *Provider) NewThroughputCounter(
+func (p *MetricsProvider) NewThroughputCounter(
 	component, subComponent string,
 	direction ThroughputDirection,
 ) prometheus.Counter {
@@ -204,7 +83,7 @@ func (p *Provider) NewThroughputCounter(
 }
 
 // NewConnectionMetrics supports common connection metrics.
-func (p *Provider) NewConnectionMetrics(opts ConnectionMetricsOpts) *ConnectionMetrics {
+func (p *MetricsProvider) NewConnectionMetrics(opts ConnectionMetricsOpts) *ConnectionMetrics {
 	subsystem := fmt.Sprintf("grpc_%s", opts.RemoteNamespace)
 	return &ConnectionMetrics{
 		Status: p.NewGaugeVec(prometheus.GaugeOpts{
@@ -224,20 +103,4 @@ func (p *Provider) NewConnectionMetrics(opts ConnectionMetricsOpts) *ConnectionM
 				"Short-lived failures may not always be captured.",
 		}, []string{"grpc_target"}),
 	}
-}
-
-// Registry returns the prometheus registry.
-func (p *Provider) Registry() *prometheus.Registry {
-	return p.registry
-}
-
-// MakeMetricsURL construct the Prometheus metrics URL.
-// based on the secure level, we set the url scheme to http or https.
-func MakeMetricsURL(address string, tlsConf *tls.Config) (string, error) {
-	scheme := httpScheme
-	if tlsConf != nil {
-		scheme = httpsScheme
-	}
-	ret, err := url.JoinPath(scheme, address, metricsSubPath)
-	return ret, errors.Wrap(err, "failed to make prometheus URL")
 }

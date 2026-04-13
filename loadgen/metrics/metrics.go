@@ -20,7 +20,7 @@ import (
 type (
 	// PerfMetrics is a struct that contains the metrics for the block generator.
 	PerfMetrics struct {
-		*monitoring.Provider
+		*monitoring.MetricsProvider
 
 		blockSentTotal            prometheus.Counter
 		blockReceivedTotal        prometheus.Counter
@@ -52,49 +52,48 @@ type (
 )
 
 // NewLoadgenServiceMetrics creates a new PerfMetrics instance.
-func NewLoadgenServiceMetrics(c *Config) *PerfMetrics {
-	p := monitoring.NewProvider()
+func NewLoadgenServiceMetrics(c *Config, mp *monitoring.MetricsProvider) *PerfMetrics {
 	latencyTracker := newLatencyReceiverSender(&c.Latency)
 	return &PerfMetrics{
-		Provider:       p,
-		latencyTracker: latencyTracker,
-		blockSentTotal: p.NewCounter(prometheus.CounterOpts{
+		MetricsProvider: mp,
+		latencyTracker:  latencyTracker,
+		blockSentTotal: mp.NewCounter(prometheus.CounterOpts{
 			Namespace: "loadgen",
 			Name:      "block_sent_total",
 			Help:      "Total number of blocks sent by the block generator",
 		}),
-		blockReceivedTotal: p.NewCounter(prometheus.CounterOpts{
+		blockReceivedTotal: mp.NewCounter(prometheus.CounterOpts{
 			Namespace: "loadgen",
 			Name:      "block_received_total",
 			Help:      "Total number of blocks received by the block generator",
 		}),
-		transactionSentTotal: p.NewCounter(prometheus.CounterOpts{
+		transactionSentTotal: mp.NewCounter(prometheus.CounterOpts{
 			Namespace: "loadgen",
 			Name:      "transaction_sent_total",
 			Help:      "Total number of transactions sent by the block generator",
 		}),
-		transactionReceivedTotal: p.NewCounter(prometheus.CounterOpts{
+		transactionReceivedTotal: mp.NewCounter(prometheus.CounterOpts{
 			Namespace: "loadgen",
 			Name:      "transaction_received_total",
 			Help:      "Total number of transactions received by the block generator",
 		}),
-		transactionCommittedTotal: p.NewCounter(prometheus.CounterOpts{
+		transactionCommittedTotal: mp.NewCounter(prometheus.CounterOpts{
 			Namespace: "loadgen",
 			Name:      "transaction_committed_total",
 			Help:      "Total number of transaction commit statuses received by the block generator",
 		}),
-		transactionAbortedTotal: p.NewCounter(prometheus.CounterOpts{
+		transactionAbortedTotal: mp.NewCounter(prometheus.CounterOpts{
 			Namespace: "loadgen",
 			Name:      "transaction_aborted_total",
 			Help:      "Total number of transaction abort statuses received by the block generator",
 		}),
-		validLatency: p.NewHistogram(prometheus.HistogramOpts{
+		validLatency: mp.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "loadgen",
 			Name:      "valid_transaction_latency_seconds",
 			Help:      "Latency of valid transactions in seconds",
 			Buckets:   latencyTracker.buckets,
 		}),
-		invalidLatency: p.NewHistogram(prometheus.HistogramOpts{
+		invalidLatency: mp.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "loadgen",
 			Name:      "invalid_transaction_latency_seconds",
 			Help:      "Latency of invalid transactions in seconds",

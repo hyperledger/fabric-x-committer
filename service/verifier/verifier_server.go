@@ -21,6 +21,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
@@ -40,20 +41,19 @@ var (
 )
 
 // New instantiate a new VerifierServer.
-func New(config *Config) *Server {
+func New(config *Config, metricsProvider *monitoring.MetricsProvider) *Server {
 	logger.Info("Initializing new verifier server")
 	return &Server{
 		config:      config,
-		metrics:     newMonitoring(),
+		metrics:     newMonitoring(metricsProvider),
 		healthcheck: connection.DefaultHealthCheckService(),
 	}
 }
 
 // Run the verifier background service.
 func (s *Server) Run(ctx context.Context) error {
-	_ = s.metrics.Provider.StartPrometheusServer(ctx, s.config.Monitoring)
-	// We don't return error here to avoid stopping the service due to monitoring error.
-	// But we use the errgroup to ensure the method returns only when the server exits.
+	// Verifier has no background work except responding to gRPC requests
+	<-ctx.Done()
 	return nil
 }
 

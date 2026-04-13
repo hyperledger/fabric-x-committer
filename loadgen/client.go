@@ -27,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
 
 type (
@@ -55,7 +56,7 @@ type (
 var logger = flogging.MustGetLogger("load-gen-client")
 
 // NewLoadGenClient creates a new client instance.
-func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
+func NewLoadGenClient(conf *ClientConfig, provider *monitoring.MetricsProvider) (*Client, error) {
 	logger.Debugf("Config passed: %s", &utils.LazyJSON{O: conf})
 
 	c := &Client{
@@ -64,7 +65,7 @@ func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 			Profile: conf.LoadProfile,
 			Stream:  conf.Stream,
 			Limit:   conf.Limit,
-			Metrics: metrics.NewLoadgenServiceMetrics(&conf.Monitoring),
+			Metrics: metrics.NewLoadgenServiceMetrics(&conf.Monitoring, provider),
 		},
 		healthcheck: connection.DefaultHealthCheckService(),
 		ready:       channel.NewReady(),
@@ -117,9 +118,6 @@ func (c *Client) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	g, gCtx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		return c.resources.Metrics.StartPrometheusServer(gCtx, &c.conf.Monitoring.ServerConfig)
-	})
 	g.Go(func() error {
 		return c.runHTTPServer(ctx)
 	})

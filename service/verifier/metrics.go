@@ -13,26 +13,25 @@ import (
 )
 
 type metrics struct {
-	Provider             *monitoring.Provider
+	Provider             *monitoring.MetricsProvider
 	VerifierServerInTxs  prometheus.Counter
 	VerifierServerOutTxs prometheus.Counter
 	ActiveStreams        prometheus.Gauge
 	ActiveRequests       prometheus.Gauge
 }
 
-func newMonitoring() *metrics {
-	p := monitoring.NewProvider()
+func newMonitoring(mp *monitoring.MetricsProvider) *metrics {
 	return &metrics{
-		Provider:             p,
-		VerifierServerInTxs:  p.NewThroughputCounter("verifier_server", "tx", monitoring.In),
-		VerifierServerOutTxs: p.NewThroughputCounter("verifier_server", "tx", monitoring.Out),
-		ActiveStreams: prometheus.NewGauge(prometheus.GaugeOpts{
+		Provider:             mp,
+		VerifierServerInTxs:  mp.NewThroughputCounter("verifier_server", "tx", monitoring.In),
+		VerifierServerOutTxs: mp.NewThroughputCounter("verifier_server", "tx", monitoring.Out),
+		ActiveStreams: mp.NewGauge(prometheus.GaugeOpts{
 			Namespace: "verifier_server",
 			Subsystem: "grpc",
 			Name:      "active_streams",
 			Help:      "The total number of started streams",
 		}),
-		ActiveRequests: p.NewGauge(prometheus.GaugeOpts{
+		ActiveRequests: mp.NewGauge(prometheus.GaugeOpts{
 			Namespace: "verifier_server",
 			Subsystem: "parallel_executor",
 			Name:      "active_requests",

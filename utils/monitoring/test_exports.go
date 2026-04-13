@@ -24,7 +24,7 @@ type ExpectedConn struct {
 }
 
 // WaitForConnections waits for a connection metric to have the required number of connected labels.
-func WaitForConnections(t *testing.T, p *Provider, name string, requiredCount int) {
+func WaitForConnections(t *testing.T, p *MetricsProvider, name string, requiredCount int) {
 	t.Helper()
 	require.Eventually(t, func() bool {
 		gather, err := p.Registry().Gather()

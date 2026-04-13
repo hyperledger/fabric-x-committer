@@ -26,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
@@ -62,10 +63,10 @@ type (
 )
 
 // NewQueryService create a new QueryService given a configuration.
-func NewQueryService(config *Config) *Service {
+func NewQueryService(config *Config, metricsProvider *monitoring.MetricsProvider) *Service {
 	return &Service{
 		config:      config,
-		metrics:     newQueryServiceMetrics(),
+		metrics:     newQueryServiceMetrics(metricsProvider),
 		ready:       channel.NewReady(),
 		healthcheck: connection.DefaultHealthCheckService(),
 	}
@@ -77,7 +78,7 @@ func (q *Service) WaitForReady(ctx context.Context) bool {
 	return q.ready.WaitForReady(ctx)
 }
 
-// Run starts the Prometheus server.
+// Run starts the query service.
 func (q *Service) Run(ctx context.Context) error {
 	pool, poolErr := vc.NewDatabasePool(ctx, q.config.Database)
 	if poolErr != nil {
@@ -107,8 +108,6 @@ func (q *Service) Run(ctx context.Context) error {
 	}
 	q.ready.SignalReady()
 
-	_ = q.metrics.StartPrometheusServer(ctx, q.config.Monitoring)
-	// We don't use the error here as we avoid stopping the service due to monitoring error.
 	<-ctx.Done()
 	return nil
 }

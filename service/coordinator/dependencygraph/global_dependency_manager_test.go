@@ -31,7 +31,7 @@ func newGlobalDependencyTestEnv(t *testing.T) *globalDependencyTestEnv {
 		incomingTxs:  make(chan *transactionNodeBatch, 10),
 		outgoingTxs:  make(chan TxNodeBatch, 10),
 		validatedTxs: make(chan TxNodeBatch, 10),
-		metrics:      newPerformanceMetrics(monitoring.NewProvider()),
+		metrics:      newPerformanceMetrics(monitoring.NewMetricsProvider()),
 	}
 
 	dm := newGlobalDependencyManager(

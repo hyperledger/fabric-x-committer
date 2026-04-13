@@ -54,7 +54,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 			clientConfig:             test.ServerToMultiClientConfig(test.InsecureTLSConfig, sc.Configs...),
 			incomingTxsForValidation: inputTxBatch,
 			outgoingValidatedTxs:     outputValidatedTxs,
-			metrics:                  newPerformanceMetrics(),
+			metrics:                  newPerformanceMetrics(monitoring.NewMetricsProvider()),
 			policyManager:            pm,
 		},
 	)
@@ -72,7 +72,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 		nil,
 	)
 	monitoring.WaitForConnections(
-		t, svm.metrics.Provider, "coordinator_grpc_verifier_connection_status", numSvService,
+		t, svm.metrics.MetricsProvider, "coordinator_grpc_verifier_connection_status", numSvService,
 	)
 
 	env := &svMgrTestEnv{
