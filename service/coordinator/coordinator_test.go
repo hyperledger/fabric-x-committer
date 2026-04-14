@@ -977,9 +977,9 @@ func TestWaitingTxsCount(t *testing.T) {
 
 	actualTxsStatus := readTxStatus(t, env.csStream, txPerBlock)
 	test.RequireProtoElementsMatch(t, expectedTxsStatus, actualTxsStatus)
-	test.RequireIntMetricValue(t, txPerBlock, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
+	test.EventuallyIntMetric(t, txPerBlock, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
 		committerpb.Status_COMMITTED.String(),
-	))
+	), 10*time.Second, 100*time.Millisecond)
 
 	env.streamCancel()
 	require.Eventually(t, func() bool {

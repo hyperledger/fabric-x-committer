@@ -14,17 +14,16 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/tedsuo/ifrit"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type (
-	// ProcessWithConfig holds the ifrit process and the corresponding configuration.
+	// ProcessWithConfig holds the process and the corresponding configuration.
 	ProcessWithConfig struct {
 		params         CmdParameters
-		process        ifrit.Process
+		process        *test.Process
 		configFilePath string
 	}
 
@@ -115,7 +114,8 @@ func (p *ProcessWithConfig) Stop(t *testing.T) {
 	}
 	p.process.Signal(os.Kill)
 	select {
-	case <-p.process.Wait():
+	case err := <-p.process.Wait():
+		t.Logf("Process [%s] exited by request with error: %v", p.params.Name, err)
 	case <-time.After(30 * time.Second):
 		t.Errorf("Process [%s] did not terminate after 30 seconds", p.params.Name)
 	}
@@ -145,5 +145,7 @@ func (p *ProcessWithConfig) Restart(t *testing.T) {
 	dir, err := os.Getwd()
 	require.NoError(t, err)
 	c.Dir = path.Clean(path.Join(dir, "../.."))
-	p.process = test.Run(c, p.params.Name, "")
+	process, err := test.NewProcess(c, p.params.Name)
+	require.NoError(t, err)
+	p.process = process
 }

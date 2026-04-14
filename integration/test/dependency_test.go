@@ -12,7 +12,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	"github.com/onsi/gomega"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
@@ -20,7 +19,6 @@ import (
 
 func testSetup(t *testing.T) *runner.CommitterRuntime {
 	t.Helper()
-	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{
 		BlockSize:    5,
 		BlockTimeout: 2 * time.Second,

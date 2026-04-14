@@ -13,7 +13,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -183,7 +182,6 @@ func setupQueryService(
 	maxRequestKeys int,
 ) (c *runner.CommitterRuntime, ctx context.Context, txIDs []string) {
 	t.Helper()
-	gomega.RegisterTestingT(t)
 
 	c = runner.NewRuntime(t, &runner.Config{
 		BlockTimeout:   2 * time.Second,

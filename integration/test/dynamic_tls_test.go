@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -29,7 +28,6 @@ import (
 // while preserving static (YAML-configured) root CAs.
 func TestDynamicTLS(t *testing.T) {
 	t.Parallel()
-	gomega.RegisterTestingT(t)
 
 	c := runner.NewRuntime(t, &runner.Config{
 		TLSMode:                 connection.MutualTLSMode,

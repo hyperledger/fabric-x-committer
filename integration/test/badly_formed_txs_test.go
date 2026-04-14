@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onsi/gomega"
-
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
@@ -19,7 +17,6 @@ import (
 
 func TestBadlyFormedTxs(t *testing.T) {
 	t.Parallel()
-	gomega.RegisterTestingT(t)
 
 	// We pre-build the test cases to get the test size, which we use as the block size.
 	_, e := sidecar.MalformedTxTestCases(&workload.TxBuilder{})
