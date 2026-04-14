@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
@@ -119,7 +118,6 @@ func TestDBResiliencySecondaryPostgresNodeCrash(t *testing.T) {
 
 func registerAndCreateRuntime(t *testing.T, clusterConnection *testdb.Connection) *runner.CommitterRuntime {
 	t.Helper()
-	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{
 		NumVCService: 2,
 		BlockTimeout: 2 * time.Second,

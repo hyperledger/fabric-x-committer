@@ -13,7 +13,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -36,7 +35,6 @@ var failureScenarios = [][]string{
 
 func TestCrashWhenIdle(t *testing.T) {
 	t.Parallel()
-	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{
 		NumVerifiers: 2,
 		NumVCService: 2,
@@ -104,7 +102,6 @@ func addSignAndSendTransactions(
 
 func TestCrashWhenNonIdle(t *testing.T) {
 	t.Parallel()
-	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{
 		NumVerifiers:      2,
 		NumVCService:      2,
