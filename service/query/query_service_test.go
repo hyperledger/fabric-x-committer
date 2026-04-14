@@ -537,7 +537,7 @@ func newQueryServiceTestEnv(t *testing.T, opts *queryServiceTestOpts) *queryServ
 		Monitoring:            test.NewLocalHostServer(test.InsecureTLSConfig),
 	}
 
-	qs := NewQueryService(config)
+	qs := NewQueryService(config, nil)
 	test.RunServiceAndGrpcForTest(t.Context(), t, qs, qs.config.Server)
 	clientConn := createQueryClientWithTLS(t, &qs.config.Server.Endpoint, opts.clientTLS)
 
@@ -752,6 +752,42 @@ func defaultViewParams(timeout time.Duration) *committerpb.ViewParameters {
 }
 
 //nolint:ireturn // returning a gRPC client interface is intentional for test purpose.
+func TestRefreshTLSFromDB(t *testing.T) {
+	t.Parallel()
+
+	t.Run("updates TLS from config in DB", func(t *testing.T) {
+		t.Parallel()
+		// generateNamespacesUnderTest sets up DB with system tables and a config block.
+		dbConf := generateNamespacesUnderTest(t, []string{"0"})
+
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		pool, err := vc.NewDatabasePool(ctx, dbConf)
+		require.NoError(t, err)
+		t.Cleanup(pool.Close)
+
+		updater := &test.MockTLSUpdater{}
+		qs := &Service{
+			config:     &Config{TLSRefreshInterval: 100 * time.Millisecond},
+			tlsUpdater: updater,
+		}
+
+		go qs.refreshTLSFromDB(ctx, pool)
+
+		require.Eventually(t, func() bool {
+			return len(updater.LastCerts()) > 0
+		}, 10*time.Second, 100*time.Millisecond, "TLS updater should have been called with CAs from config")
+	})
+
+	t.Run("no-op when tlsUpdater is nil", func(t *testing.T) {
+		t.Parallel()
+		qs := &Service{config: &Config{}}
+		// Should return immediately without panic.
+		qs.refreshTLSFromDB(t.Context(), nil)
+	})
+}
+
 func createQueryClientWithTLS(
 	t *testing.T,
 	ep *connection.Endpoint,

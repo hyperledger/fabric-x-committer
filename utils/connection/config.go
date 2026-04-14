@@ -135,3 +135,17 @@ func (c *RateLimitConfig) Validate() error {
 	}
 	return nil
 }
+
+// serverCredentials returns transport credentials for this server config.
+// When a TLSConfigProvider is set, each TLS handshake is delegated to
+// GetConfigForClient, enabling dynamic CA rotation without restart.
+func (c *ServerConfig) serverCredentials(tlsProvider TLSConfigProvider) (credentials.TransportCredentials, error) {
+	if tlsProvider == nil {
+		return c.TLS.ServerCredentials()
+	}
+
+	return newCredentials(&tls.Config{
+		MinVersion:         DefaultTLSMinVersion,
+		GetConfigForClient: tlsProvider.GetConfigForClient,
+	}, nil)
+}

@@ -292,6 +292,7 @@ func TestReadConfigQuery(t *testing.T) {
 			MaxActiveViews:        query.DefaultMaxActiveViews,
 			MaxViewTimeout:        query.DefaultMaxViewTimeout,
 			MaxRequestKeys:        query.DefaultMaxRequestKeys,
+			TLSRefreshInterval:    query.DefaultTLSRefreshInterval,
 		},
 	}, {
 		name:           "sample",
@@ -307,6 +308,7 @@ func TestReadConfigQuery(t *testing.T) {
 			MaxActiveViews:        query.DefaultMaxActiveViews,
 			MaxViewTimeout:        query.DefaultMaxViewTimeout,
 			MaxRequestKeys:        query.DefaultMaxRequestKeys,
+			TLSRefreshInterval:    query.DefaultTLSRefreshInterval,
 		},
 	}}
 

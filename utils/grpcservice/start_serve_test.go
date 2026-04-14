@@ -92,7 +92,7 @@ func TestStartAndServe(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		t.Cleanup(cancel)
 
-		err := grpcservice.StartAndServe(ctx, &slowReadyService{}, serverConfig)
+		err := grpcservice.StartAndServe(ctx, &slowReadyService{}, nil, serverConfig)
 		require.NoError(t, err)
 		assert.Equal(t, 0, serverConfig.Endpoint.Port, "server should not have started")
 	})
@@ -136,7 +136,7 @@ func startInBackground(
 
 	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		return grpcservice.StartAndServe(gCtx, service, serverConfigs...)
+		return grpcservice.StartAndServe(gCtx, service, nil, serverConfigs...)
 	})
 
 	t.Cleanup(func() { cancel(); assert.NoError(t, g.Wait()) })

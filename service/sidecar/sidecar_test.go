@@ -104,7 +104,7 @@ func newSidecarTestEnvWithTLS(
 		Monitoring:                    test.NewLocalHostServer(conf.ServerTLS),
 		Orderer:                       ordererEnv.OrdererConnConfig,
 	}
-	sidecar, err := New(sidecarConf)
+	sidecar, err := New(sidecarConf, nil)
 	require.NoError(t, err)
 	t.Cleanup(sidecar.Close)
 
@@ -317,7 +317,7 @@ func TestSidecarConfigRecovery(t *testing.T) {
 
 	var err error
 	t.Log("Create a new sidecar with the old configuration (only party 0)")
-	env.sidecar, err = New(&env.config)
+	env.sidecar, err = New(&env.config, nil)
 	require.NoError(t, err)
 	t.Cleanup(env.sidecar.Close)
 
@@ -691,6 +691,50 @@ func checkNextBlockNumberToCommit(
 		require.NotNil(ct, nextBlock)
 		require.Equal(ct, expectedBlockNumber, nextBlock.Number)
 	}, expectedProcessingTime, 50*time.Millisecond)
+}
+
+func TestUpdateDynamicTLS(t *testing.T) {
+	t.Parallel()
+
+	t.Run("updates TLS CAs from config envelope", func(t *testing.T) {
+		t.Parallel()
+		updater := &test.MockTLSUpdater{}
+		s := &Service{tlsUpdater: updater}
+
+		block := createConfigBlockForTest(t)
+		ch := make(chan *common.Block, 1)
+		ch <- block
+
+		ctx, cancel := context.WithCancel(t.Context())
+		go func() {
+			// Cancel after the envelope is processed.
+			require.Eventually(t, func() bool { //nolint:testifylint
+				return len(updater.LastCerts()) > 0
+			}, 5*time.Second, 10*time.Millisecond)
+			cancel()
+		}()
+
+		err := s.updateDynamicTLS(ctx, ch)
+		require.ErrorIs(t, err, context.Canceled)
+		require.NotEmpty(t, updater.LastCerts(), "should have received TLS CA certificates")
+	})
+
+	t.Run("returns non-retryable error for invalid envelope", func(t *testing.T) {
+		t.Parallel()
+		updater := &test.MockTLSUpdater{}
+		s := &Service{tlsUpdater: updater}
+
+		block := &common.Block{
+			Header: &common.BlockHeader{Number: 1},
+			Data:   &common.BlockData{Data: [][]byte{[]byte("invalid envelope")}},
+		}
+		ch := make(chan *common.Block, 1)
+		ch <- block
+
+		err := s.updateDynamicTLS(t.Context(), ch)
+		require.Error(t, err)
+		require.Empty(t, updater.LastCerts())
+	})
 }
 
 func makeValidTx(t *testing.T, chanID string) *servicepb.LoadGenTx {

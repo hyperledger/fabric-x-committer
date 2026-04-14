@@ -52,10 +52,12 @@ type Service struct {
 	config             *Config
 	healthcheck        *health.Server
 	metrics            *perfMetrics
+	tlsUpdater         connection.TLSCertUpdater
 }
 
-// New creates a sidecar service.
-func New(c *Config) (*Service, error) {
+// New creates a sidecar service. The tlsUpdater is optional; when non-nil,
+// it is used to push updated root CA certificates from config blocks.
+func New(c *Config, tlsUpdater connection.TLSCertUpdater) (*Service, error) {
 	logger.Info("Initializing new sidecar")
 
 	// 1. Load the delivery parameters for the ordering service.
@@ -86,6 +88,7 @@ func New(c *Config) (*Service, error) {
 		metrics:        metrics,
 		committedBlock: make(chan *common.Block, c.ChannelBufferSize),
 		statusQueue:    make(chan []*committerpb.TxStatus, c.ChannelBufferSize),
+		tlsUpdater:     tlsUpdater,
 	}, nil
 }
 
@@ -170,6 +173,26 @@ func (s *Service) sendBlocksAndReceiveStatus(
 	blocksToBeCommitted := make(chan *common.Block, s.config.ChannelBufferSize)
 	s.blockToBeCommitted.Store(new(blocksToBeCommitted))
 
+	var configBlocks chan *common.Block
+	if s.tlsUpdater != nil {
+		// Config blocks are infrequent, but in rare cases a user may submit
+		// multiple config transactions in rapid succession. Buffer of 5 allows
+		// the relay to enqueue without blocking while TLS updater processes.
+		configBlocks = make(chan *common.Block, 5)
+		// Prime the channel with the latest config block from the store.
+		// This ensures TLS is initialized with current CAs before new blocks arrive.
+		_, configBlk, err := s.getPrevBlockAndItsConfig(nextBlockNum)
+		if err != nil {
+			return errors.Wrap(err, "failed to fetch latest config block for TLS initialization")
+		}
+		if configBlk != nil {
+			configBlocks <- configBlk
+		}
+		g.Go(func() error {
+			return s.updateDynamicTLS(gCtx, configBlocks)
+		})
+	}
+
 	// NOTE: deliver.s.startDelivery and relay.Run must always return an error on exist.
 	g.Go(func() error {
 		return s.startDelivery(gCtx, blocksToBeCommitted, nextBlockNum)
@@ -183,6 +206,7 @@ func (s *Service) sendBlocksAndReceiveStatus(
 			incomingBlockToBeCommitted:     blocksToBeCommitted,
 			outgoingCommittedBlock:         s.committedBlock,
 			outgoingStatusUpdates:          s.statusQueue,
+			outgoingConfigBlocks:           configBlocks,
 			waitingTxsLimit:                s.config.WaitingTxsLimit,
 		})
 	})
@@ -399,6 +423,37 @@ func (s *Service) monitorQueues(ctx context.Context) {
 		}
 		promutil.SetGauge(m.committedBlocksQueueSize, len(s.committedBlock))
 	}
+}
+
+// updateDynamicTLS reads config blocks from the relay and updates the
+// dynamic TLS CA certificates. Errors are non-retryable because a failure
+// to parse a validated config block indicates a serious problem.
+func (s *Service) updateDynamicTLS(ctx context.Context, configBlocks <-chan *common.Block) error {
+	reader := channel.NewReader(ctx, configBlocks)
+	for ctx.Err() == nil {
+		configBlk, ok := reader.Read()
+		if !ok {
+			return errors.Wrap(ctx.Err(), "context ended")
+		}
+
+		if len(configBlk.Data.Data) == 0 {
+			return errors.Join(retry.ErrNonRetryable,
+				errors.Newf("config block %d has no data", configBlk.Header.Number))
+		}
+
+		certs, err := connection.ExtractAppTLSCAsFromEnvelope(configBlk.Data.Data[0])
+		if err != nil {
+			return errors.Join(retry.ErrNonRetryable,
+				errors.Wrap(err, "failed to extract TLS CAs from config envelope"))
+		}
+
+		if err := s.tlsUpdater.SetClientRootCAs(certs); err != nil {
+			return errors.Join(retry.ErrNonRetryable, errors.Wrap(err, "failed to update dynamic TLS"))
+		}
+		logger.Infof("Updated dynamic TLS with %d CA certificates", len(certs))
+	}
+
+	return errors.Wrap(ctx.Err(), "context cancelled")
 }
 
 // Close closes the ledger.
