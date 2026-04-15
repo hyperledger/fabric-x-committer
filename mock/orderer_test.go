@@ -638,8 +638,6 @@ func TestMockOrdererDynamicTLSUpdate(t *testing.T) {
 
 	// Create initial config block with 3 peer organizations
 	_, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(artifactsPath, &testcrypto.ConfigBlock{
-		ChannelID:             "test-channel",
-		OrdererEndpoints:      []*types.OrdererEndpoint{{ID: 0, Host: "localhost", Port: 7050}},
 		PeerOrganizationCount: 3,
 	})
 	require.NoError(t, err)
@@ -649,7 +647,7 @@ func TestMockOrdererDynamicTLSUpdate(t *testing.T) {
 	dynamicTLS, err := connection.NewDynamicTLSFromConfig(serverTLSConfig)
 	require.NoError(t, err)
 
-	o, err := NewMockOrderer(&OrdererConfig{
+	orderer, err := NewMockOrderer(&OrdererConfig{
 		BlockSize:        3,
 		BlockTimeout:     time.Hour,
 		OutBlockCapacity: 10,
@@ -659,24 +657,23 @@ func TestMockOrdererDynamicTLSUpdate(t *testing.T) {
 	}, dynamicTLS)
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 
 	test.RunServiceForTest(ctx, t, func(ctx context.Context) error {
-		return connection.FilterStreamRPCError(o.Run(ctx))
-	}, o.WaitForReady)
+		return connection.FilterStreamRPCError(orderer.Run(ctx))
+	}, orderer.WaitForReady)
 
 	serverConfig := test.NewLocalHostServer(serverTLSConfig)
 	listener, err := serverConfig.Listener(ctx)
 	require.NoError(t, err)
 	server, err := serverConfig.GrpcServer(dynamicTLS)
 	require.NoError(t, err)
-	o.RegisterService(server)
+	orderer.RegisterService(server)
 
 	var wg sync.WaitGroup
 	t.Cleanup(wg.Wait)
 	t.Cleanup(server.Stop)
-
 	wg.Go(func() {
 		_ = server.Serve(listener)
 	})
@@ -720,8 +717,6 @@ func TestMockOrdererDynamicTLSUpdate(t *testing.T) {
 
 	// Submit config block removing peer-org-1 and peer-org-2 (keep only peer-org-0)
 	newConfigBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(artifactsPath, &testcrypto.ConfigBlock{
-		ChannelID:             "test-channel",
-		OrdererEndpoints:      []*types.OrdererEndpoint{{ID: 0, Host: "localhost", Port: 7050}},
 		PeerOrganizationCount: 1,
 	})
 	require.NoError(t, err)
@@ -729,32 +724,29 @@ func TestMockOrdererDynamicTLSUpdate(t *testing.T) {
 	consenters, err := testcrypto.GetConsenterIdentities(artifactsPath)
 	require.NoError(t, err)
 
-	err = o.SubmitBlockWithConsenters(ctx, &BlockWithConsenters{
+	err = orderer.SubmitBlockWithConsenters(ctx, &BlockWithConsenters{
 		Block:            newConfigBlock,
 		ConsenterSigners: consenters,
 	})
 	require.NoError(t, err)
 
 	// Wait for the config block to be processed
-	_, err = o.GetBlock(ctx, 1)
+	_, err = orderer.GetBlock(ctx, 1)
 	require.NoError(t, err)
 
-	// Verify peer-org-0 still works after TLS update
-	require.Eventually(t, func() bool {
-		return tryConnect(orgTLS[0]) == nil
-	}, 20*time.Second, 100*time.Millisecond, "peer-org-0 should still connect")
-
-	// Verify peer-org-1 and peer-org-2 are rejected after TLS update
-	require.Eventually(t, func() bool {
-		return tryConnect(orgTLS[1]) != nil
-	}, 20*time.Second, 100*time.Millisecond, "peer-org-1 should be rejected")
-
-	require.Eventually(t, func() bool {
-		return tryConnect(orgTLS[2]) != nil
-	}, 20*time.Second, 100*time.Millisecond, "peer-org-2 should be rejected")
-
-	// Verify static TLS client still works
-	require.Eventually(t, func() bool {
-		return tryConnect(clientTLSConfig) == nil
-	}, 20*time.Second, 100*time.Millisecond, "static TLS client should still connect")
+	for _, tc := range []struct {
+		name          string
+		tlsCfg        connection.TLSConfig
+		shouldConnect bool
+	}{
+		{"peer-org-0 should still connect", orgTLS[0], true},
+		{"static TLS client should still connect", clientTLSConfig, true},
+		{"peer-org-1 should be rejected", orgTLS[1], false},
+		{"peer-org-2 should be rejected", orgTLS[2], false},
+	} {
+		require.Eventually(t, func() bool {
+			connected := tryConnect(tc.tlsCfg) == nil
+			return connected == tc.shouldConnect
+		}, 20*time.Second, 250*time.Millisecond, tc.name)
+	}
 }

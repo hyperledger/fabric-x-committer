@@ -193,6 +193,7 @@ func NewMockOrderer(config *OrdererConfig, tlsUpdater connection.TLSCertUpdater)
 
 	// Initialize TLS with CAs from genesis block if available.
 	if protoutil.IsConfigBlock(genesisBlock.Block) {
+		logger.Debugf("reading root CAs from genesis block")
 		if err := o.updateTLSFromConfigBlock(genesisBlock.Block); err != nil {
 			logger.Warnf("Failed to initialize TLS from genesis block: %v", err)
 		}
@@ -389,7 +390,7 @@ func (o *Orderer) Run(ctx context.Context) error {
 
 		if protoutil.IsConfigBlock(b) {
 			blockParams.LastConfigBlockIndex = b.Header.Number
-			// Update dynamic TLS with CAs from the new config block.
+			logger.Debugf("reading root CAs from config block")
 			if err := o.updateTLSFromConfigBlock(b); err != nil {
 				logger.Warnf("Failed to update TLS from config block %d: %v", b.Header.Number, err)
 			}
