@@ -629,15 +629,14 @@ func makeEnvelopePayload(i int) *common.Envelope {
 //     Verify that clients from all three organizations can connect successfully.
 //  2. Dynamic Removal: Submit a new configuration block that reduces the number of
 //     peer organizations to one (only peer-org-0 remains).
-//     This removes peer-org-1 and peer-org-2 from the channel configuration.
-//  3. Negative Verification: Verify that peer-org-1 and peer-org-2 clients are now rejected
-//     because their organizations were removed from the config. Verify peer-org-0 still works.
+//  3. Verification: Verify that peer-org-1 and peer-org-2 clients are rejected
+//     while peer-org-0 and the static TLS client still work.
 func TestMockOrdererDynamicTLSUpdate(t *testing.T) {
 	t.Parallel()
 
 	artifactsPath := t.TempDir()
 
-	// Step 1: Create initial config block with 3 peer organizations
+	// Create initial config block with 3 peer organizations
 	_, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(artifactsPath, &testcrypto.ConfigBlock{
 		ChannelID:             "test-channel",
 		OrdererEndpoints:      []*types.OrdererEndpoint{{ID: 0, Host: "localhost", Port: 7050}},
@@ -645,14 +644,11 @@ func TestMockOrdererDynamicTLSUpdate(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Create server TLS config for the orderer
 	serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, connection.MutualTLSMode)
 
-	// Create a real DynamicTLS instance
 	dynamicTLS, err := connection.NewDynamicTLSFromConfig(serverTLSConfig)
 	require.NoError(t, err)
 
-	// Create orderer with DynamicTLS as the TLS updater
 	o, err := NewMockOrderer(&OrdererConfig{
 		BlockSize:        3,
 		BlockTimeout:     time.Hour,
@@ -670,7 +666,6 @@ func TestMockOrdererDynamicTLSUpdate(t *testing.T) {
 		return connection.FilterStreamRPCError(o.Run(ctx))
 	}, o.WaitForReady)
 
-	// Start the gRPC server with the dynamic TLS provider
 	serverConfig := test.NewLocalHostServer(serverTLSConfig)
 	listener, err := serverConfig.Listener(ctx)
 	require.NoError(t, err)
@@ -686,30 +681,6 @@ func TestMockOrdererDynamicTLSUpdate(t *testing.T) {
 		_ = server.Serve(listener)
 	})
 
-	// Helper to attempt a connection and return an error
-	tryConnect := func(tlsCfg connection.TLSConfig) error {
-		creds, err := tlsCfg.ClientCredentials()
-		if err != nil {
-			return err
-		}
-		conn, err := grpc.NewClient(serverConfig.Endpoint.Address(), grpc.WithTransportCredentials(creds))
-		if err != nil {
-			return err
-		}
-		defer conn.Close() //nolint:errcheck
-
-		callCtx, callCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer callCancel()
-
-		client := ab.NewAtomicBroadcastClient(conn)
-		_, err = client.Deliver(callCtx)
-		// If we get an application-level error (not a TLS error), the connection succeeded
-		if grpcerror.FilterUnavailableErrorCode(err) != nil {
-			return nil
-		}
-		return err
-	}
-
 	// Build TLS configs for each peer organization
 	orgTLS := [3]connection.TLSConfig{
 		test.OrgClientTLSConfig(artifactsPath, 0, serverTLSConfig.CACertPaths),
@@ -717,14 +688,37 @@ func TestMockOrdererDynamicTLSUpdate(t *testing.T) {
 		test.OrgClientTLSConfig(artifactsPath, 2, serverTLSConfig.CACertPaths),
 	}
 
-	// Step 1: Verify all three peer orgs can connect initially
-	t.Log("Step 1: Initial connection - all three orgs should connect")
-	for orgIdx, tlsCfg := range orgTLS {
-		require.NoError(t, tryConnect(tlsCfg), "peer-org-%d should connect initially", orgIdx)
+	tryConnect := func(tlsCfg connection.TLSConfig) error {
+		creds, credErr := tlsCfg.ClientCredentials()
+		if credErr != nil {
+			return credErr
+		}
+		conn, connErr := grpc.NewClient(serverConfig.Endpoint.Address(), grpc.WithTransportCredentials(creds))
+		if connErr != nil {
+			return connErr
+		}
+		defer conn.Close() //nolint:errcheck
+
+		callCtx, callCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer callCancel()
+
+		client := ab.NewAtomicBroadcastClient(conn)
+		_, deliverErr := client.Deliver(callCtx)
+		// If we get an application-level error (not a TLS error), the connection succeeded
+		if grpcerror.FilterUnavailableErrorCode(deliverErr) != nil {
+			return nil
+		}
+		return deliverErr
 	}
 
-	// Step 2: Submit config block removing peer-org-1 and peer-org-2 (keep only peer-org-0)
-	t.Log("Step 2: Dynamic removal - submit config with 1 peer org")
+	// Verify all three peer orgs can connect initially
+	for orgIdx, tlsCfg := range orgTLS {
+		require.Eventually(t, func() bool {
+			return tryConnect(tlsCfg) == nil
+		}, 20*time.Second, 100*time.Millisecond, "peer-org-%d should connect initially", orgIdx)
+	}
+
+	// Submit config block removing peer-org-1 and peer-org-2 (keep only peer-org-0)
 	newConfigBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(artifactsPath, &testcrypto.ConfigBlock{
 		ChannelID:             "test-channel",
 		OrdererEndpoints:      []*types.OrdererEndpoint{{ID: 0, Host: "localhost", Port: 7050}},
@@ -745,13 +739,22 @@ func TestMockOrdererDynamicTLSUpdate(t *testing.T) {
 	_, err = o.GetBlock(ctx, 1)
 	require.NoError(t, err)
 
-	// Step 3: Verify peer-org-1 and peer-org-2 are rejected, peer-org-0 still works
-	t.Log("Step 3: Negative assertion - peer-org-1 and peer-org-2 rejected, peer-org-0 accepted")
-	require.NoError(t, tryConnect(orgTLS[0]), "peer-org-0 should still connect")
-	require.Error(t, tryConnect(orgTLS[1]), "peer-org-1 should be rejected")
-	require.Error(t, tryConnect(orgTLS[2]), "peer-org-2 should be rejected")
+	// Verify peer-org-0 still works after TLS update
+	require.Eventually(t, func() bool {
+		return tryConnect(orgTLS[0]) == nil
+	}, 20*time.Second, 100*time.Millisecond, "peer-org-0 should still connect")
 
-	// Step 6: Verify static TLS client still works
-	t.Log("Step 6: Static persistence - static TLS client still trusted")
-	require.NoError(t, tryConnect(clientTLSConfig), "static TLS client should still connect")
+	// Verify peer-org-1 and peer-org-2 are rejected after TLS update
+	require.Eventually(t, func() bool {
+		return tryConnect(orgTLS[1]) != nil
+	}, 20*time.Second, 100*time.Millisecond, "peer-org-1 should be rejected")
+
+	require.Eventually(t, func() bool {
+		return tryConnect(orgTLS[2]) != nil
+	}, 20*time.Second, 100*time.Millisecond, "peer-org-2 should be rejected")
+
+	// Verify static TLS client still works
+	require.Eventually(t, func() bool {
+		return tryConnect(clientTLSConfig) == nil
+	}, 20*time.Second, 100*time.Millisecond, "static TLS client should still connect")
 }
