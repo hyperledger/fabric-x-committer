@@ -16,6 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/cmd/cliutil"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/mock"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcservice"
 )
 
@@ -76,15 +77,31 @@ func startMockOrderer() *cobra.Command {
 			cmd.Printf("Starting %v\n", mockOrdererName)
 			defer cmd.Printf("%v ended\n", mockOrdererName)
 
-			service, err := mock.NewMockOrderer(conf)
-			if err != nil {
-				return errors.Wrap(err, "failed to create mock ordering service")
-			}
 			serverConfigs := conf.ServerConfigs
 			if conf.Server != nil && !conf.Server.Endpoint.Empty() {
 				serverConfigs = append(serverConfigs, conf.Server)
 			}
-			return grpcservice.StartAndServe(cmd.Context(), service, nil, serverConfigs...)
+
+			// Create dynamic TLS for the first server config (or use Server if available).
+			// This enables dynamic CA rotation from config blocks.
+			var serverConfig *connection.ServerConfig
+			if conf.Server != nil {
+				serverConfig = conf.Server
+			} else if len(serverConfigs) > 0 {
+				serverConfig = serverConfigs[0]
+			}
+
+			tlsUpdater, tlsProvider, err := cliutil.NewDynamicTLS(serverConfig)
+			if err != nil {
+				return err
+			}
+
+			service, err := mock.NewMockOrderer(conf, tlsUpdater)
+			if err != nil {
+				return errors.Wrap(err, "failed to create mock ordering service")
+			}
+
+			return grpcservice.StartAndServe(cmd.Context(), service, tlsProvider, serverConfigs...)
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)

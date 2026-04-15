@@ -44,7 +44,7 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 		ArtifactsPath: c.res.Profile.Policy.ArtifactsPath,
 		// The sidecar adapter submits a config block manually.
 		SendGenesisBlock: true,
-	})
+	}, nil)
 	if err != nil {
 		return err
 	}

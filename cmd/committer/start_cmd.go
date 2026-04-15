@@ -19,7 +19,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcservice"
 )
 
@@ -59,7 +58,7 @@ func startService(ctx context.Context, name, configPath string) error {
 
 	switch c := conf.(type) {
 	case *sidecar.Config:
-		tlsUpdater, tlsProvider, err := newDynamicTLS(c.Server)
+		tlsUpdater, tlsProvider, err := cliutil.NewDynamicTLS(c.Server)
 		if err != nil {
 			return err
 		}
@@ -85,7 +84,7 @@ func startService(ctx context.Context, name, configPath string) error {
 		return grpcservice.StartAndServe(ctx, verifier.New(c), nil, c.Server)
 
 	case *query.Config:
-		tlsUpdater, tlsProvider, err := newDynamicTLS(c.Server)
+		tlsUpdater, tlsProvider, err := cliutil.NewDynamicTLS(c.Server)
 		if err != nil {
 			return err
 		}
@@ -94,24 +93,4 @@ func startService(ctx context.Context, name, configPath string) error {
 	default:
 		return errors.Newf("unknown config type: %T", conf)
 	}
-}
-
-// newDynamicTLS returns the TLS interfaces separately to avoid the Go
-// nil-interface trap: a nil *DynamicTLS assigned to an interface becomes a
-// non-nil interface wrapping a nil pointer, which passes != nil checks but
-// panics on method calls. Returning interfaces directly ensures that when
-// TLS is disabled, callers receive true nil values.
-func newDynamicTLS(
-	serverConfig *connection.ServerConfig,
-) (connection.TLSCertUpdater, connection.TLSConfigProvider, error) {
-	if serverConfig == nil || serverConfig.TLS.Mode != connection.MutualTLSMode {
-		return nil, nil, nil
-	}
-
-	dynamicTLS, err := connection.NewDynamicTLSFromConfig(serverConfig.TLS)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to create dynamic TLS config")
-	}
-
-	return dynamicTLS, dynamicTLS, nil
 }

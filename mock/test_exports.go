@@ -200,7 +200,7 @@ func NewOrdererTestEnv(t *testing.T, p *OrdererTestParameters) *OrdererTestEnv {
 	p.OrdererConfig.ArtifactsPath = p.ArtifactsPath
 
 	// Start the system.
-	ordererService, err := NewMockOrderer(p.OrdererConfig)
+	ordererService, err := NewMockOrderer(p.OrdererConfig, nil)
 	require.NoError(t, err)
 	// Register the party states.
 	for _, ep := range allEndpoints {
