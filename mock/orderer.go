@@ -74,6 +74,7 @@ type (
 		cutBlock             chan any
 		cache                *blockCache
 		healthcheck          *health.Server
+		tlsUpdater           connection.TLSCertUpdater
 
 		// config uses atomic.Pointer to allow safe concurrent reads by the Run() goroutine
 		// while supporting runtime updates (e.g., BlockTimeout changes in tests).
@@ -146,7 +147,7 @@ var (
 )
 
 // NewMockOrderer creates multiple orderer instances.
-func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
+func NewMockOrderer(config *OrdererConfig, tlsUpdater connection.TLSCertUpdater) (*Orderer, error) {
 	if config.BlockSize == 0 {
 		config.BlockSize = defaultConfig.BlockSize
 	}
@@ -186,8 +187,18 @@ func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 		cutBlock:     make(chan any),
 		cache:        newBlockCache(config.OutBlockCapacity),
 		healthcheck:  connection.DefaultHealthCheckService(),
+		tlsUpdater:   tlsUpdater,
 	}
 	o.config.Store(config)
+
+	// Initialize TLS with CAs from genesis block if available.
+	if protoutil.IsConfigBlock(genesisBlock.Block) {
+		logger.Debugf("reading root CAs from genesis block")
+		if err := o.updateTLSFromConfigBlock(genesisBlock.Block); err != nil {
+			logger.Warnf("Failed to initialize TLS from genesis block: %v", err)
+		}
+	}
+
 	return o, nil
 }
 
@@ -379,6 +390,10 @@ func (o *Orderer) Run(ctx context.Context) error {
 
 		if protoutil.IsConfigBlock(b) {
 			blockParams.LastConfigBlockIndex = b.Header.Number
+			logger.Debugf("reading root CAs from config block")
+			if err := o.updateTLSFromConfigBlock(b); err != nil {
+				logger.Warnf("Failed to update TLS from config block %d: %v", b.Header.Number, err)
+			}
 		}
 
 		tick.Reset(o.config.Load().BlockTimeout)
@@ -568,4 +583,30 @@ func addEnvelope(c *fifoCache[any], e *common.Envelope) bool {
 	digestRaw := sha256.Sum256(e.Payload)
 	digest := base64.StdEncoding.EncodeToString(digestRaw[:])
 	return c.addIfNotExist(digest, nil)
+}
+
+// updateTLSFromConfigBlock extracts application TLS CAs from a config block
+// and updates the dynamic TLS configuration.
+// This is called when new config blocks are processed to enable runtime CA rotation.
+func (o *Orderer) updateTLSFromConfigBlock(configBlock *common.Block) error {
+	if o.tlsUpdater == nil {
+		return nil
+	}
+
+	if configBlock == nil || len(configBlock.Data.Data) == 0 {
+		return errors.New("config block is nil or has no data")
+	}
+
+	certs, err := connection.ExtractAppTLSCAsFromEnvelope(configBlock.Data.Data[0])
+	if err != nil {
+		return errors.Wrap(err, "failed to extract TLS CAs from config envelope")
+	}
+
+	if err := o.tlsUpdater.SetClientRootCAs(certs); err != nil {
+		return errors.Wrap(err, "failed to update dynamic TLS")
+	}
+
+	logger.Infof("Updated dynamic TLS with %d CA certificates from config block %d",
+		len(certs), configBlock.Header.Number)
+	return nil
 }
