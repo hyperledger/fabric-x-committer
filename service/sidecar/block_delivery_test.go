@@ -15,12 +15,20 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
+
+type blockDeliveryWrapper struct {
+	*blockDelivery
+}
+
+func (w *blockDeliveryWrapper) RegisterService(s serve.Servers) {
+	peer.RegisterDeliverServer(s.GRPC, w.blockDelivery)
+}
 
 func TestBlockDelivery(t *testing.T) {
 	t.Parallel()
@@ -28,12 +36,11 @@ func TestBlockDelivery(t *testing.T) {
 	bs, _ := newBlockStoreWithBlocks(t, 3)
 
 	// Register block delivery on a gRPC server.
-	config := test.NewLocalHostServer(test.InsecureTLSConfig)
-	test.RunGrpcServerForTest(t.Context(), t, config,
-		func(server *grpc.Server) {
-			peer.RegisterDeliverServer(server, newBlockDelivery(bs))
-		})
-	conn := test.NewInsecureConnection(t, &config.Endpoint)
+	serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
+	bd := newBlockDelivery(bs)
+	wrapper := &blockDeliveryWrapper{bd}
+	test.ServeForTest(t.Context(), t, serverConfig, wrapper)
+	conn := test.NewInsecureConnection(t, &serverConfig.GRPC.Endpoint)
 	deliverClient := peer.NewDeliverClient(conn)
 
 	t.Run("DeliverSpecificRange", func(t *testing.T) {

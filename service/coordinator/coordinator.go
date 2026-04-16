@@ -16,7 +16,6 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -25,9 +24,10 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 var logger = flogging.MustGetLogger("coordinator")
@@ -172,7 +172,7 @@ func NewCoordinatorService(c *Config) *Service {
 		initializationDone:     channel.NewReady(),
 		numWaitingTxsForStatus: &atomic.Int32{},
 		txBatchIDToDepGraph:    1,
-		healthcheck:            connection.DefaultHealthCheckService(),
+		healthcheck:            serve.DefaultHealthCheckService(),
 	}
 }
 
@@ -183,9 +183,7 @@ func (c *Service) Run(ctx context.Context) error {
 	g, eCtx := errgroup.WithContext(canCtx)
 
 	g.Go(func() error {
-		_ = c.metrics.StartPrometheusServer(eCtx, c.config.Monitoring, c.monitorQueues)
-		// We don't return error here to avoid stopping the service due to monitoring error.
-		// But we use the errgroup to ensure the method returns only when the server exits.
+		c.monitorQueues(eCtx)
 		return nil
 	})
 
@@ -237,10 +235,11 @@ func (c *Service) WaitForReady(ctx context.Context) bool {
 	return c.initializationDone.WaitForReady(ctx)
 }
 
-// RegisterService registers for the coordinator's GRPC services.
-func (c *Service) RegisterService(server *grpc.Server) {
-	servicepb.RegisterCoordinatorServer(server, c)
-	healthgrpc.RegisterHealthServer(server, c.healthcheck)
+// RegisterService registers the coordinator's gRPC services and monitoring server.
+func (c *Service) RegisterService(s serve.Servers) {
+	servicepb.RegisterCoordinatorServer(s.GRPC, c)
+	healthgrpc.RegisterHealthServer(s.GRPC, c.healthcheck)
+	monitoring.RegisterMonitoringServer(s.Monitoring, c.metrics.Provider)
 }
 
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger through a vcservice.

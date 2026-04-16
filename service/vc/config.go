@@ -16,10 +16,8 @@ import (
 
 // Config is the configuration for the validator-committer service.
 type Config struct {
-	Server         *connection.ServerConfig `mapstructure:"server"`
-	Database       *DatabaseConfig          `mapstructure:"database" validate:"required"`
-	ResourceLimits *ResourceLimitsConfig    `mapstructure:"resource-limits" validate:"required"`
-	Monitoring     *connection.ServerConfig `mapstructure:"monitoring"`
+	Database       *DatabaseConfig       `mapstructure:"database" validate:"required"`
+	ResourceLimits *ResourceLimitsConfig `mapstructure:"resource-limits" validate:"required"`
 }
 
 // DatabaseConfig is the configuration for the database.

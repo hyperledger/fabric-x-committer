@@ -22,6 +22,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -30,7 +31,7 @@ func TestRateLimit(t *testing.T) {
 
 	c := runner.NewRuntime(t, &runner.Config{
 		BlockTimeout: 2 * time.Second,
-		RateLimit: &connection.RateLimitConfig{
+		RateLimit: &serve.RateLimitConfig{
 			RequestsPerSecond: 2,
 			Burst:             1,
 		},

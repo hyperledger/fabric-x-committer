@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package connection
+package serve
 
 import (
 	"context"
@@ -149,6 +149,53 @@ func TestNewRateLimiter(t *testing.T) {
 				require.Equal(t, tt.expectedRate, int(limiter.Limit()))
 				require.Equal(t, tt.expectedBurst, limiter.Burst())
 			}
+		})
+	}
+}
+
+func TestRateLimitConfigValidate(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name          string
+		config        *RateLimitConfig
+		errorContains string
+	}{
+		{
+			name:   "nil config is valid",
+			config: nil,
+		},
+		{
+			name:   "disabled rate limiting is valid",
+			config: &RateLimitConfig{RequestsPerSecond: 0, Burst: 100},
+		},
+		{
+			name:   "burst less than requests-per-second is valid",
+			config: &RateLimitConfig{RequestsPerSecond: 1000, Burst: 200},
+		},
+		{
+			name:   "burst equal to requests-per-second is valid",
+			config: &RateLimitConfig{RequestsPerSecond: 200, Burst: 200},
+		},
+		{
+			name:          "burst zero is invalid when rate limiting is enabled",
+			config:        &RateLimitConfig{RequestsPerSecond: 100, Burst: 0},
+			errorContains: "burst must be greater than 0",
+		},
+		{
+			name:          "burst greater than requests-per-second is invalid",
+			config:        &RateLimitConfig{RequestsPerSecond: 100, Burst: 200},
+			errorContains: "burst (200) must be less than or equal to requests-per-second",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := tc.config.Validate()
+			if tc.errorContains != "" {
+				require.ErrorContains(t, err, tc.errorContains)
+				return
+			}
+			require.NoError(t, err)
 		})
 	}
 }

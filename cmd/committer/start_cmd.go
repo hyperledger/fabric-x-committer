@@ -19,7 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
-	"github.com/hyperledger/fabric-x-committer/utils/grpcservice"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 func startCMD() *cobra.Command {
@@ -51,46 +51,41 @@ func startServiceCommand(name string) *cobra.Command {
 }
 
 func startService(ctx context.Context, name, configPath string) error {
-	conf, err := readConfig(name, configPath)
+	conf, serverConfig, err := readConfig(name, configPath)
 	if err != nil {
 		return err
 	}
 
+	var service serve.Service
 	switch c := conf.(type) {
 	case *sidecar.Config:
-		tlsUpdater, tlsProvider, err := cliutil.NewDynamicTLS(c.Server)
-		if err != nil {
-			return err
-		}
-		service, err := sidecar.New(c, tlsUpdater)
+		sidecarService, err := sidecar.New(c)
 		if err != nil {
 			return errors.Wrap(err, "failed to create sidecar service")
 		}
-		defer service.Close()
-		return grpcservice.StartAndServe(ctx, service, tlsProvider, c.Server)
+		defer sidecarService.Close()
+		service = sidecarService
 
 	case *coordinator.Config:
-		return grpcservice.StartAndServe(ctx, coordinator.NewCoordinatorService(c), nil, c.Server)
+		service = coordinator.NewCoordinatorService(c)
 
 	case *vc.Config:
-		service, err := vc.NewValidatorCommitterService(ctx, c)
+		vcService, err := vc.NewValidatorCommitterService(ctx, c)
 		if err != nil {
 			return errors.Wrap(err, "failed to create validator committer service")
 		}
-		defer service.Close()
-		return grpcservice.StartAndServe(ctx, service, nil, c.Server)
+		defer vcService.Close()
+		service = vcService
 
 	case *verifier.Config:
-		return grpcservice.StartAndServe(ctx, verifier.New(c), nil, c.Server)
+		service = verifier.New(c)
 
 	case *query.Config:
-		tlsUpdater, tlsProvider, err := cliutil.NewDynamicTLS(c.Server)
-		if err != nil {
-			return err
-		}
-		return grpcservice.StartAndServe(ctx, query.NewQueryService(c, tlsUpdater), tlsProvider, c.Server)
+		service = query.NewQueryService(c)
 
 	default:
 		return errors.Newf("unknown config type: %T", conf)
 	}
+
+	return serve.StartAndServe(ctx, service, serverConfig)
 }

@@ -46,7 +46,7 @@ func TestVCSecureConnection(t *testing.T) {
 			env := NewValidatorAndCommitServiceTestEnv(t, &TestEnvOpts{ServerCreds: cfg})
 			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
 				t.Helper()
-				client := createValidatorAndCommitClientWithTLS(t, &env.Configs[0].Server.Endpoint, cfg)
+				client := createValidatorAndCommitClientWithTLS(t, &env.ServerConfigs[0].GRPC.Endpoint, cfg)
 				_, err := client.SetupSystemTablesAndNamespaces(ctx, nil)
 				return err
 			}
@@ -63,8 +63,8 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 
 	numServices := len(vcs.VCServices)
 	allEndpoints := make([]*connection.Endpoint, numServices)
-	for i, c := range vcs.Configs {
-		allEndpoints[i] = &c.Server.Endpoint
+	for i, c := range vcs.ServerConfigs {
+		allEndpoints[i] = &c.GRPC.Endpoint
 	}
 	commonConn := test.NewInsecureLoadBalancedConnection(t, allEndpoints)
 
@@ -81,8 +81,10 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 	_, setupErr := vcsTestEnv.commonClient.SetupSystemTablesAndNamespaces(initCtx, nil)
 	require.NoError(t, setupErr)
 
-	for i, c := range vcs.Configs {
-		client := createValidatorAndCommitClientWithTLS(t, &c.Server.Endpoint, test.InsecureTLSConfig)
+	for i, c := range vcs.ServerConfigs {
+		client := createValidatorAndCommitClientWithTLS(
+			t, &c.GRPC.Endpoint, test.InsecureTLSConfig,
+		)
 
 		sCtx, sCancel := context.WithTimeout(t.Context(), 5*time.Minute)
 		t.Cleanup(sCancel)

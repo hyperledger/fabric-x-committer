@@ -23,6 +23,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/ledger/blkstorage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
@@ -35,6 +36,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/delivercommitter"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
@@ -42,8 +44,9 @@ import (
 type sidecarTestEnv struct {
 	*mock.OrdererTestEnv
 	config            Config
+	serverConfig      *serve.Config
 	coordinator       *mock.Coordinator
-	coordinatorServer *test.GrpcServers
+	coordinatorServer *test.Servers
 
 	sidecar        *Service
 	committedBlock chan *common.Block
@@ -87,9 +90,9 @@ func newSidecarTestEnvWithTLS(
 		ClientTLSConfig: conf.ClientTLS,
 	})
 
+	serverConfig := test.NewLocalHostServiceConfig(conf.ServerTLS)
 	sidecarConf := &Config{
-		Server:    test.NewLocalHostServer(conf.ServerTLS),
-		Committer: test.NewTLSClientConfig(conf.ClientTLS, &coordinatorServer.Configs[0].Endpoint),
+		Committer: test.NewTLSClientConfig(conf.ClientTLS, &coordinatorServer.Configs[0].GRPC.Endpoint),
 		Ledger: LedgerConfig{
 			Path: t.TempDir(),
 		},
@@ -101,10 +104,9 @@ func newSidecarTestEnvWithTLS(
 		LastCommittedBlockSetInterval: 100 * time.Millisecond,
 		WaitingTxsLimit:               1000,
 		ChannelBufferSize:             DefaultBufferSize,
-		Monitoring:                    test.NewLocalHostServer(conf.ServerTLS),
 		Orderer:                       ordererEnv.OrdererConnConfig,
 	}
-	sidecar, err := New(sidecarConf, nil)
+	sidecar, err := New(sidecarConf)
 	require.NoError(t, err)
 	t.Cleanup(sidecar.Close)
 
@@ -114,6 +116,7 @@ func newSidecarTestEnvWithTLS(
 		coordinator:       coordinator,
 		coordinatorServer: coordinatorServer,
 		config:            *sidecarConf,
+		serverConfig:      serverConfig,
 	}
 }
 
@@ -131,7 +134,7 @@ func (env *sidecarTestEnv) startSidecarServiceAndClientAndNotificationStream(
 
 func (env *sidecarTestEnv) startSidecarService(ctx context.Context, t *testing.T) {
 	t.Helper()
-	test.RunServiceAndGrpcForTest(ctx, t, env.sidecar, env.config.Server)
+	test.RunServiceAndServeForTest(ctx, t, env.sidecar, env.serverConfig)
 }
 
 func (env *sidecarTestEnv) startSidecarClient(
@@ -141,7 +144,7 @@ func (env *sidecarTestEnv) startSidecarClient(
 	sidecarClientCreds connection.TLSConfig,
 ) {
 	t.Helper()
-	committerClient := test.NewTLSClientConfig(sidecarClientCreds, &env.config.Server.Endpoint)
+	committerClient := test.NewTLSClientConfig(sidecarClientCreds, &env.serverConfig.GRPC.Endpoint)
 	env.committedBlock = delivercommitter.Start(ctx, t, committerClient, startBlkNum)
 }
 
@@ -151,7 +154,7 @@ func (env *sidecarTestEnv) startNotificationStream(
 	sidecarClientCreds connection.TLSConfig,
 ) {
 	t.Helper()
-	conn := test.NewSecuredConnection(t, &env.config.Server.Endpoint, sidecarClientCreds)
+	conn := test.NewSecuredConnection(t, &env.serverConfig.GRPC.Endpoint, sidecarClientCreds)
 	var err error
 	env.notifyStream, err = committerpb.NewNotifierClient(conn).OpenNotificationStream(ctx)
 	require.NoError(t, err)
@@ -293,7 +296,7 @@ func TestSidecarConfigRecovery(t *testing.T) {
 	t.Log("Stop the sidecar service and ledger service")
 	cancel()
 	require.Eventually(t, func() bool {
-		return test.CheckServerStopped(t, env.config.Server.Endpoint.Address())
+		return test.CheckServerStopped(t, env.serverConfig.GRPC.Endpoint.Address())
 	}, 4*time.Second, 500*time.Millisecond)
 	require.Eventually(t, func() bool {
 		return !env.coordinator.IsStreamActive()
@@ -317,7 +320,7 @@ func TestSidecarConfigRecovery(t *testing.T) {
 
 	var err error
 	t.Log("Create a new sidecar with the old configuration (only party 0)")
-	env.sidecar, err = New(&env.config, nil)
+	env.sidecar, err = New(&env.config)
 	require.NoError(t, err)
 	t.Cleanup(env.sidecar.Close)
 
@@ -345,7 +348,7 @@ func TestSidecarRecovery(t *testing.T) {
 	t.Log("2. Stop the sidecar service and ledger service")
 	cancel()
 	require.Eventually(t, func() bool {
-		return test.CheckServerStopped(t, env.config.Server.Endpoint.Address())
+		return test.CheckServerStopped(t, env.serverConfig.GRPC.Endpoint.Address())
 	}, 4*time.Second, 500*time.Millisecond)
 	require.Eventually(t, func() bool {
 		return !env.coordinator.IsStreamActive()
@@ -434,7 +437,7 @@ func TestSidecarRecoveryAfterCoordinatorFailure(t *testing.T) {
 	}
 
 	t.Log("2. Stop the coordinator")
-	env.coordinatorServer.Servers[0].Stop()
+	env.coordinatorServer.ServersStop[0]()
 
 	monitoring.RequireConnectionMetrics(
 		t, coordLabel,
@@ -465,7 +468,7 @@ func TestSidecarStartWithoutCoordinator(t *testing.T) {
 	t.Cleanup(cancel)
 
 	t.Log("Stop the coordinator")
-	env.coordinatorServer.Servers[0].Stop()
+	env.coordinatorServer.ServersStop[0]()
 	coordLabel := env.getCoordinatorLabel(t)
 	test.CheckServerStopped(t, coordLabel)
 
@@ -698,31 +701,35 @@ func TestUpdateDynamicTLS(t *testing.T) {
 
 	t.Run("updates TLS CAs from config envelope", func(t *testing.T) {
 		t.Parallel()
-		updater := &test.MockTLSUpdater{}
-		s := &Service{tlsUpdater: updater}
+		s := &Service{}
 
 		block := createConfigBlockForTest(t)
 		ch := make(chan *common.Block, 1)
 		ch <- block
 
 		ctx, cancel := context.WithCancel(t.Context())
-		go func() {
-			// Cancel after the envelope is processed.
-			require.Eventually(t, func() bool { //nolint:testifylint
-				return len(updater.LastCerts()) > 0
-			}, 5*time.Second, 10*time.Millisecond)
-			cancel()
-		}()
+		t.Cleanup(cancel)
+		g, gCtx := errgroup.WithContext(ctx)
+		t.Cleanup(func() {
+			_ = g.Wait()
+		})
+		g.Go(func() error {
+			return s.updateDynamicTLS(gCtx, ch)
+		})
 
-		err := s.updateDynamicTLS(ctx, ch)
-		require.ErrorIs(t, err, context.Canceled)
-		require.NotEmpty(t, updater.LastCerts(), "should have received TLS CA certificates")
+		require.EventuallyWithT(t, func(ct *assert.CollectT) {
+			require.NotEmpty(ct, s.tlsUpdater.Load())
+		}, 5*time.Second, 10*time.Millisecond)
+		// Cancel after the envelope is processed.
+		cancel()
+
+		require.ErrorIs(t, g.Wait(), context.Canceled)
+		require.NotEmpty(t, s.tlsUpdater.Load(), "should have received TLS CA certificates")
 	})
 
 	t.Run("returns non-retryable error for invalid envelope", func(t *testing.T) {
 		t.Parallel()
-		updater := &test.MockTLSUpdater{}
-		s := &Service{tlsUpdater: updater}
+		s := &Service{}
 
 		block := &common.Block{
 			Header: &common.BlockHeader{Number: 1},
@@ -733,7 +740,7 @@ func TestUpdateDynamicTLS(t *testing.T) {
 
 		err := s.updateDynamicTLS(t.Context(), ch)
 		require.Error(t, err)
-		require.Empty(t, updater.LastCerts())
+		require.Empty(t, s.tlsUpdater.Load())
 	})
 }
 
@@ -780,7 +787,7 @@ func TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery(t *testing.T
 	t.Log("Stop the sidecar service")
 	cancel()
 	require.Eventually(t, func() bool {
-		return test.CheckServerStopped(t, env.config.Server.Endpoint.Address())
+		return test.CheckServerStopped(t, env.serverConfig.GRPC.Endpoint.Address())
 	}, 4*time.Second, 500*time.Millisecond)
 	require.Eventually(t, func() bool {
 		return !env.coordinator.IsStreamActive()
