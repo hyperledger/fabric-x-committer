@@ -31,7 +31,7 @@ import (
 
 // StartMockVerifierService starts a specified number of mock verifier service and register cancellation.
 func StartMockVerifierService(t *testing.T, p test.StartServerParameters) (
-	*Verifier, *test.GrpcServers,
+	*Verifier, *test.Servers,
 ) {
 	t.Helper()
 	mockVerifier := NewMockSigVerifier()
@@ -42,14 +42,14 @@ func StartMockVerifierService(t *testing.T, p test.StartServerParameters) (
 // StartMockVerifierServiceFromServerConfig starts a specified number of mock verifier service.
 func StartMockVerifierServiceFromServerConfig(
 	t *testing.T, verifier *Verifier, sc ...*connection.ServerConfig,
-) *test.GrpcServers {
+) *test.Servers {
 	t.Helper()
 	return test.StartGrpcServersWithConfigForTest(t.Context(), t, verifier.RegisterService, sc...)
 }
 
 // StartMockVCService starts a specified number of mock VC service using the same shared instance.
 // It is used for testing when multiple VC services are required to share the same state.
-func StartMockVCService(t *testing.T, p test.StartServerParameters) (*VcService, *test.GrpcServers) {
+func StartMockVCService(t *testing.T, p test.StartServerParameters) (*VcService, *test.Servers) {
 	t.Helper()
 	sharedVC := NewMockVcService()
 	vcGrpc := test.StartGrpcServersForTest(t.Context(), t, p, sharedVC.RegisterService)
@@ -59,14 +59,14 @@ func StartMockVCService(t *testing.T, p test.StartServerParameters) (*VcService,
 // StartMockVCServiceFromServerConfig starts a specified number of mock vc service.
 func StartMockVCServiceFromServerConfig(
 	t *testing.T, vc *VcService, sc ...*connection.ServerConfig,
-) *test.GrpcServers {
+) *test.Servers {
 	t.Helper()
 	return test.StartGrpcServersWithConfigForTest(t.Context(), t, vc.RegisterService, sc...)
 }
 
 // StartMockCoordinatorService starts a mock coordinator service and registers cancellation.
 func StartMockCoordinatorService(t *testing.T, p test.StartServerParameters) (
-	*Coordinator, *test.GrpcServers,
+	*Coordinator, *test.Servers,
 ) {
 	t.Helper()
 	p.NumService = 1
@@ -82,7 +82,7 @@ func StartMockCoordinatorServiceFromServerConfig(
 	t *testing.T,
 	coordService *Coordinator,
 	sc *connection.ServerConfig,
-) *test.GrpcServers {
+) *test.Servers {
 	t.Helper()
 	return test.StartGrpcServersWithConfigForTest(t.Context(), t, coordService.RegisterService, sc)
 }

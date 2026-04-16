@@ -16,7 +16,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/msp"
 
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type (
@@ -39,6 +38,13 @@ type (
 			Sign(signature.Digest) (signature.Signature, error)
 		}
 	}
+)
+
+const (
+	// CreatorCertificate denotes Creator field in protoblocktx.Identity to contain x509 certificate.
+	CreatorCertificate = 0
+	// CreatorID denotes Creator field in protoblocktx.Identity to contain the digest of x509 certificate.
+	CreatorID = 1
 )
 
 // Endorse creates endorsements for all identities in the mspEndorser.
@@ -92,9 +98,9 @@ func CreateEndorsementsForSignatureRule(
 			Endorsement: sig,
 		}
 		switch creatorType {
-		case test.CreatorCertificate:
+		case CreatorCertificate:
 			eid.Identity = msppb.NewIdentity(string(mspIDs[i]), certBytesOrID[i])
-		case test.CreatorID:
+		case CreatorID:
 			eid.Identity = msppb.NewIdentityWithIDOfCert(string(mspIDs[i]), hex.EncodeToString(certBytesOrID[i]))
 		}
 

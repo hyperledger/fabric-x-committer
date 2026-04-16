@@ -17,7 +17,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/utils/certificate"
 
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 // NsEndorser endorse a transaction's namespace.
@@ -67,7 +66,7 @@ func NewNsEndorserFromMsp(certType int, identities ...msp.SigningIdentity) (*NsE
 		if err != nil {
 			return nil, err
 		}
-		if certType == test.CreatorID {
+		if certType == CreatorID {
 			idBytes, err = certificate.DigestPemContent(idBytes, bccsp.SHA256)
 			if err != nil {
 				return nil, err

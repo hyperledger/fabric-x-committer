@@ -40,7 +40,7 @@ type vcMgrTestEnv struct {
 	outputTxs                 chan dependencygraph.TxNodeBatch
 	outputTxsStatus           chan *committerpb.TxStatusBatch
 	mockVcService             *mock.VcService
-	mockVCGrpcServers         *test.GrpcServers
+	mockVCGrpcServers         *test.Servers
 	sigVerTestEnv             *svMgrTestEnv
 }
 
