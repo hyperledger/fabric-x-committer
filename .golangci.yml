@@ -241,4 +241,3 @@ sort-order:
   - file  # filepath, line, and column.
   - severity
   - linter
-

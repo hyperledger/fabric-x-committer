@@ -13,15 +13,14 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 type (
@@ -58,14 +57,14 @@ type (
 // NewMockSigVerifier returns a new mock verifier.
 func NewMockSigVerifier() *Verifier {
 	return &Verifier{
-		healthcheck: connection.DefaultHealthCheckService(),
+		healthcheck: serve.DefaultHealthCheckService(),
 	}
 }
 
-// RegisterService registers for the verifier's GRPC services.
-func (m *Verifier) RegisterService(server *grpc.Server) {
-	servicepb.RegisterVerifierServer(server, m)
-	healthgrpc.RegisterHealthServer(server, m.healthcheck)
+// RegisterService registers the verifier's gRPC services.
+func (m *Verifier) RegisterService(s serve.Servers) {
+	servicepb.RegisterVerifierServer(s.GRPC, m)
+	healthgrpc.RegisterHealthServer(s.GRPC, m.healthcheck)
 }
 
 // StartStream is a mock implementation of the [protosignverifierservice.VerifierServer].

@@ -21,12 +21,12 @@ func TestCheckServerStopped(t *testing.T) {
 
 	_, sigVerServers := mock.StartMockVerifierService(t, test.StartServerParameters{NumService: 1})
 
-	addr := sigVerServers.Configs[0].Endpoint.Address()
+	addr := sigVerServers.Configs[0].GRPC.Endpoint.Address()
 	require.Eventually(t, func() bool {
 		return !test.CheckServerStopped(t, addr)
 	}, 3*time.Second, 250*time.Millisecond)
 
-	sigVerServers.Servers[0].Stop()
+	sigVerServers.ServersStop[0]()
 
 	require.Eventually(t, func() bool {
 		return test.CheckServerStopped(t, addr)

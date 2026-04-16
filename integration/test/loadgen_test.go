@@ -77,7 +77,7 @@ func TestLoadGenWithTLSModes(t *testing.T) {
 					require.NoError(t, err)
 
 					metricsURL, err := monitoring.MakeMetricsURL(
-						c.SystemConfig.Services.LoadGen.MetricsEndpoint.Address(), metricsClientTLSConfig,
+						c.SystemConfig.Services.LoadGen.MetricsEndpoint.Address(), &c.SystemConfig.ClientTLS,
 					)
 					require.NoError(t, err)
 					require.EventuallyWithT(t, func(ct *assert.CollectT) {

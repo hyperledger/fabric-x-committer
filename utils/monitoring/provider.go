@@ -7,20 +7,16 @@ SPDX-License-Identifier: Apache-2.0
 package monitoring
 
 import (
-	"context"
-	"crypto/tls"
 	"fmt"
 	"net/http"
 	"net/http/pprof"
 	"net/url"
 	"sync/atomic"
-	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
@@ -45,33 +41,11 @@ func NewProvider() *Provider {
 	return &Provider{registry: prometheus.NewRegistry()}
 }
 
-// StartPrometheusServer starts a prometheus server.
-// It also starts the given monitoring methods. Their context will cancel once the server is cancelled.
-// This method returns once the server is shutdown and all monitoring methods returns.
-func (p *Provider) StartPrometheusServer(
-	ctx context.Context, serverConfig *connection.ServerConfig, monitor ...func(context.Context),
-) error {
-	logger.Debugf("Creating prometheus server with secure mode: %v", serverConfig.TLS.Mode)
-	// Generate TLS configuration from the server config.
-	serverCreds, err := connection.NewServerTLSCredentials(serverConfig.TLS)
-	if err != nil {
-		return errors.Wrap(err, "failed to create TLS credentials for prometheus server")
-	}
-	serverTLSConfig, err := serverCreds.CreateServerTLSConfig()
-	if err != nil {
-		return err
-	}
-	mux := http.NewServeMux()
-	mux.Handle(
-		metricsSubPath,
-		promhttp.HandlerFor(
-			p.Registry(),
-			promhttp.HandlerOpts{
-				Registry: p.Registry(),
-			},
-		),
-	)
-
+// RegisterMonitoringServer registers the monitoring endpoints with the provided HTTP mux.
+// It sets up Prometheus metrics endpoint and pprof profiling handlers.
+// It uses the similar signature as GRPC server registration to allow common
+// language for all server<->service interfaces.
+func RegisterMonitoringServer(mux *http.ServeMux, p *Provider) {
 	// Register pprof handlers for profiling.
 	// Note: We must explicitly register these handlers because we're using a custom ServeMux.
 	// The net/http/pprof package's init() function only registers handlers on http.DefaultServeMux,
@@ -85,67 +59,11 @@ func (p *Provider) StartPrometheusServer(
 	mux.HandleFunc(pprofSubPath+"profile", pprof.Profile)
 	mux.HandleFunc(pprofSubPath+"symbol", pprof.Symbol)
 	mux.HandleFunc(pprofSubPath+"trace", pprof.Trace)
-	server := &http.Server{
-		ReadTimeout: 30 * time.Second,
-		Handler:     mux,
-		TLSConfig:   serverTLSConfig,
-	}
 
-	l, err := serverConfig.Listener(ctx)
-	if err != nil {
-		return err
-	}
-	defer connection.CloseConnectionsLog(l)
-
-	if serverTLSConfig != nil {
-		l = tls.NewListener(l, serverTLSConfig)
-	}
-
-	metricsURL, err := MakeMetricsURL(l.Addr().String(), serverTLSConfig)
-	if err != nil {
-		return err
-	}
-	p.url.Store(&metricsURL)
-
-	g, gCtx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		logger.Infof("Prometheus serving on URL: %s", metricsURL)
-		defer logger.Info("Prometheus stopped serving")
-		return server.Serve(l)
-	})
-
-	// The following ensures the method does not return before all monitor methods return.
-	for _, m := range monitor {
-		g.Go(func() error {
-			m(gCtx)
-			return nil
-		})
-	}
-
-	// The following ensures the method does not return before the close procedure is complete.
-	stopAfter := context.AfterFunc(ctx, func() {
-		g.Go(func() error {
-			if errClose := server.Close(); err != nil {
-				return errors.Wrap(errClose, "failed to close prometheus server")
-			}
-			return nil
-		})
-	})
-	defer stopAfter()
-
-	if err = g.Wait(); !errors.Is(err, http.ErrServerClosed) {
-		return errors.Wrap(err, "prometheus server stopped with an error")
-	}
-	return nil
-}
-
-// URL returns the prometheus server URL.
-func (p *Provider) URL() string {
-	metricsURL := p.url.Load()
-	if metricsURL != nil {
-		return *metricsURL
-	}
-	return ""
+	// Register metrics handlers.
+	mux.Handle(metricsSubPath, promhttp.HandlerFor(
+		p.Registry(), promhttp.HandlerOpts{Registry: p.Registry()},
+	))
 }
 
 // NewCounter creates a new prometheus counter.
@@ -233,9 +151,9 @@ func (p *Provider) Registry() *prometheus.Registry {
 
 // MakeMetricsURL construct the Prometheus metrics URL.
 // based on the secure level, we set the url scheme to http or https.
-func MakeMetricsURL(address string, tlsConf *tls.Config) (string, error) {
+func MakeMetricsURL(address string, tlsConf *connection.TLSConfig) (string, error) {
 	scheme := httpScheme
-	if tlsConf != nil {
+	if tlsConf != nil && (tlsConf.Mode == connection.OneSideTLSMode || tlsConf.Mode == connection.MutualTLSMode) {
 		scheme = httpsScheme
 	}
 	ret, err := url.JoinPath(scheme, address, metricsSubPath)

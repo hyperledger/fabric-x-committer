@@ -290,8 +290,8 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 		return count == numTxs-6
 	}, 4*time.Second, 100*time.Millisecond)
 
-	env.mockVCGrpcServers.Servers[0].Stop()
-	test.CheckServerStopped(t, env.mockVCGrpcServers.Configs[0].Endpoint.Address())
+	env.mockVCGrpcServers.ServersStop[0]()
+	test.CheckServerStopped(t, env.mockVCGrpcServers.Configs[0].GRPC.Endpoint.Address())
 	env.requireConnectionMetrics(t, 0, connection.Disconnected, 1)
 
 	env.mockVcService.MockFaultyNodeDropSize = 0

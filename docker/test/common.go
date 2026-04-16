@@ -113,10 +113,9 @@ func createAndStartContainerAndItsLogs(
 
 func monitorMetric(t *testing.T, metricsPort string, metricsTLS *connection.TLSConfig) {
 	t.Helper()
-
 	tlsConf := test.MustGetTLSConfig(t, metricsTLS)
 
-	metricsURL, err := monitoring.MakeMetricsURL(net.JoinHostPort(localhost, metricsPort), tlsConf)
+	metricsURL, err := monitoring.MakeMetricsURL(net.JoinHostPort(localhost, metricsPort), metricsTLS)
 	require.NoError(t, err)
 
 	t.Logf("Check the load generator metrics from: %s", metricsURL)

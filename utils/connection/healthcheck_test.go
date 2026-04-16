@@ -22,13 +22,13 @@ func TestRunHealthCheck(t *testing.T) {
 
 	t.Run("returns nil when service is SERVING", func(t *testing.T) {
 		t.Parallel()
-		serverConfig := test.NewLocalHostServer(test.InsecureTLSConfig)
+		serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
 
 		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 		t.Cleanup(cancel)
-		test.RunGrpcServerForTest(ctx, t, serverConfig, nil)
+		test.ServeForTest(ctx, t, serverConfig, nil)
 
-		err := connection.RunHealthCheck(ctx, serverConfig.Endpoint, serverConfig.TLS)
+		err := connection.RunHealthCheck(ctx, serverConfig.GRPC.Endpoint, serverConfig.GRPC.TLS)
 		require.NoError(t, err)
 	})
 

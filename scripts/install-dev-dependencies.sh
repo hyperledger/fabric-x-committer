@@ -8,6 +8,7 @@ set -e
 
 # Versions for non-Go tools
 protoc_bin_version="33.4"
+golangci_lint_version="v2.11.4"
 sqlfluff_version="3.4.0"
 
 # Install protoc binary (C++ based, not available via go install)
@@ -63,7 +64,6 @@ go install tool
 
 # golangci-lint is installed separately (not via go.mod tool directive)
 # to avoid pulling GPL-licensed dependencies into the module graph.
-golangci_lint_version="v2.8.0"
 echo
 echo "Installing golangci-lint ${golangci_lint_version}"
 go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${golangci_lint_version}"

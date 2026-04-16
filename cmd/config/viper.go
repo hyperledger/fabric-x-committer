@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliverorderer"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 // NewViperWithCoordinatorDefaults returns a viper instance with the coordinator default values.
@@ -97,8 +98,8 @@ func newViperWithServiceDefault(servicePort, monitoringPort int) *viper.Viper {
 	v.SetDefault("server.endpoint", &connection.Endpoint{Host: connection.DefaultHost, Port: servicePort})
 	v.SetDefault("monitoring.endpoint", &connection.Endpoint{Host: connection.DefaultHost, Port: monitoringPort})
 	// Rate limiting disabled by default (0 = disabled)
-	v.SetDefault("server.rate-limit", &connection.RateLimitConfig{})
-	v.SetDefault("monitoring.rate-limit", &connection.RateLimitConfig{})
+	v.SetDefault("server.rate-limit", &serve.RateLimitConfig{})
+	v.SetDefault("monitoring.rate-limit", &serve.RateLimitConfig{})
 	return v
 }
 

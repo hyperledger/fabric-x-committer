@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 const config = `
@@ -46,7 +47,7 @@ func TestParseEndpoint(t *testing.T) {
 	v := viper.New()
 	require.NoError(t, readYamlConfigsFromIO(v, bytes.NewBufferString(config)))
 	conf := new(struct {
-		Server                       connection.ServerConfig     `mapstructure:"server"`
+		Server                       serve.ServerConfig          `mapstructure:"server"`
 		Endpoint                     connection.Endpoint         `mapstructure:"endpoint"`
 		OrdererEndpoint              commontypes.OrdererEndpoint `mapstructure:"orderer-endpoint"`
 		JSONOrdererEndpoint          commontypes.OrdererEndpoint `mapstructure:"json-orderer-endpoint"`

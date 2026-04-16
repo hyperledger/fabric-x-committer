@@ -11,13 +11,21 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
+
+type blockQueryWrapper struct {
+	*blockQuery
+}
+
+func (w *blockQueryWrapper) RegisterService(s serve.Servers) {
+	committerpb.RegisterBlockQueryServiceServer(s.GRPC, w.blockQuery)
+}
 
 func TestBlockQuery(t *testing.T) {
 	t.Parallel()
@@ -27,12 +35,11 @@ func TestBlockQuery(t *testing.T) {
 	// Create the query service and register on a gRPC server.
 	queryService := newBlockQuery(bs)
 
-	config := test.NewLocalHostServer(test.InsecureTLSConfig)
-	test.RunGrpcServerForTest(t.Context(), t, config, func(server *grpc.Server) {
-		committerpb.RegisterBlockQueryServiceServer(server, queryService)
-	})
+	serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
+	wrapper := &blockQueryWrapper{queryService}
+	test.ServeForTest(t.Context(), t, serverConfig, wrapper)
 
-	conn := test.NewInsecureConnection(t, &config.Endpoint)
+	conn := test.NewInsecureConnection(t, &serverConfig.GRPC.Endpoint)
 	client := committerpb.NewBlockQueryServiceClient(conn)
 
 	t.Run("GetBlockchainInfo", func(t *testing.T) {

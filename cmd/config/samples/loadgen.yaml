@@ -18,13 +18,11 @@ server:
     # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
       - /root/artifacts/peerOrganizations/peer-org-0.com/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
+# Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
 # The HTTP endpoint for runtime rate limit adjustments.
-# It exposes the following API:
+# It also exposes the following API:
 # GET  /getRateLimit - Get the rate limit returning a JSON body { "rate": uint64 }.
 # POST /setRateLimit - Sets the rate limit using a JSON body { "rate": uint64 }.
-http-server:
-  endpoint: :6997
-# Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
 monitoring:
   # The endpoint where Prometheus metrics and pprof profiling are exposed.
   # Format: host:port or :port (binds to all interfaces).

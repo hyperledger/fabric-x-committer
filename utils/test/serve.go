@@ -16,19 +16,18 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/grpcservice"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 type (
 	// Servers holds the server instances and their respective configurations.
 	Servers struct {
-		Servers []*grpc.Server
-		Configs []*connection.ServerConfig
+		Configs     []*serve.Config
+		ServersStop []context.CancelFunc
 	}
 
 	// StartServerParameters defines the parameters for starting servers.
@@ -36,83 +35,105 @@ type (
 		TLSConfig  connection.TLSConfig
 		NumService int
 	}
+
+	// HealthService is a test helper that implements grpcservice.Registerer
+	// and provides a default health check service for gRPC servers in tests.
+	HealthService struct {
+		healthgrpc.HealthServer
+	}
 )
 
-// RunGrpcServerForTest starts a GRPC server using a register method.
-// It handles the cleanup of the GRPC server at the end of a test, and ensure the test is ended
-// only when the GRPC server is down.
+// ServeForTest starts a GRPC server and optionally a monitoring server using a register method.
+// It handles the cleanup of the servers at the end of a test, and ensure the test is ended
+// only when the servers are down.
 // It also updates the server config endpoint port to the actual port if the configuration
 // did not specify a port.
-// The method asserts that the GRPC server did not end with failure.
-func RunGrpcServerForTest(
-	ctx context.Context, tb testing.TB, serverConfig *connection.ServerConfig, register func(server *grpc.Server),
-) *grpc.Server {
+// The method asserts that the servers did not end with failure.
+func ServeForTest(
+	ctx context.Context, tb testing.TB, sc *serve.Config, registerer serve.Registerer,
+) (stop context.CancelFunc) {
 	tb.Helper()
-	listener, err := serverConfig.Listener(ctx)
-	require.NoError(tb, err)
-	server, err := serverConfig.GrpcServer(nil)
+
+	servers, err := serve.NewServers(ctx, sc)
+	tb.Cleanup(servers.Stop)
 	require.NoError(tb, err)
 
-	if register != nil {
-		register(server)
-	} else {
-		healthgrpc.RegisterHealthServer(server, connection.DefaultHealthCheckService())
+	if registerer == nil {
+		registerer = &HealthService{HealthServer: serve.DefaultHealthCheckService()}
 	}
 
 	var wg sync.WaitGroup
 	tb.Cleanup(wg.Wait)
-	tb.Cleanup(server.Stop)
 
 	// The parent error capture the caller stack trace,
 	// which helps track the server origin when debugging test failures.
 	parentErr := errors.New("parent stack context")
 	wg.Go(func() {
+		serveErr := servers.Serve(ctx, registerer)
 		// We use assert to prevent panicking for cleanup errors.
-		serveErr := server.Serve(listener)
-		if serveErr != nil && !errors.Is(serveErr, grpc.ErrServerStopped) {
+		if serveErr != nil {
 			assert.NoError(tb, errors.WithSecondaryError(serveErr, parentErr))
 		}
 	})
 
 	_ = context.AfterFunc(ctx, func() {
-		server.Stop()
+		servers.Stop()
 	})
-	return server
+	return servers.Stop
 }
 
-// StartGrpcServersForTest starts multiple GRPC servers with a default configuration.
-func StartGrpcServersForTest(
+// ServeManyForTest starts multiple GRPC servers with a default configuration.
+func ServeManyForTest(
 	ctx context.Context,
 	t *testing.T,
 	p StartServerParameters,
-	register func(*grpc.Server),
+	r serve.Registerer,
 ) *Servers {
 	t.Helper()
-	sc := make([]*connection.ServerConfig, p.NumService)
+	sc := make([]*serve.Config, p.NumService)
 	for i := range sc {
-		sc[i] = NewLocalHostServer(p.TLSConfig)
+		sc[i] = NewLocalHostServiceConfig(p.TLSConfig)
 	}
-	return StartGrpcServersWithConfigForTest(ctx, t, register, sc...)
+	return ServeManyWithConfigForTest(ctx, t, r, sc...)
 }
 
-// StartGrpcServersWithConfigForTest starts multiple GRPC servers with given configurations.
-func StartGrpcServersWithConfigForTest(
-	ctx context.Context, t *testing.T, register func(*grpc.Server), sc ...*connection.ServerConfig,
+// ServeManyWithConfigForTest starts multiple GRPC servers with given configurations.
+func ServeManyWithConfigForTest(
+	ctx context.Context, t *testing.T, r serve.Registerer, sc ...*serve.Config,
 ) *Servers {
 	t.Helper()
-	grpcServers := make([]*grpc.Server, len(sc))
-	if register == nil {
-		register = func(server *grpc.Server) {
-			healthgrpc.RegisterHealthServer(server, connection.DefaultHealthCheckService())
-		}
-	}
-	for i, s := range sc {
-		grpcServers[i] = RunGrpcServerForTest(ctx, t, s, register)
+	serverStoppers := make([]context.CancelFunc, len(sc))
+	for i, c := range sc {
+		serverStoppers[i] = ServeForTest(ctx, t, c, r)
 	}
 	return &Servers{
-		Servers: grpcServers,
-		Configs: sc,
+		ServersStop: serverStoppers,
+		Configs:     sc,
 	}
+}
+
+// RegisterService registers the health check service with the gRPC server.
+// This implements the grpcservice.Registerer interface.
+func (h *HealthService) RegisterService(s serve.Servers) {
+	healthgrpc.RegisterHealthServer(s.GRPC, h)
+}
+
+// RunServiceAndServeForTest combines running a service and its GRPC server.
+// It is intended for services that implements the Service API (i.e., command line services).
+func RunServiceAndServeForTest(
+	ctx context.Context,
+	t *testing.T,
+	service serve.Service,
+	serverConfig ...*serve.Config,
+) *channel.Ready {
+	t.Helper()
+	doneFlag := RunServiceForTest(ctx, t, func(ctx context.Context) error {
+		return connection.FilterStreamRPCError(service.Run(ctx))
+	}, service.WaitForReady)
+	for _, c := range serverConfig {
+		ServeForTest(ctx, t, c, service)
+	}
+	return doneFlag
 }
 
 // RunServiceForTest runs a service using the given service method, and waits for it to be ready
@@ -152,23 +173,5 @@ func RunServiceForTest(
 	initCtx, initCancel := context.WithTimeout(dCtx, 2*time.Minute)
 	tb.Cleanup(initCancel)
 	require.True(tb, waitFunc(initCtx), "service is not ready")
-	return doneFlag
-}
-
-// RunServiceAndGrpcForTest combines running a service and its GRPC server.
-// It is intended for services that implements the Service API (i.e., command line services).
-func RunServiceAndGrpcForTest(
-	ctx context.Context,
-	t *testing.T,
-	service grpcservice.Service,
-	serverConfig ...*connection.ServerConfig,
-) *channel.Ready {
-	t.Helper()
-	doneFlag := RunServiceForTest(ctx, t, func(ctx context.Context) error {
-		return connection.FilterStreamRPCError(service.Run(ctx))
-	}, service.WaitForReady)
-	for _, server := range serverConfig {
-		RunGrpcServerForTest(ctx, t, server, service.RegisterService)
-	}
 	return doneFlag
 }

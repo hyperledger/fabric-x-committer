@@ -26,26 +26,23 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
+	"github.com/hyperledger/fabric-x-committer/utils/serialization"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type (
 	// OrdererConfig configuration for the mock orderer.
 	OrdererConfig struct {
-		// Server and ServerConfigs sets the used serving endpoints.
-		// We support both for compatibility with other services.
-		Server                  *connection.ServerConfig      `mapstructure:"server"`
-		ServerConfigs           []*connection.ServerConfig    `mapstructure:"servers"`
+		Servers                 []*serve.ServerConfig         `mapstructure:"servers"`
 		BlockSize               int                           `mapstructure:"block-size"`
 		BlockTimeout            time.Duration                 `mapstructure:"block-timeout"`
 		OutBlockCapacity        int                           `mapstructure:"out-block-capacity"`
@@ -77,7 +74,7 @@ type (
 		cutBlock             chan any
 		cache                *blockCache
 		healthcheck          *health.Server
-		tlsUpdater           connection.TLSCertUpdater
+		tlsUpdater           serve.DynamicTLSUpdater
 
 		// config uses atomic.Pointer to allow safe concurrent reads by the Run() goroutine
 		// while supporting runtime updates (e.g., BlockTimeout changes in tests).
@@ -150,7 +147,7 @@ var (
 )
 
 // NewMockOrderer creates multiple orderer instances.
-func NewMockOrderer(config *OrdererConfig, tlsUpdater connection.TLSCertUpdater) (*Orderer, error) {
+func NewMockOrderer(config *OrdererConfig) (*Orderer, error) {
 	if config.BlockSize == 0 {
 		config.BlockSize = defaultConfig.BlockSize
 	}
@@ -163,22 +160,21 @@ func NewMockOrderer(config *OrdererConfig, tlsUpdater connection.TLSCertUpdater)
 	if config.PayloadCacheSize == 0 {
 		config.PayloadCacheSize = defaultConfig.PayloadCacheSize
 	}
-	if config.TestServerParameters.NumService == 0 && len(config.ServerConfigs) == 0 {
+	if config.TestServerParameters.NumService == 0 && len(config.Servers) == 0 {
 		config.TestServerParameters.NumService = defaultConfig.TestServerParameters.NumService
 	}
 	genesisBlock, err := loadGenesisBlockWithConsenters(config)
 	if err != nil {
 		return nil, err
 	}
-	numServices := max(1, config.TestServerParameters.NumService, len(config.ServerConfigs))
+	numServices := max(1, config.TestServerParameters.NumService, len(config.Servers))
 	o := &Orderer{
 		genesisBlock: *genesisBlock,
 		inEnvs:       make(chan envelopeEntry, numServices*config.BlockSize*config.OutBlockCapacity),
 		inBlocks:     make(chan *BlockWithConsenters, config.BlockSize*config.OutBlockCapacity),
 		cutBlock:     make(chan any),
 		cache:        newBlockCache(config.OutBlockCapacity),
-		healthcheck:  connection.DefaultHealthCheckService(),
-		tlsUpdater:   tlsUpdater,
+		healthcheck:  serve.DefaultHealthCheckService(),
 	}
 	o.config.Store(config)
 
@@ -472,10 +468,11 @@ func (*Orderer) WaitForReady(context.Context) bool {
 	return true
 }
 
-// RegisterService registers for the orderer's GRPC services.
-func (o *Orderer) RegisterService(server *grpc.Server) {
-	ab.RegisterAtomicBroadcastServer(server, o)
-	healthgrpc.RegisterHealthServer(server, o.healthcheck)
+// RegisterService registers the orderer's gRPC services.
+func (o *Orderer) RegisterService(s serve.Servers) {
+	ab.RegisterAtomicBroadcastServer(s.GRPC, o)
+	healthgrpc.RegisterHealthServer(s.GRPC, o.healthcheck)
+	serve.RegisterDynamicTLSUpdater(s.GrpcTLSProvider, &o.tlsUpdater)
 }
 
 // SubmitBlock allows submitting blocks directly for testing other packages.
@@ -609,24 +606,28 @@ func addEnvelope(c *fifoCache[any], e *common.Envelope) bool {
 // and updates the dynamic TLS configuration.
 // This is called when new config blocks are processed to enable runtime CA rotation.
 func (o *Orderer) updateTLSFromConfigBlock(configBlock *common.Block) error {
-	if o.tlsUpdater == nil {
-		return nil
-	}
-
 	if configBlock == nil || len(configBlock.Data.Data) == 0 {
 		return errors.New("config block is nil or has no data")
 	}
 
-	certs, err := connection.ExtractAppTLSCAsFromEnvelope(configBlock.Data.Data[0])
+	certs, err := serialization.ExtractAppTLSCAsFromEnvelope(configBlock.Data.Data[0])
 	if err != nil {
 		return errors.Wrap(err, "failed to extract TLS CAs from config envelope")
 	}
 
-	if err := o.tlsUpdater.SetClientRootCAs(certs); err != nil {
-		return errors.Wrap(err, "failed to update dynamic TLS")
-	}
+	o.tlsUpdater.UpdateClientRootCAs(certs)
 
 	logger.Infof("Updated dynamic TLS with %d CA certificates from config block %d",
 		len(certs), configBlock.Header.Number)
 	return nil
+}
+
+// OrdererStartAndServe starts the orderer and serves it with the given configuration.
+func OrdererStartAndServe(ctx context.Context, service *Orderer) error {
+	sc := service.config.Load().Servers
+	serveConfs := make([]*serve.Config, len(sc))
+	for i, s := range sc {
+		serveConfs[i] = &serve.Config{GRPC: *s}
+	}
+	return serve.StartAndServe(ctx, service, serveConfs...)
 }

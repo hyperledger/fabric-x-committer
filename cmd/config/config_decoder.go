@@ -20,6 +20,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 // RFC 1123 hostname validation regex:
@@ -65,13 +66,13 @@ func endpointDecoder(dataType, targetType reflect.Type, rawData any) (result any
 
 func serverDecoder(dataType, targetType reflect.Type, rawData any) (result any, err error) {
 	stringData, ok := viperutil.GetStringData(dataType, rawData)
-	if !ok || targetType != reflect.TypeFor[connection.ServerConfig]() {
+	if !ok || targetType != reflect.TypeFor[serve.ServerConfig]() {
 		return rawData, nil
 	}
 	endpoint, err := parseEndpoint(stringData)
-	var ret connection.ServerConfig
+	var ret serve.ServerConfig
 	if endpoint != nil {
-		ret = connection.ServerConfig{Endpoint: *endpoint}
+		ret = serve.ServerConfig{Endpoint: *endpoint}
 	}
 	return ret, err
 }

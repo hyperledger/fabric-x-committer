@@ -11,18 +11,19 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v5/pgxpool"
 	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/hyperledger/fabric-x-common/api/committerpb"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen"
@@ -31,17 +32,19 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type (
 	queryServiceTestEnv struct {
-		config     *Config
-		qs         *Service
-		ns         []string
-		clientConn committerpb.QueryServiceClient
-		pool       *pgxpool.Pool
+		config       *Config
+		serverConfig *serve.Config
+		qs           *Service
+		ns           []string
+		clientConn   committerpb.QueryServiceClient
+		pool         *pgxpool.Pool
 	}
 
 	queryServiceTestOpts struct {
@@ -62,7 +65,7 @@ func TestQuerySecureConnection(t *testing.T) {
 			env := newQueryServiceTestEnv(t, &queryServiceTestOpts{serverTLS: serverTLS, clientTLS: clientTLS})
 			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
 				t.Helper()
-				client := createQueryClientWithTLS(t, &env.qs.config.Server.Endpoint, cfg)
+				client := createQueryClientWithTLS(t, &env.serverConfig.GRPC.Endpoint, cfg)
 				_, err := client.GetConfigTransaction(ctx, nil)
 				return err
 			}
@@ -531,15 +534,15 @@ func newQueryServiceTestEnv(t *testing.T, opts *queryServiceTestOpts) *queryServ
 		MaxViewTimeout:        time.Minute,
 		MaxAggregatedViews:    5,
 		MaxActiveViews:        opts.maxActiveViews,
-		Server:                test.NewLocalHostServer(opts.serverTLS),
 		MaxRequestKeys:        opts.maxRequestKeys,
 		Database:              dbConf,
-		Monitoring:            test.NewLocalHostServer(test.InsecureTLSConfig),
+		TLSRefreshInterval:    100 * time.Millisecond,
 	}
+	serverConfig := test.NewLocalHostServiceConfig(opts.serverTLS)
 
-	qs := NewQueryService(config, nil)
-	test.RunServiceAndGrpcForTest(t.Context(), t, qs, qs.config.Server)
-	clientConn := createQueryClientWithTLS(t, &qs.config.Server.Endpoint, opts.clientTLS)
+	qs := NewQueryService(config)
+	test.RunServiceAndServeForTest(t.Context(), t, qs, serverConfig)
+	clientConn := createQueryClientWithTLS(t, &serverConfig.GRPC.Endpoint, opts.clientTLS)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -548,11 +551,12 @@ func newQueryServiceTestEnv(t *testing.T, opts *queryServiceTestOpts) *queryServ
 	t.Cleanup(pool.Close)
 
 	return &queryServiceTestEnv{
-		config:     config,
-		qs:         qs,
-		ns:         namespacesToTest,
-		clientConn: clientConn,
-		pool:       pool,
+		config:       config,
+		serverConfig: serverConfig,
+		qs:           qs,
+		ns:           namespacesToTest,
+		clientConn:   clientConn,
+		pool:         pool,
 	}
 }
 
@@ -561,7 +565,7 @@ func generateNamespacesUnderTest(t *testing.T, namespaces []string) *vc.Database
 	env := vc.NewValidatorAndCommitServiceTestEnv(t, nil)
 	env.SetupSystemTablesAndNamespaces(t.Context(), t)
 
-	clientConf := loadgen.DefaultClientConf(t, test.InsecureTLSConfig)
+	clientConf := loadgen.DefaultClientConf(t)
 	clientConf.Adapter.VCClient = test.NewTLSMultiClientConfig(test.InsecureTLSConfig, env.Endpoints...)
 	nsPolicies := make(map[string]*workload.Policy, len(namespaces))
 	for i, ns := range namespaces {
@@ -767,24 +771,19 @@ func TestRefreshTLSFromDB(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(pool.Close)
 
-		updater := &test.MockTLSUpdater{}
 		qs := &Service{
-			config:     &Config{TLSRefreshInterval: 100 * time.Millisecond},
-			tlsUpdater: updater,
+			config: &Config{TLSRefreshInterval: 100 * time.Millisecond},
 		}
 
-		go qs.refreshTLSFromDB(ctx, pool)
+		var wg sync.WaitGroup
+		t.Cleanup(wg.Wait)
+		wg.Go(func() {
+			qs.refreshTLSFromDB(ctx, pool)
+		})
 
-		require.Eventually(t, func() bool {
-			return len(updater.LastCerts()) > 0
+		require.EventuallyWithT(t, func(ct *assert.CollectT) {
+			require.NotEmpty(ct, qs.tlsUpdater.Load())
 		}, 10*time.Second, 100*time.Millisecond, "TLS updater should have been called with CAs from config")
-	})
-
-	t.Run("no-op when tlsUpdater is nil", func(t *testing.T) {
-		t.Parallel()
-		qs := &Service{config: &Config{}}
-		// Should return immediately without panic.
-		qs.refreshTLSFromDB(t.Context(), nil)
 	})
 }
 

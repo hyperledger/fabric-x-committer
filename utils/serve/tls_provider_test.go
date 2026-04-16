@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package connection
+package serve
 
 import (
 	"crypto/x509"
@@ -18,7 +18,12 @@ import (
 	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/stretchr/testify/require"
+
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 )
+
+const localHost = "localhost"
 
 func TestDynamicTLS(t *testing.T) {
 	t.Parallel()
@@ -37,41 +42,41 @@ func TestDynamicTLS(t *testing.T) {
 		notContain []tlsgen.CA
 	}{
 		{
-			name:       "initial config has only static CAs",
-			contain:    []tlsgen.CA{cas[0]},
-			notContain: []tlsgen.CA{cas[1]},
+			name:    "initial config has only static CAs",
+			contain: []tlsgen.CA{cas[0]},
 		},
 		{
-			name:       "after SetClientRootCAs includes dynamic CAs",
-			updates:    []tlsgen.CA{cas[1]},
-			contain:    []tlsgen.CA{cas[0], cas[1]},
-			notContain: []tlsgen.CA{cas[2]},
+			name:    "after SetClientRootCAs includes dynamic CAs",
+			updates: []tlsgen.CA{cas[1]},
+			contain: []tlsgen.CA{cas[0], cas[1]},
 		},
 		{
-			name:       "SetClientRootCAs replaces previous dynamic CAs",
-			updates:    []tlsgen.CA{cas[1], cas[2]},
-			contain:    []tlsgen.CA{cas[0], cas[2]},
-			notContain: []tlsgen.CA{cas[1]},
+			name:    "SetClientRootCAs replaces previous dynamic CAs",
+			updates: []tlsgen.CA{cas[1], cas[2]},
+			contain: []tlsgen.CA{cas[0], cas[2]},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			dtls := newTestDynamicTLS(t, cas[0])
+			dtls, updater := newTestDynamicTLS(t, cas[0])
+			require.False(t, dtls.updateNoLock())
 			for _, ca := range tc.updates {
-				require.NoError(t, dtls.SetClientRootCAs([][]byte{ca.CertBytes()}))
+				updater.UpdateClientRootCAs([][]byte{ca.CertBytes()})
+				require.True(t, dtls.updateNoLock())
+				require.False(t, dtls.updateNoLock())
 			}
 
 			cfg, err := dtls.GetConfigForClient(nil)
 			require.NoError(t, err)
 			require.NotNil(t, cfg)
-			requireCAs(t, cfg.ClientCAs, tc.contain, tc.notContain)
+			requireCAs(t, cfg.ClientCAs, tc.contain...)
 		})
 	}
 
 	t.Run("server certificate is preserved across updates", func(t *testing.T) {
 		t.Parallel()
-		dtls := newTestDynamicTLS(t, cas[0])
-		require.NoError(t, dtls.SetClientRootCAs([][]byte{cas[1].CertBytes()}))
+		dtls, updater := newTestDynamicTLS(t, cas[0])
+		updater.UpdateClientRootCAs([][]byte{cas[1].CertBytes()})
 
 		cfg, err := dtls.GetConfigForClient(nil)
 		require.NoError(t, err)
@@ -80,8 +85,20 @@ func TestDynamicTLS(t *testing.T) {
 
 	t.Run("SetClientRootCAs rejects invalid cert", func(t *testing.T) {
 		t.Parallel()
-		dtls := newTestDynamicTLS(t, cas[0])
-		require.Error(t, dtls.SetClientRootCAs([][]byte{[]byte("not a valid cert")}))
+		dtls, updater := newTestDynamicTLS(t, cas[0])
+
+		badCA, err := tlsgen.NewCA()
+		require.NoError(t, err)
+		badCA.CertBytes()[0] = 0
+
+		updater.UpdateClientRootCAs([][]byte{badCA.CertBytes()})
+		require.True(t, dtls.updateNoLock())
+		require.False(t, dtls.updateNoLock())
+
+		cfg, err := dtls.GetConfigForClient(nil)
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+		requireCAs(t, cfg.ClientCAs, cas[0])
 	})
 }
 
@@ -121,7 +138,7 @@ func TestExtractAppTLSCAsFromEnvelope(t *testing.T) {
 
 	t.Run("extracts TLS CAs from valid config envelope", func(t *testing.T) {
 		t.Parallel()
-		certs, err := ExtractAppTLSCAsFromEnvelope(block.Data.Data[0])
+		certs, err := serialization.ExtractAppTLSCAsFromEnvelope(block.Data.Data[0])
 		require.NoError(t, err)
 		require.NotEmpty(t, certs, "should extract at least one TLS CA certificate")
 
@@ -134,20 +151,20 @@ func TestExtractAppTLSCAsFromEnvelope(t *testing.T) {
 
 	t.Run("returns error for invalid envelope", func(t *testing.T) {
 		t.Parallel()
-		_, err := ExtractAppTLSCAsFromEnvelope([]byte("invalid"))
+		_, err := serialization.ExtractAppTLSCAsFromEnvelope([]byte("invalid"))
 		require.Error(t, err)
 	})
 
 	t.Run("returns error for nil envelope", func(t *testing.T) {
 		t.Parallel()
-		_, err := ExtractAppTLSCAsFromEnvelope(nil)
+		_, err := serialization.ExtractAppTLSCAsFromEnvelope(nil)
 		require.Error(t, err)
 	})
 }
 
 // newTestDynamicTLS creates a DynamicTLS via NewDynamicTLSFromConfig using the given CA
 // for both server credentials and client CA trust.
-func newTestDynamicTLS(t *testing.T, ca tlsgen.CA) *DynamicTLS {
+func newTestDynamicTLS(t *testing.T, ca tlsgen.CA) (*TLSProvider, *DynamicTLSUpdater) {
 	t.Helper()
 	keyPair, err := ca.NewServerCertKeyPair(localHost)
 	require.NoError(t, err)
@@ -160,40 +177,29 @@ func newTestDynamicTLS(t *testing.T, ca tlsgen.CA) *DynamicTLS {
 	require.NoError(t, os.WriteFile(keyPath, keyPair.Key, 0o600))
 	require.NoError(t, os.WriteFile(caPath, ca.CertBytes(), 0o600))
 
-	dtls, err := NewDynamicTLSFromConfig(TLSConfig{
-		Mode:        MutualTLSMode,
+	dtls, err := NewTLSProvider(connection.TLSConfig{
+		Mode:        connection.MutualTLSMode,
 		CertPath:    certPath,
 		KeyPath:     keyPath,
 		CACertPaths: []string{caPath},
 	})
 	require.NoError(t, err)
-	return dtls
+
+	var updater DynamicTLSUpdater
+	RegisterDynamicTLSUpdater(dtls, &updater)
+	return dtls, &updater
 }
 
 // requireCAs asserts that the pool contains all CAs in `contain` and none of the CAs in `notContain`.
-func requireCAs(t *testing.T, pool *x509.CertPool, contain, notContain []tlsgen.CA) {
+func requireCAs(t *testing.T, pool *x509.CertPool, contain ...tlsgen.CA) {
 	t.Helper()
 	require.NotNil(t, pool)
 
-	for _, ca := range contain {
-		cert := parsePEMCert(t, ca.CertBytes())
-		_, err := cert.Verify(x509.VerifyOptions{Roots: pool})
-		require.NoError(t, err, "pool should contain CA certificate")
+	containsCAs := make([][]byte, len(contain))
+	for i, ca := range contain {
+		containsCAs[i] = ca.CertBytes()
 	}
-
-	for _, ca := range notContain {
-		cert := parsePEMCert(t, ca.CertBytes())
-		_, err := cert.Verify(x509.VerifyOptions{Roots: pool})
-		require.Error(t, err, "pool should NOT contain CA certificate")
-	}
-}
-
-func parsePEMCert(t *testing.T, pemBytes []byte) *x509.Certificate {
-	t.Helper()
-	block, _ := pem.Decode(pemBytes)
-	require.NotNil(t, block, "failed to decode PEM block")
-
-	cert, err := x509.ParseCertificate(block.Bytes)
+	expectedPool, err := connection.BuildCertPool(containsCAs...)
 	require.NoError(t, err)
-	return cert
+	require.True(t, pool.Equal(expectedPool))
 }

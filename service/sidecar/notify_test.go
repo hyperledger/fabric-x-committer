@@ -16,13 +16,21 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
+
+type notifierWrapper struct {
+	*notifier
+}
+
+func (w *notifierWrapper) RegisterService(s serve.Servers) {
+	committerpb.RegisterNotifierServer(s.GRPC, w.notifier)
+}
 
 func BenchmarkNotifier(b *testing.B) {
 	flogging.ActivateSpec("fatal")
@@ -292,11 +300,10 @@ func TestNotifierStream(t *testing.T) {
 	t.Parallel()
 	env := newNotifierTestEnv(t, 5)
 	m := env.metrics
-	config := test.NewLocalHostServer(test.InsecureTLSConfig)
-	test.RunGrpcServerForTest(t.Context(), t, config, func(server *grpc.Server) {
-		committerpb.RegisterNotifierServer(server, env.n)
-	})
-	endpoint := &config.Endpoint
+	serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
+	wrapper := &notifierWrapper{env.n}
+	test.ServeForTest(t.Context(), t, serverConfig, wrapper)
+	endpoint := &serverConfig.GRPC.Endpoint
 	conn := test.NewInsecureConnection(t, endpoint)
 	client := committerpb.NewNotifierClient(conn)
 

@@ -163,7 +163,7 @@ func (c *TLSCredentials) CreateServerTLSConfig() (*tls.Config, error) {
 
 		// Load CA certificate pool (only for mutual TLS)
 		if c.Mode == MutualTLSMode {
-			tlsCfg.ClientCAs, err = buildCertPool(c.CACerts)
+			tlsCfg.ClientCAs, err = BuildCertPool(c.CACerts...)
 			if err != nil {
 				return nil, err
 			}
@@ -198,7 +198,7 @@ func (c *TLSCredentials) CreateClientTLSConfig() (*tls.Config, error) {
 
 		// Load CA certificate pool (required for both modes)
 		var err error
-		tlsCfg.RootCAs, err = buildCertPool(c.CACerts)
+		tlsCfg.RootCAs, err = BuildCertPool(c.CACerts...)
 		if err != nil {
 			return nil, err
 		}
@@ -210,15 +210,30 @@ func (c *TLSCredentials) CreateClientTLSConfig() (*tls.Config, error) {
 	}
 }
 
-func buildCertPool(rootCAs [][]byte) (*x509.CertPool, error) {
+// BuildCertPool creates a new x509 certificate pool from the given root CA certificates.
+// If no root CA certificates are provided, an error is returned.
+// If any of the root CA certificates cannot be parsed, an error is returned.
+// Otherwise, the function returns the created certificate pool.
+func BuildCertPool(rootCAs ...[]byte) (*x509.CertPool, error) {
 	if len(rootCAs) == 0 {
 		return nil, errors.New("no CA certificates provided")
 	}
 	certPool := x509.NewCertPool()
-	for _, rootCA := range rootCAs {
-		if ok := certPool.AppendCertsFromPEM(rootCA); !ok {
-			return nil, errors.Errorf("unable to parse CA cert")
-		}
+	if ok := ExtendCertPool(certPool, rootCAs...); !ok {
+		return nil, errors.Errorf("unable to parse CA cert")
 	}
 	return certPool, nil
+}
+
+// ExtendCertPool appends the given root CA certificates to the given certificate pool.
+// If any of the root CA certificates cannot be parsed, the function returns false.
+// Otherwise, the function returns true.
+func ExtendCertPool(certPool *x509.CertPool, rootCAs ...[]byte) bool {
+	ok := true
+	for _, rootCA := range rootCAs {
+		if !certPool.AppendCertsFromPEM(rootCA) {
+			ok = false
+		}
+	}
+	return ok
 }

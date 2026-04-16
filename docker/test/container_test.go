@@ -72,7 +72,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			waitForContainerHealthy(ctx, t, containerName)
 
 			v := config.NewViperWithLoadGenDefaults()
-			c, err := config.ReadLoadGenYamlAndSetupLogging(v, filepath.Join(localConfigPath, "loadgen.yaml"))
+			c, _, err := config.ReadLoadGenYamlAndSetupLogging(v, filepath.Join(localConfigPath, "loadgen.yaml"))
 			require.NoError(t, err)
 
 			// Copy the container's crypto artifacts to the host so the test

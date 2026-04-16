@@ -16,8 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/cmd/cliutil"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/mock"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/grpcservice"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 const (
@@ -69,39 +68,23 @@ func startMockOrderer() *cobra.Command {
 		Long:  fmt.Sprintf("%v is a mock ordering service.", mockOrdererName),
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			conf, err := config.ReadMockOrdererYamlAndSetupLogging(v, configPath)
+			conf, serverConfig, err := config.ReadMockOrdererYamlAndSetupLogging(v, configPath)
 			if err != nil {
 				return err
 			}
+			if !serverConfig.GRPC.Endpoint.Empty() {
+				conf.Servers = append(conf.Servers, &serverConfig.GRPC)
+			}
+
 			cmd.SilenceUsage = true
 			cmd.Printf("Starting %v\n", mockOrdererName)
 			defer cmd.Printf("%v ended\n", mockOrdererName)
 
-			serverConfigs := conf.ServerConfigs
-			if conf.Server != nil && !conf.Server.Endpoint.Empty() {
-				serverConfigs = append(serverConfigs, conf.Server)
-			}
-
-			// Create dynamic TLS for the first server config (or use Server if available).
-			// This enables dynamic CA rotation from config blocks.
-			var serverConfig *connection.ServerConfig
-			if conf.Server != nil {
-				serverConfig = conf.Server
-			} else if len(serverConfigs) > 0 {
-				serverConfig = serverConfigs[0]
-			}
-
-			tlsUpdater, tlsProvider, err := cliutil.NewDynamicTLS(serverConfig)
-			if err != nil {
-				return err
-			}
-
-			service, err := mock.NewMockOrderer(conf, tlsUpdater)
+			service, err := mock.NewMockOrderer(conf)
 			if err != nil {
 				return errors.Wrap(err, "failed to create mock ordering service")
 			}
-
-			return grpcservice.StartAndServe(cmd.Context(), service, tlsProvider, serverConfigs...)
+			return mock.OrdererStartAndServe(cmd.Context(), service)
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)
@@ -117,16 +100,16 @@ func startMockCoordinator() *cobra.Command {
 		Long:  fmt.Sprintf("%v is a mock coordinator service.", mockCoordinatorName),
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			conf, err := config.ReadCoordinatorYamlAndSetupLogging(v, configPath)
+			_, serverConfig, err := config.ReadCoordinatorYamlAndSetupLogging(v, configPath)
 			if err != nil {
 				return err
 			}
 			cmd.SilenceUsage = true
-			cmd.Printf("Starting %v\n", mockVerifierName)
-			defer cmd.Printf("%v ended\n", mockVerifierName)
+			cmd.Printf("Starting %v\n", mockCoordinatorName)
+			defer cmd.Printf("%v ended\n", mockCoordinatorName)
 
 			service := mock.NewMockCoordinator()
-			return grpcservice.Serve(cmd.Context(), service, conf.Server, nil)
+			return serve.Serve(cmd.Context(), service, serverConfig)
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)
@@ -142,7 +125,7 @@ func startMockVerifier() *cobra.Command {
 		Long:  fmt.Sprintf("%v is a mock signature verification service.", mockVerifierName),
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			conf, err := config.ReadVerifierYamlAndSetupLogging(v, configPath)
+			_, serverConfig, err := config.ReadVerifierYamlAndSetupLogging(v, configPath)
 			if err != nil {
 				return err
 			}
@@ -151,7 +134,7 @@ func startMockVerifier() *cobra.Command {
 			defer cmd.Printf("%v ended\n", mockVerifierName)
 
 			sv := mock.NewMockSigVerifier()
-			return grpcservice.Serve(cmd.Context(), sv, conf.Server, nil)
+			return serve.Serve(cmd.Context(), sv, serverConfig)
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)
@@ -167,7 +150,7 @@ func startMockVC() *cobra.Command {
 		Long:  fmt.Sprintf("%v is a mock validator and committer service.", mockVcName),
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			conf, err := config.ReadVCYamlAndSetupLogging(v, configPath)
+			_, serverConfig, err := config.ReadVCYamlAndSetupLogging(v, configPath)
 			if err != nil {
 				return err
 			}
@@ -176,7 +159,7 @@ func startMockVC() *cobra.Command {
 			defer cmd.Printf("%v ended\n", mockVcName)
 
 			vcs := mock.NewMockVcService()
-			return grpcservice.Serve(cmd.Context(), vcs, conf.Server, nil)
+			return serve.Serve(cmd.Context(), vcs, serverConfig)
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)

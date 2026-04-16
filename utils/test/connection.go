@@ -23,6 +23,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 var (
@@ -60,14 +61,23 @@ func CheckServerStopped(t *testing.T, addr string) bool {
 	return false
 }
 
+// GrpcServiceToConnectionServerConfigs extracts gRPC server endpoints from serve configs.
+func GrpcServiceToConnectionServerConfigs(servers ...*serve.Config) []*serve.ServerConfig {
+	result := make([]*serve.ServerConfig, len(servers))
+	for i, server := range servers {
+		result[i] = &server.GRPC
+	}
+	return result
+}
+
 // ServerToMultiClientConfig is used to create a multi client configuration from existing server(s)
 // given a client TLS configuration.
 func ServerToMultiClientConfig(
-	clientTLS connection.TLSConfig, servers ...*connection.ServerConfig,
+	clientTLS connection.TLSConfig, servers ...*serve.Config,
 ) *connection.MultiClientConfig {
 	endpoints := make([]*connection.Endpoint, len(servers))
 	for i, server := range servers {
-		endpoints[i] = &server.Endpoint
+		endpoints[i] = &server.GRPC.Endpoint
 	}
 	return &connection.MultiClientConfig{
 		TLS:       clientTLS,
@@ -184,16 +194,12 @@ func MustGetTLSConfig(t *testing.T, tlsConfig *connection.TLSConfig) *tls.Config
 	return clientTLSConfig
 }
 
-// NewPreAllocatedLocalHostServer create a localhost server config with a pre allocated listener and port.
-func NewPreAllocatedLocalHostServer(t *testing.T, tlsConfig connection.TLSConfig) *connection.ServerConfig {
+// NewPreAllocatedLocalHostServerConfig create a localhost server config with a pre allocated listener and port.
+func NewPreAllocatedLocalHostServerConfig(t *testing.T, tlsConfig connection.TLSConfig) *serve.Config {
 	t.Helper()
-	server := NewLocalHostServer(tlsConfig)
-	listener, err := server.PreAllocateListener(t.Context())
-	t.Cleanup(func() {
-		_ = listener.Close()
-	})
-	require.NoError(t, err)
-	return server
+	serverConfig := NewLocalHostServiceConfig(tlsConfig)
+	serve.PreAllocateListener(t, &serverConfig.GRPC)
+	return serverConfig
 }
 
 // NewServiceTLSConfig creates a server TLS configuration with certificates loaded from the artifact path.
@@ -211,6 +217,15 @@ func NewServiceTLSConfig(artifactsPath, serviceName, mode string) connection.TLS
 	}
 }
 
+// NewLocalHostServiceConfig returns a grpcservice.ServerConfig with both gRPC and monitoring endpoints.
+// Both endpoints use "localhost:0" (auto-assigned ports) with the given TLS credentials.
+func NewLocalHostServiceConfig(creds connection.TLSConfig) *serve.Config {
+	return &serve.Config{
+		GRPC: *NewLocalHostServer(creds),
+		HTTP: *NewLocalHostServer(creds),
+	}
+}
+
 // NewEndpoint creates an endpoint from give host and port (as string).
 func NewEndpoint(t *testing.T, host, port string) *connection.Endpoint {
 	t.Helper()
@@ -220,8 +235,8 @@ func NewEndpoint(t *testing.T, host, port string) *connection.Endpoint {
 }
 
 // NewLocalHostServer returns a default server config with endpoint "localhost:0" given server credentials.
-func NewLocalHostServer(creds connection.TLSConfig) *connection.ServerConfig {
-	return &connection.ServerConfig{
+func NewLocalHostServer(creds connection.TLSConfig) *serve.ServerConfig {
+	return &serve.ServerConfig{
 		Endpoint: connection.Endpoint{Host: "127.0.0.1"},
 		TLS:      creds,
 	}

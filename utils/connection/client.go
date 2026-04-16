@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -39,7 +40,8 @@ const (
 	defaultGrpcMaxAttempts = 1024
 	// TODO: All services including the orderer must use the same default maximum message size.
 	//       Hence, we need to move this constant to fabric-x-common.
-	maxMsgSize       = 100 * 1024 * 1024
+	// MaxMsgSize is set to 100MB.
+	MaxMsgSize       = 100 * 1024 * 1024
 	scResolverSchema = "sc.connection"
 )
 
@@ -179,8 +181,8 @@ func NewConnection(p ClientParameters) (*grpc.ClientConn, error) {
 		grpc.WithDefaultServiceConfig(MakeGrpcRetryPolicyJSON(p.Retry)),
 		grpc.WithTransportCredentials(p.Creds),
 		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(maxMsgSize),
-			grpc.MaxCallSendMsgSize(maxMsgSize),
+			grpc.MaxCallRecvMsgSize(MaxMsgSize),
+			grpc.MaxCallSendMsgSize(MaxMsgSize),
 		),
 		grpc.WithMaxCallAttempts(defaultGrpcMaxAttempts),
 	}, p.AdditionalOpts...)
@@ -198,6 +200,10 @@ func CloseConnections[T io.Closer](connections ...T) error {
 	logger.Infof("Closing %d connections.", len(connections))
 	errs := make([]error, len(connections))
 	for i, closer := range connections {
+		v := reflect.ValueOf(closer)
+		if !v.IsValid() || (v.Kind() == reflect.Ptr && v.IsNil()) {
+			continue
+		}
 		errs[i] = filterAcceptableCloseErr(closer.Close())
 	}
 	return errors.Join(errs...)

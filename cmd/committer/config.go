@@ -10,6 +10,7 @@ import (
 	"github.com/cockroachdb/errors"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 const (
@@ -28,7 +29,7 @@ var serviceNames = map[string]string{
 	queryService:       "Query-Service",
 }
 
-func readConfig(name, configPath string) (any, error) {
+func readConfig(name, configPath string) (any, *serve.Config, error) {
 	switch name {
 	case sidecarService:
 		return config.ReadSidecarYamlAndSetupLogging(config.NewViperWithSidecarDefaults(), configPath)
@@ -41,6 +42,6 @@ func readConfig(name, configPath string) (any, error) {
 	case queryService:
 		return config.ReadQueryYamlAndSetupLogging(config.NewViperWithQueryDefaults(), configPath)
 	default:
-		return nil, errors.Newf("unknown service: %s", name)
+		return nil, nil, errors.Newf("unknown service: %s", name)
 	}
 }

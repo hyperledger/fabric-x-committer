@@ -17,12 +17,20 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/delivercommitter"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
+
+type blockDeliveryTestWrapper struct {
+	*blockDelivery
+}
+
+func (w *blockDeliveryTestWrapper) RegisterService(s serve.Servers) {
+	peer.RegisterDeliverServer(s.GRPC, w.blockDelivery)
+}
 
 func TestBlockStoreAndDelivery(t *testing.T) {
 	t.Parallel()
@@ -35,16 +43,15 @@ func TestBlockStoreAndDelivery(t *testing.T) {
 
 	bd := newBlockDelivery(bs)
 
-	config := test.NewLocalHostServer(test.InsecureTLSConfig)
+	serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
 	inputBlock := make(chan *common.Block, 10)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(bs.run(ctx, &blockStoreRunConfig{
 			IncomingCommittedBlock: inputBlock,
 		}))
 	}, nil)
-	test.RunGrpcServerForTest(t.Context(), t, config, func(server *grpc.Server) {
-		peer.RegisterDeliverServer(server, bd)
-	})
+	wrapper := &blockDeliveryTestWrapper{bd}
+	test.ServeForTest(t.Context(), t, serverConfig, wrapper)
 
 	// NOTE: if we start the delivery client without even the 0'th block, it would
 	//       result in an error. This is due to the iterator implementation in the
@@ -62,7 +69,7 @@ func TestBlockStoreAndDelivery(t *testing.T) {
 	require.Equal(t, 1, test.GetIntMetricValue(t, metrics.blockHeight))
 	require.Greater(t, test.GetMetricValue(t, metrics.appendBlockToLedgerSeconds), float64(0))
 
-	committerClient := test.NewInsecureClientConfig(&config.Endpoint)
+	committerClient := test.NewInsecureClientConfig(&serverConfig.GRPC.Endpoint)
 	receivedBlocksFromLedgerService := delivercommitter.Start(t.Context(), t, committerClient, 0)
 
 	blk1, _ := createBlockForTest(t, 1, protoutil.BlockHeaderHash(blk0.Header))

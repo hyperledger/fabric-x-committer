@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -26,8 +27,17 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
+
+type deliverServerWrapper struct {
+	peer.DeliverServer
+}
+
+func (w *deliverServerWrapper) RegisterService(s serve.Servers) {
+	peer.RegisterDeliverServer(s.GRPC, w.DeliverServer)
+}
 
 //nolint:paralleltest // modifies grpc logger.
 func TestGRPCRetry(t *testing.T) {
@@ -39,14 +49,14 @@ func TestGRPCRetry(t *testing.T) {
 	})
 
 	t.Log("Starting service")
-	serverConfig := test.NewLocalHostServer(test.InsecureTLSConfig)
+	serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	test.RunGrpcServerForTest(ctx, t, serverConfig, nil)
+	test.ServeForTest(ctx, t, serverConfig, nil)
 
 	t.Log("Connecting")
-	conn := test.NewInsecureConnection(t, &serverConfig.Endpoint)
+	conn := test.NewInsecureConnection(t, &serverConfig.GRPC.Endpoint)
 	client := healthgrpc.NewHealthClient(conn)
 
 	t.Log("Sanity check")
@@ -55,22 +65,25 @@ func TestGRPCRetry(t *testing.T) {
 
 	t.Log("Stopping the grpc server")
 	cancel()
-	test.CheckServerStopped(t, serverConfig.Endpoint.Address())
+	test.CheckServerStopped(t, serverConfig.GRPC.Endpoint.Address())
 
 	// We override the context to avoid mistakenly using the previous one.
 	ctx, cancel = context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	go func() {
+
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
+	wg.Go(func() {
 		time.Sleep(30 * time.Second)
 		t.Log("Service is starting")
-		test.RunGrpcServerForTest(ctx, t, serverConfig, nil)
-	}()
+		test.ServeForTest(ctx, t, serverConfig, nil)
+	})
 
 	t.Log("Attempting to connect with default GRPC config")
 	_, err = client.Check(ctx, nil)
 	require.NoError(t, err)
 
-	conn2 := test.NewInsecureConnectionWithRetry(t, &serverConfig.Endpoint, retry.Profile{
+	conn2 := test.NewInsecureConnectionWithRetry(t, &serverConfig.GRPC.Endpoint, retry.Profile{
 		MaxElapsedTime: 2 * time.Second,
 	})
 	client2 := healthgrpc.NewHealthClient(conn2)
@@ -81,17 +94,17 @@ func TestGRPCRetry(t *testing.T) {
 
 	t.Log("Stopping the grpc server")
 	cancel()
-	test.CheckServerStopped(t, serverConfig.Endpoint.Address())
+	test.CheckServerStopped(t, serverConfig.GRPC.Endpoint.Address())
 
 	// We override the context to avoid mistakenly using the previous one.
 	ctx, cancel = context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	go func() {
+	wg.Go(func() {
 		time.Sleep(30 * time.Second)
 		t.Log("Service is starting")
-		test.RunGrpcServerForTest(ctx, t, serverConfig, nil)
-	}()
+		test.ServeForTest(ctx, t, serverConfig, nil)
+	})
 
 	t.Log("Attempting to connect again with lower timeout")
 	_, err = client2.Check(ctx, nil)
@@ -108,14 +121,14 @@ func TestGRPCRetryMultiEndpoints(t *testing.T) {
 	})
 
 	t.Log("Starting service")
-	serverConfig := test.NewLocalHostServer(test.InsecureTLSConfig)
+	serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	test.RunGrpcServerForTest(ctx, t, serverConfig, nil)
+	test.ServeForTest(ctx, t, serverConfig, nil)
 
 	t.Log("Connecting")
-	conn := test.NewInsecureConnection(t, &serverConfig.Endpoint)
+	conn := test.NewInsecureConnection(t, &serverConfig.GRPC.Endpoint)
 	client := healthgrpc.NewHealthClient(conn)
 
 	t.Log("Sanity check")
@@ -136,10 +149,10 @@ func TestGRPCRetryMultiEndpoints(t *testing.T) {
 	multiConn := test.NewInsecureLoadBalancedConnection(t, []*connection.Endpoint{
 		// We put the fake one first to ensure we iterate over it.
 		&fakeServerConfig.Endpoint,
-		&serverConfig.Endpoint,
+		&serverConfig.GRPC.Endpoint,
 	})
 	require.Contains(t, multiConn.Target(), fakeServerConfig.Endpoint.Address())
-	require.Contains(t, multiConn.Target(), serverConfig.Endpoint.Address())
+	require.Contains(t, multiConn.Target(), serverConfig.GRPC.Endpoint.Address())
 
 	multiClient := healthgrpc.NewHealthClient(multiConn)
 	for i := range 100 {
@@ -190,8 +203,8 @@ var (
 
 type filterTestEnv struct {
 	service       *fakeBroadcastDeliver
-	serverConf    *connection.ServerConfig
-	server        *grpc.Server
+	serverConf    *serve.Config
+	serverStop    context.CancelFunc
 	client        peer.DeliverClient
 	deliver       peer.Deliver_DeliverClient
 	serviceCancel context.CancelFunc
@@ -202,17 +215,16 @@ func newFilterTestEnv(t *testing.T) *filterTestEnv {
 	t.Helper()
 	env := &filterTestEnv{
 		service:    &fakeBroadcastDeliver{},
-		serverConf: &connection.ServerConfig{Endpoint: connection.Endpoint{Host: "localhost"}},
+		serverConf: test.NewLocalHostServiceConfig(test.InsecureTLSConfig),
 	}
 
 	serviceCtx, serviceCancel := context.WithTimeout(t.Context(), 3*time.Minute)
 	t.Cleanup(serviceCancel)
 	env.serviceCancel = serviceCancel
 
-	env.server = test.RunGrpcServerForTest(serviceCtx, t, env.serverConf, func(server *grpc.Server) {
-		peer.RegisterDeliverServer(server, env.service)
-	})
-	conn := test.NewInsecureConnection(t, &env.serverConf.Endpoint)
+	wrapper := &deliverServerWrapper{env.service}
+	env.serverStop = test.ServeForTest(serviceCtx, t, env.serverConf, wrapper)
+	conn := test.NewInsecureConnection(t, &env.serverConf.GRPC.Endpoint)
 	env.client = peer.NewDeliverClient(conn)
 
 	clientCtx, clientCancel := context.WithTimeout(t.Context(), 3*time.Minute)
@@ -300,7 +312,7 @@ func TestFilterStreamRPCError(t *testing.T) {
 		env := newFilterTestEnv(t)
 		go func() {
 			time.Sleep(3 * time.Second)
-			env.server.Stop()
+			env.serverStop()
 		}()
 		_, err := env.deliver.Recv()
 		require.Error(t, err)
@@ -348,18 +360,41 @@ func (c *closer) Close() error {
 func TestCloseConnections(t *testing.T) {
 	t.Parallel()
 	testErrors := []error{
-		io.EOF, io.ErrUnexpectedEOF, io.ErrClosedPipe, net.ErrClosed, context.Canceled, context.DeadlineExceeded,
+		io.EOF, io.ErrUnexpectedEOF, io.ErrClosedPipe, net.ErrClosed, context.Canceled, context.DeadlineExceeded, nil,
 	}
+
 	for _, err := range testErrors {
-		t.Run(err.Error(), func(t *testing.T) {
+		name := "<nil>"
+		if err != nil {
+			name = err.Error()
+		}
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			require.NoError(t, connection.CloseConnections(&closer{err: errors.Wrap(err, "failed")}))
 		})
 	}
 
-	t.Run("all", func(t *testing.T) {
+	t.Run("all io.Closer type", func(t *testing.T) {
 		t.Parallel()
-		closers := make([]*closer, len(testErrors))
+		// We keep an extra nil element to test nil closer handling.
+		closers := make([]io.Closer, len(testErrors)+2)
+		var c *grpc.ClientConn
+		closers[len(testErrors)] = c
+		for i, err := range testErrors {
+			closers[i] = &closer{err: errors.Wrap(err, "failed")}
+		}
+		require.NoError(t, connection.CloseConnections(closers...))
+	})
+
+	t.Run("all nil grpc.ClientConn", func(t *testing.T) {
+		t.Parallel()
+		require.NoError(t, connection.CloseConnections(make([]*grpc.ClientConn, len(testErrors))...))
+	})
+
+	t.Run("all private type", func(t *testing.T) {
+		t.Parallel()
+		// We keep an extra nil element to test nil closer handling.
+		closers := make([]*closer, len(testErrors)+1)
 		for i, err := range testErrors {
 			closers[i] = &closer{err: errors.Wrap(err, "failed")}
 		}

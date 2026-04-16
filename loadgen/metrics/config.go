@@ -8,16 +8,13 @@ package metrics
 
 import (
 	"time"
-
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 type (
 	// Config describes the load generator metrics.
 	// It adds latency tracker to the common metrics configurations.
 	Config struct {
-		connection.ServerConfig `mapstructure:",squash" yaml:",inline"`
-		Latency                 LatencyConfig `mapstructure:"latency" yaml:"latency"`
+		Latency LatencyConfig `mapstructure:"latency" yaml:"latency"`
 	}
 
 	// LatencyConfig describes the latency monitoring parameters.
