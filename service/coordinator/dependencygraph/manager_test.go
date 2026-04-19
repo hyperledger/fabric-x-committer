@@ -90,7 +90,7 @@ func BenchmarkDependencyGraph(b *testing.B) {
 								PrometheusMetricsProvider: monitoring.NewProvider(),
 							})
 
-							txPoll := workload.GenerateTransactions(b, p, max(b.N*3, batchSize*3))
+							txPoll := workload.GenerateTransactions(b, p, max(b.N, batchSize))
 
 							ctx := b.Context()
 							outCtx := channel.NewReader(ctx, out)
@@ -120,10 +120,12 @@ func BenchmarkDependencyGraph(b *testing.B) {
 							// Generates the load to the manager's queue.
 							go func() {
 								var i uint64
-								for ctx.Err() == nil && len(txPoll) > 0 {
-									take := min(batchSize, len(txPoll))
+								remaining := b.N
+								for ctx.Err() == nil && remaining > 0 {
+									take := min(batchSize, len(txPoll), remaining)
 									batch := workload.MapToCoordinatorBatch(i, txPoll[:take])
 									txPoll = txPoll[take:]
+									remaining -= take
 									inCtx.Write(&TransactionBatch{
 										ID:  i,
 										Txs: batch.Txs,
@@ -145,6 +147,7 @@ func BenchmarkDependencyGraph(b *testing.B) {
 								total += len(batch)
 							}
 							b.StopTimer()
+							test.ReportTxPerSecond(b)
 						})
 					}
 				})
