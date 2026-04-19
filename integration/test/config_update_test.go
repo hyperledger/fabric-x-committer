@@ -13,7 +13,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -30,7 +29,6 @@ func newConfigTestEnv(t *testing.T) (
 	*runner.CommitterRuntime, func(),
 ) {
 	t.Helper()
-	gomega.RegisterTestingT(t)
 
 	c := runner.NewRuntime(t, &runner.Config{
 		NumOrderers:  3,
@@ -237,7 +235,6 @@ func TestConfigUpdateOrdererEndpoints(t *testing.T) {
 // bypassing the normal batching delays configured for the verifier and VC services.
 func TestConfigBlockImmediateCommit(t *testing.T) {
 	t.Parallel()
-	gomega.RegisterTestingT(t)
 
 	c := runner.NewRuntime(t, &runner.Config{
 		BlockSize:                           100,

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -63,7 +62,6 @@ func TestLoadGenWithTLSModes(t *testing.T) {
 			for _, mode := range test.ServerModes {
 				t.Run(fmt.Sprintf("tls-mode:%s", mode), func(t *testing.T) {
 					t.Parallel()
-					gomega.RegisterTestingT(t)
 					c := runner.NewRuntime(t, &runner.Config{
 						NumVerifiers: 2,
 						NumVCService: 2,
@@ -97,7 +95,6 @@ func TestLoadGenWithTLSModes(t *testing.T) {
 
 func TestLoadGenCommitterWithLimit(t *testing.T) {
 	t.Parallel()
-	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{
 		BlockTimeout: 2 * time.Second,
 		BlockSize:    500,
