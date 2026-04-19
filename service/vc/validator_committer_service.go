@@ -16,7 +16,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -24,9 +23,10 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 var logger = flogging.MustGetLogger("validator-committer")
@@ -106,9 +106,8 @@ func NewValidatorCommitterService(
 		minTxBatchSize:           config.ResourceLimits.MinTransactionBatchSize,
 		timeoutForMinTxBatchSize: config.ResourceLimits.TimeoutForMinTransactionBatchSize,
 		config:                   config,
-		healthcheck:              connection.DefaultHealthCheckService(),
+		healthcheck:              serve.DefaultHealthCheckService(),
 	}
-
 	return vc, nil
 }
 
@@ -119,12 +118,7 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 	g, eCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		logger.Info("Starting Prometheus monitoring server")
-		_ = vc.metrics.StartPrometheusServer(
-			eCtx, vc.config.Monitoring, vc.monitorQueues,
-		)
-		// We don't return error here to avoid stopping the service due to monitoring error.
-		// But we use the errgroup to ensure the method returns only when the server exits.
+		vc.monitorQueues(ctx)
 		return nil
 	})
 
@@ -164,10 +158,11 @@ func (*ValidatorCommitterService) WaitForReady(context.Context) bool {
 	return true
 }
 
-// RegisterService registers for the validator-committer's GRPC services.
-func (vc *ValidatorCommitterService) RegisterService(server *grpc.Server) {
-	servicepb.RegisterValidationAndCommitServiceServer(server, vc)
-	healthgrpc.RegisterHealthServer(server, vc.healthcheck)
+// RegisterService registers the validator-committer's gRPC services and monitoring server.
+func (vc *ValidatorCommitterService) RegisterService(s serve.Servers) {
+	servicepb.RegisterValidationAndCommitServiceServer(s.GRPC, vc)
+	healthgrpc.RegisterHealthServer(s.GRPC, vc.healthcheck)
+	monitoring.RegisterMonitoringServer(s.Monitoring, vc.metrics.Provider)
 }
 
 func (vc *ValidatorCommitterService) monitorQueues(ctx context.Context) {

@@ -24,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
@@ -126,19 +127,19 @@ func newBroadcastTestEnv(t *testing.T, tlsMode, ftLevel string) *broadcastTestEn
 	})
 	e.OrdererConnConfig.FaultToleranceLevel = ftLevel
 
-	sc := make([]*connection.ServerConfig, 0, len(e.AllServerConfig))
+	sc := make([]*serve.Config, 0, len(e.AllServerConfig))
 	fakeEndpoints := make(map[uint32][]*commontypes.OrdererEndpoint)
 	downServers := make(map[uint32][]*commontypes.OrdererEndpoint)
 	for id := range e.NumIDs {
 		fakeEp := make([]*commontypes.OrdererEndpoint, e.ServerPerID)
 		downEp := make([]*commontypes.OrdererEndpoint, e.ServerPerID)
 		for i := range e.ServerPerID {
-			fakeServer := test.NewPreAllocatedLocalHostServer(t, serverTLSConfig)
+			fakeServer := test.NewPreAllocatedLocalHostServerConfig(t, serverTLSConfig)
 			sc = append(sc, fakeServer)
 			fakeEp[i] = &commontypes.OrdererEndpoint{
 				ID:   id,
-				Host: sc[i].Endpoint.Host,
-				Port: sc[i].Endpoint.Port,
+				Host: sc[i].GRPC.Endpoint.Host,
+				Port: sc[i].GRPC.Endpoint.Port,
 			}
 
 			downServer := test.NewPreAllocatedLocalHostServer(t, serverTLSConfig)
@@ -151,8 +152,8 @@ func newBroadcastTestEnv(t *testing.T, tlsMode, ftLevel string) *broadcastTestEn
 		fakeEndpoints[id] = fakeEp
 		downServers[id] = downEp
 	}
-	fakeServers := test.StartGrpcServersWithConfigForTest(t.Context(), t, nil, sc...)
-	require.Len(t, fakeServers.Servers, len(e.AllServerConfig))
+	fakeServers := test.ServeManyWithConfigForTest(t.Context(), t, nil, sc...)
+	require.Len(t, fakeServers.ServersStop, len(e.AllServerConfig))
 
 	t.Log("Read config block")
 	b := e.GetBlock(t, 0)

@@ -29,8 +29,11 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliverorderer"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
+	"github.com/hyperledger/fabric-x-committer/utils/serialization"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 var logger = flogging.MustGetLogger("sidecar")
@@ -52,12 +55,11 @@ type Service struct {
 	config             *Config
 	healthcheck        *health.Server
 	metrics            *perfMetrics
-	tlsUpdater         connection.TLSCertUpdater
+	tlsUpdater         serve.DynamicTLSUpdater
 }
 
-// New creates a sidecar service. The tlsUpdater is optional; when non-nil,
-// it is used to push updated root CA certificates from config blocks.
-func New(c *Config, tlsUpdater connection.TLSCertUpdater) (*Service, error) {
+// New creates a sidecar service.
+func New(c *Config) (*Service, error) {
 	logger.Info("Initializing new sidecar")
 
 	// 1. Load the delivery parameters for the ordering service.
@@ -83,12 +85,11 @@ func New(c *Config, tlsUpdater connection.TLSCertUpdater) (*Service, error) {
 		blockStore:     blockStoreInstance,
 		blockDelivery:  newBlockDelivery(blockStoreInstance),
 		blockQuery:     newBlockQuery(blockStoreInstance),
-		healthcheck:    connection.DefaultHealthCheckService(),
+		healthcheck:    serve.DefaultHealthCheckService(),
 		config:         c,
 		metrics:        metrics,
 		committedBlock: make(chan *common.Block, c.ChannelBufferSize),
 		statusQueue:    make(chan []*committerpb.TxStatus, c.ChannelBufferSize),
-		tlsUpdater:     tlsUpdater,
 	}, nil
 }
 
@@ -102,10 +103,6 @@ func (*Service) WaitForReady(context.Context) bool {
 func (s *Service) Run(ctx context.Context) error {
 	pCtx, pCancel := context.WithCancel(ctx)
 	defer pCancel()
-	// similar to other services, when the prometheus server returns an error, we do not terminate the service.
-	go func() {
-		_ = s.metrics.StartPrometheusServer(pCtx, s.config.Monitoring, s.monitorQueues)
-	}()
 
 	logger.Infof("Create coordinator client and connect to %s", s.config.Committer.Endpoint)
 	conn, connErr := connection.NewSingleConnection(s.config.Committer)
@@ -146,12 +143,14 @@ func (s *Service) Run(ctx context.Context) error {
 	return utils.ProcessErr(g.Wait(), "sidecar has been stopped")
 }
 
-// RegisterService registers for the sidecar's GRPC services.
-func (s *Service) RegisterService(server *grpc.Server) {
-	peer.RegisterDeliverServer(server, s.blockDelivery)
-	committerpb.RegisterNotifierServer(server, s.notifier)
-	committerpb.RegisterBlockQueryServiceServer(server, s.blockQuery)
-	healthgrpc.RegisterHealthServer(server, s.healthcheck)
+// RegisterService registers the sidecar's gRPC services and monitoring server.
+func (s *Service) RegisterService(srv serve.Servers) {
+	peer.RegisterDeliverServer(srv.GRPC, s.blockDelivery)
+	committerpb.RegisterNotifierServer(srv.GRPC, s.notifier)
+	committerpb.RegisterBlockQueryServiceServer(srv.GRPC, s.blockQuery)
+	healthgrpc.RegisterHealthServer(srv.GRPC, s.healthcheck)
+	serve.RegisterDynamicTLSUpdater(srv.GrpcTLSProvider, &s.tlsUpdater)
+	monitoring.RegisterMonitoringServer(srv.Monitoring, s.metrics.Provider)
 }
 
 func (s *Service) sendBlocksAndReceiveStatus(
@@ -173,25 +172,22 @@ func (s *Service) sendBlocksAndReceiveStatus(
 	blocksToBeCommitted := make(chan *common.Block, s.config.ChannelBufferSize)
 	s.blockToBeCommitted.Store(new(blocksToBeCommitted))
 
-	var configBlocks chan *common.Block
-	if s.tlsUpdater != nil {
-		// Config blocks are infrequent, but in rare cases a user may submit
-		// multiple config transactions in rapid succession. Buffer of 5 allows
-		// the relay to enqueue without blocking while TLS updater processes.
-		configBlocks = make(chan *common.Block, 5)
-		// Prime the channel with the latest config block from the store.
-		// This ensures TLS is initialized with current CAs before new blocks arrive.
-		_, configBlk, err := s.getPrevBlockAndItsConfig(nextBlockNum)
-		if err != nil {
-			return errors.Wrap(err, "failed to fetch latest config block for TLS initialization")
-		}
-		if configBlk != nil {
-			configBlocks <- configBlk
-		}
-		g.Go(func() error {
-			return s.updateDynamicTLS(gCtx, configBlocks)
-		})
+	// Config blocks are infrequent, but in rare cases a user may submit
+	// multiple config transactions in rapid succession. Buffer of 5 allows
+	// the relay to enqueue without blocking while TLS updater processes.
+	configBlocks := make(chan *common.Block, 5)
+	// Prime the channel with the latest config block from the store.
+	// This ensures TLS is initialized with current CAs before new blocks arrive.
+	_, configBlk, err := s.getPrevBlockAndItsConfig(nextBlockNum)
+	if err != nil {
+		return errors.Wrap(err, "failed to fetch latest config block for TLS initialization")
 	}
+	if configBlk != nil {
+		configBlocks <- configBlk
+	}
+	g.Go(func() error {
+		return s.updateDynamicTLS(gCtx, configBlocks)
+	})
 
 	// NOTE: deliver.s.startDelivery and relay.Run must always return an error on exist.
 	g.Go(func() error {
@@ -441,15 +437,14 @@ func (s *Service) updateDynamicTLS(ctx context.Context, configBlocks <-chan *com
 				errors.Newf("config block %d has no data", configBlk.Header.Number))
 		}
 
-		certs, err := connection.ExtractAppTLSCAsFromEnvelope(configBlk.Data.Data[0])
+		certs, err := serialization.ExtractAppTLSCAsFromEnvelope(configBlk.Data.Data[0])
 		if err != nil {
 			return errors.Join(retry.ErrNonRetryable,
 				errors.Wrap(err, "failed to extract TLS CAs from config envelope"))
 		}
 
-		if err := s.tlsUpdater.SetClientRootCAs(certs); err != nil {
-			return errors.Join(retry.ErrNonRetryable, errors.Wrap(err, "failed to update dynamic TLS"))
-		}
+		s.tlsUpdater.UpdateClientRootCAs(certs)
+
 		logger.Infof("Updated dynamic TLS with %d CA certificates", len(certs))
 	}
 

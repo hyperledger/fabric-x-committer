@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -121,7 +122,7 @@ func (dc *DatabaseContainer) start(ctx context.Context) error {
 		return err
 	}
 
-	err := connection.ListenRetryExecute(ctx, func() error {
+	err := serve.ListenRetryExecute(ctx, func() error {
 		err := dc.client.StartContainerWithContext(dc.containerID, nil, ctx)
 		var containerAlreadyRunning *docker.ContainerAlreadyRunning
 		if err != nil && !errors.As(err, &containerAlreadyRunning) {
@@ -290,7 +291,7 @@ func (dc *DatabaseContainer) createContainer(ctx context.Context) error {
 			MemorySwap:   memorySwap,
 		},
 	}
-	return connection.ListenRetryExecute(ctx, func() error {
+	return serve.ListenRetryExecute(ctx, func() error {
 		container, err := dc.client.CreateContainer(dockerOptions)
 		if container != nil {
 			dc.containerID = container.ID

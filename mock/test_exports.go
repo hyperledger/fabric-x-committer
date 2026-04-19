@@ -18,73 +18,71 @@ import (
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 // StartMockVerifierService starts a specified number of mock verifier service and register cancellation.
 func StartMockVerifierService(t *testing.T, p test.StartServerParameters) (
-	*Verifier, *test.GrpcServers,
+	*Verifier, *test.Servers,
 ) {
 	t.Helper()
 	mockVerifier := NewMockSigVerifier()
-	verifierGrpc := test.StartGrpcServersForTest(t.Context(), t, p, mockVerifier.RegisterService)
-	return mockVerifier, verifierGrpc
+	verifierSC := test.ServeManyForTest(t.Context(), t, p, mockVerifier)
+	return mockVerifier, verifierSC
 }
 
 // StartMockVerifierServiceFromServerConfig starts a specified number of mock verifier service.
 func StartMockVerifierServiceFromServerConfig(
-	t *testing.T, verifier *Verifier, sc ...*connection.ServerConfig,
-) *test.GrpcServers {
+	t *testing.T, verifier *Verifier, sc ...*serve.Config,
+) *test.Servers {
 	t.Helper()
-	return test.StartGrpcServersWithConfigForTest(t.Context(), t, verifier.RegisterService, sc...)
+	return test.ServeManyWithConfigForTest(t.Context(), t, verifier, sc...)
 }
 
 // StartMockVCService starts a specified number of mock VC service using the same shared instance.
 // It is used for testing when multiple VC services are required to share the same state.
-func StartMockVCService(t *testing.T, p test.StartServerParameters) (*VcService, *test.GrpcServers) {
+func StartMockVCService(t *testing.T, p test.StartServerParameters) (*VcService, *test.Servers) {
 	t.Helper()
 	sharedVC := NewMockVcService()
-	vcGrpc := test.StartGrpcServersForTest(t.Context(), t, p, sharedVC.RegisterService)
-	return sharedVC, vcGrpc
+	vcSC := test.ServeManyForTest(t.Context(), t, p, sharedVC)
+	return sharedVC, vcSC
 }
 
 // StartMockVCServiceFromServerConfig starts a specified number of mock vc service.
 func StartMockVCServiceFromServerConfig(
-	t *testing.T, vc *VcService, sc ...*connection.ServerConfig,
-) *test.GrpcServers {
+	t *testing.T, vc *VcService, sc ...*serve.Config,
+) *test.Servers {
 	t.Helper()
-	return test.StartGrpcServersWithConfigForTest(t.Context(), t, vc.RegisterService, sc...)
+	return test.ServeManyWithConfigForTest(t.Context(), t, vc, sc...)
 }
 
 // StartMockCoordinatorService starts a mock coordinator service and registers cancellation.
 func StartMockCoordinatorService(t *testing.T, p test.StartServerParameters) (
-	*Coordinator, *test.GrpcServers,
+	*Coordinator, *test.Servers,
 ) {
 	t.Helper()
 	p.NumService = 1
 	mockCoordinator := NewMockCoordinator()
-	coordinatorGrpc := test.StartGrpcServersForTest(
-		t.Context(), t, p, mockCoordinator.RegisterService,
-	)
-	return mockCoordinator, coordinatorGrpc
+	coordinatorSC := test.ServeManyForTest(t.Context(), t, p, mockCoordinator)
+	return mockCoordinator, coordinatorSC
 }
 
 // StartMockCoordinatorServiceFromServerConfig starts a mock coordinator service using the given config.
 func StartMockCoordinatorServiceFromServerConfig(
 	t *testing.T,
 	coordService *Coordinator,
-	sc *connection.ServerConfig,
-) *test.GrpcServers {
+	sc *serve.Config,
+) *test.Servers {
 	t.Helper()
-	return test.StartGrpcServersWithConfigForTest(t.Context(), t, coordService.RegisterService, sc)
+	return test.ServeManyWithConfigForTest(t.Context(), t, coordService, sc)
 }
 
 // StreamFetcher is used by RequireStreams/RequireStreamsWithEndpoints.
@@ -125,8 +123,8 @@ type OrdererTestEnv struct {
 	Orderer           *Orderer
 	PrevBlock         *common.Block
 	PartyStates       map[uint32]*PartyState
-	AllServerConfig   []*connection.ServerConfig
-	AllServers        []*grpc.Server
+	AllServerConfig   []*serve.Config
+	AllServersStop    []context.CancelFunc
 	AllEndpoints      []*commontypes.OrdererEndpoint
 }
 
@@ -172,18 +170,18 @@ func NewOrdererTestEnv(t *testing.T, p *OrdererTestParameters) *OrdererTestEnv {
 	instanceCount := int(p.NumIDs) * p.ServerPerID
 	t.Logf("Orderer instances: %d; IDs: %d", instanceCount, p.NumIDs)
 
-	allServerConfigs := make([]*connection.ServerConfig, 0, instanceCount)
+	allServerConfigs := make([]*serve.Config, 0, instanceCount)
 	allEndpoints := make([]*commontypes.OrdererEndpoint, 0, instanceCount)
 	partyStates := make(map[uint32]*PartyState, p.NumIDs)
 	for id := range p.NumIDs {
 		partyStates[id] = &PartyState{PartyID: id}
 		for range p.ServerPerID {
-			server := test.NewPreAllocatedLocalHostServer(t, p.ServerTLSConfig)
-			allServerConfigs = append(allServerConfigs, server)
+			serverConfig := test.NewPreAllocatedLocalHostServerConfig(t, p.ServerTLSConfig)
+			allServerConfigs = append(allServerConfigs, serverConfig)
 			allEndpoints = append(allEndpoints, &commontypes.OrdererEndpoint{
 				ID:   id,
-				Host: server.Endpoint.Host,
-				Port: server.Endpoint.Port,
+				Host: serverConfig.GRPC.Endpoint.Host,
+				Port: serverConfig.GRPC.Endpoint.Port,
 			})
 		}
 	}
@@ -200,7 +198,7 @@ func NewOrdererTestEnv(t *testing.T, p *OrdererTestParameters) *OrdererTestEnv {
 	p.OrdererConfig.ArtifactsPath = p.ArtifactsPath
 
 	// Start the system.
-	ordererService, err := NewMockOrderer(p.OrdererConfig, nil)
+	ordererService, err := NewMockOrderer(p.OrdererConfig)
 	require.NoError(t, err)
 	// Register the party states.
 	for _, ep := range allEndpoints {
@@ -227,20 +225,18 @@ func NewOrdererTestEnv(t *testing.T, p *OrdererTestParameters) *OrdererTestEnv {
 // StartServers starts the servers for the orderer and maps them to their respective IDs.
 func (e *OrdererTestEnv) StartServers(t *testing.T) {
 	t.Helper()
-	allServers := test.StartGrpcServersWithConfigForTest(
-		t.Context(), t, e.Orderer.RegisterService, e.AllServerConfig...,
-	)
-	require.Len(t, allServers.Servers, len(e.AllServerConfig))
-	e.AllServers = allServers.Servers
+	allServers := test.ServeManyWithConfigForTest(t.Context(), t, e.Orderer, e.AllServerConfig...)
+	require.Len(t, allServers.ServersStop, len(e.AllServerConfig))
+	e.AllServersStop = allServers.ServersStop
 }
 
 // StopServers stops the servers and closes their pre allocated listeners.
 func (e *OrdererTestEnv) StopServers() {
-	for _, s := range e.AllServers {
-		s.Stop()
+	for _, stopFunc := range e.AllServersStop {
+		stopFunc()
 	}
 	for _, s := range e.AllServerConfig {
-		_ = s.ClosePreAllocatedListener()
+		serve.ClosePreAllocatedListener(&s.GRPC)
 	}
 }
 
@@ -248,8 +244,8 @@ func (e *OrdererTestEnv) StopServers() {
 func (e *OrdererTestEnv) StopServersOfID(id uint32) {
 	for idx, ep := range e.AllEndpoints {
 		if ep.ID == id {
-			e.AllServers[idx].Stop()
-			_ = e.AllServerConfig[idx].ClosePreAllocatedListener()
+			e.AllServersStop[idx]()
+			serve.ClosePreAllocatedListener(&e.AllServerConfig[idx].GRPC)
 		}
 	}
 }

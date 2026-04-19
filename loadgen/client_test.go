@@ -31,7 +31,9 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
@@ -68,29 +70,28 @@ func TestLoadGenForLoadGen(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(loadGenTestCaseName(tc), func(t *testing.T) {
 			t.Parallel()
-			clientConf, serverTLSConfig, clientTLSConfig := clientConfigForTestCase(t, tc)
+			e := newLoadGenClientTestEnv(t, tc)
 			// Ensure the client doesn't generate load, but only receives it from the sub client.
-			clientConf.LoadProfile.Workers = 0
+			e.clientConf.LoadProfile.Workers = 0
 
-			clientConf.Adapter.VerifierClient = startVerifiers(t, serverTLSConfig, clientTLSConfig)
-			_, err := clientConf.Server.PreAllocateListener(t.Context())
-			require.NoError(t, err)
+			e.clientConf.Adapter.VerifierClient = startVerifiers(t, e.serverTLSConfig, e.clientTLSConfig)
+			serve.PreAllocateListener(t, &e.serverConf.GRPC)
 
-			subClientConf := DefaultClientConf(t, serverTLSConfig)
+			subEnv := newLoadGenClientTestEnv(t, tc)
 			// We ensure the sub client uses the same crypto artifacts as
 			// the main load generator and the entire system.
-			subClientConf.LoadProfile.Policy.ArtifactsPath = clientConf.LoadProfile.Policy.ArtifactsPath
+			subEnv.clientConf.LoadProfile.Policy.ArtifactsPath = e.clientConf.LoadProfile.Policy.ArtifactsPath
 
-			subClientConf.Adapter.LoadGenClient = test.NewTLSClientConfig(
-				clientTLSConfig, &clientConf.Server.Endpoint,
+			subEnv.clientConf.Adapter.LoadGenClient = test.NewTLSClientConfig(
+				e.clientTLSConfig, &e.serverConf.GRPC.Endpoint,
 			)
-			subClient, err := NewLoadGenClient(subClientConf)
+			subClient, err := NewLoadGenClient(subEnv.clientConf)
 			require.NoError(t, err)
 
 			t.Log("Start distributed loadgen")
 			subCtx, subCancel := context.WithCancel(t.Context())
 			t.Cleanup(subCancel)
-			subDone := test.RunServiceAndGrpcForTest(subCtx, t, subClient, subClientConf.Server)
+			subDone := test.RunServiceAndServeForTest(subCtx, t, subClient, subEnv.serverConf)
 			// Stop the sub-client before test cleanup tears down the main server.
 			// Without this, the main server's gRPC Stop runs first (LIFO cleanup order),
 			// causing the sub-client to hit "connection reset by peer" on in-flight RPCs.
@@ -98,7 +99,7 @@ func TestLoadGenForLoadGen(t *testing.T) {
 				subCancel()
 				subDone.WaitForReady(t.Context())
 			})
-			testLoadGenerator(t, clientConf, &clientTLSConfig)
+			e.testLoadGenerator(t)
 		})
 	}
 }
@@ -108,12 +109,12 @@ func TestLoadGenForVCService(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(loadGenTestCaseName(tc), func(t *testing.T) {
 			t.Parallel()
-			clientConf, serverTLSConfig, clientTLSConfig := clientConfigForTestCase(t, tc)
+			e := newLoadGenClientTestEnv(t, tc)
 			env := vc.NewValidatorAndCommitServiceTestEnv(t, &vc.TestEnvOpts{
-				NumServices: 2, ServerCreds: serverTLSConfig,
+				NumServices: 2, ServerCreds: e.serverTLSConfig,
 			})
-			clientConf.Adapter.VCClient = test.NewTLSMultiClientConfig(clientTLSConfig, env.Endpoints...)
-			testLoadGenerator(t, clientConf, &clientTLSConfig)
+			e.clientConf.Adapter.VCClient = test.NewTLSMultiClientConfig(e.clientTLSConfig, env.Endpoints...)
+			e.testLoadGenerator(t)
 		})
 	}
 }
@@ -123,10 +124,9 @@ func TestLoadGenForVerifier(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(loadGenTestCaseName(tc), func(t *testing.T) {
 			t.Parallel()
-			clientConf, serverTLSConfig, clientTLSConfig := clientConfigForTestCase(t, tc)
-			clientConf.Adapter.VerifierClient = startVerifiers(t, serverTLSConfig, clientTLSConfig)
-			// Start client
-			testLoadGenerator(t, clientConf, &clientTLSConfig)
+			e := newLoadGenClientTestEnv(t, tc)
+			e.clientConf.Adapter.VerifierClient = startVerifiers(t, e.serverTLSConfig, e.clientTLSConfig)
+			e.testLoadGenerator(t)
 		})
 	}
 }
@@ -135,20 +135,18 @@ func startVerifiers(t *testing.T, serverTLS, clientTLS connection.TLSConfig) *co
 	t.Helper()
 	endpoints := make([]*connection.Endpoint, 2)
 	for i := range endpoints {
-		sConf := &verifier.Config{
-			Server:     test.NewLocalHostServer(serverTLS),
-			Monitoring: test.NewLocalHostServer(serverTLS),
+		service := verifier.New(&verifier.Config{
 			ParallelExecutor: verifier.ExecutorConfig{
 				BatchSizeCutoff:   50,
 				BatchTimeCutoff:   10 * time.Millisecond,
 				ChannelBufferSize: 50,
 				Parallelism:       40,
 			},
-		}
+		})
 
-		service := verifier.New(sConf)
-		test.RunGrpcServerForTest(t.Context(), t, sConf.Server, service.RegisterService)
-		endpoints[i] = &sConf.Server.Endpoint
+		serverConfig := test.NewLocalHostServiceConfig(serverTLS)
+		test.ServeForTest(t.Context(), t, serverConfig, service)
+		endpoints[i] = &serverConfig.GRPC.Endpoint
 	}
 	return test.NewTLSMultiClientConfig(clientTLS, endpoints...)
 }
@@ -164,20 +162,18 @@ func TestLoadGenForCoordinator(t *testing.T) {
 	) {
 		t.Run(loadGenTestCaseName(tc), func(t *testing.T) {
 			t.Parallel()
-			clientConf, serverTLSConfig, clientTLSConfig := clientConfigForTestCase(t, tc)
+			e := newLoadGenClientTestEnv(t, tc)
 
 			mockSettings := test.StartServerParameters{
 				NumService: 1,
-				TLSConfig:  serverTLSConfig,
+				TLSConfig:  e.serverTLSConfig,
 			}
 			_, sigVerServer := mock.StartMockVerifierService(t, mockSettings)
 			_, vcServer := mock.StartMockVCService(t, mockSettings)
 
 			cConf := &coordinator.Config{
-				Server:             test.NewLocalHostServer(serverTLSConfig),
-				Monitoring:         test.NewLocalHostServer(serverTLSConfig),
-				Verifier:           *test.ServerToMultiClientConfig(clientTLSConfig, sigVerServer.Configs...),
-				ValidatorCommitter: *test.ServerToMultiClientConfig(clientTLSConfig, vcServer.Configs...),
+				Verifier:           *test.ServerToMultiClientConfig(e.clientTLSConfig, sigVerServer.Configs...),
+				ValidatorCommitter: *test.ServerToMultiClientConfig(e.clientTLSConfig, vcServer.Configs...),
 				DependencyGraph: &coordinator.DependencyGraphConfig{
 					NumOfLocalDepConstructors: 1,
 					WaitingTxsLimit:           100_000,
@@ -186,13 +182,13 @@ func TestLoadGenForCoordinator(t *testing.T) {
 			}
 
 			service := coordinator.NewCoordinatorService(cConf)
-			test.RunServiceAndGrpcForTest(t.Context(), t, service, cConf.Server)
+			serverConfig := test.NewLocalHostServiceConfig(e.serverTLSConfig)
+			test.RunServiceAndServeForTest(t.Context(), t, service, serverConfig)
 
 			// Start client
-			clientConf.Adapter.CoordinatorClient = test.NewTLSClientConfig(
-				clientTLSConfig, &cConf.Server.Endpoint,
-			)
-			testLoadGenerator(t, clientConf, &clientTLSConfig)
+			coordEp := &serverConfig.GRPC.Endpoint
+			e.clientConf.Adapter.CoordinatorClient = test.NewTLSClientConfig(e.clientTLSConfig, coordEp)
+			e.testLoadGenerator(t)
 		})
 	}
 }
@@ -208,7 +204,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 	) {
 		t.Run(loadGenTestCaseName(tc), func(t *testing.T) {
 			t.Parallel()
-			e, clientConf := clientConfigWithOrdererForTestCase(t, tc)
+			e, lgEnv := clientConfigWithOrdererForTestCase(t, tc)
 			_, coordinatorServer := mock.StartMockCoordinatorService(t, test.StartServerParameters{
 				TLSConfig: e.ServerTLSConfig,
 			})
@@ -217,42 +213,40 @@ func TestLoadGenForSidecar(t *testing.T) {
 			// To avoid manually pre-choosing ports that might conflict with other tests,
 			// we pre allocate them by starting a listener that picks a port automatically and bind to it.
 			// In real evaluation scenario, the ports will be selected by the deployment infrastructure.
-			sidecarServerConf := preAllocatePorts(t, e.ServerTLSConfig)
+			sidecarServerConf := test.NewPreAllocatedLocalHostServerConfig(t, e.ServerTLSConfig)
 
 			// The sidecar adapter runs its own orderer.
 			e.StopServers()
 
 			// Start server under test
 			sidecarConf := &sidecar.Config{
-				Server:                        sidecarServerConf,
 				LastCommittedBlockSetInterval: 100 * time.Millisecond,
 				WaitingTxsLimit:               5000,
 				ChannelBufferSize:             sidecar.DefaultBufferSize,
 				Committer: test.NewTLSClientConfig(
 					e.ClientTLSConfig,
-					&coordinatorServer.Configs[0].Endpoint,
+					&coordinatorServer.Configs[0].GRPC.Endpoint,
 				),
 				Notification: sidecar.NotificationServiceConfig{
 					MaxTimeout:         sidecar.DefaultNotificationMaxTimeout,
 					MaxActiveTxIDs:     sidecar.DefaultMaxActiveTxIDs,
 					MaxTxIDsPerRequest: sidecar.DefaultMaxTxIDsPerRequest,
 				},
-				Monitoring: test.NewLocalHostServer(e.ServerTLSConfig),
 				Ledger: sidecar.LedgerConfig{
 					Path: t.TempDir(),
 				},
 				Orderer: e.OrdererConnConfig,
 			}
-			service, err := sidecar.New(sidecarConf, nil)
+			service, err := sidecar.New(sidecarConf)
 			require.NoError(t, err)
 			t.Cleanup(service.Close)
-			test.RunServiceAndGrpcForTest(t.Context(), t, service, sidecarConf.Server)
+			test.RunServiceAndServeForTest(t.Context(), t, service, sidecarServerConf)
 			// Start client
-			clientConf.Adapter.SidecarClient = &adapters.SidecarClientConfig{
-				OrdererServers: e.AllServerConfig,
-				SidecarClient:  test.NewTLSClientConfig(e.ClientTLSConfig, &sidecarServerConf.Endpoint),
+			lgEnv.clientConf.Adapter.SidecarClient = &adapters.SidecarClientConfig{
+				OrdererServers: test.GrpcServiceToConnectionServerConfigs(e.AllServerConfig...),
+				SidecarClient:  test.NewTLSClientConfig(e.ClientTLSConfig, &sidecarServerConf.GRPC.Endpoint),
 			}
-			testLoadGenerator(t, clientConf, &e.ClientTLSConfig)
+			lgEnv.testLoadGenerator(t)
 		})
 	}
 }
@@ -262,7 +256,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 	for _, tc := range ordererTestCases {
 		t.Run(loadGenTestCaseName(tc), func(t *testing.T) {
 			t.Parallel()
-			e, clientConf := clientConfigWithOrdererForTestCase(t, tc)
+			e, lgEnv := clientConfigWithOrdererForTestCase(t, tc)
 
 			// Start dependencies
 			_, coordinatorServer := mock.StartMockCoordinatorService(t, test.StartServerParameters{
@@ -270,39 +264,38 @@ func TestLoadGenForOrderer(t *testing.T) {
 			})
 
 			sidecarConf := &sidecar.Config{
-				Server:                        test.NewLocalHostServer(e.ServerTLSConfig),
 				LastCommittedBlockSetInterval: 100 * time.Millisecond,
 				WaitingTxsLimit:               5000,
 				ChannelBufferSize:             sidecar.DefaultBufferSize,
 				Committer: test.NewTLSClientConfig(
 					e.ClientTLSConfig,
-					&coordinatorServer.Configs[0].Endpoint,
+					&coordinatorServer.Configs[0].GRPC.Endpoint,
 				),
 				Notification: sidecar.NotificationServiceConfig{
 					MaxTimeout:         sidecar.DefaultNotificationMaxTimeout,
 					MaxActiveTxIDs:     sidecar.DefaultMaxActiveTxIDs,
 					MaxTxIDsPerRequest: sidecar.DefaultMaxTxIDsPerRequest,
 				},
-				Monitoring: test.NewLocalHostServer(e.ServerTLSConfig),
 				Ledger: sidecar.LedgerConfig{
 					Path: t.TempDir(),
 				},
 				Orderer: e.OrdererConnConfig,
 			}
+			serverConfig := test.NewLocalHostServiceConfig(e.ServerTLSConfig)
 
 			// Start sidecar.
-			service, err := sidecar.New(sidecarConf, nil)
+			service, err := sidecar.New(sidecarConf)
 			require.NoError(t, err)
 			t.Cleanup(service.Close)
-			test.RunServiceAndGrpcForTest(t.Context(), t, service, sidecarConf.Server)
+			test.RunServiceAndServeForTest(t.Context(), t, service, serverConfig)
 
 			// Start client
-			clientConf.Adapter.OrdererClient = &adapters.OrdererClientConfig{
-				SidecarClient:        test.NewTLSClientConfig(e.ClientTLSConfig, &sidecarConf.Server.Endpoint),
+			lgEnv.clientConf.Adapter.OrdererClient = &adapters.OrdererClientConfig{
+				SidecarClient:        test.NewTLSClientConfig(e.ClientTLSConfig, &serverConfig.GRPC.Endpoint),
 				Orderer:              e.OrdererConnConfig,
 				BroadcastParallelism: 5,
 			}
-			testLoadGenerator(t, clientConf, &e.ClientTLSConfig)
+			lgEnv.testLoadGenerator(t)
 		})
 	}
 }
@@ -312,35 +305,26 @@ func TestLoadGenForOnlyOrderer(t *testing.T) {
 	for _, tc := range ordererTestCases {
 		t.Run(loadGenTestCaseName(tc), func(t *testing.T) {
 			t.Parallel()
-			e, clientConf := clientConfigWithOrdererForTestCase(t, tc)
+			e, lgEnv := clientConfigWithOrdererForTestCase(t, tc)
 
 			// Start client
-			clientConf.Adapter.OrdererClient = &adapters.OrdererClientConfig{
+			lgEnv.clientConf.Adapter.OrdererClient = &adapters.OrdererClientConfig{
 				Orderer:              e.OrdererConnConfig,
 				BroadcastParallelism: 5,
 			}
-			testLoadGenerator(t, clientConf, &e.ClientTLSConfig)
+			lgEnv.testLoadGenerator(t)
 		})
 	}
 }
 
-func preAllocatePorts(t *testing.T, tlsConfig connection.TLSConfig) *connection.ServerConfig {
+func (e *loadGenClientTestEnv) testLoadGenerator(t *testing.T) {
 	t.Helper()
-	server := test.NewLocalHostServer(tlsConfig)
-	listener, err := server.PreAllocateListener(t.Context())
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = listener.Close()
-	})
-	return server
-}
-
-func testLoadGenerator(t *testing.T, c *ClientConfig, metricsTLS *connection.TLSConfig) {
-	t.Helper()
-	client, err := NewLoadGenClient(c)
+	client, err := NewLoadGenClient(e.clientConf)
 	require.NoError(t, err)
 
-	ready := test.RunServiceAndGrpcForTest(t.Context(), t, client, client.conf.Server)
+	ready := test.RunServiceAndServeForTest(t.Context(), t, client, e.serverConf)
+	metricsURL, err := monitoring.MakeMetricsURL(e.serverConf.Monitoring.Endpoint.Address(), &e.clientTLSConfig)
+	require.NoError(t, err)
 	eventuallyMetrics(t, client.resources.Metrics, func(m metrics.MetricState) bool {
 		return m.TransactionsSent > 0 &&
 			m.TransactionsReceived > 0 &&
@@ -348,9 +332,11 @@ func testLoadGenerator(t *testing.T, c *ClientConfig, metricsTLS *connection.TLS
 			m.TransactionsAborted == 0
 	})
 
-	if !c.Limit.HasLimit() {
+	limitConf := e.clientConf.Limit
+
+	if !limitConf.HasLimit() {
 		// If we have a limit, the Prometheus server might stop before we can fetch the metrics.
-		test.CheckMetrics(t, client.resources.Metrics.URL(), test.MustGetTLSConfig(t, metricsTLS),
+		test.CheckMetrics(t, metricsURL, test.MustGetTLSConfig(t, &e.clientTLSConfig),
 			"loadgen_block_sent_total",
 			"loadgen_transaction_sent_total",
 			"loadgen_transaction_received_total",
@@ -370,7 +356,7 @@ func testLoadGenerator(t *testing.T, c *ClientConfig, metricsTLS *connection.TLS
 	// satisfy if even a single transaction is aborted during the entire run.
 	require.Zero(t, client.resources.Metrics.GetState().TransactionsAborted, "unexpected aborted transactions")
 
-	if !c.Limit.HasLimit() {
+	if !limitConf.HasLimit() {
 		return
 	}
 
@@ -383,50 +369,43 @@ func testLoadGenerator(t *testing.T, c *ClientConfig, metricsTLS *connection.TLS
 
 	m := client.resources.Metrics.GetState()
 
-	if c.Limit.Blocks == 0 || c.Limit.Transactions == 0 {
-		if c.Limit.Blocks > 0 {
-			require.Equal(t, c.Limit.Blocks, m.BlocksSent)
-			require.Equal(t, c.Limit.Blocks, m.BlocksReceived)
+	if limitConf.Blocks == 0 || limitConf.Transactions == 0 {
+		if limitConf.Blocks > 0 {
+			require.Equal(t, limitConf.Blocks, m.BlocksSent)
+			require.Equal(t, limitConf.Blocks, m.BlocksReceived)
 		}
-		if c.Limit.Transactions > 0 {
-			require.Equal(t, c.Limit.Transactions, m.TransactionsSent)
-			require.Equal(t, c.Limit.Transactions, m.TransactionsReceived)
+		if limitConf.Transactions > 0 {
+			require.Equal(t, limitConf.Transactions, m.TransactionsSent)
+			require.Equal(t, limitConf.Transactions, m.TransactionsReceived)
 		}
 	} else {
 		// We cant enforce exact limits for both requirements.
-		if c.Adapter.OrdererClient == nil {
+		if e.clientConf.Adapter.OrdererClient == nil {
 			// The orderer does not track sent blocks.
-			require.GreaterOrEqual(t, m.BlocksSent, c.Limit.Blocks)
+			require.GreaterOrEqual(t, m.BlocksSent, limitConf.Blocks)
 		}
-		require.GreaterOrEqual(t, m.BlocksReceived, c.Limit.Blocks)
-		require.GreaterOrEqual(t, m.TransactionsSent, c.Limit.Transactions)
-		require.GreaterOrEqual(t, m.TransactionsReceived, c.Limit.Transactions)
+		require.GreaterOrEqual(t, m.BlocksReceived, limitConf.Blocks)
+		require.GreaterOrEqual(t, m.TransactionsSent, limitConf.Transactions)
+		require.GreaterOrEqual(t, m.TransactionsReceived, limitConf.Transactions)
 	}
 }
 
 func TestLoadGenRateLimiterServer(t *testing.T) {
 	t.Parallel()
-	clientConf := DefaultClientConf(t, test.InsecureTLSConfig)
-	clientConf.Adapter.VerifierClient = startVerifiers(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+	lgEnv := newLoadGenClientTestEnv(t, loadGenTestCase{})
+	lgEnv.clientConf.Adapter.VerifierClient = startVerifiers(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
 	curRate := uint64(10)
-	clientConf.Stream.RateLimit = curRate
+	lgEnv.clientConf.Stream.RateLimit = curRate
 	// We use small wait to ensure the rate limiter serves in low granularity.
-	clientConf.LoadProfile.Block.PreferredRate = 10 * time.Millisecond
-	clientConf.LoadProfile.Block.MaxSize = 10
-	clientConf.LoadProfile.Block.MinSize = 1
-	clientConf.HTTPServer = test.NewLocalHostServer(test.InsecureTLSConfig)
+	lgEnv.clientConf.LoadProfile.Block.PreferredRate = 10 * time.Millisecond
+	lgEnv.clientConf.LoadProfile.Block.MaxSize = 10
+	lgEnv.clientConf.LoadProfile.Block.MinSize = 1
 
-	// Pre-allocate listener to bind port synchronously and avoid data race.
-	l, err := clientConf.HTTPServer.PreAllocateListener(t.Context())
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = l.Close()
-	})
-	client, err := NewLoadGenClient(clientConf)
+	client, err := NewLoadGenClient(lgEnv.clientConf)
 	require.NoError(t, err)
 
-	test.RunServiceForTest(t.Context(), t, client.Run, client.WaitForReady)
-	rlEndpoint := &clientConf.HTTPServer.Endpoint
+	test.RunServiceAndServeForTest(t.Context(), t, client, lgEnv.serverConf)
+	rlEndpoint := &lgEnv.serverConf.HTTP.Endpoint
 	require.NotZero(t, rlEndpoint.Port)
 	t.Logf("limiter endpoint: %v", rlEndpoint)
 
@@ -467,34 +446,47 @@ func requireEventuallyMeasuredRate(t *testing.T, m *metrics.PerfMetrics, expecte
 	}, 20*time.Second, 2*time.Second)
 }
 
-func clientConfigForTestCase(t *testing.T, tc loadGenTestCase) (
-	clientConf *ClientConfig, serverTLSConfig, clientTLSConfig connection.TLSConfig,
-) {
+type loadGenClientTestEnv struct {
+	clientConf      *ClientConfig
+	serverConf      *serve.Config
+	serverTLSConfig connection.TLSConfig
+	clientTLSConfig connection.TLSConfig
+}
+
+func newLoadGenClientTestEnv(t *testing.T, tc loadGenTestCase) *loadGenClientTestEnv {
 	t.Helper()
-	serverTLSConfig, clientTLSConfig = test.CreateServerAndClientTLSConfig(t, tc.serverTLSMode)
-	clientConf = DefaultClientConf(t, serverTLSConfig)
+	clientConf := DefaultClientConf(t)
 	clientConf.Limit = tc.limit
-	return clientConf, serverTLSConfig, clientTLSConfig
+
+	serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, tc.serverTLSMode)
+	serverConfig := test.NewLocalHostServiceConfig(serverTLSConfig)
+	serverConfig.HTTP = *test.NewLocalHostServer(serverTLSConfig)
+	return &loadGenClientTestEnv{
+		clientConf:      clientConf,
+		serverConf:      serverConfig,
+		serverTLSConfig: serverTLSConfig,
+		clientTLSConfig: clientTLSConfig,
+	}
 }
 
 func clientConfigWithOrdererForTestCase(t *testing.T, tc loadGenTestCase) (
-	e *mock.OrdererTestEnv, clientConf *ClientConfig,
+	e *mock.OrdererTestEnv, lgEnv *loadGenClientTestEnv,
 ) {
 	t.Helper()
-	clientConf, serverTLSConfig, clientTLSConfig := clientConfigForTestCase(t, tc)
-	policy := &clientConf.LoadProfile.Policy
+	lgEnv = newLoadGenClientTestEnv(t, tc)
+	policy := &lgEnv.clientConf.LoadProfile.Policy
 	e = mock.NewOrdererTestEnv(t, &mock.OrdererTestParameters{
 		NumIDs:                3,
 		PeerOrganizationCount: policy.PeerOrganizationCount,
 		ChanID:                policy.ChannelID,
 		OrdererConfig: &mock.OrdererConfig{
 			//nolint:gosec // uint64 -> int.
-			BlockSize:        int(clientConf.LoadProfile.Block.MaxSize),
+			BlockSize:        int(lgEnv.clientConf.LoadProfile.Block.MaxSize),
 			SendGenesisBlock: true,
 		},
 		ArtifactsPath:   policy.ArtifactsPath,
-		ServerTLSConfig: serverTLSConfig,
-		ClientTLSConfig: clientTLSConfig,
+		ServerTLSConfig: lgEnv.serverTLSConfig,
+		ClientTLSConfig: lgEnv.clientTLSConfig,
 	})
 
 	policy.OrdererEndpoints = e.AllEndpoints
@@ -507,7 +499,7 @@ func clientConfigWithOrdererForTestCase(t *testing.T, tc loadGenTestCase) (
 			}
 		}
 	}
-	return e, clientConf
+	return e, lgEnv
 }
 
 func loadGenTestCaseName(tc loadGenTestCase) string {

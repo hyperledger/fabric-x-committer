@@ -8,16 +8,12 @@ package verifier
 
 import (
 	"time"
-
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 type (
 	// Config describes the signature verifier parameters.
 	Config struct {
-		Server           *connection.ServerConfig `mapstructure:"server"`
-		Monitoring       *connection.ServerConfig `mapstructure:"monitoring"`
-		ParallelExecutor ExecutorConfig           `mapstructure:"parallel-executor"`
+		ParallelExecutor ExecutorConfig `mapstructure:"parallel-executor"`
 	}
 
 	// ExecutorConfig describes the execution parameters.

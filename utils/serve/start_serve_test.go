@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package grpcservice_test
+package serve_test
 
 import (
 	"context"
@@ -14,12 +14,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/grpcservice"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -47,8 +46,8 @@ func (s *stubService) WaitForReady(_ context.Context) bool {
 	return true
 }
 
-func (*stubService) RegisterService(server *grpc.Server) {
-	healthgrpc.RegisterHealthServer(server, connection.DefaultHealthCheckService())
+func (*stubService) RegisterService(s serve.Servers) {
+	healthgrpc.RegisterHealthServer(s.GRPC, serve.DefaultHealthCheckService())
 }
 
 // slowReadyService blocks WaitForReady until context expires.
@@ -64,8 +63,8 @@ func (*slowReadyService) WaitForReady(ctx context.Context) bool {
 	return false
 }
 
-func (*slowReadyService) RegisterService(server *grpc.Server) {
-	healthgrpc.RegisterHealthServer(server, connection.DefaultHealthCheckService())
+func (*slowReadyService) RegisterService(s serve.Servers) {
+	healthgrpc.RegisterHealthServer(s.GRPC, serve.DefaultHealthCheckService())
 }
 
 func TestStartAndServe(t *testing.T) {
@@ -73,7 +72,7 @@ func TestStartAndServe(t *testing.T) {
 
 	t.Run("starts service and serves gRPC", func(t *testing.T) {
 		t.Parallel()
-		serverConfig := test.NewLocalHostServer(test.InsecureTLSConfig)
+		serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
 		svc := newStubService()
 
 		startInBackground(t, svc, serverConfig)
@@ -87,20 +86,20 @@ func TestStartAndServe(t *testing.T) {
 
 	t.Run("stops when service is not ready", func(t *testing.T) {
 		t.Parallel()
-		serverConfig := test.NewLocalHostServer(test.InsecureTLSConfig)
+		serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
 
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		t.Cleanup(cancel)
 
-		err := grpcservice.StartAndServe(ctx, &slowReadyService{}, nil, serverConfig)
+		err := serve.StartAndServe(ctx, &slowReadyService{}, serverConfig)
 		require.NoError(t, err)
-		assert.Equal(t, 0, serverConfig.Endpoint.Port, "server should not have started")
+		assert.Equal(t, 0, serverConfig.GRPC.Endpoint.Port, "server should not have started")
 	})
 
 	t.Run("serves on multiple server configs", func(t *testing.T) {
 		t.Parallel()
-		serverConfig1 := test.NewLocalHostServer(test.InsecureTLSConfig)
-		serverConfig2 := test.NewLocalHostServer(test.InsecureTLSConfig)
+		serverConfig1 := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
+		serverConfig2 := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
 
 		startInBackground(t, newStubService(), serverConfig1, serverConfig2)
 
@@ -109,12 +108,12 @@ func TestStartAndServe(t *testing.T) {
 	})
 }
 
-func requireHealthy(t *testing.T, sc *connection.ServerConfig) {
+func requireHealthy(t *testing.T, sc *serve.Config) {
 	t.Helper()
 
-	require.NotZero(t, sc.Endpoint.Port, "server did not bind to a port")
+	require.NotZero(t, sc.GRPC.Endpoint.Port, "server did not bind to a port")
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		assert.NoError(ct, connection.RunHealthCheck(t.Context(), sc.Endpoint, sc.TLS))
+		assert.NoError(ct, connection.RunHealthCheck(t.Context(), sc.GRPC.Endpoint, sc.GRPC.TLS))
 	}, 5*time.Second, 50*time.Millisecond, "health check did not pass")
 }
 
@@ -122,13 +121,12 @@ func requireHealthy(t *testing.T, sc *connection.ServerConfig) {
 // Pre-allocates listeners so Endpoint.Port is set before any goroutine starts,
 // avoiding a data race between Listener()'s port assignment and test reads.
 func startInBackground(
-	t *testing.T, service grpcservice.Service, serverConfigs ...*connection.ServerConfig,
+	t *testing.T, service serve.Service, serverConfigs ...*serve.Config,
 ) {
 	t.Helper()
 
 	for _, sc := range serverConfigs {
-		_, err := sc.PreAllocateListener(t.Context())
-		require.NoError(t, err)
+		serve.PreAllocateListener(t, &sc.GRPC)
 	}
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -136,7 +134,7 @@ func startInBackground(
 
 	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		return grpcservice.StartAndServe(gCtx, service, nil, serverConfigs...)
+		return serve.StartAndServe(gCtx, service, serverConfigs...)
 	})
 
 	t.Cleanup(func() { cancel(); assert.NoError(t, g.Wait()) })

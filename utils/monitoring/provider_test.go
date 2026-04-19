@@ -20,11 +20,13 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type metricsProviderTestEnv struct {
 	provider        *Provider
+	url             string
 	clientTLSConfig *tls.Config
 }
 
@@ -197,7 +199,7 @@ func TestPprofEndpoints(t *testing.T) {
 	defer client.CloseIdleConnections()
 
 	// Extract base URL from metrics URL (remove /metrics path)
-	metricsURL := env.provider.URL()
+	metricsURL := env.url
 	baseURL := metricsURL[:len(metricsURL)-len(metricsSubPath)]
 
 	tests := []struct {
@@ -227,6 +229,14 @@ func TestPprofEndpoints(t *testing.T) {
 	}
 }
 
+type fakeService struct {
+	*Provider
+}
+
+func (f *fakeService) RegisterService(s serve.Servers) {
+	RegisterMonitoringServer(s.Monitoring, f.Provider)
+}
+
 func newMetricsProviderTestEnv(t *testing.T, serverTLS, clientTLS connection.TLSConfig) *metricsProviderTestEnv {
 	t.Helper()
 	p := NewProvider()
@@ -234,14 +244,15 @@ func newMetricsProviderTestEnv(t *testing.T, serverTLS, clientTLS connection.TLS
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	c := test.NewLocalHostServer(serverTLS)
-	go func() {
-		assert.NoError(t, p.StartPrometheusServer(ctx, c))
-	}()
+	serverConfig := test.NewLocalHostServiceConfig(serverTLS)
+	test.ServeForTest(ctx, t, serverConfig, &fakeService{Provider: p})
 
 	clientCreds, err := connection.NewClientTLSCredentials(clientTLS)
 	require.NoError(t, err)
 	clientTLSConfig, err := clientCreds.CreateClientTLSConfig()
+	require.NoError(t, err)
+
+	metricsURL, err := MakeMetricsURL(serverConfig.Monitoring.Endpoint.Address(), &serverTLS)
 	require.NoError(t, err)
 
 	client := &http.Client{
@@ -250,9 +261,9 @@ func newMetricsProviderTestEnv(t *testing.T, serverTLS, clientTLS connection.TLS
 		},
 	}
 	defer client.CloseIdleConnections()
+
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.NotEmpty(ct, p.URL())
-		resp, err := client.Get(p.URL())
+		resp, err := client.Get(metricsURL)
 		require.NoError(ct, err)
 		require.NotNil(ct, resp)
 		require.Equal(ct, http.StatusOK, resp.StatusCode)
@@ -261,16 +272,17 @@ func newMetricsProviderTestEnv(t *testing.T, serverTLS, clientTLS connection.TLS
 
 	return &metricsProviderTestEnv{
 		provider:        p,
+		url:             metricsURL,
 		clientTLSConfig: clientTLSConfig,
 	}
 }
 
 func (e *metricsProviderTestEnv) checkMetrics(t *testing.T, expected ...string) {
 	t.Helper()
-	test.CheckMetrics(t, e.provider.URL(), e.clientTLSConfig, expected...)
+	test.CheckMetrics(t, e.url, e.clientTLSConfig, expected...)
 }
 
 func (e *metricsProviderTestEnv) getMetricValue(t *testing.T, metricNameWithLabels string) int {
 	t.Helper()
-	return test.GetMetricValueFromURL(t, e.provider.URL(), metricNameWithLabels, e.clientTLSConfig)
+	return test.GetMetricValueFromURL(t, e.url, metricNameWithLabels, e.clientTLSConfig)
 }

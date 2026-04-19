@@ -17,7 +17,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/semaphore"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -25,9 +24,11 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
+	"github.com/hyperledger/fabric-x-committer/utils/serialization"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 var logger = flogging.MustGetLogger("query")
@@ -61,20 +62,17 @@ type (
 		metrics     *perfMetrics
 		ready       *channel.Ready
 		healthcheck *health.Server
-		tlsUpdater  connection.TLSCertUpdater
+		tlsUpdater  serve.DynamicTLSUpdater
 	}
 )
 
 // NewQueryService create a new QueryService given a configuration.
-// The tlsUpdater is optional; when non-nil, it is used to push updated
-// root CA certificates read from the database.
-func NewQueryService(config *Config, tlsUpdater connection.TLSCertUpdater) *Service {
+func NewQueryService(config *Config) *Service {
 	return &Service{
 		config:      config,
 		metrics:     newQueryServiceMetrics(),
 		ready:       channel.NewReady(),
-		healthcheck: connection.DefaultHealthCheckService(),
-		tlsUpdater:  tlsUpdater,
+		healthcheck: serve.DefaultHealthCheckService(),
 	}
 }
 
@@ -117,17 +115,16 @@ func (q *Service) Run(ctx context.Context) error {
 	// TLS refresh runs as a standalone goroutine rather than in an errgroup because
 	// a transient failure to read config from the DB should not stop the query service.
 	go q.refreshTLSFromDB(ctx, pool)
-
-	_ = q.metrics.StartPrometheusServer(ctx, q.config.Monitoring)
-	// We don't use the error here as we avoid stopping the service due to monitoring error.
 	<-ctx.Done()
 	return nil
 }
 
-// RegisterService registers for the query-service's GRPC services.
-func (q *Service) RegisterService(server *grpc.Server) {
-	committerpb.RegisterQueryServiceServer(server, q)
-	healthgrpc.RegisterHealthServer(server, q.healthcheck)
+// RegisterService registers the query service's gRPC services and monitoring server.
+func (q *Service) RegisterService(s serve.Servers) {
+	committerpb.RegisterQueryServiceServer(s.GRPC, q)
+	healthgrpc.RegisterHealthServer(s.GRPC, q.healthcheck)
+	serve.RegisterDynamicTLSUpdater(s.GrpcTLSProvider, &q.tlsUpdater)
+	monitoring.RegisterMonitoringServer(s.Monitoring, q.metrics.Provider)
 }
 
 // BeginView implements the query-service interface.
@@ -334,10 +331,6 @@ func (q *Service) requestLatency(method string, start time.Time) {
 // refreshTLSFromDB periodically polls the database for the config transaction
 // and updates the dynamic TLS CA certificates only when the config version changes.
 func (q *Service) refreshTLSFromDB(ctx context.Context, pool querier) {
-	if q.tlsUpdater == nil {
-		return
-	}
-
 	var lastVersion uint64
 	seen := false
 
@@ -354,19 +347,15 @@ func (q *Service) refreshTLSFromDB(ctx context.Context, pool querier) {
 			return
 		}
 
-		certs, err := connection.ExtractAppTLSCAsFromEnvelope(configTX.Envelope)
+		certs, err := serialization.ExtractAppTLSCAsFromEnvelope(configTX.Envelope)
 		if err != nil {
 			logger.Errorf("Failed to extract TLS CAs from config envelope: %v", err)
 			return
 		}
 
-		if err := q.tlsUpdater.SetClientRootCAs(certs); err != nil {
-			logger.Errorf("Failed to update dynamic TLS: %v", err)
-			return
-		}
-
 		seen = true
 		lastVersion = configTX.Version
+		q.tlsUpdater.UpdateClientRootCAs(certs)
 		logger.Infof("Updated dynamic TLS with %d CA certificates from config version %d", len(certs), lastVersion)
 	}
 

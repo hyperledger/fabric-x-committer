@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
@@ -30,10 +31,11 @@ const (
 type (
 	// ValidatorAndCommitterServiceTestEnv denotes the test environment for vcservice.
 	ValidatorAndCommitterServiceTestEnv struct {
-		VCServices []*ValidatorCommitterService
-		DBEnv      *DatabaseTestEnv
-		Configs    []*Config
-		Endpoints  []*connection.Endpoint
+		VCServices    []*ValidatorCommitterService
+		DBEnv         *DatabaseTestEnv
+		Configs       []*Config
+		ServerConfigs []*serve.Config
+		Endpoints     []*connection.Endpoint
 	}
 
 	// ValueVersion contains a list of values and their matching versions.
@@ -76,29 +78,31 @@ func NewValidatorAndCommitServiceTestEnv(t *testing.T, opts *TestEnvOpts) *Valid
 
 	vcservices := make([]*ValidatorCommitterService, opts.NumServices)
 	configs := make([]*Config, opts.NumServices)
+	serverConfigs := make([]*serve.Config, opts.NumServices)
 	endpoints := make([]*connection.Endpoint, opts.NumServices)
 
 	for i := range vcservices {
 		config := &Config{
-			Server:         test.NewLocalHostServer(opts.ServerCreds),
 			Database:       opts.DBEnv.DBConf,
 			ResourceLimits: opts.ResourceLimits,
-			Monitoring:     test.NewLocalHostServer(test.InsecureTLSConfig),
 		}
+		serverConfig := test.NewLocalHostServiceConfig(opts.ServerCreds)
 		vcs, err := NewValidatorCommitterService(initCtx, config)
 		require.NoError(t, err)
 		t.Cleanup(vcs.Close)
-		test.RunServiceAndGrpcForTest(t.Context(), t, vcs, config.Server)
+		test.RunServiceAndServeForTest(t.Context(), t, vcs, serverConfig)
 		vcservices[i] = vcs
 		configs[i] = config
-		endpoints[i] = &config.Server.Endpoint
+		serverConfigs[i] = serverConfig
+		endpoints[i] = &serverConfig.GRPC.Endpoint
 	}
 
 	return &ValidatorAndCommitterServiceTestEnv{
-		VCServices: vcservices,
-		DBEnv:      opts.DBEnv,
-		Configs:    configs,
-		Endpoints:  endpoints,
+		VCServices:    vcservices,
+		DBEnv:         opts.DBEnv,
+		Configs:       configs,
+		ServerConfigs: serverConfigs,
+		Endpoints:     endpoints,
 	}
 }
 

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-committer/service/vc"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 // Config is the configuration for the query service.
@@ -34,15 +33,13 @@ import (
 // (MaxViewTimeout / ViewAggregationWindow) * <number-of-used-view-configuration-permutations>
 // If there are no more available connections, queries will wait until such connection is available.
 type Config struct {
-	Server                *connection.ServerConfig `mapstructure:"server"`
-	Monitoring            *connection.ServerConfig `mapstructure:"monitoring"`
-	Database              *vc.DatabaseConfig       `mapstructure:"database" validate:"required"`
-	MinBatchKeys          int                      `mapstructure:"min-batch-keys" validate:"required,gt=0"`
-	MaxBatchWait          time.Duration            `mapstructure:"max-batch-wait" validate:"required,gt=0"`
-	ViewAggregationWindow time.Duration            `mapstructure:"view-aggregation-window" validate:"required,gt=0"`
-	MaxAggregatedViews    int                      `mapstructure:"max-aggregated-views" validate:"required,gt=0"`
-	MaxActiveViews        int                      `mapstructure:"max-active-views" validate:"gte=0"`
-	MaxViewTimeout        time.Duration            `mapstructure:"max-view-timeout" validate:"required,gt=0"`
+	Database              *vc.DatabaseConfig `mapstructure:"database" validate:"required"`
+	MinBatchKeys          int                `mapstructure:"min-batch-keys" validate:"required,gt=0"`
+	MaxBatchWait          time.Duration      `mapstructure:"max-batch-wait" validate:"required,gt=0"`
+	ViewAggregationWindow time.Duration      `mapstructure:"view-aggregation-window" validate:"required,gt=0"`
+	MaxAggregatedViews    int                `mapstructure:"max-aggregated-views" validate:"required,gt=0"`
+	MaxActiveViews        int                `mapstructure:"max-active-views" validate:"gte=0"`
+	MaxViewTimeout        time.Duration      `mapstructure:"max-view-timeout" validate:"required,gt=0"`
 	// MaxRequestKeys is the maximum number of keys allowed in a single query request.
 	// This applies to both GetRows (total keys across all namespaces) and
 	// GetTransactionStatus (number of transaction IDs).

@@ -7,8 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 package testcrypto
 
 import (
+	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -121,5 +123,21 @@ func GetOrdererConnConfig(artifactsPath string, clientTLSConfig connection.TLSCo
 		},
 		Identity:                     id,
 		SuspicionGracePeriodPerBlock: time.Second,
+	}
+}
+
+// OrgClientTLSConfig creates a mutual TLS client configuration using a specific
+// peer organization's TLS client certificate. The serverCACertPaths are the CA
+// certs needed to verify the server (typically from the CredentialsFactory).
+func OrgClientTLSConfig(artifactsPath string, orgIndex int, serverCACertPaths []string) connection.TLSConfig {
+	orgName := fmt.Sprintf("peer-org-%d", orgIndex)
+	orgDomain := fmt.Sprintf("peer-org-%d.com", orgIndex)
+	tlsDir := filepath.Join(artifactsPath, cryptogen.PeerOrganizationsDir, orgName,
+		cryptogen.UsersDir, fmt.Sprintf("client@%s", orgDomain), cryptogen.TLSDir)
+	return connection.TLSConfig{
+		Mode:        connection.MutualTLSMode,
+		CertPath:    filepath.Join(tlsDir, "client.crt"),
+		KeyPath:     filepath.Join(tlsDir, "client.key"),
+		CACertPaths: serverCACertPaths,
 	}
 }

@@ -30,6 +30,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -40,18 +41,21 @@ func TestReadConfigSidecar(t *testing.T) {
 	t.Parallel()
 	sidecarTLSCreds := test.NewServiceTLSConfig(artifactsPath, "sidecar", connection.MutualTLSMode)
 	tests := []struct {
-		name           string
-		configFilePath string
-		expectedConfig *sidecar.Config
+		name                  string
+		configFilePath        string
+		expectedServiceConfig *sidecar.Config
+		expectedServerConfig  *serve.Config
 	}{{
 		name:           "default",
 		configFilePath: emptyConfig(t),
-		expectedConfig: &sidecar.Config{
-			Server: &connection.ServerConfig{
+		expectedServerConfig: &serve.Config{
+			GRPC: serve.ServerConfig{
 				Endpoint:             *newEndpoint(connection.DefaultHost, sidecar.DefaultServerPort),
 				MaxConcurrentStreams: sidecar.DefaultMaxConcurrentStreams,
 			},
-			Monitoring: newServerConfig(connection.DefaultHost, sidecar.DefaultMonitoringPort),
+			Monitoring: *newServerConfig(connection.DefaultHost, sidecar.DefaultMonitoringPort),
+		},
+		expectedServiceConfig: &sidecar.Config{
 			Committer: &connection.ClientConfig{
 				Endpoint: newEndpoint(connection.DefaultHost, coordinator.DefaultServerPort),
 			},
@@ -73,23 +77,25 @@ func TestReadConfigSidecar(t *testing.T) {
 	}, {
 		name:           "sample",
 		configFilePath: "samples/sidecar.yaml",
-		expectedConfig: &sidecar.Config{
-			Server: &connection.ServerConfig{
+		expectedServerConfig: &serve.Config{
+			GRPC: serve.ServerConfig{
 				Endpoint: *newEndpoint("", 4001),
 				TLS:      sidecarTLSCreds,
-				KeepAlive: &connection.ServerKeepAliveConfig{
-					Params: &connection.ServerKeepAliveParamsConfig{
+				KeepAlive: &serve.ServerKeepAliveConfig{
+					Params: &serve.ServerKeepAliveParamsConfig{
 						Time:    300 * time.Second,
 						Timeout: 600 * time.Second,
 					},
-					EnforcementPolicy: &connection.ServerKeepAliveEnforcementPolicyConfig{
+					EnforcementPolicy: &serve.ServerKeepAliveEnforcementPolicyConfig{
 						MinTime:             60 * time.Second,
 						PermitWithoutStream: false,
 					},
 				},
 				MaxConcurrentStreams: 10,
 			},
-			Monitoring: newServerConfigWithDefaultTLS("sidecar", 2114),
+			Monitoring: *newServerConfigWithDefaultTLS("sidecar", 2114),
+		},
+		expectedServiceConfig: &sidecar.Config{
 			Orderer: ordererdial.Config{
 				FaultToleranceLevel:        ordererdial.BFT,
 				LatestKnownConfigBlockPath: "/root/artifacts/config-block.pb.bin",
@@ -120,9 +126,10 @@ func TestReadConfigSidecar(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			v := NewViperWithSidecarDefaults()
-			c, err := ReadSidecarYamlAndSetupLogging(v, tc.configFilePath)
+			c, serverConfig, err := ReadSidecarYamlAndSetupLogging(v, tc.configFilePath)
 			require.NoError(t, err)
-			require.Equal(t, tc.expectedConfig, c)
+			require.Equal(t, tc.expectedServiceConfig, c)
+			require.Equal(t, tc.expectedServerConfig, serverConfig)
 		})
 	}
 }
@@ -130,15 +137,15 @@ func TestReadConfigSidecar(t *testing.T) {
 func TestReadConfigCoordinator(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name           string
-		configFilePath string
-		expectedConfig *coordinator.Config
+		name                  string
+		configFilePath        string
+		expectedServiceConfig *coordinator.Config
+		expectedServerConfig  *serve.Config
 	}{{
-		name:           "default",
-		configFilePath: emptyConfig(t),
-		expectedConfig: &coordinator.Config{
-			Server:     newServerConfig(connection.DefaultHost, coordinator.DefaultServerPort),
-			Monitoring: newServerConfig(connection.DefaultHost, coordinator.DefaultMonitoringPort),
+		name:                 "default",
+		configFilePath:       emptyConfig(t),
+		expectedServerConfig: newServeConfig(coordinator.DefaultServerPort, coordinator.DefaultMonitoringPort),
+		expectedServiceConfig: &coordinator.Config{
 			DependencyGraph: &coordinator.DependencyGraphConfig{
 				NumOfLocalDepConstructors: coordinator.DefaultNumOfLocalDepConstructors,
 				WaitingTxsLimit:           coordinator.DefaultWaitingTxsLimit,
@@ -148,11 +155,14 @@ func TestReadConfigCoordinator(t *testing.T) {
 	}, {
 		name:           "sample",
 		configFilePath: "samples/coordinator.yaml",
-		expectedConfig: &coordinator.Config{
-			Server:             newServerConfigWithDefaultTLS("coordinator", 9001),
-			Monitoring:         newServerConfigWithDefaultTLS("coordinator", 2119),
-			Verifier:           newMultiClientConfigWithDefaultTLS("verifier", "coordinator", 5001),
-			ValidatorCommitter: newMultiClientConfigWithDefaultTLS("vc", "coordinator", 6001),
+		expectedServerConfig: newServeConfigWithDefaultTLS(
+			"coordinator", coordinator.DefaultServerPort, coordinator.DefaultMonitoringPort,
+		),
+		expectedServiceConfig: &coordinator.Config{
+			Verifier: newMultiClientConfigWithDefaultTLS(
+				"verifier", "coordinator", verifier.DefaultServerPort,
+			),
+			ValidatorCommitter: newMultiClientConfigWithDefaultTLS("vc", "coordinator", vc.DefaultServerPort),
 			DependencyGraph: &coordinator.DependencyGraphConfig{
 				NumOfLocalDepConstructors: coordinator.DefaultNumOfLocalDepConstructors,
 				WaitingTxsLimit:           coordinator.DefaultWaitingTxsLimit,
@@ -165,9 +175,10 @@ func TestReadConfigCoordinator(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			v := NewViperWithCoordinatorDefaults()
-			c, err := ReadCoordinatorYamlAndSetupLogging(v, tc.configFilePath)
+			c, serverConfig, err := ReadCoordinatorYamlAndSetupLogging(v, tc.configFilePath)
 			require.NoError(t, err)
-			require.Equal(t, tc.expectedConfig, c)
+			require.Equal(t, tc.expectedServiceConfig, c)
+			require.Equal(t, tc.expectedServerConfig, serverConfig)
 		})
 	}
 }
@@ -175,16 +186,16 @@ func TestReadConfigCoordinator(t *testing.T) {
 func TestReadConfigVC(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name           string
-		configFilePath string
-		expectedConfig *vc.Config
+		name                  string
+		configFilePath        string
+		expectedServiceConfig *vc.Config
+		expectedServerConfig  *serve.Config
 	}{{
-		name:           "default",
-		configFilePath: emptyConfig(t),
-		expectedConfig: &vc.Config{
-			Server:     newServerConfig(connection.DefaultHost, vc.DefaultServerPort),
-			Monitoring: newServerConfig(connection.DefaultHost, vc.DefaultMonitoringPort),
-			Database:   defaultDBConfig(),
+		name:                 "default",
+		configFilePath:       emptyConfig(t),
+		expectedServerConfig: newServeConfig(vc.DefaultServerPort, vc.DefaultMonitoringPort),
+		expectedServiceConfig: &vc.Config{
+			Database: defaultDBConfig(),
 			ResourceLimits: &vc.ResourceLimitsConfig{
 				MaxWorkersForPreparer:             vc.DefaultMaxWorkersForPreparer,
 				MaxWorkersForValidator:            vc.DefaultMaxWorkersForValidator,
@@ -194,12 +205,11 @@ func TestReadConfigVC(t *testing.T) {
 			},
 		},
 	}, {
-		name:           "sample",
-		configFilePath: "samples/vc.yaml",
-		expectedConfig: &vc.Config{
-			Server:     newServerConfigWithDefaultTLS("vc", 6001),
-			Monitoring: newServerConfigWithDefaultTLS("vc", 2116),
-			Database:   defaultSampleDBConfig(),
+		name:                 "sample",
+		configFilePath:       "samples/vc.yaml",
+		expectedServerConfig: newServeConfigWithDefaultTLS("vc", vc.DefaultServerPort, vc.DefaultMonitoringPort),
+		expectedServiceConfig: &vc.Config{
+			Database: defaultSampleDBConfig(),
 			ResourceLimits: &vc.ResourceLimitsConfig{
 				MaxWorkersForPreparer:             vc.DefaultMaxWorkersForPreparer,
 				MaxWorkersForValidator:            vc.DefaultMaxWorkersForValidator,
@@ -214,9 +224,10 @@ func TestReadConfigVC(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			v := NewViperWithVCDefaults()
-			c, err := ReadVCYamlAndSetupLogging(v, tc.configFilePath)
+			c, serverConfig, err := ReadVCYamlAndSetupLogging(v, tc.configFilePath)
 			require.NoError(t, err)
-			require.Equal(t, tc.expectedConfig, c)
+			require.Equal(t, tc.expectedServiceConfig, c)
+			require.Equal(t, tc.expectedServerConfig, serverConfig)
 		})
 	}
 }
@@ -224,15 +235,15 @@ func TestReadConfigVC(t *testing.T) {
 func TestReadConfigVerifier(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name           string
-		configFilePath string
-		expectedConfig *verifier.Config
+		name                  string
+		configFilePath        string
+		expectedServiceConfig *verifier.Config
+		expectedServerConfig  *serve.Config
 	}{{
-		name:           "default",
-		configFilePath: emptyConfig(t),
-		expectedConfig: &verifier.Config{
-			Server:     newServerConfig(connection.DefaultHost, verifier.DefaultServerPort),
-			Monitoring: newServerConfig(connection.DefaultHost, verifier.DefaultMonitoringPort),
+		name:                 "default",
+		configFilePath:       emptyConfig(t),
+		expectedServerConfig: newServeConfig(verifier.DefaultServerPort, verifier.DefaultMonitoringPort),
+		expectedServiceConfig: &verifier.Config{
 			ParallelExecutor: verifier.ExecutorConfig{
 				Parallelism:       verifier.DefaultParallelism,
 				BatchSizeCutoff:   verifier.DefaultBatchSizeCutoff,
@@ -243,9 +254,10 @@ func TestReadConfigVerifier(t *testing.T) {
 	}, {
 		name:           "sample",
 		configFilePath: "samples/verifier.yaml",
-		expectedConfig: &verifier.Config{
-			Server:     newServerConfigWithDefaultTLS("verifier", 5001),
-			Monitoring: newServerConfigWithDefaultTLS("verifier", 2115),
+		expectedServerConfig: newServeConfigWithDefaultTLS(
+			"verifier", verifier.DefaultServerPort, verifier.DefaultMonitoringPort,
+		),
+		expectedServiceConfig: &verifier.Config{
 			ParallelExecutor: verifier.ExecutorConfig{
 				BatchSizeCutoff:   verifier.DefaultBatchSizeCutoff,
 				BatchTimeCutoff:   10 * time.Millisecond,
@@ -259,9 +271,10 @@ func TestReadConfigVerifier(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			v := NewViperWithVerifierDefaults()
-			c, err := ReadVerifierYamlAndSetupLogging(v, tc.configFilePath)
+			c, serverConfig, err := ReadVerifierYamlAndSetupLogging(v, tc.configFilePath)
 			require.NoError(t, err)
-			require.Equal(t, tc.expectedConfig, c)
+			require.Equal(t, tc.expectedServiceConfig, c)
+			require.Equal(t, tc.expectedServerConfig, serverConfig)
 		})
 	}
 }
@@ -269,21 +282,24 @@ func TestReadConfigVerifier(t *testing.T) {
 func TestReadConfigQuery(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name           string
-		configFilePath string
-		expectedConfig *query.Config
+		name                  string
+		configFilePath        string
+		expectedServiceConfig *query.Config
+		expectedServerConfig  *serve.Config
 	}{{
 		name:           "default",
 		configFilePath: emptyConfig(t),
-		expectedConfig: &query.Config{
-			Server: &connection.ServerConfig{
+		expectedServerConfig: &serve.Config{
+			GRPC: serve.ServerConfig{
 				Endpoint: *newEndpoint(connection.DefaultHost, query.DefaultServerPort),
-				RateLimit: connection.RateLimitConfig{
+				RateLimit: serve.RateLimitConfig{
 					RequestsPerSecond: query.DefaultRequestsPerSecond,
 					Burst:             query.DefaultBurst,
 				},
 			},
-			Monitoring:            newServerConfig(connection.DefaultHost, query.DefaultMonitoringPort),
+			Monitoring: *newServerConfig(connection.DefaultHost, query.DefaultMonitoringPort),
+		},
+		expectedServiceConfig: &query.Config{
 			Database:              defaultDBConfig(),
 			MinBatchKeys:          query.DefaultMinBatchKeys,
 			MaxBatchWait:          query.DefaultMaxBatchWait,
@@ -297,9 +313,10 @@ func TestReadConfigQuery(t *testing.T) {
 	}, {
 		name:           "sample",
 		configFilePath: "samples/query.yaml",
-		expectedConfig: &query.Config{
-			Server:                newServerConfigWithDefaultTLS("query", 7001),
-			Monitoring:            newServerConfigWithDefaultTLS("query", 2117),
+		expectedServerConfig: newServeConfigWithDefaultTLS(
+			"query", query.DefaultServerPort, query.DefaultMonitoringPort,
+		),
+		expectedServiceConfig: &query.Config{
 			Database:              defaultSampleDBConfig(),
 			MinBatchKeys:          query.DefaultMinBatchKeys,
 			MaxBatchWait:          query.DefaultMaxBatchWait,
@@ -316,9 +333,10 @@ func TestReadConfigQuery(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			v := NewViperWithQueryDefaults()
-			c, err := ReadQueryYamlAndSetupLogging(v, tc.configFilePath)
+			c, serverConfig, err := ReadQueryYamlAndSetupLogging(v, tc.configFilePath)
 			require.NoError(t, err)
-			require.Equal(t, tc.expectedConfig, c)
+			require.Equal(t, tc.expectedServiceConfig, c)
+			require.Equal(t, tc.expectedServerConfig, serverConfig)
 		})
 	}
 }
@@ -327,26 +345,25 @@ func TestReadConfigLoadGen(t *testing.T) {
 	t.Parallel()
 	loadgenTLSCreds := test.NewServiceTLSConfig(artifactsPath, "loadgen", connection.MutualTLSMode)
 	tests := []struct {
-		name           string
-		configFilePath string
-		expectedConfig *loadgen.ClientConfig
+		name                  string
+		configFilePath        string
+		expectedServiceConfig *loadgen.ClientConfig
+		expectedServerConfig  *serve.Config
 	}{{
-		name:           "default",
-		configFilePath: emptyConfig(t),
-		expectedConfig: &loadgen.ClientConfig{
-			Server: newServerConfig(connection.DefaultHost, loadgen.DefaultServerPort),
-			Monitoring: metrics.Config{
-				ServerConfig: *newServerConfig(connection.DefaultHost, loadgen.DefaultMonitoringPort),
-			},
-		},
+		name:                  "default",
+		configFilePath:        emptyConfig(t),
+		expectedServerConfig:  newServeConfig(loadgen.DefaultServerPort, loadgen.DefaultMonitoringPort),
+		expectedServiceConfig: &loadgen.ClientConfig{},
 	}, {
 		name:           "sample",
 		configFilePath: "samples/loadgen.yaml",
-		expectedConfig: &loadgen.ClientConfig{
-			Server:     newServerConfigWithDefaultTLS("loadgen", 8001),
-			HTTPServer: newServerConfig("", 6997),
+		expectedServerConfig: &serve.Config{
+			GRPC:       *newServerConfigWithDefaultTLS("loadgen", loadgen.DefaultServerPort),
+			Monitoring: *newServerConfigWithDefaultTLS("loadgen", loadgen.DefaultMonitoringPort),
+			HTTP:       *newServerConfig("", 6997),
+		},
+		expectedServiceConfig: &loadgen.ClientConfig{
 			Monitoring: metrics.Config{
-				ServerConfig: *newServerConfigWithDefaultTLS("loadgen", 2118),
 				Latency: metrics.LatencyConfig{
 					SamplerConfig: metrics.SamplerConfig{
 						Portion: 0.01,
@@ -424,9 +441,10 @@ func TestReadConfigLoadGen(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			v := NewViperWithLoadGenDefaults()
-			c, err := ReadLoadGenYamlAndSetupLogging(v, tc.configFilePath)
+			c, serverConfig, err := ReadLoadGenYamlAndSetupLogging(v, tc.configFilePath)
 			require.NoError(t, err)
-			require.Equal(t, tc.expectedConfig, c)
+			require.Equal(t, tc.expectedServiceConfig, c)
+			require.Equal(t, tc.expectedServerConfig, serverConfig)
 		})
 	}
 }
@@ -482,15 +500,29 @@ func newMultiClientConfigWithDefaultTLS(host, fromService string, port int) conn
 	}
 }
 
-func newServerConfigWithDefaultTLS(serviceName string, port int) *connection.ServerConfig {
-	return &connection.ServerConfig{
+func newServeConfigWithDefaultTLS(host string, grpcPort, monitorinPort int) *serve.Config {
+	return &serve.Config{
+		GRPC:       *newServerConfigWithDefaultTLS(host, grpcPort),
+		Monitoring: *newServerConfigWithDefaultTLS(host, monitorinPort),
+	}
+}
+
+func newServeConfig(grpcPort, monitorinPort int) *serve.Config {
+	return &serve.Config{
+		GRPC:       *newServerConfig(connection.DefaultHost, grpcPort),
+		Monitoring: *newServerConfig(connection.DefaultHost, monitorinPort),
+	}
+}
+
+func newServerConfigWithDefaultTLS(serviceName string, port int) *serve.ServerConfig {
+	return &serve.ServerConfig{
 		Endpoint: *newEndpoint("", port),
 		TLS:      test.NewServiceTLSConfig(artifactsPath, serviceName, connection.MutualTLSMode),
 	}
 }
 
-func newServerConfig(host string, port int) *connection.ServerConfig {
-	return &connection.ServerConfig{
+func newServerConfig(host string, port int) *serve.ServerConfig {
+	return &serve.ServerConfig{
 		Endpoint: *newEndpoint(host, port),
 	}
 }
