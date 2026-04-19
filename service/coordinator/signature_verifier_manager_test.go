@@ -35,7 +35,7 @@ type svMgrTestEnv struct {
 	inputTxBatch        chan dependencygraph.TxNodeBatch
 	outputValidatedTxs  chan dependencygraph.TxNodeBatch
 	mockVerifier        *mock.Verifier
-	grpcServers         *test.GrpcServers
+	grpcServers         *test.Servers
 	policyManager       *policyManager
 	curBlockNum         atomic.Uint64
 }

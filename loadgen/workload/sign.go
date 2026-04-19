@@ -20,7 +20,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
@@ -128,7 +127,7 @@ func newPolicyEndorser(artifactsPath string, policy *Policy) (*testsig.NsEndorse
 func newPolicyEndorserFromMSP(signingIdentities []msp.SigningIdentity) (
 	*testsig.NsEndorser, *applicationpb.NamespacePolicy,
 ) {
-	endorser, err := testsig.NewNsEndorserFromMsp(test.CreatorID, signingIdentities...)
+	endorser, err := testsig.NewNsEndorserFromMsp(testsig.CreatorID, signingIdentities...)
 	utils.Must(err)
 
 	serializedSigningIdentities := make([][]byte, len(signingIdentities))
