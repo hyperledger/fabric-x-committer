@@ -3,6 +3,7 @@
 ---
 site_name: Fabric-X Committer
 site_description: High-throughput transaction validation and commit for Hyperledger Fabric-X
+site_url: https://hyperledger.github.io/fabric-x-committer/
 repo_url: https://github.com/hyperledger/fabric-x-committer
 repo_name: hyperledger/fabric-x-committer
 
