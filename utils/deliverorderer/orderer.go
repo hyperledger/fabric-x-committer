@@ -129,9 +129,10 @@ func newFTDelivery(odp Parameters) (*ftDelivery, error) {
 	// We use the maximum between all the provided config blocks.
 	// This ensures we won't miss a crucial config-block that updated all the endpoints and/or the credentials.
 	state, latestConfig, err := newBlockProcessingState(&SessionInfo{
-		LastBlock:                   odp.LastBlock,
-		NextBlockVerificationConfig: odp.NextBlockVerificationConfig,
-		LatestKnownConfig:           MaxBlock(odp.LatestKnownConfig, odp.NextBlockVerificationConfig),
+		LastBlock:                      odp.LastBlock,
+		NextBlockVerificationConfig:    odp.NextBlockVerificationConfig,
+		LatestKnownConfig:              MaxBlock(odp.LatestKnownConfig, odp.NextBlockVerificationConfig),
+		SkipBlockSignatureVerification: odp.SkipBlockSignatureVerification,
 	})
 	if err != nil {
 		return nil, err
