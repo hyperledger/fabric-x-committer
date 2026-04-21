@@ -40,6 +40,9 @@ type (
 		*channelconfig.ConfigBlockMaterial
 		configBlockNumber uint64
 		verifier          *protoutil.BlockSigVerifier
+		// skipBlockSignatureVerification mirrors ordererdial.Config.SkipBlockSignatureVerification.
+		// When true, updateIfConfigBlock leaves verifier nil so verifyBlockPolicy early-returns.
+		skipBlockSignatureVerification bool
 	}
 )
 
@@ -53,6 +56,8 @@ var ErrUnexpectedBlockNumber = errors.New("received unexpected block number")
 func newBlockProcessingState(session *SessionInfo) (
 	state blockVerificationStateMachine, latestConfig configState, err error,
 ) {
+	state.skipBlockSignatureVerification = session.SkipBlockSignatureVerification
+	latestConfig.skipBlockSignatureVerification = session.SkipBlockSignatureVerification
 	// We use headers-only stream to allow providing data-less block as the last block.
 	// We process the last block before applying the config block to avoid verifying the last block.
 	// This is because the last block might be signed by previous configuration.
@@ -257,9 +262,12 @@ func (cs *configState) updateIfConfigBlock(block *common.Block) error {
 			configMaterial.ChannelID, cs.ChannelID)
 	}
 
-	verifier, err := fetchVerifier(configMaterial.Bundle)
-	if err != nil {
-		return err
+	var verifier *protoutil.BlockSigVerifier
+	if !cs.skipBlockSignatureVerification {
+		verifier, err = fetchVerifier(configMaterial.Bundle)
+		if err != nil {
+			return err
+		}
 	}
 
 	cs.ConfigBlockMaterial = configMaterial

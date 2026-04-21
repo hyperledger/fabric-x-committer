@@ -91,6 +91,9 @@ type (
 		OutputBlockWithSourceID chan<- *deliver.BlockWithSourceID
 
 		SuspicionGracePeriodPerBlock time.Duration
+
+		// SkipBlockSignatureVerification mirrors ordererdial.Config.SkipBlockSignatureVerification.
+		SkipBlockSignatureVerification bool
 	}
 
 	// SessionInfo represents the processing state of blocks to support recovery and resumption.
@@ -99,6 +102,9 @@ type (
 		LatestKnownConfig           *common.Block
 		NextBlockVerificationConfig *common.Block
 		LastBlock                   *common.Block
+
+		// SkipBlockSignatureVerification mirrors ordererdial.Config.SkipBlockSignatureVerification.
+		SkipBlockSignatureVerification bool
 	}
 )
 
@@ -130,12 +136,13 @@ func LoadParametersFromConfig(c *ordererdial.Config) (p Parameters, err error) {
 		return p, errors.WithHint(idErr, "error creating identity signer")
 	}
 	return Parameters{
-		FaultToleranceLevel:          c.FaultToleranceLevel,
-		TLS:                          *tls,
-		TLSCertHash:                  tlsCertHash,
-		Retry:                        c.Retry,
-		Signer:                       signer,
-		SuspicionGracePeriodPerBlock: c.SuspicionGracePeriodPerBlock,
-		LatestKnownConfig:            latestConfigBlock,
+		FaultToleranceLevel:            c.FaultToleranceLevel,
+		TLS:                            *tls,
+		TLSCertHash:                    tlsCertHash,
+		Retry:                          c.Retry,
+		Signer:                         signer,
+		SuspicionGracePeriodPerBlock:   c.SuspicionGracePeriodPerBlock,
+		LatestKnownConfig:              latestConfigBlock,
+		SkipBlockSignatureVerification: c.SkipBlockSignatureVerification,
 	}, nil
 }
