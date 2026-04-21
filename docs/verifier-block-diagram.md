@@ -85,7 +85,7 @@ This document provides a detailed block diagram of the verifier service componen
 │  │  │  │  2. Update Policies (if Update present)                      │  │ │
 │  │  │  │     executor.verifier.updatePolicies(batch.Update)           │  │ │
 │  │  │  │     - Config updates: MSP Manager, LifecycleEndorsement      │  │ │
-│  │  │  │     - Namespace policies: Signature/Threshold rules          │  │ │
+│  │  │  │     - Namespace policies: MSP/Threshold rules                │  │ │
 │  │  │  │                                                              │  │ │
 │  │  │  │  3. Forward Requests to Executor                             │  │ │
 │  │  │  │     for each request in batch.Requests:                      │  │ │
