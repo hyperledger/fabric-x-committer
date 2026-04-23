@@ -32,6 +32,15 @@ type (
 		// The following parameters only applies to delivery.
 		Identity                     *IdentityConfig `mapstructure:"identity"`
 		SuspicionGracePeriodPerBlock time.Duration   `mapstructure:"suspicion-grace-period-per-block"`
+
+		// SkipBlockSignatureVerification disables verification of the orderer block
+		// signatures against the channel's BlockValidation policy. Required workaround
+		// for hyperledger/fabric-x-orderer, which still has a TODO in
+		// node/crypto/signer.go:Serialize returning literal "creator" instead of a
+		// real MSP-serialized identity. Without this, v0.2.0+ committers reject every
+		// non-genesis block with "implicit policy evaluation failed - 0 sub-policies
+		// were satisfied". Remove once fabric-x-orderer implements a real Serialize.
+		SkipBlockSignatureVerification bool `mapstructure:"skip-block-signature-verification"`
 	}
 
 	// IdentityConfig defines the orderer's client MSP.
