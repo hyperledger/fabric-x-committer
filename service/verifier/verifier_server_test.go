@@ -195,7 +195,7 @@ func TestSignatureRule(t *testing.T) {
 	data, err := tx1.Namespaces[0].ASN1Marshal(fakeTxID)
 	require.NoError(t, err)
 
-	for _, certType := range []int{test.CreatorCertificate, test.CreatorID} {
+	for _, certType := range []int{testsig.CreatorCertificate, testsig.CreatorID} {
 		signer, signerErr := testsig.NewNsEndorserFromMsp(certType, signingIdentities...)
 		require.NoError(t, signerErr)
 		sig, signerErr := signer.Endorse(data)

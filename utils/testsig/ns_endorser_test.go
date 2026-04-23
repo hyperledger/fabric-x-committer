@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
@@ -100,28 +99,28 @@ func TestNewNsEndorserFromMsp(t *testing.T) {
 	}{
 		{
 			name:         "single certificate",
-			identityType: test.CreatorCertificate,
+			identityType: CreatorCertificate,
 			peerCount:    1,
 		},
 		{
 			name:         "single ID",
-			identityType: test.CreatorID,
+			identityType: CreatorID,
 			peerCount:    1,
 		},
 
 		{
 			name:         "3 certificates",
-			identityType: test.CreatorCertificate,
+			identityType: CreatorCertificate,
 			peerCount:    3,
 		},
 		{
 			name:         "3 IDs",
-			identityType: test.CreatorID,
+			identityType: CreatorID,
 			peerCount:    3,
 		},
 		{
 			name:         "no identities",
-			identityType: test.CreatorID,
+			identityType: CreatorID,
 			peerCount:    0,
 		},
 	} {
@@ -189,22 +188,22 @@ func TestEndorseTxNsWithMSP(t *testing.T) {
 	}{
 		{
 			name:      "single MSP identity",
-			certType:  test.CreatorCertificate,
+			certType:  CreatorCertificate,
 			peerCount: 1,
 		},
 		{
 			name:      "3 MSP identity",
-			certType:  test.CreatorCertificate,
+			certType:  CreatorCertificate,
 			peerCount: 3,
 		},
 		{
 			name:      "single ID",
-			certType:  test.CreatorID,
+			certType:  CreatorID,
 			peerCount: 1,
 		},
 		{
 			name:      "3 IDs",
-			certType:  test.CreatorID,
+			certType:  CreatorID,
 			peerCount: 3,
 		},
 	} {
@@ -239,7 +238,7 @@ func TestEndorseTxNsWithMSP(t *testing.T) {
 				require.NotEmpty(t, endorsement.EndorsementsWithIdentity[i].Endorsement)
 				require.NotNil(t, endorsement.EndorsementsWithIdentity[i].Identity)
 
-				if tc.certType == test.CreatorID {
+				if tc.certType == CreatorID {
 					identityStr := endorsement.EndorsementsWithIdentity[i].Identity.String()
 					require.Contains(t, identityStr, "certificate_id:")
 					require.Contains(t, identityStr, "\"")
@@ -377,22 +376,22 @@ func TestCreateEndorsementsForSignatureRule(t *testing.T) {
 	}{
 		{
 			name:     "3 certificates",
-			certType: test.CreatorCertificate,
+			certType: CreatorCertificate,
 			sigCount: 3,
 		},
 		{
 			name:     "3 IDs",
-			certType: test.CreatorID,
+			certType: CreatorID,
 			sigCount: 3,
 		},
 		{
 			name:     "single certificate",
-			certType: test.CreatorCertificate,
+			certType: CreatorCertificate,
 			sigCount: 1,
 		},
 		{
 			name:     "single ID",
-			certType: test.CreatorID,
+			certType: CreatorID,
 			sigCount: 1,
 		},
 	} {
@@ -410,7 +409,7 @@ func TestCreateEndorsementsForSignatureRule(t *testing.T) {
 				require.Equal(t, string(mspIDs[i]), set.EndorsementsWithIdentity[i].Identity.MspId)
 				require.NotNil(t, set.EndorsementsWithIdentity[i].Identity)
 
-				if tc.certType == test.CreatorID {
+				if tc.certType == CreatorID {
 					expectedID := hex.EncodeToString(certs[i])
 					require.Contains(t, set.EndorsementsWithIdentity[i].Identity.String(), expectedID)
 				}
@@ -420,7 +419,7 @@ func TestCreateEndorsementsForSignatureRule(t *testing.T) {
 
 	t.Run("empty inputs", func(t *testing.T) {
 		t.Parallel()
-		set := CreateEndorsementsForSignatureRule(nil, nil, nil, test.CreatorCertificate)
+		set := CreateEndorsementsForSignatureRule(nil, nil, nil, CreatorCertificate)
 
 		require.NotNil(t, set)
 		require.Empty(t, set.EndorsementsWithIdentity)

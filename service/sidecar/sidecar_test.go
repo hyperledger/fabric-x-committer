@@ -43,7 +43,7 @@ type sidecarTestEnv struct {
 	*mock.OrdererTestEnv
 	config            Config
 	coordinator       *mock.Coordinator
-	coordinatorServer *test.GrpcServers
+	coordinatorServer *test.Servers
 
 	sidecar        *Service
 	committedBlock chan *common.Block

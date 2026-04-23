@@ -20,7 +20,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
@@ -140,7 +139,7 @@ func TestNsVerifierPolicyBased(t *testing.T) {
 		toByteArray("bad-sig"),
 		toByteArray("unknown-msp"),
 		[][]byte{unknownIdentity},
-		test.CreatorCertificate,
+		testsig.CreatorCertificate,
 	)}
 
 	t.Run("from MSP rule", func(t *testing.T) {
@@ -150,7 +149,7 @@ func TestNsVerifierPolicyBased(t *testing.T) {
 			deserializer)
 		require.NoError(t, errNs)
 
-		for _, creatorType := range []int{test.CreatorCertificate, test.CreatorID} {
+		for _, creatorType := range []int{testsig.CreatorCertificate, testsig.CreatorID} {
 			require.NoError(t, verifier.VerifyNs(fakeTxID, makeTx(validEndorsements(creatorType)), 0))
 		}
 		require.Error(t, verifier.VerifyNs(fakeTxID, makeTx(invalidEndorsements), 0))
@@ -165,7 +164,7 @@ func TestNsVerifierPolicyBased(t *testing.T) {
 		verifier := signature.NewNsVerifierFromChannelPolicy(resolvedPolicy)
 		require.NotNil(t, verifier)
 
-		for _, creatorType := range []int{test.CreatorCertificate, test.CreatorID} {
+		for _, creatorType := range []int{testsig.CreatorCertificate, testsig.CreatorID} {
 			require.NoError(t, verifier.VerifyNs(fakeTxID, makeTx(validEndorsements(creatorType)), 0))
 		}
 		require.NoError(t, verifier.UpdateIdentities(nil))
@@ -203,7 +202,7 @@ func TestNsVerifierPolicyBased(t *testing.T) {
 			&cauthdsl.MockIdentityDeserializer{KnownIdentities: knownIdentities})
 		require.NoError(t, err)
 
-		for _, creatorType := range []int{test.CreatorCertificate, test.CreatorID} {
+		for _, creatorType := range []int{testsig.CreatorCertificate, testsig.CreatorID} {
 			// org0, org3, and org1 sign — satisfies first OR branch.
 			require.NoError(t, verifier.VerifyNs(fakeTxID, makeTx([]*applicationpb.Endorsements{
 				testsig.CreateEndorsementsForSignatureRule(

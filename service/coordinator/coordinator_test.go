@@ -45,7 +45,7 @@ type (
 		streamCancel           context.CancelFunc
 		dbEnv                  *vc.DatabaseTestEnv
 		verifier               *mock.Verifier
-		sigVerifierGrpcServers *test.GrpcServers
+		sigVerifierGrpcServers *test.Servers
 		serverTLS              connection.TLSConfig
 		clientTLS              connection.TLSConfig
 	}

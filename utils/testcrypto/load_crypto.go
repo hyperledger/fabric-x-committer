@@ -9,6 +9,7 @@ package testcrypto
 import (
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -19,6 +20,16 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
+)
+
+var (
+	// OrgRootCA is the path to organization 0's TLS client credentials in the crypto materials directory.
+	OrgRootCA = filepath.Join(cryptogen.PeerOrganizationsDir, "peer-org-0",
+		cryptogen.MSPDir, cryptogen.TLSCaCertsDir, "tlspeer-org-0-CA-cert.pem")
+
+	// OrdererRootCATLSPath is the path to organization 0's orderer TLS credentials in the crypto materials directory.
+	OrdererRootCATLSPath = filepath.Join(cryptogen.OrdererOrganizationsDir,
+		"orderer-org-0", cryptogen.MSPDir, cryptogen.TLSCaCertsDir, "tlsorderer-org-0-CA-cert.pem")
 )
 
 // GetPeersIdentities returns the peers' identities from a crypto path.
