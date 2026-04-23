@@ -14,10 +14,10 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-x-common/msp"
+	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
-	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 func TestNewIdentitySigner(t *testing.T) {

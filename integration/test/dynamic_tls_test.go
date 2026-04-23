@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -20,7 +21,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
-	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 // TestDynamicTLS verifies that the sidecar and query service dynamically update

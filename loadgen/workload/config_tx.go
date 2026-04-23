@@ -16,10 +16,10 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
+	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
-	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 // CreateConfigTxFromConfigBlock creates a config TX.

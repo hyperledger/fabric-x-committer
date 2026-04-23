@@ -16,6 +16,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -28,7 +29,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/deliverorderer"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
-	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 const channelForTest = "mychannel"

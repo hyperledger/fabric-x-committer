@@ -17,10 +17,10 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
-	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
