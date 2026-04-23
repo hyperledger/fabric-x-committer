@@ -16,6 +16,7 @@ import (
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
+	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -24,9 +25,9 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
-	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 // StartMockVerifierService starts a specified number of mock verifier service and register cancellation.
@@ -216,7 +217,7 @@ func NewOrdererTestEnv(t *testing.T, p *OrdererTestParameters) *OrdererTestEnv {
 		OrdererTestParameters: *p,
 		AllServerConfig:       allServerConfigs,
 		AllEndpoints:          allEndpoints,
-		OrdererConnConfig:     testcrypto.GetOrdererConnConfig(p.ArtifactsPath, p.ClientTLSConfig),
+		OrdererConnConfig:     GetOrdererConnConfig(p.ArtifactsPath, p.ClientTLSConfig),
 		PartyStates:           partyStates,
 		Orderer:               ordererService,
 	}
@@ -359,4 +360,31 @@ func (e *OrdererTestEnv) WaitForBlock(t *testing.T, outputBlocks <-chan *common.
 	t.Logf("Received block #%d", b.Header.Number)
 	e.PrevBlock = b
 	return b
+}
+
+// GetOrdererConnConfig returns the configuration for an orderer connection using the config block and peer
+// organizations in tha artifacts path.
+func GetOrdererConnConfig(artifactsPath string, clientTLSConfig connection.TLSConfig) ordererdial.Config {
+	peerMsp := testcrypto.GetPeersMspDirs(artifactsPath)
+	var id *ordererdial.IdentityConfig
+	if len(peerMsp) > 0 {
+		id = &ordererdial.IdentityConfig{
+			MspID:  peerMsp[0].MspName,
+			MSPDir: peerMsp[0].MspDir,
+			BCCSP:  peerMsp[0].CspConf,
+		}
+	}
+	return ordererdial.Config{
+		FaultToleranceLevel:        ordererdial.BFT,
+		TLS:                        ordererdial.TLSConfigToOrdererTLSConfig(clientTLSConfig),
+		LatestKnownConfigBlockPath: path.Join(artifactsPath, cryptogen.ConfigBlockFileName),
+		Retry: &retry.Profile{
+			InitialInterval: 10 * time.Millisecond,
+			MaxInterval:     100 * time.Millisecond,
+			Multiplier:      2,
+			MaxElapsedTime:  time.Second,
+		},
+		Identity:                     id,
+		SuspicionGracePeriodPerBlock: time.Second,
+	}
 }
