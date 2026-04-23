@@ -14,6 +14,7 @@ import (
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/text/language"
@@ -22,7 +23,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
-	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 func BenchmarkVerifyBlock(b *testing.B) {
@@ -95,7 +95,7 @@ func TestVerifyBlock(t *testing.T) {
 	// Test policy validation
 	t.Log("[V] New block with minimal quorum")
 	minimalQuorum := p
-	minimalQuorum.ConsenterSigners = minimalQuorum.ConsenterSigners[:3]
+	minimalQuorum.ConsenterSigners = minimalQuorum.ConsenterSigners[:4]
 	submitGoodBlock(t, &s, &minimalQuorum, 6)
 	p.PrevBlock = minimalQuorum.PrevBlock
 
@@ -105,7 +105,7 @@ func TestVerifyBlock(t *testing.T) {
 	b4 := workload.MapToOrdererBlock(1, txs)
 	b4 = testcrypto.PrepareBlockHeaderAndMetadata(b4, insufficientQuorum)
 	err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b4})
-	require.ErrorContains(t, err, "2 sub-policies were satisfied, but this policy requires 3")
+	require.ErrorContains(t, err, "signature set did not satisfy policy")
 
 	t.Log("[V] Block with nil data in header-only stream")
 	bHeaderOnly := workload.MapToOrdererBlock(1, txs)
@@ -141,7 +141,7 @@ func TestVerifyBlock(t *testing.T) {
 	p.LastConfigBlockIndex = p2.LastConfigBlockIndex
 	b7 = testcrypto.PrepareBlockHeaderAndMetadata(b7, p)
 	err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b7})
-	require.ErrorContains(t, err, "0 sub-policies were satisfied")
+	require.ErrorContains(t, err, "signature set did not satisfy policy")
 }
 
 func TestVerifyBlockForm(t *testing.T) {
@@ -362,7 +362,7 @@ func TestVerifyBlockEdgeCases(t *testing.T) {
 		t.Parallel()
 		s, p := prepare(t)
 		s.configState = configState{
-			verifierFunc:        nil, // No verifier function
+			verifier:            nil, // No verifier function
 			ConfigBlockMaterial: nil, // No config block
 		}
 		p.ConsenterSigners = nil
@@ -460,7 +460,7 @@ func TestUpdateIfConfigBlock(t *testing.T) {
 		assert.Equal(t, "test-channel", cs.ChannelID)
 		assert.Equal(t, configBlock.Header.Number, cs.configBlockNumber)
 		assert.NotNil(t, cs.ConfigBlock)
-		assert.NotNil(t, cs.verifierFunc)
+		assert.NotNil(t, cs.verifier)
 		assert.Len(t, cs.OrdererOrganizations, 1)
 	})
 
@@ -513,11 +513,11 @@ func prepare(tb testing.TB) (blockVerificationStateMachine, testcrypto.BlockPrep
 	genesisBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(cryptoDir, &testcrypto.ConfigBlock{
 		ChannelID: "my-chan",
 		OrdererEndpoints: []*commontypes.OrdererEndpoint{
-			{ID: 0, Host: "127.0.0.1", Port: 1000},
-			{ID: 1, Host: "127.0.0.1", Port: 1001},
-			{ID: 2, Host: "127.0.0.1", Port: 1002},
-			{ID: 3, Host: "127.0.0.1", Port: 1003},
-			{ID: 4, Host: "127.0.0.1", Port: 1004},
+			{ID: 1, Host: "127.0.0.1", Port: 1000},
+			{ID: 2, Host: "127.0.0.1", Port: 1001},
+			{ID: 3, Host: "127.0.0.1", Port: 1002},
+			{ID: 4, Host: "127.0.0.1", Port: 1003},
+			{ID: 5, Host: "127.0.0.1", Port: 1004},
 		},
 	})
 	require.NoError(tb, err)
@@ -531,6 +531,7 @@ func prepare(tb testing.TB) (blockVerificationStateMachine, testcrypto.BlockPrep
 
 	identities, idErr := testcrypto.GetConsenterIdentities(cryptoDir)
 	require.NoError(tb, idErr)
+	require.Len(tb, identities, 5)
 	return s, testcrypto.BlockPrepareParameters{
 		LastConfigBlockIndex: 0,
 		PrevBlock:            genesisBlock,

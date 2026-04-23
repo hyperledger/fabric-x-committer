@@ -505,7 +505,7 @@ func newEndpoint(host string, port int) *connection.Endpoint {
 func newIdentityConfig() *ordererdial.IdentityConfig {
 	return &ordererdial.IdentityConfig{
 		MspID:  "peer-org-0",
-		MSPDir: "/root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/msp",
+		MSPDir: "/root/artifacts/peerOrganizations/peer-org-0.com/users/client@peer-org-0.com/msp",
 		BCCSP: &factory.FactoryOpts{
 			Default: "SW",
 			SW: &factory.SwOpts{

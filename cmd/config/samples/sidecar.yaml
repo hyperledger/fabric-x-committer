@@ -13,12 +13,12 @@ server:
     # or 'mtls' (mutual TLS with client cert verification).
     mode: mtls
     # Path to the server's TLS certificate file (public key).
-    cert-path: /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar/tls/server.crt
+    cert-path: /root/artifacts/peerOrganizations/peer-org-0.com/peers/sidecar/tls/server.crt
     # Path to the server's TLS private key file.
-    key-path: /root/artifacts/peerOrganizations/peer-org-0/peers/sidecar/tls/server.key
+    key-path: /root/artifacts/peerOrganizations/peer-org-0.com/peers/sidecar/tls/server.key
     # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
-      - /root/artifacts/peerOrganizations/peer-org-0/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
+      - /root/artifacts/peerOrganizations/peer-org-0.com/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
   keep-alive:
     params:
       # Duration after which the server sends a keepalive ping if no data has been
@@ -87,7 +87,7 @@ orderer:
     # MSP ID of the organization this sidecar represents.
     msp-id: peer-org-0
     # Path to the MSP directory containing certificates and keys for the identity.
-    msp-dir: /root/artifacts/peerOrganizations/peer-org-0/users/client@peer-org-0.com/msp
+    msp-dir: /root/artifacts/peerOrganizations/peer-org-0.com/users/client@peer-org-0.com/msp
     bccsp:
       Default: SW
       SW:
@@ -152,4 +152,3 @@ logging:
   format: >-
     %{color}%{time:2006-01-02 15:04:05.000 MST} [%{module}] %{shortfunc}
     -> %{level:.4s}%{color:reset} %{message}
-
