@@ -12,7 +12,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
@@ -22,7 +21,6 @@ import (
 
 func TestCreateUpdateNamespace(t *testing.T) {
 	t.Parallel()
-	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{
 		NumVerifiers: 2,
 		NumVCService: 2,

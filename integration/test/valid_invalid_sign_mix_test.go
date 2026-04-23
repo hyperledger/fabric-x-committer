@@ -12,14 +12,12 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	"github.com/onsi/gomega"
 
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 )
 
 func TestMixOfValidAndInvalidSign(t *testing.T) { //nolint:gocognit
 	t.Parallel()
-	gomega.RegisterTestingT(t)
 	c := runner.NewRuntime(t, &runner.Config{
 		NumVerifiers: 2,
 		BlockSize:    5,
