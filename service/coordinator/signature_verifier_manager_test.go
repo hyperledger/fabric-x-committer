@@ -35,7 +35,7 @@ type svMgrTestEnv struct {
 	inputTxBatch        chan dependencygraph.TxNodeBatch
 	outputValidatedTxs  chan dependencygraph.TxNodeBatch
 	mockVerifier        *mock.Verifier
-	grpcServers         *test.GrpcServers
+	grpcServers         *test.Servers
 	policyManager       *policyManager
 	curBlockNum         atomic.Uint64
 }
@@ -309,9 +309,11 @@ func TestSignatureVerifierManagerRecovery(t *testing.T) {
 		return len(firstSv.txBeingValidated) == numTxs-6 // first 4 transactions would be pending
 	}, 30*time.Second, 100*time.Millisecond)
 
-	for i, s := range env.grpcServers.Servers {
-		s.Stop()
-		test.CheckServerStopped(t, env.grpcServers.Configs[i].Endpoint.Address())
+	for _, stopFunc := range env.grpcServers.ServersStop {
+		stopFunc()
+	}
+	for _, c := range env.grpcServers.Configs {
+		test.CheckServerStopped(t, c.GRPC.Endpoint.Address())
 	}
 	env.requireConnectionMetrics(t, 0, connection.Disconnected, 1)
 
@@ -399,8 +401,8 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 	env.requireAllUpdate(t, verifierStreams, 1, expectedUpdate)
 
 	t.Log("Stop the service")
-	env.grpcServers.Servers[0].Stop()
-	test.CheckServerStopped(t, env.grpcServers.Configs[0].Endpoint.Address())
+	env.grpcServers.ServersStop[0]()
+	test.CheckServerStopped(t, env.grpcServers.Configs[0].GRPC.Endpoint.Address())
 	env.submitTxBatch(t, 1)
 	env.requireConnectionMetrics(t, 0, connection.Disconnected, 1)
 
@@ -419,7 +421,7 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 
 	t.Log("Ensure the correct server is shutdown")
 	verifierStreams = mock.RequireStreams(t, env.mockVerifier, 2)
-	stoppedEndpoint := env.grpcServers.Configs[0].Endpoint.Address()
+	stoppedEndpoint := env.grpcServers.Configs[0].GRPC.Endpoint.Address()
 	mock.RequireStreamsWithEndpoints(t, env.mockVerifier, 0, stoppedEndpoint)
 
 	t.Log("Verify that all other mock policy verifiers have the same verification key")
@@ -433,9 +435,9 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 	}, 2*time.Second, 1*time.Second)
 
 	t.Log("Restart server")
-	env.grpcServers.Servers[0] = mock.StartMockVerifierServiceFromServerConfig(
+	env.grpcServers.ServersStop[0] = mock.StartMockVerifierServiceFromServerConfig(
 		t, env.mockVerifier, env.grpcServers.Configs[0],
-	).Servers[0]
+	).ServersStop[0]
 	env.requireConnectionMetrics(t, 0, connection.Connected, 1)
 	t.Log("New instance is up")
 

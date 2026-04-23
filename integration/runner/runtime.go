@@ -31,6 +31,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/delivercommitter"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testapp"
@@ -84,7 +85,7 @@ type (
 		// CrashTest is true to indicate a service crash is expected, and not a failure.
 		CrashTest bool
 		// RateLimit configures rate limiting for services that support it (query, sidecar).
-		RateLimit *connection.RateLimitConfig
+		RateLimit *serve.RateLimitConfig
 		// MaxRequestKeys is the maximum number of keys allowed in a single query request.
 		// Set to 0 to disable the limit.
 		MaxRequestKeys int
@@ -239,8 +240,8 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	s.Services = allocateServices(t, conf, credFactory)
 	s.Services.Orderer = make([]config.ServiceConfig, len(c.OrdererEnv.AllServerConfig))
 	for i, serverConf := range c.OrdererEnv.AllServerConfig {
-		s.Services.Orderer[i].GrpcEndpoint = &serverConf.Endpoint
-		s.Services.Orderer[i].GrpcTLS = serverConf.TLS
+		s.Services.Orderer[i].GrpcEndpoint = &serverConf.GRPC.Endpoint
+		s.Services.Orderer[i].GrpcTLS = serverConf.GRPC.TLS
 	}
 
 	test.LogStruct(t, "System Parameters", s)
@@ -614,17 +615,17 @@ func (c *CommitterRuntime) ensureAtLeastLastCommittedBlockNumber(t *testing.T, b
 }
 
 // requireAllServicesAreRunning fails the test if any managed process has exited unexpectedly.
-func (c *CommitterRuntime) requireAllServicesAreRunning(t *testing.T) {
-	t.Helper()
-	c.MockOrderer.requireRunning(t)
-	c.Coordinator.requireRunning(t)
-	c.Sidecar.requireRunning(t)
-	c.QueryService.requireRunning(t)
+func (c *CommitterRuntime) requireAllServicesAreRunning(tb testing.TB) {
+	tb.Helper()
+	c.MockOrderer.requireRunning(tb)
+	c.Coordinator.requireRunning(tb)
+	c.Sidecar.requireRunning(tb)
+	c.QueryService.requireRunning(tb)
 	for _, p := range c.Verifier {
-		p.requireRunning(t)
+		p.requireRunning(tb)
 	}
 	for _, p := range c.VcService {
-		p.requireRunning(t)
+		p.requireRunning(tb)
 	}
 }
 

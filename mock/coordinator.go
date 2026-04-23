@@ -16,7 +16,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -24,8 +23,8 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 // Coordinator is a mock implementation of servicepb.CoordinatorServer.
@@ -49,14 +48,14 @@ var defaultTxStatusStorageSize = 100_000
 func NewMockCoordinator() *Coordinator {
 	return &Coordinator{
 		txsStatus:   newFifoCache[*committerpb.TxStatus](defaultTxStatusStorageSize),
-		healthcheck: connection.DefaultHealthCheckService(),
+		healthcheck: serve.DefaultHealthCheckService(),
 	}
 }
 
-// RegisterService registers for the coordinator's GRPC services.
-func (c *Coordinator) RegisterService(server *grpc.Server) {
-	servicepb.RegisterCoordinatorServer(server, c)
-	healthgrpc.RegisterHealthServer(server, c.healthcheck)
+// RegisterService registers the coordinator's gRPC services.
+func (c *Coordinator) RegisterService(s serve.Servers) {
+	servicepb.RegisterCoordinatorServer(s.GRPC, c)
+	healthgrpc.RegisterHealthServer(s.GRPC, c.healthcheck)
 }
 
 // SetLastCommittedBlockNumber sets the last committed block number.

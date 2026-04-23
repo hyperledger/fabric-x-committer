@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
@@ -67,15 +66,11 @@ func TestHasCodeWithGRPCService(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
-	server := test.StartGrpcServersForTest(
-		ctx, t, test.StartServerParameters{
-			NumService: 1,
-		},
-		func(server *grpc.Server) {
-			healthgrpc.RegisterHealthServer(server, &healthgrpc.UnimplementedHealthServer{})
-		})
+	wrapper := &test.HealthService{HealthServer: &healthgrpc.UnimplementedHealthServer{}}
+	p := test.StartServerParameters{NumService: 1}
+	sc := test.ServeManyForTest(ctx, t, p, wrapper)
 
-	conn := test.NewInsecureConnectionWithRetry(t, &server.Configs[0].Endpoint, retry.Profile{
+	conn := test.NewInsecureConnectionWithRetry(t, &sc.Configs[0].GRPC.Endpoint, retry.Profile{
 		MaxElapsedTime: 2 * time.Second,
 	})
 
@@ -87,8 +82,8 @@ func TestHasCodeWithGRPCService(t *testing.T) {
 	_, err = client.List(ctx, nil)
 	require.False(t, HasCode(err, codes.NotFound)) // all APIs are codes.Unimplemented
 
-	server.Servers[0].Stop()
-	test.CheckServerStopped(t, server.Configs[0].Endpoint.Address())
+	sc.ServersStop[0]()
+	test.CheckServerStopped(t, sc.Configs[0].GRPC.Endpoint.Address())
 
 	_, err = client.Check(ctx, nil)
 	require.Truef(t, HasCode(err, codes.Unavailable), "code: %s", GetCode(err))

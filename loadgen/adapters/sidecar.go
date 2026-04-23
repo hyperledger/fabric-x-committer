@@ -15,7 +15,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
-	"github.com/hyperledger/fabric-x-committer/utils/grpcservice"
 )
 
 type (
@@ -40,11 +39,11 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 		return errors.New("no orderer servers configured")
 	}
 	orderer, err := mock.NewMockOrderer(&mock.OrdererConfig{
-		ServerConfigs: c.config.OrdererServers,
+		Servers:       c.config.OrdererServers,
 		ArtifactsPath: c.res.Profile.Policy.ArtifactsPath,
 		// The sidecar adapter submits a config block manually.
 		SendGenesisBlock: true,
-	}, nil)
+	})
 	if err != nil {
 		return err
 	}
@@ -55,7 +54,7 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 	g, gCtx := errgroup.WithContext(dCtx)
 
 	g.Go(func() error {
-		return grpcservice.StartAndServe(gCtx, orderer, nil, c.config.OrdererServers...)
+		return mock.OrdererStartAndServe(gCtx, orderer)
 	})
 
 	g.Go(func() error {

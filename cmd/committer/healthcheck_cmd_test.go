@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
@@ -46,18 +45,17 @@ func TestHealthcheckCMD(t *testing.T) {
 	}
 
 	// SERVING: start a gRPC server that reports SERVING.
-	serverConfig := test.NewLocalHostServer(test.InsecureTLSConfig)
-	test.RunGrpcServerForTest(t.Context(), t, serverConfig, nil)
-	servingSystem := newSystemConfig(&serverConfig.Endpoint)
+	servingServerConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
+	test.ServeForTest(t.Context(), t, servingServerConfig, nil)
+	servingSystem := newSystemConfig(&servingServerConfig.GRPC.Endpoint)
 
 	// NOT SERVING: start a separate gRPC server that reports NOT_SERVING.
-	notServingConfig := test.NewLocalHostServer(test.InsecureTLSConfig)
-	test.RunGrpcServerForTest(t.Context(), t, notServingConfig, func(server *grpc.Server) {
-		hs := health.NewServer()
-		hs.SetServingStatus("", healthgrpc.HealthCheckResponse_NOT_SERVING)
-		healthgrpc.RegisterHealthServer(server, hs)
-	})
-	notServingSystem := newSystemConfig(&notServingConfig.Endpoint)
+	notServingServerConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
+	hs := health.NewServer()
+	hs.SetServingStatus("", healthgrpc.HealthCheckResponse_NOT_SERVING)
+	wrapper := &test.HealthService{HealthServer: hs}
+	test.ServeForTest(t.Context(), t, notServingServerConfig, wrapper)
+	notServingSystem := newSystemConfig(&notServingServerConfig.GRPC.Endpoint)
 
 	for _, sc := range []struct {
 		service string

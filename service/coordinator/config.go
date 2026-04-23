@@ -13,11 +13,9 @@ import (
 type (
 	// Config is the configuration for coordinator service. It contains configurations for all managers.
 	Config struct {
-		Server             *connection.ServerConfig     `mapstructure:"server"`
 		Verifier           connection.MultiClientConfig `mapstructure:"verifier"`
 		ValidatorCommitter connection.MultiClientConfig `mapstructure:"validator-committer"`
 		DependencyGraph    *DependencyGraphConfig       `mapstructure:"dependency-graph" validate:"required"`
-		Monitoring         *connection.ServerConfig     `mapstructure:"monitoring"`
 		// ChannelBufferSizePerGoroutine defines the buffer size per go-routine.
 		ChannelBufferSizePerGoroutine int `mapstructure:"per-channel-buffer-size-per-goroutine" validate:"required,gt=0"` //nolint:lll,revive
 	}

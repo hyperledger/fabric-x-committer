@@ -13,7 +13,7 @@ import (
 )
 
 type metrics struct {
-	Provider             *monitoring.Provider
+	*monitoring.Provider
 	VerifierServerInTxs  prometheus.Counter
 	VerifierServerOutTxs prometheus.Counter
 	ActiveStreams        prometheus.Gauge

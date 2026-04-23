@@ -26,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -44,9 +45,7 @@ type CommandTest struct {
 // StartDefaultSystem starts a system with mocks for CMD testing.
 func StartDefaultSystem(t *testing.T) config.SystemConfig {
 	t.Helper()
-	serverParams := test.StartServerParameters{
-		NumService: 1,
-	}
+	serverParams := test.StartServerParameters{NumService: 1}
 	_, verifier := mock.StartMockVerifierService(t, serverParams)
 	_, vc := mock.StartMockVCService(t, serverParams)
 	orderer := mock.NewOrdererTestEnv(t, &mock.OrdererTestParameters{
@@ -55,12 +54,12 @@ func StartDefaultSystem(t *testing.T) config.SystemConfig {
 		},
 	})
 	_, coordinator := mock.StartMockCoordinatorService(t, serverParams)
-	server := test.NewLocalHostServer(test.InsecureTLSConfig)
-	listen, err := server.Listener(t.Context())
+	serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
+	listen, err := serverConfig.GRPC.Listener(t.Context())
 	require.NoError(t, err)
 	connection.CloseConnectionsLog(listen)
 
-	ordererEp := orderer.AllServerConfig[0].Endpoint
+	ordererEp := orderer.AllServerConfig[0].GRPC.Endpoint
 	policy := &workload.PolicyProfile{
 		ArtifactsPath:         t.TempDir(),
 		ChannelID:             "channel1",
@@ -71,18 +70,25 @@ func StartDefaultSystem(t *testing.T) config.SystemConfig {
 	require.NoError(t, err)
 
 	return config.SystemConfig{
-		ThisService: config.ServiceConfig{
-			GrpcEndpoint: &server.Endpoint,
-		},
+		ThisService: convertServiceConfig(serverConfig),
 		Services: config.SystemServices{
-			Verifier:    []config.ServiceConfig{{GrpcEndpoint: &verifier.Configs[0].Endpoint}},
-			VCService:   []config.ServiceConfig{{GrpcEndpoint: &vc.Configs[0].Endpoint}},
-			Orderer:     []config.ServiceConfig{{GrpcEndpoint: &ordererEp}},
-			Coordinator: config.ServiceConfig{GrpcEndpoint: &coordinator.Configs[0].Endpoint},
+			Verifier:    []config.ServiceConfig{convertServiceConfig(verifier.Configs[0])},
+			VCService:   []config.ServiceConfig{convertServiceConfig(vc.Configs[0])},
+			Orderer:     []config.ServiceConfig{convertServiceConfig(orderer.AllServerConfig[0])},
+			Coordinator: convertServiceConfig(coordinator.Configs[0]),
 		},
 		DB:         defaultTestDBConfig(),
 		Policy:     policy,
 		LedgerPath: t.TempDir(),
+	}
+}
+
+func convertServiceConfig(c *serve.Config) config.ServiceConfig {
+	return config.ServiceConfig{
+		GrpcEndpoint:    &c.GRPC.Endpoint,
+		MetricsEndpoint: &c.Monitoring.Endpoint,
+		GrpcTLS:         c.GRPC.TLS,
+		MetricsTLS:      c.Monitoring.TLS,
 	}
 }
 

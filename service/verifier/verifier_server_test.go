@@ -23,6 +23,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
@@ -44,12 +45,13 @@ type cryptoParameters struct {
 func TestVerifierSecureConnection(t *testing.T) {
 	t.Parallel()
 	test.RunSecureConnectionTest(t,
-		func(t *testing.T, tlsCfg, _ connection.TLSConfig) test.RPCAttempt {
+		func(t *testing.T, serverTLS, _ connection.TLSConfig) test.RPCAttempt {
 			t.Helper()
-			env := newTestState(t, defaultConfigWithTLS(tlsCfg))
+			config, serverConfig := defaultConfigWithTLS(serverTLS)
+			_ = newTestState(t, config, serverConfig)
 			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
 				t.Helper()
-				client := createVerifierClientWithTLS(t, &env.Service.config.Server.Endpoint, cfg)
+				client := createVerifierClientWithTLS(t, &serverConfig.GRPC.Endpoint, cfg)
 				_, err := client.StartStream(ctx)
 				return err
 			}
@@ -59,7 +61,8 @@ func TestVerifierSecureConnection(t *testing.T) {
 
 func TestNoVerificationKeySet(t *testing.T) {
 	t.Parallel()
-	c := newTestState(t, defaultConfigWithTLS(test.InsecureTLSConfig))
+	config, serverConfig := defaultConfigWithTLS(test.InsecureTLSConfig)
+	c := newTestState(t, config, serverConfig)
 
 	stream, err := c.Client.StartStream(t.Context())
 	require.NoError(t, err)
@@ -74,12 +77,14 @@ func TestNoVerificationKeySet(t *testing.T) {
 
 func TestNoInput(t *testing.T) {
 	t.Parallel()
-	c := newTestState(t, defaultConfigWithTLS(test.InsecureTLSConfig))
+	config, serverConfig := defaultConfigWithTLS(test.InsecureTLSConfig)
+	c := newTestState(t, config, serverConfig)
 
-	stream, _ := c.Client.StartStream(t.Context())
+	stream, err := c.Client.StartStream(t.Context())
+	require.NoError(t, err)
 
 	cp := defaultCryptoParameters(t)
-	err := stream.Send(&servicepb.VerifierBatch{Update: cp.update})
+	err = stream.Send(&servicepb.VerifierBatch{Update: cp.update})
 	require.NoError(t, err)
 
 	_, ok := readStream(t, stream, testTimeout)
@@ -88,9 +93,11 @@ func TestNoInput(t *testing.T) {
 
 func TestMinimalInput(t *testing.T) {
 	t.Parallel()
-	c := newTestState(t, defaultConfigWithTLS(test.InsecureTLSConfig))
+	config, serverConfig := defaultConfigWithTLS(test.InsecureTLSConfig)
+	c := newTestState(t, config, serverConfig)
 
-	stream, _ := c.Client.StartStream(t.Context())
+	stream, err := c.Client.StartStream(t.Context())
+	require.NoError(t, err)
 
 	cp := defaultCryptoParameters(t)
 
@@ -103,7 +110,8 @@ func TestMinimalInput(t *testing.T) {
 			}},
 		}},
 	}
-	s, _ := cp.dataTxEndorser.EndorseTxNs(fakeTxID, tx1, 0)
+	s, err := cp.dataTxEndorser.EndorseTxNs(fakeTxID, tx1, 0)
+	require.NoError(t, err)
 	tx1.Endorsements = append(tx1.Endorsements, s)
 
 	tx2 := &applicationpb.Tx{
@@ -116,7 +124,8 @@ func TestMinimalInput(t *testing.T) {
 		}},
 	}
 
-	s, _ = cp.dataTxEndorser.EndorseTxNs(fakeTxID, tx2, 0)
+	s, err = cp.dataTxEndorser.EndorseTxNs(fakeTxID, tx2, 0)
+	require.NoError(t, err)
 	tx2.Endorsements = append(tx2.Endorsements, s)
 
 	tx3 := &applicationpb.Tx{
@@ -128,10 +137,11 @@ func TestMinimalInput(t *testing.T) {
 			}},
 		}},
 	}
-	s, _ = cp.metaTxEndorser.EndorseTxNs(fakeTxID, tx3, 0)
+	s, err = cp.metaTxEndorser.EndorseTxNs(fakeTxID, tx3, 0)
+	require.NoError(t, err)
 	tx3.Endorsements = append(tx3.Endorsements, s)
 
-	err := stream.Send(&servicepb.VerifierBatch{
+	err = stream.Send(&servicepb.VerifierBatch{
 		Update: cp.update,
 		Requests: []*servicepb.TxWithRef{
 			{Ref: committerpb.NewTxRef(fakeTxID, 1, 1), Content: tx1},
@@ -148,7 +158,8 @@ func TestMinimalInput(t *testing.T) {
 
 func TestSignatureRule(t *testing.T) {
 	t.Parallel()
-	c := newTestState(t, defaultConfigQuickCutoff())
+	config, serverConfig := defaultConfigQuickCutoff()
+	c := newTestState(t, config, serverConfig)
 
 	stream, err := c.Client.StartStream(t.Context())
 	require.NoError(t, err)
@@ -232,7 +243,8 @@ func TestSignatureRule(t *testing.T) {
 
 func TestBadSignature(t *testing.T) {
 	t.Parallel()
-	c := newTestState(t, defaultConfigQuickCutoff())
+	config, serverConfig := defaultConfigQuickCutoff()
+	c := newTestState(t, config, serverConfig)
 
 	stream, err := c.Client.StartStream(t.Context())
 	require.NoError(t, err)
@@ -261,7 +273,8 @@ func TestBadSignature(t *testing.T) {
 
 func TestUpdatePolicies(t *testing.T) {
 	t.Parallel()
-	c := newTestState(t, defaultConfigQuickCutoff())
+	config, serverConfig := defaultConfigQuickCutoff()
+	c := newTestState(t, config, serverConfig)
 
 	ns1 := "ns1"
 	ns2 := "ns2"
@@ -348,7 +361,8 @@ func TestUpdatePolicies(t *testing.T) {
 
 func TestMultipleUpdatePolicies(t *testing.T) {
 	t.Parallel()
-	c := newTestState(t, defaultConfigQuickCutoff())
+	config, serverConfig := defaultConfigQuickCutoff()
+	c := newTestState(t, config, serverConfig)
 
 	ns := make([]string, 101)
 	for i := range ns {
@@ -486,14 +500,14 @@ type State struct {
 	Client  servicepb.VerifierClient
 }
 
-func newTestState(t *testing.T, config *Config) *State {
+func newTestState(t *testing.T, config *Config, serverConfig *serve.Config) *State {
 	t.Helper()
 	service := New(config)
-	test.RunServiceAndGrpcForTest(t.Context(), t, service, config.Server)
+	test.RunServiceAndServeForTest(t.Context(), t, service, serverConfig)
 
 	return &State{
 		Service: service,
-		Client:  createVerifierClientWithTLS(t, &config.Server.Endpoint, test.InsecureTLSConfig),
+		Client:  createVerifierClientWithTLS(t, &serverConfig.GRPC.Endpoint, test.InsecureTLSConfig),
 	}
 }
 
@@ -546,23 +560,22 @@ func defaultCryptoParameters(t *testing.T) cryptoParameters {
 	return ret
 }
 
-func defaultConfigWithTLS(tlsConfig connection.TLSConfig) *Config {
-	return &Config{
-		Server: test.NewLocalHostServer(tlsConfig),
+func defaultConfigWithTLS(tlsConfig connection.TLSConfig) (*Config, *serve.Config) {
+	config := &Config{
 		ParallelExecutor: ExecutorConfig{
 			BatchSizeCutoff:   3,
 			BatchTimeCutoff:   1 * time.Hour,
 			Parallelism:       3,
 			ChannelBufferSize: 1,
 		},
-		Monitoring: test.NewLocalHostServer(test.InsecureTLSConfig),
 	}
+	return config, test.NewLocalHostServiceConfig(tlsConfig)
 }
 
-func defaultConfigQuickCutoff() *Config {
-	config := defaultConfigWithTLS(test.InsecureTLSConfig)
+func defaultConfigQuickCutoff() (*Config, *serve.Config) {
+	config, serverConfig := defaultConfigWithTLS(test.InsecureTLSConfig)
 	config.ParallelExecutor.BatchSizeCutoff = 1
-	return config
+	return config, serverConfig
 }
 
 //nolint:ireturn // returning a gRPC client interface is intentional for test purpose.

@@ -8,14 +8,11 @@ package loadgen
 
 import (
 	"context"
-	"net/http"
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -26,7 +23,8 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 type (
@@ -66,7 +64,7 @@ func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 			Limit:   conf.Limit,
 			Metrics: metrics.NewLoadgenServiceMetrics(&conf.Monitoring),
 		},
-		healthcheck: connection.DefaultHealthCheckService(),
+		healthcheck: serve.DefaultHealthCheckService(),
 		ready:       channel.NewReady(),
 	}
 
@@ -118,12 +116,6 @@ func (c *Client) Run(ctx context.Context) error {
 	defer cancel()
 	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		return c.resources.Metrics.StartPrometheusServer(gCtx, &c.conf.Monitoring.ServerConfig)
-	})
-	g.Go(func() error {
-		return c.runHTTPServer(ctx)
-	})
-	g.Go(func() error {
 		return c.txStream.Run(gCtx)
 	})
 
@@ -163,10 +155,13 @@ func (c *Client) WaitForReady(ctx context.Context) bool {
 	return c.ready.WaitForReady(ctx)
 }
 
-// RegisterService registers for the load-gen's GRPC services.
-func (c *Client) RegisterService(server *grpc.Server) {
-	servicepb.RegisterLoadGenServiceServer(server, c)
-	healthgrpc.RegisterHealthServer(server, c.healthcheck)
+// RegisterService registers the loadgen's gRPC services and monitoring server.
+func (c *Client) RegisterService(s serve.Servers) {
+	servicepb.RegisterLoadGenServiceServer(s.GRPC, c)
+	healthgrpc.RegisterHealthServer(s.GRPC, c.healthcheck)
+	monitoring.RegisterMonitoringServer(s.Monitoring, c.resources.Metrics.Provider)
+	// The following call returns error, but always returns nil.
+	_ = servicepb.RegisterLoadGenServiceHandlerServer(context.Background(), s.HTTP, c)
 }
 
 // AppendBatch appends a batch to the stream.
@@ -184,56 +179,6 @@ func (c *Client) GetRateLimit(context.Context, *emptypb.Empty) (*servicepb.RateL
 func (c *Client) SetRateLimit(_ context.Context, limit *servicepb.RateLimit) (*emptypb.Empty, error) {
 	c.txStream.SetRate(limit.Rate)
 	return nil, nil
-}
-
-// runHTTPServer starts a simple HTTP server for setting the rate limit.
-func (c *Client) runHTTPServer(ctx context.Context) error {
-	serverConfig := c.conf.HTTPServer
-	if serverConfig == nil || serverConfig.Endpoint.Empty() {
-		return nil
-	}
-
-	tlsCreds, err := connection.NewServerTLSCredentials(serverConfig.TLS)
-	if err != nil {
-		return err
-	}
-	tlsCfg, err := tlsCreds.CreateServerTLSConfig()
-	if err != nil {
-		return err
-	}
-
-	mux := runtime.NewServeMux()
-	err = servicepb.RegisterLoadGenServiceHandlerServer(ctx, mux, c)
-	if err != nil {
-		return errors.Wrap(err, "failed to register loadgen service handler")
-	}
-
-	g, gCtx := errgroup.WithContext(ctx)
-	ln, err := serverConfig.Listener(ctx)
-	if err != nil {
-		return errors.Wrap(err, "failed to listen")
-	}
-	defer func() {
-		_ = ln.Close()
-	}()
-
-	logger.Infof("Start remote controller server on %s", serverConfig.Endpoint.Address())
-	server := &http.Server{
-		Addr:        ln.Addr().String(),
-		Handler:     mux,
-		ReadTimeout: time.Minute,
-		TLSConfig:   tlsCfg,
-	}
-	g.Go(func() error {
-		return server.Serve(ln)
-	})
-	<-gCtx.Done()
-	_ = server.Close()
-	err = g.Wait()
-	if err == nil || errors.Is(err, http.ErrServerClosed) {
-		return nil
-	}
-	return errors.Wrap(err, "failed to serve remote controller")
 }
 
 // submitWorkloadSetupTXs writes the workload setup TXs to the channel, and waits for them to be committed.

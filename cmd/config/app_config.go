@@ -26,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 var (
@@ -34,58 +35,63 @@ var (
 )
 
 // ReadSidecarYamlAndSetupLogging reading the YAML config file of the sidecar.
-func ReadSidecarYamlAndSetupLogging(v *viper.Viper, configPath string) (*sidecar.Config, error) {
-	c := &sidecar.Config{}
-	return c, ReadYamlAndSetupLogging(v, configPath, "SIDECAR", c)
+func ReadSidecarYamlAndSetupLogging(
+	v *viper.Viper, configPath string,
+) (*sidecar.Config, *serve.Config, error) {
+	return ReadYamlAndSetupLogging[sidecar.Config](v, configPath, "SIDECAR")
 }
 
 // ReadCoordinatorYamlAndSetupLogging reading the YAML config file of the coordinator.
-func ReadCoordinatorYamlAndSetupLogging(v *viper.Viper, configPath string) (*coordinator.Config, error) {
-	c := &coordinator.Config{}
-	return c, ReadYamlAndSetupLogging(v, configPath, "COORDINATOR", c)
+func ReadCoordinatorYamlAndSetupLogging(
+	v *viper.Viper, configPath string,
+) (*coordinator.Config, *serve.Config, error) {
+	return ReadYamlAndSetupLogging[coordinator.Config](v, configPath, "COORDINATOR")
 }
 
 // ReadVCYamlAndSetupLogging reading the YAML config file of the VC.
-func ReadVCYamlAndSetupLogging(v *viper.Viper, configPath string) (*vc.Config, error) {
-	c := &vc.Config{}
-	return c, ReadYamlAndSetupLogging(v, configPath, "VC", c)
+func ReadVCYamlAndSetupLogging(v *viper.Viper, configPath string) (*vc.Config, *serve.Config, error) {
+	return ReadYamlAndSetupLogging[vc.Config](v, configPath, "VC")
 }
 
 // ReadVerifierYamlAndSetupLogging reading the YAML config file of the verifier.
-func ReadVerifierYamlAndSetupLogging(v *viper.Viper, configPath string) (*verifier.Config, error) {
-	c := &verifier.Config{}
-	return c, ReadYamlAndSetupLogging(v, configPath, "VERIFIER", c)
+func ReadVerifierYamlAndSetupLogging(
+	v *viper.Viper, configPath string,
+) (*verifier.Config, *serve.Config, error) {
+	return ReadYamlAndSetupLogging[verifier.Config](v, configPath, "VERIFIER")
 }
 
 // ReadQueryYamlAndSetupLogging reading the YAML config file of the query service.
-func ReadQueryYamlAndSetupLogging(v *viper.Viper, configPath string) (*query.Config, error) {
-	c := &query.Config{}
-	return c, ReadYamlAndSetupLogging(v, configPath, "QUERY", c)
+func ReadQueryYamlAndSetupLogging(v *viper.Viper, configPath string) (*query.Config, *serve.Config, error) {
+	return ReadYamlAndSetupLogging[query.Config](v, configPath, "QUERY")
 }
 
 // ReadMockOrdererYamlAndSetupLogging reading the YAML config file of the mock ordering service.
-func ReadMockOrdererYamlAndSetupLogging(v *viper.Viper, configPath string) (*mock.OrdererConfig, error) {
-	c := &mock.OrdererConfig{}
-	return c, ReadYamlAndSetupLogging(v, configPath, "ORDERER", c)
+func ReadMockOrdererYamlAndSetupLogging(
+	v *viper.Viper, configPath string,
+) (*mock.OrdererConfig, *serve.Config, error) {
+	return ReadYamlAndSetupLogging[mock.OrdererConfig](v, configPath, "ORDERER")
 }
 
 // ReadLoadGenYamlAndSetupLogging reading the YAML config file of the load generator.
-func ReadLoadGenYamlAndSetupLogging(v *viper.Viper, configPath string) (*loadgen.ClientConfig, error) {
-	c := &loadgen.ClientConfig{}
-	return c, ReadYamlAndSetupLogging(v, configPath, "LOADGEN", c)
+func ReadLoadGenYamlAndSetupLogging(
+	v *viper.Viper, configPath string,
+) (*loadgen.ClientConfig, *serve.Config, error) {
+	return ReadYamlAndSetupLogging[loadgen.ClientConfig](v, configPath, "LOADGEN")
 }
 
 // ReadYamlAndSetupLogging reading the YAML config file of a service.
-func ReadYamlAndSetupLogging(v *viper.Viper, configPath, servicePrefix string, c any) error {
+// It parses the server configuration separately from the service-specific configuration,
+// following the same pattern as logging configuration.
+func ReadYamlAndSetupLogging[T any](v *viper.Viper, configPath, servicePrefix string) (*T, *serve.Config, error) {
 	if configPath == "" {
-		return errors.New("--config flag must be set")
+		return nil, nil, errors.New("--config flag must be set")
 	}
 	content, err := os.ReadFile(filepath.Clean(configPath))
 	if err != nil {
-		return errors.Wrapf(err, "failed to read config file: %s", configPath)
+		return nil, nil, errors.Wrapf(err, "failed to read config file: %s", configPath)
 	}
 	if err = readYamlConfigsFromIO(v, bytes.NewReader(content)); err != nil {
-		return err
+		return nil, nil, err
 	}
 	setupEnv(v, servicePrefix)
 
@@ -93,10 +99,23 @@ func ReadYamlAndSetupLogging(v *viper.Viper, configPath, servicePrefix string, c
 		Logging *flogging.Config `mapstructure:"logging"`
 	}{}
 	if err = unmarshal(v, &loggingWrapper); err != nil {
-		return err
+		return nil, nil, err
 	}
 	flogging.Init(*loggingWrapper.Logging)
-	return unmarshal(v, c)
+
+	// Parse server configuration separately (similar to logging)
+	serverConfig := &serve.Config{}
+	if err = unmarshal(v, serverConfig); err != nil {
+		return nil, nil, err
+	}
+
+	// Parse service-specific configuration
+	c := new(T)
+	if err = unmarshal(v, c); err != nil {
+		return nil, nil, err
+	}
+
+	return c, serverConfig, nil
 }
 
 // unmarshal populate a config object and validate it.

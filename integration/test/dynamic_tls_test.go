@@ -20,7 +20,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
@@ -51,7 +50,7 @@ func TestDynamicTLS(t *testing.T) {
 	// so these remain valid throughout the test.
 	orgTLS := [3]connection.TLSConfig{}
 	for i := range orgTLS {
-		orgTLS[i] = test.OrgClientTLSConfig(c.OrdererEnv.ArtifactsPath, i, serverCACertPaths)
+		orgTLS[i] = testcrypto.OrgClientTLSConfig(c.OrdererEnv.ArtifactsPath, i, serverCACertPaths)
 	}
 
 	// Step 1: Assert all three peer orgs can connect to sidecar and query service.

@@ -9,6 +9,7 @@ package adapters
 import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 type (
@@ -34,7 +35,7 @@ type (
 	// SidecarClientConfig is a struct that contains the configuration for the sidecar client.
 	// OrdererServers config must correlate with the orderer endpoints of the policy.
 	SidecarClientConfig struct {
-		SidecarClient  *connection.ClientConfig   `mapstructure:"sidecar-client"`
-		OrdererServers []*connection.ServerConfig `mapstructure:"orderer-servers"`
+		SidecarClient  *connection.ClientConfig `mapstructure:"sidecar-client"`
+		OrdererServers []*serve.ServerConfig    `mapstructure:"orderer-servers"`
 	}
 )

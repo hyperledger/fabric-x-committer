@@ -10,7 +10,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 // Default configuration values for the load generator.
@@ -22,11 +21,7 @@ const (
 type (
 	// ClientConfig is a struct that contains the configuration for the client.
 	ClientConfig struct {
-		// Server for a gRPC server for the full load-generator's gRPC API.
-		Server *connection.ServerConfig `mapstructure:"server"`
-		// HTTPServer for an HTTP server to set/get the limiter's rate.
-		HTTPServer *connection.ServerConfig `mapstructure:"http-server"`
-		Monitoring metrics.Config           `mapstructure:"monitoring" yaml:"monitoring"`
+		Monitoring metrics.Config `mapstructure:"monitoring" yaml:"monitoring"`
 
 		Adapter     adapters.AdapterConfig  `mapstructure:",squash" yaml:",inline"`
 		Stream      *workload.StreamOptions `mapstructure:"stream" yaml:"stream"`

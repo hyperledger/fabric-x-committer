@@ -15,7 +15,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -23,8 +22,8 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 type (
@@ -54,14 +53,14 @@ type (
 func NewMockVcService() *VcService {
 	return &VcService{
 		txsStatus:   newFifoCache[*committerpb.TxStatus](defaultTxStatusStorageSize),
-		healthcheck: connection.DefaultHealthCheckService(),
+		healthcheck: serve.DefaultHealthCheckService(),
 	}
 }
 
-// RegisterService registers for the validator-committer's GRPC services.
-func (v *VcService) RegisterService(server *grpc.Server) {
-	servicepb.RegisterValidationAndCommitServiceServer(server, v)
-	healthgrpc.RegisterHealthServer(server, v.healthcheck)
+// RegisterService registers the validator-committer's gRPC services.
+func (v *VcService) RegisterService(s serve.Servers) {
+	servicepb.RegisterValidationAndCommitServiceServer(s.GRPC, v)
+	healthgrpc.RegisterHealthServer(s.GRPC, v.healthcheck)
 }
 
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger.

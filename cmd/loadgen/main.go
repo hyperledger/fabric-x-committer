@@ -18,7 +18,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 
-	"github.com/hyperledger/fabric-x-committer/utils/grpcservice"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 const (
@@ -57,7 +57,7 @@ func loadGenCMD() *cobra.Command {
 		Short: fmt.Sprintf("Starts %v.", serviceName),
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			conf, err := config.ReadLoadGenYamlAndSetupLogging(v, configPath)
+			conf, serverConfig, err := config.ReadLoadGenYamlAndSetupLogging(v, configPath)
 			if err != nil {
 				return err
 			}
@@ -76,7 +76,7 @@ func loadGenCMD() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return grpcservice.StartAndServe(cmd.Context(), client, nil, conf.Server)
+			return serve.StartAndServe(cmd.Context(), client, serverConfig)
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)
@@ -94,7 +94,7 @@ func loadGenArtifacts() *cobra.Command {
 		Short: "Generates the crypto artifacts and genesis block to the output folder.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			conf, err := config.ReadLoadGenYamlAndSetupLogging(v, configPath)
+			conf, _, err := config.ReadLoadGenYamlAndSetupLogging(v, configPath)
 			if err != nil {
 				return err
 			}
