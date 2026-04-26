@@ -47,6 +47,14 @@ send-genesis-block: true
 # and cryptographic materials needed for operation. If not provided, a default
 # config block is used.
 artifacts-path: /root/artifacts
+# Alternative path to the genesis block file. If not provided, it will be extracted from the artifacts-path.
+# genesis-block-path: /root/artifacts/config-block.pb.bin
+# A list of consensers to sign blocks. If not provided, it will be extracted from the artifacts-path.
+# consenter-msp-identities:
+#   - msp-id: orderer-org-0
+#     msp-dir: /root/artifacts/ordererOrganizations/orderer-org-0.com/orderers/consenter-org-0/msp
+#   - msp-id: orderer-org-1
+#     msp-dir: /root/artifacts/ordererOrganizations/orderer-org-1.com/orderers/consenter-org-1/msp
 
 # Logging configuration
 logging:
