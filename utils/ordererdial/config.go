@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
+	"github.com/hyperledger/fabric-x-common/msp"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
@@ -91,4 +92,13 @@ func NewTLSCredentials(c TLSConfig) (*connection.TLSCredentials, error) {
 		CertPath:    c.CertPath,
 		CACertPaths: c.CommonCACertPaths,
 	})
+}
+
+// IdentityConfigToMspDir converts the identity config to msp directory.
+func IdentityConfigToMspDir(ids ...*IdentityConfig) []*msp.DirLoadParameters {
+	mspDirectories := make([]*msp.DirLoadParameters, len(ids))
+	for i, id := range ids {
+		mspDirectories[i] = &msp.DirLoadParameters{MspName: id.MspID, MspDir: id.MSPDir, CspConf: id.BCCSP}
+	}
+	return mspDirectories
 }

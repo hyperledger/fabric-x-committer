@@ -34,6 +34,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
@@ -43,14 +44,16 @@ type (
 	OrdererConfig struct {
 		// Server and ServerConfigs sets the used serving endpoints.
 		// We support both for compatibility with other services.
-		Server           *connection.ServerConfig   `mapstructure:"server"`
-		ServerConfigs    []*connection.ServerConfig `mapstructure:"servers"`
-		BlockSize        int                        `mapstructure:"block-size"`
-		BlockTimeout     time.Duration              `mapstructure:"block-timeout"`
-		OutBlockCapacity int                        `mapstructure:"out-block-capacity"`
-		PayloadCacheSize int                        `mapstructure:"payload-cache-size"`
-		ArtifactsPath    string                     `mapstructure:"artifacts-path"`
-		SendGenesisBlock bool                       `mapstructure:"send-genesis-block"`
+		Server                  *connection.ServerConfig      `mapstructure:"server"`
+		ServerConfigs           []*connection.ServerConfig    `mapstructure:"servers"`
+		BlockSize               int                           `mapstructure:"block-size"`
+		BlockTimeout            time.Duration                 `mapstructure:"block-timeout"`
+		OutBlockCapacity        int                           `mapstructure:"out-block-capacity"`
+		PayloadCacheSize        int                           `mapstructure:"payload-cache-size"`
+		ArtifactsPath           string                        `mapstructure:"artifacts-path"`
+		GenesisBlockPath        string                        `mapstructure:"genesis-block-path"`
+		ConsentersMSPIdentities []*ordererdial.IdentityConfig `mapstructure:"consenter-msp-identities"`
+		SendGenesisBlock        bool                          `mapstructure:"send-genesis-block"`
 
 		// TestServerParameters is only used for internal testing.
 		TestServerParameters test.StartServerParameters
@@ -163,25 +166,13 @@ func NewMockOrderer(config *OrdererConfig, tlsUpdater connection.TLSCertUpdater)
 	if config.TestServerParameters.NumService == 0 && len(config.ServerConfigs) == 0 {
 		config.TestServerParameters.NumService = defaultConfig.TestServerParameters.NumService
 	}
-	genesisBlock := BlockWithConsenters{Block: defaultConfigBlock}
-	if len(config.ArtifactsPath) > 0 {
-		configBlockPath := path.Join(config.ArtifactsPath, cryptogen.ConfigBlockFileName)
-		configMaterial, err := channelconfig.LoadConfigBlockMaterialFromFile(configBlockPath)
-		if err != nil {
-			return nil, err
-		}
-		consenters, err := testcrypto.GetConsenterIdentities(config.ArtifactsPath)
-		if err != nil {
-			return nil, err
-		}
-		genesisBlock = BlockWithConsenters{
-			Block:            configMaterial.ConfigBlock,
-			ConsenterSigners: consenters,
-		}
+	genesisBlock, err := loadGenesisBlockWithConsenters(config)
+	if err != nil {
+		return nil, err
 	}
 	numServices := max(1, config.TestServerParameters.NumService, len(config.ServerConfigs))
 	o := &Orderer{
-		genesisBlock: genesisBlock,
+		genesisBlock: *genesisBlock,
 		inEnvs:       make(chan envelopeEntry, numServices*config.BlockSize*config.OutBlockCapacity),
 		inBlocks:     make(chan *BlockWithConsenters, config.BlockSize*config.OutBlockCapacity),
 		cutBlock:     make(chan any),
@@ -200,6 +191,35 @@ func NewMockOrderer(config *OrdererConfig, tlsUpdater connection.TLSCertUpdater)
 	}
 
 	return o, nil
+}
+
+func loadGenesisBlockWithConsenters(config *OrdererConfig) (*BlockWithConsenters, error) {
+	ret := &BlockWithConsenters{Block: defaultConfigBlock}
+	configBlockPath := config.GenesisBlockPath
+	consenterMspDirectories := ordererdial.IdentityConfigToMspDir(config.ConsentersMSPIdentities...)
+
+	// Artifacts path overrides other paths.
+	if len(config.ArtifactsPath) > 0 {
+		configBlockPath = path.Join(config.ArtifactsPath, cryptogen.ConfigBlockFileName)
+		consenterMspDirectories = testcrypto.GetOrdererMspDirs(config.ArtifactsPath)
+	}
+
+	if len(configBlockPath) > 0 {
+		configMaterial, err := channelconfig.LoadConfigBlockMaterialFromFile(configBlockPath)
+		if err != nil {
+			return nil, err
+		}
+		ret.Block = configMaterial.ConfigBlock
+	}
+	if len(consenterMspDirectories) > 0 {
+		consenters, err := testcrypto.GetSigningIdentities(consenterMspDirectories...)
+		if err != nil {
+			return nil, err
+		}
+		ret.ConsenterSigners = consenters
+	}
+
+	return ret, nil
 }
 
 // Broadcast receives TXs and returns ACKs.

@@ -528,7 +528,7 @@ func loadGenTestCaseName(tc loadGenTestCase) string {
 	return fmt.Sprintf("tls:%s limit:%s msp-ids:%v", tc.serverTLSMode, limit, tc.useMSPIdentities)
 }
 
-func getMSPIdentities(t *testing.T, artifactsPath string) []ordererdial.IdentityConfig {
+func getMSPIdentities(t *testing.T, artifactsPath string) []*ordererdial.IdentityConfig {
 	t.Helper()
 
 	// Get MSP directories from the artifacts path.
@@ -536,9 +536,9 @@ func getMSPIdentities(t *testing.T, artifactsPath string) []ordererdial.Identity
 	require.NotEmpty(t, mspDirs, "MSP directories should not be empty")
 
 	// Convert to IdentityConfig format.
-	mspIdentities := make([]ordererdial.IdentityConfig, len(mspDirs))
+	mspIdentities := make([]*ordererdial.IdentityConfig, len(mspDirs))
 	for i, mspDir := range mspDirs {
-		mspIdentities[i] = ordererdial.IdentityConfig{
+		mspIdentities[i] = &ordererdial.IdentityConfig{
 			MspID:  mspDir.MspName,
 			MSPDir: mspDir.MspDir,
 			BCCSP:  mspDir.CspConf,
