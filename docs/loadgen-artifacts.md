@@ -34,7 +34,7 @@ The generated directory structure contains all necessary cryptographic materials
 .
 ├── arma.pb.bin
 ├── config-block.pb.bin
-├── ordererOrganizations/orderer-org-0
+├── ordererOrganizations/orderer-org-0.com
 │   ├── ca
 │   │   ├── orderer-org-0-CA-cert.pem
 │   │   └── priv_sk
@@ -97,7 +97,7 @@ The generated directory structure contains all necessary cryptographic materials
 │               ├── signcerts/client@orderer-org-0.com-cert.pem
 │               └── tlscacerts/tlsorderer-org-0-CA-cert.pem
 └── peerOrganizations
-    ├── peer-org-0
+    ├── peer-org-0.com
     │   ├── ca
     │   │   ├── peer-org-0-CA-cert.pem
     │   │   └── priv_sk
@@ -219,7 +219,7 @@ The generated directory structure contains all necessary cryptographic materials
     │               ├── keystore/priv_sk
     │               ├── signcerts/client@peer-org-0.com-cert.pem
     │               └── tlscacerts/tlspeer-org-0-CA-cert.pem
-    └── peer-org-1
+    └── peer-org-1.com
         ├── ca
         │   ├── peer-org-1-CA-cert.pem
         │   └── priv_sk

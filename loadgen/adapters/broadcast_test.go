@@ -16,6 +16,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -25,7 +26,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
-	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
 
 const channelForTest = "my-channel"
