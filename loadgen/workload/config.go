@@ -151,10 +151,10 @@ type PolicyProfile struct {
 // In such case, we use the default rule, which state that all peer organization should sign.
 // If MSPIdentities is not provided, we load the signing identities from ArtifactsPath.
 type Policy struct {
-	Scheme        signature.Scheme             `mapstructure:"scheme" yaml:"scheme"`
-	Seed          int64                        `mapstructure:"seed" yaml:"seed"`
-	KeyPath       *KeyPath                     `mapstructure:"key-path" yaml:"key-path"`
-	MSPIdentities []ordererdial.IdentityConfig `mapstructure:"msp-identities" yaml:"msp-identities"`
+	Scheme        signature.Scheme              `mapstructure:"scheme" yaml:"scheme"`
+	Seed          int64                         `mapstructure:"seed" yaml:"seed"`
+	KeyPath       *KeyPath                      `mapstructure:"key-path" yaml:"key-path"`
+	MSPIdentities []*ordererdial.IdentityConfig `mapstructure:"msp-identities" yaml:"msp-identities"`
 }
 
 // KeyPath describes how to find/generate the signature keys.

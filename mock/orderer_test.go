@@ -9,6 +9,7 @@ package mock
 import (
 	"context"
 	"fmt"
+	"path"
 	"sync"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -26,6 +28,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
 )
@@ -748,5 +751,125 @@ func TestMockOrdererDynamicTLSUpdate(t *testing.T) {
 			connected := tryConnect(tc.tlsCfg) == nil
 			return connected == tc.shouldConnect
 		}, 20*time.Second, 250*time.Millisecond, tc.name)
+	}
+}
+
+// TestOrdererConfigPaths tests that GenesisBlockPath and ConsentersMSPIdentities
+// configuration options work correctly.
+func TestOrdererConfigPaths(t *testing.T) {
+	t.Parallel()
+
+	artifactsPath := t.TempDir()
+
+	// Create config block and crypto materials
+	genesisBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(artifactsPath, &testcrypto.ConfigBlock{
+		ChannelID:             "test-channel",
+		OrdererEndpoints:      []*types.OrdererEndpoint{{ID: 0, Host: "localhost", Port: 7050}},
+		PeerOrganizationCount: 1,
+	})
+	require.NoError(t, err)
+
+	// Get orderer MSP directories for ConsentersMSPIdentities tests
+	ordererMspDirs := testcrypto.GetOrdererMspDirs(artifactsPath)
+	require.NotEmpty(t, ordererMspDirs)
+
+	// Convert to IdentityConfig format with BCCSP configuration
+	consenterIdentities := make([]*ordererdial.IdentityConfig, len(ordererMspDirs))
+	for i, mspDir := range ordererMspDirs {
+		consenterIdentities[i] = &ordererdial.IdentityConfig{
+			MspID:  mspDir.MspName,
+			MSPDir: mspDir.MspDir,
+			BCCSP:  mspDir.CspConf,
+		}
+	}
+
+	// Success cases
+	for _, tc := range []struct {
+		name                    string
+		genesisBlockPath        string
+		consentersMSPIdentities []*ordererdial.IdentityConfig
+		artifactsPath           string
+		expectBlock             *common.Block
+		expectConsenters        bool
+	}{
+		{
+			name:             "default config block when no paths provided",
+			expectBlock:      defaultConfigBlock,
+			expectConsenters: false,
+		},
+		{
+			name:             "artifacts path loads both block and consenters",
+			artifactsPath:    artifactsPath,
+			expectBlock:      genesisBlock,
+			expectConsenters: true,
+		},
+		{
+			name:                    "genesis block path and consenter identities",
+			genesisBlockPath:        path.Join(artifactsPath, cryptogen.ConfigBlockFileName),
+			consentersMSPIdentities: consenterIdentities,
+			expectBlock:             genesisBlock,
+			expectConsenters:        true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			orderer, err := NewMockOrderer(&OrdererConfig{
+				BlockSize:               3,
+				BlockTimeout:            time.Hour,
+				OutBlockCapacity:        10,
+				PayloadCacheSize:        10,
+				SendGenesisBlock:        false,
+				GenesisBlockPath:        tc.genesisBlockPath,
+				ConsentersMSPIdentities: tc.consentersMSPIdentities,
+				ArtifactsPath:           tc.artifactsPath,
+			}, nil)
+			require.NoError(t, err)
+			require.NotNil(t, orderer)
+
+			// Verify genesis block
+			test.RequireProtoEqual(t, tc.expectBlock, orderer.genesisBlock.Block)
+
+			// Verify consenters
+			if tc.expectConsenters {
+				require.NotEmpty(t, orderer.genesisBlock.ConsenterSigners)
+			} else {
+				require.Empty(t, orderer.genesisBlock.ConsenterSigners)
+			}
+		})
+	}
+
+	// Failure cases
+	for _, tc := range []struct {
+		name                    string
+		genesisBlockPath        string
+		consentersMSPIdentities []*ordererdial.IdentityConfig
+	}{
+		{
+			name:             "invalid genesis block path",
+			genesisBlockPath: "/nonexistent/path/block.pb",
+		},
+		{
+			name: "invalid consenter MSP directory",
+			consentersMSPIdentities: []*ordererdial.IdentityConfig{
+				{MspID: "OrdererMSP", MSPDir: "/nonexistent/msp"},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			orderer, err := NewMockOrderer(&OrdererConfig{
+				BlockSize:               3,
+				BlockTimeout:            time.Hour,
+				OutBlockCapacity:        10,
+				PayloadCacheSize:        10,
+				SendGenesisBlock:        false,
+				GenesisBlockPath:        tc.genesisBlockPath,
+				ConsentersMSPIdentities: tc.consentersMSPIdentities,
+			}, nil)
+			require.Error(t, err)
+			require.Nil(t, orderer)
+		})
 	}
 }

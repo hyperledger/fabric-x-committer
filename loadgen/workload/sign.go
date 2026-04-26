@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testcrypto"
@@ -94,10 +95,7 @@ func newPolicyEndorser(artifactsPath string, policy *Policy) (*testsig.NsEndorse
 		var mspDirectories []*msp.DirLoadParameters
 		switch {
 		case len(policy.MSPIdentities) > 0:
-			mspDirectories = make([]*msp.DirLoadParameters, len(policy.MSPIdentities))
-			for i, id := range policy.MSPIdentities {
-				mspDirectories[i] = &msp.DirLoadParameters{MspName: id.MspID, MspDir: id.MSPDir, CspConf: id.BCCSP}
-			}
+			mspDirectories = ordererdial.IdentityConfigToMspDir(policy.MSPIdentities...)
 		case len(artifactsPath) > 0:
 			mspDirectories = testcrypto.GetPeersMspDirs(artifactsPath)
 		default:
