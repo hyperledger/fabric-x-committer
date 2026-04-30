@@ -39,7 +39,7 @@ type (
 	configState struct {
 		*channelconfig.ConfigBlockMaterial
 		configBlockNumber uint64
-		verifierFunc      protoutil.BlockVerifierFunc
+		verifier          *protoutil.BlockSigVerifier
 	}
 )
 
@@ -188,7 +188,7 @@ func (s *blockVerificationStateMachine) verifyHashes(block *common.Block) error 
 // verifyBlockPolicy returns error if the block does not satisfy the config block policy.
 // It is only used internally.
 func (s *blockVerificationStateMachine) verifyBlockPolicy(block *common.Block) error {
-	if s.ConfigBlockMaterial == nil || s.verifierFunc == nil {
+	if s.ConfigBlockMaterial == nil || s.verifier == nil {
 		return nil
 	}
 
@@ -238,7 +238,7 @@ func (s *blockVerificationStateMachine) verifyBlockPolicy(block *common.Block) e
 	}
 
 	// Verify block according to the config block policy.
-	err = s.verifierFunc(block.Header, block.Metadata)
+	err = s.verifier.Verify(block.Header, block.Metadata)
 	return errors.Wrapf(err, "block signature verification failed on block [%d]", blockNumber)
 }
 
@@ -257,18 +257,18 @@ func (cs *configState) updateIfConfigBlock(block *common.Block) error {
 			configMaterial.ChannelID, cs.ChannelID)
 	}
 
-	verifierFunc, err := fetchVerifier(configMaterial.Bundle)
+	verifier, err := fetchVerifier(configMaterial.Bundle)
 	if err != nil {
 		return err
 	}
 
 	cs.ConfigBlockMaterial = configMaterial
 	cs.configBlockNumber = block.Header.Number
-	cs.verifierFunc = verifierFunc
+	cs.verifier = verifier
 	return nil
 }
 
-func fetchVerifier(bundle *channelconfig.Bundle) (protoutil.BlockVerifierFunc, error) {
+func fetchVerifier(bundle *channelconfig.Bundle) (*protoutil.BlockSigVerifier, error) {
 	policy, exists := bundle.PolicyManager().GetPolicy(policies.BlockValidation)
 	if !exists {
 		return nil, errors.Newf("no `%s` policy in config block", policies.BlockValidation)
@@ -285,5 +285,9 @@ func fetchVerifier(bundle *channelconfig.Bundle) (protoutil.BlockVerifierFunc, e
 		consenters = oc.Consenters()
 	}
 
-	return protoutil.BlockSignatureVerifier(bftEnabled, consenters, policy), nil
+	return &protoutil.BlockSigVerifier{
+		Policy:     policy,
+		BFT:        bftEnabled,
+		Consenters: consenters,
+	}, nil
 }
