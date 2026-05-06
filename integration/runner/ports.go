@@ -48,9 +48,9 @@ func (p *serviceAllocator) allocateService(t *testing.T, count int) []config.Ser
 	for i := range serviceConfigs {
 		conf := &serviceConfigs[i]
 		conf.GrpcEndpoint = p.allocateEndpoint(t)
-		conf.MetricsEndpoint = p.allocateEndpoint(t)
+		conf.HTTPEndpoint = p.allocateEndpoint(t)
 		conf.GrpcTLS, _ = p.credFactory.CreateServerCredentials(t, p.tlsMode, conf.GrpcEndpoint.Host)
-		conf.MetricsTLS, _ = p.credFactory.CreateServerCredentials(t, p.tlsMode, conf.MetricsEndpoint.Host)
+		conf.HTTPTLS, _ = p.credFactory.CreateServerCredentials(t, p.tlsMode, conf.HTTPEndpoint.Host)
 	}
 	return serviceConfigs
 }

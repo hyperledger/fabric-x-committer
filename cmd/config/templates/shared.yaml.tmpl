@@ -54,7 +54,7 @@ endpoints:
 {{- /* {{ include "monitoring" . | indent 0 }} */ -}}
 {{- define "monitoring" }}
 monitoring:
-{{ include "endpointWithTLS" (dict "Endpoint" (.ThisService.MetricsEndpoint | default "localhost:0") "TLS" .ThisService.MetricsTLS) | indent 2 }}
+{{ include "endpointWithTLS" (dict "Endpoint" (.ThisService.HTTPEndpoint | default "localhost:0") "TLS" .ThisService.HTTPTLS) | indent 2 }}
 {{- end }}
 
 {{- /* {{ include "logging" . | indent 0 }} */ -}}

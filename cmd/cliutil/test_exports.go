@@ -85,10 +85,10 @@ func StartDefaultSystem(t *testing.T) config.SystemConfig {
 
 func convertServiceConfig(c *serve.Config) config.ServiceConfig {
 	return config.ServiceConfig{
-		GrpcEndpoint:    &c.GRPC.Endpoint,
-		MetricsEndpoint: &c.HTTP.Endpoint,
-		GrpcTLS:         c.GRPC.TLS,
-		MetricsTLS:      c.HTTP.TLS,
+		GrpcEndpoint: &c.GRPC.Endpoint,
+		HTTPEndpoint: &c.HTTP.Endpoint,
+		GrpcTLS:      c.GRPC.TLS,
+		HTTPTLS:      c.HTTP.TLS,
 	}
 }
 

@@ -78,10 +78,10 @@ type (
 
 	// ServiceConfig stores the service's server and metrics endpoints, along with their TLS configuration.
 	ServiceConfig struct {
-		GrpcEndpoint    *connection.Endpoint
-		MetricsEndpoint *connection.Endpoint
-		GrpcTLS         connection.TLSConfig
-		MetricsTLS      connection.TLSConfig
+		GrpcEndpoint *connection.Endpoint
+		HTTPEndpoint *connection.Endpoint
+		GrpcTLS      connection.TLSConfig
+		HTTPTLS      connection.TLSConfig
 	}
 
 	// DatabaseConfig represents the used DB.
