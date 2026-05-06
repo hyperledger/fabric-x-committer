@@ -40,7 +40,6 @@ This document provides specific guidelines for writing tests in the fabric-x-com
 ```go
 func TestMyFunction(t *testing.T) {
     t.Parallel()
-    
     t.Run("success cases", func(t *testing.T) {  // ❌ Unnecessary nesting
         t.Parallel()
         for _, tc := range []struct{...}{...} {
@@ -49,7 +48,6 @@ func TestMyFunction(t *testing.T) {
             })
         }
     })
-    
     t.Run("failure cases", func(t *testing.T) {  // ❌ Unnecessary nesting
         t.Parallel()
         for _, tc := range []struct{...}{...} {
@@ -65,7 +63,6 @@ func TestMyFunction(t *testing.T) {
 ```go
 func TestMyFunction(t *testing.T) {
     t.Parallel()
-    
     // Success cases
     for _, tc := range []struct {
         name     string
@@ -89,7 +86,6 @@ func TestMyFunction(t *testing.T) {
             require.Equal(t, tc.expected, result)
         })
     }
-    
     // Failure cases
     for _, tc := range []struct {
         name  string
@@ -206,7 +202,6 @@ require.PanicsWithValue(t, "exact error message", func() {
 ```go
 func TestBucketConfig_Buckets(t *testing.T) {
     t.Parallel()
-    
     // Success cases
     for _, tc := range []struct {
         name     string
@@ -236,7 +231,6 @@ func TestBucketConfig_Buckets(t *testing.T) {
             require.Equal(t, tc.expected, result)
         })
     }
-    
     // Failure cases
     for _, tc := range []struct {
         name   string
@@ -260,6 +254,271 @@ func TestBucketConfig_Buckets(t *testing.T) {
 }
 ```
 
+## Metrics Testing
+
+The project provides specialized helper functions in [`utils/test/metrics.go`](../../utils/test/metrics.go) for testing Prometheus metrics. Use these helpers consistently across all tests.
+
+### Available Metrics Testing Functions
+
+#### Direct Metric Value Assertions
+
+✅ **CORRECT** - Use [`test.RequireIntMetricValue()`](../../utils/test/metrics.go:99) for immediate assertions:
+```go
+// Assert metric equals expected value immediately
+test.RequireIntMetricValue(t, 5, myMetric)
+test.RequireIntMetricValue(t, 0, myMetric.WithLabelValues("label"))
+
+// Verify initial state
+test.RequireIntMetricValue(t, 0, metrics.pendingRequests)
+```
+
+#### Eventual Metric Value Assertions
+
+✅ **CORRECT** - Use [`test.EventuallyIntMetric()`](../../utils/test/metrics.go:105) when metrics update asynchronously:
+```go
+// Wait for metric to reach expected value
+test.EventuallyIntMetric(
+    t,
+    expectedValue,
+    myMetric,
+    5*time.Second,        // waitFor duration
+    100*time.Millisecond, // tick interval
+)
+
+// With optional message
+test.EventuallyIntMetric(
+    t,
+    10,
+    metrics.transactionsSentTotal,
+    5*time.Second,
+    10*time.Millisecond,
+    "transactions should be sent",
+)
+```
+
+#### Getting Metric Values
+
+Use [`test.GetIntMetricValue()`](../../utils/test/metrics.go:92) or [`test.GetMetricValue()`](../../utils/test/metrics.go:69) when you need the value for custom assertions:
+
+```go
+// Get integer metric value (rounded)
+preValue := test.GetIntMetricValue(t, metrics.transactionReceivedTotal)
+
+// Perform operations...
+
+// Assert using the captured value
+test.EventuallyIntMetric(t, preValue+10, metrics.transactionReceivedTotal,
+    5*time.Second, 100*time.Millisecond)
+
+// Get float metric value (for histograms, summaries)
+latency := test.GetMetricValue(t, metrics.blockMappingInRelaySeconds)
+require.Greater(t, latency, float64(0))
+
+// Use with require.EventuallyWithT for complex conditions
+require.EventuallyWithT(t, func(ct *assert.CollectT) {
+    require.Equal(ct, 0, test.GetIntMetricValue(t, metrics.queueSize))
+    require.Equal(ct, 5, test.GetIntMetricValue(t, metrics.activeWorkers))
+}, 3*time.Second, 500*time.Millisecond)
+```
+
+#### HTTP Metrics Endpoint Testing
+
+For integration tests that check metrics via HTTP:
+
+```go
+// Check that specific metrics exist in the output
+test.CheckMetrics(t, metricsURL, tlsConfig,
+    "loadgen_block_sent_total",
+    "loadgen_transaction_committed_total",
+)
+
+// Get specific metric value from HTTP endpoint
+count := test.GetMetricValueFromURL(t, metricsURL, "metric_name", tlsConfig)
+require.Greater(t, count, 500)
+```
+
+### Metrics Testing Best Practices
+
+1. **Use Appropriate Helper**: Choose the right helper based on timing requirements:
+   - [`test.RequireIntMetricValue()`](../../utils/test/metrics.go:99) for synchronous operations where the metric should already have the expected value
+   - [`test.EventuallyIntMetric()`](../../utils/test/metrics.go:105) for asynchronous operations where the metric will reach the expected value after some time
+   - [`test.GetIntMetricValue()`](../../utils/test/metrics.go:92) for capturing baseline values or when using with `require.Eventually()` for complex conditions
+   - [`test.GetMetricValue()`](../../utils/test/metrics.go:69) for float metrics (histograms, summaries) or when you need the raw float value
+
+2. **Capture Baseline Values**: When testing incremental changes, capture the metric value before the operation:
+   ```go
+   preValue := test.GetIntMetricValue(t, metrics.transactionReceivedTotal)
+
+   // perform operation that adds 10 transactions
+   sendTransactions(10)
+
+   // Verify the increment
+   test.EventuallyIntMetric(t, preValue+10, metrics.transactionReceivedTotal,
+       5*time.Second, 100*time.Millisecond)
+   ```
+
+3. **Test Labeled Metrics**: Use [`WithLabelValues()`](https://pkg.go.dev/github.com/prometheus/client_golang/prometheus#CounterVec.WithLabelValues) to test specific label combinations:
+   ```go
+   test.RequireIntMetricValue(t, 10,
+       metrics.transactionCommittedTotal.WithLabelValues("COMMITTED"))
+   test.RequireIntMetricValue(t, 2,
+       metrics.transactionCommittedTotal.WithLabelValues("MALFORMED"))
+   ```
+
+4. **Use Appropriate Wait Times**: For [`test.EventuallyIntMetric()`](../../utils/test/metrics.go:105):
+   - Unit tests: 1-5 seconds wait, 10-100ms tick
+   - Integration tests: 5-60 seconds wait, 100ms-1s tick
+   - Examples from codebase:
+     - Fast operations: `5*time.Second, 10*time.Millisecond`
+     - Normal operations: `5*time.Second, 100*time.Millisecond`
+     - Slow operations: `2*time.Second, 200*time.Millisecond`
+
+5. **Test Initial State**: Always verify metrics start at expected initial values:
+   ```go
+   test.RequireIntMetricValue(t, 0, metrics.pendingRequests)
+   test.RequireIntMetricValue(t, 0, metrics.activeStreams)
+   ```
+
+6. **Verify Metric Decrements**: When testing gauges that can decrease:
+   ```go
+   test.RequireIntMetricValue(t, 5, metrics.queueSize)
+   // process items
+   test.EventuallyIntMetric(t, 0, metrics.queueSize, 2*time.Second, 100*time.Millisecond)
+   ```
+
+7. **Use `require.Never()` for Bounds Testing**: When verifying metrics don't exceed limits:
+   ```go
+   require.Never(t, func() bool {
+       return test.GetIntMetricValue(t, metrics.counter) > maxExpected
+   }, 3*time.Second, 1*time.Second)
+   ```
+
+8. **Use `require.EventuallyWithT()` for Multi-Metric Conditions**: When checking multiple metrics, always use `require.EventuallyWithT()` instead of `require.Eventually()` to ensure clear visibility of which metric failed:
+   ```go
+   // ✅ CORRECT - Shows which metric failed
+   require.EventuallyWithT(t, func(ct *assert.CollectT) {
+       require.Equal(ct, 1, test.GetIntMetricValue(t, metrics.inputQueue))
+       require.Equal(ct, 1, test.GetIntMetricValue(t, metrics.outputQueue))
+       require.Equal(ct, 0, test.GetIntMetricValue(t, metrics.processingQueue))
+   }, 3*time.Second, 500*time.Millisecond)
+
+   // ❌ INCORRECT - Doesn't show which condition failed
+   require.Eventually(t, func() bool {
+       return test.GetIntMetricValue(t, metrics.inputQueue) == 1 &&
+              test.GetIntMetricValue(t, metrics.outputQueue) == 1 &&
+              test.GetIntMetricValue(t, metrics.processingQueue) == 0
+   }, 3*time.Second, 500*time.Millisecond)
+   ```
+
+9. **Use `require.EventuallyWithT()` for Single Metrics with Context**: When you need detailed assertion messages for a single metric:
+   ```go
+   require.EventuallyWithT(t, func(ct *assert.CollectT) {
+       actual := test.GetIntMetricValue(t, metrics.counter)
+       require.Equal(ct, expected, actual, "counter should reach expected value")
+   }, 5*time.Second, 100*time.Millisecond)
+   ```
+
+10. **Test Timing Metrics**: For histogram and summary metrics, verify they are positive:
+    ```go
+    latency := test.GetMetricValue(t, metrics.requestDurationSeconds)
+    require.Greater(t, latency, float64(0))
+    ```
+
+### Common Patterns
+
+#### Pattern 1: Incremental Counter Testing
+```go
+// Capture baseline
+preValue := test.GetIntMetricValue(t, metrics.transactionReceivedTotal)
+
+// Perform operation
+sendTransactions(5)
+
+// Verify increment
+test.EventuallyIntMetric(t, preValue+5, metrics.transactionReceivedTotal,
+    5*time.Second, 100*time.Millisecond)
+```
+
+#### Pattern 2: Multiple Labeled Metrics
+```go
+test.RequireIntMetricValue(t, 30, metrics.notifierPendingTxIDs)
+test.RequireIntMetricValue(t, 6, metrics.notifierUniquePendingTxIDs)
+test.RequireIntMetricValue(t, 10, metrics.notifierTxIDsStatusDeliveries)
+test.RequireIntMetricValue(t, 0, metrics.notifierTxIDsTimeoutDeliveries)
+```
+
+#### Pattern 3: Queue Size Monitoring
+```go
+// Verify queue fills up
+test.EventuallyIntMetric(t, 3, metrics.waitingTransactionsQueueSize,
+    5*time.Second, 10*time.Millisecond)
+
+// Process items
+processQueue()
+
+// Verify queue empties
+test.EventuallyIntMetric(t, 0, metrics.waitingTransactionsQueueSize,
+    5*time.Second, 10*time.Millisecond)
+```
+
+#### Pattern 4: Complex Multi-Metric Conditions
+```go
+// Use EventuallyWithT for clear failure messages
+require.EventuallyWithT(t, func(ct *assert.CollectT) {
+    require.Equal(ct, 10, test.GetIntMetricValue(t, metrics.gdgTxProcessedTotal))
+    require.Equal(ct, 8, test.GetIntMetricValue(t, metrics.gdgValidatedTxProcessedTotal))
+}, 2*time.Second, 200*time.Millisecond)
+```
+
+#### Pattern 5: Integration Test HTTP Metrics
+```go
+require.EventuallyWithT(t, func(ct *assert.CollectT) {
+    count := test.GetMetricValueFromURL(
+        t, metricsURL, "loadgen_transaction_committed_total", tlsConfig,
+    )
+    require.Greater(ct, count, 500)
+}, 300*time.Second, 1*time.Second)
+```
+
+### Example: Complete Metrics Test
+
+```go
+func TestRelayMetrics(t *testing.T) {
+    t.Parallel()
+
+    env := setupTestEnvironment(t)
+    m := env.metrics
+
+    // Verify initial state
+    test.RequireIntMetricValue(t, 0, m.transactionsSentTotal)
+    test.RequireIntMetricValue(t, 0, m.waitingTransactionsQueueSize)
+
+    // Submit transactions
+    txCount := 3
+    submitTransactions(txCount)
+
+    // Verify metrics update asynchronously
+    test.EventuallyIntMetric(t, txCount, m.transactionsSentTotal,
+        5*time.Second, 10*time.Millisecond)
+    test.EventuallyIntMetric(t, txCount, m.waitingTransactionsQueueSize,
+        5*time.Second, 10*time.Millisecond)
+
+    // Process transactions
+    processTransactions()
+
+    // Verify labeled metrics
+    test.RequireIntMetricValue(t, txCount,
+        m.transactionsStatusReceivedTotal.WithLabelValues("COMMITTED"))
+
+    // Verify queue empties
+    test.EventuallyIntMetric(t, 0, m.waitingTransactionsQueueSize,
+        5*time.Second, 10*time.Millisecond)
+
+    // Verify timing metrics are positive
+    require.Greater(t, test.GetMetricValue(t, m.processingSeconds), float64(0))
+}
+```
+
 ## Summary
 
 - **No nested test groups** - Keep table-driven tests flat
@@ -269,3 +528,4 @@ func TestBucketConfig_Buckets(t *testing.T) {
 - **Descriptive test names**
 - **Helper functions at the end with `t.Helper()`**
 - **Never use `panic()` in tests**
+- **Use metrics testing helpers** - [`test.RequireIntMetricValue()`](../../utils/test/metrics.go:99), [`test.EventuallyIntMetric()`](../../utils/test/metrics.go:105), [`test.GetIntMetricValue()`](../../utils/test/metrics.go:92)
