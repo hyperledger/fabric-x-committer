@@ -32,5 +32,6 @@ func committerCMD() *cobra.Command {
 	cmd.AddCommand(cliutil.VersionCmd())
 	cmd.AddCommand(startCMD())
 	cmd.AddCommand(healthcheckCMD())
+	cmd.AddCommand(initFromSnapshotCMD())
 	return cmd
 }
