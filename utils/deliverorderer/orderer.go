@@ -316,6 +316,7 @@ func (d *ftDelivery) checkBlockWithholding() error {
 		// Clear suspicion if data stream caught up.
 		if d.targetNextBlockNum > 0 {
 			d.metrics.SuspicionClearedTotal.WithLabelValues(dataSourceIDLabel).Inc()
+			d.metrics.TargetArrivalDeadline.WithLabelValues(dataSourceIDLabel).Set(0)
 			d.targetNextBlockNum = 0
 		}
 		return nil
@@ -327,9 +328,9 @@ func (d *ftDelivery) checkBlockWithholding() error {
 		//nolint:gosec // Capping the gap at [math.MaxInt64].
 		gapDuration := time.Duration(min(d.targetNextBlockNum-d.dataStream.nextBlockNum, math.MaxInt64))
 		d.targetArrivalTime = time.Now().Add(d.params.SuspicionGracePeriodPerBlock * gapDuration)
-		targetArrivalTimeUnix := float64(d.targetArrivalTime.Unix())
-		d.metrics.TargetArrivalDeadline.WithLabelValues(dataSourceIDLabel).Set(targetArrivalTimeUnix)
+		targetArrivalTimeUnix := float64(d.targetArrivalTime.UnixMilli())
 		d.metrics.SuspicionRaisedTotal.WithLabelValues(dataSourceIDLabel).Inc()
+		d.metrics.TargetArrivalDeadline.WithLabelValues(dataSourceIDLabel).Set(targetArrivalTimeUnix)
 		return nil
 	}
 
@@ -344,7 +345,9 @@ func (d *ftDelivery) checkBlockWithholding() error {
 		d.dataStream.nextBlockNum, d.curDataBlockSourceID, d.headerOnlyStream.updaterSourceID,
 		d.headerOnlyStream.nextBlockNum-1)
 
-	// Reset the target block (clears the suspicion).
+	d.metrics.SuspicionConfirmedTotal.WithLabelValues(dataSourceIDLabel).Inc()
+	d.metrics.TargetArrivalDeadline.WithLabelValues(dataSourceIDLabel).Set(0)
+	// Reset the target block (clears the suspicion for the next source).
 	d.targetNextBlockNum = 0
 	return errSuspicion
 }

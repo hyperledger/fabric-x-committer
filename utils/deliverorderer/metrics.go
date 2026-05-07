@@ -18,7 +18,7 @@ import (
 type Metrics struct {
 	// Stream Progress Metrics.
 	CurrentDataSourceID  prometheus.Gauge
-	StreamBlockNumber    prometheus.GaugeVec    // labels: stream_type
+	StreamBlockNumber    *prometheus.GaugeVec   // labels: stream_type
 	BlocksDeliveredTotal *prometheus.CounterVec // labels: stream_type, source_id
 
 	// Block Verification Metrics.
@@ -31,10 +31,11 @@ type Metrics struct {
 	StreamErrorsTotal   *prometheus.CounterVec // labels: stream_type, source_id, error_type
 
 	// Block Withholding Detection (BFT mode).
-	BlockGapGauge         *prometheus.GaugeVec   // labels: source_id
-	SuspicionRaisedTotal  *prometheus.CounterVec // labels: source_id
-	SuspicionClearedTotal *prometheus.CounterVec // labels: source_id
-	TargetArrivalDeadline *prometheus.GaugeVec   // labels: source_id
+	BlockGapGauge           *prometheus.GaugeVec   // labels: source_id
+	SuspicionRaisedTotal    *prometheus.CounterVec // labels: source_id
+	SuspicionClearedTotal   *prometheus.CounterVec // labels: source_id
+	SuspicionConfirmedTotal *prometheus.CounterVec // labels: source_id
+	TargetArrivalDeadline   *prometheus.GaugeVec   // labels: source_id
 
 	// Config Updates.
 	ConfigUpdatesTotal prometheus.Counter
@@ -52,7 +53,7 @@ func NewMetrics(p *monitoring.Provider, params monitoring.MetricsParameters) *Me
 			Name:      "data_source_id",
 			Help:      "Current orderer party ID used as the data block source.",
 		}),
-		StreamBlockNumber: *p.NewGaugeVec(prometheus.GaugeOpts{
+		StreamBlockNumber: p.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: params.Namespace,
 			Subsystem: params.Subsystem,
 			Name:      "block_number",
@@ -113,6 +114,12 @@ func NewMetrics(p *monitoring.Provider, params monitoring.MetricsParameters) *Me
 			Name:      "withholding_suspicion_cleared_total",
 			Help:      "Total number of block withholding suspicions cleared by data source ID.",
 		}, []string{"source_id"}),
+		SuspicionConfirmedTotal: p.NewCounterVec(prometheus.CounterOpts{
+			Namespace: params.Namespace,
+			Subsystem: params.Subsystem,
+			Name:      "withholding_suspicion_confirmed_total",
+			Help:      "Total number of block withholding suspicions confirmed by data source ID.",
+		}, []string{"source_id"}),
 		BlockGapGauge: p.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: params.Namespace,
 			Subsystem: params.Subsystem,
@@ -123,8 +130,9 @@ func NewMetrics(p *monitoring.Provider, params monitoring.MetricsParameters) *Me
 		TargetArrivalDeadline: p.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: params.Namespace,
 			Subsystem: params.Subsystem,
-			Name:      "target_arrival_deadline",
-			Help:      "Unix timestamp of the target block arrival deadline for withholding detection by source ID.",
+			Name:      "target_arrival_deadline_unix_milliseconds",
+			Help: "Unix timestamp (milliseconds) of the target block arrival deadline for withholding " +
+				"detection by source ID.",
 		}, []string{"source_id"}),
 
 		// Config Updates

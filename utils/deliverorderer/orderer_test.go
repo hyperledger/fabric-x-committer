@@ -10,6 +10,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -415,10 +416,8 @@ func TestOrdererDeliverBFT(t *testing.T) {
 			// Verify suspicion metrics for party 2
 			suspicionCount2 := test.GetIntMetricValue(t, m.SuspicionRaisedTotal.WithLabelValues("2"))
 			require.GreaterOrEqual(t, suspicionCount2, 1, "suspicion should be raised for party 2")
-
-			// Verify target arrival deadline was set when suspicion was raised
-			targetDeadline := test.GetMetricValue(t, m.TargetArrivalDeadline.WithLabelValues("2"))
-			require.Greater(t, targetDeadline, float64(0), "target arrival deadline should be set")
+			suspicionConfirmCount2 := test.GetIntMetricValue(t, m.SuspicionConfirmedTotal.WithLabelValues("2"))
+			require.GreaterOrEqual(t, suspicionConfirmCount2, 1, "suspicion should be confirmed for party 2")
 
 			currentSource = test.GetIntMetricValue(t, m.CurrentDataSourceID)
 			require.Equal(t, 1, currentSource, "current data source should be party 1")
@@ -478,7 +477,7 @@ func TestOrdererDeliverBFT(t *testing.T) {
 			stopDelivery()
 
 			p1.HoldFromBlock.Store(0)
-			e.startDelivery(t)
+			stopDelivery = e.startDelivery(t)
 			b = e.submit(t)
 			require.EqualValues(t, 1, b.SourceID)
 
@@ -499,6 +498,66 @@ func TestOrdererDeliverBFT(t *testing.T) {
 
 			finalBlockNum := test.GetIntMetricValue(t, m.StreamBlockNumber.WithLabelValues("data"))
 			require.GreaterOrEqual(t, finalBlockNum, 5, "should have delivered multiple blocks")
+
+			t.Log("Restart stream with longer suspecion deadline")
+			stopDelivery()
+			p0.HoldFromBlock.Store(0)
+			p0.ReplaceBlock.Clear()
+			p1.HoldFromBlock.Store(0)
+			p1.ReplaceBlock.Clear()
+			p2.HoldFromBlock.Store(0)
+			p2.ReplaceBlock.Clear()
+			e.deliveryParams.SuspicionGracePeriodPerBlock = time.Hour
+
+			stopDelivery = e.startDelivery(t)
+			b = e.submit(t)
+			curSource := b.SourceID
+			curSourceLabel := strconv.FormatUint(uint64(curSource), 10)
+
+			t.Logf("Hold blocks from current source: %s", curSourceLabel)
+			e.PartyStates[curSource].HoldFromBlock.Store(b.Block.Header.Number)
+
+			curSusCount := test.GetIntMetricValue(t, m.SuspicionRaisedTotal.WithLabelValues(curSourceLabel))
+			curConfirmedSusCount := test.GetIntMetricValue(t, m.SuspicionConfirmedTotal.WithLabelValues(curSourceLabel))
+			curClearedSusCount := test.GetIntMetricValue(t, m.SuspicionClearedTotal.WithLabelValues(curSourceLabel))
+
+			expectedDeadline := float64(time.Now().Add(time.Hour - time.Millisecond).UnixMilli())
+			t.Log("Submit another block without receiving it")
+			txs := workload.GenerateTransactions(t, nil, 10)
+			block := workload.MapToOrdererBlock(0, txs)
+			err := e.Orderer.SubmitBlock(t.Context(), block)
+			require.NoError(t, err)
+			b, ok := channel.NewReader(t.Context(), e.outputWithSource).ReadWithTimeout(3 * time.Second)
+			require.False(t, ok)
+			require.Nil(t, b)
+
+			suspicions := test.GetIntMetricValue(t, m.SuspicionRaisedTotal.WithLabelValues(curSourceLabel))
+			require.Greater(t, suspicions, curSusCount)
+			suspicionConfirmed := test.GetIntMetricValue(t, m.SuspicionConfirmedTotal.WithLabelValues(curSourceLabel))
+			require.Equal(t, curConfirmedSusCount, suspicionConfirmed)
+			suspicionCleared := test.GetIntMetricValue(t, m.SuspicionClearedTotal.WithLabelValues(curSourceLabel))
+			require.Equal(t, curClearedSusCount, suspicionCleared)
+
+			// Verify target arrival deadline was set when suspicion was raised.
+			targetDeadline := test.GetMetricValue(t, m.TargetArrivalDeadline.WithLabelValues(curSourceLabel))
+			require.Greater(t, targetDeadline, expectedDeadline)
+
+			// Verify gap.
+			gap := test.GetIntMetricValue(t, m.BlockGapGauge.WithLabelValues(curSourceLabel))
+			require.Equal(t, -1, gap)
+
+			t.Log("Release data block")
+			e.PartyStates[curSource].HoldFromBlock.Store(0)
+			blk := e.WaitForBlock(t, e.output)
+			require.NotNil(t, blk)
+
+			// Suspecion cleared.
+			suspicionCleared = test.GetIntMetricValue(t, m.SuspicionClearedTotal.WithLabelValues(curSourceLabel))
+			require.Greater(t, suspicionCleared, curClearedSusCount)
+			targetDeadline = test.GetMetricValue(t, m.TargetArrivalDeadline.WithLabelValues(curSourceLabel))
+			require.Zero(t, targetDeadline)
+
+			stopDelivery()
 		})
 	}
 }
