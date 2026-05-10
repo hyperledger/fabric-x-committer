@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -29,6 +30,10 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
+type loggincConfig struct {
+	Logging flogging.Config `mapstructure:"logging"`
+}
+
 var (
 	logger   = flogging.MustGetLogger("config-reader")
 	validate = validator.New()
@@ -38,51 +43,51 @@ var (
 func ReadSidecarYamlAndSetupLogging(
 	v *viper.Viper, configPath string,
 ) (*sidecar.Config, *serve.Config, error) {
-	return ReadYamlAndSetupLogging[sidecar.Config](v, configPath, "SIDECAR")
+	return readYamlAndSetupLogging[sidecar.Config](v, configPath)
 }
 
 // ReadCoordinatorYamlAndSetupLogging reading the YAML config file of the coordinator.
 func ReadCoordinatorYamlAndSetupLogging(
 	v *viper.Viper, configPath string,
 ) (*coordinator.Config, *serve.Config, error) {
-	return ReadYamlAndSetupLogging[coordinator.Config](v, configPath, "COORDINATOR")
+	return readYamlAndSetupLogging[coordinator.Config](v, configPath)
 }
 
 // ReadVCYamlAndSetupLogging reading the YAML config file of the VC.
 func ReadVCYamlAndSetupLogging(v *viper.Viper, configPath string) (*vc.Config, *serve.Config, error) {
-	return ReadYamlAndSetupLogging[vc.Config](v, configPath, "VC")
+	return readYamlAndSetupLogging[vc.Config](v, configPath)
 }
 
 // ReadVerifierYamlAndSetupLogging reading the YAML config file of the verifier.
 func ReadVerifierYamlAndSetupLogging(
 	v *viper.Viper, configPath string,
 ) (*verifier.Config, *serve.Config, error) {
-	return ReadYamlAndSetupLogging[verifier.Config](v, configPath, "VERIFIER")
+	return readYamlAndSetupLogging[verifier.Config](v, configPath)
 }
 
 // ReadQueryYamlAndSetupLogging reading the YAML config file of the query service.
 func ReadQueryYamlAndSetupLogging(v *viper.Viper, configPath string) (*query.Config, *serve.Config, error) {
-	return ReadYamlAndSetupLogging[query.Config](v, configPath, "QUERY")
+	return readYamlAndSetupLogging[query.Config](v, configPath)
 }
 
 // ReadMockOrdererYamlAndSetupLogging reading the YAML config file of the mock ordering service.
 func ReadMockOrdererYamlAndSetupLogging(
 	v *viper.Viper, configPath string,
 ) (*mock.OrdererConfig, *serve.Config, error) {
-	return ReadYamlAndSetupLogging[mock.OrdererConfig](v, configPath, "ORDERER")
+	return readYamlAndSetupLogging[mock.OrdererConfig](v, configPath)
 }
 
 // ReadLoadGenYamlAndSetupLogging reading the YAML config file of the load generator.
 func ReadLoadGenYamlAndSetupLogging(
 	v *viper.Viper, configPath string,
 ) (*loadgen.ClientConfig, *serve.Config, error) {
-	return ReadYamlAndSetupLogging[loadgen.ClientConfig](v, configPath, "LOADGEN")
+	return readYamlAndSetupLogging[loadgen.ClientConfig](v, configPath)
 }
 
-// ReadYamlAndSetupLogging reading the YAML config file of a service.
+// readYamlAndSetupLogging reading the YAML config file of a service.
 // It parses the server configuration separately from the service-specific configuration,
 // following the same pattern as logging configuration.
-func ReadYamlAndSetupLogging[T any](v *viper.Viper, configPath, servicePrefix string) (*T, *serve.Config, error) {
+func readYamlAndSetupLogging[T any](v *viper.Viper, configPath string) (*T, *serve.Config, error) {
 	if configPath == "" {
 		return nil, nil, errors.New("--config flag must be set")
 	}
@@ -93,46 +98,46 @@ func ReadYamlAndSetupLogging[T any](v *viper.Viper, configPath, servicePrefix st
 	if err = readYamlConfigsFromIO(v, bytes.NewReader(content)); err != nil {
 		return nil, nil, err
 	}
-	setupEnv(v, servicePrefix)
 
-	loggingWrapper := struct {
-		Logging *flogging.Config `mapstructure:"logging"`
-	}{}
-	if err = unmarshal(v, &loggingWrapper); err != nil {
-		return nil, nil, err
-	}
-	flogging.Init(*loggingWrapper.Logging)
-
-	// Parse server configuration separately (similar to logging)
-	serverConfig := &serve.Config{}
-	if err = unmarshal(v, serverConfig); err != nil {
-		return nil, nil, err
+	// Check if the YAML is overridden by an environment variable.
+	if envValue, ok := os.LookupEnv(v.GetEnvPrefix() + "_YAML"); ok && envValue != "" {
+		logger.Debugf("Overridding config YAML from env: %s", envValue)
+		if err = readYamlConfigsFromIO(v, strings.NewReader(envValue)); err != nil {
+			return nil, nil, err
+		}
 	}
 
-	// Parse service-specific configuration
-	c := new(T)
-	if err = unmarshal(v, c); err != nil {
+	// Parse logging, server configuration, and target config.
+	loggingConf := new(loggincConfig)
+	serverConf := new(serve.Config)
+	targetConf := new(T)
+	if err = unmarshal(v, loggingConf, serverConf, targetConf); err != nil {
 		return nil, nil, err
 	}
+	flogging.Init(loggingConf.Logging)
 
-	return c, serverConfig, nil
+	return targetConf, serverConf, nil
 }
 
-// unmarshal populate a config object and validate it.
-func unmarshal(v *viper.Viper, c any) error {
-	defer logger.Debugf("Decoded config: %s", &utils.LazyJSON{O: c})
-	if err := v.Unmarshal(c, decoderHook()); err != nil {
-		return errors.Wrap(err, "error decoding config")
+// unmarshal populate multiple config objects and validates them.
+// It automatically set configuration via environment variables.
+// E.g. SC_SIDECAR_SERVER_ENDPOINT=localhost:1234.
+func unmarshal(v *viper.Viper, items ...any) error {
+	for _, c := range items {
+		setEnvVars(v, reflect.TypeOf(c))
 	}
-	return errors.Wrap(validate.Struct(c), "error validating config")
-}
 
-// setupEnv enables setting configuration via environment variables.
-// E.g. SC_LOGGING_ENABLED=false, but not SC_VERBOSE=false (does not work with aliases).
-func setupEnv(v *viper.Viper, servicePrefix string) {
-	v.SetEnvPrefix("SC_" + strings.ToUpper(servicePrefix))
-	v.AutomaticEnv()
-	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
+	decoders := decoderHook()
+	for _, c := range items {
+		if err := v.Unmarshal(c, decoders); err != nil {
+			return errors.Wrap(err, "error decoding config")
+		}
+		logger.Debugf("Decoded config: %s", &utils.LazyJSON{O: c})
+		if err := validate.Struct(c); err != nil {
+			return errors.Wrap(err, "error validating config")
+		}
+	}
+	return nil
 }
 
 // readYamlConfigsFromIO reads configurations from IO.

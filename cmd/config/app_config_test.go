@@ -15,6 +15,7 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen"
@@ -590,4 +591,144 @@ func TestViperDefaultsAreComplete(t *testing.T) {
 		c := &query.Config{}
 		require.NoError(t, unmarshal(v, c))
 	})
+}
+
+// TestEnvOverrideFieldsNotInYAML verifies that environment variables can override
+// config fields even when those fields are not present in the YAML file and have no defaults.
+func TestEnvOverrideFieldsNotInYAML(t *testing.T) {
+	f := emptyConfig(t)
+
+	for _, tc := range []struct{ name, file string }{
+		{name: "coordinator-empty", file: f},
+		{name: "coordinator-sample", file: "samples/coordinator.yaml"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("SC_COORDINATOR_VALIDATOR_COMMITTER_RECONNECT_MULTIPLIER", "1.1")
+			t.Setenv("SC_COORDINATOR_SERVER_TLS_CERT_PATH", "/path/server")
+			t.Setenv("SC_COORDINATOR_MONITORING_TLS_CERT_PATH", "/path/monitoring")
+			t.Setenv("SC_COORDINATOR_VERIFIER_TLS_CERT_PATH", "/path/verifier")
+			t.Setenv("SC_COORDINATOR_VALIDATOR_COMMITTER_TLS_CERT_PATH", "/path/vc")
+			conf, server, err := ReadCoordinatorYamlAndSetupLogging(NewViperWithCoordinatorDefaults(), tc.file)
+			require.NoError(t, err)
+			require.NotNil(t, conf.ValidatorCommitter.Retry)
+			assert.InEpsilon(t, 1.1, conf.ValidatorCommitter.Retry.Multiplier, 1e-4)
+			assert.Equal(t, "/path/server", server.GRPC.TLS.CertPath)
+			assert.Equal(t, "/path/monitoring", server.HTTP.TLS.CertPath)
+			assert.Equal(t, "/path/verifier", conf.Verifier.TLS.CertPath)
+			assert.Equal(t, "/path/vc", conf.ValidatorCommitter.TLS.CertPath)
+		})
+	}
+
+	for _, tc := range []struct{ name, file string }{
+		{name: "sidecar-empty", file: f},
+		{name: "sidecar-sample", file: "samples/sidecar.yaml"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("SC_SIDECAR_LEDGER_SYNC_INTERVAL", "60")
+			t.Setenv("SC_SIDECAR_ORDERER_RECONNECT_MAX_INTERVAL", "1m")
+			t.Setenv("SC_SIDECAR_SERVER_TLS_MODE", "none")
+			t.Setenv("SC_SIDECAR_ORDERER_TLS_MODE", "mtls")
+			t.Setenv("SC_SIDECAR_COMMITTER_TLS_MODE", "tls")
+			c, server, err := ReadSidecarYamlAndSetupLogging(NewViperWithSidecarDefaults(), tc.file)
+			require.NoError(t, err)
+			assert.Equal(t, uint64(60), c.Ledger.SyncInterval)
+			require.NotNil(t, c.Orderer.Retry)
+			require.Equal(t, time.Minute, c.Orderer.Retry.MaxInterval)
+			require.Equal(t, "none", server.GRPC.TLS.Mode)
+			require.Equal(t, "mtls", c.Orderer.TLS.Mode)
+			require.Equal(t, "tls", c.Committer.TLS.Mode)
+		})
+	}
+
+	for _, tc := range []struct{ name, file string }{
+		{name: "vc-empty", file: f},
+		{name: "vc-sample", file: "samples/vc.yaml"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("SC_VC_DATABASE_TABLE_PRE_SPLIT_TABLETS", "10")
+			t.Setenv("SC_VC_DATABASE_LOAD_BALANCE", "true")
+			t.Setenv("SC_VC_SERVER_TLS_KEY_PATH", "/path/server")
+			t.Setenv("SC_VC_MONITORING_TLS_KEY_PATH", "/path/monitoring")
+			conf, server, err := ReadVCYamlAndSetupLogging(NewViperWithVCDefaults(), tc.file)
+			require.NoError(t, err)
+			assert.True(t, conf.Database.LoadBalance)
+			assert.Equal(t, 10, conf.Database.TablePreSplitTablets)
+			assert.Equal(t, "/path/server", server.GRPC.TLS.KeyPath)
+			assert.Equal(t, "/path/monitoring", server.HTTP.TLS.KeyPath)
+		})
+	}
+
+	for _, tc := range []struct{ name, file string }{
+		{name: "query-empty", file: f},
+		{name: "query-sample", file: "samples/query.yaml"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("SC_QUERY_MAX_ACTIVE_VIEWS", "8192")
+			t.Setenv("SC_QUERY_DATABASE_TABLE_PRE_SPLIT_TABLETS", "512")
+			t.Setenv("SC_QUERY_SERVER_TLS_CA_CERT_PATHS", "/path/server")
+			t.Setenv("SC_QUERY_MONITORING_TLS_CA_CERT_PATHS", "[/path/mon1,/path/mon2]")
+			conf, server, err := ReadQueryYamlAndSetupLogging(NewViperWithQueryDefaults(), tc.file)
+			require.NoError(t, err)
+			assert.Equal(t, 8192, conf.MaxActiveViews)
+			assert.Equal(t, 512, conf.Database.TablePreSplitTablets)
+			assert.Equal(t, []string{"/path/server"}, server.GRPC.TLS.CACertPaths)
+			assert.Equal(t, []string{"/path/mon1", "/path/mon2"}, server.HTTP.TLS.CACertPaths)
+		})
+	}
+
+	for _, tc := range []struct{ name, file string }{
+		{name: "loadgen-empty", file: f},
+		{name: "loadgen-sample", file: "samples/loadgen.yaml"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("SC_LOADGEN_LOAD_PROFILE_TRANSACTION_WRITE_COUNT_UNIFORM_MIN", "1")
+			t.Setenv("SC_LOADGEN_LOAD_PROFILE_TRANSACTION_WRITE_COUNT_UNIFORM_MAX", "15")
+			t.Setenv("SC_LOADGEN_YAML", `
+load-profile:
+  policy:
+    namespace-policies:
+      new:
+        scheme: MSP
+`)
+			t.Setenv("SC_LOADGEN_COORDINATOR_CLIENT_RECONNECT_MULTIPLIER", "1.2")
+			t.Setenv("SC_LOADGEN_SERVER_KEEP_ALIVE_PARAMS_MAX_CONNECTION_IDLE", "3m")
+			t.Setenv("SC_LOADGEN_MONITORING_KEEP_ALIVE_PARAMS_MAX_CONNECTION_IDLE", "5m")
+			conf, server, err := ReadLoadGenYamlAndSetupLogging(NewViperWithLoadGenDefaults(), tc.file)
+			require.NoError(t, err)
+			require.NotNil(t, conf.LoadProfile)
+			require.NotNil(t, conf.LoadProfile.Transaction)
+			require.NotNil(t, conf.LoadProfile.Transaction.BlindWriteCount)
+			require.NotNil(t, conf.LoadProfile.Transaction.BlindWriteCount.Uniform)
+			assert.InEpsilon(t, 1, conf.LoadProfile.Transaction.BlindWriteCount.Uniform.Min, 1e-4)
+			assert.InEpsilon(t, 15, conf.LoadProfile.Transaction.BlindWriteCount.Uniform.Max, 1e-4)
+			require.NotNil(t, conf.LoadProfile.Policy)
+			require.NotNil(t, conf.LoadProfile.Policy.NamespacePolicies)
+			require.NotNil(t, conf.LoadProfile.Policy.NamespacePolicies["new"])
+			require.Equal(t, "MSP", conf.LoadProfile.Policy.NamespacePolicies["new"].Scheme)
+			require.NotNil(t, conf.Adapter.CoordinatorClient)
+			require.NotNil(t, conf.Adapter.CoordinatorClient.Retry)
+			assert.InEpsilon(t, 1.2, conf.Adapter.CoordinatorClient.Retry.Multiplier, 1e-4)
+			assert.Equal(t, 3*time.Minute, server.GRPC.KeepAlive.Params.MaxConnectionIdle)
+			assert.Equal(t, 5*time.Minute, server.HTTP.KeepAlive.Params.MaxConnectionIdle)
+		})
+	}
+
+	for _, tc := range []struct{ name, file string }{
+		{name: "orderer-empty", file: f},
+		{name: "orderer-sample", file: "samples/mock-orderer.yaml"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("SC_ORDERER_SERVERS_ENDPOINT", "orderer:1234")
+			t.Setenv("SC_ORDERER_SERVER_KEEP_ALIVE_PARAMS_TIMEOUT", "3m")
+			t.Setenv("SC_ORDERER_MONITORING_KEEP_ALIVE_PARAMS_TIMEOUT", "5m")
+			conf, server, err := ReadMockOrdererYamlAndSetupLogging(NewViperWithLoggingDefault("orderer"), tc.file)
+			require.NoError(t, err)
+			require.Len(t, conf.Servers, 1)
+			require.NotNil(t, conf.Servers[0])
+			require.Equal(t, "orderer", conf.Servers[0].Endpoint.Host)
+			require.Equal(t, 1234, conf.Servers[0].Endpoint.Port)
+			assert.Equal(t, 3*time.Minute, server.GRPC.KeepAlive.Params.Timeout)
+			assert.Equal(t, 5*time.Minute, server.HTTP.KeepAlive.Params.Timeout)
+		})
+	}
 }

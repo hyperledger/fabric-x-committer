@@ -60,7 +60,7 @@ func mockStartCMD() *cobra.Command {
 }
 
 func startMockOrderer() *cobra.Command {
-	v := config.NewViperWithLoggingDefault()
+	v := config.NewViperWithLoggingDefault("orderer")
 	var configPath string
 	cmd := &cobra.Command{
 		Use:   "orderer",
