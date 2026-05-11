@@ -9,6 +9,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
@@ -56,7 +57,11 @@ func startService(ctx context.Context, name, configPath string) error {
 		return err
 	}
 
-	var service serve.Service
+	var (
+		service serve.Service
+		timeout time.Duration
+	)
+
 	switch c := conf.(type) {
 	case *sidecar.Config:
 		sidecarService, err := sidecar.New(c)
@@ -65,9 +70,11 @@ func startService(ctx context.Context, name, configPath string) error {
 		}
 		defer sidecarService.Close()
 		service = sidecarService
+		timeout = c.ReadinessTimeout
 
 	case *coordinator.Config:
 		service = coordinator.NewCoordinatorService(c)
+		timeout = c.ReadinessTimeout
 
 	case *vc.Config:
 		vcService, err := vc.NewValidatorCommitterService(ctx, c)
@@ -76,16 +83,19 @@ func startService(ctx context.Context, name, configPath string) error {
 		}
 		defer vcService.Close()
 		service = vcService
+		timeout = c.ReadinessTimeout
 
 	case *verifier.Config:
 		service = verifier.New(c)
+		timeout = c.ReadinessTimeout
 
 	case *query.Config:
 		service = query.NewQueryService(c)
+		timeout = c.ReadinessTimeout
 
 	default:
 		return errors.Newf("unknown config type: %T", conf)
 	}
 
-	return serve.StartAndServe(ctx, service, serverConfig)
+	return serve.StartAndServe(ctx, service, timeout, serverConfig)
 }

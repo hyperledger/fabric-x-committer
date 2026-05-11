@@ -84,6 +84,10 @@ dependency-graph:
 # constructors. Larger values reduce contention but increase memory usage proportionally.
 # Default: 10
 per-channel-buffer-size-per-goroutine: 10
+# Maximum time to wait for the coordinator service to become ready before startup fails.
+# This covers initialization that happens after Run starts and before the gRPC server begins serving.
+readiness-timeout: 5m
+
 
 # Logging configuration
 logging:

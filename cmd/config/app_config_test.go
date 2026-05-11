@@ -65,6 +65,7 @@ func TestReadConfigSidecar(t *testing.T) {
 			Ledger: sidecar.LedgerConfig{
 				Path: "./ledger/",
 			},
+			ReadinessTimeout: sidecar.DefaultReadinessTimeout,
 			Notification: sidecar.NotificationServiceConfig{
 				MaxTimeout:         sidecar.DefaultNotificationMaxTimeout,
 				MaxActiveTxIDs:     sidecar.DefaultMaxActiveTxIDs,
@@ -112,6 +113,7 @@ func TestReadConfigSidecar(t *testing.T) {
 				Path:         "/root/sc/ledger",
 				SyncInterval: 100,
 			},
+			ReadinessTimeout: sidecar.DefaultReadinessTimeout,
 			Notification: sidecar.NotificationServiceConfig{
 				MaxTimeout:         10 * time.Minute,
 				MaxActiveTxIDs:     100_000,
@@ -150,6 +152,7 @@ func TestReadConfigCoordinator(t *testing.T) {
 				NumOfLocalDepConstructors: coordinator.DefaultNumOfLocalDepConstructors,
 				WaitingTxsLimit:           coordinator.DefaultWaitingTxsLimit,
 			},
+			ReadinessTimeout:              coordinator.DefaultReadinessTimeout,
 			ChannelBufferSizePerGoroutine: coordinator.DefaultChannelBufferSizePerGoroutine,
 		},
 	}, {
@@ -167,6 +170,7 @@ func TestReadConfigCoordinator(t *testing.T) {
 				NumOfLocalDepConstructors: coordinator.DefaultNumOfLocalDepConstructors,
 				WaitingTxsLimit:           coordinator.DefaultWaitingTxsLimit,
 			},
+			ReadinessTimeout:              coordinator.DefaultReadinessTimeout,
 			ChannelBufferSizePerGoroutine: coordinator.DefaultChannelBufferSizePerGoroutine,
 		},
 	}}
@@ -203,6 +207,7 @@ func TestReadConfigVC(t *testing.T) {
 				MinTransactionBatchSize:           vc.DefaultMinTransactionBatchSize,
 				TimeoutForMinTransactionBatchSize: vc.DefaultTimeoutForMinBatchSize,
 			},
+			ReadinessTimeout: vc.DefaultReadinessTimeout,
 		},
 	}, {
 		name:                 "sample",
@@ -217,6 +222,7 @@ func TestReadConfigVC(t *testing.T) {
 				MinTransactionBatchSize:           vc.DefaultMinTransactionBatchSize,
 				TimeoutForMinTransactionBatchSize: 2 * time.Second,
 			},
+			ReadinessTimeout: vc.DefaultReadinessTimeout,
 		},
 	}}
 
@@ -250,6 +256,7 @@ func TestReadConfigVerifier(t *testing.T) {
 				BatchTimeCutoff:   verifier.DefaultBatchTimeCutoff,
 				ChannelBufferSize: verifier.DefaultChannelBufferSize,
 			},
+			ReadinessTimeout: verifier.DefaultReadinessTimeout,
 		},
 	}, {
 		name:           "sample",
@@ -264,6 +271,7 @@ func TestReadConfigVerifier(t *testing.T) {
 				ChannelBufferSize: verifier.DefaultChannelBufferSize,
 				Parallelism:       40,
 			},
+			ReadinessTimeout: verifier.DefaultReadinessTimeout,
 		},
 	}}
 
@@ -309,6 +317,7 @@ func TestReadConfigQuery(t *testing.T) {
 			MaxViewTimeout:        query.DefaultMaxViewTimeout,
 			MaxRequestKeys:        query.DefaultMaxRequestKeys,
 			TLSRefreshInterval:    query.DefaultTLSRefreshInterval,
+			ReadinessTimeout:      query.DefaultReadinessTimeout,
 		},
 	}, {
 		name:           "sample",
@@ -326,6 +335,7 @@ func TestReadConfigQuery(t *testing.T) {
 			MaxViewTimeout:        query.DefaultMaxViewTimeout,
 			MaxRequestKeys:        query.DefaultMaxRequestKeys,
 			TLSRefreshInterval:    query.DefaultTLSRefreshInterval,
+			ReadinessTimeout:      query.DefaultReadinessTimeout,
 		},
 	}}
 
@@ -350,10 +360,12 @@ func TestReadConfigLoadGen(t *testing.T) {
 		expectedServiceConfig *loadgen.ClientConfig
 		expectedServerConfig  *serve.Config
 	}{{
-		name:                  "default",
-		configFilePath:        emptyConfig(t),
-		expectedServerConfig:  newServeConfig(loadgen.DefaultServerPort, loadgen.DefaultMonitoringPort),
-		expectedServiceConfig: &loadgen.ClientConfig{},
+		name:                 "default",
+		configFilePath:       emptyConfig(t),
+		expectedServerConfig: newServeConfig(loadgen.DefaultServerPort, loadgen.DefaultMonitoringPort),
+		expectedServiceConfig: &loadgen.ClientConfig{
+			ReadinessTimeout: loadgen.DefaultReadinessTimeout,
+		},
 	}, {
 		name:           "sample",
 		configFilePath: "samples/loadgen.yaml",
@@ -361,6 +373,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 			"loadgen", loadgen.DefaultServerPort, loadgen.DefaultMonitoringPort,
 		),
 		expectedServiceConfig: &loadgen.ClientConfig{
+			ReadinessTimeout: loadgen.DefaultReadinessTimeout,
 			Monitoring: metrics.Config{
 				Latency: metrics.LatencyConfig{
 					SamplerConfig: metrics.SamplerConfig{

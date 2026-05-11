@@ -76,7 +76,7 @@ func loadGenCMD() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return serve.StartAndServe(cmd.Context(), client, serverConfig)
+			return serve.StartAndServe(cmd.Context(), client, conf.ReadinessTimeout, serverConfig)
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)

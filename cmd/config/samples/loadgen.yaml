@@ -271,6 +271,10 @@ limit:
   blocks: 0
   transactions: 50_000
 
+# Maximum time to wait for the load generator service to become ready before startup fails.
+# This covers initialization that happens after Run starts and before the gRPC server begins serving.
+readiness-timeout: 5m
+
 # Logging configuration
 logging:
   # Log level specification. Can be a single level (e.g., "info", "debug") or

@@ -177,7 +177,7 @@ func (c *TLSCredentials) CreateServerTLSConfig() (*tls.Config, error) {
 	}
 }
 
-// CreateClientTLSConfig returns a TLS config to be used by a server.
+// CreateClientTLSConfig returns a TLS config to be used by a client.
 func (c *TLSCredentials) CreateClientTLSConfig() (*tls.Config, error) {
 	switch c.Mode {
 	case NoneTLSMode, UnmentionedTLSMode:

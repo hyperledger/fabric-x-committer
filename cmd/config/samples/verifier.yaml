@@ -61,6 +61,10 @@ parallel-executor:
   # Higher values improve throughput on multi-core systems but increase CPU usage.
   # Default: 4
   parallelism: 40
+  # Maximum time to wait for the verifier service to become ready before startup fails.
+  # This covers initialization that happens after Run starts and before the gRPC server begins serving.
+  # Default: 5m
+  readiness-timeout: 5m
 
 # Logging configuration
 logging:

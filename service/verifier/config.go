@@ -14,6 +14,7 @@ type (
 	// Config describes the signature verifier parameters.
 	Config struct {
 		ParallelExecutor ExecutorConfig `mapstructure:"parallel-executor"`
+		ReadinessTimeout time.Duration  `mapstructure:"readiness-timeout" validate:"required,gt=0"`
 	}
 
 	// ExecutorConfig describes the execution parameters.
@@ -33,6 +34,7 @@ type (
 const (
 	DefaultServerPort        = 5001
 	DefaultMonitoringPort    = 2115
+	DefaultReadinessTimeout  = 5 * time.Minute
 	DefaultParallelism       = 4
 	DefaultBatchSizeCutoff   = 50
 	DefaultBatchTimeCutoff   = 500 * time.Millisecond

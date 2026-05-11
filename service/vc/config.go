@@ -16,8 +16,9 @@ import (
 
 // Config is the configuration for the validator-committer service.
 type Config struct {
-	Database       *DatabaseConfig       `mapstructure:"database" validate:"required"`
-	ResourceLimits *ResourceLimitsConfig `mapstructure:"resource-limits" validate:"required"`
+	Database         *DatabaseConfig       `mapstructure:"database" validate:"required"`
+	ResourceLimits   *ResourceLimitsConfig `mapstructure:"resource-limits" validate:"required"`
+	ReadinessTimeout time.Duration         `mapstructure:"readiness-timeout" validate:"required,gt=0"`
 }
 
 // DatabaseConfig is the configuration for the database.
@@ -64,6 +65,7 @@ type ResourceLimitsConfig struct {
 const (
 	DefaultServerPort                  = 6001
 	DefaultMonitoringPort              = 2116
+	DefaultReadinessTimeout            = 5 * time.Minute
 	DefaultDatabaseName                = "yugabyte"
 	DefaultDatabaseMaxConnections      = 20
 	DefaultDatabaseMinConnections      = 1
