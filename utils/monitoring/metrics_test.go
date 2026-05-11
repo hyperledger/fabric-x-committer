@@ -18,15 +18,11 @@ import (
 func TestConnectionMetrics(t *testing.T) {
 	t.Parallel()
 
-	newConnectionMetrics := func() *ConnectionMetrics {
-		p := NewProvider()
-		return p.NewConnectionMetrics(ConnectionMetricsOpts{})
-	}
 	target := "localhost:7051"
 
 	t.Run("Connected", func(t *testing.T) {
 		t.Parallel()
-		m := newConnectionMetrics()
+		m := NewConnectionMetrics(NewProvider(), MetricsParameters{})
 
 		m.Connected(target)
 		requireStatus(t, m, target, int(connection.Connected))
@@ -34,8 +30,7 @@ func TestConnectionMetrics(t *testing.T) {
 
 	t.Run("Disconnected_AfterConnected", func(t *testing.T) {
 		t.Parallel()
-		m := newConnectionMetrics()
-
+		m := NewConnectionMetrics(NewProvider(), MetricsParameters{})
 		m.Connected(target)
 		m.Disconnected(target)
 
@@ -45,7 +40,7 @@ func TestConnectionMetrics(t *testing.T) {
 
 	t.Run("Disconnected_WithoutPriorConnect", func(t *testing.T) {
 		t.Parallel()
-		m := newConnectionMetrics()
+		m := NewConnectionMetrics(NewProvider(), MetricsParameters{})
 
 		m.Disconnected(target)
 
@@ -55,7 +50,7 @@ func TestConnectionMetrics(t *testing.T) {
 
 	t.Run("Disconnected_Twice", func(t *testing.T) {
 		t.Parallel()
-		m := newConnectionMetrics()
+		m := NewConnectionMetrics(NewProvider(), MetricsParameters{})
 
 		m.Connected(target)
 		m.Disconnected(target)
@@ -66,7 +61,7 @@ func TestConnectionMetrics(t *testing.T) {
 
 	t.Run("MultipleTargets", func(t *testing.T) {
 		t.Parallel()
-		m := newConnectionMetrics()
+		m := NewConnectionMetrics(NewProvider(), MetricsParameters{})
 		target2 := "localhost:7052"
 
 		m.Connected(target)
@@ -81,7 +76,7 @@ func TestConnectionMetrics(t *testing.T) {
 
 	t.Run("Reconnect", func(t *testing.T) {
 		t.Parallel()
-		m := newConnectionMetrics()
+		m := NewConnectionMetrics(NewProvider(), MetricsParameters{})
 
 		m.Connected(target)
 		m.Disconnected(target)

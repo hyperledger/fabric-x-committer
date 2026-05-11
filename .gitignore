@@ -43,6 +43,7 @@ test/**/*.log
 
 .DS_Store
 venv
+**/__pycache__
 
 # MkDocs build output
 site/

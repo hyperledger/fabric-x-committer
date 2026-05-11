@@ -11,6 +11,7 @@ import (
 	"maps"
 	"math"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliver"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
@@ -33,6 +35,7 @@ type (
 	// ftDelivery supports fault tolerance delivery.
 	ftDelivery struct {
 		params           Parameters
+		metrics          *Metrics
 		jointOutputBlock chan *deliver.BlockWithSourceID
 
 		// dataStream and headerOnlyStream holds the processing state of each stream respectively.
@@ -66,16 +69,9 @@ type (
 	// when accessing shared state between startSingleDeliveryStream() and processBlocks().
 	streamExecutionParams struct {
 		deliver.Parameters
+		metrics  *Metrics
 		dialInfo *connection.DialInfo
 	}
-)
-
-// The following errors are used to communicate the stream restart reason and how to proceed.
-var (
-	errRequireRestart = errors.New("stream restart required")
-	errConfigUpdate   = errors.Wrap(errRequireRestart, "config block received")
-	errSuspicion      = errors.Wrap(errRequireRestart, "block withholding suspicion")
-	errDataBlockError = errors.Wrap(retry.ErrBackOff, "data block error")
 )
 
 var logger = flogging.MustGetLogger("deliverorderer")
@@ -106,7 +102,14 @@ func ToQueue(ctx context.Context, odp Parameters) (*SessionInfo, error) {
 		g.Go(func() error {
 			return d.processBlocks(gCtx)
 		})
-		return g.Wait()
+		streamErr := g.Wait()
+
+		// Track stream restart reason.
+		if streamErr != nil && ctx.Err() == nil {
+			d.metrics.StreamRestartsTotal.WithLabelValues(getErrorLabel(streamErr)).Inc()
+		}
+
+		return streamErr
 	})
 
 	return &SessionInfo{
@@ -126,6 +129,12 @@ func newFTDelivery(odp Parameters) (*ftDelivery, error) {
 		return nil, errors.New("SuspicionGracePeriodPerBlock must be positive for BFT")
 	}
 
+	metrics := odp.Metrics
+	if metrics == nil {
+		// If not provided, we initialize a metrics instance with a detached provider to avoid nil checks.
+		metrics = NewMetrics(monitoring.NewProvider(), monitoring.MetricsParameters{})
+	}
+
 	// We use the maximum between all the provided config blocks.
 	// This ensures we won't miss a crucial config-block that updated all the endpoints and/or the credentials.
 	state, latestConfig, err := newBlockProcessingState(&SessionInfo{
@@ -140,6 +149,7 @@ func newFTDelivery(odp Parameters) (*ftDelivery, error) {
 	jointChannelCapacity := max(cap(odp.OutputBlock), cap(odp.OutputBlockWithSourceID))
 	return &ftDelivery{
 		params:                  odp,
+		metrics:                 metrics,
 		jointOutputBlock:        make(chan *deliver.BlockWithSourceID, jointChannelCapacity),
 		monitorBlockWithholding: ftLevel == ordererdial.BFT,
 		headerOnlyStream:        state,
@@ -192,13 +202,25 @@ func (d *ftDelivery) processNextBlock(ctx context.Context) (
 
 	// We pick the processing state according to the block source (data or header only).
 	state := d.getProcessingState(blk)
+	streamType := "header"
+	if state.dataBlockStream {
+		streamType = "data"
+	}
+	sourceIDLabel := strconv.FormatUint(uint64(blk.SourceID), 10)
 
 	// Verification step: a block is ignored if it failed verification.
 	// Otherwise, we update the internal processing state and config update if necessary.
+	startTime := time.Now()
 	verificationErr := state.verificationStepAndUpdateState(blk)
+	verificationDuration := time.Since(startTime)
+	verificationErrLabel := getErrorLabel(verificationErr)
+	d.metrics.BlockVerificationSeconds.WithLabelValues(
+		streamType, sourceIDLabel, verificationErrLabel,
+	).Observe(verificationDuration.Seconds())
+
 	if verificationErr != nil {
 		// The underlying delivery client ensures consecutive blocks.
-		// However, the join stream can have blocks out-of-ourder for two reasons.
+		// However, the join stream can have blocks out-of-order for two reasons:
 		//   1. We switched the data stream source, but the queue had some previously unprocessed blocks.
 		//      Thus, by the time the first block arrives from the new stream, the actual state might be
 		//      ahead of requested next block.
@@ -206,15 +228,17 @@ func (d *ftDelivery) processNextBlock(ctx context.Context) (
 		//      Thus, we get the same block multiple times from different sources.
 		// In both cases, we process the first block that arrives in order, and skip the rest.
 		// With that, we save processing time of duplicated blocks from different sources.
-		// Since getting an unexpected block number from a source other than the last updater is a
+		// Since getting a duplicated block number from a source other than the last updater is a
 		// correct behavior, we don't need to log it.
-		if !errors.Is(verificationErr, ErrUnexpectedBlockNumber) || state.updaterSourceID == blk.SourceID {
+		if !errors.Is(verificationErr, ErrDuplicateBlock) || state.updaterSourceID == blk.SourceID {
+			d.metrics.StreamErrorsTotal.WithLabelValues(
+				streamType, sourceIDLabel, verificationErrLabel,
+			).Inc()
 			logger.Warnf("Block verification failed for source [%d] (data=%v): %v",
 				blk.SourceID, state.dataBlockStream, verificationErr)
 		}
 
-		// An issue on the main data block stream, requires a restart
-		// to ensure progress.
+		// An issue on the main data block stream requires a restart to ensure progress.
 		if state.dataBlockStream {
 			return nil, errors.Join(errDataBlockError, verificationErr)
 		}
@@ -224,6 +248,10 @@ func (d *ftDelivery) processNextBlock(ctx context.Context) (
 		// which is a correct behavior.
 		return nil, nil
 	}
+
+	// Update stream progress metrics.
+	d.metrics.StreamBlockNumber.WithLabelValues(streamType).Set(float64(blk.Block.Header.Number))
+	d.metrics.BlocksDeliveredTotal.WithLabelValues(streamType, sourceIDLabel).Inc()
 
 	// Deliver step: if it is a valid data block, deliver it.
 	if state.dataBlockStream {
@@ -265,6 +293,8 @@ func (d *ftDelivery) checkNextStreamAction(state *blockVerificationStateMachine)
 		// If a newer config block appears, it may contain endpoints update.
 		// So we restart the streams with the latest config.
 		d.latestConfig = state.configState
+		d.metrics.ConfigUpdatesTotal.Inc()
+		d.metrics.ConfigBlockNumber.Set(float64(state.configBlockNumber))
 		return errConfigUpdate
 	}
 
@@ -272,17 +302,35 @@ func (d *ftDelivery) checkNextStreamAction(state *blockVerificationStateMachine)
 }
 
 func (d *ftDelivery) checkBlockWithholding() error {
-	// If the data source is ahead, or we raised suspicion recently, continue.
-	if !d.monitorBlockWithholding || d.dataStream.nextBlockNum >= d.headerOnlyStream.nextBlockNum {
+	if !d.monitorBlockWithholding {
+		return nil
+	}
+
+	// Track block gap.
+	gap := float64(d.dataStream.nextBlockNum) - float64(d.headerOnlyStream.nextBlockNum)
+	dataSourceIDLabel := strconv.FormatUint(uint64(d.curDataBlockSourceID), 10)
+	d.metrics.BlockGapGauge.WithLabelValues(dataSourceIDLabel).Set(float64(gap))
+
+	// If the data source is ahead, continue.
+	if d.dataStream.nextBlockNum >= d.headerOnlyStream.nextBlockNum {
+		// Clear suspicion if data stream caught up.
+		if d.targetNextBlockNum > 0 {
+			d.metrics.SuspicionClearedTotal.WithLabelValues(dataSourceIDLabel).Inc()
+			d.metrics.TargetArrivalDeadline.WithLabelValues(dataSourceIDLabel).Set(0)
+			d.targetNextBlockNum = 0
+		}
 		return nil
 	}
 
 	// If we already passes the target, set the next target arrival time.
 	if d.dataStream.nextBlockNum >= d.targetNextBlockNum {
 		d.targetNextBlockNum = d.headerOnlyStream.nextBlockNum
-		gap := min(d.targetNextBlockNum-d.dataStream.nextBlockNum, math.MaxInt64)
 		//nolint:gosec // Capping the gap at [math.MaxInt64].
-		d.targetArrivalTime = time.Now().Add(d.params.SuspicionGracePeriodPerBlock * time.Duration(gap))
+		gapDuration := time.Duration(min(d.targetNextBlockNum-d.dataStream.nextBlockNum, math.MaxInt64))
+		d.targetArrivalTime = time.Now().Add(d.params.SuspicionGracePeriodPerBlock * gapDuration)
+		targetArrivalTimeUnix := float64(d.targetArrivalTime.UnixMilli())
+		d.metrics.SuspicionRaisedTotal.WithLabelValues(dataSourceIDLabel).Inc()
+		d.metrics.TargetArrivalDeadline.WithLabelValues(dataSourceIDLabel).Set(targetArrivalTimeUnix)
 		return nil
 	}
 
@@ -297,7 +345,9 @@ func (d *ftDelivery) checkBlockWithholding() error {
 		d.dataStream.nextBlockNum, d.curDataBlockSourceID, d.headerOnlyStream.updaterSourceID,
 		d.headerOnlyStream.nextBlockNum-1)
 
-	// Reset the target block (clears the suspicion).
+	d.metrics.SuspicionConfirmedTotal.WithLabelValues(dataSourceIDLabel).Inc()
+	d.metrics.TargetArrivalDeadline.WithLabelValues(dataSourceIDLabel).Set(0)
+	// Reset the target block (clears the suspicion for the next source).
 	d.targetNextBlockNum = 0
 	return errSuspicion
 }
@@ -320,6 +370,7 @@ func (d *ftDelivery) initStreams() (dataWorker streamExecutionParams, headerWork
 	// with getProcessingState() which reads this field in the processBlocks() goroutine.
 	d.curDataBlockSourceID = d.pickDataBlockStreamID(m)
 	logger.Infof("Using party ID [%d] as the data block source", d.curDataBlockSourceID)
+	d.metrics.CurrentDataSourceID.Set(float64(d.curDataBlockSourceID))
 
 	dataSourceParameters := deliver.Parameters{
 		ChannelID:               d.latestConfig.ChannelID,
@@ -338,6 +389,7 @@ func (d *ftDelivery) initStreams() (dataWorker streamExecutionParams, headerWork
 	if !d.monitorBlockWithholding || len(m.PartyIDToDialInfo) < 2 {
 		return streamExecutionParams{
 			Parameters: dataSourceParameters,
+			metrics:    d.metrics,
 			dialInfo:   m.Joint,
 		}, nil
 	}
@@ -345,6 +397,7 @@ func (d *ftDelivery) initStreams() (dataWorker streamExecutionParams, headerWork
 	// Create worker params for data stream + all header-only streams.
 	dataWorker = streamExecutionParams{
 		Parameters: dataSourceParameters,
+		metrics:    d.metrics,
 		dialInfo:   m.PartyIDToDialInfo[d.curDataBlockSourceID],
 	}
 	headerWorkers = make([]streamExecutionParams, 0, len(m.PartyIDToDialInfo)-1)
@@ -356,6 +409,7 @@ func (d *ftDelivery) initStreams() (dataWorker streamExecutionParams, headerWork
 		p.SourceID = id
 		headerWorkers = append(headerWorkers, streamExecutionParams{
 			Parameters: p,
+			metrics:    d.metrics,
 			dialInfo:   dialInfo,
 		})
 	}
@@ -411,11 +465,18 @@ func startSingleDeliveryStream(ctx context.Context, params streamExecutionParams
 	if params.HeaderOnly {
 		workerType = "headers"
 	}
-	workerErr := errors.NewWithDepthf(0, "[%s] delivery worker [ID:%d] ended", workerType, params.SourceID)
+	sourceIDLabel := strconv.FormatUint(uint64(params.SourceID), 10)
+	workerErr := errors.NewWithDepthf(0, "[%s] delivery worker [ID:%s] ended", workerType, sourceIDLabel)
+
+	// Track stream start and active streams
+	params.metrics.StreamStartsTotal.WithLabelValues(workerType, sourceIDLabel).Inc()
+	params.metrics.ActiveStreams.WithLabelValues(workerType, sourceIDLabel).Inc()
+	defer params.metrics.ActiveStreams.WithLabelValues(workerType, sourceIDLabel).Dec()
 
 	conn, connErr := params.dialInfo.NewLoadBalancedConnection()
 	if connErr != nil {
 		logger.Errorf("%s with error: %v", workerErr, connErr)
+		params.metrics.StreamErrorsTotal.WithLabelValues(workerType, sourceIDLabel, "connection").Inc()
 		return errors.Join(workerErr, connErr)
 	}
 	defer connection.CloseConnectionsLog(conn)
@@ -426,6 +487,7 @@ func startSingleDeliveryStream(ctx context.Context, params streamExecutionParams
 	if err != nil && ctx.Err() == nil {
 		// We only report error if the worker ended unexpectedly.
 		logger.Errorf("%s with error: %v", workerErr, err)
+		params.metrics.StreamErrorsTotal.WithLabelValues(workerType, sourceIDLabel, "delivery").Inc()
 	}
 	return errors.Join(workerErr, err)
 }

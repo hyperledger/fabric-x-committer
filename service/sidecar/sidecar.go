@@ -70,6 +70,7 @@ func New(c *Config) (*Service, error) {
 
 	// 2. Relay the blocks to committer and receive the transaction status.
 	metrics := newPerformanceMetrics()
+	deliveryParams.Metrics = metrics.delivery
 	relayService := newRelay(c.LastCommittedBlockSetInterval, metrics)
 
 	// 3. Deliver the block with status to client.

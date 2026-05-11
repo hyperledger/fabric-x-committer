@@ -55,13 +55,13 @@ func newPerformanceMetrics() *perfMetrics {
 		}, []string{"status"}),
 		sigverifierInputTxBatchQueueSize: p.NewGauge(prometheus.GaugeOpts{
 			Namespace: "coordinator",
-			Subsystem: "sigverifier",
+			Subsystem: "verifier",
 			Name:      "input_tx_batch_queue_size",
 			Help:      "Size of the input transaction batch queue of the signature verifier manager.",
 		}),
 		sigverifierOutputValidatedTxBatchQueueSize: p.NewGauge(prometheus.GaugeOpts{
 			Namespace: "coordinator",
-			Subsystem: "sigverifier",
+			Subsystem: "verifier",
 			Name:      "output_validated_tx_batch_queue_size",
 			Help:      "Size of the output validated transaction batch queue of the signature verifier manager.",
 		}),
@@ -81,7 +81,7 @@ func newPerformanceMetrics() *perfMetrics {
 		}),
 		sigverifierTransactionProcessedTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: "coordinator",
-			Subsystem: "sigverifier",
+			Subsystem: "verifier",
 			Name:      "transaction_processed_total",
 			Help:      "Total number of transactions processed by the signature verifier manager.",
 		}),
@@ -91,9 +91,9 @@ func newPerformanceMetrics() *perfMetrics {
 			Name:      "transaction_processed_total",
 			Help:      "Total number of transactions processed by the validation and committer service manager.",
 		}),
-		verifiersConnection: p.NewConnectionMetrics(monitoring.ConnectionMetricsOpts{
-			Namespace:       "coordinator",
-			RemoteNamespace: "verifier",
+		verifiersConnection: monitoring.NewConnectionMetrics(p, monitoring.MetricsParameters{
+			Namespace: "coordinator",
+			Subsystem: "verifier",
 		}),
 		verifiersRetriedTransactionTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: "coordinator",
@@ -101,13 +101,13 @@ func newPerformanceMetrics() *perfMetrics {
 			Name:      "retired_transaction_total",
 			Help:      "Total number of transactions retried by the validation and committer service manager.",
 		}),
-		vcservicesConnection: p.NewConnectionMetrics(monitoring.ConnectionMetricsOpts{
-			Namespace:       "coordinator",
-			RemoteNamespace: "vcservice",
+		vcservicesConnection: monitoring.NewConnectionMetrics(p, monitoring.MetricsParameters{
+			Namespace: "coordinator",
+			Subsystem: "vcservice",
 		}),
 		vcservicesRetriedTransactionTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: "coordinator",
-			Subsystem: "sigverifier",
+			Subsystem: "verifier",
 			Name:      "retired_transaction_total",
 			Help:      "Total number of transactions retried by the signature verifier manager.",
 		}),

@@ -72,7 +72,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 		nil,
 	)
 	monitoring.WaitForConnections(
-		t, svm.metrics.Provider, "coordinator_grpc_verifier_connection_status", numSvService,
+		t, svm.metrics.Provider, "coordinator_verifier_connection_status", numSvService,
 	)
 
 	env := &svMgrTestEnv{

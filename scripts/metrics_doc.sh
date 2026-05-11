@@ -8,22 +8,9 @@
 #   ./metrics_doc.sh generate  - Generate metrics documentation
 #   ./metrics_doc.sh check     - Check if documentation is up to date
 
-fabricx_dir="$(cd "$(dirname "$0")/.." && pwd)"
-scripts_dir="${fabricx_dir}/scripts"
-metrics_doc="${fabricx_dir}/docs/metrics_reference.md"
-
-# extract_metrics - Parses a Go metrics file and outputs markdown table rows.
-extract_metrics() {
-  local filepath="$1"
-
-  if [[ ! -f "$filepath" ]]; then
-    echo "Warning: $filepath not found" >&2
-    return
-  fi
-
-  # Join concatenated strings (" + " on same line or across lines) and extract metrics
-  perl -0777 -pe 's/" \+\n\s*"//g; s/" \+ "//g' "$filepath" | awk -f "${scripts_dir}/extract_metrics.awk"
-}
+repo_root_dir="$(cd "$(dirname "$0")/.." && pwd)"
+extract_metrics_script="${repo_root_dir}/scripts/metrics_doc_extract.py"
+metrics_doc="${repo_root_dir}/docs/metrics_reference.md"
 
 generate_service_doc() {
   local service_name="$1"
@@ -37,7 +24,8 @@ The following ${service_name} metrics are exported for consumption by Prometheus
 | Name | Type | Labels | Description |
 | ---- | ---- | ------ | ----------- |
 EOF
-  extract_metrics "${fabricx_dir}/${metrics_file}"
+  # Parses a Go metrics file and outputs markdown table rows.
+  python3 "${extract_metrics_script}" "${repo_root_dir}/${metrics_file}"
   echo ""
 }
 

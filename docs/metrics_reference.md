@@ -10,51 +10,74 @@ SPDX-License-Identifier: Apache-2.0
 
 The following Sidecar metrics are exported for consumption by Prometheus.
 
-| Name                                                       | Type      | Labels | Description                                                                      |
-|------------------------------------------------------------|-----------|--------|----------------------------------------------------------------------------------|
-| sidecar_grpc_coordinator_sent_transaction_total            | counter   |        | Total number of transactions sent to the coordinator service.                    |
-| sidecar_grpc_coordinator_received_transaction_status_total | counter   | status | Total number of transactions statuses received from the coordinator service.     |
-| sidecar_relay_block_mapping_seconds                        | histogram |        | Time spent mapping a received block to an internal block.                        |
-| sidecar_relay_mapped_block_processing_seconds              | histogram |        | Time spent processing an internal block and sending it to the coordinator.       |
-| sidecar_relay_transaction_status_batch_processing_seconds  | histogram |        | Time spent processing a received status batch from the coordinator.              |
-| sidecar_relay_waiting_transactions_queue_size              | gauge     |        | Total number of transactions waiting at the relay for statuses.                  |
-| sidecar_relay_input_block_queue_size                       | gauge     |        | Size of the input block queue of the relay service.                              |
-| sidecar_relay_output_committed_block_queue_size            | gauge     |        | Size of the output committed block queue of the relay service.                   |
-| sidecar_ledger_append_block_seconds                        | histogram |        | Time spent appending a block to the ledger.                                      |
-| sidecar_ledger_block_height                                | gauge     |        | The current block height of the ledger.                                          |
-| sidecar_relay_transaction_in_total                         | counter   |        | Total number of transactions received from the orderer.                          |
-| sidecar_relay_transaction_out_total                        | counter   |        | Total number of transaction statuses processed from the coordinator.             |
-| sidecar_notifier_active_streams                            | gauge     |        | Number of active notification streams.                                           |
-| sidecar_notifier_pending_tx_ids                            | gauge     |        | Number of pending (txID, request) subscriptions waiting for status notification. |
-| sidecar_notifier_unique_pending_tx_ids                     | gauge     |        | Number of unique transaction IDs pending across all requests.                    |
-| sidecar_notifier_tx_ids_status_deliveries_total            | counter   |        | Total number of transaction IDs' status deliveries to clients.                   |
-| sidecar_notifier_tx_ids_timeout_deliveries_total           | counter   |        | Total number of transaction IDs' timeout deliveries to clients.                  |
+| Name                                                       | Type      | Labels                           | Description                                                                                                                                              |
+|------------------------------------------------------------|-----------|----------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| sidecar_grpc_coordinator_sent_transaction_total            | counter   |                                  | Total number of transactions sent to the coordinator service.                                                                                            |
+| sidecar_grpc_coordinator_received_transaction_status_total | counter   | status                           | Total number of transactions statuses received from the coordinator service.                                                                             |
+| sidecar_relay_block_mapping_seconds                        | histogram |                                  | Time spent mapping a received block to an internal block.                                                                                                |
+| sidecar_relay_mapped_block_processing_seconds              | histogram |                                  | Time spent processing an internal block and sending it to the coordinator.                                                                               |
+| sidecar_relay_transaction_status_batch_processing_seconds  | histogram |                                  | Time spent processing a received status batch from the coordinator.                                                                                      |
+| sidecar_relay_waiting_transactions_queue_size              | gauge     |                                  | Total number of transactions waiting at the relay for statuses.                                                                                          |
+| sidecar_relay_input_block_queue_size                       | gauge     |                                  | Size of the input block queue of the relay service.                                                                                                      |
+| sidecar_relay_output_committed_block_queue_size            | gauge     |                                  | Size of the output committed block queue of the relay service.                                                                                           |
+| sidecar_coordinator_connection_status                      | gauge     | grpc_target                      | Connection status to coordinator service by grpc target (1 = connected, 0 = disconnected).                                                               |
+| sidecar_coordinator_connection_failure_total               | counter   | grpc_target                      | Total number of connection failures to coordinator service. Short-lived failures may not always be captured.                                             |
+| sidecar_ledger_append_block_seconds                        | histogram |                                  | Time spent appending a block to the ledger.                                                                                                              |
+| sidecar_ledger_block_height                                | gauge     |                                  | The current block height of the ledger.                                                                                                                  |
+| sidecar_relay_transaction_in_total                         | counter   |                                  | Total number of transactions received from the orderer.                                                                                                  |
+| sidecar_relay_transaction_out_total                        | counter   |                                  | Total number of transaction statuses processed from the coordinator.                                                                                     |
+| sidecar_notifier_active_streams                            | gauge     |                                  | Number of active notification streams.                                                                                                                   |
+| sidecar_notifier_pending_tx_ids                            | gauge     |                                  | Number of pending (txID, request) subscriptions waiting for status notification.                                                                         |
+| sidecar_notifier_unique_pending_tx_ids                     | gauge     |                                  | Number of unique transaction IDs pending across all requests.                                                                                            |
+| sidecar_notifier_tx_ids_status_deliveries_total            | counter   |                                  | Total number of transaction IDs' status deliveries to clients.                                                                                           |
+| sidecar_notifier_tx_ids_timeout_deliveries_total           | counter   |                                  | Total number of transaction IDs' timeout deliveries to clients.                                                                                          |
+| sidecar_delivery_data_source_id                            | gauge     |                                  | Current orderer party ID used as the data block source.                                                                                                  |
+| sidecar_delivery_block_number                              | gauge     | stream_type                      | Current block number by stream type (data or headers).                                                                                                   |
+| sidecar_delivery_blocks_delivered_total                    | counter   | stream_type source_id            | Total number of blocks delivered by stream type, and source ID.                                                                                          |
+| sidecar_delivery_block_verification_seconds                | histogram | stream_type source_id result     | Time spent verifying blocks by stream type, source ID, and result.                                                                                       |
+| sidecar_delivery_stream_restarts_total                     | counter   | reason                           | Total number of stream restarts by reason.                                                                                                               |
+| sidecar_delivery_stream_starts_total                       | counter   | stream_type source_id            | Total number of stream starts by stream type and source ID.                                                                                              |
+| sidecar_delivery_stream_active                             | gauge     | stream_type source_id            | Number of currently active streams by stream type, and source ID.                                                                                        |
+| sidecar_delivery_stream_errors_total                       | counter   | stream_type source_id error_type | Total number of stream errors by stream type, source ID, and error type.                                                                                 |
+| sidecar_delivery_withholding_suspicion_raised_total        | counter   | source_id                        | Total number of block withholding suspicions raised by data source ID.                                                                                   |
+| sidecar_delivery_withholding_suspicion_cleared_total       | counter   | source_id                        | Total number of block withholding suspicions cleared by data source ID.                                                                                  |
+| sidecar_delivery_withholding_suspicion_confirmed_total     | counter   | source_id                        | Total number of block withholding suspicions confirmed by data source ID.                                                                                |
+| sidecar_delivery_stream_block_gap                          | gauge     | source_id                        | Current block gap between header and data streams (data - header) by data source ID.Positive value indicates that data stream is ahead of header stream. |
+| sidecar_delivery_target_arrival_deadline_unix_milliseconds | gauge     | source_id                        | Unix timestamp (milliseconds) of the target block arrival deadline for withholding detection by source ID.                                               |
+| sidecar_delivery_config_updates_total                      | counter   |                                  | Total number of config block updates detected.                                                                                                           |
+| sidecar_delivery_config_block_number                       | gauge     |                                  | Current config block number.                                                                                                                             |
 
 ## Coordinator Metrics
 
 The following Coordinator metrics are exported for consumption by Prometheus.
 
-| Name                                                         | Type    | Labels | Description                                                                                           |
-|--------------------------------------------------------------|---------|--------|-------------------------------------------------------------------------------------------------------|
-| coordinator_grpc_received_transaction_total                  | counter |        | Total number of transactions received by the coordinator service from the client.                     |
-| coordinator_grpc_committed_transaction_total                 | counter | status | Total number of transactions committed status sent by the coordinator service to the client.          |
-| coordinator_sigverifier_input_tx_batch_queue_size            | gauge   |        | Size of the input transaction batch queue of the signature verifier manager.                          |
-| coordinator_sigverifier_output_validated_tx_batch_queue_size | gauge   |        | Size of the output validated transaction batch queue of the signature verifier manager.               |
-| coordinator_vcservice_output_tx_status_batch_queue_size      | gauge   |        | Size of the output transaction status batch queue of the validation and committer service manager.    |
-| coordinator_vcservice_output_validated_tx_batch_queue_size   | gauge   |        | Size of the output validated transaction batch queue of the validation and committer service manager. |
-| coordinator_sigverifier_transaction_processed_total          | counter |        | Total number of transactions processed by the signature verifier manager.                             |
-| coordinator_vcservice_transaction_processed_total            | counter |        | Total number of transactions processed by the validation and committer service manager.               |
-| coordinator_vcservice_retired_transaction_total              | counter |        | Total number of transactions retried by the validation and committer service manager.                 |
-| coordinator_sigverifier_retired_transaction_total            | counter |        | Total number of transactions retried by the signature verifier manager.                               |
+| Name                                                       | Type    | Labels      | Description                                                                                                |
+|------------------------------------------------------------|---------|-------------|------------------------------------------------------------------------------------------------------------|
+| coordinator_grpc_received_transaction_total                | counter |             | Total number of transactions received by the coordinator service from the client.                          |
+| coordinator_grpc_committed_transaction_total               | counter | status      | Total number of transactions committed status sent by the coordinator service to the client.               |
+| coordinator_verifier_input_tx_batch_queue_size             | gauge   |             | Size of the input transaction batch queue of the signature verifier manager.                               |
+| coordinator_verifier_output_validated_tx_batch_queue_size  | gauge   |             | Size of the output validated transaction batch queue of the signature verifier manager.                    |
+| coordinator_vcservice_output_tx_status_batch_queue_size    | gauge   |             | Size of the output transaction status batch queue of the validation and committer service manager.         |
+| coordinator_vcservice_output_validated_tx_batch_queue_size | gauge   |             | Size of the output validated transaction batch queue of the validation and committer service manager.      |
+| coordinator_verifier_transaction_processed_total           | counter |             | Total number of transactions processed by the signature verifier manager.                                  |
+| coordinator_vcservice_transaction_processed_total          | counter |             | Total number of transactions processed by the validation and committer service manager.                    |
+| coordinator_verifier_connection_status                     | gauge   | grpc_target | Connection status to verifier service by grpc target (1 = connected, 0 = disconnected).                    |
+| coordinator_verifier_connection_failure_total              | counter | grpc_target | Total number of connection failures to verifier service. Short-lived failures may not always be captured.  |
+| coordinator_vcservice_retired_transaction_total            | counter |             | Total number of transactions retried by the validation and committer service manager.                      |
+| coordinator_vcservice_connection_status                    | gauge   | grpc_target | Connection status to vcservice service by grpc target (1 = connected, 0 = disconnected).                   |
+| coordinator_vcservice_connection_failure_total             | counter | grpc_target | Total number of connection failures to vcservice service. Short-lived failures may not always be captured. |
+| coordinator_verifier_retired_transaction_total             | counter |             | Total number of transactions retried by the signature verifier manager.                                    |
 
 ## Verifier Metrics
 
 The following Verifier metrics are exported for consumption by Prometheus.
 
-| Name                                              | Type  | Labels | Description                         |
-|---------------------------------------------------|-------|--------|-------------------------------------|
-| verifier_server_grpc_active_streams               | gauge |        | The total number of started streams |
-| verifier_server_parallel_executor_active_requests | gauge |        | The total number of active requests |
+| Name                                              | Type    | Labels | Description                         |
+|---------------------------------------------------|---------|--------|-------------------------------------|
+| verifier_server_tx_input_throughput               | counter |        | Incoming requests for a component   |
+| verifier_server_tx_output_throughput              | counter |        | Outgoing responses for a component  |
+| verifier_server_grpc_active_streams               | gauge   |        | The total number of started streams |
+| verifier_server_parallel_executor_active_requests | gauge   |        | The total number of active requests |
 
 ## Validator-Committer Metrics
 

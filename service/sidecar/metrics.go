@@ -9,6 +9,7 @@ package sidecar
 import (
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/hyperledger/fabric-x-committer/utils/deliverorderer"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
 
@@ -46,6 +47,9 @@ type perfMetrics struct {
 	notifierUniquePendingTxIDs     prometheus.Gauge
 	notifierTxIDsStatusDeliveries  prometheus.Counter
 	notifierTxIDsTimeoutDeliveries prometheus.Counter
+
+	// delivery metrics
+	delivery *deliverorderer.Metrics
 }
 
 func newPerformanceMetrics() *perfMetrics {
@@ -105,9 +109,9 @@ func newPerformanceMetrics() *perfMetrics {
 			Name:      "output_committed_block_queue_size",
 			Help:      "Size of the output committed block queue of the relay service.",
 		}),
-		coordConnection: p.NewConnectionMetrics(monitoring.ConnectionMetricsOpts{
-			Namespace:       "sidecar",
-			RemoteNamespace: "coordinator",
+		coordConnection: monitoring.NewConnectionMetrics(p, monitoring.MetricsParameters{
+			Namespace: "sidecar",
+			Subsystem: "coordinator",
 		}),
 		appendBlockToLedgerSeconds: p.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "sidecar",
@@ -163,6 +167,10 @@ func newPerformanceMetrics() *perfMetrics {
 			Subsystem: "notifier",
 			Name:      "tx_ids_timeout_deliveries_total",
 			Help:      "Total number of transaction IDs' timeout deliveries to clients.",
+		}),
+		delivery: deliverorderer.NewMetrics(p, monitoring.MetricsParameters{
+			Namespace: "sidecar",
+			Subsystem: "delivery",
 		}),
 	}
 }

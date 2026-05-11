@@ -125,7 +125,7 @@ func (s *Server) handleInputs(
 		if err != nil {
 			return errors.Join(ErrUpdatePolicies, err)
 		}
-		promutil.AddToCounter(s.metrics.VerifierServerInTxs, len(batch.Requests))
+		promutil.AddToCounter(s.metrics.VerifierServerTxs.Input, len(batch.Requests))
 		promutil.AddToGauge(s.metrics.ActiveRequests, len(batch.Requests))
 
 		// Pass verification requests for processing.
@@ -149,7 +149,7 @@ func (s *Server) handleOutputs(
 		if !ok {
 			return errors.Wrap(stream.Context().Err(), "context ended")
 		}
-		promutil.AddToCounter(s.metrics.VerifierServerOutTxs, len(outputs))
+		promutil.AddToCounter(s.metrics.VerifierServerTxs.Output, len(outputs))
 		promutil.AddToGauge(s.metrics.ActiveRequests, -len(outputs))
 		logger.Debugf("Received output: %v", output)
 		rpcErr := stream.Send(&committerpb.TxStatusBatch{Status: outputs})

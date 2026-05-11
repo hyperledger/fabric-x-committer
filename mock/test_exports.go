@@ -350,10 +350,10 @@ func (e *OrdererTestEnv) WaitForBlock(t *testing.T, outputBlocks <-chan *common.
 	b, ok := channel.NewReader(t.Context(), outputBlocks).ReadWithTimeout(3 * time.Second)
 	require.True(t, ok, "failed to receive block from output channel")
 	require.NotNil(t, b)
+	t.Logf("Received block #%d", b.Header.Number)
 	if e.PrevBlock != nil {
 		require.Equal(t, e.PrevBlock.Header.Number+1, b.Header.Number)
 	}
-	t.Logf("Received block #%d", b.Header.Number)
 	e.PrevBlock = b
 	return b
 }

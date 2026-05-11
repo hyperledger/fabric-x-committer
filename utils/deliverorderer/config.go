@@ -91,6 +91,7 @@ type (
 		OutputBlockWithSourceID chan<- *deliver.BlockWithSourceID
 
 		SuspicionGracePeriodPerBlock time.Duration
+		Metrics                      *Metrics
 	}
 
 	// SessionInfo represents the processing state of blocks to support recovery and resumption.

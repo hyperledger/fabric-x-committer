@@ -61,7 +61,7 @@ func TestVerifyBlock(t *testing.T) {
 	t.Log("[X] Well-formed block with no signatures")
 	b1 = testcrypto.PrepareBlockHeaderAndMetadata(b1, testcrypto.BlockPrepareParameters{PrevBlock: p.PrevBlock})
 	err := s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b1})
-	require.ErrorContains(t, err, "block signature verification failed on block")
+	require.ErrorContains(t, err, "block signature verification failed")
 
 	t.Log("[V] Well-formed block with signatures")
 	b1 = testcrypto.PrepareBlockHeaderAndMetadata(b1, p)
@@ -69,9 +69,9 @@ func TestVerifyBlock(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 1, s.updaterSourceID)
 
-	t.Log("[X] Unexpected next block number")
+	t.Log("[X] Unexpected next block number (duplicate)")
 	err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b1})
-	require.ErrorContains(t, err, "received [1] != [2] expected")
+	require.ErrorContains(t, err, "received duplicate block")
 
 	t.Log("[X] Unexpected prev block hash")
 	b1a := workload.MapToOrdererBlock(2, txs)
@@ -135,7 +135,7 @@ func TestVerifyBlock(t *testing.T) {
 	p.PrevBlock = p2.PrevBlock
 	b7 := testcrypto.PrepareBlockHeaderAndMetadata(workload.MapToOrdererBlock(1, txs), p)
 	err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b7})
-	require.ErrorContains(t, err, "block's last config block [0] != [5] current config block")
+	require.ErrorContains(t, err, "block [7] points to config [0], expected [5]")
 
 	t.Log("[X] Block with old consenters")
 	p.LastConfigBlockIndex = p2.LastConfigBlockIndex
@@ -230,7 +230,7 @@ func TestVerifyBlockEdgeCases(t *testing.T) {
 		b = testcrypto.PrepareBlockHeaderAndMetadata(b, p)
 		err := s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: b})
 		require.Error(t, err)
-		require.ErrorContains(t, err, "block number [6] is less than config block number [10]")
+		require.ErrorContains(t, err, "block [6] < config block [10]")
 	})
 
 	t.Run("Genesis block mismatch", func(t *testing.T) {
@@ -318,7 +318,7 @@ func TestVerifyBlockEdgeCases(t *testing.T) {
 		})
 		err := s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: badBlock})
 		require.Error(t, err)
-		require.ErrorContains(t, err, "block's last config block [3] != [0] current config block")
+		require.ErrorContains(t, err, "block [5] points to config [3], expected [0]")
 	})
 
 	t.Run("Valid config block envelope with invalid config block", func(t *testing.T) {
@@ -397,7 +397,7 @@ func TestVerifyBlockEdgeCases(t *testing.T) {
 
 		err = s.verificationStepAndUpdateState(&deliver.BlockWithSourceID{Block: badConfigBlock})
 		require.Error(t, err)
-		require.ErrorContains(t, err, "config block's last config block [3] != [1] config block number")
+		require.ErrorContains(t, err, "config block [1] points to [3] instead of itself")
 	})
 }
 

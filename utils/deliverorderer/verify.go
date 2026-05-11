@@ -43,9 +43,6 @@ type (
 	}
 )
 
-// ErrUnexpectedBlockNumber is returned by the verification step if the blocks are not received in order.
-var ErrUnexpectedBlockNumber = errors.New("received unexpected block number")
-
 // newBlockProcessingState initializes the processing state from the last block
 // and start the following blocks processing from it.
 // It returns a headers only stream state, and the latest config state.
@@ -112,12 +109,17 @@ func (s *blockVerificationStateMachine) cloneAsDataBlockStream() blockVerificati
 func (s *blockVerificationStateMachine) verificationStepAndUpdateState(blk *deliver.BlockWithSourceID) error {
 	// 1. Verify form.
 	if !s.verifyBlockForm(blk.Block) {
-		return errors.New("received malformed block")
+		return ErrMalformedBlock
 	}
 
 	// 2. Verify correct progress.
 	if blk.Block.Header.Number != s.nextBlockNum {
-		return errors.Wrapf(ErrUnexpectedBlockNumber, "received [%d] != [%d] expected",
+		// Differentiate between duplicate (already processed) and unexpected (out of order)
+		if blk.Block.Header.Number < s.nextBlockNum {
+			return errors.Wrapf(ErrDuplicateBlock, "received [%d] < [%d] expected",
+				blk.Block.Header.Number, s.nextBlockNum)
+		}
+		return errors.Wrapf(ErrUnexpectedBlockNumber, "received [%d] > [%d] expected",
 			blk.Block.Header.Number, s.nextBlockNum)
 	}
 
@@ -167,7 +169,7 @@ func (s *blockVerificationStateMachine) verifyHashes(block *common.Block) error 
 	// Verify header hash if we have the previous block hash.
 	if len(s.lastBlockHeaderHash) != 0 {
 		if !bytes.Equal(block.Header.PreviousHash, s.lastBlockHeaderHash) {
-			return errors.Newf("previous block header hash mismatch on block [%d]", blockNumber)
+			return errors.Wrapf(ErrHeaderHashMismatch, "on block [%d]", blockNumber)
 		}
 	}
 
@@ -179,7 +181,7 @@ func (s *blockVerificationStateMachine) verifyHashes(block *common.Block) error 
 		// Verify that Header.DataHash is equal to the hash of block.Data
 		// This is to ensure that the header is consistent with the data carried by this block
 		if !bytes.Equal(dataHash, block.Header.DataHash) {
-			return errors.Newf("block data hash mismatch on block [%d]", blockNumber)
+			return errors.Wrapf(ErrDataHashMismatch, "on block [%d]", blockNumber)
 		}
 	}
 	return nil
@@ -199,7 +201,7 @@ func (s *blockVerificationStateMachine) verifyBlockPolicy(block *common.Block) e
 	// But if we received a config block from external source via the input parameters, such error may occur.
 	// For example, if the last known config was given from a corrupted ledger, or a male configured YAML file.
 	if blockNumber < s.configBlockNumber {
-		return errors.Newf("block number [%d] is less than config block number [%d]",
+		return errors.Wrapf(ErrConfigBlockAhead, "block [%d] < config block [%d]",
 			blockNumber, s.configBlockNumber)
 	}
 
@@ -208,7 +210,7 @@ func (s *blockVerificationStateMachine) verifyBlockPolicy(block *common.Block) e
 	// so we expect it to be correct.
 	lastConfigBlockIdx, err := protoutil.GetLastConfigIndexFromBlock(block)
 	if err != nil {
-		return errors.Wrap(err, "failed to fetch last config block index from block")
+		return errors.Join(ErrLastConfigIndexFetch, err)
 	}
 	if s.configBlockNumber != lastConfigBlockIdx {
 		// Fabric's config block points to itself. If it is not a config block that
@@ -216,12 +218,12 @@ func (s *blockVerificationStateMachine) verifyBlockPolicy(block *common.Block) e
 		// We have a nested verification to ensure we don't run the relatively heavy
 		// check [protoutil.IsConfigBlock()] for most cases.
 		if !protoutil.IsConfigBlock(block) {
-			return errors.Newf("block's last config block [%d] != [%d] current config block",
-				lastConfigBlockIdx, s.configBlockNumber)
+			return errors.Wrapf(ErrLastConfigIndexMismatch, "block [%d] points to config [%d], expected [%d]",
+				blockNumber, lastConfigBlockIdx, s.configBlockNumber)
 		}
 		if lastConfigBlockIdx != blockNumber {
-			return errors.Newf("config block's last config block [%d] != [%d] config block number",
-				lastConfigBlockIdx, blockNumber)
+			return errors.Wrapf(ErrConfigBlockSelfReference, "config block [%d] points to [%d] instead of itself",
+				blockNumber, lastConfigBlockIdx)
 		}
 	}
 
@@ -232,14 +234,17 @@ func (s *blockVerificationStateMachine) verifyBlockPolicy(block *common.Block) e
 	if blockNumber == 0 {
 		ok := proto.Equal(block, s.ConfigBlock)
 		if !ok {
-			return errors.New("delivered genesis block mismatch to known genesis block")
+			return ErrGenesisBlockMismatch
 		}
 		return nil
 	}
 
 	// Verify block according to the config block policy.
 	err = s.verifier.Verify(block.Header, block.Metadata)
-	return errors.Wrapf(err, "block signature verification failed on block [%d]", blockNumber)
+	if err != nil {
+		return errors.Wrapf(errors.Join(ErrSignatureVerification, err), "on block [%d]", blockNumber)
+	}
+	return nil
 }
 
 // updateIfConfigBlock sets the config by which blocks are verified.

@@ -14,18 +14,19 @@ import (
 
 type metrics struct {
 	*monitoring.Provider
-	VerifierServerInTxs  prometheus.Counter
-	VerifierServerOutTxs prometheus.Counter
-	ActiveStreams        prometheus.Gauge
-	ActiveRequests       prometheus.Gauge
+	VerifierServerTxs *monitoring.ThroughputMetrics
+	ActiveStreams     prometheus.Gauge
+	ActiveRequests    prometheus.Gauge
 }
 
 func newMonitoring() *metrics {
 	p := monitoring.NewProvider()
 	return &metrics{
-		Provider:             p,
-		VerifierServerInTxs:  p.NewThroughputCounter("verifier_server", "tx", monitoring.In),
-		VerifierServerOutTxs: p.NewThroughputCounter("verifier_server", "tx", monitoring.Out),
+		Provider: p,
+		VerifierServerTxs: monitoring.NewThroughputMetrics(p, monitoring.MetricsParameters{
+			Namespace: "verifier_server",
+			Subsystem: "tx",
+		}),
 		ActiveStreams: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: "verifier_server",
 			Subsystem: "grpc",

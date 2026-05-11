@@ -106,8 +106,8 @@ func EventuallyIntMetric( //nolint:revive // number of arguments is derived from
 	t *testing.T, expected int, m prometheus.Metric, waitFor, tick time.Duration, msgAndArgs ...any,
 ) {
 	t.Helper()
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		v := GetIntMetricValue(t, m)
-		require.Equal(c, expected, v)
+		require.Equal(ct, expected, v)
 	}, waitFor, tick, msgAndArgs...)
 }
