@@ -79,7 +79,7 @@ func StartAndServe(ctx context.Context, service Service, serverConfig ...*Config
 		return service.Run(gCtx)
 	})
 
-	// If we get more than one server config, we'll use the first assigned time.Duration as
+	// Extract the readiness timeout from the first config that defines one.
 	var readinessTimeout time.Duration
 	for _, s := range serverConfig {
 		if s.ReadinessTimeout > 0 {
