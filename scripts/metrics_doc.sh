@@ -11,6 +11,7 @@
 repo_root_dir="$(cd "$(dirname "$0")/.." && pwd)"
 extract_metrics_script="${repo_root_dir}/scripts/metrics_doc_extract.py"
 metrics_doc="${repo_root_dir}/docs/metrics_reference.md"
+python_cmd="${python3:-$(PYTHON_CMD)}"
 
 generate_service_doc() {
   local service_name="$1"
@@ -25,7 +26,7 @@ The following ${service_name} metrics are exported for consumption by Prometheus
 | ---- | ---- | ------ | ----------- |
 EOF
   # Parses a Go metrics file and outputs markdown table rows.
-  python3 "${extract_metrics_script}" "${repo_root_dir}/${metrics_file}"
+  ${python_cmd} "${extract_metrics_script}" "${repo_root_dir}/${metrics_file}"
   echo ""
 }
 

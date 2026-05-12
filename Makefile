@@ -109,7 +109,7 @@ ifneq ("$(wildcard /opt/homebrew/include)","")
     proto_flags += --proto_path="/opt/homebrew/include"
 endif
 
-PYTHON_CMD ?= $(shell command -v python3 2>/dev/null || command -v python 2>/dev/null)
+PYTHON_CMD ?= $(or $(wildcard ./venv/bin/python), $(shell command -v python3 || command -v python))
 
 # Set additional parameter to build the test-node for different platforms and push
 # E.g., make multiplatform=true docker_push=true build-image-test-node
@@ -119,7 +119,7 @@ ifeq "$(multiplatform)" "true"
 endif
 
 docker_push ?= false
-docker_push_arg = 
+docker_push_arg =
 ifeq "$(docker_push)" "true"
 	docker_push_arg=--push
 endif
@@ -379,12 +379,18 @@ build-with-docker: FORCE
 # Linter
 #########################
 
-lint: check-metrics-doc check-sample-tree lint-proto FORCE
+lint: lint-go lint-sql lint-license check-metrics-doc check-sample-tree lint-proto check-cli-doc FORCE
+
+lint-go:
 	@echo "Running Go Linters..."
 	golangci-lint run --color=always --new-from-rev=main --timeout=4m
 	scripts/lint.sh $(go_cmd)
+
+lint-sql:
 	@echo "Running SQL Linters..."
 	git ls-files '*.sql' | sort -u | ${PYTHON_CMD} -m sqlfluff lint --dialect postgres
+
+lint-license:
 	@echo "Running License Header Linters..."
 	scripts/license-lint.sh
 
@@ -395,14 +401,19 @@ full-lint-%: FORCE
 full-lint: FORCE
 	golangci-lint run --color=always --timeout=4m ./...
 
+
+#########################
+# Document Generation
+#########################
+
 generate-metrics-doc: FORCE
 	scripts/metrics_doc.sh generate
 
 check-metrics-doc: FORCE
-	scripts/metrics_doc.sh check
+	PYTHON_CMD=$(PYTHON_CMD) scripts/metrics_doc.sh check
 
 generate-cli-doc: build FORCE
-	scripts/cli_help_docs.sh generate
+	PYTHON_CMD=$(PYTHON_CMD) scripts/cli_help_docs.sh generate
 
 check-cli-doc: build FORCE
 	scripts/cli_help_docs.sh check
