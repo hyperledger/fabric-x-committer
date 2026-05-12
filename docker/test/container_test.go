@@ -280,14 +280,14 @@ func TestYugabyteDriverDiscoveryWithSingleNodeConnection(t *testing.T) {
 		cmd: append(commonTestNodeCMD, "loadgen"),
 		additionalEnvs: []string{
 			"SC_VC_DATABASE_ENDPOINTS=" + singleTabletAddress,
-			"SC_VC_DATABASE_USERNAME=" + "yugabyte",
-			"SC_VC_DATABASE_DATABASE=" + "yugabyte",
+			"SC_VC_DATABASE_USERNAME=" + testdb.YugaDBType,
+			"SC_VC_DATABASE_DATABASE=" + testdb.YugaDBType,
 			"SC_VC_DATABASE_LOAD_BALANCE=true",
 			"SC_VC_DATABASE_TLS_MODE=" + connection.NoneTLSMode,
 
 			"SC_QUERY_DATABASE_ENDPOINTS=" + singleTabletAddress,
-			"SC_QUERY_DATABASE_USERNAME=" + "yugabyte",
-			"SC_QUERY_DATABASE_DATABASE=" + "yugabyte",
+			"SC_QUERY_DATABASE_USERNAME=" + testdb.YugaDBType,
+			"SC_QUERY_DATABASE_DATABASE=" + testdb.YugaDBType,
 			"SC_QUERY_DATABASE_LOAD_BALANCE=true",
 			"SC_QUERY_DATABASE_TLS_MODE=" + connection.NoneTLSMode,
 		},
