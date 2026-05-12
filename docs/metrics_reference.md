@@ -83,27 +83,26 @@ The following Verifier metrics are exported for consumption by Prometheus.
 
 The following Validator-Committer metrics are exported for consumption by Prometheus.
 
-| Name                                                                            | Type      | Labels | Description                                                                                                    |
-|---------------------------------------------------------------------------------|-----------|--------|----------------------------------------------------------------------------------------------------------------|
-| vcservice_grpc_received_transaction_total                                       | counter   |        | Number of transactions received by the service                                                                 |
-| vcservice_grpc_processed_transaction_total                                      | counter   |        | Number of transactions processed by the service                                                                |
-| vcservice_committed_transaction_total                                           | counter   |        | The total number of transactions committed                                                                     |
-| vcservice_mvcc_conflict_total                                                   | counter   |        | The total number of transactions that failed due to MVCC conflict                                              |
-| vcservice_duplicate_transaction_total                                           | counter   |        | The total number of duplicate transactions                                                                     |
-| vcservice_preparer_input_queue_size                                             | gauge     |        | The preparer input queue size                                                                                  |
-| vcservice_validator_input_queue_size                                            | gauge     |        | The validator input queue size                                                                                 |
-| vcservice_committer_input_queue_size                                            | gauge     |        | The committer input queue size                                                                                 |
-| vcservice_txstatus_output_queue_size                                            | gauge     |        | The txstatus output queue size                                                                                 |
-| vcservice_preparer_tx_batch_latency_seconds                                     | histogram |        | The latency of the preparer processing a batch of transactions                                                 |
-| vcservice_validator_tx_batch_latency_seconds                                    | histogram |        | The latency of the validator processing a batch of transactions                                                |
-| vcservice_committer_tx_batch_latency_seconds                                    | histogram |        | The latency of the committer processing a batch of transactions                                                |
-| vcservice_database_tx_batch_validation_latency_seconds                          | histogram |        | The latency of the database validating a batch of transactions                                                 |
-| vcservice_database_tx_batch_query_version_latency_seconds                       | histogram |        | The latency of the database querying version for keys in a batch of transactions                               |
-| vcservice_database_tx_batch_commit_latency_seconds                              | histogram |        | The latency of the database committing a batch of transactions                                                 |
-| vcservice_database_tx_batch_commit_txs_status_latency_seconds                   | histogram |        | The latency of the database committing a batch of transactions and updating their status                       |
-| vcservice_database_tx_batch_commit_update_latency_seconds                       | histogram |        | The latency of the database committing a batch of transactions which involes updating existing keys            |
-| vcservice_database_tx_batch_commit_insert_new_key_with_value_latency_seconds    | histogram |        | The latency of the database committing a batch of transactions which involes inserting new keys with values    |
-| vcservice_database_tx_batch_commit_insert_new_key_without_value_latency_seconds | histogram |        | The latency of the database committing a batch of transactions which involes inserting new keys without values |
+| Name                                                                         | Type      | Labels | Description                                                                                                 |
+|------------------------------------------------------------------------------|-----------|--------|-------------------------------------------------------------------------------------------------------------|
+| vcservice_grpc_received_transaction_total                                    | counter   |        | Number of transactions received by the service                                                              |
+| vcservice_grpc_processed_transaction_total                                   | counter   |        | Number of transactions processed by the service                                                             |
+| vcservice_committed_transaction_total                                        | counter   |        | The total number of transactions committed                                                                  |
+| vcservice_mvcc_conflict_total                                                | counter   |        | The total number of transactions that failed due to MVCC conflict                                           |
+| vcservice_duplicate_transaction_total                                        | counter   |        | The total number of duplicate transactions                                                                  |
+| vcservice_preparer_input_queue_size                                          | gauge     |        | The preparer input queue size                                                                               |
+| vcservice_validator_input_queue_size                                         | gauge     |        | The validator input queue size                                                                              |
+| vcservice_committer_input_queue_size                                         | gauge     |        | The committer input queue size                                                                              |
+| vcservice_txstatus_output_queue_size                                         | gauge     |        | The txstatus output queue size                                                                              |
+| vcservice_preparer_tx_batch_latency_seconds                                  | histogram |        | The latency of the preparer processing a batch of transactions                                              |
+| vcservice_validator_tx_batch_latency_seconds                                 | histogram |        | The latency of the validator processing a batch of transactions                                             |
+| vcservice_committer_tx_batch_latency_seconds                                 | histogram |        | The latency of the committer processing a batch of transactions                                             |
+| vcservice_database_tx_batch_validation_latency_seconds                       | histogram |        | The latency of the database validating a batch of transactions                                              |
+| vcservice_database_tx_batch_query_version_latency_seconds                    | histogram |        | The latency of the database querying version for keys in a batch of transactions                            |
+| vcservice_database_tx_batch_commit_latency_seconds                           | histogram |        | The latency of the database committing a batch of transactions                                              |
+| vcservice_database_tx_batch_commit_txs_status_latency_seconds                | histogram |        | The latency of the database committing a batch of transactions and updating their status                    |
+| vcservice_database_tx_batch_commit_update_latency_seconds                    | histogram |        | The latency of the database committing a batch of transactions which involes updating existing keys         |
+| vcservice_database_tx_batch_commit_insert_new_key_with_value_latency_seconds | histogram |        | The latency of the database committing a batch of transactions which involes inserting new keys with values |
 
 ## Query Service Metrics
 

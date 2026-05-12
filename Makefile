@@ -401,6 +401,12 @@ generate-metrics-doc: FORCE
 check-metrics-doc: FORCE
 	scripts/metrics_doc.sh check
 
+generate-cli-doc: build FORCE
+	scripts/cli_help_docs.sh generate
+
+check-cli-doc: build FORCE
+	scripts/cli_help_docs.sh check
+
 generate-sample-tree: build FORCE
 	$(PYTHON_CMD) scripts/loadgen_artifacts_doc.py generate $(project_path)
 

@@ -27,7 +27,7 @@ func newMonitoring() *metrics {
 			Namespace: "verifier_server",
 			Subsystem: "tx",
 		}),
-		ActiveStreams: prometheus.NewGauge(prometheus.GaugeOpts{
+		ActiveStreams: p.NewGauge(prometheus.GaugeOpts{
 			Namespace: "verifier_server",
 			Subsystem: "grpc",
 			Name:      "active_streams",

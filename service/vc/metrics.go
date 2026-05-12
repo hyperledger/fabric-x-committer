@@ -35,13 +35,12 @@ type perfMetrics struct {
 	validatorTxBatchLatencySeconds prometheus.Histogram
 	committerTxBatchLatencySeconds prometheus.Histogram
 
-	databaseTxBatchValidationLatencySeconds                     prometheus.Histogram
-	databaseTxBatchQueryVersionLatencySeconds                   prometheus.Histogram
-	databaseTxBatchCommitLatencySeconds                         prometheus.Histogram
-	databaseTxBatchCommitTxsStatusLatencySeconds                prometheus.Histogram
-	databaseTxBatchCommitUpdateLatencySeconds                   prometheus.Histogram
-	databaseTxBatchCommitInsertNewKeyWithoutValueLatencySeconds prometheus.Histogram
-	databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds    prometheus.Histogram
+	databaseTxBatchValidationLatencySeconds                  prometheus.Histogram
+	databaseTxBatchQueryVersionLatencySeconds                prometheus.Histogram
+	databaseTxBatchCommitLatencySeconds                      prometheus.Histogram
+	databaseTxBatchCommitTxsStatusLatencySeconds             prometheus.Histogram
+	databaseTxBatchCommitUpdateLatencySeconds                prometheus.Histogram
+	databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds prometheus.Histogram
 }
 
 func newVCServiceMetrics() *perfMetrics {
@@ -163,14 +162,6 @@ func newVCServiceMetrics() *perfMetrics {
 			Name:      "tx_batch_commit_insert_new_key_with_value_latency_seconds",
 			Help: "The latency of the database committing a batch of transactions which involes " +
 				"inserting new keys with values",
-			Buckets: buckets,
-		}),
-		databaseTxBatchCommitInsertNewKeyWithoutValueLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "vcservice",
-			Subsystem: "database",
-			Name:      "tx_batch_commit_insert_new_key_without_value_latency_seconds",
-			Help: "The latency of the database committing a batch of transactions which involes " +
-				"inserting new keys without values",
 			Buckets: buckets,
 		}),
 	}
