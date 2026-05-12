@@ -35,8 +35,8 @@ type (
 	YugaClusterController struct {
 		DBClusterController
 
+		NetworkName       string
 		replicationFactor int
-		networkName       string
 	}
 
 	nodeConfigParameters struct {
@@ -90,14 +90,14 @@ func StartYugaCluster(ctx context.Context, t *testing.T, numberOfMasters, number
 	cluster := &YugaClusterController{
 		DBClusterController: DBClusterController{dbType: testdb.YugaDBType},
 		replicationFactor:   rf,
-		networkName:         fmt.Sprintf("%s%s", networkPrefix, uuid.NewString()),
+		NetworkName:         fmt.Sprintf("%s%s", networkPrefix, uuid.NewString()),
 	}
 	// A dedicated Docker network enables container-to-container communication
 	// via container names (Docker DNS). Masters and tservers use each other's
 	// container names as RPC addresses for Raft consensus and heartbeats.
-	test.CreateDockerNetwork(t, cluster.networkName)
+	test.CreateDockerNetwork(t, cluster.NetworkName)
 	t.Cleanup(func() {
-		test.RemoveDockerNetwork(t, cluster.networkName)
+		test.RemoveDockerNetwork(t, cluster.NetworkName)
 	})
 
 	// We create the nodes before startup to ensure
@@ -134,7 +134,7 @@ func (cc *YugaClusterController) createNode(role string) {
 		DatabaseType: testdb.YugaDBType,
 		// All nodes join the same Docker network so they can resolve each
 		// other by container name for inter-node RPC (Raft, heartbeats).
-		Network: cc.networkName,
+		Network: cc.NetworkName,
 	}
 	// Expose the YSQL port via host port mapping so the test client can reach
 	// the tablet servers through a host-accessible address on all platforms.

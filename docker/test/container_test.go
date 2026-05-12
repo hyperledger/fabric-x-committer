@@ -46,7 +46,8 @@ const (
 	coordinatorServicePort = "9001"
 	databasePort           = "5433"
 
-	committerContainerName = "committer"
+	committerContainerName            = "committer"
+	committerDiscoveryTestPostfixName = "discovery_test"
 )
 
 var commonTestNodeCMD = []string{"run", "db", "committer", "orderer"}
@@ -224,7 +225,89 @@ func TestStartTestNode(t *testing.T) {
 	require.True(t, ok)
 	t.Logf("Received block #%d with %d TXs", b.Header.Number, len(b.Data.Data))
 
-	monitorMetric(t, getContainerMappedHostPort(ctx, t, containerName, loadGenMetricsPort), nil)
+	monitorMetric(
+		t, getContainerMappedHostPort(ctx, t, containerName, loadGenMetricsPort), nil, 1000,
+	)
+}
+
+// TestYugabyteTabletDiscoveryWithSingleNodeConnection verifies that the YugabyteDB
+// smart driver can discover and connect to all tablets in a cluster when only one
+// tablet address is provided in the connection string.
+// This test runs the committer services in a Docker container within the same
+// network as the YugabyteDB cluster.
+//
+// We run this test in a docker container because YugabyteDB's
+// smart driver discovers other tablets by querying yb_servers(),
+// which returns the internal Docker container IP addresses.
+// These container IPs are only reachable from within the Docker network and not from
+// the host machine.
+//
+// Test scenario:
+// 1. Start a 3-admin, 3-tablet YugabyteDB cluster in Docker network.
+// 2. Start the committer container in the same network.
+// 3. Configure committer to connect to only ONE tablet using container IP.
+// 4. Enable LoadBalance=true to trigger driver discovery via yb_servers().
+// 5. Verify transactions flow.
+// 6. Stop the tablet we initially connected to.
+// 7. Verify transactions continue to flow.
+func TestYugabyteDriverDiscoveryWithSingleNodeConnection(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	t.Cleanup(cancel)
+
+	clusterController, _ := runner.StartYugaCluster(ctx, t, 3, 3)
+
+	singleTabletNode, idx := clusterController.GetSingleNodeByRole(runner.TabletNode)
+	require.NotNil(t, singleTabletNode)
+
+	// Get the container's internal address to use in the committer's connection string
+	singleTabletAddress := singleTabletNode.GetContainerConnectionDetails(t).Address()
+
+	// Start committer container in the same Docker network
+	committerName := fmt.Sprintf("%s_%s_%s",
+		test.DockerNamesPrefix, committerContainerName, committerDiscoveryTestPostfixName,
+	)
+	stopAndRemoveContainersByName(ctx, t, createDockerClient(t), committerName)
+
+	startCommitter(ctx, t, startNodeParameters{
+		node:              committerName,
+		networkName:       clusterController.NetworkName,
+		tlsMode:           connection.NoneTLSMode,
+		dbType:            testdb.YugaDBType,
+		dbEndpointsString: singleTabletAddress,
+		// The 'db' node starts, but we never connect to it.
+		cmd: append(commonTestNodeCMD, "loadgen"),
+		additionalEnvs: []string{
+			"SC_VC_DATABASE_ENDPOINTS=" + singleTabletAddress,
+			"SC_VC_DATABASE_USERNAME=" + "yugabyte",
+			"SC_VC_DATABASE_DATABASE=" + "yugabyte",
+			"SC_VC_DATABASE_LOAD_BALANCE=true",
+			"SC_VC_DATABASE_TLS_MODE=" + connection.NoneTLSMode,
+
+			"SC_QUERY_DATABASE_ENDPOINTS=" + singleTabletAddress,
+			"SC_QUERY_DATABASE_USERNAME=" + "yugabyte",
+			"SC_QUERY_DATABASE_DATABASE=" + "yugabyte",
+			"SC_QUERY_DATABASE_LOAD_BALANCE=true",
+			"SC_QUERY_DATABASE_TLS_MODE=" + connection.NoneTLSMode,
+		},
+	})
+
+	waitForContainerHealthy(ctx, t, committerName)
+
+	// Monitor metrics to verify transactions are being committed
+	metricsPort := getContainerMappedHostPort(ctx, t, committerName, loadGenMetricsPort)
+	t.Logf("Monitoring metrics on host port: %s", metricsPort)
+
+	// Verify transactions are flowing
+	monitorMetric(t, metricsPort, nil, 1000)
+
+	clusterController.StopAndRemoveSingleNodeByIndex(t, idx)
+
+	// Verify transactions continue to flow after the initial node is removed,
+	// This proves the driver discovered and is now using the other tablets
+	t.Log("Verifying transactions continue after node failure")
+	monitorMetric(t, metricsPort, nil, 1000)
 }
 
 func startCommitter(ctx context.Context, t *testing.T, params startNodeParameters) {
@@ -241,7 +324,7 @@ func startCommitter(ctx context.Context, t *testing.T, params startNodeParameter
 				coordinatorServicePort + "/tcp": struct{}{},
 				databasePort + "/tcp":           struct{}{},
 			},
-			Env: []string{
+			Env: append([]string{
 				"SC_COORDINATOR_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_COORDINATOR_VERIFIER_TLS_MODE=" + params.tlsMode,
 				"SC_COORDINATOR_VALIDATOR_COMMITTER_TLS_MODE=" + params.tlsMode,
@@ -262,7 +345,7 @@ func startCommitter(ctx context.Context, t *testing.T, params startNodeParameter
 				"SC_LOADGEN_MONITORING_TLS_MODE=" + params.tlsMode,
 				"SC_LOADGEN_ORDERER_CLIENT_SIDECAR_CLIENT_TLS_MODE=" + params.tlsMode,
 				"SC_LOADGEN_ORDERER_CLIENT_ORDERER_TLS_MODE=" + params.tlsMode,
-			},
+			}, params.additionalEnvs...),
 			Healthcheck: &container.HealthConfig{
 				Test:        []string{"CMD", "healthcheck"},
 				Interval:    2 * time.Second,
@@ -273,7 +356,7 @@ func startCommitter(ctx context.Context, t *testing.T, params startNodeParameter
 			Tty: true,
 		},
 		hostConfig: &container.HostConfig{
-			NetworkMode: network.NetworkDefault,
+			NetworkMode: setNetworkMode(params.networkName),
 			PortBindings: nat.PortMap{
 				// sidecar port binding
 				sidecarPort + "/tcp": []nat.PortBinding{{
@@ -322,4 +405,11 @@ func requireQueryResults(
 	for idx := range retNamespaces {
 		test.RequireProtoElementsMatch(t, requiredItems[idx].Rows, retNamespaces[idx].Rows)
 	}
+}
+
+func setNetworkMode(networkName string) container.NetworkMode {
+	if networkName != "" {
+		return container.NetworkMode(networkName)
+	}
+	return network.NetworkDefault
 }

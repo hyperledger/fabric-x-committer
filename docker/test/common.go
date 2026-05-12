@@ -38,13 +38,15 @@ type (
 		name       string
 	}
 	startNodeParameters struct {
-		node          string
-		networkName   string
-		tlsMode       string
-		artifactsPath string
-		dbType        string
-		dbPassword    string
-		cmd           []string
+		node              string
+		networkName       string
+		tlsMode           string
+		artifactsPath     string
+		dbType            string
+		dbPassword        string
+		dbEndpointsString string
+		cmd               []string
+		additionalEnvs    []string
 	}
 )
 
@@ -111,24 +113,19 @@ func createAndStartContainerAndItsLogs(
 	}()
 }
 
-func monitorMetric(t *testing.T, metricsPort string, metricsTLS *connection.TLSConfig) {
+func monitorMetric(t *testing.T, metricsPort string, metricsTLS *connection.TLSConfig, waitForCount int) {
 	t.Helper()
 	tlsConf := test.MustGetTLSConfig(t, metricsTLS)
 
 	metricsURL, err := monitoring.MakeMetricsURL(net.JoinHostPort(localhost, metricsPort), metricsTLS)
 	require.NoError(t, err)
 
+	currentNumberOfTxs := test.GetMetricValueFromURL(t, metricsURL, monitoredMetric, tlsConf)
 	t.Logf("Check the load generator metrics from: %s", metricsURL)
-	// We check often since the load generator's metrics might be closed if the limit is reached.
-	// We log only if there are changes to avoid spamming the log.
-	prevCount := -1
 	require.Eventually(t, func() bool {
-		count := test.GetMetricValueFromURL(t, metricsURL, monitoredMetric, tlsConf)
-		if prevCount != count {
-			t.Logf("%s: %d", monitoredMetric, count)
-		}
-		prevCount = count
-		return count > 1_000
+		committedTxs := test.GetMetricValueFromURL(t, metricsURL, monitoredMetric, tlsConf)
+		t.Logf("Amount of committed txs: %d\n", committedTxs)
+		return committedTxs > currentNumberOfTxs+waitForCount
 	}, 15*time.Minute, 100*time.Millisecond)
 }
 
