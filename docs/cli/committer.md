@@ -13,19 +13,23 @@ The `committer` command starts Fabric-X committer services and checks service he
 All configuration settings can be overridden using environment variables.
 The variable name follows the pattern `SC_<SERVICE>_<KEY>`, where dots and dashes
 in the key are replaced with underscores.
-
-For example, to disable logging for the sidecar service:
-
-```
-SC_SIDECAR_LOGGING_ENABLED=false
-```
+To override settings using environment variable YAML, set `SC_<SERVICE>_YAML`.
 
 Service prefixes: `SIDECAR`, `COORDINATOR`, `VERIFIER`, `VC`, `QUERY`.
 
-Example - start the sidecar with logging disabled:
+For example, start the sidecar service with endpoint `localhost:8080`:
 
 ```
-SC_SIDECAR_LOGGING_ENABLED=false committer start sidecar -c config.yaml
+SC_SIDECAR_SERVER_ENDPOINT=localhost:8080 committer start sidecar -c config.yaml
+```
+
+Or via YAML:
+
+```
+SC_SIDECAR_YAML=$(cat <<EOF
+server:
+  endpoint: localhost:8080
+EOF) committer start sidecar -c config.yaml
 ```
 
 

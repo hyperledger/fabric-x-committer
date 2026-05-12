@@ -17,12 +17,11 @@ import (
 
 // setEnvVars recursively walks through struct fields and manually sets environment variables in viper.
 // This allows environment variables to override nested pointer struct fields.
-// E.g. SC_LOGGING_ENABLED=false.
 func setEnvVars(v *viper.Viper, objType reflect.Type, keyParts ...string) {
 	if fieldKey := strings.Join(keyParts, "."); len(fieldKey) > 0 {
 		envKey := strings.ToUpper(envStringReplacer.Replace(v.GetEnvPrefix() + "_" + fieldKey))
 		if envValue, ok := os.LookupEnv(envKey); ok && envValue != "" {
-			logger.Debugf("Overridding config key '%s' from env var '%s=%s'", fieldKey, envKey, envValue)
+			logger.Debugf("Overridding config key '%s' from env var '%s'", fieldKey, envKey)
 			v.Set(fieldKey, envValue)
 		}
 	}

@@ -30,7 +30,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
-type loggincConfig struct {
+type loggingConfig struct {
 	Logging flogging.Config `mapstructure:"logging"`
 }
 
@@ -100,15 +100,16 @@ func readYamlAndSetupLogging[T any](v *viper.Viper, configPath string) (*T, *ser
 	}
 
 	// Check if the YAML is overridden by an environment variable.
-	if envValue, ok := os.LookupEnv(v.GetEnvPrefix() + "_YAML"); ok && envValue != "" {
-		logger.Debugf("Overridding config YAML from env: %s", envValue)
+	yamlEnvKey := v.GetEnvPrefix() + "_YAML"
+	if envValue, ok := os.LookupEnv(yamlEnvKey); ok && envValue != "" {
+		logger.Debugf("Overridding config YAML from env var '%s'", yamlEnvKey)
 		if err = readYamlConfigsFromIO(v, strings.NewReader(envValue)); err != nil {
 			return nil, nil, err
 		}
 	}
 
 	// Parse logging, server configuration, and target config.
-	loggingConf := new(loggincConfig)
+	loggingConf := new(loggingConfig)
 	serverConf := new(serve.Config)
 	targetConf := new(T)
 	if err = unmarshal(v, loggingConf, serverConf, targetConf); err != nil {
@@ -121,7 +122,6 @@ func readYamlAndSetupLogging[T any](v *viper.Viper, configPath string) (*T, *ser
 
 // unmarshal populate multiple config objects and validates them.
 // It automatically set configuration via environment variables.
-// E.g. SC_SIDECAR_SERVER_ENDPOINT=localhost:1234.
 func unmarshal(v *viper.Viper, items ...any) error {
 	for _, c := range items {
 		setEnvVars(v, reflect.TypeOf(c))
