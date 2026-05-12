@@ -47,6 +47,8 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting Started: setup.md
+  - CLI Reference:
+      - committer: cli/committer.md
   - Architecture: architecture.md
   - Deployment:
       - Deployment Guide: deployment-guide.md
