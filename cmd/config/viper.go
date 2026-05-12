@@ -99,6 +99,7 @@ func NewViperWithLoadGenDefaults() *viper.Viper {
 	return newViperWithServiceDefault("loadgen", loadgen.DefaultServerPort, loadgen.DefaultMonitoringPort)
 }
 
+// NewViperWithOrdererDefaults returns a viper instance with the mock-orderer service default values.
 func NewViperWithOrdererDefaults() *viper.Viper {
 	v := NewViperWithLoggingDefault("orderer")
 	v.SetDefault("readiness-timeout", serve.DefaultReadinessTimeout)

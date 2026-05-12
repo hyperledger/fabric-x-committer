@@ -61,6 +61,7 @@ type (
 	}
 )
 
+// DefaultReadinessTimeout is the default timeout for waiting for service readiness.
 const DefaultReadinessTimeout = 5 * time.Minute
 
 var logger = flogging.MustGetLogger("serve")
