@@ -300,14 +300,14 @@ func TestYugabyteDriverDiscoveryWithSingleNodeConnection(t *testing.T) {
 	t.Logf("Monitoring metrics on host port: %s", metricsPort)
 
 	// Verify transactions are flowing
-	monitorMetric(t, metricsPort, nil, 1000)
+	monitorMetric(t, metricsPort, nil, 5000)
 
 	clusterController.StopAndRemoveSingleNodeByIndex(t, idx)
 
 	// Verify transactions continue to flow after the initial node is removed,
 	// This proves the driver discovered and is now using the other tablets
 	t.Log("Verifying transactions continue after node failure")
-	monitorMetric(t, metricsPort, nil, 1000)
+	monitorMetric(t, metricsPort, nil, 5000)
 }
 
 func startCommitter(ctx context.Context, t *testing.T, params startNodeParameters) {
