@@ -33,7 +33,6 @@ func NewViperWithCoordinatorDefaults() *viper.Viper {
 	v.SetDefault("dependency-graph.num-of-local-dep-constructors", coordinator.DefaultNumOfLocalDepConstructors)
 	v.SetDefault("dependency-graph.waiting-txs-limit", coordinator.DefaultWaitingTxsLimit)
 	v.SetDefault("per-channel-buffer-size-per-goroutine", coordinator.DefaultChannelBufferSizePerGoroutine)
-	v.SetDefault("readiness-timeout", coordinator.DefaultReadinessTimeout)
 	return v
 }
 
@@ -51,7 +50,6 @@ func NewViperWithSidecarDefaults() *viper.Viper {
 	v.SetDefault("channel-buffer-size", sidecar.DefaultBufferSize)
 	v.SetDefault("server.max-concurrent-streams", sidecar.DefaultMaxConcurrentStreams)
 	v.SetDefault("orderer.suspicion-grace-period-per-block", deliverorderer.DefaultSuspicionGracePeriodPerBlock)
-	v.SetDefault("readiness-timeout", sidecar.DefaultReadinessTimeout)
 	return v
 }
 
@@ -62,7 +60,6 @@ func NewViperWithVerifierDefaults() *viper.Viper {
 	v.SetDefault("parallel-executor.batch-time-cutoff", verifier.DefaultBatchTimeCutoff)
 	v.SetDefault("parallel-executor.batch-size-cutoff", verifier.DefaultBatchSizeCutoff)
 	v.SetDefault("parallel-executor.channel-buffer-size", verifier.DefaultChannelBufferSize)
-	v.SetDefault("readiness-timeout", verifier.DefaultReadinessTimeout)
 	return v
 }
 
@@ -70,7 +67,6 @@ func NewViperWithVerifierDefaults() *viper.Viper {
 func NewViperWithVCDefaults() *viper.Viper {
 	v := newViperWithServiceDefault("vc", vc.DefaultServerPort, vc.DefaultMonitoringPort)
 	defaultDBFlags(v)
-	v.SetDefault("readiness-timeout", vc.DefaultReadinessTimeout)
 	// defaults for ResourceLimitsConfig
 	limitPrefix := "resource-limits."
 	v.SetDefault(limitPrefix+"max-workers-for-preparer", vc.DefaultMaxWorkersForPreparer)
@@ -95,14 +91,17 @@ func NewViperWithQueryDefaults() *viper.Viper {
 	v.SetDefault("max-view-timeout", query.DefaultMaxViewTimeout)
 	v.SetDefault("max-request-keys", query.DefaultMaxRequestKeys)
 	v.SetDefault("tls-refresh-interval", query.DefaultTLSRefreshInterval)
-	v.SetDefault("readiness-timeout", query.DefaultReadinessTimeout)
 	return v
 }
 
 // NewViperWithLoadGenDefaults returns a viper instance with the load generator default values.
 func NewViperWithLoadGenDefaults() *viper.Viper {
-	v := newViperWithServiceDefault("loadgen", loadgen.DefaultServerPort, loadgen.DefaultMonitoringPort)
-	v.SetDefault("readiness-timeout", loadgen.DefaultReadinessTimeout)
+	return newViperWithServiceDefault("loadgen", loadgen.DefaultServerPort, loadgen.DefaultMonitoringPort)
+}
+
+func NewViperWithOrdererDefaults() *viper.Viper {
+	v := NewViperWithLoggingDefault("orderer")
+	v.SetDefault("readiness-timeout", serve.DefaultReadinessTimeout)
 	return v
 }
 
@@ -114,6 +113,7 @@ func newViperWithServiceDefault(serviceName string, servicePort, monitoringPort 
 	// Rate limiting disabled by default (0 = disabled)
 	v.SetDefault("server.rate-limit", &serve.RateLimitConfig{})
 	v.SetDefault("monitoring.rate-limit", &serve.RateLimitConfig{})
+	v.SetDefault("readiness-timeout", serve.DefaultReadinessTimeout)
 	return v
 }
 

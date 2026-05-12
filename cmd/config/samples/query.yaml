@@ -44,6 +44,10 @@ monitoring:
     requests-per-second: 0
     burst: 0
 
+# Maximum time to wait for the query service to become ready before startup fails.
+# This covers initialization that happens after Run starts and before the gRPC server begins serving.
+readiness-timeout: 5m
+
 # Database connection configuration
 database:
   # List of database endpoints to connect to. Multiple endpoints can be specified
@@ -157,9 +161,6 @@ max-view-timeout: 10s
 # Set to 0 to disable the limit (not recommended for production).
 # Default: 10,000
 max-request-keys: 10000
-# Maximum time to wait for the query service to become ready before startup fails.
-# This covers initialization that happens after Run starts and before the gRPC server begins serving.
-readiness-timeout: 5m
 
 # Logging configuration
 logging:

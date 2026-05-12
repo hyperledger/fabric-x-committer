@@ -62,6 +62,10 @@ monitoring:
     requests-per-second: 0
     burst: 0
 
+# Maximum time to wait for the sidecar service to become ready before startup fails.
+# This covers initialization that happens after Run starts and before the gRPC server begins serving.
+readiness-timeout: 5m
+
 # Orderer connection configuration for fetching blocks
 orderer:
   # Fault tolerance level of the ordering service: 'BFT' (Byzantine Fault Tolerant) or 'CFT'.
@@ -140,10 +144,6 @@ waiting-txs-limit: 20_000_000
 # by reducing channel contention but increase memory usage.
 # Default: 100
 channel-buffer-size: 100
-# Maximum time to wait for the sidecar service to become ready before startup fails.
-# This covers initialization that happens after Run starts and before the gRPC server begins serving.
-readiness-timeout: 5m
-
 
 # Logging configuration
 logging:

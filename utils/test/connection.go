@@ -221,8 +221,9 @@ func NewServiceTLSConfig(artifactsPath, serviceName, mode string) connection.TLS
 // Both endpoints use "localhost:0" (auto-assigned ports) with the given TLS credentials.
 func NewLocalHostServiceConfig(creds connection.TLSConfig) *serve.Config {
 	return &serve.Config{
-		GRPC: *NewLocalHostServer(creds),
-		HTTP: *NewLocalHostServer(creds),
+		GRPC:             *NewLocalHostServer(creds),
+		HTTP:             *NewLocalHostServer(creds),
+		ReadinessTimeout: serve.DefaultReadinessTimeout,
 	}
 }
 

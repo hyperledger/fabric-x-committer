@@ -54,7 +54,8 @@ func TestReadConfigSidecar(t *testing.T) {
 				Endpoint:             *newEndpoint(connection.DefaultHost, sidecar.DefaultServerPort),
 				MaxConcurrentStreams: sidecar.DefaultMaxConcurrentStreams,
 			},
-			HTTP: *newServerConfig(sidecar.DefaultMonitoringPort),
+			HTTP:             *newServerConfig(sidecar.DefaultMonitoringPort),
+			ReadinessTimeout: serve.DefaultReadinessTimeout,
 		},
 		expectedServiceConfig: &sidecar.Config{
 			Committer: &connection.ClientConfig{
@@ -66,7 +67,6 @@ func TestReadConfigSidecar(t *testing.T) {
 			Ledger: sidecar.LedgerConfig{
 				Path: "./ledger/",
 			},
-			ReadinessTimeout: sidecar.DefaultReadinessTimeout,
 			Notification: sidecar.NotificationServiceConfig{
 				MaxTimeout:         sidecar.DefaultNotificationMaxTimeout,
 				MaxActiveTxIDs:     sidecar.DefaultMaxActiveTxIDs,
@@ -95,7 +95,8 @@ func TestReadConfigSidecar(t *testing.T) {
 				},
 				MaxConcurrentStreams: 10,
 			},
-			HTTP: *newServerConfigWithDefaultTLS("sidecar", 2114),
+			HTTP:             *newServerConfigWithDefaultTLS("sidecar", 2114),
+			ReadinessTimeout: serve.DefaultReadinessTimeout,
 		},
 		expectedServiceConfig: &sidecar.Config{
 			Orderer: ordererdial.Config{
@@ -114,7 +115,6 @@ func TestReadConfigSidecar(t *testing.T) {
 				Path:         "/root/sc/ledger",
 				SyncInterval: 100,
 			},
-			ReadinessTimeout: sidecar.DefaultReadinessTimeout,
 			Notification: sidecar.NotificationServiceConfig{
 				MaxTimeout:         10 * time.Minute,
 				MaxActiveTxIDs:     100_000,
@@ -153,7 +153,6 @@ func TestReadConfigCoordinator(t *testing.T) {
 				NumOfLocalDepConstructors: coordinator.DefaultNumOfLocalDepConstructors,
 				WaitingTxsLimit:           coordinator.DefaultWaitingTxsLimit,
 			},
-			ReadinessTimeout:              coordinator.DefaultReadinessTimeout,
 			ChannelBufferSizePerGoroutine: coordinator.DefaultChannelBufferSizePerGoroutine,
 		},
 	}, {
@@ -171,7 +170,6 @@ func TestReadConfigCoordinator(t *testing.T) {
 				NumOfLocalDepConstructors: coordinator.DefaultNumOfLocalDepConstructors,
 				WaitingTxsLimit:           coordinator.DefaultWaitingTxsLimit,
 			},
-			ReadinessTimeout:              coordinator.DefaultReadinessTimeout,
 			ChannelBufferSizePerGoroutine: coordinator.DefaultChannelBufferSizePerGoroutine,
 		},
 	}}
@@ -208,7 +206,6 @@ func TestReadConfigVC(t *testing.T) {
 				MinTransactionBatchSize:           vc.DefaultMinTransactionBatchSize,
 				TimeoutForMinTransactionBatchSize: vc.DefaultTimeoutForMinBatchSize,
 			},
-			ReadinessTimeout: vc.DefaultReadinessTimeout,
 		},
 	}, {
 		name:                 "sample",
@@ -223,7 +220,6 @@ func TestReadConfigVC(t *testing.T) {
 				MinTransactionBatchSize:           vc.DefaultMinTransactionBatchSize,
 				TimeoutForMinTransactionBatchSize: 2 * time.Second,
 			},
-			ReadinessTimeout: vc.DefaultReadinessTimeout,
 		},
 	}}
 
@@ -257,7 +253,6 @@ func TestReadConfigVerifier(t *testing.T) {
 				BatchTimeCutoff:   verifier.DefaultBatchTimeCutoff,
 				ChannelBufferSize: verifier.DefaultChannelBufferSize,
 			},
-			ReadinessTimeout: verifier.DefaultReadinessTimeout,
 		},
 	}, {
 		name:           "sample",
@@ -272,7 +267,6 @@ func TestReadConfigVerifier(t *testing.T) {
 				ChannelBufferSize: verifier.DefaultChannelBufferSize,
 				Parallelism:       40,
 			},
-			ReadinessTimeout: verifier.DefaultReadinessTimeout,
 		},
 	}}
 
@@ -306,7 +300,8 @@ func TestReadConfigQuery(t *testing.T) {
 					Burst:             query.DefaultBurst,
 				},
 			},
-			HTTP: *newServerConfig(query.DefaultMonitoringPort),
+			HTTP:             *newServerConfig(query.DefaultMonitoringPort),
+			ReadinessTimeout: serve.DefaultReadinessTimeout,
 		},
 		expectedServiceConfig: &query.Config{
 			Database:              defaultDBConfig(),
@@ -318,7 +313,6 @@ func TestReadConfigQuery(t *testing.T) {
 			MaxViewTimeout:        query.DefaultMaxViewTimeout,
 			MaxRequestKeys:        query.DefaultMaxRequestKeys,
 			TLSRefreshInterval:    query.DefaultTLSRefreshInterval,
-			ReadinessTimeout:      query.DefaultReadinessTimeout,
 		},
 	}, {
 		name:           "sample",
@@ -336,7 +330,6 @@ func TestReadConfigQuery(t *testing.T) {
 			MaxViewTimeout:        query.DefaultMaxViewTimeout,
 			MaxRequestKeys:        query.DefaultMaxRequestKeys,
 			TLSRefreshInterval:    query.DefaultTLSRefreshInterval,
-			ReadinessTimeout:      query.DefaultReadinessTimeout,
 		},
 	}}
 
@@ -361,12 +354,10 @@ func TestReadConfigLoadGen(t *testing.T) {
 		expectedServiceConfig *loadgen.ClientConfig
 		expectedServerConfig  *serve.Config
 	}{{
-		name:                 "default",
-		configFilePath:       emptyConfig(t),
-		expectedServerConfig: newServeConfig(loadgen.DefaultServerPort, loadgen.DefaultMonitoringPort),
-		expectedServiceConfig: &loadgen.ClientConfig{
-			ReadinessTimeout: loadgen.DefaultReadinessTimeout,
-		},
+		name:                  "default",
+		configFilePath:        emptyConfig(t),
+		expectedServerConfig:  newServeConfig(loadgen.DefaultServerPort, loadgen.DefaultMonitoringPort),
+		expectedServiceConfig: &loadgen.ClientConfig{},
 	}, {
 		name:           "sample",
 		configFilePath: "samples/loadgen.yaml",
@@ -374,7 +365,6 @@ func TestReadConfigLoadGen(t *testing.T) {
 			"loadgen", loadgen.DefaultServerPort, loadgen.DefaultMonitoringPort,
 		),
 		expectedServiceConfig: &loadgen.ClientConfig{
-			ReadinessTimeout: loadgen.DefaultReadinessTimeout,
 			Monitoring: metrics.Config{
 				Latency: metrics.LatencyConfig{
 					SamplerConfig: metrics.SamplerConfig{
@@ -514,15 +504,17 @@ func newMultiClientConfigWithDefaultTLS(host, fromService string, port int) conn
 
 func newServeConfigWithDefaultTLS(host string, grpcPort, monitorinPort int) *serve.Config {
 	return &serve.Config{
-		GRPC: *newServerConfigWithDefaultTLS(host, grpcPort),
-		HTTP: *newServerConfigWithDefaultTLS(host, monitorinPort),
+		GRPC:             *newServerConfigWithDefaultTLS(host, grpcPort),
+		HTTP:             *newServerConfigWithDefaultTLS(host, monitorinPort),
+		ReadinessTimeout: serve.DefaultReadinessTimeout,
 	}
 }
 
 func newServeConfig(grpcPort, monitorinPort int) *serve.Config {
 	return &serve.Config{
-		GRPC: *newServerConfig(grpcPort),
-		HTTP: *newServerConfig(monitorinPort),
+		GRPC:             *newServerConfig(grpcPort),
+		HTTP:             *newServerConfig(monitorinPort),
+		ReadinessTimeout: serve.DefaultReadinessTimeout,
 	}
 }
 
@@ -734,7 +726,7 @@ load-profile:
 			t.Setenv("SC_ORDERER_SERVERS_ENDPOINT", "orderer:1234")
 			t.Setenv("SC_ORDERER_SERVER_KEEP_ALIVE_PARAMS_TIMEOUT", "3m")
 			t.Setenv("SC_ORDERER_MONITORING_KEEP_ALIVE_PARAMS_TIMEOUT", "5m")
-			conf, server, err := ReadMockOrdererYamlAndSetupLogging(NewViperWithLoggingDefault("orderer"), tc.file)
+			conf, server, err := ReadMockOrdererYamlAndSetupLogging(NewViperWithOrdererDefaults(), tc.file)
 			require.NoError(t, err)
 			require.Len(t, conf.Servers, 1)
 			require.NotNil(t, conf.Servers[0])

@@ -23,6 +23,9 @@ type (
 	Config struct {
 		GRPC ServerConfig `mapstructure:"server"`
 		HTTP ServerConfig `mapstructure:"monitoring"`
+		// ReadinessTimeout is the maximum time to wait for the load generator service
+		// to become ready before startup fails.
+		ReadinessTimeout time.Duration `mapstructure:"readiness-timeout" validate:"required,gt=0"`
 	}
 
 	// ServerConfig describes the connection parameter for a server.

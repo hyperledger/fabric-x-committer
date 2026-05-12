@@ -51,7 +51,6 @@ type (
 		GenesisBlockPath        string                        `mapstructure:"genesis-block-path"`
 		ConsentersMSPIdentities []*ordererdial.IdentityConfig `mapstructure:"consenter-msp-identities"`
 		SendGenesisBlock        bool                          `mapstructure:"send-genesis-block"`
-		ReadinessTimeout        time.Duration                 `mapstructure:"readiness-timeout"`
 
 		// TestServerParameters is only used for internal testing.
 		TestServerParameters test.StartServerParameters
@@ -625,11 +624,10 @@ func (o *Orderer) updateTLSFromConfigBlock(configBlock *common.Block) error {
 
 // OrdererStartAndServe starts the orderer and serves it with the given configuration.
 func OrdererStartAndServe(ctx context.Context, service *Orderer) error {
-	conf := service.config.Load()
-	sc := conf.Servers
+	sc := service.config.Load().Servers
 	serveConfs := make([]*serve.Config, len(sc))
 	for i, s := range sc {
 		serveConfs[i] = &serve.Config{GRPC: *s}
 	}
-	return serve.StartAndServe(ctx, service, conf.ReadinessTimeout, serveConfs...)
+	return serve.StartAndServe(ctx, service, serveConfs...)
 }

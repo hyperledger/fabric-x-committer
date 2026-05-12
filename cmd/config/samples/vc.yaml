@@ -39,6 +39,12 @@ monitoring:
     #   - Must be greater than 0
     #   - Must be less than or equal to requests-per-second
     burst: 0
+
+# Maximum time to wait for the validator-committer service to become ready before startup fails.
+# This covers initialization that happens after Run starts and before the gRPC server begins serving.
+# Default: 5m
+readiness-timeout: 5m
+
 # Database connection configuration
 database:
   # List of database endpoints to connect to. For YugabyteDB clusters, list all nodes.
@@ -151,10 +157,6 @@ resource-limits:
   # Balances latency vs. batching efficiency.
   # Default: 5s
   timeout-for-min-transaction-batch-size: 2s
-  # Maximum time to wait for the validator-committer service to become ready before startup fails.
-  # This covers initialization that happens after Run starts and before the gRPC server begins serving.
-  # Default: 5m
-  readiness-timeout: 5m
 
 # Logging configuration
 logging:

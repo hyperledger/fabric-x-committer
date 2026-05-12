@@ -28,8 +28,6 @@ type stubService struct {
 	running *channel.Ready
 }
 
-const DefaultTestReadinessTimeout = 5 * time.Second
-
 func newStubService() *stubService {
 	return &stubService{
 		ready:   channel.NewReady(),
@@ -93,7 +91,7 @@ func TestStartAndServe(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		t.Cleanup(cancel)
 
-		err := serve.StartAndServe(ctx, &slowReadyService{}, DefaultTestReadinessTimeout, serverConfig)
+		err := serve.StartAndServe(ctx, &slowReadyService{}, serverConfig)
 		require.NoError(t, err)
 		assert.Equal(t, 0, serverConfig.GRPC.Endpoint.Port, "server should not have started")
 	})
@@ -136,7 +134,7 @@ func startInBackground(
 
 	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		return serve.StartAndServe(gCtx, service, DefaultTestReadinessTimeout, serverConfigs...)
+		return serve.StartAndServe(gCtx, service, serverConfigs...)
 	})
 
 	t.Cleanup(func() { cancel(); assert.NoError(t, g.Wait()) })

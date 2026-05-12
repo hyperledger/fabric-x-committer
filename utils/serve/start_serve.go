@@ -61,17 +61,13 @@ type (
 	}
 )
 
+const DefaultReadinessTimeout = 5 * time.Minute
+
 var logger = flogging.MustGetLogger("serve")
 
-// StartAndServe runs a full lifecycle service: starts the service, waits up to
-// readinessTimeout for it to become ready, then creates and serves gRPC and HTTP
-// server(s). Stops everything if either the service or any server exits.
-func StartAndServe(
-	ctx context.Context,
-	service Service,
-	readinessTimeout time.Duration,
-	serverConfig ...*Config,
-) error {
+// StartAndServe runs a full lifecycle service: starts the service, waits for it
+// to be ready, then creates and serves gRPC and HTTP server(s).
+func StartAndServe(ctx context.Context, service Service, serverConfig ...*Config) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -81,6 +77,15 @@ func StartAndServe(
 		defer cancel()
 		return service.Run(gCtx)
 	})
+
+	// If we get more than one server config, we'll use the first assigned time.Duration as
+	var readinessTimeout time.Duration
+	for _, s := range serverConfig {
+		if s.ReadinessTimeout > 0 {
+			readinessTimeout = s.ReadinessTimeout
+			break
+		}
+	}
 
 	ctxTimeout, cancelTimeout := context.WithTimeout(gCtx, readinessTimeout)
 	defer cancelTimeout()

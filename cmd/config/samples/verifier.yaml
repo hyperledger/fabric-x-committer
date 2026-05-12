@@ -39,6 +39,11 @@ monitoring:
     #   - Must be less than or equal to requests-per-second
     burst: 0
 
+# Maximum time to wait for the verifier service to become ready before startup fails.
+# This covers initialization that happens after Run starts and before the gRPC server begins serving.
+# Default: 5m
+readiness-timeout: 5m
+
 parallel-executor:
   # Minimum number of verification responses to collect before emitting a batch result.
   # Larger batches improve verification efficiency through parallel processing
@@ -61,10 +66,6 @@ parallel-executor:
   # Higher values improve throughput on multi-core systems but increase CPU usage.
   # Default: 4
   parallelism: 40
-  # Maximum time to wait for the verifier service to become ready before startup fails.
-  # This covers initialization that happens after Run starts and before the gRPC server begins serving.
-  # Default: 5m
-  readiness-timeout: 5m
 
 # Logging configuration
 logging:

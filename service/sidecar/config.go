@@ -19,10 +19,9 @@ type (
 	// and the config of ledger service, and the orderer setup.
 	// It may contain the orderer endpoint from which the sidecar pulls blocks.
 	Config struct {
-		Committer        *connection.ClientConfig `mapstructure:"committer"`
-		Orderer          ordererdial.Config       `mapstructure:"orderer"`
-		Ledger           LedgerConfig             `mapstructure:"ledger"`
-		ReadinessTimeout time.Duration            `mapstructure:"readiness-timeout" validate:"required,gt=0"`
+		Committer *connection.ClientConfig `mapstructure:"committer"`
+		Orderer   ordererdial.Config       `mapstructure:"orderer"`
+		Ledger    LedgerConfig             `mapstructure:"ledger"`
 		// LastCommittedBlockSetInterval is the interval at which the sidecar updates
 		// the coordinator with the last committed block.
 		LastCommittedBlockSetInterval time.Duration `mapstructure:"last-committed-block-set-interval" validate:"required,gt=0"` //nolint:lll,revive
@@ -57,7 +56,6 @@ type (
 const (
 	DefaultServerPort                    = 4001
 	DefaultMonitoringPort                = 2114
-	DefaultReadinessTimeout              = 5 * time.Minute
 	DefaultNotificationMaxTimeout        = time.Minute
 	DefaultBufferSize                    = 100
 	DefaultMaxActiveTxIDs                = 100_000

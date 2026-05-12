@@ -40,7 +40,6 @@ type Config struct {
 	MaxAggregatedViews    int                `mapstructure:"max-aggregated-views" validate:"required,gt=0"`
 	MaxActiveViews        int                `mapstructure:"max-active-views" validate:"gte=0"`
 	MaxViewTimeout        time.Duration      `mapstructure:"max-view-timeout" validate:"required,gt=0"`
-	ReadinessTimeout      time.Duration      `mapstructure:"readiness-timeout" validate:"required,gt=0"`
 	// MaxRequestKeys is the maximum number of keys allowed in a single query request.
 	// This applies to both GetRows (total keys across all namespaces) and
 	// GetTransactionStatus (number of transaction IDs).
@@ -55,7 +54,6 @@ type Config struct {
 const (
 	DefaultServerPort            = 7001
 	DefaultMonitoringPort        = 2117
-	DefaultReadinessTimeout      = 5 * time.Minute
 	DefaultRequestsPerSecond     = 5000
 	DefaultBurst                 = 1000
 	DefaultMinBatchKeys          = 1024
