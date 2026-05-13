@@ -47,7 +47,6 @@ const (
 	databasePort           = "5433"
 
 	committerContainerName = "committer"
-	discoverySuffix        = "discovery_test"
 )
 
 var commonTestNodeCMD = []string{"run", "db", "committer", "orderer"}
@@ -266,7 +265,7 @@ func TestYugabyteDriverDiscoveryWithSingleNodeConnection(t *testing.T) {
 
 	// Start committer container in the same Docker network
 	committerName := fmt.Sprintf("%s_%s_%s",
-		test.DockerNamesPrefix, committerContainerName, discoverySuffix,
+		test.DockerNamesPrefix, committerContainerName, "discovery_test",
 	)
 	stopAndRemoveContainersByName(ctx, t, createDockerClient(t), committerName)
 
@@ -276,8 +275,7 @@ func TestYugabyteDriverDiscoveryWithSingleNodeConnection(t *testing.T) {
 		tlsMode:           connection.NoneTLSMode,
 		dbType:            testdb.YugaDBType,
 		dbEndpointsString: singleTabletAddress,
-		// The 'db' node starts, but we never connect to it.
-		cmd: append(commonTestNodeCMD, "loadgen"),
+		cmd:               []string{"run", "committer", "orderer", "loadgen"},
 		additionalEnvs: []string{
 			"SC_VC_DATABASE_ENDPOINTS=" + singleTabletAddress,
 			"SC_VC_DATABASE_USERNAME=" + testdb.YugaDBType,
@@ -290,6 +288,9 @@ func TestYugabyteDriverDiscoveryWithSingleNodeConnection(t *testing.T) {
 			"SC_QUERY_DATABASE_DATABASE=" + testdb.YugaDBType,
 			"SC_QUERY_DATABASE_LOAD_BALANCE=true",
 			"SC_QUERY_DATABASE_TLS_MODE=" + connection.NoneTLSMode,
+
+			// We are limiting the number of transactions to ensure transactions are not processed from the VC queue.
+			"SC_LOADGEN_LIMIT_TRANSACTIONS=1000",
 		},
 	})
 
