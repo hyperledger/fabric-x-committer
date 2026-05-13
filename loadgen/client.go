@@ -147,7 +147,7 @@ func (c *Client) Run(ctx context.Context) error {
 
 // WaitForReady indicates if the service is ready to be exposed as a gRPC service.
 // This implementation always returns true as the service is considered ready immediately.
-func (c *Client) WaitForReady(context.Context) bool {
+func (*Client) WaitForReady(context.Context) bool {
 	return true
 }
 
