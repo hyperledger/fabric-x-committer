@@ -37,7 +37,6 @@ type (
 		resources   adapters.ClientResources
 		adapter     ServiceAdapter
 		healthcheck *health.Server
-		ready       *channel.Ready
 	}
 
 	// ServiceAdapter encapsulates the common interface for adapters.
@@ -66,7 +65,6 @@ func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 			Metrics: metrics.NewLoadgenServiceMetrics(&conf.Monitoring),
 		},
 		healthcheck: serve.DefaultHealthCheckService(),
-		ready:       channel.NewReady(),
 	}
 
 	adapter, err := getAdapter(&conf.Adapter, &c.resources)
@@ -120,9 +118,6 @@ func (c *Client) Run(ctx context.Context) error {
 		return c.txStream.Run(gCtx)
 	})
 
-	defer c.ready.Reset()
-	c.ready.SignalReady()
-
 	workloadSetupTXs := make(chan *servicepb.LoadGenTx, 1)
 	cs := &workload.StreamWithSetup{
 		WorkloadSetupTXs: channel.NewReader(gCtx, workloadSetupTXs),
@@ -150,10 +145,10 @@ func (c *Client) Run(ctx context.Context) error {
 	return g.Wait()
 }
 
-// WaitForReady waits for the service resources to initialize, so it is ready to answers requests.
-// If the context ended before the service is ready, returns false.
-func (c *Client) WaitForReady(ctx context.Context) bool {
-	return c.ready.WaitForReady(ctx)
+// WaitForReady indicates if the service is ready to be exposed as a gRPC service.
+// This implementation always returns true as the service is considered ready immediately.
+func (c *Client) WaitForReady(context.Context) bool {
+	return true
 }
 
 // RegisterService registers the loadgen's gRPC services and monitoring server.

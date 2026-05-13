@@ -54,8 +54,8 @@ func (s *Server) Run(ctx context.Context) error {
 	return nil
 }
 
-// WaitForReady wait for service to be ready to be exposed as gRPC service.
-// If the context ended before the service is ready, returns false.
+// WaitForReady indicates if the service is ready to be exposed as a gRPC service.
+// This implementation always returns true as the service is considered ready immediately.
 func (*Server) WaitForReady(context.Context) bool {
 	return true
 }

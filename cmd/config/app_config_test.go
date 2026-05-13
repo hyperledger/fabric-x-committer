@@ -54,8 +54,8 @@ func TestReadConfigSidecar(t *testing.T) {
 				Endpoint:             *newEndpoint(connection.DefaultHost, sidecar.DefaultServerPort),
 				MaxConcurrentStreams: sidecar.DefaultMaxConcurrentStreams,
 			},
-			HTTP:             *newServerConfig(sidecar.DefaultMonitoringPort),
-			ReadinessTimeout: serve.DefaultReadinessTimeout,
+			HTTP:                  *newServerConfig(sidecar.DefaultMonitoringPort),
+			ServiceStartupTimeout: serve.DefaultServiceStartupTimeout,
 		},
 		expectedServiceConfig: &sidecar.Config{
 			Committer: &connection.ClientConfig{
@@ -95,8 +95,8 @@ func TestReadConfigSidecar(t *testing.T) {
 				},
 				MaxConcurrentStreams: 10,
 			},
-			HTTP:             *newServerConfigWithDefaultTLS("sidecar", 2114),
-			ReadinessTimeout: serve.DefaultReadinessTimeout,
+			HTTP:                  *newServerConfigWithDefaultTLS("sidecar", 2114),
+			ServiceStartupTimeout: serve.DefaultServiceStartupTimeout,
 		},
 		expectedServiceConfig: &sidecar.Config{
 			Orderer: ordererdial.Config{
@@ -300,8 +300,8 @@ func TestReadConfigQuery(t *testing.T) {
 					Burst:             query.DefaultBurst,
 				},
 			},
-			HTTP:             *newServerConfig(query.DefaultMonitoringPort),
-			ReadinessTimeout: serve.DefaultReadinessTimeout,
+			HTTP:                  *newServerConfig(query.DefaultMonitoringPort),
+			ServiceStartupTimeout: serve.DefaultServiceStartupTimeout,
 		},
 		expectedServiceConfig: &query.Config{
 			Database:              defaultDBConfig(),
@@ -504,17 +504,17 @@ func newMultiClientConfigWithDefaultTLS(host, fromService string, port int) conn
 
 func newServeConfigWithDefaultTLS(host string, grpcPort, monitorinPort int) *serve.Config {
 	return &serve.Config{
-		GRPC:             *newServerConfigWithDefaultTLS(host, grpcPort),
-		HTTP:             *newServerConfigWithDefaultTLS(host, monitorinPort),
-		ReadinessTimeout: serve.DefaultReadinessTimeout,
+		GRPC:                  *newServerConfigWithDefaultTLS(host, grpcPort),
+		HTTP:                  *newServerConfigWithDefaultTLS(host, monitorinPort),
+		ServiceStartupTimeout: serve.DefaultServiceStartupTimeout,
 	}
 }
 
 func newServeConfig(grpcPort, monitorinPort int) *serve.Config {
 	return &serve.Config{
-		GRPC:             *newServerConfig(grpcPort),
-		HTTP:             *newServerConfig(monitorinPort),
-		ReadinessTimeout: serve.DefaultReadinessTimeout,
+		GRPC:                  *newServerConfig(grpcPort),
+		HTTP:                  *newServerConfig(monitorinPort),
+		ServiceStartupTimeout: serve.DefaultServiceStartupTimeout,
 	}
 }
 

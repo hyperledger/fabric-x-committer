@@ -73,10 +73,6 @@ monitoring:
       # Example: [0.001, 0.01, 0.1, 1.0, 5.0] creates buckets for <1ms, 1-10ms, 10-100ms, 100ms-1s, 1-5s, >5s
       # values: [0.001, 0.01, 0.1, 1.0, 5.0]
 
-# Maximum time to wait for the load generator service to become ready before startup fails.
-# This covers initialization that happens after Run starts and before the gRPC server begins serving.
-readiness-timeout: 5m
-
 # Orderer client configuration for submitting transactions
 orderer-client:
   # Sidecar client configuration (alternative to direct orderer connection)

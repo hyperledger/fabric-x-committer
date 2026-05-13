@@ -23,9 +23,9 @@ type (
 	Config struct {
 		GRPC ServerConfig `mapstructure:"server"`
 		HTTP ServerConfig `mapstructure:"monitoring"`
-		// ReadinessTimeout is the maximum time to wait for a service
+		// ServiceStartupTimeout is the maximum time to wait for a service
 		// to become ready before startup fails.
-		ReadinessTimeout time.Duration `mapstructure:"readiness-timeout" validate:"required,gt=0"`
+		ServiceStartupTimeout time.Duration `mapstructure:"startup-timeout" validate:"required,gt=0"`
 	}
 
 	// ServerConfig describes the connection parameter for a server.
@@ -70,6 +70,9 @@ type (
 		PermitWithoutStream bool          `mapstructure:"permit-without-stream"`
 	}
 )
+
+// DefaultServiceStartupTimeout is the default timeout for waiting for service readiness.
+const DefaultServiceStartupTimeout = 5 * time.Minute
 
 // Validate checks that the rate limit configuration is valid.
 func (c *RateLimitConfig) Validate() error {

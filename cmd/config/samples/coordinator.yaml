@@ -40,8 +40,11 @@ monitoring:
     burst: 0
 
 # Maximum time to wait for the coordinator service to become ready before startup fails.
-# This covers initialization that happens after Run starts and before the gRPC server begins serving.
-readiness-timeout: 5m
+# The coordinator is considered ready after it successfully
+# establishes connections to the validator-committers using its manager and attempts to
+# recover the policy manager (namespace policies and config transaction) from the state DB.
+# Default: 5m
+startup-timeout: 5m
 
 verifier:
   # List of verifier service endpoints. Multiple endpoints enable load distribution

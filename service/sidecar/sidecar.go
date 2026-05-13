@@ -94,8 +94,8 @@ func New(c *Config) (*Service, error) {
 	}, nil
 }
 
-// WaitForReady wait for sidecar to be ready to be exposed as gRPC service.
-// If the context ended before the service is ready, returns false.
+// WaitForReady indicates if the service is ready to be exposed as a gRPC service.
+// This implementation always returns true as the service is considered ready immediately.
 func (*Service) WaitForReady(context.Context) bool {
 	return true
 }

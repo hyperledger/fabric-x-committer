@@ -61,9 +61,6 @@ type (
 	}
 )
 
-// DefaultReadinessTimeout is the default timeout for waiting for service readiness.
-const DefaultReadinessTimeout = 5 * time.Minute
-
 var logger = flogging.MustGetLogger("serve")
 
 // StartAndServe runs a full lifecycle service: starts the service, waits for it
@@ -80,15 +77,15 @@ func StartAndServe(ctx context.Context, service Service, serverConfig ...*Config
 	})
 
 	// Extract the readiness timeout from the first config that defines one.
-	var readinessTimeout time.Duration
+	serviceStartupTimeout := DefaultServiceStartupTimeout
 	for _, s := range serverConfig {
-		if s.ReadinessTimeout > 0 {
-			readinessTimeout = s.ReadinessTimeout
+		if s.ServiceStartupTimeout > 0 {
+			serviceStartupTimeout = s.ServiceStartupTimeout
 			break
 		}
 	}
 
-	ctxTimeout, cancelTimeout := context.WithTimeout(gCtx, readinessTimeout)
+	ctxTimeout, cancelTimeout := context.WithTimeout(gCtx, serviceStartupTimeout)
 	defer cancelTimeout()
 	if !service.WaitForReady(ctxTimeout) {
 		cancel()

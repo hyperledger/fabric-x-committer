@@ -152,8 +152,8 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 	return nil
 }
 
-// WaitForReady wait for the service to be ready to be exposed as gRPC service.
-// If the context ended before the service is ready, returns false.
+// WaitForReady indicates if the service is ready to be exposed as a gRPC service.
+// This implementation always returns true as the service is considered ready immediately.
 func (*ValidatorCommitterService) WaitForReady(context.Context) bool {
 	return true
 }
