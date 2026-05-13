@@ -114,7 +114,7 @@ func newViperWithServiceDefault(serviceName string, servicePort, monitoringPort 
 	// Rate limiting disabled by default (0 = disabled)
 	v.SetDefault("server.rate-limit", &serve.RateLimitConfig{})
 	v.SetDefault("monitoring.rate-limit", &serve.RateLimitConfig{})
-	v.SetDefault("readiness-timeout", serve.DefaultServiceStartupTimeout)
+	v.SetDefault("startup-timeout", serve.DefaultServiceStartupTimeout)
 	return v
 }
 
