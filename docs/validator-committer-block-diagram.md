@@ -34,7 +34,7 @@ Main responsibilities:
 - receive conflict-free transaction batches from Coordinator
 - categorize writes into blind writes, new writes, and non-blind writes
 - validate transaction read-sets against committed database state
-- commit valid transactions and update world state
+- commit transaction statuses of valid/invalid transactions and update world state
 - return final transaction status to Coordinator
 - provide data access APIs for namespace policies and config recovery
 
