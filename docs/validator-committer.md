@@ -18,11 +18,26 @@ SPDX-License-Identifier: Apache-2.0
 
 ## 1. Overview
 
+```mermaid
+flowchart LR
+    Batch[Verified transaction batch] --> Prepare[Prepare read/write sets]
+    Prepare --> Validate[Validate read versions]
+    Validate -->|valid| Commit[Apply writes]
+    Validate -->|invalid| StatusOnly[Record invalid status]
+    Commit --> Status[Record committed status]
+    StatusOnly --> DB[(State database)]
+    Status --> DB
+    DB --> Coordinator[Return final statuses]
+```
+
 The [Validator-Committer (VC) service](/service/vc) is a core component responsible for the final stages of transaction processing.
 It operates downstream from the Coordinator, receiving batches of transactions that are internally conflict-free. 
 This means that these conflict-free transactions do not conflict with any other active transactions being processed concurrently.
 Its primary function is to perform optimistic concurrency control by validating each transaction's read-set against the current state in
 the database. Transactions that pass this validation are then committed, and their write-sets are applied to the database.
+
+
+The same durable status path is used for successful and unsuccessful transactions. Valid transactions update namespace state; invalid transactions skip application-state writes but still receive final statuses that clients and recovery logic can query.
 
 ## 2. Core Responsibilities
 
