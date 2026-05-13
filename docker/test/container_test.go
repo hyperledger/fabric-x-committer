@@ -46,8 +46,8 @@ const (
 	coordinatorServicePort = "9001"
 	databasePort           = "5433"
 
-	committerContainerName            = "committer"
-	committerDiscoveryTestPostfixName = "discovery_test"
+	committerContainerName = "committer"
+	discoverySuffix        = "discovery_test"
 )
 
 var commonTestNodeCMD = []string{"run", "db", "committer", "orderer"}
@@ -266,7 +266,7 @@ func TestYugabyteDriverDiscoveryWithSingleNodeConnection(t *testing.T) {
 
 	// Start committer container in the same Docker network
 	committerName := fmt.Sprintf("%s_%s_%s",
-		test.DockerNamesPrefix, committerContainerName, committerDiscoveryTestPostfixName,
+		test.DockerNamesPrefix, committerContainerName, discoverySuffix,
 	)
 	stopAndRemoveContainersByName(ctx, t, createDockerClient(t), committerName)
 
