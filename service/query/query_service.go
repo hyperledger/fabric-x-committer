@@ -155,7 +155,8 @@ func (q *Service) BeginView(
 			continue
 		}
 		if errors.Is(err, ErrTooManyActiveViews) {
-			return nil, grpcerror.WrapResourceExhaustedOrCancelled(ctx,
+			return nil, grpcerror.WrapResourceExhaustedOrCancelled(
+				ctx,
 				errors.Wrapf(err, "limit %d", q.config.MaxActiveViews),
 			)
 		}
@@ -319,7 +320,8 @@ func (q *Service) validateKeysCount(count int) error {
 	if q.config.MaxRequestKeys > 0 && count > q.config.MaxRequestKeys {
 		return grpcerror.WrapInvalidArgument(
 			errors.Join(ErrTooManyKeys, errors.Newf("requested %d keys, maximum allowed is %d",
-				count, q.config.MaxRequestKeys)))
+				count, q.config.MaxRequestKeys)),
+		)
 	}
 	return nil
 }

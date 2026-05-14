@@ -95,7 +95,8 @@ func (n *notifier) run(ctx context.Context, statusQueue chan []*committerpb.TxSt
 			// (e.g., max keys per query). The client controls request size and should respect it.
 			if len(txIDs) > n.maxTxIDsPerRequest {
 				reject(req, txIDs, fmt.Sprintf(
-					"request contains %d tx IDs, max allowed is %d", len(txIDs), n.maxTxIDsPerRequest))
+					"request contains %d tx IDs, max allowed is %d", len(txIDs), n.maxTxIDsPerRequest,
+				))
 				continue
 			}
 			// Global active limit: accept what fits, reject the rest. Unlike the per-request limit,

@@ -44,7 +44,8 @@ type cryptoParameters struct {
 
 func TestVerifierSecureConnection(t *testing.T) {
 	t.Parallel()
-	test.RunSecureConnectionTest(t,
+	test.RunSecureConnectionTest(
+		t,
 		func(t *testing.T, serverTLS, _ connection.TLSConfig) test.RPCAttempt {
 			t.Helper()
 			config, serverConfig := defaultConfigWithTLS(serverTLS)
@@ -181,7 +182,8 @@ func TestSignatureRule(t *testing.T) {
 		Rule: &applicationpb.NamespacePolicy_MspRule{
 			MspRule: protoutil.MarshalOrPanic(
 				policydsl.Envelope(policydsl.And(policydsl.SignedBy(0), policydsl.SignedBy(1)),
-					serializedSigningIdentities)),
+					serializedSigningIdentities),
+			),
 		},
 	}
 

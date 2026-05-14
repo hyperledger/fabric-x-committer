@@ -336,7 +336,8 @@ func (e *loadGenClientTestEnv) testLoadGenerator(t *testing.T) {
 
 	if !limitConf.HasLimit() {
 		// If we have a limit, the Prometheus server might stop before we can fetch the metrics.
-		test.CheckMetrics(t, metricsURL, test.MustGetTLSConfig(t, &e.clientTLSConfig),
+		test.CheckMetrics(
+			t, metricsURL, test.MustGetTLSConfig(t, &e.clientTLSConfig),
 			"loadgen_block_sent_total",
 			"loadgen_transaction_sent_total",
 			"loadgen_transaction_received_total",

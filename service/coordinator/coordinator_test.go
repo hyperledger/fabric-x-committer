@@ -66,7 +66,8 @@ type (
 // under various client TLS configurations.
 func TestCoordinatorSecureConnection(t *testing.T) {
 	t.Parallel()
-	test.RunSecureConnectionTest(t,
+	test.RunSecureConnectionTest(
+		t,
 		func(t *testing.T, serverTLSCfg, clientTLSCfg connection.TLSConfig) test.RPCAttempt {
 			t.Helper()
 			env := newCoordinatorTestEnv(t, &testConfig{

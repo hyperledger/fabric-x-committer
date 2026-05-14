@@ -162,7 +162,8 @@ func (env *sidecarTestEnv) startNotificationStream(
 
 func TestSidecarSecureConnection(t *testing.T) {
 	t.Parallel()
-	test.RunSecureConnectionTest(t,
+	test.RunSecureConnectionTest(
+		t,
 		func(t *testing.T, serverCreds, clientCreds connection.TLSConfig) test.RPCAttempt {
 			t.Helper()
 			env := newSidecarTestEnvWithTLS(

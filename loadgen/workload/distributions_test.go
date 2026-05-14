@@ -159,7 +159,8 @@ func TestDiscreteDistMarshal(t *testing.T) {
 
 	t.Run("marshal", func(t *testing.T) {
 		t.Parallel()
-		requireMarshalUnmarshal(t,
+		requireMarshalUnmarshal(
+			t,
 			"discrete:\n  - value: 0\n    probability: 1\n",
 			NewDiscreteDistribution([]DiscreteValue[float64]{{Value: 0, Probability: 1}}),
 		)

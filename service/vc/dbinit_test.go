@@ -89,6 +89,7 @@ func TestRetry(t *testing.T) {
 			Retry: &retry.Profile{
 				MaxElapsedTime: 10 * time.Second,
 			},
-		})
+		},
+	)
 	require.ErrorContains(t, err, "failed to create a connection pool")
 }

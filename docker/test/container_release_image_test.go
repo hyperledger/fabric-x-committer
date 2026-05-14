@@ -122,7 +122,8 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 						c.LoadProfile.Policy.ArtifactsPath, "loadgen", mode,
 					)
 
-					monitorMetric(t,
+					monitorMetric(
+						t,
 						getContainerMappedHostPort(
 							ctx, t, assembleContainerName("loadgen", mode, dbType), loadGenMetricsPort,
 						), &metricsClientTLSConfig, 1000,
@@ -236,7 +237,8 @@ func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, param
 		hostConfig: &container.HostConfig{
 			NetworkMode: container.NetworkMode(params.networkName),
 			Binds: []string{
-				fmt.Sprintf("%s.yaml:/%s.yaml",
+				fmt.Sprintf(
+					"%s.yaml:/%s.yaml",
 					filepath.Join(mustGetWD(t), localConfigPath, params.node), configPath,
 				),
 				fmt.Sprintf("%s:%s", params.artifactsPath, containerArtifactsPath),
@@ -287,7 +289,8 @@ func startLoadgenNodeWithReleaseImage(
 				}},
 			},
 			Binds: []string{
-				fmt.Sprintf("%s.yaml:/%s.yaml",
+				fmt.Sprintf(
+					"%s.yaml:/%s.yaml",
 					filepath.Join(mustGetWD(t), localConfigPath, params.node), configPath,
 				),
 				// Mount the crypto artifacts for MSP-based endorsement of the meta namespace.

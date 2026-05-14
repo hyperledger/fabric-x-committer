@@ -8,7 +8,7 @@ set -e
 
 # Versions for non-Go tools
 protoc_bin_version="33.4"
-golangci_lint_version="v2.11.4"
+golangci_lint_version="v2.12.2"
 sqlfluff_version="3.4.0"
 
 # Install protoc binary (C++ based, not available via go install)

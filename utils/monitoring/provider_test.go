@@ -76,7 +76,8 @@ func TestCounterVec(t *testing.T) {
 	promutil.AddToCounterVec(cv, []string{"ns_2"}, 1)
 	promutil.AddToCounterVec(cv, []string{"ns_1"}, 1)
 
-	env.checkMetrics(t,
+	env.checkMetrics(
+		t,
 		`vcservice_preparer_transaction_total{namespace="ns_1"} 2`,
 		`vcservice_preparer_transaction_total{namespace="ns_2"} 1`,
 	)
@@ -121,12 +122,14 @@ func TestNewGuageVec(t *testing.T) {
 
 	gv.With(prometheus.Labels{"namespace": "ns_1"}).Add(7)
 	gv.With(prometheus.Labels{"namespace": "ns_2"}).Add(2)
-	env.checkMetrics(t, `vcservice_committer_transactions_queued{namespace="ns_1"} 7`,
+	env.checkMetrics(
+		t, `vcservice_committer_transactions_queued{namespace="ns_1"} 7`,
 		`vcservice_committer_transactions_queued{namespace="ns_2"} 2`,
 	)
 
 	promutil.SetGaugeVec(gv, []string{"ns_1"}, 4)
-	env.checkMetrics(t, `vcservice_committer_transactions_queued{namespace="ns_1"} 4`,
+	env.checkMetrics(
+		t, `vcservice_committer_transactions_queued{namespace="ns_1"} 4`,
 		`vcservice_committer_transactions_queued{namespace="ns_2"} 2`,
 	)
 }

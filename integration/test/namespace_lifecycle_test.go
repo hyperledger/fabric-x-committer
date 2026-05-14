@@ -152,7 +152,8 @@ func TestCreateUpdateNamespace(t *testing.T) {
 			}},
 		}
 		lgTx := c.TxBuilder.MakeTx(tx)
-		c.SendTransactionsToOrderer(t,
+		c.SendTransactionsToOrderer(
+			t,
 			[]*servicepb.LoadGenTx{lgTx},
 			[]committerpb.Status{committerpb.Status_MALFORMED_MISSING_SIGNATURE},
 		)

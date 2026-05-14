@@ -59,7 +59,8 @@ type (
 // under various client TLS configurations.
 func TestQuerySecureConnection(t *testing.T) {
 	t.Parallel()
-	test.RunSecureConnectionTest(t,
+	test.RunSecureConnectionTest(
+		t,
 		func(t *testing.T, serverTLS, clientTLS connection.TLSConfig) test.RPCAttempt {
 			t.Helper()
 			env := newQueryServiceTestEnv(t, &queryServiceTestOpts{serverTLS: serverTLS, clientTLS: clientTLS})
@@ -630,7 +631,8 @@ func (q *queryServiceTestEnv) update(t *testing.T, i *items) {
 	require.NotEmpty(t, i.keys)
 	require.Len(t, i.values, len(i.keys))
 	require.Len(t, i.versions, len(i.keys))
-	query := fmt.Sprintf(`
+	query := fmt.Sprintf(
+		`
 		UPDATE %[1]s
 			SET value = t.value,
 				version = t.version

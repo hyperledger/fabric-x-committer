@@ -112,7 +112,8 @@ func TestRateLimit(t *testing.T) {
 			}
 
 			successCount, rateLimitedCount, otherErrorCount := makeParallelRequests(
-				t, numParallelRequests, conn, tt.requestFn, tt.timeout)
+				t, numParallelRequests, conn, tt.requestFn, tt.timeout,
+			)
 
 			if tt.expectAllSucceed {
 				require.Equal(t, int32(numParallelRequests), successCount) //nolint:gosec // int to int32

@@ -19,7 +19,8 @@ func TestBasicEncodingDecoding(t *testing.T) {
 	for i := range uint64(10_000) {
 		value := EncodeOrderPreservingVarUint64(i)
 		nextValue := EncodeOrderPreservingVarUint64(i + 1)
-		require.Greaterf(t, nextValue, value,
+		require.Greaterf(
+			t, nextValue, value,
 			"A smaller integer should result in smaller bytes. [%d]=>[%x], [%d]=>[%x]",
 			i, i+1, value, nextValue,
 		)
@@ -49,7 +50,8 @@ func TestDecodingBadInputBytes(t *testing.T) {
 	sizeBytes := proto.EncodeVarint(uint64(1000))
 	_, _, err := DecodeOrderPreservingVarUint64(sizeBytes)
 	require.Error(t, err)
-	require.Equal(t,
+	require.Equal(
+		t,
 		fmt.Sprintf(
 			"number of consumed bytes from DecodeVarint is invalid, expected 1, but got %d",
 			len(sizeBytes),
@@ -60,7 +62,8 @@ func TestDecodingBadInputBytes(t *testing.T) {
 	invalidSizeBytes := sizeBytes[0 : len(sizeBytes)-1]
 	_, _, err = DecodeOrderPreservingVarUint64(invalidSizeBytes)
 	require.Error(t, err)
-	require.Equal(t,
+	require.Equal(
+		t,
 		"number of consumed bytes from DecodeVarint is invalid, expected 1, but got 0",
 		err.Error(),
 	)

@@ -78,7 +78,8 @@ func TestConfigUpdateLifecyclePolicy(t *testing.T) {
 	validTx := &applicationpb.Tx{
 		Namespaces: metaTx.Namespaces,
 	}
-	c.SendTransactionsToOrderer(t,
+	c.SendTransactionsToOrderer(
+		t,
 		[]*servicepb.LoadGenTx{c.TxBuilder.MakeTx(validTx)},
 		[]committerpb.Status{committerpb.Status_COMMITTED},
 	)
@@ -124,7 +125,8 @@ func TestConfigUpdateLifecyclePolicy(t *testing.T) {
 	updatedEndorsement, err := updatedEndorser.EndorseTxNs("stale-version-tx", staleVersionTx, 0)
 	require.NoError(t, err)
 	staleVersionTx.Endorsements = []*applicationpb.Endorsements{updatedEndorsement}
-	c.SendTransactionsToOrderer(t,
+	c.SendTransactionsToOrderer(
+		t,
 		[]*servicepb.LoadGenTx{c.TxBuilder.MakeTxWithID("stale-version-tx", staleVersionTx)},
 		[]committerpb.Status{committerpb.Status_ABORTED_MVCC_CONFLICT},
 	)
@@ -140,7 +142,8 @@ func TestConfigUpdateLifecyclePolicy(t *testing.T) {
 	staleEndorserEndorsement, err := staleEndorser.EndorseTxNs("stale-endorser-tx", staleEndorserTx, 0)
 	require.NoError(t, err)
 	staleEndorserTx.Endorsements = []*applicationpb.Endorsements{staleEndorserEndorsement}
-	c.SendTransactionsToOrderer(t,
+	c.SendTransactionsToOrderer(
+		t,
 		[]*servicepb.LoadGenTx{c.TxBuilder.MakeTxWithID("stale-endorser-tx", staleEndorserTx)},
 		[]committerpb.Status{committerpb.Status_ABORTED_SIGNATURE_INVALID},
 	)
@@ -155,7 +158,8 @@ func TestConfigUpdateLifecyclePolicy(t *testing.T) {
 	freshEndorsement, err := updatedEndorser.EndorseTxNs("fresh-meta-tx", freshTx, 0)
 	require.NoError(t, err)
 	freshTx.Endorsements = []*applicationpb.Endorsements{freshEndorsement}
-	c.SendTransactionsToOrderer(t,
+	c.SendTransactionsToOrderer(
+		t,
 		[]*servicepb.LoadGenTx{c.TxBuilder.MakeTxWithID("fresh-meta-tx", freshTx)},
 		[]committerpb.Status{committerpb.Status_COMMITTED},
 	)

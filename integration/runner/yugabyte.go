@@ -262,7 +262,8 @@ func (cc *YugaClusterController) setClusterPlacementPolicy(t *testing.T) {
 		return
 	}
 
-	cc.runYBAdmin(t,
+	cc.runYBAdmin(
+		t,
 		"modify_placement_info", "cloud1.datacenter1.rack1",
 		fmt.Sprintf("%d", cc.replicationFactor),
 	)
@@ -328,7 +329,8 @@ func nodeConfig(t *testing.T, params nodeConfigParameters) []string {
 	t.Helper()
 	switch params.role {
 	case MasterNode:
-		return append(nodeCommonConfig("yb-master", params.nodeName, masterPort),
+		return append(
+			nodeCommonConfig("yb-master", params.nodeName, masterPort),
 			// List of all master nodes so they can form a Raft group.
 			"--master_addresses", params.masterAddresses,
 			// Desired number of replicas for system and user tables.
@@ -340,7 +342,8 @@ func nodeConfig(t *testing.T, params nodeConfigParameters) []string {
 			fmt.Sprintf("--txn_table_wait_min_ts_count=%d", params.replicationFactor),
 		)
 	case TabletNode:
-		return append(nodeCommonConfig("yb-tserver", params.nodeName, tabletPort),
+		return append(
+			nodeCommonConfig("yb-tserver", params.nodeName, tabletPort),
 			// Enable the YSQL (PostgreSQL-compatible) query layer.
 			"--start_pgsql_proxy",
 			// Master addresses so the tserver can register and discover tablets.

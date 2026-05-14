@@ -57,7 +57,8 @@ func (c *LoadGenAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 	g, gCtx := errgroup.WithContext(dCtx)
 	g.Go(func() error {
 		receiveQueueCtx := channel.NewWriter(gCtx, receiveQueue)
-		return sendBlocks(dCtx, &c.commonAdapter, txStream, workload.MapToLoadGenBatch,
+		return sendBlocks(
+			dCtx, &c.commonAdapter, txStream, workload.MapToLoadGenBatch,
 			func(batch *servicepb.LoadGenBatch) error {
 				_, appendErr := client.AppendBatch(dCtx, batch)
 				status := committerpb.Status_COMMITTED

@@ -300,7 +300,7 @@ func getVerifier(t *testing.T, block *common.Block) protoutil.BlockVerifierFunc 
 	oc, ok := configMaterial.Bundle.OrdererConfig()
 	require.True(t, ok)
 
-	bftEnabled := configMaterial.Bundle.ChannelConfig().Capabilities().ConsensusTypeBFT()
+	bftEnabled := oc.ConsensusType() == "BFT" || oc.ConsensusType() == "arma"
 	require.True(t, bftEnabled)
 	consenters := oc.Consenters()
 

@@ -59,7 +59,8 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 		},
 	)
 
-	test.RunServiceForTest(t.Context(), t,
+	test.RunServiceForTest(
+		t.Context(), t,
 		func(ctx context.Context) error {
 			err := connection.FilterStreamRPCError(svm.run(ctx))
 			if expectedEndError != "" {

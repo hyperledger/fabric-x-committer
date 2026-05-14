@@ -117,7 +117,8 @@ func mapToStatusBatch(block *common.Block) []metrics.TxStatus {
 	if block.Metadata != nil && len(block.Metadata.Metadata) > statusIdx {
 		statusCodes = block.Metadata.Metadata[statusIdx]
 	}
-	logger.Infof("Received block #%d with %d TXs and %d statuses [%s]",
+	logger.Infof(
+		"Received block #%d with %d TXs and %d statuses [%s]",
 		block.Header.Number, len(block.Data.Data), len(statusCodes), recapStatusCodes(statusCodes),
 	)
 

@@ -65,7 +65,8 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 		})
 	})
 	g.Go(func() error {
-		return sendBlocks(gCtx, &c.commonAdapter, txStream, workload.MapToOrdererBlock,
+		return sendBlocks(
+			gCtx, &c.commonAdapter, txStream, workload.MapToOrdererBlock,
 			func(fabricBlock *common.Block) error {
 				return orderer.SubmitBlock(gCtx, fabricBlock)
 			},

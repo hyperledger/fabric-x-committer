@@ -177,7 +177,8 @@ func (dc *DatabaseContainer) initDefaults() error { //nolint:gocognit
 			if len(dc.TLSConfig.CACertPaths) == 0 {
 				return errors.New("CA cert paths required for TLS-enabled YugabyteDB")
 			}
-			dc.Binds = append(dc.Binds,
+			dc.Binds = append(
+				dc.Binds,
 				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CertPath, yugabytePublicKeyFileName),
 				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.KeyPath, yugabytePrivateKeyFileName),
 				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CACertPaths[0], yugabyteCACertificateFileName),
@@ -199,7 +200,8 @@ func (dc *DatabaseContainer) initDefaults() error { //nolint:gocognit
 		}
 
 		if dc.TLSConfig != nil {
-			dc.Binds = append(dc.Binds,
+			dc.Binds = append(
+				dc.Binds,
 				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.CertPath, postgresPublicKeyFileName),
 				fmt.Sprintf("%s:/creds/%s", dc.TLSConfig.KeyPath, postgresPrivateKeyFileName),
 			)

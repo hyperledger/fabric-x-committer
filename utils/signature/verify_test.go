@@ -146,7 +146,8 @@ func TestNsVerifierPolicyBased(t *testing.T) {
 		t.Parallel()
 		verifier, errNs := signature.NewNsVerifier(
 			&applicationpb.NamespacePolicy{Rule: &applicationpb.NamespacePolicy_MspRule{MspRule: pBytes}},
-			deserializer)
+			deserializer,
+		)
 		require.NoError(t, errNs)
 
 		for _, creatorType := range []int{testsig.CreatorCertificate, testsig.CreatorID} {
@@ -193,13 +194,15 @@ func TestNsVerifierPolicyBased(t *testing.T) {
 					policydsl.And(policydsl.SignedBy(0), policydsl.SignedBy(2)),
 				),
 				policydsl.SignedBy(3),
-			), identities)
+			), identities,
+		)
 		nestedBytes, err := proto.Marshal(nested)
 		require.NoError(t, err)
 
 		verifier, err := signature.NewNsVerifier(
 			&applicationpb.NamespacePolicy{Rule: &applicationpb.NamespacePolicy_MspRule{MspRule: nestedBytes}},
-			&cauthdsl.MockIdentityDeserializer{KnownIdentities: knownIdentities})
+			&cauthdsl.MockIdentityDeserializer{KnownIdentities: knownIdentities},
+		)
 		require.NoError(t, err)
 
 		for _, creatorType := range []int{testsig.CreatorCertificate, testsig.CreatorID} {

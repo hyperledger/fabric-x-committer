@@ -194,7 +194,8 @@ func setupQueryService(
 	t.Cleanup(cancel)
 
 	t.Log("Insert TXs")
-	txIDs = c.MakeAndSendTransactionsToOrderer(t,
+	txIDs = c.MakeAndSendTransactionsToOrderer(
+		t,
 		[][]*applicationpb.TxNamespace{
 			{{
 				NsId:      "1",

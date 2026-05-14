@@ -132,7 +132,8 @@ func registerAndCreateRuntime(t *testing.T, clusterConnection *testdb.Connection
 func waitForCommittedTxs(t *testing.T, c *runner.CommitterRuntime, waitForCount int) {
 	t.Helper()
 	currentNumberOfTxs := c.CountStatus(t, committerpb.Status_COMMITTED)
-	require.Eventually(t,
+	require.Eventually(
+		t,
 		func() bool {
 			committedTxs := c.CountStatus(t, committerpb.Status_COMMITTED)
 			t.Logf("Amount of committed txs: %d\n", committedTxs)

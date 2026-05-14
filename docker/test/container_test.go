@@ -94,7 +94,8 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 				return config.ServiceConfig{GrpcEndpoint: mustGetEndpoint(ctx, t, containerName, servicePort)}
 			}
 			clientTLS := test.NewServiceTLSConfig(artifactsPath, "sidecar", mode)
-			clientTLS.CACertPaths = append(clientTLS.CACertPaths,
+			clientTLS.CACertPaths = append(
+				clientTLS.CACertPaths,
 				filepath.Join(artifactsPath, test.OrdererRootCATLSPath),
 			)
 			runtime := runner.CommitterRuntime{
@@ -263,7 +264,8 @@ func TestYugabyteDriverDiscoveryWithSingleNodeConnection(t *testing.T) {
 	singleTabletAddress := singleTabletNode.GetContainerConnectionDetails(t).Address()
 
 	// Start committer container in the same Docker network
-	committerName := fmt.Sprintf("%s_%s_%s",
+	committerName := fmt.Sprintf(
+		"%s_%s_%s",
 		test.DockerNamesPrefix, committerContainerName, "discovery_test",
 	)
 	stopAndRemoveContainersByName(ctx, t, createDockerClient(t), committerName)

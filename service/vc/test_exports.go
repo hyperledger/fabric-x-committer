@@ -304,7 +304,8 @@ SELECT _key, _value, _version
 FROM UNNEST($1::bytea[], $2::bytea[], $3::bigint[]) AS t(_key, _value, _version);
 `
 		query := FmtNsID(insertQuery, nsID)
-		require.NoError(t, retry.ExecuteSQL(t.Context(), env.DB.retryProfile, env.DB.pool, query,
+		require.NoError(t, retry.ExecuteSQL(
+			t.Context(), env.DB.retryProfile, env.DB.pool, query,
 			writes.keys, writes.values, writes.versions,
 		))
 	}
