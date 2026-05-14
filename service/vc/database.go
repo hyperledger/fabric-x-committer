@@ -91,25 +91,10 @@ func newDatabase(ctx context.Context, config *DatabaseConfig, metrics *perfMetri
 
 	logger.Infof("validator persister connected to database at [%s]", config.EndpointsString())
 
-	defer func() {
-		if err != nil {
-			pool.Close()
-		}
-	}()
-
-	tablePreSplitTablets := config.TablePreSplitTablets
-	if tablePreSplitTablets > 0 {
-		isYugabyte, err := isYugabyteDB(ctx, pool)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to detect database type")
-		}
-
-		if !isYugabyte {
-			logger.Info("PostgreSQL detected; ignoring table-pre-split-tablets configuration")
-			tablePreSplitTablets = 0
-		} else {
-			logger.Infof("YugabyteDB detected; tables will be pre-split into %d tablets", tablePreSplitTablets)
-		}
+	tablePreSplitTablets, err := getTablePreSplitTablets(ctx, pool, config)
+	if err != nil {
+		pool.Close()
+		return nil, err
 	}
 
 	return &database{
@@ -118,6 +103,26 @@ func newDatabase(ctx context.Context, config *DatabaseConfig, metrics *perfMetri
 		retryProfile:         config.Retry,
 		tablePreSplitTablets: tablePreSplitTablets,
 	}, nil
+}
+
+func getTablePreSplitTablets(ctx context.Context, pg *pgxpool.Pool, config *DatabaseConfig) (int, error) {
+	tablePreSplitTablets := config.TablePreSplitTablets
+	if tablePreSplitTablets == 0 {
+		return 0, nil
+	}
+
+	isYugabyte, err := isYugabyteDB(ctx, pg)
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to detect database type")
+	}
+
+	if !isYugabyte {
+		logger.Info("PostgreSQL detected; ignoring table-pre-split-tablets configuration")
+		tablePreSplitTablets = 0
+	} else {
+		logger.Infof("YugabyteDB detected; tables will be pre-split into %d tablets", tablePreSplitTablets)
+	}
+	return tablePreSplitTablets, nil
 }
 
 // isYugabyteDB queries the database version string to determine whether the backend is YugabyteDB.

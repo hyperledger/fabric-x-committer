@@ -87,9 +87,7 @@ func NewValidatorAndCommitServiceTestEnv(t *testing.T, opts *TestEnvOpts) *Valid
 			ResourceLimits: opts.ResourceLimits,
 		}
 		serverConfig := test.NewLocalHostServiceConfig(opts.ServerCreds)
-		vcs, err := NewValidatorCommitterService(initCtx, config)
-		require.NoError(t, err)
-		t.Cleanup(vcs.Close)
+		vcs := NewValidatorCommitterService(initCtx, config)
 		test.RunServiceAndServeForTest(t.Context(), t, vcs, serverConfig)
 		vcservices[i] = vcs
 		configs[i] = config

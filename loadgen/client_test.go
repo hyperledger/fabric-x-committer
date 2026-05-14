@@ -482,6 +482,8 @@ func clientConfigWithOrdererForTestCase(t *testing.T, tc loadGenTestCase) (
 			//nolint:gosec // uint64 -> int.
 			BlockSize:        int(lgEnv.clientConf.LoadProfile.Block.MaxSize),
 			SendGenesisBlock: true,
+			// We use large enough payload cache size to avoid repeated TXs.
+			PayloadCacheSize: 1024 * 1024,
 		},
 		ArtifactsPath:   policy.ArtifactsPath,
 		ServerTLSConfig: lgEnv.serverTLSConfig,

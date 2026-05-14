@@ -23,8 +23,6 @@ import (
 
 // transactionCommitter is responsible for committing the transactions.
 type transactionCommitter struct {
-	// db is a handler for the state database holding all the committed states
-	db *database
 	// incomingValidatedTransactions is the channel from which the committer receives the validated transactions
 	// from the validator
 	incomingValidatedTransactions <-chan *validatedTransactions
@@ -37,37 +35,32 @@ type transactionCommitter struct {
 
 // newCommitter creates a new transactionCommitter.
 func newCommitter(
-	db *database,
 	validatedTxs <-chan *validatedTransactions,
 	txsStatus chan<- *committerpb.TxStatusBatch,
 	metrics *perfMetrics,
 ) *transactionCommitter {
 	logger.Info("Initializing new committer")
 	return &transactionCommitter{
-		db:                            db,
 		incomingValidatedTransactions: validatedTxs,
 		outgoingTransactionsStatus:    txsStatus,
 		metrics:                       metrics,
 	}
 }
 
-func (c *transactionCommitter) run(ctx context.Context, numWorkers int) error {
+func (c *transactionCommitter) run(ctx context.Context, db *database, numWorkers int) error {
 	logger.Infof("Starting transactionCommitter with %d workers", numWorkers)
 	g, eCtx := errgroup.WithContext(ctx)
 	for range numWorkers {
 		g.Go(func() error {
-			return c.commit(eCtx)
+			return c.commit(eCtx, db)
 		})
 	}
 
 	return g.Wait()
 }
 
-func (c *transactionCommitter) commit(ctx context.Context) error {
+func (c *transactionCommitter) commit(ctx context.Context, db *database) error {
 	// NOTE: Three retry is adequate for now. We can make it configurable in the future.
-	var txsStatus *committerpb.TxStatusBatch
-	var err error
-
 	incomingValidatedTransactions := channel.NewReader(ctx, c.incomingValidatedTransactions)
 	outgoingTransactionsStatus := channel.NewWriter(ctx, c.outgoingTransactionsStatus)
 	for {
@@ -85,7 +78,7 @@ func (c *transactionCommitter) commit(ctx context.Context) error {
 		// Rather than distinguishing retryable transaction error, we retry for all errors.
 		// This is for simplicity and we can improve it in future.
 		// TODO: Add test to ensure commit is retried.
-		txsStatus, err = c.commitTransactions(ctx, vTx)
+		txsStatus, err := c.commitTransactions(ctx, db, vTx)
 		if err != nil {
 			return fmt.Errorf("failed to commit transactions: %w", err)
 		}
@@ -100,10 +93,11 @@ func (c *transactionCommitter) commit(ctx context.Context) error {
 
 func (c *transactionCommitter) commitTransactions(
 	ctx context.Context,
+	db *database,
 	vTx *validatedTransactions,
 ) (*committerpb.TxStatusBatch, error) {
 	// We eliminate blind writes outside the retry loop to avoid doing it more than once.
-	if err := c.populateVersionsAndCategorizeBlindWrites(ctx, vTx); err != nil {
+	if err := c.populateVersionsAndCategorizeBlindWrites(ctx, db, vTx); err != nil {
 		return nil, err
 	}
 
@@ -137,8 +131,8 @@ func (c *transactionCommitter) commitTransactions(
 			txIDToHeight: vTx.txIDToHeight,
 		}
 
-		res, retryErr := retry.ExecuteWithResult(ctx, c.db.retryProfile, func() (*commitResult, error) {
-			return c.db.commit(ctx, info)
+		res, retryErr := retry.ExecuteWithResult(ctx, db.retryProfile, func() (*commitResult, error) {
+			return db.commit(ctx, info)
 		})
 		if retryErr != nil {
 			return nil, retryErr
@@ -152,7 +146,7 @@ func (c *transactionCommitter) commitTransactions(
 			//       The setCorrectStatusForDuplicateTxID function checks whether the transaction is truly a
 			//       duplicate or a resubmission. If it is a resubmission, it retrieves the correct status from
 			//       the tx_status table.
-			if err := c.setCorrectStatusForDuplicateTxID(ctx, info.batchStatus, info.txIDToHeight); err != nil {
+			if err := c.setCorrectStatusForDuplicateTxID(ctx, db, info.batchStatus, info.txIDToHeight); err != nil {
 				return nil, fmt.Errorf("failed to set correct status for duplicate txs: %w", err)
 			}
 			return info.batchStatus, nil
@@ -189,13 +183,13 @@ func prepareStatusForCommit(vTx *validatedTransactions) *committerpb.TxStatusBat
 // populateVersionsAndCategorizeBlindWrites fetches the current version of the blind-writes keys, and assigns them
 // to the appropriate category (new/update).
 func (c *transactionCommitter) populateVersionsAndCategorizeBlindWrites(
-	ctx context.Context, vTx *validatedTransactions,
+	ctx context.Context, db *database, vTx *validatedTransactions,
 ) error {
 	state := make(map[string]keyToVersion)
 	for nsID, writes := range groupWritesByNamespace(vTx.validTxBlindWrites) {
 		// TODO: Though we could run the following in a goroutine per namespace, we restrain
 		// 		 from doing so till we evaluate the performance
-		versionOfPresentKeys, err := c.db.queryVersionsIfPresent(ctx, nsID, writes.keys)
+		versionOfPresentKeys, err := db.queryVersionsIfPresent(ctx, nsID, writes.keys)
 		if err != nil {
 			return err
 		}
@@ -225,6 +219,7 @@ func (c *transactionCommitter) populateVersionsAndCategorizeBlindWrites(
 
 func (c *transactionCommitter) setCorrectStatusForDuplicateTxID(
 	ctx context.Context,
+	db *database,
 	txsStatus *committerpb.TxStatusBatch,
 	txIDToHeight transactionIDToHeight,
 ) error {
@@ -241,7 +236,7 @@ func (c *transactionCommitter) setCorrectStatusForDuplicateTxID(
 		return nil
 	}
 
-	idStatusHeight, err := c.db.readStatusWithHeight(ctx, dupTxIDs)
+	idStatusHeight, err := db.readStatusWithHeight(ctx, dupTxIDs)
 	if err != nil {
 		return err
 	}

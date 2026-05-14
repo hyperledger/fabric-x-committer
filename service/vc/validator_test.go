@@ -33,9 +33,9 @@ func newValidatorTestEnv(t *testing.T) *validatorTestEnv {
 
 	dbEnv := newDatabaseTestEnvWithTablesSetup(t)
 	metrics := newVCServiceMetrics()
-	v := newValidator(dbEnv.DB, preparedTxs, validatedTxs, metrics)
+	v := newValidator(preparedTxs, validatedTxs, metrics)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
-		return v.run(ctx, 1)
+		return v.run(ctx, dbEnv.DB, 1)
 	}, nil)
 
 	return &validatorTestEnv{

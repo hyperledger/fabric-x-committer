@@ -21,8 +21,6 @@ import (
 
 // transactionValidator validates the reads of transactions against the committed states.
 type transactionValidator struct {
-	// db is the state database holding all the committed states.
-	db *database
 	// incomingPreparedTransactions is the channel from which the validator receives prepared transactions.
 	incomingPreparedTransactions <-chan *preparedTransactions
 	// outgoingValidatedTransactions is the channel to which the validator sends validated transactions so that
@@ -58,14 +56,12 @@ func (v *validatedTransactions) Debug() {
 
 // newValidator creates a new validator.
 func newValidator(
-	db *database,
 	preparedTxs <-chan *preparedTransactions,
 	validatedTxs chan<- *validatedTransactions,
 	metrics *perfMetrics,
 ) *transactionValidator {
 	logger.Info("Initializing new validator")
 	return &transactionValidator{
-		db:                            db,
 		incomingPreparedTransactions:  preparedTxs,
 		outgoingValidatedTransactions: validatedTxs,
 		metrics:                       metrics,
@@ -73,19 +69,19 @@ func newValidator(
 }
 
 // start starts the validator with the given number of workers.
-func (v *transactionValidator) run(ctx context.Context, numWorkers int) error {
+func (v *transactionValidator) run(ctx context.Context, db *database, numWorkers int) error {
 	logger.Infof("Starting Validator with %d workers", numWorkers)
 	g, eCtx := errgroup.WithContext(ctx)
 	for range numWorkers {
 		g.Go(func() error {
-			return v.validate(eCtx)
+			return v.validate(eCtx, db)
 		})
 	}
 
 	return g.Wait()
 }
 
-func (v *transactionValidator) validate(ctx context.Context) error {
+func (v *transactionValidator) validate(ctx context.Context, db *database) error {
 	incomingPreparedTransactions := channel.NewReader(ctx, v.incomingPreparedTransactions)
 	outgoingValidatedTransactions := channel.NewWriter(ctx, v.outgoingValidatedTransactions)
 
@@ -103,7 +99,7 @@ func (v *transactionValidator) validate(ctx context.Context) error {
 		// 		 over parallelize and make contention among preparer, validator, and committer
 		//       goroutines to acquire the CPU. Based on performance evaluation, we can decide
 		//       to run per namespace validation in parallel.
-		nsToReadConflicts, valErr := v.validateReads(ctx, prepTx.nsToReads)
+		nsToReadConflicts, valErr := v.validateReads(ctx, db, prepTx.nsToReads)
 		if valErr != nil {
 			return valErr
 		}
@@ -132,6 +128,7 @@ func (v *transactionValidator) validate(ctx context.Context) error {
 
 func (v *transactionValidator) validateReads(
 	ctx context.Context,
+	db *database,
 	nsToReads namespaceToReads,
 ) (namespaceToReads /* conflicts */, error) {
 	// nsToReadConflicts maintains all conflicting reads per namespace.
@@ -139,7 +136,7 @@ func (v *transactionValidator) validateReads(
 	nsToReadConflicts := make(namespaceToReads)
 
 	for nsID, r := range nsToReads {
-		conflicts, err := v.db.validateNamespaceReads(ctx, nsID, r)
+		conflicts, err := db.validateNamespaceReads(ctx, nsID, r)
 		if err != nil {
 			return nil, err
 		}

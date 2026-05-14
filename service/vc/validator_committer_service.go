@@ -64,6 +64,7 @@ type ValidatorCommitterService struct {
 	// Further, when isStreamActive is active, NumberOfWaitingTransactionsForStatus would return an
 	// error as this gRPC api can be called only when the stream is inactive.
 	isStreamActive atomic.Bool
+	ready          *channel.Ready
 }
 
 // NewValidatorCommitterService creates a new ValidatorCommitterService.
@@ -73,7 +74,7 @@ type ValidatorCommitterService struct {
 func NewValidatorCommitterService(
 	ctx context.Context,
 	config *Config,
-) (*ValidatorCommitterService, error) {
+) *ValidatorCommitterService {
 	logger.Info("Initializing new validator committer service.")
 	l := config.ResourceLimits
 
@@ -86,35 +87,36 @@ func NewValidatorCommitterService(
 	txsStatus := make(chan *committerpb.TxStatusBatch, l.MaxWorkersForCommitter*queueMultiplier)
 
 	metrics := newVCServiceMetrics()
-	db, err := newDatabase(ctx, config.Database, metrics)
-	if err != nil {
-		logger.Errorf("%+v", err)
-		return nil, err
-	}
-
-	vc := &ValidatorCommitterService{
+	return &ValidatorCommitterService{
 		preparer:                 newPreparer(toPrepareTxs, preparedTxs, metrics),
-		validator:                newValidator(db, preparedTxs, validatedTxs, metrics),
-		committer:                newCommitter(db, validatedTxs, txsStatus, metrics),
+		validator:                newValidator(preparedTxs, validatedTxs, metrics),
+		committer:                newCommitter(validatedTxs, txsStatus, metrics),
 		receivedTxBatch:          receivedTxBatch,
 		toPrepareTxs:             toPrepareTxs,
 		preparedTxs:              preparedTxs,
 		validatedTxs:             validatedTxs,
 		txsStatus:                txsStatus,
-		db:                       db,
 		metrics:                  metrics,
 		minTxBatchSize:           config.ResourceLimits.MinTransactionBatchSize,
 		timeoutForMinTxBatchSize: config.ResourceLimits.TimeoutForMinTransactionBatchSize,
 		config:                   config,
 		healthcheck:              serve.DefaultHealthCheckService(),
+		ready:                    channel.NewReady(),
 	}
-	return vc, nil
 }
 
 // Run starts the validator and committer service.
 func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 	logger.Info("Starting ValidatorCommitterService")
-	defer vc.Close()
+	db, err := newDatabase(ctx, vc.config.Database, vc.metrics)
+	if err != nil {
+		return err
+	}
+	defer db.close()
+	vc.db = db
+	vc.ready.SignalReady()
+	defer vc.ready.Reset()
+
 	g, eCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
@@ -136,12 +138,12 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 
 	logger.Infof("Starting %d workers for the transaction validator", l.MaxWorkersForValidator)
 	g.Go(func() error {
-		return vc.validator.run(eCtx, l.MaxWorkersForValidator)
+		return vc.validator.run(eCtx, db, l.MaxWorkersForValidator)
 	})
 
 	logger.Infof("Starting %d workers for the transaction committer", l.MaxWorkersForCommitter)
 	g.Go(func() error {
-		return vc.committer.run(eCtx, l.MaxWorkersForCommitter)
+		return vc.committer.run(eCtx, db, l.MaxWorkersForCommitter)
 	})
 
 	if err := g.Wait(); err != nil {
@@ -152,10 +154,10 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 	return nil
 }
 
-// WaitForReady indicates if the service is ready to be exposed as a gRPC service.
-// This implementation always returns true as the service is considered ready immediately.
-func (*ValidatorCommitterService) WaitForReady(context.Context) bool {
-	return true
+// WaitForReady wait for the service to be ready to be exposed as gRPC service.
+// If the context ended before the service is ready, returns false.
+func (vc *ValidatorCommitterService) WaitForReady(ctx context.Context) bool {
+	return vc.ready.WaitForReady(ctx)
 }
 
 // RegisterService registers the validator-committer's gRPC services and monitoring server.
@@ -387,9 +389,4 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 		promutil.AddToCounter(vc.metrics.transactionDuplicateTxTotal, dup)
 		promutil.AddToCounter(vc.metrics.transactionProcessedTotal, len(txStatus.Status))
 	}
-}
-
-// Close is closing the db connection.
-func (vc *ValidatorCommitterService) Close() {
-	vc.db.close()
 }

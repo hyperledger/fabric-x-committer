@@ -39,6 +39,13 @@ monitoring:
     #   - Must be greater than 0
     #   - Must be less than or equal to requests-per-second
     burst: 0
+
+# Maximum time to wait for the VC service to become ready before startup fails.
+# The VC service is considered ready after it successfully
+# establishes a connection pool to the database.
+# Default: 5m
+startup-timeout: 5m
+
 # Database connection configuration
 database:
   # List of database endpoints to connect to. For YugabyteDB clusters, list all nodes.

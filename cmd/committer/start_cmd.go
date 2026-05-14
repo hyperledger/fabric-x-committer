@@ -70,12 +70,7 @@ func startService(ctx context.Context, name, configPath string) error {
 		service = coordinator.NewCoordinatorService(c)
 
 	case *vc.Config:
-		vcService, err := vc.NewValidatorCommitterService(ctx, c)
-		if err != nil {
-			return errors.Wrap(err, "failed to create validator committer service")
-		}
-		defer vcService.Close()
-		service = vcService
+		service = vc.NewValidatorCommitterService(ctx, c)
 
 	case *verifier.Config:
 		service = verifier.New(c)

@@ -34,9 +34,9 @@ func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 
 	dbEnv := newDatabaseTestEnvWithTablesSetup(t)
 	metrics := newVCServiceMetrics()
-	c := newCommitter(dbEnv.DB, validatedTxs, txStatus, metrics)
+	c := newCommitter(validatedTxs, txStatus, metrics)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
-		return c.run(ctx, 1)
+		return c.run(ctx, dbEnv.DB, 1)
 	}, nil)
 	return &committerTestEnv{
 		c:            c,
