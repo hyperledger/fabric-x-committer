@@ -76,7 +76,7 @@ func StartAndServe(ctx context.Context, service Service, serverConfig ...*Config
 		return service.Run(gCtx)
 	})
 
-	// Extract the readiness timeout from the first config that defines one.
+	// Extract the service startup timeout from the first config that defines one.
 	serviceStartupTimeout := DefaultServiceStartupTimeout
 	for _, s := range serverConfig {
 		if s.ServiceStartupTimeout > 0 {

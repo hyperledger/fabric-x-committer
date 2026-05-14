@@ -71,7 +71,7 @@ type (
 	}
 )
 
-// DefaultServiceStartupTimeout is the default timeout for waiting for service readiness.
+// DefaultServiceStartupTimeout is the default timeout for waiting for service startup.
 const DefaultServiceStartupTimeout = 5 * time.Minute
 
 // Validate checks that the rate limit configuration is valid.
