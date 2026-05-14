@@ -18,7 +18,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/yugabyte/pgx/v5"
 	"github.com/yugabyte/pgx/v5/pgxpool"
-	"go.uber.org/zap/zapcore"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
@@ -73,15 +72,6 @@ type (
 	}
 )
 
-func (s *statesToBeCommitted) Debug() {
-	if !logger.IsEnabledFor(zapcore.DebugLevel) {
-		return
-	}
-	logger.Debugf("total states: %d\n\tupdate: %d\n\twrites: %d\n\tbatch status: %d",
-		len(s.updateWrites)+len(s.newWrites)+len(s.batchStatus.Status),
-		len(s.updateWrites), len(s.newWrites), len(s.batchStatus.Status))
-}
-
 // newDatabase creates a new database.
 func newDatabase(ctx context.Context, config *DatabaseConfig, metrics *perfMetrics) (*database, error) {
 	pool, err := NewDatabasePool(ctx, config)
@@ -106,23 +96,21 @@ func newDatabase(ctx context.Context, config *DatabaseConfig, metrics *perfMetri
 }
 
 func getTablePreSplitTablets(ctx context.Context, pg *pgxpool.Pool, config *DatabaseConfig) (int, error) {
-	tablePreSplitTablets := config.TablePreSplitTablets
-	if tablePreSplitTablets == 0 {
+	if config.TablePreSplitTablets == 0 {
 		return 0, nil
 	}
 
 	isYugabyte, err := isYugabyteDB(ctx, pg)
 	if err != nil {
-		return 0, errors.Wrap(err, "failed to detect database type")
+		return 0, err
 	}
-
 	if !isYugabyte {
 		logger.Info("PostgreSQL detected; ignoring table-pre-split-tablets configuration")
-		tablePreSplitTablets = 0
-	} else {
-		logger.Infof("YugabyteDB detected; tables will be pre-split into %d tablets", tablePreSplitTablets)
+		return 0, nil
 	}
-	return tablePreSplitTablets, nil
+
+	logger.Infof("YugabyteDB detected; tables will be pre-split into %d tablets", config.TablePreSplitTablets)
+	return config.TablePreSplitTablets, nil
 }
 
 // isYugabyteDB queries the database version string to determine whether the backend is YugabyteDB.

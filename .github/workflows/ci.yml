@@ -125,6 +125,14 @@ jobs:
       - run: scripts/get-and-start-yuga.sh
       - run: go mod tidy
       - run: make test-core-db
+      - run: scripts/test-coverage-filter-files.sh
+      - name: Send coverage
+        uses: shogo82148/actions-goveralls@v1
+        with:
+          path-to-profile: coverage.profile
+          flag-name: core-db-test
+          parallel: true
+        continue-on-error: true
 
   integration-test:
     name: Integration Tests (yugabyte)
@@ -172,6 +180,7 @@ jobs:
     needs:
       - unit-test
       - db-test
+      - core-db-test
     runs-on: ubuntu-latest
     steps:
       - uses: coverallsapp/github-action@v2
@@ -271,4 +280,3 @@ jobs:
         uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{matrix.language}}"
-

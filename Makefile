@@ -136,7 +136,7 @@ REQUIRES_DB_PACKAGES_REGEXP = ${ROOT_PKG_REGEXP}/(service/coordinator|loadgen|cm
 HEAVY_PACKAGES_REGEXP = ${ROOT_PKG_REGEXP}/(docker|integration)
 
 NON_HEAVY_PACKAGES=$(shell $(go_cmd) list ./... | grep -vE "$(HEAVY_PACKAGES_REGEXP)")
-COR_DB_PACKAGES=$(shell $(go_cmd) list ./... | grep -E "$(CORE_DB_PACKAGES_REGEXP)")
+CORE_DB_PACKAGES=$(shell $(go_cmd) list ./... | grep -E "$(CORE_DB_PACKAGES_REGEXP)")
 REQUIRES_DB_PACKAGES=$(shell $(go_cmd) list ./... | grep -E "$(REQUIRES_DB_PACKAGES_REGEXP)")
 NO_DB_PACKAGES=$(shell $(go_cmd) list ./... | grep -vE "$(CORE_DB_PACKAGES_REGEXP)|$(REQUIRES_DB_PACKAGES_REGEXP)|$(HEAVY_PACKAGES_REGEXP)")
 
@@ -177,7 +177,7 @@ test-container: build-image-test-node build-image-release
 
 # Tests for components that directly talk to the DB, where different DBs might affect behaviour.
 test-core-db: FORCE
-	@$(call test_method, ${COR_DB_PACKAGES})
+	@$(call test_method_with_coverage, ${CORE_DB_PACKAGES})
 
 # Tests for components that depend on the DB layer, but are agnostic to the specific DB used.
 test-requires-db: FORCE
@@ -189,11 +189,11 @@ test-no-db: FORCE
 
 # Tests for components that depend on the DB layer, and ones that are agnostic to the specific DB used.
 test-all-db: FORCE
-	@$(call test_method_with_coverage, ${REQUIRES_DB_PACKAGES} ${COR_DB_PACKAGES}, -race)
+	@$(call test_method_with_coverage, ${REQUIRES_DB_PACKAGES} ${CORE_DB_PACKAGES}, -race)
 
 # Runs test coverage analysis. It uses same tests that will be covered by the CI.
 test-cover: FORCE
-	@$(call test_method_with_coverage, ${NO_DB_PACKAGES} ${REQUIRES_DB_PACKAGES} ${COR_DB_PACKAGES})
+	@$(call test_method_with_coverage, ${NO_DB_PACKAGES} ${REQUIRES_DB_PACKAGES} ${CORE_DB_PACKAGES})
 	@scripts/test-coverage-filter-files.sh
 
 cover-report: FORCE

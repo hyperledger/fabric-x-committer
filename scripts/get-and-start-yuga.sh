@@ -28,3 +28,5 @@ docker run --name "$YUGA_CONTAINER" \
 #  environments with low resource allocation, causing the test to fail. To handle
 #  such cases, we are increasing the limit to 4000. Note that this increase is not
 #  recommended for production and is intended solely for running the test.
+
+PGPASSWORD=yugabyte PGUSER=yugabyte PGHOST=localhost PGPORT=5433 scripts/db-version.sh

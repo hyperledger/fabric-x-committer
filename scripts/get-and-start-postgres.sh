@@ -14,3 +14,5 @@ docker run --name sc_test_postgres_unit_tests \
   -p 5433:5432 \
   -d postgres:18.3-alpine3.23 \
   -c max_connections=1000
+
+PGPASSWORD=postgres PGUSER=postgres PGHOST=localhost PGPORT=5433 scripts/db-version.sh
