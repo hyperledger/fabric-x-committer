@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/network"
 	"github.com/docker/go-connections/nat"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
@@ -313,6 +312,7 @@ func TestYugabyteDriverDiscoveryWithSingleNodeConnection(t *testing.T) {
 
 func startCommitter(ctx context.Context, t *testing.T, params startNodeParameters) {
 	t.Helper()
+
 	createAndStartContainerAndItsLogs(ctx, t, createAndStartContainerParameters{
 		config: &container.Config{
 			Image: testNodeImage,
@@ -357,7 +357,7 @@ func startCommitter(ctx context.Context, t *testing.T, params startNodeParameter
 			Tty: true,
 		},
 		hostConfig: &container.HostConfig{
-			NetworkMode: setNetworkMode(params.networkName),
+			NetworkMode: container.NetworkMode(params.networkName),
 			PortBindings: nat.PortMap{
 				// sidecar port binding
 				sidecarPort + "/tcp": []nat.PortBinding{{
@@ -406,11 +406,4 @@ func requireQueryResults(
 	for idx := range retNamespaces {
 		test.RequireProtoElementsMatch(t, requiredItems[idx].Rows, retNamespaces[idx].Rows)
 	}
-}
-
-func setNetworkMode(networkName string) container.NetworkMode {
-	if networkName != "" {
-		return container.NetworkMode(networkName)
-	}
-	return network.NetworkDefault
 }
