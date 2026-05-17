@@ -108,7 +108,6 @@ func newSidecarTestEnvWithTLS(
 	}
 	sidecar, err := New(sidecarConf)
 	require.NoError(t, err)
-	t.Cleanup(sidecar.Close)
 
 	return &sidecarTestEnv{
 		OrdererTestEnv:    ordererEnv,
@@ -305,7 +304,6 @@ func TestSidecarConfigRecovery(t *testing.T) {
 
 	// Important: Close the sidecar explicitly to release LevelDB resources
 	require.NotNil(t, env.sidecar)
-	env.sidecar.Close()
 
 	t.Log("Stop all servers of party 0 (initial ID)")
 	env.StopServersOfID(0)
@@ -323,7 +321,6 @@ func TestSidecarConfigRecovery(t *testing.T) {
 	t.Log("Create a new sidecar with the old configuration (only party 0)")
 	env.sidecar, err = New(&env.config)
 	require.NoError(t, err)
-	t.Cleanup(env.sidecar.Close)
 
 	t.Log("Start the new sidecar")
 	env.startSidecarServiceAndClientAndNotificationStream(newCtx, t, 2, test.InsecureTLSConfig)
@@ -382,15 +379,15 @@ func TestSidecarRecovery(t *testing.T) {
 	//       we reset the block store object so that its in-memory data
 	//       structure reflects the correct height.
 	var err error
-	env.sidecar.blockStore, err = newBlockStore(
+	tempBlockStore, err := newBlockStore(
 		env.config.Ledger.Path,
 		0,
 		newPerformanceMetrics(),
 	)
 	require.NoError(t, err)
-	env.sidecar.blockDelivery = newBlockDelivery(env.sidecar.blockStore)
-	env.sidecar.blockQuery = newBlockQuery(env.sidecar.blockStore)
-	ensureAtLeastHeight(t, env.sidecar.blockStore, 1) // back to block 0
+	t.Cleanup(tempBlockStore.close)
+	ensureAtLeastHeight(t, tempBlockStore, 1) // back to block 0
+	tempBlockStore.close()
 
 	t.Log("4. Make coordinator not idle to ensure sidecar is waiting")
 	env.coordinator.SetWaitingTxsCount(10)
