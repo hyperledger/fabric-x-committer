@@ -239,7 +239,6 @@ func TestLoadGenForSidecar(t *testing.T) {
 			}
 			service, err := sidecar.New(sidecarConf)
 			require.NoError(t, err)
-			t.Cleanup(service.Close)
 			test.RunServiceAndServeForTest(t.Context(), t, service, sidecarServerConf)
 			// Start client
 			lgEnv.clientConf.Adapter.SidecarClient = &adapters.SidecarClientConfig{
@@ -286,7 +285,6 @@ func TestLoadGenForOrderer(t *testing.T) {
 			// Start sidecar.
 			service, err := sidecar.New(sidecarConf)
 			require.NoError(t, err)
-			t.Cleanup(service.Close)
 			test.RunServiceAndServeForTest(t.Context(), t, service, serverConfig)
 
 			// Start client

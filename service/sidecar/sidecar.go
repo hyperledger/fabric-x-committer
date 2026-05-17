@@ -9,20 +9,29 @@ package sidecar
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/common/ledger/blkstorage"
+	"github.com/hyperledger/fabric-x-common/common/ledger/blockledger"
+	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/emptypb"
+
+	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -41,13 +50,15 @@ var logger = flogging.MustGetLogger("sidecar")
 // Service is a relay service which relays the block from orderer to committer. Further,
 // it aggregates the transaction status and forwards the validated block to clients who have
 // registered on the ledger server.
+//   - Implements peer.DeliverServer by streaming blocks from a blockStore.
+//   - Implements committerpb.BlockQueryServiceServer by delegating
+//     read-only queries directly to the underlying block store.
 type Service struct {
+	committerpb.UnimplementedBlockQueryServiceServer
 	deliveryParams     deliverorderer.Parameters
 	relay              *relay
 	notifier           *notifier
 	blockStore         *blockStore
-	blockDelivery      *blockDelivery
-	blockQuery         *blockQuery
 	coordConn          *grpc.ClientConn
 	blockToBeCommitted atomic.Pointer[chan *common.Block]
 	committedBlock     chan *common.Block
@@ -56,7 +67,18 @@ type Service struct {
 	healthcheck        *health.Server
 	metrics            *perfMetrics
 	tlsUpdater         serve.DynamicTLSUpdater
+	ready              *channel.Ready
 }
+
+var (
+	blockReadyRetryProfile = retry.Profile{
+		InitialInterval: 100 * time.Millisecond,
+		Multiplier:      1.5,
+		MaxInterval:     3 * time.Second,
+	}
+	// ErrEmptyTxID is returned when a transaction ID query is called with an empty tx_id.
+	ErrEmptyTxID = errors.New("tx_id must not be empty")
+)
 
 // New creates a sidecar service.
 func New(c *Config) (*Service, error) {
@@ -73,37 +95,36 @@ func New(c *Config) (*Service, error) {
 	deliveryParams.Metrics = metrics.delivery
 	relayService := newRelay(c.LastCommittedBlockSetInterval, metrics)
 
-	// 3. Deliver the block with status to client.
-	blockStoreInstance, err := newBlockStore(c.Ledger.Path, c.Ledger.SyncInterval, metrics)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create block store: %w", err)
-	}
-
 	return &Service{
 		deliveryParams: deliveryParams,
 		relay:          relayService,
 		notifier:       newNotifier(c.ChannelBufferSize, &c.Notification, metrics),
-		blockStore:     blockStoreInstance,
-		blockDelivery:  newBlockDelivery(blockStoreInstance),
-		blockQuery:     newBlockQuery(blockStoreInstance),
 		healthcheck:    serve.DefaultHealthCheckService(),
 		config:         c,
 		metrics:        metrics,
 		committedBlock: make(chan *common.Block, c.ChannelBufferSize),
 		statusQueue:    make(chan []*committerpb.TxStatus, c.ChannelBufferSize),
+		ready:          channel.NewReady(),
 	}, nil
 }
 
-// WaitForReady indicates if the service is ready to be exposed as a gRPC service.
-// This implementation always returns true as the service is considered ready immediately.
-func (*Service) WaitForReady(context.Context) bool {
-	return true
+// WaitForReady wait for the service to be ready to be exposed as gRPC service.
+// If the context ended before the service is ready, returns false.
+func (s *Service) WaitForReady(ctx context.Context) bool {
+	return s.ready.WaitForReady(ctx)
 }
 
 // Run starts the sidecar service. The call to Run blocks until an error occurs or the context is canceled.
 func (s *Service) Run(ctx context.Context) error {
-	pCtx, pCancel := context.WithCancel(ctx)
-	defer pCancel()
+	// Deliver the block with status to client.
+	blockStoreInstance, err := newBlockStore(s.config.Ledger.Path, s.config.Ledger.SyncInterval, s.metrics)
+	if err != nil {
+		return fmt.Errorf("failed to create block store: %w", err)
+	}
+	defer blockStoreInstance.close()
+	s.blockStore = blockStoreInstance
+	s.ready.SignalReady()
+	defer s.ready.Reset()
 
 	logger.Infof("Create coordinator client and connect to %s", s.config.Committer.Endpoint)
 	conn, connErr := connection.NewSingleConnection(s.config.Committer)
@@ -115,6 +136,8 @@ func (s *Service) Run(ctx context.Context) error {
 	logger.Infof("sidecar connected to coordinator at %s", s.config.Committer.Endpoint)
 	coordClient := servicepb.NewCoordinatorClient(conn)
 
+	pCtx, pCancel := context.WithCancel(ctx)
+	defer pCancel()
 	g, gCtx := errgroup.WithContext(pCtx)
 
 	// The following runs independently of the coordinator connection lifecycle.
@@ -146,9 +169,9 @@ func (s *Service) Run(ctx context.Context) error {
 
 // RegisterService registers the sidecar's gRPC services and monitoring server.
 func (s *Service) RegisterService(srv serve.Servers) {
-	peer.RegisterDeliverServer(srv.GRPC, s.blockDelivery)
+	peer.RegisterDeliverServer(srv.GRPC, s)
+	committerpb.RegisterBlockQueryServiceServer(srv.GRPC, s)
 	committerpb.RegisterNotifierServer(srv.GRPC, s.notifier)
-	committerpb.RegisterBlockQueryServiceServer(srv.GRPC, s.blockQuery)
 	healthgrpc.RegisterHealthServer(srv.GRPC, s.healthcheck)
 	serve.RegisterDynamicTLSUpdater(srv.GrpcTLSProvider, &s.tlsUpdater)
 	monitoring.RegisterMonitoringServer(srv.HTTP, s.metrics.Provider)
@@ -452,9 +475,214 @@ func (s *Service) updateDynamicTLS(ctx context.Context, configBlocks <-chan *com
 	return errors.Wrap(ctx.Err(), "context cancelled")
 }
 
-// Close closes the ledger.
-func (s *Service) Close() {
-	s.blockStore.close()
+// ============================================================
+// Block Delivery
+// ============================================================
+
+// Deliver delivers the requested blocks.
+func (s *Service) Deliver(srv peer.Deliver_DeliverServer) error {
+	addr := util.ExtractRemoteAddress(srv.Context())
+	logger.Infof("Starting new deliver loop for %s", addr)
+	for {
+		logger.Infof("Attempting to read seek info message from %s", addr)
+		envelope, err := srv.Recv()
+		if errors.Is(err, io.EOF) {
+			logger.Infof("Received EOF from %s,", addr)
+			return nil
+		}
+		if err != nil {
+			return grpcerror.WrapInternalError(err)
+		}
+
+		logger.Infof("Received seek info message from %s", addr)
+		retStatus, err := s.deliverBlocks(srv, envelope)
+		if err != nil {
+			logger.Infof("Failed delivering to %s with status %v: %v", addr, retStatus, err)
+			return wrapDeliverError(retStatus, err)
+		}
+		logger.Infof("Done delivering to %s", addr)
+
+		if err = srv.Send(&peer.DeliverResponse{
+			Type: &peer.DeliverResponse_Status{Status: retStatus},
+		}); err != nil {
+			logger.Infof("Error sending to %s: %s", addr, err)
+			return grpcerror.WrapInternalError(err)
+		}
+	}
+}
+
+// DeliverFiltered implements an API in peer.DeliverServer.
+//
+// Deprecated: this method is implemented to have compatibility with Fabric so that the fabric smart client
+// can easily integrate with both FabricX and Fabric. Eventually, this method will be removed.
+func (*Service) DeliverFiltered(peer.Deliver_DeliverFilteredServer) error {
+	return grpcerror.WrapUnimplemented(errors.New("method is deprecated"))
+}
+
+// DeliverWithPrivateData implements an API in peer.DeliverServer.
+//
+// Deprecated: this method is implemented to have compatibility with Fabric so that the fabric smart client
+// can easily integrate with both FabricX and Fabric. Eventually, this method will be removed.
+func (*Service) DeliverWithPrivateData(peer.Deliver_DeliverWithPrivateDataServer) error {
+	return grpcerror.WrapUnimplemented(errors.New("method is deprecated"))
+}
+
+func (s *Service) deliverBlocks(
+	srv peer.Deliver_DeliverServer,
+	envelope *common.Envelope,
+) (common.Status, error) {
+	payload, _, err := serialization.ParseEnvelope(envelope)
+	if err != nil {
+		return common.Status_BAD_REQUEST, errors.Wrap(err, "error parsing envelope")
+	}
+
+	seekInfo, err := readSeekInfo(payload.Data)
+	if err != nil {
+		return common.Status_BAD_REQUEST, err
+	}
+	cursor, stopNum, err := s.getCursor(seekInfo)
+	if err != nil {
+		return common.Status_BAD_REQUEST, err
+	}
+	defer cursor.Close()
+	logger.Debugf("Received seekInfo.")
+
+	ctx := srv.Context()
+
+	if seekInfo.Behavior == ab.SeekInfo_BLOCK_UNTIL_READY {
+		// We use a retry backoff here to avoid busy waiting when blocks are not yet available.
+		if !retry.WaitForCondition(ctx, &blockReadyRetryProfile, func() bool {
+			return s.blockStore.ledger.Height() > 0
+		}) {
+			return 0, errors.New("blocks not yet available")
+		}
+	}
+
+	for ctx.Err() == nil {
+		block, retStatus := cursor.Next(ctx)
+		if retStatus != common.Status_SUCCESS {
+			return retStatus, nil
+		}
+
+		err = srv.Send(&peer.DeliverResponse{Type: &peer.DeliverResponse_Block{Block: block}})
+		if err != nil {
+			return common.Status_INTERNAL_SERVER_ERROR, errors.Wrap(err, "error sending response")
+		}
+		logger.Infof("Successfully sent block %d:%d to client.", block.Header.Number, len(block.Data.Data))
+
+		if stopNum == block.Header.Number {
+			break
+		}
+	}
+	return common.Status_SUCCESS, nil
+}
+
+func (s *Service) getCursor(seekInfo *ab.SeekInfo) (blockledger.Iterator, uint64, error) {
+	cursor, number := s.blockStore.ledger.Iterator(seekInfo.Start)
+
+	switch stop := seekInfo.Stop.Type.(type) {
+	case *ab.SeekPosition_Oldest:
+		return cursor, number, nil
+	case *ab.SeekPosition_Newest:
+		// when seeking only the newest block (i.e. starting
+		// and stopping at newest), don't reevaluate the ledger
+		// height as this can lead to multiple blocks being
+		// sent when only one is expected
+		if proto.Equal(seekInfo.Start, seekInfo.Stop) {
+			return cursor, number, nil
+		}
+		return cursor, s.blockStore.ledger.Height() - 1, nil
+	case *ab.SeekPosition_Specified:
+		if stop.Specified.Number < number {
+			cursor.Close()
+			return nil, 0, errors.New("start number greater than stop number")
+		}
+		return cursor, stop.Specified.Number, nil
+	default:
+		cursor.Close()
+		return nil, 0, errors.New("unknown type")
+	}
+}
+
+// wrapDeliverError wraps deliver errors with appropriate gRPC status codes based on the Fabric status.
+func wrapDeliverError(inputStatus common.Status, err error) error {
+	if err == nil {
+		return nil
+	}
+	switch inputStatus {
+	case common.Status_BAD_REQUEST:
+		return grpcerror.WrapInvalidArgument(err)
+	case common.Status_NOT_FOUND:
+		return grpcerror.WrapNotFound(err)
+	default:
+		return grpcerror.WrapInternalError(err)
+	}
+}
+
+func readSeekInfo(payload []byte) (*ab.SeekInfo, error) {
+	seekInfo := &ab.SeekInfo{}
+	if err := proto.Unmarshal(payload, seekInfo); err != nil {
+		return nil, errors.New("malformed seekInfo payload")
+	}
+	if seekInfo.Start == nil || seekInfo.Stop == nil {
+		return nil, errors.New("seekInfo missing start or stop")
+	}
+	return seekInfo, nil
+}
+
+// ============================================================
+// Block Query
+// ============================================================
+
+// GetBlockchainInfo returns the current blockchain height and hash metadata.
+func (s *Service) GetBlockchainInfo(_ context.Context, _ *emptypb.Empty) (*common.BlockchainInfo, error) {
+	info, err := s.blockStore.store.GetBlockchainInfo()
+	if err != nil {
+		logger.Errorf("GetBlockchainInfo failed: %v", err)
+		return nil, grpcerror.WrapInternalError(err)
+	}
+	return info, nil
+}
+
+// GetBlockByNumber retrieves a block by its sequence number.
+func (s *Service) GetBlockByNumber(_ context.Context, req *committerpb.BlockNumber) (*common.Block, error) {
+	block, err := s.blockStore.store.RetrieveBlockByNumber(req.GetNumber())
+	if err != nil {
+		return nil, wrapQueryError(err)
+	}
+	return block, nil
+}
+
+// GetBlockByTxID retrieves the block that contains the specified transaction.
+func (s *Service) GetBlockByTxID(_ context.Context, req *committerpb.TxID) (*common.Block, error) {
+	if req.GetTxId() == "" {
+		return nil, grpcerror.WrapInvalidArgument(ErrEmptyTxID)
+	}
+	block, err := s.blockStore.store.RetrieveBlockByTxID(req.GetTxId())
+	if err != nil {
+		return nil, wrapQueryError(err)
+	}
+	return block, nil
+}
+
+// GetTxByID retrieves the transaction envelope for the specified transaction ID.
+func (s *Service) GetTxByID(_ context.Context, req *committerpb.TxID) (*common.Envelope, error) {
+	if req.GetTxId() == "" {
+		return nil, grpcerror.WrapInvalidArgument(ErrEmptyTxID)
+	}
+	envelope, err := s.blockStore.store.RetrieveTxByID(req.GetTxId())
+	if err != nil {
+		return nil, wrapQueryError(err)
+	}
+	return envelope, nil
+}
+
+func wrapQueryError(err error) error {
+	if errors.Is(err, blkstorage.ErrNotFound) {
+		return grpcerror.WrapNotFound(err)
+	}
+	logger.Errorf("Unexpected block store error: %v", err)
+	return grpcerror.WrapInternalError(err)
 }
 
 func waitForIdleCoordinator(ctx context.Context, client servicepb.CoordinatorClient) error {

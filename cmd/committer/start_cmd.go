@@ -59,25 +59,18 @@ func startService(ctx context.Context, name, configPath string) error {
 	var service serve.Service
 	switch c := conf.(type) {
 	case *sidecar.Config:
-		sidecarService, err := sidecar.New(c)
+		service, err = sidecar.New(c)
 		if err != nil {
 			return errors.Wrap(err, "failed to create sidecar service")
 		}
-		defer sidecarService.Close()
-		service = sidecarService
-
 	case *coordinator.Config:
 		service = coordinator.NewCoordinatorService(c)
-
 	case *vc.Config:
 		service = vc.NewValidatorCommitterService(ctx, c)
-
 	case *verifier.Config:
 		service = verifier.New(c)
-
 	case *query.Config:
 		service = query.NewQueryService(c)
-
 	default:
 		return errors.Newf("unknown config type: %T", conf)
 	}

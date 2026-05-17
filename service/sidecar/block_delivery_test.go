@@ -23,11 +23,11 @@ import (
 )
 
 type blockDeliveryWrapper struct {
-	*blockDelivery
+	*Service
 }
 
 func (w *blockDeliveryWrapper) RegisterService(s serve.Servers) {
-	peer.RegisterDeliverServer(s.GRPC, w.blockDelivery)
+	peer.RegisterDeliverServer(s.GRPC, w)
 }
 
 func TestBlockDelivery(t *testing.T) {
@@ -37,9 +37,8 @@ func TestBlockDelivery(t *testing.T) {
 
 	// Register block delivery on a gRPC server.
 	serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
-	bd := newBlockDelivery(bs)
-	wrapper := &blockDeliveryWrapper{bd}
-	test.ServeForTest(t.Context(), t, serverConfig, wrapper)
+	bd := &blockDeliveryWrapper{Service: &Service{blockStore: bs}}
+	test.ServeForTest(t.Context(), t, serverConfig, bd)
 	conn := test.NewInsecureConnection(t, &serverConfig.GRPC.Endpoint)
 	deliverClient := peer.NewDeliverClient(conn)
 
