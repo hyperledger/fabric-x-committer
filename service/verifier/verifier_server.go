@@ -74,7 +74,7 @@ func (s *Server) StartStream(stream servicepb.Verifier_StartStreamServer) error 
 	defer s.metrics.ActiveStreams.Dec()
 
 	// We create a new executor for each stream to avoid answering to the wrong stream.
-	executor := newParallelExecutor(&s.config.ParallelExecutor)
+	executor := newParallelExecutor(s.config)
 	g, gCtx := errgroup.WithContext(stream.Context())
 	g.Go(func() error {
 		return s.handleInputs(gCtx, stream, executor)

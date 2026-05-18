@@ -23,7 +23,7 @@ type (
 		outputSingleCh chan *verificationOutput
 		outputCh       chan []*committerpb.TxStatus
 		verifier       *verifier
-		config         *ExecutorConfig
+		config         *Config
 	}
 
 	verificationOutput struct {
@@ -32,12 +32,12 @@ type (
 	}
 )
 
-func newParallelExecutor(config *ExecutorConfig) *parallelExecutor {
+func newParallelExecutor(config *Config) *parallelExecutor {
 	channelCapacity := config.ChannelBufferSize * config.Parallelism
 	return &parallelExecutor{
 		config:         config,
 		inputCh:        make(chan *servicepb.TxWithRef, channelCapacity),
-		outputCh:       make(chan []*committerpb.TxStatus),
+		outputCh:       make(chan []*committerpb.TxStatus, 1),
 		outputSingleCh: make(chan *verificationOutput, channelCapacity),
 		verifier:       newVerifier(),
 	}
@@ -61,21 +61,30 @@ func (e *parallelExecutor) handleChannelInput(ctx context.Context) {
 func (e *parallelExecutor) handleCutoff(ctx context.Context) {
 	var outputBuffer []*committerpb.TxStatus
 	chOut := channel.NewWriter(ctx, e.outputCh)
+
+	var cutTimeout <-chan time.Time
 	cutBatch := func(size int) {
 		for len(outputBuffer) >= size {
 			batchSize := min(e.config.BatchSizeCutoff, len(outputBuffer))
 			logger.Debugf("Cuts batch with %d/%d of the outputs.", batchSize, len(outputBuffer))
 			chOut.Write(outputBuffer[:batchSize])
 			outputBuffer = outputBuffer[batchSize:]
+			// Reset the timer if we submitted a batch.
+			cutTimeout = nil
 		}
 	}
 	for {
+		if cutTimeout == nil {
+			cutTimeout = time.After(e.config.BatchTimeCutoff)
+		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(e.config.BatchTimeCutoff):
-			logger.Debugf("Attempts to cut a batch (timout). (buffer size: %d)", len(outputBuffer))
+		case <-cutTimeout:
+			logger.Debugf("Attempts to cut a batch (timeout). (buffer size: %d)", len(outputBuffer))
 			cutBatch(1)
+			// Reset the timer since it ended.
+			cutTimeout = nil
 		case output := <-e.outputSingleCh:
 			logger.Debugf("Attempts to emit a batch (response). (buffer size: %d)", len(outputBuffer)+1)
 			outputBuffer = append(outputBuffer, output.status)

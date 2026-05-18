@@ -247,12 +247,10 @@ func TestReadConfigVerifier(t *testing.T) {
 		configFilePath:       emptyConfig(t),
 		expectedServerConfig: newServeConfig(verifier.DefaultServerPort, verifier.DefaultMonitoringPort),
 		expectedServiceConfig: &verifier.Config{
-			ParallelExecutor: verifier.ExecutorConfig{
-				Parallelism:       verifier.DefaultParallelism,
-				BatchSizeCutoff:   verifier.DefaultBatchSizeCutoff,
-				BatchTimeCutoff:   verifier.DefaultBatchTimeCutoff,
-				ChannelBufferSize: verifier.DefaultChannelBufferSize,
-			},
+			Parallelism:       verifier.DefaultParallelism,
+			BatchSizeCutoff:   verifier.DefaultBatchSizeCutoff,
+			BatchTimeCutoff:   verifier.DefaultBatchTimeCutoff,
+			ChannelBufferSize: verifier.DefaultChannelBufferSize,
 		},
 	}, {
 		name:           "sample",
@@ -261,12 +259,10 @@ func TestReadConfigVerifier(t *testing.T) {
 			"verifier", verifier.DefaultServerPort, verifier.DefaultMonitoringPort,
 		),
 		expectedServiceConfig: &verifier.Config{
-			ParallelExecutor: verifier.ExecutorConfig{
-				BatchSizeCutoff:   verifier.DefaultBatchSizeCutoff,
-				BatchTimeCutoff:   10 * time.Millisecond,
-				ChannelBufferSize: verifier.DefaultChannelBufferSize,
-				Parallelism:       40,
-			},
+			BatchSizeCutoff:   verifier.DefaultBatchSizeCutoff,
+			BatchTimeCutoff:   10 * time.Millisecond,
+			ChannelBufferSize: verifier.DefaultChannelBufferSize,
+			Parallelism:       40,
 		},
 	}}
 

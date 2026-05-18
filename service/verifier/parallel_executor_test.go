@@ -60,7 +60,7 @@ func TestRegularTransactionBatching(t *testing.T) {
 
 func startExecutor(ctx context.Context, t *testing.T, batchSizeCutoff int) *parallelExecutor {
 	t.Helper()
-	config := &ExecutorConfig{
+	config := &Config{
 		BatchSizeCutoff:   batchSizeCutoff,
 		BatchTimeCutoff:   1 * time.Hour,
 		Parallelism:       1,

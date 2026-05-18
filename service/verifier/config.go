@@ -13,11 +13,6 @@ import (
 type (
 	// Config describes the signature verifier parameters.
 	Config struct {
-		ParallelExecutor ExecutorConfig `mapstructure:"parallel-executor"`
-	}
-
-	// ExecutorConfig describes the execution parameters.
-	ExecutorConfig struct {
 		// Parallelism How many parallel go routines will be launched
 		Parallelism int `mapstructure:"parallelism" validate:"required,gt=0"`
 		// BatchSizeCutoff The minimum amount of responses we need to collect before emitting a response

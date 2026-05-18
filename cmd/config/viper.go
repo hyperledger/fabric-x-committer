@@ -56,10 +56,10 @@ func NewViperWithSidecarDefaults() *viper.Viper {
 // NewViperWithVerifierDefaults returns a viper instance with the verifier default values.
 func NewViperWithVerifierDefaults() *viper.Viper {
 	v := newViperWithServiceDefault("verifier", verifier.DefaultServerPort, verifier.DefaultMonitoringPort)
-	v.SetDefault("parallel-executor.parallelism", verifier.DefaultParallelism)
-	v.SetDefault("parallel-executor.batch-time-cutoff", verifier.DefaultBatchTimeCutoff)
-	v.SetDefault("parallel-executor.batch-size-cutoff", verifier.DefaultBatchSizeCutoff)
-	v.SetDefault("parallel-executor.channel-buffer-size", verifier.DefaultChannelBufferSize)
+	v.SetDefault("parallelism", verifier.DefaultParallelism)
+	v.SetDefault("batch-time-cutoff", verifier.DefaultBatchTimeCutoff)
+	v.SetDefault("batch-size-cutoff", verifier.DefaultBatchSizeCutoff)
+	v.SetDefault("channel-buffer-size", verifier.DefaultChannelBufferSize)
 	return v
 }
 

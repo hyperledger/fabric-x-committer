@@ -564,19 +564,17 @@ func defaultCryptoParameters(t *testing.T) cryptoParameters {
 
 func defaultConfigWithTLS(tlsConfig connection.TLSConfig) (*Config, *serve.Config) {
 	config := &Config{
-		ParallelExecutor: ExecutorConfig{
-			BatchSizeCutoff:   3,
-			BatchTimeCutoff:   1 * time.Hour,
-			Parallelism:       3,
-			ChannelBufferSize: 1,
-		},
+		BatchSizeCutoff:   3,
+		BatchTimeCutoff:   1 * time.Hour,
+		Parallelism:       3,
+		ChannelBufferSize: 1,
 	}
 	return config, test.NewLocalHostServiceConfig(tlsConfig)
 }
 
 func defaultConfigQuickCutoff() (*Config, *serve.Config) {
 	config, serverConfig := defaultConfigWithTLS(test.InsecureTLSConfig)
-	config.ParallelExecutor.BatchSizeCutoff = 1
+	config.BatchSizeCutoff = 1
 	return config, serverConfig
 }
 

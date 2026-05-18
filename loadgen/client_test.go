@@ -136,12 +136,10 @@ func startVerifiers(t *testing.T, serverTLS, clientTLS connection.TLSConfig) *co
 	endpoints := make([]*connection.Endpoint, 2)
 	for i := range endpoints {
 		service := verifier.New(&verifier.Config{
-			ParallelExecutor: verifier.ExecutorConfig{
-				BatchSizeCutoff:   50,
-				BatchTimeCutoff:   10 * time.Millisecond,
-				ChannelBufferSize: 50,
-				Parallelism:       40,
-			},
+			BatchSizeCutoff:   50,
+			BatchTimeCutoff:   10 * time.Millisecond,
+			ChannelBufferSize: 50,
+			Parallelism:       40,
 		})
 
 		serverConfig := test.NewLocalHostServiceConfig(serverTLS)
