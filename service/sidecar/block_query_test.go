@@ -20,11 +20,11 @@ import (
 )
 
 type blockQueryWrapper struct {
-	*blockQuery
+	*Service
 }
 
 func (w *blockQueryWrapper) RegisterService(s serve.Servers) {
-	committerpb.RegisterBlockQueryServiceServer(s.GRPC, w.blockQuery)
+	committerpb.RegisterBlockQueryServiceServer(s.GRPC, w.Service)
 }
 
 func TestBlockQuery(t *testing.T) {
@@ -33,11 +33,10 @@ func TestBlockQuery(t *testing.T) {
 	bs, txIDs := newBlockStoreWithBlocks(t, 2)
 
 	// Create the query service and register on a gRPC server.
-	queryService := newBlockQuery(bs)
+	queryService := &blockQueryWrapper{Service: &Service{blockStore: bs}}
 
 	serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
-	wrapper := &blockQueryWrapper{queryService}
-	test.ServeForTest(t.Context(), t, serverConfig, wrapper)
+	test.ServeForTest(t.Context(), t, serverConfig, queryService)
 
 	conn := test.NewInsecureConnection(t, &serverConfig.GRPC.Endpoint)
 	client := committerpb.NewBlockQueryServiceClient(conn)

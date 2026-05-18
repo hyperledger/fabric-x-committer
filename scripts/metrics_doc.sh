@@ -11,7 +11,7 @@
 repo_root_dir="$(cd "$(dirname "$0")/.." && pwd)"
 extract_metrics_script="${repo_root_dir}/scripts/metrics_doc_extract.py"
 metrics_doc="${repo_root_dir}/docs/metrics_reference.md"
-python_cmd="${python3:-$(PYTHON_CMD)}"
+python_cmd="${python3:-${PYTHON_CMD}}"
 
 generate_service_doc() {
   local service_name="$1"

@@ -25,11 +25,11 @@ import (
 )
 
 type blockDeliveryTestWrapper struct {
-	*blockDelivery
+	*Service
 }
 
 func (w *blockDeliveryTestWrapper) RegisterService(s serve.Servers) {
-	peer.RegisterDeliverServer(s.GRPC, w.blockDelivery)
+	peer.RegisterDeliverServer(s.GRPC, w)
 }
 
 func TestBlockStoreAndDelivery(t *testing.T) {
@@ -41,7 +41,7 @@ func TestBlockStoreAndDelivery(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(bs.close)
 
-	bd := newBlockDelivery(bs)
+	bd := &blockDeliveryTestWrapper{Service: &Service{blockStore: bs, metrics: metrics}}
 
 	serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
 	inputBlock := make(chan *common.Block, 10)
@@ -50,8 +50,7 @@ func TestBlockStoreAndDelivery(t *testing.T) {
 			IncomingCommittedBlock: inputBlock,
 		}))
 	}, nil)
-	wrapper := &blockDeliveryTestWrapper{bd}
-	test.ServeForTest(t.Context(), t, serverConfig, wrapper)
+	test.ServeForTest(t.Context(), t, serverConfig, bd)
 
 	// NOTE: if we start the delivery client without even the 0'th block, it would
 	//       result in an error. This is due to the iterator implementation in the
