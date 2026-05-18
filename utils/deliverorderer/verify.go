@@ -285,7 +285,7 @@ func fetchVerifier(bundle *channelconfig.Bundle) (*protoutil.BlockSigVerifier, e
 	}
 
 	var consenters []*common.Consenter
-	bftEnabled := bundle.ChannelConfig().Capabilities().ConsensusTypeBFT()
+	bftEnabled := oc.ConsensusType() == "BFT" || oc.ConsensusType() == "arma"
 	if bftEnabled {
 		consenters = oc.Consenters()
 	}

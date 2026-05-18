@@ -450,7 +450,9 @@ func TestUpdateIfConfigBlock(t *testing.T) {
 		configBlock, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(cryptoDir, &testcrypto.ConfigBlock{
 			ChannelID: "test-channel",
 			OrdererEndpoints: []*commontypes.OrdererEndpoint{
-				{ID: 0, Host: "127.0.0.1", Port: 1000},
+				{ID: 1, Host: "127.0.0.1", Port: 1000},
+				{ID: 2, Host: "127.0.0.1", Port: 1001},
+				{ID: 3, Host: "127.0.0.1", Port: 1002},
 			},
 		})
 		require.NoError(t, err)
@@ -461,7 +463,14 @@ func TestUpdateIfConfigBlock(t *testing.T) {
 		assert.Equal(t, configBlock.Header.Number, cs.configBlockNumber)
 		assert.NotNil(t, cs.ConfigBlock)
 		assert.NotNil(t, cs.verifier)
-		assert.Len(t, cs.OrdererOrganizations, 1)
+		assert.Len(t, cs.OrdererOrganizations, 3)
+
+		configMaterial, err := channelconfig.LoadConfigBlockMaterial(configBlock)
+		require.NoError(t, err)
+		verifier, err := fetchVerifier(configMaterial.Bundle)
+		require.NoError(t, err)
+		assert.True(t, verifier.BFT)
+		assert.Len(t, verifier.Consenters, 3)
 	})
 
 	t.Run("Malformed config block (invalid envelope) - treated as non-config", func(t *testing.T) {
