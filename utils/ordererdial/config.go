@@ -21,7 +21,7 @@ import (
 type (
 	// Config defines the static configuration of the orderer as loaded from the YAML file.
 	Config struct {
-		FaultToleranceLevel string               `mapstructure:"fault-tolerance-level" validate:"omitempty,oneof=CFT BFT"`
+		FaultToleranceLevel string               `mapstructure:"fault-tolerance-level" validate:"omitempty,oneof=CFT BFT"` //nolint:lll,revive
 		TLS                 connection.TLSConfig `mapstructure:"tls"`
 		Retry               *retry.Profile       `mapstructure:"reconnect"`
 		// LatestKnownConfigBlockPath is the path for the latest known config block.

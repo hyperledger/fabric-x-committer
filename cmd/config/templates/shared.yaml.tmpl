@@ -86,14 +86,7 @@ rate-limit:
 orderer:
   fault-tolerance-level: BFT
   latest-known-config-block-path: "{{ .Policy.ArtifactsPath }}/config-block.pb.bin"
-  tls:
-    mode: {{ .ClientTLS.Mode }}
-    cert-path: {{ .ClientTLS.CertPath }}
-    key-path: {{ .ClientTLS.KeyPath }}
-    common-ca-cert-paths:
-      {{- range .ClientTLS.CACertPaths }}
-      - {{ . }}
-      {{- end }}
+{{ include "tlsConfig" .ClientTLS | indent 2 }}
   identity:
     msp-id: peer-org-0
     msp-dir: {{ .Policy.ArtifactsPath }}/peerOrganizations/peer-org-0.com/users/client@peer-org-0.com/msp
