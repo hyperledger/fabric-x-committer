@@ -117,7 +117,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 				),
 				OrdererEnv: &mock.OrdererTestEnv{
 					OrdererConnConfig: ordererdial.Config{
-						TLS:                        ordererdial.TLSConfigToOrdererTLSConfig(clientTLS),
+						TLS:                        clientTLS,
 						FaultToleranceLevel:        ordererdial.CFT,
 						LatestKnownConfigBlockPath: path.Join(artifactsPath, cryptogen.ConfigBlockFileName),
 					},

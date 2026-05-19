@@ -108,7 +108,7 @@ const DefaultSuspicionGracePeriodPerBlock = time.Second
 
 // LoadParametersFromConfig returns orderer delivery parameters and channel-ID from a given config.
 func LoadParametersFromConfig(c *ordererdial.Config) (p Parameters, err error) {
-	tls, err := ordererdial.NewTLSCredentials(c.TLS)
+	tls, err := connection.NewClientTLSCredentials(c.TLS)
 	if err != nil {
 		return p, err
 	}

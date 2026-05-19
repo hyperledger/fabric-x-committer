@@ -60,7 +60,7 @@ func TestLoadOrdererDeliveryParametersFromConfig(t *testing.T) {
 		name                   string
 		faultToleranceLevel    string
 		configBlockPath        string
-		tlsConfig              ordererdial.TLSConfig
+		tlsConfig              connection.TLSConfig
 		expectError            bool
 		expectedChannelID      string
 		expectedFaultTolerance string
@@ -105,11 +105,11 @@ func TestLoadOrdererDeliveryParametersFromConfig(t *testing.T) {
 			name:                "error with invalid TLS configuration",
 			faultToleranceLevel: ordererdial.BFT,
 			configBlockPath:     e.OrdererConnConfig.LatestKnownConfigBlockPath,
-			tlsConfig: ordererdial.TLSConfig{
-				Mode:              connection.MutualTLSMode,
-				CertPath:          "/nonexistent/cert.pem",
-				KeyPath:           "/nonexistent/key.pem",
-				CommonCACertPaths: []string{"/nonexistent/ca.pem"},
+			tlsConfig: connection.TLSConfig{
+				Mode:        connection.MutualTLSMode,
+				CertPath:    "/nonexistent/cert.pem",
+				KeyPath:     "/nonexistent/key.pem",
+				CACertPaths: []string{"/nonexistent/ca.pem"},
 			},
 			expectError: true,
 		},

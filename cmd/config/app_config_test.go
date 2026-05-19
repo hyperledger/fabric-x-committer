@@ -103,7 +103,7 @@ func TestReadConfigSidecar(t *testing.T) {
 				FaultToleranceLevel:        ordererdial.BFT,
 				LatestKnownConfigBlockPath: "/root/artifacts/config-block.pb.bin",
 				Identity:                   newIdentityConfig(),
-				TLS: ordererdial.TLSConfig{
+				TLS: connection.TLSConfig{
 					Mode:     sidecarTLSCreds.Mode,
 					KeyPath:  sidecarTLSCreds.KeyPath,
 					CertPath: sidecarTLSCreds.CertPath,
@@ -380,7 +380,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 						FaultToleranceLevel:        ordererdial.BFT,
 						LatestKnownConfigBlockPath: "/root/artifacts/config-block.pb.bin",
 						Identity:                   newIdentityConfig(),
-						TLS: ordererdial.TLSConfig{
+						TLS: connection.TLSConfig{
 							Mode:     loadgenTLSCreds.Mode,
 							KeyPath:  loadgenTLSCreds.KeyPath,
 							CertPath: loadgenTLSCreds.CertPath,

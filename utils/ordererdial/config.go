@@ -21,9 +21,9 @@ import (
 type (
 	// Config defines the static configuration of the orderer as loaded from the YAML file.
 	Config struct {
-		FaultToleranceLevel string         `mapstructure:"fault-tolerance-level" validate:"omitempty,oneof=CFT BFT"`
-		TLS                 TLSConfig      `mapstructure:"tls"`
-		Retry               *retry.Profile `mapstructure:"reconnect"`
+		FaultToleranceLevel string               `mapstructure:"fault-tolerance-level" validate:"omitempty,oneof=CFT BFT"`
+		TLS                 connection.TLSConfig `mapstructure:"tls"`
+		Retry               *retry.Profile       `mapstructure:"reconnect"`
 		// LatestKnownConfigBlockPath is the path for the latest known config block.
 		// We fetch the orderer endpoints, CA certificates, and channel-ID from this block.
 		// This block might be newer than the block used for verification, to allow using
@@ -41,16 +41,6 @@ type (
 		MspID  string               `mapstructure:"msp-id"`
 		MSPDir string               `mapstructure:"msp-dir"`
 		BCCSP  *factory.FactoryOpts `mapstructure:"bccsp"`
-	}
-
-	// TLSConfig is a TLS config for the orderer clients.
-	TLSConfig struct {
-		Mode     string `mapstructure:"mode" validate:"omitempty,oneof=tls mtls none"`
-		CertPath string `mapstructure:"cert-path"`
-		KeyPath  string `mapstructure:"key-path"`
-		// CommonCACertPaths is a temporary workaround to inject CA to all organizations.
-		// TODO: This will be removed once we read the TLS certificates from the config block.
-		CommonCACertPaths []string `mapstructure:"common-ca-cert-paths"`
 	}
 )
 
@@ -82,16 +72,6 @@ func GetFaultToleranceLevel(ftLevel string) (string, error) {
 	default:
 		return ftLevel, errors.Newf("invalid fault tolerance level: '%s'", ftLevel)
 	}
-}
-
-// NewTLSCredentials is a wrapper for [connection.NewClientTLSCredentials] with the orderer's config.
-func NewTLSCredentials(c TLSConfig) (*connection.TLSCredentials, error) {
-	return connection.NewClientTLSCredentials(connection.TLSConfig{
-		Mode:        c.Mode,
-		KeyPath:     c.KeyPath,
-		CertPath:    c.CertPath,
-		CACertPaths: c.CommonCACertPaths,
-	})
 }
 
 // IdentityConfigToMspDir converts the identity config to msp directory.

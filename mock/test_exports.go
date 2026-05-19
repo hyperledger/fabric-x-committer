@@ -372,7 +372,7 @@ func GetOrdererConnConfig(artifactsPath string, clientTLSConfig connection.TLSCo
 	}
 	return ordererdial.Config{
 		FaultToleranceLevel:        ordererdial.BFT,
-		TLS:                        ordererdial.TLSConfigToOrdererTLSConfig(clientTLSConfig),
+		TLS:                        clientTLSConfig,
 		LatestKnownConfigBlockPath: path.Join(artifactsPath, cryptogen.ConfigBlockFileName),
 		Retry: &retry.Profile{
 			InitialInterval: 10 * time.Millisecond,

@@ -50,7 +50,7 @@ type (
 
 // NewBroadcastStream starts a new broadcast stream (non-production).
 func NewBroadcastStream(ctx context.Context, config *ordererdial.Config) (Broadcaster, error) {
-	tls, err := ordererdial.NewTLSCredentials(config.TLS)
+	tls, err := connection.NewClientTLSCredentials(config.TLS)
 	if err != nil {
 		return nil, err
 	}
