@@ -475,6 +475,69 @@ func TestNotifierGlobalLimit(t *testing.T) {
 	require.Len(t, res.TxStatusEvents, 2)
 }
 
+// TestNotifierQueuedTimeoutAfterStatusDoesNotEmitEmptyResponse verifies that
+// when a request's timeout timer fires and queues a callback, a status event
+// may be processed first, removing all of the request's TX IDs from the
+// subscription map. The late timeout callback must not emit an empty timeout
+// response when there are no TX IDs left to report.
+func TestNotifierQueuedTimeoutAfterStatusDoesNotEmitEmptyResponse(t *testing.T) {
+	t.Parallel()
+
+	// Set up a channel to capture responses and a subscriptions map with 1 slot.
+	responses := make(chan *committerpb.NotificationResponse, 2)
+	q := channel.NewWriter(t.Context(), responses)
+	req := &notificationRequest{
+		request: &committerpb.NotificationRequest{
+			TxStatusRequest: &committerpb.TxIDsBatch{TxIds: []string{"tx1"}},
+			Timeout:         durationpb.New(1 * time.Millisecond),
+		},
+		streamEventQueue: q,
+		timer:            time.NewTimer(time.Hour),
+	}
+	defer req.timer.Stop()
+	subs := &subscriptions{
+		txIDToRequests: make(map[string]map[*notificationRequest]any),
+		availableSlots: 1,
+	}
+
+	// Subscribe: the request is now tracked in the map under "tx1".
+	rejected, uniqueNew := subs.addRequest(req)
+	require.Empty(t, rejected)
+	require.Equal(t, 1, uniqueNew)
+
+	// Simulate the race: the timeout timer has already queued this request for
+	// processing, but the status event arrives and is handled first.
+	// The status delivery removes "tx1" from the subscription map and emits a
+	// status response.
+	queuedTimeoutReq := req
+	removed, uniqueRemoved := subs.removeAndEnqueueStatusEvents([]*committerpb.TxStatus{
+		{Ref: committerpb.NewTxRef("tx1", 1, 0)},
+	})
+	require.Equal(t, 1, removed)
+	require.Equal(t, 1, uniqueRemoved)
+
+	// Verify the status response was emitted.
+	res := <-responses
+	require.Empty(t, res.TimeoutTxIds)
+	test.RequireProtoElementsMatch(t, []*committerpb.TxStatus{
+		{Ref: committerpb.NewTxRef("tx1", 1, 0)},
+	}, res.TxStatusEvents)
+
+	// Now the queued timeout callback runs. Since "tx1" was already removed by
+	// the status delivery, there is nothing left to time out. The method must
+	// return zero counts and must NOT write an empty timeout response.
+	removed, uniqueRemoved = subs.removeAndEnqueueTimeoutEvents(queuedTimeoutReq)
+	require.Zero(t, removed)
+	require.Zero(t, uniqueRemoved)
+
+	// Confirm no second response was written (channel is empty).
+	select {
+	case res := <-responses:
+		require.Failf(t, "timeout response should not be emitted", "response: %v", res)
+	default:
+	}
+}
+
 func newNotifierTestEnv(tb testing.TB, numOfClients int) *notifierTestEnv {
 	tb.Helper()
 	return newNotifierTestEnvWithConfig(tb, numOfClients, &NotificationServiceConfig{
