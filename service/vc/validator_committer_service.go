@@ -317,7 +317,7 @@ func (vc *ValidatorCommitterService) batchReceivedTransactionsAndForwardForProce
 	toPrepareTxs := channel.NewWriter(ctx, vc.toPrepareTxs)
 
 	sendLargeBatch := func() {
-		defer timer.Reset(vc.timeoutForMinTxBatchSize)
+		defer resetBatchTimer(timer, vc.timeoutForMinTxBatchSize)
 		if len(largerBatch.Transactions) == 0 {
 			return
 		}
@@ -349,6 +349,19 @@ func (vc *ValidatorCommitterService) batchReceivedTransactionsAndForwardForProce
 			}
 		}
 	}
+}
+
+// resetBatchTimer safely resets a timer by draining any stale tick from the channel before
+// resetting. Per Go docs, Reset should only be used on stopped or expired timers with the
+// channel drained; otherwise Reset may incorrectly fire immediately on a stale tick.
+func resetBatchTimer(timer *time.Timer, timeout time.Duration) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+	timer.Reset(timeout)
 }
 
 // sendTransactionStatus sends the status of the transactions to the client.

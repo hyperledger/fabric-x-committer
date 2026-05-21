@@ -101,6 +101,21 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 	return vcsTestEnv
 }
 
+func TestResetBatchTimerDrainsExpiredTick(t *testing.T) {
+	t.Parallel()
+
+	timer := time.NewTimer(0)
+	t.Cleanup(func() { timer.Stop() })
+
+	resetBatchTimer(timer, time.Hour)
+
+	select {
+	case <-timer.C:
+		require.Fail(t, "timer delivered stale tick after reset")
+	default:
+	}
+}
+
 func TestCreateConfigAndTables(t *testing.T) {
 	t.Parallel()
 	env := newValidatorAndCommitServiceTestEnvWithClient(t, nil)
