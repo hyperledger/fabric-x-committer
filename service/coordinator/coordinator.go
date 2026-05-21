@@ -343,7 +343,7 @@ func (c *Service) receiveAndProcessBlock(
 		// still be forwarded to downstream components for complete processing.
 
 		promutil.AddToCounter(c.metrics.transactionReceivedTotal, len(blk.Txs)+len(blk.Rejected))
-		c.numWaitingTxsForStatus.Add(int32(len(blk.Txs))) //nolint:gosec
+		c.numWaitingTxsForStatus.Add(int32(len(blk.Txs) + len(blk.Rejected))) //nolint:gosec
 
 		if len(blk.Txs) > 0 {
 			// TODO: make it configurable.

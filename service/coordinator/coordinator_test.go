@@ -929,6 +929,33 @@ func TestChunkSizeSentForDepGraph(t *testing.T) {
 	}, 4*time.Second, 100*time.Millisecond)
 }
 
+func TestWaitingTxsCountReturnsToZeroForBlockWithRejectedTxs(t *testing.T) {
+	t.Parallel()
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
+
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env.startServiceAndOpenStream(ctx, t)
+	env.createNamespaces(t, 0, "1")
+
+	b, expectedTxsStatus := makeTestBlock(1)
+	rejectedStatus := committerpb.NewTxStatus(
+		committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
+		"rejected",
+		0,
+		1,
+	)
+	b.Rejected = []*committerpb.TxStatus{rejectedStatus}
+	expectedTxsStatus = append(expectedTxsStatus, rejectedStatus)
+
+	err := env.csStream.Send(b)
+	require.NoError(t, err)
+
+	actualTxsStatus := readTxStatus(t, env.csStream, len(expectedTxsStatus))
+	test.RequireProtoElementsMatch(t, expectedTxsStatus, actualTxsStatus)
+	require.Equal(t, int32(0), env.coordinator.numWaitingTxsForStatus.Load())
+}
+
 func TestWaitingTxsCount(t *testing.T) {
 	t.Parallel()
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
