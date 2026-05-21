@@ -540,23 +540,25 @@ func (s *Service) deliverBlocks(
 	if err != nil {
 		return common.Status_BAD_REQUEST, err
 	}
-	cursor, stopNum, err := s.getCursor(seekInfo)
-	if err != nil {
-		return common.Status_BAD_REQUEST, err
-	}
-	defer cursor.Close()
-	logger.Debugf("Received seekInfo.")
 
 	ctx := srv.Context()
 
 	if seekInfo.Behavior == ab.SeekInfo_BLOCK_UNTIL_READY {
-		// We use a retry backoff here to avoid busy waiting when blocks are not yet available.
+		// Wait before creating the cursor. FileLedger cannot create a waiting block-zero
+		// iterator while the ledger is empty because the block-zero index does not exist yet.
 		if !retry.WaitForCondition(ctx, &blockReadyRetryProfile, func() bool {
 			return s.blockStore.ledger.Height() > 0
 		}) {
 			return 0, errors.New("blocks not yet available")
 		}
 	}
+
+	cursor, stopNum, err := s.getCursor(seekInfo)
+	if err != nil {
+		return common.Status_BAD_REQUEST, err
+	}
+	defer cursor.Close()
+	logger.Debugf("Received seekInfo.")
 
 	for ctx.Err() == nil {
 		block, retStatus := cursor.Next(ctx)
@@ -591,7 +593,11 @@ func (s *Service) getCursor(seekInfo *ab.SeekInfo) (blockledger.Iterator, uint64
 		if proto.Equal(seekInfo.Start, seekInfo.Stop) {
 			return cursor, number, nil
 		}
-		return cursor, s.blockStore.ledger.Height() - 1, nil
+		height := s.blockStore.ledger.Height()
+		if height == 0 {
+			return cursor, 0, nil
+		}
+		return cursor, height - 1, nil
 	case *ab.SeekPosition_Specified:
 		if stop.Specified.Number < number {
 			cursor.Close()

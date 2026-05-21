@@ -21,7 +21,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
 	github.com/hyperledger/fabric-lib-go v1.1.3
 	github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7
-	github.com/hyperledger/fabric-x-common v0.2.4
+	github.com/hyperledger/fabric-x-common v0.2.5-0.20260526151648-855f12b2d438
 	github.com/jackc/puddle/v2 v2.2.2
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/prometheus/client_golang v1.23.2
