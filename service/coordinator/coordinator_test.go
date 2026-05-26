@@ -331,49 +331,33 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 	require.Equal(t, uint64(2), nextBlock.Number)
 }
 
-func TestCoordinatorServiceRejectedTx(t *testing.T) {
+func TestCoordinatorServiceRejectedTxAndWaitingStatusCount(t *testing.T) {
 	t.Parallel()
-	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: true})
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
-	t.Cleanup(cancel)
-	env.startServiceAndOpenStream(ctx, t)
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
 
-	env.createNamespaces(t, 0, "1")
+	// Seven transactions are still waiting for sidecar-visible final status. Five of
+	// those statuses are already queued in two batches. One queued status is a
+	// rejected transaction, proving rejected statuses are counted in the same unit
+	// as committed statuses.
+	env.coordinator.numWaitingTxsForStatus.Store(7)
 
-	preMetricsValue := test.GetIntMetricValue(t, env.coordinator.metrics.transactionReceivedTotal)
-
-	err := env.csStream.Send(&servicepb.CoordinatorBatch{
-		Rejected: []*committerpb.TxStatus{
-			{
-				Ref:    committerpb.NewTxRef("rejected", 1, 0),
-				Status: committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
-			},
+	require.True(t, env.coordinator.queues.vcServiceToCoordinatorTxStatus.write(t.Context(), &committerpb.TxStatusBatch{
+		Status: []*committerpb.TxStatus{
+			committerpb.NewTxStatus(committerpb.Status_COMMITTED, "queued-1", 2, 0),
+			committerpb.NewTxStatus(committerpb.Status_COMMITTED, "queued-2", 2, 1),
 		},
-	})
+	}))
+	require.True(t, env.coordinator.queues.vcServiceToCoordinatorTxStatus.write(t.Context(), &committerpb.TxStatusBatch{
+		Status: []*committerpb.TxStatus{
+			committerpb.NewTxStatus(committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD, "queued-rejected", 2, 2),
+			committerpb.NewTxStatus(committerpb.Status_COMMITTED, "queued-4", 2, 3),
+			committerpb.NewTxStatus(committerpb.Status_COMMITTED, "queued-5", 2, 4),
+		},
+	}))
+
+	waitingTxs, err := env.coordinator.NumberOfWaitingTransactionsForStatus(t.Context(), nil)
 	require.NoError(t, err)
-	test.EventuallyIntMetric(
-		t, preMetricsValue+1, env.coordinator.metrics.transactionReceivedTotal,
-		1*time.Second, 100*time.Millisecond,
-	)
-
-	env.requireStatus(ctx, t, []*committerpb.TxStatus{
-		committerpb.NewTxStatus(committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD, "rejected", 1, 0),
-	}, nil)
-
-	test.RequireIntMetricValue(t, 1, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
-		committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD.String(),
-	))
-	test.RequireIntMetricValue(t, preMetricsValue, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
-		committerpb.Status_COMMITTED.String(),
-	))
-
-	_, err = env.coordinator.SetLastCommittedBlockNumber(ctx, &servicepb.BlockRef{Number: 1})
-	require.NoError(t, err)
-
-	nextBlock, err := env.coordinator.GetNextBlockNumberToCommit(ctx, nil)
-	require.NoError(t, err)
-	require.NotNil(t, nextBlock)
-	require.Equal(t, uint64(2), nextBlock.Number)
+	require.Equal(t, int32(2), waitingTxs.GetCount())
 }
 
 func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
@@ -553,7 +537,7 @@ func TestQueueSize(t *testing.T) {
 	q.depGraphToSigVerifierFreeTxs <- dependencygraph.TxNodeBatch{}
 	q.sigVerifierToVCServiceValidatedTxs <- dependencygraph.TxNodeBatch{}
 	q.vcServiceToDepGraphValidatedTxs <- dependencygraph.TxNodeBatch{}
-	q.vcServiceToCoordinatorTxStatus <- &committerpb.TxStatusBatch{}
+	require.True(t, q.vcServiceToCoordinatorTxStatus.write(t.Context(), &committerpb.TxStatusBatch{}))
 
 	require.Eventually(t, func() bool {
 		return test.GetIntMetricValue(t, m.sigverifierInputTxBatchQueueSize) == 1 &&
@@ -565,7 +549,8 @@ func TestQueueSize(t *testing.T) {
 	<-q.depGraphToSigVerifierFreeTxs
 	<-q.sigVerifierToVCServiceValidatedTxs
 	<-q.vcServiceToDepGraphValidatedTxs
-	<-q.vcServiceToCoordinatorTxStatus
+	_, ok := q.vcServiceToCoordinatorTxStatus.read(t.Context())
+	require.True(t, ok)
 
 	require.Eventually(t, func() bool {
 		return test.GetIntMetricValue(t, m.sigverifierInputTxBatchQueueSize) == 0 &&

@@ -37,10 +37,9 @@ type (
 	// 3. Forwarding the validated transactions node to the dependency graph manager.
 	// 4. Forwarding the status of the transactions to the coordinator.
 	validatorCommitterManager struct {
-		config              *validatorCommitterManagerConfig
-		commonClient        servicepb.ValidationAndCommitServiceClient
-		validatorCommitter  []*validatorCommitter
-		txsStatusBufferSize int
+		config             *validatorCommitterManagerConfig
+		commonClient       servicepb.ValidationAndCommitServiceClient
+		validatorCommitter []*validatorCommitter
 		// ready indicates that the validatorCommitter array is initialized.
 		ready *channel.Ready
 	}
@@ -62,7 +61,7 @@ type (
 		clientConfig                   *connection.MultiClientConfig
 		incomingTxsForValidationCommit <-chan dependencygraph.TxNodeBatch
 		outgoingValidatedTxsNode       chan<- dependencygraph.TxNodeBatch
-		outgoingTxsStatus              chan<- *committerpb.TxStatusBatch
+		outgoingTxsStatus              *txStatusQueue
 		metrics                        *perfMetrics
 		policyMgr                      *policyManager
 	}
@@ -71,9 +70,8 @@ type (
 func newValidatorCommitterManager(c *validatorCommitterManagerConfig) *validatorCommitterManager {
 	logger.Info("Initializing new ValidatorCommitterManager")
 	return &validatorCommitterManager{
-		config:              c,
-		txsStatusBufferSize: cap(c.outgoingTxsStatus),
-		ready:               channel.NewReady(),
+		config: c,
+		ready:  channel.NewReady(),
 	}
 }
 
@@ -127,7 +125,7 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 					eCtx,
 					txBatchQueue,
 					channel.NewWriter(eCtx, c.outgoingValidatedTxsNode),
-					channel.NewWriter(eCtx, c.outgoingTxsStatus),
+					c.outgoingTxsStatus,
 				)
 			})
 		})
@@ -206,7 +204,7 @@ func (vc *validatorCommitter) sendTransactionsAndForwardStatus(
 	ctx context.Context,
 	inputTxBatch channel.ReaderWriter[dependencygraph.TxNodeBatch],
 	outputValidatedTxsNode channel.Writer[dependencygraph.TxNodeBatch],
-	outputTxsStatus channel.Writer[*committerpb.TxStatusBatch],
+	outputTxsStatus *txStatusQueue,
 ) error {
 	defer vc.metrics.vcservicesConnection.Disconnected(vc.conn.CanonicalTarget())
 
@@ -232,7 +230,7 @@ func (vc *validatorCommitter) sendTransactionsAndForwardStatus(
 		//       transaction from the stream and removing it from txBeingValidated, if the stream context is
 		//       canceled before we can write to these two channels, the validation results are lost forever.
 		//       Similarly, the first argument, i.e., context should not be stream context.
-		return vc.receiveStatusAndForwardToOutput(stream, outputValidatedTxsNode, outputTxsStatus)
+		return vc.receiveStatusAndForwardToOutput(ctx, stream, outputValidatedTxsNode, outputTxsStatus)
 	})
 
 	return utils.ProcessErr(g.Wait(), "sendTransactionsAndForwardStatus run failed")
@@ -300,9 +298,10 @@ func splitAndSendToVC(
 }
 
 func (vc *validatorCommitter) receiveStatusAndForwardToOutput(
+	ctx context.Context,
 	stream servicepb.ValidationAndCommitService_StartValidateAndCommitStreamClient,
 	outputTxsNode channel.Writer[dependencygraph.TxNodeBatch],
-	outputTxsStatus channel.Writer[*committerpb.TxStatusBatch],
+	outputTxsStatus *txStatusQueue,
 ) error {
 	for {
 		txsStatus, err := stream.Recv()
@@ -339,8 +338,8 @@ func (vc *validatorCommitter) receiveStatusAndForwardToOutput(
 		//       this is not an issue. If the sidecar becomes bottlenecked and cannot receive
 		//       the statuses quickly, the gRPC flow control will activate and slow down the
 		//       whole system, allowing the sidecar to catch up.
-		if ok := outputTxsStatus.Write(txsStatus); !ok {
-			return errors.Wrap(outputTxsStatus.Context().Err(), "context ended")
+		if ok := outputTxsStatus.write(ctx, txsStatus); !ok {
+			return errors.Wrap(ctx.Err(), "context ended")
 		}
 		logger.Debugf("Forwarded batch with %d TX statuses back to coordinator", len(txsStatus.Status))
 

@@ -86,10 +86,10 @@ type (
 		//       rename vcServiceToDepGraphValidatedTxs to committedOrAbortedTxsNode.
 		vcServiceToDepGraphValidatedTxs chan dependencygraph.TxNodeBatch
 
-		// sender: validator committer manager sends transaction status to this channel. For each validator committer
-		// 	       server, there is a goroutine that sends transaction status to this channel.
-		// receiver: coordinator receives transaction status from this channel and forwards them to the sidecar.
-		vcServiceToCoordinatorTxStatus chan *committerpb.TxStatusBatch
+		// sender: validator committer manager sends transaction status to this queue. For each validator committer
+		// 	       server, there is a goroutine that sends transaction status to this queue.
+		// receiver: coordinator receives transaction status from this queue and forwards them to the sidecar.
+		vcServiceToCoordinatorTxStatus *txStatusQueue
 	}
 )
 
@@ -122,7 +122,7 @@ func NewCoordinatorService(c *Config) *Service {
 		depGraphToSigVerifierFreeTxs:       make(chan dependencygraph.TxNodeBatch, bufSzPerChanForValCommitMgr),
 		sigVerifierToVCServiceValidatedTxs: make(chan dependencygraph.TxNodeBatch, bufSzPerChanForSignVerifierMgr),
 		vcServiceToDepGraphValidatedTxs:    make(chan dependencygraph.TxNodeBatch, bufSzPerChanForValCommitMgr),
-		vcServiceToCoordinatorTxStatus:     make(chan *committerpb.TxStatusBatch, bufSzPerChanForValCommitMgr),
+		vcServiceToCoordinatorTxStatus:     newTxStatusQueue(bufSzPerChanForValCommitMgr),
 	}
 
 	metrics := newPerformanceMetrics()
@@ -280,7 +280,7 @@ func (c *Service) NumberOfWaitingTransactionsForStatus(
 	defer c.streamActive.Unlock()
 
 	return &servicepb.WaitingTransactions{
-		Count: c.numWaitingTxsForStatus.Load() - int32(len(c.queues.vcServiceToCoordinatorTxStatus)), //nolint:gosec
+		Count: c.numWaitingTxsForStatus.Load() - c.queues.vcServiceToCoordinatorTxStatus.readyCount(),
 	}, nil
 }
 
@@ -374,12 +374,12 @@ func (c *Service) sendTxStatus(
 	ctx context.Context,
 	stream servicepb.Coordinator_BlockProcessingServer,
 ) error {
-	txsStatus := channel.NewReader(ctx, c.queues.vcServiceToCoordinatorTxStatus)
 	for {
-		txStatus, ctxAlive := txsStatus.Read()
-		if !ctxAlive {
+		txStatus, ok := c.queues.vcServiceToCoordinatorTxStatus.read(ctx)
+		if !ok {
 			return nil
 		}
+
 		c.numWaitingTxsForStatus.Add(-int32(len(txStatus.Status))) //nolint:gosec
 
 		if err := stream.Send(txStatus); err != nil {
@@ -414,6 +414,6 @@ func (c *Service) monitorQueues(ctx context.Context) {
 		promutil.SetGauge(m.sigverifierInputTxBatchQueueSize, len(q.depGraphToSigVerifierFreeTxs))
 		promutil.SetGauge(m.sigverifierOutputValidatedTxBatchQueueSize, len(q.sigVerifierToVCServiceValidatedTxs))
 		promutil.SetGauge(m.vcserviceOutputValidatedTxBatchQueueSize, len(q.vcServiceToDepGraphValidatedTxs))
-		promutil.SetGauge(m.vcserviceOutputTxStatusBatchQueueSize, len(q.vcServiceToCoordinatorTxStatus))
+		promutil.SetGauge(m.vcserviceOutputTxStatusBatchQueueSize, q.vcServiceToCoordinatorTxStatus.len())
 	}
 }
