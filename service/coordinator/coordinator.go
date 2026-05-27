@@ -279,6 +279,17 @@ func (c *Service) NumberOfWaitingTransactionsForStatus(
 	}
 	defer c.streamActive.Unlock()
 
+	// When the sidecar stream is inactive, numWaitingTxsForStatus is not decremented
+	// because sendTxStatus cannot forward statuses. However, VC continues producing
+	// statuses into the queue. To compute the number of TXs still being processed
+	// (i.e., not yet computed by VC), we subtract readyCount (statuses already
+	// produced but not yet consumed by sendTxStatus) from numWaitingTxsForStatus.
+	// The difference is never negative because numWaitingTxsForStatus is always
+	// greater than or equal to readyCount: every status in the queue was previously
+	// counted in numWaitingTxsForStatus at block receipt, and numWaitingTxsForStatus
+	// is only decremented after sendTxStatus consumes from the queue.
+	// When the difference is zero, all previously submitted TXs have been processed
+	// and the sidecar can safely reconnect.
 	return &servicepb.WaitingTransactions{
 		Count: c.numWaitingTxsForStatus.Load() - c.queues.vcServiceToCoordinatorTxStatus.readyCount(),
 	}, nil
