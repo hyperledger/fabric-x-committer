@@ -580,18 +580,18 @@ func (s *Service) deliverBlocks(
 }
 
 func (s *Service) getCursor(seekInfo *ab.SeekInfo) (blockledger.Iterator, uint64, error) {
-	cursor, number := s.blockStore.ledger.Iterator(seekInfo.Start)
+	cursor, startNum := s.blockStore.ledger.Iterator(seekInfo.Start)
 
 	switch stop := seekInfo.Stop.Type.(type) {
 	case *ab.SeekPosition_Oldest:
-		return cursor, number, nil
+		return cursor, startNum, nil
 	case *ab.SeekPosition_Newest:
 		// when seeking only the newest block (i.e. starting
 		// and stopping at newest), don't reevaluate the ledger
 		// height as this can lead to multiple blocks being
 		// sent when only one is expected
 		if proto.Equal(seekInfo.Start, seekInfo.Stop) {
-			return cursor, number, nil
+			return cursor, startNum, nil
 		}
 		height := s.blockStore.ledger.Height()
 		if height == 0 {
@@ -599,7 +599,7 @@ func (s *Service) getCursor(seekInfo *ab.SeekInfo) (blockledger.Iterator, uint64
 		}
 		return cursor, height - 1, nil
 	case *ab.SeekPosition_Specified:
-		if stop.Specified.Number < number {
+		if stop.Specified.Number < startNum {
 			cursor.Close()
 			return nil, 0, errors.New("start number greater than stop number")
 		}

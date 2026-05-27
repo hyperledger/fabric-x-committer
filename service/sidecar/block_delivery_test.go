@@ -20,6 +20,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -231,14 +232,8 @@ func TestBlockDeliveryWaitsForBlockZeroOnEmptyLedger(t *testing.T) {
 			inputBlock <- blk
 			ensureAtLeastHeight(t, bs, 1)
 
-			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-			defer cancel()
-			var result deliverResult
-			select {
-			case result = <-resultCh:
-			case <-ctx.Done():
-				require.NoError(t, ctx.Err())
-			}
+			result, ok := channel.NewReader(t.Context(), resultCh).ReadWithTimeout(2 * time.Second)
+			require.True(t, ok)
 			require.NoError(t, result.err)
 			require.Equal(t, uint64(0), result.response.GetBlock().GetHeader().GetNumber())
 
