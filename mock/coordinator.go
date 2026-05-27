@@ -34,7 +34,7 @@ type Coordinator struct {
 	lastCommittedBlock atomic.Pointer[servicepb.BlockRef]
 	nextBlock          atomic.Uint64
 	streamActive       atomic.Bool
-	numTxsInProgress      atomic.Int32
+	numTxsInProgress   atomic.Int32
 	txsStatus          *fifoCache[*committerpb.TxStatus]
 	txsStatusMu        sync.Mutex
 	latency            atomic.Pointer[time.Duration]

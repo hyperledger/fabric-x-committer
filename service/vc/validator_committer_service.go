@@ -61,8 +61,6 @@ type ValidatorCommitterService struct {
 	// streams were allowed concurrently, transaction status might not reach the client
 	// reliably, as we are not currently associating requests and their corresponding responses
 	// (i.e., status updates) with specific streams.
-	// Further, when isStreamActive is active, NoPendingTransactionProcessing would return an
-	// error as this gRPC api can be called only when the stream is inactive.
 	isStreamActive atomic.Bool
 	ready          *channel.Ready
 }

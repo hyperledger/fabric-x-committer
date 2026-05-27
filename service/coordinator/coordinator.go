@@ -97,7 +97,9 @@ type (
 var (
 	// ErrActiveStreamPendingTxProcessing is returned when NoPendingTransactionProcessing is called
 	// while a stream is active. This value cannot be reliably determined in this state.
-	ErrActiveStreamPendingTxProcessing = errors.New("cannot check pending transaction processing while stream is active")
+	ErrActiveStreamPendingTxProcessing = errors.New(
+		"cannot check pending transaction processing while stream is active",
+	)
 
 	// ErrExistingStreamOrConflictingOp indicates that a stream cannot be created because a stream already exists
 	// or a conflicting gRPC API call is being made concurrently.
@@ -162,17 +164,17 @@ func NewCoordinatorService(c *Config) *Service {
 	)
 
 	return &Service{
-		dependencyMgr:          depMgr,
-		signatureVerifierMgr:   svMgr,
-		validatorCommitterMgr:  vcMgr,
-		policyMgr:              policyMgr,
-		queues:                 queues,
-		config:                 c,
-		metrics:                metrics,
-		initializationDone:     channel.NewReady(),
-		numTxsInProgress: &atomic.Int32{},
-		txBatchIDToDepGraph:    1,
-		healthcheck:            serve.DefaultHealthCheckService(),
+		dependencyMgr:         depMgr,
+		signatureVerifierMgr:  svMgr,
+		validatorCommitterMgr: vcMgr,
+		policyMgr:             policyMgr,
+		queues:                queues,
+		config:                c,
+		metrics:               metrics,
+		initializationDone:    channel.NewReady(),
+		numTxsInProgress:      &atomic.Int32{},
+		txBatchIDToDepGraph:   1,
+		healthcheck:           serve.DefaultHealthCheckService(),
 	}
 }
 
@@ -285,12 +287,17 @@ func (c *Service) NoPendingTransactionProcessing(
 	// statuses into the queue. To compute the number of TXs still being processed
 	// (i.e., not yet computed by VC), we subtract readyCount (statuses already
 	// produced but not yet consumed by sendTxStatus) from numTxsInProgress.
-	// The difference is never negative because numTxsInProgress is always
-	// greater than or equal to readyCount: every status in the queue was previously
-	// counted in numTxsInProgress at block receipt, and numTxsInProgress
-	// is only decremented after sendTxStatus consumes from the queue.
-	// When the difference is zero, all previously submitted TXs have been processed
-	// and the sidecar can safely reconnect.
+	//
+	// numTxsInProgress is a superset of readyCount: every status tracked by
+	// readyCount was previously counted in numTxsInProgress at block receipt,
+	// and numTxsInProgress is only decremented after sendTxStatus consumes from
+	// the queue (which decrements readyCount first). The two values are not read
+	// atomically, but numTxsInProgress is frozen while the stream is inactive
+	// (only receiveAndProcessBlock and sendTxStatus modify it, and both require
+	// an active stream). So the result is never negative.
+	//
+	// When numTxsInProgress equals readyCount, all previously submitted TXs
+	// have been processed and the sidecar can safely reconnect.
 	return wrapperspb.Bool(
 		c.numTxsInProgress.Load() == c.queues.vcServiceToCoordinatorTxStatus.readyCount(),
 	), nil
