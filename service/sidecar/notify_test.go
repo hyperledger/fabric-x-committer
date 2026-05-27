@@ -478,71 +478,29 @@ func TestNotifierGlobalLimit(t *testing.T) {
 func TestNotifierLateTimeoutDoesNotEmitEmptyResponse(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct {
-		name                     string
-		queueTimeoutBeforeStatus bool
-	}{
-		{
-			name:                     "queued timeout then status then timeout processing",
-			queueTimeoutBeforeStatus: true,
-		},
-		{
-			name:                     "status then late timeout callback",
-			queueTimeoutBeforeStatus: false,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+	subs, req, responses := newSingleTxSubscription(t)
 
-			subs, req, responses := newSingleTxSubscription(t)
-			var timeoutReq *notificationRequest
-			if tc.queueTimeoutBeforeStatus {
-				timeoutReq = req
-			}
-
-			removeAndRequireStatusEvent(t, subs, responses)
-
-			if !tc.queueTimeoutBeforeStatus {
-				timeoutReq = req
-			}
-			removeAndRequireNoTimeoutEvent(t, subs, timeoutReq, responses)
-		})
-	}
-}
-
-func removeAndRequireStatusEvent(
-	tb testing.TB,
-	subs *subscriptions,
-	responses chan *committerpb.NotificationResponse,
-) {
-	tb.Helper()
+	// Process a status event for the subscribed TX ID.
 	removed, uniqueRemoved := subs.removeAndEnqueueStatusEvents([]*committerpb.TxStatus{
 		{Ref: committerpb.NewTxRef("tx1", 1, 0)},
 	})
-	require.Equal(tb, 1, removed)
-	require.Equal(tb, 1, uniqueRemoved)
+	require.Equal(t, 1, removed)
+	require.Equal(t, 1, uniqueRemoved)
 
 	res := <-responses
-	require.Empty(tb, res.TimeoutTxIds)
-	test.RequireProtoElementsMatch(tb, []*committerpb.TxStatus{
+	require.Empty(t, res.TimeoutTxIds)
+	test.RequireProtoElementsMatch(t, []*committerpb.TxStatus{
 		{Ref: committerpb.NewTxRef("tx1", 1, 0)},
 	}, res.TxStatusEvents)
-}
 
-func removeAndRequireNoTimeoutEvent(
-	tb testing.TB,
-	subs *subscriptions,
-	req *notificationRequest,
-	responses chan *committerpb.NotificationResponse,
-) {
-	tb.Helper()
-	removed, uniqueRemoved := subs.removeAndEnqueueTimeoutEvents(req)
-	require.Zero(tb, removed)
-	require.Zero(tb, uniqueRemoved)
+	// A late timeout callback must not emit an empty timeout response.
+	removed, uniqueRemoved = subs.removeAndEnqueueTimeoutEvents(req)
+	require.Zero(t, removed)
+	require.Zero(t, uniqueRemoved)
 
 	select {
 	case res := <-responses:
-		require.Failf(tb, "timeout response should not be emitted", "response: %v", res)
+		require.Failf(t, "timeout response should not be emitted", "response: %v", res)
 	default:
 	}
 }
