@@ -390,7 +390,7 @@ func TestSidecarRecovery(t *testing.T) {
 	tempBlockStore.close()
 
 	t.Log("4. Make coordinator not idle to ensure sidecar is waiting")
-	env.coordinator.SetWaitingTxsCount(10)
+	env.coordinator.SetTxsInProgress(10)
 
 	t.Log("5. Restart the sidecar service and ledger service")
 	env.startSidecarServiceAndClientAndNotificationStream(ctx2, t, 11, test.InsecureTLSConfig)
@@ -401,7 +401,7 @@ func TestSidecarRecovery(t *testing.T) {
 	}, 3*time.Second, 1*time.Second)
 
 	t.Log("7. Make coordinator idle")
-	env.coordinator.SetWaitingTxsCount(0)
+	env.coordinator.SetTxsInProgress(0)
 
 	t.Log("8. Blockstore would recover lost blocks")
 	ensureAtLeastHeight(t, env.sidecar.blockStore, 11)

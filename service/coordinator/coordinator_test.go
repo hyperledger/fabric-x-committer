@@ -331,7 +331,7 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 	require.Equal(t, uint64(2), nextBlock.Number)
 }
 
-func TestCoordinatorServiceRejectedTxAndWaitingStatusCount(t *testing.T) {
+func TestNoPendingTransactionProcessing(t *testing.T) {
 	t.Parallel()
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
 
@@ -339,7 +339,7 @@ func TestCoordinatorServiceRejectedTxAndWaitingStatusCount(t *testing.T) {
 	// those statuses are already queued in two batches. One queued status is a
 	// rejected transaction, proving rejected statuses are counted in the same unit
 	// as committed statuses.
-	env.coordinator.numWaitingTxsForStatus.Store(7)
+	env.coordinator.numTxsInProgress.Store(7)
 
 	require.True(t, env.coordinator.queues.vcServiceToCoordinatorTxStatus.write(t.Context(), &committerpb.TxStatusBatch{
 		Status: []*committerpb.TxStatus{
@@ -355,9 +355,9 @@ func TestCoordinatorServiceRejectedTxAndWaitingStatusCount(t *testing.T) {
 		},
 	}))
 
-	waitingTxs, err := env.coordinator.NumberOfWaitingTransactionsForStatus(t.Context(), nil)
+	idle, err := env.coordinator.NoPendingTransactionProcessing(t.Context(), nil)
 	require.NoError(t, err)
-	require.Equal(t, int32(2), waitingTxs.GetCount())
+	require.False(t, idle.GetValue())
 }
 
 func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
@@ -806,9 +806,9 @@ func TestCoordinatorStreamFailureWithSidecar(t *testing.T) {
 
 	env.streamCancel() // simulate the failure of sidecar
 
-	// only when the stream is inactive, we do not get an error for NumberOfWaitingTransactionsForStatus.
+	// only when the stream is inactive, we do not get an error for NoPendingTransactionProcessing.
 	require.Eventually(t, func() bool {
-		_, err := env.client.NumberOfWaitingTransactionsForStatus(ctx, nil)
+		_, err := env.client.NoPendingTransactionProcessing(ctx, nil)
 		return err == nil
 	}, 5*time.Second, 10*time.Millisecond)
 
@@ -938,7 +938,7 @@ func TestWaitingTxsCountReturnsToZeroForBlockWithRejectedTxs(t *testing.T) {
 
 	actualTxsStatus := readTxStatus(t, env.csStream, len(expectedTxsStatus))
 	test.RequireProtoElementsMatch(t, expectedTxsStatus, actualTxsStatus)
-	require.Equal(t, int32(0), env.coordinator.numWaitingTxsForStatus.Load())
+	require.Equal(t, int32(0), env.coordinator.numTxsInProgress.Load())
 }
 
 func TestWaitingTxsCount(t *testing.T) {
@@ -954,7 +954,7 @@ func TestWaitingTxsCount(t *testing.T) {
 	success := channel.Make[bool](ctx, 1)
 	go func() {
 		success.Write(assert.Eventually(t, func() bool {
-			return env.coordinator.numWaitingTxsForStatus.Load() == int32(2)
+			return env.coordinator.numTxsInProgress.Load() == int32(2)
 		}, 1*time.Minute, 100*time.Millisecond))
 	}()
 
@@ -966,10 +966,10 @@ func TestWaitingTxsCount(t *testing.T) {
 	require.True(t, ok, "timed out waiting for tx count")
 	require.True(t, isSuccess)
 
-	count, err := env.client.NumberOfWaitingTransactionsForStatus(t.Context(), nil)
+	result, err := env.client.NoPendingTransactionProcessing(t.Context(), nil)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), ErrActiveStreamWaitingTransactions.Error())
-	require.Nil(t, count)
+	require.Contains(t, err.Error(), ErrActiveStreamPendingTxProcessing.Error())
+	require.Nil(t, result)
 
 	env.sigVerifierGrpcServers.ServersStop[0]()
 	require.Eventually(t, func() bool {
@@ -1001,11 +1001,11 @@ func TestWaitingTxsCount(t *testing.T) {
 	}, 2*time.Second, 100*time.Millisecond)
 
 	require.Eventually(t, func() bool {
-		wTxs, err := env.client.NumberOfWaitingTransactionsForStatus(t.Context(), nil)
+		idle, err := env.client.NoPendingTransactionProcessing(t.Context(), nil)
 		if err != nil {
 			return false
 		}
-		return wTxs.GetCount() == 0
+		return idle.GetValue()
 	}, 2*time.Second, 100*time.Millisecond)
 }
 

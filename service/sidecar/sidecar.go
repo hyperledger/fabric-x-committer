@@ -687,14 +687,14 @@ func wrapQueryError(err error) error {
 
 func waitForIdleCoordinator(ctx context.Context, client servicepb.CoordinatorClient) error {
 	for {
-		waitingTxs, err := client.NumberOfWaitingTransactionsForStatus(ctx, nil)
+		idle, err := client.NoPendingTransactionProcessing(ctx, nil)
 		if err != nil {
-			return logAndWrapCoordinatorError(err, "failed to get number of waiting transactions from coordinator")
+			return logAndWrapCoordinatorError(err, "failed to check pending transaction processing from coordinator")
 		}
-		if waitingTxs.Count == 0 {
+		if idle.GetValue() {
 			return nil
 		}
-		logger.Infof("Waiting for coordinator to complete processing [%d] pending transactions", waitingTxs.Count)
+		logger.Info("Waiting for coordinator to complete processing pending transactions")
 		time.Sleep(100 * time.Millisecond)
 	}
 }
