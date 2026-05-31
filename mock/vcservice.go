@@ -121,12 +121,12 @@ func (v *VcService) GetTransactionsStatus(
 	_ context.Context,
 	query *committerpb.TxIDsBatch,
 ) (*committerpb.TxStatusBatch, error) {
-	s := &committerpb.TxStatusBatch{Status: make([]*committerpb.TxStatus, len(query.TxIds))}
+	s := &committerpb.TxStatusBatch{Status: make([]*committerpb.TxStatus, 0, len(query.TxIds))}
 	v.worldStateMu.Lock()
 	defer v.worldStateMu.Unlock()
-	for i, id := range query.TxIds {
+	for _, id := range query.TxIds {
 		if status, ok := v.txsStatus.get(id); ok {
-			s.Status[i] = status
+			s.Status = append(s.Status, status)
 		}
 	}
 	return s, nil
