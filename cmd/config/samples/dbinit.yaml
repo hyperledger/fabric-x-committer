@@ -32,4 +32,3 @@ database:
   # Enable load balancing across multiple database endpoints. Should be enabled for
   # YugabyteDB clusters to distribute operations across nodes. Set to false for single-node deployments.
   load-balance: false
-
