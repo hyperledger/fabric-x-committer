@@ -64,8 +64,10 @@ func TestInitStateDBCMD(t *testing.T) {
 	t.Log("Querying for the tables created by initialization")
 	// Check that system tables exist
 	var count int
-	require.NoError(t, pool.QueryRow(
-		ctx, "SELECT COUNT(*) FROM pg_tables WHERE tablename IN ('tx_status', 'metadata')").Scan(&count),
+	require.NoError(
+		t, pool.QueryRow(
+			ctx, "SELECT COUNT(*) FROM pg_tables WHERE tablename IN ('tx_status', 'metadata')",
+		).Scan(&count),
 	)
 	require.Equal(t, 2, count, "system tables should exist")
 }
