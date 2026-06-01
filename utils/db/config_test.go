@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package vc
+package db
 
 import (
 	"testing"
@@ -14,9 +14,10 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
+//nolint:gosec //hardcoded credentials are fine for testing
 func TestDatasourceName(t *testing.T) {
 	t.Parallel()
-	c1 := &DatabaseConfig{
+	c1 := &Config{
 		Endpoints:   []*connection.Endpoint{{Host: "localhost", Port: 5433}},
 		Username:    "yugabyte_user",
 		Password:    "yugabyte_pass",
@@ -29,7 +30,7 @@ func TestDatasourceName(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, e1, connString)
 
-	c2 := &DatabaseConfig{
+	c2 := &Config{
 		Endpoints: []*connection.Endpoint{
 			{Host: "host1", Port: 1111},
 			{Host: "host2", Port: 2222},

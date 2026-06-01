@@ -22,7 +22,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
+	"github.com/hyperledger/fabric-x-committer/utils/db"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
@@ -31,6 +31,7 @@ const (
 	committerReleaseImage = "docker.io/hyperledger/fabric-x-committer:latest"
 	loadgenReleaseImage   = "docker.io/hyperledger/fabric-x-loadgen:latest"
 	networkPrefixName     = test.DockerNamesPrefix + "_network"
+
 	// containerConfigPath is the path to the config directory inside the container.
 	containerConfigPath = "/root/config"
 	// localConfigPath is the path to the sample YAML configuration of each service.
@@ -41,7 +42,9 @@ const (
 	// Instead, Yugabyte generates a random password, and this path points to the output file containing it.
 	containerPathForYugabytePassword = "/root/var/data/yugabyted_credentials.txt" //nolint:gosec
 
-	defaultDBPort = "5433"
+	defaultDBPort     = "5433"
+	configFlag        = "--config"
+	containerRootUser = "0:0"
 )
 
 // enforcePostgresSSLAndReloadConfigScript enforces SSL-only client connections to a PostgreSQL
@@ -71,10 +74,8 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	_, err = workload.CreateOrExtendConfigBlockWithCrypto(&c.LoadProfile.Policy)
 	require.NoError(t, err)
 
-	dbNode := "db"
-	ordererNode := "orderer"
-	loadgenNode := "loadgen"
-	committerNodes := []string{"verifier", "vc", "query", "coordinator", "sidecar"}
+	dbInitNode := "dbinit"
+	committerNodes := []string{verifierService, vcService, queryService, coordinatorService, sidecarService}
 
 	for _, dbType := range []string{testdb.YugaDBType, testdb.PostgresDBType} {
 		t.Run(fmt.Sprintf("database:%s", dbType), func(t *testing.T) {
@@ -96,7 +97,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 						dbType:        dbType,
 					}
 
-					for _, node := range append(committerNodes, dbNode, ordererNode, loadgenNode) {
+					for _, node := range append(committerNodes, dbService, ordererService, loadgenService) {
 						// stop and remove the container if it already exists.
 						stopAndRemoveContainersByName(
 							ctx, t, createDockerClient(t), assembleContainerName(node, mode, dbType),
@@ -104,9 +105,11 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					}
 
 					// start a secured database node and return the db password.
-					params.dbPassword = startSecuredDatabaseNode(ctx, t, params.asNode(dbNode))
+					params.dbPassword = startSecuredDatabaseNode(ctx, t, params.asNode(dbService))
+					// init the state DB and verify the operation succeeded.
+					runDatabaseInitWithReleaseImage(ctx, t, params.asNode(dbInitNode))
 					// start the orderer node.
-					startCommitterNodeWithTestImage(ctx, t, params.asNode(ordererNode))
+					startCommitterNodeWithTestImage(ctx, t, params.asNode(ordererService))
 					// start the committer nodes.
 					for _, node := range committerNodes {
 						startCommitterNodeWithReleaseImage(ctx, t, params.asNode(node))
@@ -116,7 +119,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 						waitForContainerHealthy(ctx, t, assembleContainerName(node, mode, dbType))
 					}
 					// start the load generator node.
-					startLoadgenNodeWithReleaseImage(ctx, t, params.asNode(loadgenNode))
+					startLoadgenNodeWithReleaseImage(ctx, t, params.asNode(loadgenService))
 
 					metricsClientTLSConfig := test.NewServiceTLSConfig(
 						c.LoadProfile.Policy.ArtifactsPath, "loadgen", mode,
@@ -157,7 +160,7 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 
 	// This is relevant if a different CA was used to issue the DB's TLS certificates.
 	require.NotEmpty(t, tlsConfig.CACertPaths)
-	conn.TLS = dbconn.DatabaseTLSConfig{
+	conn.TLS = db.TLSConfig{
 		Mode:       connection.OneSideTLSMode,
 		CACertPath: tlsConfig.CACertPaths[0],
 	}
@@ -181,24 +184,57 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 	return conn.Password
 }
 
+// runDatabaseInitWithReleaseImage runs init-db command in a temporary container.
+func runDatabaseInitWithReleaseImage(ctx context.Context, t *testing.T, params startNodeParameters) {
+	t.Helper()
+
+	dbInitConfigPath := filepath.Join(containerConfigPath, params.node)
+	t.Logf("Starting %s as container with user %s.\n", committerReleaseImage, containerRootUser)
+
+	runContainerToCompletion(ctx, t, createAndStartContainerParameters{
+		config: &container.Config{
+			Image: committerReleaseImage,
+			Cmd:   []string{initDBCommand, configFlag, fmt.Sprintf("%s.yaml", dbInitConfigPath)},
+			User:  containerRootUser,
+			Env: []string{
+				"SC_DBINIT_DATABASE_PASSWORD=" + params.dbPassword,
+				"SC_DBINIT_DATABASE_USERNAME=" + params.dbUsername(),
+				"SC_DBINIT_DATABASE_DATABASE=" + params.dbDefaultDatabase(),
+			},
+			Tty: true,
+		},
+		hostConfig: &container.HostConfig{
+			NetworkMode: container.NetworkMode(params.networkName),
+			Binds: []string{
+				fmt.Sprintf(
+					"%s.yaml:/%s.yaml",
+					filepath.Join(mustGetWD(t), localConfigPath, "dbinit"), dbInitConfigPath,
+				),
+				fmt.Sprintf("%s:%s", params.artifactsPath, containerArtifactsPath),
+			},
+			AutoRemove: true,
+		},
+		name: assembleContainerName(initDBCommand, params.tlsMode, params.dbType),
+	})
+}
+
 // startCommitterNodeWithReleaseImage starts a committer node using the release image.
 func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, params startNodeParameters) {
 	t.Helper()
 
 	configPath := filepath.Join(containerConfigPath, params.node)
-	containerUser := "0:0"
-	t.Logf("Starting %s as container with user %s.\n", committerReleaseImage, containerUser)
+	t.Logf("Starting %s as container with user %s.\n", committerReleaseImage, containerRootUser)
 	createAndStartContainerAndItsLogs(ctx, t, createAndStartContainerParameters{
 		config: &container.Config{
 			Image: committerReleaseImage,
 			Cmd: []string{
 				"start",
 				params.node,
-				"--config",
+				configFlag,
 				fmt.Sprintf("%s.yaml", configPath),
 			},
 			Hostname: params.node,
-			User:     containerUser,
+			User:     containerRootUser,
 			Env: []string{
 				"SC_COORDINATOR_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_COORDINATOR_VERIFIER_TLS_MODE=" + params.tlsMode,
@@ -225,7 +261,7 @@ func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, param
 			Healthcheck: &container.HealthConfig{
 				Test: []string{
 					"CMD", "/bin/entrypoint", "healthcheck", params.node,
-					"--config", fmt.Sprintf("%s.yaml", configPath),
+					configFlag, fmt.Sprintf("%s.yaml", configPath),
 				},
 				Interval:    2 * time.Second,
 				Timeout:     5 * time.Second,
@@ -264,7 +300,7 @@ func startLoadgenNodeWithReleaseImage(
 			Image: loadgenReleaseImage,
 			Cmd: []string{
 				"start",
-				"--config",
+				configFlag,
 				fmt.Sprintf("%s.yaml", configPath),
 			},
 			Hostname: params.node,
@@ -312,7 +348,7 @@ func startCommitterNodeWithTestImage(
 	createAndStartContainerAndItsLogs(ctx, t, createAndStartContainerParameters{
 		config: &container.Config{
 			Image:    testNodeImage,
-			Cmd:      []string{"run", params.node},
+			Cmd:      []string{runCommand, params.node},
 			Tty:      true,
 			Hostname: params.node,
 			Env: []string{

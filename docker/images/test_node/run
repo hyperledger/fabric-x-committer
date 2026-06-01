@@ -59,6 +59,10 @@ if [[ $ops == *"loadgen"* ]]; then
   "$BINS_PATH/loadgen" start --config "$CONFIGS_PATH/loadgen.yaml" &
 fi
 
+if [[ $ops == *"init-db"* ]]; then
+  "$BINS_PATH/committer" init-db --config "$CONFIGS_PATH/dbinit.yaml"
+fi
+
 # This just override's the postgres trap.
 function cleanup() {
   jobs

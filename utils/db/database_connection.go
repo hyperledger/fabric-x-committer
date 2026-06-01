@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package dbconn
+package db
 
 import (
 	"context"
@@ -19,12 +19,6 @@ import (
 )
 
 type (
-	// DatabaseTLSConfig holds the database TLS mode and its necessary credentials.
-	DatabaseTLSConfig struct {
-		Mode       string `mapstructure:"mode"`
-		CACertPath string `mapstructure:"ca-cert-path"`
-	}
-
 	// DataSourceNameParams defines the parameters required to construct a database connection string.
 	DataSourceNameParams struct {
 		Username        string
@@ -32,7 +26,7 @@ type (
 		Database        string
 		EndpointsString string
 		LoadBalance     bool
-		TLS             DatabaseTLSConfig
+		TLS             TLSConfig
 	}
 
 	// deadlineConn wraps a net.Conn with a per-read deadline so that reads

@@ -24,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/db"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -48,7 +49,7 @@ func TestVCSecureConnection(t *testing.T) {
 			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
 				t.Helper()
 				client := createValidatorAndCommitClientWithTLS(t, &env.ServerConfigs[0].GRPC.Endpoint, cfg)
-				_, err := client.SetupSystemTablesAndNamespaces(ctx, nil)
+				_, err := client.SetLastCommittedBlockNumber(ctx, nil)
 				return err
 			}
 		},
@@ -76,11 +77,6 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 		streams:      make([]servicepb.ValidationAndCommitService_StartValidateAndCommitStreamClient, numServices),
 		dbEnv:        vcs.DBEnv,
 	}
-
-	initCtx, initCancel := context.WithTimeout(t.Context(), 2*time.Minute)
-	defer initCancel()
-	_, setupErr := vcsTestEnv.commonClient.SetupSystemTablesAndNamespaces(initCtx, nil)
-	require.NoError(t, setupErr)
 
 	for i, c := range vcs.ServerConfigs {
 		client := createValidatorAndCommitClientWithTLS(
@@ -175,7 +171,7 @@ func TestCreateConfigAndTables(t *testing.T) {
 	require.Equal(t, pBytes, policies.Policies[0].Policy)
 
 	// Ensure the table exists.
-	rows, err := env.dbEnv.DB.pool.Query(ctx, fmt.Sprintf("select key, value from %s", TableName(utNsID)))
+	rows, err := env.dbEnv.DB.pool.Query(ctx, fmt.Sprintf("select key, value from %s", db.TableName(utNsID)))
 	require.NoError(t, err)
 	defer rows.Close()
 	keys, values, err := readTwoItems[[]byte, []byte](rows)

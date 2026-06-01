@@ -28,7 +28,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
+	"github.com/hyperledger/fabric-x-committer/utils/db"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
@@ -449,25 +449,25 @@ func TestReadConfigLoadGen(t *testing.T) {
 	}
 }
 
-func defaultDBConfig() *vc.DatabaseConfig {
-	return &vc.DatabaseConfig{
-		Endpoints:      []*connection.Endpoint{newEndpoint(connection.DefaultHost, vc.DefaultDatabaseEndpointPort)},
-		Database:       vc.DefaultDatabaseName,
-		MaxConnections: vc.DefaultDatabaseMaxConnections,
-		MinConnections: vc.DefaultDatabaseMinConnections,
+func defaultDBConfig() *db.Config {
+	return &db.Config{
+		Endpoints:      []*connection.Endpoint{newEndpoint(connection.DefaultHost, db.DefaultEndpointPort)},
+		Database:       db.DefaultName,
+		MaxConnections: db.DefaultMaxConnections,
+		MinConnections: db.DefaultMinConnections,
 		Retry: &retry.Profile{
-			MaxElapsedTime: vc.DefaultDatabaseRetryMaxElapsedTime,
+			MaxElapsedTime: db.DefaultRetryMaxElapsedTime,
 		},
 	}
 }
 
-func defaultSampleDBConfig() *vc.DatabaseConfig {
-	return &vc.DatabaseConfig{
+func defaultSampleDBConfig() *db.Config {
+	return &db.Config{
 		Endpoints: []*connection.Endpoint{newEndpoint("db", 5433)},
 		Username:  "yugabyte",
 		Password:  "yugabyte",
 		Database:  "yugabyte",
-		TLS: dbconn.DatabaseTLSConfig{
+		TLS: db.TLSConfig{
 			Mode:       connection.OneSideTLSMode,
 			CACertPath: filepath.Join(artifactsPath, test.OrgRootCA),
 		},

@@ -31,6 +31,23 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 
+const (
+	// service names and commands.
+	verifierService    = "verifier"
+	vcService          = "vc"
+	queryService       = "query"
+	coordinatorService = "coordinator"
+	sidecarService     = "sidecar"
+	dbService          = "db"
+	ordererService     = "orderer"
+	loadgenService     = "loadgen"
+
+	initDBCommand = "init-db"
+	runCommand    = "run"
+
+	committer = "committer"
+)
+
 type (
 	createAndStartContainerParameters struct {
 		config     *container.Config
@@ -87,19 +104,13 @@ func createAndStartContainerAndItsLogs(
 	params createAndStartContainerParameters,
 ) {
 	t.Helper()
-	dockerClient := createDockerClient(t)
-	resp, err := dockerClient.ContainerCreate(
-		ctx, params.config, params.hostConfig, nil, nil, params.name,
-	)
-	require.NoError(t, err)
-	require.NoError(t, dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{}))
-
+	dockerClient, id := createContainer(ctx, t, params)
+	require.NoError(t, dockerClient.ContainerStart(ctx, id, container.StartOptions{}))
 	//nolint:contextcheck // We want to ensure cleanup when the test is done.
 	t.Cleanup(func() {
-		stopAndRemoveContainerByID(context.Background(), t, dockerClient, resp.ID)
+		stopAndRemoveContainerByID(context.Background(), t, dockerClient, id)
 	})
-
-	logs, err := dockerClient.ContainerLogs(ctx, resp.ID, container.LogsOptions{
+	logs, err := dockerClient.ContainerLogs(ctx, id, container.LogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Follow:     true,
@@ -111,6 +122,54 @@ func createAndStartContainerAndItsLogs(
 			t.Logf("[%s] logs ended with: %v", params.name, err)
 		}
 	}()
+}
+
+// runContainerToCompletion creates, starts, and waits for a one-shot container to finish,
+// asserting a zero exit code.
+func runContainerToCompletion(
+	ctx context.Context,
+	t *testing.T,
+	params createAndStartContainerParameters,
+) {
+	t.Helper()
+	dockerClient, id := createContainer(ctx, t, params)
+	// Subscribe before starting.
+	// If the container finishes and is removed, before
+	// ContainerWait is called, the container ID no longer exists and the exit status is lost.
+	statusCh, errCh := dockerClient.ContainerWait(ctx, id, container.WaitConditionNotRunning)
+	require.NoError(t, dockerClient.ContainerStart(ctx, id, container.StartOptions{}))
+
+	logs, err := dockerClient.ContainerLogs(ctx, id, container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     true,
+	})
+	require.NoError(t, err)
+	go func() {
+		_, err = io.Copy(os.Stdout, logs)
+		if err != nil {
+			t.Logf("[%s] logs ended with: %v", params.name, err)
+		}
+	}()
+
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	case status := <-statusCh:
+		require.Zero(t, status.StatusCode, "container %s failed with exit code %d", params.name, status.StatusCode)
+	}
+}
+
+func createContainer(
+	ctx context.Context,
+	t *testing.T,
+	params createAndStartContainerParameters,
+) (*client.Client, string) {
+	t.Helper()
+	dockerClient := createDockerClient(t)
+	resp, err := dockerClient.ContainerCreate(ctx, params.config, params.hostConfig, nil, nil, params.name)
+	require.NoError(t, err)
+	return dockerClient, resp.ID
 }
 
 func monitorMetric(t *testing.T, metricsPort string, metricsTLS *connection.TLSConfig, waitForCount int) {

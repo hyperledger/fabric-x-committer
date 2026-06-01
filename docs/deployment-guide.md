@@ -148,7 +148,24 @@ Start the database cluster first and wait for it to be healthy before starting a
    - For YugabyteDB: ensure all tablet servers are online and the tablet leader election is complete
    - For PostgreSQL: ensure replication is established between primary and replicas
 
-2. **Start Services** (any order after database is healthy)
+2. **Initialize Database**
+   - Run the database initialization command to create system tables and namespaces:
+     ```shell
+     committer init-db --config <path-to-database-config> --timeout <time.duration>
+     ```
+     **Parameters:**
+      - `--config`: Path to the VC service configuration file (required)
+      - `--timeout`: Timeout for the initialization operation (default: 5m)
+
+   - This command connects directly to the database and creates:
+     - System tables (`tx_status`, `metadata`)
+     - System namespaces (`meta`, `config`)
+     - Required stored procedures
+   - This is a one-time administrative operation that must be performed before any db operation
+   - The command is safe to run multiple times
+   - See [Database Initialization](#database-initialization) for details
+
+3. **Start Services** (any order after database is healthy and initialized)
    - VC Service — connects to database on startup
    - Query Service — connects to database on startup
    - Verifier Service — stateless, loads policies on first request

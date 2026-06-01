@@ -18,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/db"
 	"github.com/hyperledger/fabric-x-committer/utils/deliverorderer"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
@@ -106,6 +107,13 @@ func NewViperWithOrdererDefaults() *viper.Viper {
 	return v
 }
 
+// NewViperWithDBInitDefaults returns a viper instance with the database initialization default values.
+func NewViperWithDBInitDefaults() *viper.Viper {
+	v := NewViperWithLoggingDefault("dbinit")
+	defaultDBFlags(v)
+	return v
+}
+
 // newViperWithServiceDefault returns a viper instance with a service default values.
 func newViperWithServiceDefault(serviceName string, servicePort, monitoringPort int) *viper.Viper {
 	v := NewViperWithLoggingDefault(serviceName)
@@ -133,11 +141,11 @@ func NewViperWithLoggingDefault(serviceName string) *viper.Viper {
 func defaultDBFlags(v *viper.Viper) {
 	prefix := "database."
 	v.SetDefault(prefix+"endpoints", []*connection.Endpoint{
-		{Host: vc.DefaultDatabaseEndpointHost, Port: vc.DefaultDatabaseEndpointPort},
+		{Host: db.DefaultEndpointHost, Port: db.DefaultEndpointPort},
 	})
-	v.SetDefault(prefix+"database", vc.DefaultDatabaseName)
-	v.SetDefault(prefix+"max-connections", vc.DefaultDatabaseMaxConnections)
-	v.SetDefault(prefix+"min-connections", vc.DefaultDatabaseMinConnections)
+	v.SetDefault(prefix+"database", db.DefaultName)
+	v.SetDefault(prefix+"max-connections", db.DefaultMaxConnections)
+	v.SetDefault(prefix+"min-connections", db.DefaultMinConnections)
 	// We allow 10 minutes by default for a DB recovery.
-	v.SetDefault(prefix+"retry.max-elapsed-time", vc.DefaultDatabaseRetryMaxElapsedTime)
+	v.SetDefault(prefix+"retry.max-elapsed-time", db.DefaultRetryMaxElapsedTime)
 }

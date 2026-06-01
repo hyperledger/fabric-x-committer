@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package vc
+package db
 
 import (
 	"context"
@@ -14,18 +14,14 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/yugabyte/pgx/v5/pgxpool"
 
-	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 const (
-	setMetadataPrepSQLStmt      = "UPDATE metadata SET value = $2 WHERE key = $1;"
-	getMetadataPrepSQLStmt      = "SELECT value FROM metadata WHERE key = $1;"
-	queryTxIDsStatusPrepSQLStmt = "SELECT tx_id, status, height FROM tx_status WHERE tx_id = ANY($1);"
-
 	// nsIDTemplatePlaceholder is used as a template placeholder for SQL queries.
 	nsIDTemplatePlaceholder = "${NAMESPACE_ID}"
 
@@ -45,11 +41,11 @@ var (
 
 	systemNamespaces = []string{committerpb.MetaNamespaceID, committerpb.ConfigNamespaceID}
 
-	lastCommittedBlockNumberKey = []byte("last committed block number")
+	logger = flogging.MustGetLogger("db-init")
 )
 
-// NewDatabasePool creates a new pool from a database config.
-func NewDatabasePool(ctx context.Context, config *DatabaseConfig) (*pgxpool.Pool, error) {
+// NewPool creates a new pool from a database config.
+func NewPool(ctx context.Context, config *Config) (*pgxpool.Pool, error) {
 	connString, err := config.DataSourceName()
 	if err != nil {
 		return nil, errors.Wrapf(err, "could not build database connection string")
@@ -64,7 +60,7 @@ func NewDatabasePool(ctx context.Context, config *DatabaseConfig) (*pgxpool.Pool
 	poolConfig.MaxConns = config.MaxConnections
 	poolConfig.MinConns = config.MinConnections
 
-	dbconn.ConfigureConnReadDeadline(poolConfig)
+	ConfigureConnReadDeadline(poolConfig)
 
 	return retry.ExecuteWithResult(ctx, config.Retry, func() (*pgxpool.Pool, error) {
 		p, poolErr := pgxpool.NewWithConfig(ctx, poolConfig)
@@ -77,17 +73,25 @@ func NewDatabasePool(ctx context.Context, config *DatabaseConfig) (*pgxpool.Pool
 	})
 }
 
-// TODO: merge this file with database.go.
-func (db *database) setupSystemTablesAndNamespaces(ctx context.Context) error {
-	logger.Info("Created tx status table, metadata table, and its methods.")
-	if execErr := retry.ExecuteSQL(ctx, db.retryProfile, db.pool,
-		fmtSplitIntoTablets(dbInitSQLStmt, db.tablePreSplitTablets)); execErr != nil {
+// SetupSystemTablesAndNamespaces creates the required system tables and namespaces in the database.
+// This function should be called before operating against the database.
+// It is safe to run multiple times.
+// TODO: merge this file with vc/database.go.
+func SetupSystemTablesAndNamespaces(
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	retryProfile *retry.Profile,
+	tablePreSplitTablets int,
+) error {
+	logger.Info("Creating tx status table, metadata table, and their methods.")
+	if execErr := retry.ExecuteSQL(ctx, retryProfile, pool,
+		fmtSplitIntoTablets(dbInitSQLStmt, tablePreSplitTablets)); execErr != nil {
 		return fmt.Errorf("failed to create system tables and functions: %w", execErr)
 	}
 
 	for _, nsID := range systemNamespaces {
-		execErr := createNsTables(nsID, db.tablePreSplitTablets, func(q string) error {
-			return retry.ExecuteSQL(ctx, db.retryProfile, db.pool, q)
+		execErr := CreateNsTables(nsID, tablePreSplitTablets, func(q string) error {
+			return retry.ExecuteSQL(ctx, retryProfile, pool, q)
 		})
 		if execErr != nil {
 			return execErr
@@ -97,7 +101,8 @@ func (db *database) setupSystemTablesAndNamespaces(ctx context.Context) error {
 	return nil
 }
 
-func createNsTables(nsID string, tablets int, queryFunc func(q string) error) error {
+// CreateNsTables creates the table and functions for a namespace.
+func CreateNsTables(nsID string, tablets int, queryFunc func(q string) error) error {
 	query := FmtNsID(createNamespaceSQLStmt, nsID)
 	query = fmtSplitIntoTablets(query, tablets)
 	if err := queryFunc(query); err != nil {
@@ -126,4 +131,36 @@ func fmtSplitIntoTablets(sqlTemplate string, tablets int) string {
 			" SPLIT INTO "+strconv.Itoa(tablets)+" TABLETS")
 	}
 	return strings.ReplaceAll(sqlTemplate, splitIntoTabletsPlaceholder, "")
+}
+
+// GetTablePreSplitTablets determines the number of tablets to use for table pre-splitting.
+// Returns 0 for PostgreSQL or when TablePreSplitTablets is not configured.
+// Returns the configured value for YugabyteDB.
+func GetTablePreSplitTablets(ctx context.Context, pg *pgxpool.Pool, config *Config) (int, error) {
+	if config.TablePreSplitTablets == 0 {
+		return 0, nil
+	}
+
+	isYugabyte, err := IsYugabyteDB(ctx, pg)
+	if err != nil {
+		return 0, err
+	}
+	if !isYugabyte {
+		logger.Info("PostgreSQL detected; ignoring table-pre-split-tablets configuration")
+		return 0, nil
+	}
+
+	logger.Infof("YugabyteDB detected; tables will be pre-split into %d tablets", config.TablePreSplitTablets)
+	return config.TablePreSplitTablets, nil
+}
+
+// IsYugabyteDB queries the database version string to determine whether the backend is YugabyteDB.
+// YugabyteDB's version() output contains "-YB-" (e.g., "PostgreSQL 11.2-YB-2.20.1.0 ..."),
+// which distinguishes it from standard PostgreSQL.
+func IsYugabyteDB(ctx context.Context, pool *pgxpool.Pool) (bool, error) {
+	var version string
+	if err := pool.QueryRow(ctx, "SELECT version()").Scan(&version); err != nil {
+		return false, errors.Wrap(err, "failed to query database version")
+	}
+	return strings.Contains(version, "-YB-"), nil
 }
