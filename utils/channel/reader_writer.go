@@ -36,6 +36,7 @@ type (
 	Writer[T any] interface {
 		WithContext[T]
 		Write(value T) bool
+		WriteWithTimeout(T, time.Duration) bool
 	}
 	// WithContext supports fetching and updating the context.
 	WithContext[T any] interface {
@@ -133,6 +134,22 @@ func (c *channel[T]) Write(value T) bool {
 	}
 	select {
 	case <-c.ctx.Done():
+		return false
+	case c.output <- value:
+		return true
+	}
+}
+
+// WriteWithTimeout one value to the channel.
+// Returns false if the channel is closed, timeout occurred, or the context is done.
+func (c *channel[T]) WriteWithTimeout(value T, timeout time.Duration) bool {
+	if c.output == nil || c.ctx.Err() != nil {
+		return false
+	}
+	select {
+	case <-c.ctx.Done():
+		return false
+	case <-time.After(timeout):
 		return false
 	case c.output <- value:
 		return true

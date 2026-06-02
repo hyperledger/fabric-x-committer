@@ -26,10 +26,11 @@ import (
 
 type (
 	relay struct {
-		incomingBlockToBeCommitted <-chan *common.Block
-		outgoingCommittedBlock     chan<- *common.Block
-		outgoingStatusUpdates      chan<- []*committerpb.TxStatus
-		outgoingConfigBlocks       chan<- *common.Block
+		incomingBlockToBeCommitted    <-chan *common.Block
+		outgoingCommittedBlock        chan<- *common.Block
+		outgoingStatusUpdates         chan<- []*committerpb.TxStatus
+		outgoingConfigBlocks          chan<- *common.Block
+		outgoingCommittedBlockWithTxs chan<- *committedBlockWithTxs
 
 		// nextBlockNumberToBeCommitted denotes the next block number of to be committed.
 		nextBlockNumberToBeCommitted atomic.Uint64
@@ -52,6 +53,7 @@ type (
 		outgoingCommittedBlock         chan<- *common.Block
 		outgoingStatusUpdates          chan<- []*committerpb.TxStatus
 		outgoingConfigBlocks           chan<- *common.Block
+		outgoingCommittedBlockWithTxs  chan<- *committedBlockWithTxs
 		waitingTxsLimit                int
 	}
 )
@@ -74,6 +76,7 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 	r.outgoingCommittedBlock = config.outgoingCommittedBlock
 	r.outgoingStatusUpdates = config.outgoingStatusUpdates
 	r.outgoingConfigBlocks = config.outgoingConfigBlocks
+	r.outgoingCommittedBlockWithTxs = config.outgoingCommittedBlockWithTxs
 	r.blkNumToBlkWithStatus.Clear()
 	r.txIDToHeight.Clear()
 	r.waitingTxsSlots = utils.NewSlots(int64(config.waitingTxsLimit))
@@ -172,6 +175,7 @@ func (r *relay) sendBlocksToCoordinator(
 ) error {
 	queue := channel.NewReader(ctx, mappedBlockQueue)
 	outgoingCommittedBlock := channel.NewWriter(ctx, r.outgoingCommittedBlock)
+	outgoingCommittedBlockWithTxs := channel.NewWriter(ctx, r.outgoingCommittedBlockWithTxs)
 
 	for {
 		mappedBlock, ok := queue.Read()
@@ -184,7 +188,7 @@ func (r *relay) sendBlocksToCoordinator(
 		r.activeBlocksCount.Add(1)
 
 		if mappedBlock.withStatus.pendingCount.Load() == 0 {
-			r.processCommittedBlocksInOrder(ctx, outgoingCommittedBlock)
+			r.processCommittedBlocksInOrder(ctx, outgoingCommittedBlock, outgoingCommittedBlockWithTxs)
 		}
 
 		if err := stream.Send(mappedBlock.block); err != nil {
@@ -220,6 +224,7 @@ func (r *relay) processStatusBatch(
 ) error {
 	txsStatus := channel.NewReader(ctx, statusBatch)
 	outgoingCommittedBlock := channel.NewWriter(ctx, r.outgoingCommittedBlock)
+	outgoingCommittedBlockWithTxs := channel.NewWriter(ctx, r.outgoingCommittedBlockWithTxs)
 	outgoingStatusUpdates := channel.NewWriter(ctx, r.outgoingStatusUpdates)
 	for {
 		tStatus, readOK := txsStatus.Read()
@@ -280,7 +285,7 @@ func (r *relay) processStatusBatch(
 		promutil.AddToCounter(r.metrics.transactionOutThroughput, int(txStatusProcessedCount))
 		r.waitingTxsSlots.Release(txStatusProcessedCount)
 		promutil.AddToGauge(r.metrics.waitingTransactionsQueueSize, -int(txStatusProcessedCount))
-		r.processCommittedBlocksInOrder(ctx, outgoingCommittedBlock)
+		r.processCommittedBlocksInOrder(ctx, outgoingCommittedBlock, outgoingCommittedBlockWithTxs)
 		promutil.Observe(r.metrics.transactionStatusesProcessingInRelaySeconds, time.Since(startTime))
 	}
 }
@@ -288,6 +293,7 @@ func (r *relay) processStatusBatch(
 func (r *relay) processCommittedBlocksInOrder(
 	ctx context.Context,
 	outgoingCommittedBlock channel.Writer[*common.Block],
+	outgoingCommittedBlockWithTxs channel.Writer[*committedBlockWithTxs],
 ) {
 	r.committedBlockMu.Lock()
 	defer r.committedBlockMu.Unlock()
@@ -317,6 +323,13 @@ func (r *relay) processCommittedBlocksInOrder(
 
 		blkWithStatus.setStatusMetadataInBlock()
 		outgoingCommittedBlock.Write(blkWithStatus.block)
+
+		// Create committedBlockWithTxs from blockWithStatus for notifier
+		outgoingCommittedBlockWithTxs.Write(&committedBlockWithTxs{
+			blockNumber: blkWithStatus.blockNumber,
+			txs:         blkWithStatus.txs,
+			statuses:    blkWithStatus.txStatus,
+		})
 	}
 }
 

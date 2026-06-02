@@ -14,10 +14,13 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/durationpb"
 
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
@@ -101,11 +104,13 @@ func BenchmarkNotifier(b *testing.B) {
 }
 
 type notifierTestEnv struct {
-	n              *notifier
-	metrics        *perfMetrics
-	requestQueue   channel.Writer[*notificationRequest]
-	statusQueue    channel.Writer[[]*committerpb.TxStatus]
-	responseQueues []channel.ReaderWriter[*committerpb.NotificationResponse]
+	n                          *notifier
+	metrics                    *perfMetrics
+	requestQueue               channel.Writer[*notificationRequest]
+	statusQueue                channel.Writer[[]*committerpb.TxStatus]
+	committedBlockWithTxsQueue channel.Writer[*committedBlockWithTxs]
+	responseQueues             []channel.ReaderWriter[*committerpb.NotificationResponse]
+	client                     committerpb.NotifierClient
 }
 
 func TestNotifierDirect(t *testing.T) {
@@ -300,14 +305,8 @@ func TestNotifierStream(t *testing.T) {
 	t.Parallel()
 	env := newNotifierTestEnv(t, 5)
 	m := env.metrics
-	serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
-	wrapper := &notifierWrapper{env.n}
-	test.ServeForTest(t.Context(), t, serverConfig, wrapper)
-	endpoint := &serverConfig.GRPC.Endpoint
-	conn := test.NewInsecureConnection(t, endpoint)
-	client := committerpb.NewNotifierClient(conn)
 
-	stream, err := client.OpenNotificationStream(t.Context())
+	stream, err := env.client.OpenNotificationStream(t.Context())
 	require.NoError(t, err)
 
 	// Verify active stream metric
@@ -404,6 +403,7 @@ func TestNotifierGlobalLimit(t *testing.T) {
 		MaxTimeout:         DefaultNotificationMaxTimeout,
 		MaxActiveTxIDs:     5,
 		MaxTxIDsPerRequest: 10,
+		StreamWriteTimeout: 2 * time.Minute,
 	})
 	q := env.responseQueues[0]
 
@@ -522,8 +522,9 @@ func newSingleTxSubscription(
 		req.timer.Stop()
 	})
 	subs := &subscriptions{
-		txIDToRequests: make(map[string]map[*notificationRequest]any),
-		availableSlots: 1,
+		txIDToRequests:     make(map[string]map[*notificationRequest]any),
+		availableSlots:     1,
+		streamWriteTimeout: DefaultStreamWriteTimeout,
 	}
 	rejected, uniqueNew := subs.addRequest(req)
 	require.Empty(tb, rejected)
@@ -537,6 +538,7 @@ func newNotifierTestEnv(tb testing.TB, numOfClients int) *notifierTestEnv {
 		MaxTimeout:         DefaultNotificationMaxTimeout,
 		MaxActiveTxIDs:     DefaultMaxActiveTxIDs,
 		MaxTxIDsPerRequest: DefaultMaxTxIDsPerRequest,
+		StreamWriteTimeout: DefaultStreamWriteTimeout,
 	})
 }
 
@@ -555,8 +557,165 @@ func newNotifierTestEnvWithConfig(tb testing.TB, numOfClients int, conf *Notific
 		env.responseQueues[i] = channel.Make[*committerpb.NotificationResponse](tb.Context(), 10)
 	}
 
+	committedBlockWithTxsQueue := make(chan *committedBlockWithTxs, 10)
+	env.committedBlockWithTxsQueue = channel.NewWriter(tb.Context(), committedBlockWithTxsQueue)
+
 	test.RunServiceForTest(tb.Context(), tb, func(ctx context.Context) error {
-		return connection.FilterStreamRPCError(env.n.run(ctx, statusQueue))
+		return connection.FilterStreamRPCError(env.n.run(ctx, statusQueue, committedBlockWithTxsQueue))
 	}, nil)
+
+	serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
+	wrapper := &notifierWrapper{env.n}
+	test.ServeForTest(tb.Context(), tb, serverConfig, wrapper)
+	endpoint := &serverConfig.GRPC.Endpoint
+	env.client = committerpb.NewNotifierClient(test.NewInsecureConnection(tb, endpoint))
 	return env
+}
+
+//nolint:gocognit // test complexity is acceptable.
+func TestStreamAllTransactions(t *testing.T) {
+	t.Parallel()
+
+	const (
+		testTxID1 = "tx1"
+		testTxID2 = "tx2"
+		testTxID3 = "tx3"
+		testTxID4 = "tx4"
+		testNs1   = "ns1"
+		testNs2   = "ns2"
+		testNs3   = "ns3"
+	)
+
+	block := &committedBlockWithTxs{
+		blockNumber: 1,
+		txs: []*servicepb.TxWithRef{
+			createTestTx(testTxID1, 0, testNs1),
+			createTestTx(testTxID2, 1, testNs2),
+			createTestTx(testTxID3, 2, testNs1, testNs2),
+			createTestTx(testTxID4, 3, testNs3),
+		},
+		statuses: []committerpb.Status{
+			committerpb.Status_COMMITTED,
+			committerpb.Status_ABORTED_MVCC_CONFLICT,
+			committerpb.Status_COMMITTED,
+			committerpb.Status_REJECTED_DUPLICATE_TX_ID,
+		},
+	}
+
+	cases := []struct {
+		name          string
+		request       *committerpb.StreamAllRequest
+		expectedTxIDs []string
+	}{
+		{
+			name:          "NoFilters",
+			request:       &committerpb.StreamAllRequest{},
+			expectedTxIDs: []string{testTxID1, testTxID2, testTxID3, testTxID4},
+		},
+		{
+			name: "NamespaceFilter_ns1",
+			request: &committerpb.StreamAllRequest{
+				FilterNamespaces: []string{testNs1},
+			},
+			expectedTxIDs: []string{testTxID1, testTxID3}, // tx1 has ns1, tx3 has ns1+ns2
+		},
+		{
+			name: "NamespaceFilter_ns2",
+			request: &committerpb.StreamAllRequest{
+				FilterNamespaces: []string{testNs2},
+			},
+			expectedTxIDs: []string{testTxID2, testTxID3}, // tx2 has ns2, tx3 has ns1+ns2
+		},
+		{
+			name: "StatusFilter_COMMITTED",
+			request: &committerpb.StreamAllRequest{
+				FilterStatus: []committerpb.Status{committerpb.Status_COMMITTED},
+			},
+			expectedTxIDs: []string{testTxID1, testTxID3}, // Only COMMITTED txs
+		},
+		{
+			name: "CombinedFilters",
+			request: &committerpb.StreamAllRequest{
+				FilterNamespaces: []string{testNs1},
+				FilterStatus:     []committerpb.Status{committerpb.Status_COMMITTED},
+			},
+			expectedTxIDs: []string{testTxID1, testTxID3}, // ns1 AND COMMITTED
+		},
+		{
+			name: "WithNamespaces",
+			request: &committerpb.StreamAllRequest{
+				IncludeReadWriteSets: true,
+			},
+			expectedTxIDs: []string{testTxID1, testTxID2, testTxID3, testTxID4},
+		},
+		{
+			name: "WithEndorsements",
+			request: &committerpb.StreamAllRequest{
+				IncludeEndorsements: true,
+			},
+			expectedTxIDs: []string{testTxID1, testTxID2, testTxID3, testTxID4},
+		},
+	}
+
+	env := newNotifierTestEnv(t, 0)
+	streams := make([]committerpb.Notifier_StreamAllTransactionsClient, len(cases))
+	for i, tc := range cases {
+		var err error
+		streams[i], err = env.client.StreamAllTransactions(t.Context(), tc.request)
+		require.NoError(t, err)
+	}
+
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		env.n.allTxStreamsMu.RLock()
+		activeStreams := env.n.allTxStreams
+		env.n.allTxStreamsMu.RUnlock()
+		require.Len(ct, activeStreams, len(cases))
+	}, 10*time.Second, 100*time.Millisecond)
+	env.committedBlockWithTxsQueue.Write(block)
+
+	for i, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			batch, err := streams[i].Recv()
+			require.NoError(t, err)
+			require.EqualValues(t, 1, batch.BlockNumber)
+
+			actualTxIDs := make([]string, len(batch.Events))
+			for j, event := range batch.Events {
+				actualTxIDs[j] = event.Ref.TxId
+			}
+			require.ElementsMatch(t, tc.expectedTxIDs, actualTxIDs)
+
+			if tc.request.IncludeReadWriteSets {
+				for _, event := range batch.Events {
+					require.NotEmpty(t, event.Namespaces)
+				}
+			}
+			if tc.request.IncludeEndorsements {
+				for _, event := range batch.Events {
+					require.NotEmpty(t, event.Endorsements)
+				}
+			}
+		})
+	}
+}
+
+func createTestTx(txID string, idx uint32, namespacesIDs ...string) *servicepb.TxWithRef {
+	namespaces := make([]*applicationpb.TxNamespace, len(namespacesIDs))
+	endorsements := make([]*applicationpb.Endorsements, len(namespacesIDs))
+	for i, ns := range namespacesIDs {
+		namespaces[i] = &applicationpb.TxNamespace{NsId: ns}
+		endorsements[i] = &applicationpb.Endorsements{
+			EndorsementsWithIdentity: []*applicationpb.EndorsementWithIdentity{
+				{Endorsement: []byte("sig" + txID + ns)},
+			},
+		}
+	}
+	return &servicepb.TxWithRef{
+		Ref: committerpb.NewTxRef(txID, 1, idx),
+		Content: &applicationpb.Tx{
+			Namespaces:   namespaces,
+			Endorsements: endorsements,
+		},
+	}
 }

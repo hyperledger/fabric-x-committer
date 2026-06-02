@@ -118,23 +118,23 @@ func NewSecuredConnectionWithRetry(
 }
 
 // NewInsecureConnection creates the default connection with insecure credentials.
-func NewInsecureConnection(t *testing.T, endpoint connection.WithAddress) *grpc.ClientConn {
-	t.Helper()
-	return NewInsecureConnectionWithRetry(t, endpoint, defaultGrpcRetryProfile)
+func NewInsecureConnection(tb testing.TB, endpoint connection.WithAddress) *grpc.ClientConn {
+	tb.Helper()
+	return NewInsecureConnectionWithRetry(tb, endpoint, defaultGrpcRetryProfile)
 }
 
 // NewInsecureConnectionWithRetry creates the default dial config with insecure credentials.
 func NewInsecureConnectionWithRetry(
-	t *testing.T, endpoint connection.WithAddress, retryProfile retry.Profile,
+	tb testing.TB, endpoint connection.WithAddress, retryProfile retry.Profile,
 ) *grpc.ClientConn {
-	t.Helper()
+	tb.Helper()
 	conn, err := connection.NewConnection(connection.ClientParameters{
 		Address: endpoint.Address(),
 		Creds:   insecure.NewCredentials(),
 		Retry:   &retryProfile,
 	})
-	require.NoError(t, err)
-	t.Cleanup(func() {
+	require.NoError(tb, err)
+	tb.Cleanup(func() {
 		_ = conn.Close()
 	})
 	return conn

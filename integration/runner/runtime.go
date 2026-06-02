@@ -60,6 +60,7 @@ type (
 		SidecarClientConfig *connection.ClientConfig
 		NotifyClient        committerpb.NotifierClient
 		NotifyStream        committerpb.Notifier_OpenNotificationStreamClient
+		StreamAllTxStream   committerpb.Notifier_StreamAllTransactionsClient
 
 		CommittedBlock          chan *common.Block
 		TxBuilder               *workload.TxBuilder
@@ -302,6 +303,8 @@ func (c *CommitterRuntime) OpenNotificationStream(ctx context.Context, t *testin
 	t.Helper()
 	var err error
 	c.NotifyStream, err = c.NotifyClient.OpenNotificationStream(ctx)
+	require.NoError(t, err)
+	c.StreamAllTxStream, err = c.NotifyClient.StreamAllTransactions(ctx, nil)
 	require.NoError(t, err)
 }
 
@@ -549,7 +552,6 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 	persistedTxIDsStatus := make([]*committerpb.TxStatus, 0, len(expected.TxIDs))
 	duplicateTxIDsStatus := make([]*committerpb.TxStatus, 0, len(expected.TxIDs))
 	for i, tID := range expected.TxIDs {
-		//nolint:gosec // int -> uint32.
 		s := committerpb.NewTxStatus(expected.Statuses[i], tID, blk.Header.Number, uint32(i))
 		if s.Status == committerpb.Status_REJECTED_DUPLICATE_TX_ID {
 			duplicateTxIDsStatus = append(duplicateTxIDsStatus, s)
@@ -575,6 +577,7 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 	}
 
 	sidecar.RequireNotifications(t, c.NotifyStream, blk.Header.Number, expected.TxIDs, expected.Statuses)
+	sidecar.RequireStreamAllTransactions(t, c.StreamAllTxStream, blk.Header.Number, expected.TxIDs, expected.Statuses)
 }
 
 // CountStatus returns the number of transactions with a given tx status.

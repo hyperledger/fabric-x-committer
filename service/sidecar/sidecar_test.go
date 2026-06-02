@@ -100,6 +100,7 @@ func newSidecarTestEnvWithTLS(
 			MaxTimeout:         DefaultNotificationMaxTimeout,
 			MaxActiveTxIDs:     DefaultMaxActiveTxIDs,
 			MaxTxIDsPerRequest: blockSize * 2,
+			StreamWriteTimeout: DefaultStreamWriteTimeout,
 		},
 		LastCommittedBlockSetInterval: 100 * time.Millisecond,
 		WaitingTxsLimit:               1000,
