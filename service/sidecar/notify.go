@@ -437,8 +437,8 @@ func (s *allTxStream) streamWorker(stream committerpb.Notifier_StreamAllTransact
 			return errors.New("block queue closed")
 		}
 
-		// Filter and enrich transactions in this worker thread
-		filteredEvents := s.filterAndEnrichBlock(block)
+		// Filter and build transactions in this worker thread
+		filteredEvents := s.filterAndBuildEvents(block)
 		// Only send if there are events after filtering
 		if len(filteredEvents) == 0 {
 			continue
@@ -454,9 +454,9 @@ func (s *allTxStream) streamWorker(stream committerpb.Notifier_StreamAllTransact
 	}
 }
 
-// filterAndEnrichBlock processes all transactions in a block, applying filters
+// filterAndBuildEvents processes all transactions in a block, applying filters
 // and enriching with optional content based on the stream's configuration.
-func (s *allTxStream) filterAndEnrichBlock(
+func (s *allTxStream) filterAndBuildEvents(
 	block *committedBlockWithTxs,
 ) []*committerpb.TxEvent {
 	// Pre-allocate with capacity for efficiency
@@ -468,7 +468,7 @@ func (s *allTxStream) filterAndEnrichBlock(
 		if len(s.filterStatuses) > 0 && !slices.Contains(s.filterStatuses, status) {
 			continue // Filtered out by status
 		}
-		matchingNamespaces := getMatchingNamespaces(tx, s.filterNamespaces)
+		matchingNamespaces := filterNamespaces(tx, s.filterNamespaces)
 		// If no namespaces matched, filter out this transaction
 		if len(s.filterNamespaces) > 0 && len(matchingNamespaces) == 0 {
 			continue // Filtered out by namespace
@@ -493,7 +493,7 @@ func (s *allTxStream) filterAndEnrichBlock(
 	return events
 }
 
-func getMatchingNamespaces(
+func filterNamespaces(
 	tx *servicepb.TxWithRef, filterNamespaces []string,
 ) []*applicationpb.TxNamespace {
 	if tx == nil || tx.Content == nil {
