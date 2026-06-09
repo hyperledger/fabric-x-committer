@@ -282,7 +282,7 @@ func (c *Service) NoPendingTransactionProcessing(
 	}
 	defer c.streamActive.Unlock()
 
-	// When the sidecar stream is inactive, numTxsInProgress is not decremented
+	// When the sidecar stream is inactive, numTxsInProgress is not updated
 	// because sendTxStatus cannot forward statuses. However, VC continues producing
 	// statuses into the queue. To compute the number of TXs still being processed
 	// (i.e., not yet computed by VC), we subtract readyCount (statuses already

@@ -188,7 +188,7 @@ GetConfigTransaction(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*
 ```go
 NoPendingTransactionProcessing(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
 ```
-  * This API returns the number of transactions that are currently in the pipeline awaiting a final status.
+  * This API returns true when all previously submitted transactions have been processed.
 
 ## 7. Failure and Recovery
 

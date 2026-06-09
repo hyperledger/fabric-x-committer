@@ -376,7 +376,7 @@ When the sidecar restarts after a crash, it follows a systematic recovery proces
 
 2. Wait for Coordinator to Become Idle
    ├─► Query: NoPendingTransactionProcessing()
-   ├─► Wait until count == 0
+   ├─► Wait until true
    └─► Ensures all in-flight transactions are processed
 
 3. Query Coordinator State
