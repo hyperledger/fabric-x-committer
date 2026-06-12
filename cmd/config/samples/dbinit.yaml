@@ -23,12 +23,13 @@ database:
     ca-cert-path: /root/artifacts/peerOrganizations/peer-org-0.com/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
   # Maximum size of the database connection pool. Limits concurrent database operations.
   # Should be tuned based on database capacity and expected transaction load.
+  # For database initialization, a small pool is enough since it only performs schema initialization.
   # Default: 20
-  max-connections: 10
+  max-connections: 5
   # Minimum size of the database connection pool. Keeps connections warm for faster operations.
   # Should be less than or equal to max-connections.
   # Default: 1
-  min-connections: 5
+  min-connections: 1
   # Enable load balancing across multiple database endpoints. Should be enabled for
   # YugabyteDB clusters to distribute operations across nodes. Set to false for single-node deployments.
   load-balance: false

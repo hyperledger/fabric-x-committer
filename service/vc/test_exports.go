@@ -171,11 +171,7 @@ func NewDatabaseTestEnvFromConnection(t *testing.T, cs *testdb.Connection, loadB
 	require.NoError(t, err, "%+v", err)
 	t.Cleanup(dbObject.close)
 
-	// Initialize the database with system tables and namespaces
-	tablets, err := db.GetTablePreSplitTablets(sCtx, dbObject.pool, config)
-	require.NoError(t, err, "failed to get table pre-split tablets: %+v", err)
-
-	err = db.SetupSystemTablesAndNamespaces(sCtx, dbObject.pool, config.Retry, tablets)
+	err = db.SetupSystemTablesAndNamespaces(sCtx, config)
 	require.NoError(t, err, "failed to initialize database: %+v", err)
 
 	return &DatabaseTestEnv{

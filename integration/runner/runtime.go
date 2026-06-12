@@ -549,7 +549,6 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 	persistedTxIDsStatus := make([]*committerpb.TxStatus, 0, len(expected.TxIDs))
 	duplicateTxIDsStatus := make([]*committerpb.TxStatus, 0, len(expected.TxIDs))
 	for i, tID := range expected.TxIDs {
-		//nolint:gosec // int -> uint32.
 		s := committerpb.NewTxStatus(expected.Statuses[i], tID, blk.Header.Number, uint32(i))
 		if s.Status == committerpb.Status_REJECTED_DUPLICATE_TX_ID {
 			duplicateTxIDsStatus = append(duplicateTxIDsStatus, s)

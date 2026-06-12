@@ -383,15 +383,14 @@ func createTablesAndFunctionsForNamespaces(ctx context.Context, tx pgx.Tx, newNs
 
 	for _, ns := range newNs.keys {
 		nsID := string(ns)
-
 		tableName := db.TableName(nsID)
 		logger.Infof("Creating table [%s] and required functions for namespace [%s]", tableName, ns)
-		err := db.CreateNsTables(nsID, tablets, func(q string) error {
-			_, execErr := tx.Exec(ctx, q)
-			return execErr
-		})
-		if err != nil {
-			return err
+		query := db.CreateNsTables(nsID, tablets)
+		if _, execErr := tx.Exec(ctx, query); execErr != nil {
+			return errors.Wrapf(
+				execErr,
+				"failed to create table and functions for namespace [%s] with query [%s]", nsID, query,
+			)
 		}
 	}
 

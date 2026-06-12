@@ -37,14 +37,15 @@ func databaseInitializationCMD() *cobra.Command {
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)
-	cliutil.SetDurationFlag(cmd, "timeout", &timeout)
+	// registers a duration flag for database initialization.
+	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Minute, "Timeout for the initialization operation")
 	return cmd
 }
 
 // runDatabaseInitialization reads the database-initialization config,
 // connects directly to the database, and initializes it.
 func runDatabaseInitialization(cmd *cobra.Command, configPath string, timeout time.Duration) error {
-	dbConfig, _, err := config.ReadDBInitYamlAndSetupLogging(config.NewViperWithDBInitDefaults(), configPath)
+	dbConfig, err := config.ReadDBInitYamlAndSetupLogging(config.NewViperWithDBInitDefaults(), configPath)
 	if err != nil {
 		return err
 	}
@@ -52,18 +53,7 @@ func runDatabaseInitialization(cmd *cobra.Command, configPath string, timeout ti
 	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 	defer cancel()
 
-	pool, err := db.NewPool(ctx, dbConfig)
-	if err != nil {
-		return errors.Wrap(err, "failed to connect to database")
-	}
-	defer pool.Close()
-
-	tablePreSplitTablets, err := db.GetTablePreSplitTablets(ctx, pool, dbConfig)
-	if err != nil {
-		return errors.Wrap(err, "failed to determine database type")
-	}
-
-	if err := db.SetupSystemTablesAndNamespaces(ctx, pool, dbConfig.Retry, tablePreSplitTablets); err != nil {
+	if err := db.SetupSystemTablesAndNamespaces(ctx, dbConfig); err != nil {
 		return errors.Wrap(err, "failed to initialize state database")
 	}
 

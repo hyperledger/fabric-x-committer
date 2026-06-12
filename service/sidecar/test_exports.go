@@ -39,7 +39,6 @@ func RequireNotifications( //nolint:revive // argument-limit.
 		if !IsStatusStoredInDB(s) {
 			continue
 		}
-		//nolint:gosec // int -> uint32.
 		expected = append(expected, &committerpb.TxStatus{
 			Ref:    committerpb.NewTxRef(txIDs[i], expectedBlockNumber, uint32(i)),
 			Status: s,

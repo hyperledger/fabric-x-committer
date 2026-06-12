@@ -76,25 +76,33 @@ func NewPool(ctx context.Context, config *Config) (*pgxpool.Pool, error) {
 // SetupSystemTablesAndNamespaces creates the required system tables and namespaces in the database.
 // This function should be called before operating against the database.
 // It is safe to run multiple times.
-// TODO: merge this file with vc/database.go.
 func SetupSystemTablesAndNamespaces(
-	ctx context.Context,
-	pool *pgxpool.Pool,
-	retryProfile *retry.Profile,
-	tablePreSplitTablets int,
+	ctx context.Context, config *Config,
 ) error {
+	pool, err := NewPool(ctx, config)
+	if err != nil {
+		return errors.Wrap(err, "failed to connect to database")
+	}
+	defer pool.Close()
+
+	tablePreSplitTablets, err := GetTablePreSplitTablets(ctx, pool, config)
+	if err != nil {
+		return errors.Wrap(err, "failed to determine database type")
+	}
+
 	logger.Info("Creating tx status table, metadata table, and their methods.")
-	if execErr := retry.ExecuteSQL(ctx, retryProfile, pool,
+	if execErr := retry.ExecuteSQL(ctx, config.Retry, pool,
 		fmtSplitIntoTablets(dbInitSQLStmt, tablePreSplitTablets)); execErr != nil {
 		return fmt.Errorf("failed to create system tables and functions: %w", execErr)
 	}
 
 	for _, nsID := range systemNamespaces {
-		execErr := CreateNsTables(nsID, tablePreSplitTablets, func(q string) error {
-			return retry.ExecuteSQL(ctx, retryProfile, pool, q)
-		})
-		if execErr != nil {
-			return execErr
+		query := CreateNsTables(nsID, tablePreSplitTablets)
+		if execErr := retry.ExecuteSQL(ctx, config.Retry, pool, query); execErr != nil {
+			return errors.Wrapf(
+				execErr,
+				"failed to create table and functions for namespace [%s] with query [%s]", nsID, query,
+			)
 		}
 		logger.Infof("namespace %s: created table and its methods.", nsID)
 	}
@@ -102,14 +110,9 @@ func SetupSystemTablesAndNamespaces(
 }
 
 // CreateNsTables creates the table and functions for a namespace.
-func CreateNsTables(nsID string, tablets int, queryFunc func(q string) error) error {
+func CreateNsTables(nsID string, tablets int) string {
 	query := FmtNsID(createNamespaceSQLStmt, nsID)
-	query = fmtSplitIntoTablets(query, tablets)
-	if err := queryFunc(query); err != nil {
-		return errors.Wrapf(err, "failed to create table and functions for namespace [%s] with query [%s]",
-			nsID, query)
-	}
-	return nil
+	return fmtSplitIntoTablets(query, tablets)
 }
 
 // FmtNsID replaces the namespace placeholder with the namespace ID in an SQL template string.

@@ -94,12 +94,12 @@ func ReadLoadGenYamlAndSetupLogging(
 // ReadDBInitYamlAndSetupLogging reading the YAML config file for database initialization.
 func ReadDBInitYamlAndSetupLogging(
 	v *viper.Viper, configPath string,
-) (*db.Config, *serve.Config, error) {
-	cfg, srvCfg, err := readYamlAndSetupLogging[databaseInitConfig](v, configPath)
+) (*db.Config, error) {
+	cfg, _, err := readYamlAndSetupLogging[databaseInitConfig](v, configPath)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return cfg.Database, srvCfg, nil
+	return cfg.Database, nil
 }
 
 // readYamlAndSetupLogging reading the YAML config file of a service.
