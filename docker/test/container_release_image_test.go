@@ -213,7 +213,7 @@ func runDatabaseInitWithReleaseImage(
 	dbInitConfigPath := filepath.Join(containerConfigPath, params.node)
 	t.Logf("Starting %s as container with user %s.\n", committerReleaseImage, containerRootUser)
 
-	statusCh, errCh := createAndStartContainerAndItsLogs(ctx, t, createAndStartContainerParameters{
+	return createAndStartContainerAndItsLogs(ctx, t, createAndStartContainerParameters{
 		config: &container.Config{
 			Image: committerReleaseImage,
 			Cmd: []string{
@@ -244,7 +244,6 @@ func runDatabaseInitWithReleaseImage(
 		},
 		name: assembleContainerName(initDBCommand, params.tlsMode, params.dbType),
 	})
-	return statusCh, errCh
 }
 
 // startCommitterNodeWithReleaseImage starts a committer node using the release image.
