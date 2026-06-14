@@ -46,6 +46,7 @@ func NewViperWithSidecarDefaults() *viper.Viper {
 	v.SetDefault("notification.max-timeout", sidecar.DefaultNotificationMaxTimeout)
 	v.SetDefault("notification.max-active-tx-ids", sidecar.DefaultMaxActiveTxIDs)
 	v.SetDefault("notification.max-tx-ids-per-request", sidecar.DefaultMaxTxIDsPerRequest)
+	v.SetDefault("notification.stream-write-timeout", sidecar.DefaultStreamWriteTimeout)
 	v.SetDefault("last-committed-block-set-interval", sidecar.DefaultLastCommittedBlockSetInterval)
 	v.SetDefault("waiting-txs-limit", sidecar.DefaultWaitingTxsLimit)
 	v.SetDefault("channel-buffer-size", sidecar.DefaultBufferSize)

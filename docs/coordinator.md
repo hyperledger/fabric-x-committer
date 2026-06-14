@@ -186,9 +186,9 @@ GetConfigTransaction(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*
   * This API retrieves the latest system configuration transaction by querying a Validator-Committer service, which reads it from the database.
 
 ```go
-NumberOfWaitingTransactionsForStatus(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*WaitingTransactions, error)
+NoPendingTransactionProcessing(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
 ```
-  * This API returns the number of transactions that are currently in the pipeline awaiting a final status.
+  * This API returns true when all previously submitted transactions have been processed.
 
 ## 7. Failure and Recovery
 

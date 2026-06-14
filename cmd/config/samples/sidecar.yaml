@@ -124,6 +124,11 @@ notification:
   max-active-tx-ids: 100_000
   # Default: 1,000
   max-tx-ids-per-request: 1000
+  # Timeout for writing notifications to the stream.
+  # If a client cannot consume notifications within this timeout, it will be disconnected
+  # to prevent blocking the notification service.
+  # Default: 30s
+  stream-write-timeout: 30s
 
 # How often the sidecar updates the coordinator with the last committed block number.
 # More frequent updates improve coordinator accuracy for dependency resolution but

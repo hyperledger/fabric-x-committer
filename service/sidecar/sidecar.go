@@ -55,19 +55,20 @@ var logger = flogging.MustGetLogger("sidecar")
 //     read-only queries directly to the underlying block store.
 type Service struct {
 	committerpb.UnimplementedBlockQueryServiceServer
-	deliveryParams     deliverorderer.Parameters
-	relay              *relay
-	notifier           *notifier
-	blockStore         *blockStore
-	coordConn          *grpc.ClientConn
-	blockToBeCommitted atomic.Pointer[chan *common.Block]
-	committedBlock     chan *common.Block
-	statusQueue        chan []*committerpb.TxStatus
-	config             *Config
-	healthcheck        *health.Server
-	metrics            *perfMetrics
-	tlsUpdater         serve.DynamicTLSUpdater
-	ready              *channel.Ready
+	deliveryParams        deliverorderer.Parameters
+	relay                 *relay
+	notifier              *notifier
+	blockStore            *blockStore
+	coordConn             *grpc.ClientConn
+	blockToBeCommitted    atomic.Pointer[chan *common.Block]
+	committedBlock        chan *common.Block
+	committedBlockWithTxs chan *committedBlockWithTxs
+	statusQueue           chan []*committerpb.TxStatus
+	config                *Config
+	healthcheck           *health.Server
+	metrics               *perfMetrics
+	tlsUpdater            serve.DynamicTLSUpdater
+	ready                 *channel.Ready
 }
 
 var (
@@ -96,15 +97,16 @@ func New(c *Config) (*Service, error) {
 	relayService := newRelay(c.LastCommittedBlockSetInterval, metrics)
 
 	return &Service{
-		deliveryParams: deliveryParams,
-		relay:          relayService,
-		notifier:       newNotifier(c.ChannelBufferSize, &c.Notification, metrics),
-		healthcheck:    serve.DefaultHealthCheckService(),
-		config:         c,
-		metrics:        metrics,
-		committedBlock: make(chan *common.Block, c.ChannelBufferSize),
-		statusQueue:    make(chan []*committerpb.TxStatus, c.ChannelBufferSize),
-		ready:          channel.NewReady(),
+		deliveryParams:        deliveryParams,
+		relay:                 relayService,
+		notifier:              newNotifier(c.ChannelBufferSize, &c.Notification, metrics),
+		healthcheck:           serve.DefaultHealthCheckService(),
+		config:                c,
+		metrics:               metrics,
+		committedBlock:        make(chan *common.Block, c.ChannelBufferSize),
+		committedBlockWithTxs: make(chan *committedBlockWithTxs, c.ChannelBufferSize),
+		statusQueue:           make(chan []*committerpb.TxStatus, c.ChannelBufferSize),
+		ready:                 channel.NewReady(),
 	}, nil
 }
 
@@ -151,7 +153,7 @@ func (s *Service) Run(ctx context.Context) error {
 	})
 	g.Go(func() error {
 		// Notification for clients.
-		return s.notifier.run(gCtx, s.statusQueue)
+		return s.notifier.run(gCtx, s.statusQueue, s.committedBlockWithTxs)
 	})
 
 	g.Go(func() error {
@@ -227,6 +229,7 @@ func (s *Service) sendBlocksAndReceiveStatus(
 			outgoingCommittedBlock:         s.committedBlock,
 			outgoingStatusUpdates:          s.statusQueue,
 			outgoingConfigBlocks:           configBlocks,
+			outgoingCommittedBlockWithTxs:  s.committedBlockWithTxs,
 			waitingTxsLimit:                s.config.WaitingTxsLimit,
 		})
 	})
@@ -693,14 +696,14 @@ func wrapQueryError(err error) error {
 
 func waitForIdleCoordinator(ctx context.Context, client servicepb.CoordinatorClient) error {
 	for {
-		waitingTxs, err := client.NumberOfWaitingTransactionsForStatus(ctx, nil)
+		idle, err := client.NoPendingTransactionProcessing(ctx, nil)
 		if err != nil {
-			return logAndWrapCoordinatorError(err, "failed to get number of waiting transactions from coordinator")
+			return logAndWrapCoordinatorError(err, "failed to check pending transaction processing from coordinator")
 		}
-		if waitingTxs.Count == 0 {
+		if idle.GetValue() {
 			return nil
 		}
-		logger.Infof("Waiting for coordinator to complete processing [%d] pending transactions", waitingTxs.Count)
+		logger.Info("Waiting for coordinator to complete processing pending transactions")
 		time.Sleep(100 * time.Millisecond)
 	}
 }

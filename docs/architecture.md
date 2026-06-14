@@ -93,7 +93,7 @@ The **Query Service** operates independently of the commit pipeline. Clients and
 
 The Sidecar acts as the critical bridge between the Hyperledger Fabric-X Ordering Service and the Committer's internal processing pipeline. It is responsible for fetching blocks sequentially from the Ordering Service, performing initial transaction validation to filter out malformed transactions, and maintaining a durable local block store on the file system.
 
-Beyond block ingestion, the Sidecar serves as the delivery endpoint for clients, providing committed blocks to registered applications and offering a notification service for transaction status updates. It also exposes query APIs that allow clients to fetch historical blocks and transactions directly from the block store.
+Beyond block ingestion, the Sidecar serves as the delivery endpoint for clients, providing committed blocks to registered applications and offering two notification mechanisms: transaction ID subscription for tracking specific transactions, and an all-transactions stream for monitoring all blockchain activity with optional filtering. It also exposes query APIs that allow clients to fetch historical blocks and transactions directly from the block store.
 
 **Key Characteristics:**
 

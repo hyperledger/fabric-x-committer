@@ -56,6 +56,41 @@ func RequireNotifications( //nolint:revive // argument-limit.
 	}, 15*time.Second, 50*time.Millisecond)
 }
 
+// RequireStreamAllTransactions verifies that the expected transactions were received
+// from the StreamAllTransactions stream.
+func RequireStreamAllTransactions( //nolint:revive // argument-limit.
+	t *testing.T,
+	stream committerpb.Notifier_StreamAllTransactionsClient,
+	expectedBlockNumber uint64,
+	txIDs []string,
+	status []committerpb.Status,
+) {
+	t.Helper()
+	require.Len(t, status, len(txIDs))
+
+	// Build expected events
+	expected := make([]*committerpb.TxEvent, len(txIDs))
+	for i, txID := range txIDs {
+		expected[i] = &committerpb.TxEvent{
+			Ref:    committerpb.NewTxRef(txID, expectedBlockNumber, uint32(i)),
+			Status: status[i],
+		}
+	}
+
+	// Receive and validate the batch
+	var events []*committerpb.TxEvent
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		batch, err := stream.Recv()
+		require.NoError(ct, err)
+		require.NotNil(ct, batch)
+		require.Equal(ct, expectedBlockNumber, batch.BlockNumber)
+		events = batch.Events
+	}, 15*time.Second, 50*time.Millisecond)
+
+	require.NotNil(t, events)
+	test.RequireProtoElementsMatch(t, expected, events)
+}
+
 // MalformedTxTestCases are valid and invalid TXs due to malformed.
 func MalformedTxTestCases(txb *workload.TxBuilder) (
 	txs []*servicepb.LoadGenTx, expectedStatuses []committerpb.Status,

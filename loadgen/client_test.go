@@ -229,6 +229,7 @@ func TestLoadGenForSidecar(t *testing.T) {
 					MaxTimeout:         sidecar.DefaultNotificationMaxTimeout,
 					MaxActiveTxIDs:     sidecar.DefaultMaxActiveTxIDs,
 					MaxTxIDsPerRequest: sidecar.DefaultMaxTxIDsPerRequest,
+					StreamWriteTimeout: sidecar.DefaultStreamWriteTimeout,
 				},
 				Ledger: sidecar.LedgerConfig{
 					Path: t.TempDir(),
@@ -272,6 +273,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 					MaxTimeout:         sidecar.DefaultNotificationMaxTimeout,
 					MaxActiveTxIDs:     sidecar.DefaultMaxActiveTxIDs,
 					MaxTxIDsPerRequest: sidecar.DefaultMaxTxIDsPerRequest,
+					StreamWriteTimeout: sidecar.DefaultStreamWriteTimeout,
 				},
 				Ledger: sidecar.LedgerConfig{
 					Path: t.TempDir(),

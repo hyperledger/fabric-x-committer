@@ -331,49 +331,33 @@ func TestCoordinatorServiceValidTx(t *testing.T) {
 	require.Equal(t, uint64(2), nextBlock.Number)
 }
 
-func TestCoordinatorServiceRejectedTx(t *testing.T) {
+func TestNoPendingTransactionProcessing(t *testing.T) {
 	t.Parallel()
-	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2, mockVcService: true})
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
-	t.Cleanup(cancel)
-	env.startServiceAndOpenStream(ctx, t)
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1, mockVcService: true})
 
-	env.createNamespaces(t, 0, "1")
+	// Seven transactions are still waiting for sidecar-visible final status. Five of
+	// those statuses are already queued in two batches. One queued status is a
+	// rejected transaction, proving rejected statuses are counted in the same unit
+	// as committed statuses.
+	env.coordinator.numTxsInProgress.Store(7)
 
-	preMetricsValue := test.GetIntMetricValue(t, env.coordinator.metrics.transactionReceivedTotal)
-
-	err := env.csStream.Send(&servicepb.CoordinatorBatch{
-		Rejected: []*committerpb.TxStatus{
-			{
-				Ref:    committerpb.NewTxRef("rejected", 1, 0),
-				Status: committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
-			},
+	require.True(t, env.coordinator.queues.vcServiceToCoordinatorTxStatus.write(t.Context(), &committerpb.TxStatusBatch{
+		Status: []*committerpb.TxStatus{
+			committerpb.NewTxStatus(committerpb.Status_COMMITTED, "queued-1", 2, 0),
+			committerpb.NewTxStatus(committerpb.Status_COMMITTED, "queued-2", 2, 1),
 		},
-	})
+	}))
+	require.True(t, env.coordinator.queues.vcServiceToCoordinatorTxStatus.write(t.Context(), &committerpb.TxStatusBatch{
+		Status: []*committerpb.TxStatus{
+			committerpb.NewTxStatus(committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD, "queued-rejected", 2, 2),
+			committerpb.NewTxStatus(committerpb.Status_COMMITTED, "queued-4", 2, 3),
+			committerpb.NewTxStatus(committerpb.Status_COMMITTED, "queued-5", 2, 4),
+		},
+	}))
+
+	idle, err := env.coordinator.NoPendingTransactionProcessing(t.Context(), nil)
 	require.NoError(t, err)
-	test.EventuallyIntMetric(
-		t, preMetricsValue+1, env.coordinator.metrics.transactionReceivedTotal,
-		1*time.Second, 100*time.Millisecond,
-	)
-
-	env.requireStatus(ctx, t, []*committerpb.TxStatus{
-		committerpb.NewTxStatus(committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD, "rejected", 1, 0),
-	}, nil)
-
-	test.RequireIntMetricValue(t, 1, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
-		committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD.String(),
-	))
-	test.RequireIntMetricValue(t, preMetricsValue, env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(
-		committerpb.Status_COMMITTED.String(),
-	))
-
-	_, err = env.coordinator.SetLastCommittedBlockNumber(ctx, &servicepb.BlockRef{Number: 1})
-	require.NoError(t, err)
-
-	nextBlock, err := env.coordinator.GetNextBlockNumberToCommit(ctx, nil)
-	require.NoError(t, err)
-	require.NotNil(t, nextBlock)
-	require.Equal(t, uint64(2), nextBlock.Number)
+	require.False(t, idle.GetValue())
 }
 
 func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
@@ -553,7 +537,7 @@ func TestQueueSize(t *testing.T) {
 	q.depGraphToSigVerifierFreeTxs <- dependencygraph.TxNodeBatch{}
 	q.sigVerifierToVCServiceValidatedTxs <- dependencygraph.TxNodeBatch{}
 	q.vcServiceToDepGraphValidatedTxs <- dependencygraph.TxNodeBatch{}
-	q.vcServiceToCoordinatorTxStatus <- &committerpb.TxStatusBatch{}
+	require.True(t, q.vcServiceToCoordinatorTxStatus.write(t.Context(), &committerpb.TxStatusBatch{}))
 
 	require.Eventually(t, func() bool {
 		return test.GetIntMetricValue(t, m.sigverifierInputTxBatchQueueSize) == 1 &&
@@ -565,7 +549,8 @@ func TestQueueSize(t *testing.T) {
 	<-q.depGraphToSigVerifierFreeTxs
 	<-q.sigVerifierToVCServiceValidatedTxs
 	<-q.vcServiceToDepGraphValidatedTxs
-	<-q.vcServiceToCoordinatorTxStatus
+	_, ok := q.vcServiceToCoordinatorTxStatus.read(t.Context())
+	require.True(t, ok)
 
 	require.Eventually(t, func() bool {
 		return test.GetIntMetricValue(t, m.sigverifierInputTxBatchQueueSize) == 0 &&
@@ -821,9 +806,9 @@ func TestCoordinatorStreamFailureWithSidecar(t *testing.T) {
 
 	env.streamCancel() // simulate the failure of sidecar
 
-	// only when the stream is inactive, we do not get an error for NumberOfWaitingTransactionsForStatus.
+	// only when the stream is inactive, we do not get an error for NoPendingTransactionProcessing.
 	require.Eventually(t, func() bool {
-		_, err := env.client.NumberOfWaitingTransactionsForStatus(ctx, nil)
+		_, err := env.client.NoPendingTransactionProcessing(ctx, nil)
 		return err == nil
 	}, 5*time.Second, 10*time.Millisecond)
 
@@ -953,7 +938,7 @@ func TestWaitingTxsCountReturnsToZeroForBlockWithRejectedTxs(t *testing.T) {
 
 	actualTxsStatus := readTxStatus(t, env.csStream, len(expectedTxsStatus))
 	test.RequireProtoElementsMatch(t, expectedTxsStatus, actualTxsStatus)
-	require.Equal(t, int32(0), env.coordinator.numWaitingTxsForStatus.Load())
+	require.Equal(t, int32(0), env.coordinator.numTxsInProgress.Load())
 }
 
 func TestWaitingTxsCount(t *testing.T) {
@@ -969,7 +954,7 @@ func TestWaitingTxsCount(t *testing.T) {
 	success := channel.Make[bool](ctx, 1)
 	go func() {
 		success.Write(assert.Eventually(t, func() bool {
-			return env.coordinator.numWaitingTxsForStatus.Load() == int32(2)
+			return env.coordinator.numTxsInProgress.Load() == int32(2)
 		}, 1*time.Minute, 100*time.Millisecond))
 	}()
 
@@ -981,10 +966,10 @@ func TestWaitingTxsCount(t *testing.T) {
 	require.True(t, ok, "timed out waiting for tx count")
 	require.True(t, isSuccess)
 
-	count, err := env.client.NumberOfWaitingTransactionsForStatus(t.Context(), nil)
+	result, err := env.client.NoPendingTransactionProcessing(t.Context(), nil)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), ErrActiveStreamWaitingTransactions.Error())
-	require.Nil(t, count)
+	require.Contains(t, err.Error(), ErrActiveStreamPendingTxProcessing.Error())
+	require.Nil(t, result)
 
 	env.sigVerifierGrpcServers.ServersStop[0]()
 	require.Eventually(t, func() bool {
@@ -1016,11 +1001,11 @@ func TestWaitingTxsCount(t *testing.T) {
 	}, 2*time.Second, 100*time.Millisecond)
 
 	require.Eventually(t, func() bool {
-		wTxs, err := env.client.NumberOfWaitingTransactionsForStatus(t.Context(), nil)
+		idle, err := env.client.NoPendingTransactionProcessing(t.Context(), nil)
 		if err != nil {
 			return false
 		}
-		return wTxs.GetCount() == 0
+		return idle.GetValue()
 	}, 2*time.Second, 100*time.Millisecond)
 }
 

@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -33,7 +34,7 @@ type Coordinator struct {
 	lastCommittedBlock atomic.Pointer[servicepb.BlockRef]
 	nextBlock          atomic.Uint64
 	streamActive       atomic.Bool
-	numWaitingTxs      atomic.Int32
+	numTxsInProgress   atomic.Int32
 	txsStatus          *fifoCache[*committerpb.TxStatus]
 	txsStatusMu        sync.Mutex
 	latency            atomic.Pointer[time.Duration]
@@ -89,12 +90,13 @@ func (c *Coordinator) GetTransactionsStatus(
 	return &committerpb.TxStatusBatch{Status: status}, nil
 }
 
-// NumberOfWaitingTransactionsForStatus returns the number of transactions waiting to get the final status.
-func (c *Coordinator) NumberOfWaitingTransactionsForStatus(
+// NoPendingTransactionProcessing returns true when all previously submitted
+// transactions have been processed.
+func (c *Coordinator) NoPendingTransactionProcessing(
 	context.Context,
 	*emptypb.Empty,
-) (*servicepb.WaitingTransactions, error) {
-	return &servicepb.WaitingTransactions{Count: c.numWaitingTxs.Load()}, nil
+) (*wrapperspb.BoolValue, error) {
+	return wrapperspb.Bool(c.numTxsInProgress.Load() == 0), nil
 }
 
 // IsStreamActive returns true if the stream from the sidecar is active.
@@ -143,7 +145,7 @@ func (c *Coordinator) receiveBlocks(
 		c.nextBlock.Store(maxBlock + 1)
 
 		logger.Debugf("Received batch with %d transactions", len(block.Txs))
-		c.numWaitingTxs.Add(int32(len(block.Txs))) //nolint:gosec
+		c.numTxsInProgress.Add(int32(len(block.Txs))) //nolint:gosec
 
 		// send to the validation
 		blockQueue.Write(block)
@@ -210,14 +212,14 @@ func (c *Coordinator) sendTxsStatusChunk(
 		return errors.Wrap(err, "failed to send status")
 	}
 	logger.Debugf("Sent back batch with %d TXs", len(b.Status))
-	c.numWaitingTxs.Add(-int32(len(b.Status))) //nolint:gosec
+	c.numTxsInProgress.Add(-int32(len(b.Status))) //nolint:gosec
 	return nil
 }
 
-// SetWaitingTxsCount sets the waiting transactions count. The purpose
-// of this method is to set the count manually for testing purpose.
-func (c *Coordinator) SetWaitingTxsCount(count int32) {
-	c.numWaitingTxs.Store(count)
+// SetTxsInProgress sets the in-progress transaction count. The purpose
+// of this method is to set the count manually for testing purposes.
+func (c *Coordinator) SetTxsInProgress(count int32) {
+	c.numTxsInProgress.Store(count)
 }
 
 // SetDelay sets the duration to wait before sending statuses.

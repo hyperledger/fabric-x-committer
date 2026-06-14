@@ -13,6 +13,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -25,9 +26,10 @@ func TestStreamConcurrencyLimit(t *testing.T) {
 	t.Parallel()
 
 	// The runtime's Start opens 2 long-lived streams:
-	//   1. Notification stream (OpenNotificationStream)
-	//   2. Deliver stream (startBlockDelivery)
-	// With MaxConcurrentStreams=4, exactly 2 slots remain for the test.
+	//   1. Deliver stream (startBlockDelivery)
+	//   2. Notification stream (OpenNotificationStream)
+	//   3. Notification block stream (StreamAllTransactions)
+	// With MaxConcurrentStreams=4, exactly 1 slot remain for the test.
 	const maxStreams = 4
 	c := runner.NewRuntime(t, &runner.Config{
 		BlockTimeout:         2 * time.Second,
@@ -58,9 +60,6 @@ func TestStreamConcurrencyLimit(t *testing.T) {
 	_, err = deliverClient.Deliver(deliverCtx)
 	require.NoError(t, err)
 
-	_, err = notifyClient.OpenNotificationStream(t.Context())
-	require.NoError(t, err)
-
 	// Wait for the server to start the stream handlers above and acquire
 	// their semaphore slots. The server processes new streams asynchronously
 	// (goroutine per stream), so without this the interceptor may not have
@@ -87,22 +86,26 @@ func TestStreamConcurrencyLimit(t *testing.T) {
 	}
 	requireResourceExhausted(t, err)
 
+	rejectedStreamAll, err := notifyClient.StreamAllTransactions(t.Context(), nil)
+	if err == nil {
+		_, err = rejectedStreamAll.Recv()
+	}
+	requireResourceExhausted(t, err)
+
 	// Cancel the Deliver stream to release one semaphore slot.
 	// The server-side handler must return before the semaphore is released,
 	// so we poll with require.Eventually to tolerate the cleanup delay.
 	deliverCancel()
 
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
 		defer cancel()
-		stream, err := notifyClient.OpenNotificationStream(ctx)
-		if err != nil {
-			return false
-		}
-		_, err = stream.Recv()
+		stream, streamErr := notifyClient.OpenNotificationStream(ctx)
+		require.NoError(ct, streamErr)
+		_, recvErr := stream.Recv()
 		// Accepted: handler runs, Recv blocks until context timeout (DeadlineExceeded)
 		// Rejected: interceptor returns ResourceExhausted, Recv gets it immediately
-		return status.Code(err) != codes.ResourceExhausted
+		require.NotEqual(ct, codes.ResourceExhausted, status.Code(recvErr))
 	}, 5*time.Second, 100*time.Millisecond, "new stream should succeed after releasing a slot")
 }
 

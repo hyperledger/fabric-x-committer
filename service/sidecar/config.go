@@ -49,6 +49,9 @@ type (
 		MaxActiveTxIDs int `mapstructure:"max-active-tx-ids" validate:"required,gt=0"`
 		// MaxTxIDsPerRequest is the maximum number of txIDs allowed in a single notification request.
 		MaxTxIDsPerRequest int `mapstructure:"max-tx-ids-per-request" validate:"required,gt=0"`
+		// StreamWriteTimeout is the timeout for writing notifications to the stream.
+		// If a client cannot consume notifications within this timeout, it will be disconnected.
+		StreamWriteTimeout time.Duration `mapstructure:"stream-write-timeout" validate:"required,gt=0"`
 	}
 )
 
@@ -60,6 +63,7 @@ const (
 	DefaultBufferSize                    = 100
 	DefaultMaxActiveTxIDs                = 100_000
 	DefaultMaxTxIDsPerRequest            = 1000
+	DefaultStreamWriteTimeout            = 30 * time.Second
 	DefaultLastCommittedBlockSetInterval = 5 * time.Second
 	DefaultWaitingTxsLimit               = 100_000
 	DefaultMaxConcurrentStreams          = 10

@@ -38,7 +38,9 @@ The Sidecar performs four main tasks:
 4. **Persist Committed Blocks:** Stores blocks confirmed as committed by the Coordinator in a local, append-only file
     store for durability and auditability.
 5. **Deliver to Clients:** Delivers the committed blocks to registered client applications.
-6. **Notification:** Notifies subscribers when transactions are committed or aborted, on a per-transaction ID basis.
+6. **Notification:** Provides two notification mechanisms:
+   - **Transaction ID Subscription:** Notifies subscribers when specific transactions (by ID) are committed or aborted.
+   - **All Transactions Stream:** Streams all committed transactions in block order with optional filtering.
 
 Note that the fourth task is executed only when users/clients creates a stream with the sidecar.
 
@@ -287,6 +289,8 @@ the status updates for all transactions within that block using `blockWithStatus
 ```go
 	blockWithStatus struct {
 		block         *common.Block
+		blockNumber   uint64
+		txs           []*protoblocktx.Tx
 		txStatus      []validationCode
 		txIDToTxIndex map[string]int
 		pendingCount  int
@@ -303,9 +307,14 @@ A block is only considered fully processed and ready for commitment when two con
 
 **g. Enqueueing Committed Blocks**: 
 
-When a block satisfies the criteria outlined in step f, the relay component first appends the collected
-transaction statuses within the metadata of the original Fabric block (sourced from `blocksToBeCommitted`). 
-Subsequently, this modified block is enqueued onto the `committedBlocks` output channel.
+When a block satisfies the criteria outlined in step f, the relay component performs two actions:
+
+1. Appends the collected transaction statuses within the metadata of the original Fabric block
+   (sourced from `blocksToBeCommitted`) and enqueues it onto the `committedBlocks` output channel
+   for persistence.
+
+2. Creates a `committedBlockWithTxs` structure containing the block number, transaction list, and
+   status information, and sends it to the notification service for distribution to subscribers.
 
 ### Task 3. Persisting Committed Block in the File System
 

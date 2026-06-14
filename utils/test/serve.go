@@ -122,16 +122,16 @@ func (h *HealthService) RegisterService(s serve.Servers) {
 // It is intended for services that implements the Service API (i.e., command line services).
 func RunServiceAndServeForTest(
 	ctx context.Context,
-	t *testing.T,
+	tb testing.TB,
 	service serve.Service,
 	serverConfig ...*serve.Config,
 ) *channel.Ready {
-	t.Helper()
-	doneFlag := RunServiceForTest(ctx, t, func(ctx context.Context) error {
+	tb.Helper()
+	doneFlag := RunServiceForTest(ctx, tb, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(service.Run(ctx))
 	}, service.WaitForReady)
 	for _, c := range serverConfig {
-		ServeForTest(ctx, t, c, service)
+		ServeForTest(ctx, tb, c, service)
 	}
 	return doneFlag
 }

@@ -18,6 +18,7 @@ import (
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	wrapperspb "google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -26,11 +27,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Coordinator_BlockProcessing_FullMethodName                      = "/servicepb.Coordinator/BlockProcessing"
-	Coordinator_SetLastCommittedBlockNumber_FullMethodName          = "/servicepb.Coordinator/SetLastCommittedBlockNumber"
-	Coordinator_GetNextBlockNumberToCommit_FullMethodName           = "/servicepb.Coordinator/GetNextBlockNumberToCommit"
-	Coordinator_GetTransactionsStatus_FullMethodName                = "/servicepb.Coordinator/GetTransactionsStatus"
-	Coordinator_NumberOfWaitingTransactionsForStatus_FullMethodName = "/servicepb.Coordinator/NumberOfWaitingTransactionsForStatus"
+	Coordinator_BlockProcessing_FullMethodName                = "/servicepb.Coordinator/BlockProcessing"
+	Coordinator_SetLastCommittedBlockNumber_FullMethodName    = "/servicepb.Coordinator/SetLastCommittedBlockNumber"
+	Coordinator_GetNextBlockNumberToCommit_FullMethodName     = "/servicepb.Coordinator/GetNextBlockNumberToCommit"
+	Coordinator_GetTransactionsStatus_FullMethodName          = "/servicepb.Coordinator/GetTransactionsStatus"
+	Coordinator_NoPendingTransactionProcessing_FullMethodName = "/servicepb.Coordinator/NoPendingTransactionProcessing"
 )
 
 // CoordinatorClient is the client API for Coordinator service.
@@ -41,7 +42,7 @@ type CoordinatorClient interface {
 	SetLastCommittedBlockNumber(ctx context.Context, in *BlockRef, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetNextBlockNumberToCommit(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*BlockRef, error)
 	GetTransactionsStatus(ctx context.Context, in *committerpb.TxIDsBatch, opts ...grpc.CallOption) (*committerpb.TxStatusBatch, error)
-	NumberOfWaitingTransactionsForStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*WaitingTransactions, error)
+	NoPendingTransactionProcessing(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
 }
 
 type coordinatorClient struct {
@@ -95,10 +96,10 @@ func (c *coordinatorClient) GetTransactionsStatus(ctx context.Context, in *commi
 	return out, nil
 }
 
-func (c *coordinatorClient) NumberOfWaitingTransactionsForStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*WaitingTransactions, error) {
+func (c *coordinatorClient) NoPendingTransactionProcessing(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(WaitingTransactions)
-	err := c.cc.Invoke(ctx, Coordinator_NumberOfWaitingTransactionsForStatus_FullMethodName, in, out, cOpts...)
+	out := new(wrapperspb.BoolValue)
+	err := c.cc.Invoke(ctx, Coordinator_NoPendingTransactionProcessing_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +114,7 @@ type CoordinatorServer interface {
 	SetLastCommittedBlockNumber(context.Context, *BlockRef) (*emptypb.Empty, error)
 	GetNextBlockNumberToCommit(context.Context, *emptypb.Empty) (*BlockRef, error)
 	GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch) (*committerpb.TxStatusBatch, error)
-	NumberOfWaitingTransactionsForStatus(context.Context, *emptypb.Empty) (*WaitingTransactions, error)
+	NoPendingTransactionProcessing(context.Context, *emptypb.Empty) (*wrapperspb.BoolValue, error)
 	mustEmbedUnimplementedCoordinatorServer()
 }
 
@@ -136,8 +137,8 @@ func (UnimplementedCoordinatorServer) GetNextBlockNumberToCommit(context.Context
 func (UnimplementedCoordinatorServer) GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch) (*committerpb.TxStatusBatch, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetTransactionsStatus not implemented")
 }
-func (UnimplementedCoordinatorServer) NumberOfWaitingTransactionsForStatus(context.Context, *emptypb.Empty) (*WaitingTransactions, error) {
-	return nil, status.Error(codes.Unimplemented, "method NumberOfWaitingTransactionsForStatus not implemented")
+func (UnimplementedCoordinatorServer) NoPendingTransactionProcessing(context.Context, *emptypb.Empty) (*wrapperspb.BoolValue, error) {
+	return nil, status.Error(codes.Unimplemented, "method NoPendingTransactionProcessing not implemented")
 }
 func (UnimplementedCoordinatorServer) mustEmbedUnimplementedCoordinatorServer() {}
 func (UnimplementedCoordinatorServer) testEmbeddedByValue()                     {}
@@ -221,20 +222,20 @@ func _Coordinator_GetTransactionsStatus_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Coordinator_NumberOfWaitingTransactionsForStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Coordinator_NoPendingTransactionProcessing_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(CoordinatorServer).NumberOfWaitingTransactionsForStatus(ctx, in)
+		return srv.(CoordinatorServer).NoPendingTransactionProcessing(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Coordinator_NumberOfWaitingTransactionsForStatus_FullMethodName,
+		FullMethod: Coordinator_NoPendingTransactionProcessing_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(CoordinatorServer).NumberOfWaitingTransactionsForStatus(ctx, req.(*emptypb.Empty))
+		return srv.(CoordinatorServer).NoPendingTransactionProcessing(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -259,8 +260,8 @@ var Coordinator_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Coordinator_GetTransactionsStatus_Handler,
 		},
 		{
-			MethodName: "NumberOfWaitingTransactionsForStatus",
-			Handler:    _Coordinator_NumberOfWaitingTransactionsForStatus_Handler,
+			MethodName: "NoPendingTransactionProcessing",
+			Handler:    _Coordinator_NoPendingTransactionProcessing_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

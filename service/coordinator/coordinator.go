@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
@@ -57,7 +58,7 @@ type (
 		// multiple concurrent streams could lead to unreliable status delivery.
 		streamActive sync.RWMutex
 
-		numWaitingTxsForStatus *atomic.Int32
+		numTxsInProgress *atomic.Int32
 
 		txBatchIDToDepGraph uint64
 
@@ -86,18 +87,19 @@ type (
 		//       rename vcServiceToDepGraphValidatedTxs to committedOrAbortedTxsNode.
 		vcServiceToDepGraphValidatedTxs chan dependencygraph.TxNodeBatch
 
-		// sender: validator committer manager sends transaction status to this channel. For each validator committer
-		// 	       server, there is a goroutine that sends transaction status to this channel.
-		// receiver: coordinator receives transaction status from this channel and forwards them to the sidecar.
-		vcServiceToCoordinatorTxStatus chan *committerpb.TxStatusBatch
+		// sender: validator committer manager sends transaction status to this queue. For each validator committer
+		// 	       server, there is a goroutine that sends transaction status to this queue.
+		// receiver: coordinator receives transaction status from this queue and forwards them to the sidecar.
+		vcServiceToCoordinatorTxStatus *txStatusQueue
 	}
 )
 
 var (
-	// ErrActiveStreamWaitingTransactions is returned when NumberOfWaitingTransactionsForStatus is called
+	// ErrActiveStreamPendingTxProcessing is returned when NoPendingTransactionProcessing is called
 	// while a stream is active. This value cannot be reliably determined in this state.
-	ErrActiveStreamWaitingTransactions = errors.New("cannot determine number of waiting transactions for " +
-		"status while stream is active")
+	ErrActiveStreamPendingTxProcessing = errors.New(
+		"cannot check pending transaction processing while stream is active",
+	)
 
 	// ErrExistingStreamOrConflictingOp indicates that a stream cannot be created because a stream already exists
 	// or a conflicting gRPC API call is being made concurrently.
@@ -122,7 +124,7 @@ func NewCoordinatorService(c *Config) *Service {
 		depGraphToSigVerifierFreeTxs:       make(chan dependencygraph.TxNodeBatch, bufSzPerChanForValCommitMgr),
 		sigVerifierToVCServiceValidatedTxs: make(chan dependencygraph.TxNodeBatch, bufSzPerChanForSignVerifierMgr),
 		vcServiceToDepGraphValidatedTxs:    make(chan dependencygraph.TxNodeBatch, bufSzPerChanForValCommitMgr),
-		vcServiceToCoordinatorTxStatus:     make(chan *committerpb.TxStatusBatch, bufSzPerChanForValCommitMgr),
+		vcServiceToCoordinatorTxStatus:     newTxStatusQueue(bufSzPerChanForValCommitMgr),
 	}
 
 	metrics := newPerformanceMetrics()
@@ -162,17 +164,17 @@ func NewCoordinatorService(c *Config) *Service {
 	)
 
 	return &Service{
-		dependencyMgr:          depMgr,
-		signatureVerifierMgr:   svMgr,
-		validatorCommitterMgr:  vcMgr,
-		policyMgr:              policyMgr,
-		queues:                 queues,
-		config:                 c,
-		metrics:                metrics,
-		initializationDone:     channel.NewReady(),
-		numWaitingTxsForStatus: &atomic.Int32{},
-		txBatchIDToDepGraph:    1,
-		healthcheck:            serve.DefaultHealthCheckService(),
+		dependencyMgr:         depMgr,
+		signatureVerifierMgr:  svMgr,
+		validatorCommitterMgr: vcMgr,
+		policyMgr:             policyMgr,
+		queues:                queues,
+		config:                c,
+		metrics:               metrics,
+		initializationDone:    channel.NewReady(),
+		numTxsInProgress:      &atomic.Int32{},
+		txBatchIDToDepGraph:   1,
+		healthcheck:           serve.DefaultHealthCheckService(),
 	}
 }
 
@@ -269,19 +271,36 @@ func (c *Service) GetTransactionsStatus(
 	return c.validatorCommitterMgr.getTransactionsStatus(ctx, q)
 }
 
-// NumberOfWaitingTransactionsForStatus returns the number of transactions waiting to get the final status.
-func (c *Service) NumberOfWaitingTransactionsForStatus(
+// NoPendingTransactionProcessing returns true when all previously submitted
+// transactions have been processed and the sidecar can safely reconnect.
+func (c *Service) NoPendingTransactionProcessing(
 	context.Context,
 	*emptypb.Empty,
-) (*servicepb.WaitingTransactions, error) {
+) (*wrapperspb.BoolValue, error) {
 	if !c.streamActive.TryLock() {
-		return nil, grpcerror.WrapFailedPrecondition(ErrActiveStreamWaitingTransactions)
+		return nil, grpcerror.WrapFailedPrecondition(ErrActiveStreamPendingTxProcessing)
 	}
 	defer c.streamActive.Unlock()
 
-	return &servicepb.WaitingTransactions{
-		Count: c.numWaitingTxsForStatus.Load() - int32(len(c.queues.vcServiceToCoordinatorTxStatus)), //nolint:gosec
-	}, nil
+	// When the sidecar stream is inactive, numTxsInProgress is not updated
+	// because sendTxStatus cannot forward statuses. However, VC continues producing
+	// statuses into the queue. To compute the number of TXs still being processed
+	// (i.e., not yet computed by VC), we subtract readyCount (statuses already
+	// produced but not yet consumed by sendTxStatus) from numTxsInProgress.
+	//
+	// numTxsInProgress is a superset of readyCount: every status tracked by
+	// readyCount was previously counted in numTxsInProgress at block receipt,
+	// and numTxsInProgress is only decremented after sendTxStatus consumes from
+	// the queue (which decrements readyCount first). The two values are not read
+	// atomically, but numTxsInProgress is frozen while the stream is inactive
+	// (only receiveAndProcessBlock and sendTxStatus modify it, and both require
+	// an active stream). So the result is never negative.
+	//
+	// When numTxsInProgress equals readyCount, all previously submitted TXs
+	// have been processed and the sidecar can safely reconnect.
+	return wrapperspb.Bool(
+		c.numTxsInProgress.Load() == c.queues.vcServiceToCoordinatorTxStatus.readyCount(),
+	), nil
 }
 
 // BlockProcessing receives a stream of blocks from the client and processes them.
@@ -343,7 +362,7 @@ func (c *Service) receiveAndProcessBlock(
 		// still be forwarded to downstream components for complete processing.
 
 		promutil.AddToCounter(c.metrics.transactionReceivedTotal, len(blk.Txs)+len(blk.Rejected))
-		c.numWaitingTxsForStatus.Add(int32(len(blk.Txs) + len(blk.Rejected))) //nolint:gosec
+		c.numTxsInProgress.Add(int32(len(blk.Txs) + len(blk.Rejected))) //nolint:gosec
 
 		if len(blk.Txs) > 0 {
 			// TODO: make it configurable.
@@ -374,13 +393,13 @@ func (c *Service) sendTxStatus(
 	ctx context.Context,
 	stream servicepb.Coordinator_BlockProcessingServer,
 ) error {
-	txsStatus := channel.NewReader(ctx, c.queues.vcServiceToCoordinatorTxStatus)
 	for {
-		txStatus, ctxAlive := txsStatus.Read()
-		if !ctxAlive {
+		txStatus, ok := c.queues.vcServiceToCoordinatorTxStatus.read(ctx)
+		if !ok {
 			return nil
 		}
-		c.numWaitingTxsForStatus.Add(-int32(len(txStatus.Status))) //nolint:gosec
+
+		c.numTxsInProgress.Add(-int32(len(txStatus.Status))) //nolint:gosec
 
 		if err := stream.Send(txStatus); err != nil {
 			return errors.Wrap(err, "failed to send transaction status batch to the sidecar")
@@ -414,6 +433,6 @@ func (c *Service) monitorQueues(ctx context.Context) {
 		promutil.SetGauge(m.sigverifierInputTxBatchQueueSize, len(q.depGraphToSigVerifierFreeTxs))
 		promutil.SetGauge(m.sigverifierOutputValidatedTxBatchQueueSize, len(q.sigVerifierToVCServiceValidatedTxs))
 		promutil.SetGauge(m.vcserviceOutputValidatedTxBatchQueueSize, len(q.vcServiceToDepGraphValidatedTxs))
-		promutil.SetGauge(m.vcserviceOutputTxStatusBatchQueueSize, len(q.vcServiceToCoordinatorTxStatus))
+		promutil.SetGauge(m.vcserviceOutputTxStatusBatchQueueSize, q.vcServiceToCoordinatorTxStatus.len())
 	}
 }

@@ -375,8 +375,8 @@ When the sidecar restarts after a crash, it follows a systematic recovery proces
    └─► Initialize TLS configuration
 
 2. Wait for Coordinator to Become Idle
-   ├─► Query: NumberOfWaitingTransactionsForStatus()
-   ├─► Wait until count == 0
+   ├─► Query: NoPendingTransactionProcessing()
+   ├─► Wait until true
    └─► Ensures all in-flight transactions are processed
 
 3. Query Coordinator State
