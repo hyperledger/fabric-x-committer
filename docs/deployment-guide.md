@@ -163,7 +163,6 @@ Start the database cluster first and wait for it to be healthy before starting a
      - Required stored procedures
    - This is a one-time administrative operation that must be performed before any db operation
    - The command is safe to run multiple times
-   - See [Database Initialization](#database-initialization) for details
 
 3. **Start Services** (any order after database is healthy and initialized)
    - VC Service — connects to database on startup

@@ -31,7 +31,6 @@ const (
 	committerReleaseImage = "docker.io/hyperledger/fabric-x-committer:latest"
 	loadgenReleaseImage   = "docker.io/hyperledger/fabric-x-loadgen:latest"
 	networkPrefixName     = test.DockerNamesPrefix + "_network"
-
 	// containerConfigPath is the path to the config directory inside the container.
 	containerConfigPath = "/root/config"
 	// localConfigPath is the path to the sample YAML configuration of each service.
@@ -70,7 +69,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	ctx := t.Context()
 
 	t.Log("creating config-block")
-	artifactsPath := generateArtifactsPath(t)
+	artifactsPath := generateArtifacts(t)
 
 	committerNodes := []string{verifierService, vcService, queryService, coordinatorService, sidecarService}
 
@@ -120,7 +119,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					// start the load generator node.
 					startLoadgenNodeWithReleaseImage(ctx, t, params.asNode(loadgenService))
 
-					metricsClientTLSConfig := test.NewServiceTLSConfig(artifactsPath, "loadgen", mode)
+					metricsClientTLSConfig := test.NewServiceTLSConfig(artifactsPath, loadgenService, mode)
 
 					monitorMetric(
 						t,
@@ -143,7 +142,7 @@ func TestDatabaseInitFailureWithoutActiveDB(t *testing.T) {
 		tlsMode:       connection.NoneTLSMode,
 		dbType:        "none_activated_database",
 		dbInitTimeout: "10s",
-		artifactsPath: generateArtifactsPath(t),
+		artifactsPath: generateArtifacts(t),
 	}
 	statusCh, errorCh := runDatabaseInitWithReleaseImage(t.Context(), t, params.asNode(dbinit))
 
@@ -393,8 +392,8 @@ func startCommitterNodeWithTestImage(
 	})
 }
 
-// generateArtifactsPath loads a loadgen config, create crypto materials and return their path.
-func generateArtifactsPath(t *testing.T) string {
+// generateArtifacts loads a loadgen config, create crypto materials and return their path.
+func generateArtifacts(t *testing.T) string {
 	t.Helper()
 	t.Log("creating config-block")
 	v := config.NewViperWithLoadGenDefaults()
