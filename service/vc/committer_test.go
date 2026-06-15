@@ -89,13 +89,13 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 		),
 		&committerpb.TxStatusBatch{
 			Status: []*committerpb.TxStatus{
-				committerpb.NewTxStatus(committerpb.Status_COMMITTED, "tx1", 1, 1),
-				committerpb.NewTxStatus(committerpb.Status_COMMITTED, "tx2", 1, 2),
+				committerpb.NewTxStatus(committerpb.Status_COMMITTED, string(txs[0]), 1, 1),
+				committerpb.NewTxStatus(committerpb.Status_COMMITTED, string(txs[1]), 1, 2),
 			},
 		},
 		transactionIDToHeight{
-			"tx1": servicepb.NewHeight(1, 1),
-			"tx2": servicepb.NewHeight(1, 2),
+			txs[0]: servicepb.NewHeight(1, 1),
+			txs[1]: servicepb.NewHeight(1, 2),
 		},
 	)
 
@@ -360,13 +360,13 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 			name: "all invalid txs",
 			txs: &validatedTransactions{
 				validTxNonBlindWrites: transactionToWrites{
-					"tx1": writes(false, state{"2", 7, 1}),
+					txs[0]: writes(false, state{"2", 7, 1}),
 				},
 				validTxBlindWrites: transactionToWrites{
-					"tx1": writes(true, state{"1", 1, 6}),
+					txs[0]: writes(true, state{"1", 1, 6}),
 				},
 				newWrites: transactionToWrites{
-					"tx1": writes(true, state{"1", 40, 0}),
+					txs[0]: writes(true, state{"1", 40, 0}),
 				},
 				invalidTxStatus: map[TxID]committerpb.Status{
 					"tx-conflict-10": committerpb.Status_ABORTED_MVCC_CONFLICT,
@@ -374,14 +374,14 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 					"tx-conflict-12": committerpb.Status_ABORTED_MVCC_CONFLICT,
 				},
 				txIDToHeight: transactionIDToHeight{
-					"tx1":            servicepb.NewHeight(1, 5),
+					txs[0]:           servicepb.NewHeight(1, 5),
 					"tx-conflict-10": servicepb.NewHeight(1, 1),
 					"tx-conflict-11": servicepb.NewHeight(4, 2),
 					"tx-conflict-12": servicepb.NewHeight(66000, 3),
 				},
 			},
 			expectedTxStatuses: []*committerpb.TxStatus{
-				committerpb.NewTxStatus(committerpb.Status_REJECTED_DUPLICATE_TX_ID, "tx1", 1, 5),
+				committerpb.NewTxStatus(committerpb.Status_REJECTED_DUPLICATE_TX_ID, string(txs[0]), 1, 5),
 				committerpb.NewTxStatus(committerpb.Status_ABORTED_MVCC_CONFLICT, "tx-conflict-10", 1, 1),
 				committerpb.NewTxStatus(committerpb.Status_ABORTED_MVCC_CONFLICT, "tx-conflict-11", 4, 2),
 				committerpb.NewTxStatus(committerpb.Status_ABORTED_MVCC_CONFLICT, "tx-conflict-12", 66000, 3),

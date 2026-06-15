@@ -383,15 +383,27 @@ func TestReadWriteWithValue(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(1)
 	p.Transaction.ReadWriteValueSize = 32
-	p.Transaction.ReadWriteCount = NewConstantDistribution(2)
+	p.Transaction.ReadWriteCount = NewConstantDistribution(3)
 
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 	g := c.MakeGenerator()
 	tx := g.Next(t.Context())
-	require.Len(t, tx.Tx.Namespaces[0].ReadWrites, 2)
+	require.Len(t, tx.Tx.Namespaces[0].ReadWrites, 3)
 	for _, v := range tx.Tx.Namespaces[0].ReadWrites {
 		require.Len(t, v.Value, 32)
 	}
+}
+
+func TestWithMetadata(t *testing.T) {
+	t.Parallel()
+	p := DefaultProfile(1)
+	p.Transaction.MetadataSize = 128
+
+	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
+	g := c.MakeGenerator()
+	tx := g.Next(t.Context())
+	require.Len(t, tx.Tx.Metadata, 1)
+	require.Len(t, tx.Tx.Metadata[0], 128)
 }
 
 func TestGenTxWithRateLimit(t *testing.T) {
@@ -403,7 +415,7 @@ func TestGenTxWithRateLimit(t *testing.T) {
 	options := defaultStreamOptions()
 	p := DefaultProfile(1)
 	options.RateLimit = rate
-	options.GenBatch = uint32(producedTotal) //nolint:gosec // int -> uint32.
+	options.GenBatch = uint32(producedTotal)
 	c := startTxGeneratorUnderTest(t, p, options)
 	g := c.MakeGenerator()
 

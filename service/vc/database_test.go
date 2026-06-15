@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v5/pgxpool"
@@ -135,9 +134,6 @@ func TestValidateNamespaceReads(t *testing.T) {
 		nil,
 	)
 
-	// Shortcut for version pointer.
-	v := applicationpb.NewVersion
-
 	tests := []struct {
 		name                  string
 		nsID                  string
@@ -164,11 +160,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns2,
 			r: &reads{
 				keys:     [][]byte{k7, k8, k9},
-				versions: []*uint64{nil, v(0), nil},
+				versions: []*uint64{nil, new(uint64(0)), nil},
 			},
 			expectedReadConflicts: &reads{
 				keys:     [][]byte{k8},
-				versions: []*uint64{v(0)},
+				versions: []*uint64{new(uint64(0))},
 			},
 		},
 		{
@@ -176,11 +172,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns2,
 			r: &reads{
 				keys:     [][]byte{k7, k8, k9},
-				versions: []*uint64{v(1), v(0), v(1)},
+				versions: []*uint64{new(uint64(1)), new(uint64(0)), new(uint64(1))},
 			},
 			expectedReadConflicts: &reads{
 				keys:     [][]byte{k7, k8, k9},
-				versions: []*uint64{v(1), v(0), v(1)},
+				versions: []*uint64{new(uint64(1)), new(uint64(0)), new(uint64(1))},
 			},
 		},
 		{
@@ -188,7 +184,7 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns1,
 			r: &reads{
 				keys:     [][]byte{k1, k2, k3},
-				versions: []*uint64{v(0), v(0), v(0)},
+				versions: []*uint64{new(uint64(0)), new(uint64(0)), new(uint64(0))},
 			},
 			expectedReadConflicts: &reads{},
 		},
@@ -197,11 +193,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns1,
 			r: &reads{
 				keys:     [][]byte{k1, k2, k3},
-				versions: []*uint64{v(1), v(0), v(1)},
+				versions: []*uint64{new(uint64(1)), new(uint64(0)), new(uint64(1))},
 			},
 			expectedReadConflicts: &reads{
 				keys:     [][]byte{k1, k3},
-				versions: []*uint64{v(1), v(1)},
+				versions: []*uint64{new(uint64(1)), new(uint64(1))},
 			},
 		},
 		{
@@ -209,11 +205,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns2,
 			r: &reads{
 				keys:     [][]byte{k4, k5, k6},
-				versions: []*uint64{v(0), v(0), v(0)},
+				versions: []*uint64{new(uint64(0)), new(uint64(0)), new(uint64(0))},
 			},
 			expectedReadConflicts: &reads{
 				keys:     [][]byte{k4, k5, k6},
-				versions: []*uint64{v(0), v(0), v(0)},
+				versions: []*uint64{new(uint64(0)), new(uint64(0)), new(uint64(0))},
 			},
 		},
 		{
@@ -221,11 +217,11 @@ func TestValidateNamespaceReads(t *testing.T) {
 			nsID: ns2,
 			r: &reads{
 				keys:     [][]byte{k4, k5, k6, k7, k8, k9},
-				versions: []*uint64{v(1), v(0), v(1), nil, v(0), nil},
+				versions: []*uint64{new(uint64(1)), new(uint64(0)), new(uint64(1)), nil, new(uint64(0)), nil},
 			},
 			expectedReadConflicts: &reads{
 				keys:     [][]byte{k5, k8},
-				versions: []*uint64{v(0), v(0)},
+				versions: []*uint64{new(uint64(0)), new(uint64(0))},
 			},
 		},
 	}

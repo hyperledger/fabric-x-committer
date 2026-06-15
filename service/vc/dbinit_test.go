@@ -23,7 +23,7 @@ func TestDBInit(t *testing.T) {
 	env := newDatabaseTestEnvWithTablesSetup(t)
 
 	tableName := TableName(committerpb.MetaNamespaceID)
-	keys := [][]byte{[]byte("tx1"), []byte("tx2"), []byte("tx3"), []byte("tx4")}
+	keys := [][]byte{[]byte(txs[0]), []byte(txs[1]), []byte(txs[2]), []byte(txs[3])}
 	ret := env.DB.pool.QueryRow(t.Context(), FmtNsID(insertNsStatesSQLTempl, committerpb.MetaNamespaceID), keys, keys)
 	duplicates, err := readArrayResult[[]byte](ret)
 	require.NoError(t, err)
