@@ -188,8 +188,8 @@ github.com/hyperledger/fabric-lib-go v1.1.5-0.20260607181445-fc4b05c5d38f h1:o2J
 github.com/hyperledger/fabric-lib-go v1.1.5-0.20260607181445-fc4b05c5d38f/go.mod h1:amVM/GTZB4fhzHdSk8MEHpoC3N34zCIvkWjFX70wZiA=
 github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7 h1:sQ5qv8vQQfwewa1JlCiSCC8dLElmaU2/frLolpgibEY=
 github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7/go.mod h1:bJnwzfv03oZQeCc863pdGTDgf5nmCy6Za3RAE7d2XsQ=
-github.com/hyperledger/fabric-x-common v0.2.6-0.20260615064541-1c4ab61a4665 h1:ZdgU58S1ktOV1mFkJ05iJT7kO0IMpF41phg9FrjURY4=
-github.com/hyperledger/fabric-x-common v0.2.6-0.20260615064541-1c4ab61a4665/go.mod h1:xkAVXn2qEb/JMFOI8MrCMJC+rg0u8ip4tZz/2cAEXAk=
+github.com/hyperledger/fabric-x-common v0.2.6 h1:nmrWvLC9oM91Xff1s5ae0hjWjX7fnAW4p3GLD/wkXZY=
+github.com/hyperledger/fabric-x-common v0.2.6/go.mod h1:xkAVXn2qEb/JMFOI8MrCMJC+rg0u8ip4tZz/2cAEXAk=
 github.com/ianlancetaylor/demangle v0.0.0-20200824232613-28f6c0f3b639/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
 github.com/imkira/go-interpol v1.1.0 h1:KIiKr0VSG2CUW1hl1jpiyuzuJeKUUpC8iM1AIE7N1Vk=
 github.com/imkira/go-interpol v1.1.0/go.mod h1:z0h2/2T3XF8kyEPpRgJ3kmNv+C43p+I/CoI+jC3w2iA=
