@@ -167,8 +167,8 @@ func checkNewTxNode(
 	txNode *TransactionNode,
 ) {
 	t.Helper()
-	test.RequireProtoEqual(t, tx.Ref, txNode.Tx.Ref)
-	test.RequireProtoElementsMatch(t, tx.Content.Namespaces, txNode.Tx.Namespaces)
+	test.RequireProtoEqual(t, tx.Ref, txNode.VCTx.Ref)
+	test.RequireProtoElementsMatch(t, tx.Content.Namespaces, txNode.VCTx.Namespaces)
 	require.True(t, txNode.isDependencyFree())
 	require.ElementsMatch(t, readsWrites.readsOnly, txNode.rwKeys.readsOnly)
 	require.ElementsMatch(t, readsWrites.writesOnly, txNode.rwKeys.writesOnly)

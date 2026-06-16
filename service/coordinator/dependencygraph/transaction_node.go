@@ -20,8 +20,8 @@ import (
 type (
 	// TransactionNode is a node in the dependency graph.
 	TransactionNode struct {
-		Tx           *servicepb.VcTx
-		Endorsements []*applicationpb.Endorsements
+		VCTx       *servicepb.VcTx
+		VerifierTx *servicepb.TxWithRef
 
 		// dependsOnTxs is a set of transactions that this transaction depends on.
 		// A transaction is eligible for validation once all the transactions
@@ -72,19 +72,19 @@ type (
 // newTransactionNode creates a TX node for coordinator's TX.
 func newTransactionNode(tx *servicepb.TxWithRef) *TransactionNode {
 	return &TransactionNode{
-		Tx: &servicepb.VcTx{
+		VCTx: &servicepb.VcTx{
 			Ref:        tx.Ref,
 			Namespaces: tx.Content.Namespaces,
 		},
-		Endorsements: tx.Content.Endorsements,
-		rwKeys:       readAndWriteKeys(tx.Content.Namespaces),
+		VerifierTx: tx,
+		rwKeys:     readAndWriteKeys(tx.Content.Namespaces),
 	}
 }
 
 // NewRejectedTransactionNode creates a TX node for a rejected TX.
 func NewRejectedTransactionNode(tx *committerpb.TxStatus) *TransactionNode {
 	return &TransactionNode{
-		Tx: &servicepb.VcTx{
+		VCTx: &servicepb.VcTx{
 			Ref:                   tx.Ref,
 			PrelimInvalidTxStatus: &tx.Status,
 		},

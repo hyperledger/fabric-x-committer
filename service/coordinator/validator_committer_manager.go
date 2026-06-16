@@ -250,8 +250,8 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 		logger.Debugf("New TX node came from dependency graph manager to vc manager")
 		txBatch := make([]*servicepb.VcTx, len(txsNode))
 		for i, txNode := range txsNode {
-			vc.txBeingValidated.Store(txNode.Tx.Ref.TxId, txNode)
-			txBatch[i] = txNode.Tx
+			vc.txBeingValidated.Store(txNode.VCTx.Ref.TxId, txNode)
+			txBatch[i] = txNode.VCTx
 		}
 
 		if firstBatch {
@@ -389,7 +389,7 @@ func (vc *validatorCommitter) getTxsAndUpdatePolicies(txsStatus *committerpb.TxS
 		// Updating policy before sending transaction nodes to the dependency
 		// graph manager to free dependent transactions. Otherwise, dependent transactions
 		// might be validated against a stale policy.
-		vc.policyMgr.updateFromTx(txNode.Tx.Namespaces)
+		vc.policyMgr.updateFromTx(txNode.VCTx.Namespaces)
 	}
 
 	return txsNode, untrackedTxIdx
