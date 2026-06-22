@@ -38,7 +38,11 @@ func TestDeliverToChannel(t *testing.T) {
 	// 10 times for the pulled blocks, 10 times for the blocks in the buffer, and 1 that blocks because
 	// the buffer is full.
 	s.EXPECT().RecvBlockOrStatus().MaxTimes(21).DoAndReturn(func() (*common.Block, *common.Status, error) {
-		b := &common.Block{Header: &common.BlockHeader{Number: nextBlockNum}}
+		b := &common.Block{
+			Header:   &common.BlockHeader{Number: nextBlockNum},
+			Metadata: &common.BlockMetadata{},
+			Data:     &common.BlockData{},
+		}
 		nextBlockNum++
 		return b, nil, nil
 	})
@@ -48,7 +52,11 @@ func TestDeliverToChannel(t *testing.T) {
 	outputBlock := channel.NewReader(t.Context(), e.outputBlock)
 	outputBlockWithSourceID := channel.NewReader(t.Context(), e.outputBlockWithSourceID)
 	for i := range uint64(10) {
-		expectedBlock := &common.Block{Header: &common.BlockHeader{Number: i}}
+		expectedBlock := &common.Block{
+			Header:   &common.BlockHeader{Number: i},
+			Metadata: &common.BlockMetadata{},
+			Data:     &common.BlockData{},
+		}
 
 		readBlock, ok := outputBlock.ReadWithTimeout(3 * time.Second)
 		require.True(t, ok)
@@ -109,7 +117,32 @@ func TestDeliverToChannelFailedStreamer(t *testing.T) {
 	t.Log("Receive bad block (nil header)")
 	s = NewMockStreamer(e.ctrl)
 	s.EXPECT().Send(gomock.Not(gomock.Nil())).Times(1).Return(nil)
-	s.EXPECT().RecvBlockOrStatus().Times(1).Return(&common.Block{}, nil, nil)
+	s.EXPECT().RecvBlockOrStatus().Times(1).Return(&common.Block{
+		Metadata: &common.BlockMetadata{},
+		Data:     &common.BlockData{},
+	}, nil, nil)
+	streamerQueue.Write(s)
+	_, ok = outputBlock.ReadWithTimeout(time.Second)
+	require.False(t, ok)
+
+	t.Log("Receive bad block (nil metadata)")
+	s = NewMockStreamer(e.ctrl)
+	s.EXPECT().Send(gomock.Not(gomock.Nil())).Times(1).Return(nil)
+	s.EXPECT().RecvBlockOrStatus().Times(1).Return(&common.Block{
+		Header: &common.BlockHeader{Number: 1},
+		Data:   &common.BlockData{},
+	}, nil, nil)
+	streamerQueue.Write(s)
+	_, ok = outputBlock.ReadWithTimeout(time.Second)
+	require.False(t, ok)
+
+	t.Log("Receive bad block (nil data)")
+	s = NewMockStreamer(e.ctrl)
+	s.EXPECT().Send(gomock.Not(gomock.Nil())).Times(1).Return(nil)
+	s.EXPECT().RecvBlockOrStatus().Times(1).Return(&common.Block{
+		Header:   &common.BlockHeader{Number: 1},
+		Metadata: &common.BlockMetadata{},
+	}, nil, nil)
 	streamerQueue.Write(s)
 	_, ok = outputBlock.ReadWithTimeout(time.Second)
 	require.False(t, ok)
@@ -117,7 +150,11 @@ func TestDeliverToChannelFailedStreamer(t *testing.T) {
 	t.Log("Receive bad block (wrong number 1 != 0)")
 	s = NewMockStreamer(e.ctrl)
 	s.EXPECT().Send(gomock.Not(gomock.Nil())).Times(1).Return(nil)
-	s.EXPECT().RecvBlockOrStatus().Times(1).Return(&common.Block{Header: &common.BlockHeader{Number: 1}}, nil, nil)
+	s.EXPECT().RecvBlockOrStatus().Times(1).Return(&common.Block{
+		Header:   &common.BlockHeader{Number: 1},
+		Metadata: &common.BlockMetadata{},
+		Data:     &common.BlockData{},
+	}, nil, nil)
 	streamerQueue.Write(s)
 	_, ok = outputBlock.ReadWithTimeout(time.Second)
 	require.False(t, ok)
@@ -125,7 +162,11 @@ func TestDeliverToChannelFailedStreamer(t *testing.T) {
 	t.Log("Correct block, then bad block (wrong number 0 != 1)")
 	s = NewMockStreamer(e.ctrl)
 	s.EXPECT().Send(gomock.Not(gomock.Nil())).Times(1).Return(nil)
-	correctBlock := &common.Block{Header: &common.BlockHeader{Number: 0}}
+	correctBlock := &common.Block{
+		Header:   &common.BlockHeader{Number: 0},
+		Metadata: &common.BlockMetadata{},
+		Data:     &common.BlockData{},
+	}
 	s.EXPECT().RecvBlockOrStatus().Times(2).Return(correctBlock, nil, nil)
 	streamerQueue.Write(s)
 	rb, ok := outputBlock.ReadWithTimeout(3 * time.Second)

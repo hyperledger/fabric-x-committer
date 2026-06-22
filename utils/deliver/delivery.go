@@ -120,8 +120,8 @@ func toQueueWithoutReconnect(ctx context.Context, p *Parameters) error {
 		// We make minimal verifications to ensure we receive blocks in order.
 		// This allows us to restart the connection from the next expected block.
 		// We restart the connection upon failure.
-		if block == nil || block.Header == nil {
-			return errors.Join(backoff, errors.New("received nil block or with nil header"))
+		if block == nil || block.Header == nil || block.Metadata == nil || (!p.HeaderOnly && block.Data == nil) {
+			return errors.Join(backoff, errors.New("received nil block, header, metadata, or data"))
 		}
 		if block.Header.Number != p.NextBlockNum {
 			return errors.Join(backoff, errors.Errorf("received block number %d != %d (expected)",
