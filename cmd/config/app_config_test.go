@@ -316,9 +316,24 @@ func TestReadConfigQuery(t *testing.T) {
 	}, {
 		name:           "sample",
 		configFilePath: "samples/query.yaml",
-		expectedServerConfig: newServeConfigWithDefaultTLS(
-			"query", query.DefaultServerPort, query.DefaultMonitoringPort,
-		),
+		expectedServerConfig: &serve.Config{
+			GRPC: serve.ServerConfig{
+				Endpoint: *newEndpoint("", query.DefaultServerPort),
+				TLS:      test.NewServiceTLSConfig(artifactsPath, "query", connection.MutualTLSMode),
+				KeepAlive: &serve.ServerKeepAliveConfig{
+					Params: &serve.ServerKeepAliveParamsConfig{
+						Time:    300 * time.Second,
+						Timeout: 600 * time.Second,
+					},
+					EnforcementPolicy: &serve.ServerKeepAliveEnforcementPolicyConfig{
+						MinTime:             60 * time.Second,
+						PermitWithoutStream: false,
+					},
+				},
+			},
+			HTTP:                  *newServerConfigWithDefaultTLS("query", query.DefaultMonitoringPort),
+			ServiceStartupTimeout: serve.DefaultServiceStartupTimeout,
+		},
 		expectedServiceConfig: &query.Config{
 			Database:              defaultSampleDBConfig(),
 			MinBatchKeys:          query.DefaultMinBatchKeys,
