@@ -31,15 +31,15 @@ import (
 // connection without closing it.
 //
 // A live gRPC client cannot be made unresponsive through configuration: its
-// transport answers server pings automatically. To produce a genuinely silent
-// client, the connection is routed through a proxy that is
-// black-holed mid-stream. The socket stays open but no bytes flow, so the
-// server's ping is never acknowledged and the server must close the connection itself.
+// transport automatically responds to server pings. To produce a genuinely
+// silent client, the connection is routed through a proxy that blocks data transportation.
+// The socket remains open, but no bytes flow, so the server's ping
+// is never acknowledged and the server must close the connection itself.
 type blackHoleProxy struct {
 	*toxiclient.Proxy
 }
 
-// newBlackHoleProxy creates a proxy plane between the service to the client.
+// newBlackHoleProxy creates a proxy control plane between the client and the service.
 func newBlackHoleProxy(t *testing.T, upstream string) blackHoleProxy {
 	t.Helper()
 
@@ -63,15 +63,15 @@ func newBlackHoleProxy(t *testing.T, upstream string) blackHoleProxy {
 	return blackHoleProxy{proxy}
 }
 
-// blackHole stops all data on the connection without closing it, so the socket
-// stays open, but the server's keep-alive ping is never acknowledged.
+// blackHole blocks all data on the connection without closing it. The socket
+// remains open, but the server's keep-alive ping is never acknowledged.
 func (p blackHoleProxy) blackHole(t *testing.T) {
 	t.Helper()
 	_, err := p.AddToxic(
 		"block-data",
 		"timeout",
 		"upstream",
-		1.0, // Probability the toxic applies
+		1.0, // Probability that the toxic applies.
 		toxiclient.Attributes{
 			"timeout": 0,
 		},
@@ -82,7 +82,9 @@ func (p blackHoleProxy) blackHole(t *testing.T) {
 const (
 	keepAliveTime    = 5 * time.Second
 	keepAliveTimeout = 10 * time.Second
-	// Server should close within Time and Timeout.
+
+	// The server should close the connection within Time and Timeout,
+	// but we add 15 seconds so the context will not finish before.
 	connectionClosingTime = keepAliveTime + keepAliveTimeout + 15*time.Second
 )
 
@@ -117,20 +119,21 @@ func TestSidecarKeepAliveDeadConnectionDetection(t *testing.T) {
 		TxStatusRequest: &committerpb.TxIDsBatch{TxIds: []string{"dummy-tx"}},
 	}))
 
-	// Enforce connection to the server.
+	// Force the connection to be established.
 	conn.Connect()
 	require.Eventually(t, func() bool {
 		return conn.GetState() == connectivity.Ready
 	}, 10*time.Second, 50*time.Millisecond, "connection must be ready before blocking data transport")
 
-	// Block data transportation - the socket stays open, but no bytes flow, so the
-	// server sees a vanished client rather than a clean disconnect.
+	// Block data transport. The socket remains open, but no bytes flow, so the
+	// server observes a vanished client rather than a clean disconnect.
 	proxy.blackHole(t)
+
 	recvErr := receiveWithin(stream, connectionClosingTime)
-	t.Logf("receievedErr: %v", recvErr)
-	require.Error(t, receiveWithin(stream, connectionClosingTime),
-		"server should close the dead connection via keep-alive")
-	// Although we expect the error to return, we can also verify that the translation of the gRPC error is unavailable.
+	t.Logf("receivedErr: %v", recvErr)
+	require.Error(t, recvErr, "server should close the dead connection via keep-alive")
+
+	// Verify that the server-initiated close is translated into a gRPC Unavailable error.
 	require.Equal(t, codes.Unavailable, status.Code(recvErr), "expected server-initiated close")
 }
 
@@ -160,7 +163,7 @@ func TestQueryKeepAliveDeadConnectionDetection(t *testing.T) {
 
 	queryClient := committerpb.NewQueryServiceClient(conn)
 
-	// Enforce connection to the server.
+	// Force the connection to be established.
 	conn.Connect()
 	require.Eventually(t, func() bool {
 		return conn.GetState() == connectivity.Ready
@@ -171,8 +174,8 @@ func TestQueryKeepAliveDeadConnectionDetection(t *testing.T) {
 	cancel()
 	require.NoError(t, err, "query should succeed before the partition")
 
-	// Block data transportation - the socket stays open, but no bytes flow, so the
-	// server sees a vanished client rather than a clean disconnect
+	// Block data transport. The socket remains open, but no bytes flow, so the
+	// server observes a vanished client rather than a clean disconnect.
 	proxy.blackHole(t)
 
 	require.Eventually(t, func() bool {
@@ -181,7 +184,7 @@ func TestQueryKeepAliveDeadConnectionDetection(t *testing.T) {
 		"server should close the dead connection via keep-alive")
 }
 
-// receiveWithin returns the stream's first receive error, or nil if none
+// receiveWithin returns the stream's first receive error, or nil if no error
 // arrives within the timeout.
 func receiveWithin(stream committerpb.Notifier_OpenNotificationStreamClient, timeout time.Duration) error {
 	done := make(chan error, 1)
