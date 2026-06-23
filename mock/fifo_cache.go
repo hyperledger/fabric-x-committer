@@ -20,7 +20,7 @@ func newFifoCache[T any](size int) *fifoCache[T] {
 	}
 }
 
-// addIfNotExist returns true if a new entry was added.
+// addIfNotExist returns true if the entry is unique.
 // It employs a FIFO eviction policy.
 func (c *fifoCache[T]) addIfNotExist(key string, value T) bool {
 	if _, ok := c.get(key); ok {
@@ -31,17 +31,6 @@ func (c *fifoCache[T]) addIfNotExist(key string, value T) bool {
 	c.evictionQueue[c.evictionIndex] = key
 	c.evictionIndex = (c.evictionIndex + 1) % len(c.evictionQueue)
 	return true
-}
-
-// updateOrAddIfNotExist returns true if a new entry was added.
-// It employs a FIFO eviction policy.
-func (c *fifoCache[T]) updateOrAddIfNotExist(key string, value T) bool {
-	if _, ok := c.get(key); ok {
-		c.cache[key] = value
-		// We don't modify the eviction order for simplicity.
-		return false
-	}
-	return c.addIfNotExist(key, value)
 }
 
 // get returns the value of a key.

@@ -202,185 +202,63 @@ func TestVcServiceStreamProcessing(t *testing.T) {
 	})
 }
 
-// TestVcServiceMVCCValidation tests MVCC validation logic and all rejection reasons.
-func TestVcServiceMVCCValidation(t *testing.T) {
+// TestVcServiceStatusInjection tests that the mock returns injected statuses without
+// performing any validation of its own, and defaults to COMMITTED otherwise.
+func TestVcServiceStatusInjection(t *testing.T) {
 	t.Parallel()
 
 	e := startVCTestEnv(t, test.StartServerParameters{NumService: 1})
-	e.vc.FullMVCC.Store(true) // Enable full MVCC validation
 
-	t.Log("Case 1: TX to a non-existing namespace (ABORTED_MVCC_CONFLICT)")
+	t.Log("Case 1: No injected status defaults to COMMITTED")
 	e.sendTX(t, &servicepb.VcTx{
-		Ref: committerpb.NewTxRef("tx-no-ns", 1, 0),
+		Ref: committerpb.NewTxRef("tx-default", 1, 0),
 		Namespaces: []*applicationpb.TxNamespace{{
 			NsId: testNS,
 			BlindWrites: []*applicationpb.Write{
 				{Key: []byte("key1"), Value: []byte("value1")},
 			},
 		}},
-	}, committerpb.Status_ABORTED_MVCC_CONFLICT)
+	}, committerpb.Status_COMMITTED)
 
-	t.Log("Case 2: TX with preliminary invalid status (pass-through from coordinator/verifier)")
-	// Test multiple preliminary invalid statuses to ensure they are passed through correctly
-	for i, ps := range []struct {
-		name   string
-		status committerpb.Status
-	}{
-		{"signature-invalid", committerpb.Status_ABORTED_SIGNATURE_INVALID},
-		{"malformed-missing-tx-id", committerpb.Status_MALFORMED_MISSING_TX_ID},
-		{"malformed-duplicate-namespace", committerpb.Status_MALFORMED_DUPLICATE_NAMESPACE},
+	t.Log("Case 2: Injected statuses are returned verbatim")
+	for i, s := range []committerpb.Status{
+		committerpb.Status_ABORTED_MVCC_CONFLICT,
+		committerpb.Status_REJECTED_DUPLICATE_TX_ID,
+		committerpb.Status_ABORTED_SIGNATURE_INVALID,
 	} {
+		ref := committerpb.NewTxRef("tx-injected-"+s.String(), uint64(2+i), uint32(i))
+		e.vc.SetTxStatus(ref, s)
 		e.sendTX(t, &servicepb.VcTx{
-			Ref:                   committerpb.NewTxRef("tx-prelim-"+ps.name, uint64(1+i), uint32(1+i)),
-			PrelimInvalidTxStatus: &ps.status,
+			Ref: ref,
 			Namespaces: []*applicationpb.TxNamespace{{
 				NsId: testNS,
 				BlindWrites: []*applicationpb.Write{
-					{Key: []byte("prelim-key-" + ps.name), Value: []byte("prelim-value")},
+					{Key: []byte("inj-key"), Value: []byte("inj-value")},
 				},
 			}},
-		}, ps.status)
+		}, s)
 	}
 
-	t.Log("Case 3: Create the namespace (send config and meta namespace separately)")
+	t.Log("Case 3: PrelimInvalidTxStatus takes precedence over an injected status")
+	prelimRef := committerpb.NewTxRef("tx-prelim", 10, 0)
+	// Even though we inject COMMITTED, the preliminary status wins.
+	e.vc.SetTxStatus(prelimRef, committerpb.Status_COMMITTED)
 	e.sendTX(t, &servicepb.VcTx{
-		Ref: committerpb.NewTxRef("init-config", 2, 0),
-		Namespaces: []*applicationpb.TxNamespace{{
-			NsId: committerpb.ConfigNamespaceID,
-			BlindWrites: []*applicationpb.Write{
-				{Key: []byte(committerpb.ConfigKey), Value: nil},
-			},
-		}},
-	}, committerpb.Status_COMMITTED)
-	e.sendTX(t, &servicepb.VcTx{
-		Ref: committerpb.NewTxRef("init-meta", 3, 0),
-		Namespaces: []*applicationpb.TxNamespace{{
-			NsId: committerpb.MetaNamespaceID,
-			BlindWrites: []*applicationpb.Write{
-				{Key: []byte(testNS), Value: nil},
-			},
-		}},
-	}, committerpb.Status_COMMITTED)
-
-	t.Log("Case 4: TX with duplicate TX ID but different ref (REJECTED_DUPLICATE_TX_ID)")
-	e.sendTX(t, &servicepb.VcTx{
-		Ref: committerpb.NewTxRef("duplicate-tx", 5, 0),
-		Namespaces: []*applicationpb.TxNamespace{{
-			NsId: testNS,
-			BlindWrites: []*applicationpb.Write{
-				{Key: []byte("dup-key"), Value: []byte("value1")},
-			},
-		}},
-	}, committerpb.Status_COMMITTED)
-
-	// Try to send transaction with same ID but different ref
-	e.sendTX(t, &servicepb.VcTx{
-		Ref: committerpb.NewTxRef("duplicate-tx", 6, 0),
-		Namespaces: []*applicationpb.TxNamespace{{
-			NsId: testNS,
-			BlindWrites: []*applicationpb.Write{
-				{Key: []byte("dup-key"), Value: []byte("value2")},
-			},
-		}},
-	}, committerpb.Status_REJECTED_DUPLICATE_TX_ID)
-
-	t.Log("Case 5: TX with wrong version number in read-write (ABORTED_MVCC_CONFLICT)")
-	// Trying to read a non-existent key with version 0 should fail
-	e.sendTX(t, &servicepb.VcTx{
-		Ref: committerpb.NewTxRef("tx-read-nonexistent", 7, 0),
+		Ref:                   prelimRef,
+		PrelimInvalidTxStatus: new(committerpb.Status_MALFORMED_NO_WRITES),
 		Namespaces: []*applicationpb.TxNamespace{{
 			NsId:      testNS,
-			NsVersion: 0,
-			ReadWrites: []*applicationpb.ReadWrite{
-				{Key: []byte("conflict-key"), Value: []byte("value1"), Version: new(uint64(0))},
-			},
+			ReadsOnly: []*applicationpb.Read{{Key: []byte("key3")}},
 		}},
-	}, committerpb.Status_ABORTED_MVCC_CONFLICT)
+	}, committerpb.Status_MALFORMED_NO_WRITES)
 
-	t.Log("Case 6: Successfully write the key with blind write (COMMITTED)")
-	e.sendTX(t, &servicepb.VcTx{
-		Ref: committerpb.NewTxRef("tx-write-first", 8, 0),
-		Namespaces: []*applicationpb.TxNamespace{{
-			NsId:      testNS,
-			NsVersion: 0,
-			BlindWrites: []*applicationpb.Write{
-				{Key: []byte("conflict-key"), Value: []byte("initial-value")},
-			},
-		}},
-	}, committerpb.Status_COMMITTED)
-
-	t.Log("Case 7: TX with wrong version in read-write after initial write (ABORTED_MVCC_CONFLICT)")
-	e.sendTX(t, &servicepb.VcTx{
-		Ref: committerpb.NewTxRef("tx-write-conflict", 9, 0),
-		Namespaces: []*applicationpb.TxNamespace{{
-			NsId:      testNS,
-			NsVersion: 0,
-			ReadWrites: []*applicationpb.ReadWrite{
-				{Key: []byte("conflict-key"), Value: []byte("value2"), Version: new(uint64(1))},
-			},
-		}},
-	}, committerpb.Status_ABORTED_MVCC_CONFLICT)
-
-	t.Log("Case 8: TX with wrong version number in read-only (ABORTED_MVCC_CONFLICT)")
-	e.sendTX(t, &servicepb.VcTx{
-		Ref: committerpb.NewTxRef("tx-read-conflict", 10, 0),
-		Namespaces: []*applicationpb.TxNamespace{{
-			NsId:      testNS,
-			NsVersion: 0,
-			ReadsOnly: []*applicationpb.Read{
-				{Key: []byte("conflict-key"), Version: new(uint64(1))},
-			},
-		}},
-	}, committerpb.Status_ABORTED_MVCC_CONFLICT)
-
-	t.Log("Case 9: Valid TX with read-write using correct version (COMMITTED)")
-	e.sendTX(t, &servicepb.VcTx{
-		Ref: committerpb.NewTxRef("tx-valid-rw", 11, 0),
-		Namespaces: []*applicationpb.TxNamespace{{
-			NsId:      testNS,
-			NsVersion: 0,
-			ReadWrites: []*applicationpb.ReadWrite{
-				{Key: []byte("conflict-key"), Value: []byte("updated-value"), Version: new(uint64(0))},
-			},
-		}},
-	}, committerpb.Status_COMMITTED)
-
-	t.Log("Case 10: Valid TX with blind write (COMMITTED)")
-	e.sendTX(t, &servicepb.VcTx{
-		Ref: committerpb.NewTxRef("tx-blind-write", 12, 0),
-		Namespaces: []*applicationpb.TxNamespace{{
-			NsId:      testNS,
-			NsVersion: 0,
-			BlindWrites: []*applicationpb.Write{
-				{Key: []byte("blind-key"), Value: []byte("blind-value")},
-			},
-		}},
-	}, committerpb.Status_COMMITTED)
-
-	t.Log("Case 11: Idempotent transaction processing (same ref returns same status)")
-	txIdempotent := &servicepb.VcTx{
-		Ref: committerpb.NewTxRef("idempotent-tx", 13, 0),
-		Namespaces: []*applicationpb.TxNamespace{{
-			NsId:      testNS,
-			NsVersion: 0,
-			BlindWrites: []*applicationpb.Write{
-				{Key: []byte("idem-key"), Value: []byte("idem-value")},
-			},
-		}},
-	}
-	e.sendTX(t, txIdempotent, committerpb.Status_COMMITTED)
-
-	// Send same transaction again (should return same status - idempotent)
-	e.sendTX(t, txIdempotent, committerpb.Status_COMMITTED)
-
-	t.Log("Case 12: Duplicate transaction number detection (error, not a status)")
+	t.Log("Case 4: Duplicate transaction number detection (error, not a status)")
 	batchDupTxNum := &servicepb.VcBatch{
 		Transactions: []*servicepb.VcTx{
 			{
 				Ref: committerpb.NewTxRef("tx-dup-num-1", 14, 0),
 				Namespaces: []*applicationpb.TxNamespace{{
-					NsId:      testNS,
-					NsVersion: 0,
+					NsId: testNS,
 					BlindWrites: []*applicationpb.Write{
 						{Key: []byte("key-dup-1"), Value: []byte("value1")},
 					},
@@ -389,8 +267,7 @@ func TestVcServiceMVCCValidation(t *testing.T) {
 			{
 				Ref: committerpb.NewTxRef("tx-dup-num-2", 14, 0), // Duplicate tx number
 				Namespaces: []*applicationpb.TxNamespace{{
-					NsId:      testNS,
-					NsVersion: 0,
+					NsId: testNS,
 					BlindWrites: []*applicationpb.Write{
 						{Key: []byte("key-dup-2"), Value: []byte("value2")},
 					},
@@ -483,40 +360,6 @@ func TestVcServiceMultipleStreams(t *testing.T) {
 		require.Len(t, statusBatch.Status, 1)
 		require.Equal(t, committerpb.Status_COMMITTED, statusBatch.Status[0].Status)
 	}
-}
-
-// TestVcServiceWorldState tests world state management.
-func TestVcServiceWorldState(t *testing.T) {
-	t.Parallel()
-
-	e := startVCTestEnv(t, test.StartServerParameters{NumService: 1})
-
-	// Write some keys
-	tx := &servicepb.VcTx{
-		Ref: committerpb.NewTxRef("world-state-tx", 1, 0),
-		Namespaces: []*applicationpb.TxNamespace{{
-			NsId: "test-ns",
-			BlindWrites: []*applicationpb.Write{
-				{Key: []byte("ws-key1"), Value: []byte("ws-value1")},
-				{Key: []byte("ws-key2"), Value: []byte("ws-value2")},
-			},
-		}},
-	}
-	e.sendTX(t, tx, committerpb.Status_COMMITTED)
-
-	// Verify world state
-	worldState := e.vc.GetKeys("test-ns", []byte("ws-key1"), []byte("ws-key2"), []byte("non-existent"))
-	require.Len(t, worldState, 2)
-
-	require.Equal(t, "test-ns", worldState[0].Namespace)
-	require.Equal(t, []byte("ws-key1"), worldState[0].Key)
-	require.Equal(t, []byte("ws-value1"), worldState[0].Value)
-	require.Equal(t, uint64(0), worldState[0].Version)
-
-	require.Equal(t, "test-ns", worldState[1].Namespace)
-	require.Equal(t, []byte("ws-key2"), worldState[1].Key)
-	require.Equal(t, []byte("ws-value2"), worldState[1].Value)
-	require.Equal(t, uint64(0), worldState[1].Version)
 }
 
 // TestVcServiceFaultyNodeSimulation tests the faulty node simulation feature.

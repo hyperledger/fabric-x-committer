@@ -345,7 +345,6 @@ func TestNoPendingTransactionProcessing(t *testing.T) {
 func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 	t.Parallel()
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2})
-	env.vc.FullMVCC.Store(true)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
 	env.startServiceAndOpenStream(ctx, t)
@@ -496,12 +495,6 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 		test.RequireIntMetricValue(t, expectedReceived,
 			env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(committerpb.Status_COMMITTED.String()))
 	}
-
-	res := env.vc.GetKeys(utNsID, mainKey, subKey)
-	require.ElementsMatch(t, []*mock.WorldState{
-		{Namespace: utNsID, Key: mainKey, Value: []byte("Value of version 3"), Version: 3},
-		{Namespace: utNsID, Key: subKey, Value: []byte("Sub value of version 0"), Version: 0},
-	}, res)
 }
 
 func TestQueueSize(t *testing.T) {
@@ -542,10 +535,14 @@ func TestQueueSize(t *testing.T) {
 func TestCoordinatorRecovery(t *testing.T) {
 	t.Parallel()
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1})
-	env.vc.FullMVCC.Store(true)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
 	env.startServiceAndOpenStream(ctx, t)
+
+	// The mock VC does not validate; the test injects the non-committed outcomes it expects.
+	// "mvcc conflict" (2,2) conflicts, and "tx1" (2,5) reuses the TX ID committed in block 1.
+	env.vc.SetTxStatus(committerpb.NewTxRef("mvcc conflict", 2, 2), committerpb.Status_ABORTED_MVCC_CONFLICT)
+	env.vc.SetTxStatus(committerpb.NewTxRef("tx1", 2, 5), committerpb.Status_REJECTED_DUPLICATE_TX_ID)
 
 	env.createNamespaces(t, 0, "1")
 

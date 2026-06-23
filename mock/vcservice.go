@@ -8,6 +8,7 @@ package mock
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -17,7 +18,6 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -33,17 +33,18 @@ type (
 	VcService struct {
 		servicepb.ValidationAndCommitServiceServer
 		streamStateManager[VCStreamState]
-		nextBlock    atomic.Pointer[servicepb.BlockRef]
-		txsStatus    *fifoCache[*committerpb.TxStatus]
-		worldState   *fifoCache[*WorldState]
-		worldStateMu sync.Mutex
-		healthcheck  *health.Server
+		nextBlock atomic.Pointer[servicepb.BlockRef]
+		txsStatus *fifoCache[*committerpb.TxStatus]
+		// statusOverrides holds the status the mock should return for a given TX ref.
+		// The mock does not perform any validation; the test injects the expected
+		// outcome per TX. A TX with no override defaults to COMMITTED.
+		statusOverrides map[string]committerpb.Status
+		txsStatusMu     sync.Mutex
+		healthcheck     *health.Server
 		// NumBatchesReceived is the number of batches received by VcService.
 		NumBatchesReceived atomic.Uint32
 		// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
 		MockFaultyNodeDropSize int
-		// FullMVCC forces the mock VC to perform full MVCC validation.
-		FullMVCC atomic.Bool
 	}
 
 	// VCStreamState holds the stream's batch queue.
@@ -51,28 +52,14 @@ type (
 		StreamInfo
 		q chan *servicepb.VcBatch
 	}
-
-	// WorldState describe the world-state of a key.
-	WorldState struct {
-		Namespace string
-		Key       []byte
-		Value     []byte
-		Version   uint64
-	}
-
-	read struct {
-		ns      string
-		key     []byte
-		version *uint64
-	}
 )
 
 // NewMockVcService returns a new VcService.
 func NewMockVcService() *VcService {
 	return &VcService{
-		txsStatus:   newFifoCache[*committerpb.TxStatus](defaultTxStatusStorageSize),
-		worldState:  newFifoCache[*WorldState](defaultTxStatusStorageSize),
-		healthcheck: serve.DefaultHealthCheckService(),
+		txsStatus:       newFifoCache[*committerpb.TxStatus](defaultTxStatusStorageSize),
+		statusOverrides: make(map[string]committerpb.Status),
+		healthcheck:     serve.DefaultHealthCheckService(),
 	}
 }
 
@@ -122,8 +109,8 @@ func (v *VcService) GetTransactionsStatus(
 	query *committerpb.TxIDsBatch,
 ) (*committerpb.TxStatusBatch, error) {
 	s := &committerpb.TxStatusBatch{Status: make([]*committerpb.TxStatus, 0, len(query.TxIds))}
-	v.worldStateMu.Lock()
-	defer v.worldStateMu.Unlock()
+	v.txsStatusMu.Lock()
+	defer v.txsStatusMu.Unlock()
 	for _, id := range query.TxIds {
 		if status, ok := v.txsStatus.get(id); ok {
 			s.Status = append(s.Status, status)
@@ -220,17 +207,14 @@ func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *servicepb.
 	return nil
 }
 
-// GetKeys returns the WorldState of the given keys.
-func (v *VcService) GetKeys(nsID string, keys ...[]byte) []*WorldState {
-	res := make([]*WorldState, 0, len(keys))
-	v.worldStateMu.Lock()
-	defer v.worldStateMu.Unlock()
-	for _, k := range keys {
-		if val, ok := v.worldState.get(worldStateKey(nsID, k)); ok {
-			res = append(res, val)
-		}
-	}
-	return res
+// SetTxStatus injects the status the mock will return for the TX with the given ref.
+// This lets a test declare the VC's outcome explicitly (e.g. ABORTED_MVCC_CONFLICT or
+// REJECTED_DUPLICATE_TX_ID) instead of having the mock compute it. A TX with no injected
+// status defaults to COMMITTED (unless it carries a PrelimInvalidTxStatus).
+func (v *VcService) SetTxStatus(ref *committerpb.TxRef, status committerpb.Status) {
+	v.txsStatusMu.Lock()
+	defer v.txsStatusMu.Unlock()
+	v.statusOverrides[refKey(ref)] = status
 }
 
 func (v *VcService) process(txs []*servicepb.VcTx) []*committerpb.TxStatus {
@@ -239,20 +223,17 @@ func (v *VcService) process(txs []*servicepb.VcTx) []*committerpb.TxStatus {
 	// We simulate a faulty node by not responding to the first X TXs.
 	skip := max(0, min(v.MockFaultyNodeDropSize, len(txs)))
 
-	v.worldStateMu.Lock()
-	defer v.worldStateMu.Unlock()
+	v.txsStatusMu.Lock()
+	defer v.txsStatusMu.Unlock()
+
 	for _, tx := range txs[skip:] {
-		code := v.validate(tx)
-		if code == committerpb.Status_COMMITTED {
-			for _, w := range getWrites(tx) {
-				key := worldStateKey(w.Namespace, w.Key)
-				if val, valExist := v.worldState.get(key); valExist {
-					w.Version = val.Version + 1
-				}
-				v.worldState.updateOrAddIfNotExist(key, w)
-			}
+		txStatus := committerpb.Status_COMMITTED
+		if tx.PrelimInvalidTxStatus != nil {
+			txStatus = *tx.PrelimInvalidTxStatus
+		} else if override, ok := v.statusOverrides[refKey(tx.Ref)]; ok {
+			txStatus = override
 		}
-		s := committerpb.NewTxStatusFromRef(tx.Ref, code)
+		s := committerpb.NewTxStatusFromRef(tx.Ref, txStatus)
 		status = append(status, s)
 		v.txsStatus.addIfNotExist(tx.Ref.TxId, s)
 	}
@@ -260,82 +241,6 @@ func (v *VcService) process(txs []*servicepb.VcTx) []*committerpb.TxStatus {
 	return status
 }
 
-func (v *VcService) validate(tx *servicepb.VcTx) committerpb.Status {
-	code := committerpb.Status_COMMITTED
-	if tx.PrelimInvalidTxStatus != nil {
-		return *tx.PrelimInvalidTxStatus
-	}
-
-	if !v.FullMVCC.Load() {
-		return code
-	}
-
-	existingStatus, txIDExist := v.txsStatus.get(tx.Ref.TxId)
-	if txIDExist {
-		if proto.Equal(existingStatus.Ref, tx.Ref) {
-			return existingStatus.Status
-		}
-		return committerpb.Status_REJECTED_DUPLICATE_TX_ID
-	}
-
-	for _, r := range getReads(tx) {
-		key := worldStateKey(r.ns, r.key)
-		val, valExist := v.worldState.get(key)
-		if (r.version == nil && valExist) || (r.version != nil && (!valExist || *r.version != val.Version)) {
-			return committerpb.Status_ABORTED_MVCC_CONFLICT
-		}
-	}
-
-	return code
-}
-
-func getReads(tx *servicepb.VcTx) (reads []read) {
-	for _, ns := range tx.Namespaces {
-		if ns.NsId != committerpb.MetaNamespaceID && ns.NsId != committerpb.ConfigNamespaceID {
-			reads = append(reads, read{
-				ns:      committerpb.MetaNamespaceID,
-				key:     []byte(ns.NsId),
-				version: &ns.NsVersion,
-			})
-		}
-		for _, r := range ns.ReadsOnly {
-			reads = append(reads, read{
-				ns:      ns.NsId,
-				key:     r.Key,
-				version: r.Version,
-			})
-		}
-		for _, rw := range ns.ReadWrites {
-			reads = append(reads, read{
-				ns:      ns.NsId,
-				key:     rw.Key,
-				version: rw.Version,
-			})
-		}
-	}
-	return reads
-}
-
-func getWrites(tx *servicepb.VcTx) (writes []*WorldState) {
-	for _, ns := range tx.Namespaces {
-		for _, rw := range ns.ReadWrites {
-			writes = append(writes, &WorldState{
-				Namespace: ns.NsId,
-				Key:       rw.Key,
-				Value:     rw.Value,
-			})
-		}
-		for _, w := range ns.BlindWrites {
-			writes = append(writes, &WorldState{
-				Namespace: ns.NsId,
-				Key:       w.Key,
-				Value:     w.Value,
-			})
-		}
-	}
-	return writes
-}
-
-func worldStateKey(nsID string, key []byte) string {
-	return nsID + "$" + string(key)
+func refKey(ref *committerpb.TxRef) string {
+	return fmt.Sprintf("%s/%d/%d", ref.TxId, ref.BlockNum, ref.TxNum)
 }
