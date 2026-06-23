@@ -118,7 +118,7 @@ func (v *NsVerifier) VerifyNs(txID string, tx *applicationpb.Tx, nsIndex int) er
 		return nil
 	}
 
-	data, err := tx.Namespaces[nsIndex].ASN1Marshal(txID)
+	data, err := tx.Namespaces[nsIndex].ASN1Marshal(txID, tx.Metadata)
 	if err != nil {
 		return err
 	}

@@ -655,6 +655,13 @@ func TestStreamAllTransactions(t *testing.T) {
 			},
 			expectedTxIDs: []string{testTxID1, testTxID2, testTxID3, testTxID4},
 		},
+		{
+			name: "WithMetadata",
+			request: &committerpb.StreamAllRequest{
+				IncludeMetadata: true,
+			},
+			expectedTxIDs: []string{testTxID1, testTxID2, testTxID3, testTxID4},
+		},
 	}
 
 	env := newNotifierTestEnv(t, 0)
@@ -686,14 +693,21 @@ func TestStreamAllTransactions(t *testing.T) {
 			}
 			require.ElementsMatch(t, tc.expectedTxIDs, actualTxIDs)
 
-			if tc.request.IncludeReadWriteSets {
-				for _, event := range batch.Events {
+			for _, event := range batch.Events {
+				if tc.request.IncludeReadWriteSets {
 					require.NotEmpty(t, event.Namespaces)
+				} else {
+					require.Empty(t, event.Namespaces)
 				}
-			}
-			if tc.request.IncludeEndorsements {
-				for _, event := range batch.Events {
+				if tc.request.IncludeEndorsements {
 					require.NotEmpty(t, event.Endorsements)
+				} else {
+					require.Empty(t, event.Endorsements)
+				}
+				if tc.request.IncludeMetadata {
+					require.NotEmpty(t, event.Metadata)
+				} else {
+					require.Empty(t, event.Metadata)
 				}
 			}
 		})
@@ -716,6 +730,7 @@ func createTestTx(txID string, idx uint32, namespacesIDs ...string) *servicepb.T
 		Content: &applicationpb.Tx{
 			Namespaces:   namespaces,
 			Endorsements: endorsements,
+			Metadata:     [][]byte{[]byte("metadata")},
 		},
 	}
 }

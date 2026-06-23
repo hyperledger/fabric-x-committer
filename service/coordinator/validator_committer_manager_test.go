@@ -218,7 +218,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		txBatch := []*dependencygraph.TransactionNode{
 			{
-				Tx: &servicepb.VcTx{
+				VCTx: &servicepb.VcTx{
 					Ref: committerpb.NewTxRef("create config", 100, 63),
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId: committerpb.ConfigNamespaceID,
@@ -230,7 +230,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 				},
 			},
 			{
-				Tx: &servicepb.VcTx{
+				VCTx: &servicepb.VcTx{
 					Ref: committerpb.NewTxRef("create ns 1", 100, 64),
 					Namespaces: []*applicationpb.TxNamespace{{
 						NsId: committerpb.MetaNamespaceID,
@@ -347,7 +347,7 @@ func createInputTxsNodeForTest(t *testing.T, numTxs, valueSize int, blkNum uint6
 	for i := range numTxs {
 		id := uuid.NewString()
 		txsNode[i] = &dependencygraph.TransactionNode{
-			Tx: &servicepb.VcTx{
+			VCTx: &servicepb.VcTx{
 				Ref: committerpb.NewTxRef(id, blkNum, uint32(i)), //nolint:gosec
 				Namespaces: []*applicationpb.TxNamespace{{
 					BlindWrites: []*applicationpb.Write{{

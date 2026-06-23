@@ -4,7 +4,7 @@
 //
 module github.com/hyperledger/fabric-x-committer
 
-go 1.26.0
+go 1.26.3
 
 require (
 	github.com/cenkalti/backoff/v5 v5.0.3
@@ -20,9 +20,9 @@ require (
 	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
-	github.com/hyperledger/fabric-lib-go v1.1.3
+	github.com/hyperledger/fabric-lib-go v1.1.5-0.20260607181445-fc4b05c5d38f
 	github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7
-	github.com/hyperledger/fabric-x-common v0.2.5
+	github.com/hyperledger/fabric-x-common v0.2.6
 	github.com/jackc/puddle/v2 v2.2.2
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
@@ -38,7 +38,7 @@ require (
 	golang.org/x/text v0.37.0
 	golang.org/x/time v0.15.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260511170946-3700d4141b60
-	google.golang.org/grpc v1.81.0
+	google.golang.org/grpc v1.81.1
 	google.golang.org/protobuf v1.36.11
 )
 
@@ -121,7 +121,6 @@ require (
 	github.com/mattn/go-runewidth v0.0.23 // indirect
 	github.com/miekg/pkcs11 v1.1.2 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
-	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/go-archive v0.2.0 // indirect
 	github.com/moby/moby/api v1.54.2 // indirect

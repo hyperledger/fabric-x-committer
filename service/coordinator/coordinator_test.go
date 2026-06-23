@@ -443,7 +443,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 						ReadWrites: []*applicationpb.ReadWrite{{
 							Key:     mainKey,
 							Value:   []byte("value of version 1"),
-							Version: applicationpb.NewVersion(0),
+							Version: new(uint64(0)),
 						}},
 					}},
 				},
@@ -469,7 +469,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 						NsVersion: utNsVersion,
 						ReadsOnly: []*applicationpb.Read{{
 							Key:     mainKey,
-							Version: applicationpb.NewVersion(2),
+							Version: new(uint64(2)),
 						}},
 						ReadWrites: []*applicationpb.ReadWrite{{
 							Key:   subKey,
@@ -486,7 +486,7 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 						NsVersion: utNsVersion,
 						ReadWrites: []*applicationpb.ReadWrite{{
 							Key:     mainKey,
-							Version: applicationpb.NewVersion(2),
+							Version: new(uint64(2)),
 							Value:   []byte("Value of version 3"),
 						}},
 					}},

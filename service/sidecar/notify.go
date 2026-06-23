@@ -85,6 +85,7 @@ type (
 		// Content flags
 		includeReadWriteSets bool
 		includeEndorsements  bool
+		includeMetadata      bool
 
 		// Communication
 		blockQueue chan *committedBlockWithTxs
@@ -236,6 +237,7 @@ func (n *notifier) StreamAllTransactions(
 		filterStatuses:       req.FilterStatus,
 		includeReadWriteSets: req.IncludeReadWriteSets,
 		includeEndorsements:  req.IncludeEndorsements,
+		includeMetadata:      req.IncludeMetadata,
 		blockQueue:           make(chan *committedBlockWithTxs, n.bufferSize),
 		ctx:                  ctx,
 		cancel:               cancel,
@@ -486,6 +488,9 @@ func (s *allTxStream) filterAndBuildEvents(
 		// Include endorsements if requested
 		if s.includeEndorsements {
 			event.Endorsements = tx.Content.Endorsements
+		}
+		if s.includeMetadata {
+			event.Metadata = tx.Content.Metadata
 		}
 		events = append(events, event)
 	}

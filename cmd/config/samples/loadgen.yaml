@@ -148,6 +148,8 @@ load-profile:
   #   bernoulli: P                      - 1 with probability P, 0 otherwise.
   #   discrete: [{value: V, probability: P}, ...] - Discrete distribution.
   transaction:
+    # Size in bytes of the metadata for each transaction (0 means nil value).
+    # metadata-size: 0
     # Size in bytes of the value written for each read-write operation (0 means nil value).
     # read-write-value-size: 0
     # Size in bytes of the value written for each blind-write operation (0 means nil value).

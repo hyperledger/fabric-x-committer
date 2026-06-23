@@ -213,7 +213,7 @@ func TestDependencyGraphManager(t *testing.T) {
 			depFreeTxs := <-outgoingTxs
 			require.Len(t, depFreeTxs, 1)
 			actualT1 := depFreeTxs[0]
-			test.RequireProtoEqual(t, t1.Ref, actualT1.Tx.Ref)
+			test.RequireProtoEqual(t, t1.Ref, actualT1.VCTx.Ref)
 			ensureNoOutputs(t, outgoingTxs)
 
 			validatedTxs <- TxNodeBatch{actualT1}
@@ -222,7 +222,7 @@ func TestDependencyGraphManager(t *testing.T) {
 			depFreeTxs = <-outgoingTxs
 			require.Len(t, depFreeTxs, 1)
 			actualT2 := depFreeTxs[0]
-			test.RequireProtoEqual(t, t2.Ref, actualT2.Tx.Ref)
+			test.RequireProtoEqual(t, t2.Ref, actualT2.VCTx.Ref)
 			ensureNoOutputs(t, outgoingTxs)
 
 			test.RequireIntMetricValue(t, 2, metrics.dependentTransactionsQueueSize)
@@ -233,15 +233,15 @@ func TestDependencyGraphManager(t *testing.T) {
 			depFreeTxs = <-outgoingTxs
 			require.Len(t, depFreeTxs, 2)
 			var actualT3, actualT4 *TransactionNode
-			if t3.Ref.TxId == depFreeTxs[0].Tx.Ref.TxId {
+			if t3.Ref.TxId == depFreeTxs[0].VCTx.Ref.TxId {
 				actualT3 = depFreeTxs[0]
 				actualT4 = depFreeTxs[1]
 			} else {
 				actualT3 = depFreeTxs[1]
 				actualT4 = depFreeTxs[0]
 			}
-			test.RequireProtoEqual(t, t3.Ref, actualT3.Tx.Ref)
-			test.RequireProtoEqual(t, t4.Ref, actualT4.Tx.Ref)
+			test.RequireProtoEqual(t, t3.Ref, actualT3.VCTx.Ref)
+			test.RequireProtoEqual(t, t4.Ref, actualT4.VCTx.Ref)
 			ensureNoOutputs(t, outgoingTxs)
 
 			test.RequireIntMetricValue(t, 0, metrics.dependentTransactionsQueueSize)
@@ -282,7 +282,7 @@ func TestDependencyGraphManager(t *testing.T) {
 			depFreeTxs = <-outgoingTxs
 			require.Len(t, depFreeTxs, 1)
 			actualT1 = depFreeTxs[0]
-			test.RequireProtoEqual(t, t1.Ref, actualT1.Tx.Ref)
+			test.RequireProtoEqual(t, t1.Ref, actualT1.VCTx.Ref)
 			ensureNoOutputs(t, outgoingTxs)
 
 			validatedTxs <- TxNodeBatch{actualT1}
@@ -291,7 +291,7 @@ func TestDependencyGraphManager(t *testing.T) {
 			depFreeTxs = <-outgoingTxs
 			require.Len(t, depFreeTxs, 1)
 			actualT2 = depFreeTxs[0]
-			test.RequireProtoEqual(t, t2.Ref, actualT2.Tx.Ref)
+			test.RequireProtoEqual(t, t2.Ref, actualT2.VCTx.Ref)
 			ensureNoOutputs(t, outgoingTxs)
 
 			validatedTxs <- TxNodeBatch{actualT2}
@@ -300,7 +300,7 @@ func TestDependencyGraphManager(t *testing.T) {
 			depFreeTxs = <-outgoingTxs
 			require.Len(t, depFreeTxs, 1)
 			actualT3 = depFreeTxs[0]
-			test.RequireProtoEqual(t, t3.Ref, actualT3.Tx.Ref)
+			test.RequireProtoEqual(t, t3.Ref, actualT3.VCTx.Ref)
 			ensureNoOutputs(t, outgoingTxs)
 
 			validatedTxs <- TxNodeBatch{actualT3}
@@ -309,7 +309,7 @@ func TestDependencyGraphManager(t *testing.T) {
 			depFreeTxs = <-outgoingTxs
 			require.Len(t, depFreeTxs, 1)
 			actualT4 = depFreeTxs[0]
-			test.RequireProtoEqual(t, t4.Ref, actualT4.Tx.Ref)
+			test.RequireProtoEqual(t, t4.Ref, actualT4.VCTx.Ref)
 			ensureNoOutputs(t, outgoingTxs)
 
 			validatedTxs <- TxNodeBatch{actualT4}

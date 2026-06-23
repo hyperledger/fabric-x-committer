@@ -73,7 +73,8 @@ type BlockProfile struct {
 
 // TransactionProfile describes generate TX characteristics.
 type TransactionProfile struct {
-	// The sizes of the values to generate (size=0 => value=nil)
+	// The sizes of the values/metadata to generate (size=0 => value=nil)
+	MetadataSize        uint32 `mapstructure:"metadata-size" yaml:"metadata-size"`
 	ReadWriteValueSize  uint32 `mapstructure:"read-write-value-size" yaml:"read-write-value-size"`
 	BlindWriteValueSize uint32 `mapstructure:"blind-write-value-size" yaml:"blind-write-value-size"`
 	// The number of keys to generate (read ver=nil)
