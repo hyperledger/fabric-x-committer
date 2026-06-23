@@ -8,8 +8,6 @@ package test
 
 import (
 	"context"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"net"
 	"strconv"
 	"testing"
@@ -22,7 +20,9 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/status"
 
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 )
@@ -203,5 +203,7 @@ func freePort(t *testing.T) int {
 	l, err := net.Listen("tcp", "localhost:0")
 	require.NoError(t, err)
 	defer func() { _ = l.Close() }()
-	return l.Addr().(*net.TCPAddr).Port
+	addr, ok := l.Addr().(*net.TCPAddr)
+	require.True(t, ok, "expected TCP address")
+	return addr.Port
 }
