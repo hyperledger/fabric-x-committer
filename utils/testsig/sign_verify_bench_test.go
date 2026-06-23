@@ -32,7 +32,7 @@ func BenchmarkMarshal(b *testing.B) {
 
 	b.ResetTimer()
 	for i, tx := range txs {
-		resBench[i], errBench[i] = tx.Tx.Namespaces[0].ASN1Marshal(tx.Id)
+		resBench[i], errBench[i] = tx.Tx.Namespaces[0].ASN1Marshal(tx.Id, tx.Tx.Metadata)
 	}
 	b.StopTimer()
 	for i := range b.N {
@@ -50,7 +50,7 @@ func BenchmarkDigest(b *testing.B) {
 
 	b.ResetTimer()
 	for i, tx := range txs {
-		resBench[i], errBench[i] = tx.Tx.Namespaces[0].ASN1Marshal(tx.Id)
+		resBench[i], errBench[i] = tx.Tx.Namespaces[0].ASN1Marshal(tx.Id, tx.Tx.Metadata)
 		d := sha256.Sum256(resBench[i])
 		resBench[i] = d[:]
 	}

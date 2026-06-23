@@ -196,7 +196,7 @@ func TestSignatureVerifierManagerWithMultipleVerifiers(t *testing.T) {
 	for range numBlocks {
 		select {
 		case txBatch := <-env.outputValidatedTxs:
-			require.ElementsMatch(t, expectedValidatedTxs[txBatch[0].Tx.Ref.BlockNum], txBatch)
+			require.ElementsMatch(t, expectedValidatedTxs[txBatch[0].VCTx.Ref.BlockNum], txBatch)
 		case <-deadline:
 			t.Fatal("Did not receive all blocks from output after timeout")
 		}
@@ -220,21 +220,25 @@ func TestSignatureVerifierManagerWithMultipleVerifiers(t *testing.T) {
 
 func TestSignatureVerifierWithAllInvalidTxs(t *testing.T) {
 	t.Parallel()
-	txBatch := dependencygraph.TxNodeBatch{}
-	expectedValidatedTxs := dependencygraph.TxNodeBatch{}
+	txBatch := make([]*dependencygraph.TransactionNode, 0, 3)
+	expectedValidatedTxs := make([]*dependencygraph.TransactionNode, 0, 3)
 	for i := range 3 {
+		ref := committerpb.NewTxRef("", uint64(i), uint32(i))
 		txNode := &dependencygraph.TransactionNode{
-			Tx: &servicepb.VcTx{
-				Ref: committerpb.NewTxRef("", uint64(i), uint32(i)), //nolint:gosec
+			VCTx: &servicepb.VcTx{Ref: ref},
+			VerifierTx: &servicepb.TxWithRef{
+				Ref:     ref,
+				Content: &applicationpb.Tx{},
 			},
 		}
 		txBatch = append(txBatch, txNode)
 
 		expectedValidatedTxs = append(expectedValidatedTxs, &dependencygraph.TransactionNode{
-			Tx: &servicepb.VcTx{
-				Ref:                   txNode.Tx.Ref,
+			VCTx: &servicepb.VcTx{
+				Ref:                   txNode.VCTx.Ref,
 				PrelimInvalidTxStatus: &sigInvalidTxStatus,
 			},
+			VerifierTx: txNode.VerifierTx,
 		})
 	}
 
@@ -257,9 +261,16 @@ func createTxNodeBatchForTest(
 		}},
 	}}
 	for i := range numTxs {
+		txWithRef := &servicepb.TxWithRef{
+			Ref: committerpb.NewTxRef("", blkNum, uint32(i)),
+			Content: &applicationpb.Tx{
+				Namespaces: ns,
+			},
+		}
 		txNode := &dependencygraph.TransactionNode{
-			Tx: &servicepb.VcTx{
-				Ref:        committerpb.NewTxRef("", blkNum, uint32(i)), //nolint:gosec
+			VerifierTx: txWithRef,
+			VCTx: &servicepb.VcTx{
+				Ref:        txWithRef.Ref,
 				Namespaces: ns,
 			},
 		}
@@ -267,17 +278,18 @@ func createTxNodeBatchForTest(
 		switch i % 2 {
 		case 0:
 			// even number txs are valid.
-			txNode.Endorsements = testsig.CreateEndorsementsForThresholdRule([]byte("dummy"))
+			txNode.VerifierTx.Content.Endorsements = testsig.CreateEndorsementsForThresholdRule([]byte("dummy"))
 			expectedValidatedTxs = append(expectedValidatedTxs, txNode)
 		case 1:
 			// odd number txs are invalid. No signature means invalid transaction.
 			// we need to create a copy of txNode to add expected status.
 			txNodeWithStatus := &dependencygraph.TransactionNode{
-				Tx: &servicepb.VcTx{
-					Ref:                   txNode.Tx.Ref,
+				VCTx: &servicepb.VcTx{
+					Ref:                   txWithRef.Ref,
 					Namespaces:            ns,
 					PrelimInvalidTxStatus: &sigInvalidTxStatus,
 				},
+				VerifierTx: txWithRef,
 			}
 			expectedValidatedTxs = append(expectedValidatedTxs, txNodeWithStatus)
 		}

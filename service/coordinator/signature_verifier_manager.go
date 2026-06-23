@@ -12,7 +12,6 @@ import (
 	"sync"
 
 	"github.com/cockroachdb/errors"
-	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -214,13 +213,7 @@ func (sv *signatureVerifier) sendTransactionsToSVService(
 		request.Update, policyVersion = sv.policyManager.getUpdates(policyVersion)
 
 		for idx, txNode := range txBatch {
-			request.Requests[idx] = &servicepb.TxWithRef{
-				Ref: txNode.Tx.Ref,
-				Content: &applicationpb.Tx{
-					Namespaces:   txNode.Tx.Namespaces,
-					Endorsements: txNode.Endorsements,
-				},
-			}
+			request.Requests[idx] = txNode.VerifierTx
 		}
 
 		if firstBatch {
@@ -326,7 +319,7 @@ func (sv *signatureVerifier) fetchAndDeleteTxBeingValidated(
 		}
 		delete(sv.txBeingValidated, k)
 		if resp.Status != committerpb.Status_COMMITTED {
-			txNode.Tx.PrelimInvalidTxStatus = &resp.Status
+			txNode.VCTx.PrelimInvalidTxStatus = &resp.Status
 		}
 		validatedTxs = append(validatedTxs, txNode)
 	}
@@ -356,6 +349,6 @@ func (sv *signatureVerifier) addTxsBeingValidated(txBatch dependencygraph.TxNode
 	sv.txMu.Lock()
 	defer sv.txMu.Unlock()
 	for _, txNode := range txBatch {
-		sv.txBeingValidated[*servicepb.NewHeightFromTxRef(txNode.Tx.Ref)] = txNode
+		sv.txBeingValidated[*servicepb.NewHeightFromTxRef(txNode.VCTx.Ref)] = txNode
 	}
 }

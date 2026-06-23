@@ -24,6 +24,7 @@ type (
 		BlindWriteKeyGenerator   *MultiGenerator[Key]
 		ReadWriteValueGenerator  *ByteArrayGenerator
 		BlindWriteValueGenerator *ByteArrayGenerator
+		MetadataGenerator        *ByteArrayGenerator
 		Modifiers                []Modifier
 	}
 
@@ -66,6 +67,7 @@ func newIndependentTxGenerators(profile *Profile, extraModifiers ...Generator[Mo
 			BlindWriteKeyGenerator:   multiKeyGenerator(s.nextSeed(), keyGens[i], profile.Transaction.BlindWriteCount),
 			ReadWriteValueGenerator:  valueGenerator(s.nextSeed(), profile.Transaction.ReadWriteValueSize),
 			BlindWriteValueGenerator: valueGenerator(s.nextSeed(), profile.Transaction.BlindWriteValueSize),
+			MetadataGenerator:        valueGenerator(s.nextSeed(), profile.Transaction.MetadataSize),
 			Modifiers:                modifiers,
 		}
 	}
@@ -104,8 +106,16 @@ func (g *IndependentTxGenerator) Next() *servicepb.LoadGenTx {
 		}
 	}
 
+	// We include a metadata only if specifically requested.
+	var metadata [][]byte
+	metadataItem := g.MetadataGenerator.Next()
+	if len(metadataItem) > 0 {
+		metadata = [][]byte{metadataItem}
+	}
+
 	tx := &applicationpb.Tx{
 		Namespaces: []*applicationpb.TxNamespace{ns},
+		Metadata:   metadata,
 	}
 	for _, mod := range g.Modifiers {
 		mod.Modify(tx)
