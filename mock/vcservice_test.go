@@ -362,6 +362,48 @@ func TestVcServiceMultipleStreams(t *testing.T) {
 	}
 }
 
+// TestVcServiceGetReceivedTxOrder verifies that GetReceivedTxOrder returns TxIds
+// in the order they were processed, across batches and excluding faulty-dropped TXs.
+func TestVcServiceGetReceivedTxOrder(t *testing.T) {
+	t.Parallel()
+
+	e := startVCTestEnv(t, test.StartServerParameters{NumService: 1})
+
+	// Send two batches sequentially; order must reflect processing sequence.
+	batch1 := &servicepb.VcBatch{
+		Transactions: []*servicepb.VcTx{
+			{Ref: committerpb.NewTxRef("order-tx-1", 1, 0)},
+			{Ref: committerpb.NewTxRef("order-tx-2", 1, 1)},
+		},
+	}
+	e.sendBatch(t, batch1, []committerpb.Status{committerpb.Status_COMMITTED, committerpb.Status_COMMITTED})
+
+	batch2 := &servicepb.VcBatch{
+		Transactions: []*servicepb.VcTx{
+			{Ref: committerpb.NewTxRef("order-tx-3", 2, 0)},
+		},
+	}
+	e.sendBatch(t, batch2, []committerpb.Status{committerpb.Status_COMMITTED})
+
+	require.Equal(t, []string{"order-tx-1", "order-tx-2", "order-tx-3"}, e.vc.GetReceivedTxOrder())
+
+	// Faulty-dropped TXs are not recorded (they never reach process()).
+	e.vc.MockFaultyNodeDropSize = 1
+	batch3 := &servicepb.VcBatch{
+		Transactions: []*servicepb.VcTx{
+			{Ref: committerpb.NewTxRef("order-tx-dropped", 3, 0)},
+			{Ref: committerpb.NewTxRef("order-tx-4", 3, 1)},
+		},
+	}
+	require.NoError(t, e.streams[0].Send(batch3))
+	statusBatch, err := e.streams[0].Recv()
+	require.NoError(t, err)
+	require.Len(t, statusBatch.Status, 1)
+	require.Equal(t, "order-tx-4", statusBatch.Status[0].Ref.TxId)
+
+	require.Equal(t, []string{"order-tx-1", "order-tx-2", "order-tx-3", "order-tx-4"}, e.vc.GetReceivedTxOrder())
+}
+
 // TestVcServiceFaultyNodeSimulation tests the faulty node simulation feature.
 func TestVcServiceFaultyNodeSimulation(t *testing.T) {
 	t.Parallel()

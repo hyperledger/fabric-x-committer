@@ -9,6 +9,7 @@ package mock
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -39,8 +40,13 @@ type (
 		// The mock does not perform any validation; the test injects the expected
 		// outcome per TX. A TX with no override defaults to COMMITTED.
 		statusOverrides map[string]committerpb.Status
-		txsStatusMu     sync.Mutex
-		healthcheck     *health.Server
+		// receivedOrder records the TxIds of every processed TX in arrival order
+		// across all streams, guarded by txsStatusMu. Tests use it to assert
+		// relative ordering of dependent transactions.
+		receivedOrder []string
+		txsStatusMu   sync.Mutex
+		healthcheck   *health.Server
+
 		// NumBatchesReceived is the number of batches received by VcService.
 		NumBatchesReceived atomic.Uint32
 		// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
@@ -236,9 +242,18 @@ func (v *VcService) process(txs []*servicepb.VcTx) []*committerpb.TxStatus {
 		s := committerpb.NewTxStatusFromRef(tx.Ref, txStatus)
 		status = append(status, s)
 		v.txsStatus.addIfNotExist(tx.Ref.TxId, s)
+		v.receivedOrder = append(v.receivedOrder, tx.Ref.TxId)
 	}
 
 	return status
+}
+
+// GetReceivedTxOrder returns the TxIds of all processed transactions in the
+// order the mock received them across all streams.
+func (v *VcService) GetReceivedTxOrder() []string {
+	v.txsStatusMu.Lock()
+	defer v.txsStatusMu.Unlock()
+	return slices.Clone(v.receivedOrder)
 }
 
 func refKey(ref *committerpb.TxRef) string {

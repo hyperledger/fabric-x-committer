@@ -495,6 +495,32 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 		test.RequireIntMetricValue(t, expectedReceived,
 			env.coordinator.metrics.transactionCommittedTotal.WithLabelValues(committerpb.Status_COMMITTED.String()))
 	}
+
+	// Assert that the dependent TX chain reached the mock VC in the correct
+	// relative order. The dependency graph releases a TX to the VC only after
+	// its predecessor commits, so arrival order at the VC reflects execution order.
+	// idx 5 and idx 6 both depend only on idx 4 (both read main-key v2); their
+	// order relative to each other is not guaranteed, so we only assert both come
+	// after idx 4.
+	order := env.vc.GetReceivedTxOrder()
+	pos := func(txID string) int {
+		p := slices.Index(order, txID)
+		require.GreaterOrEqualf(t, p, 0, "dependent TX %q never received by VC; order: %v", txID, order)
+		return p
+	}
+
+	ns := pos("create namespace 1")
+	create := pos("create main key (read-write version 0)")
+	updateV1 := pos("update main key (read-write version 1)")
+	blindV2 := pos("update main key (blind-write version 2)")
+	readV2 := pos("read main key, create sub key (read version 2, read-write version 0)")
+	updateV3 := pos("update main key (read-write version 3)")
+
+	require.Less(t, ns, create, "namespace must precede main-key TXs; order: %v", order)
+	require.Less(t, create, updateV1, "order: %v", order)
+	require.Less(t, updateV1, blindV2, "order: %v", order)
+	require.Less(t, blindV2, readV2, "v2 reader must follow blind-write; order: %v", order)
+	require.Less(t, blindV2, updateV3, "v2 writer must follow blind-write; order: %v", order)
 }
 
 func TestQueueSize(t *testing.T) {
