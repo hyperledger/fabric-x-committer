@@ -217,6 +217,7 @@ func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *servicepb.
 // This lets a test declare the VC's outcome explicitly (e.g. ABORTED_MVCC_CONFLICT or
 // REJECTED_DUPLICATE_TX_ID) instead of having the mock compute it. A TX with no injected
 // status defaults to COMMITTED (unless it carries a PrelimInvalidTxStatus).
+// Note that PrelimInvalidTxStatus takes precedence over this tx status.
 func (v *VcService) SetTxStatus(ref *committerpb.TxRef, status committerpb.Status) {
 	v.txsStatusMu.Lock()
 	defer v.txsStatusMu.Unlock()

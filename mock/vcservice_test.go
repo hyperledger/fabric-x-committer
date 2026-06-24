@@ -30,7 +30,7 @@ type mockVCTestEnv struct {
 
 const testNS = "ns1"
 
-func startVCTestEnv(t *testing.T, p test.StartServerParameters) *mockVCTestEnv {
+func newVCTestEnv(t *testing.T, p test.StartServerParameters) *mockVCTestEnv {
 	t.Helper()
 	vc, serverConfig := StartMockVCService(t, p)
 	require.NotNil(t, vc)
@@ -64,12 +64,12 @@ func startVCTestEnv(t *testing.T, p test.StartServerParameters) *mockVCTestEnv {
 	}
 }
 
-func (e *mockVCTestEnv) sendTX(t *testing.T, tx *servicepb.VcTx, expectedStatus committerpb.Status) {
+func (e *mockVCTestEnv) requireSendTX(t *testing.T, tx *servicepb.VcTx, expectedStatus committerpb.Status) {
 	t.Helper()
-	e.sendBatch(t, &servicepb.VcBatch{Transactions: []*servicepb.VcTx{tx}}, []committerpb.Status{expectedStatus})
+	e.requireSendBatch(t, &servicepb.VcBatch{Transactions: []*servicepb.VcTx{tx}}, []committerpb.Status{expectedStatus})
 }
 
-func (e *mockVCTestEnv) sendBatch(t *testing.T, batch *servicepb.VcBatch, expectedStatus []committerpb.Status) {
+func (e *mockVCTestEnv) requireSendBatch(t *testing.T, batch *servicepb.VcBatch, expectedStatus []committerpb.Status) {
 	t.Helper()
 	require.NotNil(t, batch)
 	err := e.streams[0].Send(batch)
@@ -91,7 +91,7 @@ func (e *mockVCTestEnv) sendBatch(t *testing.T, batch *servicepb.VcBatch, expect
 func TestVcService(t *testing.T) {
 	t.Parallel()
 
-	e := startVCTestEnv(t, test.StartServerParameters{NumService: 1})
+	e := newVCTestEnv(t, test.StartServerParameters{NumService: 1})
 
 	t.Run("set and get block number", func(t *testing.T) {
 		t.Parallel()
@@ -135,7 +135,7 @@ func TestVcServiceStreamProcessing(t *testing.T) {
 	t.Run("process valid transactions", func(t *testing.T) {
 		t.Parallel()
 
-		e := startVCTestEnv(t, test.StartServerParameters{NumService: 1})
+		e := newVCTestEnv(t, test.StartServerParameters{NumService: 1})
 
 		// Send batch of transactions
 		batch := &servicepb.VcBatch{
@@ -160,7 +160,7 @@ func TestVcServiceStreamProcessing(t *testing.T) {
 				},
 			},
 		}
-		e.sendBatch(t, batch, []committerpb.Status{committerpb.Status_COMMITTED, committerpb.Status_COMMITTED})
+		e.requireSendBatch(t, batch, []committerpb.Status{committerpb.Status_COMMITTED, committerpb.Status_COMMITTED})
 
 		// Verify batch counter
 		require.Equal(t, uint32(1), e.vc.NumBatchesReceived.Load())
@@ -169,7 +169,7 @@ func TestVcServiceStreamProcessing(t *testing.T) {
 	t.Run("process transactions with preliminary invalid status", func(t *testing.T) {
 		t.Parallel()
 
-		e := startVCTestEnv(t, test.StartServerParameters{NumService: 1})
+		e := newVCTestEnv(t, test.StartServerParameters{NumService: 1})
 		tx := &servicepb.VcTx{
 			Ref:                   committerpb.NewTxRef("tx-invalid", 10, 0),
 			PrelimInvalidTxStatus: new(committerpb.Status_MALFORMED_NO_WRITES),
@@ -178,13 +178,13 @@ func TestVcServiceStreamProcessing(t *testing.T) {
 				ReadsOnly: []*applicationpb.Read{{Key: []byte("key3")}},
 			}},
 		}
-		e.sendTX(t, tx, committerpb.Status_MALFORMED_NO_WRITES)
+		e.requireSendTX(t, tx, committerpb.Status_MALFORMED_NO_WRITES)
 	})
 
 	t.Run("multiple batches processing", func(t *testing.T) {
 		t.Parallel()
 
-		e := startVCTestEnv(t, test.StartServerParameters{NumService: 1})
+		e := newVCTestEnv(t, test.StartServerParameters{NumService: 1})
 
 		// Send multiple batches
 		for i := range 3 {
@@ -197,7 +197,7 @@ func TestVcServiceStreamProcessing(t *testing.T) {
 					},
 				}},
 			}
-			e.sendTX(t, tx, committerpb.Status_COMMITTED)
+			e.requireSendTX(t, tx, committerpb.Status_COMMITTED)
 		}
 	})
 }
@@ -207,10 +207,10 @@ func TestVcServiceStreamProcessing(t *testing.T) {
 func TestVcServiceStatusInjection(t *testing.T) {
 	t.Parallel()
 
-	e := startVCTestEnv(t, test.StartServerParameters{NumService: 1})
+	e := newVCTestEnv(t, test.StartServerParameters{NumService: 1})
 
 	t.Log("Case 1: No injected status defaults to COMMITTED")
-	e.sendTX(t, &servicepb.VcTx{
+	e.requireSendTX(t, &servicepb.VcTx{
 		Ref: committerpb.NewTxRef("tx-default", 1, 0),
 		Namespaces: []*applicationpb.TxNamespace{{
 			NsId: testNS,
@@ -228,7 +228,7 @@ func TestVcServiceStatusInjection(t *testing.T) {
 	} {
 		ref := committerpb.NewTxRef("tx-injected-"+s.String(), uint64(2+i), uint32(i))
 		e.vc.SetTxStatus(ref, s)
-		e.sendTX(t, &servicepb.VcTx{
+		e.requireSendTX(t, &servicepb.VcTx{
 			Ref: ref,
 			Namespaces: []*applicationpb.TxNamespace{{
 				NsId: testNS,
@@ -243,7 +243,7 @@ func TestVcServiceStatusInjection(t *testing.T) {
 	prelimRef := committerpb.NewTxRef("tx-prelim", 10, 0)
 	// Even though we inject COMMITTED, the preliminary status wins.
 	e.vc.SetTxStatus(prelimRef, committerpb.Status_COMMITTED)
-	e.sendTX(t, &servicepb.VcTx{
+	e.requireSendTX(t, &servicepb.VcTx{
 		Ref:                   prelimRef,
 		PrelimInvalidTxStatus: new(committerpb.Status_MALFORMED_NO_WRITES),
 		Namespaces: []*applicationpb.TxNamespace{{
@@ -288,7 +288,7 @@ func TestVcServiceStatusInjection(t *testing.T) {
 func TestVcServiceGetTransactionsStatus(t *testing.T) {
 	t.Parallel()
 
-	e := startVCTestEnv(t, test.StartServerParameters{NumService: 1})
+	e := newVCTestEnv(t, test.StartServerParameters{NumService: 1})
 
 	batch := &servicepb.VcBatch{
 		Transactions: []*servicepb.VcTx{
@@ -312,7 +312,7 @@ func TestVcServiceGetTransactionsStatus(t *testing.T) {
 			},
 		},
 	}
-	e.sendBatch(t, batch, []committerpb.Status{committerpb.Status_COMMITTED, committerpb.Status_COMMITTED})
+	e.requireSendBatch(t, batch, []committerpb.Status{committerpb.Status_COMMITTED, committerpb.Status_COMMITTED})
 
 	// Query transaction status
 	statusBatch, err := e.clients[0].GetTransactionsStatus(t.Context(), &committerpb.TxIDsBatch{
@@ -336,7 +336,7 @@ func TestVcServiceGetTransactionsStatus(t *testing.T) {
 func TestVcServiceMultipleStreams(t *testing.T) {
 	t.Parallel()
 
-	e := startVCTestEnv(t, test.StartServerParameters{NumService: 3})
+	e := newVCTestEnv(t, test.StartServerParameters{NumService: 3})
 
 	// Send transactions on each stream (server)
 	for i, stream := range e.streams {
@@ -367,7 +367,7 @@ func TestVcServiceMultipleStreams(t *testing.T) {
 func TestVcServiceGetReceivedTxOrder(t *testing.T) {
 	t.Parallel()
 
-	e := startVCTestEnv(t, test.StartServerParameters{NumService: 1})
+	e := newVCTestEnv(t, test.StartServerParameters{NumService: 1})
 
 	// Send two batches sequentially; order must reflect processing sequence.
 	batch1 := &servicepb.VcBatch{
@@ -376,14 +376,14 @@ func TestVcServiceGetReceivedTxOrder(t *testing.T) {
 			{Ref: committerpb.NewTxRef("order-tx-2", 1, 1)},
 		},
 	}
-	e.sendBatch(t, batch1, []committerpb.Status{committerpb.Status_COMMITTED, committerpb.Status_COMMITTED})
+	e.requireSendBatch(t, batch1, []committerpb.Status{committerpb.Status_COMMITTED, committerpb.Status_COMMITTED})
 
 	batch2 := &servicepb.VcBatch{
 		Transactions: []*servicepb.VcTx{
 			{Ref: committerpb.NewTxRef("order-tx-3", 2, 0)},
 		},
 	}
-	e.sendBatch(t, batch2, []committerpb.Status{committerpb.Status_COMMITTED})
+	e.requireSendBatch(t, batch2, []committerpb.Status{committerpb.Status_COMMITTED})
 
 	require.Equal(t, []string{"order-tx-1", "order-tx-2", "order-tx-3"}, e.vc.GetReceivedTxOrder())
 
@@ -408,7 +408,7 @@ func TestVcServiceGetReceivedTxOrder(t *testing.T) {
 func TestVcServiceFaultyNodeSimulation(t *testing.T) {
 	t.Parallel()
 
-	e := startVCTestEnv(t, test.StartServerParameters{NumService: 1})
+	e := newVCTestEnv(t, test.StartServerParameters{NumService: 1})
 	e.vc.MockFaultyNodeDropSize = 2 // Drop first 2 transactions
 
 	// Send batch with 4 transactions
