@@ -28,10 +28,18 @@ func TestCreateUpdateNamespace(t *testing.T) {
 	})
 	c.Start(t, runner.FullTxPath)
 
+	// NewRuntime already registers ns1, ns2, ns3 with real endorsers.
+	// Register ns4 for the multi-namespace creation test.
+	c.AddOrUpdateNamespaces(t, "4")
+
 	verPolicies := c.TxBuilder.TxEndorser.VerificationPolicies()
 	policyBytesNs1, err := proto.Marshal(verPolicies["1"])
 	require.NoError(t, err)
 	policyBytesNs2, err := proto.Marshal(verPolicies["2"])
+	require.NoError(t, err)
+	policyBytesNs3, err := proto.Marshal(verPolicies["3"])
+	require.NoError(t, err)
+	policyBytesNs4, err := proto.Marshal(verPolicies["4"])
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -126,6 +134,24 @@ func TestCreateUpdateNamespace(t *testing.T) {
 					Key:   []byte("key4"),
 					Value: []byte("value4"),
 				}},
+			}}},
+			expected: []committerpb.Status{committerpb.Status_COMMITTED},
+		},
+		{
+			name: "create two namespaces in a single transaction",
+			txs: [][]*applicationpb.TxNamespace{{{ // create ns3 and ns4 via meta namespace in a single transaction.
+				NsId:      committerpb.MetaNamespaceID,
+				NsVersion: 0,
+				ReadWrites: []*applicationpb.ReadWrite{
+					{
+						Key:   []byte("3"),
+						Value: policyBytesNs3,
+					},
+					{
+						Key:   []byte("4"),
+						Value: policyBytesNs4,
+					},
+				},
 			}}},
 			expected: []committerpb.Status{committerpb.Status_COMMITTED},
 		},

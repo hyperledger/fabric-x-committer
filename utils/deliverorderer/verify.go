@@ -150,6 +150,9 @@ func (s *blockVerificationStateMachine) verificationStepAndUpdateState(blk *deli
 // verifyBlockForm checks whether the block is well-formed.
 // It is only used internally.
 func (s *blockVerificationStateMachine) verifyBlockForm(block *common.Block) bool {
+	// The delivery already filters nil blocks, headers, metadata, or data.
+	// We only need to verify that the metadata is with valid form.
+	// We verify everything anyway to ensure correctness.
 	if block == nil || block.Header == nil || block.Metadata == nil {
 		return false
 	}
