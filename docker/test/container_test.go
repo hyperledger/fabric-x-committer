@@ -288,12 +288,6 @@ func TestYugabyteDriverDiscoveryWithSingleNodeConnection(t *testing.T) {
 			"SC_QUERY_DATABASE_LOAD_BALANCE=true",
 			"SC_QUERY_DATABASE_TLS_MODE=" + connection.NoneTLSMode,
 
-			"SC_DBINIT_DATABASE_ENDPOINTS=" + singleTabletAddress,
-			"SC_DBINIT_DATABASE_USERNAME=" + testdb.YugaDBType,
-			"SC_DBINIT_DATABASE_DATABASE=" + testdb.YugaDBType,
-			"SC_DBINIT_DATABASE_LOAD_BALANCE=true",
-			"SC_DBINIT_DATABASE_TLS_MODE=" + connection.NoneTLSMode,
-
 			// We are limiting the number of transactions to ensure transactions are not processed from the VC queue.
 			"SC_LOADGEN_STREAM_RATE_LIMIT=1000",
 		},

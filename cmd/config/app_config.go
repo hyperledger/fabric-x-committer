@@ -27,17 +27,12 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/db"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 type (
 	loggingConfig struct {
 		Logging flogging.Config `mapstructure:"logging"`
-	}
-
-	databaseInitConfig struct {
-		Database *db.Config `mapstructure:"database" validate:"required"`
 	}
 )
 
@@ -89,17 +84,6 @@ func ReadLoadGenYamlAndSetupLogging(
 	v *viper.Viper, configPath string,
 ) (*loadgen.ClientConfig, *serve.Config, error) {
 	return readYamlAndSetupLogging[loadgen.ClientConfig](v, configPath)
-}
-
-// ReadDBInitYamlAndSetupLogging reading the YAML config file for database initialization.
-func ReadDBInitYamlAndSetupLogging(
-	v *viper.Viper, configPath string,
-) (*db.Config, error) {
-	cfg, _, err := readYamlAndSetupLogging[databaseInitConfig](v, configPath)
-	if err != nil {
-		return nil, err
-	}
-	return cfg.Database, nil
 }
 
 // readYamlAndSetupLogging reading the YAML config file of a service.

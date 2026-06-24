@@ -44,7 +44,7 @@ if [[ $ops == *"db"* ]]; then
 fi
 
 if [[ $ops == *"init-db"* ]]; then
-  "$BINS_PATH/committer" init-db --config "$CONFIGS_PATH/dbinit.yaml"
+  "$BINS_PATH/committer" init-db --config "$CONFIGS_PATH/vc.yaml"
 fi
 
 if [[ $ops == *"orderer"* ]]; then

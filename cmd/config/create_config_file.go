@@ -114,8 +114,6 @@ var (
 	TemplateVC string
 	//go:embed templates/verifier.yaml.tmpl
 	TemplateVerifier string
-	//go:embed templates/dbinit.yaml.tmpl
-	TemplateDBInit string
 
 	//go:embed templates/loadgen_only_orderer.yaml.tmpl
 	TemplateLoadGenOnlyOrderer string

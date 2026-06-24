@@ -108,13 +108,6 @@ func NewViperWithOrdererDefaults() *viper.Viper {
 	return v
 }
 
-// NewViperWithDBInitDefaults returns a viper instance with the database initialization default values.
-func NewViperWithDBInitDefaults() *viper.Viper {
-	v := NewViperWithLoggingDefault("dbinit")
-	defaultDBFlags(v)
-	return v
-}
-
 // newViperWithServiceDefault returns a viper instance with a service default values.
 func newViperWithServiceDefault(serviceName string, servicePort, monitoringPort int) *viper.Viper {
 	v := NewViperWithLoggingDefault(serviceName)

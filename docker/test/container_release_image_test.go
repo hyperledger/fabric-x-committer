@@ -45,8 +45,6 @@ const (
 	configFlag        = "--config"
 	timeoutFlag       = "--timeout"
 	containerRootUser = "0:0"
-
-	dbinit = "dbinit"
 )
 
 // enforcePostgresSSLAndReloadConfigScript enforces SSL-only client connections to a PostgreSQL
@@ -104,7 +102,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					// start a secured database node and return the db password.
 					params.dbPassword = startSecuredDatabaseNode(ctx, t, params.asNode(dbService))
 					// init the state DB and verify the operation succeeded.
-					statusChannel, errChannel := runDatabaseInitWithReleaseImage(ctx, t, params.asNode(dbinit))
+					statusChannel, errChannel := runDatabaseInitWithReleaseImage(ctx, t, params.asNode(vcService))
 					requireSuccessfulExecution(t, statusChannel, errChannel)
 					// start the orderer node.
 					startCommitterNodeWithTestImage(ctx, t, params.asNode(ordererService))
@@ -144,7 +142,7 @@ func TestDatabaseInitFailureWithoutActiveDB(t *testing.T) {
 		dbInitTimeout: "10s",
 		artifactsPath: generateArtifacts(t),
 	}
-	statusCh, errorCh := runDatabaseInitWithReleaseImage(t.Context(), t, params.asNode(dbinit))
+	statusCh, errorCh := runDatabaseInitWithReleaseImage(t.Context(), t, params.asNode(vcService))
 
 	// Expect the container to fail since there's no database available.
 	select {
@@ -224,9 +222,9 @@ func runDatabaseInitWithReleaseImage(
 			},
 			User: containerRootUser,
 			Env: []string{
-				"SC_DBINIT_DATABASE_PASSWORD=" + params.dbPassword,
-				"SC_DBINIT_DATABASE_USERNAME=" + params.dbUsername(),
-				"SC_DBINIT_DATABASE_DATABASE=" + params.dbDefaultDatabase(),
+				"SC_VC_DATABASE_PASSWORD=" + params.dbPassword,
+				"SC_VC_DATABASE_USERNAME=" + params.dbUsername(),
+				"SC_VC_DATABASE_DATABASE=" + params.dbDefaultDatabase(),
 			},
 			Tty: true,
 		},

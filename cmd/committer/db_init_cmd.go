@@ -42,10 +42,10 @@ func databaseInitializationCMD() *cobra.Command {
 	return cmd
 }
 
-// runDatabaseInitialization reads the database-initialization config,
-// connects directly to the database, and initializes it.
+// runDatabaseInitialization reads the validator-committer config,
+// connects directly to the database using its database section, and initializes it.
 func runDatabaseInitialization(cmd *cobra.Command, configPath string, timeout time.Duration) error {
-	dbConfig, err := config.ReadDBInitYamlAndSetupLogging(config.NewViperWithDBInitDefaults(), configPath)
+	vcConfig, _, err := config.ReadVCYamlAndSetupLogging(config.NewViperWithVCDefaults(), configPath)
 	if err != nil {
 		return err
 	}
@@ -53,7 +53,7 @@ func runDatabaseInitialization(cmd *cobra.Command, configPath string, timeout ti
 	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 	defer cancel()
 
-	if err := db.SetupSystemTablesAndNamespaces(ctx, dbConfig); err != nil {
+	if err := db.SetupSystemTablesAndNamespaces(ctx, vcConfig.Database); err != nil {
 		return errors.Wrap(err, "failed to initialize state database")
 	}
 

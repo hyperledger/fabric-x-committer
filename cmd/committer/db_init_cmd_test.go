@@ -32,7 +32,7 @@ func TestInitStateDBCMD(t *testing.T) {
 		Name:              initDBCommand,
 		Args:              []string{initDBCommand},
 		CmdStdOutput:      "Database initialized successfully",
-		UseConfigTemplate: config.TemplateDBInit,
+		UseConfigTemplate: config.TemplateVC,
 		System: config.SystemConfig{
 			DB: config.DatabaseConfig{
 				Endpoints:   conn.Endpoints,
