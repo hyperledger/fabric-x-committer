@@ -8,6 +8,8 @@ package mock
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -32,10 +34,19 @@ type (
 	VcService struct {
 		servicepb.ValidationAndCommitServiceServer
 		streamStateManager[VCStreamState]
-		nextBlock   atomic.Pointer[servicepb.BlockRef]
-		txsStatus   *fifoCache[*committerpb.TxStatus]
-		txsStatusMu sync.Mutex
-		healthcheck *health.Server
+		nextBlock atomic.Pointer[servicepb.BlockRef]
+		txsStatus *fifoCache[*committerpb.TxStatus]
+		// statusOverrides holds the status the mock should return for a given TX ref.
+		// The mock does not perform any validation; the test injects the expected
+		// outcome per TX. A TX with no override defaults to COMMITTED.
+		statusOverrides map[string]committerpb.Status
+		// receivedOrder records the TxIds of every processed TX in arrival order
+		// across all streams, guarded by txsStatusMu. Tests use it to assert
+		// relative ordering of dependent transactions.
+		receivedOrder []string
+		txsStatusMu   sync.Mutex
+		healthcheck   *health.Server
+
 		// NumBatchesReceived is the number of batches received by VcService.
 		NumBatchesReceived atomic.Uint32
 		// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
@@ -52,8 +63,9 @@ type (
 // NewMockVcService returns a new VcService.
 func NewMockVcService() *VcService {
 	return &VcService{
-		txsStatus:   newFifoCache[*committerpb.TxStatus](defaultTxStatusStorageSize),
-		healthcheck: serve.DefaultHealthCheckService(),
+		txsStatus:       newFifoCache[*committerpb.TxStatus](defaultTxStatusStorageSize),
+		statusOverrides: make(map[string]committerpb.Status),
+		healthcheck:     serve.DefaultHealthCheckService(),
 	}
 }
 
@@ -102,12 +114,12 @@ func (v *VcService) GetTransactionsStatus(
 	_ context.Context,
 	query *committerpb.TxIDsBatch,
 ) (*committerpb.TxStatusBatch, error) {
-	s := &committerpb.TxStatusBatch{Status: make([]*committerpb.TxStatus, len(query.TxIds))}
+	s := &committerpb.TxStatusBatch{Status: make([]*committerpb.TxStatus, 0, len(query.TxIds))}
 	v.txsStatusMu.Lock()
 	defer v.txsStatusMu.Unlock()
-	for i, id := range query.TxIds {
+	for _, id := range query.TxIds {
 		if status, ok := v.txsStatus.get(id); ok {
-			s.Status[i] = status
+			s.Status = append(s.Status, status)
 		}
 	}
 	return s, nil
@@ -146,14 +158,6 @@ func (v *VcService) receiveAndProcessTransactions(
 		if err != nil {
 			return errors.Wrap(err, "error receiving transactions")
 		}
-
-		preTxNum := txBatch.Transactions[0].Ref.TxNum
-		for _, tx := range txBatch.Transactions[1:] {
-			if preTxNum == tx.Ref.TxNum {
-				return errors.New("duplication tx num detected")
-			}
-		}
-
 		v.NumBatchesReceived.Add(1)
 		txBatchChanWriter.Write(txBatch)
 	}
@@ -171,26 +175,8 @@ func (v *VcService) sendTransactionStatus(
 		if !ok {
 			break
 		}
-		txsStatus := &committerpb.TxStatusBatch{
-			Status: make([]*committerpb.TxStatus, 0, len(txBatch.Transactions)),
-		}
-		v.txsStatusMu.Lock()
-		for i, tx := range txBatch.Transactions {
-			if i < v.MockFaultyNodeDropSize {
-				// We simulate a faulty node by not responding to the first X TXs.
-				continue
-			}
-			code := committerpb.Status_COMMITTED
-			if tx.PrelimInvalidTxStatus != nil {
-				code = *tx.PrelimInvalidTxStatus
-			}
-			s := committerpb.NewTxStatusFromRef(tx.Ref, code)
-			txsStatus.Status = append(txsStatus.Status, s)
-			v.txsStatus.addIfNotExist(tx.Ref.TxId, s)
-		}
-		v.txsStatusMu.Unlock()
-
-		if err := stream.Send(txsStatus); err != nil {
+		status := v.process(txBatch.Transactions)
+		if err := stream.Send(&committerpb.TxStatusBatch{Status: status}); err != nil {
 			return errors.Wrap(err, "error sending transaction status")
 		}
 	}
@@ -209,4 +195,52 @@ func (v *VcService) SubmitTransactions(ctx context.Context, txsBatch *servicepb.
 	s := states[utils.RandIntN(uint64(len(states)))]
 	channel.NewWriter(ctx, s.q).Write(txsBatch)
 	return nil
+}
+
+// SetTxStatus injects the status the mock will return for the TX with the given ref.
+// This lets a test declare the VC's outcome explicitly (e.g. ABORTED_MVCC_CONFLICT or
+// REJECTED_DUPLICATE_TX_ID) instead of having the mock compute it. A TX with no injected
+// status defaults to COMMITTED (unless it carries a PrelimInvalidTxStatus).
+// Note that PrelimInvalidTxStatus takes precedence over this tx status.
+func (v *VcService) SetTxStatus(ref *committerpb.TxRef, status committerpb.Status) {
+	v.txsStatusMu.Lock()
+	defer v.txsStatusMu.Unlock()
+	v.statusOverrides[refKey(ref)] = status
+}
+
+func (v *VcService) process(txs []*servicepb.VcTx) []*committerpb.TxStatus {
+	status := make([]*committerpb.TxStatus, 0, len(txs))
+
+	// We simulate a faulty node by not responding to the first X TXs.
+	skip := max(0, min(v.MockFaultyNodeDropSize, len(txs)))
+
+	v.txsStatusMu.Lock()
+	defer v.txsStatusMu.Unlock()
+
+	for _, tx := range txs[skip:] {
+		txStatus := committerpb.Status_COMMITTED
+		if tx.PrelimInvalidTxStatus != nil {
+			txStatus = *tx.PrelimInvalidTxStatus
+		} else if override, ok := v.statusOverrides[refKey(tx.Ref)]; ok {
+			txStatus = override
+		}
+		s := committerpb.NewTxStatusFromRef(tx.Ref, txStatus)
+		status = append(status, s)
+		v.txsStatus.addIfNotExist(tx.Ref.TxId, s)
+		v.receivedOrder = append(v.receivedOrder, tx.Ref.TxId)
+	}
+
+	return status
+}
+
+// GetReceivedTxOrder returns the TxIds of all processed transactions in the
+// order the mock received them across all streams.
+func (v *VcService) GetReceivedTxOrder() []string {
+	v.txsStatusMu.Lock()
+	defer v.txsStatusMu.Unlock()
+	return slices.Clone(v.receivedOrder)
+}
+
+func refKey(ref *committerpb.TxRef) string {
+	return fmt.Sprintf("%s/%d/%d", ref.TxId, ref.BlockNum, ref.TxNum)
 }

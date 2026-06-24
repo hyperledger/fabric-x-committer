@@ -16,12 +16,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/go-connections/nat"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
@@ -38,15 +38,23 @@ import (
 )
 
 const (
-	sidecarPort            = "4001"
-	loadGenMetricsPort     = "2118"
-	mockOrdererPort        = "7050"
-	queryServicePort       = "7001"
-	coordinatorServicePort = "9001"
-	databasePort           = "5433"
+	runCMD        = "run"
+	committerName = "committer"
+	ordererName   = "orderer"
+	loadGenName   = "loadgen"
+	dbName        = "db"
 )
 
-var commonTestNodeCMD = []string{runCommand, dbService, initDBCommand, committer, ordererService}
+var (
+	sidecarPort            = network.MustParsePort("4001/tcp")
+	loadGenMetricsPort     = network.MustParsePort("2118/tcp")
+	mockOrdererPort        = network.MustParsePort("7050/tcp")
+	queryServicePort       = network.MustParsePort("7001/tcp")
+	coordinatorServicePort = network.MustParsePort("9001/tcp")
+	databasePort           = network.MustParsePort("5433/tcp")
+
+	commonTestNodeCMD = []string{runCMD, dbName, initDBCommand, committerName, ordererName}
+)
 
 // TestStartTestNodeWithTLSModesAndRemoteConnection launches the committer’s
 // all-in-one Docker image under each TLS mode, verifies that remote (non-internal)
@@ -59,7 +67,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			t.Parallel()
 			ctx := t.Context()
 
-			containerName := assembleContainerName(committer, mode, testdb.PostgresDBType)
+			containerName := assembleContainerName(committerName, mode, testdb.PostgresDBType)
 			stopAndRemoveContainersByName(ctx, t, createDockerClient(t), containerName)
 			startCommitter(ctx, t, startNodeParameters{
 				node:    containerName,
@@ -88,7 +96,7 @@ func TestStartTestNodeWithTLSModesAndRemoteConnection(t *testing.T) {
 			_, err = workload.CreateOrExtendConfigBlockWithCrypto(&c.LoadProfile.Policy)
 			require.NoError(t, err)
 
-			getServerConfig := func(servicePort string) config.ServiceConfig {
+			getServerConfig := func(servicePort network.Port) config.ServiceConfig {
 				return config.ServiceConfig{GrpcEndpoint: mustGetEndpoint(ctx, t, containerName, servicePort)}
 			}
 			clientTLS := test.NewServiceTLSConfig(artifactsPath, "sidecar", mode)
@@ -205,12 +213,12 @@ func TestStartTestNode(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	containerName := fmt.Sprintf("%s_%s", test.DockerNamesPrefix, committer)
+	containerName := fmt.Sprintf("%s_%s", test.DockerNamesPrefix, committerName)
 	stopAndRemoveContainersByName(ctx, t, createDockerClient(t), containerName)
 	startCommitter(ctx, t, startNodeParameters{
 		node:    containerName,
 		tlsMode: connection.NoneTLSMode,
-		cmd:     append(commonTestNodeCMD, "loadgen"),
+		cmd:     append(commonTestNodeCMD, loadGenName),
 	})
 	waitForContainerHealthy(ctx, t, containerName)
 
@@ -262,19 +270,19 @@ func TestYugabyteDriverDiscoveryWithSingleNodeConnection(t *testing.T) {
 	singleTabletAddress := singleTabletNode.GetContainerConnectionDetails(t).Address()
 
 	// Start committer container in the same Docker network
-	committerName := fmt.Sprintf(
+	committerNodeName := fmt.Sprintf(
 		"%s_%s_%s",
-		test.DockerNamesPrefix, committer, "discovery_test",
+		test.DockerNamesPrefix, committerName, "discovery_test",
 	)
-	stopAndRemoveContainersByName(ctx, t, createDockerClient(t), committerName)
+	stopAndRemoveContainersByName(ctx, t, createDockerClient(t), committerNodeName)
 
 	startCommitter(ctx, t, startNodeParameters{
-		node:              committerName,
+		node:              committerNodeName,
 		networkName:       clusterController.NetworkName,
 		tlsMode:           connection.NoneTLSMode,
 		dbType:            testdb.YugaDBType,
 		dbEndpointsString: singleTabletAddress,
-		cmd:               []string{runCommand, committer, initDBCommand, ordererService, loadgenService},
+		cmd:               []string{runCMD, committerName, initDBCommand, ordererName, loadGenName},
 		additionalEnvs: []string{
 			"SC_VC_DATABASE_ENDPOINTS=" + singleTabletAddress,
 			"SC_VC_DATABASE_USERNAME=" + testdb.YugaDBType,
@@ -293,10 +301,10 @@ func TestYugabyteDriverDiscoveryWithSingleNodeConnection(t *testing.T) {
 		},
 	})
 
-	waitForContainerHealthy(ctx, t, committerName)
+	waitForContainerHealthy(ctx, t, committerNodeName)
 
 	// Monitor metrics to verify transactions are being committed
-	metricsPort := getContainerMappedHostPort(ctx, t, committerName, loadGenMetricsPort)
+	metricsPort := getContainerMappedHostPort(ctx, t, committerNodeName, loadGenMetricsPort)
 	t.Logf("Monitoring metrics on host port: %s", metricsPort)
 
 	// Verify transactions are flowing
@@ -317,13 +325,13 @@ func startCommitter(ctx context.Context, t *testing.T, params startNodeParameter
 		config: &container.Config{
 			Image: testNodeImage,
 			Cmd:   params.cmd,
-			ExposedPorts: nat.PortSet{
-				sidecarPort + "/tcp":            struct{}{},
-				mockOrdererPort + "/tcp":        struct{}{},
-				loadGenMetricsPort + "/tcp":     struct{}{},
-				queryServicePort + "/tcp":       struct{}{},
-				coordinatorServicePort + "/tcp": struct{}{},
-				databasePort + "/tcp":           struct{}{},
+			ExposedPorts: network.PortSet{
+				sidecarPort:            struct{}{},
+				mockOrdererPort:        struct{}{},
+				loadGenMetricsPort:     struct{}{},
+				queryServicePort:       struct{}{},
+				coordinatorServicePort: struct{}{},
+				databasePort:           struct{}{},
 			},
 			Env: append([]string{
 				"SC_COORDINATOR_SERVER_TLS_MODE=" + params.tlsMode,
@@ -358,39 +366,22 @@ func startCommitter(ctx context.Context, t *testing.T, params startNodeParameter
 		},
 		hostConfig: &container.HostConfig{
 			NetworkMode: container.NetworkMode(params.networkName),
-			PortBindings: nat.PortMap{
-				// sidecar port binding
-				sidecarPort + "/tcp": []nat.PortBinding{{
-					HostIP:   localhostIP,
-					HostPort: "0", // auto port assign
-				}},
-				mockOrdererPort + "/tcp": []nat.PortBinding{{
-					HostIP:   localhostIP,
-					HostPort: "0", // auto port assign
-				}},
-				loadGenMetricsPort + "/tcp": []nat.PortBinding{{
-					HostIP:   localhostIP,
-					HostPort: "0", // auto port assign
-				}},
-				queryServicePort + "/tcp": []nat.PortBinding{{
-					HostIP:   localhostIP,
-					HostPort: "0", // auto port assign
-				}},
-				coordinatorServicePort + "/tcp": []nat.PortBinding{{
-					HostIP:   localhostIP,
-					HostPort: "0", // auto port assign
-				}},
-				databasePort + "/tcp": []nat.PortBinding{{
-					HostIP:   localhostIP,
-					HostPort: "0", // auto port assign
-				}},
+			PortBindings: network.PortMap{
+				sidecarPort:            localHostBind,
+				mockOrdererPort:        localHostBind,
+				loadGenMetricsPort:     localHostBind,
+				queryServicePort:       localHostBind,
+				coordinatorServicePort: localHostBind,
+				databasePort:           localHostBind,
 			},
 		},
 		name: params.node,
 	})
 }
 
-func mustGetEndpoint(ctx context.Context, t *testing.T, containerName, servicePort string) *connection.Endpoint {
+func mustGetEndpoint(
+	ctx context.Context, t *testing.T, containerName string, servicePort network.Port,
+) *connection.Endpoint {
 	t.Helper()
 	return test.NewEndpoint(t, localhost, getContainerMappedHostPort(ctx, t, containerName, servicePort))
 }

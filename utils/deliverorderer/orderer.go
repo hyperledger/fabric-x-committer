@@ -280,12 +280,10 @@ func (d *ftDelivery) readNextBlock(ctx context.Context) *deliver.BlockWithSource
 }
 
 func (d *ftDelivery) getProcessingState(block *deliver.BlockWithSourceID) *blockVerificationStateMachine {
-	switch block.SourceID {
-	case d.curDataBlockSourceID:
+	if block.Block.Data != nil && block.SourceID == d.curDataBlockSourceID {
 		return &d.dataStream
-	default:
-		return &d.headerOnlyStream
 	}
+	return &d.headerOnlyStream
 }
 
 func (d *ftDelivery) checkNextStreamAction(state *blockVerificationStateMachine) error {

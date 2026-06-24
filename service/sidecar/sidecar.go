@@ -573,7 +573,8 @@ func (s *Service) deliverBlocks(
 		if err != nil {
 			return common.Status_INTERNAL_SERVER_ERROR, errors.Wrap(err, "error sending response")
 		}
-		logger.Infof("Successfully sent block %d:%d to client.", block.Header.Number, len(block.Data.Data))
+		logger.Infof("Successfully sent block [%d] (size: %d) to client.",
+			block.Header.Number, len(block.Data.Data))
 
 		if stopNum == block.Header.Number {
 			break

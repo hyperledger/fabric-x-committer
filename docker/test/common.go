@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"os"
 	"path"
 	"path/filepath"
@@ -19,9 +20,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
-	"github.com/docker/go-connections/nat"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -92,12 +93,15 @@ const (
 	monitoredMetric = "loadgen_transaction_committed_total"
 	testNodeImage   = "docker.io/hyperledger/committer-test-node:latest"
 	localhost       = "localhost"
-	// localhostIP is the numeric form of localhost, required by Docker's PortBinding.HostIP
-	// which calls netip.ParseAddr and rejects hostnames.
-	localhostIP = "127.0.0.1"
+
 	// containerArtifactsPath is the path to the artifacts directory inside the container.
 	containerArtifactsPath = "/root/artifacts"
 )
+
+var localHostBind = []network.PortBinding{{
+	HostIP:   netip.MustParseAddr("127.0.0.1"),
+	HostPort: "0", // auto port assign
+}}
 
 func createAndStartContainerAndItsLogs(
 	ctx context.Context,
@@ -106,22 +110,27 @@ func createAndStartContainerAndItsLogs(
 ) (<-chan container.WaitResponse, <-chan error) {
 	t.Helper()
 	dockerClient := createDockerClient(t)
-	resp, err := dockerClient.ContainerCreate(
-		ctx, params.config, params.hostConfig, nil, nil, params.name,
-	)
+	resp, err := dockerClient.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Name:       params.name,
+		Config:     params.config,
+		HostConfig: params.hostConfig,
+	})
 	require.NoError(t, err)
 	// Subscribe before starting.
 	// If the container finishes and is removed, before
 	// ContainerWait is called, the container ID no longer exists and the exit status is lost.
-	statusCh, errCh := dockerClient.ContainerWait(ctx, resp.ID, container.WaitConditionNextExit)
-	require.NoError(t, dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{}))
+	resultChannels := dockerClient.ContainerWait(ctx, resp.ID, client.ContainerWaitOptions{
+		Condition: container.WaitConditionNextExit,
+	})
+	_, err = dockerClient.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{})
+	require.NoError(t, err)
 	if !params.hostConfig.AutoRemove {
 		//nolint:contextcheck // We want to ensure cleanup when the test is done.
 		t.Cleanup(func() {
 			stopAndRemoveContainerByID(context.Background(), t, dockerClient, resp.ID)
 		})
 	}
-	logs, err := dockerClient.ContainerLogs(ctx, resp.ID, container.LogsOptions{
+	logs, err := dockerClient.ContainerLogs(ctx, resp.ID, client.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Follow:     true,
@@ -133,7 +142,7 @@ func createAndStartContainerAndItsLogs(
 			t.Logf("[%s] logs ended with: %v", params.name, err)
 		}
 	}()
-	return statusCh, errCh
+	return resultChannels.Result, resultChannels.Error
 }
 
 func monitorMetric(t *testing.T, metricsPort string, metricsTLS *connection.TLSConfig, waitForCount int) {
@@ -153,13 +162,13 @@ func monitorMetric(t *testing.T, metricsPort string, metricsTLS *connection.TLSC
 
 func stopAndRemoveContainersByName(ctx context.Context, t *testing.T, dockerClient *client.Client, names ...string) {
 	t.Helper()
-	list, err := dockerClient.ContainerList(ctx, container.ListOptions{
+	list, err := dockerClient.ContainerList(ctx, client.ContainerListOptions{
 		All: true,
 	})
 	require.NoError(t, err)
 
 	nameToID := make(map[string]string)
-	for _, c := range list {
+	for _, c := range list.Items {
 		for _, name := range c.Names {
 			nameToID[name[1:]] = c.ID
 		}
@@ -177,11 +186,11 @@ func stopAndRemoveContainersByName(ctx context.Context, t *testing.T, dockerClie
 
 func stopAndRemoveContainerByID(ctx context.Context, t *testing.T, dockerClient *client.Client, id string) {
 	t.Helper()
-	err := dockerClient.ContainerStop(ctx, id, container.StopOptions{})
+	_, err := dockerClient.ContainerStop(ctx, id, client.ContainerStopOptions{})
 	if err != nil {
 		t.Logf("unable to stop container %s: %s", id, err)
 	}
-	err = dockerClient.ContainerRemove(ctx, id, container.RemoveOptions{
+	_, err = dockerClient.ContainerRemove(ctx, id, client.ContainerRemoveOptions{
 		RemoveVolumes: true,
 		Force:         true,
 	})
@@ -191,18 +200,15 @@ func stopAndRemoveContainerByID(ctx context.Context, t *testing.T, dockerClient 
 }
 
 func getContainerMappedHostPort(
-	ctx context.Context, t *testing.T, containerName, containerPort string,
+	ctx context.Context, t *testing.T, containerName string, containerPort network.Port,
 ) string {
 	t.Helper()
-	c := createDockerClient(t)
-	defer func() {
-		assert.NoError(t, c.Close())
-	}()
-	info, err := c.ContainerInspect(ctx, containerName)
+	dockerClient := createDockerClient(t)
+	defer connection.CloseConnectionsLog(dockerClient)
+	info, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, info)
-	portKey := nat.Port(fmt.Sprintf("%s/tcp", containerPort))
-	bindings, ok := info.NetworkSettings.Ports[portKey]
+	bindings, ok := info.Container.NetworkSettings.Ports[containerPort]
 	require.True(t, ok)
 	require.NotEmpty(t, bindings)
 	return bindings[0].HostPort
@@ -210,9 +216,11 @@ func getContainerMappedHostPort(
 
 func createDockerClient(t *testing.T) *client.Client {
 	t.Helper()
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	dockerClient, err := client.New(client.FromEnv)
 	require.NoError(t, err)
-	defer connection.CloseConnectionsLog(dockerClient)
+	t.Cleanup(func() {
+		connection.CloseConnectionsLog(dockerClient)
+	})
 	return dockerClient
 }
 
@@ -224,12 +232,13 @@ func assembleContainerName(node, tlsMode, dbType string) string {
 func waitForContainerHealthy(ctx context.Context, t *testing.T, containerName string) {
 	t.Helper()
 	dockerClient := createDockerClient(t)
+	defer connection.CloseConnectionsLog(dockerClient)
 	t.Logf("Waiting for %s to be healthy", containerName)
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+		inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 		assert.NoError(ct, err)
-		if inspect.State.Health != nil {
-			assert.Equal(ct, "healthy", inspect.State.Health.Status)
+		if inspect.Container.State.Health != nil {
+			assert.Equal(ct, container.Healthy, inspect.Container.State.Health.Status)
 		}
 	}, 3*time.Minute, 500*time.Millisecond, "%s did not become healthy", containerName)
 	t.Logf("%s is healthy", containerName)
@@ -239,16 +248,19 @@ func copyArtifactsFromContainer(ctx context.Context, t *testing.T, containerName
 	t.Helper()
 
 	dockerClient := createDockerClient(t)
-	reader, _, err := dockerClient.CopyFromContainer(ctx, containerName, containerArtifactsPath)
+	defer connection.CloseConnectionsLog(dockerClient)
+	res, err := dockerClient.CopyFromContainer(ctx, containerName, client.CopyFromContainerOptions{
+		SourcePath: containerArtifactsPath,
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		assert.NoError(t, reader.Close())
+		assert.NoError(t, res.Content.Close())
 	})
 
 	artifactsPrefixSize := len(path.Base(containerArtifactsPath)) + 1
 
 	hostDir := t.TempDir()
-	tr := tar.NewReader(reader)
+	tr := tar.NewReader(res.Content)
 	for {
 		header, tErr := tr.Next()
 		if tErr == io.EOF {

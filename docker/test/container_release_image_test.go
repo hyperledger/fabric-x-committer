@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/go-connections/nat"
 	"github.com/google/uuid"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
@@ -102,8 +102,8 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					// start a secured database node and return the db password.
 					params.dbPassword = startSecuredDatabaseNode(ctx, t, params.asNode(dbService))
 					// init the state DB and verify the operation succeeded.
-					statusChannel, errChannel := runDatabaseInitWithReleaseImage(ctx, t, params.asNode(vcService))
-					requireSuccessfulExecution(t, statusChannel, errChannel)
+					resultCh, errCh := runDatabaseInitWithReleaseImage(ctx, t, params.asNode(vcService))
+					requireSuccessfulExecution(t, resultCh, errCh)
 					// start the orderer node.
 					startCommitterNodeWithTestImage(ctx, t, params.asNode(ordererService))
 					// start the committer nodes.
@@ -142,11 +142,11 @@ func TestDatabaseInitFailureWithoutActiveDB(t *testing.T) {
 		dbInitTimeout: "10s",
 		artifactsPath: generateArtifacts(t),
 	}
-	statusCh, errorCh := runDatabaseInitWithReleaseImage(t.Context(), t, params.asNode(vcService))
+	resultCh, errorCh := runDatabaseInitWithReleaseImage(t.Context(), t, params.asNode(vcService))
 
 	// Expect the container to fail since there's no database available.
 	select {
-	case status := <-statusCh:
+	case status := <-resultCh:
 		t.Logf("exited with status code: %v", status.StatusCode)
 		require.NotZero(t, status.StatusCode, "container should have failed but exited with code 0")
 	case err := <-errorCh:
@@ -330,8 +330,8 @@ func startLoadgenNodeWithReleaseImage(
 			},
 			Hostname: params.node,
 			User:     containerUser,
-			ExposedPorts: nat.PortSet{
-				loadGenMetricsPort + "/tcp": {},
+			ExposedPorts: network.PortSet{
+				loadGenMetricsPort: {},
 			},
 			Tty: true,
 			Env: []string{
@@ -343,11 +343,8 @@ func startLoadgenNodeWithReleaseImage(
 		},
 		hostConfig: &container.HostConfig{
 			NetworkMode: container.NetworkMode(params.networkName),
-			PortBindings: nat.PortMap{
-				loadGenMetricsPort + "/tcp": []nat.PortBinding{{
-					HostIP:   localhostIP,
-					HostPort: "0", // auto port assign
-				}},
+			PortBindings: network.PortMap{
+				loadGenMetricsPort: localHostBind,
 			},
 			Binds: []string{
 				fmt.Sprintf(
@@ -412,13 +409,13 @@ func mustGetWD(t *testing.T) string {
 }
 
 func requireSuccessfulExecution(
-	t *testing.T, statusCh <-chan container.WaitResponse, errCh <-chan error,
+	t *testing.T, resultCh <-chan container.WaitResponse, errCh <-chan error,
 ) {
 	t.Helper()
 	select {
 	case err := <-errCh:
 		require.NoError(t, err)
-	case status := <-statusCh:
+	case status := <-resultCh:
 		require.Zero(
 			t,
 			status.StatusCode,

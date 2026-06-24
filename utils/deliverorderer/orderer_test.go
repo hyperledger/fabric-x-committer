@@ -442,7 +442,9 @@ func TestOrdererDeliverBFT(t *testing.T) {
 			p1.HoldFromBlock.Store(expectedBlockNum)
 			p2.HoldFromBlock.Store(expectedBlockNum + 1)
 			p0.ReplaceBlock.Store(expectedBlockNum, &common.Block{
-				Header: &common.BlockHeader{Number: expectedBlockNum},
+				Header:   &common.BlockHeader{Number: expectedBlockNum},
+				Data:     &common.BlockData{},
+				Metadata: &common.BlockMetadata{},
 			})
 			b = e.submit(t)
 			require.EqualValues(t, 2, b.SourceID)
