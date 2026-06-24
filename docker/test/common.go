@@ -45,8 +45,6 @@ const (
 
 	initDBCommand = "init-db"
 	runCommand    = "run"
-
-	committer = "committer"
 )
 
 type (
