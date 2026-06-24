@@ -251,37 +251,6 @@ func TestVcServiceStatusInjection(t *testing.T) {
 			ReadsOnly: []*applicationpb.Read{{Key: []byte("key3")}},
 		}},
 	}, committerpb.Status_MALFORMED_NO_WRITES)
-
-	t.Log("Case 4: Duplicate transaction number detection (error, not a status)")
-	batchDupTxNum := &servicepb.VcBatch{
-		Transactions: []*servicepb.VcTx{
-			{
-				Ref: committerpb.NewTxRef("tx-dup-num-1", 14, 0),
-				Namespaces: []*applicationpb.TxNamespace{{
-					NsId: testNS,
-					BlindWrites: []*applicationpb.Write{
-						{Key: []byte("key-dup-1"), Value: []byte("value1")},
-					},
-				}},
-			},
-			{
-				Ref: committerpb.NewTxRef("tx-dup-num-2", 14, 0), // Duplicate tx number
-				Namespaces: []*applicationpb.TxNamespace{{
-					NsId: testNS,
-					BlindWrites: []*applicationpb.Write{
-						{Key: []byte("key-dup-2"), Value: []byte("value2")},
-					},
-				}},
-			},
-		},
-	}
-	err := e.streams[0].Send(batchDupTxNum)
-	require.NoError(t, err)
-
-	// Should receive error due to duplicate tx num
-	_, err = e.streams[0].Recv()
-	require.Error(t, err)
-	require.ErrorContains(t, err, "duplication tx num detected")
 }
 
 // TestVcServiceGetTransactionsStatus tests transaction status retrieval.

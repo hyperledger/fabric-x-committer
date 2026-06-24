@@ -166,14 +166,6 @@ func (v *VcService) receiveAndProcessTransactions(
 		if err != nil {
 			return errors.Wrap(err, "error receiving transactions")
 		}
-
-		preTxNum := txBatch.Transactions[0].Ref.TxNum
-		for _, tx := range txBatch.Transactions[1:] {
-			if preTxNum == tx.Ref.TxNum {
-				return errors.New("duplication tx num detected")
-			}
-		}
-
 		v.NumBatchesReceived.Add(1)
 		txBatchChanWriter.Write(txBatch)
 	}
