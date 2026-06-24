@@ -30,11 +30,9 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
-type (
-	loggingConfig struct {
-		Logging flogging.Config `mapstructure:"logging"`
-	}
-)
+type loggingConfig struct {
+	Logging flogging.Config `mapstructure:"logging"`
+}
 
 var (
 	logger   = flogging.MustGetLogger("config-reader")
