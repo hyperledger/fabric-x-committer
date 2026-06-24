@@ -86,8 +86,8 @@ func TestReadConfigSidecar(t *testing.T) {
 				TLS:      sidecarTLSCreds,
 				KeepAlive: &serve.ServerKeepAliveConfig{
 					Params: &serve.ServerKeepAliveParamsConfig{
-						Time:    300 * time.Second,
-						Timeout: 600 * time.Second,
+						Time:    60 * time.Second,
+						Timeout: 10 * time.Second,
 					},
 					EnforcementPolicy: &serve.ServerKeepAliveEnforcementPolicyConfig{
 						MinTime:             60 * time.Second,
@@ -322,12 +322,12 @@ func TestReadConfigQuery(t *testing.T) {
 				TLS:      test.NewServiceTLSConfig(artifactsPath, "query", connection.MutualTLSMode),
 				KeepAlive: &serve.ServerKeepAliveConfig{
 					Params: &serve.ServerKeepAliveParamsConfig{
-						Time:    300 * time.Second,
-						Timeout: 600 * time.Second,
+						Time:    60 * time.Second,
+						Timeout: 10 * time.Second,
 					},
 					EnforcementPolicy: &serve.ServerKeepAliveEnforcementPolicyConfig{
 						MinTime:             60 * time.Second,
-						PermitWithoutStream: false,
+						PermitWithoutStream: true,
 					},
 				},
 			},
