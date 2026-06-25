@@ -5,8 +5,8 @@
 {{ include "service" . | indent 0 }}
   keep-alive:
     params:
-      time: {{ .KeepAliveTime | default "300s" }}
-      timeout: {{ .KeepAliveTimeout | default "600s" }}
+      time: {{ .KeepAliveTime | default "60s" }}
+      timeout: {{ .KeepAliveTimeout | default "10s" }}
     enforcement-policy:
       min-time: 60s
       permit-without-stream: {{ .KeepAlivePermitWithoutStream | default false }}
