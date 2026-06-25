@@ -1,0 +1,7 @@
+{
+  "env": {
+    "DB_DEPLOYMENT": "local",
+    "DB_TYPE": "postgres",
+    "FABRIC_LOGGING_SPEC": "info:grpc=error"
+  }
+}

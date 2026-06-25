@@ -34,8 +34,9 @@ docker/runner/out
 .build
 .bob/*
 !.bob/rules/
-!.bob/commands/
 !.bob/skills/
+.claude/settings.local.json
+
 *coverage.profile
 *coverage.html
 

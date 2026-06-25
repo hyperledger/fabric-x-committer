@@ -1,12 +1,6 @@
-<!--
-Copyright IBM Corp. All Rights Reserved.
-
-SPDX-License-Identifier: Apache-2.0
--->
-
 ---
-
-description: review the pull request
+name: pr-review
+description: Review a GitHub pull request for the Fabric-X Committer project and post comment-only findings. Invoke with the PR URL.
 argument-hint: <url to the pull request>
 ---
 
