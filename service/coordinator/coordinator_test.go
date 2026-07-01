@@ -25,7 +25,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/mock"
-	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -521,41 +520,6 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 	require.Less(t, updateV1, blindV2, "order: %v", order)
 	require.Less(t, blindV2, readV2, "v2 reader must follow blind-write; order: %v", order)
 	require.Less(t, blindV2, updateV3, "v2 writer must follow blind-write; order: %v", order)
-}
-
-func TestQueueSize(t *testing.T) {
-	t.Parallel()
-	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2})
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
-	t.Cleanup(cancel)
-	go env.coordinator.monitorQueues(ctx)
-
-	q := env.coordinator.queues
-	m := env.coordinator.metrics
-	q.depGraphToSigVerifierFreeTxs <- dependencygraph.TxNodeBatch{}
-	q.sigVerifierToVCServiceValidatedTxs <- dependencygraph.TxNodeBatch{}
-	q.vcServiceToDepGraphValidatedTxs <- dependencygraph.TxNodeBatch{}
-	require.True(t, q.vcServiceToCoordinatorTxStatus.write(t.Context(), &committerpb.TxStatusBatch{}))
-
-	require.Eventually(t, func() bool {
-		return test.GetIntMetricValue(t, m.sigverifierInputTxBatchQueueSize) == 1 &&
-			test.GetIntMetricValue(t, m.sigverifierOutputValidatedTxBatchQueueSize) == 1 &&
-			test.GetIntMetricValue(t, m.vcserviceOutputValidatedTxBatchQueueSize) == 1 &&
-			test.GetIntMetricValue(t, m.vcserviceOutputTxStatusBatchQueueSize) == 1
-	}, 3*time.Second, 500*time.Millisecond)
-
-	<-q.depGraphToSigVerifierFreeTxs
-	<-q.sigVerifierToVCServiceValidatedTxs
-	<-q.vcServiceToDepGraphValidatedTxs
-	_, ok := q.vcServiceToCoordinatorTxStatus.read(t.Context())
-	require.True(t, ok)
-
-	require.Eventually(t, func() bool {
-		return test.GetIntMetricValue(t, m.sigverifierInputTxBatchQueueSize) == 0 &&
-			test.GetIntMetricValue(t, m.sigverifierOutputValidatedTxBatchQueueSize) == 0 &&
-			test.GetIntMetricValue(t, m.vcserviceOutputValidatedTxBatchQueueSize) == 0 &&
-			test.GetIntMetricValue(t, m.vcserviceOutputTxStatusBatchQueueSize) == 0
-	}, 3*time.Second, 500*time.Millisecond)
 }
 
 func TestCoordinatorRecovery(t *testing.T) {

@@ -10,7 +10,6 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
@@ -29,6 +28,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
+	"github.com/hyperledger/fabric-x-committer/utils/servicemanager"
 )
 
 var logger = flogging.MustGetLogger("coordinator")
@@ -39,8 +39,9 @@ type (
 	Service struct {
 		servicepb.UnimplementedCoordinatorServer
 		dependencyMgr         *dependencygraph.Manager
-		signatureVerifierMgr  *signatureVerifierManager
-		validatorCommitterMgr *validatorCommitterManager
+		signatureVerifierMgr  *servicemanager.Manager
+		validatorCommitterMgr *servicemanager.Manager
+		validatorCommitterAPI *validatorCommitterAPI
 		policyMgr             *policyManager
 		queues                *channels
 		config                *Config
@@ -142,8 +143,8 @@ func NewCoordinatorService(c *Config) *Service {
 
 	policyMgr := newPolicyManager()
 
-	svMgr := newSignatureVerifierManager(
-		&signVerifierManagerConfig{
+	svMgr := newVerifierManager(
+		&verifierManagerParams{
 			clientConfig:             &c.Verifier,
 			incomingTxsForValidation: queues.depGraphToSigVerifierFreeTxs,
 			outgoingValidatedTxs:     queues.sigVerifierToVCServiceValidatedTxs,
@@ -185,11 +186,6 @@ func (c *Service) Run(ctx context.Context) error {
 	g, eCtx := errgroup.WithContext(canCtx)
 
 	g.Go(func() error {
-		c.monitorQueues(eCtx)
-		return nil
-	})
-
-	g.Go(func() error {
 		logger.Info("Starting dependency graph manager")
 		c.dependencyMgr.Run(eCtx)
 		return nil
@@ -197,7 +193,7 @@ func (c *Service) Run(ctx context.Context) error {
 
 	g.Go(func() error {
 		logger.Info("Starting signature verifier manager")
-		if err := c.signatureVerifierMgr.run(eCtx); err != nil {
+		if err := c.signatureVerifierMgr.Run(eCtx); err != nil {
 			logger.Errorf("coordinator service stops due to an error returned by signature verifier manager: %v", err)
 			return err
 		}
@@ -206,7 +202,7 @@ func (c *Service) Run(ctx context.Context) error {
 
 	g.Go(func() error {
 		logger.Info("Starting validator committer manager")
-		if err := c.validatorCommitterMgr.run(eCtx); err != nil {
+		if err := c.validatorCommitterMgr.Run(eCtx); err != nil {
 			logger.Errorf("coordinator service stopped due "+
 				"to an error returned by validator committer manager: %v", err)
 			return err
@@ -214,12 +210,15 @@ func (c *Service) Run(ctx context.Context) error {
 		return nil
 	})
 
-	if !c.validatorCommitterMgr.ready.WaitForReady(eCtx) {
-		return g.Wait()
+	var err error
+	c.validatorCommitterAPI, err = newValidatorCommitterAPI(ctx, &c.config.ValidatorCommitter, c.policyMgr)
+	if err != nil {
+		return err
 	}
+	defer c.validatorCommitterAPI.close()
 
 	// We attempt to recover the policy manager and the last committed block number from the state DB.
-	if err := c.validatorCommitterMgr.recoverPolicyManagerFromStateDB(ctx); err != nil {
+	if err = c.validatorCommitterAPI.recoverPolicyManagerFromStateDB(ctx); err != nil {
 		return err
 	}
 
@@ -250,7 +249,7 @@ func (c *Service) SetLastCommittedBlockNumber(
 	lastBlock *servicepb.BlockRef,
 ) (*emptypb.Empty, error) {
 	// Error is already wrapped with proper gRPC status code by validatorCommitterMgr.
-	return &emptypb.Empty{}, c.validatorCommitterMgr.setLastCommittedBlockNumber(ctx, lastBlock)
+	return &emptypb.Empty{}, c.validatorCommitterAPI.setLastCommittedBlockNumber(ctx, lastBlock)
 }
 
 // GetNextBlockNumberToCommit returns the next expected block number to be received by the coordinator.
@@ -259,7 +258,7 @@ func (c *Service) GetNextBlockNumberToCommit(
 	_ *emptypb.Empty,
 ) (*servicepb.BlockRef, error) {
 	// Error is already wrapped with proper gRPC status code by validatorCommitterMgr.
-	return c.validatorCommitterMgr.getNextBlockNumberToCommit(ctx)
+	return c.validatorCommitterAPI.getNextBlockNumberToCommit(ctx)
 }
 
 // GetTransactionsStatus returns the status of given transactions identifiers.
@@ -268,7 +267,7 @@ func (c *Service) GetTransactionsStatus(
 	q *committerpb.TxIDsBatch,
 ) (*committerpb.TxStatusBatch, error) {
 	// Error is already wrapped with proper gRPC status code by validatorCommitterMgr.
-	return c.validatorCommitterMgr.getTransactionsStatus(ctx, q)
+	return c.validatorCommitterAPI.getTransactionsStatus(ctx, q)
 }
 
 // NoPendingTransactionProcessing returns true when all previously submitted
@@ -415,24 +414,5 @@ func (c *Service) sendTxStatus(
 		for status, count := range statusCount {
 			promutil.AddToCounter(m.transactionCommittedTotal.WithLabelValues(status.String()), count)
 		}
-	}
-}
-
-func (c *Service) monitorQueues(ctx context.Context) {
-	// TODO: make sampling time configurable
-	ticker := time.NewTicker(100 * time.Millisecond)
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-
-		m := c.metrics
-		q := c.queues
-		promutil.SetGauge(m.sigverifierInputTxBatchQueueSize, len(q.depGraphToSigVerifierFreeTxs))
-		promutil.SetGauge(m.sigverifierOutputValidatedTxBatchQueueSize, len(q.sigVerifierToVCServiceValidatedTxs))
-		promutil.SetGauge(m.vcserviceOutputValidatedTxBatchQueueSize, len(q.vcServiceToDepGraphValidatedTxs))
-		promutil.SetGauge(m.vcserviceOutputTxStatusBatchQueueSize, q.vcServiceToCoordinatorTxStatus.len())
 	}
 }

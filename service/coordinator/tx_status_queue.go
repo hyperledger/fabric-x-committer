@@ -24,6 +24,14 @@ func newTxStatusQueue(size int) *txStatusQueue {
 	}
 }
 
+// Write implements the servicemanager.ResultWriter interface so the generic
+// service manager can forward VC results through this queue. Wrapping the
+// status slice in a TxStatusBatch keeps the count-before-enqueue accounting
+// (see readyCount) used by NoPendingTransactionProcessing.
+func (q *txStatusQueue) Write(ctx context.Context, results []*committerpb.TxStatus) bool {
+	return q.write(ctx, &committerpb.TxStatusBatch{Status: results})
+}
+
 func (q *txStatusQueue) write(ctx context.Context, batch *committerpb.TxStatusBatch) bool {
 	if ctx.Err() != nil {
 		return false

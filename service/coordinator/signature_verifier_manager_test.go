@@ -26,12 +26,14 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/servicemanager"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
 type svMgrTestEnv struct {
-	signVerifierManager *signatureVerifierManager
+	signVerifierManager *servicemanager.Manager
+	metrics             *perfMetrics
 	inputTxBatch        chan dependencygraph.TxNodeBatch
 	outputValidatedTxs  chan dependencygraph.TxNodeBatch
 	mockVerifier        *mock.Verifier
@@ -49,12 +51,13 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 	outputValidatedTxs := make(chan dependencygraph.TxNodeBatch, 10)
 
 	pm := newPolicyManager()
-	svm := newSignatureVerifierManager(
-		&signVerifierManagerConfig{
+	metrics := newPerformanceMetrics()
+	svm := newVerifierManager(
+		&verifierManagerParams{
 			clientConfig:             test.ServerToMultiClientConfig(test.InsecureTLSConfig, sc.Configs...),
 			incomingTxsForValidation: inputTxBatch,
 			outgoingValidatedTxs:     outputValidatedTxs,
-			metrics:                  newPerformanceMetrics(),
+			metrics:                  metrics,
 			policyManager:            pm,
 		},
 	)
@@ -62,7 +65,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 	test.RunServiceForTest(
 		t.Context(), t,
 		func(ctx context.Context) error {
-			err := connection.FilterStreamRPCError(svm.run(ctx))
+			err := connection.FilterStreamRPCError(svm.Run(ctx))
 			if expectedEndError != "" {
 				require.ErrorContains(t, err, expectedEndError)
 			} else {
@@ -73,11 +76,12 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 		nil,
 	)
 	monitoring.WaitForConnections(
-		t, svm.metrics.Provider, "coordinator_verifier_connection_status", numSvService,
+		t, metrics.Provider, "coordinator_verifier_connection_status", numSvService,
 	)
 
 	env := &svMgrTestEnv{
 		signVerifierManager: svm,
+		metrics:             metrics,
 		inputTxBatch:        inputTxBatch,
 		outputValidatedTxs:  outputValidatedTxs,
 		mockVerifier:        verifier,
@@ -100,10 +104,18 @@ func (e *svMgrTestEnv) requireTxBatch(t *testing.T, expectedValidatedTxs depende
 	t.Helper()
 	select {
 	case actualTxBatch := <-e.outputValidatedTxs:
-		require.ElementsMatch(t, expectedValidatedTxs, actualTxBatch)
+		test.RequireProtoElementsMatch(t, allRef(expectedValidatedTxs), allRef(actualTxBatch))
 	case <-time.After(5 * time.Second):
 		t.Fatal("Did not receive block from output after timeout")
 	}
+}
+
+func allRef(items dependencygraph.TxNodeBatch) []*committerpb.TxRef {
+	refs := make([]*committerpb.TxRef, len(items))
+	for i, tx := range items {
+		refs[i] = tx.VCTx.Ref
+	}
+	return refs
 }
 
 func (e *svMgrTestEnv) requireConnectionMetrics(
@@ -111,11 +123,12 @@ func (e *svMgrTestEnv) requireConnectionMetrics(
 	svIndex, expectedConnStatus, expectedConnFailureTotal int,
 ) {
 	t.Helper()
-	require.Less(t, svIndex, len(e.signVerifierManager.signVerifier))
-	sv := e.signVerifierManager.signVerifier[svIndex]
+	allConn := servicemanager.GetAllActiveConnections(e.signVerifierManager)
+	require.Less(t, svIndex, len(allConn))
+	conn := allConn[svIndex]
 	monitoring.RequireConnectionMetrics(
-		t, sv.conn.CanonicalTarget(),
-		e.signVerifierManager.metrics.verifiersConnection,
+		t, conn.CanonicalTarget(),
+		e.metrics.verifiers.Connection,
 		monitoring.ExpectedConn{Status: expectedConnStatus, FailureTotal: expectedConnFailureTotal},
 	)
 }
@@ -123,7 +136,7 @@ func (e *svMgrTestEnv) requireConnectionMetrics(
 func (e *svMgrTestEnv) requireRetriedTxsTotal(t *testing.T, expectedRetriedTxsTotal int) {
 	t.Helper()
 	test.EventuallyIntMetric(
-		t, expectedRetriedTxsTotal, e.signVerifierManager.metrics.verifiersRetriedTransactionTotal,
+		t, expectedRetriedTxsTotal, e.metrics.verifiers.RetriedTotal,
 		30*time.Second, 250*time.Millisecond,
 	)
 }
@@ -145,7 +158,7 @@ func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
 	env.requireTxBatch(t, expectedValidatedTxs)
 
 	test.EventuallyIntMetric(
-		t, 15, env.signVerifierManager.config.metrics.sigverifierTransactionProcessedTotal,
+		t, 15, env.metrics.verifiers.ProcessedTotal,
 		30*time.Second, 10*time.Millisecond,
 	)
 }
@@ -175,7 +188,7 @@ func TestSignatureVerifierManagerWithLargeSize(t *testing.T) {
 	// env.requireTxBatch(t, expectedValidatedTxs)
 
 	test.EventuallyIntMetric(
-		t, totalBlocks*txPerBlock+1, env.signVerifierManager.config.metrics.sigverifierTransactionProcessedTotal,
+		t, totalBlocks*txPerBlock+1, env.metrics.verifiers.ProcessedTotal,
 		30*time.Second, 10*time.Millisecond,
 	)
 }
@@ -211,10 +224,9 @@ func TestSignatureVerifierManagerWithMultipleVerifiers(t *testing.T) {
 	}
 	require.Equal(t, numBlocks, totalBlocksReceived)
 
-	for _, sv := range env.signVerifierManager.signVerifier {
-		sv.txMu.Lock()
-		require.Empty(t, sv.txBeingValidated)
-		sv.txMu.Unlock()
+	// Verify all workers have processed their jobs
+	for _, pendingCount := range servicemanager.GetAllPendingTaskCount(env.signVerifierManager) {
+		require.Equal(t, 0, pendingCount)
 	}
 }
 
@@ -315,11 +327,10 @@ func TestSignatureVerifierManagerRecovery(t *testing.T) {
 	expectedValidatedTxs := env.submitTxBatch(t, numTxs)
 
 	// Validate the full block have not been reported
-	firstSv := env.signVerifierManager.signVerifier[0]
-	require.Eventually(t, func() bool {
-		firstSv.txMu.Lock()
-		defer firstSv.txMu.Unlock()
-		return len(firstSv.txBeingValidated) == numTxs-6 // first 4 transactions would be pending
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		pendingCounts := servicemanager.GetAllPendingTaskCount(env.signVerifierManager)
+		require.NotEmpty(t, pendingCounts)
+		require.Equal(ct, numTxs-6, pendingCounts[0]) // first 4 transactions would be pending
 	}, 30*time.Second, 100*time.Millisecond)
 
 	for _, stopFunc := range env.grpcServers.ServersStop {

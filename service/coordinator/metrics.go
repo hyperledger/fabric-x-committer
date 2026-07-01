@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/servicemanager"
 )
 
 type perfMetrics struct {
@@ -19,21 +20,8 @@ type perfMetrics struct {
 	transactionReceivedTotal  prometheus.Counter
 	transactionCommittedTotal *prometheus.CounterVec
 
-	// queue sizes
-	sigverifierInputTxBatchQueueSize           prometheus.Gauge
-	sigverifierOutputValidatedTxBatchQueueSize prometheus.Gauge
-	vcserviceOutputTxStatusBatchQueueSize      prometheus.Gauge
-	vcserviceOutputValidatedTxBatchQueueSize   prometheus.Gauge
-
-	// processed transactions by each manager
-	sigverifierTransactionProcessedTotal prometheus.Counter
-	vcserviceTransactionProcessedTotal   prometheus.Counter
-
-	// connection failure
-	verifiersConnection               *monitoring.ConnectionMetrics
-	verifiersRetriedTransactionTotal  prometheus.Counter
-	vcservicesConnection              *monitoring.ConnectionMetrics
-	vcservicesRetriedTransactionTotal prometheus.Counter
+	verifiers *servicemanager.Metrics
+	vcs       *servicemanager.Metrics
 }
 
 func newPerformanceMetrics() *perfMetrics {
@@ -53,63 +41,13 @@ func newPerformanceMetrics() *perfMetrics {
 			Name:      "committed_transaction_total",
 			Help:      "Total number of transactions committed status sent by the coordinator service to the client.",
 		}, []string{"status"}),
-		sigverifierInputTxBatchQueueSize: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: "coordinator",
-			Subsystem: "verifier",
-			Name:      "input_tx_batch_queue_size",
-			Help:      "Size of the input transaction batch queue of the signature verifier manager.",
-		}),
-		sigverifierOutputValidatedTxBatchQueueSize: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: "coordinator",
-			Subsystem: "verifier",
-			Name:      "output_validated_tx_batch_queue_size",
-			Help:      "Size of the output validated transaction batch queue of the signature verifier manager.",
-		}),
-		vcserviceOutputTxStatusBatchQueueSize: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: "coordinator",
-			Subsystem: "vcservice",
-			Name:      "output_tx_status_batch_queue_size",
-			Help: "Size of the output transaction status batch queue of " +
-				"the validation and committer service manager.",
-		}),
-		vcserviceOutputValidatedTxBatchQueueSize: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: "coordinator",
-			Subsystem: "vcservice",
-			Name:      "output_validated_tx_batch_queue_size",
-			Help: "Size of the output validated transaction batch queue " +
-				"of the validation and committer service manager.",
-		}),
-		sigverifierTransactionProcessedTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "coordinator",
-			Subsystem: "verifier",
-			Name:      "transaction_processed_total",
-			Help:      "Total number of transactions processed by the signature verifier manager.",
-		}),
-		vcserviceTransactionProcessedTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "coordinator",
-			Subsystem: "vcservice",
-			Name:      "transaction_processed_total",
-			Help:      "Total number of transactions processed by the validation and committer service manager.",
-		}),
-		verifiersConnection: monitoring.NewConnectionMetrics(p, monitoring.MetricsParameters{
+		verifiers: servicemanager.NewMetrics(p, monitoring.MetricsParameters{
 			Namespace: "coordinator",
 			Subsystem: "verifier",
 		}),
-		verifiersRetriedTransactionTotal: p.NewCounter(prometheus.CounterOpts{
+		vcs: servicemanager.NewMetrics(p, monitoring.MetricsParameters{
 			Namespace: "coordinator",
 			Subsystem: "vcservice",
-			Name:      "retired_transaction_total",
-			Help:      "Total number of transactions retried by the validation and committer service manager.",
-		}),
-		vcservicesConnection: monitoring.NewConnectionMetrics(p, monitoring.MetricsParameters{
-			Namespace: "coordinator",
-			Subsystem: "vcservice",
-		}),
-		vcservicesRetriedTransactionTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "coordinator",
-			Subsystem: "verifier",
-			Name:      "retired_transaction_total",
-			Help:      "Total number of transactions retried by the signature verifier manager.",
 		}),
 	}
 }

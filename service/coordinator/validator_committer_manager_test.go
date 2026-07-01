@@ -28,6 +28,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/servicemanager"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testapp"
@@ -35,13 +36,14 @@ import (
 )
 
 type vcMgrTestEnv struct {
-	validatorCommitterManager *validatorCommitterManager
+	validatorCommitterManager *servicemanager.Manager
 	inputTxs                  chan dependencygraph.TxNodeBatch
 	outputTxs                 chan dependencygraph.TxNodeBatch
 	outputTxsStatus           *txStatusQueue
 	mockVcService             *mock.VcService
 	mockVCGrpcServers         *test.Servers
 	sigVerTestEnv             *svMgrTestEnv
+	metrics                   *perfMetrics
 }
 
 func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
@@ -53,22 +55,26 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 	outputTxs := make(chan dependencygraph.TxNodeBatch, 10)
 	outputTxsStatus := newTxStatusQueue(10)
 
+	metrics := newPerformanceMetrics()
 	vcm := newValidatorCommitterManager(
 		&validatorCommitterManagerConfig{
 			clientConfig:                   test.ServerToMultiClientConfig(test.InsecureTLSConfig, servers.Configs...),
 			incomingTxsForValidationCommit: inputTxs,
 			outgoingValidatedTxsNode:       outputTxs,
 			outgoingTxsStatus:              outputTxsStatus,
-			metrics:                        newPerformanceMetrics(),
+			metrics:                        metrics,
 			policyMgr:                      svEnv.policyManager,
 		},
 	)
 
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
-		err := connection.FilterStreamRPCError(vcm.run(ctx))
+		err := connection.FilterStreamRPCError(vcm.Run(ctx))
 		assert.NoError(t, err)
 		return nil
-	}, vcm.ready.WaitForReady)
+	}, nil)
+
+	// Ensure the manager creates all the workers.
+	mock.RequireStreams(t, vcs, numVCService)
 
 	return &vcMgrTestEnv{
 		validatorCommitterManager: vcm,
@@ -78,6 +84,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 		mockVcService:             vcs,
 		mockVCGrpcServers:         servers,
 		sigVerTestEnv:             svEnv,
+		metrics:                   metrics,
 	}
 }
 
@@ -86,11 +93,11 @@ func (e *vcMgrTestEnv) requireConnectionMetrics(
 	vcIndex, expectedConnStatus, expectedConnFailureTotal int,
 ) {
 	t.Helper()
-	require.Less(t, vcIndex, len(e.validatorCommitterManager.validatorCommitter))
-	sv := e.validatorCommitterManager.validatorCommitter[vcIndex]
+	conns := servicemanager.GetAllActiveConnections(e.validatorCommitterManager)
+	require.Less(t, vcIndex, len(conns))
 	monitoring.RequireConnectionMetrics(
-		t, sv.conn.CanonicalTarget(),
-		sv.metrics.vcservicesConnection,
+		t, conns[vcIndex].CanonicalTarget(),
+		e.metrics.vcs.Connection,
 		monitoring.ExpectedConn{Status: expectedConnStatus, FailureTotal: expectedConnFailureTotal},
 	)
 }
@@ -98,7 +105,7 @@ func (e *vcMgrTestEnv) requireConnectionMetrics(
 func (e *vcMgrTestEnv) requireRetriedTxsTotal(t *testing.T, expectedRetriedTxsTotal int) {
 	t.Helper()
 	test.EventuallyIntMetric(
-		t, expectedRetriedTxsTotal, e.validatorCommitterManager.config.metrics.vcservicesRetriedTransactionTotal,
+		t, expectedRetriedTxsTotal, e.metrics.vcs.RetriedTotal,
 		5*time.Second, 250*time.Millisecond,
 	)
 }
@@ -107,8 +114,8 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 	t.Parallel()
 
 	ensureZeroWaitingTxs := func(env *vcMgrTestEnv) {
-		for _, vc := range env.validatorCommitterManager.validatorCommitter {
-			require.Zero(t, vc.txBeingValidated.Count())
+		for _, count := range servicemanager.GetAllPendingTaskCount(env.validatorCommitterManager) {
+			require.Zero(t, count)
 		}
 	}
 
@@ -126,7 +133,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 		test.RequireProtoElementsMatch(t, expectedTxsStatus, outTxsStatus.Status)
 
 		test.EventuallyIntMetric(
-			t, 5, env.validatorCommitterManager.config.metrics.vcserviceTransactionProcessedTotal,
+			t, 5, env.metrics.vcs.ProcessedTotal,
 			2*time.Second, 100*time.Millisecond,
 		)
 
@@ -159,7 +166,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		test.EventuallyIntMetric(
 			t, 5+totalBlocks*txPerBlock,
-			env.validatorCommitterManager.config.metrics.vcserviceTransactionProcessedTotal,
+			env.metrics.vcs.ProcessedTotal,
 			2*time.Second, 100*time.Millisecond,
 		)
 
@@ -285,9 +292,10 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	txBatch, expectedTxsStatus := createInputTxsNodeForTest(t, numTxs, 0, 0)
 	env.inputTxs <- txBatch
 
-	require.Eventually(t, func() bool {
-		count := env.validatorCommitterManager.validatorCommitter[0].txBeingValidated.Count()
-		return count == numTxs-6
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		pendingCounts := servicemanager.GetAllPendingTaskCount(env.validatorCommitterManager)
+		require.NotEmpty(ct, pendingCounts)
+		require.Equal(ct, numTxs-6, pendingCounts[0])
 	}, 4*time.Second, 100*time.Millisecond)
 
 	env.mockVCGrpcServers.ServersStop[0]()
@@ -310,7 +318,7 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	}
 	test.RequireProtoElementsMatch(t, expectedTxsStatus, actualTxsStatus)
 
-	txProcessedTotalMetric := env.validatorCommitterManager.config.metrics.vcserviceTransactionProcessedTotal
+	txProcessedTotalMetric := env.metrics.vcs.ProcessedTotal
 	txTotal := test.GetIntMetricValue(t, txProcessedTotalMetric)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)

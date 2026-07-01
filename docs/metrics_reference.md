@@ -51,22 +51,22 @@ The following Sidecar metrics are exported for consumption by Prometheus.
 
 The following Coordinator metrics are exported for consumption by Prometheus.
 
-| Name                                                       | Type    | Labels      | Description                                                                                                |
-|------------------------------------------------------------|---------|-------------|------------------------------------------------------------------------------------------------------------|
-| coordinator_grpc_received_transaction_total                | counter |             | Total number of transactions received by the coordinator service from the client.                          |
-| coordinator_grpc_committed_transaction_total               | counter | status      | Total number of transactions committed status sent by the coordinator service to the client.               |
-| coordinator_verifier_input_tx_batch_queue_size             | gauge   |             | Size of the input transaction batch queue of the signature verifier manager.                               |
-| coordinator_verifier_output_validated_tx_batch_queue_size  | gauge   |             | Size of the output validated transaction batch queue of the signature verifier manager.                    |
-| coordinator_vcservice_output_tx_status_batch_queue_size    | gauge   |             | Size of the output transaction status batch queue of the validation and committer service manager.         |
-| coordinator_vcservice_output_validated_tx_batch_queue_size | gauge   |             | Size of the output validated transaction batch queue of the validation and committer service manager.      |
-| coordinator_verifier_transaction_processed_total           | counter |             | Total number of transactions processed by the signature verifier manager.                                  |
-| coordinator_vcservice_transaction_processed_total          | counter |             | Total number of transactions processed by the validation and committer service manager.                    |
-| coordinator_verifier_connection_status                     | gauge   | grpc_target | Connection status to verifier service by grpc target (1 = connected, 0 = disconnected).                    |
-| coordinator_verifier_connection_failure_total              | counter | grpc_target | Total number of connection failures to verifier service. Short-lived failures may not always be captured.  |
-| coordinator_vcservice_retired_transaction_total            | counter |             | Total number of transactions retried by the validation and committer service manager.                      |
-| coordinator_vcservice_connection_status                    | gauge   | grpc_target | Connection status to vcservice service by grpc target (1 = connected, 0 = disconnected).                   |
-| coordinator_vcservice_connection_failure_total             | counter | grpc_target | Total number of connection failures to vcservice service. Short-lived failures may not always be captured. |
-| coordinator_verifier_retired_transaction_total             | counter |             | Total number of transactions retried by the signature verifier manager.                                    |
+| Name                                              | Type    | Labels      | Description                                                                                                |
+|---------------------------------------------------|---------|-------------|------------------------------------------------------------------------------------------------------------|
+| coordinator_grpc_received_transaction_total       | counter |             | Total number of transactions received by the coordinator service from the client.                          |
+| coordinator_grpc_committed_transaction_total      | counter | status      | Total number of transactions committed status sent by the coordinator service to the client.               |
+| coordinator_verifier_connection_status            | gauge   | grpc_target | Connection status to verifier service by grpc target (1 = connected, 0 = disconnected).                    |
+| coordinator_verifier_connection_failure_total     | counter | grpc_target | Total number of connection failures to verifier service. Short-lived failures may not always be captured.  |
+| coordinator_verifier_transaction_processed_total  | counter |             | Total number of transactions processed by the manager.                                                     |
+| coordinator_verifier_transaction_retired_total    | counter |             | Total number of transactions retried by the manager.                                                       |
+| coordinator_verifier_input_batch_queue_size       | gauge   |             | Size of the input batch queue of the manager.                                                              |
+| coordinator_verifier_output_batch_queue_size      | gauge   |             | Size of the output batch queue of the manager.                                                             |
+| coordinator_vcservice_connection_status           | gauge   | grpc_target | Connection status to vcservice service by grpc target (1 = connected, 0 = disconnected).                   |
+| coordinator_vcservice_connection_failure_total    | counter | grpc_target | Total number of connection failures to vcservice service. Short-lived failures may not always be captured. |
+| coordinator_vcservice_transaction_processed_total | counter |             | Total number of transactions processed by the manager.                                                     |
+| coordinator_vcservice_transaction_retired_total   | counter |             | Total number of transactions retried by the manager.                                                       |
+| coordinator_vcservice_input_batch_queue_size      | gauge   |             | Size of the input batch queue of the manager.                                                              |
+| coordinator_vcservice_output_batch_queue_size     | gauge   |             | Size of the output batch queue of the manager.                                                             |
 
 ## Verifier Metrics
 
