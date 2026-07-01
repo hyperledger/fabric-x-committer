@@ -23,10 +23,10 @@ server:
     params:
       # Duration after which the server sends a keepalive ping if no data has been
       # transmitted on the connection. Helps detect dead connections and prevent resource leaks.
-      time: 300s
+      time: 60s
       # How long the server waits for a keepalive acknowledgment before closing the connection.
       # Should be longer than params.time to allow for network delays.
-      timeout: 600s
+      timeout: 10s
     enforcement-policy:
       # Minimum time clients must wait between sending keepalive pings. Prevents clients
       # from overwhelming the server with excessive pings. Clients violating this are disconnected.
