@@ -53,7 +53,7 @@ var (
 	coordinatorServicePort = network.MustParsePort("9001/tcp")
 	databasePort           = network.MustParsePort("5433/tcp")
 
-	commonTestNodeCMD = []string{runCMD, dbName, committerName, ordererName}
+	commonTestNodeCMD = []string{runCMD, dbName, initDBCommand, committerName, ordererName}
 )
 
 // TestStartTestNodeWithTLSModesAndRemoteConnection launches the committer’s
@@ -282,7 +282,7 @@ func TestYugabyteDriverDiscoveryWithSingleNodeConnection(t *testing.T) {
 		tlsMode:           connection.NoneTLSMode,
 		dbType:            testdb.YugaDBType,
 		dbEndpointsString: singleTabletAddress,
-		cmd:               []string{runCMD, committerName, ordererName, loadGenName},
+		cmd:               []string{runCMD, committerName, initDBCommand, ordererName, loadGenName},
 		additionalEnvs: []string{
 			"SC_VC_DATABASE_ENDPOINTS=" + singleTabletAddress,
 			"SC_VC_DATABASE_USERNAME=" + testdb.YugaDBType,

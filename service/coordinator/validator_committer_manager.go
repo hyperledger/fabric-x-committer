@@ -99,10 +99,6 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 	}
 	defer connection.CloseConnectionsLog(commonConn)
 	vcm.commonClient = servicepb.NewValidationAndCommitServiceClient(commonConn)
-	_, setupErr := vcm.commonClient.SetupSystemTablesAndNamespaces(ctx, nil)
-	if setupErr != nil {
-		return errors.Wrap(setupErr, "failed to setup system tables and namespaces")
-	}
 
 	connections, connErr := connection.NewConnectionPerEndpoint(c.clientConfig)
 	if connErr != nil {

@@ -252,14 +252,6 @@ func (vc *ValidatorCommitterService) GetConfigTransaction(
 	return policies, grpcerror.WrapInternalError(err)
 }
 
-// SetupSystemTablesAndNamespaces creates the required system tables and namespaces.
-func (vc *ValidatorCommitterService) SetupSystemTablesAndNamespaces(
-	ctx context.Context,
-	_ *emptypb.Empty,
-) (*emptypb.Empty, error) {
-	return nil, grpcerror.WrapInternalError(vc.db.setupSystemTablesAndNamespaces(ctx))
-}
-
 // StartValidateAndCommitStream is the function that starts the stream between the client and the service.
 // It receives transactions from the client, prepares them, validates them and commits them to the database.
 // It also sends the status of the transactions to the client.

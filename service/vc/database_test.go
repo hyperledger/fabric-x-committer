@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v5/pgxpool"
 
+	"github.com/hyperledger/fabric-x-committer/utils/db"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
@@ -22,19 +23,9 @@ const (
 	ns2 = "2"
 )
 
-func newDatabaseTestEnvWithTablesSetup(t *testing.T) *DatabaseTestEnv {
-	t.Helper()
-	env := NewDatabaseTestEnv(t)
-	ctx, _ := createContext(t)
-	require.NoError(t, env.DB.setupSystemTablesAndNamespaces(ctx))
-	return env
-}
-
 func TestTablesAndMethods(t *testing.T) {
 	t.Parallel()
 	env := NewDatabaseTestEnv(t)
-	ctx, _ := createContext(t)
-	require.NoError(t, env.DB.setupSystemTablesAndNamespaces(ctx))
 	env.populateData(t, []string{"a", "b"}, namespaceToWrites{}, nil, nil)
 
 	expectedTables := []string{"metadata", "tx_status", "ns__meta", "ns__config", "ns_a", "ns_b"}
@@ -103,7 +94,7 @@ WHERE pronamespace = 'public'::regnamespace
 
 func TestValidateNamespaceReads(t *testing.T) {
 	t.Parallel()
-	env := newDatabaseTestEnvWithTablesSetup(t)
+	env := NewDatabaseTestEnv(t)
 
 	k1 := []byte("key1")
 	k2 := []byte("key2")
@@ -237,9 +228,36 @@ func TestValidateNamespaceReads(t *testing.T) {
 	}
 }
 
+func TestDBInit(t *testing.T) {
+	t.Parallel()
+	env := NewDatabaseTestEnv(t)
+
+	tableName := db.TableName(committerpb.MetaNamespaceID)
+	keys := [][]byte{[]byte("tx1"), []byte("tx2"), []byte("tx3"), []byte("tx4")}
+	ret := env.DB.pool.QueryRow(
+		t.Context(), db.FmtNsID(insertNsStatesSQLTempl, committerpb.MetaNamespaceID), keys, keys,
+	)
+	duplicates, err := readArrayResult[[]byte](ret)
+	require.NoError(t, err)
+	require.Empty(t, duplicates)
+
+	// Validate default values
+	r, err := env.DB.pool.Query(t.Context(), "select * from "+tableName+";")
+	require.NoError(t, err)
+	defer r.Close()
+	for r.Next() {
+		var key, value []byte
+		var version uint64
+		require.NoError(t, r.Scan(&key, &value, &version))
+		require.NotNil(t, key)
+		require.Equal(t, key, value)
+		require.EqualValues(t, 0, version)
+	}
+}
+
 func TestDBCommit(t *testing.T) {
 	t.Parallel()
-	dbEnv := newDatabaseTestEnvWithTablesSetup(t)
+	dbEnv := NewDatabaseTestEnv(t)
 
 	require.Equal(t, dbEnv.DBConf.Retry, dbEnv.DB.retryProfile)
 
@@ -307,7 +325,7 @@ func TestNewDatabaseTabletsWithDetection(t *testing.T) {
 	env := NewDatabaseTestEnv(t)
 
 	// Detect the actual DB type to know what to assert.
-	actuallyYugabyte, err := isYugabyteDB(t.Context(), env.DB.pool)
+	actuallyYugabyte, err := db.IsYugabyteDB(t.Context(), env.DB.pool)
 	require.NoError(t, err)
 
 	env.DBConf.TablePreSplitTablets = 5

@@ -32,7 +32,7 @@ func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 	validatedTxs := make(chan *validatedTransactions, 10)
 	txStatus := make(chan *committerpb.TxStatusBatch, 10)
 
-	dbEnv := newDatabaseTestEnvWithTablesSetup(t)
+	dbEnv := NewDatabaseTestEnv(t)
 	metrics := newVCServiceMetrics()
 	c := newCommitter(validatedTxs, txStatus, metrics)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {

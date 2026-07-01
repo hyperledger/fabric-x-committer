@@ -43,6 +43,10 @@ if [[ $ops == *"db"* ]]; then
   docker-entrypoint.sh postgres -p 5433 &
 fi
 
+if [[ $ops == *"init-db"* ]]; then
+  "$BINS_PATH/committer" init-db --config "$CONFIGS_PATH/vc.yaml"
+fi
+
 if [[ $ops == *"orderer"* ]]; then
   "$BINS_PATH/mock"      start orderer     --config "$CONFIGS_PATH/mock-orderer.yaml" &
 fi

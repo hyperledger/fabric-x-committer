@@ -317,12 +317,6 @@ GetConfigTransaction(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*
 
  * This API retrieves the latest system configuration transaction.
 
-```go
-SetupSystemTablesAndNamespaces(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error)
-```
-
- * This API is used to initialize the required system tables (like `tx_status`) and stored procedures in the database when the system is first set up.
-
 ## 7. Failure and Recovery
 
 The VC service is designed to be stateless regarding the pipeline itself, relying on the Coordinator and the database for state management and recovery.
