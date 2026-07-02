@@ -1,9 +1,3 @@
-<!--
-Copyright IBM Corp. All Rights Reserved.
-
-SPDX-License-Identifier: Apache-2.0
--->
-
 ---
 name: tests
 description: Write and/or run unit and integration tests, ensuring high code coverage and reliability.
