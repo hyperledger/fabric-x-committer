@@ -10,7 +10,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -514,7 +513,7 @@ func TestOrdererDeliverBFT(t *testing.T) {
 			stopDelivery = e.startDelivery(t)
 			b = e.submit(t)
 			curSource := b.SourceID
-			curSourceLabel := strconv.FormatUint(uint64(curSource), 10)
+			curSourceLabel := deliverorderer.SourceLabel(curSource)
 
 			t.Logf("Hold blocks from current source: %s", curSourceLabel)
 			e.PartyStates[curSource].HoldFromBlock.Store(b.Block.Header.Number)
@@ -562,6 +561,52 @@ func TestOrdererDeliverBFT(t *testing.T) {
 			stopDelivery()
 		})
 	}
+}
+
+// TestOrdererDeliverBFTRepeatedPromotionProgresses is an end-to-end guard for the
+// "cascading suspicion can halt block delivery" bug (#632). With real gRPC streams, header-only
+// streams continuously race ahead of the data stream, so a freshly promoted data source might
+// already have header-only blocks queued. Before the fix, such a stale header-only block from the
+// promoted source was processed as a (payload-less) data block, immediately re-suspecting it and
+// promoting yet another source — a cascade that stalls delivery.
+//
+// Here we force the current data source to withhold the next block every round (a short grace
+// period promotes a new source quickly). Delivery must keep progressing across repeated
+// promotions rather than stalling.
+func TestOrdererDeliverBFTRepeatedPromotionProgresses(t *testing.T) {
+	t.Parallel()
+	e := newDeliverOrdererTestEnv(t, deliverOrdererTestEnvParams{
+		ftMode:  ordererdial.BFT,
+		tlsMode: connection.NoneTLSMode,
+	})
+	// A short grace period makes suspicion + promotion happen quickly.
+	e.deliveryParams.SuspicionGracePeriodPerBlock = 100 * time.Millisecond
+	stopDelivery := e.startDelivery(t)
+	defer stopDelivery()
+	e.waitForDeliveryOfConfigBlock(t)
+	require.Len(t, e.PartyStates, 3)
+
+	//nolint:gosec // party IDs are small, non-negative values.
+	prev := uint32(test.GetIntMetricValue(t, e.deliveryParams.Metrics.CurrentDataSourceID))
+	for range 100 {
+		expectedBlockNum := e.PrevBlock.Header.Number + 1
+		// Withhold the next full data block only from the current source, forcing a promotion.
+		for _, p := range e.PartyStates {
+			p.HoldFromBlock.Store(0)
+		}
+		e.PartyStates[prev].HoldFromBlock.Store(expectedBlockNum)
+
+		b := e.submit(t)
+		require.NotEqual(t, prev, b.SourceID, "delivery must rotate away from the withholding source")
+		prev = b.SourceID
+	}
+
+	// No data-stream restart should have been needed to clear a stale header-only block.
+	// (Restarts here would be due to genuine suspicion/promotion, never a malformed data block.)
+	id := deliverorderer.SourceLabel(prev)
+	m := e.deliveryParams.Metrics.StreamErrorsTotal.WithLabelValues("data", id, "malformed_block")
+	malformedFromHeaders := test.GetIntMetricValue(t, m)
+	require.Zero(t, malformedFromHeaders, "a promoted source's queued header-only block must not be seen as malformed")
 }
 
 type deliverOrdererTestEnvParams struct {

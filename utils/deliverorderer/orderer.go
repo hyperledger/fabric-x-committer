@@ -206,7 +206,7 @@ func (d *ftDelivery) processNextBlock(ctx context.Context) (
 	if state.dataBlockStream {
 		streamType = "data"
 	}
-	sourceIDLabel := strconv.FormatUint(uint64(blk.SourceID), 10)
+	sourceIDLabel := SourceLabel(blk.SourceID)
 
 	// Verification step: a block is ignored if it failed verification.
 	// Otherwise, we update the internal processing state and config update if necessary.
@@ -306,8 +306,8 @@ func (d *ftDelivery) checkBlockWithholding() error {
 
 	// Track block gap.
 	gap := float64(d.dataStream.nextBlockNum) - float64(d.headerOnlyStream.nextBlockNum)
-	dataSourceIDLabel := strconv.FormatUint(uint64(d.curDataBlockSourceID), 10)
-	d.metrics.BlockGapGauge.WithLabelValues(dataSourceIDLabel).Set(float64(gap))
+	dataSourceIDLabel := SourceLabel(d.curDataBlockSourceID)
+	d.metrics.BlockGapGauge.WithLabelValues(dataSourceIDLabel).Set(gap)
 
 	// If the data source is ahead, continue.
 	if d.dataStream.nextBlockNum >= d.headerOnlyStream.nextBlockNum {
@@ -463,7 +463,7 @@ func startSingleDeliveryStream(ctx context.Context, params streamExecutionParams
 	if params.HeaderOnly {
 		workerType = "headers"
 	}
-	sourceIDLabel := strconv.FormatUint(uint64(params.SourceID), 10)
+	sourceIDLabel := SourceLabel(params.SourceID)
 	workerErr := errors.NewWithDepthf(0, "[%s] delivery worker [ID:%s] ended", workerType, sourceIDLabel)
 
 	// Track stream start and active streams
@@ -488,4 +488,10 @@ func startSingleDeliveryStream(ctx context.Context, params streamExecutionParams
 		params.metrics.StreamErrorsTotal.WithLabelValues(workerType, sourceIDLabel, "delivery").Inc()
 	}
 	return errors.Join(workerErr, err)
+}
+
+// SourceLabel returns the block source ID as a string.
+// Used as a metric label for the source ID.
+func SourceLabel(id uint32) string {
+	return strconv.FormatUint(uint64(id), 10)
 }
