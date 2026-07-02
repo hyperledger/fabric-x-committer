@@ -7,9 +7,9 @@
 set -e
 
 # Versions for non-Go tools
-protoc_bin_version="33.4"
+protoc_bin_version="35.1"
 golangci_lint_version="v2.12.2"
-sqlfluff_version="3.4.0"
+sqlfluff_version="4.2.2"
 
 # Install protoc binary (C++ based, not available via go install)
 download_dir=$(mktemp -d -t "sc_dev_depedencies.XXXX")
