@@ -9,7 +9,7 @@ package query
 import (
 	"time"
 
-	"github.com/hyperledger/fabric-x-committer/utils/db"
+	"github.com/hyperledger/fabric-x-committer/service/db"
 )
 
 // Config is the configuration for the query service.

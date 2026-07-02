@@ -21,8 +21,8 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
+	"github.com/hyperledger/fabric-x-committer/service/db"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/db"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
@@ -69,7 +69,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	t.Log("creating config-block")
 	artifactsPath := generateArtifacts(t)
 
-	committerNodes := []string{verifierService, vcService, queryService, coordinatorService, sidecarService}
+	committerNodes := []string{verifierName, vcName, queryName, coordinatorName, sidecarName}
 
 	for _, dbType := range []string{testdb.YugaDBType, testdb.PostgresDBType} {
 		t.Run(fmt.Sprintf("database:%s", dbType), func(t *testing.T) {
@@ -92,7 +92,7 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 						dbInitTimeout: "30s",
 					}
 
-					for _, node := range append(committerNodes, dbService, ordererService, loadgenService) {
+					for _, node := range append(committerNodes, dbName, ordererName, loadGenName) {
 						// stop and remove the container if it already exists.
 						stopAndRemoveContainersByName(
 							ctx, t, createDockerClient(t), assembleContainerName(node, mode, dbType),
@@ -100,12 +100,12 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					}
 
 					// start a secured database node and return the db password.
-					params.dbPassword = startSecuredDatabaseNode(ctx, t, params.asNode(dbService))
+					params.dbPassword = startSecuredDatabaseNode(ctx, t, params.asNode(dbName))
 					// init the state DB and verify the operation succeeded.
-					resultCh, errCh := runDatabaseInitWithReleaseImage(ctx, t, params.asNode(vcService))
+					resultCh, errCh := runDatabaseInitWithReleaseImage(ctx, t, params.asNode(vcName))
 					requireSuccessfulExecution(t, resultCh, errCh)
 					// start the orderer node.
-					startCommitterNodeWithTestImage(ctx, t, params.asNode(ordererService))
+					startCommitterNodeWithTestImage(ctx, t, params.asNode(ordererName))
 					// start the committer nodes.
 					for _, node := range committerNodes {
 						startCommitterNodeWithReleaseImage(ctx, t, params.asNode(node))
@@ -115,9 +115,9 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 						waitForContainerHealthy(ctx, t, assembleContainerName(node, mode, dbType))
 					}
 					// start the load generator node.
-					startLoadgenNodeWithReleaseImage(ctx, t, params.asNode(loadgenService))
+					startLoadgenNodeWithReleaseImage(ctx, t, params.asNode(loadGenName))
 
-					metricsClientTLSConfig := test.NewServiceTLSConfig(artifactsPath, loadgenService, mode)
+					metricsClientTLSConfig := test.NewServiceTLSConfig(artifactsPath, loadGenName, mode)
 
 					monitorMetric(
 						t,
@@ -142,7 +142,7 @@ func TestDatabaseInitFailureWithoutActiveDB(t *testing.T) {
 		dbInitTimeout: "10s",
 		artifactsPath: generateArtifacts(t),
 	}
-	resultCh, errorCh := runDatabaseInitWithReleaseImage(t.Context(), t, params.asNode(vcService))
+	resultCh, errorCh := runDatabaseInitWithReleaseImage(t.Context(), t, params.asNode(vcName))
 
 	// Expect the container to fail since there's no database available.
 	select {
@@ -370,7 +370,7 @@ func startCommitterNodeWithTestImage(
 	createAndStartContainerAndItsLogs(ctx, t, createAndStartContainerParameters{
 		config: &container.Config{
 			Image:    testNodeImage,
-			Cmd:      []string{runCommand, params.node},
+			Cmd:      []string{runCMD, params.node},
 			Tty:      true,
 			Hostname: params.node,
 			Env: []string{

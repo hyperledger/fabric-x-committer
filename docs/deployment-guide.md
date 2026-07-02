@@ -151,7 +151,7 @@ Start the database cluster first and wait for it to be healthy before starting a
 2. **Initialize Database**
    - Run the database initialization command to create system tables and namespaces:
      ```shell
-     committer init-db --config <path-to-database-config> --timeout <time.duration>
+     committer init-db --config <path-to-vc-config> --timeout <duration>
      ```
      **Parameters:**
       - `--config`: Path to the VC service configuration file (required)

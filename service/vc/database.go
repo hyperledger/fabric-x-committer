@@ -19,7 +19,7 @@ import (
 	"github.com/yugabyte/pgx/v5/pgxpool"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
-	"github.com/hyperledger/fabric-x-committer/utils/db"
+	"github.com/hyperledger/fabric-x-committer/service/db"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
@@ -480,10 +480,10 @@ func (d *database) readConfigTX(ctx context.Context) (*applicationpb.ConfigTrans
 }
 
 func retryQueryAndReadArrayResult[T any](
-	ctx context.Context, db *database, query string, args ...any,
+	ctx context.Context, d *database, query string, args ...any,
 ) ([]T, error) {
-	return retry.ExecuteWithResult(ctx, db.retryProfile, func() ([]T, error) {
-		row := db.pool.QueryRow(ctx, query, args...)
+	return retry.ExecuteWithResult(ctx, d.retryProfile, func() ([]T, error) {
+		row := d.pool.QueryRow(ctx, query, args...)
 		items, readErr := readArrayResult[T](row)
 		if readErr != nil {
 			logger.Debugf("attempt: %s", readErr)
@@ -493,10 +493,10 @@ func retryQueryAndReadArrayResult[T any](
 }
 
 func retryQueryAndReadTwoItems[T1, T2 any](
-	ctx context.Context, db *database, query string, args ...any,
+	ctx context.Context, d *database, query string, args ...any,
 ) ([]T1, []T2, error) {
-	res, err := retry.ExecuteWithResult(ctx, db.retryProfile, func() (*tuple[[]T1, []T2], error) {
-		rows, queryErr := db.pool.Query(ctx, query, args...)
+	res, err := retry.ExecuteWithResult(ctx, d.retryProfile, func() (*tuple[[]T1, []T2], error) {
+		rows, queryErr := d.pool.Query(ctx, query, args...)
 		if queryErr != nil {
 			return nil, errors.Wrapf(queryErr, "query rows: query [%s]", query)
 		}

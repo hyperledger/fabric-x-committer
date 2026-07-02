@@ -34,17 +34,18 @@ import (
 
 const (
 	// service names and commands.
-	verifierService    = "verifier"
-	vcService          = "vc"
-	queryService       = "query"
-	coordinatorService = "coordinator"
-	sidecarService     = "sidecar"
-	dbService          = "db"
-	ordererService     = "orderer"
-	loadgenService     = "loadgen"
+	committerName   = "committer"
+	ordererName     = "orderer"
+	loadGenName     = "loadgen"
+	sidecarName     = "sidecar"
+	verifierName    = "verifier"
+	vcName          = "vc"
+	queryName       = "query"
+	coordinatorName = "coordinator"
+	dbName          = "db"
 
+	runCMD        = "run"
 	initDBCommand = "init-db"
-	runCommand    = "run"
 )
 
 type (

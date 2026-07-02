@@ -37,14 +37,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 
-const (
-	runCMD        = "run"
-	committerName = "committer"
-	ordererName   = "orderer"
-	loadGenName   = "loadgen"
-	dbName        = "db"
-)
-
 var (
 	sidecarPort            = network.MustParsePort("4001/tcp")
 	loadGenMetricsPort     = network.MustParsePort("2118/tcp")
