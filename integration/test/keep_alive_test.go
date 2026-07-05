@@ -83,7 +83,7 @@ func TestKeepAliveDeadConnectionDetection(t *testing.T) {
 
 				return func(t *testing.T) {
 					t.Helper()
-					receiveErr := receiveWithin(stream, connectionClosingTime)
+					receiveErr := receiveWithin(t, stream, connectionClosingTime)
 					require.Error(t, receiveErr, "server should close the dead connection via keep-alive")
 					require.Equal(
 						t,
@@ -106,11 +106,11 @@ func TestKeepAliveDeadConnectionDetection(t *testing.T) {
 				clientCreds credentials.TransportCredentials,
 			) func(*testing.T) {
 				t.Helper()
+				client1 := committerpb.NewNotifierClient(proxiedConn)
 
 				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 				t.Cleanup(cancel)
-				// Setup stream on proxied connection
-				client1 := committerpb.NewNotifierClient(proxiedConn)
+
 				stream1, err := client1.OpenNotificationStream(ctx)
 				require.NoError(t, err)
 				require.NoError(t, stream1.Send(&committerpb.NotificationRequest{
@@ -123,7 +123,6 @@ func TestKeepAliveDeadConnectionDetection(t *testing.T) {
 				t.Cleanup(func() { _ = conn2.Close() })
 
 				client2 := committerpb.NewNotifierClient(conn2)
-
 				// Verify slot is occupied
 				stream2, err := client2.OpenNotificationStream(ctx)
 				if err == nil {
@@ -133,8 +132,9 @@ func TestKeepAliveDeadConnectionDetection(t *testing.T) {
 
 				return func(t *testing.T) {
 					t.Helper()
-					ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+					ctx, cancel = context.WithTimeout(t.Context(), 2*time.Minute)
 					t.Cleanup(cancel)
+
 					// Verify slot is released after keep-alive timeout
 					require.EventuallyWithT(t, func(ct *assert.CollectT) {
 						stream3, err := client2.OpenNotificationStream(ctx)
@@ -142,7 +142,7 @@ func TestKeepAliveDeadConnectionDetection(t *testing.T) {
 						require.NoError(ct, stream3.Send(&committerpb.NotificationRequest{
 							TxStatusRequest: &committerpb.TxIDsBatch{TxIds: []string{dummyTxID}},
 						}))
-					}, connectionClosingTime, 200*time.Millisecond)
+					}, connectionClosingTime, 500*time.Millisecond)
 				}
 			},
 		},
@@ -160,6 +160,7 @@ func TestKeepAliveDeadConnectionDetection(t *testing.T) {
 			) func(*testing.T) {
 				t.Helper()
 				client := committerpb.NewQueryServiceClient(proxiedConn)
+
 				ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 				t.Cleanup(cancel)
 
@@ -267,15 +268,14 @@ func blackHole(t *testing.T, p *toxiclient.Proxy) {
 
 // receiveWithin returns the stream's first receive error, or nil if no error
 // arrives within the timeout.
-func receiveWithin(stream committerpb.Notifier_OpenNotificationStreamClient, timeout time.Duration) error {
+func receiveWithin(t *testing.T, stream committerpb.Notifier_OpenNotificationStreamClient, timeout time.Duration) error {
 	done := make(chan error, 1)
 	go func() {
 		_, err := stream.Recv()
 		select {
 		case done <- err:
-		case <-stream.Context().Done():
-			// If no error is not received before the timeout,
-			// this goroutine should be able to exit cleanly when the stream context is canceled.
+		case <-t.Context().Done():
+			// The test finished before we could send the error.
 		}
 	}()
 	select {
