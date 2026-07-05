@@ -85,7 +85,8 @@ func TestKeepAliveDeadConnectionDetection(t *testing.T) {
 					t.Helper()
 					receiveErr := receiveWithin(stream, connectionClosingTime)
 					require.Error(t, receiveErr, "server should close the dead connection via keep-alive")
-					require.Equal(t,
+					require.Equal(
+						t,
 						codes.Unavailable, status.Code(receiveErr), "expected server-initiated close",
 					)
 				}
