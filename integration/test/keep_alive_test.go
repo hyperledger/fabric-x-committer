@@ -132,7 +132,7 @@ func TestKeepAliveDeadConnectionDetection(t *testing.T) {
 
 				return func(t *testing.T) {
 					t.Helper()
-					ctx, cancel = context.WithTimeout(t.Context(), 2*time.Minute)
+					ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 					t.Cleanup(cancel)
 
 					// Verify slot is released after keep-alive timeout
@@ -268,7 +268,11 @@ func blackHole(t *testing.T, p *toxiclient.Proxy) {
 
 // receiveWithin returns the stream's first receive error, or nil if no error
 // arrives within the timeout.
-func receiveWithin(t *testing.T, stream committerpb.Notifier_OpenNotificationStreamClient, timeout time.Duration) error {
+func receiveWithin(
+	t *testing.T, stream committerpb.Notifier_OpenNotificationStreamClient, timeout time.Duration,
+) error {
+	t.Helper()
+
 	done := make(chan error, 1)
 	go func() {
 		_, err := stream.Recv()
