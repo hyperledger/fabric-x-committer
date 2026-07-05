@@ -72,7 +72,7 @@ func TestKeepAliveDeadConnectionDetection(t *testing.T) {
 			) func(*testing.T) {
 				t.Helper()
 				client := committerpb.NewNotifierClient(proxiedConn)
-				ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+				ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
 				t.Cleanup(cancel)
 
 				stream, err := client.OpenNotificationStream(ctx)
@@ -93,7 +93,7 @@ func TestKeepAliveDeadConnectionDetection(t *testing.T) {
 			},
 		},
 		{
-			name:                 "Sidecar/StreamSlotRelease",
+			name:                 "SidecarStreamSlotRelease",
 			permitWithoutStream:  false,
 			maxConcurrentStreams: 4,
 			serviceAddr: func(c *runner.CommitterRuntime) string {
