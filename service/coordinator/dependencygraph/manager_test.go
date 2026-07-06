@@ -87,6 +87,7 @@ func BenchmarkDependencyGraph(b *testing.B) {
 								IncomingValidatedTxsNode:  val,
 								NumOfLocalDepConstructors: tc.workers,
 								WaitingTxsLimit:           20_000_000,
+								QueueMonitorSamplingTime:  100 * time.Millisecond,
 								PrometheusMetricsProvider: monitoring.NewProvider(),
 							})
 
@@ -180,6 +181,7 @@ func TestDependencyGraphManager(t *testing.T) {
 				IncomingValidatedTxsNode:  validatedTxs,
 				NumOfLocalDepConstructors: 2,
 				WaitingTxsLimit:           waitingTXsLimit,
+				QueueMonitorSamplingTime:  100 * time.Millisecond,
 				PrometheusMetricsProvider: monitoring.NewProvider(),
 			})
 

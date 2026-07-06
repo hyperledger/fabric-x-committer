@@ -136,6 +136,7 @@ func NewCoordinatorService(c *Config) *Service {
 			IncomingValidatedTxsNode:  queues.vcServiceToDepGraphValidatedTxs,
 			NumOfLocalDepConstructors: c.DependencyGraph.NumOfLocalDepConstructors,
 			WaitingTxsLimit:           c.DependencyGraph.WaitingTxsLimit,
+			QueueMonitorSamplingTime:  c.DependencyGraph.QueueMonitorSamplingTime,
 			PrometheusMetricsProvider: metrics.Provider,
 		},
 	)
@@ -365,8 +366,7 @@ func (c *Service) receiveAndProcessBlock(
 		c.numTxsInProgress.Add(int32(len(blk.Txs) + len(blk.Rejected))) //nolint:gosec
 
 		if len(blk.Txs) > 0 {
-			// TODO: make it configurable.
-			chunkSizeForDepGraph := min(c.config.DependencyGraph.WaitingTxsLimit, 500)
+			chunkSizeForDepGraph := min(c.config.DependencyGraph.WaitingTxsLimit, c.config.DependencyGraph.ChunkSize)
 			for i := 0; i < len(blk.Txs); i += chunkSizeForDepGraph {
 				end := min(i+chunkSizeForDepGraph, len(blk.Txs))
 				txsBatchForDependencyGraph.Write(&dependencygraph.TransactionBatch{
@@ -419,8 +419,8 @@ func (c *Service) sendTxStatus(
 }
 
 func (c *Service) monitorQueues(ctx context.Context) {
-	// TODO: make sampling time configurable
-	ticker := time.NewTicker(100 * time.Millisecond)
+	ticker := time.NewTicker(c.config.QueueMonitorSamplingTime)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():

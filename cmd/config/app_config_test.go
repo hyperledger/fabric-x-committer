@@ -155,8 +155,11 @@ func TestReadConfigCoordinator(t *testing.T) {
 			DependencyGraph: &coordinator.DependencyGraphConfig{
 				NumOfLocalDepConstructors: coordinator.DefaultNumOfLocalDepConstructors,
 				WaitingTxsLimit:           coordinator.DefaultWaitingTxsLimit,
+				ChunkSize:                 coordinator.DefaultChunkSize,
+				QueueMonitorSamplingTime:  coordinator.DefaultQueueMonitorSamplingTime,
 			},
 			ChannelBufferSizePerGoroutine: coordinator.DefaultChannelBufferSizePerGoroutine,
+			QueueMonitorSamplingTime:      coordinator.DefaultQueueMonitorSamplingTime,
 		},
 	}, {
 		name:           "sample",
@@ -172,8 +175,11 @@ func TestReadConfigCoordinator(t *testing.T) {
 			DependencyGraph: &coordinator.DependencyGraphConfig{
 				NumOfLocalDepConstructors: coordinator.DefaultNumOfLocalDepConstructors,
 				WaitingTxsLimit:           coordinator.DefaultWaitingTxsLimit,
+				ChunkSize:                 coordinator.DefaultChunkSize,
+				QueueMonitorSamplingTime:  coordinator.DefaultQueueMonitorSamplingTime,
 			},
 			ChannelBufferSizePerGoroutine: coordinator.DefaultChannelBufferSizePerGoroutine,
+			QueueMonitorSamplingTime:      coordinator.DefaultQueueMonitorSamplingTime,
 		},
 	}}
 

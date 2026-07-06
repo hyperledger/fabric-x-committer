@@ -76,8 +76,7 @@ func (m *Manager) Run(ctx context.Context) {
 }
 
 func (m *Manager) monitorQueues(ctx context.Context) {
-	// TODO: make sampling time configurable
-	ticker := time.NewTicker(100 * time.Millisecond)
+	ticker := time.NewTicker(m.parameters.QueueMonitorSamplingTime)
 	for {
 		select {
 		case <-ctx.Done():

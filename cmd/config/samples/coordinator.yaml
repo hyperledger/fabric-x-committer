@@ -84,6 +84,14 @@ dependency-graph:
   # coordinator applies backpressure to upstream services.
   # Default: 100,000
   waiting-txs-limit: 100_000
+  # Maximum number of transactions to process in a single chunk for the dependency graph.
+  # This value is used to split large transaction batches into smaller chunks.
+  # The actual chunk size is the minimum of this value and waiting-txs-limit.
+  # Default: 500
+  chunk-size: 500
+  # Sampling interval for monitoring dependency graph queue sizes.
+  # Default: 100ms
+  queue-monitor-sampling-time: 100ms
 
 # Base buffer size per goroutine/endpoint for internal channels. The actual
 # buffer size is calculated as this value multiplied by the number of endpoints
@@ -91,6 +99,10 @@ dependency-graph:
 # constructors. Larger values reduce contention but increase memory usage proportionally.
 # Default: 10
 per-channel-buffer-size-per-goroutine: 10
+
+# Sampling interval for monitoring coordinator queue sizes.
+# Default: 100ms
+queue-monitor-sampling-time: 100ms
 
 # Logging configuration
 logging:
