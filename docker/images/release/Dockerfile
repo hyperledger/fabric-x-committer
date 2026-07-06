@@ -7,7 +7,7 @@
 ###########################################
 # Stage 1: Production runtime image
 ###########################################
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.6 AS prod
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8 AS prod
 
 ARG BIN
 ARG SRC_BIN_PATH
