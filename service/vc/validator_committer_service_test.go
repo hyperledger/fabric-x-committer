@@ -49,6 +49,7 @@ func TestVCSecureConnection(t *testing.T) {
 			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
 				t.Helper()
 				client := createValidatorAndCommitClientWithTLS(t, &env.ServerConfigs[0].GRPC.Endpoint, cfg)
+				// The GetNextBlockNumberToCommit RPC is used here to test the secure connection.
 				_, err := client.GetNextBlockNumberToCommit(ctx, nil)
 				return err
 			}
