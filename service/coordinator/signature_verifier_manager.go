@@ -108,9 +108,8 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 		logger.Infof("Client [%d] successfully created and connected to sv at %s", i, label)
 
 		g.Go(func() error {
-			// error should never occur unless there is a bug or malicious activity. Hence, it is fine to crash for now.
-			// TODO: initialize retry from config.
-			return retry.Sustain(eCtx, nil, func() error {
+			// Error should never occur unless there is a bug or malicious activity. Hence, it is fine to crash for now.
+			return retry.Sustain(eCtx, svm.config.clientConfig.Retry, func() error {
 				defer sv.recoverPendingTransactions(txBatchQueue)
 				return sv.sendTransactionsAndForwardStatus(
 					eCtx,
