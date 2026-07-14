@@ -832,12 +832,12 @@ func TestOrdererConfigPaths(t *testing.T) {
 	}{
 		{
 			name:             "invalid genesis block path",
-			genesisBlockPath: "/nonexistent/path/block.pb",
+			genesisBlockPath: "/tmp/nonexistent/path/block.pb",
 		},
 		{
 			name: "invalid consenter MSP directory",
 			consentersMSPIdentities: []*ordererdial.IdentityConfig{
-				{MspID: "OrdererMSP", MSPDir: "/nonexistent/msp"},
+				{MspID: "OrdererMSP", MSPDir: "/tmp/nonexistent/msp"},
 			},
 		},
 	} {
