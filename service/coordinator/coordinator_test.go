@@ -106,7 +106,6 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 			NumOfLocalDepConstructors: 3,
 			WaitingTxsLimit:           10,
 			ChunkSize:                 DefaultChunkSize,
-			QueueMonitorSamplingTime:  DefaultQueueMonitorSamplingTime,
 		},
 		ChannelBufferSizePerGoroutine: 2000,
 		QueueMonitorSamplingTime:      DefaultQueueMonitorSamplingTime,

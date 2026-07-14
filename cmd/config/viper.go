@@ -33,7 +33,6 @@ func NewViperWithCoordinatorDefaults() *viper.Viper {
 	v.SetDefault("dependency-graph.num-of-local-dep-constructors", coordinator.DefaultNumOfLocalDepConstructors)
 	v.SetDefault("dependency-graph.waiting-txs-limit", coordinator.DefaultWaitingTxsLimit)
 	v.SetDefault("dependency-graph.chunk-size", coordinator.DefaultChunkSize)
-	v.SetDefault("dependency-graph.queue-monitor-sampling-time", coordinator.DefaultQueueMonitorSamplingTime)
 	v.SetDefault("per-channel-buffer-size-per-goroutine", coordinator.DefaultChannelBufferSizePerGoroutine)
 	v.SetDefault("queue-monitor-sampling-time", coordinator.DefaultQueueMonitorSamplingTime)
 	return v

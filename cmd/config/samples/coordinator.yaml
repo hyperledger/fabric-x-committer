@@ -89,9 +89,6 @@ dependency-graph:
   # The actual chunk size is the minimum of this value and waiting-txs-limit.
   # Default: 500
   chunk-size: 500
-  # Sampling interval for monitoring dependency graph queue sizes.
-  # Default: 100ms
-  queue-monitor-sampling-time: 100ms
 
 # Base buffer size per goroutine/endpoint for internal channels. The actual
 # buffer size is calculated as this value multiplied by the number of endpoints

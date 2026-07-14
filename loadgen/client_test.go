@@ -176,7 +176,6 @@ func TestLoadGenForCoordinator(t *testing.T) {
 					NumOfLocalDepConstructors: 1,
 					WaitingTxsLimit:           100_000,
 					ChunkSize:                 coordinator.DefaultChunkSize,
-					QueueMonitorSamplingTime:  coordinator.DefaultQueueMonitorSamplingTime,
 				},
 				ChannelBufferSizePerGoroutine: 10,
 				QueueMonitorSamplingTime:      coordinator.DefaultQueueMonitorSamplingTime,

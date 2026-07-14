@@ -19,6 +19,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
+	"github.com/hyperledger/fabric-x-committer/service/coordinator"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -87,7 +88,7 @@ func BenchmarkDependencyGraph(b *testing.B) {
 								IncomingValidatedTxsNode:  val,
 								NumOfLocalDepConstructors: tc.workers,
 								WaitingTxsLimit:           20_000_000,
-								QueueMonitorSamplingTime:  100 * time.Millisecond,
+								QueueMonitorSamplingTime:  coordinator.DefaultQueueMonitorSamplingTime,
 								PrometheusMetricsProvider: monitoring.NewProvider(),
 							})
 
@@ -181,7 +182,7 @@ func TestDependencyGraphManager(t *testing.T) {
 				IncomingValidatedTxsNode:  validatedTxs,
 				NumOfLocalDepConstructors: 2,
 				WaitingTxsLimit:           waitingTXsLimit,
-				QueueMonitorSamplingTime:  100 * time.Millisecond,
+				QueueMonitorSamplingTime:  coordinator.DefaultQueueMonitorSamplingTime,
 				PrometheusMetricsProvider: monitoring.NewProvider(),
 			})
 

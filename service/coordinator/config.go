@@ -30,8 +30,6 @@ type (
 		WaitingTxsLimit           int `mapstructure:"waiting-txs-limit" validate:"required,gt=0"`
 		// ChunkSize defines the maximum number of transactions to process in a single chunk for the dependency graph.
 		ChunkSize int `mapstructure:"chunk-size" validate:"required,gt=0"`
-		// QueueMonitorSamplingTime defines the sampling interval for monitoring dependency graph queue sizes.
-		QueueMonitorSamplingTime time.Duration `mapstructure:"queue-monitor-sampling-time" validate:"required,gt=0"`
 	}
 )
 
