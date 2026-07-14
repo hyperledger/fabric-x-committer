@@ -385,7 +385,7 @@ func createTablesAndFunctionsForNamespaces(ctx context.Context, tx pgx.Tx, newNs
 		nsID := string(ns)
 		tableName := db.TableName(nsID)
 		logger.Infof("Creating table [%s] and required functions for namespace [%s]", tableName, ns)
-		query := db.CreateNsTables(nsID, tablets)
+		query := db.MakeNsTablesQuery(nsID, tablets)
 		if _, execErr := tx.Exec(ctx, query); execErr != nil {
 			return errors.Wrapf(
 				execErr,

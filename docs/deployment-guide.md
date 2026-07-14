@@ -159,9 +159,9 @@ Start the database cluster first and wait for it to be healthy before starting a
 
    - This command connects directly to the database and creates:
      - System tables (`tx_status`, `metadata`)
-     - System namespaces (`meta`, `config`)
+     - System namespaces (`_meta`, `_config`)
      - Required stored procedures
-   - This is a one-time administrative operation that must be performed before any db operation
+   - This is a one-time administrative operation that must be performed before booting the committer for the first time
    - The command is safe to run multiple times
 
 3. **Start Services** (any order after database is healthy and initialized)

@@ -106,7 +106,7 @@ func createAndStartContainerAndItsLogs(
 	ctx context.Context,
 	t *testing.T,
 	params createAndStartContainerParameters,
-) (<-chan container.WaitResponse, <-chan error) {
+) client.ContainerWaitResult {
 	t.Helper()
 	dockerClient := createDockerClient(t)
 	resp, err := dockerClient.ContainerCreate(ctx, client.ContainerCreateOptions{
@@ -123,12 +123,10 @@ func createAndStartContainerAndItsLogs(
 	})
 	_, err = dockerClient.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{})
 	require.NoError(t, err)
-	if !params.hostConfig.AutoRemove {
-		//nolint:contextcheck // We want to ensure cleanup when the test is done.
-		t.Cleanup(func() {
-			stopAndRemoveContainerByID(context.Background(), t, dockerClient, resp.ID)
-		})
-	}
+	//nolint:contextcheck // We want to ensure cleanup when the test is done.
+	t.Cleanup(func() {
+		stopAndRemoveContainerByID(context.Background(), t, dockerClient, resp.ID)
+	})
 	logs, err := dockerClient.ContainerLogs(ctx, resp.ID, client.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
@@ -141,7 +139,7 @@ func createAndStartContainerAndItsLogs(
 			t.Logf("[%s] logs ended with: %v", params.name, err)
 		}
 	}()
-	return resultChannels.Result, resultChannels.Error
+	return resultChannels
 }
 
 func monitorMetric(t *testing.T, metricsPort string, metricsTLS *connection.TLSConfig, waitForCount int) {

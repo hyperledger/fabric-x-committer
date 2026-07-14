@@ -97,7 +97,7 @@ func SetupSystemTablesAndNamespaces(
 	}
 
 	for _, nsID := range systemNamespaces {
-		query := CreateNsTables(nsID, tablePreSplitTablets)
+		query := MakeNsTablesQuery(nsID, tablePreSplitTablets)
 		if execErr := retry.ExecuteSQL(ctx, config.Retry, pool, query); execErr != nil {
 			return errors.Wrapf(
 				execErr,
@@ -109,8 +109,8 @@ func SetupSystemTablesAndNamespaces(
 	return nil
 }
 
-// CreateNsTables creates the table and functions for a namespace.
-func CreateNsTables(nsID string, tablets int) string {
+// MakeNsTablesQuery returns the query to create the table and functions for a namespace.
+func MakeNsTablesQuery(nsID string, tablets int) string {
 	query := FmtNsID(createNamespaceSQLStmt, nsID)
 	return fmtSplitIntoTablets(query, tablets)
 }

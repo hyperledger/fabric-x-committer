@@ -228,7 +228,7 @@ func TestValidateNamespaceReads(t *testing.T) {
 	}
 }
 
-func TestDBInit(t *testing.T) {
+func TestInsertNamespaceKeys(t *testing.T) {
 	t.Parallel()
 	env := NewDatabaseTestEnv(t)
 

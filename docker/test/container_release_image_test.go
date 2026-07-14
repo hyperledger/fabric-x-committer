@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
@@ -102,8 +103,20 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					// start a secured database node and return the db password.
 					params.dbPassword = startSecuredDatabaseNode(ctx, t, params.asNode(dbName))
 					// init the state DB and verify the operation succeeded.
-					resultCh, errCh := runDatabaseInitWithReleaseImage(ctx, t, params.asNode(vcName))
-					requireSuccessfulExecution(t, resultCh, errCh)
+					resChannels := runDatabaseInitWithReleaseImage(ctx, t, params.asNode(vcName))
+
+					dbInitCtx, dbInitCancel := context.WithTimeout(ctx, 30*time.Second)
+					t.Cleanup(dbInitCancel)
+
+					select {
+					case err := <-resChannels.Error:
+						require.NoError(t, err)
+					case status := <-resChannels.Result:
+						require.Zero(t, status.StatusCode)
+					case <-dbInitCtx.Done():
+						require.Fail(t, "timeout waiting for database initialization")
+					}
+
 					// start the orderer node.
 					startCommitterNodeWithTestImage(ctx, t, params.asNode(ordererName))
 					// start the committer nodes.
@@ -136,21 +149,26 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 func TestDatabaseInitFailureWithoutActiveDB(t *testing.T) {
 	t.Parallel()
 
-	params := startNodeParameters{
+	resChannels := runDatabaseInitWithReleaseImage(t.Context(), t, startNodeParameters{
+		node:          vcName,
 		tlsMode:       connection.NoneTLSMode,
 		dbType:        "none_activated_database",
 		dbInitTimeout: "10s",
 		artifactsPath: generateArtifacts(t),
-	}
-	resultCh, errorCh := runDatabaseInitWithReleaseImage(t.Context(), t, params.asNode(vcName))
+	})
 
 	// Expect the container to fail since there's no database available.
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(cancel)
+
 	select {
-	case status := <-resultCh:
+	case status := <-resChannels.Result:
 		t.Logf("exited with status code: %v", status.StatusCode)
 		require.NotZero(t, status.StatusCode, "container should have failed but exited with code 0")
-	case err := <-errorCh:
+	case err := <-resChannels.Error:
 		require.Error(t, err, "container should have failed but exited with no error")
+	case <-ctx.Done():
+		require.Fail(t, "timeout waiting for container to fail")
 	}
 }
 
@@ -204,7 +222,7 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 // runDatabaseInitWithReleaseImage runs init-db command in a temporary container.
 func runDatabaseInitWithReleaseImage(
 	ctx context.Context, t *testing.T, params startNodeParameters,
-) (<-chan container.WaitResponse, <-chan error) {
+) client.ContainerWaitResult {
 	t.Helper()
 
 	dbInitConfigPath := filepath.Join(containerConfigPath, params.node)
@@ -406,21 +424,4 @@ func mustGetWD(t *testing.T) string {
 	wd, err := os.Getwd()
 	require.NoError(t, err)
 	return wd
-}
-
-func requireSuccessfulExecution(
-	t *testing.T, resultCh <-chan container.WaitResponse, errCh <-chan error,
-) {
-	t.Helper()
-	select {
-	case err := <-errCh:
-		require.NoError(t, err)
-	case status := <-resultCh:
-		require.Zero(
-			t,
-			status.StatusCode,
-			"container failed with exit code %d",
-			status.StatusCode,
-		)
-	}
 }
