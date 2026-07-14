@@ -91,7 +91,7 @@ func TestLoadOrdererDeliveryParametersFromConfig(t *testing.T) {
 		{
 			name:                "error when config block file does not exist",
 			faultToleranceLevel: ordererdial.BFT,
-			configBlockPath:     "/nonexistent/path/config-block.pb",
+			configBlockPath:     "/tmp/nonexistent/path/config-block.pb",
 			expectError:         true,
 		},
 		{
@@ -106,9 +106,9 @@ func TestLoadOrdererDeliveryParametersFromConfig(t *testing.T) {
 			configBlockPath:     e.OrdererConnConfig.LatestKnownConfigBlockPath,
 			tlsConfig: connection.TLSConfig{
 				Mode:        connection.MutualTLSMode,
-				CertPath:    "/nonexistent/cert.pem",
-				KeyPath:     "/nonexistent/key.pem",
-				CACertPaths: []string{"/nonexistent/ca.pem"},
+				CertPath:    "/tmp/nonexistent/cert.pem",
+				KeyPath:     "/tmp/nonexistent/key.pem",
+				CACertPaths: []string{"/tmp/nonexistent/ca.pem"},
 			},
 			expectError: true,
 		},
