@@ -35,9 +35,9 @@ const (
 	keepAliveTime    = 5 * time.Second
 	keepAliveTimeout = 10 * time.Second
 
-	// The server should close the connection within Time and Timeout,
-	// but we add some amount of time so the context will not finish before.
-	connectionClosingTime = keepAliveTime + keepAliveTimeout + 2*time.Minute
+	// The server should close the connection within Time + Timeout,
+	// but we allow some headroom to avoid racing the context timeout.
+	maxConnectionClosingTime = keepAliveTime + keepAliveTimeout + 2*time.Minute
 
 	localhostDynamicPort = "localhost:0"
 	dummyTxID            = "dummy-tx"
@@ -83,7 +83,7 @@ func TestKeepAliveDeadConnectionDetection(t *testing.T) {
 
 				return func(t *testing.T) {
 					t.Helper()
-					receiveErr := receiveWithin(t, stream, connectionClosingTime)
+					receiveErr := receiveWithin(t, stream, maxConnectionClosingTime)
 					require.Error(t, receiveErr, "server should close the dead connection via keep-alive")
 					require.Equal(
 						t,
@@ -142,7 +142,7 @@ func TestKeepAliveDeadConnectionDetection(t *testing.T) {
 						require.NoError(ct, stream3.Send(&committerpb.NotificationRequest{
 							TxStatusRequest: &committerpb.TxIDsBatch{TxIds: []string{dummyTxID}},
 						}))
-					}, connectionClosingTime, 500*time.Millisecond)
+					}, maxConnectionClosingTime, 500*time.Millisecond)
 				}
 			},
 		},
@@ -173,7 +173,7 @@ func TestKeepAliveDeadConnectionDetection(t *testing.T) {
 					t.Helper()
 					require.EventuallyWithT(t, func(ct *assert.CollectT) {
 						require.NotEqual(ct, connectivity.Ready, proxiedConn.GetState())
-					}, connectionClosingTime, 200*time.Millisecond)
+					}, maxConnectionClosingTime, 200*time.Millisecond)
 				}
 			},
 		},

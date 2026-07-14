@@ -95,8 +95,6 @@ type (
 		// If not explicitly set in config, viper default of 10 is used.
 		MaxConcurrentStreams int
 
-		// Keep-alive configuration for exposing API services (sidecar, query) for testing.
-		//
 		// KeepAliveTime is the duration the server waits when it doesn't see any activity before it
 		// pings the client to see if the transport is still alive.
 		KeepAliveTime time.Duration
@@ -105,7 +103,7 @@ type (
 		KeepAliveTimeout time.Duration
 		// KeepAlivePermitWithoutStream determine if the server
 		// allows keepalive pings even when there are no active streams.
-		KeepAlivePermitWithoutStream bool // Allow clients to ping without active streams
+		KeepAlivePermitWithoutStream bool
 
 		// VCMinTransactionBatchSize configures the minimum batch size for VC service.
 		VCMinTransactionBatchSize int

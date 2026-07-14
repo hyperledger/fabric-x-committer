@@ -21,18 +21,21 @@ server:
       - /root/artifacts/peerOrganizations/peer-org-0.com/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
   keep-alive:
     params:
-      # Duration after which the server sends a keepalive ping if no data has been
-      # transmitted on the connection. Helps detect dead connections and prevent resource leaks.
+      # After a duration of this time if the server doesn't see any activity it
+      # pings the client to see if the transport is still alive.
+      # If set below 1s, a minimum value of 1s will be used instead.
       time: 60s
-      # How long the server waits for a keepalive acknowledgment before closing the connection.
-      # Should be longer than params.time to allow for network delays.
+      # After having pinged for keepalive check, the server waits for a duration
+      # of Timeout and if no activity is seen even after that the connection is
+      # closed.
       timeout: 10s
     enforcement-policy:
-      # Minimum time clients must wait between sending keepalive pings. Prevents clients
-      # from overwhelming the server with excessive pings. Clients violating this are disconnected.
+      # MinTime is the minimum amount of time a client should wait before sending
+      # a keepalive ping.
       min-time: 60s
-      # Controls whether clients can send keepalive pings when no active streams exist.
-      # Set to false to prevent unnecessary pings and reduce server load.
+      # If true, server allows keepalive pings even when there are no active streams(RPCs).
+      # If false, and a client sends ping when there are no active
+      # streams, the server will send GOAWAY and close the connection.
       permit-without-stream: false
   # Maximum number of concurrent streaming RPCs (Deliver + Notification) allowed per
   # client connection. Limits resource usage but may cause connection failures if clients
