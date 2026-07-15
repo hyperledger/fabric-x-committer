@@ -25,7 +25,7 @@ type (
 		HTTP ServerConfig `mapstructure:"monitoring"`
 		// ServiceStartupTimeout is the maximum time to wait for a service
 		// to become ready before startup fails.
-		ServiceStartupTimeout time.Duration `mapstructure:"startup-timeout"`
+		ServiceStartupTimeout time.Duration `mapstructure:"startup-timeout" default:"5m"`
 	}
 
 	// ServerConfig describes the connection parameter for a server.

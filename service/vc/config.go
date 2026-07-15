@@ -20,20 +20,9 @@ type Config struct {
 
 // ResourceLimitsConfig is the configuration for the resource limits.
 type ResourceLimitsConfig struct {
-	MaxWorkersForPreparer             int           `mapstructure:"max-workers-for-preparer" validate:"required,gt=0"`
-	MaxWorkersForValidator            int           `mapstructure:"max-workers-for-validator" validate:"required,gt=0"`
-	MaxWorkersForCommitter            int           `mapstructure:"max-workers-for-committer" validate:"required,gt=0"`
-	MinTransactionBatchSize           int           `mapstructure:"min-transaction-batch-size" validate:"required,gt=0"`
-	TimeoutForMinTransactionBatchSize time.Duration `mapstructure:"timeout-for-min-transaction-batch-size" validate:"required,gt=0"` //nolint:lll,revive
+	MaxWorkersForPreparer             int           `mapstructure:"max-workers-for-preparer" default:"1" validate:"gt=0"`                //nolint:lll,revive
+	MaxWorkersForValidator            int           `mapstructure:"max-workers-for-validator" default:"1" validate:"gt=0"`               //nolint:lll,revive
+	MaxWorkersForCommitter            int           `mapstructure:"max-workers-for-committer" default:"20" validate:"gt=0"`              //nolint:lll,revive
+	MinTransactionBatchSize           int           `mapstructure:"min-transaction-batch-size" default:"1" validate:"gt=0"`              //nolint:lll,revive
+	TimeoutForMinTransactionBatchSize time.Duration `mapstructure:"timeout-for-min-transaction-batch-size" default:"5s" validate:"gt=0"` //nolint:lll,revive
 }
-
-// Default configuration values for the validator-committer service.
-const (
-	DefaultServerPort              = 6001
-	DefaultMonitoringPort          = 2116
-	DefaultMaxWorkersForPreparer   = 1
-	DefaultMaxWorkersForValidator  = 1
-	DefaultMaxWorkersForCommitter  = 20
-	DefaultMinTransactionBatchSize = 1
-	DefaultTimeoutForMinBatchSize  = 5 * time.Second
-)

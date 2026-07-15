@@ -400,7 +400,7 @@ func TestNotifierGlobalLimit(t *testing.T) {
 	t.Parallel()
 
 	env := newNotifierTestEnvWithConfig(t, 1, &NotificationServiceConfig{
-		MaxTimeout:         DefaultNotificationMaxTimeout,
+		MaxTimeout:         time.Minute,
 		MaxActiveTxIDs:     5,
 		MaxTxIDsPerRequest: 10,
 		StreamWriteTimeout: 2 * time.Minute,
@@ -524,7 +524,7 @@ func newSingleTxSubscription(
 	subs := &subscriptions{
 		txIDToRequests:     make(map[string]map[*notificationRequest]any),
 		availableSlots:     1,
-		streamWriteTimeout: DefaultStreamWriteTimeout,
+		streamWriteTimeout: 30 * time.Second,
 	}
 	rejected, uniqueNew := subs.addRequest(req)
 	require.Empty(tb, rejected)
@@ -535,10 +535,10 @@ func newSingleTxSubscription(
 func newNotifierTestEnv(tb testing.TB, numOfClients int) *notifierTestEnv {
 	tb.Helper()
 	return newNotifierTestEnvWithConfig(tb, numOfClients, &NotificationServiceConfig{
-		MaxTimeout:         DefaultNotificationMaxTimeout,
-		MaxActiveTxIDs:     DefaultMaxActiveTxIDs,
-		MaxTxIDsPerRequest: DefaultMaxTxIDsPerRequest,
-		StreamWriteTimeout: DefaultStreamWriteTimeout,
+		MaxTimeout:         time.Minute,
+		MaxActiveTxIDs:     100_000,
+		MaxTxIDsPerRequest: 1000,
+		StreamWriteTimeout: 30 * time.Second,
 	})
 }
 
@@ -546,11 +546,11 @@ func newNotifierTestEnvWithConfig(tb testing.TB, numOfClients int, conf *Notific
 	tb.Helper()
 	metrics := newPerformanceMetrics()
 	env := &notifierTestEnv{
-		n:              newNotifier(DefaultBufferSize, conf, metrics),
+		n:              newNotifier(100, conf, metrics),
 		metrics:        metrics,
 		responseQueues: make([]channel.ReaderWriter[*committerpb.NotificationResponse], numOfClients),
 	}
-	statusQueue := make(chan []*committerpb.TxStatus, DefaultBufferSize)
+	statusQueue := make(chan []*committerpb.TxStatus, 100)
 	env.requestQueue = channel.NewWriter(tb.Context(), env.n.requestQueue)
 	env.statusQueue = channel.NewWriter(tb.Context(), statusQueue)
 	for i := range env.responseQueues {

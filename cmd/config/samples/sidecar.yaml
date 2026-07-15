@@ -44,11 +44,13 @@ server:
   rate-limit:
     # Maximum number of requests per second allowed.
     # Set to 0 to disable rate limiting.
+    # Default: 5,000
     requests-per-second: 0
     # Maximum number of requests allowed in a single burst.
     # When rate limiting is enabled (requests-per-second > 0):
     #   - Must be greater than 0
     #   - Must be less than or equal to requests-per-second
+    # Default: 1,000
     burst: 0
 # Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
 monitoring:

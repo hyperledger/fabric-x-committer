@@ -31,7 +31,7 @@ import (
 )
 
 type loggingConfig struct {
-	Logging flogging.Config `mapstructure:"logging"`
+	Logging flogging.Config `mapstructure:"logging" default:"logSpec=info:grpc=error"`
 }
 
 var (
@@ -124,7 +124,7 @@ func readYamlAndSetupLogging[T any](v *viper.Viper, configPath string) (*T, *ser
 // It automatically set configuration via environment variables.
 func unmarshal(v *viper.Viper, items ...any) error {
 	for _, c := range items {
-		setEnvVars(v, reflect.TypeOf(c))
+		setDefaultsAndEnv(v, reflect.TypeOf(c))
 	}
 
 	decoders := decoderHook()

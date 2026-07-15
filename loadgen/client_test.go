@@ -175,10 +175,10 @@ func TestLoadGenForCoordinator(t *testing.T) {
 				DependencyGraph: &coordinator.DependencyGraphConfig{
 					NumOfLocalDepConstructors: 1,
 					WaitingTxsLimit:           100_000,
-					ChunkSize:                 coordinator.DefaultChunkSize,
+					ChunkSize:                 500,
 				},
 				ChannelBufferSizePerGoroutine: 10,
-				QueueMonitorSamplingTime:      coordinator.DefaultQueueMonitorSamplingTime,
+				QueueMonitorSamplingTime:      100 * time.Millisecond,
 			}
 
 			service := coordinator.NewCoordinatorService(cConf)
@@ -222,16 +222,16 @@ func TestLoadGenForSidecar(t *testing.T) {
 			sidecarConf := &sidecar.Config{
 				LastCommittedBlockSetInterval: 100 * time.Millisecond,
 				WaitingTxsLimit:               5000,
-				ChannelBufferSize:             sidecar.DefaultBufferSize,
+				ChannelBufferSize:             100,
 				Committer: test.NewTLSClientConfig(
 					e.ClientTLSConfig,
 					&coordinatorServer.Configs[0].GRPC.Endpoint,
 				),
 				Notification: sidecar.NotificationServiceConfig{
-					MaxTimeout:         sidecar.DefaultNotificationMaxTimeout,
-					MaxActiveTxIDs:     sidecar.DefaultMaxActiveTxIDs,
-					MaxTxIDsPerRequest: sidecar.DefaultMaxTxIDsPerRequest,
-					StreamWriteTimeout: sidecar.DefaultStreamWriteTimeout,
+					MaxTimeout:         time.Minute,
+					MaxActiveTxIDs:     100_000,
+					MaxTxIDsPerRequest: 1000,
+					StreamWriteTimeout: 30 * time.Second,
 				},
 				Ledger: sidecar.LedgerConfig{
 					Path: t.TempDir(),
@@ -266,16 +266,16 @@ func TestLoadGenForOrderer(t *testing.T) {
 			sidecarConf := &sidecar.Config{
 				LastCommittedBlockSetInterval: 100 * time.Millisecond,
 				WaitingTxsLimit:               5000,
-				ChannelBufferSize:             sidecar.DefaultBufferSize,
+				ChannelBufferSize:             100,
 				Committer: test.NewTLSClientConfig(
 					e.ClientTLSConfig,
 					&coordinatorServer.Configs[0].GRPC.Endpoint,
 				),
 				Notification: sidecar.NotificationServiceConfig{
-					MaxTimeout:         sidecar.DefaultNotificationMaxTimeout,
-					MaxActiveTxIDs:     sidecar.DefaultMaxActiveTxIDs,
-					MaxTxIDsPerRequest: sidecar.DefaultMaxTxIDsPerRequest,
-					StreamWriteTimeout: sidecar.DefaultStreamWriteTimeout,
+					MaxTimeout:         time.Minute,
+					MaxActiveTxIDs:     100_000,
+					MaxTxIDsPerRequest: 1000,
+					StreamWriteTimeout: 30 * time.Second,
 				},
 				Ledger: sidecar.LedgerConfig{
 					Path: t.TempDir(),

@@ -11,16 +11,7 @@ import (
 
 	"github.com/spf13/viper"
 
-	"github.com/hyperledger/fabric-x-committer/loadgen"
-	"github.com/hyperledger/fabric-x-committer/service/coordinator"
-	"github.com/hyperledger/fabric-x-committer/service/query"
-	"github.com/hyperledger/fabric-x-committer/service/sidecar"
-	"github.com/hyperledger/fabric-x-committer/service/vc"
-	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/deliverorderer"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
-	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
 var (
@@ -28,106 +19,72 @@ var (
 	scEnvPrefix       = "SC_"
 )
 
+// Default per-service ports. Ports are the only defaults kept as constants: they differ per service
+// (so a shared struct tag can't express them), while every other default is a `default:"..."` tag.
+const (
+	coordinatorServerPort     = 9001
+	coordinatorMonitoringPort = 2119
+	sidecarServerPort         = 4001
+	sidecarMonitoringPort     = 2114
+	verifierServerPort        = 5001
+	verifierMonitoringPort    = 2115
+	vcServerPort              = 6001
+	vcMonitoringPort          = 2116
+	queryServerPort           = 7001
+	queryMonitoringPort       = 2117
+	loadgenServerPort         = 8001
+	loadgenMonitoringPort     = 2118
+)
+
 // NewViperWithCoordinatorDefaults returns a viper instance with the coordinator default values.
 func NewViperWithCoordinatorDefaults() *viper.Viper {
-	v := newViperWithServiceDefault("coordinator", coordinator.DefaultServerPort, coordinator.DefaultMonitoringPort)
-	v.SetDefault("dependency-graph.num-of-local-dep-constructors", coordinator.DefaultNumOfLocalDepConstructors)
-	v.SetDefault("dependency-graph.waiting-txs-limit", coordinator.DefaultWaitingTxsLimit)
-	v.SetDefault("dependency-graph.chunk-size", coordinator.DefaultChunkSize)
-	v.SetDefault("per-channel-buffer-size-per-goroutine", coordinator.DefaultChannelBufferSizePerGoroutine)
-	v.SetDefault("queue-monitor-sampling-time", coordinator.DefaultQueueMonitorSamplingTime)
+	v := newViperWithServiceDefault("coordinator", coordinatorServerPort, coordinatorMonitoringPort)
+	setEndpoint(v, "verifier.endpoints", verifierServerPort)
+	setEndpoint(v, "validator-committer.endpoints", vcServerPort)
 	return v
 }
 
 // NewViperWithSidecarDefaults returns a viper instance with the sidecar default values.
 func NewViperWithSidecarDefaults() *viper.Viper {
-	v := newViperWithServiceDefault("sidecar", sidecar.DefaultServerPort, sidecar.DefaultMonitoringPort)
-	v.SetDefault("committer.endpoint",
-		(&connection.Endpoint{Host: connection.DefaultHost, Port: coordinator.DefaultServerPort}).String())
-	v.SetDefault("ledger.path", "./ledger/")
-	v.SetDefault("notification.max-timeout", sidecar.DefaultNotificationMaxTimeout)
-	v.SetDefault("notification.max-active-tx-ids", sidecar.DefaultMaxActiveTxIDs)
-	v.SetDefault("notification.max-tx-ids-per-request", sidecar.DefaultMaxTxIDsPerRequest)
-	v.SetDefault("notification.stream-write-timeout", sidecar.DefaultStreamWriteTimeout)
-	v.SetDefault("last-committed-block-set-interval", sidecar.DefaultLastCommittedBlockSetInterval)
-	v.SetDefault("waiting-txs-limit", sidecar.DefaultWaitingTxsLimit)
-	v.SetDefault("channel-buffer-size", sidecar.DefaultBufferSize)
-	v.SetDefault("server.max-concurrent-streams", sidecar.DefaultMaxConcurrentStreams)
-	v.SetDefault("orderer.suspicion-grace-period-per-block", deliverorderer.DefaultSuspicionGracePeriodPerBlock)
+	v := newViperWithServiceDefault("sidecar", sidecarServerPort, sidecarMonitoringPort)
+	setEndpoint(v, "committer.endpoint", coordinatorServerPort)
+	setClientFacingServerLimits(v)
 	return v
 }
 
 // NewViperWithVerifierDefaults returns a viper instance with the verifier default values.
 func NewViperWithVerifierDefaults() *viper.Viper {
-	v := newViperWithServiceDefault("verifier", verifier.DefaultServerPort, verifier.DefaultMonitoringPort)
-	v.SetDefault("parallelism", verifier.DefaultParallelism)
-	v.SetDefault("batch-time-cutoff", verifier.DefaultBatchTimeCutoff)
-	v.SetDefault("batch-size-cutoff", verifier.DefaultBatchSizeCutoff)
-	v.SetDefault("channel-buffer-size", verifier.DefaultChannelBufferSize)
-	return v
+	return newViperWithServiceDefault("verifier", verifierServerPort, verifierMonitoringPort)
 }
 
 // NewViperWithVCDefaults returns a viper instance with the VC default values.
 func NewViperWithVCDefaults() *viper.Viper {
-	v := newViperWithServiceDefault("vc", vc.DefaultServerPort, vc.DefaultMonitoringPort)
-	defaultDBFlags(v)
-	// defaults for ResourceLimitsConfig
-	limitPrefix := "resource-limits."
-	v.SetDefault(limitPrefix+"max-workers-for-preparer", vc.DefaultMaxWorkersForPreparer)
-	v.SetDefault(limitPrefix+"max-workers-for-validator", vc.DefaultMaxWorkersForValidator)
-	v.SetDefault(limitPrefix+"max-workers-for-committer", vc.DefaultMaxWorkersForCommitter)
-	v.SetDefault(limitPrefix+"min-transaction-batch-size", vc.DefaultMinTransactionBatchSize)
-	v.SetDefault(limitPrefix+"timeout-for-min-transaction-batch-size", vc.DefaultTimeoutForMinBatchSize)
-	return v
+	return newViperWithServiceDefault("vc", vcServerPort, vcMonitoringPort)
 }
 
 // NewViperWithQueryDefaults returns a viper instance with the query-service default values.
 func NewViperWithQueryDefaults() *viper.Viper {
-	v := newViperWithServiceDefault("query", query.DefaultServerPort, query.DefaultMonitoringPort)
-	defaultDBFlags(v)
-	v.SetDefault("server.rate-limit.requests-per-second", query.DefaultRequestsPerSecond)
-	v.SetDefault("server.rate-limit.burst", query.DefaultBurst)
-	v.SetDefault("min-batch-keys", query.DefaultMinBatchKeys)
-	v.SetDefault("max-batch-wait", query.DefaultMaxBatchWait)
-	v.SetDefault("view-aggregation-window", query.DefaultViewAggregationWindow)
-	v.SetDefault("max-aggregated-views", query.DefaultMaxAggregatedViews)
-	v.SetDefault("max-active-views", query.DefaultMaxActiveViews)
-	v.SetDefault("max-view-timeout", query.DefaultMaxViewTimeout)
-	v.SetDefault("max-request-keys", query.DefaultMaxRequestKeys)
-	v.SetDefault("tls-refresh-interval", query.DefaultTLSRefreshInterval)
-	return v
-}
-
-// NewViperWithDBDefaults returns a viper instance with only the database default values.
-// It is agnostic to other service-specific fields, so it can read the database configuration
-// from any service's config file (e.g., VC or query).
-func NewViperWithDBDefaults() *viper.Viper {
-	v := NewViperWithLoggingDefault("db")
-	defaultDBFlags(v)
+	v := newViperWithServiceDefault("query", queryServerPort, queryMonitoringPort)
+	setClientFacingServerLimits(v)
 	return v
 }
 
 // NewViperWithLoadGenDefaults returns a viper instance with the load generator default values.
 func NewViperWithLoadGenDefaults() *viper.Viper {
-	return newViperWithServiceDefault("loadgen", loadgen.DefaultServerPort, loadgen.DefaultMonitoringPort)
+	return newViperWithServiceDefault("loadgen", loadgenServerPort, loadgenMonitoringPort)
 }
 
 // NewViperWithOrdererDefaults returns a viper instance with the mock-orderer service default values.
 func NewViperWithOrdererDefaults() *viper.Viper {
-	v := NewViperWithLoggingDefault("orderer")
-	v.SetDefault("readiness-timeout", serve.DefaultServiceStartupTimeout)
-	return v
+	return NewViperWithLoggingDefault("orderer")
 }
 
-// newViperWithServiceDefault returns a viper instance with a service default values.
+// newViperWithServiceDefault returns a viper instance with a service's default server and monitoring
+// endpoints.
 func newViperWithServiceDefault(serviceName string, servicePort, monitoringPort int) *viper.Viper {
 	v := NewViperWithLoggingDefault(serviceName)
-	v.SetDefault("server.endpoint", &connection.Endpoint{Host: connection.DefaultHost, Port: servicePort})
-	v.SetDefault("monitoring.endpoint", &connection.Endpoint{Host: connection.DefaultHost, Port: monitoringPort})
-	// Rate limiting disabled by default (0 = disabled)
-	v.SetDefault("server.rate-limit", &serve.RateLimitConfig{})
-	v.SetDefault("monitoring.rate-limit", &serve.RateLimitConfig{})
-	v.SetDefault("startup-timeout", serve.DefaultServiceStartupTimeout)
+	setEndpoint(v, "server.endpoint", servicePort)
+	setEndpoint(v, "monitoring.endpoint", monitoringPort)
 	return v
 }
 
@@ -137,20 +94,19 @@ func NewViperWithLoggingDefault(serviceName string) *viper.Viper {
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(envStringReplacer)
 	v.SetEnvPrefix(strings.ToUpper(scEnvPrefix + serviceName))
-	v.SetDefault("logging.logSpec", "info")
-	v.SetDefault("logging.format", "")
 	return v
 }
 
-// defaultDBFlags sets the default DB parameters.
-func defaultDBFlags(v *viper.Viper) {
-	prefix := "database."
-	v.SetDefault(prefix+"endpoints", []*connection.Endpoint{
-		{Host: statedb.DefaultEndpointHost, Port: statedb.DefaultEndpointPort},
-	})
-	v.SetDefault(prefix+"database", statedb.DefaultName)
-	v.SetDefault(prefix+"max-connections", statedb.DefaultMaxConnections)
-	v.SetDefault(prefix+"min-connections", statedb.DefaultMinConnections)
-	// We allow 10 minutes by default for a DB recovery.
-	v.SetDefault(prefix+"retry.max-elapsed-time", statedb.DefaultRetryMaxElapsedTime)
+// setClientFacingServerLimits sets the gRPC rate-limit and max-concurrent-streams defaults for the
+// client-facing services (query, sidecar); internal services are left unlimited.
+func setClientFacingServerLimits(v *viper.Viper) {
+	v.SetDefault("server.rate-limit.requests-per-second", 5_000)
+	v.SetDefault("server.rate-limit.burst", 1_000)
+	v.SetDefault("server.max-concurrent-streams", 10)
+}
+
+// setEndpoint registers a default "localhost:port" endpoint at the given viper key, decoded into a
+// single endpoint or a one-element list depending on the target field.
+func setEndpoint(v *viper.Viper, key string, port int) {
+	v.SetDefault(key, (&connection.Endpoint{Host: connection.DefaultHost, Port: port}).String())
 }
