@@ -129,7 +129,11 @@ func (c *channel[T]) ReadWithTimeout(timeout time.Duration) (T, bool) {
 // Write one value to the channel.
 // Returns false if the context is done.
 func (c *channel[T]) Write(value T) bool {
-	if c.output == nil || c.ctx.Err() != nil {
+	if c.output == nil {
+		// Writing to `nil` channel is a no-op in Go, so it cannot fail.
+		return true
+	}
+	if c.ctx.Err() != nil {
 		return false
 	}
 	select {
@@ -143,7 +147,11 @@ func (c *channel[T]) Write(value T) bool {
 // WriteWithTimeout one value to the channel.
 // Returns false if the channel is closed, timeout occurred, or the context is done.
 func (c *channel[T]) WriteWithTimeout(value T, timeout time.Duration) bool {
-	if c.output == nil || c.ctx.Err() != nil {
+	if c.output == nil {
+		// Writing to `nil` channel is a no-op in Go, so it cannot fail.
+		return true
+	}
+	if c.ctx.Err() != nil {
 		return false
 	}
 	select {

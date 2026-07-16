@@ -64,10 +64,14 @@ def print_all_metrics_from_content(content: str):
             print_single_metric_from_block(metric_type, is_vec, params_block)
             continue
 
+        params_block = extract_block(params_block, "{}")
+        if not params_block:
+            continue
+
         # match_type == 'method'
         package_name, function_name = rest
 
-        # Determine the source file based on the package name
+        # Determine the source file based on the package name.
         source_file = repo_root_dir / "utils" / package_name / "metrics.go"
         if not source_file.exists():
             print(f"Warning: {source_file} not found", file=sys.stderr)
@@ -78,11 +82,13 @@ def print_all_metrics_from_content(content: str):
         if not func_body:
             continue
 
-        # Substitute params.Namespace and params.Subsystem in the function body
+        # Substitute "params.Namespace" and "params.Subsystem" in the function body.
         namespace = extract_field(params_block, "Namespace")
         func_body = re.sub(r'\bparams\.Namespace\b', f'"{namespace}"', func_body)
         subsystem = extract_field(params_block, "Subsystem")
         func_body = re.sub(r'\bparams\.Subsystem\b', f'"{subsystem}"', func_body)
+        # Substitute "params" with the actual params definition, so we can extract nested metrics.
+        func_body = re.sub(r'\bparams\b', f'monitoring.MetricsParameters{{{params_block}}}', func_body)
 
         # Extract metrics from the substituted function body
         print_all_metrics_from_content(func_body)

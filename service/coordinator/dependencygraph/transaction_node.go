@@ -46,7 +46,7 @@ type (
 		// Note that a transaction T2 can depend on another transaction T1 only if T1
 		// has arrived before T2 or T1 precedes T2 in transaction order in the block.
 		// Hence, we will not have cyclic dependencies.
-		dependsOnTxs TxNodeBatch
+		dependsOnTxs []*TransactionNode
 		// dependentTxs is a set of transactions that depend on this transaction.
 		// After validating this transaction, dependentTxs is used to remove dependencies
 		// from each dependent transaction.
@@ -59,7 +59,7 @@ type (
 	}
 
 	// TxNodeBatch is a batch of transaction nodes.
-	TxNodeBatch []*TransactionNode
+	TxNodeBatch = []*TransactionNode
 
 	// readWriteKeys holds the read and write keys of a transaction.
 	readWriteKeys struct {
