@@ -188,7 +188,7 @@ GetConfigTransaction(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*
 ```go
 NoPendingTransactionProcessing(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
 ```
-  * This API returns true when all previously submitted transactions have been processed.
+  * This API returns true when all previously submitted transactions have been processed. It is polled by the Sidecar during recovery, while no block-processing stream is active. Because the Validator-Committer keeps producing statuses into the coordinator's bounded status queue even when no stream is draining it, each call drains and discards any queued statuses. This frees the blocked Validator-Committer writers so processing can complete; discarding is safe because the statuses are already durable in the state database and the Sidecar recovers them from there. Without this drain, a backlog larger than the queue capacity would deadlock the recovery handshake.
 
 ## 7. Failure and Recovery
 
