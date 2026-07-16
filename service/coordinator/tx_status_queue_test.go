@@ -106,6 +106,36 @@ func TestTxStatusQueueCanceledBlockedWriteRollsBackCount(t *testing.T) {
 	require.Equal(t, 1, queue.len())
 }
 
+func TestTxStatusQueueDrain(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty queue drains nothing", func(t *testing.T) {
+		t.Parallel()
+
+		queue := newTxStatusQueue(2)
+		require.Zero(t, queue.drain())
+		require.Zero(t, queue.readyCount())
+		require.Zero(t, queue.len())
+	})
+
+	t.Run("drain removes all queued statuses and reports the count", func(t *testing.T) {
+		t.Parallel()
+
+		queue := newTxStatusQueue(2)
+		require.True(t, queue.write(t.Context(), txStatusBatch("tx-1", "tx-2")))
+		require.True(t, queue.write(t.Context(), txStatusBatch("tx-3", "tx-4", "tx-5")))
+		require.Equal(t, int32(5), queue.readyCount())
+		require.Equal(t, 2, queue.len())
+
+		require.Equal(t, int32(5), queue.drain())
+		require.Zero(t, queue.readyCount())
+		require.Zero(t, queue.len())
+
+		// Draining again is a no-op.
+		require.Zero(t, queue.drain())
+	})
+}
+
 func txStatusBatch(txIDs ...string) *committerpb.TxStatusBatch {
 	statuses := make([]*committerpb.TxStatus, len(txIDs))
 	for i, txID := range txIDs {

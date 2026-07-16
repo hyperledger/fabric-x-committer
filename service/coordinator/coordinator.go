@@ -273,7 +273,45 @@ func (c *Service) GetTransactionsStatus(
 }
 
 // NoPendingTransactionProcessing returns true when all previously submitted
-// transactions have been processed and the sidecar can safely reconnect.
+// transactions have been processed (validated and committed by the VC) and the
+// sidecar can safely reconnect. It is polled by the sidecar's
+// waitForIdleCoordinator during recovery, while no stream is active.
+//
+// Draining the status queue here is what breaks the deadlock described in
+// issue #616. The status queue (vcServiceToCoordinatorTxStatus) is filled by the
+// VC on the coordinator's lifetime context, but drained only by sendTxStatus,
+// which lives and dies with the sidecar stream. While the stream is inactive,
+// nothing drains the queue, yet the VC keeps forwarding statuses for the
+// in-flight transactions. Once the queue fills, the VC writers block on it. If
+// the number of in-flight transactions exceeds the queue capacity, readyCount
+// plateaus below numTxsInProgress and can never catch up, so the equality below
+// would never hold. The result is a circular wait: the sidecar cannot start a
+// new stream (and thus resume draining) until this call reports idle, but this
+// call cannot report idle until the VC — which is blocked on the full queue —
+// finishes. By draining the queue on every call we free space for the blocked
+// VC writers, let them finish producing, and let numTxsInProgress settle.
+//
+// Discarding the drained statuses is safe: the VC produces a status only after
+// the transaction is durably committed to the state DB, and the sidecar always
+// recovers statuses from the DB (via GetTransactionsStatus), never from this
+// queue. So while the stream is inactive these queued statuses have no consumer
+// and can be dropped.
+//
+// Accounting/invariants:
+//   - numTxsInProgress is a superset of readyCount: every status counted in
+//     readyCount was previously counted in numTxsInProgress at block receipt, and
+//     numTxsInProgress is decremented only when a status leaves the queue (by
+//     sendTxStatus or by the drain below, both of which decrement readyCount by
+//     the same amount). Draining therefore preserves numTxsInProgress >=
+//     readyCount >= 0, so the result is never negative.
+//   - Holding streamActive makes this mutually exclusive with the queue's only
+//     other reader, sendTxStatus (which runs under BlockProcessing's lock), and
+//     with receiveAndProcessBlock. VC writers may still run concurrently; that is
+//     safe because count is atomic and channels support concurrent send/receive.
+//   - After draining, readyCount is ~0, so the equality reduces to
+//     numTxsInProgress == 0, i.e. every submitted transaction has produced (and
+//     we have consumed) its status. When that holds the queue is empty, so a
+//     reconnecting stream starts clean with no stale statuses.
 func (c *Service) NoPendingTransactionProcessing(
 	context.Context,
 	*emptypb.Empty,
@@ -283,22 +321,8 @@ func (c *Service) NoPendingTransactionProcessing(
 	}
 	defer c.streamActive.Unlock()
 
-	// When the sidecar stream is inactive, numTxsInProgress is not updated
-	// because sendTxStatus cannot forward statuses. However, VC continues producing
-	// statuses into the queue. To compute the number of TXs still being processed
-	// (i.e., not yet computed by VC), we subtract readyCount (statuses already
-	// produced but not yet consumed by sendTxStatus) from numTxsInProgress.
-	//
-	// numTxsInProgress is a superset of readyCount: every status tracked by
-	// readyCount was previously counted in numTxsInProgress at block receipt,
-	// and numTxsInProgress is only decremented after sendTxStatus consumes from
-	// the queue (which decrements readyCount first). The two values are not read
-	// atomically, but numTxsInProgress is frozen while the stream is inactive
-	// (only receiveAndProcessBlock and sendTxStatus modify it, and both require
-	// an active stream). So the result is never negative.
-	//
-	// When numTxsInProgress equals readyCount, all previously submitted TXs
-	// have been processed and the sidecar can safely reconnect.
+	c.numTxsInProgress.Add(-c.queues.vcServiceToCoordinatorTxStatus.drain())
+
 	return wrapperspb.Bool(
 		c.numTxsInProgress.Load() == c.queues.vcServiceToCoordinatorTxStatus.readyCount(),
 	), nil

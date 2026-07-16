@@ -12,6 +12,8 @@ import (
 	"math"
 	"slices"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -320,9 +322,9 @@ func TestNoPendingTransactionProcessing(t *testing.T) {
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1})
 
 	// Seven transactions are still waiting for sidecar-visible final status. Five of
-	// those statuses are already queued in two batches. One queued status is a
-	// rejected transaction, proving rejected statuses are counted in the same unit
-	// as committed statuses.
+	// those statuses have already been produced by the VC and queued in two batches.
+	// One queued status is a rejected transaction, proving rejected statuses are
+	// counted in the same unit as committed statuses.
 	env.coordinator.numTxsInProgress.Store(7)
 
 	require.True(t, env.coordinator.queues.vcServiceToCoordinatorTxStatus.write(t.Context(), &committerpb.TxStatusBatch{
@@ -339,9 +341,60 @@ func TestNoPendingTransactionProcessing(t *testing.T) {
 		},
 	}))
 
+	// The stream is inactive, so the call drains and discards the 5 queued statuses,
+	// decrementing numTxsInProgress from 7 to 2. Two transactions still have no
+	// status yet (the VC has not produced them), so the coordinator is not idle.
 	idle, err := env.coordinator.NoPendingTransactionProcessing(t.Context(), nil)
 	require.NoError(t, err)
 	require.False(t, idle.GetValue())
+	require.Equal(t, int32(2), env.coordinator.numTxsInProgress.Load())
+	require.Zero(t, env.coordinator.queues.vcServiceToCoordinatorTxStatus.readyCount())
+}
+
+// TestNoPendingTransactionProcessingDrainsWhenStreamInactive reproduces the
+// deadlock described in issue #616. While the sidecar stream is inactive, the VC
+// keeps producing statuses into the bounded vcServiceToCoordinatorTxStatus queue,
+// but sendTxStatus (its only drainer) is gone with the stream. If the number of
+// in-flight transactions exceeds the queue capacity, the VC writers block on the
+// full queue, readyCount can never catch up to numTxsInProgress, and the idle
+// handshake never completes. NoPendingTransactionProcessing must therefore drain
+// the queue on each call so the VC keeps making progress and the coordinator
+// eventually reports idle. Without the drain, the polling loop below never
+// converges and the test times out.
+func TestNoPendingTransactionProcessingDrainsWhenStreamInactive(t *testing.T) {
+	t.Parallel()
+
+	const (
+		inFlight = 20
+		queueCap = 2 // Far smaller than inFlight, so the VC writer is forced to block.
+	)
+
+	c := &Service{
+		queues:           &channels{vcServiceToCoordinatorTxStatus: newTxStatusQueue(queueCap)},
+		numTxsInProgress: &atomic.Int32{},
+	}
+	c.numTxsInProgress.Store(inFlight)
+
+	// Simulate the VC forwarding one status per in-flight transaction. With a
+	// queue capacity of 2 and no active stream draining it, this goroutine blocks
+	// until NoPendingTransactionProcessing drains the queue.
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for i := range inFlight {
+			c.queues.vcServiceToCoordinatorTxStatus.write(t.Context(), txStatusBatch(strconv.Itoa(i)))
+		}
+	})
+
+	// Poll exactly like the sidecar's waitForIdleCoordinator.
+	require.Eventually(t, func() bool {
+		idle, err := c.NoPendingTransactionProcessing(t.Context(), nil)
+		require.NoError(t, err)
+		return idle.GetValue()
+	}, 5*time.Second, 10*time.Millisecond)
+
+	wg.Wait()
+	require.Zero(t, c.numTxsInProgress.Load())
+	require.Zero(t, c.queues.vcServiceToCoordinatorTxStatus.readyCount())
 }
 
 func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
