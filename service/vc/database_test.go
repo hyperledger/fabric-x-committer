@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v5/pgxpool"
 
-	"github.com/hyperledger/fabric-x-committer/utils/db"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
+	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
 const (
@@ -232,10 +232,10 @@ func TestInsertNamespaceKeys(t *testing.T) {
 	t.Parallel()
 	env := NewDatabaseTestEnv(t)
 
-	tableName := db.TableName(committerpb.MetaNamespaceID)
+	tableName := statedb.TableName(committerpb.MetaNamespaceID)
 	keys := [][]byte{[]byte("tx1"), []byte("tx2"), []byte("tx3"), []byte("tx4")}
 	ret := env.DB.pool.QueryRow(
-		t.Context(), db.FmtNsID(insertNsStatesSQLTempl, committerpb.MetaNamespaceID), keys, keys,
+		t.Context(), statedb.FmtNsID(insertNsStatesSQLTempl, committerpb.MetaNamespaceID), keys, keys,
 	)
 	duplicates, err := readArrayResult[[]byte](ret)
 	require.NoError(t, err)
@@ -325,7 +325,7 @@ func TestNewDatabaseTabletsWithDetection(t *testing.T) {
 	env := NewDatabaseTestEnv(t)
 
 	// Detect the actual DB type to know what to assert.
-	actuallyYugabyte, err := db.IsYugabyteDB(t.Context(), env.DB.pool)
+	actuallyYugabyte, err := statedb.IsYugabyteDB(t.Context(), env.DB.pool)
 	require.NoError(t, err)
 
 	env.DBConf.TablePreSplitTablets = 5

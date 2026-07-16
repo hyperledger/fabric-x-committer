@@ -15,7 +15,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/cmd/cliutil"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
-	"github.com/hyperledger/fabric-x-committer/utils/db"
+	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 
@@ -48,7 +48,7 @@ func TestInitStateDBCMD(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	t.Cleanup(cancel)
-	pool, err := db.NewPool(ctx, &db.Config{
+	pool, err := statedb.NewPool(ctx, &statedb.Config{
 		Endpoints:      conn.Endpoints,
 		Database:       conn.Database,
 		Username:       conn.User,

@@ -19,9 +19,9 @@ import (
 	"github.com/yugabyte/pgx/v5/pgxpool"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
-	"github.com/hyperledger/fabric-x-committer/utils/db"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
+	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
 const (
@@ -79,15 +79,15 @@ type (
 )
 
 // newDatabase creates a new database.
-func newDatabase(ctx context.Context, config *db.Config, metrics *perfMetrics) (*database, error) {
-	pool, err := db.NewPool(ctx, config)
+func newDatabase(ctx context.Context, config *statedb.Config, metrics *perfMetrics) (*database, error) {
+	pool, err := statedb.NewPool(ctx, config)
 	if err != nil {
 		return nil, err
 	}
 
 	logger.Infof("validator persister connected to database at [%s]", config.EndpointsString())
 
-	tablePreSplitTablets, err := db.GetTablePreSplitTablets(ctx, pool, config)
+	tablePreSplitTablets, err := statedb.GetTablePreSplitTablets(ctx, pool, config)
 	if err != nil {
 		pool.Close()
 		return nil, err
@@ -120,7 +120,7 @@ func (d *database) validateNamespaceReads(
 	// a common function for all namespace, we need to pass the table name as a parameter
 	// which makes the query dynamic and hence we lose the benefits of static SQL.
 	start := time.Now()
-	query := db.FmtNsID(validateReadsSQLTempl, nsID)
+	query := statedb.FmtNsID(validateReadsSQLTempl, nsID)
 
 	conflictIdx, err := retryQueryAndReadArrayResult[int](ctx, d, query, r.keys, r.versions)
 	if err != nil {
@@ -139,7 +139,7 @@ func (d *database) validateNamespaceReads(
 // queryVersionsIfPresent queries the versions for the given keys if they exist.
 func (d *database) queryVersionsIfPresent(ctx context.Context, nsID string, queryKeys [][]byte) (keyToVersion, error) {
 	start := time.Now()
-	query := db.FmtNsID(queryVersionsSQLTempl, nsID)
+	query := statedb.FmtNsID(queryVersionsSQLTempl, nsID)
 
 	foundKeys, foundVersions, err := retryQueryAndReadTwoItems[[]byte, int64](ctx, d, query, queryKeys)
 	if err != nil {
@@ -336,7 +336,7 @@ func (d *database) insertStates(
 			continue
 		}
 
-		q := db.FmtNsID(insertNsStatesSQLTempl, nsID)
+		q := statedb.FmtNsID(insertNsStatesSQLTempl, nsID)
 		ret := tx.QueryRow(ctx, q, writes.keys, writes.values)
 		violating, err := readArrayResult[[]byte](ret)
 		if err != nil {
@@ -365,7 +365,7 @@ func (d *database) updateStates(ctx context.Context, tx pgx.Tx, nsToWrites names
 			continue
 		}
 
-		query := db.FmtNsID(updateNsStatesSQLTempl, nsID)
+		query := statedb.FmtNsID(updateNsStatesSQLTempl, nsID)
 		_, err := tx.Exec(ctx, query, writes.keys, writes.values, writes.versions)
 		if err != nil {
 			return errors.Wrapf(err, "failed to execute query [%s]", query)
@@ -383,9 +383,9 @@ func createTablesAndFunctionsForNamespaces(ctx context.Context, tx pgx.Tx, newNs
 
 	for _, ns := range newNs.keys {
 		nsID := string(ns)
-		tableName := db.TableName(nsID)
+		tableName := statedb.TableName(nsID)
 		logger.Infof("Creating table [%s] and required functions for namespace [%s]", tableName, ns)
-		query := db.MakeNsTablesQuery(nsID, tablets)
+		query := statedb.MakeNsTablesQuery(nsID, tablets)
 		if _, execErr := tx.Exec(ctx, query); execErr != nil {
 			return errors.Wrapf(
 				execErr,
@@ -450,7 +450,7 @@ func (d *database) readStatusWithHeight(
 func (d *database) readNamespacePolicies(ctx context.Context) (*applicationpb.NamespacePolicies, error) {
 	keys, values, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, d, queryPoliciesSQLStmt)
 	if err != nil {
-		metaTable := db.TableName(committerpb.MetaNamespaceID)
+		metaTable := statedb.TableName(committerpb.MetaNamespaceID)
 		return nil, fmt.Errorf("failed to read the policies from table [%s]: %w", metaTable, err)
 	}
 	policy := &applicationpb.NamespacePolicies{
@@ -470,7 +470,7 @@ func (d *database) readConfigTX(ctx context.Context) (*applicationpb.ConfigTrans
 	_, values, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, d, queryConfigSQLStmt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the config transaction from table [%s]: %w",
-			db.TableName(committerpb.ConfigNamespaceID), err)
+			statedb.TableName(committerpb.ConfigNamespaceID), err)
 	}
 	configTX := &applicationpb.ConfigTransaction{}
 	for _, v := range values {

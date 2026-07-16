@@ -9,12 +9,12 @@ package vc
 import (
 	"time"
 
-	"github.com/hyperledger/fabric-x-committer/utils/db"
+	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
 // Config is the configuration for the validator-committer service.
 type Config struct {
-	Database       *db.Config            `mapstructure:"database" validate:"required"`
+	Database       *statedb.Config       `mapstructure:"database" validate:"required"`
 	ResourceLimits *ResourceLimitsConfig `mapstructure:"resource-limits" validate:"required"`
 }
 

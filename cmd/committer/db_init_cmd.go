@@ -15,7 +15,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/cmd/cliutil"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
-	"github.com/hyperledger/fabric-x-committer/utils/db"
+	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
 const initDBCommand = "init-db"
@@ -41,7 +41,7 @@ func databaseInitializationCMD() *cobra.Command {
 			ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 			defer cancel()
 
-			if err := db.SetupSystemTablesAndNamespaces(ctx, vcConfig.Database); err != nil {
+			if err := statedb.SetupSystemTablesAndNamespaces(ctx, vcConfig.Database); err != nil {
 				return errors.Wrap(err, "failed to initialize state database")
 			}
 

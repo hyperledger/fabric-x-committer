@@ -24,9 +24,9 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/db"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
+	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testapp"
 )
@@ -172,7 +172,7 @@ func TestCreateConfigAndTables(t *testing.T) {
 	require.Equal(t, pBytes, policies.Policies[0].Policy)
 
 	// Ensure the table exists.
-	rows, err := env.dbEnv.DB.pool.Query(ctx, fmt.Sprintf("select key, value from %s", db.TableName(utNsID)))
+	rows, err := env.dbEnv.DB.pool.Query(ctx, fmt.Sprintf("select key, value from %s", statedb.TableName(utNsID)))
 	require.NoError(t, err)
 	defer rows.Close()
 	keys, values, err := readTwoItems[[]byte, []byte](rows)

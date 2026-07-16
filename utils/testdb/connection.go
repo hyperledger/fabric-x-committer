@@ -16,8 +16,8 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/db"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
+	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
 var logger = flogging.MustGetLogger("db-connection")
@@ -50,7 +50,7 @@ type Connection struct {
 	Password    string
 	Database    string
 	LoadBalance bool
-	TLS         db.TLSConfig
+	TLS         statedb.TLSConfig
 }
 
 // NewConnection returns connection parameters with DB-type-specific default credentials.
@@ -65,7 +65,7 @@ func NewConnection(dbType string, endpoints ...*connection.Endpoint) *Connection
 
 // dataSourceName returns the dataSourceName to be used by the database/sql package.
 func (c *Connection) dataSourceName() (string, error) {
-	return db.DataSourceName(db.DataSourceNameParams{
+	return statedb.DataSourceName(statedb.DataSourceNameParams{
 		Username:        c.User,
 		Password:        c.Password,
 		Database:        c.Database,
@@ -94,7 +94,7 @@ func (c *Connection) open(ctx context.Context) (*pgxpool.Pool, error) {
 	poolConfig.MaxConns = 1
 	poolConfig.MinConns = 1
 
-	db.ConfigureConnReadDeadline(poolConfig)
+	statedb.ConfigureConnReadDeadline(poolConfig)
 
 	pool, retryErr := retry.ExecuteWithResult(ctx, DefaultRetry, func() (*pgxpool.Pool, error) {
 		return pgxpool.NewWithConfig(ctx, poolConfig)

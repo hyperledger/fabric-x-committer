@@ -23,7 +23,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/db"
+	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
@@ -195,7 +195,7 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 
 	// This is relevant if a different CA was used to issue the DB's TLS certificates.
 	require.NotEmpty(t, tlsConfig.CACertPaths)
-	conn.TLS = db.TLSConfig{
+	conn.TLS = statedb.TLSConfig{
 		Mode:       connection.OneSideTLSMode,
 		CACertPath: tlsConfig.CACertPaths[0],
 	}
