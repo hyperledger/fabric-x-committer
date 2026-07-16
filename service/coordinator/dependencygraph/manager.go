@@ -77,6 +77,7 @@ func (m *Manager) Run(ctx context.Context) {
 
 func (m *Manager) monitorQueues(ctx context.Context) {
 	ticker := time.NewTicker(m.parameters.QueueMonitorSamplingTime)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
