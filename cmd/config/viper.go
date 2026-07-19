@@ -9,6 +9,8 @@ package config
 import (
 	"strings"
 
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
 	"github.com/spf13/viper"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen"
@@ -17,9 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliverorderer"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 var (

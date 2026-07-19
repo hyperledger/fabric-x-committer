@@ -10,9 +10,9 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/hyperledger/fabric-x-common/utils/connection"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 

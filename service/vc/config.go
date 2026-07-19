@@ -9,9 +9,10 @@ package vc
 import (
 	"time"
 
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/retry"
+
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
-	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 // Config is the configuration for the validator-committer service.

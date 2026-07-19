@@ -15,10 +15,10 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/utils/retry"
 	"github.com/yugabyte/pgx/v5/pgxpool"
 
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
-	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 const (

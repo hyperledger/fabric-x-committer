@@ -10,10 +10,11 @@ import (
 	"net"
 	"testing"
 
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -57,7 +58,7 @@ func (p *serviceAllocator) allocateService(t *testing.T, count int) []config.Ser
 
 func (p *serviceAllocator) allocateEndpoint(t *testing.T) *connection.Endpoint {
 	t.Helper()
-	s := test.NewLocalHostServer(test.InsecureTLSConfig)
+	s := commontest.NewLocalHostServer(commontest.InsecureTLSConfig)
 	listener, err := s.Listener(t.Context())
 	require.NoError(t, err)
 	p.listeners = append(p.listeners, listener)

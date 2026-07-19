@@ -9,8 +9,9 @@ package workload
 import (
 	"context"
 
+	"github.com/hyperledger/fabric-x-common/utils/channel"
+
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
 )
 
 type (

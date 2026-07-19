@@ -13,13 +13,14 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/retry"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/retry"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
@@ -86,9 +87,9 @@ func NewValidatorAndCommitServiceTestEnv(t *testing.T, opts *TestEnvOpts) *Valid
 			Database:       opts.DBEnv.DBConf,
 			ResourceLimits: opts.ResourceLimits,
 		}
-		serverConfig := test.NewLocalHostServiceConfig(opts.ServerCreds)
+		serverConfig := commontest.NewLocalHostServiceConfig(opts.ServerCreds)
 		vcs := NewValidatorCommitterService(initCtx, config)
-		test.RunServiceAndServeForTest(t.Context(), t, vcs, serverConfig)
+		commontest.RunServiceAndServeForTest(t.Context(), t, vcs, serverConfig)
 		vcservices[i] = vcs
 		configs[i] = config
 		serverConfigs[i] = serverConfig
@@ -107,7 +108,7 @@ func NewValidatorAndCommitServiceTestEnv(t *testing.T, opts *TestEnvOpts) *Valid
 func defaultVCTestEnvOpts() *TestEnvOpts {
 	return &TestEnvOpts{
 		NumServices: 1,
-		ServerCreds: test.InsecureTLSConfig,
+		ServerCreds: commontest.InsecureTLSConfig,
 		ResourceLimits: &ResourceLimitsConfig{
 			MaxWorkersForPreparer:             2,
 			MaxWorkersForValidator:            2,

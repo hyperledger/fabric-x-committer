@@ -21,10 +21,10 @@ import (
 	"github.com/cockroachdb/errors"
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/google/uuid"
+	"github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 const (

@@ -15,11 +15,11 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-common/common/crypto/tlsgen"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/retry"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 type (
@@ -152,7 +152,7 @@ func CreateClientWithTLS[T any](
 	protoClient func(grpc.ClientConnInterface) T,
 ) T {
 	t.Helper()
-	conn := NewSecuredConnectionWithRetry(t, endpoint, tlsCfg, retry.Profile{
+	conn := commontest.NewSecuredConnectionWithRetry(t, endpoint, tlsCfg, retry.Profile{
 		// prevents secure connection tests from hanging until the context times out.
 		MaxElapsedTime: 3 * time.Second,
 	})

@@ -23,6 +23,10 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/utils/channel"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/retry"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -31,18 +35,13 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
-
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/deliverorderer"
+	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
-	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 var logger = flogging.MustGetLogger("sidecar")

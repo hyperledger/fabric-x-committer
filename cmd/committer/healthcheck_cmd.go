@@ -9,10 +9,10 @@ package main
 import (
 	"fmt"
 
+	"github.com/hyperledger/fabric-x-common/utils/connection"
 	"github.com/spf13/cobra"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/cliutil"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 // healthcheckCMD creates the "healthcheck" parent command with all service subcommands.

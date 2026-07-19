@@ -15,6 +15,9 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/utils/channel"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -23,8 +26,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testsig"
@@ -35,7 +36,7 @@ type svMgrTestEnv struct {
 	inputTxBatch        chan dependencygraph.TxNodeBatch
 	outputValidatedTxs  chan dependencygraph.TxNodeBatch
 	mockVerifier        *mock.Verifier
-	grpcServers         *test.Servers
+	grpcServers         *commontest.Servers
 	policyManager       *policyManager
 	curBlockNum         atomic.Uint64
 }
@@ -43,7 +44,7 @@ type svMgrTestEnv struct {
 func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte) *svMgrTestEnv {
 	t.Helper()
 	expectedEndError := string(expectedEndErrorMsg)
-	verifier, sc := mock.StartMockVerifierService(t, test.StartServerParameters{NumService: numSvService})
+	verifier, sc := mock.StartMockVerifierService(t, commontest.StartServerParameters{NumService: numSvService})
 
 	inputTxBatch := make(chan dependencygraph.TxNodeBatch, 10)
 	outputValidatedTxs := make(chan dependencygraph.TxNodeBatch, 10)
@@ -51,7 +52,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 	pm := newPolicyManager()
 	svm := newSignatureVerifierManager(
 		&signVerifierManagerConfig{
-			clientConfig:             test.ServerToMultiClientConfig(test.InsecureTLSConfig, sc.Configs...),
+			clientConfig:             commontest.ServerToMultiClientConfig(commontest.InsecureTLSConfig, sc.Configs...),
 			incomingTxsForValidation: inputTxBatch,
 			outgoingValidatedTxs:     outputValidatedTxs,
 			metrics:                  newPerformanceMetrics(),
@@ -59,7 +60,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 		},
 	)
 
-	test.RunServiceForTest(
+	commontest.RunServiceForTest(
 		t.Context(), t,
 		func(ctx context.Context) error {
 			err := connection.FilterStreamRPCError(svm.run(ctx))
@@ -326,7 +327,7 @@ func TestSignatureVerifierManagerRecovery(t *testing.T) {
 		stopFunc()
 	}
 	for _, c := range env.grpcServers.Configs {
-		test.CheckServerStopped(t, c.GRPC.Endpoint.Address())
+		commontest.CheckServerStopped(t, c.GRPC.Endpoint.Address())
 	}
 	env.requireConnectionMetrics(t, 0, connection.Disconnected, 1)
 
@@ -415,7 +416,7 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 
 	t.Log("Stop the service")
 	env.grpcServers.ServersStop[0]()
-	test.CheckServerStopped(t, env.grpcServers.Configs[0].GRPC.Endpoint.Address())
+	commontest.CheckServerStopped(t, env.grpcServers.Configs[0].GRPC.Endpoint.Address())
 	env.submitTxBatch(t, 1)
 	env.requireConnectionMetrics(t, 0, connection.Disconnected, 1)
 

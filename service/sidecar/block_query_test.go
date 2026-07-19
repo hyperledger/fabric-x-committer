@@ -10,13 +10,12 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
+	"github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
-
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type blockQueryWrapper struct {

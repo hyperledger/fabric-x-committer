@@ -21,13 +21,14 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
+	"github.com/hyperledger/fabric-x-common/utils/channel"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -167,7 +168,7 @@ func TestOrderer(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
-	test.RunServiceForTest(ctx, t, func(ctx context.Context) error {
+	commontest.RunServiceForTest(ctx, t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(o.Run(ctx))
 	}, o.WaitForReady)
 
@@ -316,12 +317,12 @@ func TestOrdererStreamingAPI(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, o)
-	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
+	commontest.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(o.Run(ctx))
 	}, o.WaitForReady)
 
 	numServices := 3
-	sc := test.ServeManyForTest(t.Context(), t, test.StartServerParameters{
+	sc := commontest.ServeManyForTest(t.Context(), t, commontest.StartServerParameters{
 		NumService: numServices,
 	}, o)
 	require.NotNil(t, sc)
@@ -656,11 +657,11 @@ func TestMockOrdererDynamicTLSUpdate(t *testing.T) {
 	require.NoError(t, err)
 
 	serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, connection.MutualTLSMode)
-	serverConfig := test.NewLocalHostServiceConfig(serverTLSConfig)
+	serverConfig := commontest.NewLocalHostServiceConfig(serverTLSConfig)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	test.RunServiceAndServeForTest(ctx, t, orderer, serverConfig)
+	commontest.RunServiceAndServeForTest(ctx, t, orderer, serverConfig)
 
 	// Build TLS configs for each peer organization
 	orgTLS := [3]connection.TLSConfig{

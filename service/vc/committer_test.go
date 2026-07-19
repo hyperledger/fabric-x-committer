@@ -13,10 +13,11 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/utils/channel"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -35,7 +36,7 @@ func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 	dbEnv := newDatabaseTestEnvWithTablesSetup(t)
 	metrics := newVCServiceMetrics()
 	c := newCommitter(validatedTxs, txStatus, metrics)
-	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
+	commontest.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return c.run(ctx, dbEnv.DB, 1)
 	}, nil)
 	return &committerTestEnv{

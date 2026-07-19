@@ -20,6 +20,9 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
+	"github.com/hyperledger/fabric-x-common/utils/channel"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/stretchr/testify/require"
@@ -29,8 +32,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/delivercommitter"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -224,7 +225,7 @@ func TestStartTestNode(t *testing.T) {
 
 	t.Log("Try to fetch the first block")
 	sidecarEndpoint := mustGetEndpoint(ctx, t, containerName, sidecarPort)
-	committerClient := test.NewInsecureClientConfig(sidecarEndpoint)
+	committerClient := commontest.NewInsecureClientConfig(sidecarEndpoint)
 	committedBlock := delivercommitter.Start(ctx, t, committerClient, 0)
 	b, ok := channel.NewReader(ctx, committedBlock).Read()
 	require.True(t, ok)
@@ -383,7 +384,7 @@ func mustGetEndpoint(
 	ctx context.Context, t *testing.T, containerName string, servicePort network.Port,
 ) *connection.Endpoint {
 	t.Helper()
-	return test.NewEndpoint(t, localhost, getContainerMappedHostPort(ctx, t, containerName, servicePort))
+	return commontest.NewEndpoint(t, localhost, getContainerMappedHostPort(ctx, t, containerName, servicePort))
 }
 
 // requireQueryResults checks that the QueryService returned the expected rows.

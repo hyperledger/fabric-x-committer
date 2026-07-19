@@ -8,8 +8,7 @@ package deliverorderer
 
 import (
 	"github.com/cockroachdb/errors"
-
-	"github.com/hyperledger/fabric-x-committer/utils/retry"
+	"github.com/hyperledger/fabric-x-common/utils/retry"
 )
 
 var (

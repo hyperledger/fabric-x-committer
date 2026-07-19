@@ -20,12 +20,12 @@ import (
 	sprig "github.com/go-task/slim-sprig/v3"
 	"github.com/google/uuid"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 type (

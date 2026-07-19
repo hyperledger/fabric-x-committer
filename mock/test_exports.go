@@ -16,18 +16,18 @@ import (
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
+	"github.com/hyperledger/fabric-x-common/utils/channel"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/retry"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
+	"github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
-	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 // StartMockVerifierService starts a specified number of mock verifier service and register cancellation.

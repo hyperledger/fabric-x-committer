@@ -14,6 +14,9 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
+	"github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -21,9 +24,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 func TestRateLimit(t *testing.T) {

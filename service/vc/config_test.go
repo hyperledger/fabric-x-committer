@@ -9,9 +9,8 @@ package vc
 import (
 	"testing"
 
+	"github.com/hyperledger/fabric-x-common/utils/connection"
 	"github.com/stretchr/testify/require"
-
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 func TestDatasourceName(t *testing.T) {

@@ -15,13 +15,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"

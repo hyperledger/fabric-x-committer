@@ -13,13 +13,14 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/utils/channel"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/mock"
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -40,7 +41,7 @@ const (
 
 func newRelayTestEnv(t *testing.T) *relayTestEnv {
 	t.Helper()
-	coord, coordinatorServer := mock.StartMockCoordinatorService(t, test.StartServerParameters{})
+	coord, coordinatorServer := mock.StartMockCoordinatorService(t, commontest.StartServerParameters{})
 	coordinatorEndpoint := coordinatorServer.Configs[0].GRPC.Endpoint
 
 	metrics := newPerformanceMetrics()
@@ -49,7 +50,7 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 		metrics,
 	)
 
-	conn := test.NewInsecureConnection(t, &coordinatorEndpoint)
+	conn := commontest.NewInsecureConnection(t, &coordinatorEndpoint)
 
 	logger.Infof("sidecar connected to coordinator at %s", &coordinatorEndpoint)
 
@@ -64,7 +65,7 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 	}
 
 	client := servicepb.NewCoordinatorClient(conn)
-	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
+	commontest.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(relayService.run(ctx, &relayRunConfig{
 			coordClient:                    client,
 			nextExpectedBlockByCoordinator: 0,

@@ -14,13 +14,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -61,7 +62,7 @@ func TestCounterWithTLSModes(t *testing.T) {
 func TestCounterVec(t *testing.T) {
 	t.Parallel()
 
-	env := newMetricsProviderTestEnv(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+	env := newMetricsProviderTestEnv(t, commontest.InsecureTLSConfig, commontest.InsecureTLSConfig)
 
 	opts := prometheus.CounterOpts{
 		Namespace: "vcservice",
@@ -87,7 +88,7 @@ func TestCounterVec(t *testing.T) {
 func TestNewGuage(t *testing.T) {
 	t.Parallel()
 
-	env := newMetricsProviderTestEnv(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+	env := newMetricsProviderTestEnv(t, commontest.InsecureTLSConfig, commontest.InsecureTLSConfig)
 
 	opts := prometheus.GaugeOpts{
 		Namespace: "vcservice",
@@ -110,7 +111,7 @@ func TestNewGuage(t *testing.T) {
 func TestNewGuageVec(t *testing.T) {
 	t.Parallel()
 
-	env := newMetricsProviderTestEnv(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+	env := newMetricsProviderTestEnv(t, commontest.InsecureTLSConfig, commontest.InsecureTLSConfig)
 
 	opts := prometheus.GaugeOpts{
 		Namespace: "vcservice",
@@ -137,7 +138,7 @@ func TestNewGuageVec(t *testing.T) {
 func TestNewHistogram(t *testing.T) {
 	t.Parallel()
 
-	env := newMetricsProviderTestEnv(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+	env := newMetricsProviderTestEnv(t, commontest.InsecureTLSConfig, commontest.InsecureTLSConfig)
 
 	opts := prometheus.HistogramOpts{
 		Namespace: "vcservice",
@@ -161,7 +162,7 @@ func TestNewHistogram(t *testing.T) {
 func TestNewHistogramVec(t *testing.T) {
 	t.Parallel()
 
-	env := newMetricsProviderTestEnv(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+	env := newMetricsProviderTestEnv(t, commontest.InsecureTLSConfig, commontest.InsecureTLSConfig)
 
 	opts := prometheus.HistogramOpts{
 		Namespace: "vcservice",
@@ -192,7 +193,7 @@ func TestNewHistogramVec(t *testing.T) {
 func TestPprofEndpoints(t *testing.T) {
 	t.Parallel()
 
-	env := newMetricsProviderTestEnv(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+	env := newMetricsProviderTestEnv(t, commontest.InsecureTLSConfig, commontest.InsecureTLSConfig)
 
 	client := &http.Client{
 		Transport: &http.Transport{
@@ -247,8 +248,8 @@ func newMetricsProviderTestEnv(t *testing.T, serverTLS, clientTLS connection.TLS
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	serverConfig := test.NewLocalHostServiceConfig(serverTLS)
-	test.ServeForTest(ctx, t, serverConfig, &fakeService{Provider: p})
+	serverConfig := commontest.NewLocalHostServiceConfig(serverTLS)
+	commontest.ServeForTest(ctx, t, serverConfig, &fakeService{Provider: p})
 
 	clientCreds, err := connection.NewClientTLSCredentials(clientTLS)
 	require.NoError(t, err)

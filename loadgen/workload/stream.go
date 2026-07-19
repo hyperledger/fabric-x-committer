@@ -11,10 +11,10 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/utils/channel"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
 )
 
 type (

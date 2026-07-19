@@ -21,6 +21,10 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/common/ledger/blkstorage"
+	"github.com/hyperledger/fabric-x-common/utils/channel"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,12 +36,9 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/delivercommitter"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -46,7 +47,7 @@ type sidecarTestEnv struct {
 	config            Config
 	serverConfig      *serve.Config
 	coordinator       *mock.Coordinator
-	coordinatorServer *test.Servers
+	coordinatorServer *commontest.Servers
 
 	sidecar        *Service
 	committedBlock chan *common.Block
@@ -70,7 +71,7 @@ func newSidecarTestEnvWithTLS(
 	conf sidecarTestConfig,
 ) *sidecarTestEnv {
 	t.Helper()
-	coordinator, coordinatorServer := mock.StartMockCoordinatorService(t, test.StartServerParameters{
+	coordinator, coordinatorServer := mock.StartMockCoordinatorService(t, commontest.StartServerParameters{
 		TLSConfig: conf.ServerTLS,
 	})
 	ordererEnv := mock.NewOrdererTestEnv(t, &mock.OrdererTestParameters{
@@ -90,9 +91,9 @@ func newSidecarTestEnvWithTLS(
 		ClientTLSConfig: conf.ClientTLS,
 	})
 
-	serverConfig := test.NewLocalHostServiceConfig(conf.ServerTLS)
+	serverConfig := commontest.NewLocalHostServiceConfig(conf.ServerTLS)
 	sidecarConf := &Config{
-		Committer: test.NewTLSClientConfig(conf.ClientTLS, &coordinatorServer.Configs[0].GRPC.Endpoint),
+		Committer: commontest.NewTLSClientConfig(conf.ClientTLS, &coordinatorServer.Configs[0].GRPC.Endpoint),
 		Ledger: LedgerConfig{
 			Path: t.TempDir(),
 		},
@@ -134,7 +135,7 @@ func (env *sidecarTestEnv) startSidecarServiceAndClientAndNotificationStream(
 
 func (env *sidecarTestEnv) startSidecarService(ctx context.Context, t *testing.T) {
 	t.Helper()
-	test.RunServiceAndServeForTest(ctx, t, env.sidecar, env.serverConfig)
+	commontest.RunServiceAndServeForTest(ctx, t, env.sidecar, env.serverConfig)
 }
 
 func (env *sidecarTestEnv) startSidecarClient(
@@ -144,7 +145,7 @@ func (env *sidecarTestEnv) startSidecarClient(
 	sidecarClientCreds connection.TLSConfig,
 ) {
 	t.Helper()
-	committerClient := test.NewTLSClientConfig(sidecarClientCreds, &env.serverConfig.GRPC.Endpoint)
+	committerClient := commontest.NewTLSClientConfig(sidecarClientCreds, &env.serverConfig.GRPC.Endpoint)
 	env.committedBlock = delivercommitter.Start(ctx, t, committerClient, startBlkNum)
 }
 
@@ -154,7 +155,7 @@ func (env *sidecarTestEnv) startNotificationStream(
 	sidecarClientCreds connection.TLSConfig,
 ) {
 	t.Helper()
-	conn := test.NewSecuredConnection(t, &env.serverConfig.GRPC.Endpoint, sidecarClientCreds)
+	conn := commontest.NewSecuredConnection(t, &env.serverConfig.GRPC.Endpoint, sidecarClientCreds)
 	var err error
 	env.notifyStream, err = committerpb.NewNotifierClient(conn).OpenNotificationStream(ctx)
 	require.NoError(t, err)
@@ -284,7 +285,7 @@ func TestSidecarConfigRecovery(t *testing.T) {
 	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{NumIDs: 3, InitialNumIDs: 1})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
+	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, commontest.InsecureTLSConfig)
 	t.Log("Waiting for the genesis block")
 	env.requireBlock(ctx, t, 0)
 
@@ -297,7 +298,7 @@ func TestSidecarConfigRecovery(t *testing.T) {
 	t.Log("Stop the sidecar service and ledger service")
 	cancel()
 	require.Eventually(t, func() bool {
-		return test.CheckServerStopped(t, env.serverConfig.GRPC.Endpoint.Address())
+		return commontest.CheckServerStopped(t, env.serverConfig.GRPC.Endpoint.Address())
 	}, 4*time.Second, 500*time.Millisecond)
 	require.Eventually(t, func() bool {
 		return !env.coordinator.IsStreamActive()
@@ -310,7 +311,7 @@ func TestSidecarConfigRecovery(t *testing.T) {
 	env.StopServersOfID(0)
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		for _, ep := range env.EndpointsOfID(0) {
-			require.True(ct, test.CheckServerStopped(t, ep.Address()))
+			require.True(ct, commontest.CheckServerStopped(t, ep.Address()))
 		}
 	}, 4*time.Second, 500*time.Millisecond)
 
@@ -324,7 +325,7 @@ func TestSidecarConfigRecovery(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Log("Start the new sidecar")
-	env.startSidecarServiceAndClientAndNotificationStream(newCtx, t, 2, test.InsecureTLSConfig)
+	env.startSidecarServiceAndClientAndNotificationStream(newCtx, t, 2, commontest.InsecureTLSConfig)
 
 	// Now we can send transactions with the new configuration
 	t.Log("Sanity check: send additional block")
@@ -336,7 +337,7 @@ func TestSidecarRecovery(t *testing.T) {
 	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
+	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, commontest.InsecureTLSConfig)
 	env.requireBlock(ctx, t, 0)
 
 	t.Log("1. Commit block 1 to 10")
@@ -347,7 +348,7 @@ func TestSidecarRecovery(t *testing.T) {
 	t.Log("2. Stop the sidecar service and ledger service")
 	cancel()
 	require.Eventually(t, func() bool {
-		return test.CheckServerStopped(t, env.serverConfig.GRPC.Endpoint.Address())
+		return commontest.CheckServerStopped(t, env.serverConfig.GRPC.Endpoint.Address())
 	}, 4*time.Second, 500*time.Millisecond)
 	require.Eventually(t, func() bool {
 		return !env.coordinator.IsStreamActive()
@@ -394,7 +395,7 @@ func TestSidecarRecovery(t *testing.T) {
 	env.coordinator.SetTxsInProgress(10)
 
 	t.Log("5. Restart the sidecar service and ledger service")
-	env.startSidecarServiceAndClientAndNotificationStream(ctx2, t, 11, test.InsecureTLSConfig)
+	env.startSidecarServiceAndClientAndNotificationStream(ctx2, t, 11, commontest.InsecureTLSConfig)
 
 	t.Log("6. Recovery should not happen when coordinator is not idle.")
 	require.Never(t, func() bool {
@@ -420,7 +421,7 @@ func TestSidecarRecoveryAfterCoordinatorFailure(t *testing.T) {
 	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
+	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, commontest.InsecureTLSConfig)
 	env.requireBlock(ctx, t, 0)
 
 	coordLabel := env.getCoordinatorLabel(t)
@@ -469,10 +470,10 @@ func TestSidecarStartWithoutCoordinator(t *testing.T) {
 	t.Log("Stop the coordinator")
 	env.coordinatorServer.ServersStop[0]()
 	coordLabel := env.getCoordinatorLabel(t)
-	test.CheckServerStopped(t, coordLabel)
+	commontest.CheckServerStopped(t, coordLabel)
 
 	t.Log("Start the service")
-	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
+	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, commontest.InsecureTLSConfig)
 	monitoring.RequireConnectionMetrics(
 		t, coordLabel,
 		env.sidecar.metrics.coordConnection,
@@ -502,7 +503,7 @@ func TestSidecarVerifyBadTxForm(t *testing.T) {
 	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
+	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, commontest.InsecureTLSConfig)
 	env.requireBlock(ctx, t, 0)
 	txs, expected := MalformedTxTestCases(&workload.TxBuilder{ChannelID: env.ChanID})
 	testSize := len(expected)
@@ -766,11 +767,11 @@ func TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery(t *testing.T
 	// We start with only one orderer, and later add the others.
 	// The initial one is blocked, so if we start from it, we can never receive the new config block.
 	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{
-		NumIDs: 3, InitialNumIDs: 1, ServerTLS: test.InsecureTLSConfig, ClientTLS: test.InsecureTLSConfig,
+		NumIDs: 3, InitialNumIDs: 1, ServerTLS: commontest.InsecureTLSConfig, ClientTLS: commontest.InsecureTLSConfig,
 	})
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
+	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, commontest.InsecureTLSConfig)
 	env.requireBlock(ctx, t, 0)
 
 	t.Log("Send a config block with all the endpoints")
@@ -786,7 +787,7 @@ func TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery(t *testing.T
 	t.Log("Stop the sidecar service")
 	cancel()
 	require.Eventually(t, func() bool {
-		return test.CheckServerStopped(t, env.serverConfig.GRPC.Endpoint.Address())
+		return commontest.CheckServerStopped(t, env.serverConfig.GRPC.Endpoint.Address())
 	}, 4*time.Second, 500*time.Millisecond)
 	require.Eventually(t, func() bool {
 		return !env.coordinator.IsStreamActive()
@@ -805,7 +806,7 @@ func TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery(t *testing.T
 	// If ledger recovery happened before endpoint update (incorrect behavior),
 	// the recovery would fail because it would try to fetch from localhost:9999.
 	// Start the client from block 11 since blocks 0-10 will be recovered.
-	env.startSidecarServiceAndClientAndNotificationStream(newCtx, t, 12, test.InsecureTLSConfig)
+	env.startSidecarServiceAndClientAndNotificationStream(newCtx, t, 12, commontest.InsecureTLSConfig)
 
 	t.Log("Verify ledger store was recovered successfully")
 	// The successful recovery of blocks 1-10 proves that orderer endpoints were

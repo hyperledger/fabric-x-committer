@@ -14,10 +14,9 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 const (

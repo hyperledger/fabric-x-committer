@@ -17,6 +17,9 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -28,10 +31,8 @@ import (
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/delivercommitter"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testapp"
@@ -280,13 +281,13 @@ func (c *CommitterRuntime) CreateRuntimeClients(ctx context.Context, t *testing.
 	services := c.SystemConfig.Services
 
 	c.CoordinatorClient = servicepb.NewCoordinatorClient(
-		test.NewSecuredConnection(t, services.Coordinator.GrpcEndpoint, c.SystemConfig.ClientTLS),
+		commontest.NewSecuredConnection(t, services.Coordinator.GrpcEndpoint, c.SystemConfig.ClientTLS),
 	)
 	c.QueryServiceClient = committerpb.NewQueryServiceClient(
-		test.NewSecuredConnection(t, services.Query.GrpcEndpoint, c.SystemConfig.ClientTLS),
+		commontest.NewSecuredConnection(t, services.Query.GrpcEndpoint, c.SystemConfig.ClientTLS),
 	)
 	c.NotifyClient = committerpb.NewNotifierClient(
-		test.NewSecuredConnection(t, services.Sidecar.GrpcEndpoint, c.SystemConfig.ClientTLS),
+		commontest.NewSecuredConnection(t, services.Sidecar.GrpcEndpoint, c.SystemConfig.ClientTLS),
 	)
 	var err error
 	c.OrdererStream, err = adapters.NewBroadcastStream(ctx, &c.OrdererEnv.OrdererConnConfig)
@@ -295,7 +296,7 @@ func (c *CommitterRuntime) CreateRuntimeClients(ctx context.Context, t *testing.
 		connection.CloseConnectionsLog(c.OrdererStream)
 	})
 
-	c.SidecarClientConfig = test.NewTLSClientConfig(c.SystemConfig.ClientTLS, services.Sidecar.GrpcEndpoint)
+	c.SidecarClientConfig = commontest.NewTLSClientConfig(c.SystemConfig.ClientTLS, services.Sidecar.GrpcEndpoint)
 }
 
 // OpenNotificationStream starts a notification stream.
@@ -393,7 +394,7 @@ func (c *CommitterRuntime) startLoadGen(t *testing.T, serviceFlags int) {
 func (c *CommitterRuntime) startBlockDelivery(t *testing.T) {
 	t.Helper()
 	t.Log("Running delivery client")
-	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
+	commontest.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(delivercommitter.ToQueue(ctx, delivercommitter.Parameters{
 			ClientConfig: c.SidecarClientConfig,
 			OutputBlock:  c.CommittedBlock,

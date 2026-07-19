@@ -14,12 +14,13 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/utils/channel"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -400,7 +401,7 @@ func startManager(tb testing.TB, kind string, p *Parameters) *perfMetrics {
 	default:
 		return nil
 	}
-	test.RunServiceForTest(tb.Context(), tb, func(ctx context.Context) error {
+	commontest.RunServiceForTest(tb.Context(), tb, func(ctx context.Context) error {
 		manService.Run(ctx)
 		return nil
 	}, nil)

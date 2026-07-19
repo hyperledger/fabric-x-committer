@@ -13,6 +13,8 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-x-common/utils/channel"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
@@ -23,9 +25,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/metrics"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 type (

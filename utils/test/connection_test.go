@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/mock"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 func TestCheckServerStopped(t *testing.T) {
