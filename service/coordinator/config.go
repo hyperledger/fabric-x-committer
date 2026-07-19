@@ -8,6 +8,7 @@ package coordinator
 
 import (
 	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"time"
 )
 
 type (
@@ -18,12 +19,16 @@ type (
 		DependencyGraph    *DependencyGraphConfig       `mapstructure:"dependency-graph" validate:"required"`
 		// ChannelBufferSizePerGoroutine defines the buffer size per go-routine.
 		ChannelBufferSizePerGoroutine int `mapstructure:"per-channel-buffer-size-per-goroutine" validate:"required,gt=0"` //nolint:lll,revive
+		// QueueMonitorSamplingTime defines the sampling interval for monitoring queue sizes.
+		QueueMonitorSamplingTime time.Duration `mapstructure:"queue-monitor-sampling-time" validate:"required,gt=0"`
 	}
 
 	// DependencyGraphConfig is the configuration for dependency graph manager. It contains resource limits.
 	DependencyGraphConfig struct {
 		NumOfLocalDepConstructors int `mapstructure:"num-of-local-dep-constructors" validate:"required,gt=0"`
 		WaitingTxsLimit           int `mapstructure:"waiting-txs-limit" validate:"required,gt=0"`
+		// ChunkSize defines the maximum number of transactions to process in a single chunk for the dependency graph.
+		ChunkSize int `mapstructure:"chunk-size" validate:"required,gt=0"`
 	}
 )
 
@@ -34,4 +39,6 @@ const (
 	DefaultNumOfLocalDepConstructors     = 1
 	DefaultWaitingTxsLimit               = 100_000
 	DefaultChannelBufferSizePerGoroutine = 10
+	DefaultChunkSize                     = 500
+	DefaultQueueMonitorSamplingTime      = 100 * time.Millisecond
 )

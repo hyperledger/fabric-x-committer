@@ -25,6 +25,8 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
+const DefaultQueueMonitorSamplingTime = 100 * time.Millisecond
+
 type batchWithLatency struct {
 	batch TxNodeBatch
 	done  time.Time
@@ -88,6 +90,7 @@ func BenchmarkDependencyGraph(b *testing.B) {
 								IncomingValidatedTxsNode:  val,
 								NumOfLocalDepConstructors: tc.workers,
 								WaitingTxsLimit:           20_000_000,
+								QueueMonitorSamplingTime:  DefaultQueueMonitorSamplingTime,
 								PrometheusMetricsProvider: monitoring.NewProvider(),
 							})
 
@@ -181,6 +184,7 @@ func TestDependencyGraphManager(t *testing.T) {
 				IncomingValidatedTxsNode:  validatedTxs,
 				NumOfLocalDepConstructors: 2,
 				WaitingTxsLimit:           waitingTXsLimit,
+				QueueMonitorSamplingTime:  DefaultQueueMonitorSamplingTime,
 				PrometheusMetricsProvider: monitoring.NewProvider(),
 			})
 
