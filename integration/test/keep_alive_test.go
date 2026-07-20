@@ -8,7 +8,6 @@ package test
 
 import (
 	"context"
-	"google.golang.org/protobuf/types/known/durationpb"
 	"net"
 	"strconv"
 	"testing"
@@ -16,8 +15,6 @@ import (
 
 	"github.com/Shopify/toxiproxy/v2"
 	toxiclient "github.com/Shopify/toxiproxy/v2/client"
-	"github.com/hyperledger/fabric-x-committer/integration/runner"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
@@ -27,6 +24,10 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/protobuf/types/known/durationpb"
+
+	"github.com/hyperledger/fabric-x-committer/integration/runner"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 const (
