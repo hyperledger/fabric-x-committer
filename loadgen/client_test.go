@@ -18,6 +18,9 @@ import (
 
 	"github.com/gavv/httpexpect/v2"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,10 +34,8 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -142,8 +143,8 @@ func startVerifiers(t *testing.T, serverTLS, clientTLS connection.TLSConfig) *co
 			Parallelism:       40,
 		})
 
-		serverConfig := test.NewLocalHostServiceConfig(serverTLS)
-		test.ServeForTest(t.Context(), t, serverConfig, service)
+		serverConfig := commontest.NewLocalHostServiceConfig(serverTLS)
+		commontest.ServeForTest(t.Context(), t, serverConfig, service)
 		endpoints[i] = &serverConfig.GRPC.Endpoint
 	}
 	return test.NewTLSMultiClientConfig(clientTLS, endpoints...)
@@ -182,7 +183,7 @@ func TestLoadGenForCoordinator(t *testing.T) {
 			}
 
 			service := coordinator.NewCoordinatorService(cConf)
-			serverConfig := test.NewLocalHostServiceConfig(e.serverTLSConfig)
+			serverConfig := commontest.NewLocalHostServiceConfig(e.serverTLSConfig)
 			test.RunServiceAndServeForTest(t.Context(), t, service, serverConfig)
 
 			// Start client
@@ -282,7 +283,7 @@ func TestLoadGenForOrderer(t *testing.T) {
 				},
 				Orderer: e.OrdererConnConfig,
 			}
-			serverConfig := test.NewLocalHostServiceConfig(e.ServerTLSConfig)
+			serverConfig := commontest.NewLocalHostServiceConfig(e.ServerTLSConfig)
 
 			// Start sidecar.
 			service, err := sidecar.New(sidecarConf)
@@ -394,7 +395,9 @@ func (e *loadGenClientTestEnv) testLoadGenerator(t *testing.T) {
 func TestLoadGenRateLimiterServer(t *testing.T) {
 	t.Parallel()
 	lgEnv := newLoadGenClientTestEnv(t, loadGenTestCase{})
-	lgEnv.clientConf.Adapter.VerifierClient = startVerifiers(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+	lgEnv.clientConf.Adapter.VerifierClient = startVerifiers(
+		t, commontest.InsecureTLSConfig, commontest.InsecureTLSConfig,
+	)
 	curRate := uint64(10)
 	lgEnv.clientConf.Stream.RateLimit = curRate
 	// We use small wait to ensure the rate limiter serves in low granularity.
@@ -460,7 +463,7 @@ func newLoadGenClientTestEnv(t *testing.T, tc loadGenTestCase) *loadGenClientTes
 	clientConf.Limit = tc.limit
 
 	serverTLSConfig, clientTLSConfig := test.CreateServerAndClientTLSConfig(t, tc.serverTLSMode)
-	serverConfig := test.NewLocalHostServiceConfig(serverTLSConfig)
+	serverConfig := commontest.NewLocalHostServiceConfig(serverTLSConfig)
 	return &loadGenClientTestEnv{
 		clientConf:      clientConf,
 		serverConf:      serverConfig,

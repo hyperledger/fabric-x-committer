@@ -17,6 +17,9 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,8 +34,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -539,7 +540,7 @@ func newQueryServiceTestEnv(t *testing.T, opts *queryServiceTestOpts) *queryServ
 		Database:              dbConf,
 		TLSRefreshInterval:    100 * time.Millisecond,
 	}
-	serverConfig := test.NewLocalHostServiceConfig(opts.serverTLS)
+	serverConfig := commontest.NewLocalHostServiceConfig(opts.serverTLS)
 
 	qs := NewQueryService(config)
 	test.RunServiceAndServeForTest(t.Context(), t, qs, serverConfig)
@@ -567,7 +568,7 @@ func generateNamespacesUnderTest(t *testing.T, namespaces []string) *vc.Database
 	env.SetupSystemTablesAndNamespaces(t.Context(), t)
 
 	clientConf := loadgen.DefaultClientConf(t)
-	clientConf.Adapter.VCClient = test.NewTLSMultiClientConfig(test.InsecureTLSConfig, env.Endpoints...)
+	clientConf.Adapter.VCClient = test.NewTLSMultiClientConfig(commontest.InsecureTLSConfig, env.Endpoints...)
 	nsPolicies := make(map[string]*workload.Policy, len(namespaces))
 	for i, ns := range namespaces {
 		nsPolicies[ns] = &workload.Policy{

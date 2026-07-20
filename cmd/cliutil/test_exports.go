@@ -17,6 +17,9 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,8 +28,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -54,7 +55,7 @@ func StartDefaultSystem(t *testing.T) config.SystemConfig {
 		},
 	})
 	_, coordinator := mock.StartMockCoordinatorService(t, serverParams)
-	serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
+	serverConfig := commontest.NewLocalHostServiceConfig(commontest.InsecureTLSConfig)
 	listen, err := serverConfig.GRPC.Listener(t.Context())
 	require.NoError(t, err)
 	connection.CloseConnectionsLog(listen)

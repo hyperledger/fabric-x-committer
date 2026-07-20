@@ -10,7 +10,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-common/utils/channel"
+
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 

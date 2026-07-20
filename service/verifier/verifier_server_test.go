@@ -16,15 +16,16 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/utils/channel"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testsig"
@@ -62,7 +63,7 @@ func TestVerifierSecureConnection(t *testing.T) {
 
 func TestNoVerificationKeySet(t *testing.T) {
 	t.Parallel()
-	config, serverConfig := defaultConfigWithTLS(test.InsecureTLSConfig)
+	config, serverConfig := defaultConfigWithTLS(commontest.InsecureTLSConfig)
 	c := newTestState(t, config, serverConfig)
 
 	stream, err := c.Client.StartStream(t.Context())
@@ -78,7 +79,7 @@ func TestNoVerificationKeySet(t *testing.T) {
 
 func TestNoInput(t *testing.T) {
 	t.Parallel()
-	config, serverConfig := defaultConfigWithTLS(test.InsecureTLSConfig)
+	config, serverConfig := defaultConfigWithTLS(commontest.InsecureTLSConfig)
 	c := newTestState(t, config, serverConfig)
 
 	stream, err := c.Client.StartStream(t.Context())
@@ -94,7 +95,7 @@ func TestNoInput(t *testing.T) {
 
 func TestMinimalInput(t *testing.T) {
 	t.Parallel()
-	config, serverConfig := defaultConfigWithTLS(test.InsecureTLSConfig)
+	config, serverConfig := defaultConfigWithTLS(commontest.InsecureTLSConfig)
 	c := newTestState(t, config, serverConfig)
 
 	stream, err := c.Client.StartStream(t.Context())
@@ -509,7 +510,7 @@ func newTestState(t *testing.T, config *Config, serverConfig *serve.Config) *Sta
 
 	return &State{
 		Service: service,
-		Client:  createVerifierClientWithTLS(t, &serverConfig.GRPC.Endpoint, test.InsecureTLSConfig),
+		Client:  createVerifierClientWithTLS(t, &serverConfig.GRPC.Endpoint, commontest.InsecureTLSConfig),
 	}
 }
 
@@ -569,11 +570,11 @@ func defaultConfigWithTLS(tlsConfig connection.TLSConfig) (*Config, *serve.Confi
 		Parallelism:       3,
 		ChannelBufferSize: 1,
 	}
-	return config, test.NewLocalHostServiceConfig(tlsConfig)
+	return config, commontest.NewLocalHostServiceConfig(tlsConfig)
 }
 
 func defaultConfigQuickCutoff() (*Config, *serve.Config) {
-	config, serverConfig := defaultConfigWithTLS(test.InsecureTLSConfig)
+	config, serverConfig := defaultConfigWithTLS(commontest.InsecureTLSConfig)
 	config.BatchSizeCutoff = 1
 	return config, serverConfig
 }

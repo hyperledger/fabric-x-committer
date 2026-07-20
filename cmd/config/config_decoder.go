@@ -17,10 +17,9 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/hyperledger/fabric-x-common/common/viperutil"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
 	"github.com/spf13/viper"
-
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 // RFC 1123 hostname validation regex:

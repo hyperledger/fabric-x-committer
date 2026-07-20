@@ -16,9 +16,9 @@ import (
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
 	"google.golang.org/grpc"
 
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 )
 

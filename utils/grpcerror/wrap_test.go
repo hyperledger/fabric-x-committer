@@ -12,12 +12,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-x-common/utils/retry"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
-	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -66,11 +67,11 @@ func TestHasCodeWithGRPCService(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
-	wrapper := &test.HealthService{HealthServer: &healthgrpc.UnimplementedHealthServer{}}
+	wrapper := &commontest.HealthService{HealthServer: &healthgrpc.UnimplementedHealthServer{}}
 	p := test.StartServerParameters{NumService: 1}
 	sc := test.ServeManyForTest(ctx, t, p, wrapper)
 
-	conn := test.NewInsecureConnectionWithRetry(t, &sc.Configs[0].GRPC.Endpoint, retry.Profile{
+	conn := commontest.NewInsecureConnectionWithRetry(t, &sc.Configs[0].GRPC.Endpoint, retry.Profile{
 		MaxElapsedTime: 2 * time.Second,
 	})
 
@@ -83,7 +84,7 @@ func TestHasCodeWithGRPCService(t *testing.T) {
 	require.False(t, HasCode(err, codes.NotFound)) // all APIs are codes.Unimplemented
 
 	sc.ServersStop[0]()
-	test.CheckServerStopped(t, sc.Configs[0].GRPC.Endpoint.Address())
+	commontest.CheckServerStopped(t, sc.Configs[0].GRPC.Endpoint.Address())
 
 	_, err = client.Check(ctx, nil)
 	require.Truef(t, HasCode(err, codes.Unavailable), "code: %s", GetCode(err))

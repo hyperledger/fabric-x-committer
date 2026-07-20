@@ -14,9 +14,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hyperledger/fabric-x-common/utils/connection"
 	"github.com/stretchr/testify/require"
-
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 // LogStruct logs a struct in a flat representation.

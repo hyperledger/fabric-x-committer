@@ -16,14 +16,15 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/utils/channel"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -564,11 +565,11 @@ func newNotifierTestEnvWithConfig(tb testing.TB, numOfClients int, conf *Notific
 		return connection.FilterStreamRPCError(env.n.run(ctx, statusQueue, committedBlockWithTxsQueue))
 	}, nil)
 
-	serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
+	serverConfig := commontest.NewLocalHostServiceConfig(commontest.InsecureTLSConfig)
 	wrapper := &notifierWrapper{env.n}
-	test.ServeForTest(tb.Context(), tb, serverConfig, wrapper)
+	commontest.ServeForTest(tb.Context(), tb, serverConfig, wrapper)
 	endpoint := &serverConfig.GRPC.Endpoint
-	env.client = committerpb.NewNotifierClient(test.NewInsecureConnection(tb, endpoint))
+	env.client = committerpb.NewNotifierClient(commontest.NewInsecureConnection(tb, endpoint))
 	return env
 }
 

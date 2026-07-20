@@ -15,6 +15,9 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/retry"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -23,9 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
-	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testapp"
 )
@@ -67,7 +68,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 	for i, c := range vcs.ServerConfigs {
 		allEndpoints[i] = &c.GRPC.Endpoint
 	}
-	commonConn := test.NewInsecureLoadBalancedConnection(t, allEndpoints)
+	commonConn := commontest.NewInsecureLoadBalancedConnection(t, allEndpoints)
 
 	vcsTestEnv := &validatorAndCommitterServiceTestEnvWithClient{
 		vcs:          vcs.VCServices,
@@ -84,7 +85,7 @@ func newValidatorAndCommitServiceTestEnvWithClient(
 
 	for i, c := range vcs.ServerConfigs {
 		client := createValidatorAndCommitClientWithTLS(
-			t, &c.GRPC.Endpoint, test.InsecureTLSConfig,
+			t, &c.GRPC.Endpoint, commontest.InsecureTLSConfig,
 		)
 
 		sCtx, sCancel := context.WithTimeout(t.Context(), 5*time.Minute)

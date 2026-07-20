@@ -18,21 +18,21 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/utils/channel"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
-
-	"github.com/hyperledger/fabric-x-common/api/applicationpb"
-	"github.com/hyperledger/fabric-x-common/api/committerpb"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testapp"
 	"github.com/hyperledger/fabric-x-committer/utils/testsig"
@@ -143,7 +143,7 @@ func (e *coordinatorTestEnv) startService(
 ) {
 	t.Helper()
 	cs := e.coordinator
-	e.serverConfig = test.NewLocalHostServiceConfig(e.serverTLS)
+	e.serverConfig = commontest.NewLocalHostServiceConfig(e.serverTLS)
 	test.RunServiceAndServeForTest(ctx, t, cs, e.serverConfig)
 }
 
@@ -950,8 +950,8 @@ func TestConnectionReadyWithTimeout(t *testing.T) {
 	t.Parallel()
 	randomEndpoint := &connection.Endpoint{Host: "random", Port: 1234}
 	c := NewCoordinatorService(&Config{
-		Verifier:           *test.NewTLSMultiClientConfig(test.InsecureTLSConfig, randomEndpoint),
-		ValidatorCommitter: *test.NewTLSMultiClientConfig(test.InsecureTLSConfig, randomEndpoint),
+		Verifier:           *test.NewTLSMultiClientConfig(commontest.InsecureTLSConfig, randomEndpoint),
+		ValidatorCommitter: *test.NewTLSMultiClientConfig(commontest.InsecureTLSConfig, randomEndpoint),
 		DependencyGraph:    &DependencyGraphConfig{},
 	})
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
@@ -1047,7 +1047,7 @@ func TestWaitingTxsCount(t *testing.T) {
 
 	env.sigVerifierGrpcServers.ServersStop[0]()
 	require.Eventually(t, func() bool {
-		return test.CheckServerStopped(t, env.sigVerifierGrpcServers.Configs[0].GRPC.Endpoint.Address())
+		return commontest.CheckServerStopped(t, env.sigVerifierGrpcServers.Configs[0].GRPC.Endpoint.Address())
 	}, 4*time.Second, 500*time.Millisecond)
 
 	t.Log("Start server")

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/hyperledger/fabric-x-common/utils/serve"
 	"github.com/spf13/cobra"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/cliutil"
@@ -17,8 +18,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen"
 	"github.com/hyperledger/fabric-x-committer/loadgen/adapters"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
-
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 const (

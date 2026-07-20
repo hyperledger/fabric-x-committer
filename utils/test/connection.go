@@ -7,31 +7,22 @@ SPDX-License-Identifier: Apache-2.0
 package test
 
 import (
-	"context"
 	"crypto/tls"
 	"fmt"
 	"path/filepath"
 	"strconv"
 	"testing"
-	"time"
-
-	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
-
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/retry"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/retry"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
+	"github.com/hyperledger/fabric-x-common/utils/test"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 )
 
 var (
-	// InsecureTLSConfig defines an empty tls config.
-	InsecureTLSConfig connection.TLSConfig
-	// defaultGrpcRetryProfile defines the retry policy for a gRPC client connection.
-	defaultGrpcRetryProfile retry.Profile
-
 	// OrgRootCA is the path to organization 0's TLS client credentials in the crypto materials directory.
 	OrgRootCA = filepath.Join(cryptogen.PeerOrganizationsDir, "peer-org-0.com",
 		cryptogen.MSPDir, cryptogen.TLSCaCertsDir, "tlspeer-org-0-CA-cert.pem")
@@ -40,26 +31,6 @@ var (
 	OrdererRootCATLSPath = filepath.Join(cryptogen.OrdererOrganizationsDir,
 		"orderer-org-0.com", cryptogen.MSPDir, cryptogen.TLSCaCertsDir, "tlsorderer-org-0-CA-cert.pem")
 )
-
-// CheckServerStopped returns true if the grpc server listening on a
-// given address has been stopped.
-func CheckServerStopped(t *testing.T, addr string) bool {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-
-	conn, err := grpc.DialContext( //nolint:staticcheck
-		ctx,
-		addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(), //nolint:staticcheck
-	)
-	if err != nil {
-		return true
-	}
-	_ = conn.Close()
-	return false
-}
 
 // GrpcServiceToConnectionServerConfigs extracts gRPC server endpoints from serve configs.
 func GrpcServiceToConnectionServerConfigs(servers ...*serve.Config) []*serve.ServerConfig {
@@ -92,7 +63,7 @@ func NewSecuredConnection(
 	tlsConfig connection.TLSConfig,
 ) *grpc.ClientConn {
 	t.Helper()
-	return NewSecuredConnectionWithRetry(t, endpoint, tlsConfig, defaultGrpcRetryProfile)
+	return NewSecuredConnectionWithRetry(t, endpoint, tlsConfig, test.DefaultGrpcRetryProfile)
 }
 
 // NewSecuredConnectionWithRetry creates the default connection with given transport credentials.
@@ -117,43 +88,6 @@ func NewSecuredConnectionWithRetry(
 	return conn
 }
 
-// NewInsecureConnection creates the default connection with insecure credentials.
-func NewInsecureConnection(tb testing.TB, endpoint connection.WithAddress) *grpc.ClientConn {
-	tb.Helper()
-	return NewInsecureConnectionWithRetry(tb, endpoint, defaultGrpcRetryProfile)
-}
-
-// NewInsecureConnectionWithRetry creates the default dial config with insecure credentials.
-func NewInsecureConnectionWithRetry(
-	tb testing.TB, endpoint connection.WithAddress, retryProfile retry.Profile,
-) *grpc.ClientConn {
-	tb.Helper()
-	conn, err := connection.NewConnection(connection.ClientParameters{
-		Address: endpoint.Address(),
-		Creds:   insecure.NewCredentials(),
-		Retry:   &retryProfile,
-	})
-	require.NoError(tb, err)
-	tb.Cleanup(func() {
-		_ = conn.Close()
-	})
-	return conn
-}
-
-// NewInsecureLoadBalancedConnection creates the default connection with insecure credentials.
-func NewInsecureLoadBalancedConnection(t *testing.T, endpoints []*connection.Endpoint) *grpc.ClientConn {
-	t.Helper()
-	conn, err := connection.NewLoadBalancedConnection(&connection.MultiClientConfig{
-		Endpoints: endpoints,
-		Retry:     &defaultGrpcRetryProfile,
-	})
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = conn.Close()
-	})
-	return conn
-}
-
 // NewTLSMultiClientConfig creates a multi client configuration for test purposes
 // given number of endpoints and a TLS configuration.
 func NewTLSMultiClientConfig(
@@ -163,13 +97,13 @@ func NewTLSMultiClientConfig(
 	return &connection.MultiClientConfig{
 		Endpoints: ep,
 		TLS:       tlsConfig,
-		Retry:     &defaultGrpcRetryProfile,
+		Retry:     &test.DefaultGrpcRetryProfile,
 	}
 }
 
 // NewInsecureClientConfig creates a client configuration for test purposes given an endpoint.
 func NewInsecureClientConfig(ep *connection.Endpoint) *connection.ClientConfig {
-	return NewTLSClientConfig(InsecureTLSConfig, ep)
+	return NewTLSClientConfig(test.InsecureTLSConfig, ep)
 }
 
 // NewTLSClientConfig creates a client configuration for test purposes given a single endpoint and creds.
@@ -177,7 +111,7 @@ func NewTLSClientConfig(tlsConfig connection.TLSConfig, ep *connection.Endpoint)
 	return &connection.ClientConfig{
 		Endpoint: ep,
 		TLS:      tlsConfig,
-		Retry:    &defaultGrpcRetryProfile,
+		Retry:    &test.DefaultGrpcRetryProfile,
 	}
 }
 
@@ -197,7 +131,7 @@ func MustGetTLSConfig(t *testing.T, tlsConfig *connection.TLSConfig) *tls.Config
 // NewPreAllocatedLocalHostServerConfig create a localhost server config with a pre allocated listener and port.
 func NewPreAllocatedLocalHostServerConfig(t *testing.T, tlsConfig connection.TLSConfig) *serve.Config {
 	t.Helper()
-	serverConfig := NewLocalHostServiceConfig(tlsConfig)
+	serverConfig := test.NewLocalHostServiceConfig(tlsConfig)
 	serve.PreAllocateListener(t, &serverConfig.GRPC)
 	return serverConfig
 }
@@ -217,30 +151,12 @@ func NewServiceTLSConfig(artifactsPath, serviceName, mode string) connection.TLS
 	}
 }
 
-// NewLocalHostServiceConfig returns a grpcservice.ServerConfig with both gRPC and monitoring endpoints.
-// Both endpoints use "localhost:0" (auto-assigned ports) with the given TLS credentials.
-func NewLocalHostServiceConfig(creds connection.TLSConfig) *serve.Config {
-	return &serve.Config{
-		GRPC:                  *NewLocalHostServer(creds),
-		HTTP:                  *NewLocalHostServer(creds),
-		ServiceStartupTimeout: serve.DefaultServiceStartupTimeout,
-	}
-}
-
 // NewEndpoint creates an endpoint from give host and port (as string).
 func NewEndpoint(t *testing.T, host, port string) *connection.Endpoint {
 	t.Helper()
 	convertedPort, err := strconv.Atoi(port)
 	require.NoError(t, err, "could not convert port to integer")
 	return &connection.Endpoint{Host: host, Port: convertedPort}
-}
-
-// NewLocalHostServer returns a default server config with endpoint "localhost:0" given server credentials.
-func NewLocalHostServer(creds connection.TLSConfig) *serve.ServerConfig {
-	return &serve.ServerConfig{
-		Endpoint: connection.Endpoint{Host: "127.0.0.1"},
-		TLS:      creds,
-	}
 }
 
 // OrgClientTLSConfig creates a mutual TLS client configuration using a specific

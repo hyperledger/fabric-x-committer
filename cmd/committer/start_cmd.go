@@ -11,6 +11,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
 	"github.com/spf13/cobra"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/cliutil"
@@ -19,7 +20,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 func startCMD() *cobra.Command {

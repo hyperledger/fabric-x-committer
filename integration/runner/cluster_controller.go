@@ -10,9 +10,9 @@ import (
 	"iter"
 	"testing"
 
+	"github.com/hyperledger/fabric-x-common/utils/connection"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 

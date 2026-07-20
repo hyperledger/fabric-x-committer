@@ -15,8 +15,8 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric-x-common/common/ledger/blockledger/fileledger"
+	"github.com/hyperledger/fabric-x-common/utils/channel"
 
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 

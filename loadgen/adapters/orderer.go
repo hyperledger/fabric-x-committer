@@ -10,10 +10,10 @@ import (
 	"context"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 type (

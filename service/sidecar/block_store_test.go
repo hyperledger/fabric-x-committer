@@ -15,12 +15,13 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/delivercommitter"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -43,14 +44,14 @@ func TestBlockStoreAndDelivery(t *testing.T) {
 
 	bd := &blockDeliveryTestWrapper{Service: &Service{blockStore: bs, metrics: metrics}}
 
-	serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
+	serverConfig := commontest.NewLocalHostServiceConfig(commontest.InsecureTLSConfig)
 	inputBlock := make(chan *common.Block, 10)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(bs.run(ctx, &blockStoreRunConfig{
 			IncomingCommittedBlock: inputBlock,
 		}))
 	}, nil)
-	test.ServeForTest(t.Context(), t, serverConfig, bd)
+	commontest.ServeForTest(t.Context(), t, serverConfig, bd)
 
 	// NOTE: if we start the delivery client without even the 0'th block, it would
 	//       result in an error. This is due to the iterator implementation in the

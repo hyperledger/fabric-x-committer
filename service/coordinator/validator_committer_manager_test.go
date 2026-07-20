@@ -16,6 +16,8 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/utils/connection"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,7 +28,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -55,7 +56,9 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 
 	vcm := newValidatorCommitterManager(
 		&validatorCommitterManagerConfig{
-			clientConfig:                   test.ServerToMultiClientConfig(test.InsecureTLSConfig, servers.Configs...),
+			clientConfig: test.ServerToMultiClientConfig(
+				commontest.InsecureTLSConfig, servers.Configs...,
+			),
 			incomingTxsForValidationCommit: inputTxs,
 			outgoingValidatedTxsNode:       outputTxs,
 			outgoingTxsStatus:              outputTxsStatus,
@@ -291,7 +294,7 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	}, 4*time.Second, 100*time.Millisecond)
 
 	env.mockVCGrpcServers.ServersStop[0]()
-	test.CheckServerStopped(t, env.mockVCGrpcServers.Configs[0].GRPC.Endpoint.Address())
+	commontest.CheckServerStopped(t, env.mockVCGrpcServers.Configs[0].GRPC.Endpoint.Address())
 	env.requireConnectionMetrics(t, 0, connection.Disconnected, 1)
 
 	env.mockVcService.MockFaultyNodeDropSize = 0

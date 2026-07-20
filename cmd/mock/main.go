@@ -11,12 +11,12 @@ import (
 	"os"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-x-common/utils/serve"
 	"github.com/spf13/cobra"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/cliutil"
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/mock"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 const (
