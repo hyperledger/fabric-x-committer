@@ -10,11 +10,13 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -155,8 +157,10 @@ func TestReadConfigCoordinator(t *testing.T) {
 			DependencyGraph: &coordinator.DependencyGraphConfig{
 				NumOfLocalDepConstructors: coordinator.DefaultNumOfLocalDepConstructors,
 				WaitingTxsLimit:           coordinator.DefaultWaitingTxsLimit,
+				ChunkSize:                 coordinator.DefaultChunkSize,
 			},
 			ChannelBufferSizePerGoroutine: coordinator.DefaultChannelBufferSizePerGoroutine,
+			QueueMonitorSamplingTime:      coordinator.DefaultQueueMonitorSamplingTime,
 		},
 	}, {
 		name:           "sample",
@@ -172,8 +176,10 @@ func TestReadConfigCoordinator(t *testing.T) {
 			DependencyGraph: &coordinator.DependencyGraphConfig{
 				NumOfLocalDepConstructors: coordinator.DefaultNumOfLocalDepConstructors,
 				WaitingTxsLimit:           coordinator.DefaultWaitingTxsLimit,
+				ChunkSize:                 coordinator.DefaultChunkSize,
 			},
 			ChannelBufferSizePerGoroutine: coordinator.DefaultChannelBufferSizePerGoroutine,
+			QueueMonitorSamplingTime:      coordinator.DefaultQueueMonitorSamplingTime,
 		},
 	}}
 
@@ -458,7 +464,7 @@ func defaultDBConfig() *statedb.Config {
 		MaxConnections: statedb.DefaultMaxConnections,
 		MinConnections: statedb.DefaultMinConnections,
 		Retry: &retry.Profile{
-			MaxElapsedTime: statedb.DefaultRetryMaxElapsedTime,
+			MaxElapsedTime: new(statedb.DefaultRetryMaxElapsedTime),
 		},
 	}
 }
@@ -481,7 +487,7 @@ func defaultSampleDBConfig() *statedb.Config {
 			RandomizationFactor: 0.5,
 			Multiplier:          1.5,
 			MaxInterval:         60 * time.Second,
-			MaxElapsedTime:      15 * time.Minute,
+			MaxElapsedTime:      new(15 * time.Minute),
 		},
 	}
 }
@@ -557,6 +563,44 @@ func emptyConfig(t *testing.T) string {
 	configPath := filepath.Clean(path.Join(t.TempDir(), "empty.yaml"))
 	require.NoError(t, os.WriteFile(configPath, []byte{}, 0o660))
 	return configPath
+}
+
+// TestReconnectMaxElapsedTime exercises the full decode-and-validate path for the
+// reconnect retry profile: an explicit 0 requests unlimited retries and must decode
+// to a non-nil pointer, an omitted value must stay nil (so the 15m default applies
+// later), and a negative value must be rejected by validation.
+func TestReconnectMaxElapsedTime(t *testing.T) {
+	t.Parallel()
+	read := func(t *testing.T, yaml string) (*connection.MultiClientConfig, error) {
+		t.Helper()
+		v := viper.New()
+		require.NoError(t, readYamlConfigsFromIO(v, strings.NewReader(yaml)))
+		mc := &connection.MultiClientConfig{}
+		return mc, unmarshal(v, mc)
+	}
+
+	t.Run("zero decodes to unlimited", func(t *testing.T) {
+		t.Parallel()
+		mc, err := read(t, "reconnect:\n  max-elapsed-time: 0s\n")
+		require.NoError(t, err)
+		require.NotNil(t, mc.Retry)
+		require.NotNil(t, mc.Retry.MaxElapsedTime)
+		require.Equal(t, time.Duration(0), *mc.Retry.MaxElapsedTime)
+	})
+
+	t.Run("omitted stays nil", func(t *testing.T) {
+		t.Parallel()
+		mc, err := read(t, "reconnect:\n  initial-interval: 1s\n")
+		require.NoError(t, err)
+		require.NotNil(t, mc.Retry)
+		require.Nil(t, mc.Retry.MaxElapsedTime)
+	})
+
+	t.Run("negative is rejected", func(t *testing.T) {
+		t.Parallel()
+		_, err := read(t, "reconnect:\n  max-elapsed-time: -5m\n")
+		require.Error(t, err)
+	})
 }
 
 func TestViperDefaultsAreComplete(t *testing.T) {

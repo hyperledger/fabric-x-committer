@@ -104,6 +104,7 @@ committer:
   #   randomization-factor: 0.5
   #   multiplier: 1.5
   #   max-interval: 10s
+  #   # Total retry budget. Set to 0s for unlimited retries (never give up on the coordinator).
   #   max-elapsed-time: 15m
 ledger:
   # Filesystem directory where the sidecar stores the local copy of the blockchain ledger.

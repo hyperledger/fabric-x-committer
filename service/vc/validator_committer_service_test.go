@@ -508,7 +508,7 @@ func TestGRPCStatusCode(t *testing.T) {
 	env.vcs[0].db.retryProfile = &retry.Profile{
 		InitialInterval: 100 * time.Millisecond,
 		MaxInterval:     1 * time.Second,
-		MaxElapsedTime:  3 * time.Second,
+		MaxElapsedTime:  new(3 * time.Second),
 	}
 
 	testCases := []struct {

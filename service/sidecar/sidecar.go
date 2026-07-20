@@ -157,8 +157,7 @@ func (s *Service) Run(ctx context.Context) error {
 	})
 
 	g.Go(func() error {
-		// TODO: initialize retry from config.
-		return retry.Sustain(gCtx, nil, func() error {
+		return retry.Sustain(gCtx, s.config.Committer.Retry, func() error {
 			defer func() {
 				s.recoverCommittedBlocks(gCtx)
 			}()

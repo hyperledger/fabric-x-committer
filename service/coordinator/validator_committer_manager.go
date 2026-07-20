@@ -114,8 +114,7 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 		logger.Infof("Client [%d] successfully created and connected to vc at %s", i, label)
 
 		g.Go(func() error {
-			// TODO: initialize retry from config.
-			return retry.Sustain(eCtx, nil, func() (err error) {
+			return retry.Sustain(eCtx, vcm.config.clientConfig.Retry, func() (err error) {
 				defer vc.recoverPendingTransactions(txBatchQueue)
 				return vc.sendTransactionsAndForwardStatus(
 					eCtx,

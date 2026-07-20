@@ -38,7 +38,7 @@ func defaultCredentials(dbType string) (user, password string) {
 // DefaultRetry is used for tests.
 var DefaultRetry = &retry.Profile{
 	// MaxElapsedTime is the duration allocated for the retry mechanism during the database initialization process.
-	MaxElapsedTime: 5 * time.Minute,
+	MaxElapsedTime: new(5 * time.Minute),
 	// InitialInterval is the starting wait time interval that increases every retry attempt.
 	InitialInterval: time.Duration(utils.RandIntN(900)+100) * time.Millisecond,
 }
