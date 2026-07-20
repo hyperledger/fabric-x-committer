@@ -33,7 +33,7 @@ func databaseInitializationCMD() *cobra.Command {
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			vcConfig, _, err := config.ReadVCYamlAndSetupLogging(config.NewViperWithVCDefaults(), configPath)
+			dbConfig, _, err := config.ReadDBYamlAndSetupLogging(config.NewViperWithDBDefaults(), configPath)
 			if err != nil {
 				return err
 			}
@@ -41,7 +41,7 @@ func databaseInitializationCMD() *cobra.Command {
 			ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 			defer cancel()
 
-			if err := statedb.SetupSystemTablesAndNamespaces(ctx, vcConfig.Database); err != nil {
+			if err := statedb.SetupSystemTablesAndNamespaces(ctx, dbConfig); err != nil {
 				return errors.Wrap(err, "failed to initialize state database")
 			}
 
