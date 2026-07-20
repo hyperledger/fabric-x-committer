@@ -113,6 +113,8 @@ For detailed service descriptions and architecture, see the [Architecture Guide]
 
 All service endpoints must be pre-configured before deployment. To scale up, start additional pre-configured instances. To scale down, stop the instances no longer needed.
 
+**Retry budget for dynamic scaling.** The Coordinator maintains its connections to the Verifier and Validator-Committer instances (and the Sidecar its connection to the Coordinator) with an exponential-backoff retry loop bounded by the `reconnect.max-elapsed-time` budget (default 15 minutes). If a pre-configured instance stays down longer than that budget — for example, while it is stopped for scaling — the sustained operation gives up. For deployments that stop and start instances at runtime, set `reconnect.max-elapsed-time: 0s` on the relevant client configuration to retry **indefinitely** (never give up), so the Coordinator keeps reconnecting as instances come and go. The other retry parameters (`initial-interval`, `randomization-factor`, `multiplier`, `max-interval`) still apply. Note that this only removes the time limit from the reconnection loop; the underlying gRPC retry policy remains bounded by design.
+
 ### 3.1 Scaling Verifier Instances
 
 Verifier services are CPU-bound — their primary work is cryptographic signature verification. Add Verifier instances when CPU utilization on existing instances is consistently saturated. To scale up, start additional pre-configured Verifier instances. To scale down, stop the instances no longer needed.

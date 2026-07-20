@@ -87,7 +87,7 @@ func TestRetry(t *testing.T) {
 			Password:       "pwd",
 			MaxConnections: 5,
 			Retry: &retry.Profile{
-				MaxElapsedTime: 10 * time.Second,
+				MaxElapsedTime: new(10 * time.Second),
 			},
 		},
 	)

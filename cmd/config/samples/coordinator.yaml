@@ -58,6 +58,8 @@ verifier:
   #   randomization-factor: 0.5
   #   multiplier: 1.5
   #   max-interval: 10s
+  #   # Total retry budget. Set to 0s for unlimited retries (never give up) — this keeps
+  #   # reconnecting to verifier/VC instances that are stopped/started for dynamic scaling.
   #   max-elapsed-time: 15m
 validator-committer:
   # List of validator-committer (VC) service endpoints. Multiple endpoints enable
@@ -71,6 +73,8 @@ validator-committer:
   #   randomization-factor: 0.5
   #   multiplier: 1.5
   #   max-interval: 10s
+  #   # Total retry budget. Set to 0s for unlimited retries (never give up) — this keeps
+  #   # reconnecting to verifier/VC instances that are stopped/started for dynamic scaling.
   #   max-elapsed-time: 15m
 
 dependency-graph:

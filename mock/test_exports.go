@@ -378,7 +378,7 @@ func GetOrdererConnConfig(artifactsPath string, clientTLSConfig connection.TLSCo
 			InitialInterval: 10 * time.Millisecond,
 			MaxInterval:     100 * time.Millisecond,
 			Multiplier:      2,
-			MaxElapsedTime:  time.Second,
+			MaxElapsedTime:  new(time.Second),
 		},
 		Identity:                     id,
 		SuspicionGracePeriodPerBlock: time.Second,

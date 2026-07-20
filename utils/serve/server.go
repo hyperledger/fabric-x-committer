@@ -26,7 +26,7 @@ var (
 	listenRetry = retry.Profile{
 		InitialInterval: 50 * time.Millisecond,
 		MaxInterval:     500 * time.Millisecond,
-		MaxElapsedTime:  2 * time.Minute,
+		MaxElapsedTime:  new(2 * time.Minute),
 	}
 
 	// portConflictRegex is the compiled regular expression
