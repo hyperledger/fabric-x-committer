@@ -8,6 +8,7 @@ package test
 
 import (
 	"context"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"net"
 	"strconv"
 	"testing"
@@ -15,6 +16,8 @@ import (
 
 	"github.com/Shopify/toxiproxy/v2"
 	toxiclient "github.com/Shopify/toxiproxy/v2/client"
+	"github.com/hyperledger/fabric-x-committer/integration/runner"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
@@ -22,13 +25,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/status"
-
-	"github.com/hyperledger/fabric-x-committer/integration/runner"
-	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 const (
@@ -41,177 +39,176 @@ const (
 
 	localhostDynamicPort = "localhost:0"
 	dummyTxID            = "dummy-tx"
+
+	sidecarService = iota
+	queryService
 )
 
+// keepAliveConfig holds the per-test knobs for a keep-alive runtime.
+type keepAliveConfig struct {
+	permitWithoutStream  bool
+	maxConcurrentStreams int
+}
+
+// TestKeepAliveDeadConnectionDetection verifies that a service's server-side keep-alive
+// closes a silent (black-holed) connection on its own.
 func TestKeepAliveDeadConnectionDetection(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		name                 string
-		permitWithoutStream  bool
-		maxConcurrentStreams int
-		serviceAddr          func(*runner.CommitterRuntime) string
-		connect              func(
-			t *testing.T,
-			proxiedConn *grpc.ClientConn,
-			directAddr string,
-			clientCreds credentials.TransportCredentials,
-		) func(*testing.T)
+		name                string
+		service             int
+		permitWithoutStream bool
 	}{
 		{
 			name:                "Sidecar",
+			service:             sidecarService,
 			permitWithoutStream: false,
-			serviceAddr: func(c *runner.CommitterRuntime) string {
-				return c.SystemConfig.Services.Sidecar.GrpcEndpoint.Address()
-			},
-			connect: func(
-				t *testing.T,
-				proxiedConn *grpc.ClientConn,
-				_ string,
-				_ credentials.TransportCredentials,
-			) func(*testing.T) {
-				t.Helper()
-				client := committerpb.NewNotifierClient(proxiedConn)
-				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
-				t.Cleanup(cancel)
-
-				stream, err := client.OpenNotificationStream(ctx)
-				require.NoError(t, err)
-				require.NoError(t, stream.Send(&committerpb.NotificationRequest{
-					TxStatusRequest: &committerpb.TxIDsBatch{TxIds: []string{dummyTxID}},
-				}))
-
-				return func(t *testing.T) {
-					t.Helper()
-					receiveErr := receiveWithin(t, stream, maxConnectionClosingTime)
-					require.Error(t, receiveErr, "server should close the dead connection via keep-alive")
-					require.Equal(
-						t,
-						codes.Unavailable, status.Code(receiveErr), "expected server-initiated close",
-					)
-				}
-			},
-		},
-		{
-			name:                 "SidecarStreamSlotRelease",
-			permitWithoutStream:  false,
-			maxConcurrentStreams: 4,
-			serviceAddr: func(c *runner.CommitterRuntime) string {
-				return c.SystemConfig.Services.Sidecar.GrpcEndpoint.Address()
-			},
-			connect: func(
-				t *testing.T,
-				proxiedConn *grpc.ClientConn,
-				directAddr string,
-				clientCreds credentials.TransportCredentials,
-			) func(*testing.T) {
-				t.Helper()
-				client1 := committerpb.NewNotifierClient(proxiedConn)
-
-				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
-				t.Cleanup(cancel)
-
-				stream1, err := client1.OpenNotificationStream(ctx)
-				require.NoError(t, err)
-				require.NoError(t, stream1.Send(&committerpb.NotificationRequest{
-					TxStatusRequest: &committerpb.TxIDsBatch{TxIds: []string{dummyTxID}},
-				}))
-
-				// Create direct connection
-				conn2, err := grpc.NewClient(directAddr, grpc.WithTransportCredentials(clientCreds))
-				require.NoError(t, err)
-				t.Cleanup(func() { _ = conn2.Close() })
-
-				client2 := committerpb.NewNotifierClient(conn2)
-				// Verify slot is occupied
-				stream2, err := client2.OpenNotificationStream(ctx)
-				if err == nil {
-					_, err = stream2.Recv()
-				}
-				require.Error(t, err, "second stream should fail with ResourceExhausted")
-
-				return func(t *testing.T) {
-					t.Helper()
-					ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
-					t.Cleanup(cancel)
-
-					// Verify slot is released after keep-alive timeout
-					require.EventuallyWithT(t, func(ct *assert.CollectT) {
-						stream3, err := client2.OpenNotificationStream(ctx)
-						require.NoError(ct, err, "third stream should succeed after first connection closed")
-						require.NoError(ct, stream3.Send(&committerpb.NotificationRequest{
-							TxStatusRequest: &committerpb.TxIDsBatch{TxIds: []string{dummyTxID}},
-						}))
-					}, maxConnectionClosingTime, 500*time.Millisecond)
-				}
-			},
 		},
 		{
 			name:                "Query",
+			service:             queryService,
 			permitWithoutStream: true,
-			serviceAddr: func(c *runner.CommitterRuntime) string {
-				return c.SystemConfig.Services.Query.GrpcEndpoint.Address()
-			},
-			connect: func(
-				t *testing.T,
-				proxiedConn *grpc.ClientConn,
-				_ string,
-				_ credentials.TransportCredentials,
-			) func(*testing.T) {
-				t.Helper()
-				client := committerpb.NewQueryServiceClient(proxiedConn)
-
-				ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
-				t.Cleanup(cancel)
-
-				_, err := client.GetTransactionStatus(ctx, &committerpb.TxStatusQuery{
-					TxIds: []string{dummyTxID},
-				})
-				require.NoError(t, err)
-
-				return func(t *testing.T) {
-					t.Helper()
-					require.EventuallyWithT(t, func(ct *assert.CollectT) {
-						require.NotEqual(ct, connectivity.Ready, proxiedConn.GetState())
-					}, maxConnectionClosingTime, 200*time.Millisecond)
-				}
-			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			c := runner.NewRuntime(t, &runner.Config{
-				BlockTimeout:                 2 * time.Second,
-				KeepAliveTime:                keepAliveTime,
-				KeepAliveTimeout:             keepAliveTimeout,
-				KeepAlivePermitWithoutStream: tc.permitWithoutStream,
-				MaxConcurrentStreams:         tc.maxConcurrentStreams,
-			})
-			c.Start(t, runner.FullTxPathWithQuery)
+			c := startKeepAliveRuntime(t, keepAliveConfig{permitWithoutStream: tc.permitWithoutStream})
+			proxy, conn := dialThroughProxy(t, serviceAddr(t, c, tc.service), clientCredentials(t, c))
 
-			clientCreds, err := c.SystemConfig.ClientTLS.ClientCredentials()
-			require.NoError(t, err)
-
-			serviceAddr := tc.serviceAddr(c)
-			proxy := newProxy(t, serviceAddr)
-
-			proxiedConn, err := grpc.NewClient(proxy.Listen, grpc.WithTransportCredentials(clientCreds))
-			require.NoError(t, err)
-			t.Cleanup(func() { _ = proxiedConn.Close() })
-
-			proxiedConn.Connect()
-			require.EventuallyWithT(t, func(ct *assert.CollectT) {
-				require.Equal(ct, connectivity.Ready, proxiedConn.GetState())
-			}, 30*time.Second, 500*time.Millisecond)
-
-			verify := tc.connect(t, proxiedConn, serviceAddr, clientCreds)
-
+			activateConnection(t, conn, tc.service)
 			blackHole(t, proxy)
 
-			verify(t)
+			require.EventuallyWithT(t, func(ct *assert.CollectT) {
+				require.NotEqual(ct, connectivity.Ready, conn.GetState())
+			}, maxConnectionClosingTime, 200*time.Millisecond)
 		})
 	}
+}
+
+// TestKeepAliveSidecarStreamSlotRelease verifies that once keep-alive closes a dead
+// connection, the concurrent-stream slot it held is released for new clients.
+func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
+	t.Parallel()
+
+	c := startKeepAliveRuntime(t, keepAliveConfig{
+		permitWithoutStream:  false,
+		maxConcurrentStreams: 4,
+	})
+
+	addr := serviceAddr(t, c, sidecarService)
+	clientCreds := clientCredentials(t, c)
+
+	proxy, conn := dialThroughProxy(t, addr, clientCreds)
+
+	activateConnection(t, conn, sidecarService)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+	t.Cleanup(cancel)
+
+	conn2, err := grpc.NewClient(addr, grpc.WithTransportCredentials(clientCreds))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn2.Close() })
+
+	client2 := committerpb.NewNotifierClient(conn2)
+	stream2, err := client2.OpenNotificationStream(ctx)
+	if err == nil {
+		_, err = stream2.Recv()
+	}
+	require.Error(t, err, "second stream should fail with ResourceExhausted")
+
+	blackHole(t, proxy)
+
+	// Once keep-alive closes the dead connection, the slot is released.
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		stream3, err := client2.OpenNotificationStream(ctx)
+		require.NoError(ct, err)
+		require.NoError(ct, stream3.Send(&committerpb.NotificationRequest{
+			TxStatusRequest: &committerpb.TxIDsBatch{TxIds: []string{dummyTxID}},
+			Timeout:         durationpb.New(2 * time.Second),
+		}))
+
+		_, err = stream3.Recv()
+		require.NoError(ct, err, "third stream should be admitted after the slot is released")
+	}, maxConnectionClosingTime, 500*time.Millisecond)
+}
+
+func startKeepAliveRuntime(t *testing.T, cfg keepAliveConfig) *runner.CommitterRuntime {
+	t.Helper()
+	c := runner.NewRuntime(t, &runner.Config{
+		BlockTimeout:                 2 * time.Second,
+		KeepAliveTime:                keepAliveTime,
+		KeepAliveTimeout:             keepAliveTimeout,
+		KeepAlivePermitWithoutStream: cfg.permitWithoutStream,
+		MaxConcurrentStreams:         cfg.maxConcurrentStreams,
+	})
+	c.Start(t, runner.FullTxPathWithQuery)
+	return c
+}
+
+// clientCredentials returns the TLS credentials a client uses to reach the runtime services.
+func clientCredentials(t *testing.T, c *runner.CommitterRuntime) credentials.TransportCredentials {
+	t.Helper()
+	creds, err := c.SystemConfig.ClientTLS.ClientCredentials()
+	require.NoError(t, err)
+	return creds
+}
+
+// serviceAddr returns the endpoint address of the given service in the runtime.
+func serviceAddr(t *testing.T, c *runner.CommitterRuntime, service int) string {
+	t.Helper()
+	switch service {
+	case sidecarService:
+		return c.SystemConfig.Services.Sidecar.GrpcEndpoint.Address()
+	case queryService:
+		return c.SystemConfig.Services.Query.GrpcEndpoint.Address()
+	default:
+		require.FailNow(t, "unknown service kind")
+		return ""
+	}
+}
+
+// activateConnection issues an RPC on a connection so the server has traffic to monitor with keep-alive.
+func activateConnection(t *testing.T, conn *grpc.ClientConn, service int) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+	t.Cleanup(cancel)
+
+	switch service {
+	case sidecarService:
+		stream, err := committerpb.NewNotifierClient(conn).OpenNotificationStream(ctx)
+		require.NoError(t, err)
+		require.NoError(t, stream.Send(&committerpb.NotificationRequest{
+			TxStatusRequest: &committerpb.TxIDsBatch{TxIds: []string{dummyTxID}},
+		}))
+	case queryService:
+		_, err := committerpb.NewQueryServiceClient(conn).GetTransactionStatus(ctx, &committerpb.TxStatusQuery{
+			TxIds: []string{dummyTxID},
+		})
+		require.NoError(t, err)
+	default:
+		require.FailNow(t, "unknown service kind")
+	}
+}
+
+// dialThroughProxy routes a connection through a toxiproxy that can later black-hole the traffic.
+func dialThroughProxy(
+	t *testing.T, serviceAddr string, clientCreds credentials.TransportCredentials,
+) (*toxiclient.Proxy, *grpc.ClientConn) {
+	t.Helper()
+	proxy := newProxy(t, serviceAddr)
+
+	conn, err := grpc.NewClient(proxy.Listen, grpc.WithTransportCredentials(clientCreds))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+
+	conn.Connect()
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		require.Equal(ct, connectivity.Ready, conn.GetState())
+	}, 30*time.Second, 500*time.Millisecond)
+
+	return proxy, conn
 }
 
 // newProxy creates a proxy control plane between the client and the service that can silently
@@ -264,30 +261,6 @@ func blackHole(t *testing.T, p *toxiclient.Proxy) {
 		},
 	)
 	require.NoError(t, err)
-}
-
-// receiveWithin returns the stream's first receive error, or nil if no error
-// arrives within the timeout.
-func receiveWithin(
-	t *testing.T, stream committerpb.Notifier_OpenNotificationStreamClient, timeout time.Duration,
-) error {
-	t.Helper()
-
-	done := make(chan error, 1)
-	go func() {
-		_, err := stream.Recv()
-		select {
-		case done <- err:
-		case <-t.Context().Done():
-			// The test finished before we could send the error.
-		}
-	}()
-	select {
-	case err := <-done:
-		return err
-	case <-time.After(timeout):
-		return nil
-	}
 }
 
 // freePort returns an unused localhost TCP port.

@@ -30,8 +30,7 @@ server:
       # closed.
       timeout: 10s
     enforcement-policy:
-      # MinTime is the minimum amount of time a client should wait before sending
-      # a keepalive ping.
+      # The minimum amount of time a client should wait before sending a keepalive ping.
       min-time: 60s
       # If true, server allows keepalive pings even when there are no active streams(RPCs).
       # If false, and a client sends ping when there are no active
