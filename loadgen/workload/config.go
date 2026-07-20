@@ -33,7 +33,6 @@ type Profile struct {
 	Block       BlockProfile       `mapstructure:"block" yaml:"block"`
 	Key         KeyProfile         `mapstructure:"key" yaml:"key"`
 	Transaction TransactionProfile `mapstructure:"transaction" yaml:"transaction"`
-	Query       QueryProfile       `mapstructure:"query" yaml:"query"`
 	Policy      PolicyProfile      `mapstructure:"policy" yaml:"policy"`
 	Conflicts   ConflictProfile    `mapstructure:"conflicts" yaml:"conflicts"`
 
@@ -83,18 +82,6 @@ type TransactionProfile struct {
 	ReadWriteCount *Distribution `mapstructure:"read-write-count" yaml:"read-write-count"`
 	// The number of keys to generate (write)
 	BlindWriteCount *Distribution `mapstructure:"write-count" yaml:"write-count"`
-}
-
-// QueryProfile describes generate query characteristics.
-type QueryProfile struct {
-	// The number of keys to query.
-	QuerySize *Distribution `mapstructure:"query-size" yaml:"query-size"`
-	// The minimal portion of invalid keys (1 => all keys are invalid).
-	// This is a lower bound since some valid keys might have failed to commit due to conflicts.
-	MinInvalidKeysPortion *Distribution `mapstructure:"min-invalid-keys-portion" yaml:"min-invalid-keys-portion"`
-	// If Shuffle=false, the valid keys will be placed first.
-	// Otherwise, they will be shuffled.
-	Shuffle bool `mapstructure:"shuffle" yaml:"shuffle"`
 }
 
 // ConflictProfile describes the TX conflict characteristics.

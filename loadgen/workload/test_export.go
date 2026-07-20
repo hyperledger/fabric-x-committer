@@ -39,11 +39,6 @@ func DefaultProfile(workers uint32) *Profile {
 			ReadWriteValueSize: 32,
 			ReadWriteCount:     NewConstantDistribution(2),
 		},
-		Query: QueryProfile{
-			QuerySize:             NewConstantDistribution(100),
-			MinInvalidKeysPortion: NewConstantDistribution(0),
-			Shuffle:               false,
-		},
 		Policy: PolicyProfile{
 			NamespacePolicies: map[string]*Policy{
 				DefaultGeneratedNamespaceID: {Scheme: signature.NoScheme},
