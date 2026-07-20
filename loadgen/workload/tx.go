@@ -62,9 +62,9 @@ func newIndependentTxGenerators(profile *Profile, extraModifiers ...Generator[Mo
 		utils.Must(err)
 		gens[i] = &IndependentTxGenerator{
 			TxBuilder:                txb,
-			ReadOnlyKeyGenerator:     multiKeyGenerator(s.nextSeed(), keyGens[i], profile.Transaction.ReadOnlyCount),
-			ReadWriteKeyGenerator:    multiKeyGenerator(s.nextSeed(), keyGens[i], profile.Transaction.ReadWriteCount),
-			BlindWriteKeyGenerator:   multiKeyGenerator(s.nextSeed(), keyGens[i], profile.Transaction.BlindWriteCount),
+			ReadOnlyKeyGenerator:     multiKeyGenerator(keyGens[i], profile.Transaction.ReadOnlyCount),
+			ReadWriteKeyGenerator:    multiKeyGenerator(keyGens[i], profile.Transaction.ReadWriteCount),
+			BlindWriteKeyGenerator:   multiKeyGenerator(keyGens[i], profile.Transaction.BlindWriteCount),
 			ReadWriteValueGenerator:  valueGenerator(s.nextSeed(), profile.Transaction.ReadWriteValueSize),
 			BlindWriteValueGenerator: valueGenerator(s.nextSeed(), profile.Transaction.BlindWriteValueSize),
 			MetadataGenerator:        valueGenerator(s.nextSeed(), profile.Transaction.MetadataSize),
@@ -123,10 +123,10 @@ func (g *IndependentTxGenerator) Next() *servicepb.LoadGenTx {
 	return g.TxBuilder.MakeTx(tx)
 }
 
-func multiKeyGenerator(rnd *rand.Rand, keyGen Generator[Key], keyCount *Distribution) *MultiGenerator[Key] {
+func multiKeyGenerator(keyGen Generator[Key], keyCount uint32) *MultiGenerator[Key] {
 	return &MultiGenerator[Key]{
 		Gen:   keyGen,
-		Count: keyCount.MakeIntGenerator(rnd),
+		Count: int(keyCount),
 	}
 }
 

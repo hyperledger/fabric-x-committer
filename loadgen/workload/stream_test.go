@@ -119,23 +119,9 @@ func requireValidTx(t *testing.T, tx *servicepb.LoadGenTx, profile *Profile, end
 	require.NotEmpty(t, tx.EnvelopePayload)
 	require.Len(t, tx.Tx.Namespaces, 1)
 
-	if profile.Transaction.ReadOnlyCount != nil {
-		require.Len(t, tx.Tx.Namespaces[0].ReadsOnly, 1)
-	} else {
-		require.Empty(t, tx.Tx.Namespaces[0].ReadsOnly)
-	}
-
-	if profile.Transaction.ReadWriteCount != nil {
-		require.Len(t, tx.Tx.Namespaces[0].ReadWrites, 2)
-	} else {
-		require.Empty(t, tx.Tx.Namespaces[0].ReadWrites)
-	}
-
-	if profile.Transaction.BlindWriteCount != nil {
-		require.Len(t, tx.Tx.Namespaces[0].BlindWrites, 3)
-	} else {
-		require.Empty(t, tx.Tx.Namespaces[0].BlindWrites)
-	}
+	require.Len(t, tx.Tx.Namespaces[0].ReadsOnly, int(profile.Transaction.ReadOnlyCount))
+	require.Len(t, tx.Tx.Namespaces[0].ReadWrites, int(profile.Transaction.ReadWriteCount))
+	require.Len(t, tx.Tx.Namespaces[0].BlindWrites, int(profile.Transaction.BlindWriteCount))
 
 	for _, v := range tx.Tx.Namespaces[0].ReadsOnly {
 		requireValidKey(t, v.Key, profile)
@@ -164,11 +150,11 @@ func testTxProfiles(t *testing.T) (profiles []*Profile) {
 	for _, onlyReadWrite := range []bool{true, false} {
 		for _, p := range testWorkersProfiles() {
 			if !onlyReadWrite {
-				p.Transaction.ReadOnlyCount = NewConstantDistribution(1)
-				p.Transaction.BlindWriteCount = NewConstantDistribution(3)
+				p.Transaction.ReadOnlyCount = 1
+				p.Transaction.BlindWriteCount = 3
 			} else {
-				p.Transaction.ReadOnlyCount = nil
-				p.Transaction.BlindWriteCount = nil
+				p.Transaction.ReadOnlyCount = 0
+				p.Transaction.BlindWriteCount = 0
 			}
 			profiles = append(profiles, p)
 		}
@@ -245,7 +231,7 @@ func TestGenValidBlock(t *testing.T) {
 }
 
 func profileTestName(p *Profile) string {
-	onlyReadWrite := p.Transaction.ReadOnlyCount == nil
+	onlyReadWrite := p.Transaction.ReadOnlyCount == 0
 	key := "no-key"
 	policy := p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID]
 	if policy.KeyPath != nil && policy.KeyPath.VerificationKey != "" {
@@ -282,25 +268,25 @@ func TestGenDependentTx(t *testing.T) {
 	p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.NoScheme
 	p.Conflicts.Dependencies = []DependencyDescription{
 		{
-			Gap:         NewConstantDistribution(1),
+			Gap:         1,
 			Src:         "write",
 			Dst:         "write",
 			Probability: 0.1,
 		},
 		{
-			Gap:         NewConstantDistribution(1),
+			Gap:         1,
 			Src:         "read",
 			Dst:         "write",
 			Probability: 0.1,
 		},
 		{
-			Gap:         NewConstantDistribution(1),
+			Gap:         1,
 			Src:         "write",
 			Dst:         "read-write",
 			Probability: 0.1,
 		},
 		{
-			Gap:         NewConstantDistribution(1),
+			Gap:         1,
 			Src:         "read-write",
 			Dst:         "read-write",
 			Probability: 0.1,
@@ -337,7 +323,7 @@ func TestBlindWriteWithValue(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(1)
 	p.Transaction.BlindWriteValueSize = 32
-	p.Transaction.BlindWriteCount = NewConstantDistribution(2)
+	p.Transaction.BlindWriteCount = 2
 
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 	g := c.MakeGenerator()
@@ -352,7 +338,7 @@ func TestReadWriteWithValue(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(1)
 	p.Transaction.ReadWriteValueSize = 32
-	p.Transaction.ReadWriteCount = NewConstantDistribution(3)
+	p.Transaction.ReadWriteCount = 3
 
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 	g := c.MakeGenerator()
@@ -467,4 +453,15 @@ func verify(
 		}
 	}
 	return true
+}
+
+// requireBernoulliDist asserts that the given sample of 0/1 values has the
+// expected proportion of 1s within delta.
+func requireBernoulliDist(t *testing.T, sample []float64, probability Probability, delta float64) {
+	t.Helper()
+	var ones float64
+	for _, v := range sample {
+		ones += v
+	}
+	require.InDelta(t, probability, ones/float64(len(sample)), delta)
 }

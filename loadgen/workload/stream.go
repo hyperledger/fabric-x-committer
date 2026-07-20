@@ -77,7 +77,7 @@ func (s *TxStream) MakeGenerator() *ConsumerRateController[*servicepb.LoadGenTx]
 func ingestBatchesToQueue[T any](ctx context.Context, c chan<- []T, g Generator[T], batchSize int) {
 	batchGen := &MultiGenerator[T]{
 		Gen:   g,
-		Count: &ConstGenerator[int]{Const: max(batchSize, 1)},
+		Count: max(batchSize, 1),
 	}
 	q := channel.NewWriter(ctx, c)
 	for q.Write(batchGen.Next()) {

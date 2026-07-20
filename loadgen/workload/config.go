@@ -25,6 +25,9 @@ const (
 	PolicySchemeUnspecified = ""
 )
 
+// Probability is a float in the closed interval [0,1].
+type Probability = float64
+
 // Profile describes the generated workload characteristics.
 // It only contains parameters that deterministically affect the
 // generated items.
@@ -77,11 +80,11 @@ type TransactionProfile struct {
 	ReadWriteValueSize  uint32 `mapstructure:"read-write-value-size" yaml:"read-write-value-size"`
 	BlindWriteValueSize uint32 `mapstructure:"blind-write-value-size" yaml:"blind-write-value-size"`
 	// The number of keys to generate (read ver=nil)
-	ReadOnlyCount *Distribution `mapstructure:"read-only-count" yaml:"read-only-count"`
+	ReadOnlyCount uint32 `mapstructure:"read-only-count" yaml:"read-only-count"`
 	// The number of keys to generate (read ver=nil/write)
-	ReadWriteCount *Distribution `mapstructure:"read-write-count" yaml:"read-write-count"`
+	ReadWriteCount uint32 `mapstructure:"read-write-count" yaml:"read-write-count"`
 	// The number of keys to generate (write)
-	BlindWriteCount *Distribution `mapstructure:"write-count" yaml:"write-count"`
+	BlindWriteCount uint32 `mapstructure:"write-count" yaml:"write-count"`
 }
 
 // ConflictProfile describes the TX conflict characteristics.
@@ -97,8 +100,8 @@ type ConflictProfile struct {
 type DependencyDescription struct {
 	// Probability of the dependency type [0,1] (default: 0)
 	Probability Probability `mapstructure:"probability" yaml:"probability"`
-	// Gap is the distance between the dependent TXs (default: 1)
-	Gap *Distribution `mapstructure:"gap" yaml:"gap"`
+	// Gap is the distance between the dependent TXs (min: 1, default: 1)
+	Gap uint64 `mapstructure:"gap" yaml:"gap"`
 	// Src dependency "read", "write", or "read-write"
 	Src string `mapstructure:"src" yaml:"src"`
 	// Dst dependency "read", "write", or "read-write"

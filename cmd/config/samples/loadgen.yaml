@@ -140,13 +140,7 @@ load-profile:
   #   - read-only: Reads a key without writing (version is nil).
   #   - read-write: Reads and writes a key (read version is nil).
   #   - blind-write (write-count): Writes a key without reading it first.
-  # The count for each type is specified using a distribution (see below).
-  # Supported distributions:
-  #   const: N                          - Exactly N operations.
-  #   uniform: {min: M, max: N}         - Uniformly distributed between M and N.
-  #   normal: {mean: M, std: S}         - Normal distribution with mean M and std S.
-  #   bernoulli: P                      - 1 with probability P, 0 otherwise.
-  #   discrete: [{value: V, probability: P}, ...] - Discrete distribution.
+  # The count for each type is a fixed number of operations per transaction (default: 0).
   transaction:
     # Size in bytes of the metadata for each transaction (0 means nil value).
     # metadata-size: 0
@@ -155,14 +149,11 @@ load-profile:
     # Size in bytes of the value written for each blind-write operation (0 means nil value).
     # blind-write-value-size: 0
     # Number of read-only operations per transaction.
-    # read-only-count:
-    #   const: 0
+    # read-only-count: 0
     # Number of read-write operations per transaction.
-    read-write-count:
-      const: 2
+    read-write-count: 2
     # Number of blind-write operations per transaction.
-    # write-count:
-    #   const: 0
+    # write-count: 0
   # Policy configuration for transaction endorsement and validation
   policy:
     # Channel ID for which transactions are generated. Must match the target blockchain channel.
@@ -222,11 +213,10 @@ load-profile:
     # Each dependency type is an independent Bernoulli trial applied per transaction.
     # 'src' and 'dst' specify the operation types that create the dependency:
     #   "read", "write", or "read-write" (both read and write the same key).
-    # 'gap' controls the distance (in transaction count) between dependent transactions.
+    # 'gap' controls the distance (in transaction count) between dependent transactions (min: 1, default: 1).
     # dependencies:
     #   - probability: 0.05   # 5% of transactions will have this dependency
-    #     gap:
-    #       const: 1          # Dependent transaction is the immediately next one
+    #     gap: 1              # Dependent transaction is the immediately next one
     #     src: read-write     # Source transaction reads and writes a key
     #     dst: read-write     # Destination transaction reads and writes the same key
   # Random seed for reproducible transaction generation. Same seed produces same transaction sequence.

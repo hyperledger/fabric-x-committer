@@ -30,8 +30,7 @@ load-profile:
     size: 32
   transaction:
     metadata-size: 150
-    read-write-count:
-      const: 2
+    read-write-count: 2
   policy:
     channel-id: {{ .Policy.ChannelID }}
     artifacts-path: {{ .Policy.ArtifactsPath }}
