@@ -41,13 +41,13 @@ type vcMgrTestEnv struct {
 	outputTxs                 chan dependencygraph.TxNodeBatch
 	outputTxsStatus           *txStatusQueue
 	mockVcService             *mock.VcService
-	mockVCGrpcServers         *commontest.Servers
+	mockVCGrpcServers         *test.Servers
 	sigVerTestEnv             *svMgrTestEnv
 }
 
 func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 	t.Helper()
-	vcs, servers := mock.StartMockVCService(t, commontest.StartServerParameters{NumService: numVCService})
+	vcs, servers := mock.StartMockVCService(t, test.StartServerParameters{NumService: numVCService})
 	svEnv := newSvMgrTestEnv(t, 2)
 
 	inputTxs := make(chan dependencygraph.TxNodeBatch, 10)
@@ -56,7 +56,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 
 	vcm := newValidatorCommitterManager(
 		&validatorCommitterManagerConfig{
-			clientConfig: commontest.ServerToMultiClientConfig(
+			clientConfig: test.ServerToMultiClientConfig(
 				commontest.InsecureTLSConfig, servers.Configs...,
 			),
 			incomingTxsForValidationCommit: inputTxs,
@@ -67,7 +67,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 		},
 	)
 
-	commontest.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		err := connection.FilterStreamRPCError(vcm.run(ctx))
 		assert.NoError(t, err)
 		return nil

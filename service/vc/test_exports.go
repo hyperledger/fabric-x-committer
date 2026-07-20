@@ -89,7 +89,7 @@ func NewValidatorAndCommitServiceTestEnv(t *testing.T, opts *TestEnvOpts) *Valid
 		}
 		serverConfig := commontest.NewLocalHostServiceConfig(opts.ServerCreds)
 		vcs := NewValidatorCommitterService(initCtx, config)
-		commontest.RunServiceAndServeForTest(t.Context(), t, vcs, serverConfig)
+		test.RunServiceAndServeForTest(t.Context(), t, vcs, serverConfig)
 		vcservices[i] = vcs
 		configs[i] = config
 		serverConfigs[i] = serverConfig

@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -34,7 +33,7 @@ func newLocalDependencyConstructorTestEnv(t *testing.T) *localDependencyConstruc
 
 	metrics := newPerformanceMetrics(monitoring.NewProvider())
 	ldc := newLocalDependencyConstructor(inComingTxs, outGoingTxs, metrics)
-	commontest.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		ldc.run(ctx, 5)
 		return nil
 	}, nil)

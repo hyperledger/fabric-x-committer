@@ -23,7 +23,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/hyperledger/fabric-x-common/utils/connection"
 	"github.com/hyperledger/fabric-x-common/utils/serve"
-	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -316,7 +315,7 @@ func (dc *DatabaseContainer) GetConnectionOptions(ctx context.Context, t *testin
 	endpoints := make([]*connection.Endpoint, 0, len(portBindings)+1)
 	endpoints = append(endpoints, dc.GetContainerConnectionDetails(t))
 	for _, p := range portBindings {
-		endpoints = append(endpoints, commontest.NewEndpoint(t, p.HostIP, p.HostPort))
+		endpoints = append(endpoints, test.NewEndpoint(t, p.HostIP, p.HostPort))
 	}
 	return NewConnection(dc.DatabaseType, endpoints...)
 }
@@ -339,7 +338,7 @@ func (dc *DatabaseContainer) GetContainerConnectionDetails(
 		require.True(t, ok)
 		ipAddress = containerNet.IPAddress
 	}
-	return commontest.NewEndpoint(t, ipAddress, dc.DbPort.Port())
+	return test.NewEndpoint(t, ipAddress, dc.DbPort.Port())
 }
 
 // ExposePort adds a host port mapping for the given container port (e.g. "5433")
@@ -385,7 +384,7 @@ func (dc *DatabaseContainer) GetHostMappedEndpoint(t *testing.T) *connection.End
 	if hostIP == "0.0.0.0" {
 		hostIP = "127.0.0.1"
 	}
-	return commontest.NewEndpoint(t, hostIP, bindings[0].HostPort)
+	return test.NewEndpoint(t, hostIP, bindings[0].HostPort)
 }
 
 // streamLogs streams the container output to stdout/stderr.

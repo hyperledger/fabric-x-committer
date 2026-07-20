@@ -27,7 +27,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/hyperledger/fabric-x-common/utils/channel"
 	"github.com/hyperledger/fabric-x-common/utils/serve"
-	"github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
@@ -37,6 +36,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/ordererdial"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type (

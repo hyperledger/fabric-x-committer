@@ -11,12 +11,13 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	"github.com/hyperledger/fabric-x-common/utils/test"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type mockVCTestEnv struct {
@@ -41,7 +42,7 @@ func newVCTestEnv(t *testing.T, p test.StartServerParameters) *mockVCTestEnv {
 	clients := make([]servicepb.ValidationAndCommitServiceClient, len(serverConfig.Configs))
 	streams := make([]grpc.BidiStreamingClient[servicepb.VcBatch, committerpb.TxStatusBatch], len(serverConfig.Configs))
 	for i, cfg := range serverConfig.Configs {
-		conn := test.NewInsecureConnection(t, &cfg.GRPC.Endpoint)
+		conn := commontest.NewInsecureConnection(t, &cfg.GRPC.Endpoint)
 		client := servicepb.NewValidationAndCommitServiceClient(conn)
 		stream, err := client.StartValidateAndCommitStream(t.Context())
 		require.NoError(t, err)

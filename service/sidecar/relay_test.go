@@ -41,7 +41,7 @@ const (
 
 func newRelayTestEnv(t *testing.T) *relayTestEnv {
 	t.Helper()
-	coord, coordinatorServer := mock.StartMockCoordinatorService(t, commontest.StartServerParameters{})
+	coord, coordinatorServer := mock.StartMockCoordinatorService(t, test.StartServerParameters{})
 	coordinatorEndpoint := coordinatorServer.Configs[0].GRPC.Endpoint
 
 	metrics := newPerformanceMetrics()
@@ -65,7 +65,7 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 	}
 
 	client := servicepb.NewCoordinatorClient(conn)
-	commontest.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(relayService.run(ctx, &relayRunConfig{
 			coordClient:                    client,
 			nextExpectedBlockByCoordinator: 0,

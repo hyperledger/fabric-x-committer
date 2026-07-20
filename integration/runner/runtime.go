@@ -19,7 +19,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/utils/connection"
 	"github.com/hyperledger/fabric-x-common/utils/serve"
-	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -281,13 +280,13 @@ func (c *CommitterRuntime) CreateRuntimeClients(ctx context.Context, t *testing.
 	services := c.SystemConfig.Services
 
 	c.CoordinatorClient = servicepb.NewCoordinatorClient(
-		commontest.NewSecuredConnection(t, services.Coordinator.GrpcEndpoint, c.SystemConfig.ClientTLS),
+		test.NewSecuredConnection(t, services.Coordinator.GrpcEndpoint, c.SystemConfig.ClientTLS),
 	)
 	c.QueryServiceClient = committerpb.NewQueryServiceClient(
-		commontest.NewSecuredConnection(t, services.Query.GrpcEndpoint, c.SystemConfig.ClientTLS),
+		test.NewSecuredConnection(t, services.Query.GrpcEndpoint, c.SystemConfig.ClientTLS),
 	)
 	c.NotifyClient = committerpb.NewNotifierClient(
-		commontest.NewSecuredConnection(t, services.Sidecar.GrpcEndpoint, c.SystemConfig.ClientTLS),
+		test.NewSecuredConnection(t, services.Sidecar.GrpcEndpoint, c.SystemConfig.ClientTLS),
 	)
 	var err error
 	c.OrdererStream, err = adapters.NewBroadcastStream(ctx, &c.OrdererEnv.OrdererConnConfig)
@@ -296,7 +295,7 @@ func (c *CommitterRuntime) CreateRuntimeClients(ctx context.Context, t *testing.
 		connection.CloseConnectionsLog(c.OrdererStream)
 	})
 
-	c.SidecarClientConfig = commontest.NewTLSClientConfig(c.SystemConfig.ClientTLS, services.Sidecar.GrpcEndpoint)
+	c.SidecarClientConfig = test.NewTLSClientConfig(c.SystemConfig.ClientTLS, services.Sidecar.GrpcEndpoint)
 }
 
 // OpenNotificationStream starts a notification stream.
@@ -394,7 +393,7 @@ func (c *CommitterRuntime) startLoadGen(t *testing.T, serviceFlags int) {
 func (c *CommitterRuntime) startBlockDelivery(t *testing.T) {
 	t.Helper()
 	t.Log("Running delivery client")
-	commontest.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(delivercommitter.ToQueue(ctx, delivercommitter.Parameters{
 			ClientConfig: c.SidecarClientConfig,
 			OutputBlock:  c.CommittedBlock,

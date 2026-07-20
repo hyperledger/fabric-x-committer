@@ -15,11 +15,11 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/utils/channel"
-	"github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type prepareTestEnv struct {

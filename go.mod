@@ -177,4 +177,4 @@ require (
 	mvdan.cc/gofumpt v0.10.0 // indirect
 )
 
-replace github.com/hyperledger/fabric-x-common => github.com/dean-amar/fabric-x-common v0.0.0-20260719154116-e9e43fb72133
+replace github.com/hyperledger/fabric-x-common => github.com/dean-amar/fabric-x-common v0.0.0-20260720101156-d4218e661bcc

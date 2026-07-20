@@ -506,7 +506,7 @@ type State struct {
 func newTestState(t *testing.T, config *Config, serverConfig *serve.Config) *State {
 	t.Helper()
 	service := New(config)
-	commontest.RunServiceAndServeForTest(t.Context(), t, service, serverConfig)
+	test.RunServiceAndServeForTest(t.Context(), t, service, serverConfig)
 
 	return &State{
 		Service: service,

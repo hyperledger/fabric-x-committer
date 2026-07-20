@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package serialization_test
+package serialization
 
 import (
 	"encoding/pem"
@@ -14,8 +14,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
 	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/stretchr/testify/require"
-
-	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 )
 
 const localhost = "localhost"
@@ -56,7 +54,7 @@ func TestExtractAppTLSCAsFromEnvelope(t *testing.T) {
 
 	t.Run("extracts TLS CAs from valid config envelope", func(t *testing.T) {
 		t.Parallel()
-		certs, err := serialization.ExtractAppTLSCAsFromEnvelope(block.Data.Data[0])
+		certs, err := ExtractAppTLSCAsFromEnvelope(block.Data.Data[0])
 		require.NoError(t, err)
 		require.NotEmpty(t, certs, "should extract at least one TLS CA certificate")
 
@@ -69,13 +67,13 @@ func TestExtractAppTLSCAsFromEnvelope(t *testing.T) {
 
 	t.Run("returns error for invalid envelope", func(t *testing.T) {
 		t.Parallel()
-		_, err := serialization.ExtractAppTLSCAsFromEnvelope([]byte("invalid"))
+		_, err := ExtractAppTLSCAsFromEnvelope([]byte("invalid"))
 		require.Error(t, err)
 	})
 
 	t.Run("returns error for nil envelope", func(t *testing.T) {
 		t.Parallel()
-		_, err := serialization.ExtractAppTLSCAsFromEnvelope(nil)
+		_, err := ExtractAppTLSCAsFromEnvelope(nil)
 		require.Error(t, err)
 	})
 }

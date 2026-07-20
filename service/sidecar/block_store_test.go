@@ -46,7 +46,7 @@ func TestBlockStoreAndDelivery(t *testing.T) {
 
 	serverConfig := commontest.NewLocalHostServiceConfig(commontest.InsecureTLSConfig)
 	inputBlock := make(chan *common.Block, 10)
-	commontest.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(bs.run(ctx, &blockStoreRunConfig{
 			IncomingCommittedBlock: inputBlock,
 		}))
@@ -69,7 +69,7 @@ func TestBlockStoreAndDelivery(t *testing.T) {
 	require.Equal(t, 1, test.GetIntMetricValue(t, metrics.blockHeight))
 	require.Greater(t, test.GetMetricValue(t, metrics.appendBlockToLedgerSeconds), float64(0))
 
-	committerClient := commontest.NewInsecureClientConfig(&serverConfig.GRPC.Endpoint)
+	committerClient := test.NewInsecureClientConfig(&serverConfig.GRPC.Endpoint)
 	receivedBlocksFromLedgerService := delivercommitter.Start(t.Context(), t, committerClient, 0)
 
 	blk1, _ := createBlockForTest(t, 1, protoutil.BlockHeaderHash(blk0.Header))

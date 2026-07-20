@@ -10,10 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-x-common/utils/test"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/mock"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 func TestCheckServerStopped(t *testing.T) {
@@ -23,12 +24,12 @@ func TestCheckServerStopped(t *testing.T) {
 
 	addr := sigVerServers.Configs[0].GRPC.Endpoint.Address()
 	require.Eventually(t, func() bool {
-		return !test.CheckServerStopped(t, addr)
+		return !commontest.CheckServerStopped(t, addr)
 	}, 3*time.Second, 250*time.Millisecond)
 
 	sigVerServers.ServersStop[0]()
 
 	require.Eventually(t, func() bool {
-		return test.CheckServerStopped(t, addr)
+		return commontest.CheckServerStopped(t, addr)
 	}, 3*time.Second, 250*time.Millisecond)
 }

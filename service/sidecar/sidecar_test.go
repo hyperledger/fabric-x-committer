@@ -47,7 +47,7 @@ type sidecarTestEnv struct {
 	config            Config
 	serverConfig      *serve.Config
 	coordinator       *mock.Coordinator
-	coordinatorServer *commontest.Servers
+	coordinatorServer *test.Servers
 
 	sidecar        *Service
 	committedBlock chan *common.Block
@@ -71,7 +71,7 @@ func newSidecarTestEnvWithTLS(
 	conf sidecarTestConfig,
 ) *sidecarTestEnv {
 	t.Helper()
-	coordinator, coordinatorServer := mock.StartMockCoordinatorService(t, commontest.StartServerParameters{
+	coordinator, coordinatorServer := mock.StartMockCoordinatorService(t, test.StartServerParameters{
 		TLSConfig: conf.ServerTLS,
 	})
 	ordererEnv := mock.NewOrdererTestEnv(t, &mock.OrdererTestParameters{
@@ -93,7 +93,7 @@ func newSidecarTestEnvWithTLS(
 
 	serverConfig := commontest.NewLocalHostServiceConfig(conf.ServerTLS)
 	sidecarConf := &Config{
-		Committer: commontest.NewTLSClientConfig(conf.ClientTLS, &coordinatorServer.Configs[0].GRPC.Endpoint),
+		Committer: test.NewTLSClientConfig(conf.ClientTLS, &coordinatorServer.Configs[0].GRPC.Endpoint),
 		Ledger: LedgerConfig{
 			Path: t.TempDir(),
 		},
@@ -135,7 +135,7 @@ func (env *sidecarTestEnv) startSidecarServiceAndClientAndNotificationStream(
 
 func (env *sidecarTestEnv) startSidecarService(ctx context.Context, t *testing.T) {
 	t.Helper()
-	commontest.RunServiceAndServeForTest(ctx, t, env.sidecar, env.serverConfig)
+	test.RunServiceAndServeForTest(ctx, t, env.sidecar, env.serverConfig)
 }
 
 func (env *sidecarTestEnv) startSidecarClient(
@@ -145,7 +145,7 @@ func (env *sidecarTestEnv) startSidecarClient(
 	sidecarClientCreds connection.TLSConfig,
 ) {
 	t.Helper()
-	committerClient := commontest.NewTLSClientConfig(sidecarClientCreds, &env.serverConfig.GRPC.Endpoint)
+	committerClient := test.NewTLSClientConfig(sidecarClientCreds, &env.serverConfig.GRPC.Endpoint)
 	env.committedBlock = delivercommitter.Start(ctx, t, committerClient, startBlkNum)
 }
 
@@ -155,7 +155,7 @@ func (env *sidecarTestEnv) startNotificationStream(
 	sidecarClientCreds connection.TLSConfig,
 ) {
 	t.Helper()
-	conn := commontest.NewSecuredConnection(t, &env.serverConfig.GRPC.Endpoint, sidecarClientCreds)
+	conn := test.NewSecuredConnection(t, &env.serverConfig.GRPC.Endpoint, sidecarClientCreds)
 	var err error
 	env.notifyStream, err = committerpb.NewNotifierClient(conn).OpenNotificationStream(ctx)
 	require.NoError(t, err)

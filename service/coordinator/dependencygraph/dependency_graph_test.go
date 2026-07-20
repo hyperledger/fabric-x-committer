@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -40,11 +39,11 @@ func TestDependencyGraph(t *testing.T) {
 			metrics:                metrics,
 		},
 	)
-	commontest.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		ldc.run(ctx, 2)
 		return nil
 	}, nil)
-	commontest.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		dm.run(ctx)
 		return nil
 	}, nil)

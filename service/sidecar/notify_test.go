@@ -561,7 +561,7 @@ func newNotifierTestEnvWithConfig(tb testing.TB, numOfClients int, conf *Notific
 	committedBlockWithTxsQueue := make(chan *committedBlockWithTxs, 10)
 	env.committedBlockWithTxsQueue = channel.NewWriter(tb.Context(), committedBlockWithTxsQueue)
 
-	commontest.RunServiceForTest(tb.Context(), tb, func(ctx context.Context) error {
+	test.RunServiceForTest(tb.Context(), tb, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(env.n.run(ctx, statusQueue, committedBlockWithTxsQueue))
 	}, nil)
 

@@ -543,7 +543,7 @@ func newQueryServiceTestEnv(t *testing.T, opts *queryServiceTestOpts) *queryServ
 	serverConfig := commontest.NewLocalHostServiceConfig(opts.serverTLS)
 
 	qs := NewQueryService(config)
-	commontest.RunServiceAndServeForTest(t.Context(), t, qs, serverConfig)
+	test.RunServiceAndServeForTest(t.Context(), t, qs, serverConfig)
 	clientConn := createQueryClientWithTLS(t, &serverConfig.GRPC.Endpoint, opts.clientTLS)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
@@ -568,7 +568,7 @@ func generateNamespacesUnderTest(t *testing.T, namespaces []string) *vc.Database
 	env.SetupSystemTablesAndNamespaces(t.Context(), t)
 
 	clientConf := loadgen.DefaultClientConf(t)
-	clientConf.Adapter.VCClient = commontest.NewTLSMultiClientConfig(commontest.InsecureTLSConfig, env.Endpoints...)
+	clientConf.Adapter.VCClient = test.NewTLSMultiClientConfig(commontest.InsecureTLSConfig, env.Endpoints...)
 	nsPolicies := make(map[string]*workload.Policy, len(namespaces))
 	for i, ns := range namespaces {
 		nsPolicies[ns] = &workload.Policy{

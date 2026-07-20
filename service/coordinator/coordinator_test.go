@@ -48,7 +48,7 @@ type (
 		streamCancel           context.CancelFunc
 		verifier               *mock.Verifier
 		vc                     *mock.VcService
-		sigVerifierGrpcServers *commontest.Servers
+		sigVerifierGrpcServers *test.Servers
 		serverTLS              connection.TLSConfig
 		clientTLS              connection.TLSConfig
 	}
@@ -92,18 +92,18 @@ func TestCoordinatorSecureConnection(t *testing.T) {
 func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEnv {
 	t.Helper()
 
-	verifier, svServers := mock.StartMockVerifierService(t, commontest.StartServerParameters{
+	verifier, svServers := mock.StartMockVerifierService(t, test.StartServerParameters{
 		NumService: tConfig.numSigService,
 		TLSConfig:  tConfig.serverTLS,
 	})
-	vcService, vcServers := mock.StartMockVCService(t, commontest.StartServerParameters{
+	vcService, vcServers := mock.StartMockVCService(t, test.StartServerParameters{
 		NumService: tConfig.numVcService,
 		TLSConfig:  tConfig.serverTLS,
 	})
 
 	c := &Config{
-		Verifier:           *commontest.ServerToMultiClientConfig(tConfig.clientTLS, svServers.Configs...),
-		ValidatorCommitter: *commontest.ServerToMultiClientConfig(tConfig.clientTLS, vcServers.Configs...),
+		Verifier:           *test.ServerToMultiClientConfig(tConfig.clientTLS, svServers.Configs...),
+		ValidatorCommitter: *test.ServerToMultiClientConfig(tConfig.clientTLS, vcServers.Configs...),
 		DependencyGraph: &DependencyGraphConfig{
 			NumOfLocalDepConstructors: 3,
 			WaitingTxsLimit:           10,
@@ -144,7 +144,7 @@ func (e *coordinatorTestEnv) startService(
 	t.Helper()
 	cs := e.coordinator
 	e.serverConfig = commontest.NewLocalHostServiceConfig(e.serverTLS)
-	commontest.RunServiceAndServeForTest(ctx, t, cs, e.serverConfig)
+	test.RunServiceAndServeForTest(ctx, t, cs, e.serverConfig)
 }
 
 func (e *coordinatorTestEnv) ensureStreamActive(t *testing.T) {
@@ -950,8 +950,8 @@ func TestConnectionReadyWithTimeout(t *testing.T) {
 	t.Parallel()
 	randomEndpoint := &connection.Endpoint{Host: "random", Port: 1234}
 	c := NewCoordinatorService(&Config{
-		Verifier:           *commontest.NewTLSMultiClientConfig(commontest.InsecureTLSConfig, randomEndpoint),
-		ValidatorCommitter: *commontest.NewTLSMultiClientConfig(commontest.InsecureTLSConfig, randomEndpoint),
+		Verifier:           *test.NewTLSMultiClientConfig(commontest.InsecureTLSConfig, randomEndpoint),
+		ValidatorCommitter: *test.NewTLSMultiClientConfig(commontest.InsecureTLSConfig, randomEndpoint),
 		DependencyGraph:    &DependencyGraphConfig{},
 	})
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)

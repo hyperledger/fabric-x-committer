@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
@@ -46,7 +45,7 @@ func newGlobalDependencyTestEnv(t *testing.T) *globalDependencyTestEnv {
 	)
 
 	env.dm = dm
-	commontest.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		dm.run(ctx)
 		return nil
 	}, nil)

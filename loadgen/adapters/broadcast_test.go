@@ -18,7 +18,6 @@ import (
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/utils/connection"
 	"github.com/hyperledger/fabric-x-common/utils/serve"
-	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 	"github.com/stretchr/testify/require"
 
@@ -135,7 +134,7 @@ func newBroadcastTestEnv(t *testing.T, tlsMode, ftLevel string) *broadcastTestEn
 		fakeEp := make([]*commontypes.OrdererEndpoint, e.ServerPerID)
 		downEp := make([]*commontypes.OrdererEndpoint, e.ServerPerID)
 		for i := range e.ServerPerID {
-			fakeServer := commontest.NewPreAllocatedLocalHostServerConfig(t, serverTLSConfig)
+			fakeServer := test.NewPreAllocatedLocalHostServerConfig(t, serverTLSConfig)
 			sc = append(sc, fakeServer)
 			fakeEp[i] = &commontypes.OrdererEndpoint{
 				ID:   id,
@@ -143,7 +142,7 @@ func newBroadcastTestEnv(t *testing.T, tlsMode, ftLevel string) *broadcastTestEn
 				Port: sc[i].GRPC.Endpoint.Port,
 			}
 
-			downServer := commontest.NewPreAllocatedLocalHostServerConfig(t, serverTLSConfig)
+			downServer := test.NewPreAllocatedLocalHostServerConfig(t, serverTLSConfig)
 			downEp[i] = &commontypes.OrdererEndpoint{
 				ID:   id,
 				Host: downServer.GRPC.Endpoint.Host,
@@ -153,7 +152,7 @@ func newBroadcastTestEnv(t *testing.T, tlsMode, ftLevel string) *broadcastTestEn
 		fakeEndpoints[id] = fakeEp
 		downServers[id] = downEp
 	}
-	fakeServers := commontest.ServeManyWithConfigForTest(t.Context(), t, nil, sc...)
+	fakeServers := test.ServeManyWithConfigForTest(t.Context(), t, nil, sc...)
 	require.Len(t, fakeServers.ServersStop, len(e.AllServerConfig))
 
 	t.Log("Read config block")

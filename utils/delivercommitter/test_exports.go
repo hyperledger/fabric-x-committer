@@ -12,7 +12,8 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/utils/connection"
-	"github.com/hyperledger/fabric-x-common/utils/test"
+
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 // Start starts a delivery to fetch committed blocks from the sidecar/ledger service.

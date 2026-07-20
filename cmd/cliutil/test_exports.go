@@ -46,7 +46,7 @@ type CommandTest struct {
 // StartDefaultSystem starts a system with mocks for CMD testing.
 func StartDefaultSystem(t *testing.T) config.SystemConfig {
 	t.Helper()
-	serverParams := commontest.StartServerParameters{NumService: 1}
+	serverParams := test.StartServerParameters{NumService: 1}
 	_, verifier := mock.StartMockVerifierService(t, serverParams)
 	_, vc := mock.StartMockVCService(t, serverParams)
 	orderer := mock.NewOrdererTestEnv(t, &mock.OrdererTestParameters{

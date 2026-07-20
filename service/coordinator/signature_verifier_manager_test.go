@@ -36,7 +36,7 @@ type svMgrTestEnv struct {
 	inputTxBatch        chan dependencygraph.TxNodeBatch
 	outputValidatedTxs  chan dependencygraph.TxNodeBatch
 	mockVerifier        *mock.Verifier
-	grpcServers         *commontest.Servers
+	grpcServers         *test.Servers
 	policyManager       *policyManager
 	curBlockNum         atomic.Uint64
 }
@@ -44,7 +44,7 @@ type svMgrTestEnv struct {
 func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte) *svMgrTestEnv {
 	t.Helper()
 	expectedEndError := string(expectedEndErrorMsg)
-	verifier, sc := mock.StartMockVerifierService(t, commontest.StartServerParameters{NumService: numSvService})
+	verifier, sc := mock.StartMockVerifierService(t, test.StartServerParameters{NumService: numSvService})
 
 	inputTxBatch := make(chan dependencygraph.TxNodeBatch, 10)
 	outputValidatedTxs := make(chan dependencygraph.TxNodeBatch, 10)
@@ -52,7 +52,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 	pm := newPolicyManager()
 	svm := newSignatureVerifierManager(
 		&signVerifierManagerConfig{
-			clientConfig:             commontest.ServerToMultiClientConfig(commontest.InsecureTLSConfig, sc.Configs...),
+			clientConfig:             test.ServerToMultiClientConfig(commontest.InsecureTLSConfig, sc.Configs...),
 			incomingTxsForValidation: inputTxBatch,
 			outgoingValidatedTxs:     outputValidatedTxs,
 			metrics:                  newPerformanceMetrics(),
@@ -60,7 +60,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 		},
 	)
 
-	commontest.RunServiceForTest(
+	test.RunServiceForTest(
 		t.Context(), t,
 		func(ctx context.Context) error {
 			err := connection.FilterStreamRPCError(svm.run(ctx))

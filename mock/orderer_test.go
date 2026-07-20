@@ -168,7 +168,7 @@ func TestOrderer(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
-	commontest.RunServiceForTest(ctx, t, func(ctx context.Context) error {
+	test.RunServiceForTest(ctx, t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(o.Run(ctx))
 	}, o.WaitForReady)
 
@@ -317,12 +317,12 @@ func TestOrdererStreamingAPI(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, o)
-	commontest.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(o.Run(ctx))
 	}, o.WaitForReady)
 
 	numServices := 3
-	sc := commontest.ServeManyForTest(t.Context(), t, commontest.StartServerParameters{
+	sc := test.ServeManyForTest(t.Context(), t, test.StartServerParameters{
 		NumService: numServices,
 	}, o)
 	require.NotNil(t, sc)
@@ -661,7 +661,7 @@ func TestMockOrdererDynamicTLSUpdate(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	commontest.RunServiceAndServeForTest(ctx, t, orderer, serverConfig)
+	test.RunServiceAndServeForTest(ctx, t, orderer, serverConfig)
 
 	// Build TLS configs for each peer organization
 	orgTLS := [3]connection.TLSConfig{

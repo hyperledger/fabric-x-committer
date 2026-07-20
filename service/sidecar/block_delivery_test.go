@@ -19,10 +19,12 @@ import (
 	"github.com/hyperledger/fabric-x-common/utils/channel"
 	"github.com/hyperledger/fabric-x-common/utils/connection"
 	"github.com/hyperledger/fabric-x-common/utils/serve"
-	"github.com/hyperledger/fabric-x-common/utils/test"
+	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type blockDeliveryWrapper struct {
@@ -39,10 +41,10 @@ func TestBlockDelivery(t *testing.T) {
 	bs, _ := newBlockStoreWithBlocks(t, 3)
 
 	// Register block delivery on a gRPC server.
-	serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
+	serverConfig := commontest.NewLocalHostServiceConfig(commontest.InsecureTLSConfig)
 	bd := &blockDeliveryWrapper{Service: &Service{blockStore: bs}}
-	test.ServeForTest(t.Context(), t, serverConfig, bd)
-	conn := test.NewInsecureConnection(t, &serverConfig.GRPC.Endpoint)
+	commontest.ServeForTest(t.Context(), t, serverConfig, bd)
+	conn := commontest.NewInsecureConnection(t, &serverConfig.GRPC.Endpoint)
 	deliverClient := peer.NewDeliverClient(conn)
 
 	t.Run("DeliverSpecificRange", func(t *testing.T) {
@@ -194,9 +196,9 @@ func TestBlockDeliveryWaitsForBlockZeroOnEmptyLedger(t *testing.T) {
 			t.Cleanup(bs.close)
 
 			wrapper := &blockDeliveryWrapper{Service: &Service{blockStore: bs, metrics: metrics}}
-			serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
-			test.ServeForTest(t.Context(), t, serverConfig, wrapper)
-			conn := test.NewInsecureConnection(t, &serverConfig.GRPC.Endpoint)
+			serverConfig := commontest.NewLocalHostServiceConfig(commontest.InsecureTLSConfig)
+			commontest.ServeForTest(t.Context(), t, serverConfig, wrapper)
+			conn := commontest.NewInsecureConnection(t, &serverConfig.GRPC.Endpoint)
 			deliverClient := peer.NewDeliverClient(conn)
 
 			streamCtx, streamCancel := context.WithCancel(t.Context())

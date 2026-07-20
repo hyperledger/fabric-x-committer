@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-common/utils/connection"
-	commontest "github.com/hyperledger/fabric-x-common/utils/test"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
@@ -123,7 +122,7 @@ func createAndStartContainerAndItsLogs(
 
 func monitorMetric(t *testing.T, metricsPort string, metricsTLS *connection.TLSConfig, waitForCount int) {
 	t.Helper()
-	tlsConf := commontest.MustGetTLSConfig(t, metricsTLS)
+	tlsConf := test.MustGetTLSConfig(t, metricsTLS)
 
 	metricsURL, err := monitoring.MakeMetricsURL(net.JoinHostPort(localhost, metricsPort), metricsTLS)
 	require.NoError(t, err)
