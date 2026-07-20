@@ -701,7 +701,8 @@ func TestPrepareSnapshotTx(t *testing.T) {
 	}
 
 	env.txBatch <- tx
-	preparedTxs := <-env.preparedTxs
+	preparedTxs, ok := channel.NewReader(t.Context(), env.preparedTxs).Read()
+	require.True(t, ok)
 	ensurePreparedTx(t, expectedPreparedTxs, preparedTxs)
 	// No _meta namespace-version read must be created for the snapshot TX.
 	require.NotContains(t, preparedTxs.nsToReads, committerpb.MetaNamespaceID)
@@ -757,7 +758,8 @@ func TestPrepareCheckpointTx(t *testing.T) {
 	}
 
 	env.txBatch <- tx
-	preparedTxs := <-env.preparedTxs
+	preparedTxs, ok := channel.NewReader(t.Context(), env.preparedTxs).Read()
+	require.True(t, ok)
 	ensurePreparedTx(t, expectedPreparedTxs, preparedTxs)
 	// No _meta namespace-version read must be created for the checkpoint TX.
 	require.NotContains(t, preparedTxs.nsToReads, committerpb.MetaNamespaceID)

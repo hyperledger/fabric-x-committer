@@ -186,11 +186,10 @@ func (p *transactionPreparer) prepare(ctx context.Context) error { //nolint:goco
 				// duplicate snapshot requests.
 				if nsOperations.NsId == committerpb.SnapshotNamespaceID {
 					// proto.Marshal cannot fail here: SnapshotState{TxRef} is a small, acyclic
-					// message. We still return the error instead of skipping the TX: the preparer
-					// runs deterministically on every committer, so silently dropping this write
-					// would omit the _snapshot row on one replica while others keep it, forking
-					// state. Failing the worker (via errgroup) halts this committer uniformly
-					// rather than diverging.
+					// message. We return the error only for completeness. proto.Marshal is
+					// deterministic, so any failure would occur identically on every committer
+					// and halt them uniformly (via errgroup); there is no risk of one replica
+					// dropping the _snapshot write while others keep it.
 					state, marshalErr := proto.Marshal(&committerpb.SnapshotState{TxRef: tx.Ref})
 					if marshalErr != nil {
 						return errors.Wrapf(marshalErr, "failed to marshal snapshot state for TX %s", tx.Ref.TxId)
