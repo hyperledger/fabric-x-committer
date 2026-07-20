@@ -91,15 +91,15 @@ type TransactionProfile struct {
 // Note that each of the conflicts' probabilities are independent bernoulli distributions.
 type ConflictProfile struct {
 	// Probability of invalid signatures [0,1] (default: 0)
-	InvalidSignatures Probability `mapstructure:"invalid-signatures" yaml:"invalid-signatures"`
+	InvalidSignatures Probability `mapstructure:"invalid-signatures" yaml:"invalid-signatures" validate:"gte=0,lte=1"`
 	// Dependencies list of dependencies
-	Dependencies []DependencyDescription `mapstructure:"dependencies" yaml:"dependencies"`
+	Dependencies []DependencyDescription `mapstructure:"dependencies" yaml:"dependencies" validate:"dive"`
 }
 
 // DependencyDescription describes a dependency type.
 type DependencyDescription struct {
 	// Probability of the dependency type [0,1] (default: 0)
-	Probability Probability `mapstructure:"probability" yaml:"probability"`
+	Probability Probability `mapstructure:"probability" yaml:"probability" validate:"gte=0,lte=1"`
 	// Gap is the distance between the dependent TXs (min: 1, default: 1)
 	Gap uint64 `mapstructure:"gap" yaml:"gap"`
 	// Src dependency "read", "write", or "read-write"
