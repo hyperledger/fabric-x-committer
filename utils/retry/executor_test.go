@@ -47,7 +47,7 @@ func TestNewBackoff(t *testing.T) {
 				RandomizationFactor: 0.2,
 				Multiplier:          2.0,
 				MaxInterval:         50 * time.Millisecond,
-				MaxElapsedTime:      100 * time.Millisecond,
+				MaxElapsedTime:      new(100 * time.Millisecond),
 			},
 			expectedInitialInterval:     10 * time.Millisecond,
 			expectedRandomizationFactor: 0.2,
@@ -65,7 +65,7 @@ func TestNewBackoff(t *testing.T) {
 			assert.InEpsilon(t, tt.expectedRandomizationFactor, p.RandomizationFactor, 0)
 			assert.InEpsilon(t, tt.expectedMultiplier, p.Multiplier, 0)
 			assert.Equal(t, tt.expectedMaxInterval, p.MaxInterval)
-			assert.Equal(t, tt.expectedMaxElapsedTime, p.MaxElapsedTime)
+			assert.Equal(t, tt.expectedMaxElapsedTime, *p.MaxElapsedTime)
 
 			b := tt.profile.NewBackoff()
 			assert.InEpsilon(t, tt.expectedInitialInterval, b.InitialInterval, 0)
@@ -93,7 +93,7 @@ func TestExecute(t *testing.T) {
 			profile: &Profile{
 				InitialInterval: 1 * time.Millisecond,
 				MaxInterval:     100 * time.Millisecond,
-				MaxElapsedTime:  1 * time.Second,
+				MaxElapsedTime:  new(1 * time.Second),
 			},
 			failUntil:         3, // op fails until the third call, then succeeds.
 			expectedCallCount: 3,
@@ -104,7 +104,7 @@ func TestExecute(t *testing.T) {
 			profile: &Profile{
 				InitialInterval: 10 * time.Millisecond,
 				MaxInterval:     500 * time.Millisecond,
-				MaxElapsedTime:  5 * time.Second,
+				MaxElapsedTime:  new(5 * time.Second),
 			},
 			failUntil:              -1, // op always fails.
 			expectError:            true,

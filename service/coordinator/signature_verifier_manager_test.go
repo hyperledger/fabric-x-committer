@@ -9,6 +9,7 @@ package coordinator
 import (
 	"context"
 	"crypto/rand"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -90,10 +91,56 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 
 func (e *svMgrTestEnv) submitTxBatch(t *testing.T, numTxs int) dependencygraph.TxNodeBatch {
 	t.Helper()
+	return e.submitTxBatchWithContext(t.Context(), t, numTxs)
+}
+
+func (e *svMgrTestEnv) submitTxBatchWithContext(
+	ctx context.Context, t *testing.T, numTxs int,
+) dependencygraph.TxNodeBatch {
+	t.Helper()
 	blkNum := e.curBlockNum.Add(1) - 1
 	txBatch, expectedValidatedTxs := createTxNodeBatchForTest(t, blkNum, numTxs, 0)
-	channel.NewWriter(t.Context(), e.inputTxBatch).Write(txBatch)
+	channel.NewWriter(ctx, e.inputTxBatch).Write(txBatch)
 	return expectedValidatedTxs
+}
+
+// startBatchSubmitter runs a background goroutine that submits batchesPerRound batches every
+// batchSubmitInterval until the returned cancelled function is called.
+// Sending batches is what pushes a pending policy update out to the verifiers,
+// so a test that waits for propagation starts the submitter, runs its require.Eventually /
+// require.Never, then stops it.
+//
+// The batch submission lives here, in a dedicated and explicitly-stopped goroutine, and must NOT
+// be moved into the require.Eventually/require.Never condition. testify runs the condition in its
+// own goroutine ("go checkCond()") and, once waitFor elapses, returns WITHOUT waiting for that
+// goroutine to finish (see testify assertions.go: the <-timer.C case returns immediately and the
+// buffered result channel lets the orphan complete later). submitTxBatch blocks while the input
+// channel is full, so a condition that submits leaks a goroutine past the assertion that then
+// (1) submits stray batches into a later phase of the test and (2) races on any variable the
+// condition captured -- an observed data race on verifierStreams.
+// Keeping the condition side-effect-free (a pure read of atomics/stable locals) makes it safe
+// even if it outlives the assertion.
+func (e *svMgrTestEnv) startBatchSubmitter(t *testing.T, batchesPerRound int) func() {
+	t.Helper()
+	ctx, cancel := context.WithCancel(t.Context())
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				for range batchesPerRound {
+					e.submitTxBatchWithContext(ctx, t, 1)
+				}
+			}
+		}
+	})
+	t.Cleanup(wg.Wait)
+	t.Cleanup(cancel)
+	return cancel
 }
 
 func (e *svMgrTestEnv) requireTxBatch(t *testing.T, expectedValidatedTxs dependencygraph.TxNodeBatch) {
@@ -440,12 +487,13 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 	t.Log("Verify that all other mock policy verifiers have the same verification key")
 	env.requireAllUpdate(t, verifierStreams, 2, expectedSecondUpdate)
 
-	t.Log("Ensure the down SV is not updated")
+	t.Log("Ensure the surviving verifiers receive no further updates")
+	survivingStream := verifierStreams[0]
+	stopSubmitter := env.startBatchSubmitter(t, 1)
 	require.Never(t, func() bool {
-		// Process some batches to force progress
-		env.submitTxBatch(t, 1)
-		return len(*verifierStreams[0].Updates.Load()) > 2
-	}, 2*time.Second, 1*time.Second)
+		return len(*survivingStream.Updates.Load()) > 2
+	}, 2*time.Second, 100*time.Millisecond)
+	stopSubmitter()
 
 	t.Log("Restart server")
 	env.grpcServers.ServersStop[0] = mock.StartMockVerifierServiceFromServerConfig(
@@ -464,7 +512,8 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 	}
 
 	t.Log("Ensure we re-connected to the endpoint")
-	verifierStreams = mock.RequireStreams(t, env.mockVerifier, 3)
+	// Barrier: wait until all three streams are active again. The result is unused.
+	mock.RequireStreams(t, env.mockVerifier, 3)
 	restartedStream := mock.RequireStreamsWithEndpoints(t, env.mockVerifier, 1, stoppedEndpoint)
 	env.requireAllUpdate(t, restartedStream, 1, newExpectedUpdate)
 }
@@ -476,35 +525,25 @@ func (e *svMgrTestEnv) requireAllUpdate(
 	expected *servicepb.VerifierUpdates,
 ) {
 	t.Helper()
-	updates := make([][]*servicepb.VerifierUpdates, len(svs))
 
-	// verify that all mock policy verifiers have the same verification key.
+	// Sending batches is what pushes the pending policy update to the verifiers. Submit in the
+	// background so the require.Eventually condition below stays a pure, non-blocking read (see
+	// startBatchSubmitter for why the submission must not live inside the condition).
+	stop := e.startBatchSubmitter(t, len(svs))
 	require.Eventually(t, func() bool {
-		defer func() {
-			// Process some batches to force progress.
-			for range svs {
-				e.submitTxBatch(t, 1)
+		for _, sv := range svs {
+			if len(*sv.Updates.Load()) < expectedCount {
+				return false
 			}
-		}()
-
-		// We iterate all of them everytime to ensure we hold the quick workers.
-		isDone := true
-		for i, sv := range svs {
-			if updates[i] != nil {
-				continue
-			}
-
-			u := *sv.Updates.Load()
-			if len(u) < expectedCount {
-				isDone = false
-				continue
-			}
-			updates[i] = u
 		}
-		return isDone
+		return true
 	}, 2*time.Minute, 10*time.Millisecond)
+	stop()
 
-	for _, u := range updates {
+	// No further updates propagate once the submitter is stopped (no new policy is pushed here),
+	// so re-reading each verifier's updates now is stable.
+	for _, sv := range svs {
+		u := *sv.Updates.Load()
 		require.Len(t, u, expectedCount)
 		requireUpdateEqual(t, expected, u[expectedCount-1])
 	}

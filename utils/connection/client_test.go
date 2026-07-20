@@ -84,7 +84,7 @@ func TestGRPCRetry(t *testing.T) {
 	require.NoError(t, err)
 
 	conn2 := test.NewInsecureConnectionWithRetry(t, &serverConfig.GRPC.Endpoint, retry.Profile{
-		MaxElapsedTime: 2 * time.Second,
+		MaxElapsedTime: new(2 * time.Second),
 	})
 	client2 := healthgrpc.NewHealthClient(conn2)
 
@@ -420,13 +420,18 @@ func TestGrpcRetryJSON(t *testing.T) {
 	  }]
 	}`
 	for _, tt := range []struct {
-		maxElapsedTime   time.Duration
+		name             string
+		maxElapsedTime   *time.Duration
 		expectedAttempts int
 	}{
-		{maxElapsedTime: 0, expectedAttempts: 96},
-		{maxElapsedTime: 15 * time.Second, expectedAttempts: 7},
+		// A nil budget falls back to the 15m default.
+		{name: "default", maxElapsedTime: nil, expectedAttempts: 96},
+		// A zero budget requests unlimited retries; the gRPC layer is intentionally bounded,
+		// so it is capped at the high defaultGrpcMaxAttempts rather than being truly unlimited.
+		{name: "unlimited", maxElapsedTime: new(time.Duration(0)), expectedAttempts: 1024},
+		{name: "finite", maxElapsedTime: new(15 * time.Second), expectedAttempts: 7},
 	} {
-		t.Run(fmt.Sprintf("maxElapsed=%s", tt.maxElapsedTime), func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			profile := retry.Profile{MaxElapsedTime: tt.maxElapsedTime}
 			jsonRaw := connection.MakeGrpcRetryPolicyJSON(&profile)

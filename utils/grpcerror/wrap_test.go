@@ -71,7 +71,7 @@ func TestHasCodeWithGRPCService(t *testing.T) {
 	sc := test.ServeManyForTest(ctx, t, p, wrapper)
 
 	conn := test.NewInsecureConnectionWithRetry(t, &sc.Configs[0].GRPC.Endpoint, retry.Profile{
-		MaxElapsedTime: 2 * time.Second,
+		MaxElapsedTime: new(2 * time.Second),
 	})
 
 	client := healthgrpc.NewHealthClient(conn)

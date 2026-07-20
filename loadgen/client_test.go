@@ -175,8 +175,10 @@ func TestLoadGenForCoordinator(t *testing.T) {
 				DependencyGraph: &coordinator.DependencyGraphConfig{
 					NumOfLocalDepConstructors: 1,
 					WaitingTxsLimit:           100_000,
+					ChunkSize:                 coordinator.DefaultChunkSize,
 				},
 				ChannelBufferSizePerGoroutine: 10,
+				QueueMonitorSamplingTime:      coordinator.DefaultQueueMonitorSamplingTime,
 			}
 
 			service := coordinator.NewCoordinatorService(cConf)
