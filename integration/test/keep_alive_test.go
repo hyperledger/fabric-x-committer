@@ -8,6 +8,7 @@ package test
 
 import (
 	"context"
+	"google.golang.org/grpc/keepalive"
 	"net"
 	"strconv"
 	"testing"
@@ -78,8 +79,9 @@ func TestKeepAliveDeadConnectionDetection(t *testing.T) {
 			c := startKeepAliveRuntime(t, keepAliveConfig{permitWithoutStream: tc.permitWithoutStream})
 			proxy, conn := dialThroughProxy(t, serviceAddr(t, c, tc.service), clientCredentials(t, c))
 
-			activateConnection(t, conn, tc.service)
-			blackHole(t, proxy)
+			sendInitialMessage(t, conn, tc.service)
+
+			interceptMessages(t, proxy)
 
 			require.EventuallyWithT(t, func(ct *assert.CollectT) {
 				require.NotEqual(ct, connectivity.Ready, conn.GetState())
@@ -103,7 +105,7 @@ func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 
 	proxy, conn := dialThroughProxy(t, addr, clientCreds)
 
-	activateConnection(t, conn, sidecarService)
+	sendInitialMessage(t, conn, sidecarService)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
@@ -119,7 +121,7 @@ func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 	}
 	require.Error(t, err, "second stream should fail with ResourceExhausted")
 
-	blackHole(t, proxy)
+	interceptMessages(t, proxy)
 
 	// Once keep-alive closes the dead connection, the slot is released.
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -170,8 +172,8 @@ func serviceAddr(t *testing.T, c *runner.CommitterRuntime, service int) string {
 	}
 }
 
-// activateConnection issues an RPC on a connection so the server has traffic to monitor with keep-alive.
-func activateConnection(t *testing.T, conn *grpc.ClientConn, service int) {
+// sendInitialMessage issues an RPC on a connection so the server has traffic to monitor with keep-alive.
+func sendInitialMessage(t *testing.T, conn *grpc.ClientConn, service int) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
@@ -200,7 +202,11 @@ func dialThroughProxy(
 	t.Helper()
 	proxy := newProxy(t, serviceAddr)
 
-	conn, err := grpc.NewClient(proxy.Listen, grpc.WithTransportCredentials(clientCreds))
+	conn, err := grpc.NewClient(proxy.Listen,
+		grpc.WithTransportCredentials(clientCreds), grpc.WithKeepaliveParams(keepalive.ClientParameters{
+			Time:    999 * time.Hour, // effectively disable client-side keep-alive
+			Timeout: 999 * time.Hour, // effectively disable client-side keep-alive
+		}))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 
@@ -248,9 +254,9 @@ func newProxy(t *testing.T, upstream string) *toxiclient.Proxy {
 	return proxy
 }
 
-// blackHole blocks all data on the connection without closing it. The socket
+// interceptMessages blocks all data on the connection without closing it (only client -> server). The socket
 // remains open, but the server's keep-alive ping is never acknowledged.
-func blackHole(t *testing.T, p *toxiclient.Proxy) {
+func interceptMessages(t *testing.T, p *toxiclient.Proxy) {
 	t.Helper()
 	_, err := p.AddToxic(
 		"block-data",
