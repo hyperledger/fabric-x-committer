@@ -24,8 +24,8 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
+	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
 type (
@@ -103,7 +103,7 @@ type (
 		Password    string
 		LoadBalance bool
 		Endpoints   []*connection.Endpoint
-		TLS         dbconn.DatabaseTLSConfig
+		TLS         statedb.TLSConfig
 	}
 )
 

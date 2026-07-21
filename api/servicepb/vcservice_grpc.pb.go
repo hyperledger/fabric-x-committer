@@ -27,13 +27,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ValidationAndCommitService_StartValidateAndCommitStream_FullMethodName   = "/servicepb.ValidationAndCommitService/StartValidateAndCommitStream"
-	ValidationAndCommitService_SetLastCommittedBlockNumber_FullMethodName    = "/servicepb.ValidationAndCommitService/SetLastCommittedBlockNumber"
-	ValidationAndCommitService_GetNextBlockNumberToCommit_FullMethodName     = "/servicepb.ValidationAndCommitService/GetNextBlockNumberToCommit"
-	ValidationAndCommitService_GetTransactionsStatus_FullMethodName          = "/servicepb.ValidationAndCommitService/GetTransactionsStatus"
-	ValidationAndCommitService_GetNamespacePolicies_FullMethodName           = "/servicepb.ValidationAndCommitService/GetNamespacePolicies"
-	ValidationAndCommitService_GetConfigTransaction_FullMethodName           = "/servicepb.ValidationAndCommitService/GetConfigTransaction"
-	ValidationAndCommitService_SetupSystemTablesAndNamespaces_FullMethodName = "/servicepb.ValidationAndCommitService/SetupSystemTablesAndNamespaces"
+	ValidationAndCommitService_StartValidateAndCommitStream_FullMethodName = "/servicepb.ValidationAndCommitService/StartValidateAndCommitStream"
+	ValidationAndCommitService_SetLastCommittedBlockNumber_FullMethodName  = "/servicepb.ValidationAndCommitService/SetLastCommittedBlockNumber"
+	ValidationAndCommitService_GetNextBlockNumberToCommit_FullMethodName   = "/servicepb.ValidationAndCommitService/GetNextBlockNumberToCommit"
+	ValidationAndCommitService_GetTransactionsStatus_FullMethodName        = "/servicepb.ValidationAndCommitService/GetTransactionsStatus"
+	ValidationAndCommitService_GetNamespacePolicies_FullMethodName         = "/servicepb.ValidationAndCommitService/GetNamespacePolicies"
+	ValidationAndCommitService_GetConfigTransaction_FullMethodName         = "/servicepb.ValidationAndCommitService/GetConfigTransaction"
 )
 
 // ValidationAndCommitServiceClient is the client API for ValidationAndCommitService service.
@@ -46,7 +45,6 @@ type ValidationAndCommitServiceClient interface {
 	GetTransactionsStatus(ctx context.Context, in *committerpb.TxIDsBatch, opts ...grpc.CallOption) (*committerpb.TxStatusBatch, error)
 	GetNamespacePolicies(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*applicationpb.NamespacePolicies, error)
 	GetConfigTransaction(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*applicationpb.ConfigTransaction, error)
-	SetupSystemTablesAndNamespaces(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type validationAndCommitServiceClient struct {
@@ -120,16 +118,6 @@ func (c *validationAndCommitServiceClient) GetConfigTransaction(ctx context.Cont
 	return out, nil
 }
 
-func (c *validationAndCommitServiceClient) SetupSystemTablesAndNamespaces(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, ValidationAndCommitService_SetupSystemTablesAndNamespaces_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // ValidationAndCommitServiceServer is the server API for ValidationAndCommitService service.
 // All implementations must embed UnimplementedValidationAndCommitServiceServer
 // for forward compatibility.
@@ -140,7 +128,6 @@ type ValidationAndCommitServiceServer interface {
 	GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch) (*committerpb.TxStatusBatch, error)
 	GetNamespacePolicies(context.Context, *emptypb.Empty) (*applicationpb.NamespacePolicies, error)
 	GetConfigTransaction(context.Context, *emptypb.Empty) (*applicationpb.ConfigTransaction, error)
-	SetupSystemTablesAndNamespaces(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
 	mustEmbedUnimplementedValidationAndCommitServiceServer()
 }
 
@@ -168,9 +155,6 @@ func (UnimplementedValidationAndCommitServiceServer) GetNamespacePolicies(contex
 }
 func (UnimplementedValidationAndCommitServiceServer) GetConfigTransaction(context.Context, *emptypb.Empty) (*applicationpb.ConfigTransaction, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetConfigTransaction not implemented")
-}
-func (UnimplementedValidationAndCommitServiceServer) SetupSystemTablesAndNamespaces(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
-	return nil, status.Error(codes.Unimplemented, "method SetupSystemTablesAndNamespaces not implemented")
 }
 func (UnimplementedValidationAndCommitServiceServer) mustEmbedUnimplementedValidationAndCommitServiceServer() {
 }
@@ -291,24 +275,6 @@ func _ValidationAndCommitService_GetConfigTransaction_Handler(srv interface{}, c
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ValidationAndCommitService_SetupSystemTablesAndNamespaces_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ValidationAndCommitServiceServer).SetupSystemTablesAndNamespaces(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ValidationAndCommitService_SetupSystemTablesAndNamespaces_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ValidationAndCommitServiceServer).SetupSystemTablesAndNamespaces(ctx, req.(*emptypb.Empty))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // ValidationAndCommitService_ServiceDesc is the grpc.ServiceDesc for ValidationAndCommitService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -335,10 +301,6 @@ var ValidationAndCommitService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetConfigTransaction",
 			Handler:    _ValidationAndCommitService_GetConfigTransaction_Handler,
-		},
-		{
-			MethodName: "SetupSystemTablesAndNamespaces",
-			Handler:    _ValidationAndCommitService_SetupSystemTablesAndNamespaces_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

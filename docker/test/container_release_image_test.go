@@ -17,12 +17,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/config"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/dbconn"
+	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
@@ -41,7 +42,10 @@ const (
 	// Instead, Yugabyte generates a random password, and this path points to the output file containing it.
 	containerPathForYugabytePassword = "/root/var/data/yugabyted_credentials.txt" //nolint:gosec
 
-	defaultDBPort = "5433"
+	defaultDBPort     = "5433"
+	configFlag        = "--config"
+	timeoutFlag       = "--timeout"
+	containerRootUser = "0:0"
 )
 
 // enforcePostgresSSLAndReloadConfigScript enforces SSL-only client connections to a PostgreSQL
@@ -64,17 +68,9 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 	ctx := t.Context()
 
 	t.Log("creating config-block")
-	v := config.NewViperWithLoadGenDefaults()
-	c, _, err := config.ReadLoadGenYamlAndSetupLogging(v, filepath.Join(localConfigPath, "loadgen.yaml"))
-	require.NoError(t, err)
-	c.LoadProfile.Policy.ArtifactsPath = t.TempDir()
-	_, err = workload.CreateOrExtendConfigBlockWithCrypto(&c.LoadProfile.Policy)
-	require.NoError(t, err)
+	artifactsPath := generateArtifacts(t)
 
-	dbNode := "db"
-	ordererNode := "orderer"
-	loadgenNode := "loadgen"
-	committerNodes := []string{"verifier", "vc", "query", "coordinator", "sidecar"}
+	committerNodes := []string{verifierName, vcName, queryName, coordinatorName, sidecarName}
 
 	for _, dbType := range []string{testdb.YugaDBType, testdb.PostgresDBType} {
 		t.Run(fmt.Sprintf("database:%s", dbType), func(t *testing.T) {
@@ -92,11 +88,12 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					params := startNodeParameters{
 						networkName:   networkName,
 						tlsMode:       mode,
-						artifactsPath: c.LoadProfile.Policy.ArtifactsPath,
+						artifactsPath: artifactsPath,
 						dbType:        dbType,
+						dbInitTimeout: "30s",
 					}
 
-					for _, node := range append(committerNodes, dbNode, ordererNode, loadgenNode) {
+					for _, node := range append(committerNodes, dbName, ordererName, loadGenName) {
 						// stop and remove the container if it already exists.
 						stopAndRemoveContainersByName(
 							ctx, t, createDockerClient(t), assembleContainerName(node, mode, dbType),
@@ -104,9 +101,24 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 					}
 
 					// start a secured database node and return the db password.
-					params.dbPassword = startSecuredDatabaseNode(ctx, t, params.asNode(dbNode))
+					params.dbPassword = startSecuredDatabaseNode(ctx, t, params.asNode(dbName))
+					// init the state DB and verify the operation succeeded.
+					resChannels := runDatabaseInitWithReleaseImage(ctx, t, params.asNode(vcName))
+
+					dbInitCtx, dbInitCancel := context.WithTimeout(ctx, 30*time.Second)
+					t.Cleanup(dbInitCancel)
+
+					select {
+					case err := <-resChannels.Error:
+						require.NoError(t, err)
+					case status := <-resChannels.Result:
+						require.Zero(t, status.StatusCode)
+					case <-dbInitCtx.Done():
+						require.Fail(t, "timeout waiting for database initialization")
+					}
+
 					// start the orderer node.
-					startCommitterNodeWithTestImage(ctx, t, params.asNode(ordererNode))
+					startCommitterNodeWithTestImage(ctx, t, params.asNode(ordererName))
 					// start the committer nodes.
 					for _, node := range committerNodes {
 						startCommitterNodeWithReleaseImage(ctx, t, params.asNode(node))
@@ -116,11 +128,9 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 						waitForContainerHealthy(ctx, t, assembleContainerName(node, mode, dbType))
 					}
 					// start the load generator node.
-					startLoadgenNodeWithReleaseImage(ctx, t, params.asNode(loadgenNode))
+					startLoadgenNodeWithReleaseImage(ctx, t, params.asNode(loadGenName))
 
-					metricsClientTLSConfig := test.NewServiceTLSConfig(
-						c.LoadProfile.Policy.ArtifactsPath, "loadgen", mode,
-					)
+					metricsClientTLSConfig := test.NewServiceTLSConfig(artifactsPath, loadGenName, mode)
 
 					monitorMetric(
 						t,
@@ -131,6 +141,34 @@ func TestCommitterReleaseImagesWithTLS(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+// TestDatabaseInitFailureWithoutActiveDB tests that database initialization fails gracefully
+// when the database is not available, using a short timeout.
+func TestDatabaseInitFailureWithoutActiveDB(t *testing.T) {
+	t.Parallel()
+
+	resChannels := runDatabaseInitWithReleaseImage(t.Context(), t, startNodeParameters{
+		node:          vcName,
+		tlsMode:       connection.NoneTLSMode,
+		dbType:        "none_activated_database",
+		dbInitTimeout: "10s",
+		artifactsPath: generateArtifacts(t),
+	})
+
+	// Expect the container to fail since there's no database available.
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(cancel)
+
+	select {
+	case status := <-resChannels.Result:
+		t.Logf("exited with status code: %v", status.StatusCode)
+		require.NotZero(t, status.StatusCode, "container should have failed but exited with code 0")
+	case err := <-resChannels.Error:
+		require.Error(t, err, "container should have failed but exited with no error")
+	case <-ctx.Done():
+		require.Fail(t, "timeout waiting for container to fail")
 	}
 }
 
@@ -157,7 +195,7 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 
 	// This is relevant if a different CA was used to issue the DB's TLS certificates.
 	require.NotEmpty(t, tlsConfig.CACertPaths)
-	conn.TLS = dbconn.DatabaseTLSConfig{
+	conn.TLS = statedb.TLSConfig{
 		Mode:       connection.OneSideTLSMode,
 		CACertPath: tlsConfig.CACertPaths[0],
 	}
@@ -181,24 +219,65 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 	return conn.Password
 }
 
+// runDatabaseInitWithReleaseImage runs init-db command in a temporary container.
+func runDatabaseInitWithReleaseImage(
+	ctx context.Context, t *testing.T, params startNodeParameters,
+) client.ContainerWaitResult {
+	t.Helper()
+
+	dbInitConfigPath := filepath.Join(containerConfigPath, params.node)
+	t.Logf("Starting %s as container with user %s.\n", committerReleaseImage, containerRootUser)
+
+	return createAndStartContainerAndItsLogs(ctx, t, createAndStartContainerParameters{
+		config: &container.Config{
+			Image: committerReleaseImage,
+			Cmd: []string{
+				initDBCommand,
+				configFlag,
+				fmt.Sprintf("%s.yaml", dbInitConfigPath),
+				timeoutFlag,
+				params.dbInitTimeout,
+			},
+			User: containerRootUser,
+			Env: []string{
+				"SC_VC_DATABASE_PASSWORD=" + params.dbPassword,
+				"SC_VC_DATABASE_USERNAME=" + params.dbUsername(),
+				"SC_VC_DATABASE_DATABASE=" + params.dbDefaultDatabase(),
+			},
+			Tty: true,
+		},
+		hostConfig: &container.HostConfig{
+			NetworkMode: container.NetworkMode(params.networkName),
+			Binds: []string{
+				fmt.Sprintf(
+					"%s.yaml:/%s.yaml",
+					filepath.Join(mustGetWD(t), localConfigPath, params.node), dbInitConfigPath,
+				),
+				fmt.Sprintf("%s:%s", params.artifactsPath, containerArtifactsPath),
+			},
+			AutoRemove: true,
+		},
+		name: assembleContainerName(initDBCommand, params.tlsMode, params.dbType),
+	})
+}
+
 // startCommitterNodeWithReleaseImage starts a committer node using the release image.
 func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, params startNodeParameters) {
 	t.Helper()
 
 	configPath := filepath.Join(containerConfigPath, params.node)
-	containerUser := "0:0"
-	t.Logf("Starting %s as container with user %s.\n", committerReleaseImage, containerUser)
+	t.Logf("Starting %s as container with user %s.\n", committerReleaseImage, containerRootUser)
 	createAndStartContainerAndItsLogs(ctx, t, createAndStartContainerParameters{
 		config: &container.Config{
 			Image: committerReleaseImage,
 			Cmd: []string{
 				"start",
 				params.node,
-				"--config",
+				configFlag,
 				fmt.Sprintf("%s.yaml", configPath),
 			},
 			Hostname: params.node,
-			User:     containerUser,
+			User:     containerRootUser,
 			Env: []string{
 				"SC_COORDINATOR_SERVER_TLS_MODE=" + params.tlsMode,
 				"SC_COORDINATOR_VERIFIER_TLS_MODE=" + params.tlsMode,
@@ -225,7 +304,7 @@ func startCommitterNodeWithReleaseImage(ctx context.Context, t *testing.T, param
 			Healthcheck: &container.HealthConfig{
 				Test: []string{
 					"CMD", "/bin/entrypoint", "healthcheck", params.node,
-					"--config", fmt.Sprintf("%s.yaml", configPath),
+					configFlag, fmt.Sprintf("%s.yaml", configPath),
 				},
 				Interval:    2 * time.Second,
 				Timeout:     5 * time.Second,
@@ -264,7 +343,7 @@ func startLoadgenNodeWithReleaseImage(
 			Image: loadgenReleaseImage,
 			Cmd: []string{
 				"start",
-				"--config",
+				configFlag,
 				fmt.Sprintf("%s.yaml", configPath),
 			},
 			Hostname: params.node,
@@ -309,7 +388,7 @@ func startCommitterNodeWithTestImage(
 	createAndStartContainerAndItsLogs(ctx, t, createAndStartContainerParameters{
 		config: &container.Config{
 			Image:    testNodeImage,
-			Cmd:      []string{"run", params.node},
+			Cmd:      []string{runCMD, params.node},
 			Tty:      true,
 			Hostname: params.node,
 			Env: []string{
@@ -324,6 +403,19 @@ func startCommitterNodeWithTestImage(
 		},
 		name: assembleContainerName(params.node, params.tlsMode, params.dbType),
 	})
+}
+
+// generateArtifacts loads a loadgen config, create crypto materials and return their path.
+func generateArtifacts(t *testing.T) string {
+	t.Helper()
+	t.Log("creating config-block")
+	v := config.NewViperWithLoadGenDefaults()
+	c, _, err := config.ReadLoadGenYamlAndSetupLogging(v, filepath.Join(localConfigPath, "loadgen.yaml"))
+	require.NoError(t, err)
+	c.LoadProfile.Policy.ArtifactsPath = t.TempDir()
+	_, err = workload.CreateOrExtendConfigBlockWithCrypto(&c.LoadProfile.Policy)
+	require.NoError(t, err)
+	return c.LoadProfile.Policy.ArtifactsPath
 }
 
 // mustGetWD returns the current working directory.

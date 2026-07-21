@@ -19,7 +19,7 @@ import (
 	"github.com/yugabyte/pgx/v5/pgxpool"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
-	"github.com/hyperledger/fabric-x-committer/service/vc"
+	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
 //go:embed query_tmpl.sql
@@ -97,7 +97,7 @@ func (t *sharedLazyTx) Release() {
 func unsafeQueryRows(
 	ctx context.Context, queryObj querier, nsID string, keys [][]byte,
 ) ([]*committerpb.Row, error) {
-	queryStmt := vc.FmtNsID(queryRowSQLTemplate, nsID)
+	queryStmt := statedb.FmtNsID(queryRowSQLTemplate, nsID)
 	r, err := queryObj.Query(ctx, queryStmt, keys)
 	if err != nil {
 		return nil, err

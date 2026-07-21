@@ -4,57 +4,18 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package vc
+package statedb
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
-
-func TestDBInit(t *testing.T) {
-	t.Parallel()
-	env := newDatabaseTestEnvWithTablesSetup(t)
-
-	for _, tc := range []struct {
-		name string
-		nsID string
-	}{
-		{name: "meta namespace", nsID: committerpb.MetaNamespaceID},
-		{name: "config namespace", nsID: committerpb.ConfigNamespaceID},
-		{name: "snapshot namespace", nsID: committerpb.SnapshotNamespaceID},
-		{name: "checkpoint namespace", nsID: committerpb.CheckpointNamespaceID},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			tableName := TableName(tc.nsID)
-			keys := [][]byte{[]byte(txs[0]), []byte(txs[1]), []byte(txs[2]), []byte(txs[3])}
-			ret := env.DB.pool.QueryRow(t.Context(), FmtNsID(insertNsStatesSQLTempl, tc.nsID), keys, keys)
-			duplicates, err := readArrayResult[[]byte](ret)
-			require.NoError(t, err)
-			require.Empty(t, duplicates)
-
-			// Validate default values
-			r, err := env.DB.pool.Query(t.Context(), "select * from "+tableName+";")
-			require.NoError(t, err)
-			defer r.Close()
-			for r.Next() {
-				var key, value []byte
-				var version uint64
-				require.NoError(t, r.Scan(&key, &value, &version))
-				require.NotNil(t, key)
-				require.Equal(t, key, value)
-				require.EqualValues(t, 0, version)
-			}
-		})
-	}
-}
 
 func TestFmtSplitIntoTablets(t *testing.T) {
 	t.Parallel()
@@ -92,9 +53,9 @@ func TestRetry(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	_, err := NewDatabasePool(
+	_, err := NewPool(
 		ctx,
-		&DatabaseConfig{
+		&Config{
 			Endpoints:      []*connection.Endpoint{{Port: 1234}},
 			Username:       "name",
 			Password:       "pwd",

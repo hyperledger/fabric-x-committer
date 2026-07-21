@@ -32,6 +32,22 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 
+const (
+	// service names and commands.
+	committerName   = "committer"
+	ordererName     = "orderer"
+	loadGenName     = "loadgen"
+	sidecarName     = "sidecar"
+	verifierName    = "verifier"
+	vcName          = "vc"
+	queryName       = "query"
+	coordinatorName = "coordinator"
+	dbName          = "db"
+
+	runCMD        = "run"
+	initDBCommand = "init-db"
+)
+
 type (
 	createAndStartContainerParameters struct {
 		config     *container.Config
@@ -46,6 +62,7 @@ type (
 		dbType            string
 		dbPassword        string
 		dbEndpointsString string
+		dbInitTimeout     string
 		cmd               []string
 		additionalEnvs    []string
 	}
@@ -89,7 +106,7 @@ func createAndStartContainerAndItsLogs(
 	ctx context.Context,
 	t *testing.T,
 	params createAndStartContainerParameters,
-) {
+) client.ContainerWaitResult {
 	t.Helper()
 	dockerClient := createDockerClient(t)
 	resp, err := dockerClient.ContainerCreate(ctx, client.ContainerCreateOptions{
@@ -98,14 +115,18 @@ func createAndStartContainerAndItsLogs(
 		HostConfig: params.hostConfig,
 	})
 	require.NoError(t, err)
+	// Subscribe before starting.
+	// If the container finishes and is removed, before
+	// ContainerWait is called, the container ID no longer exists and the exit status is lost.
+	resultChannels := dockerClient.ContainerWait(ctx, resp.ID, client.ContainerWaitOptions{
+		Condition: container.WaitConditionNextExit,
+	})
 	_, err = dockerClient.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{})
 	require.NoError(t, err)
-
 	//nolint:contextcheck // We want to ensure cleanup when the test is done.
 	t.Cleanup(func() {
 		stopAndRemoveContainerByID(context.Background(), t, dockerClient, resp.ID)
 	})
-
 	logs, err := dockerClient.ContainerLogs(ctx, resp.ID, client.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
@@ -118,6 +139,7 @@ func createAndStartContainerAndItsLogs(
 			t.Logf("[%s] logs ended with: %v", params.name, err)
 		}
 	}()
+	return resultChannels
 }
 
 func monitorMetric(t *testing.T, metricsPort string, metricsTLS *connection.TLSConfig, waitForCount int) {

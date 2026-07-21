@@ -120,12 +120,6 @@ func TestVcService(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, configTx)
 	})
-
-	t.Run("setup system tables", func(t *testing.T) {
-		t.Parallel()
-		_, err := e.clients[0].SetupSystemTablesAndNamespaces(t.Context(), nil)
-		require.NoError(t, err)
-	})
 }
 
 // TestVcServiceStreamProcessing tests the transaction processing pipeline through streaming.

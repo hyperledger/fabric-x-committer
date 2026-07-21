@@ -34,6 +34,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
+	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -547,7 +548,7 @@ func newQueryServiceTestEnv(t *testing.T, opts *queryServiceTestOpts) *queryServ
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	pool, err := vc.NewDatabasePool(ctx, config.Database)
+	pool, err := statedb.NewPool(ctx, config.Database)
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 
@@ -561,10 +562,9 @@ func newQueryServiceTestEnv(t *testing.T, opts *queryServiceTestOpts) *queryServ
 	}
 }
 
-func generateNamespacesUnderTest(t *testing.T, namespaces []string) *vc.DatabaseConfig {
+func generateNamespacesUnderTest(t *testing.T, namespaces []string) *statedb.Config {
 	t.Helper()
 	env := vc.NewValidatorAndCommitServiceTestEnv(t, nil)
-	env.SetupSystemTablesAndNamespaces(t.Context(), t)
 
 	clientConf := loadgen.DefaultClientConf(t)
 	clientConf.Adapter.VCClient = test.NewTLSMultiClientConfig(test.InsecureTLSConfig, env.Endpoints...)
@@ -620,7 +620,7 @@ func (q *queryServiceTestEnv) insert(t *testing.T, i *items) {
 		`insert into %s values (
 			UNNEST($1::bytea[]), UNNEST($2::bytea[]), UNNEST($3::bigint[])
 		);`,
-		vc.TableName(i.ns),
+		statedb.TableName(i.ns),
 	)
 	_, err := q.pool.Exec(t.Context(), query, i.keys, i.values, i.versions)
 	require.NoError(t, err)
@@ -641,7 +641,7 @@ func (q *queryServiceTestEnv) update(t *testing.T, i *items) {
 		) AS t
 		WHERE %[1]s.key = t.key;
 		`,
-		vc.TableName(i.ns),
+		statedb.TableName(i.ns),
 	)
 	_, err := q.pool.Exec(t.Context(), query, i.keys, i.values, i.versions)
 	require.NoError(t, err)
@@ -769,7 +769,7 @@ func TestRefreshTLSFromDB(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 		t.Cleanup(cancel)
 
-		pool, err := vc.NewDatabasePool(ctx, dbConf)
+		pool, err := statedb.NewPool(ctx, dbConf)
 		require.NoError(t, err)
 		t.Cleanup(pool.Close)
 

@@ -30,7 +30,7 @@ func newValidatorTestEnv(t *testing.T) *validatorTestEnv {
 	preparedTxs := make(chan *preparedTransactions, 10)
 	validatedTxs := make(chan *validatedTransactions, 10)
 
-	dbEnv := newDatabaseTestEnvWithTablesSetup(t)
+	dbEnv := NewDatabaseTestEnv(t)
 	metrics := newVCServiceMetrics()
 	v := newValidator(preparedTxs, validatedTxs, metrics)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
