@@ -28,20 +28,11 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
-	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
-type (
-	// dbConfig wraps the shared database configuration, so it can be unmarshalled from the
-	// "database" key of any service's YAML config file (e.g., VC or query).
-	dbConfig struct {
-		Database *statedb.Config `mapstructure:"database"`
-	}
-
-	loggingConfig struct {
-		Logging flogging.Config `mapstructure:"logging"`
-	}
-)
+type loggingConfig struct {
+	Logging flogging.Config `mapstructure:"logging"`
+}
 
 var (
 	logger   = flogging.MustGetLogger("config-reader")
@@ -91,17 +82,6 @@ func ReadLoadGenYamlAndSetupLogging(
 	v *viper.Viper, configPath string,
 ) (*loadgen.ClientConfig, *serve.Config, error) {
 	return readYamlAndSetupLogging[loadgen.ClientConfig](v, configPath)
-}
-
-// ReadDBYamlAndSetupLogging reads only the database configuration from a YAML config file.
-// It expects only the "database" field and is agnostic to any other service-specific fields,
-// so it can be used with any service's config file (e.g., VC or query).
-func ReadDBYamlAndSetupLogging(v *viper.Viper, configPath string) (*statedb.Config, error) {
-	dbConf, _, err := readYamlAndSetupLogging[dbConfig](v, configPath)
-	if err != nil {
-		return nil, err
-	}
-	return dbConf.Database, nil
 }
 
 // readYamlAndSetupLogging reading the YAML config file of a service.

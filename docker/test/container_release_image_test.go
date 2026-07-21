@@ -240,9 +240,9 @@ func runDatabaseInitWithReleaseImage(
 			},
 			User: containerRootUser,
 			Env: []string{
-				"SC_DB_DATABASE_PASSWORD=" + params.dbPassword,
-				"SC_DB_DATABASE_USERNAME=" + params.dbUsername(),
-				"SC_DB_DATABASE_DATABASE=" + params.dbDefaultDatabase(),
+				"SC_VC_DATABASE_PASSWORD=" + params.dbPassword,
+				"SC_VC_DATABASE_USERNAME=" + params.dbUsername(),
+				"SC_VC_DATABASE_DATABASE=" + params.dbDefaultDatabase(),
 			},
 			Tty: true,
 		},
