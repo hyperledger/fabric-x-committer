@@ -41,7 +41,9 @@ func healthcheckServiceCommand(name string) *cobra.Command {
 			}
 
 			displayName := serviceNames[name]
-			if err := connection.RunHealthCheck(cmd.Context(), serverConfig.GRPC.Endpoint, serverConfig.GRPC.TLS); err != nil {
+			if err := connection.RunHealthCheck(
+				cmd.Context(), serverConfig.GRPC.Endpoint, serverConfig.GRPC.TLS,
+			); err != nil {
 				cmd.PrintErrf("%s: NOT SERVING: %v\n", displayName, err)
 				return err
 			}
