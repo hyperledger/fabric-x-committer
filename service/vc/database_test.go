@@ -228,7 +228,10 @@ func TestValidateNamespaceReads(t *testing.T) {
 	}
 }
 
-func TestInsertNamespaceKeys(t *testing.T) {
+// TestDBInit tests that the database is initialized with the correct namespaces and able to commit into them.
+// This test sits in the vc package because it touches unexported internals (e.g. the database pool)
+// and needs a real DB, which the utils/statedb tests do not start.
+func TestDBInit(t *testing.T) {
 	t.Parallel()
 	env := NewDatabaseTestEnv(t)
 
