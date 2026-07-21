@@ -30,8 +30,7 @@ load-profile:
     size: 32
   transaction:
     metadata-size: 150
-    read-write-count:
-      const: 2
+    read-write-count: 2
   policy:
     channel-id: {{ .Policy.ChannelID }}
     artifacts-path: {{ .Policy.ArtifactsPath }}
@@ -42,10 +41,6 @@ load-profile:
         scheme: {{ $element.Scheme }}
         seed: {{ $element.Seed }}
       {{ end }}
-  query:
-    query-size:
-    min-invalid-keys-portion:
-    shuffle: false
   conflicts:
     invalid-signatures: 0
     dependencies:

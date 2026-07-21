@@ -10,9 +10,11 @@ import (
 	"context"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -116,8 +118,7 @@ func (p *transactionPreparer) run(ctx context.Context, numWorkers int) error {
 
 	for range numWorkers {
 		g.Go(func() error {
-			p.prepare(eCtx)
-			return nil
+			return p.prepare(eCtx)
 		})
 	}
 
@@ -129,13 +130,13 @@ func (p *transactionPreparer) run(ctx context.Context, numWorkers int) error {
 // the index of invalid transactions when a read is invalid.
 // It sends the prepared transactions to the preparedTxs channel which is an input
 // to the validator.
-func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
+func (p *transactionPreparer) prepare(ctx context.Context) error { //nolint:gocognit
 	incomingTransactionBatch := channel.NewReader(ctx, p.incomingTransactionBatch)
 	outgoingPreparedTransactions := channel.NewWriter(ctx, p.outgoingPreparedTransactions)
 	for {
 		txBatch, ok := incomingTransactionBatch.Read()
 		if !ok {
-			return
+			return nil
 		}
 		logger.Debugf("New batch with %d in the preparer.", len(txBatch.Transactions))
 		start := time.Now()
@@ -175,6 +176,34 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 			for _, nsOperations := range tx.Namespaces {
 				tID := TxID(tx.Ref.TxId)
 				logger.Debugf("Preparing namespace %s in TX with ID %s ", nsOperations.NsId, tx.Ref.TxId)
+
+				// The _snapshot marker TX carries no application reads/writes and takes no
+				// _meta namespace-version dependency. We synthesize a single new write into
+				// the _snapshot namespace so the namespace is forwarded to the committer:
+				// key = tx_id, value = SnapshotState{TxRef}. Only the TxRef is set here; the
+				// committer/hash worker fills in the lifecycle status and clone details. The
+				// nil version makes this a new key, and MVCC on tx_id gives idempotency for
+				// duplicate snapshot requests.
+				if nsOperations.NsId == committerpb.SnapshotNamespaceID {
+					// proto.Marshal cannot fail here: SnapshotState{TxRef} is a small, acyclic
+					// message. We return the error only for completeness. proto.Marshal is
+					// deterministic, so any failure would occur identically on every committer
+					// and halt them uniformly (via errgroup); there is no risk of one replica
+					// dropping the _snapshot write while others keep it.
+					state, marshalErr := proto.Marshal(&committerpb.SnapshotState{TxRef: tx.Ref})
+					if marshalErr != nil {
+						return errors.Wrapf(marshalErr, "failed to marshal snapshot state for TX %s", tx.Ref.TxId)
+					}
+					prepTxs.addReadWrites(tID, &applicationpb.TxNamespace{
+						NsId: committerpb.SnapshotNamespaceID,
+						ReadWrites: []*applicationpb.ReadWrite{{
+							Key:   []byte(tx.Ref.TxId),
+							Value: state,
+						}},
+					})
+					continue
+				}
+
 				prepTxs.addReadsOnly(tID, nsOperations)
 				prepTxs.addReadWrites(tID, nsOperations)
 				prepTxs.addBlindWrites(tID, nsOperations)
@@ -195,8 +224,10 @@ func (p *transactionPreparer) prepare(ctx context.Context) { //nolint:gocognit
 							Version: &nsOperations.NsVersion,
 						}},
 					})
-				case committerpb.ConfigNamespaceID:
-					// A config TX is independent.
+				case committerpb.ConfigNamespaceID, committerpb.CheckpointNamespaceID:
+					// A config TX is independent. The _checkpoint namespace is a system
+					// namespace: its single ReadWrite is prepared above for checkpoint-specific
+					// handling, but it takes no _meta namespace-version dependency.
 				default:
 					prepTxs.addReadsOnly(tID, &applicationpb.TxNamespace{
 						NsId: committerpb.MetaNamespaceID,

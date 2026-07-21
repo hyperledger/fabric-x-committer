@@ -9,14 +9,12 @@ package workload
 import (
 	"context"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
-	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/stretchr/testify/require"
 
@@ -45,7 +43,6 @@ func defaultStreamOptions() *StreamOptions {
 func defaultBenchProfile(workers uint32) *Profile {
 	p := DefaultProfile(workers)
 	p.Block.MaxSize = 1024
-	p.Query.QuerySize = NewConstantDistribution(1024)
 	return p
 }
 
@@ -109,25 +106,6 @@ func BenchmarkGenTx(b *testing.B) {
 	})
 }
 
-func BenchmarkGenQuery(b *testing.B) {
-	//nolint:thelper // false positive.
-	genericBench(b, func(b *testing.B, p *Profile) {
-		c := NewQueryStream(p, defaultBenchStreamOptions())
-
-		ctx := b.Context()
-		b.ResetTimer()
-		test.RunServiceForTest(ctx, b, c.Run, nil)
-		g := c.MakeGenerator()
-
-		var sum int
-		for sum < b.N {
-			request := min(p.Block.MaxSize, uint64(b.N-sum)) //nolint:gosec // uint64 -> int.
-			q := g.Consume(ctx, ConsumeParameters{RequestedItems: request})
-			sum += len(q)
-		}
-	})
-}
-
 func requireValidKey(t *testing.T, key []byte, profile *Profile) {
 	t.Helper()
 	require.Len(t, key, int(profile.Key.Size))
@@ -141,23 +119,9 @@ func requireValidTx(t *testing.T, tx *servicepb.LoadGenTx, profile *Profile, end
 	require.NotEmpty(t, tx.EnvelopePayload)
 	require.Len(t, tx.Tx.Namespaces, 1)
 
-	if profile.Transaction.ReadOnlyCount != nil {
-		require.Len(t, tx.Tx.Namespaces[0].ReadsOnly, 1)
-	} else {
-		require.Empty(t, tx.Tx.Namespaces[0].ReadsOnly)
-	}
-
-	if profile.Transaction.ReadWriteCount != nil {
-		require.Len(t, tx.Tx.Namespaces[0].ReadWrites, 2)
-	} else {
-		require.Empty(t, tx.Tx.Namespaces[0].ReadWrites)
-	}
-
-	if profile.Transaction.BlindWriteCount != nil {
-		require.Len(t, tx.Tx.Namespaces[0].BlindWrites, 3)
-	} else {
-		require.Empty(t, tx.Tx.Namespaces[0].BlindWrites)
-	}
+	require.Len(t, tx.Tx.Namespaces[0].ReadsOnly, int(profile.Transaction.ReadOnlyCount))
+	require.Len(t, tx.Tx.Namespaces[0].ReadWrites, int(profile.Transaction.ReadWriteCount))
+	require.Len(t, tx.Tx.Namespaces[0].BlindWrites, int(profile.Transaction.BlindWriteCount))
 
 	for _, v := range tx.Tx.Namespaces[0].ReadsOnly {
 		requireValidKey(t, v.Key, profile)
@@ -186,11 +150,11 @@ func testTxProfiles(t *testing.T) (profiles []*Profile) {
 	for _, onlyReadWrite := range []bool{true, false} {
 		for _, p := range testWorkersProfiles() {
 			if !onlyReadWrite {
-				p.Transaction.ReadOnlyCount = NewConstantDistribution(1)
-				p.Transaction.BlindWriteCount = NewConstantDistribution(3)
+				p.Transaction.ReadOnlyCount = 1
+				p.Transaction.BlindWriteCount = 3
 			} else {
-				p.Transaction.ReadOnlyCount = nil
-				p.Transaction.BlindWriteCount = nil
+				p.Transaction.ReadOnlyCount = 0
+				p.Transaction.BlindWriteCount = 0
 			}
 			profiles = append(profiles, p)
 		}
@@ -231,15 +195,6 @@ func startTxGeneratorUnderTest(
 	return g
 }
 
-func startQueryGeneratorUnderTest(
-	t *testing.T, profile *Profile, options *StreamOptions,
-) *ConsumerRateController[*committerpb.Query] {
-	t.Helper()
-	g := NewQueryStream(profile, options)
-	test.RunServiceForTest(t.Context(), t, g.Run, nil)
-	return g.MakeGenerator()
-}
-
 func TestGenValidTx(t *testing.T) {
 	t.Parallel()
 	for _, p := range testTxProfiles(t) {
@@ -276,7 +231,7 @@ func TestGenValidBlock(t *testing.T) {
 }
 
 func profileTestName(p *Profile) string {
-	onlyReadWrite := p.Transaction.ReadOnlyCount == nil
+	onlyReadWrite := p.Transaction.ReadOnlyCount == 0
 	key := "no-key"
 	policy := p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID]
 	if policy.KeyPath != nil && policy.KeyPath.VerificationKey != "" {
@@ -313,25 +268,25 @@ func TestGenDependentTx(t *testing.T) {
 	p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.NoScheme
 	p.Conflicts.Dependencies = []DependencyDescription{
 		{
-			Gap:         NewConstantDistribution(1),
+			Gap:         1,
 			Src:         "write",
 			Dst:         "write",
 			Probability: 0.1,
 		},
 		{
-			Gap:         NewConstantDistribution(1),
+			Gap:         1,
 			Src:         "read",
 			Dst:         "write",
 			Probability: 0.1,
 		},
 		{
-			Gap:         NewConstantDistribution(1),
+			Gap:         1,
 			Src:         "write",
 			Dst:         "read-write",
 			Probability: 0.1,
 		},
 		{
-			Gap:         NewConstantDistribution(1),
+			Gap:         1,
 			Src:         "read-write",
 			Dst:         "read-write",
 			Probability: 0.1,
@@ -368,7 +323,7 @@ func TestBlindWriteWithValue(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(1)
 	p.Transaction.BlindWriteValueSize = 32
-	p.Transaction.BlindWriteCount = NewConstantDistribution(2)
+	p.Transaction.BlindWriteCount = 2
 
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 	g := c.MakeGenerator()
@@ -383,7 +338,7 @@ func TestReadWriteWithValue(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(1)
 	p.Transaction.ReadWriteValueSize = 32
-	p.Transaction.ReadWriteCount = NewConstantDistribution(3)
+	p.Transaction.ReadWriteCount = 3
 
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 	g := c.MakeGenerator()
@@ -463,140 +418,6 @@ func TestGenTxWithModifier(t *testing.T) {
 	}
 }
 
-type queryTestEnv struct {
-	p        *Profile
-	keys     map[string]*struct{}
-	txGen    *ConsumerRateController[*servicepb.LoadGenTx]
-	queryGen *ConsumerRateController[*committerpb.Query]
-}
-
-func newQueryTestEnv(t *testing.T, p *Profile, o *StreamOptions) *queryTestEnv {
-	t.Helper()
-	q := &queryTestEnv{
-		p:        p,
-		keys:     make(map[string]*struct{}),
-		txGen:    startTxGeneratorUnderTest(t, p, o).MakeGenerator(),
-		queryGen: startQueryGeneratorUnderTest(t, p, o),
-	}
-	for range 100 {
-		q.addBlock(t.Context(), p.Block.MaxSize)
-	}
-	return q
-}
-
-func (q *queryTestEnv) addBlock(ctx context.Context, size uint64) {
-	txs := q.txGen.Consume(ctx, ConsumeParameters{RequestedItems: size})
-	for _, tx := range txs {
-		for _, ns := range tx.Tx.Namespaces {
-			for _, r := range ns.ReadsOnly {
-				q.keys[string(r.Key)] = nil
-			}
-			for _, rw := range ns.ReadWrites {
-				q.keys[string(rw.Key)] = nil
-			}
-			for _, w := range ns.BlindWrites {
-				q.keys[string(w.Key)] = nil
-			}
-		}
-	}
-}
-
-func (q *queryTestEnv) exists(key []byte) bool {
-	_, ok := q.keys[string(key)]
-	return ok
-}
-
-func (q *queryTestEnv) countExistingKeys(keys [][]byte) int {
-	if q.keys == nil {
-		return 0
-	}
-	c := 0
-	for _, k := range keys {
-		if q.exists(k) {
-			c++
-		}
-	}
-	return c
-}
-
-func TestQuery(t *testing.T) {
-	t.Parallel()
-	for _, p := range testWorkersProfiles() {
-		t.Run(fmt.Sprintf("workers:%d", p.Workers), func(t *testing.T) {
-			t.Parallel()
-			env := newQueryTestEnv(t, p, defaultStreamOptions())
-
-			for i := range 5 {
-				query := env.queryGen.Next(t.Context())
-				// Since the blocks are generated in parallel, the order of the
-				// keys in the block might not be the same as in the query.
-				// So we need to consume blocks until we found all the keys.
-				require.Eventuallyf(t, func() bool {
-					env.addBlock(t.Context(), p.Block.MaxSize)
-					return len(query.Namespaces[0].Keys) == env.countExistingKeys(query.Namespaces[0].Keys)
-				}, time.Second*5, 1, "iteration %d", i)
-			}
-		})
-	}
-}
-
-func TestQueryWithInvalid(t *testing.T) {
-	t.Parallel()
-	for _, portion := range []float64{0.1, 0.5, 0.7} {
-		t.Run(fmt.Sprintf("invalid-portion:%.1f", portion), func(t *testing.T) {
-			t.Parallel()
-			p := DefaultProfile(1)
-			p.Query.MinInvalidKeysPortion = NewConstantDistribution(portion)
-			env := newQueryTestEnv(t, p, defaultStreamOptions())
-
-			existing := 0
-			total := 0
-			for range 10 {
-				query := env.queryGen.Next(t.Context())
-				total += len(query.Namespaces[0].Keys)
-				existing += env.countExistingKeys(query.Namespaces[0].Keys)
-			}
-
-			require.InDelta(t, portion, float64(total-existing)/float64(total), 1e-3)
-		})
-	}
-}
-
-func TestQueryShuffle(t *testing.T) {
-	t.Parallel()
-	portion := 0.5
-	t.Run("no-shuffle", func(t *testing.T) {
-		t.Parallel()
-		p := DefaultProfile(1)
-		p.Query.MinInvalidKeysPortion = NewConstantDistribution(portion)
-		p.Query.Shuffle = false
-		env := newQueryTestEnv(t, p, defaultStreamOptions())
-
-		for range 5 {
-			query := env.queryGen.Next(t.Context())
-			validCount := int(math.Round(float64(len(query.Namespaces[0].Keys)) * portion))
-			require.Equal(t, validCount, env.countExistingKeys(query.Namespaces[0].Keys[:validCount]))
-			require.Equal(t, 0, env.countExistingKeys(query.Namespaces[0].Keys[validCount:]))
-		}
-	})
-
-	t.Run("with-shuffle", func(t *testing.T) {
-		t.Parallel()
-		p := DefaultProfile(1)
-		p.Query.MinInvalidKeysPortion = NewConstantDistribution(portion)
-		p.Query.Shuffle = true
-		env := newQueryTestEnv(t, p, defaultStreamOptions())
-
-		for range 5 {
-			query := env.queryGen.Next(t.Context())
-			validCount := int(math.Round(float64(len(query.Namespaces[0].Keys)) * portion))
-			require.Equal(t, validCount, env.countExistingKeys(query.Namespaces[0].Keys))
-			require.NotEqual(t, validCount, env.countExistingKeys(query.Namespaces[0].Keys[:validCount]))
-			require.NotEqual(t, 0, env.countExistingKeys(query.Namespaces[0].Keys[validCount:]))
-		}
-	})
-}
-
 func TestAsnMarshal(t *testing.T) {
 	t.Parallel()
 	loadGenTxs := GenerateTransactions(t, nil, 128)
@@ -632,4 +453,15 @@ func verify(
 		}
 	}
 	return true
+}
+
+// requireBernoulliDist asserts that the given sample of 0/1 values has the
+// expected proportion of 1s within delta.
+func requireBernoulliDist(t *testing.T, sample []float64, probability Probability, delta float64) {
+	t.Helper()
+	var ones float64
+	for _, v := range sample {
+		ones += v
+	}
+	require.InDelta(t, probability, ones/float64(len(sample)), delta)
 }

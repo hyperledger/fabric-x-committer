@@ -172,7 +172,7 @@ func readAndWriteKeys(txNamespaces []*applicationpb.TxNamespace) readWriteKeys {
 		// for all previously submitted transactions to be processed before submitting a config block, and
 		// waits for that block to comnitted before sending new transactions. Therefore, we do not need to
 		// track dependencies between meta-namespace and configuration transactions.
-		if ns.NsId != committerpb.MetaNamespaceID && ns.NsId != committerpb.ConfigNamespaceID {
+		if !utils.IsSystemNamespace(ns.NsId) {
 			readOnlyKeys = append(readOnlyKeys, constructCompositeKey(committerpb.MetaNamespaceID, []byte(ns.NsId)))
 		}
 

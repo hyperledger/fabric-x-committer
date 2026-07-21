@@ -37,7 +37,11 @@ func TestTablesAndMethods(t *testing.T) {
 	require.NoError(t, env.DB.setupSystemTablesAndNamespaces(ctx))
 	env.populateData(t, []string{"a", "b"}, namespaceToWrites{}, nil, nil)
 
-	expectedTables := []string{"metadata", "tx_status", "ns__meta", "ns__config", "ns_a", "ns_b"}
+	expectedTables := []string{
+		"metadata", "tx_status",
+		"ns__meta", "ns__config", "ns__snapshot", "ns__checkpoint",
+		"ns_a", "ns_b",
+	}
 	expectedMethodsPerNamespace := []string{"insert_", "update_", "validate_reads_"}
 	expectedMethods := []string{"insert_tx_status"}
 	for _, table := range expectedTables {
