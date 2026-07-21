@@ -96,12 +96,12 @@ func ReadLoadGenYamlAndSetupLogging(
 // ReadDBYamlAndSetupLogging reads only the database configuration from a YAML config file.
 // It expects only the "database" field and is agnostic to any other service-specific fields,
 // so it can be used with any service's config file (e.g., VC or query).
-func ReadDBYamlAndSetupLogging(v *viper.Viper, configPath string) (*statedb.Config, *serve.Config, error) {
-	dbConf, serverConf, err := readYamlAndSetupLogging[dbConfig](v, configPath)
+func ReadDBYamlAndSetupLogging(v *viper.Viper, configPath string) (*statedb.Config, error) {
+	dbConf, _, err := readYamlAndSetupLogging[dbConfig](v, configPath)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return dbConf.Database, serverConf, nil
+	return dbConf.Database, nil
 }
 
 // readYamlAndSetupLogging reading the YAML config file of a service.

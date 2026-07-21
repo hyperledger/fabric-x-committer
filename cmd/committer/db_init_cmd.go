@@ -33,7 +33,7 @@ func databaseInitializationCMD() *cobra.Command {
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			dbConfig, _, err := config.ReadDBYamlAndSetupLogging(config.NewViperWithDBDefaults(), configPath)
+			dbConfig, err := config.ReadDBYamlAndSetupLogging(config.NewViperWithDBDefaults(), configPath)
 			if err != nil {
 				return err
 			}
