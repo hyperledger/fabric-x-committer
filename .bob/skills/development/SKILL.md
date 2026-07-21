@@ -320,6 +320,10 @@ Before you consider the change done (see `CLAUDE.md` and the Makefile):
   it. Add tests per the `tests` skill.
 - If you changed metrics, run `make generate-metrics-doc`.
 - If you changed `.proto`, run `make proto`.
+- **Audit docs & config for staleness.** After the above pass, dispatch a subagent to
+  run the `doc-audit` skill (keeps this context clean). It auto-fixes the generated docs
+  and reports any prose, agent-instruction, skill, config-sample, or `.tmpl` template
+  your change made obsolete — apply the **Review** suggestions it returns.
 
 **Enforced-linter cheat sheet** (from `.golangci.yml`) — write to these up front so lint
 passes the first time:
