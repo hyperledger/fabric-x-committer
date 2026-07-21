@@ -19,20 +19,22 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
-const (
-	// maxNamespaceIDLength defines the maximum number of characters allowed for namespace IDs.
-	// PostgreSQL limits identifiers to NAMEDATALEN-1, where NAMEDATALEL=64.
-	// The namespace tables have the prefix 'ns_', thus there are 60 characters remaining.
-	// See: https://www.postgresql.org/docs/current/sql-syntax-lexical.html
-	maxNamespaceIDLength = 60
+// maxNamespaceIDLength defines the maximum number of characters allowed for namespace IDs.
+// PostgreSQL limits identifiers to NAMEDATALEN-1, where NAMEDATALEL=64.
+// The namespace tables have the prefix 'ns_', thus there are 60 characters remaining.
+// See: https://www.postgresql.org/docs/current/sql-syntax-lexical.html
+const maxNamespaceIDLength = 60
 
-	// lifecycleEndorsementPolicyPath is the channel policy path for lifecycle operations.
-	// This ImplicitMeta policy evaluates org-level Endorsement policies via the MSP.
-	lifecycleEndorsementPolicyPath = "/Channel/Application/LifecycleEndorsement"
-)
+// SystemNamespacePolicy pairs a system namespace ID with the channel policy path that
+// authorizes transactions in that namespace, per the config block.
+type SystemNamespacePolicy struct {
+	NamespaceID string
+	PolicyPath  string
+}
 
 var (
 	// validNamespaceID describes the allowed characters in a namespace ID.
@@ -47,6 +49,14 @@ var (
 
 	// ErrInvalidNamespaceID is returned when the namespace ID cannot be parsed.
 	ErrInvalidNamespaceID = errors.New("invalid namespace ID")
+
+	// SystemNamespacePolicies lists every system namespace whose authorization policy is
+	// resolved directly from the config block bundle, rather than from ns__meta.
+	SystemNamespacePolicies = []SystemNamespacePolicy{
+		{NamespaceID: committerpb.MetaNamespaceID, PolicyPath: "/Channel/Application/LifecycleEndorsement"},
+		{NamespaceID: committerpb.SnapshotNamespaceID, PolicyPath: "/Channel/Application/SnapshotEndorsement"},
+		{NamespaceID: committerpb.CheckpointNamespaceID, PolicyPath: "/Channel/Application/CheckpointEndorsement"},
+	}
 )
 
 // GetUpdatesFromNamespace translates a namespace TX to policy updates.
@@ -108,8 +118,8 @@ func UnmarshalNamespacePolicy(policyBytes []byte) (*applicationpb.NamespacePolic
 
 // validateNamespaceIDInPolicy checks that a given namespace fulfills namespace naming conventions.
 func validateNamespaceIDInPolicy(nsID string) error {
-	// If it matches one of the system's namespaces it is invalid.
-	if nsID == committerpb.MetaNamespaceID || nsID == committerpb.ConfigNamespaceID {
+	// System namespaces cannot be used as ordinary application namespace policies.
+	if utils.IsSystemNamespace(nsID) {
 		return ErrInvalidNamespaceID
 	}
 
@@ -132,7 +142,8 @@ func ValidateNamespaceID(nsID string) error {
 }
 
 // ValidateConfigTx validates that a config transaction envelope can be parsed into a valid bundle
-// with a LifecycleEndorsement policy.
+// with all the config-block channel policies the verifier depends on
+// (see [SystemNamespacePolicies]).
 func ValidateConfigTx(value []byte) error {
 	envelope, err := protoutil.UnmarshalEnvelope(value)
 	if err != nil {
@@ -142,15 +153,20 @@ func ValidateConfigTx(value []byte) error {
 	if err != nil {
 		return errors.Wrap(err, "error parsing config")
 	}
-	_, err = ParseLifecycleEndorsementPolicy(bundle)
-	return err
+	for _, snp := range SystemNamespacePolicies {
+		if _, err = ParseChannelPolicy(bundle, snp.PolicyPath); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-// ParseLifecycleEndorsementPolicy extracts the LifecycleEndorsement policy from the channel config bundle.
-func ParseLifecycleEndorsementPolicy(bundle *channelconfig.Bundle) (*signature.NsVerifier, error) {
-	p, ok := bundle.PolicyManager().GetPolicy(lifecycleEndorsementPolicyPath)
+// ParseChannelPolicy resolves a channel policy at the given PolicyManager path and wraps it
+// as a namespace verifier. The path itself is used to identify the policy in error messages.
+func ParseChannelPolicy(bundle *channelconfig.Bundle, path string) (*signature.NsVerifier, error) {
+	p, ok := bundle.PolicyManager().GetPolicy(path)
 	if !ok {
-		return nil, errors.New("LifecycleEndorsement policy not found in channel config")
+		return nil, errors.Newf("policy not found in channel config: %s", path)
 	}
 	return signature.NewNsVerifierFromChannelPolicy(p), nil
 }

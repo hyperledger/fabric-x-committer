@@ -407,7 +407,7 @@ func TestReadConfigLoadGen(t *testing.T) {
 					PreferredRate: time.Second,
 				},
 				Transaction: workload.TransactionProfile{
-					ReadWriteCount: workload.NewConstantDistribution(2),
+					ReadWriteCount: 2,
 				},
 				Policy: workload.PolicyProfile{
 					ChannelID: "mychannel",
@@ -730,8 +730,7 @@ func TestEnvOverrideFieldsNotInYAML(t *testing.T) {
 		{name: "loadgen-sample", file: "samples/loadgen.yaml"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("SC_LOADGEN_LOAD_PROFILE_TRANSACTION_WRITE_COUNT_UNIFORM_MIN", "1")
-			t.Setenv("SC_LOADGEN_LOAD_PROFILE_TRANSACTION_WRITE_COUNT_UNIFORM_MAX", "15")
+			t.Setenv("SC_LOADGEN_LOAD_PROFILE_TRANSACTION_WRITE_COUNT", "15")
 			t.Setenv("SC_LOADGEN_YAML", `
 load-profile:
   policy:
@@ -745,11 +744,7 @@ load-profile:
 			conf, server, err := ReadLoadGenYamlAndSetupLogging(NewViperWithLoadGenDefaults(), tc.file)
 			require.NoError(t, err)
 			require.NotNil(t, conf.LoadProfile)
-			require.NotNil(t, conf.LoadProfile.Transaction)
-			require.NotNil(t, conf.LoadProfile.Transaction.BlindWriteCount)
-			require.NotNil(t, conf.LoadProfile.Transaction.BlindWriteCount.Uniform)
-			assert.InEpsilon(t, 1, conf.LoadProfile.Transaction.BlindWriteCount.Uniform.Min, 1e-4)
-			assert.InEpsilon(t, 15, conf.LoadProfile.Transaction.BlindWriteCount.Uniform.Max, 1e-4)
+			assert.Equal(t, uint32(15), conf.LoadProfile.Transaction.BlindWriteCount)
 			require.NotNil(t, conf.LoadProfile.Policy)
 			require.NotNil(t, conf.LoadProfile.Policy.NamespacePolicies)
 			require.NotNil(t, conf.LoadProfile.Policy.NamespacePolicies["new"])

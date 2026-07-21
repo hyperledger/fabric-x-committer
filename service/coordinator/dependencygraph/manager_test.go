@@ -48,7 +48,7 @@ func BenchmarkDependencyGraph(b *testing.B) {
 		for _, dst := range allDep {
 			testDependencies = append(testDependencies, workload.DependencyDescription{
 				Probability: 0.3,
-				Gap:         workload.NewNormalDistribution(500, 10),
+				Gap:         500,
 				Src:         src,
 				Dst:         dst,
 			})
@@ -64,7 +64,7 @@ func BenchmarkDependencyGraph(b *testing.B) {
 					p.Conflicts.Dependencies = []workload.DependencyDescription{dep}
 					name = fmt.Sprintf("%s AND %s", dep.Src, dep.Dst)
 				}
-				p.Transaction.ReadWriteCount = workload.NewConstantDistribution(float64(keyCount))
+				p.Transaction.ReadWriteCount = uint32(keyCount) //nolint:gosec // small test value.
 
 				b.Run(name, func(b *testing.B) {
 					for _, tc := range []struct {

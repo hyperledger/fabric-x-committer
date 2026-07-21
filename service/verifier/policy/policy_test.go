@@ -99,6 +99,7 @@ func TestParsePolicyItem(t *testing.T) {
 		"", "abc_$", "a-", "go!", "My Namespace", "my name", "ABC_D", "new\nline",
 		"____too_long_namespace_namespace_id_0123456789_0123456789_012",
 		committerpb.MetaNamespaceID, committerpb.ConfigNamespaceID,
+		committerpb.SnapshotNamespaceID, committerpb.CheckpointNamespaceID,
 	} {
 		t.Run(fmt.Sprintf("invalid ns: '%s'", ns), func(t *testing.T) {
 			t.Parallel()
@@ -116,58 +117,63 @@ func TestParsePolicyItem(t *testing.T) {
 	})
 }
 
-func TestParseLifecycleEndorsementPolicy(t *testing.T) {
+// TestParseChannelPolicy covers the config-block channel policies resolved by the
+// verifier (see [SystemNamespacePolicies]): LifecycleEndorsement (-> _meta),
+// SnapshotEndorsement (-> _snapshot), and CheckpointEndorsement (-> _checkpoint).
+// All entries share the same resolution logic (ParseChannelPolicy), so they are
+// exercised through one table-driven test reusing the production namespace/path table.
+func TestParseChannelPolicy(t *testing.T) {
 	t.Parallel()
 
-	t.Run("valid bundle returns verifier", func(t *testing.T) {
-		t.Parallel()
-		bundle, cryptoPath := createTestBundle(t)
+	for _, snp := range SystemNamespacePolicies {
+		t.Run(snp.NamespaceID+": valid bundle returns verifier", func(t *testing.T) {
+			t.Parallel()
+			bundle, cryptoPath := createTestBundle(t)
 
-		verifier, err := ParseLifecycleEndorsementPolicy(bundle)
-		require.NoError(t, err)
-		require.NotNil(t, verifier)
+			nsVerifier, err := ParseChannelPolicy(bundle, snp.PolicyPath)
+			require.NoError(t, err)
+			require.NotNil(t, nsVerifier)
 
-		// Verify it accepts a valid MSP endorsement.
-		endorser := workload.NewPolicyEndorserFromMsp(t, cryptoPath)
-		require.NoError(t, err)
+			endorser := workload.NewPolicyEndorserFromMsp(t, cryptoPath)
 
-		tx := &applicationpb.Tx{
-			Namespaces: []*applicationpb.TxNamespace{{
-				NsId:        committerpb.MetaNamespaceID,
-				BlindWrites: []*applicationpb.Write{{Key: []byte("test")}},
-			}},
-		}
-		endorsements, err := endorser.EndorseTxNs("tx-1", tx, 0)
-		require.NoError(t, err)
-		tx.Endorsements = []*applicationpb.Endorsements{endorsements}
-
-		require.NoError(t, verifier.VerifyNs("tx-1", tx, 0))
-	})
-
-	t.Run("rejects invalid endorsement", func(t *testing.T) {
-		t.Parallel()
-		bundle, _ := createTestBundle(t)
-
-		verifier, err := ParseLifecycleEndorsementPolicy(bundle)
-		require.NoError(t, err)
-
-		// Use a valid Identity proto but from an unknown MSP,
-		// so the MSP manager can deserialize it but the policy won't be satisfied.
-		tx := &applicationpb.Tx{
-			Namespaces: []*applicationpb.TxNamespace{{
-				NsId:        committerpb.MetaNamespaceID,
-				BlindWrites: []*applicationpb.Write{{Key: []byte("test")}},
-			}},
-			Endorsements: []*applicationpb.Endorsements{{
-				EndorsementsWithIdentity: []*applicationpb.EndorsementWithIdentity{{
-					Identity:    msppb.NewIdentity("unknown-org", []byte("unknown-cert")),
-					Endorsement: []byte("bad-sig"),
+			tx := &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
+					NsId:        snp.NamespaceID,
+					BlindWrites: []*applicationpb.Write{{Key: []byte("test")}},
 				}},
-			}},
-		}
+			}
+			endorsements, err := endorser.EndorseTxNs("tx-1", tx, 0)
+			require.NoError(t, err)
+			tx.Endorsements = []*applicationpb.Endorsements{endorsements}
 
-		require.Error(t, verifier.VerifyNs("tx-1", tx, 0))
-	})
+			require.NoError(t, nsVerifier.VerifyNs("tx-1", tx, 0))
+		})
+
+		t.Run(snp.NamespaceID+": rejects invalid endorsement", func(t *testing.T) {
+			t.Parallel()
+			bundle, _ := createTestBundle(t)
+
+			nsVerifier, err := ParseChannelPolicy(bundle, snp.PolicyPath)
+			require.NoError(t, err)
+
+			// Use a valid Identity proto but from an unknown MSP,
+			// so the MSP manager can deserialize it but the policy won't be satisfied.
+			tx := &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
+					NsId:        snp.NamespaceID,
+					BlindWrites: []*applicationpb.Write{{Key: []byte("test")}},
+				}},
+				Endorsements: []*applicationpb.Endorsements{{
+					EndorsementsWithIdentity: []*applicationpb.EndorsementWithIdentity{{
+						Identity:    msppb.NewIdentity("unknown-org", []byte("unknown-cert")),
+						Endorsement: []byte("bad-sig"),
+					}},
+				}},
+			}
+
+			require.Error(t, nsVerifier.VerifyNs("tx-1", tx, 0))
+		})
+	}
 }
 
 func TestValidateConfigTx(t *testing.T) {

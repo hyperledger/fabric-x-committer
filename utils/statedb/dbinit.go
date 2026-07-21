@@ -39,7 +39,12 @@ var (
 	//go:embed create_namespace_tmpl.sql
 	createNamespaceSQLStmt string
 
-	systemNamespaces = []string{committerpb.MetaNamespaceID, committerpb.ConfigNamespaceID}
+	systemNamespaces = []string{
+		committerpb.MetaNamespaceID,
+		committerpb.ConfigNamespaceID,
+		committerpb.SnapshotNamespaceID,
+		committerpb.CheckpointNamespaceID,
+	}
 
 	logger = flogging.MustGetLogger("db-init")
 )

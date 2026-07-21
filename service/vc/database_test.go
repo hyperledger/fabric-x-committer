@@ -28,7 +28,11 @@ func TestTablesAndMethods(t *testing.T) {
 	env := NewDatabaseTestEnv(t)
 	env.populateData(t, []string{"a", "b"}, namespaceToWrites{}, nil, nil)
 
-	expectedTables := []string{"metadata", "tx_status", "ns__meta", "ns__config", "ns_a", "ns_b"}
+	expectedTables := []string{
+		"metadata", "tx_status",
+		"ns__meta", "ns__config", "ns__snapshot", "ns__checkpoint",
+		"ns_a", "ns_b",
+	}
 	expectedMethodsPerNamespace := []string{"insert_", "update_", "validate_reads_"}
 	expectedMethods := []string{"insert_tx_status"}
 	for _, table := range expectedTables {
@@ -235,26 +239,37 @@ func TestDBInit(t *testing.T) {
 	t.Parallel()
 	env := NewDatabaseTestEnv(t)
 
-	tableName := statedb.TableName(committerpb.MetaNamespaceID)
-	keys := [][]byte{[]byte("tx1"), []byte("tx2"), []byte("tx3"), []byte("tx4")}
-	ret := env.DB.pool.QueryRow(
-		t.Context(), statedb.FmtNsID(insertNsStatesSQLTempl, committerpb.MetaNamespaceID), keys, keys,
-	)
-	duplicates, err := readArrayResult[[]byte](ret)
-	require.NoError(t, err)
-	require.Empty(t, duplicates)
+	for _, tc := range []struct {
+		name string
+		nsID string
+	}{
+		{name: "meta namespace", nsID: committerpb.MetaNamespaceID},
+		{name: "config namespace", nsID: committerpb.ConfigNamespaceID},
+		{name: "snapshot namespace", nsID: committerpb.SnapshotNamespaceID},
+		{name: "checkpoint namespace", nsID: committerpb.CheckpointNamespaceID},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tableName := statedb.TableName(tc.nsID)
+			keys := [][]byte{[]byte(txs[0]), []byte(txs[1]), []byte(txs[2]), []byte(txs[3])}
+			ret := env.DB.pool.QueryRow(t.Context(), statedb.FmtNsID(insertNsStatesSQLTempl, tc.nsID), keys, keys)
+			duplicates, err := readArrayResult[[]byte](ret)
+			require.NoError(t, err)
+			require.Empty(t, duplicates)
 
-	// Validate default values
-	r, err := env.DB.pool.Query(t.Context(), "select * from "+tableName+";")
-	require.NoError(t, err)
-	defer r.Close()
-	for r.Next() {
-		var key, value []byte
-		var version uint64
-		require.NoError(t, r.Scan(&key, &value, &version))
-		require.NotNil(t, key)
-		require.Equal(t, key, value)
-		require.EqualValues(t, 0, version)
+			// Validate default values
+			r, err := env.DB.pool.Query(t.Context(), "select * from "+tableName+";")
+			require.NoError(t, err)
+			defer r.Close()
+			for r.Next() {
+				var key, value []byte
+				var version uint64
+				require.NoError(t, r.Scan(&key, &value, &version))
+				require.NotNil(t, key)
+				require.Equal(t, key, value)
+				require.EqualValues(t, 0, version)
+			}
+		})
 	}
 }
 

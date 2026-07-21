@@ -37,23 +37,16 @@ func DefaultProfile(workers uint32) *Profile {
 		Block: BlockProfile{MaxSize: 10},
 		Transaction: TransactionProfile{
 			ReadWriteValueSize: 32,
-			ReadWriteCount:     NewConstantDistribution(2),
-		},
-		Query: QueryProfile{
-			QuerySize:             NewConstantDistribution(100),
-			MinInvalidKeysPortion: NewConstantDistribution(0),
-			Shuffle:               false,
+			ReadWriteCount:     2,
 		},
 		Policy: PolicyProfile{
 			NamespacePolicies: map[string]*Policy{
 				DefaultGeneratedNamespaceID: {Scheme: signature.NoScheme},
 			},
 		},
-		Conflicts: ConflictProfile{
-			InvalidSignatures: Never,
-		},
-		Seed:    249822374033311501,
-		Workers: workers,
+		Conflicts: ConflictProfile{InvalidSignatures: 0},
+		Seed:      249822374033311501,
+		Workers:   workers,
 	}
 }
 
