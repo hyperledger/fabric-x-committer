@@ -35,25 +35,20 @@ func healthcheckServiceCommand(name string) *cobra.Command {
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runHealthCheck(cmd, name, configPath)
+			_, serverConfig, err := readConfig(name, configPath)
+			if err != nil {
+				return err
+			}
+
+			displayName := serviceNames[name]
+			if err := connection.RunHealthCheck(cmd.Context(), serverConfig.GRPC.Endpoint, serverConfig.GRPC.TLS); err != nil {
+				cmd.PrintErrf("%s: NOT SERVING: %v\n", displayName, err)
+				return err
+			}
+			cmd.Printf("%s: SERVING\n", displayName)
+			return nil
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)
 	return cmd
-}
-
-// runHealthCheck reads the service config, performs a gRPC health check, and prints the result.
-func runHealthCheck(cmd *cobra.Command, name, configPath string) error {
-	_, serverConfig, err := readConfig(name, configPath)
-	if err != nil {
-		return err
-	}
-
-	displayName := serviceNames[name]
-	if err := connection.RunHealthCheck(cmd.Context(), serverConfig.GRPC.Endpoint, serverConfig.GRPC.TLS); err != nil {
-		cmd.PrintErrf("%s: NOT SERVING: %v\n", displayName, err)
-		return err
-	}
-	cmd.Printf("%s: SERVING\n", displayName)
-	return nil
 }
