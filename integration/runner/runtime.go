@@ -95,6 +95,16 @@ type (
 		// If not explicitly set in config, viper default of 10 is used.
 		MaxConcurrentStreams int
 
+		// KeepAliveTime is the duration the server waits when it doesn't see any activity before it
+		// pings the client to see if the transport is still alive.
+		KeepAliveTime time.Duration
+		// KeepAliveTimeout is the duration the server waits for after having pinged for keepalive check.
+		// When this time passes, the connection will be closed.
+		KeepAliveTimeout time.Duration
+		// KeepAlivePermitWithoutStream determine if the server
+		// allows keepalive pings even when there are no active streams.
+		KeepAlivePermitWithoutStream bool
+
 		// VCMinTransactionBatchSize configures the minimum batch size for VC service.
 		VCMinTransactionBatchSize int
 		// VCTimeoutForMinTransactionBatchSize configures the timeout for min batch size
@@ -216,6 +226,11 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 			VerifierBatchTimeCutoff:             conf.VerifierBatchTimeCutoff,
 			VerifierBatchSizeCutoff:             conf.VerifierBatchSizeCutoff,
 			QueryTLSRefreshInterval:             conf.QueryTLSRefreshInterval,
+
+			// Keep-alive configuration for services which exposes their API.
+			KeepAliveTime:                conf.KeepAliveTime,
+			KeepAliveTimeout:             conf.KeepAliveTimeout,
+			KeepAlivePermitWithoutStream: conf.KeepAlivePermitWithoutStream,
 		},
 		CommittedBlock:   make(chan *common.Block, 100),
 		SeedForCryptoGen: rand.New(rand.NewSource(10)),

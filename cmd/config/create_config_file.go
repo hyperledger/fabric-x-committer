@@ -56,6 +56,18 @@ type (
 		QueryTLSRefreshInterval time.Duration           // query
 		MaxConcurrentStreams    int                     // sidecar
 
+		// Keep-alive configuration for exposing API services (sidecar, query) for testing.
+		//
+		// KeepAliveTime is the duration the server waits when it doesn't see any activity before it
+		// pings the client to see if the transport is still alive.
+		KeepAliveTime time.Duration
+		// KeepAliveTimeout is the duration the server waits for after having pinged for keepalive check.
+		// When this time passes, the connection will be closed.
+		KeepAliveTimeout time.Duration
+		// KeepAlivePermitWithoutStream determine if the server
+		// allows keepalive pings even when there are no active streams.
+		KeepAlivePermitWithoutStream bool
+
 		// VC service batching configuration (for testing).
 		VCMinTransactionBatchSize           int           // vc
 		VCTimeoutForMinTransactionBatchSize time.Duration // vc
