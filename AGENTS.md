@@ -55,9 +55,8 @@ Configuration samples are available in `cmd/config/samples/`.
 
 ## Development Conventions
 
-Follow the **`development` skill** (`.claude/skills/development/SKILL.md`) whenever you write
-or change Go code — it is the authoritative, detailed source for these conventions and keeps
-them in one place. In brief:
+Follow the **`development` skill** whenever you write or change Go code — it is the
+authoritative, detailed source for these conventions and keeps them in one place. In brief:
 
 - **Simplicity first** — concrete types over interfaces, generics only for `utils/`-style
   plumbing, no callbacks/functions-as-arguments, explicit over clever (`guidelines.md`).
@@ -133,7 +132,7 @@ Detailed architectural documentation is available in the `docs/` directory:
 
 ### Adding a New Service
 
-See `.claude/skills/development/references/service-construction.md` for the full blueprint
+See the `development` skill's service-construction reference for the full blueprint
 (struct + constructor, `serve.Service` lifecycle, gRPC handlers, config pipeline, metrics,
 wiring) with a step-by-step checklist. High level:
 
