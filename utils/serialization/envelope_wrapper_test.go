@@ -9,6 +9,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -191,6 +192,7 @@ func TestLoadgenEnvelopeConsistency(t *testing.T) {
 }
 
 func BenchmarkUnwrapEnvelope(b *testing.B) {
+	flogging.ActivateSpec("fatal")
 	envelopes := loadgenEnvelopes(b, b.N)
 	b.ResetTimer()
 	for _, env := range envelopes {
@@ -199,10 +201,12 @@ func BenchmarkUnwrapEnvelope(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+	b.StopTimer()
 	test.ReportTxPerSecond(b)
 }
 
 func BenchmarkUnwrapEnvelopeLite(b *testing.B) {
+	flogging.ActivateSpec("fatal")
 	envelopes := loadgenEnvelopes(b, b.N)
 	b.ResetTimer()
 	for _, env := range envelopes {
@@ -211,6 +215,7 @@ func BenchmarkUnwrapEnvelopeLite(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+	b.StopTimer()
 	test.ReportTxPerSecond(b)
 }
 

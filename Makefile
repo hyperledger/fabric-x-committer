@@ -216,21 +216,27 @@ ci-local: FORCE
 # Benchmarks
 #########################
 
+# Benchmarks report a `tx/s` custom metric via test.ReportTxPerSecond. Raw
+# `go test` output is neither aggregated nor scaled; for readable results
+# (SI-scaled values, e.g. 12.35M, with confidence intervals) run benchstat
+# (installed by scripts/install-dev-dependencies.sh) over captured output:
+#   make bench-loadgen | tee bench.txt && benchstat bench.txt
+
 # Run load generation benchmarks.
 bench-loadgen: FORCE
 	$(go_cmd) test ./loadgen/... -bench "Benchmark.*" -run="^$$"
 
 # Run dependency detector benchmarks.
 bench-dep: FORCE
-	$(go_cmd) test ./service/coordinator/dependencygraph/... -timeout 60m -bench "BenchmarkDependencyGraph.*" -run="^$$"
+	$(go_cmd) test ./service/coordinator/dependencygraph/... -timeout 60m -bench "Benchmark.*" -run="^$$"
 
-# Run preparer benchmarks.
+# Run validator-committer benchmarks.
 bench-preparer: FORCE
-	$(go_cmd) test ./service/vc/... -bench "BenchmarkPrepare.*" -run "^$$"
+	$(go_cmd) test ./service/vc/... -bench "Benchmark.*" -run "^$$"
 
 # Run signature benchmarks.
 bench-sign: FORCE
-	$(go_cmd) test ./utils/signature/... -bench ".*" -run "^$$"
+	$(go_cmd) test ./utils/testsig/... -bench ".*" -run "^$$"
 
 # Run sidecar benchmarks.
 bench-sidecar: FORCE

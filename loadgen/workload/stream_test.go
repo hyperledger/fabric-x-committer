@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/stretchr/testify/require"
@@ -23,14 +24,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
-
-// result is used to prevent compiler optimizations.
-var result float64
-
-// printResult is used to prevent compiler optimizations.
-func printResult() {
-	fmt.Printf("Result: %v\n", result)
-}
 
 func defaultStreamOptions() *StreamOptions {
 	// We set low values for the buffer and batch to reduce the CPU load during tests.
@@ -83,15 +76,21 @@ func genericBench(b *testing.B, benchFunc func(b *testing.B, p *Profile)) {
 			benchFunc(b, p)
 		})
 	}
-	printResult()
 }
 
 func BenchmarkGenTx(b *testing.B) {
+	flogging.ActivateSpec("fatal")
 	//nolint:thelper // false positive.
 	genericBench(b, func(b *testing.B, p *Profile) {
 		t := NewTxStream(p, defaultBenchStreamOptions())
 
 		ctx := b.Context()
+		// Start the timer before creating the service: the stream generates
+		// transactions in the background as soon as it starts, and that
+		// generation is exactly the workload we want to measure. Resetting the
+		// timer after startup would let the service pre-produce transactions
+		// that the consume loop then reads "for free", inflating the reported
+		// throughput.
 		b.ResetTimer()
 		test.RunServiceForTest(ctx, b, t.Run, nil)
 		g := t.MakeGenerator()
@@ -103,6 +102,7 @@ func BenchmarkGenTx(b *testing.B) {
 			txs := g.Consume(ctx, param)
 			sum += len(txs)
 		}
+		b.StopTimer()
 		test.ReportTxPerSecond(b)
 	})
 }

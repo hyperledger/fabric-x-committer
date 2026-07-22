@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,6 +43,8 @@ func BenchmarkNotifier(b *testing.B) {
 		txIDs[i] = fmt.Sprintf("%064d", i)
 	}
 
+	// Each request must stay within the per-request limit, otherwise the notifier
+	// rejects the whole request instead of subscribing to its tx IDs.
 	batchSize := 4096
 	requests := make([]*committerpb.NotificationRequest, 0, (b.N/batchSize)+1)
 	statuses := make([][]*committerpb.TxStatus, 0, (b.N/batchSize)+1)
@@ -50,7 +53,7 @@ func BenchmarkNotifier(b *testing.B) {
 		sz := min(batchSize, len(requestTxIDs))
 		requests = append(requests, &committerpb.NotificationRequest{
 			TxStatusRequest: &committerpb.TxIDsBatch{
-				TxIds: txIDs[:sz],
+				TxIds: requestTxIDs[:sz],
 			},
 			Timeout: durationpb.New(1 * time.Hour),
 		})
@@ -70,7 +73,14 @@ func BenchmarkNotifier(b *testing.B) {
 		statusTxIDs = statusTxIDs[sz:]
 	}
 
-	env := newNotifierTestEnv(b, 5)
+	// The active-txID limit must accommodate all benchmarked tx IDs; otherwise the
+	// notifier rejects the excess instead of tracking them for notification.
+	env := newNotifierTestEnvWithConfig(b, 5, &NotificationServiceConfig{
+		MaxTimeout:         DefaultNotificationMaxTimeout,
+		MaxActiveTxIDs:     max(b.N, DefaultMaxActiveTxIDs),
+		MaxTxIDsPerRequest: batchSize,
+		StreamWriteTimeout: DefaultStreamWriteTimeout,
+	})
 	q := env.responseQueues[0]
 
 	// We benchmark a full cycle, adding TX IDs, removing them, and getting the notifications.
@@ -87,9 +97,15 @@ func BenchmarkNotifier(b *testing.B) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	for _, s := range statuses {
-		env.statusQueue.Write(s)
-	}
+	// Submit the statuses concurrently with reading the notifications below, so the
+	// notifier worker never blocks writing to a full response queue.
+	var wg sync.WaitGroup
+	b.Cleanup(wg.Wait)
+	wg.Go(func() {
+		for _, s := range statuses {
+			env.statusQueue.Write(s)
+		}
+	})
 
 	expectedCount := len(txIDs)
 	notifiedCount := 0

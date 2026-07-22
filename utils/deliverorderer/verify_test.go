@@ -27,7 +27,7 @@ import (
 )
 
 func BenchmarkVerifyBlock(b *testing.B) {
-	flogging.Init(flogging.Config{LogSpec: "fatal"})
+	flogging.ActivateSpec("fatal")
 	printer := message.NewPrinter(language.English)
 	for _, blockSize := range []int{100, 1_000, 10_000, 100_000} {
 		b.Run(printer.Sprintf("blockSize=%d", blockSize), func(b *testing.B) {
@@ -38,8 +38,10 @@ func BenchmarkVerifyBlock(b *testing.B) {
 				curBlockSize := min(blockSize, len(txs))
 				blk := workload.MapToOrdererBlock(0, txs[:curBlockSize])
 				txs = txs[curBlockSize:]
-				blocks = append(blocks, &deliver.BlockWithSourceID{Block: blk})
+				// PrepareBlockHeaderAndMetadata returns a new (cloned) block, so the
+				// block must be prepared before it is stored for verification.
 				blk = testcrypto.PrepareBlockHeaderAndMetadata(blk, p)
+				blocks = append(blocks, &deliver.BlockWithSourceID{Block: blk})
 				p.PrevBlock = blk
 			}
 

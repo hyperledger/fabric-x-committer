@@ -93,7 +93,10 @@ func BenchmarkDependencyGraph(b *testing.B) {
 								PrometheusMetricsProvider: monitoring.NewProvider(),
 							})
 
-							txPoll := workload.GenerateTransactions(b, p, max(b.N, batchSize))
+							// Over-supply transactions (3x) so the manager's internal
+							// queue stays populated throughout the measured window; we
+							// stop once b.N transactions have been released.
+							txPoll := workload.GenerateTransactions(b, p, max(b.N*3, batchSize*3))
 
 							ctx := b.Context()
 							outCtx := channel.NewReader(ctx, out)
@@ -123,12 +126,10 @@ func BenchmarkDependencyGraph(b *testing.B) {
 							// Generates the load to the manager's queue.
 							go func() {
 								var i uint64
-								remaining := b.N
-								for ctx.Err() == nil && remaining > 0 {
-									take := min(batchSize, len(txPoll), remaining)
+								for ctx.Err() == nil && len(txPoll) > 0 {
+									take := min(batchSize, len(txPoll))
 									batch := workload.MapToCoordinatorBatch(i, txPoll[:take])
 									txPoll = txPoll[take:]
-									remaining -= take
 									inCtx.Write(&TransactionBatch{
 										ID:  i,
 										Txs: batch.Txs,

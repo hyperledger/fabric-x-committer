@@ -46,6 +46,7 @@ tool (
 	github.com/googleapis/api-linter/v2/cmd/api-linter
 	github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway
 	go.uber.org/mock/mockgen
+	golang.org/x/perf/cmd/benchstat
 	golang.org/x/tools/cmd/goimports
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc
 	google.golang.org/protobuf/cmd/protoc-gen-go
@@ -62,6 +63,7 @@ require (
 	github.com/Kunde21/markdownfmt/v3 v3.1.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/TylerBrock/colorjson v0.0.0-20200706003622-8a50f05110d2 // indirect
+	github.com/aclements/go-moremath v0.0.0-20210112150236-f10218a38794 // indirect
 	github.com/ajg/form v1.7.1 // indirect
 	github.com/andybalholm/brotli v1.2.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -166,6 +168,7 @@ require (
 	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/mod v0.38.0 // indirect
 	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/perf v0.0.0-20260709024250-82a0b07e230d // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260708182218-49f421fb7959 // indirect
 	golang.org/x/term v0.45.0 // indirect

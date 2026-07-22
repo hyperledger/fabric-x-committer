@@ -800,7 +800,10 @@ func BenchmarkPrepare(b *testing.B) {
 				return p.run(ctx, w)
 			}, nil)
 
-			txPoll := workload.GenerateTransactions(b, nil, max(b.N, batchSize))
+			// Over-supply transactions (3x) so the preparer's input queue stays
+			// populated throughout the measured window; we stop once b.N
+			// transactions have been prepared.
+			txPoll := workload.GenerateTransactions(b, nil, max(b.N*3, batchSize*3))
 
 			inCtx := channel.NewWriter(b.Context(), txBatch)
 			outCtx := channel.NewReader(b.Context(), preparedTxs)
@@ -808,12 +811,10 @@ func BenchmarkPrepare(b *testing.B) {
 			// Generates the load to the preparer's queue.
 			go func() {
 				var i uint64
-				remaining := b.N
-				for b.Context().Err() == nil && remaining > 0 {
-					take := min(batchSize, len(txPoll), remaining)
+				for b.Context().Err() == nil && len(txPoll) > 0 {
+					take := min(batchSize, len(txPoll))
 					inCtx.Write(workload.MapToVcBatch(i, txPoll[:take]))
 					txPoll = txPoll[take:]
-					remaining -= take
 					i++
 				}
 			}()
