@@ -655,7 +655,7 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 	ensurePreparedTx(t, expectedPreparedTxs, preparedTxs)
 }
 
-// TestPrepareSnapshotTx verifies that a _snapshot marker TX takes no _meta namespace-version
+// TestPrepareSnapshotTx verifies that a _snapshot record TX takes no _meta namespace-version
 // dependency and is forwarded to the committer as a single new write into the _snapshot
 // namespace (key = tx_id, value = SnapshotState{TxRef}), so the namespace survives the preparer.
 func TestPrepareSnapshotTx(t *testing.T) {

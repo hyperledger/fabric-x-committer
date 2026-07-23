@@ -117,25 +117,6 @@ func IsConfigTx(namespaces []*applicationpb.TxNamespace) bool {
 	return len(namespaces) == 1 && namespaces[0].NsId == committerpb.ConfigNamespaceID
 }
 
-// IsSystemNamespace returns true if the namespace ID is one of the reserved system
-// namespaces (_meta, _config, _snapshot, _checkpoint). System namespaces are handled
-// specially across the pipeline: they cannot be used as ordinary application namespace
-// policies and they do not take the normal _meta namespace-version read dependency.
-//
-// TODO: move this to fabric-x-common alongside the committerpb namespace constants,
-// so all repos share a single system-namespace predicate.
-func IsSystemNamespace(nsID string) bool {
-	switch nsID {
-	case committerpb.MetaNamespaceID,
-		committerpb.ConfigNamespaceID,
-		committerpb.SnapshotNamespaceID,
-		committerpb.CheckpointNamespaceID:
-		return true
-	default:
-		return false
-	}
-}
-
 // RandIntN returns a true random (crypto/rand) number in the range [0, n).
 // If it fails to read the crypto/rand stream, it falls back to a pseudo random number generator.
 func RandIntN(n uint64) uint64 {

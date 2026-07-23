@@ -72,6 +72,11 @@ var (
 			"yb_num_shards_per_tserver=1," +
 			"minloglevel=3," +
 			"yb_enable_read_committed_isolation=true",
+		// enable_db_clone is a master flag required for `CREATE DATABASE ... TEMPLATE`
+		// (used by service/vc/snapshot.go createYugabyteClone). Without it, the clone
+		// statement fails with "FLAGS_enable_db_clone is disabled".
+		"--master_flags",
+		"enable_db_clone=true",
 	}
 
 	// passwordRegex is the compiled regular expression.
@@ -485,4 +490,25 @@ func (dc *DatabaseContainer) EnsureNodeReadinessByLogs(t *testing.T, requiredOut
 		output := dc.GetContainerLogs(t)
 		require.Contains(ct, output, requiredOutput)
 	}, 45*time.Second, 250*time.Millisecond)
+}
+
+// EnsureSnapshotSchedule creates a YugabyteDB snapshot schedule for dbName.
+// It registers cleanup before the test database is dropped. This is a no-op for
+// non-YugabyteDB containers.
+func (dc *DatabaseContainer) EnsureSnapshotSchedule(t *testing.T, dbName string) {
+	t.Helper()
+	if dc.DatabaseType != YugaDBType {
+		return
+	}
+	// yb-admin's default master address (127.0.0.1:7100) doesn't work here: yb-master
+	// binds to the container's network IP, not loopback. Use the container's actual IP.
+	masterAddr := dc.GetContainerConnectionDetails(t).Host + ":7100"
+	t.Logf("creating snapshot schedule for ysql.%s", dbName)
+
+	output := dc.ExecuteCommand(t, createSnapshotScheduleCmd(masterAddr, dbName))
+	scheduleID := parseSnapshotScheduleID(t, output)
+
+	t.Cleanup(func() {
+		dc.ExecuteCommand(t, deleteSnapshotScheduleCmd(masterAddr, scheduleID))
+	})
 }
