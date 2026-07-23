@@ -29,6 +29,12 @@ type (
 		block       *servicepb.CoordinatorBatch
 		withStatus  *blockWithStatus
 		isConfig    bool
+		hasSnapshot bool
+		// snapshotTxIndex is the index (into block.Txs) of the accepted snapshot TX.
+		// Only the first snapshot TX in a block is accepted; any further snapshot TXs in the
+		// same block are rejected with REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK. Valid only when
+		// hasSnapshot is true.
+		snapshotTxIndex int
 		// txIDToHeight is a reference to the relay map.
 		txIDToHeight *utils.SyncMap[string, servicepb.Height]
 	}
@@ -135,6 +141,20 @@ func (b *blockMappingResult) mapMessage(msgIndex uint32, msg []byte) error {
 		}
 		if status := verifyTxForm(tx); status != statusNotYetValidated {
 			return b.rejectTx(ref, status, "malformed tx")
+		}
+		if isSnapshotTx(tx) {
+			if b.hasSnapshot {
+				// Only the first snapshot TX in a block is processed; reject the rest with a
+				// stored status so the outcome is recorded, regardless of the first's outcome.
+				return b.rejectTx(ref, committerpb.Status_REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK,
+					"duplicate snapshot tx in block")
+			}
+			if err := b.appendTx(ref, tx); err != nil {
+				return err
+			}
+			b.hasSnapshot = true
+			b.snapshotTxIndex = len(b.block.Txs) - 1
+			return nil
 		}
 		return b.appendTx(ref, tx)
 	default:
@@ -259,11 +279,17 @@ func verifyTxForm(tx *applicationpb.Tx) committerpb.Status {
 	if status := checkEndorsements(tx); status != statusNotYetValidated {
 		return status
 	}
+	if status := checkStandaloneSystemTx(tx); status != statusNotYetValidated {
+		return status
+	}
 
 	nsIDs := make(map[string]any, len(tx.Namespaces))
 	for _, ns := range tx.Namespaces {
 		// Checks that the application does not submit a config TX.
-		if ns.NsId == committerpb.ConfigNamespaceID || policy.ValidateNamespaceID(ns.NsId) != nil {
+		if ns.NsId == committerpb.ConfigNamespaceID {
+			return committerpb.Status_MALFORMED_NAMESPACE_ID_INVALID
+		}
+		if !utils.IsSystemNamespace(ns.NsId) && policy.ValidateNamespaceID(ns.NsId) != nil {
 			return committerpb.Status_MALFORMED_NAMESPACE_ID_INVALID
 		}
 		if _, ok := nsIDs[ns.NsId]; ok {
@@ -271,7 +297,7 @@ func verifyTxForm(tx *applicationpb.Tx) committerpb.Status {
 		}
 
 		for _, check := range []func(ns *applicationpb.TxNamespace) committerpb.Status{
-			checkNamespaceFormation, checkMetaNamespace,
+			checkNamespaceReadsWrites, checkSystemNamespace,
 		} {
 			if status := check(ns); status != statusNotYetValidated {
 				return status
@@ -303,8 +329,53 @@ func checkEndorsements(tx *applicationpb.Tx) committerpb.Status {
 	return statusNotYetValidated
 }
 
-func checkNamespaceFormation(ns *applicationpb.TxNamespace) committerpb.Status {
-	if len(ns.ReadWrites) == 0 && len(ns.BlindWrites) == 0 {
+func isSnapshotTx(tx *applicationpb.Tx) bool {
+	return len(tx.Namespaces) == 1 && tx.Namespaces[0].NsId == committerpb.SnapshotNamespaceID
+}
+
+func checkStandaloneSystemTx(tx *applicationpb.Tx) committerpb.Status {
+	for _, ns := range tx.Namespaces {
+		if ns.NsId != committerpb.SnapshotNamespaceID && ns.NsId != committerpb.CheckpointNamespaceID {
+			continue
+		}
+		if len(tx.Namespaces) == 1 {
+			continue
+		}
+		// System TX must be standalone; not namespace ID/snapshot marker/checkpoint key error.
+		return committerpb.Status_MALFORMED_SYSTEM_TX_NOT_STANDALONE
+	}
+	return statusNotYetValidated
+}
+
+func checkSystemNamespace(ns *applicationpb.TxNamespace) committerpb.Status {
+	switch ns.NsId {
+	case committerpb.MetaNamespaceID:
+		return checkMetaNamespace(ns)
+	case committerpb.SnapshotNamespaceID:
+		if len(ns.ReadsOnly) > 0 || len(ns.ReadWrites) > 0 || len(ns.BlindWrites) > 0 {
+			return committerpb.Status_MALFORMED_SNAPSHOT_NOT_MARKER_ONLY
+		}
+	case committerpb.CheckpointNamespaceID:
+		if len(ns.ReadsOnly) > 0 || len(ns.BlindWrites) > 0 || len(ns.ReadWrites) != 1 {
+			return committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY
+		}
+		_, n, err := servicepb.NewHeightFromBytes(ns.ReadWrites[0].Key)
+		if err != nil || n != len(ns.ReadWrites[0].Key) {
+			return committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY
+		}
+	default:
+		return statusNotYetValidated
+	}
+	return statusNotYetValidated
+}
+
+// checkNamespaceReadsWrites validates the reads/writes shape shared by user and system
+// namespaces: it rejects a namespace with no writes (except the marker-only `_snapshot` and
+// `_checkpoint` system namespaces, whose write requirements are checked in checkSystemNamespace)
+// and validates all keys. It runs for every namespace in the transaction.
+func checkNamespaceReadsWrites(ns *applicationpb.TxNamespace) committerpb.Status {
+	if len(ns.ReadWrites) == 0 && len(ns.BlindWrites) == 0 &&
+		ns.NsId != committerpb.SnapshotNamespaceID && ns.NsId != committerpb.CheckpointNamespaceID {
 		return committerpb.Status_MALFORMED_NO_WRITES
 	}
 
