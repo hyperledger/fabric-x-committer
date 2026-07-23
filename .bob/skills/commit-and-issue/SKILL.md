@@ -10,7 +10,10 @@ PR description**. So a commit message here is not a throwaway line — it is the
 description, reviewed as-is. Write it to the PR template and keep the exact wording the
 user approves.
 
-The repo for all `gh` operations is **`hyperledger/fabric-x-committer`** (the `gh` default).
+The upstream repo for all `gh` operations (issues, and PRs via `--repo`) is
+**`hyperledger/fabric-x-committer`**. PRs, however, are pushed from and opened off **your
+fork** (`<your-user>/fabric-x-committer`), not upstream — see
+[Push to your fork, then open the PR against upstream](#5-push-to-your-fork-then-open-the-pr-against-upstream).
 
 Pick the workflow that matches the request:
 
@@ -148,10 +151,49 @@ git commit -s -F /tmp/commit-msg.txt
 
 Amend with `git commit -s --amend -F /tmp/commit-msg.txt` if refining an existing commit.
 
-The same body is the PR description verbatim — if a PR already exists or the user wants to
-open one, reuse it with `gh pr create --body-file ...` or `gh pr edit --body-file ...`. Apply
-any labels to the PR through `gh` when applicable (e.g. `gh pr edit --add-label vc,bug`) —
-never in the message body.
+### 5. Push to your fork, then open the PR against upstream
+
+Contributors don't have push access to `hyperledger/fabric-x-committer`, so the branch must
+live on **your fork**, and the PR is opened from `your-fork:branch` into
+`hyperledger:main`. Never push feature branches to the upstream remote.
+
+Inspect the remotes and pick the fork (the one that is *not* `hyperledger/...`):
+
+```bash
+git remote -v
+```
+
+Conventionally `origin` is the upstream (`hyperledger/fabric-x-committer`) and a second
+remote (often named `fork`, or `origin` when the fork was cloned directly) points at
+`<your-user>/fabric-x-committer`. Confirm your fork's owner rather than hardcoding a name:
+
+```bash
+FORK_OWNER=$(gh api user -q .login)          # your GitHub login
+FORK_REMOTE=fork                             # the remote that points at $FORK_OWNER/fabric-x-committer
+```
+
+Push the branch to the fork and open the PR with an explicit cross-repo `--head`:
+
+```bash
+git push -u "$FORK_REMOTE" <branch>
+gh pr create --repo hyperledger/fabric-x-committer \
+  --base main --head "$FORK_OWNER:<branch>" \
+  --title "[component] Short description" \
+  --body-file /tmp/pr-body.md
+```
+
+The `--head owner:branch` form is what makes it a fork PR — omitting the `owner:` prefix
+makes `gh` look for the branch on upstream and fail (or, if you accidentally pushed there,
+open an upstream-branch PR). If a branch was mistakenly pushed to upstream, delete it with
+`git push origin --delete <branch>` and re-point local tracking at the fork
+(`git branch --set-upstream-to=$FORK_REMOTE/<branch>`).
+
+The PR body is the commit message body verbatim (subject line and the `Signed-off-by:`
+trailer removed). If a PR already exists or you're updating one, reuse the same body with
+`gh pr edit --repo hyperledger/fabric-x-committer <num> --body-file /tmp/pr-body.md`. Apply
+any labels to the PR through `gh` when applicable (e.g.
+`gh pr edit --repo hyperledger/fabric-x-committer <num> --add-label vc,bug`) — never in the
+message body.
 
 ## Opening a GitHub issue
 
