@@ -27,6 +27,7 @@ type perfMetrics struct {
 	transactionStatusesProcessingInRelaySeconds prometheus.Histogram
 
 	waitingTransactionsQueueSize prometheus.Gauge
+	serverConnections            prometheus.Gauge
 
 	// queue sizes
 	yetToBeCommittedBlocksQueueSize prometheus.Gauge
@@ -112,6 +113,12 @@ func newPerformanceMetrics() *perfMetrics {
 		coordConnection: monitoring.NewConnectionMetrics(p, monitoring.MetricsParameters{
 			Namespace: "sidecar",
 			Subsystem: "coordinator",
+		}),
+		serverConnections: p.NewGauge(prometheus.GaugeOpts{
+			Namespace: "sidecar",
+			Subsystem: "grpc",
+			Name:      "active_connections",
+			Help:      "Number of client connections currently open on the server",
 		}),
 		appendBlockToLedgerSeconds: p.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "sidecar",

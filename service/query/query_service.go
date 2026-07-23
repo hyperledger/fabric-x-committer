@@ -125,6 +125,7 @@ func (q *Service) RegisterService(s serve.Servers) {
 	healthgrpc.RegisterHealthServer(s.GRPC, q.healthcheck)
 	serve.RegisterDynamicTLSUpdater(s.GrpcTLSProvider, &q.tlsUpdater)
 	monitoring.RegisterMonitoringServer(s.HTTP, q.metrics.Provider)
+	serve.RegisterConnStatHandler(s.ConnStatsHandler, q.metrics.serverConnections)
 }
 
 // BeginView implements the query-service interface.
