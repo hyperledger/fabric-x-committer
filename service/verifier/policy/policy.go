@@ -19,7 +19,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
-	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 )
 
@@ -119,7 +118,7 @@ func UnmarshalNamespacePolicy(policyBytes []byte) (*applicationpb.NamespacePolic
 // validateNamespaceIDInPolicy checks that a given namespace fulfills namespace naming conventions.
 func validateNamespaceIDInPolicy(nsID string) error {
 	// System namespaces cannot be used as ordinary application namespace policies.
-	if utils.IsSystemNamespace(nsID) {
+	if committerpb.IsSystemNamespace(nsID) {
 		return ErrInvalidNamespaceID
 	}
 

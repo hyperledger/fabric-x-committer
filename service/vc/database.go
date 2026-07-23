@@ -55,6 +55,7 @@ type (
 		metrics              *perfMetrics
 		retryProfile         *retry.Profile
 		tablePreSplitTablets int
+		config               *statedb.Config
 	}
 
 	// keyToVersion is a map from key to version.
@@ -98,6 +99,7 @@ func newDatabase(ctx context.Context, config *statedb.Config, metrics *perfMetri
 		metrics:              metrics,
 		retryProfile:         config.Retry,
 		tablePreSplitTablets: tablePreSplitTablets,
+		config:               config,
 	}, nil
 }
 

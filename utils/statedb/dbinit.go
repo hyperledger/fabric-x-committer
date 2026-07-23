@@ -39,13 +39,6 @@ var (
 	//go:embed create_namespace_tmpl.sql
 	createNamespaceSQLStmt string
 
-	systemNamespaces = []string{
-		committerpb.MetaNamespaceID,
-		committerpb.ConfigNamespaceID,
-		committerpb.SnapshotNamespaceID,
-		committerpb.CheckpointNamespaceID,
-	}
-
 	logger = flogging.MustGetLogger("db-init")
 )
 
@@ -101,7 +94,7 @@ func SetupSystemTablesAndNamespaces(
 		return fmt.Errorf("failed to create system tables and functions: %w", execErr)
 	}
 
-	for _, nsID := range systemNamespaces {
+	for _, nsID := range committerpb.SystemNamespaces() {
 		query := MakeNsTablesQuery(nsID, tablePreSplitTablets)
 		if execErr := retry.ExecuteSQL(ctx, config.Retry, pool, query); execErr != nil {
 			return errors.Wrapf(

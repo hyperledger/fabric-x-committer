@@ -250,6 +250,14 @@ Uses `github.com/cockroachdb/errors` (the `depguard` linter bans `github.com/pkg
    enforces this). This adds a message without a redundant second trace.
 3. **Return errors up the stack; do not log mid-stack.** Log once, at the boundary.
 
+**Pitfall — double-wrapping our own errors.** When the error already came from our code
+(any `service/`, `utils/`, or helper that already `errors.Wrap`-ped it), do NOT re-wrap
+with `errors.Wrap/Wrapf` — that captures a second, redundant stack trace at the same
+logical point. Use `fmt.Errorf("context: %w", err)` to add context while preserving the
+original trace. Reserve `errors.Wrap/Wrapf` for the origin (external lib or first crossing
+into our code). Example: `readStatusWithHeight` already wraps, so a caller adding the txID
+uses `fmt.Errorf("failed to read status for tx %s: %w", txID, err)`, not `errors.Wrapf`.
+
 ```go
 if len(query.TxIds) == 0 {
 	return nil, grpcerror.WrapInvalidArgument(errors.New("query is empty"))

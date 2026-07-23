@@ -177,13 +177,12 @@ func (p *transactionPreparer) prepare(ctx context.Context) error { //nolint:goco
 				tID := TxID(tx.Ref.TxId)
 				logger.Debugf("Preparing namespace %s in TX with ID %s ", nsOperations.NsId, tx.Ref.TxId)
 
-				// The _snapshot marker TX carries no application reads/writes and takes no
-				// _meta namespace-version dependency. We synthesize a single new write into
-				// the _snapshot namespace so the namespace is forwarded to the committer:
-				// key = tx_id, value = SnapshotState{TxRef}. Only the TxRef is set here; the
-				// committer/hash worker fills in the lifecycle status and clone details. The
-				// nil version makes this a new key, and MVCC on tx_id gives idempotency for
-				// duplicate snapshot requests.
+				// _snapshot record TX carries no application reads/writes and takes no _meta
+				// namespace-version dependency. We synthesize one new _snapshot record so
+				// namespace reaches committer: key = tx_id, value = SnapshotState{TxRef}.
+				// Only TxRef is set here; committer/hash worker fills lifecycle status and
+				// snapshot database details. Nil version makes this a new key, and MVCC on
+				// tx_id gives idempotency for duplicate snapshot requests.
 				if nsOperations.NsId == committerpb.SnapshotNamespaceID {
 					// proto.Marshal cannot fail here: SnapshotState{TxRef} is a small, acyclic
 					// message. We return the error only for completeness. proto.Marshal is
