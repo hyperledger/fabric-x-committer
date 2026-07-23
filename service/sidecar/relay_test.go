@@ -12,12 +12,15 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
+	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -272,6 +275,259 @@ func TestRelayConfigBlock(t *testing.T) {
 	require.Equal(t, blk2, committedBlock2)
 }
 
+func TestRelaySnapshotBlockSplitAndDrain(t *testing.T) {
+	t.Parallel()
+	relayEnv := newRelayTestEnv(t)
+	m := relayEnv.metrics
+	coordinatorDelay := 2 * time.Second
+	relayEnv.coordinator.SetDelay(coordinatorDelay)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	t.Cleanup(cancel)
+	incoming := channel.NewWriter(ctx, relayEnv.incomingBlockToBeCommitted)
+	committed := channel.NewReader(ctx, relayEnv.committedBlock)
+
+	t.Log("Block #0 (regulars + snapshot): Submit")
+	regular1 := makeValidTx(t, "ch1")
+	regular2 := makeValidTx(t, "ch1")
+	snapshot := makeSnapshotTxForTest(t, "ch1")
+	blk0 := &common.Block{
+		Header: &common.BlockHeader{Number: 0},
+		Data: &common.BlockData{Data: [][]byte{
+			regular1.SerializedEnvelope,
+			regular2.SerializedEnvelope,
+			snapshot.SerializedEnvelope,
+		}},
+	}
+	require.Nil(t, blk0.Metadata)
+	require.True(t, incoming.Write(blk0))
+
+	t.Log("Block #0: Check regular transactions submitted first")
+	test.EventuallyIntMetric(t, 2, m.transactionsSentTotal, 5*time.Second, 10*time.Millisecond)
+	test.EventuallyIntMetric(t, 2, m.waitingTransactionsQueueSize, 5*time.Second, 10*time.Millisecond)
+	require.Equal(t, int64(relayEnv.waitingTxsLimit-2), relayEnv.relay.waitingTxsSlots.Load(t))
+
+	t.Log("Block #0: Snapshot not submitted before regular drain")
+	require.Never(t, func() bool {
+		return test.GetIntMetricValue(t, m.transactionsSentTotal) > 2
+	}, coordinatorDelay/2, 10*time.Millisecond)
+
+	t.Log("Block #0: Snapshot submitted after regular drain")
+	test.EventuallyIntMetric(t, 3, m.transactionsSentTotal, 5*time.Second, 10*time.Millisecond)
+	test.EventuallyIntMetric(t, 1, m.waitingTransactionsQueueSize, 5*time.Second, 10*time.Millisecond)
+	require.Equal(t, int64(relayEnv.waitingTxsLimit-1), relayEnv.relay.waitingTxsSlots.Load(t))
+
+	t.Log("Block #1: Enqueue while snapshot path drains")
+	blk1, _ := createBlockForTest(t, 1, nil)
+	require.Nil(t, blk1.Metadata)
+	require.True(t, incoming.Write(blk1))
+
+	t.Log("Block #1: Not submitted before snapshot drain")
+	require.Never(t, func() bool {
+		return test.GetIntMetricValue(t, m.transactionsSentTotal) > 3
+	}, coordinatorDelay/2, 10*time.Millisecond)
+
+	t.Log("Block #0: Committed")
+	committedBlock0, ok := committed.Read()
+	require.True(t, ok)
+	require.Equal(t, blk0, committedBlock0)
+	require.NotNil(t, committedBlock0.Metadata)
+	require.Greater(t, len(committedBlock0.Metadata.Metadata), statusIdx)
+	require.Equal(t, []byte{valid, valid, valid}, committedBlock0.Metadata.Metadata[statusIdx])
+
+	t.Log("Block #1: Eventually submitted and committed")
+	test.EventuallyIntMetric(t, 6, m.transactionsSentTotal, 5*time.Second, 10*time.Millisecond)
+	committedBlock1, ok := committed.Read()
+	require.True(t, ok)
+	require.Equal(t, blk1, committedBlock1)
+	require.NotNil(t, committedBlock1.Metadata)
+	require.Greater(t, len(committedBlock1.Metadata.Metadata), statusIdx)
+	require.Equal(t, []byte{valid, valid, valid}, committedBlock1.Metadata.Metadata[statusIdx])
+}
+
+// TestSplitSnapshotMappedBlockPartitionsRejected verifies that rejected statuses are
+// partitioned around the snapshot by their original block position: rejects before the
+// snapshot ride the pre-snapshot segment and rejects after it ride the post-snapshot
+// segment. This keeps a post-snapshot reject's stored tx_status commit after the snapshot
+// barrier, so it does not leak into the snapshot clone's state.
+func TestSplitSnapshotMappedBlockPartitionsRejected(t *testing.T) {
+	t.Parallel()
+
+	snapshotTx := func() *applicationpb.Tx {
+		return &applicationpb.Tx{
+			Namespaces:   []*applicationpb.TxNamespace{{NsId: committerpb.SnapshotNamespaceID}},
+			Endorsements: dummyEndorsements(1),
+		}
+	}
+	regularTx := func() *applicationpb.Tx {
+		return &applicationpb.Tx{
+			Namespaces: []*applicationpb.TxNamespace{{
+				NsId:        "ns",
+				BlindWrites: []*applicationpb.Write{{Key: []byte("key")}},
+			}},
+			Endorsements: dummyEndorsements(1),
+		}
+	}
+	// malformedTx has no namespaces, so it is rejected (MALFORMED_EMPTY_NAMESPACES) with a
+	// stored status and no tx body, exercising the rejectedBefore partition branch.
+	malformedTx := func() *applicationpb.Tx {
+		return &applicationpb.Tx{Endorsements: dummyEndorsements(1)}
+	}
+
+	txb := &workload.TxBuilder{ChannelID: testChannelID}
+	// Block layout by original TxNum:
+	//   0: malformed (rejected; empty namespaces; original TxNum 0 < snapshot TxNum 2)
+	//   1: regular
+	//   2: snapshot (accepted; the barrier)
+	//   3: regular
+	//   4: snapshot (rejected as duplicate; original TxNum 4 > snapshot TxNum 2)
+	block := workload.MapToOrdererBlock(7, []*servicepb.LoadGenTx{
+		txb.MakeTx(malformedTx()),
+		txb.MakeTx(regularTx()),
+		txb.MakeTx(snapshotTx()),
+		txb.MakeTx(regularTx()),
+		txb.MakeTx(snapshotTx()),
+	})
+
+	var txIDToHeight utils.SyncMap[string, servicepb.Height]
+	mappedBlock, err := mapBlock(block, &txIDToHeight)
+	require.NoError(t, err)
+	require.True(t, mappedBlock.hasSnapshot)
+	require.Len(t, mappedBlock.block.Rejected, 2)
+
+	segments := splitSnapshotMappedBlock(mappedBlock)
+	// Pre-snapshot regular segment, snapshot segment, post-snapshot regular segment.
+	require.Len(t, segments, 3)
+
+	pre, snap, post := segments[0], segments[1], segments[2]
+
+	// Pre-snapshot segment: the leading regular TX plus the malformed reject (original TxNum 0),
+	// which must land here (before the barrier), not on the post-snapshot segment.
+	require.False(t, pre.hasSnapshot)
+	require.Len(t, pre.block.Txs, 1)
+	require.Len(t, pre.block.Rejected, 1)
+	require.Equal(
+		t,
+		committerpb.Status_MALFORMED_EMPTY_NAMESPACES,
+		pre.block.Rejected[0].Status,
+	)
+	require.Equal(t, uint32(0), pre.block.Rejected[0].Ref.TxNum)
+
+	// Snapshot segment: the snapshot TX alone, no rejected.
+	require.True(t, snap.hasSnapshot)
+	require.Len(t, snap.block.Txs, 1)
+	require.Equal(t, committerpb.SnapshotNamespaceID, snap.block.Txs[0].Content.Namespaces[0].NsId)
+	require.Empty(t, snap.block.Rejected)
+
+	// Post-snapshot segment: the trailing regular TX plus the duplicate-snapshot reject,
+	// which must land here (after the barrier), not on the pre-snapshot segment.
+	require.False(t, post.hasSnapshot)
+	require.Len(t, post.block.Txs, 1)
+	require.Len(t, post.block.Rejected, 1)
+	require.Equal(
+		t,
+		committerpb.Status_REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK,
+		post.block.Rejected[0].Status,
+	)
+	require.Equal(t, uint32(4), post.block.Rejected[0].Ref.TxNum)
+}
+
+// TestSplitSnapshotMappedBlockPositions verifies segment structure for the snapshot at each
+// position in the block: first, middle, last, and snapshot-only. It asserts the number of
+// segments and which segment carries the snapshot, exercising the leading/trailing empty-segment
+// skips in splitSnapshotMappedBlock.
+func TestSplitSnapshotMappedBlockPositions(t *testing.T) {
+	t.Parallel()
+
+	snapshotTx := func() *applicationpb.Tx {
+		return &applicationpb.Tx{
+			Namespaces:   []*applicationpb.TxNamespace{{NsId: committerpb.SnapshotNamespaceID}},
+			Endorsements: dummyEndorsements(1),
+		}
+	}
+	regularTx := func() *applicationpb.Tx {
+		return &applicationpb.Tx{
+			Namespaces: []*applicationpb.TxNamespace{{
+				NsId:        "ns",
+				BlindWrites: []*applicationpb.Write{{Key: []byte("key")}},
+			}},
+			Endorsements: dummyEndorsements(1),
+		}
+	}
+
+	tests := []struct {
+		name string
+		// txs is the ordered list of transaction factories for the block.
+		txs              []func() *applicationpb.Tx
+		expectedSegments int
+		// snapshotSegment is the index of the segment that must carry the snapshot TX.
+		snapshotSegment int
+	}{
+		{
+			name:             "snapshot is the only tx",
+			txs:              []func() *applicationpb.Tx{snapshotTx},
+			expectedSegments: 1,
+			snapshotSegment:  0,
+		},
+		{
+			name:             "snapshot is the first tx",
+			txs:              []func() *applicationpb.Tx{snapshotTx, regularTx, regularTx},
+			expectedSegments: 2,
+			snapshotSegment:  0,
+		},
+		{
+			name:             "snapshot is a middle tx",
+			txs:              []func() *applicationpb.Tx{regularTx, snapshotTx, regularTx},
+			expectedSegments: 3,
+			snapshotSegment:  1,
+		},
+		{
+			name:             "snapshot is the last tx",
+			txs:              []func() *applicationpb.Tx{regularTx, regularTx, snapshotTx},
+			expectedSegments: 2,
+			snapshotSegment:  1,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			txb := &workload.TxBuilder{ChannelID: testChannelID}
+			loadGenTxs := make([]*servicepb.LoadGenTx, len(tc.txs))
+			for i, makeTx := range tc.txs {
+				loadGenTxs[i] = txb.MakeTx(makeTx())
+			}
+			block := workload.MapToOrdererBlock(9, loadGenTxs)
+
+			var txIDToHeight utils.SyncMap[string, servicepb.Height]
+			mappedBlock, err := mapBlock(block, &txIDToHeight)
+			require.NoError(t, err)
+			require.True(t, mappedBlock.hasSnapshot)
+			require.Empty(t, mappedBlock.block.Rejected)
+
+			segments := splitSnapshotMappedBlock(mappedBlock)
+			require.Len(t, segments, tc.expectedSegments)
+
+			// Exactly one segment carries the snapshot, and it holds only the snapshot TX.
+			for i, seg := range segments {
+				if i == tc.snapshotSegment {
+					require.True(t, seg.hasSnapshot)
+					require.Len(t, seg.block.Txs, 1)
+					require.Equal(
+						t,
+						committerpb.SnapshotNamespaceID,
+						seg.block.Txs[0].Content.Namespaces[0].NsId,
+					)
+					continue
+				}
+				require.False(t, seg.hasSnapshot)
+				require.NotEmpty(t, seg.block.Txs)
+			}
+		})
+	}
+}
+
 func (e *relayTestEnv) readAllStatusQueue(t *testing.T) []*committerpb.TxStatus {
 	t.Helper()
 	var status []*committerpb.TxStatus
@@ -295,6 +551,15 @@ func createConfigBlockForTest(t *testing.T) *common.Block {
 	})
 	require.NoError(t, err)
 	return block
+}
+
+func makeSnapshotTxForTest(t *testing.T, chanID string) *servicepb.LoadGenTx {
+	t.Helper()
+	txb := workload.TxBuilder{ChannelID: chanID}
+	return txb.MakeTx(&applicationpb.Tx{
+		Namespaces:   []*applicationpb.TxNamespace{{NsId: committerpb.SnapshotNamespaceID, NsVersion: 0}},
+		Endorsements: dummyEndorsements(1),
+	})
 }
 
 // createBlockForTest creates sample block with three txIDs.

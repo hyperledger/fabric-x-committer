@@ -256,8 +256,33 @@ enum Status {
    MALFORMED_MISSING_SIGNATURE = 113;                  // Number of signatures does not match the number of namespaces.
    MALFORMED_NAMESPACE_POLICY_INVALID = 114;           // Invalid namespace policy.
    MALFORMED_CONFIG_TX_INVALID = 115;                  // Invalid configuration transaction.
+   MALFORMED_SNAPSHOT_NOT_MARKER_ONLY = 116;           // `_snapshot` namespace has reads/writes; it must be marker only.
+   MALFORMED_CHECKPOINT_INVALID_KEY = 117;             // `_checkpoint` namespace form or key is invalid.
+   MALFORMED_SYSTEM_TX_NOT_STANDALONE = 118;           // System namespace TX (`_snapshot`/`_checkpoint`) is not standalone.
+   REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK = 121;         // More than one `_snapshot` TX in a block; only the first is processed, the rest rejected.
 }
 ```
+
+#### System namespace transaction forms
+
+The sidecar applies additional form checks for system namespaces before forwarding transactions to the coordinator.
+
+- `_snapshot` transactions must be standalone: exactly one namespace, and that namespace must be `_snapshot`. The
+  `_snapshot` namespace is a marker only, so it must have no reads, no read-writes, and no blind-writes. A non-empty
+  read-write set is rejected with `MALFORMED_SNAPSHOT_NOT_MARKER_ONLY`; a mixed `_snapshot`+user transaction is
+  rejected with `MALFORMED_SYSTEM_TX_NOT_STANDALONE`. Ordinary user namespaces with no writes still use
+  `MALFORMED_NO_WRITES`.
+- `_checkpoint` transactions must be standalone: exactly one namespace, and that namespace must be `_checkpoint`. The
+  namespace must contain exactly one read-write, no reads-only entries, and no blind writes. The read-write key must
+  decode as a full `servicepb.Height` via `servicepb.NewHeightFromBytes`; valid height prefixes with trailing bytes
+  are rejected. Invalid checkpoint form is rejected with `MALFORMED_CHECKPOINT_INVALID_KEY`; a mixed
+  `_checkpoint`+user transaction is rejected with `MALFORMED_SYSTEM_TX_NOT_STANDALONE`.
+- `_meta` keeps the existing namespace-policy update checks. `_config` is still rejected if submitted as an
+  application transaction namespace.
+- Only the first `_snapshot` transaction in a block is accepted. Any additional `_snapshot` transaction in the same
+  block is rejected with `REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK` (a stored status, so the outcome is recorded in the
+  state database), regardless of the first snapshot's outcome. This bounds the snapshot drain to at most one barrier
+  per block.
 
 **c. In-Flight Duplicate Transaction Detection**: 
 
@@ -315,6 +340,26 @@ When a block satisfies the criteria outlined in step f, the relay component perf
 
 2. Creates a `committedBlockWithTxs` structure containing the block number, transaction list, and
    status information, and sends it to the notification service for distribution to subscribers.
+
+#### Snapshot split and drain
+
+When a valid `_snapshot` marker transaction appears in a block, the sidecar treats it as a submission barrier:
+
+1. Submit regular transactions that appear before the snapshot to the coordinator.
+2. Wait for `waitingTxsSlots.WaitTillEmpty(ctx)` so all in-flight regular transactions complete.
+3. Submit the snapshot transaction as a one-transaction coordinator batch, preserving its original block number and
+   transaction number.
+4. Wait for `waitingTxsSlots.WaitTillEmpty(ctx)` again so the snapshot transaction reaches a final status from the VC.
+5. Resume submission of later transactions and later blocks.
+
+The drain ends when the sidecar receives the snapshot transaction status, normally `COMMITTED`. It does not wait for
+background snapshot hash computation in the validator-committer.
+
+At most one snapshot barrier is applied per block: only the first `_snapshot` transaction in a block is accepted, so
+the block is split into at most three segments — the regular transactions before the snapshot, the snapshot
+transaction alone, and the regular transactions after it. When the snapshot is the first or last transaction (and
+there are no rejected statuses to carry on the empty side), the empty leading or trailing segment is omitted, leaving
+two segments, or a single snapshot-only segment when the block contains nothing else.
 
 ### Task 3. Persisting Committed Block in the File System
 

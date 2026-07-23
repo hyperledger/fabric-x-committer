@@ -126,7 +126,6 @@ func (r *relay) preProcessBlock(
 ) error {
 	incomingBlockToBeCommitted := channel.NewReader(ctx, r.incomingBlockToBeCommitted)
 	queue := channel.NewWriter(ctx, mappedBlockQueue)
-	configBlocks := channel.NewWriter(ctx, r.outgoingConfigBlocks)
 
 	done := context.AfterFunc(ctx, r.waitingTxsSlots.Broadcast)
 	defer done()
@@ -146,26 +145,182 @@ func (r *relay) preProcessBlock(
 			return err
 		}
 		promutil.Observe(r.metrics.blockMappingInRelaySeconds, time.Since(start))
-		if mappedBlock.isConfig {
-			// We wait for all previously submitted transactions to be processed by
-			// the committer before submitting the config block.
-			r.waitingTxsSlots.WaitTillEmpty(ctx)
-			configBlocks.Write(block)
-		}
-
-		txsCount := len(mappedBlock.block.Txs)
-		promutil.AddToCounter(r.metrics.transactionInThroughput, txsCount)
-		r.waitingTxsSlots.Acquire(ctx, int64(txsCount))
-		promutil.AddToGauge(r.metrics.waitingTransactionsQueueSize, txsCount)
-		queue.Write(mappedBlock)
-
-		if mappedBlock.isConfig {
-			// we wait for the config block to be processed by the committer
-			// before submitting any other data transactions.
-			r.waitingTxsSlots.WaitTillEmpty(ctx)
+		if err := r.submitMappedBlock(ctx, queue, block, mappedBlock); err != nil {
+			return err
 		}
 	}
 	return errors.Wrap(ctx.Err(), "context ended")
+}
+
+func (r *relay) submitMappedBlock(
+	ctx context.Context,
+	queue channel.Writer[*blockMappingResult],
+	block *common.Block,
+	mappedBlock *blockMappingResult,
+) error {
+	if !mappedBlock.hasSnapshot && !mappedBlock.isConfig {
+		// Common case: an ordinary user block with no submission barrier.
+		r.queueMappedBlock(ctx, queue, mappedBlock)
+		return nil
+	}
+
+	if mappedBlock.isConfig {
+		return r.submitConfigBlock(ctx, queue, block, mappedBlock)
+	}
+	return r.submitSnapshotBlock(ctx, queue, mappedBlock)
+}
+
+// submitConfigBlock submits a config block as a submission barrier: drain all previously
+// submitted transactions so the committer processes them before applying the config, forward
+// the config block for application, submit it, then drain again so it is processed before any
+// later data transaction is submitted.
+func (r *relay) submitConfigBlock(
+	ctx context.Context,
+	queue channel.Writer[*blockMappingResult],
+	block *common.Block,
+	mappedBlock *blockMappingResult,
+) error {
+	if err := r.drain(ctx); err != nil {
+		return err
+	}
+	channel.NewWriter(ctx, r.outgoingConfigBlocks).Write(block)
+	r.queueMappedBlock(ctx, queue, mappedBlock)
+	return r.drain(ctx)
+}
+
+// submitSnapshotBlock splits a snapshot block into segments and submits them in order. The
+// single snapshot segment is a submission barrier: earlier regular transactions are drained
+// before it, and its status is drained after it, before later transactions are submitted.
+func (r *relay) submitSnapshotBlock(
+	ctx context.Context,
+	queue channel.Writer[*blockMappingResult],
+	mappedBlock *blockMappingResult,
+) error {
+	for _, segment := range splitSnapshotMappedBlock(mappedBlock) {
+		if segment.hasSnapshot {
+			if err := r.drain(ctx); err != nil {
+				return err
+			}
+		}
+
+		r.queueMappedBlock(ctx, queue, segment)
+
+		if segment.hasSnapshot {
+			if err := r.drain(ctx); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// drain blocks until all in-flight transactions have been processed by the committer.
+// It returns a wrapped context error if the context is cancelled while waiting.
+func (r *relay) drain(ctx context.Context) error {
+	r.waitingTxsSlots.WaitTillEmpty(ctx)
+	return errors.Wrap(ctx.Err(), "context ended")
+}
+
+func (r *relay) queueMappedBlock(
+	ctx context.Context,
+	queue channel.Writer[*blockMappingResult],
+	mappedBlock *blockMappingResult,
+) {
+	txsCount := len(mappedBlock.block.Txs)
+	promutil.AddToCounter(r.metrics.transactionInThroughput, txsCount)
+	r.waitingTxsSlots.Acquire(ctx, int64(txsCount))
+	promutil.AddToGauge(r.metrics.waitingTransactionsQueueSize, txsCount)
+	queue.Write(mappedBlock)
+}
+
+func splitSnapshotMappedBlock(mappedBlock *blockMappingResult) []*blockMappingResult {
+	if !mappedBlock.hasSnapshot {
+		return []*blockMappingResult{mappedBlock}
+	}
+
+	// At most three segments: the regular TXs before the snapshot, the snapshot TX alone, and
+	// the regular TXs after it. When the snapshot is the first or last TX (and there are no
+	// rejected statuses to carry on the empty side), the empty leading/trailing segment is
+	// skipped, leaving two segments — or a single snapshot-only segment when the block contains
+	// nothing else.
+	segments := make([]*blockMappingResult, 0, 3)
+	snapshotIndex := mappedBlock.snapshotTxIndex
+
+	// Rejected statuses have no tx body, so they are not part of any Txs slice. Partition them
+	// by their original block position relative to the snapshot's original position: rejects
+	// before the snapshot ride the pre-snapshot segment, rejects after it (e.g. a duplicate
+	// snapshot) ride the post-snapshot segment. This keeps each stored reject's tx_status
+	// commit on the correct side of the snapshot barrier, so a post-snapshot reject is not
+	// committed into the state before the snapshot clone is taken.
+	snapshotTxNum := mappedBlock.block.Txs[snapshotIndex].Ref.TxNum
+	var rejectedBefore, rejectedAfter []*committerpb.TxStatus
+	for _, rejected := range mappedBlock.block.Rejected {
+		if rejected.Ref.TxNum < snapshotTxNum {
+			rejectedBefore = append(rejectedBefore, rejected)
+		} else {
+			rejectedAfter = append(rejectedAfter, rejected)
+		}
+	}
+
+	// Regular segment before the snapshot. Emit it when there are regular TXs or rejected
+	// statuses that precede the snapshot.
+	if snapshotIndex > 0 || len(rejectedBefore) > 0 {
+		segments = append(segments, mappedBlockSegment(
+			mappedBlock,
+			mappedBlock.block.Txs[:snapshotIndex],
+			rejectedBefore,
+			false,
+		))
+	}
+
+	// Snapshot one-TX segment allows waiting for the snapshot status before later TXs.
+	segments = append(segments, mappedBlockSegment(
+		mappedBlock,
+		mappedBlock.block.Txs[snapshotIndex:snapshotIndex+1],
+		nil,
+		true,
+	))
+
+	// Regular segment after the snapshot, submitted once the snapshot drain completes.
+	if snapshotIndex+1 < len(mappedBlock.block.Txs) || len(rejectedAfter) > 0 {
+		segments = append(segments, mappedBlockSegment(
+			mappedBlock,
+			mappedBlock.block.Txs[snapshotIndex+1:],
+			rejectedAfter,
+			false,
+		))
+	}
+
+	return segments
+}
+
+func mappedBlockSegment(
+	mappedBlock *blockMappingResult,
+	txs []*servicepb.TxWithRef,
+	rejected []*committerpb.TxStatus,
+	hasSnapshot bool,
+) *blockMappingResult {
+	// A segment is never a config block: config blocks return early in submitMappedBlock and
+	// are never split, so isConfig is always false here.
+	//
+	// withStatus and txIDToHeight are shared (not copied) across all segments of the block: they
+	// track whole-block state (per-TX statuses, pending count, and the relay-wide txID->height
+	// map) keyed by the original block position, so every segment must point at the same
+	// instances for status correlation and final block assembly to work. As a result the
+	// segment's withStatus.txs may reference more TXs than this segment's CoordinatorBatch
+	// carries — that is intentional: the batch is a per-segment slice while withStatus spans the
+	// whole block.
+	return &blockMappingResult{
+		blockNumber: mappedBlock.blockNumber,
+		block: &servicepb.CoordinatorBatch{
+			Txs:      txs,
+			Rejected: rejected,
+		},
+		withStatus:   mappedBlock.withStatus,
+		hasSnapshot:  hasSnapshot,
+		txIDToHeight: mappedBlock.txIDToHeight,
+	}
 }
 
 func (r *relay) sendBlocksToCoordinator(
@@ -184,8 +339,22 @@ func (r *relay) sendBlocksToCoordinator(
 		}
 
 		startTime := time.Now()
-		r.blkNumToBlkWithStatus.Store(mappedBlock.blockNumber, mappedBlock.withStatus)
-		r.activeBlocksCount.Add(1)
+		// A snapshot block is split into multiple segments that share the same block number and
+		// the same whole-block withStatus. Register the block and count it as active only once,
+		// on the first segment; later segments observe the existing entry. Note that this shared
+		// withStatus tracks all TXs of the original block, so it may reference more txIDs than the
+		// current segment's CoordinatorBatch (mappedBlock.block) sends to the coordinator — the
+		// remaining txIDs are sent by the other segments of the same block. This is not new to the
+		// split: withStatus is always registered here before stream.Send below, so even an
+		// unsplit block transiently holds txIDs not yet submitted to the coordinator. An
+		// alternative split shape — a single blockMappingResult carrying []CoordinatorBatch plus a
+		// snapshotBatchIndex/snapshotTxIndex — would avoid multiple segments but needs extra index
+		// bookkeeping, so we keep the simpler per-segment result here.
+		if _, alreadyTracked := r.blkNumToBlkWithStatus.LoadOrStore(
+			mappedBlock.blockNumber, mappedBlock.withStatus,
+		); !alreadyTracked {
+			r.activeBlocksCount.Add(1)
+		}
 
 		if mappedBlock.withStatus.pendingCount.Load() == 0 {
 			r.processCommittedBlocksInOrder(ctx, outgoingCommittedBlock, outgoingCommittedBlockWithTxs)
