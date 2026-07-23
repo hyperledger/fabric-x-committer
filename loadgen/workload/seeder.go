@@ -20,7 +20,7 @@ func newSeedersAndKeyGens(profile *Profile) ([]seeder, []*ByteArrayGenerator) {
 	s := seeder{seed: rand.New(rand.NewSource(profile.Seed))}
 	keyGens := make([]*ByteArrayGenerator, profile.Workers)
 	for i := range profile.Workers {
-		keyGens[i] = &ByteArrayGenerator{Size: profile.Key.Size, Source: s.nextSeed()}
+		keyGens[i] = &ByteArrayGenerator{Size: profile.Transaction.KeySize, Source: s.nextSeed()}
 	}
 	seeders := make([]seeder, profile.Workers)
 	for i := range profile.Workers {

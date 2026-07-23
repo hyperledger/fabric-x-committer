@@ -32,10 +32,10 @@ func GenerateTransactions(tb testing.TB, p *Profile, count int) []*servicepb.Loa
 // DefaultProfile is used for testing and benchmarking.
 func DefaultProfile(workers uint32) *Profile {
 	return &Profile{
-		Key: KeyProfile{Size: 32},
 		// We use a small block to reduce the CPU load during tests.
 		Block: BlockProfile{MaxSize: 10},
 		Transaction: TransactionProfile{
+			KeySize:            32,
 			ReadWriteValueSize: 32,
 			ReadWriteCount:     2,
 		},
@@ -44,9 +44,8 @@ func DefaultProfile(workers uint32) *Profile {
 				DefaultGeneratedNamespaceID: {Scheme: signature.NoScheme},
 			},
 		},
-		Conflicts: ConflictProfile{InvalidSignatures: 0},
-		Seed:      249822374033311501,
-		Workers:   workers,
+		Seed:    249822374033311501,
+		Workers: workers,
 	}
 }
 

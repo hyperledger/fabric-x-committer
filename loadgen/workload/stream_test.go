@@ -109,7 +109,7 @@ func BenchmarkGenTx(b *testing.B) {
 
 func requireValidKey(t *testing.T, key []byte, profile *Profile) {
 	t.Helper()
-	require.Len(t, key, int(profile.Key.Size))
+	require.Len(t, key, int(profile.Transaction.KeySize))
 	require.Positive(t, SumInt(key))
 }
 
@@ -248,7 +248,7 @@ func TestGenInvalidSigTx(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(1)
 	p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.Ecdsa
-	p.Conflicts.InvalidSignatures = 0.2
+	p.Transaction.InvalidSignatures = 0.2
 
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 	g := c.MakeGenerator()
@@ -267,7 +267,7 @@ func TestGenDependentTx(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(1)
 	p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.NoScheme
-	p.Conflicts.Dependencies = []DependencyDescription{
+	p.Transaction.Dependencies = []DependencyDescription{
 		{
 			Gap:         1,
 			Src:         "write",

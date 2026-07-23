@@ -13,10 +13,16 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
+// invalidSignatureBytes is the dummy endorsement stamped on transactions selected to be invalid.
+var invalidSignatureBytes = []byte("dummy")
+
 type (
-	// IndependentTxGenerator generates a new valid TX given key generators.
+	// IndependentTxGenerator generates a new valid TX given key generators. With a non-zero
+	// invalid-signature probability it may instead stamp a dummy endorsement, decided from its own
+	// per-worker random source so the decision is independent of the generated content.
 	IndependentTxGenerator struct {
 		TxBuilder                *TxBuilder
 		ReadOnlyKeyGenerator     *MultiGenerator[Key]
@@ -26,6 +32,8 @@ type (
 		BlindWriteValueGenerator *ByteArrayGenerator
 		MetadataGenerator        *ByteArrayGenerator
 		Modifiers                []Modifier
+		invalidSignRnd           *rand.Rand
+		invalidSignProbability   Probability
 	}
 
 	// Modifier modifies a TX.
@@ -40,24 +48,23 @@ type (
 // DefaultGeneratedNamespaceID for now we're only generating transactions for a single namespace.
 const DefaultGeneratedNamespaceID = "0"
 
-// newIndependentTxGenerators creates workers that generates independent transactions and apply the modifiers.
-// Each worker will have a unique instance of the modifier to avoid concurrency issues.
-// The modifiers will be applied in the order they are given.
-// A transaction modifier can modify any of its fields to adjust the workload.
-// For example, a modifier can query the database for the read-set versions to simulate a real transaction.
-// The signature modifier is applied last so all previous modifications will be signed correctly.
+// newIndependentTxGenerators creates workers that generate independent transactions and apply the
+// modifiers. Each worker will have a unique instance of the modifier to avoid concurrency issues.
+// The modifiers are applied in the order they are given; a modifier can modify any of the TX fields
+// to adjust the workload (for example, adding dependencies). The invalid-signature stamp is applied
+// last, after the modifiers, so it overrides any endorsement they may have produced.
 func newIndependentTxGenerators(profile *Profile, extraModifiers ...Generator[Modifier]) []*IndependentTxGenerator {
 	seeders, keyGens := newSeedersAndKeyGens(profile)
 	gens := make([]*IndependentTxGenerator, len(seeders))
 	for i, s := range seeders {
-		modifiers := make([]Modifier, 0, len(extraModifiers)+2)
-		if len(profile.Conflicts.Dependencies) > 0 {
+		modifiers := make([]Modifier, 0, len(extraModifiers)+1)
+		if len(profile.Transaction.Dependencies) > 0 {
 			modifiers = append(modifiers, newTxDependenciesModifier(s.nextSeed(), profile))
 		}
 		for _, mod := range extraModifiers {
 			modifiers = append(modifiers, mod.Next())
 		}
-		modifiers = append(modifiers, newSignTxModifier(s.nextSeed(), profile))
+		invalidSignRnd := s.nextSeed()
 		txb, err := NewTxBuilderFromPolicy(&profile.Policy, s.nextSeed())
 		utils.Must(err)
 		gens[i] = &IndependentTxGenerator{
@@ -69,6 +76,8 @@ func newIndependentTxGenerators(profile *Profile, extraModifiers ...Generator[Mo
 			BlindWriteValueGenerator: valueGenerator(s.nextSeed(), profile.Transaction.BlindWriteValueSize),
 			MetadataGenerator:        valueGenerator(s.nextSeed(), profile.Transaction.MetadataSize),
 			Modifiers:                modifiers,
+			invalidSignRnd:           invalidSignRnd,
+			invalidSignProbability:   profile.Transaction.InvalidSignatures,
 		}
 	}
 	return gens
@@ -119,6 +128,13 @@ func (g *IndependentTxGenerator) Next() *servicepb.LoadGenTx {
 	}
 	for _, mod := range g.Modifiers {
 		mod.Modify(tx)
+	}
+	if g.invalidSignRnd.Float64() < g.invalidSignProbability {
+		// Pre-assigning a dummy endorsement prevents TxBuilder from producing a valid signature.
+		tx.Endorsements = make([]*applicationpb.Endorsements, len(tx.Namespaces))
+		for i := range tx.Namespaces {
+			tx.Endorsements[i] = testsig.CreateEndorsementsForThresholdRule(invalidSignatureBytes)[0]
+		}
 	}
 	return g.TxBuilder.MakeTx(tx)
 }

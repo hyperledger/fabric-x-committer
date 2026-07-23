@@ -61,7 +61,7 @@ func BenchmarkDependencyGraph(b *testing.B) {
 				p := workload.DefaultProfile(1)
 				name := "no-dep"
 				if idx > 0 {
-					p.Conflicts.Dependencies = []workload.DependencyDescription{dep}
+					p.Transaction.Dependencies = []workload.DependencyDescription{dep}
 					name = fmt.Sprintf("%s AND %s", dep.Src, dep.Dst)
 				}
 				p.Transaction.ReadWriteCount = uint32(keyCount) //nolint:gosec // small test value.
