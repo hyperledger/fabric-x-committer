@@ -76,10 +76,10 @@ func BenchmarkNotifier(b *testing.B) {
 	// The active-txID limit must accommodate all benchmarked tx IDs; otherwise the
 	// notifier rejects the excess instead of tracking them for notification.
 	env := newNotifierTestEnvWithConfig(b, 5, &NotificationServiceConfig{
-		MaxTimeout:         DefaultNotificationMaxTimeout,
-		MaxActiveTxIDs:     max(b.N, DefaultMaxActiveTxIDs),
+		MaxTimeout:         time.Minute,
+		MaxActiveTxIDs:     b.N,
 		MaxTxIDsPerRequest: batchSize,
-		StreamWriteTimeout: DefaultStreamWriteTimeout,
+		StreamWriteTimeout: time.Minute,
 	})
 	q := env.responseQueues[0]
 
