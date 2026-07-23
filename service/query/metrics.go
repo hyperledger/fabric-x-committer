@@ -42,6 +42,7 @@ type perfMetrics struct {
 	batchResponseSize               prometheus.Histogram
 	requestAssignmentLatencySeconds prometheus.Histogram
 	queryLatencySeconds             prometheus.Histogram
+	serverConnections               prometheus.Gauge
 }
 
 func newQueryServiceMetrics() *perfMetrics {
@@ -67,6 +68,12 @@ func newQueryServiceMetrics() *perfMetrics {
 			Subsystem: "grpc",
 			Name:      "key_requested_total",
 			Help:      "Number of keys requested by the service",
+		}),
+		serverConnections: p.NewGauge(prometheus.GaugeOpts{
+			Namespace: "queryservice",
+			Subsystem: "grpc",
+			Name:      "active_connections",
+			Help:      "Number of client connections currently open on the server",
 		}),
 		keysResponded: p.NewCounter(prometheus.CounterOpts{
 			Namespace: "queryservice",
