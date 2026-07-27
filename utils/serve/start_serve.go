@@ -137,7 +137,7 @@ func NewServers(ctx context.Context, conf *Config) (s Servers, err error) {
 		return s, errors.Wrap(err, "failed to create TLS provider")
 	}
 
-	s.ConnStatsHandler = newConnStatsHandler()
+	s.ConnStatsHandler = &ConnStatsHandler{}
 
 	s.GRPC, err = newGRPCServer(&conf.GRPC, s.GrpcTLSProvider, s.ConnStatsHandler)
 	if err != nil {

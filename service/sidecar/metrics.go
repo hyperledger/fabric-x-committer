@@ -114,11 +114,9 @@ func newPerformanceMetrics() *perfMetrics {
 			Namespace: "sidecar",
 			Subsystem: "coordinator",
 		}),
-		serverConnections: p.NewGauge(prometheus.GaugeOpts{
+		serverConnections: monitoring.NewConnectionStatsMetrics(p, monitoring.MetricsParameters{
 			Namespace: "sidecar",
 			Subsystem: "grpc",
-			Name:      "active_connections",
-			Help:      "Number of client connections currently open on the server",
 		}),
 		appendBlockToLedgerSeconds: p.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "sidecar",

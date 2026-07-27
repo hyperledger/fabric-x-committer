@@ -26,10 +26,6 @@ type ConnStatsHandler struct {
 	activeConnections atomic.Pointer[prometheus.Gauge]
 }
 
-func newConnStatsHandler() *ConnStatsHandler {
-	return &ConnStatsHandler{}
-}
-
 // RegisterConnStatHandler wires the gauge that the handler updates on every connection begin and end.
 // Until a gauge is registered, the handler is a no-op.
 func RegisterConnStatHandler(h *ConnStatsHandler, activeConnections prometheus.Gauge) {

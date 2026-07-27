@@ -79,6 +79,16 @@ func NewConnectionMetrics(p *Provider, params MetricsParameters) *ConnectionMetr
 	}
 }
 
+// NewConnectionStatsMetrics creates a gauge that tracks the number of active connections to a server.
+func NewConnectionStatsMetrics(p *Provider, params MetricsParameters) prometheus.Gauge {
+	return p.NewGauge(prometheus.GaugeOpts{
+		Namespace: params.Namespace,
+		Subsystem: params.Subsystem,
+		Name:      "active_connections",
+		Help:      "Number of client connections currently open on the server",
+	})
+}
+
 // Connected observed connected.
 func (m *ConnectionMetrics) Connected(grpcTarget string) {
 	promutil.SetGaugeVec(m.Status, []string{grpcTarget}, connection.Connected)

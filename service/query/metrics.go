@@ -69,11 +69,9 @@ func newQueryServiceMetrics() *perfMetrics {
 			Name:      "key_requested_total",
 			Help:      "Number of keys requested by the service",
 		}),
-		serverConnections: p.NewGauge(prometheus.GaugeOpts{
+		serverConnections: monitoring.NewConnectionStatsMetrics(p, monitoring.MetricsParameters{
 			Namespace: "queryservice",
 			Subsystem: "grpc",
-			Name:      "active_connections",
-			Help:      "Number of client connections currently open on the server",
 		}),
 		keysResponded: p.NewCounter(prometheus.CounterOpts{
 			Namespace: "queryservice",
