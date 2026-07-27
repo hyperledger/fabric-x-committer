@@ -8,7 +8,7 @@ package test
 
 import (
 	"context"
-	"google.golang.org/grpc/keepalive"
+	"crypto/tls"
 	"net"
 	"strconv"
 	"testing"
@@ -23,12 +23,17 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 const (
@@ -42,70 +47,111 @@ const (
 	localhostDynamicPort = "localhost:0"
 	dummyTxID            = "dummy-tx"
 
-	sidecarService = iota
-	queryService
+	sidecarActiveConnectionsMetric = "sidecar_grpc_active_connections"
+	queryActiveConnectionsMetric   = "queryservice_grpc_active_connections"
 )
 
-// keepAliveConfig holds the per-test knobs for a keep-alive runtime.
-type keepAliveConfig struct {
-	permitWithoutStream  bool
-	maxConcurrentStreams int
+type (
+	// keepAliveConfig holds the per-test knobs for a keep-alive runtime.
+	keepAliveConfig struct {
+		permitWithoutStream  bool
+		maxConcurrentStreams int
+	}
+
+	// activeConnectionsGauge scrapes a service's active-connections gauge from its metrics endpoint.
+	activeConnectionsGauge struct {
+		url       string
+		name      string
+		tlsConfig *tls.Config
+	}
+)
+
+// value returns the gauge's current value.
+func (g activeConnectionsGauge) value(t *testing.T) int {
+	t.Helper()
+	return test.GetMetricValueFromURL(t, g.url, g.name, g.tlsConfig)
 }
 
-// TestKeepAliveDeadConnectionDetection verifies that a service's server-side keep-alive
-// closes a silent (black-holed) connection on its own.
-func TestKeepAliveDeadConnectionDetection(t *testing.T) {
+// TestKeepAliveSidecarDeadConnectionDetection verifies that the sidecar's server-side keep-alive
+// closes a silent connection on its own. It observes the close directly on the server, through
+// its active-connections metric.
+func TestKeepAliveSidecarDeadConnectionDetection(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct {
-		name                string
-		service             int
-		permitWithoutStream bool
-	}{
-		{
-			name:                "Sidecar",
-			service:             sidecarService,
-			permitWithoutStream: false,
-		},
-		{
-			name:                "Query",
-			service:             queryService,
-			permitWithoutStream: true,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+	c := startKeepAliveRuntime(t, keepAliveConfig{permitWithoutStream: false})
 
-			c := startKeepAliveRuntime(t, keepAliveConfig{permitWithoutStream: tc.permitWithoutStream})
-			proxy, conn := dialThroughProxy(t, serviceAddr(t, c, tc.service), clientCredentials(t, c))
+	gauge := newActiveConnectionsGauge(
+		t, c, c.SystemConfig.Services.Sidecar.HTTPEndpoint, sidecarActiveConnectionsMetric,
+	)
 
-			sendInitialMessage(t, conn, tc.service)
+	// Number of connections the Sidecar before our client connects.
+	base := gauge.value(t)
 
-			interceptMessages(t, proxy)
+	proxy, conn := dialThroughProxy(
+		t, c.SystemConfig.Services.Sidecar.GrpcEndpoint.Address(), clientCredentials(t, c),
+	)
 
-			require.EventuallyWithT(t, func(ct *assert.CollectT) {
-				require.NotEqual(ct, connectivity.Ready, conn.GetState())
-			}, maxConnectionClosingTime, 200*time.Millisecond)
-		})
-	}
+	sendSidecarInitialMessage(t, conn)
+
+	requireServerClosesDeadConnection(t, proxy, gauge, base)
+}
+
+// TestKeepAliveQueryDeadConnectionDetection verifies that the query service's server-side keep-alive
+// closes a silent connection on its own. It observes the close directly on the server, through
+// its active-connections metric.
+func TestKeepAliveQueryDeadConnectionDetection(t *testing.T) {
+	t.Parallel()
+
+	c := startKeepAliveRuntime(t, keepAliveConfig{permitWithoutStream: true})
+
+	gauge := newActiveConnectionsGauge(
+		t, c, c.SystemConfig.Services.Query.HTTPEndpoint, queryActiveConnectionsMetric,
+	)
+
+	// Number of connections the Query before our client connects.
+	base := gauge.value(t)
+
+	proxy, conn := dialThroughProxy(
+		t, c.SystemConfig.Services.Query.GrpcEndpoint.Address(), clientCredentials(t, c),
+	)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+	t.Cleanup(cancel)
+
+	_, err := committerpb.NewQueryServiceClient(conn).GetTransactionStatus(ctx, &committerpb.TxStatusQuery{
+		TxIds: []string{dummyTxID},
+	})
+	require.NoError(t, err)
+
+	requireServerClosesDeadConnection(t, proxy, gauge, base)
 }
 
 // TestKeepAliveSidecarStreamSlotRelease verifies that once keep-alive closes a dead
-// connection, the concurrent-stream slot it held is released for new clients.
+// connection, the concurrent-stream slot it held is released for new clients. It also
+// confirms, through the server's active-connections metric, that the server itself
+// closed the dead connection.
 func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 	t.Parallel()
 
 	c := startKeepAliveRuntime(t, keepAliveConfig{
-		permitWithoutStream:  false,
+		permitWithoutStream: false,
+		// maxConcurrentStreams is sized so the runtime's own sidecar streams + this
+		// test's stream fill every slot, so the next OpenNotificationStream is rejected.
 		maxConcurrentStreams: 4,
 	})
 
-	addr := serviceAddr(t, c, sidecarService)
+	addr := c.SystemConfig.Services.Sidecar.GrpcEndpoint.Address()
 	clientCreds := clientCredentials(t, c)
+	gauge := newActiveConnectionsGauge(
+		t, c, c.SystemConfig.Services.Sidecar.HTTPEndpoint, sidecarActiveConnectionsMetric,
+	)
+
+	// Number of connections the Sidecar before our client connects.
+	base := gauge.value(t)
 
 	proxy, conn := dialThroughProxy(t, addr, clientCreds)
 
-	sendInitialMessage(t, conn, sidecarService)
+	sendSidecarInitialMessage(t, conn)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
@@ -119,11 +165,24 @@ func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 	if err == nil {
 		_, err = stream2.Recv()
 	}
-	require.Error(t, err, "second stream should fail with ResourceExhausted")
+	require.Error(t, err)
+	require.Equal(t, codes.ResourceExhausted, status.Code(err),
+		"second stream should be rejected with ResourceExhausted")
+
+	// Both the intercepted connection and conn2 are now open on the server.
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		require.Equal(ct, base+2, gauge.value(t))
+	}, 30*time.Second, 200*time.Millisecond)
 
 	interceptMessages(t, proxy)
 
-	// Once keep-alive closes the dead connection, the slot is released.
+	// Keep-alive closes the dead connection: the server reports one fewer active
+	// connection (conn2 stays open).
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		require.Equal(ct, base+1, gauge.value(t))
+	}, maxConnectionClosingTime, 500*time.Millisecond)
+
+	// And the stream slot it held is released for new clients.
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		stream3, err := client2.OpenNotificationStream(ctx)
 		require.NoError(ct, err)
@@ -158,41 +217,61 @@ func clientCredentials(t *testing.T, c *runner.CommitterRuntime) credentials.Tra
 	return creds
 }
 
-// serviceAddr returns the endpoint address of the given service in the runtime.
-func serviceAddr(t *testing.T, c *runner.CommitterRuntime, service int) string {
+// newActiveConnectionsGauge builds a handle for scraping the named active-connections gauge on the
+// given service's HTTP metrics endpoint.
+func newActiveConnectionsGauge(
+	t *testing.T, c *runner.CommitterRuntime, httpEndpoint *connection.Endpoint, metricName string,
+) activeConnectionsGauge {
 	t.Helper()
-	switch service {
-	case sidecarService:
-		return c.SystemConfig.Services.Sidecar.GrpcEndpoint.Address()
-	case queryService:
-		return c.SystemConfig.Services.Query.GrpcEndpoint.Address()
-	default:
-		require.FailNow(t, "unknown service kind")
-		return ""
+
+	metricsURL, err := monitoring.MakeMetricsURL(httpEndpoint.Address(), &c.SystemConfig.ClientTLS)
+	require.NoError(t, err)
+
+	creds, err := connection.NewClientTLSCredentials(c.SystemConfig.ClientTLS)
+	require.NoError(t, err)
+
+	tlsConfig, err := creds.CreateClientTLSConfig()
+	require.NoError(t, err)
+
+	return activeConnectionsGauge{
+		url:       metricsURL,
+		name:      metricName,
+		tlsConfig: tlsConfig,
 	}
 }
 
-// sendInitialMessage issues an RPC on a connection so the server has traffic to monitor with keep-alive.
-func sendInitialMessage(t *testing.T, conn *grpc.ClientConn, service int) {
+// requireServerClosesDeadConnection intercepts the proxied connection and asserts, through the
+// service's active-connections gauge, that the server first counts the new connection and then,
+// once its keep-alive detects the now-silent connection, closes it itself — returning the count
+// to base.
+func requireServerClosesDeadConnection(t *testing.T, proxy *toxiclient.Proxy, gauge activeConnectionsGauge, base int) {
+	t.Helper()
+
+	// The server counts the new connection.
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		require.Equal(ct, base+1, gauge.value(t))
+	}, 30*time.Second, 200*time.Millisecond)
+
+	interceptMessages(t, proxy)
+
+	// The server's keep-alive detects the silent connection and closes it itself,
+	// so the active-connection count returns to the baseline.
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		require.Equal(ct, base, gauge.value(t))
+	}, maxConnectionClosingTime, 500*time.Millisecond)
+}
+
+// sendSidecarInitialMessage opens a notification stream so the sidecar has traffic to monitor with keep-alive.
+func sendSidecarInitialMessage(t *testing.T, conn *grpc.ClientConn) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
 
-	switch service {
-	case sidecarService:
-		stream, err := committerpb.NewNotifierClient(conn).OpenNotificationStream(ctx)
-		require.NoError(t, err)
-		require.NoError(t, stream.Send(&committerpb.NotificationRequest{
-			TxStatusRequest: &committerpb.TxIDsBatch{TxIds: []string{dummyTxID}},
-		}))
-	case queryService:
-		_, err := committerpb.NewQueryServiceClient(conn).GetTransactionStatus(ctx, &committerpb.TxStatusQuery{
-			TxIds: []string{dummyTxID},
-		})
-		require.NoError(t, err)
-	default:
-		require.FailNow(t, "unknown service kind")
-	}
+	stream, err := committerpb.NewNotifierClient(conn).OpenNotificationStream(ctx)
+	require.NoError(t, err)
+	require.NoError(t, stream.Send(&committerpb.NotificationRequest{
+		TxStatusRequest: &committerpb.TxIDsBatch{TxIds: []string{dummyTxID}},
+	}))
 }
 
 // dialThroughProxy routes a connection through a toxiproxy that can later black-hole the traffic.
