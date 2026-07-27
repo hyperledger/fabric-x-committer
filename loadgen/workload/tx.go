@@ -9,10 +9,10 @@ package workload
 import (
 	"math/rand"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
-	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
@@ -53,7 +53,9 @@ const DefaultGeneratedNamespaceID = "0"
 // The modifiers are applied in the order they are given; a modifier can modify any of the TX fields
 // to adjust the workload (for example, adding dependencies). The invalid-signature stamp is applied
 // last, after the modifiers, so it overrides any endorsement they may have produced.
-func newIndependentTxGenerators(profile *Profile, extraModifiers ...Generator[Modifier]) []*IndependentTxGenerator {
+func newIndependentTxGenerators(
+	profile *Profile, extraModifiers ...Generator[Modifier],
+) ([]*IndependentTxGenerator, error) {
 	seeders, keyGens := newSeedersAndKeyGens(profile)
 	gens := make([]*IndependentTxGenerator, len(seeders))
 	for i, s := range seeders {
@@ -66,7 +68,9 @@ func newIndependentTxGenerators(profile *Profile, extraModifiers ...Generator[Mo
 		}
 		invalidSignRnd := s.nextSeed()
 		txb, err := NewTxBuilderFromPolicy(&profile.Policy, s.nextSeed())
-		utils.Must(err)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create tx builder")
+		}
 		gens[i] = &IndependentTxGenerator{
 			TxBuilder:                txb,
 			ReadOnlyKeyGenerator:     multiKeyGenerator(keyGens[i], profile.Transaction.ReadOnlyCount),
@@ -80,11 +84,27 @@ func newIndependentTxGenerators(profile *Profile, extraModifiers ...Generator[Mo
 			invalidSignProbability:   profile.Transaction.InvalidSignatures,
 		}
 	}
-	return gens
+	return gens, nil
 }
 
-// Next generate a new TX.
-func (g *IndependentTxGenerator) Next() *servicepb.LoadGenTx {
+// buildAndSignBatch builds n unsigned transactions and signs them, returning the
+// ready-to-submit batch. This is the no-query generation path.
+func (g *IndependentTxGenerator) buildAndSignBatch(n int) []*servicepb.LoadGenTx {
+	return g.signBatch(g.buildBatch(n))
+}
+
+// buildBatch builds n unsigned transactions from the key, value, and metadata generators, and
+// applies the modifiers. The invalid-signature stamp and signing happen later, in signBatch.
+func (g *IndependentTxGenerator) buildBatch(n int) []*applicationpb.Tx {
+	txs := make([]*applicationpb.Tx, n)
+	for i := range txs {
+		txs[i] = g.buildTx()
+	}
+	return txs
+}
+
+// buildTx builds a single unsigned TX.
+func (g *IndependentTxGenerator) buildTx() *applicationpb.Tx {
 	readOnly := g.ReadOnlyKeyGenerator.Next()
 	readWrite := g.ReadWriteKeyGenerator.Next()
 	blindWriteKey := g.BlindWriteKeyGenerator.Next()
@@ -129,14 +149,24 @@ func (g *IndependentTxGenerator) Next() *servicepb.LoadGenTx {
 	for _, mod := range g.Modifiers {
 		mod.Modify(tx)
 	}
-	if g.invalidSignRnd.Float64() < g.invalidSignProbability {
-		// Pre-assigning a dummy endorsement prevents TxBuilder from producing a valid signature.
-		tx.Endorsements = make([]*applicationpb.Endorsements, len(tx.Namespaces))
-		for i := range tx.Namespaces {
-			tx.Endorsements[i] = testsig.CreateEndorsementsForThresholdRule(invalidSignatureBytes)[0]
+	return tx
+}
+
+// signBatch applies the invalid-signature stamp (decided independently per TX from the
+// generator's own random source) and signs each TX via the TxBuilder.
+func (g *IndependentTxGenerator) signBatch(txs []*applicationpb.Tx) []*servicepb.LoadGenTx {
+	signed := make([]*servicepb.LoadGenTx, len(txs))
+	for i, tx := range txs {
+		if g.invalidSignRnd.Float64() < g.invalidSignProbability {
+			// Pre-assigning a dummy endorsement prevents TxBuilder from producing a valid signature.
+			tx.Endorsements = make([]*applicationpb.Endorsements, len(tx.Namespaces))
+			for j := range tx.Namespaces {
+				tx.Endorsements[j] = testsig.CreateEndorsementsForThresholdRule(invalidSignatureBytes)[0]
+			}
 		}
+		signed[i] = g.TxBuilder.MakeTx(tx)
 	}
-	return g.TxBuilder.MakeTx(tx)
+	return signed
 }
 
 func multiKeyGenerator(keyGen Generator[Key], keyCount uint32) *MultiGenerator[Key] {

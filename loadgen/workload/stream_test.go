@@ -82,7 +82,8 @@ func BenchmarkGenTx(b *testing.B) {
 	flogging.ActivateSpec("fatal")
 	//nolint:thelper // false positive.
 	genericBench(b, func(b *testing.B, p *Profile) {
-		t := NewTxStream(p, defaultBenchStreamOptions())
+		t, err := NewTxStream(p, defaultBenchStreamOptions())
+		require.NoError(b, err)
 
 		ctx := b.Context()
 		// Start the timer before creating the service: the stream generates
@@ -191,7 +192,8 @@ func startTxGeneratorUnderTest(
 	t *testing.T, profile *Profile, options *StreamOptions, modifierGenerators ...Generator[Modifier],
 ) *TxStream {
 	t.Helper()
-	g := NewTxStream(profile, options, modifierGenerators...)
+	g, err := NewTxStream(profile, options, modifierGenerators...)
+	require.NoError(t, err)
 	test.RunServiceForTest(t.Context(), t, g.Run, nil)
 	return g
 }

@@ -24,9 +24,10 @@ func GenerateTransactions(tb testing.TB, p *Profile, count int) []*servicepb.Loa
 		p = DefaultProfile(1)
 	}
 	p.Workers = 1
-	g := newIndependentTxGenerators(p)
+	g, err := newIndependentTxGenerators(p)
+	require.NoError(tb, err)
 	require.Len(tb, g, 1)
-	return GenerateArray(g[0], count)
+	return g[0].buildAndSignBatch(count)
 }
 
 // DefaultProfile is used for testing and benchmarking.
