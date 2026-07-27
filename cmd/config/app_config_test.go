@@ -335,7 +335,7 @@ func TestReadConfigQuery(t *testing.T) {
 		configFilePath: "samples/query.yaml",
 		expectedServerConfig: withClientStreamLimit(&serve.Config{
 			GRPC: serve.ServerConfig{
-				Endpoint: *newEndpoint("query", queryServerPort),
+				Endpoint: *newEndpoint("", queryServerPort),
 				TLS:      test.NewServiceTLSConfig(artifactsPath, "query", connection.MutualTLSMode),
 				KeepAlive: &serve.ServerKeepAliveConfig{
 					Params: &serve.ServerKeepAliveParamsConfig{
