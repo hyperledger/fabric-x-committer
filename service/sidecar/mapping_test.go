@@ -18,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 func BenchmarkMapOneBlock(b *testing.B) {
@@ -29,6 +30,7 @@ func BenchmarkMapOneBlock(b *testing.B) {
 	b.ResetTimer()
 	mappedBlock, err := mapBlock(block, &txIDToHeight)
 	b.StopTimer()
+	test.ReportTxPerSecond(b)
 	require.NoError(b, err, "This can never occur unless there is a bug in the relay.")
 	require.NotNil(b, mappedBlock)
 }
@@ -37,35 +39,27 @@ func BenchmarkMapBlockSize(b *testing.B) {
 	flogging.ActivateSpec("fatal")
 	for _, blockSize := range []int{100, 1000, 5000, 10000} {
 		b.Run(fmt.Sprintf("blockSize=%d", blockSize), func(b *testing.B) {
-			// Generate b.N total TXs so each iteration processes a unique block,
-			// avoiding cache/locality effects from reusing the same block.
-			// Pad to ensure at least one full block.
-			totalTxs := b.N
-			if totalTxs < blockSize {
-				totalTxs = blockSize
-			}
-			allTxs := workload.GenerateTransactions(b, nil, totalTxs)
-
-			// Pre-split into blocks of blockSize.
-			numBlocks := len(allTxs) / blockSize
-			blocks := make([]*common.Block, numBlocks)
-			for i := range blocks {
-				txSlice := allTxs[i*blockSize : (i+1)*blockSize]
-				//nolint:gosec // i is a non-negative slice index
-				blocks[i] = workload.MapToOrdererBlock(uint64(i), txSlice)
+			// b.N is the number of transactions; blockSize is only the work
+			// granularity. We split b.N transactions into blocks of at most
+			// blockSize (the final block may be smaller), so ns/op and tx/s are
+			// reported per transaction, independent of the block size.
+			allTxs := workload.GenerateTransactions(b, nil, b.N)
+			blocks := make([]*common.Block, 0, (b.N+blockSize-1)/blockSize)
+			for off := 0; off < b.N; off += blockSize {
+				blocks = append(blocks, workload.MapToOrdererBlock(
+					uint64(len(blocks)), allTxs[off:min(off+blockSize, b.N)],
+				))
 			}
 
 			b.ResetTimer()
-			blockIdx := 0
-			for b.Loop() {
+			for _, blk := range blocks {
 				var txIDToHeight utils.SyncMap[string, servicepb.Height]
-				_, err := mapBlock(blocks[blockIdx%numBlocks], &txIDToHeight)
-				if err != nil {
+				if _, err := mapBlock(blk, &txIDToHeight); err != nil {
 					b.Fatal(err)
 				}
-				blockIdx++
 			}
-			b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "tx/s")
+			b.StopTimer()
+			test.ReportTxPerSecond(b)
 		})
 	}
 }

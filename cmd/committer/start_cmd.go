@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package main
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/cockroachdb/errors"
@@ -43,37 +42,34 @@ func startServiceCommand(name string) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cmd.Printf("Starting %v\n", serviceNames[name])
 			defer cmd.Printf("%v ended\n", serviceNames[name])
-			return startService(cmd.Context(), name, configPath)
+
+			conf, serverConfig, err := readConfig(name, configPath)
+			if err != nil {
+				return err
+			}
+
+			var service serve.Service
+			switch c := conf.(type) {
+			case *sidecar.Config:
+				service, err = sidecar.New(c)
+				if err != nil {
+					return errors.Wrap(err, "failed to create sidecar service")
+				}
+			case *coordinator.Config:
+				service = coordinator.NewCoordinatorService(c)
+			case *vc.Config:
+				service = vc.NewValidatorCommitterService(cmd.Context(), c)
+			case *verifier.Config:
+				service = verifier.New(c)
+			case *query.Config:
+				service = query.NewQueryService(c)
+			default:
+				return errors.Newf("unknown config type: %T", conf)
+			}
+
+			return serve.StartAndServe(cmd.Context(), service, serverConfig)
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)
 	return cmd
-}
-
-func startService(ctx context.Context, name, configPath string) error {
-	conf, serverConfig, err := readConfig(name, configPath)
-	if err != nil {
-		return err
-	}
-
-	var service serve.Service
-	switch c := conf.(type) {
-	case *sidecar.Config:
-		service, err = sidecar.New(c)
-		if err != nil {
-			return errors.Wrap(err, "failed to create sidecar service")
-		}
-	case *coordinator.Config:
-		service = coordinator.NewCoordinatorService(c)
-	case *vc.Config:
-		service = vc.NewValidatorCommitterService(ctx, c)
-	case *verifier.Config:
-		service = verifier.New(c)
-	case *query.Config:
-		service = query.NewQueryService(c)
-	default:
-		return errors.Newf("unknown config type: %T", conf)
-	}
-
-	return serve.StartAndServe(ctx, service, serverConfig)
 }

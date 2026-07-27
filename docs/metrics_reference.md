@@ -22,6 +22,7 @@ The following Sidecar metrics are exported for consumption by Prometheus.
 | sidecar_relay_output_committed_block_queue_size            | gauge     |                                  | Size of the output committed block queue of the relay service.                                                                                           |
 | sidecar_coordinator_connection_status                      | gauge     | grpc_target                      | Connection status to coordinator service by grpc target (1 = connected, 0 = disconnected).                                                               |
 | sidecar_coordinator_connection_failure_total               | counter   | grpc_target                      | Total number of connection failures to coordinator service. Short-lived failures may not always be captured.                                             |
+| sidecar_grpc_active_connections                            | gauge     |                                  | Number of client connections currently open on the server                                                                                                |
 | sidecar_ledger_append_block_seconds                        | histogram |                                  | Time spent appending a block to the ledger.                                                                                                              |
 | sidecar_ledger_block_height                                | gauge     |                                  | The current block height of the ledger.                                                                                                                  |
 | sidecar_relay_transaction_in_total                         | counter   |                                  | Total number of transactions received from the orderer.                                                                                                  |
@@ -108,18 +109,19 @@ The following Validator-Committer metrics are exported for consumption by Promet
 
 The following Query Service metrics are exported for consumption by Prometheus.
 
-| Name                                                     | Type      | Labels  | Description                                              |
-|----------------------------------------------------------|-----------|---------|----------------------------------------------------------|
-| queryservice_grpc_requests_total                         | counter   | method  | Number of requests by the service                        |
-| queryservice_grpc_requests_latency_seconds               | histogram | method  | The latency (seconds) of requests by the service         |
-| queryservice_grpc_key_requested_total                    | counter   |         | Number of keys requested by the service                  |
-| queryservice_grpc_key_responded_total                    | counter   |         | Number of keys responded by the service                  |
-| queryservice_database_processing_sessions                | gauge     | session | Number of processing sessions in the service             |
-| queryservice_database_batch_queueing_time_seconds        | histogram |         | The time batches waits for execution                     |
-| queryservice_database_batch_query_size                   | histogram |         | The size of submitted batches                            |
-| queryservice_database_batch_response_size                | histogram |         | The size of response for batch queries                   |
-| queryservice_database_request_assignment_latency_seconds | histogram |         | The latency of the query request assignment to the queue |
-| queryservice_database_query_latency_seconds              | histogram |         | The latency of the queries' batches                      |
+| Name                                                     | Type      | Labels  | Description                                               |
+|----------------------------------------------------------|-----------|---------|-----------------------------------------------------------|
+| queryservice_grpc_requests_total                         | counter   | method  | Number of requests by the service                         |
+| queryservice_grpc_requests_latency_seconds               | histogram | method  | The latency (seconds) of requests by the service          |
+| queryservice_grpc_key_requested_total                    | counter   |         | Number of keys requested by the service                   |
+| queryservice_grpc_active_connections                     | gauge     |         | Number of client connections currently open on the server |
+| queryservice_grpc_key_responded_total                    | counter   |         | Number of keys responded by the service                   |
+| queryservice_database_processing_sessions                | gauge     | session | Number of processing sessions in the service              |
+| queryservice_database_batch_queueing_time_seconds        | histogram |         | The time batches waits for execution                      |
+| queryservice_database_batch_query_size                   | histogram |         | The size of submitted batches                             |
+| queryservice_database_batch_response_size                | histogram |         | The size of response for batch queries                    |
+| queryservice_database_request_assignment_latency_seconds | histogram |         | The latency of the query request assignment to the queue  |
+| queryservice_database_query_latency_seconds              | histogram |         | The latency of the queries' batches                       |
 
 ## Load Generator Metrics
 

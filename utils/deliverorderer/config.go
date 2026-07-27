@@ -103,9 +103,6 @@ type (
 	}
 )
 
-// DefaultSuspicionGracePeriodPerBlock is used when the parameters are not set by the user.
-const DefaultSuspicionGracePeriodPerBlock = time.Second
-
 // LoadParametersFromConfig returns orderer delivery parameters and channel-ID from a given config.
 func LoadParametersFromConfig(c *ordererdial.Config) (p Parameters, err error) {
 	tls, err := connection.NewClientTLSCredentials(c.TLS)

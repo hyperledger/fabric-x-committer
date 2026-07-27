@@ -127,7 +127,7 @@ database:
     # Setting this to "0" means there is no time limit, and retries will continue
     # indefinitely until successful.
     # Format: string representing a duration (e.g., "15m", "1h").
-    # Default: 15m
+    # Default: 10m
     max-elapsed-time: 15m
 
 # Resource limit configurations

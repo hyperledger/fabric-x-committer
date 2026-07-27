@@ -97,14 +97,14 @@ func newSidecarTestEnvWithTLS(
 			Path: t.TempDir(),
 		},
 		Notification: NotificationServiceConfig{
-			MaxTimeout:         DefaultNotificationMaxTimeout,
-			MaxActiveTxIDs:     DefaultMaxActiveTxIDs,
+			MaxTimeout:         time.Minute,
+			MaxActiveTxIDs:     100_000,
 			MaxTxIDsPerRequest: blockSize * 2,
-			StreamWriteTimeout: DefaultStreamWriteTimeout,
+			StreamWriteTimeout: 30 * time.Second,
 		},
 		LastCommittedBlockSetInterval: 100 * time.Millisecond,
 		WaitingTxsLimit:               1000,
-		ChannelBufferSize:             DefaultBufferSize,
+		ChannelBufferSize:             100,
 		Orderer:                       ordererEnv.OrdererConnConfig,
 	}
 	sidecar, err := New(sidecarConf)

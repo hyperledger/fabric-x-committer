@@ -9,6 +9,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 // TestUnwrapEnvelopeLite tests UnwrapEnvelopeLite with well-formed input.
@@ -190,6 +192,7 @@ func TestLoadgenEnvelopeConsistency(t *testing.T) {
 }
 
 func BenchmarkUnwrapEnvelope(b *testing.B) {
+	flogging.ActivateSpec("fatal")
 	envelopes := loadgenEnvelopes(b, b.N)
 	b.ResetTimer()
 	for _, env := range envelopes {
@@ -198,10 +201,12 @@ func BenchmarkUnwrapEnvelope(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-	b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "tx/s")
+	b.StopTimer()
+	test.ReportTxPerSecond(b)
 }
 
 func BenchmarkUnwrapEnvelopeLite(b *testing.B) {
+	flogging.ActivateSpec("fatal")
 	envelopes := loadgenEnvelopes(b, b.N)
 	b.ResetTimer()
 	for _, env := range envelopes {
@@ -210,7 +215,8 @@ func BenchmarkUnwrapEnvelopeLite(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-	b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "tx/s")
+	b.StopTimer()
+	test.ReportTxPerSecond(b)
 }
 
 // loadgenEnvelopes generates realistic serialized envelopes using the load

@@ -55,32 +55,20 @@ Configuration samples are available in `cmd/config/samples/`.
 
 ## Development Conventions
 
-### Code Philosophy: Simplicity First
+Follow the **`development` skill** whenever you write or change Go code — it is the
+authoritative, detailed source for these conventions and keeps them in one place. In brief:
 
-This project strongly emphasizes **simple, readable code over clever abstractions**. Key principles from `guidelines.md`:
+- **Simplicity first** — concrete types over interfaces, generics only for `utils/`-style
+  plumbing, no callbacks/functions-as-arguments, explicit over clever (`guidelines.md`).
+- **Error handling** — `errors.New/Newf/Wrap/Wrapf` (`cockroachdb/errors`) at the origin,
+  `fmt.Errorf("...%w", err)` to add context, `logger.Errorf("%+v", err)` at boundaries, and
+  `utils/grpcerror` at gRPC edges.
+- **Code organization** — collate a struct's methods together; place a method above the
+  functions it calls (caller before callee).
+- **Reuse `utils/` and `fabric-x-common` helpers**; run `make lint` (or `make lint-go`).
 
-1. **Avoid Premature Abstraction**: Don't introduce interfaces, generics, or complex patterns unless there's a clear, compelling need
-2. **Minimize Interfaces**: Use concrete types by default; interfaces only for truly pluggable architectures
-3. **Limit Generics**: Use sparingly for simple utility functions; avoid for core business logic
-4. **Avoid Function Arguments**: Don't pass functions as callbacks; prefer interfaces with the Strategy Pattern if pluggability is needed
-5. **Explicit Over Clever**: Favor explicit, slightly longer code over compact but hard-to-understand solutions
-
-### Error Handling
-
-The project uses `github.com/cockroachdb/errors` for comprehensive error handling:
-
-1. **Capture Stack Traces at Origin**: Use `errors.New`, `errors.Newf`, `errors.Wrap`, or `errors.Wrapf` when first encountering an error
-2. **Add Context Without Duplicating Traces**: Use `fmt.Errorf` with `%w` to add context while preserving the original stack trace
-3. **Log Full Details at Exit Points**: Use `logger.ErrorStackTrace(err)` at service boundaries (e.g., gRPC handlers)
-4. **Convert to gRPC Errors**: At gRPC boundaries, convert internal errors to appropriate status codes using helpers in `utils/grpcerror`
-
-#### Code Guidelines
-
-- avoid callbacks when possible
-- avoid code duplication
-- Collate methods of the same struct together
-- Order the methods such that the method user is before the method declaration
-- Address lint issues - run `make lint` or `make lint-go` for Go code linting only.
+See the skill for concurrency (`errgroup` + `utils/channel`), Go 1.26 idioms,
+service/config/metrics structure, and the full linter cheat sheet.
 
 ### Performance Considerations
 
@@ -144,6 +132,10 @@ Detailed architectural documentation is available in the `docs/` directory:
 
 ### Adding a New Service
 
+See the `development` skill's service-construction reference for the full blueprint
+(struct + constructor, `serve.Service` lifecycle, gRPC handlers, config pipeline, metrics,
+wiring) with a step-by-step checklist. High level:
+
 1. Define protobuf service in `api/servicepb/`
 2. Generate code: `make proto`
 3. Implement service in `service/<name>/`
@@ -182,7 +174,7 @@ Before submitting a PR:
 - [ ] Tests cover key functionality and edge cases
 - [ ] Documentation/comments explain complex logic
 - [ ] `make lint` passes without errors
-- [ ] `make test` passes all tests
+- [ ] Relevant unit/integration tests pass locally (don't run the full `make test` locally — too slow); rely on CI for the full suite and monitor it
 - [ ] Benchmarks run if performance-critical code changed
 
 ## Getting Help

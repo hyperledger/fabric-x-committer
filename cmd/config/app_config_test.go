@@ -38,7 +38,10 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
-const artifactsPath = "/root/artifacts"
+const (
+	artifactsPath       = "/root/artifacts"
+	defaultDatabaseName = "yugabyte"
+)
 
 func TestReadConfigSidecar(t *testing.T) {
 	t.Parallel()
@@ -53,15 +56,16 @@ func TestReadConfigSidecar(t *testing.T) {
 		configFilePath: emptyConfig(t),
 		expectedServerConfig: &serve.Config{
 			GRPC: serve.ServerConfig{
-				Endpoint:             *newEndpoint(connection.DefaultHost, sidecar.DefaultServerPort),
-				MaxConcurrentStreams: sidecar.DefaultMaxConcurrentStreams,
+				Endpoint:             *newEndpoint(connection.DefaultHost, sidecarServerPort),
+				RateLimit:            serve.RateLimitConfig{RequestsPerSecond: 5000, Burst: 1000},
+				MaxConcurrentStreams: 10,
 			},
-			HTTP:                  *newServerConfig(sidecar.DefaultMonitoringPort),
+			HTTP:                  *newServerConfig(sidecarMonitoringPort),
 			ServiceStartupTimeout: serve.DefaultServiceStartupTimeout,
 		},
 		expectedServiceConfig: &sidecar.Config{
 			Committer: &connection.ClientConfig{
-				Endpoint: newEndpoint(connection.DefaultHost, coordinator.DefaultServerPort),
+				Endpoint: newEndpoint(connection.DefaultHost, coordinatorServerPort),
 			},
 			Orderer: ordererdial.Config{
 				SuspicionGracePeriodPerBlock: time.Second,
@@ -70,14 +74,14 @@ func TestReadConfigSidecar(t *testing.T) {
 				Path: "./ledger/",
 			},
 			Notification: sidecar.NotificationServiceConfig{
-				MaxTimeout:         sidecar.DefaultNotificationMaxTimeout,
-				MaxActiveTxIDs:     sidecar.DefaultMaxActiveTxIDs,
-				MaxTxIDsPerRequest: sidecar.DefaultMaxTxIDsPerRequest,
-				StreamWriteTimeout: sidecar.DefaultStreamWriteTimeout,
+				MaxTimeout:         time.Minute,
+				MaxActiveTxIDs:     100_000,
+				MaxTxIDsPerRequest: 1000,
+				StreamWriteTimeout: 30 * time.Second,
 			},
-			LastCommittedBlockSetInterval: sidecar.DefaultLastCommittedBlockSetInterval,
-			WaitingTxsLimit:               sidecar.DefaultWaitingTxsLimit,
-			ChannelBufferSize:             sidecar.DefaultBufferSize,
+			LastCommittedBlockSetInterval: 5 * time.Second,
+			WaitingTxsLimit:               100_000,
+			ChannelBufferSize:             100,
 		},
 	}, {
 		name:           "sample",
@@ -125,9 +129,9 @@ func TestReadConfigSidecar(t *testing.T) {
 				MaxTxIDsPerRequest: 1000,
 				StreamWriteTimeout: 30 * time.Second,
 			},
-			LastCommittedBlockSetInterval: sidecar.DefaultLastCommittedBlockSetInterval,
+			LastCommittedBlockSetInterval: 5 * time.Second,
 			WaitingTxsLimit:               20_000_000,
-			ChannelBufferSize:             sidecar.DefaultBufferSize,
+			ChannelBufferSize:             100,
 		},
 	}}
 	for _, tc := range tests {
@@ -152,34 +156,40 @@ func TestReadConfigCoordinator(t *testing.T) {
 	}{{
 		name:                 "default",
 		configFilePath:       emptyConfig(t),
-		expectedServerConfig: newServeConfig(coordinator.DefaultServerPort, coordinator.DefaultMonitoringPort),
+		expectedServerConfig: newServeConfig(coordinatorServerPort, coordinatorMonitoringPort),
 		expectedServiceConfig: &coordinator.Config{
-			DependencyGraph: &coordinator.DependencyGraphConfig{
-				NumOfLocalDepConstructors: coordinator.DefaultNumOfLocalDepConstructors,
-				WaitingTxsLimit:           coordinator.DefaultWaitingTxsLimit,
-				ChunkSize:                 coordinator.DefaultChunkSize,
+			Verifier: connection.MultiClientConfig{
+				Endpoints: []*connection.Endpoint{newEndpoint(connection.DefaultHost, verifierServerPort)},
 			},
-			ChannelBufferSizePerGoroutine: coordinator.DefaultChannelBufferSizePerGoroutine,
-			QueueMonitorSamplingTime:      coordinator.DefaultQueueMonitorSamplingTime,
+			ValidatorCommitter: connection.MultiClientConfig{
+				Endpoints: []*connection.Endpoint{newEndpoint(connection.DefaultHost, vcServerPort)},
+			},
+			DependencyGraph: &coordinator.DependencyGraphConfig{
+				NumOfLocalDepConstructors: 1,
+				WaitingTxsLimit:           100_000,
+				ChunkSize:                 500,
+			},
+			ChannelBufferSizePerGoroutine: 10,
+			QueueMonitorSamplingTime:      100 * time.Millisecond,
 		},
 	}, {
 		name:           "sample",
 		configFilePath: "samples/coordinator.yaml",
 		expectedServerConfig: newServeConfigWithDefaultTLS(
-			"coordinator", coordinator.DefaultServerPort, coordinator.DefaultMonitoringPort,
+			"coordinator", coordinatorServerPort, coordinatorMonitoringPort,
 		),
 		expectedServiceConfig: &coordinator.Config{
 			Verifier: newMultiClientConfigWithDefaultTLS(
-				"verifier", "coordinator", verifier.DefaultServerPort,
+				"verifier", "coordinator", verifierServerPort,
 			),
-			ValidatorCommitter: newMultiClientConfigWithDefaultTLS("vc", "coordinator", vc.DefaultServerPort),
+			ValidatorCommitter: newMultiClientConfigWithDefaultTLS("vc", "coordinator", vcServerPort),
 			DependencyGraph: &coordinator.DependencyGraphConfig{
-				NumOfLocalDepConstructors: coordinator.DefaultNumOfLocalDepConstructors,
-				WaitingTxsLimit:           coordinator.DefaultWaitingTxsLimit,
-				ChunkSize:                 coordinator.DefaultChunkSize,
+				NumOfLocalDepConstructors: 1,
+				WaitingTxsLimit:           100_000,
+				ChunkSize:                 500,
 			},
-			ChannelBufferSizePerGoroutine: coordinator.DefaultChannelBufferSizePerGoroutine,
-			QueueMonitorSamplingTime:      coordinator.DefaultQueueMonitorSamplingTime,
+			ChannelBufferSizePerGoroutine: 10,
+			QueueMonitorSamplingTime:      100 * time.Millisecond,
 		},
 	}}
 
@@ -205,28 +215,28 @@ func TestReadConfigVC(t *testing.T) {
 	}{{
 		name:                 "default",
 		configFilePath:       emptyConfig(t),
-		expectedServerConfig: newServeConfig(vc.DefaultServerPort, vc.DefaultMonitoringPort),
+		expectedServerConfig: newServeConfig(vcServerPort, vcMonitoringPort),
 		expectedServiceConfig: &vc.Config{
 			Database: defaultDBConfig(),
 			ResourceLimits: &vc.ResourceLimitsConfig{
-				MaxWorkersForPreparer:             vc.DefaultMaxWorkersForPreparer,
-				MaxWorkersForValidator:            vc.DefaultMaxWorkersForValidator,
-				MaxWorkersForCommitter:            vc.DefaultMaxWorkersForCommitter,
-				MinTransactionBatchSize:           vc.DefaultMinTransactionBatchSize,
-				TimeoutForMinTransactionBatchSize: vc.DefaultTimeoutForMinBatchSize,
+				MaxWorkersForPreparer:             1,
+				MaxWorkersForValidator:            1,
+				MaxWorkersForCommitter:            20,
+				MinTransactionBatchSize:           1,
+				TimeoutForMinTransactionBatchSize: 5 * time.Second,
 			},
 		},
 	}, {
 		name:                 "sample",
 		configFilePath:       "samples/vc.yaml",
-		expectedServerConfig: newServeConfigWithDefaultTLS("vc", vc.DefaultServerPort, vc.DefaultMonitoringPort),
+		expectedServerConfig: newServeConfigWithDefaultTLS("vc", vcServerPort, vcMonitoringPort),
 		expectedServiceConfig: &vc.Config{
 			Database: defaultSampleDBConfig(),
 			ResourceLimits: &vc.ResourceLimitsConfig{
-				MaxWorkersForPreparer:             vc.DefaultMaxWorkersForPreparer,
-				MaxWorkersForValidator:            vc.DefaultMaxWorkersForValidator,
-				MaxWorkersForCommitter:            vc.DefaultMaxWorkersForCommitter,
-				MinTransactionBatchSize:           vc.DefaultMinTransactionBatchSize,
+				MaxWorkersForPreparer:             1,
+				MaxWorkersForValidator:            1,
+				MaxWorkersForCommitter:            20,
+				MinTransactionBatchSize:           1,
 				TimeoutForMinTransactionBatchSize: 2 * time.Second,
 			},
 		},
@@ -254,23 +264,23 @@ func TestReadConfigVerifier(t *testing.T) {
 	}{{
 		name:                 "default",
 		configFilePath:       emptyConfig(t),
-		expectedServerConfig: newServeConfig(verifier.DefaultServerPort, verifier.DefaultMonitoringPort),
+		expectedServerConfig: newServeConfig(verifierServerPort, verifierMonitoringPort),
 		expectedServiceConfig: &verifier.Config{
-			Parallelism:       verifier.DefaultParallelism,
-			BatchSizeCutoff:   verifier.DefaultBatchSizeCutoff,
-			BatchTimeCutoff:   verifier.DefaultBatchTimeCutoff,
-			ChannelBufferSize: verifier.DefaultChannelBufferSize,
+			Parallelism:       4,
+			BatchSizeCutoff:   50,
+			BatchTimeCutoff:   500 * time.Millisecond,
+			ChannelBufferSize: 50,
 		},
 	}, {
 		name:           "sample",
 		configFilePath: "samples/verifier.yaml",
 		expectedServerConfig: newServeConfigWithDefaultTLS(
-			"verifier", verifier.DefaultServerPort, verifier.DefaultMonitoringPort,
+			"verifier", verifierServerPort, verifierMonitoringPort,
 		),
 		expectedServiceConfig: &verifier.Config{
-			BatchSizeCutoff:   verifier.DefaultBatchSizeCutoff,
+			BatchSizeCutoff:   50,
 			BatchTimeCutoff:   10 * time.Millisecond,
-			ChannelBufferSize: verifier.DefaultChannelBufferSize,
+			ChannelBufferSize: 50,
 			Parallelism:       40,
 		},
 	}}
@@ -299,32 +309,33 @@ func TestReadConfigQuery(t *testing.T) {
 		configFilePath: emptyConfig(t),
 		expectedServerConfig: &serve.Config{
 			GRPC: serve.ServerConfig{
-				Endpoint: *newEndpoint(connection.DefaultHost, query.DefaultServerPort),
+				Endpoint: *newEndpoint(connection.DefaultHost, queryServerPort),
 				RateLimit: serve.RateLimitConfig{
-					RequestsPerSecond: query.DefaultRequestsPerSecond,
-					Burst:             query.DefaultBurst,
+					RequestsPerSecond: 5000,
+					Burst:             1000,
 				},
+				MaxConcurrentStreams: 10,
 			},
-			HTTP:                  *newServerConfig(query.DefaultMonitoringPort),
+			HTTP:                  *newServerConfig(queryMonitoringPort),
 			ServiceStartupTimeout: serve.DefaultServiceStartupTimeout,
 		},
 		expectedServiceConfig: &query.Config{
 			Database:              defaultDBConfig(),
-			MinBatchKeys:          query.DefaultMinBatchKeys,
-			MaxBatchWait:          query.DefaultMaxBatchWait,
-			ViewAggregationWindow: query.DefaultViewAggregationWindow,
-			MaxAggregatedViews:    query.DefaultMaxAggregatedViews,
-			MaxActiveViews:        query.DefaultMaxActiveViews,
-			MaxViewTimeout:        query.DefaultMaxViewTimeout,
-			MaxRequestKeys:        query.DefaultMaxRequestKeys,
-			TLSRefreshInterval:    query.DefaultTLSRefreshInterval,
+			MinBatchKeys:          1024,
+			MaxBatchWait:          100 * time.Millisecond,
+			ViewAggregationWindow: 100 * time.Millisecond,
+			MaxAggregatedViews:    1024,
+			MaxActiveViews:        4096,
+			MaxViewTimeout:        10 * time.Second,
+			MaxRequestKeys:        10000,
+			TLSRefreshInterval:    time.Minute,
 		},
 	}, {
 		name:           "sample",
 		configFilePath: "samples/query.yaml",
-		expectedServerConfig: &serve.Config{
+		expectedServerConfig: withClientStreamLimit(&serve.Config{
 			GRPC: serve.ServerConfig{
-				Endpoint: *newEndpoint("", query.DefaultServerPort),
+				Endpoint: *newEndpoint("query", queryServerPort),
 				TLS:      test.NewServiceTLSConfig(artifactsPath, "query", connection.MutualTLSMode),
 				KeepAlive: &serve.ServerKeepAliveConfig{
 					Params: &serve.ServerKeepAliveParamsConfig{
@@ -337,19 +348,19 @@ func TestReadConfigQuery(t *testing.T) {
 					},
 				},
 			},
-			HTTP:                  *newServerConfigWithDefaultTLS("query", query.DefaultMonitoringPort),
+			HTTP:                  *newServerConfigWithDefaultTLS("query", queryMonitoringPort),
 			ServiceStartupTimeout: serve.DefaultServiceStartupTimeout,
-		},
+		}),
 		expectedServiceConfig: &query.Config{
 			Database:              defaultSampleDBConfig(),
-			MinBatchKeys:          query.DefaultMinBatchKeys,
-			MaxBatchWait:          query.DefaultMaxBatchWait,
-			ViewAggregationWindow: query.DefaultViewAggregationWindow,
-			MaxAggregatedViews:    query.DefaultMaxAggregatedViews,
-			MaxActiveViews:        query.DefaultMaxActiveViews,
-			MaxViewTimeout:        query.DefaultMaxViewTimeout,
-			MaxRequestKeys:        query.DefaultMaxRequestKeys,
-			TLSRefreshInterval:    query.DefaultTLSRefreshInterval,
+			MinBatchKeys:          1024,
+			MaxBatchWait:          100 * time.Millisecond,
+			ViewAggregationWindow: 100 * time.Millisecond,
+			MaxAggregatedViews:    1024,
+			MaxActiveViews:        4096,
+			MaxViewTimeout:        10 * time.Second,
+			MaxRequestKeys:        10000,
+			TLSRefreshInterval:    time.Minute,
 		},
 	}}
 
@@ -376,13 +387,13 @@ func TestReadConfigLoadGen(t *testing.T) {
 	}{{
 		name:                  "default",
 		configFilePath:        emptyConfig(t),
-		expectedServerConfig:  newServeConfig(loadgen.DefaultServerPort, loadgen.DefaultMonitoringPort),
+		expectedServerConfig:  newServeConfig(loadgenServerPort, loadgenMonitoringPort),
 		expectedServiceConfig: &loadgen.ClientConfig{},
 	}, {
 		name:           "sample",
 		configFilePath: "samples/loadgen.yaml",
 		expectedServerConfig: newServeConfigWithDefaultTLS(
-			"loadgen", loadgen.DefaultServerPort, loadgen.DefaultMonitoringPort,
+			"loadgen", loadgenServerPort, loadgenMonitoringPort,
 		),
 		expectedServiceConfig: &loadgen.ClientConfig{
 			Monitoring: metrics.Config{
@@ -472,14 +483,59 @@ func TestReadConfigLoadGen(t *testing.T) {
 	}
 }
 
+// TestLoadGenProbabilityValidation exercises the decode-and-validate path for the
+// loadgen conflict probabilities: values inside the closed interval [0,1] are
+// accepted, values outside are rejected by validation. This also covers the
+// per-dependency probability, which lives inside a slice (validated via "dive").
+func TestLoadGenProbabilityValidation(t *testing.T) {
+	t.Parallel()
+	read := func(t *testing.T, yaml string) error {
+		t.Helper()
+		v := viper.New()
+		require.NoError(t, readYamlConfigsFromIO(v, strings.NewReader(yaml)))
+		return unmarshal(v, &loadgen.ClientConfig{})
+	}
+	invalidSig := func(probability string) string {
+		return "load-profile:\n  conflicts:\n    invalid-signatures: " + probability + "\n"
+	}
+	dependency := func(probability string) string {
+		return "load-profile:\n  conflicts:\n    dependencies:\n" +
+			"      - probability: " + probability + "\n        src: read\n        dst: write\n"
+	}
+
+	for _, tc := range []struct {
+		name    string
+		yaml    string
+		wantErr bool
+	}{
+		{name: "invalid-signatures in range", yaml: invalidSig("0.3")},
+		{name: "invalid-signatures is 1", yaml: invalidSig("1")},
+		{name: "invalid-signatures above 1", yaml: invalidSig("1.5"), wantErr: true},
+		{name: "invalid-signatures below 0", yaml: invalidSig("-0.1"), wantErr: true},
+		{name: "dependency probability in range", yaml: dependency("0.5")},
+		{name: "dependency probability above 1", yaml: dependency("2"), wantErr: true},
+		{name: "dependency probability below 0", yaml: dependency("-1"), wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := read(t, tc.yaml)
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func defaultDBConfig() *statedb.Config {
 	return &statedb.Config{
-		Endpoints:      []*connection.Endpoint{newEndpoint(connection.DefaultHost, statedb.DefaultEndpointPort)},
-		Database:       statedb.DefaultName,
-		MaxConnections: statedb.DefaultMaxConnections,
-		MinConnections: statedb.DefaultMinConnections,
+		Endpoints:      []*connection.Endpoint{newEndpoint(connection.DefaultHost, 5433)},
+		Database:       defaultDatabaseName,
+		MaxConnections: 20,
+		MinConnections: 1,
 		Retry: &retry.Profile{
-			MaxElapsedTime: new(statedb.DefaultRetryMaxElapsedTime),
+			MaxElapsedTime: new(10 * time.Minute),
 		},
 	}
 }
@@ -489,7 +545,7 @@ func defaultSampleDBConfig() *statedb.Config {
 		Endpoints: []*connection.Endpoint{newEndpoint("db", 5433)},
 		Username:  "yugabyte",
 		Password:  "yugabyte",
-		Database:  "yugabyte",
+		Database:  defaultDatabaseName,
 		TLS: statedb.TLSConfig{
 			Mode:       connection.OneSideTLSMode,
 			CACertPath: filepath.Join(artifactsPath, test.OrgRootCA),
@@ -537,6 +593,13 @@ func newServeConfig(grpcPort, monitorinPort int) *serve.Config {
 		HTTP:                  *newServerConfig(monitorinPort),
 		ServiceStartupTimeout: serve.DefaultServiceStartupTimeout,
 	}
+}
+
+// withClientStreamLimit sets the client-facing gRPC max-concurrent-streams default (10) on c's
+// server and returns it. Only the client-facing services (query, sidecar) get this default.
+func withClientStreamLimit(c *serve.Config) *serve.Config {
+	c.GRPC.MaxConcurrentStreams = 10
+	return c
 }
 
 func newServerConfigWithDefaultTLS(serviceName string, port int) *serve.ServerConfig {
@@ -655,6 +718,17 @@ func TestViperDefaultsAreComplete(t *testing.T) {
 		c := &query.Config{}
 		require.NoError(t, unmarshal(v, c))
 	})
+}
+
+// TestLoggingDefaults verifies the logging defaults: logSpec comes from the struct-assignment tag
+// on loggingConfig, and format defaults to its empty zero value.
+func TestLoggingDefaults(t *testing.T) {
+	t.Parallel()
+	v := NewViperWithLoggingDefault("test")
+	c := new(loggingConfig)
+	require.NoError(t, unmarshal(v, c))
+	require.Equal(t, "info:grpc=error", c.Logging.LogSpec)
+	require.Empty(t, c.Logging.Format)
 }
 
 // TestEnvOverrideFieldsNotInYAML verifies that environment variables can override

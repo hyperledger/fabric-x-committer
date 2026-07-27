@@ -45,6 +45,14 @@ Run `gh auth status`. If it fails, respond ONLY with:
 Before starting any review, read:
 - `@guidelines.md` — coding standards, review comment labels, simplicity principles
 - `@docs/core-concurrency-pattern.md` — required concurrency patterns
+- `@.claude/skills/development/SKILL.md` — the conventions for writing NEW code (code
+  ordering/caller-before-callee, errgroup + context-aware channels, error handling, Go 1.26
+  idioms, and reuse of `utils/` + `fabric-x-common` helpers). New or changed code that
+  deviates from this skill is a review finding — cite the specific convention it breaks.
+- `@.claude/skills/tests/SKILL.md` — the testing conventions (table-driven + `t.Parallel`,
+  `require` over `assert`, `require.Eventually`/`EventuallyWithT` over sleeps, `t.Helper`/
+  `t.Cleanup`, `test_exports.go`, metrics helpers, and reuse of `testcrypto`/`tlsgen`
+  fixtures). Judge changed test code against this skill and flag deviations.
 
 ## Cognitive Discipline (Hallucination Prevention)
 
@@ -367,7 +375,7 @@ Verify against `@docs/core-concurrency-pattern.md`:
 
 ### 6. Error Information Disclosure
 
-- ✅ `logger.ErrorStackTrace(err)` for internal logging; `grpcerror.WrapInternalError(err)` for clients
+- ✅ `logger.Errorf("%+v", err)` for internal logging (the `%+v` verb renders the stack trace); `grpcerror.WrapInternalError(err)` for clients
 - ❌ Flag handlers returning raw `err`; error messages containing file paths, hostnames, or connection strings
 
 ### 7. Protobuf Backward Compatibility

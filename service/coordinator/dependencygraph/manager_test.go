@@ -93,6 +93,9 @@ func BenchmarkDependencyGraph(b *testing.B) {
 								PrometheusMetricsProvider: monitoring.NewProvider(),
 							})
 
+							// Over-supply transactions (3x) so the manager's internal
+							// queue stays populated throughout the measured window; we
+							// stop once b.N transactions have been released.
 							txPoll := workload.GenerateTransactions(b, p, max(b.N*3, batchSize*3))
 
 							ctx := b.Context()
@@ -148,6 +151,7 @@ func BenchmarkDependencyGraph(b *testing.B) {
 								total += len(batch)
 							}
 							b.StopTimer()
+							test.ReportTxPerSecond(b)
 						})
 					}
 				})

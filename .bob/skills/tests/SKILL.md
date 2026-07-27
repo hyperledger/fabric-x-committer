@@ -39,6 +39,18 @@ This document provides specific guidelines for writing and running tests in the 
 - Use `require.ErrorContains()` instead of `require.Error()` and then `require.Contains()`
 - Address lint issues - run `make lint`
 
+## Reusing Test Fixtures & Helpers
+
+Don't hand-roll crypto, TLS, config-block, or service/DB setup — reuse existing helpers:
+
+- **In-process harnesses (this repo):** `test.RunServiceForTest` / `test.ServeForTest` ([`utils/test/serve.go`](../../utils/test/serve.go)), `testdb.PrepareTestEnv` + `testdb.RunTestMain` (`utils/testdb`), and the hand-written mocks in `mock/`.
+- **Proto assertions (this repo):** `test.RequireProtoEqual` / `test.RequireProtoElementsMatch` (`utils/test/require_proto.go`) — never compare protos with `require.Equal`. Both accept `require.TestingT`, so they also work inside `require.EventuallyWithT`.
+- **MSP / identity / Fabric config blocks:** `github.com/hyperledger/fabric-x-common/utils/testcrypto` — `CreateOrExtendConfigBlockWithCrypto`, `ConfigBlock`, `PrepareBlockHeaderAndMetadata`, `GetPeersIdentities` / `GetConsenterIdentities` / `GetSigningIdentities` / `GetPeersMspDirs` / `GetConsenterMspDirs`.
+- **TLS test material:** `github.com/hyperledger/fabric-x-common/common/crypto/tlsgen` — `tlsgen.NewCA()`, `CA`, `CertKeyPair`.
+- **Generate crypto material:** `github.com/hyperledger/fabric-x-common/tools/cryptogen`.
+
+For authoring the production code these tests cover, use the `development` skill.
+
 ## Table-Driven Tests Structure
 
 ### DO NOT Use Nested Test Groups

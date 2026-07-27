@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,6 +43,8 @@ func BenchmarkNotifier(b *testing.B) {
 		txIDs[i] = fmt.Sprintf("%064d", i)
 	}
 
+	// Each request must stay within the per-request limit, otherwise the notifier
+	// rejects the whole request instead of subscribing to its tx IDs.
 	batchSize := 4096
 	requests := make([]*committerpb.NotificationRequest, 0, (b.N/batchSize)+1)
 	statuses := make([][]*committerpb.TxStatus, 0, (b.N/batchSize)+1)
@@ -50,7 +53,7 @@ func BenchmarkNotifier(b *testing.B) {
 		sz := min(batchSize, len(requestTxIDs))
 		requests = append(requests, &committerpb.NotificationRequest{
 			TxStatusRequest: &committerpb.TxIDsBatch{
-				TxIds: txIDs[:sz],
+				TxIds: requestTxIDs[:sz],
 			},
 			Timeout: durationpb.New(1 * time.Hour),
 		})
@@ -70,7 +73,14 @@ func BenchmarkNotifier(b *testing.B) {
 		statusTxIDs = statusTxIDs[sz:]
 	}
 
-	env := newNotifierTestEnv(b, 5)
+	// The active-txID limit must accommodate all benchmarked tx IDs; otherwise the
+	// notifier rejects the excess instead of tracking them for notification.
+	env := newNotifierTestEnvWithConfig(b, 5, &NotificationServiceConfig{
+		MaxTimeout:         time.Minute,
+		MaxActiveTxIDs:     b.N,
+		MaxTxIDsPerRequest: batchSize,
+		StreamWriteTimeout: time.Minute,
+	})
 	q := env.responseQueues[0]
 
 	// We benchmark a full cycle, adding TX IDs, removing them, and getting the notifications.
@@ -87,9 +97,15 @@ func BenchmarkNotifier(b *testing.B) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	for _, s := range statuses {
-		env.statusQueue.Write(s)
-	}
+	// Submit the statuses concurrently with reading the notifications below, so the
+	// notifier worker never blocks writing to a full response queue.
+	var wg sync.WaitGroup
+	b.Cleanup(wg.Wait)
+	wg.Go(func() {
+		for _, s := range statuses {
+			env.statusQueue.Write(s)
+		}
+	})
 
 	expectedCount := len(txIDs)
 	notifiedCount := 0
@@ -101,6 +117,7 @@ func BenchmarkNotifier(b *testing.B) {
 		notifiedCount += len(res.TxStatusEvents)
 	}
 	b.StopTimer()
+	test.ReportTxPerSecond(b)
 }
 
 type notifierTestEnv struct {
@@ -400,7 +417,7 @@ func TestNotifierGlobalLimit(t *testing.T) {
 	t.Parallel()
 
 	env := newNotifierTestEnvWithConfig(t, 1, &NotificationServiceConfig{
-		MaxTimeout:         DefaultNotificationMaxTimeout,
+		MaxTimeout:         time.Minute,
 		MaxActiveTxIDs:     5,
 		MaxTxIDsPerRequest: 10,
 		StreamWriteTimeout: 2 * time.Minute,
@@ -524,7 +541,7 @@ func newSingleTxSubscription(
 	subs := &subscriptions{
 		txIDToRequests:     make(map[string]map[*notificationRequest]any),
 		availableSlots:     1,
-		streamWriteTimeout: DefaultStreamWriteTimeout,
+		streamWriteTimeout: 30 * time.Second,
 	}
 	rejected, uniqueNew := subs.addRequest(req)
 	require.Empty(tb, rejected)
@@ -535,10 +552,10 @@ func newSingleTxSubscription(
 func newNotifierTestEnv(tb testing.TB, numOfClients int) *notifierTestEnv {
 	tb.Helper()
 	return newNotifierTestEnvWithConfig(tb, numOfClients, &NotificationServiceConfig{
-		MaxTimeout:         DefaultNotificationMaxTimeout,
-		MaxActiveTxIDs:     DefaultMaxActiveTxIDs,
-		MaxTxIDsPerRequest: DefaultMaxTxIDsPerRequest,
-		StreamWriteTimeout: DefaultStreamWriteTimeout,
+		MaxTimeout:         time.Minute,
+		MaxActiveTxIDs:     100_000,
+		MaxTxIDsPerRequest: 1000,
+		StreamWriteTimeout: 30 * time.Second,
 	})
 }
 
@@ -546,11 +563,11 @@ func newNotifierTestEnvWithConfig(tb testing.TB, numOfClients int, conf *Notific
 	tb.Helper()
 	metrics := newPerformanceMetrics()
 	env := &notifierTestEnv{
-		n:              newNotifier(DefaultBufferSize, conf, metrics),
+		n:              newNotifier(100, conf, metrics),
 		metrics:        metrics,
 		responseQueues: make([]channel.ReaderWriter[*committerpb.NotificationResponse], numOfClients),
 	}
-	statusQueue := make(chan []*committerpb.TxStatus, DefaultBufferSize)
+	statusQueue := make(chan []*committerpb.TxStatus, 100)
 	env.requestQueue = channel.NewWriter(tb.Context(), env.n.requestQueue)
 	env.statusQueue = channel.NewWriter(tb.Context(), statusQueue)
 	for i := range env.responseQueues {

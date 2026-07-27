@@ -7,8 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package statedb
 
 import (
-	"time"
-
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
@@ -17,14 +15,14 @@ type (
 	// Config is the configuration for database initialization and connection.
 	// This configuration is shared across multiple services (VC, Query) and the init-db CLI command.
 	Config struct {
-		Endpoints            []*connection.Endpoint `mapstructure:"endpoints"`
+		Endpoints            []*connection.Endpoint `mapstructure:"endpoints" default:"localhost:5433"`
 		Username             string                 `mapstructure:"username"`
 		Password             string                 `mapstructure:"password"`
-		Database             string                 `mapstructure:"database" validate:"required"`
-		MaxConnections       int32                  `mapstructure:"max-connections" validate:"required,gt=0"`
-		MinConnections       int32                  `mapstructure:"min-connections" validate:"gte=0"`
+		Database             string                 `mapstructure:"database" default:"yugabyte"`
+		MaxConnections       int32                  `mapstructure:"max-connections" default:"20" validate:"gt=0"`
+		MinConnections       int32                  `mapstructure:"min-connections" default:"1" validate:"gte=0"`
 		LoadBalance          bool                   `mapstructure:"load-balance"`
-		Retry                *retry.Profile         `mapstructure:"retry"`
+		Retry                *retry.Profile         `mapstructure:"retry" default:"max-elapsed-time=10m"`
 		TLS                  TLSConfig              `mapstructure:"tls"`
 		TablePreSplitTablets int                    `mapstructure:"table-pre-split-tablets"`
 	}
@@ -52,13 +50,3 @@ func (d *Config) DataSourceName() (string, error) {
 func (d *Config) EndpointsString() string {
 	return connection.AddressString(d.Endpoints...)
 }
-
-// Default configuration values for database connections.
-const (
-	DefaultName                = "yugabyte"
-	DefaultEndpointHost        = "localhost"
-	DefaultEndpointPort        = 5433
-	DefaultMaxConnections      = 20
-	DefaultMinConnections      = 1
-	DefaultRetryMaxElapsedTime = 10 * time.Minute
-)

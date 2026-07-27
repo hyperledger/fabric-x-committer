@@ -107,10 +107,10 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 		DependencyGraph: &DependencyGraphConfig{
 			NumOfLocalDepConstructors: 3,
 			WaitingTxsLimit:           10,
-			ChunkSize:                 DefaultChunkSize,
+			ChunkSize:                 500,
 		},
 		ChannelBufferSizePerGoroutine: 2000,
-		QueueMonitorSamplingTime:      DefaultQueueMonitorSamplingTime,
+		QueueMonitorSamplingTime:      100 * time.Millisecond,
 	}
 	return &coordinatorTestEnv{
 		coordinator:            NewCoordinatorService(c),

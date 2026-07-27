@@ -784,7 +784,6 @@ func requireEqualMapOfLists[K comparable, V any](t *testing.T, expected, actual 
 	}
 }
 
-//nolint:gocognit // single method for simplicity.
 func BenchmarkPrepare(b *testing.B) {
 	flogging.ActivateSpec("fatal")
 
@@ -801,6 +800,9 @@ func BenchmarkPrepare(b *testing.B) {
 				return p.run(ctx, w)
 			}, nil)
 
+			// Over-supply transactions (3x) so the preparer's input queue stays
+			// populated throughout the measured window; we stop once b.N
+			// transactions have been prepared.
 			txPoll := workload.GenerateTransactions(b, nil, max(b.N*3, batchSize*3))
 
 			inCtx := channel.NewWriter(b.Context(), txBatch)
@@ -826,6 +828,7 @@ func BenchmarkPrepare(b *testing.B) {
 				total += len(batch.txIDToHeight)
 			}
 			b.StopTimer()
+			test.ReportTxPerSecond(b)
 		})
 	}
 }
