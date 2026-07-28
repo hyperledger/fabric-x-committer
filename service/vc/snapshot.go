@@ -30,10 +30,14 @@ import (
 //
 // "postgres" is chosen because it is created by default on both backends
 // (YugabyteDB ships a "postgres" database for PG compatibility) and is never
-// the clone source, so it is never locked out by the PostgreSQL
-// ALLOW_CONNECTIONS dance. The extra PostgreSQL requirement that the TEMPLATE
-// source be free of other sessions is handled in createPostgresSnapshotDatabase, not here,
-// and does not apply to YugabyteDB (DocDB cloning keeps the source live).
+// the clone source. That matters because createPostgresSnapshotDatabase blocks
+// and terminates sessions on the SOURCE database only (ALLOW_CONNECTIONS false /
+// terminate-backends / ALLOW_CONNECTIONS true, see below) to satisfy PostgreSQL's
+// TEMPLATE requirement that the source be free of other sessions; connecting
+// admin operations through "postgres" instead of the source keeps this
+// connection itself from being one of the sessions that gets terminated or
+// locked out by that sequence. Does not apply to YugabyteDB (DocDB cloning
+// keeps the source live, so no lockout dance is needed there).
 const maintenanceDBName = "postgres"
 
 // createSnapshotIfPresent detects a _snapshot record in the batch's
@@ -186,8 +190,10 @@ func (db *database) createYugabyteSnapshotDatabase(ctx context.Context, clone, s
 }
 
 // createPostgresSnapshotDatabase uses STRATEGY=FILE_COPY. PostgreSQL requires the source
-// to have no other sessions during the clone, so we block new connections and
-// terminate existing ones, then re-allow (via defer, so it runs even on error).
+// to have no other sessions during the clone, so this runs a three-step sequence:
+// ALTER DATABASE ... ALLOW_CONNECTIONS false to block new sessions, terminate
+// existing backends via pg_terminate_backend, then CREATE DATABASE ... TEMPLATE ...
+// STRATEGY=FILE_COPY; ALLOW_CONNECTIONS is re-enabled via defer so it runs even on error.
 func (db *database) createPostgresSnapshotDatabase(ctx context.Context, clone, src string) error {
 	if err := db.adminExec(ctx, fmt.Sprintf("ALTER DATABASE %s ALLOW_CONNECTIONS false", src)); err != nil {
 		return err
@@ -258,10 +264,8 @@ func (db *database) adminExec(ctx context.Context, sql string) error {
 	}
 	defer func() { _ = conn.Close(ctx) }()
 
-	if _, err := conn.Exec(ctx, sql); err != nil {
-		return errors.Wrapf(err, "failed to execute admin statement [%s]", sql)
-	}
-	return nil
+	_, err = conn.Exec(ctx, sql)
+	return errors.Wrapf(err, "failed to execute admin statement [%s]", sql)
 }
 
 // ignoreDuplicateDatabase maps the "database already exists" error (PG SQLSTATE

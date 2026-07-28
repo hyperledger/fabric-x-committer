@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
+	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 
@@ -49,13 +50,59 @@ func TestCreateSnapshotDatabase(t *testing.T) {
 	name := snapshotDatabaseName(ref)
 	dropCloneCleanup(t, env.DB, name)
 
+	// Distinguishable data written to the source, across TWO namespaces, BEFORE
+	// cloning; the clone must carry both rows so a later reader observes the exact
+	// source state rather than a partial/single-table copy.
+	cloneRows := []cloneRow{
+		{ns: ns1, key: []byte("clone-check-key-1"), value: []byte("clone-check-value-1")},
+		{ns: ns2, key: []byte("clone-check-key-2"), value: []byte("clone-check-value-2")},
+	}
+	env.populateData(t, []string{ns1, ns2}, namespaceToWrites{
+		ns1: {keys: [][]byte{cloneRows[0].key}, values: [][]byte{cloneRows[0].value}, versions: []uint64{0}},
+		ns2: {keys: [][]byte{cloneRows[1].key}, values: [][]byte{cloneRows[1].value}, versions: []uint64{0}},
+	}, nil, nil)
+
 	// First creation succeeds and snapshot database exists.
 	require.NoError(t, env.DB.createSnapshotDatabase(ctx, name))
 	require.True(t, cloneExists(t, env.DB, name))
+	for _, row := range cloneRows {
+		requireCloneHasRow(t, env.DB, name, row)
+	}
 
 	// Second creation over existing database is a no-op success (reuse), not drop+recreate.
 	require.NoError(t, env.DB.createSnapshotDatabase(ctx, name))
 	require.True(t, cloneExists(t, env.DB, name))
+	for _, row := range cloneRows {
+		requireCloneHasRow(t, env.DB, name, row)
+	}
+}
+
+// cloneRow identifies a single key/value expectation in a namespace, used by
+// requireCloneHasRow to keep its argument count within the linter's limit.
+type cloneRow struct {
+	ns    string
+	key   []byte
+	value []byte
+}
+
+// requireCloneHasRow opens a short-lived pool against the clone database (not
+// the source pool) and asserts it contains row's key/value in row's namespace,
+// proving the clone's content matches the source instead of merely existing.
+func requireCloneHasRow(t *testing.T, db *database, cloneName string, row cloneRow) {
+	t.Helper()
+	cloneConfig := *db.config
+	cloneConfig.Database = cloneName
+	clonePool, err := statedb.NewPool(t.Context(), &cloneConfig)
+	require.NoError(t, err)
+	defer clonePool.Close()
+
+	var gotValue []byte
+	err = retry.Execute(t.Context(), db.retryProfile, func() error {
+		query := fmt.Sprintf("SELECT value FROM %s WHERE key = $1", statedb.TableName(row.ns))
+		return clonePool.QueryRow(t.Context(), query, row.key).Scan(&gotValue)
+	})
+	require.NoError(t, err)
+	require.Equal(t, row.value, gotValue)
 }
 
 func cloneExists(t *testing.T, db *database, name string) bool {
