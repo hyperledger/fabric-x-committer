@@ -31,6 +31,9 @@ const (
 
 	// tableNameTempl is the template for the table name for each namespace.
 	tableNameTempl = "ns_" + nsIDTemplatePlaceholder
+
+	// TxStatusTableName is the name of the system table holding per-transaction status.
+	TxStatusTableName = "tx_status"
 )
 
 var (

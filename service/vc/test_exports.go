@@ -107,15 +107,23 @@ func NewValidatorAndCommitServiceTestEnv(t *testing.T, opts *TestEnvOpts) *Valid
 
 func defaultVCTestEnvOpts() *TestEnvOpts {
 	return &TestEnvOpts{
-		NumServices: 1,
-		ServerCreds: test.InsecureTLSConfig,
-		ResourceLimits: &ResourceLimitsConfig{
-			MaxWorkersForPreparer:             2,
-			MaxWorkersForValidator:            2,
-			MaxWorkersForCommitter:            2,
-			MinTransactionBatchSize:           1,
-			TimeoutForMinTransactionBatchSize: 20 * time.Second,
-		},
+		NumServices:    1,
+		ServerCreds:    test.InsecureTLSConfig,
+		ResourceLimits: defaultTestResourceLimits(),
+	}
+}
+
+// defaultTestResourceLimits returns the resource limits used by all VC and database
+// test environments.
+func defaultTestResourceLimits() *ResourceLimitsConfig {
+	return &ResourceLimitsConfig{
+		MaxWorkersForPreparer:             2,
+		MaxWorkersForValidator:            2,
+		MaxWorkersForCommitter:            2,
+		MaxWorkersForSnapshotHash:         4,
+		SnapshotHashBatchSize:             1000,
+		MinTransactionBatchSize:           1,
+		TimeoutForMinTransactionBatchSize: 20 * time.Second,
 	}
 }
 
@@ -167,7 +175,7 @@ func NewDatabaseTestEnvFromConnection(t *testing.T, cs *testdb.Connection, loadB
 	m := newVCServiceMetrics()
 	sCtx, sCancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(sCancel)
-	dbObject, err := newDatabase(sCtx, config, m)
+	dbObject, err := newDatabase(sCtx, config, m, defaultTestResourceLimits())
 	require.NoError(t, err, "%+v", err)
 	t.Cleanup(dbObject.close)
 

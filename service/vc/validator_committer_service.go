@@ -106,7 +106,8 @@ func NewValidatorCommitterService(
 // Run starts the validator and committer service.
 func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 	logger.Info("Starting ValidatorCommitterService")
-	db, err := newDatabase(ctx, vc.config.Database, vc.metrics)
+	l := vc.config.ResourceLimits
+	db, err := newDatabase(ctx, vc.config.Database, vc.metrics, l)
 	if err != nil {
 		return err
 	}
@@ -128,7 +129,6 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 		return nil
 	})
 
-	l := vc.config.ResourceLimits
 	logger.Infof("Starting %d workers for the transaction preparer", l.MaxWorkersForPreparer)
 	g.Go(func() error {
 		return vc.preparer.run(eCtx, l.MaxWorkersForPreparer)
@@ -142,6 +142,11 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 	logger.Infof("Starting %d workers for the transaction committer", l.MaxWorkersForCommitter)
 	g.Go(func() error {
 		return vc.committer.run(eCtx, db, l.MaxWorkersForCommitter)
+	})
+
+	logger.Info("Starting the snapshot hash worker")
+	g.Go(func() error {
+		return db.runSnapshotHashWorker(eCtx)
 	})
 
 	if err := g.Wait(); err != nil {

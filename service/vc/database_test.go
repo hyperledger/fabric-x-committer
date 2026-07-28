@@ -348,7 +348,7 @@ func TestNewDatabaseTabletsWithDetection(t *testing.T) {
 
 	env.DBConf.TablePreSplitTablets = 5
 
-	db, err := newDatabase(t.Context(), env.DBConf, newVCServiceMetrics())
+	db, err := newDatabase(t.Context(), env.DBConf, newVCServiceMetrics(), defaultTestResourceLimits())
 	require.NoError(t, err)
 	t.Cleanup(db.close)
 

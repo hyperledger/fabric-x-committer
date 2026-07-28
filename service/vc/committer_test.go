@@ -27,6 +27,17 @@ type committerTestEnv struct {
 	dbEnv        *DatabaseTestEnv
 }
 
+// newCommitterTestEnv starts a committer against a fresh database, without
+// the background snapshot hash worker. Most tests use this: they either
+// don't touch snapshots at all, or manually drive/inspect a specific
+// intermediate _snapshot state (e.g. PENDING or IN_PROGRESS) right after
+// commit. Starting the worker here would race those assertions, because
+// committing a snapshot tx already enqueues a hash job the same way
+// production does (see committer.go's call to enqueueSnapshotHashJob); with
+// the worker running that job drains concurrently and can advance the record
+// past the state a test expects to observe. Use
+// newCommitterTestEnvWithHashWorker for tests that want that automatic
+// PENDING->COMPLETED flow to actually run.
 func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 	t.Helper()
 	validatedTxs := make(chan *validatedTransactions, 10)
@@ -44,6 +55,19 @@ func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 		txStatus:     txStatus,
 		dbEnv:        dbEnv,
 	}
+}
+
+// newCommitterTestEnvWithHashWorker is newCommitterTestEnv plus the
+// background snapshot hash worker, for tests that expect a committed
+// snapshot's _snapshot record to reach COMPLETED (with its hash) on its own,
+// exactly as it does in production.
+func newCommitterTestEnvWithHashWorker(t *testing.T) *committerTestEnv {
+	t.Helper()
+	env := newCommitterTestEnv(t)
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
+		return env.dbEnv.DB.runSnapshotHashWorker(ctx)
+	}, nil)
+	return env
 }
 
 type state struct {

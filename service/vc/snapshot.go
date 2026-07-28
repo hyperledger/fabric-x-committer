@@ -202,21 +202,35 @@ func (db *database) createSnapshotIfPresent(ctx context.Context, newWrites trans
 	if len(newWrites) != 1 {
 		return nil
 	}
-	for _, nsWrites := range newWrites {
-		w := nsWrites[committerpb.SnapshotNamespaceID]
-		if w.empty() {
-			return nil
-		}
-		// Exactly one key: the preparer adds a single _snapshot record per snapshot TX.
-		snapshotState, err := db.createSnapshotDatabaseAndRewriteRecord(ctx, w.keys[0], w.values[0])
-		if err != nil {
-			return err
-		}
-		if snapshotState != nil {
-			w.values[0] = snapshotState
-		}
+	w, ok := snapshotWriteInBatch(newWrites)
+	if !ok {
+		return nil
+	}
+
+	// Exactly one key: the preparer adds a single _snapshot record per snapshot TX.
+	snapshotState, err := db.createSnapshotDatabaseAndRewriteRecord(ctx, w.keys[0], w.values[0])
+	if err != nil {
+		return err
+	}
+	if snapshotState != nil {
+		w.values[0] = snapshotState
 	}
 	return nil
+}
+
+// snapshotWriteInBatch returns the single _snapshot namespace write in newWrites, if
+// any. A snapshot TX is submitted standalone, so at most one transaction in the batch
+// carries a _snapshot write, and the preparer adds exactly one key/value pair
+// (key = tx_id) for it. Shared by createSnapshotIfPresent and snapshotHashJobFromWrites
+// so both extract the same record the same way.
+func snapshotWriteInBatch(newWrites transactionToWrites) (*namespaceWrites, bool) {
+	for _, nsWrites := range newWrites {
+		w := nsWrites[committerpb.SnapshotNamespaceID]
+		if !w.empty() {
+			return w, true
+		}
+	}
+	return nil, false
 }
 
 // createSnapshotDatabaseAndRewriteRecord decodes one _snapshot record, creates
@@ -237,10 +251,11 @@ func (db *database) createSnapshotIfPresent(ctx context.Context, newWrites trans
 func (db *database) createSnapshotDatabaseAndRewriteRecord(
 	ctx context.Context, key, recordValue []byte,
 ) ([]byte, error) {
-	var state committerpb.SnapshotState
-	if err := proto.Unmarshal(recordValue, &state); err != nil {
+	state, err := decodeSnapshotState(recordValue)
+	if err != nil {
 		return nil, errors.Wrapf(err, "failed to decode _snapshot record for key %s", key)
 	}
+
 	ref := state.TxRef
 
 	if ref == nil {
@@ -268,7 +283,7 @@ func (db *database) createSnapshotDatabaseAndRewriteRecord(
 
 	// PENDING record rewrite: written atomically with the snapshot txID by the
 	// normal db.commit path once the snapshot database exists.
-	snapshotState, err := proto.Marshal(&committerpb.SnapshotState{
+	snapshotState, err := encodeSnapshotState(&committerpb.SnapshotState{
 		TxRef:         ref,
 		Status:        committerpb.SnapshotState_PENDING,
 		CloneDatabase: snapshotDatabase,
@@ -277,13 +292,6 @@ func (db *database) createSnapshotDatabaseAndRewriteRecord(
 		return nil, errors.Wrapf(err, "failed to marshal PENDING snapshot state for database %s", snapshotDatabase)
 	}
 	return snapshotState, nil
-}
-
-// snapshotDatabaseName returns deterministic database name for a snapshot at
-// given TxRef. Name encodes block height so any VC (first attempt or
-// coordinator-directed resubmission) targets same database.
-func snapshotDatabaseName(ref *committerpb.TxRef) string {
-	return fmt.Sprintf("snapshot_%d", ref.BlockNum)
 }
 
 // createSnapshotDatabase creates native zero-copy database named databaseName
@@ -415,4 +423,29 @@ func ignoreDuplicateDatabase(err error) error {
 		return nil
 	}
 	return err
+}
+
+// snapshotDatabaseName returns deterministic database name for a snapshot at
+// given TxRef. Name encodes block height so any VC (first attempt or
+// coordinator-directed resubmission) targets same database.
+func snapshotDatabaseName(ref *committerpb.TxRef) string {
+	return fmt.Sprintf("snapshot_%d", ref.BlockNum)
+}
+
+// decodeSnapshotState unmarshals a _snapshot record value.
+func decodeSnapshotState(raw []byte) (*committerpb.SnapshotState, error) {
+	var state committerpb.SnapshotState
+	if err := proto.Unmarshal(raw, &state); err != nil {
+		return nil, errors.Wrap(err, "failed to decode _snapshot record")
+	}
+	return &state, nil
+}
+
+// encodeSnapshotState marshals a _snapshot record value.
+func encodeSnapshotState(state *committerpb.SnapshotState) ([]byte, error) {
+	raw, err := proto.Marshal(state)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to marshal _snapshot record")
+	}
+	return raw, nil
 }

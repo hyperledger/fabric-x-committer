@@ -46,6 +46,7 @@ func TestCreateSnapshotDatabase(t *testing.T) {
 	env := NewDatabaseTestEnv(t)
 	testdb.EnsureSnapshotSchedule(t, env.DBConf.Database)
 	ctx, _ := createContext(t)
+
 	ref := &committerpb.TxRef{BlockNum: 1234567, TxNum: 0, TxId: "snap-clone-1"}
 	name := snapshotDatabaseName(ref)
 	dropCloneCleanup(t, env.DB, name)
@@ -175,9 +176,55 @@ func TestCommitSnapshotTxCreatesCloneAndPendingRow(t *testing.T) {
 	require.NotNil(t, stored)
 	var got committerpb.SnapshotState
 	require.NoError(t, proto.Unmarshal(stored.Value, &got))
-	require.Equal(t, committerpb.SnapshotState_PENDING, got.Status)
+	require.Contains(t, []committerpb.SnapshotState_Status{
+		committerpb.SnapshotState_PENDING,
+		committerpb.SnapshotState_IN_PROGRESS,
+		committerpb.SnapshotState_COMPLETED,
+	}, got.Status)
 	require.Equal(t, name, got.CloneDatabase)
 	require.Equal(t, ref.TxId, got.TxRef.TxId)
+}
+
+func TestUpdateSnapshotState(t *testing.T) {
+	t.Parallel()
+	env := newCommitterTestEnv(t)
+	testdb.EnsureSnapshotSchedule(t, env.dbEnv.DBConf.Database)
+	ctx, _ := createContext(t)
+
+	ref := &committerpb.TxRef{BlockNum: 700200, TxNum: 0, TxId: "snap-update-1"}
+	name := snapshotDatabaseName(ref)
+	dropCloneCleanup(t, env.dbEnv.DB, name)
+
+	// Commit a PENDING _snapshot row through the normal path.
+	value, err := proto.Marshal(&committerpb.SnapshotState{TxRef: ref})
+	require.NoError(t, err)
+	nws := make(transactionToWrites)
+	nws.getOrCreate(TxID(ref.TxId), committerpb.SnapshotNamespaceID).append([]byte(ref.TxId), value, 0)
+	channel.NewWriter(ctx, env.validatedTxs).Write(&validatedTransactions{
+		validTxNonBlindWrites: transactionToWrites{},
+		validTxBlindWrites:    transactionToWrites{},
+		newWrites:             nws,
+		readToTxIDs:           readToTransactions{},
+		invalidTxStatus:       map[TxID]committerpb.Status{},
+		txIDToHeight:          transactionIDToHeight{TxID(ref.TxId): servicepb.NewHeightFromTxRef(ref)},
+	})
+	s, ok := channel.NewReader(ctx, env.txStatus).Read()
+	require.True(t, ok)
+	require.Equal(t, committerpb.Status_COMMITTED, s.Status[0].Status)
+
+	// Move PENDING -> IN_PROGRESS.
+	require.NoError(t, env.dbEnv.DB.updateSnapshotState(
+		ctx, ref, committerpb.SnapshotState_IN_PROGRESS, nil,
+	))
+
+	rows := env.dbEnv.FetchKeys(t, committerpb.SnapshotNamespaceID, [][]byte{[]byte(ref.TxId)})
+	stored := rows[ref.TxId]
+	require.NotNil(t, stored)
+	require.EqualValues(t, 1, stored.Version) // version incremented from 0.
+	var got committerpb.SnapshotState
+	require.NoError(t, proto.Unmarshal(stored.Value, &got))
+	require.Equal(t, committerpb.SnapshotState_IN_PROGRESS, got.Status)
+	require.Equal(t, name, got.CloneDatabase)
 }
 
 func TestSnapshotDatabaseFailureReturnsError(t *testing.T) {

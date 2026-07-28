@@ -68,6 +68,8 @@ type (
 		retryProfile         *retry.Profile
 		tablePreSplitTablets int
 		config               *statedb.Config
+		resourceLimits       *ResourceLimitsConfig
+		snapshotHashJobs     chan snapshotHashJob
 	}
 
 	// keyToVersion is a map from key to version.
@@ -92,7 +94,9 @@ type (
 )
 
 // newDatabase creates a new database.
-func newDatabase(ctx context.Context, config *statedb.Config, metrics *perfMetrics) (*database, error) {
+func newDatabase(
+	ctx context.Context, config *statedb.Config, metrics *perfMetrics, resourceLimits *ResourceLimitsConfig,
+) (*database, error) {
 	pool, err := statedb.NewPool(ctx, config)
 	if err != nil {
 		return nil, err
@@ -112,6 +116,8 @@ func newDatabase(ctx context.Context, config *statedb.Config, metrics *perfMetri
 		retryProfile:         config.Retry,
 		tablePreSplitTablets: tablePreSplitTablets,
 		config:               config,
+		resourceLimits:       resourceLimits,
+		snapshotHashJobs:     make(chan snapshotHashJob, snapshotHashJobBuffer),
 	}, nil
 }
 
