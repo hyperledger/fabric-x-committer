@@ -33,6 +33,8 @@ const (
 	insertNsStatesSQLTempl = "SELECT * FROM insert_ns_${NAMESPACE_ID}($1::BYTEA[], $2::BYTEA[]);"
 	// queryVersionsSQLTempl template for the querying versions for given keys for each namespace.
 	queryVersionsSQLTempl = "SELECT key, version FROM ns_${NAMESPACE_ID} WHERE key = ANY($1);"
+	// queryValuesByKeysSQLTempl template for querying values for given keys for each namespace.
+	queryValuesByKeysSQLTempl = "SELECT key, value FROM ns_${NAMESPACE_ID} WHERE key = ANY($1);"
 
 	// insertTxStatusSQLStmt commits transaction's status for each TX.
 	insertTxStatusSQLStmt = "SELECT * FROM insert_tx_status($1::BYTEA[], $2::INTEGER[], $3::BYTEA[]);"
@@ -46,7 +48,17 @@ const (
 	queryTxIDsStatusPrepSQLStmt = "SELECT tx_id, status, height FROM tx_status WHERE tx_id = ANY($1);"
 )
 
-var lastCommittedBlockNumberKey = []byte("last committed block number")
+var (
+	lastCommittedBlockNumberKey = []byte("last committed block number")
+
+	// latestSnapshotKeyMetadataKey stores the tx_id of the most recently accepted
+	// _snapshot record, so the snapshot gate (see snapshot.go) can look up its
+	// current status with a single key lookup instead of scanning the (small but
+	// growing) ns__snapshot table. Pre-seeded (NULL) at DB init alongside
+	// lastCommittedBlockNumberKey and written atomically, in the same DB
+	// transaction as the _snapshot row it points to, by commit.
+	latestSnapshotKeyMetadataKey = []byte("latest snapshot key")
+)
 
 type (
 	// database handles the database operations.
@@ -219,6 +231,13 @@ func (d *database) commit(ctx context.Context, states *statesToBeCommitted) (*co
 		return res, nil
 	}
 
+	// If this batch carries a _snapshot write, record its key as the latest
+	// snapshot pointer in the SAME transaction, so the pointer and the _snapshot
+	// row it targets are always consistent (see rejectSnapshotIfPriorNotCheckpointed).
+	if err = setLatestSnapshotKeyIfPresent(ctx, tx, states.newWrites[committerpb.SnapshotNamespaceID]); err != nil {
+		return nil, fmt.Errorf("failed to set latest snapshot key: %w", err)
+	}
+
 	err = tx.Commit(ctx)
 	promutil.Observe(d.metrics.databaseTxBatchCommitLatencySeconds, time.Since(start))
 	if err != nil {
@@ -272,6 +291,18 @@ func (d *database) writeStatesByGroup(
 	}
 
 	return nil, nil
+}
+
+// setLatestSnapshotKeyIfPresent points latestSnapshotKeyMetadataKey at w's sole
+// key, or no-ops when w is empty (normal non-snapshot batch). The key is
+// pre-seeded (NULL) at DB init, so the existing setMetadataPrepSQLStmt UPDATE
+// is reused as-is.
+func setLatestSnapshotKeyIfPresent(ctx context.Context, tx pgx.Tx, w *namespaceWrites) error {
+	if w.empty() {
+		return nil
+	}
+	_, err := tx.Exec(ctx, setMetadataPrepSQLStmt, latestSnapshotKeyMetadataKey, w.keys[0])
+	return errors.Wrap(err, "failed to set latest snapshot key")
 }
 
 func (d *database) insertTxStatus(

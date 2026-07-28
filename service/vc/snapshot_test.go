@@ -298,3 +298,159 @@ func TestSnapshotResubmissionSkipsReclone(t *testing.T) {
 	// already-committed txID and returned the committed status.
 	require.False(t, cloneExists(t, env.dbEnv.DB, name))
 }
+
+func TestRejectSnapshotIfPriorNotCheckpointed(t *testing.T) {
+	t.Parallel()
+	inProgress := committerpb.Status_REJECTED_SNAPSHOT_IN_PROGRESS
+	noCheckpoint := committerpb.Status_REJECTED_SNAPSHOT_NO_CHECKPOINT
+	tests := []struct {
+		name       string
+		block      uint64
+		priorState committerpb.SnapshotState_Status
+		wantStatus committerpb.Status
+		accepted   bool
+	}{
+		{"checkpointed accepts", 1000, committerpb.SnapshotState_CHECKPOINTED, 0, true},
+		{"unspecified blocks 119", 1001, committerpb.SnapshotState_STATUS_UNSPECIFIED, inProgress, false},
+		{"pending blocks 119", 1002, committerpb.SnapshotState_PENDING, inProgress, false},
+		{"in_progress blocks 119", 1003, committerpb.SnapshotState_IN_PROGRESS, inProgress, false},
+		{"failed blocks 119", 1004, committerpb.SnapshotState_FAILED, inProgress, false},
+		{"completed blocks 120", 1005, committerpb.SnapshotState_COMPLETED, noCheckpoint, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			env := newCommitterTestEnv(t)
+			testdb.EnsureSnapshotSchedule(t, env.dbEnv.DBConf.Database)
+			ctx, _ := createContext(t)
+
+			prior := &committerpb.TxRef{BlockNum: tc.block, TxNum: 0, TxId: fmt.Sprintf("prior-%d", tc.block)}
+			// Seed a prior _snapshot row directly through the normal commit path (bypassing
+			// the gate), so its state is set up for the gate to react to.
+			priorValue, err := proto.Marshal(&committerpb.SnapshotState{TxRef: prior, Status: tc.priorState})
+			require.NoError(t, err)
+
+			priorNWs := make(transactionToWrites)
+			priorNWs.getOrCreate(TxID(prior.TxId), committerpb.SnapshotNamespaceID).
+				append([]byte(prior.TxId), priorValue, 0)
+
+			_, err = env.dbEnv.DB.commit(ctx, &statesToBeCommitted{
+				newWrites: groupWritesByNamespace(priorNWs),
+				batchStatus: &committerpb.TxStatusBatch{Status: []*committerpb.TxStatus{
+					servicepb.NewHeightFromTxRef(prior).WithStatus(prior.TxId, committerpb.Status_COMMITTED),
+				}},
+				txIDToHeight: transactionIDToHeight{TxID(prior.TxId): servicepb.NewHeightFromTxRef(prior)},
+			})
+			require.NoError(t, err)
+
+			incomingTxID := fmt.Sprintf("incoming-%d", tc.block)
+			vTx, name := newIncomingSnapshotVTx(t, env.dbEnv.DB, tc.block+1000, incomingTxID)
+
+			require.NoError(t, env.dbEnv.DB.rejectSnapshotIfPriorNotCheckpointed(ctx, vTx))
+
+			// The gate itself never creates a clone (that happens later, in
+			// createSnapshotIfPresent), so no clone should exist regardless of
+			// accept/reject outcome.
+			require.False(t, cloneExists(t, env.dbEnv.DB, name))
+
+			if tc.accepted {
+				require.Empty(t, vTx.invalidTxStatus)
+				require.NotEmpty(t, vTx.newWrites)
+				return
+			}
+			require.Equal(t, tc.wantStatus, vTx.invalidTxStatus[TxID(incomingTxID)])
+			require.Empty(t, vTx.newWrites) // incoming _snapshot write removed
+		})
+	}
+}
+
+// TestRejectSnapshotIfPriorNotCheckpointedMalformedRecord verifies that a
+// latest _snapshot record which fails to decode is a hard error (data
+// corruption / invariant violation), not a soft rejection status.
+func TestRejectSnapshotIfPriorNotCheckpointedMalformedRecord(t *testing.T) {
+	t.Parallel()
+	env := newCommitterTestEnv(t)
+	testdb.EnsureSnapshotSchedule(t, env.dbEnv.DBConf.Database)
+	ctx, _ := createContext(t)
+
+	// Seed a prior _snapshot record whose value is not a valid SnapshotState.
+	prior := &committerpb.TxRef{BlockNum: 2000, TxNum: 0, TxId: "prior-malformed"}
+	nws := make(transactionToWrites)
+	nws.getOrCreate(TxID(prior.TxId), committerpb.SnapshotNamespaceID).
+		append([]byte(prior.TxId), []byte("not a valid protobuf message"), 0)
+	info := &statesToBeCommitted{
+		newWrites: groupWritesByNamespace(nws),
+		batchStatus: &committerpb.TxStatusBatch{Status: []*committerpb.TxStatus{
+			servicepb.NewHeightFromTxRef(prior).WithStatus(prior.TxId, committerpb.Status_COMMITTED),
+		}},
+		txIDToHeight: transactionIDToHeight{TxID(prior.TxId): servicepb.NewHeightFromTxRef(prior)},
+	}
+	_, err := env.dbEnv.DB.commit(ctx, info)
+	require.NoError(t, err)
+
+	// An incoming, different snapshot request must see a hard error, not a
+	// silent conservative rejection status.
+	vTx, name := newIncomingSnapshotVTx(t, env.dbEnv.DB, 2001, "incoming-malformed")
+
+	err = env.dbEnv.DB.rejectSnapshotIfPriorNotCheckpointed(ctx, vTx)
+	require.ErrorContains(t, err, "failed to decode latest _snapshot record")
+	require.False(t, cloneExists(t, env.dbEnv.DB, name))
+}
+
+// newIncomingSnapshotVTx builds the validatedTransactions batch for a single,
+// standalone incoming snapshot TX targeting (blockNum, txID), as
+// rejectSnapshotIfPriorNotCheckpointed expects: exactly one transaction with one
+// unstamped (status-UNSPECIFIED) _snapshot write. It also registers cleanup for
+// the snapshot's clone database (named after ref), so callers get that for free.
+// Returns the built vTx and the clone database name.
+func newIncomingSnapshotVTx(t *testing.T, db *database, blockNum uint64, txID string) (*validatedTransactions, string) {
+	t.Helper()
+	ref := &committerpb.TxRef{BlockNum: blockNum, TxNum: 0, TxId: txID}
+	name := snapshotDatabaseName(ref)
+	dropCloneCleanup(t, db, name)
+
+	value, err := proto.Marshal(&committerpb.SnapshotState{TxRef: ref})
+	require.NoError(t, err)
+
+	nws := make(transactionToWrites)
+	nws.getOrCreate(TxID(ref.TxId), committerpb.SnapshotNamespaceID).append([]byte(ref.TxId), value, 0)
+
+	vTx := &validatedTransactions{
+		validTxNonBlindWrites: transactionToWrites{},
+		validTxBlindWrites:    transactionToWrites{},
+		newWrites:             nws,
+		readToTxIDs:           readToTransactions{},
+		invalidTxStatus:       map[TxID]committerpb.Status{},
+		txIDToHeight:          transactionIDToHeight{TxID(ref.TxId): servicepb.NewHeightFromTxRef(ref)},
+	}
+	return vTx, name
+}
+
+func TestSnapshotGateEndToEnd(t *testing.T) {
+	t.Parallel()
+	env := newCommitterTestEnv(t)
+	testdb.EnsureSnapshotSchedule(t, env.dbEnv.DBConf.Database)
+	ctx, _ := createContext(t)
+	writer := channel.NewWriter(ctx, env.validatedTxs)
+	reader := channel.NewReader(ctx, env.txStatus)
+
+	// First snapshot commits (PENDING, not yet checkpointed).
+	vTx1, _ := newIncomingSnapshotVTx(t, env.dbEnv.DB, 700001, "gate-first")
+	writer.Write(vTx1)
+	s1, ok := reader.Read()
+	require.True(t, ok)
+	require.Equal(t, committerpb.Status_COMMITTED, s1.Status[0].Status)
+
+	// Second, different snapshot is rejected because first is not CHECKPOINTED.
+	secondTxID := "gate-second"
+	vTx2, secondName := newIncomingSnapshotVTx(t, env.dbEnv.DB, 700002, secondTxID)
+	writer.Write(vTx2)
+	s2, ok := reader.Read()
+	require.True(t, ok)
+	require.Equal(t, committerpb.Status_REJECTED_SNAPSHOT_IN_PROGRESS, s2.Status[0].Status)
+
+	// No database and no _snapshot record for the rejected request.
+	require.False(t, cloneExists(t, env.dbEnv.DB, secondName))
+	rows := env.dbEnv.FetchKeys(t, committerpb.SnapshotNamespaceID, [][]byte{[]byte(secondTxID)})
+	require.Empty(t, rows)
+}
