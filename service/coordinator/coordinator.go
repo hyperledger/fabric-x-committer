@@ -41,6 +41,7 @@ type (
 		dependencyMgr         *dependencygraph.Manager
 		signatureVerifierMgr  *signatureVerifierManager
 		validatorCommitterMgr *validatorCommitterManager
+		validatorCommitterAPI *validatorCommitterAPI
 		policyMgr             *policyManager
 		queues                *channels
 		config                *Config
@@ -183,6 +184,16 @@ func NewCoordinatorService(c *Config) *Service {
 func (c *Service) Run(ctx context.Context) error {
 	canCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	// The API is created before the managers start, so the coordinator can query any vcservice
+	// without waiting for the validator-committer manager to open its per-endpoint connections.
+	var err error
+	c.validatorCommitterAPI, err = newValidatorCommitterAPI(&c.config.ValidatorCommitter, c.policyMgr)
+	if err != nil {
+		return err
+	}
+	defer c.validatorCommitterAPI.close()
+
 	g, eCtx := errgroup.WithContext(canCtx)
 
 	g.Go(func() error {
@@ -215,12 +226,8 @@ func (c *Service) Run(ctx context.Context) error {
 		return nil
 	})
 
-	if !c.validatorCommitterMgr.ready.WaitForReady(eCtx) {
-		return g.Wait()
-	}
-
 	// We attempt to recover the policy manager and the last committed block number from the state DB.
-	if err := c.validatorCommitterMgr.recoverPolicyManagerFromStateDB(ctx); err != nil {
+	if err := c.validatorCommitterAPI.recoverPolicyManagerFromStateDB(ctx); err != nil {
 		return err
 	}
 
@@ -250,8 +257,8 @@ func (c *Service) SetLastCommittedBlockNumber(
 	ctx context.Context,
 	lastBlock *servicepb.BlockRef,
 ) (*emptypb.Empty, error) {
-	// Error is already wrapped with proper gRPC status code by validatorCommitterMgr.
-	return &emptypb.Empty{}, c.validatorCommitterMgr.setLastCommittedBlockNumber(ctx, lastBlock)
+	// Error is already wrapped with proper gRPC status code by validatorCommitterAPI.
+	return &emptypb.Empty{}, c.validatorCommitterAPI.setLastCommittedBlockNumber(ctx, lastBlock)
 }
 
 // GetNextBlockNumberToCommit returns the next expected block number to be received by the coordinator.
@@ -259,8 +266,8 @@ func (c *Service) GetNextBlockNumberToCommit(
 	ctx context.Context,
 	_ *emptypb.Empty,
 ) (*servicepb.BlockRef, error) {
-	// Error is already wrapped with proper gRPC status code by validatorCommitterMgr.
-	return c.validatorCommitterMgr.getNextBlockNumberToCommit(ctx)
+	// Error is already wrapped with proper gRPC status code by validatorCommitterAPI.
+	return c.validatorCommitterAPI.getNextBlockNumberToCommit(ctx)
 }
 
 // GetTransactionsStatus returns the status of given transactions identifiers.
@@ -268,8 +275,8 @@ func (c *Service) GetTransactionsStatus(
 	ctx context.Context,
 	q *committerpb.TxIDsBatch,
 ) (*committerpb.TxStatusBatch, error) {
-	// Error is already wrapped with proper gRPC status code by validatorCommitterMgr.
-	return c.validatorCommitterMgr.getTransactionsStatus(ctx, q)
+	// Error is already wrapped with proper gRPC status code by validatorCommitterAPI.
+	return c.validatorCommitterAPI.getTransactionsStatus(ctx, q)
 }
 
 // NoPendingTransactionProcessing returns true when all previously submitted
