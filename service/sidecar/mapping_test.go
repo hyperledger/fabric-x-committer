@@ -122,7 +122,6 @@ func TestSystemNamespaceFormValidation(t *testing.T) {
 		tx                  *applicationpb.Tx
 		expectedStatus      committerpb.Status
 		expectedHasSnapshot bool
-		expectedSnapshotIdx int
 	}{
 		{
 			name: "marker-only snapshot namespace is valid",
@@ -132,7 +131,6 @@ func TestSystemNamespaceFormValidation(t *testing.T) {
 			},
 			expectedStatus:      statusNotYetValidated,
 			expectedHasSnapshot: true,
-			expectedSnapshotIdx: 0,
 		},
 		{
 			name: "snapshot namespace with reads-only is malformed",
@@ -223,6 +221,54 @@ func TestSystemNamespaceFormValidation(t *testing.T) {
 			expectedStatus: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY,
 		},
 		{
+			name: "checkpoint namespace with read-only is malformed",
+			tx: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
+					NsId:       committerpb.CheckpointNamespaceID,
+					ReadsOnly:  []*applicationpb.Read{{Key: []byte("other-key")}},
+					ReadWrites: []*applicationpb.ReadWrite{{Key: heightKey, Value: []byte("checkpoint")}},
+				}},
+				Endorsements: dummyEndorsements(1),
+			},
+			expectedStatus: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY,
+		},
+		{
+			name: "checkpoint namespace with blind write is malformed",
+			tx: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
+					NsId:        committerpb.CheckpointNamespaceID,
+					ReadWrites:  []*applicationpb.ReadWrite{{Key: heightKey, Value: []byte("checkpoint")}},
+					BlindWrites: []*applicationpb.Write{{Key: []byte("key"), Value: []byte("value")}},
+				}},
+				Endorsements: dummyEndorsements(1),
+			},
+			expectedStatus: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY,
+		},
+		{
+			name: "checkpoint namespace with more than one read-write is malformed",
+			tx: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
+					NsId: committerpb.CheckpointNamespaceID,
+					ReadWrites: []*applicationpb.ReadWrite{
+						{Key: heightKey, Value: []byte("checkpoint")},
+						{Key: []byte("other-key"), Value: []byte("checkpoint")},
+					},
+				}},
+				Endorsements: dummyEndorsements(1),
+			},
+			expectedStatus: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY,
+		},
+		{
+			name: "checkpoint namespace with no read-write is malformed",
+			tx: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
+					NsId: committerpb.CheckpointNamespaceID,
+				}},
+				Endorsements: dummyEndorsements(1),
+			},
+			expectedStatus: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY,
+		},
+		{
 			name: "checkpoint namespace mixed with ordinary namespace is malformed",
 			tx: &applicationpb.Tx{
 				Namespaces: []*applicationpb.TxNamespace{
@@ -249,8 +295,17 @@ func TestSystemNamespaceFormValidation(t *testing.T) {
 			mappedBlock, err := mapBlock(block, &txIDToHeight)
 			require.NoError(t, err)
 			require.NotNil(t, mappedBlock)
-			require.Equal(t, tc.expectedHasSnapshot, mappedBlock.hasSnapshot)
-			require.Equal(t, tc.expectedSnapshotIdx, mappedBlock.snapshotTxIndex)
+			require.Equal(t, tc.expectedHasSnapshot, mappedBlock.snapshotTx != nil)
+			if tc.expectedHasSnapshot {
+				// The snapshot TX is kept separate from block.Txs; see the snapshotTx field
+				// comment in mapping.go.
+				require.Equal(
+					t,
+					committerpb.SnapshotNamespaceID,
+					mappedBlock.snapshotTx.Content.Namespaces[0].NsId,
+				)
+				require.Empty(t, mappedBlock.block.Txs)
+			}
 		})
 	}
 }
@@ -291,11 +346,15 @@ func TestDuplicateSnapshotInBlock(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, mappedBlock)
 
-	// Only the first snapshot is accepted; its index points into the accepted Txs slice
-	// (regular#0 + snapshot#0 + regular#2 = indexes 0,1,2), so the snapshot is at index 1.
-	require.True(t, mappedBlock.hasSnapshot)
-	require.Equal(t, 1, mappedBlock.snapshotTxIndex)
-	require.Len(t, mappedBlock.block.Txs, 3)
+	// Only the first snapshot is accepted and is kept separate from block.Txs (see the
+	// snapshotTx field comment in mapping.go): block.Txs holds only the two regular TXs.
+	require.NotNil(t, mappedBlock.snapshotTx)
+	require.Equal(
+		t,
+		committerpb.SnapshotNamespaceID,
+		mappedBlock.snapshotTx.Content.Namespaces[0].NsId,
+	)
+	require.Len(t, mappedBlock.block.Txs, 2)
 
 	// The second snapshot is rejected with the dedicated stored status.
 	require.Len(t, mappedBlock.block.Rejected, 1)

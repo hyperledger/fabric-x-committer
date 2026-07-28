@@ -29,12 +29,13 @@ type (
 		block       *servicepb.CoordinatorBatch
 		withStatus  *blockWithStatus
 		isConfig    bool
-		hasSnapshot bool
-		// snapshotTxIndex is the index (into block.Txs) of the accepted snapshot TX.
-		// Only the first snapshot TX in a block is accepted; any further snapshot TXs in the
-		// same block are rejected with REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK. Valid only when
-		// hasSnapshot is true.
-		snapshotTxIndex int
+		// snapshotTx holds the accepted snapshot TX, kept out of block.Txs (unlike a regular TX) so
+		// it can be submitted to the coordinator as its own single-TX segment, separately from and
+		// after the block's other TXs. See splitSnapshotMappedBlock in relay.go. A non-nil snapshotTx
+		// is the sole signal that the block has an accepted snapshot TX. Only the first snapshot TX
+		// in a block is accepted; any further snapshot TXs in the same block are rejected with
+		// REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK.
+		snapshotTx *servicepb.TxWithRef
 		// txIDToHeight is a reference to the relay map.
 		txIDToHeight *utils.SyncMap[string, servicepb.Height]
 	}
@@ -143,17 +144,22 @@ func (b *blockMappingResult) mapMessage(msgIndex uint32, msg []byte) error {
 			return b.rejectTx(ref, status, "malformed tx")
 		}
 		if isSnapshotTx(tx) {
-			if b.hasSnapshot {
+			if b.snapshotTx != nil {
 				// Only the first snapshot TX in a block is processed; reject the rest with a
 				// stored status so the outcome is recorded, regardless of the first's outcome.
 				return b.rejectTx(ref, committerpb.Status_REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK,
 					"duplicate snapshot tx in block")
 			}
-			if err := b.appendTx(ref, tx); err != nil {
+			txWithRef, err := b.prepareTx(ref, tx)
+			if err != nil {
 				return err
 			}
-			b.hasSnapshot = true
-			b.snapshotTxIndex = len(b.block.Txs) - 1
+			if txWithRef == nil {
+				// A duplicate TX ID; already rejected by prepareTx via addTxIDMapping.
+				return nil
+			}
+			// Kept off block.Txs; see the snapshotTx field comment.
+			b.snapshotTx = txWithRef
 			return nil
 		}
 		return b.appendTx(ref, tx)
@@ -164,14 +170,29 @@ func (b *blockMappingResult) mapMessage(msgIndex uint32, msg []byte) error {
 }
 
 func (b *blockMappingResult) appendTx(ref *committerpb.TxRef, tx *applicationpb.Tx) error {
-	if idAlreadyExists, err := b.addTxIDMapping(ref); idAlreadyExists || err != nil {
+	txWithRef, err := b.prepareTx(ref, tx)
+	if err != nil || txWithRef == nil {
 		return err
 	}
-	txWithRef := &servicepb.TxWithRef{Ref: ref, Content: tx}
 	b.block.Txs = append(b.block.Txs, txWithRef)
+	return nil
+}
+
+// prepareTx runs the shared dedup/creation logic for an accepted TX: it records the TX ID,
+// stores the TxWithRef in withStatus.txs (keyed by original position), and logs it. It returns a
+// nil TxWithRef (and nil error) when ref.TxId is a duplicate, since addTxIDMapping has already
+// rejected it with a stored status. Callers append the returned TxWithRef to block.Txs themselves
+// (immediately for appendTx, or deferred to end-of-block for the snapshot TX).
+func (b *blockMappingResult) prepareTx(
+	ref *committerpb.TxRef, tx *applicationpb.Tx,
+) (*servicepb.TxWithRef, error) {
+	if idAlreadyExists, err := b.addTxIDMapping(ref); idAlreadyExists || err != nil {
+		return nil, err
+	}
+	txWithRef := &servicepb.TxWithRef{Ref: ref, Content: tx}
 	b.withStatus.txs[ref.TxNum] = txWithRef
 	debugTx(ref, "included: %s", ref.TxId)
-	return nil
+	return txWithRef, nil
 }
 
 func (b *blockMappingResult) rejectTx(ref *committerpb.TxRef, status committerpb.Status, reason string) error {

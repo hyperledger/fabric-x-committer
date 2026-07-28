@@ -343,9 +343,11 @@ When a block satisfies the criteria outlined in step f, the relay component perf
 
 #### Snapshot split and drain
 
-When a valid `_snapshot` marker transaction appears in a block, the sidecar treats it as a submission barrier:
+When a valid `_snapshot` marker transaction appears in a block, the sidecar treats it as a submission barrier and
+always sends the snapshot transaction last, regardless of where it originally appeared in the block:
 
-1. Submit regular transactions that appear before the snapshot to the coordinator.
+1. Submit every other transaction in the block (regardless of whether it originally preceded or followed the
+   snapshot) to the coordinator.
 2. Wait for `waitingTxsSlots.WaitTillEmpty(ctx)` so all in-flight regular transactions complete.
 3. Submit the snapshot transaction as a one-transaction coordinator batch, preserving its original block number and
    transaction number.
@@ -355,11 +357,15 @@ When a valid `_snapshot` marker transaction appears in a block, the sidecar trea
 The drain ends when the sidecar receives the snapshot transaction status, normally `COMMITTED`. It does not wait for
 background snapshot hash computation in the validator-committer.
 
+Sending the snapshot transaction last means the snapshot always reflects the full effect of its block, since it is
+committed only after every other transaction in that block has already committed. This is why the snapshot is always
+submitted last, not necessarily in its original position: whether it originally appeared first, in the middle, or
+last among the block's transactions, its outcome must still capture the whole block's writes.
+
 At most one snapshot barrier is applied per block: only the first `_snapshot` transaction in a block is accepted, so
-the block is split into at most three segments — the regular transactions before the snapshot, the snapshot
-transaction alone, and the regular transactions after it. When the snapshot is the first or last transaction (and
-there are no rejected statuses to carry on the empty side), the empty leading or trailing segment is omitted, leaving
-two segments, or a single snapshot-only segment when the block contains nothing else.
+the block is split into at most two segments — one segment carrying every other transaction and rejected status in
+the block (in original order), followed by the snapshot transaction alone. When the block contains nothing but the
+snapshot, the first segment is omitted, leaving a single snapshot-only segment.
 
 ### Task 3. Persisting Committed Block in the File System
 
