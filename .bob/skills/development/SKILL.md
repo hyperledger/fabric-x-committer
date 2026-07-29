@@ -123,25 +123,26 @@ Model file: `service/vc/committer.go` reads `newCommitter` → `run` → `commit
 ```go
 // service/vc/committer.go:50 — run() sits directly above the commit() it calls
 func (c *transactionCommitter) run(ctx context.Context, db *database, numWorkers int) error {
- g, eCtx := errgroup.WithContext(ctx)
- for range numWorkers {
-  g.Go(func() error { return c.commit(eCtx, db) }) // callee defined next
- }
- return g.Wait()
+	g, eCtx := errgroup.WithContext(ctx)
+	for range numWorkers {
+		g.Go(func() error { return c.commit(eCtx, db) }) // callee defined next
+	}
+	return g.Wait()
 }
 
 func (c *transactionCommitter) commit(ctx context.Context, db *database) error { /* ... */ }
 ```
 
 This applies when you *add* a helper too — insert it directly below its caller, not
-above, and not wherever there is spare room in the file. When you extract a helper out
-of an existing function during a refactor, double-check the extracted function's new
-position still satisfies caller-before-callee relative to *every* caller, not just the
-one you were looking at (a helper called from two places belongs below the one that
-reads top-to-bottom first). Free-standing utility/formatting helpers with no domain
-logic of their own (string formatting, tiny predicates, struct-literal constructors used
-from a single call site) belong at the very bottom of the file — see file layout item 10
-below — even below the last method of the file's main type.
+above it and not at some other arbitrary location in the file. When you extract a
+helper out of an existing function during a refactor, double-check the extracted
+function's new position still satisfies caller-before-callee relative to *every*
+caller, not just the one you were looking at (a helper called from two places belongs
+below the one that reads top-to-bottom first). Free-standing utility/formatting
+helpers with no domain logic of their own (string formatting, tiny predicates,
+struct-literal constructors used from a single call site) belong at the very bottom of
+the file — see file layout item 10 below — even below the last method of the file's
+main type.
 
 ### Group methods by struct
 
@@ -243,7 +244,7 @@ completion — that is errgroup's job. Bound parallelism with a fixed worker cou
 ```go
 g, eCtx := errgroup.WithContext(ctx)
 for range numWorkers {
- g.Go(func() error { return c.commit(eCtx, db) })
+	g.Go(func() error { return c.commit(eCtx, db) })
 }
 return g.Wait()
 ```
@@ -271,10 +272,10 @@ operation releases immediately on cancellation and the system never hangs on shu
 incoming := channel.NewReader(ctx, c.incomingValidatedTransactions)
 outgoing := channel.NewWriter(ctx, c.outgoingTransactionsStatus)
 for {
- vTx, ok := incoming.Read()
- if !ok { return nil } // ctx done or channel closed
- // ...
- outgoing.Write(txsStatus)
+	vTx, ok := incoming.Read()
+	if !ok { return nil } // ctx done or channel closed
+	// ...
+	outgoing.Write(txsStatus)
 }
 ```
 
@@ -334,12 +335,12 @@ uses `fmt.Errorf("failed to read status for tx %s: %w", txID, err)`, not `errors
 
 ```go
 if len(query.TxIds) == 0 {
- return nil, grpcerror.WrapInvalidArgument(errors.New("query is empty"))
+	return nil, grpcerror.WrapInvalidArgument(errors.New("query is empty"))
 }
 txIDsStatus, err := vc.db.readStatusWithHeight(ctx, txIDs)
 if err != nil {
- logger.Errorf("%+v", err)                    // log full trace, once, at the boundary
- return nil, grpcerror.WrapInternalError(err) // convert to a gRPC status code
+	logger.Errorf("%+v", err)                    // log full trace, once, at the boundary
+	return nil, grpcerror.WrapInternalError(err) // convert to a gRPC status code
 }
 ```
 
