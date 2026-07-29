@@ -197,23 +197,28 @@ func (r *relay) submitSnapshotBlock(
 	queue channel.Writer[*blockMappingResult],
 	mappedBlock *blockMappingResult,
 ) error {
-	for _, segment := range splitSnapshotMappedBlock(mappedBlock) {
-		if segment.snapshotTx != nil {
-			if err := r.drain(ctx); err != nil {
-				return err
-			}
-		}
-
-		r.queueMappedBlock(ctx, queue, segment)
-
-		if segment.snapshotTx != nil {
-			if err := r.drain(ctx); err != nil {
-				return err
-			}
-		}
+	if len(mappedBlock.block.Txs) > 0 || len(mappedBlock.block.Rejected) > 0 {
+		r.queueMappedBlock(ctx, queue, &blockMappingResult{
+			blockNumber: mappedBlock.blockNumber,
+			block: &servicepb.CoordinatorBatch{
+				Txs:      mappedBlock.block.Txs,
+				Rejected: mappedBlock.block.Rejected,
+			},
+			withStatus: mappedBlock.withStatus,
+		})
 	}
 
-	return nil
+	if err := r.drain(ctx); err != nil {
+		return err
+	}
+	r.queueMappedBlock(ctx, queue, &blockMappingResult{
+		blockNumber: mappedBlock.blockNumber,
+		block: &servicepb.CoordinatorBatch{
+			Txs: []*servicepb.TxWithRef{mappedBlock.snapshotTx},
+		},
+		withStatus: mappedBlock.withStatus,
+	})
+	return r.drain(ctx)
 }
 
 // drain blocks until all in-flight transactions have been processed by the committer.
@@ -235,40 +240,6 @@ func (r *relay) queueMappedBlock(
 	queue.Write(mappedBlock)
 }
 
-// splitSnapshotMappedBlock splits mappedBlock (called only when its snapshotTx is non-nil) into
-// at most two segments: every other TX/rejected status in the block, in original order, followed
-// by the snapshot TX alone — the snapshot always commits last, regardless of its original
-// position. When the block contains only the snapshot, the first segment is skipped. Segments
-// share (not copy) blockNumber/withStatus/txIDToHeight, since withStatus and txIDToHeight track
-// whole-block state keyed by original position.
-func splitSnapshotMappedBlock(mappedBlock *blockMappingResult) []*blockMappingResult {
-	segments := make([]*blockMappingResult, 0, 2)
-	if len(mappedBlock.block.Txs) > 0 || len(mappedBlock.block.Rejected) > 0 {
-		segments = append(segments, &blockMappingResult{
-			blockNumber: mappedBlock.blockNumber,
-			block: &servicepb.CoordinatorBatch{
-				Txs:      mappedBlock.block.Txs,
-				Rejected: mappedBlock.block.Rejected,
-			},
-			withStatus:   mappedBlock.withStatus,
-			txIDToHeight: mappedBlock.txIDToHeight,
-		})
-	}
-
-	// Snapshot one-TX segment allows waiting for the snapshot status before later TXs.
-	segments = append(segments, &blockMappingResult{
-		blockNumber: mappedBlock.blockNumber,
-		block: &servicepb.CoordinatorBatch{
-			Txs: []*servicepb.TxWithRef{mappedBlock.snapshotTx},
-		},
-		withStatus:   mappedBlock.withStatus,
-		snapshotTx:   mappedBlock.snapshotTx,
-		txIDToHeight: mappedBlock.txIDToHeight,
-	})
-
-	return segments
-}
-
 func (r *relay) sendBlocksToCoordinator(
 	ctx context.Context,
 	mappedBlockQueue <-chan *blockMappingResult,
@@ -285,7 +256,7 @@ func (r *relay) sendBlocksToCoordinator(
 		}
 
 		startTime := time.Now()
-		// A snapshot block is split into multiple segments that share the same block number and
+		// A snapshot block is split into two segments that share the same block number and
 		// the same whole-block withStatus. Register the block and count it as active only once,
 		// on the first segment; later segments observe the existing entry. Note that this shared
 		// withStatus tracks all TXs of the original block, so it may reference more txIDs than the

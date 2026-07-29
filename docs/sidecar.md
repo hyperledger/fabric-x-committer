@@ -277,7 +277,7 @@ The sidecar applies additional form checks for system namespaces before forwardi
   decode as a full `servicepb.Height` via `servicepb.NewHeightFromBytes`; valid height prefixes with trailing bytes
   are rejected. Invalid checkpoint form is rejected with `MALFORMED_CHECKPOINT_INVALID_KEY`; a mixed
   `_checkpoint`+user transaction is rejected with `MALFORMED_SYSTEM_TX_NOT_STANDALONE`.
-- `_meta` keeps the existing namespace-policy update checks. `_config` is still rejected if submitted as an
+- `_meta` keeps the existing namespace-policy update checks. `_config` is rejected if submitted as an
   application transaction namespace.
 - Only the first `_snapshot` transaction in a block is accepted. Any additional `_snapshot` transaction in the same
   block is rejected with `REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK` (a stored status, so the outcome is recorded in the

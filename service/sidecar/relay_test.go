@@ -16,6 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -287,7 +288,7 @@ func TestRelaySnapshotBlockSplitAndDrain(t *testing.T) {
 
 	t.Log("Block #0 (regular, snapshot, regular): Submit")
 	// The snapshot sits in the middle of the block to verify it is always submitted last,
-	// regardless of its original position (see splitSnapshotMappedBlock in relay.go).
+	// regardless of its original position (see submitSnapshotBlock in relay.go).
 	regular1 := makeValidTx(t, "ch1")
 	regular2 := makeValidTx(t, "ch1")
 	snapshot := makeSnapshotTxForTest(t, "ch1")
@@ -341,19 +342,33 @@ func TestRelaySnapshotBlockSplitAndDrain(t *testing.T) {
 	requireStatusMetadata(t, committedBlock1, valid, valid, valid)
 }
 
-// TestSplitSnapshotMappedBlockCarriesAllRejected verifies that all rejected statuses in the
-// block — regardless of whether they originally preceded or followed the snapshot — ride the
-// single non-snapshot segment, which is always submitted (and drained) before the snapshot
-// segment. The snapshot TX always commits last within its block.
-func TestSplitSnapshotMappedBlockCarriesAllRejected(t *testing.T) {
+// TestSubmitSnapshotBlockSnapshotOnly verifies that when the block contains only the snapshot
+// TX (no regular TXs, no rejects), submitSnapshotBlock queues a single segment carrying the
+// snapshot TX alone, and does not queue an empty non-snapshot segment.
+func TestSubmitSnapshotBlockSnapshotOnly(t *testing.T) {
 	t.Parallel()
 
-	snapshotTx := func() *applicationpb.Tx {
-		return &applicationpb.Tx{
-			Namespaces:   []*applicationpb.TxNamespace{{NsId: committerpb.SnapshotNamespaceID}},
-			Endorsements: dummyEndorsements(1),
-		}
-	}
+	txb := &workload.TxBuilder{ChannelID: testChannelID}
+	block := workload.MapToOrdererBlock(9, []*servicepb.LoadGenTx{makeSnapshotLoadGenTxForTest(txb)})
+
+	var txIDToHeight utils.SyncMap[string, servicepb.Height]
+	mappedBlock, err := mapBlock(block, &txIDToHeight)
+	require.NoError(t, err)
+	require.NotNil(t, mappedBlock.snapshotTx)
+	require.Empty(t, mappedBlock.block.Rejected)
+
+	segments := submitSnapshotBlockForTest(t, mappedBlock)
+	require.Len(t, segments, 1)
+	requireSnapshotOnlySegment(t, segments[0])
+}
+
+// TestSubmitSnapshotBlockCarriesAllRejected verifies that all rejected statuses in the block —
+// regardless of whether they originally preceded or followed the snapshot — ride the single
+// non-snapshot segment, which is queued (and drained) before the snapshot segment. The snapshot
+// TX always commits last within its block.
+func TestSubmitSnapshotBlockCarriesAllRejected(t *testing.T) {
+	t.Parallel()
+
 	regularTx := func() *applicationpb.Tx {
 		return &applicationpb.Tx{
 			Namespaces: []*applicationpb.TxNamespace{{
@@ -379,9 +394,9 @@ func TestSplitSnapshotMappedBlockCarriesAllRejected(t *testing.T) {
 	block := workload.MapToOrdererBlock(7, []*servicepb.LoadGenTx{
 		txb.MakeTx(malformedTx()),
 		txb.MakeTx(regularTx()),
-		txb.MakeTx(snapshotTx()),
+		makeSnapshotLoadGenTxForTest(txb),
 		txb.MakeTx(regularTx()),
-		txb.MakeTx(snapshotTx()),
+		makeSnapshotLoadGenTxForTest(txb),
 	})
 
 	var txIDToHeight utils.SyncMap[string, servicepb.Height]
@@ -390,7 +405,7 @@ func TestSplitSnapshotMappedBlockCarriesAllRejected(t *testing.T) {
 	require.NotNil(t, mappedBlock.snapshotTx)
 	require.Len(t, mappedBlock.block.Rejected, 2)
 
-	segments := splitSnapshotMappedBlock(mappedBlock)
+	segments := submitSnapshotBlockForTest(t, mappedBlock)
 	// Single non-snapshot segment carrying both regular TXs and both rejects, then the snapshot
 	// segment (always last).
 	require.Len(t, segments, 2)
@@ -399,14 +414,9 @@ func TestSplitSnapshotMappedBlockCarriesAllRejected(t *testing.T) {
 
 	// Non-snapshot segment: both regular TXs plus both rejects (malformed and duplicate-snapshot),
 	// regardless of their original position relative to the snapshot.
-	require.Nil(t, rest.snapshotTx)
 	require.Len(t, rest.block.Txs, 2)
 	require.Len(t, rest.block.Rejected, 2)
-	require.Equal(
-		t,
-		committerpb.Status_MALFORMED_EMPTY_NAMESPACES,
-		rest.block.Rejected[0].Status,
-	)
+	require.Equal(t, committerpb.Status_MALFORMED_EMPTY_NAMESPACES, rest.block.Rejected[0].Status)
 	require.Equal(t, uint32(0), rest.block.Rejected[0].Ref.TxNum)
 	require.Equal(
 		t,
@@ -416,27 +426,17 @@ func TestSplitSnapshotMappedBlockCarriesAllRejected(t *testing.T) {
 	require.Equal(t, uint32(4), rest.block.Rejected[1].Ref.TxNum)
 
 	// Snapshot segment: the snapshot TX alone, no rejected, always last.
-	requireSnapshotSegment(t, snap)
+	requireSnapshotOnlySegment(t, snap)
 	require.Empty(t, snap.block.Rejected)
 }
 
-// TestSplitSnapshotMappedBlockPositions verifies segment structure for the snapshot at each
-// position in the block: first, middle, last, and snapshot-only. It asserts the number of
-// segments and which segment carries the snapshot, exercising the leading/trailing empty-segment
-// skips in splitSnapshotMappedBlock.
-// TestSplitSnapshotMappedBlockPositions verifies segment structure for the snapshot at each
-// position in the block: first, middle, last, and snapshot-only. The snapshot always ends up in
-// the last segment (committed last within its block), collapsing to a single snapshot-only
-// segment only when the block contains nothing else.
-func TestSplitSnapshotMappedBlockPositions(t *testing.T) {
+// TestSubmitSnapshotBlockPositions verifies segment structure for the snapshot at each position
+// in the block: first, middle, last, and snapshot-only. The snapshot always ends up in the last
+// segment (queued, hence committed, last within its block), collapsing to a single
+// snapshot-only segment only when the block contains nothing else.
+func TestSubmitSnapshotBlockPositions(t *testing.T) {
 	t.Parallel()
 
-	snapshotTx := func() *applicationpb.Tx {
-		return &applicationpb.Tx{
-			Namespaces:   []*applicationpb.TxNamespace{{NsId: committerpb.SnapshotNamespaceID}},
-			Endorsements: dummyEndorsements(1),
-		}
-	}
 	regularTx := func() *applicationpb.Tx {
 		return &applicationpb.Tx{
 			Namespaces: []*applicationpb.TxNamespace{{
@@ -449,32 +449,37 @@ func TestSplitSnapshotMappedBlockPositions(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// txs is the ordered list of transaction factories for the block.
-		txs              []func() *applicationpb.Tx
+		// snapshotPos is the position of the snapshot TX among the block's TXs.
+		snapshotPos      int
+		regularCount     int
 		expectedSegments int
 		expectedRestTxs  int
 	}{
 		{
 			name:             "snapshot is the only tx",
-			txs:              []func() *applicationpb.Tx{snapshotTx},
+			snapshotPos:      0,
+			regularCount:     0,
 			expectedSegments: 1,
 			expectedRestTxs:  0,
 		},
 		{
 			name:             "snapshot is the first tx",
-			txs:              []func() *applicationpb.Tx{snapshotTx, regularTx, regularTx},
+			snapshotPos:      0,
+			regularCount:     2,
 			expectedSegments: 2,
 			expectedRestTxs:  2,
 		},
 		{
 			name:             "snapshot is a middle tx",
-			txs:              []func() *applicationpb.Tx{regularTx, snapshotTx, regularTx},
+			snapshotPos:      1,
+			regularCount:     2,
 			expectedSegments: 2,
 			expectedRestTxs:  2,
 		},
 		{
 			name:             "snapshot is the last tx",
-			txs:              []func() *applicationpb.Tx{regularTx, regularTx, snapshotTx},
+			snapshotPos:      2,
+			regularCount:     2,
 			expectedSegments: 2,
 			expectedRestTxs:  2,
 		},
@@ -485,9 +490,13 @@ func TestSplitSnapshotMappedBlockPositions(t *testing.T) {
 			t.Parallel()
 
 			txb := &workload.TxBuilder{ChannelID: testChannelID}
-			loadGenTxs := make([]*servicepb.LoadGenTx, len(tc.txs))
-			for i, makeTx := range tc.txs {
-				loadGenTxs[i] = txb.MakeTx(makeTx())
+			loadGenTxs := make([]*servicepb.LoadGenTx, 0, tc.regularCount+1)
+			for i := 0; i <= tc.regularCount; i++ {
+				if i == tc.snapshotPos {
+					loadGenTxs = append(loadGenTxs, makeSnapshotLoadGenTxForTest(txb))
+					continue
+				}
+				loadGenTxs = append(loadGenTxs, txb.MakeTx(regularTx()))
 			}
 			block := workload.MapToOrdererBlock(9, loadGenTxs)
 
@@ -497,22 +506,81 @@ func TestSplitSnapshotMappedBlockPositions(t *testing.T) {
 			require.NotNil(t, mappedBlock.snapshotTx)
 			require.Empty(t, mappedBlock.block.Rejected)
 
-			segments := splitSnapshotMappedBlock(mappedBlock)
+			segments := submitSnapshotBlockForTest(t, mappedBlock)
 			require.Len(t, segments, tc.expectedSegments)
 
 			// The snapshot always rides the last segment, alone. Any earlier segment is a single
 			// non-snapshot segment carrying every other TX in the block, in original order.
 			snap := segments[len(segments)-1]
-			requireSnapshotSegment(t, snap)
+			requireSnapshotOnlySegment(t, snap)
 
 			if tc.expectedRestTxs == 0 {
 				return
 			}
 			rest := segments[0]
-			require.Nil(t, rest.snapshotTx)
 			require.Len(t, rest.block.Txs, tc.expectedRestTxs)
 		})
 	}
+}
+
+// makeSnapshotLoadGenTxForTest builds a standalone accepted _snapshot marker TX using txb.
+func makeSnapshotLoadGenTxForTest(txb *workload.TxBuilder) *servicepb.LoadGenTx {
+	return txb.MakeTx(&applicationpb.Tx{
+		Namespaces:   []*applicationpb.TxNamespace{{NsId: committerpb.SnapshotNamespaceID}},
+		Endorsements: dummyEndorsements(1),
+	})
+}
+
+// submitSnapshotBlockForTest drives mappedBlock through relay.submitSnapshotBlock with an
+// unbounded queue and slots, returning the segments in the order they were queued. It runs
+// submitSnapshotBlock concurrently with reading the expected number of segments off the queue,
+// releasing each segment's TXs immediately so drain (which blocks until they are "released")
+// unblocks in turn.
+func submitSnapshotBlockForTest(t *testing.T, mappedBlock *blockMappingResult) []*blockMappingResult {
+	t.Helper()
+
+	r := &relay{
+		metrics:         newPerformanceMetrics(),
+		waitingTxsSlots: utils.NewSlots(int64(len(mappedBlock.block.Txs)) + 1),
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	t.Cleanup(cancel)
+
+	queueCh := make(chan *blockMappingResult, 2)
+	queue := channel.NewWriter(ctx, queueCh)
+	reader := channel.NewReader(ctx, queueCh)
+
+	// submitSnapshotBlock queues at most two segments: the non-snapshot segment (skipped when
+	// the block has no regular TXs/rejects) and the snapshot segment.
+	expectedSegments := 1
+	if len(mappedBlock.block.Txs) > 0 || len(mappedBlock.block.Rejected) > 0 {
+		expectedSegments = 2
+	}
+
+	g, _ := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		return r.submitSnapshotBlock(ctx, queue, mappedBlock)
+	})
+
+	segments := make([]*blockMappingResult, 0, expectedSegments)
+	for range expectedSegments {
+		segment, ok := reader.Read()
+		require.True(t, ok, "timed out waiting for a segment")
+		segments = append(segments, segment)
+		r.waitingTxsSlots.Release(int64(len(segment.block.Txs)))
+	}
+
+	require.NoError(t, g.Wait())
+	return segments
+}
+
+// requireSnapshotOnlySegment asserts that seg is a snapshot-only segment: it carries exactly the
+// accepted snapshot TX, alone, as its single transaction.
+func requireSnapshotOnlySegment(t *testing.T, seg *blockMappingResult) {
+	t.Helper()
+	require.Len(t, seg.block.Txs, 1)
+	require.Equal(t, committerpb.SnapshotNamespaceID, seg.block.Txs[0].Content.Namespaces[0].NsId)
 }
 
 // requireStatusMetadata asserts that block's status metadata (at statusIdx) holds exactly the
@@ -522,15 +590,6 @@ func requireStatusMetadata(t *testing.T, block *common.Block, expectedStatus ...
 	require.NotNil(t, block.Metadata)
 	require.Greater(t, len(block.Metadata.Metadata), statusIdx)
 	require.Equal(t, expectedStatus, block.Metadata.Metadata[statusIdx])
-}
-
-// requireSnapshotSegment asserts that seg is a snapshot-only segment: it carries exactly the
-// accepted snapshot TX, alone, as its single transaction.
-func requireSnapshotSegment(t *testing.T, seg *blockMappingResult) {
-	t.Helper()
-	require.NotNil(t, seg.snapshotTx)
-	require.Len(t, seg.block.Txs, 1)
-	require.Equal(t, committerpb.SnapshotNamespaceID, seg.block.Txs[0].Content.Namespaces[0].NsId)
 }
 
 func (e *relayTestEnv) readAllStatusQueue(t *testing.T) []*committerpb.TxStatus {

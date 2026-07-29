@@ -31,12 +31,15 @@ type (
 		isConfig    bool
 		// snapshotTx holds the accepted snapshot TX, kept out of block.Txs (unlike a regular TX) so
 		// it can be submitted to the coordinator as its own single-TX segment, separately from and
-		// after the block's other TXs. See splitSnapshotMappedBlock in relay.go. A non-nil snapshotTx
+		// after the block's other TXs. See submitSnapshotBlock in relay.go. A non-nil snapshotTx
 		// is the sole signal that the block has an accepted snapshot TX. Only the first snapshot TX
 		// in a block is accepted; any further snapshot TXs in the same block are rejected with
 		// REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK.
 		snapshotTx *servicepb.TxWithRef
-		// txIDToHeight is a reference to the relay map.
+		// txIDToHeight is a reference to the relay map. It is only used while constructing this
+		// blockMappingResult (mapBlock/addTxIDMapping); nothing reads it back off the struct
+		// afterwards, so callers that build further blockMappingResult values (e.g.
+		// submitSnapshotBlock's segments) do not need to carry it forward.
 		txIDToHeight *utils.SyncMap[string, servicepb.Height]
 	}
 
