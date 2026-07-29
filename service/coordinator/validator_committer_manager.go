@@ -52,9 +52,9 @@ type (
 		metrics   *perfMetrics
 		policyMgr *policyManager
 
-		// vc service returns only the txID and the status of the transaction. To find the
-		// transaction node associated with the txID, we use txBeingValidated map.
-		txBeingValidated utils.SyncMap[string, *dependencygraph.TransactionNode]
+		// txBeingValidated stores the transactions currently being validated by this vcservice, so the
+		// status returned by the vcservice can be matched back to its transaction node.
+		txBeingValidated utils.SyncMap[servicepb.Height, *dependencygraph.TransactionNode]
 	}
 
 	validatorCommitterManagerConfig struct {
@@ -243,9 +243,9 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 		}
 
 		logger.Debugf("New TX node came from dependency graph manager to vc manager")
+		vc.addTxsBeingValidated(txsNode)
 		txBatch := make([]*servicepb.VcTx, len(txsNode))
 		for i, txNode := range txsNode {
-			vc.txBeingValidated.Store(txNode.VCTx.Ref.TxId, txNode)
 			txBatch[i] = txNode.VCTx
 		}
 
@@ -333,7 +333,13 @@ func (vc *validatorCommitter) receiveStatusAndForwardToOutput(
 		//       this is not an issue. If the sidecar becomes bottlenecked and cannot receive
 		//       the statuses quickly, the gRPC flow control will activate and slow down the
 		//       whole system, allowing the sidecar to catch up.
+		// NOTE: getTxsAndUpdatePolicies removes the transactions from txBeingValidated before their
+		//       results are queued, so a failed write must return them to the map. Otherwise
+		//       recoverPendingTransactions has nothing to re-queue and the transactions are lost:
+		//       their status never reaches the sidecar, and their nodes never free their dependents
+		//       in the dependency graph. The signature verifier manager guards the same invariant.
 		if ok := outputTxsStatus.write(ctx, txsStatus); !ok {
+			vc.addTxsBeingValidated(txsNode)
 			return errors.Wrap(ctx.Err(), "context ended")
 		}
 		logger.Debugf("Forwarded batch with %d TX statuses back to coordinator", len(txsStatus.Status))
@@ -341,6 +347,7 @@ func (vc *validatorCommitter) receiveStatusAndForwardToOutput(
 		promutil.AddToCounter(vc.metrics.vcserviceTransactionProcessedTotal, len(txsStatus.Status))
 
 		if len(txsNode) > 0 && !outputTxsNode.Write(txsNode) {
+			vc.addTxsBeingValidated(txsNode)
 			return errors.Wrap(outputTxsNode.Context().Err(), "context ended")
 		}
 		logger.Debugf("Forwarded batch with %d TX statuses back to dep graph", len(txsStatus.Status))
@@ -365,12 +372,12 @@ func (vc *validatorCommitter) getTxsAndUpdatePolicies(txsStatus *committerpb.TxS
 ) {
 	txsNode = make([]*dependencygraph.TransactionNode, 0, len(txsStatus.Status))
 	for i, txStatus := range txsStatus.Status {
-		txNode, ok := vc.txBeingValidated.LoadAndDelete(txStatus.Ref.TxId)
+		txNode, ok := vc.txBeingValidated.LoadAndDelete(*servicepb.NewHeightFromTxRef(txStatus.Ref))
 		if !ok {
 			// Because the VC manager might submit the same transaction multiple times (for example,
 			// if a VC service fails or the coordinator reconnects to a failed VC service), it could
 			// receive duplicate responses.  However, the txBeingValidated lookup will succeed only once.
-			// Therefore, if the transaction ID is not found in txBeingValidated, we must proceed to
+			// Therefore, if the transaction is not found in txBeingValidated, we must proceed to
 			// the next status.
 			untrackedTxIdx = append(untrackedTxIdx, i)
 			continue
@@ -388,4 +395,10 @@ func (vc *validatorCommitter) getTxsAndUpdatePolicies(txsStatus *committerpb.TxS
 	}
 
 	return txsNode, untrackedTxIdx
+}
+
+func (vc *validatorCommitter) addTxsBeingValidated(txsNode dependencygraph.TxNodeBatch) {
+	for _, txNode := range txsNode {
+		vc.txBeingValidated.Store(*servicepb.NewHeightFromTxRef(txNode.VCTx.Ref), txNode)
+	}
 }

@@ -26,6 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -327,6 +328,30 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	require.Never(t, func() bool {
 		return test.GetIntMetricValue(t, txProcessedTotalMetric) > txTotal
 	}, 2*time.Second, 1*time.Second)
+}
+
+// TestValidatorCommitterAddAndRecoverPendingTxs covers the tracking invariant that
+// receiveStatusAndForwardToOutput depends on when forwarding a result fails: every transaction
+// returned to txBeingValidated must be recoverable.
+func TestValidatorCommitterAddAndRecoverPendingTxs(t *testing.T) {
+	t.Parallel()
+	// The connection is unused: neither call below touches the stream.
+	vc := newValidatorCommitter(nil, newPerformanceMetrics(), newPolicyManager())
+
+	txsNode := dependencygraph.TxNodeBatch{
+		{VCTx: &servicepb.VcTx{Ref: committerpb.NewTxRef("tx 1", 1, 0)}},
+		{VCTx: &servicepb.VcTx{Ref: committerpb.NewTxRef("tx 2", 2, 0)}},
+		{VCTx: &servicepb.VcTx{Ref: committerpb.NewTxRef("tx 3", 1, 1)}},
+	}
+	vc.addTxsBeingValidated(txsNode)
+	require.Equal(t, len(txsNode), vc.txBeingValidated.Count())
+
+	recovered := make(chan dependencygraph.TxNodeBatch, 1)
+	vc.recoverPendingTransactions(channel.NewWriter(t.Context(), recovered))
+
+	require.ElementsMatch(t, txsNode, <-recovered)
+	require.Zero(t, vc.txBeingValidated.Count())
+	test.RequireIntMetricValue(t, len(txsNode), vc.metrics.vcservicesRetriedTransactionTotal)
 }
 
 func (e *vcMgrTestEnv) readOutputTxsStatus(t *testing.T) *committerpb.TxStatusBatch {
