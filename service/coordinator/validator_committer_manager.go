@@ -12,7 +12,6 @@ import (
 	"slices"
 
 	"github.com/cockroachdb/errors"
-	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -22,7 +21,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
@@ -36,12 +34,12 @@ type (
 	// 2. Receiving the status of the transactions from the vcservices.
 	// 3. Forwarding the validated transactions node to the dependency graph manager.
 	// 4. Forwarding the status of the transactions to the coordinator.
+	//
+	// The request/response API that any vcservice can serve is not part of this manager; see
+	// validatorCommitterAPI.
 	validatorCommitterManager struct {
 		config             *validatorCommitterManagerConfig
-		commonClient       servicepb.ValidationAndCommitServiceClient
 		validatorCommitter []*validatorCommitter
-		// ready indicates that the validatorCommitter array is initialized.
-		ready *channel.Ready
 	}
 
 	// validatorCommitter is responsible for managing the communication with a single
@@ -71,12 +69,10 @@ func newValidatorCommitterManager(c *validatorCommitterManagerConfig) *validator
 	logger.Info("Initializing new ValidatorCommitterManager")
 	return &validatorCommitterManager{
 		config: c,
-		ready:  channel.NewReady(),
 	}
 }
 
 func (vcm *validatorCommitterManager) run(ctx context.Context) error {
-	defer vcm.ready.Reset()
 	c := vcm.config
 	logger.Infof("Connections to %d vc's will be opened from vc manager", len(c.clientConfig.Endpoints))
 	vcm.validatorCommitter = make([]*validatorCommitter, len(c.clientConfig.Endpoints))
@@ -92,13 +88,6 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 		)
 		return nil
 	})
-
-	commonConn, err := connection.NewLoadBalancedConnection(c.clientConfig)
-	if err != nil {
-		return fmt.Errorf("failed to create connection to validator persisters: %w", err)
-	}
-	defer connection.CloseConnectionsLog(commonConn)
-	vcm.commonClient = servicepb.NewValidationAndCommitServiceClient(commonConn)
 
 	connections, connErr := connection.NewConnectionPerEndpoint(c.clientConfig)
 	if connErr != nil {
@@ -126,64 +115,7 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 		})
 	}
 
-	vcm.ready.SignalReady()
 	return utils.ProcessErr(g.Wait(), "validator-committer manager failed")
-}
-
-func (vcm *validatorCommitterManager) setLastCommittedBlockNumber(
-	ctx context.Context,
-	lastBlock *servicepb.BlockRef,
-) error {
-	_, err := vcm.commonClient.SetLastCommittedBlockNumber(ctx, lastBlock)
-	return grpcerror.WrapWithContext(err, "failed setting the last committed block number")
-}
-
-func (vcm *validatorCommitterManager) getNextBlockNumberToCommit(
-	ctx context.Context,
-) (*servicepb.BlockRef, error) {
-	ret, err := vcm.commonClient.GetNextBlockNumberToCommit(ctx, nil)
-	return ret, grpcerror.WrapWithContext(err, "failed getting the next expected block number")
-}
-
-func (vcm *validatorCommitterManager) getTransactionsStatus(
-	ctx context.Context,
-	query *committerpb.TxIDsBatch,
-) (*committerpb.TxStatusBatch, error) {
-	ret, err := vcm.commonClient.GetTransactionsStatus(ctx, query)
-	return ret, grpcerror.WrapWithContext(err, "failed getting transactions status")
-}
-
-func (vcm *validatorCommitterManager) getNamespacePolicies(
-	ctx context.Context,
-) (*applicationpb.NamespacePolicies, error) {
-	ret, err := vcm.commonClient.GetNamespacePolicies(ctx, nil)
-	return ret, grpcerror.WrapWithContext(err, "failed loading policies")
-}
-
-func (vcm *validatorCommitterManager) getConfigTransaction(
-	ctx context.Context,
-) (*applicationpb.ConfigTransaction, error) {
-	ret, err := vcm.commonClient.GetConfigTransaction(ctx, nil)
-	return ret, grpcerror.WrapWithContext(err, "failed loading config transaction")
-}
-
-func (vcm *validatorCommitterManager) recoverPolicyManagerFromStateDB(ctx context.Context) error {
-	policyMsg, err := vcm.getNamespacePolicies(ctx)
-	if err != nil {
-		return err
-	}
-	configMsg, err := vcm.getConfigTransaction(ctx)
-	if err != nil {
-		return err
-	}
-	if len(policyMsg.Policies) == 0 && configMsg.Envelope == nil {
-		return nil
-	}
-	vcm.config.policyMgr.update(&servicepb.VerifierUpdates{
-		NamespacePolicies: policyMsg,
-		Config:            configMsg,
-	})
-	return nil
 }
 
 func newValidatorCommitter(conn *grpc.ClientConn, metrics *perfMetrics, policyMgr *policyManager) *validatorCommitter {

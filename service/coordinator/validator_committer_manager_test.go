@@ -69,7 +69,12 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 		err := connection.FilterStreamRPCError(vcm.run(ctx))
 		assert.NoError(t, err)
 		return nil
-	}, vcm.ready.WaitForReady)
+	}, nil)
+	// Waiting for all the connections ensures the validatorCommitter slice is fully populated,
+	// as newSvMgrTestEnv does for the verifiers.
+	monitoring.WaitForConnections(
+		t, vcm.config.metrics.Provider, "coordinator_vcservice_connection_status", numVCService,
+	)
 
 	return &vcMgrTestEnv{
 		validatorCommitterManager: vcm,

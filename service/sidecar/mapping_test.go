@@ -12,6 +12,7 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/require"
 
@@ -20,6 +21,9 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
+
+// testChannelID is a shared channel ID used by sidecar mapping/relay tests.
+const testChannelID = "chan"
 
 func BenchmarkMapOneBlock(b *testing.B) {
 	flogging.ActivateSpec("fatal")
@@ -66,7 +70,7 @@ func BenchmarkMapBlockSize(b *testing.B) {
 
 func TestBlockMapping(t *testing.T) {
 	t.Parallel()
-	txb := &workload.TxBuilder{ChannelID: "chan"}
+	txb := &workload.TxBuilder{ChannelID: testChannelID}
 	txs, expected := MalformedTxTestCases(txb)
 	expectedBlockSize := 0
 	expectedRejected := 0
@@ -104,4 +108,260 @@ func TestBlockMapping(t *testing.T) {
 	require.Len(t, mappedBlock.block.Rejected, expectedRejected)
 	//nolint:gosec // int -> int32
 	require.Equal(t, int32(expectedBlockSize), mappedBlock.withStatus.pendingCount.Load())
+}
+
+func TestSystemNamespaceFormValidation(t *testing.T) {
+	t.Parallel()
+
+	const ordinaryNsID = "ordinary"
+	heightKey := servicepb.NewHeight(7, 3).ToBytes()
+	heightKeyWithTrailingBytes := append(append([]byte{}, heightKey...), []byte("junk")...)
+
+	for _, tc := range []struct {
+		name                string
+		tx                  *applicationpb.Tx
+		expectedStatus      committerpb.Status
+		expectedHasSnapshot bool
+	}{
+		{
+			name: "marker-only snapshot namespace is valid",
+			tx: &applicationpb.Tx{
+				Namespaces:   []*applicationpb.TxNamespace{{NsId: committerpb.SnapshotNamespaceID}},
+				Endorsements: dummyEndorsements(1),
+			},
+			expectedStatus:      statusNotYetValidated,
+			expectedHasSnapshot: true,
+		},
+		{
+			name: "snapshot namespace with reads-only is malformed",
+			tx: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
+					NsId:      committerpb.SnapshotNamespaceID,
+					ReadsOnly: []*applicationpb.Read{{Key: []byte("key")}},
+				}},
+				Endorsements: dummyEndorsements(1),
+			},
+			expectedStatus: committerpb.Status_MALFORMED_SNAPSHOT_NOT_MARKER_ONLY,
+		},
+		{
+			name: "snapshot namespace with read-writes is malformed",
+			tx: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
+					NsId:       committerpb.SnapshotNamespaceID,
+					ReadWrites: []*applicationpb.ReadWrite{{Key: []byte("key"), Value: []byte("value")}},
+				}},
+				Endorsements: dummyEndorsements(1),
+			},
+			expectedStatus: committerpb.Status_MALFORMED_SNAPSHOT_NOT_MARKER_ONLY,
+		},
+		{
+			name: "snapshot namespace with blind-writes is malformed",
+			tx: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
+					NsId:        committerpb.SnapshotNamespaceID,
+					BlindWrites: []*applicationpb.Write{{Key: []byte("key"), Value: []byte("value")}},
+				}},
+				Endorsements: dummyEndorsements(1),
+			},
+			expectedStatus: committerpb.Status_MALFORMED_SNAPSHOT_NOT_MARKER_ONLY,
+		},
+		{
+			name: "snapshot namespace mixed with ordinary namespace is malformed",
+			tx: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{
+					{NsId: committerpb.SnapshotNamespaceID},
+					{NsId: ordinaryNsID, BlindWrites: []*applicationpb.Write{{Key: []byte("key")}}},
+				},
+				Endorsements: dummyEndorsements(2),
+			},
+			expectedStatus: committerpb.Status_MALFORMED_SYSTEM_TX_NOT_STANDALONE,
+		},
+		{
+			name: "ordinary empty namespace is malformed with no writes",
+			tx: &applicationpb.Tx{
+				Namespaces:   []*applicationpb.TxNamespace{{NsId: ordinaryNsID}},
+				Endorsements: dummyEndorsements(1),
+			},
+			expectedStatus: committerpb.Status_MALFORMED_NO_WRITES,
+		},
+		{
+			name: "checkpoint namespace with height key is valid",
+			tx: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
+					NsId:       committerpb.CheckpointNamespaceID,
+					ReadWrites: []*applicationpb.ReadWrite{{Key: heightKey, Value: []byte("checkpoint")}},
+				}},
+				Endorsements: dummyEndorsements(1),
+			},
+			expectedStatus: statusNotYetValidated,
+		},
+		{
+			name: "checkpoint namespace with non-height key is malformed",
+			tx: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
+					NsId:       committerpb.CheckpointNamespaceID,
+					ReadWrites: []*applicationpb.ReadWrite{{Key: []byte("not-height"), Value: []byte("checkpoint")}},
+				}},
+				Endorsements: dummyEndorsements(1),
+			},
+			expectedStatus: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY,
+		},
+		{
+			name: "checkpoint namespace with height key plus trailing bytes is malformed",
+			tx: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
+					NsId: committerpb.CheckpointNamespaceID,
+					ReadWrites: []*applicationpb.ReadWrite{{
+						Key:   heightKeyWithTrailingBytes,
+						Value: []byte("checkpoint"),
+					}},
+				}},
+				Endorsements: dummyEndorsements(1),
+			},
+			expectedStatus: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY,
+		},
+		{
+			name: "checkpoint namespace with read-only is malformed",
+			tx: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
+					NsId:       committerpb.CheckpointNamespaceID,
+					ReadsOnly:  []*applicationpb.Read{{Key: []byte("other-key")}},
+					ReadWrites: []*applicationpb.ReadWrite{{Key: heightKey, Value: []byte("checkpoint")}},
+				}},
+				Endorsements: dummyEndorsements(1),
+			},
+			expectedStatus: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY,
+		},
+		{
+			name: "checkpoint namespace with blind write is malformed",
+			tx: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
+					NsId:        committerpb.CheckpointNamespaceID,
+					ReadWrites:  []*applicationpb.ReadWrite{{Key: heightKey, Value: []byte("checkpoint")}},
+					BlindWrites: []*applicationpb.Write{{Key: []byte("key"), Value: []byte("value")}},
+				}},
+				Endorsements: dummyEndorsements(1),
+			},
+			expectedStatus: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY,
+		},
+		{
+			name: "checkpoint namespace with more than one read-write is malformed",
+			tx: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
+					NsId: committerpb.CheckpointNamespaceID,
+					ReadWrites: []*applicationpb.ReadWrite{
+						{Key: heightKey, Value: []byte("checkpoint")},
+						{Key: []byte("other-key"), Value: []byte("checkpoint")},
+					},
+				}},
+				Endorsements: dummyEndorsements(1),
+			},
+			expectedStatus: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY,
+		},
+		{
+			name: "checkpoint namespace with no read-write is malformed",
+			tx: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
+					NsId: committerpb.CheckpointNamespaceID,
+				}},
+				Endorsements: dummyEndorsements(1),
+			},
+			expectedStatus: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY,
+		},
+		{
+			name: "checkpoint namespace mixed with ordinary namespace is malformed",
+			tx: &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{
+					{
+						NsId:       committerpb.CheckpointNamespaceID,
+						ReadWrites: []*applicationpb.ReadWrite{{Key: heightKey, Value: []byte("checkpoint")}},
+					},
+					{NsId: ordinaryNsID, BlindWrites: []*applicationpb.Write{{Key: []byte("key")}}},
+				},
+				Endorsements: dummyEndorsements(2),
+			},
+			expectedStatus: committerpb.Status_MALFORMED_SYSTEM_TX_NOT_STANDALONE,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tc.expectedStatus, verifyTxForm(tc.tx))
+
+			txb := &workload.TxBuilder{ChannelID: testChannelID}
+			block := workload.MapToOrdererBlock(1, []*servicepb.LoadGenTx{txb.MakeTx(tc.tx)})
+
+			var txIDToHeight utils.SyncMap[string, servicepb.Height]
+			mappedBlock, err := mapBlock(block, &txIDToHeight)
+			require.NoError(t, err)
+			require.NotNil(t, mappedBlock)
+			require.Equal(t, tc.expectedHasSnapshot, mappedBlock.snapshotTx != nil)
+			if tc.expectedHasSnapshot {
+				// The snapshot TX is kept separate from block.Txs; see the snapshotTx field
+				// comment in mapping.go.
+				require.Equal(
+					t,
+					committerpb.SnapshotNamespaceID,
+					mappedBlock.snapshotTx.Content.Namespaces[0].NsId,
+				)
+				require.Empty(t, mappedBlock.block.Txs)
+			}
+		})
+	}
+}
+
+// TestDuplicateSnapshotInBlock verifies that when a block contains more than one snapshot TX,
+// only the first is accepted and the rest are rejected with
+// REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK (a stored status), regardless of the first's outcome.
+func TestDuplicateSnapshotInBlock(t *testing.T) {
+	t.Parallel()
+
+	snapshotTx := func() *applicationpb.Tx {
+		return &applicationpb.Tx{
+			Namespaces:   []*applicationpb.TxNamespace{{NsId: committerpb.SnapshotNamespaceID}},
+			Endorsements: dummyEndorsements(1),
+		}
+	}
+	regularTx := func() *applicationpb.Tx {
+		return &applicationpb.Tx{
+			Namespaces: []*applicationpb.TxNamespace{{
+				NsId:        "ns",
+				BlindWrites: []*applicationpb.Write{{Key: []byte("key")}},
+			}},
+			Endorsements: dummyEndorsements(1),
+		}
+	}
+
+	txb := &workload.TxBuilder{ChannelID: testChannelID}
+	// Block layout: [regular, snapshot#0 (accepted), regular, snapshot#1 (rejected)].
+	block := workload.MapToOrdererBlock(1, []*servicepb.LoadGenTx{
+		txb.MakeTx(regularTx()),
+		txb.MakeTx(snapshotTx()),
+		txb.MakeTx(regularTx()),
+		txb.MakeTx(snapshotTx()),
+	})
+
+	var txIDToHeight utils.SyncMap[string, servicepb.Height]
+	mappedBlock, err := mapBlock(block, &txIDToHeight)
+	require.NoError(t, err)
+	require.NotNil(t, mappedBlock)
+
+	// Only the first snapshot is accepted and is kept separate from block.Txs (see the
+	// snapshotTx field comment in mapping.go): block.Txs holds only the two regular TXs.
+	require.NotNil(t, mappedBlock.snapshotTx)
+	require.Equal(
+		t,
+		committerpb.SnapshotNamespaceID,
+		mappedBlock.snapshotTx.Content.Namespaces[0].NsId,
+	)
+	require.Len(t, mappedBlock.block.Txs, 2)
+
+	// The second snapshot is rejected with the dedicated stored status.
+	require.Len(t, mappedBlock.block.Rejected, 1)
+	require.Equal(
+		t,
+		committerpb.Status_REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK,
+		mappedBlock.block.Rejected[0].Status,
+	)
+	require.Equal(t, uint32(3), mappedBlock.block.Rejected[0].Ref.TxNum)
 }

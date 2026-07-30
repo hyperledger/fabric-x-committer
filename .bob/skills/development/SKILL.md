@@ -21,6 +21,7 @@ here. Follow it whenever you add or change production Go source.
 covers *authoring* production code.
 
 **Authoritative sources in the repo** (read them when a topic needs depth):
+
 - `guidelines.md` — the simplicity philosophy and error-handling policy.
 - `docs/core-concurrency-pattern.md` — the errgroup + context-aware channel doctrine.
 - `.golangci.yml` — every linter that gates your PR (see the cheat sheet at the end).
@@ -43,6 +44,38 @@ abstraction, stop:
 - **Explicit and a few lines longer beats compact and clever.** Guard clauses, early
   returns, intermediate variables. Max ~3 levels of nesting; `gocognit` caps complexity
   at 15.
+
+## Comments explain *why*, not *what*
+
+A comment earns its place only if it tells the reader something the code cannot: the
+reasoning behind a choice, a non-obvious invariant, a trade-off, an edge case that looks
+like a bug but isn't, or a pointer to *why* something is shaped the way it is. If a
+comment just restates the next line in English, delete it — the code already says that,
+and a paraphrase comment rots the moment the code changes underneath it.
+
+```go
+// BAD — restates the code, adds nothing
+// increment the retry count
+retryCount++
+
+// GOOD — explains why this exists / a non-obvious constraint
+// Capped at 3: beyond that the coordinator's own timeout fires first, so a 4th
+// retry here would never be observed by the caller.
+retryCount++
+```
+
+When writing or reviewing a doc comment on a function, ask "does this only describe
+parameters/return values I could read from the signature, or does it explain something
+the signature can't" — keep the latter, cut the former down to the minimum Go convention
+requires (the `godot`-enforced one-line summary starting with the function name).
+
+Apply the same restraint to comment *length*: a comment that has grown longer than the
+function it documents is a sign it is explaining implementation mechanics that belong in
+the code (better names, an extracted helper) rather than prose above it. Prefer a short
+pointer to *where* the fuller rationale already lives (a doc file, a field comment) over
+restating it inline every time. If review feedback says "shrink this comment,"
+the fix is almost always: keep the one or two sentences that are genuinely load-bearing
+(why, not what) and delete or relocate the rest.
 
 ## Step 0 — reuse before you write
 
@@ -100,6 +133,17 @@ func (c *transactionCommitter) run(ctx context.Context, db *database, numWorkers
 func (c *transactionCommitter) commit(ctx context.Context, db *database) error { /* ... */ }
 ```
 
+This applies when you *add* a helper too — insert it directly below its caller, not
+above it and not at some other arbitrary location in the file. When you extract a
+helper out of an existing function during a refactor, double-check the extracted
+function's new position still satisfies caller-before-callee relative to *every*
+caller, not just the one you were looking at (a helper called from two places belongs
+below the one that reads top-to-bottom first). Free-standing utility/formatting
+helpers with no domain logic of their own (string formatting, tiny predicates,
+struct-literal constructors used from a single call site) belong at the very bottom of
+the file — see file layout item 10 below — even below the last method of the file's
+main type.
+
 ### Group methods by struct
 
 Keep all methods of one type contiguous; the constructor `newXxx` leads the block, then
@@ -108,6 +152,23 @@ its methods. Don't interleave two types' methods by chance.
 **Exception:** when two types collaborate tightly in one file, top-down call order
 (above) wins over strict grouping — order by the processing flow
 (`service/sidecar/notify.go` does this deliberately).
+
+### Whitespace and readability
+
+A blank line is a signal that groups related statements and separates one step from
+the next — use it deliberately, the same way paragraph breaks work in prose. Put a
+blank line between: setting up inputs and using them, a guard-clause block and the main
+body that follows, and independent steps of a function (e.g. "drain", "write", "drain
+again" each get their own line group in `submitConfigBlock`). Don't cram unrelated
+statements onto adjacent lines just to shorten the function — a dense function is
+harder to scan than a slightly longer one with clear paragraphs, and reviewers will ask
+for the blank lines back.
+
+Conversely, don't scatter blank lines *inside* one cohesive step (e.g. between building
+a struct literal's fields, or between an `if err != nil` guard and its `return`) — that
+signals a break where there isn't one. Related declarations, a single guard clause, and
+a struct literal's fields stay tight together; the break goes at the boundary between
+distinct concepts, not in the middle of one.
 
 ### Don't fragment into tiny single-use helpers — but do manage complexity
 
@@ -129,6 +190,7 @@ For logic shared *within* one function, use a local closure
 Every `.go` file follows this order (model: `service/coordinator/coordinator.go`):
 
 1. Apache-2.0 header — the `/* ... */` block comment (the `goheader` linter requires it):
+
    ```go
    /*
    Copyright IBM Corp. All Rights Reserved.
@@ -136,6 +198,7 @@ Every `.go` file follows this order (model: `service/coordinator/coordinator.go`
    SPDX-License-Identifier: Apache-2.0
    */
    ```
+
 2. `package` clause.
 3. `import (...)` — three blank-line-separated groups: stdlib, third-party, then internal
    `github.com/hyperledger/fabric-x-committer/...` (`goimports` local-prefixes enforces this).
@@ -155,6 +218,17 @@ Every `.go` file follows this order (model: `service/coordinator/coordinator.go`
 pipeline component/manager (`preparer.go`, `validator.go`, `committer.go`, `database.go`).
 Keep files moderate (~200–750 lines); give a large concern its own file. Tests are
 co-located as `<file>_test.go`; shared exported test helpers go in `test_exports.go`.
+
+Don't hesitate to introduce a new file when a change grows a distinct concept inside an
+existing one — a new file is cheap and often clarifies more than it costs. Signs it's
+time to split: a file's unrelated concerns start interleaving in the caller-before-callee
+order (two call chains competing for the same file), a single `.go` file is approaching
+the upper end of the ~750-line guideline, or a chunk of logic (e.g. a validation ruleset,
+a new sub-protocol, a splitting/merging algorithm) is substantial enough to have its own
+doc comment block, tests, and helpers that would otherwise crowd the file that merely
+*uses* it. When you do split, move the whole concept — its types, constructor, methods,
+and any free helpers it privately relies on — together, and keep its own tests in the
+matching `<newfile>_test.go` rather than leaving them behind in the original test file.
 
 ## Concurrency
 
@@ -242,6 +316,7 @@ The codebase is aggressively modern. **Prefer** in new code:
 Uses `github.com/cockroachdb/errors` (the `depguard` linter bans `github.com/pkg/errors`).
 
 **Decision rule:**
+
 1. **Originate or first cross into our code** (a new condition, or an error from a DB
    driver / gRPC `Recv` / marshal) → `errors.New` / `errors.Newf` / `errors.Wrap` /
    `errors.Wrapf`. This captures the stack trace at the origin.
@@ -307,6 +382,7 @@ sample YAML → decoder hooks), Prometheus metrics via `monitoring.Provider`, co
 wiring, `serve.StartAndServe` bootstrap, and a step-by-step checklist.
 
 Quick essentials:
+
 - Constructors return concrete `*T` with **no error** for pure in-memory wiring; return
   `(*T, error)` only when the constructor does I/O (e.g. `newDatabase`).
 - Pass wide dependency lists as a `*xxxConfig` struct, not many positional args (the
