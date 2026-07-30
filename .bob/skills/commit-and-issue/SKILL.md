@@ -97,7 +97,7 @@ The formal headers, in order (all but Type of change and Description are optiona
 
 #### Additional details (Optional)
 
-<Optional: implementation notes, how it was tested, deferred follow-ups, notes to reviewers.>
+<Optional: implementation notes, deferred follow-ups, notes to reviewers.>
 
 #### Related issues
 
@@ -135,6 +135,14 @@ section only for a genuinely untracked, trivial change (e.g. a routine dependenc
 next step), a `---------` separator (inserted by GitHub's squash when it concatenates
 commits), or **labels** — labels live on the PR/issue and are applied via `gh`
 (e.g. `gh pr edit --add-label ...`), never written into the message text.
+
+**Don't narrate verification or CI in the body.** No `Verified:` / `Testing` rundown of the
+`go build`, `go test`, `make lint`, or `make` targets you ran — CI runs the full suite against
+every PR, so a local pass/fail checklist is noise the reviewer skips. You still run the relevant
+tests and lint before submitting (see the `development` skill); you just don't restate them in the
+message. The one exception is a step a *reviewer* must run to observe the effect — a manual repro,
+a specific config, or a benchmark command with its numbers — which belongs in `#### Additional
+details` as reproduction instructions, not as a checklist of what already passed.
 
 ### 4. Show the message, then commit with sign-off
 
