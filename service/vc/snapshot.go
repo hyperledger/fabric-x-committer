@@ -70,14 +70,12 @@ func (db *database) rejectSnapshotIfPriorNotCheckpointed(
 		return nil
 	}
 	var incomingTxID TxID
-	var found bool
 	for txID, nsWrites := range vTx.newWrites {
 		if !nsWrites[committerpb.SnapshotNamespaceID].empty() {
 			incomingTxID = txID
-			found = true
 		}
 	}
-	if !found {
+	if incomingTxID == "" {
 		return nil
 	}
 
@@ -92,7 +90,7 @@ func (db *database) rejectSnapshotIfPriorNotCheckpointed(
 		return nil
 	}
 
-	blockStatus, err := db.latestSnapshotRejectionStatus(ctx)
+	blockStatus, err := db.determineSnapshotStatus(ctx)
 	if err != nil {
 		return err
 	}
@@ -104,7 +102,7 @@ func (db *database) rejectSnapshotIfPriorNotCheckpointed(
 	return nil
 }
 
-// latestSnapshotRejectionStatus looks up the latest _snapshot record via the
+// determineSnapshotStatus looks up the latest _snapshot record via the
 // latestSnapshotKeyMetadataKey pointer and returns the rejection status the
 // incoming request should receive, or STATUS_UNSPECIFIED when the request may
 // proceed (no prior snapshot ever accepted, or the latest one is CHECKPOINTED).
@@ -115,33 +113,13 @@ func (db *database) rejectSnapshotIfPriorNotCheckpointed(
 // outcome. Both are returned as errors -- never silently mapped to a
 // conservative rejection status -- so the batch fails/retries instead of
 // masking the anomaly.
-func (db *database) latestSnapshotRejectionStatus(ctx context.Context) (committerpb.Status, error) {
-	key, err := db.getLatestSnapshotKey(ctx)
+func (db *database) determineSnapshotStatus(ctx context.Context) (committerpb.Status, error) {
+	state, err := db.readLatestSnapshotRecord(ctx)
 	if err != nil {
-		return committerpb.Status_STATUS_UNSPECIFIED, fmt.Errorf("failed to read latest snapshot key: %w", err)
+		return committerpb.Status_STATUS_UNSPECIFIED, err
 	}
-	if len(key) == 0 {
+	if state == nil {
 		return committerpb.Status_STATUS_UNSPECIFIED, nil // no snapshot has ever been accepted.
-	}
-
-	rows, err := db.readRawSnapshotRecords(ctx, [][]byte{key})
-	if err != nil {
-		return committerpb.Status_STATUS_UNSPECIFIED, fmt.Errorf("failed to read latest _snapshot record: %w", err)
-	}
-	if len(rows) == 0 {
-		// The pointer and its row are written atomically in the same DB transaction
-		// (setLatestSnapshotKeyIfPresent), so a pointer with no row is never possible
-		// under normal operation -- this guards against a future bug (e.g. a
-		// maintenance path that deletes _snapshot rows without clearing the pointer)
-		// silently making the gate assume no active snapshot.
-		return committerpb.Status_STATUS_UNSPECIFIED,
-			errors.Newf("latest snapshot key %s has no matching _snapshot record", key)
-	}
-
-	var state committerpb.SnapshotState
-	if decodeErr := proto.Unmarshal(rows[0], &state); decodeErr != nil {
-		return committerpb.Status_STATUS_UNSPECIFIED,
-			errors.Wrapf(decodeErr, "failed to decode latest _snapshot record for key %s", key)
 	}
 
 	switch state.Status {
@@ -154,24 +132,46 @@ func (db *database) latestSnapshotRejectionStatus(ctx context.Context) (committe
 	}
 }
 
-// getLatestSnapshotKey reads the latest-snapshot pointer set by
-// setLatestSnapshotKeyIfPresent. A nil/empty result means no snapshot has ever
-// been accepted. Mirrors getNextBlockNumberToCommit's pattern: the key is
-// pre-seeded (NULL) at DB init, so the row always exists.
-func (db *database) getLatestSnapshotKey(ctx context.Context) ([]byte, error) {
-	return retry.ExecuteWithResult(ctx, db.retryProfile, func() ([]byte, error) {
+// readLatestSnapshotRecord performs the full pointer-to-row read cycle: it looks
+// up the latest-snapshot pointer (latestSnapshotKeyMetadataKey, set by
+// setLatestSnapshotKeyIfPresent) and, when one is set, reads and decodes the
+// _snapshot record it names.
+//
+// Returns (nil, nil) when no snapshot has ever been accepted (pointer unset).
+// The pointer and its row are written atomically in the same DB transaction
+// (setLatestSnapshotKeyIfPresent), so a pointer with no matching row is never
+// possible under normal operation; this guards against a future bug (e.g. a
+// maintenance path that deletes _snapshot rows without clearing the pointer)
+// silently making the caller assume no active snapshot, by returning a hard
+// error instead. A row whose value fails to decode is likewise a hard error,
+// never silently mapped to a conservative rejection status.
+func (db *database) readLatestSnapshotRecord(ctx context.Context) (*committerpb.SnapshotState, error) {
+	key, err := retry.ExecuteWithResult(ctx, db.retryProfile, func() ([]byte, error) {
 		r := db.pool.QueryRow(ctx, getMetadataPrepSQLStmt, latestSnapshotKeyMetadataKey)
 		var v []byte
 		return v, errors.Wrap(r.Scan(&v), "failed to get the latest snapshot key")
 	})
-}
+	if err != nil {
+		return nil, fmt.Errorf("failed to read latest snapshot key: %w", err)
+	}
+	if len(key) == 0 {
+		return nil, nil
+	}
 
-// readRawSnapshotRecords reads the raw (still-encoded) values of the given
-// _snapshot keys, in the same key order filtering as queryVersionsIfPresent.
-func (db *database) readRawSnapshotRecords(ctx context.Context, keys [][]byte) ([][]byte, error) {
 	query := statedb.FmtNsID(queryValuesByKeysSQLTempl, committerpb.SnapshotNamespaceID)
-	_, values, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, db, query, keys)
-	return values, err
+	_, values, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, db, query, [][]byte{key})
+	if err != nil {
+		return nil, fmt.Errorf("failed to read latest _snapshot record: %w", err)
+	}
+	if len(values) == 0 {
+		return nil, errors.Newf("latest snapshot key %s has no matching _snapshot record", key)
+	}
+
+	var state committerpb.SnapshotState
+	if decodeErr := proto.Unmarshal(values[0], &state); decodeErr != nil {
+		return nil, errors.Wrapf(decodeErr, "failed to decode latest _snapshot record for key %s", key)
+	}
+	return &state, nil
 }
 
 // createSnapshotIfPresent detects a _snapshot record in the batch's

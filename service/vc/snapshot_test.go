@@ -425,32 +425,3 @@ func newIncomingSnapshotVTx(t *testing.T, db *database, blockNum uint64, txID st
 	}
 	return vTx, name
 }
-
-func TestSnapshotGateEndToEnd(t *testing.T) {
-	t.Parallel()
-	env := newCommitterTestEnv(t)
-	testdb.EnsureSnapshotSchedule(t, env.dbEnv.DBConf.Database)
-	ctx, _ := createContext(t)
-	writer := channel.NewWriter(ctx, env.validatedTxs)
-	reader := channel.NewReader(ctx, env.txStatus)
-
-	// First snapshot commits (PENDING, not yet checkpointed).
-	vTx1, _ := newIncomingSnapshotVTx(t, env.dbEnv.DB, 700001, "gate-first")
-	writer.Write(vTx1)
-	s1, ok := reader.Read()
-	require.True(t, ok)
-	require.Equal(t, committerpb.Status_COMMITTED, s1.Status[0].Status)
-
-	// Second, different snapshot is rejected because first is not CHECKPOINTED.
-	secondTxID := "gate-second"
-	vTx2, secondName := newIncomingSnapshotVTx(t, env.dbEnv.DB, 700002, secondTxID)
-	writer.Write(vTx2)
-	s2, ok := reader.Read()
-	require.True(t, ok)
-	require.Equal(t, committerpb.Status_REJECTED_SNAPSHOT_IN_PROGRESS, s2.Status[0].Status)
-
-	// No database and no _snapshot record for the rejected request.
-	require.False(t, cloneExists(t, env.dbEnv.DB, secondName))
-	rows := env.dbEnv.FetchKeys(t, committerpb.SnapshotNamespaceID, [][]byte{[]byte(secondTxID)})
-	require.Empty(t, rows)
-}

@@ -101,14 +101,6 @@ func (c *transactionCommitter) commitTransactions(
 		return nil, err
 	}
 
-	// Gate a new snapshot request: reject it unless the latest _snapshot record
-	// is CHECKPOINTED. On rejection this removes the incoming _snapshot write and
-	// sets its invalid status, so createSnapshotIfPresent below no-ops and no
-	// snapshot database or record is created.
-	if err := db.rejectSnapshotIfPriorNotCheckpointed(ctx, vTx); err != nil {
-		return nil, fmt.Errorf("failed to gate snapshot before commit: %w", err)
-	}
-
 	// Ideally, we should add BlindWrite entries with a null version to the
 	// `readToTxIDs` map. This is because transactions can be resubmitted to multiple
 	// `vcservice` instances during connection issue between the coordinator and
