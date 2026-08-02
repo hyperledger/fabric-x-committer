@@ -241,6 +241,27 @@ func (e *OrdererTestEnv) StopServers() {
 	}
 }
 
+// ReserveListeners re-reserves each server's port by pre-allocating a placeholder listener,
+// stored as the server config's pre-allocated listener. This keeps the ports held (so a
+// parallel test cannot claim them) until their next consumer binds them: either a subsequent
+// in-process StartServers (which reuses the pre-allocated listener) or the external
+// mock-orderer subprocess (for which the runner releases the reservation after spawn).
+// The servers must be stopped before calling this.
+func (e *OrdererTestEnv) ReserveListeners(t *testing.T) {
+	t.Helper()
+	for _, s := range e.AllServerConfig {
+		serve.PreAllocateListener(t, &s.GRPC)
+	}
+}
+
+// ReleaseListeners closes the reserved (pre-allocated) listeners, freeing the ports for the
+// mock-orderer subprocess to bind. It is safe to call multiple times.
+func (e *OrdererTestEnv) ReleaseListeners() {
+	for _, s := range e.AllServerConfig {
+		serve.ClosePreAllocatedListener(&s.GRPC)
+	}
+}
+
 // StopServersOfID stop the servers of a party ID and closes their pre allocated listeners.
 func (e *OrdererTestEnv) StopServersOfID(id uint32) {
 	for idx, ep := range e.AllEndpoints {

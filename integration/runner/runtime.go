@@ -48,6 +48,8 @@ type (
 		Sidecar      *ProcessWithConfig
 		Coordinator  *ProcessWithConfig
 		QueryService *ProcessWithConfig
+		LoadGen      *ProcessWithConfig
+		DistLoadGen  *ProcessWithConfig
 		Verifier     []*ProcessWithConfig
 		VcService    []*ProcessWithConfig
 
@@ -184,9 +186,15 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 			SendGenesisBlock: true,
 		},
 	})
-	// We stop the orderer servers to allow the integration tests to start the mock orderer
-	// using the binary.
-	defer ordererEnv.StopServers()
+	// We stop the orderer servers to allow the integration tests to start the mock orderer,
+	// either in-process (OrdererEnv.StartServers) or via the binary (MockOrderer subprocess).
+	// These two consumers are mutually exclusive per test. We re-reserve the freed ports
+	// (holding a placeholder listener) so that, like every other service, no parallel test
+	// can claim them before the intended consumer binds them.
+	defer func() {
+		ordererEnv.StopServers()
+		ordererEnv.ReserveListeners(t)
+	}()
 
 	c := &CommitterRuntime{
 		Config: conf,
@@ -221,6 +229,7 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 		SeedForCryptoGen: rand.New(rand.NewSource(10)),
 		OrdererEnv:       ordererEnv,
 	}
+
 	t.Log("Making DB env")
 	if conf.DBConnection == nil {
 		c.DBEnv = vc.NewDatabaseTestEnv(t)
@@ -237,37 +246,64 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	s.DB.TLS = c.DBEnv.DBConf.TLS
 	s.LedgerPath = t.TempDir()
 
-	t.Log("Allocating services endpoints, ports, and TLS credentials")
-	s.Services = allocateServices(t, conf, credFactory)
+	t.Log("Creating namespaces policies")
+	c.AddOrUpdateNamespaces(t, workload.DefaultGeneratedNamespaceID, "1", "2", "3")
+
+	t.Log("Allocating services, ports, and TLS credentials")
+	// The mock orderer's ports come from OrdererEnv (reserved by its own listeners). Every other
+	// service's ports are allocated here, straight into the process that owns them; each endpoint is
+	// then published into s.Services so the config templates (rendered below) can reference it.
 	s.Services.Orderer = make([]config.ServiceConfig, len(c.OrdererEnv.AllServerConfig))
 	for i, serverConf := range c.OrdererEnv.AllServerConfig {
 		s.Services.Orderer[i].GrpcEndpoint = &serverConf.GRPC.Endpoint
 		s.Services.Orderer[i].GrpcTLS = serverConf.GRPC.TLS
 	}
+	c.MockOrderer = newExternalProcess(t, cmdOrderer, s.Services.Orderer[0])
 
-	test.LogStruct(t, "System Parameters", s)
+	// params carries the credentials factory and TLS mode used to build each service endpoint;
+	// newProcess passes it to allocateService (see process.go).
+	params := serviceParams{credFactory: credFactory, tlsMode: conf.TLSMode}
 
-	c.AddOrUpdateNamespaces(t, workload.DefaultGeneratedNamespaceID, "1", "2", "3")
-
-	t.Log("Create processes")
-	c.MockOrderer = newProcess(t, cmdOrderer, s, s.Services.Orderer[0])
-	for i, service := range s.Services.Verifier {
+	s.Services.Verifier = make([]config.ServiceConfig, conf.NumVerifiers)
+	c.Verifier = make([]*ProcessWithConfig, conf.NumVerifiers)
+	for i := range conf.NumVerifiers {
 		p := cmdVerifier
 		p.Name = fmt.Sprintf("%s-%d", p.Name, i)
 		// we generate different keys for each verifier.
-		c.Verifier = append(c.Verifier, newProcess(t, p, s, service))
+		c.Verifier[i], s.Services.Verifier[i] = newProcess(t, params, p)
 	}
 
-	for i, service := range s.Services.VCService {
+	s.Services.VCService = make([]config.ServiceConfig, conf.NumVCService)
+	c.VcService = make([]*ProcessWithConfig, conf.NumVCService)
+	for i := range conf.NumVCService {
 		p := cmdVC
 		p.Name = fmt.Sprintf("%s-%d", p.Name, i)
 		// we generate different keys for each vc-service.
-		c.VcService = append(c.VcService, newProcess(t, p, s, service))
+		c.VcService[i], s.Services.VCService[i] = newProcess(t, params, p)
 	}
 
-	c.Coordinator = newProcess(t, cmdCoordinator, s, s.Services.Coordinator)
-	c.QueryService = newProcess(t, cmdQuery, s, s.Services.Query)
-	c.Sidecar = newProcess(t, cmdSidecar, s, s.Services.Sidecar)
+	c.Coordinator, s.Services.Coordinator = newProcess(t, params, cmdCoordinator)
+	c.QueryService, s.Services.Query = newProcess(t, params, cmdQuery)
+	c.Sidecar, s.Services.Sidecar = newProcess(t, params, cmdSidecar)
+
+	// The load generators are pre-allocated here like every other service, but their config files are
+	// written later by startLoadGen: the primary's template is chosen by the loadgen flag passed to
+	// Start (and its worker count drops to 0 in distributed mode), so it cannot be rendered here. The
+	// distributed client's config could be, but startLoadGen writes it too so the loadgen config stays
+	// in one place and its worker count is set explicitly rather than inherited from the default above.
+	// The primary reserves its ports; the distributed client is dialed by no one (it connects out to
+	// the primary at Services.LoadGen), so it binds its own ephemeral port and reserves nothing.
+	c.LoadGen, s.Services.LoadGen = newProcess(t, params, cmdLoadGen)
+	c.DistLoadGen = newExternalProcess(t, cmdLoadGenDist, config.ServiceConfig{})
+
+	test.LogStruct(t, "System Parameters", s)
+
+	// Every service endpoint is now known, so each process's config file can be rendered (a template
+	// may reference any service's endpoint, e.g. the coordinator dials the verifiers and VC services).
+	t.Log("Writing service config files")
+	for _, p := range c.serverProcesses() {
+		p.writeConfig(t, s)
+	}
 
 	t.Log("Create clients")
 	c.CreateRuntimeClients(t.Context(), t)
@@ -321,6 +357,10 @@ func (c *CommitterRuntime) Start(t *testing.T, serviceFlags int) {
 	}
 	if Orderer&serviceFlags != 0 {
 		c.MockOrderer.Restart(t)
+		// The subprocess now owns the orderer ports; release our reservation so it can
+		// bind them (it is already retrying via ListenRetryExecute). Mutually exclusive
+		// with the in-process OrdererEnv.StartServers path, which reuses the reservation.
+		c.OrdererEnv.ReleaseListeners()
 	}
 	if Verifier&serviceFlags != 0 {
 		for _, p := range c.Verifier {
@@ -354,39 +394,47 @@ func (c *CommitterRuntime) Start(t *testing.T, serviceFlags int) {
 	}
 }
 
+// startLoadGen renders and starts the load generators pre-allocated in NewRuntime. Only the primary's
+// template varies with the service flags; the distributed client's template is fixed (see cmdLoadGenDist).
 func (c *CommitterRuntime) startLoadGen(t *testing.T, serviceFlags int) {
 	t.Helper()
 	loadGenFlag := loadGenMatcher & serviceFlags
 	require.Falsef(t, isMoreThanOneBitSet(loadGenFlag), "only one load generator may be set")
-	loadGenParams := cmdLoadGen
 	switch loadGenFlag {
 	case LoadGenForOnlyOrderer:
-		loadGenParams.Template = config.TemplateLoadGenOnlyOrderer
+		c.LoadGen.params.Template = config.TemplateLoadGenOnlyOrderer
 	case LoadGenForOrderer:
-		loadGenParams.Template = config.TemplateLoadGenOrderer
+		c.LoadGen.params.Template = config.TemplateLoadGenOrderer
 	case LoadGenForCommitter:
-		loadGenParams.Template = config.TemplateLoadGenCommitter
+		c.LoadGen.params.Template = config.TemplateLoadGenCommitter
 	case LoadGenForCoordinator:
-		loadGenParams.Template = config.TemplateLoadGenCoordinator
+		c.LoadGen.params.Template = config.TemplateLoadGenCoordinator
 	case LoadGenForVCService:
-		loadGenParams.Template = config.TemplateLoadGenVC
+		c.LoadGen.params.Template = config.TemplateLoadGenVC
 	case LoadGenForVerifier:
-		loadGenParams.Template = config.TemplateLoadGenVerifier
+		c.LoadGen.params.Template = config.TemplateLoadGenVerifier
 	default:
 		return
 	}
-	s := c.SystemConfig
 
+	s := c.SystemConfig
 	isDist := serviceFlags&LoadGenForDistributedLoadGen != 0
 	if isDist {
 		s.LoadGenWorkers = 0
 	}
-	newProcess(t, loadGenParams, &s, s.Services.LoadGen).Restart(t)
+	c.LoadGen.writeConfig(t, &s)
+	c.LoadGen.Restart(t)
+	if loadGenFlag == LoadGenForCommitter {
+		// The committer load generator runs an embedded orderer that binds the orderer
+		// ports (orderer-servers in the template). Release our reservation so it can bind
+		// them; it is already retrying via ListenRetryExecute. Mutually exclusive with the
+		// Orderer subprocess flag (enforced by the guard in Start).
+		c.OrdererEnv.ReleaseListeners()
+	}
 	if isDist {
 		s.LoadGenWorkers = 1
-		loadGenParams.Name = "dist-loadgen"
-		loadGenParams.Template = config.TemplateLoadGenDistributedLoadGenClient
-		newProcess(t, loadGenParams, &s, config.ServiceConfig{}).Restart(t)
+		c.DistLoadGen.writeConfig(t, &s)
+		c.DistLoadGen.Restart(t)
 	}
 }
 
@@ -620,16 +668,21 @@ func (c *CommitterRuntime) ensureAtLeastLastCommittedBlockNumber(t *testing.T, b
 // requireAllServicesAreRunning fails the test if any managed process has exited unexpectedly.
 func (c *CommitterRuntime) requireAllServicesAreRunning(t *testing.T) {
 	t.Helper()
-	c.MockOrderer.requireRunning(t)
-	c.Coordinator.requireRunning(t)
-	c.Sidecar.requireRunning(t)
-	c.QueryService.requireRunning(t)
-	for _, p := range c.Verifier {
+	for _, p := range c.serverProcesses() {
 		p.requireRunning(t)
 	}
-	for _, p := range c.VcService {
-		p.requireRunning(t)
-	}
+}
+
+// serverProcesses returns the server processes managed by the runtime, in a stable order. It backs
+// both the config-writing pass in NewRuntime and requireAllServicesAreRunning. The load generators
+// are excluded: their template and worker count depend on the service flags passed to Start, so
+// startLoadGen writes their config and starts them.
+func (c *CommitterRuntime) serverProcesses() []*ProcessWithConfig {
+	procs := make([]*ProcessWithConfig, 0, 4+len(c.Verifier)+len(c.VcService))
+	procs = append(procs, c.MockOrderer, c.Coordinator, c.Sidecar, c.QueryService)
+	procs = append(procs, c.Verifier...)
+	procs = append(procs, c.VcService...)
+	return procs
 }
 
 func isMoreThanOneBitSet(bits int) bool {
