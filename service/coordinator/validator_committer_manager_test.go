@@ -172,6 +172,33 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 		ensureZeroWaitingTxs(env)
 	})
 
+	t.Run("an empty batch is not sent to the vcservice", func(t *testing.T) {
+		t.Parallel()
+		env := newVcMgrTestEnv(t, 1)
+
+		// The first batch of a stream goes through splitAndSendToVC, which already sends nothing
+		// for an empty batch, so send a real batch first to get past that path.
+		first, firstStatus := createInputTxsNodeForTest(t, 2, 0, 1)
+		env.inputTxs <- first
+		require.ElementsMatch(t, first, <-env.outputTxs)
+		test.RequireProtoElementsMatch(t, firstStatus, env.readOutputTxsStatus(t).Status)
+		require.Equal(t, uint32(1), env.mockVcService.NumBatchesReceived.Load())
+
+		// An empty batch reaches the manager when every status in a verifier response was
+		// untracked. It must not be marshalled and sent as an empty VcBatch.
+		env.inputTxs <- dependencygraph.TxNodeBatch{}
+
+		// A real batch behind it proves the empty one was skipped rather than merely delayed:
+		// had it been sent, it would have been counted before this one.
+		second, secondStatus := createInputTxsNodeForTest(t, 3, 0, 2)
+		env.inputTxs <- second
+		require.ElementsMatch(t, second, <-env.outputTxs)
+		test.RequireProtoElementsMatch(t, secondStatus, env.readOutputTxsStatus(t).Status)
+
+		require.Equal(t, uint32(2), env.mockVcService.NumBatchesReceived.Load())
+		ensureZeroWaitingTxs(env)
+	})
+
 	t.Run("send batches to ensure all vcservices are used", func(t *testing.T) {
 		t.Parallel()
 		env := newVcMgrTestEnv(t, 2)

@@ -157,6 +157,13 @@ func (vc *validatorCommitter) sendTransactionsAndForwardStatus(
 		//       transaction from the stream and removing it from txBeingValidated, if the stream context is
 		//       canceled before we can write to these two channels, the validation results are lost forever.
 		//       Similarly, the first argument, i.e., context should not be stream context.
+		//       Binding them to the stream would also make the re-queue in
+		//       receiveStatusAndForwardToOutput reachable on every stream failure: a batch whose
+		//       statuses were already queued would be re-sent, the vcservice would re-emit those
+		//       statuses, and Service.numTxsInProgress would be decremented twice for one
+		//       transaction. That breaks the numTxsInProgress >= readyCount >= 0 invariant that
+		//       NoPendingTransactionProcessing relies on to report idle, so the sidecar could
+		//       never re-establish its stream.
 		return vc.receiveStatusAndForwardToOutput(ctx, stream, outputValidatedTxsNode, outputTxsStatus)
 	})
 
@@ -175,6 +182,10 @@ func (vc *validatorCommitter) sendTransactionsToVCService(
 		}
 
 		logger.Debugf("New TX node came from dependency graph manager to vc manager")
+		if len(txsNode) == 0 {
+			continue
+		}
+
 		vc.addTxsBeingValidated(txsNode)
 		txBatch := make([]*servicepb.VcTx, len(txsNode))
 		for i, txNode := range txsNode {
@@ -233,8 +244,7 @@ func (vc *validatorCommitter) receiveStatusAndForwardToOutput(
 	for {
 		txsStatus, err := stream.Recv()
 		if err != nil {
-			// The stream ended or the SVM was closed.
-			return errors.Wrap(err, "receive from stream ended with error")
+			return classifyStreamRecvError(err)
 		}
 
 		logger.Debugf("Batch contains %d TX statuses", len(txsStatus.Status))
