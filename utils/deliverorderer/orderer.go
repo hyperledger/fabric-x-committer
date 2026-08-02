@@ -177,7 +177,8 @@ func (d *ftDelivery) processBlocks(ctx context.Context) error {
 	for ctx.Err() == nil {
 		deliverBlock, err := d.processNextBlock(ctx)
 		if deliverBlock != nil {
-			// Write will be no-op if the output buffer is nil.
+			// Both outputs are optional. Write reports false for one that was not set, since
+			// the value is dropped rather than delivered, so the result is ignored here.
 			deliveryBlockOutput.Write(deliverBlock.Block)
 			deliveryBlockOutputWithSourceID.Write(deliverBlock)
 		}
