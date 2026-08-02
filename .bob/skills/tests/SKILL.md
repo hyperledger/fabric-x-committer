@@ -424,6 +424,27 @@ require.Greater(t, count, 500)
     - [`test.GetIntMetricValue()`](../../utils/test/metrics.go:92) for capturing baseline values or when using with `require.Eventually()` for complex conditions
     - [`test.GetMetricValue()`](../../utils/test/metrics.go:69) for float metrics (histograms, summaries) or when you need the raw float value
 
+   Metrics are only **eventually consistent**: a metric is never required to be an exact in-time
+   representation of the truth, only to have been consistent with reality at some point and to
+   converge to it. So a metric updated by a worker goroutine must be asserted with
+   `test.EventuallyIntMetric()` — even when the test has already observed the worker's *effect*
+   (a response on a channel, a committed block). Observing the effect does not order the metric
+   update: the worker typically publishes the effect first and updates the metric a few
+   instructions later, and on a loaded CI runner it can be descheduled in between. Reserve
+   `test.RequireIntMetricValue()` for values no concurrent goroutine is touching, such as the
+   initial state before any work is submitted.
+
+   But an eventual assertion only proves a value was **reached**, so it is vacuous when the
+   expected value is the one the metric already holds — it passes on the first tick, before the
+   work it is meant to verify has happened. When a step must leave a metric *unchanged* (a gauge
+   that goes up and back down, a counter the step must not touch), don't assert it on its own with
+   an eventual helper. Either gate on a metric the step does change and then assert the unchanged
+   one with `test.RequireIntMetricValue()`, which fails the moment it moved, or assert the changed
+   and unchanged values as one `require.EventuallyWithT()` condition so they must hold at the same
+   instant — polling stays sound there, because the changed value cannot reach its expected state
+   until the step completes, and that is what keeps the unchanged ones meaningful. For "must never
+   exceed" claims, use `require.Never()` (see below).
+
 2. **Capture Baseline Values**: When testing incremental changes, capture the metric value before the operation:
 
    ```go
@@ -527,13 +548,14 @@ test.EventuallyIntMetric(t, preValue+5, metrics.transactionReceivedTotal,
     5*time.Second, 100*time.Millisecond)
 ```
 
-#### Pattern 2: Multiple Labeled Metrics
+#### Pattern 2: Several Metrics Updated by a Worker
 
 ```go
-test.RequireIntMetricValue(t, 30, metrics.notifierPendingTxIDs)
-test.RequireIntMetricValue(t, 6, metrics.notifierUniquePendingTxIDs)
-test.RequireIntMetricValue(t, 10, metrics.notifierTxIDsStatusDeliveries)
-test.RequireIntMetricValue(t, 0, metrics.notifierTxIDsTimeoutDeliveries)
+// The notifier's worker updates these after it delivers the notification the test just read,
+// so they are only eventually consistent with it.
+test.EventuallyIntMetric(t, 30, metrics.notifierPendingTxIDs, 5*time.Second, 100*time.Millisecond)
+test.EventuallyIntMetric(t, 6, metrics.notifierUniquePendingTxIDs, 5*time.Second, 100*time.Millisecond)
+test.EventuallyIntMetric(t, 10, metrics.notifierTxIDsStatusDeliveries, 5*time.Second, 100*time.Millisecond)
 ```
 
 #### Pattern 3: Queue Size Monitoring
