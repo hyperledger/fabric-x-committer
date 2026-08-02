@@ -96,7 +96,7 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 	defer connection.CloseConnectionsLog(connections...)
 	for i, conn := range connections {
 		label := conn.CanonicalTarget()
-		c.metrics.vcservicesConnection.Disconnected(label)
+		c.metrics.vcs.connection.Disconnected(label)
 
 		vc := newValidatorCommitter(conn, c.metrics, c.policyMgr)
 		vcm.validatorCommitter[i] = vc
@@ -133,7 +133,7 @@ func (vc *validatorCommitter) sendTransactionsAndForwardStatus(
 	outputValidatedTxsNode channel.Writer[dependencygraph.TxNodeBatch],
 	outputTxsStatus *txStatusQueue,
 ) error {
-	defer vc.metrics.vcservicesConnection.Disconnected(vc.conn.CanonicalTarget())
+	defer vc.metrics.vcs.connection.Disconnected(vc.conn.CanonicalTarget())
 
 	g, gCtx := errgroup.WithContext(ctx)
 
@@ -143,7 +143,7 @@ func (vc *validatorCommitter) sendTransactionsAndForwardStatus(
 	}
 
 	// if the stream is started, the connection has been established.
-	vc.metrics.vcservicesConnection.Connected(vc.conn.CanonicalTarget())
+	vc.metrics.vcs.connection.Connected(vc.conn.CanonicalTarget())
 
 	// NOTE: sendTransactionsToVCService and receiveStatusAndForwardToOutput must
 	//       always return an error on exist.
@@ -276,7 +276,7 @@ func (vc *validatorCommitter) receiveStatusAndForwardToOutput(
 		}
 		logger.Debugf("Forwarded batch with %d TX statuses back to coordinator", len(txsStatus.Status))
 
-		promutil.AddToCounter(vc.metrics.vcserviceTransactionProcessedTotal, len(txsStatus.Status))
+		promutil.AddToCounter(vc.metrics.vcs.processedTotal, len(txsStatus.Status))
 
 		if len(txsNode) > 0 && !outputTxsNode.Write(txsNode) {
 			vc.addTxsBeingValidated(txsNode)
@@ -295,7 +295,7 @@ func (vc *validatorCommitter) recoverPendingTransactions(inputTxsNode channel.Wr
 		return
 	}
 
-	promutil.AddToCounter(vc.metrics.vcservicesRetriedTransactionTotal, len(pendingTxs))
+	promutil.AddToCounter(vc.metrics.vcs.retriedTotal, len(pendingTxs))
 	inputTxsNode.Write(pendingTxs)
 }
 

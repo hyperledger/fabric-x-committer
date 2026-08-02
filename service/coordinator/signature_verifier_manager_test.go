@@ -50,12 +50,17 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 	outputValidatedTxs := make(chan dependencygraph.TxNodeBatch, 10)
 
 	pm := newPolicyManager()
+	metrics := newPerformanceMetrics(&channels{
+		depGraphToSigVerifierFreeTxs:       inputTxBatch,
+		sigVerifierToVCServiceValidatedTxs: outputValidatedTxs,
+		vcServiceToCoordinatorTxStatus:     newTxStatusQueue(1),
+	})
 	svm := newSignatureVerifierManager(
 		&signVerifierManagerConfig{
 			clientConfig:             test.ServerToMultiClientConfig(test.InsecureTLSConfig, sc.Configs...),
 			incomingTxsForValidation: inputTxBatch,
 			outgoingValidatedTxs:     outputValidatedTxs,
-			metrics:                  newPerformanceMetrics(),
+			metrics:                  metrics,
 			policyManager:            pm,
 		},
 	)
@@ -74,7 +79,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 		nil,
 	)
 	monitoring.WaitForConnections(
-		t, svm.metrics.Provider, "coordinator_verifier_connection_status", numSvService,
+		t, metrics.Provider, "coordinator_verifier_connection_status", numSvService,
 	)
 
 	env := &svMgrTestEnv{
@@ -162,7 +167,7 @@ func (e *svMgrTestEnv) requireConnectionMetrics(
 	sv := e.signVerifierManager.signVerifier[svIndex]
 	monitoring.RequireConnectionMetrics(
 		t, sv.conn.CanonicalTarget(),
-		e.signVerifierManager.metrics.verifiersConnection,
+		e.signVerifierManager.metrics.verifiers.connection,
 		monitoring.ExpectedConn{Status: expectedConnStatus, FailureTotal: expectedConnFailureTotal},
 	)
 }
@@ -170,7 +175,7 @@ func (e *svMgrTestEnv) requireConnectionMetrics(
 func (e *svMgrTestEnv) requireRetriedTxsTotal(t *testing.T, expectedRetriedTxsTotal int) {
 	t.Helper()
 	test.EventuallyIntMetric(
-		t, expectedRetriedTxsTotal, e.signVerifierManager.metrics.verifiersRetriedTransactionTotal,
+		t, expectedRetriedTxsTotal, e.signVerifierManager.metrics.verifiers.retriedTotal,
 		30*time.Second, 250*time.Millisecond,
 	)
 }
@@ -192,7 +197,7 @@ func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
 	env.requireTxBatch(t, expectedValidatedTxs)
 
 	test.EventuallyIntMetric(
-		t, 15, env.signVerifierManager.config.metrics.sigverifierTransactionProcessedTotal,
+		t, 15, env.signVerifierManager.config.metrics.verifiers.processedTotal,
 		30*time.Second, 10*time.Millisecond,
 	)
 }
@@ -222,7 +227,7 @@ func TestSignatureVerifierManagerWithLargeSize(t *testing.T) {
 	// env.requireTxBatch(t, expectedValidatedTxs)
 
 	test.EventuallyIntMetric(
-		t, totalBlocks*txPerBlock+1, env.signVerifierManager.config.metrics.sigverifierTransactionProcessedTotal,
+		t, totalBlocks*txPerBlock+1, env.signVerifierManager.config.metrics.verifiers.processedTotal,
 		30*time.Second, 10*time.Millisecond,
 	)
 }

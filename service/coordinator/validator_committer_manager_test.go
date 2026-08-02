@@ -54,13 +54,18 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 	outputTxs := make(chan dependencygraph.TxNodeBatch, 10)
 	outputTxsStatus := newTxStatusQueue(10)
 
+	metrics := newPerformanceMetrics(&channels{
+		sigVerifierToVCServiceValidatedTxs: inputTxs,
+		vcServiceToDepGraphValidatedTxs:    outputTxs,
+		vcServiceToCoordinatorTxStatus:     outputTxsStatus,
+	})
 	vcm := newValidatorCommitterManager(
 		&validatorCommitterManagerConfig{
 			clientConfig:                   test.ServerToMultiClientConfig(test.InsecureTLSConfig, servers.Configs...),
 			incomingTxsForValidationCommit: inputTxs,
 			outgoingValidatedTxsNode:       outputTxs,
 			outgoingTxsStatus:              outputTxsStatus,
-			metrics:                        newPerformanceMetrics(),
+			metrics:                        metrics,
 			policyMgr:                      svEnv.policyManager,
 		},
 	)
@@ -73,7 +78,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 	// Waiting for all the connections ensures the validatorCommitter slice is fully populated,
 	// as newSvMgrTestEnv does for the verifiers.
 	monitoring.WaitForConnections(
-		t, vcm.config.metrics.Provider, "coordinator_vcservice_connection_status", numVCService,
+		t, metrics.Provider, "coordinator_vcservice_connection_status", numVCService,
 	)
 
 	return &vcMgrTestEnv{
@@ -96,7 +101,7 @@ func (e *vcMgrTestEnv) requireConnectionMetrics(
 	sv := e.validatorCommitterManager.validatorCommitter[vcIndex]
 	monitoring.RequireConnectionMetrics(
 		t, sv.conn.CanonicalTarget(),
-		sv.metrics.vcservicesConnection,
+		sv.metrics.vcs.connection,
 		monitoring.ExpectedConn{Status: expectedConnStatus, FailureTotal: expectedConnFailureTotal},
 	)
 }
@@ -104,7 +109,7 @@ func (e *vcMgrTestEnv) requireConnectionMetrics(
 func (e *vcMgrTestEnv) requireRetriedTxsTotal(t *testing.T, expectedRetriedTxsTotal int) {
 	t.Helper()
 	test.EventuallyIntMetric(
-		t, expectedRetriedTxsTotal, e.validatorCommitterManager.config.metrics.vcservicesRetriedTransactionTotal,
+		t, expectedRetriedTxsTotal, e.validatorCommitterManager.config.metrics.vcs.retriedTotal,
 		5*time.Second, 250*time.Millisecond,
 	)
 }
@@ -132,7 +137,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 		test.RequireProtoElementsMatch(t, expectedTxsStatus, outTxsStatus.Status)
 
 		test.EventuallyIntMetric(
-			t, 5, env.validatorCommitterManager.config.metrics.vcserviceTransactionProcessedTotal,
+			t, 5, env.validatorCommitterManager.config.metrics.vcs.processedTotal,
 			2*time.Second, 100*time.Millisecond,
 		)
 
@@ -165,7 +170,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		test.EventuallyIntMetric(
 			t, 5+totalBlocks*txPerBlock,
-			env.validatorCommitterManager.config.metrics.vcserviceTransactionProcessedTotal,
+			env.validatorCommitterManager.config.metrics.vcs.processedTotal,
 			2*time.Second, 100*time.Millisecond,
 		)
 
@@ -316,7 +321,7 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	}
 	test.RequireProtoElementsMatch(t, expectedTxsStatus, actualTxsStatus)
 
-	txProcessedTotalMetric := env.validatorCommitterManager.config.metrics.vcserviceTransactionProcessedTotal
+	txProcessedTotalMetric := env.validatorCommitterManager.config.metrics.vcs.processedTotal
 	txTotal := test.GetIntMetricValue(t, txProcessedTotalMetric)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
@@ -341,7 +346,7 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 func TestValidatorCommitterAddAndRecoverPendingTxs(t *testing.T) {
 	t.Parallel()
 	// The connection is unused: neither call below touches the stream.
-	vc := newValidatorCommitter(nil, newPerformanceMetrics(), newPolicyManager())
+	vc := newValidatorCommitter(nil, newTestPerfMetrics(), newPolicyManager())
 
 	txsNode := dependencygraph.TxNodeBatch{
 		{VCTx: &servicepb.VcTx{Ref: committerpb.NewTxRef("tx 1", 1, 0)}},
@@ -356,7 +361,7 @@ func TestValidatorCommitterAddAndRecoverPendingTxs(t *testing.T) {
 
 	require.ElementsMatch(t, txsNode, <-recovered)
 	require.Zero(t, vc.txBeingValidated.Count())
-	test.RequireIntMetricValue(t, len(txsNode), vc.metrics.vcservicesRetriedTransactionTotal)
+	test.RequireIntMetricValue(t, len(txsNode), vc.metrics.vcs.retriedTotal)
 }
 
 func (e *vcMgrTestEnv) readOutputTxsStatus(t *testing.T) *committerpb.TxStatusBatch {

@@ -10,7 +10,6 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
@@ -128,7 +127,7 @@ func NewCoordinatorService(c *Config) *Service {
 		vcServiceToCoordinatorTxStatus:     newTxStatusQueue(bufSzPerChanForValCommitMgr),
 	}
 
-	metrics := newPerformanceMetrics()
+	metrics := newPerformanceMetrics(queues)
 
 	depMgr := dependencygraph.NewManager(
 		&dependencygraph.Parameters{
@@ -195,11 +194,6 @@ func (c *Service) Run(ctx context.Context) error {
 	defer c.validatorCommitterAPI.close()
 
 	g, eCtx := errgroup.WithContext(canCtx)
-
-	g.Go(func() error {
-		c.monitorQueues(eCtx)
-		return nil
-	})
 
 	g.Go(func() error {
 		logger.Info("Starting dependency graph manager")
@@ -446,24 +440,5 @@ func (c *Service) sendTxStatus(
 		for status, count := range statusCount {
 			promutil.AddToCounter(m.transactionCommittedTotal.WithLabelValues(status.String()), count)
 		}
-	}
-}
-
-func (c *Service) monitorQueues(ctx context.Context) {
-	ticker := time.NewTicker(c.config.QueueMonitorSamplingTime)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-
-		m := c.metrics
-		q := c.queues
-		promutil.SetGauge(m.sigverifierInputTxBatchQueueSize, len(q.depGraphToSigVerifierFreeTxs))
-		promutil.SetGauge(m.sigverifierOutputValidatedTxBatchQueueSize, len(q.sigVerifierToVCServiceValidatedTxs))
-		promutil.SetGauge(m.vcserviceOutputValidatedTxBatchQueueSize, len(q.vcServiceToDepGraphValidatedTxs))
-		promutil.SetGauge(m.vcserviceOutputTxStatusBatchQueueSize, q.vcServiceToCoordinatorTxStatus.len())
 	}
 }

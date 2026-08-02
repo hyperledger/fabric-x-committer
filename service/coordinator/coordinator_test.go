@@ -581,23 +581,27 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 func TestQueueSize(t *testing.T) {
 	t.Parallel()
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2})
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
-	t.Cleanup(cancel)
-	go env.coordinator.monitorQueues(ctx)
 
 	q := env.coordinator.queues
 	m := env.coordinator.metrics
+	requireQueueSizes := func(expected int) {
+		test.RequireIntMetricValue(t, expected, m.verifiers.inputQueueSize)
+		test.RequireIntMetricValue(t, expected, m.verifiers.outputQueueSize)
+		test.RequireIntMetricValue(t, expected, m.vcs.inputQueueSize)
+		test.RequireIntMetricValue(t, expected, m.vcs.outputQueueSize)
+		test.RequireIntMetricValue(t, expected, m.vcserviceOutputTxStatusBatchQueueSize)
+	}
+
+	requireQueueSizes(0)
+
+	// The verifier's output queue is the VC's input queue, so one batch covers both.
 	q.depGraphToSigVerifierFreeTxs <- dependencygraph.TxNodeBatch{}
 	q.sigVerifierToVCServiceValidatedTxs <- dependencygraph.TxNodeBatch{}
 	q.vcServiceToDepGraphValidatedTxs <- dependencygraph.TxNodeBatch{}
 	require.True(t, q.vcServiceToCoordinatorTxStatus.write(t.Context(), &committerpb.TxStatusBatch{}))
 
-	require.Eventually(t, func() bool {
-		return test.GetIntMetricValue(t, m.sigverifierInputTxBatchQueueSize) == 1 &&
-			test.GetIntMetricValue(t, m.sigverifierOutputValidatedTxBatchQueueSize) == 1 &&
-			test.GetIntMetricValue(t, m.vcserviceOutputValidatedTxBatchQueueSize) == 1 &&
-			test.GetIntMetricValue(t, m.vcserviceOutputTxStatusBatchQueueSize) == 1
-	}, 3*time.Second, 500*time.Millisecond)
+	// The gauges report the queue length when scraped, so no sampling interval to wait for.
+	requireQueueSizes(1)
 
 	<-q.depGraphToSigVerifierFreeTxs
 	<-q.sigVerifierToVCServiceValidatedTxs
@@ -605,12 +609,7 @@ func TestQueueSize(t *testing.T) {
 	_, ok := q.vcServiceToCoordinatorTxStatus.read(t.Context())
 	require.True(t, ok)
 
-	require.Eventually(t, func() bool {
-		return test.GetIntMetricValue(t, m.sigverifierInputTxBatchQueueSize) == 0 &&
-			test.GetIntMetricValue(t, m.sigverifierOutputValidatedTxBatchQueueSize) == 0 &&
-			test.GetIntMetricValue(t, m.vcserviceOutputValidatedTxBatchQueueSize) == 0 &&
-			test.GetIntMetricValue(t, m.vcserviceOutputTxStatusBatchQueueSize) == 0
-	}, 3*time.Second, 500*time.Millisecond)
+	requireQueueSizes(0)
 }
 
 func TestCoordinatorRecovery(t *testing.T) {

@@ -101,7 +101,7 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 	defer connection.CloseConnectionsLog(connections...)
 	for i, conn := range connections {
 		label := conn.CanonicalTarget()
-		c.metrics.verifiersConnection.Disconnected(label)
+		c.metrics.verifiers.connection.Disconnected(label)
 
 		sv := newSignatureVerifier(c, conn)
 		svm.signVerifier[i] = sv
@@ -163,7 +163,7 @@ func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
 	inputTxBatch channel.ReaderWriter[dependencygraph.TxNodeBatch],
 	outputValidatedTxs channel.Writer[dependencygraph.TxNodeBatch],
 ) error {
-	defer sv.metrics.verifiersConnection.Disconnected(sv.conn.CanonicalTarget())
+	defer sv.metrics.verifiers.connection.Disconnected(sv.conn.CanonicalTarget())
 	g, gCtx := errgroup.WithContext(ctx)
 
 	stream, err := sv.client.StartStream(gCtx)
@@ -172,7 +172,7 @@ func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
 	}
 
 	// if the stream is started, the connection is established.
-	sv.metrics.verifiersConnection.Connected(sv.conn.CanonicalTarget())
+	sv.metrics.verifiers.connection.Connected(sv.conn.CanonicalTarget())
 
 	// NOTE: sendTransactionsToSVService and receiveStatusAndForwardToOutput must
 	//       always return an error on exist.
@@ -299,7 +299,7 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 			return errors.Wrap(outputValidatedTxs.Context().Err(), "context ended")
 		}
 
-		promutil.AddToCounter(sv.metrics.sigverifierTransactionProcessedTotal, len(response.Status))
+		promutil.AddToCounter(sv.metrics.verifiers.processedTotal, len(response.Status))
 	}
 }
 
@@ -341,7 +341,7 @@ func (sv *signatureVerifier) recoverPendingTransactions(inputTxBatch channel.Wri
 	sv.txBeingValidated = make(map[servicepb.Height]*dependencygraph.TransactionNode)
 
 	inputTxBatch.Write(pendingTxs)
-	promutil.AddToCounter(sv.metrics.verifiersRetriedTransactionTotal, len(pendingTxs))
+	promutil.AddToCounter(sv.metrics.verifiers.retriedTotal, len(pendingTxs))
 }
 
 func (sv *signatureVerifier) addTxsBeingValidated(txBatch dependencygraph.TxNodeBatch) {
