@@ -189,24 +189,25 @@ type Config struct {
 	Verifier           connection.MultiClientConfig `mapstructure:"verifier"`
 	ValidatorCommitter connection.MultiClientConfig `mapstructure:"validator-committer"`
 	DependencyGraph    *DependencyGraphConfig       `mapstructure:"dependency-graph" validate:"required"`
-	ChannelBufferSizePerGoroutine int          `mapstructure:"per-channel-buffer-size-per-goroutine" validate:"required,gt=0"`
-	QueueMonitorSamplingTime      time.Duration `mapstructure:"queue-monitor-sampling-time" validate:"required,gt=0"`
+	// Every scalar carries its default in a `default` tag, not a Default* const.
+	ChannelBufferSizePerGoroutine int `mapstructure:"per-channel-buffer-size-per-goroutine" default:"10" validate:"gt=0"`
+	QueueMonitorSamplingTime time.Duration `mapstructure:"queue-monitor-sampling-time" default:"100ms" validate:"gt=0"`
 }
-
-const (
-	DefaultServerPort             = 6001
-	DefaultDatabaseMaxConnections = 20
-)
 ```
 
 The full pipeline (keep every stage in sync when adding a field):
 
 ```
-Config struct (mapstructure) → viper default → sample YAML → env var → decoder hook → docs
+Config struct (mapstructure + default tag) → sample YAML → env var → decoder hook → docs
 ```
 
-- Register defaults in `cmd/config/viper.go` via `v.SetDefault("kebab.key", Default*)`;
-  env vars use prefix `SC_<SERVICE>_` with `-`/`.`→`_`.
+- Give every field its default in a `default:"..."` tag. `setDefaultsAndEnv`
+  (`cmd/config/config_preload.go:27`) walks the struct **type** and registers each tag as a
+  viper default, so a new field needs no manual `v.SetDefault`. Env vars use prefix
+  `SC_<SERVICE>_` with `-`/`.`→`_`, applied by the same walk.
+- `cmd/config/viper.go` holds only what a tag cannot express: the `server.*` limits for
+  client-facing services (`setClientFacingServerLimits`) and each service's default endpoint
+  (`setEndpoint`).
 - `readYamlAndSetupLogging[T]` (`cmd/config/app_config.go:90`) reads YAML, applies the
   `SC_<SVC>_YAML` override, and unmarshals + `validate.Struct`s three structs: logging,
   `serve.Config`, and your `T`.
@@ -223,6 +224,11 @@ holds typed prometheus fields. `newXxxMetrics()` calls `monitoring.NewProvider()
 `p.NewCounter/NewGauge/NewHistogram(...)` (each auto-registers). Give every metric
 `Namespace`/`Subsystem`/`Name`/`Help`. Update metrics at runtime only through `promutil`
 helpers (`AddToCounter`, `SetGauge`, `Observe`), never raw prometheus calls.
+
+For a gauge that merely reports a value already available on demand — a channel length, a
+queue depth — use `p.NewGaugeFunc(opts, fn)` instead of a `NewGauge` that a goroutine sets
+on a ticker. The value is then exact at scrape time and costs no goroutine. `fn` runs on the
+scrape path, so keep it cheap and concurrency-safe.
 
 ```go
 // service/vc/metrics.go:15
@@ -256,13 +262,13 @@ Pass dependencies as config. Open connections **in `Run`**, using the `utils/con
 dialers, and always `defer connection.CloseConnectionsLog(conn...)`:
 
 ```go
-// service/coordinator/validator_committer_manager.go:96
-commonConn, err := connection.NewLoadBalancedConnection(c.clientConfig)
+// service/coordinator/validator_committer_api.go:39
+conn, err := connection.NewLoadBalancedConnection(conf)
 if err != nil {
-	return fmt.Errorf("failed to create connection to validator persisters: %w", err)
+	return nil, fmt.Errorf("failed to create connection to validator persisters: %w", err)
 }
-defer connection.CloseConnectionsLog(commonConn)
-vcm.commonClient = servicepb.NewValidationAndCommitServiceClient(commonConn)
+// The caller owns the connection and defers connection.CloseConnectionsLog(conn).
+client := servicepb.NewValidationAndCommitServiceClient(conn)
 ```
 
 - `NewSingleConnection` — one peer; `NewLoadBalancedConnection` — round-robin over
@@ -296,14 +302,15 @@ return serve.StartAndServe(ctx, service, serverConfig)
 
 ## 9. New-service checklist
 
-1. `service/<name>/config.go` — `Config` (mapstructure + validate tags), `Default*` consts.
+1. `service/<name>/config.go` — `Config` (mapstructure + `default` + validate tags).
    Serving knobs go in `serve.Config`, not here.
 2. `service/<name>/metrics.go` — `perfMetrics` embedding `*monitoring.Provider`;
    `new<X>Metrics()` using `p.New*`.
 3. `service/<name>/<name>.go` — struct embedding `Unimplemented<X>Server` +
    `config`/`metrics`/`healthcheck`/`ready`; `New<X>Service(cfg)`; `Run` / `WaitForReady`
    / `RegisterService`; gRPC handlers using `grpcerror.Wrap*`. Package logger at top.
-4. `cmd/config/viper.go` — register every default with `v.SetDefault`.
+4. `cmd/config/viper.go` — only for what a `default` tag cannot express: the service's
+   default endpoint, and `server.*` limits if it is client-facing.
 5. `cmd/config/app_config.go` — `Read<X>YamlAndSetupLogging` via `readYamlAndSetupLogging[<X>.Config]`.
 6. `cmd/committer/config.go` + `start_cmd.go` — add the service to config dispatch and the
    `startService` switch → `serve.StartAndServe`.

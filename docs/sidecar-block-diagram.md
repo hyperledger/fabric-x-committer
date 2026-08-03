@@ -575,10 +575,10 @@ The sidecar tracks recovery-related metrics:
 ```
 Metrics:
 - sidecar_coordinator_connection_status
-  └─► Labels: {status="connected|disconnected"}
+  └─► Labels: {grpc_target="<endpoint>"}; 1 = connected, 0 = disconnected
 
-- sidecar_coordinator_connection_failures_total
-  └─► Increments on each connection failure
+- sidecar_coordinator_connection_failure_total
+  └─► Labels: {grpc_target="<endpoint>"}; increments on each connection failure
 
 - sidecar_ledger_block_height
   └─► Current block store height

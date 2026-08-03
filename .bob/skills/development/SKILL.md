@@ -213,7 +213,8 @@ Every `.go` file follows this order (model: `service/coordinator/coordinator.go`
 
 ### Split a package into role-named files
 
-`config.go` (Config + `Default*` consts), `metrics.go` (`perfMetrics` + `newXxxMetrics`),
+`config.go` (Config with mapstructure/`default`/validate tags), `metrics.go`
+(`perfMetrics` + `newXxxMetrics`),
 `<service>.go` (the server, constructor, lifecycle, gRPC handlers), then one file per
 pipeline component/manager (`preparer.go`, `validator.go`, `committer.go`, `database.go`).
 Keep files moderate (~200–750 lines); give a large concern its own file. Tests are
@@ -388,8 +389,9 @@ Quick essentials:
 - Pass wide dependency lists as a `*xxxConfig` struct, not many positional args (the
   `revive` `argument-limit` is 4).
 - Config structs use `mapstructure:"kebab-case"` + `validate:"..."` tags — **no `yaml`
-  tags**. Every field needs a `Default*` const and a `v.SetDefault(...)` in
-  `cmd/config/viper.go`, plus an entry in the sample YAML under `cmd/config/samples/`.
+  tags**. Give every field its default in a `default:"..."` tag — `cmd/config/config_preload.go`
+  registers them with viper automatically — plus an entry in the sample YAML under
+  `cmd/config/samples/`.
 - Adding a `loadgen` `workload.Profile` field also means updating
   `loadgen_shared.yaml.tmpl` and the env-override test.
 

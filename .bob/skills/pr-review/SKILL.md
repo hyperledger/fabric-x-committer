@@ -420,10 +420,10 @@ Config struct (mapstructure) → Viper defaults → CLI flags → Sample YAML �
 
 **Key files:** `service/*/config.go`, `cmd/config/viper.go`, `cmd/config/cobra_flags.go`, `cmd/config/samples/*.yaml`, `cmd/config/config_decoder.go`, `docs/setup.md`
 
-### Viper Defaults
+### Config Defaults
 
-- ✅ Every new `mapstructure` field has a `v.SetDefault()` in `cmd/config/viper.go`; defaults are production-safe; duration fields use `time.Duration` values
-- ❌ Flag missing defaults; zero-value defaults where zero means "disabled"; duration defaults as strings
+- ✅ Every new `mapstructure` field carries a `default:"..."` tag (registered with viper by `cmd/config/config_preload.go`); defaults are production-safe; duration defaults are parseable durations such as `100ms`
+- ❌ Flag missing defaults; zero-value defaults where zero means "disabled"; a manual `v.SetDefault` in `cmd/config/viper.go` where a `default` tag would do (that file is only for the service endpoint and `server.*` limits)
 
 ### Sample YAML
 

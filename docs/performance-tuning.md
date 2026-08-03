@@ -47,9 +47,9 @@ Monitor queue length gauges to find the bottleneck. A growing queue means the do
 | `sidecar_relay_input_block_queue_size` | Block Ingestion | Coordinator not consuming blocks fast enough |
 | `sidecar_relay_waiting_transactions_queue_size` | Relay | Transactions waiting for commit statuses to return |
 | `sidecar_relay_output_committed_block_queue_size` | Committed Blocks | Committed blocks backing up; downstream consumers slow |
-| `coordinator_sigverifier_input_tx_batch_queue_size` | Signature Verification | Verifiers cannot keep up; add instances or CPU |
-| `coordinator_sigverifier_output_validated_tx_batch_queue_size` | Verified → VC | VC services not consuming verified transactions fast enough |
-| `coordinator_vcservice_output_validated_tx_batch_queue_size` | VC → Dep Graph | Dependency graph not processing validated results fast enough |
+| `coordinator_verifier_input_batch_queue_size` | Signature Verification | Verifiers cannot keep up; add instances or CPU |
+| `coordinator_verifier_output_batch_queue_size` | Verified → VC | VC services not consuming verified transactions fast enough |
+| `coordinator_vcservice_output_batch_queue_size` | VC → Dep Graph | Dependency graph not processing validated results fast enough |
 | `coordinator_vcservice_output_tx_status_batch_queue_size` | Status Response | Status responses backing up between VC and Coordinator |
 | `vcservice_preparer_input_queue_size` | VC Preparation | Preparer workers saturated |
 | `vcservice_validator_input_queue_size` | VC Validation | DB validation queries too slow; check connections or co-location |
