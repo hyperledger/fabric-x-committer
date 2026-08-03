@@ -80,7 +80,10 @@ func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 	}
 
 	// After creating the artifacts, we can create the stream.
-	c.txStream = workload.NewTxStream(conf.LoadProfile, conf.Stream)
+	c.txStream, err = workload.NewTxStream(conf.LoadProfile, conf.Stream)
+	if err != nil {
+		return nil, err
+	}
 
 	c.adapter = adapter
 	conf.Generate = adapters.PhasesIntersect(conf.Generate, adapter.Supports())

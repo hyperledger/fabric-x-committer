@@ -31,6 +31,10 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
+// serverDownDuration is how long each restart leaves the server down before bringing it back: long
+// enough for the low-budget client to exhaust its retries while the default client rides it out.
+const serverDownDuration = 30 * time.Second
+
 type deliverServerWrapper struct {
 	peer.DeliverServer
 }
@@ -65,19 +69,12 @@ func TestGRPCRetry(t *testing.T) {
 
 	t.Log("Stopping the grpc server")
 	cancel()
-	test.CheckServerStopped(t, serverConfig.GRPC.Endpoint.Address())
+	reserveWhileServerDown(t, serverConfig)
 
-	// We override the context to avoid mistakenly using the previous one.
+	// Override the context so this restart and the client retrying against it run on a fresh budget.
 	ctx, cancel = context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-
-	var wg sync.WaitGroup
-	t.Cleanup(wg.Wait)
-	wg.Go(func() {
-		time.Sleep(30 * time.Second)
-		t.Log("Service is starting")
-		test.ServeForTest(ctx, t, serverConfig, nil)
-	})
+	scheduleServerRestart(ctx, t, serverConfig)
 
 	t.Log("Attempting to connect with default GRPC config")
 	_, err = client.Check(ctx, nil)
@@ -94,21 +91,39 @@ func TestGRPCRetry(t *testing.T) {
 
 	t.Log("Stopping the grpc server")
 	cancel()
-	test.CheckServerStopped(t, serverConfig.GRPC.Endpoint.Address())
+	reserveWhileServerDown(t, serverConfig)
 
-	// We override the context to avoid mistakenly using the previous one.
+	// Override the context so this restart and the client retrying against it run on a fresh budget.
 	ctx, cancel = context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-
-	wg.Go(func() {
-		time.Sleep(30 * time.Second)
-		t.Log("Service is starting")
-		test.ServeForTest(ctx, t, serverConfig, nil)
-	})
+	scheduleServerRestart(ctx, t, serverConfig)
 
 	t.Log("Attempting to connect again with lower timeout")
 	_, err = client2.Check(ctx, nil)
 	require.Error(t, err)
+}
+
+// reserveWhileServerDown re-reserves the server's gRPC port the moment it is stopped, so a parallel
+// test cannot grab the just-freed ephemeral port while the server is down.
+func reserveWhileServerDown(t *testing.T, sc *serve.Config) {
+	t.Helper()
+	serve.ClosePreAllocatedListener(&sc.GRPC)
+	serve.PreAllocateListener(t, &sc.GRPC)
+	require.True(t, test.CheckServerStopped(t, sc.GRPC.Endpoint.Address()),
+		"a reservation-only port must not answer gRPC health checks")
+}
+
+// scheduleServerRestart brings the server back up after serverDownDuration, reusing the reserved
+// port.
+func scheduleServerRestart(ctx context.Context, t *testing.T, sc *serve.Config) {
+	t.Helper()
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
+	wg.Go(func() {
+		time.Sleep(serverDownDuration)
+		t.Log("Service is starting")
+		test.ServeForTest(ctx, t, sc, nil)
+	})
 }
 
 //nolint:paralleltest // modifies grpc logger.

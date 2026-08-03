@@ -82,7 +82,8 @@ func BenchmarkGenTx(b *testing.B) {
 	flogging.ActivateSpec("fatal")
 	//nolint:thelper // false positive.
 	genericBench(b, func(b *testing.B, p *Profile) {
-		t := NewTxStream(p, defaultBenchStreamOptions())
+		t, err := NewTxStream(p, defaultBenchStreamOptions())
+		require.NoError(b, err)
 
 		ctx := b.Context()
 		// Start the timer before creating the service: the stream generates
@@ -109,7 +110,7 @@ func BenchmarkGenTx(b *testing.B) {
 
 func requireValidKey(t *testing.T, key []byte, profile *Profile) {
 	t.Helper()
-	require.Len(t, key, int(profile.Key.Size))
+	require.Len(t, key, int(profile.Transaction.KeySize))
 	require.Positive(t, SumInt(key))
 }
 
@@ -191,7 +192,8 @@ func startTxGeneratorUnderTest(
 	t *testing.T, profile *Profile, options *StreamOptions, modifierGenerators ...Generator[Modifier],
 ) *TxStream {
 	t.Helper()
-	g := NewTxStream(profile, options, modifierGenerators...)
+	g, err := NewTxStream(profile, options, modifierGenerators...)
+	require.NoError(t, err)
 	test.RunServiceForTest(t.Context(), t, g.Run, nil)
 	return g
 }
@@ -248,7 +250,7 @@ func TestGenInvalidSigTx(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(1)
 	p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.Ecdsa
-	p.Conflicts.InvalidSignatures = 0.2
+	p.Transaction.InvalidSignatures = 0.2
 
 	c := startTxGeneratorUnderTest(t, p, defaultStreamOptions())
 	g := c.MakeGenerator()
@@ -267,7 +269,7 @@ func TestGenDependentTx(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(1)
 	p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.NoScheme
-	p.Conflicts.Dependencies = []DependencyDescription{
+	p.Transaction.Dependencies = []DependencyDescription{
 		{
 			Gap:         1,
 			Src:         "write",

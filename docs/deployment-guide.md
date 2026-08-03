@@ -168,7 +168,31 @@ Start the database cluster first and wait for it to be healthy before starting a
    - This is a one-time administrative operation that must be performed before booting the committer for the first time
    - The command is safe to run multiple times
 
-3. **Start Services** (any order after database is healthy and initialized)
+3. **Provision a YugabyteDB PITR snapshot schedule (required for state snapshots)**
+
+   State snapshots create a native database clone via `CREATE DATABASE ... TEMPLATE`.
+   On YugabyteDB, cloning is built on Point-in-Time Recovery and **fails without a
+   pre-existing snapshot schedule** on the state database (error: `Could not find
+   snapshot schedule for namespace <db>`) — this applies even to as-of-now clones.
+   **Without this schedule, snapshots cannot be created.** PostgreSQL deployments do
+   not need this step.
+
+   The schedule can only be created with the `yb-admin` CLI (no YSQL statement exists),
+   so it is an operator provisioning step performed once against the state database:
+   ```shell
+   yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> \
+     create_snapshot_schedule <interval-minutes> <retention-minutes> ysql.<database>
+   ```
+
+   **Keep the interval and retention as short as your operations allow.** The committer
+   needs the schedule only to enable cloning, not for a recovery window. Retention is the
+   performance lever: a long window pins old SST files (disk growth) and forces DocDB to
+   retain more MVCC history (larger, slower scans). A short interval/retention lets
+   compaction reclaim history promptly. The schedule's mere existence has no throughput
+   cost. Note that while a schedule exists it blocks `DROP DATABASE` of the state database
+   and disallows `DROP TABLESPACE` cluster-wide.
+
+4. **Start Services** (any order after database is healthy and initialized)
    - VC Service — connects to database on startup
    - Query Service — connects to database on startup
    - Verifier Service — stateless, loads policies on first request

@@ -29,7 +29,17 @@ type (
 		block       *servicepb.CoordinatorBatch
 		withStatus  *blockWithStatus
 		isConfig    bool
-		// txIDToHeight is a reference to the relay map.
+		// snapshotTx holds the accepted snapshot TX, kept out of block.Txs (unlike a regular TX) so
+		// it can be submitted to the coordinator as its own single-TX segment, separately from and
+		// after the block's other TXs. See submitSnapshotBlock in relay.go. A non-nil snapshotTx
+		// is the sole signal that the block has an accepted snapshot TX. Only the first snapshot TX
+		// in a block is accepted; any further snapshot TXs in the same block are rejected with
+		// REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK.
+		snapshotTx *servicepb.TxWithRef
+		// txIDToHeight is a reference to the relay map. It is only used while constructing this
+		// blockMappingResult (mapBlock/addTxIDMapping); nothing reads it back off the struct
+		// afterwards, so callers that build further blockMappingResult values (e.g.
+		// submitSnapshotBlock's segments) do not need to carry it forward.
 		txIDToHeight *utils.SyncMap[string, servicepb.Height]
 	}
 
@@ -136,6 +146,25 @@ func (b *blockMappingResult) mapMessage(msgIndex uint32, msg []byte) error {
 		if status := verifyTxForm(tx); status != statusNotYetValidated {
 			return b.rejectTx(ref, status, "malformed tx")
 		}
+		if isSnapshotTx(tx) {
+			if b.snapshotTx != nil {
+				// Only the first snapshot TX in a block is processed; reject the rest with a
+				// stored status so the outcome is recorded, regardless of the first's outcome.
+				return b.rejectTx(ref, committerpb.Status_REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK,
+					"duplicate snapshot tx in block")
+			}
+			txWithRef, err := b.prepareTx(ref, tx)
+			if err != nil {
+				return err
+			}
+			if txWithRef == nil {
+				// A duplicate TX ID; already rejected by prepareTx via addTxIDMapping.
+				return nil
+			}
+			// Kept off block.Txs; see the snapshotTx field comment.
+			b.snapshotTx = txWithRef
+			return nil
+		}
 		return b.appendTx(ref, tx)
 	default:
 		return b.rejectTx(ref, committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
@@ -144,14 +173,29 @@ func (b *blockMappingResult) mapMessage(msgIndex uint32, msg []byte) error {
 }
 
 func (b *blockMappingResult) appendTx(ref *committerpb.TxRef, tx *applicationpb.Tx) error {
-	if idAlreadyExists, err := b.addTxIDMapping(ref); idAlreadyExists || err != nil {
+	txWithRef, err := b.prepareTx(ref, tx)
+	if err != nil || txWithRef == nil {
 		return err
 	}
-	txWithRef := &servicepb.TxWithRef{Ref: ref, Content: tx}
 	b.block.Txs = append(b.block.Txs, txWithRef)
+	return nil
+}
+
+// prepareTx runs the shared dedup/creation logic for an accepted TX: it records the TX ID,
+// stores the TxWithRef in withStatus.txs (keyed by original position), and logs it. It returns a
+// nil TxWithRef (and nil error) when ref.TxId is a duplicate, since addTxIDMapping has already
+// rejected it with a stored status. Callers append the returned TxWithRef to block.Txs themselves
+// (immediately for appendTx, or deferred to end-of-block for the snapshot TX).
+func (b *blockMappingResult) prepareTx(
+	ref *committerpb.TxRef, tx *applicationpb.Tx,
+) (*servicepb.TxWithRef, error) {
+	if idAlreadyExists, err := b.addTxIDMapping(ref); idAlreadyExists || err != nil {
+		return nil, err
+	}
+	txWithRef := &servicepb.TxWithRef{Ref: ref, Content: tx}
 	b.withStatus.txs[ref.TxNum] = txWithRef
 	debugTx(ref, "included: %s", ref.TxId)
-	return nil
+	return txWithRef, nil
 }
 
 func (b *blockMappingResult) rejectTx(ref *committerpb.TxRef, status committerpb.Status, reason string) error {
@@ -259,11 +303,17 @@ func verifyTxForm(tx *applicationpb.Tx) committerpb.Status {
 	if status := checkEndorsements(tx); status != statusNotYetValidated {
 		return status
 	}
+	if status := checkStandaloneSystemTx(tx); status != statusNotYetValidated {
+		return status
+	}
 
 	nsIDs := make(map[string]any, len(tx.Namespaces))
 	for _, ns := range tx.Namespaces {
 		// Checks that the application does not submit a config TX.
-		if ns.NsId == committerpb.ConfigNamespaceID || policy.ValidateNamespaceID(ns.NsId) != nil {
+		if ns.NsId == committerpb.ConfigNamespaceID {
+			return committerpb.Status_MALFORMED_NAMESPACE_ID_INVALID
+		}
+		if !committerpb.IsSystemNamespace(ns.NsId) && policy.ValidateNamespaceID(ns.NsId) != nil {
 			return committerpb.Status_MALFORMED_NAMESPACE_ID_INVALID
 		}
 		if _, ok := nsIDs[ns.NsId]; ok {
@@ -271,7 +321,7 @@ func verifyTxForm(tx *applicationpb.Tx) committerpb.Status {
 		}
 
 		for _, check := range []func(ns *applicationpb.TxNamespace) committerpb.Status{
-			checkNamespaceFormation, checkMetaNamespace,
+			checkNamespaceReadsWrites, checkSystemNamespace,
 		} {
 			if status := check(ns); status != statusNotYetValidated {
 				return status
@@ -303,8 +353,53 @@ func checkEndorsements(tx *applicationpb.Tx) committerpb.Status {
 	return statusNotYetValidated
 }
 
-func checkNamespaceFormation(ns *applicationpb.TxNamespace) committerpb.Status {
-	if len(ns.ReadWrites) == 0 && len(ns.BlindWrites) == 0 {
+func isSnapshotTx(tx *applicationpb.Tx) bool {
+	return len(tx.Namespaces) == 1 && tx.Namespaces[0].NsId == committerpb.SnapshotNamespaceID
+}
+
+func checkStandaloneSystemTx(tx *applicationpb.Tx) committerpb.Status {
+	for _, ns := range tx.Namespaces {
+		if ns.NsId != committerpb.SnapshotNamespaceID && ns.NsId != committerpb.CheckpointNamespaceID {
+			continue
+		}
+		if len(tx.Namespaces) == 1 {
+			continue
+		}
+		// System TX must be standalone; not namespace ID/snapshot marker/checkpoint key error.
+		return committerpb.Status_MALFORMED_SYSTEM_TX_NOT_STANDALONE
+	}
+	return statusNotYetValidated
+}
+
+func checkSystemNamespace(ns *applicationpb.TxNamespace) committerpb.Status {
+	switch ns.NsId {
+	case committerpb.MetaNamespaceID:
+		return checkMetaNamespace(ns)
+	case committerpb.SnapshotNamespaceID:
+		if len(ns.ReadsOnly) > 0 || len(ns.ReadWrites) > 0 || len(ns.BlindWrites) > 0 {
+			return committerpb.Status_MALFORMED_SNAPSHOT_NOT_MARKER_ONLY
+		}
+	case committerpb.CheckpointNamespaceID:
+		if len(ns.ReadsOnly) > 0 || len(ns.BlindWrites) > 0 || len(ns.ReadWrites) != 1 {
+			return committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY
+		}
+		_, n, err := servicepb.NewHeightFromBytes(ns.ReadWrites[0].Key)
+		if err != nil || n != len(ns.ReadWrites[0].Key) {
+			return committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY
+		}
+	default:
+		return statusNotYetValidated
+	}
+	return statusNotYetValidated
+}
+
+// checkNamespaceReadsWrites validates the reads/writes shape shared by user and system
+// namespaces: it rejects a namespace with no writes (except the marker-only `_snapshot` and
+// `_checkpoint` system namespaces, whose write requirements are checked in checkSystemNamespace)
+// and validates all keys. It runs for every namespace in the transaction.
+func checkNamespaceReadsWrites(ns *applicationpb.TxNamespace) committerpb.Status {
+	if len(ns.ReadWrites) == 0 && len(ns.BlindWrites) == 0 &&
+		ns.NsId != committerpb.SnapshotNamespaceID && ns.NsId != committerpb.CheckpointNamespaceID {
 		return committerpb.Status_MALFORMED_NO_WRITES
 	}
 

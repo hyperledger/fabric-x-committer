@@ -122,6 +122,17 @@ func (c *transactionCommitter) commitTransactions(
 	// to reuse transaction IDs.
 	// However, we still limit the number of retries to some arbitrary number to avoid an endless loop due to a bug.
 	maxRetriesToRemoveAllInvalidTxs := 1024
+	// Snapshot-database-first: if batch carries a _snapshot record, create native
+	// database and rewrite record value to PENDING+clone_database BEFORE batch
+	// commits. Snapshot txID commits only once snapshot database exists
+	// (invariant txID <=> database <=> record). Creation failure aborts batch and
+	// coordinator retries it.
+	// TODO: COORDINATOR detects VC failure and decides resubmission or snapshot
+	// database recreation/re-hash; VC does not self-recover.
+	if err := db.createSnapshotIfPresent(ctx, vTx.newWrites); err != nil {
+		return nil, fmt.Errorf("failed to create snapshot before commit: %w", err)
+	}
+
 	for range maxRetriesToRemoveAllInvalidTxs {
 		// Group the writes by namespace so that we can commit to each table independently.
 		info := &statesToBeCommitted{

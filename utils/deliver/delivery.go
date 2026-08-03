@@ -130,7 +130,8 @@ func toQueueWithoutReconnect(ctx context.Context, p *Parameters) error {
 		p.NextBlockNum++
 		backoff = nil
 
-		// Write will be no-op if the output buffer is nil.
+		// Both outputs are optional. Write reports false for one that was not set, since the
+		// value is dropped rather than delivered, so the result is deliberately ignored here.
 		outputBlock.Write(block)
 		outputBlockWithSourceID.Write(&BlockWithSourceID{
 			SourceID: p.SourceID,

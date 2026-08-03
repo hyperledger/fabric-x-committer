@@ -275,6 +275,41 @@ If this happens, the writes and/or statuses for the corresponding transactions a
 **e. Reporting Status:** After the commit is successful, the `batchStatus` is sent to the `txsStatus` channel, which relays the information 
 back to the Coordinator, completing the workflow for the transaction batch.
 
+### Task 4. Creating State Snapshots (Clone-First)
+
+When a `_snapshot` marker transaction is committed, the VC creates a native,
+zero-copy clone of the state database **before** the marker's transaction ID is
+committed, preserving the invariant `txID committed <=> clone exists <=> PENDING row`.
+The clone is a consistent copy of the drained state cut and is never dropped by
+the VC (dropping is forbidden because it could delete a clone whose txID has not
+yet committed). See [snapshot.go](/service/vc/snapshot.go).
+
+A `_snapshot` transaction is submitted standalone: the sidecar drains the pipeline
+before and after it, so no user transaction commits until the snapshot is fully
+processed. The clone therefore captures the exact snapshot cut with a plain
+`CREATE DATABASE <clone> TEMPLATE <source>` (as of current time), with no `AS OF`
+timestamp required.
+
+> **YugabyteDB prerequisite — a PITR snapshot schedule is mandatory.** YugabyteDB
+> database cloning is built on Point-in-Time Recovery: `CREATE DATABASE ... TEMPLATE`
+> fails with `Could not find snapshot schedule for namespace <db>` unless a snapshot
+> schedule already exists on the source database — this holds even for as-of-now
+> clones (no `AS OF`). **Without a snapshot schedule, snapshots cannot be created.**
+>
+> The schedule can only be created with the `yb-admin` CLI (there is no YSQL/SQL
+> statement for it), so it is an out-of-band operator provisioning step, not something
+> the VC creates at runtime. See the deployment guide for provisioning and tuning.
+>
+> **Performance:** merely having a schedule does not slow the database; the cost is
+> driven by the retention window. A long retention pins old SST files (disk growth)
+> and forces DocDB to keep more MVCC history, which enlarges scans. Because the
+> committer only needs cloning (not a recovery window), keep the snapshot interval and
+> retention as short as YugabyteDB allows. Also note a schedule blocks `DROP DATABASE`
+> of the source and disallows `DROP TABLESPACE` cluster-wide while it exists.
+>
+> PostgreSQL uses `CREATE DATABASE ... TEMPLATE ... STRATEGY=FILE_COPY` and needs no
+> schedule.
+
 ## 6. gRPC Service API
 
 The VC service exposes a [gRPC API](/service/vc/validator_committer_service.go) (`ValidationAndCommitServiceClient`) for the Coordinator and other system components. The methods are:

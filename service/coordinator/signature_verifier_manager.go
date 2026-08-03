@@ -101,7 +101,7 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 	defer connection.CloseConnectionsLog(connections...)
 	for i, conn := range connections {
 		label := conn.CanonicalTarget()
-		c.metrics.verifiersConnection.Disconnected(label)
+		c.metrics.verifiers.connection.Disconnected(label)
 
 		sv := newSignatureVerifier(c, conn)
 		svm.signVerifier[i] = sv
@@ -163,7 +163,7 @@ func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
 	inputTxBatch channel.ReaderWriter[dependencygraph.TxNodeBatch],
 	outputValidatedTxs channel.Writer[dependencygraph.TxNodeBatch],
 ) error {
-	defer sv.metrics.verifiersConnection.Disconnected(sv.conn.CanonicalTarget())
+	defer sv.metrics.verifiers.connection.Disconnected(sv.conn.CanonicalTarget())
 	g, gCtx := errgroup.WithContext(ctx)
 
 	stream, err := sv.client.StartStream(gCtx)
@@ -172,7 +172,7 @@ func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
 	}
 
 	// if the stream is started, the connection is established.
-	sv.metrics.verifiersConnection.Connected(sv.conn.CanonicalTarget())
+	sv.metrics.verifiers.connection.Connected(sv.conn.CanonicalTarget())
 
 	// NOTE: sendTransactionsToSVService and receiveStatusAndForwardToOutput must
 	//       always return an error on exist.
@@ -278,20 +278,13 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 	for {
 		response, err := stream.Recv()
 		if err != nil {
-			if grpcerror.HasCode(err, codes.InvalidArgument) {
-				// While it is unlikely that svm would send an invalid policy, it could happen
-				// if the stored policy in the database is corrupted or maliciously altered, or
-				// if there is a bug in the committer that modifies the policy bytes.
-				return errors.Join(retry.ErrNonRetryable, err)
-			}
-			// The stream ended or the SVM was closed.
-			return errors.Wrap(err, "receive from stream ended with error")
+			return classifyStreamRecvError(err)
 		}
 
 		logger.Debugf("New batch came from sv to sv manager, contains %d items", len(response.Status))
 
 		validatedTxs := sv.fetchAndDeleteTxBeingValidated(response)
-		if !outputValidatedTxs.Write(validatedTxs) {
+		if len(validatedTxs) > 0 && !outputValidatedTxs.Write(validatedTxs) {
 			// Since transactions are loaded and deleted from txBeingValidated before their
 			// validation results are queued, we must re-queue the transaction to txBeingValidated
 			// if its result cannot be added to the outputValidatedTxs queue.
@@ -299,7 +292,7 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 			return errors.Wrap(outputValidatedTxs.Context().Err(), "context ended")
 		}
 
-		promutil.AddToCounter(sv.metrics.sigverifierTransactionProcessedTotal, len(response.Status))
+		promutil.AddToCounter(sv.metrics.verifiers.processedTotal, len(response.Status))
 	}
 }
 
@@ -341,7 +334,7 @@ func (sv *signatureVerifier) recoverPendingTransactions(inputTxBatch channel.Wri
 	sv.txBeingValidated = make(map[servicepb.Height]*dependencygraph.TransactionNode)
 
 	inputTxBatch.Write(pendingTxs)
-	promutil.AddToCounter(sv.metrics.verifiersRetriedTransactionTotal, len(pendingTxs))
+	promutil.AddToCounter(sv.metrics.verifiers.retriedTotal, len(pendingTxs))
 }
 
 func (sv *signatureVerifier) addTxsBeingValidated(txBatch dependencygraph.TxNodeBatch) {
@@ -350,4 +343,17 @@ func (sv *signatureVerifier) addTxsBeingValidated(txBatch dependencygraph.TxNode
 	for _, txNode := range txBatch {
 		sv.txBeingValidated[*servicepb.NewHeightFromTxRef(txNode.VCTx.Ref)] = txNode
 	}
+}
+
+// classifyStreamRecvError maps a receive error from a service stream to a retry decision, for both
+// the signature verifier and the validator committer manager. An InvalidArgument is not
+// retryable: it means the request we sent can never be accepted, which points at corrupted or
+// altered state, or at a bug in the committer. Every other error ends the stream and
+// is retried under the sustain policy.
+func classifyStreamRecvError(err error) error {
+	if grpcerror.HasCode(err, codes.InvalidArgument) {
+		return errors.Join(retry.ErrNonRetryable, err)
+	}
+	// The stream ended or the manager was closed.
+	return errors.Wrap(err, "receive from stream ended with error")
 }

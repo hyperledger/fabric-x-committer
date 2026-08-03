@@ -10,7 +10,10 @@ PR description**. So a commit message here is not a throwaway line — it is the
 description, reviewed as-is. Write it to the PR template and keep the exact wording the
 user approves.
 
-The repo for all `gh` operations is **`hyperledger/fabric-x-committer`** (the `gh` default).
+The upstream repo for all `gh` operations (issues, and PRs via `--repo`) is
+**`hyperledger/fabric-x-committer`**. PRs, however, are pushed from and opened off **your
+fork** (`<your-user>/fabric-x-committer`), not upstream — see
+[Push to your fork, then open the PR against upstream](#5-push-to-your-fork-then-open-the-pr-against-upstream).
 
 Pick the workflow that matches the request:
 
@@ -94,7 +97,7 @@ The formal headers, in order (all but Type of change and Description are optiona
 
 #### Additional details (Optional)
 
-<Optional: implementation notes, how it was tested, deferred follow-ups, notes to reviewers.>
+<Optional: implementation notes, deferred follow-ups, notes to reviewers.>
 
 #### Related issues
 
@@ -133,6 +136,14 @@ next step), a `---------` separator (inserted by GitHub's squash when it concate
 commits), or **labels** — labels live on the PR/issue and are applied via `gh`
 (e.g. `gh pr edit --add-label ...`), never written into the message text.
 
+**Don't narrate verification or CI in the body.** No `Verified:` / `Testing` rundown of the
+`go build`, `go test`, `make lint`, or `make` targets you ran — CI runs the full suite against
+every PR, so a local pass/fail checklist is noise the reviewer skips. You still run the relevant
+tests and lint before submitting (see the `development` skill); you just don't restate them in the
+message. The one exception is a step a *reviewer* must run to observe the effect — a manual repro,
+a specific config, or a benchmark command with its numbers — which belongs in `#### Additional
+details` as reproduction instructions, not as a checklist of what already passed.
+
 ### 4. Show the message, then commit with sign-off
 
 Because the wording ships verbatim as the PR description, **show the full drafted message and
@@ -148,10 +159,51 @@ git commit -s -F /tmp/commit-msg.txt
 
 Amend with `git commit -s --amend -F /tmp/commit-msg.txt` if refining an existing commit.
 
-The same body is the PR description verbatim — if a PR already exists or the user wants to
-open one, reuse it with `gh pr create --body-file ...` or `gh pr edit --body-file ...`. Apply
-any labels to the PR through `gh` when applicable (e.g. `gh pr edit --add-label vc,bug`) —
-never in the message body.
+### 5. Push to your fork, then open the PR against upstream
+
+Contributors don't have push access to `hyperledger/fabric-x-committer`, so the branch must
+live on **your fork**, and the PR is opened from `your-fork:branch` into
+`hyperledger:main`. Never push feature branches to the upstream remote.
+
+Inspect the remotes and pick the fork (the one that is *not* `hyperledger/...`):
+
+```bash
+git remote -v
+```
+
+By GitHub convention, `origin` points at your fork (`<your-user>/fabric-x-committer`) and
+`upstream` points at `hyperledger/fabric-x-committer` — but don't assume the names match;
+read the URLs from `git remote -v` and pick by URL, not by name (this repo's own clone may
+name them differently). Confirm your fork's owner rather than hardcoding a name:
+
+```bash
+FORK_OWNER=$(gh api user -q .login)          # your GitHub login
+FORK_REMOTE=$(git remote -v | awk -v u="$FORK_OWNER/fabric-x-committer" '$2 ~ u {print $1; exit}')
+```
+
+Push the branch to the fork and open the PR with an explicit cross-repo `--head`:
+
+```bash
+git push -u "$FORK_REMOTE" <branch>
+gh pr create --repo hyperledger/fabric-x-committer \
+  --base main --head "$FORK_OWNER:<branch>" \
+  --title "[component] Short description" \
+  --body-file /tmp/pr-body.md
+```
+
+The `--head owner:branch` form is what makes it a fork PR — omitting the `owner:` prefix
+makes `gh` look for the branch on upstream and fail (or, if you accidentally pushed there,
+open an upstream-branch PR). If a branch was mistakenly pushed to the upstream remote,
+delete it there (`git push <upstream-remote> --delete <branch>`, using the remote name
+identified from `git remote -v`, not assumed to be `origin`) and re-point local tracking at
+the fork (`git branch --set-upstream-to=$FORK_REMOTE/<branch>`).
+
+The PR body is the commit message body verbatim (subject line and the `Signed-off-by:`
+trailer removed). If a PR already exists or you're updating one, reuse the same body with
+`gh pr edit --repo hyperledger/fabric-x-committer <num> --body-file /tmp/pr-body.md`. Apply
+any labels to the PR through `gh` when applicable (e.g.
+`gh pr edit --repo hyperledger/fabric-x-committer <num> --add-label vc,bug`) — never in the
+message body.
 
 ## Opening a GitHub issue
 

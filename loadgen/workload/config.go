@@ -34,10 +34,8 @@ type Probability = float64
 // The items order, however, might be affected by other parameters.
 type Profile struct {
 	Block       BlockProfile       `mapstructure:"block" yaml:"block"`
-	Key         KeyProfile         `mapstructure:"key" yaml:"key"`
 	Transaction TransactionProfile `mapstructure:"transaction" yaml:"transaction"`
 	Policy      PolicyProfile      `mapstructure:"policy" yaml:"policy"`
-	Conflicts   ConflictProfile    `mapstructure:"conflicts" yaml:"conflicts"`
 
 	// The seed to generate the seeds for each worker
 	Seed int64 `mapstructure:"seed" yaml:"seed"`
@@ -47,12 +45,6 @@ type Profile struct {
 	// To ensure responsibility of items between runs (e.g., for query)
 	// the number of workers must be preserved.
 	Workers uint32 `mapstructure:"workers" yaml:"workers"`
-}
-
-// KeyProfile describes generated keys characteristics.
-type KeyProfile struct {
-	// Size is the size of the key to generate.
-	Size uint32 `mapstructure:"size" yaml:"size"`
 }
 
 // BlockProfile describes generate block characteristics
@@ -74,22 +66,21 @@ type BlockProfile struct {
 }
 
 // TransactionProfile describes generate TX characteristics.
+// Note that each of the conflict probabilities are independent bernoulli distributions.
 type TransactionProfile struct {
-	// The sizes of the values/metadata to generate (size=0 => value=nil)
-	MetadataSize        uint32 `mapstructure:"metadata-size" yaml:"metadata-size"`
+	// The byte sizes of the generated key/values/metadata (size=0 => nil), ordered key, value, metadata.
+	KeySize             uint32 `mapstructure:"key-size" yaml:"key-size"`
 	ReadWriteValueSize  uint32 `mapstructure:"read-write-value-size" yaml:"read-write-value-size"`
 	BlindWriteValueSize uint32 `mapstructure:"blind-write-value-size" yaml:"blind-write-value-size"`
+	MetadataSize        uint32 `mapstructure:"metadata-size" yaml:"metadata-size"`
+
 	// The number of keys to generate (read ver=nil)
 	ReadOnlyCount uint32 `mapstructure:"read-only-count" yaml:"read-only-count"`
 	// The number of keys to generate (read ver=nil/write)
 	ReadWriteCount uint32 `mapstructure:"read-write-count" yaml:"read-write-count"`
 	// The number of keys to generate (write)
 	BlindWriteCount uint32 `mapstructure:"write-count" yaml:"write-count"`
-}
 
-// ConflictProfile describes the TX conflict characteristics.
-// Note that each of the conflicts' probabilities are independent bernoulli distributions.
-type ConflictProfile struct {
 	// Probability of invalid signatures [0,1] (default: 0)
 	InvalidSignatures Probability `mapstructure:"invalid-signatures" yaml:"invalid-signatures" validate:"gte=0,lte=1"`
 	// Dependencies list of dependencies

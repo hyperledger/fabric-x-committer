@@ -86,6 +86,16 @@ func (p *Provider) NewGauge(opts prometheus.GaugeOpts) prometheus.Gauge {
 	return g
 }
 
+// NewGaugeFunc creates a new prometheus gauge whose value is reported by calling fn on every
+// scrape. Use it instead of a NewGauge that a dedicated goroutine samples on a timer: the value
+// is exact rather than as fresh as the sampling interval, and no goroutine is needed. fn is
+// called by the scrape handler, so it must be cheap and safe for concurrent use.
+func (p *Provider) NewGaugeFunc(opts prometheus.GaugeOpts, fn func() float64) prometheus.GaugeFunc {
+	g := prometheus.NewGaugeFunc(opts, fn)
+	p.registry.MustRegister(g)
+	return g
+}
+
 // NewGaugeVec creates a new prometheus gauge vector.
 func (p *Provider) NewGaugeVec(opts prometheus.GaugeOpts, labels []string) *prometheus.GaugeVec {
 	gv := prometheus.NewGaugeVec(opts, labels)

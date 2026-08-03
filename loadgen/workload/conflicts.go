@@ -11,8 +11,6 @@ import (
 	"math/rand"
 
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
-
-	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
 // Dependency types.
@@ -23,12 +21,6 @@ const (
 )
 
 type (
-	// signTxModifier signs transactions according to the conflicts profile.
-	signTxModifier struct {
-		invalidSignGenerator *bernoulliGenerator
-		invalidSignature     []byte
-	}
-
 	// dependenciesModifier adds dependencies conflicts according to the conflict profile.
 	dependenciesModifier struct {
 		keyGenerator    *ByteArrayGenerator
@@ -51,30 +43,12 @@ type (
 	}
 )
 
-func newSignTxModifier(rnd *rand.Rand, profile *Profile) *signTxModifier {
-	return &signTxModifier{
-		invalidSignGenerator: &bernoulliGenerator{rnd: rnd, probability: profile.Conflicts.InvalidSignatures},
-		invalidSignature:     []byte("dummy"),
-	}
-}
-
-// Modify signs a transaction.
-func (g *signTxModifier) Modify(tx *applicationpb.Tx) {
-	if g.invalidSignGenerator.Next() {
-		// Pre-assigning prevents TxBuilder from re-signing the TX.
-		tx.Endorsements = make([]*applicationpb.Endorsements, len(tx.Namespaces))
-		for i := range len(tx.Namespaces) {
-			tx.Endorsements[i] = testsig.CreateEndorsementsForThresholdRule(g.invalidSignature)[0]
-		}
-	}
-}
-
 func newTxDependenciesModifier(
 	rnd *rand.Rand, profile *Profile,
 ) *dependenciesModifier {
 	return &dependenciesModifier{
-		keyGenerator: &ByteArrayGenerator{Size: profile.Key.Size, Source: rnd},
-		dependencies: Map(profile.Conflicts.Dependencies, func(
+		keyGenerator: &ByteArrayGenerator{Size: profile.Transaction.KeySize, Source: rnd},
+		dependencies: Map(profile.Transaction.Dependencies, func(
 			_ int, value DependencyDescription,
 		) dependencyDesc {
 			return dependencyDesc{

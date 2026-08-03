@@ -12,23 +12,35 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
+	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 
 type validatorTestEnv struct {
 	v            *transactionValidator
 	preparedTxs  chan *preparedTransactions
 	validatedTxs chan *validatedTransactions
+	txStatus     chan *committerpb.TxStatusBatch
 	dbEnv        *DatabaseTestEnv
 }
 
-func newValidatorTestEnv(t *testing.T) *validatorTestEnv {
+// newValidatorTestEnv starts a validator wired to a fresh DB. When withCommitter is
+// true, a committer is chained onto validatedTxs too, so tests can exercise gating
+// logic that spans both (e.g. the snapshot gate, which the validator applies before
+// the committer's createSnapshotIfPresent runs) via txStatus. withCommitter must be
+// false for tests that read validatedTxs directly (e.g. TestValidate): a running
+// committer would otherwise drain that channel out from under the test.
+//
+//nolint:revive // flag-parameter: withCommitter selects test topology, not runtime behavior.
+func newValidatorTestEnv(t *testing.T, withCommitter bool) *validatorTestEnv {
 	t.Helper()
 	preparedTxs := make(chan *preparedTransactions, 10)
 	validatedTxs := make(chan *validatedTransactions, 10)
+	var txStatus chan *committerpb.TxStatusBatch
 
 	dbEnv := NewDatabaseTestEnv(t)
 	metrics := newVCServiceMetrics()
@@ -37,10 +49,19 @@ func newValidatorTestEnv(t *testing.T) *validatorTestEnv {
 		return v.run(ctx, dbEnv.DB, 1)
 	}, nil)
 
+	if withCommitter {
+		txStatus = make(chan *committerpb.TxStatusBatch, 10)
+		c := newCommitter(validatedTxs, txStatus, metrics)
+		test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
+			return c.run(ctx, dbEnv.DB, 1)
+		}, nil)
+	}
+
 	return &validatorTestEnv{
 		v:            v,
 		preparedTxs:  preparedTxs,
 		validatedTxs: validatedTxs,
+		txStatus:     txStatus,
 		dbEnv:        dbEnv,
 	}
 }
@@ -48,7 +69,7 @@ func newValidatorTestEnv(t *testing.T) *validatorTestEnv {
 func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 	t.Parallel()
 
-	env := newValidatorTestEnv(t)
+	env := newValidatorTestEnv(t, false)
 
 	k1_1 := []byte("key1.1")
 	k1_2 := []byte("key1.2")
@@ -326,4 +347,59 @@ func TestValidate(t *testing.T) { //nolint:maintidx // cannot improve.
 			require.Equal(t, tt.expectedValidatedTx.invalidTxStatus, validatedTxs.invalidTxStatus)
 		})
 	}
+}
+
+func TestSnapshotGateEndToEnd(t *testing.T) {
+	t.Parallel()
+	env := newValidatorTestEnv(t, true)
+	testdb.EnsureSnapshotSchedule(t, env.dbEnv.DBConf.Database)
+	ctx, _ := createContext(t)
+	writer := channel.NewWriter(ctx, env.preparedTxs)
+	reader := channel.NewReader(ctx, env.txStatus)
+
+	// First snapshot commits (PENDING, not yet checkpointed).
+	prepTx1, _ := newIncomingSnapshotPreparedTx(t, env.dbEnv.DB, 700001, "gate-first")
+	writer.Write(prepTx1)
+	s1, ok := reader.Read()
+	require.True(t, ok)
+	require.Equal(t, committerpb.Status_COMMITTED, s1.Status[0].Status)
+
+	// Second, different snapshot is rejected because first is not CHECKPOINTED.
+	secondTxID := "gate-second"
+	prepTx2, secondName := newIncomingSnapshotPreparedTx(t, env.dbEnv.DB, 700002, secondTxID)
+	writer.Write(prepTx2)
+	s2, ok := reader.Read()
+	require.True(t, ok)
+	require.Equal(t, committerpb.Status_REJECTED_SNAPSHOT_IN_PROGRESS, s2.Status[0].Status)
+
+	// No database and no _snapshot record for the rejected request.
+	require.False(t, cloneExists(t, env.dbEnv.DB, secondName))
+	rows := env.dbEnv.FetchKeys(t, committerpb.SnapshotNamespaceID, [][]byte{[]byte(secondTxID)})
+	require.Empty(t, rows)
+}
+
+func newIncomingSnapshotPreparedTx(
+	t *testing.T, db *database, blockNum uint64, txID string,
+) (*preparedTransactions, string) {
+	t.Helper()
+	ref := &committerpb.TxRef{BlockNum: blockNum, TxNum: 0, TxId: txID}
+	name := snapshotDatabaseName(ref)
+	dropCloneCleanup(t, db, name)
+
+	value, err := proto.Marshal(&committerpb.SnapshotState{TxRef: ref})
+	require.NoError(t, err)
+
+	nws := make(transactionToWrites)
+	nws.getOrCreate(TxID(ref.TxId), committerpb.SnapshotNamespaceID).append([]byte(ref.TxId), value, 0)
+
+	prepTxs := &preparedTransactions{
+		nsToReads:              namespaceToReads{},
+		readToTxIDs:            readToTransactions{},
+		txIDToNsNonBlindWrites: transactionToWrites{},
+		txIDToNsBlindWrites:    transactionToWrites{},
+		txIDToNsNewWrites:      nws,
+		invalidTxIDStatus:      map[TxID]committerpb.Status{},
+		txIDToHeight:           transactionIDToHeight{TxID(ref.TxId): servicepb.NewHeightFromTxRef(ref)},
+	}
+	return prepTxs, name
 }

@@ -116,9 +116,6 @@ orderer-client:
 
 # Load profile configuration defining transaction characteristics and generation parameters
 load-profile:
-  key:
-    # Size of generated keys in bytes. Affects transaction payload size and storage requirements.
-    size: 32
   # block describes generate block characteristics
   # (when applying load to the VC or Verifier, blocks are translated to batches).
   # The generated block size is aimed to be max-size, if the generated
@@ -142,6 +139,8 @@ load-profile:
   #   - blind-write (write-count): Writes a key without reading it first.
   # The count for each type is a fixed number of operations per transaction (default: 0).
   transaction:
+    # Size of generated keys in bytes. Affects transaction payload size and storage requirements.
+    key-size: 32
     # Size in bytes of the metadata for each transaction (0 means nil value).
     # metadata-size: 0
     # Size in bytes of the value written for each read-write operation (0 means nil value).
@@ -154,6 +153,20 @@ load-profile:
     read-write-count: 2
     # Number of blind-write operations per transaction.
     # write-count: 0
+    # Fraction of transactions to generate with invalid signatures (0.0 to 1.0).
+    # Used to test signature verification and error handling. 0.1 = 10% invalid.
+    # Independent Bernoulli trial applied per transaction.
+    invalid-signatures: 0.1
+    # Dependencies inject read-write conflicts between transactions to test MVCC validation.
+    # Each dependency type is an independent Bernoulli trial applied per transaction.
+    # 'src' and 'dst' specify the operation types that create the dependency:
+    #   "read", "write", or "read-write" (both read and write the same key).
+    # 'gap' controls the distance (in transaction count) between dependent transactions (min: 1, default: 1).
+    # dependencies:
+    #   - probability: 0.05   # 5% of transactions will have this dependency
+    #     gap: 1              # Dependent transaction is the immediately next one
+    #     src: read-write     # Source transaction reads and writes a key
+    #     dst: read-write     # Destination transaction reads and writes the same key
   # Policy configuration for transaction endorsement and validation
   policy:
     # Channel ID for which transactions are generated. Must match the target blockchain channel.
@@ -204,21 +217,6 @@ load-profile:
     # which will be printed by the loadgen CLI tool.
     # If this path does not exist, or it is empty, the artifacts will be generated into it.
     artifacts-path: /root/artifacts
-  # Conflict and error injection configuration for testing system resilience.
-  conflicts:
-    # Fraction of transactions to generate with invalid signatures (0.0 to 1.0).
-    # Used to test signature verification and error handling. 0.1 = 10% invalid.
-    invalid-signatures: 0.1
-    # Dependencies inject read-write conflicts between transactions to test MVCC validation.
-    # Each dependency type is an independent Bernoulli trial applied per transaction.
-    # 'src' and 'dst' specify the operation types that create the dependency:
-    #   "read", "write", or "read-write" (both read and write the same key).
-    # 'gap' controls the distance (in transaction count) between dependent transactions (min: 1, default: 1).
-    # dependencies:
-    #   - probability: 0.05   # 5% of transactions will have this dependency
-    #     gap: 1              # Dependent transaction is the immediately next one
-    #     src: read-write     # Source transaction reads and writes a key
-    #     dst: read-write     # Destination transaction reads and writes the same key
   # Random seed for reproducible transaction generation. Same seed produces same transaction sequence.
   seed: 12345
   # Number of worker goroutines for parallel transaction generation.
