@@ -13,9 +13,11 @@ extract_metrics_script="${repo_root_dir}/scripts/metrics_doc_extract.py"
 metrics_doc="${repo_root_dir}/docs/metrics_reference.md"
 python_cmd="${python3:-${PYTHON_CMD}}"
 
+# generate_service_doc <service name> <metrics file>... - one section per service, over one or
+# more metrics files, for a service whose metrics are split across packages.
 generate_service_doc() {
   local service_name="$1"
-  local metrics_file="$2"
+  shift
 
   cat <<EOF
 ## ${service_name} Metrics
@@ -25,8 +27,11 @@ The following ${service_name} metrics are exported for consumption by Prometheus
 | Name | Type | Labels | Description |
 | ---- | ---- | ------ | ----------- |
 EOF
-  # Parses a Go metrics file and outputs markdown table rows.
-  ${python_cmd} "${extract_metrics_script}" "${repo_root_dir}/${metrics_file}"
+  # Parses the Go metrics files and outputs markdown table rows.
+  local metrics_file
+  for metrics_file in "$@"; do
+    ${python_cmd} "${extract_metrics_script}" "${repo_root_dir}/${metrics_file}"
+  done
   echo ""
 }
 
@@ -44,7 +49,9 @@ SPDX-License-Identifier: Apache-2.0
 EOF
 
   generate_service_doc "Sidecar" "service/sidecar/metrics.go"
-  generate_service_doc "Coordinator" "service/coordinator/metrics.go"
+  generate_service_doc "Coordinator" \
+    "service/coordinator/metrics.go" \
+    "service/coordinator/dependencygraph/metrics.go"
   generate_service_doc "Verifier" "service/verifier/metrics.go"
   generate_service_doc "Validator-Committer" "service/vc/metrics.go"
   generate_service_doc "Query Service" "service/query/metrics.go"
