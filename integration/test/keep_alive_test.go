@@ -58,8 +58,8 @@ type (
 		maxConcurrentStreams int
 	}
 
-	// activeConnectionsGauge scrapes a service's active-connections gauge from its metrics endpoint.
-	activeConnectionsGauge struct {
+	// metricsGetter scrapes a service's active-connections gauge from its metrics endpoint.
+	metricsGetter struct {
 		url       string
 		name      string
 		tlsConfig *tls.Config
@@ -67,7 +67,7 @@ type (
 )
 
 // value returns the gauge's current value.
-func (g activeConnectionsGauge) value(t *testing.T) int {
+func (g metricsGetter) value(t *testing.T) int {
 	t.Helper()
 	return test.GetMetricValueFromURL(t, g.url, g.name, g.tlsConfig)
 }
@@ -80,12 +80,12 @@ func TestKeepAliveSidecarDeadConnectionDetection(t *testing.T) {
 
 	c := startKeepAliveRuntime(t, keepAliveConfig{permitWithoutStream: false})
 
-	gauge := newActiveConnectionsGauge(
+	gauge := newMetricsGetter(
 		t, c, c.SystemConfig.Services.Sidecar.HTTPEndpoint, sidecarActiveConnectionsMetric,
 	)
 
 	// Number of connections the Sidecar before our client connects.
-	base := gauge.value(t)
+	prevActiveConnections := gauge.value(t)
 
 	proxy, conn := dialThroughProxy(
 		t, c.SystemConfig.Services.Sidecar.GrpcEndpoint.Address(), clientCredentials(t, c),
@@ -93,7 +93,7 @@ func TestKeepAliveSidecarDeadConnectionDetection(t *testing.T) {
 
 	sendSidecarInitialMessage(t, conn)
 
-	requireServerClosesDeadConnection(t, proxy, gauge, base)
+	blockAndWaitForServerClose(t, proxy, gauge, prevActiveConnections)
 }
 
 // TestKeepAliveQueryDeadConnectionDetection verifies that the query service's server-side keep-alive
@@ -104,12 +104,12 @@ func TestKeepAliveQueryDeadConnectionDetection(t *testing.T) {
 
 	c := startKeepAliveRuntime(t, keepAliveConfig{permitWithoutStream: true})
 
-	gauge := newActiveConnectionsGauge(
+	gauge := newMetricsGetter(
 		t, c, c.SystemConfig.Services.Query.HTTPEndpoint, queryActiveConnectionsMetric,
 	)
 
 	// Number of connections the Query before our client connects.
-	base := gauge.value(t)
+	prevActiveConnections := gauge.value(t)
 
 	proxy, conn := dialThroughProxy(
 		t, c.SystemConfig.Services.Query.GrpcEndpoint.Address(), clientCredentials(t, c),
@@ -123,7 +123,7 @@ func TestKeepAliveQueryDeadConnectionDetection(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	requireServerClosesDeadConnection(t, proxy, gauge, base)
+	blockAndWaitForServerClose(t, proxy, gauge, prevActiveConnections)
 }
 
 // TestKeepAliveSidecarStreamSlotRelease verifies that once keep-alive closes a dead
@@ -142,12 +142,12 @@ func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 
 	addr := c.SystemConfig.Services.Sidecar.GrpcEndpoint.Address()
 	clientCreds := clientCredentials(t, c)
-	gauge := newActiveConnectionsGauge(
+	gauge := newMetricsGetter(
 		t, c, c.SystemConfig.Services.Sidecar.HTTPEndpoint, sidecarActiveConnectionsMetric,
 	)
 
 	// Number of connections the Sidecar before our client connects.
-	base := gauge.value(t)
+	prevActiveConnections := gauge.value(t)
 
 	proxy, conn := dialThroughProxy(t, addr, clientCreds)
 
@@ -171,15 +171,15 @@ func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 
 	// Both the intercepted connection and conn2 are now open on the server.
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, base+2, gauge.value(t))
+		require.Equal(ct, prevActiveConnections+2, gauge.value(t))
 	}, 30*time.Second, 200*time.Millisecond)
 
-	interceptMessages(t, proxy)
+	blockMessages(t, proxy)
 
 	// Keep-alive closes the dead connection: the server reports one fewer active
 	// connection (conn2 stays open).
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, base+1, gauge.value(t))
+		require.Equal(ct, prevActiveConnections+1, gauge.value(t))
 	}, maxConnectionClosingTime, 500*time.Millisecond)
 
 	// And the stream slot it held is released for new clients.
@@ -217,11 +217,11 @@ func clientCredentials(t *testing.T, c *runner.CommitterRuntime) credentials.Tra
 	return creds
 }
 
-// newActiveConnectionsGauge builds a handle for scraping the named active-connections gauge on the
+// newMetricsGetter builds a handle for scraping the named active-connections gauge on the
 // given service's HTTP metrics endpoint.
-func newActiveConnectionsGauge(
+func newMetricsGetter(
 	t *testing.T, c *runner.CommitterRuntime, httpEndpoint *connection.Endpoint, metricName string,
-) activeConnectionsGauge {
+) metricsGetter {
 	t.Helper()
 
 	metricsURL, err := monitoring.MakeMetricsURL(httpEndpoint.Address(), &c.SystemConfig.ClientTLS)
@@ -233,31 +233,31 @@ func newActiveConnectionsGauge(
 	tlsConfig, err := creds.CreateClientTLSConfig()
 	require.NoError(t, err)
 
-	return activeConnectionsGauge{
+	return metricsGetter{
 		url:       metricsURL,
 		name:      metricName,
 		tlsConfig: tlsConfig,
 	}
 }
 
-// requireServerClosesDeadConnection intercepts the proxied connection and asserts, through the
+// blockAndWaitForServerClose intercepts the proxied connection and asserts, through the
 // service's active-connections gauge, that the server first counts the new connection and then,
 // once its keep-alive detects the now-silent connection, closes it itself — returning the count
-// to base.
-func requireServerClosesDeadConnection(t *testing.T, proxy *toxiclient.Proxy, gauge activeConnectionsGauge, base int) {
+// to the number of previous active connections.
+func blockAndWaitForServerClose(t *testing.T, proxy *toxiclient.Proxy, gauge metricsGetter, prevActiveConnections int) {
 	t.Helper()
 
 	// The server counts the new connection.
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, base+1, gauge.value(t))
+		require.Equal(ct, prevActiveConnections+1, gauge.value(t))
 	}, 30*time.Second, 200*time.Millisecond)
 
-	interceptMessages(t, proxy)
+	blockMessages(t, proxy)
 
 	// The server's keep-alive detects the silent connection and closes it itself,
 	// so the active-connection count returns to the baseline.
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, base, gauge.value(t))
+		require.Equal(ct, prevActiveConnections, gauge.value(t))
 	}, maxConnectionClosingTime, 500*time.Millisecond)
 }
 
@@ -333,9 +333,9 @@ func newProxy(t *testing.T, upstream string) *toxiclient.Proxy {
 	return proxy
 }
 
-// interceptMessages blocks all data on the connection without closing it (only client -> server). The socket
+// blockMessages blocks all data on the connection without closing it (only client -> server). The socket
 // remains open, but the server's keep-alive ping is never acknowledged.
-func interceptMessages(t *testing.T, p *toxiclient.Proxy) {
+func blockMessages(t *testing.T, p *toxiclient.Proxy) {
 	t.Helper()
 	_, err := p.AddToxic(
 		"block-data",
