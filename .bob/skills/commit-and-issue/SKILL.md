@@ -159,6 +159,14 @@ git commit -s -F /tmp/commit-msg.txt
 
 Amend with `git commit -s --amend -F /tmp/commit-msg.txt` if refining an existing commit.
 
+**Preserve the `#### ` headers — commit with `-F`, never through the editor.** Git's default
+cleanup is `strip` whenever the message is edited in an editor, and `strip` deletes every line
+starting with `#` — silently eating the `#### Type of change` / `#### Description` / … headers and
+mangling the PR description. Passing the message via `-F <file>` (or `-m`) defaults to `whitespace`
+cleanup, which keeps `#` lines, so `git commit -s -F …` and `git commit -s --amend -F …` are safe.
+The trap is an editor-based `git commit --amend` (or a `rebase`/tool that reopens the editor),
+which re-strips the headers; if you must edit interactively, add `--cleanup=whitespace`.
+
 ### 5. Push to your fork, then open the PR against upstream
 
 Contributors don't have push access to `hyperledger/fabric-x-committer`, so the branch must
