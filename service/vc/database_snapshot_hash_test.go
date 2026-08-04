@@ -31,7 +31,8 @@ func TestEnqueueSnapshotHashJobReturnsContextCancellation(t *testing.T) {
 	cancel()
 	db := &database{snapshotHashJobs: make(chan snapshotHashJob, 1)}
 
-	err := db.enqueueSnapshotHashJob(ctx, &committerpb.TxRef{TxId: "snapshot-tx"}, "snapshot_1")
+	job := snapshotHashJob{cloneDatabase: "snapshot_1", ref: &committerpb.TxRef{TxId: "snapshot-tx"}}
+	err := db.enqueueSnapshotHashJob(ctx, job)
 	require.ErrorIs(t, err, context.Canceled)
 	require.Empty(t, db.snapshotHashJobs)
 }
@@ -136,7 +137,7 @@ func TestSnapshotHashReEnqueueIsIdempotent(t *testing.T) {
 	// Step 3: manually re-enqueue the same clone (simulating a recovery re-drive,
 	// see the enqueueSnapshotHashJob doc comment), then wait for a second
 	// IN_PROGRESS -> COMPLETED pass over the same immutable clone.
-	require.NoError(t, env.dbEnv.DB.enqueueSnapshotHashJob(ctx, ref, name))
+	require.NoError(t, env.dbEnv.DB.enqueueSnapshotHashJob(ctx, snapshotHashJob{cloneDatabase: name, ref: ref}))
 
 	// Re-enqueue must drive IN_PROGRESS then COMPLETED. Version grows by two, so
 	// this cannot pass by observing first completed state before worker runs.
@@ -188,7 +189,7 @@ func TestSnapshotHashDeterministic(t *testing.T) {
 	require.NotEmpty(t, h1)
 
 	// Re-hashing the same immutable clone yields the identical digest.
-	h2, err := env.DB.hashSnapshotDatabase(ctx, snapshotDatabaseName(ref))
+	h2, err := env.DB.hasher.hashSnapshotDatabase(ctx, snapshotDatabaseName(ref))
 	require.NoError(t, err)
 	require.Equal(t, h1, h2)
 
@@ -211,7 +212,7 @@ func createAndHashSnapshotClone(ctx context.Context, t *testing.T, db *database,
 	name := snapshotDatabaseName(ref)
 	dropCloneCleanup(t, db, name) //nolint:contextcheck // cleanup must run after test ctx ends; see dropCloneCleanup.
 	require.NoError(t, db.createSnapshotDatabase(ctx, name))
-	hash, err := db.hashSnapshotDatabase(ctx, name)
+	hash, err := db.hasher.hashSnapshotDatabase(ctx, name)
 	require.NoError(t, err)
 	return hash
 }

@@ -282,7 +282,7 @@ zero-copy clone of the state database **before** the marker's transaction ID is
 committed, preserving the invariant `txID committed <=> clone exists <=> PENDING row`.
 The clone is a consistent copy of the drained state cut and is never dropped by
 the VC (dropping is forbidden because it could delete a clone whose txID has not
-yet committed). See [snapshot.go](/service/vc/snapshot.go).
+yet committed). See [database_snapshot.go](/service/vc/database_snapshot.go).
 
 A `_snapshot` transaction is submitted standalone: the sidecar drains the pipeline
 before and after it, so no user transaction commits until the snapshot is fully

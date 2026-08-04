@@ -11,8 +11,9 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
-	"hash"
+	"io"
 	"slices"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
@@ -33,9 +34,32 @@ import (
 const (
 	snapshotHashJobBuffer = 1
 
-	selectSnapshotRowSQL = "SELECT value FROM ns_" + committerpb.SnapshotNamespaceID + " WHERE key = $1;"
 	updateSnapshotRowSQL = "UPDATE ns_" + committerpb.SnapshotNamespaceID +
 		" SET value = $2, version = version + 1 WHERE key = $1;"
+
+	// selectSnapshotRowForUpdateSQL locks the _snapshot row for the duration of the
+	// enclosing transaction. beginTx runs at READ COMMITTED, which does not itself
+	// serialize concurrent access to a row or fail our commit if another transaction
+	// changed it after we read it: our later UPDATE is a blind write keyed only on
+	// `key`, so at plain READ COMMITTED a concurrent writer could commit between our
+	// SELECT and UPDATE and we would still match and overwrite it, succeeding with a
+	// stale value (TOCTOU). FOR UPDATE closes that gap by blocking any concurrent
+	// writer on this row until we commit or roll back, so no stale read can survive
+	// into our write.
+	selectSnapshotRowForUpdateSQL = "SELECT value FROM ns_" + committerpb.SnapshotNamespaceID +
+		" WHERE key = $1 FOR UPDATE;"
+
+	// txStatusPageSQL pages tx_status in primary-key order for hashing. tx_id is the
+	// PRIMARY KEY of tx_status, so ORDER BY tx_id is an index-order scan with no sort
+	// step, and `tx_id > $1` is an index seek.
+	txStatusPageSQL = "SELECT tx_id, status, height FROM tx_status WHERE tx_id > $1 ORDER BY tx_id LIMIT $2"
+
+	// nsRowPageSQLTempl pages an ns_<id> table in primary-key order for hashing.
+	// `key` is the PRIMARY KEY of ns_<id>, so ORDER BY key is served directly from the
+	// primary-key index (index-order scan) — there is no sort step, and the keyset
+	// predicate `key > $1` is an index seek. ${TABLE} is a sanitized identifier built
+	// from ns__meta keys, not user input.
+	nsRowPageSQLTempl = "SELECT key, value FROM ${TABLE} WHERE key > $1 ORDER BY key LIMIT $2"
 )
 
 // snapshotHashJob is a background request to hash a snapshot clone database and
@@ -78,8 +102,7 @@ func snapshotHashJobFromWrites(newWrites transactionToWrites) (snapshotHashJob, 
 // TestSnapshotHashReEnqueueIsIdempotent), not treated as a duplicate. A canceled
 // context means the commit already succeeded but the job was not queued; the caller
 // must not treat this as a failed commit.
-func (db *database) enqueueSnapshotHashJob(ctx context.Context, ref *committerpb.TxRef, cloneDatabase string) error {
-	job := snapshotHashJob{cloneDatabase: cloneDatabase, ref: ref}
+func (db *database) enqueueSnapshotHashJob(ctx context.Context, job snapshotHashJob) error {
 	if channel.NewWriter(ctx, db.snapshotHashJobs).Write(job) {
 		return nil
 	}
@@ -107,7 +130,7 @@ func (db *database) processSnapshotHashJob(ctx context.Context, job snapshotHash
 		return fmt.Errorf("failed to mark snapshot %s IN_PROGRESS: %w", job.cloneDatabase, err)
 	}
 
-	digest, err := db.hashSnapshotDatabase(ctx, job.cloneDatabase)
+	digest, err := db.hasher.hashSnapshotDatabase(ctx, job.cloneDatabase)
 	if err != nil {
 		return fmt.Errorf("failed to hash snapshot %s: %w", job.cloneDatabase, err)
 	}
@@ -122,10 +145,16 @@ func (db *database) processSnapshotHashJob(ctx context.Context, job snapshotHash
 // (and hash, when digest is non-nil); TxRef and CloneDatabase are preserved because
 // the existing record is decoded, mutated, and re-encoded rather than rebuilt.
 //
-// The read and the write are retried independently (not as one combined
-// operation): decode/encode are pure in-memory steps that never benefit from a
-// retry, so wrapping them together with the DB calls would needlessly re-run a
-// successful SELECT (or a successful UPDATE) whenever only the other step failed.
+// The read and the write run inside a single DB transaction using SELECT ... FOR
+// UPDATE (see selectSnapshotRowForUpdateSQL), not just beginTx's READ COMMITTED
+// isolation alone: READ COMMITTED does not detect this conflict or fail our commit,
+// because our UPDATE is a blind write keyed only on `key`, not on the value/version
+// we read. Without the row lock, a concurrent writer could commit between our SELECT
+// and UPDATE, and we would still match and overwrite it with our stale re-encoded
+// value (TOCTOU) with no error at any point. FOR UPDATE blocks that concurrent writer
+// on this row until we commit or roll back, closing the gap. The whole
+// read-decode-mutate-encode-write sequence is retried as one unit so a transient
+// failure anywhere in it restarts from a fresh, consistent read.
 func (db *database) updateSnapshotState(
 	ctx context.Context,
 	ref *committerpb.TxRef,
@@ -134,33 +163,39 @@ func (db *database) updateSnapshotState(
 ) error {
 	key := []byte(ref.TxId)
 
-	raw, err := retry.ExecuteWithResult(ctx, db.retryProfile, func() ([]byte, error) {
-		var raw []byte
-		scanErr := db.pool.QueryRow(ctx, selectSnapshotRowSQL, key).Scan(&raw)
-		return raw, errors.Wrapf(scanErr, "failed to read _snapshot record for tx %s", ref.TxId)
-	})
-	if err != nil {
-		return err
-	}
-
-	state, decErr := decodeSnapshotState(raw)
-	if decErr != nil {
-		return errors.Wrapf(decErr, "tx %s", ref.TxId)
-	}
-
-	state.Status = status
-	if digest != nil {
-		state.Hash = digest
-	}
-
-	newRaw, encErr := encodeSnapshotState(state)
-	if encErr != nil {
-		return errors.Wrapf(encErr, "tx %s", ref.TxId)
-	}
-
 	return retry.Execute(ctx, db.retryProfile, func() error {
-		_, exErr := db.pool.Exec(ctx, updateSnapshotRowSQL, key, newRaw)
-		return errors.Wrapf(exErr, "failed to update _snapshot record for tx %s", ref.TxId)
+		tx, rollBackFunc, err := db.beginTx(ctx)
+		if err != nil {
+			return err
+		}
+		defer rollBackFunc()
+
+		var raw []byte
+		scanErr := tx.QueryRow(ctx, selectSnapshotRowForUpdateSQL, key).Scan(&raw)
+		if scanErr != nil {
+			return errors.Wrapf(scanErr, "failed to read _snapshot record for tx %s", ref.TxId)
+		}
+
+		state, decErr := decodeSnapshotState(raw)
+		if decErr != nil {
+			return errors.Wrapf(decErr, "tx %s", ref.TxId)
+		}
+
+		state.Status = status
+		if digest != nil {
+			state.Hash = digest
+		}
+
+		newRaw, encErr := encodeSnapshotState(state)
+		if encErr != nil {
+			return errors.Wrapf(encErr, "tx %s", ref.TxId)
+		}
+
+		if _, exErr := tx.Exec(ctx, updateSnapshotRowSQL, key, newRaw); exErr != nil {
+			return errors.Wrapf(exErr, "failed to update _snapshot record for tx %s", ref.TxId)
+		}
+
+		return errors.Wrapf(tx.Commit(ctx), "failed to commit _snapshot state update for tx %s", ref.TxId)
 	})
 }
 
@@ -171,10 +206,14 @@ type nsRow struct {
 }
 
 // pagingKey returns the keyset-pagination cursor value for this row.
-func (r nsRow) pagingKey() []byte { return r.Key }
+func (r nsRow) pagingKey() []byte {
+	return r.Key
+}
 
 // hashKV returns the length-prefix-encoded key/value pair folded into the table hash.
-func (r nsRow) hashKV() (key, value []byte) { return r.Key, r.Value }
+func (r nsRow) hashKV() (key, value []byte) {
+	return r.Key, r.Value
+}
 
 // txStatusRow is one tx_status row, collected positionally (SELECT tx_id, status, height).
 type txStatusRow struct {
@@ -184,7 +223,9 @@ type txStatusRow struct {
 }
 
 // pagingKey returns the keyset-pagination cursor value for this row.
-func (r txStatusRow) pagingKey() []byte { return r.TxID }
+func (r txStatusRow) pagingKey() []byte {
+	return r.TxID
+}
 
 // hashKV returns key=tx_id, value=int32BE(status)||height, folded into the table hash.
 func (r txStatusRow) hashKV() (key, value []byte) {
@@ -204,6 +245,18 @@ type pageRow interface {
 	hashKV() ([]byte, []byte)
 }
 
+// snapshotHasher computes the deterministic content hash of a snapshot clone
+// database. It is a standalone utility, not a method set on *database: hashing
+// only needs read-only DB connection config, resource limits, and a retry
+// profile, not database's pool, metrics, or in-flight commit state. Keeping it
+// separate stops database's method surface from growing across every file
+// that touches namespace tables (database.go, database_snapshot.go, database_snapshot_hash.go).
+type snapshotHasher struct {
+	config         *statedb.Config
+	resourceLimits *ResourceLimitsConfig
+	retryProfile   *retry.Profile
+}
+
 // hashSnapshotDatabase opens a short-lived pool on the clone database, hashes
 // every hashed table in parallel, and combines the per-table digests in sorted
 // table-name order into one deterministic SHA-256.
@@ -214,33 +267,33 @@ type pageRow interface {
 // result is identical for identical clone content regardless of table-
 // completion order, because each table is hashed independently and the combine
 // step re-sorts by table name.
-func (db *database) hashSnapshotDatabase(ctx context.Context, cloneDatabase string) ([]byte, error) {
-	pool, err := db.openClonePool(ctx, cloneDatabase)
+func (h *snapshotHasher) hashSnapshotDatabase(ctx context.Context, cloneDatabase string) ([]byte, error) {
+	pool, err := h.openClonePool(ctx, cloneDatabase)
 	if err != nil {
 		return nil, err
 	}
 	defer pool.Close()
 
-	tables, err := listHashedTables(ctx, pool, db.retryProfile)
+	tables, err := listHashedTables(ctx, pool, h.retryProfile)
 	if err != nil {
 		return nil, err
 	}
 
 	cfg := tableHashConfig{
-		pool: pool, batchSize: db.resourceLimits.SnapshotHashBatchSize, retryProfile: db.retryProfile,
+		pool: pool, batchSize: h.resourceLimits.SnapshotHashBatchSize, retryProfile: h.retryProfile,
 	}
 	tableHashes := make([][]byte, len(tables))
 
 	g, gCtx := errgroup.WithContext(ctx)
-	g.SetLimit(db.resourceLimits.MaxWorkersForSnapshotHash)
+	g.SetLimit(h.resourceLimits.MaxWorkersForSnapshotHash)
 
 	for i, table := range tables {
 		g.Go(func() error {
-			h, hErr := hashTable(gCtx, cfg, table)
+			hh, hErr := hashTable(gCtx, cfg, table)
 			if hErr != nil {
 				return fmt.Errorf("failed to hash table %s: %w", table, hErr)
 			}
-			tableHashes[i] = h
+			tableHashes[i] = hh
 			return nil
 		})
 	}
@@ -267,11 +320,11 @@ func (db *database) hashSnapshotDatabase(ctx context.Context, cloneDatabase stri
 
 // openClonePool opens a pgxpool against the clone database, sized to the
 // per-table worker count so parallel scans do not starve on connections.
-func (db *database) openClonePool(ctx context.Context, cloneDatabase string) (*pgxpool.Pool, error) {
-	cfg := *db.config
+func (h *snapshotHasher) openClonePool(ctx context.Context, cloneDatabase string) (*pgxpool.Pool, error) {
+	cfg := *h.config
 	cfg.Database = cloneDatabase
 	//nolint:gosec // small bounded worker count.
-	cfg.MaxConnections = int32(db.resourceLimits.MaxWorkersForSnapshotHash) + 1
+	cfg.MaxConnections = int32(h.resourceLimits.MaxWorkersForSnapshotHash) + 1
 
 	pool, err := statedb.NewPool(ctx, &cfg)
 	if err != nil {
@@ -336,17 +389,11 @@ type tableHashConfig struct {
 // ORDER BY the primary key is an index-order scan (no sort step).
 func hashTable(ctx context.Context, cfg tableHashConfig, table string) ([]byte, error) {
 	if table == statedb.TxStatusTableName {
-		// tx_id is the PRIMARY KEY of tx_status, so ORDER BY tx_id is an index-order
-		// scan with no sort step, and `tx_id > $1` is an index seek.
-		const q = "SELECT tx_id, status, height FROM tx_status WHERE tx_id > $1 ORDER BY tx_id LIMIT $2"
-		return hashPaginatedTable[txStatusRow](ctx, cfg, q, statedb.TxStatusTableName)
+		return hashPaginatedTable[txStatusRow](ctx, cfg, txStatusPageSQL, statedb.TxStatusTableName)
 	}
 	// table is a sanitized identifier built from ns__meta keys, not user input.
 	sanitizedTable := pgx.Identifier{table}.Sanitize()
-	// `key` is the PRIMARY KEY of ns_<id>, so ORDER BY key is served directly from the
-	// primary-key index (index-order scan) — there is no sort step, and the keyset
-	// predicate `key > $1` is an index seek.
-	q := fmt.Sprintf("SELECT key, value FROM %s WHERE key > $1 ORDER BY key LIMIT $2", sanitizedTable)
+	q := strings.ReplaceAll(nsRowPageSQLTempl, "${TABLE}", sanitizedTable)
 	return hashPaginatedTable[nsRow](ctx, cfg, q, sanitizedTable)
 }
 
@@ -400,7 +447,7 @@ func hashPaginatedTable[T pageRow](
 
 // writeLengthPrefixed writes an 8-byte big-endian length followed by the bytes.
 // The length prefix prevents boundary collisions (e.g. "ab"+"cd" vs "abc"+"d").
-func writeLengthPrefixed(h hash.Hash, b []byte) {
+func writeLengthPrefixed(h io.Writer, b []byte) {
 	var lenBuf [8]byte
 	binary.BigEndian.PutUint64(lenBuf[:], uint64(len(b)))
 	_, _ = h.Write(lenBuf[:]) // sha256 Write never errors.

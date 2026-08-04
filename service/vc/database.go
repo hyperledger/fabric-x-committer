@@ -70,6 +70,7 @@ type (
 		config               *statedb.Config
 		resourceLimits       *ResourceLimitsConfig
 		snapshotHashJobs     chan snapshotHashJob
+		hasher               *snapshotHasher
 	}
 
 	// keyToVersion is a map from key to version.
@@ -118,6 +119,11 @@ func newDatabase(
 		config:               config,
 		resourceLimits:       resourceLimits,
 		snapshotHashJobs:     make(chan snapshotHashJob, snapshotHashJobBuffer),
+		hasher: &snapshotHasher{
+			config:         config,
+			resourceLimits: resourceLimits,
+			retryProfile:   config.Retry,
+		},
 	}, nil
 }
 

@@ -151,7 +151,7 @@ func (c *transactionCommitter) commitTransactions(
 
 		if res == nil {
 			if job, ok := snapshotHashJobFromWrites(vTx.newWrites); ok {
-				if err := db.enqueueSnapshotHashJob(ctx, job.ref, job.cloneDatabase); err != nil {
+				if err := db.enqueueSnapshotHashJob(ctx, job); err != nil {
 					return nil, fmt.Errorf("failed to enqueue snapshot hash job for %s: %w", job.cloneDatabase, err)
 				}
 			}
