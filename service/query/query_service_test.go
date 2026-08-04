@@ -450,9 +450,25 @@ func TestQueryWithConsistentView(t *testing.T) {
 	// So we expect the old version of item 2.
 	requireResults(t, []*items{&testItem2}, ret3.Namespaces)
 
+	// All three views share one batcher, and so one transaction. Asserting that here keeps
+	// the wait below meaningful: it must observe a 1 -> 0 transition rather than a value the
+	// gauge already held.
+	txSessions := env.qs.metrics.processingSessions.WithLabelValues(sessionTransactions)
+	test.RequireIntMetricValue(t, 1, txSessions)
+
 	env.endView(t, client, view0)
 	env.endView(t, client, view1)
 	env.endView(t, client, view2)
+
+	// EndView only cancels the view's context; its batcher reference is dropped by a
+	// context.AfterFunc goroutine, so the RPC can return before the drop happens. The
+	// shared transaction is rolled back only once the batcher loses its last reference
+	// and is cancelled, so a zero transaction count is what tells us the batcher is
+	// retired and that view3 below is guaranteed to open a new transaction.
+	test.EventuallyIntMetric(
+		t, 0, txSessions, 5*time.Second, 10*time.Millisecond,
+		"the views' shared transaction should be released once all views ended",
+	)
 
 	view3 := env.beginView(t, client, defaultViewParams(time.Minute))
 	key2Query.View = view3
