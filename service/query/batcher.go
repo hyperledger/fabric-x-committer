@@ -72,6 +72,9 @@ type (
 
 		// batcher is initialized lazily upon the first query.
 		batcher *batcher
+		// retired is set once the view was ended or timed out, and its batcher
+		// reference, if any, was released.
+		retired bool
 	}
 	batcher struct {
 		m sync.Mutex
@@ -144,6 +147,7 @@ func (q *viewsBatcher) makeView(viewID string, p *committerpb.ViewParameters) er
 		v.m.Lock()
 		b := v.batcher
 		v.batcher = nil
+		v.retired = true
 		v.m.Unlock()
 		if b != nil {
 			b.leave()
@@ -164,6 +168,13 @@ func (q *viewsBatcher) getBatcher(ctx context.Context, view *committerpb.View) (
 
 	v.m.Lock()
 	defer v.m.Unlock()
+	// The view might have been retired after its holder was fetched, but before we acquired its
+	// lock. As the retirement is marked under the same lock, an assignment either precedes the
+	// retirement, which then releases it, or is rejected here. An unpaired assignment would have
+	// leaked the batcher, and its open DB transaction, for the service's lifetime.
+	if v.retired {
+		return nil, ErrInvalidOrStaleView
+	}
 	if v.batcher == nil {
 		if _, err := q.updateOrCreateBatcher(ctx, v); err != nil {
 			return nil, err

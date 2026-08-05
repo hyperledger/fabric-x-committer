@@ -49,3 +49,5 @@ venv
 
 # MkDocs build output
 site/
+graphify-out/
+docs/superpowers/

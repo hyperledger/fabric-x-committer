@@ -75,6 +75,8 @@ func NewReader[T any](ctx context.Context, input <-chan T) Reader[T] {
 }
 
 // NewWriter instantiate a Writer.
+// A nil output always fails to write: the value cannot be delivered, so callers that leave an
+// output unset because it is optional must ignore the result.
 func NewWriter[T any](ctx context.Context, output chan<- T) Writer[T] {
 	return &channel[T]{
 		ctx:    ctx,

@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: "3.x"
       - run: pip install mkdocs-material
       - run: mkdocs build
 
@@ -116,6 +116,12 @@ jobs:
     name: Core DB Tests (yugabyte)
     needs: [gate]
     runs-on: ubuntu-latest
+    # This job starts YugabyteDB (get-and-start-yuga.sh), so override the workflow-level
+    # DB_TYPE=postgres. The snapshot clone tests create a per-database snapshot schedule
+    # (testdb.EnsureSnapshotSchedule) only when DB_TYPE=yugabyte; without this
+    # the schedule is skipped and the clone fails with "Could not find snapshot schedule".
+    env:
+      DB_TYPE: yugabyte
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

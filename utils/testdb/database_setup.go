@@ -11,9 +11,11 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base32"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -46,6 +48,12 @@ const (
 
 	deploymentTypeEnv = "DB_DEPLOYMENT"
 	databaseTypeEnv   = "DB_TYPE"
+
+	// localYugaContainerEnv overrides the name of the locally-started YugabyteDB
+	// container that DB_DEPLOYMENT=local tests exec yb-admin into (for snapshot
+	// schedule creation). Defaults to the name used by scripts/get-and-start-yuga.sh.
+	localYugaContainerEnv     = "YUGA_CONTAINER"
+	defaultLocalYugaContainer = "sc_test_yugabyte"
 )
 
 // sharedContainer holds the container created by SetupSharedContainer for use
@@ -123,6 +131,7 @@ func PrepareTestEnvWithConnection(t *testing.T, conn *Connection) *Connection {
 			logger.Warnf("%+v", err)
 		}
 	})
+
 	conn.Database = dbName
 	return conn
 }
@@ -202,6 +211,91 @@ func CleanupSharedContainer() {
 	}); err != nil {
 		log.Printf("Warning: failed to remove container %s: %v", dc.Name, err)
 	}
+}
+
+// EnsureSnapshotSchedule creates a YugabyteDB snapshot schedule for dbName.
+// This is opt-in and called only by tests that create a snapshot database. It is
+// a no-op for postgres.
+//
+// Deployment modes:
+//   - container: exec yb-admin via the docker client on the container object.
+//   - local (e.g. CI): exec yb-admin through `docker exec <YUGA_CONTAINER>`.
+func EnsureSnapshotSchedule(t *testing.T, dbName string) {
+	t.Helper()
+	if getDBTypeFromEnv() != YugaDBType {
+		return
+	}
+	if sharedContainer != nil {
+		sharedContainer.EnsureSnapshotSchedule(t, dbName)
+		return
+	}
+	if getDBDeploymentFromEnv() == deploymentLocal {
+		ensureLocalSnapshotSchedule(t, dbName)
+	}
+}
+
+// ensureLocalSnapshotSchedule creates (and registers cleanup for) a snapshot schedule
+// on the locally-started YugabyteDB container by running yb-admin through `docker exec`.
+// The container name comes from YUGA_CONTAINER (default: the name used by
+// scripts/get-and-start-yuga.sh). That script starts yugabyted with
+// --advertise_address 0.0.0.0, so yb-master is reachable at the default 127.0.0.1:7100
+// from inside the container.
+func ensureLocalSnapshotSchedule(t *testing.T, dbName string) {
+	t.Helper()
+	container := os.Getenv(localYugaContainerEnv)
+	if container == "" {
+		container = defaultLocalYugaContainer
+	}
+	const masterAddr = "127.0.0.1:7100"
+	t.Logf("creating snapshot schedule for ysql.%s on container %s", dbName, container)
+
+	output := dockerExec(t, container, createSnapshotScheduleCmd(masterAddr, dbName)...)
+	scheduleID := parseSnapshotScheduleID(t, output)
+
+	t.Cleanup(func() {
+		dockerExec(t, container, deleteSnapshotScheduleCmd(masterAddr, scheduleID)...)
+	})
+}
+
+// createSnapshotScheduleCmd builds the yb-admin argv that creates a snapshot schedule
+// (interval 1 minute, retention 10 minutes) for the ysql.<dbName> keyspace.
+func createSnapshotScheduleCmd(masterAddr, dbName string) []string {
+	return []string{
+		"bin/yb-admin", "--master_addresses", masterAddr,
+		"create_snapshot_schedule", "1", "10", "ysql." + dbName,
+	}
+}
+
+// deleteSnapshotScheduleCmd builds the yb-admin argv that deletes a snapshot schedule.
+func deleteSnapshotScheduleCmd(masterAddr, scheduleID string) []string {
+	return []string{
+		"bin/yb-admin", "--master_addresses", masterAddr,
+		"delete_snapshot_schedule", scheduleID,
+	}
+}
+
+// parseSnapshotScheduleID extracts the schedule_id from yb-admin create_snapshot_schedule
+// JSON output, failing the test if it is missing.
+func parseSnapshotScheduleID(t *testing.T, output string) string {
+	t.Helper()
+	var resp struct {
+		ScheduleID string `json:"schedule_id"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(output), &resp),
+		"unexpected create_snapshot_schedule output: %s", output)
+	require.NotEmpty(t, resp.ScheduleID, "create_snapshot_schedule returned no schedule_id: %s", output)
+	return resp.ScheduleID
+}
+
+// dockerExec runs `docker exec <container> <args...>` and returns stdout, failing the
+// test on a non-zero exit.
+func dockerExec(t *testing.T, container string, args ...string) string {
+	t.Helper()
+	//nolint:gosec // test-only, fixed args.
+	cmd := exec.Command("docker", append([]string{"exec", container}, args...)...)
+	out, err := cmd.CombinedOutput()
+	require.NoErrorf(t, err, "docker exec %s %s failed: %s", container, strings.Join(args, " "), out)
+	return string(out)
 }
 
 // RunTestMain is a convenience wrapper for TestMain functions that only need

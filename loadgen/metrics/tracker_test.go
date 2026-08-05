@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 //nolint:gocognit // cognitive complexity 24 > 15
@@ -80,7 +81,7 @@ func TestLatencyTrackerPrefix(t *testing.T) {
 
 func BenchmarkLatencyTrackerPortion(b *testing.B) {
 	for _, conf := range []SamplerConfig{
-		{ /* never */ }, {Portion: 1}, {Portion: 0.1}, {Portion: 0.01}, {Prefix: "0"}, {Prefix: "00"},
+		{Portion: 0.1}, {Portion: 0.01}, {Prefix: "0"}, {Prefix: "00"},
 	} {
 		sampler := newSampler(&conf)
 		b.Run(fmt.Sprintf("%v", &utils.LazyJSON{O: conf}), func(b *testing.B) {
@@ -89,6 +90,8 @@ func BenchmarkLatencyTrackerPortion(b *testing.B) {
 			for _, txID := range txIDs {
 				sampler(txID)
 			}
+			b.StopTimer()
+			test.ReportTxPerSecond(b)
 		})
 	}
 }

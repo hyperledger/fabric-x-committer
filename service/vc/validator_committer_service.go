@@ -109,7 +109,8 @@ func NewValidatorCommitterService(
 // Run starts the validator and committer service.
 func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 	logger.Info("Starting ValidatorCommitterService")
-	db, err := newDatabase(ctx, vc.config.Database, vc.metrics)
+	l := vc.config.ResourceLimits
+	db, err := newDatabase(ctx, vc.config.Database, vc.metrics, l)
 	if err != nil {
 		return err
 	}
@@ -131,7 +132,6 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 		return nil
 	})
 
-	l := vc.config.ResourceLimits
 	logger.Infof("Starting %d workers for the transaction preparer", l.WorkersForPreparer)
 	g.Go(func() error {
 		return vc.preparer.run(eCtx, l.WorkersForPreparer)
@@ -145,6 +145,11 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 	logger.Infof("Starting %d workers for the transaction committer", l.WorkersForCommitter)
 	g.Go(func() error {
 		return vc.committer.run(eCtx, db, l.WorkersForCommitter)
+	})
+
+	logger.Info("Starting the snapshot hash worker")
+	g.Go(func() error {
+		return db.runSnapshotHashWorker(eCtx)
 	})
 
 	if err := g.Wait(); err != nil {
@@ -169,7 +174,8 @@ func (vc *ValidatorCommitterService) RegisterService(s serve.Servers) {
 }
 
 func (vc *ValidatorCommitterService) monitorQueues(ctx context.Context) {
-	ticker := time.NewTicker(vc.config.ResourceLimits.QueueMonitorSamplingTime)
+	// TODO: make sampling time configurable
+	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		select {
@@ -252,14 +258,6 @@ func (vc *ValidatorCommitterService) GetConfigTransaction(
 		logger.Errorf("%+v", err)
 	}
 	return policies, grpcerror.WrapInternalError(err)
-}
-
-// SetupSystemTablesAndNamespaces creates the required system tables and namespaces.
-func (vc *ValidatorCommitterService) SetupSystemTablesAndNamespaces(
-	ctx context.Context,
-	_ *emptypb.Empty,
-) (*emptypb.Empty, error) {
-	return nil, grpcerror.WrapInternalError(vc.db.setupSystemTablesAndNamespaces(ctx))
 }
 
 // StartValidateAndCommitStream is the function that starts the stream between the client and the service.

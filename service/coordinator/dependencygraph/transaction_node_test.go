@@ -22,6 +22,44 @@ import (
 
 var nsID1ForTest = "1"
 
+// TestTransactionNodeSystemNamespaces verifies that system namespaces do not take the
+// normal _meta namespace-version read dependency, mirroring the existing _meta/_config
+// exemption for _snapshot and _checkpoint.
+func TestTransactionNodeSystemNamespaces(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		nsID string
+	}{
+		{name: "meta namespace", nsID: committerpb.MetaNamespaceID},
+		{name: "config namespace", nsID: committerpb.ConfigNamespaceID},
+		{name: "snapshot namespace", nsID: committerpb.SnapshotNamespaceID},
+		{name: "checkpoint namespace", nsID: committerpb.CheckpointNamespaceID},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tx := createTxForTest(t, 0, tc.nsID, nil, [][]byte{[]byte("k")}, nil)
+			txNode := newTransactionNode(tx)
+
+			metaKey := constructCompositeKey(committerpb.MetaNamespaceID, []byte(tc.nsID))
+			require.NotContains(t, txNode.rwKeys.readsOnly, metaKey,
+				"system namespace %s must not take the _meta namespace-version read dependency", tc.nsID)
+		})
+	}
+}
+
+// TestTransactionNodeApplicationNamespace verifies that an ordinary application namespace
+// still takes the _meta namespace-version read dependency.
+func TestTransactionNodeApplicationNamespace(t *testing.T) {
+	t.Parallel()
+	tx := createTxForTest(t, 0, nsID1ForTest, nil, [][]byte{[]byte("k")}, nil)
+	txNode := newTransactionNode(tx)
+
+	metaKey := constructCompositeKey(committerpb.MetaNamespaceID, []byte(nsID1ForTest))
+	require.Contains(t, txNode.rwKeys.readsOnly, metaKey)
+}
+
 func TestTransactionNode(t *testing.T) {
 	t.Parallel()
 

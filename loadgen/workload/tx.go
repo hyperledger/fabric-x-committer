@@ -9,14 +9,20 @@ package workload
 import (
 	"math/rand"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
-	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
+// invalidSignatureBytes is the dummy endorsement stamped on transactions selected to be invalid.
+var invalidSignatureBytes = []byte("dummy")
+
 type (
-	// IndependentTxGenerator generates a new valid TX given key generators.
+	// IndependentTxGenerator generates a new valid TX given key generators. With a non-zero
+	// invalid-signature probability it may instead stamp a dummy endorsement, decided from its own
+	// per-worker random source so the decision is independent of the generated content.
 	IndependentTxGenerator struct {
 		TxBuilder                *TxBuilder
 		ReadOnlyKeyGenerator     *MultiGenerator[Key]
@@ -26,6 +32,8 @@ type (
 		BlindWriteValueGenerator *ByteArrayGenerator
 		MetadataGenerator        *ByteArrayGenerator
 		Modifiers                []Modifier
+		invalidSignRnd           *rand.Rand
+		invalidSignProbability   Probability
 	}
 
 	// Modifier modifies a TX.
@@ -40,42 +48,63 @@ type (
 // DefaultGeneratedNamespaceID for now we're only generating transactions for a single namespace.
 const DefaultGeneratedNamespaceID = "0"
 
-// newIndependentTxGenerators creates workers that generates independent transactions and apply the modifiers.
-// Each worker will have a unique instance of the modifier to avoid concurrency issues.
-// The modifiers will be applied in the order they are given.
-// A transaction modifier can modify any of its fields to adjust the workload.
-// For example, a modifier can query the database for the read-set versions to simulate a real transaction.
-// The signature modifier is applied last so all previous modifications will be signed correctly.
-func newIndependentTxGenerators(profile *Profile, extraModifiers ...Generator[Modifier]) []*IndependentTxGenerator {
+// newIndependentTxGenerators creates workers that generate independent transactions and apply the
+// modifiers. Each worker will have a unique instance of the modifier to avoid concurrency issues.
+// The modifiers are applied in the order they are given; a modifier can modify any of the TX fields
+// to adjust the workload (for example, adding dependencies). The invalid-signature stamp is applied
+// last, after the modifiers, so it overrides any endorsement they may have produced.
+func newIndependentTxGenerators(
+	profile *Profile, extraModifiers ...Generator[Modifier],
+) ([]*IndependentTxGenerator, error) {
 	seeders, keyGens := newSeedersAndKeyGens(profile)
 	gens := make([]*IndependentTxGenerator, len(seeders))
 	for i, s := range seeders {
-		modifiers := make([]Modifier, 0, len(extraModifiers)+2)
-		if len(profile.Conflicts.Dependencies) > 0 {
+		modifiers := make([]Modifier, 0, len(extraModifiers)+1)
+		if len(profile.Transaction.Dependencies) > 0 {
 			modifiers = append(modifiers, newTxDependenciesModifier(s.nextSeed(), profile))
 		}
 		for _, mod := range extraModifiers {
 			modifiers = append(modifiers, mod.Next())
 		}
-		modifiers = append(modifiers, newSignTxModifier(s.nextSeed(), profile))
+		invalidSignRnd := s.nextSeed()
 		txb, err := NewTxBuilderFromPolicy(&profile.Policy, s.nextSeed())
-		utils.Must(err)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create tx builder")
+		}
 		gens[i] = &IndependentTxGenerator{
 			TxBuilder:                txb,
-			ReadOnlyKeyGenerator:     multiKeyGenerator(s.nextSeed(), keyGens[i], profile.Transaction.ReadOnlyCount),
-			ReadWriteKeyGenerator:    multiKeyGenerator(s.nextSeed(), keyGens[i], profile.Transaction.ReadWriteCount),
-			BlindWriteKeyGenerator:   multiKeyGenerator(s.nextSeed(), keyGens[i], profile.Transaction.BlindWriteCount),
+			ReadOnlyKeyGenerator:     multiKeyGenerator(keyGens[i], profile.Transaction.ReadOnlyCount),
+			ReadWriteKeyGenerator:    multiKeyGenerator(keyGens[i], profile.Transaction.ReadWriteCount),
+			BlindWriteKeyGenerator:   multiKeyGenerator(keyGens[i], profile.Transaction.BlindWriteCount),
 			ReadWriteValueGenerator:  valueGenerator(s.nextSeed(), profile.Transaction.ReadWriteValueSize),
 			BlindWriteValueGenerator: valueGenerator(s.nextSeed(), profile.Transaction.BlindWriteValueSize),
 			MetadataGenerator:        valueGenerator(s.nextSeed(), profile.Transaction.MetadataSize),
 			Modifiers:                modifiers,
+			invalidSignRnd:           invalidSignRnd,
+			invalidSignProbability:   profile.Transaction.InvalidSignatures,
 		}
 	}
-	return gens
+	return gens, nil
 }
 
-// Next generate a new TX.
-func (g *IndependentTxGenerator) Next() *servicepb.LoadGenTx {
+// buildAndSignBatch builds n unsigned transactions and signs them, returning the
+// ready-to-submit batch. This is the no-query generation path.
+func (g *IndependentTxGenerator) buildAndSignBatch(n int) []*servicepb.LoadGenTx {
+	return g.signBatch(g.buildBatch(n))
+}
+
+// buildBatch builds n unsigned transactions from the key, value, and metadata generators, and
+// applies the modifiers. The invalid-signature stamp and signing happen later, in signBatch.
+func (g *IndependentTxGenerator) buildBatch(n int) []*applicationpb.Tx {
+	txs := make([]*applicationpb.Tx, n)
+	for i := range txs {
+		txs[i] = g.buildTx()
+	}
+	return txs
+}
+
+// buildTx builds a single unsigned TX.
+func (g *IndependentTxGenerator) buildTx() *applicationpb.Tx {
 	readOnly := g.ReadOnlyKeyGenerator.Next()
 	readWrite := g.ReadWriteKeyGenerator.Next()
 	blindWriteKey := g.BlindWriteKeyGenerator.Next()
@@ -120,13 +149,30 @@ func (g *IndependentTxGenerator) Next() *servicepb.LoadGenTx {
 	for _, mod := range g.Modifiers {
 		mod.Modify(tx)
 	}
-	return g.TxBuilder.MakeTx(tx)
+	return tx
 }
 
-func multiKeyGenerator(rnd *rand.Rand, keyGen Generator[Key], keyCount *Distribution) *MultiGenerator[Key] {
+// signBatch applies the invalid-signature stamp (decided independently per TX from the
+// generator's own random source) and signs each TX via the TxBuilder.
+func (g *IndependentTxGenerator) signBatch(txs []*applicationpb.Tx) []*servicepb.LoadGenTx {
+	signed := make([]*servicepb.LoadGenTx, len(txs))
+	for i, tx := range txs {
+		if g.invalidSignRnd.Float64() < g.invalidSignProbability {
+			// Pre-assigning a dummy endorsement prevents TxBuilder from producing a valid signature.
+			tx.Endorsements = make([]*applicationpb.Endorsements, len(tx.Namespaces))
+			for j := range tx.Namespaces {
+				tx.Endorsements[j] = testsig.CreateEndorsementsForThresholdRule(invalidSignatureBytes)[0]
+			}
+		}
+		signed[i] = g.TxBuilder.MakeTx(tx)
+	}
+	return signed
+}
+
+func multiKeyGenerator(keyGen Generator[Key], keyCount uint32) *MultiGenerator[Key] {
 	return &MultiGenerator[Key]{
 		Gen:   keyGen,
-		Count: keyCount.MakeIntGenerator(rnd),
+		Count: int(keyCount),
 	}
 }
 

@@ -26,12 +26,12 @@ server:
 load-profile:
   block:
     max-size: {{ .BlockSize }}
-  key:
-    size: 32
   transaction:
+    key-size: 32
     metadata-size: 150
-    read-write-count:
-      const: 2
+    read-write-count: 2
+    invalid-signatures: 0
+    dependencies:
   policy:
     channel-id: {{ .Policy.ChannelID }}
     artifacts-path: {{ .Policy.ArtifactsPath }}
@@ -42,13 +42,6 @@ load-profile:
         scheme: {{ $element.Scheme }}
         seed: {{ $element.Seed }}
       {{ end }}
-  query:
-    query-size:
-    min-invalid-keys-portion:
-    shuffle: false
-  conflicts:
-    invalid-signatures: 0
-    dependencies:
   seed: 12345
   workers: {{ .LoadGenWorkers }}
 

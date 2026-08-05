@@ -8,6 +8,7 @@ package vc
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -115,6 +116,14 @@ func (v *transactionValidator) validate(ctx context.Context, db *database) error
 		}
 		if err := vTxs.invalidateTxsOnReadConflicts(nsToReadConflicts); err != nil {
 			return err
+		}
+
+		// Gate a new snapshot request: reject it unless the latest _snapshot record
+		// is CHECKPOINTED. On rejection this removes the incoming _snapshot write and
+		// sets its invalid status, so createSnapshotIfPresent (committer) later no-ops
+		// and no snapshot database or record is created.
+		if err := db.rejectSnapshotIfPriorNotCheckpointed(ctx, vTxs); err != nil {
+			return fmt.Errorf("failed to gate snapshot before commit: %w", err)
 		}
 
 		promutil.Observe(v.metrics.validatorTxBatchLatencySeconds, time.Since(start))

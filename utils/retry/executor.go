@@ -71,6 +71,8 @@ func executeWithResult[T any](
 	ctx context.Context, p *Profile, operation func() (T, error), terminalErrors ...error,
 ) (T, error) {
 	p = p.WithDefaults()
+	// WithDefaults guarantees a non-nil MaxElapsedTime; a value of 0 disables
+	// the time limit in backoff/v5, yielding unlimited retries.
 	return backoff.Retry(ctx, func() (T, error) {
 		res, err := operation()
 		if err != nil {
@@ -83,5 +85,5 @@ func executeWithResult[T any](
 			}
 		}
 		return res, err
-	}, backoff.WithBackOff(p.NewBackoff()), backoff.WithMaxElapsedTime(p.MaxElapsedTime))
+	}, backoff.WithBackOff(p.NewBackoff()), backoff.WithMaxElapsedTime(*p.MaxElapsedTime))
 }

@@ -157,8 +157,7 @@ func (s *Service) Run(ctx context.Context) error {
 	})
 
 	g.Go(func() error {
-		// TODO: initialize retry from config.
-		return retry.Sustain(gCtx, nil, func() error {
+		return retry.Sustain(gCtx, s.config.Committer.Retry, func() error {
 			defer func() {
 				s.recoverCommittedBlocks(gCtx)
 			}()
@@ -177,6 +176,7 @@ func (s *Service) RegisterService(srv serve.Servers) {
 	healthgrpc.RegisterHealthServer(srv.GRPC, s.healthcheck)
 	serve.RegisterDynamicTLSUpdater(srv.GrpcTLSProvider, &s.tlsUpdater)
 	monitoring.RegisterMonitoringServer(srv.HTTP, s.metrics.Provider)
+	serve.RegisterConnStatHandler(srv.ConnStatsHandler, s.metrics.serverConnections)
 }
 
 func (s *Service) sendBlocksAndReceiveStatus(

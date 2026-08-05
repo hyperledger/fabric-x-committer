@@ -10,9 +10,9 @@ This document provides specific guidelines for writing and running tests in the 
 - **High Coverage Expected**: Strive for comprehensive test coverage, but focus on meaningful scenarios
 - **Minimize Mocks**: Use mocks sparingly; prefer testing with real dependencies when practical
 - **Database Tests**: Tests requiring databases are categorized:
-    - `test-core-db`: Components that directly interact with the database
-    - `test-requires-db`: Components that depend on the database layer
-    - `test-no-db`: Pure logic tests with no database dependency
+  - `test-core-db`: Components that directly interact with the database
+  - `test-requires-db`: Components that depend on the database layer
+  - `test-no-db`: Pure logic tests with no database dependency
 
 #### Running Database Tests
 
@@ -39,11 +39,24 @@ This document provides specific guidelines for writing and running tests in the 
 - Use `require.ErrorContains()` instead of `require.Error()` and then `require.Contains()`
 - Address lint issues - run `make lint`
 
+## Reusing Test Fixtures & Helpers
+
+Don't hand-roll crypto, TLS, config-block, or service/DB setup — reuse existing helpers:
+
+- **In-process harnesses (this repo):** `test.RunServiceForTest` / `test.ServeForTest` ([`utils/test/serve.go`](../../utils/test/serve.go)), `testdb.PrepareTestEnv` + `testdb.RunTestMain` (`utils/testdb`), and the hand-written mocks in `mock/`.
+- **Proto assertions (this repo):** `test.RequireProtoEqual` / `test.RequireProtoElementsMatch` (`utils/test/require_proto.go`) — never compare protos with `require.Equal`. Both accept `require.TestingT`, so they also work inside `require.EventuallyWithT`.
+- **MSP / identity / Fabric config blocks:** `github.com/hyperledger/fabric-x-common/utils/testcrypto` — `CreateOrExtendConfigBlockWithCrypto`, `ConfigBlock`, `PrepareBlockHeaderAndMetadata`, `GetPeersIdentities` / `GetConsenterIdentities` / `GetSigningIdentities` / `GetPeersMspDirs` / `GetConsenterMspDirs`.
+- **TLS test material:** `github.com/hyperledger/fabric-x-common/common/crypto/tlsgen` — `tlsgen.NewCA()`, `CA`, `CertKeyPair`.
+- **Generate crypto material:** `github.com/hyperledger/fabric-x-common/tools/cryptogen`.
+
+For authoring the production code these tests cover, use the `development` skill.
+
 ## Table-Driven Tests Structure
 
 ### DO NOT Use Nested Test Groups
 
 ❌ **INCORRECT** - Do not nest success/failure cases:
+
 ```go
 func TestMyFunction(t *testing.T) {
     t.Parallel()
@@ -67,6 +80,7 @@ func TestMyFunction(t *testing.T) {
 ```
 
 ✅ **CORRECT** - Use flat structure with descriptive test names:
+
 ```go
 func TestMyFunction(t *testing.T) {
     t.Parallel()
@@ -125,6 +139,7 @@ func TestMyFunction(t *testing.T) {
 ### Use Inline Test Case Definitions
 
 ✅ **CORRECT** - Define test cases inline:
+
 ```go
 for _, tc := range []struct {
     name     string
@@ -176,6 +191,7 @@ for _, tc := range []struct {
 When testing functions that panic:
 
 ✅ **CORRECT** - Use `require.Panics()` for general panic testing:
+
 ```go
 require.Panics(t, func() {
     MyFunction(invalidInput)
@@ -183,6 +199,7 @@ require.Panics(t, func() {
 ```
 
 ❌ **AVOID** - Don't use `require.PanicsWithValue()` or `require.PanicsWithError()` when error wrapping is involved:
+
 ```go
 // This may fail due to error wrapping (e.g., cockroachdb/errors)
 require.PanicsWithValue(t, "exact error message", func() {
@@ -192,11 +209,64 @@ require.PanicsWithValue(t, "exact error message", func() {
 
 **Rationale**: Error wrapping libraries (like `cockroachdb/errors`) add stack traces and metadata, making exact value matching unreliable. Use `require.Panics()` unless you have a specific need to verify the exact panic value.
 
+## Step comments for multi-step scenario tests
+
+Table-driven tests cover one input/output at a time; many integration and
+sequential-scenario tests instead walk a story with side effects in between (submit a
+block, wait for a status, mutate config, assert a new behavior). For these, narrate each
+stage with a paired `// Step N: <what and, if not obvious, why>` comment directly above
+the code AND a matching `t.Log("Step N: ...")` call at the top of that stage — the
+comment documents intent for a reader of the source, the `t.Log` puts the same narrative
+into `-v` test output so a failure's stack trace lands under a labeled stage instead of
+an anonymous block of assertions.
+
+```go
+// Step 2: Submit config block removing peer-org-2 (keep only peer-org-0 and peer-org-1).
+// CreateOrExtendConfigBlockWithCrypto retains existing crypto on disk, so peer-org-2's
+// certs remain available for reconnection in Step 4.
+t.Log("Step 2: Dynamic removal - submit config with 2 peer orgs")
+c.OrdererEnv.SubmitConfigBlock(t, &testcrypto.ConfigBlock{
+    OrdererEndpoints:      c.OrdererEnv.AllEndpoints,
+    PeerOrganizationCount: 2,
+})
+```
+
+Number steps sequentially for the whole test (`Step 1`, `Step 2`, ...) even across
+helper calls, so the sequence reads as one story; don't restart numbering per subtest.
+Keep the comment focused on *why this step exists in the scenario* (what earlier state
+it depends on, what later step will use its result) — not a restatement of the Go call
+below it, per the `development` skill's comment guidance. A short setup/waiting line
+that isn't really a new scenario stage doesn't need its own step number; reserve numbers
+for the scenario's actual beats. This pattern is orthogonal to table-driven tests — use
+numbered steps for sequential/stateful scenarios, table-driven for independent
+input/output cases; don't force one style onto the other's shape.
+
 ## Code Duplication
 
 - Avoid code duplication in tests
 - Extract common setup logic into helper functions
 - Use table-driven tests to reduce repetitive test code
+
+**Rule of thumb**: if the same 3+ lines of assertions or setup appear in two or more
+tests (even with minor argument differences), extract a small `requireXxx(t, ...)` or
+`makeXxx(t, ...)` helper rather than copy-pasting. This isn't just about line count — a
+repeated assertion block is a repeated *claim* about behavior, and when that behavior
+changes you want one call site to fix, not N near-identical copies that can silently
+drift out of sync with each other. Name the helper after what it verifies or builds
+(`requireStatusMetadata`, `requireSnapshotSegment`), not after the test that happens to
+use it first, so it reads naturally at every call site:
+
+```go
+// BAD — same three-assertion block repeated at every commit-verification site
+require.NotNil(t, committedBlock0.Metadata)
+require.Greater(t, len(committedBlock0.Metadata.Metadata), statusIdx)
+require.Equal(t, []byte{valid, valid, valid}, committedBlock0.Metadata.Metadata[statusIdx])
+// ... repeated again below for committedBlock1 with different expected bytes ...
+
+// GOOD — one assertion helper, called with the varying expectation
+requireStatusMetadata(t, committedBlock0, valid, valid, valid)
+requireStatusMetadata(t, committedBlock1, valid, valid, valid)
+```
 
 ## Test Coverage
 
@@ -270,6 +340,7 @@ The project provides specialized helper functions in [`utils/test/metrics.go`](.
 #### Direct Metric Value Assertions
 
 ✅ **CORRECT** - Use [`test.RequireIntMetricValue()`](../../utils/test/metrics.go:99) for immediate assertions:
+
 ```go
 // Assert metric equals expected value immediately
 test.RequireIntMetricValue(t, 5, myMetric)
@@ -282,6 +353,7 @@ test.RequireIntMetricValue(t, 0, metrics.pendingRequests)
 #### Eventual Metric Value Assertions
 
 ✅ **CORRECT** - Use [`test.EventuallyIntMetric()`](../../utils/test/metrics.go:105) when metrics update asynchronously:
+
 ```go
 // Wait for metric to reach expected value
 test.EventuallyIntMetric(
@@ -352,7 +424,29 @@ require.Greater(t, count, 500)
     - [`test.GetIntMetricValue()`](../../utils/test/metrics.go:92) for capturing baseline values or when using with `require.Eventually()` for complex conditions
     - [`test.GetMetricValue()`](../../utils/test/metrics.go:69) for float metrics (histograms, summaries) or when you need the raw float value
 
+   Metrics are only **eventually consistent**: a metric is never required to be an exact in-time
+   representation of the truth, only to have been consistent with reality at some point and to
+   converge to it. So a metric updated by a worker goroutine must be asserted with
+   `test.EventuallyIntMetric()` — even when the test has already observed the worker's *effect*
+   (a response on a channel, a committed block). Observing the effect does not order the metric
+   update: the worker typically publishes the effect first and updates the metric a few
+   instructions later, and on a loaded CI runner it can be descheduled in between. Reserve
+   `test.RequireIntMetricValue()` for values no concurrent goroutine is touching, such as the
+   initial state before any work is submitted.
+
+   But an eventual assertion only proves a value was **reached**, so it is vacuous when the
+   expected value is the one the metric already holds — it passes on the first tick, before the
+   work it is meant to verify has happened. When a step must leave a metric *unchanged* (a gauge
+   that goes up and back down, a counter the step must not touch), don't assert it on its own with
+   an eventual helper. Either gate on a metric the step does change and then assert the unchanged
+   one with `test.RequireIntMetricValue()`, which fails the moment it moved, or assert the changed
+   and unchanged values as one `require.EventuallyWithT()` condition so they must hold at the same
+   instant — polling stays sound there, because the changed value cannot reach its expected state
+   until the step completes, and that is what keeps the unchanged ones meaningful. For "must never
+   exceed" claims, use `require.Never()` (see below).
+
 2. **Capture Baseline Values**: When testing incremental changes, capture the metric value before the operation:
+
    ```go
    preValue := test.GetIntMetricValue(t, metrics.transactionReceivedTotal)
 
@@ -365,6 +459,7 @@ require.Greater(t, count, 500)
    ```
 
 3. **Test Labeled Metrics**: Use [`WithLabelValues()`](https://pkg.go.dev/github.com/prometheus/client_golang/prometheus#CounterVec.WithLabelValues) to test specific label combinations:
+
    ```go
    test.RequireIntMetricValue(t, 10,
        metrics.transactionCommittedTotal.WithLabelValues("COMMITTED"))
@@ -381,12 +476,14 @@ require.Greater(t, count, 500)
         - Slow operations: `2*time.Second, 200*time.Millisecond`
 
 5. **Test Initial State**: Always verify metrics start at expected initial values:
+
    ```go
    test.RequireIntMetricValue(t, 0, metrics.pendingRequests)
    test.RequireIntMetricValue(t, 0, metrics.activeStreams)
    ```
 
 6. **Verify Metric Decrements**: When testing gauges that can decrease:
+
    ```go
    test.RequireIntMetricValue(t, 5, metrics.queueSize)
    // process items
@@ -394,6 +491,7 @@ require.Greater(t, count, 500)
    ```
 
 7. **Use `require.Never()` for Bounds Testing**: When verifying metrics don't exceed limits:
+
    ```go
    require.Never(t, func() bool {
        return test.GetIntMetricValue(t, metrics.counter) > maxExpected
@@ -401,6 +499,7 @@ require.Greater(t, count, 500)
    ```
 
 8. **Use `require.EventuallyWithT()` for Multi-Metric Conditions**: When checking multiple metrics, always use `require.EventuallyWithT()` instead of `require.Eventually()` to ensure clear visibility of which metric failed:
+
    ```go
    // ✅ CORRECT - Shows which metric failed
    require.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -418,6 +517,7 @@ require.Greater(t, count, 500)
    ```
 
 9. **Use `require.EventuallyWithT()` for Single Metrics with Context**: When you need detailed assertion messages for a single metric:
+
    ```go
    require.EventuallyWithT(t, func(ct *assert.CollectT) {
        actual := test.GetIntMetricValue(t, metrics.counter)
@@ -426,6 +526,7 @@ require.Greater(t, count, 500)
    ```
 
 10. **Test Timing Metrics**: For histogram and summary metrics, verify they are positive:
+
     ```go
     latency := test.GetMetricValue(t, metrics.requestDurationSeconds)
     require.Greater(t, latency, float64(0))
@@ -434,6 +535,7 @@ require.Greater(t, count, 500)
 ### Common Patterns
 
 #### Pattern 1: Incremental Counter Testing
+
 ```go
 // Capture baseline
 preValue := test.GetIntMetricValue(t, metrics.transactionReceivedTotal)
@@ -446,15 +548,18 @@ test.EventuallyIntMetric(t, preValue+5, metrics.transactionReceivedTotal,
     5*time.Second, 100*time.Millisecond)
 ```
 
-#### Pattern 2: Multiple Labeled Metrics
+#### Pattern 2: Several Metrics Updated by a Worker
+
 ```go
-test.RequireIntMetricValue(t, 30, metrics.notifierPendingTxIDs)
-test.RequireIntMetricValue(t, 6, metrics.notifierUniquePendingTxIDs)
-test.RequireIntMetricValue(t, 10, metrics.notifierTxIDsStatusDeliveries)
-test.RequireIntMetricValue(t, 0, metrics.notifierTxIDsTimeoutDeliveries)
+// The notifier's worker updates these after it delivers the notification the test just read,
+// so they are only eventually consistent with it.
+test.EventuallyIntMetric(t, 30, metrics.notifierPendingTxIDs, 5*time.Second, 100*time.Millisecond)
+test.EventuallyIntMetric(t, 6, metrics.notifierUniquePendingTxIDs, 5*time.Second, 100*time.Millisecond)
+test.EventuallyIntMetric(t, 10, metrics.notifierTxIDsStatusDeliveries, 5*time.Second, 100*time.Millisecond)
 ```
 
 #### Pattern 3: Queue Size Monitoring
+
 ```go
 // Verify queue fills up
 test.EventuallyIntMetric(t, 3, metrics.waitingTransactionsQueueSize,
@@ -469,6 +574,7 @@ test.EventuallyIntMetric(t, 0, metrics.waitingTransactionsQueueSize,
 ```
 
 #### Pattern 4: Complex Multi-Metric Conditions
+
 ```go
 // Use EventuallyWithT for clear failure messages
 require.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -478,6 +584,7 @@ require.EventuallyWithT(t, func(ct *assert.CollectT) {
 ```
 
 #### Pattern 5: Integration Test HTTP Metrics
+
 ```go
 require.EventuallyWithT(t, func(ct *assert.CollectT) {
     count := test.GetMetricValueFromURL(
@@ -534,5 +641,7 @@ func TestRelayMetrics(t *testing.T) {
 - **Use `require.Panics()` for panic testing**
 - **Descriptive test names**
 - **Helper functions at the end with `t.Helper()`**
+- **Extract a helper once 3+ lines of assertions/setup repeat across tests**
+- **Narrate multi-step scenario tests with paired `// Step N:` comments and `t.Log("Step N: ...")`**
 - **Never use `panic()` in tests**
 - **Use metrics testing helpers** - [`test.RequireIntMetricValue()`](../../utils/test/metrics.go:99), [`test.EventuallyIntMetric()`](../../utils/test/metrics.go:105), [`test.GetIntMetricValue()`](../../utils/test/metrics.go:92)

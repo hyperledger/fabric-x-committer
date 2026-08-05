@@ -19,6 +19,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 var testedSchemes = append(signature.AllRealSchemes, workload.PolicySchemeMSP)
@@ -35,6 +36,7 @@ func BenchmarkMarshal(b *testing.B) {
 		resBench[i], errBench[i] = tx.Tx.Namespaces[0].ASN1Marshal(tx.Id, tx.Tx.Metadata)
 	}
 	b.StopTimer()
+	test.ReportTxPerSecond(b)
 	for i := range b.N {
 		require.NoError(b, errBench[i], "error at index %d", i)
 		require.NotNil(b, resBench[i], "no result at index %d", i)
@@ -55,6 +57,7 @@ func BenchmarkDigest(b *testing.B) {
 		resBench[i] = d[:]
 	}
 	b.StopTimer()
+	test.ReportTxPerSecond(b)
 	for i := range b.N {
 		require.NoError(b, errBench[i], "error at index %d", i)
 		require.NotNil(b, resBench[i], "no result at index %d", i)
@@ -76,6 +79,7 @@ func BenchmarkSign(b *testing.B) {
 				endorser.Endorse(tx.Id, tx.Tx)
 			}
 			b.StopTimer()
+			test.ReportTxPerSecond(b)
 
 			for i, tx := range txs {
 				require.NotEmpty(b, tx.Tx.Endorsements, "endorsement is empty at index %d", i)
@@ -110,6 +114,7 @@ func BenchmarkVerify(b *testing.B) {
 				errBench[i] = v.VerifyNs(tx.Id, tx.Tx, 0)
 			}
 			b.StopTimer()
+			test.ReportTxPerSecond(b)
 
 			for i, curErr := range errBench {
 				require.NoError(b, curErr, "error at index %d", i)

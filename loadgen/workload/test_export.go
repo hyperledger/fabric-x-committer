@@ -24,33 +24,26 @@ func GenerateTransactions(tb testing.TB, p *Profile, count int) []*servicepb.Loa
 		p = DefaultProfile(1)
 	}
 	p.Workers = 1
-	g := newIndependentTxGenerators(p)
+	g, err := newIndependentTxGenerators(p)
+	require.NoError(tb, err)
 	require.Len(tb, g, 1)
-	return GenerateArray(g[0], count)
+	return g[0].buildAndSignBatch(count)
 }
 
 // DefaultProfile is used for testing and benchmarking.
 func DefaultProfile(workers uint32) *Profile {
 	return &Profile{
-		Key: KeyProfile{Size: 32},
 		// We use a small block to reduce the CPU load during tests.
 		Block: BlockProfile{MaxSize: 10},
 		Transaction: TransactionProfile{
+			KeySize:            32,
 			ReadWriteValueSize: 32,
-			ReadWriteCount:     NewConstantDistribution(2),
-		},
-		Query: QueryProfile{
-			QuerySize:             NewConstantDistribution(100),
-			MinInvalidKeysPortion: NewConstantDistribution(0),
-			Shuffle:               false,
+			ReadWriteCount:     2,
 		},
 		Policy: PolicyProfile{
 			NamespacePolicies: map[string]*Policy{
 				DefaultGeneratedNamespaceID: {Scheme: signature.NoScheme},
 			},
-		},
-		Conflicts: ConflictProfile{
-			InvalidSignatures: Never,
 		},
 		Seed:    249822374033311501,
 		Workers: workers,

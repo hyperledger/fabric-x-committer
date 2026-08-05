@@ -11,6 +11,7 @@ import (
 	"path"
 	"slices"
 	"testing"
+	"time"
 
 	commontypes "github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
@@ -191,7 +192,7 @@ func TestParameterPropagation(t *testing.T) {
 		{ID: 0, Host: "orderer1.example.com", Port: 7050},
 		{ID: 0, Host: "orderer2.example.com", Port: 7051},
 	})
-	retryProfile := &retry.Profile{MaxElapsedTime: 30}
+	retryProfile := &retry.Profile{MaxElapsedTime: new(time.Duration(30))}
 	tlsCreds := connection.TLSCredentials{
 		Mode:    connection.OneSideTLSMode,
 		Cert:    []byte("fake-cert"),

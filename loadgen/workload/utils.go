@@ -8,7 +8,6 @@ package workload
 
 import (
 	"cmp"
-	"math"
 
 	"golang.org/x/exp/constraints"
 )
@@ -25,30 +24,6 @@ func SumInt[T constraints.Integer](arr []T) int64 {
 		sum += int64(v)
 	}
 	return sum
-}
-
-// Sum returns the sum of an array of floats.
-func Sum[T constraints.Float](arr []T) float64 {
-	var sum float64
-	for _, v := range arr {
-		sum += float64(v)
-	}
-	return sum
-}
-
-// MeanStd returns the mean and std of an array of float samples.
-func MeanStd[T constraints.Float](arr []T) (mean, std float64) {
-	n := float64(len(arr))
-	mean = Sum(arr) / n
-
-	// Sample std: sqrt( Σ (v - mean)^2 / (n-1) )
-	var sqrSum float64
-	for _, v := range arr {
-		d := float64(v) - mean
-		sqrSum += d * d
-	}
-	std = math.Sqrt(sqrSum / (n - 1))
-	return mean, std
 }
 
 // Map maps an array to a new array of the same size using a transformation function.

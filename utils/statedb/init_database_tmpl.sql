@@ -16,6 +16,10 @@ INSERT INTO metadata
 VALUES ('last committed block number', NULL)
 ON CONFLICT DO NOTHING;
 
+INSERT INTO metadata
+VALUES ('latest snapshot key', NULL)
+ON CONFLICT DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS tx_status
 (
     tx_id  BYTEA NOT NULL PRIMARY KEY,

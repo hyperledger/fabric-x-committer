@@ -15,6 +15,7 @@ import (
 	"github.com/yugabyte/pgx/v5/pgxpool"
 
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
+	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
 const (
@@ -22,22 +23,16 @@ const (
 	ns2 = "2"
 )
 
-func newDatabaseTestEnvWithTablesSetup(t *testing.T) *DatabaseTestEnv {
-	t.Helper()
-	env := NewDatabaseTestEnv(t)
-	ctx, _ := createContext(t)
-	require.NoError(t, env.DB.setupSystemTablesAndNamespaces(ctx))
-	return env
-}
-
 func TestTablesAndMethods(t *testing.T) {
 	t.Parallel()
 	env := NewDatabaseTestEnv(t)
-	ctx, _ := createContext(t)
-	require.NoError(t, env.DB.setupSystemTablesAndNamespaces(ctx))
 	env.populateData(t, []string{"a", "b"}, namespaceToWrites{}, nil, nil)
 
-	expectedTables := []string{"metadata", "tx_status", "ns__meta", "ns__config", "ns_a", "ns_b"}
+	expectedTables := []string{
+		"metadata", "tx_status",
+		"ns__meta", "ns__config", "ns__snapshot", "ns__checkpoint",
+		"ns_a", "ns_b",
+	}
 	expectedMethodsPerNamespace := []string{"insert_", "update_", "validate_reads_"}
 	expectedMethods := []string{"insert_tx_status"}
 	for _, table := range expectedTables {
@@ -103,7 +98,7 @@ WHERE pronamespace = 'public'::regnamespace
 
 func TestValidateNamespaceReads(t *testing.T) {
 	t.Parallel()
-	env := newDatabaseTestEnvWithTablesSetup(t)
+	env := NewDatabaseTestEnv(t)
 
 	k1 := []byte("key1")
 	k2 := []byte("key2")
@@ -237,9 +232,50 @@ func TestValidateNamespaceReads(t *testing.T) {
 	}
 }
 
+// TestDBInit tests that the database is initialized with the correct namespaces and able to commit into them.
+// This test sits in the vc package because it touches unexported internals (e.g. the database pool)
+// and needs a real DB, which the utils/statedb tests do not start.
+func TestDBInit(t *testing.T) {
+	t.Parallel()
+	env := NewDatabaseTestEnv(t)
+
+	for _, tc := range []struct {
+		name string
+		nsID string
+	}{
+		{name: "meta namespace", nsID: committerpb.MetaNamespaceID},
+		{name: "config namespace", nsID: committerpb.ConfigNamespaceID},
+		{name: "snapshot namespace", nsID: committerpb.SnapshotNamespaceID},
+		{name: "checkpoint namespace", nsID: committerpb.CheckpointNamespaceID},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tableName := statedb.TableName(tc.nsID)
+			keys := [][]byte{[]byte(txs[0]), []byte(txs[1]), []byte(txs[2]), []byte(txs[3])}
+			ret := env.DB.pool.QueryRow(t.Context(), statedb.FmtNsID(insertNsStatesSQLTempl, tc.nsID), keys, keys)
+			duplicates, err := readArrayResult[[]byte](ret)
+			require.NoError(t, err)
+			require.Empty(t, duplicates)
+
+			// Validate default values
+			r, err := env.DB.pool.Query(t.Context(), "select * from "+tableName+";")
+			require.NoError(t, err)
+			defer r.Close()
+			for r.Next() {
+				var key, value []byte
+				var version uint64
+				require.NoError(t, r.Scan(&key, &value, &version))
+				require.NotNil(t, key)
+				require.Equal(t, key, value)
+				require.EqualValues(t, 0, version)
+			}
+		})
+	}
+}
+
 func TestDBCommit(t *testing.T) {
 	t.Parallel()
-	dbEnv := newDatabaseTestEnvWithTablesSetup(t)
+	dbEnv := NewDatabaseTestEnv(t)
 
 	require.Equal(t, dbEnv.DBConf.Retry, dbEnv.DB.retryProfile)
 
@@ -307,12 +343,12 @@ func TestNewDatabaseTabletsWithDetection(t *testing.T) {
 	env := NewDatabaseTestEnv(t)
 
 	// Detect the actual DB type to know what to assert.
-	actuallyYugabyte, err := isYugabyteDB(t.Context(), env.DB.pool)
+	actuallyYugabyte, err := statedb.IsYugabyteDB(t.Context(), env.DB.pool)
 	require.NoError(t, err)
 
 	env.DBConf.TablePreSplitTablets = 5
 
-	db, err := newDatabase(t.Context(), env.DBConf, newVCServiceMetrics())
+	db, err := newDatabase(t.Context(), env.DBConf, newVCServiceMetrics(), defaultTestResourceLimits())
 	require.NoError(t, err)
 	t.Cleanup(db.close)
 

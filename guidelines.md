@@ -186,13 +186,13 @@ package and standard Go practices for clarity and detailed diagnostics.
 
 3.  **Log Full Error Details at Exit Points:** At the boundaries or exit points of logical operations
     (e.g., within a gRPC handler just before returning a response, or finishing a background task), log the 
-    complete error details. This *must* include the full stack trace. Use a dedicated logging function like
-    `logger.ErrorStackTrace(err)` which is designed to extract and format the stack trace contained
+    complete error details. This *must* include the full stack trace. Use `logger.Errorf("%+v", err)`:
+    the `%+v` verb extracts and formats the stack trace contained
     within the `cockroachdb/errors` error object.
 
 4.  **Handle Errors at gRPC Boundaries:** You cannot directly return stack traces over a gRPC connection.
     Instead, after logging the detailed internal error (as per point 3), convert the error into an 
-    appropriate gRPC status code. Use helper functions, preferably located in `utils/gprcerror`, to map 
+    appropriate gRPC status code. Use helper functions, preferably located in `utils/grpcerror`, to map 
     internal error types or conditions to standard gRPC codes (e.g., `codes.Internal` for unexpected 
     server errors, `codes.InvalidArgument` for validation failures, `codes.NotFound`, etc.). This provides
     the client with a meaningful, standardized error without exposing internal implementation details
@@ -202,9 +202,9 @@ package and standard Go practices for clarity and detailed diagnostics.
         func (s *server) MyGRPCHandler(ctx context.Context, req *pb.Request) (*pb.Response, error) {
             res, err := s.service.DoSomething(ctx, req.Data)
             if err != nil {
-                logger.ErrorStackTrace(err) // Log the full error + stack trace internally
+                logger.Errorf("%+v", err) // Log the full error + stack trace internally
                 // Convert to gRPC status error for the client
-                return nil, gprcerror.WrapInternalError(err) 
+                return nil, grpcerror.WrapInternalError(err) 
             }
             return &pb.Response{Result: res}, nil
         }

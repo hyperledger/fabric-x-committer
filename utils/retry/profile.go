@@ -26,7 +26,7 @@ SPDX-License-Identifier: Apache-2.0
 //   - RandomizationFactor: Jitter to prevent thundering herd
 //   - Multiplier: Factor by which wait time increases each retry
 //   - MaxInterval: Maximum wait time between retries
-//   - MaxElapsedTime: Total time budget for all retries (0 = unlimited)
+//   - MaxElapsedTime: Total time budget for all retries (nil = default, 0 = unlimited)
 //
 // Example Usage:
 //
@@ -61,8 +61,15 @@ var logger = flogging.MustGetLogger("retry")
 
 // Profile can be used to define the backoff properties for retries.
 //
-// After MaxElapsedTime, the backoff method returns the underlying error.
-// It never stops if MaxElapsedTime == 0.
+// MaxElapsedTime controls the total time budget for retries:
+//   - nil (unset): the default (15 minutes) is used.
+//   - 0: retries never stop (unlimited); the backoff runs until the operation
+//     succeeds, the context is cancelled, or a permanent error occurs.
+//   - positive: the backoff returns the underlying error after this duration.
+//
+// Note: the unlimited (0) budget only removes the time limit from the backoff.
+// gRPC connection retries remain bounded (see connection.MakeGrpcRetryPolicyJSON);
+// unbounded service reconnection is provided by [Sustain].
 //
 // This is used as a workaround for known issues:
 //   - Dropping a database with proximity to accessing it.
@@ -70,11 +77,11 @@ var logger = flogging.MustGetLogger("retry")
 //   - Creating/dropping tables immediately after creating a database.
 //     See: https://github.com/yugabyte/yugabyte-db/issues/14519.
 type Profile struct {
-	InitialInterval     time.Duration `mapstructure:"initial-interval"`
-	RandomizationFactor float64       `mapstructure:"randomization-factor"`
-	Multiplier          float64       `mapstructure:"multiplier"`
-	MaxInterval         time.Duration `mapstructure:"max-interval"`
-	MaxElapsedTime      time.Duration `mapstructure:"max-elapsed-time"`
+	InitialInterval     time.Duration  `mapstructure:"initial-interval"`
+	RandomizationFactor float64        `mapstructure:"randomization-factor"`
+	Multiplier          float64        `mapstructure:"multiplier"`
+	MaxInterval         time.Duration  `mapstructure:"max-interval"`
+	MaxElapsedTime      *time.Duration `mapstructure:"max-elapsed-time" validate:"omitempty,gte=0"`
 }
 
 const (
@@ -86,13 +93,17 @@ const (
 )
 
 // WithDefaults returns a clone of this profile with default values.
+//
+// A nil MaxElapsedTime is replaced with the default (15 minutes). A non-nil
+// value is preserved as-is, including an explicit 0 which requests unlimited
+// retries. This makes WithDefaults idempotent for MaxElapsedTime.
 func (p *Profile) WithDefaults() *Profile {
 	newP := &Profile{
 		InitialInterval:     defaultInitialInterval,
 		RandomizationFactor: defaultRandomizationFactor,
 		Multiplier:          defaultMultiplier,
 		MaxInterval:         defaultMaxInterval,
-		MaxElapsedTime:      defaultMaxElapsedTime,
+		MaxElapsedTime:      new(defaultMaxElapsedTime),
 	}
 	if p == nil {
 		return newP
@@ -109,7 +120,7 @@ func (p *Profile) WithDefaults() *Profile {
 	if p.MaxInterval > 0 {
 		newP.MaxInterval = p.MaxInterval
 	}
-	if p.MaxElapsedTime > 0 {
+	if p.MaxElapsedTime != nil {
 		newP.MaxElapsedTime = p.MaxElapsedTime
 	}
 	return newP

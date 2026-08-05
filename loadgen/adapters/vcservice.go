@@ -41,10 +41,6 @@ func (c *VcAdapter) RunWorkload(ctx context.Context, txStream *workload.StreamWi
 	}
 	defer connection.CloseConnectionsLog(commonConn)
 	commonClient := servicepb.NewValidationAndCommitServiceClient(commonConn)
-	_, setupError := commonClient.SetupSystemTablesAndNamespaces(ctx, nil)
-	if setupError != nil {
-		return errors.Wrap(setupError, "failed to setup system tables and namespaces")
-	}
 	if nextBlock, getErr := commonClient.GetNextBlockNumberToCommit(ctx, nil); getErr != nil {
 		// We do not return error as we can proceed assuming no blocks were committed.
 		logger.Infof("failed getting last committed block number: %v", getErr)

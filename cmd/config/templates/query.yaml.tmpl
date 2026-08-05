@@ -3,6 +3,13 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 {{ include "service" . | indent 0 }}
+  keep-alive:
+    params:
+      time: {{ .KeepAliveTime | default "60s" }}
+      timeout: {{ .KeepAliveTimeout | default "10s" }}
+    enforcement-policy:
+      min-time: 60s
+      permit-without-stream: {{ .KeepAlivePermitWithoutStream | default false }}
 {{ include "rateLimit" . | indent 2 }}
 
 {{ include "database" . | indent 0 }}

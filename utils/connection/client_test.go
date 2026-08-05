@@ -31,6 +31,10 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
+// serverDownDuration is how long each restart leaves the server down before bringing it back: long
+// enough for the low-budget client to exhaust its retries while the default client rides it out.
+const serverDownDuration = 30 * time.Second
+
 type deliverServerWrapper struct {
 	peer.DeliverServer
 }
@@ -65,26 +69,19 @@ func TestGRPCRetry(t *testing.T) {
 
 	t.Log("Stopping the grpc server")
 	cancel()
-	test.CheckServerStopped(t, serverConfig.GRPC.Endpoint.Address())
+	reserveWhileServerDown(t, serverConfig)
 
-	// We override the context to avoid mistakenly using the previous one.
+	// Override the context so this restart and the client retrying against it run on a fresh budget.
 	ctx, cancel = context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-
-	var wg sync.WaitGroup
-	t.Cleanup(wg.Wait)
-	wg.Go(func() {
-		time.Sleep(30 * time.Second)
-		t.Log("Service is starting")
-		test.ServeForTest(ctx, t, serverConfig, nil)
-	})
+	scheduleServerRestart(ctx, t, serverConfig)
 
 	t.Log("Attempting to connect with default GRPC config")
 	_, err = client.Check(ctx, nil)
 	require.NoError(t, err)
 
 	conn2 := test.NewInsecureConnectionWithRetry(t, &serverConfig.GRPC.Endpoint, retry.Profile{
-		MaxElapsedTime: 2 * time.Second,
+		MaxElapsedTime: new(2 * time.Second),
 	})
 	client2 := healthgrpc.NewHealthClient(conn2)
 
@@ -94,21 +91,39 @@ func TestGRPCRetry(t *testing.T) {
 
 	t.Log("Stopping the grpc server")
 	cancel()
-	test.CheckServerStopped(t, serverConfig.GRPC.Endpoint.Address())
+	reserveWhileServerDown(t, serverConfig)
 
-	// We override the context to avoid mistakenly using the previous one.
+	// Override the context so this restart and the client retrying against it run on a fresh budget.
 	ctx, cancel = context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-
-	wg.Go(func() {
-		time.Sleep(30 * time.Second)
-		t.Log("Service is starting")
-		test.ServeForTest(ctx, t, serverConfig, nil)
-	})
+	scheduleServerRestart(ctx, t, serverConfig)
 
 	t.Log("Attempting to connect again with lower timeout")
 	_, err = client2.Check(ctx, nil)
 	require.Error(t, err)
+}
+
+// reserveWhileServerDown re-reserves the server's gRPC port the moment it is stopped, so a parallel
+// test cannot grab the just-freed ephemeral port while the server is down.
+func reserveWhileServerDown(t *testing.T, sc *serve.Config) {
+	t.Helper()
+	serve.ClosePreAllocatedListener(&sc.GRPC)
+	serve.PreAllocateListener(t, &sc.GRPC)
+	require.True(t, test.CheckServerStopped(t, sc.GRPC.Endpoint.Address()),
+		"a reservation-only port must not answer gRPC health checks")
+}
+
+// scheduleServerRestart brings the server back up after serverDownDuration, reusing the reserved
+// port.
+func scheduleServerRestart(ctx context.Context, t *testing.T, sc *serve.Config) {
+	t.Helper()
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
+	wg.Go(func() {
+		time.Sleep(serverDownDuration)
+		t.Log("Service is starting")
+		test.ServeForTest(ctx, t, sc, nil)
+	})
 }
 
 //nolint:paralleltest // modifies grpc logger.
@@ -420,13 +435,18 @@ func TestGrpcRetryJSON(t *testing.T) {
 	  }]
 	}`
 	for _, tt := range []struct {
-		maxElapsedTime   time.Duration
+		name             string
+		maxElapsedTime   *time.Duration
 		expectedAttempts int
 	}{
-		{maxElapsedTime: 0, expectedAttempts: 96},
-		{maxElapsedTime: 15 * time.Second, expectedAttempts: 7},
+		// A nil budget falls back to the 15m default.
+		{name: "default", maxElapsedTime: nil, expectedAttempts: 96},
+		// A zero budget requests unlimited retries; the gRPC layer is intentionally bounded,
+		// so it is capped at the high defaultGrpcMaxAttempts rather than being truly unlimited.
+		{name: "unlimited", maxElapsedTime: new(time.Duration(0)), expectedAttempts: 1024},
+		{name: "finite", maxElapsedTime: new(15 * time.Second), expectedAttempts: 7},
 	} {
-		t.Run(fmt.Sprintf("maxElapsed=%s", tt.maxElapsedTime), func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			profile := retry.Profile{MaxElapsedTime: tt.maxElapsedTime}
 			jsonRaw := connection.MakeGrpcRetryPolicyJSON(&profile)

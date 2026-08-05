@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"reflect"
 	"regexp"
@@ -37,6 +38,10 @@ const (
 	Disconnected = 0
 
 	// defaultGrpcMaxAttempts is set to a high number to allow the timeout to dictate the retry end condition.
+	// The gRPC retry policy is intentionally bounded: gRPC has no notion of unlimited attempts, so even when
+	// the retry profile requests an unlimited budget (MaxElapsedTime == 0) we cap the gRPC layer at this value.
+	// Unbounded retries are provided by retry.Sustain, which re-establishes the connection after the gRPC layer
+	// gives up; this applies to service reconnection only.
 	defaultGrpcMaxAttempts = 1024
 	// TODO: All services including the orderer must use the same default maximum message size.
 	//       Hence, we need to move this constant to fabric-x-common.
@@ -315,7 +320,15 @@ func MakeGrpcRetryPolicyJSON(p *retry.Profile) string {
 	initialInterval := max(p.InitialInterval.Seconds(), time.Nanosecond.Seconds())
 	maxInterval := max(p.MaxInterval.Seconds(), initialInterval)
 	multiplier := max(p.Multiplier, 1.0001)
-	maxElapsedTimeSeconds := max(p.MaxElapsedTime.Seconds(), maxInterval)
+
+	// An unlimited retry budget (MaxElapsedTime == 0) cannot be expressed as a gRPC retry policy,
+	// so we bound the gRPC layer at defaultGrpcMaxAttempts and rely on retry.Sustain for unbounded
+	// reconnection. WithDefaults guarantees MaxElapsedTime is non-nil.
+	maxAttempts := defaultGrpcMaxAttempts
+	if elapsed := *p.MaxElapsedTime; elapsed > 0 {
+		maxElapsedTimeSeconds := max(elapsed.Seconds(), maxInterval)
+		maxAttempts = CalcMaxAttempts(initialInterval, maxInterval, multiplier, maxElapsedTimeSeconds)
+	}
 	ret := map[string]any{
 		"loadBalancingConfig": []map[string]any{{
 			"round_robin": make(map[string]any),
@@ -324,7 +337,7 @@ func MakeGrpcRetryPolicyJSON(p *retry.Profile) string {
 			// Setting an empty name sets the default for all methods.
 			"name": []any{make(map[string]any)},
 			"retryPolicy": map[string]any{
-				"maxAttempts":       CalcMaxAttempts(initialInterval, maxInterval, multiplier, maxElapsedTimeSeconds),
+				"maxAttempts":       maxAttempts,
 				"initialBackoff":    formatSeconds(initialInterval),
 				"maxBackoff":        formatSeconds(maxInterval),
 				"backoffMultiplier": multiplier,
@@ -344,20 +357,34 @@ func MakeGrpcRetryPolicyJSON(p *retry.Profile) string {
 	return string(jsonString)
 }
 
-// CalcMaxAttempts calculates the number of attempts given the following parameters:
-// - initialInterval > 0
-// - maxInterval     >= i
-// - multiplier      > 1
-// - maxElapsedTime > i.
+// CalcMaxAttempts returns the number of attempts an exponential backoff makes before its
+// cumulative wait time first exceeds maxElapsedTime. It is the closed-form equivalent of
+// summing the (capped) backoff intervals until the budget is exhausted.
+//
+// The k-th interval (k starting at 0) is min(initialInterval*multiplier^k, maxInterval):
+// it grows geometrically until it reaches maxInterval, then stays constant. The result is
+// the smallest n for which the sum of the first n intervals exceeds maxElapsedTime.
+//
+// Preconditions (guaranteed by the caller):
+//   - initialInterval > 0
+//   - maxInterval     >= initialInterval
+//   - multiplier      > 1
+//   - maxElapsedTime  >= 0
 func CalcMaxAttempts(initialInterval, maxInterval, multiplier, maxElapsedTime float64) int {
-	nextBackoffInterval := initialInterval
-	var estimatedElapsedTime float64
-	var attempts int
-	for attempts = 0; estimatedElapsedTime <= maxElapsedTime; attempts++ {
-		estimatedElapsedTime += nextBackoffInterval
-		nextBackoffInterval = min(nextBackoffInterval*multiplier, maxInterval)
+	// geometricSteps is the number of intervals during the geometric-growth phase, i.e. the
+	// smallest k for which initialInterval*multiplier^k reaches maxInterval.
+	geometricSteps := math.Ceil(math.Log(maxInterval/initialInterval) / math.Log(multiplier))
+	// geometricSum is the total wait accumulated during that geometric-growth phase.
+	geometricSum := initialInterval * (math.Pow(multiplier, geometricSteps) - 1) / (multiplier - 1)
+
+	if maxElapsedTime < geometricSum {
+		// The budget is exhausted while the interval is still growing: the smallest n with
+		// initialInterval*(multiplier^n - 1)/(multiplier - 1) > maxElapsedTime.
+		q := 1 + maxElapsedTime*(multiplier-1)/initialInterval
+		return int(math.Floor(math.Log(q)/math.Log(multiplier))) + 1
 	}
-	return attempts
+	// The budget is exhausted during the capped phase, where every interval equals maxInterval.
+	return int(geometricSteps) + int(math.Floor((maxElapsedTime-geometricSum)/maxInterval)) + 1
 }
 
 func formatSeconds(sec float64) string {

@@ -13,4 +13,3 @@ resource-limits:
   min-transaction-batch-size: {{ .VCMinTransactionBatchSize | default 1 }}
   timeout-for-min-transaction-batch-size: {{ .VCTimeoutForMinTransactionBatchSize | default "2s" }}
   queue-multiplier: 1
-  queue-monitor-sampling-time: 100ms

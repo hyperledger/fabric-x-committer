@@ -10,7 +10,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -22,6 +21,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
+	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
 const (
@@ -33,6 +33,8 @@ const (
 	insertNsStatesSQLTempl = "SELECT * FROM insert_ns_${NAMESPACE_ID}($1::BYTEA[], $2::BYTEA[]);"
 	// queryVersionsSQLTempl template for the querying versions for given keys for each namespace.
 	queryVersionsSQLTempl = "SELECT key, version FROM ns_${NAMESPACE_ID} WHERE key = ANY($1);"
+	// queryValuesByKeysSQLTempl template for querying values for given keys for each namespace.
+	queryValuesByKeysSQLTempl = "SELECT key, value FROM ns_${NAMESPACE_ID} WHERE key = ANY($1);"
 
 	// insertTxStatusSQLStmt commits transaction's status for each TX.
 	insertTxStatusSQLStmt = "SELECT * FROM insert_tx_status($1::BYTEA[], $2::INTEGER[], $3::BYTEA[]);"
@@ -40,6 +42,22 @@ const (
 	queryPoliciesSQLStmt = "SELECT key, value from ns_" + committerpb.MetaNamespaceID + ";"
 	// queryConfigSQLStmt queries the config-namespace policy.
 	queryConfigSQLStmt = "SELECT key, value from ns_" + committerpb.ConfigNamespaceID + ";"
+
+	setMetadataPrepSQLStmt      = "UPDATE metadata SET value = $2 WHERE key = $1;"
+	getMetadataPrepSQLStmt      = "SELECT value FROM metadata WHERE key = $1;"
+	queryTxIDsStatusPrepSQLStmt = "SELECT tx_id, status, height FROM tx_status WHERE tx_id = ANY($1);"
+)
+
+var (
+	lastCommittedBlockNumberKey = []byte("last committed block number")
+
+	// latestSnapshotKeyMetadataKey stores the tx_id of the most recently accepted
+	// _snapshot record, so the snapshot gate (see snapshot.go) can look up its
+	// current status with a single key lookup instead of scanning the (small but
+	// growing) ns__snapshot table. Pre-seeded (NULL) at DB init alongside
+	// lastCommittedBlockNumberKey and written atomically, in the same DB
+	// transaction as the _snapshot row it points to, by commit.
+	latestSnapshotKeyMetadataKey = []byte("latest snapshot key")
 )
 
 type (
@@ -49,6 +67,10 @@ type (
 		metrics              *perfMetrics
 		retryProfile         *retry.Profile
 		tablePreSplitTablets int
+		config               *statedb.Config
+		resourceLimits       *ResourceLimitsConfig
+		snapshotHashJobs     chan snapshotHashJob
+		hasher               *snapshotHasher
 	}
 
 	// keyToVersion is a map from key to version.
@@ -73,15 +95,17 @@ type (
 )
 
 // newDatabase creates a new database.
-func newDatabase(ctx context.Context, config *DatabaseConfig, metrics *perfMetrics) (*database, error) {
-	pool, err := NewDatabasePool(ctx, config)
+func newDatabase(
+	ctx context.Context, config *statedb.Config, metrics *perfMetrics, resourceLimits *ResourceLimitsConfig,
+) (*database, error) {
+	pool, err := statedb.NewPool(ctx, config)
 	if err != nil {
 		return nil, err
 	}
 
 	logger.Infof("validator persister connected to database at [%s]", config.EndpointsString())
 
-	tablePreSplitTablets, err := getTablePreSplitTablets(ctx, pool, config)
+	tablePreSplitTablets, err := statedb.GetTablePreSplitTablets(ctx, pool, config)
 	if err != nil {
 		pool.Close()
 		return nil, err
@@ -92,45 +116,24 @@ func newDatabase(ctx context.Context, config *DatabaseConfig, metrics *perfMetri
 		metrics:              metrics,
 		retryProfile:         config.Retry,
 		tablePreSplitTablets: tablePreSplitTablets,
+		config:               config,
+		resourceLimits:       resourceLimits,
+		snapshotHashJobs:     make(chan snapshotHashJob, snapshotHashJobBuffer),
+		hasher: &snapshotHasher{
+			config:         config,
+			resourceLimits: resourceLimits,
+			retryProfile:   config.Retry,
+		},
 	}, nil
 }
 
-func getTablePreSplitTablets(ctx context.Context, pg *pgxpool.Pool, config *DatabaseConfig) (int, error) {
-	if config.TablePreSplitTablets == 0 {
-		return 0, nil
-	}
-
-	isYugabyte, err := isYugabyteDB(ctx, pg)
-	if err != nil {
-		return 0, err
-	}
-	if !isYugabyte {
-		logger.Info("PostgreSQL detected; ignoring table-pre-split-tablets configuration")
-		return 0, nil
-	}
-
-	logger.Infof("YugabyteDB detected; tables will be pre-split into %d tablets", config.TablePreSplitTablets)
-	return config.TablePreSplitTablets, nil
-}
-
-// isYugabyteDB queries the database version string to determine whether the backend is YugabyteDB.
-// YugabyteDB's version() output contains "-YB-" (e.g., "PostgreSQL 11.2-YB-2.20.1.0 ..."),
-// which distinguishes it from standard PostgreSQL.
-func isYugabyteDB(ctx context.Context, pool *pgxpool.Pool) (bool, error) {
-	var version string
-	if err := pool.QueryRow(ctx, "SELECT version()").Scan(&version); err != nil {
-		return false, errors.Wrap(err, "failed to query database version")
-	}
-	return strings.Contains(version, "-YB-"), nil
-}
-
-func (db *database) close() {
+func (d *database) close() {
 	logger.Info("closing database connection")
-	db.pool.Close()
+	d.pool.Close()
 }
 
 // validateNamespaceReads validates the reads for a given namespace.
-func (db *database) validateNamespaceReads(
+func (d *database) validateNamespaceReads(
 	ctx context.Context,
 	nsID string,
 	r *reads,
@@ -143,9 +146,9 @@ func (db *database) validateNamespaceReads(
 	// a common function for all namespace, we need to pass the table name as a parameter
 	// which makes the query dynamic and hence we lose the benefits of static SQL.
 	start := time.Now()
-	query := FmtNsID(validateReadsSQLTempl, nsID)
+	query := statedb.FmtNsID(validateReadsSQLTempl, nsID)
 
-	conflictIdx, err := retryQueryAndReadArrayResult[int](ctx, db, query, r.keys, r.versions)
+	conflictIdx, err := retryQueryAndReadArrayResult[int](ctx, d, query, r.keys, r.versions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to validate reads on namespace [%s]: %w", nsID, err)
 	}
@@ -154,17 +157,17 @@ func (db *database) validateNamespaceReads(
 		// SQL indexing starts from 1.
 		readConflicts.append(r.keys[i-1], r.versions[i-1])
 	}
-	promutil.Observe(db.metrics.databaseTxBatchValidationLatencySeconds, time.Since(start))
+	promutil.Observe(d.metrics.databaseTxBatchValidationLatencySeconds, time.Since(start))
 
 	return readConflicts, nil
 }
 
 // queryVersionsIfPresent queries the versions for the given keys if they exist.
-func (db *database) queryVersionsIfPresent(ctx context.Context, nsID string, queryKeys [][]byte) (keyToVersion, error) {
+func (d *database) queryVersionsIfPresent(ctx context.Context, nsID string, queryKeys [][]byte) (keyToVersion, error) {
 	start := time.Now()
-	query := FmtNsID(queryVersionsSQLTempl, nsID)
+	query := statedb.FmtNsID(queryVersionsSQLTempl, nsID)
 
-	foundKeys, foundVersions, err := retryQueryAndReadTwoItems[[]byte, int64](ctx, db, query, queryKeys)
+	foundKeys, foundVersions, err := retryQueryAndReadTwoItems[[]byte, int64](ctx, d, query, queryKeys)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get keys' version from namespace [%s]: %w", nsID, err)
 	}
@@ -173,14 +176,14 @@ func (db *database) queryVersionsIfPresent(ctx context.Context, nsID string, que
 	for i, key := range foundKeys {
 		kToV[string(key)] = uint64(foundVersions[i]) //nolint:gosec // DB table is constraint to non-negative value.
 	}
-	promutil.Observe(db.metrics.databaseTxBatchQueryVersionLatencySeconds, time.Since(start))
+	promutil.Observe(d.metrics.databaseTxBatchQueryVersionLatencySeconds, time.Since(start))
 
 	return kToV, nil
 }
 
-func (db *database) getNextBlockNumberToCommit(ctx context.Context) (*servicepb.BlockRef, error) {
-	value, retryErr := retry.ExecuteWithResult(ctx, db.retryProfile, func() ([]byte, error) {
-		r := db.pool.QueryRow(ctx, getMetadataPrepSQLStmt, lastCommittedBlockNumberKey)
+func (d *database) getNextBlockNumberToCommit(ctx context.Context) (*servicepb.BlockRef, error) {
+	value, retryErr := retry.ExecuteWithResult(ctx, d.retryProfile, func() ([]byte, error) {
+		r := d.pool.QueryRow(ctx, getMetadataPrepSQLStmt, lastCommittedBlockNumberKey)
 		var v []byte
 		return v, errors.Wrap(r.Scan(&v), "failed to get the last committed block number")
 	})
@@ -196,7 +199,7 @@ func (db *database) getNextBlockNumberToCommit(ctx context.Context) (*servicepb.
 	return res, nil
 }
 
-func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *servicepb.BlockRef) error {
+func (d *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *servicepb.BlockRef) error {
 	// NOTE: We can actually batch this transaction with regular user transactions and perform
 	//       a single commit. However, we need to implement special logic to handle cases
 	//       when there are no waiting user transactions. Hence, for simplicity, we are not
@@ -210,11 +213,11 @@ func (db *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *serv
 	//       and standard comparison operators.
 	v := make([]byte, 8)
 	binary.BigEndian.PutUint64(v, bInfo.Number)
-	return retry.ExecuteSQL(ctx, db.retryProfile, db.pool, setMetadataPrepSQLStmt, lastCommittedBlockNumberKey, v)
+	return retry.ExecuteSQL(ctx, d.retryProfile, d.pool, setMetadataPrepSQLStmt, lastCommittedBlockNumberKey, v)
 }
 
 // commit commits the writes to the database.
-func (db *database) commit(ctx context.Context, states *statesToBeCommitted) (*commitResult, error) {
+func (d *database) commit(ctx context.Context, states *statesToBeCommitted) (*commitResult, error) {
 	start := time.Now()
 	if states.empty() {
 		return nil, nil
@@ -223,7 +226,7 @@ func (db *database) commit(ctx context.Context, states *statesToBeCommitted) (*c
 	// We want to commit all the writes to all namespaces or none at all,
 	// so we use a database transaction. Otherwise, the failure and recovery
 	// logic will be very complicated.
-	tx, rollBackFunc, err := db.beginTx(ctx)
+	tx, rollBackFunc, err := d.beginTx(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +234,7 @@ func (db *database) commit(ctx context.Context, states *statesToBeCommitted) (*c
 	// This will be executed if an error occurs. If transaction is committed, this will be a no-op.
 	defer rollBackFunc()
 
-	res, err := db.writeStatesByGroup(ctx, tx, states)
+	res, err := d.writeStatesByGroup(ctx, tx, states)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write states: %w", err)
 	}
@@ -240,8 +243,15 @@ func (db *database) commit(ctx context.Context, states *statesToBeCommitted) (*c
 		return res, nil
 	}
 
+	// If this batch carries a _snapshot write, record its key as the latest
+	// snapshot pointer in the SAME transaction, so the pointer and the _snapshot
+	// row it targets are always consistent (see rejectSnapshotIfPriorNotCheckpointed).
+	if err = setLatestSnapshotKeyIfPresent(ctx, tx, states.newWrites[committerpb.SnapshotNamespaceID]); err != nil {
+		return nil, fmt.Errorf("failed to set latest snapshot key: %w", err)
+	}
+
 	err = tx.Commit(ctx)
-	promutil.Observe(db.metrics.databaseTxBatchCommitLatencySeconds, time.Since(start))
+	promutil.Observe(d.metrics.databaseTxBatchCommitLatencySeconds, time.Since(start))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to perform the final commit on the database transaction")
 	}
@@ -249,7 +259,7 @@ func (db *database) commit(ctx context.Context, states *statesToBeCommitted) (*c
 	return nil, nil
 }
 
-func (db *database) writeStatesByGroup(
+func (d *database) writeStatesByGroup(
 	ctx context.Context,
 	tx pgx.Tx,
 	states *statesToBeCommitted,
@@ -260,7 +270,7 @@ func (db *database) writeStatesByGroup(
 	// If we don't insert transaction IDs first, there are other consequences. These
 	// could be mitigated by adding writes with a null version present in BlindWrites
 	// to the readToTxIDs map, but inserting the IDs upfront is a cleaner solution.
-	duplicates, err := db.insertTxStatus(ctx, tx, states)
+	duplicates, err := d.insertTxStatus(ctx, tx, states)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert transactions status: %w", err)
 	}
@@ -271,7 +281,7 @@ func (db *database) writeStatesByGroup(
 		return &commitResult{duplicates: duplicates}, nil
 	}
 
-	conflicts, err := db.insertStates(ctx, tx, states.newWrites)
+	conflicts, err := d.insertStates(ctx, tx, states.newWrites)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert states: %w", err)
 	}
@@ -283,19 +293,31 @@ func (db *database) writeStatesByGroup(
 	}
 
 	if err = createTablesAndFunctionsForNamespaces(ctx, tx,
-		states.newWrites[committerpb.MetaNamespaceID], db.tablePreSplitTablets); err != nil {
+		states.newWrites[committerpb.MetaNamespaceID], d.tablePreSplitTablets); err != nil {
 		return nil, fmt.Errorf("failed to create tables and functions for new namespaces: %w", err)
 	}
 
 	// Updates cannot have a conflicts because their versions are validated beforehand.
-	if err = db.updateStates(ctx, tx, states.updateWrites); err != nil {
+	if err = d.updateStates(ctx, tx, states.updateWrites); err != nil {
 		return nil, fmt.Errorf("failed to execute updates: %w", err)
 	}
 
 	return nil, nil
 }
 
-func (db *database) insertTxStatus(
+// setLatestSnapshotKeyIfPresent points latestSnapshotKeyMetadataKey at w's sole
+// key, or no-ops when w is empty (normal non-snapshot batch). The key is
+// pre-seeded (NULL) at DB init, so the existing setMetadataPrepSQLStmt UPDATE
+// is reused as-is.
+func setLatestSnapshotKeyIfPresent(ctx context.Context, tx pgx.Tx, w *namespaceWrites) error {
+	if w.empty() {
+		return nil
+	}
+	_, err := tx.Exec(ctx, setMetadataPrepSQLStmt, latestSnapshotKeyMetadataKey, w.keys[0])
+	return errors.Wrap(err, "failed to set latest snapshot key")
+}
+
+func (d *database) insertTxStatus(
 	ctx context.Context,
 	tx pgx.Tx,
 	states *statesToBeCommitted,
@@ -329,7 +351,7 @@ func (db *database) insertTxStatus(
 		return nil, fmt.Errorf("failed to read result from query [%s]: %w", insertTxStatusSQLStmt, err)
 	}
 	if len(duplicates) == 0 {
-		promutil.Observe(db.metrics.databaseTxBatchCommitTxsStatusLatencySeconds, time.Since(start))
+		promutil.Observe(d.metrics.databaseTxBatchCommitTxsStatusLatencySeconds, time.Since(start))
 		return nil, nil
 	}
 
@@ -338,17 +360,17 @@ func (db *database) insertTxStatus(
 		duplicateTxs[i] = TxID(v)
 	}
 	logger.Debugf("Total number of duplicate txs: %d", len(duplicateTxs))
-	promutil.Observe(db.metrics.databaseTxBatchCommitTxsStatusLatencySeconds, time.Since(start))
+	promutil.Observe(d.metrics.databaseTxBatchCommitTxsStatusLatencySeconds, time.Since(start))
 	return duplicateTxs, nil
 }
 
-func (db *database) insertStates(
+func (d *database) insertStates(
 	ctx context.Context, tx pgx.Tx, nsToWrites namespaceToWrites,
 ) (namespaceToReads /* conflicts */, error) {
 	start := time.Now()
 	defer func() {
 		promutil.Observe(
-			db.metrics.databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds,
+			d.metrics.databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds,
 			time.Since(start),
 		)
 	}()
@@ -359,7 +381,7 @@ func (db *database) insertStates(
 			continue
 		}
 
-		q := FmtNsID(insertNsStatesSQLTempl, nsID)
+		q := statedb.FmtNsID(insertNsStatesSQLTempl, nsID)
 		ret := tx.QueryRow(ctx, q, writes.keys, writes.values)
 		violating, err := readArrayResult[[]byte](ret)
 		if err != nil {
@@ -381,20 +403,20 @@ func (db *database) insertStates(
 	return nil, nil
 }
 
-func (db *database) updateStates(ctx context.Context, tx pgx.Tx, nsToWrites namespaceToWrites) error {
+func (d *database) updateStates(ctx context.Context, tx pgx.Tx, nsToWrites namespaceToWrites) error {
 	start := time.Now()
 	for nsID, writes := range nsToWrites {
 		if writes.empty() {
 			continue
 		}
 
-		query := FmtNsID(updateNsStatesSQLTempl, nsID)
+		query := statedb.FmtNsID(updateNsStatesSQLTempl, nsID)
 		_, err := tx.Exec(ctx, query, writes.keys, writes.values, writes.versions)
 		if err != nil {
 			return errors.Wrapf(err, "failed to execute query [%s]", query)
 		}
 	}
-	promutil.Observe(db.metrics.databaseTxBatchCommitUpdateLatencySeconds, time.Since(start))
+	promutil.Observe(d.metrics.databaseTxBatchCommitUpdateLatencySeconds, time.Since(start))
 
 	return nil
 }
@@ -406,23 +428,22 @@ func createTablesAndFunctionsForNamespaces(ctx context.Context, tx pgx.Tx, newNs
 
 	for _, ns := range newNs.keys {
 		nsID := string(ns)
-
-		tableName := TableName(nsID)
+		tableName := statedb.TableName(nsID)
 		logger.Infof("Creating table [%s] and required functions for namespace [%s]", tableName, ns)
-		err := createNsTables(nsID, tablets, func(q string) error {
-			_, execErr := tx.Exec(ctx, q)
-			return execErr
-		})
-		if err != nil {
-			return err
+		query := statedb.MakeNsTablesQuery(nsID, tablets)
+		if _, execErr := tx.Exec(ctx, query); execErr != nil {
+			return errors.Wrapf(
+				execErr,
+				"failed to create table and functions for namespace [%s] with query [%s]", nsID, query,
+			)
 		}
 	}
 
 	return nil
 }
 
-func (db *database) beginTx(ctx context.Context) (pgx.Tx, func(), error) {
-	tx, err := db.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+func (d *database) beginTx(ctx context.Context) (pgx.Tx, func(), error) {
+	tx, err := d.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to being a database transaction")
 	}
@@ -439,12 +460,12 @@ func (s *statesToBeCommitted) empty() bool {
 	return s.updateWrites.empty() && s.newWrites.empty() && (s.batchStatus == nil || len(s.batchStatus.Status) == 0)
 }
 
-func (db *database) readStatusWithHeight(
+func (d *database) readStatusWithHeight(
 	ctx context.Context,
 	txIDs [][]byte,
 ) ([]*committerpb.TxStatus, error) {
-	return retry.ExecuteWithResult(ctx, db.retryProfile, func() ([]*committerpb.TxStatus, error) {
-		r, queryErr := db.pool.Query(ctx, queryTxIDsStatusPrepSQLStmt, txIDs)
+	return retry.ExecuteWithResult(ctx, d.retryProfile, func() ([]*committerpb.TxStatus, error) {
+		r, queryErr := d.pool.Query(ctx, queryTxIDsStatusPrepSQLStmt, txIDs)
 		if queryErr != nil {
 			return nil, errors.Wrap(queryErr, "query txIDs from the table [tx_status]")
 		}
@@ -471,10 +492,10 @@ func (db *database) readStatusWithHeight(
 	})
 }
 
-func (db *database) readNamespacePolicies(ctx context.Context) (*applicationpb.NamespacePolicies, error) {
-	keys, values, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, db, queryPoliciesSQLStmt)
+func (d *database) readNamespacePolicies(ctx context.Context) (*applicationpb.NamespacePolicies, error) {
+	keys, values, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, d, queryPoliciesSQLStmt)
 	if err != nil {
-		metaTable := TableName(committerpb.MetaNamespaceID)
+		metaTable := statedb.TableName(committerpb.MetaNamespaceID)
 		return nil, fmt.Errorf("failed to read the policies from table [%s]: %w", metaTable, err)
 	}
 	policy := &applicationpb.NamespacePolicies{
@@ -490,11 +511,11 @@ func (db *database) readNamespacePolicies(ctx context.Context) (*applicationpb.N
 	return policy, nil
 }
 
-func (db *database) readConfigTX(ctx context.Context) (*applicationpb.ConfigTransaction, error) {
-	_, values, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, db, queryConfigSQLStmt)
+func (d *database) readConfigTX(ctx context.Context) (*applicationpb.ConfigTransaction, error) {
+	_, values, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, d, queryConfigSQLStmt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the config transaction from table [%s]: %w",
-			TableName(committerpb.ConfigNamespaceID), err)
+			statedb.TableName(committerpb.ConfigNamespaceID), err)
 	}
 	configTX := &applicationpb.ConfigTransaction{}
 	for _, v := range values {
@@ -504,10 +525,10 @@ func (db *database) readConfigTX(ctx context.Context) (*applicationpb.ConfigTran
 }
 
 func retryQueryAndReadArrayResult[T any](
-	ctx context.Context, db *database, query string, args ...any,
+	ctx context.Context, d *database, query string, args ...any,
 ) ([]T, error) {
-	return retry.ExecuteWithResult(ctx, db.retryProfile, func() ([]T, error) {
-		row := db.pool.QueryRow(ctx, query, args...)
+	return retry.ExecuteWithResult(ctx, d.retryProfile, func() ([]T, error) {
+		row := d.pool.QueryRow(ctx, query, args...)
 		items, readErr := readArrayResult[T](row)
 		if readErr != nil {
 			logger.Debugf("attempt: %s", readErr)
@@ -517,10 +538,10 @@ func retryQueryAndReadArrayResult[T any](
 }
 
 func retryQueryAndReadTwoItems[T1, T2 any](
-	ctx context.Context, db *database, query string, args ...any,
+	ctx context.Context, d *database, query string, args ...any,
 ) ([]T1, []T2, error) {
-	res, err := retry.ExecuteWithResult(ctx, db.retryProfile, func() (*tuple[[]T1, []T2], error) {
-		rows, queryErr := db.pool.Query(ctx, query, args...)
+	res, err := retry.ExecuteWithResult(ctx, d.retryProfile, func() (*tuple[[]T1, []T2], error) {
+		rows, queryErr := d.pool.Query(ctx, query, args...)
 		if queryErr != nil {
 			return nil, errors.Wrapf(queryErr, "query rows: query [%s]", query)
 		}

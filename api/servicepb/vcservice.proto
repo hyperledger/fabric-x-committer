@@ -27,7 +27,6 @@ service ValidationAndCommitService {
     rpc GetTransactionsStatus (committerpb.TxIDsBatch) returns (committerpb.TxStatusBatch) {};
     rpc GetNamespacePolicies(google.protobuf.Empty) returns (applicationpb.NamespacePolicies) {};
     rpc GetConfigTransaction(google.protobuf.Empty) returns (applicationpb.ConfigTransaction) {};
-    rpc SetupSystemTablesAndNamespaces(google.protobuf.Empty) returns (google.protobuf.Empty) {};
 }
 
 message VcBatch {

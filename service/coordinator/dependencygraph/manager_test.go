@@ -24,6 +24,8 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
+const DefaultQueueMonitorSamplingTime = 100 * time.Millisecond
+
 type batchWithLatency struct {
 	batch TxNodeBatch
 	done  time.Time
@@ -46,7 +48,7 @@ func BenchmarkDependencyGraph(b *testing.B) {
 		for _, dst := range allDep {
 			testDependencies = append(testDependencies, workload.DependencyDescription{
 				Probability: 0.3,
-				Gap:         workload.NewNormalDistribution(500, 10),
+				Gap:         500,
 				Src:         src,
 				Dst:         dst,
 			})
@@ -59,10 +61,10 @@ func BenchmarkDependencyGraph(b *testing.B) {
 				p := workload.DefaultProfile(1)
 				name := "no-dep"
 				if idx > 0 {
-					p.Conflicts.Dependencies = []workload.DependencyDescription{dep}
+					p.Transaction.Dependencies = []workload.DependencyDescription{dep}
 					name = fmt.Sprintf("%s AND %s", dep.Src, dep.Dst)
 				}
-				p.Transaction.ReadWriteCount = workload.NewConstantDistribution(float64(keyCount))
+				p.Transaction.ReadWriteCount = uint32(keyCount) //nolint:gosec // small test value.
 
 				b.Run(name, func(b *testing.B) {
 					for _, tc := range []struct {
@@ -87,9 +89,13 @@ func BenchmarkDependencyGraph(b *testing.B) {
 								IncomingValidatedTxsNode:  val,
 								NumOfLocalDepConstructors: tc.workers,
 								WaitingTxsLimit:           20_000_000,
+								QueueMonitorSamplingTime:  DefaultQueueMonitorSamplingTime,
 								PrometheusMetricsProvider: monitoring.NewProvider(),
 							})
 
+							// Over-supply transactions (3x) so the manager's internal
+							// queue stays populated throughout the measured window; we
+							// stop once b.N transactions have been released.
 							txPoll := workload.GenerateTransactions(b, p, max(b.N*3, batchSize*3))
 
 							ctx := b.Context()
@@ -145,6 +151,7 @@ func BenchmarkDependencyGraph(b *testing.B) {
 								total += len(batch)
 							}
 							b.StopTimer()
+							test.ReportTxPerSecond(b)
 						})
 					}
 				})
@@ -180,6 +187,7 @@ func TestDependencyGraphManager(t *testing.T) {
 				IncomingValidatedTxsNode:  validatedTxs,
 				NumOfLocalDepConstructors: 2,
 				WaitingTxsLimit:           waitingTXsLimit,
+				QueueMonitorSamplingTime:  DefaultQueueMonitorSamplingTime,
 				PrometheusMetricsProvider: monitoring.NewProvider(),
 			})
 

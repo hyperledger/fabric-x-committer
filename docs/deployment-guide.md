@@ -113,6 +113,10 @@ For detailed service descriptions and architecture, see the [Architecture Guide]
 
 All service endpoints must be pre-configured before deployment. To scale up, start additional pre-configured instances. To scale down, stop the instances no longer needed.
 
+**Retry budget for dynamic scaling.** The Coordinator maintains its connections to the Verifier and Validator-Committer instances (and the Sidecar its connection to the Coordinator) with an exponential-backoff retry loop bounded by the `reconnect.max-elapsed-time` budget (default 15 minutes). If a pre-configured instance stays down longer than that budget — for example, while it is stopped for scaling — the sustained operation gives up. For deployments that stop and start instances at runtime, set `reconnect.max-elapsed-time: 0s` on the relevant client configuration to retry **indefinitely** (never give up), so the Coordinator keeps reconnecting as instances come and go. The other retry parameters (`initial-interval`, `randomization-factor`, `multiplier`, `max-interval`) still apply.
+
+**Reconnection cadence (`reconnect.max-interval`).** The retry delay grows exponentially from `initial-interval` up to `max-interval` (default 10 seconds); once it reaches `max-interval`, every subsequent attempt waits that fixed interval. `max-interval` therefore sets the steady-state cadence at which a client polls a disconnected instance, and bounds how long it may wait before reconnecting to an instance that has come back online — for example, one just started during scale-up. Set `max-interval` with this trade-off in mind: a shorter interval reconnects to new or recovered instances faster at the cost of more frequent retry attempts, while a longer interval reduces retry traffic but slows reconnection.
+
 ### 3.1 Scaling Verifier Instances
 
 Verifier services are CPU-bound — their primary work is cryptographic signature verification. Add Verifier instances when CPU utilization on existing instances is consistently saturated. To scale up, start additional pre-configured Verifier instances. To scale down, stop the instances no longer needed.
@@ -148,7 +152,47 @@ Start the database cluster first and wait for it to be healthy before starting a
    - For YugabyteDB: ensure all tablet servers are online and the tablet leader election is complete
    - For PostgreSQL: ensure replication is established between primary and replicas
 
-2. **Start Services** (any order after database is healthy)
+2. **Initialize Database**
+   - Run the database initialization command to create system tables and namespaces:
+     ```shell
+     committer init-db --config <path-to-vc-config> --timeout <duration>
+     ```
+     **Parameters:**
+      - `--config`: Path to the VC service configuration file (required)
+      - `--timeout`: Timeout for the initialization operation (default: 5m)
+
+   - This command connects directly to the database and creates:
+     - System tables (`tx_status`, `metadata`)
+     - System namespaces (`_meta`, `_config`)
+     - Required stored procedures
+   - This is a one-time administrative operation that must be performed before booting the committer for the first time
+   - The command is safe to run multiple times
+
+3. **Provision a YugabyteDB PITR snapshot schedule (required for state snapshots)**
+
+   State snapshots create a native database clone via `CREATE DATABASE ... TEMPLATE`.
+   On YugabyteDB, cloning is built on Point-in-Time Recovery and **fails without a
+   pre-existing snapshot schedule** on the state database (error: `Could not find
+   snapshot schedule for namespace <db>`) — this applies even to as-of-now clones.
+   **Without this schedule, snapshots cannot be created.** PostgreSQL deployments do
+   not need this step.
+
+   The schedule can only be created with the `yb-admin` CLI (no YSQL statement exists),
+   so it is an operator provisioning step performed once against the state database:
+   ```shell
+   yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> \
+     create_snapshot_schedule <interval-minutes> <retention-minutes> ysql.<database>
+   ```
+
+   **Keep the interval and retention as short as your operations allow.** The committer
+   needs the schedule only to enable cloning, not for a recovery window. Retention is the
+   performance lever: a long window pins old SST files (disk growth) and forces DocDB to
+   retain more MVCC history (larger, slower scans). A short interval/retention lets
+   compaction reclaim history promptly. The schedule's mere existence has no throughput
+   cost. Note that while a schedule exists it blocks `DROP DATABASE` of the state database
+   and disallows `DROP TABLESPACE` cluster-wide.
+
+4. **Start Services** (any order after database is healthy and initialized)
    - VC Service — connects to database on startup
    - Query Service — connects to database on startup
    - Verifier Service — stateless, loads policies on first request

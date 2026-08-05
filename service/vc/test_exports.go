@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
+	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
@@ -106,17 +107,24 @@ func NewValidatorAndCommitServiceTestEnv(t *testing.T, opts *TestEnvOpts) *Valid
 
 func defaultVCTestEnvOpts() *TestEnvOpts {
 	return &TestEnvOpts{
-		NumServices: 1,
-		ServerCreds: test.InsecureTLSConfig,
-		ResourceLimits: &ResourceLimitsConfig{
-			WorkersForPreparer:                2,
-			WorkersForValidator:               2,
-			WorkersForCommitter:               2,
-			MinTransactionBatchSize:           1,
-			TimeoutForMinTransactionBatchSize: 20 * time.Second,
-			QueueMultiplier:                   DefaultQueueMultiplier,
-			QueueMonitorSamplingTime:          DefaultQueueMonitorSamplingTime,
-		},
+		NumServices:    1,
+		ServerCreds:    test.InsecureTLSConfig,
+		ResourceLimits: defaultTestResourceLimits(),
+	}
+}
+
+// defaultTestResourceLimits returns the resource limits used by all VC and database
+// test environments.
+func defaultTestResourceLimits() *ResourceLimitsConfig {
+	return &ResourceLimitsConfig{
+		WorkersForPreparer:                2,
+		WorkersForValidator:               2,
+		WorkersForCommitter:               2,
+		MaxWorkersForSnapshotHash:         4,
+		SnapshotHashBatchSize:             1000,
+		MinTransactionBatchSize:           1,
+		TimeoutForMinTransactionBatchSize: 20 * time.Second,
+		QueueMultiplier:                   1,
 	}
 }
 
@@ -128,16 +136,10 @@ func (vcEnv *ValidatorAndCommitterServiceTestEnv) GetDBEnv() *DatabaseTestEnv {
 	return vcEnv.DBEnv
 }
 
-// SetupSystemTablesAndNamespaces creates the required system tables and namespaces.
-func (vcEnv *ValidatorAndCommitterServiceTestEnv) SetupSystemTablesAndNamespaces(ctx context.Context, t *testing.T) {
-	t.Helper()
-	require.NoError(t, vcEnv.DBEnv.DB.setupSystemTablesAndNamespaces(ctx))
-}
-
 // DatabaseTestEnv represents a database test environment.
 type DatabaseTestEnv struct {
 	DB     *database
-	DBConf *DatabaseConfig
+	DBConf *statedb.Config
 }
 
 // NewDatabaseTestEnv creates a new default database test environment.
@@ -159,7 +161,7 @@ func NewDatabaseTestEnvWithCustomConnection(t *testing.T, dbConnections *testdb.
 // NewDatabaseTestEnvFromConnection creates a new db test environment given a db connection without preparations.
 func NewDatabaseTestEnvFromConnection(t *testing.T, cs *testdb.Connection, loadBalance bool) *DatabaseTestEnv {
 	t.Helper()
-	config := &DatabaseConfig{
+	config := &statedb.Config{
 		Endpoints:      cs.Endpoints,
 		Username:       cs.User,
 		Password:       cs.Password,
@@ -174,9 +176,12 @@ func NewDatabaseTestEnvFromConnection(t *testing.T, cs *testdb.Connection, loadB
 	m := newVCServiceMetrics()
 	sCtx, sCancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(sCancel)
-	dbObject, err := newDatabase(sCtx, config, m)
+	dbObject, err := newDatabase(sCtx, config, m, defaultTestResourceLimits())
 	require.NoError(t, err, "%+v", err)
 	t.Cleanup(dbObject.close)
+
+	err = statedb.SetupSystemTablesAndNamespaces(sCtx, config)
+	require.NoError(t, err, "failed to initialize database: %+v", err)
 
 	return &DatabaseTestEnv{
 		DB:     dbObject,
@@ -305,7 +310,7 @@ INSERT INTO ns_${NAMESPACE_ID} (key, value, version)
 SELECT _key, _value, _version
 FROM UNNEST($1::bytea[], $2::bytea[], $3::bigint[]) AS t(_key, _value, _version);
 `
-		query := FmtNsID(insertQuery, nsID)
+		query := statedb.FmtNsID(insertQuery, nsID)
 		require.NoError(t, retry.ExecuteSQL(
 			t.Context(), env.DB.retryProfile, env.DB.pool, query,
 			writes.keys, writes.values, writes.versions,
@@ -316,7 +321,7 @@ FROM UNNEST($1::bytea[], $2::bytea[], $3::bigint[]) AS t(_key, _value, _version)
 // FetchKeys fetches a list of keys.
 func (env *DatabaseTestEnv) FetchKeys(t *testing.T, nsID string, keys [][]byte) map[string]*ValueVersion {
 	t.Helper()
-	query := fmt.Sprintf(queryKeyValueVersionSQLTmpt, TableName(nsID))
+	query := fmt.Sprintf(queryKeyValueVersionSQLTmpt, statedb.TableName(nsID))
 
 	kvPairs, err := env.DB.pool.Query(t.Context(), query, keys)
 	require.NoError(t, err)
@@ -340,7 +345,7 @@ func (env *DatabaseTestEnv) FetchKeys(t *testing.T, nsID string, keys [][]byte) 
 func (env *DatabaseTestEnv) tableExists(t *testing.T, nsID string) {
 	t.Helper()
 	query := fmt.Sprintf(
-		"SELECT table_name FROM information_schema.tables WHERE table_name = '%s'", TableName(nsID),
+		"SELECT table_name FROM information_schema.tables WHERE table_name = '%s'", statedb.TableName(nsID),
 	)
 	names, err := env.DB.pool.Query(t.Context(), query)
 	require.NoError(t, err)

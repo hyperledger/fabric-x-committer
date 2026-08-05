@@ -45,6 +45,7 @@ Available Commands:
   completion  Generate the autocompletion script for the specified shell
   healthcheck Check if a service is healthy.
   help        Help about any command
+  init-db     Initialize the database with required tables and namespaces
   start       Start a service.
   version     print Committer version
 

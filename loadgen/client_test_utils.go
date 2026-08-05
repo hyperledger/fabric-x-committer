@@ -37,10 +37,10 @@ func DefaultClientConf(t *testing.T) *ClientConfig {
 	t.Helper()
 	return &ClientConfig{
 		LoadProfile: &workload.Profile{
-			Key:   workload.KeyProfile{Size: 32},
 			Block: workload.BlockProfile{MaxSize: defaultBlockSize},
 			Transaction: workload.TransactionProfile{
-				ReadWriteCount: workload.NewConstantDistribution(2),
+				KeySize:        32,
+				ReadWriteCount: 2,
 			},
 			Policy: workload.PolicyProfile{
 				NamespacePolicies: map[string]*workload.Policy{

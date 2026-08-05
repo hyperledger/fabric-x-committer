@@ -87,11 +87,13 @@ func createVerifiers(
 	idDeserializer := bundle.MSPManager()
 	newPolicies := make(map[string]*signature.NsVerifier)
 	if update.Config != nil {
-		nsVerifier, err := policy.ParseLifecycleEndorsementPolicy(bundle)
-		if err != nil {
-			return nil, errors.Join(ErrUpdatePolicies, err)
+		for _, snp := range policy.SystemNamespacePolicies {
+			nsVerifier, err := policy.ParseChannelPolicy(bundle, snp.PolicyPath)
+			if err != nil {
+				return nil, errors.Join(ErrUpdatePolicies, err)
+			}
+			newPolicies[snp.NamespaceID] = nsVerifier
 		}
-		newPolicies[committerpb.MetaNamespaceID] = nsVerifier
 	}
 	if update.NamespacePolicies != nil {
 		for _, pd := range update.NamespacePolicies.Policies {

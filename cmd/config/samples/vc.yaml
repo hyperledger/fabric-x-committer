@@ -127,7 +127,7 @@ database:
     # Setting this to "0" means there is no time limit, and retries will continue
     # indefinitely until successful.
     # Format: string representing a duration (e.g., "15m", "1h").
-    # Default: 15m
+    # Default: 10m
     max-elapsed-time: 15m
 
 # Resource limit configurations
@@ -148,6 +148,15 @@ resource-limits:
   # based on database capacity.
   # Default: 20
   workers-for-committer: 20
+  # Number of goroutines that hash namespace tables in parallel when computing a
+  # snapshot's hash. Hashing runs in the background against a snapshot clone
+  # database, so this trades hash latency against read load on the cluster.
+  # Default: 4
+  max-workers-for-snapshot-hash: 4
+  # Number of rows fetched per round-trip when scanning a table for hashing
+  # (keyset pagination). Bounds the memory used by a hashing worker on large tables.
+  # Default: 1000
+  snapshot-hash-batch-size: 1000
   # Minimum number of transactions that must accumulate before processing a batch
   # through the validation pipeline. Larger batches improve database efficiency
   # through bulk operations but increase latency. Set to 1 for lowest latency.
@@ -165,9 +174,6 @@ resource-limits:
   # validated-but-not-yet-committed write sets.
   # Default: 1
   queue-multiplier: 1
-  # Sampling interval for monitoring validator committer queue sizes.
-  # Default: 100ms
-  queue-monitor-sampling-time: 100ms
 
 # Logging configuration
 logging:

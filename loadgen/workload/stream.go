@@ -10,44 +10,37 @@ import (
 	"context"
 
 	"github.com/cockroachdb/errors"
-	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 )
 
-type (
-	// TxStream yields transactions from the  stream.
-	TxStream struct {
-		options        *StreamOptions
-		gens           []*IndependentTxGenerator
-		queue          chan []*servicepb.LoadGenTx
-		rateController *ConsumerRateController[*servicepb.LoadGenTx]
-	}
-
-	// QueryStream generates stream's queries consumers.
-	QueryStream struct {
-		options        *StreamOptions
-		gen            []*QueryGenerator
-		queue          chan []*committerpb.Query
-		rateController *ConsumerRateController[*committerpb.Query]
-	}
-)
+// TxStream yields transactions from the  stream.
+type TxStream struct {
+	options        *StreamOptions
+	gens           []*IndependentTxGenerator
+	queue          chan []*servicepb.LoadGenTx
+	rateController *ConsumerRateController[*servicepb.LoadGenTx]
+}
 
 // NewTxStream creates a stream that generates transactions in batches into a queue.
 func NewTxStream(
 	profile *Profile,
 	options *StreamOptions,
 	modifierGenerators ...Generator[Modifier],
-) *TxStream {
+) (*TxStream, error) {
+	gens, err := newIndependentTxGenerators(profile, modifierGenerators...)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create tx generators")
+	}
 	queue := make(chan []*servicepb.LoadGenTx, max(options.BuffersSize, 1))
 	return &TxStream{
 		options:        options,
 		queue:          queue,
-		gens:           newIndependentTxGenerators(profile, modifierGenerators...),
+		gens:           gens,
 		rateController: NewConsumerRateController(options.RateLimit, queue),
-	}
+	}, nil
 }
 
 // Run starts the stream workers.
@@ -56,11 +49,20 @@ func (s *TxStream) Run(ctx context.Context) error {
 	g, gCtx := errgroup.WithContext(ctx)
 	for _, gen := range s.gens {
 		g.Go(func() error {
-			ingestBatchesToQueue(gCtx, s.queue, gen, int(s.options.GenBatch))
-			return nil
+			return s.generateBatches(gCtx, gen)
 		})
 	}
 	return errors.Wrap(g.Wait(), "stream finished")
+}
+
+// generateBatches builds and signs batches from gen and writes them to the stream's queue
+// until the context ends.
+func (s *TxStream) generateBatches(ctx context.Context, gen *IndependentTxGenerator) error {
+	batchSize := max(int(s.options.GenBatch), 1)
+	q := channel.NewWriter(ctx, s.queue)
+	for q.Write(gen.buildAndSignBatch(batchSize)) {
+	}
+	return nil
 }
 
 // AppendBatch appends a batch to the stream.
@@ -83,46 +85,4 @@ func (s *TxStream) SetRate(rate uint64) {
 // generators from the same Stream can be used concurrently.
 func (s *TxStream) MakeGenerator() *ConsumerRateController[*servicepb.LoadGenTx] {
 	return s.rateController.InstantiateWorker()
-}
-
-// NewQueryStream creates a stream that generates queries into a queue.
-func NewQueryStream(profile *Profile, options *StreamOptions) *QueryStream {
-	queue := make(chan []*committerpb.Query, max(options.BuffersSize, 1))
-	return &QueryStream{
-		options:        options,
-		queue:          queue,
-		gen:            newIndependentQueryGenerators(profile),
-		rateController: NewConsumerRateController(options.RateLimit, queue),
-	}
-}
-
-// Run starts the workers.
-func (s *QueryStream) Run(ctx context.Context) error {
-	logger.Debugf("Starting %d workers to generate query load", len(s.gen))
-
-	g, gCtx := errgroup.WithContext(ctx)
-	for _, gen := range s.gen {
-		g.Go(func() error {
-			ingestBatchesToQueue(gCtx, s.queue, gen, int(s.options.GenBatch))
-			return nil
-		})
-	}
-	return errors.Wrap(g.Wait(), "stream finished")
-}
-
-// MakeGenerator creates a new generator that consumes from the stream.
-// Each generator must be used from a single goroutine, but different
-// generators from the same Stream can be used concurrently.
-func (s *QueryStream) MakeGenerator() *ConsumerRateController[*committerpb.Query] {
-	return s.rateController.InstantiateWorker()
-}
-
-func ingestBatchesToQueue[T any](ctx context.Context, c chan<- []T, g Generator[T], batchSize int) {
-	batchGen := &MultiGenerator[T]{
-		Gen:   g,
-		Count: &ConstGenerator[int]{Const: max(batchSize, 1)},
-	}
-	q := channel.NewWriter(ctx, c)
-	for q.Write(batchGen.Next()) {
-	}
 }

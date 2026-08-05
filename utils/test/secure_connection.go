@@ -154,7 +154,7 @@ func CreateClientWithTLS[T any](
 	t.Helper()
 	conn := NewSecuredConnectionWithRetry(t, endpoint, tlsCfg, retry.Profile{
 		// prevents secure connection tests from hanging until the context times out.
-		MaxElapsedTime: 3 * time.Second,
+		MaxElapsedTime: new(3 * time.Second),
 	})
 	return protoClient(conn)
 }

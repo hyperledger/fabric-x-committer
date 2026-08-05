@@ -643,7 +643,7 @@ func newDeliverOrdererTestEnv(t *testing.T, p deliverOrdererTestEnvParams) *deli
 	params, err := deliverorderer.LoadParametersFromConfig(&e.OrdererConnConfig)
 	require.NoError(t, err)
 	params.FaultToleranceLevel = p.ftMode
-	params.Retry.MaxElapsedTime = time.Minute
+	params.Retry.MaxElapsedTime = new(time.Minute)
 	params.OutputBlock = output
 	params.OutputBlockWithSourceID = outputWithSource
 	params.NextBlockVerificationConfig = params.LatestKnownConfig

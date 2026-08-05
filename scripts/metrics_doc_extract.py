@@ -25,13 +25,17 @@ while repo_root_dir.parent != repo_root_dir:
         break
     repo_root_dir = repo_root_dir.parent
 
-# Pattern: New(Counter|Gauge|Histogram)(Vec)?(prometheus.(Counter|Gauge|Histogram)Opts
-# Captures: group(1)=metric type, group(2)=Vec or None, group(3)=opts type
-metric_pattern = re.compile(r'New([A-Z][a-z]+)(Vec)?\(prometheus\.([A-Z][a-z]+)Opts')
+# Pattern: New(Counter|Gauge|Histogram)(Vec|Func)?(prometheus.(Counter|Gauge|Histogram)Opts
+# Captures: group(1)=metric type, group(2)=Vec, Func or None, group(3)=opts type
+metric_pattern = re.compile(r'New([A-Z][a-z]+)(Vec|Func)?\(prometheus\.([A-Z][a-z]+)Opts')
 
 # Pattern: package.FunctionName(..., monitoring.MetricsParameters
 # Captures: group(1)=package, group(2)=method name
 params_usage_pattern = re.compile(r'(\w+)\.(\w+)\([^)]+,\s*(?:monitoring\.)?MetricsParameters')
+
+# Pattern: FunctionName(..., monitoring.MetricsParameters — a helper in the file being parsed.
+# Captures: group(1)=function name
+local_params_usage_pattern = re.compile(r'(?<![\w.])(\w+)\([^)]+,\s*(?:monitoring\.)?MetricsParameters')
 
 
 def main():
@@ -64,25 +68,37 @@ def print_all_metrics_from_content(content: str):
             print_single_metric_from_block(metric_type, is_vec, params_block)
             continue
 
-        # match_type == 'method'
-        package_name, function_name = rest
-
-        # Determine the source file based on the package name
-        source_file = repo_root_dir / "utils" / package_name / "metrics.go"
-        if not source_file.exists():
-            print(f"Warning: {source_file} not found", file=sys.stderr)
+        params_block = extract_block(params_block, "{}")
+        if not params_block:
             continue
 
+        if match_type == 'local_method':
+            # A helper defined in the file we are already parsing.
+            function_name, = rest
+            source_content = content
+        else:
+            # match_type == 'method'
+            package_name, function_name = rest
+
+            # Determine the source file based on the package name.
+            source_file = repo_root_dir / "utils" / package_name / "metrics.go"
+            if not source_file.exists():
+                print(f"Warning: {source_file} not found", file=sys.stderr)
+                continue
+            source_content = source_file.read_text()
+
         # Extract the function body
-        func_body = extract_function_body(source_file.read_text(), function_name)
+        func_body = extract_function_body(source_content, function_name)
         if not func_body:
             continue
 
-        # Substitute params.Namespace and params.Subsystem in the function body
+        # Substitute "params.Namespace" and "params.Subsystem" in the function body.
         namespace = extract_field(params_block, "Namespace")
         func_body = re.sub(r'\bparams\.Namespace\b', f'"{namespace}"', func_body)
         subsystem = extract_field(params_block, "Subsystem")
         func_body = re.sub(r'\bparams\.Subsystem\b', f'"{subsystem}"', func_body)
+        # Substitute "params" with the actual params definition, so we can extract nested metrics.
+        func_body = re.sub(r'\bparams\b', f'monitoring.MetricsParameters{{{params_block}}}', func_body)
 
         # Extract metrics from the substituted function body
         print_all_metrics_from_content(func_body)
@@ -92,7 +108,7 @@ def iter_all_matches(content: str):
     # Find all metrics.
     for match in metric_pattern.finditer(content):
         metric_type = match.group(1).lower()  # Counter, Gauge, or Histogram
-        is_vec = match.group(2) is not None  # Vec or None
+        is_vec = match.group(2) == 'Vec'  # only a Vec carries labels
         opts_type = match.group(3).lower()  # Counter, Gauge, or Histogram
 
         # Verify that the metric type matches the opts type
@@ -105,6 +121,10 @@ def iter_all_matches(content: str):
         function_name = match.group(2)
         yield match.start(), 'method', package_name, function_name
 
+    # Find all same-file helper calls that use monitoring.MetricsParameters{}
+    for match in local_params_usage_pattern.finditer(content):
+        yield match.start(), 'local_method', match.group(1)
+
 
 def print_single_metric_from_block(metric_type: str, is_vec: bool, block: str):
     """Print a metric as a Markdown table row."""
@@ -115,6 +135,12 @@ def print_single_metric_from_block(metric_type: str, is_vec: bool, block: str):
     labels = extract_labels(block) if is_vec else ""
 
     if not name:
+        return
+
+    # A definition inside a parameterised helper (Namespace: params.Namespace) cannot be
+    # resolved on its own. Skip it here; it is emitted once per call site instead, with the
+    # namespace and subsystem substituted.
+    if not namespace:
         return
 
     metric_name = namespace
@@ -167,9 +193,9 @@ def extract_labels(block: str) -> str:
 
 def extract_function_body(content: str, function_name: str) -> str:
     """Extract the body of a function by name."""
-    # Pattern: func FunctionName(..., params monitoring.MetricsParameters)
+    # Pattern: func FunctionName(..., params monitoring.MetricsParameters[, ...])
     match = re.search(
-        rf'func\s+{function_name}\s*\(([^)]+,)?\s*params\s+(monitoring\.)?MetricsParameters\)',
+        rf'func\s+{function_name}\s*\(([^)]+,)?\s*params\s+(monitoring\.)?MetricsParameters[,)]',
         content, re.MULTILINE,
     )
     if not match:

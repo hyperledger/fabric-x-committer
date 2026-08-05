@@ -11,8 +11,6 @@ import (
 	"math/rand"
 
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
-
-	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
 // Dependency types.
@@ -23,12 +21,6 @@ const (
 )
 
 type (
-	// signTxModifier signs transactions according to the conflicts profile.
-	signTxModifier struct {
-		invalidSignGenerator *FloatToBooleanGenerator
-		invalidSignature     []byte
-	}
-
 	// dependenciesModifier adds dependencies conflicts according to the conflict profile.
 	dependenciesModifier struct {
 		keyGenerator    *ByteArrayGenerator
@@ -38,10 +30,10 @@ type (
 	}
 
 	dependencyDesc struct {
-		bernoulliGenerator *FloatToIntGenerator
-		gapGenerator       *FloatToPositiveIntGenerator
-		src                string
-		dst                string
+		trigger *bernoulliGenerator
+		gap     uint64
+		src     string
+		dst     string
 	}
 
 	dependency struct {
@@ -51,41 +43,19 @@ type (
 	}
 )
 
-func newSignTxModifier(rnd *rand.Rand, profile *Profile) *signTxModifier {
-	dist := NewBernoulliDistribution(profile.Conflicts.InvalidSignatures)
-	return &signTxModifier{
-		invalidSignGenerator: dist.MakeBooleanGenerator(rnd),
-		invalidSignature:     []byte("dummy"),
-	}
-}
-
-// Modify signs a transaction.
-func (g *signTxModifier) Modify(tx *applicationpb.Tx) {
-	if g.invalidSignGenerator.Next() {
-		// Pre-assigning prevents TxBuilder from re-signing the TX.
-		tx.Endorsements = make([]*applicationpb.Endorsements, len(tx.Namespaces))
-		for i := range len(tx.Namespaces) {
-			tx.Endorsements[i] = testsig.CreateEndorsementsForThresholdRule(g.invalidSignature)[0]
-		}
-	}
-}
-
 func newTxDependenciesModifier(
 	rnd *rand.Rand, profile *Profile,
 ) *dependenciesModifier {
 	return &dependenciesModifier{
-		keyGenerator: &ByteArrayGenerator{Size: profile.Key.Size, Source: rnd},
-		dependencies: Map(profile.Conflicts.Dependencies, func(
+		keyGenerator: &ByteArrayGenerator{Size: profile.Transaction.KeySize, Source: rnd},
+		dependencies: Map(profile.Transaction.Dependencies, func(
 			_ int, value DependencyDescription,
 		) dependencyDesc {
 			return dependencyDesc{
-				bernoulliGenerator: &FloatToIntGenerator{FloatGen: &BernoulliGenerator{
-					Rnd:         rnd,
-					Probability: value.Probability,
-				}},
-				gapGenerator: value.Gap.MakePositiveIntGenerator(rnd),
-				src:          value.Src,
-				dst:          value.Dst,
+				trigger: &bernoulliGenerator{rnd: rnd, probability: value.Probability},
+				gap:     max(value.Gap, 1),
+				src:     value.Src,
+				dst:     value.Dst,
 			}
 		}),
 		dependenciesMap: make(map[uint64][]dependency),
@@ -103,18 +73,17 @@ func (g *dependenciesModifier) Modify(tx *applicationpb.Tx) {
 	}
 
 	for _, depDesc := range g.dependencies {
-		if depDesc.bernoulliGenerator.Next() != 1 {
+		if !depDesc.trigger.Next() {
 			continue
 		}
 
-		gap := depDesc.gapGenerator.Next()
 		d := dependency{
 			key: g.keyGenerator.Next(),
 			src: depDesc.src,
 			dst: depDesc.dst,
 		}
 		addKey(tx, d.src, d.key)
-		g.dependenciesMap[g.index+gap] = append(g.dependenciesMap[g.index+gap], d)
+		g.dependenciesMap[g.index+depDesc.gap] = append(g.dependenciesMap[g.index+depDesc.gap], d)
 	}
 
 	g.index++
@@ -132,4 +101,15 @@ func addKey(tx *applicationpb.Tx, dependencyType string, key []byte) {
 	default:
 		panic(fmt.Sprintf("invalid dependency type: %s", dependencyType))
 	}
+}
+
+// bernoulliGenerator yields true with the configured probability.
+type bernoulliGenerator struct {
+	rnd         *rand.Rand
+	probability Probability
+}
+
+// Next yields true with the configured probability.
+func (g *bernoulliGenerator) Next() bool {
+	return g.rnd.Float64() < g.probability
 }

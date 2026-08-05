@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
@@ -654,6 +655,116 @@ func TestPrepareTx(t *testing.T) { //nolint:maintidx // cannot improve.
 	ensurePreparedTx(t, expectedPreparedTxs, preparedTxs)
 }
 
+// TestPrepareSnapshotTx verifies that a _snapshot record TX takes no _meta namespace-version
+// dependency and is forwarded to the committer as a single new write into the _snapshot
+// namespace (key = tx_id, value = SnapshotState{TxRef}), so the namespace survives the preparer.
+func TestPrepareSnapshotTx(t *testing.T) {
+	t.Parallel()
+	env := newPrepareTestEnv(t)
+
+	tx := &servicepb.VcBatch{
+		Transactions: []*servicepb.VcTx{
+			{
+				Ref: committerpb.NewTxRef(string(txs[0]), 8, 1),
+				Namespaces: []*applicationpb.TxNamespace{
+					{NsId: committerpb.SnapshotNamespaceID, NsVersion: 0},
+				},
+			},
+		},
+	}
+
+	snapshotState, err := proto.Marshal(&committerpb.SnapshotState{
+		TxRef: committerpb.NewTxRef(string(txs[0]), 8, 1),
+	})
+	require.NoError(t, err)
+
+	expectedPreparedTxs := &preparedTransactions{
+		nsToReads: namespaceToReads{},
+		readToTxIDs: readToTransactions{
+			newCmpRead(committerpb.SnapshotNamespaceID, []byte(txs[0]), nil): []TxID{txs[0]},
+		},
+		txIDToNsNonBlindWrites: transactionToWrites{},
+		txIDToNsBlindWrites:    transactionToWrites{},
+		txIDToNsNewWrites: transactionToWrites{
+			txs[0]: namespaceToWrites{
+				committerpb.SnapshotNamespaceID: &namespaceWrites{
+					keys:     [][]byte{[]byte(txs[0])},
+					values:   [][]byte{snapshotState},
+					versions: []uint64{0},
+				},
+			},
+		},
+		invalidTxIDStatus: map[TxID]committerpb.Status{},
+		txIDToHeight: transactionIDToHeight{
+			txs[0]: servicepb.NewHeight(8, 1),
+		},
+	}
+
+	env.txBatch <- tx
+	preparedTxs, ok := channel.NewReader(t.Context(), env.preparedTxs).Read()
+	require.True(t, ok)
+	ensurePreparedTx(t, expectedPreparedTxs, preparedTxs)
+	// No _meta namespace-version read must be created for the snapshot TX.
+	require.NotContains(t, preparedTxs.nsToReads, committerpb.MetaNamespaceID)
+}
+
+// TestPrepareCheckpointTx verifies that a _checkpoint TX retains its single versioned
+// ReadWrite for checkpoint-specific handling but takes no _meta namespace-version dependency.
+func TestPrepareCheckpointTx(t *testing.T) {
+	t.Parallel()
+	env := newPrepareTestEnv(t)
+
+	heightKey := servicepb.NewHeight(8, 0).ToBytes()
+	hashValue := []byte("snapshot-hash")
+
+	tx := &servicepb.VcBatch{
+		Transactions: []*servicepb.VcTx{
+			{
+				Ref: committerpb.NewTxRef(string(txs[0]), 9, 1),
+				Namespaces: []*applicationpb.TxNamespace{
+					{
+						NsId:      committerpb.CheckpointNamespaceID,
+						NsVersion: 0,
+						ReadWrites: []*applicationpb.ReadWrite{
+							{Key: heightKey, Version: nil, Value: hashValue},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	expectedPreparedTxs := &preparedTransactions{
+		// A nil-version ReadWrite is treated as a new write; no reads are produced.
+		nsToReads: namespaceToReads{},
+		readToTxIDs: readToTransactions{
+			newCmpRead(committerpb.CheckpointNamespaceID, heightKey, nil): []TxID{txs[0]},
+		},
+		txIDToNsNonBlindWrites: transactionToWrites{},
+		txIDToNsBlindWrites:    transactionToWrites{},
+		txIDToNsNewWrites: transactionToWrites{
+			txs[0]: namespaceToWrites{
+				committerpb.CheckpointNamespaceID: &namespaceWrites{
+					keys:     [][]byte{heightKey},
+					values:   [][]byte{hashValue},
+					versions: []uint64{0},
+				},
+			},
+		},
+		invalidTxIDStatus: map[TxID]committerpb.Status{},
+		txIDToHeight: transactionIDToHeight{
+			txs[0]: servicepb.NewHeight(9, 1),
+		},
+	}
+
+	env.txBatch <- tx
+	preparedTxs, ok := channel.NewReader(t.Context(), env.preparedTxs).Read()
+	require.True(t, ok)
+	ensurePreparedTx(t, expectedPreparedTxs, preparedTxs)
+	// No _meta namespace-version read must be created for the checkpoint TX.
+	require.NotContains(t, preparedTxs.nsToReads, committerpb.MetaNamespaceID)
+}
+
 func ensurePreparedTx(t *testing.T, expectedPreparedTxs, actualPreparedTxs *preparedTransactions) {
 	t.Helper()
 	require.Equal(t, expectedPreparedTxs.nsToReads, actualPreparedTxs.nsToReads)
@@ -673,7 +784,6 @@ func requireEqualMapOfLists[K comparable, V any](t *testing.T, expected, actual 
 	}
 }
 
-//nolint:gocognit // single method for simplicity.
 func BenchmarkPrepare(b *testing.B) {
 	flogging.ActivateSpec("fatal")
 
@@ -690,6 +800,9 @@ func BenchmarkPrepare(b *testing.B) {
 				return p.run(ctx, w)
 			}, nil)
 
+			// Over-supply transactions (3x) so the preparer's input queue stays
+			// populated throughout the measured window; we stop once b.N
+			// transactions have been prepared.
 			txPoll := workload.GenerateTransactions(b, nil, max(b.N*3, batchSize*3))
 
 			inCtx := channel.NewWriter(b.Context(), txBatch)
@@ -715,6 +828,7 @@ func BenchmarkPrepare(b *testing.B) {
 				total += len(batch.txIDToHeight)
 			}
 			b.StopTimer()
+			test.ReportTxPerSecond(b)
 		})
 	}
 }

@@ -21,18 +21,20 @@ server:
       - /root/artifacts/peerOrganizations/peer-org-0.com/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
   keep-alive:
     params:
-      # Duration after which the server sends a keepalive ping if no data has been
-      # transmitted on the connection. Helps detect dead connections and prevent resource leaks.
-      time: 300s
-      # How long the server waits for a keepalive acknowledgment before closing the connection.
-      # Should be longer than params.time to allow for network delays.
-      timeout: 600s
+      # After a duration of this time if the server doesn't see any activity it
+      # pings the client to see if the transport is still alive.
+      # If set below 1s, a minimum value of 1s will be used instead.
+      time: 60s
+      # After having pinged for keepalive check, the server waits for a duration
+      # of Timeout and if no activity is seen even after that the connection is
+      # closed.
+      timeout: 10s
     enforcement-policy:
-      # Minimum time clients must wait between sending keepalive pings. Prevents clients
-      # from overwhelming the server with excessive pings. Clients violating this are disconnected.
+      # The minimum amount of time a client should wait before sending a keepalive ping.
       min-time: 60s
-      # Controls whether clients can send keepalive pings when no active streams exist.
-      # Set to false to prevent unnecessary pings and reduce server load.
+      # If true, server allows keepalive pings even when there are no active streams(RPCs).
+      # If false, and a client sends ping when there are no active
+      # streams, the server will send GOAWAY and close the connection.
       permit-without-stream: false
   # Maximum number of concurrent streaming RPCs (Deliver + Notification) allowed per
   # client connection. Limits resource usage but may cause connection failures if clients
@@ -44,11 +46,13 @@ server:
   rate-limit:
     # Maximum number of requests per second allowed.
     # Set to 0 to disable rate limiting.
+    # Default: 5,000
     requests-per-second: 0
     # Maximum number of requests allowed in a single burst.
     # When rate limiting is enabled (requests-per-second > 0):
     #   - Must be greater than 0
     #   - Must be less than or equal to requests-per-second
+    # Default: 1,000
     burst: 0
 # Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
 monitoring:
@@ -104,6 +108,7 @@ committer:
   #   randomization-factor: 0.5
   #   multiplier: 1.5
   #   max-interval: 10s
+  #   # Total retry budget. Set to 0s for unlimited retries (never give up on the coordinator).
   #   max-elapsed-time: 15m
 ledger:
   # Filesystem directory where the sidecar stores the local copy of the blockchain ledger.

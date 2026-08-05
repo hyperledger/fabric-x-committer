@@ -47,9 +47,9 @@ Monitor queue length gauges to find the bottleneck. A growing queue means the do
 | `sidecar_relay_input_block_queue_size` | Block Ingestion | Coordinator not consuming blocks fast enough |
 | `sidecar_relay_waiting_transactions_queue_size` | Relay | Transactions waiting for commit statuses to return |
 | `sidecar_relay_output_committed_block_queue_size` | Committed Blocks | Committed blocks backing up; downstream consumers slow |
-| `coordinator_sigverifier_input_tx_batch_queue_size` | Signature Verification | Verifiers cannot keep up; add instances or CPU |
-| `coordinator_sigverifier_output_validated_tx_batch_queue_size` | Verified → VC | VC services not consuming verified transactions fast enough |
-| `coordinator_vcservice_output_validated_tx_batch_queue_size` | VC → Dep Graph | Dependency graph not processing validated results fast enough |
+| `coordinator_verifier_input_batch_queue_size` | Signature Verification | Verifiers cannot keep up; add instances or CPU |
+| `coordinator_verifier_output_batch_queue_size` | Verified → VC | VC services not consuming verified transactions fast enough |
+| `coordinator_vcservice_output_batch_queue_size` | VC → Dep Graph | Dependency graph not processing validated results fast enough |
 | `coordinator_vcservice_output_tx_status_batch_queue_size` | Status Response | Status responses backing up between VC and Coordinator |
 | `vcservice_preparer_input_queue_size` | VC Preparation | Preparer workers saturated |
 | `vcservice_validator_input_queue_size` | VC Validation | DB validation queries too slow; check connections or co-location |
@@ -229,6 +229,22 @@ When `min-transaction-batch-size` is 1, this timeout has no effect (batches are 
 
 The default of 2s pairs with the default batch size of 1 (effectively unused). If you increase the batch size, consider reducing the timeout to 100-500ms to bound the latency impact.
 
+### `resource-limits.max-workers-for-snapshot-hash`
+
+Number of goroutines that hash namespace tables in parallel when computing a snapshot's hash. Hashing runs in the background, after the snapshot transaction is committed, against a clone database of the snapshot — so it never blocks the commit pipeline, but it does add read load to the cluster.
+
+The snapshot hash worker opens its own short-lived connection pool against the clone database, sized to `max-workers-for-snapshot-hash`. It therefore does not consume the main pool's connection budget (see `database.max-connections`), but the cluster must have headroom for those extra connections and the scan traffic they generate.
+
+| Setting | Effect |
+|---------|--------|
+| 1 | Serialized per-table hashing; lowest read load; slowest hash |
+| 4 (default) | Parallel per-table hashing; good balance |
+| >4 | Faster hashing on many-namespace deployments; competes with live traffic |
+
+### `resource-limits.snapshot-hash-batch-size`
+
+Number of rows fetched per round-trip when scanning a table for hashing (keyset pagination). Larger batches reduce the number of round-trips but increase the memory held by each hashing worker; total memory scales with `max-workers-for-snapshot-hash × snapshot-hash-batch-size`, and it also depends on the size of the keys and values in the table being hashed. The default of 1000 keeps per-worker memory bounded on large tables.
+
 ### `database.max-connections`
 
 Maximum number of connections in the database connection pool. The validator and committer stages share this pool (the preparer does not use the database — it performs in-memory parsing only). If the pool is exhausted, workers block waiting for a free connection, reducing effective parallelism.
@@ -238,6 +254,8 @@ Size the pool to accommodate concurrent usage:
 ```
 Required connections >= workers-for-validator + workers-for-committer
 ```
+
+Snapshot hashing does not draw from this pool — it uses its own short-lived pool against the clone database (see `resource-limits.max-workers-for-snapshot-hash`).
 
 Setting this too low causes connection starvation — workers sit idle waiting for connections while the database has spare capacity. Setting this too high wastes database server memory and can cause connection-level contention.
 
