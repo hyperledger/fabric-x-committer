@@ -4,11 +4,9 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 -->
 
-Metrics Reference
-=================
+# Metrics Reference
 
-Sidecar Metrics
----------------
+## Sidecar Metrics
 
 The following Sidecar metrics are exported for consumption by Prometheus.
 
@@ -53,8 +51,7 @@ The following Sidecar metrics are exported for consumption by Prometheus.
 | sidecar_delivery_config_updates_total                      | counter   |                                  | Total number of config block updates detected.                                                                                                           |
 | sidecar_delivery_config_block_number                       | gauge     |                                  | Current config block number.                                                                                                                             |
 
-Coordinator Metrics
--------------------
+## Coordinator Metrics
 
 The following Coordinator metrics are exported for consumption by Prometheus.
 
@@ -97,8 +94,7 @@ The following Coordinator metrics are exported for consumption by Prometheus.
 | coordinator_global_dependency_graph_output_freed_tx_batch_seconds                      | histogram |                    | Time spent outputting a freed transaction batch in the global dependency graph manager                        |
 | coordinator_dependency_graph_dependent_transactions_queue_size                         | gauge     |                    | The number of transactions currently waiting on dependencies.                                                 |
 
-Verifier Metrics
-----------------
+## Verifier Metrics
 
 The following Verifier metrics are exported for consumption by Prometheus.
 
@@ -113,16 +109,14 @@ The following Verifier metrics are exported for consumption by Prometheus.
 | verifier_server_grpc_active_connections           | gauge     |                    | Number of client connections currently open on the server                             |
 | verifier_server_parallel_executor_active_requests | gauge     |                    | The total number of active requests                                                   |
 
-Validator-Committer Metrics
----------------------------
+## Validator-Committer Metrics
 
 The following Validator-Committer metrics are exported for consumption by Prometheus.
 
 | Name | Type | Labels | Description |
 |------|------|--------|-------------|
 
-Query Service Metrics
----------------------
+## Query Service Metrics
 
 The following Query Service metrics are exported for consumption by Prometheus.
 
@@ -142,8 +136,7 @@ The following Query Service metrics are exported for consumption by Prometheus.
 | queryservice_database_request_assignment_latency_seconds | histogram |                    | The latency of the query request assignment to the queue                              |
 | queryservice_database_query_latency_seconds              | histogram |                    | The latency of the queries' batches                                                   |
 
-Load Generator Metrics
-----------------------
+## Load Generator Metrics
 
 The following Load Generator metrics are exported for consumption by Prometheus.
 
