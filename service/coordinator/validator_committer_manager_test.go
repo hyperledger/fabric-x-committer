@@ -37,6 +37,7 @@ import (
 
 type vcMgrTestEnv struct {
 	validatorCommitterManager *validatorCommitterManager
+	api                       *validatorCommitterAPI
 	inputTxs                  chan dependencygraph.TxNodeBatch
 	outputTxs                 chan dependencygraph.TxNodeBatch
 	outputTxsStatus           *txStatusQueue
@@ -70,8 +71,14 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 		},
 	)
 
+	api, err := newValidatorCommitterAPI(
+		test.ServerToMultiClientConfig(test.InsecureTLSConfig, servers.Configs...), svEnv.policyManager,
+	)
+	require.NoError(t, err)
+	t.Cleanup(api.close)
+
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
-		err := connection.FilterStreamRPCError(vcm.run(ctx))
+		err := connection.FilterStreamRPCError(vcm.run(ctx, api))
 		assert.NoError(t, err)
 		return nil
 	}, nil)
@@ -83,6 +90,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 
 	return &vcMgrTestEnv{
 		validatorCommitterManager: vcm,
+		api:                       api,
 		inputTxs:                  inputTxs,
 		outputTxs:                 outputTxs,
 		outputTxsStatus:           outputTxsStatus,
@@ -389,6 +397,105 @@ func TestValidatorCommitterAddAndRecoverPendingTxs(t *testing.T) {
 	require.ElementsMatch(t, txsNode, <-recovered)
 	require.Zero(t, vc.txBeingValidated.Count())
 	test.RequireIntMetricValue(t, len(txsNode), vc.metrics.vcs.retriedTotal)
+}
+
+func TestSweepSnapshotRecoveryNoSnapshotEverAccepted(t *testing.T) {
+	t.Parallel()
+	env := newVcMgrTestEnv(t, 2)
+
+	// No snapshot ever accepted: no RestartSnapshotHash call on any VC.
+	require.NoError(t, env.validatorCommitterManager.sweepSnapshotRecovery(t.Context(), env.api))
+	require.Empty(t, env.mockVcService.RestartSnapshotHashCalls())
+}
+
+func TestSweepSnapshotRecoveryTerminalStatusIsNoOp(t *testing.T) {
+	t.Parallel()
+	// Success cases: COMPLETED and CHECKPOINTED never trigger a restart call.
+	for _, tc := range []struct {
+		name   string
+		status committerpb.SnapshotState_Status
+	}{
+		{name: "COMPLETED", status: committerpb.SnapshotState_COMPLETED},
+		{name: "CHECKPOINTED", status: committerpb.SnapshotState_CHECKPOINTED},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			env := newVcMgrTestEnv(t, 2)
+			env.mockVcService.SetLatestSnapshotState(&committerpb.SnapshotState{
+				TxRef: &committerpb.TxRef{TxId: "snap-sweep-terminal"}, Status: tc.status,
+			})
+
+			require.NoError(t, env.validatorCommitterManager.sweepSnapshotRecovery(t.Context(), env.api))
+			require.Empty(t, env.mockVcService.RestartSnapshotHashCalls())
+		})
+	}
+}
+
+func TestSweepSnapshotRecoveryClaimedByLiveVCIsNoOp(t *testing.T) {
+	t.Parallel()
+	env := newVcMgrTestEnv(t, 2)
+	txID := "snap-sweep-claimed"
+	env.mockVcService.SetLatestSnapshotState(&committerpb.SnapshotState{
+		TxRef: &committerpb.TxRef{TxId: txID}, Status: committerpb.SnapshotState_IN_PROGRESS,
+		CloneDatabase: testSnapshotCloneDatabase,
+	})
+	env.mockVcService.SetOwnsSnapshotHashJob(txID, true)
+
+	require.NoError(t, env.validatorCommitterManager.sweepSnapshotRecovery(t.Context(), env.api))
+	require.Empty(t, env.mockVcService.RestartSnapshotHashCalls())
+}
+
+func TestSweepSnapshotRecoveryUnclaimedCallsRestartHash(t *testing.T) {
+	t.Parallel()
+	// Success cases: PENDING/IN_PROGRESS/FAILED with no live owner all call
+	// RestartSnapshotHash exactly once.
+	for _, tc := range []struct {
+		name   string
+		status committerpb.SnapshotState_Status
+	}{
+		{name: "PENDING", status: committerpb.SnapshotState_PENDING},
+		{name: "IN_PROGRESS", status: committerpb.SnapshotState_IN_PROGRESS},
+		{name: "FAILED", status: committerpb.SnapshotState_FAILED},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			env := newVcMgrTestEnv(t, 2)
+			txID := "snap-sweep-unclaimed-" + tc.name
+			env.mockVcService.SetLatestSnapshotState(&committerpb.SnapshotState{
+				TxRef: &committerpb.TxRef{TxId: txID}, Status: tc.status, CloneDatabase: testSnapshotCloneDatabase,
+			})
+			// No SetOwnsSnapshotHashJob call: every VC reports unowned by default.
+
+			require.NoError(t, env.validatorCommitterManager.sweepSnapshotRecovery(t.Context(), env.api))
+			require.Equal(t, []string{txID}, env.mockVcService.RestartSnapshotHashCalls())
+		})
+	}
+}
+
+// TestAnyVCOwnsSnapshotHashJobWaitsForValidatorCommitterReady is the
+// regression test for the startup race this design fixed: before run has
+// been called at all, vcm.validatorCommitter is nil, and without
+// validatorCommitterReady gating the read, anyVCOwnsSnapshotHashJob would
+// wrongly and immediately report "not owned" -- indistinguishable from every
+// VC genuinely not owning the job -- even though no VC was actually asked.
+// With the gate in place, the call must instead block until run signals
+// readiness (here, via ctx ending first, proving it actually waited rather
+// than racing through on the nil slice).
+func TestAnyVCOwnsSnapshotHashJobWaitsForValidatorCommitterReady(t *testing.T) {
+	t.Parallel()
+	vcm := newValidatorCommitterManager(&validatorCommitterManagerConfig{})
+	require.Nil(t, vcm.validatorCommitter)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+
+	// run was never called, so validatorCommitterReady never fires: the call
+	// must block until ctx ends, not return a false "unowned" immediately.
+	start := time.Now()
+	owned, err := vcm.anyVCOwnsSnapshotHashJob(ctx, "snap-race-regression")
+	require.False(t, owned)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.GreaterOrEqual(t, time.Since(start), 200*time.Millisecond)
 }
 
 func (e *vcMgrTestEnv) readOutputTxsStatus(t *testing.T) *committerpb.TxStatusBatch {

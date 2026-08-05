@@ -212,7 +212,7 @@ func (c *Service) Run(ctx context.Context) error {
 
 	g.Go(func() error {
 		logger.Info("Starting validator committer manager")
-		if err := c.validatorCommitterMgr.run(eCtx); err != nil {
+		if err := c.validatorCommitterMgr.run(eCtx, c.validatorCommitterAPI); err != nil {
 			logger.Errorf("coordinator service stopped due "+
 				"to an error returned by validator committer manager: %v", err)
 			return err
@@ -223,6 +223,36 @@ func (c *Service) Run(ctx context.Context) error {
 	// We attempt to recover the policy manager and the last committed block number from the state DB.
 	if err := c.validatorCommitterAPI.recoverPolicyManagerFromStateDB(ctx); err != nil {
 		return err
+	}
+
+	// Coordinator-restart rediscovery: (re)start any snapshot hash job left
+	// outstanding by a prior coordinator/VC crash. This is called concurrently
+	// with validatorCommitterMgr's own goroutine (started just above) still
+	// building its validatorCommitter slice, but anyVCOwnsSnapshotHashJob
+	// (reached via sweepSnapshotRecovery) waits on validatorCommitterReady
+	// before reading that slice, so this never races an allocated-but-empty or
+	// nil slice into a false "no VC could own this" conclusion -- see that
+	// wait's doc comment for why both this startup call and every
+	// per-VC-disconnect call need it, and why waiting there costs nothing
+	// blocking here (the loop it waits on does no dialing, only local
+	// connection-object construction).
+	//
+	// Once that slice is populated, a given slot's OwnsSnapshotHashJob call can
+	// still fail with Unavailable/DeadlineExceeded/Canceled if that VC's stream
+	// has not actually connected yet (grpc.NewClient dials lazily) or is
+	// transiently down; anyVCOwnsSnapshotHashJob treats that as "does not
+	// claim", which is the correct inference here -- a VC unreachable to the
+	// coordinator over gRPC cannot be the one running the hash job either
+	// (dead, restarting, or genuinely not yet connected), except for the rare
+	// case of a VC partitioned from the coordinator but still reachable to its
+	// own database. A resulting duplicate hash run in that rare case is not
+	// itself harmful: enqueueSnapshotHashJob's re-enqueue is idempotent
+	// (recomputes and overwrites the same deterministic digest), so both VCs
+	// converge on the same COMPLETED record; the cost is wasted duplicate work,
+	// not incorrect state. T028 does not require blocking startup on this, so a
+	// failure here is logged, not returned.
+	if err := c.validatorCommitterMgr.sweepSnapshotRecovery(ctx, c.validatorCommitterAPI); err != nil {
+		logger.Errorf("snapshot recovery sweep on startup failed: %+v", err)
 	}
 
 	c.initializationDone.SignalReady()

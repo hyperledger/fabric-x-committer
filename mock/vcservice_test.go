@@ -30,6 +30,8 @@ type mockVCTestEnv struct {
 
 const testNS = "ns1"
 
+const testSnapshotTxID1 = "snap-mock-1"
+
 func newVCTestEnv(t *testing.T, p test.StartServerParameters) *mockVCTestEnv {
 	t.Helper()
 	vc, serverConfig := StartMockVCService(t, p)
@@ -413,4 +415,44 @@ func TestVcServiceFaultyNodeSimulation(t *testing.T) {
 	require.Len(t, statusBatch.Status, 2)
 	require.Equal(t, "faulty-tx-3", statusBatch.Status[0].Ref.TxId)
 	require.Equal(t, "faulty-tx-4", statusBatch.Status[1].Ref.TxId)
+}
+
+func TestVcServiceSnapshotRecoveryRPCs(t *testing.T) {
+	t.Parallel()
+	v := NewMockVcService()
+
+	// GetLatestSnapshotState defaults to an empty state.
+	got, err := v.GetLatestSnapshotState(t.Context(), nil)
+	require.NoError(t, err)
+	require.Nil(t, got.TxRef)
+
+	want := &committerpb.SnapshotState{
+		TxRef: &committerpb.TxRef{TxId: testSnapshotTxID1}, Status: committerpb.SnapshotState_PENDING,
+	}
+	v.SetLatestSnapshotState(want)
+	got, err = v.GetLatestSnapshotState(t.Context(), nil)
+	require.NoError(t, err)
+	require.Same(t, want, got)
+
+	// OwnsSnapshotHashJob defaults to false, and reflects whatever was set.
+	owns, err := v.OwnsSnapshotHashJob(t.Context(), &servicepb.SnapshotTxIDRequest{TxId: testSnapshotTxID1})
+	require.NoError(t, err)
+	require.False(t, owns.GetValue())
+
+	v.SetOwnsSnapshotHashJob(testSnapshotTxID1, true)
+	owns, err = v.OwnsSnapshotHashJob(t.Context(), &servicepb.SnapshotTxIDRequest{TxId: testSnapshotTxID1})
+	require.NoError(t, err)
+	require.True(t, owns.GetValue())
+
+	owns, err = v.OwnsSnapshotHashJob(t.Context(), &servicepb.SnapshotTxIDRequest{TxId: "some-other-tx"})
+	require.NoError(t, err)
+	require.False(t, owns.GetValue())
+
+	// RestartSnapshotHash records every call, in order.
+	require.Empty(t, v.RestartSnapshotHashCalls())
+	_, err = v.RestartSnapshotHash(t.Context(), &servicepb.SnapshotTxIDRequest{TxId: testSnapshotTxID1})
+	require.NoError(t, err)
+	_, err = v.RestartSnapshotHash(t.Context(), &servicepb.SnapshotTxIDRequest{TxId: "snap-mock-2"})
+	require.NoError(t, err)
+	require.Equal(t, []string{testSnapshotTxID1, "snap-mock-2"}, v.RestartSnapshotHashCalls())
 }

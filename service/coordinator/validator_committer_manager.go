@@ -15,12 +15,14 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
@@ -40,6 +42,18 @@ type (
 	validatorCommitterManager struct {
 		config             *validatorCommitterManagerConfig
 		validatorCommitter []*validatorCommitter
+
+		// validatorCommitterReady signals once run has finished allocating
+		// validatorCommitter and populating every slot (each slot's *grpc.ClientConn
+		// exists, though its underlying connection may still be dialing/reconnecting
+		// -- see anyVCOwnsSnapshotHashJob's gRPC-unavailable handling for that
+		// separate, always-open case). Any caller that reads validatorCommitter
+		// before that point -- e.g. the coordinator's startup snapshot sweep, which
+		// runs concurrently with run's own goroutine, or a per-VC-disconnect sweep
+		// spawned by run itself while its connection-setup loop is still running --
+		// must wait on this first, or it can observe a nil/partially-populated
+		// slice and wrongly conclude no VC could possibly own the job.
+		validatorCommitterReady *channel.Ready
 	}
 
 	// validatorCommitter is responsible for managing the communication with a single
@@ -68,11 +82,118 @@ type (
 func newValidatorCommitterManager(c *validatorCommitterManagerConfig) *validatorCommitterManager {
 	logger.Info("Initializing new ValidatorCommitterManager")
 	return &validatorCommitterManager{
-		config: c,
+		config:                  c,
+		validatorCommitterReady: channel.NewReady(),
 	}
 }
 
-func (vcm *validatorCommitterManager) run(ctx context.Context) error {
+// sweepSnapshotRecovery derives, from live state only, whether a snapshot hash
+// job needs (re)starting right now — no coordinator-side memory of which VC
+// previously owned it, no persisted tracking. Safe to call repeatedly and
+// concurrently; every branch is a no-op if there is nothing to do. Called on
+// every VC disconnect and once at coordinator startup; both call sites are
+// identical because rejectSnapshotIfPriorNotCheckpointed (VC-side) guarantees
+// at most one non-terminal snapshot exists system-wide, so there is nothing
+// case-specific to distinguish between "disconnect" and "restart" here: in
+// both cases we simply need to know, right now, whether the one active
+// snapshot's hash job is currently owned by a live VC, and (re)start it on
+// some VC if not.
+//
+// This also correctly recovers a coordinator+all-VC simultaneous crash, even
+// though the sidecar never resubmits the snapshot tx in that scenario: the
+// sidecar drains before/after a snapshot TX and submits it exactly once, so
+// once it has been acknowledged as committed the sidecar has no reason to
+// ever resend it, regardless of what happens to the coordinator or VCs
+// afterward. Recovery here does not depend on that resubmission at all --
+// api.getLatestSnapshotState reads the _snapshot row directly from VC-side
+// durable storage (survives both processes crashing), and that alone is
+// enough for this sweep to rediscover the outstanding job and restart it on
+// whichever VC (re)connects first.
+func (vcm *validatorCommitterManager) sweepSnapshotRecovery(ctx context.Context, api *validatorCommitterAPI) error {
+	state, err := api.getLatestSnapshotState(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get latest snapshot state: %w", err)
+	}
+	if state.TxRef == nil {
+		return nil // no snapshot has ever been accepted.
+	}
+	switch state.Status {
+	case committerpb.SnapshotState_COMPLETED, committerpb.SnapshotState_CHECKPOINTED:
+		return nil // nothing to restart.
+	}
+
+	owned, err := vcm.anyVCOwnsSnapshotHashJob(ctx, state.TxRef.TxId)
+	if err != nil {
+		return fmt.Errorf("failed to broadcast snapshot hash ownership query: %w", err)
+	}
+	if owned {
+		return nil // a live VC is already running this job.
+	}
+
+	if err := api.restartSnapshotHash(ctx, state.TxRef.TxId); err != nil {
+		return fmt.Errorf("failed to restart snapshot hash for tx %s: %w", state.TxRef.TxId, err)
+	}
+	return nil
+}
+
+// anyVCOwnsSnapshotHashJob broadcasts OwnsSnapshotHashJob to every currently
+// connected validatorCommitter. It first waits for validatorCommitterReady, so
+// vcm.validatorCommitter is guaranteed allocated and fully populated (every
+// slot's *grpc.ClientConn constructed, though a given connection may still be
+// dialing/reconnecting) before this reads it -- without that wait, a caller
+// racing run's own connection-setup loop (either the coordinator's startup
+// sweep, which runs concurrently with run in its own goroutine, or a
+// per-VC-disconnect sweep, which run spawns via g.Go from *inside* that same
+// loop and so can itself fire before the loop has populated every later slot)
+// could observe a nil or partially-empty slice and wrongly conclude no VC
+// could possibly own the job, even though every VC is actually up and one of
+// them owns it right now. If ctx ends first, WaitForReady returns false and
+// this returns that context error instead of silently proceeding on a
+// possibly-empty slice.
+//
+// Once ready, a nil entry means that endpoint's connection attempt itself
+// failed at dial time (see run); it is treated as not claiming, consistent
+// with "unclaimed" being the safe default. Returns true as soon as any VC
+// claims ownership.
+func (vcm *validatorCommitterManager) anyVCOwnsSnapshotHashJob(ctx context.Context, txID string) (bool, error) {
+	if !vcm.validatorCommitterReady.WaitForReady(ctx) {
+		return false, errors.Wrap(ctx.Err(), "context ended before validator-committer connections were ready")
+	}
+
+	g, gCtx := errgroup.WithContext(ctx)
+	owned := make([]bool, len(vcm.validatorCommitter))
+	for i, vc := range vcm.validatorCommitter {
+		if vc == nil {
+			continue
+		}
+		g.Go(func() error {
+			resp, err := vc.client.OwnsSnapshotHashJob(gCtx, &servicepb.SnapshotTxIDRequest{TxId: txID})
+			if err != nil {
+				// Only a transport-level failure (the VC is genuinely unreachable
+				// right now, which is exactly the disconnect this sweep is
+				// reacting to) is treated as "does not claim" rather than a real
+				// error — checked via the gRPC status code, not by assuming every
+				// error means unreachable. Any other code (e.g. InvalidArgument,
+				// Internal) is a genuine bug/misbehavior and must propagate so the
+				// sweep does not silently proceed as if no VC claimed the job.
+				switch grpcerror.GetCode(err) {
+				case codes.Unavailable, codes.DeadlineExceeded, codes.Canceled:
+					return nil // VC unreachable, so it does not claim ownership.
+				default:
+					return fmt.Errorf("OwnsSnapshotHashJob failed on %s: %w", vc.conn.CanonicalTarget(), err)
+				}
+			}
+			owned[i] = resp.GetValue()
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return false, err
+	}
+	return slices.Contains(owned, true), nil
+}
+
+func (vcm *validatorCommitterManager) run(ctx context.Context, api *validatorCommitterAPI) error {
 	c := vcm.config
 	logger.Infof("Connections to %d vc's will be opened from vc manager", len(c.clientConfig.Endpoints))
 	vcm.validatorCommitter = make([]*validatorCommitter, len(c.clientConfig.Endpoints))
@@ -91,6 +212,11 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 
 	connections, connErr := connection.NewConnectionPerEndpoint(c.clientConfig)
 	if connErr != nil {
+		// The slice stays all-nil, which is its correct final state: zero
+		// connections were established, so there is trivially no VC that could own
+		// anything. Signal readiness anyway so a startup sweep waiting on
+		// validatorCommitterReady is not left blocked forever by this early return.
+		vcm.validatorCommitterReady.SignalReady()
 		return fmt.Errorf("failed to create connection to validator persister: %w", connErr)
 	}
 	defer connection.CloseConnectionsLog(connections...)
@@ -105,6 +231,18 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 		g.Go(func() error {
 			return retry.Sustain(eCtx, vcm.config.clientConfig.Retry, func() (err error) {
 				defer vc.recoverPendingTransactions(txBatchQueue)
+				// sendTransactionsAndForwardStatus below returns whenever this VC's
+				// stream ends, i.e. on every reconnect attempt retry.Sustain drives
+				// (not gated behind gRPC's own transparent retry budget). If this VC
+				// was the one running the active snapshot's hash job, that job dies
+				// with the connection and nothing else will notice; sweeping here,
+				// right after every disconnect, is what re-discovers that and moves
+				// the job to another live VC (or restarts it once this VC reconnects).
+				defer func() {
+					if sweepErr := vcm.sweepSnapshotRecovery(eCtx, api); sweepErr != nil {
+						logger.Errorf("snapshot recovery sweep on VC disconnect failed: %+v", sweepErr)
+					}
+				}()
 				return vc.sendTransactionsAndForwardStatus(
 					eCtx,
 					txBatchQueue,
@@ -114,6 +252,14 @@ func (vcm *validatorCommitterManager) run(ctx context.Context) error {
 			})
 		})
 	}
+
+	// Every slot's *grpc.ClientConn now exists (a slot may still be dialing/
+	// reconnecting underneath -- that is a separate, always-open case handled by
+	// anyVCOwnsSnapshotHashJob's gRPC-unavailable branch, not this signal). Any
+	// caller of anyVCOwnsSnapshotHashJob that first waits on
+	// validatorCommitterReady is guaranteed validatorCommitter is not nil/empty
+	// by the time it reads it.
+	vcm.validatorCommitterReady.SignalReady()
 
 	return utils.ProcessErr(g.Wait(), "validator-committer manager failed")
 }

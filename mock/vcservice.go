@@ -20,6 +20,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -47,6 +48,17 @@ type (
 		txsStatusMu   sync.Mutex
 		healthcheck   *health.Server
 
+		// latestSnapshotState is returned by GetLatestSnapshotState. nil means no
+		// snapshot has ever been accepted (mirrors the real VC's zero-value case).
+		latestSnapshotState atomic.Pointer[committerpb.SnapshotState]
+		// hashJobOwnership records which tx_ids OwnsSnapshotHashJob should report
+		// as owned by this mock VC. Guarded by txsStatusMu (shared with the other
+		// small maps this mock already protects with that lock).
+		hashJobOwnership map[string]bool
+		// restartSnapshotHashCalls records every RestartSnapshotHash call's tx_id,
+		// in order, for test assertions. Guarded by txsStatusMu.
+		restartSnapshotHashCalls []string
+
 		// NumBatchesReceived is the number of batches received by VcService.
 		NumBatchesReceived atomic.Uint32
 		// MockFaultyNodeDropSize allows mocking a faulty node by dropping some TXs.
@@ -63,9 +75,10 @@ type (
 // NewMockVcService returns a new VcService.
 func NewMockVcService() *VcService {
 	return &VcService{
-		txsStatus:       newFifoCache[*committerpb.TxStatus](defaultTxStatusStorageSize),
-		statusOverrides: make(map[string]committerpb.Status),
-		healthcheck:     serve.DefaultHealthCheckService(),
+		txsStatus:        newFifoCache[*committerpb.TxStatus](defaultTxStatusStorageSize),
+		statusOverrides:  make(map[string]committerpb.Status),
+		hashJobOwnership: make(map[string]bool),
+		healthcheck:      serve.DefaultHealthCheckService(),
 	}
 }
 
@@ -231,6 +244,62 @@ func (v *VcService) process(txs []*servicepb.VcTx) []*committerpb.TxStatus {
 	}
 
 	return status
+}
+
+// SetLatestSnapshotState injects the SnapshotState GetLatestSnapshotState
+// returns. Not calling this leaves GetLatestSnapshotState returning an empty
+// (never nil) SnapshotState, matching the real VC's no-prior-snapshot case.
+func (v *VcService) SetLatestSnapshotState(state *committerpb.SnapshotState) {
+	v.latestSnapshotState.Store(state)
+}
+
+// GetLatestSnapshotState is a mock implementation of the servicepb.GetLatestSnapshotState RPC.
+func (v *VcService) GetLatestSnapshotState(
+	_ context.Context,
+	_ *emptypb.Empty,
+) (*committerpb.SnapshotState, error) {
+	if state := v.latestSnapshotState.Load(); state != nil {
+		return state, nil
+	}
+	return &committerpb.SnapshotState{}, nil
+}
+
+// SetOwnsSnapshotHashJob injects the ownership OwnsSnapshotHashJob should
+// report for txID. Not calling this for a given txID defaults to false.
+func (v *VcService) SetOwnsSnapshotHashJob(txID string, owned bool) {
+	v.txsStatusMu.Lock()
+	defer v.txsStatusMu.Unlock()
+	v.hashJobOwnership[txID] = owned
+}
+
+// OwnsSnapshotHashJob is a mock implementation of the servicepb.OwnsSnapshotHashJob RPC.
+func (v *VcService) OwnsSnapshotHashJob(
+	_ context.Context,
+	req *servicepb.SnapshotTxIDRequest,
+) (*wrapperspb.BoolValue, error) {
+	v.txsStatusMu.Lock()
+	defer v.txsStatusMu.Unlock()
+	return wrapperspb.Bool(v.hashJobOwnership[req.TxId]), nil
+}
+
+// RestartSnapshotHash is a mock implementation of the servicepb.RestartSnapshotHash
+// RPC. It records the call for RestartSnapshotHashCalls and otherwise no-ops.
+func (v *VcService) RestartSnapshotHash(
+	_ context.Context,
+	req *servicepb.SnapshotTxIDRequest,
+) (*emptypb.Empty, error) {
+	v.txsStatusMu.Lock()
+	defer v.txsStatusMu.Unlock()
+	v.restartSnapshotHashCalls = append(v.restartSnapshotHashCalls, req.TxId)
+	return &emptypb.Empty{}, nil
+}
+
+// RestartSnapshotHashCalls returns the tx_id passed to every RestartSnapshotHash
+// call so far, in call order.
+func (v *VcService) RestartSnapshotHashCalls() []string {
+	v.txsStatusMu.Lock()
+	defer v.txsStatusMu.Unlock()
+	return slices.Clone(v.restartSnapshotHashCalls)
 }
 
 // GetReceivedTxOrder returns the TxIds of all processed transactions in the

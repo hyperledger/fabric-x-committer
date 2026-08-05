@@ -106,3 +106,13 @@ func (vca *validatorCommitterAPI) getTransactionsStatus(
 	ret, err := vca.client.GetTransactionsStatus(ctx, query)
 	return ret, grpcerror.WrapWithContext(err, "failed getting transactions status")
 }
+
+func (vca *validatorCommitterAPI) getLatestSnapshotState(ctx context.Context) (*committerpb.SnapshotState, error) {
+	ret, err := vca.client.GetLatestSnapshotState(ctx, nil)
+	return ret, grpcerror.WrapWithContext(err, "failed getting latest snapshot state")
+}
+
+func (vca *validatorCommitterAPI) restartSnapshotHash(ctx context.Context, txID string) error {
+	_, err := vca.client.RestartSnapshotHash(ctx, &servicepb.SnapshotTxIDRequest{TxId: txID})
+	return grpcerror.WrapWithContext(err, "failed restarting snapshot hash")
+}
