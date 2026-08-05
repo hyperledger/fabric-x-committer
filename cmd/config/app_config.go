@@ -136,6 +136,13 @@ func unmarshal(v *viper.Viper, items ...any) error {
 		if err := validate.Struct(c); err != nil {
 			return errors.Wrap(err, "error validating config")
 		}
+		// Cross-field rules that struct tags can't express (a field compared to a sum of other fields)
+		// live in a config's Validate(); run it here so those rules are enforced at config load too.
+		if cv, ok := c.(interface{ Validate() error }); ok {
+			if err := cv.Validate(); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

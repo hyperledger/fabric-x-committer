@@ -58,13 +58,20 @@ func NewTxBuilderFromPolicy(policy *PolicyProfile, nonceSource io.Reader) (*TxBu
 
 // MakeTx makes an enveloped TX with the builder's properties.
 func (txb *TxBuilder) MakeTx(tx *applicationpb.Tx) *servicepb.LoadGenTx {
-	return txb.makeTx(nil, tx)
+	return txb.makeTx(nil, nil, tx)
 }
 
 // MakeTxWithID makes an enveloped TX with the builder's properties.
 // It uses the given TX-ID instead of generating a valid one.
 func (txb *TxBuilder) MakeTxWithID(txID string, tx *applicationpb.Tx) *servicepb.LoadGenTx {
-	return txb.makeTx(&txID, tx)
+	return txb.makeTx(&txID, nil, tx)
+}
+
+// MakeTxWithNonce makes an enveloped TX using the given nonce instead of reading one from the
+// builder's nonce source. The derived TX-ID (ComputeTxID(nonce, creator)) is therefore a
+// deterministic function of the nonce, letting the caller make it addressable by index.
+func (txb *TxBuilder) MakeTxWithNonce(nonce []byte, tx *applicationpb.Tx) *servicepb.LoadGenTx {
+	return txb.makeTx(nil, nonce, tx)
 }
 
 // makeTx does the following steps:
@@ -78,11 +85,17 @@ func (txb *TxBuilder) MakeTxWithID(txID string, tx *applicationpb.Tx) *servicepb
 //  5. Serializes the envelope.
 //
 // Returns a [protoloadgen.TX] with the appropriate values.
-func (txb *TxBuilder) makeTx(optionalTxID *string, blockTx *applicationpb.Tx) *servicepb.LoadGenTx {
+func (txb *TxBuilder) makeTx(
+	optionalTxID *string, optionalNonce []byte, blockTx *applicationpb.Tx,
+) *servicepb.LoadGenTx {
 	//  1. Generates the signature-header, and TX-ID.
+	nonce := optionalNonce
+	if nonce == nil {
+		nonce = readNonce(txb.NonceSource)
+	}
 	sigHeader := &common.SignatureHeader{
 		Creator: txb.EnvCreator,
-		Nonce:   readNonce(txb.NonceSource),
+		Nonce:   nonce,
 	}
 	var txID string
 	if optionalTxID == nil {
@@ -98,7 +111,7 @@ func (txb *TxBuilder) makeTx(optionalTxID *string, blockTx *applicationpb.Tx) *s
 	case txb.TxEndorser != nil:
 		// If TxEndorser is given, it is used to sign the TX.
 		txb.TxEndorser.Endorse(txID, blockTx)
-	case txb.TxEndorser == nil:
+	default:
 		// Otherwise, it puts empty signatures for all namespaces to ensure well-formed TX.
 		blockTx.Endorsements = make([]*applicationpb.Endorsements, len(blockTx.Namespaces))
 	}
