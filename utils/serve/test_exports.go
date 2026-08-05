@@ -16,7 +16,8 @@ import (
 )
 
 // PreAllocateListener allocates a port and binds ahead of server initialization.
-// It stores the listener object internally for reuse by later listener calls.
+// It stores the listener object internally until a server takes it (see [ServerConfig.Listener]),
+// which keeps the port held so that no other process can claim it in the meantime.
 func PreAllocateListener(tb testing.TB, c *ServerConfig) net.Listener {
 	tb.Helper()
 	if c.preAllocatedListener != nil {

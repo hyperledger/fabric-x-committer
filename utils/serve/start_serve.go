@@ -221,9 +221,13 @@ func (s *Servers) Stop() {
 
 // Listener instantiates a [net.Listener] and updates the config port with the effective port.
 // If the port is predefined, it retries to bind to the port until successful or until the context ends.
+// A pre-allocated listener is handed over to the caller, which becomes its sole owner. The config
+// drops its reference so that releasing a reservation can never close a listener that a server is
+// already serving on.
 func (c *ServerConfig) Listener(ctx context.Context) (net.Listener, error) {
-	if c.preAllocatedListener != nil {
-		return c.preAllocatedListener, nil
+	if preAllocated := c.preAllocatedListener; preAllocated != nil {
+		c.preAllocatedListener = nil
+		return preAllocated, nil
 	}
 
 	var listener net.Listener
