@@ -11,6 +11,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 type (
@@ -20,6 +21,9 @@ type (
 		// received and processed transactions
 		transactionReceivedTotal  prometheus.Counter
 		transactionCommittedTotal *prometheus.CounterVec
+
+		// server-side gRPC connection- and RPC-level metrics recorded by the stats handler.
+		serverMetrics *serve.ServerMetrics
 
 		// per-service-manager metrics
 		verifiers *managerMetrics
@@ -63,6 +67,10 @@ func newPerformanceMetrics(q *channels) *perfMetrics {
 			Name:      "committed_transaction_total",
 			Help:      "Total number of transactions committed status sent by the coordinator service to the client.",
 		}, []string{"status"}),
+		serverMetrics: monitoring.NewServerMetrics(p, monitoring.MetricsParameters{
+			Namespace: "coordinator",
+			Subsystem: "grpc",
+		}),
 		verifiers: newManagerMetrics(p, monitoring.MetricsParameters{
 			Namespace: "coordinator",
 			Subsystem: "verifier",

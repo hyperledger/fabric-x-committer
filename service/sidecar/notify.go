@@ -181,9 +181,6 @@ func (n *notifier) recordRemovals(pendingTxIDsRemoved, uniquePendingTxIDsRemoved
 
 // OpenNotificationStream implements the [protonotify.NotifierServer] API.
 func (n *notifier) OpenNotificationStream(stream committerpb.Notifier_OpenNotificationStreamServer) error {
-	n.metrics.notifierActiveStreams.Inc()
-	defer n.metrics.notifierActiveStreams.Dec()
-
 	g, gCtx := errgroup.WithContext(stream.Context())
 	requestQueue := channel.NewWriter(gCtx, n.requestQueue)
 	streamEventQueue := channel.Make[*committerpb.NotificationResponse](gCtx, n.bufferSize)
@@ -224,9 +221,6 @@ func (n *notifier) StreamAllTransactions(
 	req *committerpb.StreamAllRequest,
 	stream committerpb.Notifier_StreamAllTransactionsServer,
 ) error {
-	n.metrics.notifierActiveStreams.Inc()
-	defer n.metrics.notifierActiveStreams.Dec()
-
 	// Create stream context with cancellation
 	ctx, cancel := context.WithCancel(stream.Context())
 	defer cancel()

@@ -244,6 +244,7 @@ func (c *Service) RegisterService(s serve.Servers) {
 	servicepb.RegisterCoordinatorServer(s.GRPC, c)
 	healthgrpc.RegisterHealthServer(s.GRPC, c.healthcheck)
 	monitoring.RegisterMonitoringServer(s.HTTP, c.metrics.Provider)
+	serve.RegisterServerMetrics(s.StatsHandler, c.metrics.serverMetrics)
 }
 
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger through a vcservice.

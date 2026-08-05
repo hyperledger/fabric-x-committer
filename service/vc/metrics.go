@@ -10,12 +10,20 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
+)
+
+const (
+	metricsNamespaceVC = "vcservice"
+	gRPCSubsystem      = "grpc"
 )
 
 var buckets = []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}
 
 type perfMetrics struct {
 	*monitoring.Provider
+
+	serverMetrics *serve.ServerMetrics
 
 	// transaction received and processed counters
 	transactionReceivedTotal     prometheus.Counter
@@ -48,108 +56,112 @@ func newVCServiceMetrics() *perfMetrics {
 
 	return &perfMetrics{
 		Provider: p,
+		serverMetrics: monitoring.NewServerMetrics(p, monitoring.MetricsParameters{
+			Namespace: metricsNamespaceVC,
+			Subsystem: gRPCSubsystem,
+		}),
 		transactionReceivedTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "vcservice",
-			Subsystem: "grpc",
+			Namespace: metricsNamespaceVC,
+			Subsystem: gRPCSubsystem,
 			Name:      "received_transaction_total",
 			Help:      "Number of transactions received by the service",
 		}),
 		transactionProcessedTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "vcservice",
-			Subsystem: "grpc",
+			Namespace: metricsNamespaceVC,
+			Subsystem: gRPCSubsystem,
 			Name:      "processed_transaction_total",
 			Help:      "Number of transactions processed by the service",
 		}),
 		transactionCommittedTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "vcservice",
+			Namespace: metricsNamespaceVC,
 			Name:      "committed_transaction_total",
 			Help:      "The total number of transactions committed",
 		}),
 		transactionMVCCConflictTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "vcservice",
+			Namespace: metricsNamespaceVC,
 			Name:      "mvcc_conflict_total",
 			Help:      "The total number of transactions that failed due to MVCC conflict",
 		}),
 		transactionDuplicateTxTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "vcservice",
+			Namespace: metricsNamespaceVC,
 			Name:      "duplicate_transaction_total",
 			Help:      "The total number of duplicate transactions",
 		}),
 		preparerInputQueueSize: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: "vcservice",
+			Namespace: metricsNamespaceVC,
 			Subsystem: "preparer",
 			Name:      "input_queue_size",
 			Help:      "The preparer input queue size",
 		}),
 		validatorInputQueueSize: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: "vcservice",
+			Namespace: metricsNamespaceVC,
 			Subsystem: "validator",
 			Name:      "input_queue_size",
 			Help:      "The validator input queue size",
 		}),
 		committerInputQueueSize: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: "vcservice",
+			Namespace: metricsNamespaceVC,
 			Subsystem: "committer",
 			Name:      "input_queue_size",
 			Help:      "The committer input queue size",
 		}),
 		txStatusOutputQueueSize: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: "vcservice",
+			Namespace: metricsNamespaceVC,
 			Subsystem: "txstatus",
 			Name:      "output_queue_size",
 			Help:      "The txstatus output queue size",
 		}),
 		preparerTxBatchLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "vcservice",
+			Namespace: metricsNamespaceVC,
 			Subsystem: "preparer",
 			Name:      "tx_batch_latency_seconds",
 			Help:      "The latency of the preparer processing a batch of transactions",
 			Buckets:   buckets,
 		}),
 		validatorTxBatchLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "vcservice",
+			Namespace: metricsNamespaceVC,
 			Subsystem: "validator",
 			Name:      "tx_batch_latency_seconds",
 			Help:      "The latency of the validator processing a batch of transactions",
 			Buckets:   buckets,
 		}),
 		committerTxBatchLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "vcservice",
+			Namespace: metricsNamespaceVC,
 			Subsystem: "committer",
 			Name:      "tx_batch_latency_seconds",
 			Help:      "The latency of the committer processing a batch of transactions",
 			Buckets:   buckets,
 		}),
 		databaseTxBatchValidationLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "vcservice",
+			Namespace: metricsNamespaceVC,
 			Subsystem: "database",
 			Name:      "tx_batch_validation_latency_seconds",
 			Help:      "The latency of the database validating a batch of transactions",
 			Buckets:   buckets,
 		}),
 		databaseTxBatchQueryVersionLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "vcservice",
+			Namespace: metricsNamespaceVC,
 			Subsystem: "database",
 			Name:      "tx_batch_query_version_latency_seconds",
 			Help:      "The latency of the database querying version for keys in a batch of transactions",
 			Buckets:   buckets,
 		}),
 		databaseTxBatchCommitLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "vcservice",
+			Namespace: metricsNamespaceVC,
 			Subsystem: "database",
 			Name:      "tx_batch_commit_latency_seconds",
 			Help:      "The latency of the database committing a batch of transactions",
 			Buckets:   buckets,
 		}),
 		databaseTxBatchCommitTxsStatusLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "vcservice",
+			Namespace: metricsNamespaceVC,
 			Subsystem: "database",
 			Name:      "tx_batch_commit_txs_status_latency_seconds",
 			Help:      "The latency of the database committing a batch of transactions and updating their status",
 			Buckets:   buckets,
 		}),
 		databaseTxBatchCommitUpdateLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "vcservice",
+			Namespace: metricsNamespaceVC,
 			Subsystem: "database",
 			Name:      "tx_batch_commit_update_latency_seconds",
 			Help: "The latency of the database committing a batch of transactions which involes " +
@@ -157,7 +169,7 @@ func newVCServiceMetrics() *perfMetrics {
 			Buckets: buckets,
 		}),
 		databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "vcservice",
+			Namespace: metricsNamespaceVC,
 			Subsystem: "database",
 			Name:      "tx_batch_commit_insert_new_key_with_value_latency_seconds",
 			Help: "The latency of the database committing a batch of transactions which involes " +

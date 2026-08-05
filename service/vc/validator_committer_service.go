@@ -168,6 +168,7 @@ func (vc *ValidatorCommitterService) RegisterService(s serve.Servers) {
 	servicepb.RegisterValidationAndCommitServiceServer(s.GRPC, vc)
 	healthgrpc.RegisterHealthServer(s.GRPC, vc.healthcheck)
 	monitoring.RegisterMonitoringServer(s.HTTP, vc.metrics.Provider)
+	serve.RegisterServerMetrics(s.StatsHandler, vc.metrics.serverMetrics)
 }
 
 func (vc *ValidatorCommitterService) monitorQueues(ctx context.Context) {

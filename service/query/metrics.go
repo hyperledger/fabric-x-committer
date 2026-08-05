@@ -10,13 +10,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 const (
-	grpcBeginView             = "begin_view"
-	grpcEndView               = "end_view"
-	grpcGetRows               = "get_rows"
-	grpcGetTxStatus           = "get_tx_status"
 	sessionViews              = "active_views"
 	sessionProcessingQueries  = "processing_queries"
 	sessionWaitingQueries     = "waiting_queries"
@@ -32,8 +29,7 @@ var (
 type perfMetrics struct {
 	*monitoring.Provider
 
-	requests                        *prometheus.CounterVec
-	requestsLatency                 *prometheus.HistogramVec
+	serverMetrics                   *serve.ServerMetrics
 	keysRequested                   prometheus.Counter
 	keysResponded                   prometheus.Counter
 	processingSessions              *prometheus.GaugeVec
@@ -42,7 +38,6 @@ type perfMetrics struct {
 	batchResponseSize               prometheus.Histogram
 	requestAssignmentLatencySeconds prometheus.Histogram
 	queryLatencySeconds             prometheus.Histogram
-	serverConnections               prometheus.Gauge
 }
 
 func newQueryServiceMetrics() *perfMetrics {
@@ -50,28 +45,15 @@ func newQueryServiceMetrics() *perfMetrics {
 
 	return &perfMetrics{
 		Provider: p,
-		requests: p.NewCounterVec(prometheus.CounterOpts{
+		serverMetrics: monitoring.NewServerMetrics(p, monitoring.MetricsParameters{
 			Namespace: "queryservice",
 			Subsystem: "grpc",
-			Name:      "requests_total",
-			Help:      "Number of requests by the service",
-		}, []string{"method"}),
-		requestsLatency: p.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "queryservice",
-			Subsystem: "grpc",
-			Name:      "requests_latency_seconds",
-			Help:      "The latency (seconds) of requests by the service",
-			Buckets:   timeBuckets,
-		}, []string{"method"}),
+		}),
 		keysRequested: p.NewCounter(prometheus.CounterOpts{
 			Namespace: "queryservice",
 			Subsystem: "grpc",
 			Name:      "key_requested_total",
 			Help:      "Number of keys requested by the service",
-		}),
-		serverConnections: monitoring.NewConnectionStatsMetrics(p, monitoring.MetricsParameters{
-			Namespace: "queryservice",
-			Subsystem: "grpc",
 		}),
 		keysResponded: p.NewCounter(prometheus.CounterOpts{
 			Namespace: "queryservice",

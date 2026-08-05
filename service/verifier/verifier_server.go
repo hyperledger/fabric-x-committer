@@ -65,13 +65,12 @@ func (s *Server) RegisterService(srv serve.Servers) {
 	servicepb.RegisterVerifierServer(srv.GRPC, s)
 	healthgrpc.RegisterHealthServer(srv.GRPC, s.healthcheck)
 	monitoring.RegisterMonitoringServer(srv.HTTP, s.metrics.Provider)
+	serve.RegisterServerMetrics(srv.StatsHandler, s.metrics.serverMetrics)
 }
 
 // StartStream starts a verification stream.
 func (s *Server) StartStream(stream servicepb.Verifier_StartStreamServer) error {
 	defer logger.Debug("Interrupted stream.")
-	s.metrics.ActiveStreams.Inc()
-	defer s.metrics.ActiveStreams.Dec()
 
 	// We create a new executor for each stream to avoid answering to the wrong stream.
 	executor := newParallelExecutor(s.config)

@@ -176,7 +176,7 @@ func (s *Service) RegisterService(srv serve.Servers) {
 	healthgrpc.RegisterHealthServer(srv.GRPC, s.healthcheck)
 	serve.RegisterDynamicTLSUpdater(srv.GrpcTLSProvider, &s.tlsUpdater)
 	monitoring.RegisterMonitoringServer(srv.HTTP, s.metrics.Provider)
-	serve.RegisterConnStatHandler(srv.ConnStatsHandler, s.metrics.serverConnections)
+	serve.RegisterServerMetrics(srv.StatsHandler, s.metrics.serverMetrics)
 }
 
 func (s *Service) sendBlocksAndReceiveStatus(

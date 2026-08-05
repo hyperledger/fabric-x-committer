@@ -10,12 +10,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 type metrics struct {
 	*monitoring.Provider
 	VerifierServerTxs *monitoring.ThroughputMetrics
-	ActiveStreams     prometheus.Gauge
+	serverMetrics     *serve.ServerMetrics
 	ActiveRequests    prometheus.Gauge
 }
 
@@ -27,11 +28,9 @@ func newMonitoring() *metrics {
 			Namespace: "verifier_server",
 			Subsystem: "tx",
 		}),
-		ActiveStreams: p.NewGauge(prometheus.GaugeOpts{
+		serverMetrics: monitoring.NewServerMetrics(p, monitoring.MetricsParameters{
 			Namespace: "verifier_server",
 			Subsystem: "grpc",
-			Name:      "active_streams",
-			Help:      "The total number of started streams",
 		}),
 		ActiveRequests: p.NewGauge(prometheus.GaugeOpts{
 			Namespace: "verifier_server",
