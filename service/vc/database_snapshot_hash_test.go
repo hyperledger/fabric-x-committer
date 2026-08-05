@@ -31,8 +31,8 @@ func TestEnqueueSnapshotHashJobReturnsContextCancellation(t *testing.T) {
 	cancel()
 	db := &database{snapshotHashJobs: make(chan snapshotHashJob, 1)}
 
-	job := snapshotHashJob{cloneDatabase: "snapshot_1", ref: &committerpb.TxRef{TxId: "snapshot-tx"}}
-	err := db.enqueueSnapshotHashJob(ctx, job)
+	ref := &committerpb.TxRef{TxId: "snapshot-tx"}
+	err := db.enqueueSnapshotHashJob(ctx, ref, "snapshot_1")
 	require.ErrorIs(t, err, context.Canceled)
 	require.Empty(t, db.snapshotHashJobs)
 }
@@ -137,7 +137,7 @@ func TestSnapshotHashReEnqueueIsIdempotent(t *testing.T) {
 	// Step 3: manually re-enqueue the same clone (simulating a recovery re-drive,
 	// see the enqueueSnapshotHashJob doc comment), then wait for a second
 	// IN_PROGRESS -> COMPLETED pass over the same immutable clone.
-	require.NoError(t, env.dbEnv.DB.enqueueSnapshotHashJob(ctx, snapshotHashJob{cloneDatabase: name, ref: ref}))
+	require.NoError(t, env.dbEnv.DB.enqueueSnapshotHashJob(ctx, ref, name))
 
 	// Re-enqueue must drive IN_PROGRESS then COMPLETED. Version grows by two, so
 	// this cannot pass by observing first completed state before worker runs.
@@ -255,6 +255,150 @@ func TestSnapshotHashReflectsStateAndExclusions(t *testing.T) {
 
 	// Excluded-namespace rows do not affect the digest.
 	require.Equal(t, baselineHash, newHash)
+}
+
+func TestUpdateSnapshotStateSetsErrorMessage(t *testing.T) {
+	t.Parallel()
+	env := newCommitterTestEnv(t)
+	testdb.EnsureSnapshotSchedule(t, env.dbEnv.DBConf.Database)
+	ctx, _ := createContext(t)
+
+	ref := &committerpb.TxRef{BlockNum: 800200, TxNum: 0, TxId: "snap-errmsg-1"}
+	name := snapshotDatabaseName(ref)
+	dropCloneCleanup(t, env.dbEnv.DB, name)
+	commitFreshSnapshotTx(ctx, t, env, ref)
+
+	require.NoError(t, env.dbEnv.DB.updateSnapshotState(ctx, ref, snapshotStateUpdate{
+		Status: committerpb.SnapshotState_FAILED,
+		ErrMsg: "missing clone_database",
+	}))
+
+	rows := env.dbEnv.FetchKeys(t, committerpb.SnapshotNamespaceID, [][]byte{[]byte(ref.TxId)})
+	stored := rows[ref.TxId]
+	require.NotNil(t, stored)
+	var got committerpb.SnapshotState
+	require.NoError(t, proto.Unmarshal(stored.Value, &got))
+	require.Equal(t, committerpb.SnapshotState_FAILED, got.Status)
+	require.Equal(t, "missing clone_database", got.Error)
+	require.Equal(t, name, got.CloneDatabase) // preserved, not clobbered.
+}
+
+func TestRestartSnapshotHash(t *testing.T) {
+	t.Parallel()
+
+	// Success cases: PENDING/IN_PROGRESS/FAILED all (re-)enqueue and eventually
+	// reach COMPLETED with a non-empty hash; CHECKPOINTED and COMPLETED are
+	// left untouched (no-op).
+	for _, tc := range []struct {
+		name          string
+		initialStatus committerpb.SnapshotState_Status
+		expectEnqueue bool
+	}{
+		{name: "PENDING enqueues and completes", initialStatus: committerpb.SnapshotState_PENDING, expectEnqueue: true},
+		{
+			name: "FAILED re-enqueues and completes", initialStatus: committerpb.SnapshotState_FAILED,
+			expectEnqueue: true,
+		},
+		{name: "COMPLETED is a no-op", initialStatus: committerpb.SnapshotState_COMPLETED, expectEnqueue: false},
+		{name: "CHECKPOINTED is a no-op", initialStatus: committerpb.SnapshotState_CHECKPOINTED, expectEnqueue: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			env := newCommitterTestEnvWithHashWorker(t)
+			testdb.EnsureSnapshotSchedule(t, env.dbEnv.DBConf.Database)
+			ctx, _ := createContext(t)
+
+			ref := &committerpb.TxRef{
+				//nolint:gosec // enum values are small, non-negative, and bounded (0-5).
+				BlockNum: 800300 + uint64(tc.initialStatus), TxNum: uint32(tc.initialStatus),
+				TxId: fmt.Sprintf("snap-restart-%d", tc.initialStatus),
+			}
+			name := snapshotDatabaseName(ref)
+			dropCloneCleanup(t, env.dbEnv.DB, name)
+			require.NoError(t, env.dbEnv.DB.createSnapshotDatabase(ctx, name))
+
+			// Seed a committed row directly at the target status (bypassing the
+			// normal PENDING-then-worker-advances flow, so IN_PROGRESS/FAILED/
+			// CHECKPOINTED can be set up without racing the running worker).
+			seedSnapshotRowAtStatus(ctx, t, env.dbEnv.DB, ref, tc.initialStatus, name)
+
+			require.NoError(t, env.dbEnv.DB.restartSnapshotHash(ctx, ref.TxId))
+
+			if !tc.expectEnqueue {
+				// No-op: status must remain exactly what it was seeded to.
+				record, found := snapshotRecordForPolling(ctx, env.dbEnv.DB, ref.TxId)
+				require.True(t, found)
+				require.Equal(t, tc.initialStatus, record.state.Status)
+				return
+			}
+
+			require.Eventually(t, func() bool {
+				pollCtx, cancel := context.WithTimeout(ctx, time.Second)
+				defer cancel()
+				record, found := snapshotRecordForPolling(pollCtx, env.dbEnv.DB, ref.TxId)
+				return found && record.state.Status == committerpb.SnapshotState_COMPLETED && len(record.state.Hash) > 0
+			}, 30*time.Second, 100*time.Millisecond)
+		})
+	}
+}
+
+func TestRestartSnapshotHashMissingCloneRecordsFailedAndHalts(t *testing.T) {
+	t.Parallel()
+	env := newCommitterTestEnvWithHashWorker(t)
+	testdb.EnsureSnapshotSchedule(t, env.dbEnv.DBConf.Database)
+	ctx, _ := createContext(t)
+
+	ref := &committerpb.TxRef{BlockNum: 800400, TxNum: 0, TxId: "snap-restart-missing-clone"}
+
+	// Seed a committed row with an EMPTY clone_database (case 7: the row exists
+	// and is committed, but there is nothing to restart).
+	seedSnapshotRowAtStatus(ctx, t, env.dbEnv.DB, ref, committerpb.SnapshotState_PENDING, "")
+
+	require.NoError(t, env.dbEnv.DB.restartSnapshotHash(ctx, ref.TxId))
+
+	record, found := snapshotRecordForPolling(ctx, env.dbEnv.DB, ref.TxId)
+	require.True(t, found)
+	require.Equal(t, committerpb.SnapshotState_FAILED, record.state.Status)
+	require.NotEmpty(t, record.state.Error)
+}
+
+func TestOwnsSnapshotHashJob(t *testing.T) {
+	t.Parallel()
+	env := newCommitterTestEnvWithHashWorker(t)
+	testdb.EnsureSnapshotSchedule(t, env.dbEnv.DBConf.Database)
+	ctx, _ := createContext(t)
+
+	// No job running yet: not owned.
+	require.False(t, env.dbEnv.DB.ownsSnapshotHashJob("snap-owns-1"))
+
+	ref := &committerpb.TxRef{BlockNum: 800500, TxNum: 0, TxId: "snap-owns-1"}
+	name := snapshotDatabaseName(ref)
+	dropCloneCleanup(t, env.dbEnv.DB, name)
+	commitFreshSnapshotTx(ctx, t, env, ref)
+
+	// Wait for the on-demand hash worker to finish, then assert the marker was
+	// released: not owned once COMPLETED, and a different tx_id is never
+	// owned. The in-progress window itself is too racy to assert
+	// deterministically here (the worker may finish before any check runs);
+	// it is covered by the atomic Store/defer-Store(nil) bracketing in
+	// processSnapshotHashJob, reviewed alongside this test.
+	require.Eventually(t, func() bool {
+		pollCtx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		record, found := snapshotRecordForPolling(pollCtx, env.dbEnv.DB, ref.TxId)
+		return found && record.state.Status == committerpb.SnapshotState_COMPLETED
+	}, 30*time.Second, 100*time.Millisecond)
+	require.False(t, env.dbEnv.DB.ownsSnapshotHashJob(ref.TxId))
+	require.False(t, env.dbEnv.DB.ownsSnapshotHashJob("some-other-tx-id"))
+}
+
+func TestRestartSnapshotHashUnknownTxIDReturnsError(t *testing.T) {
+	t.Parallel()
+	env := newCommitterTestEnv(t)
+	ctx, _ := createContext(t)
+
+	err := env.dbEnv.DB.restartSnapshotHash(ctx, "tx-that-was-never-committed")
+	require.ErrorContains(t, err, "no _snapshot record")
 }
 
 // insertRawRow inserts a single row directly into ns_<nsID> on the source DB,

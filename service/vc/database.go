@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -71,6 +72,12 @@ type (
 		resourceLimits       *ResourceLimitsConfig
 		snapshotHashJobs     chan snapshotHashJob
 		hasher               *snapshotHasher
+		// currentSnapshotHashTxID holds the tx_id of the _snapshot record the
+		// hash worker is currently processing, or nil when idle. Set/cleared by
+		// processSnapshotHashJob (service/vc/snapshot_hash.go); read by
+		// ownsSnapshotHashJob to answer the OwnsSnapshotHashJob RPC used only
+		// for coordinator-restart ownership-broadcast rediscovery.
+		currentSnapshotHashTxID atomic.Pointer[string]
 	}
 
 	// keyToVersion is a map from key to version.

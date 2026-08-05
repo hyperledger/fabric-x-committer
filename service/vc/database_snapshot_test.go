@@ -213,9 +213,9 @@ func TestUpdateSnapshotState(t *testing.T) {
 	require.Equal(t, committerpb.Status_COMMITTED, s.Status[0].Status)
 
 	// Move PENDING -> IN_PROGRESS.
-	require.NoError(t, env.dbEnv.DB.updateSnapshotState(
-		ctx, ref, committerpb.SnapshotState_IN_PROGRESS, nil,
-	))
+	require.NoError(t, env.dbEnv.DB.updateSnapshotState(ctx, ref, snapshotStateUpdate{
+		Status: committerpb.SnapshotState_IN_PROGRESS,
+	}))
 
 	rows := env.dbEnv.FetchKeys(t, committerpb.SnapshotNamespaceID, [][]byte{[]byte(ref.TxId)})
 	stored := rows[ref.TxId]
@@ -241,7 +241,7 @@ func TestSnapshotDatabaseFailureReturnsError(t *testing.T) {
 	nws := make(transactionToWrites)
 	nws.getOrCreate(TxID(ref.TxId), committerpb.SnapshotNamespaceID).append([]byte(ref.TxId), value, 0)
 
-	err = env.DB.createSnapshotIfPresent(ctx, nws)
+	_, err = env.DB.createSnapshotIfPresent(ctx, nws)
 	require.ErrorContains(t, err, "failed to create snapshot database")
 	require.False(t, cloneExists(t, env.DB, snapshotDatabaseName(ref)))
 }
@@ -278,6 +278,11 @@ func TestSnapshotDuplicateTxIDIsIdempotent(t *testing.T) {
 	s1, ok := reader.Read()
 	require.True(t, ok)
 	require.Equal(t, committerpb.Status_COMMITTED, s1.Status[0].Status)
+
+	// Drain the hash job the first submission enqueued (bounded 1-slot buffer
+	// per snapshotHashJobBuffer, no worker running in this env to drain it) so
+	// the resubmission's own re-enqueue below does not block on a full channel.
+	<-env.dbEnv.DB.snapshotHashJobs
 
 	// Second submission of the same tx_id at the same height: the commit path
 	// detects the duplicate txID, but setCorrectStatusForDuplicateTxID recognizes
@@ -326,6 +331,11 @@ func TestSnapshotResubmissionSkipsReclone(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, committerpb.Status_COMMITTED, s1.Status[0].Status)
 	require.True(t, cloneExists(t, env.dbEnv.DB, name))
+
+	// Drain the hash job the first submission enqueued (bounded 1-slot buffer
+	// per snapshotHashJobBuffer, no worker running in this env to drain it) so
+	// the resubmission's own re-enqueue below does not block on a full channel.
+	<-env.dbEnv.DB.snapshotHashJobs
 
 	// Drop the clone out-of-band to prove the resubmission does NOT re-create it:
 	// because txID is already committed, createSnapshotIfPresent must skip database creation.
@@ -440,8 +450,38 @@ func TestRejectSnapshotIfPriorNotCheckpointedMalformedRecord(t *testing.T) {
 	vTx, name := newIncomingSnapshotVTx(t, env.dbEnv.DB, 2001, "incoming-malformed")
 
 	err = env.dbEnv.DB.rejectSnapshotIfPriorNotCheckpointed(ctx, vTx)
-	require.ErrorContains(t, err, "failed to decode latest _snapshot record")
+	require.ErrorContains(t, err, "failed to decode _snapshot record")
 	require.False(t, cloneExists(t, env.dbEnv.DB, name))
+}
+
+func TestGetLatestSnapshotState(t *testing.T) {
+	t.Parallel()
+	env := newCommitterTestEnv(t)
+	testdb.EnsureSnapshotSchedule(t, env.dbEnv.DBConf.Database)
+	ctx, _ := createContext(t)
+
+	// No snapshot has ever been accepted: returns an empty (never nil) state.
+	got, err := env.dbEnv.DB.getLatestSnapshotState(ctx)
+	require.NoError(t, err)
+	require.Nil(t, got)
+
+	// Commit a snapshot TX through the normal path, then confirm the accepted
+	// record is returned with its TxRef/status/clone_database intact.
+	ref := &committerpb.TxRef{BlockNum: 800100, TxNum: 0, TxId: "snap-latest-1"}
+	name := snapshotDatabaseName(ref)
+	dropCloneCleanup(t, env.dbEnv.DB, name)
+	commitFreshSnapshotTx(ctx, t, env, ref)
+
+	got, err = env.dbEnv.DB.getLatestSnapshotState(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, ref.TxId, got.TxRef.TxId)
+	require.Equal(t, name, got.CloneDatabase)
+	require.Contains(t, []committerpb.SnapshotState_Status{
+		committerpb.SnapshotState_PENDING,
+		committerpb.SnapshotState_IN_PROGRESS,
+		committerpb.SnapshotState_COMPLETED,
+	}, got.Status)
 }
 
 // newIncomingSnapshotVTx builds the validatedTransactions batch for a single,
@@ -471,4 +511,123 @@ func newIncomingSnapshotVTx(t *testing.T, db *database, blockNum uint64, txID st
 		txIDToHeight:          transactionIDToHeight{TxID(ref.TxId): servicepb.NewHeightFromTxRef(ref)},
 	}
 	return vTx, name
+}
+
+// TestSnapshotResubmissionReenqueuesHashing proves case 8 from PR-13.md: a VC
+// that committed a snapshot's row/clone/hash-job but crashed before acking
+// the coordinator looks, from the coordinator's side, identical to an
+// unresolved case-1 tx. When the coordinator resubmits the same tx (plain tx
+// resubmission, no restart-hash RPC), the resubmission handler must detect
+// the existing row and re-enqueue hashing rather than silently no-op'ing.
+//
+// Reuses the existing newIncomingSnapshotVTx helper (already in this file,
+// used by TestRejectSnapshotIfPriorNotCheckpointed et al.) to build the vTx,
+// rather than re-typing the same single-write-batch construction.
+func TestSnapshotResubmissionReenqueuesHashing(t *testing.T) {
+	t.Parallel()
+	env := newCommitterTestEnv(t) // no hash worker: inspect PENDING before it advances.
+	testdb.EnsureSnapshotSchedule(t, env.dbEnv.DBConf.Database)
+	writer := channel.NewWriter(t.Context(), env.validatedTxs)
+	reader := channel.NewReader(t.Context(), env.txStatus)
+
+	// First submission: commits, enqueues hashing (no worker running, so it
+	// stays PENDING).
+	vTx1, name := newIncomingSnapshotVTx(t, env.dbEnv.DB, 800600, "snap-case8-1")
+	writer.Write(vTx1)
+	s1, ok := reader.Read()
+	require.True(t, ok)
+	require.Equal(t, committerpb.Status_COMMITTED, s1.Status[0].Status)
+
+	rows := env.dbEnv.FetchKeys(t, committerpb.SnapshotNamespaceID, [][]byte{[]byte("snap-case8-1")})
+	require.NotNil(t, rows["snap-case8-1"])
+
+	// Drain the one job the first submission already enqueued (bounded 1-slot
+	// buffer per snapshotHashJobBuffer) so the resubmission's re-enqueue below
+	// is observably a SECOND job, not a leftover from the first.
+	select {
+	case <-env.dbEnv.DB.snapshotHashJobs:
+	default:
+		t.Fatal("expected first submission to have enqueued a hash job")
+	}
+
+	// Resubmit the same tx (simulating the coordinator's plain-tx-resubmission
+	// retry path after a VC disconnect it never got a COMMITTED reply from).
+	// newIncomingSnapshotVTx rebuilds an equivalent vTx for the same
+	// (block, tx_id) pair — same shape the real coordinator retry path
+	// resends — registering a second (harmless, deduped by t.Cleanup) clone
+	// cleanup for the same name.
+	vTx2, _ := newIncomingSnapshotVTx(t, env.dbEnv.DB, 800600, "snap-case8-1")
+	writer.Write(vTx2)
+	s2, ok := reader.Read()
+	require.True(t, ok)
+	require.Equal(t, committerpb.Status_COMMITTED, s2.Status[0].Status)
+
+	// The resubmission must have re-enqueued hashing for the existing clone,
+	// not silently no-op'd.
+	select {
+	case job := <-env.dbEnv.DB.snapshotHashJobs:
+		require.Equal(t, name, job.cloneDatabase)
+		require.Equal(t, "snap-case8-1", job.ref.TxId)
+	default:
+		t.Fatal("expected resubmission to re-enqueue a hash job")
+	}
+
+	// No second clone/row was created — exactly one row, same clone.
+	require.True(t, cloneExists(t, env.dbEnv.DB, name))
+	rows = env.dbEnv.FetchKeys(t, committerpb.SnapshotNamespaceID, [][]byte{[]byte("snap-case8-1")})
+	require.Len(t, rows, 1)
+}
+
+// commitFreshSnapshotTx builds and submits a single-write _snapshot batch for
+// ref through the real committer path (writer -> commit -> COMMITTED status),
+// exactly as a first-ever snapshot submission would arrive, and asserts the
+// resulting status is COMMITTED. Shared by every test in this file (and
+// snapshot_hash_test.go) that just needs "a snapshot tx is already
+// committed" as setup, so that shape is not re-typed per test.
+func commitFreshSnapshotTx(
+	ctx context.Context, t *testing.T, env *committerTestEnv, ref *committerpb.TxRef,
+) {
+	t.Helper()
+	value, err := proto.Marshal(&committerpb.SnapshotState{TxRef: ref})
+	require.NoError(t, err)
+	nws := make(transactionToWrites)
+	nws.getOrCreate(TxID(ref.TxId), committerpb.SnapshotNamespaceID).append([]byte(ref.TxId), value, 0)
+	channel.NewWriter(ctx, env.validatedTxs).Write(&validatedTransactions{
+		validTxNonBlindWrites: transactionToWrites{},
+		validTxBlindWrites:    transactionToWrites{},
+		newWrites:             nws,
+		readToTxIDs:           readToTransactions{},
+		invalidTxStatus:       map[TxID]committerpb.Status{},
+		txIDToHeight:          transactionIDToHeight{TxID(ref.TxId): servicepb.NewHeightFromTxRef(ref)},
+	})
+	s, ok := channel.NewReader(ctx, env.txStatus).Read()
+	require.True(t, ok)
+	require.Equal(t, committerpb.Status_COMMITTED, s.Status[0].Status)
+}
+
+// seedSnapshotRowAtStatus commits a _snapshot row for ref directly at status
+// with cloneDB as its clone_database, bypassing the normal
+// PENDING-then-worker-advances flow. Used when a test needs to set up
+// IN_PROGRESS/FAILED/CHECKPOINTED or a deliberately-empty clone_database
+// without racing a running hash worker or the commit path's own database
+// creation. Shared by Task 4/5/6-derived tests in snapshot_hash_test.go.
+func seedSnapshotRowAtStatus( //nolint:revive // 6 args; reused by later tasks.
+	ctx context.Context, t *testing.T, db *database, ref *committerpb.TxRef,
+	status committerpb.SnapshotState_Status, cloneDB string,
+) {
+	t.Helper()
+	value, err := proto.Marshal(&committerpb.SnapshotState{
+		TxRef: ref, Status: status, CloneDatabase: cloneDB,
+	})
+	require.NoError(t, err)
+	nws := make(transactionToWrites)
+	nws.getOrCreate(TxID(ref.TxId), committerpb.SnapshotNamespaceID).append([]byte(ref.TxId), value, 0)
+	_, err = db.commit(ctx, &statesToBeCommitted{
+		newWrites: groupWritesByNamespace(nws),
+		batchStatus: &committerpb.TxStatusBatch{Status: []*committerpb.TxStatus{
+			servicepb.NewHeightFromTxRef(ref).WithStatus(ref.TxId, committerpb.Status_COMMITTED),
+		}},
+		txIDToHeight: transactionIDToHeight{TxID(ref.TxId): servicepb.NewHeightFromTxRef(ref)},
+	})
+	require.NoError(t, err)
 }

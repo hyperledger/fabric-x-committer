@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils"
@@ -231,6 +232,49 @@ func (vc *ValidatorCommitterService) GetTransactionsStatus(
 	}
 
 	return &committerpb.TxStatusBatch{Status: txIDsStatus}, nil
+}
+
+// GetLatestSnapshotState returns the most recently accepted _snapshot record,
+// or an empty SnapshotState if none has ever been accepted.
+func (vc *ValidatorCommitterService) GetLatestSnapshotState(
+	ctx context.Context,
+	_ *emptypb.Empty,
+) (*committerpb.SnapshotState, error) {
+	state, err := vc.db.getLatestSnapshotState(ctx)
+	if err != nil {
+		logger.Errorf("%+v", err)
+		return nil, grpcerror.WrapInternalError(err)
+	}
+	if state == nil {
+		return &committerpb.SnapshotState{}, nil
+	}
+	return state, nil
+}
+
+// RestartSnapshotHash (re-)enqueues the on-demand hash worker for the
+// _snapshot row identified by req.TxId. It never resubmits the tx or
+// creates/recreates a clone database.
+func (vc *ValidatorCommitterService) RestartSnapshotHash(
+	ctx context.Context,
+	req *servicepb.SnapshotTxIDRequest,
+) (*emptypb.Empty, error) {
+	if req.TxId == "" {
+		return nil, grpcerror.WrapInvalidArgument(errors.New("tx_id is empty"))
+	}
+	if err := vc.db.restartSnapshotHash(ctx, req.TxId); err != nil {
+		logger.Errorf("%+v", err)
+		return nil, grpcerror.WrapInternalError(err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// OwnsSnapshotHashJob reports whether this VC process currently has a
+// running hash worker job for req.TxId's snapshot clone.
+func (vc *ValidatorCommitterService) OwnsSnapshotHashJob(
+	_ context.Context,
+	req *servicepb.SnapshotTxIDRequest,
+) (*wrapperspb.BoolValue, error) {
+	return wrapperspb.Bool(vc.db.ownsSnapshotHashJob(req.TxId)), nil
 }
 
 // GetNamespacePolicies retrieves the policy data from the database.

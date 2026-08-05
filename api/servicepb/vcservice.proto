@@ -11,12 +11,14 @@ option go_package = "github.com/hyperledger/fabric-x-committer/api/servicepb";
 package servicepb;
 
 import "google/protobuf/empty.proto";
+import "google/protobuf/wrappers.proto";
 
 import "api/applicationpb/block_tx.proto";
 import "api/applicationpb/config.proto";
 
 import "api/committerpb/status.proto";
 import "api/committerpb/ref.proto";
+import "api/committerpb/snapshot.proto";
 
 import "api/servicepb/common.proto";
 
@@ -27,6 +29,23 @@ service ValidationAndCommitService {
     rpc GetTransactionsStatus (committerpb.TxIDsBatch) returns (committerpb.TxStatusBatch) {};
     rpc GetNamespacePolicies(google.protobuf.Empty) returns (applicationpb.NamespacePolicies) {};
     rpc GetConfigTransaction(google.protobuf.Empty) returns (applicationpb.ConfigTransaction) {};
+    // GetLatestSnapshotState returns the most recently accepted _snapshot record
+    // (there is at most one non-CHECKPOINTED snapshot lifecycle active at a
+    // time, enforced by rejectSnapshotIfPriorNotCheckpointed), or an empty/
+    // zero-value SnapshotState if none has ever been accepted.
+    rpc GetLatestSnapshotState (google.protobuf.Empty) returns (committerpb.SnapshotState) {};
+    // OwnsSnapshotHashJob reports whether this VC process currently has a
+    // running/enqueued hash worker job for the given tx_id's snapshot clone.
+    // Called by the coordinator's sweepSnapshotRecovery, both once at
+    // coordinator startup and on every VC disconnect -- i.e. whenever either
+    // the coordinator or a VC may have failed and a hash job's ownership needs
+    // rediscovering, not only on a coordinator restart.
+    rpc OwnsSnapshotHashJob (SnapshotTxIDRequest) returns (google.protobuf.BoolValue) {};
+    // RestartSnapshotHash (re-)enqueues the on-demand hash worker for the
+    // _snapshot row identified by tx_id. It never resubmits the tx or creates/
+    // recreates a clone database. On a missing/empty clone_database it records
+    // the row FAILED with a diagnostic error and signals a halt.
+    rpc RestartSnapshotHash (SnapshotTxIDRequest) returns (google.protobuf.Empty) {};
 }
 
 message VcBatch {
@@ -37,4 +56,12 @@ message VcTx {
     committerpb.TxRef ref = 1;
     repeated applicationpb.TxNamespace namespaces = 2;
     optional committerpb.Status prelim_invalid_tx_status = 3;
+}
+
+// SnapshotTxIDRequest carries only a snapshot tx_id. Shared by
+// OwnsSnapshotHashJob and RestartSnapshotHash, which both take only a tx_id
+// (never a caller-supplied clone_database — both RPCs re-read the current
+// _snapshot row/worker state for the given tx_id internally).
+message SnapshotTxIDRequest {
+    string tx_id = 1;
 }

@@ -90,7 +90,7 @@ func (db *database) rejectSnapshotIfPriorNotCheckpointed(
 		return nil
 	}
 
-	blockStatus, err := db.determineSnapshotStatus(ctx)
+	blockStatus, err := db.latestSnapshotRejectionStatus(ctx)
 	if err != nil {
 		return err
 	}
@@ -102,19 +102,46 @@ func (db *database) rejectSnapshotIfPriorNotCheckpointed(
 	return nil
 }
 
-// determineSnapshotStatus looks up the latest _snapshot record via the
-// latestSnapshotKeyMetadataKey pointer and returns the rejection status the
-// incoming request should receive, or STATUS_UNSPECIFIED when the request may
-// proceed (no prior snapshot ever accepted, or the latest one is CHECKPOINTED).
+// getLatestSnapshotState reads the latest _snapshot record via the
+// latestSnapshotKeyMetadataKey pointer (shared by latestSnapshotRejectionStatus,
+// which calls this rather than repeating the lookup) and returns it decoded,
+// or nil, nil if no snapshot has ever been accepted. Because
+// rejectSnapshotIfPriorNotCheckpointed enforces at most one active snapshot
+// lifecycle system-wide, this single pointer lookup is sufficient for
+// GetLatestSnapshotState's gRPC handler and for the coordinator's
+// sweepSnapshotRecovery -- there is never more than one non-terminal row to
+// find.
+func (db *database) getLatestSnapshotState(ctx context.Context) (*committerpb.SnapshotState, error) {
+	key, err := db.getLatestSnapshotKey(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read latest snapshot key: %w", err)
+	}
+	if len(key) == 0 {
+		return nil, nil // no snapshot has ever been accepted.
+	}
+
+	state, err := db.readSnapshotStateByKey(ctx, key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read latest _snapshot record: %w", err)
+	}
+	return state, nil
+}
+
+// latestSnapshotRejectionStatus looks up the latest _snapshot record (via
+// getLatestSnapshotState, so the pointer-fetch/empty-check/decode sequence is
+// not repeated here) and returns the rejection status the incoming request
+// should receive, or STATUS_UNSPECIFIED when the request may proceed (no
+// prior snapshot ever accepted, or the latest one is CHECKPOINTED).
 //
-// A pointer that names a missing row, or a row whose value fails to decode, is
-// an invariant violation (the pointer is written atomically with its row; see
+// A record that getLatestSnapshotState fails to read -- a pointer that names a
+// missing row, or a row whose value fails to decode -- is an invariant
+// violation (the pointer is written atomically with its row; see
 // setLatestSnapshotKeyIfPresent) or storage corruption, not a normal rejection
-// outcome. Both are returned as errors -- never silently mapped to a
+// outcome. It is returned as an error here too -- never silently mapped to a
 // conservative rejection status -- so the batch fails/retries instead of
 // masking the anomaly.
-func (db *database) determineSnapshotStatus(ctx context.Context) (committerpb.Status, error) {
-	state, err := db.readLatestSnapshotRecord(ctx)
+func (db *database) latestSnapshotRejectionStatus(ctx context.Context) (committerpb.Status, error) {
+	state, err := db.getLatestSnapshotState(ctx)
 	if err != nil {
 		return committerpb.Status_STATUS_UNSPECIFIED, err
 	}
@@ -132,46 +159,66 @@ func (db *database) determineSnapshotStatus(ctx context.Context) (committerpb.St
 	}
 }
 
-// readLatestSnapshotRecord performs the full pointer-to-row read cycle: it looks
-// up the latest-snapshot pointer (latestSnapshotKeyMetadataKey, set by
-// setLatestSnapshotKeyIfPresent) and, when one is set, reads and decodes the
-// _snapshot record it names.
-//
-// Returns (nil, nil) when no snapshot has ever been accepted (pointer unset).
-// The pointer and its row are written atomically in the same DB transaction
-// (setLatestSnapshotKeyIfPresent), so a pointer with no matching row is never
-// possible under normal operation; this guards against a future bug (e.g. a
-// maintenance path that deletes _snapshot rows without clearing the pointer)
-// silently making the caller assume no active snapshot, by returning a hard
-// error instead. A row whose value fails to decode is likewise a hard error,
-// never silently mapped to a conservative rejection status.
-func (db *database) readLatestSnapshotRecord(ctx context.Context) (*committerpb.SnapshotState, error) {
-	key, err := retry.ExecuteWithResult(ctx, db.retryProfile, func() ([]byte, error) {
+// getLatestSnapshotKey reads the latest-snapshot pointer set by
+// setLatestSnapshotKeyIfPresent. A nil/empty result means no snapshot has ever
+// been accepted. Mirrors getNextBlockNumberToCommit's pattern: the key is
+// pre-seeded (NULL) at DB init, so the row always exists.
+func (db *database) getLatestSnapshotKey(ctx context.Context) ([]byte, error) {
+	return retry.ExecuteWithResult(ctx, db.retryProfile, func() ([]byte, error) {
 		r := db.pool.QueryRow(ctx, getMetadataPrepSQLStmt, latestSnapshotKeyMetadataKey)
 		var v []byte
 		return v, errors.Wrap(r.Scan(&v), "failed to get the latest snapshot key")
 	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to read latest snapshot key: %w", err)
-	}
-	if len(key) == 0 {
-		return nil, nil
-	}
+}
 
+// readRawSnapshotRecords reads the raw (still-encoded) values of the given
+// _snapshot keys, in the same key order filtering as queryVersionsIfPresent.
+func (db *database) readRawSnapshotRecords(ctx context.Context, keys [][]byte) ([][]byte, error) {
 	query := statedb.FmtNsID(queryValuesByKeysSQLTempl, committerpb.SnapshotNamespaceID)
-	_, values, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, db, query, [][]byte{key})
+	_, values, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, db, query, keys)
+	return values, err
+}
+
+// readSnapshotStateByKey reads and decodes the single _snapshot record for
+// key. A missing row is always an error here -- there is no "no snapshot yet"
+// case at this level, because every caller either already knows the key names
+// a real record (restartSnapshotHash's txID argument) or has just confirmed
+// the latest-snapshot pointer is non-empty (getLatestSnapshotState,
+// latestSnapshotRejectionStatus) before calling this. Shared by all three so
+// the read+missing-row+decode sequence exists exactly once instead of being
+// copied per caller.
+func (db *database) readSnapshotStateByKey(ctx context.Context, key []byte) (*committerpb.SnapshotState, error) {
+	rows, err := db.readRawSnapshotRecords(ctx, [][]byte{key})
 	if err != nil {
-		return nil, fmt.Errorf("failed to read latest _snapshot record: %w", err)
+		return nil, fmt.Errorf("failed to read _snapshot record for key %s: %w", key, err)
 	}
-	if len(values) == 0 {
-		return nil, errors.Newf("latest snapshot key %s has no matching _snapshot record", key)
+	if len(rows) == 0 {
+		return nil, errors.Newf("no _snapshot record for key %s", key)
 	}
 
-	var state committerpb.SnapshotState
-	if decodeErr := proto.Unmarshal(values[0], &state); decodeErr != nil {
-		return nil, errors.Wrapf(decodeErr, "failed to decode latest _snapshot record for key %s", key)
+	state, err := decodeSnapshotState(rows[0])
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to decode _snapshot record for key %s", key)
 	}
-	return &state, nil
+	return state, nil
+}
+
+// snapshotResubmission is returned by createSnapshotIfPresent when the
+// incoming _snapshot write belongs to a txID that already committed in a
+// prior life (existing-row-aware resubmission, case 8 in PR-13.md): TxID
+// names the row whose hash job the caller must explicitly (re-)start via
+// restartSnapshotHash. The zero value means "no resubmission" -- nothing for
+// the caller to do.
+//
+// This is surfaced as an explicit return value, rather than triggered as a
+// side effect deep inside record-rewrite plumbing, so the re-enqueue call
+// itself lives at the commit call site next to snapshotHashJobFromWrites --
+// the two are siblings (one enqueues for a fresh PENDING write in *this*
+// batch, the other re-enqueues for a write that turned out to be a
+// resubmission and was dropped from newWrites before it could commit) and
+// reading commitTransactions should make that obvious.
+type snapshotResubmission struct {
+	TxID string
 }
 
 // createSnapshotIfPresent detects a _snapshot record in the batch's
@@ -195,27 +242,34 @@ func (db *database) readLatestSnapshotRecord(ctx context.Context) (*committerpb.
 // Snapshot database creation MUST succeed before txID is committed. On failure
 // this returns an error, batch is not committed, txID stays uncommitted, and
 // coordinator retries snapshot (this PR does not self-recover).
-func (db *database) createSnapshotIfPresent(ctx context.Context, newWrites transactionToWrites) error {
+//
+// The returned snapshotResubmission is non-zero exactly when the record turned
+// out to belong to an already-committed txID; the caller (commitTransactions)
+// is responsible for calling restartSnapshotHash on it -- this function only
+// detects the case, it does not act on it.
+func (db *database) createSnapshotIfPresent(
+	ctx context.Context, newWrites transactionToWrites,
+) (snapshotResubmission, error) {
 	// A snapshot TX is submitted standalone: the sidecar drains before and after it,
 	// so its batch contains exactly one transaction and hence one new-write entry.
 	// Any other count means there is no _snapshot record to act on.
 	if len(newWrites) != 1 {
-		return nil
+		return snapshotResubmission{}, nil
 	}
 	w, ok := snapshotWriteInBatch(newWrites)
 	if !ok {
-		return nil
+		return snapshotResubmission{}, nil
 	}
 
 	// Exactly one key: the preparer adds a single _snapshot record per snapshot TX.
-	snapshotState, err := db.createSnapshotDatabaseAndRewriteRecord(ctx, w.keys[0], w.values[0])
+	snapshotState, resubmission, err := db.createSnapshotDatabaseAndRewriteRecord(ctx, w.keys[0], w.values[0])
 	if err != nil {
-		return err
+		return snapshotResubmission{}, err
 	}
 	if snapshotState != nil {
 		w.values[0] = snapshotState
 	}
-	return nil
+	return resubmission, nil
 }
 
 // snapshotWriteInBatch returns the single _snapshot namespace write in newWrites, if
@@ -235,7 +289,9 @@ func snapshotWriteInBatch(newWrites transactionToWrites) (*namespaceWrites, bool
 
 // createSnapshotDatabaseAndRewriteRecord decodes one _snapshot record, creates
 // or reuses its snapshot database when needed, and returns a rewritten PENDING
-// record. A nil result means leave recordValue unchanged.
+// record plus a non-zero snapshotResubmission when the record turns out to
+// belong to an already-committed txID. A nil record result means leave
+// recordValue unchanged.
 //
 // The tx_status lookup and CREATE-only database operation handle these cases:
 //
@@ -247,19 +303,22 @@ func snapshotWriteInBatch(newWrites transactionToWrites) (*namespaceWrites, bool
 //
 // A txID already in tx_status may be a same-height resubmission or a
 // different-height duplicate. The normal commit path resolves that distinction;
-// this function must not create a snapshot database for either case.
+// this function must not create a snapshot database for either case. It also
+// must not (re-)enqueue the hash job itself: that is a visible side effect on
+// the running worker, not a record-rewrite decision, so it is left to the
+// caller via the returned snapshotResubmission (see createSnapshotIfPresent).
 func (db *database) createSnapshotDatabaseAndRewriteRecord(
 	ctx context.Context, key, recordValue []byte,
-) ([]byte, error) {
+) ([]byte, snapshotResubmission, error) {
 	state, err := decodeSnapshotState(recordValue)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to decode _snapshot record for key %s", key)
+		return nil, snapshotResubmission{}, errors.Wrapf(err, "failed to decode _snapshot record for key %s", key)
 	}
 
 	ref := state.TxRef
 
 	if ref == nil {
-		return nil, errors.Newf("_snapshot record for key %s has no TxRef", key)
+		return nil, snapshotResubmission{}, errors.Newf("_snapshot record for key %s has no TxRef", key)
 	}
 
 	// Skip database creation unless this is first-ever submission (txID absent
@@ -270,15 +329,27 @@ func (db *database) createSnapshotDatabaseAndRewriteRecord(
 	// correct status.
 	rows, err := db.readStatusWithHeight(ctx, [][]byte{[]byte(ref.TxId)})
 	if err != nil {
-		return nil, fmt.Errorf("failed to read status for snapshot tx %s: %w", ref.TxId, err)
+		return nil, snapshotResubmission{}, fmt.Errorf("failed to read status for snapshot tx %s: %w", ref.TxId, err)
 	}
 	if len(rows) > 0 {
-		return nil, nil
+		// Existing-row-aware resubmission (case 8 in PR-13.md): this txID already
+		// committed. It may be a genuine same-height resubmission (the VC that
+		// first committed it crashed before acking the coordinator, so the
+		// coordinator's bookkeeping is stale and resubmits) or a different-height
+		// duplicate (rejected later by the normal commit path regardless). Either
+		// way the _snapshot row for this exact tx_id already exists, so the caller
+		// must re-run restartSnapshotHash's read-status-branch-enqueue logic on
+		// it: safe because that logic no-ops on COMPLETED/CHECKPOINTED and only
+		// re-enqueues on PENDING/IN_PROGRESS/FAILED, so a stale hash job is
+		// (re-)started without attempting a fresh clone/insert.
+		return nil, snapshotResubmission{TxID: ref.TxId}, nil
 	}
 
 	snapshotDatabase := snapshotDatabaseName(ref)
 	if createErr := db.createSnapshotDatabase(ctx, snapshotDatabase); createErr != nil {
-		return nil, fmt.Errorf("failed to create snapshot database %s: %w", snapshotDatabase, createErr)
+		return nil, snapshotResubmission{}, fmt.Errorf(
+			"failed to create snapshot database %s: %w", snapshotDatabase, createErr,
+		)
 	}
 
 	// PENDING record rewrite: written atomically with the snapshot txID by the
@@ -289,9 +360,11 @@ func (db *database) createSnapshotDatabaseAndRewriteRecord(
 		CloneDatabase: snapshotDatabase,
 	})
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to marshal PENDING snapshot state for database %s", snapshotDatabase)
+		return nil, snapshotResubmission{}, errors.Wrapf(
+			err, "failed to marshal PENDING snapshot state for database %s", snapshotDatabase,
+		)
 	}
-	return snapshotState, nil
+	return snapshotState, snapshotResubmission{}, nil
 }
 
 // createSnapshotDatabase creates native zero-copy database named databaseName

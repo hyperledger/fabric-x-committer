@@ -102,7 +102,8 @@ func snapshotHashJobFromWrites(newWrites transactionToWrites) (snapshotHashJob, 
 // TestSnapshotHashReEnqueueIsIdempotent), not treated as a duplicate. A canceled
 // context means the commit already succeeded but the job was not queued; the caller
 // must not treat this as a failed commit.
-func (db *database) enqueueSnapshotHashJob(ctx context.Context, job snapshotHashJob) error {
+func (db *database) enqueueSnapshotHashJob(ctx context.Context, ref *committerpb.TxRef, cloneDatabase string) error {
+	job := snapshotHashJob{cloneDatabase: cloneDatabase, ref: ref}
 	if channel.NewWriter(ctx, db.snapshotHashJobs).Write(job) {
 		return nil
 	}
@@ -125,8 +126,67 @@ func (db *database) runSnapshotHashWorker(ctx context.Context) error {
 	}
 }
 
+// restartSnapshotHash re-reads the current _snapshot record for txID and
+// (re-)enqueues the hash worker for it, based on the record's own status --
+// it never trusts a caller-supplied clone_database. This is the shared
+// implementation behind both the RestartSnapshotHash RPC and (in a later
+// task) the VC-side existing-row-aware resubmission handler; both reach a
+// record whose commit already succeeded and only need hashing (re)started.
+//
+// CHECKPOINTED and COMPLETED are terminal/already-done and are left
+// untouched (case matrix per PR-13.md: nothing to restart). A missing or
+// empty clone_database on an otherwise-committed row is unrecoverable per
+// PR-11's invariant (txID committed <=> clone exists <=> PENDING row) --
+// fabricating a new clone for an already-committed txID would violate it,
+// so this records FAILED with a diagnostic error and signals halt instead.
+func (db *database) restartSnapshotHash(ctx context.Context, txID string) error {
+	state, err := db.readSnapshotStateByKey(ctx, []byte(txID))
+	if err != nil {
+		return fmt.Errorf("failed to read _snapshot record for tx %s: %w", txID, err)
+	}
+
+	switch state.Status {
+	case committerpb.SnapshotState_CHECKPOINTED, committerpb.SnapshotState_COMPLETED:
+		return nil // terminal / already done -- nothing to restart.
+	case committerpb.SnapshotState_PENDING, committerpb.SnapshotState_IN_PROGRESS, committerpb.SnapshotState_FAILED:
+		// fall through to the clone check below.
+	default:
+		return errors.Newf("_snapshot record for tx %s has unexpected status %s", txID, state.Status)
+	}
+
+	if state.CloneDatabase == "" {
+		reason := fmt.Sprintf("tx %s is committed but has no clone_database to restart hashing on", txID)
+		db.signalSnapshotHashHalt(reason)
+		return db.updateSnapshotState(ctx, state.TxRef, snapshotStateUpdate{
+			Status: committerpb.SnapshotState_FAILED,
+			ErrMsg: reason,
+		})
+	}
+
+	return db.enqueueSnapshotHashJob(ctx, state.TxRef, state.CloneDatabase)
+}
+
+// signalSnapshotHashHalt records a non-recoverable snapshot-hash-restart
+// condition.
+// TODO: call the real coordinator halt signal once PR-04's CheckpointFeedback
+// proto lands and PR-16 wires VC->coordinator halt notification; until then
+// this only logs, matching the checkpoint-mismatch halt's "does not mask with
+// a status transition" intent -- the FAILED write in restartSnapshotHash is
+// the visible signal in the meantime.
+// The receiver is unused for now (this only logs); it stays a method on
+// *database because PR-16 will wire a real coordinator call through db here.
+func (*database) signalSnapshotHashHalt(reason string) {
+	logger.Warnf("snapshot hash halt condition: %s", reason)
+}
+
 func (db *database) processSnapshotHashJob(ctx context.Context, job snapshotHashJob) error {
-	if err := db.updateSnapshotState(ctx, job.ref, committerpb.SnapshotState_IN_PROGRESS, nil); err != nil {
+	txID := job.ref.TxId
+	db.currentSnapshotHashTxID.Store(&txID)
+	defer db.currentSnapshotHashTxID.Store(nil)
+
+	if err := db.updateSnapshotState(ctx, job.ref, snapshotStateUpdate{
+		Status: committerpb.SnapshotState_IN_PROGRESS,
+	}); err != nil {
 		return fmt.Errorf("failed to mark snapshot %s IN_PROGRESS: %w", job.cloneDatabase, err)
 	}
 
@@ -135,15 +195,41 @@ func (db *database) processSnapshotHashJob(ctx context.Context, job snapshotHash
 		return fmt.Errorf("failed to hash snapshot %s: %w", job.cloneDatabase, err)
 	}
 
-	if err := db.updateSnapshotState(ctx, job.ref, committerpb.SnapshotState_COMPLETED, digest); err != nil {
+	if err := db.updateSnapshotState(ctx, job.ref, snapshotStateUpdate{
+		Status: committerpb.SnapshotState_COMPLETED,
+		Digest: digest,
+	}); err != nil {
 		return fmt.Errorf("failed to mark snapshot %s COMPLETED: %w", job.cloneDatabase, err)
 	}
 	return nil
 }
 
-// updateSnapshotState rewrites the _snapshot record for ref.TxId with a new status
-// (and hash, when digest is non-nil); TxRef and CloneDatabase are preserved because
-// the existing record is decoded, mutated, and re-encoded rather than rebuilt.
+// ownsSnapshotHashJob reports whether this VC process's hash worker is
+// currently processing txID. Used only by the OwnsSnapshotHashJob RPC, itself
+// used only for coordinator-restart ownership-broadcast rediscovery — it is
+// an in-memory check against the running worker, never a DB read, because
+// ownership is about which process is doing the work right now, not what the
+// persisted row says.
+func (db *database) ownsSnapshotHashJob(txID string) bool {
+	current := db.currentSnapshotHashTxID.Load()
+	return current != nil && *current == txID
+}
+
+// snapshotStateUpdate bundles updateSnapshotState's mutation fields so the
+// function stays within the revive argument-limit of 4 (ctx, ref, update)
+// while carrying a diagnostic error message alongside status/digest.
+// A zero-value field means "leave this part of the record unchanged": empty
+// ErrMsg leaves SnapshotState.Error as-is, nil Digest leaves SnapshotState.Hash
+// as-is.
+type snapshotStateUpdate struct {
+	Status committerpb.SnapshotState_Status
+	Digest []byte
+	ErrMsg string
+}
+
+// updateSnapshotState rewrites the _snapshot record for ref.TxId per update;
+// TxRef and CloneDatabase are preserved because the existing record is decoded,
+// mutated, and re-encoded rather than rebuilt.
 //
 // The read and the write run inside a single DB transaction using SELECT ... FOR
 // UPDATE (see selectSnapshotRowForUpdateSQL), not just beginTx's READ COMMITTED
@@ -158,8 +244,7 @@ func (db *database) processSnapshotHashJob(ctx context.Context, job snapshotHash
 func (db *database) updateSnapshotState(
 	ctx context.Context,
 	ref *committerpb.TxRef,
-	status committerpb.SnapshotState_Status,
-	digest []byte,
+	update snapshotStateUpdate,
 ) error {
 	key := []byte(ref.TxId)
 
@@ -181,9 +266,13 @@ func (db *database) updateSnapshotState(
 			return errors.Wrapf(decErr, "tx %s", ref.TxId)
 		}
 
-		state.Status = status
-		if digest != nil {
-			state.Hash = digest
+		state.Status = update.Status
+		if update.Digest != nil {
+			state.Hash = update.Digest
+		}
+
+		if update.ErrMsg != "" {
+			state.Error = update.ErrMsg
 		}
 
 		newRaw, encErr := encodeSnapshotState(state)

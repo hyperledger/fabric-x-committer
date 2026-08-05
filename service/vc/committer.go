@@ -137,8 +137,26 @@ func (c *transactionCommitter) commitTransactions(
 	// coordinator retries it.
 	// TODO: COORDINATOR detects VC failure and decides resubmission or snapshot
 	// database recreation/re-hash; VC does not self-recover.
-	if err := db.createSnapshotIfPresent(ctx, vTx.newWrites); err != nil {
+	//
+	// A non-zero resubmission means the record belonged to an already-committed
+	// txID (existing-row-aware resubmission): no database/record work happened
+	// above, and the eventual successful commit below drops this txID's write
+	// from newWrites as a duplicate, so snapshotHashJobFromWrites (below) never
+	// sees it. restartSnapshotHash is therefore called explicitly here, as the
+	// resubmission-side sibling of the fresh-PENDING enqueue below -- both are
+	// visible at the commit call site instead of one being buried inside
+	// record-rewrite plumbing.
+	resubmission, err := db.createSnapshotIfPresent(ctx, vTx.newWrites)
+	if err != nil {
 		return nil, fmt.Errorf("failed to create snapshot before commit: %w", err)
+	}
+
+	if resubmission.TxID != "" {
+		if err := db.restartSnapshotHash(ctx, resubmission.TxID); err != nil {
+			return nil, fmt.Errorf(
+				"failed to re-enqueue snapshot hash on resubmission for tx %s: %w", resubmission.TxID, err,
+			)
+		}
 	}
 
 	for range maxRetriesToRemoveAllInvalidTxs {
@@ -158,8 +176,15 @@ func (c *transactionCommitter) commitTransactions(
 		}
 
 		if res == nil {
+			// Fresh-PENDING sibling of the resubmission-side restartSnapshotHash call
+			// above: snapshotHashJobFromWrites only ever sees a record that is still
+			// PENDING in *this* just-committed batch's newWrites, i.e. a first-ever
+			// submission. It structurally cannot also cover the resubmission case
+			// handled above, because a resubmitted txID's write is dropped from
+			// newWrites (as a duplicate) before the commit that reaches this point
+			// ever succeeds -- there is nothing left here for it to find.
 			if job, ok := snapshotHashJobFromWrites(vTx.newWrites); ok {
-				if err := db.enqueueSnapshotHashJob(ctx, job); err != nil {
+				if err := db.enqueueSnapshotHashJob(ctx, job.ref, job.cloneDatabase); err != nil {
 					return nil, fmt.Errorf("failed to enqueue snapshot hash job for %s: %w", job.cloneDatabase, err)
 				}
 			}
