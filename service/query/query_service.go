@@ -229,7 +229,7 @@ func (q *Service) GetTransactionStatus(
 	}
 
 	if err := q.validateKeysCount(len(query.TxIds)); err != nil {
-		return nil, err
+		return nil, grpcerror.WrapInvalidArgument(err)
 	}
 
 	keys := make([][]byte, len(query.TxIds))
