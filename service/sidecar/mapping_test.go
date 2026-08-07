@@ -14,6 +14,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -108,6 +109,41 @@ func TestBlockMapping(t *testing.T) {
 	require.Len(t, mappedBlock.block.Rejected, expectedRejected)
 	//nolint:gosec // int -> int32
 	require.Equal(t, int32(expectedBlockSize), mappedBlock.withStatus.pendingCount.Load())
+}
+
+func TestConfigTxMapping(t *testing.T) {
+	t.Parallel()
+
+	const clientTxID = "client-config-txid"
+	lastUpdateChdr := protoutil.MakeChannelHeader(common.HeaderType_CONFIG_UPDATE, 1, testChannelID, 0)
+	lastUpdateChdr.TxId = clientTxID
+	lastUpdateSigHdr := protoutil.MakeSignatureHeader(nil, protoutil.CreateNonceOrPanic())
+	lastUpdate := &common.Envelope{Payload: protoutil.MarshalOrPanic(&common.Payload{
+		Header: protoutil.MakePayloadHeader(lastUpdateChdr, lastUpdateSigHdr),
+		Data:   []byte("config-update"),
+	})}
+
+	outerChdr := protoutil.MakeChannelHeader(common.HeaderType_CONFIG, 1, testChannelID, 0)
+	outerSigHdr := protoutil.MakeSignatureHeader(nil, protoutil.CreateNonceOrPanic())
+	outerEnv := &common.Envelope{Payload: protoutil.MarshalOrPanic(&common.Payload{
+		Header: protoutil.MakePayloadHeader(outerChdr, outerSigHdr),
+		Data:   protoutil.MarshalOrPanic(&common.ConfigEnvelope{LastUpdate: lastUpdate}),
+	})}
+
+	block := &common.Block{
+		Header: &common.BlockHeader{Number: 0},
+		Data:   &common.BlockData{Data: [][]byte{protoutil.MarshalOrPanic(outerEnv)}},
+	}
+
+	var txIDToHeight utils.SyncMap[string, servicepb.Height]
+	mappedBlock, err := mapBlock(block, &txIDToHeight)
+	require.NoError(t, err)
+	require.NotNil(t, mappedBlock)
+	require.True(t, mappedBlock.isConfig)
+	require.Len(t, mappedBlock.block.Txs, 1)
+	require.Equal(t, clientTxID, mappedBlock.block.Txs[0].Ref.TxId)
+	require.Equal(t, committerpb.ConfigNamespaceID, mappedBlock.block.Txs[0].Content.Namespaces[0].NsId)
+	require.Equal(t, []byte(committerpb.ConfigKey), mappedBlock.block.Txs[0].Content.Namespaces[0].BlindWrites[0].Key)
 }
 
 func TestSystemNamespaceFormValidation(t *testing.T) {

@@ -263,6 +263,8 @@ enum Status {
 }
 ```
 
+Config envelopes are exempt from the `MALFORMED_MISSING_TX_ID` filter: a CONFIG TX's outer envelope does not carry a TxID (it is created and signed by the consensus leader), and the orderer already validated the config. The sidecar applies it as-is, extracting the client's TxID from the `ConfigEnvelope.LastUpdate` field when needed for client notification.
+
 #### System namespace transaction forms
 
 The sidecar applies additional form checks for system namespaces before forwarding transactions to the coordinator.

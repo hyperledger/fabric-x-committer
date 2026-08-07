@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -126,19 +127,20 @@ func (b *blockMappingResult) mapMessage(msgIndex uint32, msg []byte) error {
 	if envErr != nil {
 		return b.rejectNonDBStatusTx(ref, committerpb.Status_MALFORMED_BAD_ENVELOPE, envErr.Error())
 	}
-	if envLite.TxID == "" || !utf8.ValidString(envLite.TxID) {
-		return b.rejectNonDBStatusTx(ref, committerpb.Status_MALFORMED_MISSING_TX_ID, "no TX ID")
-	}
-	ref.TxId = envLite.TxID
-
 	switch common.HeaderType(envLite.HeaderType) {
 	case common.HeaderType_CONFIG:
-		if err := policy.ValidateConfigTx(msg); err != nil {
-			return b.rejectTx(ref, committerpb.Status_MALFORMED_CONFIG_TX_INVALID, err.Error())
+		// extracts configId from config.LastUpdate.TxId, which is the client's TxID.
+		ref.TxId = envLite.TxID
+		if ref.TxId == "" {
+			ref.TxId = extractConfigTxID(envLite.Data)
 		}
 		b.isConfig = true
 		return b.appendTx(ref, configTx(msg))
 	case common.HeaderType_MESSAGE:
+		if envLite.TxID == "" || !utf8.ValidString(envLite.TxID) {
+			return b.rejectNonDBStatusTx(ref, committerpb.Status_MALFORMED_MISSING_TX_ID, "no TX ID")
+		}
+		ref.TxId = envLite.TxID
 		tx, err := serialization.UnmarshalTx(envLite.Data)
 		if err != nil {
 			return b.rejectTx(ref, committerpb.Status_MALFORMED_BAD_ENVELOPE_PAYLOAD, err.Error())
@@ -279,6 +281,20 @@ func debugTx(ref *committerpb.TxRef, format string, a ...any) {
 		txID = ref.TxId
 	}
 	logger.Debugf("ID [%s]: %s", txID, fmt.Sprintf(format, a...))
+}
+
+// extractConfigTxID returns the client's TxID from a config envelope. The outer envelope of a
+// config TX carries no TxID (it is created and signed by the consensus leader).
+func extractConfigTxID(value []byte) string {
+	configEnv, err := protoutil.UnmarshalConfigEnvelope(value)
+	if err != nil {
+		return ""
+	}
+	chdr, err := protoutil.ChannelHeader(configEnv.LastUpdate)
+	if err != nil {
+		return ""
+	}
+	return chdr.TxId
 }
 
 func configTx(value []byte) *applicationpb.Tx {
