@@ -158,28 +158,31 @@ load-profile:
     # deterministically from the transaction index.
     invalid-signatures: 0.1
     #
-    # The transaction layout above is fixed (same slot counts every transaction). new-keys-rate,
+    # The transaction layout above is fixed (same slot counts every transaction). key-backref-rate,
     # tx-reference-gap, and key-lookback-window control only which keys fill those slots — fresh keys, or
     # references to keys from earlier transactions — which is what creates (or avoids) commit-time
     # contention. Reads carry nil versions for now; a later PR adds a querier that fills the real versions.
     #
-    # new-keys-rate: average number of new keys generated per transaction; the remaining slots reference
-    # keys from earlier transactions, so keys are reused and the coordinator sees commit-time contention.
-    # New keys fill slots in layout order: read-write, then blind-write, then read-only.
-    # UNSET (default) gives every slot a fresh unique key — no reuse, no contention.
-    # To create conflicts, set it below the total slot count (read-only + read-write + write);
-    # it must not exceed that count. 0 means no new keys at all (every slot references a fixed static set).
-    # new-keys-rate: 1
-    # tx-reference-gap and key-lookback-window together set the window that backward references are sampled from.
-    # Both are ignored when new-keys-rate is unset.
-    # A reference is drawn uniformly from the key-lookback-window newest keys that existed tx-reference-gap
-    # transactions ago.
-    # Example: with tx-reference-gap=100 and key-lookback-window=10, a reference from transaction 1000 samples the
-    # 10 newest keys that existed as of transaction 900.
+    # key-backref-rate: average number of backward references (reused keys) per transaction; the remaining
+    # slots create fresh keys, so the average number of NEW keys per transaction is the total slot count
+    # minus this rate. References fill slots after the fresh keys, in layout order: read-write, then
+    # blind-write, then read-only.
+    # 0 (DEFAULT) gives every slot a fresh unique key — no reuse, no contention.
+    # Below 1 it acts as a probability: the fraction of transactions with a single reference (0.3 ≈ 30%).
+    # 1 or more is roughly a fixed count per transaction; a fractional part adds that probability on top
+    # (2.5 ≈ two or three references). It must not exceed the total slot count (read-only + read-write +
+    # write); at the maximum every slot is a reference (a fully static working set).
+    # key-backref-rate: 1
+    # tx-reference-gap and key-lookback-window shape where backward references point; both are optional
+    # (default 0) and irrelevant when key-backref-rate is 0.
+    # A reference is drawn from the key-lookback-window newest keys that existed tx-reference-gap
+    # transactions ago. Example: tx-reference-gap=100, key-lookback-window=10 — a reference from
+    # transaction 1000 is drawn from the 10 newest keys that existed as of transaction 900.
     # tx-reference-gap: 0 (default) draws the newest keys, which may still be in flight, so conflicting
     # transactions can land in the same block (a live dependency); larger values draw older, committed keys.
-    # key-lookback-window: larger spreads references over more keys (less contention); smaller concentrates them
-    # (more contention). Must be at least the total slot count so a transaction's references stay distinct.
+    # key-lookback-window: 0 (default) steps straight back from the gap position (most contention); a
+    # positive value spreads references over that many keys (larger = less contention), with no minimum —
+    # surplus references beyond the window simply step back below it.
     # tx-reference-gap: 0
     # key-lookback-window: 1024
   # Policy configuration for transaction endorsement and validation

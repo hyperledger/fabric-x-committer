@@ -98,24 +98,28 @@ func TestTxRegenerableByIndex(t *testing.T) {
 	}
 }
 
-// TestSlotKeysSplit covers the enabled split with backward references only: within any transaction all
-// slot key indices are distinct (creates never collide with references), read-write slots take the
-// creates first, and every backward reference (the remaining write slots and all read-only slots) sits
-// inside the working set [top-W, top) strictly below the committable frontier. Warmup references go to
-// distinct NEGATIVE (pre-genesis) indices that never equal a non-negative create index.
+// TestSlotKeysSplit covers a split with backward references: within any transaction all slot key indices
+// are distinct (creates never collide with references), read-write slots take the creates first, and
+// every backward reference (the remaining write slots and all read-only slots) sits inside the working
+// set [top-W, top) strictly below the committable frontier. Warmup references go to distinct NEGATIVE
+// (pre-genesis) indices that never equal a non-negative create index.
 func TestSlotKeysSplit(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(1)
 	p.Transaction.ReadOnlyCount = 1
 	p.Transaction.ReadWriteCount = 2
 	p.Transaction.BlindWriteCount = 1
-	p.Transaction.NewKeysRate = new(float64(2)) // 2 of 3 write slots create => 1 backward write ref
+	// 2 backward references of 4 slots: both read-writes create, the blind-write and the read-only ref.
+	p.Transaction.KeyBackrefRate = 2
 	p.Transaction.TxReferenceGap = 3
 	p.Transaction.KeyLookbackWindow = 8
 	require.NoError(t, p.Transaction.Validate())
 
 	proc := newTxRandomProcess(p)
 	w := int64(p.Transaction.KeyLookbackWindow) //nolint:gosec // test value fits int64.
+	// effRate is the effective new-key rate the generator uses: total slots minus the backref rate.
+	effRate := float64(p.Transaction.ReadOnlyCount+p.Transaction.ReadWriteCount+p.Transaction.BlindWriteCount) -
+		p.Transaction.KeyBackrefRate
 	for txID := range uint64(30) {
 		keys := proc.slotKeys(txID)
 		all := make([]int64, 0, 4)
@@ -130,13 +134,13 @@ func TestSlotKeysSplit(t *testing.T) {
 			seen[idx] = struct{}{}
 		}
 
-		committed := committedFrontier(txID, *p.Transaction.NewKeysRate)
+		committed := committedFrontier(txID, effRate)
 		require.Equal(t, committed, keys.readWrite[0])   // create wm=0 (read-write checked insert)
 		require.Equal(t, committed+1, keys.readWrite[1]) // create wm=1 (read-write checked insert)
 
 		// Both backward references (the blind write and the read-only) fall in the working set
 		// [top-W, top), strictly below the frontier.
-		top := committedFrontier(txID-min(txID, p.Transaction.TxReferenceGap), *p.Transaction.NewKeysRate)
+		top := committedFrontier(txID-min(txID, p.Transaction.TxReferenceGap), effRate)
 		for _, ref := range []int64{keys.blindWrite[0], keys.readOnly[0]} {
 			require.GreaterOrEqualf(t, ref, top-w, "tx %d ref %d below window", txID, ref)
 			require.Lessf(t, ref, top, "tx %d ref %d not backward of top", txID, ref)
@@ -151,43 +155,46 @@ func TestSlotKeysSplit(t *testing.T) {
 	require.NotEqual(t, early.blindWrite[0], early.readOnly[0])
 }
 
-// TestSlotKeysNewReadOnly proves the lifted cap: when new-keys-rate exceeds the write-slot count, the
-// surplus new keys spill into read-only slots (fresh frontier indices — nonexistent reads), agnostically.
+// TestSlotKeysNewReadOnly proves that when a transaction has fewer backward references than read-only
+// slots, the surplus fresh keys spill into the read-only slots (fresh frontier indices — nonexistent
+// reads) in layout order, leaving only the last slots as references.
 func TestSlotKeysNewReadOnly(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(1)
 	p.Transaction.ReadOnlyCount = 2
 	p.Transaction.ReadWriteCount = 1
 	p.Transaction.BlindWriteCount = 1
-	p.Transaction.NewKeysRate = new(float64(4)) // 4 > writeSlots(2); every slot is new every tx
+	// 4 slots, one backward reference: 3 fresh keys fill read-write, blind-write, and the FIRST read-only
+	// slot (the surplus); only the last read-only slot is a backward reference.
+	p.Transaction.KeyBackrefRate = 1
 	p.Transaction.TxReferenceGap = 0
 	p.Transaction.KeyLookbackWindow = 8
 	require.NoError(t, p.Transaction.Validate())
 
 	proc := newTxRandomProcess(p)
+	effRate := float64(p.Transaction.ReadOnlyCount+p.Transaction.ReadWriteCount+p.Transaction.BlindWriteCount) -
+		p.Transaction.KeyBackrefRate
 	for txID := range uint64(20) {
 		keys := proc.slotKeys(txID)
-		c := committedFrontier(txID, *p.Transaction.NewKeysRate)
-		// With rate == slotsPerTx (4), all 4 slots create fresh indices [c, c+4); none is a backward ref.
-		got := append(append(append([]int64{}, keys.readWrite...), keys.blindWrite...), keys.readOnly...)
-		want := []int64{c, c + 1, c + 2, c + 3}
-		require.ElementsMatch(t, want, got, "tx %d: all slots should be fresh frontier indices", txID)
-		// Read-only slots specifically are non-negative fresh keys (not backward/negative references).
-		for _, ro := range keys.readOnly {
-			require.GreaterOrEqual(t, ro, c, "tx %d: read-only slot should be a fresh frontier index", txID)
-		}
+		c := committedFrontier(txID, effRate)
+		// The 3 fresh keys land in layout order: read-write, blind-write, then the first read-only slot.
+		require.Equal(t, []int64{c, c + 1, c + 2},
+			[]int64{keys.readWrite[0], keys.blindWrite[0], keys.readOnly[0]},
+			"tx %d: surplus fresh keys should fill read-only in layout order", txID)
+		// The last read-only slot is the single backward reference, strictly below the frontier.
+		require.Less(t, keys.readOnly[1], c, "tx %d: last read-only slot should be a backward reference", txID)
 	}
 }
 
-// TestSlotKeysStaticWorkingSet covers new-keys-rate 0: nothing is ever created, so every slot references
-// the static pre-genesis (negative) working set [-W, 0). It also proves the per-transaction random
-// offset SPREADS references across the whole window rather than pinning them to a single key.
+// TestSlotKeysStaticWorkingSet covers key-backref-rate at the slot count: nothing is ever created, so
+// every slot references the static pre-genesis (negative) working set [-W, 0). It also proves the
+// sampling SPREADS references across the whole window rather than pinning them to a single key.
 func TestSlotKeysStaticWorkingSet(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(1)
 	p.Transaction.ReadWriteCount = 0
 	p.Transaction.BlindWriteCount = 1
-	p.Transaction.NewKeysRate = new(float64(0)) // no creates at all
+	p.Transaction.KeyBackrefRate = 1 // == total slots: no creates at all
 	p.Transaction.TxReferenceGap = 0
 	p.Transaction.KeyLookbackWindow = 16
 	require.NoError(t, p.Transaction.Validate())
@@ -201,8 +208,51 @@ func TestSlotKeysStaticWorkingSet(t *testing.T) {
 		require.Negative(t, ref)           // never a create
 		distinct[ref] = struct{}{}
 	}
-	// The random offset covers the window; a fixed gap alone would pin every reference to one key.
+	// The sampling covers the window; a fixed gap alone would pin every reference to one key.
 	require.Greater(t, len(distinct), int(w)/2)
+}
+
+// TestSlotKeysWindowEdgeCases covers the two lookback-window boundaries the split must never fail on: a
+// zero window (references step straight back from the gap position) and a window smaller than the number
+// of references (the surplus steps contiguously back below the window). Both use key-backref-rate at the
+// slot count, so top = 0 and every reference is a fixed negative index.
+func TestSlotKeysWindowEdgeCases(t *testing.T) {
+	t.Parallel()
+	base := func() *Profile {
+		p := DefaultProfile(1)
+		p.Transaction.ReadWriteCount = 0
+		p.Transaction.BlindWriteCount = 3
+		p.Transaction.KeyBackrefRate = 3 // == total slots: 3 references, no creates (top stays 0)
+		p.Transaction.TxReferenceGap = 0
+		return p
+	}
+
+	t.Run("zero window steps straight back", func(t *testing.T) {
+		t.Parallel()
+		p := base()
+		p.Transaction.KeyLookbackWindow = 0
+		require.NoError(t, p.Transaction.Validate())
+		proc := newTxRandomProcess(p)
+		for txID := range uint64(10) {
+			// top = 0: references are the fixed run top-1, top-2, top-3.
+			require.Equal(t, []int64{-1, -2, -3}, proc.slotKeys(txID).blindWrite)
+		}
+	})
+
+	t.Run("window smaller than references overflows below it", func(t *testing.T) {
+		t.Parallel()
+		p := base()
+		p.Transaction.KeyLookbackWindow = 2 // < 3 references
+		require.NoError(t, p.Transaction.Validate())
+		proc := newTxRandomProcess(p)
+		for txID := range uint64(50) {
+			refs := proc.slotKeys(txID).blindWrite
+			// The two windowed references are a distinct sample of {top-1, top-2} = {-1, -2}.
+			require.ElementsMatch(t, []int64{-1, -2}, refs[:2])
+			// The surplus reference steps below the window to top-1-W = -3.
+			require.Equal(t, int64(-3), refs[2])
+		}
+	})
 }
 
 // TestGeneratorStreamWorkerCountInvariant confirms the strengthened determinism contract: the SET of
@@ -215,7 +265,7 @@ func TestGeneratorStreamWorkerCountInvariant(t *testing.T) {
 	idSet := func(workers uint32) map[string]struct{} {
 		p := DefaultProfile(workers)
 		p.Transaction.ReadWriteCount = 2
-		counter := NewTxCounter(p.Transaction)
+		counter := NewTxCounter()
 		gens, err := newIndependentTxGenerators(p, counter)
 		require.NoError(t, err)
 		ids := make(map[string]struct{}, total)

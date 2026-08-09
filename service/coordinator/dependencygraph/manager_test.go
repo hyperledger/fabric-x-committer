@@ -47,15 +47,15 @@ func BenchmarkDependencyGraph(b *testing.B) {
 
 	// Dependency shapes over the united key space: writes CREATE keys (grow the space) and every
 	// remaining write slot plus every read-only slot BACKWARD-references a past create (reuse).
-	// newKeysRate is the create rate over write slots. Forward (read-before-create / write-after-read)
-	// dependencies are NOT synthesized statically — at runtime they arise from out-of-order commit — so
-	// this benchmark exercises the backward dependency shapes.
+	// key-backref-rate is the number of backward references per transaction; the remaining slots create
+	// keys. Forward (read-before-create / write-after-read) dependencies are NOT synthesized statically —
+	// at runtime they arise from out-of-order commit — so this benchmark exercises the backward shapes.
 	// configure mutates the whole *workload.Profile (it sets p.Transaction.* fields).
 	type shape struct {
 		name      string
 		configure func(p *workload.Profile)
 	}
-	// noSplit leaves new-keys-rate unset: every slot is a fresh unique key, so there are no dependencies.
+	// noSplit leaves key-backref-rate at 0: every slot is a fresh unique key, so there are no dependencies.
 	noSplit := func(ro, rw, bw uint32) func(*workload.Profile) {
 		return func(p *workload.Profile) {
 			p.Transaction.ReadOnlyCount = ro
@@ -63,13 +63,14 @@ func BenchmarkDependencyGraph(b *testing.B) {
 			p.Transaction.BlindWriteCount = bw
 		}
 	}
-	// withSplit enables the split: references are drawn from a 64-key working set one transaction behind.
+	// withSplit enables references: one create per transaction, the rest drawn from a 64-key working set
+	// one transaction behind.
 	withSplit := func(ro, rw, bw uint32) func(*workload.Profile) {
 		return func(p *workload.Profile) {
 			p.Transaction.ReadOnlyCount = ro
 			p.Transaction.ReadWriteCount = rw
 			p.Transaction.BlindWriteCount = bw
-			p.Transaction.NewKeysRate = new(1.0)
+			p.Transaction.KeyBackrefRate = float64(ro+rw+bw) - 1 // all but one slot references a past create
 			p.Transaction.TxReferenceGap = 1
 			p.Transaction.KeyLookbackWindow = 64
 		}

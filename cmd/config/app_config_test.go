@@ -518,9 +518,9 @@ func TestLoadGenProbabilityValidation(t *testing.T) {
 	}
 }
 
-// new-keys-rate / key-lookback-window are validated at config load: the non-negativity bound is a struct
-// tag, while the cross-field bounds (rate <= total slots; key-lookback-window >= total slots) are enforced
-// by ClientConfig.Validate(), which the loader runs after struct-tag validation.
+// key-backref-rate is validated at config load: the non-negativity bound is a struct tag, while the
+// upper bound (rate <= total slots) is enforced by ClientConfig.Validate(), which the loader runs after
+// struct-tag validation. tx-reference-gap and key-lookback-window have no cross-field constraints.
 func TestLoadGenTransactionProfileValidation(t *testing.T) {
 	t.Parallel()
 	read := func(t *testing.T, yaml string) error {
@@ -533,7 +533,7 @@ func TestLoadGenTransactionProfileValidation(t *testing.T) {
 	profile := func(rate, window string) string {
 		return "load-profile:\n  transaction:\n" +
 			"    read-only-count: 2\n    read-write-count: 2\n    write-count: 1\n" +
-			"    new-keys-rate: " + rate + "\n    key-lookback-window: " + window + "\n"
+			"    key-backref-rate: " + rate + "\n    key-lookback-window: " + window + "\n"
 	}
 
 	for _, tc := range []struct {
@@ -541,11 +541,11 @@ func TestLoadGenTransactionProfileValidation(t *testing.T) {
 		yaml    string
 		wantErr bool
 	}{
-		{name: "valid split", yaml: profile("3", "100")},
+		{name: "valid references", yaml: profile("3", "100")},
 		{name: "rate at total slots", yaml: profile("5", "100")},
+		{name: "zero window accepted", yaml: profile("3", "0")},
 		{name: "negative rate rejected by tag", yaml: profile("-1", "100"), wantErr: true},
 		{name: "rate above total slots rejected by Validate", yaml: profile("6", "100"), wantErr: true},
-		{name: "window below total slots rejected by Validate", yaml: profile("3", "4"), wantErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

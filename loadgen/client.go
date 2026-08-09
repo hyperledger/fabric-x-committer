@@ -59,7 +59,7 @@ func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 	// The shared transaction-index counter is created before the stream: the stream's workers reserve
 	// their index ranges from it. It depends only on the transaction profile, not on the crypto
 	// artifacts below.
-	txCounter := workload.NewTxCounter(conf.LoadProfile.Transaction)
+	txCounter := workload.NewTxCounter()
 	c := &Client{
 		conf: conf,
 		resources: adapters.ClientResources{

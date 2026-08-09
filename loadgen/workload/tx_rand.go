@@ -31,10 +31,10 @@ type txRandomProcess struct {
 	// across calls: the rootSeed prefix is written once at construction; derive rewrites the domain
 	// byte and the two index fields.
 	seed [addressLen]byte
-	// selectedSet is the reused membership set for Floyd's algorithm, which draws k distinct offsets out
-	// of the W-key working set — a uniform sample WITHOUT replacement — for a transaction's backward
-	// references. It is cleared and refilled per transaction to avoid a per-transaction allocation; this
-	// is safe because the process is driven from a single goroutine.
+	// selectedSet is the reused membership set for Floyd's algorithm, which samples a transaction's backward
+	// references as distinct offsets into the lookback window — a uniform sample without replacement. It is
+	// cleared and refilled per transaction to avoid a per-transaction allocation; this is safe because the
+	// process is driven from a single goroutine.
 	// For more information on Floyd's algorithm: https://dl.acm.org/doi/pdf/10.1145/30401.315746
 	selectedSet map[int64]struct{}
 }
@@ -109,73 +109,65 @@ func (p *txRandomProcess) nonce(txIdx uint64) []byte {
 	return p.derive(domainNonce, txIdx, 0, uint32(crypto.NonceSize))
 }
 
-// slotKeys computes the flat key index of every slot of transaction txIdx. Reads and writes share ONE
-// key space — the committable keys created by write slots. The committable frontier C = C(txIdx) is the
-// number of keys created before this transaction. With the split disabled (NewKeysRate == nil) every
-// slot gets a globally-unique fresh index (freshSlotKeys, the historical workload); otherwise
-// splitSlotKeys applies the frontier + working-set model. Indices are signed int64 (negative =
-// pre-genesis warmup key).
-func (p *txRandomProcess) slotKeys(txIdx uint64) txSlotKeys {
-	if p.NewKeysRate == nil {
-		return p.freshSlotKeys(txIdx)
-	}
-	return p.splitSlotKeys(txIdx)
-}
-
-// freshSlotKeys is the split-disabled layout: every slot across the whole run gets a distinct index, so
-// no key is ever reused — contention-free workload.
-func (p *txRandomProcess) freshSlotKeys(txIdx uint64) txSlotKeys {
-	slotsPerTx := int64(p.ReadWriteCount + p.BlindWriteCount + p.ReadOnlyCount)
-	committedFrontier := int64(txIdx) * slotsPerTx //nolint:gosec // global tx index fits int64 in practice.
-	newkeys := make([]int64, slotsPerTx)
-	fillNewKeys(newkeys, committedFrontier, slotsPerTx)
-	return p.newTxSlotKeysFromArray(newkeys)
-}
-
-// splitSlotKeys is the split-enabled layout. Let C = C(txIdx) and newKeys = C(txIdx+1) - C:
-//   - the first newKeys slots, in layout order (read-write, then blind-write, then read-only), get fresh
-//     frontier indices at [C, C+newKeys): a new WRITE slot CREATES its key, while a new READ slot is a
-//     NONEXISTENT READ — it never creates, so the frontier index it consumes is wasted (never becomes a
-//     committed key). Only writes advance real committed state, but the frontier counts every introduced
-//     index, write or read.
-//   - every remaining slot BACKWARD-references an existing key drawn from the moving working set
-//     [top-W, top), where top = C(max(0, txIdx-gap)) is the frontier `gap` transactions behind and
-//     W = KeyLookbackWindow. The offsets are a UNIFORM SAMPLE WITHOUT REPLACEMENT of [0, W) drawn by
-//     Floyd's
-//     algorithm (seeded from the tx index), so a transaction's slots reference a distinct, scattered
-//     subset of the window rather than a single contiguous run. Floyd's fixes the subset uniformly but
-//     does not shuffle it, so which drawn key lands on which slot is not itself uniform — immaterial
-//     here, where contention depends only on which keys are touched and that they are distinct.
+// slotKeys decides which key each slot of transaction txIdx touches. Reads and writes draw from one shared
+// pool of keys, and a key only comes into existence when a write slot creates it. There is no map of live
+// keys: the generator tracks a single running count of how many keys have been introduced so far (the
+// committed frontier) and derives every slot from that count and the transaction index.
 //
-// Fresh indices (>= C >= top) and backward references (< top) are disjoint, and sampling without
-// replacement keeps the references distinct (Validate guarantees W >= total slots, so the window is
-// always wide enough to draw one distinct key per slot). Backward indices go NEGATIVE during run-start
-// warmup, and stay negative for the whole run when the rate is 0 (no creates); these are distinct
-// pre-genesis keys no create ever produces, so we do not clamp.
-func (p *txRandomProcess) splitSlotKeys(txIdx uint64) txSlotKeys {
+// Each transaction introduces some fresh keys first, then fills its remaining slots with backward
+// references to keys introduced earlier. How many fresh keys it introduces is how far the frontier advances
+// over this one transaction (capped at the slot count); the slots left over become references. Fresh slots
+// are filled first in layout order — read-write, then blind-write, then read-only — so a write creates its
+// key while a fresh read-only slot reads a key nothing ever creates: a harmless wasted index (only writes
+// advance committed state, but the frontier still counts every index it hands out). This is the whole point
+// of the knob: a higher backref rate means fewer fresh keys and more reuse, which is what produces the
+// commit-time contention.
+//
+// A backward reference points below the frontier as it stood some transactions earlier — the reference gap,
+// which chooses between keys still in flight (small gap) and keys already committed (large gap). Within a
+// lookback window the references are spread across the newest keys of that window as a uniform sample
+// without replacement, so a wider window dilutes contention and a narrower one concentrates it. References
+// that do not fit the window — and every reference when no window is set — step straight back one key at a
+// time from the top of the window; that is the most-contended pattern, and because it needs no room it is
+// why no window is ever too small.
+//
+// Fresh keys and references can never land on the same index, and a transaction's own references are always
+// distinct. Early in the run (and for the entire run when there are no fresh keys at all) references reach
+// below key index zero; those negative indices are just distinct pre-genesis keys no create ever produces,
+// so they are left alone rather than clamped. At the default backref rate of zero there are no references
+// at all — every slot gets its own fresh key, the original contention-free workload.
+func (p *txRandomProcess) slotKeys(txIdx uint64) txSlotKeys {
 	slotsPerTx := int64(p.ReadWriteCount + p.BlindWriteCount + p.ReadOnlyCount)
-	rate := *p.NewKeysRate
-	frontier := committedFrontier(txIdx, rate)
-	newKeys := min(slotsPerTx, committedFrontier(txIdx+1, rate)-frontier) // in [0, slotsPerTx]
-	allkeys := make([]int64, slotsPerTx)
-	fillNewKeys(allkeys, frontier, newKeys)
+	newKeysRate := float64(slotsPerTx) - p.KeyBackrefRate
+	frontier := committedFrontier(txIdx, newKeysRate)
+	newKeys := min(slotsPerTx, committedFrontier(txIdx+1, newKeysRate)-frontier) // in [0, slotsPerTx]
+	allKeys := make([]int64, slotsPerTx)
+	fillNewKeys(allKeys, frontier, newKeys)
 
-	window := int64(p.KeyLookbackWindow) //nolint:gosec // key-lookback-window config value fits int64.
-	top := committedFrontier(txIdx-min(txIdx, p.TxReferenceGap), rate)
 	nRefs := slotsPerTx - newKeys
-	rnd := p.derive(domainRef, txIdx, 0, uint32(8*nRefs)) //nolint:gosec // small slot count fits uint32.
+	window := int64(p.KeyLookbackWindow) //nolint:gosec // key-lookback-window config value fits int64.
+	top := committedFrontier(txIdx-min(txIdx, p.TxReferenceGap), newKeysRate)
+	sampled := min(window, nRefs)
+	rnd := p.derive(domainRef, txIdx, 0, uint32(8*sampled)) //nolint:gosec // small slot count fits uint32.
 	clear(p.selectedSet)
-	for i := range slotsPerTx - newKeys {
-		j := window - nRefs + i
-		//nolint:gosec // j+1 >= 1 since Validate guarantees window >= nRefs, so the modulus is positive.
+	// Floyd's algorithm picks distinct offsets into the window, spread uniformly, in a single pass — so we
+	// neither allocate the whole window nor shuffle it just to draw a few references from it.
+	for i := range sampled {
+		j := window - sampled + i
+		//nolint:gosec // sampled never exceeds window, so j stays non-negative and j+1 is a valid modulus.
 		t := int64(binary.BigEndian.Uint64(rnd[8*i:]) % uint64(j+1))
 		if _, ok := p.selectedSet[t]; ok {
 			t = j
 		}
 		p.selectedSet[t] = struct{}{}
-		allkeys[newKeys+i] = top - 1 - t
+		allKeys[newKeys+i] = top - 1 - t
 	}
-	return p.newTxSlotKeysFromArray(allkeys)
+	// Any references the window could not hold — and all of them when there is no window — step one key at
+	// a time back from the top, the most-contended pattern.
+	for i := sampled; i < nRefs; i++ {
+		allKeys[newKeys+i] = top - 1 - i
+	}
+	return p.newTxSlotKeysFromArray(allKeys)
 }
 
 func (p *txRandomProcess) newTxSlotKeysFromArray(keys []int64) txSlotKeys {
@@ -192,12 +184,15 @@ func fillNewKeys(newkeys []int64, frontier, count int64) {
 	}
 }
 
-// committedFrontier is the number of committable keys created (by write slots) before transaction txIdx:
-// C(txIdx) = floor(txIdx * rate), where rate is the dereferenced NewKeysRate. It is only meaningful with
-// the split enabled (rate from a non-nil NewKeysRate); a rate of 0 yields a constant frontier of 0 (no
-// creates — the static working-set regime).
-func committedFrontier(txIdx uint64, rate float64) int64 {
-	return int64(float64(txIdx) * rate)
+// committedFrontier reports how many keys have been introduced before transaction txIdx. It grows by the
+// effective new-key rate — the slot count minus the backref rate — each transaction, so a larger backref
+// rate advances it more slowly and leaves more existing keys to reference. The rate may be fractional;
+// rounding the accumulated count down is what turns a fractional rate into whole keys spread evenly across
+// transactions instead of arriving in bursts. A zero backref rate advances the frontier by the full slot
+// count every transaction (every slot fresh); a backref rate equal to the slot count freezes it at zero
+// (nothing is ever created — a fully static working set).
+func committedFrontier(txIdx uint64, newKeysRate float64) int64 {
+	return int64(float64(txIdx) * newKeysRate)
 }
 
 // invalidSignature decides, deterministically from the transaction index, whether this transaction

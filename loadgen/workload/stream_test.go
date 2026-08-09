@@ -84,7 +84,7 @@ func BenchmarkGenTx(b *testing.B) {
 	flogging.ActivateSpec("fatal")
 	//nolint:thelper // false positive.
 	genericBench(b, func(b *testing.B, p *Profile) {
-		t, err := NewTxStream(p, defaultBenchStreamOptions(), NewTxCounter(p.Transaction))
+		t, err := NewTxStream(p, defaultBenchStreamOptions(), NewTxCounter())
 		require.NoError(b, err)
 
 		ctx := b.Context()
@@ -192,7 +192,7 @@ func testTxProfiles(t *testing.T) (profiles []*Profile) {
 
 func startTxGeneratorUnderTest(t *testing.T, profile *Profile, options *StreamOptions) *TxStream {
 	t.Helper()
-	g, err := NewTxStream(profile, options, NewTxCounter(profile.Transaction))
+	g, err := NewTxStream(profile, options, NewTxCounter())
 	require.NoError(t, err)
 	test.RunServiceForTest(t.Context(), t, g.Run, nil)
 	return g
@@ -202,7 +202,7 @@ func startTxGeneratorUnderTest(t *testing.T, profile *Profile, options *StreamOp
 // single-generator case for tests and benchmarks.
 func firstGen(tb testing.TB, p *Profile) *IndependentTxGenerator {
 	tb.Helper()
-	gens, err := newIndependentTxGenerators(p, NewTxCounter(p.Transaction))
+	gens, err := newIndependentTxGenerators(p, NewTxCounter())
 	require.NoError(tb, err)
 	require.NotEmpty(tb, gens)
 	return gens[0]
@@ -377,10 +377,11 @@ func TestGenSplitContention(t *testing.T) {
 	t.Parallel()
 	p := DefaultProfile(1)
 	p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.NoScheme
-	// One create per transaction; the second read-write slot is a backward reference one tx behind,
-	// drawn from a 2-key window so warmup adds at most a couple of extra (negative) keys.
+	// One backward reference per transaction: with 2 slots, key-backref-rate 1 leaves one create and one
+	// reference one tx behind, drawn from a 2-key window so warmup adds at most a couple of extra
+	// (negative) keys.
 	p.Transaction.ReadWriteCount = 2
-	p.Transaction.NewKeysRate = new(float64(1))
+	p.Transaction.KeyBackrefRate = 1
 	p.Transaction.TxReferenceGap = 1
 	p.Transaction.KeyLookbackWindow = 2
 

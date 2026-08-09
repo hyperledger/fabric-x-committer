@@ -87,24 +87,31 @@ type TransactionProfile struct {
 	// transactions — which is what produces (or avoids) commit-time contention. Reads carry nil versions
 	// for now; a later PR adds a querier that fills the real versions.
 
-	// NewKeysRate is the average number of new keys generated per transaction; the remaining slots
-	// reference keys from earlier transactions, so keys are reused and the coordinator sees commit-time
-	// contention. New keys fill slots in layout order: read-write, then blind-write, then read-only.
-	// Unset (default): every slot gets a fresh unique key — no reuse, no contention. To create conflicts,
-	// set it below the total slot count (read-only + read-write + write); it must not exceed that count.
-	// 0 means no new keys at all (every slot references a fixed static set).
-	NewKeysRate *float64 `mapstructure:"new-keys-rate" yaml:"new-keys-rate" validate:"omitempty,gte=0"`
-	// TxReferenceGap and KeyLookbackWindow together set the window that backward references are drawn from;
-	// both are ignored when new-keys-rate is unset. A reference is drawn from the KeyLookbackWindow newest
-	// keys that existed TxReferenceGap transactions ago.
+	// KeyBackrefRate is the average number of BACKWARD REFERENCES (reused keys) per transaction: slots that
+	// reference a key created by an earlier transaction instead of creating a fresh one, so keys are reused
+	// and the coordinator sees commit-time contention. The remaining slots create fresh keys, so the
+	// average number of NEW keys per transaction is the total slot count minus this rate.
+	// 0 (default) means no references — every slot gets a fresh unique key, the historical contention-free
+	// workload. Below 1 it acts as a probability: the fraction of transactions that get a single reference
+	// (e.g. 0.3 ≈ 30% of transactions reference one existing key). 1 or more is roughly a fixed count of
+	// references per transaction, and a fractional part adds that sub-1 probability on top (e.g. 2.5 ≈ two
+	// or three references). It must not exceed the total slot count (read-only + read-write + write); at the
+	// maximum every slot is a reference (a fully static working set, no new keys). References fill slots
+	// after the fresh keys, in layout order: read-write, then blind-write, then read-only.
+	KeyBackrefRate float64 `mapstructure:"key-backref-rate" yaml:"key-backref-rate" validate:"gte=0"`
+	// TxReferenceGap and KeyLookbackWindow shape where backward references point; both are optional, both
+	// default to 0, and both are irrelevant when key-backref-rate is 0. A reference is drawn from the
+	// KeyLookbackWindow newest keys that existed TxReferenceGap transactions ago.
 	//
 	// TxReferenceGap is how far back, in transactions, references reach. 0 (default) draws the newest keys,
 	// which may still be in flight — so conflicting transactions can land in the same block (a live
 	// dependency); larger values draw older, already-committed keys.
 	TxReferenceGap uint64 `mapstructure:"tx-reference-gap" yaml:"tx-reference-gap"`
-	// KeyLookbackWindow is how many of the newest keys a reference is drawn from. A larger window spreads
-	// references over more keys (less contention); a smaller one concentrates them (more contention). Must
-	// be at least the total slot count so a transaction's references stay distinct.
+	// KeyLookbackWindow is how many of the newest keys a reference is drawn from. 0 (default) means no
+	// window: references step straight back from the gap position (the newest key, then the one before it,
+	// and so on) — a fixed, most-contended pattern. A positive value spreads references across that many
+	// keys (larger = less contention); it has no minimum, and when a transaction needs more distinct
+	// references than the window holds, the surplus simply steps back beyond the window.
 	KeyLookbackWindow uint64 `mapstructure:"key-lookback-window" yaml:"key-lookback-window"`
 
 	// InvalidSignatures is the probability [0,1] that a transaction is stamped with a bad signature
@@ -112,23 +119,15 @@ type TransactionProfile struct {
 	InvalidSignatures Probability `mapstructure:"invalid-signatures" yaml:"invalid-signatures" validate:"gte=0,lte=1"`
 }
 
-// Validate checks the split configuration. An unset new-keys-rate keeps the historical fresh-key
-// workload (tx-reference-gap and key-lookback-window are ignored). When set, the rate must not exceed the
-// total slot count (so the per-transaction new-key count never overflows the transaction's slots), and
-// the lookback window must be at least the total slot count so every reference within a transaction is
-// distinct.
+// Validate checks the split configuration. key-backref-rate must not exceed the total slot count, so the
+// per-transaction reference count never exceeds the transaction's slots; 0 (the default) keeps the
+// historical fresh-key workload. tx-reference-gap and key-lookback-window are always optional and have no
+// minimum — a zero or small window never fails, as references step back beyond it as needed.
 func (p *TransactionProfile) Validate() error {
-	if p.NewKeysRate == nil {
-		return nil
-	}
 	totalSlots := uint64(p.ReadOnlyCount) + uint64(p.ReadWriteCount) + uint64(p.BlindWriteCount)
-	if rate := *p.NewKeysRate; rate > float64(totalSlots) {
-		return errors.Newf("new-keys-rate %v exceeds total slots %d (read-only + read-write + write)",
-			rate, totalSlots)
-	}
-	if p.KeyLookbackWindow < totalSlots {
-		return errors.Newf("key-lookback-window %d must be at least the total slot count %d so every "+
-			"reference within a transaction is distinct", p.KeyLookbackWindow, totalSlots)
+	if p.KeyBackrefRate > float64(totalSlots) {
+		return errors.Newf("key-backref-rate %v exceeds total slots %d (read-only + read-write + write)",
+			p.KeyBackrefRate, totalSlots)
 	}
 	return nil
 }
