@@ -32,6 +32,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
+	github.com/syndbg/fabric-x-migrate-poc v0.0.0
 	github.com/yugabyte/pgx/v5 v5.7.6-yb-1
 	go.uber.org/mock v0.6.0
 	go.uber.org/zap v1.28.0
@@ -43,6 +44,10 @@ require (
 	google.golang.org/grpc v1.82.0
 	google.golang.org/protobuf v1.36.11
 )
+
+// TODO: replace this local PoC module with the accepted schema package in
+// github.com/hyperledger/fabric-x-common before merge.
+replace github.com/syndbg/fabric-x-migrate-poc => ../fabric-x-migrate-poc
 
 tool (
 	github.com/Kunde21/markdownfmt/v3/cmd/markdownfmt

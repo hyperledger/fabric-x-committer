@@ -317,12 +317,10 @@ func (dc *DatabaseContainer) GetConnectionOptions(ctx context.Context, t *testin
 	require.NoError(t, err)
 
 	portBindings := container.NetworkSettings.Ports[dc.DbPort]
-	endpoints := make([]*connection.Endpoint, 0, len(portBindings)+1)
-	endpoints = append(endpoints, dc.GetContainerConnectionDetails(t))
-	for _, p := range portBindings {
-		endpoints = append(endpoints, test.NewEndpoint(t, p.HostIP, p.HostPort))
+	if len(portBindings) > 0 {
+		return NewConnection(dc.DatabaseType, dc.GetHostMappedEndpoint(t))
 	}
-	return NewConnection(dc.DatabaseType, endpoints...)
+	return NewConnection(dc.DatabaseType, dc.GetContainerConnectionDetails(t))
 }
 
 // GetContainerConnectionDetails inspect the container and fetches its connection to an endpoint.
