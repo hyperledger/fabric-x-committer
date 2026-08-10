@@ -8,7 +8,6 @@ package test
 
 import (
 	"context"
-	"crypto/tls"
 	"net"
 	"strconv"
 	"testing"
@@ -32,8 +31,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 const (
@@ -51,25 +48,17 @@ const (
 	queryActiveConnectionsMetric   = "queryservice_grpc_active_connections"
 )
 
-type (
-	// keepAliveConfig holds the per-test knobs for a keep-alive runtime.
-	keepAliveConfig struct {
-		permitWithoutStream  bool
-		maxConcurrentStreams int
-	}
+// keepAliveConfig holds the per-test knobs for a keep-alive runtime.
+type keepAliveConfig struct {
+	permitWithoutStream  bool
+	maxConcurrentStreams int
+}
 
-	// metricsGetter scrapes a service's active-connections gauge from its metrics endpoint.
-	metricsGetter struct {
-		url       string
-		name      string
-		tlsConfig *tls.Config
-	}
-)
-
-// value returns the gauge's current value.
-func (g metricsGetter) value(t *testing.T) int {
-	t.Helper()
-	return test.GetMetricValueFromURL(t, g.url, g.name, g.tlsConfig)
+type blockAndWaitParameters struct {
+	proxy                 *toxiclient.Proxy
+	metricsScraper        runner.MetricsScraper
+	prevActiveConnections int
+	metric                string
 }
 
 // TestKeepAliveSidecarDeadConnectionDetection verifies that the sidecar's server-side keep-alive
@@ -80,12 +69,10 @@ func TestKeepAliveSidecarDeadConnectionDetection(t *testing.T) {
 
 	c := startKeepAliveRuntime(t, keepAliveConfig{permitWithoutStream: false})
 
-	gauge := newMetricsGetter(
-		t, c, c.SystemConfig.Services.Sidecar.HTTPEndpoint, sidecarActiveConnectionsMetric,
-	)
+	metricsScraper := runner.NewMetricsScraper(t, c, c.SystemConfig.Services.Sidecar.HTTPEndpoint)
 
 	// Number of connections the Sidecar before our client connects.
-	prevActiveConnections := gauge.value(t)
+	prevActiveConnections := metricsScraper.Value(t, sidecarActiveConnectionsMetric)
 
 	proxy, conn := dialThroughProxy(
 		t, c.SystemConfig.Services.Sidecar.GrpcEndpoint.Address(), clientCredentials(t, c),
@@ -93,7 +80,12 @@ func TestKeepAliveSidecarDeadConnectionDetection(t *testing.T) {
 
 	sendSidecarInitialMessage(t, conn)
 
-	blockAndWaitForServerClose(t, proxy, gauge, prevActiveConnections)
+	blockAndWaitForServerClose(t, blockAndWaitParameters{
+		proxy:                 proxy,
+		metricsScraper:        metricsScraper,
+		prevActiveConnections: prevActiveConnections,
+		metric:                sidecarActiveConnectionsMetric,
+	})
 }
 
 // TestKeepAliveQueryDeadConnectionDetection verifies that the query service's server-side keep-alive
@@ -104,12 +96,10 @@ func TestKeepAliveQueryDeadConnectionDetection(t *testing.T) {
 
 	c := startKeepAliveRuntime(t, keepAliveConfig{permitWithoutStream: true})
 
-	gauge := newMetricsGetter(
-		t, c, c.SystemConfig.Services.Query.HTTPEndpoint, queryActiveConnectionsMetric,
-	)
+	metricsScraper := runner.NewMetricsScraper(t, c, c.SystemConfig.Services.Query.HTTPEndpoint)
 
 	// Number of connections the Query before our client connects.
-	prevActiveConnections := gauge.value(t)
+	prevActiveConnections := metricsScraper.Value(t, queryActiveConnectionsMetric)
 
 	proxy, conn := dialThroughProxy(
 		t, c.SystemConfig.Services.Query.GrpcEndpoint.Address(), clientCredentials(t, c),
@@ -123,7 +113,12 @@ func TestKeepAliveQueryDeadConnectionDetection(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	blockAndWaitForServerClose(t, proxy, gauge, prevActiveConnections)
+	blockAndWaitForServerClose(t, blockAndWaitParameters{
+		proxy:                 proxy,
+		metricsScraper:        metricsScraper,
+		prevActiveConnections: prevActiveConnections,
+		metric:                queryActiveConnectionsMetric,
+	})
 }
 
 // TestKeepAliveSidecarStreamSlotRelease verifies that once keep-alive closes a dead
@@ -142,12 +137,10 @@ func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 
 	addr := c.SystemConfig.Services.Sidecar.GrpcEndpoint.Address()
 	clientCreds := clientCredentials(t, c)
-	gauge := newMetricsGetter(
-		t, c, c.SystemConfig.Services.Sidecar.HTTPEndpoint, sidecarActiveConnectionsMetric,
-	)
+	metricsScraper := runner.NewMetricsScraper(t, c, c.SystemConfig.Services.Sidecar.HTTPEndpoint)
 
 	// Number of connections the Sidecar before our client connects.
-	prevActiveConnections := gauge.value(t)
+	prevActiveConnections := metricsScraper.Value(t, sidecarActiveConnectionsMetric)
 
 	proxy, conn := dialThroughProxy(t, addr, clientCreds)
 
@@ -171,7 +164,7 @@ func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 
 	// Both the intercepted connection and conn2 are now open on the server.
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, prevActiveConnections+2, gauge.value(t))
+		require.Equal(ct, prevActiveConnections+2, metricsScraper.Value(t, sidecarActiveConnectionsMetric))
 	}, 30*time.Second, 200*time.Millisecond)
 
 	blockMessages(t, proxy)
@@ -179,7 +172,7 @@ func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 	// Keep-alive closes the dead connection: the server reports one fewer active
 	// connection (conn2 stays open).
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, prevActiveConnections+1, gauge.value(t))
+		require.Equal(ct, prevActiveConnections+1, metricsScraper.Value(t, sidecarActiveConnectionsMetric))
 	}, maxConnectionClosingTime, 500*time.Millisecond)
 
 	// And the stream slot it held is released for new clients.
@@ -217,47 +210,24 @@ func clientCredentials(t *testing.T, c *runner.CommitterRuntime) credentials.Tra
 	return creds
 }
 
-// newMetricsGetter builds a handle for scraping the named active-connections gauge on the
-// given service's HTTP metrics endpoint.
-func newMetricsGetter(
-	t *testing.T, c *runner.CommitterRuntime, httpEndpoint *connection.Endpoint, metricName string,
-) metricsGetter {
-	t.Helper()
-
-	metricsURL, err := monitoring.MakeMetricsURL(httpEndpoint.Address(), &c.SystemConfig.ClientTLS)
-	require.NoError(t, err)
-
-	creds, err := connection.NewClientTLSCredentials(c.SystemConfig.ClientTLS)
-	require.NoError(t, err)
-
-	tlsConfig, err := creds.CreateClientTLSConfig()
-	require.NoError(t, err)
-
-	return metricsGetter{
-		url:       metricsURL,
-		name:      metricName,
-		tlsConfig: tlsConfig,
-	}
-}
-
 // blockAndWaitForServerClose intercepts the proxied connection and asserts, through the
 // service's active-connections gauge, that the server first counts the new connection and then,
 // once its keep-alive detects the now-silent connection, closes it itself — returning the count
 // to the number of previous active connections.
-func blockAndWaitForServerClose(t *testing.T, proxy *toxiclient.Proxy, gauge metricsGetter, prevActiveConnections int) {
+func blockAndWaitForServerClose(t *testing.T, params blockAndWaitParameters) {
 	t.Helper()
 
 	// The server counts the new connection.
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, prevActiveConnections+1, gauge.value(t))
+		require.Equal(ct, params.prevActiveConnections+1, params.metricsScraper.Value(t, params.metric))
 	}, 30*time.Second, 200*time.Millisecond)
 
-	blockMessages(t, proxy)
+	blockMessages(t, params.proxy)
 
 	// The server's keep-alive detects the silent connection and closes it itself,
 	// so the active-connection count returns to the baseline.
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, prevActiveConnections, gauge.value(t))
+		require.Equal(ct, params.prevActiveConnections, params.metricsScraper.Value(t, params.metric))
 	}, maxConnectionClosingTime, 500*time.Millisecond)
 }
 

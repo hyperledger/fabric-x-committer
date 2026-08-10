@@ -114,7 +114,7 @@ func newPerformanceMetrics() *perfMetrics {
 			Namespace: "sidecar",
 			Subsystem: "coordinator",
 		}),
-		serverMetrics: monitoring.NewServerMetrics(p, monitoring.MetricsParameters{
+		serverMetrics: serve.NewServerMetrics(p, monitoring.MetricsParameters{
 			Namespace: "sidecar",
 			Subsystem: "grpc",
 		}),

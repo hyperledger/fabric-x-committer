@@ -67,7 +67,7 @@ func newPerformanceMetrics(q *channels) *perfMetrics {
 			Name:      "committed_transaction_total",
 			Help:      "Total number of transactions committed status sent by the coordinator service to the client.",
 		}, []string{"status"}),
-		serverMetrics: monitoring.NewServerMetrics(p, monitoring.MetricsParameters{
+		serverMetrics: serve.NewServerMetrics(p, monitoring.MetricsParameters{
 			Namespace: "coordinator",
 			Subsystem: "grpc",
 		}),

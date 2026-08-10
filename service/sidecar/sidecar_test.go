@@ -35,7 +35,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/delivercommitter"
-	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -424,10 +423,10 @@ func TestSidecarRecoveryAfterCoordinatorFailure(t *testing.T) {
 	env.requireBlock(ctx, t, 0)
 
 	coordLabel := env.getCoordinatorLabel(t)
-	monitoring.RequireConnectionMetrics(
+	test.RequireConnectionMetrics(
 		t, coordLabel,
 		env.sidecar.metrics.coordConnection,
-		monitoring.ExpectedConn{Status: connection.Connected},
+		test.ExpectedConn{Status: connection.Connected},
 	)
 
 	t.Log("1. Commit block 1 to 10")
@@ -438,10 +437,10 @@ func TestSidecarRecoveryAfterCoordinatorFailure(t *testing.T) {
 	t.Log("2. Stop the coordinator")
 	env.coordinatorServer.ServersStop[0]()
 
-	monitoring.RequireConnectionMetrics(
+	test.RequireConnectionMetrics(
 		t, coordLabel,
 		env.sidecar.metrics.coordConnection,
-		monitoring.ExpectedConn{Status: connection.Disconnected, FailureTotal: 1},
+		test.ExpectedConn{Status: connection.Disconnected, FailureTotal: 1},
 	)
 
 	t.Log("3. Send transactions to ordering service to create block 11 after stopping the coordinator")
@@ -451,10 +450,10 @@ func TestSidecarRecoveryAfterCoordinatorFailure(t *testing.T) {
 	env.coordinatorServer = mock.StartMockCoordinatorServiceFromServerConfig(t, env.coordinator,
 		env.coordinatorServer.Configs[0])
 
-	monitoring.RequireConnectionMetrics(
+	test.RequireConnectionMetrics(
 		t, coordLabel,
 		env.sidecar.metrics.coordConnection,
-		monitoring.ExpectedConn{Status: connection.Connected, FailureTotal: 1},
+		test.ExpectedConn{Status: connection.Connected, FailureTotal: 1},
 	)
 
 	env.requireBlockWithTXs(ctx, t, 11, txs)
@@ -473,19 +472,19 @@ func TestSidecarStartWithoutCoordinator(t *testing.T) {
 
 	t.Log("Start the service")
 	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
-	monitoring.RequireConnectionMetrics(
+	test.RequireConnectionMetrics(
 		t, coordLabel,
 		env.sidecar.metrics.coordConnection,
-		monitoring.ExpectedConn{Status: connection.Disconnected},
+		test.ExpectedConn{Status: connection.Disconnected},
 	)
 
 	t.Log("Restart the coordinator")
 	env.coordinatorServer = mock.StartMockCoordinatorServiceFromServerConfig(t, env.coordinator,
 		env.coordinatorServer.Configs[0])
-	monitoring.RequireConnectionMetrics(
+	test.RequireConnectionMetrics(
 		t, coordLabel,
 		env.sidecar.metrics.coordConnection,
-		monitoring.ExpectedConn{Status: connection.Connected},
+		test.ExpectedConn{Status: connection.Connected},
 	)
 
 	t.Log("Wait for block 0")

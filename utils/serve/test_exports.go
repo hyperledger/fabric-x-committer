@@ -10,6 +10,7 @@ import (
 	"net"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -39,4 +40,19 @@ func ClosePreAllocatedListener(c *ServerConfig) {
 	listener := c.preAllocatedListener
 	c.preAllocatedListener = nil
 	connection.CloseConnectionsLog(listener)
+}
+
+// GetRequestsTotal returns the counter of completed RPCs, labeled by method.
+func GetRequestsTotal(m *ServerMetrics) *prometheus.CounterVec {
+	return m.requestsTotal
+}
+
+// GetActiveStreams returns the gauge of streaming RPCs currently in progress, labeled by method.
+func GetActiveStreams(m *ServerMetrics) *prometheus.GaugeVec {
+	return m.activeStreams
+}
+
+// GetActiveConnections returns the gauge of client connections currently open on the server.
+func GetActiveConnections(m *ServerMetrics) prometheus.Gauge {
+	return m.activeConnections
 }

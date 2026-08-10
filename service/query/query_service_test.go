@@ -434,8 +434,12 @@ func TestQueryMetrics(t *testing.T) {
 
 	t.Log("Validate metrics")
 	require.Equal(t, 1, env.qs.batcher.viewIDToViewHolder.Count())
-	requireEventuallyIntVecMetricValue(t, 1, env.qs.metrics.serverMetrics.RequestsTotal.MetricVec,
-		committerpb.QueryService_BeginView_FullMethodName)
+	requireEventuallyIntVecMetricValue(
+		t,
+		1,
+		serve.GetRequestsTotal(env.qs.metrics.serverMetrics).MetricVec,
+		committerpb.QueryService_BeginView_FullMethodName,
+	)
 	test.RequireIntMetricValue(t, 1, env.qs.metrics.processingSessions.WithLabelValues(sessionViews))
 	test.RequireIntMetricValue(t, 1, env.qs.metrics.processingSessions.WithLabelValues(sessionTransactions))
 	env.endView(t, env.clientConn, view0)
@@ -451,8 +455,12 @@ func TestQueryMetrics(t *testing.T) {
 	require.Equal(t, 0, env.qs.batcher.viewIDToViewHolder.Count())
 	test.RequireIntMetricValue(t, 0, env.qs.metrics.processingSessions.WithLabelValues(sessionViews))
 	test.RequireIntMetricValue(t, 0, env.qs.metrics.processingSessions.WithLabelValues(sessionTransactions))
-	requireEventuallyIntVecMetricValue(t, expectedMetricsSize, env.qs.metrics.serverMetrics.RequestsTotal.MetricVec,
-		committerpb.QueryService_GetRows_FullMethodName)
+	requireEventuallyIntVecMetricValue(
+		t,
+		expectedMetricsSize,
+		serve.GetRequestsTotal(env.qs.metrics.serverMetrics).MetricVec,
+		committerpb.QueryService_GetRows_FullMethodName,
+	)
 	test.RequireIntMetricValue(t, expectedMetricsSize*querySize, env.qs.metrics.keysRequested)
 	test.RequireIntMetricValue(t, expectedMetricsSize*keyCount, env.qs.metrics.keysResponded)
 }

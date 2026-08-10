@@ -14,10 +14,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
-
-const methodLabel = "method"
 
 type (
 	// MetricsParameters describes metrics namespace and subsystem.
@@ -79,45 +76,6 @@ func NewConnectionMetrics(p *Provider, params MetricsParameters) *ConnectionMetr
 				params.Subsystem,
 			),
 		}, []string{"grpc_target"}),
-	}
-}
-
-// NewServerMetrics creates the server-side metrics recorded by the gRPC stats handler.
-func NewServerMetrics(p *Provider, params MetricsParameters) *serve.ServerMetrics {
-	latencyBuckets := []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1, 2, 3, 4, 5, 10}
-	return &serve.ServerMetrics{
-		RequestsTotal: p.NewCounterVec(prometheus.CounterOpts{
-			Namespace: params.Namespace,
-			Subsystem: params.Subsystem,
-			Name:      "requests_total",
-			Help:      "Number of requests by the service",
-		}, []string{methodLabel}),
-		LatencySeconds: p.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: params.Namespace,
-			Subsystem: params.Subsystem,
-			Name:      "requests_latency_seconds",
-			Help:      "The latency (seconds) of requests by the service, by method and gRPC status code",
-			Buckets:   latencyBuckets,
-		}, []string{methodLabel, "status"}),
-		StreamDurationSeconds: p.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: params.Namespace,
-			Subsystem: params.Subsystem,
-			Name:      "stream_duration_seconds",
-			Help:      "The duration (seconds) a stream ran from start to end, by method and gRPC status code",
-			Buckets:   latencyBuckets,
-		}, []string{methodLabel, "status"}),
-		ActiveStreams: p.NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: params.Namespace,
-			Subsystem: params.Subsystem,
-			Name:      "active_streams",
-			Help:      "Number of gRPC streams currently open on the server",
-		}, []string{"method"}),
-		ActiveConnections: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: params.Namespace,
-			Subsystem: params.Subsystem,
-			Name:      "active_connections",
-			Help:      "Number of client connections currently open on the server",
-		}),
 	}
 }
 

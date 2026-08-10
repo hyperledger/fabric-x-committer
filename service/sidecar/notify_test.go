@@ -337,7 +337,7 @@ func TestNotifierStream(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify the active-stream gauge for the method we opened (labelled by full gRPC method).
-	activeStreams := m.serverMetrics.ActiveStreams.WithLabelValues(
+	activeStreams := serve.GetActiveStreams(m.serverMetrics).WithLabelValues(
 		committerpb.Notifier_OpenNotificationStream_FullMethodName,
 	)
 	test.EventuallyIntMetric(t, 1, activeStreams, 5*time.Second, 100*time.Millisecond)

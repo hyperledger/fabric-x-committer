@@ -28,7 +28,7 @@ func newMonitoring() *metrics {
 			Namespace: "verifier_server",
 			Subsystem: "tx",
 		}),
-		serverMetrics: monitoring.NewServerMetrics(p, monitoring.MetricsParameters{
+		serverMetrics: serve.NewServerMetrics(p, monitoring.MetricsParameters{
 			Namespace: "verifier_server",
 			Subsystem: "grpc",
 		}),

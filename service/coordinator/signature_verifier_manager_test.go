@@ -26,7 +26,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
@@ -78,7 +77,7 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 		},
 		nil,
 	)
-	monitoring.WaitForConnections(
+	test.WaitForConnections(
 		t, metrics.Provider, "coordinator_verifier_connection_status", numSvService,
 	)
 
@@ -165,10 +164,10 @@ func (e *svMgrTestEnv) requireConnectionMetrics(
 	t.Helper()
 	require.Less(t, svIndex, len(e.signVerifierManager.signVerifier))
 	sv := e.signVerifierManager.signVerifier[svIndex]
-	monitoring.RequireConnectionMetrics(
+	test.RequireConnectionMetrics(
 		t, sv.conn.CanonicalTarget(),
 		e.signVerifierManager.metrics.verifiers.connection,
-		monitoring.ExpectedConn{Status: expectedConnStatus, FailureTotal: expectedConnFailureTotal},
+		test.ExpectedConn{Status: expectedConnStatus, FailureTotal: expectedConnFailureTotal},
 	)
 }
 

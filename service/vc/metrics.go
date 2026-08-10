@@ -56,7 +56,7 @@ func newVCServiceMetrics() *perfMetrics {
 
 	return &perfMetrics{
 		Provider: p,
-		serverMetrics: monitoring.NewServerMetrics(p, monitoring.MetricsParameters{
+		serverMetrics: serve.NewServerMetrics(p, monitoring.MetricsParameters{
 			Namespace: metricsNamespaceVC,
 			Subsystem: gRPCSubsystem,
 		}),
