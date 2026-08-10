@@ -37,7 +37,6 @@ func TestLimiterTargetRate(t *testing.T) {
 
 			l := NewConsumerRateController(tc.rate, runProducer(t))
 
-			//nolint:gosec // uint64 -> int64 in duration.
 			ctx, cancel := context.WithTimeout(t.Context(), time.Second*time.Duration(expectedSeconds*2))
 			t.Cleanup(cancel)
 			wg := sync.WaitGroup{}

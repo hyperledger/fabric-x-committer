@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package monitoring
+package monitoring_test
 
 import (
 	"testing"
@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -22,7 +23,7 @@ func TestConnectionMetrics(t *testing.T) {
 
 	t.Run("Connected", func(t *testing.T) {
 		t.Parallel()
-		m := NewConnectionMetrics(NewProvider(), MetricsParameters{})
+		m := monitoring.NewConnectionMetrics(monitoring.NewProvider(), monitoring.MetricsParameters{})
 
 		m.Connected(target)
 		requireStatus(t, m, target, int(connection.Connected))
@@ -30,7 +31,7 @@ func TestConnectionMetrics(t *testing.T) {
 
 	t.Run("Disconnected_AfterConnected", func(t *testing.T) {
 		t.Parallel()
-		m := NewConnectionMetrics(NewProvider(), MetricsParameters{})
+		m := monitoring.NewConnectionMetrics(monitoring.NewProvider(), monitoring.MetricsParameters{})
 		m.Connected(target)
 		m.Disconnected(target)
 
@@ -40,7 +41,7 @@ func TestConnectionMetrics(t *testing.T) {
 
 	t.Run("Disconnected_WithoutPriorConnect", func(t *testing.T) {
 		t.Parallel()
-		m := NewConnectionMetrics(NewProvider(), MetricsParameters{})
+		m := monitoring.NewConnectionMetrics(monitoring.NewProvider(), monitoring.MetricsParameters{})
 
 		m.Disconnected(target)
 
@@ -50,7 +51,7 @@ func TestConnectionMetrics(t *testing.T) {
 
 	t.Run("Disconnected_Twice", func(t *testing.T) {
 		t.Parallel()
-		m := NewConnectionMetrics(NewProvider(), MetricsParameters{})
+		m := monitoring.NewConnectionMetrics(monitoring.NewProvider(), monitoring.MetricsParameters{})
 
 		m.Connected(target)
 		m.Disconnected(target)
@@ -61,7 +62,7 @@ func TestConnectionMetrics(t *testing.T) {
 
 	t.Run("MultipleTargets", func(t *testing.T) {
 		t.Parallel()
-		m := NewConnectionMetrics(NewProvider(), MetricsParameters{})
+		m := monitoring.NewConnectionMetrics(monitoring.NewProvider(), monitoring.MetricsParameters{})
 		target2 := "localhost:7052"
 
 		m.Connected(target)
@@ -76,7 +77,7 @@ func TestConnectionMetrics(t *testing.T) {
 
 	t.Run("Reconnect", func(t *testing.T) {
 		t.Parallel()
-		m := NewConnectionMetrics(NewProvider(), MetricsParameters{})
+		m := monitoring.NewConnectionMetrics(monitoring.NewProvider(), monitoring.MetricsParameters{})
 
 		m.Connected(target)
 		m.Disconnected(target)
@@ -87,14 +88,14 @@ func TestConnectionMetrics(t *testing.T) {
 	})
 }
 
-func requireStatus(t *testing.T, m *ConnectionMetrics, target string, expected int) {
+func requireStatus(t *testing.T, m *monitoring.ConnectionMetrics, target string, expected int) {
 	t.Helper()
 	metric, err := m.Status.GetMetricWithLabelValues(target)
 	require.NoError(t, err)
 	test.RequireIntMetricValue(t, expected, metric)
 }
 
-func requireFailureTotal(t *testing.T, m *ConnectionMetrics, target string, expected int) {
+func requireFailureTotal(t *testing.T, m *monitoring.ConnectionMetrics, target string, expected int) {
 	t.Helper()
 	metric, err := m.FailureTotal.GetMetricWithLabelValues(target)
 	require.NoError(t, err)

@@ -24,10 +24,11 @@ func GenerateTransactions(tb testing.TB, p *Profile, count int) []*servicepb.Loa
 		p = DefaultProfile(1)
 	}
 	p.Workers = 1
-	g, err := newIndependentTxGenerators(p)
+	g, err := newIndependentTxGenerators(p, NewTxCounter())
 	require.NoError(tb, err)
 	require.Len(tb, g, 1)
-	return g[0].buildAndSignBatch(count)
+	require.Positive(tb, count)
+	return g[0].buildAndSignBatch(uint64(count)) //nolint:gosec // count is a non-negative test batch size.
 }
 
 // DefaultProfile is used for testing and benchmarking.

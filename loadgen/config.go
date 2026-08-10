@@ -26,3 +26,13 @@ type (
 		Generate adapters.Phases `mapstructure:"generate" yaml:"generate"`
 	}
 )
+
+// Validate runs the cross-field configuration checks that struct `validate` tags can't express (a field
+// compared to a sum of other fields). The config loader invokes it after struct-tag validation, so these
+// rules are enforced at config load rather than at runtime.
+func (c *ClientConfig) Validate() error {
+	if c.LoadProfile == nil {
+		return nil
+	}
+	return c.LoadProfile.Transaction.Validate()
+}
