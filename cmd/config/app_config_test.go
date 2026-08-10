@@ -485,10 +485,9 @@ func TestReadConfigLoadGen(t *testing.T) {
 	}
 }
 
-// TestLoadGenProbabilityValidation exercises the decode-and-validate path for the loadgen transaction
-// conflict probabilities: values inside the closed interval [0,1] are accepted, values outside are
-// rejected by validation. This also covers the per-dependency probability, which lives inside a slice
-// (validated via "dive").
+// TestLoadGenProbabilityValidation exercises the decode-and-validate path for the loadgen
+// invalid-signatures probability: values inside the closed interval [0,1] are accepted, values outside
+// are rejected by validation.
 func TestLoadGenProbabilityValidation(t *testing.T) {
 	t.Parallel()
 	read := func(t *testing.T, yaml string) error {
@@ -500,10 +499,6 @@ func TestLoadGenProbabilityValidation(t *testing.T) {
 	invalidSig := func(probability string) string {
 		return "load-profile:\n  transaction:\n    invalid-signatures: " + probability + "\n"
 	}
-	dependency := func(probability string) string {
-		return "load-profile:\n  transaction:\n    dependencies:\n" +
-			"      - probability: " + probability + "\n        src: read\n        dst: write\n"
-	}
 
 	for _, tc := range []struct {
 		name    string
@@ -514,9 +509,47 @@ func TestLoadGenProbabilityValidation(t *testing.T) {
 		{name: "invalid-signatures is 1", yaml: invalidSig("1")},
 		{name: "invalid-signatures above 1", yaml: invalidSig("1.5"), wantErr: true},
 		{name: "invalid-signatures below 0", yaml: invalidSig("-0.1"), wantErr: true},
-		{name: "dependency probability in range", yaml: dependency("0.5")},
-		{name: "dependency probability above 1", yaml: dependency("2"), wantErr: true},
-		{name: "dependency probability below 0", yaml: dependency("-1"), wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := read(t, tc.yaml)
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+// key-backref-rate is validated at config load: the non-negativity bound is a struct tag, while the
+// upper bound (rate <= total slots) is enforced by ClientConfig.Validate(), which the loader runs after
+// struct-tag validation. tx-reference-gap and key-lookback-window have no cross-field constraints.
+func TestLoadGenTransactionProfileValidation(t *testing.T) {
+	t.Parallel()
+	read := func(t *testing.T, yaml string) error {
+		t.Helper()
+		v := viper.New()
+		require.NoError(t, readYamlConfigsFromIO(v, strings.NewReader(yaml)))
+		return unmarshal(v, &loadgen.ClientConfig{})
+	}
+	// 5 total slots: 2 read-only + 2 read-write + 1 write.
+	profile := func(rate, window string) string {
+		return "load-profile:\n  transaction:\n" +
+			"    read-only-count: 2\n    read-write-count: 2\n    write-count: 1\n" +
+			"    key-backref-rate: " + rate + "\n    key-lookback-window: " + window + "\n"
+	}
+
+	for _, tc := range []struct {
+		name    string
+		yaml    string
+		wantErr bool
+	}{
+		{name: "valid references", yaml: profile("3", "100")},
+		{name: "rate at total slots", yaml: profile("5", "100")},
+		{name: "zero window accepted", yaml: profile("3", "0")},
+		{name: "negative rate rejected by tag", yaml: profile("-1", "100"), wantErr: true},
+		{name: "rate above total slots rejected by Validate", yaml: profile("6", "100"), wantErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

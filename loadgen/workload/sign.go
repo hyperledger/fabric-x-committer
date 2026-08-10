@@ -134,7 +134,7 @@ func newPolicyEndorserFromMSP(signingIdentities []msp.SigningIdentity) (
 		siBytes, serErr := si.Serialize()
 		utils.Must(serErr)
 		serializedSigningIdentities[i] = siBytes
-		sigPolicies[i] = policydsl.SignedBy(int32(i)) //nolint:gosec // safe int -> int32.
+		sigPolicies[i] = policydsl.SignedBy(int32(i))
 	}
 
 	nsPolicy := &applicationpb.NamespacePolicy{
