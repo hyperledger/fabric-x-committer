@@ -24,7 +24,7 @@ The following Sidecar metrics are exported for consumption by Prometheus.
 | sidecar_coordinator_connection_failure_total               | counter   | grpc_target                      | Total number of connection failures to coordinator service. Short-lived failures may not always be captured.                                             |
 | sidecar_grpc_requests_total                                | counter   | method                           | Number of requests by the service                                                                                                                        |
 | sidecar_grpc_requests_latency_seconds                      | histogram | method status                    | The latency (seconds) of requests by the service, by method and gRPC status code                                                                         |
-| sidecar_grpc_stream_duration_seconds                       | histogram | method status                    | The duration (seconds) a stream ran from start to end, by method and gRPC status code                                                                    |
+| sidecar_grpc_stream_duration_seconds                       | histogram | method status                    | The duration (seconds) a stream was active from start to end, by method and gRPC status code                                                             |
 | sidecar_grpc_active_streams                                | gauge     | method                           | Number of gRPC streams currently open on the server                                                                                                      |
 | sidecar_grpc_active_connections                            | gauge     |                                  | Number of client connections currently open on the server                                                                                                |
 | sidecar_ledger_append_block_seconds                        | histogram |                                  | Time spent appending a block to the ledger.                                                                                                              |
@@ -61,7 +61,7 @@ The following Coordinator metrics are exported for consumption by Prometheus.
 | coordinator_grpc_committed_transaction_total                                           | counter   | status        | Total number of transactions committed status sent by the coordinator service to the client.                  |
 | coordinator_grpc_requests_total                                                        | counter   | method        | Number of requests by the service                                                                             |
 | coordinator_grpc_requests_latency_seconds                                              | histogram | method status | The latency (seconds) of requests by the service, by method and gRPC status code                              |
-| coordinator_grpc_stream_duration_seconds                                               | histogram | method status | The duration (seconds) a stream ran from start to end, by method and gRPC status code                         |
+| coordinator_grpc_stream_duration_seconds                                               | histogram | method status | The duration (seconds) a stream was active from start to end, by method and gRPC status code                  |
 | coordinator_grpc_active_streams                                                        | gauge     | method        | Number of gRPC streams currently open on the server                                                           |
 | coordinator_grpc_active_connections                                                    | gauge     |               | Number of client connections currently open on the server                                                     |
 | coordinator_verifier_connection_status                                                 | gauge     | grpc_target   | Connection status to verifier service by grpc target (1 = connected, 0 = disconnected).                       |
@@ -98,16 +98,16 @@ The following Coordinator metrics are exported for consumption by Prometheus.
 
 The following Verifier metrics are exported for consumption by Prometheus.
 
-| Name                                              | Type      | Labels        | Description                                                                           |
-|---------------------------------------------------|-----------|---------------|---------------------------------------------------------------------------------------|
-| verifier_server_tx_input_throughput               | counter   |               | Incoming requests for a component                                                     |
-| verifier_server_tx_output_throughput              | counter   |               | Outgoing responses for a component                                                    |
-| verifier_server_grpc_requests_total               | counter   | method        | Number of requests by the service                                                     |
-| verifier_server_grpc_requests_latency_seconds     | histogram | method status | The latency (seconds) of requests by the service, by method and gRPC status code      |
-| verifier_server_grpc_stream_duration_seconds      | histogram | method status | The duration (seconds) a stream ran from start to end, by method and gRPC status code |
-| verifier_server_grpc_active_streams               | gauge     | method        | Number of gRPC streams currently open on the server                                   |
-| verifier_server_grpc_active_connections           | gauge     |               | Number of client connections currently open on the server                             |
-| verifier_server_parallel_executor_active_requests | gauge     |               | The total number of active requests                                                   |
+| Name                                              | Type      | Labels        | Description                                                                                  |
+|---------------------------------------------------|-----------|---------------|----------------------------------------------------------------------------------------------|
+| verifier_server_tx_input_throughput               | counter   |               | Incoming requests for a component                                                            |
+| verifier_server_tx_output_throughput              | counter   |               | Outgoing responses for a component                                                           |
+| verifier_server_grpc_requests_total               | counter   | method        | Number of requests by the service                                                            |
+| verifier_server_grpc_requests_latency_seconds     | histogram | method status | The latency (seconds) of requests by the service, by method and gRPC status code             |
+| verifier_server_grpc_stream_duration_seconds      | histogram | method status | The duration (seconds) a stream was active from start to end, by method and gRPC status code |
+| verifier_server_grpc_active_streams               | gauge     | method        | Number of gRPC streams currently open on the server                                          |
+| verifier_server_grpc_active_connections           | gauge     |               | Number of client connections currently open on the server                                    |
+| verifier_server_parallel_executor_active_requests | gauge     |               | The total number of active requests                                                          |
 
 ## Validator-Committer Metrics
 
@@ -120,21 +120,21 @@ The following Validator-Committer metrics are exported for consumption by Promet
 
 The following Query Service metrics are exported for consumption by Prometheus.
 
-| Name                                                     | Type      | Labels        | Description                                                                           |
-|----------------------------------------------------------|-----------|---------------|---------------------------------------------------------------------------------------|
-| queryservice_grpc_requests_total                         | counter   | method        | Number of requests by the service                                                     |
-| queryservice_grpc_requests_latency_seconds               | histogram | method status | The latency (seconds) of requests by the service, by method and gRPC status code      |
-| queryservice_grpc_stream_duration_seconds                | histogram | method status | The duration (seconds) a stream ran from start to end, by method and gRPC status code |
-| queryservice_grpc_active_streams                         | gauge     | method        | Number of gRPC streams currently open on the server                                   |
-| queryservice_grpc_active_connections                     | gauge     |               | Number of client connections currently open on the server                             |
-| queryservice_grpc_key_requested_total                    | counter   |               | Number of keys requested by the service                                               |
-| queryservice_grpc_key_responded_total                    | counter   |               | Number of keys responded by the service                                               |
-| queryservice_database_processing_sessions                | gauge     | session       | Number of processing sessions in the service                                          |
-| queryservice_database_batch_queueing_time_seconds        | histogram |               | The time batches waits for execution                                                  |
-| queryservice_database_batch_query_size                   | histogram |               | The size of submitted batches                                                         |
-| queryservice_database_batch_response_size                | histogram |               | The size of response for batch queries                                                |
-| queryservice_database_request_assignment_latency_seconds | histogram |               | The latency of the query request assignment to the queue                              |
-| queryservice_database_query_latency_seconds              | histogram |               | The latency of the queries' batches                                                   |
+| Name                                                     | Type      | Labels        | Description                                                                                  |
+|----------------------------------------------------------|-----------|---------------|----------------------------------------------------------------------------------------------|
+| queryservice_grpc_requests_total                         | counter   | method        | Number of requests by the service                                                            |
+| queryservice_grpc_requests_latency_seconds               | histogram | method status | The latency (seconds) of requests by the service, by method and gRPC status code             |
+| queryservice_grpc_stream_duration_seconds                | histogram | method status | The duration (seconds) a stream was active from start to end, by method and gRPC status code |
+| queryservice_grpc_active_streams                         | gauge     | method        | Number of gRPC streams currently open on the server                                          |
+| queryservice_grpc_active_connections                     | gauge     |               | Number of client connections currently open on the server                                    |
+| queryservice_grpc_key_requested_total                    | counter   |               | Number of keys requested by the service                                                      |
+| queryservice_grpc_key_responded_total                    | counter   |               | Number of keys responded by the service                                                      |
+| queryservice_database_processing_sessions                | gauge     | session       | Number of processing sessions in the service                                                 |
+| queryservice_database_batch_queueing_time_seconds        | histogram |               | The time batches waits for execution                                                         |
+| queryservice_database_batch_query_size                   | histogram |               | The size of submitted batches                                                                |
+| queryservice_database_batch_response_size                | histogram |               | The size of response for batch queries                                                       |
+| queryservice_database_request_assignment_latency_seconds | histogram |               | The latency of the query request assignment to the queue                                     |
+| queryservice_database_query_latency_seconds              | histogram |               | The latency of the queries' batches                                                          |
 
 ## Load Generator Metrics
 
