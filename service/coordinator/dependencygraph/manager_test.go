@@ -26,6 +26,12 @@ import (
 
 const DefaultQueueMonitorSamplingTime = 100 * time.Millisecond
 
+// Manager kinds under test.
+const (
+	managerKindGlobalLocal = "global-local"
+	managerKindSimple      = "simple"
+)
+
 type batchWithLatency struct {
 	batch TxNodeBatch
 	done  time.Time
@@ -39,121 +45,133 @@ func BenchmarkDependencyGraph(b *testing.B) {
 	latency := 10 * time.Second
 	batchSize := 1024
 
-	testKeysCount := []int{2, 4, 6}
-	allDep := []string{workload.DependencyReadOnly, workload.DependencyReadWrite, workload.DependencyBlindWrite}
-
-	// We start with one to have no dependencies.
-	testDependencies := make([]workload.DependencyDescription, 1, 1+len(allDep)*len(allDep))
-	for _, src := range allDep {
-		for _, dst := range allDep {
-			testDependencies = append(testDependencies, workload.DependencyDescription{
-				Probability: 0.3,
-				Gap:         500,
-				Src:         src,
-				Dst:         dst,
-			})
+	// Dependency shapes over the united key space: writes CREATE keys (grow the space) and every
+	// remaining write slot plus every read-only slot BACKWARD-references a past create (reuse).
+	// key-backref-rate is the number of backward references per transaction; the remaining slots create
+	// keys. Forward (read-before-create / write-after-read) dependencies are NOT synthesized statically —
+	// at runtime they arise from out-of-order commit — so this benchmark exercises the backward shapes.
+	// configure mutates the whole *workload.Profile (it sets p.Transaction.* fields).
+	type shape struct {
+		name      string
+		configure func(p *workload.Profile)
+	}
+	// noSplit leaves key-backref-rate at 0: every slot is a fresh unique key, so there are no dependencies.
+	noSplit := func(ro, rw, bw uint32) func(*workload.Profile) {
+		return func(p *workload.Profile) {
+			p.Transaction.ReadOnlyCount = ro
+			p.Transaction.ReadWriteCount = rw
+			p.Transaction.BlindWriteCount = bw
 		}
 	}
+	// withSplit enables references: one create per transaction, the rest drawn from a 64-key working set
+	// one transaction behind.
+	withSplit := func(ro, rw, bw uint32) func(*workload.Profile) {
+		return func(p *workload.Profile) {
+			p.Transaction.ReadOnlyCount = ro
+			p.Transaction.ReadWriteCount = rw
+			p.Transaction.BlindWriteCount = bw
+			p.Transaction.KeyBackrefRate = float64(ro+rw+bw) - 1 // all but one slot references a past create
+			p.Transaction.TxReferenceGap = 1
+			p.Transaction.KeyLookbackWindow = 64
+		}
+	}
+	shapes := []shape{
+		{"no-dep", noSplit(1, 2, 1)},              // fresh unique keys, no deps
+		{"write__read", withSplit(1, 0, 1)},       // BW create; backward RO ref -> RAW
+		{"write__write", withSplit(0, 0, 2)},      // BW create + backward BW ref -> WAW
+		{"write__read-write", withSplit(0, 2, 0)}, // RW create + backward RW ref -> RAW+WAW
+	}
 
-	for _, keyCount := range testKeysCount {
-		b.Run(fmt.Sprintf("%d-keys", keyCount), func(b *testing.B) {
-			for idx, dep := range testDependencies {
-				p := workload.DefaultProfile(1)
-				name := "no-dep"
-				if idx > 0 {
-					p.Transaction.Dependencies = []workload.DependencyDescription{dep}
-					name = fmt.Sprintf("%s AND %s", dep.Src, dep.Dst)
-				}
-				p.Transaction.ReadWriteCount = uint32(keyCount) //nolint:gosec // small test value.
+	for _, sh := range shapes {
+		p := workload.DefaultProfile(1)
+		sh.configure(p)
 
+		b.Run(sh.name, func(b *testing.B) {
+			for _, tc := range []struct {
+				kind    string
+				workers int
+			}{
+				{kind: managerKindSimple, workers: 2},
+				{kind: managerKindGlobalLocal, workers: 2},
+				{kind: managerKindGlobalLocal, workers: 4},
+			} {
+				name := fmt.Sprintf("%s-%d", tc.kind, tc.workers)
 				b.Run(name, func(b *testing.B) {
-					for _, tc := range []struct {
-						kind    string
-						workers int
-					}{
-						{kind: "simple", workers: 2},
-						{kind: "global-local", workers: 2},
-						{kind: "global-local", workers: 4},
-					} {
-						name := fmt.Sprintf("%s-%d", tc.kind, tc.workers)
-						b.Run(name, func(b *testing.B) {
-							// The main queues.
-							in := make(chan *TransactionBatch, 8)
-							out := make(chan TxNodeBatch, 8)
-							val := make(chan TxNodeBatch, 8)
+					// The main queues.
+					in := make(chan *TransactionBatch, 8)
+					out := make(chan TxNodeBatch, 8)
+					val := make(chan TxNodeBatch, 8)
 
-							// Starts the dependency manager.
-							startManager(b, tc.kind, &Parameters{
-								IncomingTxs:               in,
-								OutgoingDepFreeTxsNode:    out,
-								IncomingValidatedTxsNode:  val,
-								NumOfLocalDepConstructors: tc.workers,
-								WaitingTxsLimit:           20_000_000,
-								QueueMonitorSamplingTime:  DefaultQueueMonitorSamplingTime,
-								PrometheusMetricsProvider: monitoring.NewProvider(),
-							})
+					// Starts the dependency manager.
+					startManager(b, tc.kind, &Parameters{
+						IncomingTxs:               in,
+						OutgoingDepFreeTxsNode:    out,
+						IncomingValidatedTxsNode:  val,
+						NumOfLocalDepConstructors: tc.workers,
+						WaitingTxsLimit:           20_000_000,
+						QueueMonitorSamplingTime:  DefaultQueueMonitorSamplingTime,
+						PrometheusMetricsProvider: monitoring.NewProvider(),
+					})
 
-							// Over-supply transactions (3x) so the manager's internal
-							// queue stays populated throughout the measured window; we
-							// stop once b.N transactions have been released.
-							txPoll := workload.GenerateTransactions(b, p, max(b.N*3, batchSize*3))
+					// Over-supply transactions (3x) so the manager's internal
+					// queue stays populated throughout the measured window; we
+					// stop once b.N transactions have been released.
+					txPoll := workload.GenerateTransactions(b, p, max(b.N*3, batchSize*3))
 
-							ctx := b.Context()
-							outCtx := channel.NewReader(ctx, out)
-							valCtx := channel.NewWriter(ctx, val)
-							inCtx := channel.NewWriter(ctx, in)
-							latencySimulatorQueue := channel.Make[*batchWithLatency](ctx, 1024*1024)
+					ctx := b.Context()
+					outCtx := channel.NewReader(ctx, out)
+					valCtx := channel.NewWriter(ctx, val)
+					inCtx := channel.NewWriter(ctx, in)
+					latencySimulatorQueue := channel.Make[*batchWithLatency](ctx, 1024*1024)
 
-							// Simulates the batch processing latency.
-							go func() {
-								for ctx.Err() == nil {
-									wtl, ok := latencySimulatorQueue.Read()
-									if !ok {
-										return
-									}
-									waitFor := time.Until(wtl.done)
-									if waitFor > 0 {
-										select {
-										case <-time.After(waitFor):
-										case <-ctx.Done():
-										}
-									}
-									valCtx.Write(wtl.batch)
-								}
-							}()
-
-							b.ResetTimer()
-							// Generates the load to the manager's queue.
-							go func() {
-								var i uint64
-								for ctx.Err() == nil && len(txPoll) > 0 {
-									take := min(batchSize, len(txPoll))
-									batch := workload.MapToCoordinatorBatch(i, txPoll[:take])
-									txPoll = txPoll[take:]
-									inCtx.Write(&TransactionBatch{
-										ID:  i,
-										Txs: batch.Txs,
-									})
-									i++
-								}
-							}()
-							// Reads the output of the manager, and forward it to the latency simulator.
-							var total int
-							for total < b.N {
-								batch, ok := outCtx.Read()
-								if !ok {
-									return
-								}
-								latencySimulatorQueue.Write(&batchWithLatency{
-									batch: batch,
-									done:  time.Now().Add(latency),
-								})
-								total += len(batch)
+					// Simulates the batch processing latency.
+					go func() {
+						for ctx.Err() == nil {
+							wtl, ok := latencySimulatorQueue.Read()
+							if !ok {
+								return
 							}
-							b.StopTimer()
-							test.ReportTxPerSecond(b)
+							waitFor := time.Until(wtl.done)
+							if waitFor > 0 {
+								select {
+								case <-time.After(waitFor):
+								case <-ctx.Done():
+								}
+							}
+							valCtx.Write(wtl.batch)
+						}
+					}()
+
+					b.ResetTimer()
+					// Generates the load to the manager's queue.
+					go func() {
+						var i uint64
+						for ctx.Err() == nil && len(txPoll) > 0 {
+							take := min(batchSize, len(txPoll))
+							batch := workload.MapToCoordinatorBatch(i, txPoll[:take])
+							txPoll = txPoll[take:]
+							inCtx.Write(&TransactionBatch{
+								ID:  i,
+								Txs: batch.Txs,
+							})
+							i++
+						}
+					}()
+					// Reads the output of the manager, and forward it to the latency simulator.
+					var total int
+					for total < b.N {
+						batch, ok := outCtx.Read()
+						if !ok {
+							return
+						}
+						latencySimulatorQueue.Write(&batchWithLatency{
+							batch: batch,
+							done:  time.Now().Add(latency),
 						})
+						total += len(batch)
 					}
+					b.StopTimer()
+					test.ReportTxPerSecond(b)
 				})
 			}
 		})
@@ -174,7 +192,7 @@ func TestDependencyGraphManager(t *testing.T) {
 
 	const waitingTXsLimit = 20
 
-	for _, manType := range []string{"global-local", "simple"} {
+	for _, manType := range []string{managerKindGlobalLocal, managerKindSimple} {
 		t.Run(manType, func(t *testing.T) {
 			t.Parallel()
 			incomingTxs := make(chan *TransactionBatch, 10)
@@ -397,11 +415,11 @@ func startManager(tb testing.TB, kind string, p *Parameters) *perfMetrics {
 	}
 	var metrics *perfMetrics
 	switch kind {
-	case "global-local":
+	case managerKindGlobalLocal:
 		m := NewManager(p)
 		manService = m
 		metrics = m.metrics
-	case "simple":
+	case managerKindSimple:
 		m := NewSimpleManager(p)
 		manService = m
 		metrics = m.metrics

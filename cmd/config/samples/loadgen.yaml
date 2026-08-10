@@ -141,32 +141,50 @@ load-profile:
   transaction:
     # Size of generated keys in bytes. Affects transaction payload size and storage requirements.
     key-size: 32
-    # Size in bytes of the metadata for each transaction (0 means nil value).
-    # metadata-size: 0
     # Size in bytes of the value written for each read-write operation (0 means nil value).
     # read-write-value-size: 0
     # Size in bytes of the value written for each blind-write operation (0 means nil value).
     # blind-write-value-size: 0
+    # Size in bytes of the metadata for each transaction (0 means nil value).
+    # metadata-size: 0
     # Number of read-only operations per transaction.
     # read-only-count: 0
     # Number of read-write operations per transaction.
     read-write-count: 2
     # Number of blind-write operations per transaction.
     # write-count: 0
-    # Fraction of transactions to generate with invalid signatures (0.0 to 1.0).
-    # Used to test signature verification and error handling. 0.1 = 10% invalid.
-    # Independent Bernoulli trial applied per transaction.
+    # Fraction of transactions to generate with invalid signatures (0.0 to 1.0), for testing
+    # signature verification and error handling. 0.1 = 10% invalid. The decision is derived
+    # deterministically from the transaction index.
     invalid-signatures: 0.1
-    # Dependencies inject read-write conflicts between transactions to test MVCC validation.
-    # Each dependency type is an independent Bernoulli trial applied per transaction.
-    # 'src' and 'dst' specify the operation types that create the dependency:
-    #   "read", "write", or "read-write" (both read and write the same key).
-    # 'gap' controls the distance (in transaction count) between dependent transactions (min: 1, default: 1).
-    # dependencies:
-    #   - probability: 0.05   # 5% of transactions will have this dependency
-    #     gap: 1              # Dependent transaction is the immediately next one
-    #     src: read-write     # Source transaction reads and writes a key
-    #     dst: read-write     # Destination transaction reads and writes the same key
+    #
+    # The transaction layout above is fixed (same slot counts every transaction). key-backref-rate,
+    # tx-reference-gap, and key-lookback-window control only which keys fill those slots — fresh keys, or
+    # references to keys from earlier transactions — which is what creates (or avoids) commit-time
+    # contention. Reads carry nil versions for now; a later PR adds a querier that fills the real versions.
+    #
+    # key-backref-rate: average number of backward references (reused keys) per transaction; the remaining
+    # slots create fresh keys, so the average number of NEW keys per transaction is the total slot count
+    # minus this rate. References fill slots after the fresh keys, in layout order: read-write, then
+    # blind-write, then read-only.
+    # 0 (DEFAULT) gives every slot a fresh unique key — no reuse, no contention.
+    # Below 1 it acts as a probability: the fraction of transactions with a single reference (0.3 ≈ 30%).
+    # 1 or more is roughly a fixed count per transaction; a fractional part adds that probability on top
+    # (2.5 ≈ two or three references). It must not exceed the total slot count (read-only + read-write +
+    # write); at the maximum every slot is a reference (a fully static working set).
+    # key-backref-rate: 1
+    # tx-reference-gap and key-lookback-window shape where backward references point; both are optional
+    # (default 0) and irrelevant when key-backref-rate is 0.
+    # A reference is drawn from the key-lookback-window newest keys that existed tx-reference-gap
+    # transactions ago. Example: tx-reference-gap=100, key-lookback-window=10 — a reference from
+    # transaction 1000 is drawn from the 10 newest keys that existed as of transaction 900.
+    # tx-reference-gap: 0 (default) draws the newest keys, which may still be in flight, so conflicting
+    # transactions can land in the same block (a live dependency); larger values draw older, committed keys.
+    # key-lookback-window: 0 (default) steps straight back from the gap position (most contention); a
+    # positive value spreads references over that many keys (larger = less contention), with no minimum —
+    # surplus references beyond the window simply step back below it.
+    # tx-reference-gap: 0
+    # key-lookback-window: 1024
   # Policy configuration for transaction endorsement and validation
   policy:
     # Channel ID for which transactions are generated. Must match the target blockchain channel.

@@ -37,13 +37,15 @@ type Profile struct {
 	Transaction TransactionProfile `mapstructure:"transaction" yaml:"transaction"`
 	Policy      PolicyProfile      `mapstructure:"policy" yaml:"policy"`
 
-	// The seed to generate the seeds for each worker
+	// Seed is the single PRF root for the whole workload. Every generated item (keys, values, nonce,
+	// metadata, and the new-vs-existing layout) is a pure function of this seed and the item's global
+	// transaction index, so the same Seed reproduces the same items.
 	Seed int64 `mapstructure:"seed" yaml:"seed"`
 
-	// Workers is the number of independent producers.
-	// Each worker uses a unique seed that is generated from the main seed.
-	// To ensure responsibility of items between runs (e.g., for query)
-	// the number of workers must be preserved.
+	// Workers is the number of parallel producers. They share one global transaction-index counter and
+	// the same Seed, so the multiset of generated transactions is independent of the worker count —
+	// workers are pure parallelism. The count therefore does not need to be preserved between runs to
+	// reproduce items.
 	Workers uint32 `mapstructure:"workers" yaml:"workers"`
 }
 
@@ -66,7 +68,6 @@ type BlockProfile struct {
 }
 
 // TransactionProfile describes generate TX characteristics.
-// Note that each of the conflict probabilities are independent bernoulli distributions.
 type TransactionProfile struct {
 	// The byte sizes of the generated key/values/metadata (size=0 => nil), ordered key, value, metadata.
 	KeySize             uint32 `mapstructure:"key-size" yaml:"key-size"`
@@ -81,22 +82,54 @@ type TransactionProfile struct {
 	// The number of keys to generate (write)
 	BlindWriteCount uint32 `mapstructure:"write-count" yaml:"write-count"`
 
-	// Probability of invalid signatures [0,1] (default: 0)
+	// The transaction layout above is fixed: every transaction has the same slot counts. The three knobs
+	// below control only which keys fill those slots — fresh keys, or references to keys from earlier
+	// transactions — which is what produces (or avoids) commit-time contention. Reads carry nil versions
+	// for now; a later PR adds a querier that fills the real versions.
+
+	// KeyBackrefRate is the average number of BACKWARD REFERENCES (reused keys) per transaction: slots that
+	// reference a key created by an earlier transaction instead of creating a fresh one, so keys are reused
+	// and the coordinator sees commit-time contention. The remaining slots create fresh keys, so the
+	// average number of NEW keys per transaction is the total slot count minus this rate.
+	// 0 (default) means no references — every slot gets a fresh unique key, the historical contention-free
+	// workload. Below 1 it acts as a probability: the fraction of transactions that get a single reference
+	// (e.g. 0.3 ≈ 30% of transactions reference one existing key). 1 or more is roughly a fixed count of
+	// references per transaction, and a fractional part adds that sub-1 probability on top (e.g. 2.5 ≈ two
+	// or three references). It must not exceed the total slot count (read-only + read-write + write); at the
+	// maximum every slot is a reference (a fully static working set, no new keys). References fill slots
+	// after the fresh keys, in layout order: read-write, then blind-write, then read-only.
+	KeyBackrefRate float64 `mapstructure:"key-backref-rate" yaml:"key-backref-rate" validate:"gte=0"`
+	// TxReferenceGap and KeyLookbackWindow shape where backward references point; both are optional, both
+	// default to 0, and both are irrelevant when key-backref-rate is 0. A reference is drawn from the
+	// KeyLookbackWindow newest keys that existed TxReferenceGap transactions ago.
+	//
+	// TxReferenceGap is how far back, in transactions, references reach. 0 (default) draws the newest keys,
+	// which may still be in flight — so conflicting transactions can land in the same block (a live
+	// dependency); larger values draw older, already-committed keys.
+	TxReferenceGap uint64 `mapstructure:"tx-reference-gap" yaml:"tx-reference-gap"`
+	// KeyLookbackWindow is how many of the newest keys a reference is drawn from. 0 (default) means no
+	// window: references step straight back from the gap position (the newest key, then the one before it,
+	// and so on) — a fixed, most-contended pattern. A positive value spreads references across that many
+	// keys (larger = less contention); it has no minimum, and when a transaction needs more distinct
+	// references than the window holds, the surplus simply steps back beyond the window.
+	KeyLookbackWindow uint64 `mapstructure:"key-lookback-window" yaml:"key-lookback-window"`
+
+	// InvalidSignatures is the probability [0,1] that a transaction is stamped with a bad signature
+	// (default: 0). The decision is derived deterministically from the transaction index.
 	InvalidSignatures Probability `mapstructure:"invalid-signatures" yaml:"invalid-signatures" validate:"gte=0,lte=1"`
-	// Dependencies list of dependencies
-	Dependencies []DependencyDescription `mapstructure:"dependencies" yaml:"dependencies" validate:"dive"`
 }
 
-// DependencyDescription describes a dependency type.
-type DependencyDescription struct {
-	// Probability of the dependency type [0,1] (default: 0)
-	Probability Probability `mapstructure:"probability" yaml:"probability" validate:"gte=0,lte=1"`
-	// Gap is the distance between the dependent TXs (min: 1, default: 1)
-	Gap uint64 `mapstructure:"gap" yaml:"gap"`
-	// Src dependency "read", "write", or "read-write"
-	Src string `mapstructure:"src" yaml:"src"`
-	// Dst dependency "read", "write", or "read-write"
-	Dst string `mapstructure:"dst" yaml:"dst"`
+// Validate checks the split configuration. key-backref-rate must not exceed the total slot count, so the
+// per-transaction reference count never exceeds the transaction's slots; 0 (the default) keeps the
+// historical fresh-key workload. tx-reference-gap and key-lookback-window are always optional and have no
+// minimum — a zero or small window never fails, as references step back beyond it as needed.
+func (p *TransactionProfile) Validate() error {
+	totalSlots := uint64(p.ReadOnlyCount) + uint64(p.ReadWriteCount) + uint64(p.BlindWriteCount)
+	if p.KeyBackrefRate > float64(totalSlots) {
+		return errors.Newf("key-backref-rate %v exceeds total slots %d (read-only + read-write + write)",
+			p.KeyBackrefRate, totalSlots)
+	}
+	return nil
 }
 
 // PolicyProfile holds the policy information for the load generation.
