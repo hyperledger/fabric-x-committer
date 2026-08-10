@@ -48,18 +48,20 @@ const (
 	queryActiveConnectionsMetric   = "queryservice_grpc_active_connections"
 )
 
-// keepAliveConfig holds the per-test knobs for a keep-alive runtime.
-type keepAliveConfig struct {
-	permitWithoutStream  bool
-	maxConcurrentStreams int
-}
+type (
+	// keepAliveConfig holds the per-test knobs for a keep-alive runtime.
+	keepAliveConfig struct {
+		permitWithoutStream  bool
+		maxConcurrentStreams int
+	}
 
-type blockAndWaitParameters struct {
-	proxy                 *toxiclient.Proxy
-	metricsScraper        runner.MetricsScraper
-	prevActiveConnections int
-	metric                string
-}
+	blockAndWaitParameters struct {
+		proxy                 *toxiclient.Proxy
+		metricsScraper        runner.MetricsScraper
+		prevActiveConnections int
+		metric                string
+	}
+)
 
 // TestKeepAliveSidecarDeadConnectionDetection verifies that the sidecar's server-side keep-alive
 // closes a silent connection on its own. It observes the close directly on the server, through

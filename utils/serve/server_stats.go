@@ -16,12 +16,10 @@ import (
 
 type (
 	// ServerStatsHandler is a gRPC stats.Handler attached to every server. It records
-	// server-side connection and RPC-level metrics from the gRPC stats callbacks, so
-	// services do not hand-write this instrumentation inside their RPC methods.
+	// server-side connection and RPC-level metrics from the gRPC stats callbacks.
 	//
-	// Metrics are held in ServerMetrics, stored in an atomic pointer and a no-op until a service
-	// registers it, so registration is safe while or after the server starts serving. Each
-	// metric field is optional: a nil field is simply not recorded.
+	// Metrics are held in ServerMetrics struct, stored in an atomic pointer and a no-op until a service
+	// registers it, so registration is safe while or after the server starts serving.
 	ServerStatsHandler struct {
 		metrics atomic.Pointer[ServerMetrics]
 	}

@@ -36,10 +36,7 @@ const (
 
 // TestServerStatsMetricsFullSystem verifies that the gRPC stats handler records RPC-level metrics
 // on the full system through actual client calls, validating the whole mechanism - server wiring,
-// method labeling, and metric recording. The subtests run in parallel against one shared runtime:
-// they are independent because the unary and connection cases observe query-service metrics while
-// the streaming case observes sidecar metrics, and the unary case reuses the runtime's connection
-// rather than opening one, so only the connection case moves the query active-connections gauge.
+// method labeling, and metric recording.
 func TestServerStatsMetricsFullSystem(t *testing.T) {
 	t.Parallel()
 

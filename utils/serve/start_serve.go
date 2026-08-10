@@ -51,8 +51,8 @@ type (
 		GrpcTLSProvider *TLSProvider
 
 		// StatsHandler records server-side connection and RPC-level metrics from the gRPC
-		// stats callbacks. Services opt in by registering metric families via
-		// RegisterServerMetrics from their own monitoring provider.
+		// stats callbacks.
+		// Services opt in by registering via RegisterServerMetrics.
 		StatsHandler *ServerStatsHandler
 
 		httpServer *http.Server
