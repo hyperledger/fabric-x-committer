@@ -4,7 +4,7 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package monitoring
+package monitoring_test
 
 import (
 	"context"
@@ -19,13 +19,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 type metricsProviderTestEnv struct {
-	provider        *Provider
+	provider        *monitoring.Provider
 	url             string
 	clientTLSConfig *tls.Config
 }
@@ -203,7 +204,7 @@ func TestPprofEndpoints(t *testing.T) {
 
 	// Extract base URL from metrics URL (remove /metrics path)
 	metricsURL := env.url
-	baseURL := metricsURL[:len(metricsURL)-len(metricsSubPath)]
+	baseURL := metricsURL[:len(metricsURL)-len(monitoring.MetricsSubPath)]
 
 	tests := []struct {
 		name string
@@ -233,16 +234,16 @@ func TestPprofEndpoints(t *testing.T) {
 }
 
 type fakeService struct {
-	*Provider
+	*monitoring.Provider
 }
 
 func (f *fakeService) RegisterService(s serve.Servers) {
-	RegisterMonitoringServer(s.HTTP, f.Provider)
+	monitoring.RegisterMonitoringServer(s.HTTP, f.Provider)
 }
 
 func newMetricsProviderTestEnv(t *testing.T, serverTLS, clientTLS connection.TLSConfig) *metricsProviderTestEnv {
 	t.Helper()
-	p := NewProvider()
+	p := monitoring.NewProvider()
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -255,7 +256,7 @@ func newMetricsProviderTestEnv(t *testing.T, serverTLS, clientTLS connection.TLS
 	clientTLSConfig, err := clientCreds.CreateClientTLSConfig()
 	require.NoError(t, err)
 
-	metricsURL, err := MakeMetricsURL(serverConfig.HTTP.Endpoint.Address(), &serverTLS)
+	metricsURL, err := monitoring.MakeMetricsURL(serverConfig.HTTP.Endpoint.Address(), &serverTLS)
 	require.NoError(t, err)
 
 	client := &http.Client{

@@ -28,7 +28,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testapp"
@@ -77,7 +76,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 	}, nil)
 	// Waiting for all the connections ensures the validatorCommitter slice is fully populated,
 	// as newSvMgrTestEnv does for the verifiers.
-	monitoring.WaitForConnections(
+	test.WaitForConnections(
 		t, metrics.Provider, "coordinator_vcservice_connection_status", numVCService,
 	)
 
@@ -99,10 +98,10 @@ func (e *vcMgrTestEnv) requireConnectionMetrics(
 	t.Helper()
 	require.Less(t, vcIndex, len(e.validatorCommitterManager.validatorCommitter))
 	sv := e.validatorCommitterManager.validatorCommitter[vcIndex]
-	monitoring.RequireConnectionMetrics(
+	test.RequireConnectionMetrics(
 		t, sv.conn.CanonicalTarget(),
 		sv.metrics.vcs.connection,
-		monitoring.ExpectedConn{Status: expectedConnStatus, FailureTotal: expectedConnFailureTotal},
+		test.ExpectedConn{Status: expectedConnStatus, FailureTotal: expectedConnFailureTotal},
 	)
 }
 
