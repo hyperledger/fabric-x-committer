@@ -7,13 +7,18 @@ SPDX-License-Identifier: Apache-2.0
 package testdb
 
 import (
+	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 // GetContainerLogs and ExecuteCommand accept a [test.TestingT] so that a polling condition can
@@ -51,6 +56,34 @@ func TestStopAndRemoveContainerWithoutContainerIsNoOp(t *testing.T) {
 	t.Parallel()
 	dc := &DatabaseContainer{Name: "sc_test_never_started"}
 
+	dc.StopAndRemoveContainer(t)
+}
+
+// A cluster node can exit on its own before teardown reaches it — a yugabyte tserver does once the
+// masters it depends on are stopped — so teardown must not fail on a container that is already gone.
+// Both halves of "already gone" are covered: exited but still present, and removed outright.
+func TestStopAndRemoveContainerIsIdempotent(t *testing.T) {
+	t.Parallel()
+	dc := &DatabaseContainer{
+		Name:         fmt.Sprintf("%s_teardown_%s", test.DockerNamesPrefix, uuid.NewString()[:8]),
+		Image:        DefaultPostgresImage,
+		DatabaseType: PostgresDBType,
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
+	t.Cleanup(cancel)
+	dc.StartContainer(ctx, t)
+	// Reap directly rather than through the method under test, so a failure here cannot leak the
+	// container. Force removal of an already-removed container is the expected path once the test
+	// body has run.
+	t.Cleanup(func() {
+		_ = dc.client.RemoveContainer(docker.RemoveContainerOptions{ID: dc.ContainerID(), Force: true})
+	})
+
+	// Stop it behind teardown's back, as a node that exits by itself would.
+	require.NoError(t, dc.client.StopContainer(dc.ContainerID(), 10))
+	dc.StopAndRemoveContainer(t)
+
+	// And again, now that the container no longer exists at all.
 	dc.StopAndRemoveContainer(t)
 }
 
