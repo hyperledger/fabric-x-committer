@@ -53,6 +53,16 @@ func GetActiveStreams(m *ServerMetrics) *prometheus.GaugeVec {
 	return m.activeStreams
 }
 
+// GetLatencySeconds returns the unary-RPC latency histogram, labeled by method and gRPC status.
+func GetLatencySeconds(m *ServerMetrics) *prometheus.HistogramVec {
+	return m.latencySeconds
+}
+
+// GetStreamDurationSeconds returns the streaming-RPC duration histogram, labeled by method and gRPC status.
+func GetStreamDurationSeconds(m *ServerMetrics) *prometheus.HistogramVec {
+	return m.streamDurationSeconds
+}
+
 // GetActiveConnections returns the gauge of client connections currently open on the server.
 func GetActiveConnections(m *ServerMetrics) prometheus.Gauge {
 	return m.activeConnections

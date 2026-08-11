@@ -71,6 +71,7 @@ func (h *ServerStatsHandler) HandleRPC(ctx context.Context, s stats.RPCStats) {
 			m.activeStreams.WithLabelValues(rm.full).Inc()
 		}
 	case *stats.End:
+		// If the error is nil, the result is "OK"; if it is not a gRPC error, the result is "Unknown".
 		statusCode := status.Code(st.Error).String()
 		duration := st.EndTime.Sub(st.BeginTime).Seconds()
 

@@ -113,8 +113,31 @@ The following Verifier metrics are exported for consumption by Prometheus.
 
 The following Validator-Committer metrics are exported for consumption by Prometheus.
 
-| Name | Type | Labels | Description |
-|------|------|--------|-------------|
+| Name                                                                         | Type      | Labels        | Description                                                                                                 |
+|------------------------------------------------------------------------------|-----------|---------------|-------------------------------------------------------------------------------------------------------------|
+| vcservice_grpc_received_transaction_total                                    | counter   |               | Number of transactions received by the service                                                              |
+| vcservice_grpc_processed_transaction_total                                   | counter   |               | Number of transactions processed by the service                                                             |
+| vcservice_grpc_requests_total                                                | counter   | method        | Number of requests by the service                                                                           |
+| vcservice_grpc_requests_latency_seconds                                      | histogram | method status | The latency (seconds) of requests by the service, by method and gRPC status code                            |
+| vcservice_grpc_stream_duration_seconds                                       | histogram | method status | The duration (seconds) a stream was active from start to end, by method and gRPC status code                |
+| vcservice_grpc_active_streams                                                | gauge     | method        | Number of gRPC streams currently open on the server                                                         |
+| vcservice_grpc_active_connections                                            | gauge     |               | Number of client connections currently open on the server                                                   |
+| vcservice_committed_transaction_total                                        | counter   |               | The total number of transactions committed                                                                  |
+| vcservice_mvcc_conflict_total                                                | counter   |               | The total number of transactions that failed due to MVCC conflict                                           |
+| vcservice_duplicate_transaction_total                                        | counter   |               | The total number of duplicate transactions                                                                  |
+| vcservice_preparer_input_queue_size                                          | gauge     |               | The preparer input queue size                                                                               |
+| vcservice_validator_input_queue_size                                         | gauge     |               | The validator input queue size                                                                              |
+| vcservice_committer_input_queue_size                                         | gauge     |               | The committer input queue size                                                                              |
+| vcservice_txstatus_output_queue_size                                         | gauge     |               | The txstatus output queue size                                                                              |
+| vcservice_preparer_tx_batch_latency_seconds                                  | histogram |               | The latency of the preparer processing a batch of transactions                                              |
+| vcservice_validator_tx_batch_latency_seconds                                 | histogram |               | The latency of the validator processing a batch of transactions                                             |
+| vcservice_committer_tx_batch_latency_seconds                                 | histogram |               | The latency of the committer processing a batch of transactions                                             |
+| vcservice_database_tx_batch_validation_latency_seconds                       | histogram |               | The latency of the database validating a batch of transactions                                              |
+| vcservice_database_tx_batch_query_version_latency_seconds                    | histogram |               | The latency of the database querying version for keys in a batch of transactions                            |
+| vcservice_database_tx_batch_commit_latency_seconds                           | histogram |               | The latency of the database committing a batch of transactions                                              |
+| vcservice_database_tx_batch_commit_txs_status_latency_seconds                | histogram |               | The latency of the database committing a batch of transactions and updating their status                    |
+| vcservice_database_tx_batch_commit_update_latency_seconds                    | histogram |               | The latency of the database committing a batch of transactions which involes updating existing keys         |
+| vcservice_database_tx_batch_commit_insert_new_key_with_value_latency_seconds | histogram |               | The latency of the database committing a batch of transactions which involes inserting new keys with values |
 
 ## Query Service Metrics
 

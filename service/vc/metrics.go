@@ -13,11 +13,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
-const (
-	metricsNamespaceVC = "vcservice"
-	gRPCSubsystem      = "grpc"
-)
-
 var buckets = []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}
 
 type perfMetrics struct {
@@ -56,112 +51,112 @@ func newVCServiceMetrics() *perfMetrics {
 
 	return &perfMetrics{
 		Provider: p,
-		serverMetrics: serve.NewServerMetrics(p, monitoring.MetricsParameters{
-			Namespace: metricsNamespaceVC,
-			Subsystem: gRPCSubsystem,
-		}),
 		transactionReceivedTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: metricsNamespaceVC,
-			Subsystem: gRPCSubsystem,
+			Namespace: "vcservice",
+			Subsystem: "grpc",
 			Name:      "received_transaction_total",
 			Help:      "Number of transactions received by the service",
 		}),
 		transactionProcessedTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: metricsNamespaceVC,
-			Subsystem: gRPCSubsystem,
+			Namespace: "vcservice",
+			Subsystem: "grpc",
 			Name:      "processed_transaction_total",
 			Help:      "Number of transactions processed by the service",
 		}),
+		serverMetrics: serve.NewServerMetrics(p, monitoring.MetricsParameters{
+			Namespace: "vcservice",
+			Subsystem: "grpc",
+		}),
 		transactionCommittedTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: metricsNamespaceVC,
+			Namespace: "vcservice",
 			Name:      "committed_transaction_total",
 			Help:      "The total number of transactions committed",
 		}),
 		transactionMVCCConflictTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: metricsNamespaceVC,
+			Namespace: "vcservice",
 			Name:      "mvcc_conflict_total",
 			Help:      "The total number of transactions that failed due to MVCC conflict",
 		}),
 		transactionDuplicateTxTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: metricsNamespaceVC,
+			Namespace: "vcservice",
 			Name:      "duplicate_transaction_total",
 			Help:      "The total number of duplicate transactions",
 		}),
 		preparerInputQueueSize: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: metricsNamespaceVC,
+			Namespace: "vcservice",
 			Subsystem: "preparer",
 			Name:      "input_queue_size",
 			Help:      "The preparer input queue size",
 		}),
 		validatorInputQueueSize: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: metricsNamespaceVC,
+			Namespace: "vcservice",
 			Subsystem: "validator",
 			Name:      "input_queue_size",
 			Help:      "The validator input queue size",
 		}),
 		committerInputQueueSize: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: metricsNamespaceVC,
+			Namespace: "vcservice",
 			Subsystem: "committer",
 			Name:      "input_queue_size",
 			Help:      "The committer input queue size",
 		}),
 		txStatusOutputQueueSize: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: metricsNamespaceVC,
+			Namespace: "vcservice",
 			Subsystem: "txstatus",
 			Name:      "output_queue_size",
 			Help:      "The txstatus output queue size",
 		}),
 		preparerTxBatchLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: metricsNamespaceVC,
+			Namespace: "vcservice",
 			Subsystem: "preparer",
 			Name:      "tx_batch_latency_seconds",
 			Help:      "The latency of the preparer processing a batch of transactions",
 			Buckets:   buckets,
 		}),
 		validatorTxBatchLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: metricsNamespaceVC,
+			Namespace: "vcservice",
 			Subsystem: "validator",
 			Name:      "tx_batch_latency_seconds",
 			Help:      "The latency of the validator processing a batch of transactions",
 			Buckets:   buckets,
 		}),
 		committerTxBatchLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: metricsNamespaceVC,
+			Namespace: "vcservice",
 			Subsystem: "committer",
 			Name:      "tx_batch_latency_seconds",
 			Help:      "The latency of the committer processing a batch of transactions",
 			Buckets:   buckets,
 		}),
 		databaseTxBatchValidationLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: metricsNamespaceVC,
+			Namespace: "vcservice",
 			Subsystem: "database",
 			Name:      "tx_batch_validation_latency_seconds",
 			Help:      "The latency of the database validating a batch of transactions",
 			Buckets:   buckets,
 		}),
 		databaseTxBatchQueryVersionLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: metricsNamespaceVC,
+			Namespace: "vcservice",
 			Subsystem: "database",
 			Name:      "tx_batch_query_version_latency_seconds",
 			Help:      "The latency of the database querying version for keys in a batch of transactions",
 			Buckets:   buckets,
 		}),
 		databaseTxBatchCommitLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: metricsNamespaceVC,
+			Namespace: "vcservice",
 			Subsystem: "database",
 			Name:      "tx_batch_commit_latency_seconds",
 			Help:      "The latency of the database committing a batch of transactions",
 			Buckets:   buckets,
 		}),
 		databaseTxBatchCommitTxsStatusLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: metricsNamespaceVC,
+			Namespace: "vcservice",
 			Subsystem: "database",
 			Name:      "tx_batch_commit_txs_status_latency_seconds",
 			Help:      "The latency of the database committing a batch of transactions and updating their status",
 			Buckets:   buckets,
 		}),
 		databaseTxBatchCommitUpdateLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: metricsNamespaceVC,
+			Namespace: "vcservice",
 			Subsystem: "database",
 			Name:      "tx_batch_commit_update_latency_seconds",
 			Help: "The latency of the database committing a batch of transactions which involes " +
@@ -169,7 +164,7 @@ func newVCServiceMetrics() *perfMetrics {
 			Buckets: buckets,
 		}),
 		databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: metricsNamespaceVC,
+			Namespace: "vcservice",
 			Subsystem: "database",
 			Name:      "tx_batch_commit_insert_new_key_with_value_latency_seconds",
 			Help: "The latency of the database committing a batch of transactions which involes " +
