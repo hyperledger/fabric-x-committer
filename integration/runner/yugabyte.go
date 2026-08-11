@@ -13,6 +13,7 @@ import (
 	"net"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -54,6 +55,12 @@ const (
 	networkPrefix = "sc_yuga_net_"
 	masterPort    = "7100"
 	tabletPort    = "9100"
+
+	// ybAdminTimeout bounds a single yb-admin invocation. Its own default is 60s, which is the
+	// entire budget of the waits in startNodes: an attempt that cannot reach the leader master
+	// would consume the whole retry window, leaving the wait with one sample instead of hundreds,
+	// and would still be running when the wait gives up. Keep this well below those waits.
+	ybAdminTimeout = 5 * time.Second
 
 	// MasterNode represents yugabyte master db node.
 	MasterNode = "master"
@@ -109,11 +116,12 @@ func StartYugaCluster(ctx context.Context, t *testing.T, numberOfMasters, number
 	for range numberOfTablets {
 		cluster.createNode(TabletNode)
 	}
-	cluster.startNodes(ctx, t)
-
+	// Registered before startup: startNodes starts the containers and can then fail (for example
+	// its wait for a master quorum times out), and without this the containers would leak.
 	t.Cleanup(func() {
 		cluster.stopAndRemoveCluster(t)
 	})
+	cluster.startNodes(ctx, t)
 
 	// In YugabyteDB, masters manage cluster metadata (tablet locations, schema,
 	// Raft leadership) while tservers handle all SQL read/write operations.
@@ -208,7 +216,7 @@ func (cc *YugaClusterController) startNodes(ctx context.Context, t *testing.T) {
 	// registrations, create system tables, or serve any metadata requests.
 	expectedMasters := len(maps.Collect(cc.IterNodesByRole(MasterNode)))
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, expectedMasters, strings.Count(cc.listAllMasters(t), "ALIVE"))
+		require.Equal(ct, expectedMasters, strings.Count(cc.listAllMasters(ct), "ALIVE"))
 	}, time.Minute, time.Millisecond*100)
 
 	// Wait for each tserver to finish bootstrapping (syncing data to disk).
@@ -222,7 +230,7 @@ func (cc *YugaClusterController) startNodes(ctx context.Context, t *testing.T) {
 	// to serve queries reliably.
 	expectedTablets := len(maps.Collect(cc.IterNodesByRole(TabletNode)))
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, expectedTablets, strings.Count(cc.runYBAdmin(t, "list_all_tablet_servers"), "ALIVE"))
+		require.Equal(ct, expectedTablets, strings.Count(cc.runYBAdmin(ct, "list_all_tablet_servers"), "ALIVE"))
 	}, time.Minute, time.Millisecond*500)
 
 	// Set the cluster-level placement policy to ensure the load balancer
@@ -275,25 +283,26 @@ func (cc *YugaClusterController) verifyTransactionTableRF(t *testing.T) {
 		return
 	}
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		output := cc.runYBAdmin(t, "list_tablets", "system", "transactions", "0", "include_followers")
+		output := cc.runYBAdmin(ct, "list_tablets", "system", "transactions", "0", "include_followers")
 		for _, n := range cc.IterNodesByRole(TabletNode) {
 			assert.Contains(ct, output, n.Name)
 		}
 	}, 2*time.Minute, 500*time.Millisecond)
 }
 
-func (cc *YugaClusterController) listAllMasters(t *testing.T) string {
+func (cc *YugaClusterController) listAllMasters(t test.TestingT) string {
 	t.Helper()
 	output := cc.runYBAdmin(t, "list_all_masters")
 	require.NotEmpty(t, output, "Could not get yb-admin output from any node")
 	return output
 }
 
-func (cc *YugaClusterController) runYBAdmin(t *testing.T, args ...string) string {
+func (cc *YugaClusterController) runYBAdmin(t test.TestingT, args ...string) string {
 	t.Helper()
 	cmd := append([]string{
 		"/home/yugabyte/bin/yb-admin",
 		"-master_addresses", cc.getMasterAddresses(),
+		"-timeout_ms", strconv.Itoa(int(ybAdminTimeout.Milliseconds())),
 	}, args...)
 	var output string
 	for _, n := range cc.nodes {

@@ -35,18 +35,21 @@ func CheckMetrics(t *testing.T, url string, tlsConfig *tls.Config, expectedMetri
 }
 
 // GetMetricValueFromURL reads the metrics endpoint and fetch the value of a specific metric.
-func GetMetricValueFromURL(t *testing.T, url, metricName string, tlsConfig *tls.Config) int {
+func GetMetricValueFromURL(t TestingT, url, metricName string, tlsConfig *tls.Config) int {
 	t.Helper()
 	metricsOutput := getMetricsFromURL(t, url, tlsConfig)
 	r, err := regexp.Compile(`(?m)^` + metricName + `\s+([\d.]+)`)
 	require.NoError(t, err)
 	m := r.FindStringSubmatch(metricsOutput)
+	// Without this, a metric that is not exported yet indexes an empty match and panics -- which,
+	// from a polling goroutine, takes the whole test binary down.
+	require.Lenf(t, m, 2, "metric [%s] not found", metricName)
 	val, err := strconv.ParseFloat(m[1], 64)
 	require.NoError(t, err)
 	return int(math.Round(val))
 }
 
-func getMetricsFromURL(t *testing.T, url string, tlsConfig *tls.Config) string {
+func getMetricsFromURL(t TestingT, url string, tlsConfig *tls.Config) string {
 	t.Helper()
 	client := &http.Client{
 		Transport: &http.Transport{
@@ -61,7 +64,7 @@ func getMetricsFromURL(t *testing.T, url string, tlsConfig *tls.Config) string {
 		require.NotNil(ct, resp)
 		require.Equal(ct, http.StatusOK, resp.StatusCode)
 		b, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
+		require.NoError(ct, err)
 		require.NoError(ct, resp.Body.Close())
 		val = string(b)
 	}, time.Minute, 100*time.Millisecond)
@@ -69,7 +72,7 @@ func getMetricsFromURL(t *testing.T, url string, tlsConfig *tls.Config) string {
 }
 
 // GetMetricValue returns the value of a prometheus metric.
-func GetMetricValue(t *testing.T, m prometheus.Metric) float64 {
+func GetMetricValue(t TestingT, m prometheus.Metric) float64 {
 	t.Helper()
 	gm := promgo.Metric{}
 	require.NoError(t, m.Write(&gm))
@@ -92,7 +95,7 @@ func GetMetricValue(t *testing.T, m prometheus.Metric) float64 {
 }
 
 // GetIntMetricValue returns the value of a prometheus metric, rounded to the nearest integer.
-func GetIntMetricValue(t *testing.T, m prometheus.Metric) int {
+func GetIntMetricValue(t TestingT, m prometheus.Metric) int {
 	t.Helper()
 	val := GetMetricValue(t, m)
 	return int(math.Round(val))
@@ -110,7 +113,7 @@ func EventuallyIntMetric( //nolint:revive // number of arguments is derived from
 ) {
 	t.Helper()
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		v := GetIntMetricValue(t, m)
+		v := GetIntMetricValue(ct, m)
 		require.Equal(ct, expected, v)
 	}, waitFor, tick, msgAndArgs...)
 }

@@ -185,8 +185,9 @@ func (p *ProcessWithConfig) writeConfig(t *testing.T, conf *config.SystemConfig)
 	p.configFilePath = config.CreateTempConfigFromTemplate(t, p.params.Template, &s)
 }
 
-// requireRunning fails the test immediately if the process has already exited.
-func (p *ProcessWithConfig) requireRunning(t *testing.T) {
+// requireRunning fails immediately if the process has already exited. It takes a [test.TestingT] so
+// a polling condition can pass its [assert.CollectT] and fail only that tick.
+func (p *ProcessWithConfig) requireRunning(t test.TestingT) {
 	t.Helper()
 	if p == nil || p.process == nil {
 		return
@@ -194,7 +195,7 @@ func (p *ProcessWithConfig) requireRunning(t *testing.T) {
 
 	select {
 	case err := <-p.process.Wait():
-		t.Fatalf("Process [%s] exited unexpectedly: %v", p.params.Name, err)
+		require.Failf(t, "process exited unexpectedly", "[%s]: %v", p.params.Name, err)
 	default:
 	}
 }
