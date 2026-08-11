@@ -80,12 +80,13 @@ func StartPostgresCluster(ctx context.Context, t *testing.T) (*PostgresClusterCo
 	}
 
 	t.Log("starting postgres cluster")
-	cluster.addPrimaryNode(ctx, t)
-	cluster.addSecondaryNode(ctx, t)
-
+	// Registered before startup: adding a node starts its container and can then fail (for example
+	// its readiness wait times out), and without this the containers would leak.
 	t.Cleanup(func() {
 		cluster.stopAndRemoveCluster(t)
 	})
+	cluster.addPrimaryNode(ctx, t)
+	cluster.addSecondaryNode(ctx, t)
 
 	clusterConnections := cluster.getNodesConnections(t)
 	// After the initial connection, we create a testing-db that will be used by the vc-service.
@@ -156,7 +157,7 @@ func (cc *PostgresClusterController) addSecondaryNode(ctx context.Context, t *te
 func ensurePostgresFullyReady(t *testing.T, node *testdb.DatabaseContainer) {
 	t.Helper()
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		output := node.GetContainerLogs(t)
+		output := node.GetContainerLogs(ct)
 		count := strings.Count(output, testdb.PostgresReadinesssOutput)
 		require.GreaterOrEqual(ct, count, 2)
 	}, 45*time.Second, 250*time.Millisecond)

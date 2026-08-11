@@ -84,6 +84,12 @@ var (
 	passwordRegex = regexp.MustCompile(`(?i)(?m)^password:\s*(.+)$`)
 )
 
+// tLogger recovers Logf, which [test.TestingT] does not carry because an [assert.CollectT] has no
+// equivalent for it.
+type tLogger = interface {
+	Logf(format string, args ...any)
+}
+
 // DatabaseContainer manages the execution of an instance of a dockerized DB for tests.
 type DatabaseContainer struct {
 	Name         string
@@ -406,7 +412,7 @@ func (dc *DatabaseContainer) streamLogs() {
 }
 
 // GetContainerLogs return the output of the DatabaseContainer.
-func (dc *DatabaseContainer) GetContainerLogs(t *testing.T) string {
+func (dc *DatabaseContainer) GetContainerLogs(t test.TestingT) string {
 	t.Helper()
 	var outputBuffer bytes.Buffer
 	require.NoError(t, dc.client.Logs(docker.LogsOptions{
@@ -421,8 +427,14 @@ func (dc *DatabaseContainer) GetContainerLogs(t *testing.T) string {
 }
 
 // StopAndRemoveContainer stops and removes the db container from the docker engine.
+// It is a no-op for a container that was never created, so a cluster teardown registered before
+// startup can run after a partial start.
 func (dc *DatabaseContainer) StopAndRemoveContainer(t *testing.T) {
 	t.Helper()
+	if dc.containerID == "" {
+		return
+	}
+
 	dc.StopContainer(t)
 	require.NoError(t, dc.client.RemoveContainer(docker.RemoveContainerOptions{
 		ID:    dc.ContainerID(),
@@ -456,10 +468,12 @@ func (dc *DatabaseContainer) ReadPasswordFromContainer(t *testing.T, filePath st
 }
 
 // ExecuteCommand executes a command and returns the container output.
-func (dc *DatabaseContainer) ExecuteCommand(t *testing.T, cmd []string) string {
+func (dc *DatabaseContainer) ExecuteCommand(t test.TestingT, cmd []string) string {
 	t.Helper()
 	require.NotNil(t, dc.client)
-	t.Logf("executing %s", strings.Join(cmd, " "))
+	if l, ok := t.(tLogger); ok {
+		l.Logf("executing %s", strings.Join(cmd, " "))
+	}
 
 	var stdout strings.Builder
 	var stderr strings.Builder
@@ -487,7 +501,7 @@ func (dc *DatabaseContainer) ExecuteCommand(t *testing.T, cmd []string) string {
 func (dc *DatabaseContainer) EnsureNodeReadinessByLogs(t *testing.T, requiredOutput string) {
 	t.Helper()
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		output := dc.GetContainerLogs(t)
+		output := dc.GetContainerLogs(ct)
 		require.Contains(ct, output, requiredOutput)
 	}, 45*time.Second, 250*time.Millisecond)
 }

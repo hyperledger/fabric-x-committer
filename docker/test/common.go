@@ -156,7 +156,7 @@ func monitorMetric(t *testing.T, metricsPort string, metricsTLS *connection.TLSC
 	})
 	t.Logf("Check the load generator metrics from: %s", metricsURL)
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		committedTxs := test.GetMetricValueFromURL(t, test.GetMetricValueParameters{
+		committedTxs := test.GetMetricValueFromURL(ct, test.GetMetricValueParameters{
 			URL:        metricsURL,
 			MetricName: monitoredMetric,
 			TLSConfig:  tlsConf,

@@ -81,7 +81,7 @@ func TestLoadGenWithTLSModes(t *testing.T) {
 					)
 					require.NoError(t, err)
 					require.EventuallyWithT(t, func(ct *assert.CollectT) {
-						count := test.GetMetricValueFromURL(t, test.GetMetricValueParameters{
+						count := test.GetMetricValueFromURL(ct, test.GetMetricValueParameters{
 							URL:        metricsURL,
 							MetricName: "loadgen_transaction_committed_total",
 							TLSConfig:  metricsClientTLSConfig,

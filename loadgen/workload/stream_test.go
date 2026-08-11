@@ -84,7 +84,7 @@ func BenchmarkGenTx(b *testing.B) {
 	flogging.ActivateSpec("fatal")
 	//nolint:thelper // false positive.
 	genericBench(b, func(b *testing.B, p *Profile) {
-		t, err := NewTxStream(p, defaultBenchStreamOptions(), NewTxCounter())
+		t, err := NewTxStream(p, defaultBenchStreamOptions(), NewTxCounter(p.Transaction))
 		require.NoError(b, err)
 
 		ctx := b.Context()
@@ -192,7 +192,7 @@ func testTxProfiles(t *testing.T) (profiles []*Profile) {
 
 func startTxGeneratorUnderTest(t *testing.T, profile *Profile, options *StreamOptions) *TxStream {
 	t.Helper()
-	g, err := NewTxStream(profile, options, NewTxCounter())
+	g, err := NewTxStream(profile, options, NewTxCounter(profile.Transaction))
 	require.NoError(t, err)
 	test.RunServiceForTest(t.Context(), t, g.Run, nil)
 	return g
@@ -202,7 +202,7 @@ func startTxGeneratorUnderTest(t *testing.T, profile *Profile, options *StreamOp
 // single-generator case for tests and benchmarks.
 func firstGen(tb testing.TB, p *Profile) *IndependentTxGenerator {
 	tb.Helper()
-	gens, err := newIndependentTxGenerators(p, NewTxCounter())
+	gens, err := newIndependentTxGenerators(p, NewTxCounter(p.Transaction))
 	require.NoError(tb, err)
 	require.NotEmpty(tb, gens)
 	return gens[0]
@@ -222,6 +222,80 @@ func TestGenValidTx(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTxStreamKeyStats(t *testing.T) {
+	t.Parallel()
+	p := DefaultProfile(1)
+	p.Transaction.ReadOnlyCount = 1
+	p.Transaction.ReadWriteCount = 2
+	p.Transaction.BlindWriteCount = 1
+	p.Transaction.KeyBackrefRate = 2.5 // 2.5 backrefs / tx of 4 slots => 1.5 fresh keys / tx
+	p.Transaction.TxReferenceGap = 5
+	p.Transaction.KeyLookbackWindow = 100
+
+	counter := NewTxCounter(p.Transaction)
+	s, err := NewTxStream(p, defaultStreamOptions(), counter)
+	require.NoError(t, err)
+	require.Equal(t, KeyStats{}, counter.KeyStats(), "nothing generated yet")
+
+	const n = 100
+	s.gens[0].buildBatch(n) // advances the shared counter by n
+
+	w := uint64(p.Transaction.ReadWriteCount + p.Transaction.BlindWriteCount)
+	ro := uint64(p.Transaction.ReadOnlyCount)
+	require.Equal(t, KeyStats{
+		KeyFrontier:         150,       // floor(100*1.5)
+		ReferencedReadKeys:  n * ro,    // every read-only slot reuses a key
+		ReferencedWriteKeys: n*w - 150, // the write slots that didn't create reuse a key
+	}, counter.KeyStats())
+}
+
+// TestTxStreamKeyStatsAboveWriteCap covers a new-key rate above the write-slot count: the surplus new
+// keys fall on read-only slots, and the reference counts must not underflow.
+func TestTxStreamKeyStatsAboveWriteCap(t *testing.T) {
+	t.Parallel()
+	p := DefaultProfile(1)
+	p.Transaction.ReadOnlyCount = 2
+	p.Transaction.ReadWriteCount = 1
+	p.Transaction.BlindWriteCount = 1
+	p.Transaction.KeyBackrefRate = 1 // 1 backref / tx of 4 slots => 3 fresh keys / tx > 2 write slots
+	p.Transaction.TxReferenceGap = 0
+	p.Transaction.KeyLookbackWindow = 8
+	require.NoError(t, p.Transaction.Validate())
+
+	counter := NewTxCounter(p.Transaction)
+	s, err := NewTxStream(p, defaultStreamOptions(), counter)
+	require.NoError(t, err)
+	const n = 100
+	s.gens[0].buildBatch(n)
+	// 300 new keys but only N*W=200 write slots to create them; the surplus 100 fall on read-only slots,
+	// leaving 200-100=100 read-only slots reusing keys and none on the write slots.
+	require.Equal(t, KeyStats{
+		KeyFrontier:         300,
+		ReferencedReadKeys:  100,
+		ReferencedWriteKeys: 0,
+	}, counter.KeyStats())
+}
+
+// TestTxStreamKeyStatsHistorical covers the default backref rate of zero: every slot introduces a fresh
+// key, so there are no references and every slot counts as created (N*slotsPerTx).
+func TestTxStreamKeyStatsHistorical(t *testing.T) {
+	t.Parallel()
+	p := DefaultProfile(1)
+	p.Transaction.ReadOnlyCount = 1
+	p.Transaction.ReadWriteCount = 2
+	p.Transaction.BlindWriteCount = 1
+	// KeyBackrefRate defaults to 0 => every slot is a fresh key, no references.
+
+	counter := NewTxCounter(p.Transaction)
+	s, err := NewTxStream(p, defaultStreamOptions(), counter)
+	require.NoError(t, err)
+	const n = 100
+	s.gens[0].buildBatch(n)
+	w := uint64(p.Transaction.ReadWriteCount + p.Transaction.BlindWriteCount)
+	slotsPerTx := w + uint64(p.Transaction.ReadOnlyCount)
+	require.Equal(t, KeyStats{KeyFrontier: n * slotsPerTx}, counter.KeyStats())
 }
 
 func TestGenValidBlock(t *testing.T) {

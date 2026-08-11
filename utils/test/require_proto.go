@@ -15,15 +15,9 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type tHelper = interface {
-	Helper()
-}
-
 // RequireProtoEqual verifies that two proto are equal.
-func RequireProtoEqual(t require.TestingT, expected, actual proto.Message) {
-	if h, ok := t.(tHelper); ok {
-		h.Helper()
-	}
+func RequireProtoEqual(t TestingT, expected, actual proto.Message) {
+	t.Helper()
 	require.Truef(
 		t,
 		proto.Equal(expected, actual),
@@ -35,11 +29,9 @@ func RequireProtoEqual(t require.TestingT, expected, actual proto.Message) {
 
 // RequireProtoElementsMatch verifies that two arrays of proto have the same elements.
 func RequireProtoElementsMatch[T proto.Message](
-	t require.TestingT, expected, actual []T, msgAndArgs ...any,
+	t TestingT, expected, actual []T, msgAndArgs ...any,
 ) {
-	if h, ok := t.(tHelper); ok {
-		h.Helper()
-	}
+	t.Helper()
 	if expected == nil {
 		require.Nil(t, actual, msgAndArgs...)
 		return

@@ -46,7 +46,7 @@ func NewMetricsScraper(
 }
 
 // Value returns the gauge's current Value.
-func (s MetricsScraper) Value(t *testing.T, metricName string) int {
+func (s MetricsScraper) Value(t test.TestingT, metricName string) int {
 	t.Helper()
 	return test.GetMetricValueFromURL(t, test.GetMetricValueParameters{
 		URL:        s.url,
@@ -57,7 +57,7 @@ func (s MetricsScraper) Value(t *testing.T, metricName string) int {
 
 // ValueWithLabels returns the current ValueWithLabels of the named series carrying the given labels, or 0 if the
 // series is not present yet.
-func (s MetricsScraper) ValueWithLabels(t *testing.T, metricName string, labels map[string]string) int {
+func (s MetricsScraper) ValueWithLabels(t test.TestingT, metricName string, labels map[string]string) int {
 	t.Helper()
 	v, _ := test.GetLabeledMetricValueFromURL(t, test.GetMetricValueParameters{
 		URL:        s.url,
