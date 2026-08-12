@@ -25,9 +25,18 @@ while repo_root_dir.parent != repo_root_dir:
         break
     repo_root_dir = repo_root_dir.parent
 
-# Pattern: New(Counter|Gauge|Histogram)(Vec|Func)?(prometheus.(Counter|Gauge|Histogram)Opts
+# Pattern: New[<Qualifier>](Counter|Gauge|Histogram)(Vec|Func)?[<type args>]([<provider>,]
+#          prometheus.(...)Opts
+# Matches the Provider methods (NewGauge(prometheus.GaugeOpts{...})), the free helpers that take
+# the provider first (NewChannelLenGauge(p, prometheus.GaugeOpts{...}, ch)), and generic helpers
+# instantiated explicitly (NewChannelLenGaugeVec[*pkg.Type](p, prometheus.GaugeOpts{...}, labels)).
+# The qualifier before the metric type is non-greedy so group(1) is always the type itself.
 # Captures: group(1)=metric type, group(2)=Vec, Func or None, group(3)=opts type
-metric_pattern = re.compile(r'New([A-Z][a-z]+)(Vec|Func)?\(prometheus\.([A-Z][a-z]+)Opts')
+metric_pattern = re.compile(
+    # The type-argument list allows one level of nesting, for a slice element like [[]*pkg.Type].
+    r'New[A-Za-z]*?([A-Z][a-z]+)(Vec|Func)?(?:\[(?:[^\[\]]|\[[^\]]*])*])?'
+    r'\((?:\s*[\w.]+\s*,)?\s*prometheus\.([A-Z][a-z]+)Opts'
+)
 
 # Pattern: package.FunctionName(..., monitoring.MetricsParameters
 # Captures: group(1)=package, group(2)=method name
@@ -36,6 +45,18 @@ params_usage_pattern = re.compile(r'(\w+)\.(\w+)\([^)]+,\s*(?:monitoring\.)?Metr
 # Pattern: FunctionName(..., monitoring.MetricsParameters — a helper in the file being parsed.
 # Captures: group(1)=function name
 local_params_usage_pattern = re.compile(r'(?<![\w.])(\w+)\([^)]+,\s*(?:monitoring\.)?MetricsParameters')
+
+# Pattern: identifier = "value" — a string constant declaration.
+# Captures: group(1)=identifier, group(2)=value
+string_const_pattern = re.compile(r'(?<![\w.])(\w+)\s*(?:string\s*)?=\s*"([^"]*)"')
+
+# Pattern: Namespace|Subsystem|Name|Help: identifier — an opts field given as a bare identifier.
+# Captures: group(1)=field, group(2)=identifier
+opts_field_ident_pattern = re.compile(r'\b(Namespace|Subsystem|Name|Help)\s*:\s*([A-Za-z_]\w*)\s*,')
+
+# Pattern: identifier := []string{...} — a label-name slice, usually shared by several metrics.
+# Captures: group(1)=identifier, group(2)=the slice literal
+string_slice_pattern = re.compile(r'(?<![\w.])(\w+)\s*:?=\s*(\[]string\{[^}]*})')
 
 
 def main():
@@ -56,6 +77,12 @@ def print_all_metrics_from_content(content: str):
     """Extract all metrics from Go source content in order of appearance."""
     # Join concatenated strings
     content = re.sub(r'"\s*\+\s*"', '', content)
+
+    # Inline string constants, so a metric that names its namespace, subsystem or name through a
+    # constant is still resolved. Without this the field reads as empty and the metric is dropped
+    # from the doc silently, which makes hoisting a repeated literal (as goconst asks) look safe
+    # when it is not.
+    content = inline_string_constants(content)
 
     # Collect all matches with their positions, sorted by position to maintain order.
     for pos, match_type, *rest in sorted(iter_all_matches(content)):
@@ -102,6 +129,24 @@ def print_all_metrics_from_content(content: str):
 
         # Extract metrics from the substituted function body
         print_all_metrics_from_content(func_body)
+
+
+def inline_string_constants(content: str) -> str:
+    """Replace identifiers declared as `name = "value"` or `name := []string{...}` with the value."""
+    constants = dict(string_const_pattern.findall(content))
+    if constants:
+        def substitute(match: re.Match) -> str:
+            field, identifier = match.group(1), match.group(2)
+            value = constants.get(identifier)
+            return f'{field}: "{value}"' if value is not None else match.group(0)
+
+        content = opts_field_ident_pattern.sub(substitute, content)
+
+    # Label slices are shared between metrics, so inline them too — extract_labels reads the
+    # literal. The declaration itself is left alone, hence the lookahead.
+    for name, literal in string_slice_pattern.findall(content):
+        content = re.sub(rf'(?<![\w.])({name})\b(?!\s*:?=)', literal.replace('\\', '\\\\'), content)
+    return content
 
 
 def iter_all_matches(content: str):

@@ -17,6 +17,14 @@ import (
 // txBeingValidated lock is expected to be sub-millisecond, so the buckets are dense at the low end.
 var lockLatencyBuckets = []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}
 
+const (
+	namespace = "coordinator"
+
+	subsystemGRPC      = "grpc"
+	subsystemVCService = "vcservice"
+	subsystemVerifier  = "verifier"
+)
+
 type (
 	perfMetrics struct {
 		*monitoring.Provider
@@ -62,44 +70,44 @@ func newPerformanceMetrics(q *channels) *perfMetrics {
 	return &perfMetrics{
 		Provider: p,
 		transactionReceivedTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "coordinator",
-			Subsystem: "grpc",
+			Namespace: namespace,
+			Subsystem: subsystemGRPC,
 			Name:      "received_transaction_total",
 			Help:      "Total number of transactions received by the coordinator service from the client.",
 		}),
 		transactionCommittedTotal: p.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "coordinator",
-			Subsystem: "grpc",
+			Namespace: namespace,
+			Subsystem: subsystemGRPC,
 			Name:      "committed_transaction_total",
 			Help:      "Total number of transactions committed status sent by the coordinator service to the client.",
 		}, []string{"status"}),
 		verifiers: newManagerMetrics(p, monitoring.MetricsParameters{
-			Namespace: "coordinator",
+			Namespace: namespace,
 			Subsystem: "verifier",
 		}, q.depGraphToSigVerifierFreeTxs, q.sigVerifierToVCServiceValidatedTxs),
 		vcs: newManagerMetrics(p, monitoring.MetricsParameters{
-			Namespace: "coordinator",
-			Subsystem: "vcservice",
+			Namespace: namespace,
+			Subsystem: subsystemVCService,
 		}, q.sigVerifierToVCServiceValidatedTxs, q.vcServiceToDepGraphValidatedTxs),
 		verifierFetchValidatedTxsLockWaitSeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "coordinator",
-			Subsystem: "verifier",
+			Namespace: namespace,
+			Subsystem: subsystemVerifier,
 			Name:      "fetch_validated_txs_lock_wait_seconds",
 			Help: "Time spent waiting to acquire the txBeingValidated lock while fetching validated " +
 				"transactions from a signature verifier.",
 			Buckets: lockLatencyBuckets,
 		}),
 		verifierFetchValidatedTxsLockHoldSeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "coordinator",
-			Subsystem: "verifier",
+			Namespace: namespace,
+			Subsystem: subsystemVerifier,
 			Name:      "fetch_validated_txs_lock_hold_seconds",
 			Help: "Time spent holding the txBeingValidated lock while fetching validated " +
 				"transactions from a signature verifier.",
 			Buckets: lockLatencyBuckets,
 		}),
 		vcserviceOutputTxStatusBatchQueueSize: p.NewGaugeFunc(prometheus.GaugeOpts{
-			Namespace: "coordinator",
-			Subsystem: "vcservice",
+			Namespace: namespace,
+			Subsystem: subsystemVCService,
 			Name:      "output_tx_status_batch_queue_size",
 			Help: "Size of the output transaction status batch queue of " +
 				"the validation and committer service manager.",
