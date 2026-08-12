@@ -13,6 +13,15 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
 
+const (
+	namespace = "sidecar"
+
+	subsystemRelay           = "relay"
+	subsystemNotifier        = "notifier"
+	subsystemGRPCCoordinator = "grpc_coordinator"
+	subsystemLedger          = "ledger"
+)
+
 type perfMetrics struct {
 	*monitoring.Provider
 
@@ -60,121 +69,121 @@ func newPerformanceMetrics() *perfMetrics {
 	return &perfMetrics{
 		Provider: p,
 		transactionsSentTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "sidecar",
-			Subsystem: "grpc_coordinator",
+			Namespace: namespace,
+			Subsystem: subsystemGRPCCoordinator,
 			Name:      "sent_transaction_total",
 			Help:      "Total number of transactions sent to the coordinator service.",
 		}),
 		transactionsStatusReceivedTotal: p.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "sidecar",
-			Subsystem: "grpc_coordinator",
+			Namespace: namespace,
+			Subsystem: subsystemGRPCCoordinator,
 			Name:      "received_transaction_status_total",
 			Help:      "Total number of transactions statuses received from the coordinator service.",
 		}, []string{"status"}),
 		blockMappingInRelaySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "sidecar",
-			Subsystem: "relay",
+			Namespace: namespace,
+			Subsystem: subsystemRelay,
 			Name:      "block_mapping_seconds",
 			Help:      "Time spent mapping a received block to an internal block.",
 			Buckets:   histoBuckets,
 		}),
 		mappedBlockProcessingInRelaySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "sidecar",
-			Subsystem: "relay",
+			Namespace: namespace,
+			Subsystem: subsystemRelay,
 			Name:      "mapped_block_processing_seconds",
 			Help:      "Time spent processing an internal block and sending it to the coordinator.",
 			Buckets:   histoBuckets,
 		}),
 		transactionStatusesProcessingInRelaySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "sidecar",
-			Subsystem: "relay",
+			Namespace: namespace,
+			Subsystem: subsystemRelay,
 			Name:      "transaction_status_batch_processing_seconds",
 			Help:      "Time spent processing a received status batch from the coordinator.",
 			Buckets:   histoBuckets,
 		}),
 		waitingTransactionsQueueSize: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: "sidecar",
-			Subsystem: "relay",
+			Namespace: namespace,
+			Subsystem: subsystemRelay,
 			Name:      "waiting_transactions_queue_size",
 			Help:      "Total number of transactions waiting at the relay for statuses.",
 		}),
 		yetToBeCommittedBlocksQueueSize: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: "sidecar",
-			Subsystem: "relay",
+			Namespace: namespace,
+			Subsystem: subsystemRelay,
 			Name:      "input_block_queue_size",
 			Help:      "Size of the input block queue of the relay service.",
 		}),
 		committedBlocksQueueSize: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: "sidecar",
-			Subsystem: "relay",
+			Namespace: namespace,
+			Subsystem: subsystemRelay,
 			Name:      "output_committed_block_queue_size",
 			Help:      "Size of the output committed block queue of the relay service.",
 		}),
 		coordConnection: monitoring.NewConnectionMetrics(p, monitoring.MetricsParameters{
-			Namespace: "sidecar",
+			Namespace: namespace,
 			Subsystem: "coordinator",
 		}),
 		serverConnections: monitoring.NewConnectionStatsMetrics(p, monitoring.MetricsParameters{
-			Namespace: "sidecar",
+			Namespace: namespace,
 			Subsystem: "grpc",
 		}),
 		appendBlockToLedgerSeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "sidecar",
-			Subsystem: "ledger",
+			Namespace: namespace,
+			Subsystem: subsystemLedger,
 			Name:      "append_block_seconds",
 			Help:      "Time spent appending a block to the ledger.",
 			Buckets:   histoBuckets,
 		}),
 		blockHeight: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: "sidecar",
-			Subsystem: "ledger",
+			Namespace: namespace,
+			Subsystem: subsystemLedger,
 			Name:      "block_height",
 			Help:      "The current block height of the ledger.",
 		}),
 		transactionInThroughput: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "sidecar",
-			Subsystem: "relay",
+			Namespace: namespace,
+			Subsystem: subsystemRelay,
 			Name:      "transaction_in_total",
 			Help:      "Total number of transactions received from the orderer.",
 		}),
 		transactionOutThroughput: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "sidecar",
-			Subsystem: "relay",
+			Namespace: namespace,
+			Subsystem: subsystemRelay,
 			Name:      "transaction_out_total",
 			Help:      "Total number of transaction statuses processed from the coordinator.",
 		}),
 		notifierActiveStreams: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: "sidecar",
-			Subsystem: "notifier",
+			Namespace: namespace,
+			Subsystem: subsystemNotifier,
 			Name:      "active_streams",
 			Help:      "Number of active notification streams.",
 		}),
 		notifierPendingTxIDs: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: "sidecar",
-			Subsystem: "notifier",
+			Namespace: namespace,
+			Subsystem: subsystemNotifier,
 			Name:      "pending_tx_ids",
 			Help:      "Number of pending (txID, request) subscriptions waiting for status notification.",
 		}),
 		notifierUniquePendingTxIDs: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: "sidecar",
-			Subsystem: "notifier",
+			Namespace: namespace,
+			Subsystem: subsystemNotifier,
 			Name:      "unique_pending_tx_ids",
 			Help:      "Number of unique transaction IDs pending across all requests.",
 		}),
 		notifierTxIDsStatusDeliveries: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "sidecar",
-			Subsystem: "notifier",
+			Namespace: namespace,
+			Subsystem: subsystemNotifier,
 			Name:      "tx_ids_status_deliveries_total",
 			Help:      "Total number of transaction IDs' status deliveries to clients.",
 		}),
 		notifierTxIDsTimeoutDeliveries: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "sidecar",
-			Subsystem: "notifier",
+			Namespace: namespace,
+			Subsystem: subsystemNotifier,
 			Name:      "tx_ids_timeout_deliveries_total",
 			Help:      "Total number of transaction IDs' timeout deliveries to clients.",
 		}),
 		delivery: deliverorderer.NewMetrics(p, monitoring.MetricsParameters{
-			Namespace: "sidecar",
+			Namespace: namespace,
 			Subsystem: "delivery",
 		}),
 	}

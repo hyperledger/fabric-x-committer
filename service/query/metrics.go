@@ -13,6 +13,11 @@ import (
 )
 
 const (
+	namespace = "queryservice"
+
+	subsystemGRPC     = "grpc"
+	subsystemDatabase = "database"
+
 	grpcBeginView             = "begin_view"
 	grpcEndView               = "end_view"
 	grpcGetRows               = "get_rows"
@@ -51,71 +56,71 @@ func newQueryServiceMetrics() *perfMetrics {
 	return &perfMetrics{
 		Provider: p,
 		requests: p.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "queryservice",
-			Subsystem: "grpc",
+			Namespace: namespace,
+			Subsystem: subsystemGRPC,
 			Name:      "requests_total",
 			Help:      "Number of requests by the service",
 		}, []string{"method"}),
 		requestsLatency: p.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "queryservice",
-			Subsystem: "grpc",
+			Namespace: namespace,
+			Subsystem: subsystemGRPC,
 			Name:      "requests_latency_seconds",
 			Help:      "The latency (seconds) of requests by the service",
 			Buckets:   timeBuckets,
 		}, []string{"method"}),
 		keysRequested: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "queryservice",
-			Subsystem: "grpc",
+			Namespace: namespace,
+			Subsystem: subsystemGRPC,
 			Name:      "key_requested_total",
 			Help:      "Number of keys requested by the service",
 		}),
 		serverConnections: monitoring.NewConnectionStatsMetrics(p, monitoring.MetricsParameters{
-			Namespace: "queryservice",
-			Subsystem: "grpc",
+			Namespace: namespace,
+			Subsystem: subsystemGRPC,
 		}),
 		keysResponded: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "queryservice",
-			Subsystem: "grpc",
+			Namespace: namespace,
+			Subsystem: subsystemGRPC,
 			Name:      "key_responded_total",
 			Help:      "Number of keys responded by the service",
 		}),
 		processingSessions: p.NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: "queryservice",
-			Subsystem: "database",
+			Namespace: namespace,
+			Subsystem: subsystemDatabase,
 			Name:      "processing_sessions",
 			Help:      "Number of processing sessions in the service",
 		}, []string{"session"}),
 		batchQueuingTimeSeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "queryservice",
-			Subsystem: "database",
+			Namespace: namespace,
+			Subsystem: subsystemDatabase,
 			Name:      "batch_queueing_time_seconds",
 			Help:      "The time batches waits for execution",
 			Buckets:   timeBuckets,
 		}),
 		batchQuerySize: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "queryservice",
-			Subsystem: "database",
+			Namespace: namespace,
+			Subsystem: subsystemDatabase,
 			Name:      "batch_query_size",
 			Help:      "The size of submitted batches",
 			Buckets:   sizeBuckets,
 		}),
 		batchResponseSize: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "queryservice",
-			Subsystem: "database",
+			Namespace: namespace,
+			Subsystem: subsystemDatabase,
 			Name:      "batch_response_size",
 			Help:      "The size of response for batch queries",
 			Buckets:   sizeBuckets,
 		}),
 		requestAssignmentLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "queryservice",
-			Subsystem: "database",
+			Namespace: namespace,
+			Subsystem: subsystemDatabase,
 			Name:      "request_assignment_latency_seconds",
 			Help:      "The latency of the query request assignment to the queue",
 			Buckets:   timeBuckets,
 		}),
 		queryLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "queryservice",
-			Subsystem: "database",
+			Namespace: namespace,
+			Subsystem: subsystemDatabase,
 			Name:      "query_latency_seconds",
 			Help:      "The latency of the queries' batches",
 			Buckets:   timeBuckets,

@@ -13,6 +13,13 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
 
+const (
+	namespace = "coordinator"
+
+	subsystemGRPC      = "grpc"
+	subsystemVCService = "vcservice"
+)
+
 type (
 	perfMetrics struct {
 		*monitoring.Provider
@@ -52,28 +59,28 @@ func newPerformanceMetrics(q *channels) *perfMetrics {
 	return &perfMetrics{
 		Provider: p,
 		transactionReceivedTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "coordinator",
-			Subsystem: "grpc",
+			Namespace: namespace,
+			Subsystem: subsystemGRPC,
 			Name:      "received_transaction_total",
 			Help:      "Total number of transactions received by the coordinator service from the client.",
 		}),
 		transactionCommittedTotal: p.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "coordinator",
-			Subsystem: "grpc",
+			Namespace: namespace,
+			Subsystem: subsystemGRPC,
 			Name:      "committed_transaction_total",
 			Help:      "Total number of transactions committed status sent by the coordinator service to the client.",
 		}, []string{"status"}),
 		verifiers: newManagerMetrics(p, monitoring.MetricsParameters{
-			Namespace: "coordinator",
+			Namespace: namespace,
 			Subsystem: "verifier",
 		}, q.depGraphToSigVerifierFreeTxs, q.sigVerifierToVCServiceValidatedTxs),
 		vcs: newManagerMetrics(p, monitoring.MetricsParameters{
-			Namespace: "coordinator",
-			Subsystem: "vcservice",
+			Namespace: namespace,
+			Subsystem: subsystemVCService,
 		}, q.sigVerifierToVCServiceValidatedTxs, q.vcServiceToDepGraphValidatedTxs),
 		vcserviceOutputTxStatusBatchQueueSize: p.NewGaugeFunc(prometheus.GaugeOpts{
-			Namespace: "coordinator",
-			Subsystem: "vcservice",
+			Namespace: namespace,
+			Subsystem: subsystemVCService,
 			Name:      "output_tx_status_batch_queue_size",
 			Help: "Size of the output transaction status batch queue of " +
 				"the validation and committer service manager.",
