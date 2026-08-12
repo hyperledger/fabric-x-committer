@@ -141,7 +141,8 @@ func (r *relay) preProcessBlock(
 		start := time.Now()
 		mappedBlock, err := mapBlock(block, &r.txIDToHeight)
 		if err != nil {
-			// This can never occur unless there is a bug in the relay.
+			// This can never occur unless there is a bug in the relay or a
+			// mapping error which indicates a bad block.
 			return err
 		}
 		promutil.Observe(r.metrics.blockMappingInRelaySeconds, time.Since(start))

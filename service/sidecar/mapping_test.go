@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -111,28 +112,52 @@ func TestBlockMapping(t *testing.T) {
 	require.Equal(t, int32(expectedBlockSize), mappedBlock.withStatus.pendingCount.Load())
 }
 
-func TestConfigTxMapping(t *testing.T) {
-	t.Parallel()
+// configEnvelopeForTest returns a CONFIG envelope wrapping the given ConfigEnvelope, with an
+// outer channel header that carries no TxID (the outer envelope of a CONFIG TX is created and
+// signed by the consensus leader, so its TxID must not be used).
+func configEnvelopeForTest(t *testing.T, configEnv *common.ConfigEnvelope) []byte {
+	t.Helper()
+	outerChdr := protoutil.MakeChannelHeader(common.HeaderType_CONFIG, 1, testChannelID, 0)
+	outerSigHdr := protoutil.MakeSignatureHeader(nil, protoutil.CreateNonceOrPanic())
+	return protoutil.MarshalOrPanic(&common.Envelope{Payload: protoutil.MarshalOrPanic(&common.Payload{
+		Header: protoutil.MakePayloadHeader(outerChdr, outerSigHdr),
+		Data:   protoutil.MarshalOrPanic(configEnv),
+	})})
+}
 
-	const clientTxID = "client-config-txid"
+// lastUpdateForTest returns a CONFIG_UPDATE envelope carrying the given client TxID.
+func lastUpdateForTest(t *testing.T, clientTxID string) *common.Envelope {
+	t.Helper()
 	lastUpdateChdr := protoutil.MakeChannelHeader(common.HeaderType_CONFIG_UPDATE, 1, testChannelID, 0)
 	lastUpdateChdr.TxId = clientTxID
 	lastUpdateSigHdr := protoutil.MakeSignatureHeader(nil, protoutil.CreateNonceOrPanic())
-	lastUpdate := &common.Envelope{Payload: protoutil.MarshalOrPanic(&common.Payload{
+	return &common.Envelope{Payload: protoutil.MarshalOrPanic(&common.Payload{
 		Header: protoutil.MakePayloadHeader(lastUpdateChdr, lastUpdateSigHdr),
 		Data:   []byte("config-update"),
 	})}
+}
 
-	outerChdr := protoutil.MakeChannelHeader(common.HeaderType_CONFIG, 1, testChannelID, 0)
-	outerSigHdr := protoutil.MakeSignatureHeader(nil, protoutil.CreateNonceOrPanic())
-	outerEnv := &common.Envelope{Payload: protoutil.MarshalOrPanic(&common.Payload{
-		Header: protoutil.MakePayloadHeader(outerChdr, outerSigHdr),
-		Data:   protoutil.MarshalOrPanic(&common.ConfigEnvelope{LastUpdate: lastUpdate}),
-	})}
+func TestConfigTxMapping(t *testing.T) {
+	t.Parallel()
+
+	const clientTxID = "some-client-config-txid-2027-12-01"
+
+	// The config TX must pass policy.ValidateConfigTx, so we build the envelope on top of
+	// a real, valid config block. The outer envelope of a CONFIG TX carries no TxID (it is
+	// created and signed by the consensus leader); the client's TxID is extracted from the
+	// ConfigEnvelope.LastUpdate field when needed for client notification.
+	configBlock := createConfigBlockForTest(t)
+	env, err := protoutil.UnmarshalEnvelope(configBlock.Data.Data[0])
+	require.NoError(t, err)
+	payload, err := protoutil.UnmarshalPayload(env.Payload)
+	require.NoError(t, err)
+	configEnv, err := protoutil.UnmarshalConfigEnvelope(payload.Data)
+	require.NoError(t, err)
+	configEnv.LastUpdate = lastUpdateForTest(t, clientTxID)
 
 	block := &common.Block{
-		Header: &common.BlockHeader{Number: 0},
-		Data:   &common.BlockData{Data: [][]byte{protoutil.MarshalOrPanic(outerEnv)}},
+		Header: &common.BlockHeader{Number: 1},
+		Data:   &common.BlockData{Data: [][]byte{configEnvelopeForTest(t, configEnv)}},
 	}
 
 	var txIDToHeight utils.SyncMap[string, servicepb.Height]
@@ -144,6 +169,58 @@ func TestConfigTxMapping(t *testing.T) {
 	require.Equal(t, clientTxID, mappedBlock.block.Txs[0].Ref.TxId)
 	require.Equal(t, committerpb.ConfigNamespaceID, mappedBlock.block.Txs[0].Content.Namespaces[0].NsId)
 	require.Equal(t, []byte(committerpb.ConfigKey), mappedBlock.block.Txs[0].Content.Namespaces[0].BlindWrites[0].Key)
+}
+
+// TestConfigTxMappingMissingTxID verifies that a CONFIG TX from which no client TxID can be
+// extracted is rejected with MALFORMED_MISSING_TX_ID (a non-DB status)
+func TestConfigTxMappingMissingTxID(t *testing.T) {
+	t.Parallel()
+
+	// A config envelope whose LastUpdate carries no TxID, so no client TxID can be extracted.
+	configBlock := createConfigBlockForTest(t)
+	env, err := protoutil.UnmarshalEnvelope(configBlock.Data.Data[0])
+	require.NoError(t, err)
+	payload, err := protoutil.UnmarshalPayload(env.Payload)
+	require.NoError(t, err)
+	configEnv, err := protoutil.UnmarshalConfigEnvelope(payload.Data)
+	require.NoError(t, err)
+	configEnv.LastUpdate = lastUpdateForTest(t, "")
+
+	block := &common.Block{
+		Header: &common.BlockHeader{Number: 1},
+		Data:   &common.BlockData{Data: [][]byte{configEnvelopeForTest(t, configEnv)}},
+	}
+
+	var txIDToHeight utils.SyncMap[string, servicepb.Height]
+	mappedBlock, err := mapBlock(block, &txIDToHeight)
+	require.NoError(t, err)
+	require.NotNil(t, mappedBlock)
+	require.False(t, mappedBlock.isConfig)
+	require.Empty(t, mappedBlock.block.Txs)
+	require.Len(t, mappedBlock.withStatus.txStatus, 1)
+	require.Equal(t, committerpb.Status_MALFORMED_MISSING_TX_ID, mappedBlock.withStatus.txStatus[0])
+}
+
+// TestConfigTxMappingInvalid verifies that a CONFIG TX that cannot be parsed into a valid
+// bundle fails the mapping with a backoff error, which restarts the block source feed from one
+// block before and tries again.
+func TestConfigTxMappingInvalid(t *testing.T) {
+	t.Parallel()
+
+	// The config envelope parses (so a client TxID is available from LastUpdate), but its
+	// Config is nil, which cannot be parsed into a valid bundle.
+	configEnv := &common.ConfigEnvelope{LastUpdate: lastUpdateForTest(t, "client-config-txid")}
+
+	block := &common.Block{
+		Header: &common.BlockHeader{Number: 1},
+		Data:   &common.BlockData{Data: [][]byte{configEnvelopeForTest(t, configEnv)}},
+	}
+
+	var txIDToHeight utils.SyncMap[string, servicepb.Height]
+	mappedBlock, err := mapBlock(block, &txIDToHeight)
+	require.Error(t, err)
+	require.Nil(t, mappedBlock)
+	require.ErrorIs(t, err, retry.ErrBackOff)
 }
 
 func TestSystemNamespaceFormValidation(t *testing.T) {

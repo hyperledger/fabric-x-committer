@@ -21,6 +21,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 )
 
@@ -106,7 +107,8 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb
 		logger.Debugf("Mapping transaction [blk,tx] = [%d,%d]", blockNumber, msgIndex)
 		err := mappedBlock.mapMessage(uint32(msgIndex), msg) //nolint:gosec // int -> uint32.
 		if err != nil {
-			// This can never occur unless there is a bug in the relay.
+			// This can never occur unless there is a bug in the relay or a
+			// mapping error which indicates a bad block.
 			return nil, err
 		}
 	}
@@ -129,10 +131,17 @@ func (b *blockMappingResult) mapMessage(msgIndex uint32, msg []byte) error {
 	}
 	switch common.HeaderType(envLite.HeaderType) {
 	case common.HeaderType_CONFIG:
-		// extracts configId from config.LastUpdate.TxId, which is the client's TxID.
-		ref.TxId = envLite.TxID
+		// TxID is extracted from the ConfigEnvelope.LastUpdate field.
+		ref.TxId = extractConfigTxID(envLite.Data)
 		if ref.TxId == "" {
-			ref.TxId = extractConfigTxID(envLite.Data)
+			return b.rejectNonDBStatusTx(ref, committerpb.Status_MALFORMED_MISSING_TX_ID, "no TX ID")
+		}
+		// We must validate the config TX here. If the mapping fails, it will be retried with a
+		// backoff error, which restarts the block source feed from one block before and
+		// tries again, finally failing if the parsing keeps failing.
+		if err := policy.ValidateConfigTx(msg); err != nil {
+			return errors.Join(retry.ErrBackOff,
+				fmt.Errorf("invalid config TX [%s]: %w", ref.TxId, err))
 		}
 		b.isConfig = true
 		return b.appendTx(ref, configTx(msg))
@@ -288,10 +297,12 @@ func debugTx(ref *committerpb.TxRef, format string, a ...any) {
 func extractConfigTxID(value []byte) string {
 	configEnv, err := protoutil.UnmarshalConfigEnvelope(value)
 	if err != nil {
+		logger.Warnf("Failed to unmarshal config envelope: %v", err)
 		return ""
 	}
 	chdr, err := protoutil.ChannelHeader(configEnv.LastUpdate)
 	if err != nil {
+		logger.Warnf("Failed to extract channel header from config envelope: %v", err)
 		return ""
 	}
 	return chdr.TxId

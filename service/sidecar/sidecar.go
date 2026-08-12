@@ -402,7 +402,8 @@ func appendMissingBlock(
 	var txIDToHeight utils.SyncMap[string, servicepb.Height]
 	mappedBlock, err := mapBlock(blk, &txIDToHeight)
 	if err != nil {
-		// This can never occur unless there is a bug in the relay.
+		// This can never occur unless there is a bug in the relay or a
+		// mapping error which indicates a bad block.
 		return err
 	}
 
