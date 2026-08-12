@@ -13,10 +13,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
 
-// lockLatencyBuckets buckets a mutex wait/hold time. Contention on the verifier's
-// txBeingValidated lock is expected to be sub-millisecond, so the buckets are dense at the low end.
-var lockLatencyBuckets = []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}
-
 const (
 	namespace = "coordinator"
 
@@ -37,9 +33,8 @@ type (
 		verifiers *managerMetrics
 		vcs       *managerMetrics
 
-		// verifier-only: the signature verifier serializes its txBeingValidated map with a mutex,
-		// unlike the vcservice manager which uses a lock-free SyncMap. These histograms measure
-		// contention on that mutex from the status-receive path (fetchAndDeleteTxBeingValidated).
+		// Verifier-Only: These histograms measure mutex usage stats
+		// from the status-receive path (fetchAndDeleteTxBeingValidated).
 		verifierFetchValidatedTxsLockWaitSeconds prometheus.Histogram
 		verifierFetchValidatedTxsLockHoldSeconds prometheus.Histogram
 
@@ -65,6 +60,7 @@ type (
 )
 
 func newPerformanceMetrics(q *channels) *perfMetrics {
+	var lockLatencyBuckets = []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}
 	p := monitoring.NewProvider()
 
 	return &perfMetrics{

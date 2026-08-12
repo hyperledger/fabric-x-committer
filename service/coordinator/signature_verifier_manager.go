@@ -36,13 +36,13 @@ type (
 	// 3. Forwarding the status of the transactions to the coordinator.
 	signatureVerifierManager struct {
 		config       *signVerifierManagerConfig
-		signVerifier []*signatureVerifier
+		signVerifier []*signatureVerifierClient
 		metrics      *perfMetrics
 	}
 
-	// signatureVerifier is responsible for managing the communication with a single
+	// signatureVerifierClient is responsible for managing the communication with a single
 	// signature verifier server.
-	signatureVerifier struct {
+	signatureVerifierClient struct {
 		conn    *grpc.ClientConn
 		client  servicepb.VerifierClient
 		metrics *perfMetrics
@@ -79,7 +79,7 @@ func newSignatureVerifierManager(config *signVerifierManagerConfig) *signatureVe
 func (svm *signatureVerifierManager) run(ctx context.Context) error {
 	c := svm.config
 	logger.Infof("Connections to %d sv's will be opened from sv manager", len(c.clientConfig.Endpoints))
-	svm.signVerifier = make([]*signatureVerifier, len(c.clientConfig.Endpoints))
+	svm.signVerifier = make([]*signatureVerifierClient, len(c.clientConfig.Endpoints))
 
 	derivedCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -104,7 +104,7 @@ func (svm *signatureVerifierManager) run(ctx context.Context) error {
 		label := conn.CanonicalTarget()
 		c.metrics.verifiers.connection.Disconnected(label)
 
-		sv := newSignatureVerifier(c, conn)
+		sv := newSignatureVerifierClient(c, conn)
 		svm.signVerifier[i] = sv
 		logger.Infof("Client [%d] successfully created and connected to sv at %s", i, label)
 
@@ -140,12 +140,12 @@ func ingestIncomingTxsToInternalQueue(
 	}
 }
 
-func newSignatureVerifier(
+func newSignatureVerifierClient(
 	config *signVerifierManagerConfig,
 	conn *grpc.ClientConn,
-) *signatureVerifier {
+) *signatureVerifierClient {
 	logger.Info("Initializing new SignatureVerifier")
-	return &signatureVerifier{
+	return &signatureVerifierClient{
 		conn:             conn,
 		client:           servicepb.NewVerifierClient(conn),
 		metrics:          config.metrics,
@@ -159,7 +159,7 @@ func newSignatureVerifier(
 // and use it to send transactions, and receive the results.
 // It reconnects the stream in case of failure.
 // It stops when the context was cancelled, i.e., the SVM have closed, or according to the retry policy.
-func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
+func (sv *signatureVerifierClient) sendTransactionsAndForwardStatus(
 	ctx context.Context,
 	inputTxBatch channel.ReaderWriter[dependencygraph.TxNodeBatch],
 	outputValidatedTxs channel.Writer[dependencygraph.TxNodeBatch],
@@ -189,7 +189,7 @@ func (sv *signatureVerifier) sendTransactionsAndForwardStatus(
 }
 
 // NOTE: sendTransactionsToSVService filters all transient connection related errors.
-func (sv *signatureVerifier) sendTransactionsToSVService(
+func (sv *signatureVerifierClient) sendTransactionsToSVService(
 	stream servicepb.Verifier_StartStreamClient,
 	inputTxBatch channel.Reader[dependencygraph.TxNodeBatch],
 ) error {
@@ -272,7 +272,7 @@ func splitAndSendToVerifier(
 	return nil
 }
 
-func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
+func (sv *signatureVerifierClient) receiveStatusAndForwardToOutput(
 	stream servicepb.Verifier_StartStreamClient,
 	outputValidatedTxs channel.Writer[dependencygraph.TxNodeBatch],
 ) error {
@@ -297,7 +297,7 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 	}
 }
 
-func (sv *signatureVerifier) fetchAndDeleteTxBeingValidated(
+func (sv *signatureVerifierClient) fetchAndDeleteTxBeingValidated(
 	response *committerpb.TxStatusBatch,
 ) dependencygraph.TxNodeBatch {
 	validatedTxs := dependencygraph.TxNodeBatch(make([]*dependencygraph.TransactionNode, 0, len(response.Status)))
@@ -325,7 +325,7 @@ func (sv *signatureVerifier) fetchAndDeleteTxBeingValidated(
 	return validatedTxs
 }
 
-func (sv *signatureVerifier) recoverPendingTransactions(inputTxBatch channel.Writer[dependencygraph.TxNodeBatch]) {
+func (sv *signatureVerifierClient) recoverPendingTransactions(inputTxBatch channel.Writer[dependencygraph.TxNodeBatch]) {
 	sv.txMu.Lock()
 	defer sv.txMu.Unlock()
 
@@ -344,7 +344,7 @@ func (sv *signatureVerifier) recoverPendingTransactions(inputTxBatch channel.Wri
 	promutil.AddToCounter(sv.metrics.verifiers.retriedTotal, len(pendingTxs))
 }
 
-func (sv *signatureVerifier) addTxsBeingValidated(txBatch dependencygraph.TxNodeBatch) {
+func (sv *signatureVerifierClient) addTxsBeingValidated(txBatch dependencygraph.TxNodeBatch) {
 	sv.txMu.Lock()
 	defer sv.txMu.Unlock()
 	for _, txNode := range txBatch {
