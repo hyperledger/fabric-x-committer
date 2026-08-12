@@ -60,7 +60,7 @@ type (
 )
 
 func newPerformanceMetrics(q *channels) *perfMetrics {
-	var lockLatencyBuckets = []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}
+	lockLatencyBuckets := []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}
 	p := monitoring.NewProvider()
 
 	return &perfMetrics{

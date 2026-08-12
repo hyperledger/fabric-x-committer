@@ -325,7 +325,9 @@ func (sv *signatureVerifierClient) fetchAndDeleteTxBeingValidated(
 	return validatedTxs
 }
 
-func (sv *signatureVerifierClient) recoverPendingTransactions(inputTxBatch channel.Writer[dependencygraph.TxNodeBatch]) {
+func (sv *signatureVerifierClient) recoverPendingTransactions(
+	inputTxBatch channel.Writer[dependencygraph.TxNodeBatch],
+) {
 	sv.txMu.Lock()
 	defer sv.txMu.Unlock()
 
