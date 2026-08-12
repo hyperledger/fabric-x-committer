@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
@@ -300,9 +301,12 @@ func (sv *signatureVerifier) fetchAndDeleteTxBeingValidated(
 	response *committerpb.TxStatusBatch,
 ) dependencygraph.TxNodeBatch {
 	validatedTxs := dependencygraph.TxNodeBatch(make([]*dependencygraph.TransactionNode, 0, len(response.Status)))
-	// TODO: introduce metrics to measure the lock wait/holding duration.
+
+	waitStart := time.Now()
 	sv.txMu.Lock()
-	defer sv.txMu.Unlock()
+	holdStart := time.Now()
+	promutil.Observe(sv.metrics.verifierFetchValidatedTxsLockWaitSeconds, time.Since(waitStart))
+
 	for _, resp := range response.Status {
 		k := *servicepb.NewHeightFromTxRef(resp.Ref)
 		txNode, ok := sv.txBeingValidated[k]
@@ -315,6 +319,9 @@ func (sv *signatureVerifier) fetchAndDeleteTxBeingValidated(
 		}
 		validatedTxs = append(validatedTxs, txNode)
 	}
+
+	sv.txMu.Unlock()
+	promutil.Observe(sv.metrics.verifierFetchValidatedTxsLockHoldSeconds, time.Since(holdStart))
 	return validatedTxs
 }
 

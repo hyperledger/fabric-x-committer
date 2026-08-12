@@ -13,6 +13,10 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
 
+// lockLatencyBuckets buckets a mutex wait/hold time. Contention on the verifier's
+// txBeingValidated lock is expected to be sub-millisecond, so the buckets are dense at the low end.
+var lockLatencyBuckets = []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}
+
 type (
 	perfMetrics struct {
 		*monitoring.Provider
@@ -24,6 +28,12 @@ type (
 		// per-service-manager metrics
 		verifiers *managerMetrics
 		vcs       *managerMetrics
+
+		// verifier-only: the signature verifier serializes its txBeingValidated map with a mutex,
+		// unlike the vcservice manager which uses a lock-free SyncMap. These histograms measure
+		// contention on that mutex from the status-receive path (fetchAndDeleteTxBeingValidated).
+		verifierFetchValidatedTxsLockWaitSeconds prometheus.Histogram
+		verifierFetchValidatedTxsLockHoldSeconds prometheus.Histogram
 
 		// The status queue is read by the coordinator itself, so it has no manager to report it.
 		// Its saturation is what stalls the idle handshake, see NoPendingTransactionProcessing.
@@ -71,6 +81,22 @@ func newPerformanceMetrics(q *channels) *perfMetrics {
 			Namespace: "coordinator",
 			Subsystem: "vcservice",
 		}, q.sigVerifierToVCServiceValidatedTxs, q.vcServiceToDepGraphValidatedTxs),
+		verifierFetchValidatedTxsLockWaitSeconds: p.NewHistogram(prometheus.HistogramOpts{
+			Namespace: "coordinator",
+			Subsystem: "verifier",
+			Name:      "fetch_validated_txs_lock_wait_seconds",
+			Help: "Time spent waiting to acquire the txBeingValidated lock while fetching validated " +
+				"transactions from a signature verifier.",
+			Buckets: lockLatencyBuckets,
+		}),
+		verifierFetchValidatedTxsLockHoldSeconds: p.NewHistogram(prometheus.HistogramOpts{
+			Namespace: "coordinator",
+			Subsystem: "verifier",
+			Name:      "fetch_validated_txs_lock_hold_seconds",
+			Help: "Time spent holding the txBeingValidated lock while fetching validated " +
+				"transactions from a signature verifier.",
+			Buckets: lockLatencyBuckets,
+		}),
 		vcserviceOutputTxStatusBatchQueueSize: p.NewGaugeFunc(prometheus.GaugeOpts{
 			Namespace: "coordinator",
 			Subsystem: "vcservice",

@@ -199,6 +199,13 @@ func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
 		t, 15, env.signVerifierManager.config.metrics.verifiers.processedTotal,
 		30*time.Second, 10*time.Millisecond,
 	)
+
+	// fetchAndDeleteTxBeingValidated ran for every received status batch above, so both the
+	// wait and hold histograms hold positive-duration samples. A histogram average is positive
+	// only once such a sample was recorded, which confirms the instrumentation is wired.
+	m := env.signVerifierManager.config.metrics
+	require.Greater(t, test.GetMetricValue(t, m.verifierFetchValidatedTxsLockWaitSeconds), float64(0))
+	require.Greater(t, test.GetMetricValue(t, m.verifierFetchValidatedTxsLockHoldSeconds), float64(0))
 }
 
 func TestSignatureVerifierManagerWithLargeSize(t *testing.T) {
