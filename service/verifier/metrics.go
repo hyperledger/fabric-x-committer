@@ -13,6 +13,8 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
+const namespace = "verifier_server"
+
 type metrics struct {
 	*monitoring.Provider
 	VerifierServerTxs *monitoring.ThroughputMetrics
@@ -25,15 +27,15 @@ func newMonitoring() *metrics {
 	return &metrics{
 		Provider: p,
 		VerifierServerTxs: monitoring.NewThroughputMetrics(p, monitoring.MetricsParameters{
-			Namespace: "verifier_server",
+			Namespace: namespace,
 			Subsystem: "tx",
 		}),
 		serverMetrics: serve.NewServerMetrics(p, monitoring.MetricsParameters{
-			Namespace: "verifier_server",
+			Namespace: namespace,
 			Subsystem: "grpc",
 		}),
 		ActiveRequests: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: "verifier_server",
+			Namespace: namespace,
 			Subsystem: "parallel_executor",
 			Name:      "active_requests",
 			Help:      "The total number of active requests",
