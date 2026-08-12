@@ -13,9 +13,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	promgo "github.com/prometheus/client_model/go"
 
+	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
+
+const namespace = "loadgen"
 
 type (
 	// PerfMetrics is a struct that contains the metrics for the block generator.
@@ -31,6 +34,11 @@ type (
 		validLatency              prometheus.Histogram
 		invalidLatency            prometheus.Histogram
 
+		// Scrape-time counters read from the shared tx-index counter; no caller updates them.
+		createdKeysTotal         prometheus.CounterFunc
+		referencedReadKeysTotal  prometheus.CounterFunc
+		referencedWriteKeysTotal prometheus.CounterFunc
+
 		latencyTracker *latencyReceiverSender
 	}
 
@@ -42,6 +50,9 @@ type (
 		TransactionsReceived  uint64
 		TransactionsCommitted uint64
 		TransactionsAborted   uint64
+		CreatedKeys           uint64
+		ReferencedReadKeys    uint64
+		ReferencedWriteKeys   uint64
 	}
 
 	// TxStatus is used to report a batch item.
@@ -51,55 +62,75 @@ type (
 	}
 )
 
-// NewLoadgenServiceMetrics creates a new PerfMetrics instance.
-func NewLoadgenServiceMetrics(c *Config) *PerfMetrics {
+// NewLoadgenServiceMetrics creates a new PerfMetrics instance. The key-generation counters read from the
+// shared counter at scrape time via KeyStats.
+func NewLoadgenServiceMetrics(c *Config, counter *workload.TxCounter) *PerfMetrics {
 	p := monitoring.NewProvider()
 	latencyTracker := newLatencyReceiverSender(&c.Latency)
 	return &PerfMetrics{
 		Provider:       p,
 		latencyTracker: latencyTracker,
 		blockSentTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "loadgen",
+			Namespace: namespace,
 			Name:      "block_sent_total",
 			Help:      "Total number of blocks sent by the block generator",
 		}),
 		blockReceivedTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "loadgen",
+			Namespace: namespace,
 			Name:      "block_received_total",
 			Help:      "Total number of blocks received by the block generator",
 		}),
 		transactionSentTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "loadgen",
+			Namespace: namespace,
 			Name:      "transaction_sent_total",
 			Help:      "Total number of transactions sent by the block generator",
 		}),
 		transactionReceivedTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "loadgen",
+			Namespace: namespace,
 			Name:      "transaction_received_total",
 			Help:      "Total number of transactions received by the block generator",
 		}),
 		transactionCommittedTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "loadgen",
+			Namespace: namespace,
 			Name:      "transaction_committed_total",
 			Help:      "Total number of transaction commit statuses received by the block generator",
 		}),
 		transactionAbortedTotal: p.NewCounter(prometheus.CounterOpts{
-			Namespace: "loadgen",
+			Namespace: namespace,
 			Name:      "transaction_aborted_total",
 			Help:      "Total number of transaction abort statuses received by the block generator",
 		}),
 		validLatency: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loadgen",
+			Namespace: namespace,
 			Name:      "valid_transaction_latency_seconds",
 			Help:      "Latency of valid transactions in seconds",
 			Buckets:   latencyTracker.buckets,
 		}),
 		invalidLatency: p.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loadgen",
+			Namespace: namespace,
 			Name:      "invalid_transaction_latency_seconds",
 			Help:      "Latency of invalid transactions in seconds",
 			Buckets:   latencyTracker.buckets,
 		}),
+		createdKeysTotal: p.NewCounterFunc(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "created_keys_total",
+			Help: "Total number of new keys the workload has introduced, each counted once when it is " +
+				"first created; some may never be committed (for example, when the transaction that " +
+				"creates the key aborts)",
+		}, func() float64 { return float64(counter.KeyStats().KeyFrontier) }),
+		referencedReadKeysTotal: p.NewCounterFunc(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "referenced_read_keys_total",
+			Help: "Total number of read-only accesses that reused an already-created key instead of " +
+				"introducing a new one",
+		}, func() float64 { return float64(counter.KeyStats().ReferencedReadKeys) }),
+		referencedWriteKeysTotal: p.NewCounterFunc(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "referenced_write_keys_total",
+			Help: "Total number of write accesses (read-write and blind-write) that reused an " +
+				"already-created key instead of introducing a new one",
+		}, func() float64 { return float64(counter.KeyStats().ReferencedWriteKeys) }),
 	}
 }
 
@@ -112,10 +143,15 @@ func (c *PerfMetrics) GetState() MetricState {
 		TransactionsReceived:  getCounterValue(c.transactionReceivedTotal),
 		TransactionsCommitted: getCounterValue(c.transactionCommittedTotal),
 		TransactionsAborted:   getCounterValue(c.transactionAbortedTotal),
+		CreatedKeys:           getCounterValue(c.createdKeysTotal),
+		ReferencedReadKeys:    getCounterValue(c.referencedReadKeysTotal),
+		ReferencedWriteKeys:   getCounterValue(c.referencedWriteKeysTotal),
 	}
 }
 
-func getCounterValue(c prometheus.Counter) uint64 {
+// getCounterValue reads a counter-typed metric's value. The parameter is prometheus.Metric so it accepts
+// both plain counters and CounterFuncs.
+func getCounterValue(c prometheus.Metric) uint64 {
 	gm := promgo.Metric{}
 	if err := c.Write(&gm); err != nil {
 		logger.Warnf("Failed reading counter value: %v", err)

@@ -44,7 +44,8 @@ This document provides specific guidelines for writing and running tests in the 
 Don't hand-roll crypto, TLS, config-block, or service/DB setup — reuse existing helpers:
 
 - **In-process harnesses (this repo):** `test.RunServiceForTest` / `test.ServeForTest` ([`utils/test/serve.go`](../../utils/test/serve.go)), `testdb.PrepareTestEnv` + `testdb.RunTestMain` (`utils/testdb`), and the hand-written mocks in `mock/`.
-- **Proto assertions (this repo):** `test.RequireProtoEqual` / `test.RequireProtoElementsMatch` (`utils/test/require_proto.go`) — never compare protos with `require.Equal`. Both accept `require.TestingT`, so they also work inside `require.EventuallyWithT`.
+- **Proto assertions (this repo):** `test.RequireProtoEqual` / `test.RequireProtoElementsMatch` (`utils/test/require_proto.go`) — never compare protos with `require.Equal`. Both accept `test.TestingT`, so they also work inside `require.EventuallyWithT`.
+- **Inside an `Eventually` condition, never touch the outer `t`** — not `require`, not `t.Fatalf`, not `t.Logf`. The condition runs on its own goroutine and may outlive the test, where asserting on the test's own `T` panics the *whole test binary* instead of failing one test; it also fails the test on the first transient error instead of retrying. Assert on the `ct`, and give any helper the condition calls a `test.TestingT` parameter (`require.TestingT` plus `Helper()`) so the `ct` can be passed down — see `test.GetIntMetricValue`, `testdb.DatabaseContainer.ExecuteCommand`. `testing.TB` cannot serve here: it is sealed, so an `assert.CollectT` can never satisfy it; reserve it for helpers needing `Cleanup`/`TempDir`/`Context` that no condition calls.
 - **MSP / identity / Fabric config blocks:** `github.com/hyperledger/fabric-x-common/utils/testcrypto` — `CreateOrExtendConfigBlockWithCrypto`, `ConfigBlock`, `PrepareBlockHeaderAndMetadata`, `GetPeersIdentities` / `GetConsenterIdentities` / `GetSigningIdentities` / `GetPeersMspDirs` / `GetConsenterMspDirs`.
 - **TLS test material:** `github.com/hyperledger/fabric-x-common/common/crypto/tlsgen` — `tlsgen.NewCA()`, `CA`, `CertKeyPair`.
 - **Generate crypto material:** `github.com/hyperledger/fabric-x-common/tools/cryptogen`.
@@ -395,8 +396,8 @@ require.Greater(t, latency, float64(0))
 
 // Use with require.EventuallyWithT for complex conditions
 require.EventuallyWithT(t, func(ct *assert.CollectT) {
-    require.Equal(ct, 0, test.GetIntMetricValue(t, metrics.queueSize))
-    require.Equal(ct, 5, test.GetIntMetricValue(t, metrics.activeWorkers))
+    require.Equal(ct, 0, test.GetIntMetricValue(ct, metrics.queueSize))
+    require.Equal(ct, 5, test.GetIntMetricValue(ct, metrics.activeWorkers))
 }, 3*time.Second, 500*time.Millisecond)
 ```
 
@@ -503,9 +504,9 @@ require.Greater(t, count, 500)
    ```go
    // ✅ CORRECT - Shows which metric failed
    require.EventuallyWithT(t, func(ct *assert.CollectT) {
-       require.Equal(ct, 1, test.GetIntMetricValue(t, metrics.inputQueue))
-       require.Equal(ct, 1, test.GetIntMetricValue(t, metrics.outputQueue))
-       require.Equal(ct, 0, test.GetIntMetricValue(t, metrics.processingQueue))
+       require.Equal(ct, 1, test.GetIntMetricValue(ct, metrics.inputQueue))
+       require.Equal(ct, 1, test.GetIntMetricValue(ct, metrics.outputQueue))
+       require.Equal(ct, 0, test.GetIntMetricValue(ct, metrics.processingQueue))
    }, 3*time.Second, 500*time.Millisecond)
 
    // ❌ INCORRECT - Doesn't show which condition failed
@@ -520,7 +521,7 @@ require.Greater(t, count, 500)
 
    ```go
    require.EventuallyWithT(t, func(ct *assert.CollectT) {
-       actual := test.GetIntMetricValue(t, metrics.counter)
+       actual := test.GetIntMetricValue(ct, metrics.counter)
        require.Equal(ct, expected, actual, "counter should reach expected value")
    }, 5*time.Second, 100*time.Millisecond)
    ```
@@ -578,8 +579,8 @@ test.EventuallyIntMetric(t, 0, metrics.waitingTransactionsQueueSize,
 ```go
 // Use EventuallyWithT for clear failure messages
 require.EventuallyWithT(t, func(ct *assert.CollectT) {
-    require.Equal(ct, 10, test.GetIntMetricValue(t, metrics.gdgTxProcessedTotal))
-    require.Equal(ct, 8, test.GetIntMetricValue(t, metrics.gdgValidatedTxProcessedTotal))
+    require.Equal(ct, 10, test.GetIntMetricValue(ct, metrics.gdgTxProcessedTotal))
+    require.Equal(ct, 8, test.GetIntMetricValue(ct, metrics.gdgValidatedTxProcessedTotal))
 }, 2*time.Second, 200*time.Millisecond)
 ```
 

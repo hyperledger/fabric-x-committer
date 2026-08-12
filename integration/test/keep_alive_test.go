@@ -66,8 +66,9 @@ type (
 	}
 )
 
-// value returns the gauge's current value.
-func (g metricsGetter) value(t *testing.T) int {
+// value returns the gauge's current value. It takes a [test.TestingT] so a polling condition can
+// pass its [assert.CollectT] instead of the test's own T.
+func (g metricsGetter) value(t test.TestingT) int {
 	t.Helper()
 	return test.GetMetricValueFromURL(t, g.url, g.name, g.tlsConfig)
 }
@@ -171,7 +172,7 @@ func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 
 	// Both the intercepted connection and conn2 are now open on the server.
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, prevActiveConnections+2, gauge.value(t))
+		require.Equal(ct, prevActiveConnections+2, gauge.value(ct))
 	}, 30*time.Second, 200*time.Millisecond)
 
 	blockMessages(t, proxy)
@@ -179,7 +180,7 @@ func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 	// Keep-alive closes the dead connection: the server reports one fewer active
 	// connection (conn2 stays open).
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, prevActiveConnections+1, gauge.value(t))
+		require.Equal(ct, prevActiveConnections+1, gauge.value(ct))
 	}, maxConnectionClosingTime, 500*time.Millisecond)
 
 	// And the stream slot it held is released for new clients.
@@ -249,7 +250,7 @@ func blockAndWaitForServerClose(t *testing.T, proxy *toxiclient.Proxy, gauge met
 
 	// The server counts the new connection.
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, prevActiveConnections+1, gauge.value(t))
+		require.Equal(ct, prevActiveConnections+1, gauge.value(ct))
 	}, 30*time.Second, 200*time.Millisecond)
 
 	blockMessages(t, proxy)
@@ -257,7 +258,7 @@ func blockAndWaitForServerClose(t *testing.T, proxy *toxiclient.Proxy, gauge met
 	// The server's keep-alive detects the silent connection and closes it itself,
 	// so the active-connection count returns to the baseline.
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, prevActiveConnections, gauge.value(t))
+		require.Equal(ct, prevActiveConnections, gauge.value(ct))
 	}, maxConnectionClosingTime, 500*time.Millisecond)
 }
 

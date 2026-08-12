@@ -44,7 +44,8 @@ func EnsurePersistedTxStatus(
 }
 
 // RequireStatus fails if the expected status does not appear in the statuses list.
-func RequireStatus(t require.TestingT, expected *committerpb.TxStatus, statuses []*committerpb.TxStatus) {
+func RequireStatus(t test.TestingT, expected *committerpb.TxStatus, statuses []*committerpb.TxStatus) {
+	t.Helper()
 	var actualStatus *committerpb.TxStatus
 	for _, status := range statuses {
 		if status.Ref.TxId == expected.Ref.TxId {

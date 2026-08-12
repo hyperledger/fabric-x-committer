@@ -265,7 +265,7 @@ func TestGeneratorStreamWorkerCountInvariant(t *testing.T) {
 	idSet := func(workers uint32) map[string]struct{} {
 		p := DefaultProfile(workers)
 		p.Transaction.ReadWriteCount = 2
-		counter := NewTxCounter()
+		counter := NewTxCounter(p.Transaction)
 		gens, err := newIndependentTxGenerators(p, counter)
 		require.NoError(t, err)
 		ids := make(map[string]struct{}, total)

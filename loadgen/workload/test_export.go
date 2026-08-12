@@ -24,7 +24,7 @@ func GenerateTransactions(tb testing.TB, p *Profile, count int) []*servicepb.Loa
 		p = DefaultProfile(1)
 	}
 	p.Workers = 1
-	g, err := newIndependentTxGenerators(p, NewTxCounter())
+	g, err := newIndependentTxGenerators(p, NewTxCounter(p.Transaction))
 	require.NoError(tb, err)
 	require.Len(tb, g, 1)
 	require.Positive(tb, count)

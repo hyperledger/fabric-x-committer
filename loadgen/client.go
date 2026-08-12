@@ -56,17 +56,16 @@ var logger = flogging.MustGetLogger("load-gen-client")
 func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 	logger.Debugf("Config passed: %s", &utils.LazyJSON{O: conf})
 
-	// The shared transaction-index counter is created before the stream: the stream's workers reserve
-	// their index ranges from it. It depends only on the transaction profile, not on the crypto
-	// artifacts below.
-	txCounter := workload.NewTxCounter()
+	// Created before both the metrics and the stream because both share it; it needs only the transaction
+	// profile, so it can be built ahead of the crypto artifacts below.
+	txCounter := workload.NewTxCounter(conf.LoadProfile.Transaction)
 	c := &Client{
 		conf: conf,
 		resources: adapters.ClientResources{
 			Profile: conf.LoadProfile,
 			Stream:  conf.Stream,
 			Limit:   conf.Limit,
-			Metrics: metrics.NewLoadgenServiceMetrics(&conf.Monitoring),
+			Metrics: metrics.NewLoadgenServiceMetrics(&conf.Monitoring, txCounter),
 		},
 		healthcheck: serve.DefaultHealthCheckService(),
 	}
