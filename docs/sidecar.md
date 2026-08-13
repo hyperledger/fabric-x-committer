@@ -255,13 +255,38 @@ enum Status {
    MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET = 112;    // Duplicate key in the read-write set.
    MALFORMED_MISSING_SIGNATURE = 113;                  // Number of signatures does not match the number of namespaces.
    MALFORMED_NAMESPACE_POLICY_INVALID = 114;           // Invalid namespace policy.
-   MALFORMED_CONFIG_TX_INVALID = 115;                  // Invalid configuration transaction.
    MALFORMED_SNAPSHOT_NOT_MARKER_ONLY = 116;           // `_snapshot` namespace has reads/writes; it must be marker only.
    MALFORMED_CHECKPOINT_INVALID_KEY = 117;             // `_checkpoint` namespace form or key is invalid.
    MALFORMED_SYSTEM_TX_NOT_STANDALONE = 118;           // System namespace TX (`_snapshot`/`_checkpoint`) is not standalone.
    REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK = 121;         // More than one `_snapshot` TX in a block; only the first is processed, the rest rejected.
 }
 ```
+
+#### Configuration transactions
+
+A config transaction is never rejected — not even as a duplicate. The ordering service has already
+validated it and applied it to the channel config, so a committer that rejected it would diverge from
+the rest of the network. None of the statuses above therefore apply to a config transaction: the
+sidecar either accepts it, or fails the block holding it, restarts its block feed, and fetches the
+block again — possibly from another orderer. The retry uses a backoff, and the sidecar stops once the
+retry profile is exhausted, as a config transaction that is consistently unprocessable requires human
+intervention. A duplicate transaction ID takes the same path, since by the time the block is fetched
+again, the transaction that holds the ID has likely been processed and released it.
+
+The transaction ID of a config transaction is taken from the client's config-update transaction,
+nested in `ConfigEnvelope.LastUpdate`. The outer envelope's transaction ID is used only when there is
+no nested update at all, in a bootstrap (genesis) config block, which no client submitted.
+
+The client's transaction ID is the only acceptable identifier for a config update, and it is the one
+the client waits for a notification on. The outer envelope of a config block that the ordering
+service creates for a config update is generated and signed by the consensus leader, so its
+transaction ID is the leader's: it never stands in for a nested update that carries no transaction ID
+or that cannot be read. Such a config block is malformed, and the sidecar fails it.
+
+Nor is a transaction ID ever computed from an envelope's creator and nonce. The ordering service
+verifies that every transaction ID is present and matches its creator and nonce, so a config
+transaction that reaches the committer without one is malformed, and the committer fails it rather
+than inventing an ID for it.
 
 #### System namespace transaction forms
 

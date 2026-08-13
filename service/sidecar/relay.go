@@ -141,7 +141,9 @@ func (r *relay) preProcessBlock(
 		start := time.Now()
 		mappedBlock, err := mapBlock(block, &r.txIDToHeight)
 		if err != nil {
-			// This can never occur unless there is a bug in the relay.
+			// A config TX that cannot be processed ends the relay, so the sidecar restarts its
+			// block feed and fetches the block again (see unprocessableConfigTx). Any other
+			// error can never occur unless there is a bug in the relay.
 			return err
 		}
 		promutil.Observe(r.metrics.blockMappingInRelaySeconds, time.Since(start))
