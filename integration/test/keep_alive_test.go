@@ -72,7 +72,7 @@ func TestKeepAliveSidecarDeadConnectionDetection(t *testing.T) {
 
 	c := startKeepAliveRuntime(t, keepAliveConfig{permitWithoutStream: false})
 
-	metricsScraper := test.NewMetricsScraper(t, c, c.SystemConfig.Services.Sidecar.HTTPEndpoint)
+	metricsScraper := test.NewMetricsScraper(t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Sidecar.HTTPEndpoint)
 
 	// Number of connections the Sidecar before our client connects.
 	prevActiveConnections := metricsScraper.Value(t, sidecarActiveConnectionsMetric)
@@ -99,7 +99,7 @@ func TestKeepAliveQueryDeadConnectionDetection(t *testing.T) {
 
 	c := startKeepAliveRuntime(t, keepAliveConfig{permitWithoutStream: true})
 
-	metricsScraper := test.NewMetricsScraper(t, c, c.SystemConfig.Services.Query.HTTPEndpoint)
+	metricsScraper := test.NewMetricsScraper(t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Query.HTTPEndpoint)
 
 	// Number of connections the Query before our client connects.
 	prevActiveConnections := metricsScraper.Value(t, queryActiveConnectionsMetric)
@@ -140,7 +140,7 @@ func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 
 	addr := c.SystemConfig.Services.Sidecar.GrpcEndpoint.Address()
 	clientCreds := clientCredentials(t, c)
-	metricsScraper := test.NewMetricsScraper(t, c, c.SystemConfig.Services.Sidecar.HTTPEndpoint)
+	metricsScraper := test.NewMetricsScraper(t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Sidecar.HTTPEndpoint)
 
 	// Number of connections the Sidecar before our client connects.
 	prevActiveConnections := metricsScraper.Value(t, sidecarActiveConnectionsMetric)

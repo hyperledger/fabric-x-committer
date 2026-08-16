@@ -47,8 +47,8 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
 
-	queryMetrics := test.NewMetricsScraper(t, c, c.SystemConfig.Services.Query.HTTPEndpoint)
-	sidecarMetrics := test.NewMetricsScraper(t, c, c.SystemConfig.Services.Sidecar.HTTPEndpoint)
+	queryMetrics := test.NewMetricsScraper(t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Query.HTTPEndpoint)
+	sidecarMetrics := test.NewMetricsScraper(t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Sidecar.HTTPEndpoint)
 
 	t.Run("Unary RPC Value And Latency", func(t *testing.T) {
 		t.Parallel()

@@ -8,7 +8,6 @@ package test
 
 import (
 	"crypto/tls"
-	"github.com/hyperledger/fabric-x-committer/integration/runner"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -26,14 +25,14 @@ type MetricsScraper struct {
 // NewMetricsScraper builds a handle for scraping the named active-connections gauge on the
 // given service's HTTP metrics endpoint.
 func NewMetricsScraper(
-	t *testing.T, c *runner.CommitterRuntime, httpEndpoint *connection.Endpoint,
+	t *testing.T, clientTLS connection.TLSConfig, httpEndpoint *connection.Endpoint,
 ) MetricsScraper {
 	t.Helper()
 
-	metricsURL, err := monitoring.MakeMetricsURL(httpEndpoint.Address(), &c.SystemConfig.ClientTLS)
+	metricsURL, err := monitoring.MakeMetricsURL(httpEndpoint.Address(), &clientTLS)
 	require.NoError(t, err)
 
-	creds, err := connection.NewClientTLSCredentials(c.SystemConfig.ClientTLS)
+	creds, err := connection.NewClientTLSCredentials(clientTLS)
 	require.NoError(t, err)
 
 	tlsConfig, err := creds.CreateClientTLSConfig()
