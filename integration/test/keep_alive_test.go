@@ -31,6 +31,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 const (
@@ -57,7 +58,7 @@ type (
 
 	blockAndWaitParameters struct {
 		proxy                 *toxiclient.Proxy
-		metricsScraper        runner.MetricsScraper
+		metricsScraper        test.MetricsScraper
 		prevActiveConnections int
 		metric                string
 	}
@@ -71,7 +72,7 @@ func TestKeepAliveSidecarDeadConnectionDetection(t *testing.T) {
 
 	c := startKeepAliveRuntime(t, keepAliveConfig{permitWithoutStream: false})
 
-	metricsScraper := runner.NewMetricsScraper(t, c, c.SystemConfig.Services.Sidecar.HTTPEndpoint)
+	metricsScraper := test.NewMetricsScraper(t, c, c.SystemConfig.Services.Sidecar.HTTPEndpoint)
 
 	// Number of connections the Sidecar before our client connects.
 	prevActiveConnections := metricsScraper.Value(t, sidecarActiveConnectionsMetric)
@@ -98,7 +99,7 @@ func TestKeepAliveQueryDeadConnectionDetection(t *testing.T) {
 
 	c := startKeepAliveRuntime(t, keepAliveConfig{permitWithoutStream: true})
 
-	metricsScraper := runner.NewMetricsScraper(t, c, c.SystemConfig.Services.Query.HTTPEndpoint)
+	metricsScraper := test.NewMetricsScraper(t, c, c.SystemConfig.Services.Query.HTTPEndpoint)
 
 	// Number of connections the Query before our client connects.
 	prevActiveConnections := metricsScraper.Value(t, queryActiveConnectionsMetric)
@@ -139,7 +140,7 @@ func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 
 	addr := c.SystemConfig.Services.Sidecar.GrpcEndpoint.Address()
 	clientCreds := clientCredentials(t, c)
-	metricsScraper := runner.NewMetricsScraper(t, c, c.SystemConfig.Services.Sidecar.HTTPEndpoint)
+	metricsScraper := test.NewMetricsScraper(t, c, c.SystemConfig.Services.Sidecar.HTTPEndpoint)
 
 	// Number of connections the Sidecar before our client connects.
 	prevActiveConnections := metricsScraper.Value(t, sidecarActiveConnectionsMetric)

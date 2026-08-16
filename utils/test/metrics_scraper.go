@@ -4,17 +4,17 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
-package runner
+package test
 
 import (
 	"crypto/tls"
+	"github.com/hyperledger/fabric-x-committer/integration/runner"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
-	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 // MetricsScraper scrapes a service's active-connections gauge from its metrics endpoint.
@@ -26,7 +26,7 @@ type MetricsScraper struct {
 // NewMetricsScraper builds a handle for scraping the named active-connections gauge on the
 // given service's HTTP metrics endpoint.
 func NewMetricsScraper(
-	t *testing.T, c *CommitterRuntime, httpEndpoint *connection.Endpoint,
+	t *testing.T, c *runner.CommitterRuntime, httpEndpoint *connection.Endpoint,
 ) MetricsScraper {
 	t.Helper()
 
@@ -46,9 +46,9 @@ func NewMetricsScraper(
 }
 
 // Value returns the gauge's current Value.
-func (s MetricsScraper) Value(t test.TestingT, metricName string) int {
+func (s MetricsScraper) Value(t TestingT, metricName string) int {
 	t.Helper()
-	return test.GetMetricValueFromURL(t, test.GetMetricValueParameters{
+	return GetMetricValueFromURL(t, GetMetricValueParameters{
 		URL:        s.url,
 		MetricName: metricName,
 		TLSConfig:  s.tlsConfig,
@@ -57,9 +57,9 @@ func (s MetricsScraper) Value(t test.TestingT, metricName string) int {
 
 // ValueWithLabels returns the current ValueWithLabels of the named series carrying the given labels, or 0 if the
 // series is not present yet.
-func (s MetricsScraper) ValueWithLabels(t test.TestingT, metricName string, labels map[string]string) int {
+func (s MetricsScraper) ValueWithLabels(t TestingT, metricName string, labels map[string]string) int {
 	t.Helper()
-	v, _ := test.GetLabeledMetricValueFromURL(t, test.GetMetricValueParameters{
+	v, _ := GetLabeledMetricValueFromURL(t, GetMetricValueParameters{
 		URL:        s.url,
 		MetricName: metricName,
 		Labels:     labels,

@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/connectivity"
 
 	"github.com/hyperledger/fabric-x-committer/integration/runner"
+	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 const (
@@ -46,8 +47,8 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
 
-	queryMetrics := runner.NewMetricsScraper(t, c, c.SystemConfig.Services.Query.HTTPEndpoint)
-	sidecarMetrics := runner.NewMetricsScraper(t, c, c.SystemConfig.Services.Sidecar.HTTPEndpoint)
+	queryMetrics := test.NewMetricsScraper(t, c, c.SystemConfig.Services.Query.HTTPEndpoint)
+	sidecarMetrics := test.NewMetricsScraper(t, c, c.SystemConfig.Services.Sidecar.HTTPEndpoint)
 
 	t.Run("Unary RPC Value And Latency", func(t *testing.T) {
 		t.Parallel()
@@ -59,13 +60,13 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		requireEventuallyWithTerm(t, func(ct *assert.CollectT) {
+		require.EventuallyWithT(t, func(ct *assert.CollectT) {
 			require.Equal(ct, preRequests+1, queryMetrics.ValueWithLabels(t, queryRequestsTotalMetric, unaryLabels))
 			require.Positive(ct, queryMetrics.ValueWithLabels(t, queryLatencyMetric, map[string]string{
 				method:   getTransactionStatusMethod,
 				"status": "OK",
 			}))
-		})
+		}, 30*time.Second, 200*time.Millisecond)
 	})
 
 	t.Run("Streaming RPC Duration And Active Stream Count", func(t *testing.T) {
@@ -83,19 +84,19 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 			TxStatusRequest: &committerpb.TxIDsBatch{TxIds: []string{"non-existent-tx"}},
 		}))
 
-		requireEventuallyWithTerm(t, func(ct *assert.CollectT) {
+		require.EventuallyWithT(t, func(ct *assert.CollectT) {
 			activeStreams := sidecarMetrics.ValueWithLabels(t, sidecarActiveStreamsMetric, streamLabels)
 			require.Equal(ct, preActiveStreams+1, activeStreams)
-		})
+		}, 30*time.Second, 200*time.Millisecond)
 
 		cancelStream()
 
-		requireEventuallyWithTerm(t, func(ct *assert.CollectT) {
+		require.EventuallyWithT(t, func(ct *assert.CollectT) {
 			activeStreams := sidecarMetrics.ValueWithLabels(t, sidecarActiveStreamsMetric, streamLabels)
 			streamDuration := sidecarMetrics.ValueWithLabels(t, sidecarStreamDurationMetric, streamLabels)
 			require.Equal(ct, preActiveStreams, activeStreams)
 			require.Positive(ct, streamDuration-preStreamDuration)
-		})
+		}, 30*time.Second, 200*time.Millisecond)
 	})
 
 	//nolint:paralleltest // this test examine the active-connections gauge, while other tests,
@@ -110,22 +111,17 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 		require.NoError(t, err)
 
 		conn.Connect()
-		requireEventuallyWithTerm(t, func(ct *assert.CollectT) {
+		require.EventuallyWithT(t, func(ct *assert.CollectT) {
 			require.Equal(ct, connectivity.Ready, conn.GetState())
-		})
+		}, 30*time.Second, 200*time.Millisecond)
 
-		requireEventuallyWithTerm(t, func(ct *assert.CollectT) {
+		require.EventuallyWithT(t, func(ct *assert.CollectT) {
 			require.Equal(ct, preActiveConns+1, queryMetrics.Value(t, queryActiveConnsMetric))
-		})
+		}, 30*time.Second, 200*time.Millisecond)
 
 		require.NoError(t, conn.Close())
-		requireEventuallyWithTerm(t, func(ct *assert.CollectT) {
+		require.EventuallyWithT(t, func(ct *assert.CollectT) {
 			require.Equal(ct, preActiveConns, queryMetrics.Value(t, queryActiveConnsMetric))
-		})
+		}, 30*time.Second, 200*time.Millisecond)
 	})
-}
-
-func requireEventuallyWithTerm(t *testing.T, term func(ct *assert.CollectT)) {
-	t.Helper()
-	require.EventuallyWithT(t, term, 30*time.Second, 200*time.Millisecond)
 }
