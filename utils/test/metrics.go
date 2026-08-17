@@ -8,18 +8,17 @@ package test
 
 import (
 	"crypto/tls"
-	"fmt"
 	"io"
 	"math"
 	"net/http"
-	"regexp"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	promgo "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -27,7 +26,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
 
-// GetMetricValueParameters is used to pass parameters to GetMetricValueFromURL and GetLabeledMetricValueFromURL.
+// GetMetricValueParameters is used to pass parameters to GetMetricValueFromURL.
 type GetMetricValueParameters struct {
 	MetricName string
 	URL        string
@@ -44,47 +43,101 @@ func CheckMetrics(t *testing.T, url string, tlsConfig *tls.Config, expectedMetri
 	}
 }
 
-// GetMetricValueFromURL reads the metrics endpoint and fetch the value of a specific metric.
+// GetMetricValueFromURL reads the metrics endpoint and returns the value of the series named
+// params.MetricName carrying params.Labels, rounded to the nearest integer, failing the test if no
+// such series is exported yet. Use findFloatMetricValueFromURL for sub-integer values (e.g. a
+// histogram _sum of short durations) that must not be rounded to zero.
 func GetMetricValueFromURL(t TestingT, params GetMetricValueParameters) int {
 	t.Helper()
-	metricsOutput := getMetricsFromURL(t, params.URL, params.TLSConfig)
-	r, err := regexp.Compile(`(?m)^` + params.MetricName + `\s+([\d.]+)`)
-	require.NoError(t, err)
-	m := r.FindStringSubmatch(metricsOutput)
-	// Without this, a metric that is not exported yet indexes an empty match and panics -- which,
-	// from a polling goroutine, takes the whole test binary down.
-	require.Lenf(t, m, 2, "metric [%s] not found", params.MetricName)
-	val, err := strconv.ParseFloat(m[1], 64)
-	require.NoError(t, err)
-	return int(math.Round(val))
+	value, ok := findFloatMetricValueFromURL(t, params)
+	require.Truef(t, ok, "metric [%s] not found", params.MetricName)
+	return int(math.Round(value))
 }
 
-// GetLabeledMetricValueFromURL reads the metrics endpoint and returns the value of the metric
-// series named metricName carrying the given labels. Only the given labels must match; the series
-// may carry additional labels.
-func GetLabeledMetricValueFromURL(
-	t TestingT, params GetMetricValueParameters,
-) (int, bool) {
+// findFloatMetricValueFromURL parses the exposition text and sums the float values of every series
+// matching params.MetricName and params.Labels. It returns the sum and whether any series matched.
+func findFloatMetricValueFromURL(t TestingT, params GetMetricValueParameters) (float64, bool) {
 	t.Helper()
+	parser := expfmt.NewTextParser(model.UTF8Validation)
+	families, err := parser.TextToMetricFamilies(strings.NewReader(getMetricsFromURL(t, params.URL, params.TLSConfig)))
+	require.NoError(t, err)
 
-	seriesRegex := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(params.MetricName) + `\{([^}]*)\}\s+(\S+)`)
-
-	for _, m := range seriesRegex.FindAllStringSubmatch(getMetricsFromURL(t, params.URL, params.TLSConfig), -1) {
-		if !labelsMatch(m[1], params.Labels) {
-			continue
-		}
-		val, err := strconv.ParseFloat(m[2], 64)
-		require.NoError(t, err)
-		return int(math.Round(val)), true
+	family, extract := resolveFamily(families, params.MetricName)
+	if family == nil {
+		return 0, false
 	}
-	return 0, false
+
+	var sum float64
+	found := false
+	for _, m := range family.GetMetric() {
+		if labelsMatch(m, params.Labels) {
+			sum += extract(m)
+			found = true
+		}
+	}
+	return sum, found
 }
 
-// labelsMatch reports whether the prometheus label segment (e.g. `method="x",status="OK"`)
-// contains every requested key="value" pair.
-func labelsMatch(labelSegment string, labels map[string]string) bool {
-	for k, v := range labels {
-		if !strings.Contains(labelSegment, fmt.Sprintf("%s=%q", k, v)) {
+// resolveFamily finds the metric family for name and returns it together with a function that
+// extracts the wanted value from one of its series. A histogram/summary is exposed by the parser
+// under its base name, so a request for the "<base>_count" or "<base>_sum" child series resolves to
+// that family and reads the corresponding aggregate instead of a plain sample value.
+func resolveFamily(
+	families map[string]*promgo.MetricFamily, name string,
+) (*promgo.MetricFamily, func(*promgo.Metric) float64) {
+	if family := families[name]; family != nil {
+		return family, sampleValue
+	}
+	if base, ok := strings.CutSuffix(name, "_count"); ok {
+		if family := families[base]; family != nil {
+			return family, aggregateSampleCount
+		}
+	}
+	if base, ok := strings.CutSuffix(name, "_sum"); ok {
+		if family := families[base]; family != nil {
+			return family, aggregateSampleSum
+		}
+	}
+	return nil, nil
+}
+
+// sampleValue returns the scalar value of a counter, gauge, or untyped series.
+func sampleValue(m *promgo.Metric) float64 {
+	switch {
+	case m.Counter != nil:
+		return m.Counter.GetValue()
+	case m.Gauge != nil:
+		return m.Gauge.GetValue()
+	default:
+		return m.Untyped.GetValue()
+	}
+}
+
+// aggregateSampleCount returns the observation count of a histogram or summary series.
+func aggregateSampleCount(m *promgo.Metric) float64 {
+	if m.Histogram != nil {
+		return float64(m.Histogram.GetSampleCount())
+	}
+	return float64(m.Summary.GetSampleCount())
+}
+
+// aggregateSampleSum returns the observation sum of a histogram or summary series.
+func aggregateSampleSum(m *promgo.Metric) float64 {
+	if m.Histogram != nil {
+		return m.Histogram.GetSampleSum()
+	}
+	return m.Summary.GetSampleSum()
+}
+
+// labelsMatch reports whether the series carries every requested key/value label pair. Matching is
+// exact per label (name and value).
+func labelsMatch(m *promgo.Metric, want map[string]string) bool {
+	have := make(map[string]string, len(m.GetLabel()))
+	for _, l := range m.GetLabel() {
+		have[l.GetName()] = l.GetValue()
+	}
+	for name, value := range want {
+		if have[name] != value {
 			return false
 		}
 	}

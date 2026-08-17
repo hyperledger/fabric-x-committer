@@ -26,10 +26,7 @@ const (
 	sessionTransactions       = "transactions"
 )
 
-var (
-	timeBuckets = []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1, 2, 3, 4, 5, 10}
-	sizeBuckets = []float64{1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1 << 10, 1 << 11, 1 << 12, 1 << 13, 1 << 14, 1 << 15}
-)
+var sizeBuckets = []float64{1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1 << 10, 1 << 11, 1 << 12, 1 << 13, 1 << 14, 1 << 15}
 
 type perfMetrics struct {
 	*monitoring.Provider
@@ -77,7 +74,7 @@ func newQueryServiceMetrics() *perfMetrics {
 			Subsystem: subsystemDatabase,
 			Name:      "batch_queueing_time_seconds",
 			Help:      "The time batches waits for execution",
-			Buckets:   timeBuckets,
+			Buckets:   monitoring.LatencyBuckets,
 		}),
 		batchQuerySize: p.NewHistogram(prometheus.HistogramOpts{
 			Namespace: namespace,
@@ -98,14 +95,14 @@ func newQueryServiceMetrics() *perfMetrics {
 			Subsystem: subsystemDatabase,
 			Name:      "request_assignment_latency_seconds",
 			Help:      "The latency of the query request assignment to the queue",
-			Buckets:   timeBuckets,
+			Buckets:   monitoring.LatencyBuckets,
 		}),
 		queryLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystemDatabase,
 			Name:      "query_latency_seconds",
 			Help:      "The latency of the queries' batches",
-			Buckets:   timeBuckets,
+			Buckets:   monitoring.LatencyBuckets,
 		}),
 	}
 }

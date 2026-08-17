@@ -16,14 +16,14 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
 
-// MetricsScraper scrapes a service's active-connections gauge from its metrics endpoint.
+// MetricsScraper scrapes named metric series from a service's HTTP metrics endpoint. The metric to
+// read is chosen per call, so one scraper serves every metric a service exposes.
 type MetricsScraper struct {
 	url       string
 	tlsConfig *tls.Config
 }
 
-// NewMetricsScraper builds a handle for scraping the named active-connections gauge on the
-// given service's HTTP metrics endpoint.
+// NewMetricsScraper builds a handle for scraping the given service's HTTP metrics endpoint.
 func NewMetricsScraper(
 	t *testing.T, clientTLS connection.TLSConfig, httpEndpoint *connection.Endpoint,
 ) MetricsScraper {
@@ -44,7 +44,7 @@ func NewMetricsScraper(
 	}
 }
 
-// Value returns the gauge's current Value.
+// Value returns the current value of the named series, failing the test if it is not exported yet.
 func (s MetricsScraper) Value(t TestingT, metricName string) int {
 	t.Helper()
 	return GetMetricValueFromURL(t, GetMetricValueParameters{
@@ -54,15 +54,27 @@ func (s MetricsScraper) Value(t TestingT, metricName string) int {
 	})
 }
 
-// ValueWithLabels returns the current ValueWithLabels of the named series carrying the given labels, or 0 if the
-// series is not present yet.
+// ValueWithLabels returns the current value of the named series carrying the given labels.
 func (s MetricsScraper) ValueWithLabels(t TestingT, metricName string, labels map[string]string) int {
 	t.Helper()
-	v, _ := GetLabeledMetricValueFromURL(t, GetMetricValueParameters{
+	return GetMetricValueFromURL(t, GetMetricValueParameters{
 		URL:        s.url,
 		MetricName: metricName,
 		Labels:     labels,
 		TLSConfig:  s.tlsConfig,
 	})
-	return v
+}
+
+// FloatValueWithLabels returns the unrounded current value of the named series carrying the given
+// labels, or 0 if the series is not present yet. Use this over ValueWithLabels for sub-integer
+// values, such as a histogram _sum of short durations, that must not be rounded to zero.
+func (s MetricsScraper) FloatValueWithLabels(t TestingT, metricName string, labels map[string]string) float64 {
+	t.Helper()
+	value, _ := findFloatMetricValueFromURL(t, GetMetricValueParameters{
+		URL:        s.url,
+		MetricName: metricName,
+		Labels:     labels,
+		TLSConfig:  s.tlsConfig,
+	})
+	return value
 }

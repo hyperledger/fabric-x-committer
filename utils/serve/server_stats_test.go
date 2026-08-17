@@ -26,10 +26,10 @@ const (
 	healthCheckMethod = healthgrpc.Health_Check_FullMethodName
 	healthWatchMethod = healthgrpc.Health_Watch_FullMethodName
 
-	// statusOK is the gRPC status of a successful unary RPC; canceledStatus is the status the
+	// statusOK is the gRPC status of a successful unary RPC; statusCanceled is the status the
 	// server records for a stream the client tears down by cancelling its context.
 	statusOK       = "OK"
-	canceledStatus = "Canceled"
+	statusCanceled = "Canceled"
 )
 
 type (
@@ -85,18 +85,18 @@ func TestServerConnStatsHandler(t *testing.T) {
 	conn := test.NewInsecureConnection(t, &env.grpcEndpoint)
 	conn2 := test.NewInsecureConnection(t, &env.grpcEndpoint)
 
-	test.RequireIntMetricValue(t, 0, serve.GetActiveConnections(env.metrics))
+	test.RequireIntMetricValue(t, 0, env.metrics.ActiveConnections)
 
 	t.Log("Connecting clients")
 	conn.Connect()
-	test.EventuallyIntMetric(t, 1, serve.GetActiveConnections(env.metrics), 30*time.Second, 100*time.Millisecond)
+	test.EventuallyIntMetric(t, 1, env.metrics.ActiveConnections, 30*time.Second, 100*time.Millisecond)
 	conn2.Connect()
-	test.EventuallyIntMetric(t, 2, serve.GetActiveConnections(env.metrics), 30*time.Second, 100*time.Millisecond)
+	test.EventuallyIntMetric(t, 2, env.metrics.ActiveConnections, 30*time.Second, 100*time.Millisecond)
 
 	t.Log("Disconnecting clients")
 	require.NoError(t, conn.Close())
 	require.NoError(t, conn2.Close())
-	test.EventuallyIntMetric(t, 0, serve.GetActiveConnections(env.metrics), 30*time.Second, 100*time.Millisecond)
+	test.EventuallyIntMetric(t, 0, env.metrics.ActiveConnections, 30*time.Second, 100*time.Millisecond)
 }
 
 // TestServerStatsHandlerUnaryRPC verifies the handler's unary workflow: a completed unary RPC
@@ -112,14 +112,14 @@ func TestServerStatsHandlerUnaryRPC(t *testing.T) {
 	require.NoError(t, err)
 
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, 1, test.GetIntMetricValue(t,
-			serve.GetRequestsTotal(env.metrics).WithLabelValues(healthCheckMethod)))
-		require.Positive(ct, histogramValue(t,
-			serve.GetLatencySeconds(env.metrics).MetricVec, healthCheckMethod, statusOK))
+		require.Equal(ct, 1, test.GetIntMetricValue(ct,
+			env.metrics.RequestsTotal.WithLabelValues(healthCheckMethod)))
+		require.Positive(ct, histogramValue(ct,
+			env.metrics.LatencySeconds.MetricVec, healthCheckMethod, statusOK))
 	}, 30*time.Second, 100*time.Millisecond)
 
 	// A unary RPC must never be treated as a stream.
-	test.RequireIntMetricValue(t, 0, serve.GetActiveStreams(env.metrics).WithLabelValues(healthCheckMethod))
+	test.RequireIntMetricValue(t, 0, env.metrics.ActiveStreams.WithLabelValues(healthCheckMethod))
 }
 
 // TestServerStatsHandlerStreamingRPC verifies the handler's streaming workflow: an open stream is
@@ -141,27 +141,27 @@ func TestServerStatsHandlerStreamingRPC(t *testing.T) {
 	require.NoError(t, err)
 
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, 1, test.GetIntMetricValue(t,
-			serve.GetActiveStreams(env.metrics).WithLabelValues(healthWatchMethod)))
+		require.Equal(ct, 1, test.GetIntMetricValue(ct,
+			env.metrics.ActiveStreams.WithLabelValues(healthWatchMethod)))
 	}, 30*time.Second, 100*time.Millisecond)
 
 	// The RPC is not yet completed, so requestsTotal is still zero.
-	test.RequireIntMetricValue(t, 0, serve.GetRequestsTotal(env.metrics).WithLabelValues(healthWatchMethod))
+	test.RequireIntMetricValue(t, 0, env.metrics.RequestsTotal.WithLabelValues(healthWatchMethod))
 
 	// Tearing the stream down completes the RPC: the gauge returns to zero, the request is
 	// counted, and the stream duration is recorded.
 	cancelStream()
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, 0, test.GetIntMetricValue(t,
-			serve.GetActiveStreams(env.metrics).WithLabelValues(healthWatchMethod)))
-		require.Equal(ct, 1, test.GetIntMetricValue(t,
-			serve.GetRequestsTotal(env.metrics).WithLabelValues(healthWatchMethod)))
-		require.Positive(ct, histogramValue(t,
-			serve.GetStreamDurationSeconds(env.metrics).MetricVec, healthWatchMethod, canceledStatus))
+		require.Equal(ct, 0, test.GetIntMetricValue(ct,
+			env.metrics.ActiveStreams.WithLabelValues(healthWatchMethod)))
+		require.Equal(ct, 1, test.GetIntMetricValue(ct,
+			env.metrics.RequestsTotal.WithLabelValues(healthWatchMethod)))
+		require.Positive(ct, histogramValue(ct,
+			env.metrics.StreamDurationSeconds.MetricVec, healthWatchMethod, statusCanceled))
 	}, 30*time.Second, 100*time.Millisecond)
 }
 
-func histogramValue(t *testing.T, mv *prometheus.MetricVec, lvs ...string) float64 {
+func histogramValue(t test.TestingT, mv *prometheus.MetricVec, lvs ...string) float64 {
 	t.Helper()
 	m, err := mv.GetMetricWithLabelValues(lvs...)
 	require.NoError(t, err)

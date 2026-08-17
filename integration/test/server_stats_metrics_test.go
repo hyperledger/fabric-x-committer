@@ -23,11 +23,12 @@ import (
 
 const (
 	queryRequestsTotalMetric = "queryservice_grpc_requests_total"
-	queryLatencyMetric       = "queryservice_grpc_requests_latency_seconds_count"
+	queryLatencyCountMetric  = "queryservice_grpc_requests_latency_seconds_count"
 	queryActiveConnsMetric   = "queryservice_grpc_active_connections"
 
-	sidecarActiveStreamsMetric  = "sidecar_grpc_active_streams"
-	sidecarStreamDurationMetric = "sidecar_grpc_stream_duration_seconds_count"
+	sidecarActiveStreamsMetric       = "sidecar_grpc_active_streams"
+	sidecarStreamDurationCountMetric = "sidecar_grpc_stream_duration_seconds_count"
+	sidecarStreamDurationSumMetric   = "sidecar_grpc_stream_duration_seconds_sum"
 
 	getTransactionStatusMethod   = "/committerpb.QueryService/GetTransactionStatus"
 	openNotificationStreamMethod = "/committerpb.Notifier/OpenNotificationStream"
@@ -61,8 +62,8 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 		require.NoError(t, err)
 
 		require.EventuallyWithT(t, func(ct *assert.CollectT) {
-			require.Equal(ct, preRequests+1, queryMetrics.ValueWithLabels(t, queryRequestsTotalMetric, unaryLabels))
-			require.Positive(ct, queryMetrics.ValueWithLabels(t, queryLatencyMetric, map[string]string{
+			require.Equal(ct, preRequests+1, queryMetrics.ValueWithLabels(ct, queryRequestsTotalMetric, unaryLabels))
+			require.Positive(ct, queryMetrics.ValueWithLabels(ct, queryLatencyCountMetric, map[string]string{
 				method:   getTransactionStatusMethod,
 				"status": "OK",
 			}))
@@ -73,7 +74,8 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 		t.Parallel()
 		streamLabels := map[string]string{method: openNotificationStreamMethod}
 		preActiveStreams := sidecarMetrics.ValueWithLabels(t, sidecarActiveStreamsMetric, streamLabels)
-		preStreamDuration := sidecarMetrics.ValueWithLabels(t, sidecarStreamDurationMetric, streamLabels)
+		preStreamDurationCount := sidecarMetrics.ValueWithLabels(t, sidecarStreamDurationCountMetric, streamLabels)
+		preStreamDurationSum := sidecarMetrics.FloatValueWithLabels(t, sidecarStreamDurationSumMetric, streamLabels)
 
 		streamCtx, cancelStream := context.WithCancel(ctx)
 		t.Cleanup(cancelStream)
@@ -85,43 +87,54 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 		}))
 
 		require.EventuallyWithT(t, func(ct *assert.CollectT) {
-			activeStreams := sidecarMetrics.ValueWithLabels(t, sidecarActiveStreamsMetric, streamLabels)
+			activeStreams := sidecarMetrics.ValueWithLabels(ct, sidecarActiveStreamsMetric, streamLabels)
 			require.Equal(ct, preActiveStreams+1, activeStreams)
 		}, 30*time.Second, 200*time.Millisecond)
 
 		cancelStream()
 
 		require.EventuallyWithT(t, func(ct *assert.CollectT) {
-			activeStreams := sidecarMetrics.ValueWithLabels(t, sidecarActiveStreamsMetric, streamLabels)
-			streamDuration := sidecarMetrics.ValueWithLabels(t, sidecarStreamDurationMetric, streamLabels)
+			activeStreams := sidecarMetrics.ValueWithLabels(ct, sidecarActiveStreamsMetric, streamLabels)
+			streamDurationCount := sidecarMetrics.ValueWithLabels(ct, sidecarStreamDurationCountMetric, streamLabels)
+			streamDurationSum := sidecarMetrics.FloatValueWithLabels(ct, sidecarStreamDurationSumMetric, streamLabels)
 			require.Equal(ct, preActiveStreams, activeStreams)
-			require.Positive(ct, streamDuration-preStreamDuration)
+			require.Equal(ct, preStreamDurationCount+1, streamDurationCount)
+			require.Positive(ct, streamDurationSum-preStreamDurationSum)
 		}, 30*time.Second, 200*time.Millisecond)
 	})
+}
 
-	//nolint:paralleltest // this test examine the active-connections gauge, while other tests,
-	// activating lazy connections which could lead to flaky results if run in parallel.
-	t.Run("Client Connection Lifecycle Count", func(t *testing.T) {
-		preActiveConns := queryMetrics.Value(t, queryActiveConnsMetric)
+// TestActiveConnectionCountFullSystem verifies
+// that the gRPC stats handler correctly tracks the number of active connections
+// on the full system through actual client calls, validating the whole mechanism - server wiring,
+// connection tracking, and metric recording.
+func TestActiveConnectionCountFullSystem(t *testing.T) {
+	t.Parallel()
 
-		conn, err := grpc.NewClient(
-			c.SystemConfig.Services.Query.GrpcEndpoint.Address(),
-			grpc.WithTransportCredentials(clientCredentials(t, c)),
-		)
-		require.NoError(t, err)
+	c := runner.NewRuntime(t, &runner.Config{BlockTimeout: 2 * time.Second})
+	c.Start(t, runner.FullTxPathWithQuery)
 
-		conn.Connect()
-		require.EventuallyWithT(t, func(ct *assert.CollectT) {
-			require.Equal(ct, connectivity.Ready, conn.GetState())
-		}, 30*time.Second, 200*time.Millisecond)
+	queryMetrics := test.NewMetricsScraper(t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Query.HTTPEndpoint)
 
-		require.EventuallyWithT(t, func(ct *assert.CollectT) {
-			require.Equal(ct, preActiveConns+1, queryMetrics.Value(t, queryActiveConnsMetric))
-		}, 30*time.Second, 200*time.Millisecond)
+	preActiveConns := queryMetrics.Value(t, queryActiveConnsMetric)
 
-		require.NoError(t, conn.Close())
-		require.EventuallyWithT(t, func(ct *assert.CollectT) {
-			require.Equal(ct, preActiveConns, queryMetrics.Value(t, queryActiveConnsMetric))
-		}, 30*time.Second, 200*time.Millisecond)
-	})
+	conn, err := grpc.NewClient(
+		c.SystemConfig.Services.Query.GrpcEndpoint.Address(),
+		grpc.WithTransportCredentials(clientCredentials(t, c)),
+	)
+	require.NoError(t, err)
+
+	conn.Connect()
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		require.Equal(ct, connectivity.Ready, conn.GetState())
+	}, 30*time.Second, 200*time.Millisecond)
+
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		require.Equal(ct, preActiveConns+1, queryMetrics.Value(ct, queryActiveConnsMetric))
+	}, 30*time.Second, 200*time.Millisecond)
+
+	require.NoError(t, conn.Close())
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		require.Equal(ct, preActiveConns, queryMetrics.Value(ct, queryActiveConnsMetric))
+	}, 30*time.Second, 200*time.Millisecond)
 }

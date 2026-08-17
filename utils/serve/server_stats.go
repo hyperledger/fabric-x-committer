@@ -66,28 +66,28 @@ func (h *ServerStatsHandler) HandleRPC(ctx context.Context, s stats.RPCStats) {
 	}
 	switch st := s.(type) {
 	case *stats.Begin:
-		rm.isStream = st.IsServerStream
+		rm.isStream = st.IsServerStream || st.IsClientStream
 		if rm.isStream {
-			m.activeStreams.WithLabelValues(rm.full).Inc()
+			m.ActiveStreams.WithLabelValues(rm.full).Inc()
 		}
 	case *stats.End:
 		// If the error is nil, the result is "OK"; if it is not a gRPC error, the result is "Unknown".
 		statusCode := status.Code(st.Error).String()
 		duration := st.EndTime.Sub(st.BeginTime).Seconds()
 
-		m.requestsTotal.WithLabelValues(rm.full).Inc()
+		m.RequestsTotal.WithLabelValues(rm.full).Inc()
 
 		if rm.isStream {
-			m.activeStreams.WithLabelValues(rm.full).Dec()
-			m.streamDurationSeconds.WithLabelValues(rm.full, statusCode).Observe(duration)
+			m.ActiveStreams.WithLabelValues(rm.full).Dec()
+			m.StreamDurationSeconds.WithLabelValues(rm.full, statusCode).Observe(duration)
 		} else {
-			m.latencySeconds.WithLabelValues(rm.full, statusCode).Observe(duration)
+			m.LatencySeconds.WithLabelValues(rm.full, statusCode).Observe(duration)
 		}
 	default:
 	}
 }
 
-// HandleConn tracks the connection lifecycle: activeConnections is incremented when the server
+// HandleConn tracks the connection lifecycle: ActiveConnections is incremented when the server
 // accepts a connection and decremented when it tears it down (client disconnect, keep-alive
 // timeout, max-age, or shutdown).
 func (h *ServerStatsHandler) HandleConn(_ context.Context, s stats.ConnStats) {
@@ -97,9 +97,9 @@ func (h *ServerStatsHandler) HandleConn(_ context.Context, s stats.ConnStats) {
 	}
 	switch s.(type) {
 	case *stats.ConnBegin:
-		m.activeConnections.Inc()
+		m.ActiveConnections.Inc()
 	case *stats.ConnEnd:
-		m.activeConnections.Dec()
+		m.ActiveConnections.Dec()
 	default:
 	}
 }

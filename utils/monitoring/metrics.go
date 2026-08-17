@@ -37,6 +37,11 @@ type (
 	}
 )
 
+// LatencyBuckets is the shared Prometheus histogram bucket boundaries (seconds) for
+// request/stream latency metrics, shared so latency histograms across
+// services report against the same boundaries and remain directly comparable.
+var LatencyBuckets = []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1, 2, 3, 4, 5, 10}
+
 // NewThroughputMetrics creates a new prometheus throughput counter.
 func NewThroughputMetrics(p *Provider, params MetricsParameters) *ThroughputMetrics {
 	return &ThroughputMetrics{

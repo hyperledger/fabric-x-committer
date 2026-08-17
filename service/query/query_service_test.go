@@ -437,7 +437,7 @@ func TestQueryMetrics(t *testing.T) {
 	requireEventuallyIntVecMetricValue(
 		t,
 		1,
-		serve.GetRequestsTotal(env.qs.metrics.serverMetrics).MetricVec,
+		env.qs.metrics.serverMetrics.RequestsTotal.MetricVec,
 		committerpb.QueryService_BeginView_FullMethodName,
 	)
 	test.RequireIntMetricValue(t, 1, env.qs.metrics.processingSessions.WithLabelValues(sessionViews))
@@ -458,7 +458,7 @@ func TestQueryMetrics(t *testing.T) {
 	requireEventuallyIntVecMetricValue(
 		t,
 		expectedMetricsSize,
-		serve.GetRequestsTotal(env.qs.metrics.serverMetrics).MetricVec,
+		env.qs.metrics.serverMetrics.RequestsTotal.MetricVec,
 		committerpb.QueryService_GetRows_FullMethodName,
 	)
 	test.RequireIntMetricValue(t, expectedMetricsSize*querySize, env.qs.metrics.keysRequested)
