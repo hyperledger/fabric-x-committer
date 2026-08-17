@@ -110,7 +110,6 @@ func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEn
 			ChunkSize:                 500,
 		},
 		ChannelBufferSizePerGoroutine: 2000,
-		QueueMonitorSamplingTime:      100 * time.Millisecond,
 	}
 	return &coordinatorTestEnv{
 		coordinator:            NewCoordinatorService(c),

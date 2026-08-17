@@ -85,7 +85,7 @@ The following Coordinator metrics are exported for consumption by Prometheus.
 | coordinator_vcservice_output_tx_status_batch_queue_size                                | gauge     |               | Size of the output transaction status batch queue of the validation and committer service manager.            |
 | coordinator_local_dependency_graph_input_tx_batch_queue_size                           | gauge     |               | Size of the input transaction batch queue of the local dependency graph manager                               |
 | coordinator_global_dependency_graph_input_tx_batch_queue_size                          | gauge     |               | Size of the input transaction batch queue of the global dependency graph manager                              |
-| coordinator_global_dependency_graph_size                                               | gauge     |               | Size of the global dependency graph manager in terms of the number of transactions waiting to be processed    |
+| coordinator_global_dependency_graph_size                                               | gauge     |               | Number of transactions held in the global dependency graph waiting to be processed                            |
 | coordinator_local_dependency_graph_tx_processed_total                                  | counter   |               | Total number of new transactions processed by the local dependency graph manager                              |
 | coordinator_global_dependency_graph_tx_processed_total                                 | counter   |               | Total number of new transactions processed by the global dependency graph manager                             |
 | coordinator_global_dependency_graph_validated_tx_processed_total                       | counter   |               | Total number of validated transactions processed by the global dependency graph manager                       |
@@ -98,7 +98,7 @@ The following Coordinator metrics are exported for consumption by Prometheus.
 | coordinator_global_dependency_graph_remove_dependents_of_validated_tx_batch_seconds    | histogram |               | Time spent removing the dependents of a validated transaction batch in the global dependency graph manager    |
 | coordinator_global_dependency_graph_add_freed_tx_batch_seconds                         | histogram |               | Time spent adding a freed transaction batch to a queue in the global dependency graph manager                 |
 | coordinator_global_dependency_graph_output_freed_tx_batch_seconds                      | histogram |               | Time spent outputting a freed transaction batch in the global dependency graph manager                        |
-| coordinator_dependency_graph_dependent_transactions_queue_size                         | gauge     |               | The number of transactions currently waiting on dependencies.                                                 |
+| coordinator_dependency_graph_dependent_transactions                                    | gauge     |               | The number of transactions currently waiting on dependencies.                                                 |
 
 ## Verifier Metrics
 

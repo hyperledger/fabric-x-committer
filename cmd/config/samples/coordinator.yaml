@@ -101,10 +101,6 @@ dependency-graph:
 # Default: 10
 per-channel-buffer-size-per-goroutine: 10
 
-# Sampling interval for monitoring coordinator queue sizes.
-# Default: 100ms
-queue-monitor-sampling-time: 100ms
-
 # Logging configuration
 logging:
   # Log level specification. Can be a single level (e.g., "info", "debug") or

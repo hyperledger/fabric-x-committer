@@ -56,7 +56,9 @@ func NewSimpleManager(p *Parameters) *SimpleManager {
 		preProcessedTxBatchQueue:        make(chan TxNodeBatch, cap(p.IncomingTxs)),
 		preProcessedValidatedBatchQueue: make(chan validatedBatch, cap(p.IncomingValidatedTxsNode)),
 		keyToWaitingTXs:                 make(map[string]*waiting),
-		metrics:                         newPerformanceMetrics(p.PrometheusMetricsProvider),
+		metrics: newPerformanceMetrics(p.PrometheusMetricsProvider, &managerQueues{
+			ldgInput: p.IncomingTxs,
+		}),
 	}
 }
 
@@ -139,13 +141,13 @@ func (m *SimpleManager) taskProcessing(ctx context.Context) {
 		case batch := <-batchQueue:
 			depFree = m.processTxBatch(batch)
 			promutil.AddToCounter(m.metrics.gdgTxProcessedTotal, len(batch))
-			promutil.AddToGauge(m.metrics.dependentTransactionsQueueSize, len(batch)-len(depFree))
+			promutil.AddToGauge(m.metrics.dependentTxCount, len(batch)-len(depFree))
 		case batch := <-m.preProcessedValidatedBatchQueue:
 			depFree = m.processValidatedBatch(batch)
 			promutil.AddToCounter(m.metrics.gdgValidatedTxProcessedTotal, batch.txCount)
-			promutil.SubFromGauge(m.metrics.dependentTransactionsQueueSize, len(depFree))
+			promutil.SubFromGauge(m.metrics.dependentTxCount, len(depFree))
 		}
-		promutil.SetGauge(m.metrics.gdgWaitingTxQueueSize, m.waitingTXs)
+		promutil.SetGauge(m.metrics.gdgWaitingTxCount, m.waitingTXs)
 		if len(depFree) > 0 {
 			out.Write(depFree)
 		}

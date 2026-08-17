@@ -27,11 +27,14 @@ type globalDependencyTestEnv struct {
 
 func newGlobalDependencyTestEnv(t *testing.T) *globalDependencyTestEnv {
 	t.Helper()
+	incomingTxs := make(chan *transactionNodeBatch, 10)
 	env := &globalDependencyTestEnv{
-		incomingTxs:  make(chan *transactionNodeBatch, 10),
+		incomingTxs:  incomingTxs,
 		outgoingTxs:  make(chan TxNodeBatch, 10),
 		validatedTxs: make(chan TxNodeBatch, 10),
-		metrics:      newPerformanceMetrics(monitoring.NewProvider()),
+		metrics: newPerformanceMetrics(monitoring.NewProvider(), &managerQueues{
+			gdgInput: incomingTxs,
+		}),
 	}
 
 	dm := newGlobalDependencyManager(
@@ -99,11 +102,11 @@ func TestGlobalDependencyManagerNoGlobalDependency(t *testing.T) {
 		// only dependency free tx is t1
 		require.Equal(t, TxNodeBatch{t1}, depFreeTxs)
 
-		test.RequireIntMetricValue(t, 3, env.metrics.gdgWaitingTxQueueSize)
+		test.RequireIntMetricValue(t, 3, env.metrics.gdgWaitingTxCount)
 
 		env.validatedTxs <- TxNodeBatch{t1}
 
-		test.EventuallyIntMetric(t, 2, env.metrics.gdgWaitingTxQueueSize, 2*time.Second, 200*time.Millisecond)
+		test.EventuallyIntMetric(t, 2, env.metrics.gdgWaitingTxCount, 2*time.Second, 200*time.Millisecond)
 
 		depFreeTxs = <-env.outgoingTxs
 		// after validating t1, t2 becomes dependency free
