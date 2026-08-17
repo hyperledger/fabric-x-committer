@@ -70,7 +70,7 @@ func (s MetricsScraper) ValueWithLabels(t TestingT, metricName string, labels ma
 // values, such as a histogram _sum of short durations, that must not be rounded to zero.
 func (s MetricsScraper) FloatValueWithLabels(t TestingT, metricName string, labels map[string]string) float64 {
 	t.Helper()
-	value, _ := findFloatMetricValueFromURL(t, GetMetricValueParameters{
+	value := findFloatMetricValueFromURL(t, GetMetricValueParameters{
 		URL:        s.url,
 		MetricName: metricName,
 		Labels:     labels,

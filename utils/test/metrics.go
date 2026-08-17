@@ -49,14 +49,13 @@ func CheckMetrics(t *testing.T, url string, tlsConfig *tls.Config, expectedMetri
 // histogram _sum of short durations) that must not be rounded to zero.
 func GetMetricValueFromURL(t TestingT, params GetMetricValueParameters) int {
 	t.Helper()
-	value, ok := findFloatMetricValueFromURL(t, params)
-	require.Truef(t, ok, "metric [%s] not found", params.MetricName)
+	value := findFloatMetricValueFromURL(t, params)
 	return int(math.Round(value))
 }
 
 // findFloatMetricValueFromURL parses the exposition text and sums the float values of every series
 // matching params.MetricName and params.Labels. It returns the sum and whether any series matched.
-func findFloatMetricValueFromURL(t TestingT, params GetMetricValueParameters) (float64, bool) {
+func findFloatMetricValueFromURL(t TestingT, params GetMetricValueParameters) float64 {
 	t.Helper()
 	parser := expfmt.NewTextParser(model.UTF8Validation)
 	families, err := parser.TextToMetricFamilies(strings.NewReader(getMetricsFromURL(t, params.URL, params.TLSConfig)))
@@ -64,18 +63,16 @@ func findFloatMetricValueFromURL(t TestingT, params GetMetricValueParameters) (f
 
 	family, extract := resolveFamily(families, params.MetricName)
 	if family == nil {
-		return 0, false
+		return 0
 	}
 
 	var sum float64
-	found := false
 	for _, m := range family.GetMetric() {
 		if labelsMatch(m, params.Labels) {
 			sum += extract(m)
-			found = true
 		}
 	}
-	return sum, found
+	return sum
 }
 
 // resolveFamily finds the metric family for name and returns it together with a function that
