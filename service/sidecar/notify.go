@@ -42,6 +42,8 @@ type (
 		metrics            *perfMetrics
 		// requestQueue receives requests from users.
 		requestQueue chan *notificationRequest
+		// timeoutQueue receives requests whose deadline has passed.
+		timeoutQueue chan *notificationRequest
 
 		// StreamAllTransactions support
 		allTxStreams   []*allTxStream
@@ -98,7 +100,12 @@ type (
 	}
 )
 
-func newNotifier(bufferSize int, conf *NotificationServiceConfig, metrics *perfMetrics) *notifier {
+func newNotifier(
+	bufferSize int,
+	conf *NotificationServiceConfig,
+	metrics *perfMetrics,
+	q *queues,
+) *notifier {
 	return &notifier{
 		bufferSize:         bufferSize,
 		maxTimeout:         conf.MaxTimeout,
@@ -106,7 +113,8 @@ func newNotifier(bufferSize int, conf *NotificationServiceConfig, metrics *perfM
 		maxTxIDsPerRequest: conf.MaxTxIDsPerRequest,
 		streamWriteTimeout: conf.StreamWriteTimeout,
 		metrics:            metrics,
-		requestQueue:       make(chan *notificationRequest, bufferSize),
+		requestQueue:       q.notifierRequests,
+		timeoutQueue:       q.notifierTimeouts,
 	}
 }
 
@@ -120,8 +128,7 @@ func (n *notifier) run(
 		availableSlots:     n.maxActiveTxIDs,
 		streamWriteTimeout: n.streamWriteTimeout,
 	}
-	timeoutQueue := make(chan *notificationRequest, cap(n.requestQueue))
-	timeoutQueueCtx := channel.NewWriter(ctx, timeoutQueue)
+	timeoutQueueCtx := channel.NewWriter(ctx, n.timeoutQueue)
 
 	reject := func(req *notificationRequest, txIDs []string, reason string) {
 		req.streamEventQueue.Write(&committerpb.NotificationResponse{
@@ -164,7 +171,7 @@ func (n *notifier) run(
 			pendingTxIDsRemoved, uniquePendingTxIDsRemoved := notifyMap.removeAndEnqueueStatusEvents(status)
 			n.recordRemovals(pendingTxIDsRemoved, uniquePendingTxIDsRemoved)
 			promutil.AddToCounter(n.metrics.notifierTxIDsStatusDeliveries, pendingTxIDsRemoved)
-		case req := <-timeoutQueue:
+		case req := <-n.timeoutQueue:
 			pendingTxIDsRemoved, uniquePendingTxIDsRemoved := notifyMap.removeAndEnqueueTimeoutEvents(req)
 			n.recordRemovals(pendingTxIDsRemoved, uniquePendingTxIDsRemoved)
 			promutil.AddToCounter(n.metrics.notifierTxIDsTimeoutDeliveries, pendingTxIDsRemoved)

@@ -225,10 +225,22 @@ holds typed prometheus fields. `newXxxMetrics()` calls `monitoring.NewProvider()
 `Namespace`/`Subsystem`/`Name`/`Help`. Update metrics at runtime only through `promutil`
 helpers (`AddToCounter`, `SetGauge`, `Observe`), never raw prometheus calls.
 
-For a gauge that merely reports a value already available on demand — a channel length, a
-queue depth — use `p.NewGaugeFunc(opts, fn)` instead of a `NewGauge` that a goroutine sets
-on a ticker. The value is then exact at scrape time and costs no goroutine. `fn` runs on the
-scrape path, so keep it cheap and concurrency-safe.
+**Never sample a value on a ticker if it can be read on demand.** A goroutine that wakes up to
+call `promutil.SetGauge(len(ch))` costs a goroutine and makes the value up to one interval
+stale, and the wiring is easy to lose — the sidecar shipped one for three months after its only
+call site was deleted, so two gauges silently read zero. Instead:
+
+| Reporting | Use |
+|---|---|
+| Length of a channel that lives as long as the service | `p.NewChannelLenGauge(opts, ch)` |
+| Length of a channel replaced at runtime (per session) | `p.NewAtomicChannelLenGauge(opts, &ptr)`; the owner `Store`s the current channel |
+| Anything else already computable (a map size, a struct field) | `p.NewGaugeFunc(opts, fn)` — `fn` runs on the scrape path, so keep it cheap, non-blocking and nil-safe |
+
+`promutil.SetGauge` / `AddToGauge` remain correct for a gauge whose value is *maintained*
+incrementally rather than derivable on demand (e.g. a count of in-flight subscriptions).
+
+The queues a gauge reports must exist before the metrics are registered, so the service
+constructor builds them first and passes them in (`service/sidecar/sidecar.go`'s `queues`).
 
 ```go
 // service/vc/metrics.go:15

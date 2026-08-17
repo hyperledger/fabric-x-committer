@@ -465,7 +465,7 @@ func TestSidecarRecovery(t *testing.T) {
 	tempBlockStore, err := newBlockStore(
 		env.config.Ledger.Path,
 		0,
-		newPerformanceMetrics(),
+		newPerformanceMetrics(newQueues(10)),
 	)
 	require.NoError(t, err)
 	t.Cleanup(tempBlockStore.close)

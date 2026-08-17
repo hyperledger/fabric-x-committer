@@ -11,6 +11,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -111,6 +112,74 @@ func TestNewGuage(t *testing.T) {
 
 	promutil.SetGauge(g, 5)
 	env.checkMetrics(t, "vcservice_preparer_transactions_queued 5")
+}
+
+func TestNewChannelLenGauge(t *testing.T) {
+	t.Parallel()
+
+	env := newMetricsProviderTestEnv(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+
+	ch := make(chan int, 3)
+	g := env.provider.NewChannelLenGauge(prometheus.GaugeOpts{
+		Namespace: "vcservice",
+		Subsystem: "preparer",
+		Name:      "input_queue_size",
+		Help:      "Number of batches waiting to be prepared",
+	}, ch)
+
+	env.checkMetrics(t, "vcservice_preparer_input_queue_size 0")
+
+	// The value is read on scrape, so it tracks the channel without anything setting it.
+	ch <- 1
+	ch <- 2
+	env.checkMetrics(t, "vcservice_preparer_input_queue_size 2")
+
+	<-ch
+	env.checkMetrics(t, "vcservice_preparer_input_queue_size 1")
+
+	// A nil channel reports zero rather than panicking on the scrape path.
+	var nilCh chan int
+	nilGauge := env.provider.NewChannelLenGauge(prometheus.GaugeOpts{
+		Namespace: "vcservice",
+		Subsystem: "validator",
+		Name:      "pending_queue_size",
+		Help:      "Number of batches waiting to be validated",
+	}, nilCh)
+	require.Equal(t, 0, test.GetIntMetricValue(t, nilGauge))
+	require.Equal(t, 1, test.GetIntMetricValue(t, g))
+}
+
+func TestNewAtomicChannelLenGauge(t *testing.T) {
+	t.Parallel()
+
+	env := newMetricsProviderTestEnv(t, test.InsecureTLSConfig, test.InsecureTLSConfig)
+
+	var holder atomic.Pointer[chan int]
+	g := env.provider.NewAtomicChannelLenGauge(prometheus.GaugeOpts{
+		Namespace: "sidecar",
+		Subsystem: "relay",
+		Name:      "input_block_queue_size",
+		Help:      "Number of blocks waiting to be relayed",
+	}, &holder)
+
+	// An unset pointer reports zero rather than dereferencing nil.
+	env.checkMetrics(t, "sidecar_relay_input_block_queue_size 0")
+
+	first := make(chan int, 5)
+	holder.Store(&first)
+	first <- 1
+	first <- 2
+	env.checkMetrics(t, "sidecar_relay_input_block_queue_size 2")
+
+	// Replacing the channel must move the gauge to the new one instead of latching the value of
+	// the channel the previous session left behind.
+	second := make(chan int, 5)
+	holder.Store(&second)
+	env.checkMetrics(t, "sidecar_relay_input_block_queue_size 0")
+
+	second <- 1
+	require.Equal(t, 1, test.GetIntMetricValue(t, g))
+	require.Len(t, first, 2)
 }
 
 func TestNewGuageVec(t *testing.T) {

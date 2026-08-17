@@ -40,8 +40,10 @@ type perfMetrics struct {
 	serverMetrics                *serve.ServerMetrics
 
 	// queue sizes
-	yetToBeCommittedBlocksQueueSize prometheus.Gauge
-	committedBlocksQueueSize        prometheus.Gauge
+	yetToBeCommittedBlocksQueueSize prometheus.GaugeFunc
+	mappedBlocksQueueSize           prometheus.GaugeFunc
+	statusBatchQueueSize            prometheus.GaugeFunc
+	committedBlocksQueueSize        prometheus.GaugeFunc
 
 	coordConnection *monitoring.ConnectionMetrics
 
@@ -57,12 +59,16 @@ type perfMetrics struct {
 	notifierUniquePendingTxIDs     prometheus.Gauge
 	notifierTxIDsStatusDeliveries  prometheus.Counter
 	notifierTxIDsTimeoutDeliveries prometheus.Counter
+	notifierInputBlockQueueSize    prometheus.GaugeFunc
+	notifierInputStatusQueueSize   prometheus.GaugeFunc
+	notifierRequestQueueSize       prometheus.GaugeFunc
+	notifierTimeoutQueueSize       prometheus.GaugeFunc
 
 	// delivery metrics
 	delivery *deliverorderer.Metrics
 }
 
-func newPerformanceMetrics() *perfMetrics {
+func newPerformanceMetrics(q *queues) *perfMetrics {
 	p := monitoring.NewProvider()
 
 	histoBuckets := []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75, 1}
@@ -107,18 +113,36 @@ func newPerformanceMetrics() *perfMetrics {
 			Name:      "waiting_transactions_queue_size",
 			Help:      "Total number of transactions waiting at the relay for statuses.",
 		}),
-		yetToBeCommittedBlocksQueueSize: p.NewGauge(prometheus.GaugeOpts{
-			Namespace: namespace,
-			Subsystem: subsystemRelay,
-			Name:      "input_block_queue_size",
-			Help:      "Size of the input block queue of the relay service.",
-		}),
-		committedBlocksQueueSize: p.NewGauge(prometheus.GaugeOpts{
+		committedBlocksQueueSize: p.NewChannelLenGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: subsystemRelay,
 			Name:      "output_committed_block_queue_size",
 			Help:      "Size of the output committed block queue of the relay service.",
-		}),
+		}, q.committedBlock),
+		notifierInputBlockQueueSize: p.NewChannelLenGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: subsystemNotifier,
+			Name:      "input_block_queue_size",
+			Help:      "Size of the committed block queue delivered from the relay to the notifier.",
+		}, q.committedBlockWithTxs),
+		notifierInputStatusQueueSize: p.NewChannelLenGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: subsystemNotifier,
+			Name:      "input_status_queue_size",
+			Help:      "Size of the transaction status queue delivered from the relay to the notifier.",
+		}, q.statusQueue),
+		notifierRequestQueueSize: p.NewChannelLenGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: subsystemNotifier,
+			Name:      "request_queue_size",
+			Help:      "Size of the queue of notification requests received from clients.",
+		}, q.notifierRequests),
+		notifierTimeoutQueueSize: p.NewChannelLenGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: subsystemNotifier,
+			Name:      "timeout_queue_size",
+			Help:      "Size of the queue of notification requests that have timed out.",
+		}, q.notifierTimeouts),
 		coordConnection: monitoring.NewConnectionMetrics(p, monitoring.MetricsParameters{
 			Namespace: namespace,
 			Subsystem: "coordinator",
@@ -180,5 +204,23 @@ func newPerformanceMetrics() *perfMetrics {
 			Namespace: namespace,
 			Subsystem: "delivery",
 		}),
+		yetToBeCommittedBlocksQueueSize: p.NewAtomicChannelLenGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: subsystemRelay,
+			Name:      "input_block_queue_size",
+			Help:      "Size of the input block queue of the relay service.",
+		}, &q.relayInputBlock),
+		mappedBlocksQueueSize: p.NewAtomicChannelLenGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: subsystemRelay,
+			Name:      "mapped_block_queue_size",
+			Help:      "Size of the relay's queue of mapped blocks waiting to be sent to the coordinator.",
+		}, &q.relayMappedBlock),
+		statusBatchQueueSize: p.NewAtomicChannelLenGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: subsystemRelay,
+			Name:      "input_status_batch_queue_size",
+			Help:      "Size of the relay's queue of status batches received from the coordinator.",
+		}, &q.relayStatusBatch),
 	}
 }

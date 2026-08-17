@@ -574,9 +574,10 @@ func newNotifierTestEnv(tb testing.TB, numOfClients int) *notifierTestEnv {
 
 func newNotifierTestEnvWithConfig(tb testing.TB, numOfClients int, conf *NotificationServiceConfig) *notifierTestEnv {
 	tb.Helper()
-	metrics := newPerformanceMetrics()
+	q := newQueues(100)
+	metrics := newPerformanceMetrics(q)
 	env := &notifierTestEnv{
-		n:              newNotifier(100, conf, metrics),
+		n:              newNotifier(100, conf, metrics, q),
 		metrics:        metrics,
 		responseQueues: make([]channel.ReaderWriter[*committerpb.NotificationResponse], numOfClients),
 	}
