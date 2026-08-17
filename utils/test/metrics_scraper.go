@@ -44,7 +44,7 @@ func NewMetricsScraper(
 	}
 }
 
-// Value returns the current value of the named series, failing the test if it is not exported yet.
+// Value returns the current value of the named series, or 0 if it is not exported yet.
 func (s MetricsScraper) Value(t TestingT, metricName string) int {
 	t.Helper()
 	return GetMetricValueFromURL(t, GetMetricValueParameters{
@@ -54,7 +54,8 @@ func (s MetricsScraper) Value(t TestingT, metricName string) int {
 	})
 }
 
-// ValueWithLabels returns the current value of the named series carrying the given labels.
+// ValueWithLabels returns the current value of the named series carrying the given labels, or 0 if
+// the series is not present yet.
 func (s MetricsScraper) ValueWithLabels(t TestingT, metricName string, labels map[string]string) int {
 	t.Helper()
 	return GetMetricValueFromURL(t, GetMetricValueParameters{

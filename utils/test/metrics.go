@@ -26,7 +26,8 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
 
-// GetMetricValueParameters is used to pass parameters to GetMetricValueFromURL.
+// GetMetricValueParameters carries the parameters for the metric-value lookups
+// (GetMetricValueFromURL and the scraper's Float accessors).
 type GetMetricValueParameters struct {
 	MetricName string
 	URL        string
@@ -44,9 +45,10 @@ func CheckMetrics(t *testing.T, url string, tlsConfig *tls.Config, expectedMetri
 }
 
 // GetMetricValueFromURL reads the metrics endpoint and returns the value of the series named
-// params.MetricName carrying params.Labels, rounded to the nearest integer, failing the test if no
-// such series is exported yet. Use findFloatMetricValueFromURL for sub-integer values (e.g. a
-// histogram _sum of short durations) that must not be rounded to zero.
+// params.MetricName carrying params.Labels, rounded to the nearest integer, or 0 if no such series
+// is exported yet (a labeled series is absent until its first observation, so a baseline read taken
+// before any traffic legitimately returns 0). Use findFloatMetricValueFromURL for sub-integer values
+// (e.g. a histogram _sum of short durations) that must not be rounded to zero.
 func GetMetricValueFromURL(t TestingT, params GetMetricValueParameters) int {
 	t.Helper()
 	value := findFloatMetricValueFromURL(t, params)
@@ -79,6 +81,10 @@ func findFloatMetricValueFromURL(t TestingT, params GetMetricValueParameters) fl
 // extracts the wanted value from one of its series. A histogram/summary is exposed by the parser
 // under its base name, so a request for the "<base>_count" or "<base>_sum" child series resolves to
 // that family and reads the corresponding aggregate instead of a plain sample value.
+//
+// A direct name match is preferred, so this only falls back to the histogram/summary aggregate when
+// no family is literally named "<name>". That relies on no counter/gauge being named with a "_count"
+// or "_sum" suffix, which holds here as those suffixes are exclusive to histogram/summary children.
 func resolveFamily(
 	families map[string]*promgo.MetricFamily, name string,
 ) (*promgo.MetricFamily, func(*promgo.Metric) float64) {

@@ -37,9 +37,9 @@ type (
 // rpcContextKey is the context key under which TagRPC stores the resolved method.
 const rpcContextKey rpcCtxKey = "rpc-method"
 
-// RegisterServerMetrics wires the metrics that the handler records into.
-// The handler is a complete no-op until a service registers and,
-// safe to call while or after the server starts serving.
+// RegisterServerMetrics wires the metrics that the handler records into. The handler is a complete
+// no-op until a service registers its metrics, and this is safe to call while or after the server
+// starts serving.
 func RegisterServerMetrics(h *ServerStatsHandler, m *ServerMetrics) {
 	h.metrics.Store(m)
 }
