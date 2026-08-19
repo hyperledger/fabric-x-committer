@@ -66,7 +66,8 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 				ct, queryRequestsLatencyMetric, map[string]string{
 					method:   getTransactionStatusMethod,
 					"status": "OK",
-				}))
+				},
+			))
 		}, 30*time.Second, 200*time.Millisecond)
 	})
 
