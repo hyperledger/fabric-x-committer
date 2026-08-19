@@ -1,0 +1,13 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+{{ include "service" . | indent 0 }}
+
+{{ include "database" . | indent 0 }}
+
+poll-interval: {{ .SnapshotHasherPollInterval | default "1m" }}
+
+resource-limits:
+  max-workers-for-hash: {{ .SnapshotHasherMaxWorkers | default 4 }}
+  hash-batch-size: {{ .SnapshotHasherBatchSize | default 1000 }}

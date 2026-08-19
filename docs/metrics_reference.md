@@ -165,6 +165,24 @@ The following Query Service metrics are exported for consumption by Prometheus.
 | queryservice_database_request_assignment_latency_seconds | histogram |               | The latency of the query request assignment to the queue                                     |
 | queryservice_database_query_latency_seconds              | histogram |               | The latency of the queries' batches                                                          |
 
+## Snapshot Hasher Metrics
+
+The following Snapshot Hasher metrics are exported for consumption by Prometheus.
+
+| Name                                          | Type      | Labels        | Description                                                                                                                                 |
+|-----------------------------------------------|-----------|---------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| snapshothasher_hash_jobs_completed_total      | counter   |               | Number of snapshot hash jobs that published a digest.                                                                                       |
+| snapshothasher_hash_jobs_failed_total         | counter   |               | Number of snapshot hash jobs that ended without publishing a digest.                                                                        |
+| snapshothasher_hash_in_progress               | gauge     |               | 1 while a snapshot clone is being hashed, 0 otherwise.                                                                                      |
+| snapshothasher_hash_started_timestamp_seconds | gauge     |               | Unix time at which the in-progress hash started, or 0 when none is running; subtract from the current time to alert on a long-running hash. |
+| snapshothasher_poll_errors_total              | counter   |               | Number of polls that failed before a hash job could be started or skipped.                                                                  |
+| snapshothasher_hash_duration_seconds          | histogram |               | Time taken to hash a snapshot clone database.                                                                                               |
+| snapshothasher_grpc_requests_total            | counter   | method        | Number of RPCs started by the service                                                                                                       |
+| snapshothasher_grpc_requests_latency_seconds  | histogram | method status | The latency (seconds) of requests by the service, by method and gRPC status code                                                            |
+| snapshothasher_grpc_stream_duration_seconds   | histogram | method status | The duration (seconds) a stream was active from start to end, by method and gRPC status code                                                |
+| snapshothasher_grpc_active_streams            | gauge     | method        | Number of gRPC streams currently open on the server                                                                                         |
+| snapshothasher_grpc_active_connections        | gauge     |               | Number of client connections currently open on the server                                                                                   |
+
 ## Load Generator Metrics
 
 The following Load Generator metrics are exported for consumption by Prometheus.

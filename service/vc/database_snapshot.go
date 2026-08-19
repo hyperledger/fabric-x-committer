@@ -18,9 +18,9 @@ import (
 	"github.com/jackc/pgerrcode"
 	"github.com/yugabyte/pgx/v5"
 	"github.com/yugabyte/pgx/v5/pgconn"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
+	"github.com/hyperledger/fabric-x-committer/utils/snapshotstate"
 	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
@@ -52,7 +52,7 @@ WHERE db_name = $1`
 
 // rejectSnapshotIfPriorNotCheckpointed gates a new _snapshot request so that at
 // most one snapshot lifecycle is active. The request is accepted only when the
-// latest _snapshot record (tracked via latestSnapshotKeyMetadataKey) is
+// latest _snapshot record (tracked via snapshotstate.LatestRecordPointerKey) is
 // CHECKPOINTED, or none exists yet; otherwise the incoming snapshot transaction
 // is rejected WITHOUT creating a snapshot database or writing a _snapshot record.
 //
@@ -112,7 +112,7 @@ func (db *database) rejectSnapshotIfPriorNotCheckpointed(
 }
 
 // determineSnapshotStatus looks up the latest _snapshot record via the
-// latestSnapshotKeyMetadataKey pointer and returns the rejection status the
+// snapshotstate.LatestRecordPointerKey pointer and returns the rejection status the
 // incoming request should receive, or STATUS_UNSPECIFIED when the request may
 // proceed (no prior snapshot ever accepted, or the latest one is CHECKPOINTED).
 //
@@ -123,7 +123,7 @@ func (db *database) rejectSnapshotIfPriorNotCheckpointed(
 // conservative rejection status -- so the batch fails/retries instead of
 // masking the anomaly.
 func (db *database) determineSnapshotStatus(ctx context.Context) (committerpb.Status, error) {
-	state, err := db.readLatestSnapshotRecord(ctx)
+	state, err := db.snapshotState.ReadLatest(ctx)
 	if err != nil {
 		return committerpb.Status_STATUS_UNSPECIFIED, err
 	}
@@ -139,48 +139,6 @@ func (db *database) determineSnapshotStatus(ctx context.Context) (committerpb.St
 	default:
 		return committerpb.Status_REJECTED_SNAPSHOT_IN_PROGRESS, nil
 	}
-}
-
-// readLatestSnapshotRecord performs the full pointer-to-row read cycle: it looks
-// up the latest-snapshot pointer (latestSnapshotKeyMetadataKey, set by
-// setLatestSnapshotKeyIfPresent) and, when one is set, reads and decodes the
-// _snapshot record it names.
-//
-// Returns (nil, nil) when no snapshot has ever been accepted (pointer unset).
-// The pointer and its row are written atomically in the same DB transaction
-// (setLatestSnapshotKeyIfPresent), so a pointer with no matching row is never
-// possible under normal operation; this guards against a future bug (e.g. a
-// maintenance path that deletes _snapshot rows without clearing the pointer)
-// silently making the caller assume no active snapshot, by returning a hard
-// error instead. A row whose value fails to decode is likewise a hard error,
-// never silently mapped to a conservative rejection status.
-func (db *database) readLatestSnapshotRecord(ctx context.Context) (*committerpb.SnapshotState, error) {
-	key, err := retry.ExecuteWithResult(ctx, db.retryProfile, func() ([]byte, error) {
-		r := db.pool.QueryRow(ctx, getMetadataPrepSQLStmt, latestSnapshotKeyMetadataKey)
-		var v []byte
-		return v, errors.Wrap(r.Scan(&v), "failed to get the latest snapshot key")
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to read latest snapshot key: %w", err)
-	}
-	if len(key) == 0 {
-		return nil, nil
-	}
-
-	query := statedb.FmtNsID(queryValuesByKeysSQLTempl, committerpb.SnapshotNamespaceID)
-	_, values, err := retryQueryAndReadTwoItems[[]byte, []byte](ctx, db, query, [][]byte{key})
-	if err != nil {
-		return nil, fmt.Errorf("failed to read latest _snapshot record: %w", err)
-	}
-	if len(values) == 0 {
-		return nil, errors.Newf("latest snapshot key %s has no matching _snapshot record", key)
-	}
-
-	var state committerpb.SnapshotState
-	if decodeErr := proto.Unmarshal(values[0], &state); decodeErr != nil {
-		return nil, errors.Wrapf(decodeErr, "failed to decode latest _snapshot record for key %s", key)
-	}
-	return &state, nil
 }
 
 // createSnapshotIfPresent detects a _snapshot record in the batch's
@@ -202,8 +160,8 @@ func (db *database) readLatestSnapshotRecord(ctx context.Context) (*committerpb.
 // _snapshot table nor re-observes its own PENDING rewrite.
 //
 // Snapshot database creation MUST succeed before txID is committed. On failure
-// this returns an error, batch is not committed, txID stays uncommitted, and
-// coordinator retries snapshot (this PR does not self-recover).
+// this returns an error, batch is not committed, txID stays uncommitted, and the
+// coordinator retries the snapshot; this path does not self-recover.
 func (db *database) createSnapshotIfPresent(ctx context.Context, newWrites transactionToWrites) error {
 	// A snapshot TX is submitted standalone: the sidecar drains before and after it,
 	// so its batch contains exactly one transaction and hence one new-write entry.
@@ -230,8 +188,7 @@ func (db *database) createSnapshotIfPresent(ctx context.Context, newWrites trans
 // snapshotWriteInBatch returns the single _snapshot namespace write in newWrites, if
 // any. A snapshot TX is submitted standalone, so at most one transaction in the batch
 // carries a _snapshot write, and the preparer adds exactly one key/value pair
-// (key = tx_id) for it. Shared by createSnapshotIfPresent and snapshotHashJobFromWrites
-// so both extract the same record the same way.
+// (key = tx_id) for it.
 func snapshotWriteInBatch(newWrites transactionToWrites) (*namespaceWrites, bool) {
 	for _, nsWrites := range newWrites {
 		w := nsWrites[committerpb.SnapshotNamespaceID]
@@ -260,7 +217,7 @@ func snapshotWriteInBatch(newWrites transactionToWrites) (*namespaceWrites, bool
 func (db *database) createSnapshotDatabaseAndRewriteRecord(
 	ctx context.Context, key, recordValue []byte,
 ) ([]byte, error) {
-	state, err := decodeSnapshotState(recordValue)
+	state, err := snapshotstate.Decode(recordValue)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to decode _snapshot record for key %s", key)
 	}
@@ -292,7 +249,7 @@ func (db *database) createSnapshotDatabaseAndRewriteRecord(
 
 	// PENDING record rewrite: written atomically with the snapshot txID by the
 	// normal db.commit path once the snapshot database exists.
-	snapshotState, err := encodeSnapshotState(&committerpb.SnapshotState{
+	snapshotState, err := snapshotstate.Encode(&committerpb.SnapshotState{
 		TxRef:         ref,
 		Status:        committerpb.SnapshotState_PENDING,
 		CloneDatabase: snapshotDatabase,
@@ -313,7 +270,7 @@ func (db *database) createSnapshotDatabaseAndRewriteRecord(
 // ALLOW_CONNECTIONS false and the deferred re-enable locks out src for ALL
 // pools. A VC cannot fix this (it may be dead; peers aren't authorized). The
 // COORDINATOR, on detecting VC failure, re-enables ALLOW_CONNECTIONS via the
-// maintenance DB. Not implemented in this PR.
+// maintenance DB. Not implemented yet.
 func (db *database) createSnapshotDatabase(ctx context.Context, databaseName string) error {
 	isYuga, err := statedb.IsYugabyteDB(ctx, db.pool)
 	if err != nil {
@@ -472,22 +429,4 @@ func yugabyteCloneStateError(clone, state, failureReason string) error {
 // coordinator-directed resubmission) targets same database.
 func snapshotDatabaseName(ref *committerpb.TxRef) string {
 	return fmt.Sprintf("snapshot_%d", ref.BlockNum)
-}
-
-// decodeSnapshotState unmarshals a _snapshot record value.
-func decodeSnapshotState(raw []byte) (*committerpb.SnapshotState, error) {
-	var state committerpb.SnapshotState
-	if err := proto.Unmarshal(raw, &state); err != nil {
-		return nil, errors.Wrap(err, "failed to decode _snapshot record")
-	}
-	return &state, nil
-}
-
-// encodeSnapshotState marshals a _snapshot record value.
-func encodeSnapshotState(state *committerpb.SnapshotState) ([]byte, error) {
-	raw, err := proto.Marshal(state)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to marshal _snapshot record")
-	}
-	return raw, nil
 }

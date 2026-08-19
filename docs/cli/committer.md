@@ -15,7 +15,7 @@ The variable name follows the pattern `SC_<SERVICE>_<KEY>`, where dots and dashe
 in the key are replaced with underscores.
 To override settings using environment variable YAML, set `SC_<SERVICE>_YAML`.
 
-Service prefixes: `SIDECAR`, `COORDINATOR`, `VERIFIER`, `VC`, `QUERY`.
+Service prefixes: `SIDECAR`, `COORDINATOR`, `VERIFIER`, `VC`, `QUERY`, `SNAPSHOT_HASHER`.
 
 For example, start the sidecar service with endpoint `localhost:8080`:
 
@@ -65,11 +65,12 @@ Usage:
   Committer start [command]
 
 Available Commands:
-  coordinator Starts Coordinator.
-  query       Starts Query-Service.
-  sidecar     Starts Sidecar.
-  vc          Starts Validator-Committer.
-  verifier    Starts Verifier.
+  coordinator     Starts Coordinator.
+  query           Starts Query-Service.
+  sidecar         Starts Sidecar.
+  snapshot-hasher Starts Snapshot-Hasher.
+  vc              Starts Validator-Committer.
+  verifier        Starts Verifier.
 
 Flags:
   -h, --help   help for start
@@ -157,11 +158,12 @@ Usage:
   Committer healthcheck [command]
 
 Available Commands:
-  coordinator Check Coordinator health.
-  query       Check Query-Service health.
-  sidecar     Check Sidecar health.
-  vc          Check Validator-Committer health.
-  verifier    Check Verifier health.
+  coordinator     Check Coordinator health.
+  query           Check Query-Service health.
+  sidecar         Check Sidecar health.
+  snapshot-hasher Check Snapshot-Hasher health.
+  vc              Check Validator-Committer health.
+  verifier        Check Verifier health.
 
 Flags:
   -h, --help   help for healthcheck

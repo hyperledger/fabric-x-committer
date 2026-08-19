@@ -92,6 +92,7 @@ service/config/metrics structure, and the full linter cheat sheet.
 │   ├── vc/              # Validator-Committer service
 │   ├── sidecar/         # Block fetching middleware
 │   ├── query/           # Query service
+│   ├── snapshothasher/  # Snapshot hashing service
 │   └── verifier/        # Signature verification
 ├── loadgen/             # Load generation framework
 ├── mock/                # Mock implementations
@@ -114,6 +115,7 @@ Detailed architectural documentation is available in the `docs/` directory:
 - `docs/sidecar.md`: Sidecar middleware design and recovery
 - `docs/verification-service.md`: Signature verification details
 - `docs/query-service.md`: Query service API
+- `docs/snapshot-hasher.md`: Snapshot hasher service and snapshot record lifecycle
 - `docs/logging.md`: Logging conventions
 - `docs/metrics_reference.md`: Available metrics
 - `docs/tls-configurations.md`: TLS setup

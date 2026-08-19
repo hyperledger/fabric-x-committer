@@ -15,11 +15,11 @@ SPDX-License-Identifier: Apache-2.0
 
 ## 1. Overview
 
-The Fabric-X Committer is built around six core services, each designed with specific responsibilities in the transaction processing pipeline. The services are categorized into stateful and stateless components, with careful consideration given to scalability and fault tolerance.
+The Fabric-X Committer is built around seven core services, each designed with specific responsibilities in the transaction processing pipeline. The services are categorized into stateful and stateless components, with careful consideration given to scalability and fault tolerance.
 
-These six services are: **Sidecar**, **Coordinator**, **Verifier**, **Validator-Committer (VC)**, **Query Service**, and **Database Cluster**.
+These seven services are: **Sidecar**, **Coordinator**, **Verifier**, **Validator-Committer (VC)**, **Query Service**, **Snapshot Hasher**, and **Database Cluster**.
 
-The architecture achieves high throughput through a sophisticated pipelined design that enables parallel processing of conflict-free transactions while maintaining deterministic outcomes and strong consistency guarantees. Each service plays a specific role: the Sidecar acts as the entry point for blocks from the Ordering Service, the Coordinator orchestrates the validation flow using dependency graph analysis, Verifier services perform parallel signature verification, Validator-Committer (VC) services execute final MVCC validation and commit operations against the database, and the Query Service provides read-only access to the committed world state for clients and endorsers.
+The architecture achieves high throughput through a sophisticated pipelined design that enables parallel processing of conflict-free transactions while maintaining deterministic outcomes and strong consistency guarantees. Each service plays a specific role: the Sidecar acts as the entry point for blocks from the Ordering Service, the Coordinator orchestrates the validation flow using dependency graph analysis, Verifier services perform parallel signature verification, Validator-Committer (VC) services execute final MVCC validation and commit operations against the database, the Query Service provides read-only access to the committed world state for clients and endorsers, and the Snapshot Hasher hashes state snapshots off the commit path.
 
 ## 2. Architecture Diagram
 
@@ -63,19 +63,19 @@ The architecture achieves high throughput through a sophisticated pipelined desi
                          │                        │
                          │ State Queries          │
                          ▼                        │
-                ┌──────────────────┐              │
-                │  Query Service   │ (2+ inst.)   │
-                │   (Stateless)    │              │
-                └────────┬─────────┘              │
-                         │                        │
-                         │ Read Only              │
-                         ▼                        ▼
-                ┌─────────────────────────────────────┐
-                │       Database Cluster              │ (6-9 nodes)
-                │          (Stateful)                 │
-                │  - World State   - Tx Status        │
-                │  - Policies      - Configuration    │
-                └─────────────────────────────────────┘
+                ┌──────────────────┐              │        ┌──────────────────┐
+                │  Query Service   │ (2+ inst.)   │        │  Snapshot Hasher │ (1 instance)
+                │   (Stateless)    │              │        │   (Stateless)    │
+                └────────┬─────────┘              │        └────────┬─────────┘
+                         │                        │                 │
+                         │ Read Only              │                 │ Poll Record,
+                         ▼                        ▼                 ▼ Hash Clone
+                ┌─────────────────────────────────────────────────────────────┐
+                │                    Database Cluster                         │ (6-9 nodes)
+                │                       (Stateful)                            │
+                │  - World State   - Tx Status   - Snapshot Records + Clones  │
+                │  - Policies      - Configuration                            │
+                └─────────────────────────────────────────────────────────────┘
 ```
 
 ### Component Interactions
@@ -86,6 +86,8 @@ The architecture achieves high throughput through a sophisticated pipelined desi
 4. **Coordinator** relays statuses back to the Sidecar, which delivers committed blocks and notifications to clients.
 
 The **Query Service** operates independently of the commit pipeline. Clients and endorsers query world state directly through the Query Service, which reads from the database.
+
+The **Snapshot Hasher** likewise sits outside the pipeline. It is driven by durable state alone: when a snapshot transaction commits, the VC leaves a snapshot record and a clone database behind, and the Snapshot Hasher discovers that record on a later poll and hashes the clone.
 
 ## 3. Service Components
 
@@ -159,7 +161,21 @@ The Query Service connects directly to the database cluster to read namespace ta
 
 **Reference**: See [query-service.md](query-service.md) for detailed documentation.
 
-### 3.6 Database Cluster
+### 3.6 Snapshot Hasher
+
+The Snapshot Hasher computes the content hash of a state snapshot. When a snapshot transaction commits, the VC creates a zero-copy clone of the state database and records it; this service polls for such a record and hashes the clone, writing the digest back onto the record. It is named for hashing because that is all it does — creating the snapshot and its clone belongs to the VC.
+
+It is deployed as a **single instance**, because hashing a clone is a full scan and must not be attempted by several processes at once. With one scheduler in the system and hashing running inline, no lease or leader election is needed to keep snapshot hashing exclusive.
+
+**Key Characteristics:**
+
+- **State**: Stateless - the snapshot record in the database is the state
+- **Cardinality**: Exactly one instance
+- **Scalability**: Vertical scaling only (a single hash job at a time, by design)
+
+**Reference**: See [snapshot-hasher.md](snapshot-hasher.md) for detailed documentation.
+
+### 3.7 Database Cluster
 
 The database cluster serves as the system's persistent storage layer, maintaining the world state for all namespaces and the final status of every transaction. The system supports two database options, each optimized for different deployment scenarios.
 
@@ -195,6 +211,8 @@ The system handles failures in any service and ensures correctness.
 **Sidecar Failure.** When the Sidecar restarts, it gets the next expected block number from the Coordinator and compares it to the last block in its local store. If there is a gap, the Sidecar fetches the missing blocks from the Ordering Service and their transaction statuses from the state database to update its store. It then resumes fetching new blocks from the Ordering Service. See [Sidecar Failure and Recovery](sidecar.md#7-failure-and-recovery) for more details.
 
 **Query Service Failure.** The Query Service is stateless and holds no persistent state. On restart, it reconnects to the database and resumes serving queries immediately. Clients experience a brief interruption and can retry against another Query Service instance. See [Query Service Error Handling and Recovery](query-service.md#error-handling-and-recovery) for more details.
+
+**Snapshot Hasher Failure.** The Snapshot Hasher holds no state of its own; the snapshot record is the state. While it is down, committing continues unaffected and only snapshot hashing is delayed: every record accumulated in the meantime is discovered once it returns. A restart mid-hash leaves the record `IN_PROGRESS` and the partial digest is discarded, so the first poll after restart re-hashes the same immutable clone to the same digest. See [Snapshot Hasher Failure and Recovery](snapshot-hasher.md#7-failure-and-recovery) for more details.
 
 **Database Node Failure.** Database node failures are handled by shard replication; if a shard fails, its replicas remain available. A catastrophic failure or corruption of the entire state database requires rebuilding the state by reprocessing all blocks from the Ordering Service. 
 **Multiple Service Failures.** When multiple services fail simultaneously, recovery follows the same per-service procedures described above. The idempotent design of the VC services and the checkpoint-based recovery of the Coordinator and Sidecar ensure that even concurrent failures do not lead to data corruption or duplicate commits. Each service recovers independently upon restart, and the system converges to a consistent state as services come back online.
