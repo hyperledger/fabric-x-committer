@@ -17,7 +17,7 @@ const method = "method"
 // ServerMetrics holds the server-side connection and RPC metrics a service records. The RPC
 // metrics are labeled by the full gRPC method ("/pkg.Service/Method").
 type ServerMetrics struct {
-	// RequestsTotal counts completed RPCs (unary and streaming).
+	// RequestsTotal counts started RPCs (unary and streaming).
 	RequestsTotal *prometheus.CounterVec
 	// LatencySeconds observes RPC duration, labeled by method and by the RPC's
 	// gRPC status code. Streaming RPCs are not observed, as their duration is the lifetime
