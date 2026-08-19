@@ -27,7 +27,7 @@ import (
 )
 
 // GetMetricValueParameters carries the parameters for the metric-value lookups
-// (GetMetricValueFromURL, GetHistogramCountFromURL, GetHistogramSumFromURL).
+// (GetCounterOrGaugeValueFromURL, GetHistogramCountAndSumValueFromURL).
 type GetMetricValueParameters struct {
 	MetricName string
 	URL        string
@@ -44,46 +44,47 @@ func CheckMetrics(t *testing.T, url string, tlsConfig *tls.Config, expectedMetri
 	}
 }
 
-// GetMetricValueFromURL reads the metrics endpoint and returns the scalar value of the
+// GetCounterOrGaugeValueFromURL reads the metrics endpoint and returns the scalar value of the
 // counter/gauge/untyped series named params.MetricName carrying params.Labels, rounded to the
 // nearest integer. It returns 0 for an absent family and for a labeled series not exported yet (a
 // "...Vec" series is absent until its first observation, so a pre-traffic baseline read returns 0).
-// Reading a histogram/summary this way also returns 0 -- use GetHistogramCountFromURL or
+// Reading a histogram/summary this way also returns 0 -- use GetHistogramCountAndSumValueFromURL or
 // GetHistogramSumFromURL instead.
-func GetMetricValueFromURL(t TestingT, params GetMetricValueParameters) int {
+func GetCounterOrGaugeValueFromURL(t TestingT, params GetMetricValueParameters) int {
 	t.Helper()
 	var sum float64
 
 	for _, m := range getMetricSeries(t, params) {
-		sum += plainSample(m)
+		switch {
+		// Branch on which typed field is set: GetValue returns 0 for a nil field, so the value alone
+		// cannot tell a real zero from the wrong metric kind.
+		case m.Counter != nil:
+			sum += m.Counter.GetValue()
+		case m.Gauge != nil:
+			sum += m.Gauge.GetValue()
+		default:
+			sum += m.Untyped.GetValue()
+		}
 	}
 	return int(math.Round(sum))
 }
 
-// GetHistogramCountFromURL reads the metrics endpoint and returns the observation count of the
+// GetHistogramCountAndSumValueFromURL reads the metrics endpoint and returns the observation count and the sum of the
 // histogram named params.MetricName carrying params.Labels. Pass the histogram's base name, not its
 // "_count" child. Absent-family and not-yet-observed reads return 0; a
 // non-histogram family also reads as 0.
-func GetHistogramCountFromURL(t TestingT, params GetMetricValueParameters) uint64 {
+func GetHistogramCountAndSumValueFromURL(t TestingT, params GetMetricValueParameters) (uint64, float64) {
 	t.Helper()
-	var sum uint64
+	var (
+		count uint64
+		sum   float64
+	)
 
 	for _, m := range getMetricSeries(t, params) {
-		sum += sampleCount(m)
+		count += m.Histogram.GetSampleCount()
+		sum += m.Histogram.GetSampleSum()
 	}
-	return sum
-}
-
-// GetHistogramSumFromURL reads the metrics endpoint and returns the unrounded observation sum of the
-// histogram named params.MetricName carrying params.Labels. Pass the histogram's base name, not its
-// "_sum" child. A sum of short durations is not lost to zero. A non-histogram family reads as 0.
-func GetHistogramSumFromURL(t TestingT, params GetMetricValueParameters) float64 {
-	t.Helper()
-	var sum float64
-	for _, m := range getMetricSeries(t, params) {
-		sum += sampleSum(m)
-	}
-	return sum
+	return count, sum
 }
 
 // getMetricSeries fetches and parses the exposition text and returns every series of the family
@@ -110,30 +111,6 @@ func getMetricSeries(
 		}
 	}
 	return series
-}
-
-// plainSample returns the scalar value of a counter, gauge, or untyped series.
-func plainSample(m *promgo.Metric) float64 {
-	switch {
-	// Branch on which typed field is set: GetValue returns 0 for a nil field, so the value alone
-	// cannot tell a real zero from the wrong metric kind.
-	case m.Counter != nil:
-		return m.Counter.GetValue()
-	case m.Gauge != nil:
-		return m.Gauge.GetValue()
-	default:
-		return m.Untyped.GetValue()
-	}
-}
-
-// sampleCount returns the observation count of a histogram series.
-func sampleCount(m *promgo.Metric) uint64 {
-	return m.Histogram.GetSampleCount()
-}
-
-// sampleSum returns the observation sum of a histogram series.
-func sampleSum(m *promgo.Metric) float64 {
-	return m.Histogram.GetSampleSum()
 }
 
 // labelsMatch reports whether the series carries every requested key/value label pair. Matching is

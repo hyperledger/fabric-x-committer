@@ -44,12 +44,12 @@ func NewMetricsScraper(
 	}
 }
 
-// Value returns the current value of the named counter/gauge/untyped series carrying the given
+// GaugeOrCounterValue returns the current value of the named counter/gauge/untyped series carrying the given
 // labels, rounded to the nearest integer. Pass nil labels to sum every series in the family. It
 // returns 0 for a labeled series not exported yet.
-func (s MetricsScraper) Value(t TestingT, metricName string, labels map[string]string) int {
+func (s MetricsScraper) GaugeOrCounterValue(t TestingT, metricName string, labels map[string]string) int {
 	t.Helper()
-	return GetMetricValueFromURL(t, GetMetricValueParameters{
+	return GetCounterOrGaugeValueFromURL(t, GetMetricValueParameters{
 		URL:        s.url,
 		MetricName: metricName,
 		Labels:     labels,
@@ -57,24 +57,13 @@ func (s MetricsScraper) Value(t TestingT, metricName string, labels map[string]s
 	})
 }
 
-// HistogramCountValue returns the observation count of the named histogram carrying the given
+// HistogramCountAndSumValue returns the observation count and sum of the named histogram carrying the given
 // labels, rounded to the nearest integer. Pass the histogram's base name, not its "_count" child.
-func (s MetricsScraper) HistogramCountValue(t TestingT, metricName string, labels map[string]string) uint64 {
+func (s MetricsScraper) HistogramCountAndSumValue(
+	t TestingT, metricName string, labels map[string]string,
+) (uint64, float64) {
 	t.Helper()
-	return GetHistogramCountFromURL(t, GetMetricValueParameters{
-		URL:        s.url,
-		MetricName: metricName,
-		Labels:     labels,
-		TLSConfig:  s.tlsConfig,
-	})
-}
-
-// HistogramSumValue returns the unrounded observation sum of the named histogram carrying the given
-// labels. Pass the histogram's base name, not its "_sum" child. Prefer this over a rounded read for
-// a sum of short durations that must not be lost to zero.
-func (s MetricsScraper) HistogramSumValue(t TestingT, metricName string, labels map[string]string) float64 {
-	t.Helper()
-	return GetHistogramSumFromURL(t, GetMetricValueParameters{
+	return GetHistogramCountAndSumValueFromURL(t, GetMetricValueParameters{
 		URL:        s.url,
 		MetricName: metricName,
 		Labels:     labels,

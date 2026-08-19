@@ -149,14 +149,14 @@ func monitorMetric(t *testing.T, metricsPort string, metricsTLS *connection.TLSC
 	metricsURL, err := monitoring.MakeMetricsURL(net.JoinHostPort(localhost, metricsPort), metricsTLS)
 	require.NoError(t, err)
 
-	currentNumberOfTxs := test.GetMetricValueFromURL(t, test.GetMetricValueParameters{
+	currentNumberOfTxs := test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
 		URL:        metricsURL,
 		MetricName: monitoredMetric,
 		TLSConfig:  tlsConf,
 	})
 	t.Logf("Check the load generator metrics from: %s", metricsURL)
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		committedTxs := test.GetMetricValueFromURL(ct, test.GetMetricValueParameters{
+		committedTxs := test.GetCounterOrGaugeValueFromURL(ct, test.GetMetricValueParameters{
 			URL:        metricsURL,
 			MetricName: monitoredMetric,
 			TLSConfig:  tlsConf,

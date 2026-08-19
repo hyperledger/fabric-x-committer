@@ -289,7 +289,7 @@ func (e *metricsProviderTestEnv) checkMetrics(t *testing.T, expected ...string) 
 
 func (e *metricsProviderTestEnv) getMetricValue(t *testing.T, metricName string, labels map[string]string) int {
 	t.Helper()
-	return test.GetMetricValueFromURL(t, test.GetMetricValueParameters{
+	return test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
 		URL:        e.url,
 		MetricName: metricName,
 		Labels:     labels,

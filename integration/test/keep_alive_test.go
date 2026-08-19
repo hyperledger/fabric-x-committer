@@ -75,7 +75,7 @@ func TestKeepAliveSidecarDeadConnectionDetection(t *testing.T) {
 	metricsScraper := test.NewMetricsScraper(t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Sidecar.HTTPEndpoint)
 
 	// Connections open on the sidecar before our client connects.
-	prevActiveConnections := metricsScraper.Value(t, sidecarActiveConnectionsMetric, nil)
+	prevActiveConnections := metricsScraper.GaugeOrCounterValue(t, sidecarActiveConnectionsMetric, nil)
 
 	proxy, conn := dialThroughProxy(
 		t, c.SystemConfig.Services.Sidecar.GrpcEndpoint.Address(), clientCredentials(t, c),
@@ -102,7 +102,7 @@ func TestKeepAliveQueryDeadConnectionDetection(t *testing.T) {
 	metricsScraper := test.NewMetricsScraper(t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Query.HTTPEndpoint)
 
 	// Connections open on the query service before our client connects.
-	prevActiveConnections := metricsScraper.Value(t, queryActiveConnectionsMetric, nil)
+	prevActiveConnections := metricsScraper.GaugeOrCounterValue(t, queryActiveConnectionsMetric, nil)
 
 	proxy, conn := dialThroughProxy(
 		t, c.SystemConfig.Services.Query.GrpcEndpoint.Address(), clientCredentials(t, c),
@@ -143,7 +143,7 @@ func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 	metricsScraper := test.NewMetricsScraper(t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Sidecar.HTTPEndpoint)
 
 	// Connections open on the sidecar before our client connects.
-	prevActiveConnections := metricsScraper.Value(t, sidecarActiveConnectionsMetric, nil)
+	prevActiveConnections := metricsScraper.GaugeOrCounterValue(t, sidecarActiveConnectionsMetric, nil)
 
 	proxy, conn := dialThroughProxy(t, addr, clientCreds)
 
@@ -167,7 +167,10 @@ func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 
 	// Both the intercepted connection and conn2 are now open on the server.
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, prevActiveConnections+2, metricsScraper.Value(ct, sidecarActiveConnectionsMetric, nil))
+		require.Equal(
+			ct,
+			prevActiveConnections+2, metricsScraper.GaugeOrCounterValue(ct, sidecarActiveConnectionsMetric, nil),
+		)
 	}, 30*time.Second, 200*time.Millisecond)
 
 	blockMessages(t, proxy)
@@ -175,7 +178,10 @@ func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 	// Keep-alive closes the dead connection: the server reports one fewer active
 	// connection (conn2 stays open).
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, prevActiveConnections+1, metricsScraper.Value(ct, sidecarActiveConnectionsMetric, nil))
+		require.Equal(
+			ct,
+			prevActiveConnections+1, metricsScraper.GaugeOrCounterValue(ct, sidecarActiveConnectionsMetric, nil),
+		)
 	}, maxConnectionClosingTime, 500*time.Millisecond)
 
 	// And the stream slot it held is released for new clients.
@@ -222,7 +228,10 @@ func blockAndWaitForServerClose(t *testing.T, params blockAndWaitParameters) {
 
 	// The server counts the new connection.
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, params.prevActiveConnections+1, params.metricsScraper.Value(ct, params.metric, nil))
+		require.Equal(
+			ct,
+			params.prevActiveConnections+1, params.metricsScraper.GaugeOrCounterValue(ct, params.metric, nil),
+		)
 	}, 30*time.Second, 200*time.Millisecond)
 
 	blockMessages(t, params.proxy)
@@ -230,7 +239,10 @@ func blockAndWaitForServerClose(t *testing.T, params blockAndWaitParameters) {
 	// The server's keep-alive detects the silent connection and closes it itself,
 	// so the active-connection count returns to the baseline.
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Equal(ct, params.prevActiveConnections, params.metricsScraper.Value(ct, params.metric, nil))
+		require.Equal(
+			ct,
+			params.prevActiveConnections, params.metricsScraper.GaugeOrCounterValue(ct, params.metric, nil),
+		)
 	}, maxConnectionClosingTime, 500*time.Millisecond)
 }
 
