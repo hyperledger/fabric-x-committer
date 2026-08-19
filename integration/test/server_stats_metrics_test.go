@@ -62,10 +62,11 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 
 		require.EventuallyWithT(t, func(ct *assert.CollectT) {
 			require.Equal(ct, preRequests+1, queryMetrics.Value(ct, queryRequestsTotalMetric, unaryLabels))
-			require.Equal(ct, uint64(1), queryMetrics.HistogramCountValue(ct, queryRequestsLatencyMetric, map[string]string{
-				method:   getTransactionStatusMethod,
-				"status": "OK",
-			}))
+			require.Equal(ct, uint64(1), queryMetrics.HistogramCountValue(
+				ct, queryRequestsLatencyMetric, map[string]string{
+					method:   getTransactionStatusMethod,
+					"status": "OK",
+				}))
 		}, 30*time.Second, 200*time.Millisecond)
 	})
 
