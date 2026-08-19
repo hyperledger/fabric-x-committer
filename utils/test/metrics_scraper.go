@@ -59,7 +59,7 @@ func (s MetricsScraper) Value(t TestingT, metricName string, labels map[string]s
 
 // HistogramCountValue returns the observation count of the named histogram carrying the given
 // labels, rounded to the nearest integer. Pass the histogram's base name, not its "_count" child.
-func (s MetricsScraper) HistogramCountValue(t TestingT, metricName string, labels map[string]string) int {
+func (s MetricsScraper) HistogramCountValue(t TestingT, metricName string, labels map[string]string) uint64 {
 	t.Helper()
 	return GetHistogramCountFromURL(t, GetMetricValueParameters{
 		URL:        s.url,

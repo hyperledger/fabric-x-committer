@@ -64,9 +64,9 @@ func GetMetricValueFromURL(t TestingT, params GetMetricValueParameters) int {
 // histogram named params.MetricName carrying params.Labels. Pass the histogram's base name, not its
 // "_count" child. Absent-family and not-yet-observed reads return 0; a
 // non-histogram family also reads as 0.
-func GetHistogramCountFromURL(t TestingT, params GetMetricValueParameters) int {
+func GetHistogramCountFromURL(t TestingT, params GetMetricValueParameters) uint64 {
 	t.Helper()
-	var sum int
+	var sum uint64
 
 	for _, m := range getMetricSeries(t, params) {
 		sum += sampleCount(m)
@@ -127,8 +127,8 @@ func plainSample(m *promgo.Metric) float64 {
 }
 
 // sampleCount returns the observation count of a histogram series.
-func sampleCount(m *promgo.Metric) int {
-	return int(m.Histogram.GetSampleCount())
+func sampleCount(m *promgo.Metric) uint64 {
+	return m.Histogram.GetSampleCount()
 }
 
 // sampleSum returns the observation sum of a histogram series.
