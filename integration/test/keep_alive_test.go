@@ -75,7 +75,11 @@ func TestKeepAliveSidecarDeadConnectionDetection(t *testing.T) {
 	metricsScraper := test.NewMetricsScraper(t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Sidecar.HTTPEndpoint)
 
 	// Connections open on the sidecar before our client connects.
-	prevActiveConnections := metricsScraper.GaugeOrCounterValue(t, sidecarActiveConnectionsMetric, nil)
+	prevActiveConnections := test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
+		URL:        metricsScraper.GetURL(),
+		TLSConfig:  metricsScraper.GetTLSConfig(),
+		MetricName: sidecarActiveConnectionsMetric,
+	})
 
 	proxy, conn := dialThroughProxy(
 		t, c.SystemConfig.Services.Sidecar.GrpcEndpoint.Address(), clientCredentials(t, c),
@@ -102,7 +106,11 @@ func TestKeepAliveQueryDeadConnectionDetection(t *testing.T) {
 	metricsScraper := test.NewMetricsScraper(t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Query.HTTPEndpoint)
 
 	// Connections open on the query service before our client connects.
-	prevActiveConnections := metricsScraper.GaugeOrCounterValue(t, queryActiveConnectionsMetric, nil)
+	prevActiveConnections := test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
+		URL:        metricsScraper.GetURL(),
+		TLSConfig:  metricsScraper.GetTLSConfig(),
+		MetricName: queryActiveConnectionsMetric,
+	})
 
 	proxy, conn := dialThroughProxy(
 		t, c.SystemConfig.Services.Query.GrpcEndpoint.Address(), clientCredentials(t, c),
@@ -143,7 +151,11 @@ func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 	metricsScraper := test.NewMetricsScraper(t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Sidecar.HTTPEndpoint)
 
 	// Connections open on the sidecar before our client connects.
-	prevActiveConnections := metricsScraper.GaugeOrCounterValue(t, sidecarActiveConnectionsMetric, nil)
+	prevActiveConnections := test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
+		URL:        metricsScraper.GetURL(),
+		TLSConfig:  metricsScraper.GetTLSConfig(),
+		MetricName: sidecarActiveConnectionsMetric,
+	})
 
 	proxy, conn := dialThroughProxy(t, addr, clientCreds)
 
@@ -169,7 +181,11 @@ func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		require.Equal(
 			ct,
-			prevActiveConnections+2, metricsScraper.GaugeOrCounterValue(ct, sidecarActiveConnectionsMetric, nil),
+			prevActiveConnections+2, test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
+				URL:        metricsScraper.GetURL(),
+				TLSConfig:  metricsScraper.GetTLSConfig(),
+				MetricName: sidecarActiveConnectionsMetric,
+			}),
 		)
 	}, 30*time.Second, 200*time.Millisecond)
 
@@ -180,7 +196,11 @@ func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		require.Equal(
 			ct,
-			prevActiveConnections+1, metricsScraper.GaugeOrCounterValue(ct, sidecarActiveConnectionsMetric, nil),
+			prevActiveConnections+1, test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
+				URL:        metricsScraper.GetURL(),
+				TLSConfig:  metricsScraper.GetTLSConfig(),
+				MetricName: sidecarActiveConnectionsMetric,
+			}),
 		)
 	}, maxConnectionClosingTime, 500*time.Millisecond)
 
@@ -230,7 +250,11 @@ func blockAndWaitForServerClose(t *testing.T, params blockAndWaitParameters) {
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		require.Equal(
 			ct,
-			params.prevActiveConnections+1, params.metricsScraper.GaugeOrCounterValue(ct, params.metric, nil),
+			params.prevActiveConnections+1, test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
+				URL:        params.metricsScraper.GetURL(),
+				TLSConfig:  params.metricsScraper.GetTLSConfig(),
+				MetricName: params.metric,
+			}),
 		)
 	}, 30*time.Second, 200*time.Millisecond)
 
@@ -241,7 +265,11 @@ func blockAndWaitForServerClose(t *testing.T, params blockAndWaitParameters) {
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		require.Equal(
 			ct,
-			params.prevActiveConnections, params.metricsScraper.GaugeOrCounterValue(ct, params.metric, nil),
+			params.prevActiveConnections, test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
+				URL:        params.metricsScraper.GetURL(),
+				TLSConfig:  params.metricsScraper.GetTLSConfig(),
+				MetricName: params.metric,
+			}),
 		)
 	}, maxConnectionClosingTime, 500*time.Millisecond)
 }

@@ -44,29 +44,12 @@ func NewMetricsScraper(
 	}
 }
 
-// GaugeOrCounterValue returns the current value of the named counter/gauge/untyped series carrying the given
-// labels, rounded to the nearest integer. Pass nil labels to sum every series in the family. It
-// returns 0 for a labeled series not exported yet.
-func (s MetricsScraper) GaugeOrCounterValue(t TestingT, metricName string, labels map[string]string) int {
-	t.Helper()
-	return GetCounterOrGaugeValueFromURL(t, GetMetricValueParameters{
-		URL:        s.url,
-		MetricName: metricName,
-		Labels:     labels,
-		TLSConfig:  s.tlsConfig,
-	})
+// GetURL returns the metric URL address.
+func (s MetricsScraper) GetURL() string {
+	return s.url
 }
 
-// HistogramCountAndSumValue returns the observation count and sum of the named histogram carrying the given
-// labels, rounded to the nearest integer. Pass the histogram's base name, not its "_count" child.
-func (s MetricsScraper) HistogramCountAndSumValue(
-	t TestingT, metricName string, labels map[string]string,
-) (uint64, float64) {
-	t.Helper()
-	return GetHistogramCountAndSumValueFromURL(t, GetMetricValueParameters{
-		URL:        s.url,
-		MetricName: metricName,
-		Labels:     labels,
-		TLSConfig:  s.tlsConfig,
-	})
+// GetTLSConfig returns the metric tls.Config.
+func (s MetricsScraper) GetTLSConfig() *tls.Config {
+	return s.tlsConfig
 }

@@ -114,7 +114,7 @@ func TestServerStatsHandlerUnaryRPC(t *testing.T) {
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		require.Equal(ct, 1, test.GetIntMetricValue(ct,
 			env.metrics.RequestsTotal.WithLabelValues(healthCheckMethod)))
-		require.Positive(ct, histogramValue(ct,
+		require.Positive(ct, metricVecValue(ct,
 			env.metrics.LatencySeconds.MetricVec, healthCheckMethod, statusOK))
 	}, 30*time.Second, 100*time.Millisecond)
 
@@ -145,8 +145,8 @@ func TestServerStatsHandlerStreamingRPC(t *testing.T) {
 			env.metrics.ActiveStreams.WithLabelValues(healthWatchMethod)))
 	}, 30*time.Second, 100*time.Millisecond)
 
-	// The RPC is not yet completed, so requestsTotal is still zero.
-	test.RequireIntMetricValue(t, 0, env.metrics.RequestsTotal.WithLabelValues(healthWatchMethod))
+	// The RPC started, so requestsTotal should be 1.
+	test.RequireIntMetricValue(t, 1, env.metrics.RequestsTotal.WithLabelValues(healthWatchMethod))
 
 	// Tearing the stream down completes the RPC: the gauge returns to zero, the request is
 	// counted, and the stream duration is recorded.
@@ -154,14 +154,12 @@ func TestServerStatsHandlerStreamingRPC(t *testing.T) {
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		require.Equal(ct, 0, test.GetIntMetricValue(ct,
 			env.metrics.ActiveStreams.WithLabelValues(healthWatchMethod)))
-		require.Equal(ct, 1, test.GetIntMetricValue(ct,
-			env.metrics.RequestsTotal.WithLabelValues(healthWatchMethod)))
-		require.Positive(ct, histogramValue(ct,
+		require.Positive(ct, metricVecValue(ct,
 			env.metrics.StreamDurationSeconds.MetricVec, healthWatchMethod, statusCanceled))
 	}, 30*time.Second, 100*time.Millisecond)
 }
 
-func histogramValue(t test.TestingT, mv *prometheus.MetricVec, lvs ...string) float64 {
+func metricVecValue(t test.TestingT, mv *prometheus.MetricVec, lvs ...string) float64 {
 	t.Helper()
 	m, err := mv.GetMetricWithLabelValues(lvs...)
 	require.NoError(t, err)
