@@ -27,7 +27,7 @@ import (
 )
 
 // GetMetricValueParameters carries the parameters for the metric-value lookups
-// (GetMetricValueFromURL and the scraper's Float accessors).
+// (GetMetricValueFromURL, GetHistogramCountFromURL, GetHistogramSumFromURL).
 type GetMetricValueParameters struct {
 	MetricName string
 	URL        string
@@ -44,69 +44,79 @@ func CheckMetrics(t *testing.T, url string, tlsConfig *tls.Config, expectedMetri
 	}
 }
 
-// GetMetricValueFromURL reads the metrics endpoint and returns the value of the series named
-// params.MetricName carrying params.Labels, rounded to the nearest integer, or 0 if no such series
-// is exported yet (a labeled series is absent until its first observation, so a baseline read taken
-// before any traffic legitimately returns 0). Use findFloatMetricValueFromURL for sub-integer values
-// (e.g. a histogram _sum of short durations) that must not be rounded to zero.
+// GetMetricValueFromURL reads the metrics endpoint and returns the scalar value of the
+// counter/gauge/untyped series named params.MetricName carrying params.Labels, rounded to the
+// nearest integer. It returns 0 for an absent family and for a labeled series not exported yet (a
+// "...Vec" series is absent until its first observation, so a pre-traffic baseline read returns 0).
+// Reading a histogram/summary this way also returns 0 -- use GetHistogramCountFromURL or
+// GetHistogramSumFromURL instead.
 func GetMetricValueFromURL(t TestingT, params GetMetricValueParameters) int {
 	t.Helper()
-	value := findFloatMetricValueFromURL(t, params)
-	return int(math.Round(value))
+	var sum float64
+
+	for _, m := range getMetricSeries(t, params) {
+		sum += plainSample(m)
+	}
+	return int(math.Round(sum))
 }
 
-// findFloatMetricValueFromURL parses the exposition text and sums the float values of every series
-// matching params.MetricName and params.Labels. It returns the sum and whether any series matched.
-func findFloatMetricValueFromURL(t TestingT, params GetMetricValueParameters) float64 {
+// GetHistogramCountFromURL reads the metrics endpoint and returns the observation count of the
+// histogram named params.MetricName carrying params.Labels. Pass the histogram's base name, not its
+// "_count" child. Absent-family and not-yet-observed reads return 0; a
+// non-histogram family also reads as 0.
+func GetHistogramCountFromURL(t TestingT, params GetMetricValueParameters) int {
+	t.Helper()
+	var sum int
+
+	for _, m := range getMetricSeries(t, params) {
+		sum += sampleCount(m)
+	}
+	return sum
+}
+
+// GetHistogramSumFromURL reads the metrics endpoint and returns the unrounded observation sum of the
+// histogram named params.MetricName carrying params.Labels. Pass the histogram's base name, not its
+// "_sum" child. A sum of short durations is not lost to zero. A non-histogram family reads as 0.
+func GetHistogramSumFromURL(t TestingT, params GetMetricValueParameters) float64 {
+	t.Helper()
+	var sum float64
+	for _, m := range getMetricSeries(t, params) {
+		sum += sampleSum(m)
+	}
+	return sum
+}
+
+// getMetricSeries fetches and parses the exposition text and returns every series of the family
+// named params.MetricName that carries params.Labels. It returns no series (so callers sum to 0)
+// when the family is absent: a labeled series is not exported until its first observation, and a
+// missing unlabeled family reads the same way.
+func getMetricSeries(
+	t TestingT, params GetMetricValueParameters,
+) []*promgo.Metric {
 	t.Helper()
 	parser := expfmt.NewTextParser(model.UTF8Validation)
 	families, err := parser.TextToMetricFamilies(strings.NewReader(getMetricsFromURL(t, params.URL, params.TLSConfig)))
 	require.NoError(t, err)
 
-	family, extract := resolveFamily(families, params.MetricName)
+	family := families[params.MetricName]
 	if family == nil {
-		return 0
+		return nil
 	}
 
-	var sum float64
+	series := make([]*promgo.Metric, 0, len(family.Metric))
 	for _, m := range family.GetMetric() {
 		if labelsMatch(m, params.Labels) {
-			sum += extract(m)
+			series = append(series, m)
 		}
 	}
-	return sum
+	return series
 }
 
-// resolveFamily finds the metric family for name and returns it together with a function that
-// extracts the wanted value from one of its series. A histogram/summary is exposed by the parser
-// under its base name, so a request for the "<base>_count" or "<base>_sum" child series resolves to
-// that family and reads the corresponding aggregate instead of a plain sample value.
-//
-// A direct name match is preferred, so this only falls back to the histogram/summary aggregate when
-// no family is literally named "<name>". That relies on no counter/gauge being named with a "_count"
-// or "_sum" suffix, which holds here as those suffixes are exclusive to histogram/summary children.
-func resolveFamily(
-	families map[string]*promgo.MetricFamily, name string,
-) (*promgo.MetricFamily, func(*promgo.Metric) float64) {
-	if family := families[name]; family != nil {
-		return family, sampleValue
-	}
-	if base, ok := strings.CutSuffix(name, "_count"); ok {
-		if family := families[base]; family != nil {
-			return family, aggregateSampleCount
-		}
-	}
-	if base, ok := strings.CutSuffix(name, "_sum"); ok {
-		if family := families[base]; family != nil {
-			return family, aggregateSampleSum
-		}
-	}
-	return nil, nil
-}
-
-// sampleValue returns the scalar value of a counter, gauge, or untyped series.
-func sampleValue(m *promgo.Metric) float64 {
+// plainSample returns the scalar value of a counter, gauge, or untyped series.
+func plainSample(m *promgo.Metric) float64 {
 	switch {
+	// Branch on which typed field is set: GetValue returns 0 for a nil field, so the value alone
+	// cannot tell a real zero from the wrong metric kind.
 	case m.Counter != nil:
 		return m.Counter.GetValue()
 	case m.Gauge != nil:
@@ -116,20 +126,14 @@ func sampleValue(m *promgo.Metric) float64 {
 	}
 }
 
-// aggregateSampleCount returns the observation count of a histogram or summary series.
-func aggregateSampleCount(m *promgo.Metric) float64 {
-	if m.Histogram != nil {
-		return float64(m.Histogram.GetSampleCount())
-	}
-	return float64(m.Summary.GetSampleCount())
+// sampleCount returns the observation count of a histogram series.
+func sampleCount(m *promgo.Metric) int {
+	return int(m.Histogram.GetSampleCount())
 }
 
-// aggregateSampleSum returns the observation sum of a histogram or summary series.
-func aggregateSampleSum(m *promgo.Metric) float64 {
-	if m.Histogram != nil {
-		return m.Histogram.GetSampleSum()
-	}
-	return m.Summary.GetSampleSum()
+// sampleSum returns the observation sum of a histogram series.
+func sampleSum(m *promgo.Metric) float64 {
+	return m.Histogram.GetSampleSum()
 }
 
 // labelsMatch reports whether the series carries every requested key/value label pair. Matching is

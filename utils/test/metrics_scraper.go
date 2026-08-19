@@ -44,19 +44,10 @@ func NewMetricsScraper(
 	}
 }
 
-// Value returns the current value of the named series, or 0 if it is not exported yet.
-func (s MetricsScraper) Value(t TestingT, metricName string) int {
-	t.Helper()
-	return GetMetricValueFromURL(t, GetMetricValueParameters{
-		URL:        s.url,
-		MetricName: metricName,
-		TLSConfig:  s.tlsConfig,
-	})
-}
-
-// ValueWithLabels returns the current value of the named series carrying the given labels, or 0 if
-// the series is not present yet.
-func (s MetricsScraper) ValueWithLabels(t TestingT, metricName string, labels map[string]string) int {
+// Value returns the current value of the named counter/gauge/untyped series carrying the given
+// labels, rounded to the nearest integer. Pass nil labels to sum every series in the family. It
+// returns 0 for a labeled series not exported yet.
+func (s MetricsScraper) Value(t TestingT, metricName string, labels map[string]string) int {
 	t.Helper()
 	return GetMetricValueFromURL(t, GetMetricValueParameters{
 		URL:        s.url,
@@ -66,16 +57,27 @@ func (s MetricsScraper) ValueWithLabels(t TestingT, metricName string, labels ma
 	})
 }
 
-// FloatValueWithLabels returns the unrounded current value of the named series carrying the given
-// labels, or 0 if the series is not present yet. Use this over ValueWithLabels for sub-integer
-// values, such as a histogram _sum of short durations, that must not be rounded to zero.
-func (s MetricsScraper) FloatValueWithLabels(t TestingT, metricName string, labels map[string]string) float64 {
+// HistogramCountValue returns the observation count of the named histogram carrying the given
+// labels, rounded to the nearest integer. Pass the histogram's base name, not its "_count" child.
+func (s MetricsScraper) HistogramCountValue(t TestingT, metricName string, labels map[string]string) int {
 	t.Helper()
-	value := findFloatMetricValueFromURL(t, GetMetricValueParameters{
+	return GetHistogramCountFromURL(t, GetMetricValueParameters{
 		URL:        s.url,
 		MetricName: metricName,
 		Labels:     labels,
 		TLSConfig:  s.tlsConfig,
 	})
-	return value
+}
+
+// HistogramSumValue returns the unrounded observation sum of the named histogram carrying the given
+// labels. Pass the histogram's base name, not its "_sum" child. Prefer this over a rounded read for
+// a sum of short durations that must not be lost to zero.
+func (s MetricsScraper) HistogramSumValue(t TestingT, metricName string, labels map[string]string) float64 {
+	t.Helper()
+	return GetHistogramSumFromURL(t, GetMetricValueParameters{
+		URL:        s.url,
+		MetricName: metricName,
+		Labels:     labels,
+		TLSConfig:  s.tlsConfig,
+	})
 }

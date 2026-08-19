@@ -18,8 +18,8 @@ type (
 	// ServerStatsHandler is a gRPC stats.Handler attached to every server. It records
 	// server-side connection and RPC-level metrics from the gRPC stats callbacks.
 	//
-	// Metrics are held in ServerMetrics struct, stored in an atomic pointer and a no-op until a service
-	// registers it, so registration is safe while or after the server starts serving.
+	// It holds its ServerMetrics in an atomic pointer and is a no-op until a service registers them,
+	// so registration is safe while or after the server starts serving.
 	ServerStatsHandler struct {
 		metrics atomic.Pointer[ServerMetrics]
 	}
@@ -37,9 +37,8 @@ type (
 // rpcContextKey is the context key under which TagRPC stores the resolved method.
 const rpcContextKey rpcCtxKey = "rpc-method"
 
-// RegisterServerMetrics wires the metrics that the handler records into. The handler is a complete
-// no-op until a service registers its metrics, and this is safe to call while or after the server
-// starts serving.
+// RegisterServerMetrics gives the handler the metrics to record into. Until this is called the
+// handler is a no-op, and it is safe to call while or after the server starts serving.
 func RegisterServerMetrics(h *ServerStatsHandler, m *ServerMetrics) {
 	h.metrics.Store(m)
 }
