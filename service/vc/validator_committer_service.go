@@ -144,9 +144,9 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 		return vc.committer.run(eCtx, db, l.MaxWorkersForCommitter)
 	})
 
-	logger.Info("Starting the snapshot hash worker")
+	logger.Info("Starting snapshot hash scheduler")
 	g.Go(func() error {
-		return db.runSnapshotHashWorker(eCtx)
+		return db.runSnapshotHashScheduler(eCtx)
 	})
 
 	if err := g.Wait(); err != nil {

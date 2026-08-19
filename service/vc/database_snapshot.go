@@ -202,8 +202,8 @@ func (db *database) readLatestSnapshotRecord(ctx context.Context) (*committerpb.
 // _snapshot table nor re-observes its own PENDING rewrite.
 //
 // Snapshot database creation MUST succeed before txID is committed. On failure
-// this returns an error, batch is not committed, txID stays uncommitted, and
-// coordinator retries snapshot (this PR does not self-recover).
+// this returns an error, batch is not committed, txID stays uncommitted, and the
+// coordinator retries the snapshot; this path does not self-recover.
 func (db *database) createSnapshotIfPresent(ctx context.Context, newWrites transactionToWrites) error {
 	// A snapshot TX is submitted standalone: the sidecar drains before and after it,
 	// so its batch contains exactly one transaction and hence one new-write entry.
@@ -313,7 +313,7 @@ func (db *database) createSnapshotDatabaseAndRewriteRecord(
 // ALLOW_CONNECTIONS false and the deferred re-enable locks out src for ALL
 // pools. A VC cannot fix this (it may be dead; peers aren't authorized). The
 // COORDINATOR, on detecting VC failure, re-enables ALLOW_CONNECTIONS via the
-// maintenance DB. Not implemented in this PR.
+// maintenance DB. Not implemented yet.
 func (db *database) createSnapshotDatabase(ctx context.Context, databaseName string) error {
 	isYuga, err := statedb.IsYugabyteDB(ctx, db.pool)
 	if err != nil {

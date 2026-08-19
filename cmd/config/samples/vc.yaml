@@ -157,6 +157,14 @@ resource-limits:
   # (keyset pagination). Bounds the memory used by a hashing worker on large tables.
   # Default: 1000
   snapshot-hash-batch-size: 1000
+  # How long a snapshot hash job's lease stays valid. Only one worker hashes a
+  # given snapshot at a time; the worker renews this lease while it hashes, and
+  # another worker may take the job over once the lease expires. Must exceed the
+  # renewal interval by a comfortable margin: too low risks a second worker
+  # taking over a hash that is still running, too high delays recovery after a
+  # worker dies mid-hash.
+  # Default: 1m
+  snapshot-hash-lease-ttl: 1m
   # Minimum number of transactions that must accumulate before processing a batch
   # through the validation pipeline. Larger batches improve database efficiency
   # through bulk operations but increase latency. Set to 1 for lowest latency.

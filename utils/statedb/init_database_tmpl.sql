@@ -20,6 +20,16 @@ INSERT INTO metadata
 VALUES ('latest snapshot key', NULL)
 ON CONFLICT DO NOTHING;
 
+-- 'snapshot hash lease' guards the snapshot hash job so that only one worker
+-- computes a given snapshot's hash at a time. The value encodes transaction
+-- ID, owner token, and expiry. Owner token fences stale attempts after
+-- takeover: only current owner can renew, release, or publish completion.
+-- Pre-seeded NULL (no lease held) so the row always exists and plain UPDATE
+-- below can be reused, matching 'latest snapshot key'.
+INSERT INTO metadata
+VALUES ('snapshot hash lease', NULL)
+ON CONFLICT DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS tx_status
 (
     tx_id  BYTEA NOT NULL PRIMARY KEY,

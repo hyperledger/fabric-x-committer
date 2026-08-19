@@ -69,7 +69,6 @@ type (
 		tablePreSplitTablets int
 		config               *statedb.Config
 		resourceLimits       *ResourceLimitsConfig
-		snapshotHashJobs     chan snapshotHashJob
 		hasher               *snapshotHasher
 	}
 
@@ -118,7 +117,6 @@ func newDatabase(
 		tablePreSplitTablets: tablePreSplitTablets,
 		config:               config,
 		resourceLimits:       resourceLimits,
-		snapshotHashJobs:     make(chan snapshotHashJob, snapshotHashJobBuffer),
 		hasher: &snapshotHasher{
 			config:         config,
 			resourceLimits: resourceLimits,

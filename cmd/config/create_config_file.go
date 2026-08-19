@@ -72,6 +72,11 @@ type (
 		VCMinTransactionBatchSize           int           // vc
 		VCTimeoutForMinTransactionBatchSize time.Duration // vc
 
+		// VC service snapshot hashing configuration (for testing).
+		VCMaxWorkersForSnapshotHash int           // vc
+		VCSnapshotHashBatchSize     int           // vc
+		VCSnapshotHashLeaseTTL      time.Duration // vc
+
 		// Verifier batching configuration (for testing).
 		VerifierBatchTimeCutoff time.Duration // verifier
 		VerifierBatchSizeCutoff int           // verifier

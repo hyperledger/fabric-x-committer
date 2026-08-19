@@ -38,3 +38,11 @@ message VcTx {
     repeated applicationpb.TxNamespace namespaces = 2;
     optional committerpb.Status prelim_invalid_tx_status = 3;
 }
+
+message SnapshotHashLease {
+    string tx_id = 1;
+    // Random UUID identifying one acquisition attempt. Tx ID alone cannot
+    // distinguish a stale worker from a new worker that took over same job.
+    bytes owner_token = 2;
+    int64 expires_at_unix_nano = 3;
+}

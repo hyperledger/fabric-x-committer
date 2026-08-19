@@ -425,6 +425,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 				MaxWorkersForPreparer:             2,
 				MaxWorkersForValidator:            2,
 				MaxWorkersForCommitter:            2,
+				SnapshotHashLeaseTTL:              time.Minute,
 				MinTransactionBatchSize:           100,
 				TimeoutForMinTransactionBatchSize: 1 * time.Hour,
 			},

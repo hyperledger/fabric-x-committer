@@ -245,6 +245,19 @@ The snapshot hash worker opens its own short-lived connection pool against the c
 
 Number of rows fetched per round-trip when scanning a table for hashing (keyset pagination). Larger batches reduce the number of round-trips but increase the memory held by each hashing worker; total memory scales with `max-workers-for-snapshot-hash × snapshot-hash-batch-size`, and it also depends on the size of the keys and values in the table being hashed. The default of 1000 keeps per-worker memory bounded on large tables.
 
+### `resource-limits.snapshot-hash-lease-ttl`
+
+How long a snapshot hash job's lease stays valid. Only one worker hashes a given snapshot at a time, and that exclusion is enforced by a lease stored in the state database: the worker renews the lease while it hashes, and another worker may take the job over only once the lease has expired. An expired lease is how a worker that died mid-hash is detected.
+
+This is a correctness-vs-takeover-latency tradeoff, not a throughput knob. The minimum accepted value is 1m, so the lease stays comfortably above the renewal interval:
+
+| Value | Effect |
+|---|---|
+| 1m (minimum and default) | Comfortable margin above the renewal interval; the scheduler polls once per TTL, so takeover after the lease expires can take almost two minutes from the last successful renewal in the worst polling phase |
+| Much higher | Safer against spurious takeover, but a job orphaned by a crashed worker stays stuck for that much longer |
+
+Raise it if hashing very large clones on a loaded cluster makes renewals unreliable. Each acquisition carries a unique ownership token, so a stale attempt that resumes after takeover cannot renew or clear its successor's lease, or publish snapshot completion.
+
 ### `database.max-connections`
 
 Maximum number of connections in the database connection pool. The validator and committer stages share this pool (the preparer does not use the database — it performs in-memory parsing only). If the pool is exhausted, workers block waiting for a free connection, reducing effective parallelism.

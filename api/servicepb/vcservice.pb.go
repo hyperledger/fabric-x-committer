@@ -133,6 +133,68 @@ func (x *VcTx) GetPrelimInvalidTxStatus() committerpb.Status {
 	return committerpb.Status(0)
 }
 
+type SnapshotHashLease struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	TxId  string                 `protobuf:"bytes,1,opt,name=tx_id,json=txId,proto3" json:"tx_id,omitempty"`
+	// Random UUID identifying one acquisition attempt. Tx ID alone cannot
+	// distinguish a stale worker from a new worker that took over same job.
+	OwnerToken        []byte `protobuf:"bytes,2,opt,name=owner_token,json=ownerToken,proto3" json:"owner_token,omitempty"`
+	ExpiresAtUnixNano int64  `protobuf:"varint,3,opt,name=expires_at_unix_nano,json=expiresAtUnixNano,proto3" json:"expires_at_unix_nano,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *SnapshotHashLease) Reset() {
+	*x = SnapshotHashLease{}
+	mi := &file_api_servicepb_vcservice_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SnapshotHashLease) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SnapshotHashLease) ProtoMessage() {}
+
+func (x *SnapshotHashLease) ProtoReflect() protoreflect.Message {
+	mi := &file_api_servicepb_vcservice_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SnapshotHashLease.ProtoReflect.Descriptor instead.
+func (*SnapshotHashLease) Descriptor() ([]byte, []int) {
+	return file_api_servicepb_vcservice_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *SnapshotHashLease) GetTxId() string {
+	if x != nil {
+		return x.TxId
+	}
+	return ""
+}
+
+func (x *SnapshotHashLease) GetOwnerToken() []byte {
+	if x != nil {
+		return x.OwnerToken
+	}
+	return nil
+}
+
+func (x *SnapshotHashLease) GetExpiresAtUnixNano() int64 {
+	if x != nil {
+		return x.ExpiresAtUnixNano
+	}
+	return 0
+}
+
 var File_api_servicepb_vcservice_proto protoreflect.FileDescriptor
 
 const file_api_servicepb_vcservice_proto_rawDesc = "" +
@@ -146,7 +208,12 @@ const file_api_servicepb_vcservice_proto_rawDesc = "" +
 	"namespaces\x18\x02 \x03(\v2\x1a.applicationpb.TxNamespaceR\n" +
 	"namespaces\x12Q\n" +
 	"\x18prelim_invalid_tx_status\x18\x03 \x01(\x0e2\x13.committerpb.StatusH\x00R\x15prelimInvalidTxStatus\x88\x01\x01B\x1b\n" +
-	"\x19_prelim_invalid_tx_status2\x83\x04\n" +
+	"\x19_prelim_invalid_tx_status\"z\n" +
+	"\x11SnapshotHashLease\x12\x13\n" +
+	"\x05tx_id\x18\x01 \x01(\tR\x04txId\x12\x1f\n" +
+	"\vowner_token\x18\x02 \x01(\fR\n" +
+	"ownerToken\x12/\n" +
+	"\x14expires_at_unix_nano\x18\x03 \x01(\x03R\x11expiresAtUnixNano2\x83\x04\n" +
 	"\x1aValidationAndCommitService\x12R\n" +
 	"\x1cStartValidateAndCommitStream\x12\x12.servicepb.VcBatch\x1a\x1a.committerpb.TxStatusBatch(\x010\x01\x12L\n" +
 	"\x1bSetLastCommittedBlockNumber\x12\x13.servicepb.BlockRef\x1a\x16.google.protobuf.Empty\"\x00\x12K\n" +
@@ -167,37 +234,38 @@ func file_api_servicepb_vcservice_proto_rawDescGZIP() []byte {
 	return file_api_servicepb_vcservice_proto_rawDescData
 }
 
-var file_api_servicepb_vcservice_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_api_servicepb_vcservice_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_api_servicepb_vcservice_proto_goTypes = []any{
 	(*VcBatch)(nil),                         // 0: servicepb.VcBatch
 	(*VcTx)(nil),                            // 1: servicepb.VcTx
-	(*committerpb.TxRef)(nil),               // 2: committerpb.TxRef
-	(*applicationpb.TxNamespace)(nil),       // 3: applicationpb.TxNamespace
-	(committerpb.Status)(0),                 // 4: committerpb.Status
-	(*BlockRef)(nil),                        // 5: servicepb.BlockRef
-	(*emptypb.Empty)(nil),                   // 6: google.protobuf.Empty
-	(*committerpb.TxIDsBatch)(nil),          // 7: committerpb.TxIDsBatch
-	(*committerpb.TxStatusBatch)(nil),       // 8: committerpb.TxStatusBatch
-	(*applicationpb.NamespacePolicies)(nil), // 9: applicationpb.NamespacePolicies
-	(*applicationpb.ConfigTransaction)(nil), // 10: applicationpb.ConfigTransaction
+	(*SnapshotHashLease)(nil),               // 2: servicepb.SnapshotHashLease
+	(*committerpb.TxRef)(nil),               // 3: committerpb.TxRef
+	(*applicationpb.TxNamespace)(nil),       // 4: applicationpb.TxNamespace
+	(committerpb.Status)(0),                 // 5: committerpb.Status
+	(*BlockRef)(nil),                        // 6: servicepb.BlockRef
+	(*emptypb.Empty)(nil),                   // 7: google.protobuf.Empty
+	(*committerpb.TxIDsBatch)(nil),          // 8: committerpb.TxIDsBatch
+	(*committerpb.TxStatusBatch)(nil),       // 9: committerpb.TxStatusBatch
+	(*applicationpb.NamespacePolicies)(nil), // 10: applicationpb.NamespacePolicies
+	(*applicationpb.ConfigTransaction)(nil), // 11: applicationpb.ConfigTransaction
 }
 var file_api_servicepb_vcservice_proto_depIdxs = []int32{
 	1,  // 0: servicepb.VcBatch.transactions:type_name -> servicepb.VcTx
-	2,  // 1: servicepb.VcTx.ref:type_name -> committerpb.TxRef
-	3,  // 2: servicepb.VcTx.namespaces:type_name -> applicationpb.TxNamespace
-	4,  // 3: servicepb.VcTx.prelim_invalid_tx_status:type_name -> committerpb.Status
+	3,  // 1: servicepb.VcTx.ref:type_name -> committerpb.TxRef
+	4,  // 2: servicepb.VcTx.namespaces:type_name -> applicationpb.TxNamespace
+	5,  // 3: servicepb.VcTx.prelim_invalid_tx_status:type_name -> committerpb.Status
 	0,  // 4: servicepb.ValidationAndCommitService.StartValidateAndCommitStream:input_type -> servicepb.VcBatch
-	5,  // 5: servicepb.ValidationAndCommitService.SetLastCommittedBlockNumber:input_type -> servicepb.BlockRef
-	6,  // 6: servicepb.ValidationAndCommitService.GetNextBlockNumberToCommit:input_type -> google.protobuf.Empty
-	7,  // 7: servicepb.ValidationAndCommitService.GetTransactionsStatus:input_type -> committerpb.TxIDsBatch
-	6,  // 8: servicepb.ValidationAndCommitService.GetNamespacePolicies:input_type -> google.protobuf.Empty
-	6,  // 9: servicepb.ValidationAndCommitService.GetConfigTransaction:input_type -> google.protobuf.Empty
-	8,  // 10: servicepb.ValidationAndCommitService.StartValidateAndCommitStream:output_type -> committerpb.TxStatusBatch
-	6,  // 11: servicepb.ValidationAndCommitService.SetLastCommittedBlockNumber:output_type -> google.protobuf.Empty
-	5,  // 12: servicepb.ValidationAndCommitService.GetNextBlockNumberToCommit:output_type -> servicepb.BlockRef
-	8,  // 13: servicepb.ValidationAndCommitService.GetTransactionsStatus:output_type -> committerpb.TxStatusBatch
-	9,  // 14: servicepb.ValidationAndCommitService.GetNamespacePolicies:output_type -> applicationpb.NamespacePolicies
-	10, // 15: servicepb.ValidationAndCommitService.GetConfigTransaction:output_type -> applicationpb.ConfigTransaction
+	6,  // 5: servicepb.ValidationAndCommitService.SetLastCommittedBlockNumber:input_type -> servicepb.BlockRef
+	7,  // 6: servicepb.ValidationAndCommitService.GetNextBlockNumberToCommit:input_type -> google.protobuf.Empty
+	8,  // 7: servicepb.ValidationAndCommitService.GetTransactionsStatus:input_type -> committerpb.TxIDsBatch
+	7,  // 8: servicepb.ValidationAndCommitService.GetNamespacePolicies:input_type -> google.protobuf.Empty
+	7,  // 9: servicepb.ValidationAndCommitService.GetConfigTransaction:input_type -> google.protobuf.Empty
+	9,  // 10: servicepb.ValidationAndCommitService.StartValidateAndCommitStream:output_type -> committerpb.TxStatusBatch
+	7,  // 11: servicepb.ValidationAndCommitService.SetLastCommittedBlockNumber:output_type -> google.protobuf.Empty
+	6,  // 12: servicepb.ValidationAndCommitService.GetNextBlockNumberToCommit:output_type -> servicepb.BlockRef
+	9,  // 13: servicepb.ValidationAndCommitService.GetTransactionsStatus:output_type -> committerpb.TxStatusBatch
+	10, // 14: servicepb.ValidationAndCommitService.GetNamespacePolicies:output_type -> applicationpb.NamespacePolicies
+	11, // 15: servicepb.ValidationAndCommitService.GetConfigTransaction:output_type -> applicationpb.ConfigTransaction
 	10, // [10:16] is the sub-list for method output_type
 	4,  // [4:10] is the sub-list for method input_type
 	4,  // [4:4] is the sub-list for extension type_name
@@ -218,7 +286,7 @@ func file_api_servicepb_vcservice_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_servicepb_vcservice_proto_rawDesc), len(file_api_servicepb_vcservice_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

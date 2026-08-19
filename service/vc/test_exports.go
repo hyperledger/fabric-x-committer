@@ -122,6 +122,7 @@ func defaultTestResourceLimits() *ResourceLimitsConfig {
 		MaxWorkersForCommitter:            2,
 		MaxWorkersForSnapshotHash:         4,
 		SnapshotHashBatchSize:             1000,
+		SnapshotHashLeaseTTL:              time.Minute,
 		MinTransactionBatchSize:           1,
 		TimeoutForMinTransactionBatchSize: 20 * time.Second,
 	}

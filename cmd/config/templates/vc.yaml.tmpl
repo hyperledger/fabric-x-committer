@@ -10,5 +10,8 @@ resource-limits:
   max-workers-for-preparer: 1
   max-workers-for-validator: 1
   max-workers-for-committer: 20
+  max-workers-for-snapshot-hash: {{ .VCMaxWorkersForSnapshotHash | default 4 }}
+  snapshot-hash-batch-size: {{ .VCSnapshotHashBatchSize | default 1000 }}
+  snapshot-hash-lease-ttl: {{ .VCSnapshotHashLeaseTTL | default "1m" }}
   min-transaction-batch-size: {{ .VCMinTransactionBatchSize | default 1 }}
   timeout-for-min-transaction-batch-size: {{ .VCTimeoutForMinTransactionBatchSize | default "2s" }}

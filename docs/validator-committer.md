@@ -89,8 +89,7 @@ world state for each namespace, and internal metadata. The tables are categorize
 | `value`     | `BYTEA`   | The system configuration transaction.              |
 | `version`   | `BIGINT`  | Not Applicable                                     |
 
-* **Metadata Table (`metadata`)**: This table is a simple key-value store for other internal system metadata. For now, we
-only store the last committed block number.
+* **Metadata Table (`metadata`)**: This table is a simple key-value store for internal system metadata. It stores the last committed block number, the key of the latest accepted snapshot record, and the tokenized snapshot-hash lease used for worker ownership and expiry detection.
 
 | Column Name | Data Type | Description/Constraints        |
 | :---------- | :-------- | :----------------------------- |
@@ -279,11 +278,15 @@ back to the Coordinator, completing the workflow for the transaction batch.
 
 When a `_snapshot` marker transaction is committed, the VC creates a native,
 zero-copy clone of the state database **before** the marker's transaction ID is
-committed, preserving the invariant `txID committed <=> clone ready <=> PENDING row`.
+committed, preserving the one-way guarantee that every committed snapshot txID has
+a clone and a PENDING row; uncommitted attempts may also leave a reusable clone.
 For YugabyteDB, ready means `yb_database_clones().state = 'COMPLETE'`; a
 `pg_database` row alone is insufficient. The clone is a consistent copy of the
-drained state cut and is never dropped by the VC (dropping is forbidden because
-it could delete a clone whose txID has not yet committed). See
+drained state cut and is never dropped by the VC (dropping is forbidden because it
+could delete a clone whose txID has not yet committed). Failed or losing attempts
+leave deterministic clones for retry/reuse or operator reconciliation, and
+successful and ambiguous attempts preserve them as well; administrative clone
+deletion remains outside the commit path. See
 [database_snapshot.go](/service/vc/database_snapshot.go).
 
 A `_snapshot` transaction is submitted standalone: the sidecar drains the pipeline
@@ -368,7 +371,7 @@ sent to the VC service and which have been acknowledged with a final status.
 
 ### B. Restart and Recovery Procedure
 
-If the VC service fails and restarts, its internal channels (`preparedTxs`, `validatedTxs`) will be empty. Recovery is managed by the Coordinator:
+If the VC service fails and restarts, its internal channels (`preparedTxs`, `validatedTxs`) will be empty. Transaction-batch recovery is managed by the Coordinator:
 
 1.  **Reconnect:** Upon restart, the VC service re-establishes its gRPC server and awaits a connection from the Coordinator.
 2.  **Coordinator-led Recovery:** The Coordinator maintains a list of transactions sent to each VC service. Upon detecting a broken stream with a failed VC service, it will resubmit
@@ -382,3 +385,5 @@ any transaction batches for which it has not received a final `TransactionsStatu
     identifies it as a resubmission, reuses the already committed status, and does not re-process the transaction. This ensures that the commit operation is idempotent 
     and prevents incorrect validation or duplicate writes. If a transaction is a resubmission, its correct, original status is retrieved from the `tx_status` table.
 4.  **Resume Operation:** Once the Coordinator has re-sent any necessary batches and they have been processed idempotently, the system seamlessly resumes normal operation.
+
+Snapshot hashing is scheduled independently of the commit path. The committer only makes the `_snapshot` record durable; a dedicated scheduler goroutine in every VC checks the latest snapshot state once per snapshot-hash lease TTL and hashes any record that still needs it, inline, so one VC runs at most one hash at a time. That single start path covers a fresh snapshot, a resubmitted one, and one orphaned by a dead worker, at the cost of hashing beginning within one TTL of the commit. A PENDING, IN_PROGRESS, or FAILED hash job can be claimed once the lease expires. Each acquisition has a unique owner token; renewal, release, and final completion require exact ownership, fencing stale workers after takeover.
