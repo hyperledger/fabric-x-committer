@@ -24,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -272,6 +273,24 @@ func TestRelayConfigBlock(t *testing.T) {
 
 	committedBlock2 := <-relayEnv.committedBlock
 	require.Equal(t, blk2, committedBlock2)
+}
+
+// TestRelayUnprocessableConfigBlock verifies that a config block the sidecar cannot process ends
+// the relay with a retryable error, so the sidecar restarts its block feed and fetches the block
+// again, instead of committing the block without its config TX.
+func TestRelayUnprocessableConfigBlock(t *testing.T) {
+	t.Parallel()
+	relayService := newRelay(time.Second, newPerformanceMetrics())
+	incomingBlockToBeCommitted := make(chan *common.Block, 1)
+	relayService.incomingBlockToBeCommitted = incomingBlockToBeCommitted
+	relayService.waitingTxsSlots = utils.NewSlots(100)
+
+	// A config TX with no TX ID in either its nested update or its outer envelope.
+	incomingBlockToBeCommitted <- configBlockForTest(configTxForTest(t, configTxParts{}))
+
+	err := relayService.preProcessBlock(t.Context(), make(chan *blockMappingResult, 1))
+	require.ErrorContains(t, err, "cannot process the config TX [blk:1,num:0]")
+	require.ErrorIs(t, err, retry.ErrBackOff)
 }
 
 func TestRelaySnapshotBlockSplitAndDrain(t *testing.T) {

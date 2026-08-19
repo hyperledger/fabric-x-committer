@@ -21,6 +21,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/common/ledger/blkstorage"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -35,6 +36,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/delivercommitter"
+	"github.com/hyperledger/fabric-x-committer/utils/deliverorderer"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -276,6 +278,87 @@ func TestSidecarConfigUpdate(t *testing.T) {
 			env.sendTransactionsAndEnsureCommitted(ctx, t, expectedBlock)
 		})
 	}
+}
+
+// TestSidecarUnprocessableConfigBlockRecovery verifies that a config block the sidecar cannot
+// process does not stall it: the sidecar fails the block instead of committing it without its
+// config TX, restarts its block feed, and commits the block once a delivery attempt returns it in
+// a processable form — as an attempt served by another orderer would.
+func TestSidecarUnprocessableConfigBlockRecovery(t *testing.T) {
+	t.Parallel()
+	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{
+		NumIDs: 3, ServerTLS: test.InsecureTLSConfig, ClientTLS: test.InsecureTLSConfig,
+	})
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env.startSidecarServiceAndClientAndNotificationStream(ctx, t, 0, test.InsecureTLSConfig)
+
+	// Step 1: Commit the genesis config block, so the sidecar is caught up and the next block it
+	// asks for is the one the following steps make unprocessable.
+	t.Log("Step 1: Commit the genesis config block")
+	genesisBlock := env.requireBlock(ctx, t, 0)
+	streamStartsBefore := dataStreamStarts(t, env)
+
+	// Step 2: Serve an unprocessable config block as block 1: its config TX carries no TX ID in
+	// its nested config update, which the outer envelope's TX ID does not stand in for. Its channel
+	// config is the genesis one, so the delivery client accepts the config it holds, and the block is
+	// signed by the consenters exactly as the mock orderer signs the blocks it cuts, so it passes the
+	// delivery client's verification and reaches the relay. Every source serves it because a config
+	// block is delivered in full on the header-only streams too, which would otherwise diverge from
+	// the data stream.
+	t.Log("Step 2: Serve an unprocessable config block as block 1 from every orderer")
+	consenters, err := testcrypto.GetConsenterIdentities(env.ArtifactsPath)
+	require.NoError(t, err)
+	unprocessableConfigBlock := testcrypto.PrepareBlockHeaderAndMetadata(
+		&common.Block{Data: &common.BlockData{Data: [][]byte{configTxForTest(t, configTxParts{
+			baseEnvelope: genesisBlock.Data.Data[0],
+			outerTxID:    "consenter-config-tx-id",
+			lastUpdate:   configUpdateForTest(t, ""),
+		})}}},
+		testcrypto.BlockPrepareParameters{PrevBlock: genesisBlock, ConsenterSigners: consenters},
+	)
+	for _, partyState := range env.PartyStates {
+		partyState.ReplaceBlock.Store(genesisBlock.Header.Number+1, unprocessableConfigBlock)
+	}
+
+	// Step 3: Submit the config block the orderer cuts as the real block 1, the one the sidecar
+	// commits in Step 6 once the replacement is gone.
+	t.Log("Step 3: Submit the real config block, cut as block 1")
+	env.SubmitConfigBlock(t, &testcrypto.ConfigBlock{OrdererEndpoints: env.AllEndpoints})
+
+	// Step 4: While every attempt returns the unprocessable block, the sidecar must not commit it,
+	// and must keep restarting its block feed rather than stopping or skipping the config TX.
+	t.Log("Step 4: Verify block 1 is not committed, and that the block feed restarts")
+	_, ok := channel.NewReader(ctx, env.committedBlock).ReadWithTimeout(5 * time.Second)
+	require.False(t, ok, "an unprocessable config block must not be committed")
+	require.Greater(t, dataStreamStarts(t, env), streamStartsBefore,
+		"the sidecar should have restarted its block feed")
+
+	// Step 5: The next attempt now returns block 1 in a processable form.
+	t.Log("Step 5: Serve the real block 1 again")
+	for _, partyState := range env.PartyStates {
+		partyState.ReplaceBlock.Clear()
+	}
+
+	// Step 6: The config block is committed with its config TX, and the sidecar keeps committing.
+	t.Log("Step 6: Verify the config block is committed, and the sidecar resumes")
+	configBlock := env.requireBlock(ctx, t, 1)
+	require.True(t, protoutil.IsConfigBlock(configBlock))
+	requireStatusMetadata(t, configBlock, valid)
+	env.sendTransactionsAndEnsureCommitted(ctx, t, 2)
+}
+
+// dataStreamStarts returns how many data-block delivery streams the sidecar has started, across
+// all the orderers it may pick as its data source.
+func dataStreamStarts(t *testing.T, env *sidecarTestEnv) int {
+	t.Helper()
+	starts := 0
+	for partyID := range env.PartyStates {
+		starts += test.GetIntMetricValue(t, env.sidecar.metrics.delivery.StreamStartsTotal.WithLabelValues(
+			"data", deliverorderer.SourceLabel(partyID),
+		))
+	}
+	return starts
 }
 
 func TestSidecarConfigRecovery(t *testing.T) {
