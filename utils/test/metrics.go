@@ -66,19 +66,15 @@ func GetCounterOrGaugeValueFromURL(t TestingT, params GetMetricValueParameters) 
 			sum += m.Untyped.GetValue()
 		}
 	}
-	return int(math.Round(sum))
+	return int(sum)
 }
 
 // GetHistogramCountAndSumValueFromURL reads the metrics endpoint and returns the observation count and the sum of the
 // histogram named params.MetricName carrying params.Labels. Pass the histogram's base name, not its
 // "_count" child. Absent-family and not-yet-observed reads return 0; a
 // non-histogram family also reads as 0.
-func GetHistogramCountAndSumValueFromURL(t TestingT, params GetMetricValueParameters) (uint64, float64) {
+func GetHistogramCountAndSumValueFromURL(t TestingT, params GetMetricValueParameters) (count uint64, sum float64) {
 	t.Helper()
-	var (
-		count uint64
-		sum   float64
-	)
 
 	for _, m := range getMetricSeries(t, params) {
 		count += m.Histogram.GetSampleCount()
