@@ -26,13 +26,43 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
 
-// GetMetricValueParameters carries the parameters for the metric-value lookups
-// (GetCounterOrGaugeValueFromURL, GetHistogramCountAndSumValueFromURL).
-type GetMetricValueParameters struct {
-	MetricName string
-	URL        string
-	TLSConfig  *tls.Config
-	Labels     map[string]string
+type (
+	// MetricsParameters scrapes named metric series from a service's HTTP metrics endpoint. The metric to
+	// read is chosen per call, so one scraper serves every metric a service exposes.
+	MetricsParameters struct {
+		URL       string
+		TLSConfig *tls.Config
+	}
+
+	// GetMetricValueParameters carries the parameters for the metric-value lookups
+	// (GetCounterOrGaugeValueFromURL, GetHistogramCountAndSumValueFromURL).
+	GetMetricValueParameters struct {
+		MetricName string
+		URL        string
+		TLSConfig  *tls.Config
+		Labels     map[string]string
+	}
+)
+
+// NewMetricsParameters builds a handle for scraping the given service's HTTP metrics endpoint.
+func NewMetricsParameters(
+	t *testing.T, clientTLS connection.TLSConfig, httpEndpoint *connection.Endpoint,
+) MetricsParameters {
+	t.Helper()
+
+	metricsURL, err := monitoring.MakeMetricsURL(httpEndpoint.Address(), &clientTLS)
+	require.NoError(t, err)
+
+	creds, err := connection.NewClientTLSCredentials(clientTLS)
+	require.NoError(t, err)
+
+	tlsConfig, err := creds.CreateClientTLSConfig()
+	require.NoError(t, err)
+
+	return MetricsParameters{
+		URL:       metricsURL,
+		TLSConfig: tlsConfig,
+	}
 }
 
 // CheckMetrics checks the metrics endpoint for the expected metrics.

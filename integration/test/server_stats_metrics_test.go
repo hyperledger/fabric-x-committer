@@ -47,8 +47,10 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
 
-	queryMetrics := test.NewMetricsScraper(t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Query.HTTPEndpoint)
-	sidecarMetrics := test.NewMetricsScraper(t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Sidecar.HTTPEndpoint)
+	queryMetrics := test.NewMetricsParameters(t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Query.HTTPEndpoint)
+	sidecarMetrics := test.NewMetricsParameters(
+		t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Sidecar.HTTPEndpoint,
+	)
 
 	t.Run("Unary RPC Value And Latency", func(t *testing.T) {
 		t.Parallel()
@@ -161,7 +163,7 @@ func TestActiveConnectionCountFullSystem(t *testing.T) {
 	c := runner.NewRuntime(t, &runner.Config{BlockTimeout: 2 * time.Second})
 	c.Start(t, runner.FullTxPathWithQuery)
 
-	queryMetrics := test.NewMetricsScraper(t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Query.HTTPEndpoint)
+	queryMetrics := test.NewMetricsParameters(t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Query.HTTPEndpoint)
 
 	preActiveConns := test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
 		URL:        queryMetrics.URL,
