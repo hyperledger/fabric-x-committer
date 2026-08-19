@@ -54,8 +54,8 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 		t.Parallel()
 		unaryLabels := map[string]string{method: getTransactionStatusMethod}
 		preRequests := test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
-			URL:        queryMetrics.GetURL(),
-			TLSConfig:  queryMetrics.GetTLSConfig(),
+			URL:        queryMetrics.URL,
+			TLSConfig:  queryMetrics.TLSConfig,
 			MetricName: queryRequestsTotalMetric,
 			Labels:     unaryLabels,
 		})
@@ -67,8 +67,8 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 
 		require.EventuallyWithT(t, func(ct *assert.CollectT) {
 			requestLatencyCount, _ := test.GetHistogramCountAndSumValueFromURL(ct, test.GetMetricValueParameters{
-				URL:        queryMetrics.GetURL(),
-				TLSConfig:  queryMetrics.GetTLSConfig(),
+				URL:        queryMetrics.URL,
+				TLSConfig:  queryMetrics.TLSConfig,
 				MetricName: queryRequestsLatencyMetric,
 				Labels: map[string]string{
 					method:   getTransactionStatusMethod,
@@ -77,8 +77,8 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 			})
 			require.Equal(
 				ct, preRequests+1, test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
-					URL:        queryMetrics.GetURL(),
-					TLSConfig:  queryMetrics.GetTLSConfig(),
+					URL:        queryMetrics.URL,
+					TLSConfig:  queryMetrics.TLSConfig,
 					MetricName: queryRequestsTotalMetric,
 					Labels:     unaryLabels,
 				}),
@@ -91,8 +91,8 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 		t.Parallel()
 		streamLabels := map[string]string{method: openNotificationStreamMethod}
 		preActiveStreams := test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
-			URL:        sidecarMetrics.GetURL(),
-			TLSConfig:  sidecarMetrics.GetTLSConfig(),
+			URL:        sidecarMetrics.URL,
+			TLSConfig:  sidecarMetrics.TLSConfig,
 			MetricName: sidecarActiveStreamsMetric,
 			Labels:     streamLabels,
 		})
@@ -100,8 +100,8 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 		preStreamDurationCount, preStreamDurationSum := test.GetHistogramCountAndSumValueFromURL(
 			t,
 			test.GetMetricValueParameters{
-				URL:        sidecarMetrics.GetURL(),
-				TLSConfig:  sidecarMetrics.GetTLSConfig(),
+				URL:        sidecarMetrics.URL,
+				TLSConfig:  sidecarMetrics.TLSConfig,
 				MetricName: sidecarStreamDurationMetric,
 				Labels:     streamLabels,
 			},
@@ -118,8 +118,8 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 
 		require.EventuallyWithT(t, func(ct *assert.CollectT) {
 			activeStreams := test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
-				URL:        sidecarMetrics.GetURL(),
-				TLSConfig:  sidecarMetrics.GetTLSConfig(),
+				URL:        sidecarMetrics.URL,
+				TLSConfig:  sidecarMetrics.TLSConfig,
 				MetricName: sidecarActiveStreamsMetric,
 				Labels:     streamLabels,
 			})
@@ -130,16 +130,16 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 
 		require.EventuallyWithT(t, func(ct *assert.CollectT) {
 			activeStreams := test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
-				URL:        sidecarMetrics.GetURL(),
-				TLSConfig:  sidecarMetrics.GetTLSConfig(),
+				URL:        sidecarMetrics.URL,
+				TLSConfig:  sidecarMetrics.TLSConfig,
 				MetricName: sidecarActiveStreamsMetric,
 				Labels:     streamLabels,
 			})
 			streamDurationCount, streamDurationSum := test.GetHistogramCountAndSumValueFromURL(
 				t,
 				test.GetMetricValueParameters{
-					URL:        sidecarMetrics.GetURL(),
-					TLSConfig:  sidecarMetrics.GetTLSConfig(),
+					URL:        sidecarMetrics.URL,
+					TLSConfig:  sidecarMetrics.TLSConfig,
 					MetricName: sidecarStreamDurationMetric,
 					Labels:     streamLabels,
 				},
@@ -164,8 +164,8 @@ func TestActiveConnectionCountFullSystem(t *testing.T) {
 	queryMetrics := test.NewMetricsScraper(t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Query.HTTPEndpoint)
 
 	preActiveConns := test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
-		URL:        queryMetrics.GetURL(),
-		TLSConfig:  queryMetrics.GetTLSConfig(),
+		URL:        queryMetrics.URL,
+		TLSConfig:  queryMetrics.TLSConfig,
 		MetricName: queryActiveConnsMetric,
 	})
 
@@ -182,8 +182,8 @@ func TestActiveConnectionCountFullSystem(t *testing.T) {
 
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		require.Equal(ct, preActiveConns+1, test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
-			URL:        queryMetrics.GetURL(),
-			TLSConfig:  queryMetrics.GetTLSConfig(),
+			URL:        queryMetrics.URL,
+			TLSConfig:  queryMetrics.TLSConfig,
 			MetricName: queryActiveConnsMetric,
 		}))
 	}, 30*time.Second, 200*time.Millisecond)
@@ -191,8 +191,8 @@ func TestActiveConnectionCountFullSystem(t *testing.T) {
 	require.NoError(t, conn.Close())
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		require.Equal(ct, preActiveConns, test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
-			URL:        queryMetrics.GetURL(),
-			TLSConfig:  queryMetrics.GetTLSConfig(),
+			URL:        queryMetrics.URL,
+			TLSConfig:  queryMetrics.TLSConfig,
 			MetricName: queryActiveConnsMetric,
 		}))
 	}, 30*time.Second, 200*time.Millisecond)

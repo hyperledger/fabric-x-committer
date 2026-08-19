@@ -19,8 +19,8 @@ import (
 // MetricsScraper scrapes named metric series from a service's HTTP metrics endpoint. The metric to
 // read is chosen per call, so one scraper serves every metric a service exposes.
 type MetricsScraper struct {
-	url       string
-	tlsConfig *tls.Config
+	URL       string
+	TLSConfig *tls.Config
 }
 
 // NewMetricsScraper builds a handle for scraping the given service's HTTP metrics endpoint.
@@ -39,17 +39,7 @@ func NewMetricsScraper(
 	require.NoError(t, err)
 
 	return MetricsScraper{
-		url:       metricsURL,
-		tlsConfig: tlsConfig,
+		URL:       metricsURL,
+		TLSConfig: tlsConfig,
 	}
-}
-
-// GetURL returns the metric URL address.
-func (s MetricsScraper) GetURL() string {
-	return s.url
-}
-
-// GetTLSConfig returns the metric tls.Config.
-func (s MetricsScraper) GetTLSConfig() *tls.Config {
-	return s.tlsConfig
 }
