@@ -1126,7 +1126,8 @@ Inserts new keys. Returns array of violating keys on primary key violation.
 | After `insert_tx_status` but before commit | Nothing (uncommitted) | Full batch retry | Transaction rolled back; `insert_tx_status` detects duplicates on retry |
 | During `insert_ns` | Nothing (uncommitted) | Retry with reduced batch | Violating keys returned; corresponding txs marked invalid |
 | During `update_ns` | Nothing (uncommitted) | Retry | Updates cannot conflict (versions pre-validated) |
-| Final commit fails | Nothing | Retry | All changes in single transaction |
+| Final commit definitely rolled back (serialization/deadlock) | Nothing | Full transaction retry | Server confirms no commit occurred |
+| Final commit outcome is unknown | May have committed | No automatic replay | Prevents a successful commit from being replayed as a duplicate |
 
 ### 8.4 Duplicate Transaction Handling
 

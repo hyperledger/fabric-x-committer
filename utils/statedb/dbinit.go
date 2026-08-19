@@ -16,6 +16,8 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/jackc/pgerrcode"
+	"github.com/yugabyte/pgx/v5/pgconn"
 	"github.com/yugabyte/pgx/v5/pgxpool"
 
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
@@ -43,9 +45,21 @@ var (
 	createNamespaceSQLStmt string
 
 	logger = flogging.MustGetLogger("db-init")
+
+	// ErrDatabaseNotFound reports that a pool was opened against a database that does
+	// not exist (SQLSTATE 3D000, invalid_catalog_name). It is exposed so a caller whose
+	// database is guaranteed to exist can tell this apart from a connection failure and
+	// treat it as the invariant violation it is, rather than retrying it.
+	ErrDatabaseNotFound = errors.New("database does not exist")
 )
 
 // NewPool creates a new pool from a database config.
+//
+// A pool open against a database that does not exist fails immediately rather than
+// being retried: the database is provisioned before any service starts, so SQLSTATE
+// 3D000 means the configured name is wrong or the cluster was never initialized, and
+// no number of attempts changes either. Retrying it would spend the whole retry
+// budget before reporting a condition that was decidable on the first try.
 func NewPool(ctx context.Context, config *Config) (*pgxpool.Pool, error) {
 	connString, err := config.DataSourceName()
 	if err != nil {
@@ -70,8 +84,20 @@ func NewPool(ctx context.Context, config *Config) (*pgxpool.Pool, error) {
 		}
 		// NewWithConfig creates the pool lazily without connecting, so we ping to
 		// verify connectivity eagerly and let the retry loop handle transient failures.
-		return p, errors.Wrap(p.Ping(ctx), "failed to create a connection pool")
-	})
+		pingErr := p.Ping(ctx)
+		if pingErr == nil {
+			return p, nil
+		}
+		// The caller only closes a pool it receives, so an unusable one is closed here
+		// rather than leaked once per attempt.
+		p.Close()
+		var pgErr *pgconn.PgError
+		if errors.As(pingErr, &pgErr) && pgErr.Code == pgerrcode.InvalidCatalogName {
+			return nil, errors.Wrapf(errors.Join(retry.ErrNonRetryable, ErrDatabaseNotFound),
+				"database %s", config.Database)
+		}
+		return nil, errors.Wrap(pingErr, "failed to create a connection pool")
+	}, retry.ErrNonRetryable)
 }
 
 // SetupSystemTablesAndNamespaces creates the required system tables and namespaces in the database.

@@ -31,11 +31,12 @@ func ExecuteWithResult[T any](
 }
 
 // Execute executes the given operation repeatedly until it succeeds or a timeout occurs.
+// Errors matching terminalErrors stop retries immediately.
 // It returns nil on success, or the error returned by the final attempt on timeout.
-func Execute(ctx context.Context, p *Profile, o func() error) error {
+func Execute(ctx context.Context, p *Profile, o func() error, terminalErrors ...error) error {
 	_, err := executeWithResult(ctx, p, func() (any, error) {
 		return nil, o()
-	})
+	}, terminalErrors...)
 	return err
 }
 

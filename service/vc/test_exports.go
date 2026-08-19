@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/yugabyte/pgx/v5"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -120,8 +121,6 @@ func defaultTestResourceLimits() *ResourceLimitsConfig {
 		MaxWorkersForPreparer:             2,
 		MaxWorkersForValidator:            2,
 		MaxWorkersForCommitter:            2,
-		MaxWorkersForSnapshotHash:         4,
-		SnapshotHashBatchSize:             1000,
 		MinTransactionBatchSize:           1,
 		TimeoutForMinTransactionBatchSize: 20 * time.Second,
 	}
@@ -175,7 +174,7 @@ func NewDatabaseTestEnvFromConnection(t *testing.T, cs *testdb.Connection, loadB
 	m := newVCServiceMetrics(&queues{})
 	sCtx, sCancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(sCancel)
-	dbObject, err := newDatabase(sCtx, config, m, defaultTestResourceLimits())
+	dbObject, err := newDatabase(sCtx, config, m)
 	require.NoError(t, err, "%+v", err)
 	t.Cleanup(dbObject.close)
 
@@ -373,4 +372,181 @@ func (env *DatabaseTestEnv) rowNotExists(t *testing.T, nsID string, keys [][]byt
 		assert.Failf(t, "Key should not exist", "key [%s] value: [%s] version [%d]",
 			key, string(valVer.Value), valVer.Version)
 	}
+}
+
+// SnapshotFixture describes a durable `_snapshot` record a test wants in place.
+// It exists because the snapshot hasher and the integration tests both need the
+// state the commit path leaves behind, without driving a whole block through the
+// pipeline: the record, the committed txID, and the latest-snapshot pointer.
+//
+// The clone database itself is not created here. A test that needs one calls
+// CreateSnapshotClone, which keeps a record whose clone must be absent (asserting how
+// a missing clone is reported) on the same footing as one whose clone exists.
+type SnapshotFixture struct {
+	Ref           *committerpb.TxRef
+	Status        committerpb.SnapshotState_Status
+	CloneDatabase string
+}
+
+// SnapshotRecord is a `_snapshot` record together with its row version, so a test
+// can assert that a tick did NOT rewrite a record, not merely that its status is
+// unchanged.
+type SnapshotRecord struct {
+	State   *committerpb.SnapshotState
+	Version int64
+}
+
+// SeedSnapshotRecord commits a `_snapshot` record for f.Ref directly at f.Status,
+// bypassing the normal PENDING-then-hasher-advances flow.
+//
+// Committing it through db.commit rather than a raw INSERT is what makes the
+// fixture realistic: the txID lands in tx_status and the latest-snapshot pointer is
+// written in the same transaction as the row, which is how a reader finds it.
+func (env *DatabaseTestEnv) SeedSnapshotRecord(t *testing.T, f SnapshotFixture) {
+	t.Helper()
+	value, err := statedb.EncodeSnapshotState(&committerpb.SnapshotState{
+		TxRef: f.Ref, Status: f.Status, CloneDatabase: f.CloneDatabase,
+	})
+	require.NoError(t, err)
+
+	nws := make(namespaceToWrites)
+	nws.getOrCreate(committerpb.SnapshotNamespaceID).append([]byte(f.Ref.TxId), value, 0)
+	states := &statesToBeCommitted{
+		newWrites: nws,
+		batchStatus: &servicepb.TxStatusBatch{Status: []*committerpb.TxStatus{
+			servicepb.NewHeightFromTxRef(f.Ref).WithStatus(f.Ref.TxId, committerpb.Status_COMMITTED),
+		}},
+		txIDToHeight: transactionIDToHeight{TxID(f.Ref.TxId): servicepb.NewHeightFromTxRef(f.Ref)},
+	}
+
+	// Retried exactly as the production commit path is: on PostgreSQL, creating a
+	// clone runs pg_terminate_backend against the source database, which kills this
+	// pool's connections, so a commit right after a clone can hit SQLSTATE 57P01
+	// until the pool replaces them.
+	_, err = retry.ExecuteWithResult(t.Context(), env.DB.retryProfile, func() (*commitResult, error) {
+		return env.DB.commit(t.Context(), states)
+	})
+	require.NoError(t, err)
+}
+
+// SeedSnapshotRecordWithoutTxRef commits a `_snapshot` record whose value carries no
+// TxRef, which a reader cannot address. Only a bug or storage corruption produces
+// one, so a fixture is the only way to cover how a reader reports it.
+func (env *DatabaseTestEnv) SeedSnapshotRecordWithoutTxRef(t *testing.T, txID, cloneDatabase string) {
+	t.Helper()
+	value, err := statedb.EncodeSnapshotState(&committerpb.SnapshotState{
+		Status: committerpb.SnapshotState_PENDING, CloneDatabase: cloneDatabase,
+	})
+	require.NoError(t, err)
+
+	nws := make(namespaceToWrites)
+	nws.getOrCreate(committerpb.SnapshotNamespaceID).append([]byte(txID), value, 0)
+	_, err = env.DB.commit(t.Context(), &statesToBeCommitted{newWrites: nws})
+	require.NoError(t, err)
+}
+
+// CreateSnapshotClone creates the named clone database through the same path the
+// commit uses, and registers its drop as cleanup so a parallel test run does not
+// leak cluster-global databases.
+func (env *DatabaseTestEnv) CreateSnapshotClone(t *testing.T, name string) {
+	t.Helper()
+	dropSnapshotCloneOnCleanup(t, env.DB, name)
+	require.NoError(t, env.DB.createSnapshotDatabase(t.Context(), name))
+}
+
+// dropSnapshotCloneOnCleanup drops the named clone database when the test ends, so a
+// parallel run does not leak cluster-global databases. It lives here, not in a
+// _test.go file, so CreateSnapshotClone above can reach it.
+//
+// The drop runs on context.Background() because the test context is already
+// cancelled by the time cleanups run.
+func dropSnapshotCloneOnCleanup(t *testing.T, db *database, name string) {
+	t.Helper()
+	t.Cleanup(func() {
+		sql := fmt.Sprintf("DROP DATABASE IF EXISTS %s", pgx.Identifier{name}.Sanitize())
+		_ = db.adminExec(context.Background(), sql)
+	})
+}
+
+// ReadSnapshotRecord reads a `_snapshot` record and its row version.
+//
+// It goes through the retry profile rather than a bare query because creating a
+// snapshot clone briefly severs this pool's connections on PostgreSQL, so an
+// otherwise-correct read can fail purely because it raced a clone.
+func (env *DatabaseTestEnv) ReadSnapshotRecord(ctx context.Context, txID string) (*SnapshotRecord, bool) {
+	query := fmt.Sprintf("SELECT value, version FROM %s WHERE key = $1",
+		statedb.TableName(committerpb.SnapshotNamespaceID))
+	record, err := retry.ExecuteWithResult(ctx, env.DB.retryProfile, func() (*SnapshotRecord, error) {
+		var raw []byte
+		record := &SnapshotRecord{}
+		if err := env.DB.pool.QueryRow(ctx, query, []byte(txID)).Scan(&raw, &record.Version); err != nil {
+			return nil, err
+		}
+		state, err := statedb.DecodeSnapshotState(raw)
+		record.State = state
+		return record, err
+	})
+	if err != nil {
+		return nil, false
+	}
+	return record, true
+}
+
+// SnapshotDatabaseName returns the deterministic clone-database name for ref, so a
+// test outside this package names the same clone the commit path would.
+func SnapshotDatabaseName(ref *committerpb.TxRef) string {
+	return snapshotDatabaseName(ref)
+}
+
+// StateFixture describes committed state a test wants in the database before it
+// exercises something that reads the whole state, such as hashing a clone.
+type StateFixture struct {
+	// NamespaceIDs are registered in ns__meta, which both creates their ns_<id>
+	// tables and makes them part of the hashed table set.
+	NamespaceIDs []string
+	// Rows are the namespace rows to insert, keyed by namespace ID.
+	Rows map[string][]KeyValue
+	// TxStatuses are committed as COMMITTED tx_status rows, so a fixture can also
+	// populate the tx_status table.
+	TxStatuses []*committerpb.TxRef
+}
+
+// KeyValue is one namespace row in a StateFixture.
+type KeyValue struct {
+	Key   []byte
+	Value []byte
+}
+
+// SeedState commits f through the normal commit path, so the resulting state is
+// indistinguishable from state produced by real transactions.
+func (env *DatabaseTestEnv) SeedState(t *testing.T, f StateFixture) {
+	t.Helper()
+	nsToWrites := namespaceToWrites{}
+	for nsID, rows := range f.Rows {
+		w := nsToWrites.getOrCreate(nsID)
+		for _, row := range rows {
+			w.append(row.Key, row.Value, 0)
+		}
+	}
+
+	batchStatus := &servicepb.TxStatusBatch{}
+	txIDToHeight := transactionIDToHeight{}
+	for _, ref := range f.TxStatuses {
+		batchStatus.Status = append(batchStatus.Status,
+			committerpb.NewTxStatusFromRef(ref, committerpb.Status_COMMITTED))
+		txIDToHeight[TxID(ref.TxId)] = servicepb.NewHeightFromTxRef(ref)
+	}
+
+	env.populateData(t, f.NamespaceIDs, nsToWrites, batchStatus, txIDToHeight)
+}
+
+// InsertRowDirectly inserts a row into ns_<nsID> without registering the namespace
+// in ns__meta, which is the only way to populate a system namespace (`_snapshot`,
+// `_checkpoint`) whose table already exists but is deliberately never registered.
+func (env *DatabaseTestEnv) InsertRowDirectly(t *testing.T, nsID string, row KeyValue) {
+	t.Helper()
+	query := statedb.FmtNsID("INSERT INTO ns_${NAMESPACE_ID} (key, value, version) VALUES ($1, $2, 0)", nsID)
+	require.NoError(t, retry.ExecuteSQL(
+		t.Context(), env.DB.retryProfile, env.DB.pool, query, row.Key, row.Value,
+	))
 }

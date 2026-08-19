@@ -38,7 +38,7 @@ The variable name follows the pattern `SC_<SERVICE>_<KEY>`, where dots and dashe
 in the key are replaced with underscores.
 To override settings using environment variable YAML, set `SC_<SERVICE>_YAML`.
 
-Service prefixes: `SIDECAR`, `COORDINATOR`, `VERIFIER`, `VC`, `QUERY`.
+Service prefixes: `SIDECAR`, `COORDINATOR`, `VERIFIER`, `VC`, `QUERY`, `SNAPSHOT_HASHER`.
 
 For example, start the sidecar service with endpoint `localhost:8080`:
 

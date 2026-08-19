@@ -22,18 +22,20 @@ var (
 // Default per-service ports. Ports are the only defaults kept as constants: they differ per service
 // (so a shared struct tag can't express them), while every other default is a `default:"..."` tag.
 const (
-	coordinatorServerPort     = 9001
-	coordinatorMonitoringPort = 2119
-	sidecarServerPort         = 4001
-	sidecarMonitoringPort     = 2114
-	verifierServerPort        = 5001
-	verifierMonitoringPort    = 2115
-	vcServerPort              = 6001
-	vcMonitoringPort          = 2116
-	queryServerPort           = 7001
-	queryMonitoringPort       = 2117
-	loadgenServerPort         = 8001
-	loadgenMonitoringPort     = 2118
+	coordinatorServerPort        = 9001
+	coordinatorMonitoringPort    = 2119
+	sidecarServerPort            = 4001
+	sidecarMonitoringPort        = 2114
+	verifierServerPort           = 5001
+	verifierMonitoringPort       = 2115
+	vcServerPort                 = 6001
+	vcMonitoringPort             = 2116
+	queryServerPort              = 7001
+	queryMonitoringPort          = 2117
+	snapshotHasherServerPort     = 3001
+	snapshotHasherMonitoringPort = 2120
+	loadgenServerPort            = 8001
+	loadgenMonitoringPort        = 2118
 )
 
 // NewViperWithCoordinatorDefaults returns a viper instance with the coordinator default values.
@@ -67,6 +69,11 @@ func NewViperWithQueryDefaults() *viper.Viper {
 	v := newViperWithServiceDefault("query", queryServerPort, queryMonitoringPort)
 	setClientFacingServerLimits(v)
 	return v
+}
+
+// NewViperWithSnapshotHasherDefaults returns a viper instance with the snapshot hasher default values.
+func NewViperWithSnapshotHasherDefaults() *viper.Viper {
+	return newViperWithServiceDefault("snapshot-hasher", snapshotHasherServerPort, snapshotHasherMonitoringPort)
 }
 
 // NewViperWithLoadGenDefaults returns a viper instance with the load generator default values.

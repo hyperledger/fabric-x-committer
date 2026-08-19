@@ -27,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/coordinator"
 	"github.com/hyperledger/fabric-x-committer/service/query"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
+	"github.com/hyperledger/fabric-x-committer/service/snapshothasher"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -220,8 +221,6 @@ func TestReadConfigVC(t *testing.T) {
 				MaxWorkersForPreparer:             1,
 				MaxWorkersForValidator:            1,
 				MaxWorkersForCommitter:            20,
-				MaxWorkersForSnapshotHash:         4,
-				SnapshotHashBatchSize:             1000,
 				MinTransactionBatchSize:           1,
 				TimeoutForMinTransactionBatchSize: 5 * time.Second,
 			},
@@ -236,8 +235,6 @@ func TestReadConfigVC(t *testing.T) {
 				MaxWorkersForPreparer:             1,
 				MaxWorkersForValidator:            1,
 				MaxWorkersForCommitter:            20,
-				MaxWorkersForSnapshotHash:         4,
-				SnapshotHashBatchSize:             1000,
 				MinTransactionBatchSize:           1,
 				TimeoutForMinTransactionBatchSize: 2 * time.Second,
 			},
@@ -371,6 +368,60 @@ func TestReadConfigQuery(t *testing.T) {
 			t.Parallel()
 			v := NewViperWithQueryDefaults()
 			c, serverConfig, err := ReadQueryYamlAndSetupLogging(v, tc.configFilePath)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedServiceConfig, c)
+			require.Equal(t, tc.expectedServerConfig, serverConfig)
+		})
+	}
+}
+
+func TestReadConfigSnapshotHasher(t *testing.T) {
+	t.Parallel()
+	// The hasher's own pool only polls the snapshot record one statement at a time, so
+	// its sample deliberately sets a smaller pool than the services that commit or serve
+	// queries; the clone pool is sized separately from max-workers-for-hash.
+	sampleDBConfig := defaultSampleDBConfig()
+	sampleDBConfig.MaxConnections = 2
+	sampleDBConfig.MinConnections = 1
+
+	tests := []struct {
+		name                  string
+		configFilePath        string
+		expectedServiceConfig *snapshothasher.Config
+		expectedServerConfig  *serve.Config
+	}{{
+		name:                 "default",
+		configFilePath:       emptyConfig(t),
+		expectedServerConfig: newServeConfig(snapshotHasherServerPort, snapshotHasherMonitoringPort),
+		expectedServiceConfig: &snapshothasher.Config{
+			Database:     defaultDBConfig(),
+			PollInterval: time.Minute,
+			ResourceLimits: &snapshothasher.ResourceLimitsConfig{
+				MaxWorkersForHash: 4,
+				HashBatchSize:     1000,
+			},
+		},
+	}, {
+		name:           "sample",
+		configFilePath: "samples/snapshot-hasher.yaml",
+		expectedServerConfig: newServeConfigWithDefaultTLS(
+			"snapshot-hasher", snapshotHasherServerPort, snapshotHasherMonitoringPort,
+		),
+		expectedServiceConfig: &snapshothasher.Config{
+			Database:     sampleDBConfig,
+			PollInterval: time.Minute,
+			ResourceLimits: &snapshothasher.ResourceLimitsConfig{
+				MaxWorkersForHash: 4,
+				HashBatchSize:     1000,
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			v := NewViperWithSnapshotHasherDefaults()
+			c, serverConfig, err := ReadSnapshotHasherYamlAndSetupLogging(v, tc.configFilePath)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedServiceConfig, c)
 			require.Equal(t, tc.expectedServerConfig, serverConfig)
@@ -742,6 +793,13 @@ func TestViperDefaultsAreComplete(t *testing.T) {
 		t.Parallel()
 		v := NewViperWithVerifierDefaults()
 		c := &verifier.Config{}
+		require.NoError(t, unmarshal(v, c))
+	})
+
+	t.Run("snapshot-hasher", func(t *testing.T) {
+		t.Parallel()
+		v := NewViperWithSnapshotHasherDefaults()
+		c := &snapshothasher.Config{}
 		require.NoError(t, unmarshal(v, c))
 	})
 

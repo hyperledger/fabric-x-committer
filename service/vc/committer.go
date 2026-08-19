@@ -123,13 +123,13 @@ func (c *transactionCommitter) commitTransactions(
 	// to reuse transaction IDs.
 	// However, we still limit the number of retries to some arbitrary number to avoid an endless loop due to a bug.
 	maxRetriesToRemoveAllInvalidTxs := 1024
+
 	// Snapshot-database-first: if batch carries a _snapshot record, create native
 	// database and rewrite record value to PENDING+clone_database BEFORE batch
-	// commits. Snapshot txID commits only once snapshot database exists
-	// (invariant txID <=> database <=> record). Creation failure aborts batch and
-	// coordinator retries it.
-	// TODO: COORDINATOR detects VC failure and decides resubmission or snapshot
-	// database recreation/re-hash; VC does not self-recover.
+	// commits, so a committed snapshot txID always has its database and record.
+	// Hashing that record is not this path's concern, nor this service's: the
+	// snapshot service discovers the durable record on a later poll and hashes it,
+	// whether the snapshot is fresh, resubmitted, or orphaned by a restart.
 	if err := db.createSnapshotIfPresent(ctx, vTx.newWrites); err != nil {
 		return nil, fmt.Errorf("failed to create snapshot before commit: %w", err)
 	}
@@ -151,12 +151,6 @@ func (c *transactionCommitter) commitTransactions(
 		}
 
 		if res == nil {
-			if job, ok := snapshotHashJobFromWrites(vTx.newWrites); ok {
-				if err := db.enqueueSnapshotHashJob(ctx, job); err != nil {
-					return nil, fmt.Errorf("failed to enqueue snapshot hash job for %s: %w", job.cloneDatabase, err)
-				}
-			}
-
 			// NOTE: If a submitted transaction is invalid for multiple reasons, including a duplicate
 			//       transaction ID, the committer prioritizes Status_ABORTED_DUPLICATE_TXID over any other
 			//       invalid status code. Even if a previously committed transaction is resubmitted (regardless

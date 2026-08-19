@@ -183,7 +183,7 @@ and does not split cleanly (e.g. the ~130-line `prepare` at `service/vc/preparer
 In test code, `gocognit` is sometimes simply suppressed with a scoped `//nolint`.
 
 For logic shared *within* one function, use a local closure
-(`service/vc/validator_committer_service.go:317` `sendLargeBatch`), not a method.
+(`service/vc/validator_committer_service.go:309` `sendLargeBatch`), not a method.
 
 ### File layout template
 

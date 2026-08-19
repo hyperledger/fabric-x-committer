@@ -90,7 +90,7 @@ jobs:
           build-args: |
             BIN=committer
             SRC_BIN_PATH=release
-            PORTS=4001 2114 9001 2119 5001 2115 6001 2116 7001 2117
+            PORTS=4001 2114 9001 2119 5001 2115 6001 2116 7001 2117 3001 2120
             VERSION=${{ env.VERSION }}
             CREATED=${{ env.CREATED }}
             REVISION=${{ env.REVISION }}
