@@ -27,12 +27,11 @@ type (
 	// resolvedMethod carries per-RPC state from TagRPC/Begin to End. HandleRPC stores a pointer
 	// to it on the context, so the isStream flag set on Begin is visible to the matching End.
 	resolvedMethod struct {
-		full     string
-		isStream bool
+		fullMethodName string
+		isStream       bool
 	}
 
-	// rpcCtxKey is defined due to the following linter message: "should not use built-in type string as key for value;
-	// define your own type to avoid collisions".
+	// rpcCtxKey is defined as a new datatype to avoid collisions between context keys.
 	rpcCtxKey string
 )
 
@@ -50,7 +49,7 @@ func RegisterServerMetrics(h *ServerStatsHandler, m *ServerMetrics) {
 func (*ServerStatsHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) context.Context {
 	return context.WithValue(
 		ctx, rpcContextKey, &resolvedMethod{
-			full: info.FullMethodName,
+			fullMethodName: info.FullMethodName,
 		},
 	)
 }
@@ -69,20 +68,20 @@ func (h *ServerStatsHandler) HandleRPC(ctx context.Context, s stats.RPCStats) {
 	case *stats.Begin:
 		rm.isStream = st.IsServerStream || st.IsClientStream
 		if rm.isStream {
-			m.ActiveStreams.WithLabelValues(rm.full).Inc()
+			m.ActiveStreams.WithLabelValues(rm.fullMethodName).Inc()
 		}
 	case *stats.End:
 		// If the error is nil, the result is "OK"; if it is not a gRPC error, the result is "Unknown".
 		statusCode := status.Code(st.Error).String()
 		duration := st.EndTime.Sub(st.BeginTime).Seconds()
 
-		m.RequestsTotal.WithLabelValues(rm.full).Inc()
+		m.RequestsTotal.WithLabelValues(rm.fullMethodName).Inc()
 
 		if rm.isStream {
-			m.ActiveStreams.WithLabelValues(rm.full).Dec()
-			m.StreamDurationSeconds.WithLabelValues(rm.full, statusCode).Observe(duration)
+			m.ActiveStreams.WithLabelValues(rm.fullMethodName).Dec()
+			m.StreamDurationSeconds.WithLabelValues(rm.fullMethodName, statusCode).Observe(duration)
 		} else {
-			m.LatencySeconds.WithLabelValues(rm.full, statusCode).Observe(duration)
+			m.LatencySeconds.WithLabelValues(rm.fullMethodName, statusCode).Observe(duration)
 		}
 	default:
 	}

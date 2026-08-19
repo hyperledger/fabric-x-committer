@@ -48,8 +48,7 @@ func CheckMetrics(t *testing.T, url string, tlsConfig *tls.Config, expectedMetri
 // counter/gauge/untyped series named params.MetricName carrying params.Labels, rounded to the
 // nearest integer. It returns 0 for an absent family and for a labeled series not exported yet (a
 // "...Vec" series is absent until its first observation, so a pre-traffic baseline read returns 0).
-// Reading a histogram/summary this way also returns 0 -- use GetHistogramCountAndSumValueFromURL or
-// GetHistogramSumFromURL instead.
+// Reading a histogram/summary this way also returns 0 -- use GetHistogramCountAndSumValueFromURL.
 func GetCounterOrGaugeValueFromURL(t TestingT, params GetMetricValueParameters) int {
 	t.Helper()
 	var sum float64
