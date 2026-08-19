@@ -32,7 +32,7 @@ type (
 	}
 
 	// rpcCtxKey is defined due to the following linter message: "should not use built-in type string as key for value;
-	// define your own type to avoid collisions"
+	// define your own type to avoid collisions".
 	rpcCtxKey string
 )
 
