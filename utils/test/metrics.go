@@ -27,9 +27,9 @@ import (
 )
 
 type (
-	// MetricsParameters scrapes named metric series from a service's HTTP metrics endpoint. The metric to
-	// read is chosen per call, so one scraper serves every metric a service exposes.
-	MetricsParameters struct {
+	// MetricsConnectionParameters builds the URL and tls.Config given a service's HTTP metrics endpoint
+	// and a TLS configuration.
+	MetricsConnectionParameters struct {
 		URL       string
 		TLSConfig *tls.Config
 	}
@@ -44,10 +44,10 @@ type (
 	}
 )
 
-// NewMetricsParameters builds a handle for scraping the given service's HTTP metrics endpoint.
-func NewMetricsParameters(
+// NewMetricsConnectionParameters builds a handle for scraping the given service's HTTP metrics endpoint.
+func NewMetricsConnectionParameters(
 	t *testing.T, clientTLS connection.TLSConfig, httpEndpoint *connection.Endpoint,
-) MetricsParameters {
+) MetricsConnectionParameters {
 	t.Helper()
 
 	metricsURL, err := monitoring.MakeMetricsURL(httpEndpoint.Address(), &clientTLS)
@@ -59,7 +59,7 @@ func NewMetricsParameters(
 	tlsConfig, err := creds.CreateClientTLSConfig()
 	require.NoError(t, err)
 
-	return MetricsParameters{
+	return MetricsConnectionParameters{
 		URL:       metricsURL,
 		TLSConfig: tlsConfig,
 	}

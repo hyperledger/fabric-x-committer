@@ -11,10 +11,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/stats"
+	"google.golang.org/grpc/status"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
@@ -30,6 +34,9 @@ const (
 	// server records for a stream the client tears down by cancelling its context.
 	statusOK       = "OK"
 	statusCanceled = "Canceled"
+
+	unaryMethod  = "/test.Service/Unary"
+	streamMethod = "/test.Service/Stream"
 )
 
 type (
@@ -43,6 +50,13 @@ type (
 		metrics      *serve.ServerMetrics
 		health       healthgrpc.HealthClient
 		grpcEndpoint connection.Endpoint
+	}
+
+	recordRPCParams struct {
+		handler       *serve.ServerStatsHandler
+		methodName    string
+		isStream      bool
+		recordedError error
 	}
 )
 
@@ -173,6 +187,95 @@ func TestServerStatsHandlerStreamingRPC(t *testing.T) {
 		require.Positive(ct, metricVecValue(ct,
 			env.metrics.StreamDurationSeconds.MetricVec, healthWatchMethod, statusCanceled))
 	}, 30*time.Second, 100*time.Millisecond)
+}
+
+// TestServerStatsHandlerStatusCodeForNotgRPCError verifies that a completed RPC is recorded under the label of
+// its gRPC status code, for every code the server may return.
+func TestServerStatsHandler_gRPCStatusCodes(t *testing.T) {
+	t.Parallel()
+
+	for _, code := range []codes.Code{
+		codes.OK,
+		codes.Canceled,
+		codes.Unknown,
+		codes.InvalidArgument,
+		codes.DeadlineExceeded,
+		codes.NotFound,
+		codes.AlreadyExists,
+		codes.PermissionDenied,
+		codes.ResourceExhausted,
+		codes.FailedPrecondition,
+		codes.Aborted,
+		codes.OutOfRange,
+		codes.Unimplemented,
+		codes.Internal,
+		codes.Unavailable,
+		codes.DataLoss,
+		codes.Unauthenticated,
+	} {
+		t.Run(code.String(), func(t *testing.T) {
+			t.Parallel()
+			requireRPCStatusRecorded(t, status.Error(code, ""), code.String())
+		})
+	}
+}
+
+// TestServerStatsHandlerRecordsUnknownStatusForNonGRPCError verifies that
+// non-gRPC errors are recorded with the Unknown gRPC status code.
+func TestServerStatsHandlerRecordsUnknownStatusForNonGRPCError(t *testing.T) {
+	t.Parallel()
+	requireRPCStatusRecorded(t, errors.New("not a gRPC error"), "Unknown")
+}
+
+// requireRPCStatusRecorded drives one unary and one streaming RPC that end with rpcErr, and
+// asserts each is recorded under wantStatus in its histogram (unary latency, stream duration).
+func requireRPCStatusRecorded(t *testing.T, rpcErr error, wantStatus string) {
+	t.Helper()
+	serverMetrics := serve.NewServerMetrics(monitoring.NewProvider(), monitoring.MetricsParameters{
+		Namespace: "test",
+		Subsystem: "server_stats",
+	})
+	statHandler := &serve.ServerStatsHandler{}
+	serve.RegisterServerMetrics(statHandler, serverMetrics)
+
+	// A completed unary RPC records its latency under the status label.
+	recordRPC(t, recordRPCParams{
+		handler:       statHandler,
+		methodName:    unaryMethod,
+		isStream:      false,
+		recordedError: rpcErr,
+	})
+	require.Positive(t, metricVecValue(t, serverMetrics.LatencySeconds.MetricVec, unaryMethod, wantStatus))
+
+	// A completed streaming RPC records its duration under the status label.
+	recordRPC(t, recordRPCParams{
+		handler:       statHandler,
+		methodName:    streamMethod,
+		isStream:      true,
+		recordedError: rpcErr,
+	})
+	require.Positive(t, metricVecValue(t, serverMetrics.StreamDurationSeconds.MetricVec, streamMethod, wantStatus))
+}
+
+// recordRPC drives the stats handler through one RPC's lifecycle: TagRPC to resolve the method,
+// then a Begin/End pair carrying a fixed positive duration, so the recorded histogram value is
+// positive.
+func recordRPC(t *testing.T, params recordRPCParams) {
+	t.Helper()
+	h := params.handler
+	ctx := h.TagRPC(t.Context(), &stats.RPCTagInfo{FullMethodName: params.methodName})
+	begin := time.Unix(0, 0)
+	h.HandleRPC(ctx,
+		&stats.Begin{
+			BeginTime:      begin,
+			IsServerStream: params.isStream,
+		})
+	h.HandleRPC(ctx,
+		&stats.End{
+			BeginTime: begin,
+			EndTime:   begin.Add(time.Second),
+			Error:     params.recordedError,
+		})
 }
 
 func metricVecValue(t test.TestingT, mv *prometheus.MetricVec, lvs ...string) float64 {

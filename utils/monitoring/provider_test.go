@@ -82,8 +82,12 @@ func TestCounterVec(t *testing.T) {
 		`vcservice_preparer_transaction_total{namespace="ns_1"} 2`,
 		`vcservice_preparer_transaction_total{namespace="ns_2"} 1`,
 	)
-	require.Equal(t, 2, env.getCounterOrGaugeValue(t, "vcservice_preparer_transaction_total",
-		map[string]string{"namespace": "ns_1"}))
+	require.Equal(t, 2, test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
+		URL:        env.url,
+		MetricName: "vcservice_preparer_transaction_total",
+		Labels:     map[string]string{"namespace": "ns_1"},
+		TLSConfig:  env.clientTLSConfig,
+	}))
 }
 
 func TestNewGuage(t *testing.T) {
@@ -285,16 +289,4 @@ func newMetricsProviderTestEnv(t *testing.T, serverTLS, clientTLS connection.TLS
 func (e *metricsProviderTestEnv) checkMetrics(t *testing.T, expected ...string) {
 	t.Helper()
 	test.CheckMetrics(t, e.url, e.clientTLSConfig, expected...)
-}
-
-func (e *metricsProviderTestEnv) getCounterOrGaugeValue(
-	t *testing.T, metricName string, labels map[string]string,
-) int {
-	t.Helper()
-	return test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
-		URL:        e.url,
-		MetricName: metricName,
-		Labels:     labels,
-		TLSConfig:  e.clientTLSConfig,
-	})
 }

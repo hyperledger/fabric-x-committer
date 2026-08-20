@@ -47,11 +47,9 @@ func RegisterServerMetrics(h *ServerStatsHandler, m *ServerMetrics) {
 // TagRPC stores a per-RPC resolvedMethod on the returned context, which gRPC threads through
 // the RPC's HandleRPC calls. A pointer is stored so Begin can record the RPC kind for End.
 func (*ServerStatsHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) context.Context {
-	return context.WithValue(
-		ctx, rpcContextKey, &resolvedMethod{
-			fullMethodName: info.FullMethodName,
-		},
-	)
+	return context.WithValue(ctx, rpcContextKey, &resolvedMethod{
+		fullMethodName: info.FullMethodName,
+	})
 }
 
 // HandleRPC records RPC-level metrics on stream beginning and RPC completion.

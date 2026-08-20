@@ -40,7 +40,7 @@ func NewServerMetrics(p *monitoring.Provider, params monitoring.MetricsParameter
 			Namespace: params.Namespace,
 			Subsystem: params.Subsystem,
 			Name:      "requests_total",
-			Help:      "Number of requests by the service",
+			Help:      "Number of requests started by the service, counted at the beginning of the RPC",
 		}, []string{method}),
 		LatencySeconds: p.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: params.Namespace,
