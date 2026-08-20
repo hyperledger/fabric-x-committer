@@ -20,7 +20,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
-	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 )
@@ -47,7 +46,10 @@ type (
 	blockMapper struct {
 		*blockMappingResult
 
-		txIDToHeight *utils.SyncMap[string, servicepb.Height]
+		// dedup is the relay's in-flight TX ID set, and txIDs collects the IDs this block added
+		// to it, which mapBlock hands to dedup as the block's eviction unit.
+		dedup *txIDDedup
+		txIDs []string
 	}
 
 	blockWithStatus struct {
@@ -66,7 +68,10 @@ const (
 	statusIdx             = int(common.BlockMetadataIndex_TRANSACTIONS_FILTER)
 )
 
-func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb.Height]) (*blockMappingResult, error) {
+// mapBlock maps an orderer block into the batch the relay submits to the coordinator. It records
+// every accepted TX ID in dedup, rejecting a TX whose ID is already in flight, and hands dedup the
+// block's IDs so they are released once the block is committed.
+func mapBlock(block *common.Block, dedup *txIDDedup) (*blockMappingResult, error) {
 	// Prepare block's metadata.
 	if block.Metadata == nil {
 		block.Metadata = &common.BlockMetadata{}
@@ -105,7 +110,8 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb
 				blockNumber: blockNumber,
 			},
 		},
-		txIDToHeight: txIDToHeight,
+		dedup: dedup,
+		txIDs: make([]string, 0, txCount),
 	}
 	mapper.withStatus.pendingCount.Store(int32(txCount)) //nolint:gosec // int -> int32
 
@@ -118,6 +124,8 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb
 			return nil, err
 		}
 	}
+
+	dedup.trackBlock(blockNumber, mapper.txIDs)
 	return mapper.blockMappingResult, nil
 }
 
@@ -325,11 +333,19 @@ func (m *blockMapper) rejectNonDBStatusTx(
 func (m *blockMapper) addTxIDMapping(ref *committerpb.TxRef) (
 	idAlreadyExists bool, err error,
 ) {
-	_, idAlreadyExists = m.txIDToHeight.LoadOrStore(ref.TxId, *servicepb.NewHeightFromTxRef(ref))
-	if idAlreadyExists {
-		err = m.rejectNonDBStatusTx(ref, committerpb.Status_REJECTED_DUPLICATE_TX_ID, "duplicate tx")
+	if m.dedup.add(ref.TxId) {
+		m.txIDs = append(m.txIDs, ref.TxId)
+		return false, nil
 	}
-	return idAlreadyExists, err
+	return true, m.rejectNonDBStatusTx(ref, committerpb.Status_REJECTED_DUPLICATE_TX_ID, "duplicate tx")
+}
+
+// holds reports whether ref refers to a transaction of this block: the block must carry that TX ID
+// at that position. mapBlock fills txs for every position of the block, including the transactions
+// it rejects itself, so a ref that does not match belongs to a submission the relay no longer
+// tracks — see processStatusBatch.
+func (b *blockWithStatus) holds(ref *committerpb.TxRef) bool {
+	return int(ref.TxNum) < len(b.txs) && b.txs[ref.TxNum].Ref.TxId == ref.TxId
 }
 
 func (b *blockWithStatus) setFinalStatus(txNum uint32, status committerpb.Status) error {

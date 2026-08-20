@@ -440,8 +440,8 @@ func appendMissingBlock(
 	blk *common.Block,
 	committedBlocks channel.Writer[*common.Block],
 ) error {
-	var txIDToHeight utils.SyncMap[string, servicepb.Height]
-	mappedBlock, err := mapBlock(blk, &txIDToHeight)
+	var dedup txIDDedup
+	mappedBlock, err := mapBlock(blk, &dedup)
 	if err != nil {
 		// This can never occur unless there is a bug in the relay.
 		return err

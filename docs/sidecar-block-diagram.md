@@ -77,7 +77,7 @@ This document provides a detailed block diagram of the sidecar service component
 │  │  │  preProcessBlock()                                     │ │  │
 │  │  │  - Maps blocks using mapBlock()                        │ │  │
 │  │  │  - Validates transaction form                          │ │  │
-│  │  │  - Detects duplicates (txIDToHeight map)               │ │  │
+│  │  │  - Detects duplicates (txIDDedup set)                  │ │  │
 │  │  │  - Handles config blocks (stop the world)              │ │  │
 │  │  │  - Manages waitingTxsSlots (backpressure)              │ │  │
 │  │  └────────────────┬───────────────────────────────────────┘ │  │
@@ -87,7 +87,7 @@ This document provides a detailed block diagram of the sidecar service component
 │  │                   │                                         │  │
 │  │  ┌────────────────▼───────────────────────────────────────┐ │  │
 │  │  │  sendBlocksToCoordinator()                             │ │  │
-│  │  │  - Stores blocks in blkNumToBlkWithStatus map          │ │  │
+│  │  │  - Tracks blocks in inFlightBlocks                     │ │  │
 │  │  │  - Sends CoordinatorBatch via gRPC stream ─────────────┼─┼─►│
 │  │  │  - Tracks pending transactions                         │ │  │
 │  │  └────────────────────────────────────────────────────────┘ │  │
@@ -104,7 +104,7 @@ This document provides a detailed block diagram of the sidecar service component
 │  │  ┌────────────────▼───────────────────────────────────────┐ │  │
 │  │  │  processStatusBatch()                                  │ │  │
 │  │  │  - Updates blockWithStatus.txStatus                    │ │  │
-│  │  │  - Removes from txIDToHeight map                       │ │  │
+│  │  │  - Routes statuses via inFlightBlocks                  │ │  │
 │  │  │  - Releases waitingTxsSlots                            │ │  │
 │  │  │  - Calls processCommittedBlocksInOrder()               │ │  │
 │  │  └────────────────┬───────────────┬───────────────────────┘ │  │

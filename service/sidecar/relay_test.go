@@ -8,6 +8,7 @@ package sidecar
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -379,8 +380,8 @@ func TestSubmitSnapshotBlockSnapshotOnly(t *testing.T) {
 	txb := &workload.TxBuilder{ChannelID: testChannelID}
 	block := workload.MapToOrdererBlock(9, []*servicepb.LoadGenTx{makeSnapshotLoadGenTxForTest(txb)})
 
-	var txIDToHeight utils.SyncMap[string, servicepb.Height]
-	mappedBlock, err := mapBlock(block, &txIDToHeight)
+	var dedup txIDDedup
+	mappedBlock, err := mapBlock(block, &dedup)
 	require.NoError(t, err)
 	require.NotNil(t, mappedBlock.snapshotTx)
 	require.Empty(t, mappedBlock.block.Rejected)
@@ -427,8 +428,8 @@ func TestSubmitSnapshotBlockCarriesAllRejected(t *testing.T) {
 		makeSnapshotLoadGenTxForTest(txb),
 	})
 
-	var txIDToHeight utils.SyncMap[string, servicepb.Height]
-	mappedBlock, err := mapBlock(block, &txIDToHeight)
+	var dedup txIDDedup
+	mappedBlock, err := mapBlock(block, &dedup)
 	require.NoError(t, err)
 	require.NotNil(t, mappedBlock.snapshotTx)
 	require.Len(t, mappedBlock.block.Rejected, 2)
@@ -528,8 +529,8 @@ func TestSubmitSnapshotBlockPositions(t *testing.T) {
 			}
 			block := workload.MapToOrdererBlock(9, loadGenTxs)
 
-			var txIDToHeight utils.SyncMap[string, servicepb.Height]
-			mappedBlock, err := mapBlock(block, &txIDToHeight)
+			var dedup txIDDedup
+			mappedBlock, err := mapBlock(block, &dedup)
 			require.NoError(t, err)
 			require.NotNil(t, mappedBlock.snapshotTx)
 			require.Empty(t, mappedBlock.block.Rejected)
@@ -549,6 +550,77 @@ func TestSubmitSnapshotBlockPositions(t *testing.T) {
 			require.Len(t, rest.block.Txs, tc.expectedRestTxs)
 		})
 	}
+}
+
+// TestRelayStatusRouting verifies which statuses the relay applies to the block it tracks. A
+// status is routed by the (block number, TX number, TX ID) triple of its ref, so a status that
+// carries a TX ID the tracked block does not hold at that position belongs to a submission the
+// relay no longer tracks, and must be dropped rather than applied to whatever sits there.
+func TestRelayStatusRouting(t *testing.T) {
+	t.Parallel()
+
+	const trackedBlockNum = uint64(3)
+	blk, txIDs := createBlockForTest(t, trackedBlockNum, nil)
+	var dedup txIDDedup
+	mappedBlock, err := mapBlock(blk, &dedup)
+	require.NoError(t, err)
+
+	committedBlock := make(chan *common.Block, 1)
+	statusUpdates := make(chan []*committerpb.TxStatus, 1)
+	r := &relay{
+		metrics:                       newPerformanceMetrics(newQueues(10)),
+		waitingTxsSlots:               utils.NewSlots(int64(len(txIDs))),
+		outgoingCommittedBlock:        committedBlock,
+		outgoingCommittedBlockWithTxs: make(chan *committedBlockWithTxs, 1),
+		outgoingStatusUpdates:         statusUpdates,
+	}
+	r.inFlightBlocks.reset(trackedBlockNum)
+	alreadyTracked, err := r.inFlightBlocks.register(trackedBlockNum, mappedBlock.withStatus)
+	require.NoError(t, err)
+	require.False(t, alreadyTracked)
+
+	// One batch holding every status the relay must drop, followed by the block's real statuses.
+	// The dropped ones come first so that a status wrongly applied to a TX would consume its only
+	// final status, and the real status behind it would then fail the whole relay.
+	applied := []*committerpb.TxStatus{
+		{Ref: committerpb.NewTxRef(txIDs[0], trackedBlockNum, 0), Status: committerpb.Status_COMMITTED},
+		{Ref: committerpb.NewTxRef(txIDs[1], trackedBlockNum, 1), Status: committerpb.Status_ABORTED_MVCC_CONFLICT},
+		{Ref: committerpb.NewTxRef(txIDs[2], trackedBlockNum, 2), Status: committerpb.Status_COMMITTED},
+	}
+	dropped := []*committerpb.TxStatus{
+		{Ref: committerpb.NewTxRef(txIDs[0], trackedBlockNum-1, 0), Status: committerpb.Status_COMMITTED},
+		{Ref: committerpb.NewTxRef(txIDs[0], trackedBlockNum+1, 0), Status: committerpb.Status_COMMITTED},
+		{Ref: committerpb.NewTxRef(txIDs[0], trackedBlockNum, 1), Status: committerpb.Status_COMMITTED},
+		{Ref: committerpb.NewTxRef("never-submitted", trackedBlockNum, 0), Status: committerpb.Status_COMMITTED},
+		{
+			Ref:    committerpb.NewTxRef(txIDs[0], trackedBlockNum, uint32(len(txIDs))),
+			Status: committerpb.Status_COMMITTED,
+		},
+	}
+
+	statusBatch := make(chan *servicepb.TxStatusBatch, 1)
+	statusBatch <- &servicepb.TxStatusBatch{Status: append(slices.Clone(dropped), applied...)}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	g, gCtx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		return r.processStatusBatch(gCtx, statusBatch)
+	})
+
+	// Reading through gCtx, which errgroup cancels as soon as processStatusBatch fails, makes a
+	// relay that mis-routes a status fail these reads instead of leaving the test blocked on a
+	// status report or a block that will never come.
+	statusReport, ok := channel.NewReader(gCtx, statusUpdates).Read()
+	require.True(t, ok, "the relay stopped before reporting the statuses")
+	test.RequireProtoElementsMatch(t, applied, statusReport)
+
+	outBlock, ok := channel.NewReader(gCtx, committedBlock).Read()
+	require.True(t, ok, "the relay stopped before committing the block")
+	require.Equal(t, blk, outBlock)
+	requireStatusMetadata(t, blk, valid, byte(committerpb.Status_ABORTED_MVCC_CONFLICT), valid)
+
+	cancel()
+	require.ErrorIs(t, g.Wait(), context.Canceled)
 }
 
 // makeSnapshotLoadGenTxForTest builds a standalone accepted _snapshot marker TX using txb.

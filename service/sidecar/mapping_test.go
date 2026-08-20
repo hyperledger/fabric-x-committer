@@ -20,7 +20,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
-	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -33,9 +32,9 @@ func BenchmarkMapOneBlock(b *testing.B) {
 	txs := workload.GenerateTransactions(b, nil, b.N)
 	block := workload.MapToOrdererBlock(1, txs)
 
-	var txIDToHeight utils.SyncMap[string, servicepb.Height]
+	var dedup txIDDedup
 	b.ResetTimer()
-	mappedBlock, err := mapBlock(block, &txIDToHeight)
+	mappedBlock, err := mapBlock(block, &dedup)
 	b.StopTimer()
 	test.ReportTxPerSecond(b)
 	require.NoError(b, err, "This can never occur unless there is a bug in the relay.")
@@ -60,8 +59,8 @@ func BenchmarkMapBlockSize(b *testing.B) {
 
 			b.ResetTimer()
 			for _, blk := range blocks {
-				var txIDToHeight utils.SyncMap[string, servicepb.Height]
-				if _, err := mapBlock(blk, &txIDToHeight); err != nil {
+				var dedup txIDDedup
+				if _, err := mapBlock(blk, &dedup); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -91,11 +90,11 @@ func TestBlockMapping(t *testing.T) {
 	txs = append(txs, lgTX)
 	expected = append(expected, committerpb.Status_REJECTED_DUPLICATE_TX_ID)
 
-	var txIDToHeight utils.SyncMap[string, servicepb.Height]
-	txIDToHeight.Store(lgTX.Id, servicepb.Height{})
+	var dedup txIDDedup
+	require.True(t, dedup.add(lgTX.Id))
 
 	block := workload.MapToOrdererBlock(1, txs)
-	mappedBlock, err := mapBlock(block, &txIDToHeight)
+	mappedBlock, err := mapBlock(block, &dedup)
 	require.NoError(t, err, "This can never occur unless there is a bug in the relay.")
 
 	require.NotNil(t, mappedBlock)
@@ -106,7 +105,7 @@ func TestBlockMapping(t *testing.T) {
 	require.Equal(t, block.Header.Number, mappedBlock.blockNumber)
 	require.Equal(t, expected, mappedBlock.withStatus.txStatus)
 
-	require.Equal(t, expectedBlockSize+1, txIDToHeight.Count())
+	require.Len(t, dedup.ids, expectedBlockSize+1)
 	require.Len(t, mappedBlock.block.Txs, expectedBlockSize-expectedRejected)
 	require.Len(t, mappedBlock.block.Rejected, expectedRejected)
 	//nolint:gosec // int -> int32
@@ -165,8 +164,8 @@ func TestConfigTxMapping(t *testing.T) {
 			t.Parallel()
 			configEnv := configTxForTest(t, tc.parts)
 
-			var txIDToHeight utils.SyncMap[string, servicepb.Height]
-			mappedBlock, err := mapBlock(configBlockForTest(configEnv), &txIDToHeight)
+			var dedup txIDDedup
+			mappedBlock, err := mapBlock(configBlockForTest(configEnv), &dedup)
 			require.NoError(t, err)
 			require.NotNil(t, mappedBlock)
 
@@ -180,10 +179,10 @@ func TestConfigTxMapping(t *testing.T) {
 				Content: configTx(configEnv),
 			}, mappedBlock.block.Txs[0])
 
-			// The TX ID must be tracked so the submitting client can be notified.
-			height, ok := txIDToHeight.Load(tc.expectedTxID)
-			require.True(t, ok)
-			require.Equal(t, servicepb.Height{BlockNum: 1, TxNum: 0}, height)
+			// The TX ID must be tracked, both as in flight and at its position in the block, so
+			// the status the coordinator returns for it reaches the submitting client.
+			require.Contains(t, dedup.ids, tc.expectedTxID)
+			require.True(t, mappedBlock.withStatus.holds(committerpb.NewTxRef(tc.expectedTxID, 1, 0)))
 		})
 	}
 
@@ -243,8 +242,8 @@ func TestConfigTxMapping(t *testing.T) {
 			t.Parallel()
 			block := configBlockForTest(configTxForTest(t, tc.parts))
 
-			var txIDToHeight utils.SyncMap[string, servicepb.Height]
-			_, err := mapBlock(block, &txIDToHeight)
+			var dedup txIDDedup
+			_, err := mapBlock(block, &dedup)
 			require.ErrorContains(t, err, tc.expectedErrorMessage)
 			// The block must be re-fetched, possibly from another orderer, rather than committed.
 			require.ErrorIs(t, err, retry.ErrBackOff)
@@ -263,9 +262,9 @@ func TestConfigTxDuplicateID(t *testing.T) {
 		lastUpdate: configUpdateForTest(t, userTxID),
 	}))
 
-	var txIDToHeight utils.SyncMap[string, servicepb.Height]
-	txIDToHeight.Store(userTxID, *servicepb.NewHeight(0, 0))
-	_, err := mapBlock(block, &txIDToHeight)
+	var dedup txIDDedup
+	require.True(t, dedup.add(userTxID))
+	_, err := mapBlock(block, &dedup)
 	require.ErrorContains(t, err, "duplicate TX ID ["+userTxID+"]")
 	// The block must be re-fetched, by which time the TX holding the ID may have been processed.
 	require.ErrorIs(t, err, retry.ErrBackOff)
@@ -452,8 +451,8 @@ func TestSystemNamespaceFormValidation(t *testing.T) {
 			txb := &workload.TxBuilder{ChannelID: testChannelID}
 			block := workload.MapToOrdererBlock(1, []*servicepb.LoadGenTx{txb.MakeTx(tc.tx)})
 
-			var txIDToHeight utils.SyncMap[string, servicepb.Height]
-			mappedBlock, err := mapBlock(block, &txIDToHeight)
+			var dedup txIDDedup
+			mappedBlock, err := mapBlock(block, &dedup)
 			require.NoError(t, err)
 			require.NotNil(t, mappedBlock)
 			require.Equal(t, tc.expectedHasSnapshot, mappedBlock.snapshotTx != nil)
@@ -502,8 +501,8 @@ func TestDuplicateSnapshotInBlock(t *testing.T) {
 		txb.MakeTx(snapshotTx()),
 	})
 
-	var txIDToHeight utils.SyncMap[string, servicepb.Height]
-	mappedBlock, err := mapBlock(block, &txIDToHeight)
+	var dedup txIDDedup
+	mappedBlock, err := mapBlock(block, &dedup)
 	require.NoError(t, err)
 	require.NotNil(t, mappedBlock)
 
