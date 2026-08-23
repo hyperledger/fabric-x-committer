@@ -27,6 +27,16 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
 
+// Deployment-sized stream settings for the generation benchmarks. Their results depend on the host's
+// core count, so run them on the machine that will host the load generator.
+const (
+	benchBlockSize = 10_000
+	benchGenBatch  = 4096
+	benchBuffers   = 100
+	// benchWorkers is the worker count the gen-batch sweep holds fixed.
+	benchWorkers = 64
+)
+
 func defaultStreamOptions() *StreamOptions {
 	// We set low values for the buffer and batch to reduce the CPU load during tests.
 	return &StreamOptions{
@@ -35,79 +45,71 @@ func defaultStreamOptions() *StreamOptions {
 	}
 }
 
-func defaultBenchProfile(workers uint32) *Profile {
-	p := DefaultProfile(workers)
-	p.Block.MaxSize = 1024
-	return p
-}
-
-func defaultBenchStreamOptions() *StreamOptions {
-	o := defaultStreamOptions()
-	o.BuffersSize = 1000
-	o.GenBatch = 4096
-	return o
-}
-
-func benchWorkersProfiles() (profiles []*Profile) {
-	for _, workers := range []uint32{1, 2, 4, 8, 16, 32, 64} {
-		profiles = append(profiles, defaultBenchProfile(workers))
-	}
-	return profiles
-}
-
-func benchTxProfiles() (profiles []*Profile) {
-	for _, sign := range []bool{true, false} {
-		for _, p := range benchWorkersProfiles() {
-			if !sign {
-				p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.NoScheme
-			} else {
-				p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = signature.Ecdsa
-			}
-			profiles = append(profiles, p)
+// BenchmarkGenTx measures the rate a stream offers as workers are added, per signature scheme. Use it
+// to choose a host's worker count and to know the highest rate the host can offer before a committer
+// result is quoted against it. BenchmarkTxGeneration gives one transaction's cost on one goroutine, which
+// shows neither how generation scales with workers nor where it stops. NONE removes signing, so the gap
+// to it is what signing costs at each worker count.
+func BenchmarkGenTx(b *testing.B) {
+	flogging.ActivateSpec("fatal")
+	for _, scheme := range []signature.Scheme{signature.NoScheme, signature.Eddsa, signature.Ecdsa} {
+		for _, workers := range []uint32{1, 4, 8, 16, 32, 64, 128, 256} {
+			b.Run(fmt.Sprintf("%s/workers-%03d", scheme, workers), func(b *testing.B) {
+				benchmarkGeneration(b, benchProfile(workers, scheme),
+					&StreamOptions{BuffersSize: benchBuffers, GenBatch: benchGenBatch})
+			})
 		}
 	}
-	return profiles
 }
 
-func genericBench(b *testing.B, benchFunc func(b *testing.B, p *Profile)) {
-	b.Helper()
-	for _, p := range benchTxProfiles() {
-		name := fmt.Sprintf("workers-%d-sign-%s",
-			p.Workers, p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme)
-		b.Run(name, func(b *testing.B) {
-			benchFunc(b, p)
+// BenchmarkGenerationGenBatch measures how the number of transactions a worker hands to the queue at
+// once changes the rate. Use it to choose gen-batch, which BenchmarkGenTx holds fixed. The queue holds
+// the same number of transactions at every size, so only the hand-off cost changes.
+func BenchmarkGenerationGenBatch(b *testing.B) {
+	flogging.ActivateSpec("fatal")
+	for _, genBatch := range []uint32{1, 100, 512, 4096} {
+		b.Run(fmt.Sprintf("genbatch-%04d", genBatch), func(b *testing.B) {
+			benchmarkGeneration(b, benchProfile(benchWorkers, signature.Ecdsa), &StreamOptions{
+				BuffersSize: benchBuffers * benchGenBatch / int(genBatch),
+				GenBatch:    genBatch,
+			})
 		})
 	}
 }
 
-func BenchmarkGenTx(b *testing.B) {
-	flogging.ActivateSpec("fatal")
-	//nolint:thelper // false positive.
-	genericBench(b, func(b *testing.B, p *Profile) {
-		t, err := NewTxStream(p, defaultBenchStreamOptions(), NewTxCounter(p.Transaction))
-		require.NoError(b, err)
+// benchmarkGeneration measures the rate at which a stream can be consumed, which is the rate a
+// deployment could offer with the same settings.
+func benchmarkGeneration(b *testing.B, profile *Profile, options *StreamOptions) {
+	b.Helper()
+	stream, err := NewTxStream(profile, options, NewTxCounter(profile.Transaction))
+	require.NoError(b, err)
 
-		ctx := b.Context()
-		// Start the timer before creating the service: the stream generates
-		// transactions in the background as soon as it starts, and that
-		// generation is exactly the workload we want to measure. Resetting the
-		// timer after startup would let the service pre-produce transactions
-		// that the consume loop then reads "for free", inflating the reported
-		// throughput.
-		b.ResetTimer()
-		test.RunServiceForTest(ctx, b, t.Run, nil)
-		g := t.MakeGenerator()
+	ctx := b.Context()
+	test.RunServiceForTest(ctx, b, stream.Run, nil)
+	generator := stream.MakeGenerator()
 
-		param := ConsumeParameters{MinItems: p.Block.MinSize}
-		var sum int
-		for sum < b.N {
-			param.RequestedItems = min(p.Block.MaxSize, uint64(b.N-sum)) //nolint:gosec // uint64 -> int.
-			txs := g.Consume(ctx, param)
-			sum += len(txs)
+	param := ConsumeParameters{MinItems: profile.Block.MinSize}
+	consume := func(n int) {
+		for consumed := 0; consumed < n; {
+			param.RequestedItems = min(profile.Block.MaxSize, uint64(n-consumed)) //nolint:gosec // int -> uint64.
+			consumed += len(generator.Consume(ctx, param))
 		}
-		b.StopTimer()
-		test.ReportTxPerSecond(b)
-	})
+	}
+
+	// Warm up with one batch from every worker, so the timer excludes startup and the wait for the
+	// first batches. The consumer outpaces the workers, so the queue is near empty when it starts.
+	consume(int(profile.Workers) * int(options.GenBatch))
+	b.ResetTimer()
+	consume(b.N)
+	b.StopTimer()
+	test.ReportTxPerSecond(b)
+}
+
+func benchProfile(workers uint32, scheme signature.Scheme) *Profile {
+	p := DefaultProfile(workers)
+	p.Block.MaxSize = benchBlockSize
+	p.Policy.NamespacePolicies[DefaultGeneratedNamespaceID].Scheme = scheme
+	return p
 }
 
 func requireValidKey(t *testing.T, key []byte, profile *Profile) {
