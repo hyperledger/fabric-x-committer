@@ -29,7 +29,7 @@ type (
 		transactionReceivedTotal  prometheus.Counter
 		transactionCommittedTotal *prometheus.CounterVec
 
-		// server-side gRPC connection- and RPC-level metrics recorded by the stats handler.
+		// server-side gRPC connection and RPC-level metrics recorded by the stats handler.
 		serverMetrics *serve.ServerMetrics
 
 		// per-service-manager metrics

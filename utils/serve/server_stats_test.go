@@ -191,9 +191,9 @@ func TestServerStatsHandlerStreamingRPC(t *testing.T) {
 	}, 30*time.Second, 100*time.Millisecond)
 }
 
-// TestServerStatsHandler_gRPCStatusCodes verifies that a completed RPC is recorded under the label of
+// TestServerStatsHandlerGRPCStatusCodes verifies that a completed RPC is recorded under the label of
 // its gRPC status code, for every code the server may return.
-func TestServerStatsHandler_gRPCStatusCodes(t *testing.T) {
+func TestServerStatsHandlerGRPCStatusCodes(t *testing.T) {
 	t.Parallel()
 
 	for _, code := range []codes.Code{
