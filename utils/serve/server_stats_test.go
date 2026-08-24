@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -53,10 +54,11 @@ type (
 	}
 
 	recordRPCParams struct {
-		handler       *serve.ServerStatsHandler
-		methodName    string
-		isStream      bool
-		recordedError error
+		handler        *serve.ServerStatsHandler
+		methodName     string
+		isServerStream bool
+		isClientStream bool
+		recordedError  error
 	}
 )
 
@@ -189,7 +191,7 @@ func TestServerStatsHandlerStreamingRPC(t *testing.T) {
 	}, 30*time.Second, 100*time.Millisecond)
 }
 
-// TestServerStatsHandlerStatusCodeForNotgRPCError verifies that a completed RPC is recorded under the label of
+// TestServerStatsHandler_gRPCStatusCodes verifies that a completed RPC is recorded under the label of
 // its gRPC status code, for every code the server may return.
 func TestServerStatsHandler_gRPCStatusCodes(t *testing.T) {
 	t.Parallel()
@@ -242,18 +244,19 @@ func requireRPCStatusRecorded(t *testing.T, rpcErr error, wantStatus string) {
 	recordRPC(t, recordRPCParams{
 		handler:       statHandler,
 		methodName:    unaryMethod,
-		isStream:      false,
 		recordedError: rpcErr,
 	})
+	require.Equal(t, 1, testutil.CollectAndCount(serverMetrics.LatencySeconds))
 	require.Positive(t, metricVecValue(t, serverMetrics.LatencySeconds.MetricVec, unaryMethod, wantStatus))
 
 	// A completed streaming RPC records its duration under the status label.
 	recordRPC(t, recordRPCParams{
-		handler:       statHandler,
-		methodName:    streamMethod,
-		isStream:      true,
-		recordedError: rpcErr,
+		handler:        statHandler,
+		methodName:     streamMethod,
+		isServerStream: true,
+		recordedError:  rpcErr,
 	})
+	require.Equal(t, 1, testutil.CollectAndCount(serverMetrics.StreamDurationSeconds))
 	require.Positive(t, metricVecValue(t, serverMetrics.StreamDurationSeconds.MetricVec, streamMethod, wantStatus))
 }
 
@@ -268,7 +271,8 @@ func recordRPC(t *testing.T, params recordRPCParams) {
 	h.HandleRPC(ctx,
 		&stats.Begin{
 			BeginTime:      begin,
-			IsServerStream: params.isStream,
+			IsServerStream: params.isServerStream,
+			IsClientStream: params.isClientStream,
 		})
 	h.HandleRPC(ctx,
 		&stats.End{

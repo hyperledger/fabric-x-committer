@@ -27,8 +27,8 @@ import (
 )
 
 type (
-	// MetricsConnectionParameters builds the URL and tls.Config given a service's HTTP metrics endpoint
-	// and a TLS configuration.
+	// MetricsConnectionParameters carries the scrape URL and client TLS config for a service's
+	// HTTP metrics endpoint.
 	MetricsConnectionParameters struct {
 		URL       string
 		TLSConfig *tls.Config

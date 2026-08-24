@@ -52,7 +52,7 @@ func (*ServerStatsHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) c
 	})
 }
 
-// HandleRPC records RPC-level metrics on stream beginning and RPC completion.
+// HandleRPC records RPC-level metrics on RPC beginning and completion.
 func (h *ServerStatsHandler) HandleRPC(ctx context.Context, s stats.RPCStats) {
 	m := h.metrics.Load()
 	if m == nil {
