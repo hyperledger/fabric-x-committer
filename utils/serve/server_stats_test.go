@@ -57,7 +57,6 @@ type (
 		handler        *serve.ServerStatsHandler
 		methodName     string
 		isServerStream bool
-		isClientStream bool
 		recordedError  error
 	}
 )
@@ -229,6 +228,13 @@ func TestServerStatsHandlerRecordsUnknownStatusForNonGRPCError(t *testing.T) {
 	requireRPCStatusRecorded(t, errors.New("not a gRPC error"), "Unknown")
 }
 
+// TestServerStatsHandlerRecordsOKStatusForNilGRPCError verifies that
+// a nil error recorded with the OK gRPC status code.
+func TestServerStatsHandlerRecordsOKStatusForNilGRPCError(t *testing.T) {
+	t.Parallel()
+	requireRPCStatusRecorded(t, nil, codes.OK.String())
+}
+
 // requireRPCStatusRecorded drives one unary and one streaming RPC that end with rpcErr, and
 // asserts each is recorded under wantStatus in its histogram (unary latency, stream duration).
 func requireRPCStatusRecorded(t *testing.T, rpcErr error, wantStatus string) {
@@ -272,7 +278,6 @@ func recordRPC(t *testing.T, params recordRPCParams) {
 		&stats.Begin{
 			BeginTime:      begin,
 			IsServerStream: params.isServerStream,
-			IsClientStream: params.isClientStream,
 		})
 	h.HandleRPC(ctx,
 		&stats.End{

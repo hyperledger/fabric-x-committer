@@ -191,7 +191,13 @@ func GetMetricValue(t TestingT, m prometheus.Metric) float64 {
 	case gm.Summary != nil:
 		return gm.Summary.GetSampleSum()
 	case gm.Histogram != nil:
-		return gm.Histogram.GetSampleSum() / float64(gm.Histogram.GetSampleCount())
+		count := gm.Histogram.GetSampleCount()
+		// A histogram child with no observations would divide 0/0 = NaN, which testify cannot order.
+		// Return 0 so callers asserting positivity fail cleanly instead.
+		if count == 0 {
+			return 0
+		}
+		return gm.Histogram.GetSampleSum() / float64(count)
 	default:
 		require.Fail(t, "unsupported metric")
 		return 0
