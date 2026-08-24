@@ -36,8 +36,8 @@ type (
 // NewLoadGenAdapter instantiate LoadGenAdapter.
 func NewLoadGenAdapter(config *connection.ClientConfig, res *ClientResources) *LoadGenAdapter {
 	return &LoadGenAdapter{
-		commonAdapter: commonAdapter{res: res},
-		config:        config,
+		res:    res,
+		config: config,
 	}
 }
 

@@ -27,8 +27,8 @@ type (
 // NewOrdererAdapter instantiate OrdererAdapter.
 func NewOrdererAdapter(config *OrdererClientConfig, res *ClientResources) *OrdererAdapter {
 	return &OrdererAdapter{
-		commonAdapter: commonAdapter{res: res},
-		config:        config,
+		res:    res,
+		config: config,
 	}
 }
 
