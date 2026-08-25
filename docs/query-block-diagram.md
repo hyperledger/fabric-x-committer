@@ -488,12 +488,16 @@ Context Hierarchy:
 │                              METRICS                                        │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-Request Metrics:
+Request Metrics (recorded by the shared gRPC stats handler, see utils/serve/server_stats.go):
   - queryservice_grpc_requests_total{method}
-    └─► Counter: Total requests by method (begin_view, get_rows, etc.)
+    └─► Counter: RPCs started, by full gRPC method
+        (e.g. /committerpb.QueryService/BeginView, /committerpb.QueryService/GetRows)
 
-  - queryservice_grpc_requests_latency_seconds{method}
-    └─► Histogram: Request latency by method
+  - queryservice_grpc_requests_latency_seconds{method,status}
+    └─► Histogram: Unary RPC duration by method and gRPC status code
+
+  - queryservice_grpc_active_connections
+    └─► Gauge: Client connections currently open on the server
 
   - queryservice_grpc_key_requested_total
     └─► Counter: Total keys requested across all queries

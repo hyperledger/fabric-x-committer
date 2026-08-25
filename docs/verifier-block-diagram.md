@@ -393,8 +393,9 @@ Throughput Metrics:
     └─► Counter: Total transaction statuses sent to coordinator
 
 Active State Metrics:
-  - verifier_server_grpc_active_streams
-    └─► Gauge: Number of active gRPC streams
+  - verifier_server_grpc_active_streams{method}
+    └─► Gauge: Streaming RPCs currently open, by full gRPC method name
+        (recorded by the shared gRPC stats handler, see utils/serve/server_stats.go)
 
   - verifier_server_parallel_executor_active_requests
     └─► Gauge: Number of transactions currently being verified

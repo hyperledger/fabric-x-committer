@@ -69,6 +69,7 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 			Labels:     map[string]string{method: getTransactionStatusMethod, "status": "OK"},
 		}
 		preRequests := test.GetCounterOrGaugeValueFromURL(t, requestsTotal)
+		preLatencyCount, _ := test.GetHistogramCountAndSumValueFromURL(t, requestsLatency)
 
 		_, err := c.QueryServiceClient.GetTransactionStatus(ctx, &committerpb.TxStatusQuery{
 			TxIds: []string{"non-existent-tx"},
@@ -76,9 +77,9 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 		require.NoError(t, err)
 
 		require.EventuallyWithT(t, func(ct *assert.CollectT) {
-			requestLatencyCount, _ := test.GetHistogramCountAndSumValueFromURL(ct, requestsLatency)
+			latencyCount, _ := test.GetHistogramCountAndSumValueFromURL(ct, requestsLatency)
 			require.Equal(ct, preRequests+1, test.GetCounterOrGaugeValueFromURL(ct, requestsTotal))
-			require.Equal(ct, uint64(1), requestLatencyCount)
+			require.Equal(ct, preLatencyCount+1, latencyCount)
 		}, 30*time.Second, 200*time.Millisecond)
 	})
 
