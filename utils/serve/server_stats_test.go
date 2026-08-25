@@ -18,7 +18,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -35,53 +34,47 @@ const (
 	// server records for a stream the client tears down by cancelling its context.
 	statusOK       = "OK"
 	statusCanceled = "Canceled"
-
-	unaryMethod  = "/test.Service/Unary"
-	streamMethod = "/test.Service/Stream"
 )
 
 type (
+	// statsRegisterer wires the stats-handler metrics and a health service onto a test server.
+	// The health service is either the real one or a stubHealthServer, so a test can choose whether
+	// its Check/Watch RPCs succeed or fail with a chosen gRPC status.
 	statsRegisterer struct {
 		serverMetrics *serve.ServerMetrics
+		healthServer  healthgrpc.HealthServer
 	}
 
 	// serverStatsTestEnv bundles a running server wired with the gRPC stats handler and a health
-	// client, so each workflow test can drive real RPCs against it.
+	// client, so a test can drive real RPCs against it and read back the recorded metrics.
 	serverStatsTestEnv struct {
 		metrics      *serve.ServerMetrics
 		health       healthgrpc.HealthClient
 		grpcEndpoint connection.Endpoint
 	}
 
-	recordRPCParams struct {
-		handler        *serve.ServerStatsHandler
-		methodName     string
-		isServerStream bool
-		recordedError  error
+	// stubHealthServer is a health service whose Check (unary) and Watch (streaming) RPCs return
+	// returnedErr, so a test can drive a real RPC to a chosen gRPC status and observe how the stats
+	// handler recorded it. A nil returnedErr makes both RPCs succeed.
+	stubHealthServer struct {
+		healthgrpc.UnimplementedHealthServer
+		returnedErr error
 	}
 )
 
 func (r *statsRegisterer) RegisterService(srv serve.Servers) {
 	serve.RegisterServerMetrics(srv.StatsHandler, r.serverMetrics)
-	healthgrpc.RegisterHealthServer(srv.GRPC, serve.DefaultHealthCheckService())
+	healthgrpc.RegisterHealthServer(srv.GRPC, r.healthServer)
 }
 
-// newServerStatsTestEnv starts a server wired with the stats handler and a health service, and
-// returns the recorded metrics together with a connected health client.
-func newServerStatsTestEnv(ctx context.Context, t *testing.T) *serverStatsTestEnv {
-	t.Helper()
-	m := serve.NewServerMetrics(monitoring.NewProvider(), monitoring.MetricsParameters{
-		Namespace: "test",
-		Subsystem: "server_stats",
-	})
-	serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
-	test.ServeForTest(ctx, t, serverConfig, &statsRegisterer{serverMetrics: m})
-	conn := test.NewInsecureConnection(t, &serverConfig.GRPC.Endpoint)
-	return &serverStatsTestEnv{
-		metrics:      m,
-		health:       healthgrpc.NewHealthClient(conn),
-		grpcEndpoint: serverConfig.GRPC.Endpoint,
-	}
+func (s stubHealthServer) Check(
+	context.Context, *healthgrpc.HealthCheckRequest,
+) (*healthgrpc.HealthCheckResponse, error) {
+	return &healthgrpc.HealthCheckResponse{Status: healthgrpc.HealthCheckResponse_SERVING}, s.returnedErr
+}
+
+func (s stubHealthServer) Watch(*healthgrpc.HealthCheckRequest, healthgrpc.Health_WatchServer) error {
+	return s.returnedErr
 }
 
 // TestServerConnStatsHandler verifies the active-connections gauge end to end:
@@ -94,7 +87,7 @@ func TestServerConnStatsHandler(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env := newServerStatsTestEnv(ctx, t)
+	env := newServerStatsTestEnv(ctx, t, serve.DefaultHealthCheckService())
 
 	t.Log("Creating clients")
 	conn := test.NewInsecureConnection(t, &env.grpcEndpoint)
@@ -121,7 +114,7 @@ func TestServerStatsHandlerUnaryRPC(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env := newServerStatsTestEnv(ctx, t)
+	env := newServerStatsTestEnv(ctx, t, serve.DefaultHealthCheckService())
 
 	_, err := env.health.Check(ctx, &healthgrpc.HealthCheckRequest{})
 	require.NoError(t, err)
@@ -153,7 +146,7 @@ func TestServerStatsHandlerStreamingRPC(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env := newServerStatsTestEnv(ctx, t)
+	env := newServerStatsTestEnv(ctx, t, serve.DefaultHealthCheckService())
 
 	streamCtx, cancelStream := context.WithCancel(ctx)
 	t.Cleanup(cancelStream)
@@ -190,13 +183,14 @@ func TestServerStatsHandlerStreamingRPC(t *testing.T) {
 	}, 30*time.Second, 100*time.Millisecond)
 }
 
-// TestServerStatsHandlerGRPCStatusCodes verifies that a completed RPC is recorded under the label of
-// its gRPC status code, for every code the server may return.
-func TestServerStatsHandlerGRPCStatusCodes(t *testing.T) {
+// TestServerStatsHandlerRecordsRPCStatus drives real RPCs whose handler returns a chosen error (or
+// nil for success), and asserts the stats handler records each under the gRPC status the server
+// produced.
+func TestServerStatsHandlerRecordsRPCStatus(t *testing.T) {
 	t.Parallel()
 
+	// Each gRPC status error is recorded under its own code.
 	for _, code := range []codes.Code{
-		codes.OK,
 		codes.Canceled,
 		codes.Unknown,
 		codes.InvalidArgument,
@@ -216,72 +210,67 @@ func TestServerStatsHandlerGRPCStatusCodes(t *testing.T) {
 			requireRPCStatusRecorded(t, status.Error(code, ""), code.String())
 		})
 	}
+
+	// A non-gRPC error is recorded as Unknown.
+	t.Run("non-gRPC error", func(t *testing.T) {
+		t.Parallel()
+		requireRPCStatusRecorded(t, errors.New("not a gRPC error"), codes.Unknown.String())
+	})
+
+	// A nil error is recorded as OK.
+	t.Run("nil error", func(t *testing.T) {
+		t.Parallel()
+		requireRPCStatusRecorded(t, nil, codes.OK.String())
+	})
 }
 
-// TestServerStatsHandlerRecordsUnknownStatusForNonGRPCError verifies that
-// non-gRPC errors are recorded with the Unknown gRPC status code.
-func TestServerStatsHandlerRecordsUnknownStatusForNonGRPCError(t *testing.T) {
-	t.Parallel()
-	requireRPCStatusRecorded(t, errors.New("not a gRPC error"), "Unknown")
-}
-
-// TestServerStatsHandlerRecordsOKStatusForNilGRPCError verifies that
-// a nil error recorded with the OK gRPC status code.
-func TestServerStatsHandlerRecordsOKStatusForNilGRPCError(t *testing.T) {
-	t.Parallel()
-	requireRPCStatusRecorded(t, nil, codes.OK.String())
-}
-
-// requireRPCStatusRecorded drives one unary and one streaming RPC that end with rpcErr, and
-// asserts each is recorded under wantStatus in its histogram (unary latency, stream duration).
+// requireRPCStatusRecorded drives a real unary (Check) and streaming (Watch) RPC whose handler
+// returns rpcErr, and asserts each is recorded under wantStatus. Check under LatencySeconds,
+// Watch under StreamDurationSeconds.
 func requireRPCStatusRecorded(t *testing.T, rpcErr error, wantStatus string) {
 	t.Helper()
-	serverMetrics := serve.NewServerMetrics(monitoring.NewProvider(), monitoring.MetricsParameters{
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env := newServerStatsTestEnv(ctx, t, stubHealthServer{returnedErr: rpcErr})
+
+	// Both RPCs return rpcErr; gRPC turns it into a status and reports it to the stats handler.
+	_, _ = env.health.Check(ctx, &healthgrpc.HealthCheckRequest{})
+	stream, err := env.health.Watch(ctx, &healthgrpc.HealthCheckRequest{})
+	require.NoError(t, err)
+	_, _ = stream.Recv() // drive the stream to completion so its End callback fires
+
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		require.Equal(ct, 1, testutil.CollectAndCount(env.metrics.LatencySeconds))
+		require.Positive(
+			ct,
+			metricVecValue(ct, env.metrics.LatencySeconds.MetricVec, healthCheckMethod, wantStatus),
+		)
+		require.Equal(ct, 1, testutil.CollectAndCount(env.metrics.StreamDurationSeconds))
+		require.Positive(
+			ct,
+			metricVecValue(ct, env.metrics.StreamDurationSeconds.MetricVec, healthWatchMethod, wantStatus),
+		)
+	}, 30*time.Second, 100*time.Millisecond)
+}
+
+// newServerStatsTestEnv starts a server wired with the stats handler and the given health service,
+// and returns the recorded metrics together with a connected health client.
+func newServerStatsTestEnv(
+	ctx context.Context, t *testing.T, healthServer healthgrpc.HealthServer,
+) *serverStatsTestEnv {
+	t.Helper()
+	m := serve.NewServerMetrics(monitoring.NewProvider(), monitoring.MetricsParameters{
 		Namespace: "test",
 		Subsystem: "server_stats",
 	})
-	statHandler := &serve.ServerStatsHandler{}
-	serve.RegisterServerMetrics(statHandler, serverMetrics)
-
-	// A completed unary RPC records its latency under the status label.
-	recordRPC(t, recordRPCParams{
-		handler:       statHandler,
-		methodName:    unaryMethod,
-		recordedError: rpcErr,
-	})
-	require.Equal(t, 1, testutil.CollectAndCount(serverMetrics.LatencySeconds))
-	require.Positive(t, metricVecValue(t, serverMetrics.LatencySeconds.MetricVec, unaryMethod, wantStatus))
-
-	// A completed streaming RPC records its duration under the status label.
-	recordRPC(t, recordRPCParams{
-		handler:        statHandler,
-		methodName:     streamMethod,
-		isServerStream: true,
-		recordedError:  rpcErr,
-	})
-	require.Equal(t, 1, testutil.CollectAndCount(serverMetrics.StreamDurationSeconds))
-	require.Positive(t, metricVecValue(t, serverMetrics.StreamDurationSeconds.MetricVec, streamMethod, wantStatus))
-}
-
-// recordRPC drives the stats handler through one RPC's lifecycle: TagRPC to resolve the method,
-// then a Begin/End pair carrying a fixed positive duration, so the recorded histogram value is
-// positive.
-func recordRPC(t *testing.T, params recordRPCParams) {
-	t.Helper()
-	h := params.handler
-	ctx := h.TagRPC(t.Context(), &stats.RPCTagInfo{FullMethodName: params.methodName})
-	begin := time.Unix(0, 0)
-	h.HandleRPC(ctx,
-		&stats.Begin{
-			BeginTime:      begin,
-			IsServerStream: params.isServerStream,
-		})
-	h.HandleRPC(ctx,
-		&stats.End{
-			BeginTime: begin,
-			EndTime:   begin.Add(time.Second),
-			Error:     params.recordedError,
-		})
+	serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
+	test.ServeForTest(ctx, t, serverConfig, &statsRegisterer{serverMetrics: m, healthServer: healthServer})
+	conn := test.NewInsecureConnection(t, &serverConfig.GRPC.Endpoint)
+	return &serverStatsTestEnv{
+		metrics:      m,
+		health:       healthgrpc.NewHealthClient(conn),
+		grpcEndpoint: serverConfig.GRPC.Endpoint,
+	}
 }
 
 func metricVecValue(t test.TestingT, mv *prometheus.MetricVec, lvs ...string) float64 {
