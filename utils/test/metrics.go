@@ -37,9 +37,8 @@ type (
 	// GetMetricValueParameters carries the parameters for the metric-value lookups
 	// (GetCounterOrGaugeValueFromURL, GetHistogramCountAndSumValueFromURL).
 	GetMetricValueParameters struct {
+		MetricsConnectionParameters
 		MetricName string
-		URL        string
-		TLSConfig  *tls.Config
 		Labels     map[string]string
 	}
 )

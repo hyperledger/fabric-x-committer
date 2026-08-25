@@ -12,8 +12,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
 
-const method = "method"
-
 // ServerMetrics holds the server-side connection and RPC metrics a service records. The RPC
 // metrics are labeled by the full gRPC method ("/pkg.Service/Method").
 type ServerMetrics struct {
@@ -32,6 +30,8 @@ type ServerMetrics struct {
 	// when it is torn down, so it reflects the number of connections currently open.
 	ActiveConnections prometheus.Gauge
 }
+
+const method = "method"
 
 // NewServerMetrics creates the server-side metrics recorded by the gRPC stats handler.
 func NewServerMetrics(p *monitoring.Provider, params monitoring.MetricsParameters) *ServerMetrics {

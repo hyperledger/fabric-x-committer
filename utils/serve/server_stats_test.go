@@ -70,7 +70,10 @@ func (r *statsRegisterer) RegisterService(srv serve.Servers) {
 func (s stubHealthServer) Check(
 	context.Context, *healthgrpc.HealthCheckRequest,
 ) (*healthgrpc.HealthCheckResponse, error) {
-	return &healthgrpc.HealthCheckResponse{Status: healthgrpc.HealthCheckResponse_SERVING}, s.returnedErr
+	if s.returnedErr != nil {
+		return nil, s.returnedErr
+	}
+	return &healthgrpc.HealthCheckResponse{Status: healthgrpc.HealthCheckResponse_SERVING}, nil
 }
 
 func (s stubHealthServer) Watch(*healthgrpc.HealthCheckRequest, healthgrpc.Health_WatchServer) error {

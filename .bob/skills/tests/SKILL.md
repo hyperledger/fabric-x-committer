@@ -340,7 +340,7 @@ The project provides specialized helper functions in [`utils/test/metrics.go`](.
 
 #### Direct Metric Value Assertions
 
-✅ **CORRECT** - Use [`test.RequireIntMetricValue()`](../../utils/test/metrics.go:219) for immediate assertions:
+✅ **CORRECT** - Use [`test.RequireIntMetricValue()`](../../utils/test/metrics.go) for immediate assertions:
 
 ```go
 // Assert metric equals expected value immediately
@@ -353,7 +353,7 @@ test.RequireIntMetricValue(t, 0, metrics.pendingRequests)
 
 #### Eventual Metric Value Assertions
 
-✅ **CORRECT** - Use [`test.EventuallyIntMetric()`](../../utils/test/metrics.go:225) when metrics update asynchronously:
+✅ **CORRECT** - Use [`test.EventuallyIntMetric()`](../../utils/test/metrics.go) when metrics update asynchronously:
 
 ```go
 // Wait for metric to reach expected value
@@ -378,7 +378,7 @@ test.EventuallyIntMetric(
 
 #### Getting Metric Values
 
-Use [`test.GetIntMetricValue()`](../../utils/test/metrics.go:212) or [`test.GetMetricValue()`](../../utils/test/metrics.go:183) when you need the value for custom assertions:
+Use [`test.GetIntMetricValue()`](../../utils/test/metrics.go) or [`test.GetMetricValue()`](../../utils/test/metrics.go) when you need the value for custom assertions:
 
 ```go
 // Get integer metric value (rounded)
@@ -427,17 +427,17 @@ observations, sum := test.GetHistogramCountAndSumValueFromURL(t, test.GetMetricV
     URL:        metricsURL,
     MetricName: "some_latency_seconds",
     TLSConfig:  tlsConfig,
-    Labels:     map[string]string{"method": "method_name", "status": "status"}
+    Labels:     map[string]string{"method": "method_name", "status": "status"},
 })
 ```
 
 ### Metrics Testing Best Practices
 
 1. **Use Appropriate Helper**: Choose the right helper based on timing requirements:
-    - [`test.RequireIntMetricValue()`](../../utils/test/metrics.go:219) for synchronous operations where the metric should already have the expected value
-    - [`test.EventuallyIntMetric()`](../../utils/test/metrics.go:225) for asynchronous operations where the metric will reach the expected value after some time
-    - [`test.GetIntMetricValue()`](../../utils/test/metrics.go:212) for capturing baseline values or when using with `require.Eventually()` for complex conditions
-    - [`test.GetMetricValue()`](../../utils/test/metrics.go:183) for float metrics (histograms, summaries) or when you need the raw float value
+    - [`test.RequireIntMetricValue()`](../../utils/test/metrics.go) for synchronous operations where the metric should already have the expected value
+    - [`test.EventuallyIntMetric()`](../../utils/test/metrics.go) for asynchronous operations where the metric will reach the expected value after some time
+    - [`test.GetIntMetricValue()`](../../utils/test/metrics.go) for capturing baseline values or when using with `require.Eventually()` for complex conditions
+    - [`test.GetMetricValue()`](../../utils/test/metrics.go) for float metrics (histograms, summaries) or when you need the raw float value
 
    Metrics are only **eventually consistent**: a metric is never required to be an exact in-time
    representation of the truth, only to have been consistent with reality at some point and to
@@ -482,7 +482,7 @@ observations, sum := test.GetHistogramCountAndSumValueFromURL(t, test.GetMetricV
        metrics.transactionCommittedTotal.WithLabelValues("MALFORMED"))
    ```
 
-4. **Use Appropriate Wait Times**: For [`test.EventuallyIntMetric()`](../../utils/test/metrics.go:225):
+4. **Use Appropriate Wait Times**: For [`test.EventuallyIntMetric()`](../../utils/test/metrics.go):
     - Unit tests: 1-5 seconds wait, 10-100ms tick
     - Integration tests: 5-60 seconds wait, 100ms-1s tick
     - Examples from codebase:
@@ -661,4 +661,4 @@ func TestRelayMetrics(t *testing.T) {
 - **Extract a helper once 3+ lines of assertions/setup repeat across tests**
 - **Narrate multi-step scenario tests with paired `// Step N:` comments and `t.Log("Step N: ...")`**
 - **Never use `panic()` in tests**
-- **Use metrics testing helpers** - [`test.RequireIntMetricValue()`](../../utils/test/metrics.go:219), [`test.EventuallyIntMetric()`](../../utils/test/metrics.go:225), [`test.GetIntMetricValue()`](../../utils/test/metrics.go:212)
+- **Use metrics testing helpers** - [`test.RequireIntMetricValue()`](../../utils/test/metrics.go), [`test.EventuallyIntMetric()`](../../utils/test/metrics.go), [`test.GetIntMetricValue()`](../../utils/test/metrics.go)

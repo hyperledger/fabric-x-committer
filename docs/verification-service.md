@@ -142,11 +142,7 @@ The Verification Service exposes several Prometheus metrics to monitor its perfo
    - `verifier_server_tx_out`: Counter for outgoing verification results.
 
 2. **Active Streams and Requests**:
-   - `verifier_server_grpc_active_streams`: Gauge for the number of streaming RPCs currently open,
-     labeled by the full gRPC method. Recorded by the shared gRPC stats handler
-     (`utils/serve/server_stats.go`), which also exports `verifier_server_grpc_requests_total`,
-     `verifier_server_grpc_requests_latency_seconds`, `verifier_server_grpc_stream_duration_seconds`
-     and `verifier_server_grpc_active_connections`.
+   - `verifier_server_grpc_active_streams`: Gauge for the number of active gRPC streams.
    - `verifier_server_parallel_executor_active_requests`: Gauge for the number of active verification requests.
 
 These metrics provide insights into the service's performance and can be used for capacity planning and troubleshooting.
