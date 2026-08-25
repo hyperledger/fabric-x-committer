@@ -18,6 +18,10 @@ type (
 	// ServerStatsHandler is a gRPC stats.Handler attached to every server. It records
 	// server-side connection and RPC-level metrics from the gRPC stats callbacks.
 	//
+	// Being attached at the server level, it records every RPC the server handles, including
+	// infrastructure services such as gRPC health checks and reflection; those surface as their own
+	// "method" label values (e.g. /grpc.health.v1.Health/Check) rather than being singled out.
+	//
 	// It holds its ServerMetrics in an atomic pointer and is a no-op until a service registers them,
 	// so registration is safe while or after the server starts serving.
 	ServerStatsHandler struct {

@@ -95,7 +95,7 @@ func GetCounterOrGaugeValueFromURL(t TestingT, params GetMetricValueParameters) 
 			sum += m.Untyped.GetValue()
 		}
 	}
-	return int(sum)
+	return int(math.Round(sum))
 }
 
 // GetHistogramCountAndSumValueFromURL reads the metrics endpoint and returns the observation count and the sum of the

@@ -54,7 +54,7 @@ func NewServerMetrics(p *monitoring.Provider, params monitoring.MetricsParameter
 			Subsystem: params.Subsystem,
 			Name:      "stream_duration_seconds",
 			Help:      "The duration (seconds) a stream was active from start to end, by method and gRPC status code",
-			Buckets:   monitoring.LatencyBuckets,
+			Buckets:   monitoring.StreamDurationBuckets,
 		}, []string{method, "status"}),
 		ActiveStreams: p.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: params.Namespace,
