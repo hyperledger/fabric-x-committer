@@ -23,10 +23,11 @@ type executor interface {
 var errConditionNotSatisfied = errors.New("condition not satisfied")
 
 // ExecuteWithResult executes the given operation repeatedly until it succeeds or a timeout occurs.
-// It returns the result of the operation on success, or an error on timeout.
-// This is a generic version that can return any type T.
-func ExecuteWithResult[T any](ctx context.Context, p *Profile, operation func() (T, error)) (T, error) {
-	return executeWithResult(ctx, p, operation)
+// Errors matching terminalErrors stop retries immediately.
+func ExecuteWithResult[T any](
+	ctx context.Context, p *Profile, operation func() (T, error), terminalErrors ...error,
+) (T, error) {
+	return executeWithResult(ctx, p, operation, terminalErrors...)
 }
 
 // Execute executes the given operation repeatedly until it succeeds or a timeout occurs.
