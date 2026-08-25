@@ -39,7 +39,16 @@ import (
 // connection itself from being one of the sessions that gets terminated or
 // locked out by that sequence. Does not apply to YugabyteDB (DocDB cloning
 // keeps the source live, so no lockout dance is needed there).
-const maintenanceDBName = "postgres"
+const (
+	maintenanceDBName = "postgres"
+
+	yugabyteCloneStateComplete = "COMPLETE"
+	yugabyteCloneStateAborted  = "ABORTED"
+	yugabyteCloneStateQuery    = `
+SELECT state, COALESCE(failure_reason, '')
+FROM yb_database_clones()
+WHERE db_name = $1`
+)
 
 // rejectSnapshotIfPriorNotCheckpointed gates a new _snapshot request so that at
 // most one snapshot lifecycle is active. The request is accepted only when the
@@ -294,12 +303,11 @@ func (db *database) createSnapshotDatabaseAndRewriteRecord(
 	return snapshotState, nil
 }
 
-// createSnapshotDatabase creates native zero-copy database named databaseName
-// from source database. CREATE-only: it never DROPs. A "database already exists"
-// result is treated as success (reuse) — name is deterministic and database
-// content is drained deterministic cut, so a sibling VC's database is
-// equivalent. Dropping here could delete a database whose txID has not yet
-// committed, so it is forbidden.
+// createSnapshotDatabase creates or reuses a native zero-copy database. A duplicate
+// name is a reuse candidate: YugabyteDB still verifies clone completion before success.
+// Name is deterministic and database content is a drained deterministic cut, so a
+// sibling VC's complete database is equivalent. Dropping here could delete a database
+// whose txID has not yet committed, so it is forbidden.
 //
 // TODO: a hard-kill of the PostgreSQL path between
 // ALLOW_CONNECTIONS false and the deferred re-enable locks out src for ALL
@@ -311,25 +319,41 @@ func (db *database) createSnapshotDatabase(ctx context.Context, databaseName str
 	if err != nil {
 		return err
 	}
+	if isYuga {
+		return db.createYugabyteSnapshotDatabase(ctx, databaseName, db.config.Database)
+	}
+
 	src := pgx.Identifier{db.config.Database}.Sanitize()
 	snapshotDatabase := pgx.Identifier{databaseName}.Sanitize()
-
-	if isYuga {
-		return db.createYugabyteSnapshotDatabase(ctx, snapshotDatabase, src)
-	}
 	return db.createPostgresSnapshotDatabase(ctx, snapshotDatabase, src)
 }
 
-// createYugabyteSnapshotDatabase uses DocDB cloning via CREATE DATABASE ... TEMPLATE; the
-// source stays live. We clone as of current time (no AS OF): the sidecar drains
-// before and after the snapshot TX and no user TX commits until the snapshot is
-// fully processed, so "now" already is the exact snapshot cut. Cloning still
-// requires a snapshot schedule to exist on the source keyspace (a standing PITR
-// object provisioned out of band); without it YugabyteDB returns "Could not
-// find snapshot schedule for namespace".
-func (db *database) createYugabyteSnapshotDatabase(ctx context.Context, clone, src string) error {
+// createYugabyteSnapshotDatabase uses DocDB cloning and waits for YugabyteDB's clone
+// catalog to report COMPLETE after either creation or duplicate-name reuse. Source stays
+// live. We clone as of current time (no AS OF): sidecar drains before and after snapshot
+// TX and no user TX commits until snapshot is fully processed, so "now" is exact cut.
+// Cloning requires a snapshot schedule on source keyspace; without it YugabyteDB returns
+// "Could not find snapshot schedule for namespace".
+func (db *database) createYugabyteSnapshotDatabase(ctx context.Context, cloneName, srcName string) error {
+	clone := pgx.Identifier{cloneName}.Sanitize()
+	src := pgx.Identifier{srcName}.Sanitize()
 	sql := fmt.Sprintf("CREATE DATABASE %s TEMPLATE %s", clone, src)
-	return ignoreDuplicateDatabase(db.adminExec(ctx, sql))
+	if err := ignoreDuplicateDatabase(db.adminExec(ctx, sql)); err != nil {
+		return err
+	}
+	return db.waitForYugabyteClone(ctx, cloneName)
+}
+
+func (db *database) waitForYugabyteClone(ctx context.Context, clone string) error {
+	_, err := retry.ExecuteWithResult(ctx, db.retryProfile, func() (any, error) {
+		var state, failureReason string
+		err := db.pool.QueryRow(ctx, yugabyteCloneStateQuery, clone).Scan(&state, &failureReason)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to read state for YugabyteDB clone %s", clone)
+		}
+		return nil, yugabyteCloneStateError(clone, state, failureReason)
+	}, retry.ErrNonRetryable)
+	return err
 }
 
 // createPostgresSnapshotDatabase uses STRATEGY=FILE_COPY. PostgreSQL requires the source
@@ -411,9 +435,8 @@ func (db *database) adminExec(ctx context.Context, sql string) error {
 	return errors.Wrapf(err, "failed to execute admin statement [%s]", sql)
 }
 
-// ignoreDuplicateDatabase maps the "database already exists" error (PG SQLSTATE
-// 42P04) to success: a concurrent sibling VC created the clone first, which is
-// exactly the clone we need (reuse).
+// ignoreDuplicateDatabase maps 42P04 to nil so backend-specific callers can reuse
+// a deterministic clone name. YugabyteDB callers must still verify clone readiness.
 func ignoreDuplicateDatabase(err error) error {
 	if err == nil {
 		return nil
@@ -423,6 +446,25 @@ func ignoreDuplicateDatabase(err error) error {
 		return nil
 	}
 	return err
+}
+
+func yugabyteCloneStateError(clone, state, failureReason string) error {
+	switch state {
+	case yugabyteCloneStateComplete:
+		return nil
+	case yugabyteCloneStateAborted:
+		if failureReason == "" {
+			failureReason = "not reported"
+		}
+		return errors.Wrapf(
+			retry.ErrNonRetryable,
+			"YugabyteDB clone %s aborted; failure reason: %s",
+			clone,
+			failureReason,
+		)
+	default:
+		return errors.Newf("YugabyteDB clone %s is not ready: state %s", clone, state)
+	}
 }
 
 // snapshotDatabaseName returns deterministic database name for a snapshot at

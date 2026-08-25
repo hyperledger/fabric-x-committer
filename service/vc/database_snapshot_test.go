@@ -41,6 +41,63 @@ func TestSnapshotDatabaseName(t *testing.T) {
 	}
 }
 
+func TestYugabyteCloneStateError(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, yugabyteCloneStateError("snapshot_1", "COMPLETE", ""))
+
+	for _, tc := range []struct {
+		name               string
+		state              string
+		failureReason      string
+		expectedError      string
+		expectNonRetryable bool
+	}{
+		{
+			name:          "aborted clone reports server reason",
+			state:         "ABORTED",
+			failureReason: "tablet limit exceeded",
+			expectedError: "YugabyteDB clone snapshot_1 aborted; " +
+				"failure reason: tablet limit exceeded",
+			expectNonRetryable: true,
+		},
+		{
+			name:  "aborted clone reports absent reason",
+			state: "ABORTED",
+			expectedError: "YugabyteDB clone snapshot_1 aborted; " +
+				"failure reason: not reported",
+			expectNonRetryable: true,
+		},
+		{
+			name:          "schema creation remains retryable",
+			state:         "CLONE_SCHEMA_STARTED",
+			expectedError: "YugabyteDB clone snapshot_1 is not ready: state CLONE_SCHEMA_STARTED",
+		},
+		{
+			name:          "restoring clone remains retryable",
+			state:         "RESTORING",
+			expectedError: "YugabyteDB clone snapshot_1 is not ready: state RESTORING",
+		},
+		{
+			name:          "unknown clone state remains retryable",
+			state:         "FUTURE_STATE",
+			expectedError: "YugabyteDB clone snapshot_1 is not ready: state FUTURE_STATE",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := yugabyteCloneStateError("snapshot_1", tc.state, tc.failureReason)
+			require.ErrorContains(t, err, tc.expectedError)
+			if tc.expectNonRetryable {
+				require.ErrorIs(t, err, retry.ErrNonRetryable)
+			} else {
+				require.NotErrorIs(t, err, retry.ErrNonRetryable)
+			}
+		})
+	}
+}
+
 func TestCreateSnapshotDatabase(t *testing.T) {
 	t.Parallel()
 	env := NewDatabaseTestEnv(t)
@@ -108,16 +165,23 @@ func requireCloneHasRow(t *testing.T, db *database, cloneName string, row cloneR
 
 func cloneExists(t *testing.T, db *database, name string) bool {
 	t.Helper()
-	// createSnapshotDatabase's PostgreSQL path terminates all connections to source
-	// database (see createPostgresSnapshotDatabase), which can include this pool's own connection
-	// to db.config.Database, not just the clone name being polled for; the very next
-	// pool acquisition can hit that severed connection (SQLSTATE 57P01) before pgxpool
-	// notices and redials. Production callers tolerate this via db.retryProfile
-	// (e.g. commit's post-clone follow-up query); do the same here instead of a bare query.
+	// PostgreSQL clone creation terminates source connections, so catalog queries
+	// need retries while pgxpool redials. YugabyteDB readiness requires both a
+	// database catalog entry and an asynchronous clone state of COMPLETE.
 	exists, err := retry.ExecuteWithResult(t.Context(), db.retryProfile, func() (bool, error) {
+		isYuga, err := statedb.IsYugabyteDB(t.Context(), db.pool)
+		if err != nil {
+			return false, err
+		}
+
+		query := "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)"
+		if isYuga {
+			query += " AND EXISTS(" +
+				"SELECT 1 FROM yb_database_clones() WHERE db_name = $1 AND state = 'COMPLETE')"
+		}
+
 		var exists bool
-		err := db.pool.QueryRow(t.Context(),
-			"SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", name).Scan(&exists)
+		err = db.pool.QueryRow(t.Context(), query, name).Scan(&exists)
 		return exists, err
 	})
 	require.NoError(t, err)

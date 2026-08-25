@@ -35,8 +35,7 @@ func setDefaultsAndEnv(v *viper.Viper, objType reflect.Type, keyParts ...string)
 	case reflect.Array, reflect.Slice:
 		setDefaultsAndEnv(v, objType.Elem(), keyParts...)
 	case reflect.Struct:
-		for i := range objType.NumField() {
-			field := objType.Field(i)
+		for field := range objType.Fields() {
 			fieldKeyParts, ok := getFieldKeyParts(field, keyParts...)
 			if !ok {
 				continue
@@ -81,7 +80,7 @@ func registerDefault(v *viper.Viper, path, defaultValue string) {
 		v.SetDefault(path, defaultValue)
 		return
 	}
-	for _, pair := range strings.Fields(defaultValue) {
+	for pair := range strings.FieldsSeq(defaultValue) {
 		if key, val, ok := strings.Cut(pair, "="); ok {
 			v.SetDefault(path+"."+key, val)
 		}

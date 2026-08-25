@@ -279,16 +279,21 @@ back to the Coordinator, completing the workflow for the transaction batch.
 
 When a `_snapshot` marker transaction is committed, the VC creates a native,
 zero-copy clone of the state database **before** the marker's transaction ID is
-committed, preserving the invariant `txID committed <=> clone exists <=> PENDING row`.
-The clone is a consistent copy of the drained state cut and is never dropped by
-the VC (dropping is forbidden because it could delete a clone whose txID has not
-yet committed). See [database_snapshot.go](/service/vc/database_snapshot.go).
+committed, preserving the invariant `txID committed <=> clone ready <=> PENDING row`.
+For YugabyteDB, ready means `yb_database_clones().state = 'COMPLETE'`; a
+`pg_database` row alone is insufficient. The clone is a consistent copy of the
+drained state cut and is never dropped by the VC (dropping is forbidden because
+it could delete a clone whose txID has not yet committed). See
+[database_snapshot.go](/service/vc/database_snapshot.go).
 
 A `_snapshot` transaction is submitted standalone: the sidecar drains the pipeline
 before and after it, so no user transaction commits until the snapshot is fully
 processed. The clone therefore captures the exact snapshot cut with a plain
 `CREATE DATABASE <clone> TEMPLATE <source>` (as of current time), with no `AS OF`
-timestamp required.
+timestamp required. After either initial creation or duplicate-name reuse,
+YugabyteDB clone state is polled until `COMPLETE`. An `ABORTED` state fails
+promptly and reports YugabyteDB's `failure_reason`. PostgreSQL clone creation is
+synchronous and retains its existing duplicate-reuse behavior.
 
 > **YugabyteDB prerequisite — a PITR snapshot schedule is mandatory.** YugabyteDB
 > database cloning is built on Point-in-Time Recovery: `CREATE DATABASE ... TEMPLATE`

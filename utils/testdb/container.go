@@ -427,8 +427,11 @@ func (dc *DatabaseContainer) GetContainerLogs(t test.TestingT) string {
 }
 
 // StopAndRemoveContainer stops and removes the db container from the docker engine.
-// It is a no-op for a container that was never created, so a cluster teardown registered before
-// startup can run after a partial start.
+//
+// It is idempotent: a container that was never created, has already exited, or is already gone is not
+// an error, since the postcondition — the container is not running — already holds. A cluster teardown
+// therefore survives both a partial start and a node that exited on its own, as a yugabyte tserver does
+// once the masters it depends on are stopped.
 func (dc *DatabaseContainer) StopAndRemoveContainer(t *testing.T) {
 	t.Helper()
 	if dc.containerID == "" {
@@ -436,17 +439,31 @@ func (dc *DatabaseContainer) StopAndRemoveContainer(t *testing.T) {
 	}
 
 	dc.StopContainer(t)
-	require.NoError(t, dc.client.RemoveContainer(docker.RemoveContainerOptions{
+	err := dc.client.RemoveContainer(docker.RemoveContainerOptions{
 		ID:    dc.ContainerID(),
 		Force: true,
-	}))
+	})
+	var noSuchContainer *docker.NoSuchContainer
+	if errors.As(err, &noSuchContainer) {
+		return
+	}
+	require.NoError(t, err)
 	t.Logf("Container %s stopped and removed successfully", dc.ContainerID())
 }
 
-// StopContainer stops db container.
+// StopContainer stops db container. A container that has already exited, or that no longer exists, is
+// not an error — see [DatabaseContainer.StopAndRemoveContainer].
 func (dc *DatabaseContainer) StopContainer(t *testing.T) {
 	t.Helper()
-	require.NoError(t, dc.client.StopContainer(dc.ContainerID(), 10))
+	err := dc.client.StopContainer(dc.ContainerID(), 10)
+	var (
+		notRunning      *docker.ContainerNotRunning
+		noSuchContainer *docker.NoSuchContainer
+	)
+	if errors.As(err, &notRunning) || errors.As(err, &noSuchContainer) {
+		return
+	}
+	require.NoError(t, err)
 }
 
 // ContainerID returns the container ID.
