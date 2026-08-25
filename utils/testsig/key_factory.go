@@ -124,22 +124,24 @@ func ecdsaNewKeyPairWithSeed(seed int64) (signature.PrivateKey, signature.Public
 	hasher := sha3.New256()
 	_, err := hasher.Write(seedBytes)
 	utils.Must(err)
-	privateKey := new(big.Int).SetBytes(hasher.Sum(nil))
+	scalar := new(big.Int).SetBytes(hasher.Sum(nil))
 
-	privateKey.Mod(privateKey, curve.Params().N)
-	if privateKey.Sign() == 0 {
+	scalar.Mod(scalar, curve.Params().N)
+	if scalar.Sign() == 0 {
 		// generated zero private key
 		return nil, nil
 	}
 
-	x, y := curve.ScalarBaseMult(privateKey.Bytes())
-	pk := &ecdsa.PrivateKey{
-		PublicKey: ecdsa.PublicKey{Curve: curve, X: x, Y: y},
-		D:         privateKey,
-	}
-	serializedPrivateKey, err := SerializeSigningKey(pk)
+	// ParseRawPrivateKey derives the public key itself, and wants the scalar in SEC 1
+	// fixed-length form, so FillBytes restores the leading zeros that big.Int drops.
+	rawKey := make([]byte, (curve.Params().N.BitLen()+7)/8)
+	scalar.FillBytes(rawKey)
+	privateKey, err := ecdsa.ParseRawPrivateKey(curve, rawKey)
 	utils.Must(err)
-	serializedPublicKey, err := SerializeVerificationKey(&pk.PublicKey)
+
+	serializedPrivateKey, err := SerializeSigningKey(privateKey)
+	utils.Must(err)
+	serializedPublicKey, err := SerializeVerificationKey(&privateKey.PublicKey)
 	utils.Must(err)
 	return serializedPrivateKey, serializedPublicKey
 }
