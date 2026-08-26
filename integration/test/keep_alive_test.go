@@ -75,9 +75,8 @@ func TestKeepAliveSidecarDeadConnectionDetection(t *testing.T) {
 		t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Sidecar.HTTPEndpoint,
 	)
 	activeConnectionsMetric := test.GetMetricValueParameters{
-		URL:        metricsConnectionParams.URL,
-		TLSConfig:  metricsConnectionParams.TLSConfig,
-		MetricName: sidecarActiveConnectionsMetric,
+		MetricsConnectionParameters: metricsConnectionParams,
+		MetricName:                  sidecarActiveConnectionsMetric,
 	}
 
 	// Connections open on the sidecar before our client connects.
@@ -108,9 +107,8 @@ func TestKeepAliveQueryDeadConnectionDetection(t *testing.T) {
 		t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Query.HTTPEndpoint,
 	)
 	activeConnectionsMetric := test.GetMetricValueParameters{
-		URL:        metricsConnectionParams.URL,
-		TLSConfig:  metricsConnectionParams.TLSConfig,
-		MetricName: queryActiveConnectionsMetric,
+		MetricsConnectionParameters: metricsConnectionParams,
+		MetricName:                  queryActiveConnectionsMetric,
 	}
 
 	// Connections open on the query service before our client connects.
@@ -155,9 +153,8 @@ func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 		t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Sidecar.HTTPEndpoint,
 	)
 	activeConnectionsMetric := test.GetMetricValueParameters{
-		URL:        metricsConnectionParams.URL,
-		TLSConfig:  metricsConnectionParams.TLSConfig,
-		MetricName: sidecarActiveConnectionsMetric,
+		MetricsConnectionParameters: metricsConnectionParams,
+		MetricName:                  sidecarActiveConnectionsMetric,
 	}
 
 	// Connections open on the sidecar before our client connects.

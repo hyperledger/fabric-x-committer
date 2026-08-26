@@ -57,16 +57,14 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 	t.Run("Unary RPC Value And Latency", func(t *testing.T) {
 		t.Parallel()
 		requestsTotal := test.GetMetricValueParameters{
-			URL:        queryMetrics.URL,
-			TLSConfig:  queryMetrics.TLSConfig,
-			MetricName: queryRequestsTotalMetric,
-			Labels:     map[string]string{method: getTransactionStatusMethod},
+			MetricsConnectionParameters: queryMetrics,
+			MetricName:                  queryRequestsTotalMetric,
+			Labels:                      map[string]string{method: getTransactionStatusMethod},
 		}
 		requestsLatency := test.GetMetricValueParameters{
-			URL:        queryMetrics.URL,
-			TLSConfig:  queryMetrics.TLSConfig,
-			MetricName: queryRequestsLatencyMetric,
-			Labels:     map[string]string{method: getTransactionStatusMethod, "status": "OK"},
+			MetricsConnectionParameters: queryMetrics,
+			MetricName:                  queryRequestsLatencyMetric,
+			Labels:                      map[string]string{method: getTransactionStatusMethod, "status": "OK"},
 		}
 		preRequests := test.GetCounterOrGaugeValueFromURL(t, requestsTotal)
 		preLatencyCount, _ := test.GetHistogramCountAndSumValueFromURL(t, requestsLatency)
@@ -87,16 +85,14 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 		t.Parallel()
 		streamLabels := map[string]string{method: openNotificationStreamMethod}
 		activeStreamsMetric := test.GetMetricValueParameters{
-			URL:        sidecarMetrics.URL,
-			TLSConfig:  sidecarMetrics.TLSConfig,
-			MetricName: sidecarActiveStreamsMetric,
-			Labels:     streamLabels,
+			MetricsConnectionParameters: sidecarMetrics,
+			MetricName:                  sidecarActiveStreamsMetric,
+			Labels:                      streamLabels,
 		}
 		streamDurationMetric := test.GetMetricValueParameters{
-			URL:        sidecarMetrics.URL,
-			TLSConfig:  sidecarMetrics.TLSConfig,
-			MetricName: sidecarStreamDurationMetric,
-			Labels:     streamLabels,
+			MetricsConnectionParameters: sidecarMetrics,
+			MetricName:                  sidecarStreamDurationMetric,
+			Labels:                      streamLabels,
 		}
 		preActiveStreams := test.GetCounterOrGaugeValueFromURL(t, activeStreamsMetric)
 		preStreamDurationCount, preStreamDurationSum := test.GetHistogramCountAndSumValueFromURL(
@@ -142,9 +138,8 @@ func TestActiveConnectionCountFullSystem(t *testing.T) {
 	)
 
 	activeConnsMetric := test.GetMetricValueParameters{
-		URL:        queryMetrics.URL,
-		TLSConfig:  queryMetrics.TLSConfig,
-		MetricName: queryActiveConnsMetric,
+		MetricsConnectionParameters: queryMetrics,
+		MetricName:                  queryActiveConnsMetric,
 	}
 	preActiveConns := test.GetCounterOrGaugeValueFromURL(t, activeConnsMetric)
 
