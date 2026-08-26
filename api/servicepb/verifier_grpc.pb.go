@@ -13,7 +13,6 @@ package servicepb
 
 import (
 	context "context"
-	committerpb "github.com/hyperledger/fabric-x-common/api/committerpb"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -32,7 +31,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type VerifierClient interface {
-	StartStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[VerifierBatch, committerpb.TxStatusBatch], error)
+	StartStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[VerifierBatch, TxStatusBatch], error)
 }
 
 type verifierClient struct {
@@ -43,24 +42,24 @@ func NewVerifierClient(cc grpc.ClientConnInterface) VerifierClient {
 	return &verifierClient{cc}
 }
 
-func (c *verifierClient) StartStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[VerifierBatch, committerpb.TxStatusBatch], error) {
+func (c *verifierClient) StartStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[VerifierBatch, TxStatusBatch], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &Verifier_ServiceDesc.Streams[0], Verifier_StartStream_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[VerifierBatch, committerpb.TxStatusBatch]{ClientStream: stream}
+	x := &grpc.GenericClientStream[VerifierBatch, TxStatusBatch]{ClientStream: stream}
 	return x, nil
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Verifier_StartStreamClient = grpc.BidiStreamingClient[VerifierBatch, committerpb.TxStatusBatch]
+type Verifier_StartStreamClient = grpc.BidiStreamingClient[VerifierBatch, TxStatusBatch]
 
 // VerifierServer is the server API for Verifier service.
 // All implementations must embed UnimplementedVerifierServer
 // for forward compatibility.
 type VerifierServer interface {
-	StartStream(grpc.BidiStreamingServer[VerifierBatch, committerpb.TxStatusBatch]) error
+	StartStream(grpc.BidiStreamingServer[VerifierBatch, TxStatusBatch]) error
 	mustEmbedUnimplementedVerifierServer()
 }
 
@@ -71,7 +70,7 @@ type VerifierServer interface {
 // pointer dereference when methods are called.
 type UnimplementedVerifierServer struct{}
 
-func (UnimplementedVerifierServer) StartStream(grpc.BidiStreamingServer[VerifierBatch, committerpb.TxStatusBatch]) error {
+func (UnimplementedVerifierServer) StartStream(grpc.BidiStreamingServer[VerifierBatch, TxStatusBatch]) error {
 	return status.Error(codes.Unimplemented, "method StartStream not implemented")
 }
 func (UnimplementedVerifierServer) mustEmbedUnimplementedVerifierServer() {}
@@ -96,11 +95,11 @@ func RegisterVerifierServer(s grpc.ServiceRegistrar, srv VerifierServer) {
 }
 
 func _Verifier_StartStream_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(VerifierServer).StartStream(&grpc.GenericServerStream[VerifierBatch, committerpb.TxStatusBatch]{ServerStream: stream})
+	return srv.(VerifierServer).StartStream(&grpc.GenericServerStream[VerifierBatch, TxStatusBatch]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Verifier_StartStreamServer = grpc.BidiStreamingServer[VerifierBatch, committerpb.TxStatusBatch]
+type Verifier_StartStreamServer = grpc.BidiStreamingServer[VerifierBatch, TxStatusBatch]
 
 // Verifier_ServiceDesc is the grpc.ServiceDesc for Verifier service.
 // It's only intended for direct use with grpc.RegisterService,

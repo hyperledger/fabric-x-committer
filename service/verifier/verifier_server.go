@@ -11,7 +11,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
-	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
@@ -65,13 +64,12 @@ func (s *Server) RegisterService(srv serve.Servers) {
 	servicepb.RegisterVerifierServer(srv.GRPC, s)
 	healthgrpc.RegisterHealthServer(srv.GRPC, s.healthcheck)
 	monitoring.RegisterMonitoringServer(srv.HTTP, s.metrics.Provider)
+	serve.RegisterServerMetrics(srv.StatsHandler, s.metrics.serverMetrics)
 }
 
 // StartStream starts a verification stream.
 func (s *Server) StartStream(stream servicepb.Verifier_StartStreamServer) error {
 	defer logger.Debug("Interrupted stream.")
-	s.metrics.ActiveStreams.Inc()
-	defer s.metrics.ActiveStreams.Dec()
 
 	// We create a new executor for each stream to avoid answering to the wrong stream.
 	executor := newParallelExecutor(s.config)
@@ -125,8 +123,8 @@ func (s *Server) handleInputs(
 		if err != nil {
 			return errors.Join(ErrUpdatePolicies, err)
 		}
-		promutil.AddToCounter(s.metrics.VerifierServerTxs.Input, len(batch.Requests))
-		promutil.AddToGauge(s.metrics.ActiveRequests, len(batch.Requests))
+		promutil.AddToCounter(s.metrics.verifierServerTxs.Input, len(batch.Requests))
+		promutil.AddToGauge(s.metrics.activeRequests, len(batch.Requests))
 
 		// Pass verification requests for processing.
 		for _, r := range batch.Requests {
@@ -149,10 +147,10 @@ func (s *Server) handleOutputs(
 		if !ok {
 			return errors.Wrap(stream.Context().Err(), "context ended")
 		}
-		promutil.AddToCounter(s.metrics.VerifierServerTxs.Output, len(outputs))
-		promutil.AddToGauge(s.metrics.ActiveRequests, -len(outputs))
+		promutil.AddToCounter(s.metrics.verifierServerTxs.Output, len(outputs))
+		promutil.AddToGauge(s.metrics.activeRequests, -len(outputs))
 		logger.Debugf("Received output: %v", output)
-		rpcErr := stream.Send(&committerpb.TxStatusBatch{Status: outputs})
+		rpcErr := stream.Send(&servicepb.TxStatusBatch{Status: outputs})
 		if rpcErr != nil {
 			return errors.Wrap(rpcErr, "stream ended")
 		}

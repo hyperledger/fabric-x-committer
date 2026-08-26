@@ -489,12 +489,6 @@ Context Hierarchy:
 └─────────────────────────────────────────────────────────────────────────────┘
 
 Request Metrics:
-  - queryservice_grpc_requests_total{method}
-    └─► Counter: Total requests by method (begin_view, get_rows, etc.)
-
-  - queryservice_grpc_requests_latency_seconds{method}
-    └─► Histogram: Request latency by method
-
   - queryservice_grpc_key_requested_total
     └─► Counter: Total keys requested across all queries
 

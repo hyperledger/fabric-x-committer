@@ -31,8 +31,8 @@ type (
 // NewVerifierAdapter instantiate VerifierAdapter.
 func NewVerifierAdapter(config *connection.MultiClientConfig, res *ClientResources) *VerifierAdapter {
 	return &VerifierAdapter{
-		commonAdapter: commonAdapter{res: res},
-		config:        config,
+		res:    res,
+		config: config,
 	}
 }
 

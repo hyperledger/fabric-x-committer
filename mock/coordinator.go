@@ -79,7 +79,7 @@ func (c *Coordinator) GetNextBlockNumberToCommit(
 func (c *Coordinator) GetTransactionsStatus(
 	_ context.Context,
 	q *committerpb.TxIDsBatch,
-) (*committerpb.TxStatusBatch, error) {
+) (*servicepb.TxStatusBatch, error) {
 	status := make([]*committerpb.TxStatus, len(q.TxIds))
 	c.txsStatusMu.Lock()
 	defer c.txsStatusMu.Unlock()
@@ -87,7 +87,7 @@ func (c *Coordinator) GetTransactionsStatus(
 		v, _ := c.txsStatus.get(txID)
 		status[i] = v
 	}
-	return &committerpb.TxStatusBatch{Status: status}, nil
+	return &servicepb.TxStatusBatch{Status: status}, nil
 }
 
 // NoPendingTransactionProcessing returns true when all previously submitted
@@ -198,7 +198,7 @@ func (c *Coordinator) sendTxsStatusChunk(
 	stream servicepb.Coordinator_BlockProcessingServer,
 	txs []*committerpb.TxStatus,
 ) error {
-	b := &committerpb.TxStatusBatch{
+	b := &servicepb.TxStatusBatch{
 		Status: make([]*committerpb.TxStatus, len(txs)),
 	}
 	c.txsStatusMu.Lock()

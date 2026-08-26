@@ -340,7 +340,7 @@ The project provides specialized helper functions in [`utils/test/metrics.go`](.
 
 #### Direct Metric Value Assertions
 
-✅ **CORRECT** - Use [`test.RequireIntMetricValue()`](../../utils/test/metrics.go:99) for immediate assertions:
+✅ **CORRECT** - Use [`test.RequireIntMetricValue()`](../../utils/test/metrics.go) for immediate assertions:
 
 ```go
 // Assert metric equals expected value immediately
@@ -353,7 +353,7 @@ test.RequireIntMetricValue(t, 0, metrics.pendingRequests)
 
 #### Eventual Metric Value Assertions
 
-✅ **CORRECT** - Use [`test.EventuallyIntMetric()`](../../utils/test/metrics.go:105) when metrics update asynchronously:
+✅ **CORRECT** - Use [`test.EventuallyIntMetric()`](../../utils/test/metrics.go) when metrics update asynchronously:
 
 ```go
 // Wait for metric to reach expected value
@@ -378,7 +378,7 @@ test.EventuallyIntMetric(
 
 #### Getting Metric Values
 
-Use [`test.GetIntMetricValue()`](../../utils/test/metrics.go:92) or [`test.GetMetricValue()`](../../utils/test/metrics.go:69) when you need the value for custom assertions:
+Use [`test.GetIntMetricValue()`](../../utils/test/metrics.go) or [`test.GetMetricValue()`](../../utils/test/metrics.go) when you need the value for custom assertions:
 
 ```go
 // Get integer metric value (rounded)
@@ -412,18 +412,32 @@ test.CheckMetrics(t, metricsURL, tlsConfig,
     "loadgen_transaction_committed_total",
 )
 
-// Get specific metric value from HTTP endpoint
-count := test.GetMetricValueFromURL(t, metricsURL, "metric_name", tlsConfig)
+// Get a counter/gauge value from the HTTP endpoint. Labels are optional and match a
+// subset: an unlabelled lookup on a "...Vec" family sums every child series.
+count := test.GetCounterOrGaugeValueFromURL(t, test.GetMetricValueParameters{
+    URL:        metricsURL,
+    MetricName: "metric_name",
+    TLSConfig:  tlsConfig,
+    Labels:     map[string]string{"method": "/pkg.Service/Method"},
+})
 require.Greater(t, count, 500)
+
+// Histograms expose an observation count and sum instead of a single value.
+observations, sum := test.GetHistogramCountAndSumValueFromURL(t, test.GetMetricValueParameters{
+    URL:        metricsURL,
+    MetricName: "some_latency_seconds",
+    TLSConfig:  tlsConfig,
+    Labels:     map[string]string{"method": "method_name", "status": "status"},
+})
 ```
 
 ### Metrics Testing Best Practices
 
 1. **Use Appropriate Helper**: Choose the right helper based on timing requirements:
-    - [`test.RequireIntMetricValue()`](../../utils/test/metrics.go:99) for synchronous operations where the metric should already have the expected value
-    - [`test.EventuallyIntMetric()`](../../utils/test/metrics.go:105) for asynchronous operations where the metric will reach the expected value after some time
-    - [`test.GetIntMetricValue()`](../../utils/test/metrics.go:92) for capturing baseline values or when using with `require.Eventually()` for complex conditions
-    - [`test.GetMetricValue()`](../../utils/test/metrics.go:69) for float metrics (histograms, summaries) or when you need the raw float value
+    - [`test.RequireIntMetricValue()`](../../utils/test/metrics.go) for synchronous operations where the metric should already have the expected value
+    - [`test.EventuallyIntMetric()`](../../utils/test/metrics.go) for asynchronous operations where the metric will reach the expected value after some time
+    - [`test.GetIntMetricValue()`](../../utils/test/metrics.go) for capturing baseline values or when using with `require.Eventually()` for complex conditions
+    - [`test.GetMetricValue()`](../../utils/test/metrics.go) for float metrics (histograms, summaries) or when you need the raw float value
 
    Metrics are only **eventually consistent**: a metric is never required to be an exact in-time
    representation of the truth, only to have been consistent with reality at some point and to
@@ -468,7 +482,7 @@ require.Greater(t, count, 500)
        metrics.transactionCommittedTotal.WithLabelValues("MALFORMED"))
    ```
 
-4. **Use Appropriate Wait Times**: For [`test.EventuallyIntMetric()`](../../utils/test/metrics.go:105):
+4. **Use Appropriate Wait Times**: For [`test.EventuallyIntMetric()`](../../utils/test/metrics.go):
     - Unit tests: 1-5 seconds wait, 10-100ms tick
     - Integration tests: 5-60 seconds wait, 100ms-1s tick
     - Examples from codebase:
@@ -588,9 +602,11 @@ require.EventuallyWithT(t, func(ct *assert.CollectT) {
 
 ```go
 require.EventuallyWithT(t, func(ct *assert.CollectT) {
-    count := test.GetMetricValueFromURL(
-        t, metricsURL, "loadgen_transaction_committed_total", tlsConfig,
-    )
+    count := test.GetCounterOrGaugeValueFromURL(ct, test.GetMetricValueParameters{
+        URL:        metricsURL,
+        MetricName: "loadgen_transaction_committed_total",
+        TLSConfig:  tlsConfig,
+    })
     require.Greater(ct, count, 500)
 }, 300*time.Second, 1*time.Second)
 ```
@@ -645,4 +661,4 @@ func TestRelayMetrics(t *testing.T) {
 - **Extract a helper once 3+ lines of assertions/setup repeat across tests**
 - **Narrate multi-step scenario tests with paired `// Step N:` comments and `t.Log("Step N: ...")`**
 - **Never use `panic()` in tests**
-- **Use metrics testing helpers** - [`test.RequireIntMetricValue()`](../../utils/test/metrics.go:99), [`test.EventuallyIntMetric()`](../../utils/test/metrics.go:105), [`test.GetIntMetricValue()`](../../utils/test/metrics.go:92)
+- **Use metrics testing helpers** - [`test.RequireIntMetricValue()`](../../utils/test/metrics.go), [`test.EventuallyIntMetric()`](../../utils/test/metrics.go), [`test.GetIntMetricValue()`](../../utils/test/metrics.go)

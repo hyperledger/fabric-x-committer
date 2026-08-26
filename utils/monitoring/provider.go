@@ -106,6 +106,35 @@ func (p *Provider) NewGaugeFunc(opts prometheus.GaugeOpts, fn func() float64) pr
 	return g
 }
 
+// NewChannelLenGauge creates a new prometheus gauge that reports the number of items buffered in
+// ch on every scrape. Prefer it over a NewGauge that a dedicated goroutine samples on a timer.
+// A nil channel reports zero.
+func (p *Provider) NewChannelLenGauge[T any](
+	opts prometheus.GaugeOpts,
+	ch <-chan T,
+) prometheus.GaugeFunc {
+	return p.NewGaugeFunc(opts, func() float64 {
+		return float64(len(ch))
+	})
+}
+
+// NewAtomicChannelLenGauge creates a new prometheus gauge that reports the number of items
+// buffered in the channel ch currently points to. Use it for a queue that is replaced during the
+// service's lifetime, such as one recreated per session: the value follows whichever channel is
+// installed, and an unset pointer reports zero rather than the previous channel's last value.
+func (p *Provider) NewAtomicChannelLenGauge[T any](
+	opts prometheus.GaugeOpts,
+	ch *atomic.Pointer[chan T],
+) prometheus.GaugeFunc {
+	return p.NewGaugeFunc(opts, func() float64 {
+		c := ch.Load()
+		if c == nil {
+			return 0
+		}
+		return float64(len(*c))
+	})
+}
+
 // NewGaugeVec creates a new prometheus gauge vector.
 func (p *Provider) NewGaugeVec(opts prometheus.GaugeOpts, labels []string) *prometheus.GaugeVec {
 	gv := prometheus.NewGaugeVec(opts, labels)

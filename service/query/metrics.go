@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 const (
@@ -18,10 +19,6 @@ const (
 	subsystemGRPC     = "grpc"
 	subsystemDatabase = "database"
 
-	grpcBeginView             = "begin_view"
-	grpcEndView               = "end_view"
-	grpcGetRows               = "get_rows"
-	grpcGetTxStatus           = "get_tx_status"
 	sessionViews              = "active_views"
 	sessionProcessingQueries  = "processing_queries"
 	sessionWaitingQueries     = "waiting_queries"
@@ -29,16 +26,12 @@ const (
 	sessionTransactions       = "transactions"
 )
 
-var (
-	timeBuckets = []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1, 2, 3, 4, 5, 10}
-	sizeBuckets = []float64{1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1 << 10, 1 << 11, 1 << 12, 1 << 13, 1 << 14, 1 << 15}
-)
+var sizeBuckets = []float64{1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1 << 10, 1 << 11, 1 << 12, 1 << 13, 1 << 14, 1 << 15}
 
 type perfMetrics struct {
 	*monitoring.Provider
 
-	requests                        *prometheus.CounterVec
-	requestsLatency                 *prometheus.HistogramVec
+	serverMetrics                   *serve.ServerMetrics
 	keysRequested                   prometheus.Counter
 	keysResponded                   prometheus.Counter
 	processingSessions              *prometheus.GaugeVec
@@ -47,7 +40,6 @@ type perfMetrics struct {
 	batchResponseSize               prometheus.Histogram
 	requestAssignmentLatencySeconds prometheus.Histogram
 	queryLatencySeconds             prometheus.Histogram
-	serverConnections               prometheus.Gauge
 }
 
 func newQueryServiceMetrics() *perfMetrics {
@@ -55,28 +47,15 @@ func newQueryServiceMetrics() *perfMetrics {
 
 	return &perfMetrics{
 		Provider: p,
-		requests: p.NewCounterVec(prometheus.CounterOpts{
+		serverMetrics: serve.NewServerMetrics(p, monitoring.MetricsParameters{
 			Namespace: namespace,
 			Subsystem: subsystemGRPC,
-			Name:      "requests_total",
-			Help:      "Number of requests by the service",
-		}, []string{"method"}),
-		requestsLatency: p.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: namespace,
-			Subsystem: subsystemGRPC,
-			Name:      "requests_latency_seconds",
-			Help:      "The latency (seconds) of requests by the service",
-			Buckets:   timeBuckets,
-		}, []string{"method"}),
+		}),
 		keysRequested: p.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: subsystemGRPC,
 			Name:      "key_requested_total",
 			Help:      "Number of keys requested by the service",
-		}),
-		serverConnections: monitoring.NewConnectionStatsMetrics(p, monitoring.MetricsParameters{
-			Namespace: namespace,
-			Subsystem: subsystemGRPC,
 		}),
 		keysResponded: p.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
@@ -95,7 +74,7 @@ func newQueryServiceMetrics() *perfMetrics {
 			Subsystem: subsystemDatabase,
 			Name:      "batch_queueing_time_seconds",
 			Help:      "The time batches waits for execution",
-			Buckets:   timeBuckets,
+			Buckets:   monitoring.LatencyBuckets,
 		}),
 		batchQuerySize: p.NewHistogram(prometheus.HistogramOpts{
 			Namespace: namespace,
@@ -116,14 +95,14 @@ func newQueryServiceMetrics() *perfMetrics {
 			Subsystem: subsystemDatabase,
 			Name:      "request_assignment_latency_seconds",
 			Help:      "The latency of the query request assignment to the queue",
-			Buckets:   timeBuckets,
+			Buckets:   monitoring.LatencyBuckets,
 		}),
 		queryLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystemDatabase,
 			Name:      "query_latency_seconds",
 			Help:      "The latency of the queries' batches",
-			Buckets:   timeBuckets,
+			Buckets:   monitoring.LatencyBuckets,
 		}),
 	}
 }

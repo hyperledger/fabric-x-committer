@@ -54,7 +54,12 @@ type (
 		outgoingStatusUpdates          chan<- []*committerpb.TxStatus
 		outgoingConfigBlocks           chan<- *common.Block
 		outgoingCommittedBlockWithTxs  chan<- *committedBlockWithTxs
-		waitingTxsLimit                int
+		// mappedBlockQueue and statusBatch connect the relay's own stages. They live for one
+		// coordinator session, like incomingBlockToBeCommitted, so the session creates them and
+		// reports their sizes.
+		mappedBlockQueue chan *blockMappingResult
+		statusBatch      chan *servicepb.TxStatusBatch
+		waitingTxsLimit  int
 	}
 )
 
@@ -97,20 +102,18 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 
 	expectedNextBlockToBeCommitted := r.nextBlockNumberToBeCommitted.Load()
 
-	mappedBlockQueue := make(chan *blockMappingResult, cap(r.incomingBlockToBeCommitted))
 	g.Go(func() error {
-		return r.preProcessBlock(sCtx, mappedBlockQueue)
+		return r.preProcessBlock(sCtx, config.mappedBlockQueue)
 	})
 	g.Go(func() error {
-		return r.sendBlocksToCoordinator(sCtx, mappedBlockQueue, stream)
+		return r.sendBlocksToCoordinator(sCtx, config.mappedBlockQueue, stream)
 	})
 
-	statusBatch := make(chan *committerpb.TxStatusBatch, cap(r.outgoingCommittedBlock))
 	g.Go(func() error {
-		return receiveStatusFromCoordinator(sCtx, stream, statusBatch)
+		return receiveStatusFromCoordinator(sCtx, stream, config.statusBatch)
 	})
 	g.Go(func() error {
-		return r.processStatusBatch(sCtx, statusBatch)
+		return r.processStatusBatch(sCtx, config.statusBatch)
 	})
 
 	g.Go(func() error {
@@ -141,7 +144,9 @@ func (r *relay) preProcessBlock(
 		start := time.Now()
 		mappedBlock, err := mapBlock(block, &r.txIDToHeight)
 		if err != nil {
-			// This can never occur unless there is a bug in the relay.
+			// A config TX that cannot be processed ends the relay, so the sidecar restarts its
+			// block feed and fetches the block again (see unprocessableConfigTx). Any other
+			// error can never occur unless there is a bug in the relay.
 			return err
 		}
 		promutil.Observe(r.metrics.blockMappingInRelaySeconds, time.Since(start))
@@ -287,7 +292,7 @@ func (r *relay) sendBlocksToCoordinator(
 func receiveStatusFromCoordinator(
 	ctx context.Context,
 	stream servicepb.Coordinator_BlockProcessingClient,
-	statusBatch chan<- *committerpb.TxStatusBatch,
+	statusBatch chan<- *servicepb.TxStatusBatch,
 ) error {
 	txsStatus := channel.NewWriter(ctx, statusBatch)
 	for {
@@ -303,7 +308,7 @@ func receiveStatusFromCoordinator(
 
 func (r *relay) processStatusBatch(
 	ctx context.Context,
-	statusBatch <-chan *committerpb.TxStatusBatch,
+	statusBatch <-chan *servicepb.TxStatusBatch,
 ) error {
 	txsStatus := channel.NewReader(ctx, statusBatch)
 	outgoingCommittedBlock := channel.NewWriter(ctx, r.outgoingCommittedBlock)

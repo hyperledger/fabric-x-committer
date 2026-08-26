@@ -13,7 +13,6 @@ package servicepb
 
 import (
 	applicationpb "github.com/hyperledger/fabric-x-common/api/applicationpb"
-	committerpb "github.com/hyperledger/fabric-x-common/api/committerpb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -136,7 +135,7 @@ var File_api_servicepb_verifier_proto protoreflect.FileDescriptor
 
 const file_api_servicepb_verifier_proto_rawDesc = "" +
 	"\n" +
-	"\x1capi/servicepb/verifier.proto\x12\tservicepb\x1a\x1eapi/applicationpb/config.proto\x1a\x1capi/committerpb/status.proto\x1a\x1aapi/servicepb/common.proto\"\x85\x01\n" +
+	"\x1capi/servicepb/verifier.proto\x12\tservicepb\x1a\x1eapi/applicationpb/config.proto\x1a\x1aapi/servicepb/common.proto\"\x85\x01\n" +
 	"\rVerifierBatch\x127\n" +
 	"\x06update\x18\x01 \x01(\v2\x1a.servicepb.VerifierUpdatesH\x00R\x06update\x88\x01\x01\x120\n" +
 	"\brequests\x18\x02 \x03(\v2\x14.servicepb.TxWithRefR\brequestsB\t\n" +
@@ -145,9 +144,9 @@ const file_api_servicepb_verifier_proto_rawDesc = "" +
 	"\x06config\x18\x01 \x01(\v2 .applicationpb.ConfigTransactionH\x00R\x06config\x88\x01\x01\x12T\n" +
 	"\x12namespace_policies\x18\x02 \x01(\v2 .applicationpb.NamespacePoliciesH\x01R\x11namespacePolicies\x88\x01\x01B\t\n" +
 	"\a_configB\x15\n" +
-	"\x13_namespace_policies2S\n" +
-	"\bVerifier\x12G\n" +
-	"\vStartStream\x12\x18.servicepb.VerifierBatch\x1a\x1a.committerpb.TxStatusBatch(\x010\x01B9Z7github.com/hyperledger/fabric-x-committer/api/servicepbb\x06proto3"
+	"\x13_namespace_policies2Q\n" +
+	"\bVerifier\x12E\n" +
+	"\vStartStream\x12\x18.servicepb.VerifierBatch\x1a\x18.servicepb.TxStatusBatch(\x010\x01B9Z7github.com/hyperledger/fabric-x-committer/api/servicepbb\x06proto3"
 
 var (
 	file_api_servicepb_verifier_proto_rawDescOnce sync.Once
@@ -168,7 +167,7 @@ var file_api_servicepb_verifier_proto_goTypes = []any{
 	(*TxWithRef)(nil),                       // 2: servicepb.TxWithRef
 	(*applicationpb.ConfigTransaction)(nil), // 3: applicationpb.ConfigTransaction
 	(*applicationpb.NamespacePolicies)(nil), // 4: applicationpb.NamespacePolicies
-	(*committerpb.TxStatusBatch)(nil),       // 5: committerpb.TxStatusBatch
+	(*TxStatusBatch)(nil),                   // 5: servicepb.TxStatusBatch
 }
 var file_api_servicepb_verifier_proto_depIdxs = []int32{
 	1, // 0: servicepb.VerifierBatch.update:type_name -> servicepb.VerifierUpdates
@@ -176,7 +175,7 @@ var file_api_servicepb_verifier_proto_depIdxs = []int32{
 	3, // 2: servicepb.VerifierUpdates.config:type_name -> applicationpb.ConfigTransaction
 	4, // 3: servicepb.VerifierUpdates.namespace_policies:type_name -> applicationpb.NamespacePolicies
 	0, // 4: servicepb.Verifier.StartStream:input_type -> servicepb.VerifierBatch
-	5, // 5: servicepb.Verifier.StartStream:output_type -> committerpb.TxStatusBatch
+	5, // 5: servicepb.Verifier.StartStream:output_type -> servicepb.TxStatusBatch
 	5, // [5:6] is the sub-list for method output_type
 	4, // [4:5] is the sub-list for method input_type
 	4, // [4:4] is the sub-list for extension type_name

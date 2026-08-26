@@ -3,7 +3,7 @@ name: development
 description: >-
   Conventions for writing NEW Go code in the Fabric-X Committer repo: code
   organization/ordering, concurrency (errgroup + context-aware channels), Go
-  1.26 idioms, error handling, logging, and service/config/metrics structure.
+  1.27 idioms, error handling, logging, and service/config/metrics structure.
   Use this skill BEFORE writing or modifying any Go source in this repository —
   adding a service, component, function, gRPC handler, or config field, or
   refactoring existing code — so the new code matches established patterns and
@@ -290,7 +290,7 @@ Use `context.AfterFunc(ctx, fn)` for cancel-driven teardown (the standard primit
 Reach for `atomic` for counters/flags/pointers, `Mutex`/`RWMutex` for compound state, and
 `TryLock` to reject a second concurrent stream (`grpcerror.WrapFailedPrecondition`).
 
-## Modern Go idioms (1.26)
+## Modern Go idioms (1.27)
 
 The codebase is aggressively modern. **Prefer** in new code:
 
@@ -301,6 +301,12 @@ The codebase is aggressively modern. **Prefer** in new code:
 - Built-in `min` / `max` (pervasive), e.g. `min(high, max(low, v))`.
 - Range-over-integer: `for range n` / `for i := range n` (the `intrange` linter pushes this).
 - `iter.Seq` / `iter.Seq2` for custom iterators (`utils/sync_map.go`).
+- Stdlib iterator forms over `Len`/`At` and slice-returning helpers:
+  `reflect.Type.Fields()` (`cmd/config/config_preload.go:38`), `strings.FieldsSeq` /
+  `strings.SplitSeq` (`cmd/config/config_preload.go:83`).
+- Promoted (embedded) field names directly in composite literals — Go 1.27 accepts
+  `&PostgresClusterController{dbType: ..., networkName: ...}` in place of spelling out
+  the embedded `DBClusterController{...}` literal (`integration/runner/postgres.go:78`).
 - `errors.Join` — especially to combine a retry sentinel with a cause:
   `errors.Join(retry.ErrBackOff, err)`.
 - `context.AfterFunc`, and `context.WithCancelCause` / `context.Cause` where a cancel

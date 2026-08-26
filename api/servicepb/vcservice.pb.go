@@ -146,12 +146,12 @@ const file_api_servicepb_vcservice_proto_rawDesc = "" +
 	"namespaces\x18\x02 \x03(\v2\x1a.applicationpb.TxNamespaceR\n" +
 	"namespaces\x12Q\n" +
 	"\x18prelim_invalid_tx_status\x18\x03 \x01(\x0e2\x13.committerpb.StatusH\x00R\x15prelimInvalidTxStatus\x88\x01\x01B\x1b\n" +
-	"\x19_prelim_invalid_tx_status2\x83\x04\n" +
-	"\x1aValidationAndCommitService\x12R\n" +
-	"\x1cStartValidateAndCommitStream\x12\x12.servicepb.VcBatch\x1a\x1a.committerpb.TxStatusBatch(\x010\x01\x12L\n" +
+	"\x19_prelim_invalid_tx_status2\xff\x03\n" +
+	"\x1aValidationAndCommitService\x12P\n" +
+	"\x1cStartValidateAndCommitStream\x12\x12.servicepb.VcBatch\x1a\x18.servicepb.TxStatusBatch(\x010\x01\x12L\n" +
 	"\x1bSetLastCommittedBlockNumber\x12\x13.servicepb.BlockRef\x1a\x16.google.protobuf.Empty\"\x00\x12K\n" +
-	"\x1aGetNextBlockNumberToCommit\x12\x16.google.protobuf.Empty\x1a\x13.servicepb.BlockRef\"\x00\x12N\n" +
-	"\x15GetTransactionsStatus\x12\x17.committerpb.TxIDsBatch\x1a\x1a.committerpb.TxStatusBatch\"\x00\x12R\n" +
+	"\x1aGetNextBlockNumberToCommit\x12\x16.google.protobuf.Empty\x1a\x13.servicepb.BlockRef\"\x00\x12L\n" +
+	"\x15GetTransactionsStatus\x12\x17.committerpb.TxIDsBatch\x1a\x18.servicepb.TxStatusBatch\"\x00\x12R\n" +
 	"\x14GetNamespacePolicies\x12\x16.google.protobuf.Empty\x1a .applicationpb.NamespacePolicies\"\x00\x12R\n" +
 	"\x14GetConfigTransaction\x12\x16.google.protobuf.Empty\x1a .applicationpb.ConfigTransaction\"\x00B9Z7github.com/hyperledger/fabric-x-committer/api/servicepbb\x06proto3"
 
@@ -177,7 +177,7 @@ var file_api_servicepb_vcservice_proto_goTypes = []any{
 	(*BlockRef)(nil),                        // 5: servicepb.BlockRef
 	(*emptypb.Empty)(nil),                   // 6: google.protobuf.Empty
 	(*committerpb.TxIDsBatch)(nil),          // 7: committerpb.TxIDsBatch
-	(*committerpb.TxStatusBatch)(nil),       // 8: committerpb.TxStatusBatch
+	(*TxStatusBatch)(nil),                   // 8: servicepb.TxStatusBatch
 	(*applicationpb.NamespacePolicies)(nil), // 9: applicationpb.NamespacePolicies
 	(*applicationpb.ConfigTransaction)(nil), // 10: applicationpb.ConfigTransaction
 }
@@ -192,10 +192,10 @@ var file_api_servicepb_vcservice_proto_depIdxs = []int32{
 	7,  // 7: servicepb.ValidationAndCommitService.GetTransactionsStatus:input_type -> committerpb.TxIDsBatch
 	6,  // 8: servicepb.ValidationAndCommitService.GetNamespacePolicies:input_type -> google.protobuf.Empty
 	6,  // 9: servicepb.ValidationAndCommitService.GetConfigTransaction:input_type -> google.protobuf.Empty
-	8,  // 10: servicepb.ValidationAndCommitService.StartValidateAndCommitStream:output_type -> committerpb.TxStatusBatch
+	8,  // 10: servicepb.ValidationAndCommitService.StartValidateAndCommitStream:output_type -> servicepb.TxStatusBatch
 	6,  // 11: servicepb.ValidationAndCommitService.SetLastCommittedBlockNumber:output_type -> google.protobuf.Empty
 	5,  // 12: servicepb.ValidationAndCommitService.GetNextBlockNumberToCommit:output_type -> servicepb.BlockRef
-	8,  // 13: servicepb.ValidationAndCommitService.GetTransactionsStatus:output_type -> committerpb.TxStatusBatch
+	8,  // 13: servicepb.ValidationAndCommitService.GetTransactionsStatus:output_type -> servicepb.TxStatusBatch
 	9,  // 14: servicepb.ValidationAndCommitService.GetNamespacePolicies:output_type -> applicationpb.NamespacePolicies
 	10, // 15: servicepb.ValidationAndCommitService.GetConfigTransaction:output_type -> applicationpb.ConfigTransaction
 	10, // [10:16] is the sub-list for method output_type

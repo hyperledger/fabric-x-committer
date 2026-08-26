@@ -15,11 +15,13 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
 )
 
@@ -105,7 +107,8 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb
 		logger.Debugf("Mapping transaction [blk,tx] = [%d,%d]", blockNumber, msgIndex)
 		err := mappedBlock.mapMessage(uint32(msgIndex), msg) //nolint:gosec // int -> uint32.
 		if err != nil {
-			// This can never occur unless there is a bug in the relay.
+			// Either a config TX that cannot be processed (see unprocessableConfigTx),
+			// or a bug in the relay.
 			return nil, err
 		}
 	}
@@ -126,50 +129,133 @@ func (b *blockMappingResult) mapMessage(msgIndex uint32, msg []byte) error {
 	if envErr != nil {
 		return b.rejectNonDBStatusTx(ref, committerpb.Status_MALFORMED_BAD_ENVELOPE, envErr.Error())
 	}
+	headerType := common.HeaderType(envLite.HeaderType)
+
+	// A config TX is classified before its TX ID is resolved: it does not carry its TX ID where
+	// every other message type does. See mapConfigTx.
+	if headerType == common.HeaderType_CONFIG {
+		return b.mapConfigTx(ref, envLite, msg)
+	}
+
 	if envLite.TxID == "" || !utf8.ValidString(envLite.TxID) {
 		return b.rejectNonDBStatusTx(ref, committerpb.Status_MALFORMED_MISSING_TX_ID, "no TX ID")
 	}
 	ref.TxId = envLite.TxID
 
-	switch common.HeaderType(envLite.HeaderType) {
-	case common.HeaderType_CONFIG:
-		if err := policy.ValidateConfigTx(msg); err != nil {
-			return b.rejectTx(ref, committerpb.Status_MALFORMED_CONFIG_TX_INVALID, err.Error())
-		}
-		b.isConfig = true
-		return b.appendTx(ref, configTx(msg))
-	case common.HeaderType_MESSAGE:
-		tx, err := serialization.UnmarshalTx(envLite.Data)
-		if err != nil {
-			return b.rejectTx(ref, committerpb.Status_MALFORMED_BAD_ENVELOPE_PAYLOAD, err.Error())
-		}
-		if status := verifyTxForm(tx); status != statusNotYetValidated {
-			return b.rejectTx(ref, status, "malformed tx")
-		}
-		if isSnapshotTx(tx) {
-			if b.snapshotTx != nil {
-				// Only the first snapshot TX in a block is processed; reject the rest with a
-				// stored status so the outcome is recorded, regardless of the first's outcome.
-				return b.rejectTx(ref, committerpb.Status_REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK,
-					"duplicate snapshot tx in block")
-			}
-			txWithRef, err := b.prepareTx(ref, tx)
-			if err != nil {
-				return err
-			}
-			if txWithRef == nil {
-				// A duplicate TX ID; already rejected by prepareTx via addTxIDMapping.
-				return nil
-			}
-			// Kept off block.Txs; see the snapshotTx field comment.
-			b.snapshotTx = txWithRef
-			return nil
-		}
-		return b.appendTx(ref, tx)
-	default:
+	if headerType != common.HeaderType_MESSAGE {
 		return b.rejectTx(ref, committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
-			"unsupported message type: "+common.HeaderType(envLite.HeaderType).String())
+			"unsupported message type: "+headerType.String())
 	}
+
+	tx, err := serialization.UnmarshalTx(envLite.Data)
+	if err != nil {
+		return b.rejectTx(ref, committerpb.Status_MALFORMED_BAD_ENVELOPE_PAYLOAD, err.Error())
+	}
+	if status := verifyTxForm(tx); status != statusNotYetValidated {
+		return b.rejectTx(ref, status, "malformed tx")
+	}
+	if !isSnapshotTx(tx) {
+		return b.appendTx(ref, tx)
+	}
+
+	if b.snapshotTx != nil {
+		// Only the first snapshot TX in a block is processed; reject the rest with a
+		// stored status so the outcome is recorded, regardless of the first's outcome.
+		return b.rejectTx(ref, committerpb.Status_REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK,
+			"duplicate snapshot tx in block")
+	}
+	txWithRef, err := b.prepareTx(ref, tx)
+	if err != nil {
+		return err
+	}
+	if txWithRef == nil {
+		// A duplicate TX ID; already rejected by prepareTx via addTxIDMapping.
+		return nil
+	}
+	// Kept off block.Txs; see the snapshotTx field comment.
+	b.snapshotTx = txWithRef
+	return nil
+}
+
+// mapConfigTx maps a config TX, which the sidecar can only accept or fail on. Unlike a data TX,
+// it cannot be rejected: the ordering service has already validated it and applied it to the
+// channel config, so a committer that rejects it would diverge from the rest of the network.
+func (b *blockMappingResult) mapConfigTx(
+	ref *committerpb.TxRef, envLite *serialization.EnvelopeLite, msg []byte,
+) error {
+	// The config TX is validated here, where failing the block is still an option. The verifier
+	// and the coordinator parse it again later, where a failure could no longer be recovered from.
+	if err := policy.ValidateConfigTx(msg); err != nil {
+		return b.unprocessableConfigTx(ref, err)
+	}
+	txID, err := configTxID(envLite)
+	if err != nil {
+		return b.unprocessableConfigTx(ref, err)
+	}
+	ref.TxId = txID
+
+	txWithRef, err := b.prepareTx(ref, configTx(msg))
+	if err != nil {
+		return err
+	}
+	if txWithRef == nil {
+		// The TX ID is already in flight, and prepareTx rejected the TX as a duplicate. A config TX
+		// cannot be rejected either, so the block fails instead: by the time it is fetched again,
+		// the TX that holds the ID has likely been processed and released it.
+		return b.unprocessableConfigTx(ref, errors.Newf("duplicate TX ID [%s]", ref.TxId))
+	}
+	b.isConfig = true
+	b.block.Txs = append(b.block.Txs, txWithRef)
+	return nil
+}
+
+// unprocessableConfigTx fails the block holding a config TX the sidecar cannot process. The
+// returned error unwinds the relay, making the sidecar restart its block feed and fetch the
+// block again, possibly from another orderer. Since the config TX cannot be rejected, this is the
+// only way to recover from a config TX that arrived corrupted. It is retried with a backoff, and
+// the sidecar stops once the retry profile is exhausted, as a config TX that is consistently
+// unprocessable requires human intervention.
+func (b *blockMappingResult) unprocessableConfigTx(ref *committerpb.TxRef, err error) error {
+	err = errors.Wrapf(err, "cannot process the config TX [blk:%d,num:%d]", b.blockNumber, ref.TxNum)
+	logger.Errorf("%+v", err)
+	return errors.Join(retry.ErrBackOff, err)
+}
+
+// configTxID returns the TX ID of a config TX: the TX ID of the client's config-update TX, nested
+// in ConfigEnvelope.LastUpdate, or the outer envelope's TX ID when the config TX has no nested
+// update at all — a bootstrap (genesis) config block, which no client submitted.
+//
+// The client's TX ID is the only acceptable ID for a config update, and it is the one the client
+// waits for a notification on. The outer envelope of a config block that the ordering service
+// creates for a config update is generated and signed by the consensus leader, so its TX ID is the
+// leader's: a nested update that carries no TX ID, or that cannot be read, makes the config TX
+// unprocessable rather than falling back to an ID that is not the client's.
+//
+// Do not fall back any further by computing a TX ID from an envelope's creator and nonce: the
+// ordering service verifies that every TX ID is present and matches its creator and nonce, so a
+// config TX that reaches the committer without one is malformed, and the committer must fail it
+// rather than invent an ID for it.
+func configTxID(envLite *serialization.EnvelopeLite) (string, error) {
+	configEnv, err := protoutil.UnmarshalConfigEnvelope(envLite.Data)
+	if err != nil {
+		return "", errors.Wrap(err, "error unmarshalling config envelope")
+	}
+
+	if configEnv.LastUpdate == nil {
+		if envLite.TxID == "" {
+			return "", errors.New("no TX ID in the config TX")
+		}
+		return envLite.TxID, nil
+	}
+
+	_, channelHdr, err := serialization.ParseEnvelope(configEnv.LastUpdate)
+	if err != nil {
+		return "", errors.Wrap(err, "error parsing the config update envelope")
+	}
+	if channelHdr.TxId == "" {
+		return "", errors.New("no TX ID in the config update")
+	}
+	return channelHdr.TxId, nil
 }
 
 func (b *blockMappingResult) appendTx(ref *committerpb.TxRef, tx *applicationpb.Tx) error {

@@ -28,8 +28,8 @@ type (
 // NewVCAdapter instantiate VcAdapter.
 func NewVCAdapter(config *connection.MultiClientConfig, res *ClientResources) *VcAdapter {
 	return &VcAdapter{
-		commonAdapter: commonAdapter{res: res},
-		config:        config,
+		res:    res,
+		config: config,
 	}
 }
 

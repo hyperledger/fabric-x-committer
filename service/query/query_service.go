@@ -125,16 +125,13 @@ func (q *Service) RegisterService(s serve.Servers) {
 	healthgrpc.RegisterHealthServer(s.GRPC, q.healthcheck)
 	serve.RegisterDynamicTLSUpdater(s.GrpcTLSProvider, &q.tlsUpdater)
 	monitoring.RegisterMonitoringServer(s.HTTP, q.metrics.Provider)
-	serve.RegisterConnStatHandler(s.ConnStatsHandler, q.metrics.serverConnections)
+	serve.RegisterServerMetrics(s.StatsHandler, q.metrics.serverMetrics)
 }
 
 // BeginView implements the query-service interface.
 func (q *Service) BeginView(
 	ctx context.Context, params *committerpb.ViewParameters,
 ) (*committerpb.View, error) {
-	q.metrics.requests.WithLabelValues(grpcBeginView).Inc()
-	defer q.requestLatency(grpcBeginView, time.Now())
-
 	// Validate and cap timeout.
 	if params.TimeoutMilliseconds == 0 ||
 		int64(params.TimeoutMilliseconds) > q.config.MaxViewTimeout.Milliseconds() { //nolint:gosec
@@ -170,8 +167,6 @@ func (q *Service) BeginView(
 func (q *Service) EndView(
 	_ context.Context, view *committerpb.View,
 ) (*emptypb.Empty, error) {
-	q.metrics.requests.WithLabelValues(grpcEndView).Inc()
-	defer q.requestLatency(grpcEndView, time.Now())
 	return nil, grpcerror.WrapFailedPrecondition(q.batcher.removeViewID(view.Id))
 }
 
@@ -179,8 +174,6 @@ func (q *Service) EndView(
 func (q *Service) GetRows(
 	ctx context.Context, query *committerpb.Query,
 ) (*committerpb.Rows, error) {
-	q.metrics.requests.WithLabelValues(grpcGetRows).Inc()
-
 	if len(query.Namespaces) == 0 {
 		return nil, grpcerror.WrapInvalidArgument(ErrEmptyNamespaces)
 	}
@@ -200,10 +193,9 @@ func (q *Service) GetRows(
 		totalKeys += len(ns.Keys)
 	}
 	if err := q.validateKeysCount(totalKeys); err != nil {
-		return nil, err
+		return nil, grpcerror.WrapInvalidArgument(err)
 	}
 
-	defer q.requestLatency(grpcGetRows, time.Now())
 	promutil.AddToCounter(q.metrics.keysRequested, totalKeys)
 
 	batches, err := q.assignRequest(ctx, query)
@@ -232,17 +224,13 @@ func (q *Service) GetRows(
 func (q *Service) GetTransactionStatus(
 	ctx context.Context, query *committerpb.TxStatusQuery,
 ) (*committerpb.TxStatusResponse, error) {
-	q.metrics.requests.WithLabelValues(grpcGetTxStatus).Inc()
-
 	if len(query.TxIds) == 0 {
 		return nil, grpcerror.WrapInvalidArgument(ErrEmptyTxIDs)
 	}
 
 	if err := q.validateKeysCount(len(query.TxIds)); err != nil {
-		return nil, err
+		return nil, grpcerror.WrapInvalidArgument(err)
 	}
-
-	defer q.requestLatency(grpcGetTxStatus, time.Now())
 
 	keys := make([][]byte, len(query.TxIds))
 	for i, txID := range query.TxIds {
@@ -319,16 +307,10 @@ func getUUID() (string, error) {
 
 func (q *Service) validateKeysCount(count int) error {
 	if q.config.MaxRequestKeys > 0 && count > q.config.MaxRequestKeys {
-		return grpcerror.WrapInvalidArgument(
-			errors.Join(ErrTooManyKeys, errors.Newf("requested %d keys, maximum allowed is %d",
-				count, q.config.MaxRequestKeys)),
-		)
+		return errors.Join(ErrTooManyKeys, errors.Newf("requested %d keys, maximum allowed is %d",
+			count, q.config.MaxRequestKeys))
 	}
 	return nil
-}
-
-func (q *Service) requestLatency(method string, start time.Time) {
-	promutil.Observe(q.metrics.requestsLatency.WithLabelValues(method), time.Since(start))
 }
 
 // refreshTLSFromDB periodically polls the database for the config transaction

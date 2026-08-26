@@ -244,6 +244,7 @@ func (c *Service) RegisterService(s serve.Servers) {
 	servicepb.RegisterCoordinatorServer(s.GRPC, c)
 	healthgrpc.RegisterHealthServer(s.GRPC, c.healthcheck)
 	monitoring.RegisterMonitoringServer(s.HTTP, c.metrics.Provider)
+	serve.RegisterServerMetrics(s.StatsHandler, c.metrics.serverMetrics)
 }
 
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger through a vcservice.
@@ -268,7 +269,7 @@ func (c *Service) GetNextBlockNumberToCommit(
 func (c *Service) GetTransactionsStatus(
 	ctx context.Context,
 	q *committerpb.TxIDsBatch,
-) (*committerpb.TxStatusBatch, error) {
+) (*servicepb.TxStatusBatch, error) {
 	// Error is already wrapped with proper gRPC status code by validatorCommitterAPI.
 	return c.validatorCommitterAPI.getTransactionsStatus(ctx, q)
 }

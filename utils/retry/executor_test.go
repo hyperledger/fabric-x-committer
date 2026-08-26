@@ -135,6 +135,40 @@ func TestExecute(t *testing.T) {
 	}
 }
 
+func TestExecuteWithResultRetries(t *testing.T) {
+	t.Parallel()
+
+	callCount := 0
+	result, err := ExecuteWithResult(t.Context(), &Profile{
+		InitialInterval: time.Millisecond,
+		MaxElapsedTime:  new(time.Second),
+	}, func() (int, error) {
+		callCount++
+		if callCount < 3 {
+			return 0, errors.New("transient error")
+		}
+		return 42, nil
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 42, result)
+	require.Equal(t, 3, callCount)
+}
+
+func TestExecuteWithResultTerminalError(t *testing.T) {
+	t.Parallel()
+
+	terminalErr := errors.New("terminal error")
+	callCount := 0
+	_, err := ExecuteWithResult(t.Context(), nil, func() (int, error) {
+		callCount++
+		return 0, errors.Wrap(terminalErr, "operation failed")
+	}, terminalErr)
+
+	require.ErrorIs(t, err, terminalErr)
+	require.Equal(t, 1, callCount)
+}
+
 // TestExecuteLogLevel is used to manually verify the log output is using the correct
 // method name when logging.
 //

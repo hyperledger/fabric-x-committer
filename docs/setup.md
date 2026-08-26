@@ -17,9 +17,9 @@ brew install go@1.24.3
 
 ```shell
 apt-get update
-wget https://go.dev/dl/go1.24.3.linux-amd64.tar.gz
-tar xvf ./go1.24.3.linux-amd64.tar.gz
-rm ./go1.24.3.linux-amd64.tar.gz
+wget https://go.dev/dl/go1.27.0.linux-amd64.tar.gz
+tar xvf ./go1.27.0.linux-amd64.tar.gz
+rm ./go1.27.0.linux-amd64.tar.gz
 mv ./go/ /usr/local/
 ```
 
