@@ -204,8 +204,8 @@ func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
 	// wait and hold histograms hold positive-duration samples. A histogram average is positive
 	// only once such a sample was recorded, which confirms the instrumentation is wired.
 	m := env.signVerifierManager.config.metrics
-	require.Greater(t, test.GetMetricValue(t, m.verifierFetchValidatedTxsLockWaitSeconds), float64(0))
-	require.Greater(t, test.GetMetricValue(t, m.verifierFetchValidatedTxsLockHoldSeconds), float64(0))
+	require.Positive(t, test.GetMetricValue(t, m.verifierFetchValidatedTxsLockWaitSeconds))
+	require.Positive(t, test.GetMetricValue(t, m.verifierFetchValidatedTxsLockHoldSeconds))
 }
 
 func TestSignatureVerifierManagerWithLargeSize(t *testing.T) {
