@@ -309,7 +309,7 @@ func (vc *validatorCommitter) recoverPendingTransactions(inputTxsNode channel.Wr
 	inputTxsNode.Write(pendingTxs)
 }
 
-func (vc *validatorCommitter) getTxsAndUpdatePolicies(txsStatus *committerpb.TxStatusBatch) (
+func (vc *validatorCommitter) getTxsAndUpdatePolicies(txsStatus *servicepb.TxStatusBatch) (
 	txsNode []*dependencygraph.TransactionNode, untrackedTxIdx []int,
 ) {
 	txsNode = make([]*dependencygraph.TransactionNode, 0, len(txsStatus.Status))

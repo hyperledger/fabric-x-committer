@@ -58,7 +58,7 @@ type (
 		// coordinator session, like incomingBlockToBeCommitted, so the session creates them and
 		// reports their sizes.
 		mappedBlockQueue chan *blockMappingResult
-		statusBatch      chan *committerpb.TxStatusBatch
+		statusBatch      chan *servicepb.TxStatusBatch
 		waitingTxsLimit  int
 	}
 )
@@ -292,7 +292,7 @@ func (r *relay) sendBlocksToCoordinator(
 func receiveStatusFromCoordinator(
 	ctx context.Context,
 	stream servicepb.Coordinator_BlockProcessingClient,
-	statusBatch chan<- *committerpb.TxStatusBatch,
+	statusBatch chan<- *servicepb.TxStatusBatch,
 ) error {
 	txsStatus := channel.NewWriter(ctx, statusBatch)
 	for {
@@ -308,7 +308,7 @@ func receiveStatusFromCoordinator(
 
 func (r *relay) processStatusBatch(
 	ctx context.Context,
-	statusBatch <-chan *committerpb.TxStatusBatch,
+	statusBatch <-chan *servicepb.TxStatusBatch,
 ) error {
 	txsStatus := channel.NewReader(ctx, statusBatch)
 	outgoingCommittedBlock := channel.NewWriter(ctx, r.outgoingCommittedBlock)

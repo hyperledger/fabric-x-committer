@@ -13,6 +13,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/require"
 
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -90,7 +91,7 @@ func TestRelaySessionQueueMetricsAreWired(t *testing.T) {
 	inputBlock <- &common.Block{}
 	mappedBlock <- &blockMappingResult{}
 	mappedBlock <- &blockMappingResult{}
-	statusBatch <- &committerpb.TxStatusBatch{}
+	statusBatch <- &servicepb.TxStatusBatch{}
 
 	test.RequireIntMetricValue(t, 1, m.yetToBeCommittedBlocksQueueSize)
 	test.RequireIntMetricValue(t, 2, m.mappedBlocksQueueSize)

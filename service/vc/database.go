@@ -79,7 +79,7 @@ type (
 	statesToBeCommitted struct {
 		updateWrites namespaceToWrites
 		newWrites    namespaceToWrites
-		batchStatus  *committerpb.TxStatusBatch
+		batchStatus  *servicepb.TxStatusBatch
 		txIDToHeight transactionIDToHeight
 	}
 

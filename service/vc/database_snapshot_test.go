@@ -447,7 +447,7 @@ func TestRejectSnapshotIfPriorNotCheckpointed(t *testing.T) {
 
 			_, err = env.dbEnv.DB.commit(ctx, &statesToBeCommitted{
 				newWrites: groupWritesByNamespace(priorNWs),
-				batchStatus: &committerpb.TxStatusBatch{Status: []*committerpb.TxStatus{
+				batchStatus: &servicepb.TxStatusBatch{Status: []*committerpb.TxStatus{
 					servicepb.NewHeightFromTxRef(prior).WithStatus(prior.TxId, committerpb.Status_COMMITTED),
 				}},
 				txIDToHeight: transactionIDToHeight{TxID(prior.TxId): servicepb.NewHeightFromTxRef(prior)},
@@ -491,7 +491,7 @@ func TestRejectSnapshotIfPriorNotCheckpointedMalformedRecord(t *testing.T) {
 		append([]byte(prior.TxId), []byte("not a valid protobuf message"), 0)
 	info := &statesToBeCommitted{
 		newWrites: groupWritesByNamespace(nws),
-		batchStatus: &committerpb.TxStatusBatch{Status: []*committerpb.TxStatus{
+		batchStatus: &servicepb.TxStatusBatch{Status: []*committerpb.TxStatus{
 			servicepb.NewHeightFromTxRef(prior).WithStatus(prior.TxId, committerpb.Status_COMMITTED),
 		}},
 		txIDToHeight: transactionIDToHeight{TxID(prior.TxId): servicepb.NewHeightFromTxRef(prior)},

@@ -48,7 +48,7 @@ type ValidatorCommitterService struct {
 	toPrepareTxs             chan *servicepb.VcBatch
 	preparedTxs              chan *preparedTransactions
 	validatedTxs             chan *validatedTransactions
-	txsStatus                chan *committerpb.TxStatusBatch
+	txsStatus                chan *servicepb.TxStatusBatch
 	db                       *database
 	metrics                  *perfMetrics
 	minTxBatchSize           int
@@ -82,7 +82,7 @@ func NewValidatorCommitterService(
 	toPrepareTxs := make(chan *servicepb.VcBatch, l.MaxWorkersForPreparer*queueMultiplier)
 	preparedTxs := make(chan *preparedTransactions, l.MaxWorkersForValidator*queueMultiplier)
 	validatedTxs := make(chan *validatedTransactions, queueMultiplier)
-	txsStatus := make(chan *committerpb.TxStatusBatch, l.MaxWorkersForCommitter*queueMultiplier)
+	txsStatus := make(chan *servicepb.TxStatusBatch, l.MaxWorkersForCommitter*queueMultiplier)
 
 	metrics := newVCServiceMetrics()
 	return &ValidatorCommitterService{
@@ -216,7 +216,7 @@ func (vc *ValidatorCommitterService) GetNextBlockNumberToCommit(
 func (vc *ValidatorCommitterService) GetTransactionsStatus(
 	ctx context.Context,
 	query *committerpb.TxIDsBatch,
-) (*committerpb.TxStatusBatch, error) {
+) (*servicepb.TxStatusBatch, error) {
 	if len(query.TxIds) == 0 {
 		return nil, grpcerror.WrapInvalidArgument(errors.New("query is empty"))
 	}
@@ -231,7 +231,7 @@ func (vc *ValidatorCommitterService) GetTransactionsStatus(
 		return nil, grpcerror.WrapInternalError(err)
 	}
 
-	return &committerpb.TxStatusBatch{Status: txIDsStatus}, nil
+	return &servicepb.TxStatusBatch{Status: txIDsStatus}, nil
 }
 
 // GetNamespacePolicies retrieves the policy data from the database.

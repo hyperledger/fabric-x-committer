@@ -24,7 +24,7 @@ type validatorTestEnv struct {
 	v            *transactionValidator
 	preparedTxs  chan *preparedTransactions
 	validatedTxs chan *validatedTransactions
-	txStatus     chan *committerpb.TxStatusBatch
+	txStatus     chan *servicepb.TxStatusBatch
 	dbEnv        *DatabaseTestEnv
 }
 
@@ -40,7 +40,7 @@ func newValidatorTestEnv(t *testing.T, withCommitter bool) *validatorTestEnv {
 	t.Helper()
 	preparedTxs := make(chan *preparedTransactions, 10)
 	validatedTxs := make(chan *validatedTransactions, 10)
-	var txStatus chan *committerpb.TxStatusBatch
+	var txStatus chan *servicepb.TxStatusBatch
 
 	dbEnv := NewDatabaseTestEnv(t)
 	metrics := newVCServiceMetrics()
@@ -50,7 +50,7 @@ func newValidatorTestEnv(t *testing.T, withCommitter bool) *validatorTestEnv {
 	}, nil)
 
 	if withCommitter {
-		txStatus = make(chan *committerpb.TxStatusBatch, 10)
+		txStatus = make(chan *servicepb.TxStatusBatch, 10)
 		c := newCommitter(validatedTxs, txStatus, metrics)
 		test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 			return c.run(ctx, dbEnv.DB, 1)

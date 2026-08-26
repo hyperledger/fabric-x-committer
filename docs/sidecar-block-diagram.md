@@ -99,7 +99,7 @@ This document provides a detailed block diagram of the sidecar service component
 │  │  └────────────────┬───────────────────────────────────────┘ │  │
 │  │                   │                                         │  │
 │  │                   │ statusBatch                             │  │
-│  │                   │ (chan *committerpb.TxStatusBatch)       │  │
+│  │                   │ (chan *servicepb.TxStatusBatch)         │  │
 │  │                   │                                         │  │
 │  │  ┌────────────────▼───────────────────────────────────────┐ │  │
 │  │  │  processStatusBatch()                                  │ │  │

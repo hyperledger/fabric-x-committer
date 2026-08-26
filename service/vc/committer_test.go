@@ -23,7 +23,7 @@ import (
 type committerTestEnv struct {
 	c            *transactionCommitter
 	validatedTxs chan *validatedTransactions
-	txStatus     chan *committerpb.TxStatusBatch
+	txStatus     chan *servicepb.TxStatusBatch
 	dbEnv        *DatabaseTestEnv
 }
 
@@ -41,7 +41,7 @@ type committerTestEnv struct {
 func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 	t.Helper()
 	validatedTxs := make(chan *validatedTransactions, 10)
-	txStatus := make(chan *committerpb.TxStatusBatch, 10)
+	txStatus := make(chan *servicepb.TxStatusBatch, 10)
 
 	dbEnv := NewDatabaseTestEnv(t)
 	metrics := newVCServiceMetrics()
@@ -111,7 +111,7 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 			state{"2", 3, 1},
 			state{"2", 4, 1},
 		),
-		&committerpb.TxStatusBatch{
+		&servicepb.TxStatusBatch{
 			Status: []*committerpb.TxStatus{
 				committerpb.NewTxStatus(committerpb.Status_COMMITTED, string(txs[0]), 1, 1),
 				committerpb.NewTxStatus(committerpb.Status_COMMITTED, string(txs[1]), 1, 2),

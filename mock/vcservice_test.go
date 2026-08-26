@@ -25,7 +25,7 @@ type mockVCTestEnv struct {
 	servers *test.Servers
 	conns   []*grpc.ClientConn
 	clients []servicepb.ValidationAndCommitServiceClient
-	streams []grpc.BidiStreamingClient[servicepb.VcBatch, committerpb.TxStatusBatch]
+	streams []grpc.BidiStreamingClient[servicepb.VcBatch, servicepb.TxStatusBatch]
 }
 
 const testNS = "ns1"
@@ -40,7 +40,7 @@ func newVCTestEnv(t *testing.T, p test.StartServerParameters) *mockVCTestEnv {
 
 	conns := make([]*grpc.ClientConn, len(serverConfig.Configs))
 	clients := make([]servicepb.ValidationAndCommitServiceClient, len(serverConfig.Configs))
-	streams := make([]grpc.BidiStreamingClient[servicepb.VcBatch, committerpb.TxStatusBatch], len(serverConfig.Configs))
+	streams := make([]grpc.BidiStreamingClient[servicepb.VcBatch, servicepb.TxStatusBatch], len(serverConfig.Configs))
 	for i, cfg := range serverConfig.Configs {
 		conn := test.NewInsecureConnection(t, &cfg.GRPC.Endpoint)
 		client := servicepb.NewValidationAndCommitServiceClient(conn)

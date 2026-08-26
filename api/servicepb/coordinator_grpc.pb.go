@@ -38,10 +38,10 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type CoordinatorClient interface {
-	BlockProcessing(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[CoordinatorBatch, committerpb.TxStatusBatch], error)
+	BlockProcessing(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[CoordinatorBatch, TxStatusBatch], error)
 	SetLastCommittedBlockNumber(ctx context.Context, in *BlockRef, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetNextBlockNumberToCommit(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*BlockRef, error)
-	GetTransactionsStatus(ctx context.Context, in *committerpb.TxIDsBatch, opts ...grpc.CallOption) (*committerpb.TxStatusBatch, error)
+	GetTransactionsStatus(ctx context.Context, in *committerpb.TxIDsBatch, opts ...grpc.CallOption) (*TxStatusBatch, error)
 	NoPendingTransactionProcessing(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
 }
 
@@ -53,18 +53,18 @@ func NewCoordinatorClient(cc grpc.ClientConnInterface) CoordinatorClient {
 	return &coordinatorClient{cc}
 }
 
-func (c *coordinatorClient) BlockProcessing(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[CoordinatorBatch, committerpb.TxStatusBatch], error) {
+func (c *coordinatorClient) BlockProcessing(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[CoordinatorBatch, TxStatusBatch], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &Coordinator_ServiceDesc.Streams[0], Coordinator_BlockProcessing_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[CoordinatorBatch, committerpb.TxStatusBatch]{ClientStream: stream}
+	x := &grpc.GenericClientStream[CoordinatorBatch, TxStatusBatch]{ClientStream: stream}
 	return x, nil
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Coordinator_BlockProcessingClient = grpc.BidiStreamingClient[CoordinatorBatch, committerpb.TxStatusBatch]
+type Coordinator_BlockProcessingClient = grpc.BidiStreamingClient[CoordinatorBatch, TxStatusBatch]
 
 func (c *coordinatorClient) SetLastCommittedBlockNumber(ctx context.Context, in *BlockRef, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -86,9 +86,9 @@ func (c *coordinatorClient) GetNextBlockNumberToCommit(ctx context.Context, in *
 	return out, nil
 }
 
-func (c *coordinatorClient) GetTransactionsStatus(ctx context.Context, in *committerpb.TxIDsBatch, opts ...grpc.CallOption) (*committerpb.TxStatusBatch, error) {
+func (c *coordinatorClient) GetTransactionsStatus(ctx context.Context, in *committerpb.TxIDsBatch, opts ...grpc.CallOption) (*TxStatusBatch, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(committerpb.TxStatusBatch)
+	out := new(TxStatusBatch)
 	err := c.cc.Invoke(ctx, Coordinator_GetTransactionsStatus_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -110,10 +110,10 @@ func (c *coordinatorClient) NoPendingTransactionProcessing(ctx context.Context, 
 // All implementations must embed UnimplementedCoordinatorServer
 // for forward compatibility.
 type CoordinatorServer interface {
-	BlockProcessing(grpc.BidiStreamingServer[CoordinatorBatch, committerpb.TxStatusBatch]) error
+	BlockProcessing(grpc.BidiStreamingServer[CoordinatorBatch, TxStatusBatch]) error
 	SetLastCommittedBlockNumber(context.Context, *BlockRef) (*emptypb.Empty, error)
 	GetNextBlockNumberToCommit(context.Context, *emptypb.Empty) (*BlockRef, error)
-	GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch) (*committerpb.TxStatusBatch, error)
+	GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch) (*TxStatusBatch, error)
 	NoPendingTransactionProcessing(context.Context, *emptypb.Empty) (*wrapperspb.BoolValue, error)
 	mustEmbedUnimplementedCoordinatorServer()
 }
@@ -125,7 +125,7 @@ type CoordinatorServer interface {
 // pointer dereference when methods are called.
 type UnimplementedCoordinatorServer struct{}
 
-func (UnimplementedCoordinatorServer) BlockProcessing(grpc.BidiStreamingServer[CoordinatorBatch, committerpb.TxStatusBatch]) error {
+func (UnimplementedCoordinatorServer) BlockProcessing(grpc.BidiStreamingServer[CoordinatorBatch, TxStatusBatch]) error {
 	return status.Error(codes.Unimplemented, "method BlockProcessing not implemented")
 }
 func (UnimplementedCoordinatorServer) SetLastCommittedBlockNumber(context.Context, *BlockRef) (*emptypb.Empty, error) {
@@ -134,7 +134,7 @@ func (UnimplementedCoordinatorServer) SetLastCommittedBlockNumber(context.Contex
 func (UnimplementedCoordinatorServer) GetNextBlockNumberToCommit(context.Context, *emptypb.Empty) (*BlockRef, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetNextBlockNumberToCommit not implemented")
 }
-func (UnimplementedCoordinatorServer) GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch) (*committerpb.TxStatusBatch, error) {
+func (UnimplementedCoordinatorServer) GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch) (*TxStatusBatch, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetTransactionsStatus not implemented")
 }
 func (UnimplementedCoordinatorServer) NoPendingTransactionProcessing(context.Context, *emptypb.Empty) (*wrapperspb.BoolValue, error) {
@@ -162,11 +162,11 @@ func RegisterCoordinatorServer(s grpc.ServiceRegistrar, srv CoordinatorServer) {
 }
 
 func _Coordinator_BlockProcessing_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(CoordinatorServer).BlockProcessing(&grpc.GenericServerStream[CoordinatorBatch, committerpb.TxStatusBatch]{ServerStream: stream})
+	return srv.(CoordinatorServer).BlockProcessing(&grpc.GenericServerStream[CoordinatorBatch, TxStatusBatch]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Coordinator_BlockProcessingServer = grpc.BidiStreamingServer[CoordinatorBatch, committerpb.TxStatusBatch]
+type Coordinator_BlockProcessingServer = grpc.BidiStreamingServer[CoordinatorBatch, TxStatusBatch]
 
 func _Coordinator_SetLastCommittedBlockNumber_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(BlockRef)

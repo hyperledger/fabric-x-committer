@@ -87,7 +87,7 @@ type queues struct {
 	// writes them while a scrape may be reading.
 	relayInputBlock  atomic.Pointer[chan *common.Block]
 	relayMappedBlock atomic.Pointer[chan *blockMappingResult]
-	relayStatusBatch atomic.Pointer[chan *committerpb.TxStatusBatch]
+	relayStatusBatch atomic.Pointer[chan *servicepb.TxStatusBatch]
 }
 
 func newQueues(bufferSize int) *queues {
@@ -106,7 +106,7 @@ func newQueues(bufferSize int) *queues {
 func (q *queues) reset() {
 	inputBlock := make(chan *common.Block, q.bufferSize)
 	mappedBlock := make(chan *blockMappingResult, q.bufferSize)
-	statusBatch := make(chan *committerpb.TxStatusBatch, q.bufferSize)
+	statusBatch := make(chan *servicepb.TxStatusBatch, q.bufferSize)
 	q.relayInputBlock.Store(&inputBlock)
 	q.relayMappedBlock.Store(&mappedBlock)
 	q.relayStatusBatch.Store(&statusBatch)

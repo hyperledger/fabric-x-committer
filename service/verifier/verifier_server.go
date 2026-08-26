@@ -11,7 +11,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
-	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
@@ -151,7 +150,7 @@ func (s *Server) handleOutputs(
 		promutil.AddToCounter(s.metrics.verifierServerTxs.Output, len(outputs))
 		promutil.AddToGauge(s.metrics.activeRequests, -len(outputs))
 		logger.Debugf("Received output: %v", output)
-		rpcErr := stream.Send(&committerpb.TxStatusBatch{Status: outputs})
+		rpcErr := stream.Send(&servicepb.TxStatusBatch{Status: outputs})
 		if rpcErr != nil {
 			return errors.Wrap(rpcErr, "stream ended")
 		}

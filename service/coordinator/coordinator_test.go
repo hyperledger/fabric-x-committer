@@ -327,13 +327,13 @@ func TestNoPendingTransactionProcessing(t *testing.T) {
 	// counted in the same unit as committed statuses.
 	env.coordinator.numTxsInProgress.Store(7)
 
-	require.True(t, env.coordinator.queues.vcServiceToCoordinatorTxStatus.write(t.Context(), &committerpb.TxStatusBatch{
+	require.True(t, env.coordinator.queues.vcServiceToCoordinatorTxStatus.write(t.Context(), &servicepb.TxStatusBatch{
 		Status: []*committerpb.TxStatus{
 			committerpb.NewTxStatus(committerpb.Status_COMMITTED, "queued-1", 2, 0),
 			committerpb.NewTxStatus(committerpb.Status_COMMITTED, "queued-2", 2, 1),
 		},
 	}))
-	require.True(t, env.coordinator.queues.vcServiceToCoordinatorTxStatus.write(t.Context(), &committerpb.TxStatusBatch{
+	require.True(t, env.coordinator.queues.vcServiceToCoordinatorTxStatus.write(t.Context(), &servicepb.TxStatusBatch{
 		Status: []*committerpb.TxStatus{
 			committerpb.NewTxStatus(committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD, "queued-rejected", 2, 2),
 			committerpb.NewTxStatus(committerpb.Status_COMMITTED, "queued-4", 2, 3),
@@ -598,7 +598,7 @@ func TestQueueSize(t *testing.T) {
 	q.depGraphToSigVerifierFreeTxs <- dependencygraph.TxNodeBatch{}
 	q.sigVerifierToVCServiceValidatedTxs <- dependencygraph.TxNodeBatch{}
 	q.vcServiceToDepGraphValidatedTxs <- dependencygraph.TxNodeBatch{}
-	require.True(t, q.vcServiceToCoordinatorTxStatus.write(t.Context(), &committerpb.TxStatusBatch{}))
+	require.True(t, q.vcServiceToCoordinatorTxStatus.write(t.Context(), &servicepb.TxStatusBatch{}))
 
 	// The gauges report the queue length when scraped, so no sampling interval to wait for.
 	requireQueueSizes(1)

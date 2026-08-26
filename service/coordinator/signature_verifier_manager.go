@@ -297,7 +297,7 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 }
 
 func (sv *signatureVerifier) fetchAndDeleteTxBeingValidated(
-	response *committerpb.TxStatusBatch,
+	response *servicepb.TxStatusBatch,
 ) dependencygraph.TxNodeBatch {
 	validatedTxs := dependencygraph.TxNodeBatch(make([]*dependencygraph.TransactionNode, 0, len(response.Status)))
 	// TODO: introduce metrics to measure the lock wait/holding duration.

@@ -146,7 +146,7 @@ At the boundary: validate input, log full errors, convert every returned error t
 // service/vc/validator_committer_service.go:210
 func (vc *ValidatorCommitterService) GetTransactionsStatus(
 	ctx context.Context, query *committerpb.TxIDsBatch,
-) (*committerpb.TxStatusBatch, error) {
+) (*servicepb.TxStatusBatch, error) {
 	if len(query.TxIds) == 0 {
 		return nil, grpcerror.WrapInvalidArgument(errors.New("query is empty"))
 	}
@@ -155,7 +155,7 @@ func (vc *ValidatorCommitterService) GetTransactionsStatus(
 		logger.Errorf("%+v", err)
 		return nil, grpcerror.WrapInternalError(err)
 	}
-	return &committerpb.TxStatusBatch{Status: txIDsStatus}, nil
+	return &servicepb.TxStatusBatch{Status: txIDsStatus}, nil
 }
 ```
 

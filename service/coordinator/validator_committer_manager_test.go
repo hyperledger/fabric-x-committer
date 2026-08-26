@@ -390,7 +390,7 @@ func TestValidatorCommitterAddAndRecoverPendingTxs(t *testing.T) {
 	test.RequireIntMetricValue(t, len(txsNode), vc.metrics.vcs.retriedTotal)
 }
 
-func (e *vcMgrTestEnv) readOutputTxsStatus(t *testing.T) *committerpb.TxStatusBatch {
+func (e *vcMgrTestEnv) readOutputTxsStatus(t *testing.T) *servicepb.TxStatusBatch {
 	t.Helper()
 	batch, ok := e.outputTxsStatus.read(t.Context())
 	require.True(t, ok)
