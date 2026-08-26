@@ -27,7 +27,6 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/mock"
-	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -578,38 +577,22 @@ func TestCoordinatorServiceDependentOrderedTxs(t *testing.T) {
 	require.Less(t, blindV2, updateV3, "v2 writer must follow blind-write; order: %v", order)
 }
 
-func TestQueueSize(t *testing.T) {
+// TestStatusQueueSize covers the one queue gauge the coordinator reports itself; each service
+// manager reports its own input and output queues (see TestManagerQueueSizeMetrics).
+func TestStatusQueueSize(t *testing.T) {
 	t.Parallel()
 	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 2, numVcService: 2})
 
-	q := env.coordinator.queues
-	m := env.coordinator.metrics
-	requireQueueSizes := func(expected int) {
-		test.RequireIntMetricValue(t, expected, m.verifiers.inputQueueSize)
-		test.RequireIntMetricValue(t, expected, m.verifiers.outputQueueSize)
-		test.RequireIntMetricValue(t, expected, m.vcs.inputQueueSize)
-		test.RequireIntMetricValue(t, expected, m.vcs.outputQueueSize)
-		test.RequireIntMetricValue(t, expected, m.vcserviceOutputTxStatusBatchQueueSize)
-	}
+	q := env.coordinator.queues.vcServiceToCoordinatorTxStatus
+	m := env.coordinator.metrics.vcserviceOutputTxStatusBatchQueueSize
+	test.RequireIntMetricValue(t, 0, m)
 
-	requireQueueSizes(0)
+	require.True(t, q.write(t.Context(), &committerpb.TxStatusBatch{}))
+	test.RequireIntMetricValue(t, 1, m)
 
-	// The verifier's output queue is the VC's input queue, so one batch covers both.
-	q.depGraphToSigVerifierFreeTxs <- dependencygraph.TxNodeBatch{}
-	q.sigVerifierToVCServiceValidatedTxs <- dependencygraph.TxNodeBatch{}
-	q.vcServiceToDepGraphValidatedTxs <- dependencygraph.TxNodeBatch{}
-	require.True(t, q.vcServiceToCoordinatorTxStatus.write(t.Context(), &committerpb.TxStatusBatch{}))
-
-	// The gauges report the queue length when scraped, so no sampling interval to wait for.
-	requireQueueSizes(1)
-
-	<-q.depGraphToSigVerifierFreeTxs
-	<-q.sigVerifierToVCServiceValidatedTxs
-	<-q.vcServiceToDepGraphValidatedTxs
-	_, ok := q.vcServiceToCoordinatorTxStatus.read(t.Context())
+	_, ok := q.read(t.Context())
 	require.True(t, ok)
-
-	requireQueueSizes(0)
+	test.RequireIntMetricValue(t, 0, m)
 }
 
 func TestCoordinatorRecovery(t *testing.T) {

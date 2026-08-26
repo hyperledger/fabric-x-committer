@@ -26,7 +26,6 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/coordinator/dependencygraph"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
 	"github.com/hyperledger/fabric-x-committer/utils"
-	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -35,13 +34,14 @@ import (
 )
 
 type vcMgrTestEnv struct {
-	validatorCommitterManager *validatorCommitterManager
+	validatorCommitterManager *serviceManager
 	inputTxs                  chan dependencygraph.TxNodeBatch
 	outputTxs                 chan dependencygraph.TxNodeBatch
 	outputTxsStatus           *txStatusQueue
 	mockVcService             *mock.VcService
 	mockVCGrpcServers         *test.Servers
 	sigVerTestEnv             *svMgrTestEnv
+	metrics                   *perfMetrics
 }
 
 func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
@@ -64,7 +64,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 			incomingTxsForValidationCommit: inputTxs,
 			outgoingValidatedTxsNode:       outputTxs,
 			outgoingTxsStatus:              outputTxsStatus,
-			metrics:                        metrics,
+			metrics:                        metrics.vcs,
 			policyMgr:                      svEnv.policyManager,
 		},
 	)
@@ -74,11 +74,9 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 		assert.NoError(t, err)
 		return nil
 	}, nil)
-	// Waiting for all the connections ensures the validatorCommitter slice is fully populated,
-	// as newSvMgrTestEnv does for the verifiers.
-	test.WaitForConnections(
-		t, metrics.Provider, "coordinator_vcservice_connection_status", numVCService,
-	)
+
+	// Ensure the manager creates all the workers.
+	mock.RequireStreams(t, vcs, numVCService)
 
 	return &vcMgrTestEnv{
 		validatorCommitterManager: vcm,
@@ -88,6 +86,7 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 		mockVcService:             vcs,
 		mockVCGrpcServers:         servers,
 		sigVerTestEnv:             svEnv,
+		metrics:                   metrics,
 	}
 }
 
@@ -96,11 +95,11 @@ func (e *vcMgrTestEnv) requireConnectionMetrics(
 	vcIndex, expectedConnStatus, expectedConnFailureTotal int,
 ) {
 	t.Helper()
-	require.Less(t, vcIndex, len(e.validatorCommitterManager.validatorCommitter))
-	sv := e.validatorCommitterManager.validatorCommitter[vcIndex]
+	conns := allActiveConnections(e.validatorCommitterManager)
+	require.Less(t, vcIndex, len(conns))
 	test.RequireConnectionMetrics(
-		t, sv.conn.CanonicalTarget(),
-		sv.metrics.vcs.connection,
+		t, conns[vcIndex].CanonicalTarget(),
+		e.metrics.vcs.connection,
 		test.ExpectedConn{Status: expectedConnStatus, FailureTotal: expectedConnFailureTotal},
 	)
 }
@@ -108,7 +107,7 @@ func (e *vcMgrTestEnv) requireConnectionMetrics(
 func (e *vcMgrTestEnv) requireRetriedTxsTotal(t *testing.T, expectedRetriedTxsTotal int) {
 	t.Helper()
 	test.EventuallyIntMetric(
-		t, expectedRetriedTxsTotal, e.validatorCommitterManager.config.metrics.vcs.retriedTotal,
+		t, expectedRetriedTxsTotal, e.metrics.vcs.retriedTotal,
 		5*time.Second, 250*time.Millisecond,
 	)
 }
@@ -117,8 +116,8 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 	t.Parallel()
 
 	ensureZeroWaitingTxs := func(env *vcMgrTestEnv) {
-		for _, vc := range env.validatorCommitterManager.validatorCommitter {
-			require.Zero(t, vc.txBeingValidated.Count())
+		for _, count := range allPendingTxCount(env.validatorCommitterManager) {
+			require.Zero(t, count)
 		}
 	}
 
@@ -136,7 +135,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 		test.RequireProtoElementsMatch(t, expectedTxsStatus, outTxsStatus.Status)
 
 		test.EventuallyIntMetric(
-			t, 5, env.validatorCommitterManager.config.metrics.vcs.processedTotal,
+			t, 5, env.metrics.vcs.processedTotal,
 			2*time.Second, 100*time.Millisecond,
 		)
 
@@ -169,7 +168,7 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 
 		test.EventuallyIntMetric(
 			t, 5+totalBlocks*txPerBlock,
-			env.validatorCommitterManager.config.metrics.vcs.processedTotal,
+			env.metrics.vcs.processedTotal,
 			2*time.Second, 100*time.Millisecond,
 		)
 
@@ -180,8 +179,8 @@ func TestValidatorCommitterManagerX(t *testing.T) {
 		t.Parallel()
 		env := newVcMgrTestEnv(t, 1)
 
-		// The first batch of a stream goes through splitAndSendToVC, which already sends nothing
-		// for an empty batch, so send a real batch first to get past that path.
+		// A real batch first, so the empty batch below is observed on the plain send path rather
+		// than on the first-batch path, which splits a batch by block.
 		first, firstStatus := createInputTxsNodeForTest(t, 2, 0, 1)
 		env.inputTxs <- first
 		require.ElementsMatch(t, first, <-env.outputTxs)
@@ -322,9 +321,10 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	txBatch, expectedTxsStatus := createInputTxsNodeForTest(t, numTxs, 0, 0)
 	env.inputTxs <- txBatch
 
-	require.Eventually(t, func() bool {
-		count := env.validatorCommitterManager.validatorCommitter[0].txBeingValidated.Count()
-		return count == numTxs-6
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		pendingCounts := allPendingTxCount(env.validatorCommitterManager)
+		require.NotEmpty(ct, pendingCounts)
+		require.Equal(ct, numTxs-6, pendingCounts[0])
 	}, 4*time.Second, 100*time.Millisecond)
 
 	env.mockVCGrpcServers.ServersStop[0]()
@@ -347,7 +347,7 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	}
 	test.RequireProtoElementsMatch(t, expectedTxsStatus, actualTxsStatus)
 
-	txProcessedTotalMetric := env.validatorCommitterManager.config.metrics.vcs.processedTotal
+	txProcessedTotalMetric := env.metrics.vcs.processedTotal
 	txTotal := test.GetIntMetricValue(t, txProcessedTotalMetric)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
@@ -364,30 +364,6 @@ func TestValidatorCommitterManagerRecovery(t *testing.T) {
 	require.Never(t, func() bool {
 		return test.GetIntMetricValue(t, txProcessedTotalMetric) > txTotal
 	}, 2*time.Second, 1*time.Second)
-}
-
-// TestValidatorCommitterAddAndRecoverPendingTxs covers the tracking invariant that
-// receiveStatusAndForwardToOutput depends on when forwarding a result fails: every transaction
-// returned to txBeingValidated must be recoverable.
-func TestValidatorCommitterAddAndRecoverPendingTxs(t *testing.T) {
-	t.Parallel()
-	// The connection is unused: neither call below touches the stream.
-	vc := newValidatorCommitter(nil, newTestPerfMetrics(), newPolicyManager())
-
-	txsNode := dependencygraph.TxNodeBatch{
-		{VCTx: &servicepb.VcTx{Ref: committerpb.NewTxRef("tx 1", 1, 0)}},
-		{VCTx: &servicepb.VcTx{Ref: committerpb.NewTxRef("tx 2", 2, 0)}},
-		{VCTx: &servicepb.VcTx{Ref: committerpb.NewTxRef("tx 3", 1, 1)}},
-	}
-	vc.addTxsBeingValidated(txsNode)
-	require.Equal(t, len(txsNode), vc.txBeingValidated.Count())
-
-	recovered := make(chan dependencygraph.TxNodeBatch, 1)
-	vc.recoverPendingTransactions(channel.NewWriter(t.Context(), recovered))
-
-	require.ElementsMatch(t, txsNode, <-recovered)
-	require.Zero(t, vc.txBeingValidated.Count())
-	test.RequireIntMetricValue(t, len(txsNode), vc.metrics.vcs.retriedTotal)
 }
 
 func (e *vcMgrTestEnv) readOutputTxsStatus(t *testing.T) *committerpb.TxStatusBatch {

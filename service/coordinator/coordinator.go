@@ -38,8 +38,8 @@ type (
 	Service struct {
 		servicepb.UnimplementedCoordinatorServer
 		dependencyMgr         *dependencygraph.Manager
-		signatureVerifierMgr  *signatureVerifierManager
-		validatorCommitterMgr *validatorCommitterManager
+		signatureVerifierMgr  *serviceManager
+		validatorCommitterMgr *serviceManager
 		validatorCommitterAPI *validatorCommitterAPI
 		policyMgr             *policyManager
 		queues                *channels
@@ -143,12 +143,12 @@ func NewCoordinatorService(c *Config) *Service {
 
 	policyMgr := newPolicyManager()
 
-	svMgr := newSignatureVerifierManager(
-		&signVerifierManagerConfig{
+	svMgr := newVerifierManager(
+		&verifierManagerParams{
 			clientConfig:             &c.Verifier,
 			incomingTxsForValidation: queues.depGraphToSigVerifierFreeTxs,
 			outgoingValidatedTxs:     queues.sigVerifierToVCServiceValidatedTxs,
-			metrics:                  metrics,
+			metrics:                  metrics.verifiers,
 			policyManager:            policyMgr,
 		},
 	)
@@ -159,7 +159,7 @@ func NewCoordinatorService(c *Config) *Service {
 			incomingTxsForValidationCommit: queues.sigVerifierToVCServiceValidatedTxs,
 			outgoingValidatedTxsNode:       queues.vcServiceToDepGraphValidatedTxs,
 			outgoingTxsStatus:              queues.vcServiceToCoordinatorTxStatus,
-			metrics:                        metrics,
+			metrics:                        metrics.vcs,
 			policyMgr:                      policyMgr,
 		},
 	)
