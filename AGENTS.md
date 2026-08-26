@@ -15,7 +15,7 @@ The system consists of four main microservices that communicate via gRPC:
 
 ### Key Technologies
 
-- **Language**: Go 1.26
+- **Language**: Go 1.27
 - **Communication**: gRPC with Protocol Buffers
 - **Database**: PostgreSQL or YugabyteDB (for state storage)
 - **Testing**: Standard Go testing with binaries integration tests and Docker-based integration tests
@@ -25,7 +25,7 @@ The system consists of four main microservices that communicate via gRPC:
 
 ### Prerequisites
 
-- Go 1.26 or later
+- Go 1.27 or later
 - Docker (for integration tests and containerized builds)
 - PostgreSQL or YugabyteDB (for tests requiring database)
 
@@ -67,7 +67,7 @@ authoritative, detailed source for these conventions and keeps them in one place
   functions it calls (caller before callee).
 - **Reuse `utils/` and `fabric-x-common` helpers**; run `make lint` (or `make lint-go`).
 
-See the skill for concurrency (`errgroup` + `utils/channel`), Go 1.26 idioms,
+See the skill for concurrency (`errgroup` + `utils/channel`), Go 1.27 idioms,
 service/config/metrics structure, and the full linter cheat sheet.
 
 ### Performance Considerations

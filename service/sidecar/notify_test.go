@@ -34,6 +34,7 @@ type notifierWrapper struct {
 
 func (w *notifierWrapper) RegisterService(s serve.Servers) {
 	committerpb.RegisterNotifierServer(s.GRPC, w.notifier)
+	serve.RegisterServerMetrics(s.StatsHandler, w.metrics.serverMetrics)
 }
 
 func BenchmarkNotifier(b *testing.B) {
@@ -335,8 +336,11 @@ func TestNotifierStream(t *testing.T) {
 	stream, err := env.client.OpenNotificationStream(t.Context())
 	require.NoError(t, err)
 
-	// Verify active stream metric
-	test.EventuallyIntMetric(t, 1, m.notifierActiveStreams, 5*time.Second, 100*time.Millisecond)
+	// Verify the active-stream gauge for the method we opened (labelled by full gRPC method).
+	activeStreams := m.serverMetrics.ActiveStreams.WithLabelValues(
+		committerpb.Notifier_OpenNotificationStream_FullMethodName,
+	)
+	test.EventuallyIntMetric(t, 1, activeStreams, 5*time.Second, 100*time.Millisecond)
 
 	t.Log("Submitting requests")
 	err = stream.Send(&committerpb.NotificationRequest{
@@ -570,9 +574,10 @@ func newNotifierTestEnv(tb testing.TB, numOfClients int) *notifierTestEnv {
 
 func newNotifierTestEnvWithConfig(tb testing.TB, numOfClients int, conf *NotificationServiceConfig) *notifierTestEnv {
 	tb.Helper()
-	metrics := newPerformanceMetrics()
+	q := newQueues(100)
+	metrics := newPerformanceMetrics(q)
 	env := &notifierTestEnv{
-		n:              newNotifier(100, conf, metrics),
+		n:              newNotifier(100, conf, metrics, q),
 		metrics:        metrics,
 		responseQueues: make([]channel.ReaderWriter[*committerpb.NotificationResponse], numOfClients),
 	}

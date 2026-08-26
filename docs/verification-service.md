@@ -141,8 +141,7 @@ The Verification Service exposes several Prometheus metrics to monitor its perfo
    - `verifier_server_tx_in`: Counter for incoming transactions.
    - `verifier_server_tx_out`: Counter for outgoing verification results.
 
-2. **Active Streams and Requests**:
-   - `verifier_server_grpc_active_streams`: Gauge for the number of active gRPC streams.
+2. **Active Requests**:
    - `verifier_server_parallel_executor_active_requests`: Gauge for the number of active verification requests.
 
 These metrics provide insights into the service's performance and can be used for capacity planning and troubleshooting.

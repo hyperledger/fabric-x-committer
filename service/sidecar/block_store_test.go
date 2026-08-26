@@ -36,7 +36,7 @@ func TestBlockStoreAndDelivery(t *testing.T) {
 	t.Parallel()
 	ledgerPath := t.TempDir()
 
-	metrics := newPerformanceMetrics()
+	metrics := newPerformanceMetrics(newQueues(10))
 	bs, err := newBlockStore(ledgerPath, 0, metrics)
 	require.NoError(t, err)
 	t.Cleanup(bs.close)

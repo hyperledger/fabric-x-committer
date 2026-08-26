@@ -298,7 +298,7 @@ func (sv *signatureVerifierClient) receiveStatusAndForwardToOutput(
 }
 
 func (sv *signatureVerifierClient) fetchAndDeleteTxBeingValidated(
-	response *committerpb.TxStatusBatch,
+	response *servicepb.TxStatusBatch,
 ) dependencygraph.TxNodeBatch {
 	validatedTxs := dependencygraph.TxNodeBatch(make([]*dependencygraph.TransactionNode, 0, len(response.Status)))
 

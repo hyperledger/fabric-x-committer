@@ -16,6 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
@@ -28,7 +29,7 @@ type transactionCommitter struct {
 	incomingValidatedTransactions <-chan *validatedTransactions
 	// outgoingTransactionsStatus is the channel to which the committer sends the status of the transactions
 	// so that the client can be notified
-	outgoingTransactionsStatus chan<- *committerpb.TxStatusBatch
+	outgoingTransactionsStatus chan<- *servicepb.TxStatusBatch
 
 	metrics *perfMetrics
 }
@@ -36,7 +37,7 @@ type transactionCommitter struct {
 // newCommitter creates a new transactionCommitter.
 func newCommitter(
 	validatedTxs <-chan *validatedTransactions,
-	txsStatus chan<- *committerpb.TxStatusBatch,
+	txsStatus chan<- *servicepb.TxStatusBatch,
 	metrics *perfMetrics,
 ) *transactionCommitter {
 	logger.Info("Initializing new committer")
@@ -95,7 +96,7 @@ func (c *transactionCommitter) commitTransactions(
 	ctx context.Context,
 	db *database,
 	vTx *validatedTransactions,
-) (*committerpb.TxStatusBatch, error) {
+) (*servicepb.TxStatusBatch, error) {
 	// We eliminate blind writes outside the retry loop to avoid doing it more than once.
 	if err := c.populateVersionsAndCategorizeBlindWrites(ctx, db, vTx); err != nil {
 		return nil, err
@@ -179,7 +180,7 @@ func (c *transactionCommitter) commitTransactions(
 }
 
 // prepareStatusForCommit construct transaction status.
-func prepareStatusForCommit(vTx *validatedTransactions) *committerpb.TxStatusBatch {
+func prepareStatusForCommit(vTx *validatedTransactions) *servicepb.TxStatusBatch {
 	// We first keep all the TX statuses in a map to ensure we only report once per ID.
 	sz := len(vTx.validTxNonBlindWrites) + len(vTx.validTxBlindWrites) + len(vTx.newWrites) + len(vTx.invalidTxStatus)
 	txIDs := make(map[TxID]committerpb.Status, sz)
@@ -194,7 +195,7 @@ func prepareStatusForCommit(vTx *validatedTransactions) *committerpb.TxStatusBat
 	for txID, status := range txIDs {
 		statuses = append(statuses, vTx.txIDToHeight[txID].WithStatus(string(txID), status))
 	}
-	return &committerpb.TxStatusBatch{Status: statuses}
+	return &servicepb.TxStatusBatch{Status: statuses}
 }
 
 // populateVersionsAndCategorizeBlindWrites fetches the current version of the blind-writes keys, and assigns them
@@ -237,7 +238,7 @@ func (c *transactionCommitter) populateVersionsAndCategorizeBlindWrites(
 func (c *transactionCommitter) setCorrectStatusForDuplicateTxID(
 	ctx context.Context,
 	db *database,
-	txsStatus *committerpb.TxStatusBatch,
+	txsStatus *servicepb.TxStatusBatch,
 	txIDToHeight transactionIDToHeight,
 ) error {
 	var dupTxIDs [][]byte

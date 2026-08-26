@@ -50,9 +50,10 @@ type (
 		HTTP            *http.ServeMux
 		GrpcTLSProvider *TLSProvider
 
-		// ConnStatsHandler tracks the number of open gRPC connections. A service reports the
-		// count by calling RegisterConnStatHandler with a gauge from its own monitoring provider.
-		ConnStatsHandler *ConnStatsHandler
+		// StatsHandler records server-side connection and RPC-level metrics from the gRPC
+		// stats callbacks.
+		// Services opt in by registering via RegisterServerMetrics.
+		StatsHandler *ServerStatsHandler
 
 		httpServer *http.Server
 
@@ -137,9 +138,9 @@ func NewServers(ctx context.Context, conf *Config) (s Servers, err error) {
 		return s, errors.Wrap(err, "failed to create TLS provider")
 	}
 
-	s.ConnStatsHandler = &ConnStatsHandler{}
+	s.StatsHandler = &ServerStatsHandler{}
 
-	s.GRPC, err = newGRPCServer(&conf.GRPC, s.GrpcTLSProvider, s.ConnStatsHandler)
+	s.GRPC, err = newGRPCServer(&conf.GRPC, s.GrpcTLSProvider, s.StatsHandler)
 	if err != nil {
 		return s, errors.Wrapf(err, "failed creating GRPC server")
 	}
@@ -263,11 +264,11 @@ func newHTTPListener(ctx context.Context, c *ServerConfig, tlsConfig *tls.Config
 }
 
 // newGRPCServer instantiate a [grpc.Server].
-func newGRPCServer(c *ServerConfig, tlsProvider *TLSProvider, connStats *ConnStatsHandler) (*grpc.Server, error) {
+func newGRPCServer(c *ServerConfig, tlsProvider *TLSProvider, statsHandler *ServerStatsHandler) (*grpc.Server, error) {
 	opts := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(connection.MaxMsgSize),
 		grpc.MaxSendMsgSize(connection.MaxMsgSize),
-		grpc.StatsHandler(connStats),
+		grpc.StatsHandler(statsHandler),
 	}
 	opts = append(opts, grpc.Creds(newCredentials(tlsProvider.GetServerTLSCredentials())))
 

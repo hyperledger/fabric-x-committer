@@ -13,6 +13,8 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/require"
+
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 )
 
 func TestTxStatusQueueCount(t *testing.T) {
@@ -136,10 +138,10 @@ func TestTxStatusQueueDrain(t *testing.T) {
 	})
 }
 
-func txStatusBatch(txIDs ...string) *committerpb.TxStatusBatch {
+func txStatusBatch(txIDs ...string) *servicepb.TxStatusBatch {
 	statuses := make([]*committerpb.TxStatus, len(txIDs))
 	for i, txID := range txIDs {
 		statuses[i] = committerpb.NewTxStatus(committerpb.Status_COMMITTED, txID, 1, uint32(i))
 	}
-	return &committerpb.TxStatusBatch{Status: statuses}
+	return &servicepb.TxStatusBatch{Status: statuses}
 }

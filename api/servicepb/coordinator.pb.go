@@ -89,12 +89,12 @@ const file_api_servicepb_coordinator_proto_rawDesc = "" +
 	"\x1fapi/servicepb/coordinator.proto\x12\tservicepb\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1egoogle/protobuf/wrappers.proto\x1a\x1capi/committerpb/status.proto\x1a\x19api/committerpb/ref.proto\x1a\x1aapi/servicepb/common.proto\"m\n" +
 	"\x10CoordinatorBatch\x12&\n" +
 	"\x03txs\x18\x01 \x03(\v2\x14.servicepb.TxWithRefR\x03txs\x121\n" +
-	"\brejected\x18\x02 \x03(\v2\x15.committerpb.TxStatusR\brejected2\x9c\x03\n" +
-	"\vCoordinator\x12N\n" +
-	"\x0fBlockProcessing\x12\x1b.servicepb.CoordinatorBatch\x1a\x1a.committerpb.TxStatusBatch(\x010\x01\x12L\n" +
+	"\brejected\x18\x02 \x03(\v2\x15.committerpb.TxStatusR\brejected2\x98\x03\n" +
+	"\vCoordinator\x12L\n" +
+	"\x0fBlockProcessing\x12\x1b.servicepb.CoordinatorBatch\x1a\x18.servicepb.TxStatusBatch(\x010\x01\x12L\n" +
 	"\x1bSetLastCommittedBlockNumber\x12\x13.servicepb.BlockRef\x1a\x16.google.protobuf.Empty\"\x00\x12K\n" +
-	"\x1aGetNextBlockNumberToCommit\x12\x16.google.protobuf.Empty\x1a\x13.servicepb.BlockRef\"\x00\x12L\n" +
-	"\x15GetTransactionsStatus\x12\x17.committerpb.TxIDsBatch\x1a\x1a.committerpb.TxStatusBatch\x12T\n" +
+	"\x1aGetNextBlockNumberToCommit\x12\x16.google.protobuf.Empty\x1a\x13.servicepb.BlockRef\"\x00\x12J\n" +
+	"\x15GetTransactionsStatus\x12\x17.committerpb.TxIDsBatch\x1a\x18.servicepb.TxStatusBatch\x12T\n" +
 	"\x1eNoPendingTransactionProcessing\x12\x16.google.protobuf.Empty\x1a\x1a.google.protobuf.BoolValueB9Z7github.com/hyperledger/fabric-x-committer/api/servicepbb\x06proto3"
 
 var (
@@ -111,14 +111,14 @@ func file_api_servicepb_coordinator_proto_rawDescGZIP() []byte {
 
 var file_api_servicepb_coordinator_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_api_servicepb_coordinator_proto_goTypes = []any{
-	(*CoordinatorBatch)(nil),          // 0: servicepb.CoordinatorBatch
-	(*TxWithRef)(nil),                 // 1: servicepb.TxWithRef
-	(*committerpb.TxStatus)(nil),      // 2: committerpb.TxStatus
-	(*BlockRef)(nil),                  // 3: servicepb.BlockRef
-	(*emptypb.Empty)(nil),             // 4: google.protobuf.Empty
-	(*committerpb.TxIDsBatch)(nil),    // 5: committerpb.TxIDsBatch
-	(*committerpb.TxStatusBatch)(nil), // 6: committerpb.TxStatusBatch
-	(*wrapperspb.BoolValue)(nil),      // 7: google.protobuf.BoolValue
+	(*CoordinatorBatch)(nil),       // 0: servicepb.CoordinatorBatch
+	(*TxWithRef)(nil),              // 1: servicepb.TxWithRef
+	(*committerpb.TxStatus)(nil),   // 2: committerpb.TxStatus
+	(*BlockRef)(nil),               // 3: servicepb.BlockRef
+	(*emptypb.Empty)(nil),          // 4: google.protobuf.Empty
+	(*committerpb.TxIDsBatch)(nil), // 5: committerpb.TxIDsBatch
+	(*TxStatusBatch)(nil),          // 6: servicepb.TxStatusBatch
+	(*wrapperspb.BoolValue)(nil),   // 7: google.protobuf.BoolValue
 }
 var file_api_servicepb_coordinator_proto_depIdxs = []int32{
 	1, // 0: servicepb.CoordinatorBatch.txs:type_name -> servicepb.TxWithRef
@@ -128,10 +128,10 @@ var file_api_servicepb_coordinator_proto_depIdxs = []int32{
 	4, // 4: servicepb.Coordinator.GetNextBlockNumberToCommit:input_type -> google.protobuf.Empty
 	5, // 5: servicepb.Coordinator.GetTransactionsStatus:input_type -> committerpb.TxIDsBatch
 	4, // 6: servicepb.Coordinator.NoPendingTransactionProcessing:input_type -> google.protobuf.Empty
-	6, // 7: servicepb.Coordinator.BlockProcessing:output_type -> committerpb.TxStatusBatch
+	6, // 7: servicepb.Coordinator.BlockProcessing:output_type -> servicepb.TxStatusBatch
 	4, // 8: servicepb.Coordinator.SetLastCommittedBlockNumber:output_type -> google.protobuf.Empty
 	3, // 9: servicepb.Coordinator.GetNextBlockNumberToCommit:output_type -> servicepb.BlockRef
-	6, // 10: servicepb.Coordinator.GetTransactionsStatus:output_type -> committerpb.TxStatusBatch
+	6, // 10: servicepb.Coordinator.GetTransactionsStatus:output_type -> servicepb.TxStatusBatch
 	7, // 11: servicepb.Coordinator.NoPendingTransactionProcessing:output_type -> google.protobuf.BoolValue
 	7, // [7:12] is the sub-list for method output_type
 	2, // [2:7] is the sub-list for method input_type

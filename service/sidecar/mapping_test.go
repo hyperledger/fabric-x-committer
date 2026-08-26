@@ -14,11 +14,14 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -108,6 +111,164 @@ func TestBlockMapping(t *testing.T) {
 	require.Len(t, mappedBlock.block.Rejected, expectedRejected)
 	//nolint:gosec // int -> int32
 	require.Equal(t, int32(expectedBlockSize), mappedBlock.withStatus.pendingCount.Load())
+}
+
+// TestConfigTxMapping verifies where the TX ID of a config TX comes from. The outer envelope of a
+// config block that the ordering service creates for a config update is generated and signed by
+// the consensus leader, so its TX ID is not the submitting client's; the client's TX is nested in
+// ConfigEnvelope.LastUpdate. The outer TX ID is used only when there is no nested update at all, in
+// a bootstrap (genesis) config block: it never stands in for a nested update the TX ID cannot be
+// taken from, and the committer never computes an ID of its own, so either case fails the block.
+// See https://github.com/hyperledger/fabric-x-committer/issues/752.
+func TestConfigTxMapping(t *testing.T) {
+	t.Parallel()
+
+	const (
+		userTxID      = "user-config-tx-id"
+		consenterTxID = "consenter-config-tx-id"
+		bootstrapTxID = "bootstrap-config-tx-id"
+		// Errors reported for a nested config update the TX ID cannot be taken from.
+		noNestedTxIDError     = "no TX ID in the config update"
+		unreadableNestedError = "error parsing the config update envelope"
+	)
+
+	// Success cases.
+	for _, tc := range []struct {
+		name         string
+		parts        configTxParts
+		expectedTxID string
+	}{
+		{
+			name: "config update: outer envelope has no TX ID, so the nested user TX ID is used",
+			parts: configTxParts{
+				lastUpdate: configUpdateForTest(t, userTxID),
+			},
+			expectedTxID: userTxID,
+		},
+		{
+			name: "config update: the nested user TX ID overrides the consenter's TX ID",
+			parts: configTxParts{
+				outerTxID:  consenterTxID,
+				lastUpdate: configUpdateForTest(t, userTxID),
+			},
+			expectedTxID: userTxID,
+		},
+		{
+			name: "bootstrap block: no nested update, so the outer TX ID is used",
+			parts: configTxParts{
+				outerTxID: bootstrapTxID,
+			},
+			expectedTxID: bootstrapTxID,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			configEnv := configTxForTest(t, tc.parts)
+
+			var txIDToHeight utils.SyncMap[string, servicepb.Height]
+			mappedBlock, err := mapBlock(configBlockForTest(configEnv), &txIDToHeight)
+			require.NoError(t, err)
+			require.NotNil(t, mappedBlock)
+
+			require.True(t, mappedBlock.isConfig)
+			require.Empty(t, mappedBlock.block.Rejected)
+			require.Equal(t, []committerpb.Status{statusNotYetValidated}, mappedBlock.withStatus.txStatus)
+
+			require.Len(t, mappedBlock.block.Txs, 1)
+			test.RequireProtoEqual(t, &servicepb.TxWithRef{
+				Ref:     committerpb.NewTxRef(tc.expectedTxID, 1, 0),
+				Content: configTx(configEnv),
+			}, mappedBlock.block.Txs[0])
+
+			// The TX ID must be tracked so the submitting client can be notified.
+			height, ok := txIDToHeight.Load(tc.expectedTxID)
+			require.True(t, ok)
+			require.Equal(t, servicepb.Height{BlockNum: 1, TxNum: 0}, height)
+		})
+	}
+
+	// Failure cases. A config TX has already been validated and applied by the ordering service,
+	// so the committer cannot reject it; a config TX it cannot process must fail the block instead,
+	// to be re-fetched from another source.
+	for _, tc := range []struct {
+		name                 string
+		parts                configTxParts
+		expectedErrorMessage string
+	}{
+		{
+			name:                 "bootstrap block with no outer TX ID",
+			parts:                configTxParts{},
+			expectedErrorMessage: "no TX ID in the config TX",
+		},
+		{
+			name: "nested update with no TX ID",
+			parts: configTxParts{
+				lastUpdate: configUpdateForTest(t, ""),
+			},
+			expectedErrorMessage: noNestedTxIDError,
+		},
+		{
+			name: "nested update with no TX ID, which the outer TX ID does not stand in for",
+			parts: configTxParts{
+				outerTxID:  consenterTxID,
+				lastUpdate: configUpdateForTest(t, ""),
+			},
+			expectedErrorMessage: noNestedTxIDError,
+		},
+		{
+			name: "unreadable nested update",
+			parts: configTxParts{
+				lastUpdate: &common.Envelope{},
+			},
+			expectedErrorMessage: unreadableNestedError,
+		},
+		{
+			name: "unreadable nested update, which the outer TX ID does not stand in for",
+			parts: configTxParts{
+				outerTxID:  consenterTxID,
+				lastUpdate: &common.Envelope{},
+			},
+			expectedErrorMessage: unreadableNestedError,
+		},
+		{
+			name: "channel config that cannot be parsed into a bundle",
+			parts: configTxParts{
+				lastUpdate:    configUpdateForTest(t, userTxID),
+				invalidConfig: true,
+			},
+			expectedErrorMessage: "error parsing config",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			block := configBlockForTest(configTxForTest(t, tc.parts))
+
+			var txIDToHeight utils.SyncMap[string, servicepb.Height]
+			_, err := mapBlock(block, &txIDToHeight)
+			require.ErrorContains(t, err, tc.expectedErrorMessage)
+			// The block must be re-fetched, possibly from another orderer, rather than committed.
+			require.ErrorIs(t, err, retry.ErrBackOff)
+		})
+	}
+}
+
+// TestConfigTxDuplicateID verifies that a config TX whose TX ID is already in flight fails the
+// block, rather than being rejected as a duplicate like a data TX would be. The ordering service
+// has already applied the config, so the committer must apply it too.
+func TestConfigTxDuplicateID(t *testing.T) {
+	t.Parallel()
+
+	const userTxID = "user-config-tx-id"
+	block := configBlockForTest(configTxForTest(t, configTxParts{
+		lastUpdate: configUpdateForTest(t, userTxID),
+	}))
+
+	var txIDToHeight utils.SyncMap[string, servicepb.Height]
+	txIDToHeight.Store(userTxID, *servicepb.NewHeight(0, 0))
+	_, err := mapBlock(block, &txIDToHeight)
+	require.ErrorContains(t, err, "duplicate TX ID ["+userTxID+"]")
+	// The block must be re-fetched, by which time the TX holding the ID may have been processed.
+	require.ErrorIs(t, err, retry.ErrBackOff)
 }
 
 func TestSystemNamespaceFormValidation(t *testing.T) {
@@ -364,4 +525,84 @@ func TestDuplicateSnapshotInBlock(t *testing.T) {
 		mappedBlock.block.Rejected[0].Status,
 	)
 	require.Equal(t, uint32(3), mappedBlock.block.Rejected[0].Ref.TxNum)
+}
+
+// configTxParts describes the identifying fields of a config TX. Which of them are populated
+// depends on who created the config block: the ordering service, when it applies a config update
+// submitted by a client, or the bootstrap tooling, for a genesis block.
+type configTxParts struct {
+	// outerTxID is the outer envelope's TX ID. For a config update, it is the consensus leader's.
+	outerTxID string
+	// lastUpdate is the client's config-update TX, nested in ConfigEnvelope.LastUpdate.
+	// It is nil in a genesis config block, which no client submitted.
+	lastUpdate *common.Envelope
+	// invalidConfig drops the channel config, so the config TX cannot be parsed into a bundle.
+	invalidConfig bool
+	// baseEnvelope is the config TX envelope whose channel config is reused. A config block is
+	// generated when it is nil. Tests that feed the config TX to a running sidecar pass the
+	// channel's own config TX here, so the config it carries matches the sidecar's channel.
+	baseEnvelope []byte
+}
+
+// configTxForTest builds a config TX envelope holding the given identifying fields. Its channel
+// config is taken from an existing config TX, so it stays valid (unless invalidConfig is set)
+// without the test having to construct one.
+func configTxForTest(t *testing.T, p configTxParts) []byte {
+	t.Helper()
+	baseEnvelope := p.baseEnvelope
+	if baseEnvelope == nil {
+		baseEnvelope = createConfigBlockForTest(t).Data.Data[0]
+	}
+	env, err := protoutil.UnmarshalEnvelope(baseEnvelope)
+	require.NoError(t, err)
+	payload, err := protoutil.UnmarshalPayload(env.Payload)
+	require.NoError(t, err)
+	channelHdr, err := protoutil.UnmarshalChannelHeader(payload.Header.ChannelHeader)
+	require.NoError(t, err)
+
+	channelHdr.TxId = p.outerTxID
+	payload.Header.ChannelHeader = marshalForTest(t, channelHdr)
+
+	configEnv, err := protoutil.UnmarshalConfigEnvelope(payload.Data)
+	require.NoError(t, err)
+	configEnv.LastUpdate = p.lastUpdate
+	if p.invalidConfig {
+		configEnv.Config = nil
+	}
+	payload.Data = marshalForTest(t, configEnv)
+
+	env.Payload = marshalForTest(t, payload)
+	return marshalForTest(t, env)
+}
+
+// configUpdateForTest creates the client's config-update TX as it appears in
+// ConfigEnvelope.LastUpdate. It carries only the channel header the committer reads the TX ID from;
+// the config update itself is applied by the ordering service and is irrelevant to the mapping.
+func configUpdateForTest(t *testing.T, txID string) *common.Envelope {
+	t.Helper()
+	return &common.Envelope{Payload: marshalForTest(t, &common.Payload{
+		Header: &common.Header{
+			ChannelHeader: marshalForTest(t, &common.ChannelHeader{
+				Type:      int32(common.HeaderType_CONFIG_UPDATE),
+				ChannelId: testChannelID,
+				TxId:      txID,
+			}),
+		},
+	})}
+}
+
+// configBlockForTest wraps a config TX envelope in block number one, as the ordering service
+// delivers it: a config TX is always alone in its block.
+func configBlockForTest(configEnv []byte) *common.Block {
+	return &common.Block{
+		Header: &common.BlockHeader{Number: 1},
+		Data:   &common.BlockData{Data: [][]byte{configEnv}},
+	}
+}
+
+func marshalForTest(t *testing.T, m proto.Message) []byte {
+	t.Helper()
+	value, err := proto.Marshal(m)
+	require.NoError(t, err)
+	return value
 }

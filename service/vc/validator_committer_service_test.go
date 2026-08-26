@@ -445,7 +445,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 
 		require.NoError(t, env.streams[0].Send(configTxBatch))
 
-		resultCh := make(chan *committerpb.TxStatusBatch, 1)
+		resultCh := make(chan *servicepb.TxStatusBatch, 1)
 		var wg sync.WaitGroup
 		t.Cleanup(wg.Wait)
 		wg.Go(func() {

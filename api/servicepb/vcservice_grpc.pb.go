@@ -39,10 +39,10 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ValidationAndCommitServiceClient interface {
-	StartValidateAndCommitStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[VcBatch, committerpb.TxStatusBatch], error)
+	StartValidateAndCommitStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[VcBatch, TxStatusBatch], error)
 	SetLastCommittedBlockNumber(ctx context.Context, in *BlockRef, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetNextBlockNumberToCommit(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*BlockRef, error)
-	GetTransactionsStatus(ctx context.Context, in *committerpb.TxIDsBatch, opts ...grpc.CallOption) (*committerpb.TxStatusBatch, error)
+	GetTransactionsStatus(ctx context.Context, in *committerpb.TxIDsBatch, opts ...grpc.CallOption) (*TxStatusBatch, error)
 	GetNamespacePolicies(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*applicationpb.NamespacePolicies, error)
 	GetConfigTransaction(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*applicationpb.ConfigTransaction, error)
 }
@@ -55,18 +55,18 @@ func NewValidationAndCommitServiceClient(cc grpc.ClientConnInterface) Validation
 	return &validationAndCommitServiceClient{cc}
 }
 
-func (c *validationAndCommitServiceClient) StartValidateAndCommitStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[VcBatch, committerpb.TxStatusBatch], error) {
+func (c *validationAndCommitServiceClient) StartValidateAndCommitStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[VcBatch, TxStatusBatch], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &ValidationAndCommitService_ServiceDesc.Streams[0], ValidationAndCommitService_StartValidateAndCommitStream_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[VcBatch, committerpb.TxStatusBatch]{ClientStream: stream}
+	x := &grpc.GenericClientStream[VcBatch, TxStatusBatch]{ClientStream: stream}
 	return x, nil
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ValidationAndCommitService_StartValidateAndCommitStreamClient = grpc.BidiStreamingClient[VcBatch, committerpb.TxStatusBatch]
+type ValidationAndCommitService_StartValidateAndCommitStreamClient = grpc.BidiStreamingClient[VcBatch, TxStatusBatch]
 
 func (c *validationAndCommitServiceClient) SetLastCommittedBlockNumber(ctx context.Context, in *BlockRef, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -88,9 +88,9 @@ func (c *validationAndCommitServiceClient) GetNextBlockNumberToCommit(ctx contex
 	return out, nil
 }
 
-func (c *validationAndCommitServiceClient) GetTransactionsStatus(ctx context.Context, in *committerpb.TxIDsBatch, opts ...grpc.CallOption) (*committerpb.TxStatusBatch, error) {
+func (c *validationAndCommitServiceClient) GetTransactionsStatus(ctx context.Context, in *committerpb.TxIDsBatch, opts ...grpc.CallOption) (*TxStatusBatch, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(committerpb.TxStatusBatch)
+	out := new(TxStatusBatch)
 	err := c.cc.Invoke(ctx, ValidationAndCommitService_GetTransactionsStatus_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -122,10 +122,10 @@ func (c *validationAndCommitServiceClient) GetConfigTransaction(ctx context.Cont
 // All implementations must embed UnimplementedValidationAndCommitServiceServer
 // for forward compatibility.
 type ValidationAndCommitServiceServer interface {
-	StartValidateAndCommitStream(grpc.BidiStreamingServer[VcBatch, committerpb.TxStatusBatch]) error
+	StartValidateAndCommitStream(grpc.BidiStreamingServer[VcBatch, TxStatusBatch]) error
 	SetLastCommittedBlockNumber(context.Context, *BlockRef) (*emptypb.Empty, error)
 	GetNextBlockNumberToCommit(context.Context, *emptypb.Empty) (*BlockRef, error)
-	GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch) (*committerpb.TxStatusBatch, error)
+	GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch) (*TxStatusBatch, error)
 	GetNamespacePolicies(context.Context, *emptypb.Empty) (*applicationpb.NamespacePolicies, error)
 	GetConfigTransaction(context.Context, *emptypb.Empty) (*applicationpb.ConfigTransaction, error)
 	mustEmbedUnimplementedValidationAndCommitServiceServer()
@@ -138,7 +138,7 @@ type ValidationAndCommitServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedValidationAndCommitServiceServer struct{}
 
-func (UnimplementedValidationAndCommitServiceServer) StartValidateAndCommitStream(grpc.BidiStreamingServer[VcBatch, committerpb.TxStatusBatch]) error {
+func (UnimplementedValidationAndCommitServiceServer) StartValidateAndCommitStream(grpc.BidiStreamingServer[VcBatch, TxStatusBatch]) error {
 	return status.Error(codes.Unimplemented, "method StartValidateAndCommitStream not implemented")
 }
 func (UnimplementedValidationAndCommitServiceServer) SetLastCommittedBlockNumber(context.Context, *BlockRef) (*emptypb.Empty, error) {
@@ -147,7 +147,7 @@ func (UnimplementedValidationAndCommitServiceServer) SetLastCommittedBlockNumber
 func (UnimplementedValidationAndCommitServiceServer) GetNextBlockNumberToCommit(context.Context, *emptypb.Empty) (*BlockRef, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetNextBlockNumberToCommit not implemented")
 }
-func (UnimplementedValidationAndCommitServiceServer) GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch) (*committerpb.TxStatusBatch, error) {
+func (UnimplementedValidationAndCommitServiceServer) GetTransactionsStatus(context.Context, *committerpb.TxIDsBatch) (*TxStatusBatch, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetTransactionsStatus not implemented")
 }
 func (UnimplementedValidationAndCommitServiceServer) GetNamespacePolicies(context.Context, *emptypb.Empty) (*applicationpb.NamespacePolicies, error) {
@@ -179,11 +179,11 @@ func RegisterValidationAndCommitServiceServer(s grpc.ServiceRegistrar, srv Valid
 }
 
 func _ValidationAndCommitService_StartValidateAndCommitStream_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(ValidationAndCommitServiceServer).StartValidateAndCommitStream(&grpc.GenericServerStream[VcBatch, committerpb.TxStatusBatch]{ServerStream: stream})
+	return srv.(ValidationAndCommitServiceServer).StartValidateAndCommitStream(&grpc.GenericServerStream[VcBatch, TxStatusBatch]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ValidationAndCommitService_StartValidateAndCommitStreamServer = grpc.BidiStreamingServer[VcBatch, committerpb.TxStatusBatch]
+type ValidationAndCommitService_StartValidateAndCommitStreamServer = grpc.BidiStreamingServer[VcBatch, TxStatusBatch]
 
 func _ValidationAndCommitService_SetLastCommittedBlockNumber_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(BlockRef)

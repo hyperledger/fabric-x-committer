@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 const (
@@ -29,6 +30,8 @@ var buckets = []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, 
 
 type perfMetrics struct {
 	*monitoring.Provider
+
+	serverMetrics *serve.ServerMetrics
 
 	// transaction received and processed counters
 	transactionReceivedTotal     prometheus.Counter
@@ -72,6 +75,10 @@ func newVCServiceMetrics() *perfMetrics {
 			Subsystem: subsystemGRPC,
 			Name:      "processed_transaction_total",
 			Help:      "Number of transactions processed by the service",
+		}),
+		serverMetrics: serve.NewServerMetrics(p, monitoring.MetricsParameters{
+			Namespace: namespace,
+			Subsystem: subsystemGRPC,
 		}),
 		transactionCommittedTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,

@@ -113,7 +113,7 @@ func TestParseSigningKey(t *testing.T) {
 		parsed, err := ParseSigningKey(serialized)
 		require.NoError(t, err)
 		require.NotNil(t, parsed)
-		require.Equal(t, privateKey.D, parsed.D)
+		require.True(t, privateKey.Equal(parsed), "parsed key differs from the original")
 	})
 
 	t.Run("parse PRIVATE KEY (PKCS8) format", func(t *testing.T) {
@@ -129,7 +129,7 @@ func TestParseSigningKey(t *testing.T) {
 		parsed, err := ParseSigningKey(pemBytes)
 		require.NoError(t, err)
 		require.NotNil(t, parsed)
-		require.Equal(t, privateKey.D, parsed.D)
+		require.True(t, privateKey.Equal(parsed), "parsed key differs from the original")
 	})
 
 	t.Run("nil block returns error", func(t *testing.T) {

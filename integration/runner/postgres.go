@@ -75,8 +75,8 @@ func StartPostgresCluster(ctx context.Context, t *testing.T) (*PostgresClusterCo
 	})
 
 	cluster := &PostgresClusterController{
-		DBClusterController: DBClusterController{dbType: testdb.PostgresDBType},
-		networkName:         networkName,
+		dbType:      testdb.PostgresDBType,
+		networkName: networkName,
 	}
 
 	t.Log("starting postgres cluster")

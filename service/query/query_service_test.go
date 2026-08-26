@@ -434,14 +434,19 @@ func TestQueryMetrics(t *testing.T) {
 
 	t.Log("Validate metrics")
 	require.Equal(t, 1, env.qs.batcher.viewIDToViewHolder.Count())
-	requireIntVecMetricValue(t, 1, env.qs.metrics.requests.MetricVec, grpcBeginView)
+	requireEventuallyIntVecMetricValue(
+		t,
+		1,
+		env.qs.metrics.serverMetrics.RequestsTotal.MetricVec,
+		committerpb.QueryService_BeginView_FullMethodName,
+	)
 	test.RequireIntMetricValue(t, 1, env.qs.metrics.processingSessions.WithLabelValues(sessionViews))
 	test.RequireIntMetricValue(t, 1, env.qs.metrics.processingSessions.WithLabelValues(sessionTransactions))
 	env.endView(t, env.clientConn, view0)
 	require.Equal(t, 0, env.qs.batcher.viewIDToViewHolder.Count())
 
 	for range 3 {
-		ret, err = env.qs.GetRows(t.Context(), query)
+		ret, err = env.clientConn.GetRows(t.Context(), query)
 		require.NoError(t, err)
 		requireResults(t, requiredItems, ret.Namespaces)
 	}
@@ -450,7 +455,12 @@ func TestQueryMetrics(t *testing.T) {
 	require.Equal(t, 0, env.qs.batcher.viewIDToViewHolder.Count())
 	test.RequireIntMetricValue(t, 0, env.qs.metrics.processingSessions.WithLabelValues(sessionViews))
 	test.RequireIntMetricValue(t, 0, env.qs.metrics.processingSessions.WithLabelValues(sessionTransactions))
-	requireIntVecMetricValue(t, expectedMetricsSize, env.qs.metrics.requests.MetricVec, grpcGetRows)
+	requireEventuallyIntVecMetricValue(
+		t,
+		expectedMetricsSize,
+		env.qs.metrics.serverMetrics.RequestsTotal.MetricVec,
+		committerpb.QueryService_GetRows_FullMethodName,
+	)
 	test.RequireIntMetricValue(t, expectedMetricsSize*querySize, env.qs.metrics.keysRequested)
 	test.RequireIntMetricValue(t, expectedMetricsSize*keyCount, env.qs.metrics.keysResponded)
 }
@@ -752,11 +762,14 @@ func requireRow(
 	test.RequireProtoElementsMatch(t, expected.asRows(), ret.Rows)
 }
 
-func requireIntVecMetricValue(t *testing.T, expected int, mv *prometheus.MetricVec, lvs ...string) {
+// requireEventuallyIntVecMetricValue waits for a labeled metric to reach the expected value.
+// Used for metrics recorded by the gRPC stats handler, which observes the RPC on the server
+// after the client call returns.
+func requireEventuallyIntVecMetricValue(t *testing.T, expected int, mv *prometheus.MetricVec, lvs ...string) {
 	t.Helper()
 	m, err := mv.GetMetricWithLabelValues(lvs...)
 	require.NoError(t, err)
-	test.RequireIntMetricValue(t, expected, m)
+	test.EventuallyIntMetric(t, expected, m, 30*time.Second, 100*time.Millisecond)
 }
 
 func (q *queryServiceTestEnv) beginView(

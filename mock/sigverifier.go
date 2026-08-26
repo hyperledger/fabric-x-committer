@@ -144,7 +144,7 @@ func (m *VerifierStreamState) sendResponseBatch(
 		if !ok {
 			break
 		}
-		respBatch := &committerpb.TxStatusBatch{
+		respBatch := &servicepb.TxStatusBatch{
 			Status: make([]*committerpb.TxStatus, 0, len(reqBatch.Requests)),
 		}
 

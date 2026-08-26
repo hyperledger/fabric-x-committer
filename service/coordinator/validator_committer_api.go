@@ -102,7 +102,7 @@ func (vca *validatorCommitterAPI) getNextBlockNumberToCommit(
 func (vca *validatorCommitterAPI) getTransactionsStatus(
 	ctx context.Context,
 	query *committerpb.TxIDsBatch,
-) (*committerpb.TxStatusBatch, error) {
+) (*servicepb.TxStatusBatch, error) {
 	ret, err := vca.client.GetTransactionsStatus(ctx, query)
 	return ret, grpcerror.WrapWithContext(err, "failed getting transactions status")
 }

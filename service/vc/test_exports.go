@@ -275,7 +275,7 @@ func (env *DatabaseTestEnv) populateData( //nolint:revive
 	t *testing.T,
 	createNsIDs []string,
 	nsToWrites namespaceToWrites,
-	batchStatus *committerpb.TxStatusBatch,
+	batchStatus *servicepb.TxStatusBatch,
 	txIDToHeight transactionIDToHeight,
 ) {
 	t.Helper()

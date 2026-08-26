@@ -170,7 +170,7 @@ func TestSnapshotHashDeterministic(t *testing.T) {
 		}
 	}
 
-	statusBatch := &committerpb.TxStatusBatch{}
+	statusBatch := &servicepb.TxStatusBatch{}
 	txIDToHeight := transactionIDToHeight{}
 	for i := 1; i <= 3; i++ {
 		txID := fmt.Sprintf("snap-hash-seed-tx-%d", i)
@@ -196,7 +196,7 @@ func TestSnapshotHashDeterministic(t *testing.T) {
 	// DIFFERENT state -> DIFFERENT hash. Commit an additional row into a user
 	// namespace, then a fresh clone (new snapshot name) must hash differently.
 	env.populateData(t, nil, writes(false, state{namespace: "1", keySuffix: 99, updateSequence: 0}),
-		&committerpb.TxStatusBatch{}, transactionIDToHeight{})
+		&servicepb.TxStatusBatch{}, transactionIDToHeight{})
 
 	ref2 := &committerpb.TxRef{BlockNum: 700110, TxNum: 0, TxId: "snap-hash-2"}
 	h3 := createAndHashSnapshotClone(ctx, t, env.DB, ref2)
@@ -233,7 +233,7 @@ func TestSnapshotHashReflectsStateAndExclusions(t *testing.T) {
 			state{namespace: "1", keySuffix: 1, updateSequence: 0},
 			state{namespace: "1", keySuffix: 2, updateSequence: 0},
 		),
-		&committerpb.TxStatusBatch{}, transactionIDToHeight{})
+		&servicepb.TxStatusBatch{}, transactionIDToHeight{})
 
 	// Baseline clone + hash.
 	baselineRef := &committerpb.TxRef{BlockNum: 710000, TxNum: 0, TxId: "snap-excl-base"}

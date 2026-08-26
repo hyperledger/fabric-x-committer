@@ -28,8 +28,8 @@ type (
 // NewSidecarAdapter instantiate SidecarAdapter.
 func NewSidecarAdapter(config *SidecarClientConfig, res *ClientResources) (*SidecarAdapter, error) {
 	return &SidecarAdapter{
-		commonAdapter: commonAdapter{res: res},
-		config:        config,
+		res:    res,
+		config: config,
 	}, nil
 }
 

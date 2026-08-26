@@ -45,8 +45,11 @@ Monitor queue length gauges to find the bottleneck. A growing queue means the do
 | Queue Metric | Stage | Growing Queue Means |
 |-------------|-------|---------------------|
 | `sidecar_relay_input_block_queue_size` | Block Ingestion | Coordinator not consuming blocks fast enough |
+| `sidecar_relay_mapped_block_queue_size` | Block Mapping | Blocks are mapped faster than the coordinator accepts them |
 | `sidecar_relay_waiting_transactions_queue_size` | Relay | Transactions waiting for commit statuses to return |
 | `sidecar_relay_output_committed_block_queue_size` | Committed Blocks | Committed blocks backing up; downstream consumers slow |
+| `sidecar_notifier_input_block_queue_size` | Notification | Notifier not keeping up with committed blocks |
+| `sidecar_notifier_input_status_queue_size` | Notification | Notifier not keeping up with status updates |
 | `coordinator_verifier_input_batch_queue_size` | Signature Verification | Verifiers cannot keep up; add instances or CPU |
 | `coordinator_verifier_output_batch_queue_size` | Verified → VC | VC services not consuming verified transactions fast enough |
 | `coordinator_vcservice_output_batch_queue_size` | VC → Dep Graph | Dependency graph not processing validated results fast enough |

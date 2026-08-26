@@ -10,21 +10,21 @@ import (
 	"context"
 	"sync/atomic"
 
-	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 )
 
 type txStatusQueue struct {
-	ch    chan *committerpb.TxStatusBatch
+	ch    chan *servicepb.TxStatusBatch
 	count atomic.Int32
 }
 
 func newTxStatusQueue(size int) *txStatusQueue {
 	return &txStatusQueue{
-		ch: make(chan *committerpb.TxStatusBatch, size),
+		ch: make(chan *servicepb.TxStatusBatch, size),
 	}
 }
 
-func (q *txStatusQueue) write(ctx context.Context, batch *committerpb.TxStatusBatch) bool {
+func (q *txStatusQueue) write(ctx context.Context, batch *servicepb.TxStatusBatch) bool {
 	if ctx.Err() != nil {
 		return false
 	}
@@ -43,7 +43,7 @@ func (q *txStatusQueue) write(ctx context.Context, batch *committerpb.TxStatusBa
 	}
 }
 
-func (q *txStatusQueue) read(ctx context.Context) (*committerpb.TxStatusBatch, bool) {
+func (q *txStatusQueue) read(ctx context.Context) (*servicepb.TxStatusBatch, bool) {
 	if ctx.Err() != nil {
 		return nil, false
 	}

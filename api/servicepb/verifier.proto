@@ -12,12 +12,10 @@ package servicepb;
 
 import "api/applicationpb/config.proto";
 
-import "api/committerpb/status.proto";
-
 import "api/servicepb/common.proto";
 
 service Verifier {
-    rpc StartStream(stream VerifierBatch) returns (stream committerpb.TxStatusBatch);
+    rpc StartStream(stream VerifierBatch) returns (stream servicepb.TxStatusBatch);
 }
 
 message VerifierBatch {

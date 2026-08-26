@@ -24,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
@@ -33,8 +34,12 @@ type relayTestEnv struct {
 	incomingBlockToBeCommitted chan *common.Block
 	committedBlock             chan *common.Block
 	statusQueue                chan []*committerpb.TxStatus
-	metrics                    *perfMetrics
-	waitingTxsLimit            int
+	// The relay's own stages are connected by these two. The session owns them in production, so
+	// the test supplies them here; leaving them nil would silently drop every block.
+	mappedBlockQueue chan *blockMappingResult
+	statusBatch      chan *servicepb.TxStatusBatch
+	metrics          *perfMetrics
+	waitingTxsLimit  int
 }
 
 const (
@@ -47,7 +52,8 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 	coord, coordinatorServer := mock.StartMockCoordinatorService(t, test.StartServerParameters{})
 	coordinatorEndpoint := coordinatorServer.Configs[0].GRPC.Endpoint
 
-	metrics := newPerformanceMetrics()
+	q := newQueues(10)
+	metrics := newPerformanceMetrics(q)
 	relayService := newRelay(
 		time.Second,
 		metrics,
@@ -63,6 +69,8 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 		incomingBlockToBeCommitted: make(chan *common.Block, 10),
 		committedBlock:             make(chan *common.Block, 10),
 		statusQueue:                make(chan []*committerpb.TxStatus, 10),
+		mappedBlockQueue:           make(chan *blockMappingResult, 10),
+		statusBatch:                make(chan *servicepb.TxStatusBatch, 10),
 		metrics:                    metrics,
 		waitingTxsLimit:            100,
 	}
@@ -75,6 +83,8 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 			incomingBlockToBeCommitted:     env.incomingBlockToBeCommitted,
 			outgoingCommittedBlock:         env.committedBlock,
 			outgoingStatusUpdates:          env.statusQueue,
+			mappedBlockQueue:               env.mappedBlockQueue,
+			statusBatch:                    env.statusBatch,
 			waitingTxsLimit:                env.waitingTxsLimit,
 		}))
 	}, nil)
@@ -272,6 +282,24 @@ func TestRelayConfigBlock(t *testing.T) {
 
 	committedBlock2 := <-relayEnv.committedBlock
 	require.Equal(t, blk2, committedBlock2)
+}
+
+// TestRelayUnprocessableConfigBlock verifies that a config block the sidecar cannot process ends
+// the relay with a retryable error, so the sidecar restarts its block feed and fetches the block
+// again, instead of committing the block without its config TX.
+func TestRelayUnprocessableConfigBlock(t *testing.T) {
+	t.Parallel()
+	relayService := newRelay(time.Second, newPerformanceMetrics(newQueues(10)))
+	incomingBlockToBeCommitted := make(chan *common.Block, 1)
+	relayService.incomingBlockToBeCommitted = incomingBlockToBeCommitted
+	relayService.waitingTxsSlots = utils.NewSlots(100)
+
+	// A config TX with no TX ID in either its nested update or its outer envelope.
+	incomingBlockToBeCommitted <- configBlockForTest(configTxForTest(t, configTxParts{}))
+
+	err := relayService.preProcessBlock(t.Context(), make(chan *blockMappingResult, 1))
+	require.ErrorContains(t, err, "cannot process the config TX [blk:1,num:0]")
+	require.ErrorIs(t, err, retry.ErrBackOff)
 }
 
 func TestRelaySnapshotBlockSplitAndDrain(t *testing.T) {
@@ -540,7 +568,7 @@ func submitSnapshotBlockForTest(t *testing.T, mappedBlock *blockMappingResult) [
 	t.Helper()
 
 	r := &relay{
-		metrics:         newPerformanceMetrics(),
+		metrics:         newPerformanceMetrics(newQueues(10)),
 		waitingTxsSlots: utils.NewSlots(int64(len(mappedBlock.block.Txs)) + 1),
 	}
 

@@ -28,8 +28,8 @@ type (
 // NewCoordinatorAdapter instantiate CoordinatorAdapter.
 func NewCoordinatorAdapter(config *connection.ClientConfig, res *ClientResources) *CoordinatorAdapter {
 	return &CoordinatorAdapter{
-		commonAdapter: commonAdapter{res: res},
-		config:        config,
+		res:    res,
+		config: config,
 	}
 }
 
