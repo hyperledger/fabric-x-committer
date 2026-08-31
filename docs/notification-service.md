@@ -250,16 +250,16 @@ stream, err := client.StreamAllTransactions(ctx, &committerpb.StreamAllRequest{
 
 ### 3.3. Receiving Transaction Events
 
-The server sends `BlockEvent` messages containing one or more `TxEvent` entries, along with the block's hash and its
-predecessor's hash. Transactions are batched by block. All transactions from the same block are delivered in a single
-`BlockEvent`.
+The server sends one `BlockEvent` per committed block, containing zero or more `TxEvent` entries (zero if none matched
+the request's filters), along with the block's hash and its predecessor's hash. Transactions are batched by block: all
+transactions from the same block are delivered in a single `BlockEvent`.
 
 ```go
 for {
-    batch, err := stream.Recv()
+    blockEvent, err := stream.Recv()
     ...
 
-    for _, event := range batch.Events {
+    for _, event := range blockEvent.Events {
         ...
     }
 }
@@ -270,6 +270,11 @@ for {
 **Block Order Guarantee:**
 Transactions are streamed in deterministic block order. All transactions from block N are delivered before any
 transactions from block N+1.
+
+**Unbroken Hash Chain:**
+A `BlockEvent` is delivered for every block, even one whose filters match no transactions. `block_hash`/
+`prev_block_hash` therefore form an unbroken chain for every client regardless of its filters, so a client that only
+needs to verify block linkage does not need to receive matching transactions to do so.
 
 **Starting Point:**
 The stream starts from the currently processed block when the client connects. Historical transactions are not included.

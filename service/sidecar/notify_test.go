@@ -695,6 +695,13 @@ func TestStreamAllTransactions(t *testing.T) {
 			},
 			expectedTxIDs: []string{testTxID1, testTxID2, testTxID3, testTxID4},
 		},
+		{
+			name: "NamespaceFilter_NoMatch",
+			request: &committerpb.StreamAllRequest{
+				FilterNamespaces: []string{"no-such-namespace"},
+			},
+			expectedTxIDs: []string{}, // we expect the block but without any txs
+		},
 	}
 
 	env := newNotifierTestEnv(t, 0)
@@ -706,9 +713,9 @@ func TestStreamAllTransactions(t *testing.T) {
 	}
 
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		env.n.allTxStreamsMu.RLock()
-		activeStreams := env.n.allTxStreams
-		env.n.allTxStreamsMu.RUnlock()
+		env.n.blockStreamsMu.RLock()
+		activeStreams := env.n.blockStreams
+		env.n.blockStreamsMu.RUnlock()
 		require.Len(ct, activeStreams, len(cases))
 	}, 10*time.Second, 100*time.Millisecond)
 	env.committedBlockWithTxsQueue.Write(block)
