@@ -631,6 +631,8 @@ func TestStreamAllTransactions(t *testing.T) {
 			committerpb.Status_COMMITTED,
 			committerpb.Status_REJECTED_DUPLICATE_TX_ID,
 		},
+		blockHash:     []byte("block-hash-1"),
+		prevBlockHash: []byte("block-hash-0"),
 	}
 
 	cases := []struct {
@@ -714,17 +716,19 @@ func TestStreamAllTransactions(t *testing.T) {
 	for i, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			batch, err := streams[i].Recv()
+			blockEvent, err := streams[i].Recv()
 			require.NoError(t, err)
-			require.EqualValues(t, 1, batch.BlockNumber)
+			require.EqualValues(t, 1, blockEvent.BlockNumber)
+			require.Equal(t, block.blockHash, blockEvent.BlockHash)
+			require.Equal(t, block.prevBlockHash, blockEvent.PrevBlockHash)
 
-			actualTxIDs := make([]string, len(batch.Events))
-			for j, event := range batch.Events {
+			actualTxIDs := make([]string, len(blockEvent.Events))
+			for j, event := range blockEvent.Events {
 				actualTxIDs[j] = event.Ref.TxId
 			}
 			require.ElementsMatch(t, tc.expectedTxIDs, actualTxIDs)
 
-			for _, event := range batch.Events {
+			for _, event := range blockEvent.Events {
 				if tc.request.IncludeReadWriteSets {
 					require.NotEmpty(t, event.Namespaces)
 				} else {

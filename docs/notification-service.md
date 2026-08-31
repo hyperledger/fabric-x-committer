@@ -197,10 +197,14 @@ message StreamAllRequest {
     repeated Status filter_status = 2;      // Optional: filter by status
     bool include_read_write_sets = 3;       // Optional: include read/write sets
     bool include_endorsements = 4;          // Optional: include endorsements
+    bool include_metadata = 5;              // Optional: include transaction metadata
 }
 
-message TxBatch {
-    repeated TxEvent events = 1;
+message BlockEvent {
+    uint64 block_number = 1;                // The block these events originated from
+    repeated TxEvent events = 2;
+    bytes block_hash = 3;                   // The hash of this block
+    bytes prev_block_hash = 4;              // The hash of the previous block
 }
 
 message TxEvent {
@@ -208,6 +212,7 @@ message TxEvent {
     Status status = 2;                      // Transaction status
     repeated TxNamespace namespaces = 3;    // Namespaces (if filtering enabled)
     repeated Endorsement endorsements = 4;  // Endorsements (if requested)
+    repeated bytes metadata = 5;            // Transaction metadata (if requested)
 }
 ```
 
@@ -240,10 +245,14 @@ stream, err := client.StreamAllTransactions(ctx, &committerpb.StreamAllRequest{
 - **`include_endorsements`** (optional): If true, the `endorsements` field in each `TxEvent`
   includes the transaction endorsements. Default: false.
 
+- **`include_metadata`** (optional): If true, the `metadata` field in each `TxEvent`
+  includes the transaction metadata. Default: false.
+
 ### 3.3. Receiving Transaction Events
 
-The server sends `TxBatch` messages containing one or more `TxEvent` entries. Transactions are batched by block. All
-transactions from the same block are delivered in a single `TxBatch`.
+The server sends `BlockEvent` messages containing one or more `TxEvent` entries, along with the block's hash and its
+predecessor's hash. Transactions are batched by block. All transactions from the same block are delivered in a single
+`BlockEvent`.
 
 ```go
 for {

@@ -14,6 +14,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
@@ -300,6 +301,31 @@ func TestRelayUnprocessableConfigBlock(t *testing.T) {
 	err := relayService.preProcessBlock(t.Context(), make(chan *blockMappingResult, 1))
 	require.ErrorContains(t, err, "cannot process the config TX [blk:1,num:0]")
 	require.ErrorIs(t, err, retry.ErrBackOff)
+}
+
+// TestProcessCommittedBlocksInOrderBlockHash verifies that processCommittedBlocksInOrder
+// computes the committed block's hash and forwards its previous block hash unchanged into
+// committedBlockWithTxs, for StreamAllTransactions clients.
+func TestProcessCommittedBlocksInOrderBlockHash(t *testing.T) {
+	t.Parallel()
+	relayService := newRelay(time.Second, newPerformanceMetrics(newQueues(10)))
+
+	blk, _ := createBlockForTest(t, 0, []byte("prev-hash"))
+	blk.Metadata = &common.BlockMetadata{Metadata: make([][]byte, statusIdx+1)}
+	relayService.blkNumToBlkWithStatus.Store(0, &blockWithStatus{block: blk, blockNumber: 0})
+	relayService.activeBlocksCount.Store(1)
+
+	outgoingCommittedBlock := make(chan *common.Block, 1)
+	outgoingCommittedBlockWithTxs := make(chan *committedBlockWithTxs, 1)
+	relayService.processCommittedBlocksInOrder(
+		t.Context(),
+		channel.NewWriter(t.Context(), outgoingCommittedBlock),
+		channel.NewWriter(t.Context(), outgoingCommittedBlockWithTxs),
+	)
+
+	got := <-outgoingCommittedBlockWithTxs
+	require.Equal(t, protoutil.BlockHeaderHash(blk.Header), got.blockHash)
+	require.Equal(t, []byte("prev-hash"), got.prevBlockHash)
 }
 
 func TestRelaySnapshotBlockSplitAndDrain(t *testing.T) {

@@ -72,9 +72,11 @@ type (
 	// for streaming to StreamAllTransactions clients. This is a clean interface
 	// that separates the notifier from relay's internal blockWithStatus structure.
 	committedBlockWithTxs struct {
-		blockNumber uint64
-		txs         []*servicepb.TxWithRef
-		statuses    []committerpb.Status
+		blockNumber   uint64
+		txs           []*servicepb.TxWithRef
+		statuses      []committerpb.Status
+		blockHash     []byte
+		prevBlockHash []byte
 	}
 
 	// allTxStream represents a single StreamAllTransactions client subscription.
@@ -447,12 +449,14 @@ func (s *allTxStream) streamWorker(stream committerpb.Notifier_StreamAllTransact
 			continue
 		}
 
-		batch := &committerpb.TxEventBatch{
-			BlockNumber: block.blockNumber,
-			Events:      filteredEvents,
+		blockEvent := &committerpb.BlockEvent{
+			BlockNumber:   block.blockNumber,
+			Events:        filteredEvents,
+			BlockHash:     block.blockHash,
+			PrevBlockHash: block.prevBlockHash,
 		}
-		if err := stream.Send(batch); err != nil {
-			return errors.Wrap(err, "failed to send transaction batch")
+		if err := stream.Send(blockEvent); err != nil {
+			return errors.Wrap(err, "failed to send block event")
 		}
 	}
 }
