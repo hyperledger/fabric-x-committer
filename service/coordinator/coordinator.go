@@ -424,7 +424,9 @@ func (c *Service) sendTxStatus(
 			return nil
 		}
 
-		c.numTxsInProgress.Add(-int32(len(txStatus.Status))) //nolint:gosec
+		// Count checkpoint feedback too: its transaction was counted on arrival,
+		// but it has no transaction status.
+		c.numTxsInProgress.Add(-txCount(txStatus))
 
 		if err := stream.Send(txStatus); err != nil {
 			return errors.Wrap(err, "failed to send transaction status batch to the sidecar")

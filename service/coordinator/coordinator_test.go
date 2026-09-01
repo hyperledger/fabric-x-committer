@@ -1081,6 +1081,52 @@ func TestWaitingTxsCount(t *testing.T) {
 	}, 2*time.Second, 100*time.Millisecond)
 }
 
+// TestWaitingTxsCountReturnsToZeroForHeldCheckpoint checks that feedback removes a
+// held checkpoint from the in-progress count. Otherwise, the sidecar would wait
+// forever for an idle coordinator before restarting its session.
+func TestWaitingTxsCountReturnsToZeroForHeldCheckpoint(t *testing.T) {
+	t.Parallel()
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1})
+
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env.startServiceAndOpenStream(ctx, t)
+	env.createNamespaces(t, 0, "1")
+
+	// A checkpoint-only block produces feedback with no transaction statuses.
+	b, _ := makeTestBlock(1)
+	cpRef := b.Txs[0].Ref
+	env.vc.HoldCheckpoint(cpRef, &servicepb.CheckpointFeedback{
+		Signal:              servicepb.CheckpointFeedback_HOLD,
+		Ref:                 cpRef,
+		SnapshotBlockNumber: 41,
+	})
+
+	require.NoError(t, env.csStream.Send(b))
+
+	// The feedback arrives carrying no per-TX status.
+	held, err := env.csStream.Recv()
+	require.NoError(t, err)
+	require.Empty(t, held.Status)
+	require.NotNil(t, held.CheckpointFeedback)
+	require.Equal(t, servicepb.CheckpointFeedback_HOLD, held.CheckpointFeedback.Signal)
+	require.Equal(t, cpRef.TxId, held.CheckpointFeedback.Ref.GetTxId())
+
+	// The held checkpoint must not stay counted as in-flight.
+	require.Eventually(t, func() bool {
+		return env.coordinator.numTxsInProgress.Load() == 0
+	}, 10*time.Second, 100*time.Millisecond,
+		"a held checkpoint leaked numTxsInProgress (%d), so the sidecar's idle handshake can never complete",
+		env.coordinator.numTxsInProgress.Load())
+
+	// The sidecar must be able to detect an idle coordinator before restarting.
+	env.streamCancel()
+	require.Eventually(t, func() bool {
+		idle, idleErr := env.client.NoPendingTransactionProcessing(t.Context(), nil)
+		return idleErr == nil && idle.GetValue()
+	}, 10*time.Second, 100*time.Millisecond)
+}
+
 func readTxStatus(t *testing.T, stream servicepb.Coordinator_BlockProcessingClient, count int) []*committerpb.TxStatus {
 	t.Helper()
 	actualTxsStatus := make([]*committerpb.TxStatus, 0, count)

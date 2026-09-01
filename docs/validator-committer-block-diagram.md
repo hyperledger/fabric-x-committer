@@ -184,6 +184,16 @@ Flow description:
 4. **Committer → DB:** Committer workers query versions for blind writes, validate reads, commit writes to database.
 5. **Committer → Coordinator:** Committers send final `TxStatusBatch` messages to `txsStatus` channel, returned to Coordinator.
 
+In phase 2, the validator also compares each checkpoint hash with the local snapshot hash:
+
+- Matching hashes allow the checkpoint to commit.
+- A missing or different snapshot causes a transaction rejection.
+- A missing local hash produces `HOLD`. The sidecar waits, then fetches the block again.
+- Different hashes for the same snapshot produce `HALT`. The sidecar stops for investigation.
+
+The committer forwards `HOLD` and `HALT` in the status batch.
+See [validator-committer.md](./validator-committer.md), Task 2 step **e**.
+
 Key design points:
 
 - **Multiple workers per phase**: Configurable parallelism (e.g., `MaxWorkersForPreparer`, `MaxWorkersForValidator`, `MaxWorkersForCommitter`)
@@ -481,6 +491,7 @@ The Validator phase receives prepared transactions from the Preparer and perform
 - `validTxBlindWrites`: Blind writes from valid transactions (still unresolved)
 - `newWrites`: New writes from valid transactions
 - `invalidTxStatus`: Status map for invalidated transactions (e.g., `MVCC_CONFLICT`)
+- `checkpointFeedback`: `HOLD` or `HALT` for a checkpoint; nil otherwise
 
 **Validation process**:
 
@@ -1179,11 +1190,14 @@ Open these files next to connect diagrams to implementation:
 - `service/vc/preparer.go` — Transaction preparation, write categorization, read extraction.
 - `service/vc/validator.go` — MVCC read validation, invalidation of transactions.
 - `service/vc/committer.go` — Blind write resolution, database commit, duplicate handling.
+- `service/vc/checkpoint.go` — Checkpoint hash checks, transaction rejection, and HOLD/HALT feedback.
 
 ### Database Layer
 
 - `service/vc/database.go` — Database connection, stored procedure calls, retry logic.
-- `service/vc/dbinit.go` — Table and stored procedure creation.
+- `service/vc/database_snapshot.go` — Creates snapshot clones and checks whether a new snapshot is allowed.
+- `utils/statedb/dbinit.go` — Table and stored procedure creation.
+- `utils/statedb/snapshot_state.go` — Reads and updates snapshot records, including `MarkSnapshotCheckpointedInTx`.
 
 ### Data Structures
 
@@ -1196,4 +1210,5 @@ Open these files next to connect diagrams to implementation:
 - `service/vc/preparer_test.go` — Preparer unit tests.
 - `service/vc/validator_test.go` — Validator unit tests.
 - `service/vc/committer_test.go` — Committer unit tests.
+- `service/vc/checkpoint_test.go` — Tests checkpoint hash checks, HOLD/HALT feedback, and retries.
 - `service/vc/database_test.go` — Database operation tests.

@@ -87,6 +87,12 @@ How often the Sidecar sends the latest committed block number to the Coordinator
 
 Minimal effect on steady-state throughput. Shorter intervals improve recovery speed after failures. Default: 5s.
 
+### `checkpoint-hold-retry-interval`
+
+How long the Sidecar waits before fetching a held `_checkpoint` block again. A checkpoint is held when its local snapshot hash is not ready. Default: 1m.
+
+This setting applies only during a hold. A shorter interval retries sooner, but may cause extra session restarts while hashing is still in progress. The total wait also depends on the [snapshot hasher](snapshot-hasher.md)'s poll interval and hashing time.
+
 ### `notification.max-active-tx-ids`
 
 Global limit on active transaction ID subscriptions across all notification streams. When exhausted, new subscriptions are partially rejected.

@@ -39,6 +39,13 @@ type perfMetrics struct {
 	waitingTransactionsQueueSize prometheus.Gauge
 	serverMetrics                *serve.ServerMetrics
 
+	// Checkpoint feedback metrics. The state gauge shows whether feedback has
+	// paused or stopped the sidecar: 0 = running, 1 = held, 2 = halted.
+	checkpointFeedbackState     prometheus.Gauge
+	checkpointFeedbackTotal     *prometheus.CounterVec
+	checkpointHoldsTotal        prometheus.Counter
+	blockPullPausedSecondsTotal prometheus.Counter
+
 	// queue sizes
 	yetToBeCommittedBlocksQueueSize prometheus.GaugeFunc
 	mappedBlocksQueueSize           prometheus.GaugeFunc
@@ -112,6 +119,32 @@ func newPerformanceMetrics(q *queues) *perfMetrics {
 			Subsystem: subsystemRelay,
 			Name:      "waiting_transactions_queue_size",
 			Help:      "Total number of transactions waiting at the relay for statuses.",
+		}),
+		checkpointFeedbackState: p.NewGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: subsystemRelay,
+			Name:      "checkpoint_feedback_state",
+			Help: "Checkpoint state: 0 = running, 1 = waiting for the local snapshot hash, " +
+				"2 = stopped because the local and checkpoint hashes differ.",
+		}),
+		checkpointFeedbackTotal: p.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystemRelay,
+			Name:      "checkpoint_feedback_total",
+			Help:      "Total number of checkpoint feedback signals received from the committer, by signal.",
+		}, []string{"signal"}),
+		blockPullPausedSecondsTotal: p.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystemRelay,
+			Name:      "block_pull_paused_seconds_total",
+			Help:      "Total time spent in completed checkpoint hold waits, in seconds.",
+		}),
+		checkpointHoldsTotal: p.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystemRelay,
+			Name:      "checkpoint_holds_total",
+			Help: "Total number of checkpoint holds while waiting for the local snapshot hash. " +
+				"Includes repeated holds for the same checkpoint.",
 		}),
 		committedBlocksQueueSize: p.NewChannelLenGauge(prometheus.GaugeOpts{
 			Namespace: namespace,

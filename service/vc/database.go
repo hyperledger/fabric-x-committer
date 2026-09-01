@@ -73,6 +73,9 @@ type (
 		newWrites    namespaceToWrites
 		batchStatus  *servicepb.TxStatusBatch
 		txIDToHeight transactionIDToHeight
+		// checkpoint is the verified write, or nil if there is none.
+		// Its snapshot is marked CHECKPOINTED in the same database transaction.
+		checkpoint *checkpointTx
 	}
 
 	commitResult struct {
@@ -232,6 +235,14 @@ func (d *database) commit(ctx context.Context, states *statesToBeCommitted) (*co
 	// row it targets are always consistent (see rejectSnapshotIfPriorNotCheckpointed).
 	if err = setLatestSnapshotKeyIfPresent(ctx, tx, states.newWrites[committerpb.SnapshotNamespaceID]); err != nil {
 		return nil, fmt.Errorf("failed to set latest snapshot key: %w", err)
+	}
+
+	// Commit the checkpoint and snapshot status together. A crash between separate
+	// commits could leave the snapshot waiting for a checkpoint and block new snapshots.
+	if states.checkpoint != nil {
+		if err = statedb.MarkSnapshotCheckpointedInTx(ctx, tx, states.checkpoint.blockNum); err != nil {
+			return nil, fmt.Errorf("failed to mark the snapshot as checkpointed: %w", err)
+		}
 	}
 
 	err = tx.Commit(ctx)

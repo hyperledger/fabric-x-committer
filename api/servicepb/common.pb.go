@@ -28,33 +28,31 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Signal controls new intake. HOLD and HALT allow already-fetched work to drain.
+// Signal tells the sidecar whether to wait or stop.
 type CheckpointFeedback_Signal int32
 
 const (
-	// No checkpoint feedback. Ordinary per-TX status is authoritative.
+	// Take no checkpoint action. Use the transaction statuses.
 	CheckpointFeedback_SIGNAL_UNSPECIFIED CheckpointFeedback_Signal = 0
-	// Local snapshot hash is computed and verified. Releases a prior HOLD and resumes intake.
-	CheckpointFeedback_PROCEED CheckpointFeedback_Signal = 1
-	// Local snapshot hash is not yet computed. Blocks new intake while already-fetched work drains.
-	CheckpointFeedback_HOLD CheckpointFeedback_Signal = 2
-	// Same intake barrier as HOLD, but terminal: no PROCEED follows without operator intervention.
-	CheckpointFeedback_HALT CheckpointFeedback_Signal = 3
+	// The local snapshot hash is not ready. The checkpoint has no transaction status.
+	// The sidecar waits, then submits the same checkpoint again.
+	CheckpointFeedback_HOLD CheckpointFeedback_Signal = 1
+	// The local and checkpoint hashes differ. The sidecar stops without retrying.
+	// An operator must investigate.
+	CheckpointFeedback_HALT CheckpointFeedback_Signal = 2
 )
 
 // Enum value maps for CheckpointFeedback_Signal.
 var (
 	CheckpointFeedback_Signal_name = map[int32]string{
 		0: "SIGNAL_UNSPECIFIED",
-		1: "PROCEED",
-		2: "HOLD",
-		3: "HALT",
+		1: "HOLD",
+		2: "HALT",
 	}
 	CheckpointFeedback_Signal_value = map[string]int32{
 		"SIGNAL_UNSPECIFIED": 0,
-		"PROCEED":            1,
-		"HOLD":               2,
-		"HALT":               3,
+		"HOLD":               1,
+		"HALT":               2,
 	}
 )
 
@@ -187,8 +185,8 @@ func (x *TxWithRef) GetContent() *applicationpb.Tx {
 type TxStatusBatch struct {
 	state  protoimpl.MessageState  `protogen:"open.v1"`
 	Status []*committerpb.TxStatus `protobuf:"bytes,1,rep,name=status,proto3" json:"status,omitempty"`
-	// Checkpoint feedback from the VC to the coordinator. The coordinator forwards the same message to the sidecar.
-	// If absent, ordinary per-TX status is authoritative.
+	// The coordinator forwards this feedback from the VC to the sidecar unchanged.
+	// If absent, use the transaction statuses.
 	CheckpointFeedback *CheckpointFeedback `protobuf:"bytes,2,opt,name=checkpoint_feedback,json=checkpointFeedback,proto3,oneof" json:"checkpoint_feedback,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
@@ -238,18 +236,21 @@ func (x *TxStatusBatch) GetCheckpointFeedback() *CheckpointFeedback {
 	return nil
 }
 
-// CheckpointFeedback controls checkpoint intake while local snapshot hash verification completes.
+// CheckpointFeedback tells the sidecar to wait for a snapshot hash or stop on a mismatch.
 type CheckpointFeedback struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Checkpoint feedback signal.
 	Signal CheckpointFeedback_Signal `protobuf:"varint,1,opt,name=signal,proto3,enum=servicepb.CheckpointFeedback_Signal" json:"signal,omitempty"`
-	// Checkpoint transaction ID used by the coordinator to correlate feedback with the in-flight checkpoint.
-	TxId string `protobuf:"bytes,2,opt,name=tx_id,json=txId,proto3" json:"tx_id,omitempty"`
-	// Referenced snapshot block number used in coordinator and sidecar diagnostic logs.
-	BlockNumber uint64 `protobuf:"varint,3,opt,name=block_number,json=blockNumber,proto3" json:"block_number,omitempty"`
-	// HALT divergence detail for operator diagnostics, including local and checkpoint hashes.
-	// Required when signal is HALT. Must be logged, not used as a metric label.
-	Reason        string `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
+	// The snapshot's block number, used in logs.
+	// The checkpoint transaction's block number is in ref.
+	SnapshotBlockNumber uint64 `protobuf:"varint,3,opt,name=snapshot_block_number,json=snapshotBlockNumber,proto3" json:"snapshot_block_number,omitempty"`
+	// The reason for HALT, including the local and checkpoint hashes.
+	// Required for HALT. Log it; do not use it as a metric label.
+	Reason string `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
+	// Identifies the checkpoint transaction. The coordinator uses this reference to release
+	// its dependency-graph node because HOLD and HALT have no transaction status.
+	// Without that release, a retry would wait forever on the old node.
+	Ref           *committerpb.TxRef `protobuf:"bytes,5,opt,name=ref,proto3" json:"ref,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -291,16 +292,9 @@ func (x *CheckpointFeedback) GetSignal() CheckpointFeedback_Signal {
 	return CheckpointFeedback_SIGNAL_UNSPECIFIED
 }
 
-func (x *CheckpointFeedback) GetTxId() string {
+func (x *CheckpointFeedback) GetSnapshotBlockNumber() uint64 {
 	if x != nil {
-		return x.TxId
-	}
-	return ""
-}
-
-func (x *CheckpointFeedback) GetBlockNumber() uint64 {
-	if x != nil {
-		return x.BlockNumber
+		return x.SnapshotBlockNumber
 	}
 	return 0
 }
@@ -310,6 +304,13 @@ func (x *CheckpointFeedback) GetReason() string {
 		return x.Reason
 	}
 	return ""
+}
+
+func (x *CheckpointFeedback) GetRef() *committerpb.TxRef {
+	if x != nil {
+		return x.Ref
+	}
+	return nil
 }
 
 var File_api_servicepb_common_proto protoreflect.FileDescriptor
@@ -325,17 +326,16 @@ const file_api_servicepb_common_proto_rawDesc = "" +
 	"\rTxStatusBatch\x12-\n" +
 	"\x06status\x18\x01 \x03(\v2\x15.committerpb.TxStatusR\x06status\x12S\n" +
 	"\x13checkpoint_feedback\x18\x02 \x01(\v2\x1d.servicepb.CheckpointFeedbackH\x00R\x12checkpointFeedback\x88\x01\x01B\x16\n" +
-	"\x14_checkpoint_feedback\"\xe5\x01\n" +
+	"\x14_checkpoint_feedback\"\x80\x02\n" +
 	"\x12CheckpointFeedback\x12<\n" +
-	"\x06signal\x18\x01 \x01(\x0e2$.servicepb.CheckpointFeedback.SignalR\x06signal\x12\x13\n" +
-	"\x05tx_id\x18\x02 \x01(\tR\x04txId\x12!\n" +
-	"\fblock_number\x18\x03 \x01(\x04R\vblockNumber\x12\x16\n" +
-	"\x06reason\x18\x04 \x01(\tR\x06reason\"A\n" +
+	"\x06signal\x18\x01 \x01(\x0e2$.servicepb.CheckpointFeedback.SignalR\x06signal\x122\n" +
+	"\x15snapshot_block_number\x18\x03 \x01(\x04R\x13snapshotBlockNumber\x12\x16\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reason\x12$\n" +
+	"\x03ref\x18\x05 \x01(\v2\x12.committerpb.TxRefR\x03ref\"4\n" +
 	"\x06Signal\x12\x16\n" +
-	"\x12SIGNAL_UNSPECIFIED\x10\x00\x12\v\n" +
-	"\aPROCEED\x10\x01\x12\b\n" +
-	"\x04HOLD\x10\x02\x12\b\n" +
-	"\x04HALT\x10\x03B9Z7github.com/hyperledger/fabric-x-committer/api/servicepbb\x06proto3"
+	"\x12SIGNAL_UNSPECIFIED\x10\x00\x12\b\n" +
+	"\x04HOLD\x10\x01\x12\b\n" +
+	"\x04HALT\x10\x02J\x04\b\x02\x10\x03B9Z7github.com/hyperledger/fabric-x-committer/api/servicepbb\x06proto3"
 
 var (
 	file_api_servicepb_common_proto_rawDescOnce sync.Once
@@ -367,11 +367,12 @@ var file_api_servicepb_common_proto_depIdxs = []int32{
 	7, // 2: servicepb.TxStatusBatch.status:type_name -> committerpb.TxStatus
 	4, // 3: servicepb.TxStatusBatch.checkpoint_feedback:type_name -> servicepb.CheckpointFeedback
 	0, // 4: servicepb.CheckpointFeedback.signal:type_name -> servicepb.CheckpointFeedback.Signal
-	5, // [5:5] is the sub-list for method output_type
-	5, // [5:5] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	5, // 5: servicepb.CheckpointFeedback.ref:type_name -> committerpb.TxRef
+	6, // [6:6] is the sub-list for method output_type
+	6, // [6:6] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_api_servicepb_common_proto_init() }

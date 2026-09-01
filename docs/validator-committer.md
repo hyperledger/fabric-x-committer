@@ -232,10 +232,42 @@ type validatedTransactions struct {
     newWrites             transactionToWrites
     invalidTxStatus       map[TxID]protoblocktx.Status
     txIDToHeight          transactionIDToHeight
+    // Set only for checkpoint HOLD or HALT feedback (step e).
+    checkpointFeedback    *servicepb.CheckpointFeedback
 }
 ```
 
-**e. Enqueueing for Commit:** The `validatedTransactions` object is enqueued into the `validatedTxs` channel for the Committer task.
+**e. Verifying a Checkpoint Before Commit:** A `_checkpoint` transaction contains a snapshot block number and a hash
+agreed on by the organizations. The VC commits it only if that hash matches the local hash for the same snapshot.
+
+The validator reads the block number from the checkpoint key and checks the latest `_snapshot` record. Only the latest
+snapshot can be waiting for a checkpoint: the VC rejects new snapshot requests until the previous one is `CHECKPOINTED`.
+
+| Check | Result |
+|-------|--------|
+| The block number and hash match the local snapshot | Keep the checkpoint write and commit it normally. |
+| There is no local snapshot, or its block number differs | Reject the transaction with `MALFORMED_CHECKPOINT_INVALID_KEY`. Keep processing other transactions. |
+| The local snapshot hash is missing | Remove the checkpoint write and send `HOLD`. The sidecar waits, then fetches the block again. |
+| The block number matches, but the hashes differ | Remove the checkpoint write and send `HALT`. Save the reason in the snapshot record and stop the sidecar for investigation. |
+| The key cannot be decoded, or the batch contains multiple checkpoints | Return an error. Do not send the batch to the committer. |
+
+A wrong block number is bad input, not evidence of a hash mismatch. Anyone who satisfies
+`/Channel/Application/CheckpointEndorsement` can submit a checkpoint. Halting on a wrong block number would let an
+authorized submitter stop the committer, so the VC rejects that transaction instead.
+
+The [sidecar](sidecar.md) checks the transaction's format before sending it to the VC. If the VC still receives an
+invalid key or multiple checkpoints in one batch, it fails the batch. Skipping verification could allow an unverified
+checkpoint to commit.
+
+`HOLD` and `HALT` use `CheckpointFeedback` instead of a transaction status. Transaction statuses are saved in `tx_status`
+except for `REJECTED_DUPLICATE_TX_ID`. Saving a status for a held checkpoint would cause every retry with the same
+transaction ID to be rejected as a duplicate.
+
+The feedback includes the checkpoint transaction's `TxRef`. The coordinator uses it to release the transaction's node
+from the dependency graph. The sidecar uses the feedback to wait or stop; on retry, it fetches the block again.
+See [Checkpoint feedback gate](sidecar.md#checkpoint-feedback-gate) and [checkpoint.go](/service/vc/checkpoint.go).
+
+**f. Enqueueing for Commit:** The `validatedTransactions` object is enqueued into the `validatedTxs` channel for the Committer task.
 
 ### Task 3. Committing Valid Transactions to the Database
 
@@ -261,6 +293,9 @@ type statesToBeCommitted struct {
     newWrites    namespaceToWrites
     batchStatus  *protoblocktx.TransactionsStatus
     txIDToHeight transactionIDToHeight
+    // The verified checkpoint write, if any. Its snapshot is marked CHECKPOINTED
+    // in the same database transaction.
+    checkpoint   *checkpointTx
 }
 ```
 
@@ -271,10 +306,25 @@ Both `insert_ns_${NAMESPACE_ID}` (for `newWrites`) and `insert_tx_status` can re
 If this happens, the writes and/or statuses for the corresponding transactions are removed from the batch, their statuses are updated 
 (e.g., to reflect a duplicate), and the commit is retried with the modified, smaller batch. This retry loop continues until the commit succeeds.
 
-**e. Reporting Status:** After the commit is successful, the `batchStatus` is sent to the `txsStatus` channel, which relays the information 
-back to the Coordinator, completing the workflow for the transaction batch.
+System transactions also update snapshot metadata in the same database transaction:
 
-### Task 4. Creating State Snapshots (Clone-First)
+- A `_snapshot` write sets the latest-snapshot pointer through `setLatestSnapshotKeyIfPresent`.
+- A verified `_checkpoint` write marks its snapshot `CHECKPOINTED` through `statedb.MarkSnapshotCheckpointedInTx`.
+
+The checkpoint write and snapshot status must commit together. If they committed separately, a crash between them could
+leave a saved checkpoint with a snapshot still waiting for it. The VC would then reject new snapshot requests.
+
+Each retry checks whether the checkpoint write is still in the batch. If it was removed as a duplicate, the retry does
+not update the snapshot record. An already-`CHECKPOINTED` record is left unchanged.
+
+A missing latest-snapshot pointer or a different block number causes a non-retryable error. The record no longer
+matches what the validator checked, so the committer must not save the checkpoint.
+
+**e. Reporting Status:** After the commit is successful, the `batchStatus` is sent to the `txsStatus` channel, which relays the information 
+back to the Coordinator, completing the workflow for the transaction batch. If the validator supplied
+`CheckpointFeedback`, the committer includes it unchanged. The committer does not create feedback.
+
+### Creating State Snapshots (Clone-First)
 
 When a `_snapshot` marker transaction is committed, the VC creates a native,
 zero-copy clone of the state database **before** the marker's transaction ID is

@@ -220,6 +220,47 @@ func (s *SnapshotStateManager) Update(ctx context.Context, ref *committerpb.TxRe
 	return err //nolint:wrapcheck // already wrapped inside the retried closure.
 }
 
+// MarkSnapshotCheckpointedInTx marks the latest snapshot CHECKPOINTED in the caller's
+// transaction. The checkpoint write and this update must commit together. Otherwise,
+// a crash could leave the snapshot waiting for a checkpoint and block new snapshots.
+//
+// An already-CHECKPOINTED record is left unchanged. A missing pointer or a different
+// block returns a non-retryable error: the record no longer matches what was verified.
+func MarkSnapshotCheckpointedInTx(ctx context.Context, tx pgx.Tx, blockNum uint64) error {
+	var key []byte
+	if err := tx.QueryRow(ctx, getLatestSnapshotKeySQL, LatestSnapshotPointerKey).Scan(&key); err != nil {
+		return errors.Wrap(err, "failed to read the latest snapshot key")
+	}
+	if len(key) == 0 {
+		return errors.Wrapf(retry.ErrNonRetryable,
+			"no snapshot record to checkpoint for block %d, but its checkpoint was verified", blockNum)
+	}
+
+	var raw []byte
+	if err := tx.QueryRow(ctx, selectSnapshotRecordForUpdateSQL, key).Scan(&raw); err != nil {
+		return errors.Wrapf(err, "failed to read _snapshot record for key %s", key)
+	}
+	state, err := DecodeSnapshotState(raw)
+	if err != nil {
+		return errors.Wrapf(err, "failed to decode _snapshot record for key %s", key)
+	}
+	if state.Status == committerpb.SnapshotState_CHECKPOINTED {
+		return nil // already checkpointed: a resubmitted checkpoint must not rewrite it.
+	}
+	if state.TxRef == nil || state.TxRef.BlockNum != blockNum {
+		return errors.Wrapf(retry.ErrNonRetryable,
+			"the latest snapshot record is not for block %d, but its checkpoint was verified", blockNum)
+	}
+
+	state.Status = committerpb.SnapshotState_CHECKPOINTED
+	newRaw, err := EncodeSnapshotState(state)
+	if err != nil {
+		return errors.Wrapf(err, "failed to encode _snapshot record for key %s", key)
+	}
+	_, err = tx.Exec(ctx, updateSnapshotRecordSQL, key, newRaw)
+	return errors.Wrapf(err, "failed to mark the snapshot for block %d as checkpointed", blockNum)
+}
+
 // DecodeSnapshotState unmarshals a `_snapshot` record value.
 func DecodeSnapshotState(raw []byte) (*committerpb.SnapshotState, error) {
 	var state committerpb.SnapshotState

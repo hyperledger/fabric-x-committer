@@ -298,9 +298,10 @@ The sidecar applies additional form checks for system namespaces before forwardi
   `MALFORMED_NO_WRITES`.
 - `_checkpoint` transactions must be standalone: exactly one namespace, and that namespace must be `_checkpoint`. The
   namespace must contain exactly one read-write, no reads-only entries, and no blind writes. The read-write key must
-  decode as a full `servicepb.Height` via `servicepb.NewHeightFromBytes`; valid height prefixes with trailing bytes
-  are rejected. Invalid checkpoint form is rejected with `MALFORMED_CHECKPOINT_INVALID_KEY`; a mixed
-  `_checkpoint`+user transaction is rejected with `MALFORMED_SYSTEM_TX_NOT_STANDALONE`.
+  contain only the snapshot's block number, encoded by `servicepb.CheckpointKey`. The sidecar decodes it with
+  `servicepb.BlockNumFromCheckpointKey` and rejects any extra bytes. Invalid checkpoint format is rejected with
+  `MALFORMED_CHECKPOINT_INVALID_KEY`. A transaction that mixes `_checkpoint` with a user namespace is rejected with
+  `MALFORMED_SYSTEM_TX_NOT_STANDALONE`.
 - `_meta` keeps the existing namespace-policy update checks. `_config` is rejected if submitted as an
   application transaction namespace.
 - Only the first `_snapshot` transaction in a block is accepted. Any additional `_snapshot` transaction in the same
@@ -390,6 +391,52 @@ At most one snapshot barrier is applied per block: only the first `_snapshot` tr
 the block is split into at most two segments — one segment carrying every other transaction and rejected status in
 the block (in original order), followed by the snapshot transaction alone. When the block contains nothing but the
 snapshot, the first segment is omitted, leaving a single snapshot-only segment.
+
+#### Checkpoint feedback gate
+
+A `_checkpoint` transaction contains the hash agreed on by the organizations for a snapshot. The VC compares it with
+the local hash before committing. If the local hash is missing or differs, the VC sends `CheckpointFeedback` through
+the coordinator to the sidecar. A checkpoint for a missing or different snapshot is rejected with a transaction status
+instead. See [validator-committer.md](validator-committer.md), Task 2 step **e**.
+
+The sidecar handles feedback in `processCheckpointFeedback`:
+
+| Signal | Meaning | Sidecar action |
+|--------|---------|----------------|
+| `HOLD` | The local snapshot hash is not ready. | Wait for `checkpoint-hold-retry-interval`, then restart the coordinator session and fetch the block again. |
+| `HALT` | The local and checkpoint hashes differ. | Stop the sidecar with a non-retryable error. An operator must investigate. |
+| No feedback | Use the transaction statuses. | Continue processing. |
+
+**Retrying a held checkpoint.** The checkpoint has not committed, so recovery fetches its block again. Restarting the
+session resets its queues, counters, and tracked blocks. This reuses normal recovery instead of adding a separate
+cleanup path for held checkpoints. Transactions that already committed are recognized by their transaction IDs and
+are not committed again.
+
+The wait gives the [snapshot hasher](snapshot-hasher.md) time to finish. It also pauses status processing, so it can
+delay saving other committed blocks to the block store. Recovery retrieves those statuses after reconnecting.
+
+There is no retry limit for `HOLD`. A slow hasher must not cause the sidecar to commit an unverified checkpoint or stop
+permanently. Operators can monitor repeated holds with the metrics below.
+
+**Coordinator handling.** A held or halted checkpoint has no transaction status. The coordinator forwards its feedback
+even if the batch contains no statuses. It also releases the checkpoint's dependency-graph node so a retry does not
+wait on the old node. See [coordinator.md](coordinator.md#step-5-status-aggregation-and-feedback-loop).
+
+**Metrics.** The sidecar reports four metrics:
+
+| Metric | Meaning |
+|--------|---------|
+| `sidecar_relay_checkpoint_feedback_state` | `0`: running, `1`: held, `2`: halted. |
+| `sidecar_relay_checkpoint_feedback_total{signal}` | Number of feedback messages, grouped by signal. |
+| `sidecar_relay_checkpoint_holds_total` | Number of holds, including repeated holds for the same checkpoint. |
+| `sidecar_relay_block_pull_paused_seconds_total` | Total time spent in completed hold waits, in seconds. |
+
+The state gauge stays at `1` across hold retries. It returns to `0` when a status batch arrives without feedback, not
+when the wait ends. A `HALT` stops processing, so the gauge stays at `2` for the rest of the process.
+
+If the hold counter keeps increasing, check the snapshot hasher's progress and logs. The sidecar logs the snapshot
+block number at WARN for `HOLD`, and the block number and mismatch reason at ERROR for `HALT`. These values are not
+metric labels because they could create too many distinct time series.
 
 ### Task 3. Persisting Committed Block in the File System
 

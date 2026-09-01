@@ -319,9 +319,17 @@ FROM UNNEST($1::bytea[], $2::bytea[], $3::bigint[]) AS t(_key, _value, _version)
 // FetchKeys fetches a list of keys.
 func (env *DatabaseTestEnv) FetchKeys(t *testing.T, nsID string, keys [][]byte) map[string]*ValueVersion {
 	t.Helper()
+	return env.fetchKeys(t.Context(), t, nsID, keys)
+}
+
+// fetchKeys is FetchKeys for a caller that already holds a context.
+func (env *DatabaseTestEnv) fetchKeys(
+	ctx context.Context, t *testing.T, nsID string, keys [][]byte,
+) map[string]*ValueVersion {
+	t.Helper()
 	query := fmt.Sprintf(queryKeyValueVersionSQLTmpt, statedb.TableName(nsID))
 
-	kvPairs, err := env.DB.pool.Query(t.Context(), query, keys)
+	kvPairs, err := env.DB.pool.Query(ctx, query, keys)
 	require.NoError(t, err)
 	defer kvPairs.Close()
 
@@ -366,7 +374,15 @@ func (env *DatabaseTestEnv) rowExists(t *testing.T, nsID string, exp namespaceWr
 
 func (env *DatabaseTestEnv) rowNotExists(t *testing.T, nsID string, keys [][]byte) {
 	t.Helper()
-	actualRows := env.FetchKeys(t, nsID, keys)
+	env.requireRowNotExists(t.Context(), t, nsID, keys)
+}
+
+// requireRowNotExists checks for missing rows using the caller's context.
+func (env *DatabaseTestEnv) requireRowNotExists(
+	ctx context.Context, t *testing.T, nsID string, keys [][]byte,
+) {
+	t.Helper()
+	actualRows := env.fetchKeys(ctx, t, nsID, keys)
 	assert.Empty(t, actualRows)
 	for key, valVer := range actualRows {
 		assert.Failf(t, "Key should not exist", "key [%s] value: [%s] version [%d]",
@@ -466,6 +482,15 @@ func dropSnapshotCloneOnCleanup(t *testing.T, db *database, name string) {
 		sql := fmt.Sprintf("DROP DATABASE IF EXISTS %s", pgx.Identifier{name}.Sanitize())
 		_ = db.adminExec(context.Background(), sql)
 	})
+}
+
+// ClearLatestSnapshotKey clears the latest-snapshot pointer without deleting snapshot rows.
+// Tests use it to simulate inconsistent metadata that normal commits cannot produce.
+func (env *DatabaseTestEnv) ClearLatestSnapshotKey(t *testing.T) {
+	t.Helper()
+	_, err := env.DB.pool.Exec(t.Context(), setMetadataPrepSQLStmt,
+		statedb.LatestSnapshotPointerKey, nil)
+	require.NoError(t, err)
 }
 
 // ReadSnapshotRecord reads a `_snapshot` record and its row version.
