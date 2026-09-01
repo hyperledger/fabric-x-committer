@@ -16,7 +16,7 @@ The Sidecar exposes a Notification Service that provides two mechanisms for rece
    containing transaction IDs of interest, and the server pushes status responses as transactions
    complete. Multiple subscription requests can be sent on the same stream.
 
-2. **All Transactions Stream** — Allows clients to subscribe to a stream of all committed transactions in block order,
+2. **Blocks Stream** — Allows clients to subscribe to a stream of all committed transactions in block order,
    with optional filtering by namespace and status. This is useful for audit, monitoring, event-driven applications, and
    replication systems.
 
@@ -34,7 +34,7 @@ service Notifier {
     rpc OpenNotificationStream (stream NotificationRequest) returns (stream NotificationResponse);
 
     // Subscribe to all committed transactions
-    rpc StreamAllTransactions (StreamAllRequest) returns (stream TxBatch);
+    rpc StreamBlocks (StreamBlocksRequest) returns (stream BlockEvent);
 }
 ```
 
@@ -183,16 +183,16 @@ If the notification stream breaks (e.g., sidecar restart) or the timeout expires
 the transaction completes, the client should fall back to the Block Query API to check
 the transaction status.
 
-## 3. All Transactions Stream API
+## 3. Blocks Stream API
 
 ### 3.1. API Definition
 
-The `StreamAllTransactions` RPC provides a server-streaming interface that delivers all committed transactions in block
+The `StreamBlocks` RPC provides a server-streaming interface that delivers all committed transactions in block
 order. Unlike the transaction ID subscription API, this stream does not require clients to know transaction IDs in
 advance.
 
 ```protobuf
-message StreamAllRequest {
+message StreamBlocksRequest {
     repeated string filter_namespaces = 1;  // Optional: filter by namespace(s)
     repeated Status filter_status = 2;      // Optional: filter by status
     bool include_read_write_sets = 3;       // Optional: include read/write sets
@@ -218,11 +218,11 @@ message TxEvent {
 
 ### 3.2. Opening a Stream
 
-Create a gRPC connection to the Sidecar and call `StreamAllTransactions`:
+Create a gRPC connection to the Sidecar and call `StreamBlocks`:
 
 ```go
 client := committerpb.NewNotifierClient(conn)
-stream, err := client.StreamAllTransactions(ctx, &committerpb.StreamAllRequest{
+stream, err := client.StreamBlocks(ctx, &committerpb.StreamBlocksRequest{
     FilterNamespaces: []string{"namespace-1", "namespace-2"},
     FilterStatus: []committerpb.Status{committerpb.Status_COMMITTED},
     IncludeReadWriteSets: true,
@@ -304,7 +304,7 @@ The following configuration options in `sidecar.yaml` control notification behav
 |-------------------------------------|---------|-------------------------------------------------------------------------------------------------|
 | `notification.max-timeout`          | `1m`    | Upper limit on per-request timeout for transaction ID subscriptions.                            |
 | `notification.stream-write-timeout` | `30s`   | Write timeout for all transactions stream. Prevents slow clients from blocking.                 |
-| `server.max-concurrent-streams`     | `10`    | Maximum concurrent streaming RPCs across all stream types (Deliver + Notification + StreamAll). |
+| `server.max-concurrent-streams`     | `10`    | Maximum concurrent streaming RPCs across all stream types (Deliver + Notification + Blocks). |
 
 Sample configuration:
 

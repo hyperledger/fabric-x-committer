@@ -45,7 +45,7 @@ type (
 		// timeoutQueue receives requests whose deadline has passed.
 		timeoutQueue chan *notificationRequest
 
-		// StreamAllTransactions support
+		// StreamBlocks support
 		blockStreams   []*blockStream
 		blockStreamsMu sync.RWMutex
 	}
@@ -69,7 +69,7 @@ type (
 	}
 
 	// committedBlockWithTxs contains the essential data from a committed block
-	// for streaming to StreamAllTransactions clients. This is a clean interface
+	// for streaming to StreamBlocks clients. This is a clean interface
 	// that separates the notifier from relay's internal blockWithStatus structure.
 	committedBlockWithTxs struct {
 		blockNumber   uint64
@@ -79,7 +79,7 @@ type (
 		prevBlockHash []byte
 	}
 
-	// blockStream represents a single StreamAllTransactions client subscription.
+	// blockStream represents a single StreamBlocks client subscription.
 	// Each stream has its own filters and receives committed blocks via a channel.
 	blockStream struct {
 		// Filters (empty = no filter)
@@ -223,12 +223,12 @@ func (n *notifier) OpenNotificationStream(stream committerpb.Notifier_OpenNotifi
 	return wrapNotifierError(g.Wait())
 }
 
-// StreamAllTransactions implements the [committerpb.NotifierServer] API.
+// StreamBlocks implements the [committerpb.NotifierServer] API.
 // It streams all committed transactions to the client, with optional filtering
 // by namespace and transaction status.
-func (n *notifier) StreamAllTransactions(
-	req *committerpb.StreamAllRequest,
-	stream committerpb.Notifier_StreamAllTransactionsServer,
+func (n *notifier) StreamBlocks(
+	req *committerpb.StreamBlocksRequest,
+	stream committerpb.Notifier_StreamBlocksServer,
 ) error {
 	// Create stream context with cancellation
 	ctx, cancel := context.WithCancel(stream.Context())
@@ -374,7 +374,7 @@ func (m *subscriptions) removeAndEnqueueTimeoutEvents(
 }
 
 // dispatchBlockToStreams dispatches a committed block to all registered
-// StreamAllTransactions clients. It handles slow clients by using a timeout
+// StreamBlocks clients. It handles slow clients by using a timeout
 // and canceling streams that cannot keep up.
 func (n *notifier) dispatchBlockToStreams(ctx context.Context, block *committedBlockWithTxs) {
 	// Get snapshot of streams with minimal lock time
@@ -399,7 +399,7 @@ func (n *notifier) dispatchBlockToStreams(ctx context.Context, block *committedB
 	}
 }
 
-// registerBlockStream adds a new StreamAllTransactions client to the notifier.
+// registerBlockStream adds a new StreamBlocks client to the notifier.
 // The stream will receive all committed blocks until it is unregistered or cancelled.
 func (n *notifier) registerBlockStream(stream *blockStream) {
 	n.blockStreamsMu.Lock()
@@ -413,7 +413,7 @@ func (n *notifier) registerBlockStream(stream *blockStream) {
 	n.blockStreams = streams
 }
 
-// unregisterBlockStream removes a StreamAllTransactions client from the notifier.
+// unregisterBlockStream removes a StreamBlocks client from the notifier.
 func (n *notifier) unregisterBlockStream(stream *blockStream) {
 	n.blockStreamsMu.Lock()
 	defer n.blockStreamsMu.Unlock()
@@ -431,10 +431,10 @@ func (n *notifier) unregisterBlockStream(stream *blockStream) {
 	n.blockStreams = streams
 }
 
-// streamWorker runs in its own goroutine for each StreamAllTransactions client.
+// streamWorker runs in its own goroutine for each StreamBlocks client.
 // It receives committed blocks from the blockQueue, filters and enriches them
 // according to the stream's configuration, and sends the results to the client.
-func (s *blockStream) streamWorker(stream committerpb.Notifier_StreamAllTransactionsServer) error {
+func (s *blockStream) streamWorker(stream committerpb.Notifier_StreamBlocksServer) error {
 	q := channel.NewReader(s.ctx, s.blockQueue)
 	for {
 		block, ok := q.Read()

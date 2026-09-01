@@ -62,7 +62,7 @@ type (
 		SidecarClientConfig *connection.ClientConfig
 		NotifyClient        committerpb.NotifierClient
 		NotifyStream        committerpb.Notifier_OpenNotificationStreamClient
-		BlockStream         committerpb.Notifier_StreamAllTransactionsClient
+		BlockStream         committerpb.Notifier_StreamBlocksClient
 
 		CommittedBlock          chan *common.Block
 		TxBuilder               *workload.TxBuilder
@@ -355,7 +355,7 @@ func (c *CommitterRuntime) OpenNotificationStream(ctx context.Context, t *testin
 	var err error
 	c.NotifyStream, err = c.NotifyClient.OpenNotificationStream(ctx)
 	require.NoError(t, err)
-	c.BlockStream, err = c.NotifyClient.StreamAllTransactions(ctx, nil)
+	c.BlockStream, err = c.NotifyClient.StreamBlocks(ctx, nil)
 	require.NoError(t, err)
 }
 
@@ -640,7 +640,7 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 	}
 
 	sidecar.RequireNotifications(t, c.NotifyStream, blk.Header.Number, expected.TxIDs, expected.Statuses)
-	sidecar.RequireStreamAllTransactions(t, c.BlockStream, blk.Header.Number, expected.TxIDs, expected.Statuses)
+	sidecar.RequireStreamBlocks(t, c.BlockStream, blk.Header.Number, expected.TxIDs, expected.Statuses)
 }
 
 // CountStatus returns the number of transactions with a given tx status.

@@ -305,7 +305,7 @@ func TestRelayUnprocessableConfigBlock(t *testing.T) {
 
 // TestProcessCommittedBlocksInOrderBlockHash verifies that processCommittedBlocksInOrder
 // computes the committed block's hash and forwards its previous block hash unchanged into
-// committedBlockWithTxs, for StreamAllTransactions clients.
+// committedBlockWithTxs, for StreamBlocks clients.
 func TestProcessCommittedBlocksInOrderBlockHash(t *testing.T) {
 	t.Parallel()
 	relayService := newRelay(time.Second, newPerformanceMetrics(newQueues(10)))
