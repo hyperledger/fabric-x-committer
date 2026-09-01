@@ -123,6 +123,27 @@ this to update the graph, which may resolve dependencies for other waiting trans
 2.  The raw transaction status is sent to the `vcServiceToCoordinatorTxStatus` channel. The Coordinator consumes this and forwards the statuses
 to the Sidecar for final aggregation and delivery to clients.
 
+A held or halted `_checkpoint` transaction is the one case where a batch carries no per-transaction status at all: the
+VC reports it through a `CheckpointFeedback` instead, because persisting a status would make the sidecar's re-submission
+of the same transaction ID a permanent duplicate (see [validator-committer.md](validator-committer.md) Task 2 step
+**e**). Such a batch is handled specially in both directions:
+
+- It is still forwarded to the sidecar. A batch with neither statuses nor a feedback is dropped, but the feedback alone
+  is enough to forward — discarding it would leave the checkpoint uncommitted with nothing reporting why.
+- The checkpoint transaction's node is released from `txBeingValidated` and forwarded to the dependency graph, keyed off
+  the `TxRef` the feedback carries. Every other release path is driven by a per-transaction status, so without this the
+  node would never be freed: its writes would stay in the global dependency detector, and the sidecar's re-delivery of
+  the same checkpoint would detect a write-write dependency on its own stale node and never become dependency-free.
+- `numTxsInProgress` is decremented for the feedback too. The counter is incremented per received transaction but
+  decremented per forwarded status, so a feedback-only batch would leak it permanently (see `txCount` in
+  `tx_status_queue.go`). That is not merely a wrong gauge: `NoPendingTransactionProcessing` reports idle only when
+  `numTxsInProgress` equals the status queue's ready count, which after a drain reduces to `numTxsInProgress == 0`, and
+  the sidecar polls exactly that before opening a new stream. A leak would therefore stop the session restart a hold
+  depends on from ever completing — deadlocking the recovery path that resolves the hold.
+
+The coordinator forwards the feedback verbatim and never produces or interprets one itself; the gate is applied by the
+sidecar (see [sidecar.md](sidecar.md#checkpoint-feedback-gate)).
+
 ### Step 6. Post-Commit Processing
 If a committed transaction creates or updates a namespace, a post-commit process is triggered to update the system's policies. The `Validator-Committer Manager`,
 in conjunction with a [`Policy Manager`](/service/coordinator/policy_manager.go), ensures that all `Signature Verifier` services are updated with the new endorsement policy for that namespace. 
