@@ -82,6 +82,7 @@ func TestReadConfigSidecar(t *testing.T) {
 			},
 			LastCommittedBlockSetInterval: 5 * time.Second,
 			WaitingTxsLimit:               100_000,
+			CheckpointHoldRetryInterval:   time.Minute,
 			ChannelBufferSize:             100,
 		},
 	}, {
@@ -132,6 +133,7 @@ func TestReadConfigSidecar(t *testing.T) {
 			},
 			LastCommittedBlockSetInterval: 5 * time.Second,
 			WaitingTxsLimit:               20_000_000,
+			CheckpointHoldRetryInterval:   time.Minute,
 			ChannelBufferSize:             100,
 		},
 	}}

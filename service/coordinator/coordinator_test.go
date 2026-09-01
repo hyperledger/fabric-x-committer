@@ -1082,6 +1082,63 @@ func TestWaitingTxsCount(t *testing.T) {
 	}, 2*time.Second, 100*time.Millisecond)
 }
 
+// TestWaitingTxsCountReturnsToZeroForHeldCheckpoint covers the accounting for a held
+// checkpoint, which is the one transaction that never produces a per-TX status: the VC
+// reports it through a CheckpointFeedback instead, because a persisted status would make
+// the sidecar's re-submission a permanent duplicate.
+//
+// numTxsInProgress is incremented per received transaction but decremented per forwarded
+// status, so a feedback-only batch would otherwise leak the count permanently. That is not
+// just a wrong gauge: NoPendingTransactionProcessing reports idle only when
+// numTxsInProgress equals readyCount, and after a drain that reduces to
+// numTxsInProgress == 0. The sidecar polls exactly that before starting a new stream, so a
+// leak would stop the session restart the hold depends on from ever completing --
+// deadlocking the recovery path that resolves the hold.
+func TestWaitingTxsCountReturnsToZeroForHeldCheckpoint(t *testing.T) {
+	t.Parallel()
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1})
+
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env.startServiceAndOpenStream(ctx, t)
+	env.createNamespaces(t, 0, "1")
+
+	// A block whose only transaction is the checkpoint, which is the ordinary shape for a
+	// standalone system transaction and the case that yields a status-less batch.
+	b, _ := makeTestBlock(1)
+	cpRef := b.Txs[0].Ref
+	env.vc.HoldCheckpoint(cpRef, &servicepb.CheckpointFeedback{
+		Signal:              servicepb.CheckpointFeedback_HOLD,
+		Ref:                 cpRef,
+		SnapshotBlockNumber: 41,
+	})
+
+	require.NoError(t, env.csStream.Send(b))
+
+	// The feedback arrives carrying no per-TX status.
+	held, err := env.csStream.Recv()
+	require.NoError(t, err)
+	require.Empty(t, held.Status)
+	require.NotNil(t, held.CheckpointFeedback)
+	require.Equal(t, servicepb.CheckpointFeedback_HOLD, held.CheckpointFeedback.Signal)
+	require.Equal(t, cpRef.TxId, held.CheckpointFeedback.Ref.GetTxId())
+
+	// The held checkpoint must not stay counted as in-flight.
+	require.Eventually(t, func() bool {
+		return env.coordinator.numTxsInProgress.Load() == 0
+	}, 10*time.Second, 100*time.Millisecond,
+		"a held checkpoint leaked numTxsInProgress (%d), so the sidecar's idle handshake can never complete",
+		env.coordinator.numTxsInProgress.Load())
+
+	// And the idle handshake the sidecar polls before restarting its stream must complete,
+	// which is what makes the hold recoverable.
+	env.streamCancel()
+	require.Eventually(t, func() bool {
+		idle, idleErr := env.client.NoPendingTransactionProcessing(t.Context(), nil)
+		return idleErr == nil && idle.GetValue()
+	}, 10*time.Second, 100*time.Millisecond)
+}
+
 func readTxStatus(t *testing.T, stream servicepb.Coordinator_BlockProcessingClient, count int) []*committerpb.TxStatus {
 	t.Helper()
 	actualTxsStatus := make([]*committerpb.TxStatus, 0, count)

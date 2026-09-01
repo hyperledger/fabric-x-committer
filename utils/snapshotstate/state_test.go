@@ -14,8 +14,10 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/require"
+	"github.com/yugabyte/pgx/v5"
 	"github.com/yugabyte/pgx/v5/pgxpool"
 
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
@@ -293,4 +295,120 @@ func (env *stateTestEnv) recordVersion(t *testing.T, txID string) int64 {
 	var version int64
 	require.NoError(t, env.pool.QueryRow(t.Context(), query, []byte(txID)).Scan(&version))
 	return version
+}
+
+// TestMarkCheckpointedInTx covers the transaction-scoped CHECKPOINTED advance. The
+// advance runs inside the caller's commit transaction so the record and the `_checkpoint`
+// row that attests to it become durable together; these cases pin the three outcomes that
+// transaction can see.
+func TestMarkCheckpointedInTx(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name          string
+		seed          *committerpb.SnapshotState
+		blockNum      uint64
+		expectedError string
+		wantStatus    committerpb.SnapshotState_Status
+	}{{
+		name: "advances the awaited snapshot",
+		seed: &committerpb.SnapshotState{
+			TxRef:  &committerpb.TxRef{BlockNum: 21, TxNum: 0, TxId: "snap-cp-ok"},
+			Status: committerpb.SnapshotState_COMPLETED,
+		},
+		blockNum:   21,
+		wantStatus: committerpb.SnapshotState_CHECKPOINTED,
+	}, {
+		// A resubmitted checkpoint must not rewrite the record, so this stays a no-op
+		// rather than an error.
+		name: "already checkpointed is a no-op",
+		seed: &committerpb.SnapshotState{
+			TxRef:  &committerpb.TxRef{BlockNum: 22, TxNum: 0, TxId: "snap-cp-dup"},
+			Status: committerpb.SnapshotState_CHECKPOINTED,
+		},
+		blockNum:   22,
+		wantStatus: committerpb.SnapshotState_CHECKPOINTED,
+	}, {
+		// The caller verified the checkpoint against this same record, so a different
+		// block here means the record changed underneath a verified checkpoint. Retrying
+		// cannot fix that, and succeeding silently would leave a durable attestation whose
+		// record never advances.
+		name: "different block is a non-retryable invariant violation",
+		seed: &committerpb.SnapshotState{
+			TxRef:  &committerpb.TxRef{BlockNum: 23, TxNum: 0, TxId: "snap-cp-other"},
+			Status: committerpb.SnapshotState_COMPLETED,
+		},
+		blockNum:      99,
+		expectedError: "the latest snapshot record is not for block 99",
+		wantStatus:    committerpb.SnapshotState_COMPLETED,
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			env := newStateTestEnv(t)
+			env.seedRecord(t, tc.seed)
+
+			err := env.inTx(t, func(tx pgx.Tx) error {
+				return MarkCheckpointedInTx(t.Context(), tx, tc.blockNum)
+			})
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+				require.ErrorIs(t, err, retry.ErrNonRetryable)
+			} else {
+				require.NoError(t, err)
+			}
+
+			state, err := env.state.ReadLatest(t.Context())
+			require.NoError(t, err)
+			require.Equal(t, tc.wantStatus, state.Status)
+		})
+	}
+}
+
+// TestMarkCheckpointedInTxWithoutPointer covers a verified checkpoint whose snapshot
+// record has since vanished. Reporting it as success would leave the attestation durable
+// with nothing to advance, so it is a non-retryable invariant violation.
+func TestMarkCheckpointedInTxWithoutPointer(t *testing.T) {
+	t.Parallel()
+	env := newStateTestEnv(t)
+
+	err := env.inTx(t, func(tx pgx.Tx) error {
+		return MarkCheckpointedInTx(t.Context(), tx, 31)
+	})
+	require.ErrorContains(t, err, "no snapshot record to checkpoint for block 31")
+	require.ErrorIs(t, err, retry.ErrNonRetryable)
+}
+
+// TestMarkCheckpointedInTxRollsBackWithCaller pins the reason this is transaction-scoped:
+// the advance must not survive a caller that rolls back, or a `_snapshot` record could
+// claim a checkpoint whose attestation row never committed.
+func TestMarkCheckpointedInTxRollsBackWithCaller(t *testing.T) {
+	t.Parallel()
+	env := newStateTestEnv(t)
+	ref := &committerpb.TxRef{BlockNum: 41, TxNum: 0, TxId: "snap-cp-rollback"}
+	env.seedRecord(t, &committerpb.SnapshotState{
+		TxRef:  ref,
+		Status: committerpb.SnapshotState_COMPLETED,
+	})
+
+	tx, err := env.pool.Begin(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, MarkCheckpointedInTx(t.Context(), tx, ref.BlockNum))
+	require.NoError(t, tx.Rollback(t.Context()))
+
+	state, err := env.state.ReadLatest(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, committerpb.SnapshotState_COMPLETED, state.Status)
+}
+
+// inTx runs op in its own transaction, committing only when op succeeds, so a test sees
+// the same visibility rules the commit path gives MarkCheckpointedInTx.
+func (env *stateTestEnv) inTx(t *testing.T, op func(tx pgx.Tx) error) error {
+	t.Helper()
+	tx, err := env.pool.Begin(t.Context())
+	require.NoError(t, err)
+	if opErr := op(tx); opErr != nil {
+		require.NoError(t, tx.Rollback(t.Context()))
+		return opErr
+	}
+	require.NoError(t, tx.Commit(t.Context()))
+	return nil
 }

@@ -24,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
@@ -45,6 +46,10 @@ type relayTestEnv struct {
 const (
 	valid     = byte(committerpb.Status_COMMITTED)
 	duplicate = byte(committerpb.Status_REJECTED_DUPLICATE_TX_ID)
+
+	// testCheckpointHoldRetryInterval keeps the checkpoint hold pause short enough for a
+	// test to observe the resulting session restart.
+	testCheckpointHoldRetryInterval = 50 * time.Millisecond
 )
 
 func newRelayTestEnv(t *testing.T) *relayTestEnv {
@@ -56,6 +61,7 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 	metrics := newPerformanceMetrics(q)
 	relayService := newRelay(
 		time.Second,
+		testCheckpointHoldRetryInterval,
 		metrics,
 	)
 
@@ -289,7 +295,7 @@ func TestRelayConfigBlock(t *testing.T) {
 // again, instead of committing the block without its config TX.
 func TestRelayUnprocessableConfigBlock(t *testing.T) {
 	t.Parallel()
-	relayService := newRelay(time.Second, newPerformanceMetrics(newQueues(10)))
+	relayService := newRelay(time.Second, testCheckpointHoldRetryInterval, newPerformanceMetrics(newQueues(10)))
 	incomingBlockToBeCommitted := make(chan *common.Block, 1)
 	relayService.incomingBlockToBeCommitted = incomingBlockToBeCommitted
 	relayService.waitingTxsSlots = utils.NewSlots(100)
@@ -673,4 +679,115 @@ func createBlockForTest(t *testing.T, number uint64, preBlockHash []byte) (*comm
 			},
 		},
 	}, [3]string{tx1.Id, tx2.Id, tx3.Id}
+}
+
+// TestRelayCheckpointGate covers both non-verified checkpoint verdicts. Each ends the
+// coordinator session by returning an error, which is what stops the block pull, and the
+// sentinel is the difference that matters: HOLD is retryable, so the session restarts and
+// re-fetches the checkpoint block (the coordinator's next expected block is still the
+// uncommitted checkpoint's own), while HALT is non-retryable and stops the sidecar for an
+// operator.
+func TestRelayCheckpointGate(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name      string
+		feedback  *servicepb.CheckpointFeedback
+		wantErr   error
+		wantInErr string
+		wantGauge checkpointGateState
+		// wantHeld is per-case on purpose: only a hold arms the clear-on-next-batch path.
+		// A halt must never be cleared that way, so asserting false here is what pins it.
+		wantHeld bool
+	}{{
+		name: "hold restarts the session",
+		feedback: &servicepb.CheckpointFeedback{
+			Signal:              servicepb.CheckpointFeedback_HOLD,
+			Ref:                 &committerpb.TxRef{BlockNum: 7, TxNum: 0, TxId: "cp-hold-tx"},
+			SnapshotBlockNumber: 42,
+		},
+		wantErr:   retry.ErrBackOff,
+		wantInErr: "cp-hold-tx",
+		// The gauge stays held across the restart. Clearing it when the pause elapsed would
+		// report a healthy committer while the checkpoint is still uncommitted, so a scrape
+		// between restarts would miss the gate entirely.
+		wantGauge: checkpointGateHeld,
+		wantHeld:  true,
+	}, {
+		name: "halt is terminal",
+		feedback: &servicepb.CheckpointFeedback{
+			Signal:              servicepb.CheckpointFeedback_HALT,
+			Ref:                 &committerpb.TxRef{BlockNum: 8, TxNum: 0, TxId: "cp-halt-tx"},
+			SnapshotBlockNumber: 43,
+			Reason:              "local snapshot hash does not match the checkpoint hash",
+		},
+		wantErr:   retry.ErrNonRetryable,
+		wantInErr: "local snapshot hash does not match",
+		// Never cleared: nothing resumes intake, and the status loop does not run again.
+		wantGauge: checkpointGateHalted,
+		wantHeld:  false,
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			relayService := newRelay(
+				time.Second, testCheckpointHoldRetryInterval, newPerformanceMetrics(newQueues(10)),
+			)
+			m := relayService.metrics
+
+			err := relayService.processCheckpointFeedback(t.Context(), tc.feedback)
+			require.ErrorIs(t, err, tc.wantErr)
+			require.ErrorContains(t, err, tc.wantInErr)
+
+			test.RequireIntMetricValue(t, int(tc.wantGauge), m.checkpointFeedbackState)
+			require.Equal(t, tc.wantHeld, relayService.checkpointHeld.Load())
+			test.RequireIntMetricValue(t, 1, m.checkpointFeedbackTotal.WithLabelValues(
+				tc.feedback.Signal.String(),
+			))
+		})
+	}
+}
+
+// TestRelayCheckpointHoldClearsAfterCommit covers the gauge returning to running: a hold
+// is only over once a batch arrives with no feedback, which is what proves the pipeline
+// moved past the checkpoint.
+func TestRelayCheckpointHoldClearsAfterCommit(t *testing.T) {
+	t.Parallel()
+	relayEnv := newRelayTestEnv(t)
+	m := relayEnv.metrics
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	t.Cleanup(cancel)
+
+	// Start from the state a held checkpoint leaves behind.
+	relayEnv.relay.checkpointHeld.Store(true)
+	promutil.SetGauge(m.checkpointFeedbackState, int(checkpointGateHeld))
+
+	// A batch with no feedback is the ordinary case, and it releases the gate.
+	channel.NewWriter(ctx, relayEnv.statusBatch).Write(&servicepb.TxStatusBatch{})
+
+	test.EventuallyIntMetric(t, int(checkpointGateRunning), m.checkpointFeedbackState,
+		5*time.Second, 10*time.Millisecond)
+	require.False(t, relayEnv.relay.checkpointHeld.Load())
+}
+
+// TestRelayWithoutCheckpointFeedbackKeepsRunning covers the ordinary batch: no feedback
+// means the per-TX statuses are authoritative and intake is untouched.
+func TestRelayWithoutCheckpointFeedbackKeepsRunning(t *testing.T) {
+	t.Parallel()
+	relayService := newRelay(time.Second, testCheckpointHoldRetryInterval, newPerformanceMetrics(newQueues(10)))
+
+	for _, tc := range []struct {
+		name     string
+		feedback *servicepb.CheckpointFeedback
+	}{
+		{name: "absent feedback"},
+		{
+			name:     "unspecified signal",
+			feedback: &servicepb.CheckpointFeedback{Signal: servicepb.CheckpointFeedback_SIGNAL_UNSPECIFIED},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.NoError(t, relayService.processCheckpointFeedback(t.Context(), tc.feedback))
+			test.RequireIntMetricValue(t, int(checkpointGateRunning), relayService.metrics.checkpointFeedbackState)
+		})
+	}
 }

@@ -186,6 +186,59 @@ func (s *StateManager) Update(ctx context.Context, ref *committerpb.TxRef, updat
 	return err //nolint:wrapcheck // already wrapped inside the retried closure.
 }
 
+// MarkCheckpointedInTx advances the latest `_snapshot` record to CHECKPOINTED inside the
+// caller's transaction, so the record and the `_checkpoint` row that attests to it become
+// durable together. Doing it in a later transaction would leave a crash window: a durable
+// attestation whose record is still short of CHECKPOINTED reads to the admission gate as
+// "a snapshot is still awaiting its checkpoint", which rejects every later snapshot with
+// nothing to repair it.
+//
+// An already-CHECKPOINTED record is left untouched, so a resubmitted checkpoint neither
+// rewrites it nor bumps its version. An unset pointer or a record for a different block,
+// by contrast, are invariant violations reported as non-retryable: the caller verifies both
+// against this same record before the checkpoint reaches a commit (see
+// rejectCheckpointIfNotVerified), so reaching here means the record changed underneath a
+// verified checkpoint. Retrying cannot fix that, and succeeding silently would leave a
+// durable attestation whose record never advances.
+//
+// Unlike Update, this does not retry and is not a StateManager method: it runs entirely on
+// the caller's transaction and pool, so it needs no manager state of its own, and the
+// caller retries the transaction as a whole.
+func MarkCheckpointedInTx(ctx context.Context, tx pgx.Tx, blockNum uint64) error {
+	var key []byte
+	if err := tx.QueryRow(ctx, getLatestKeySQL, LatestRecordPointerKey).Scan(&key); err != nil {
+		return errors.Wrap(err, "failed to read the latest snapshot key")
+	}
+	if len(key) == 0 {
+		return errors.Wrapf(retry.ErrNonRetryable,
+			"no snapshot record to checkpoint for block %d, but its checkpoint was verified", blockNum)
+	}
+
+	var raw []byte
+	if err := tx.QueryRow(ctx, selectRecordForUpdateSQL, key).Scan(&raw); err != nil {
+		return errors.Wrapf(err, "failed to read _snapshot record for key %s", key)
+	}
+	state, err := Decode(raw)
+	if err != nil {
+		return errors.Wrapf(err, "failed to decode _snapshot record for key %s", key)
+	}
+	if state.Status == committerpb.SnapshotState_CHECKPOINTED {
+		return nil // already checkpointed: a resubmitted checkpoint must not rewrite it.
+	}
+	if state.TxRef == nil || state.TxRef.BlockNum != blockNum {
+		return errors.Wrapf(retry.ErrNonRetryable,
+			"the latest snapshot record is not for block %d, but its checkpoint was verified", blockNum)
+	}
+
+	state.Status = committerpb.SnapshotState_CHECKPOINTED
+	newRaw, err := Encode(state)
+	if err != nil {
+		return errors.Wrapf(err, "failed to encode _snapshot record for key %s", key)
+	}
+	_, err = tx.Exec(ctx, updateRecordSQL, key, newRaw)
+	return errors.Wrapf(err, "failed to mark the snapshot for block %d as checkpointed", blockNum)
+}
+
 // Decode unmarshals a `_snapshot` record value.
 func Decode(raw []byte) (*committerpb.SnapshotState, error) {
 	var state committerpb.SnapshotState

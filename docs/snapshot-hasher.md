@@ -43,7 +43,7 @@ because a clone is immutable and the digest is deterministic, the symptom is dup
 work writing the same digest, not a corrupted record.
 
 The VC's only snapshot duty is therefore to make the record durable atomically with
-its clone. See [Creating State Snapshots](validator-committer.md#task-4-creating-state-snapshots-clone-first).
+its clone. See [Creating State Snapshots](validator-committer.md#creating-state-snapshots-clone-first).
 
 ## 3. Scheduling Model
 

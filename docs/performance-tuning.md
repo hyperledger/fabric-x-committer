@@ -86,6 +86,12 @@ How often the Sidecar sends the latest committed block number to the Coordinator
 
 Minimal effect on steady-state throughput. Shorter intervals improve recovery speed after failures. Default: 5s.
 
+### `checkpoint-hold-retry-interval`
+
+How long the Sidecar pauses before re-fetching a `_checkpoint` block that the Validator-Committer held because the snapshot hash the checkpoint attests to was still being computed.
+
+No effect on steady-state throughput: it applies only while a checkpoint waits on its snapshot hash, which an administrator paces. The wait is bounded from below by the [snapshot hasher](snapshot-hasher.md)'s own poll interval — a shorter value only re-reads the same unfinished state and restarts the coordinator session again, so it costs sessions without committing the checkpoint sooner. Default: 1m.
+
 ### `notification.max-active-tx-ids`
 
 Global limit on active transaction ID subscriptions across all notification streams. When exhausted, new subscriptions are partially rejected.
