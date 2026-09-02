@@ -45,7 +45,8 @@ var (
 	coordinatorServicePort = network.MustParsePort("9001/tcp")
 	databasePort           = network.MustParsePort("5433/tcp")
 
-	commonTestNodeCMD = []string{runCMD, dbName, initDBCommand, committerName, ordererName}
+	// The 'db' op initializes the database on its own, so 'init-db' is not passed here.
+	commonTestNodeCMD = []string{runCMD, dbName, committerName, ordererName}
 )
 
 // TestStartTestNodeWithTLSModesAndRemoteConnection launches the committer’s
