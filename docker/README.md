@@ -53,8 +53,13 @@ docker run -it --rm icr.io/cbdc/committer-test-node:0.0.2
 
 To control which parts of the system will run, you can use the `run` script as follows:
 ```shell
-docker run -it --rm icr.io/cbdc/committer-test-node:0.0.2 run [db] [orderer] [committer] [loadgen]
+docker run -it --rm icr.io/cbdc/committer-test-node:0.0.2 run [db] [init-db] [orderer] [committer] [loadgen]
 ```
+The `db` op starts the embedded PostgreSQL instance and initializes its schema, so there is no need to
+pass `init-db` next to it; doing so simply repeats the initialization. Pass `init-db` on its own to
+initialize an external database without starting the embedded one. The initialization is idempotent,
+so it is also safe to repeat on a container restart.
+
 Note: ```--insecure``` flag can be added for an insecure run.
 
 For example, to run it with an existing orderer node:

@@ -9,8 +9,12 @@ set -e
 
 ops="${*:-db orderer committer loadgen}"
 
-if [[ "$*" == *"--insecure"* ]]; then
-  # Set TLS mode to none-tls.
+# Match an operation as a complete space-delimited token so, for example,
+# `init-db` does not also match `db`.
+has_op() { [[ " $ops " == *" $1 "* ]]; }
+
+if has_op --insecure; then
+  # Disable TLS for all service connections.
   export SC_COORDINATOR_SERVER_TLS_MODE="none"
   export SC_COORDINATOR_VERIFIER_TLS_MODE="none"
   export SC_COORDINATOR_VALIDATOR_COMMITTER_TLS_MODE="none"
@@ -38,20 +42,22 @@ if [[ "$*" == *"--insecure"* ]]; then
   export SC_LOADGEN_ORDERER_CLIENT_ORDERER_TLS_MODE="none"
 fi
 
-if [[ $ops == *"db"* ]]; then
+# Start the embedded PostgreSQL instance when `db` is requested.
+if has_op db; then
   export POSTGRES_PASSWORD=postgres
   docker-entrypoint.sh postgres -p 5433 &
 fi
 
-if [[ $ops == *"init-db"* ]]; then
+# Initialize the database when either `db` or `init-db` is requested.
+if has_op db || has_op init-db; then
   "$BINS_PATH/committer" init-db --config "$CONFIGS_PATH/vc.yaml"
 fi
 
-if [[ $ops == *"orderer"* ]]; then
-  "$BINS_PATH/mock"      start orderer     --config "$CONFIGS_PATH/mock-orderer.yaml" &
+if has_op orderer; then
+  "$BINS_PATH/mock" start orderer --config "$CONFIGS_PATH/mock-orderer.yaml" &
 fi
 
-if [[ $ops == *"committer"* ]]; then
+if has_op committer; then
   "$BINS_PATH/committer" start verifier    --config "$CONFIGS_PATH/verifier.yaml" &
   "$BINS_PATH/committer" start vc          --config "$CONFIGS_PATH/vc.yaml" &
   "$BINS_PATH/committer" start query       --config "$CONFIGS_PATH/query.yaml" &
@@ -59,7 +65,7 @@ if [[ $ops == *"committer"* ]]; then
   "$BINS_PATH/committer" start sidecar     --config "$CONFIGS_PATH/sidecar.yaml" &
 fi
 
-if [[ $ops == *"loadgen"* ]]; then
+if has_op loadgen; then
   "$BINS_PATH/loadgen" start --config "$CONFIGS_PATH/loadgen.yaml" &
 fi
 

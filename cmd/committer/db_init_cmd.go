@@ -45,7 +45,7 @@ func databaseInitializationCMD() *cobra.Command {
 				return errors.Wrap(err, "failed to initialize state database")
 			}
 
-			cmd.Print("Database initialized successfully")
+			cmd.Println("Database initialized successfully")
 			return nil
 		},
 	}
