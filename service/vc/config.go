@@ -20,11 +20,12 @@ type Config struct {
 
 // ResourceLimitsConfig is the configuration for the resource limits.
 type ResourceLimitsConfig struct {
-	MaxWorkersForPreparer             int           `mapstructure:"max-workers-for-preparer" default:"1" validate:"gt=0"`                //nolint:lll,revive
-	MaxWorkersForValidator            int           `mapstructure:"max-workers-for-validator" default:"1" validate:"gt=0"`               //nolint:lll,revive
-	MaxWorkersForCommitter            int           `mapstructure:"max-workers-for-committer" default:"20" validate:"gt=0"`              //nolint:lll,revive
+	WorkersForPreparer                int           `mapstructure:"workers-for-preparer" default:"1" validate:"gt=0"`
+	WorkersForValidator               int           `mapstructure:"workers-for-validator" default:"1" validate:"gt=0"`
+	WorkersForCommitter               int           `mapstructure:"workers-for-committer" default:"20" validate:"gt=0"`
 	MaxWorkersForSnapshotHash         int           `mapstructure:"max-workers-for-snapshot-hash" default:"4" validate:"gt=0"`           //nolint:lll,revive
 	SnapshotHashBatchSize             int           `mapstructure:"snapshot-hash-batch-size" default:"1000" validate:"gt=0"`             //nolint:lll,revive
 	MinTransactionBatchSize           int           `mapstructure:"min-transaction-batch-size" default:"1" validate:"gt=0"`              //nolint:lll,revive
 	TimeoutForMinTransactionBatchSize time.Duration `mapstructure:"timeout-for-min-transaction-batch-size" default:"5s" validate:"gt=0"` //nolint:lll,revive
+	QueueMultiplier                   int           `mapstructure:"queue-multiplier" default:"1" validate:"gt=0"`
 }

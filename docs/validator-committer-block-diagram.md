@@ -186,7 +186,7 @@ Flow description:
 
 Key design points:
 
-- **Multiple workers per phase**: Configurable parallelism (e.g., `MaxWorkersForPreparer`, `MaxWorkersForValidator`, `MaxWorkersForCommitter`)
+- **Multiple workers per phase**: Configurable parallelism (e.g., `WorkersForPreparer`, `WorkersForValidator`, `WorkersForCommitter`)
 - **Pipelined execution**: All three phases run concurrently on different batches
 - **Channel-based communication**: Lock-free queues between phases
 - **Stateless workers**: Any worker can process any batch; no sticky assignments

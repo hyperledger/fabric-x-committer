@@ -7,8 +7,9 @@
 {{ include "database" . | indent 0 }}
 
 resource-limits:
-  max-workers-for-preparer: 1
-  max-workers-for-validator: 1
-  max-workers-for-committer: 20
+  workers-for-preparer: 1
+  workers-for-validator: 1
+  workers-for-committer: 20
   min-transaction-batch-size: {{ .VCMinTransactionBatchSize | default 1 }}
   timeout-for-min-transaction-batch-size: {{ .VCTimeoutForMinTransactionBatchSize | default "2s" }}
+  queue-multiplier: 1

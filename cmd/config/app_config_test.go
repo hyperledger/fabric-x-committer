@@ -219,13 +219,14 @@ func TestReadConfigVC(t *testing.T) {
 		expectedServiceConfig: &vc.Config{
 			Database: defaultDBConfig(),
 			ResourceLimits: &vc.ResourceLimitsConfig{
-				MaxWorkersForPreparer:             1,
-				MaxWorkersForValidator:            1,
-				MaxWorkersForCommitter:            20,
+				WorkersForPreparer:                1,
+				WorkersForValidator:               1,
+				WorkersForCommitter:               20,
 				MaxWorkersForSnapshotHash:         4,
 				SnapshotHashBatchSize:             1000,
 				MinTransactionBatchSize:           1,
 				TimeoutForMinTransactionBatchSize: 5 * time.Second,
+				QueueMultiplier:                   1,
 			},
 		},
 	}, {
@@ -235,13 +236,14 @@ func TestReadConfigVC(t *testing.T) {
 		expectedServiceConfig: &vc.Config{
 			Database: defaultSampleDBConfig(),
 			ResourceLimits: &vc.ResourceLimitsConfig{
-				MaxWorkersForPreparer:             1,
-				MaxWorkersForValidator:            1,
-				MaxWorkersForCommitter:            20,
+				WorkersForPreparer:                1,
+				WorkersForValidator:               1,
+				WorkersForCommitter:               20,
 				MaxWorkersForSnapshotHash:         4,
 				SnapshotHashBatchSize:             1000,
 				MinTransactionBatchSize:           1,
 				TimeoutForMinTransactionBatchSize: 2 * time.Second,
+				QueueMultiplier:                   1,
 			},
 		},
 	}}

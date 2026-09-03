@@ -422,11 +422,12 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		t.Parallel()
 		env := newValidatorAndCommitServiceTestEnvWithClient(t, &TestEnvOpts{
 			ResourceLimits: &ResourceLimitsConfig{
-				MaxWorkersForPreparer:             2,
-				MaxWorkersForValidator:            2,
-				MaxWorkersForCommitter:            2,
+				WorkersForPreparer:                2,
+				WorkersForValidator:               2,
+				WorkersForCommitter:               2,
 				MinTransactionBatchSize:           100,
 				TimeoutForMinTransactionBatchSize: 1 * time.Hour,
+				QueueMultiplier:                   1,
 			},
 		})
 

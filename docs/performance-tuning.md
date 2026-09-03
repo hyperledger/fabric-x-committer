@@ -175,7 +175,7 @@ Setting this too low causes frequent blocking that reduces the effective paralle
 
 The VC processes transactions through three pipeline stages: preparation, validation, and commit. Each stage has an independent worker pool. The overall throughput is limited by the slowest stage.
 
-### `resource-limits.max-workers-for-preparer`
+### `resource-limits.workers-for-preparer`
 
 Number of goroutines that extract read/write sets from transactions and organize them for validation. Preparation is **CPU-bound** — it parses transaction payloads, builds namespace-to-reads maps, and categorizes writes.
 
@@ -183,7 +183,7 @@ Setting this too low makes the preparer the bottleneck — transactions queue up
 
 The default of 1 is sufficient for most workloads because preparation is fast relative to the database-bound stages. Increase to 2-4 if you observe the preparer queue growing while validator and committer queues are empty.
 
-### `resource-limits.max-workers-for-validator`
+### `resource-limits.workers-for-validator`
 
 Number of goroutines that perform MVCC validation against the database. Each worker calls a stored procedure (`validate_reads_ns_<namespace>`) that checks whether read set versions still match the committed state.
 
@@ -197,7 +197,7 @@ Setting this too low causes transactions to queue at the validator stage while t
 | 2-4 | Parallel validation; higher throughput; needs more DB connections |
 | >4 | Diminishing returns unless DB can sustain the concurrent queries |
 
-### `resource-limits.max-workers-for-committer`
+### `resource-limits.workers-for-committer`
 
 Number of goroutines that commit validated transactions to the database using stored procedures (`insert_tx_status`, `insert_ns_<namespace>`, `update_ns_<namespace>`). Each commit involves multiple database round-trips within a transaction: writing transaction status, inserting new keys, and updating existing keys.
 
@@ -255,7 +255,7 @@ Maximum number of connections in the database connection pool. The validator and
 Size the pool to accommodate concurrent usage:
 
 ```
-Required connections >= max-workers-for-validator + max-workers-for-committer
+Required connections >= workers-for-validator + workers-for-committer
 ```
 
 Snapshot hashing does not draw from this pool — it uses its own short-lived pool against the clone database (see `resource-limits.max-workers-for-snapshot-hash`).

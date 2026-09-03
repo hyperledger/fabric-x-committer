@@ -136,18 +136,18 @@ resource-limits:
   # read/write sets and organizing data structures. Preparation is CPU-bound.
   # Higher values enable parallel preparation but increase CPU and memory usage.
   # Default: 1
-  max-workers-for-preparer: 1
+  workers-for-preparer: 1
   # Number of goroutines that perform MVCC validation checks against the current state.
   # Validation is database-bound. Higher values enable parallel validation but increase
   # database connection usage and contention.
   # Default: 1
-  max-workers-for-validator: 1
+  workers-for-validator: 1
   # Number of goroutines that commit validated transactions to the database using
   # stored procedures. Committing is database-bound. Higher values improve commit
   # throughput but increase database load and connection usage. Should be tuned
   # based on database capacity.
   # Default: 20
-  max-workers-for-committer: 20
+  workers-for-committer: 20
   # Number of goroutines that hash namespace tables in parallel when computing a
   # snapshot's hash. Hashing runs in the background against a snapshot clone
   # database, so this trades hash latency against read load on the cluster.
@@ -167,6 +167,13 @@ resource-limits:
   # Balances latency vs. batching efficiency.
   # Default: 5s
   timeout-for-min-transaction-batch-size: 2s
+  # Multiplier applied to the worker counts to size the buffers of the internal pipeline
+  # channels between stages (preparer, validator, committer). Larger values buffer more
+  # transactions between stages. Note: the validator->committer channel is sized by this
+  # multiplier alone (without the committer worker count) to bound the memory held by
+  # validated-but-not-yet-committed write sets.
+  # Default: 1
+  queue-multiplier: 1
 
 # Logging configuration
 logging:

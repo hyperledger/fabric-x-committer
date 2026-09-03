@@ -117,13 +117,14 @@ func defaultVCTestEnvOpts() *TestEnvOpts {
 // test environments.
 func defaultTestResourceLimits() *ResourceLimitsConfig {
 	return &ResourceLimitsConfig{
-		MaxWorkersForPreparer:             2,
-		MaxWorkersForValidator:            2,
-		MaxWorkersForCommitter:            2,
+		WorkersForPreparer:                2,
+		WorkersForValidator:               2,
+		WorkersForCommitter:               2,
 		MaxWorkersForSnapshotHash:         4,
 		SnapshotHashBatchSize:             1000,
 		MinTransactionBatchSize:           1,
 		TimeoutForMinTransactionBatchSize: 20 * time.Second,
+		QueueMultiplier:                   1,
 	}
 }
 

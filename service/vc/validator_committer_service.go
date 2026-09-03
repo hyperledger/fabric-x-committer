@@ -76,13 +76,16 @@ func NewValidatorCommitterService(
 	logger.Info("Initializing new validator committer service.")
 	l := config.ResourceLimits
 
-	// TODO: make queueMultiplier configurable
-	queueMultiplier := 1
-	receivedTxBatch := make(chan *servicepb.VcBatch, l.MaxWorkersForPreparer*queueMultiplier)
-	toPrepareTxs := make(chan *servicepb.VcBatch, l.MaxWorkersForPreparer*queueMultiplier)
-	preparedTxs := make(chan *preparedTransactions, l.MaxWorkersForValidator*queueMultiplier)
-	validatedTxs := make(chan *validatedTransactions, queueMultiplier)
-	txsStatus := make(chan *servicepb.TxStatusBatch, l.MaxWorkersForCommitter*queueMultiplier)
+	receivedTxBatch := make(chan *servicepb.VcBatch, l.WorkersForPreparer*l.QueueMultiplier)
+	toPrepareTxs := make(chan *servicepb.VcBatch, l.WorkersForPreparer*l.QueueMultiplier)
+	preparedTxs := make(chan *preparedTransactions, l.WorkersForValidator*l.QueueMultiplier)
+	// validatedTxs is intentionally sized by QueueMultiplier alone, without the committer
+	// worker factor used by the other channels. Each *validatedTransactions carries the full
+	// write sets of its batch, so a deep queue of validated-but-not-yet-committed batches
+	// would hold a large amount of state in memory. A shallow buffer bounds that memory usage;
+	// increase QueueMultiplier if the committer stage needs more headroom.
+	validatedTxs := make(chan *validatedTransactions, l.QueueMultiplier)
+	txsStatus := make(chan *servicepb.TxStatusBatch, l.WorkersForCommitter*l.QueueMultiplier)
 
 	metrics := newVCServiceMetrics()
 	return &ValidatorCommitterService{
@@ -129,19 +132,19 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 		return nil
 	})
 
-	logger.Infof("Starting %d workers for the transaction preparer", l.MaxWorkersForPreparer)
+	logger.Infof("Starting %d workers for the transaction preparer", l.WorkersForPreparer)
 	g.Go(func() error {
-		return vc.preparer.run(eCtx, l.MaxWorkersForPreparer)
+		return vc.preparer.run(eCtx, l.WorkersForPreparer)
 	})
 
-	logger.Infof("Starting %d workers for the transaction validator", l.MaxWorkersForValidator)
+	logger.Infof("Starting %d workers for the transaction validator", l.WorkersForValidator)
 	g.Go(func() error {
-		return vc.validator.run(eCtx, db, l.MaxWorkersForValidator)
+		return vc.validator.run(eCtx, db, l.WorkersForValidator)
 	})
 
-	logger.Infof("Starting %d workers for the transaction committer", l.MaxWorkersForCommitter)
+	logger.Infof("Starting %d workers for the transaction committer", l.WorkersForCommitter)
 	g.Go(func() error {
-		return vc.committer.run(eCtx, db, l.MaxWorkersForCommitter)
+		return vc.committer.run(eCtx, db, l.WorkersForCommitter)
 	})
 
 	logger.Info("Starting the snapshot hash worker")
