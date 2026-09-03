@@ -45,3 +45,62 @@ func TestTransactionProfileValidate(t *testing.T) {
 	tooMany.KeyBackrefRate = 6 // > totalSlots=5
 	require.Error(t, tooMany.Validate())
 }
+
+// TestTransactionProfileValidateQueriesRate covers queries-rate's cross-field check: it must not exceed
+// the versioned-read count (read-only + read-write; blind writes carry no version), and this bound is
+// enforced regardless of key-backref-rate (queries-rate is independent of the split).
+func TestTransactionProfileValidateQueriesRate(t *testing.T) {
+	t.Parallel()
+	// 2 read-only + 2 read-write = 4 versioned reads; 3 write-count (blind) never counts toward the bound.
+	base := TransactionProfile{ReadOnlyCount: 2, ReadWriteCount: 2, BlindWriteCount: 3}
+
+	for _, tc := range []struct {
+		name    string
+		profile TransactionProfile
+	}{
+		{name: "queries-rate below the versioned-read count", profile: withQueriesRate(base, 1)},
+		{name: "queries-rate at the versioned-read count", profile: withQueriesRate(base, 4)},
+		{name: "queries-rate zero (default, disabled)", profile: withQueriesRate(base, 0)},
+		{
+			name:    "queries-rate at the versioned-read count with key-backref-rate also set",
+			profile: withKeyBackrefRate(withQueriesRate(base, 4), 2),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.NoError(t, tc.profile.Validate())
+		})
+	}
+
+	for _, tc := range []struct {
+		name    string
+		profile TransactionProfile
+	}{
+		{name: "queries-rate above the versioned-read count", profile: withQueriesRate(base, 4.5)},
+		{
+			name:    "queries-rate above the versioned-read count, independent of key-backref-rate being zero",
+			profile: withQueriesRate(TransactionProfile{ReadOnlyCount: 1, ReadWriteCount: 1}, 3),
+		},
+		{
+			name:    "queries-rate above the versioned-read count even with key-backref-rate also valid",
+			profile: withKeyBackrefRate(withQueriesRate(base, 5), 2),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Error(t, tc.profile.Validate())
+		})
+	}
+}
+
+// withQueriesRate returns a copy of p with QueriesRate set.
+func withQueriesRate(p TransactionProfile, rate float64) TransactionProfile {
+	p.QueriesRate = rate
+	return p
+}
+
+// withKeyBackrefRate returns a copy of p with backward references enabled at rate.
+func withKeyBackrefRate(p TransactionProfile, rate float64) TransactionProfile {
+	p.KeyBackrefRate = rate
+	return p
+}

@@ -563,6 +563,48 @@ func TestLoadGenTransactionProfileValidation(t *testing.T) {
 	}
 }
 
+// TestLoadGenQueryClientValidation exercises the cross-field check enforced by
+// ClientConfig.Validate(): a positive queries-rate requires the top-level query-client
+// connection to be set, since it is what the loadgen dials to fetch committed read versions.
+func TestLoadGenQueryClientValidation(t *testing.T) {
+	t.Parallel()
+	read := func(t *testing.T, yaml string) error {
+		t.Helper()
+		v := viper.New()
+		require.NoError(t, readYamlConfigsFromIO(v, strings.NewReader(yaml)))
+		return unmarshal(v, &loadgen.ClientConfig{})
+	}
+	const queryClient = "query-client:\n  endpoints:\n    - host: query\n      port: 7001\n"
+	// read-only-count: 1 gives queries-rate 0.5 a versioned read to draw from, so
+	// TransactionProfile.Validate() (checked first) doesn't itself reject the rate.
+	const withOneRead = "load-profile:\n  transaction:\n    read-only-count: 1\n    queries-rate: 0.5\n"
+
+	for _, tc := range []struct {
+		name string
+		yaml string
+	}{
+		{
+			name: "queries-rate zero without query-client",
+			yaml: "load-profile:\n  transaction:\n    queries-rate: 0\n",
+		},
+		{
+			name: "queries-rate positive with query-client set",
+			yaml: withOneRead + queryClient,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.NoError(t, read(t, tc.yaml))
+		})
+	}
+
+	t.Run("queries-rate positive without query-client is rejected", func(t *testing.T) {
+		t.Parallel()
+		err := read(t, withOneRead)
+		require.ErrorContains(t, err, "query-client")
+	})
+}
+
 func defaultDBConfig() *statedb.Config {
 	return &statedb.Config{
 		Endpoints:      []*connection.Endpoint{newEndpoint(connection.DefaultHost, 5433)},

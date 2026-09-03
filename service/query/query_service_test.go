@@ -131,6 +131,22 @@ func TestQuery(t *testing.T) {
 		require.Contains(t, err.Error(), policy.ErrInvalidNamespaceID.Error())
 	})
 
+	t.Run("Query GetRows non-existent namespace", func(t *testing.T) {
+		t.Parallel()
+		// A valid-format namespace ID (passes ValidateNamespaceID) that was never registered, so its
+		// ns_<id> table does not exist. The query service must map the missing relation (42P01) to a
+		// NotFound status — the signal the loadgen query stage tolerates as an all-miss when it races
+		// ahead of the namespace-registration transaction.
+		ret, err := env.clientConn.GetRows(t.Context(), &committerpb.Query{
+			Namespaces: []*committerpb.QueryNamespace{
+				{NsId: "unregistered_ns", Keys: strToBytes("item1")},
+			},
+		})
+		require.Error(t, err)
+		require.Nil(t, ret)
+		require.Equal(t, codes.NotFound, status.Code(err))
+	})
+
 	t.Run("Query GetTransactionStatus with non existing TX ID", func(t *testing.T) {
 		t.Parallel()
 		ret, err := env.clientConn.GetTransactionStatus(t.Context(), &committerpb.TxStatusQuery{

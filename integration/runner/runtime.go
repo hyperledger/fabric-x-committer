@@ -81,6 +81,12 @@ type (
 		BlockTimeout      time.Duration
 		LoadgenBlockLimit uint64
 
+		// LoadGenQueriesRate sets the loadgen's queries-rate: the average number of reads per
+		// transaction whose committed version is fetched from the query service before signing.
+		// 0 (default) leaves the query stage off. A positive value renders a query-client pointed
+		// at the runtime's query service, so the QueryService flag must also be set on Start.
+		LoadGenQueriesRate float64
+
 		// DBConnection configures the runtime to operate with a custom database connection.
 		DBConnection *testdb.Connection
 		// TLS configures the secure level between the components: none | tls | mtls
@@ -209,11 +215,12 @@ func NewRuntime(t *testing.T, conf *Config) *CommitterRuntime {
 	c := &CommitterRuntime{
 		Config: conf,
 		SystemConfig: config.SystemConfig{
-			BlockSize:         conf.BlockSize,
-			BlockTimeout:      conf.BlockTimeout,
-			LoadGenBlockLimit: conf.LoadgenBlockLimit,
-			LoadGenWorkers:    1,
-			MaxRequestKeys:    conf.MaxRequestKeys,
+			BlockSize:          conf.BlockSize,
+			BlockTimeout:       conf.BlockTimeout,
+			LoadGenBlockLimit:  conf.LoadgenBlockLimit,
+			LoadGenWorkers:     1,
+			LoadGenQueriesRate: conf.LoadGenQueriesRate,
+			MaxRequestKeys:     conf.MaxRequestKeys,
 			Policy: &workload.PolicyProfile{
 				NamespacePolicies:     make(map[string]*workload.Policy),
 				ChannelID:             ordererEnv.ChanID,
