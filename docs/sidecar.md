@@ -40,7 +40,7 @@ The Sidecar performs four main tasks:
 5. **Deliver to Clients:** Delivers the committed blocks to registered client applications.
 6. **Notification:** Provides two notification mechanisms:
    - **Transaction ID Subscription:** Notifies subscribers when specific transactions (by ID) are committed or aborted.
-   - **All Transactions Stream:** Streams all committed transactions in block order with optional filtering.
+   - **Blocks Stream:** Streams all committed transactions in block order with optional filtering.
 
 Note that the fourth task is executed only when users/clients creates a stream with the sidecar.
 

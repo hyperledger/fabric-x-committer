@@ -16,7 +16,7 @@ The Sidecar exposes a Notification Service that provides two mechanisms for rece
    containing transaction IDs of interest, and the server pushes status responses as transactions
    complete. Multiple subscription requests can be sent on the same stream.
 
-2. **All Transactions Stream** — Allows clients to subscribe to a stream of all committed transactions in block order,
+2. **Blocks Stream** — Allows clients to subscribe to a stream of all committed transactions in block order,
    with optional filtering by namespace and status. This is useful for audit, monitoring, event-driven applications, and
    replication systems.
 
@@ -34,7 +34,7 @@ service Notifier {
     rpc OpenNotificationStream (stream NotificationRequest) returns (stream NotificationResponse);
 
     // Subscribe to all committed transactions
-    rpc StreamAllTransactions (StreamAllRequest) returns (stream TxBatch);
+    rpc StreamBlocks (StreamBlocksRequest) returns (stream BlockEvent);
 }
 ```
 
@@ -183,24 +183,28 @@ If the notification stream breaks (e.g., sidecar restart) or the timeout expires
 the transaction completes, the client should fall back to the Block Query API to check
 the transaction status.
 
-## 3. All Transactions Stream API
+## 3. Blocks Stream API
 
 ### 3.1. API Definition
 
-The `StreamAllTransactions` RPC provides a server-streaming interface that delivers all committed transactions in block
+The `StreamBlocks` RPC provides a server-streaming interface that delivers all committed transactions in block
 order. Unlike the transaction ID subscription API, this stream does not require clients to know transaction IDs in
 advance.
 
 ```protobuf
-message StreamAllRequest {
+message StreamBlocksRequest {
     repeated string filter_namespaces = 1;  // Optional: filter by namespace(s)
     repeated Status filter_status = 2;      // Optional: filter by status
     bool include_read_write_sets = 3;       // Optional: include read/write sets
     bool include_endorsements = 4;          // Optional: include endorsements
+    bool include_metadata = 5;              // Optional: include transaction metadata
 }
 
-message TxBatch {
-    repeated TxEvent events = 1;
+message BlockEvent {
+    uint64 block_number = 1;                // The block these events originated from
+    repeated TxEvent events = 2;
+    bytes block_hash = 3;                   // The hash of this block
+    bytes prev_block_hash = 4;              // The hash of the previous block
 }
 
 message TxEvent {
@@ -208,16 +212,17 @@ message TxEvent {
     Status status = 2;                      // Transaction status
     repeated TxNamespace namespaces = 3;    // Namespaces (if filtering enabled)
     repeated Endorsement endorsements = 4;  // Endorsements (if requested)
+    repeated bytes metadata = 5;            // Transaction metadata (if requested)
 }
 ```
 
 ### 3.2. Opening a Stream
 
-Create a gRPC connection to the Sidecar and call `StreamAllTransactions`:
+Create a gRPC connection to the Sidecar and call `StreamBlocks`:
 
 ```go
 client := committerpb.NewNotifierClient(conn)
-stream, err := client.StreamAllTransactions(ctx, &committerpb.StreamAllRequest{
+stream, err := client.StreamBlocks(ctx, &committerpb.StreamBlocksRequest{
     FilterNamespaces: []string{"namespace-1", "namespace-2"},
     FilterStatus: []committerpb.Status{committerpb.Status_COMMITTED},
     IncludeReadWriteSets: true,
@@ -240,17 +245,21 @@ stream, err := client.StreamAllTransactions(ctx, &committerpb.StreamAllRequest{
 - **`include_endorsements`** (optional): If true, the `endorsements` field in each `TxEvent`
   includes the transaction endorsements. Default: false.
 
+- **`include_metadata`** (optional): If true, the `metadata` field in each `TxEvent`
+  includes the transaction metadata. Default: false.
+
 ### 3.3. Receiving Transaction Events
 
-The server sends `TxBatch` messages containing one or more `TxEvent` entries. Transactions are batched by block. All
-transactions from the same block are delivered in a single `TxBatch`.
+The server sends one `BlockEvent` per committed block, containing zero or more `TxEvent` entries (zero if none matched
+the request's filters), along with the block's hash and its predecessor's hash. Transactions are batched by block: all
+transactions from the same block are delivered in a single `BlockEvent`.
 
 ```go
 for {
-    batch, err := stream.Recv()
+    blockEvent, err := stream.Recv()
     ...
 
-    for _, event := range batch.Events {
+    for _, event := range blockEvent.Events {
         ...
     }
 }
@@ -261,6 +270,11 @@ for {
 **Block Order Guarantee:**
 Transactions are streamed in deterministic block order. All transactions from block N are delivered before any
 transactions from block N+1.
+
+**Unbroken Hash Chain:**
+A `BlockEvent` is delivered for every block, even one whose filters match no transactions. `block_hash`/
+`prev_block_hash` therefore form an unbroken chain for every client regardless of its filters, so a client that only
+needs to verify block linkage does not need to receive matching transactions to do so.
 
 **Starting Point:**
 The stream starts from the currently processed block when the client connects. Historical transactions are not included.
@@ -290,7 +304,7 @@ The following configuration options in `sidecar.yaml` control notification behav
 |-------------------------------------|---------|-------------------------------------------------------------------------------------------------|
 | `notification.max-timeout`          | `1m`    | Upper limit on per-request timeout for transaction ID subscriptions.                            |
 | `notification.stream-write-timeout` | `30s`   | Write timeout for all transactions stream. Prevents slow clients from blocking.                 |
-| `server.max-concurrent-streams`     | `10`    | Maximum concurrent streaming RPCs across all stream types (Deliver + Notification + StreamAll). |
+| `server.max-concurrent-streams`     | `10`    | Maximum concurrent streaming RPCs across all stream types (Deliver + Notification + Blocks). |
 
 Sample configuration:
 
