@@ -30,7 +30,7 @@ const (
 	sidecarStreamDurationMetric = "sidecar_grpc_stream_duration_seconds"
 
 	getTransactionStatusMethod   = committerpb.QueryService_GetTransactionStatus_FullMethodName
-	openNotificationStreamMethod = committerpb.Notifier_OpenNotificationStream_FullMethodName
+	openNotificationStreamMethod = committerpb.SidecarService_OpenNotificationStream_FullMethodName
 
 	method = "method"
 )

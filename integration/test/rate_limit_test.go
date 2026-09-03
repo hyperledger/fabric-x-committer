@@ -75,7 +75,7 @@ func TestRateLimit(t *testing.T) {
 			name:     "Sidecar_WithoutRetry_ReturnsResourceExhausted",
 			endpoint: c.SystemConfig.Services.Sidecar.GrpcEndpoint,
 			requestFn: func(ctx context.Context, conn *grpc.ClientConn) error {
-				_, err := committerpb.NewBlockQueryServiceClient(conn).GetBlockchainInfo(ctx, &emptypb.Empty{})
+				_, err := committerpb.NewSidecarServiceClient(conn).GetBlockchainInfo(ctx, &emptypb.Empty{})
 				return err
 			},
 			timeout: 10 * time.Second,
@@ -85,7 +85,7 @@ func TestRateLimit(t *testing.T) {
 			endpoint: c.SystemConfig.Services.Sidecar.GrpcEndpoint,
 			useRetry: true,
 			requestFn: func(ctx context.Context, conn *grpc.ClientConn) error {
-				_, err := committerpb.NewBlockQueryServiceClient(conn).GetBlockByNumber(ctx, &committerpb.BlockNumber{})
+				_, err := committerpb.NewSidecarServiceClient(conn).GetBlockByNumber(ctx, &committerpb.BlockNumber{})
 				return err
 			},
 			expectAllSucceed: true,

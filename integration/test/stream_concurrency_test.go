@@ -25,11 +25,11 @@ import (
 func TestStreamConcurrencyLimit(t *testing.T) {
 	t.Parallel()
 
-	// The runtime's Start opens 2 long-lived streams:
+	// The runtime's Start opens 3 long-lived streams:
 	//   1. Deliver stream (startBlockDelivery)
 	//   2. Notification stream (OpenNotificationStream)
-	//   3. Notification block stream (StreamAllTransactions)
-	// With MaxConcurrentStreams=4, exactly 1 slot remain for the test.
+	//   3. Notification block stream (StreamBlocks)
+	// With MaxConcurrentStreams=4, exactly 1 slot remains for the test.
 	const maxStreams = 4
 	c := runner.NewRuntime(t, &runner.Config{
 		BlockTimeout:         2 * time.Second,
@@ -50,24 +50,23 @@ func TestStreamConcurrencyLimit(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 
-	// Fill remaining slots with one Deliver + one Notification stream.
-	// This proves both stream types share the same concurrency pool.
+	// Fill the remaining slot with one Deliver stream.
 	// The Deliver stream uses a cancellable context so we can release it later.
 	deliverClient := peer.NewDeliverClient(conn)
-	notifyClient := committerpb.NewNotifierClient(conn)
+	notifyClient := committerpb.NewSidecarServiceClient(conn)
 
 	deliverCtx, deliverCancel := context.WithCancel(t.Context())
 	_, err = deliverClient.Deliver(deliverCtx)
 	require.NoError(t, err)
 
-	// Wait for the server to start the stream handlers above and acquire
-	// their semaphore slots. The server processes new streams asynchronously
+	// Wait for the server to start the stream handler above and acquire
+	// its semaphore slot. The server processes new streams asynchronously
 	// (goroutine per stream), so without this the interceptor may not have
 	// called TryAcquire yet when we check for rejection below.
 	time.Sleep(2 * time.Second)
 
-	// All 4 slots are now occupied (2 from Start + 1 Deliver + 1 Notification).
-	// The next stream of either type should be rejected.
+	// All 4 slots are now occupied (3 from Start + 1 Deliver).
+	// The next stream of any type should be rejected.
 	//
 	// For bidirectional streaming RPCs, the server-side interceptor error
 	// (ResourceExhausted) is NOT returned from the initial stream creation
@@ -86,9 +85,9 @@ func TestStreamConcurrencyLimit(t *testing.T) {
 	}
 	requireResourceExhausted(t, err)
 
-	rejectedStreamAll, err := notifyClient.StreamAllTransactions(t.Context(), nil)
+	rejectedStreamBlocks, err := notifyClient.StreamBlocks(t.Context(), nil)
 	if err == nil {
-		_, err = rejectedStreamAll.Recv()
+		_, err = rejectedStreamBlocks.Recv()
 	}
 	requireResourceExhausted(t, err)
 

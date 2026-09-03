@@ -171,7 +171,7 @@ func TestKeepAliveSidecarStreamSlotRelease(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn2.Close() })
 
-	client2 := committerpb.NewNotifierClient(conn2)
+	client2 := committerpb.NewSidecarServiceClient(conn2)
 	stream2, err := client2.OpenNotificationStream(ctx)
 	if err == nil {
 		_, err = stream2.Recv()
@@ -267,7 +267,7 @@ func sendSidecarInitialMessage(t *testing.T, conn *grpc.ClientConn) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
 
-	stream, err := committerpb.NewNotifierClient(conn).OpenNotificationStream(ctx)
+	stream, err := committerpb.NewSidecarServiceClient(conn).OpenNotificationStream(ctx)
 	require.NoError(t, err)
 	require.NoError(t, stream.Send(&committerpb.NotificationRequest{
 		TxStatusRequest: &committerpb.TxIDsBatch{TxIds: []string{dummyTxID}},

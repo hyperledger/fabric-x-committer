@@ -187,3 +187,5 @@ require (
 	moul.io/http2curl/v2 v2.3.0 // indirect
 	mvdan.cc/gofumpt v0.10.0 // indirect
 )
+
+replace github.com/hyperledger/fabric-x-common => /Users/cendhu/projects/github.com/hyperledger/fabric-x-common/.worktrees/unify-sidecar-service
