@@ -16,25 +16,28 @@ The Sidecar exposes a Notification Service that provides two mechanisms for rece
    containing transaction IDs of interest, and the server pushes status responses as transactions
    complete. Multiple subscription requests can be sent on the same stream.
 
-2. **All Transactions Stream** — Allows clients to subscribe to a stream of all committed transactions in block order,
-   with optional filtering by namespace and status. This is useful for audit, monitoring, event-driven applications, and
+2. **Committed Block Stream** — Allows clients to subscribe to every committed block in order, with optional
+   transaction filtering by namespace and status. This is useful for audit, monitoring, event-driven applications, and
    replication systems.
 
 For internal architecture details, see [sidecar.md — Section 6](sidecar.md#6-notification-service).
 
 ## 1. API Definition
 
-The Notification Service provides two streaming RPCs:
+The notification RPCs live on the sidecar's unified `SidecarService`, alongside its
+block-query and snapshot-administration RPCs.
 
 From [fabric-x-common/api/committerpb](https://github.com/hyperledger/fabric-x-common)
 
 ```protobuf
-service Notifier {
-    // Subscribe to specific transaction IDs
+service SidecarService {
+    // Subscribe to specific transaction IDs.
     rpc OpenNotificationStream (stream NotificationRequest) returns (stream NotificationResponse);
 
-    // Subscribe to all committed transactions
-    rpc StreamAllTransactions (StreamAllRequest) returns (stream TxBatch);
+    // Subscribe to committed blocks.
+    rpc StreamBlocks (StreamBlocksRequest) returns (stream BlockEvent);
+
+    // Block-query and snapshot-administration RPCs are omitted here; see sidecar.md.
 }
 ```
 
@@ -90,7 +93,7 @@ Create a gRPC connection to the Sidecar, open a notification stream, and send a
 
 ```go
 conn, err := grpc.NewClient(sidecarEndpoint, dialOpts...)
-client := committerpb.NewNotifierClient(conn)
+client := committerpb.NewSidecarServiceClient(conn)
 
 stream, err := client.OpenNotificationStream(ctx)
 if err != nil {
@@ -183,24 +186,28 @@ If the notification stream breaks (e.g., sidecar restart) or the timeout expires
 the transaction completes, the client should fall back to the Block Query API to check
 the transaction status.
 
-## 3. All Transactions Stream API
+## 3. Committed Block Stream API
 
 ### 3.1. API Definition
 
-The `StreamAllTransactions` RPC provides a server-streaming interface that delivers all committed transactions in block
-order. Unlike the transaction ID subscription API, this stream does not require clients to know transaction IDs in
-advance.
+The `StreamBlocks` RPC provides a server-streaming interface that delivers every committed block in order. Optional
+filters control which transactions appear in each block event; they do not suppress delivery of blocks. Unlike the
+transaction ID subscription API, this stream does not require clients to know transaction IDs in advance.
 
 ```protobuf
-message StreamAllRequest {
+message StreamBlocksRequest {
     repeated string filter_namespaces = 1;  // Optional: filter by namespace(s)
     repeated Status filter_status = 2;      // Optional: filter by status
     bool include_read_write_sets = 3;       // Optional: include read/write sets
     bool include_endorsements = 4;          // Optional: include endorsements
+    bool include_metadata = 5;              // Optional: include metadata
 }
 
-message TxBatch {
-    repeated TxEvent events = 1;
+message BlockEvent {
+    uint64 block_number = 1;
+    repeated TxEvent events = 2;
+    bytes block_hash = 3;
+    bytes prev_block_hash = 4;
 }
 
 message TxEvent {
@@ -208,16 +215,17 @@ message TxEvent {
     Status status = 2;                      // Transaction status
     repeated TxNamespace namespaces = 3;    // Namespaces (if filtering enabled)
     repeated Endorsement endorsements = 4;  // Endorsements (if requested)
+    repeated bytes metadata = 5;            // Metadata (if requested)
 }
 ```
 
 ### 3.2. Opening a Stream
 
-Create a gRPC connection to the Sidecar and call `StreamAllTransactions`:
+Create a gRPC connection to the Sidecar and call `StreamBlocks`:
 
 ```go
-client := committerpb.NewNotifierClient(conn)
-stream, err := client.StreamAllTransactions(ctx, &committerpb.StreamAllRequest{
+client := committerpb.NewSidecarServiceClient(conn)
+stream, err := client.StreamBlocks(ctx, &committerpb.StreamBlocksRequest{
     FilterNamespaces: []string{"namespace-1", "namespace-2"},
     FilterStatus: []committerpb.Status{committerpb.Status_COMMITTED},
     IncludeReadWriteSets: true,
@@ -240,10 +248,14 @@ stream, err := client.StreamAllTransactions(ctx, &committerpb.StreamAllRequest{
 - **`include_endorsements`** (optional): If true, the `endorsements` field in each `TxEvent`
   includes the transaction endorsements. Default: false.
 
-### 3.3. Receiving Transaction Events
+- **`include_metadata`** (optional): If true, the `metadata` field in each `TxEvent`
+  includes the transaction metadata. Default: false.
 
-The server sends `TxBatch` messages containing one or more `TxEvent` entries. Transactions are batched by block. All
-transactions from the same block are delivered in a single `TxBatch`.
+### 3.3. Receiving Block Events
+
+The server sends one `BlockEvent` for every committed block, containing block number, block hash, previous block hash,
+and the `TxEvent` entries that pass the requested filters. A `BlockEvent` may contain zero `TxEvent` entries when no
+transactions in that block match.
 
 ```go
 for {
@@ -259,18 +271,18 @@ for {
 ### 3.4. Stream Behavior
 
 **Block Order Guarantee:**
-Transactions are streamed in deterministic block order. All transactions from block N are delivered before any
-transactions from block N+1.
+Committed blocks are streamed in deterministic order. Block N is delivered before block N+1, even when either block
+contains no transactions matching the requested filters.
 
 **Starting Point:**
-The stream starts from the currently processed block when the client connects. Historical transactions are not included.
+The stream starts from the currently processed block when the client connects. Historical blocks are not included.
 
 **No Recovery:**
-If the stream disconnects, the client must reconnect and will resume from the current block. Transactions from missed
-blocks are not replayed. For guaranteed delivery, use the Block Delivery API instead.
+If the stream disconnects, the client must reconnect and will resume from the current block. Missed blocks are not
+replayed. For guaranteed delivery, use the Block Delivery API instead.
 
 **Backpressure:**
-If the client cannot keep up with the transaction rate, the server will block sending to that client. The server uses a
+If the client cannot keep up with the block rate, the server will block sending to that client. The server uses a
 configurable write timeout (default: 30 seconds) to prevent slow clients from blocking the system.
 
 ## 4. Concurrency Limits
@@ -286,11 +298,11 @@ status code. Clients should handle this error with appropriate backoff and retry
 
 The following configuration options in `sidecar.yaml` control notification behavior:
 
-| Setting                             | Default | Description                                                                                     |
-|-------------------------------------|---------|-------------------------------------------------------------------------------------------------|
-| `notification.max-timeout`          | `1m`    | Upper limit on per-request timeout for transaction ID subscriptions.                            |
-| `notification.stream-write-timeout` | `30s`   | Write timeout for all transactions stream. Prevents slow clients from blocking.                 |
-| `server.max-concurrent-streams`     | `10`    | Maximum concurrent streaming RPCs across all stream types (Deliver + Notification + StreamAll). |
+| Setting                             | Default | Description                                                                                        |
+|-------------------------------------|---------|----------------------------------------------------------------------------------------------------|
+| `notification.max-timeout`          | `1m`    | Upper limit on per-request timeout for transaction ID subscriptions.                               |
+| `notification.stream-write-timeout` | `30s`   | Write timeout for the block stream. Prevents slow clients from blocking.                           |
+| `server.max-concurrent-streams`     | `10`    | Maximum concurrent streaming RPCs across all stream types (Deliver + Notification + StreamBlocks). |
 
 Sample configuration:
 

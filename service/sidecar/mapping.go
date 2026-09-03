@@ -57,7 +57,7 @@ type (
 		txStatus     []committerpb.Status
 		pendingCount atomic.Int32
 
-		// Fields for StreamAllTransactions support
+		// Fields for StreamBlocks support
 		blockNumber uint64                 // Block number
 		txs         []*servicepb.TxWithRef // Transaction content (from coordinatorBatch.Txs)
 	}

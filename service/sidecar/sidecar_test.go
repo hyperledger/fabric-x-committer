@@ -26,6 +26,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
@@ -51,7 +53,7 @@ type sidecarTestEnv struct {
 
 	sidecar        *Service
 	committedBlock chan *common.Block
-	notifyStream   committerpb.Notifier_OpenNotificationStreamClient
+	notifyStream   committerpb.SidecarService_OpenNotificationStreamClient
 }
 
 type sidecarTestConfig struct {
@@ -157,7 +159,7 @@ func (env *sidecarTestEnv) startNotificationStream(
 	t.Helper()
 	conn := test.NewSecuredConnection(t, &env.serverConfig.GRPC.Endpoint, sidecarClientCreds)
 	var err error
-	env.notifyStream, err = committerpb.NewNotifierClient(conn).OpenNotificationStream(ctx)
+	env.notifyStream, err = committerpb.NewSidecarServiceClient(conn).OpenNotificationStream(ctx)
 	require.NoError(t, err)
 }
 
@@ -897,4 +899,22 @@ func TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery(t *testing.T
 
 	t.Log("Verify normal operation continues with recovered state")
 	env.sendTransactionsAndEnsureCommitted(newCtx, t, 12)
+}
+
+// TestDeleteDBCloneForSnapshotUnimplemented pins the snapshot-administration
+// extension point: the RPC is reachable on the unified service and reports
+// UNIMPLEMENTED until the clone-deletion pipeline lands.
+func TestDeleteDBCloneForSnapshotUnimplemented(t *testing.T) {
+	t.Parallel()
+
+	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{})
+	env.startSidecarService(t.Context(), t)
+
+	conn := test.NewInsecureConnection(t, &env.serverConfig.GRPC.Endpoint)
+	client := committerpb.NewSidecarServiceClient(conn)
+
+	_, err := client.DeleteDBCloneForSnapshot(t.Context(), &committerpb.DeleteDBCloneForSnapshotRequest{
+		TxId: "tx1",
+	})
+	require.Equal(t, codes.Unimplemented, status.Code(err))
 }
