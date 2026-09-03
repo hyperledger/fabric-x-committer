@@ -33,7 +33,7 @@ type notifierWrapper struct {
 }
 
 func (w *notifierWrapper) RegisterService(s serve.Servers) {
-	committerpb.RegisterNotifierServer(s.GRPC, w.notifier)
+	committerpb.RegisterSidecarServiceServer(s.GRPC, w.notifier)
 	serve.RegisterServerMetrics(s.StatsHandler, w.metrics.serverMetrics)
 }
 
@@ -128,7 +128,7 @@ type notifierTestEnv struct {
 	statusQueue                channel.Writer[[]*committerpb.TxStatus]
 	committedBlockWithTxsQueue channel.Writer[*committedBlockWithTxs]
 	responseQueues             []channel.ReaderWriter[*committerpb.NotificationResponse]
-	client                     committerpb.NotifierClient
+	client                     committerpb.SidecarServiceClient
 }
 
 func TestNotifierDirect(t *testing.T) {
@@ -338,7 +338,7 @@ func TestNotifierStream(t *testing.T) {
 
 	// Verify the active-stream gauge for the method we opened (labelled by full gRPC method).
 	activeStreams := m.serverMetrics.ActiveStreams.WithLabelValues(
-		committerpb.Notifier_OpenNotificationStream_FullMethodName,
+		committerpb.SidecarService_OpenNotificationStream_FullMethodName,
 	)
 	test.EventuallyIntMetric(t, 1, activeStreams, 5*time.Second, 100*time.Millisecond)
 
@@ -599,26 +599,31 @@ func newNotifierTestEnvWithConfig(tb testing.TB, numOfClients int, conf *Notific
 	wrapper := &notifierWrapper{env.n}
 	test.ServeForTest(tb.Context(), tb, serverConfig, wrapper)
 	endpoint := &serverConfig.GRPC.Endpoint
-	env.client = committerpb.NewNotifierClient(test.NewInsecureConnection(tb, endpoint))
+	env.client = committerpb.NewSidecarServiceClient(test.NewInsecureConnection(tb, endpoint))
 	return env
 }
 
 //nolint:gocognit // test complexity is acceptable.
-func TestStreamAllTransactions(t *testing.T) {
+func TestStreamBlocks(t *testing.T) {
 	t.Parallel()
 
 	const (
-		testTxID1 = "tx1"
-		testTxID2 = "tx2"
-		testTxID3 = "tx3"
-		testTxID4 = "tx4"
-		testNs1   = "ns1"
-		testNs2   = "ns2"
-		testNs3   = "ns3"
+		testTxID1                = "tx1"
+		testTxID2                = "tx2"
+		testTxID3                = "tx3"
+		testTxID4                = "tx4"
+		testNs1                  = "ns1"
+		testNs2                  = "ns2"
+		testNs3                  = "ns3"
+		testNonexistentNamespace = "nonexistent"
 	)
 
+	blockHash := []byte("block-hash")
+	prevBlockHash := []byte("previous-block-hash")
 	block := &committedBlockWithTxs{
-		blockNumber: 1,
+		blockNumber:   1,
+		blockHash:     blockHash,
+		prevBlockHash: prevBlockHash,
 		txs: []*servicepb.TxWithRef{
 			createTestTx(testTxID1, 0, testNs1),
 			createTestTx(testTxID2, 1, testNs2),
@@ -635,38 +640,45 @@ func TestStreamAllTransactions(t *testing.T) {
 
 	cases := []struct {
 		name          string
-		request       *committerpb.StreamAllRequest
+		request       *committerpb.StreamBlocksRequest
 		expectedTxIDs []string
 	}{
 		{
 			name:          "NoFilters",
-			request:       &committerpb.StreamAllRequest{},
+			request:       &committerpb.StreamBlocksRequest{},
 			expectedTxIDs: []string{testTxID1, testTxID2, testTxID3, testTxID4},
 		},
 		{
 			name: "NamespaceFilter_ns1",
-			request: &committerpb.StreamAllRequest{
+			request: &committerpb.StreamBlocksRequest{
 				FilterNamespaces: []string{testNs1},
 			},
 			expectedTxIDs: []string{testTxID1, testTxID3}, // tx1 has ns1, tx3 has ns1+ns2
 		},
 		{
 			name: "NamespaceFilter_ns2",
-			request: &committerpb.StreamAllRequest{
+			request: &committerpb.StreamBlocksRequest{
 				FilterNamespaces: []string{testNs2},
 			},
 			expectedTxIDs: []string{testTxID2, testTxID3}, // tx2 has ns2, tx3 has ns1+ns2
 		},
 		{
+			name: "NamespaceFilter_noMatches",
+			request: &committerpb.StreamBlocksRequest{
+				FilterNamespaces: []string{testNonexistentNamespace},
+			},
+			expectedTxIDs: []string{},
+		},
+		{
 			name: "StatusFilter_COMMITTED",
-			request: &committerpb.StreamAllRequest{
+			request: &committerpb.StreamBlocksRequest{
 				FilterStatus: []committerpb.Status{committerpb.Status_COMMITTED},
 			},
 			expectedTxIDs: []string{testTxID1, testTxID3}, // Only COMMITTED txs
 		},
 		{
 			name: "CombinedFilters",
-			request: &committerpb.StreamAllRequest{
+			request: &committerpb.StreamBlocksRequest{
 				FilterNamespaces: []string{testNs1},
 				FilterStatus:     []committerpb.Status{committerpb.Status_COMMITTED},
 			},
@@ -674,21 +686,21 @@ func TestStreamAllTransactions(t *testing.T) {
 		},
 		{
 			name: "WithNamespaces",
-			request: &committerpb.StreamAllRequest{
+			request: &committerpb.StreamBlocksRequest{
 				IncludeReadWriteSets: true,
 			},
 			expectedTxIDs: []string{testTxID1, testTxID2, testTxID3, testTxID4},
 		},
 		{
 			name: "WithEndorsements",
-			request: &committerpb.StreamAllRequest{
+			request: &committerpb.StreamBlocksRequest{
 				IncludeEndorsements: true,
 			},
 			expectedTxIDs: []string{testTxID1, testTxID2, testTxID3, testTxID4},
 		},
 		{
 			name: "WithMetadata",
-			request: &committerpb.StreamAllRequest{
+			request: &committerpb.StreamBlocksRequest{
 				IncludeMetadata: true,
 			},
 			expectedTxIDs: []string{testTxID1, testTxID2, testTxID3, testTxID4},
@@ -696,10 +708,10 @@ func TestStreamAllTransactions(t *testing.T) {
 	}
 
 	env := newNotifierTestEnv(t, 0)
-	streams := make([]committerpb.Notifier_StreamAllTransactionsClient, len(cases))
+	streams := make([]committerpb.SidecarService_StreamBlocksClient, len(cases))
 	for i, tc := range cases {
 		var err error
-		streams[i], err = env.client.StreamAllTransactions(t.Context(), tc.request)
+		streams[i], err = env.client.StreamBlocks(t.Context(), tc.request)
 		require.NoError(t, err)
 	}
 
@@ -717,6 +729,8 @@ func TestStreamAllTransactions(t *testing.T) {
 			batch, err := streams[i].Recv()
 			require.NoError(t, err)
 			require.EqualValues(t, 1, batch.BlockNumber)
+			require.Equal(t, blockHash, batch.BlockHash)
+			require.Equal(t, prevBlockHash, batch.PrevBlockHash)
 
 			actualTxIDs := make([]string, len(batch.Events))
 			for j, event := range batch.Events {
