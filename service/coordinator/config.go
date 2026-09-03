@@ -7,8 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package coordinator
 
 import (
-	"time"
-
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
@@ -19,8 +17,6 @@ type Config struct {
 	DependencyGraph    *DependencyGraphConfig       `mapstructure:"dependency-graph" validate:"required"`
 	// ChannelBufferSizePerGoroutine defines the buffer size per go-routine.
 	ChannelBufferSizePerGoroutine int `mapstructure:"per-channel-buffer-size-per-goroutine" default:"10" validate:"gt=0"` //nolint:lll,revive
-	// QueueMonitorSamplingTime defines the sampling interval for monitoring queue sizes.
-	QueueMonitorSamplingTime time.Duration `mapstructure:"queue-monitor-sampling-time" default:"100ms" validate:"gt=0"`
 }
 
 // DependencyGraphConfig is the configuration for dependency graph manager. It contains resource limits.

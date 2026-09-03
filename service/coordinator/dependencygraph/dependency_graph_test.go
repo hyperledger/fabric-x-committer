@@ -25,7 +25,10 @@ func TestDependencyGraph(t *testing.T) {
 	localDepIncomingTxs := make(chan *TransactionBatch, 10)
 	localDepOutgoingTxs := make(chan *transactionNodeBatch, 10)
 
-	metrics := newPerformanceMetrics(monitoring.NewProvider())
+	metrics := newPerformanceMetrics(monitoring.NewProvider(), &managerQueues{
+		ldgInput: localDepIncomingTxs,
+		gdgInput: localDepOutgoingTxs,
+	})
 	ldc := newLocalDependencyConstructor(localDepIncomingTxs, localDepOutgoingTxs, metrics)
 
 	globalDepOutgoingTxs := make(chan TxNodeBatch, 10)
@@ -51,7 +54,7 @@ func TestDependencyGraph(t *testing.T) {
 	t.Log("check reads and writes dependency tracking")
 	keys := makeTestKeys(t, 10)
 
-	test.RequireIntMetricValue(t, 0, metrics.dependentTransactionsQueueSize)
+	test.RequireIntMetricValue(t, 0, metrics.dependentTxCount)
 
 	// t2 depends on t1
 	t1 := createTxForTest(
@@ -66,7 +69,7 @@ func TestDependencyGraph(t *testing.T) {
 		Txs: []*servicepb.TxWithRef{t1, t2},
 	}
 
-	test.EventuallyIntMetric(t, 1, metrics.dependentTransactionsQueueSize, 5*time.Second, 100*time.Millisecond)
+	test.EventuallyIntMetric(t, 1, metrics.dependentTxCount, 5*time.Second, 100*time.Millisecond)
 
 	// t3 depends on t2 and t1
 	t3 := createTxForTest(
@@ -82,7 +85,7 @@ func TestDependencyGraph(t *testing.T) {
 		Txs: []*servicepb.TxWithRef{t3, t4},
 	}
 
-	test.EventuallyIntMetric(t, 3, metrics.dependentTransactionsQueueSize, 5*time.Second, 100*time.Millisecond)
+	test.EventuallyIntMetric(t, 3, metrics.dependentTxCount, 5*time.Second, 100*time.Millisecond)
 
 	// only t1 is dependency free
 	depFreeTxs := <-globalDepOutgoingTxs
@@ -103,7 +106,7 @@ func TestDependencyGraph(t *testing.T) {
 	actualT2 := depFreeTxs[0]
 	test.RequireProtoEqual(t, t2.Ref, actualT2.VCTx.Ref)
 
-	test.RequireIntMetricValue(t, 2, metrics.dependentTransactionsQueueSize)
+	test.RequireIntMetricValue(t, 2, metrics.dependentTxCount)
 
 	// t2 has 2 dependent transactions, t3 and t4
 	require.Equal(t, 2, actualT2.dependentTxs.Count())
@@ -124,7 +127,7 @@ func TestDependencyGraph(t *testing.T) {
 	test.RequireProtoEqual(t, t3.Ref, actualT3.VCTx.Ref)
 	test.RequireProtoEqual(t, t4.Ref, actualT4.VCTx.Ref)
 
-	test.RequireIntMetricValue(t, 0, metrics.dependentTransactionsQueueSize)
+	test.RequireIntMetricValue(t, 0, metrics.dependentTxCount)
 
 	validatedTxs <- TxNodeBatch{actualT3, actualT4}
 

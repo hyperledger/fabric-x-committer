@@ -7,8 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package dependencygraph
 
 import (
-	"time"
-
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 )
 
@@ -29,8 +27,6 @@ type Parameters struct {
 	// WaitingTxsLimit defines the maximum number of transactions
 	// that can be waiting at the dependency manager.
 	WaitingTxsLimit int
-	// QueueMonitorSamplingTime defines the sampling interval for monitoring queue sizes.
-	QueueMonitorSamplingTime time.Duration
 	// PrometheusMetricsProvider is the provider for Prometheus metrics.
 	PrometheusMetricsProvider *monitoring.Provider
 }

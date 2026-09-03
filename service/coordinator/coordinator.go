@@ -136,7 +136,6 @@ func NewCoordinatorService(c *Config) *Service {
 			IncomingValidatedTxsNode:  queues.vcServiceToDepGraphValidatedTxs,
 			NumOfLocalDepConstructors: c.DependencyGraph.NumOfLocalDepConstructors,
 			WaitingTxsLimit:           c.DependencyGraph.WaitingTxsLimit,
-			QueueMonitorSamplingTime:  c.QueueMonitorSamplingTime,
 			PrometheusMetricsProvider: metrics.Provider,
 		},
 	)

@@ -184,14 +184,13 @@ pointers tagged `validate:"required"`. Serving knobs (server/monitoring endpoint
 keepalive, rate-limit) live in `serve.Config`, **not** the service config.
 
 ```go
-// service/coordinator/config.go:17
+// service/coordinator/config.go:14
 type Config struct {
 	Verifier           connection.MultiClientConfig `mapstructure:"verifier"`
 	ValidatorCommitter connection.MultiClientConfig `mapstructure:"validator-committer"`
 	DependencyGraph    *DependencyGraphConfig       `mapstructure:"dependency-graph" validate:"required"`
 	// Every scalar carries its default in a `default` tag, not a Default* const.
 	ChannelBufferSizePerGoroutine int `mapstructure:"per-channel-buffer-size-per-goroutine" default:"10" validate:"gt=0"`
-	QueueMonitorSamplingTime time.Duration `mapstructure:"queue-monitor-sampling-time" default:"100ms" validate:"gt=0"`
 }
 ```
 

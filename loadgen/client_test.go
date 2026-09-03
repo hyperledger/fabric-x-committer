@@ -178,7 +178,6 @@ func TestLoadGenForCoordinator(t *testing.T) {
 					ChunkSize:                 500,
 				},
 				ChannelBufferSizePerGoroutine: 10,
-				QueueMonitorSamplingTime:      100 * time.Millisecond,
 			}
 
 			service := coordinator.NewCoordinatorService(cConf)
