@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -407,9 +408,11 @@ func (r *relay) processCommittedBlocksInOrder(
 
 		// Create committedBlockWithTxs from blockWithStatus for notifier
 		outgoingCommittedBlockWithTxs.Write(&committedBlockWithTxs{
-			blockNumber: blkWithStatus.blockNumber,
-			txs:         blkWithStatus.txs,
-			statuses:    blkWithStatus.txStatus,
+			blockNumber:   blkWithStatus.blockNumber,
+			blockHash:     protoutil.BlockHeaderHash(blkWithStatus.block.Header),
+			prevBlockHash: blkWithStatus.block.Header.PreviousHash,
+			txs:           blkWithStatus.txs,
+			statuses:      blkWithStatus.txStatus,
 		})
 	}
 }

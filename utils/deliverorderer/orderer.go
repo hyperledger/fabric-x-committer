@@ -114,8 +114,8 @@ func ToQueue(ctx context.Context, odp Parameters) (*SessionInfo, error) {
 
 	return &SessionInfo{
 		LastBlock:                   d.dataStream.lastBlock,
-		NextBlockVerificationConfig: d.dataStream.ConfigBlock,
-		LatestKnownConfig:           d.latestConfig.ConfigBlock,
+		NextBlockVerificationConfig: d.dataStream.configBlock(),
+		LatestKnownConfig:           d.latestConfig.configBlock(),
 	}, err
 }
 

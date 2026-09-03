@@ -24,7 +24,7 @@ type blockQueryWrapper struct {
 }
 
 func (w *blockQueryWrapper) RegisterService(s serve.Servers) {
-	committerpb.RegisterBlockQueryServiceServer(s.GRPC, w.Service)
+	committerpb.RegisterSidecarServiceServer(s.GRPC, w.Service)
 }
 
 func TestBlockQuery(t *testing.T) {
@@ -33,13 +33,15 @@ func TestBlockQuery(t *testing.T) {
 	bs, txIDs := newBlockStoreWithBlocks(t, 2)
 
 	// Create the query service and register on a gRPC server.
-	queryService := &blockQueryWrapper{Service: &Service{blockStore: bs}}
+	// The notifier must be non-nil: Service reaches the Unimplemented fallbacks
+	// for RPCs it does not serve (DeleteDBCloneForSnapshot) through this pointer.
+	queryService := &blockQueryWrapper{Service: &Service{blockStore: bs, notifier: &notifier{}}}
 
 	serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
 	test.ServeForTest(t.Context(), t, serverConfig, queryService)
 
 	conn := test.NewInsecureConnection(t, &serverConfig.GRPC.Endpoint)
-	client := committerpb.NewBlockQueryServiceClient(conn)
+	client := committerpb.NewSidecarServiceClient(conn)
 
 	t.Run("GetBlockchainInfo", func(t *testing.T) {
 		t.Parallel()

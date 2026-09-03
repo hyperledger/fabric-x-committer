@@ -235,7 +235,7 @@ func (s *blockVerificationStateMachine) verifyBlockPolicy(block *common.Block) e
 	// If we got block #0, we must also have the config block #0, as we assert that the config
 	// block is never ahead of the next expected block.
 	if blockNumber == 0 {
-		ok := proto.Equal(block, s.ConfigBlock)
+		ok := proto.Equal(block, s.configBlock())
 		if !ok {
 			return ErrGenesisBlockMismatch
 		}
@@ -248,6 +248,16 @@ func (s *blockVerificationStateMachine) verifyBlockPolicy(block *common.Block) e
 		return errors.Wrapf(errors.Join(ErrSignatureVerification, err), "on block [%d]", blockNumber)
 	}
 	return nil
+}
+
+// configBlock returns the config block, or nil if no config block was loaded yet.
+// The embedded ConfigBlockMaterial is nil until the first config block is processed,
+// so the field must never be dereferenced directly.
+func (cs *configState) configBlock() *common.Block {
+	if cs.ConfigBlockMaterial == nil {
+		return nil
+	}
+	return cs.ConfigBlock
 }
 
 // updateIfConfigBlock sets the config by which blocks are verified.

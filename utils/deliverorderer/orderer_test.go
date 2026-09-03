@@ -249,6 +249,23 @@ func TestNewOrdererDeliverEdgeCases(t *testing.T) {
 		})
 		require.ErrorContains(t, err, "config block number [3] is ahead of the next expected block [2]")
 	})
+
+	t.Run("no config block at all", func(t *testing.T) {
+		t.Parallel()
+
+		// The session ends before any config block is processed, so the config state holds no
+		// config block material. Reading the session's config blocks must not panic.
+		session, err := deliverorderer.ToQueue(cancelledContext, deliverorderer.Parameters{
+			FaultToleranceLevel:          ordererdial.BFT,
+			TLS:                          *tls,
+			OutputBlock:                  make(chan *common.Block, 10),
+			SuspicionGracePeriodPerBlock: time.Second,
+		})
+		require.ErrorIs(t, err, context.Canceled)
+		require.NotNil(t, session)
+		require.Nil(t, session.NextBlockVerificationConfig)
+		require.Nil(t, session.LatestKnownConfig)
+	})
 }
 
 func TestOrdererDeliverCFT(t *testing.T) {

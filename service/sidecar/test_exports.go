@@ -27,7 +27,7 @@ import (
 // RequireNotifications verifies that the expected notification were received.
 func RequireNotifications( //nolint:revive // argument-limit.
 	t *testing.T,
-	notifyStream committerpb.Notifier_OpenNotificationStreamClient,
+	notifyStream committerpb.SidecarService_OpenNotificationStreamClient,
 	expectedBlockNumber uint64,
 	txIDs []string,
 	status []committerpb.Status,
@@ -56,12 +56,14 @@ func RequireNotifications( //nolint:revive // argument-limit.
 	}, 15*time.Second, 50*time.Millisecond)
 }
 
-// RequireStreamAllTransactions verifies that the expected transactions were received
-// from the StreamAllTransactions stream.
-func RequireStreamAllTransactions( //nolint:revive // argument-limit.
+// RequireStreamBlocks verifies that the expected transactions were received
+// from the StreamBlocks stream.
+func RequireStreamBlocks( //nolint:revive // argument-limit.
 	t *testing.T,
-	stream committerpb.Notifier_StreamAllTransactionsClient,
+	stream committerpb.SidecarService_StreamBlocksClient,
 	expectedBlockNumber uint64,
+	expectedBlockHash []byte,
+	expectedPrevBlockHash []byte,
 	txIDs []string,
 	status []committerpb.Status,
 ) {
@@ -84,6 +86,8 @@ func RequireStreamAllTransactions( //nolint:revive // argument-limit.
 		require.NoError(ct, err)
 		require.NotNil(ct, batch)
 		require.Equal(ct, expectedBlockNumber, batch.BlockNumber)
+		require.Equal(ct, expectedBlockHash, batch.BlockHash)
+		require.Equal(ct, expectedPrevBlockHash, batch.PrevBlockHash)
 		events = batch.Events
 	}, 15*time.Second, 50*time.Millisecond)
 
