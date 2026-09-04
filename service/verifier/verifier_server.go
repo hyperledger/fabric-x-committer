@@ -8,6 +8,8 @@ package verifier
 
 import (
 	"context"
+	"strconv"
+	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
@@ -29,6 +31,9 @@ type Server struct {
 	config      *Config
 	metrics     *metrics
 	healthcheck *health.Server
+	// nextStreamID labels the per-stream queue metrics. Only uniqueness among the live streams
+	// matters, since a stream's series is removed when it ends.
+	nextStreamID atomic.Uint64
 }
 
 var (
@@ -73,6 +78,10 @@ func (s *Server) StartStream(stream servicepb.Verifier_StartStreamServer) error 
 
 	// We create a new executor for each stream to avoid answering to the wrong stream.
 	executor := newParallelExecutor(s.config)
+	streamID := strconv.FormatUint(s.nextStreamID.Add(1), 10)
+	s.metrics.registerExecutorQueues(streamID, executor)
+	defer s.metrics.unregisterExecutorQueues(streamID)
+
 	g, gCtx := errgroup.WithContext(stream.Context())
 	g.Go(func() error {
 		return s.handleInputs(gCtx, stream, executor)

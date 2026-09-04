@@ -54,10 +54,16 @@ Monitor queue length gauges to find the bottleneck. A growing queue means the do
 | `coordinator_verifier_output_batch_queue_size` | Verified → VC | VC services not consuming verified transactions fast enough |
 | `coordinator_vcservice_output_batch_queue_size` | VC → Dep Graph | Dependency graph not processing validated results fast enough |
 | `coordinator_vcservice_output_tx_status_batch_queue_size` | Status Response | Status responses backing up between VC and Coordinator |
+| `sum(verifier_server_parallel_executor_input_queue_size)` | Verification | Verifier workers saturated across all streams |
 | `vcservice_preparer_input_queue_size` | VC Preparation | Preparer workers saturated |
 | `vcservice_validator_input_queue_size` | VC Validation | DB validation queries too slow; check connections or co-location |
 | `vcservice_committer_input_queue_size` | VC Commit | DB commit throughput is the bottleneck; most common |
 | `vcservice_txstatus_output_queue_size` | VC Status Output | Status responses backing up; Coordinator not consuming fast enough |
+
+A queue that exists once per stream carries a `stream` label, so read it as a total with
+`sum(<metric>)` or per worker with `max(<metric>)` — a single saturated worker matters even when
+the total looks healthy. A stream's series disappears when the stream ends, so `sum` covers only
+the live streams.
 
 ## 3. Sidecar
 

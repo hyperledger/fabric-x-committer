@@ -67,7 +67,7 @@ func NewMetricsConnectionParameters(
 // CheckMetrics checks the metrics endpoint for the expected metrics.
 func CheckMetrics(t *testing.T, url string, tlsConfig *tls.Config, expectedMetrics ...string) {
 	t.Helper()
-	metricsOutput := getMetricsFromURL(t, url, tlsConfig)
+	metricsOutput := GetMetricsFromURL(t, url, tlsConfig)
 	for _, expected := range expectedMetrics {
 		require.Contains(t, metricsOutput, expected)
 	}
@@ -120,7 +120,7 @@ func getMetricSeries(
 ) []*promgo.Metric {
 	t.Helper()
 	parser := expfmt.NewTextParser(model.UTF8Validation)
-	families, err := parser.TextToMetricFamilies(strings.NewReader(getMetricsFromURL(t, params.URL, params.TLSConfig)))
+	families, err := parser.TextToMetricFamilies(strings.NewReader(GetMetricsFromURL(t, params.URL, params.TLSConfig)))
 	require.NoError(t, err)
 
 	family := families[params.MetricName]
@@ -152,7 +152,9 @@ func labelsMatch(m *promgo.Metric, want map[string]string) bool {
 	return true
 }
 
-func getMetricsFromURL(t TestingT, url string, tlsConfig *tls.Config) string {
+// GetMetricsFromURL returns the whole prometheus exposition served at url. Prefer CheckMetrics
+// or GetMetricValueFromURL for asserting on a series; use this to assert one is absent.
+func GetMetricsFromURL(t TestingT, url string, tlsConfig *tls.Config) string {
 	t.Helper()
 	client := &http.Client{
 		Transport: &http.Transport{

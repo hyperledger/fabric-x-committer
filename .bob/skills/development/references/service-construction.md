@@ -234,6 +234,7 @@ call site was deleted, so two gauges silently read zero. Instead:
 |---|---|
 | Length of a channel that lives as long as the service | `p.NewChannelLenGauge(opts, ch)` |
 | Length of a channel replaced at runtime (per session) | `p.NewAtomicChannelLenGauge(opts, &ptr)`; the owner `Store`s the current channel |
+| Length of a channel that exists once per stream or worker, several live at a time | `monitoring.NewChannelLenGaugeVec[T](p, opts, []string{"stream"})`; `Register`/`Unregister` per stream, and the operator sums over the label |
 | Anything else already computable (a map size, a struct field) | `p.NewGaugeFunc(opts, fn)` — `fn` runs on the scrape path, so keep it cheap, non-blocking and nil-safe |
 
 `promutil.SetGauge` / `AddToGauge` remain correct for a gauge whose value is *maintained*
@@ -264,6 +265,10 @@ func newVCServiceMetrics() *perfMetrics {
 	}
 }
 ```
+
+With the `Vec` form, always `Unregister` when the stream ends — a series left behind keeps
+reporting the depth of a queue nothing drains, which reads as a stuck worker. Pair the
+`Register` with a `defer`.
 
 Reuse `monitoring.ThroughputMetrics` / `ConnectionMetrics` bundles where they fit
 (`utils/monitoring/metrics.go`). Run `make generate-metrics-doc` after changes.
