@@ -105,6 +105,7 @@ The following topology is a reference starting point based on micro-benchmarks, 
 - **Verifier (3)**: Provides parallel signature verification with redundancy. Three instances tolerate 1-2 failures while continuing to process transactions. Adjust the count based on endorsement policy complexity — more complex policies with more signatures per transaction benefit from additional instances.
 - **VC (6, co-located with DB)**: Co-location of VC instances with database nodes minimizes network latency for MVCC operations, reducing round-trip times from milliseconds to microseconds. Each VC instance connects to ALL database nodes via client-side load balancing, so co-location with a subset of nodes is sufficient to gain the latency benefit.
 - **Database (9, RF=3)**: A 9-node cluster with replication factor 3 tolerates up to 2 simultaneous node failures without data loss or availability impact. The node count enables distributed query processing across many tablets for high write throughput.
+- **Snapshot Hasher (1)**: Single instance by design. Hashing a snapshot clone is a full scan and must not be attempted by several processes at once; with exactly one scheduler in the system, snapshot hashing needs no lease or leader election. It does no per-transaction work, so one instance suffices regardless of transaction throughput. Skip it entirely if the deployment never takes state snapshots.
 - **Query Service (2+)**: Provides read-only access to committed world state for clients and endorsers. Minimum 2 instances for redundancy. Does not need to be co-located with database nodes since it performs read-only operations and should not impact the commit path performance. Scale based on the number of endorsers and query throughput requirements.
 
 For detailed service descriptions and architecture, see the [Architecture Guide](architecture.md).
@@ -133,9 +134,11 @@ When adding database nodes, add them in pairs to maintain balanced data distribu
 
 Query Service instances are stateless and perform read-only queries against the database. Add instances based on the number of endorsers and query throughput requirements. Query Service instances do not need to be co-located with database nodes.
 
-### 3.5 Sidecar and Coordinator
+### 3.5 Sidecar, Coordinator, and Snapshot Hasher
 
-Both the Sidecar and Coordinator are single-instance services. They cannot be scaled horizontally. If either becomes a bottleneck, scale vertically by allocating more CPU cores and memory to the node.
+The Sidecar, Coordinator, and Snapshot Hasher are single-instance services. They cannot be scaled horizontally. If one becomes a bottleneck, scale vertically by allocating more CPU cores and memory to the node. For the Snapshot Hasher, `resource-limits.max-workers-for-hash` decides how much of that node one hash job can use; see [Performance Tuning — Snapshot Hasher](performance-tuning.md#8-snapshot-hasher).
+
+Upgrading a deployment that already took state snapshots: snapshot hashing moved out of the VC, so deploy the Snapshot Hasher as a new unit and delete the VC's `max-workers-for-snapshot-hash` and `snapshot-hash-batch-size` keys. Leaving them in `vc.yaml` is silently ignored rather than rejected, so they would look effective while doing nothing. In-flight snapshot records need no migration: the new service discovers whatever state the old VC left behind and drives it to completion, including one left `IN_PROGRESS` by the upgrade itself.
 
 See [Performance Tuning](performance-tuning.md) for configuration parameters and their impact on throughput and latency.
 
@@ -195,6 +198,7 @@ Start the database cluster first and wait for it to be healthy before starting a
 4. **Start Services** (any order after database is healthy and initialized)
    - VC Service — connects to database on startup
    - Query Service — connects to database on startup
+   - Snapshot Hasher — connects to database on startup (only needed for state snapshots)
    - Verifier Service — stateless, loads policies on first request
    - Coordinator Service — connects to VC and Verifier services
    - Sidecar Service — connects to Coordinator and Ordering Service
@@ -206,6 +210,7 @@ Start the database cluster first and wait for it to be healthy before starting a
 | Database | No dependencies |
 | VC Service | Requires Database |
 | Query Service | Requires Database |
+| Snapshot Hasher | Requires Database |
 | Verifier | No dependencies (policies loaded on first request) |
 | Coordinator | Requires VC Service and Verifier |
 | Sidecar | Requires Coordinator and Ordering Service |

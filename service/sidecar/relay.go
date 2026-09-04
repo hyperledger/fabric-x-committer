@@ -22,6 +22,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 type (
@@ -39,8 +40,19 @@ type (
 		blkNumToBlkWithStatus         utils.SyncMap[uint64, *blockWithStatus]
 		txIDToHeight                  utils.SyncMap[string, servicepb.Height]
 		lastCommittedBlockSetInterval time.Duration
-		waitingTxsSlots               *utils.Slots
-		metrics                       *perfMetrics
+		// checkpointHoldRetryInterval is how long block intake pauses before the session
+		// restarts to re-fetch a held checkpoint block. See processCheckpointFeedback.
+		checkpointHoldRetryInterval time.Duration
+		// checkpointHeld records that a checkpoint was held, so the gate gauge can be
+		// returned to "running" once a later batch arrives with no feedback. It survives the
+		// session restarts a hold causes, because the relay outlives them.
+		checkpointHeld atomic.Bool
+		// checkpointHolds counts consecutive holds so the log can say which attempt this is. A
+		// hold has no attempt limit (see processCheckpointFeedback), so the count is the only
+		// thing that distinguishes "held once" from "held for an hour".
+		checkpointHolds atomic.Uint64
+		waitingTxsSlots *utils.Slots
+		metrics         *perfMetrics
 		// committedBlockMu protects processCommittedBlocksInOrder from concurrent execution
 		// by sendBlocksToCoordinator and processStatusBatch goroutines.
 		committedBlockMu sync.Mutex
@@ -63,13 +75,26 @@ type (
 	}
 )
 
+// checkpointGateState is the value published on the checkpointFeedbackState gauge, so an
+// operator can tell a stalled committer's reason from metrics alone. Running is the
+// ordinary state and says nothing about checkpoints; the other two are set only by a
+// checkpoint verdict.
+type checkpointGateState int
+
+const (
+	checkpointGateRunning checkpointGateState = 0
+	checkpointGateHeld    checkpointGateState = 1
+	checkpointGateHalted  checkpointGateState = 2
+)
+
 func newRelay(
-	lastCommittedBlockSetInterval time.Duration,
+	lastCommittedBlockSetInterval, checkpointHoldRetryInterval time.Duration,
 	metrics *perfMetrics,
 ) *relay {
 	logger.Info("Initializing new relay")
 	return &relay{
 		lastCommittedBlockSetInterval: lastCommittedBlockSetInterval,
+		checkpointHoldRetryInterval:   checkpointHoldRetryInterval,
 		metrics:                       metrics,
 	}
 }
@@ -85,6 +110,10 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 	r.blkNumToBlkWithStatus.Clear()
 	r.txIDToHeight.Clear()
 	r.waitingTxsSlots = utils.NewSlots(int64(config.waitingTxsLimit))
+	// The gauge tracks the slots, so it is reset with them. A session that ends with TXs
+	// in flight never sees their statuses, so their increments are never subtracted; without
+	// this the gauge would drift up by that count on every reconnect and never come back.
+	promutil.SetGauge(r.metrics.waitingTransactionsQueueSize, 0)
 
 	// Using the errgroup context for the stream ensures that we cancel the stream once one of the tasks fails.
 	// And we use the stream's context to ensure that if the stream is closed, we stop all the tasks.
@@ -320,6 +349,20 @@ func (r *relay) processStatusBatch(
 			return errors.Wrap(ctx.Err(), "context ended")
 		}
 
+		// A checkpoint that did not verify gates block intake. Handling it before the
+		// per-TX statuses is deliberate: the held checkpoint has no status of its own, so
+		// there is nothing in the loop below to react to.
+		if tStatus.CheckpointFeedback != nil {
+			if err := r.processCheckpointFeedback(ctx, tStatus.CheckpointFeedback); err != nil {
+				return err
+			}
+		} else if r.checkpointHeld.CompareAndSwap(true, false) {
+			// The pipeline moved past the checkpoint that was held, so the gate is no longer
+			// the reason for anything. A halt is never cleared here: it is terminal, and this
+			// loop does not run again after it.
+			r.setCheckpointGate(checkpointGateRunning)
+		}
+
 		txStatusProcessedCount := int64(0)
 		startTime := time.Now()
 		statusReport := make([]*committerpb.TxStatus, 0, len(tStatus.Status))
@@ -376,6 +419,84 @@ func (r *relay) processStatusBatch(
 		r.processCommittedBlocksInOrder(ctx, outgoingCommittedBlock, outgoingCommittedBlockWithTxs)
 		promutil.Observe(r.metrics.transactionStatusesProcessingInRelaySeconds, time.Since(startTime))
 	}
+}
+
+// processCheckpointFeedback gates the pipeline on the committer's checkpoint verdict.
+// The caller skips an absent feedback, which is the normal case; an UNSPECIFIED signal is
+// treated the same way and leaves the pipeline running.
+//
+// Both verdicts end the coordinator session by returning an error, which is what stops
+// the block pull: the session's retry.Sustain loop (see sendBlocksAndReceiveStatus)
+// re-recovers from the coordinator's next expected block, and because the held or halted
+// checkpoint never committed, that block is the checkpoint's own. So the block is
+// re-delivered and re-mapped from scratch rather than the relay having to unwind the
+// per-block bookkeeping (pending count, waiting slots, tracked heights) by hand.
+//
+// HOLD sleeps first so the retry does not re-read a hash that is still being computed;
+// the snapshot hasher publishes it on its own poll interval. The sleep runs in the status
+// loop, so it stalls status processing as well as block intake: statuses for blocks that
+// already committed are not drained for the length of the pause, and their blocks are not
+// written to the block store until the session restarts. That is acceptable because the
+// session is about to be torn down anyway and the coordinator re-delivers the statuses on
+// reconnect, but it does mean a hold pauses more than intake.
+//
+// HALT is terminal: it wraps ErrNonRetryable so Sustain stops the sidecar for an operator
+// instead of retrying a divergence that cannot resolve itself.
+//
+// The gate gauge is left at "held" across the session restart, and is cleared by the
+// caller only once a batch arrives with no feedback. Resetting it here, before returning,
+// would drop it to "running" while the checkpoint is still unresolved, so a scrape between
+// restarts would show a healthy committer that is in fact gated.
+//
+// A hold can repeat indefinitely, and deliberately has no attempt limit: giving up would
+// mean either committing an unverified checkpoint or halting on a snapshot hasher that is
+// merely slow. Repetition is instead made observable -- checkpointHoldsTotal counts every
+// hold of the same checkpoint, so an operator can alert on a checkpoint that is not
+// clearing rather than infer it from a gauge that only says "held".
+func (r *relay) processCheckpointFeedback(
+	ctx context.Context, feedback *servicepb.CheckpointFeedback,
+) error {
+	if feedback == nil || feedback.Signal == servicepb.CheckpointFeedback_SIGNAL_UNSPECIFIED {
+		return nil
+	}
+	promutil.AddToCounter(r.metrics.checkpointFeedbackTotal.WithLabelValues(feedback.Signal.String()), 1)
+	txID := feedback.GetRef().GetTxId()
+
+	if feedback.Signal == servicepb.CheckpointFeedback_HALT {
+		r.setCheckpointGate(checkpointGateHalted)
+		logger.Errorf("Halting block intake: checkpoint TX [%s] for snapshot block [%d] diverged: %s",
+			txID, feedback.SnapshotBlockNumber, feedback.Reason)
+		return errors.Wrapf(retry.ErrNonRetryable, "checkpoint TX %s for snapshot block %d diverged: %s",
+			txID, feedback.SnapshotBlockNumber, feedback.Reason)
+	}
+
+	r.checkpointHeld.Store(true)
+	r.setCheckpointGate(checkpointGateHeld)
+	holds := r.checkpointHolds.Add(1)
+	promutil.AddToCounter(r.metrics.checkpointHoldsTotal, 1)
+	logger.Warnf("Pausing block intake for %s (hold %d): checkpoint TX [%s] for snapshot block [%d] "+
+		"awaits the local snapshot hash", r.checkpointHoldRetryInterval, holds, txID, feedback.SnapshotBlockNumber)
+
+	start := time.Now()
+	select {
+	case <-ctx.Done():
+		return errors.Wrap(ctx.Err(), "context ended while holding a checkpoint")
+	case <-time.After(r.checkpointHoldRetryInterval):
+	}
+	promutil.AddDurationToCounter(r.metrics.blockPullPausedSecondsTotal, time.Since(start))
+
+	return errors.Wrapf(retry.ErrBackOff,
+		"checkpoint TX %s for snapshot block %d is held until the local snapshot hash is computed",
+		txID, feedback.SnapshotBlockNumber)
+}
+
+// setCheckpointGate publishes the gate state, and resets the hold count when the gate
+// returns to running so the next hold's count starts from the checkpoint that caused it.
+func (r *relay) setCheckpointGate(state checkpointGateState) {
+	if state == checkpointGateRunning {
+		r.checkpointHolds.Store(0)
+	}
+	promutil.SetGauge(r.metrics.checkpointFeedbackState, int(state))
 }
 
 func (r *relay) processCommittedBlocksInOrder(

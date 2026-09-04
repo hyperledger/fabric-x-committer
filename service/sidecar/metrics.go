@@ -39,6 +39,14 @@ type perfMetrics struct {
 	waitingTransactionsQueueSize prometheus.Gauge
 	serverMetrics                *serve.ServerMetrics
 
+	// checkpoint feedback from the validator-committer, forwarded by the coordinator.
+	// The state gauge is the single "why is this committer not progressing?" signal:
+	// 0 = running, 1 = held, 2 = halted.
+	checkpointFeedbackState     prometheus.Gauge
+	checkpointFeedbackTotal     *prometheus.CounterVec
+	checkpointHoldsTotal        prometheus.Counter
+	blockPullPausedSecondsTotal prometheus.Counter
+
 	// queue sizes
 	yetToBeCommittedBlocksQueueSize prometheus.GaugeFunc
 	mappedBlocksQueueSize           prometheus.GaugeFunc
@@ -112,6 +120,33 @@ func newPerformanceMetrics(q *queues) *perfMetrics {
 			Subsystem: subsystemRelay,
 			Name:      "waiting_transactions_queue_size",
 			Help:      "Total number of transactions waiting at the relay for statuses.",
+		}),
+		checkpointFeedbackState: p.NewGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: subsystemRelay,
+			Name:      "checkpoint_feedback_state",
+			Help: "Current block-intake gate state: 0 = running normally, 1 = held while a checkpoint " +
+				"awaits the local snapshot hash, 2 = halted on a checkpoint divergence (terminal).",
+		}),
+		checkpointFeedbackTotal: p.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystemRelay,
+			Name:      "checkpoint_feedback_total",
+			Help:      "Total number of checkpoint feedback signals received from the committer, by signal.",
+		}, []string{"signal"}),
+		blockPullPausedSecondsTotal: p.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystemRelay,
+			Name:      "block_pull_paused_seconds_total",
+			Help:      "Cumulative seconds block pulling was paused while a checkpoint was held.",
+		}),
+		checkpointHoldsTotal: p.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystemRelay,
+			Name:      "checkpoint_holds_total",
+			Help: "Total number of times a checkpoint was held awaiting the local snapshot hash. A hold " +
+				"repeats until the hash is computed, so a rate above zero for longer than the snapshot " +
+				"hasher's poll interval means a checkpoint is not clearing.",
 		}),
 		committedBlocksQueueSize: p.NewChannelLenGauge(prometheus.GaugeOpts{
 			Namespace: namespace,

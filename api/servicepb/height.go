@@ -48,6 +48,11 @@ func (h *Height) WithStatus(txID string, status committerpb.Status) *committerpb
 	return committerpb.NewTxStatus(status, txID, h.BlockNum, h.TxNum)
 }
 
+// WithTxID creates committerpb.TxRef locating txID at this height.
+func (h *Height) WithTxID(txID string) *committerpb.TxRef {
+	return &committerpb.TxRef{BlockNum: h.BlockNum, TxNum: h.TxNum, TxId: txID}
+}
+
 // ToBytes serializes the Height.
 func (h *Height) ToBytes() []byte {
 	blockNumBytes := utils.EncodeOrderPreservingVarUint64(h.BlockNum)

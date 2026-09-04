@@ -89,8 +89,7 @@ world state for each namespace, and internal metadata. The tables are categorize
 | `value`     | `BYTEA`   | The system configuration transaction.              |
 | `version`   | `BIGINT`  | Not Applicable                                     |
 
-* **Metadata Table (`metadata`)**: This table is a simple key-value store for other internal system metadata. For now, we
-only store the last committed block number.
+* **Metadata Table (`metadata`)**: This table is a simple key-value store for internal system metadata. It stores the last committed block number and the key of the latest accepted snapshot record, which lets a reader find that record with a single key lookup instead of scanning `ns__snapshot`.
 
 | Column Name | Data Type | Description/Constraints        |
 | :---------- | :-------- | :----------------------------- |
@@ -233,10 +232,36 @@ type validatedTransactions struct {
     newWrites             transactionToWrites
     invalidTxStatus       map[TxID]protoblocktx.Status
     txIDToHeight          transactionIDToHeight
+    // Set only when a `_checkpoint` write failed verification (step e); nil otherwise.
+    checkpointFeedback    *servicepb.CheckpointFeedback
 }
 ```
 
-**e. Enqueueing for Commit:** The `validatedTransactions` object is enqueued into the `validatedTxs` channel for the Committer task.
+**e. Verifying a Checkpoint Before Commit:** A `_checkpoint` write attests to a snapshot hash agreed by the
+organizations, so it may only commit once it matches the hash this committer computed for that snapshot. The validator
+decodes the write's key into the snapshot's block number, compares the attested hash against the latest `_snapshot`
+record, and on any verdict but a match removes the write and records a `CheckpointFeedback` on the batch for the
+committer to forward:
+
+| Verdict | Outcome | Effect |
+|---------|---------|--------|
+| Hash matches | commit | The write stays in the batch and commits normally. An absent feedback means the per-TX status is authoritative. |
+| No `_snapshot` record exists, or the checkpoint names a block that is not the one awaiting a checkpoint | per-TX rejection | Bad input: the submitter chose the block number and local state is not in question, so the transaction is rejected with `MALFORMED_CHECKPOINT_INVALID_KEY` and the pipeline keeps running. |
+| The write's key does not decode to exactly one block number, or the batch carries more than one `_checkpoint` transaction | batch fails | Broken invariants, not bad input: the sidecar's form check already guarantees the key's shape, and nothing routes two checkpoints into one batch. Neither can be verified, so the validator returns an error and the batch does not reach the committer — the same treatment `MarkCheckpointedInTx` gives a record that changed underneath a verified checkpoint. Failing rather than skipping matters because a skipped write stays in the batch and would commit an unverified attestation. |
+| Hash mismatches | `HALT` | The organizations attested a hash this committer's own state contradicts — the one genuine divergence. Nothing commits; terminal, the reason is recorded on the `_snapshot` record and the sidecar stops for an operator. |
+| Local hash not yet computed | `HOLD` | Nothing commits, and **no per-TX status is produced** — every status but `REJECTED_DUPLICATE_TX_ID` is persisted to `tx_status`, and a persisted status would make the sidecar's re-submission of the same txID a permanent duplicate. The sidecar re-fetches the block after a pause. |
+
+Rejecting bad input rather than halting on it is a security property, not a nicety: `_checkpoint` is client-submittable (any submitter satisfying `/Channel/Application/CheckpointEndorsement`), so halting on a checkpoint for a block that was never snapshotted would let an authorized submitter stop the committer at will. Form validation is not repeated here — the sidecar's `checkSystemNamespace` ([sidecar.md](sidecar.md)) already requires exactly one `ReadWrite` whose key decodes as a block number — but the VC still refuses to proceed on a write it cannot verify rather than letting it through.
+
+Because `HOLD` and `HALT` produce no per-TX status, the feedback carries the checkpoint transaction's full `TxRef`. The
+sidecar needs the transaction ID to know what to re-submit, and the coordinator needs the height to release the
+transaction's dependency-graph node — the one release path that is not driven by a status. See
+[sidecar.md](sidecar.md#checkpoint-feedback-gate).
+
+Verification lives here, beside the snapshot admission gate, because both decide whether a system transaction may reach
+the committer at all. See [checkpoint.go](/service/vc/checkpoint.go).
+
+**f. Enqueueing for Commit:** The `validatedTransactions` object is enqueued into the `validatedTxs` channel for the Committer task.
 
 ### Task 3. Committing Valid Transactions to the Database
 
@@ -262,6 +287,9 @@ type statesToBeCommitted struct {
     newWrites    namespaceToWrites
     batchStatus  *protoblocktx.TransactionsStatus
     txIDToHeight transactionIDToHeight
+    // Set when the batch carries a verified `_checkpoint` write, so the attested
+    // snapshot's record is advanced to CHECKPOINTED in the same DB transaction.
+    checkpoint   *checkpointTx
 }
 ```
 
@@ -272,18 +300,35 @@ Both `insert_ns_${NAMESPACE_ID}` (for `newWrites`) and `insert_tx_status` can re
 If this happens, the writes and/or statuses for the corresponding transactions are removed from the batch, their statuses are updated 
 (e.g., to reflect a duplicate), and the commit is retried with the modified, smaller batch. This retry loop continues until the commit succeeds.
 
-**e. Reporting Status:** After the commit is successful, the `batchStatus` is sent to the `txsStatus` channel, which relays the information 
-back to the Coordinator, completing the workflow for the transaction batch.
+Two system writes are folded into that same database transaction, so each is durable exactly when the row it describes is:
+a `_snapshot` write also sets the latest-snapshot pointer (`setLatestSnapshotKeyIfPresent`), and a verified `_checkpoint` write also
+advances its `_snapshot` record to `CHECKPOINTED` (`snapshotstate.MarkCheckpointedInTx`). The checkpoint case is what admits the next
+snapshot request, so splitting it into a second transaction would leave a crash window where a durable attestation has a record still
+short of `CHECKPOINTED` — which the admission gate reads as "a snapshot is still awaiting its checkpoint", rejecting every later
+snapshot with nothing to repair it. The checkpoint write is re-read on each retry iteration, so a write the retry loop drops as a
+duplicate never advances the record. `MarkCheckpointedInTx` treats an unset latest-snapshot pointer, or a latest record
+for a different block, as non-retryable invariant violations rather than no-ops: the validator verified the checkpoint
+against that same record, so either state means it changed underneath a verified checkpoint, and succeeding silently
+would leave a durable attestation whose record never advances. An already-`CHECKPOINTED` record stays a no-op, which is
+the resubmitted-checkpoint case.
 
-### Task 4. Creating State Snapshots (Clone-First)
+**e. Reporting Status:** After the commit is successful, the `batchStatus` is sent to the `txsStatus` channel, which relays the information 
+back to the Coordinator, completing the workflow for the transaction batch. The committer forwards the validator's
+`CheckpointFeedback` verbatim on that batch, and never produces one itself.
+
+### Creating State Snapshots (Clone-First)
 
 When a `_snapshot` marker transaction is committed, the VC creates a native,
 zero-copy clone of the state database **before** the marker's transaction ID is
-committed, preserving the invariant `txID committed <=> clone ready <=> PENDING row`.
+committed, preserving the one-way guarantee that every committed snapshot txID has
+a clone and a PENDING row; uncommitted attempts may also leave a reusable clone.
 For YugabyteDB, ready means `yb_database_clones().state = 'COMPLETE'`; a
 `pg_database` row alone is insufficient. The clone is a consistent copy of the
-drained state cut and is never dropped by the VC (dropping is forbidden because
-it could delete a clone whose txID has not yet committed). See
+drained state cut and is never dropped by the VC (dropping is forbidden because it
+could delete a clone whose txID has not yet committed). Failed or losing attempts
+leave deterministic clones for retry/reuse or operator reconciliation, and
+successful and ambiguous attempts preserve them as well; administrative clone
+deletion remains outside the commit path. See
 [database_snapshot.go](/service/vc/database_snapshot.go).
 
 A `_snapshot` transaction is submitted standalone: the sidecar drains the pipeline
@@ -368,7 +413,7 @@ sent to the VC service and which have been acknowledged with a final status.
 
 ### B. Restart and Recovery Procedure
 
-If the VC service fails and restarts, its internal channels (`preparedTxs`, `validatedTxs`) will be empty. Recovery is managed by the Coordinator:
+If the VC service fails and restarts, its internal channels (`preparedTxs`, `validatedTxs`) will be empty. Transaction-batch recovery is managed by the Coordinator:
 
 1.  **Reconnect:** Upon restart, the VC service re-establishes its gRPC server and awaits a connection from the Coordinator.
 2.  **Coordinator-led Recovery:** The Coordinator maintains a list of transactions sent to each VC service. Upon detecting a broken stream with a failed VC service, it will resubmit
@@ -382,3 +427,5 @@ any transaction batches for which it has not received a final `TransactionsStatu
     identifies it as a resubmission, reuses the already committed status, and does not re-process the transaction. This ensures that the commit operation is idempotent 
     and prevents incorrect validation or duplicate writes. If a transaction is a resubmission, its correct, original status is retrieved from the `tx_status` table.
 4.  **Resume Operation:** Once the Coordinator has re-sent any necessary batches and they have been processed idempotently, the system seamlessly resumes normal operation.
+
+Snapshot hashing is not part of VC recovery at all: it belongs to the separate, single-instance [snapshot hasher](snapshot-hasher.md). The VC's only duty is to make the `_snapshot` record durable atomically with its clone; that service polls the latest snapshot record and hashes any record that still needs it, so a snapshot committed by a VC that then crashed is picked up on a later poll with no VC involvement.

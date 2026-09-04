@@ -184,6 +184,12 @@ Flow description:
 4. **Committer → DB:** Committer workers query versions for blind writes, validate reads, commit writes to database.
 5. **Committer → Coordinator:** Committers send final `TxStatusBatch` messages to `txsStatus` channel, returned to Coordinator.
 
+A `_checkpoint` transaction takes one extra step in phase 2: the validator verifies the attested hash against this
+committer's own hash of the referenced snapshot. A checkpoint for a snapshot this committer is not awaiting is
+rejected with a per-TX status; a hash that contradicts local state records a `HALT` and a hash that is not yet computed
+records a `HOLD`, which the committer forwards on the batch status and the sidecar acts on by halting or by re-fetching
+the block. See [`docs/validator-committer.md`](./validator-committer.md) Task 2 step **e**.
+
 Key design points:
 
 - **Multiple workers per phase**: Configurable parallelism (e.g., `MaxWorkersForPreparer`, `MaxWorkersForValidator`, `MaxWorkersForCommitter`)
@@ -481,6 +487,7 @@ The Validator phase receives prepared transactions from the Preparer and perform
 - `validTxBlindWrites`: Blind writes from valid transactions (still unresolved)
 - `newWrites`: New writes from valid transactions
 - `invalidTxStatus`: Status map for invalidated transactions (e.g., `MVCC_CONFLICT`)
+- `checkpointFeedback`: HOLD/HALT verdict for a `_checkpoint` write; nil on ordinary batches
 
 **Validation process**:
 
@@ -1126,7 +1133,8 @@ Inserts new keys. Returns array of violating keys on primary key violation.
 | After `insert_tx_status` but before commit | Nothing (uncommitted) | Full batch retry | Transaction rolled back; `insert_tx_status` detects duplicates on retry |
 | During `insert_ns` | Nothing (uncommitted) | Retry with reduced batch | Violating keys returned; corresponding txs marked invalid |
 | During `update_ns` | Nothing (uncommitted) | Retry | Updates cannot conflict (versions pre-validated) |
-| Final commit fails | Nothing | Retry | All changes in single transaction |
+| Final commit definitely rolled back (serialization/deadlock) | Nothing | Full transaction retry | Server confirms no commit occurred |
+| Final commit outcome is unknown | May have committed | No automatic replay | Prevents a successful commit from being replayed as a duplicate |
 
 ### 8.4 Duplicate Transaction Handling
 
@@ -1178,11 +1186,14 @@ Open these files next to connect diagrams to implementation:
 - `service/vc/preparer.go` — Transaction preparation, write categorization, read extraction.
 - `service/vc/validator.go` — MVCC read validation, invalidation of transactions.
 - `service/vc/committer.go` — Blind write resolution, database commit, duplicate handling.
+- `service/vc/checkpoint.go` — `_checkpoint` verify-before-commit, per-TX rejection, hold/halt feedback.
 
 ### Database Layer
 
 - `service/vc/database.go` — Database connection, stored procedure calls, retry logic.
-- `service/vc/dbinit.go` — Table and stored procedure creation.
+- `service/vc/database_snapshot.go` — Snapshot clone creation and the snapshot-admission gate.
+- `utils/statedb/dbinit.go` — Table and stored procedure creation.
+- `utils/snapshotstate/state.go` — `_snapshot` record contract: `ReadLatest`, `Update`, `MarkCheckpointedInTx`.
 
 ### Data Structures
 
@@ -1195,4 +1206,5 @@ Open these files next to connect diagrams to implementation:
 - `service/vc/preparer_test.go` — Preparer unit tests.
 - `service/vc/validator_test.go` — Validator unit tests.
 - `service/vc/committer_test.go` — Committer unit tests.
+- `service/vc/checkpoint_test.go` — Checkpoint verify-before-commit, hold/halt, and re-submission tests.
 - `service/vc/database_test.go` — Database operation tests.

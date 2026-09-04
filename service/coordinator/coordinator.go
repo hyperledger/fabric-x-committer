@@ -425,7 +425,10 @@ func (c *Service) sendTxStatus(
 			return nil
 		}
 
-		c.numTxsInProgress.Add(-int32(len(txStatus.Status))) //nolint:gosec
+		// Decremented by the number of transactions the batch accounts for, not by the number
+		// of statuses: a held checkpoint carries a feedback and no status of its own, and it
+		// was counted when its block arrived. See txCount.
+		c.numTxsInProgress.Add(-txCount(txStatus))
 
 		if err := stream.Send(txStatus); err != nil {
 			return errors.Wrap(err, "failed to send transaction status batch to the sidecar")

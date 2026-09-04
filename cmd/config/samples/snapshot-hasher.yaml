@@ -1,0 +1,147 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+# Configuration for the server.
+# The snapshot hasher exposes no RPCs of its own: work reaches it through the state
+# database. The gRPC server exists only so the service can be health-checked the same
+# way as every other service.
+server:
+  # The gRPC endpoint where the snapshot hasher serves health checks.
+  # Format: host:port or :port (binds to all interfaces).
+  endpoint: :3001
+  tls: &tlsConfig
+    # TLS mode for server connections: 'none' (no TLS), 'tls' (server auth only),
+    # or 'mtls' (mutual TLS with client cert verification).
+    mode: mtls
+    # Path to the server's TLS certificate file (public key).
+    cert-path: /root/artifacts/peerOrganizations/peer-org-0.com/peers/snapshot-hasher/tls/server.crt
+    # Path to the server's TLS private key file.
+    key-path: /root/artifacts/peerOrganizations/peer-org-0.com/peers/snapshot-hasher/tls/server.key
+    # List of paths to CA certificate files for verifying client certificates (required for mtls).
+    ca-cert-paths:
+      - /root/artifacts/peerOrganizations/peer-org-0.com/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
+# Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
+monitoring:
+  # The endpoint where Prometheus metrics and pprof profiling are exposed.
+  # Format: host:port or :port (binds to all interfaces).
+  endpoint: :2120
+  # Monitoring TLS configuration should/could be different from the GRPC server TLS
+  # to only allow authorized admins to monitor the service's metrics.
+  tls: *tlsConfig
+
+# Maximum time to wait for the snapshot hasher to become ready before startup fails.
+# The service is considered ready once it has a connection pool to the database.
+# Default: 5m
+startup-timeout: 5m
+
+# Database connection configuration
+database:
+  # List of database endpoints to connect to. For YugabyteDB clusters, list all nodes.
+  # Format: host:port for each endpoint.
+  endpoints:
+    - db:5433
+  # Database username for authentication.
+  username: "yugabyte"
+  # Database password for authentication.
+  # TODO: pass password via environment variable for better security.
+  password: "yugabyte"
+  # Database name to connect to.
+  database: "yugabyte"
+  tls:
+    # TLS mode for database connections: 'none' (no TLS) or 'tls' (server auth with CA verification).
+    # Note: Database connections do not support mutual TLS (mtls).
+    mode: tls
+    # Path to the CA certificate file for verifying the database server's certificate.
+    ca-cert-path: /root/artifacts/peerOrganizations/peer-org-0.com/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
+  # Maximum size of the connection pool on THIS database. It serves only the poll of
+  # the latest snapshot record, which runs one statement at a time on a single
+  # goroutine, so a couple of connections is plenty regardless of cluster size or
+  # transaction load. The parallel scans of a snapshot clone do NOT use this pool or
+  # this limit: each hash job opens its own pool on the clone database, sized from
+  # resource-limits.max-workers-for-hash below.
+  # Default: 20
+  max-connections: 2
+  # Minimum size of the connection pool. Keeps connections warm for faster operations.
+  # Should be less than or equal to max-connections.
+  # Default: 1
+  min-connections: 1
+  # Enable load balancing across multiple database endpoints. Should be enabled for
+  # YugabyteDB clusters to distribute operations across nodes. Set to false for single-node deployments.
+  load-balance: false
+  retry:  # The exponential backoff retry strategy for database operation.
+    # This strategy increases the delay between retry attempts exponentially.
+    # When using YugabyteDB as the backend, it is needed to handle retryable errors.
+    # https://support.yugabyte.com/hc/en-us/articles/
+    # 4409627048461-How-to-Troubleshoot-Database-Transaction-Retryable-Errors
+
+    # initial-interval: Specifies the duration of the first backoff interval.
+    # This is the time to wait before the first retry attempt.
+    # Format: string representing a duration (e.g., "500ms", "1s", "2.5s").
+    # Default: 500ms
+    initial-interval: 500ms
+
+    # randomization-factor: Controls the amount of randomness (jitter) applied to each backoff interval.
+    # The actual backoff duration for an attempt will be randomly selected from the range:
+    # [current_interval * (1 - randomization_factor), current_interval * (1 + randomization_factor)]
+    # A factor of 0 means no randomization. A factor of 0.5 means the actual interval
+    # can vary by +/- 50% of the calculated interval.
+    # Must be between 0 and 1.
+    # Default: 0.5
+    randomization-factor: 0.5
+
+    # multiplier: The factor by which the backoff interval increases after each failed attempt.
+    # The next interval (before randomization) is calculated as: current_interval * multiplier.
+    # A value of 1.5 means each subsequent interval will be 50% longer than the previous one.
+    # Must be >= 1.
+    # Default: 1.5
+    multiplier: 1.5
+
+    # max-interval: Sets the absolute maximum duration for any single backoff interval.
+    # Even if the calculated interval (initial_interval * multiplier^n) exceeds this value,
+    # the interval used (before randomization) will be capped at max-interval.
+    # Format: string representing a duration (e.g., "60s", "1m", "5m").
+    # Default: 10s
+    max-interval: 60s
+
+    # max-elapsed-time: The maximum total time allowed for retries since the operation first began.
+    # If the total time spent (including execution time of attempts and backoff waits)
+    # exceeds this duration, the retry mechanism will stop, even if other limits haven't been reached.
+    # Setting this to "0" means there is no time limit, and retries will continue
+    # indefinitely until successful.
+    # Format: string representing a duration (e.g., "15m", "1h").
+    # Default: 10m
+    max-elapsed-time: 15m
+
+# How often the service re-reads the latest snapshot record looking for work.
+# Hashing therefore begins within one interval of the snapshot committing: nothing
+# notifies this service, so the interval is the whole scheduling latency. Lower it
+# to start hashing sooner at the cost of one extra small query per interval.
+# Default: 1m
+poll-interval: 1m
+
+# Resource limit configurations. These bound the read load a hash job places on the
+# cluster, which is also serving live transactions.
+resource-limits:
+  # Number of tables hashed in parallel within one hash job. Hashing is a full scan of
+  # the clone, so this trades hash latency against read load on the cluster.
+  # Default: 4
+  max-workers-for-hash: 4
+  # Number of rows fetched per round-trip when scanning a table for hashing
+  # (keyset pagination). Bounds the memory used by a hashing worker on large tables;
+  # total memory scales with max-workers-for-hash x hash-batch-size.
+  # Default: 1000
+  hash-batch-size: 1000
+
+# Logging configuration
+logging:
+  # Log level specification. Can be a single level (e.g., "info", "debug") or
+  # module-specific levels (e.g., "info,vc=debug").
+  # Valid levels: debug, info, warning, error, panic, fatal.
+  logSpec: info:grpc=error
+  # Log message format template. Supports color codes, timestamps, module names,
+  # function names, and log levels. See fabric-lib-go/common/flogging for details.
+  format: >-
+    %{color}%{time:2006-01-02 15:04:05.000 MST} [%{module}] %{shortfunc}
+    -> %{level:.4s}%{color:reset} %{message}

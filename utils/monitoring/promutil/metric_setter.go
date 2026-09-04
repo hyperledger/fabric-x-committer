@@ -22,6 +22,12 @@ func AddToCounterVec(c *prometheus.CounterVec, labels []string, n int) {
 	c.WithLabelValues(labels...).Add(float64(n))
 }
 
+// AddDurationToCounter adds a duration, in seconds, to a prometheus counter. Used for
+// cumulative-seconds counters, where whole-second rounding would lose sub-second waits.
+func AddDurationToCounter(c prometheus.Counter, d time.Duration) {
+	c.Add(d.Seconds())
+}
+
 // AddToGauge adds a value to a prometheus gauge.
 func AddToGauge(g prometheus.Gauge, n int) {
 	g.Add(float64(n))

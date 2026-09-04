@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
@@ -39,6 +40,11 @@ type validatedTransactions struct {
 	readToTxIDs           readToTransactions
 	invalidTxStatus       map[TxID]committerpb.Status
 	txIDToHeight          transactionIDToHeight
+	// checkpointFeedback is set by the validator when a `_checkpoint` write did not
+	// verify, and is forwarded verbatim by the committer on the batch status. It is nil
+	// on every ordinary batch, which is what tells the sidecar the per-TX status is
+	// authoritative.
+	checkpointFeedback *servicepb.CheckpointFeedback
 }
 
 func (v *validatedTransactions) Debug() {
@@ -124,6 +130,14 @@ func (v *transactionValidator) validate(ctx context.Context, db *database) error
 		// and no snapshot database or record is created.
 		if err := db.rejectSnapshotIfPriorNotCheckpointed(ctx, vTxs); err != nil {
 			return fmt.Errorf("failed to gate snapshot before commit: %w", err)
+		}
+
+		// Verify a _checkpoint write against this committer's own snapshot hash. On any
+		// verdict but a match this removes the write, so the attestation never commits
+		// unverified, and either rejects the TX (a checkpoint for a snapshot this committer
+		// is not awaiting) or records the feedback the committer forwards.
+		if err := db.rejectCheckpointIfNotVerified(ctx, vTxs); err != nil {
+			return fmt.Errorf("failed to verify checkpoint before commit: %w", err)
 		}
 
 		promutil.Observe(v.metrics.validatorTxBatchLatencySeconds, time.Since(start))

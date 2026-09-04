@@ -21,6 +21,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
+	"github.com/hyperledger/fabric-x-committer/utils/snapshotstate"
 	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
@@ -48,17 +49,7 @@ const (
 	queryTxIDsStatusPrepSQLStmt = "SELECT tx_id, status, height FROM tx_status WHERE tx_id = ANY($1);"
 )
 
-var (
-	lastCommittedBlockNumberKey = []byte("last committed block number")
-
-	// latestSnapshotKeyMetadataKey stores the tx_id of the most recently accepted
-	// _snapshot record, so the snapshot gate (see snapshot.go) can look up its
-	// current status with a single key lookup instead of scanning the (small but
-	// growing) ns__snapshot table. Pre-seeded (NULL) at DB init alongside
-	// lastCommittedBlockNumberKey and written atomically, in the same DB
-	// transaction as the _snapshot row it points to, by commit.
-	latestSnapshotKeyMetadataKey = []byte("latest snapshot key")
-)
+var lastCommittedBlockNumberKey = []byte("last committed block number")
 
 type (
 	// database handles the database operations.
@@ -68,9 +59,11 @@ type (
 		retryProfile         *retry.Profile
 		tablePreSplitTablets int
 		config               *statedb.Config
-		resourceLimits       *ResourceLimitsConfig
-		snapshotHashJobs     chan snapshotHashJob
-		hasher               *snapshotHasher
+		// snapshotState is the shared accessor for the durable `_snapshot` record. The
+		// VC only reads it today, to gate a new snapshot request, and will also write
+		// CHECKPOINTED through it once checkpointing lands; the snapshot service drives
+		// the same record from PENDING to COMPLETED from its own process.
+		snapshotState *snapshotstate.StateManager
 	}
 
 	// keyToVersion is a map from key to version.
@@ -81,6 +74,10 @@ type (
 		newWrites    namespaceToWrites
 		batchStatus  *servicepb.TxStatusBatch
 		txIDToHeight transactionIDToHeight
+		// checkpoint is the verified `_checkpoint` write in this batch, or nil. When set, the
+		// attested snapshot's record is advanced to CHECKPOINTED in the same transaction as
+		// the attestation row (see snapshotstate.MarkCheckpointedInTx).
+		checkpoint *checkpointTx
 	}
 
 	commitResult struct {
@@ -95,9 +92,7 @@ type (
 )
 
 // newDatabase creates a new database.
-func newDatabase(
-	ctx context.Context, config *statedb.Config, metrics *perfMetrics, resourceLimits *ResourceLimitsConfig,
-) (*database, error) {
+func newDatabase(ctx context.Context, config *statedb.Config, metrics *perfMetrics) (*database, error) {
 	pool, err := statedb.NewPool(ctx, config)
 	if err != nil {
 		return nil, err
@@ -117,13 +112,7 @@ func newDatabase(
 		retryProfile:         config.Retry,
 		tablePreSplitTablets: tablePreSplitTablets,
 		config:               config,
-		resourceLimits:       resourceLimits,
-		snapshotHashJobs:     make(chan snapshotHashJob, snapshotHashJobBuffer),
-		hasher: &snapshotHasher{
-			config:         config,
-			resourceLimits: resourceLimits,
-			retryProfile:   config.Retry,
-		},
+		snapshotState:        snapshotstate.NewStateManager(pool, config.Retry),
 	}, nil
 }
 
@@ -250,6 +239,15 @@ func (d *database) commit(ctx context.Context, states *statesToBeCommitted) (*co
 		return nil, fmt.Errorf("failed to set latest snapshot key: %w", err)
 	}
 
+	// Likewise for a verified _checkpoint write: the attestation row and the CHECKPOINTED
+	// record it produces must become durable together, or a crash between them would wedge
+	// the snapshot admission gate.
+	if states.checkpoint != nil {
+		if err = snapshotstate.MarkCheckpointedInTx(ctx, tx, states.checkpoint.blockNum); err != nil {
+			return nil, fmt.Errorf("failed to mark the snapshot as checkpointed: %w", err)
+		}
+	}
+
 	err = tx.Commit(ctx)
 	promutil.Observe(d.metrics.databaseTxBatchCommitLatencySeconds, time.Since(start))
 	if err != nil {
@@ -305,15 +303,16 @@ func (d *database) writeStatesByGroup(
 	return nil, nil
 }
 
-// setLatestSnapshotKeyIfPresent points latestSnapshotKeyMetadataKey at w's sole
-// key, or no-ops when w is empty (normal non-snapshot batch). The key is
-// pre-seeded (NULL) at DB init, so the existing setMetadataPrepSQLStmt UPDATE
-// is reused as-is.
+// setLatestSnapshotKeyIfPresent points snapshotstate.LatestRecordPointerKey at w's
+// sole key, or no-ops when w is empty (normal non-snapshot batch). Writing it here,
+// in the same transaction as the _snapshot row, is what lets the snapshot service
+// find the record it must hash with a single key lookup. The key is pre-seeded
+// (NULL) at DB init, so the existing setMetadataPrepSQLStmt UPDATE is reused as-is.
 func setLatestSnapshotKeyIfPresent(ctx context.Context, tx pgx.Tx, w *namespaceWrites) error {
 	if w.empty() {
 		return nil
 	}
-	_, err := tx.Exec(ctx, setMetadataPrepSQLStmt, latestSnapshotKeyMetadataKey, w.keys[0])
+	_, err := tx.Exec(ctx, setMetadataPrepSQLStmt, snapshotstate.LatestRecordPointerKey, w.keys[0])
 	return errors.Wrap(err, "failed to set latest snapshot key")
 }
 

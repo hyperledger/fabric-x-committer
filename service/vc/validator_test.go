@@ -384,7 +384,7 @@ func newIncomingSnapshotPreparedTx(
 	t.Helper()
 	ref := &committerpb.TxRef{BlockNum: blockNum, TxNum: 0, TxId: txID}
 	name := snapshotDatabaseName(ref)
-	dropCloneCleanup(t, db, name)
+	dropSnapshotCloneOnCleanup(t, db, name)
 
 	value, err := proto.Marshal(&committerpb.SnapshotState{TxRef: ref})
 	require.NoError(t, err)

@@ -74,6 +74,10 @@ func TestCommitterCMD(t *testing.T) {
 		{Cmd: []string{"start", vcService}, Name: serviceNames[vcService], Templ: config.TemplateVC},
 		{Cmd: []string{"start", verifierService}, Name: serviceNames[verifierService], Templ: config.TemplateVerifier},
 		{Cmd: []string{"start", queryService}, Name: serviceNames[queryService], Templ: config.TemplateQueryService},
+		{
+			Cmd: []string{"start", snapshotHasherService}, Name: serviceNames[snapshotHasherService],
+			Templ: config.TemplateSnapshotHasher,
+		},
 	} {
 		t.Run(serviceCase.Name, func(t *testing.T) {
 			cases := []cliutil.CommandTest{

@@ -16,9 +16,10 @@ This guide explains how each configuration parameter affects system performance 
 5. [Verifier](#5-verifier)
 6. [Validator-Committer (VC)](#6-validator-committer-vc)
 7. [Query Service](#7-query-service)
-8. [Database](#8-database)
-9. [Co-location Impact](#9-co-location-impact)
-10. [Benchmarking](#10-benchmarking)
+8. [Snapshot Hasher](#8-snapshot-hasher)
+9. [Database](#9-database)
+10. [Co-location Impact](#10-co-location-impact)
+11. [Benchmarking](#11-benchmarking)
 
 ## 1. Pipeline Flow Control
 
@@ -84,6 +85,12 @@ A small buffer (e.g., 1-10) tightly couples the Sidecar's internal stages: any s
 How often the Sidecar sends the latest committed block number to the Coordinator. The Coordinator uses this for dependency resolution.
 
 Minimal effect on steady-state throughput. Shorter intervals improve recovery speed after failures. Default: 5s.
+
+### `checkpoint-hold-retry-interval`
+
+How long the Sidecar pauses before re-fetching a `_checkpoint` block that the Validator-Committer held because the snapshot hash the checkpoint attests to was still being computed.
+
+No effect on steady-state throughput: it applies only while a checkpoint waits on its snapshot hash, which an administrator paces. The wait is bounded from below by the [snapshot hasher](snapshot-hasher.md)'s own poll interval — a shorter value only re-reads the same unfinished state and restarts the coordinator session again, so it costs sessions without committing the checkpoint sooner. Default: 1m.
 
 ### `notification.max-active-tx-ids`
 
@@ -232,22 +239,6 @@ When `min-transaction-batch-size` is 1, this timeout has no effect (batches are 
 
 The default of 2s pairs with the default batch size of 1 (effectively unused). If you increase the batch size, consider reducing the timeout to 100-500ms to bound the latency impact.
 
-### `resource-limits.max-workers-for-snapshot-hash`
-
-Number of goroutines that hash namespace tables in parallel when computing a snapshot's hash. Hashing runs in the background, after the snapshot transaction is committed, against a clone database of the snapshot — so it never blocks the commit pipeline, but it does add read load to the cluster.
-
-The snapshot hash worker opens its own short-lived connection pool against the clone database, sized to `max-workers-for-snapshot-hash`. It therefore does not consume the main pool's connection budget (see `database.max-connections`), but the cluster must have headroom for those extra connections and the scan traffic they generate.
-
-| Setting | Effect |
-|---------|--------|
-| 1 | Serialized per-table hashing; lowest read load; slowest hash |
-| 4 (default) | Parallel per-table hashing; good balance |
-| >4 | Faster hashing on many-namespace deployments; competes with live traffic |
-
-### `resource-limits.snapshot-hash-batch-size`
-
-Number of rows fetched per round-trip when scanning a table for hashing (keyset pagination). Larger batches reduce the number of round-trips but increase the memory held by each hashing worker; total memory scales with `max-workers-for-snapshot-hash × snapshot-hash-batch-size`, and it also depends on the size of the keys and values in the table being hashed. The default of 1000 keeps per-worker memory bounded on large tables.
-
 ### `database.max-connections`
 
 Maximum number of connections in the database connection pool. The validator and committer stages share this pool (the preparer does not use the database — it performs in-memory parsing only). If the pool is exhausted, workers block waiting for a free connection, reducing effective parallelism.
@@ -258,7 +249,7 @@ Size the pool to accommodate concurrent usage:
 Required connections >= max-workers-for-validator + max-workers-for-committer
 ```
 
-Snapshot hashing does not draw from this pool — it uses its own short-lived pool against the clone database (see `resource-limits.max-workers-for-snapshot-hash`).
+Snapshot hashing does not draw from this pool at all: it runs in the separate snapshot hasher, against its own short-lived pool on the clone database (see [Snapshot Hasher](#8-snapshot-hasher)).
 
 Setting this too low causes connection starvation — workers sit idle waiting for connections while the database has spare capacity. Setting this too high wastes database server memory and can cause connection-level contention.
 
@@ -367,7 +358,41 @@ The Query Service connection pool operates differently from the VC pool. Connect
 
 Size the pool based on expected concurrent view load and the formula above. The default of 10 is conservative — increase for production workloads. Monitor the connection pool wait metrics to detect when views are blocking on connection acquisition.
 
-## 8. Database
+## 8. Snapshot Hasher
+
+The snapshot hasher hashes snapshot clones. It is deployed as a single instance and does no per-transaction work, so its parameters trade hash latency against the read load it adds to a cluster that is also committing transactions.
+
+It uses two pools with different sizing rules: the long-lived pool on the source database, governed by `database.max-connections`, only polls the latest snapshot record one statement at a time, so it needs very few connections; the per-job pool on the clone database is sized from `resource-limits.max-workers-for-hash` (see below). The hasher creates no tables, so `database.table-pre-split-tablets` has no effect here and is omitted from its sample config.
+
+### `poll-interval`
+
+How often the hasher re-reads the latest snapshot record looking for work. Nothing notifies it, so this interval *is* the scheduling latency: hashing begins within one interval of the snapshot committing, and after a restart the first check happens one interval in.
+
+| Value | Effect |
+|---|---|
+| 1m (default) | One small indexed query per minute; hashing starts within a minute of the commit |
+| Seconds | Hashing starts sooner, at the cost of a query per interval; useful when snapshots are frequent and hashes are awaited |
+| Much higher | Fewer queries, but a snapshot can sit unhashed for that long, and a restart takes that long to resume |
+
+Lowering it does not make hashing faster — only the wait before it starts. Hashing runs inline, so a job that outlives the interval simply delays the next check.
+
+### `resource-limits.max-workers-for-hash`
+
+Number of tables hashed in parallel within one hash job. Hashing is a full scan of every hashed table in the clone, so this is the main knob on how much read load a hash job adds.
+
+This setting is also the clone pool's size. Each hash job opens its own short-lived pool against the clone database with exactly `max-workers-for-hash` connections, because at most one connection per worker is in use at any instant while it pages through its table; `database.max-connections` and `database.min-connections` are not used for that pool, since they size the long-lived pool that polls the snapshot record on the source database. So a hash job neither consumes another service's connection budget nor obeys this service's own pool settings — but the cluster must have headroom for those extra connections and their scan traffic.
+
+| Setting | Effect |
+|---------|--------|
+| 1 | Serialized per-table hashing; lowest read load; slowest hash |
+| 4 (default) | Parallel per-table hashing; good balance |
+| >4 | Faster hashing on many-namespace deployments; competes with live traffic |
+
+### `resource-limits.hash-batch-size`
+
+Number of rows fetched per round-trip when scanning a table for hashing (keyset pagination). Larger batches reduce the number of round-trips but increase the memory held by each hashing worker; total memory scales with `max-workers-for-hash × hash-batch-size`, and it also depends on the size of the keys and values in the table being hashed. The default of 1000 keeps per-worker memory bounded on large tables.
+
+## 9. Database
 
 ### YugabyteDB Considerations
 
@@ -381,13 +406,13 @@ Size the pool based on expected concurrent view load and the formula above. The 
 - **Connection pool**: Same `max-connections` and `min-connections` parameters apply. Size based on concurrent query volume.
 - **Replication**: For read-heavy workloads, configure Query Service instances to connect to read replicas.
 
-## 9. Co-location Impact
+## 10. Co-location Impact
 
 MVCC validation requires multiple database round-trips per transaction — read set validation, write set application, and status updates. When VC instances are co-located with database nodes, each of these round-trips takes microseconds instead of milliseconds. Without co-location, expect significantly higher commit latency, which directly limits overall system throughput.
 
 Co-location is most impactful for the VC service because it performs the most database operations per transaction. The Query Service benefits less because its read-only queries are less latency-sensitive.
 
-## 10. Benchmarking
+## 11. Benchmarking
 
 The tuning recommendations in this guide are starting points, not guarantees. Real performance depends on factors specific to your deployment:
 

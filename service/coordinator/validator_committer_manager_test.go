@@ -390,6 +390,94 @@ func TestValidatorCommitterAddAndRecoverPendingTxs(t *testing.T) {
 	test.RequireIntMetricValue(t, len(txsNode), vc.metrics.vcs.retriedTotal)
 }
 
+// TestValidatorCommitterForwardsHeldCheckpoint covers a held checkpoint arriving alone in
+// its batch, which is the ordinary shape for a standalone `_checkpoint` TX. The VC reports
+// no per-TX status for it (a persisted status would make the sidecar's re-submission a
+// permanent duplicate), so the batch carries a feedback and nothing else. Two things must
+// still happen:
+//
+//   - the batch reaches the sidecar. Dropping it as "empty" would leave the checkpoint
+//     uncommitted with nothing reporting why;
+//   - the checkpoint's node is released. Every other release path is keyed off a status, so
+//     without an explicit release the node stays in txBeingValidated and its writes stay in
+//     the global dependency detector. The sidecar's re-delivery of the same checkpoint then
+//     detects a write-write dependency on that stale node, which nothing will ever free, so
+//     the resubmitted checkpoint never commits even after the hash lands.
+func TestValidatorCommitterForwardsHeldCheckpoint(t *testing.T) {
+	t.Parallel()
+	env := newVcMgrTestEnv(t, 1)
+
+	const snapshotBlock = 42
+	cpRef := committerpb.NewTxRef("cp-held-tx", 50, 0)
+	env.mockVcService.HoldCheckpoint(cpRef, &servicepb.CheckpointFeedback{
+		Signal:              servicepb.CheckpointFeedback_HOLD,
+		Ref:                 cpRef,
+		SnapshotBlockNumber: snapshotBlock,
+	})
+
+	cpNode := &dependencygraph.TransactionNode{VCTx: &servicepb.VcTx{Ref: cpRef}}
+	env.inputTxs <- dependencygraph.TxNodeBatch{cpNode}
+
+	// The feedback reaches the sidecar even though the batch carries no status.
+	held := env.readOutputTxsStatus(t)
+	require.Empty(t, held.Status)
+	require.NotNil(t, held.CheckpointFeedback)
+	require.Equal(t, servicepb.CheckpointFeedback_HOLD, held.CheckpointFeedback.Signal)
+	require.Equal(t, cpRef.TxId, held.CheckpointFeedback.Ref.GetTxId())
+	require.EqualValues(t, snapshotBlock, held.CheckpointFeedback.SnapshotBlockNumber)
+
+	// The node is forwarded to the dependency graph, which is what frees its dependents and
+	// removes its writes from the global dependency detector.
+	require.ElementsMatch(t, dependencygraph.TxNodeBatch{cpNode}, <-env.outputTxs)
+	require.Zero(t, env.validatorCommitterManager.validatorCommitter[0].txBeingValidated.Count(),
+		"the held checkpoint's node was never released, so its re-delivery would deadlock behind it")
+
+	// The hash lands and the sidecar re-delivers the same checkpoint TX, as a new node for
+	// the same ref. It must now commit: a stale node left behind by the hold would make this
+	// batch wait forever instead.
+	env.mockVcService.ReleaseCheckpoint(cpRef)
+	resubmitted := &dependencygraph.TransactionNode{VCTx: &servicepb.VcTx{Ref: cpRef}}
+	env.inputTxs <- dependencygraph.TxNodeBatch{resubmitted}
+
+	committed := env.readOutputTxsStatus(t)
+	require.Nil(t, committed.CheckpointFeedback)
+	require.Len(t, committed.Status, 1)
+	require.Equal(t, committerpb.Status_COMMITTED, committed.Status[0].Status)
+	require.Equal(t, cpRef.TxId, committed.Status[0].Ref.TxId)
+	require.ElementsMatch(t, dependencygraph.TxNodeBatch{resubmitted}, <-env.outputTxs)
+	require.Zero(t, env.validatorCommitterManager.validatorCommitter[0].txBeingValidated.Count())
+}
+
+// TestValidatorCommitterDropsEmptyStatusBatch covers the complement of the test above: a
+// batch with neither statuses nor a feedback carries nothing to act on and must not be
+// forwarded. Only an untracked-status batch produces this, which happens when the
+// coordinator restarts.
+func TestValidatorCommitterDropsEmptyStatusBatch(t *testing.T) {
+	t.Parallel()
+	env := newVcMgrTestEnv(t, 1)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(cancel)
+
+	// Untracked TXs: the manager never sent these, so every status is stripped and the batch
+	// is left with nothing.
+	require.NoError(t, env.mockVcService.SubmitTransactions(ctx, &servicepb.VcBatch{
+		Transactions: []*servicepb.VcTx{
+			{Ref: committerpb.NewTxRef("untracked-1", 1, 0)},
+			{Ref: committerpb.NewTxRef("untracked-2", 1, 1)},
+		},
+	}))
+
+	// A real batch behind it proves the empty one was dropped rather than merely delayed:
+	// had it been forwarded, it would have been read before this one.
+	txBatch, expectedStatus := createInputTxsNodeForTest(t, 2, 0, 2)
+	env.inputTxs <- txBatch
+
+	forwarded := env.readOutputTxsStatus(t)
+	require.Nil(t, forwarded.CheckpointFeedback)
+	test.RequireProtoElementsMatch(t, expectedStatus, forwarded.Status)
+}
+
 func (e *vcMgrTestEnv) readOutputTxsStatus(t *testing.T) *servicepb.TxStatusBatch {
 	t.Helper()
 	batch, ok := e.outputTxsStatus.read(t.Context())

@@ -469,8 +469,8 @@ func checkSystemNamespace(ns *applicationpb.TxNamespace) committerpb.Status {
 		if len(ns.ReadsOnly) > 0 || len(ns.BlindWrites) > 0 || len(ns.ReadWrites) != 1 {
 			return committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY
 		}
-		_, n, err := servicepb.NewHeightFromBytes(ns.ReadWrites[0].Key)
-		if err != nil || n != len(ns.ReadWrites[0].Key) {
+		// The key names the snapshot's block number only; see servicepb.CheckpointKey.
+		if _, err := servicepb.BlockNumFromCheckpointKey(ns.ReadWrites[0].Key); err != nil {
 			return committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY
 		}
 	default:
