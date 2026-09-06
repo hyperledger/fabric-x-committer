@@ -43,7 +43,7 @@ func newValidatorTestEnv(t *testing.T, withCommitter bool) *validatorTestEnv {
 	var txStatus chan *servicepb.TxStatusBatch
 
 	dbEnv := NewDatabaseTestEnv(t)
-	metrics := newVCServiceMetrics()
+	metrics := newVCServiceMetrics(&queues{preparedTxs: preparedTxs, validatedTxs: validatedTxs})
 	v := newValidator(preparedTxs, validatedTxs, metrics)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return v.run(ctx, dbEnv.DB, 1)

@@ -54,6 +54,7 @@ Monitor queue length gauges to find the bottleneck. A growing queue means the do
 | `coordinator_verifier_output_batch_queue_size` | Verified → VC | VC services not consuming verified transactions fast enough |
 | `coordinator_vcservice_output_batch_queue_size` | VC → Dep Graph | Dependency graph not processing validated results fast enough |
 | `coordinator_vcservice_output_tx_status_batch_queue_size` | Status Response | Status responses backing up between VC and Coordinator |
+| `vcservice_batcher_input_queue_size` | VC Intake | Coordinator submitting faster than the VC batches; first queue to fill |
 | `vcservice_preparer_input_queue_size` | VC Preparation | Preparer workers saturated |
 | `vcservice_validator_input_queue_size` | VC Validation | DB validation queries too slow; check connections or co-location |
 | `vcservice_committer_input_queue_size` | VC Commit | DB commit throughput is the bottleneck; most common |

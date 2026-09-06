@@ -44,11 +44,7 @@ type ValidatorCommitterService struct {
 	preparer                 *transactionPreparer
 	validator                *transactionValidator
 	committer                *transactionCommitter
-	receivedTxBatch          chan *servicepb.VcBatch
-	toPrepareTxs             chan *servicepb.VcBatch
-	preparedTxs              chan *preparedTransactions
-	validatedTxs             chan *validatedTransactions
-	txsStatus                chan *servicepb.TxStatusBatch
+	queues                   *queues
 	db                       *database
 	metrics                  *perfMetrics
 	minTxBatchSize           int
@@ -65,6 +61,16 @@ type ValidatorCommitterService struct {
 	ready          *channel.Ready
 }
 
+// queues are the channels connecting the service's pipeline stages. Their sizes are reported on
+// scrape, so they are created before the metrics that observe them.
+type queues struct {
+	receivedTxBatch chan *servicepb.VcBatch
+	toPrepareTxs    chan *servicepb.VcBatch
+	preparedTxs     chan *preparedTransactions
+	validatedTxs    chan *validatedTransactions
+	txsStatus       chan *servicepb.TxStatusBatch
+}
+
 // NewValidatorCommitterService creates a new ValidatorCommitterService.
 // It creates the preparer, the validator and the committer.
 // It also creates the channels that are used to communicate between the preparer, the validator and the committer.
@@ -78,22 +84,20 @@ func NewValidatorCommitterService(
 
 	// TODO: make queueMultiplier configurable
 	queueMultiplier := 1
-	receivedTxBatch := make(chan *servicepb.VcBatch, l.MaxWorkersForPreparer*queueMultiplier)
-	toPrepareTxs := make(chan *servicepb.VcBatch, l.MaxWorkersForPreparer*queueMultiplier)
-	preparedTxs := make(chan *preparedTransactions, l.MaxWorkersForValidator*queueMultiplier)
-	validatedTxs := make(chan *validatedTransactions, queueMultiplier)
-	txsStatus := make(chan *servicepb.TxStatusBatch, l.MaxWorkersForCommitter*queueMultiplier)
+	q := &queues{
+		receivedTxBatch: make(chan *servicepb.VcBatch, l.MaxWorkersForPreparer*queueMultiplier),
+		toPrepareTxs:    make(chan *servicepb.VcBatch, l.MaxWorkersForPreparer*queueMultiplier),
+		preparedTxs:     make(chan *preparedTransactions, l.MaxWorkersForValidator*queueMultiplier),
+		validatedTxs:    make(chan *validatedTransactions, queueMultiplier),
+		txsStatus:       make(chan *servicepb.TxStatusBatch, l.MaxWorkersForCommitter*queueMultiplier),
+	}
 
-	metrics := newVCServiceMetrics()
+	metrics := newVCServiceMetrics(q)
 	return &ValidatorCommitterService{
-		preparer:                 newPreparer(toPrepareTxs, preparedTxs, metrics),
-		validator:                newValidator(preparedTxs, validatedTxs, metrics),
-		committer:                newCommitter(validatedTxs, txsStatus, metrics),
-		receivedTxBatch:          receivedTxBatch,
-		toPrepareTxs:             toPrepareTxs,
-		preparedTxs:              preparedTxs,
-		validatedTxs:             validatedTxs,
-		txsStatus:                txsStatus,
+		preparer:                 newPreparer(q.toPrepareTxs, q.preparedTxs, metrics),
+		validator:                newValidator(q.preparedTxs, q.validatedTxs, metrics),
+		committer:                newCommitter(q.validatedTxs, q.txsStatus, metrics),
+		queues:                   q,
 		metrics:                  metrics,
 		minTxBatchSize:           config.ResourceLimits.MinTransactionBatchSize,
 		timeoutForMinTxBatchSize: config.ResourceLimits.TimeoutForMinTransactionBatchSize,
@@ -117,11 +121,6 @@ func (vc *ValidatorCommitterService) Run(ctx context.Context) error {
 	defer vc.ready.Reset()
 
 	g, eCtx := errgroup.WithContext(ctx)
-
-	g.Go(func() error {
-		vc.monitorQueues(ctx)
-		return nil
-	})
 
 	g.Go(func() error {
 		logger.Info("Starting transaction batching and forwarding process")
@@ -169,23 +168,6 @@ func (vc *ValidatorCommitterService) RegisterService(s serve.Servers) {
 	healthgrpc.RegisterHealthServer(s.GRPC, vc.healthcheck)
 	monitoring.RegisterMonitoringServer(s.HTTP, vc.metrics.Provider)
 	serve.RegisterServerMetrics(s.StatsHandler, vc.metrics.serverMetrics)
-}
-
-func (vc *ValidatorCommitterService) monitorQueues(ctx context.Context) {
-	// TODO: make sampling time configurable
-	ticker := time.NewTicker(250 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-		promutil.SetGauge(vc.metrics.preparerInputQueueSize, len(vc.toPrepareTxs))
-		promutil.SetGauge(vc.metrics.validatorInputQueueSize, len(vc.preparedTxs))
-		promutil.SetGauge(vc.metrics.committerInputQueueSize, len(vc.validatedTxs))
-		promutil.SetGauge(vc.metrics.txStatusOutputQueueSize, len(vc.txsStatus))
-	}
 }
 
 // SetLastCommittedBlockNumber set the last committed block number in the database/ledger.
@@ -300,7 +282,7 @@ func (vc *ValidatorCommitterService) receiveTransactions(
 		txCount := len(b.Transactions)
 		logger.Debugf("Received batch of %d transactions", txCount)
 		promutil.AddToCounter(vc.metrics.transactionReceivedTotal, txCount)
-		vc.receivedTxBatch <- b
+		vc.queues.receivedTxBatch <- b
 	}
 
 	return nil
@@ -310,7 +292,7 @@ func (vc *ValidatorCommitterService) batchReceivedTransactionsAndForwardForProce
 	largerBatch := &servicepb.VcBatch{}
 	timer := time.NewTimer(vc.timeoutForMinTxBatchSize)
 	defer timer.Stop()
-	toPrepareTxs := channel.NewWriter(ctx, vc.toPrepareTxs)
+	toPrepareTxs := channel.NewWriter(ctx, vc.queues.toPrepareTxs)
 
 	sendLargeBatch := func() {
 		defer timer.Reset(vc.timeoutForMinTxBatchSize)
@@ -329,7 +311,7 @@ func (vc *ValidatorCommitterService) batchReceivedTransactionsAndForwardForProce
 			return
 		case <-timer.C:
 			sendLargeBatch()
-		case txBatch, ok := <-vc.receivedTxBatch:
+		case txBatch, ok := <-vc.queues.receivedTxBatch:
 			if !ok {
 				return
 			}
@@ -354,7 +336,7 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 ) error {
 	logger.Info("Send transaction status")
 
-	txsStatus := channel.NewReader(ctx, vc.txsStatus)
+	txsStatus := channel.NewReader(ctx, vc.queues.txsStatus)
 	for {
 		txStatus, ok := txsStatus.Read()
 		if !ok {

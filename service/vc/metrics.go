@@ -41,10 +41,11 @@ type perfMetrics struct {
 	transactionDuplicateTxTotal  prometheus.Counter
 
 	// queue sizes for each sub-component
-	preparerInputQueueSize  prometheus.Gauge
-	validatorInputQueueSize prometheus.Gauge
-	committerInputQueueSize prometheus.Gauge
-	txStatusOutputQueueSize prometheus.Gauge
+	batcherInputQueueSize   prometheus.GaugeFunc
+	preparerInputQueueSize  prometheus.GaugeFunc
+	validatorInputQueueSize prometheus.GaugeFunc
+	committerInputQueueSize prometheus.GaugeFunc
+	txStatusOutputQueueSize prometheus.GaugeFunc
 
 	// time taken by each sub-component
 	preparerTxBatchLatencySeconds  prometheus.Histogram
@@ -59,7 +60,7 @@ type perfMetrics struct {
 	databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds prometheus.Histogram
 }
 
-func newVCServiceMetrics() *perfMetrics {
+func newVCServiceMetrics(q *queues) *perfMetrics {
 	p := monitoring.NewProvider()
 
 	return &perfMetrics{
@@ -95,30 +96,36 @@ func newVCServiceMetrics() *perfMetrics {
 			Name:      "duplicate_transaction_total",
 			Help:      "The total number of duplicate transactions",
 		}),
-		preparerInputQueueSize: p.NewGauge(prometheus.GaugeOpts{
+		batcherInputQueueSize: p.NewChannelLenGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: "batcher",
+			Name:      nameInputQueueSize,
+			Help:      "The batcher input queue size, holding the batches received from the client",
+		}, q.receivedTxBatch),
+		preparerInputQueueSize: p.NewChannelLenGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: subsystemPreparer,
 			Name:      nameInputQueueSize,
 			Help:      "The preparer input queue size",
-		}),
-		validatorInputQueueSize: p.NewGauge(prometheus.GaugeOpts{
+		}, q.toPrepareTxs),
+		validatorInputQueueSize: p.NewChannelLenGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: subsystemValidator,
 			Name:      nameInputQueueSize,
 			Help:      "The validator input queue size",
-		}),
-		committerInputQueueSize: p.NewGauge(prometheus.GaugeOpts{
+		}, q.preparedTxs),
+		committerInputQueueSize: p.NewChannelLenGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: subsystemCommitter,
 			Name:      nameInputQueueSize,
 			Help:      "The committer input queue size",
-		}),
-		txStatusOutputQueueSize: p.NewGauge(prometheus.GaugeOpts{
+		}, q.validatedTxs),
+		txStatusOutputQueueSize: p.NewChannelLenGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: "txstatus",
 			Name:      "output_queue_size",
 			Help:      "The txstatus output queue size",
-		}),
+		}, q.txsStatus),
 		preparerTxBatchLatencySeconds: p.NewHistogram(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystemPreparer,

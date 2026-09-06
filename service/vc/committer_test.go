@@ -44,7 +44,7 @@ func newCommitterTestEnv(t *testing.T) *committerTestEnv {
 	txStatus := make(chan *servicepb.TxStatusBatch, 10)
 
 	dbEnv := NewDatabaseTestEnv(t)
-	metrics := newVCServiceMetrics()
+	metrics := newVCServiceMetrics(&queues{validatedTxs: validatedTxs, txsStatus: txStatus})
 	c := newCommitter(validatedTxs, txStatus, metrics)
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return c.run(ctx, dbEnv.DB, 1)
