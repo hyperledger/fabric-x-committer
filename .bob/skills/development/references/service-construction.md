@@ -62,7 +62,7 @@ Rules:
   **not** open DB or gRPC connections — those happen in `Run`.
 - Return concrete `*T` with **no error** for in-memory wiring. Return `(*T, error)` only
   when construction does I/O (e.g. `newDatabase(ctx, cfg, metrics) (*database, error)`,
-  `service/vc/database.go:76`, or `sidecar.New` which parses orderer params eagerly).
+  `service/vc/database.go:91`, or `sidecar.New` which parses orderer params eagerly).
 - Unexported components use lowercase `newXxx` and log `logger.Info("Initializing
   new<Xxx>")` as the first line.
 - The body returns a keyed struct literal, one `field: value,` per line.
@@ -171,7 +171,7 @@ if !c.streamActive.TryLock() {
 defer c.streamActive.Unlock()
 ```
 
-Models: `service/vc/validator_committer_service.go:266` (stream + CAS guard),
+Models: `service/vc/validator_committer_service.go:258` (stream + CAS guard),
 `service/verifier/verifier_server.go:71` (per-stream executor).
 
 ## 5. Config structs and the loading pipeline

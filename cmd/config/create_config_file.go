@@ -72,6 +72,11 @@ type (
 		VCMinTransactionBatchSize           int           // vc
 		VCTimeoutForMinTransactionBatchSize time.Duration // vc
 
+		// Snapshot hasher configuration (for testing).
+		SnapshotHasherPollInterval time.Duration // snapshot-hasher
+		SnapshotHasherMaxWorkers   int           // snapshot-hasher
+		SnapshotHasherBatchSize    int           // snapshot-hasher
+
 		// Verifier batching configuration (for testing).
 		VerifierBatchTimeCutoff time.Duration // verifier
 		VerifierBatchSizeCutoff int           // verifier
@@ -79,13 +84,14 @@ type (
 
 	// SystemServices holds all configurations for the system services.
 	SystemServices struct {
-		Verifier    []ServiceConfig
-		VCService   []ServiceConfig
-		Orderer     []ServiceConfig
-		Coordinator ServiceConfig
-		Sidecar     ServiceConfig
-		Query       ServiceConfig
-		LoadGen     ServiceConfig
+		Verifier       []ServiceConfig
+		VCService      []ServiceConfig
+		Orderer        []ServiceConfig
+		Coordinator    ServiceConfig
+		Sidecar        ServiceConfig
+		SnapshotHasher ServiceConfig
+		Query          ServiceConfig
+		LoadGen        ServiceConfig
 	}
 
 	// ServiceConfig stores the service's server and metrics endpoints, along with their TLS configuration.
@@ -122,6 +128,8 @@ var (
 	TemplateQueryService string
 	//go:embed templates/sidecar.yaml.tmpl
 	TemplateSidecar string
+	//go:embed templates/snapshot-hasher.yaml.tmpl
+	TemplateSnapshotHasher string
 	//go:embed templates/vc.yaml.tmpl
 	TemplateVC string
 	//go:embed templates/verifier.yaml.tmpl

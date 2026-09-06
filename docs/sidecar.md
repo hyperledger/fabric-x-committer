@@ -380,7 +380,7 @@ always sends the snapshot transaction last, regardless of where it originally ap
 5. Resume submission of later transactions and later blocks.
 
 The drain ends when the sidecar receives the snapshot transaction status, normally `COMMITTED`. It does not wait for
-background snapshot hash computation in the validator-committer.
+the snapshot's hash, which the separate [snapshot hasher](snapshot-hasher.md) computes asynchronously.
 
 Sending the snapshot transaction last means the snapshot always reflects the full effect of its block, since it is
 committed only after every other transaction in that block has already committed. This is why the snapshot is always

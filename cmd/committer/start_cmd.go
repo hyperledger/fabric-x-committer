@@ -16,6 +16,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/service/coordinator"
 	"github.com/hyperledger/fabric-x-committer/service/query"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
+	"github.com/hyperledger/fabric-x-committer/service/snapshothasher"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
@@ -26,7 +27,9 @@ func startCMD() *cobra.Command {
 		Use:   "start",
 		Short: "Start a service.",
 	}
-	for _, name := range []string{sidecarService, coordinatorService, vcService, verifierService, queryService} {
+	for _, name := range []string{
+		sidecarService, coordinatorService, vcService, verifierService, queryService, snapshotHasherService,
+	} {
 		cmd.AddCommand(startServiceCommand(name))
 	}
 	return cmd
@@ -63,6 +66,8 @@ func startServiceCommand(name string) *cobra.Command {
 				service = verifier.New(c)
 			case *query.Config:
 				service = query.NewQueryService(c)
+			case *snapshothasher.Config:
+				service = snapshothasher.NewSnapshotHasherService(c)
 			default:
 				return errors.Newf("unknown config type: %T", conf)
 			}

@@ -54,7 +54,7 @@ From the diff, extract the change vocabulary you will grep for in Step 3:
 - **CLI flags / commands** — changes under `cmd/` (cobra commands, flag names).
 - **Symbols** — renamed/removed exported and unexported funcs, types, methods.
 - **Paths** — moved/renamed/deleted files and packages.
-- **Service names** — sidecar / coordinator / verifier / vc / query / loadgen / mock.
+- **Service names** — sidecar / coordinator / verifier / vc / query / snapshot-hasher / loadgen / mock.
 - **Metrics** — changes in any `service/*/metrics.go`.
 - **`workload.Profile` fields** — changes under `loadgen/workload/`.
 - **Make targets / scripts** — changes to `Makefile` or `scripts/`.

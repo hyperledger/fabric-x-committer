@@ -11,14 +11,18 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/jackc/pgerrcode"
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v5"
+	"github.com/yugabyte/pgx/v5/pgconn"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
+	"github.com/hyperledger/fabric-x-committer/utils/snapshotstate"
 	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
@@ -106,7 +110,7 @@ func TestCreateSnapshotDatabase(t *testing.T) {
 
 	ref := &committerpb.TxRef{BlockNum: 1234567, TxNum: 0, TxId: "snap-clone-1"}
 	name := snapshotDatabaseName(ref)
-	dropCloneCleanup(t, env.DB, name)
+	dropSnapshotCloneOnCleanup(t, env.DB, name)
 
 	// Distinguishable data written to the source, across TWO namespaces, BEFORE
 	// cloning; the clone must carry both rows so a later reader observes the exact
@@ -188,14 +192,6 @@ func cloneExists(t *testing.T, db *database, name string) bool {
 	return exists
 }
 
-func dropCloneCleanup(t *testing.T, db *database, name string) {
-	t.Helper()
-	t.Cleanup(func() {
-		sql := fmt.Sprintf("DROP DATABASE IF EXISTS %s", pgx.Identifier{name}.Sanitize())
-		_ = db.adminExec(context.Background(), sql)
-	})
-}
-
 func TestCommitSnapshotTxCreatesCloneAndPendingRow(t *testing.T) {
 	t.Parallel()
 	env := newCommitterTestEnv(t)
@@ -204,7 +200,7 @@ func TestCommitSnapshotTxCreatesCloneAndPendingRow(t *testing.T) {
 
 	ref := &committerpb.TxRef{BlockNum: 987654, TxNum: 1, TxId: "snap-e2e-1"}
 	name := snapshotDatabaseName(ref)
-	dropCloneCleanup(t, env.dbEnv.DB, name)
+	dropSnapshotCloneOnCleanup(t, env.dbEnv.DB, name)
 
 	// Preparer routes _snapshot record as a new write: key=txId, value=SnapshotState{TxRef}.
 	value, err := proto.Marshal(&committerpb.SnapshotState{TxRef: ref})
@@ -257,7 +253,7 @@ func TestUpdateSnapshotState(t *testing.T) {
 
 	ref := &committerpb.TxRef{BlockNum: 700200, TxNum: 0, TxId: "snap-update-1"}
 	name := snapshotDatabaseName(ref)
-	dropCloneCleanup(t, env.dbEnv.DB, name)
+	dropSnapshotCloneOnCleanup(t, env.dbEnv.DB, name)
 
 	// Commit a PENDING _snapshot row through the normal path.
 	value, err := proto.Marshal(&committerpb.SnapshotState{TxRef: ref})
@@ -277,9 +273,9 @@ func TestUpdateSnapshotState(t *testing.T) {
 	require.Equal(t, committerpb.Status_COMMITTED, s.Status[0].Status)
 
 	// Move PENDING -> IN_PROGRESS.
-	require.NoError(t, env.dbEnv.DB.updateSnapshotState(
-		ctx, ref, committerpb.SnapshotState_IN_PROGRESS, nil,
-	))
+	require.NoError(t, env.dbEnv.DB.snapshotState.Update(ctx, ref, snapshotstate.Update{
+		Status: committerpb.SnapshotState_IN_PROGRESS,
+	}))
 
 	rows := env.dbEnv.FetchKeys(t, committerpb.SnapshotNamespaceID, [][]byte{[]byte(ref.TxId)})
 	stored := rows[ref.TxId]
@@ -289,6 +285,13 @@ func TestUpdateSnapshotState(t *testing.T) {
 	require.NoError(t, proto.Unmarshal(stored.Value, &got))
 	require.Equal(t, committerpb.SnapshotState_IN_PROGRESS, got.Status)
 	require.Equal(t, name, got.CloneDatabase)
+}
+
+func TestIgnoreDuplicateDatabase(t *testing.T) {
+	t.Parallel()
+	require.NoError(t, ignoreDuplicateDatabase(nil))
+	require.NoError(t, ignoreDuplicateDatabase(&pgconn.PgError{Code: pgerrcode.DuplicateDatabase}))
+	require.ErrorContains(t, ignoreDuplicateDatabase(errors.New("create failed")), "create failed")
 }
 
 func TestSnapshotDatabaseFailureReturnsError(t *testing.T) {
@@ -305,7 +308,9 @@ func TestSnapshotDatabaseFailureReturnsError(t *testing.T) {
 	nws := make(transactionToWrites)
 	nws.getOrCreate(TxID(ref.TxId), committerpb.SnapshotNamespaceID).append([]byte(ref.TxId), value, 0)
 
-	err = env.DB.createSnapshotIfPresent(ctx, nws)
+	w, ok := snapshotWriteInBatch(nws)
+	require.True(t, ok)
+	_, err = env.DB.createSnapshotDatabaseAndRewriteRecord(ctx, w.keys[0], w.values[0])
 	require.ErrorContains(t, err, "failed to create snapshot database")
 	require.False(t, cloneExists(t, env.DB, snapshotDatabaseName(ref)))
 }
@@ -320,7 +325,7 @@ func TestSnapshotDuplicateTxIDIsIdempotent(t *testing.T) {
 
 	ref := &committerpb.TxRef{BlockNum: 222333, TxNum: 0, TxId: "snap-dup-1"}
 	name := snapshotDatabaseName(ref)
-	dropCloneCleanup(t, env.dbEnv.DB, name)
+	dropSnapshotCloneOnCleanup(t, env.dbEnv.DB, name)
 
 	build := func() *validatedTransactions {
 		value, err := proto.Marshal(&committerpb.SnapshotState{TxRef: ref})
@@ -342,6 +347,10 @@ func TestSnapshotDuplicateTxIDIsIdempotent(t *testing.T) {
 	s1, ok := reader.Read()
 	require.True(t, ok)
 	require.Equal(t, committerpb.Status_COMMITTED, s1.Status[0].Status)
+
+	// The commit path starts no hashing at all -- the snapshot service does, from its
+	// own process -- so the record stays exactly where the commit left it.
+	requireSnapshotStatus(t, env.dbEnv, ref.TxId, committerpb.SnapshotState_PENDING)
 
 	// Second submission of the same tx_id at the same height: the commit path
 	// detects the duplicate txID, but setCorrectStatusForDuplicateTxID recognizes
@@ -367,7 +376,7 @@ func TestSnapshotResubmissionSkipsReclone(t *testing.T) {
 
 	ref := &committerpb.TxRef{BlockNum: 444555, TxNum: 0, TxId: "snap-resubmit-1"}
 	name := snapshotDatabaseName(ref)
-	dropCloneCleanup(t, env.dbEnv.DB, name)
+	dropSnapshotCloneOnCleanup(t, env.dbEnv.DB, name)
 
 	build := func() *validatedTransactions {
 		value, err := proto.Marshal(&committerpb.SnapshotState{TxRef: ref})
@@ -390,6 +399,10 @@ func TestSnapshotResubmissionSkipsReclone(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, committerpb.Status_COMMITTED, s1.Status[0].Status)
 	require.True(t, cloneExists(t, env.dbEnv.DB, name))
+
+	// The commit path starts no hashing at all -- the snapshot service does, from its
+	// own process -- so the record stays exactly where the commit left it.
+	requireSnapshotStatus(t, env.dbEnv, ref.TxId, committerpb.SnapshotState_PENDING)
 
 	// Drop the clone out-of-band to prove the resubmission does NOT re-create it:
 	// because txID is already committed, createSnapshotIfPresent must skip database creation.
@@ -504,7 +517,7 @@ func TestRejectSnapshotIfPriorNotCheckpointedMalformedRecord(t *testing.T) {
 	vTx, name := newIncomingSnapshotVTx(t, env.dbEnv.DB, 2001, "incoming-malformed")
 
 	err = env.dbEnv.DB.rejectSnapshotIfPriorNotCheckpointed(ctx, vTx)
-	require.ErrorContains(t, err, "failed to decode latest _snapshot record")
+	require.ErrorContains(t, err, "failed to decode the latest _snapshot record")
 	require.False(t, cloneExists(t, env.dbEnv.DB, name))
 }
 
@@ -518,7 +531,7 @@ func newIncomingSnapshotVTx(t *testing.T, db *database, blockNum uint64, txID st
 	t.Helper()
 	ref := &committerpb.TxRef{BlockNum: blockNum, TxNum: 0, TxId: txID}
 	name := snapshotDatabaseName(ref)
-	dropCloneCleanup(t, db, name)
+	dropSnapshotCloneOnCleanup(t, db, name)
 
 	value, err := proto.Marshal(&committerpb.SnapshotState{TxRef: ref})
 	require.NoError(t, err)
@@ -535,4 +548,86 @@ func newIncomingSnapshotVTx(t *testing.T, db *database, blockNum uint64, txID st
 		txIDToHeight:          transactionIDToHeight{TxID(ref.TxId): servicepb.NewHeightFromTxRef(ref)},
 	}
 	return vTx, name
+}
+
+// TestCreateSnapshotIfPresentIgnoresDuplicateHeight covers a txID already
+// committed at a DIFFERENT height: the normal duplicate-status path rejects it,
+// so no clone is created and no hash job is queued.
+func TestCreateSnapshotIfPresentIgnoresDuplicateHeight(t *testing.T) {
+	t.Parallel()
+	env := newCommitterTestEnv(t)
+	committed := &committerpb.TxRef{BlockNum: 800700, TxNum: 0, TxId: "snap-prepare-duplicate"}
+	env.dbEnv.SeedSnapshotRecord(t, SnapshotFixture{
+		Ref:           committed,
+		Status:        committerpb.SnapshotState_PENDING,
+		CloneDatabase: snapshotDatabaseName(committed),
+	})
+	vTx, name := newIncomingSnapshotVTx(t, env.dbEnv.DB, committed.BlockNum+1, committed.TxId)
+
+	require.NoError(t, env.dbEnv.DB.createSnapshotIfPresent(t.Context(), vTx.newWrites))
+	require.False(t, cloneExists(t, env.dbEnv.DB, name))
+}
+
+// commitFreshSnapshotTx builds and submits a single-write _snapshot batch for
+// ref through the real committer path (writer -> commit -> COMMITTED status),
+// exactly as a first-ever snapshot submission would arrive, and asserts the
+// resulting status is COMMITTED. Shared by every test in this file that just needs
+// "a snapshot tx is already committed" as setup, so that shape is not re-typed per
+// test.
+func commitFreshSnapshotTx(
+	ctx context.Context, t *testing.T, env *committerTestEnv, ref *committerpb.TxRef,
+) {
+	t.Helper()
+	value, err := proto.Marshal(&committerpb.SnapshotState{TxRef: ref})
+	require.NoError(t, err)
+	nws := make(transactionToWrites)
+	nws.getOrCreate(TxID(ref.TxId), committerpb.SnapshotNamespaceID).append([]byte(ref.TxId), value, 0)
+	channel.NewWriter(ctx, env.validatedTxs).Write(&validatedTransactions{
+		validTxNonBlindWrites: transactionToWrites{},
+		validTxBlindWrites:    transactionToWrites{},
+		newWrites:             nws,
+		readToTxIDs:           readToTransactions{},
+		invalidTxStatus:       map[TxID]committerpb.Status{},
+		txIDToHeight:          transactionIDToHeight{TxID(ref.TxId): servicepb.NewHeightFromTxRef(ref)},
+	})
+	s, ok := channel.NewReader(ctx, env.txStatus).Read()
+	require.True(t, ok)
+	require.Equal(t, committerpb.Status_COMMITTED, s.Status[0].Status)
+}
+
+// requireSnapshotStatus asserts the committed _snapshot record for txID is at the
+// wanted status.
+func requireSnapshotStatus(
+	t *testing.T, env *DatabaseTestEnv, txID string, want committerpb.SnapshotState_Status,
+) {
+	t.Helper()
+	record, found := env.ReadSnapshotRecord(t.Context(), txID)
+	require.True(t, found)
+	require.Equal(t, want, record.State.Status)
+}
+
+func TestUpdateSnapshotStateSetsErrorMessage(t *testing.T) {
+	t.Parallel()
+	env := newCommitterTestEnv(t)
+	testdb.EnsureSnapshotSchedule(t, env.dbEnv.DBConf.Database)
+	ctx, _ := createContext(t)
+
+	ref := &committerpb.TxRef{BlockNum: 800200, TxNum: 0, TxId: "snap-errmsg-1"}
+	name := snapshotDatabaseName(ref)
+	dropSnapshotCloneOnCleanup(t, env.dbEnv.DB, name)
+	commitFreshSnapshotTx(ctx, t, env, ref)
+
+	require.NoError(t, env.dbEnv.DB.snapshotState.Update(ctx, ref, snapshotstate.Update{
+		Status: committerpb.SnapshotState_FAILED,
+		ErrMsg: "missing clone_database",
+	}))
+
+	rows := env.dbEnv.FetchKeys(t, committerpb.SnapshotNamespaceID, [][]byte{[]byte(ref.TxId)})
+	stored := rows[ref.TxId]
+	require.NotNil(t, stored)
+	var got committerpb.SnapshotState
+	require.NoError(t, proto.Unmarshal(stored.Value, &got))
+	require.Equal(t, committerpb.SnapshotState_FAILED, got.Status)
+	require.Equal(t, "missing clone_database", got.Error)
+	require.Equal(t, name, got.CloneDatabase) // preserved, not clobbered.
 }
