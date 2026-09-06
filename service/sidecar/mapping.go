@@ -38,10 +38,15 @@ type (
 		// in a block is accepted; any further snapshot TXs in the same block are rejected with
 		// REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK.
 		snapshotTx *servicepb.TxWithRef
-		// txIDToHeight is a reference to the relay map. It is only used while constructing this
-		// blockMappingResult (mapBlock/addTxIDMapping); nothing reads it back off the struct
-		// afterwards, so callers that build further blockMappingResult values (e.g.
-		// submitSnapshotBlock's segments) do not need to carry it forward.
+	}
+
+	// blockMapper is the scaffolding for building one blockMappingResult: the relay's in-flight TX
+	// ID set, which mapping needs to dedup against but nothing reads once mapping finishes. It
+	// lives here rather than on the result — mapBlock drops the mapper and returns only the
+	// result, so the reference stops being reachable at that point.
+	blockMapper struct {
+		*blockMappingResult
+
 		txIDToHeight *utils.SyncMap[string, servicepb.Height]
 	}
 
@@ -82,40 +87,41 @@ func mapBlock(block *common.Block, txIDToHeight *utils.SyncMap[string, servicepb
 				block:       block,
 				blockNumber: blockNumber,
 			},
-			txIDToHeight: txIDToHeight,
 		}, nil
 	}
 
 	txCount := len(block.Data.Data)
-	mappedBlock := &blockMappingResult{
-		blockNumber: blockNumber,
-		block: &servicepb.CoordinatorBatch{
-			Txs:      make([]*servicepb.TxWithRef, 0, txCount),
-			Rejected: make([]*committerpb.TxStatus, 0, txCount),
-		},
-		withStatus: &blockWithStatus{
-			block:       block,
-			txStatus:    make([]committerpb.Status, txCount),
-			txs:         make([]*servicepb.TxWithRef, txCount),
+	mapper := &blockMapper{
+		blockMappingResult: &blockMappingResult{
 			blockNumber: blockNumber,
+			block: &servicepb.CoordinatorBatch{
+				Txs:      make([]*servicepb.TxWithRef, 0, txCount),
+				Rejected: make([]*committerpb.TxStatus, 0, txCount),
+			},
+			withStatus: &blockWithStatus{
+				block:       block,
+				txStatus:    make([]committerpb.Status, txCount),
+				txs:         make([]*servicepb.TxWithRef, txCount),
+				blockNumber: blockNumber,
+			},
 		},
 		txIDToHeight: txIDToHeight,
 	}
-	mappedBlock.withStatus.pendingCount.Store(int32(txCount)) //nolint:gosec // int -> int32
+	mapper.withStatus.pendingCount.Store(int32(txCount)) //nolint:gosec // int -> int32
 
 	for msgIndex, msg := range block.Data.Data {
 		logger.Debugf("Mapping transaction [blk,tx] = [%d,%d]", blockNumber, msgIndex)
-		err := mappedBlock.mapMessage(uint32(msgIndex), msg) //nolint:gosec // int -> uint32.
+		err := mapper.mapMessage(uint32(msgIndex), msg)
 		if err != nil {
 			// Either a config TX that cannot be processed (see unprocessableConfigTx),
 			// or a bug in the relay.
 			return nil, err
 		}
 	}
-	return mappedBlock, nil
+	return mapper.blockMappingResult, nil
 }
 
-func (b *blockMappingResult) mapMessage(msgIndex uint32, msg []byte) error {
+func (m *blockMapper) mapMessage(msgIndex uint32, msg []byte) error {
 	// UnwrapEnvelopeLite extracts only HeaderType, TxID, and Data from the envelope
 	// by scanning the protobuf wire format directly. Unlike UnwrapEnvelope, which
 	// fully deserializes all nested proto messages and validates every field, this
@@ -124,47 +130,47 @@ func (b *blockMappingResult) mapMessage(msgIndex uint32, msg []byte) error {
 	// those fields will go undetected. This is acceptable because the committer
 	// does not use them, and for the same reason, they are not validated in the
 	// sidecar. TODO: remove unused fields from the ChannelHeader proto.
-	ref := committerpb.NewTxRef("", b.blockNumber, msgIndex)
+	ref := committerpb.NewTxRef("", m.blockNumber, msgIndex)
 	envLite, envErr := serialization.UnwrapEnvelopeLite(msg)
 	if envErr != nil {
-		return b.rejectNonDBStatusTx(ref, committerpb.Status_MALFORMED_BAD_ENVELOPE, envErr.Error())
+		return m.rejectNonDBStatusTx(ref, committerpb.Status_MALFORMED_BAD_ENVELOPE, envErr.Error())
 	}
 	headerType := common.HeaderType(envLite.HeaderType)
 
 	// A config TX is classified before its TX ID is resolved: it does not carry its TX ID where
 	// every other message type does. See mapConfigTx.
 	if headerType == common.HeaderType_CONFIG {
-		return b.mapConfigTx(ref, envLite, msg)
+		return m.mapConfigTx(ref, envLite, msg)
 	}
 
 	if envLite.TxID == "" || !utf8.ValidString(envLite.TxID) {
-		return b.rejectNonDBStatusTx(ref, committerpb.Status_MALFORMED_MISSING_TX_ID, "no TX ID")
+		return m.rejectNonDBStatusTx(ref, committerpb.Status_MALFORMED_MISSING_TX_ID, "no TX ID")
 	}
 	ref.TxId = envLite.TxID
 
 	if headerType != common.HeaderType_MESSAGE {
-		return b.rejectTx(ref, committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
+		return m.rejectTx(ref, committerpb.Status_MALFORMED_UNSUPPORTED_ENVELOPE_PAYLOAD,
 			"unsupported message type: "+headerType.String())
 	}
 
 	tx, err := serialization.UnmarshalTx(envLite.Data)
 	if err != nil {
-		return b.rejectTx(ref, committerpb.Status_MALFORMED_BAD_ENVELOPE_PAYLOAD, err.Error())
+		return m.rejectTx(ref, committerpb.Status_MALFORMED_BAD_ENVELOPE_PAYLOAD, err.Error())
 	}
 	if status := verifyTxForm(tx); status != statusNotYetValidated {
-		return b.rejectTx(ref, status, "malformed tx")
+		return m.rejectTx(ref, status, "malformed tx")
 	}
 	if !isSnapshotTx(tx) {
-		return b.appendTx(ref, tx)
+		return m.appendTx(ref, tx)
 	}
 
-	if b.snapshotTx != nil {
+	if m.snapshotTx != nil {
 		// Only the first snapshot TX in a block is processed; reject the rest with a
 		// stored status so the outcome is recorded, regardless of the first's outcome.
-		return b.rejectTx(ref, committerpb.Status_REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK,
+		return m.rejectTx(ref, committerpb.Status_REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK,
 			"duplicate snapshot tx in block")
 	}
-	txWithRef, err := b.prepareTx(ref, tx)
+	txWithRef, err := m.prepareTx(ref, tx)
 	if err != nil {
 		return err
 	}
@@ -173,28 +179,28 @@ func (b *blockMappingResult) mapMessage(msgIndex uint32, msg []byte) error {
 		return nil
 	}
 	// Kept off block.Txs; see the snapshotTx field comment.
-	b.snapshotTx = txWithRef
+	m.snapshotTx = txWithRef
 	return nil
 }
 
 // mapConfigTx maps a config TX, which the sidecar can only accept or fail on. Unlike a data TX,
 // it cannot be rejected: the ordering service has already validated it and applied it to the
 // channel config, so a committer that rejects it would diverge from the rest of the network.
-func (b *blockMappingResult) mapConfigTx(
+func (m *blockMapper) mapConfigTx(
 	ref *committerpb.TxRef, envLite *serialization.EnvelopeLite, msg []byte,
 ) error {
 	// The config TX is validated here, where failing the block is still an option. The verifier
 	// and the coordinator parse it again later, where a failure could no longer be recovered from.
 	if err := policy.ValidateConfigTx(msg); err != nil {
-		return b.unprocessableConfigTx(ref, err)
+		return m.unprocessableConfigTx(ref, err)
 	}
 	txID, err := configTxID(envLite)
 	if err != nil {
-		return b.unprocessableConfigTx(ref, err)
+		return m.unprocessableConfigTx(ref, err)
 	}
 	ref.TxId = txID
 
-	txWithRef, err := b.prepareTx(ref, configTx(msg))
+	txWithRef, err := m.prepareTx(ref, configTx(msg))
 	if err != nil {
 		return err
 	}
@@ -202,10 +208,10 @@ func (b *blockMappingResult) mapConfigTx(
 		// The TX ID is already in flight, and prepareTx rejected the TX as a duplicate. A config TX
 		// cannot be rejected either, so the block fails instead: by the time it is fetched again,
 		// the TX that holds the ID has likely been processed and released it.
-		return b.unprocessableConfigTx(ref, errors.Newf("duplicate TX ID [%s]", ref.TxId))
+		return m.unprocessableConfigTx(ref, errors.Newf("duplicate TX ID [%s]", ref.TxId))
 	}
-	b.isConfig = true
-	b.block.Txs = append(b.block.Txs, txWithRef)
+	m.isConfig = true
+	m.block.Txs = append(m.block.Txs, txWithRef)
 	return nil
 }
 
@@ -215,8 +221,8 @@ func (b *blockMappingResult) mapConfigTx(
 // only way to recover from a config TX that arrived corrupted. It is retried with a backoff, and
 // the sidecar stops once the retry profile is exhausted, as a config TX that is consistently
 // unprocessable requires human intervention.
-func (b *blockMappingResult) unprocessableConfigTx(ref *committerpb.TxRef, err error) error {
-	err = errors.Wrapf(err, "cannot process the config TX [blk:%d,num:%d]", b.blockNumber, ref.TxNum)
+func (m *blockMapper) unprocessableConfigTx(ref *committerpb.TxRef, err error) error {
+	err = errors.Wrapf(err, "cannot process the config TX [blk:%d,num:%d]", m.blockNumber, ref.TxNum)
 	logger.Errorf("%+v", err)
 	return errors.Join(retry.ErrBackOff, err)
 }
@@ -258,12 +264,12 @@ func configTxID(envLite *serialization.EnvelopeLite) (string, error) {
 	return channelHdr.TxId, nil
 }
 
-func (b *blockMappingResult) appendTx(ref *committerpb.TxRef, tx *applicationpb.Tx) error {
-	txWithRef, err := b.prepareTx(ref, tx)
+func (m *blockMapper) appendTx(ref *committerpb.TxRef, tx *applicationpb.Tx) error {
+	txWithRef, err := m.prepareTx(ref, tx)
 	if err != nil || txWithRef == nil {
 		return err
 	}
-	b.block.Txs = append(b.block.Txs, txWithRef)
+	m.block.Txs = append(m.block.Txs, txWithRef)
 	return nil
 }
 
@@ -272,27 +278,27 @@ func (b *blockMappingResult) appendTx(ref *committerpb.TxRef, tx *applicationpb.
 // nil TxWithRef (and nil error) when ref.TxId is a duplicate, since addTxIDMapping has already
 // rejected it with a stored status. Callers append the returned TxWithRef to block.Txs themselves
 // (immediately for appendTx, or deferred to end-of-block for the snapshot TX).
-func (b *blockMappingResult) prepareTx(
+func (m *blockMapper) prepareTx(
 	ref *committerpb.TxRef, tx *applicationpb.Tx,
 ) (*servicepb.TxWithRef, error) {
-	if idAlreadyExists, err := b.addTxIDMapping(ref); idAlreadyExists || err != nil {
+	if idAlreadyExists, err := m.addTxIDMapping(ref); idAlreadyExists || err != nil {
 		return nil, err
 	}
 	txWithRef := &servicepb.TxWithRef{Ref: ref, Content: tx}
-	b.withStatus.txs[ref.TxNum] = txWithRef
+	m.withStatus.txs[ref.TxNum] = txWithRef
 	debugTx(ref, "included: %s", ref.TxId)
 	return txWithRef, nil
 }
 
-func (b *blockMappingResult) rejectTx(ref *committerpb.TxRef, status committerpb.Status, reason string) error {
+func (m *blockMapper) rejectTx(ref *committerpb.TxRef, status committerpb.Status, reason string) error {
 	if !IsStatusStoredInDB(status) {
-		return b.rejectNonDBStatusTx(ref, status, reason)
+		return m.rejectNonDBStatusTx(ref, status, reason)
 	}
-	if idAlreadyExists, err := b.addTxIDMapping(ref); idAlreadyExists || err != nil {
+	if idAlreadyExists, err := m.addTxIDMapping(ref); idAlreadyExists || err != nil {
 		return err
 	}
-	b.block.Rejected = append(b.block.Rejected, &committerpb.TxStatus{Ref: ref, Status: status})
-	b.withStatus.txs[ref.TxNum] = &servicepb.TxWithRef{Ref: ref}
+	m.block.Rejected = append(m.block.Rejected, &committerpb.TxStatus{Ref: ref, Status: status})
+	m.withStatus.txs[ref.TxNum] = &servicepb.TxWithRef{Ref: ref}
 	debugTx(ref, "rejected: %s (%s)", &status, reason)
 	return nil
 }
@@ -300,28 +306,28 @@ func (b *blockMappingResult) rejectTx(ref *committerpb.TxRef, status committerpb
 // rejectNonDBStatusTx is used to reject with statuses that are not stored in the state DB.
 // Namely, statuses for cases where we don't have a TX ID, or there is a TX ID duplication.
 // For such cases, no notification will be given by the notification service.
-func (b *blockMappingResult) rejectNonDBStatusTx(
+func (m *blockMapper) rejectNonDBStatusTx(
 	ref *committerpb.TxRef, status committerpb.Status, reason string,
 ) error {
 	if IsStatusStoredInDB(status) {
 		// This can never occur unless there is a bug in the relay.
-		return errors.Newf("[BUG] status should be stored [blk:%d,num:%d]: %s", b.blockNumber, ref.TxNum, &status)
+		return errors.Newf("[BUG] status should be stored [blk:%d,num:%d]: %s", m.blockNumber, ref.TxNum, &status)
 	}
-	err := b.withStatus.setFinalStatus(ref.TxNum, status)
+	err := m.withStatus.setFinalStatus(ref.TxNum, status)
 	if err != nil {
 		return err
 	}
-	b.withStatus.txs[ref.TxNum] = &servicepb.TxWithRef{Ref: ref}
+	m.withStatus.txs[ref.TxNum] = &servicepb.TxWithRef{Ref: ref}
 	debugTx(ref, "excluded: %s (%s)", &status, reason)
 	return nil
 }
 
-func (b *blockMappingResult) addTxIDMapping(ref *committerpb.TxRef) (
+func (m *blockMapper) addTxIDMapping(ref *committerpb.TxRef) (
 	idAlreadyExists bool, err error,
 ) {
-	_, idAlreadyExists = b.txIDToHeight.LoadOrStore(ref.TxId, *servicepb.NewHeightFromTxRef(ref))
+	_, idAlreadyExists = m.txIDToHeight.LoadOrStore(ref.TxId, *servicepb.NewHeightFromTxRef(ref))
 	if idAlreadyExists {
-		err = b.rejectNonDBStatusTx(ref, committerpb.Status_REJECTED_DUPLICATE_TX_ID, "duplicate tx")
+		err = m.rejectNonDBStatusTx(ref, committerpb.Status_REJECTED_DUPLICATE_TX_ID, "duplicate tx")
 	}
 	return idAlreadyExists, err
 }
