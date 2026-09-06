@@ -64,6 +64,10 @@ type perfMetrics struct {
 	notifierRequestQueueSize       prometheus.GaugeFunc
 	notifierTimeoutQueueSize       prometheus.GaugeFunc
 
+	// A StreamAllTransactions subscription has its own block queue, so the queue is reported per
+	// stream and summed by the operator, e.g. sum(sidecar_notifier_stream_block_queue_size).
+	allTxStreamBlockQueueSize *monitoring.ChannelLenGaugeVec[*committedBlockWithTxs]
+
 	// delivery metrics
 	delivery *deliverorderer.Metrics
 }
@@ -143,6 +147,14 @@ func newPerformanceMetrics(q *queues) *perfMetrics {
 			Name:      "timeout_queue_size",
 			Help:      "Size of the queue of notification requests that have timed out.",
 		}, q.notifierTimeouts),
+		allTxStreamBlockQueueSize: monitoring.NewChannelLenGaugeVec[*committedBlockWithTxs](
+			p, prometheus.GaugeOpts{
+				Namespace: namespace,
+				Subsystem: subsystemNotifier,
+				Name:      "stream_block_queue_size",
+				Help:      "Size of one all-transactions stream's queue of blocks waiting to be sent.",
+			}, []string{"stream"},
+		),
 		coordConnection: monitoring.NewConnectionMetrics(p, monitoring.MetricsParameters{
 			Namespace: namespace,
 			Subsystem: "coordinator",
