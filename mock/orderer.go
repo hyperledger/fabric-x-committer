@@ -42,11 +42,16 @@ import (
 type (
 	// OrdererConfig configuration for the mock orderer.
 	OrdererConfig struct {
-		Servers                 []*serve.ServerConfig         `mapstructure:"servers"`
-		BlockSize               int                           `mapstructure:"block-size"`
-		BlockTimeout            time.Duration                 `mapstructure:"block-timeout"`
-		OutBlockCapacity        int                           `mapstructure:"out-block-capacity"`
-		PayloadCacheSize        int                           `mapstructure:"payload-cache-size"`
+		Servers          []*serve.ServerConfig `mapstructure:"servers"`
+		BlockSize        int                   `mapstructure:"block-size"`
+		BlockTimeout     time.Duration         `mapstructure:"block-timeout"`
+		OutBlockCapacity int                   `mapstructure:"out-block-capacity"`
+		PayloadCacheSize int                   `mapstructure:"payload-cache-size"`
+		// PrepareInPlace declares that blocks submitted with SubmitBlock belong to this orderer, so it
+		// writes their header into the block it was given and reuses the data hash the submitter
+		// filled in. Only safe when the submitter builds a block per call and never touches it again.
+		// Does not apply to the genesis and config blocks, which may be shared.
+		PrepareInPlace          bool                          `mapstructure:"prepare-in-place"`
 		ArtifactsPath           string                        `mapstructure:"artifacts-path"`
 		GenesisBlockPath        string                        `mapstructure:"genesis-block-path"`
 		ConsentersMSPIdentities []*ordererdial.IdentityConfig `mapstructure:"consenter-msp-identities"`
@@ -428,6 +433,14 @@ func (o *Orderer) Run(ctx context.Context) error {
 	// Submit the config block.
 	if o.config.Load().SendGenesisBlock {
 		sendBlockWithConsenters(&o.genesisBlock)
+	}
+
+	// After the genesis block, and only after it: the genesis block may be the package-level default,
+	// which is shared, and preparing that one in place would rewrite it for every orderer in the
+	// process.
+	if o.config.Load().PrepareInPlace {
+		blockParams.InPlace = true
+		blockParams.ReuseDataHash = true
 	}
 
 	data := make([][]byte, 0, o.config.Load().BlockSize)
