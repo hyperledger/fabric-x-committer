@@ -901,20 +901,39 @@ func TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery(t *testing.T
 	env.sendTransactionsAndEnsureCommitted(newCtx, t, 12)
 }
 
-// TestDeleteDBCloneForSnapshotUnimplemented pins the snapshot-administration
-// extension point: the RPC is reachable on the unified service and reports
-// UNIMPLEMENTED until the clone-deletion pipeline lands.
-func TestDeleteDBCloneForSnapshotUnimplemented(t *testing.T) {
+// TestDeleteDBCloneForSnapshot asserts the sidecar forwards an admin snapshot-clone deletion
+// to the coordinator verbatim, rejects an empty tx_id locally, and passes the coordinator's
+// status code through untouched.
+func TestDeleteDBCloneForSnapshot(t *testing.T) {
 	t.Parallel()
 
 	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{})
 	env.startSidecarService(t.Context(), t)
+	// Wait until the genesis block reaches the block store. Exiting the test before delivery
+	// has processed a config block tears the delivery session down inside a window where its
+	// verification state still has no config material, which panics (a latent shutdown bug in
+	// utils/deliverorderer, unrelated to this RPC).
+	ensureAtLeastHeight(t, env.sidecar.blockStore, 1)
 
 	conn := test.NewInsecureConnection(t, &env.serverConfig.GRPC.Endpoint)
 	client := committerpb.NewSidecarServiceClient(conn)
 
+	const snapshotTxID = "snap-tx-1"
 	_, err := client.DeleteDBCloneForSnapshot(t.Context(), &committerpb.DeleteDBCloneForSnapshotRequest{
-		TxId: "tx1",
+		TxId: snapshotTxID,
 	})
-	require.Equal(t, codes.Unimplemented, status.Code(err))
+	require.NoError(t, err)
+	require.Equal(t, []string{snapshotTxID}, env.coordinator.DeleteDBCloneRequests())
+
+	// An empty tx_id never reaches the coordinator.
+	_, err = client.DeleteDBCloneForSnapshot(t.Context(), &committerpb.DeleteDBCloneForSnapshotRequest{})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Equal(t, []string{snapshotTxID}, env.coordinator.DeleteDBCloneRequests())
+
+	// The coordinator's own code (here NOT_FOUND for an unknown snapshot) reaches the client.
+	env.coordinator.SetDeleteDBCloneError(status.Error(codes.NotFound, "no such snapshot"))
+	_, err = client.DeleteDBCloneForSnapshot(t.Context(), &committerpb.DeleteDBCloneForSnapshotRequest{
+		TxId: "snap-tx-unknown",
+	})
+	require.Equal(t, codes.NotFound, status.Code(err))
 }

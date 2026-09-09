@@ -4,6 +4,12 @@ Copyright IBM Corp. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
 */
 
+// DeleteDBCloneForSnapshot is not an AIP-135 resource delete: it drops the database
+// clone of a snapshot identified by its transaction ID, and the request message is
+// committerpb.DeleteDBCloneForSnapshotRequest (defined in fabric-x-common), which has
+// no `name` field to annotate.
+// (-- api-linter: core::0135::method-signature=disabled --)
+
 syntax = "proto3";
 
 option go_package = "github.com/hyperledger/fabric-x-committer/api/servicepb";
@@ -17,6 +23,7 @@ import "api/applicationpb/config.proto";
 
 import "api/committerpb/status.proto";
 import "api/committerpb/ref.proto";
+import "api/committerpb/sidecar.proto";
 
 import "api/servicepb/common.proto";
 
@@ -27,6 +34,10 @@ service ValidationAndCommitService {
     rpc GetTransactionsStatus (committerpb.TxIDsBatch) returns (servicepb.TxStatusBatch) {};
     rpc GetNamespacePolicies(google.protobuf.Empty) returns (applicationpb.NamespacePolicies) {};
     rpc GetConfigTransaction(google.protobuf.Empty) returns (applicationpb.ConfigTransaction) {};
+
+    // Drops the database clone of the snapshot named by tx_id and clears the clone name from
+    // its _snapshot row, keeping the row itself.
+    rpc DeleteDBCloneForSnapshot(committerpb.DeleteDBCloneForSnapshotRequest) returns (google.protobuf.Empty) {};
 }
 
 message VcBatch {

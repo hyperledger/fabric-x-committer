@@ -49,6 +49,12 @@ FROM yb_database_clones()
 WHERE db_name = $1`
 )
 
+// ErrSnapshotNotCheckpointed is returned when a snapshot's database is asked to be dropped
+// before the snapshot reached CHECKPOINTED. Until then the clone is the only artifact from
+// which the snapshot hash can be recomputed or a contested hash re-verified, so dropping it
+// would be unrecoverable.
+var ErrSnapshotNotCheckpointed = errors.New("snapshot is not CHECKPOINTED")
+
 // rejectSnapshotIfPriorNotCheckpointed gates a new _snapshot request so that at
 // most one snapshot lifecycle is active. The request is accepted only when the
 // latest _snapshot record (tracked via statedb.LatestSnapshotPointerKey) is
@@ -389,6 +395,62 @@ func (db *database) adminExec(ctx context.Context, sql string) error {
 
 	_, err = conn.Exec(ctx, sql)
 	return errors.Wrapf(err, "failed to execute admin statement [%s]", sql)
+}
+
+// deleteSnapshotDatabase drops the snapshot database of the snapshot identified by txID and
+// clears clone_database on its _snapshot record. Clearing that field IS the deletion signal:
+// SnapshotState has no deletion timestamp. The record itself is retained, so the snapshot's
+// status and hash stay queryable after its database is gone.
+//
+// Deletion is admin-triggered only; nothing reclaims snapshot databases on a timer.
+//
+// The two steps are ordered drop-then-clear so a failure between them leaves the record
+// still naming a database that no longer exists, which a retry of this call resolves
+// (DROP DATABASE IF EXISTS is a no-op, and the clear then runs). The reverse order would
+// leave an orphan database that no record names and nothing can find again.
+//
+// An already-cleared record is a success, not an error: the caller cannot distinguish a
+// retry of its own request from a duplicate, and both mean the database is gone.
+//
+// Deletion requires the snapshot to be CHECKPOINTED; any other status is refused with
+// ErrSnapshotNotCheckpointed. An unknown txID is reported as statedb.ErrSnapshotNotFound.
+func (db *database) deleteSnapshotDatabase(ctx context.Context, txID string) error {
+	state, err := db.snapshotState.Read(ctx, txID)
+	if err != nil {
+		return fmt.Errorf("failed to read _snapshot record for tx %s: %w", txID, err)
+	}
+	if state.CloneDatabase == "" {
+		return nil
+	}
+	// Checked after the already-deleted no-op on purpose: a retry of a delete that already
+	// succeeded must stay a success regardless of status, and CHECKPOINTED is the terminal
+	// state, so a cleared record's status can never gate its own retry.
+	if state.Status != committerpb.SnapshotState_CHECKPOINTED {
+		return fmt.Errorf("%w: tx %s is %s", ErrSnapshotNotCheckpointed, txID, state.Status)
+	}
+
+	if err := db.dropDatabase(ctx, state.CloneDatabase); err != nil {
+		return fmt.Errorf("failed to drop snapshot database %s: %w", state.CloneDatabase, err)
+	}
+
+	// CHECKPOINTED is terminal, so re-asserting it keeps the status unchanged while
+	// ExpectedStatus refuses the clear if the locked row is no longer CHECKPOINTED.
+	update := statedb.SnapshotUpdate{
+		Status:             committerpb.SnapshotState_CHECKPOINTED,
+		ExpectedStatus:     []committerpb.SnapshotState_Status{committerpb.SnapshotState_CHECKPOINTED},
+		ClearCloneDatabase: true,
+	}
+	if err := db.snapshotState.Update(ctx, state.TxRef, update); err != nil {
+		return fmt.Errorf("failed to clear clone_database for snapshot tx %s: %w", txID, err)
+	}
+	return nil
+}
+
+// dropDatabase drops the named database through the maintenance connection. IF EXISTS makes
+// it a no-op on an already-dropped database, so a retry of a partially completed deletion
+// proceeds to the record update.
+func (db *database) dropDatabase(ctx context.Context, name string) error {
+	return db.adminExec(ctx, fmt.Sprintf("DROP DATABASE IF EXISTS %s", pgx.Identifier{name}.Sanitize()))
 }
 
 // ignoreDuplicateDatabase maps 42P04 to nil so backend-specific callers can reuse

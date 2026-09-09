@@ -273,6 +273,16 @@ func (c *Service) GetTransactionsStatus(
 	return c.validatorCommitterAPI.getTransactionsStatus(ctx, q)
 }
 
+// DeleteDBCloneForSnapshot forwards an admin snapshot-clone deletion to a vcservice, which
+// drops the snapshot database and clears clone_database on the _snapshot record.
+func (c *Service) DeleteDBCloneForSnapshot(
+	ctx context.Context,
+	req *committerpb.DeleteDBCloneForSnapshotRequest,
+) (*emptypb.Empty, error) {
+	// Error is already wrapped with proper gRPC status code by validatorCommitterAPI.
+	return &emptypb.Empty{}, c.validatorCommitterAPI.deleteDBCloneForSnapshot(ctx, req)
+}
+
 // NoPendingTransactionProcessing returns true when all previously submitted
 // transactions have been processed (validated and committed by the VC) and the
 // sidecar can safely reconnect. It is polled by the sidecar's

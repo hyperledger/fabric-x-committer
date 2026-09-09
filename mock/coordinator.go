@@ -39,6 +39,7 @@ type Coordinator struct {
 	txsStatusMu        sync.Mutex
 	latency            atomic.Pointer[time.Duration]
 	healthcheck        *health.Server
+	deleteCloneRecorder
 }
 
 // We don't want to utilize unlimited memory for storing the transactions status.
@@ -214,6 +215,16 @@ func (c *Coordinator) sendTxsStatusChunk(
 	logger.Debugf("Sent back batch with %d TXs", len(b.Status))
 	c.numTxsInProgress.Add(-int32(len(b.Status))) //nolint:gosec
 	return nil
+}
+
+// DeleteDBCloneForSnapshot records the request and returns the injected error. It only
+// resolves the ambiguity between the embedded deleteCloneRecorder and the embedded
+// servicepb.CoordinatorServer, which declares the same method.
+func (c *Coordinator) DeleteDBCloneForSnapshot(
+	ctx context.Context,
+	req *committerpb.DeleteDBCloneForSnapshotRequest,
+) (*emptypb.Empty, error) {
+	return c.deleteCloneRecorder.DeleteDBCloneForSnapshot(ctx, req)
 }
 
 // SetTxsInProgress sets the in-progress transaction count. The purpose

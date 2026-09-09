@@ -15,7 +15,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/yugabyte/pgx/v5"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -463,8 +462,7 @@ func (env *DatabaseTestEnv) CreateSnapshotClone(t *testing.T, name string) {
 func dropSnapshotCloneOnCleanup(t *testing.T, db *database, name string) {
 	t.Helper()
 	t.Cleanup(func() {
-		sql := fmt.Sprintf("DROP DATABASE IF EXISTS %s", pgx.Identifier{name}.Sanitize())
-		_ = db.adminExec(context.Background(), sql)
+		_ = db.dropDatabase(context.Background(), name)
 	})
 }
 

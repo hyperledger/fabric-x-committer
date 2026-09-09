@@ -426,8 +426,10 @@ to manage these blocks in the file system.
 | Fabric `protos.Deliver` | `Deliver`, `DeliverFiltered`, `DeliverWithPrivateData` | Fabric's own wire contract, so Fabric clients dial the sidecar unchanged. |
 
 One object, `*sidecar.Service`, backs both. It serves the block-store reads directly,
-the two event streams through its embedded notifier, and answers `UNIMPLEMENTED` for
-`DeleteDBCloneForSnapshot` until the snapshot clone-deletion pipeline lands.
+the two event streams through its embedded notifier, and forwards
+`DeleteDBCloneForSnapshot` to the coordinator, returning the coordinator's status
+unchanged (`NOT_FOUND` for an unknown `tx_id`, `FAILED_PRECONDITION` for a snapshot that
+is not yet `CHECKPOINTED`, `INTERNAL` for a failed drop).
 `committerpb.BlockQueryService` and `committerpb.Notifier` were folded into
 `SidecarService` and no longer exist; clients replace `NewBlockQueryServiceClient` and
 `NewNotifierClient` with `NewSidecarServiceClient`, keeping the same method names and
