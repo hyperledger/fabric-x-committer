@@ -605,3 +605,31 @@ func marshalForTest(t *testing.T, m proto.Message) []byte {
 	require.NoError(t, err)
 	return value
 }
+
+func TestBlockWithStatusHolds(t *testing.T) {
+	t.Parallel()
+
+	blk := &blockWithStatus{
+		blockNumber: 4,
+		txs: []*servicepb.TxWithRef{
+			{Ref: committerpb.NewTxRef("tx-0", 4, 0)},
+			{Ref: committerpb.NewTxRef("tx-1", 4, 1)},
+		},
+	}
+
+	for _, tc := range []struct {
+		name     string
+		ref      *committerpb.TxRef
+		expected bool
+	}{
+		{name: "ID at its own position", ref: committerpb.NewTxRef("tx-1", 4, 1), expected: true},
+		{name: "ID at another TX's position", ref: committerpb.NewTxRef("tx-1", 4, 0), expected: false},
+		{name: "unknown ID", ref: committerpb.NewTxRef("tx-2", 4, 1), expected: false},
+		{name: "position beyond the block", ref: committerpb.NewTxRef("tx-1", 4, 2), expected: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.expected, blk.holds(tc.ref))
+		})
+	}
+}

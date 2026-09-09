@@ -46,10 +46,10 @@ type (
 	blockMapper struct {
 		*blockMappingResult
 
-		// dedup is the relay's in-flight TX ID set, and txIDs collects the IDs this block added
-		// to it, which mapBlock hands to dedup as the block's eviction unit.
-		dedup *txIDDedup
-		txIDs []string
+		// txIDDedup is the relay's in-flight TX ID set, and txIDs collects the IDs this block
+		// added to it, which mapBlock hands to the set as the block's eviction unit.
+		txIDDedup *txIDDedup
+		txIDs     []string
 	}
 
 	blockWithStatus struct {
@@ -110,8 +110,8 @@ func mapBlock(block *common.Block, dedup *txIDDedup) (*blockMappingResult, error
 				blockNumber: blockNumber,
 			},
 		},
-		dedup: dedup,
-		txIDs: make([]string, 0, txCount),
+		txIDDedup: dedup,
+		txIDs:     make([]string, 0, txCount),
 	}
 	mapper.withStatus.pendingCount.Store(int32(txCount)) //nolint:gosec // int -> int32
 
@@ -333,7 +333,7 @@ func (m *blockMapper) rejectNonDBStatusTx(
 func (m *blockMapper) addTxIDMapping(ref *committerpb.TxRef) (
 	idAlreadyExists bool, err error,
 ) {
-	if m.dedup.add(ref.TxId) {
+	if m.txIDDedup.add(ref.TxId) {
 		m.txIDs = append(m.txIDs, ref.TxId)
 		return false, nil
 	}

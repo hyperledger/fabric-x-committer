@@ -9,10 +9,7 @@ package sidecar
 import (
 	"testing"
 
-	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/stretchr/testify/require"
-
-	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 )
 
 func TestInFlightBlocksWindow(t *testing.T) {
@@ -20,8 +17,8 @@ func TestInFlightBlocksWindow(t *testing.T) {
 
 	var blocks inFlightBlocks
 	blocks.reset(7)
-	require.Equal(t, uint64(7), blocks.nextBlockNumber())
-	require.Nil(t, blocks.first())
+	require.Equal(t, uint64(7), blocks.nextBlockNumberToCommit())
+	require.Nil(t, blocks.nextBlockToCommit())
 	require.Nil(t, blocks.get(7))
 
 	tracked := make([]*blockWithStatus, 0, 3)
@@ -39,13 +36,13 @@ func TestInFlightBlocksWindow(t *testing.T) {
 	}
 	require.Nil(t, blocks.get(6))
 	require.Nil(t, blocks.get(10))
-	require.Same(t, tracked[0], blocks.first())
+	require.Same(t, tracked[0], blocks.nextBlockToCommit())
 
 	// Retiring the oldest block advances the window, so the block number it held becomes untracked.
-	blocks.dropFirst()
-	require.Equal(t, uint64(8), blocks.nextBlockNumber())
+	blocks.dropCommittedBlock()
+	require.Equal(t, uint64(8), blocks.nextBlockNumberToCommit())
 	require.Nil(t, blocks.get(7))
-	require.Same(t, tracked[1], blocks.first())
+	require.Same(t, tracked[1], blocks.nextBlockToCommit())
 	require.Same(t, tracked[2], blocks.get(9))
 
 	// A block number that is already tracked is reported rather than registered again: the segments
@@ -85,7 +82,7 @@ func TestInFlightBlocksRingWrapAround(t *testing.T) {
 
 	for blockNumber := uint64(depth); blockNumber < 4*initialInFlightBlocksCapacity; blockNumber++ {
 		requireRegister(t, &blocks, blockNumber)
-		blocks.dropFirst()
+		blocks.dropCommittedBlock()
 		requireWindow(t, &blocks, blockNumber-depth+1, depth)
 	}
 }
@@ -104,7 +101,7 @@ func TestInFlightBlocksRingGrowsWhileWrapped(t *testing.T) {
 		requireRegister(t, &blocks, blockNumber)
 	}
 	for range retired {
-		blocks.dropFirst()
+		blocks.dropCommittedBlock()
 	}
 	const refilled = initialInFlightBlocksCapacity + retired
 	for blockNumber := uint64(initialInFlightBlocksCapacity); blockNumber < refilled; blockNumber++ {
@@ -118,83 +115,9 @@ func TestInFlightBlocksRingGrowsWhileWrapped(t *testing.T) {
 
 	// The grown ring must still wrap and retire correctly.
 	for range initialInFlightBlocksCapacity + 1 {
-		blocks.dropFirst()
+		blocks.dropCommittedBlock()
 	}
 	requireWindow(t, &blocks, initialInFlightBlocksCapacity+retired+1, 0)
-}
-
-func TestTxIDDedupEviction(t *testing.T) {
-	t.Parallel()
-
-	var dedup txIDDedup
-	dedup.reset()
-
-	// Block 0 holds "a" and "b"; "a" repeated within the block is a duplicate.
-	require.True(t, dedup.add("a"))
-	require.True(t, dedup.add("b"))
-	require.False(t, dedup.add("a"))
-	dedup.trackBlock(0, []string{"a", "b"})
-
-	// A TX ID in flight in an earlier block is a duplicate in a later one.
-	require.False(t, dedup.add("b"))
-	require.True(t, dedup.add("c"))
-	dedup.trackBlock(1, []string{"c"})
-
-	// Nothing is evicted while both blocks are still in flight.
-	dedup.evictCommitted(0)
-	require.Len(t, dedup.ids, 3)
-
-	// Committing block 0 releases only its own IDs, and a released ID can be used again.
-	dedup.evictCommitted(1)
-	require.Equal(t, map[string]struct{}{"c": {}}, dedup.ids)
-	require.True(t, dedup.add("a"))
-	dedup.trackBlock(2, []string{"a"})
-
-	// A block that contributed no IDs is tracked like any other, and evicts as a no-op.
-	dedup.trackBlock(3, nil)
-	require.Len(t, dedup.blocks, 3)
-
-	dedup.evictCommitted(4)
-	require.Empty(t, dedup.ids)
-	require.Empty(t, dedup.blocks)
-}
-
-// TestTxIDDedupZeroValue covers the throwaway dedup set used to map a single block outside the
-// relay; see appendMissingBlock.
-func TestTxIDDedupZeroValue(t *testing.T) {
-	t.Parallel()
-
-	var dedup txIDDedup
-	require.True(t, dedup.add("a"))
-	require.False(t, dedup.add("a"))
-}
-
-func TestBlockWithStatusHolds(t *testing.T) {
-	t.Parallel()
-
-	blk := &blockWithStatus{
-		blockNumber: 4,
-		txs: []*servicepb.TxWithRef{
-			{Ref: committerpb.NewTxRef("tx-0", 4, 0)},
-			{Ref: committerpb.NewTxRef("tx-1", 4, 1)},
-		},
-	}
-
-	for _, tc := range []struct {
-		name     string
-		ref      *committerpb.TxRef
-		expected bool
-	}{
-		{name: "ID at its own position", ref: committerpb.NewTxRef("tx-1", 4, 1), expected: true},
-		{name: "ID at another TX's position", ref: committerpb.NewTxRef("tx-1", 4, 0), expected: false},
-		{name: "unknown ID", ref: committerpb.NewTxRef("tx-2", 4, 1), expected: false},
-		{name: "position beyond the block", ref: committerpb.NewTxRef("tx-1", 4, 2), expected: false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tc.expected, blk.holds(tc.ref))
-		})
-	}
 }
 
 // requireRegister registers a block identified by its own number, which requireWindow asserts on.
@@ -209,7 +132,7 @@ func requireRegister(t *testing.T, blocks *inFlightBlocks, blockNumber uint64) {
 // block number in it still resolves to the block registered for it.
 func requireWindow(t *testing.T, blocks *inFlightBlocks, from, count uint64) {
 	t.Helper()
-	require.Equal(t, from, blocks.nextBlockNumber())
+	require.Equal(t, from, blocks.nextBlockNumberToCommit())
 	for blockNumber := from; blockNumber < from+count; blockNumber++ {
 		blk := blocks.get(blockNumber)
 		require.NotNil(t, blk, "block %d must be tracked", blockNumber)
@@ -221,10 +144,10 @@ func requireWindow(t *testing.T, blocks *inFlightBlocks, from, count uint64) {
 	require.Nil(t, blocks.get(from-1))
 	require.Nil(t, blocks.get(from+count))
 	if count == 0 {
-		require.Nil(t, blocks.first())
+		require.Nil(t, blocks.nextBlockToCommit())
 		return
 	}
-	require.Equal(t, from, blocks.first().blockNumber)
+	require.Equal(t, from, blocks.nextBlockToCommit().blockNumber)
 }
 
 // TestInFlightBlocksSteadyStateDoesNotAllocate pins the reason the window is a ring and not a slice
@@ -249,11 +172,11 @@ func TestInFlightBlocksSteadyStateDoesNotAllocate(t *testing.T) {
 			t.Error(err)
 		}
 		for range 10 {
-			if blocks.get(blockNumber) == nil || blocks.first() == nil {
+			if blocks.get(blockNumber) == nil || blocks.nextBlockToCommit() == nil {
 				t.Error("the registered block must be tracked")
 			}
 		}
-		blocks.dropFirst()
+		blocks.dropCommittedBlock()
 		blockNumber++
 	})
 	require.Zero(t, allocs)

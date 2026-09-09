@@ -32,9 +32,8 @@ type (
 		outgoingCommittedBlockWithTxs chan<- *committedBlockWithTxs
 
 		// inFlightBlocks tracks the submitted blocks awaiting statuses, and owns the number of the
-		// next block to be committed. txIDDedup holds their TX IDs, to reject a duplicate TX ID.
+		// next block to be committed. Their TX IDs are held by preProcessBlock's own txIDDedup.
 		inFlightBlocks                inFlightBlocks
-		txIDDedup                     txIDDedup
 		lastCommittedBlockSetInterval time.Duration
 		waitingTxsSlots               *utils.Slots
 		metrics                       *perfMetrics
@@ -79,7 +78,6 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 	r.outgoingConfigBlocks = config.outgoingConfigBlocks
 	r.outgoingCommittedBlockWithTxs = config.outgoingCommittedBlockWithTxs
 	r.inFlightBlocks.reset(config.nextExpectedBlockByCoordinator)
-	r.txIDDedup.reset()
 	r.waitingTxsSlots = utils.NewSlots(int64(config.waitingTxsLimit))
 
 	// Using the errgroup context for the stream ensures that we cancel the stream once one of the tasks fails.
@@ -96,7 +94,7 @@ func (r *relay) run(ctx context.Context, config *relayRunConfig) error { //nolin
 
 	logger.Infof("Starting coordinator sender and receiver")
 
-	expectedNextBlockToBeCommitted := r.inFlightBlocks.nextBlockNumber()
+	expectedNextBlockToBeCommitted := r.inFlightBlocks.nextBlockNumberToCommit()
 
 	g.Go(func() error {
 		return r.preProcessBlock(sCtx, config.mappedBlockQueue)
@@ -129,6 +127,10 @@ func (r *relay) preProcessBlock(
 	done := context.AfterFunc(ctx, r.waitingTxsSlots.Broadcast)
 	defer done()
 
+	// The dedup set is declared here, rather than on the relay, because this goroutine is its
+	// only user, which is what allows it to go unsynchronized; see txIDDedup.
+	var dedup txIDDedup
+
 	for ctx.Err() == nil {
 		block, ok := incomingBlockToBeCommitted.Read()
 		if !ok {
@@ -137,12 +139,12 @@ func (r *relay) preProcessBlock(
 		// The delivery client guarantees a block with a header and in the correct order.
 		logger.Debugf("Block %d arrived in the relay", block.Header.Number)
 
-		// Releasing the TX IDs of the blocks committed since the previous block was mapped keeps
-		// the dedup set owned by this goroutine alone; see txIDDedup.
-		r.txIDDedup.evictCommitted(r.inFlightBlocks.nextBlockNumber())
+		// Releasing the TX IDs of the blocks committed since the previous block was mapped is what
+		// keeps the dedup set owned by this goroutine alone; see txIDDedup.
+		dedup.evictCommittedBelow(r.inFlightBlocks.nextBlockNumberToCommit())
 
 		start := time.Now()
-		mappedBlock, err := mapBlock(block, &r.txIDDedup)
+		mappedBlock, err := mapBlock(block, &dedup)
 		if err != nil {
 			// A config TX that cannot be processed ends the relay, so the sidecar restarts its
 			// block feed and fetches the block again (see unprocessableConfigTx). Any other
@@ -380,9 +382,10 @@ func (r *relay) processCommittedBlocksInOrder(
 	defer r.committedBlockMu.Unlock()
 
 	for ctx.Err() == nil {
-		blkWithStatus := r.inFlightBlocks.first()
+		blkWithStatus := r.inFlightBlocks.nextBlockToCommit()
 		if blkWithStatus == nil {
-			logger.Debugf("Next block [%d] to be committed is not in progress", r.inFlightBlocks.nextBlockNumber())
+			logger.Debugf("Next block [%d] to be committed is not in progress",
+				r.inFlightBlocks.nextBlockNumberToCommit())
 			return
 		}
 		if blkWithStatus.pendingCount.Load() > 0 {
@@ -390,7 +393,7 @@ func (r *relay) processCommittedBlocksInOrder(
 		}
 		logger.Debugf("Next block [%d] has been committed", blkWithStatus.blockNumber)
 
-		r.inFlightBlocks.dropFirst()
+		r.inFlightBlocks.dropCommittedBlock()
 
 		statusCount := utils.CountAppearances(blkWithStatus.txStatus)
 		for status, count := range statusCount {
@@ -431,11 +434,11 @@ func (r *relay) setLastCommittedBlockNumber(
 		case <-time.After(r.lastCommittedBlockSetInterval):
 		}
 
-		if r.inFlightBlocks.nextBlockNumber() == expectedNextBlockToBeCommitted {
+		if r.inFlightBlocks.nextBlockNumberToCommit() == expectedNextBlockToBeCommitted {
 			continue
 		}
 
-		blkNum := r.inFlightBlocks.nextBlockNumber() - 1
+		blkNum := r.inFlightBlocks.nextBlockNumberToCommit() - 1
 		logger.Debugf("Setting the last committed block number: %d", blkNum)
 		_, err := client.SetLastCommittedBlockNumber(ctx, &servicepb.BlockRef{Number: blkNum})
 		if err != nil {

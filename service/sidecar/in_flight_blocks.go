@@ -41,29 +41,6 @@ type (
 		head  int
 		count int
 	}
-
-	// txIDDedup holds the TX IDs of the blocks that are in flight, so that a TX ID already in
-	// flight can be rejected instead of being submitted twice.
-	//
-	// It is owned exclusively by the relay's preProcessBlock goroutine and therefore needs no
-	// synchronization at all: rather than have the status goroutine remove an ID once its status
-	// arrives, preProcessBlock evicts a whole block's IDs once it observes that the block has been
-	// committed (see evictCommitted). An ID is consequently held for slightly longer than it is
-	// strictly in flight: until the last TX of its block is committed rather than until its own
-	// status arrives. That only widens the window in which a resubmission of the ID is rejected
-	// here, with a status that is not stored in the state DB and so is not notified, rather than by
-	// the VC — a window that already exists for a TX whose status has not yet arrived.
-	txIDDedup struct {
-		ids    map[string]struct{}
-		blocks []dedupBlock
-	}
-
-	// dedupBlock holds the TX IDs one block contributed to txIDDedup.ids, so they can be evicted
-	// together. The blocks form a FIFO ordered by block number.
-	dedupBlock struct {
-		blockNumber uint64
-		txIDs       []string
-	}
 )
 
 // reset starts tracking from scratch, with nextBlockNum as the next block number to be committed.
@@ -76,8 +53,8 @@ func (b *inFlightBlocks) reset(nextBlockNum uint64) {
 	b.count = 0
 }
 
-// nextBlockNumber returns the number of the next block to be committed.
-func (b *inFlightBlocks) nextBlockNumber() uint64 {
+// nextBlockNumberToCommit returns the number of the next block to be committed.
+func (b *inFlightBlocks) nextBlockNumberToCommit() uint64 {
 	return b.nextBlockNum.Load()
 }
 
@@ -138,9 +115,9 @@ func (b *inFlightBlocks) get(blockNumber uint64) *blockWithStatus {
 	return b.buf[b.slot(b.head+int(offset))] //nolint:gosec // offset < count, so it fits an int.
 }
 
-// first returns the oldest tracked block, the next one to be committed, or nil if no block is
-// tracked.
-func (b *inFlightBlocks) first() *blockWithStatus {
+// nextBlockToCommit returns the oldest tracked block, the next one to be committed, or nil if no
+// block is tracked.
+func (b *inFlightBlocks) nextBlockToCommit() *blockWithStatus {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.count == 0 {
@@ -149,10 +126,11 @@ func (b *inFlightBlocks) first() *blockWithStatus {
 	return b.buf[b.head]
 }
 
-// dropFirst stops tracking the oldest block and advances the next block number to be committed.
-// The caller must have taken the block from first, and must hold the relay's committedBlockMu so
-// that no other caller drops a block in between.
-func (b *inFlightBlocks) dropFirst() {
+// dropCommittedBlock stops tracking the oldest block and advances the next block number to be
+// committed. The caller must have taken the block from nextBlockToCommit and observed that it is
+// committed, and must hold the relay's committedBlockMu so that no other caller drops a block in
+// between.
+func (b *inFlightBlocks) dropCommittedBlock() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	// The dropped block must not stay reachable through the ring slot it vacates.
@@ -166,47 +144,4 @@ func (b *inFlightBlocks) dropFirst() {
 // non-empty — which it is whenever a block is tracked.
 func (b *inFlightBlocks) slot(position int) int {
 	return position & (len(b.buf) - 1)
-}
-
-// reset drops every tracked TX ID.
-func (d *txIDDedup) reset() {
-	*d = txIDDedup{}
-}
-
-// add records txID as in flight. It returns false if the ID is already in flight, in which case
-// the caller must reject the transaction as a duplicate.
-func (d *txIDDedup) add(txID string) bool {
-	if _, inFlight := d.ids[txID]; inFlight {
-		return false
-	}
-	if d.ids == nil {
-		// Keeps the zero value usable for a caller that maps a single block outside the relay,
-		// where the dedup set is a throwaway (see appendMissingBlock).
-		d.ids = make(map[string]struct{})
-	}
-	d.ids[txID] = struct{}{}
-	return true
-}
-
-// trackBlock records the IDs that add accepted for a block, so evictCommitted can release them
-// once the block is committed. Blocks must be tracked in increasing block-number order. A block
-// that accepted no IDs is tracked too, and evicts as a no-op.
-func (d *txIDDedup) trackBlock(blockNumber uint64, txIDs []string) {
-	d.blocks = append(d.blocks, dedupBlock{blockNumber: blockNumber, txIDs: txIDs})
-}
-
-// evictCommitted releases the IDs of every tracked block below nextBlockNumber. Those blocks have
-// been committed, so their TX IDs are no longer in flight.
-func (d *txIDDedup) evictCommitted(nextBlockNumber uint64) {
-	committed := 0
-	for _, blk := range d.blocks {
-		if blk.blockNumber >= nextBlockNumber {
-			break
-		}
-		for _, txID := range blk.txIDs {
-			delete(d.ids, txID)
-		}
-		committed++
-	}
-	d.blocks = d.blocks[committed:]
 }
