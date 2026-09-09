@@ -195,6 +195,14 @@ Start the database cluster first and wait for it to be healthy before starting a
    cost. Note that while a schedule exists it blocks `DROP DATABASE` of the state database
    and disallows `DROP TABLESPACE` cluster-wide.
 
+   Snapshot clones are never deleted automatically. Once a snapshot is `CHECKPOINTED` or
+   `ABORTED`, reclaim its clone with the following command, which can run while the
+   committer is running:
+   ```shell
+   committer delete-clone --config <path-to-vc-config> --tx-id <snapshot-tx-id>
+   ```
+   See [Snapshot clone deletion](validator-committer.md#snapshot-clone-deletion).
+
 4. **Start Services** (any order after database is healthy and initialized)
    - VC Service — connects to database on startup
    - Query Service — connects to database on startup

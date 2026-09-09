@@ -901,9 +901,9 @@ func TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery(t *testing.T
 	env.sendTransactionsAndEnsureCommitted(newCtx, t, 12)
 }
 
-// TestDeleteDBCloneForSnapshotUnimplemented pins the snapshot-administration
-// extension point: the RPC is reachable on the unified service and reports
-// UNIMPLEMENTED until the clone-deletion pipeline lands.
+// TestDeleteDBCloneForSnapshotUnimplemented pins that the sidecar does not serve clone
+// deletion: the RPC is still in committerpb, but clones are deleted with the
+// `committer delete-clone` CLI, so the sidecar reports UNIMPLEMENTED.
 func TestDeleteDBCloneForSnapshotUnimplemented(t *testing.T) {
 	t.Parallel()
 

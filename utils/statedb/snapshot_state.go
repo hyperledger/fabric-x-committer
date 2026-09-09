@@ -76,7 +76,17 @@ type SnapshotUpdate struct {
 	// is one of these; an empty slice writes unconditionally. See Update for why the row
 	// lock alone does not give this.
 	ExpectedStatus []committerpb.SnapshotState_Status
+
+	// ClearCloneDatabase clears the clone name to mark its database as deleted, and
+	// keeps the locked row's error text, so ErrMsg is ignored. Clearing the name says
+	// nothing about the snapshot, so it must not replace a diagnostic that a concurrent
+	// writer recorded after the caller read the record.
+	ClearCloneDatabase bool
 }
+
+// ErrSnapshotNotFound means no snapshot record matches the transaction ID.
+// Read reports it without retrying: a missing record will not appear on a retry.
+var ErrSnapshotNotFound = errors.New("no snapshot record for the given transaction ID")
 
 // ErrUnexpectedSnapshotStatus reports that the locked `_snapshot` record was not in
 // a status its caller required, so the update was not applied. It is not a fault:
@@ -122,20 +132,13 @@ func (s *SnapshotStateManager) ReadLatest(ctx context.Context) (*committerpb.Sna
 			return nil, nil //nolint:nilnil // no snapshot has ever been accepted.
 		}
 
-		var raw []byte
-		if scanErr := s.pool.QueryRow(ctx, selectSnapshotRecordSQL, key).Scan(&raw); scanErr != nil {
-			if errors.Is(scanErr, pgx.ErrNoRows) {
-				return nil, errors.Wrapf(retry.ErrNonRetryable,
-					"latest snapshot key %s has no matching _snapshot record", key)
-			}
-			return nil, errors.Wrapf(scanErr, "failed to read _snapshot record for key %s", key)
+		state, readErr := s.readRecord(ctx, key)
+		if errors.Is(readErr, ErrSnapshotNotFound) {
+			// The pointer and record are saved together, so a missing record means corrupt data.
+			return nil, errors.Wrapf(errors.Join(retry.ErrNonRetryable, readErr),
+				"latest snapshot key %s has no matching _snapshot record", key)
 		}
-		state, decodeErr := DecodeSnapshotState(raw)
-		if decodeErr != nil {
-			return nil, errors.Wrapf(errors.Join(retry.ErrNonRetryable, decodeErr),
-				"failed to decode the latest _snapshot record for key %s", key)
-		}
-		return state, nil
+		return state, readErr
 	}, retry.ErrNonRetryable)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the latest _snapshot record: %w", err)
@@ -143,9 +146,32 @@ func (s *SnapshotStateManager) ReadLatest(ctx context.Context) (*committerpb.Sna
 	return state, nil
 }
 
-// Update rewrites the `_snapshot` record for ref.TxId per update; TxRef and
-// CloneDatabase are preserved because the existing record is decoded, mutated, and
-// re-encoded rather than rebuilt.
+// Read returns the snapshot record for txID, or ErrSnapshotNotFound if none exists.
+func (s *SnapshotStateManager) Read(ctx context.Context, txID string) (*committerpb.SnapshotState, error) {
+	return retry.ExecuteWithResult(ctx, s.retryProfile, func() (*committerpb.SnapshotState, error) {
+		return s.readRecord(ctx, []byte(txID))
+	}, retry.ErrNonRetryable, ErrSnapshotNotFound)
+}
+
+// readRecord reads and decodes one snapshot record without retrying.
+// Read and ReadLatest share it so they report read and decode errors the same way.
+func (s *SnapshotStateManager) readRecord(ctx context.Context, key []byte) (*committerpb.SnapshotState, error) {
+	var raw []byte
+	if scanErr := s.pool.QueryRow(ctx, selectSnapshotRecordSQL, key).Scan(&raw); scanErr != nil {
+		if errors.Is(scanErr, pgx.ErrNoRows) {
+			return nil, errors.Wrapf(ErrSnapshotNotFound, "%s", key)
+		}
+		return nil, errors.Wrapf(scanErr, "failed to read _snapshot record for key %s", key)
+	}
+	state, decodeErr := DecodeSnapshotState(raw)
+	if decodeErr != nil {
+		return nil, errors.Wrapf(errors.Join(retry.ErrNonRetryable, decodeErr),
+			"failed to decode the _snapshot record for key %s", key)
+	}
+	return state, nil
+}
+
+// Update applies the changes to the snapshot record for ref.TxId and keeps the other fields.
 //
 // The read and the write run inside a single DB transaction using SELECT ... FOR
 // UPDATE (see selectSnapshotRecordForUpdateSQL), not READ COMMITTED alone: without the row
@@ -206,7 +232,11 @@ func (s *SnapshotStateManager) Update(ctx context.Context, ref *committerpb.TxRe
 		if update.Digest != nil {
 			state.Hash = update.Digest
 		}
-		state.Error = update.ErrMsg
+		if update.ClearCloneDatabase {
+			state.CloneDatabase = ""
+		} else {
+			state.Error = update.ErrMsg
+		}
 
 		newRaw, err := EncodeSnapshotState(state)
 		if err != nil {
