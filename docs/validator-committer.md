@@ -336,11 +336,12 @@ committed, preserving the one-way guarantee that every committed snapshot txID h
 a clone and a PENDING row; uncommitted attempts may also leave a reusable clone.
 For YugabyteDB, ready means `yb_database_clones().state = 'COMPLETE'`; a
 `pg_database` row alone is insufficient. The clone is a consistent copy of the
-drained state cut and is never dropped by the VC (dropping is forbidden because it
-could delete a clone whose txID has not yet committed). Failed or losing attempts
-leave deterministic clones for retry/reuse or operator reconciliation, and
-successful and ambiguous attempts preserve them as well; administrative clone
-deletion remains outside the commit path. See
+drained state cut and is never dropped as part of snapshot creation; it is dropped
+only by the `committer delete-clone` CLI, and only once the snapshot is `CHECKPOINTED`
+or `ABORTED` (see [Snapshot clone deletion](#snapshot-clone-deletion)). Failed or
+losing attempts leave deterministic clones for retry/reuse or operator reconciliation,
+and successful and ambiguous attempts preserve them as well; clone deletion remains
+outside the commit path. See
 [database_snapshot.go](/service/vc/database_snapshot.go).
 
 A `_snapshot` transaction is submitted standalone: the sidecar drains the pipeline
@@ -371,6 +372,35 @@ synchronous and retains its existing duplicate-reuse behavior.
 >
 > PostgreSQL uses `CREATE DATABASE ... TEMPLATE ... STRATEGY=FILE_COPY` and needs no
 > schedule.
+
+### Snapshot clone deletion
+
+Snapshot clones are never reclaimed on a timer; an operator deletes one with:
+
+```bash
+committer delete-clone --config <vc-config> --tx-id <snapshot-tx-id>
+```
+
+Like `init-db`, the command reads the VC config and talks to the state database directly,
+not through a service, so it can run while the committer is running. It drops the database
+named by the record's `clone_database` field and clears that field. Clearing it *is* the
+deletion signal, since `SnapshotState` has no deletion timestamp. The record is retained, so
+its status and hash stay queryable. See
+[snapshot_clone.go](/utils/statedb/snapshot_clone.go).
+
+Deletion is refused unless the snapshot is `CHECKPOINTED` or `ABORTED`, because only then
+will the clone never be hashed again. Before that, the clone is the only artifact from which
+the snapshot hash can be recomputed or a contested hash re-verified. The command fails for an
+empty or unknown `--tx-id`. If the record's `clone_database` is already empty, the command
+succeeds for any status, so running it again after a success is a no-op.
+
+The drop and the record update cannot be one atomic transaction: PostgreSQL does not allow
+`DROP DATABASE` inside a transaction. The command drops the clone first, then clears the
+name, and only if the locked record still has the status it checked. If the command stops
+between the two steps, the record still names the deleted database; running it again uses
+`DROP DATABASE IF EXISTS`, then clears the name. Clearing the name before dropping would risk
+leaving a database that no record names. A failed or interrupted run leaves an unknown
+outcome, and the operator should run the command again.
 
 ## 6. gRPC Service API
 
