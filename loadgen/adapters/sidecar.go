@@ -43,6 +43,9 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 		ArtifactsPath: c.res.Profile.Policy.ArtifactsPath,
 		// The sidecar adapter submits a config block manually.
 		SendGenesisBlock: true,
+		// This adapter builds a block per batch and never touches it again, and MapToOrdererBlock
+		// leaves the data hash in its header, so the orderer needs neither a clone nor a rehash.
+		PrepareInPlace: true,
 	})
 	if err != nil {
 		return err

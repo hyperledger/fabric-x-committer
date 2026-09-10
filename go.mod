@@ -187,3 +187,10 @@ require (
 	moul.io/http2curl/v2 v2.3.0 // indirect
 	mvdan.cc/gofumpt v0.10.0 // indirect
 )
+
+// Pending hyperledger/fabric-x-common#186, which adds the BlockPrepareParameters options the mock
+// orderer's prepare-in-place path needs. This points at that same commit rebased onto the revision
+// required above, because fabric-x-common's main also carries #179, a breaking change this repository
+// has not adopted yet. Drop the replace once #186 merges and this repository moves to a release
+// carrying it.
+replace github.com/hyperledger/fabric-x-common => github.com/liran-funaro/fabric-x-common v0.0.0-20260910144220-0240aee5a4f5

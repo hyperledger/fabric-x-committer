@@ -9,6 +9,7 @@ package workload
 import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 )
@@ -64,14 +65,21 @@ func MapToEnvelopeBatch(_ uint64, txs []*servicepb.LoadGenTx) []*common.Envelope
 }
 
 // MapToOrdererBlock creates a Fabric's Orderer output block.
+//
+// The data hash is computed here, on the caller's goroutine, rather than left to whoever prepares the
+// block's header. It covers the block's own data and nothing else, so unlike the number and the
+// previous hash it does not depend on the chain and need not be computed in chain order -- and hashing
+// is the whole per-transaction cost of preparing a block, which a single block-preparing goroutine
+// would otherwise pay for every block in sequence.
 func MapToOrdererBlock(blockNum uint64, txs []*servicepb.LoadGenTx) *common.Block {
 	data := make([][]byte, len(txs))
 	for i, tx := range txs {
 		data[i] = tx.SerializedEnvelope
 	}
+	blockData := &common.BlockData{Data: data}
 	return &common.Block{
-		Header: &common.BlockHeader{Number: blockNum},
-		Data:   &common.BlockData{Data: data},
+		Header: &common.BlockHeader{Number: blockNum, DataHash: protoutil.ComputeBlockDataHash(blockData)},
+		Data:   blockData,
 	}
 }
 
