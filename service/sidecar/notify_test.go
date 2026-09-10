@@ -604,7 +604,7 @@ func newNotifierTestEnvWithConfig(tb testing.TB, numOfClients int, conf *Notific
 }
 
 //nolint:gocognit // test complexity is acceptable.
-func TestStreamAllTransactions(t *testing.T) {
+func TestStreamBlocks(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -631,42 +631,44 @@ func TestStreamAllTransactions(t *testing.T) {
 			committerpb.Status_COMMITTED,
 			committerpb.Status_REJECTED_DUPLICATE_TX_ID,
 		},
+		blockHash:     []byte("block-hash-1"),
+		prevBlockHash: []byte("block-hash-0"),
 	}
 
 	cases := []struct {
 		name          string
-		request       *committerpb.StreamAllRequest
+		request       *committerpb.StreamBlocksRequest
 		expectedTxIDs []string
 	}{
 		{
 			name:          "NoFilters",
-			request:       &committerpb.StreamAllRequest{},
+			request:       &committerpb.StreamBlocksRequest{},
 			expectedTxIDs: []string{testTxID1, testTxID2, testTxID3, testTxID4},
 		},
 		{
 			name: "NamespaceFilter_ns1",
-			request: &committerpb.StreamAllRequest{
+			request: &committerpb.StreamBlocksRequest{
 				FilterNamespaces: []string{testNs1},
 			},
 			expectedTxIDs: []string{testTxID1, testTxID3}, // tx1 has ns1, tx3 has ns1+ns2
 		},
 		{
 			name: "NamespaceFilter_ns2",
-			request: &committerpb.StreamAllRequest{
+			request: &committerpb.StreamBlocksRequest{
 				FilterNamespaces: []string{testNs2},
 			},
 			expectedTxIDs: []string{testTxID2, testTxID3}, // tx2 has ns2, tx3 has ns1+ns2
 		},
 		{
 			name: "StatusFilter_COMMITTED",
-			request: &committerpb.StreamAllRequest{
+			request: &committerpb.StreamBlocksRequest{
 				FilterStatus: []committerpb.Status{committerpb.Status_COMMITTED},
 			},
 			expectedTxIDs: []string{testTxID1, testTxID3}, // Only COMMITTED txs
 		},
 		{
 			name: "CombinedFilters",
-			request: &committerpb.StreamAllRequest{
+			request: &committerpb.StreamBlocksRequest{
 				FilterNamespaces: []string{testNs1},
 				FilterStatus:     []committerpb.Status{committerpb.Status_COMMITTED},
 			},
@@ -674,39 +676,46 @@ func TestStreamAllTransactions(t *testing.T) {
 		},
 		{
 			name: "WithNamespaces",
-			request: &committerpb.StreamAllRequest{
+			request: &committerpb.StreamBlocksRequest{
 				IncludeReadWriteSets: true,
 			},
 			expectedTxIDs: []string{testTxID1, testTxID2, testTxID3, testTxID4},
 		},
 		{
 			name: "WithEndorsements",
-			request: &committerpb.StreamAllRequest{
+			request: &committerpb.StreamBlocksRequest{
 				IncludeEndorsements: true,
 			},
 			expectedTxIDs: []string{testTxID1, testTxID2, testTxID3, testTxID4},
 		},
 		{
 			name: "WithMetadata",
-			request: &committerpb.StreamAllRequest{
+			request: &committerpb.StreamBlocksRequest{
 				IncludeMetadata: true,
 			},
 			expectedTxIDs: []string{testTxID1, testTxID2, testTxID3, testTxID4},
 		},
+		{
+			name: "NamespaceFilter_NoMatch",
+			request: &committerpb.StreamBlocksRequest{
+				FilterNamespaces: []string{"no-such-namespace"},
+			},
+			expectedTxIDs: []string{}, // we expect the block but without any txs
+		},
 	}
 
 	env := newNotifierTestEnv(t, 0)
-	streams := make([]committerpb.Notifier_StreamAllTransactionsClient, len(cases))
+	streams := make([]committerpb.Notifier_StreamBlocksClient, len(cases))
 	for i, tc := range cases {
 		var err error
-		streams[i], err = env.client.StreamAllTransactions(t.Context(), tc.request)
+		streams[i], err = env.client.StreamBlocks(t.Context(), tc.request)
 		require.NoError(t, err)
 	}
 
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		env.n.allTxStreamsMu.RLock()
-		activeStreams := env.n.allTxStreams
-		env.n.allTxStreamsMu.RUnlock()
+		env.n.blockStreamsMu.RLock()
+		activeStreams := env.n.blockStreams
+		env.n.blockStreamsMu.RUnlock()
 		require.Len(ct, activeStreams, len(cases))
 	}, 10*time.Second, 100*time.Millisecond)
 	env.committedBlockWithTxsQueue.Write(block)
@@ -714,17 +723,19 @@ func TestStreamAllTransactions(t *testing.T) {
 	for i, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			batch, err := streams[i].Recv()
+			blockEvent, err := streams[i].Recv()
 			require.NoError(t, err)
-			require.EqualValues(t, 1, batch.BlockNumber)
+			require.EqualValues(t, 1, blockEvent.BlockNumber)
+			require.Equal(t, block.blockHash, blockEvent.BlockHash)
+			require.Equal(t, block.prevBlockHash, blockEvent.PrevBlockHash)
 
-			actualTxIDs := make([]string, len(batch.Events))
-			for j, event := range batch.Events {
+			actualTxIDs := make([]string, len(blockEvent.Events))
+			for j, event := range blockEvent.Events {
 				actualTxIDs[j] = event.Ref.TxId
 			}
 			require.ElementsMatch(t, tc.expectedTxIDs, actualTxIDs)
 
-			for _, event := range batch.Events {
+			for _, event := range blockEvent.Events {
 				if tc.request.IncludeReadWriteSets {
 					require.NotEmpty(t, event.Namespaces)
 				} else {

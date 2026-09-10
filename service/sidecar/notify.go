@@ -45,9 +45,9 @@ type (
 		// timeoutQueue receives requests whose deadline has passed.
 		timeoutQueue chan *notificationRequest
 
-		// StreamAllTransactions support
-		allTxStreams   []*allTxStream
-		allTxStreamsMu sync.RWMutex
+		// StreamBlocks support
+		blockStreams   []*blockStream
+		blockStreamsMu sync.RWMutex
 	}
 
 	notificationRequest struct {
@@ -69,17 +69,19 @@ type (
 	}
 
 	// committedBlockWithTxs contains the essential data from a committed block
-	// for streaming to StreamAllTransactions clients. This is a clean interface
+	// for streaming to StreamBlocks clients. This is a clean interface
 	// that separates the notifier from relay's internal blockWithStatus structure.
 	committedBlockWithTxs struct {
-		blockNumber uint64
-		txs         []*servicepb.TxWithRef
-		statuses    []committerpb.Status
+		blockNumber   uint64
+		txs           []*servicepb.TxWithRef
+		statuses      []committerpb.Status
+		blockHash     []byte
+		prevBlockHash []byte
 	}
 
-	// allTxStream represents a single StreamAllTransactions client subscription.
+	// blockStream represents a single StreamBlocks client subscription.
 	// Each stream has its own filters and receives committed blocks via a channel.
-	allTxStream struct {
+	blockStream struct {
 		// Filters (empty = no filter)
 		filterNamespaces []string
 		filterStatuses   []committerpb.Status
@@ -176,7 +178,7 @@ func (n *notifier) run(
 			n.recordRemovals(pendingTxIDsRemoved, uniquePendingTxIDsRemoved)
 			promutil.AddToCounter(n.metrics.notifierTxIDsTimeoutDeliveries, pendingTxIDsRemoved)
 		case block := <-committedBlockWithTxs:
-			n.dispatchBlockToAllTxStreams(ctx, block)
+			n.dispatchBlockToStreams(ctx, block)
 		}
 	}
 }
@@ -221,19 +223,19 @@ func (n *notifier) OpenNotificationStream(stream committerpb.Notifier_OpenNotifi
 	return wrapNotifierError(g.Wait())
 }
 
-// StreamAllTransactions implements the [committerpb.NotifierServer] API.
+// StreamBlocks implements the [committerpb.NotifierServer] API.
 // It streams all committed transactions to the client, with optional filtering
 // by namespace and transaction status.
-func (n *notifier) StreamAllTransactions(
-	req *committerpb.StreamAllRequest,
-	stream committerpb.Notifier_StreamAllTransactionsServer,
+func (n *notifier) StreamBlocks(
+	req *committerpb.StreamBlocksRequest,
+	stream committerpb.Notifier_StreamBlocksServer,
 ) error {
 	// Create stream context with cancellation
 	ctx, cancel := context.WithCancel(stream.Context())
 	defer cancel()
 
 	// Create stream state with filters from request
-	s := &allTxStream{
+	s := &blockStream{
 		filterNamespaces:     req.FilterNamespaces,
 		filterStatuses:       req.FilterStatus,
 		includeReadWriteSets: req.IncludeReadWriteSets,
@@ -245,8 +247,8 @@ func (n *notifier) StreamAllTransactions(
 	}
 
 	// Register stream to receive blocks
-	n.registerAllTxStream(s)
-	defer n.unregisterAllTxStream(s)
+	n.registerBlockStream(s)
+	defer n.unregisterBlockStream(s)
 
 	// Run worker to process blocks and send to client
 	// The worker handles filtering, enrichment, and sending
@@ -371,14 +373,14 @@ func (m *subscriptions) removeAndEnqueueTimeoutEvents(
 	return pendingTxIDsRemoved, uniquePendingTxIDsRemoved
 }
 
-// dispatchBlockToAllTxStreams dispatches a committed block to all registered
-// StreamAllTransactions clients. It handles slow clients by using a timeout
+// dispatchBlockToStreams dispatches a committed block to all registered
+// StreamBlocks clients. It handles slow clients by using a timeout
 // and canceling streams that cannot keep up.
-func (n *notifier) dispatchBlockToAllTxStreams(ctx context.Context, block *committedBlockWithTxs) {
+func (n *notifier) dispatchBlockToStreams(ctx context.Context, block *committedBlockWithTxs) {
 	// Get snapshot of streams with minimal lock time
-	n.allTxStreamsMu.RLock()
-	streams := n.allTxStreams
-	n.allTxStreamsMu.RUnlock()
+	n.blockStreamsMu.RLock()
+	streams := n.blockStreams
+	n.blockStreamsMu.RUnlock()
 
 	// Write to each stream's channel with configured timeout
 	for _, stream := range streams {
@@ -397,42 +399,42 @@ func (n *notifier) dispatchBlockToAllTxStreams(ctx context.Context, block *commi
 	}
 }
 
-// registerAllTxStream adds a new StreamAllTransactions client to the notifier.
+// registerBlockStream adds a new StreamBlocks client to the notifier.
 // The stream will receive all committed blocks until it is unregistered or cancelled.
-func (n *notifier) registerAllTxStream(stream *allTxStream) {
-	n.allTxStreamsMu.Lock()
-	defer n.allTxStreamsMu.Unlock()
+func (n *notifier) registerBlockStream(stream *blockStream) {
+	n.blockStreamsMu.Lock()
+	defer n.blockStreamsMu.Unlock()
 
 	// We create a new slice to prevent modifying the slice while
-	// it is being iterated over in dispatchBlockToAllTxStreams.
-	streams := make([]*allTxStream, len(n.allTxStreams)+1)
-	copy(streams, n.allTxStreams)
-	streams[len(n.allTxStreams)] = stream
-	n.allTxStreams = streams
+	// it is being iterated over in dispatchBlockToStreams.
+	streams := make([]*blockStream, len(n.blockStreams)+1)
+	copy(streams, n.blockStreams)
+	streams[len(n.blockStreams)] = stream
+	n.blockStreams = streams
 }
 
-// unregisterAllTxStream removes a StreamAllTransactions client from the notifier.
-func (n *notifier) unregisterAllTxStream(stream *allTxStream) {
-	n.allTxStreamsMu.Lock()
-	defer n.allTxStreamsMu.Unlock()
+// unregisterBlockStream removes a StreamBlocks client from the notifier.
+func (n *notifier) unregisterBlockStream(stream *blockStream) {
+	n.blockStreamsMu.Lock()
+	defer n.blockStreamsMu.Unlock()
 
-	idx := slices.Index(n.allTxStreams, stream)
+	idx := slices.Index(n.blockStreams, stream)
 	if idx < 0 {
 		return
 	}
 
 	// We create a new slice to prevent modifying the slice while
-	// it is being iterated over in dispatchBlockToAllTxStreams.
-	streams := make([]*allTxStream, len(n.allTxStreams)-1)
-	copy(streams, n.allTxStreams[:idx])
-	copy(streams[idx:], n.allTxStreams[idx+1:])
-	n.allTxStreams = streams
+	// it is being iterated over in dispatchBlockToStreams.
+	streams := make([]*blockStream, len(n.blockStreams)-1)
+	copy(streams, n.blockStreams[:idx])
+	copy(streams[idx:], n.blockStreams[idx+1:])
+	n.blockStreams = streams
 }
 
-// streamWorker runs in its own goroutine for each StreamAllTransactions client.
+// streamWorker runs in its own goroutine for each StreamBlocks client.
 // It receives committed blocks from the blockQueue, filters and enriches them
 // according to the stream's configuration, and sends the results to the client.
-func (s *allTxStream) streamWorker(stream committerpb.Notifier_StreamAllTransactionsServer) error {
+func (s *blockStream) streamWorker(stream committerpb.Notifier_StreamBlocksServer) error {
 	q := channel.NewReader(s.ctx, s.blockQueue)
 	for {
 		block, ok := q.Read()
@@ -440,26 +442,21 @@ func (s *allTxStream) streamWorker(stream committerpb.Notifier_StreamAllTransact
 			return errors.New("block queue closed")
 		}
 
-		// Filter and build transactions in this worker thread
-		filteredEvents := s.filterAndBuildEvents(block)
-		// Only send if there are events after filtering
-		if len(filteredEvents) == 0 {
-			continue
+		blockEvent := &committerpb.BlockEvent{
+			BlockNumber:   block.blockNumber,
+			Events:        s.filterAndBuildEvents(block),
+			BlockHash:     block.blockHash,
+			PrevBlockHash: block.prevBlockHash,
 		}
-
-		batch := &committerpb.TxEventBatch{
-			BlockNumber: block.blockNumber,
-			Events:      filteredEvents,
-		}
-		if err := stream.Send(batch); err != nil {
-			return errors.Wrap(err, "failed to send transaction batch")
+		if err := stream.Send(blockEvent); err != nil {
+			return errors.Wrap(err, "failed to send block event")
 		}
 	}
 }
 
 // filterAndBuildEvents processes all transactions in a block, applying filters
 // and enriching with optional content based on the stream's configuration.
-func (s *allTxStream) filterAndBuildEvents(
+func (s *blockStream) filterAndBuildEvents(
 	block *committedBlockWithTxs,
 ) []*committerpb.TxEvent {
 	// Pre-allocate with capacity for efficiency

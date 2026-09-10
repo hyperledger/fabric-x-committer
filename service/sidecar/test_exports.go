@@ -56,11 +56,11 @@ func RequireNotifications( //nolint:revive // argument-limit.
 	}, 15*time.Second, 50*time.Millisecond)
 }
 
-// RequireStreamAllTransactions verifies that the expected transactions were received
-// from the StreamAllTransactions stream.
-func RequireStreamAllTransactions( //nolint:revive // argument-limit.
+// RequireStreamBlocks verifies that the expected transactions were received
+// from the StreamBlocks stream.
+func RequireStreamBlocks( //nolint:revive // argument-limit.
 	t *testing.T,
-	stream committerpb.Notifier_StreamAllTransactionsClient,
+	stream committerpb.Notifier_StreamBlocksClient,
 	expectedBlockNumber uint64,
 	txIDs []string,
 	status []committerpb.Status,
