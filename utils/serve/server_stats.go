@@ -12,6 +12,8 @@ import (
 
 	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
+
+	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 )
 
 type (
@@ -56,7 +58,8 @@ func (*ServerStatsHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) c
 	})
 }
 
-// HandleRPC records RPC-level metrics on RPC beginning and completion.
+// HandleRPC records RPC-level metrics on RPC beginning and completion, and per-message metrics as
+// each message crosses the wire.
 func (h *ServerStatsHandler) HandleRPC(ctx context.Context, s stats.RPCStats) {
 	m := h.metrics.Load()
 	if m == nil {
@@ -76,14 +79,18 @@ func (h *ServerStatsHandler) HandleRPC(ctx context.Context, s stats.RPCStats) {
 	case *stats.End:
 		// If the error is nil, the result is "OK"; if it is not a gRPC error, the result is "Unknown".
 		statusCode := status.Code(st.Error).String()
-		duration := st.EndTime.Sub(st.BeginTime).Seconds()
+		duration := st.EndTime.Sub(st.BeginTime)
 
 		if rm.isStream {
 			m.ActiveStreams.WithLabelValues(rm.fullMethodName).Dec()
-			m.StreamDurationSeconds.WithLabelValues(rm.fullMethodName, statusCode).Observe(duration)
+			promutil.Observe(m.StreamDurationSeconds.WithLabelValues(rm.fullMethodName, statusCode), duration)
 		} else {
-			m.LatencySeconds.WithLabelValues(rm.fullMethodName, statusCode).Observe(duration)
+			promutil.Observe(m.LatencySeconds.WithLabelValues(rm.fullMethodName, statusCode), duration)
 		}
+	case *stats.InPayload:
+		promutil.ObserveSize(m.MessageReceivedSizeBytes.WithLabelValues(rm.fullMethodName), st.WireLength)
+	case *stats.OutPayload:
+		promutil.ObserveSize(m.MessageSentSizeBytes.WithLabelValues(rm.fullMethodName), st.WireLength)
 	default:
 	}
 }

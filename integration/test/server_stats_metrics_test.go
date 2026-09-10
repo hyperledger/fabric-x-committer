@@ -25,6 +25,8 @@ const (
 	queryRequestsTotalMetric   = "queryservice_grpc_requests_total"
 	queryRequestsLatencyMetric = "queryservice_grpc_requests_latency_seconds"
 	queryActiveConnsMetric     = "queryservice_grpc_active_connections"
+	queryMessageRecvSizeMetric = "queryservice_grpc_message_received_size_bytes"
+	queryMessageSentSizeMetric = "queryservice_grpc_message_sent_size_bytes"
 
 	sidecarActiveStreamsMetric  = "sidecar_grpc_active_streams"
 	sidecarStreamDurationMetric = "sidecar_grpc_stream_duration_seconds"
@@ -54,30 +56,52 @@ func TestServerStatsMetricsFullSystem(t *testing.T) {
 		t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Sidecar.HTTPEndpoint,
 	)
 
-	t.Run("Unary RPC Value And Latency", func(t *testing.T) {
+	t.Run("Unary RPC Value Latency And Messages", func(t *testing.T) {
 		t.Parallel()
+		methodLabel := map[string]string{method: getTransactionStatusMethod}
 		requestsTotal := test.GetMetricValueParameters{
 			MetricsConnectionParameters: queryMetrics,
 			MetricName:                  queryRequestsTotalMetric,
-			Labels:                      map[string]string{method: getTransactionStatusMethod},
+			Labels:                      methodLabel,
 		}
 		requestsLatency := test.GetMetricValueParameters{
 			MetricsConnectionParameters: queryMetrics,
 			MetricName:                  queryRequestsLatencyMetric,
 			Labels:                      map[string]string{method: getTransactionStatusMethod, "status": "OK"},
 		}
+		messageRecvSize := test.GetMetricValueParameters{
+			MetricsConnectionParameters: queryMetrics,
+			MetricName:                  queryMessageRecvSizeMetric,
+			Labels:                      methodLabel,
+		}
+		messageSentSize := test.GetMetricValueParameters{
+			MetricsConnectionParameters: queryMetrics,
+			MetricName:                  queryMessageSentSizeMetric,
+			Labels:                      methodLabel,
+		}
 		preRequests := test.GetCounterOrGaugeValueFromURL(t, requestsTotal)
 		preLatencyCount, _ := test.GetHistogramCountAndSumValueFromURL(t, requestsLatency)
+		preRecvSizeCount, preRecvSizeSum := test.GetHistogramCountAndSumValueFromURL(t, messageRecvSize)
+		preSentSizeCount, preSentSizeSum := test.GetHistogramCountAndSumValueFromURL(t, messageSentSize)
 
 		_, err := c.QueryServiceClient.GetTransactionStatus(ctx, &committerpb.TxStatusQuery{
 			TxIds: []string{"non-existent-tx"},
 		})
 		require.NoError(t, err)
 
+		// A unary RPC is exactly one message in and one message out, each of a non-zero wire size:
+		// the size histograms' observation counts are the per-direction message counts.
 		require.EventuallyWithT(t, func(ct *assert.CollectT) {
 			latencyCount, _ := test.GetHistogramCountAndSumValueFromURL(ct, requestsLatency)
+			recvSizeCount, recvSizeSum := test.GetHistogramCountAndSumValueFromURL(ct, messageRecvSize)
+			sentSizeCount, sentSizeSum := test.GetHistogramCountAndSumValueFromURL(ct, messageSentSize)
+
 			require.Equal(ct, preRequests+1, test.GetCounterOrGaugeValueFromURL(ct, requestsTotal))
 			require.Equal(ct, preLatencyCount+1, latencyCount)
+			require.Equal(ct, preRecvSizeCount+1, recvSizeCount)
+			require.Equal(ct, preSentSizeCount+1, sentSizeCount)
+			require.Positive(ct, recvSizeSum-preRecvSizeSum)
+			require.Positive(ct, sentSizeSum-preSentSizeSum)
 		}, 30*time.Second, 200*time.Millisecond)
 	})
 
