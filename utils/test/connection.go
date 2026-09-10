@@ -61,6 +61,18 @@ func CheckServerStopped(t *testing.T, addr string) bool {
 	return false
 }
 
+// ReserveWhileServerDown re-reserves the server's ports the moment it is stopped, so a parallel test
+// binary cannot grab the just-freed ephemeral ports while the server is down. The server is stopped
+// asynchronously (by canceling its context), so it may still hold the ports; the reservation retries
+// the bind until it releases them. A later restart from the same config takes the reservation over.
+func ReserveWhileServerDown(t *testing.T, sc *serve.Config) {
+	t.Helper()
+	serve.PreAllocateListener(t, &sc.GRPC)
+	serve.PreAllocateListener(t, &sc.HTTP)
+	require.True(t, CheckServerStopped(t, sc.GRPC.Endpoint.Address()),
+		"a reservation-only port must not answer gRPC health checks")
+}
+
 // GrpcServiceToConnectionServerConfigs extracts gRPC server endpoints from serve configs.
 func GrpcServiceToConnectionServerConfigs(servers ...*serve.Config) []*serve.ServerConfig {
 	result := make([]*serve.ServerConfig, len(servers))
