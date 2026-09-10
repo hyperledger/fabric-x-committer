@@ -118,6 +118,32 @@ Maximum number of transactions in the global dependency graph. The Coordinator a
 
 The dependency graph is what enables parallel dispatch to Verifier and VC services. A small graph (e.g., 100) means once transactions are dispatched, no new ones enter until results return — creating idle gaps and reducing throughput. A very large graph increases memory for dependency tracking state and queuing latency. Incoming blocks are chunked into batches of `min(waiting-txs-limit, 500)` to prevent a single block from consuming all slots. Default: 100,000.
 
+### What the dependency graph costs per transaction
+
+The graph does its bookkeeping per KEY, not per transaction, so a transaction's cost is
+proportional to how many keys it reads and writes. `BenchmarkDependencyGraphBySize` measures
+about 420 ns per key for the manager this service runs, roughly flat from one key per
+transaction to eight, on a 32-core machine (medians over six runs):
+
+| keys per transaction | ns per transaction | one machine's ceiling |
+|---|---|---|
+| 1 (one read-write) | 1,342 | ~745,000 tx/s |
+| 2 (two read-writes) | 1,749 | ~572,000 tx/s |
+| 4 (four read-writes) | 2,434 | ~411,000 tx/s |
+| 8 (four read-writes + four blind writes) | 5,037 | ~199,000 tx/s |
+
+The consequence when sizing a deployment: transactions with several operations cut the rate the
+graph alone can sustain roughly in proportion to their key count. At one key it has ample headroom
+over any rate a single coordinator will see; by four keys its ceiling is the same order as the
+rate a large committer deployment reaches, so it becomes a candidate bottleneck for
+operation-heavy workloads while being irrelevant for small ones. The benchmark's spread reaches
+50%, so treat differences under about 20% as unresolved.
+
+The package also contains `SimpleManager`, an alternative that keeps the whole waiting set in one
+map owned by a single goroutine. It is faster at every size in the same benchmark -- about 1.6x
+at one key, narrowing to 1.16x at four -- but it has no production caller in this repository
+today, so the figures above are the ones that describe a running service.
+
 ### `per-channel-buffer-size-per-goroutine`
 
 Base buffer size for internal Go channels connecting the Coordinator's pipeline stages. The actual buffer for each channel is computed as base × number of endpoints (or constructors):
