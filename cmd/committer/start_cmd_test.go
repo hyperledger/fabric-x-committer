@@ -39,19 +39,29 @@ func TestCommitterCMD(t *testing.T) {
 	}
 	commonTests := []cliutil.CommandTest{
 		{
-			Name:         "print version",
+			Name:         "when version is requested, it prints the version",
 			Args:         []string{"version"},
 			CmdStdOutput: cliutil.FullCommitterVersion(),
 		},
 		{
-			Name: "trailing flag args for version",
+			Name: "when version has an unknown flag, it rejects the flag",
 			Args: []string{"version", "--test"},
 			Err:  errors.New("unknown flag: --test"),
 		},
 		{
-			Name: "trailing command args for version",
+			Name: "when version has a trailing command, it rejects the command",
 			Args: []string{"version", "test"},
 			Err:  fmt.Errorf(`unknown command "test" for "%v version"`, cliutil.CommitterName),
+		},
+		{
+			Name: "when migration operations are combined, it rejects the command",
+			Args: []string{"--init-from-snapshot", "snapshot.fxgenesis", "--activate-migration", "snapshot.fxgenesis"},
+			Err:  errors.New("--init-from-snapshot, --activate-migration, and --verify-migration are mutually exclusive"),
+		},
+		{
+			Name: "when a migration operation is combined with a subcommand, it rejects the command",
+			Args: []string{"--init-from-snapshot", "snapshot.fxgenesis", "version"},
+			Err:  errors.New("unknown flag: --init-from-snapshot"),
 		},
 	}
 	for _, test := range commonTests {
@@ -75,10 +85,10 @@ func TestCommitterCMD(t *testing.T) {
 		{Cmd: []string{"start", verifierService}, Name: serviceNames[verifierService], Templ: config.TemplateVerifier},
 		{Cmd: []string{"start", queryService}, Name: serviceNames[queryService], Templ: config.TemplateQueryService},
 	} {
-		t.Run(serviceCase.Name, func(t *testing.T) {
+		t.Run("when starting "+serviceCase.Name+", it serves the component", func(t *testing.T) {
 			cases := []cliutil.CommandTest{
 				{
-					Name:              "start",
+					Name:              "when configuration is valid, it starts the service",
 					Args:              serviceCase.Cmd,
 					CmdLoggerOutputs:  []string{"Serving", s.ThisService.GrpcEndpoint.String()},
 					CmdStdOutput:      fmt.Sprintf("Starting %v", serviceCase.Name),

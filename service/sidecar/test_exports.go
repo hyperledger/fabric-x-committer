@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -19,10 +20,20 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/service/verifier/policy"
+	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testsig"
 )
+
+// MapBlockForTest maps a Fabric-X block to the coordinator representation used by integration tests.
+func MapBlockForTest(block *common.Block) (*servicepb.CoordinatorBatch, error) {
+	mapped, err := mapBlock(block, &utils.SyncMap[string, servicepb.Height]{})
+	if err != nil {
+		return nil, err
+	}
+	return mapped.block, nil
+}
 
 // RequireNotifications verifies that the expected notification were received.
 func RequireNotifications( //nolint:revive // argument-limit.

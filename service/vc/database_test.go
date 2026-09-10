@@ -29,7 +29,7 @@ func TestTablesAndMethods(t *testing.T) {
 	env.populateData(t, []string{"a", "b"}, namespaceToWrites{}, nil, nil)
 
 	expectedTables := []string{
-		"metadata", "tx_status",
+		"metadata", "tx_status", "migrated_tx_ids", "migration_record",
 		"ns__meta", "ns__config", "ns__snapshot", "ns__checkpoint",
 		"ns_a", "ns_b",
 	}
