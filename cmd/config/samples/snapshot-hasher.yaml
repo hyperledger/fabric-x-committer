@@ -3,20 +3,22 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 ---
-# Configuration for the server
+# Configuration for the server.
+# The snapshot hasher exposes no RPCs of its own: work reaches it through the state
+# database. The gRPC server exists only so the service can be health-checked the same
+# way as every other service.
 server:
-  # The gRPC endpoint where the validator-committer service listens for validation
-  # and commit requests from the coordinator via bidirectional streaming.
+  # The gRPC endpoint where the snapshot hasher serves health checks.
   # Format: host:port or :port (binds to all interfaces).
-  endpoint: :6001
+  endpoint: :3001
   tls: &tlsConfig
     # TLS mode for server connections: 'none' (no TLS), 'tls' (server auth only),
     # or 'mtls' (mutual TLS with client cert verification).
     mode: mtls
     # Path to the server's TLS certificate file (public key).
-    cert-path: /root/artifacts/peerOrganizations/peer-org-0.com/peers/vc/tls/server.crt
+    cert-path: /root/artifacts/peerOrganizations/peer-org-0.com/peers/snapshot-hasher/tls/server.crt
     # Path to the server's TLS private key file.
-    key-path: /root/artifacts/peerOrganizations/peer-org-0.com/peers/vc/tls/server.key
+    key-path: /root/artifacts/peerOrganizations/peer-org-0.com/peers/snapshot-hasher/tls/server.key
     # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
       - /root/artifacts/peerOrganizations/peer-org-0.com/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
@@ -24,25 +26,13 @@ server:
 monitoring:
   # The endpoint where Prometheus metrics and pprof profiling are exposed.
   # Format: host:port or :port (binds to all interfaces).
-  endpoint: :2116
+  endpoint: :2120
   # Monitoring TLS configuration should/could be different from the GRPC server TLS
   # to only allow authorized admins to monitor the service's metrics.
   tls: *tlsConfig
-  # Rate limiting configuration for unary gRPC endpoints.
-  # Uses a token bucket algorithm to limit the number of requests per second.
-  rate-limit:
-    # Maximum number of requests per second allowed.
-    # Set to 0 to disable rate limiting.
-    requests-per-second: 0
-    # Maximum number of requests allowed in a single burst.
-    # When rate limiting is enabled (requests-per-second > 0):
-    #   - Must be greater than 0
-    #   - Must be less than or equal to requests-per-second
-    burst: 0
 
-# Maximum time to wait for the VC service to become ready before startup fails.
-# The VC service is considered ready after it successfully
-# establishes a connection pool to the database.
+# Maximum time to wait for the snapshot hasher to become ready before startup fails.
+# The service is considered ready once it has a connection pool to the database.
 # Default: 5m
 startup-timeout: 5m
 
@@ -65,27 +55,21 @@ database:
     mode: tls
     # Path to the CA certificate file for verifying the database server's certificate.
     ca-cert-path: /root/artifacts/peerOrganizations/peer-org-0.com/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
-  # Maximum size of the database connection pool. Limits concurrent database operations.
-  # Should be tuned based on database capacity and expected transaction load.
+  # Maximum size of the connection pool on THIS database. It serves only the poll of
+  # the latest snapshot record, which runs one statement at a time on a single
+  # goroutine, so a couple of connections is plenty regardless of cluster size or
+  # transaction load. The parallel scans of a snapshot clone do NOT use this pool or
+  # this limit: each hash job opens its own pool on the clone database, sized from
+  # resource-limits.max-workers-for-hash below.
   # Default: 20
-  max-connections: 10
-  # Minimum size of the database connection pool. Keeps connections warm for faster operations.
+  max-connections: 2
+  # Minimum size of the connection pool. Keeps connections warm for faster operations.
   # Should be less than or equal to max-connections.
   # Default: 1
-  min-connections: 5
+  min-connections: 1
   # Enable load balancing across multiple database endpoints. Should be enabled for
   # YugabyteDB clusters to distribute operations across nodes. Set to false for single-node deployments.
   load-balance: false
-
-  # Number of tablets to pre-split each table into at creation time (YugabyteDB only).
-  # Pre-splitting distributes a table's data across multiple tablet servers from the start,
-  # preventing the "hot tablet" bottleneck where a single tablet handles all initial writes
-  # before YugabyteDB's automatic splitting kicks in, which causes unpredictable latency spikes.
-  # Recommended value: set to the number of tablet servers in the cluster, or a small multiple
-  # of it (e.g., 1x-2x the number of tservers), so each tserver gets an equal share of tablets.
-  # For example, with 3 tservers, set table-pre-split-tablets to 3 or 6.
-  # When the underlying database is PostgreSQL, this setting is automatically ignored even if set.
-  table-pre-split-tablets: 0
   retry:  # The exponential backoff retry strategy for database operation.
     # This strategy increases the delay between retry attempts exponentially.
     # When using YugabyteDB as the backend, it is needed to handle retryable errors.
@@ -130,34 +114,25 @@ database:
     # Default: 10m
     max-elapsed-time: 15m
 
-# Resource limit configurations
+# How often the service re-reads the latest snapshot record looking for work.
+# Hashing therefore begins within one interval of the snapshot committing: nothing
+# notifies this service, so the interval is the whole scheduling latency. Lower it
+# to start hashing sooner at the cost of one extra small query per interval.
+# Default: 1m
+poll-interval: 1m
+
+# Resource limit configurations. These bound the read load a hash job places on the
+# cluster, which is also serving live transactions.
 resource-limits:
-  # Number of goroutines that prepare transactions for validation by extracting
-  # read/write sets and organizing data structures. Preparation is CPU-bound.
-  # Higher values enable parallel preparation but increase CPU and memory usage.
-  # Default: 1
-  max-workers-for-preparer: 1
-  # Number of goroutines that perform MVCC validation checks against the current state.
-  # Validation is database-bound. Higher values enable parallel validation but increase
-  # database connection usage and contention.
-  # Default: 1
-  max-workers-for-validator: 1
-  # Number of goroutines that commit validated transactions to the database using
-  # stored procedures. Committing is database-bound. Higher values improve commit
-  # throughput but increase database load and connection usage. Should be tuned
-  # based on database capacity.
-  # Default: 20
-  max-workers-for-committer: 20
-  # Minimum number of transactions that must accumulate before processing a batch
-  # through the validation pipeline. Larger batches improve database efficiency
-  # through bulk operations but increase latency. Set to 1 for lowest latency.
-  # Default: 1
-  min-transaction-batch-size: 1
-  # Maximum time to wait for a batch to reach min-transaction-batch-size before
-  # processing it anyway. Ensures timely processing under low transaction rates.
-  # Balances latency vs. batching efficiency.
-  # Default: 5s
-  timeout-for-min-transaction-batch-size: 2s
+  # Number of tables hashed in parallel within one hash job. Hashing is a full scan of
+  # the clone, so this trades hash latency against read load on the cluster.
+  # Default: 4
+  max-workers-for-hash: 4
+  # Number of rows fetched per round-trip when scanning a table for hashing
+  # (keyset pagination). Bounds the memory used by a hashing worker on large tables;
+  # total memory scales with max-workers-for-hash x hash-batch-size.
+  # Default: 1000
+  hash-batch-size: 1000
 
 # Logging configuration
 logging:

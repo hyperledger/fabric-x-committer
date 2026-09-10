@@ -9,7 +9,7 @@ The Fabric-X Committer implements the validation and commit stage of the Hyperle
 
 ## Architecture at a Glance
 
-The system is built around six core services connected by gRPC streams and bounded channels:
+The system is built around seven core services connected by gRPC streams and bounded channels:
 
 ```
 Ordering Service
@@ -20,9 +20,11 @@ Ordering Service
                   Verify │        │  Validate & Commit
                          ▼        ▼
                      Verifier     VC ──► Database Cluster
-                                             ▲
-                                  Query ─────┘
-                                 Service
+                                             ▲  ▲
+                                  Query ─────┘  │
+                                 Service        │
+                                             Snapshot
+                                             Hasher
 ```
 
 - **Sidecar** — Fetches blocks from the Ordering Service, persists them locally, and delivers committed blocks to clients. Exposes a Notification Service for asynchronous transaction status updates.
@@ -30,13 +32,14 @@ Ordering Service
 - **Verifier** — Validates transaction signatures against namespace endorsement policies using a parallel worker pool.
 - **Validator-Committer (VC)** — Executes a three-stage pipeline (Prepare, Validate, Commit) performing MVCC checks and committing valid transactions to the database.
 - **Query Service** — Provides read-only access to the committed world state with configurable isolation levels and query batching.
+- **Snapshot Hasher** — Single instance that discovers committed state snapshots from durable state and hashes their clone databases, off the commit path.
 - **Database Cluster** — Stores world state, transaction statuses, and namespace policies. Supports YugabyteDB (recommended) and PostgreSQL.
 
 ## Key Capabilities
 
 - **High Throughput** — Pipelined processing with parallel dispatch of conflict-free transactions. Exceeds 100,000 TPS on commodity hardware with YugabyteDB.
 - **Fault Tolerance** — Idempotent commit operations enable automatic recovery from service failures without data corruption. Each service recovers independently on restart.
-- **Horizontal Scaling** — Verifier, VC, Query Service, and Database nodes scale horizontally. Sidecar and Coordinator scale vertically.
+- **Horizontal Scaling** — Verifier, VC, Query Service, and Database nodes scale horizontally. Sidecar, Coordinator, and Snapshot Hasher scale vertically.
 - **Flexible Endorsement Policies** — Supports both lightweight threshold rules (single public key) and fine-grained MSP rules (AND/OR/k-of-n over organizational identities).
 - **Observability** — Prometheus metrics for every pipeline stage, with queue-depth gauges for bottleneck identification.
 

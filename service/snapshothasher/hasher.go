@@ -1,0 +1,247 @@
+/*
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+*/
+
+package snapshothasher
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/binary"
+	"fmt"
+	"io"
+
+	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/yugabyte/pgx/v5"
+	"github.com/yugabyte/pgx/v5/pgxpool"
+	"golang.org/x/sync/errgroup"
+
+	"github.com/hyperledger/fabric-x-committer/utils/retry"
+	"github.com/hyperledger/fabric-x-committer/utils/statedb"
+)
+
+// txStatusPageSQL pages tx_status in primary-key order for hashing, encoding the
+// hashed value in SQL as int4send(status)||height so every table yields the same
+// (key, value) row shape. tx_id is the PRIMARY KEY, so ORDER BY tx_id is an
+// index-order scan with no sort step, and `tx_id > $1` is an index seek.
+//
+// status is a nullable column, and NULL || height is NULL, not height: without the
+// coalesce a single NULL status would collapse the whole concatenation and drop that
+// row's height from the digest, so two rows differing only in height would hash
+// identically. The sentinel is negative, which no committerpb.Status value is, so it
+// cannot collide with a real status.
+const txStatusPageSQL = "SELECT tx_id, int4send(coalesce(status, -1)) || height FROM tx_status " +
+	"WHERE tx_id > $1 ORDER BY tx_id LIMIT $2"
+
+// tablePageSQLFmt pages a (key, value) table in primary-key order. The table name is
+// a sanitized identifier, so it is formatted in rather than bound.
+const tablePageSQLFmt = "SELECT key, value FROM %s WHERE key > $1 ORDER BY key LIMIT $2"
+
+// hasher computes the deterministic content hash of a snapshot clone database.
+type hasher struct {
+	config *Config
+}
+
+// hashSnapshotDatabase is given a short-lived pool on the clone database, hashes
+// every hashed table in parallel, and combines the per-table digests in a fixed
+// order into one deterministic SHA-256. The caller opens the pool (see
+// openClonePool) so that a clone that is not there to hash is detected before any
+// state is written for the attempt.
+//
+// Hashed set (see listHashedTables for the rule): every user namespace's ns_<id>
+// table, plus ns__config, ns__meta, tx_status, and ns__checkpoint. metadata and
+// ns__snapshot are excluded.
+func (h *hasher) hashSnapshotDatabase(ctx context.Context, pool *pgxpool.Pool) ([]byte, error) {
+	tables, err := h.listHashedTables(ctx, pool)
+	if err != nil {
+		return nil, err
+	}
+	tableHashes := make([][]byte, len(tables))
+
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(h.config.ResourceLimits.MaxWorkersForHash)
+
+	for i, table := range tables {
+		g.Go(func() error {
+			hh, hErr := h.hashTable(gCtx, pool, table)
+			if hErr != nil {
+				return fmt.Errorf("failed to hash table %s: %w", table, hErr)
+			}
+			tableHashes[i] = hh
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	// Combine in the order listHashedTables returned (fixed tables, then registry
+	// order), so the digest does not depend on table-completion order.
+	//
+	// NOTE (future work, phase 2): only the combined root hash is persisted today.
+	// To localize a divergence between organizations we must also preserve the
+	// per-table hashes, plus a Merkle tree over a table's rows to narrow the diff
+	// within it. Neither changes the root-hash encoding computed here.
+	final := sha256.New()
+	for i, table := range tables {
+		writeLengthPrefixed(final, []byte(table))
+		writeLengthPrefixed(final, tableHashes[i])
+	}
+	return final.Sum(nil), nil
+}
+
+// openClonePool opens a short-lived pgxpool against the clone database, sized to
+// exactly the per-table worker count: a worker holds a connection only while
+// reading a page, and listHashedTables has returned its connection before the
+// first worker starts. The configured max/min-connections size the long-lived
+// pool on the SOURCE database, which is a different database and a
+// one-statement-at-a-time workload, so they are deliberately ignored here.
+//
+// A clone is created before its snapshot transaction commits, so a committed
+// record naming a clone that does not exist is an invariant violation: it is
+// reported as ErrCorruptSnapshotState, and fails immediately because
+// statedb.NewPool treats a missing database as terminal.
+func (h *hasher) openClonePool(ctx context.Context, cloneDatabase string) (*pgxpool.Pool, error) {
+	cfg := *h.config.Database
+	cfg.Database = cloneDatabase
+	//nolint:gosec // small bounded worker count.
+	cfg.MaxConnections = int32(h.config.ResourceLimits.MaxWorkersForHash)
+	cfg.MinConnections = 0
+
+	pool, err := statedb.NewPool(ctx, &cfg)
+	if errors.Is(err, statedb.ErrDatabaseNotFound) {
+		return nil, errors.Wrapf(errors.Join(ErrCorruptSnapshotState, err),
+			"snapshot clone %s does not exist", cloneDatabase)
+	}
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to open pool on snapshot clone %s", cloneDatabase)
+	}
+	return pool, nil
+}
+
+// listHashedTables returns the tables to hash on the clone, in the order their
+// digests are combined: the fixed system tables first, then one ns_<id> table per
+// user namespace in ns__meta key order. The registry query is ORDER BY key, so the
+// order is deterministic without sorting here.
+//
+// The set follows one rule: hash what every organization's clone must agree on, and
+// exclude what each organization derives locally.
+//
+//   - ns__checkpoint is hashed. A checkpoint is committed by an ordered, endorsed
+//     transaction, so it holds the same content at the same height everywhere. There
+//     is no cycle: the checkpoint for a snapshot commits only after that snapshot's
+//     digest exists, so it can appear in a later clone but never in its own.
+//   - metadata is excluded, and cannot be included: `last committed block number` is
+//     written by each sidecar on its own interval, so two organizations holding
+//     byte-identical committed state still hold different values when a clone is taken.
+//   - ns__snapshot is excluded: it is this service's own progress, written while the
+//     hash runs.
+//
+// A table added later belongs on the side this rule puts it, not the side its name
+// suggests.
+func (h *hasher) listHashedTables(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
+	// metaTable is a sanitized fixed identifier, not user input.
+	metaTable := pgx.Identifier{statedb.TableName(committerpb.MetaNamespaceID)}.Sanitize()
+	metaRows, err := retry.ExecuteWithResult(ctx, h.config.Database.Retry, func() ([]struct{ Key []byte }, error) {
+		rows, queryErr := pool.Query(ctx, fmt.Sprintf("SELECT key FROM %s ORDER BY key", metaTable))
+		if queryErr != nil {
+			return nil, errors.Wrap(queryErr, "failed to read namespace registry from ns__meta")
+		}
+		defer rows.Close()
+		collected, collectErr := pgx.CollectRows(rows, pgx.RowToStructByPos[struct{ Key []byte }])
+		return collected, errors.Wrap(collectErr, "failed to collect ns__meta rows")
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Fixed system tables that hold committed state but are not registered in ns__meta.
+	tables := make([]string, 0, len(metaRows)+4)
+	tables = append(
+		tables,
+		statedb.TableName(committerpb.ConfigNamespaceID),
+		statedb.TableName(committerpb.MetaNamespaceID),
+		statedb.TxStatusTableName,
+		statedb.TableName(committerpb.CheckpointNamespaceID),
+	)
+	for i := range metaRows {
+		tables = append(tables, statedb.TableName(string(metaRows[i].Key)))
+	}
+	return tables, nil
+}
+
+// hashTable scans one table in primary-key order in bounded pages (keyset
+// pagination) and folds rows into a per-table SHA-256 using length-prefixed
+// encoding len(key)||key||len(value)||value. tx_status is encoded as key=tx_id,
+// value=int4send(status)||height (see txStatusPageSQL). Paging bounds worker
+// memory on large tables; ORDER BY the primary key is an index-order scan.
+//
+// NOTE (future work): fetching and hashing are sequential -- each page waits for
+// the previous hash fold and vice versa. Pipelining them (fetch page N+1 while
+// hashing page N) is deliberately not done, to avoid extra concurrent read load
+// on a cluster that is also serving live transactions.
+func (h *hasher) hashTable(ctx context.Context, pool *pgxpool.Pool, table string) ([]byte, error) {
+	// table is a sanitized identifier built from ns__meta keys, not user input.
+	sanitizedTable := pgx.Identifier{table}.Sanitize()
+	query := txStatusPageSQL
+	if table != statedb.TxStatusTableName {
+		query = fmt.Sprintf(tablePageSQLFmt, sanitizedTable)
+	}
+
+	batchSize := h.config.ResourceLimits.HashBatchSize
+	tableHash := sha256.New()
+	// keys/tx_ids are always non-empty in this system, so the empty-bytes lower bound
+	// includes the first real row (empty BYTEA sorts below every non-empty key). A
+	// genuinely empty key would be skipped by `key > $1` (`'' > ''` is false), which is
+	// acceptable given the non-empty invariant.
+	lastKey := []byte{}
+	for {
+		// Re-issuing the query per page is cheap: the keyset predicate is an index seek.
+		page, err := retry.ExecuteWithResult(ctx, h.config.Database.Retry, func() ([]row, error) {
+			rows, queryErr := pool.Query(ctx, query, lastKey, batchSize)
+			if queryErr != nil {
+				return nil, errors.Wrapf(queryErr, "failed to query page of table %s", sanitizedTable)
+			}
+			defer rows.Close()
+			collected, collectErr := pgx.CollectRows(rows, pgx.RowToStructByPos[row])
+			return collected, errors.Wrapf(collectErr, "failed to collect page of table %s", sanitizedTable)
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		for i := range page {
+			// A NULL value scans as nil and is hashed as an empty value. That is the storage
+			// semantics this system already has -- a write carries proto3 bytes, which cannot
+			// distinguish nil from empty -- so the two are the same committed state, not a
+			// collision. tx_status cannot reach here with a nil value: see txStatusPageSQL.
+			writeLengthPrefixed(tableHash, page[i].Key)
+			writeLengthPrefixed(tableHash, page[i].Value)
+		}
+		if len(page) < batchSize {
+			break
+		}
+		lastKey = page[len(page)-1].Key
+	}
+	return tableHash.Sum(nil), nil
+}
+
+// row is one hashed row, collected positionally: the primary key (also the
+// keyset-pagination cursor) and the value folded into the table hash.
+type row struct {
+	Key   []byte
+	Value []byte
+}
+
+// writeLengthPrefixed writes an 8-byte big-endian length followed by the bytes.
+// The length prefix prevents boundary collisions (e.g. "ab"+"cd" vs "abc"+"d").
+func writeLengthPrefixed(h io.Writer, b []byte) {
+	var lenBuf [8]byte
+	binary.BigEndian.PutUint64(lenBuf[:], uint64(len(b)))
+	_, _ = h.Write(lenBuf[:]) // sha256 Write never errors.
+	_, _ = h.Write(b)
+}

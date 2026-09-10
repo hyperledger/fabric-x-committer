@@ -59,6 +59,7 @@ nav:
       - Verifier: verification-service.md
       - Validator-Committer: validator-committer.md
       - Query Service: query-service.md
+      - Snapshot Hasher: snapshot-hasher.md
       - Notification Service: notification-service.md
   - Configuration:
       - TLS: tls-configurations.md
