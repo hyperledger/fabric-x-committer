@@ -174,6 +174,113 @@ func TestUpdate(t *testing.T) {
 	}
 }
 
+// TestUpdateWithExpectedStatus covers the conditional write. The row lock stops two
+// writers from interleaving a read and a write, but not a write that was decided
+// against a status the record no longer holds: the UPDATE matches on `key` alone, so
+// without this check a caller that read IN_PROGRESS would still publish COMPLETED
+// over a record that has since been CHECKPOINTED. The two cases that motivate it are
+// a second hasher (a deployment error) and a checkpoint transaction arriving while
+// this organization is still hashing.
+func TestUpdateWithExpectedStatus(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		stored   committerpb.SnapshotState_Status
+		expected []committerpb.SnapshotState_Status
+		wantErr  bool
+	}{{
+		name:     "matching status is written",
+		stored:   committerpb.SnapshotState_IN_PROGRESS,
+		expected: []committerpb.SnapshotState_Status{committerpb.SnapshotState_IN_PROGRESS},
+	}, {
+		name:   "any listed status matches",
+		stored: committerpb.SnapshotState_FAILED,
+		expected: []committerpb.SnapshotState_Status{
+			committerpb.SnapshotState_PENDING,
+			committerpb.SnapshotState_IN_PROGRESS,
+			committerpb.SnapshotState_FAILED,
+		},
+	}, {
+		// The case the check exists for: a checkpoint landed while this process was
+		// hashing, so publishing a digest now would undo the checkpoint.
+		name:     "checkpointed record rejects a completing write",
+		stored:   committerpb.SnapshotState_CHECKPOINTED,
+		expected: []committerpb.SnapshotState_Status{committerpb.SnapshotState_IN_PROGRESS},
+		wantErr:  true,
+	}, {
+		// A second hasher that already published: this one's write is stale.
+		name:     "completed record rejects a second completing write",
+		stored:   committerpb.SnapshotState_COMPLETED,
+		expected: []committerpb.SnapshotState_Status{committerpb.SnapshotState_IN_PROGRESS},
+		wantErr:  true,
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			env := newSnapshotStateTestEnv(t)
+			ref := &committerpb.TxRef{BlockNum: 21, TxNum: 0, TxId: "snap-expected-status"}
+			env.seedRecord(t, &committerpb.SnapshotState{
+				TxRef:         ref,
+				Status:        tc.stored,
+				CloneDatabase: "snapshot_21",
+			})
+
+			// Bounded well under the retry budget: a rejection that was retried instead of
+			// reported terminal would exhaust this context, so that regression fails here
+			// rather than merely being slow.
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+			t.Cleanup(cancel)
+
+			err := env.state.Update(ctx, ref, statedb.SnapshotUpdate{
+				Status:         committerpb.SnapshotState_COMPLETED,
+				Digest:         []byte("digest"),
+				ExpectedStatus: tc.expected,
+			})
+
+			got, readErr := env.state.ReadLatest(t.Context())
+			require.NoError(t, readErr)
+
+			if !tc.wantErr {
+				require.NoError(t, err)
+				require.Equal(t, committerpb.SnapshotState_COMPLETED, got.Status)
+				require.Equal(t, []byte("digest"), got.Hash)
+				return
+			}
+
+			require.ErrorIs(t, err, statedb.ErrUnexpectedSnapshotStatus)
+			// Never retried: the record moved on, so a later attempt cannot restore the
+			// caller's premise, and spending the budget would delay the caller's re-decision.
+			require.NoError(t, ctx.Err(), "a status mismatch must fail fast, not retry")
+			// The rejected write must leave no trace at all, not even a version bump.
+			require.Equal(t, tc.stored, got.Status)
+			require.Empty(t, got.Hash)
+			require.EqualValues(t, 0, env.recordVersion(t, ref.TxId))
+		})
+	}
+}
+
+// TestUpdateWithoutExpectedStatusIsUnconditional keeps the field opt-in: the
+// validator-committer owns the record's whole lifecycle and writes without naming a
+// premise, so an empty ExpectedStatus must overwrite whatever is stored -- including
+// a terminal status.
+func TestUpdateWithoutExpectedStatusIsUnconditional(t *testing.T) {
+	t.Parallel()
+	env := newSnapshotStateTestEnv(t)
+	ref := &committerpb.TxRef{BlockNum: 22, TxNum: 0, TxId: "snap-unconditional"}
+	env.seedRecord(t, &committerpb.SnapshotState{
+		TxRef:         ref,
+		Status:        committerpb.SnapshotState_CHECKPOINTED,
+		CloneDatabase: "snapshot_22",
+	})
+
+	require.NoError(t, env.state.Update(t.Context(), ref, statedb.SnapshotUpdate{
+		Status: committerpb.SnapshotState_COMPLETED,
+	}))
+
+	got, err := env.state.ReadLatest(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, committerpb.SnapshotState_COMPLETED, got.Status)
+}
+
 // TestEncodeDecodeRoundTrip pins the record encoding, which two processes depend on
 // agreeing about: the validator-committer writes the record and the snapshot service
 // rewrites it, so a field lost in a round trip would silently drop state such as the

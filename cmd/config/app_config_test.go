@@ -396,7 +396,7 @@ func TestReadConfigSnapshotHasher(t *testing.T) {
 		expectedServiceConfig: &snapshothasher.Config{
 			Database:     defaultDBConfig(),
 			PollInterval: time.Minute,
-			ResourceLimits: &snapshothasher.ResourceLimitsConfig{
+			ResourceLimits: snapshothasher.ResourceLimitsConfig{
 				MaxWorkersForHash: 4,
 				HashBatchSize:     1000,
 			},
@@ -410,7 +410,7 @@ func TestReadConfigSnapshotHasher(t *testing.T) {
 		expectedServiceConfig: &snapshothasher.Config{
 			Database:     sampleDBConfig,
 			PollInterval: time.Minute,
-			ResourceLimits: &snapshothasher.ResourceLimitsConfig{
+			ResourceLimits: snapshothasher.ResourceLimitsConfig{
 				MaxWorkersForHash: 4,
 				HashBatchSize:     1000,
 			},

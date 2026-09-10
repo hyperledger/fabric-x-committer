@@ -13,6 +13,7 @@ SPDX-License-Identifier: Apache-2.0
 5. [Hash Computation](#5-hash-computation)
 6. [Configuration](#6-configuration)
 7. [Failure and Recovery](#7-failure-and-recovery)
+8. [Known Limitations](#8-known-limitations)
 
 ## 1. Overview
 
@@ -99,18 +100,34 @@ reading this hasher's log, and the next tick retries it.
 The digest is a SHA-256 over the clone's committed content, computed so that identical
 clone content always yields an identical digest:
 
-- The hashed set is derived from `ns__meta`, the authoritative namespace registry:
-  every user namespace's `ns_<id>` table, plus `ns__meta`, `ns__config`, and
-  `tx_status`. `metadata`, `ns__snapshot`, and `ns__checkpoint` are excluded — the
-  first two are exactly the tables this service and the VC write while a snapshot is in
-  flight, so including them would make the digest depend on hashing progress.
+- The hashed set follows one rule: **hash what every organization's clone must agree
+  on, and exclude what each organization derives locally.** It is every user
+  namespace's `ns_<id>` table (from `ns__meta`, the authoritative namespace registry),
+  plus the fixed tables `ns__config`, `ns__meta`, `tx_status`, and `ns__checkpoint`.
+    - `ns__checkpoint` is included: a checkpoint is committed by an ordered, endorsed
+      transaction, so it holds the same content at the same height everywhere. There is
+      no cycle — the checkpoint for a snapshot commits only after that snapshot's digest
+      exists, so it can appear in a later clone but never in its own.
+    - `metadata` is excluded, and cannot be included: `last committed block number` is
+      written by each sidecar on its own `last-committed-block-set-interval`, so two
+      organizations holding byte-identical committed state still hold different values
+      when a clone is taken.
+    - `ns__snapshot` is excluded: it is this service's own hashing progress, written
+      while the hash runs.
+
+  Excluding those two costs nothing, because neither is state a node bootstrapped from a
+  snapshot needs: `ns__snapshot` records one organization's hashing progress, and
+  `metadata` is local bookkeeping the new node rebuilds as it runs. Where a value is
+  genuinely needed — `last committed block number` — it can be set during bootstrap from
+  the snapshot's own height rather than carried in the digest.
 - Each table is scanned in primary-key order in bounded pages (keyset pagination), so
   worker memory stays bounded on large tables and the scan is served by the primary-key
   index with no sort step.
 - Rows are folded in with length-prefixed encoding (`len(key)||key||len(value)||value`),
   which prevents boundary collisions between adjacent keys and values.
-- Per-table digests are combined in sorted table-name order, so the result does not
-  depend on which table finished first.
+- Per-table digests are combined in a fixed order — `ns__config`, `ns__meta`,
+  `tx_status`, `ns__checkpoint`, then user namespaces in `ns__meta` key order — so the
+  result does not depend on which table finished first.
 
 Only the combined root hash is persisted today. Localizing a divergence between
 organizations — per-table digests, then a Merkle Patricia trie over a table's rows — is
@@ -159,6 +176,13 @@ The hasher holds no state of its own; the `_snapshot` record is the state.
   digest, and the VC keeps rejecting new snapshots until the latest one is
   `CHECKPOINTED` — so this needs an operator, and the exit message names the record and
   the clone it could not hash.
+- **A record taken over mid-hash.** A checkpoint transaction can commit for a slow
+  organization while its hasher is still scanning, and a second hasher (a deployment
+  error) can publish first. Every status write names the statuses it was decided
+  against, so a job whose record has moved has its write rejected rather than applied —
+  publishing a digest over a `CHECKPOINTED` record would undo the checkpoint. This is
+  logged and left uncounted: the next tick re-reads the record and decides again from
+  its new status.
 
 ### Observability
 
@@ -168,18 +192,55 @@ pointer that names no row, a record that does not decode). The hash-job counters
 cannot express those — such a tick completes no job and fails none — so without it a
 service whose database is down looks the same as an idle one.
 
-`snapshothasher_hash_started_timestamp_seconds` covers the opposite blind spot.
-Hashing a clone is a full scan and can run for many minutes, but
-`snapshothasher_hash_duration_seconds` is only observed once a hash returns, so while
-one is running a busy service and an idle one publish identical numbers. A non-zero
-value means a hash is in progress; alert on the elapsed time rather than on the
-non-zero value alone, since a stuck job holds it forever and never reaches the
-histogram:
+`snapshothasher_hash_started_total` covers the opposite blind spot. Hashing a clone is
+a full scan and can run for many minutes, but `snapshothasher_hash_duration_seconds` is
+observed only once a scan returns, so a hash in flight would otherwise look like an idle
+service. Counting starts separately makes it a gap against the terminal counters:
 
 ```promql
-# Hashing has been running for more than an hour.
-snapshothasher_hash_started_timestamp_seconds > 0
-  and (time() - snapshothasher_hash_started_timestamp_seconds) > 3600
+# A hash started and has neither computed a digest nor recorded a failure.
+snapshothasher_hash_started_total
+  - (snapshothasher_hash_duration_seconds_count + snapshothasher_hash_jobs_failed_total)
 ```
 
+`jobs_failed_total` belongs in that sum because a failed hash never reaches the
+histogram — the failure is recorded before the duration is observed — so comparing
+starts against `duration_seconds_count` alone would report a permanent in-flight hash
+after the first failure.
+
+A value of 1 is a hash running normally; alert on a sustained difference, since that is
+what separates a long scan from a stuck one. Two things this cannot do: a hash lost to a
+killed process shows up only after the fact, from the stored series, because an
+in-process counter resets to zero along with every other one and a fresh start therefore
+looks idle; and elapsed time is inferred from how long the difference persists rather
+than read directly, which is why the alert belongs in a rule's `for:` clause rather than
+in the expression.
+
+A second gap separates a digest that was computed from one that was published:
+
+```promql
+# A digest was computed but never published: the record was taken over mid-hash, or the
+# COMPLETED write failed.
+snapshothasher_hash_duration_seconds_count
+  - (snapshothasher_hash_jobs_completed_total + snapshothasher_hash_jobs_failed_total)
+```
+
+This is the symptom of a second hasher running against the same state database, which is
+a deployment error: both processes hash the same immutable clone, and the one that
+publishes second has its write rejected. Nothing is corrupted — the digest is
+deterministic — but the wasted work is otherwise visible only in the logs.
+
 See [Metrics Reference](metrics_reference.md).
+
+## 8. Known Limitations
+
+- **No digest algorithm version is recorded.** Any future change to the hashed set or
+  the encoding — for example the planned per-table digests and Merkle Patricia trie —
+  would make an already-committed checkpoint unverifiable, because a re-ingesting node
+  has no way to know which algorithm produced that digest. The version belongs in the
+  checkpoint transaction payload, which is the artifact organizations agree on and the
+  one re-ingestion reads; that payload is not defined yet.
+- **Terminal abort handling is not here yet.** A `FAILED` record is always retried, so
+  a snapshot that can never be hashed — a clone lost for good, say — has no terminal
+  resting state. An `ABORTED` status and an abort snapshot transaction, which is what
+  makes an abort reproducible under re-ingestion, are the immediate next change.

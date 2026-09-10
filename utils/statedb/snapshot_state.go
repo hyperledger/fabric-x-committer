@@ -19,6 +19,7 @@ package statedb
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
@@ -70,7 +71,19 @@ type SnapshotUpdate struct {
 	Status committerpb.SnapshotState_Status
 	Digest []byte
 	ErrMsg string
+
+	// ExpectedStatus, when non-empty, aborts the update unless the locked row's status
+	// is one of these; an empty slice writes unconditionally. See Update for why the row
+	// lock alone does not give this.
+	ExpectedStatus []committerpb.SnapshotState_Status
 }
+
+// ErrUnexpectedSnapshotStatus reports that the locked `_snapshot` record was not in
+// a status its caller required, so the update was not applied. It is not a fault:
+// a concurrent checkpoint reaches it legitimately. It is never retryable, because
+// the record has moved on -- re-reading cannot restore the caller's premise, and the
+// caller must re-decide what to do from the new status.
+var ErrUnexpectedSnapshotStatus = errors.New("unexpected _snapshot record status")
 
 // SnapshotStateManager reads and writes `_snapshot` records over a state-database pool.
 // Callers hold one per process; it carries no per-record state, so it is safe to
@@ -141,6 +154,13 @@ func (s *SnapshotStateManager) ReadLatest(ctx context.Context) (*committerpb.Sna
 // The whole read-decode-mutate-encode-write sequence is retried as one unit, so a
 // transient failure anywhere in it restarts from a fresh, consistent read.
 //
+// The row lock stops a lost update; it does not stop a wrong-state transition, since
+// this UPDATE matches on `key` alone and would apply whatever the locked row now
+// holds. update.ExpectedStatus closes that: when set, the locked status must be one
+// of the statuses the caller reasoned about, or the update is rejected with
+// ErrUnexpectedSnapshotStatus. An empty ExpectedStatus keeps the write
+// unconditional.
+//
 //nolint:gocognit // one transaction: lock, decode, mutate, write, commit.
 func (s *SnapshotStateManager) Update(ctx context.Context, ref *committerpb.TxRef, update SnapshotUpdate) error {
 	if update.Status == committerpb.SnapshotState_STATUS_UNSPECIFIED {
@@ -173,6 +193,13 @@ func (s *SnapshotStateManager) Update(ctx context.Context, ref *committerpb.TxRe
 		if err != nil {
 			// A value that does not decode will not decode on a retry either.
 			return errors.Wrapf(errors.Join(retry.ErrNonRetryable, err), "tx %s", ref.TxId)
+		}
+		// Checked against the LOCKED row, so no writer can move the record between this
+		// comparison and the UPDATE below.
+		if len(update.ExpectedStatus) > 0 && !slices.Contains(update.ExpectedStatus, state.Status) {
+			return errors.Wrapf(errors.Join(retry.ErrNonRetryable, ErrUnexpectedSnapshotStatus),
+				"_snapshot record for tx %s is %s, expected one of %v",
+				ref.TxId, state.Status, update.ExpectedStatus)
 		}
 
 		state.Status = update.Status

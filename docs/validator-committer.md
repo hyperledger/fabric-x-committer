@@ -89,7 +89,7 @@ world state for each namespace, and internal metadata. The tables are categorize
 | `value`     | `BYTEA`   | The system configuration transaction.              |
 | `version`   | `BIGINT`  | Not Applicable                                     |
 
-* **Metadata Table (`metadata`)**: This table is a simple key-value store for internal system metadata. It stores the last committed block number and the key of the latest accepted snapshot record, which lets a reader find that record with a single key lookup instead of scanning `ns__snapshot`.
+* **Metadata Table (`metadata`)**: This table is a simple key-value store for internal system metadata. It stores the last committed block number and the key of the latest accepted snapshot record, which lets a reader find that record with a single key lookup instead of scanning `ns__snapshot`. It is helper maintenance data rather than part of the world state — the last committed block number is written by each sidecar on its own interval, so two organizations holding identical committed state can hold different values here. That is why it is excluded from the snapshot digest (see [Hash Computation](snapshot-hasher.md#5-hash-computation)).
 
 | Column Name | Data Type | Description/Constraints        |
 | :---------- | :-------- | :----------------------------- |

@@ -20,45 +20,110 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/testdb"
 )
 
-// TestHashStartedTimestampGauge pins the only metric that describes a hash while it
-// runs. Every other metric here is after-the-fact -- the duration histogram is
-// observed once a hash returns -- so without it a full clone scan, which can take
-// many minutes, is indistinguishable from an idle service. It must be set before
-// hashing and cleared afterwards, so a scrape never sees a stale start time once the
-// job is done.
-func TestHashStartedTimestampGauge(t *testing.T) {
+// TestHashStartedCounter pins the only signal that a hash which never returns leaves
+// behind. Every other metric here is after-the-fact -- the duration histogram is
+// observed once a hash returns, and the failure counter only once a failure is
+// classified -- so a scan still running, or a process killed mid-hash, would otherwise
+// be indistinguishable from an idle service. Counting starts separately makes that
+// visible as a gap between this counter and the two terminal ones.
+func TestHashStartedCounter(t *testing.T) {
 	t.Parallel()
 	env := newTestEnv(t)
-	ctx, cancel := createContext(t)
-	defer cancel()
+	ctx := createContext(t)
 
-	startedAt := func() float64 {
-		return test.GetMetricValue(t, env.metrics.hashStartedTimestampSeconds)
+	started := func() int {
+		return int(test.GetMetricValue(t, env.metrics.hashStartedTotal))
 	}
-
-	require.Zero(t, startedAt(), "no hash has started yet")
+	require.Zero(t, started(), "no hash has started yet")
 
 	env.dbEnv.SeedState(t, seededState([]string{"1", "2"}))
-	ref := &committerpb.TxRef{BlockNum: 740000, TxNum: 0, TxId: "snap-gauge-in-progress"}
+	ref := &committerpb.TxRef{BlockNum: 740000, TxNum: 0, TxId: "snap-counter-hashed"}
 	env.seedRecord(t, ref, committerpb.SnapshotState_PENDING)
 
-	beforeSeconds := time.Now().Unix()
-	done := make(chan error, 1)
-	go func() { done <- env.scheduler.hashLatestSnapshotIfNeeded(ctx) }()
+	require.NoError(t, env.scheduler.hashLatestSnapshotIfNeeded(ctx))
+	require.Equal(t, 1, started(), "a hash that ran must be counted as started")
+	require.Equal(t, 1, int(test.GetMetricValue(t, env.metrics.hashJobsCompletedTotal)))
 
-	// The gauge is observed while the hash is still running, which is the whole point of
-	// having it; a hash of seeded state is short, so a completed job is an accepted
-	// outcome of this wait rather than a failure.
-	require.Eventually(t, func() bool {
-		return startedAt() > 0 || len(done) == 1
-	}, 30*time.Second, 10*time.Millisecond)
-	if v := startedAt(); v > 0 {
-		require.GreaterOrEqual(t, v, float64(beforeSeconds),
-			"a running hash must publish when it started")
+	// A tick that finds terminal work must not look like a started hash: the record is
+	// now COMPLETED, so the next tick has nothing to do. Were this counted, the gap
+	// against the terminal counters would grow on every idle tick and the alert built on
+	// it would fire on a healthy service.
+	require.NoError(t, env.scheduler.hashLatestSnapshotIfNeeded(ctx))
+	require.Equal(t, 1, started(), "a tick with nothing to hash must not count a start")
+}
+
+// TestHashSnapshotRejectsRecordTakenOverMidHash covers the two ways a record can move
+// while a hash runs: a checkpoint transaction commits for a slow organization, or a
+// second hasher (a deployment error) publishes first. Either way this job's write was
+// decided against a status the record no longer holds, so it must be rejected rather
+// than applied -- publishing COMPLETED over a CHECKPOINTED record would undo the
+// checkpoint.
+//
+// Both writes hashSnapshot makes are covered, because they fail differently. Rejecting
+// the COMPLETED write protects the digest directly. Rejecting the opening IN_PROGRESS
+// write matters more subtly: were it unguarded it would overwrite CHECKPOINTED with
+// IN_PROGRESS, and the COMPLETED write would then find its own value, match, and
+// publish -- so the record would be un-checkpointed through a guard that looks like it
+// is protecting it.
+func TestHashSnapshotRejectsRecordTakenOverMidHash(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		blockNum uint64
+		// held is the status this job read before the takeover, and therefore the premise
+		// its writes are decided against. PENDING exercises the opening IN_PROGRESS write;
+		// IN_PROGRESS skips it and exercises the publishing one.
+		held    committerpb.SnapshotState_Status
+		takenTo committerpb.SnapshotState_Status
+	}{{
+		name:     "checkpointed while publishing",
+		blockNum: 750100,
+		held:     committerpb.SnapshotState_IN_PROGRESS,
+		takenTo:  committerpb.SnapshotState_CHECKPOINTED,
+	}, {
+		name:     "completed by another hasher",
+		blockNum: 750101,
+		held:     committerpb.SnapshotState_IN_PROGRESS,
+		takenTo:  committerpb.SnapshotState_COMPLETED,
+	}, {
+		name:     "checkpointed before the job started",
+		blockNum: 750102,
+		held:     committerpb.SnapshotState_PENDING,
+		takenTo:  committerpb.SnapshotState_CHECKPOINTED,
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			env := newTestEnv(t)
+			ctx := createContext(t)
+			env.dbEnv.SeedState(t, seededState([]string{"1"}))
+
+			ref := &committerpb.TxRef{BlockNum: tc.blockNum, TxNum: 0, TxId: "snap-takeover-" + tc.name}
+			env.seedRecord(t, ref, tc.held)
+
+			// The record is moved out from under the job before it writes, which is what a
+			// concurrent writer does. Moving it up front reproduces the interleaving
+			// deterministically, without racing a real hash.
+			require.NoError(t, env.state.Update(ctx, ref, statedb.SnapshotUpdate{Status: tc.takenTo}))
+
+			state, err := env.state.ReadLatest(ctx)
+			require.NoError(t, err)
+			// The premise this job holds in memory: it read the record before the takeover.
+			state.Status = tc.held
+
+			pool, err := env.hasher.openClonePool(ctx, state.CloneDatabase)
+			require.NoError(t, err)
+			t.Cleanup(pool.Close)
+
+			require.ErrorIs(t, env.scheduler.hashSnapshot(ctx, state, pool),
+				statedb.ErrUnexpectedSnapshotStatus)
+
+			// The new owner's status stands, and no digest from this job is published over it.
+			record, found := env.dbEnv.ReadSnapshotRecord(ctx, ref.TxId)
+			require.True(t, found)
+			require.Equal(t, tc.takenTo, record.State.Status)
+			require.Empty(t, record.State.Hash)
+		})
 	}
-
-	require.NoError(t, <-done)
-	require.Zero(t, startedAt(), "a finished hash must not leave a stale start time")
 }
 
 // TestHashLatestSnapshotIfNeeded walks every status a tick can find on the latest
@@ -84,8 +149,7 @@ func TestHashLatestSnapshotIfNeeded(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			env := newTestEnv(t)
-			ctx, cancel := createContext(t)
-			defer cancel()
+			ctx := createContext(t)
 
 			ref := &committerpb.TxRef{BlockNum: tc.blockNum, TxNum: 0, TxId: "snap-sched-" + tc.name}
 			before := env.seedRecord(t, ref, tc.status)
@@ -196,8 +260,7 @@ func TestHashLatestSnapshotIfNeededCorruptCloneStops(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			env := newTestEnv(t)
-			ctx, cancel := createContext(t)
-			defer cancel()
+			ctx := createContext(t)
 
 			ref := &committerpb.TxRef{BlockNum: tc.blockNum, TxNum: 0, TxId: "snap-corrupt-clone-" + tc.name}
 			// No CreateSnapshotClone call: the clone this record names must not exist.
@@ -236,8 +299,7 @@ func TestHashLatestSnapshotIfNeededCorruptCloneStops(t *testing.T) {
 func TestSchedulerRunStopsOnCorruptState(t *testing.T) {
 	t.Parallel()
 	env := newTestEnv(t)
-	ctx, cancel := createContext(t)
-	defer cancel()
+	ctx := createContext(t)
 
 	ref := &committerpb.TxRef{BlockNum: 800402, TxNum: 0, TxId: "snap-corrupt-run"}
 	env.dbEnv.SeedSnapshotRecord(t, vc.SnapshotFixture{
@@ -262,8 +324,7 @@ func TestSchedulerRunStopsOnCorruptState(t *testing.T) {
 func TestHashLatestSnapshotIfNeededRejectsMissingTxRef(t *testing.T) {
 	t.Parallel()
 	env := newTestEnv(t)
-	ctx, cancel := createContext(t)
-	defer cancel()
+	ctx := createContext(t)
 
 	env.dbEnv.SeedSnapshotRecordWithoutTxRef(t, "snap-corrupt-no-ref", "snapshot_corrupt")
 
@@ -274,8 +335,7 @@ func TestHashLatestSnapshotIfNeededRejectsMissingTxRef(t *testing.T) {
 func TestHashLatestSnapshotIfNeededWithoutAnySnapshotIsNoOp(t *testing.T) {
 	t.Parallel()
 	env := newTestEnv(t)
-	ctx, cancel := createContext(t)
-	defer cancel()
+	ctx := createContext(t)
 
 	require.NoError(t, env.scheduler.hashLatestSnapshotIfNeeded(ctx))
 }
@@ -340,7 +400,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	config := &Config{
 		Database:     dbEnv.DBConf,
 		PollInterval: testPollInterval,
-		ResourceLimits: &ResourceLimitsConfig{
+		ResourceLimits: ResourceLimitsConfig{
 			MaxWorkersForHash: 4,
 			HashBatchSize:     1000,
 		},
@@ -351,7 +411,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	t.Cleanup(pool.Close)
 
 	state := statedb.NewSnapshotStateManager(pool, config.Database.Retry)
-	hasher := newHasher(config)
+	hasher := &hasher{config: config}
 	metrics := newSnapshotHasherMetrics()
 	return &testEnv{
 		dbEnv:   dbEnv,
@@ -368,9 +428,11 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 }
 
-func createContext(t *testing.T) (context.Context, context.CancelFunc) {
+// createContext bounds a test at the suite's limit. Cancellation is registered as
+// cleanup, so a caller needs nothing but the context.
+func createContext(t *testing.T) context.Context {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	t.Cleanup(cancel)
-	return ctx, cancel
+	return ctx
 }

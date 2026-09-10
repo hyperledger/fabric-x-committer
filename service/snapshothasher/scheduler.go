@@ -67,6 +67,13 @@ func (s *scheduler) run(ctx context.Context) error {
 			case err == nil:
 			case errors.Is(err, ErrCorruptSnapshotState):
 				return err
+			case errors.Is(err, statedb.ErrUnexpectedSnapshotStatus):
+				// The record moved while this tick worked on it -- a checkpoint landed, or a
+				// second hasher published first. Neither is this service's failure, and the next
+				// tick reads the new status, so it is logged as information and left uncounted:
+				// counting it would make the poll-error and failed-job alerts fire on correct
+				// behaviour.
+				logger.Infof("skipped hashing the latest snapshot: %v", err)
 			default:
 				logger.Errorf("failed to hash the latest snapshot: %+v", err)
 			}
@@ -152,6 +159,12 @@ func (s *scheduler) readRecordNeedingHash(ctx context.Context) (*committerpb.Sna
 // hashSnapshot marks the record IN_PROGRESS, hashes the already-open clone pool, and
 // publishes the digest.
 //
+// Every write names the statuses it was decided against, so a record that moved while
+// this job ran -- a checkpoint that landed, or a second hasher that published first --
+// rejects the write instead of having it overwritten. That is reported as
+// statedb.ErrUnexpectedSnapshotStatus and is a normal outcome, not a failure: the next
+// tick re-reads the record and decides again from its new status.
+//
 // A failed hash is recorded as FAILED with the cause, which is not terminal: the
 // next tick reads the same record and tries again. Re-hashing is always safe,
 // because a clone is immutable, so the digest of a given clone cannot change
@@ -171,6 +184,13 @@ func (s *scheduler) hashSnapshot(
 	if state.Status != committerpb.SnapshotState_IN_PROGRESS {
 		if err := s.state.Update(ctx, ref, statedb.SnapshotUpdate{
 			Status: committerpb.SnapshotState_IN_PROGRESS,
+			// The three statuses a tick legitimately picks up (see readRecordNeedingHash).
+			// Anything else means the record changed between that read and now.
+			ExpectedStatus: []committerpb.SnapshotState_Status{
+				committerpb.SnapshotState_PENDING,
+				committerpb.SnapshotState_IN_PROGRESS,
+				committerpb.SnapshotState_FAILED,
+			},
 		}); err != nil {
 			return fmt.Errorf("failed to mark snapshot %s IN_PROGRESS: %w", clone, err)
 		}
@@ -178,12 +198,8 @@ func (s *scheduler) hashSnapshot(
 
 	logger.Infof("hashing snapshot clone [%s] for tx [%s]", clone, ref.TxId)
 	start := time.Now()
-	// The start timestamp is what makes "hashing for too long" alertable: the duration
-	// histogram is only observed once a hash returns, so for the many minutes a clone
-	// scan takes, a busy service and an idle one would publish identical numbers. It is
-	// cleared however the hash ends, so a stale value cannot outlive the job.
-	promutil.SetGauge(s.metrics.hashStartedTimestampSeconds, int(start.Unix()))
-	defer promutil.SetGauge(s.metrics.hashStartedTimestampSeconds, 0)
+	// Counted before the scan, so a hash that never returns is still visible.
+	promutil.AddToCounter(s.metrics.hashStartedTotal, 1)
 	digest, hashErr := s.hasher.hashSnapshotDatabase(ctx, pool)
 	if hashErr != nil {
 		return s.failHash(ctx, ref, clone, hashErr)
@@ -193,6 +209,9 @@ func (s *scheduler) hashSnapshot(
 	if err := s.state.Update(ctx, ref, statedb.SnapshotUpdate{
 		Status: committerpb.SnapshotState_COMPLETED,
 		Digest: digest,
+		// This job set the record IN_PROGRESS, so anything else means it no longer owns
+		// the record and must not publish over whatever took it over.
+		ExpectedStatus: []committerpb.SnapshotState_Status{committerpb.SnapshotState_IN_PROGRESS},
 	}); err != nil {
 		return fmt.Errorf("failed to mark snapshot %s COMPLETED: %w", clone, err)
 	}
@@ -204,7 +223,9 @@ func (s *scheduler) hashSnapshot(
 // failHash records why a hash attempt ended, so an operator sees the cause on the
 // record itself rather than only in this process's log. The original error is
 // returned either way; a failure to persist it is joined onto it rather than
-// replacing it, since the hash failure is the more informative of the two.
+// replacing it, since the hash failure is the more informative of the two. That
+// ordering also keeps the hash cause reachable when the record was taken over
+// mid-hash and the FAILED write is itself rejected.
 func (s *scheduler) failHash(
 	ctx context.Context, ref *committerpb.TxRef, clone string, hashErr error,
 ) error {
@@ -221,6 +242,9 @@ func (s *scheduler) failHash(
 	updateErr := s.state.Update(ctx, ref, statedb.SnapshotUpdate{
 		Status: committerpb.SnapshotState_FAILED,
 		ErrMsg: err.Error(),
+		// This job set the record IN_PROGRESS. If something else has taken it since, its
+		// status describes the new owner's work, and this attempt's failure is not it.
+		ExpectedStatus: []committerpb.SnapshotState_Status{committerpb.SnapshotState_IN_PROGRESS},
 	})
 	return errors.Join(err, updateErr)
 }

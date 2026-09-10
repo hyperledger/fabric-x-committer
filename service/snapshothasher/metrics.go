@@ -33,15 +33,14 @@ type perfMetrics struct {
 	hashJobsFailedTotal    prometheus.Counter
 	hashDurationSeconds    prometheus.Histogram
 
-	// hashStartedTimestampSeconds describes a job while it runs, which every other
-	// metric here can only describe afterwards: hashDurationSeconds is observed once a
-	// hash returns, so for the many minutes a full clone scan takes, a busy service and
-	// an idle one publish identical numbers. Nothing else fills that gap either -- this
-	// service exposes no RPCs and holds no queue whose depth could be read. A non-zero
-	// value means a hash is in progress, and subtracting it from the current time is
-	// what makes "hashing for too long" alertable, since a stuck job never reaches the
-	// duration histogram.
-	hashStartedTimestampSeconds prometheus.Gauge
+	// hashStartedTotal counts hash attempts that began, which nothing else here records:
+	// hashDurationSeconds is observed only once a scan returns, and a scan can run for
+	// many minutes, so a hash in flight would otherwise be indistinguishable from an idle
+	// service. Its gap against the terminal counters is the in-flight signal. A hash lost
+	// to a killed process is visible only after the fact, from the stored series: an
+	// in-process counter resets to zero along with every other, so a fresh start looks
+	// idle rather than divergent.
+	hashStartedTotal prometheus.Counter
 
 	// pollErrorsTotal counts ticks that could not even determine whether there is
 	// work, which the hash-job counters cannot express: a tick that fails to read
@@ -73,12 +72,12 @@ func newSnapshotHasherMetrics() *perfMetrics {
 			Name:      "jobs_failed_total",
 			Help:      "Number of snapshot hash jobs that ended without publishing a digest.",
 		}),
-		hashStartedTimestampSeconds: p.NewGauge(prometheus.GaugeOpts{
+		hashStartedTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: subsystemHash,
-			Name:      "started_timestamp_seconds",
-			Help: "Unix time at which the in-progress hash started, or 0 when none is " +
-				"running; subtract from the current time to alert on a long-running hash.",
+			Name:      "started_total",
+			Help: "Number of snapshot hash attempts that began; its gap against " +
+				"duration_seconds_count plus jobs_failed_total is a hash in flight.",
 		}),
 		pollErrorsTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,

@@ -60,7 +60,7 @@ func (s *Service) Run(ctx context.Context) error {
 
 	scheduler := &scheduler{
 		state:        statedb.NewSnapshotStateManager(pool, s.config.Database.Retry),
-		hasher:       newHasher(s.config),
+		hasher:       &hasher{config: s.config},
 		metrics:      s.metrics,
 		pollInterval: s.config.PollInterval,
 	}

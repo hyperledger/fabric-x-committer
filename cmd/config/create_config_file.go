@@ -72,7 +72,6 @@ type (
 		VCMinTransactionBatchSize           int           // vc
 		VCTimeoutForMinTransactionBatchSize time.Duration // vc
 
-		// Snapshot hasher configuration (for testing).
 		// Verifier batching configuration (for testing).
 		VerifierBatchTimeCutoff time.Duration // verifier
 		VerifierBatchSizeCutoff int           // verifier

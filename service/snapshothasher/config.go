@@ -22,7 +22,7 @@ type Config struct {
 	// state, with no notification from the validator-committer or the coordinator.
 	PollInterval time.Duration `mapstructure:"poll-interval" default:"1m" validate:"gt=0"`
 
-	ResourceLimits *ResourceLimitsConfig `mapstructure:"resource-limits" validate:"required"`
+	ResourceLimits ResourceLimitsConfig `mapstructure:"resource-limits"`
 }
 
 // ResourceLimitsConfig bounds the work a single hash job may do against the

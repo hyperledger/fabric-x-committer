@@ -21,8 +21,7 @@ import (
 func TestSnapshotHashDeterministic(t *testing.T) {
 	t.Parallel()
 	env := newTestEnv(t)
-	ctx, cancel := createContext(t)
-	defer cancel()
+	ctx := createContext(t)
 
 	// Seed three namespaces with several keys each, plus committed tx statuses, so
 	// the digest covers multiple ns_<id> tables AND tx_status.
@@ -45,16 +44,15 @@ func TestSnapshotHashDeterministic(t *testing.T) {
 	require.NotEqual(t, h1, env.createAndHashClone(ctx, t, ref2))
 }
 
-// TestSnapshotHashExcludesUnregisteredNamespaces proves that rows in the
-// `_snapshot` and `_checkpoint` system namespaces are EXCLUDED from the digest:
-// those tables are not registered in ns__meta, so listHashedTables never hashes
-// them. Excluding them is what keeps the digest stable while the hash job itself
-// writes progress into `_snapshot`.
-func TestSnapshotHashExcludesUnregisteredNamespaces(t *testing.T) {
+// TestSnapshotHashExcludesSnapshotNamespace proves that rows in the `_snapshot`
+// system namespace are EXCLUDED from the digest: that table is not registered in
+// ns__meta and is not in the fixed list, so listHashedTables never hashes it.
+// Excluding it is what keeps the digest stable while the hash job itself writes
+// progress into `_snapshot`.
+func TestSnapshotHashExcludesSnapshotNamespace(t *testing.T) {
 	t.Parallel()
 	env := newTestEnv(t)
-	ctx, cancel := createContext(t)
-	defer cancel()
+	ctx := createContext(t)
 
 	env.dbEnv.SeedState(t, seededState([]string{"1"}))
 
@@ -62,17 +60,39 @@ func TestSnapshotHashExcludesUnregisteredNamespaces(t *testing.T) {
 	baselineHash := env.createAndHashClone(ctx, t, baselineRef)
 	require.NotEmpty(t, baselineHash)
 
-	// Write rows ONLY into the excluded system namespaces. Their tables exist, but
-	// they are never registered in ns__meta, so a fresh clone's digest must be
-	// unchanged. No user-namespace rows are added here, keeping this property
-	// independent of the different-state property above.
+	// Write rows ONLY into the excluded namespace. Its table exists, but it is never
+	// hashed, so a fresh clone's digest must be unchanged. No user-namespace rows are
+	// added here, keeping this property independent of the different-state property
+	// above.
 	env.dbEnv.InsertRowDirectly(t, committerpb.SnapshotNamespaceID,
 		vc.KeyValue{Key: []byte("excl-snap-key"), Value: []byte("excl-snap-val")})
-	env.dbEnv.InsertRowDirectly(t, committerpb.CheckpointNamespaceID,
-		vc.KeyValue{Key: []byte("excl-ckpt-key"), Value: []byte("excl-ckpt-val")})
 
 	newRef := &committerpb.TxRef{BlockNum: 710100, TxNum: 0, TxId: "snap-excl-new"}
 	require.Equal(t, baselineHash, env.createAndHashClone(ctx, t, newRef))
+}
+
+// TestSnapshotHashIncludesCheckpointNamespace proves the other half of the rule:
+// `_checkpoint` IS hashed, even though it is a system namespace absent from ns__meta.
+// A checkpoint is committed by an ordered, endorsed transaction, so it holds the same
+// content at the same height for every organization -- exactly as deterministic as a
+// user namespace, and therefore part of what a digest must cover.
+func TestSnapshotHashIncludesCheckpointNamespace(t *testing.T) {
+	t.Parallel()
+	env := newTestEnv(t)
+	ctx := createContext(t)
+
+	env.dbEnv.SeedState(t, seededState([]string{"1"}))
+
+	baselineRef := &committerpb.TxRef{BlockNum: 711000, TxNum: 0, TxId: "snap-incl-base"}
+	baselineHash := env.createAndHashClone(ctx, t, baselineRef)
+	require.NotEmpty(t, baselineHash)
+
+	env.dbEnv.InsertRowDirectly(t, committerpb.CheckpointNamespaceID,
+		vc.KeyValue{Key: []byte("incl-ckpt-key"), Value: []byte("incl-ckpt-val")})
+
+	newRef := &committerpb.TxRef{BlockNum: 711100, TxNum: 0, TxId: "snap-incl-new"}
+	require.NotEqual(t, baselineHash, env.createAndHashClone(ctx, t, newRef),
+		"a committed checkpoint must change the digest")
 }
 
 // TestSnapshotHashWithSingleWorker pins the clone pool's sizing rule: the pool gets
@@ -87,8 +107,7 @@ func TestSnapshotHashExcludesUnregisteredNamespaces(t *testing.T) {
 func TestSnapshotHashWithSingleWorker(t *testing.T) {
 	t.Parallel()
 	env := newTestEnv(t)
-	ctx, cancel := createContext(t)
-	defer cancel()
+	ctx := createContext(t)
 
 	env.dbEnv.SeedState(t, seededState([]string{"1", "2", "3"}))
 
@@ -100,13 +119,13 @@ func TestSnapshotHashWithSingleWorker(t *testing.T) {
 	// worker instead of returning an error, so without its own deadline this test
 	// would report the regression as a hung package rather than a failure.
 	serialCtx, serialCancel := context.WithTimeout(ctx, 90*time.Second)
-	defer serialCancel()
+	t.Cleanup(serialCancel)
 
 	env.config.ResourceLimits.MaxWorkersForHash = 1
-	serialHasher := newHasher(env.config)
+	serialHasher := &hasher{config: env.config}
 	pool, err := serialHasher.openClonePool(serialCtx, vc.SnapshotDatabaseName(ref))
 	require.NoError(t, err)
-	defer pool.Close()
+	t.Cleanup(pool.Close)
 	serialHash, err := serialHasher.hashSnapshotDatabase(serialCtx, pool)
 	require.NoError(t, err)
 	require.Equal(t, parallelHash, serialHash)
@@ -128,7 +147,7 @@ func (env *testEnv) hashClone(ctx context.Context, t *testing.T, cloneDatabase s
 	t.Helper()
 	pool, err := env.hasher.openClonePool(ctx, cloneDatabase)
 	require.NoError(t, err)
-	defer pool.Close()
+	t.Cleanup(pool.Close)
 	hash, err := env.hasher.hashSnapshotDatabase(ctx, pool)
 	require.NoError(t, err)
 	return hash
