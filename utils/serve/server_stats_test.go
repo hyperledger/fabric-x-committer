@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	promgo "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -111,7 +112,8 @@ func TestServerConnStatsHandler(t *testing.T) {
 }
 
 // TestServerStatsHandlerUnaryRPC verifies the handler's unary workflow: a completed unary RPC
-// increments requestsTotal and records its latency, and is never counted as an active stream.
+// increments requestsTotal, records its latency, and observes one received and one sent message with
+// its wire size, and is never counted as an active stream.
 func TestServerStatsHandlerUnaryRPC(t *testing.T) {
 	t.Parallel()
 
@@ -129,8 +131,26 @@ func TestServerStatsHandlerUnaryRPC(t *testing.T) {
 	)
 
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Positive(ct, metricVecValue(ct,
-			env.metrics.LatencySeconds.MetricVec, healthCheckMethod, statusOK))
+		require.Positive(
+			ct,
+			getMetricValueByLabels(ct,
+				env.metrics.LatencySeconds.MetricVec, healthCheckMethod, statusOK),
+		)
+		require.Equal(ct, uint64(1), getHistogramVecCountByLabels(ct,
+			env.metrics.MessageReceivedSizeBytes, healthCheckMethod))
+		require.Equal(ct, uint64(1), getHistogramVecCountByLabels(ct,
+			env.metrics.MessageSentSizeBytes, healthCheckMethod))
+		require.Positive(
+			ct,
+			getMetricValueByLabels(ct,
+				env.metrics.MessageReceivedSizeBytes.MetricVec, healthCheckMethod),
+		)
+		require.Positive(
+			ct,
+			getMetricValueByLabels(ct,
+				env.metrics.MessageSentSizeBytes.MetricVec, healthCheckMethod),
+		)
+		require.Equal(ct, 0, testutil.CollectAndCount(env.metrics.StreamDurationSeconds))
 	}, 30*time.Second, 100*time.Millisecond)
 
 	// A unary RPC must never be treated as a stream.
@@ -141,22 +161,30 @@ func TestServerStatsHandlerUnaryRPC(t *testing.T) {
 	)
 }
 
-// TestServerStatsHandlerStreamingRPC verifies the handler's streaming workflow: an open stream is
-// counted in activeStreams, and tearing it down decrements the gauge, increments requestsTotal,
-// and records the stream's duration.
+// TestServerStatsHandlerStreamingRPC verifies that the handler tracks the complete lifecycle of a
+// streaming RPC. It checks that the active-stream gauge is incremented while the stream is open,
+// received and sent messages are recorded separately, and canceling the stream decrements the gauge
+// and records the stream duration with a canceled status.
 func TestServerStatsHandlerStreamingRPC(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
-	env := newServerStatsTestEnv(ctx, t, serve.DefaultHealthCheckService())
+	healthServer := serve.DefaultHealthCheckService()
+	env := newServerStatsTestEnv(ctx, t, healthServer)
 
 	streamCtx, cancelStream := context.WithCancel(ctx)
 	t.Cleanup(cancelStream)
 
+	// Watch consumes a single request and then pushes one message per status change, the first one
+	// immediately, so the status flip drives a second message out.
 	stream, err := env.health.Watch(streamCtx, &healthgrpc.HealthCheckRequest{})
 	require.NoError(t, err)
 	_, err = stream.Recv()
+	require.NoError(t, err)
+	healthServer.SetServingStatus("", healthgrpc.HealthCheckResponse_NOT_SERVING)
+	resp, err := stream.Recv()
+	require.NotNil(t, resp)
 	require.NoError(t, err)
 
 	test.EventuallyIntMetric(
@@ -172,6 +200,13 @@ func TestServerStatsHandlerStreamingRPC(t *testing.T) {
 		30*time.Second, 100*time.Millisecond,
 	)
 
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		require.Equal(ct, uint64(1), getHistogramVecCountByLabels(ct,
+			env.metrics.MessageReceivedSizeBytes, healthWatchMethod))
+		require.Equal(ct, uint64(2), getHistogramVecCountByLabels(ct,
+			env.metrics.MessageSentSizeBytes, healthWatchMethod))
+	}, 30*time.Second, 100*time.Millisecond)
+
 	// Tearing the stream down completes the RPC: the gauge returns to zero and the stream duration is recorded.
 	cancelStream()
 
@@ -181,8 +216,9 @@ func TestServerStatsHandlerStreamingRPC(t *testing.T) {
 		30*time.Second, 100*time.Millisecond,
 	)
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		require.Positive(ct, metricVecValue(ct,
-			env.metrics.StreamDurationSeconds.MetricVec, healthWatchMethod, statusCanceled))
+		require.Positive(ct,
+			getMetricValueByLabels(ct,
+				env.metrics.StreamDurationSeconds.MetricVec, healthWatchMethod, statusCanceled))
 	}, 30*time.Second, 100*time.Millisecond)
 }
 
@@ -246,12 +282,14 @@ func requireRPCStatusRecorded(t *testing.T, rpcErr error, wantStatus string) {
 		require.Equal(ct, 1, testutil.CollectAndCount(env.metrics.LatencySeconds))
 		require.Positive(
 			ct,
-			metricVecValue(ct, env.metrics.LatencySeconds.MetricVec, healthCheckMethod, wantStatus),
+			getMetricValueByLabels(ct,
+				env.metrics.LatencySeconds.MetricVec, healthCheckMethod, wantStatus),
 		)
 		require.Equal(ct, 1, testutil.CollectAndCount(env.metrics.StreamDurationSeconds))
 		require.Positive(
 			ct,
-			metricVecValue(ct, env.metrics.StreamDurationSeconds.MetricVec, healthWatchMethod, wantStatus),
+			getMetricValueByLabels(ct,
+				env.metrics.StreamDurationSeconds.MetricVec, healthWatchMethod, wantStatus),
 		)
 	}, 30*time.Second, 100*time.Millisecond)
 }
@@ -276,9 +314,20 @@ func newServerStatsTestEnv(
 	}
 }
 
-func metricVecValue(t test.TestingT, mv *prometheus.MetricVec, lvs ...string) float64 {
+func getMetricValueByLabels(t test.TestingT, mv *prometheus.MetricVec, lvs ...string) float64 {
 	t.Helper()
 	m, err := mv.GetMetricWithLabelValues(lvs...)
 	require.NoError(t, err)
 	return test.GetMetricValue(t, m)
+}
+
+func getHistogramVecCountByLabels(t test.TestingT, hv *prometheus.HistogramVec, lvs ...string) uint64 {
+	t.Helper()
+	// HistogramVec.GetMetricWithLabelValues yields an Observer, which cannot be written to a dto;
+	// the embedded MetricVec returns the same child as a Metric, which can.
+	m, err := hv.MetricVec.GetMetricWithLabelValues(lvs...)
+	require.NoError(t, err)
+	gm := promgo.Metric{}
+	require.NoError(t, m.Write(&gm))
+	return gm.Histogram.GetSampleCount()
 }

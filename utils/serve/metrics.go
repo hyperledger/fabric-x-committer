@@ -29,6 +29,14 @@ type ServerMetrics struct {
 	// ActiveConnections is incremented when the server accepts a connection and decremented
 	// when it is torn down, so it reflects the number of connections currently open.
 	ActiveConnections prometheus.Gauge
+	// MessageReceivedSizeBytes observes the wire size of each message that arrived and decoded
+	// successfully: the compressed payload plus gRPC framing, excluding HTTP/2 framing.
+	// Its "_count" time series acts as a throughput counter for successfully received messages.
+	MessageReceivedSizeBytes *prometheus.HistogramVec
+	// MessageSentSizeBytes observes the wire size of each message successfully written to the
+	// transport, on the same basis as MessageReceivedSizeBytes. Its "_count" time series
+	// acts as a throughput counter for successfully sent messages.
+	MessageSentSizeBytes *prometheus.HistogramVec
 }
 
 const method = "method"
@@ -68,5 +76,19 @@ func NewServerMetrics(p *monitoring.Provider, params monitoring.MetricsParameter
 			Name:      "active_connections",
 			Help:      "Number of client connections currently open on the server",
 		}),
+		MessageReceivedSizeBytes: p.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: params.Namespace,
+			Subsystem: params.Subsystem,
+			Name:      "message_received_size_bytes",
+			Help:      "Distribution of the wire sizes in bytes of messages received by the server.",
+			Buckets:   monitoring.MessageSizeBuckets,
+		}, []string{method}),
+		MessageSentSizeBytes: p.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: params.Namespace,
+			Subsystem: params.Subsystem,
+			Name:      "message_sent_size_bytes",
+			Help:      "Distribution of the wire sizes in bytes of messages sent by the server.",
+			Buckets:   monitoring.MessageSizeBuckets,
+		}, []string{method}),
 	}
 }

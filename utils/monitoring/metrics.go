@@ -37,18 +37,28 @@ type (
 	}
 )
 
-// LatencyBuckets are the shared histogram bucket boundaries (seconds) for the gRPC request-latency
-// metric, so those histograms are comparable across services. It reaches 10s to cover slow RPCs;
-// components timing shorter internal work (e.g. VC and dependency-graph batches) keep their own
-// narrower buckets.
-var LatencyBuckets = []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1, 2, 3, 4, 5, 10}
+var (
+	// LatencyBuckets are the shared histogram bucket boundaries (seconds) for the gRPC request-latency
+	// metric, so those histograms are comparable across services. It reaches 10s to cover slow RPCs;
+	// components timing shorter internal work (e.g. VC and dependency-graph batches) keep their own
+	// narrower buckets.
+	LatencyBuckets = []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1, 2, 3, 4, 5, 10}
 
-// StreamDurationBuckets are the histogram bucket boundaries (seconds) for the gRPC stream-duration
-// metric. Streams (notification subscriptions, verification streams, health watches) stay open from
-// well under a second to hours, so the buckets span that range rather than reusing LatencyBuckets,
-// whose 10s ceiling would collapse every long-lived stream into the +Inf bucket. The range is 0.1s
-// to 6h.
-var StreamDurationBuckets = []float64{.1, .5, 1, 5, 15, 30, 60, 120, 300, 600, 1800, 3600, 10800, 21600}
+	// StreamDurationBuckets are the histogram bucket boundaries (seconds) for the gRPC stream-duration
+	// metric. Streams (notification subscriptions, verification streams, health watches) stay open from
+	// well under a second to hours, so the buckets span that range rather than reusing LatencyBuckets,
+	// whose 10s ceiling would collapse every long-lived stream into the +Inf bucket. The range is 0.1s
+	// to 6h.
+	StreamDurationBuckets = []float64{.1, .5, 1, 5, 15, 30, 60, 120, 300, 600, 1800, 3600, 10800, 21600}
+
+	// MessageSizeBuckets defines boundaries for gRPC wire-size histograms (in bytes).
+	// They range from 8B (which covers the 5-byte minimum gRPC header) up to 100MiB,
+	// matching the explicit connection.MaxMsgSize limit.
+	MessageSizeBuckets = []float64{
+		8, 32, 128, 512, 2 << 10, 8 << 10, 32 << 10, 128 << 10,
+		512 << 10, 2 << 20, 8 << 20, 32 << 20, 64 << 20, 100 << 20,
+	}
+)
 
 // NewThroughputMetrics creates a new prometheus throughput counter.
 func NewThroughputMetrics(p *Provider, params MetricsParameters) *ThroughputMetrics {

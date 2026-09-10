@@ -30,6 +30,8 @@ The following Sidecar metrics are exported for consumption by Prometheus.
 | sidecar_grpc_stream_duration_seconds                       | histogram | method status                    | The duration (seconds) a stream was active from start to end, by method and gRPC status code                                                             |
 | sidecar_grpc_active_streams                                | gauge     | method                           | Number of gRPC streams currently open on the server                                                                                                      |
 | sidecar_grpc_active_connections                            | gauge     |                                  | Number of client connections currently open on the server                                                                                                |
+| sidecar_grpc_message_received_size_bytes                   | histogram | method                           | Distribution of the wire sizes in bytes of messages received by the server.                                                                              |
+| sidecar_grpc_message_sent_size_bytes                       | histogram | method                           | Distribution of the wire sizes in bytes of messages sent by the server.                                                                                  |
 | sidecar_ledger_append_block_seconds                        | histogram |                                  | Time spent appending a block to the ledger.                                                                                                              |
 | sidecar_ledger_block_height                                | gauge     |                                  | The current block height of the ledger.                                                                                                                  |
 | sidecar_relay_transaction_in_total                         | counter   |                                  | Total number of transactions received from the orderer.                                                                                                  |
@@ -70,6 +72,8 @@ The following Coordinator metrics are exported for consumption by Prometheus.
 | coordinator_grpc_stream_duration_seconds                                               | histogram | method status | The duration (seconds) a stream was active from start to end, by method and gRPC status code                  |
 | coordinator_grpc_active_streams                                                        | gauge     | method        | Number of gRPC streams currently open on the server                                                           |
 | coordinator_grpc_active_connections                                                    | gauge     |               | Number of client connections currently open on the server                                                     |
+| coordinator_grpc_message_received_size_bytes                                           | histogram | method        | Distribution of the wire sizes in bytes of messages received by the server.                                   |
+| coordinator_grpc_message_sent_size_bytes                                               | histogram | method        | Distribution of the wire sizes in bytes of messages sent by the server.                                       |
 | coordinator_verifier_connection_status                                                 | gauge     | grpc_target   | Connection status to verifier service by grpc target (1 = connected, 0 = disconnected).                       |
 | coordinator_verifier_connection_failure_total                                          | counter   | grpc_target   | Total number of connection failures to verifier service. Short-lived failures may not always be captured.     |
 | coordinator_verifier_transaction_processed_total                                       | counter   |               | Total number of transactions processed by the manager.                                                        |
@@ -113,6 +117,8 @@ The following Verifier metrics are exported for consumption by Prometheus.
 | verifier_server_grpc_stream_duration_seconds      | histogram | method status | The duration (seconds) a stream was active from start to end, by method and gRPC status code |
 | verifier_server_grpc_active_streams               | gauge     | method        | Number of gRPC streams currently open on the server                                          |
 | verifier_server_grpc_active_connections           | gauge     |               | Number of client connections currently open on the server                                    |
+| verifier_server_grpc_message_received_size_bytes  | histogram | method        | Distribution of the wire sizes in bytes of messages received by the server.                  |
+| verifier_server_grpc_message_sent_size_bytes      | histogram | method        | Distribution of the wire sizes in bytes of messages sent by the server.                      |
 | verifier_server_parallel_executor_active_requests | gauge     |               | The total number of active requests                                                          |
 
 ## Validator-Committer Metrics
@@ -128,6 +134,8 @@ The following Validator-Committer metrics are exported for consumption by Promet
 | vcservice_grpc_stream_duration_seconds                                       | histogram | method status | The duration (seconds) a stream was active from start to end, by method and gRPC status code                |
 | vcservice_grpc_active_streams                                                | gauge     | method        | Number of gRPC streams currently open on the server                                                         |
 | vcservice_grpc_active_connections                                            | gauge     |               | Number of client connections currently open on the server                                                   |
+| vcservice_grpc_message_received_size_bytes                                   | histogram | method        | Distribution of the wire sizes in bytes of messages received by the server.                                 |
+| vcservice_grpc_message_sent_size_bytes                                       | histogram | method        | Distribution of the wire sizes in bytes of messages sent by the server.                                     |
 | vcservice_committed_transaction_total                                        | counter   |               | The total number of transactions committed                                                                  |
 | vcservice_mvcc_conflict_total                                                | counter   |               | The total number of transactions that failed due to MVCC conflict                                           |
 | vcservice_duplicate_transaction_total                                        | counter   |               | The total number of duplicate transactions                                                                  |
@@ -157,6 +165,8 @@ The following Query Service metrics are exported for consumption by Prometheus.
 | queryservice_grpc_stream_duration_seconds                | histogram | method status | The duration (seconds) a stream was active from start to end, by method and gRPC status code |
 | queryservice_grpc_active_streams                         | gauge     | method        | Number of gRPC streams currently open on the server                                          |
 | queryservice_grpc_active_connections                     | gauge     |               | Number of client connections currently open on the server                                    |
+| queryservice_grpc_message_received_size_bytes            | histogram | method        | Distribution of the wire sizes in bytes of messages received by the server.                  |
+| queryservice_grpc_message_sent_size_bytes                | histogram | method        | Distribution of the wire sizes in bytes of messages sent by the server.                      |
 | queryservice_grpc_key_requested_total                    | counter   |               | Number of keys requested by the service                                                      |
 | queryservice_grpc_key_responded_total                    | counter   |               | Number of keys responded by the service                                                      |
 | queryservice_database_processing_sessions                | gauge     | session       | Number of processing sessions in the service                                                 |
@@ -170,18 +180,20 @@ The following Query Service metrics are exported for consumption by Prometheus.
 
 The following Snapshot Hasher metrics are exported for consumption by Prometheus.
 
-| Name                                         | Type      | Labels        | Description                                                                                                                     |
-|----------------------------------------------|-----------|---------------|---------------------------------------------------------------------------------------------------------------------------------|
-| snapshothasher_hash_jobs_completed_total     | counter   |               | Number of snapshot hash jobs that published a digest.                                                                           |
-| snapshothasher_hash_jobs_failed_total        | counter   |               | Number of snapshot hash jobs that ended without publishing a digest.                                                            |
-| snapshothasher_hash_started_total            | counter   |               | Number of snapshot hash attempts that began; its gap against duration_seconds_count plus jobs_failed_total is a hash in flight. |
-| snapshothasher_poll_errors_total             | counter   |               | Number of polls that failed before a hash job could be started or skipped.                                                      |
-| snapshothasher_hash_duration_seconds         | histogram |               | Time taken to hash a snapshot clone database.                                                                                   |
-| snapshothasher_grpc_requests_total           | counter   | method        | Number of RPCs started by the service                                                                                           |
-| snapshothasher_grpc_requests_latency_seconds | histogram | method status | The latency (seconds) of requests by the service, by method and gRPC status code                                                |
-| snapshothasher_grpc_stream_duration_seconds  | histogram | method status | The duration (seconds) a stream was active from start to end, by method and gRPC status code                                    |
-| snapshothasher_grpc_active_streams           | gauge     | method        | Number of gRPC streams currently open on the server                                                                             |
-| snapshothasher_grpc_active_connections       | gauge     |               | Number of client connections currently open on the server                                                                       |
+| Name                                            | Type      | Labels        | Description                                                                                                                     |
+|-------------------------------------------------|-----------|---------------|---------------------------------------------------------------------------------------------------------------------------------|
+| snapshothasher_hash_jobs_completed_total        | counter   |               | Number of snapshot hash jobs that published a digest.                                                                           |
+| snapshothasher_hash_jobs_failed_total           | counter   |               | Number of snapshot hash jobs that ended without publishing a digest.                                                            |
+| snapshothasher_hash_started_total               | counter   |               | Number of snapshot hash attempts that began; its gap against duration_seconds_count plus jobs_failed_total is a hash in flight. |
+| snapshothasher_poll_errors_total                | counter   |               | Number of polls that failed before a hash job could be started or skipped.                                                      |
+| snapshothasher_hash_duration_seconds            | histogram |               | Time taken to hash a snapshot clone database.                                                                                   |
+| snapshothasher_grpc_requests_total              | counter   | method        | Number of RPCs started by the service                                                                                           |
+| snapshothasher_grpc_requests_latency_seconds    | histogram | method status | The latency (seconds) of requests by the service, by method and gRPC status code                                                |
+| snapshothasher_grpc_stream_duration_seconds     | histogram | method status | The duration (seconds) a stream was active from start to end, by method and gRPC status code                                    |
+| snapshothasher_grpc_active_streams              | gauge     | method        | Number of gRPC streams currently open on the server                                                                             |
+| snapshothasher_grpc_active_connections          | gauge     |               | Number of client connections currently open on the server                                                                       |
+| snapshothasher_grpc_message_received_size_bytes | histogram | method        | Distribution of the wire sizes in bytes of messages received by the server.                                                     |
+| snapshothasher_grpc_message_sent_size_bytes     | histogram | method        | Distribution of the wire sizes in bytes of messages sent by the server.                                                         |
 
 ## Load Generator Metrics
 
