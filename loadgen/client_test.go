@@ -28,6 +28,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/mock"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator"
+	"github.com/hyperledger/fabric-x-committer/service/query"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
 	"github.com/hyperledger/fabric-x-committer/service/vc"
 	"github.com/hyperledger/fabric-x-committer/service/verifier"
@@ -117,6 +118,58 @@ func TestLoadGenForVCService(t *testing.T) {
 			e.testLoadGenerator(t)
 		})
 	}
+}
+
+// TestLoadGenWithRealQueryService is the first loadgen test to exercise a real state DB (it needs the
+// shared test DB container, like the service/vc and service/query service tests). It proves the loadgen's
+// query stage actually dials and queries a real service/query instance over the wire, mirroring
+// TestLoadGenForVCService's VC setup but adding a query service backed by the same database.
+//
+// Version HITS are intentionally not required here: key-backref-rate is left at its default (0), so every
+// read draws a fresh key, queries always miss, and reads keep nil versions -- meaning no aborts. Proving
+// hits land correctly is the integration test's job; this test only proves the wire is connected.
+func TestLoadGenWithRealQueryService(t *testing.T) {
+	t.Parallel()
+	e := newLoadGenClientTestEnv(t, loadGenTestCase{serverTLSMode: connection.NoneTLSMode})
+
+	env := vc.NewValidatorAndCommitServiceTestEnv(t, &vc.TestEnvOpts{
+		NumServices: 1, ServerCreds: e.serverTLSConfig,
+	})
+	e.clientConf.Adapter.VCClient = test.NewTLSMultiClientConfig(e.clientTLSConfig, env.Endpoints...)
+
+	querySrvConf := test.NewLocalHostServiceConfig(e.serverTLSConfig)
+	qs := query.NewQueryService(&query.Config{
+		Database: env.DBEnv.DBConf,
+		// The loadgen's single query worker issues one small query at a time and blocks on it before
+		// generating the next batch, so a batch never fills to MinBatchKeys and every query flushes on the
+		// MaxBatchWait timer instead. Keep that wait small: at 1s each serial query would throttle
+		// generation to ~1 tx/s, far below the throughput this test asserts within its deadline.
+		MinBatchKeys:          5,
+		MaxBatchWait:          10 * time.Millisecond,
+		ViewAggregationWindow: time.Minute,
+		MaxViewTimeout:        time.Minute,
+		MaxAggregatedViews:    5,
+		MaxActiveViews:        4096,
+		MaxRequestKeys:        10000,
+		TLSRefreshInterval:    100 * time.Millisecond,
+	})
+	test.RunServiceAndServeForTest(t.Context(), t, qs, querySrvConf)
+
+	e.clientConf.QueryClient = test.NewTLSMultiClientConfig(e.clientTLSConfig, &querySrvConf.GRPC.Endpoint)
+	e.clientConf.LoadProfile.Transaction.ReadOnlyCount = 1
+	e.clientConf.LoadProfile.Transaction.QueriesRate = 1
+
+	e.testLoadGenerator(t)
+
+	queryMetricsURL, err := monitoring.MakeMetricsURL(querySrvConf.HTTP.Endpoint.Address(), &e.clientTLSConfig)
+	require.NoError(t, err)
+	queryMetricsTLSConfig := test.MustGetTLSConfig(t, &e.clientTLSConfig)
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		v := test.GetMetricValueFromURL(
+			ct, queryMetricsURL, "queryservice_grpc_key_requested_total", queryMetricsTLSConfig,
+		)
+		assert.Positive(ct, v)
+	}, 2*time.Minute, time.Second)
 }
 
 func TestLoadGenForVerifier(t *testing.T) {
