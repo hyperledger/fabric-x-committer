@@ -135,17 +135,27 @@ func (c *transactionCommitter) commitTransactions(
 	}
 
 	for range maxRetriesToRemoveAllInvalidTxs {
+		// Re-read every attempt: the retry loop below can drop the write as a duplicate
+		// txID, and a dropped write must not advance the `_snapshot` record.
+		checkpoint, cpErr := checkpointWriteInBatch(vTx)
+		if cpErr != nil {
+			return nil, fmt.Errorf("failed to read the checkpoint write before commit: %w", cpErr)
+		}
+
 		// Group the writes by namespace so that we can commit to each table independently.
 		info := &statesToBeCommitted{
 			updateWrites: groupWritesByNamespace(vTx.validTxNonBlindWrites),
 			newWrites:    groupWritesByNamespace(vTx.newWrites),
 			batchStatus:  prepareStatusForCommit(vTx),
 			txIDToHeight: vTx.txIDToHeight,
+			checkpoint:   checkpoint,
 		}
 
+		// ErrNonRetryable is terminal: the only errors that wrap it here are broken
+		// invariants around the checkpointed `_snapshot` record, which no retry can fix.
 		res, retryErr := retry.ExecuteWithResult(ctx, db.retryProfile, func() (*commitResult, error) {
 			return db.commit(ctx, info)
-		})
+		}, retry.ErrNonRetryable)
 		if retryErr != nil {
 			return nil, retryErr
 		}
@@ -161,6 +171,7 @@ func (c *transactionCommitter) commitTransactions(
 			if err := c.setCorrectStatusForDuplicateTxID(ctx, db, info.batchStatus, info.txIDToHeight); err != nil {
 				return nil, fmt.Errorf("failed to set correct status for duplicate txs: %w", err)
 			}
+			info.batchStatus.CheckpointFeedback = vTx.checkpointFeedback
 			return info.batchStatus, nil
 		}
 

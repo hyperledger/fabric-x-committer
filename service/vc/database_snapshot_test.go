@@ -595,14 +595,25 @@ func commitFreshSnapshotTx(
 }
 
 // requireSnapshotStatus asserts the committed _snapshot record for txID is at the
-// wanted status.
+// wanted status. An optional wantErrSubstring asserts the record's error field too: an
+// empty string requires no error is recorded, so a case that expects a clean record
+// cannot pass while carrying a stale divergence.
 func requireSnapshotStatus(
 	t *testing.T, env *DatabaseTestEnv, txID string, want committerpb.SnapshotState_Status,
+	wantErrSubstring ...string,
 ) {
 	t.Helper()
 	record, found := env.ReadSnapshotRecord(t.Context(), txID)
 	require.True(t, found)
 	require.Equal(t, want, record.State.Status)
+	if len(wantErrSubstring) == 0 {
+		return
+	}
+	if wantErrSubstring[0] == "" {
+		require.Empty(t, record.State.Error)
+		return
+	}
+	require.Contains(t, record.State.Error, wantErrSubstring[0])
 }
 
 func TestUpdateSnapshotStateSetsErrorMessage(t *testing.T) {

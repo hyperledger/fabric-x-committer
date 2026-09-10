@@ -150,6 +150,12 @@ waiting-txs-limit: 20_000_000
 # by reducing channel contention but increase memory usage.
 # Default: 100
 channel-buffer-size: 100
+# How long the sidecar pauses block intake before re-fetching a checkpoint block that the
+# validator-committer held because the snapshot hash it attests to was still being
+# computed. The hash is published by the snapshot hasher on its own poll interval, so a
+# shorter wait only re-reads the same unfinished state.
+# Default: 1m
+checkpoint-hold-retry-interval: 1m
 
 # Logging configuration
 logging:
