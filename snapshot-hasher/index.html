@@ -1,0 +1,1879 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="High-throughput transaction validation and commit for Hyperledger Fabric-X">
+      
+      
+      
+        <link rel="canonical" href="https://hyperledger.github.io/fabric-x-committer/snapshot-hasher/">
+      
+      
+        <link rel="prev" href="../query-service/">
+      
+      
+        <link rel="next" href="../notification-service/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Snapshot Hasher - Fabric-X Committer</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#snapshot-hasher" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Fabric-X Committer" class="md-header__button md-logo" aria-label="Fabric-X Committer" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Fabric-X Committer
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Snapshot Hasher
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/hyperledger/fabric-x-committer" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    hyperledger/fabric-x-committer
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../setup/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../cli/committer/" class="md-tabs__link">
+          
+  
+  
+  CLI Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../deployment-guide/" class="md-tabs__link">
+          
+  
+  
+  Deployment
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../sidecar/" class="md-tabs__link">
+          
+  
+  
+  Services
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../tls-configurations/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../core-concurrency-pattern/" class="md-tabs__link">
+          
+  
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Fabric-X Committer" class="md-nav__button md-logo" aria-label="Fabric-X Committer" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Fabric-X Committer
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/hyperledger/fabric-x-committer" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    hyperledger/fabric-x-committer
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CLI Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/committer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    committer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../performance-tuning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance Tuning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Services
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Services
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sidecar/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sidecar
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../coordinator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coordinator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../verification-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Verifier
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../validator-committer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validator-Committer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../query-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Query Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Snapshot Hasher
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Snapshot Hasher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-why-a-separate-service" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Why a Separate Service
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-scheduling-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Scheduling Model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-snapshot-record-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Snapshot Record Lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-hash-computation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Hash Computation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-failure-and-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Failure and Recovery
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Failure and Recovery">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-known-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Known Limitations
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../notification-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Notification Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tls-configurations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TLS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../logging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Logging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metrics_reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metrics Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../namespace-policy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Namespace Policy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../core-concurrency-pattern/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Concurrency Pattern
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../loadgen-artifacts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Load Generator Artifacts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-why-a-separate-service" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Why a Separate Service
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-scheduling-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Scheduling Model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-snapshot-record-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Snapshot Record Lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-hash-computation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Hash Computation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-failure-and-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Failure and Recovery
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Failure and Recovery">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-known-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Known Limitations
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<!--
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
+<h1 id="snapshot-hasher">Snapshot Hasher<a class="headerlink" href="#snapshot-hasher" title="Permanent link">&para;</a></h1>
+<ol>
+<li><a href="#1-overview">Overview</a></li>
+<li><a href="#2-why-a-separate-service">Why a Separate Service</a></li>
+<li><a href="#3-scheduling-model">Scheduling Model</a></li>
+<li><a href="#4-snapshot-record-lifecycle">Snapshot Record Lifecycle</a></li>
+<li><a href="#5-hash-computation">Hash Computation</a></li>
+<li><a href="#6-configuration">Configuration</a></li>
+<li><a href="#7-failure-and-recovery">Failure and Recovery</a></li>
+<li><a href="#8-known-limitations">Known Limitations</a></li>
+</ol>
+<h2 id="1-overview">1. Overview<a class="headerlink" href="#1-overview" title="Permanent link">&para;</a></h2>
+<p>The snapshot hasher turns a committed <code>_snapshot</code> record into a content hash of the
+snapshot's clone database. It is the only component that hashes snapshots. It is named
+for what it does, and deliberately not "snapshot service": it never creates a snapshot
+or its clone — the validator-committer does that on the commit path.</p>
+<p>It exposes no RPCs of its own. Work reaches it exclusively through the state
+database: the validator-committer (VC) commits a <code>_snapshot</code> record together with its
+clone, and this service discovers that record on a later poll. Its gRPC server exists
+only so the service can be health-checked the same way as every other service.</p>
+<p>Implementation: <a href="/service/snapshothasher">service/snapshothasher</a>. The durable record contract it
+shares with the VC lives in
+<a href="/utils/statedb/snapshot_state.go">utils/statedb/snapshot_state.go</a>, next to the schema
+it reads.</p>
+<h2 id="2-why-a-separate-service">2. Why a Separate Service<a class="headerlink" href="#2-why-a-separate-service" title="Permanent link">&para;</a></h2>
+<p>Hashing a snapshot is a full scan of every hashed table in a clone. It is neither part
+of committing a transaction nor something that several processes should attempt at
+once, so it is deployed as <strong>one instance</strong> alongside any number of VCs.</p>
+<p>That single-instance deployment is what keeps the design simple. With exactly one
+scheduler in the system, and hashing running inline on its polling goroutine, one
+snapshot is hashed at a time and no cross-process exclusion is needed — no lease, no
+ownership token, no leader election. Running a second instance is a deployment error;
+because a clone is immutable and the digest is deterministic, the symptom is duplicate
+work writing the same digest, not a corrupted record.</p>
+<p>The VC's only snapshot duty is therefore to make the record durable atomically with
+its clone. See <a href="../validator-committer/#task-4-creating-state-snapshots-clone-first">Creating State Snapshots</a>.</p>
+<h2 id="3-scheduling-model">3. Scheduling Model<a class="headerlink" href="#3-scheduling-model" title="Permanent link">&para;</a></h2>
+<p>The hasher polls the latest <code>_snapshot</code> record every <code>poll-interval</code> and hashes it
+whenever it still needs hashing. Nothing notifies it, so:</p>
+<ul>
+<li>hashing begins within one interval of the snapshot committing;</li>
+<li>after a restart, the first check happens one interval in;</li>
+<li>one path covers a fresh snapshot, one the coordinator resubmitted, and one orphaned
+  mid-hash by a restart — they differ only in the status the tick reads.</li>
+</ul>
+<p>Hashing runs inline, so a job that outlives the interval delays the next check rather
+than starting a second hash.</p>
+<p>The latest-snapshot pointer in the <code>metadata</code> table is what makes discovery a single
+key lookup instead of a scan of the growing <code>ns__snapshot</code> table. The VC writes that
+pointer in the same transaction as the record it names, so the pointer never names a
+row that did not commit.</p>
+<h2 id="4-snapshot-record-lifecycle">4. Snapshot Record Lifecycle<a class="headerlink" href="#4-snapshot-record-lifecycle" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Status read by a tick</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PENDING</code></td>
+<td>Hash it: this is a snapshot the VC just committed</td>
+</tr>
+<tr>
+<td><code>IN_PROGRESS</code></td>
+<td>Hash it: the only way this is seen is a job orphaned by a restart</td>
+</tr>
+<tr>
+<td><code>FAILED</code></td>
+<td>Hash it again: a clone is immutable, so a retry cannot produce a different digest</td>
+</tr>
+<tr>
+<td><code>COMPLETED</code></td>
+<td>Leave untouched — the digest is already published</td>
+</tr>
+<tr>
+<td><code>CHECKPOINTED</code></td>
+<td>Leave untouched — re-hashing could only undo the checkpoint</td>
+</tr>
+</tbody>
+</table>
+<p>Two conditions stop the service instead of being retried:</p>
+<ul>
+<li><strong>A committed record whose clone is not there to hash.</strong> The clone is created before
+  its snapshot transaction commits, so a committed record always names a clone that
+  exists. Neither shape of absence — no <code>clone_database</code> recorded, or a recorded name
+  whose database is gone — can be produced by this system, which leaves external
+  interference or storage corruption. No retry repairs either, and recording a failed
+  attempt on the record would invite a later tick to treat it as retryable work, so the
+  service stops and leaves the record as evidence.</li>
+<li><strong>A record with no <code>TxRef</code></strong> is a hard error, because a record that cannot be named
+  cannot be driven; treating it as "nothing to do" would stall hashing silently.</li>
+</ul>
+<p>A missing clone database is reported on the first attempt rather than after the
+database retry budget: <code>statedb.NewPool</code> treats SQLSTATE 3D000 (<code>invalid_catalog_name</code>)
+as terminal, since a database that does not exist will not appear on a later attempt.</p>
+<p>A failed hash records its cause on the record itself, so an operator sees why without
+reading this hasher's log, and the next tick retries it.</p>
+<h2 id="5-hash-computation">5. Hash Computation<a class="headerlink" href="#5-hash-computation" title="Permanent link">&para;</a></h2>
+<p>The digest is a SHA-256 over the clone's committed content, computed so that identical
+clone content always yields an identical digest:</p>
+<ul>
+<li>The hashed set follows one rule: <strong>hash what every organization's clone must agree
+  on, and exclude what each organization derives locally.</strong> It is every user
+  namespace's <code>ns_&lt;id&gt;</code> table (from <code>ns__meta</code>, the authoritative namespace registry),
+  plus the fixed tables <code>ns__config</code>, <code>ns__meta</code>, <code>tx_status</code>, and <code>ns__checkpoint</code>.<ul>
+<li><code>ns__checkpoint</code> is included: a checkpoint is committed by an ordered, endorsed
+  transaction, so it holds the same content at the same height everywhere. There is
+  no cycle — the checkpoint for a snapshot commits only after that snapshot's digest
+  exists, so it can appear in a later clone but never in its own.</li>
+<li><code>metadata</code> is excluded, and cannot be included: <code>last committed block number</code> is
+  written by each sidecar on its own <code>last-committed-block-set-interval</code>, so two
+  organizations holding byte-identical committed state still hold different values
+  when a clone is taken.</li>
+<li><code>ns__snapshot</code> is excluded: it is this service's own hashing progress, written
+  while the hash runs.</li>
+</ul>
+</li>
+</ul>
+<p>Excluding those two costs nothing, because neither is state a node bootstrapped from a
+  snapshot needs: <code>ns__snapshot</code> records one organization's hashing progress, and
+  <code>metadata</code> is local bookkeeping the new node rebuilds as it runs. Where a value is
+  genuinely needed — <code>last committed block number</code> — it can be set during bootstrap from
+  the snapshot's own height rather than carried in the digest.
+- Each table is scanned in primary-key order in bounded pages (keyset pagination), so
+  worker memory stays bounded on large tables and the scan is served by the primary-key
+  index with no sort step.
+- Rows are folded in with length-prefixed encoding (<code>len(key)||key||len(value)||value</code>),
+  which prevents boundary collisions between adjacent keys and values.
+- Per-table digests are combined in a fixed order — <code>ns__config</code>, <code>ns__meta</code>,
+  <code>tx_status</code>, <code>ns__checkpoint</code>, then user namespaces in <code>ns__meta</code> key order — so the
+  result does not depend on which table finished first.</p>
+<p>Only the combined root hash is persisted today. Localizing a divergence between
+organizations — per-table digests, then a Merkle Patricia trie over a table's rows — is
+planned work for this service and does not change this encoding. That work is still
+hashing, only at a finer granularity, so it fits the service's name rather than
+outgrowing it.</p>
+<h2 id="6-configuration">6. Configuration<a class="headerlink" href="#6-configuration" title="Permanent link">&para;</a></h2>
+<p>Sample: <a href="/cmd/config/samples/snapshot-hasher.yaml">cmd/config/samples/snapshot-hasher.yaml</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>database</code></td>
+<td>—</td>
+<td>State-database connection. <code>max-connections</code> sizes only the record poll (one statement at a time); each clone gets its own short-lived pool instead, sized from <code>max-workers-for-hash</code></td>
+</tr>
+<tr>
+<td><code>poll-interval</code></td>
+<td><code>1m</code></td>
+<td>How often the latest snapshot record is re-read; also the scheduling latency and the restart resume delay</td>
+</tr>
+<tr>
+<td><code>resource-limits.max-workers-for-hash</code></td>
+<td><code>4</code></td>
+<td>Tables hashed in parallel within one job, and therefore the clone pool's connection count</td>
+</tr>
+<tr>
+<td><code>resource-limits.hash-batch-size</code></td>
+<td><code>1000</code></td>
+<td>Rows fetched per round-trip while scanning a table</td>
+</tr>
+</tbody>
+</table>
+<p>Tuning guidance: <a href="../performance-tuning/#8-snapshot-hasher">Performance Tuning — Snapshot Hasher</a>.</p>
+<p>Start it with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>./bin/committer<span class="w"> </span>start<span class="w"> </span>snapshot-hasher<span class="w"> </span>--config<span class="w"> </span>&lt;config-file&gt;
+</code></pre></div>
+<h2 id="7-failure-and-recovery">7. Failure and Recovery<a class="headerlink" href="#7-failure-and-recovery" title="Permanent link">&para;</a></h2>
+<p>The hasher holds no state of its own; the <code>_snapshot</code> record is the state.</p>
+<ul>
+<li><strong>Restart mid-hash.</strong> The record is left <code>IN_PROGRESS</code> and the partial digest is
+  discarded. The first tick after restart re-reads that record and hashes it from
+  scratch. Because the clone is immutable, the recomputed digest is the same one the
+  interrupted attempt would have produced.</li>
+<li><strong>Transient database or clone failure.</strong> The tick logs the failure and records it on
+  the record; the loop keeps running and the next tick retries. A failure never stops
+  the service, because the durable record is still there to be picked up.</li>
+<li><strong>Hasher down entirely.</strong> Ordinary transaction commit is unaffected — the VC never
+  calls this service and never waits on it. Only snapshotting stalls: the outstanding
+  record is not hashed, so it never reaches <code>CHECKPOINTED</code>, and the VC rejects further
+  snapshot requests until the hasher returns and drives that record to <code>COMPLETED</code>. So
+  at most one snapshot is outstanding while the hasher is down, not a backlog of them.</li>
+<li><strong>A record the hasher refuses to drive.</strong> The service exits, so a supervisor's restart
+  loop and the exit message are the signal. Because checkpointing proceeds only from a
+  <code>COMPLETED</code> record, the snapshot stalls rather than being checkpointed without a
+  digest, and the VC keeps rejecting new snapshots until the latest one is
+  <code>CHECKPOINTED</code> — so this needs an operator, and the exit message names the record and
+  the clone it could not hash.</li>
+<li><strong>A record taken over mid-hash.</strong> A checkpoint transaction can commit for a slow
+  organization while its hasher is still scanning, and a second hasher (a deployment
+  error) can publish first. Every status write names the statuses it was decided
+  against, so a job whose record has moved has its write rejected rather than applied —
+  publishing a digest over a <code>CHECKPOINTED</code> record would undo the checkpoint. This is
+  logged and left uncounted: the next tick re-reads the record and decides again from
+  its new status.</li>
+</ul>
+<h3 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h3>
+<p><code>snapshothasher_poll_errors_total</code> is the metric to alert on: it counts ticks that
+could not determine whether there is work at all (state database unreachable, a
+pointer that names no row, a record that does not decode). The hash-job counters
+cannot express those — such a tick completes no job and fails none — so without it a
+service whose database is down looks the same as an idle one.</p>
+<p><code>snapshothasher_hash_started_total</code> covers the opposite blind spot. Hashing a clone is
+a full scan and can run for many minutes, but <code>snapshothasher_hash_duration_seconds</code> is
+observed only once a scan returns, so a hash in flight would otherwise look like an idle
+service. Counting starts separately makes it a gap against the terminal counters:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># A hash started and has neither computed a digest nor recorded a failure.</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nv">snapshothasher_hash_started_total</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="o">(</span><span class="nv">snapshothasher_hash_duration_seconds_count</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nv">snapshothasher_hash_jobs_failed_total</span><span class="o">)</span>
+</code></pre></div>
+<p><code>jobs_failed_total</code> belongs in that sum because a failed hash never reaches the
+histogram — the failure is recorded before the duration is observed — so comparing
+starts against <code>duration_seconds_count</code> alone would report a permanent in-flight hash
+after the first failure.</p>
+<p>A value of 1 is a hash running normally; alert on a sustained difference, since that is
+what separates a long scan from a stuck one. Two things this cannot do: a hash lost to a
+killed process shows up only after the fact, from the stored series, because an
+in-process counter resets to zero along with every other one and a fresh start therefore
+looks idle; and elapsed time is inferred from how long the difference persists rather
+than read directly, which is why the alert belongs in a rule's <code>for:</code> clause rather than
+in the expression.</p>
+<p>A second gap separates a digest that was computed from one that was published:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># A digest was computed but never published: the record was taken over mid-hash, or the</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="c1"># COMPLETED write failed.</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nv">snapshothasher_hash_duration_seconds_count</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="o">-</span><span class="w"> </span><span class="o">(</span><span class="nv">snapshothasher_hash_jobs_completed_total</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nv">snapshothasher_hash_jobs_failed_total</span><span class="o">)</span>
+</code></pre></div>
+<p>This is the symptom of a second hasher running against the same state database, which is
+a deployment error: both processes hash the same immutable clone, and the one that
+publishes second has its write rejected. Nothing is corrupted — the digest is
+deterministic — but the wasted work is otherwise visible only in the logs.</p>
+<p>See <a href="../metrics_reference/">Metrics Reference</a>.</p>
+<h2 id="8-known-limitations">8. Known Limitations<a class="headerlink" href="#8-known-limitations" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>No digest algorithm version is recorded.</strong> Any future change to the hashed set or
+  the encoding — for example the planned per-table digests and Merkle Patricia trie —
+  would make an already-committed checkpoint unverifiable, because a re-ingesting node
+  has no way to know which algorithm produced that digest. The version belongs in the
+  checkpoint transaction payload, which is the artifact organizations agree on and the
+  one re-ingestion reads; that payload is not defined yet.</li>
+<li><strong>Terminal abort handling is not here yet.</strong> A <code>FAILED</code> record is always retried, so
+  a snapshot that can never be hashed — a clone lost for good, say — has no terminal
+  resting state. An <code>ABORTED</code> status and an abort snapshot transaction, which is what
+  makes an abort reproducible under re-ingestion, are the immediate next change.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
