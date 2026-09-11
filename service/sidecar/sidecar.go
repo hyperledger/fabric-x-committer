@@ -50,13 +50,16 @@ var logger = flogging.MustGetLogger("sidecar")
 // it aggregates the transaction status and forwards the validated block to clients who have
 // registered on the ledger server.
 //   - Implements peer.DeliverServer by streaming blocks from a blockStore.
-//   - Implements committerpb.BlockQueryServiceServer by delegating
-//     read-only queries directly to the underlying block store.
+//   - Implements committerpb.SidecarServiceServer: block-store reads are served
+//     here, event streams by the embedded notifier, and RPCs the sidecar does not
+//     implement yet fall through to the notifier's UnimplementedSidecarServiceServer.
 type Service struct {
-	committerpb.UnimplementedBlockQueryServiceServer
+	// Embedded so the notifier's stream RPCs and the Unimplemented fallbacks are
+	// promoted onto Service. The field keeps the name `notifier`, so existing
+	// s.notifier call sites are unaffected.
+	*notifier
 	deliveryParams deliverorderer.Parameters
 	relay          *relay
-	notifier       *notifier
 	blockStore     *blockStore
 	coordConn      *grpc.ClientConn
 	queues         *queues
@@ -210,9 +213,10 @@ func (s *Service) Run(ctx context.Context) error {
 
 // RegisterService registers the sidecar's gRPC services and monitoring server.
 func (s *Service) RegisterService(srv serve.Servers) {
+	committerpb.RegisterSidecarServiceServer(srv.GRPC, s)
+	// Fabric block delivery keeps its own service so Fabric clients dial the
+	// sidecar with the wire contract they already implement.
 	peer.RegisterDeliverServer(srv.GRPC, s)
-	committerpb.RegisterBlockQueryServiceServer(srv.GRPC, s)
-	committerpb.RegisterNotifierServer(srv.GRPC, s.notifier)
 	healthgrpc.RegisterHealthServer(srv.GRPC, s.healthcheck)
 	serve.RegisterDynamicTLSUpdater(srv.GrpcTLSProvider, &s.tlsUpdater)
 	monitoring.RegisterMonitoringServer(srv.HTTP, s.metrics.Provider)
