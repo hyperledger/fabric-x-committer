@@ -579,6 +579,8 @@ func requireEveryTxReleased(t *testing.T, metrics *perfMetrics, released *atomic
 			"every submitted transaction must be released exactly once")
 		require.Equal(ct, 0, test.GetIntMetricValue(ct, metrics.gdgWaitingTxCount),
 			"no transaction may be left waiting")
+		require.Equal(ct, 0, test.GetIntMetricValue(ct, metrics.gdgDepFreeTxCount),
+			"no released batch may be left unsent")
 	}, drainTimeout, drainPollPeriod)
 }
 
