@@ -245,7 +245,7 @@ type validatedTransactions struct {
 agreed on by the organizations. The VC commits it only if that hash matches the local hash for the same snapshot.
 
 The validator uses the checkpoint metadata from preparation to check the latest `_snapshot` record. Only the latest
-snapshot can be waiting for a checkpoint: the VC rejects new snapshot requests until the previous one is `CHECKPOINTED`.
+snapshot can be waiting for a checkpoint: the VC rejects new snapshot requests until the previous one is `CHECKPOINTED` or `ABORTED`.
 
 | Check | Result |
 |-------|--------|
@@ -269,6 +269,63 @@ transaction ID to be rejected as a duplicate.
 The feedback includes the checkpoint transaction's `TxRef`. The coordinator uses it to release the transaction's node
 from the dependency graph. The sidecar uses the feedback to wait or stop; on retry, it fetches the block again.
 See [Checkpoint feedback gate](sidecar.md#checkpoint-feedback-gate) and [checkpoint.go](/service/vc/checkpoint.go).
+
+The snapshot admission gate (`rejectSnapshotIfPriorNotCheckpointed`) governs a **new snapshot request**, not an abort.
+It leaves the request valid only when the latest record's lifecycle is closed — `CHECKPOINTED` or `ABORTED` — or when no
+record exists yet; otherwise the request is rejected with `REJECTED_SNAPSHOT_NO_CHECKPOINT` or
+`REJECTED_SNAPSHOT_IN_PROGRESS`. An `ABORTED` record lets the next request through for the same reason a `CHECKPOINTED`
+one does: nothing further will happen to that snapshot. It is also the only exit for a snapshot that can never be
+hashed — a clone lost for good, say — which without it rejects every later snapshot forever, with no repair short of
+editing the state database by hand.
+
+An **abort** is gated separately, by `rejectSnapshotAbortIfNoSuchSnapshot`, and the two run in opposite directions: a
+closed lifecycle is what admits a new request, and what invalidates an abort. An abort naming a `CHECKPOINTED` or
+`ABORTED` snapshot is rejected too, since there is nothing left to abandon. Missing, different, and closed snapshots
+all produce `REJECTED_SNAPSHOT_ABORT_NO_SUCH_SNAPSHOT`; logs distinguish the cause.
+
+#### Aborting a Snapshot
+
+An abort snapshot transaction is how an administrator abandons a snapshot that will never
+be checkpointed. It is a `_snapshot`-namespace transaction carrying exactly one
+`ReadWrite`, whose key is `0xff || "abort/" || encodedBlockNum` (`committerpb.SnapshotAbortKey`) and whose value
+is empty — the row's existence is the whole statement. The leading `0xff` prevents collisions with snapshot
+record keys, which are valid UTF-8 transaction IDs.
+
+The key is a byte string rather than a protobuf message, matching the `_checkpoint` key
+(`servicepb.CheckpointKey`): the block number is encoded order-preserving, so aborts sort and
+range-scan by block directly on the stored key, which a serialized message would not. There is
+also no payload to grow — the value is deliberately empty.
+
+It is a ledger transaction rather than local state because a replay has to reproduce it. A
+node re-ingesting from genesis rebuilds the state at the snapshot height and would hash it
+successfully, publishing a digest for a snapshot the original organization abandoned;
+recording the abort only in `ns__snapshot` would not help, because that namespace is
+excluded from the digest. Governance comes for free from the namespace: an abort satisfies
+`/Channel/Application/SnapshotEndorsement`, the same policy as the request it abandons.
+
+The validator verifies it against the latest `_snapshot` record, for the same reason a
+checkpoint is verified against that record rather than one looked up by block number: a new
+snapshot is admitted only once the previous one's lifecycle is closed, so the snapshot an
+abort can legitimately name is always the latest one.
+
+| Verdict | Outcome | Effect |
+|---------|---------|--------|
+| The latest record is for that block and is not `CHECKPOINTED`/`ABORTED` | commit | The abort row commits, and the record advances to `ABORTED` in the same DB transaction. |
+| No `_snapshot` record exists, the abort names another block, or the snapshot is already `CHECKPOINTED`/`ABORTED` | per-TX rejection | `REJECTED_SNAPSHOT_ABORT_NO_SUCH_SNAPSHOT`: no abortable snapshot matches. The record is untouched, no abort row commits, and the pipeline keeps running. |
+| The batch carries more than one abort | batch fails | A broken invariant, not bad input: nothing routes two aborts into one batch, and there is no basis for choosing which is real. Skipping one would commit it unverified. |
+
+Every status short of a closed lifecycle is abortable, `COMPLETED` included: a digest that
+diverged from the other organizations is exactly a snapshot nobody will checkpoint, so
+refusing to abort it would leave that stall with no exit. Unlike a checkpoint there is no
+`HOLD` or `HALT` — an abort attests to nothing, so there is nothing local state can
+contradict. That also matters for safety: `_snapshot` is client-submittable, so halting on
+an abort for a snapshot that does not exist would let an authorized submitter stop the
+committer. See [database_snapshot.go](/service/vc/database_snapshot.go).
+
+An abort is **not** a submission barrier. It creates no clone, so it needs no exact cut of
+committed state, and it rides in an ordinary batch — which is why the snapshot admission
+gate, the clone-creating path, and the latest-snapshot pointer each have to recognize and
+skip it rather than relying on a standalone batch.
 
 **f. Enqueueing for Commit:** The `validatedTransactions` object is enqueued into the `validatedTxs` channel for the Committer task.
 
@@ -299,6 +356,9 @@ type statesToBeCommitted struct {
     // The verified checkpoint write, if any. Its snapshot is marked CHECKPOINTED
     // in the same database transaction.
     checkpoint   *checkpointTx
+    // Set when the batch carries a verified abort write, so the abandoned snapshot's
+    // record is advanced to ABORTED in the same DB transaction.
+    snapshotAbort *snapshotAbortTx
 }
 ```
 
@@ -311,11 +371,12 @@ If this happens, the writes and/or statuses for the corresponding transactions a
 
 System transactions also update snapshot metadata in the same database transaction:
 
-- A `_snapshot` write sets the latest-snapshot pointer through `setLatestSnapshotKeyIfPresent`.
-- A verified `_checkpoint` write marks its snapshot `CHECKPOINTED` through `statedb.MarkSnapshotCheckpointedInTx`.
+- A snapshot request sets the latest-snapshot pointer through `setLatestSnapshotKeyIfPresent`.
+- A verified `_checkpoint` write marks its snapshot `CHECKPOINTED` through `statedb.MarkSnapshotTerminalInTx`.
+- A verified abort write marks its snapshot `ABORTED` through the same helper.
 
-The checkpoint write and snapshot status must commit together. If they committed separately, a crash between them could
-leave a saved checkpoint with a snapshot still waiting for it. The VC would then reject new snapshot requests.
+The write and snapshot status must commit together. If they committed separately, a crash between them could
+leave a saved checkpoint or abort with a snapshot still waiting for closure. The VC would then reject new snapshot requests.
 
 Invalidating a checkpoint clears its prepared metadata along with its writes, so commit retries cannot update the
 snapshot record for a removed checkpoint. `HOLD` and `HALT` also clear this metadata. An already-`CHECKPOINTED` record
@@ -323,6 +384,14 @@ is left unchanged.
 
 A missing latest-snapshot pointer or a different block number causes a non-retryable error. The record no longer
 matches what the validator checked, so the committer must not save the checkpoint.
+
+Abort metadata is extracted once by the preparer and carried through validation to the committer. Invalidating the
+abort clears its metadata along with its writes, so a commit retry cannot advance the record for a dropped abort.
+An already-`ABORTED` record is a no-op for a resubmitted abort, and a
+`CHECKPOINTED` record, an unset pointer, or a record for another block are non-retryable invariant violations — the validator
+verified the abort against that same record, so reaching here otherwise means it changed underneath a verified abort.
+`setLatestSnapshotKeyIfPresent` skips an abort key: the pointer must always name a `_snapshot` record, and an abort row is not
+one, so pointing at it would make every later read report corruption.
 
 **e. Reporting Status:** After the commit is successful, the `batchStatus` is sent to the `txsStatus` channel, which relays the information 
 back to the Coordinator, completing the workflow for the transaction batch. If the validator supplied

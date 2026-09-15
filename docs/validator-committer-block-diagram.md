@@ -1197,7 +1197,7 @@ Open these files next to connect diagrams to implementation:
 - `service/vc/database.go` — Database connection, stored procedure calls, retry logic.
 - `service/vc/database_snapshot.go` — Creates snapshot clones and checks whether a new snapshot is allowed.
 - `utils/statedb/dbinit.go` — Table and stored procedure creation.
-- `utils/statedb/snapshot_state.go` — Reads and updates snapshot records, including `MarkSnapshotCheckpointedInTx`.
+- `utils/statedb/snapshot_state.go` — Reads and updates snapshot records, including `MarkSnapshotTerminalInTx`.
 
 ### Data Structures
 
