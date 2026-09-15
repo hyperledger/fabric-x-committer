@@ -69,7 +69,7 @@ func TestGRPCRetry(t *testing.T) {
 
 	t.Log("Stopping the grpc server")
 	cancel()
-	reserveWhileServerDown(t, serverConfig)
+	test.ReserveWhileServerDown(t, serverConfig)
 
 	// Override the context so this restart and the client retrying against it run on a fresh budget.
 	ctx, cancel = context.WithTimeout(t.Context(), 2*time.Minute)
@@ -91,7 +91,7 @@ func TestGRPCRetry(t *testing.T) {
 
 	t.Log("Stopping the grpc server")
 	cancel()
-	reserveWhileServerDown(t, serverConfig)
+	test.ReserveWhileServerDown(t, serverConfig)
 
 	// Override the context so this restart and the client retrying against it run on a fresh budget.
 	ctx, cancel = context.WithTimeout(t.Context(), 2*time.Minute)
@@ -101,18 +101,6 @@ func TestGRPCRetry(t *testing.T) {
 	t.Log("Attempting to connect again with lower timeout")
 	_, err = client2.Check(ctx, nil)
 	require.Error(t, err)
-}
-
-// reserveWhileServerDown re-reserves the server's ports the moment it is stopped, so a parallel test
-// cannot grab the just-freed ephemeral ports while the server is down. The server is stopped
-// asynchronously (by canceling its context), so it may still hold the ports; the reservation retries
-// the bind until it releases them.
-func reserveWhileServerDown(t *testing.T, sc *serve.Config) {
-	t.Helper()
-	serve.PreAllocateListener(t, &sc.GRPC)
-	serve.PreAllocateListener(t, &sc.HTTP)
-	require.True(t, test.CheckServerStopped(t, sc.GRPC.Endpoint.Address()),
-		"a reservation-only port must not answer gRPC health checks")
 }
 
 // scheduleServerRestart brings the server back up after serverDownDuration, reusing the reserved
