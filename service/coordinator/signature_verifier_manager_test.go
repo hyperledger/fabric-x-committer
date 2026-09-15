@@ -466,7 +466,10 @@ func TestSignatureVerifierManagerPolicyUpdateAndRecover(t *testing.T) {
 
 	t.Log("Stop the service")
 	env.grpcServers.ServersStop[0]()
-	test.CheckServerStopped(t, env.grpcServers.Configs[0].GRPC.Endpoint.Address())
+	// Hold the stopped server's ports until the restart below reclaims them, so no parallel test
+	// binary can bind them meanwhile: a foreign gRPC server on that port answers the verifier
+	// client with Unimplemented, which is retried without backoff and inflates the failure count.
+	test.ReserveWhileServerDown(t, env.grpcServers.Configs[0])
 	env.submitTxBatch(t, 1)
 	env.requireConnectionMetrics(t, 0, connection.Disconnected, 1)
 
