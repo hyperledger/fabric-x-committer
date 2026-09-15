@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package sidecar
 
 import (
+	"bytes"
 	"fmt"
 	"sync/atomic"
 	"unicode/utf8"
@@ -50,6 +51,13 @@ type (
 		// added to it, which mapBlock hands to the set as the block's eviction unit.
 		txIDDedup *txIDDedup
 		txIDs     []string
+		// refs and txWithRefs back every TxRef and TxWithRef the block needs, one entry per
+		// message, allocated once for the block instead of once per transaction. Mapping is on the
+		// path that decides how fast the sidecar allocates, and these were two of its allocations
+		// per transaction. Nothing may copy an element out of them — they are proto messages, and
+		// only their addresses are ever handed on — which go vet's copylocks check enforces.
+		refs       []committerpb.TxRef
+		txWithRefs []servicepb.TxWithRef
 	}
 
 	blockWithStatus struct {
@@ -66,6 +74,11 @@ type (
 const (
 	statusNotYetValidated = committerpb.Status_STATUS_UNSPECIFIED
 	statusIdx             = int(common.BlockMetadataIndex_TRANSACTIONS_FILTER)
+
+	// maxKeysForPairwiseCheck is the largest number of keys in one namespace that checkKeys
+	// compares pairwise before it switches to building a set. At this count the comparison is a few
+	// hundred short byte-slice compares, well under the cost of the map it replaces.
+	maxKeysForPairwiseCheck = 24
 )
 
 // mapBlock maps an orderer block into the batch the relay submits to the coordinator. It records
@@ -110,8 +123,10 @@ func mapBlock(block *common.Block, dedup *txIDDedup) (*blockMappingResult, error
 				blockNumber: blockNumber,
 			},
 		},
-		txIDDedup: dedup,
-		txIDs:     make([]string, 0, txCount),
+		txIDDedup:  dedup,
+		txIDs:      make([]string, 0, txCount),
+		refs:       make([]committerpb.TxRef, txCount),
+		txWithRefs: make([]servicepb.TxWithRef, txCount),
 	}
 	mapper.withStatus.pendingCount.Store(int32(txCount)) //nolint:gosec // int -> int32
 
@@ -138,7 +153,9 @@ func (m *blockMapper) mapMessage(msgIndex uint32, msg []byte) error {
 	// those fields will go undetected. This is acceptable because the committer
 	// does not use them, and for the same reason, they are not validated in the
 	// sidecar. TODO: remove unused fields from the ChannelHeader proto.
-	ref := committerpb.NewTxRef("", m.blockNumber, msgIndex)
+	ref := &m.refs[msgIndex]
+	ref.BlockNum = m.blockNumber
+	ref.TxNum = msgIndex
 	envLite, envErr := serialization.UnwrapEnvelopeLite(msg)
 	if envErr != nil {
 		return m.rejectNonDBStatusTx(ref, committerpb.Status_MALFORMED_BAD_ENVELOPE, envErr.Error())
@@ -292,7 +309,9 @@ func (m *blockMapper) prepareTx(
 	if idAlreadyExists, err := m.addTxIDMapping(ref); idAlreadyExists || err != nil {
 		return nil, err
 	}
-	txWithRef := &servicepb.TxWithRef{Ref: ref, Content: tx}
+	txWithRef := &m.txWithRefs[ref.TxNum]
+	txWithRef.Ref = ref
+	txWithRef.Content = tx
 	m.withStatus.txs[ref.TxNum] = txWithRef
 	debugTx(ref, "included: %s", ref.TxId)
 	return txWithRef, nil
@@ -306,7 +325,8 @@ func (m *blockMapper) rejectTx(ref *committerpb.TxRef, status committerpb.Status
 		return err
 	}
 	m.block.Rejected = append(m.block.Rejected, &committerpb.TxStatus{Ref: ref, Status: status})
-	m.withStatus.txs[ref.TxNum] = &servicepb.TxWithRef{Ref: ref}
+	m.txWithRefs[ref.TxNum].Ref = ref
+	m.withStatus.txs[ref.TxNum] = &m.txWithRefs[ref.TxNum]
 	debugTx(ref, "rejected: %s (%s)", &status, reason)
 	return nil
 }
@@ -325,7 +345,8 @@ func (m *blockMapper) rejectNonDBStatusTx(
 	if err != nil {
 		return err
 	}
-	m.withStatus.txs[ref.TxNum] = &servicepb.TxWithRef{Ref: ref}
+	m.txWithRefs[ref.TxNum].Ref = ref
+	m.withStatus.txs[ref.TxNum] = &m.txWithRefs[ref.TxNum]
 	debugTx(ref, "excluded: %s (%s)", &status, reason)
 	return nil
 }
@@ -511,17 +532,7 @@ func checkNamespaceReadsWrites(ns *applicationpb.TxNamespace) committerpb.Status
 		return committerpb.Status_MALFORMED_NO_WRITES
 	}
 
-	keys := make([][]byte, 0, len(ns.ReadsOnly)+len(ns.ReadWrites)+len(ns.BlindWrites))
-	for _, r := range ns.ReadsOnly {
-		keys = append(keys, r.Key)
-	}
-	for _, r := range ns.ReadWrites {
-		keys = append(keys, r.Key)
-	}
-	for _, r := range ns.BlindWrites {
-		keys = append(keys, r.Key)
-	}
-	return checkKeys(keys)
+	return checkKeys(ns)
 }
 
 func checkMetaNamespace(txNs *applicationpb.TxNamespace) committerpb.Status {
@@ -559,17 +570,53 @@ func checkMetaNamespace(txNs *applicationpb.TxNamespace) committerpb.Status {
 	return statusNotYetValidated
 }
 
-// checkKeys verifies there are no duplicate keys and no nil keys.
-func checkKeys(keys [][]byte) committerpb.Status {
-	uniqueKeys := make(map[string]any, len(keys))
-	for _, k := range keys {
-		if len(k) == 0 {
+// checkKeys verifies that a namespace has no empty key and no duplicate key.
+//
+// Duplicates are found by comparing the keys pairwise rather than by collecting them into a set.
+// The set cost two allocations per namespace — the map, and the slice the keys were first copied
+// into — which measured 2.8 allocations per transaction, on a path where the sidecar is bound by
+// how fast it allocates rather than by CPU. Comparing pairwise costs nothing and is faster for the
+// handful of keys a transaction carries, but it is quadratic, so a namespace with more keys than
+// maxKeysForPairwiseCheck still builds a set.
+func checkKeys(ns *applicationpb.TxNamespace) committerpb.Status {
+	keyCount := len(ns.ReadsOnly) + len(ns.ReadWrites) + len(ns.BlindWrites)
+	for i := range keyCount {
+		if len(nsKey(ns, i)) == 0 {
 			return committerpb.Status_MALFORMED_EMPTY_KEY
 		}
-		uniqueKeys[string(k)] = nil
 	}
-	if len(uniqueKeys) != len(keys) {
-		return committerpb.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET
+
+	if keyCount > maxKeysForPairwiseCheck {
+		uniqueKeys := make(map[string]struct{}, keyCount)
+		for i := range keyCount {
+			uniqueKeys[string(nsKey(ns, i))] = struct{}{}
+		}
+		if len(uniqueKeys) != keyCount {
+			return committerpb.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET
+		}
+		return statusNotYetValidated
+	}
+
+	for i := range keyCount {
+		for j := i + 1; j < keyCount; j++ {
+			if bytes.Equal(nsKey(ns, i), nsKey(ns, j)) {
+				return committerpb.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET
+			}
+		}
 	}
 	return statusNotYetValidated
+}
+
+// nsKey returns the i-th key of a namespace, counting the reads-only keys first, then the
+// read-writes, then the blind writes. It lets checkKeys walk every key of a namespace without
+// first copying them into one slice, which was an allocation per namespace.
+func nsKey(ns *applicationpb.TxNamespace, i int) []byte {
+	if i < len(ns.ReadsOnly) {
+		return ns.ReadsOnly[i].Key
+	}
+	i -= len(ns.ReadsOnly)
+	if i < len(ns.ReadWrites) {
+		return ns.ReadWrites[i].Key
+	}
+	return ns.BlindWrites[i-len(ns.ReadWrites)].Key
 }
