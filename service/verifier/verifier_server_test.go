@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/policydsl"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -494,6 +495,58 @@ func requireTestCase(
 	require.NotNil(t, resp)
 	test.RequireProtoEqual(t, tt.req.Ref, resp.Ref)
 	require.Equal(t, tt.expectedStatus.String(), resp.Status.String())
+}
+
+// TestExecutorQueueMetricsPerStream asserts the per-stream executor queues are reported one
+// series per live stream, and that a stream that ends takes its series with it. A leftover series
+// would keep reporting the depth of a queue nothing drains, which reads as a stuck worker.
+func TestExecutorQueueMetricsPerStream(t *testing.T) {
+	t.Parallel()
+	config, serverConfig := defaultConfigWithTLS(test.InsecureTLSConfig)
+	c := newTestState(t, config, serverConfig)
+
+	firstCtx, cancelFirst := context.WithCancel(t.Context())
+	defer cancelFirst()
+	_, err := c.Client.StartStream(firstCtx)
+	require.NoError(t, err)
+
+	secondCtx, cancelSecond := context.WithCancel(t.Context())
+	defer cancelSecond()
+	_, err = c.Client.StartStream(secondCtx)
+	require.NoError(t, err)
+
+	// Both streams report their own input queue, under distinct labels.
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		require.Len(ct, executorQueueStreamLabels(t, c.Service), 2)
+	}, testTimeout, 50*time.Millisecond)
+
+	cancelFirst()
+
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		require.Len(ct, executorQueueStreamLabels(t, c.Service), 1)
+	}, testTimeout, 50*time.Millisecond)
+}
+
+// executorQueueStreamLabels returns the stream label of every exported executor input queue.
+func executorQueueStreamLabels(t *testing.T, s *Server) []string {
+	t.Helper()
+	families, err := s.metrics.Registry().Gather()
+	require.NoError(t, err)
+
+	var streams []string
+	for _, family := range families {
+		if family.GetName() != "verifier_server_parallel_executor_input_queue_size" {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			for _, label := range metric.GetLabel() {
+				if label.GetName() == "stream" {
+					streams = append(streams, label.GetValue())
+				}
+			}
+		}
+	}
+	return streams
 }
 
 // State test state.

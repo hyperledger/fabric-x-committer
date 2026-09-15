@@ -359,3 +359,9 @@ func (e *metricsProviderTestEnv) checkMetrics(t *testing.T, expected ...string) 
 	t.Helper()
 	test.CheckMetrics(t, e.url, e.clientTLSConfig, expected...)
 }
+
+// getMetrics returns the whole exposition, for asserting that a series is absent.
+func (e *metricsProviderTestEnv) getMetrics(t *testing.T) string {
+	t.Helper()
+	return test.GetMetricsFromURL(t, e.url, e.clientTLSConfig)
+}

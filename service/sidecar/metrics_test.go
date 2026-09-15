@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package sidecar
 
 import (
+	"math"
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -67,6 +68,53 @@ func TestQueueSizeMetricsAreWired(t *testing.T) {
 			require.Equal(t, 2, tc.gauge())
 		})
 	}
+}
+
+// TestAllTxStreamQueueMetricIsPerStream covers the per-stream queue. It reports one series per
+// live subscription so an operator can sum across them, and the series must disappear with the
+// stream: a leftover series would report the depth of a queue nothing drains, which reads as a
+// stuck consumer.
+func TestAllTxStreamQueueMetricIsPerStream(t *testing.T) {
+	t.Parallel()
+
+	m := newPerformanceMetrics(newQueues(4))
+	vec := m.allTxStreamBlockQueueSize
+
+	first := &allTxStream{id: "1", blockQueue: make(chan *committedBlockWithTxs, 4)}
+	second := &allTxStream{id: "2", blockQueue: make(chan *committedBlockWithTxs, 4)}
+	vec.Register(first.blockQueue, first.id)
+	vec.Register(second.blockQueue, second.id)
+
+	first.blockQueue <- &committedBlockWithTxs{}
+	first.blockQueue <- &committedBlockWithTxs{}
+	second.blockQueue <- &committedBlockWithTxs{}
+
+	require.Equal(t, map[string]int{"1": 2, "2": 1}, gatherStreamQueueSizes(t, m))
+
+	vec.Unregister(first.id)
+	require.Equal(t, map[string]int{"2": 1}, gatherStreamQueueSizes(t, m))
+}
+
+// gatherStreamQueueSizes returns the per-stream queue size series keyed by the stream label.
+func gatherStreamQueueSizes(t *testing.T, m *perfMetrics) map[string]int {
+	t.Helper()
+	families, err := m.Registry().Gather()
+	require.NoError(t, err)
+
+	sizes := map[string]int{}
+	for _, family := range families {
+		if family.GetName() != "sidecar_notifier_stream_block_queue_size" {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			for _, label := range metric.GetLabel() {
+				if label.GetName() == "stream" {
+					sizes[label.GetValue()] = int(math.Round(metric.GetGauge().GetValue()))
+				}
+			}
+		}
+	}
+	return sizes
 }
 
 // TestRelaySessionQueueMetricsAreWired covers the queues that live for one coordinator session.

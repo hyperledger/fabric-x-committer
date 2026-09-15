@@ -10,7 +10,9 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -46,8 +48,9 @@ type (
 		timeoutQueue chan *notificationRequest
 
 		// StreamAllTransactions support
-		allTxStreams   []*allTxStream
-		allTxStreamsMu sync.RWMutex
+		allTxStreams      []*allTxStream
+		allTxStreamsMu    sync.RWMutex
+		nextAllTxStreamID atomic.Uint64
 	}
 
 	notificationRequest struct {
@@ -80,6 +83,10 @@ type (
 	// allTxStream represents a single StreamAllTransactions client subscription.
 	// Each stream has its own filters and receives committed blocks via a channel.
 	allTxStream struct {
+		// id labels this stream's queue metric. Only uniqueness among the live streams matters,
+		// since the series is removed when the stream ends.
+		id string
+
 		// Filters (empty = no filter)
 		filterNamespaces []string
 		filterStatuses   []committerpb.Status
@@ -234,6 +241,7 @@ func (n *notifier) StreamAllTransactions(
 
 	// Create stream state with filters from request
 	s := &allTxStream{
+		id:                   strconv.FormatUint(n.nextAllTxStreamID.Add(1), 10),
 		filterNamespaces:     req.FilterNamespaces,
 		filterStatuses:       req.FilterStatus,
 		includeReadWriteSets: req.IncludeReadWriteSets,
@@ -400,6 +408,8 @@ func (n *notifier) dispatchBlockToAllTxStreams(ctx context.Context, block *commi
 // registerAllTxStream adds a new StreamAllTransactions client to the notifier.
 // The stream will receive all committed blocks until it is unregistered or cancelled.
 func (n *notifier) registerAllTxStream(stream *allTxStream) {
+	n.metrics.allTxStreamBlockQueueSize.Register(stream.blockQueue, stream.id)
+
 	n.allTxStreamsMu.Lock()
 	defer n.allTxStreamsMu.Unlock()
 
@@ -413,6 +423,8 @@ func (n *notifier) registerAllTxStream(stream *allTxStream) {
 
 // unregisterAllTxStream removes a StreamAllTransactions client from the notifier.
 func (n *notifier) unregisterAllTxStream(stream *allTxStream) {
+	n.metrics.allTxStreamBlockQueueSize.Unregister(stream.id)
+
 	n.allTxStreamsMu.Lock()
 	defer n.allTxStreamsMu.Unlock()
 
