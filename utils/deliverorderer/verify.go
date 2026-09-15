@@ -276,6 +276,16 @@ func (cs *configState) updateIfConfigBlock(block *common.Block) error {
 	return nil
 }
 
+// configBlock returns the config block, or nil if no config block was loaded yet.
+// The nil case is expected: a stream that starts from block zero has no config
+// to verify with until its first config block is delivered.
+func (cs *configState) configBlock() *common.Block {
+	if cs.ConfigBlockMaterial == nil {
+		return nil
+	}
+	return cs.ConfigBlock
+}
+
 func fetchVerifier(bundle *channelconfig.Bundle) (*protoutil.BlockSigVerifier, error) {
 	policy, exists := bundle.PolicyManager().GetPolicy(policies.BlockValidation)
 	if !exists {

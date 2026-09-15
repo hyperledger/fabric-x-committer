@@ -249,6 +249,26 @@ func TestNewOrdererDeliverEdgeCases(t *testing.T) {
 		})
 		require.ErrorContains(t, err, "config block number [3] is ahead of the next expected block [2]")
 	})
+
+	t.Run("End before a config block was verified", func(t *testing.T) {
+		t.Parallel()
+
+		// A committer with an empty ledger starts at block 0 without a last block or verification
+		// config. Canceling before the first config block arrives must return a session with those
+		// fields still nil, while preserving the latest known config.
+		sessionInfo, err := deliverorderer.ToQueue(cancelledContext, deliverorderer.Parameters{
+			FaultToleranceLevel:          ordererdial.BFT,
+			TLS:                          *tls,
+			OutputBlock:                  make(chan *common.Block, 10),
+			SuspicionGracePeriodPerBlock: time.Second,
+			LatestKnownConfig:            configBlock,
+		})
+		require.ErrorContains(t, err, "context has been cancelled")
+		require.NotNil(t, sessionInfo)
+		require.Nil(t, sessionInfo.LastBlock)
+		require.Nil(t, sessionInfo.NextBlockVerificationConfig)
+		test.RequireProtoEqual(t, configBlock, sessionInfo.LatestKnownConfig)
+	})
 }
 
 func TestOrdererDeliverCFT(t *testing.T) {
