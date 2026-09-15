@@ -46,6 +46,7 @@ type (
 		receivedOrder []string
 		txsStatusMu   sync.Mutex
 		healthcheck   *health.Server
+		deleteCloneRecorder
 
 		// NumBatchesReceived is the number of batches received by VcService.
 		NumBatchesReceived atomic.Uint32
@@ -123,6 +124,16 @@ func (v *VcService) GetTransactionsStatus(
 		}
 	}
 	return s, nil
+}
+
+// DeleteDBCloneForSnapshot records the request and returns the injected error. It only
+// resolves the ambiguity between the embedded deleteCloneRecorder and the embedded
+// servicepb.ValidationAndCommitServiceServer, which declares the same method.
+func (v *VcService) DeleteDBCloneForSnapshot(
+	ctx context.Context,
+	req *committerpb.DeleteDBCloneForSnapshotRequest,
+) (*emptypb.Empty, error) {
+	return v.deleteCloneRecorder.DeleteDBCloneForSnapshot(ctx, req)
 }
 
 // StartValidateAndCommitStream is the mock implementation of the

@@ -17,6 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v5"
 	"github.com/yugabyte/pgx/v5/pgconn"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -516,8 +518,195 @@ func TestRejectSnapshotIfPriorNotCheckpointedMalformedRecord(t *testing.T) {
 	vTx, name := newIncomingSnapshotVTx(t, env.dbEnv.DB, 2001, "incoming-malformed")
 
 	err = env.dbEnv.DB.rejectSnapshotIfPriorNotCheckpointed(ctx, vTx)
-	require.ErrorContains(t, err, "failed to decode the latest _snapshot record")
+	require.ErrorContains(t, err, "failed to decode the _snapshot record")
 	require.False(t, cloneExists(t, env.dbEnv.DB, name))
+}
+
+// TestDeleteSnapshotDatabase commits a snapshot the normal way, then deletes its database
+// and asserts the record is retained with clone_database cleared (the deletion signal) at a
+// bumped version, and that a second delete of the same snapshot succeeds unchanged.
+func TestDeleteSnapshotDatabase(t *testing.T) {
+	t.Parallel()
+	env := newCommitterTestEnv(t)
+	testdb.EnsureSnapshotSchedule(t, env.dbEnv.DBConf.Database)
+	ctx, _ := createContext(t)
+
+	ref := &committerpb.TxRef{BlockNum: 810100, TxNum: 0, TxId: "snap-delete-1"}
+	name := snapshotDatabaseName(ref)
+	dropSnapshotCloneOnCleanup(t, env.dbEnv.DB, name)
+
+	commitFreshSnapshotTx(ctx, t, env, ref)
+	require.True(t, cloneExists(t, env.dbEnv.DB, name))
+
+	// Deletion is allowed only from the terminal CHECKPOINTED state; the hash worker is
+	// not running in this env, so advance the record directly (the same call the hash
+	// worker makes).
+	require.NoError(t, env.dbEnv.DB.snapshotState.Update(ctx, ref, statedb.SnapshotUpdate{
+		Status: committerpb.SnapshotState_CHECKPOINTED,
+	}))
+
+	require.NoError(t, env.dbEnv.DB.deleteSnapshotDatabase(ctx, ref.TxId))
+	require.False(t, cloneExists(t, env.dbEnv.DB, name))
+
+	record, found := env.dbEnv.ReadSnapshotRecord(ctx, ref.TxId)
+	require.True(t, found)
+	require.Empty(t, record.State.CloneDatabase)
+	require.Equal(t, ref.TxId, record.State.TxRef.TxId)
+	require.Equal(t, committerpb.SnapshotState_CHECKPOINTED, record.State.Status)
+	require.EqualValues(t, 2, record.Version) // commit(0) -> checkpoint(1) -> clear(2).
+
+	// A repeated delete is a success: the caller cannot tell a retry from a duplicate, and
+	// both mean the database is already gone. The record must not be rewritten again.
+	require.NoError(t, env.dbEnv.DB.deleteSnapshotDatabase(ctx, ref.TxId))
+	record, found = env.dbEnv.ReadSnapshotRecord(ctx, ref.TxId)
+	require.True(t, found)
+	require.Empty(t, record.State.CloneDatabase)
+	require.EqualValues(t, 2, record.Version)
+}
+
+// TestDeleteSnapshotDatabaseRefusals covers every delete the VC refuses without reaching a
+// DROP, plus the two cases that must NOT be refused. Seeded records suffice because the
+// status gate and the missing-record check both run before any DROP, so no clone is needed.
+//
+// The already-cleared row pins the check *order*: an empty clone_database wins over the
+// status gate, so a retry of a delete that already succeeded stays a success. Without it the
+// gate could be moved ahead of the no-op and every other case would still pass.
+func TestDeleteSnapshotDatabaseRefusals(t *testing.T) {
+	t.Parallel()
+	env := NewDatabaseTestEnv(t)
+
+	// Never created: every case here is decided before any DROP, so no clone is needed.
+	const missingCloneDB = "no_such_clone_db"
+
+	for _, tc := range []struct {
+		name    string
+		seed    bool
+		status  committerpb.SnapshotState_Status
+		cloneDB string
+		wantErr error
+	}{
+		{
+			name: "unknown tx_id is not found", seed: false,
+			wantErr: statedb.ErrSnapshotNotFound,
+		},
+		{
+			name: "unspecified is refused", seed: true, status: committerpb.SnapshotState_STATUS_UNSPECIFIED,
+			cloneDB: missingCloneDB, wantErr: ErrSnapshotNotCheckpointed,
+		},
+		{
+			name: "pending is refused", seed: true, status: committerpb.SnapshotState_PENDING,
+			cloneDB: missingCloneDB, wantErr: ErrSnapshotNotCheckpointed,
+		},
+		{
+			name: "in progress is refused", seed: true, status: committerpb.SnapshotState_IN_PROGRESS,
+			cloneDB: missingCloneDB, wantErr: ErrSnapshotNotCheckpointed,
+		},
+		{
+			name: "completed but not checkpointed is refused", seed: true,
+			status:  committerpb.SnapshotState_COMPLETED,
+			cloneDB: missingCloneDB, wantErr: ErrSnapshotNotCheckpointed,
+		},
+		{
+			name: "failed is refused", seed: true, status: committerpb.SnapshotState_FAILED,
+			cloneDB: missingCloneDB, wantErr: ErrSnapshotNotCheckpointed,
+		},
+		{
+			name: "already cleared succeeds even when not checkpointed", seed: true,
+			status: committerpb.SnapshotState_COMPLETED, cloneDB: "",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			txID := fmt.Sprintf("snap-delete-refusal-%d-%t-%t", tc.status, tc.seed, tc.wantErr != nil)
+			if tc.seed {
+				env.SeedSnapshotRecord(t, SnapshotFixture{
+					Ref:           &committerpb.TxRef{BlockNum: 810300, TxNum: 0, TxId: txID},
+					Status:        tc.status,
+					CloneDatabase: tc.cloneDB,
+				})
+			}
+
+			err := env.DB.deleteSnapshotDatabase(t.Context(), txID)
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+// TestDeleteSnapshotDatabaseNotCheckpointed pins the precondition on a record with a REAL
+// clone: until a snapshot reaches CHECKPOINTED its clone is the only artifact from which the
+// hash can be recomputed or a contested hash re-verified, so deletion must be refused, the
+// clone must survive, and the record must not be rewritten. The seeded cases in
+// TestDeleteSnapshotDatabaseRefusals cover the status matrix but cannot assert clone
+// survival, since they never create one.
+func TestDeleteSnapshotDatabaseNotCheckpointed(t *testing.T) {
+	t.Parallel()
+	env := newCommitterTestEnv(t)
+	testdb.EnsureSnapshotSchedule(t, env.dbEnv.DBConf.Database)
+	ctx, _ := createContext(t)
+
+	ref := &committerpb.TxRef{BlockNum: 810200, TxNum: 0, TxId: "snap-delete-pending"}
+	name := snapshotDatabaseName(ref)
+	dropSnapshotCloneOnCleanup(t, env.dbEnv.DB, name)
+
+	commitFreshSnapshotTx(ctx, t, env, ref) // leaves the record PENDING with a real clone.
+
+	err := env.dbEnv.DB.deleteSnapshotDatabase(ctx, ref.TxId)
+	require.ErrorIs(t, err, ErrSnapshotNotCheckpointed)
+	require.True(t, cloneExists(t, env.dbEnv.DB, name), "clone must survive a refused delete")
+
+	record, found := env.dbEnv.ReadSnapshotRecord(ctx, ref.TxId)
+	require.True(t, found)
+	require.Equal(t, name, record.State.CloneDatabase)
+	require.EqualValues(t, 0, record.Version, "refused delete must not rewrite the record")
+}
+
+// TestDeleteDBCloneForSnapshotRPCErrors covers the gRPC status codes the RPC reports for
+// requests that never reach a snapshot database: an empty tx_id and an unknown one.
+func TestDeleteDBCloneForSnapshotRPCErrors(t *testing.T) {
+	t.Parallel()
+	env := newValidatorAndCommitServiceTestEnvWithClient(t, nil)
+
+	for _, tc := range []struct {
+		name     string
+		txID     string
+		wantCode codes.Code
+	}{
+		{name: "empty tx_id is invalid", txID: "", wantCode: codes.InvalidArgument},
+		{name: "unknown tx_id is not found", txID: "no-such-snapshot-tx", wantCode: codes.NotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := env.commonClient.DeleteDBCloneForSnapshot(
+				t.Context(), &committerpb.DeleteDBCloneForSnapshotRequest{TxId: tc.txID},
+			)
+			require.Equal(t, tc.wantCode, status.Code(err))
+		})
+	}
+}
+
+// TestDeleteDBCloneForSnapshotNotCheckpointedRPC pins FAILED_PRECONDITION (not
+// INVALID_ARGUMENT) for a well-formed request against a snapshot that is not yet
+// CHECKPOINTED: the request becomes valid once hashing and checkpointing complete, so the
+// caller may retry it.
+func TestDeleteDBCloneForSnapshotNotCheckpointedRPC(t *testing.T) {
+	t.Parallel()
+	env := newValidatorAndCommitServiceTestEnvWithClient(t, nil)
+
+	txID := "snap-delete-rpc-not-checkpointed"
+	env.dbEnv.SeedSnapshotRecord(t, SnapshotFixture{
+		Ref:           &committerpb.TxRef{BlockNum: 810400, TxNum: 0, TxId: txID},
+		Status:        committerpb.SnapshotState_COMPLETED,
+		CloneDatabase: "no_such_clone_db",
+	})
+
+	_, err := env.commonClient.DeleteDBCloneForSnapshot(
+		t.Context(), &committerpb.DeleteDBCloneForSnapshotRequest{TxId: txID},
+	)
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 }
 
 // newIncomingSnapshotVTx builds the validatedTransactions batch for a single,

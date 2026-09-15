@@ -50,21 +50,29 @@ var logger = flogging.MustGetLogger("sidecar")
 // it aggregates the transaction status and forwards the validated block to clients who have
 // registered on the ledger server.
 //   - Implements peer.DeliverServer by streaming blocks from a blockStore.
-//   - Implements committerpb.BlockQueryServiceServer by delegating
-//     read-only queries directly to the underlying block store.
+//   - Implements committerpb.SidecarServiceServer: block-store reads are served
+//     here, event streams by the embedded notifier, and RPCs the sidecar does not
+//     implement yet fall through to the notifier's UnimplementedSidecarServiceServer.
 type Service struct {
-	committerpb.UnimplementedBlockQueryServiceServer
+	// Embedded so the notifier's stream RPCs and the Unimplemented fallbacks are
+	// promoted onto Service. The field keeps the name `notifier`, so existing
+	// s.notifier call sites are unaffected.
+	*notifier
 	deliveryParams deliverorderer.Parameters
 	relay          *relay
-	notifier       *notifier
 	blockStore     *blockStore
 	coordConn      *grpc.ClientConn
-	queues         *queues
-	config         *Config
-	healthcheck    *health.Server
-	metrics        *perfMetrics
-	tlsUpdater     serve.DynamicTLSUpdater
-	ready          *channel.Ready
+	// coordClient is created in Run but read by the DeleteDBCloneForSnapshot handler, which a
+	// client may call before Run has dialed the coordinator (readiness is signalled earlier,
+	// as soon as the block store opens). It is atomic so that call observes either no client
+	// or a fully constructed one.
+	coordClient atomic.Pointer[servicepb.CoordinatorClient]
+	queues      *queues
+	config      *Config
+	healthcheck *health.Server
+	metrics     *perfMetrics
+	tlsUpdater  serve.DynamicTLSUpdater
+	ready       *channel.Ready
 }
 
 // queues are the channels whose sizes the sidecar reports on scrape, so they are created before
@@ -120,6 +128,10 @@ var (
 	}
 	// ErrEmptyTxID is returned when a transaction ID query is called with an empty tx_id.
 	ErrEmptyTxID = errors.New("tx_id must not be empty")
+
+	// ErrCoordinatorNotConnected is returned by RPCs that must reach the coordinator while
+	// the sidecar has no coordinator connection yet (or lost it).
+	ErrCoordinatorNotConnected = errors.New("sidecar is not connected to the coordinator")
 )
 
 // New creates a sidecar service.
@@ -177,6 +189,8 @@ func (s *Service) Run(ctx context.Context) error {
 	defer connection.CloseConnectionsLog(conn)
 	logger.Infof("sidecar connected to coordinator at %s", s.config.Committer.Endpoint)
 	coordClient := servicepb.NewCoordinatorClient(conn)
+	s.coordClient.Store(&coordClient)
+	defer s.coordClient.Store(nil)
 
 	pCtx, pCancel := context.WithCancel(ctx)
 	defer pCancel()
@@ -210,9 +224,10 @@ func (s *Service) Run(ctx context.Context) error {
 
 // RegisterService registers the sidecar's gRPC services and monitoring server.
 func (s *Service) RegisterService(srv serve.Servers) {
+	committerpb.RegisterSidecarServiceServer(srv.GRPC, s)
+	// Fabric block delivery keeps its own service so Fabric clients dial the
+	// sidecar with the wire contract they already implement.
 	peer.RegisterDeliverServer(srv.GRPC, s)
-	committerpb.RegisterBlockQueryServiceServer(srv.GRPC, s)
-	committerpb.RegisterNotifierServer(srv.GRPC, s.notifier)
 	healthgrpc.RegisterHealthServer(srv.GRPC, s.healthcheck)
 	serve.RegisterDynamicTLSUpdater(srv.GrpcTLSProvider, &s.tlsUpdater)
 	monitoring.RegisterMonitoringServer(srv.HTTP, s.metrics.Provider)
@@ -716,6 +731,29 @@ func wrapQueryError(err error) error {
 	}
 	logger.Errorf("Unexpected block store error: %v", err)
 	return grpcerror.WrapInternalError(err)
+}
+
+// DeleteDBCloneForSnapshot forwards an admin snapshot-clone deletion to the coordinator,
+// which has a vcservice drop the snapshot database and clear clone_database on the
+// _snapshot record. Deletion is admin-triggered only; nothing reclaims snapshot databases
+// on a timer.
+func (s *Service) DeleteDBCloneForSnapshot(
+	ctx context.Context,
+	req *committerpb.DeleteDBCloneForSnapshotRequest,
+) (*emptypb.Empty, error) {
+	if req.GetTxId() == "" {
+		return nil, grpcerror.WrapInvalidArgument(ErrEmptyTxID)
+	}
+	client := s.coordClient.Load()
+	if client == nil {
+		return nil, grpcerror.WrapFailedPrecondition(ErrCoordinatorNotConnected)
+	}
+
+	_, err := (*client).DeleteDBCloneForSnapshot(ctx, req)
+	if err != nil {
+		return nil, logAndWrapCoordinatorError(err, "failed to delete the snapshot database clone")
+	}
+	return &emptypb.Empty{}, nil
 }
 
 func waitForIdleCoordinator(ctx context.Context, client servicepb.CoordinatorClient) error {

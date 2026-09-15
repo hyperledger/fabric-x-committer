@@ -106,3 +106,15 @@ func (vca *validatorCommitterAPI) getTransactionsStatus(
 	ret, err := vca.client.GetTransactionsStatus(ctx, query)
 	return ret, grpcerror.WrapWithContext(err, "failed getting transactions status")
 }
+
+// deleteDBCloneForSnapshot forwards an admin clone-deletion request to a vcservice. Every
+// vcservice holds the same _snapshot records but its OWN snapshot database, so this deletes
+// the clone of whichever vcservice the load-balanced connection picks -- the request is not
+// fanned out to the others.
+func (vca *validatorCommitterAPI) deleteDBCloneForSnapshot(
+	ctx context.Context,
+	req *committerpb.DeleteDBCloneForSnapshotRequest,
+) error {
+	_, err := vca.client.DeleteDBCloneForSnapshot(ctx, req)
+	return grpcerror.WrapWithContext(err, "failed deleting the snapshot database clone")
+}

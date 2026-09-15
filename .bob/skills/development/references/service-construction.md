@@ -171,7 +171,7 @@ if !c.streamActive.TryLock() {
 defer c.streamActive.Unlock()
 ```
 
-Models: `service/vc/validator_committer_service.go:258` (stream + CAS guard),
+Models: `service/vc/validator_committer_service.go:268` (stream + CAS guard),
 `service/verifier/verifier_server.go:71` (per-stream executor).
 
 ## 5. Config structs and the loading pipeline

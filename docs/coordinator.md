@@ -190,6 +190,11 @@ NoPendingTransactionProcessing(ctx context.Context, in *Empty, opts ...grpc.Call
 ```
   * This API returns true when all previously submitted transactions have been processed. It is polled by the Sidecar during recovery, while no block-processing stream is active. Because the Validator-Committer keeps producing statuses into the coordinator's bounded status queue even when no stream is draining it, each call drains and discards any queued statuses. This frees the blocked Validator-Committer writers so processing can complete; discarding is safe because the statuses are already durable in the state database and the Sidecar recovers them from there. Without this drain, a backlog larger than the queue capacity would deadlock the recovery handshake.
 
+```go
+DeleteDBCloneForSnapshot(ctx context.Context, in *committerpb.DeleteDBCloneForSnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+```
+  * This API forwards an admin snapshot-clone deletion request to a Validator-Committer service, which drops the snapshot database and clears `clone_database` on the `_snapshot` record. The Coordinator preserves the Validator-Committer's gRPC status code unchanged (`FAILED_PRECONDITION` unless the snapshot is `CHECKPOINTED`, `NOT_FOUND` for an unknown `tx_id`). The request is **not** fanned out: every Validator-Committer holds the same `_snapshot` records but its own snapshot database, so this deletes the clone of whichever service the load-balanced connection picks.
+
 ## 7. Failure and Recovery
 
 The system is designed to be resilient to Coordinator failures.

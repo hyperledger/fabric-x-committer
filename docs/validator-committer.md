@@ -282,11 +282,12 @@ committed, preserving the one-way guarantee that every committed snapshot txID h
 a clone and a PENDING row; uncommitted attempts may also leave a reusable clone.
 For YugabyteDB, ready means `yb_database_clones().state = 'COMPLETE'`; a
 `pg_database` row alone is insufficient. The clone is a consistent copy of the
-drained state cut and is never dropped by the VC (dropping is forbidden because it
-could delete a clone whose txID has not yet committed). Failed or losing attempts
-leave deterministic clones for retry/reuse or operator reconciliation, and
-successful and ambiguous attempts preserve them as well; administrative clone
-deletion remains outside the commit path. See
+drained state cut and is never dropped as part of snapshot creation; the VC drops it
+only on an explicit admin request, and only after the snapshot is `CHECKPOINTED` (see
+[Snapshot clone deletion](#snapshot-clone-deletion)). Failed or losing attempts leave
+deterministic clones for retry/reuse or operator reconciliation, and successful and
+ambiguous attempts preserve them as well; administrative clone deletion remains outside
+the commit path. See
 [database_snapshot.go](/service/vc/database_snapshot.go).
 
 A `_snapshot` transaction is submitted standalone: the sidecar drains the pipeline
@@ -317,6 +318,22 @@ synchronous and retains its existing duplicate-reuse behavior.
 >
 > PostgreSQL uses `CREATE DATABASE ... TEMPLATE ... STRATEGY=FILE_COPY` and needs no
 > schedule.
+
+### Snapshot clone deletion
+
+Snapshot clones are never reclaimed on a timer; deletion is admin-triggered only, via
+`DeleteDBCloneForSnapshot(tx_id)`, which reaches the VC from the sidecar through the
+coordinator. The VC drops the database named by the record's `clone_database` field and
+clears that field — clearing it *is* the deletion signal, since `SnapshotState` has no
+deletion timestamp — while retaining the record so status and hash stay queryable.
+
+Deletion is refused unless the snapshot's status is `CHECKPOINTED`
+(`FAILED_PRECONDITION`). Before that, the clone is the only artifact from which the
+snapshot hash can be recomputed or a contested hash re-verified. An unknown `tx_id` is
+`NOT_FOUND`, an empty one `INVALID_ARGUMENT`, and a repeated delete of an already-cleared
+record succeeds — that check precedes the status gate, so a retry of a delete that already
+succeeded stays a success. See
+[database_snapshot.go](/service/vc/database_snapshot.go).
 
 ## 6. gRPC Service API
 
@@ -359,6 +376,17 @@ GetConfigTransaction(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*
 ```
 
  * This API retrieves the latest system configuration transaction.
+
+```go
+DeleteDBCloneForSnapshot(ctx context.Context, in *committerpb.DeleteDBCloneForSnapshotRequest, opts ...grpc.CallOption) (*Empty, error)
+```
+
+ * This API drops the snapshot database clone named by the `_snapshot` record's
+   `clone_database` field and clears that field, retaining the record. It is
+   admin-triggered only and reaches the VC from the Sidecar through the Coordinator.
+   An empty `tx_id` returns `INVALID_ARGUMENT`, an unknown one `NOT_FOUND`, and a
+   snapshot that is not yet `CHECKPOINTED` returns `FAILED_PRECONDITION`. See
+   [Snapshot clone deletion](#snapshot-clone-deletion).
 
 ## 7. Failure and Recovery
 

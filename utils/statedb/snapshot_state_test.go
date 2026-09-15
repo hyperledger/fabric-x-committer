@@ -99,7 +99,7 @@ func TestReadLatestRejectsCorruptRecord(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	_, err := env.state.ReadLatest(ctx)
-	require.ErrorContains(t, err, "failed to decode the latest _snapshot record")
+	require.ErrorContains(t, err, "failed to decode the _snapshot record")
 	require.NoError(t, ctx.Err(), "a corrupt record must fail fast, not retry")
 }
 

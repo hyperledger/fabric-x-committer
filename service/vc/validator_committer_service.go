@@ -27,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
+	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
 var logger = flogging.MustGetLogger("validator-committer")
@@ -233,6 +234,33 @@ func (vc *ValidatorCommitterService) GetConfigTransaction(
 		logger.Errorf("%+v", err)
 	}
 	return policies, grpcerror.WrapInternalError(err)
+}
+
+// DeleteDBCloneForSnapshot drops the snapshot database of the snapshot named by tx_id and
+// clears clone_database on its _snapshot record, keeping the record. Deletion is
+// admin-triggered only; the request reaches here from the sidecar via the coordinator.
+func (vc *ValidatorCommitterService) DeleteDBCloneForSnapshot(
+	ctx context.Context,
+	req *committerpb.DeleteDBCloneForSnapshotRequest,
+) (*emptypb.Empty, error) {
+	if req.GetTxId() == "" {
+		return nil, grpcerror.WrapInvalidArgument(errors.New("tx_id must not be empty"))
+	}
+
+	err := vc.db.deleteSnapshotDatabase(ctx, req.GetTxId())
+	if err != nil {
+		logger.Errorf("%+v", err)
+	}
+	switch {
+	case err == nil:
+		return &emptypb.Empty{}, nil
+	case errors.Is(err, statedb.ErrSnapshotNotFound):
+		return nil, grpcerror.WrapNotFound(err)
+	case errors.Is(err, ErrSnapshotNotCheckpointed):
+		return nil, grpcerror.WrapFailedPrecondition(err)
+	default:
+		return nil, grpcerror.WrapInternalError(err)
+	}
 }
 
 // StartValidateAndCommitStream is the function that starts the stream between the client and the service.

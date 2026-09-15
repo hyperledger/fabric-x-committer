@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -60,9 +61,9 @@ type (
 		CoordinatorClient   servicepb.CoordinatorClient
 		QueryServiceClient  committerpb.QueryServiceClient
 		SidecarClientConfig *connection.ClientConfig
-		NotifyClient        committerpb.NotifierClient
-		NotifyStream        committerpb.Notifier_OpenNotificationStreamClient
-		StreamAllTxStream   committerpb.Notifier_StreamAllTransactionsClient
+		NotifyClient        committerpb.SidecarServiceClient
+		NotifyStream        committerpb.SidecarService_OpenNotificationStreamClient
+		StreamBlocksStream  committerpb.SidecarService_StreamBlocksClient
 
 		CommittedBlock          chan *common.Block
 		TxBuilder               *workload.TxBuilder
@@ -336,7 +337,7 @@ func (c *CommitterRuntime) CreateRuntimeClients(ctx context.Context, t *testing.
 	c.QueryServiceClient = committerpb.NewQueryServiceClient(
 		test.NewSecuredConnection(t, services.Query.GrpcEndpoint, c.SystemConfig.ClientTLS),
 	)
-	c.NotifyClient = committerpb.NewNotifierClient(
+	c.NotifyClient = committerpb.NewSidecarServiceClient(
 		test.NewSecuredConnection(t, services.Sidecar.GrpcEndpoint, c.SystemConfig.ClientTLS),
 	)
 	var err error
@@ -355,7 +356,7 @@ func (c *CommitterRuntime) OpenNotificationStream(ctx context.Context, t *testin
 	var err error
 	c.NotifyStream, err = c.NotifyClient.OpenNotificationStream(ctx)
 	require.NoError(t, err)
-	c.StreamAllTxStream, err = c.NotifyClient.StreamAllTransactions(ctx, nil)
+	c.StreamBlocksStream, err = c.NotifyClient.StreamBlocks(ctx, nil)
 	require.NoError(t, err)
 }
 
@@ -640,7 +641,15 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 	}
 
 	sidecar.RequireNotifications(t, c.NotifyStream, blk.Header.Number, expected.TxIDs, expected.Statuses)
-	sidecar.RequireStreamAllTransactions(t, c.StreamAllTxStream, blk.Header.Number, expected.TxIDs, expected.Statuses)
+	sidecar.RequireStreamBlocks(
+		t,
+		c.StreamBlocksStream,
+		blk.Header.Number,
+		protoutil.BlockHeaderHash(blk.Header),
+		blk.Header.PreviousHash,
+		expected.TxIDs,
+		expected.Statuses,
+	)
 }
 
 // CountStatus returns the number of transactions with a given tx status.

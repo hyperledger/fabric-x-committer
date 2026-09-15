@@ -76,7 +76,18 @@ type SnapshotUpdate struct {
 	// is one of these; an empty slice writes unconditionally. See Update for why the row
 	// lock alone does not give this.
 	ExpectedStatus []committerpb.SnapshotState_Status
+
+	// ClearCloneDatabase empties the record's clone_database field, the documented signal
+	// that the snapshot database was dropped. There is no deletion timestamp on
+	// SnapshotState.
+	ClearCloneDatabase bool
 }
+
+// ErrSnapshotNotFound reports that a caller-supplied transaction ID names no `_snapshot`
+// record. Unlike a pointer that names a missing row, this is an ordinary client error
+// (the caller chose the key), so it is a distinct sentinel the gRPC edge maps to
+// NOT_FOUND. It is never retryable: a record that is not there cannot appear later.
+var ErrSnapshotNotFound = errors.New("no snapshot record for the given transaction ID")
 
 // ErrUnexpectedSnapshotStatus reports that the locked `_snapshot` record was not in
 // a status its caller required, so the update was not applied. It is not a fault:
@@ -122,20 +133,14 @@ func (s *SnapshotStateManager) ReadLatest(ctx context.Context) (*committerpb.Sna
 			return nil, nil //nolint:nilnil // no snapshot has ever been accepted.
 		}
 
-		var raw []byte
-		if scanErr := s.pool.QueryRow(ctx, selectSnapshotRecordSQL, key).Scan(&raw); scanErr != nil {
-			if errors.Is(scanErr, pgx.ErrNoRows) {
-				return nil, errors.Wrapf(retry.ErrNonRetryable,
-					"latest snapshot key %s has no matching _snapshot record", key)
-			}
-			return nil, errors.Wrapf(scanErr, "failed to read _snapshot record for key %s", key)
+		state, readErr := s.readRecord(ctx, key)
+		if errors.Is(readErr, ErrSnapshotNotFound) {
+			// The pointer is written in the same DB transaction as the row it names, so a
+			// pointer without a row is corruption, not an ordinary missing record.
+			return nil, errors.Wrapf(errors.Join(retry.ErrNonRetryable, readErr),
+				"latest snapshot key %s has no matching _snapshot record", key)
 		}
-		state, decodeErr := DecodeSnapshotState(raw)
-		if decodeErr != nil {
-			return nil, errors.Wrapf(errors.Join(retry.ErrNonRetryable, decodeErr),
-				"failed to decode the latest _snapshot record for key %s", key)
-		}
-		return state, nil
+		return state, readErr
 	}, retry.ErrNonRetryable)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the latest _snapshot record: %w", err)
@@ -143,9 +148,39 @@ func (s *SnapshotStateManager) ReadLatest(ctx context.Context) (*committerpb.Sna
 	return state, nil
 }
 
-// Update rewrites the `_snapshot` record for ref.TxId per update; TxRef and
-// CloneDatabase are preserved because the existing record is decoded, mutated, and
-// re-encoded rather than rebuilt.
+// Read reads and decodes the `_snapshot` record named by txID, reporting
+// ErrSnapshotNotFound when the transaction ID names no record. Unlike ReadLatest, which
+// follows the latest-snapshot pointer, this reads a caller-supplied key, so a missing
+// record is an ordinary client error rather than an invariant violation.
+func (s *SnapshotStateManager) Read(ctx context.Context, txID string) (*committerpb.SnapshotState, error) {
+	return retry.ExecuteWithResult(ctx, s.retryProfile, func() (*committerpb.SnapshotState, error) {
+		return s.readRecord(ctx, []byte(txID))
+	}, retry.ErrNonRetryable, ErrSnapshotNotFound)
+}
+
+// readRecord is one un-retried read-and-decode of the `_snapshot` row keyed by key,
+// shared by Read and ReadLatest so both agree on how a missing row and an undecodable
+// value are reported. Both are non-retryable: neither can resolve itself on a later
+// attempt.
+func (s *SnapshotStateManager) readRecord(ctx context.Context, key []byte) (*committerpb.SnapshotState, error) {
+	var raw []byte
+	if scanErr := s.pool.QueryRow(ctx, selectSnapshotRecordSQL, key).Scan(&raw); scanErr != nil {
+		if errors.Is(scanErr, pgx.ErrNoRows) {
+			return nil, errors.Wrapf(ErrSnapshotNotFound, "%s", key)
+		}
+		return nil, errors.Wrapf(scanErr, "failed to read _snapshot record for key %s", key)
+	}
+	state, decodeErr := DecodeSnapshotState(raw)
+	if decodeErr != nil {
+		return nil, errors.Wrapf(errors.Join(retry.ErrNonRetryable, decodeErr),
+			"failed to decode the _snapshot record for key %s", key)
+	}
+	return state, nil
+}
+
+// Update rewrites the `_snapshot` record for ref.TxId per update; every field the
+// update does not name (in particular TxRef) is preserved because the existing record
+// is decoded, mutated, and re-encoded rather than rebuilt.
 //
 // The read and the write run inside a single DB transaction using SELECT ... FOR
 // UPDATE (see selectSnapshotRecordForUpdateSQL), not READ COMMITTED alone: without the row
@@ -207,6 +242,9 @@ func (s *SnapshotStateManager) Update(ctx context.Context, ref *committerpb.TxRe
 			state.Hash = update.Digest
 		}
 		state.Error = update.ErrMsg
+		if update.ClearCloneDatabase {
+			state.CloneDatabase = ""
+		}
 
 		newRaw, err := EncodeSnapshotState(state)
 		if err != nil {

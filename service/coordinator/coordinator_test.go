@@ -20,6 +20,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
@@ -247,6 +249,27 @@ func TestGetNextBlockNumWithActiveStream(t *testing.T) {
 
 	_, err := env.client.GetNextBlockNumberToCommit(ctx, nil)
 	require.NoError(t, err)
+}
+
+// TestCoordinatorDeleteDBCloneForSnapshot asserts the coordinator forwards an admin
+// snapshot-clone deletion to a vcservice verbatim and preserves the vcservice's status code.
+func TestCoordinatorDeleteDBCloneForSnapshot(t *testing.T) {
+	t.Parallel()
+	env := newCoordinatorTestEnv(t, &testConfig{numSigService: 1, numVcService: 1})
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(cancel)
+	env.startService(ctx, t)
+	env.client = createCoordinatorClientWithTLS(t, &env.serverConfig.GRPC.Endpoint, env.clientTLS)
+
+	req := &committerpb.DeleteDBCloneForSnapshotRequest{TxId: "snap-tx-1"}
+	_, err := env.client.DeleteDBCloneForSnapshot(ctx, req)
+	require.NoError(t, err)
+	require.Equal(t, []string{"snap-tx-1"}, env.vc.DeleteDBCloneRequests())
+
+	// The vcservice's own code (here NOT_FOUND for an unknown snapshot) reaches the client.
+	env.vc.SetDeleteDBCloneError(status.Error(codes.NotFound, "no such snapshot"))
+	_, err = env.client.DeleteDBCloneForSnapshot(ctx, req)
+	require.Equal(t, codes.NotFound, status.Code(err))
 }
 
 func TestCoordinatorServiceValidTx(t *testing.T) {

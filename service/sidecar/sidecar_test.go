@@ -26,6 +26,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
@@ -51,7 +53,7 @@ type sidecarTestEnv struct {
 
 	sidecar        *Service
 	committedBlock chan *common.Block
-	notifyStream   committerpb.Notifier_OpenNotificationStreamClient
+	notifyStream   committerpb.SidecarService_OpenNotificationStreamClient
 }
 
 type sidecarTestConfig struct {
@@ -157,7 +159,7 @@ func (env *sidecarTestEnv) startNotificationStream(
 	t.Helper()
 	conn := test.NewSecuredConnection(t, &env.serverConfig.GRPC.Endpoint, sidecarClientCreds)
 	var err error
-	env.notifyStream, err = committerpb.NewNotifierClient(conn).OpenNotificationStream(ctx)
+	env.notifyStream, err = committerpb.NewSidecarServiceClient(conn).OpenNotificationStream(ctx)
 	require.NoError(t, err)
 }
 
@@ -897,4 +899,41 @@ func TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery(t *testing.T
 
 	t.Log("Verify normal operation continues with recovered state")
 	env.sendTransactionsAndEnsureCommitted(newCtx, t, 12)
+}
+
+// TestDeleteDBCloneForSnapshot asserts the sidecar forwards an admin snapshot-clone deletion
+// to the coordinator verbatim, rejects an empty tx_id locally, and passes the coordinator's
+// status code through untouched.
+func TestDeleteDBCloneForSnapshot(t *testing.T) {
+	t.Parallel()
+
+	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{})
+	env.startSidecarService(t.Context(), t)
+	// Wait until the genesis block reaches the block store. Exiting the test before delivery
+	// has processed a config block tears the delivery session down inside a window where its
+	// verification state still has no config material, which panics (a latent shutdown bug in
+	// utils/deliverorderer, unrelated to this RPC).
+	ensureAtLeastHeight(t, env.sidecar.blockStore, 1)
+
+	conn := test.NewInsecureConnection(t, &env.serverConfig.GRPC.Endpoint)
+	client := committerpb.NewSidecarServiceClient(conn)
+
+	const snapshotTxID = "snap-tx-1"
+	_, err := client.DeleteDBCloneForSnapshot(t.Context(), &committerpb.DeleteDBCloneForSnapshotRequest{
+		TxId: snapshotTxID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{snapshotTxID}, env.coordinator.DeleteDBCloneRequests())
+
+	// An empty tx_id never reaches the coordinator.
+	_, err = client.DeleteDBCloneForSnapshot(t.Context(), &committerpb.DeleteDBCloneForSnapshotRequest{})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Equal(t, []string{snapshotTxID}, env.coordinator.DeleteDBCloneRequests())
+
+	// The coordinator's own code (here NOT_FOUND for an unknown snapshot) reaches the client.
+	env.coordinator.SetDeleteDBCloneError(status.Error(codes.NotFound, "no such snapshot"))
+	_, err = client.DeleteDBCloneForSnapshot(t.Context(), &committerpb.DeleteDBCloneForSnapshotRequest{
+		TxId: "snap-tx-unknown",
+	})
+	require.Equal(t, codes.NotFound, status.Code(err))
 }
