@@ -21,15 +21,34 @@ import (
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/loadgen/workload"
 	"github.com/hyperledger/fabric-x-committer/utils/retry"
+	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 )
 
 // testChannelID is a shared channel ID used by sidecar mapping/relay tests.
 const testChannelID = "chan"
 
+// benchTxProfile is the workload the mapping benchmarks measure. It differs from
+// workload.DefaultProfile in the one way that decides which path through mapping is measured: the
+// default policy uses signature.NoScheme, which leaves each transaction with a nil endorsement per
+// namespace, and mapping rejects those with MALFORMED_MISSING_SIGNATURE before it validates a
+// single key or builds a TxWithRef. A benchmark on that workload measures the rejection path only.
+//
+// EDDSA is the cheapest scheme to generate whose transactions mapping accepts. The scheme only has
+// to be present: the sidecar checks that each namespace carries a non-empty endorsement and leaves
+// verifying it to the signature verifier, which has the policy context to know what the
+// namespace's rule requires.
+func benchTxProfile() *workload.Profile {
+	profile := workload.DefaultProfile(1)
+	profile.Policy.NamespacePolicies[workload.DefaultGeneratedNamespaceID] = &workload.Policy{
+		Scheme: signature.Eddsa,
+	}
+	return profile
+}
+
 func BenchmarkMapOneBlock(b *testing.B) {
 	flogging.ActivateSpec("fatal")
-	txs := workload.GenerateTransactions(b, nil, b.N)
+	txs := workload.GenerateTransactions(b, benchTxProfile(), b.N)
 	block := workload.MapToOrdererBlock(1, txs)
 
 	var dedup txIDDedup
@@ -49,7 +68,7 @@ func BenchmarkMapBlockSize(b *testing.B) {
 			// granularity. We split b.N transactions into blocks of at most
 			// blockSize (the final block may be smaller), so ns/op and tx/s are
 			// reported per transaction, independent of the block size.
-			allTxs := workload.GenerateTransactions(b, nil, b.N)
+			allTxs := workload.GenerateTransactions(b, benchTxProfile(), b.N)
 			blocks := make([]*common.Block, 0, (b.N+blockSize-1)/blockSize)
 			for off := 0; off < b.N; off += blockSize {
 				blocks = append(blocks, workload.MapToOrdererBlock(
@@ -632,4 +651,161 @@ func TestBlockWithStatusHolds(t *testing.T) {
 			require.Equal(t, tc.expected, blk.holds(tc.ref))
 		})
 	}
+}
+
+// TestKeyFormValidation covers the namespace key checks: no key may be empty, and no key may
+// repeat within a namespace, whichever of the three read/write sets each occurrence sits in.
+//
+// checkKeys detects duplicates two different ways — pairwise up to maxKeysForPairwiseCheck keys,
+// and with a set above it — so the cases below exercise both sides of that threshold. A duplicate
+// found by one and missed by the other would let a transaction the sidecar must reject through.
+func TestKeyFormValidation(t *testing.T) {
+	t.Parallel()
+	// Well-formed namespaces.
+	for _, tc := range []struct {
+		name string
+		ns   *applicationpb.TxNamespace
+	}{
+		{
+			name: "one blind write",
+			ns:   keysNamespace(nil, nil, [][]byte{[]byte("k1")}),
+		},
+		{
+			name: "distinct keys across all three sets",
+			ns: keysNamespace(
+				[][]byte{[]byte("r1"), []byte("r2")},
+				[][]byte{[]byte("rw1")},
+				[][]byte{[]byte("bw1")},
+			),
+		},
+		{
+			name: "keys up to the pairwise threshold",
+			ns:   keysNamespace(nil, nil, distinctKeys(maxKeysForPairwiseCheck)),
+		},
+		{
+			name: "more keys than the pairwise threshold uses the set",
+			ns:   keysNamespace(nil, nil, distinctKeys(maxKeysForPairwiseCheck+1)),
+		},
+		{
+			name: "many keys spread across the three sets",
+			ns: keysNamespace(
+				distinctKeys(maxKeysForPairwiseCheck)[:10],
+				distinctKeys(maxKeysForPairwiseCheck)[10:20],
+				distinctKeys(maxKeysForPairwiseCheck + 20)[20:],
+			),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, statusNotYetValidated, verifyKeysNamespace(tc.ns))
+		})
+	}
+	// Malformed namespaces.
+	for _, tc := range []struct {
+		name     string
+		ns       *applicationpb.TxNamespace
+		expected committerpb.Status
+	}{
+		{
+			name:     "no writes at all",
+			ns:       keysNamespace([][]byte{[]byte("r1")}, nil, nil),
+			expected: committerpb.Status_MALFORMED_NO_WRITES,
+		},
+		{
+			name:     "empty blind write key",
+			ns:       keysNamespace(nil, nil, [][]byte{[]byte("k1"), {}}),
+			expected: committerpb.Status_MALFORMED_EMPTY_KEY,
+		},
+		{
+			name:     "empty read-only key",
+			ns:       keysNamespace([][]byte{{}}, nil, [][]byte{[]byte("k1")}),
+			expected: committerpb.Status_MALFORMED_EMPTY_KEY,
+		},
+		{
+			name:     "empty read-write key",
+			ns:       keysNamespace(nil, [][]byte{{}}, nil),
+			expected: committerpb.Status_MALFORMED_EMPTY_KEY,
+		},
+		{
+			name:     "empty key beyond the pairwise threshold",
+			ns:       keysNamespace(nil, nil, append(distinctKeys(maxKeysForPairwiseCheck+1), nil)),
+			expected: committerpb.Status_MALFORMED_EMPTY_KEY,
+		},
+		{
+			name:     "duplicate within blind writes",
+			ns:       keysNamespace(nil, nil, [][]byte{[]byte("k1"), []byte("k1")}),
+			expected: committerpb.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET,
+		},
+		{
+			name:     "duplicate across read-only and blind writes",
+			ns:       keysNamespace([][]byte{[]byte("k1")}, nil, [][]byte{[]byte("k1")}),
+			expected: committerpb.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET,
+		},
+		{
+			name:     "duplicate across read-writes and blind writes",
+			ns:       keysNamespace(nil, [][]byte{[]byte("k1")}, [][]byte{[]byte("k1")}),
+			expected: committerpb.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET,
+		},
+		{
+			name:     "duplicate across read-only and read-writes",
+			ns:       keysNamespace([][]byte{[]byte("k1")}, [][]byte{[]byte("k1")}, nil),
+			expected: committerpb.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET,
+		},
+		{
+			name: "duplicate beyond the pairwise threshold uses the set",
+			ns: keysNamespace(nil, nil, append(
+				distinctKeys(maxKeysForPairwiseCheck+1), []byte("key-0"),
+			)),
+			expected: committerpb.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET,
+		},
+		{
+			name: "duplicate beyond the threshold spanning two sets",
+			ns: keysNamespace(
+				distinctKeys(maxKeysForPairwiseCheck+1),
+				nil,
+				[][]byte{[]byte("key-0")},
+			),
+			expected: committerpb.Status_MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.expected, verifyKeysNamespace(tc.ns))
+		})
+	}
+}
+
+// keysNamespace builds a user namespace holding the given read-only, read-write and blind-write
+// keys, so a test case can name only the keys it cares about.
+func keysNamespace(readsOnly, readWrites, blindWrites [][]byte) *applicationpb.TxNamespace {
+	ns := &applicationpb.TxNamespace{NsId: "1"}
+	for _, k := range readsOnly {
+		ns.ReadsOnly = append(ns.ReadsOnly, &applicationpb.Read{Key: k})
+	}
+	for _, k := range readWrites {
+		ns.ReadWrites = append(ns.ReadWrites, &applicationpb.ReadWrite{Key: k})
+	}
+	for _, k := range blindWrites {
+		ns.BlindWrites = append(ns.BlindWrites, &applicationpb.Write{Key: k})
+	}
+	return ns
+}
+
+// distinctKeys returns n distinct keys, named so a test can reuse one of them ("key-0") to build a
+// duplicate that spans two of a namespace's read/write sets.
+func distinctKeys(n int) [][]byte {
+	keys := make([][]byte, n)
+	for i := range keys {
+		keys[i] = []byte(fmt.Sprintf("key-%d", i))
+	}
+	return keys
+}
+
+// verifyKeysNamespace runs the whole form validation over a transaction holding just this
+// namespace, so the cases go through the same path a mapped transaction does.
+func verifyKeysNamespace(ns *applicationpb.TxNamespace) committerpb.Status {
+	return verifyTxForm(&applicationpb.Tx{
+		Namespaces:   []*applicationpb.TxNamespace{ns},
+		Endorsements: dummyEndorsements(1),
+	})
 }
