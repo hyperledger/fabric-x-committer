@@ -434,6 +434,9 @@ func TestRejectSnapshotIfPriorNotCheckpointed(t *testing.T) {
 		accepted   bool
 	}{
 		{"checkpointed accepts", 1000, committerpb.SnapshotState_CHECKPOINTED, 0, true},
+		// The stall this fixes: a snapshot that can never be hashed rests at ABORTED, and a
+		// later request must be admitted exactly as it is after a checkpoint.
+		{"aborted accepts", 1006, committerpb.SnapshotState_ABORTED, 0, true},
 		{"unspecified blocks 119", 1001, committerpb.SnapshotState_STATUS_UNSPECIFIED, inProgress, false},
 		{"pending blocks 119", 1002, committerpb.SnapshotState_PENDING, inProgress, false},
 		{"in_progress blocks 119", 1003, committerpb.SnapshotState_IN_PROGRESS, inProgress, false},
@@ -640,4 +643,221 @@ func TestUpdateSnapshotStateSetsErrorMessage(t *testing.T) {
 	require.Equal(t, committerpb.SnapshotState_FAILED, got.Status)
 	require.Equal(t, "missing clone_database", got.Error)
 	require.Equal(t, name, got.CloneDatabase) // preserved, not clobbered.
+}
+
+// TestCommitSnapshotAbort walks every status an abort may close. Everything short of a
+// closed lifecycle is abortable, COMPLETED included: a digest that diverged from the
+// other organizations is exactly a snapshot nobody will checkpoint, so refusing to
+// abort it would leave that stall with no exit.
+func TestCommitSnapshotAbort(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		blockNum uint64
+		// held is the status the snapshot record is in when the abort arrives.
+		held   committerpb.SnapshotState_Status
+		digest []byte
+	}{
+		{name: "pending", blockNum: 920100, held: committerpb.SnapshotState_PENDING},
+		{name: "in progress", blockNum: 920101, held: committerpb.SnapshotState_IN_PROGRESS},
+		{name: "failed", blockNum: 920102, held: committerpb.SnapshotState_FAILED},
+		{
+			name:     "completed with a digest",
+			blockNum: 920103,
+			held:     committerpb.SnapshotState_COMPLETED,
+			digest:   []byte("diverged-digest"),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			env := newValidatorTestEnv(t, true)
+			ctx, _ := createContext(t)
+
+			ref := env.seedSnapshotHeldAt(t, snapshotHold{
+				txID: "abort-" + tc.name, blockNum: tc.blockNum, status: tc.held, digest: tc.digest,
+			})
+			abortRef := committerpb.NewTxRef("abort-tx-"+tc.name, tc.blockNum+1, 0)
+
+			status := env.submitSnapshotAbort(ctx, t, newSnapshotAbortPreparedTx(abortRef, tc.blockNum))
+			require.Len(t, status.Status, 1)
+			require.Equal(t, committerpb.Status_COMMITTED, status.Status[0].Status)
+
+			// Both must be durable: the row is the fact a replay reproduces, the status is
+			// what admits the next snapshot.
+			requireSnapshotAbortRow(t, env.dbEnv, tc.blockNum)
+			requireSnapshotStatus(t, env.dbEnv, ref.TxId, committerpb.SnapshotState_ABORTED)
+
+			// The pointer still names the record, now ABORTED, never the abort row.
+			state, err := env.dbEnv.DB.snapshotState.ReadLatest(ctx)
+			require.NoError(t, err)
+			require.Equal(t, ref.TxId, state.TxRef.TxId)
+		})
+	}
+}
+
+// TestRejectSnapshotAbortForClosedOrUnknownSnapshot covers every abort that names no
+// abortable snapshot. All are per-TX rejections rather than failures: the submitter
+// chose the block number, and local state is not in question.
+func TestRejectSnapshotAbortForClosedOrUnknownSnapshot(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		// snapshotBlock is the block of the seeded snapshot, or 0 to seed none.
+		snapshotBlock uint64
+		seededStatus  committerpb.SnapshotState_Status
+		// abortBlock is the block the abort names.
+		abortBlock uint64
+		// wantStatus is the rejection the submitter must be able to tell apart.
+		wantStatus committerpb.Status
+	}{
+		{
+			name:          "already checkpointed",
+			snapshotBlock: 920200,
+			seededStatus:  committerpb.SnapshotState_CHECKPOINTED,
+			abortBlock:    920200,
+			wantStatus:    committerpb.Status_REJECTED_SNAPSHOT_ALREADY_CHECKPOINTED,
+		},
+		{
+			name:          "already aborted",
+			snapshotBlock: 920201,
+			seededStatus:  committerpb.SnapshotState_ABORTED,
+			abortBlock:    920201,
+			wantStatus:    committerpb.Status_REJECTED_SNAPSHOT_ALREADY_ABORTED,
+		},
+		{
+			name:          "names a block that is not the latest snapshot",
+			snapshotBlock: 920202,
+			seededStatus:  committerpb.SnapshotState_PENDING,
+			abortBlock:    920999,
+			wantStatus:    committerpb.Status_REJECTED_NO_SUCH_SNAPSHOT,
+		},
+		{
+			name:       "no snapshot was ever accepted",
+			abortBlock: 920203,
+			wantStatus: committerpb.Status_REJECTED_NO_SUCH_SNAPSHOT,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			env := newValidatorTestEnv(t, true)
+			ctx, _ := createContext(t)
+
+			if tc.snapshotBlock != 0 {
+				env.seedSnapshotHeldAt(t, snapshotHold{
+					txID: "abort-rej-" + tc.name, blockNum: tc.snapshotBlock, status: tc.seededStatus,
+				})
+			}
+			abortRef := committerpb.NewTxRef("abort-rej-tx-"+tc.name, tc.abortBlock+1, 0)
+
+			status := env.submitSnapshotAbort(ctx, t, newSnapshotAbortPreparedTx(abortRef, tc.abortBlock))
+			require.Len(t, status.Status, 1)
+			require.Equal(t, tc.wantStatus, status.Status[0].Status)
+
+			// No row is left behind, so a replay cannot reproduce an abort we never accepted.
+			requireNoSnapshotAbortRow(t, env.dbEnv, tc.abortBlock)
+		})
+	}
+}
+
+// TestSnapshotAbortDoesNotGateOnPriorSnapshot pins the interaction that makes an abort
+// usable at all: the admission gate rejects a new snapshot until the latest one is
+// lifecycle-closed, and an abort is submitted precisely when it is not. Were the abort
+// gated like a request, the stuck snapshot could never be aborted.
+func TestSnapshotAbortDoesNotGateOnPriorSnapshot(t *testing.T) {
+	t.Parallel()
+	env := newValidatorTestEnv(t, false)
+	ctx, _ := createContext(t)
+
+	env.seedSnapshotHeldAt(t, snapshotHold{
+		txID: "abort-not-gated", blockNum: 920300, status: committerpb.SnapshotState_FAILED,
+	})
+
+	abortRef := committerpb.NewTxRef("abort-not-gated-tx", 920301, 0)
+	prepTx := newSnapshotAbortPreparedTx(abortRef, 920300)
+	vTx := newValidatedTxsFromPrepared(prepTx)
+
+	require.NoError(t, env.dbEnv.DB.rejectSnapshotIfPriorNotCheckpointed(ctx, vTx))
+	require.Empty(t, vTx.invalidTxStatus, "the admission gate must ignore an abort TX")
+	require.NotEmpty(t, vTx.newWrites)
+}
+
+// TestSnapshotAbortBatchHelpers covers the two batch-level rules that keep an abort out of
+// the snapshot-request path: it must never be mistaken for a request (which would clone a
+// database for a snapshot being abandoned), and two aborts in one batch must fail the batch
+// rather than let an unverified one commit.
+func TestSnapshotAbortBatchHelpers(t *testing.T) {
+	t.Parallel()
+	env := newCommitterTestEnv(t)
+	ctx, _ := createContext(t)
+
+	prepTx := newSnapshotAbortPreparedTx(committerpb.NewTxRef("abort-no-clone-tx", 920400, 0), 920399)
+	_, found := snapshotWriteInBatch(prepTx.txIDToNsNewWrites)
+	require.False(t, found, "an abort write must not be seen as a snapshot request")
+	require.NoError(t, env.dbEnv.DB.createSnapshotIfPresent(ctx, prepTx.txIDToNsNewWrites))
+
+	twoAborts := make(transactionToWrites)
+	twoAborts.getOrCreate("abort-a", committerpb.SnapshotNamespaceID).
+		append(committerpb.SnapshotAbortKey(1), nil, 0)
+	twoAborts.getOrCreate("abort-b", committerpb.SnapshotNamespaceID).
+		append(committerpb.SnapshotAbortKey(2), nil, 0)
+	_, err := snapshotAbortWriteInBatch(twoAborts)
+	require.ErrorContains(t, err, "at most one snapshot abort")
+}
+
+// submitSnapshotAbort sends an abort TX through the real validator-committer pipeline
+// and returns the resulting status batch, so every case asserts the verdict the
+// pipeline actually produces rather than one a direct call would fabricate.
+func (env *validatorTestEnv) submitSnapshotAbort(
+	ctx context.Context, t *testing.T, abort *preparedTransactions,
+) *servicepb.TxStatusBatch {
+	t.Helper()
+	channel.NewWriter(ctx, env.preparedTxs).Write(abort)
+	status, ok := channel.NewReader(ctx, env.txStatus).Read()
+	require.True(t, ok)
+	return status
+}
+
+// snapshotHold is the state an abort finds a `_snapshot` record in.
+type snapshotHold struct {
+	txID     string
+	blockNum uint64
+	status   committerpb.SnapshotState_Status
+	digest   []byte
+}
+
+// seedSnapshotHeldAt commits a `_snapshot` record for hold.blockNum and leaves it at hold.status.
+func (env *validatorTestEnv) seedSnapshotHeldAt(t *testing.T, hold snapshotHold) *committerpb.TxRef {
+	t.Helper()
+	ref := env.seedSnapshotRecord(t, hold.txID, hold.blockNum, hold.digest)
+	if hold.status != committerpb.SnapshotState_COMPLETED {
+		require.NoError(t, env.dbEnv.DB.snapshotState.Update(t.Context(), ref, statedb.SnapshotUpdate{
+			Status: hold.status,
+		}))
+	}
+	return ref
+}
+
+// newSnapshotAbortPreparedTx builds what the preparer produces for an abort TX: a
+// transaction whose single nil-version ReadWrite becomes one new write, key = the abort
+// key for blockNum, value = empty.
+func newSnapshotAbortPreparedTx(ref *committerpb.TxRef, blockNum uint64) *preparedTransactions {
+	key := committerpb.SnapshotAbortKey(blockNum)
+	txID := TxID(ref.TxId)
+	prepTx := newEmptyPreparedTransactions()
+	prepTx.txIDToNsNewWrites.getOrCreate(txID, committerpb.SnapshotNamespaceID).append(key, nil, 0)
+	prepTx.readToTxIDs[newCmpRead(committerpb.SnapshotNamespaceID, key, nil)] = []TxID{txID}
+	prepTx.txIDToHeight[txID] = servicepb.NewHeightFromTxRef(ref)
+	return prepTx
+}
+
+func requireSnapshotAbortRow(t *testing.T, env *DatabaseTestEnv, blockNum uint64) {
+	t.Helper()
+	key := committerpb.SnapshotAbortKey(blockNum)
+	rows := env.FetchKeys(t, committerpb.SnapshotNamespaceID, [][]byte{key})
+	require.NotNil(t, rows[string(key)], "no abort row for block %d", blockNum)
+}
+
+func requireNoSnapshotAbortRow(t *testing.T, env *DatabaseTestEnv, blockNum uint64) {
+	t.Helper()
+	env.rowNotExists(t, committerpb.SnapshotNamespaceID, [][]byte{committerpb.SnapshotAbortKey(blockNum)})
 }

@@ -179,6 +179,7 @@ The following Snapshot Hasher metrics are exported for consumption by Prometheus
 | snapshothasher_hash_jobs_completed_total     | counter   |               | Number of snapshot hash jobs that published a digest.                                                                           |
 | snapshothasher_hash_jobs_failed_total        | counter   |               | Number of snapshot hash jobs that ended without publishing a digest.                                                            |
 | snapshothasher_hash_started_total            | counter   |               | Number of snapshot hash attempts that began; its gap against duration_seconds_count plus jobs_failed_total is a hash in flight. |
+| snapshothasher_hash_abandoned_total          | counter   |               | Number of snapshot hash jobs stopped because the snapshot was aborted.                                                          |
 | snapshothasher_poll_errors_total             | counter   |               | Number of polls that failed before a hash job could be started or skipped.                                                      |
 | snapshothasher_hash_duration_seconds         | histogram |               | Time taken to hash a snapshot clone database.                                                                                   |
 | snapshothasher_grpc_requests_total           | counter   | method        | Number of RPCs started by the service                                                                                           |

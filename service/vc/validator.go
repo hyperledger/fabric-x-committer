@@ -45,6 +45,9 @@ type validatedTransactions struct {
 	// on every ordinary batch, which is what tells the sidecar the per-TX status is
 	// authoritative.
 	checkpointFeedback *servicepb.CheckpointFeedback
+	// snapshotAbort is this batch's verified abort write, or nil. When set, the record is
+	// advanced to ABORTED in the same transaction as the abort row.
+	snapshotAbort *snapshotAbortTx
 }
 
 func (v *validatedTransactions) Debug() {
@@ -134,6 +137,10 @@ func (v *transactionValidator) validate(ctx context.Context, db *database) error
 
 		if err := db.rejectCheckpointIfNotVerified(ctx, vTxs); err != nil {
 			return fmt.Errorf("failed to verify checkpoint before commit: %w", err)
+		}
+
+		if err := db.rejectSnapshotAbortIfNoSuchSnapshot(ctx, vTxs); err != nil {
+			return fmt.Errorf("failed to verify snapshot abort before commit: %w", err)
 		}
 
 		promutil.Observe(v.metrics.validatorTxBatchLatencySeconds, time.Since(start))

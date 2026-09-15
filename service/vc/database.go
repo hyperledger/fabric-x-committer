@@ -75,8 +75,11 @@ type (
 		txIDToHeight transactionIDToHeight
 		// checkpoint is the verified `_checkpoint` write in this batch, or nil. When set, the
 		// attested snapshot's record is advanced to CHECKPOINTED in the same transaction as
-		// the attestation row (see statedb.MarkSnapshotCheckpointedInTx).
+		// the attestation row (see statedb.MarkSnapshotTerminalInTx).
 		checkpoint *checkpointTx
+		// snapshotAbort is this batch's verified abort write, or nil. When set, the record is
+		// advanced to ABORTED in the same transaction as the abort row.
+		snapshotAbort *snapshotAbortTx
 	}
 
 	commitResult struct {
@@ -242,8 +245,18 @@ func (d *database) commit(ctx context.Context, states *statesToBeCommitted) (*co
 	// record it produces must become durable together, or a crash between them would wedge
 	// the snapshot admission gate.
 	if states.checkpoint != nil {
-		if err = statedb.MarkSnapshotCheckpointedInTx(ctx, tx, states.checkpoint.blockNum); err != nil {
+		if err = statedb.MarkSnapshotTerminalInTx(ctx, tx, states.checkpoint.blockNum,
+			committerpb.SnapshotState_CHECKPOINTED); err != nil {
 			return nil, fmt.Errorf("failed to mark the snapshot as checkpointed: %w", err)
+		}
+	}
+
+	// Likewise for a verified abort: the row and the ABORTED record must land together, or a
+	// crash between them wedges the admission gate just as an unadvanced checkpoint would.
+	if states.snapshotAbort != nil {
+		if err = statedb.MarkSnapshotTerminalInTx(ctx, tx, states.snapshotAbort.blockNum,
+			committerpb.SnapshotState_ABORTED); err != nil {
+			return nil, fmt.Errorf("failed to mark the snapshot as aborted: %w", err)
 		}
 	}
 
@@ -302,13 +315,16 @@ func (d *database) writeStatesByGroup(
 	return nil, nil
 }
 
-// setLatestSnapshotKeyIfPresent points statedb.LatestSnapshotPointerKey at w's
-// sole key, or no-ops when w is empty (normal non-snapshot batch). Writing it here,
-// in the same transaction as the _snapshot row, is what lets the snapshot service
-// find the record it must hash with a single key lookup. The key is pre-seeded
-// (NULL) at DB init, so the existing setMetadataPrepSQLStmt UPDATE is reused as-is.
+// setLatestSnapshotKeyIfPresent points statedb.LatestSnapshotPointerKey at w's sole key,
+// or no-ops when w is empty (normal non-snapshot batch) or carries an abort. Writing it
+// here, in the same transaction as the _snapshot row, is what lets the snapshot hasher
+// find the record it must hash with a single key lookup. The key is pre-seeded (NULL) at
+// DB init, so the existing setMetadataPrepSQLStmt UPDATE is reused as-is.
+//
+// An abort is excluded because the pointer must always name a `_snapshot` record; an abort
+// row is not one, so pointing at it would make every later ReadLatest report corruption.
 func setLatestSnapshotKeyIfPresent(ctx context.Context, tx pgx.Tx, w *namespaceWrites) error {
-	if w.empty() {
+	if w.empty() || committerpb.IsSnapshotAbortKey(w.keys[0]) {
 		return nil
 	}
 	_, err := tx.Exec(ctx, setMetadataPrepSQLStmt, statedb.LatestSnapshotPointerKey, w.keys[0])

@@ -141,14 +141,20 @@ func (c *transactionCommitter) commitTransactions(
 		if cpErr != nil {
 			return nil, fmt.Errorf("failed to read the checkpoint write before commit: %w", cpErr)
 		}
+		// Same for the abort: re-reading keeps a dropped abort from advancing its record.
+		abort, abortErr := snapshotAbortWriteInBatch(vTx.newWrites)
+		if abortErr != nil {
+			return nil, fmt.Errorf("failed to read the snapshot abort write before commit: %w", abortErr)
+		}
 
 		// Group the writes by namespace so that we can commit to each table independently.
 		info := &statesToBeCommitted{
-			updateWrites: groupWritesByNamespace(vTx.validTxNonBlindWrites),
-			newWrites:    groupWritesByNamespace(vTx.newWrites),
-			batchStatus:  prepareStatusForCommit(vTx),
-			txIDToHeight: vTx.txIDToHeight,
-			checkpoint:   checkpoint,
+			updateWrites:  groupWritesByNamespace(vTx.validTxNonBlindWrites),
+			newWrites:     groupWritesByNamespace(vTx.newWrites),
+			batchStatus:   prepareStatusForCommit(vTx),
+			txIDToHeight:  vTx.txIDToHeight,
+			checkpoint:    checkpoint,
+			snapshotAbort: abort,
 		}
 
 		// ErrNonRetryable is terminal: the only errors that wrap it here are broken
