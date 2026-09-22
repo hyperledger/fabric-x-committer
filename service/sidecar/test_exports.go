@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -61,9 +62,7 @@ func RequireNotifications( //nolint:revive // argument-limit.
 func RequireStreamBlocks( //nolint:revive // argument-limit.
 	t *testing.T,
 	stream committerpb.SidecarService_StreamBlocksClient,
-	expectedBlockNumber uint64,
-	expectedBlockHash []byte,
-	expectedPrevBlockHash []byte,
+	expectedHeader *common.BlockHeader,
 	txIDs []string,
 	status []committerpb.Status,
 ) {
@@ -74,7 +73,7 @@ func RequireStreamBlocks( //nolint:revive // argument-limit.
 	expected := make([]*committerpb.TxEvent, len(txIDs))
 	for i, txID := range txIDs {
 		expected[i] = &committerpb.TxEvent{
-			Ref:    committerpb.NewTxRef(txID, expectedBlockNumber, uint32(i)),
+			Ref:    committerpb.NewTxRef(txID, expectedHeader.GetNumber(), uint32(i)),
 			Status: status[i],
 		}
 	}
@@ -85,9 +84,7 @@ func RequireStreamBlocks( //nolint:revive // argument-limit.
 		batch, err := stream.Recv()
 		require.NoError(ct, err)
 		require.NotNil(ct, batch)
-		require.Equal(ct, expectedBlockNumber, batch.BlockNumber)
-		require.Equal(ct, expectedBlockHash, batch.BlockHash)
-		require.Equal(ct, expectedPrevBlockHash, batch.PrevBlockHash)
+		test.RequireProtoEqual(ct, expectedHeader, batch.Header)
 		events = batch.Events
 	}, 15*time.Second, 50*time.Millisecond)
 

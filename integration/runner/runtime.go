@@ -17,7 +17,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
-	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -644,9 +643,7 @@ func (c *CommitterRuntime) ValidateExpectedResultsInCommittedBlock(t *testing.T,
 	sidecar.RequireStreamBlocks(
 		t,
 		c.StreamBlocksStream,
-		blk.Header.Number,
-		protoutil.BlockHeaderHash(blk.Header),
-		blk.Header.PreviousHash,
+		blk.Header,
 		expected.TxIDs,
 		expected.Statuses,
 	)

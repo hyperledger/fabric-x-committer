@@ -200,14 +200,12 @@ message StreamBlocksRequest {
     repeated Status filter_status = 2;      // Optional: filter by status
     bool include_read_write_sets = 3;       // Optional: include read/write sets
     bool include_endorsements = 4;          // Optional: include endorsements
-    bool include_metadata = 5;              // Optional: include metadata
+    bool include_metadata = 5;              // Optional: include transaction metadata
 }
 
 message BlockEvent {
-    uint64 block_number = 1;
+    common.BlockHeader header = 1;
     repeated TxEvent events = 2;
-    bytes block_hash = 3;
-    bytes prev_block_hash = 4;
 }
 
 message TxEvent {
@@ -215,7 +213,7 @@ message TxEvent {
     Status status = 2;                      // Transaction status
     repeated TxNamespace namespaces = 3;    // Namespaces (if filtering enabled)
     repeated Endorsement endorsements = 4;  // Endorsements (if requested)
-    repeated bytes metadata = 5;            // Metadata (if requested)
+    repeated bytes metadata = 5;            // Transaction metadata (if requested)
 }
 ```
 
@@ -253,16 +251,16 @@ stream, err := client.StreamBlocks(ctx, &committerpb.StreamBlocksRequest{
 
 ### 3.3. Receiving Block Events
 
-The server sends one `BlockEvent` for every committed block, containing block number, block hash, previous block hash,
-and the `TxEvent` entries that pass the requested filters. A `BlockEvent` may contain zero `TxEvent` entries when no
-transactions in that block match.
+The server sends one `BlockEvent` for every committed block, containing the block's header and the `TxEvent` entries
+that pass the requested filters. A `BlockEvent` may contain zero `TxEvent` entries when no transactions in that block
+match.
 
 ```go
 for {
-    batch, err := stream.Recv()
+    blockEvent, err := stream.Recv()
     ...
 
-    for _, event := range batch.Events {
+    for _, event := range blockEvent.Events {
         ...
     }
 }

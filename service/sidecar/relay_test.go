@@ -303,6 +303,30 @@ func TestRelayUnprocessableConfigBlock(t *testing.T) {
 	require.ErrorIs(t, err, retry.ErrBackOff)
 }
 
+// TestProcessCommittedBlocksInOrderHeader verifies that processCommittedBlocksInOrder forwards
+// the committed block's header unchanged into committedBlockWithTxs, for StreamBlocks clients.
+func TestProcessCommittedBlocksInOrderHeader(t *testing.T) {
+	t.Parallel()
+	relayService := newRelay(time.Second, newPerformanceMetrics(newQueues(10)))
+
+	blk, _ := createBlockForTest(t, 0, []byte("prev-hash"))
+	blk.Metadata = &common.BlockMetadata{Metadata: make([][]byte, statusIdx+1)}
+	relayService.inFlightBlocks.reset(0)
+	_, err := relayService.inFlightBlocks.register(0, &blockWithStatus{block: blk, blockNumber: 0})
+	require.NoError(t, err)
+
+	outgoingCommittedBlock := make(chan *common.Block, 1)
+	outgoingCommittedBlockWithTxs := make(chan *committedBlockWithTxs, 1)
+	relayService.processCommittedBlocksInOrder(
+		t.Context(),
+		channel.NewWriter(t.Context(), outgoingCommittedBlock),
+		channel.NewWriter(t.Context(), outgoingCommittedBlockWithTxs),
+	)
+
+	got := <-outgoingCommittedBlockWithTxs
+	test.RequireProtoEqual(t, blk.Header, got.header)
+}
+
 func TestRelaySnapshotBlockSplitAndDrain(t *testing.T) {
 	t.Parallel()
 	relayEnv := newRelayTestEnv(t)
