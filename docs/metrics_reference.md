@@ -104,16 +104,19 @@ The following Coordinator metrics are exported for consumption by Prometheus.
 
 The following Verifier metrics are exported for consumption by Prometheus.
 
-| Name                                              | Type      | Labels        | Description                                                                                  |
-|---------------------------------------------------|-----------|---------------|----------------------------------------------------------------------------------------------|
-| verifier_server_tx_input_throughput               | counter   |               | Incoming requests for a component                                                            |
-| verifier_server_tx_output_throughput              | counter   |               | Outgoing responses for a component                                                           |
-| verifier_server_grpc_requests_total               | counter   | method        | Number of RPCs started by the service                                                        |
-| verifier_server_grpc_requests_latency_seconds     | histogram | method status | The latency (seconds) of requests by the service, by method and gRPC status code             |
-| verifier_server_grpc_stream_duration_seconds      | histogram | method status | The duration (seconds) a stream was active from start to end, by method and gRPC status code |
-| verifier_server_grpc_active_streams               | gauge     | method        | Number of gRPC streams currently open on the server                                          |
-| verifier_server_grpc_active_connections           | gauge     |               | Number of client connections currently open on the server                                    |
-| verifier_server_parallel_executor_active_requests | gauge     |               | The total number of active requests                                                          |
+| Name                                                       | Type      | Labels        | Description                                                                                  |
+|------------------------------------------------------------|-----------|---------------|----------------------------------------------------------------------------------------------|
+| verifier_server_parallel_executor_input_queue_size         | gauge     | stream        | Size of a stream's queue of transactions waiting to be verified.                             |
+| verifier_server_parallel_executor_output_single_queue_size | gauge     | stream        | Size of a stream's queue of verified transactions waiting to be batched.                     |
+| verifier_server_parallel_executor_output_queue_size        | gauge     | stream        | Size of a stream's queue of status batches waiting to be sent.                               |
+| verifier_server_tx_input_throughput                        | counter   |               | Incoming requests for a component                                                            |
+| verifier_server_tx_output_throughput                       | counter   |               | Outgoing responses for a component                                                           |
+| verifier_server_grpc_requests_total                        | counter   | method        | Number of RPCs started by the service                                                        |
+| verifier_server_grpc_requests_latency_seconds              | histogram | method status | The latency (seconds) of requests by the service, by method and gRPC status code             |
+| verifier_server_grpc_stream_duration_seconds               | histogram | method status | The duration (seconds) a stream was active from start to end, by method and gRPC status code |
+| verifier_server_grpc_active_streams                        | gauge     | method        | Number of gRPC streams currently open on the server                                          |
+| verifier_server_grpc_active_connections                    | gauge     |               | Number of client connections currently open on the server                                    |
+| verifier_server_parallel_executor_active_requests          | gauge     |               | The total number of active requests                                                          |
 
 ## Validator-Committer Metrics
 
