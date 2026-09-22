@@ -183,7 +183,8 @@ func (p *transactionPreparer) prepare(ctx context.Context) error { //nolint:goco
 				// Only TxRef is set here; committer/hash worker fills lifecycle status and
 				// snapshot database details. Nil version makes this a new key, and MVCC on
 				// tx_id gives idempotency for duplicate snapshot requests.
-				if nsOperations.NsId == committerpb.SnapshotNamespaceID {
+				// An abort carries its own write, so only a marker-only request needs one.
+				if nsOperations.NsId == committerpb.SnapshotNamespaceID && !isSnapshotAbort(nsOperations) {
 					// proto.Marshal cannot fail here: SnapshotState{TxRef} is a small, acyclic
 					// message. We return the error only for completeness. proto.Marshal is
 					// deterministic, so any failure would occur identically on every committer
@@ -223,10 +224,12 @@ func (p *transactionPreparer) prepare(ctx context.Context) error { //nolint:goco
 							Version: &nsOperations.NsVersion,
 						}},
 					})
-				case committerpb.ConfigNamespaceID, committerpb.CheckpointNamespaceID:
-					// A config TX is independent. The _checkpoint namespace is a system
-					// namespace: its single ReadWrite is prepared above for checkpoint-specific
-					// handling, but it takes no _meta namespace-version dependency.
+				case committerpb.ConfigNamespaceID, committerpb.CheckpointNamespaceID,
+					committerpb.SnapshotNamespaceID:
+					// A config TX is independent. The _checkpoint namespace, and the _snapshot
+					// namespace when it carries an abort, are system namespaces: their single
+					// ReadWrite is prepared above, but they take no _meta namespace-version
+					// dependency.
 				default:
 					prepTxs.addReadsOnly(tID, &applicationpb.TxNamespace{
 						NsId: committerpb.MetaNamespaceID,
@@ -446,4 +449,10 @@ func (nr namespaceToReads) empty() bool {
 	}
 
 	return true
+}
+
+// isSnapshotAbort reports whether a `_snapshot` namespace carries an abort rather than a
+// request. The sidecar already validated the shape, so the prefix alone decides it here.
+func isSnapshotAbort(ns *applicationpb.TxNamespace) bool {
+	return len(ns.ReadWrites) == 1 && committerpb.IsSnapshotAbortKey(ns.ReadWrites[0].Key)
 }

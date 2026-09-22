@@ -26,6 +26,12 @@ type (
 		// the coordinator with the last committed block.
 		LastCommittedBlockSetInterval time.Duration `mapstructure:"last-committed-block-set-interval" default:"5s" validate:"gt=0"` //nolint:lll,revive
 		WaitingTxsLimit               int           `mapstructure:"waiting-txs-limit" default:"100000" validate:"gt=0"`
+		// CheckpointHoldRetryInterval is how long the sidecar waits before re-fetching a
+		// checkpoint block the validator-committer held because the snapshot hash it attests
+		// to was still being computed. The wait exists because the hash is computed by the
+		// snapshot hasher on its own poll interval, so retrying sooner only re-reads the same
+		// unfinished state.
+		CheckpointHoldRetryInterval time.Duration `mapstructure:"checkpoint-hold-retry-interval" default:"1m" validate:"gt=0"` //nolint:lll,revive
 		// ChannelBufferSize is the buffer size that will be used to queue blocks, requests, and statuses.
 		ChannelBufferSize int                       `mapstructure:"channel-buffer-size" default:"100" validate:"gt=0"`
 		Notification      NotificationServiceConfig `mapstructure:"notification"`

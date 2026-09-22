@@ -36,25 +36,31 @@ message TxStatusBatch {
 
 // CheckpointFeedback controls checkpoint intake while local snapshot hash verification completes.
 message CheckpointFeedback {
-    // Signal controls new intake. HOLD and HALT allow already-fetched work to drain.
+    // Signal controls new intake.
     enum Signal {
         // No checkpoint feedback. Ordinary per-TX status is authoritative.
         SIGNAL_UNSPECIFIED = 0;
-        // Local snapshot hash is computed and verified. Releases a prior HOLD and resumes intake.
-        PROCEED = 1;
-        // Local snapshot hash is not yet computed. Blocks new intake while already-fetched work drains.
-        HOLD = 2;
-        // Same intake barrier as HOLD, but terminal: no PROCEED follows without operator intervention.
-        HALT = 3;
+        // Local snapshot hash is not yet computed. The checkpoint does not commit and carries no
+        // per-TX status, so the sidecar pauses intake and resubmits the same checkpoint TX later.
+        HOLD = 1;
+        // Local state diverged from the attested snapshot. Terminal: the sidecar stops intake and
+        // no signal follows without operator intervention.
+        HALT = 2;
     }
+
+    reserved 2; // Was tx_id, now carried by ref.
 
     // Checkpoint feedback signal.
     Signal signal = 1;
-    // Checkpoint transaction ID used by the coordinator to correlate feedback with the in-flight checkpoint.
-    string tx_id = 2;
-    // Referenced snapshot block number used in coordinator and sidecar diagnostic logs.
-    uint64 block_number = 3;
+    // Block number of the snapshot the checkpoint attests to. Used in coordinator and sidecar
+    // diagnostic logs. This is not the block holding the checkpoint TX itself; see ref.
+    uint64 snapshot_block_number = 3;
     // HALT divergence detail for operator diagnostics, including local and checkpoint hashes.
     // Required when signal is HALT. Must be logged, not used as a metric label.
     string reason = 4;
+    // Position of the checkpoint TX itself. The coordinator needs the full reference, not just the
+    // TX ID: a held checkpoint carries no per-TX status, so this is the only thing that lets the
+    // coordinator find the TX's node and release it from the dependency graph. Without it the node
+    // is never freed, and the resubmitted checkpoint deadlocks behind its own stale node.
+    committerpb.TxRef ref = 5;
 }

@@ -220,6 +220,68 @@ func (s *SnapshotStateManager) Update(ctx context.Context, ref *committerpb.TxRe
 	return err //nolint:wrapcheck // already wrapped inside the retried closure.
 }
 
+// MarkSnapshotTerminalInTx advances the latest `_snapshot` record to target (CHECKPOINTED or
+// ABORTED) in the caller's transaction, so the record and the row that closes it land together.
+// Split apart, a crash between them leaves a row whose record still reads as awaiting a
+// checkpoint, rejecting every later snapshot with nothing to repair it.
+//
+// A record already at target is a no-op, so a resubmission does not rewrite it. The other
+// terminal status, an unset pointer, and a record for another block cannot be retried: the
+// caller verified the record before this write committed, so something changed underneath.
+//
+// Only CHECKPOINTED and ABORTED are terminal; any other target is a programming error. Use
+// SnapshotStateManager.Update for the lifecycle statuses that precede them.
+func MarkSnapshotTerminalInTx(
+	ctx context.Context, tx pgx.Tx, blockNum uint64, target committerpb.SnapshotState_Status,
+) error {
+	if target != committerpb.SnapshotState_CHECKPOINTED && target != committerpb.SnapshotState_ABORTED {
+		return errors.Wrapf(retry.ErrNonRetryable, "%s is not a terminal snapshot status", target)
+	}
+
+	var key []byte
+	if err := tx.QueryRow(ctx, getLatestSnapshotKeySQL, LatestSnapshotPointerKey).Scan(&key); err != nil {
+		return errors.Wrap(err, "failed to read the latest snapshot key")
+	}
+	if len(key) == 0 {
+		return errors.Wrapf(retry.ErrNonRetryable,
+			"no snapshot record for block %d to mark %s, but its write was verified", blockNum, target)
+	}
+
+	var raw []byte
+	if err := tx.QueryRow(ctx, selectSnapshotRecordForUpdateSQL, key).Scan(&raw); err != nil {
+		return errors.Wrapf(err, "failed to read _snapshot record for key %s", key)
+	}
+	state, err := DecodeSnapshotState(raw)
+	if err != nil {
+		return errors.Wrapf(err, "failed to decode _snapshot record for key %s", key)
+	}
+	if state.Status == target {
+		return nil // a resubmitted checkpoint or abort must not rewrite the record.
+	}
+
+	// Terminal but not target, so it was closed the other way: a checkpoint cannot close an
+	// aborted snapshot, nor an abort a checkpointed one.
+	if state.Status == committerpb.SnapshotState_CHECKPOINTED ||
+		state.Status == committerpb.SnapshotState_ABORTED {
+		return errors.Wrapf(retry.ErrNonRetryable,
+			"the snapshot for block %d is already %s, but its %s write was verified",
+			blockNum, state.Status, target)
+	}
+
+	if state.TxRef == nil || state.TxRef.BlockNum != blockNum {
+		return errors.Wrapf(retry.ErrNonRetryable,
+			"the latest snapshot record is not for block %d, but its %s write was verified", blockNum, target)
+	}
+
+	state.Status = target
+	newRaw, err := EncodeSnapshotState(state)
+	if err != nil {
+		return errors.Wrapf(err, "failed to encode _snapshot record for key %s", key)
+	}
+	_, err = tx.Exec(ctx, updateSnapshotRecordSQL, key, newRaw)
+	return errors.Wrapf(err, "failed to mark the snapshot for block %d as %s", blockNum, target)
+}
+
 // DecodeSnapshotState unmarshals a `_snapshot` record value.
 func DecodeSnapshotState(raw []byte) (*committerpb.SnapshotState, error) {
 	var state committerpb.SnapshotState

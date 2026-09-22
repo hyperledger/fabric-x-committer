@@ -136,7 +136,7 @@ func New(c *Config) (*Service, error) {
 	q := newQueues(c.ChannelBufferSize)
 	metrics := newPerformanceMetrics(q)
 	deliveryParams.Metrics = metrics.delivery
-	relayService := newRelay(c.LastCommittedBlockSetInterval, metrics)
+	relayService := newRelay(c.LastCommittedBlockSetInterval, c.CheckpointHoldRetryInterval, metrics)
 
 	return &Service{
 		deliveryParams: deliveryParams,

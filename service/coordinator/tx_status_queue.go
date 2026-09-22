@@ -32,7 +32,7 @@ func (q *txStatusQueue) write(ctx context.Context, batch *servicepb.TxStatusBatc
 	// Count before enqueueing so a fast reader cannot receive and decrement this
 	// batch before it has been counted. If the enqueue is canceled while blocked,
 	// roll the count back below.
-	count := int32(len(batch.Status)) //nolint:gosec
+	count := txCount(batch)
 	q.count.Add(count)
 	select {
 	case <-ctx.Done():
@@ -52,7 +52,7 @@ func (q *txStatusQueue) read(ctx context.Context) (*servicepb.TxStatusBatch, boo
 	case <-ctx.Done():
 		return nil, false
 	case batch := <-q.ch:
-		q.count.Add(-int32(len(batch.Status))) //nolint:gosec
+		q.count.Add(-txCount(batch))
 		return batch, true
 	}
 }
@@ -80,7 +80,7 @@ func (q *txStatusQueue) drain() int32 {
 	for {
 		select {
 		case batch := <-q.ch:
-			discarded += int32(len(batch.Status)) //nolint:gosec
+			discarded += txCount(batch)
 		default:
 			q.count.Add(-discarded)
 			return discarded
@@ -90,4 +90,20 @@ func (q *txStatusQueue) drain() int32 {
 
 func (q *txStatusQueue) len() int {
 	return len(q.ch)
+}
+
+// txCount is the number of transactions a batch accounts for, which is not always the
+// number of statuses it carries.
+//
+// A held or halted `_checkpoint` transaction produces no per-TX status: the VC reports it
+// through the feedback instead, because a persisted status would make the sidecar's
+// re-submission a permanent duplicate. It was still counted in numTxsInProgress when its
+// block arrived, so a feedback must count as the one transaction it speaks for, or the
+// count leaks and NoPendingTransactionProcessing never reports idle again.
+func txCount(batch *servicepb.TxStatusBatch) int32 {
+	count := int32(len(batch.Status)) //nolint:gosec
+	if batch.CheckpointFeedback != nil {
+		count++
+	}
+	return count
 }

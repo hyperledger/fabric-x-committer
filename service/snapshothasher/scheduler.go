@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/yugabyte/pgx/v5/pgxpool"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
 	"github.com/hyperledger/fabric-x-committer/utils/statedb"
@@ -26,7 +27,15 @@ import (
 // system does, which leaves external interference or storage corruption. No retry
 // repairs either, so the service stops instead of logging the same impossible state
 // once per interval forever.
-var ErrCorruptSnapshotState = errors.New("corrupt durable snapshot state")
+var (
+	ErrCorruptSnapshotState = errors.New("corrupt durable snapshot state")
+
+	// errSnapshotAborted reports that the snapshot being hashed was abandoned by a committed
+	// abort transaction, so this hash was stopped. It is not a failure: the abort is a
+	// decision about the organization's history, and the record already holds its terminal
+	// status. Unexported because nothing outside this package acts on it.
+	errSnapshotAborted = errors.New("snapshot aborted while hashing")
+)
 
 // scheduler drives snapshot hashing from durable state alone.
 //
@@ -67,6 +76,11 @@ func (s *scheduler) run(ctx context.Context) error {
 			case err == nil:
 			case errors.Is(err, ErrCorruptSnapshotState):
 				return err
+			case errors.Is(err, errSnapshotAborted):
+				// An operator abandoned the snapshot while it was being hashed. The record already
+				// holds its terminal status, so there is nothing to retry and nothing failed; it is
+				// counted by hashAbandonedTotal and logged as information.
+				logger.Infof("stopped hashing an aborted snapshot: %v", err)
 			case errors.Is(err, statedb.ErrUnexpectedSnapshotStatus):
 				// The record moved while this tick worked on it -- a checkpoint landed, or a
 				// second hasher published first. Neither is this service's failure, and the next
@@ -116,12 +130,72 @@ func (s *scheduler) hashLatestSnapshotIfNeeded(ctx context.Context) error {
 	}
 	defer pool.Close()
 
-	return s.hashSnapshot(ctx, state, pool)
+	return s.hashSnapshotUntilAborted(ctx, state, pool)
+}
+
+// hashSnapshotUntilAborted runs the hash with a watcher that cancels it once an abort commits.
+// Hashing runs inline on the polling goroutine, so without the watcher a full-clone scan would
+// grind on for minutes against a clone nobody wants. A cancelled hash records nothing:
+// failHash returns early on a cancelled context, leaving ABORTED intact.
+func (s *scheduler) hashSnapshotUntilAborted(
+	ctx context.Context, state *committerpb.SnapshotState, pool *pgxpool.Pool,
+) error {
+	// When the hash finishes without an error, errgroup cancels nothing, so the watcher would
+	// run forever and Wait would block. Cancelling explicitly when the hash returns ends it.
+	hashCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	g, gCtx := errgroup.WithContext(hashCtx)
+	g.Go(func() error {
+		defer cancel()
+		return s.hashSnapshot(gCtx, state, pool)
+	})
+	g.Go(func() error {
+		return s.watchForAbort(gCtx, state.TxRef)
+	})
+	return g.Wait() //nolint:wrapcheck // both goroutines return already-wrapped errors.
+}
+
+// watchForAbort returns errSnapshotAborted once the record for ref is ABORTED, cancelling the
+// group and with it the hash, or nil when the hash finished first. The first check runs before
+// the ticker, so an abort that committed just before this call needs no full interval to catch.
+//
+// A read failure stops the hash. ReadLatest already retries for the profile's whole window
+// (15 minutes by default), so a failure here is a real fault rather than a blip, and a watcher
+// that kept polling blind would hash on with no way to observe an abort. A read cancelled by
+// the hash finishing is not such a failure, so it still returns nil.
+func (s *scheduler) watchForAbort(ctx context.Context, ref *committerpb.TxRef) error {
+	ticker := time.NewTicker(s.pollInterval)
+	defer ticker.Stop()
+	for {
+		if ctx.Err() != nil {
+			return nil
+		}
+		state, err := s.state.ReadLatest(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil // the hash finished and cancelled this read; it did not fail.
+			}
+			return errors.Wrapf(err, "failed to check whether snapshot %s was aborted", ref.TxId)
+		}
+
+		if state != nil && state.TxRef != nil && state.TxRef.TxId == ref.TxId &&
+			state.Status == committerpb.SnapshotState_ABORTED {
+			promutil.AddToCounter(s.metrics.hashAbandonedTotal, 1)
+			return errors.Wrapf(errSnapshotAborted, "snapshot tx %s", ref.TxId)
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+		}
+	}
 }
 
 // readRecordNeedingHash returns the latest `_snapshot` record when that record still
 // needs hashing, or (nil, nil) when there is nothing to do -- no snapshot was ever
-// accepted, or the latest one is already COMPLETED or CHECKPOINTED. Every way of
+// accepted, or the latest one is already COMPLETED, CHECKPOINTED, or ABORTED. Every way of
 // failing to decide which of those holds is counted as a poll error, since such a tick
 // neither completes nor fails a hash job.
 func (s *scheduler) readRecordNeedingHash(ctx context.Context) (*committerpb.SnapshotState, error) {
@@ -140,7 +214,8 @@ func (s *scheduler) readRecordNeedingHash(ctx context.Context) (*committerpb.Sna
 	txID := state.TxRef.TxId
 
 	switch state.Status {
-	case committerpb.SnapshotState_CHECKPOINTED, committerpb.SnapshotState_COMPLETED:
+	case committerpb.SnapshotState_CHECKPOINTED, committerpb.SnapshotState_COMPLETED,
+		committerpb.SnapshotState_ABORTED:
 		return nil, nil // terminal / already done -- nothing to hash.
 	case committerpb.SnapshotState_PENDING, committerpb.SnapshotState_IN_PROGRESS, committerpb.SnapshotState_FAILED:
 		// fall through to the clone check below.

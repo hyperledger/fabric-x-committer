@@ -255,10 +255,14 @@ enum Status {
    MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET = 112;    // Duplicate key in the read-write set.
    MALFORMED_MISSING_SIGNATURE = 113;                  // Number of signatures does not match the number of namespaces.
    MALFORMED_NAMESPACE_POLICY_INVALID = 114;           // Invalid namespace policy.
-   MALFORMED_SNAPSHOT_NOT_MARKER_ONLY = 116;           // `_snapshot` namespace has reads/writes; it must be marker only.
+   MALFORMED_SNAPSHOT_NOT_MARKER_ONLY = 116;           // `_snapshot` namespace is neither a marker-only request nor a well-formed abort.
    MALFORMED_CHECKPOINT_INVALID_KEY = 117;             // `_checkpoint` namespace form or key is invalid.
    MALFORMED_SYSTEM_TX_NOT_STANDALONE = 118;           // System namespace TX (`_snapshot`/`_checkpoint`) is not standalone.
    REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK = 121;         // More than one `_snapshot` TX in a block; only the first is processed, the rest rejected.
+   MALFORMED_SNAPSHOT_INVALID_ABORT_KEY = 122;         // An abort `_snapshot` TX's key does not decode as an abort key.
+   REJECTED_NO_SUCH_SNAPSHOT = 123;                    // An abort names a block with no `_snapshot` record, or not the snapshot awaiting its checkpoint.
+   REJECTED_SNAPSHOT_ALREADY_CHECKPOINTED = 124;       // An abort names a snapshot that was already checkpointed.
+   REJECTED_SNAPSHOT_ALREADY_ABORTED = 125;            // An abort names a snapshot that was already aborted.
 }
 ```
 
@@ -292,22 +296,29 @@ than inventing an ID for it.
 
 The sidecar applies additional form checks for system namespaces before forwarding transactions to the coordinator.
 
-- `_snapshot` transactions must be standalone: exactly one namespace, and that namespace must be `_snapshot`. The
-  `_snapshot` namespace is a marker only, so it must have no reads, no read-writes, and no blind-writes. A non-empty
-  read-write set is rejected with `MALFORMED_SNAPSHOT_NOT_MARKER_ONLY`; a mixed `_snapshot`+user transaction is
-  rejected with `MALFORMED_SYSTEM_TX_NOT_STANDALONE`. Ordinary user namespaces with no writes still use
-  `MALFORMED_NO_WRITES`.
+- `_snapshot` transactions must be standalone: exactly one namespace, and that namespace
+  must be `_snapshot`. The namespace is valid in two shapes. A **snapshot request** is a
+  marker only: no reads, no read-writes, no blind-writes. An **abort** carries exactly one
+  read-write whose key is an abort key (`committerpb.SnapshotAbortKey`), and no reads or
+  blind-writes. Any other shape is rejected with `MALFORMED_SNAPSHOT_NOT_MARKER_ONLY`; an
+  abort-prefixed key that does not decode, or that carries trailing bytes after its block
+  number, is rejected with `MALFORMED_SNAPSHOT_INVALID_ABORT_KEY`. A mixed
+  `_snapshot`+user transaction is rejected with `MALFORMED_SYSTEM_TX_NOT_STANDALONE`.
+  Ordinary user namespaces with no writes still use `MALFORMED_NO_WRITES`.
 - `_checkpoint` transactions must be standalone: exactly one namespace, and that namespace must be `_checkpoint`. The
   namespace must contain exactly one read-write, no reads-only entries, and no blind writes. The read-write key must
-  decode as a full `servicepb.Height` via `servicepb.NewHeightFromBytes`; valid height prefixes with trailing bytes
-  are rejected. Invalid checkpoint form is rejected with `MALFORMED_CHECKPOINT_INVALID_KEY`; a mixed
-  `_checkpoint`+user transaction is rejected with `MALFORMED_SYSTEM_TX_NOT_STANDALONE`.
+  decode as a complete block number via `servicepb.BlockNumFromCheckpointKey` (the order-preserving encoding produced
+  by `servicepb.CheckpointKey`): a checkpoint names its snapshot by block number alone, so a key carrying trailing
+  bytes after the block number is rejected. Invalid checkpoint form is rejected with
+  `MALFORMED_CHECKPOINT_INVALID_KEY`; a mixed `_checkpoint`+user transaction is rejected with
+  `MALFORMED_SYSTEM_TX_NOT_STANDALONE`.
 - `_meta` keeps the existing namespace-policy update checks. `_config` is rejected if submitted as an
   application transaction namespace.
 - Only the first `_snapshot` transaction in a block is accepted. Any additional `_snapshot` transaction in the same
   block is rejected with `REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK` (a stored status, so the outcome is recorded in the
   state database), regardless of the first snapshot's outcome. This bounds the snapshot drain to at most one barrier
-  per block.
+  per block. This rule, and the drain barrier below, apply to a snapshot **request** only — see
+  [Snapshot split and drain](#snapshot-split-and-drain).
 
 **c. In-Flight Duplicate Transaction Detection**: 
 
@@ -368,8 +379,14 @@ When a block satisfies the criteria outlined in step f, the relay component perf
 
 #### Snapshot split and drain
 
-When a valid `_snapshot` marker transaction appears in a block, the sidecar treats it as a submission barrier and
-always sends the snapshot transaction last, regardless of where it originally appeared in the block:
+When a valid `_snapshot` marker transaction (a **snapshot request** — see
+[System namespace transaction forms](#system-namespace-transaction-forms)) appears in a block, the sidecar treats it
+as a submission barrier and always sends it last, regardless of where it originally appeared in the block:
+
+An abort snapshot transaction shares the `_snapshot` namespace but is not a barrier: it
+creates no clone, so it needs no exact cut of committed state, and it is submitted as an
+ordinary transaction in its block's order. The one-`_snapshot`-per-block rule and
+`REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK` likewise apply to requests only.
 
 1. Submit every other transaction in the block (regardless of whether it originally preceded or followed the
    snapshot) to the coordinator.
@@ -391,6 +408,64 @@ At most one snapshot barrier is applied per block: only the first `_snapshot` tr
 the block is split into at most two segments — one segment carrying every other transaction and rejected status in
 the block (in original order), followed by the snapshot transaction alone. When the block contains nothing but the
 snapshot, the first segment is omitted, leaving a single snapshot-only segment.
+
+#### Checkpoint feedback gate
+
+A `_checkpoint` transaction attests to a snapshot hash, and the validator-committer verifies it against its own hash
+before committing (see [validator-committer.md](validator-committer.md) Task 2 step **e**). When that verification does
+not pass, the VC attaches a `CheckpointFeedback` to the status batch, the coordinator forwards it verbatim, and the
+sidecar acts on it in `processCheckpointFeedback`.
+
+Both outcomes are deliberately blunt: they tear down the whole coordinator session rather than gating the one offending
+block. That trade is acceptable because neither is expected in steady state — a checkpoint is submitted by an
+administrator well after the snapshot it attests to, so its hash is normally long since computed, and a halt means local
+state has diverged and needs an operator regardless. Paying a session restart on a rare event buys a large
+simplification: the relay never has to unwind its per-block bookkeeping (pending count, waiting slots, tracked heights)
+by hand, which is where a finer-grained gate would concentrate its risk.
+
+| Signal | Sidecar action |
+|--------|----------------|
+| `HOLD` | The local snapshot hash is still being computed. Pause the relay's status processing — and therefore block intake — for `checkpoint-hold-retry-interval`, then end the coordinator session with a retryable error so the block is fetched again. |
+| `HALT` | Local state diverged from the attested snapshot. End the session with a non-retryable error, which stops the sidecar for operator intervention. No retry follows. |
+| absent | The ordinary case: per-transaction statuses are authoritative and intake continues. |
+
+Ending the session is what re-delivers the checkpoint block, and it is why the relay does not need to unwind its
+per-block bookkeeping by hand: the session's `retry.Sustain` loop recovers from the coordinator's next expected block,
+and because the held checkpoint never committed, that block is the checkpoint's own. The block is therefore re-fetched
+and re-mapped from scratch. Blocks already fetched in that session are re-delivered too and remain correct, since a
+re-submitted transaction is deduplicated by its transaction ID.
+
+The pause exists because the hash is published by the [snapshot hasher](snapshot-hasher.md) on its own poll interval,
+so retrying sooner would only re-read the same unfinished state. Because it runs inside the status loop, the pause also
+stalls the statuses of blocks that already committed: they are not written to the block store until the session
+restarts. That is harmless — the session is about to be torn down anyway, and the coordinator re-delivers those statuses
+on reconnect — but it does mean a hold pauses more than intake.
+
+A hold repeats for as long as the hash is missing, and deliberately has no attempt limit: giving up would mean either
+committing an unverified checkpoint or halting on a snapshot hasher that is merely slow. Repetition is made observable
+instead — see `sidecar_relay_checkpoint_holds_total` below.
+
+A held or halted checkpoint carries no per-transaction status, which has two consequences beyond the sidecar:
+
+- The status batch reaching the coordinator may contain nothing but the feedback. The coordinator forwards such a batch
+  rather than discarding it as empty; dropping it would leave the checkpoint uncommitted with nothing reporting why.
+- The coordinator releases the checkpoint transaction's dependency-graph node explicitly, keyed off the reference the
+  feedback carries, because every other release path is driven by a per-transaction status. Without that release the
+  node would stay in `txBeingValidated` and its writes would stay in the global dependency detector, so the
+  re-delivered checkpoint would detect a write-write dependency on its own stale node and never commit — not even once
+  the hash lands.
+
+Four metrics make a gated sidecar diagnosable from metrics alone: `sidecar_relay_checkpoint_feedback_state`
+(`0` running normally, `1` held, `2` halted), `sidecar_relay_checkpoint_feedback_total{signal}`,
+`sidecar_relay_checkpoint_holds_total`, and `sidecar_relay_block_pull_paused_seconds_total`. The state gauge stays at
+`1` across the session restarts a hold causes, and returns to `0` only once a status batch arrives with no feedback —
+which is what proves the pipeline moved past the checkpoint. Clearing it when the pause elapsed would instead report a
+healthy committer while the checkpoint is still uncommitted, so a scrape between restarts would miss the gate entirely.
+`2` is never cleared: it is terminal. Since a hold is unbounded, alert on `sidecar_relay_checkpoint_holds_total`
+increasing for longer than the snapshot hasher's poll interval: that means a checkpoint is not clearing.
+
+The referenced block number and the halt reason are logged at WARN (HOLD) and ERROR (HALT) rather than becoming metric
+labels, since a reason is unbounded in cardinality.
 
 ### Task 3. Persisting Committed Block in the File System
 

@@ -40,6 +40,10 @@ type (
 		// The mock does not perform any validation; the test injects the expected
 		// outcome per TX. A TX with no override defaults to COMMITTED.
 		statusOverrides map[string]committerpb.Status
+		// heldCheckpoints are the TX refs the mock returns a checkpoint feedback for instead
+		// of a per-TX status, which is what the real VC does for a held or halted checkpoint:
+		// a persisted status would make the sidecar's re-submission a permanent duplicate.
+		heldCheckpoints map[string]*servicepb.CheckpointFeedback
 		// receivedOrder records the TxIds of every processed TX in arrival order
 		// across all streams, guarded by txsStatusMu. Tests use it to assert
 		// relative ordering of dependent transactions.
@@ -65,6 +69,7 @@ func NewMockVcService() *VcService {
 	return &VcService{
 		txsStatus:       newFifoCache[*committerpb.TxStatus](defaultTxStatusStorageSize),
 		statusOverrides: make(map[string]committerpb.Status),
+		heldCheckpoints: make(map[string]*servicepb.CheckpointFeedback),
 		healthcheck:     serve.DefaultHealthCheckService(),
 	}
 }
@@ -175,8 +180,11 @@ func (v *VcService) sendTransactionStatus(
 		if !ok {
 			break
 		}
-		status := v.process(txBatch.Transactions)
-		if err := stream.Send(&servicepb.TxStatusBatch{Status: status}); err != nil {
+		status, feedback := v.process(txBatch.Transactions)
+		if err := stream.Send(&servicepb.TxStatusBatch{
+			Status:             status,
+			CheckpointFeedback: feedback,
+		}); err != nil {
 			return errors.Wrap(err, "error sending transaction status")
 		}
 	}
@@ -208,8 +216,33 @@ func (v *VcService) SetTxStatus(ref *committerpb.TxRef, status committerpb.Statu
 	v.statusOverrides[refKey(ref)] = status
 }
 
-func (v *VcService) process(txs []*servicepb.VcTx) []*committerpb.TxStatus {
+// HoldCheckpoint makes the mock answer the TX at ref with the given checkpoint feedback
+// and no per-TX status, which is how the real VC reports a held or halted checkpoint.
+//
+// A batch whose only TX is held therefore yields a status-less batch, which is the case
+// that must still reach the sidecar: the feedback is the whole point of the batch.
+func (v *VcService) HoldCheckpoint(ref *committerpb.TxRef, feedback *servicepb.CheckpointFeedback) {
+	v.txsStatusMu.Lock()
+	defer v.txsStatusMu.Unlock()
+	v.heldCheckpoints[refKey(ref)] = feedback
+}
+
+// ReleaseCheckpoint stops holding the TX at ref, so a re-submission is answered with an
+// ordinary status. This is what the snapshot hash landing looks like to the coordinator.
+func (v *VcService) ReleaseCheckpoint(ref *committerpb.TxRef) {
+	v.txsStatusMu.Lock()
+	defer v.txsStatusMu.Unlock()
+	delete(v.heldCheckpoints, refKey(ref))
+}
+
+// process returns the per-TX statuses for the batch, plus a checkpoint feedback when the
+// batch carries a held checkpoint. A held TX is reported through the feedback only, so it
+// contributes no status.
+func (v *VcService) process(txs []*servicepb.VcTx) (
+	[]*committerpb.TxStatus, *servicepb.CheckpointFeedback,
+) {
 	status := make([]*committerpb.TxStatus, 0, len(txs))
+	var feedback *servicepb.CheckpointFeedback
 
 	// We simulate a faulty node by not responding to the first X TXs.
 	skip := max(0, min(v.MockFaultyNodeDropSize, len(txs)))
@@ -218,6 +251,10 @@ func (v *VcService) process(txs []*servicepb.VcTx) []*committerpb.TxStatus {
 	defer v.txsStatusMu.Unlock()
 
 	for _, tx := range txs[skip:] {
+		if held, ok := v.heldCheckpoints[refKey(tx.Ref)]; ok {
+			feedback = held
+			continue
+		}
 		txStatus := committerpb.Status_COMMITTED
 		if tx.PrelimInvalidTxStatus != nil {
 			txStatus = *tx.PrelimInvalidTxStatus
@@ -230,7 +267,7 @@ func (v *VcService) process(txs []*servicepb.VcTx) []*committerpb.TxStatus {
 		v.receivedOrder = append(v.receivedOrder, tx.Ref.TxId)
 	}
 
-	return status
+	return status, feedback
 }
 
 // GetReceivedTxOrder returns the TxIds of all processed transactions in the

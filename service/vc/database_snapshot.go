@@ -79,9 +79,13 @@ func (db *database) rejectSnapshotIfPriorNotCheckpointed(
 	}
 	var incomingTxID TxID
 	for txID, nsWrites := range vTx.newWrites {
-		if !nsWrites[committerpb.SnapshotNamespaceID].empty() {
-			incomingTxID = txID
+		w := nsWrites[committerpb.SnapshotNamespaceID]
+		// An abort arrives precisely when the latest snapshot is not closed, so gating it
+		// would make a stuck snapshot impossible to abandon.
+		if w.empty() || committerpb.IsSnapshotAbortKey(w.keys[0]) {
+			continue
 		}
+		incomingTxID = txID
 	}
 	if incomingTxID == "" {
 		return nil
@@ -103,7 +107,7 @@ func (db *database) rejectSnapshotIfPriorNotCheckpointed(
 		return err
 	}
 	if blockStatus == committerpb.Status_STATUS_UNSPECIFIED {
-		return nil // no prior snapshot, or the latest one is CHECKPOINTED -> accept.
+		return nil // no prior snapshot, or the latest one's lifecycle is closed -> accept.
 	}
 
 	vTx.updateInvalidTxs([]TxID{incomingTxID}, blockStatus)
@@ -113,7 +117,11 @@ func (db *database) rejectSnapshotIfPriorNotCheckpointed(
 // determineSnapshotStatus looks up the latest _snapshot record via the
 // statedb.LatestSnapshotPointerKey pointer and returns the rejection status the
 // incoming request should receive, or STATUS_UNSPECIFIED when the request may
-// proceed (no prior snapshot ever accepted, or the latest one is CHECKPOINTED).
+// proceed (no prior snapshot ever accepted, or the latest one's lifecycle is closed).
+//
+// Closed means CHECKPOINTED or ABORTED: nothing further will happen to that snapshot.
+// ABORTED is the only exit for a snapshot that can never be hashed, which would otherwise
+// reject every later request forever.
 //
 // A pointer that names a missing row, or a row whose value fails to decode, is
 // an invariant violation (the pointer is written atomically with its row; see
@@ -131,13 +139,121 @@ func (db *database) determineSnapshotStatus(ctx context.Context) (committerpb.St
 	}
 
 	switch state.Status {
-	case committerpb.SnapshotState_CHECKPOINTED:
+	case committerpb.SnapshotState_CHECKPOINTED, committerpb.SnapshotState_ABORTED:
 		return committerpb.Status_STATUS_UNSPECIFIED, nil
 	case committerpb.SnapshotState_COMPLETED:
 		return committerpb.Status_REJECTED_SNAPSHOT_NO_CHECKPOINT, nil
 	default:
 		return committerpb.Status_REJECTED_SNAPSHOT_IN_PROGRESS, nil
 	}
+}
+
+// snapshotAbortTx is a batch's single abort write: the TX to reject against, and the
+// snapshot it abandons.
+type snapshotAbortTx struct {
+	txID     TxID
+	blockNum uint64
+}
+
+// rejectSnapshotAbortIfNoSuchSnapshot lets an abort commit only when it names a snapshot
+// this committer can still abandon.
+//
+// An abort attests to nothing, so no failure here halts intake: every one is bad input,
+// rejected per TX. Since anyone satisfying SnapshotEndorsement may submit one, halting
+// instead would let an authorized submitter stop the committer.
+//
+// The form is already validated by the sidecar (checkSnapshotNamespace).
+func (db *database) rejectSnapshotAbortIfNoSuchSnapshot(
+	ctx context.Context, vTx *validatedTransactions,
+) error {
+	abort, err := snapshotAbortWriteInBatch(vTx.newWrites)
+	if err != nil {
+		return err
+	}
+	if abort == nil {
+		return nil
+	}
+
+	rejection, err := db.determineSnapshotAbortRejection(ctx, abort)
+	if err != nil {
+		return err
+	}
+	if rejection != committerpb.Status_STATUS_UNSPECIFIED {
+		// Drops the write, so no abort row becomes durable for an abort we did not accept.
+		vTx.updateInvalidTxs([]TxID{abort.txID}, rejection)
+		return nil
+	}
+
+	vTx.snapshotAbort = abort
+	return nil
+}
+
+// determineSnapshotAbortRejection returns the status an abort must be rejected with, or
+// STATUS_UNSPECIFIED when it names a snapshot we can still abandon.
+//
+// It compares against the latest record, not a lookup by block, because a new snapshot is
+// admitted only once the previous one closes -- so a valid abort always names the latest.
+//
+// Every status short of closed is abortable, COMPLETED included: a diverged digest is
+// exactly a snapshot nobody will checkpoint, and refusing it would leave no exit. The two
+// closed statuses get their own rejection so an administrator can tell a snapshot that does
+// not exist from one that is already abandoned.
+func (db *database) determineSnapshotAbortRejection(
+	ctx context.Context, abort *snapshotAbortTx,
+) (committerpb.Status, error) {
+	state, err := db.snapshotState.ReadLatest(ctx)
+	if err != nil {
+		return committerpb.Status_STATUS_UNSPECIFIED, err
+	}
+
+	switch {
+	case state == nil || state.TxRef == nil:
+		logger.Warnf("Rejecting abort TX [%s] for block [%d]: no _snapshot record exists to abort",
+			abort.txID, abort.blockNum)
+		return committerpb.Status_REJECTED_NO_SUCH_SNAPSHOT, nil
+	case state.TxRef.BlockNum != abort.blockNum:
+		logger.Warnf("Rejecting abort TX [%s]: the snapshot awaiting a checkpoint is at block [%d], not [%d]",
+			abort.txID, state.TxRef.BlockNum, abort.blockNum)
+		return committerpb.Status_REJECTED_NO_SUCH_SNAPSHOT, nil
+	case state.Status == committerpb.SnapshotState_CHECKPOINTED:
+		logger.Warnf("Rejecting abort TX [%s] for block [%d]: the snapshot was already checkpointed",
+			abort.txID, abort.blockNum)
+		return committerpb.Status_REJECTED_SNAPSHOT_ALREADY_CHECKPOINTED, nil
+	case state.Status == committerpb.SnapshotState_ABORTED:
+		logger.Warnf("Rejecting abort TX [%s] for block [%d]: the snapshot was already aborted",
+			abort.txID, abort.blockNum)
+		return committerpb.Status_REJECTED_SNAPSHOT_ALREADY_ABORTED, nil
+	default:
+		return committerpb.Status_STATUS_UNSPECIFIED, nil
+	}
+}
+
+// snapshotAbortWriteInBatch returns the batch's abort write, if any.
+//
+// A second abort fails the whole batch rather than being skipped: a skipped write still
+// commits, unverified, which is what this check exists to prevent, and there is no basis
+// for picking which abort is real. Nothing produces two today, so it is a broken
+// invariant, not bad input.
+func snapshotAbortWriteInBatch(newWrites transactionToWrites) (*snapshotAbortTx, error) {
+	var abort *snapshotAbortTx
+	for txID, nsWrites := range newWrites {
+		w := nsWrites[committerpb.SnapshotNamespaceID]
+		if w.empty() || !committerpb.IsSnapshotAbortKey(w.keys[0]) {
+			continue
+		}
+		blockNum, err := committerpb.BlockNumFromSnapshotAbortKey(w.keys[0])
+		if err != nil {
+			return nil, errors.Wrapf(err, "abort TX %s has an undecodable key", txID)
+		}
+
+		if abort != nil {
+			return nil, errors.Newf(
+				"a batch carries at most one snapshot abort, but it has both TX %s and TX %s", abort.txID, txID,
+			)
+		}
+		abort = &snapshotAbortTx{txID: txID, blockNum: blockNum}
+	}
+	return abort, nil
 }
 
 // createSnapshotIfPresent detects a _snapshot record in the batch's
@@ -184,16 +300,19 @@ func (db *database) createSnapshotIfPresent(ctx context.Context, newWrites trans
 	return nil
 }
 
-// snapshotWriteInBatch returns the single _snapshot namespace write in newWrites, if
-// any. A snapshot TX is submitted standalone, so at most one transaction in the batch
-// carries a _snapshot write, and the preparer adds exactly one key/value pair
-// (key = tx_id) for it.
+// snapshotWriteInBatch returns the single snapshot-request write in newWrites, if any. A
+// snapshot request is submitted standalone, so at most one transaction in the batch
+// carries one, and the preparer adds exactly one key/value pair (key = tx_id) for it.
+//
+// An abort shares this namespace but is excluded: it abandons a snapshot, so cloning for
+// it would be backwards and would leak a clone no record names.
 func snapshotWriteInBatch(newWrites transactionToWrites) (*namespaceWrites, bool) {
 	for _, nsWrites := range newWrites {
 		w := nsWrites[committerpb.SnapshotNamespaceID]
-		if !w.empty() {
-			return w, true
+		if w.empty() || committerpb.IsSnapshotAbortKey(w.keys[0]) {
+			continue
 		}
+		return w, true
 	}
 	return nil, false
 }

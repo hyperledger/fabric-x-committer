@@ -708,6 +708,60 @@ func TestPrepareSnapshotTx(t *testing.T) {
 	require.NotContains(t, preparedTxs.nsToReads, committerpb.MetaNamespaceID)
 }
 
+// TestPrepareSnapshotAbortTx verifies an abort TX keeps its own ReadWrite -- the row is the
+// ordered fact, so it must reach the committer unchanged rather than be replaced by a
+// synthesized SnapshotState -- and takes no _meta namespace-version dependency.
+func TestPrepareSnapshotAbortTx(t *testing.T) {
+	t.Parallel()
+	env := newPrepareTestEnv(t)
+
+	abortKey := committerpb.SnapshotAbortKey(8)
+
+	tx := &servicepb.VcBatch{
+		Transactions: []*servicepb.VcTx{
+			{
+				Ref: committerpb.NewTxRef(string(txs[0]), 9, 1),
+				Namespaces: []*applicationpb.TxNamespace{
+					{
+						NsId:       committerpb.SnapshotNamespaceID,
+						NsVersion:  0,
+						ReadWrites: []*applicationpb.ReadWrite{{Key: abortKey, Version: nil}},
+					},
+				},
+			},
+		},
+	}
+
+	expectedPreparedTxs := &preparedTransactions{
+		nsToReads: namespaceToReads{},
+		readToTxIDs: readToTransactions{
+			newCmpRead(committerpb.SnapshotNamespaceID, abortKey, nil): []TxID{txs[0]},
+		},
+		txIDToNsNonBlindWrites: transactionToWrites{},
+		txIDToNsBlindWrites:    transactionToWrites{},
+		txIDToNsNewWrites: transactionToWrites{
+			txs[0]: namespaceToWrites{
+				committerpb.SnapshotNamespaceID: &namespaceWrites{
+					keys:     [][]byte{abortKey},
+					values:   [][]byte{nil},
+					versions: []uint64{0},
+				},
+			},
+		},
+		invalidTxIDStatus: map[TxID]committerpb.Status{},
+		txIDToHeight: transactionIDToHeight{
+			txs[0]: servicepb.NewHeight(9, 1),
+		},
+	}
+
+	env.txBatch <- tx
+	preparedTxs, ok := channel.NewReader(t.Context(), env.preparedTxs).Read()
+	require.True(t, ok)
+	ensurePreparedTx(t, expectedPreparedTxs, preparedTxs)
+	// No _meta namespace-version read must be created for an abort TX.
+	require.NotContains(t, preparedTxs.nsToReads, committerpb.MetaNamespaceID)
+}
+
 // TestPrepareCheckpointTx verifies that a _checkpoint TX retains its single versioned
 // ReadWrite for checkpoint-specific handling but takes no _meta namespace-version dependency.
 func TestPrepareCheckpointTx(t *testing.T) {

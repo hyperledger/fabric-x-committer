@@ -46,7 +46,7 @@ because a clone is immutable and the digest is deterministic, the symptom is dup
 work writing the same digest, not a corrupted record.
 
 The VC's only snapshot duty is therefore to make the record durable atomically with
-its clone. See [Creating State Snapshots](validator-committer.md#task-4-creating-state-snapshots-clone-first).
+its clone. See [Creating State Snapshots](validator-committer.md#creating-state-snapshots-clone-first).
 
 ## 3. Scheduling Model
 
@@ -75,6 +75,14 @@ row that did not commit.
 | `FAILED` | Hash it again: a clone is immutable, so a retry cannot produce a different digest |
 | `COMPLETED` | Leave untouched — the digest is already published |
 | `CHECKPOINTED` | Leave untouched — re-hashing could only undo the checkpoint |
+| `ABORTED` | Leave untouched — the snapshot was abandoned, so a digest could only be one nobody will attest to |
+
+`ABORTED` is written only by the validator-committer, when an abort snapshot transaction
+commits — the same rule `CHECKPOINTED` follows, and for the same reason. A hasher that
+could abort on its own findings would let one organization abandon a snapshot another
+hashes successfully, and a node re-ingesting from genesis would hash it successfully too,
+so the two histories would diverge. See
+[Aborting a Snapshot](validator-committer.md#aborting-a-snapshot).
 
 Two conditions stop the service instead of being retried:
 
@@ -165,6 +173,12 @@ The hasher holds no state of its own; the `_snapshot` record is the state.
 - **Transient database or clone failure.** The tick logs the failure and records it on
   the record; the loop keeps running and the next tick retries. A failure never stops
   the service, because the durable record is still there to be picked up.
+- **A snapshot aborted mid-hash.** Hashing runs inline on the polling goroutine, so no
+  later tick would observe the abort until the scan returned — and a full-clone scan can
+  run for many minutes against a clone nobody wants any more. A watcher goroutine
+  re-reads the record every `poll-interval` while the hash runs and cancels it once the
+  record is `ABORTED`. Nothing is recorded on the record: a cancelled hash writes no
+  `FAILED`, which is what keeps the terminal `ABORTED` status intact.
 - **Hasher down entirely.** Ordinary transaction commit is unaffected — the VC never
   calls this service and never waits on it. Only snapshotting stalls: the outstanding
   record is not hashed, so it never reaches `CHECKPOINTED`, and the VC rejects further
@@ -198,15 +212,24 @@ observed only once a scan returns, so a hash in flight would otherwise look like
 service. Counting starts separately makes it a gap against the terminal counters:
 
 ```promql
-# A hash started and has neither computed a digest nor recorded a failure.
+# A hash started and has neither computed a digest, recorded a failure, nor been abandoned.
 snapshothasher_hash_started_total
-  - (snapshothasher_hash_duration_seconds_count + snapshothasher_hash_jobs_failed_total)
+  - (snapshothasher_hash_duration_seconds_count
+     + snapshothasher_hash_jobs_failed_total
+     + snapshothasher_hash_abandoned_total)
 ```
 
 `jobs_failed_total` belongs in that sum because a failed hash never reaches the
 histogram — the failure is recorded before the duration is observed — so comparing
 starts against `duration_seconds_count` alone would report a permanent in-flight hash
 after the first failure.
+
+`snapshothasher_hash_abandoned_total` counts hashes stopped by an abort. It is deliberately
+separate from `jobs_failed_total`: an abort is a decision an operator made, so counting it
+as a failure would make the failure alert fire on correct behaviour, while leaving it
+uncounted would make the wasted scan visible only in the logs. It also belongs in the
+in-flight expression's subtrahend, since an abandoned hash reaches neither the duration
+histogram nor the failure counter.
 
 A value of 1 is a hash running normally; alert on a sustained difference, since that is
 what separates a long scan from a stuck one. Two things this cannot do: a hash lost to a
@@ -240,7 +263,3 @@ See [Metrics Reference](metrics_reference.md).
   has no way to know which algorithm produced that digest. The version belongs in the
   checkpoint transaction payload, which is the artifact organizations agree on and the
   one re-ingestion reads; that payload is not defined yet.
-- **Terminal abort handling is not here yet.** A `FAILED` record is always retried, so
-  a snapshot that can never be hashed — a clone lost for good, say — has no terminal
-  resting state. An `ABORTED` status and an abort snapshot transaction, which is what
-  makes an abort reproducible under re-ingestion, are the immediate next change.

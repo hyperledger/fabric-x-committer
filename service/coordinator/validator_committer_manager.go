@@ -258,7 +258,21 @@ func (vc *validatorCommitter) receiveStatusAndForwardToOutput(
 			}
 		}
 
-		if len(txsStatus.Status) == 0 {
+		// A held or halted checkpoint has no per-TX status of its own, so the loop above never
+		// reaches its node. Release it here or it is never freed: its writes stay in the global
+		// dependency detector, and the sidecar's re-delivery of the same checkpoint TX then
+		// detects a write-write dependency on the stale node that nothing will ever free. The
+		// resubmitted checkpoint would never become dependency-free, so it would never commit
+		// even after the local hash lands. Freeing the node also returns its dependency-graph
+		// slot, which processValidatedTransactions releases per node it receives.
+		if node, ok := vc.checkpointNodeToRelease(txsStatus.CheckpointFeedback); ok {
+			txsNode = append(txsNode, node)
+		}
+
+		// A feedback-only batch carries no status but must still reach the sidecar: the feedback
+		// is the whole point of the batch, and dropping it would leave the checkpoint
+		// permanently uncommitted with nothing reporting why.
+		if len(txsStatus.Status) == 0 && txsStatus.CheckpointFeedback == nil {
 			continue
 		}
 
@@ -307,6 +321,33 @@ func (vc *validatorCommitter) recoverPendingTransactions(inputTxsNode channel.Wr
 
 	promutil.AddToCounter(vc.metrics.vcs.retriedTotal, len(pendingTxs))
 	inputTxsNode.Write(pendingTxs)
+}
+
+// checkpointNodeToRelease returns the dependency-graph node of the checkpoint TX the
+// feedback refers to, so the caller can free it without a per-TX status.
+//
+// A checkpoint's node is otherwise unreachable once it is held or halted: the VC
+// deliberately reports no status for it (a persisted status would make the sidecar's
+// re-submission a permanent duplicate), and every other release path is keyed off a
+// status. The feedback carries the TX's full reference for exactly this reason.
+//
+// Not found means the node was already released, which is the normal case for the
+// re-delivered checkpoint of a repeated hold: LoadAndDelete succeeds only once.
+func (vc *validatorCommitter) checkpointNodeToRelease(feedback *servicepb.CheckpointFeedback) (
+	*dependencygraph.TransactionNode, bool,
+) {
+	if feedback == nil || feedback.Ref == nil {
+		return nil, false
+	}
+	node, ok := vc.txBeingValidated.LoadAndDelete(*servicepb.NewHeightFromTxRef(feedback.Ref))
+	if !ok {
+		logger.Debugf("Checkpoint TX [%s] for snapshot block [%d] is no longer tracked, so nothing to release",
+			feedback.Ref.TxId, feedback.SnapshotBlockNumber)
+		return nil, false
+	}
+	logger.Infof("Releasing the dependency-graph node of %s checkpoint TX [%s] for snapshot block [%d]",
+		feedback.Signal, feedback.Ref.TxId, feedback.SnapshotBlockNumber)
+	return node, true
 }
 
 func (vc *validatorCommitter) getTxsAndUpdatePolicies(txsStatus *servicepb.TxStatusBatch) (
