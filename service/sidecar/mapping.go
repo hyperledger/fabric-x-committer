@@ -51,13 +51,20 @@ type (
 		// added to it, which mapBlock hands to the set as the block's eviction unit.
 		txIDDedup *txIDDedup
 		txIDs     []string
-		// refs and txWithRefs back every TxRef and TxWithRef the block needs, one entry per
-		// message, allocated once for the block instead of once per transaction. Mapping is on the
-		// path that decides how fast the sidecar allocates, and these were two of its allocations
-		// per transaction. Nothing may copy an element out of them — they are proto messages, and
-		// only their addresses are ever handed on — which go vet's copylocks check enforces.
-		refs       []committerpb.TxRef
-		txWithRefs []servicepb.TxWithRef
+		// refSlab, txWithRefSlab and txSlab back every TxRef, TxWithRef and decoded Tx the block needs,
+		// one entry per message, allocated once for the block instead of once per transaction. Mapping
+		// is on the path that decides how fast the sidecar allocates, and these were three of its
+		// allocations per transaction. Nothing may copy an element out of them — they are proto
+		// messages, and only their addresses are ever handed on — which go vet's copylocks check
+		// enforces.
+		//
+		// A slab keeps its whole backing array alive while anything holds one element, and a
+		// StreamBlocks subscriber can hold a TX past the block's commit. Each array is bounded by the
+		// block size and holds only message headers, so the exposure is one block's unused slots
+		// rather than something that grows.
+		refSlab       []committerpb.TxRef
+		txWithRefSlab []servicepb.TxWithRef
+		txSlab        []applicationpb.Tx
 	}
 
 	blockWithStatus struct {
@@ -123,10 +130,11 @@ func mapBlock(block *common.Block, dedup *txIDDedup) (*blockMappingResult, error
 				blockNumber: blockNumber,
 			},
 		},
-		txIDDedup:  dedup,
-		txIDs:      make([]string, 0, txCount),
-		refs:       make([]committerpb.TxRef, txCount),
-		txWithRefs: make([]servicepb.TxWithRef, txCount),
+		txIDDedup:     dedup,
+		txIDs:         make([]string, 0, txCount),
+		refSlab:       make([]committerpb.TxRef, txCount),
+		txWithRefSlab: make([]servicepb.TxWithRef, txCount),
+		txSlab:        make([]applicationpb.Tx, txCount),
 	}
 	mapper.withStatus.pendingCount.Store(int32(txCount)) //nolint:gosec // int -> int32
 
@@ -153,7 +161,7 @@ func (m *blockMapper) mapMessage(msgIndex uint32, msg []byte) error {
 	// those fields will go undetected. This is acceptable because the committer
 	// does not use them, and for the same reason, they are not validated in the
 	// sidecar. TODO: remove unused fields from the ChannelHeader proto.
-	ref := &m.refs[msgIndex]
+	ref := &m.refSlab[msgIndex]
 	ref.BlockNum = m.blockNumber
 	ref.TxNum = msgIndex
 	envLite, envErr := serialization.UnwrapEnvelopeLite(msg)
@@ -178,8 +186,8 @@ func (m *blockMapper) mapMessage(msgIndex uint32, msg []byte) error {
 			"unsupported message type: "+headerType.String())
 	}
 
-	tx, err := serialization.UnmarshalTx(envLite.Data)
-	if err != nil {
+	tx := &m.txSlab[msgIndex]
+	if err := serialization.UnmarshalTxInto(envLite.Data, tx); err != nil {
 		return m.rejectTx(ref, committerpb.Status_MALFORMED_BAD_ENVELOPE_PAYLOAD, err.Error())
 	}
 	if status := verifyTxForm(tx); status != statusNotYetValidated {
@@ -309,7 +317,7 @@ func (m *blockMapper) prepareTx(
 	if idAlreadyExists, err := m.addTxIDMapping(ref); idAlreadyExists || err != nil {
 		return nil, err
 	}
-	txWithRef := &m.txWithRefs[ref.TxNum]
+	txWithRef := &m.txWithRefSlab[ref.TxNum]
 	txWithRef.Ref = ref
 	txWithRef.Content = tx
 	m.withStatus.txs[ref.TxNum] = txWithRef
@@ -325,8 +333,8 @@ func (m *blockMapper) rejectTx(ref *committerpb.TxRef, status committerpb.Status
 		return err
 	}
 	m.block.Rejected = append(m.block.Rejected, &committerpb.TxStatus{Ref: ref, Status: status})
-	m.txWithRefs[ref.TxNum].Ref = ref
-	m.withStatus.txs[ref.TxNum] = &m.txWithRefs[ref.TxNum]
+	m.txWithRefSlab[ref.TxNum].Ref = ref
+	m.withStatus.txs[ref.TxNum] = &m.txWithRefSlab[ref.TxNum]
 	debugTx(ref, "rejected: %s (%s)", &status, reason)
 	return nil
 }
@@ -345,8 +353,8 @@ func (m *blockMapper) rejectNonDBStatusTx(
 	if err != nil {
 		return err
 	}
-	m.txWithRefs[ref.TxNum].Ref = ref
-	m.withStatus.txs[ref.TxNum] = &m.txWithRefs[ref.TxNum]
+	m.txWithRefSlab[ref.TxNum].Ref = ref
+	m.withStatus.txs[ref.TxNum] = &m.txWithRefSlab[ref.TxNum]
 	debugTx(ref, "excluded: %s (%s)", &status, reason)
 	return nil
 }

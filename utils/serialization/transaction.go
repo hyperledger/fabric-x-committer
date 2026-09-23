@@ -18,10 +18,20 @@ import (
 // UnmarshalTx unmarshal data bytes to protoblocktx.Tx.
 func UnmarshalTx(data []byte) (*applicationpb.Tx, error) {
 	var tx applicationpb.Tx
-	if err := proto.Unmarshal(data, &tx); err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal tx")
+	if err := UnmarshalTxInto(data, &tx); err != nil {
+		return nil, err
 	}
 	return &tx, nil
+}
+
+// UnmarshalTxInto unmarshals data bytes into a caller-provided TX, so a caller decoding many
+// transactions can back them with one allocation instead of one each. proto.Unmarshal resets tx
+// before decoding, so a reused TX is replaced rather than merged into.
+func UnmarshalTxInto(data []byte, tx *applicationpb.Tx) error {
+	if err := proto.Unmarshal(data, tx); err != nil {
+		return errors.Wrap(err, "failed to unmarshal tx")
+	}
+	return nil
 }
 
 // ExtractAppTLSCAsFromEnvelope parses a Fabric config envelope and extracts
