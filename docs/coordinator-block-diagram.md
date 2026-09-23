@@ -78,11 +78,13 @@ Inside coordinator, control is split across five main components:
 
 - `Service` owns external gRPC surface and stream lifecycle.
 - `dependencygraph.Manager` decides which transactions are free to run.
-- `signatureVerifierManager` talks to Verifier service pool.
-- `validatorCommitterManager` talks to Validator-Committer pool and sends final results to two consumers.
+- The verifier `serviceManager` talks to Verifier service pool.
+- The validator-committer `serviceManager` talks to Validator-Committer pool and sends final results to two consumers.
 - `policyManager` stores latest namespace/config state for future verifier requests.
 
-Runtime path mostly moves forward. Two external pools sit outside coordinator: `signatureVerifierManager` talks to Verifier service pool, and `validatorCommitterManager` talks to Validator-Committer service pool. `Service` also sends rejected transactions directly to `validatorCommitterManager`, bypassing dependency-graph path.
+Both managers are instances of the same `serviceManager` type, built by `newVerifierManager` and `newValidatorCommitterManager`. Only the per-service behavior differs, and it lives in their `serviceAdaptor` and `serviceStream` implementations.
+
+Runtime path mostly moves forward. Two external pools sit outside coordinator: the verifier manager talks to Verifier service pool, and the validator-committer manager talks to Validator-Committer service pool. `Service` also sends rejected transactions directly to the validator-committer manager, bypassing dependency-graph path.
 
 Two feedback loops matter most:
 
@@ -95,8 +97,8 @@ flowchart LR
         SVC[Service]
         LDC[local dependency constructor]
         GDM[global dependency manager]
-        SVM[signatureVerifierManager]
-        VCM[validatorCommitterManager]
+        SVM[verifier serviceManager]
+        VCM[validator-committer serviceManager]
         PM[policyManager]
     end
 
@@ -465,26 +467,26 @@ Coordinator is designed to survive stream breaks, worker-service failures, and p
 
 #### 6.1.1 Internal Architecture of Signature Verifier Manager
 
-The `signatureVerifierManager` manages communication with multiple signature verifier service instances. It maintains:
+The verifier `serviceManager` manages communication with multiple signature verifier service instances. It maintains:
 
-- **Multiple verifier clients**: One `signatureVerifier` instance per verifier service endpoint
-- **In-flight transaction tracking**: Each verifier tracks transactions currently being validated in `txBeingValidated` map
+- **Multiple workers**: One `serviceWorker` per verifier service endpoint, each driving its own stream through a `verifierAdaptor`
+- **In-flight transaction tracking**: Each worker tracks transactions currently being validated in its `txBeingProcessed` map
 - **Retry and requeue mechanism**: On stream failure, pending transactions are requeued for retry
 
 ```mermaid
 flowchart LR
-    subgraph SVM[Signature Verifier Manager]
+    subgraph SVM[Verifier serviceManager]
         IQ[Input Queue]
-        subgraph SV1[Verifier Client 1]
-            TB1[txBeingValidated]
+        subgraph SV1[Worker 1]
+            TB1[txBeingProcessed]
             S1[Stream]
         end
-        subgraph SV2[Verifier Client 2]
-            TB2[txBeingValidated]
+        subgraph SV2[Worker 2]
+            TB2[txBeingProcessed]
             S2[Stream]
         end
-        subgraph SVN[Verifier Client N]
-            TBN[txBeingValidated]
+        subgraph SVN[Worker N]
+            TBN[txBeingProcessed]
             SN[Stream]
         end
         OQ[Output Queue]
@@ -505,9 +507,9 @@ flowchart LR
 
 When a verifier stream fails:
 
-1. **Detect failure**: `sendTransactionsAndForwardStatus()` returns error when `stream.Recv()` or `stream.Send()` fails
+1. **Detect failure**: `processTxsAndForwardResults()` returns error when `stream.Recv()` or `stream.Send()` fails
 2. **Trigger recovery**: `recoverPendingTransactions()` is called via deferred callback
-3. **Requeue pending transactions**: All transactions in `txBeingValidated` are written back to input queue
+3. **Requeue pending transactions**: All transactions in `txBeingProcessed` are written back to input queue
 4. **Reconnect**: `retry.Sustain()` loop creates new stream and resumes processing
 
 ```mermaid
@@ -518,9 +520,8 @@ flowchart TD
     Success -->|Yes| Forward[Forward to Output Queue]
     Forward --> Send
     Success -->|No| Fail[Stream Failed]
-    Fail --> Lock[Lock txBeingValidated]
-    Lock --> Collect[Collect Pending Txs]
-    Collect --> Delete[Clear txBeingValidated]
+    Fail --> Collect[Collect Pending Txs]
+    Collect --> Delete[Clear txBeingProcessed]
     Delete --> Requeue[Requeue to Input Queue]
     Requeue --> Retry[Retry Sustain Loop]
     Retry --> NewStream[Create New Stream]
@@ -530,13 +531,13 @@ flowchart TD
 #### 6.1.3 Key Design Properties
 
 - **Idempotent requeue**: Transactions can be safely re-sent to any verifier instance
-- **No data loss**: `txBeingValidated` map ensures all in-flight transactions are recovered
-- **Parallel retry**: Multiple verifier clients retry independently
+- **No data loss**: `txBeingProcessed` map ensures all in-flight transactions are recovered
+- **Parallel retry**: Multiple workers retry independently
 - **Policy freshness**: Each requeued transaction gets latest policy/config deltas on retry
 
 | Failure point | What stays in memory | What is retried or rebuilt | What persists | Why result stays correct |
 |---|---|---|---|---|
-| verifier stream or verifier server fails | `signatureVerifier.txBeingValidated` still tracks in-flight nodes for that verifier instance | manager reconnects using sustained retry loop and requeues pending transactions from `txBeingValidated` | nothing new must persist at verifier stage | verifier stage is retry-safe because transactions are re-enqueued and revalidated |
+| verifier stream or verifier server fails | `serviceWorker.txBeingProcessed` still tracks in-flight nodes for that verifier instance | manager reconnects using sustained retry loop and requeues pending transactions from `txBeingProcessed` | nothing new must persist at verifier stage | verifier stage is retry-safe because transactions are re-enqueued and revalidated |
 
 Key detail:
 
@@ -548,34 +549,36 @@ Key detail:
 
 #### 6.2.1 Internal Architecture of Validator-Committer Manager
 
-The `validatorCommitterManager` manages communication with multiple validator-committer service instances. It maintains:
+The validator-committer `serviceManager` manages communication with multiple validator-committer service instances. It maintains:
 
-- **Common client**: Single load-balanced connection for system operations (setup, recovery reads)
-- **Multiple VC clients**: One `validatorCommitter` instance per VC service endpoint
-- **In-flight transaction tracking**: Each VC tracks transactions by txID in `txBeingValidated` sync map
+- **Multiple workers**: One `serviceWorker` per VC service endpoint, each driving its own stream through a `vcAdaptor`
+- **In-flight transaction tracking**: Each worker tracks transactions by transaction height in its `txBeingProcessed` sync map
 - **Retry and requeue mechanism**: On stream failure, pending transactions are requeued for retry
 - **Dual output fan-out**: Forwards results to both dependency graph (for releasing dependents) and coordinator (for status feedback to Sidecar)
 
+The request/response API that any vcservice can serve is not part of this manager. `validatorCommitterAPI` owns it, including the single load-balanced connection used for system operations (setup, recovery reads).
+
 ```mermaid
 flowchart LR
-    subgraph VCM[Validator-Committer Manager]
+    subgraph VCM[Validator-committer serviceManager]
         IQ[Input Queue]
-        CC[Common Client]
-        subgraph VC1[VC Client 1]
-            TB1[txBeingValidated]
+        subgraph VC1[Worker 1]
+            TB1[txBeingProcessed]
             S1[Stream]
         end
-        subgraph VC2[VC Client 2]
-            TB2[txBeingValidated]
+        subgraph VC2[Worker 2]
+            TB2[txBeingProcessed]
             S2[Stream]
         end
-        subgraph VCN[VC Client N]
-            TBN[txBeingValidated]
+        subgraph VCN[Worker N]
+            TBN[txBeingProcessed]
             SN[Stream]
         end
         OQ1[Output to Dep Graph]
         OQ2[Output to Coordinator]
     end
+
+    CC[validatorCommitterAPI common client]
 
     IQ -->|tx batches| VC1
     IQ -->|tx batches| VC2
@@ -596,9 +599,9 @@ flowchart LR
 
 When a VC stream fails:
 
-1. **Detect failure**: `sendTransactionsAndForwardStatus()` returns error when `stream.Recv()` or `stream.Send()` fails
+1. **Detect failure**: `processTxsAndForwardResults()` returns error when `stream.Recv()` or `stream.Send()` fails
 2. **Trigger recovery**: `recoverPendingTransactions()` is called via deferred callback
-3. **Requeue pending transactions**: All transactions in `txBeingValidated` are written back to input queue
+3. **Requeue pending transactions**: All transactions in `txBeingProcessed` are written back to input queue
 4. **Reconnect**: `retry.Sustain()` loop creates new stream and resumes processing
 
 ```mermaid
@@ -606,13 +609,13 @@ flowchart TD
     Start[Stream Active] --> Send[Send Tx Batch]
     Send --> Recv[Receive Status]
     Recv --> Success{Success?}
-    Success -->|Yes| Lookup[Lookup txBeingValidated]
+    Success -->|Yes| Lookup[Lookup txBeingProcessed]
     Lookup --> Update[Update Policy Manager]
     Update --> Fanout[Fan-out: Dep Graph + Coordinator]
     Fanout --> Send
     Success -->|No| Fail[Stream Failed]
-    Fail --> Load[Load txBeingValidated]
-    Load --> Clear[Clear txBeingValidated]
+    Fail --> Load[Load txBeingProcessed]
+    Load --> Clear[Clear txBeingProcessed]
     Clear --> Requeue[Requeue to Input Queue]
     Requeue --> Retry[Retry Sustain Loop]
     Retry --> NewStream[Create New Stream]
@@ -622,14 +625,14 @@ flowchart TD
 #### 6.2.3 Key Design Properties
 
 - **Idempotent replay**: VC commit path detects already-committed transactions and returns existing status
-- **No data loss**: `txBeingValidated` sync map ensures all in-flight transactions are recovered
-- **Parallel retry**: Multiple VC clients retry independently
+- **No data loss**: `txBeingProcessed` sync map ensures all in-flight transactions are recovered
+- **Parallel retry**: Multiple workers retry independently
 - **Duplicate tolerance**: Late/duplicate responses are dropped if txID no longer tracked
 - **Policy freshness**: Policy manager updated before dependents are released
 
 | Failure point | What stays in memory | What is retried or rebuilt | What persists | Why result stays correct |
 |---|---|---|---|---|
-| VC stream or VC server fails | `validatorCommitter.txBeingValidated` still tracks in-flight nodes for that VC instance | manager reconnects using sustained retry loop and requeues pending transactions from `txBeingValidated` | any transaction already committed by VC stays in DB | replay is safe because VC path can detect already committed transaction status |
+| VC stream or VC server fails | `serviceWorker.txBeingProcessed` still tracks in-flight nodes for that VC instance | manager reconnects using sustained retry loop and requeues pending transactions from `txBeingProcessed` | any transaction already committed by VC stays in DB | replay is safe because VC path can detect already committed transaction status |
 
 Key detail:
 
@@ -653,13 +656,13 @@ Key detail:
 
 | Failure point | What stays in memory | What is retried or rebuilt | What persists | Why result stays correct |
 |---|---|---|---|---|
-| coordinator receives delayed or duplicate VC response after retry/reconnect | first successful lookup removes matching node from `txBeingValidated` | duplicate response is effectively ignored because lookup no longer finds tracked node | committed status already stored in DB | same transaction can be submitted more than once, but only first tracked response updates in-memory release path |
+| coordinator receives delayed or duplicate VC response after retry/reconnect | first successful lookup removes matching node from `txBeingProcessed` | duplicate response is effectively ignored because lookup no longer finds tracked node | committed status already stored in DB | same transaction can be submitted more than once, but only first tracked response updates in-memory release path |
 
 Key detail:
 
-- `getTxsAndUpdatePolicies()` loads and deletes tracked node once
-- if later duplicate status arrives, node is no longer in `txBeingValidated`
-- duplicate status is dropped from status batch before downstream processing
+- `getTxsAndApplyResults()` loads and deletes tracked node once
+- if later duplicate status arrives, node is no longer in `txBeingProcessed`
+- duplicate status is dropped from status batch by `dropUntrackedStatuses()` before downstream processing
 
 ### 6.5 Coordinator Restart and Recovery
 
@@ -697,6 +700,7 @@ Open these files next if you want to connect diagrams back to implementation:
 - `service/coordinator/dependencygraph/global_dependency_manager.go` — waiting-graph maintenance, release of freed dependents, and output of dependency-free work.
 - `service/coordinator/dependencygraph/dependency_detector.go` — read/write index structure that detects read-write, write-read, and write-write relationships.
 - `service/coordinator/dependencygraph/transaction_node.go` — node model, dependency sets, and namespace lifecycle key treatment.
-- `service/coordinator/signature_verifier_manager.go` — verifier stream management, pending-policy fetch, retry, and requeue of in-flight verification work.
-- `service/coordinator/validator_committer_manager.go` — VC stream management, final-status fan-out, policy updates, and duplicate-response handling.
+- `service/coordinator/service_manager.go` — manager and per-endpoint worker shared by both service pools: connection setup, send and receive loops, in-flight tracking, retry, and requeue.
+- `service/coordinator/signature_verifier_manager.go` — verifier adaptor: stream creation, verifier request construction with pending-policy deltas, and application of verification status to the node.
+- `service/coordinator/validator_committer_manager.go` — VC adaptor: stream creation, VC batch construction, and policy updates for committed namespace changes.
 - `service/coordinator/policy_manager.go` — in-memory versioned store for namespace policies and config transaction updates.
