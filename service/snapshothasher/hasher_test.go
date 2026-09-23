@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/service/vc"
+	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
 func TestSnapshotHashDeterministic(t *testing.T) {
@@ -25,7 +26,13 @@ func TestSnapshotHashDeterministic(t *testing.T) {
 
 	// Seed three namespaces with several keys each, plus committed tx statuses, so
 	// the digest covers multiple ns_<id> tables AND tx_status.
-	env.dbEnv.SeedState(t, seededState([]string{"1", "2", "3"}))
+	state := seededState([]string{"1", "2", "3"})
+	state.Rows["1"] = append(
+		state.Rows["1"],
+		vc.KeyValue{Key: []byte("empty"), Value: []byte{}},
+		vc.KeyValue{Key: []byte("null")},
+	)
+	env.dbEnv.SeedState(t, state)
 
 	ref := &committerpb.TxRef{BlockNum: 700100, TxNum: 0, TxId: "snap-hash-1"}
 	h1 := env.createAndHashClone(ctx, t, ref)
@@ -41,7 +48,29 @@ func TestSnapshotHashDeterministic(t *testing.T) {
 	})
 
 	ref2 := &committerpb.TxRef{BlockNum: 700110, TxNum: 0, TxId: "snap-hash-2"}
-	require.NotEqual(t, h1, env.createAndHashClone(ctx, t, ref2))
+	h2 := env.createAndHashClone(ctx, t, ref2)
+	require.NotEqual(t, h1, h2)
+
+	pool, err := statedb.NewPool(ctx, env.config.Database)
+	require.NoError(t, err)
+	t.Cleanup(pool.Close)
+	previousHash, err := env.hasher.hashSnapshotDatabase(ctx, pool)
+	require.NoError(t, err)
+	require.Equal(t, h2, previousHash)
+
+	// Only versions change, including high bits and rows with empty or NULL values.
+	t.Log("Version-only changes must change the hash")
+	for _, key := range []string{"key1.1", "empty", "null"} {
+		for _, version := range []int64{1, 1<<32 + 1} {
+			_, err = pool.Exec(ctx, "UPDATE ns_1 SET version = $1 WHERE key = $2", version, []byte(key))
+			require.NoError(t, err)
+
+			currentHash, hashErr := env.hasher.hashSnapshotDatabase(ctx, pool)
+			require.NoError(t, hashErr)
+			require.NotEqual(t, previousHash, currentHash, "key %s: version-only change to %d", key, version)
+			previousHash = currentHash
+		}
+	}
 }
 
 // TestSnapshotHashExcludesSnapshotNamespace proves that rows in the `_snapshot`

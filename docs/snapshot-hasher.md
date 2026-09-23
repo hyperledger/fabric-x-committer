@@ -123,8 +123,13 @@ clone content always yields an identical digest:
 - Each table is scanned in primary-key order in bounded pages (keyset pagination), so
   worker memory stays bounded on large tables and the scan is served by the primary-key
   index with no sort step.
-- Rows are folded in with length-prefixed encoding (`len(key)||key||len(value)||value`),
-  which prevents boundary collisions between adjacent keys and values.
+- Namespace rows are folded in as
+  `len(key)||key||len(value)||value||version`. Key, value, and version are fetched
+  separately; the hasher encodes lengths and version as 8-byte big-endian integers.
+  Fixed-width versions and length prefixes prevent boundary collisions. NULL and
+  empty values hash identically, but version-only changes alter the digest.
+  For `tx_status`, the encoding remains `len(tx_id)||tx_id||len(value)||value`, where
+  `value` is `int4send(coalesce(status, -1))||height`.
 - Per-table digests are combined in a fixed order — `ns__config`, `ns__meta`,
   `tx_status`, `ns__checkpoint`, then user namespaces in `ns__meta` key order — so the
   result does not depend on which table finished first.

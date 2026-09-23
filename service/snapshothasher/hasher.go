@@ -25,20 +25,22 @@ import (
 
 // txStatusPageSQL pages tx_status in primary-key order for hashing, encoding the
 // hashed value in SQL as int4send(status)||height so every table yields the same
-// (key, value) row shape. tx_id is the PRIMARY KEY, so ORDER BY tx_id is an
-// index-order scan with no sort step, and `tx_id > $1` is an index seek.
+// (key, value, version) row shape. 0::bigint fills row.Version for tx_status,
+// which has no version column; this placeholder is not hashed.
+// tx_id is the PRIMARY KEY, so ORDER BY tx_id is an index-order scan with no
+// sort step, and `tx_id > $1` is an index seek.
 //
 // status is a nullable column, and NULL || height is NULL, not height: without the
 // coalesce a single NULL status would collapse the whole concatenation and drop that
 // row's height from the digest, so two rows differing only in height would hash
 // identically. The sentinel is negative, which no committerpb.Status value is, so it
 // cannot collide with a real status.
-const txStatusPageSQL = "SELECT tx_id, int4send(coalesce(status, -1)) || height FROM tx_status " +
+const txStatusPageSQL = "SELECT tx_id, int4send(coalesce(status, -1)) || height, 0::bigint FROM tx_status " +
 	"WHERE tx_id > $1 ORDER BY tx_id LIMIT $2"
 
-// tablePageSQLFmt pages a (key, value) table in primary-key order. The table name is
+// tablePageSQLFmt pages namespace rows in primary-key order. The table name is
 // a sanitized identifier, so it is formatted in rather than bound.
-const tablePageSQLFmt = "SELECT key, value FROM %s WHERE key > $1 ORDER BY key LIMIT $2"
+const tablePageSQLFmt = "SELECT key, value, version FROM %s WHERE key > $1 ORDER BY key LIMIT $2"
 
 // hasher computes the deterministic content hash of a snapshot clone database.
 type hasher struct {
@@ -176,7 +178,8 @@ func (h *hasher) listHashedTables(ctx context.Context, pool *pgxpool.Pool) ([]st
 
 // hashTable scans one table in primary-key order in bounded pages (keyset
 // pagination) and folds rows into a per-table SHA-256 using length-prefixed
-// encoding len(key)||key||len(value)||value. tx_status is encoded as key=tx_id,
+// encoding len(key)||key||len(value)||value followed by an 8-byte big-endian
+// version for namespace rows. tx_status is encoded as key=tx_id,
 // value=int4send(status)||height (see txStatusPageSQL). Paging bounds worker
 // memory on large tables; ORDER BY the primary key is an index-order scan.
 //
@@ -215,12 +218,13 @@ func (h *hasher) hashTable(ctx context.Context, pool *pgxpool.Pool, table string
 		}
 
 		for i := range page {
-			// A NULL value scans as nil and is hashed as an empty value. That is the storage
-			// semantics this system already has -- a write carries proto3 bytes, which cannot
-			// distinguish nil from empty -- so the two are the same committed state, not a
-			// collision. tx_status cannot reach here with a nil value: see txStatusPageSQL.
 			writeLengthPrefixed(tableHash, page[i].Key)
 			writeLengthPrefixed(tableHash, page[i].Value)
+			if table != statedb.TxStatusTableName {
+				var version [8]byte
+				binary.BigEndian.PutUint64(version[:], page[i].Version)
+				_, _ = tableHash.Write(version[:]) // sha256 Write never errors.
+			}
 		}
 		if len(page) < batchSize {
 			break
@@ -231,10 +235,11 @@ func (h *hasher) hashTable(ctx context.Context, pool *pgxpool.Pool, table string
 }
 
 // row is one hashed row, collected positionally: the primary key (also the
-// keyset-pagination cursor) and the value folded into the table hash.
+// keyset-pagination cursor), value, and version folded into the table hash.
 type row struct {
-	Key   []byte
-	Value []byte
+	Key     []byte
+	Value   []byte
+	Version uint64
 }
 
 // writeLengthPrefixed writes an 8-byte big-endian length followed by the bytes.
