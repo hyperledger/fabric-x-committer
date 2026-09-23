@@ -115,3 +115,49 @@ func TestLoadGenCommitterWithLimit(t *testing.T) {
 	count := c.CountStatus(t, committerpb.Status_COMMITTED)
 	require.Equal(t, expectedTXs, count)
 }
+
+// TestLoadGenWithQueryService runs the committer path and a query service together with a loadgen
+// configured for queries-rate > 0, so the loadgen commits transactions while concurrently fetching
+// committed read versions from the query service before signing (the "load query and committer in
+// parallel" case). It asserts both loads actually flow: the loadgen keeps committing, and the query
+// service keeps receiving key queries. Version hits are not required — with key-backref-rate at its
+// default (0) every read is a fresh key, so queries miss and reads keep nil versions; this exercises
+// the wiring and the
+// query service under a live commit load.
+func TestLoadGenWithQueryService(t *testing.T) {
+	t.Parallel()
+	c := runner.NewRuntime(t, &runner.Config{
+		NumVerifiers:       2,
+		NumVCService:       2,
+		BlockTimeout:       2 * time.Second,
+		BlockSize:          100,
+		LoadGenQueriesRate: 1,
+	})
+	c.Start(t, runner.CommitterTxPathWithLoadGen|runner.QueryService)
+
+	metricsCreds, err := connection.NewClientTLSCredentials(c.SystemConfig.ClientTLS)
+	require.NoError(t, err)
+	metricsClientTLSConfig, err := metricsCreds.CreateClientTLSConfig()
+	require.NoError(t, err)
+
+	loadGenMetricsURL, err := monitoring.MakeMetricsURL(
+		c.SystemConfig.Services.LoadGen.HTTPEndpoint.Address(), &c.SystemConfig.ClientTLS,
+	)
+	require.NoError(t, err)
+	queryMetricsURL, err := monitoring.MakeMetricsURL(
+		c.SystemConfig.Services.Query.HTTPEndpoint.Address(), &c.SystemConfig.ClientTLS,
+	)
+	require.NoError(t, err)
+
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		committed := test.GetMetricValueFromURL(
+			ct, loadGenMetricsURL, "loadgen_transaction_committed_total", metricsClientTLSConfig,
+		)
+		queried := test.GetMetricValueFromURL(
+			ct, queryMetricsURL, "queryservice_grpc_key_requested_total", metricsClientTLSConfig,
+		)
+		t.Logf("loadgen_transaction_committed_total=%d queryservice_grpc_key_requested_total=%d", committed, queried)
+		require.Greater(ct, committed, 500)
+		require.Positive(ct, queried)
+	}, 300*time.Second, 1*time.Second)
+}

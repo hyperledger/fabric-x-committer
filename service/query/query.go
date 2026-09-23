@@ -15,7 +15,9 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/jackc/pgerrcode"
 	"github.com/yugabyte/pgx/v5"
+	"github.com/yugabyte/pgx/v5/pgconn"
 	"github.com/yugabyte/pgx/v5/pgxpool"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -100,6 +102,12 @@ func unsafeQueryRows(
 	queryStmt := statedb.FmtNsID(queryRowSQLTemplate, nsID)
 	r, err := queryObj.Query(ctx, queryStmt, keys)
 	if err != nil {
+		// A missing ns_<id> relation (42P01) means the namespace does not exist: map it to
+		// ErrNamespaceNotFound (gRPC NotFound) rather than a server failure.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UndefinedTable {
+			return nil, errors.Wrapf(ErrNamespaceNotFound, "namespace %s", nsID)
+		}
 		return nil, err
 	}
 	defer r.Close()
