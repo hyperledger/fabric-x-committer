@@ -123,6 +123,22 @@ this to update the graph, which may resolve dependencies for other waiting trans
 2.  The raw transaction status is sent to the `vcServiceToCoordinatorTxStatus` channel. The Coordinator consumes this and forwards the statuses
 to the Sidecar for final aggregation and delivery to clients.
 
+A held or halted `_checkpoint` transaction has `CheckpointFeedback` instead of a transaction status. Saving a status
+for a held checkpoint would cause its retry to be rejected as a duplicate. See [validator-committer.md](validator-committer.md),
+Task 2 step **e**.
+
+The coordinator handles this feedback in three steps:
+
+1. Forward the batch to the sidecar, even if it has no statuses. Drop it only if it has neither statuses nor feedback.
+2. Use the feedback's `TxRef` to remove the checkpoint from `txBeingValidated` and release its dependency-graph node.
+   Otherwise, a retry would wait forever on the old node's writes.
+3. Count the feedback as one transaction when updating `numTxsInProgress` and the status queue's count. The `txCount`
+   helper handles both statuses and feedback. Without this count, the coordinator would never report idle after a hold,
+   and the sidecar could not restart its session.
+
+The coordinator forwards feedback unchanged. The sidecar decides whether to wait or stop.
+See [Checkpoint feedback gate](sidecar.md#checkpoint-feedback-gate).
+
 ### Step 6. Post-Commit Processing
 If a committed transaction creates or updates a namespace, a post-commit process is triggered to update the system's policies. The `Validator-Committer Manager`,
 in conjunction with a [`Policy Manager`](/service/coordinator/policy_manager.go), ensures that all `Signature Verifier` services are updated with the new endorsement policy for that namespace. 

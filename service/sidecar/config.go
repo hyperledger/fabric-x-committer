@@ -26,6 +26,9 @@ type (
 		// the coordinator with the last committed block.
 		LastCommittedBlockSetInterval time.Duration `mapstructure:"last-committed-block-set-interval" default:"5s" validate:"gt=0"` //nolint:lll,revive
 		WaitingTxsLimit               int           `mapstructure:"waiting-txs-limit" default:"100000" validate:"gt=0"`
+		// CheckpointHoldRetryInterval is the wait before fetching a held checkpoint block again.
+		// The pause gives the snapshot hasher time to finish computing the local hash.
+		CheckpointHoldRetryInterval time.Duration `mapstructure:"checkpoint-hold-retry-interval" default:"1m" validate:"gt=0"` //nolint:lll,revive
 		// ChannelBufferSize is the buffer size that will be used to queue blocks, requests, and statuses.
 		ChannelBufferSize int                       `mapstructure:"channel-buffer-size" default:"100" validate:"gt=0"`
 		Notification      NotificationServiceConfig `mapstructure:"notification"`

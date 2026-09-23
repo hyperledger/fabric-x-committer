@@ -258,7 +258,14 @@ func (vc *validatorCommitter) receiveStatusAndForwardToOutput(
 			}
 		}
 
-		if len(txsStatus.Status) == 0 {
+		// A held or halted checkpoint has no status, so the loop above cannot release it.
+		// Release its node here so a retry does not wait on the old node forever.
+		if node, ok := vc.checkpointNodeToRelease(txsStatus.CheckpointFeedback); ok {
+			txsNode = append(txsNode, node)
+		}
+
+		// Forward feedback even without statuses so the sidecar can retry or stop.
+		if len(txsStatus.Status) == 0 && txsStatus.CheckpointFeedback == nil {
 			continue
 		}
 
@@ -307,6 +314,26 @@ func (vc *validatorCommitter) recoverPendingTransactions(inputTxsNode channel.Wr
 
 	promutil.AddToCounter(vc.metrics.vcs.retriedTotal, len(pendingTxs))
 	inputTxsNode.Write(pendingTxs)
+}
+
+// checkpointNodeToRelease removes the checkpoint's tracked node for the caller to release.
+// It uses the transaction reference in the feedback because there is no status.
+// If the node is no longer tracked, there is nothing to release.
+func (vc *validatorCommitter) checkpointNodeToRelease(feedback *servicepb.CheckpointFeedback) (
+	*dependencygraph.TransactionNode, bool,
+) {
+	if feedback == nil || feedback.Ref == nil {
+		return nil, false
+	}
+	node, ok := vc.txBeingValidated.LoadAndDelete(*servicepb.NewHeightFromTxRef(feedback.Ref))
+	if !ok {
+		logger.Debugf("Checkpoint TX [%s] for snapshot block [%d] is no longer tracked, so nothing to release",
+			feedback.Ref.TxId, feedback.SnapshotBlockNumber)
+		return nil, false
+	}
+	logger.Infof("Releasing the dependency-graph node of %s checkpoint TX [%s] for snapshot block [%d]",
+		feedback.Signal, feedback.Ref.TxId, feedback.SnapshotBlockNumber)
+	return node, true
 }
 
 func (vc *validatorCommitter) getTxsAndUpdatePolicies(txsStatus *servicepb.TxStatusBatch) (

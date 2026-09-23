@@ -293,8 +293,8 @@ func TestSystemNamespaceFormValidation(t *testing.T) {
 	t.Parallel()
 
 	const ordinaryNsID = "ordinary"
-	heightKey := servicepb.NewHeight(7, 3).ToBytes()
-	heightKeyWithTrailingBytes := append(append([]byte{}, heightKey...), []byte("junk")...)
+	checkpointKey := servicepb.CheckpointKey(7)
+	checkpointKeyWithTrailingBytes := append(append([]byte{}, checkpointKey...), []byte("junk")...)
 
 	for _, tc := range []struct {
 		name                string
@@ -364,18 +364,18 @@ func TestSystemNamespaceFormValidation(t *testing.T) {
 			expectedStatus: committerpb.Status_MALFORMED_NO_WRITES,
 		},
 		{
-			name: "checkpoint namespace with height key is valid",
+			name: "checkpoint namespace with block-number key is valid",
 			tx: &applicationpb.Tx{
 				Namespaces: []*applicationpb.TxNamespace{{
 					NsId:       committerpb.CheckpointNamespaceID,
-					ReadWrites: []*applicationpb.ReadWrite{{Key: heightKey, Value: []byte("checkpoint")}},
+					ReadWrites: []*applicationpb.ReadWrite{{Key: checkpointKey, Value: []byte("checkpoint")}},
 				}},
 				Endorsements: dummyEndorsements(1),
 			},
 			expectedStatus: statusNotYetValidated,
 		},
 		{
-			name: "checkpoint namespace with non-height key is malformed",
+			name: "checkpoint namespace with non-block-number key is malformed",
 			tx: &applicationpb.Tx{
 				Namespaces: []*applicationpb.TxNamespace{{
 					NsId:       committerpb.CheckpointNamespaceID,
@@ -386,12 +386,12 @@ func TestSystemNamespaceFormValidation(t *testing.T) {
 			expectedStatus: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY,
 		},
 		{
-			name: "checkpoint namespace with height key plus trailing bytes is malformed",
+			name: "checkpoint namespace with block-number key plus trailing bytes is malformed",
 			tx: &applicationpb.Tx{
 				Namespaces: []*applicationpb.TxNamespace{{
 					NsId: committerpb.CheckpointNamespaceID,
 					ReadWrites: []*applicationpb.ReadWrite{{
-						Key:   heightKeyWithTrailingBytes,
+						Key:   checkpointKeyWithTrailingBytes,
 						Value: []byte("checkpoint"),
 					}},
 				}},
@@ -405,7 +405,7 @@ func TestSystemNamespaceFormValidation(t *testing.T) {
 				Namespaces: []*applicationpb.TxNamespace{{
 					NsId:       committerpb.CheckpointNamespaceID,
 					ReadsOnly:  []*applicationpb.Read{{Key: []byte("other-key")}},
-					ReadWrites: []*applicationpb.ReadWrite{{Key: heightKey, Value: []byte("checkpoint")}},
+					ReadWrites: []*applicationpb.ReadWrite{{Key: checkpointKey, Value: []byte("checkpoint")}},
 				}},
 				Endorsements: dummyEndorsements(1),
 			},
@@ -416,7 +416,7 @@ func TestSystemNamespaceFormValidation(t *testing.T) {
 			tx: &applicationpb.Tx{
 				Namespaces: []*applicationpb.TxNamespace{{
 					NsId:        committerpb.CheckpointNamespaceID,
-					ReadWrites:  []*applicationpb.ReadWrite{{Key: heightKey, Value: []byte("checkpoint")}},
+					ReadWrites:  []*applicationpb.ReadWrite{{Key: checkpointKey, Value: []byte("checkpoint")}},
 					BlindWrites: []*applicationpb.Write{{Key: []byte("key"), Value: []byte("value")}},
 				}},
 				Endorsements: dummyEndorsements(1),
@@ -429,7 +429,7 @@ func TestSystemNamespaceFormValidation(t *testing.T) {
 				Namespaces: []*applicationpb.TxNamespace{{
 					NsId: committerpb.CheckpointNamespaceID,
 					ReadWrites: []*applicationpb.ReadWrite{
-						{Key: heightKey, Value: []byte("checkpoint")},
+						{Key: checkpointKey, Value: []byte("checkpoint")},
 						{Key: []byte("other-key"), Value: []byte("checkpoint")},
 					},
 				}},
@@ -453,7 +453,7 @@ func TestSystemNamespaceFormValidation(t *testing.T) {
 				Namespaces: []*applicationpb.TxNamespace{
 					{
 						NsId:       committerpb.CheckpointNamespaceID,
-						ReadWrites: []*applicationpb.ReadWrite{{Key: heightKey, Value: []byte("checkpoint")}},
+						ReadWrites: []*applicationpb.ReadWrite{{Key: checkpointKey, Value: []byte("checkpoint")}},
 					},
 					{NsId: ordinaryNsID, BlindWrites: []*applicationpb.Write{{Key: []byte("key")}}},
 				},

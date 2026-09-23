@@ -430,9 +430,12 @@ func newTestEnv(t *testing.T) *testEnv {
 
 // createContext bounds a test at the suite's limit. Cancellation is registered as
 // cleanup, so a caller needs nothing but the context.
+//
+// Allow time for YugabyteDB setup and parallel tests waiting for resources.
+// Setup takes about 35 seconds per test, so even a short hash test can take minutes.
 func createContext(t *testing.T) context.Context {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 7*time.Minute)
 	t.Cleanup(cancel)
 	return ctx
 }

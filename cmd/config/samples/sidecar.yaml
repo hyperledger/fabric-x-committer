@@ -150,6 +150,10 @@ waiting-txs-limit: 20_000_000
 # by reducing channel contention but increase memory usage.
 # Default: 100
 channel-buffer-size: 100
+# How long the sidecar waits before fetching a held checkpoint block again.
+# The pause gives the snapshot hasher time to finish computing the local hash.
+# Default: 1m
+checkpoint-hold-retry-interval: 1m
 
 # Logging configuration
 logging:

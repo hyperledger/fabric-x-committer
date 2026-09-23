@@ -29,32 +29,37 @@ message TxWithRef {
 // A batch of TXs' status and optional checkpoint feedback.
 message TxStatusBatch {
     repeated committerpb.TxStatus status = 1;
-    // Checkpoint feedback from the VC to the coordinator. The coordinator forwards the same message to the sidecar.
-    // If absent, ordinary per-TX status is authoritative.
+    // The coordinator forwards this feedback from the VC to the sidecar unchanged.
+    // If absent, use the transaction statuses.
     optional CheckpointFeedback checkpoint_feedback = 2;
 }
 
-// CheckpointFeedback controls checkpoint intake while local snapshot hash verification completes.
+// CheckpointFeedback tells the sidecar to wait for a snapshot hash or stop on a mismatch.
 message CheckpointFeedback {
-    // Signal controls new intake. HOLD and HALT allow already-fetched work to drain.
+    // Signal tells the sidecar whether to wait or stop.
     enum Signal {
-        // No checkpoint feedback. Ordinary per-TX status is authoritative.
+        // Take no checkpoint action. Use the transaction statuses.
         SIGNAL_UNSPECIFIED = 0;
-        // Local snapshot hash is computed and verified. Releases a prior HOLD and resumes intake.
-        PROCEED = 1;
-        // Local snapshot hash is not yet computed. Blocks new intake while already-fetched work drains.
-        HOLD = 2;
-        // Same intake barrier as HOLD, but terminal: no PROCEED follows without operator intervention.
-        HALT = 3;
+        // The local snapshot hash is not ready. The checkpoint has no transaction status.
+        // The sidecar waits, then submits the same checkpoint again.
+        HOLD = 1;
+        // The local and checkpoint hashes differ. The sidecar stops without retrying.
+        // An operator must investigate.
+        HALT = 2;
     }
+
+    reserved 2; // Was tx_id, now carried by ref.
 
     // Checkpoint feedback signal.
     Signal signal = 1;
-    // Checkpoint transaction ID used by the coordinator to correlate feedback with the in-flight checkpoint.
-    string tx_id = 2;
-    // Referenced snapshot block number used in coordinator and sidecar diagnostic logs.
-    uint64 block_number = 3;
-    // HALT divergence detail for operator diagnostics, including local and checkpoint hashes.
-    // Required when signal is HALT. Must be logged, not used as a metric label.
+    // The snapshot's block number, used in logs.
+    // The checkpoint transaction's block number is in ref.
+    uint64 snapshot_block_number = 3;
+    // The reason for HALT, including the local and checkpoint hashes.
+    // Required for HALT. Log it; do not use it as a metric label.
     string reason = 4;
+    // Identifies the checkpoint transaction. The coordinator uses this reference to release
+    // its dependency-graph node because HOLD and HALT have no transaction status.
+    // Without that release, a retry would wait forever on the old node.
+    committerpb.TxRef ref = 5;
 }
