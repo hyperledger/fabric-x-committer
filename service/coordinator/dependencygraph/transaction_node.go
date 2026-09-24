@@ -53,6 +53,11 @@ type (
 		dependentTxs utils.SyncMap[*TransactionNode, any]
 		rwKeys       readWriteKeys
 
+		// rejected marks a transaction the coordinator rejected before the graph saw it. Such a
+		// transaction bypasses the graph on its way to the vcservice but still returns on the
+		// validated stream, so the managers must not count it against the graph's waiting limit.
+		rejected bool
+
 		// Used by the simple dependency graph.
 		waitForKeysCount uint64
 		waitingKeys      []*waiting
@@ -88,6 +93,7 @@ func NewRejectedTransactionNode(tx *committerpb.TxStatus) *TransactionNode {
 			Ref:                   tx.Ref,
 			PrelimInvalidTxStatus: &tx.Status,
 		},
+		rejected: true,
 	}
 }
 
