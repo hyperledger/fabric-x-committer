@@ -16,11 +16,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 const config = `
-server: localhost:5050
 endpoint: localhost:5050
 orderer-endpoint: id=5,msp-id=org,broadcast,deliver,localhost:5050
 json-orderer-endpoint: {"id":5,"msp-id":"org","api":["broadcast","deliver"],"host":"localhost","port":5050}
@@ -47,7 +45,6 @@ func TestParseEndpoint(t *testing.T) {
 	v := viper.New()
 	require.NoError(t, readYamlConfigsFromIO(v, bytes.NewBufferString(config)))
 	conf := new(struct {
-		Server                       serve.ServerConfig          `mapstructure:"server"`
 		Endpoint                     connection.Endpoint         `mapstructure:"endpoint"`
 		OrdererEndpoint              commontypes.OrdererEndpoint `mapstructure:"orderer-endpoint"`
 		JSONOrdererEndpoint          commontypes.OrdererEndpoint `mapstructure:"json-orderer-endpoint"`
@@ -66,7 +63,6 @@ func TestParseEndpoint(t *testing.T) {
 		Host: "localhost",
 		Port: 5050,
 	}
-	require.Equal(t, expectedEndpoint, conf.Server.Endpoint)
 	require.Equal(t, expectedEndpoint, conf.Endpoint)
 	require.Equal(t, expected, conf.OrdererEndpoint)
 	require.Equal(t, expected, conf.JSONOrdererEndpoint)

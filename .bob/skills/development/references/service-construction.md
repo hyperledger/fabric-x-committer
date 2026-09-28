@@ -200,10 +200,12 @@ The full pipeline (keep every stage in sync when adding a field):
 Config struct (mapstructure + default tag) → sample YAML → env var → decoder hook → docs
 ```
 
-- Give every field its default in a `default:"..."` tag. `setDefaultsAndEnv`
-  (`cmd/config/config_preload.go:27`) walks the struct **type** and registers each tag as a
-  viper default, so a new field needs no manual `v.SetDefault`. Env vars use prefix
-  `SC_<SERVICE>_` with `-`/`.`→`_`, applied by the same walk.
+- Give every field its default in a `default:"..."` tag. `registerDefaults`
+  (`cmd/config/config_preload.go:29`) walks the struct **type** and registers each tag as a
+  viper default, so a new field needs no manual `v.SetDefault`. The exception is a field of a
+  list item: viper holds a list as one value, so a default there cannot apply and must be
+  resolved in code. Env vars use prefix `SC_<SERVICE>_` with `-`/`.`→`_`, applied by a
+  separate walk, `applyEnvOverrides`, which does reach list items.
 - `cmd/config/viper.go` holds only what a tag cannot express: the `server.*` limits for
   client-facing services (`setClientFacingServerLimits`) and each service's default endpoint
   (`setEndpoint`).

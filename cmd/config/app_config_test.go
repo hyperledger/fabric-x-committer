@@ -765,6 +765,44 @@ func TestReconnectMaxElapsedTime(t *testing.T) {
 	})
 }
 
+// TestDefaultTagInsideList pins how the `default` tag behaves inside a list. Viper holds a list as
+// one value, so a default cannot reach the listed items, and registering one anyway conjured a
+// phantom item when the list was absent (see registerDefaults).
+func TestDefaultTagInsideList(t *testing.T) {
+	t.Parallel()
+	type item struct {
+		Name string `mapstructure:"name"`
+		Size int    `mapstructure:"size" default:"7"`
+	}
+	type config struct {
+		Items []*item `mapstructure:"items"`
+	}
+	for _, tc := range []struct {
+		name     string
+		yaml     string
+		expected []*item
+	}{
+		{
+			name:     "a listed item does not get the default",
+			yaml:     "items:\n  - name: a\n  - name: b\n    size: 3\n",
+			expected: []*item{{Name: "a"}, {Name: "b", Size: 3}},
+		},
+		{
+			name: "an absent list stays empty",
+			yaml: "other: 1\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			v := viper.New()
+			require.NoError(t, readYamlConfigsFromIO(v, strings.NewReader(tc.yaml)))
+			c := &config{}
+			require.NoError(t, unmarshal(v, c))
+			require.Equal(t, tc.expected, c.Items)
+		})
+	}
+}
+
 func TestViperDefaultsAreComplete(t *testing.T) {
 	t.Parallel()
 

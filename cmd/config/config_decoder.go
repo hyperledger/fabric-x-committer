@@ -20,7 +20,6 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/serve"
 )
 
 // RFC 1123 hostname validation regex:
@@ -42,7 +41,7 @@ const (
 func decoderHook() viper.DecoderConfigOption {
 	return viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
 		viperutil.StringSliceViaEnvDecodeHook, viperutil.ByteSizeDecodeHook, viperutil.OrdererEndpointDecoder,
-		durationDecoder, serverDecoder, endpointDecoder,
+		durationDecoder, endpointDecoder,
 	))
 }
 
@@ -62,19 +61,6 @@ func endpointDecoder(dataType, targetType reflect.Type, rawData any) (result any
 	}
 	endpoint, err := parseEndpoint(stringData)
 	return endpoint, errors.Wrap(err, "failed to parse endpoint")
-}
-
-func serverDecoder(dataType, targetType reflect.Type, rawData any) (result any, err error) {
-	stringData, ok := viperutil.GetStringData(dataType, rawData)
-	if !ok || targetType != reflect.TypeFor[serve.ServerConfig]() {
-		return rawData, nil
-	}
-	endpoint, err := parseEndpoint(stringData)
-	var ret serve.ServerConfig
-	if endpoint != nil {
-		ret = serve.ServerConfig{Endpoint: *endpoint}
-	}
-	return ret, err
 }
 
 // parseEndpoint parses an endpoint from an address string.

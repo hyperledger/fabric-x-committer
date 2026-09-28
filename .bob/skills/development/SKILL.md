@@ -302,8 +302,8 @@ The codebase is aggressively modern. **Prefer** in new code:
 - Range-over-integer: `for range n` / `for i := range n` (the `intrange` linter pushes this).
 - `iter.Seq` / `iter.Seq2` for custom iterators (`utils/sync_map.go`).
 - Stdlib iterator forms over `Len`/`At` and slice-returning helpers:
-  `reflect.Type.Fields()` (`cmd/config/config_preload.go:38`), `strings.FieldsSeq` /
-  `strings.SplitSeq` (`cmd/config/config_preload.go:83`).
+  `reflect.Type.Fields()` (`cmd/config/config_preload.go:36`), `strings.FieldsSeq` /
+  `strings.SplitSeq` (`cmd/config/config_preload.go:63`).
 - Promoted (embedded) field names directly in composite literals — Go 1.27 accepts
   `&PostgresClusterController{dbType: ..., networkName: ...}` in place of spelling out
   the embedded `DBClusterController{...}` literal (`integration/runner/postgres.go:78`).

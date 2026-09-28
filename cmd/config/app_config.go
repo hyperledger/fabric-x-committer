@@ -131,8 +131,11 @@ func readYamlAndSetupLogging[T any](v *viper.Viper, configPath string) (*T, *ser
 // unmarshal populate multiple config objects and validates them.
 // It automatically set configuration via environment variables.
 func unmarshal(v *viper.Viper, items ...any) error {
+	// Defaults and env overrides live in separate viper layers, so viper's precedence
+	// (default < config file < env override) holds whichever is seeded first.
 	for _, c := range items {
-		setDefaultsAndEnv(v, reflect.TypeOf(c))
+		registerDefaults(v, reflect.TypeOf(c))
+		applyEnvOverrides(v, reflect.TypeOf(c))
 	}
 
 	decoders := decoderHook()
