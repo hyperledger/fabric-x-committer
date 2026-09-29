@@ -81,6 +81,12 @@ Buffer size for internal Go channels in the Sidecar — block delivery, committe
 
 A small buffer (e.g., 1-10) tightly couples the Sidecar's internal stages: any slowdown in the relay to the Coordinator immediately stalls block delivery from the orderer. A larger buffer absorbs temporary throughput variations but uses more memory. Default: 100.
 
+### `max-workers-for-tx-parsing` and `min-tx-parsing-batch-size`
+
+`max-workers-for-tx-parsing` is the most goroutines one block's transactions are parsed on before the Sidecar sends the block to the Coordinator. Parsing covers each transaction's envelope, its classification, and its form checks. Only the TX ID dedup and the batch order stay on a single goroutine.
+
+With 1 worker, one core's parsing rate caps the Sidecar. More workers help only on hosts with spare cores. The relay's sender and receiver, the block store, and the notifier need cores too. `min-tx-parsing-batch-size` is the fewest transactions one goroutine is given: a block is split into batches of at least this many, so a block with fewer than twice this many is parsed on one goroutine. Defaults: 1 and 256.
+
 ### `last-committed-block-set-interval`
 
 How often the Sidecar sends the latest committed block number to the Coordinator. The Coordinator uses this for dependency resolution.

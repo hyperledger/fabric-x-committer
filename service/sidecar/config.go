@@ -32,6 +32,18 @@ type (
 		// ChannelBufferSize is the buffer size that will be used to queue blocks, requests, and statuses.
 		ChannelBufferSize int                       `mapstructure:"channel-buffer-size" default:"100" validate:"gt=0"`
 		Notification      NotificationServiceConfig `mapstructure:"notification"`
+		TxParsing         TxParsingConfig           `mapstructure:",squash"`
+	}
+
+	// TxParsingConfig controls how many goroutines parse a block's transactions before the sidecar
+	// sends the block to the coordinator. Its fields sit at the top level of the sidecar's config.
+	TxParsingConfig struct {
+		// MaxWorkers is the most goroutines one block's parsing is split across. Parsing is CPU
+		// bound, so more workers than the cores left over by the sidecar's other stages cannot help.
+		MaxWorkers int `mapstructure:"max-workers-for-tx-parsing" default:"1" validate:"gt=0"`
+		// MinBatchSize is the smallest share of a block worth giving a goroutine of its own; below
+		// it, handing the share over costs more than parsing it in place.
+		MinBatchSize int `mapstructure:"min-tx-parsing-batch-size" default:"256" validate:"gt=0"`
 	}
 
 	// LedgerConfig holds the ledger path.

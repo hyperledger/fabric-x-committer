@@ -84,6 +84,7 @@ func TestReadConfigSidecar(t *testing.T) {
 			WaitingTxsLimit:               100_000,
 			CheckpointHoldRetryInterval:   time.Minute,
 			ChannelBufferSize:             100,
+			TxParsing:                     sidecar.TxParsingConfig{MaxWorkers: 1, MinBatchSize: 256},
 		},
 	}, {
 		name:           "sample",
@@ -135,6 +136,7 @@ func TestReadConfigSidecar(t *testing.T) {
 			WaitingTxsLimit:               20_000_000,
 			CheckpointHoldRetryInterval:   time.Minute,
 			ChannelBufferSize:             100,
+			TxParsing:                     sidecar.TxParsingConfig{MaxWorkers: 1, MinBatchSize: 256},
 		},
 	}}
 	for _, tc := range tests {

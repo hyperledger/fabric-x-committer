@@ -63,6 +63,7 @@ func newRelayTestEnv(t *testing.T) *relayTestEnv {
 	relayService := newRelay(
 		time.Second,
 		testCheckpointHoldRetryInterval,
+		TxParsingConfig{},
 		metrics,
 	)
 
@@ -296,7 +297,9 @@ func TestRelayConfigBlock(t *testing.T) {
 // again, instead of committing the block without its config TX.
 func TestRelayUnprocessableConfigBlock(t *testing.T) {
 	t.Parallel()
-	relayService := newRelay(time.Second, testCheckpointHoldRetryInterval, newPerformanceMetrics(newQueues(10)))
+	relayService := newRelay(
+		time.Second, testCheckpointHoldRetryInterval, TxParsingConfig{}, newPerformanceMetrics(newQueues(10)),
+	)
 	incomingBlockToBeCommitted := make(chan *common.Block, 1)
 	relayService.incomingBlockToBeCommitted = incomingBlockToBeCommitted
 	relayService.waitingTxsSlots = utils.NewSlots(100)
@@ -313,7 +316,9 @@ func TestRelayUnprocessableConfigBlock(t *testing.T) {
 // the committed block's header unchanged into committedBlockWithTxs, for StreamBlocks clients.
 func TestProcessCommittedBlocksInOrderHeader(t *testing.T) {
 	t.Parallel()
-	relayService := newRelay(time.Second, testCheckpointHoldRetryInterval, newPerformanceMetrics(newQueues(10)))
+	relayService := newRelay(
+		time.Second, testCheckpointHoldRetryInterval, TxParsingConfig{}, newPerformanceMetrics(newQueues(10)),
+	)
 
 	blk, _ := createBlockForTest(t, 0, []byte("prev-hash"))
 	blk.Metadata = &common.BlockMetadata{Metadata: make([][]byte, statusIdx+1)}
@@ -411,7 +416,7 @@ func TestSubmitSnapshotBlockSnapshotOnly(t *testing.T) {
 	block := workload.MapToOrdererBlock(9, []*servicepb.LoadGenTx{makeSnapshotLoadGenTxForTest(txb)})
 
 	var dedup txIDDedup
-	mappedBlock, err := mapBlock(block, &dedup)
+	mappedBlock, err := mapBlock(block, &dedup, TxParsingConfig{})
 	require.NoError(t, err)
 	require.NotNil(t, mappedBlock.snapshotTx)
 	require.Empty(t, mappedBlock.block.Rejected)
@@ -459,7 +464,7 @@ func TestSubmitSnapshotBlockCarriesAllRejected(t *testing.T) {
 	})
 
 	var dedup txIDDedup
-	mappedBlock, err := mapBlock(block, &dedup)
+	mappedBlock, err := mapBlock(block, &dedup, TxParsingConfig{})
 	require.NoError(t, err)
 	require.NotNil(t, mappedBlock.snapshotTx)
 	require.Len(t, mappedBlock.block.Rejected, 2)
@@ -560,7 +565,7 @@ func TestSubmitSnapshotBlockPositions(t *testing.T) {
 			block := workload.MapToOrdererBlock(9, loadGenTxs)
 
 			var dedup txIDDedup
-			mappedBlock, err := mapBlock(block, &dedup)
+			mappedBlock, err := mapBlock(block, &dedup, TxParsingConfig{})
 			require.NoError(t, err)
 			require.NotNil(t, mappedBlock.snapshotTx)
 			require.Empty(t, mappedBlock.block.Rejected)
@@ -592,7 +597,7 @@ func TestRelayStatusRouting(t *testing.T) {
 	const trackedBlockNum = uint64(3)
 	blk, txIDs := createBlockForTest(t, trackedBlockNum, nil)
 	var dedup txIDDedup
-	mappedBlock, err := mapBlock(blk, &dedup)
+	mappedBlock, err := mapBlock(blk, &dedup, TxParsingConfig{})
 	require.NoError(t, err)
 
 	committedBlock := make(chan *common.Block, 1)
@@ -818,7 +823,7 @@ func TestRelayCheckpointGate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			relayService := newRelay(
-				time.Second, testCheckpointHoldRetryInterval, newPerformanceMetrics(newQueues(10)),
+				time.Second, testCheckpointHoldRetryInterval, TxParsingConfig{}, newPerformanceMetrics(newQueues(10)),
 			)
 			m := relayService.metrics
 
@@ -860,7 +865,9 @@ func TestRelayCheckpointHoldClearsAfterCommit(t *testing.T) {
 // not pause or stop the sidecar. processStatusBatch handles absent feedback separately.
 func TestRelayWithoutCheckpointFeedbackKeepsRunning(t *testing.T) {
 	t.Parallel()
-	relayService := newRelay(time.Second, testCheckpointHoldRetryInterval, newPerformanceMetrics(newQueues(10)))
+	relayService := newRelay(
+		time.Second, testCheckpointHoldRetryInterval, TxParsingConfig{}, newPerformanceMetrics(newQueues(10)),
+	)
 
 	require.NoError(t, relayService.processCheckpointFeedback(t.Context(),
 		&servicepb.CheckpointFeedback{Signal: servicepb.CheckpointFeedback_SIGNAL_UNSPECIFIED}))

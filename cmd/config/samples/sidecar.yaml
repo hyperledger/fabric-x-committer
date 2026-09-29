@@ -154,6 +154,15 @@ channel-buffer-size: 100
 # The pause gives the snapshot hasher time to finish computing the local hash.
 # Default: 1m
 checkpoint-hold-retry-interval: 1m
+# The most goroutines one block's transactions are parsed on before the sidecar sends the block
+# to the coordinator. With 1, one core's parsing rate caps the sidecar. Raise it on hosts with
+# spare cores; more workers than the cores the sidecar's other stages leave free cannot help.
+# Default: 1
+max-workers-for-tx-parsing: 1
+# The fewest transactions one parsing goroutine is given: a block is split into batches of at
+# least this many, so a block with fewer than twice this many is parsed on one goroutine.
+# Default: 256
+min-tx-parsing-batch-size: 256
 
 # Logging configuration
 logging:

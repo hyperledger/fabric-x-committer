@@ -139,7 +139,7 @@ func New(c *Config) (*Service, error) {
 	q := newQueues(c.ChannelBufferSize)
 	metrics := newPerformanceMetrics(q)
 	deliveryParams.Metrics = metrics.delivery
-	relayService := newRelay(c.LastCommittedBlockSetInterval, c.CheckpointHoldRetryInterval, metrics)
+	relayService := newRelay(c.LastCommittedBlockSetInterval, c.CheckpointHoldRetryInterval, c.TxParsing, metrics)
 
 	return &Service{
 		deliveryParams: deliveryParams,
@@ -445,7 +445,8 @@ func appendMissingBlock(
 	committedBlocks channel.Writer[*common.Block],
 ) error {
 	var dedup txIDDedup
-	mappedBlock, err := mapBlock(blk, &dedup)
+	// Recovery maps each missing block once, so parsing it in place (the zero TxParsingConfig) is enough.
+	mappedBlock, err := mapBlock(blk, &dedup, TxParsingConfig{})
 	if err != nil {
 		// This can never occur unless there is a bug in the relay.
 		return err

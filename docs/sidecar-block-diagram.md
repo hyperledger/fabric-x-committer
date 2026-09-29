@@ -76,7 +76,8 @@ This document provides a detailed block diagram of the sidecar service component
 │  │  ┌────────────────────────────────────────────────────────┐ │  │
 │  │  │  preProcessBlock()                                     │ │  │
 │  │  │  - Maps blocks using mapBlock()                        │ │  │
-│  │  │  - Validates transaction form                          │ │  │
+│  │  │  - Parses/validates a block's TXs in parallel          │ │  │
+│  │  │  - Folds them in, in order (dedup stays serial)        │ │  │
 │  │  │  - Detects duplicates (txIDDedup set)                  │ │  │
 │  │  │  - Handles config blocks (stop the world)              │ │  │
 │  │  │  - Manages waitingTxsSlots (backpressure)              │ │  │

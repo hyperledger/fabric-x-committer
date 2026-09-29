@@ -43,6 +43,7 @@ type (
 		// checkpointHeld keeps the gauge at "held" across session restarts.
 		// A later batch without feedback resets it to "running".
 		checkpointHeld  atomic.Bool
+		txParsing       TxParsingConfig
 		waitingTxsSlots *utils.Slots
 		metrics         *perfMetrics
 		// committedBlockMu protects processCommittedBlocksInOrder from concurrent execution
@@ -78,12 +79,14 @@ const (
 
 func newRelay(
 	lastCommittedBlockSetInterval, checkpointHoldRetryInterval time.Duration,
+	txParsing TxParsingConfig,
 	metrics *perfMetrics,
 ) *relay {
 	logger.Info("Initializing new relay")
 	return &relay{
 		lastCommittedBlockSetInterval: lastCommittedBlockSetInterval,
 		checkpointHoldRetryInterval:   checkpointHoldRetryInterval,
+		txParsing:                     txParsing,
 		metrics:                       metrics,
 	}
 }
@@ -164,7 +167,7 @@ func (r *relay) preProcessBlock(
 		dedup.evictCommittedBelow(r.inFlightBlocks.nextBlockNumberToCommit())
 
 		start := time.Now()
-		mappedBlock, err := mapBlock(block, &dedup)
+		mappedBlock, err := mapBlock(block, &dedup, r.txParsing)
 		if err != nil {
 			// A config TX that cannot be processed ends the relay, so the sidecar restarts its
 			// block feed and fetches the block again (see unprocessableConfigTx). Any other
