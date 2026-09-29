@@ -48,8 +48,6 @@ message CheckpointFeedback {
         HALT = 2;
     }
 
-    reserved 2; // Was tx_id, now carried by ref.
-
     // Checkpoint feedback signal.
     Signal signal = 1;
     // The snapshot's block number, used in logs.

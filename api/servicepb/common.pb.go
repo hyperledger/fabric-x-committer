@@ -326,7 +326,7 @@ const file_api_servicepb_common_proto_rawDesc = "" +
 	"\rTxStatusBatch\x12-\n" +
 	"\x06status\x18\x01 \x03(\v2\x15.committerpb.TxStatusR\x06status\x12S\n" +
 	"\x13checkpoint_feedback\x18\x02 \x01(\v2\x1d.servicepb.CheckpointFeedbackH\x00R\x12checkpointFeedback\x88\x01\x01B\x16\n" +
-	"\x14_checkpoint_feedback\"\x80\x02\n" +
+	"\x14_checkpoint_feedback\"\xfa\x01\n" +
 	"\x12CheckpointFeedback\x12<\n" +
 	"\x06signal\x18\x01 \x01(\x0e2$.servicepb.CheckpointFeedback.SignalR\x06signal\x122\n" +
 	"\x15snapshot_block_number\x18\x03 \x01(\x04R\x13snapshotBlockNumber\x12\x16\n" +
@@ -335,7 +335,7 @@ const file_api_servicepb_common_proto_rawDesc = "" +
 	"\x06Signal\x12\x16\n" +
 	"\x12SIGNAL_UNSPECIFIED\x10\x00\x12\b\n" +
 	"\x04HOLD\x10\x01\x12\b\n" +
-	"\x04HALT\x10\x02J\x04\b\x02\x10\x03B9Z7github.com/hyperledger/fabric-x-committer/api/servicepbb\x06proto3"
+	"\x04HALT\x10\x02B9Z7github.com/hyperledger/fabric-x-committer/api/servicepbb\x06proto3"
 
 var (
 	file_api_servicepb_common_proto_rawDescOnce sync.Once

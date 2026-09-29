@@ -147,6 +147,8 @@ The primary goal is to organize the reads and writes from all transactions in th
 * Creating a reverse map from each specific read (key-version pair) back to the transaction IDs that performed it. This is crucial for quickly
 identifying all invalid transactions if a single read proves invalid.
 * Categorizing all transaction writes into new writes, blind writes, and non-blind writes.
+* Parsing the checkpoint's snapshot block number and hash once, then carrying that metadata through validation and commit.
+  An undecodable key or multiple checkpoints fail the batch during preparation.
 
 The main data structure produced by this task is `preparedTransactions`:
 
@@ -166,6 +168,7 @@ type preparedTransactions struct {
     // Transaction metadata
     invalidTxIDStatus map[TxID]protoblocktx.Status // Stores status for pre-invalidated txs.
     txIDToHeight      transactionIDToHeight      // Maps txIDs to their blockchain height.
+    checkpoint        *checkpointTx
 }
 
 // readToTransactions maps a read to the transaction IDs that performed it.
@@ -232,6 +235,7 @@ type validatedTransactions struct {
     newWrites             transactionToWrites
     invalidTxStatus       map[TxID]protoblocktx.Status
     txIDToHeight          transactionIDToHeight
+    checkpoint            *checkpointTx
     // Set only for checkpoint HOLD or HALT feedback (step e).
     checkpointFeedback    *servicepb.CheckpointFeedback
 }
@@ -240,7 +244,7 @@ type validatedTransactions struct {
 **e. Verifying a Checkpoint Before Commit:** A `_checkpoint` transaction contains a snapshot block number and a hash
 agreed on by the organizations. The VC commits it only if that hash matches the local hash for the same snapshot.
 
-The validator reads the block number from the checkpoint key and checks the latest `_snapshot` record. Only the latest
+The validator uses the checkpoint metadata from preparation to check the latest `_snapshot` record. Only the latest
 snapshot can be waiting for a checkpoint: the VC rejects new snapshot requests until the previous one is `CHECKPOINTED`.
 
 | Check | Result |
@@ -249,7 +253,6 @@ snapshot can be waiting for a checkpoint: the VC rejects new snapshot requests u
 | There is no local snapshot, or its block number differs | Reject the transaction with `MALFORMED_CHECKPOINT_INVALID_KEY`. Keep processing other transactions. |
 | The local snapshot hash is missing | Remove the checkpoint write and send `HOLD`. The sidecar waits, then fetches the block again. |
 | The block number matches, but the hashes differ | Remove the checkpoint write and send `HALT`. Save the reason in the snapshot record and stop the sidecar for investigation. |
-| The key cannot be decoded, or the batch contains multiple checkpoints | Return an error. Do not send the batch to the committer. |
 
 A wrong block number is bad input, not evidence of a hash mismatch. Anyone who satisfies
 `/Channel/Application/CheckpointEndorsement` can submit a checkpoint. Halting on a wrong block number would let an
@@ -314,8 +317,9 @@ System transactions also update snapshot metadata in the same database transacti
 The checkpoint write and snapshot status must commit together. If they committed separately, a crash between them could
 leave a saved checkpoint with a snapshot still waiting for it. The VC would then reject new snapshot requests.
 
-Each retry checks whether the checkpoint write is still in the batch. If it was removed as a duplicate, the retry does
-not update the snapshot record. An already-`CHECKPOINTED` record is left unchanged.
+Invalidating a checkpoint clears its prepared metadata along with its writes, so commit retries cannot update the
+snapshot record for a removed checkpoint. `HOLD` and `HALT` also clear this metadata. An already-`CHECKPOINTED` record
+is left unchanged.
 
 A missing latest-snapshot pointer or a different block number causes a non-retryable error. The record no longer
 matches what the validator checked, so the committer must not save the checkpoint.

@@ -240,7 +240,7 @@ func (d *database) commit(ctx context.Context, states *statesToBeCommitted) (*co
 	// Commit the checkpoint and snapshot status together. A crash between separate
 	// commits could leave the snapshot waiting for a checkpoint and block new snapshots.
 	if states.checkpoint != nil {
-		if err = statedb.MarkSnapshotCheckpointedInTx(ctx, tx, states.checkpoint.blockNum); err != nil {
+		if err = statedb.MarkSnapshotCheckpointedInTx(ctx, tx, states.checkpoint.snapshotBlockNum); err != nil {
 			return nil, fmt.Errorf("failed to mark the snapshot as checkpointed: %w", err)
 		}
 	}

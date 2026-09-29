@@ -198,7 +198,7 @@ func TestCheckpointWriteInBatchRejectsBrokenInvariants(t *testing.T) {
 		w := prepTx.txIDToNsNewWrites[TxID(cpRef.TxId)][committerpb.CheckpointNamespaceID]
 		w.keys[0] = []byte{0xff}
 
-		cp, err := checkpointWriteInBatch(newValidatedTxsFromPrepared(prepTx))
+		cp, err := checkpointWriteInBatch(prepTx)
 		require.ErrorContains(t, err, "undecodable key")
 		require.Nil(t, cp)
 	})
@@ -209,7 +209,7 @@ func TestCheckpointWriteInBatchRejectsBrokenInvariants(t *testing.T) {
 		w := prepTx.txIDToNsNewWrites[TxID(cpRef.TxId)][committerpb.CheckpointNamespaceID]
 		w.keys[0] = append(servicepb.CheckpointKey(blockNum), []byte("junk")...)
 
-		cp, err := checkpointWriteInBatch(newValidatedTxsFromPrepared(prepTx))
+		cp, err := checkpointWriteInBatch(prepTx)
 		require.ErrorContains(t, err, trailingBytesError)
 		require.Nil(t, cp)
 	})
@@ -225,7 +225,7 @@ func TestCheckpointWriteInBatchRejectsBrokenInvariants(t *testing.T) {
 			append(secondKey, hash, 0)
 		prepTx.txIDToHeight[secondTxID] = servicepb.NewHeightFromTxRef(secondRef)
 
-		cp, err := checkpointWriteInBatch(newValidatedTxsFromPrepared(prepTx))
+		cp, err := checkpointWriteInBatch(prepTx)
 		require.ErrorContains(t, err, "at most one checkpoint")
 		require.Nil(t, cp)
 	})
@@ -318,6 +318,7 @@ func newCheckpointPreparedTx(
 	// Associate the read with this transaction so a key conflict can reject it.
 	prepTx.readToTxIDs[newCmpRead(committerpb.CheckpointNamespaceID, key, nil)] = []TxID{txID}
 	prepTx.txIDToHeight[txID] = servicepb.NewHeightFromTxRef(ref)
+	prepTx.checkpoint = &checkpointTx{txID: txID, ref: ref, snapshotBlockNum: blockNum, hash: hash}
 	return prepTx
 }
 
@@ -415,5 +416,6 @@ func newValidatedTxsFromPrepared(prepTx *preparedTransactions) *validatedTransac
 		readToTxIDs:           prepTx.readToTxIDs,
 		invalidTxStatus:       prepTx.invalidTxIDStatus,
 		txIDToHeight:          prepTx.txIDToHeight,
+		checkpoint:            prepTx.checkpoint,
 	}
 }

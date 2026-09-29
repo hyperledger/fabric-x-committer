@@ -135,20 +135,13 @@ func (c *transactionCommitter) commitTransactions(
 	}
 
 	for range maxRetriesToRemoveAllInvalidTxs {
-		// Check each attempt because a retry may remove a duplicate checkpoint write.
-		// A removed write must not mark the snapshot as CHECKPOINTED.
-		checkpoint, cpErr := checkpointWriteInBatch(vTx)
-		if cpErr != nil {
-			return nil, fmt.Errorf("failed to read the checkpoint write before commit: %w", cpErr)
-		}
-
 		// Group the writes by namespace so that we can commit to each table independently.
 		info := &statesToBeCommitted{
 			updateWrites: groupWritesByNamespace(vTx.validTxNonBlindWrites),
 			newWrites:    groupWritesByNamespace(vTx.newWrites),
 			batchStatus:  prepareStatusForCommit(vTx),
 			txIDToHeight: vTx.txIDToHeight,
-			checkpoint:   checkpoint,
+			checkpoint:   vTx.checkpoint,
 		}
 
 		// Stop on ErrNonRetryable: retrying cannot repair an inconsistent snapshot record.

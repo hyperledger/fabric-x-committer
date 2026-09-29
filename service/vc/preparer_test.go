@@ -714,7 +714,7 @@ func TestPrepareCheckpointTx(t *testing.T) {
 	t.Parallel()
 	env := newPrepareTestEnv(t)
 
-	heightKey := servicepb.NewHeight(8, 0).ToBytes()
+	heightKey := servicepb.CheckpointKey(8)
 	hashValue := []byte("snapshot-hash")
 
 	tx := &servicepb.VcBatch{
@@ -763,6 +763,40 @@ func TestPrepareCheckpointTx(t *testing.T) {
 	ensurePreparedTx(t, expectedPreparedTxs, preparedTxs)
 	// No _meta namespace-version read must be created for the checkpoint TX.
 	require.NotContains(t, preparedTxs.nsToReads, committerpb.MetaNamespaceID)
+	require.NotNil(t, preparedTxs.checkpoint)
+	require.Equal(t, txs[0], preparedTxs.checkpoint.txID)
+	require.EqualValues(t, 8, preparedTxs.checkpoint.snapshotBlockNum)
+	test.RequireProtoEqual(t, tx.Transactions[0].Ref, preparedTxs.checkpoint.ref)
+	require.Equal(t, hashValue, preparedTxs.checkpoint.hash)
+}
+
+func TestInvalidatePreparedCheckpoint(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name         string
+		invalidTxID  TxID
+		wantRetained bool
+	}{
+		{name: "unrelated transaction", invalidTxID: "other", wantRetained: true},
+		{name: "checkpoint transaction", invalidTxID: "checkpoint"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ref := committerpb.NewTxRef("checkpoint", 50, 0)
+			prep := newCheckpointPreparedTx(ref, 42, []byte("hash"))
+			validated := newValidatedTxsFromPrepared(prep)
+			require.NotNil(t, prep.checkpoint)
+			require.Same(t, prep.checkpoint, validated.checkpoint)
+
+			validated.updateInvalidTxs([]TxID{tc.invalidTxID}, committerpb.Status_REJECTED_DUPLICATE_TX_ID)
+			if tc.wantRetained {
+				require.Same(t, prep.checkpoint, validated.checkpoint)
+			} else {
+				require.Nil(t, validated.checkpoint)
+				require.NotContains(t, validated.newWrites, tc.invalidTxID)
+			}
+		})
+	}
 }
 
 func ensurePreparedTx(t *testing.T, expectedPreparedTxs, actualPreparedTxs *preparedTransactions) {

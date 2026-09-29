@@ -19,12 +19,12 @@ import (
 )
 
 // checkpointTx holds the checkpoint write to verify.
-// ref identifies the checkpoint transaction. blockNum identifies its snapshot.
+// ref identifies the checkpoint transaction, not the snapshot it attests to.
 type checkpointTx struct {
-	txID     TxID
-	ref      *committerpb.TxRef
-	blockNum uint64
-	hash     []byte
+	txID             TxID
+	ref              *committerpb.TxRef
+	snapshotBlockNum uint64
+	hash             []byte
 }
 
 // checkpointVerdict holds the result of checking a checkpoint:
@@ -48,10 +48,7 @@ type checkpointVerdict struct {
 func (d *database) rejectCheckpointIfNotVerified(
 	ctx context.Context, vTx *validatedTransactions,
 ) error {
-	cp, err := checkpointWriteInBatch(vTx)
-	if err != nil {
-		return err
-	}
+	cp := vTx.checkpoint
 	if cp == nil {
 		return nil
 	}
@@ -65,6 +62,7 @@ func (d *database) rejectCheckpointIfNotVerified(
 		vTx.updateInvalidTxs([]TxID{cp.txID}, verdict.rejectStatus)
 	case verdict.feedback != nil:
 		delete(vTx.newWrites, cp.txID)
+		vTx.checkpoint = nil
 		vTx.checkpointFeedback = verdict.feedback
 	default:
 		// Verified: the checkpoint stays in the batch and commits.
@@ -75,9 +73,9 @@ func (d *database) rejectCheckpointIfNotVerified(
 // checkpointWriteInBatch returns the batch's checkpoint write, if any.
 // An invalid key or a second checkpoint fails the batch. Skipping either check
 // could leave an unverified checkpoint in the batch to be committed.
-func checkpointWriteInBatch(vTx *validatedTransactions) (*checkpointTx, error) {
+func checkpointWriteInBatch(prepTx *preparedTransactions) (*checkpointTx, error) {
 	var cp *checkpointTx
-	for txID, nsWrites := range vTx.newWrites {
+	for txID, nsWrites := range prepTx.txIDToNsNewWrites {
 		w := nsWrites[committerpb.CheckpointNamespaceID]
 		if w.empty() {
 			continue
@@ -91,12 +89,12 @@ func checkpointWriteInBatch(vTx *validatedTransactions) (*checkpointTx, error) {
 				"a batch carries at most one checkpoint, but it has both TX %s and TX %s", cp.txID, txID,
 			)
 		}
-		h := vTx.txIDToHeight[txID]
+		h := prepTx.txIDToHeight[txID]
 		cp = &checkpointTx{
-			txID:     txID,
-			ref:      committerpb.NewTxRef(string(txID), h.BlockNum, h.TxNum),
-			blockNum: blockNum,
-			hash:     w.values[0],
+			txID:             txID,
+			ref:              committerpb.NewTxRef(string(txID), h.BlockNum, h.TxNum),
+			snapshotBlockNum: blockNum,
+			hash:             w.values[0],
 		}
 	}
 	return cp, nil
@@ -121,15 +119,15 @@ func (d *database) verifyCheckpointHash(
 	switch {
 	case state == nil || state.TxRef == nil:
 		logger.Warnf("Rejecting checkpoint TX [%s] for block [%d]: no _snapshot record exists to checkpoint",
-			cp.txID, cp.blockNum)
+			cp.txID, cp.snapshotBlockNum)
 		return checkpointVerdict{rejectStatus: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY}, nil
-	case state.TxRef.BlockNum != cp.blockNum:
+	case state.TxRef.BlockNum != cp.snapshotBlockNum:
 		logger.Warnf("Rejecting checkpoint TX [%s]: the snapshot awaiting a checkpoint is at block [%d], not [%d]",
-			cp.txID, state.TxRef.BlockNum, cp.blockNum)
+			cp.txID, state.TxRef.BlockNum, cp.snapshotBlockNum)
 		return checkpointVerdict{rejectStatus: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY}, nil
 	case len(state.Hash) == 0:
 		logger.Warnf("Holding checkpoint TX [%s]: the local hash for block [%d] is still computing (status %s)",
-			cp.txID, cp.blockNum, state.Status)
+			cp.txID, cp.snapshotBlockNum, state.Status)
 		return checkpointVerdict{feedback: cp.feedback(servicepb.CheckpointFeedback_HOLD, "")}, nil
 	case bytes.Equal(state.Hash, cp.hash):
 		return checkpointVerdict{}, nil // verified: the checkpoint commits with the batch.
@@ -137,7 +135,7 @@ func (d *database) verifyCheckpointHash(
 		// The same snapshot has different local and checkpoint hashes. Stop for investigation.
 		return d.haltOnCheckpointDivergence(ctx, cp, state, fmt.Sprintf(
 			"local snapshot hash %x for block %d does not match the checkpoint hash %x",
-			state.Hash, cp.blockNum, cp.hash,
+			state.Hash, cp.snapshotBlockNum, cp.hash,
 		))
 	}
 }
@@ -152,10 +150,10 @@ func (d *database) haltOnCheckpointDivergence(
 		Status: state.Status, ErrMsg: reason,
 	}); err != nil {
 		return checkpointVerdict{}, fmt.Errorf(
-			"failed to record the checkpoint divergence for block %d: %w", cp.blockNum, err,
+			"failed to record the checkpoint divergence for block %d: %w", cp.snapshotBlockNum, err,
 		)
 	}
-	logger.Errorf("Halting on checkpoint TX [%s] for block [%d]: %s", cp.txID, cp.blockNum, reason)
+	logger.Errorf("Halting on checkpoint TX [%s] for block [%d]: %s", cp.txID, cp.snapshotBlockNum, reason)
 	return checkpointVerdict{feedback: cp.feedback(servicepb.CheckpointFeedback_HALT, reason)}, nil
 }
 
@@ -166,7 +164,7 @@ func (cp *checkpointTx) feedback(
 	return &servicepb.CheckpointFeedback{
 		Signal:              signal,
 		Ref:                 cp.ref,
-		SnapshotBlockNumber: cp.blockNum,
+		SnapshotBlockNumber: cp.snapshotBlockNum,
 		Reason:              reason,
 	}
 }

@@ -416,22 +416,13 @@ The wait gives the [snapshot hasher](snapshot-hasher.md) time to finish. It also
 delay saving other committed blocks to the block store. Recovery retrieves those statuses after reconnecting.
 
 There is no retry limit for `HOLD`. A slow hasher must not cause the sidecar to commit an unverified checkpoint or stop
-permanently. Operators can monitor repeated holds with the metrics below.
+permanently. Operators can monitor repeated holds with the [checkpoint metrics](metrics_reference.md#sidecar-metrics).
 
 **Coordinator handling.** A held or halted checkpoint has no transaction status. The coordinator forwards its feedback
 even if the batch contains no statuses. It also releases the checkpoint's dependency-graph node so a retry does not
 wait on the old node. See [coordinator.md](coordinator.md#step-5-status-aggregation-and-feedback-loop).
 
-**Metrics.** The sidecar reports four metrics:
-
-| Metric | Meaning |
-|--------|---------|
-| `sidecar_relay_checkpoint_feedback_state` | `0`: running, `1`: held, `2`: halted. |
-| `sidecar_relay_checkpoint_feedback_total{signal}` | Number of feedback messages, grouped by signal. |
-| `sidecar_relay_checkpoint_holds_total` | Number of holds, including repeated holds for the same checkpoint. |
-| `sidecar_relay_block_pull_paused_seconds_total` | Total time spent in completed hold waits, in seconds. |
-
-The state gauge stays at `1` across hold retries. It returns to `0` when a status batch arrives without feedback, not
+**Monitoring.** The `sidecar_relay_checkpoint_feedback_state` gauge stays at `1` across hold retries. It returns to `0` when a status batch arrives without feedback, not
 when the wait ends. A `HALT` stops processing, so the gauge stays at `2` for the rest of the process.
 
 If the hold counter keeps increasing, check the snapshot hasher's progress and logs. The sidecar logs the snapshot

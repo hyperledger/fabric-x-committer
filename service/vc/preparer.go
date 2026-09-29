@@ -8,6 +8,7 @@ package vc
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -53,6 +54,7 @@ type (
 
 		invalidTxIDStatus map[TxID]committerpb.Status // Maps txIDs to the status.
 		txIDToHeight      transactionIDToHeight       // Maps txIDs to height in the blockchain.
+		checkpoint        *checkpointTx
 	}
 
 	transactionIDToHeight map[TxID]*servicepb.Height
@@ -249,6 +251,12 @@ func (p *transactionPreparer) prepare(ctx context.Context) error { //nolint:goco
 			prepTxs.txIDToNsNonBlindWrites, prepTxs.txIDToNsBlindWrites, prepTxs.txIDToNsNewWrites,
 		} {
 			lst.clearEmpty()
+		}
+
+		var err error
+		prepTxs.checkpoint, err = checkpointWriteInBatch(prepTxs)
+		if err != nil {
+			return fmt.Errorf("failed to prepare checkpoint: %w", err)
 		}
 
 		promutil.Observe(p.metrics.preparerTxBatchLatencySeconds, time.Since(start))
