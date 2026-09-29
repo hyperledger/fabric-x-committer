@@ -144,7 +144,7 @@ func requireUpdateEqual(t *testing.T, expected, actual *servicepb.VerifierUpdate
 	if expected.NamespacePolicies != nil {
 		require.NotNil(t, actual.NamespacePolicies)
 		// The policies may appear out of order due to the policy manager implementation.
-		test.RequireProtoElementsMatch(t, actual.NamespacePolicies.Policies, expected.NamespacePolicies.Policies)
+		test.RequireProtoElementsMatch(t, expected.NamespacePolicies.Policies, actual.NamespacePolicies.Policies)
 	} else {
 		require.Nil(t, actual.NamespacePolicies)
 	}
