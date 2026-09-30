@@ -37,7 +37,7 @@ func TestBlockStoreAndDelivery(t *testing.T) {
 	ledgerPath := t.TempDir()
 
 	metrics := newPerformanceMetrics(newQueues(10))
-	bs, err := newBlockStore(ledgerPath, 0, metrics)
+	bs, err := newBlockStore(&LedgerConfig{Path: ledgerPath}, metrics)
 	require.NoError(t, err)
 	t.Cleanup(bs.close)
 
@@ -94,6 +94,51 @@ func TestBlockStoreAndDelivery(t *testing.T) {
 	//       but we cannot verify Append vs AppendNoSync here because the ledger field is a concrete
 	//       *fileledger.FileLedger (not an interface). To properly test this, the ledger dependency
 	//       would need to be behind an interface so we can assert which method was called.
+}
+
+// TestBlockStoreWithoutTxIDIndex checks that appending and reopening work without the
+// transaction ID index, and that transaction ID queries fail.
+func TestBlockStoreWithoutTxIDIndex(t *testing.T) {
+	t.Parallel()
+
+	config := &LedgerConfig{Path: t.TempDir(), DisableTxIDIndex: true}
+	metrics := newPerformanceMetrics(newQueues(10))
+	bs, err := newBlockStore(config, metrics)
+	require.NoError(t, err)
+
+	inputBlock := make(chan *common.Block, 10)
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
+		return connection.FilterStreamRPCError(bs.run(ctx, &blockStoreRunConfig{
+			IncomingCommittedBlock: inputBlock,
+		}))
+	}, nil)
+
+	valid := byte(committerpb.Status_COMMITTED)
+	metadata := &common.BlockMetadata{
+		Metadata: [][]byte{nil, nil, {valid, valid, valid}},
+	}
+	blk0, txIDs := createBlockForTest(t, 0, nil)
+	blk0.Metadata = metadata
+	blk1, _ := createBlockForTest(t, 1, protoutil.BlockHeaderHash(blk0.Header))
+	blk1.Metadata = metadata
+
+	inputBlock <- blk0
+	inputBlock <- blk1
+	ensureAtLeastHeight(t, bs, 2)
+	require.Equal(t, 2, test.GetIntMetricValue(t, metrics.blockHeight))
+
+	_, err = bs.store.RetrieveBlockByNumber(0)
+	require.NoError(t, err)
+	_, err = bs.store.RetrieveBlockByTxID(txIDs[0])
+	require.Error(t, err)
+	bs.close()
+
+	// Recovery reopens a non-empty ledger, which reads the last block header through the
+	// block number index.
+	reopened, err := newBlockStore(config, newPerformanceMetrics(newQueues(10)))
+	require.NoError(t, err)
+	t.Cleanup(reopened.close)
+	require.Equal(t, uint64(2), reopened.GetBlockHeight())
 }
 
 // ensureAtLeastHeight checks if the ledger is at or above the specified height.

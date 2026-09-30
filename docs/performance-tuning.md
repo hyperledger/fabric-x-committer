@@ -75,6 +75,12 @@ How often the block store calls `fsync` to durable storage. Every Nth block trig
 
 Each fsync is an expensive I/O operation. A low value (e.g., 1) syncs every block, which can bottleneck the block ingestion path. Higher values (100, 500+) significantly improve block append throughput by amortizing I/O cost. The tradeoff is durability — blocks lost on crash are recoverable from the ordering service. Default: 100.
 
+### `ledger.disable-tx-id-index`
+
+Drops the block store's transaction ID index, which `GetBlockByTxID` and `GetTxByID` use to find a transaction. Both queries fail once it is off.
+
+This is the block store's dominant cost at high transaction rates, because it writes one index entry per transaction rather than per block, and its LevelDB compaction rewrites those entries as the index grows. On a cluster committing around 100,000 tx/s, a CPU profile of a saturated Sidecar attributed 35% of its samples to that compaction, with the index at 33 GB against 118 GB of blocks; committed throughput fell by roughly a third over an hour at a fixed offered rate as the index kept growing. A deployment that serves neither query is better off without it. Note that the index also selects the block store's on-disk format, so this setting can only be changed against an empty ledger directory. Default: false.
+
 ### `channel-buffer-size`
 
 Buffer size for internal Go channels in the Sidecar — block delivery, committed blocks, and status updates. When a channel is full, the producing goroutine blocks until the consumer reads.

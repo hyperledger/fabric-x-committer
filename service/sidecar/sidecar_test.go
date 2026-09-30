@@ -464,11 +464,7 @@ func TestSidecarRecovery(t *testing.T) {
 	//       we reset the block store object so that its in-memory data
 	//       structure reflects the correct height.
 	var err error
-	tempBlockStore, err := newBlockStore(
-		env.config.Ledger.Path,
-		0,
-		newPerformanceMetrics(newQueues(10)),
-	)
+	tempBlockStore, err := newBlockStore(&env.config.Ledger, newPerformanceMetrics(newQueues(10)))
 	require.NoError(t, err)
 	t.Cleanup(tempBlockStore.close)
 	ensureAtLeastHeight(t, tempBlockStore, 1) // back to block 0
