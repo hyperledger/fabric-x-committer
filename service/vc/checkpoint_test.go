@@ -417,5 +417,6 @@ func newValidatedTxsFromPrepared(prepTx *preparedTransactions) *validatedTransac
 		invalidTxStatus:       prepTx.invalidTxIDStatus,
 		txIDToHeight:          prepTx.txIDToHeight,
 		checkpoint:            prepTx.checkpoint,
+		snapshotAbort:         prepTx.snapshotAbort,
 	}
 }

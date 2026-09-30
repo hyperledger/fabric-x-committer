@@ -706,6 +706,64 @@ func TestPrepareSnapshotTx(t *testing.T) {
 	ensurePreparedTx(t, expectedPreparedTxs, preparedTxs)
 	// No _meta namespace-version read must be created for the snapshot TX.
 	require.NotContains(t, preparedTxs.nsToReads, committerpb.MetaNamespaceID)
+	require.Nil(t, preparedTxs.snapshotAbort)
+}
+
+// TestPrepareSnapshotAbortTx verifies an abort TX keeps its own ReadWrite -- the row is the
+// ordered fact, so it must reach the committer unchanged rather than be replaced by a
+// synthesized SnapshotState -- and takes no _meta namespace-version dependency.
+func TestPrepareSnapshotAbortTx(t *testing.T) {
+	t.Parallel()
+	env := newPrepareTestEnv(t)
+
+	abortKey := committerpb.SnapshotAbortKey(8)
+
+	tx := &servicepb.VcBatch{
+		Transactions: []*servicepb.VcTx{
+			{
+				Ref: committerpb.NewTxRef(string(txs[0]), 9, 1),
+				Namespaces: []*applicationpb.TxNamespace{
+					{
+						NsId:       committerpb.SnapshotNamespaceID,
+						NsVersion:  0,
+						ReadWrites: []*applicationpb.ReadWrite{{Key: abortKey, Version: nil}},
+					},
+				},
+			},
+		},
+	}
+
+	expectedPreparedTxs := &preparedTransactions{
+		nsToReads: namespaceToReads{},
+		readToTxIDs: readToTransactions{
+			newCmpRead(committerpb.SnapshotNamespaceID, abortKey, nil): []TxID{txs[0]},
+		},
+		txIDToNsNonBlindWrites: transactionToWrites{},
+		txIDToNsBlindWrites:    transactionToWrites{},
+		txIDToNsNewWrites: transactionToWrites{
+			txs[0]: namespaceToWrites{
+				committerpb.SnapshotNamespaceID: &namespaceWrites{
+					keys:     [][]byte{abortKey},
+					values:   [][]byte{nil},
+					versions: []uint64{0},
+				},
+			},
+		},
+		invalidTxIDStatus: map[TxID]committerpb.Status{},
+		txIDToHeight: transactionIDToHeight{
+			txs[0]: servicepb.NewHeight(9, 1),
+		},
+	}
+
+	env.txBatch <- tx
+	preparedTxs, ok := channel.NewReader(t.Context(), env.preparedTxs).Read()
+	require.True(t, ok)
+	ensurePreparedTx(t, expectedPreparedTxs, preparedTxs)
+	// No _meta namespace-version read must be created for an abort TX.
+	require.NotContains(t, preparedTxs.nsToReads, committerpb.MetaNamespaceID)
+	require.NotNil(t, preparedTxs.snapshotAbort)
+	require.Equal(t, txs[0], preparedTxs.snapshotAbort.txID)
+	require.EqualValues(t, 8, preparedTxs.snapshotAbort.blockNum)
 }
 
 // TestPrepareCheckpointTx verifies that a _checkpoint TX retains its single versioned
@@ -794,6 +852,45 @@ func TestInvalidatePreparedCheckpoint(t *testing.T) {
 			} else {
 				require.Nil(t, validated.checkpoint)
 				require.NotContains(t, validated.newWrites, tc.invalidTxID)
+			}
+		})
+	}
+}
+
+func TestInvalidatePreparedSnapshotAbort(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name        string
+		invalidTxID TxID
+		status      committerpb.Status
+	}{
+		{name: "unrelated transaction", invalidTxID: "other", status: committerpb.Status_REJECTED_DUPLICATE_TX_ID},
+		{name: "duplicate abort", invalidTxID: "abort", status: committerpb.Status_REJECTED_DUPLICATE_TX_ID},
+		{name: "conflicting abort", invalidTxID: "abort", status: committerpb.Status_ABORTED_MVCC_CONFLICT},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			prep := newSnapshotAbortPreparedTx(committerpb.NewTxRef("abort", 50, 0), 42)
+			validated := newValidatedTxsFromPrepared(prep)
+			abort := prep.snapshotAbort
+			require.NotNil(t, abort)
+			require.Same(t, abort, validated.snapshotAbort)
+
+			if tc.status == committerpb.Status_ABORTED_MVCC_CONFLICT {
+				conflicts := make(namespaceToReads)
+				conflicts.getOrCreate(committerpb.SnapshotNamespaceID).append(committerpb.SnapshotAbortKey(42), nil)
+				require.NoError(t, validated.invalidateTxsOnReadConflicts(conflicts))
+			} else {
+				validated.updateInvalidTxs([]TxID{tc.invalidTxID}, tc.status)
+			}
+
+			require.Equal(t, tc.status, validated.invalidTxStatus[tc.invalidTxID])
+			if tc.invalidTxID == abort.txID {
+				require.Nil(t, validated.snapshotAbort)
+				require.NotContains(t, validated.newWrites, tc.invalidTxID)
+			} else {
+				require.Same(t, abort, validated.snapshotAbort)
+				require.Contains(t, validated.newWrites, abort.txID)
 			}
 		})
 	}

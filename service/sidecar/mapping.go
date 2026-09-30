@@ -67,9 +67,9 @@ type (
 		status committerpb.Status
 		reason string
 		// err fails the whole block rather than the TX. Only an unprocessable config TX sets it.
-		err        error
-		isConfig   bool
-		isSnapshot bool
+		err              error
+		isConfig         bool
+		isSnapshotCreate bool
 	}
 
 	blockWithStatus struct {
@@ -252,7 +252,7 @@ func parseMessage(msg []byte, ref *committerpb.TxRef, tx *applicationpb.Tx) pars
 	if status := verifyTxForm(tx); status != statusNotYetValidated {
 		return parsedTX{status: status, reason: "malformed tx"}
 	}
-	return parsedTX{tx: tx, isSnapshot: isSnapshotTx(tx)}
+	return parsedTX{tx: tx, isSnapshotCreate: isSnapshotCreateTx(tx)}
 }
 
 // parseConfigTx validates a config TX and resolves its TX ID. Unlike a data TX, a config TX cannot
@@ -284,7 +284,7 @@ func (m *blockMapper) applyParsedTX(ref *committerpb.TxRef, parsed *parsedTX) er
 		return m.rejectTx(ref, parsed.status, parsed.reason)
 	case parsed.isConfig:
 		return m.appendConfigTx(ref, parsed.tx)
-	case !parsed.isSnapshot:
+	case !parsed.isSnapshotCreate:
 		return m.appendTx(ref, parsed.tx)
 	case m.snapshotTx == nil:
 		txWithRef, err := m.prepareTx(ref, parsed.tx)
@@ -556,8 +556,17 @@ func checkEndorsements(tx *applicationpb.Tx) committerpb.Status {
 	return statusNotYetValidated
 }
 
-func isSnapshotTx(tx *applicationpb.Tx) bool {
-	return len(tx.Namespaces) == 1 && tx.Namespaces[0].NsId == committerpb.SnapshotNamespaceID
+// isSnapshotCreateTx reports whether tx is a snapshot request, which the relay submits behind
+// a drain barrier so the clone captures an exact cut of committed state (see submitSnapshotBlock).
+//
+// An abort shares the namespace but is not one: it creates no clone, so it needs no cut and
+// rides an ordinary batch, skipping the barrier and the one-per-block rule.
+func isSnapshotCreateTx(tx *applicationpb.Tx) bool {
+	if len(tx.Namespaces) != 1 || tx.Namespaces[0].NsId != committerpb.SnapshotNamespaceID {
+		return false
+	}
+	ns := tx.Namespaces[0]
+	return len(ns.ReadsOnly) == 0 && len(ns.ReadWrites) == 0 && len(ns.BlindWrites) == 0
 }
 
 func checkStandaloneSystemTx(tx *applicationpb.Tx) committerpb.Status {
@@ -579,9 +588,7 @@ func checkSystemNamespace(ns *applicationpb.TxNamespace) committerpb.Status {
 	case committerpb.MetaNamespaceID:
 		return checkMetaNamespace(ns)
 	case committerpb.SnapshotNamespaceID:
-		if len(ns.ReadsOnly) > 0 || len(ns.ReadWrites) > 0 || len(ns.BlindWrites) > 0 {
-			return committerpb.Status_MALFORMED_SNAPSHOT_NOT_MARKER_ONLY
-		}
+		return checkSnapshotNamespace(ns)
 	case committerpb.CheckpointNamespaceID:
 		if len(ns.ReadsOnly) > 0 || len(ns.BlindWrites) > 0 || len(ns.ReadWrites) != 1 {
 			return committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY
@@ -592,6 +599,31 @@ func checkSystemNamespace(ns *applicationpb.TxNamespace) committerpb.Status {
 		}
 	default:
 		return statusNotYetValidated
+	}
+	return statusNotYetValidated
+}
+
+// checkSnapshotNamespace validates the two shapes a `_snapshot` namespace may take: a
+// marker-only request with no operations, and an abort with exactly one read-write naming
+// the snapshot it abandons. Anything else is a request carrying operations it may not have.
+//
+// An abort's value is ignored: the row's existence is the whole statement, so a value means
+// nothing either way.
+func checkSnapshotNamespace(ns *applicationpb.TxNamespace) committerpb.Status {
+	if len(ns.ReadsOnly) == 0 && len(ns.ReadWrites) == 0 && len(ns.BlindWrites) == 0 {
+		return statusNotYetValidated // a marker-only snapshot request.
+	}
+	if len(ns.ReadsOnly) > 0 || len(ns.BlindWrites) > 0 || len(ns.ReadWrites) != 1 {
+		return committerpb.Status_MALFORMED_SNAPSHOT_NOT_MARKER_ONLY
+	}
+
+	// No abort prefix means a request carrying a write, not a bad abort key.
+	if !committerpb.IsSnapshotAbortKey(ns.ReadWrites[0].Key) {
+		return committerpb.Status_MALFORMED_SNAPSHOT_NOT_MARKER_ONLY
+	}
+
+	if _, err := committerpb.BlockNumFromSnapshotAbortKey(ns.ReadWrites[0].Key); err != nil {
+		return committerpb.Status_MALFORMED_SNAPSHOT_INVALID_ABORT_KEY
 	}
 	return statusNotYetValidated
 }

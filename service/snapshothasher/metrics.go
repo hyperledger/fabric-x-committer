@@ -42,6 +42,11 @@ type perfMetrics struct {
 	// idle rather than divergent.
 	hashStartedTotal prometheus.Counter
 
+	// hashAbandonedTotal counts hashes stopped because the snapshot was aborted. Kept out of
+	// hashJobsFailedTotal because an abort is an operator's decision, not a failure, and its
+	// alert must not fire on correct behaviour.
+	hashAbandonedTotal prometheus.Counter
+
 	// pollErrorsTotal counts ticks that could not even determine whether there is
 	// work, which the hash-job counters cannot express: a tick that fails to read
 	// the record completes no job and fails none, so with only those two counters a
@@ -78,6 +83,12 @@ func newSnapshotHasherMetrics() *perfMetrics {
 			Name:      "started_total",
 			Help: "Number of snapshot hash attempts that began; its gap against " +
 				"duration_seconds_count plus jobs_failed_total is a hash in flight.",
+		}),
+		hashAbandonedTotal: p.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystemHash,
+			Name:      "abandoned_total",
+			Help:      "Number of snapshot hash jobs stopped because the snapshot was aborted.",
 		}),
 		pollErrorsTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
