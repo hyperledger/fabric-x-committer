@@ -81,6 +81,7 @@ type (
 		TLS                 connection.TLSCredentials
 		TLSCertHash         []byte
 		Retry               *retry.Profile
+		FlowControl         connection.FlowControlConfig
 		Signer              identity.SignerSerializer
 
 		LatestKnownConfig           *common.Block
@@ -132,6 +133,7 @@ func LoadParametersFromConfig(c *ordererdial.Config) (p Parameters, err error) {
 		TLS:                          *tls,
 		TLSCertHash:                  tlsCertHash,
 		Retry:                        c.Retry,
+		FlowControl:                  c.FlowControl,
 		Signer:                       signer,
 		SuspicionGracePeriodPerBlock: c.SuspicionGracePeriodPerBlock,
 		LatestKnownConfig:            latestConfigBlock,

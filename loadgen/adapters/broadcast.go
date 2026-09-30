@@ -59,9 +59,10 @@ func NewBroadcastStream(ctx context.Context, config *ordererdial.Config) (Broadc
 		return nil, err
 	}
 	m := ordererdial.NewDialInfo(configMaterial, ordererdial.Parameters{
-		API:   commontypes.Broadcast,
-		TLS:   *tls,
-		Retry: config.Retry,
+		API:         commontypes.Broadcast,
+		TLS:         *tls,
+		Retry:       config.Retry,
+		FlowControl: config.FlowControl,
 	})
 	ftLevel, err := ordererdial.GetFaultToleranceLevel(config.FaultToleranceLevel)
 	if err != nil {

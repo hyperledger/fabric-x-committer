@@ -19,6 +19,9 @@ server:
     # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
       - /root/artifacts/peerOrganizations/peer-org-0.com/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
+  # flow-control:  # Optional HTTP/2 flow control windows, in bytes. See docs/performance-tuning.md.
+  #   initial-window-size: 16_777_216       # Per stream. Default: 16 MB
+  #   initial-conn-window-size: 33_554_432  # Per connection. Default: 32 MB
 # Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
 monitoring:
   # The endpoint where Prometheus metrics and pprof profiling are exposed.
@@ -61,6 +64,9 @@ verifier:
   #   # Total retry budget. Set to 0s for unlimited retries (never give up) — this keeps
   #   # reconnecting to verifier/VC instances that are stopped/started for dynamic scaling.
   #   max-elapsed-time: 15m
+  # flow-control:  # Optional HTTP/2 flow control windows, in bytes. See docs/performance-tuning.md.
+  #   initial-window-size: 16_777_216       # Per stream. Default: 16 MB
+  #   initial-conn-window-size: 33_554_432  # Per connection. Default: 32 MB
 validator-committer:
   # List of validator-committer (VC) service endpoints. Multiple endpoints enable
   # load distribution across VC instances.
@@ -76,6 +82,9 @@ validator-committer:
   #   # Total retry budget. Set to 0s for unlimited retries (never give up) — this keeps
   #   # reconnecting to verifier/VC instances that are stopped/started for dynamic scaling.
   #   max-elapsed-time: 15m
+  # flow-control:  # Optional HTTP/2 flow control windows, in bytes. See docs/performance-tuning.md.
+  #   initial-window-size: 16_777_216       # Per stream. Default: 16 MB
+  #   initial-conn-window-size: 33_554_432  # Per connection. Default: 32 MB
 
 dependency-graph:
   # Number of transaction batches that can be processed in parallel to construct

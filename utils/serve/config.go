@@ -30,11 +30,12 @@ type (
 
 	// ServerConfig describes the connection parameter for a server.
 	ServerConfig struct {
-		Endpoint             connection.Endpoint    `mapstructure:"endpoint"`
-		TLS                  connection.TLSConfig   `mapstructure:"tls"`
-		KeepAlive            *ServerKeepAliveConfig `mapstructure:"keep-alive"`
-		RateLimit            RateLimitConfig        `mapstructure:"rate-limit"`
-		MaxConcurrentStreams int                    `mapstructure:"max-concurrent-streams" validate:"gte=0"`
+		Endpoint             connection.Endpoint          `mapstructure:"endpoint"`
+		TLS                  connection.TLSConfig         `mapstructure:"tls"`
+		KeepAlive            *ServerKeepAliveConfig       `mapstructure:"keep-alive"`
+		RateLimit            RateLimitConfig              `mapstructure:"rate-limit"`
+		MaxConcurrentStreams int                          `mapstructure:"max-concurrent-streams" validate:"gte=0"`
+		FlowControl          connection.FlowControlConfig `mapstructure:"flow-control"`
 		preAllocatedListener net.Listener
 	}
 

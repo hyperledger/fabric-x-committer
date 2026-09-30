@@ -18,6 +18,9 @@ server:
     # List of paths to CA certificate files for verifying client certificates (required for mtls).
     ca-cert-paths:
       - /root/artifacts/peerOrganizations/peer-org-0.com/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
+  # flow-control:  # Optional HTTP/2 flow control windows, in bytes. See docs/performance-tuning.md.
+  #   initial-window-size: 16_777_216       # Per stream. Default: 16 MB
+  #   initial-conn-window-size: 33_554_432  # Per connection. Default: 32 MB
 # Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
 # The HTTP endpoint for runtime rate limit adjustments.
 # It also exposes the following API:
@@ -83,6 +86,9 @@ orderer-client:
     # TLS mode for sidecar client connections: 'none' (no TLS), 'tls' (server auth only),
     # or 'mtls' (mutual TLS with client cert verification).
     tls: *tlsConfig
+    # flow-control:  # Optional HTTP/2 flow control windows, in bytes. See docs/performance-tuning.md.
+    #   initial-window-size: 16_777_216       # Per stream. Default: 16 MB
+    #   initial-conn-window-size: 33_554_432  # Per connection. Default: 32 MB
   # Direct orderer connection configuration (alternative to sidecar-client)
   orderer:
     # Fault tolerance level of the ordering service: 'BFT' (Byzantine Fault Tolerant) or 'CFT'.
@@ -93,6 +99,9 @@ orderer-client:
     latest-known-config-block-path: /root/artifacts/config-block.pb.bin
     # Loadgen uses these TLS credentials when connecting to the orderers as a client.
     tls: *tlsConfig
+    # flow-control:  # Optional HTTP/2 flow control windows, in bytes. See docs/performance-tuning.md.
+    #   initial-window-size: 16_777_216       # Per stream. Default: 16 MB
+    #   initial-conn-window-size: 33_554_432  # Per connection. Default: 32 MB
     # Identity configuration for signing transactions and connecting to orderers.
     identity:
       # MSP (Membership Service Provider) ID identifying the organization.

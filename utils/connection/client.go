@@ -58,9 +58,10 @@ type (
 
 	// DialInfo contains the parameters to dial a connection.
 	DialInfo struct {
-		Endpoints []*Endpoint
-		TLS       TLSCredentials
-		Retry     *retry.Profile
+		Endpoints   []*Endpoint
+		TLS         TLSCredentials
+		Retry       *retry.Profile
+		FlowControl FlowControlConfig
 	}
 
 	// ClientParameters contain connection parameters.
@@ -68,6 +69,7 @@ type (
 		Address        string
 		Creds          credentials.TransportCredentials
 		Retry          *retry.Profile
+		FlowControl    FlowControlConfig
 		AdditionalOpts []grpc.DialOption
 	}
 )
@@ -85,9 +87,10 @@ func NewDialInfo(config *MultiClientConfig) (*DialInfo, error) {
 		return nil, err
 	}
 	return &DialInfo{
-		Endpoints: config.Endpoints,
-		Retry:     config.Retry,
-		TLS:       *tls,
+		Endpoints:   config.Endpoints,
+		Retry:       config.Retry,
+		TLS:         *tls,
+		FlowControl: config.FlowControl,
 	}, nil
 }
 
@@ -119,9 +122,10 @@ func (d *DialInfo) NewLoadBalancedConnection() (*grpc.ClientConn, error) {
 
 	if len(d.Endpoints) == 1 {
 		return NewConnection(ClientParameters{
-			Address: d.Endpoints[0].Address(),
-			Retry:   d.Retry,
-			Creds:   tlsCredentials,
+			Address:     d.Endpoints[0].Address(),
+			Retry:       d.Retry,
+			Creds:       tlsCredentials,
+			FlowControl: d.FlowControl,
 		})
 	}
 
@@ -141,6 +145,7 @@ func (d *DialInfo) NewLoadBalancedConnection() (*grpc.ClientConn, error) {
 		Address:        fmt.Sprintf("%s:///%s", r.Scheme(), targetName),
 		Creds:          tlsCredentials,
 		Retry:          d.Retry,
+		FlowControl:    d.FlowControl,
 		AdditionalOpts: []grpc.DialOption{grpc.WithResolvers(r)},
 	})
 }
@@ -154,9 +159,10 @@ func (d *DialInfo) NewConnectionPerEndpoint() ([]*grpc.ClientConn, error) {
 	connections := make([]*grpc.ClientConn, len(d.Endpoints))
 	for i, e := range d.Endpoints {
 		connections[i], err = NewConnection(ClientParameters{
-			Address: e.Address(),
-			Creds:   tlsCreds,
-			Retry:   d.Retry,
+			Address:     e.Address(),
+			Creds:       tlsCreds,
+			Retry:       d.Retry,
+			FlowControl: d.FlowControl,
 		})
 		if err != nil {
 			CloseConnectionsLog(connections[:i]...)
@@ -173,9 +179,10 @@ func NewSingleConnection(config *ClientConfig) (*grpc.ClientConn, error) {
 		return nil, err
 	}
 	return NewConnection(ClientParameters{
-		Address: config.Endpoint.Address(),
-		Creds:   tlsCreds,
-		Retry:   config.Retry,
+		Address:     config.Endpoint.Address(),
+		Creds:       tlsCreds,
+		Retry:       config.Retry,
+		FlowControl: config.FlowControl,
 	})
 }
 
@@ -191,6 +198,13 @@ func NewConnection(p ClientParameters) (*grpc.ClientConn, error) {
 		),
 		grpc.WithMaxCallAttempts(defaultGrpcMaxAttempts),
 	}, p.AdditionalOpts...)
+	// Zero leaves gRPC's BDP-based window tuning in place; any value disables it.
+	if window := p.FlowControl.InitialWindowSize; window > 0 {
+		dialOpts = append(dialOpts, grpc.WithInitialWindowSize(window))
+	}
+	if window := p.FlowControl.InitialConnWindowSize; window > 0 {
+		dialOpts = append(dialOpts, grpc.WithInitialConnWindowSize(window))
+	}
 
 	cc, err := grpc.NewClient(p.Address, dialOpts...)
 	if err != nil {
