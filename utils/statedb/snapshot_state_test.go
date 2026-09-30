@@ -16,6 +16,7 @@ package statedb_test
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"testing"
 	"time"
 
@@ -101,7 +102,7 @@ func TestReadLatestRejectsCorruptRecord(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	_, err := env.state.ReadLatest(ctx)
-	require.ErrorContains(t, err, "failed to decode the latest _snapshot record")
+	require.ErrorContains(t, err, "failed to decode the _snapshot record")
 	require.NoError(t, ctx.Err(), "a corrupt record must fail fast, not retry")
 }
 
@@ -356,8 +357,9 @@ func TestDecodeEmptyValueIsZeroState(t *testing.T) {
 // validator-committer (which imports this package, so a test here cannot use its
 // fixtures).
 type snapshotStateTestEnv struct {
-	pool  *pgxpool.Pool
-	state *statedb.SnapshotStateManager
+	pool   *pgxpool.Pool
+	state  *statedb.SnapshotStateManager
+	config *statedb.Config
 }
 
 func newSnapshotStateTestEnv(t *testing.T) *snapshotStateTestEnv {
@@ -380,7 +382,9 @@ func newSnapshotStateTestEnv(t *testing.T) *snapshotStateTestEnv {
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 
-	return &snapshotStateTestEnv{pool: pool, state: statedb.NewSnapshotStateManager(pool, config.Retry)}
+	return &snapshotStateTestEnv{
+		pool: pool, state: statedb.NewSnapshotStateManager(pool, config.Retry), config: config,
+	}
 }
 
 // seedRecord inserts state as its own `_snapshot` row and points the latest-snapshot
@@ -525,4 +529,146 @@ func (env *snapshotStateTestEnv) inTx(t *testing.T, op func(tx pgx.Tx) error) er
 	}
 	require.NoError(t, tx.Commit(t.Context()))
 	return nil
+}
+
+// TestDeleteSnapshotClone checks that deletion of a CHECKPOINTED or ABORTED snapshot drops
+// the clone, clears its name, and keeps the rest of the record. A repeated delete succeeds
+// without rewriting the record.
+func TestDeleteSnapshotClone(t *testing.T) {
+	t.Parallel()
+	for blockNum, status := range map[uint64]committerpb.SnapshotState_Status{
+		820000: committerpb.SnapshotState_CHECKPOINTED,
+		820001: committerpb.SnapshotState_ABORTED,
+	} {
+		t.Run(status.String(), func(t *testing.T) {
+			t.Parallel()
+			env := newSnapshotStateTestEnv(t)
+			ctx := t.Context()
+			want := &committerpb.SnapshotState{
+				TxRef:         &committerpb.TxRef{BlockNum: blockNum, TxId: "snap-delete-" + status.String()},
+				Status:        status,
+				Hash:          []byte("hash"),
+				Error:         "reason",
+				CloneDatabase: env.createDatabase(t, fmt.Sprintf("snapshot_%d", blockNum)),
+			}
+			env.seedRecord(t, want)
+
+			txID := want.TxRef.TxId
+			require.NoError(t, statedb.DeleteSnapshotClone(ctx, env.config, txID))
+			require.False(t, env.databaseExists(t, want.CloneDatabase))
+
+			got, err := env.state.Read(ctx, txID)
+			require.NoError(t, err)
+			want.CloneDatabase = ""
+			test.RequireProtoEqual(t, want, got)
+			require.EqualValues(t, 1, env.recordVersion(t, txID))
+
+			// A repeated delete succeeds without rewriting the record.
+			require.NoError(t, statedb.DeleteSnapshotClone(ctx, env.config, txID))
+			require.EqualValues(t, 1, env.recordVersion(t, txID))
+		})
+	}
+}
+
+// TestDeleteSnapshotCloneAfterDropBeforeClear checks recovery when an earlier run dropped
+// the clone but did not clear its name. Removing IF EXISTS from DROP must break this test.
+func TestDeleteSnapshotCloneAfterDropBeforeClear(t *testing.T) {
+	t.Parallel()
+	env := newSnapshotStateTestEnv(t)
+	ref := &committerpb.TxRef{BlockNum: 820100, TxId: "snap-delete-dropped"}
+	env.seedRecord(t, &committerpb.SnapshotState{
+		TxRef: ref, Status: committerpb.SnapshotState_CHECKPOINTED, CloneDatabase: "snapshot_820100_gone",
+	})
+
+	require.NoError(t, statedb.DeleteSnapshotClone(t.Context(), env.config, ref.TxId))
+	got, err := env.state.Read(t.Context(), ref.TxId)
+	require.NoError(t, err)
+	require.Empty(t, got.CloneDatabase)
+}
+
+// TestDeleteSnapshotCloneRefusals checks that a missing tx_id or record, or a snapshot that
+// may still be hashed, is refused and leaves the clone and the record unchanged. An empty
+// clone name succeeds for any status, since there is nothing left to delete.
+func TestDeleteSnapshotCloneRefusals(t *testing.T) {
+	t.Parallel()
+	env := newSnapshotStateTestEnv(t)
+	ctx := t.Context()
+
+	require.ErrorContains(t, statedb.DeleteSnapshotClone(ctx, env.config, ""), "tx_id must not be empty")
+	require.ErrorIs(t, statedb.DeleteSnapshotClone(ctx, env.config, "no-such-tx"), statedb.ErrSnapshotNotFound)
+
+	clone := env.createDatabase(t, "snapshot_820200")
+	for _, status := range []committerpb.SnapshotState_Status{
+		committerpb.SnapshotState_STATUS_UNSPECIFIED,
+		committerpb.SnapshotState_PENDING,
+		committerpb.SnapshotState_IN_PROGRESS,
+		committerpb.SnapshotState_COMPLETED,
+		committerpb.SnapshotState_FAILED,
+	} {
+		txID := "snap-delete-refused-" + status.String()
+		env.insertRecord(t, &committerpb.SnapshotState{
+			TxRef: &committerpb.TxRef{BlockNum: 820200, TxId: txID}, Status: status, CloneDatabase: clone,
+		})
+		require.ErrorIs(t, statedb.DeleteSnapshotClone(ctx, env.config, txID), statedb.ErrSnapshotCloneInUse)
+		require.True(t, env.databaseExists(t, clone), "clone must survive a refused delete")
+		require.EqualValues(t, 0, env.recordVersion(t, txID), "refused delete must not rewrite the record")
+	}
+
+	txID := "snap-delete-already-cleared"
+	env.insertRecord(t, &committerpb.SnapshotState{
+		TxRef: &committerpb.TxRef{BlockNum: 820300, TxId: txID}, Status: committerpb.SnapshotState_COMPLETED,
+	})
+	require.NoError(t, statedb.DeleteSnapshotClone(ctx, env.config, txID))
+}
+
+// insertRecord inserts state as its own `_snapshot` row without moving the pointer.
+func (env *snapshotStateTestEnv) insertRecord(t *testing.T, state *committerpb.SnapshotState) {
+	t.Helper()
+	raw, err := statedb.EncodeSnapshotState(state)
+	require.NoError(t, err)
+	env.insertRawRecord(t, state.TxRef.TxId, raw)
+}
+
+// createDatabase creates an empty database standing in for a snapshot clone: deletion
+// only needs a database with that name. The database is dropped when the test ends.
+// A random suffix keeps names unique, since tests share one cluster.
+func (env *snapshotStateTestEnv) createDatabase(t *testing.T, name string) string {
+	t.Helper()
+	name = fmt.Sprintf("%s_%d", name, rand.Uint32())
+	drop := fmt.Sprintf("DROP DATABASE IF EXISTS %s", pgx.Identifier{name}.Sanitize())
+	t.Cleanup(func() { _ = statedb.AdminExec(context.Background(), env.config, drop) })
+	create := fmt.Sprintf("CREATE DATABASE %s", pgx.Identifier{name}.Sanitize())
+	require.NoError(t, statedb.AdminExec(t.Context(), env.config, create))
+	return name
+}
+
+func (env *snapshotStateTestEnv) databaseExists(t *testing.T, name string) bool {
+	t.Helper()
+	var exists bool
+	require.NoError(t, env.pool.QueryRow(t.Context(),
+		"SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", name).Scan(&exists))
+	return exists
+}
+
+// TestUpdateClearCloneDatabaseKeepsError checks that clearing the clone name keeps the
+// locked row's error text and ignores ErrMsg. Otherwise a clone deletion that read the
+// record earlier could overwrite a diagnostic written in between, such as a halt reason.
+func TestUpdateClearCloneDatabaseKeepsError(t *testing.T) {
+	t.Parallel()
+	env := newSnapshotStateTestEnv(t)
+	ref := &committerpb.TxRef{BlockNum: 820400, TxId: "snap-clear-keeps-error"}
+	env.seedRecord(t, &committerpb.SnapshotState{
+		TxRef: ref, Status: committerpb.SnapshotState_CHECKPOINTED,
+		Error: "written after the delete read the record", CloneDatabase: "snapshot_820400",
+	})
+
+	require.NoError(t, env.state.Update(t.Context(), ref, statedb.SnapshotUpdate{
+		Status:             committerpb.SnapshotState_CHECKPOINTED,
+		ErrMsg:             "stale",
+		ClearCloneDatabase: true,
+	}))
+	got, err := env.state.Read(t.Context(), ref.TxId)
+	require.NoError(t, err)
+	require.Empty(t, got.CloneDatabase)
+	require.Equal(t, "written after the delete read the record", got.Error)
 }

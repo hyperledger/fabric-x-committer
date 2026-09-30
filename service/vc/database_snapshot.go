@@ -9,9 +9,7 @@ package vc
 import (
 	"context"
 	"fmt"
-	"net"
 	"strings"
-	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
@@ -23,24 +21,7 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
-// maintenanceDBName is the neutral admin database the clone runs against.
-// A session cannot CREATE/DROP the database it is connected to on EITHER
-// backend, so both PostgreSQL and YugabyteDB need a separate always-present DB
-// to issue CREATE DATABASE from; that is what this connects to.
-//
-// "postgres" is chosen because it is created by default on both backends
-// (YugabyteDB ships a "postgres" database for PG compatibility) and is never
-// the clone source. That matters because createPostgresSnapshotDatabase blocks
-// and terminates sessions on the SOURCE database only (ALLOW_CONNECTIONS false /
-// terminate-backends / ALLOW_CONNECTIONS true, see below) to satisfy PostgreSQL's
-// TEMPLATE requirement that the source be free of other sessions; connecting
-// admin operations through "postgres" instead of the source keeps this
-// connection itself from being one of the sessions that gets terminated or
-// locked out by that sequence. Does not apply to YugabyteDB (DocDB cloning
-// keeps the source live, so no lockout dance is needed there).
 const (
-	maintenanceDBName = "postgres"
-
 	yugabyteCloneStateComplete = "COMPLETE"
 	yugabyteCloneStateAborted  = "ABORTED"
 	yugabyteCloneStateQuery    = `
@@ -294,7 +275,7 @@ func (db *database) createYugabyteSnapshotDatabase(ctx context.Context, cloneNam
 	clone := pgx.Identifier{cloneName}.Sanitize()
 	src := pgx.Identifier{srcName}.Sanitize()
 	sql := fmt.Sprintf("CREATE DATABASE %s TEMPLATE %s", clone, src)
-	if err := ignoreDuplicateDatabase(db.adminExec(ctx, sql)); err != nil {
+	if err := ignoreDuplicateDatabase(statedb.AdminExec(ctx, db.config, sql)); err != nil {
 		return err
 	}
 	return db.waitForYugabyteClone(ctx, cloneName)
@@ -318,77 +299,32 @@ func (db *database) waitForYugabyteClone(ctx context.Context, clone string) erro
 // existing backends via pg_terminate_backend, then CREATE DATABASE ... TEMPLATE ...
 // STRATEGY=FILE_COPY; ALLOW_CONNECTIONS is re-enabled via defer so it runs even on error.
 func (db *database) createPostgresSnapshotDatabase(ctx context.Context, clone, src string) error {
-	if err := db.adminExec(ctx, fmt.Sprintf("ALTER DATABASE %s ALLOW_CONNECTIONS false", src)); err != nil {
+	disallow := fmt.Sprintf("ALTER DATABASE %s ALLOW_CONNECTIONS false", src)
+	if err := statedb.AdminExec(ctx, db.config, disallow); err != nil {
 		return err
 	}
 	// Re-enable even if CREATE DATABASE fails, so the source is never left locked
 	// out on the happy/soft-error path. (Hard-kill lockout is coordinator-recovered.)
 	defer func() { //nolint:contextcheck // re-enable must run even if ctx is already cancelled/expired.
-		if err := db.adminExec(context.Background(),
+		if err := statedb.AdminExec(context.Background(), db.config,
 			fmt.Sprintf("ALTER DATABASE %s ALLOW_CONNECTIONS true", src)); err != nil {
 			logger.Warnf("failed to re-enable connections on source database: %+v", err)
 		}
 	}()
 
 	// terminate uses a string-built literal (not a parameterized query) because
-	// adminExec takes a bare SQL string; db.config.Database is server-configured,
+	// statedb.AdminExec takes a bare SQL string; db.config.Database is server-configured,
 	// not attacker input, so quote-doubling escaping is sufficient here.
 	terminate := fmt.Sprintf(
 		"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '%s' AND pid <> pg_backend_pid()",
 		strings.ReplaceAll(db.config.Database, "'", "''"),
 	)
-	if err := db.adminExec(ctx, terminate); err != nil {
+	if err := statedb.AdminExec(ctx, db.config, terminate); err != nil {
 		return err
 	}
 
 	sql := fmt.Sprintf("CREATE DATABASE %s TEMPLATE %s STRATEGY=FILE_COPY", clone, src)
-	return ignoreDuplicateDatabase(db.adminExec(ctx, sql))
-}
-
-// adminExec opens a short-lived dedicated connection to the maintenance DB
-// (outside the pgxpool) and runs a single statement. Used for CREATE DATABASE
-// and the PostgreSQL ALTER DATABASE dance, which cannot run on the source pool.
-//
-// Unlike the rest of this package, adminExec deliberately does NOT wrap the call
-// in db.retryProfile. The admin statements are one-shot DDL whose errors are
-// deterministic and semantically meaningful to the caller: "database already
-// exists" (PG SQLSTATE 42P04) is mapped to success by ignoreDuplicateDatabase,
-// and a missing template or bad name is a permanent failure. Retrying would
-// either loop on a permanent error until the context deadline or defeat that
-// mapping. The clone flow is instead re-driven end-to-end by the coordinator on
-// VC failure.
-//
-// Uses a bounded dial timeout (via a plain pgx.ConnConfig, not pgxpool) so an
-// unreachable endpoint in a multi-host DSN fails fast instead of hanging for
-// the context's full lifetime — pgx.Connect's default dialer has no timeout.
-func (db *database) adminExec(ctx context.Context, sql string) error {
-	c := db.config
-	dsn, err := statedb.DataSourceName(statedb.DataSourceNameParams{
-		Username:        c.Username,
-		Password:        c.Password,
-		Database:        maintenanceDBName,
-		EndpointsString: c.EndpointsString(),
-		LoadBalance:     c.LoadBalance,
-		TLS:             c.TLS,
-	})
-	if err != nil {
-		return err
-	}
-	connConfig, err := pgx.ParseConfig(dsn)
-	if err != nil {
-		return errors.Wrap(err, "failed to parse maintenance-db DSN")
-	}
-	dialer := &net.Dialer{Timeout: 10 * time.Second}
-	connConfig.DialFunc = dialer.DialContext
-
-	conn, err := pgx.ConnectConfig(ctx, connConfig)
-	if err != nil {
-		return errors.Wrap(err, "failed to open maintenance-db admin connection")
-	}
-	defer func() { _ = conn.Close(ctx) }()
-
-	_, err = conn.Exec(ctx, sql)
-	return errors.Wrapf(err, "failed to execute admin statement [%s]", sql)
+	return ignoreDuplicateDatabase(statedb.AdminExec(ctx, db.config, sql))
 }
 
 // ignoreDuplicateDatabase maps 42P04 to nil so backend-specific callers can reuse
