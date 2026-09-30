@@ -11,10 +11,13 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
+	"github.com/hyperledger/fabric-x-committer/utils/connection"
 )
 
 type (
@@ -68,18 +71,57 @@ func NewTxStream(profile *Profile, options *StreamOptions, counter *TxCounter) (
 	}, nil
 }
 
-// Run starts the stream workers.
-func (s *TxStream) Run(ctx context.Context) error {
+// Run starts the stream workers. When queryClient enables the query stage (set and queries-rate > 0) Run
+// dials one load-balanced query-service connection per worker and each worker versions a rate-controlled
+// subset of its batches' reads before signing; otherwise every worker runs without a querier. The dialed
+// connections are closed when Run returns, coupling their lifetime to the run.
+func (s *TxStream) Run(ctx context.Context, queryClient *connection.MultiClientConfig) error {
 	logger.Debugf("Starting %d workers to generate load", len(s.gens))
+	queriers, conns, err := s.dialQueryConnections(queryClient)
+	if err != nil {
+		return err
+	}
+	defer connection.CloseConnectionsLog(conns...)
+
 	g, gCtx := errgroup.WithContext(ctx)
-	for _, gen := range s.gens {
+	for i, gen := range s.gens {
 		g.Go(func() error {
-			// The query stage is wired per worker (its own connection) once a query client exists;
-			// until then it is nil and reads keep their nil versions.
-			return s.generateBatches(gCtx, gen, nil)
+			return s.generateBatches(gCtx, gen, queriers[i])
 		})
 	}
 	return errors.Wrap(g.Wait(), "stream finished")
+}
+
+// dialQueryConnections builds one query filler per worker — each backed by its own load-balanced
+// query-service connection — when the query stage is enabled, and returns an all-nil filler slice (no
+// versioning for any worker) when it is disabled. It hands back both the fillers the workers use and the
+// connections whose lifetime Run owns (Run closes them when it returns). The stage is enabled when the
+// workers version reads — queries-rate > 0, uniform across workers, so gens[0] speaks for all. It then
+// requires a query-client config: config-load validation already guarantees one, so a nil here is a caller
+// bug and Run fails loudly rather than silently regressing versioned reads to nil-version creates. Each
+// connection round-robins across the configured endpoints. On a dial error it closes any connection
+// already opened before returning.
+func (s *TxStream) dialQueryConnections(
+	queryClient *connection.MultiClientConfig,
+) ([]batchQuerier, []*grpc.ClientConn, error) {
+	queriers := make([]batchQuerier, len(s.gens))
+	if len(s.gens) == 0 || s.gens[0].QueriesRate <= 0 {
+		return queriers, nil, nil
+	}
+	if queryClient == nil {
+		return nil, nil, errors.New("query stage enabled (queries-rate > 0) but no query-client configured")
+	}
+	conns := make([]*grpc.ClientConn, 0, len(s.gens))
+	for i := range s.gens {
+		conn, err := connection.NewLoadBalancedConnection(queryClient)
+		if err != nil {
+			connection.CloseConnectionsLog(conns...)
+			return nil, nil, errors.Wrap(err, "failed to connect to query service")
+		}
+		conns = append(conns, conn)
+		queriers[i] = newQueryFiller(committerpb.NewQueryServiceClient(conn), s.gens[i].QueriesRate)
+	}
+	return queriers, conns, nil
 }
 
 // AppendBatch appends a batch to the stream.

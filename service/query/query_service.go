@@ -51,6 +51,10 @@ var (
 
 	// ErrTooManyActiveViews is returned when the number of active views exceeds the configured limit.
 	ErrTooManyActiveViews = errors.New("active view limit exceeded")
+
+	// ErrNamespaceNotFound is returned when a query targets a namespace whose table does not exist. It
+	// maps to gRPC NotFound so a caller can distinguish a missing namespace from an internal failure.
+	ErrNamespaceNotFound = errors.New("namespace does not exist")
 )
 
 type (
@@ -369,6 +373,10 @@ func wrapQueryError(err error) error {
 
 	if errors.Is(err, ErrInvalidOrStaleView) {
 		return grpcerror.WrapFailedPrecondition(err)
+	}
+
+	if errors.Is(err, ErrNamespaceNotFound) {
+		return grpcerror.WrapNotFound(err)
 	}
 
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {

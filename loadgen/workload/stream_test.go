@@ -11,17 +11,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/serialization"
+	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
 	"github.com/hyperledger/fabric-x-committer/utils/testsig"
@@ -95,7 +98,7 @@ func BenchmarkGenTx(b *testing.B) {
 		// that the consume loop then reads "for free", inflating the reported
 		// throughput.
 		b.ResetTimer()
-		test.RunServiceForTest(ctx, b, t.Run, nil)
+		test.RunServiceForTest(ctx, b, func(ctx context.Context) error { return t.Run(ctx, nil) }, nil)
 		g := t.MakeGenerator()
 
 		param := ConsumeParameters{MinItems: p.Block.MinSize}
@@ -194,7 +197,7 @@ func startTxGeneratorUnderTest(t *testing.T, profile *Profile, options *StreamOp
 	t.Helper()
 	g, err := NewTxStream(profile, options, NewTxCounter(profile.Transaction))
 	require.NoError(t, err)
-	test.RunServiceForTest(t.Context(), t, g.Run, nil)
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error { return g.Run(ctx, nil) }, nil)
 	return g
 }
 
@@ -431,6 +434,35 @@ func TestGenerationProducesValidSignedTxs(t *testing.T) {
 	}
 }
 
+// TestQueryStageRoutesQueriesToClient proves the query-client config passed to Run wires end-to-end: with
+// queries-rate > 0 and a query-client config, Run must dial the query service, build a queryFiller around
+// the dialed client, and the worker's query stage must actually reach it — not silently fall back to a nil
+// querier the way it does when QueryClient is nil (see TestGenerationProducesValidSignedTxs). An in-process
+// fake QueryService records every GetRows call it receives; producing a handful of transactions must yield
+// at least one such call.
+func TestQueryStageRoutesQueriesToClient(t *testing.T) {
+	t.Parallel()
+	p := DefaultProfile(1)
+	p.Transaction.ReadOnlyCount = 1
+	p.Transaction.ReadWriteCount = 1
+	p.Transaction.QueriesRate = 1 // every transaction's lone versioned read is selected for querying.
+
+	s, err := NewTxStream(p, defaultStreamOptions(), NewTxCounter(p.Transaction))
+	require.NoError(t, err)
+
+	fake := &fakeQueryServiceServer{}
+	serverConfig := test.NewLocalHostServiceConfig(test.InsecureTLSConfig)
+	test.ServeForTest(t.Context(), t, serverConfig, fake)
+	qs := test.ServerToMultiClientConfig(test.InsecureTLSConfig, serverConfig)
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error { return s.Run(ctx, qs) }, nil)
+
+	g := s.MakeGenerator()
+	txs := g.Consume(t.Context(), ConsumeParameters{RequestedItems: 10})
+	require.NotEmpty(t, txs)
+
+	require.Positive(t, fake.callCount(), "GetRows should have been called through the dialed client")
+}
+
 // txKeysByRole extracts the keys of a generated TX's single namespace, split by slot role, for tests
 // that assert on key reuse across a stream.
 func txKeysByRole(tx *servicepb.LoadGenTx) (readOnly, readWrite, blindWrite [][]byte) {
@@ -618,6 +650,41 @@ func decodeSignedTx(t *testing.T, tx *servicepb.LoadGenTx) *applicationpb.Tx {
 	inner, err := serialization.UnmarshalTx(payload.Data)
 	require.NoError(t, err)
 	return inner
+}
+
+// fakeQueryServiceServer is an in-process committerpb.QueryServiceServer test double that records every
+// GetRows call it receives, for TestQueryStageRoutesQueriesToClient, which proves Run dials the query
+// service from the query-client config passed to it and routes a worker's query stage to it end-to-end (through the
+// real gRPC dial, not just newQueryFiller directly). It is read from and written to across goroutines: the
+// test's assertion runs on the main goroutine while the server handles GetRows on a gRPC handler
+// goroutine, so calls is guarded by mu. Embedding UnimplementedQueryServiceServer supplies the other
+// service methods, which the query stage never invokes.
+type fakeQueryServiceServer struct {
+	committerpb.UnimplementedQueryServiceServer
+	mu    sync.Mutex
+	calls []*committerpb.Query
+}
+
+// RegisterService registers the fake on the test gRPC server, implementing serve.Registerer.
+func (f *fakeQueryServiceServer) RegisterService(s serve.Servers) {
+	committerpb.RegisterQueryServiceServer(s.GRPC, f)
+}
+
+// GetRows implements committerpb.QueryServiceServer. It records the query and returns an empty result (a
+// miss on every key), since only the wiring — that GetRows was actually invoked with the batch's query —
+// is under test.
+func (f *fakeQueryServiceServer) GetRows(_ context.Context, in *committerpb.Query) (*committerpb.Rows, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, in)
+	return &committerpb.Rows{}, nil
+}
+
+// callCount returns the number of GetRows calls received so far.
+func (f *fakeQueryServiceServer) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.calls)
 }
 
 // fakeVersionQuerier is a batchQuerier test double that stamps a fixed version on every read

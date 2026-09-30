@@ -119,9 +119,10 @@ func (c *Client) Run(ctx context.Context) error {
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
 	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		return c.txStream.Run(gCtx)
+		return c.txStream.Run(gCtx, c.conf.QueryClient)
 	})
 
 	workloadSetupTXs := make(chan *servicepb.LoadGenTx, 1)
