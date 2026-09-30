@@ -30,15 +30,20 @@ var dummyEndorsement = CreateEndorsementsForThresholdRule(make([]byte, 0))[0]
 
 // NewNsEndorserFromKey creates a new NsEndorser according to the key and scheme.
 func NewNsEndorserFromKey(scheme signature.Scheme, key []byte) (*NsEndorser, error) {
-	var err error
 	var e endorser
 	switch strings.ToUpper(scheme) {
 	case signature.NoScheme, "":
 		e = nil
 	case signature.Ecdsa:
-		signingKey, parseErr := ParseSigningKey(key)
-		err = parseErr
-		e = &keyEndorser{signer: &ecdsaSigner{signingKey: signingKey}}
+		signingKey, err := ParseSigningKey(key)
+		if err != nil {
+			return nil, err
+		}
+		signer, err := newEcdsaSigner(signingKey)
+		if err != nil {
+			return nil, err
+		}
+		e = &keyEndorser{signer: signer}
 	case signature.Bls:
 		sk := big.NewInt(0)
 		sk.SetBytes(key)
@@ -48,7 +53,7 @@ func NewNsEndorserFromKey(scheme signature.Scheme, key []byte) (*NsEndorser, err
 	default:
 		return nil, errors.Newf("scheme '%v' not supported", scheme)
 	}
-	return &NsEndorser{endorser: e}, err
+	return &NsEndorser{endorser: e}, nil
 }
 
 // NewNsEndorserFromMsp creates a new NsEndorser using identities.
