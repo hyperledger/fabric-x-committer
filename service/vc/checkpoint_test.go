@@ -41,7 +41,7 @@ func TestCommitCheckpointOnHashMatch(t *testing.T) {
 	require.Nil(t, status.CheckpointFeedback)
 
 	requireCheckpointRow(t, env.dbEnv, ref.BlockNum, hash)
-	requireSnapshotStatus(t, env.dbEnv, ref.TxId, committerpb.SnapshotState_CHECKPOINTED)
+	env.dbEnv.requireSnapshotStatus(t, ref.TxId, committerpb.SnapshotState_CHECKPOINTED)
 }
 
 // TestHaltCheckpointOnHashMismatch checks that different hashes produce HALT feedback.
@@ -63,7 +63,7 @@ func TestHaltCheckpointOnHashMismatch(t *testing.T) {
 
 	requireNoCheckpointRow(t, env.dbEnv, ref.BlockNum)
 	// Keep the snapshot status and save the mismatch reason for investigation.
-	requireSnapshotStatus(t, env.dbEnv, ref.TxId, committerpb.SnapshotState_COMPLETED, "does not match")
+	env.dbEnv.requireSnapshotStatus(t, ref.TxId, committerpb.SnapshotState_COMPLETED, "does not match")
 }
 
 // TestHoldCheckpointUntilHashIsComputed checks that a missing hash produces HOLD.
@@ -99,7 +99,7 @@ func TestHoldCheckpointUntilHashIsComputed(t *testing.T) {
 	require.Equal(t, committerpb.Status_COMMITTED, resubmitted.Status[0].Status)
 
 	requireCheckpointRow(t, env.dbEnv, ref.BlockNum, hash)
-	requireSnapshotStatus(t, env.dbEnv, ref.TxId, committerpb.SnapshotState_CHECKPOINTED)
+	env.dbEnv.requireSnapshotStatus(t, ref.TxId, committerpb.SnapshotState_CHECKPOINTED)
 }
 
 // TestDuplicateCheckpointIsIgnored checks that a duplicate submission does not change
@@ -154,7 +154,7 @@ func TestRejectCheckpointForWrongBlock(t *testing.T) {
 	requireNoCheckpointRow(t, env.dbEnv, otherBlock)
 
 	// Leave the snapshot unchanged so a correct checkpoint can still commit.
-	requireSnapshotStatus(t, env.dbEnv, ref.TxId, committerpb.SnapshotState_COMPLETED, "")
+	env.dbEnv.requireSnapshotStatus(t, ref.TxId, committerpb.SnapshotState_COMPLETED, "")
 }
 
 // TestRejectCheckpointWithoutSnapshotRecord checks that a checkpoint without a snapshot
@@ -180,7 +180,7 @@ func TestRejectCheckpointWithoutSnapshotRecord(t *testing.T) {
 	require.Nil(t, next.CheckpointFeedback)
 	require.Len(t, next.Status, 1)
 	require.Equal(t, committerpb.Status_COMMITTED, next.Status[0].Status)
-	requireSnapshotStatus(t, env.dbEnv, nextRef.TxId, committerpb.SnapshotState_CHECKPOINTED)
+	env.dbEnv.requireSnapshotStatus(t, nextRef.TxId, committerpb.SnapshotState_CHECKPOINTED)
 }
 
 // TestCheckpointWriteInBatchRejectsBrokenInvariants checks that invalid keys and multiple

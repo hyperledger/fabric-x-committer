@@ -160,15 +160,8 @@ func TestBlockMappingInParallel(t *testing.T) {
 			expected := []committerpb.Status{statusNotYetValidated}
 			for copyIndex := 0; len(txs) < 4*cfg.MinBatchSize; copyIndex++ {
 				for i, status := range caseStatuses {
-					switch {
-					case !IsStatusStoredInDB(status):
-					case copyIndex == 0:
-						status = statusNotYetValidated
-					default:
-						status = committerpb.Status_REJECTED_DUPLICATE_TX_ID
-					}
 					txs = append(txs, cases[i])
-					expected = append(expected, status)
+					expected = append(expected, repeatedTxStatus(status, copyIndex))
 				}
 			}
 			txs = append(txs, snapshotTx())
@@ -871,4 +864,14 @@ func verifyKeysNamespace(ns *applicationpb.TxNamespace) committerpb.Status {
 		Namespaces:   []*applicationpb.TxNamespace{ns},
 		Endorsements: dummyEndorsements(1),
 	})
+}
+
+func repeatedTxStatus(status committerpb.Status, copyIndex int) committerpb.Status {
+	if !IsStatusStoredInDB(status) {
+		return status
+	}
+	if copyIndex == 0 {
+		return statusNotYetValidated
+	}
+	return committerpb.Status_REJECTED_DUPLICATE_TX_ID
 }

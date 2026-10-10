@@ -196,7 +196,7 @@ func (s *Service) Run(ctx context.Context) error {
 	})
 	g.Go(func() error {
 		// Notification for clients.
-		return s.notifier.run(gCtx, s.queues.statusQueue, s.queues.committedBlockWithTxs)
+		return s.run(gCtx, s.queues.statusQueue, s.queues.committedBlockWithTxs)
 	})
 
 	g.Go(func() error {
