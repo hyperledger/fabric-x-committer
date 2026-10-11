@@ -16,6 +16,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/yugabyte/pgx/v5/pgxpool"
 	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
@@ -272,7 +273,7 @@ func (q *Service) GetConfigTransaction(
 	ctx context.Context,
 	_ *emptypb.Empty,
 ) (*applicationpb.ConfigTransaction, error) {
-	res, err := queryConfig(ctx, q.batcher.pool)
+	res, err := statedb.ReadConfigTransaction(ctx, q.batcher.pool)
 	return res, grpcerror.WrapInternalError(err)
 }
 
@@ -315,14 +316,14 @@ func (q *Service) validateKeysCount(count int) error {
 
 // refreshTLSFromDB periodically polls the database for the config transaction
 // and updates the dynamic TLS CA certificates only when the config version changes.
-func (q *Service) refreshTLSFromDB(ctx context.Context, pool querier) {
+func (q *Service) refreshTLSFromDB(ctx context.Context, pool *pgxpool.Pool) {
 	var lastVersion uint64
 	seen := false
 
 	// tryRefresh attempts a single refresh. Errors are logged but not returned,
 	// as this is a background polling loop that should continue on transient failures.
 	tryRefresh := func() {
-		configTX, err := queryConfig(ctx, pool)
+		configTX, err := statedb.ReadConfigTransaction(ctx, pool)
 		if err != nil {
 			logger.Errorf("Failed to read config transaction from DB: %v", err)
 			return

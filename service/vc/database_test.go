@@ -30,6 +30,7 @@ func TestTablesAndMethods(t *testing.T) {
 
 	expectedTables := []string{
 		"metadata", "tx_status",
+		"auth_tokens", "auth_nonces",
 		"ns__meta", "ns__config", "ns__snapshot", "ns__checkpoint",
 		"ns_a", "ns_b",
 	}

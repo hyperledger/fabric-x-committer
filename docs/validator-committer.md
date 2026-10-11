@@ -65,6 +65,9 @@ world state for each namespace, and internal metadata. The tables are categorize
 
 ### a. System Tables
 
+`init-db` also creates `auth_tokens` and `auth_nonces`. They belong to the Auth Service, not the VC —
+see [auth-service.md](auth-service.md).
+
 * **Transaction Status Table (`tx_status`)**: This table stores the final status of every transaction processed by the system.
 
 | Column Name | Data Type | Description/Constraints                                                                                            |

@@ -65,12 +65,14 @@ EOF
     "committer start verifier"
     "committer start vc"
     "committer start query"
+    "committer start auth"
     "committer healthcheck"
     "committer healthcheck sidecar"
     "committer healthcheck coordinator"
     "committer healthcheck verifier"
     "committer healthcheck vc"
     "committer healthcheck query"
+    "committer healthcheck auth"
     "committer version"
   )
 

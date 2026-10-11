@@ -187,3 +187,9 @@ require (
 	moul.io/http2curl/v2 v2.3.0 // indirect
 	mvdan.cc/gofumpt v0.10.0 // indirect
 )
+
+// TEMPORARY: fork of fabric-x-common (branch acl-auth-0ca3d334f) adding, on top of the exact upstream commit
+// this module requires, the `auth` test peer's TLS/MSP material, protoutil.CreateSignedEnvelopeWithSignatureHeader
+// for signing the server-issued nonce, and configtx.yaml ACLs for the committer's resources. Drop this once those
+// changes are released upstream.
+replace github.com/hyperledger/fabric-x-common => github.com/dean-amar/fabric-x-common v0.0.0-20261001211331-989d27b42041

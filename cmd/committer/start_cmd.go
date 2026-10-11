@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/hyperledger/fabric-x-committer/cmd/cliutil"
+	"github.com/hyperledger/fabric-x-committer/service/auth"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator"
 	"github.com/hyperledger/fabric-x-committer/service/query"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
@@ -28,7 +29,8 @@ func startCMD() *cobra.Command {
 		Short: "Start a service.",
 	}
 	for _, name := range []string{
-		sidecarService, coordinatorService, vcService, verifierService, queryService, snapshotHasherService,
+		authService, sidecarService, coordinatorService, vcService,
+		verifierService, queryService, snapshotHasherService,
 	} {
 		cmd.AddCommand(startServiceCommand(name))
 	}
@@ -68,6 +70,11 @@ func startServiceCommand(name string) *cobra.Command {
 				service = query.NewQueryService(c)
 			case *snapshothasher.Config:
 				service = snapshothasher.NewSnapshotHasherService(c)
+			case *auth.Config:
+				service, err = auth.NewAuthService(c)
+				if err != nil {
+					return errors.Wrap(err, "failed to create auth service")
+				}
 			default:
 				return errors.Newf("unknown config type: %T", conf)
 			}
