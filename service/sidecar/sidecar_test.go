@@ -94,8 +94,10 @@ func newSidecarTestEnvWithTLS(
 	})
 
 	serverConfig := test.NewLocalHostServiceConfig(conf.ServerTLS)
+	// restarting the coordinator from its server config rewrites that endpoint while the sidecar reads it.
+	coordinatorEndpoint := coordinatorServer.Configs[0].GRPC.Endpoint
 	sidecarConf := &Config{
-		Committer: test.NewTLSClientConfig(conf.ClientTLS, &coordinatorServer.Configs[0].GRPC.Endpoint),
+		Committer: test.NewTLSClientConfig(conf.ClientTLS, &coordinatorEndpoint),
 		Ledger: LedgerConfig{
 			Path: t.TempDir(),
 		},
