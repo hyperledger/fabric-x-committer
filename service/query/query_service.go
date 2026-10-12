@@ -314,7 +314,7 @@ func (q *Service) validateKeysCount(count int) error {
 }
 
 // refreshTLSFromDB periodically polls the database for the config transaction
-// and updates the dynamic TLS CA certificates only when the config version changes.
+// and updates the dynamic TLS CA certificates only when a newer config version is committed.
 func (q *Service) refreshTLSFromDB(ctx context.Context, pool querier) {
 	var lastVersion uint64
 	seen := false
@@ -328,7 +328,7 @@ func (q *Service) refreshTLSFromDB(ctx context.Context, pool querier) {
 			return
 		}
 
-		if len(configTX.Envelope) == 0 || (seen && configTX.Version == lastVersion) {
+		if len(configTX.Envelope) == 0 || (seen && configTX.Version <= lastVersion) {
 			return
 		}
 
