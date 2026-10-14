@@ -27,9 +27,10 @@ type (
 	// In the committer, we only use "deliver" for production code (sidecar).
 	// "broadcast" is used by the load generator to apply load on the orderer and for testing.
 	Parameters struct {
-		TLS   connection.TLSCredentials
-		Retry *retry.Profile
-		API   string
+		TLS         connection.TLSCredentials
+		Retry       *retry.Profile
+		FlowControl connection.FlowControlConfig
+		API         string
 	}
 )
 
@@ -37,8 +38,9 @@ type (
 func NewDialInfo(m *channelconfig.ConfigBlockMaterial, p Parameters) *DialInfo {
 	res := &DialInfo{
 		Joint: &connection.DialInfo{
-			TLS:   p.TLS,
-			Retry: p.Retry,
+			TLS:         p.TLS,
+			Retry:       p.Retry,
+			FlowControl: p.FlowControl,
 		},
 		PartyIDToDialInfo: make(map[uint32]*connection.DialInfo),
 	}
@@ -56,8 +58,9 @@ func NewDialInfo(m *channelconfig.ConfigBlockMaterial, p Parameters) *DialInfo {
 			perID, ok := res.PartyIDToDialInfo[ep.ID]
 			if !ok {
 				perID = &connection.DialInfo{
-					TLS:   p.TLS,
-					Retry: p.Retry,
+					TLS:         p.TLS,
+					Retry:       p.Retry,
+					FlowControl: p.FlowControl,
 				}
 				perID.TLS.CACerts = append(perID.TLS.CACerts, caCerts...)
 				res.PartyIDToDialInfo[ep.ID] = perID

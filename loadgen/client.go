@@ -93,19 +93,21 @@ func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 	return c, nil
 }
 
+// getAdapter picks the adapter whose client section names something to connect to. The section being
+// present is not enough: viper materialises a section absent from the YAML to hold its defaults.
 func getAdapter(conf *adapters.AdapterConfig, res *adapters.ClientResources) (ServiceAdapter, error) {
 	switch {
-	case conf.CoordinatorClient != nil:
+	case conf.CoordinatorClient != nil && conf.CoordinatorClient.Endpoint != nil:
 		return adapters.NewCoordinatorAdapter(conf.CoordinatorClient, res), nil
-	case conf.VCClient != nil:
+	case conf.VCClient != nil && len(conf.VCClient.Endpoints) > 0:
 		return adapters.NewVCAdapter(conf.VCClient, res), nil
-	case conf.OrdererClient != nil:
+	case conf.OrdererClient != nil && conf.OrdererClient.Orderer.LatestKnownConfigBlockPath != "":
 		return adapters.NewOrdererAdapter(conf.OrdererClient, res), nil
-	case conf.SidecarClient != nil:
+	case conf.SidecarClient != nil && len(conf.SidecarClient.OrdererServers) > 0:
 		return adapters.NewSidecarAdapter(conf.SidecarClient, res)
-	case conf.VerifierClient != nil:
+	case conf.VerifierClient != nil && len(conf.VerifierClient.Endpoints) > 0:
 		return adapters.NewVerifierAdapter(conf.VerifierClient, res), nil
-	case conf.LoadGenClient != nil:
+	case conf.LoadGenClient != nil && conf.LoadGenClient.Endpoint != nil:
 		return adapters.NewLoadGenAdapter(conf.LoadGenClient, res), nil
 	default:
 		return nil, adapters.ErrInvalidAdapterConfig

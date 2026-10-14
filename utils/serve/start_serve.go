@@ -302,6 +302,13 @@ func newGRPCServer(c *ServerConfig, tlsProvider *TLSProvider, statsHandler *Serv
 			PermitWithoutStream: c.KeepAlive.EnforcementPolicy.PermitWithoutStream,
 		}))
 	}
+	// The window a peer may write into is the one this side advertises. See connection.FlowControlConfig.
+	if window := c.FlowControl.InitialWindowSize; window > 0 {
+		opts = append(opts, grpc.InitialWindowSize(window))
+	}
+	if window := c.FlowControl.InitialConnWindowSize; window > 0 {
+		opts = append(opts, grpc.InitialConnWindowSize(window))
+	}
 	return grpc.NewServer(opts...), nil
 }
 
