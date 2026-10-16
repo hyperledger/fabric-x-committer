@@ -81,8 +81,11 @@ Two conditions stop the service instead of being retried:
 - **A committed record whose clone is not there to hash.** The clone is created before
   its snapshot transaction commits, so a committed record always names a clone that
   exists. Neither shape of absence — no `clone_database` recorded, or a recorded name
-  whose database is gone — can be produced by this system, which leaves external
-  interference or storage corruption. No retry repairs either, and recording a failed
+  whose database is gone — can be produced by this system for a status the hasher
+  hashes, which leaves external interference or storage corruption. (`committer
+  delete-clone` clears the name only for `CHECKPOINTED` or `ABORTED` records, which the
+  hasher never hashes; see
+  [Snapshot clone deletion](validator-committer.md#snapshot-clone-deletion).) No retry repairs either, and recording a failed
   attempt on the record would invite a later tick to treat it as retryable work, so the
   service stops and leaves the record as evidence.
 - **A record with no `TxRef`** is a hard error, because a record that cannot be named
@@ -247,5 +250,6 @@ See [Metrics Reference](metrics_reference.md).
   one re-ingestion reads; that payload is not defined yet.
 - **Terminal abort handling is not here yet.** A `FAILED` record is always retried, so
   a snapshot that can never be hashed — a clone lost for good, say — has no terminal
-  resting state. An `ABORTED` status and an abort snapshot transaction, which is what
-  makes an abort reproducible under re-ingestion, are the immediate next change.
+  resting state. The `ABORTED` status exists, and `committer delete-clone` accepts it, but
+  nothing sets it yet; an abort snapshot transaction, which is what makes an abort
+  reproducible under re-ingestion, is the immediate next change.

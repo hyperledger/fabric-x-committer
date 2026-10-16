@@ -33,5 +33,6 @@ func committerCMD() *cobra.Command {
 	cmd.AddCommand(startCMD())
 	cmd.AddCommand(healthcheckCMD())
 	cmd.AddCommand(databaseInitializationCMD())
+	cmd.AddCommand(deleteCloneCMD())
 	return cmd
 }

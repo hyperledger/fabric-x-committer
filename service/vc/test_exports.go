@@ -480,7 +480,7 @@ func dropSnapshotCloneOnCleanup(t *testing.T, db *database, name string) {
 	t.Helper()
 	t.Cleanup(func() {
 		sql := fmt.Sprintf("DROP DATABASE IF EXISTS %s", pgx.Identifier{name}.Sanitize())
-		_ = db.adminExec(context.Background(), sql)
+		_ = statedb.AdminExec(context.Background(), db.config, sql)
 	})
 }
 

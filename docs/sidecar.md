@@ -464,7 +464,8 @@ to manage these blocks in the file system.
 
 One object, `*sidecar.Service`, backs both. It serves the block-store reads directly,
 the two event streams through its embedded notifier, and answers `UNIMPLEMENTED` for
-`DeleteDBCloneForSnapshot` until the snapshot clone-deletion pipeline lands.
+`DeleteDBCloneForSnapshot`: snapshot clones are deleted with the `committer delete-clone`
+CLI instead (see [Snapshot clone deletion](validator-committer.md#snapshot-clone-deletion)).
 `committerpb.BlockQueryService` and `committerpb.Notifier` were folded into
 `SidecarService` and no longer exist; clients replace `NewBlockQueryServiceClient` and
 `NewNotifierClient` with `NewSidecarServiceClient`, keeping the same method names and
