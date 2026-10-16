@@ -40,17 +40,18 @@ type (
 const committerChannelID = "fabric-x-committer"
 
 // newBlockStore creates a new block store.
-func newBlockStore(ledgerDir string, syncInterval uint64, metrics *perfMetrics) (*blockStore, error) {
-	logger.Infof("Create block store under %s", ledgerDir)
+func newBlockStore(config *LedgerConfig, metrics *perfMetrics) (*blockStore, error) {
+	logger.Infof("Create block store under %s", config.Path)
 
+	// The block number index is not optional: the block store reads the last block header
+	// through it when it opens a non-empty ledger, so a sidecar could not recover without it.
+	attrs := []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum}
+	if !config.DisableTxIDIndex {
+		attrs = append(attrs, blkstorage.IndexableAttrTxID)
+	}
 	provider, err := blkstorage.NewProvider(
-		blkstorage.NewConf(ledgerDir, -1),
-		&blkstorage.IndexConfig{
-			AttrsToIndex: []blkstorage.IndexableAttr{
-				blkstorage.IndexableAttrBlockNum,
-				blkstorage.IndexableAttrTxID,
-			},
-		},
+		blkstorage.NewConf(config.Path, -1),
+		&blkstorage.IndexConfig{AttrsToIndex: attrs},
 		&disabled.Provider{},
 	)
 	if err != nil {
@@ -68,7 +69,7 @@ func newBlockStore(ledgerDir string, syncInterval uint64, metrics *perfMetrics) 
 		store:                        store,
 		storeProvider:                provider,
 		nextToBeCommittedBlockNumber: ledger.Height(),
-		syncInterval:                 syncInterval,
+		syncInterval:                 config.SyncInterval,
 		metrics:                      metrics,
 	}, nil
 }

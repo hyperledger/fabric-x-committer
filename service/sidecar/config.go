@@ -53,6 +53,9 @@ type (
 		// A value of N means every Nth block triggers a full sync; intermediate
 		// blocks are written without fsync. A value of 0 or 1 means every block is synced.
 		SyncInterval uint64 `mapstructure:"sync-interval"`
+		// DisableTxIDIndex drops the transaction ID index; GetBlockByTxID and GetTxByID then fail.
+		// Changing it requires an empty ledger directory.
+		DisableTxIDIndex bool `mapstructure:"disable-tx-id-index"`
 	}
 
 	// NotificationServiceConfig holds the parameters for notifications.

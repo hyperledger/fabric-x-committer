@@ -119,6 +119,10 @@ ledger:
   # sync every block (safest but slowest). Higher values improve write performance
   # but risk losing more blocks on crash (recoverable from orderer).
   sync-interval: 100
+  # Drop the transaction ID index; GetBlockByTxID and GetTxByID then fail.
+  # Changing this requires an empty ledger directory.
+  # Default: false
+  disable-tx-id-index: false
 notification:
   # Maximum time a client notification subscription can remain idle before being
   # automatically closed. Prevents resource leaks from abandoned subscriptions.
