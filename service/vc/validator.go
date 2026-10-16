@@ -44,6 +44,9 @@ type validatedTransactions struct {
 	// checkpointFeedback is set only for HOLD or HALT.
 	// The committer forwards it unchanged in the status batch.
 	checkpointFeedback *servicepb.CheckpointFeedback
+	// snapshotAbort is this batch's verified abort write, or nil. When set, the record is
+	// advanced to ABORTED in the same transaction as the abort row.
+	snapshotAbort *snapshotAbortTx
 }
 
 func (v *validatedTransactions) Debug() {
@@ -119,6 +122,7 @@ func (v *transactionValidator) validate(ctx context.Context, db *database) error
 			invalidTxStatus:       prepTx.invalidTxIDStatus,
 			txIDToHeight:          prepTx.txIDToHeight,
 			checkpoint:            prepTx.checkpoint,
+			snapshotAbort:         prepTx.snapshotAbort,
 		}
 		if err := vTxs.invalidateTxsOnReadConflicts(nsToReadConflicts); err != nil {
 			return err
@@ -134,6 +138,10 @@ func (v *transactionValidator) validate(ctx context.Context, db *database) error
 
 		if err := db.rejectCheckpointIfNotVerified(ctx, vTxs); err != nil {
 			return fmt.Errorf("failed to verify checkpoint before commit: %w", err)
+		}
+
+		if err := db.rejectSnapshotAbortIfNoSuchSnapshot(ctx, vTxs); err != nil {
+			return fmt.Errorf("failed to verify snapshot abort before commit: %w", err)
 		}
 
 		promutil.Observe(v.metrics.validatorTxBatchLatencySeconds, time.Since(start))
@@ -203,9 +211,12 @@ func (v *validatedTransactions) updateInvalidTxs(txIDs []TxID, status committerp
 		delete(v.validTxNonBlindWrites, tID)
 		delete(v.validTxBlindWrites, tID)
 		delete(v.newWrites, tID)
-		// A rejected checkpoint must not advance its snapshot on a commit retry.
+		// A rejected checkpoint or abort must not advance its snapshot on a commit retry.
 		if v.checkpoint != nil && v.checkpoint.txID == tID {
 			v.checkpoint = nil
+		}
+		if v.snapshotAbort != nil && v.snapshotAbort.txID == tID {
+			v.snapshotAbort = nil
 		}
 		v.invalidTxStatus[tID] = status
 	}

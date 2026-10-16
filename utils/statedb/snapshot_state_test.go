@@ -418,53 +418,137 @@ func (env *snapshotStateTestEnv) recordVersion(t *testing.T, txID string) int64 
 	return version
 }
 
-// TestMarkSnapshotCheckpointedInTx checks snapshot status updates, repeated updates,
-// and errors when the snapshot block number differs.
-func TestMarkSnapshotCheckpointedInTx(t *testing.T) {
+// TestMarkSnapshotTerminalInTx covers the advance to a terminal status, which runs inside the
+// caller's commit transaction so the record and the row that closes it land together. These
+// cases pin every outcome that transaction can see, for both targets. A nil seed leaves no
+// record, standing for a verified write whose record has since vanished.
+func TestMarkSnapshotTerminalInTx(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name          string
 		seed          *committerpb.SnapshotState
+		target        committerpb.SnapshotState_Status
 		blockNum      uint64
 		expectedError string
 		wantStatus    committerpb.SnapshotState_Status
 	}{{
-		name: "advances the awaited snapshot",
+		name: "checkpoint advances the awaited snapshot",
 		seed: &committerpb.SnapshotState{
 			TxRef:  &committerpb.TxRef{BlockNum: 21, TxNum: 0, TxId: "snap-cp-ok"},
 			Status: committerpb.SnapshotState_COMPLETED,
 		},
+		target:     committerpb.SnapshotState_CHECKPOINTED,
 		blockNum:   21,
 		wantStatus: committerpb.SnapshotState_CHECKPOINTED,
 	}, {
-		// A resubmitted checkpoint must not rewrite the record, so this stays a no-op
-		// rather than an error.
-		name: "already checkpointed is a no-op",
+		// A resubmitted checkpoint must not rewrite the record, so this stays a no-op.
+		name: "checkpoint on an already checkpointed record is a no-op",
 		seed: &committerpb.SnapshotState{
 			TxRef:  &committerpb.TxRef{BlockNum: 22, TxNum: 0, TxId: "snap-cp-dup"},
 			Status: committerpb.SnapshotState_CHECKPOINTED,
 		},
+		target:     committerpb.SnapshotState_CHECKPOINTED,
 		blockNum:   22,
 		wantStatus: committerpb.SnapshotState_CHECKPOINTED,
 	}, {
-		// A different block means the record no longer matches what was verified.
-		// The checkpoint must not commit, and retrying cannot fix this.
-		name: "different block is a non-retryable invariant violation",
+		// An aborted snapshot is abandoned for good, so nothing may later checkpoint it.
+		name: "checkpoint on an aborted record is a non-retryable invariant violation",
 		seed: &committerpb.SnapshotState{
-			TxRef:  &committerpb.TxRef{BlockNum: 23, TxNum: 0, TxId: "snap-cp-other"},
-			Status: committerpb.SnapshotState_COMPLETED,
+			TxRef:  &committerpb.TxRef{BlockNum: 24, TxNum: 0, TxId: "snap-cp-aborted"},
+			Status: committerpb.SnapshotState_ABORTED,
 		},
+		target:        committerpb.SnapshotState_CHECKPOINTED,
+		blockNum:      24,
+		expectedError: "is already ABORTED",
+		wantStatus:    committerpb.SnapshotState_ABORTED,
+	}, {
+		name: "abort abandons a pending snapshot",
+		seed: &committerpb.SnapshotState{
+			TxRef:  &committerpb.TxRef{BlockNum: 41, TxNum: 0, TxId: "snap-ab-pending"},
+			Status: committerpb.SnapshotState_PENDING,
+		},
+		target:     committerpb.SnapshotState_ABORTED,
+		blockNum:   41,
+		wantStatus: committerpb.SnapshotState_ABORTED,
+	}, {
+		name: "abort abandons a failed snapshot",
+		seed: &committerpb.SnapshotState{
+			TxRef:  &committerpb.TxRef{BlockNum: 42, TxNum: 0, TxId: "snap-ab-failed"},
+			Status: committerpb.SnapshotState_FAILED,
+		},
+		target:     committerpb.SnapshotState_ABORTED,
+		blockNum:   42,
+		wantStatus: committerpb.SnapshotState_ABORTED,
+	}, {
+		// A digest that diverged from the other organizations is exactly a snapshot nobody
+		// will checkpoint, so a COMPLETED record must still be abortable.
+		name: "abort abandons a completed snapshot",
+		seed: &committerpb.SnapshotState{
+			TxRef:  &committerpb.TxRef{BlockNum: 43, TxNum: 0, TxId: "snap-ab-completed"},
+			Status: committerpb.SnapshotState_COMPLETED,
+			Hash:   []byte("diverged"),
+		},
+		target:     committerpb.SnapshotState_ABORTED,
+		blockNum:   43,
+		wantStatus: committerpb.SnapshotState_ABORTED,
+	}, {
+		name: "abort on an already aborted record is a no-op",
+		seed: &committerpb.SnapshotState{
+			TxRef:  &committerpb.TxRef{BlockNum: 44, TxNum: 0, TxId: "snap-ab-dup"},
+			Status: committerpb.SnapshotState_ABORTED,
+		},
+		target:     committerpb.SnapshotState_ABORTED,
+		blockNum:   44,
+		wantStatus: committerpb.SnapshotState_ABORTED,
+	}, {
+		// The caller verified it was abortable, so a checkpointed record changed underneath.
+		name: "abort on a checkpointed record is a non-retryable invariant violation",
+		seed: &committerpb.SnapshotState{
+			TxRef:  &committerpb.TxRef{BlockNum: 45, TxNum: 0, TxId: "snap-ab-cp"},
+			Status: committerpb.SnapshotState_CHECKPOINTED,
+		},
+		target:        committerpb.SnapshotState_ABORTED,
+		blockNum:      45,
+		expectedError: "is already CHECKPOINTED",
+		wantStatus:    committerpb.SnapshotState_CHECKPOINTED,
+	}, {
+		name: "a record for another block is a non-retryable invariant violation",
+		seed: &committerpb.SnapshotState{
+			TxRef:  &committerpb.TxRef{BlockNum: 46, TxNum: 0, TxId: "snap-ab-other"},
+			Status: committerpb.SnapshotState_FAILED,
+		},
+		target:        committerpb.SnapshotState_ABORTED,
 		blockNum:      99,
 		expectedError: "the latest snapshot record is not for block 99",
-		wantStatus:    committerpb.SnapshotState_COMPLETED,
+		wantStatus:    committerpb.SnapshotState_FAILED,
+	}, {
+		// Only CHECKPOINTED and ABORTED close a snapshot; the lifecycle statuses go through
+		// SnapshotStateManager.Update, so asking for one here is a programming error.
+		name: "a non-terminal target is rejected",
+		seed: &committerpb.SnapshotState{
+			TxRef:  &committerpb.TxRef{BlockNum: 47, TxNum: 0, TxId: "snap-non-terminal"},
+			Status: committerpb.SnapshotState_PENDING,
+		},
+		target:        committerpb.SnapshotState_COMPLETED,
+		blockNum:      47,
+		expectedError: "COMPLETED is not a terminal snapshot status",
+		wantStatus:    committerpb.SnapshotState_PENDING,
+	}, {
+		// Reporting success would leave the row durable with nothing to advance.
+		name:          "no record at all is a non-retryable invariant violation",
+		target:        committerpb.SnapshotState_ABORTED,
+		blockNum:      51,
+		expectedError: "no snapshot record for block 51",
 	}} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			env := newSnapshotStateTestEnv(t)
-			env.seedRecord(t, tc.seed)
+			if tc.seed != nil {
+				env.seedRecord(t, tc.seed)
+			}
 
 			err := env.inTx(t, func(tx pgx.Tx) error {
-				return statedb.MarkSnapshotCheckpointedInTx(t.Context(), tx, tc.blockNum)
+				return statedb.MarkSnapshotTerminalInTx(t.Context(), tx, tc.blockNum, tc.target)
 			})
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
@@ -473,6 +557,9 @@ func TestMarkSnapshotCheckpointedInTx(t *testing.T) {
 				require.NoError(t, err)
 			}
 
+			if tc.seed == nil {
+				return
+			}
 			state, err := env.state.ReadLatest(t.Context())
 			require.NoError(t, err)
 			require.Equal(t, tc.wantStatus, state.Status)
@@ -480,22 +567,10 @@ func TestMarkSnapshotCheckpointedInTx(t *testing.T) {
 	}
 }
 
-// TestMarkSnapshotCheckpointedInTxWithoutPointer checks that a missing snapshot pointer
-// returns a non-retryable error instead of allowing the checkpoint to commit.
-func TestMarkSnapshotCheckpointedInTxWithoutPointer(t *testing.T) {
-	t.Parallel()
-	env := newSnapshotStateTestEnv(t)
-
-	err := env.inTx(t, func(tx pgx.Tx) error {
-		return statedb.MarkSnapshotCheckpointedInTx(t.Context(), tx, 31)
-	})
-	require.ErrorContains(t, err, "no snapshot record to checkpoint for block 31")
-	require.ErrorIs(t, err, retry.ErrNonRetryable)
-}
-
-// TestMarkSnapshotCheckpointedInTxRollsBackWithCaller checks that a rollback also undoes
-// the snapshot status update. The status must not claim a checkpoint that did not commit.
-func TestMarkSnapshotCheckpointedInTxRollsBackWithCaller(t *testing.T) {
+// TestMarkSnapshotTerminalInTxRollsBackWithCaller pins why this is transaction-scoped: the
+// advance must not survive a caller that rolls back, or a record could claim a checkpoint
+// whose attestation row never committed.
+func TestMarkSnapshotTerminalInTxRollsBackWithCaller(t *testing.T) {
 	t.Parallel()
 	env := newSnapshotStateTestEnv(t)
 	ref := &committerpb.TxRef{BlockNum: 41, TxNum: 0, TxId: "snap-cp-rollback"}
@@ -506,7 +581,8 @@ func TestMarkSnapshotCheckpointedInTxRollsBackWithCaller(t *testing.T) {
 
 	tx, err := env.pool.Begin(t.Context())
 	require.NoError(t, err)
-	require.NoError(t, statedb.MarkSnapshotCheckpointedInTx(t.Context(), tx, ref.BlockNum))
+	require.NoError(t, statedb.MarkSnapshotTerminalInTx(t.Context(), tx, ref.BlockNum,
+		committerpb.SnapshotState_CHECKPOINTED))
 	require.NoError(t, tx.Rollback(t.Context()))
 
 	state, err := env.state.ReadLatest(t.Context())
@@ -514,7 +590,8 @@ func TestMarkSnapshotCheckpointedInTxRollsBackWithCaller(t *testing.T) {
 	require.Equal(t, committerpb.SnapshotState_COMPLETED, state.Status)
 }
 
-// inTx runs op in a database transaction. It commits on success and rolls back on error.
+// inTx runs op in its own transaction, committing only when op succeeds, so a test sees
+// the same visibility rules the commit path gives statedb.MarkSnapshotTerminalInTx.
 func (env *snapshotStateTestEnv) inTx(t *testing.T, op func(tx pgx.Tx) error) error {
 	t.Helper()
 	tx, err := env.pool.Begin(t.Context())

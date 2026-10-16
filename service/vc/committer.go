@@ -137,11 +137,12 @@ func (c *transactionCommitter) commitTransactions(
 	for range maxRetriesToRemoveAllInvalidTxs {
 		// Group the writes by namespace so that we can commit to each table independently.
 		info := &statesToBeCommitted{
-			updateWrites: groupWritesByNamespace(vTx.validTxNonBlindWrites),
-			newWrites:    groupWritesByNamespace(vTx.newWrites),
-			batchStatus:  prepareStatusForCommit(vTx),
-			txIDToHeight: vTx.txIDToHeight,
-			checkpoint:   vTx.checkpoint,
+			updateWrites:  groupWritesByNamespace(vTx.validTxNonBlindWrites),
+			newWrites:     groupWritesByNamespace(vTx.newWrites),
+			batchStatus:   prepareStatusForCommit(vTx),
+			txIDToHeight:  vTx.txIDToHeight,
+			checkpoint:    vTx.checkpoint,
+			snapshotAbort: vTx.snapshotAbort,
 		}
 
 		// Stop on ErrNonRetryable: retrying cannot repair an inconsistent snapshot record.
