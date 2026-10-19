@@ -405,7 +405,7 @@ func TestSnapshotResubmissionSkipsReclone(t *testing.T) {
 
 	// Drop the clone out-of-band to prove the resubmission does NOT re-create it:
 	// because txID is already committed, createSnapshotIfPresent must skip database creation.
-	require.NoError(t, env.dbEnv.DB.adminExec(ctx,
+	require.NoError(t, statedb.AdminExec(ctx, env.dbEnv.DB.config,
 		fmt.Sprintf("DROP DATABASE IF EXISTS %s", pgx.Identifier{name}.Sanitize())))
 	require.False(t, cloneExists(t, env.dbEnv.DB, name))
 
@@ -516,7 +516,7 @@ func TestRejectSnapshotIfPriorNotCheckpointedMalformedRecord(t *testing.T) {
 	vTx, name := newIncomingSnapshotVTx(t, env.dbEnv.DB, 2001, "incoming-malformed")
 
 	err = env.dbEnv.DB.rejectSnapshotIfPriorNotCheckpointed(ctx, vTx)
-	require.ErrorContains(t, err, "failed to decode the latest _snapshot record")
+	require.ErrorContains(t, err, "failed to decode the _snapshot record")
 	require.False(t, cloneExists(t, env.dbEnv.DB, name))
 }
 
