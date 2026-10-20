@@ -199,6 +199,21 @@ The following Snapshot Hasher metrics are exported for consumption by Prometheus
 | snapshothasher_grpc_message_received_size_bytes | histogram | method        | Distribution of the wire sizes in bytes of messages received by the server.                                                     |
 | snapshothasher_grpc_message_sent_size_bytes     | histogram | method        | Distribution of the wire sizes in bytes of messages sent by the server.                                                         |
 
+## Auth Service Metrics
+
+The following Auth Service metrics are exported for consumption by Prometheus.
+
+| Name                                              | Type      | Labels        | Description                                                                                  |
+|---------------------------------------------------|-----------|---------------|----------------------------------------------------------------------------------------------|
+| authservice_grpc_requests_total                   | counter   | method        | Number of RPCs started by the service                                                        |
+| authservice_grpc_requests_latency_seconds         | histogram | method status | The latency (seconds) of requests by the service, by method and gRPC status code             |
+| authservice_grpc_stream_duration_seconds          | histogram | method status | The duration (seconds) a stream was active from start to end, by method and gRPC status code |
+| authservice_grpc_active_streams                   | gauge     | method        | Number of gRPC streams currently open on the server                                          |
+| authservice_grpc_active_connections               | gauge     |               | Number of client connections currently open on the server                                    |
+| authservice_grpc_message_received_size_bytes      | histogram | method        | Distribution of the wire sizes in bytes of messages received by the server.                  |
+| authservice_grpc_message_sent_size_bytes          | histogram | method        | Distribution of the wire sizes in bytes of messages sent by the server.                      |
+| authservice_config_last_refresh_timestamp_seconds | gauge     |               | Unix time of the last successful channel-configuration refresh.                              |
+
 ## Load Generator Metrics
 
 The following Load Generator metrics are exported for consumption by Prometheus.

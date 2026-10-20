@@ -61,6 +61,7 @@ nav:
       - Query Service: query-service.md
       - Snapshot Hasher: snapshot-hasher.md
       - Notification Service: notification-service.md
+      - Auth Service (ACL): auth-service.md
   - Configuration:
       - TLS: tls-configurations.md
       - Logging: logging.md

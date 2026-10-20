@@ -117,7 +117,7 @@ func SetupSystemTablesAndNamespaces(
 		return errors.Wrap(err, "failed to determine database type")
 	}
 
-	logger.Info("Creating tx status table, metadata table, and their methods.")
+	logger.Info("Creating tx status, metadata, auth service tables, and their methods.")
 	if execErr := retry.ExecuteSQL(ctx, config.Retry, pool,
 		fmtSplitIntoTablets(dbInitSQLStmt, tablePreSplitTablets)); execErr != nil {
 		return fmt.Errorf("failed to create system tables and functions: %w", execErr)
