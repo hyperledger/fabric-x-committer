@@ -51,3 +51,23 @@ EXCEPTION
         RETURN COALESCE(violating, '{}');
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE TABLE IF NOT EXISTS auth_tokens
+(
+    token_hash BYTEA  NOT NULL PRIMARY KEY,
+    record     BYTEA  NOT NULL,
+    expires_at BIGINT NOT NULL
+)${SPLIT_INTO_TABLETS};
+
+CREATE TABLE IF NOT EXISTS auth_nonces
+(
+    nonce      BYTEA  NOT NULL PRIMARY KEY,
+    expires_at BIGINT NOT NULL
+)${SPLIT_INTO_TABLETS};
+
+-- Indexes are created during initialization, before services start.
+CREATE INDEX IF NOT EXISTS auth_tokens_expires_at -- noqa: PG01
+    ON auth_tokens (expires_at);
+
+CREATE INDEX IF NOT EXISTS auth_nonces_expires_at -- noqa: PG01
+    ON auth_nonces (expires_at);

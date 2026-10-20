@@ -21,6 +21,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-committer/loadgen"
 	"github.com/hyperledger/fabric-x-committer/mock"
+	"github.com/hyperledger/fabric-x-committer/service/auth"
 	"github.com/hyperledger/fabric-x-committer/service/coordinator"
 	"github.com/hyperledger/fabric-x-committer/service/query"
 	"github.com/hyperledger/fabric-x-committer/service/sidecar"
@@ -76,6 +77,11 @@ func ReadSnapshotHasherYamlAndSetupLogging(
 	v *viper.Viper, configPath string,
 ) (*snapshothasher.Config, *serve.Config, error) {
 	return readYamlAndSetupLogging[snapshothasher.Config](v, configPath)
+}
+
+// ReadAuthYamlAndSetupLogging reading the YAML config file of the auth service.
+func ReadAuthYamlAndSetupLogging(v *viper.Viper, configPath string) (*auth.Config, *serve.Config, error) {
+	return readYamlAndSetupLogging[auth.Config](v, configPath)
 }
 
 // ReadMockOrdererYamlAndSetupLogging reading the YAML config file of the mock ordering service.
