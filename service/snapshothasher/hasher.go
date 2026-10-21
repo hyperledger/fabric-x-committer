@@ -15,11 +15,11 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/utils/retry"
 	"github.com/yugabyte/pgx/v5"
 	"github.com/yugabyte/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
