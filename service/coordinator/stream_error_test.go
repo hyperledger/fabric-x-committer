@@ -10,11 +10,10 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-x-common/utils/retry"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 // TestClassifyStreamRecvError covers the retry decision both managers make on a receive error.
