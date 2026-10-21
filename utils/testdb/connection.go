@@ -12,11 +12,12 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-x-common/utils/retry"
+	"github.com/jackc/puddle/v2"
 	"github.com/yugabyte/pgx/v5/pgxpool"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
@@ -142,5 +143,9 @@ func (c *Connection) execute(ctx context.Context, stmt string) error {
 		return err
 	}
 	defer pool.Close()
-	return retry.ExecuteSQL(ctx, DefaultRetry, pool, stmt)
+
+	return retry.Execute(ctx, DefaultRetry, func() error {
+		_, err := pool.Exec(ctx, stmt)
+		return errors.Wrapf(err, "failed to execute the SQL statement [%s]", stmt)
+	}, puddle.ErrClosedPool)
 }

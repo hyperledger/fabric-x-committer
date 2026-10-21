@@ -9,18 +9,17 @@ package statedb
 import (
 	"context"
 	_ "embed"
-	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/utils/retry"
 	"github.com/jackc/pgerrcode"
+	"github.com/jackc/puddle/v2"
 	"github.com/yugabyte/pgx/v5/pgconn"
 	"github.com/yugabyte/pgx/v5/pgxpool"
-
-	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 const (
@@ -117,15 +116,21 @@ func SetupSystemTablesAndNamespaces(
 		return errors.Wrap(err, "failed to determine database type")
 	}
 
+	executeSQL := func(query string) error {
+		return retry.Execute(ctx, config.Retry, func() error {
+			_, execErr := pool.Exec(ctx, query)
+			return errors.Wrapf(execErr, "failed to execute the SQL statement [%s]", query)
+		}, puddle.ErrClosedPool)
+	}
+
 	logger.Info("Creating tx status table, metadata table, and their methods.")
-	if execErr := retry.ExecuteSQL(ctx, config.Retry, pool,
-		fmtSplitIntoTablets(dbInitSQLStmt, tablePreSplitTablets)); execErr != nil {
-		return fmt.Errorf("failed to create system tables and functions: %w", execErr)
+	if execErr := executeSQL(fmtSplitIntoTablets(dbInitSQLStmt, tablePreSplitTablets)); execErr != nil {
+		return errors.Newf("failed to create system tables and functions: %w", execErr)
 	}
 
 	for _, nsID := range committerpb.SystemNamespaces() {
 		query := MakeNsTablesQuery(nsID, tablePreSplitTablets)
-		if execErr := retry.ExecuteSQL(ctx, config.Retry, pool, query); execErr != nil {
+		if execErr := executeSQL(query); execErr != nil {
 			return errors.Wrapf(
 				execErr,
 				"failed to create table and functions for namespace [%s] with query [%s]", nsID, query,
