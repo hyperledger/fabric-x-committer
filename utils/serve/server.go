@@ -13,10 +13,9 @@ import (
 
 	"github.com/cenkalti/backoff/v5"
 	"github.com/cockroachdb/errors"
+	"github.com/hyperledger/fabric-x-common/utils/retry"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
-
-	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 var (

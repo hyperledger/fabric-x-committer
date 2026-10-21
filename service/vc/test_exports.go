@@ -12,14 +12,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/utils/retry"
+	"github.com/jackc/puddle/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/yugabyte/pgx/v5"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
-	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
 	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 	"github.com/hyperledger/fabric-x-committer/utils/test"
@@ -309,10 +311,10 @@ SELECT _key, _value, _version
 FROM UNNEST($1::bytea[], $2::bytea[], $3::bigint[]) AS t(_key, _value, _version);
 `
 		query := statedb.FmtNsID(insertQuery, nsID)
-		require.NoError(t, retry.ExecuteSQL(
-			t.Context(), env.DB.retryProfile, env.DB.pool, query,
-			writes.keys, writes.values, writes.versions,
-		))
+		require.NoError(t, retry.Execute(t.Context(), env.DB.retryProfile, func() error {
+			_, err := env.DB.pool.Exec(t.Context(), query, writes.keys, writes.values, writes.versions)
+			return errors.Wrapf(err, "failed to execute the SQL statement [%s]", query)
+		}, puddle.ErrClosedPool))
 	}
 }
 
@@ -571,7 +573,8 @@ func (env *DatabaseTestEnv) SeedState(t *testing.T, f StateFixture) {
 func (env *DatabaseTestEnv) InsertRowDirectly(t *testing.T, nsID string, row KeyValue) {
 	t.Helper()
 	query := statedb.FmtNsID("INSERT INTO ns_${NAMESPACE_ID} (key, value, version) VALUES ($1, $2, 0)", nsID)
-	require.NoError(t, retry.ExecuteSQL(
-		t.Context(), env.DB.retryProfile, env.DB.pool, query, row.Key, row.Value,
-	))
+	require.NoError(t, retry.Execute(t.Context(), env.DB.retryProfile, func() error {
+		_, err := env.DB.pool.Exec(t.Context(), query, row.Key, row.Value)
+		return errors.Wrapf(err, "failed to execute the SQL statement [%s]", query)
+	}, puddle.ErrClosedPool))
 }
