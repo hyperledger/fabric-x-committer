@@ -8,6 +8,7 @@ package dependencygraph
 
 import (
 	"context"
+	"slices"
 	"sync"
 
 	"github.com/hyperledger/fabric-x-committer/utils/channel"
@@ -34,15 +35,24 @@ type (
 		waiting []*waiting
 	}
 
+	// waiting tracks the transactions that access key: the in-flight group and the groups queued
+	// behind it. The in-flight group is only a count, so released transactions are not held in memory.
 	waiting struct {
-		key   string
+		key string
+		// inFlightCount is the number of transactions released on this key that are not validated
+		// yet. The key is free once it reaches zero.
+		inFlightCount int
+		// inFlightIsWriter records whether the in-flight group is a writer, since a reader may join
+		// only a group of readers.
+		inFlightIsWriter bool
+		// queue holds the groups waiting behind the in-flight group, in arrival order. The in-flight
+		// group is not in it: popAndGetNext removes a group from the queue when it is released.
 		queue []*waiterGroup
 	}
 
 	waiterGroup struct {
-		group     []*TransactionNode
-		doneCount int
-		writer    bool
+		group  []*TransactionNode
+		writer bool
 	}
 )
 
@@ -114,11 +124,16 @@ func (m *SimpleManager) preProcessVal(ctx context.Context) {
 			return
 		}
 		var ws []*waiting
+		txCount := 0
 		for _, node := range batch {
+			if node.rejected {
+				continue
+			}
+			txCount++
 			ws = append(ws, node.waitingKeys...)
 		}
 		valQueue.Write(validatedBatch{
-			txCount: len(batch),
+			txCount: txCount,
 			waiting: ws,
 		})
 	}
@@ -126,31 +141,48 @@ func (m *SimpleManager) preProcessVal(ctx context.Context) {
 
 // taskProcessing -- taskQueue (TxNodeBatch/keys) -> out (TxNodeBatch).
 func (m *SimpleManager) taskProcessing(ctx context.Context) {
-	out := channel.NewWriter(ctx, m.out)
+	// pending holds released transactions that the output channel has not taken yet.
+	var pending TxNodeBatch
 	for ctx.Err() == nil {
 		batchQueue := m.preProcessedTxBatchQueue
-		if m.waitingTXs > m.waitingTxsLimit {
-			// When we passed the waiting TX limit, we only fetch from the validation queue.
+		// We stop fetching new transactions when we passed the waiting TX limit, or while released
+		// ones wait for the output (pending). New transactions would only grow pending while the
+		// output is full, so pausing them gives the backpressure a blocking write would. The
+		// validated queue stays open: consuming it is what lets the verifiers and the vcservices
+		// accept our output again (see below), and anything it releases is already counted in
+		// waitingTXs, so pending stays bounded by it.
+		if m.waitingTXs > m.waitingTxsLimit || len(pending) > 0 {
 			batchQueue = nil
 		}
 
-		var depFree TxNodeBatch
+		// The output is a case of the select, not a blocking write, because this goroutine is also
+		// the only consumer of the validated queue: blocking on a full output closes a cycle through
+		// the verifiers and the vcservices, and the pipeline halts silently. So transactions released
+		// below are not sent right away; they are added to pending and sent by this case in a later
+		// iteration, alongside the validated queue. A nil channel disables the case when there is
+		// nothing to send.
+		var outQueue chan<- TxNodeBatch
+		if len(pending) > 0 {
+			outQueue = m.out
+		}
+
 		select {
 		case <-ctx.Done():
 			return
+		case outQueue <- pending:
+			pending = nil //nolint:prealloc // refilled by appends of unknown size.
 		case batch := <-batchQueue:
-			depFree = m.processTxBatch(batch)
+			depFree := m.processTxBatch(batch)
+			pending = append(pending, depFree...)
 			promutil.AddToCounter(m.metrics.gdgTxProcessedTotal, len(batch))
 			promutil.AddToGauge(m.metrics.dependentTxCount, len(batch)-len(depFree))
 		case batch := <-m.preProcessedValidatedBatchQueue:
-			depFree = m.processValidatedBatch(batch)
+			depFree := m.processValidatedBatch(batch)
+			pending = append(pending, depFree...)
 			promutil.AddToCounter(m.metrics.gdgValidatedTxProcessedTotal, batch.txCount)
 			promutil.SubFromGauge(m.metrics.dependentTxCount, len(depFree))
 		}
 		promutil.SetGauge(m.metrics.gdgWaitingTxCount, m.waitingTXs)
-		if len(depFree) > 0 {
-			out.Write(depFree)
-		}
 	}
 }
 
@@ -190,14 +222,21 @@ func (m *SimpleManager) processValidatedBatch(val validatedBatch) TxNodeBatch {
 //nolint:revive // false positive: control flag.
 func (m *SimpleManager) checkTXFree(tx *TransactionNode, k string, writer bool) {
 	w, loaded := m.keyToWaitingTXs[k]
+	// A transaction may repeat a key, e.g. a namespace lifecycle transaction writes _meta:<ns> and
+	// also gets the implicit read of it. Registering it again would queue the transaction behind
+	// its own group forever. Writers are registered first, so the one kept is the stricter one.
+	if loaded && slices.Contains(tx.waitingKeys, w) {
+		return
+	}
 	if loaded {
 		if w.add(tx, writer) {
 			tx.waitForKeysCount++
 		}
 	} else {
 		w = &waiting{
-			key:   k,
-			queue: []*waiterGroup{{writer: writer, group: []*TransactionNode{tx}}},
+			key:              k,
+			inFlightCount:    1,
+			inFlightIsWriter: writer,
 		}
 		m.keyToWaitingTXs[k] = w
 	}
@@ -224,37 +263,37 @@ func (m *SimpleManager) appendFree(out TxNodeBatch, w *waiting) TxNodeBatch {
 // add append to the waiting queue.
 // returns true if the wait is needed.
 func (w *waiting) add(tx *TransactionNode, writer bool) bool { //nolint:revive // false positive: control flag.
-	sz := len(w.queue)
-
-	// When there are no other items, or the previous item or this item is a writer,
-	// we should add a new group.
-	if sz == 0 || writer || w.queue[sz-1].writer {
-		w.queue = append(w.queue, &waiterGroup{group: []*TransactionNode{tx}, writer: writer})
-		// We can return true if the item is not the first in the queue.
-		return sz != 0
+	// A reader joins the group of readers in front of it: the in-flight group when nothing is
+	// queued, so it proceeds at once, or else the last queued group. Anything else starts a group.
+	if len(w.queue) == 0 {
+		if !writer && !w.inFlightIsWriter {
+			w.inFlightCount++
+			return false
+		}
+	} else if last := w.queue[len(w.queue)-1]; !writer && !last.writer {
+		last.group = append(last.group, tx)
+		return true
 	}
-
-	// In this case, the latest group are readers and this item is also a reader.
-	// We can append this reader.
-	lastQueue := w.queue[sz-1]
-	lastQueue.group = append(lastQueue.group, tx)
-	// We can return true if the reader group is not the first one.
-	return sz != 1
+	w.queue = append(w.queue, &waiterGroup{group: []*TransactionNode{tx}, writer: writer})
+	return true
 }
 
-// popAndGetNext removes a TX from the waiters.
-// Returns the next waiter group to release.
-// Returns true if no other TX is waiting.
+// popAndGetNext removes a validated TX from the in-flight group.
+// It returns nil while other TXs of the in-flight group are not validated yet. Once the last of them
+// is, it releases the next queued group and returns it, or returns nil and true if none is queued,
+// meaning the key is free.
 func (w *waiting) popAndGetNext() ([]*TransactionNode, bool) {
-	prev := w.queue[0]
-	prev.doneCount++
-	if prev.doneCount < len(prev.group) {
+	w.inFlightCount--
+	if w.inFlightCount > 0 {
 		return nil, false
 	}
-
-	w.queue = w.queue[1:]
 	if len(w.queue) == 0 {
 		return nil, true
 	}
-	return w.queue[0].group, false
+
+	next := w.queue[0]
+	w.queue = w.queue[1:]
+	w.inFlightCount = len(next.group)
+	w.inFlightIsWriter = next.writer
+	return next.group, false
 }
