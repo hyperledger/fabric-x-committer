@@ -48,6 +48,8 @@ const (
 	valid     = byte(committerpb.Status_COMMITTED)
 	duplicate = byte(committerpb.Status_REJECTED_DUPLICATE_TX_ID)
 
+	malformedEmptyNamespaces = byte(committerpb.Status_MALFORMED_EMPTY_NAMESPACES)
+
 	// testCheckpointHoldRetryInterval keeps the checkpoint hold pause short enough for a
 	// test to observe the resulting session restart.
 	testCheckpointHoldRetryInterval = 50 * time.Millisecond
@@ -290,6 +292,114 @@ func TestRelayConfigBlock(t *testing.T) {
 
 	committedBlock2 := <-relayEnv.committedBlock
 	require.Equal(t, blk2, committedBlock2)
+}
+
+// TestRelayRejectedTxsTakeSlots verifies that the transactions the mapper rejects take a
+// waiting-TX slot like the accepted ones, since their statuses come back from the coordinator
+// and release one. Otherwise each rejection would raise the in-flight limit for good.
+func TestRelayRejectedTxsTakeSlots(t *testing.T) {
+	t.Parallel()
+	relayEnv := newRelayTestEnv(t)
+	m := relayEnv.metrics
+	relayEnv.coordinator.SetDelay(2 * time.Second)
+
+	t.Log("Block #0 (2 accepted, 2 rejected): Submit")
+	blk0 := createMixedBlockForTest(0)
+	relayEnv.incomingBlockToBeCommitted <- blk0
+
+	t.Log("Block #0: Every transaction is in flight")
+	txCount := len(blk0.Data.Data)
+	test.EventuallyIntMetric(t, txCount, m.transactionsSentTotal, 5*time.Second, 10*time.Millisecond)
+	test.EventuallyIntMetric(t, txCount, m.waitingTransactionsQueueSize, 5*time.Second, 10*time.Millisecond)
+	require.Equal(t, int64(relayEnv.waitingTxsLimit-txCount), relayEnv.relay.waitingTxsSlots.Load(t))
+
+	t.Log("Block #0: Committed, and the slots are back at the limit")
+	committedBlock0 := <-relayEnv.committedBlock
+	requireStatusMetadata(t, committedBlock0, valid, malformedEmptyNamespaces, valid, malformedEmptyNamespaces)
+	test.EventuallyIntMetric(t, 0, m.waitingTransactionsQueueSize, 5*time.Second, 10*time.Millisecond)
+	require.Equal(t, int64(relayEnv.waitingTxsLimit), relayEnv.relay.waitingTxsSlots.Load(t))
+}
+
+// TestRelayDrainWaitsForRejectedTxs verifies that a submission barrier does not open on the
+// statuses of rejected transactions alone, while an accepted transaction is still in flight.
+func TestRelayDrainWaitsForRejectedTxs(t *testing.T) {
+	t.Parallel()
+	var dedup txIDDedup
+	mappedBlock, err := mapBlock(createMixedBlockForTest(0), &dedup, TxParsingConfig{})
+	require.NoError(t, err)
+	require.Len(t, mappedBlock.block.Rejected, 2)
+
+	r := newStatusTestRelay(t, 100, mappedBlock)
+	queue := make(chan *blockMappingResult, 1)
+	r.queueMappedBlock(t.Context(), channel.NewWriter(t.Context(), queue), mappedBlock)
+
+	statusBatch := make(chan *servicepb.TxStatusBatch, 2)
+	statusBatch <- &servicepb.TxStatusBatch{Status: mappedBlock.block.Rejected}
+	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
+		return connection.FilterStreamRPCError(r.processStatusBatch(ctx, statusBatch))
+	}, nil)
+
+	t.Log("Only the rejected statuses are back: the barrier stays closed")
+	drainCtx, drainCancel := context.WithTimeout(t.Context(), time.Second)
+	defer drainCancel()
+	// As in preProcessBlock, a waiter on the slots only wakes on a broadcast.
+	stop := context.AfterFunc(drainCtx, r.waitingTxsSlots.Broadcast)
+	defer stop()
+	require.ErrorIs(t, r.drain(drainCtx), context.DeadlineExceeded)
+
+	t.Log("The accepted statuses are back: the barrier opens with the slots at the limit")
+	accepted := make([]*committerpb.TxStatus, 0, len(mappedBlock.block.Txs))
+	for _, tx := range mappedBlock.block.Txs {
+		accepted = append(accepted, committerpb.NewTxStatusFromRef(tx.Ref, committerpb.Status_COMMITTED))
+	}
+	statusBatch <- &servicepb.TxStatusBatch{Status: accepted}
+	require.NoError(t, r.drain(t.Context()))
+	require.Equal(t, int64(100), r.waitingTxsSlots.Load(t))
+}
+
+// TestRelayHeldCheckpointReleasesSlot verifies that held checkpoint feedback releases the slot
+// its checkpoint took, since a held checkpoint returns no status.
+func TestRelayHeldCheckpointReleasesSlot(t *testing.T) {
+	t.Parallel()
+	blk, txIDs := createBlockForTest(t, 0, nil)
+	var dedup txIDDedup
+	mappedBlock, err := mapBlock(blk, &dedup, TxParsingConfig{})
+	require.NoError(t, err)
+
+	const limit = 10
+	r := newStatusTestRelay(t, limit, mappedBlock)
+	queue := make(chan *blockMappingResult, 1)
+	r.queueMappedBlock(t.Context(), channel.NewWriter(t.Context(), queue), mappedBlock)
+
+	statusBatch := make(chan *servicepb.TxStatusBatch, 2)
+	statusBatch <- &servicepb.TxStatusBatch{Status: []*committerpb.TxStatus{
+		committerpb.NewTxStatus(committerpb.Status_COMMITTED, txIDs[0], 0, 0),
+		committerpb.NewTxStatus(committerpb.Status_COMMITTED, txIDs[1], 0, 1),
+	}}
+	statusBatch <- &servicepb.TxStatusBatch{CheckpointFeedback: &servicepb.CheckpointFeedback{
+		Signal: servicepb.CheckpointFeedback_HOLD,
+		Ref:    committerpb.NewTxRef(txIDs[2], 0, 2),
+	}}
+
+	require.ErrorIs(t, r.processStatusBatch(t.Context(), statusBatch), retry.ErrBackOff)
+	require.Equal(t, int64(limit), r.waitingTxsSlots.Load(t))
+	test.RequireIntMetricValue(t, 0, r.metrics.waitingTransactionsQueueSize)
+}
+
+// newStatusTestRelay returns a relay with the given slot limit that tracks mappedBlock, ready
+// for processStatusBatch.
+func newStatusTestRelay(t *testing.T, limit int64, mappedBlock *blockMappingResult) *relay {
+	t.Helper()
+	r := newRelay(time.Second, testCheckpointHoldRetryInterval, TxParsingConfig{},
+		newPerformanceMetrics(newQueues(10)))
+	r.waitingTxsSlots = utils.NewSlots(limit)
+	r.outgoingCommittedBlock = make(chan *common.Block, 1)
+	r.outgoingCommittedBlockWithTxs = make(chan *committedBlockWithTxs, 1)
+	r.outgoingStatusUpdates = make(chan []*committerpb.TxStatus, 2)
+	r.inFlightBlocks.reset(mappedBlock.blockNumber)
+	_, err := r.inFlightBlocks.register(mappedBlock.blockNumber, mappedBlock.withStatus)
+	require.NoError(t, err)
+	return r
 }
 
 // TestRelayUnprocessableConfigBlock verifies that a config block the sidecar cannot process ends
@@ -676,7 +786,7 @@ func submitSnapshotBlockForTest(t *testing.T, mappedBlock *blockMappingResult) [
 
 	r := &relay{
 		metrics:         newPerformanceMetrics(newQueues(10)),
-		waitingTxsSlots: utils.NewSlots(int64(len(mappedBlock.block.Txs)) + 1),
+		waitingTxsSlots: utils.NewSlots(int64(inFlightTxCount(mappedBlock.block)) + 1),
 	}
 
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
@@ -703,7 +813,7 @@ func submitSnapshotBlockForTest(t *testing.T, mappedBlock *blockMappingResult) [
 		segment, ok := reader.Read()
 		require.True(t, ok, "timed out waiting for a segment")
 		segments = append(segments, segment)
-		r.waitingTxsSlots.Release(int64(len(segment.block.Txs)))
+		r.waitingTxsSlots.Release(int64(inFlightTxCount(segment.block)))
 	}
 
 	require.NoError(t, g.Wait())
@@ -872,4 +982,25 @@ func TestRelayWithoutCheckpointFeedbackKeepsRunning(t *testing.T) {
 	require.NoError(t, relayService.processCheckpointFeedback(t.Context(),
 		&servicepb.CheckpointFeedback{Signal: servicepb.CheckpointFeedback_SIGNAL_UNSPECIFIED}))
 	test.RequireIntMetricValue(t, int(checkpointGateRunning), relayService.metrics.checkpointFeedbackState)
+}
+
+// createMixedBlockForTest creates a block of two accepted transactions, each followed by one the
+// mapper rejects with a stored status (no namespaces).
+func createMixedBlockForTest(number uint64) *common.Block {
+	txb := &workload.TxBuilder{ChannelID: "ch1"}
+	accepted := func() *servicepb.LoadGenTx {
+		return txb.MakeTx(&applicationpb.Tx{
+			Namespaces: []*applicationpb.TxNamespace{{
+				NsId:        "ns",
+				BlindWrites: []*applicationpb.Write{{Key: []byte("key")}},
+			}},
+			Endorsements: dummyEndorsements(1),
+		})
+	}
+	rejected := func() *servicepb.LoadGenTx {
+		return txb.MakeTx(&applicationpb.Tx{Endorsements: dummyEndorsements(1)})
+	}
+	return workload.MapToOrdererBlock(number, []*servicepb.LoadGenTx{
+		accepted(), rejected(), accepted(), rejected(),
+	})
 }

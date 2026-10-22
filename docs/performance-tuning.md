@@ -65,7 +65,7 @@ Monitor queue length gauges to find the bottleneck. A growing queue means the do
 
 ### `waiting-txs-limit`
 
-Maximum number of transactions the Sidecar has sent to the Coordinator and is awaiting status for. The Sidecar acquires one slot per transaction before sending a block. Slots are released only when the Coordinator returns the transaction's final status. When all slots are occupied, the Sidecar blocks on slot acquisition, which causes the internal block channel to fill up, and eventually the Sidecar stops pulling blocks from the ordering service.
+Maximum number of transactions the Sidecar has sent to the Coordinator and is awaiting status for. The Sidecar acquires one slot per transaction before sending a block, including the transactions it rejects itself. A slot is released when the Coordinator returns the transaction's final status, or, for a held or halted checkpoint, its checkpoint feedback. When all slots are occupied, the Sidecar blocks on slot acquisition, which causes the internal block channel to fill up, and eventually the Sidecar stops pulling blocks from the ordering service.
 
 This value directly controls how many transactions can be in-flight across the entire pipeline. With a low value (e.g., 100), the Sidecar sends 100 transactions and blocks until all complete — the pipeline runs in lock-step and throughput drops dramatically. With a very high value, more transactions queue across the pipeline, increasing memory and queuing latency. Config blocks trigger a full drain regardless of this value. Default: 20,000,000.
 
