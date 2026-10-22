@@ -196,7 +196,7 @@ func (s *Service) Run(ctx context.Context) error {
 	})
 	g.Go(func() error {
 		// Notification for clients.
-		return s.notifier.run(gCtx, s.queues.statusQueue, s.queues.committedBlockWithTxs)
+		return s.run(gCtx, s.queues.statusQueue, s.queues.committedBlockWithTxs)
 	})
 
 	g.Go(func() error {
@@ -445,8 +445,8 @@ func appendMissingBlock(
 	committedBlocks channel.Writer[*common.Block],
 ) error {
 	var dedup txIDDedup
-	// Recovery maps each missing block once, so parsing it in place (the zero TxParsingConfig) is enough.
-	mappedBlock, err := mapBlock(blk, &dedup, TxParsingConfig{})
+	// Recovery maps each missing block once, so parsing it in place is enough.
+	mappedBlock, err := mapBlock(blk, &dedup, TxParsingConfig{MaxWorkers: 1})
 	if err != nil {
 		// This can never occur unless there is a bug in the relay.
 		return err
