@@ -49,6 +49,9 @@ server:
     #   - Must be less than or equal to requests-per-second
     # Default: 1,000
     burst: 0
+  # flow-control:  # Optional HTTP/2 flow control windows, in bytes. See docs/performance-tuning.md.
+  #   initial-window-size: 16_777_216       # Per stream. Default: 16 MB
+  #   initial-conn-window-size: 33_554_432  # Per connection. Default: 32 MB
 # Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
 monitoring:
   # The endpoint where Prometheus metrics and pprof profiling are exposed.

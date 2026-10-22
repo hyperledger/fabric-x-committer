@@ -18,16 +18,33 @@ type (
 	// MultiClientConfig contains the endpoints, TLS config, and retry profile.
 	// This config allows the support of number of different endpoints to multiple service instances.
 	MultiClientConfig struct {
-		Endpoints []*Endpoint    `mapstructure:"endpoints"`
-		TLS       TLSConfig      `mapstructure:"tls"`
-		Retry     *retry.Profile `mapstructure:"reconnect"`
+		Endpoints   []*Endpoint       `mapstructure:"endpoints"`
+		TLS         TLSConfig         `mapstructure:"tls"`
+		Retry       *retry.Profile    `mapstructure:"reconnect"`
+		FlowControl FlowControlConfig `mapstructure:"flow-control"`
 	}
 
 	// ClientConfig contains a single endpoint, TLS config, and retry profile.
 	ClientConfig struct {
-		Endpoint *Endpoint      `mapstructure:"endpoint"`
-		TLS      TLSConfig      `mapstructure:"tls"`
-		Retry    *retry.Profile `mapstructure:"reconnect"`
+		Endpoint    *Endpoint         `mapstructure:"endpoint"`
+		TLS         TLSConfig         `mapstructure:"tls"`
+		Retry       *retry.Profile    `mapstructure:"reconnect"`
+		FlowControl FlowControlConfig `mapstructure:"flow-control"`
+	}
+
+	// FlowControlConfig sizes a connection's HTTP/2 flow control windows. It is per client and per
+	// server because the right size depends on the link's message sizes and round-trip time. Zero
+	// keeps gRPC's own BDP-based tuning, which any explicit value disables. The defaults apply only to
+	// a config loaded through viper. See docs/performance-tuning.md.
+	//
+	// A window also bounds the unread data one peer can make a server hold, so limit the client-facing
+	// endpoints with MaxConcurrentStreams and RateLimit rather than by shrinking it.
+	FlowControlConfig struct {
+		// InitialWindowSize is the per-stream window in bytes.
+		InitialWindowSize int32 `mapstructure:"initial-window-size" default:"16777216" validate:"gte=0"`
+		// InitialConnWindowSize is the connection-level window in bytes, shared by the streams on a
+		// connection, so it should exceed InitialWindowSize.
+		InitialConnWindowSize int32 `mapstructure:"initial-conn-window-size" default:"33554432" validate:"gte=0"`
 	}
 
 	// TLSConfig holds the TLS options and certificate paths

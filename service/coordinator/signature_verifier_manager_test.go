@@ -9,6 +9,7 @@ package coordinator
 import (
 	"context"
 	"crypto/rand"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -40,13 +41,22 @@ type svMgrTestEnv struct {
 	curBlockNum         atomic.Uint64
 }
 
-func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte) *svMgrTestEnv {
-	t.Helper()
-	expectedEndError := string(expectedEndErrorMsg)
-	verifier, sc := mock.StartMockVerifierService(t, test.StartServerParameters{NumService: numSvService})
+func newSvMgrTestEnv(tb testing.TB, numSvService int, expectedEndErrorMsg ...byte) *svMgrTestEnv {
+	tb.Helper()
+	return newSvMgrTestEnvWithQueues(tb, numSvService, 10, expectedEndErrorMsg...)
+}
 
-	inputTxBatch := make(chan dependencygraph.TxNodeBatch, 10)
-	outputValidatedTxs := make(chan dependencygraph.TxNodeBatch, 10)
+// newSvMgrTestEnvWithQueues is newSvMgrTestEnv with a configurable queue depth, so a benchmark can
+// keep the queues from being what it measures.
+func newSvMgrTestEnvWithQueues(
+	tb testing.TB, numSvService, queueDepth int, expectedEndErrorMsg ...byte,
+) *svMgrTestEnv {
+	tb.Helper()
+	expectedEndError := string(expectedEndErrorMsg)
+	verifier, sc := mock.StartMockVerifierService(tb, test.StartServerParameters{NumService: numSvService})
+
+	inputTxBatch := make(chan dependencygraph.TxNodeBatch, queueDepth)
+	outputValidatedTxs := make(chan dependencygraph.TxNodeBatch, queueDepth)
 
 	pm := newPolicyManager()
 	metrics := newPerformanceMetrics(&channels{
@@ -65,20 +75,20 @@ func newSvMgrTestEnv(t *testing.T, numSvService int, expectedEndErrorMsg ...byte
 	)
 
 	test.RunServiceForTest(
-		t.Context(), t,
+		tb.Context(), tb,
 		func(ctx context.Context) error {
 			err := connection.FilterStreamRPCError(svm.run(ctx))
 			if expectedEndError != "" {
-				require.ErrorContains(t, err, expectedEndError)
+				require.ErrorContains(tb, err, expectedEndError)
 			} else {
-				assert.NoError(t, err)
+				assert.NoError(tb, err)
 			}
 			return nil
 		},
 		nil,
 	)
 	test.WaitForConnections(
-		t, metrics.Provider, "coordinator_verifier_connection_status", numSvService,
+		tb, metrics.Provider, "coordinator_verifier_connection_status", numSvService,
 	)
 
 	env := &svMgrTestEnv{
@@ -177,6 +187,69 @@ func (e *svMgrTestEnv) requireRetriedTxsTotal(t *testing.T, expectedRetriedTxsTo
 		t, expectedRetriedTxsTotal, e.signVerifierManager.metrics.verifiers.retriedTotal,
 		30*time.Second, 250*time.Millisecond,
 	)
+}
+
+const (
+	// benchSvBatchSize is the batch size the evaluation cluster's dependency graph produced.
+	benchSvBatchSize = 340
+	// benchSvValueSize approximates a deployed transaction (3.34 MB per 10,000-transaction block);
+	// the sender goroutine marshals every byte of it in stream.Send.
+	benchSvValueSize = 334
+	// benchSvQueueDepth is deliberately far above the deployment's 60, so that the manager's own
+	// drain rate is what the benchmark measures rather than the depth of the queue in front of it.
+	benchSvQueueDepth = 512
+)
+
+// BenchmarkSignatureVerifierManager measures how fast the signature verifier manager pushes
+// transactions to verifiers and collects their statuses. The verifiers are mocks that do no
+// signature work, so any ceiling it finds belongs to the manager.
+func BenchmarkSignatureVerifierManager(b *testing.B) {
+	for _, numVerifiers := range []int{1, 3} {
+		b.Run("verifiers="+strconv.Itoa(numVerifiers), func(b *testing.B) {
+			runSvManagerBench(b, numVerifiers)
+		})
+	}
+}
+
+func runSvManagerBench(b *testing.B, numVerifiers int) {
+	b.Helper()
+	env := newSvMgrTestEnvWithQueues(b, numVerifiers, benchSvQueueDepth)
+
+	// Pre-generate every batch so transaction generation stays out of the timed region.
+	batchCount := max(1, (b.N+benchSvBatchSize-1)/benchSvBatchSize)
+	batches := make([]dependencygraph.TxNodeBatch, batchCount)
+	for i := range batches {
+		batches[i], _ = createTxNodeBatchForTest(b, uint64(i), benchSvBatchSize, benchSvValueSize)
+	}
+	txTotal := batchCount * benchSvBatchSize
+
+	input := channel.NewWriter(b.Context(), env.inputTxBatch)
+	output := channel.NewReader(b.Context(), env.outputValidatedTxs)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for _, batch := range batches {
+			if !input.Write(batch) {
+				return
+			}
+		}
+	}()
+
+	for received := 0; received < txTotal; {
+		validated, ok := output.Read()
+		if !ok {
+			b.Fatal("context ended before every transaction came back")
+		}
+		received += len(validated)
+	}
+	<-done
+
+	b.StopTimer()
+	b.ReportMetric(float64(txTotal)/b.Elapsed().Seconds(), "tx/s")
 }
 
 func TestSignatureVerifierManagerWithSingleVerifier(t *testing.T) {
@@ -301,10 +374,10 @@ func TestSignatureVerifierWithAllInvalidTxs(t *testing.T) {
 }
 
 func createTxNodeBatchForTest(
-	t *testing.T,
+	tb testing.TB,
 	blkNum uint64, numTxs, valueSize int,
 ) (inputTxBatch, expectedValidatedTxs dependencygraph.TxNodeBatch) {
-	t.Helper()
+	tb.Helper()
 
 	ns := []*applicationpb.TxNamespace{{
 		BlindWrites: []*applicationpb.Write{{
