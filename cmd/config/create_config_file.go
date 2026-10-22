@@ -50,6 +50,7 @@ type (
 		LoadGenBlockLimit       uint64                  // loadgen
 		LoadGenTXLimit          uint64                  // loadgen
 		LoadGenWorkers          uint64                  // loadgen
+		LoadGenQueriesRate      float64                 // loadgen: avg reads versioned via the query service per tx
 		Logging                 flogging.Config         // for all
 		RateLimit               *serve.RateLimitConfig  // query, sidecar
 		MaxRequestKeys          int                     // query

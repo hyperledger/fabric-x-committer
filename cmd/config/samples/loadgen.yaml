@@ -114,6 +114,25 @@ orderer-client:
   # We set low values to reduce the CPU load during tests.
   broadcast-parallelism: 1
 
+# Query-service connection used to fetch committed read versions for a rate-controlled subset of
+# each transaction's reads (load-profile.transaction.queries-rate) before signing. One load-balanced
+# connection is dialed per worker, round-robining across the endpoints below (list multiple query-service
+# instances to spread load). Required when queries-rate > 0; omit (or comment out) otherwise.
+# query-client:
+#   endpoints:
+#     - query:7001
+#   tls: *tlsConfig
+#   # Optional exponential backoff retry for the query connections. GetRows retries transient
+#   # gRPC failures (UNAVAILABLE / DEADLINE_EXCEEDED / RESOURCE_EXHAUSTED) with this backoff and
+#   # fails the run once the budget is spent. Default:
+#   # reconnect:
+#   #   initial-interval: 500ms
+#   #   randomization-factor: 0.5
+#   #   multiplier: 1.5
+#   #   max-interval: 10s
+#   #   # Total retry budget. Set to 0s for unlimited retries (never give up).
+#   #   max-elapsed-time: 15m
+
 # Load profile configuration defining transaction characteristics and generation parameters
 load-profile:
   # block describes generate block characteristics
@@ -157,6 +176,10 @@ load-profile:
     # signature verification and error handling. 0.1 = 10% invalid. The decision is derived
     # deterministically from the transaction index.
     invalid-signatures: 0.1
+    # Average number of reads per transaction whose committed version is fetched from the query
+    # service before signing (0, default: no querying at all; reads keep nil versions). Independent
+    # of key-backref-rate. Requires the top-level 'query-client' connection to be set when non-zero.
+    # queries-rate: 0
     #
     # The transaction layout above is fixed (same slot counts every transaction). key-backref-rate,
     # tx-reference-gap, and key-lookback-window control only which keys fill those slots — fresh keys, or
