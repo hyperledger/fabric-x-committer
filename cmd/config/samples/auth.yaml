@@ -1,0 +1,170 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+# Configuration for the server
+server:
+  # The gRPC endpoint where the auth service listens for Authenticate calls from clients and
+  # Authorize calls from resource servers. Format: host:port or :port (binds to all interfaces).
+  endpoint: :10001
+  tls: &tlsConfig
+    # TLS mode for server connections: 'none' (no TLS), 'tls' (server auth only),
+    # or 'mtls' (mutual TLS with client cert verification).
+    # mtls is strongly recommended: the token's certificate binding (its proof-of-possession
+    # property) depends on the client presenting a TLS certificate, which this mode enforces.
+    mode: mtls
+    # Path to the server's TLS certificate file (public key).
+    cert-path: /root/artifacts/peerOrganizations/peer-org-0.com/peers/auth/tls/server.crt
+    # Path to the server's TLS private key file.
+    key-path: /root/artifacts/peerOrganizations/peer-org-0.com/peers/auth/tls/server.key
+    # List of paths to CA certificate files for verifying client certificates (required for mtls).
+    ca-cert-paths:
+      - /root/artifacts/peerOrganizations/peer-org-0.com/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
+  keep-alive:
+    params:
+      # After a duration of this time if the server doesn't see any activity it
+      # pings the client to see if the transport is still alive.
+      time: 60s
+      # After having pinged for keepalive check, the server waits for a duration
+      # of Timeout and if no activity is seen even after that the connection is closed.
+      timeout: 10s
+    enforcement-policy:
+      # The minimum amount of time a client should wait before sending a keepalive ping.
+      min-time: 60s
+      # If true, server allows keepalive pings even when there are no active streams(RPCs).
+      permit-without-stream: true
+  # Rate limiting configuration for unary gRPC endpoints (token bucket).
+  rate-limit:
+    # Maximum number of requests per second allowed. Set to 0 to disable rate limiting.
+    # Default: 5,000
+    requests-per-second: 5000
+    # Maximum number of requests allowed in a single burst. Default: 1,000
+    burst: 1000
+# Monitoring endpoint configuration (Prometheus metrics at /metrics and pprof profiling at /debug/pprof/).
+monitoring:
+  # The endpoint where Prometheus metrics and pprof profiling are exposed.
+  endpoint: :2121
+  # Monitoring TLS configuration should/could be different from the GRPC server TLS
+  # to only allow authorized admins to monitor the service's metrics.
+  tls: *tlsConfig
+  rate-limit:
+    requests-per-second: 0
+    burst: 0
+
+# Maximum time to wait for the auth service to become ready before startup fails.
+# Default: 5m
+startup-timeout: 5m
+
+# Database connection configuration. The auth service reads the committed channel configuration
+# from the state database (the same one the committer uses) and persists issued token records there.
+database:
+  # List of database endpoints to connect to. Format: host:port for each endpoint.
+  endpoints:
+    - db:5433
+  # Database username for authentication.
+  username: "yugabyte"
+  # Database password for authentication.
+  password: "yugabyte"
+  # Database name to connect to.
+  database: "yugabyte"
+  tls:
+    # TLS mode for database connections: 'none' (no TLS) or 'tls' (server auth with CA verification).
+    mode: tls
+    # Path to the CA certificate file for verifying the database server's certificate.
+    ca-cert-path: /root/artifacts/peerOrganizations/peer-org-0.com/msp/tlscacerts/tlspeer-org-0-CA-cert.pem
+  # Maximum size of the database connection pool. Default: 20
+  max-connections: 10
+  # Minimum size of the database connection pool. Default: 1
+  min-connections: 5
+  # Enable load balancing across multiple database endpoints. Set to false for single-node deployments.
+  load-balance: false
+  retry:
+    # The exponential backoff retry strategy for database operation.
+    # This strategy increases the delay between retry attempts exponentially.
+    # When using YugabyteDB as the backend, it is needed to handle retryable errors.
+    # https://support.yugabyte.com/hc/en-us/articles/
+    # 4409627048461-How-to-Troubleshoot-Database-Transaction-Retryable-Errors
+
+    # initial-interval: Specifies the duration of the first backoff interval.
+    # This is the time to wait before the first retry attempt.
+    # Format: string representing a duration (e.g., "500ms", "1s", "2.5s").
+    # Default: 500ms
+    initial-interval: 500ms
+
+    # randomization-factor: Controls the amount of randomness (jitter) applied to each backoff interval.
+    # The actual backoff duration for an attempt will be randomly selected from the range:
+    # [current_interval * (1 - randomization_factor), current_interval * (1 + randomization_factor)]
+    # A factor of 0 means no randomization. A factor of 0.5 means the actual interval
+    # can vary by +/- 50% of the calculated interval.
+    # Must be between 0 and 1.
+    # Default: 0.5
+    randomization-factor: 0.5
+
+    # multiplier: The factor by which the backoff interval increases after each failed attempt.
+    # The next interval (before randomization) is calculated as: current_interval * multiplier.
+    # A value of 1.5 means each subsequent interval will be 50% longer than the previous one.
+    # Must be >= 1.
+    # Default: 1.5
+    multiplier: 1.5
+
+    # max-interval: Sets the absolute maximum duration for any single backoff interval.
+    # Even if the calculated interval (initial_interval * multiplier^n) exceeds this value,
+    # the interval used (before randomization) will be capped at max-interval.
+    # Format: string representing a duration (e.g., "60s", "1m", "5m").
+    # Default: 10s
+    max-interval: 60s
+
+    # max-elapsed-time: The maximum total time allowed for retries since the operation first began.
+    # If the total time spent (including execution time of attempts and backoff waits)
+    # exceeds this duration, the retry mechanism will stop, even if other limits haven't been reached.
+    # Setting this to "0" means there is no time limit, and retries will continue
+    # indefinitely until successful.
+    # Format: string representing a duration (e.g., "15m", "1h").
+    # Default: 10m
+    max-elapsed-time: 15m
+
+# Lifetime of an issued token.
+# Past it the resource server rejects the token and the client must authenticate again.
+# It also bounds how long an open stream lives,
+# since a stream cannot outlive the token that established it. Default: 5m
+token-ttl: 5m
+
+# Bounds how far an authentication envelope's timestamp may deviate from the server's clock. Replay is
+# prevented by the single-use nonce (see nonce-ttl); this window bounds how
+# long an unredeemed envelope stays presentable. Default: 5m
+envelope-freshness-window: 5m
+
+# How long a server-issued authentication nonce remains redeemable. A client must call IssueNonce and
+# sign the returned nonce into its envelope before calling Authenticate; the nonce is consumed on use,
+# so a captured envelope cannot be replayed. This only has to cover the IssueNonce -> Authenticate round
+# trip.
+# A shorter window means fewer unredeemed nonces held in the database. Default: 1m.
+nonce-ttl: 1m
+
+# How often the service reads the latest committed channel configuration from the state database to
+# rebuild its policy/MSP evaluation bundle. Default: 1m
+config-refresh-interval: 1m
+
+# How often expired token and nonce records are deleted from the database. Default: 1m
+sweep-interval: 1m
+
+# Throttles IssueNonce and Authenticate - the only RPCs reachable without a token, and the only ones
+# costing a signature verification and an MSP resolution. Separate from the server's `rate-limit` above
+# because that must stay high enough for Authorize, which fires once per protected RPC; one number cannot serve both.
+challenge-rate-limit:
+  # Set to 0 to disable. Default: 200
+  requests-per-second: 200
+  # Headroom above the steady rate, absorbing a burst of clients authenticating at once. Must be greater
+  # than 0 and at most requests-per-second while the limit is enabled. Default: 50
+  burst: 50
+
+# Logging configuration
+logging:
+  # Log level specification. Can be a single level (e.g., "info", "debug") or
+  # module-specific levels (e.g., "info,auth=debug").
+  logSpec: info:grpc=error
+  # Log message format template.
+  format: >-
+    %{color}%{time:2006-01-02 15:04:05.000 MST} [%{module}] %{shortfunc}
+    -> %{level:.4s}%{color:reset} %{message}
