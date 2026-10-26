@@ -26,8 +26,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
@@ -899,22 +897,4 @@ func TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery(t *testing.T
 
 	t.Log("Verify normal operation continues with recovered state")
 	env.sendTransactionsAndEnsureCommitted(newCtx, t, 12)
-}
-
-// TestDeleteDBCloneForSnapshotUnimplemented pins that the sidecar does not serve clone
-// deletion: the RPC is still in committerpb, but clones are deleted with the
-// `committer delete-clone` CLI, so the sidecar reports UNIMPLEMENTED.
-func TestDeleteDBCloneForSnapshotUnimplemented(t *testing.T) {
-	t.Parallel()
-
-	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{})
-	env.startSidecarService(t.Context(), t)
-
-	conn := test.NewInsecureConnection(t, &env.serverConfig.GRPC.Endpoint)
-	client := committerpb.NewSidecarServiceClient(conn)
-
-	_, err := client.DeleteDBCloneForSnapshot(t.Context(), &committerpb.DeleteDBCloneForSnapshotRequest{
-		TxId: "tx1",
-	})
-	require.Equal(t, codes.Unimplemented, status.Code(err))
 }

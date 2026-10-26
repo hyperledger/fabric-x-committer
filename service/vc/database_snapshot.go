@@ -306,8 +306,8 @@ func (db *database) createPostgresSnapshotDatabase(ctx context.Context, clone, s
 	// Re-enable even if CREATE DATABASE fails, so the source is never left locked
 	// out on the happy/soft-error path. (Hard-kill lockout is coordinator-recovered.)
 	defer func() { //nolint:contextcheck // re-enable must run even if ctx is already cancelled/expired.
-		if err := statedb.AdminExec(context.Background(), db.config,
-			fmt.Sprintf("ALTER DATABASE %s ALLOW_CONNECTIONS true", src)); err != nil {
+		allow := fmt.Sprintf("ALTER DATABASE %s ALLOW_CONNECTIONS true", src)
+		if err := statedb.AdminExec(context.Background(), db.config, allow); err != nil {
 			logger.Warnf("failed to re-enable connections on source database: %+v", err)
 		}
 	}()
