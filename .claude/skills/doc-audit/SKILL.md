@@ -95,10 +95,10 @@ reference map. **Ground every finding in the diff — no speculative findings.**
 |---|---|
 | Config field (`mapstructure` tag) | `cmd/config/samples/*.yaml`, `cmd/config/templates/*.yaml.tmpl`, service docs in `docs/`, the `development` skill's config-pipeline note |
 | CLI flag / command | `docs/cli/committer.md` (Tier A), `docs/setup.md`, `README.md`, `docs/deployment-guide.md`, `docker/README.md` |
-| Service / package / file / symbol | `docs/*.md` prose + `docs/*-block-diagram.md`, `CLAUDE.md`, `AGENTS.md`, `.bob/rules/*.md`, `.bob/skills/*/SKILL.md` (skills cite exact paths/symbols — e.g. the `development` skill's reuse table and `references/service-construction.md`) |
+| Service / package / file / symbol | `docs/*.md` prose + `docs/*-block-diagram.md`, `AGENTS.md`, `.claude/skills/*/SKILL.md` (skills cite exact paths/symbols — e.g. the `development` skill's reuse table and `references/service-construction.md`) |
 | Metric | `docs/metrics_reference.md` (Tier A) |
 | `workload.Profile` field | `cmd/config/samples/loadgen.yaml`, `cmd/config/templates/loadgen_shared.yaml.tmpl`, `docs/loadgen-artifacts.md` (Tier A), and the env-override test |
-| Make target / script / dev workflow | `CLAUDE.md`, `AGENTS.md`, `docs/setup.md`, any skill that names the command |
+| Make target / script / dev workflow | `AGENTS.md`, `docs/setup.md`, any skill that names the command |
 
 Grep the whole corpus, not just `docs/`:
 

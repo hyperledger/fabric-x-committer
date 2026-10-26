@@ -80,7 +80,7 @@ gh pr diff <PR_NUMBER> --repo hyperledger/fabric-x-committer
 
 ### 2. Create Local Review Document
 
-Write `PR_<NUMBER>_REVIEW.md` with: Summary, Scope Creep Check, Compliance Check (against `@guidelines.md`, `@AGENTS.md`, and `.bob/rules`), File-by-File Analysis, Architecture Impact, Security Analysis, Configuration Impact, Performance Considerations, Migration Strategy, Testing Recommendations, Documentation Impact.
+Write `PR_<NUMBER>_REVIEW.md` with: Summary, Scope Creep Check, Compliance Check (against `@guidelines.md` and `@AGENTS.md`), File-by-File Analysis, Architecture Impact, Security Analysis, Configuration Impact, Performance Considerations, Migration Strategy, Testing Recommendations, Documentation Impact.
 
 ### 3. Request Permission to Post
 

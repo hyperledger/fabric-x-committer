@@ -32,9 +32,7 @@ docker/runner/out
 .idea
 .vscode
 .build
-.bob/*
-!.bob/rules/
-!.bob/skills/
+.bob/
 .claude/settings.local.json
 
 *coverage.profile
