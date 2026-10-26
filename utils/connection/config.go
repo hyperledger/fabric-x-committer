@@ -9,9 +9,8 @@ package connection
 import (
 	"crypto/tls"
 
+	"github.com/hyperledger/fabric-x-common/utils/retry"
 	"google.golang.org/grpc/credentials"
-
-	"github.com/hyperledger/fabric-x-committer/utils/retry"
 )
 
 type (
