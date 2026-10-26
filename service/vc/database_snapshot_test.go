@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
@@ -136,6 +137,57 @@ func TestCreateSnapshotDatabase(t *testing.T) {
 	for _, row := range cloneRows {
 		requireCloneHasRow(t, env.DB, name, row)
 	}
+}
+
+// TestCreateSnapshotDatabaseInvalidatesConnectionCache covers YugabyteDB's stale
+// datallowconn cache after a clone completes without a catalog-version bump.
+func TestCreateSnapshotDatabaseInvalidatesConnectionCache(t *testing.T) {
+	t.Parallel()
+	env := NewDatabaseTestEnv(t)
+	ctx, _ := createContext(t)
+	isYuga, err := statedb.IsYugabyteDB(ctx, env.DB.pool)
+	require.NoError(t, err)
+	if !isYuga {
+		t.Skip("YugabyteDB catalog cache regression")
+	}
+
+	// Step 1: Create a complete clone that the duplicate-name path can reuse.
+	t.Log("Step 1: Create a complete clone")
+	testdb.EnsureSnapshotSchedule(t, env.DBConf.Database)
+	const name = "snapshot_connection_cache"
+	env.CreateSnapshotClone(t, name)
+	clone := pgx.Identifier{name}.Sanitize()
+	cloneConfig := *env.DBConf
+	cloneConfig.Database = name
+	cloneConfig.Retry = &retry.Profile{MaxElapsedTime: new(time.Millisecond)}
+
+	// Step 2: A failed connection caches datallowconn=false on the tserver.
+	t.Log("Step 2: Cache the disabled connection flag")
+	require.NoError(t, statedb.AdminExec(ctx, env.DBConf,
+		fmt.Sprintf("ALTER DATABASE %s ALLOW_CONNECTIONS false", clone)))
+	pool, err := statedb.NewPool(ctx, &cloneConfig)
+	if pool != nil {
+		pool.Close()
+	}
+	require.ErrorContains(t, err, "not currently accepting connections")
+
+	// Step 3: Reproduce the clone workflow's non-DDL re-enable, which leaves the cache stale.
+	t.Log("Step 3: Re-enable without invalidating the catalog cache")
+	require.NoError(t, statedb.AdminExec(ctx, env.DBConf, fmt.Sprintf(
+		"SET yb_non_ddl_txn_for_sys_tables_allowed = true; "+
+			"UPDATE pg_database SET datallowconn = true WHERE datname = '%s'", name,
+	)))
+	var allowsConnections bool
+	require.NoError(t, env.DB.pool.QueryRow(ctx,
+		"SELECT datallowconn FROM pg_database WHERE datname = $1", name).Scan(&allowsConnections))
+	require.True(t, allowsConnections)
+
+	// Step 4: Reusing a COMPLETE clone must invalidate the stale flag before returning success.
+	t.Log("Step 4: Reuse the clone and verify it accepts connections")
+	require.NoError(t, env.DB.createSnapshotDatabase(ctx, name))
+	pool, err = statedb.NewPool(ctx, &cloneConfig)
+	require.NoError(t, err)
+	pool.Close()
 }
 
 // cloneRow identifies a single key/value expectation in a namespace, used by

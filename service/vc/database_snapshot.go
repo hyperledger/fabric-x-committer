@@ -278,7 +278,13 @@ func (db *database) createYugabyteSnapshotDatabase(ctx context.Context, cloneNam
 	if err := ignoreDuplicateDatabase(statedb.AdminExec(ctx, db.config, sql)); err != nil {
 		return err
 	}
-	return db.waitForYugabyteClone(ctx, cloneName)
+	if err := db.waitForYugabyteClone(ctx, cloneName); err != nil {
+		return err
+	}
+	// YugabyteDB 2025.2's non-DDL re-enable can leave datallowconn=false cached.
+	// Invalidate it only after COMPLETE (yugabyte/yugabyte-db#32637).
+	allow := fmt.Sprintf("ALTER DATABASE %s ALLOW_CONNECTIONS true", clone)
+	return statedb.AdminExec(ctx, db.config, allow)
 }
 
 func (db *database) waitForYugabyteClone(ctx context.Context, clone string) error {

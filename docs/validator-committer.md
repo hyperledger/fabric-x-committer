@@ -334,10 +334,10 @@ When a `_snapshot` marker transaction is committed, the VC creates a native,
 zero-copy clone of the state database **before** the marker's transaction ID is
 committed, preserving the one-way guarantee that every committed snapshot txID has
 a clone and a PENDING row; uncommitted attempts may also leave a reusable clone.
-For YugabyteDB, ready means `yb_database_clones().state = 'COMPLETE'`; a
-`pg_database` row alone is insufficient. The clone is a consistent copy of the
-drained state cut and is never dropped as part of snapshot creation; it is dropped
-only by the `committer delete-clone` CLI, and only once the snapshot is `CHECKPOINTED`
+For YugabyteDB, readiness requires `yb_database_clones().state = 'COMPLETE'`
+and a successful connection-cache invalidation; a `pg_database` row alone is
+insufficient. The clone is a consistent copy of the drained state cut and is never
+dropped as part of snapshot creation; it is dropped only by the `committer delete-clone` CLI, and only once the snapshot is `CHECKPOINTED`
 or `ABORTED` (see [Snapshot clone deletion](#snapshot-clone-deletion)). Failed or
 losing attempts leave deterministic clones for retry/reuse or operator reconciliation,
 and successful and ambiguous attempts preserve them as well; clone deletion remains
@@ -349,9 +349,12 @@ before and after it, so no user transaction commits until the snapshot is fully
 processed. The clone therefore captures the exact snapshot cut with a plain
 `CREATE DATABASE <clone> TEMPLATE <source>` (as of current time), with no `AS OF`
 timestamp required. After either initial creation or duplicate-name reuse,
-YugabyteDB clone state is polled until `COMPLETE`. An `ABORTED` state fails
-promptly and reports YugabyteDB's `failure_reason`. PostgreSQL clone creation is
-synchronous and retains its existing duplicate-reuse behavior.
+YugabyteDB clone state is polled until `COMPLETE`. The VC then runs
+`ALTER DATABASE <clone> ALLOW_CONNECTIONS true` to invalidate stale disabled-connection
+flags that YugabyteDB 2025.2's non-DDL re-enable can leave cached. This DDL never runs
+before `COMPLETE`; an `ABORTED` state fails promptly and reports YugabyteDB's
+`failure_reason`. PostgreSQL clone creation is synchronous and retains its existing
+duplicate-reuse behavior.
 
 > **YugabyteDB prerequisite — a PITR snapshot schedule is mandatory.** YugabyteDB
 > database cloning is built on Point-in-Time Recovery: `CREATE DATABASE ... TEMPLATE`
