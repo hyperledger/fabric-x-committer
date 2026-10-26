@@ -61,7 +61,7 @@ func startServiceCommand(name string) *cobra.Command {
 			case *coordinator.Config:
 				service = coordinator.NewCoordinatorService(c)
 			case *vc.Config:
-				service = vc.NewValidatorCommitterService(cmd.Context(), c)
+				service = vc.NewValidatorCommitterService(c)
 			case *verifier.Config:
 				service = verifier.New(c)
 			case *query.Config:

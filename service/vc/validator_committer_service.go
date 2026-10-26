@@ -75,21 +75,16 @@ type queues struct {
 // It creates the preparer, the validator and the committer.
 // It also creates the channels that are used to communicate between the preparer, the validator and the committer.
 // It also creates the database connection.
-func NewValidatorCommitterService(
-	ctx context.Context,
-	config *Config,
-) *ValidatorCommitterService {
+func NewValidatorCommitterService(config *Config) *ValidatorCommitterService {
 	logger.Info("Initializing new validator committer service.")
 	l := config.ResourceLimits
 
-	// TODO: make queueMultiplier configurable
-	queueMultiplier := 1
 	q := &queues{
-		receivedTxBatch: make(chan *servicepb.VcBatch, l.MaxWorkersForPreparer*queueMultiplier),
-		toPrepareTxs:    make(chan *servicepb.VcBatch, l.MaxWorkersForPreparer*queueMultiplier),
-		preparedTxs:     make(chan *preparedTransactions, l.MaxWorkersForValidator*queueMultiplier),
-		validatedTxs:    make(chan *validatedTransactions, queueMultiplier),
-		txsStatus:       make(chan *servicepb.TxStatusBatch, l.MaxWorkersForCommitter*queueMultiplier),
+		receivedTxBatch: make(chan *servicepb.VcBatch, l.MaxWorkersForPreparer),
+		toPrepareTxs:    make(chan *servicepb.VcBatch, l.MaxWorkersForPreparer),
+		preparedTxs:     make(chan *preparedTransactions, l.MaxWorkersForValidator),
+		validatedTxs:    make(chan *validatedTransactions, 1),
+		txsStatus:       make(chan *servicepb.TxStatusBatch, l.MaxWorkersForCommitter),
 	}
 
 	metrics := newVCServiceMetrics(q)

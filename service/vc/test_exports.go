@@ -75,9 +75,6 @@ func NewValidatorAndCommitServiceTestEnv(t *testing.T, opts *TestEnvOpts) *Valid
 		opts.DBEnv = NewDatabaseTestEnv(t)
 	}
 
-	initCtx, initCancel := context.WithTimeout(t.Context(), 2*time.Minute)
-	t.Cleanup(initCancel)
-
 	vcservices := make([]*ValidatorCommitterService, opts.NumServices)
 	configs := make([]*Config, opts.NumServices)
 	serverConfigs := make([]*serve.Config, opts.NumServices)
@@ -89,7 +86,7 @@ func NewValidatorAndCommitServiceTestEnv(t *testing.T, opts *TestEnvOpts) *Valid
 			ResourceLimits: opts.ResourceLimits,
 		}
 		serverConfig := test.NewLocalHostServiceConfig(opts.ServerCreds)
-		vcs := NewValidatorCommitterService(initCtx, config)
+		vcs := NewValidatorCommitterService(config)
 		test.RunServiceAndServeForTest(t.Context(), t, vcs, serverConfig)
 		vcservices[i] = vcs
 		configs[i] = config
