@@ -79,6 +79,9 @@ func newVcMgrTestEnv(t *testing.T, numVCService int) *vcMgrTestEnv {
 	test.WaitForConnections(
 		t, metrics.Provider, "coordinator_vcservice_connection_status", numVCService,
 	)
+	// The client marks a connection before the mock registers its stream,
+	// so wait for the mock too, before a test submits to it directly.
+	mock.RequireStreams(t, vcs, numVCService)
 
 	return &vcMgrTestEnv{
 		validatorCommitterManager: vcm,
