@@ -7,10 +7,20 @@ SPDX-License-Identifier: Apache-2.0
 package servicepb
 
 import (
+	"crypto/sha256"
 	"fmt"
 
 	"github.com/hyperledger/fabric-x-committer/utils"
 )
+
+// CheckpointAbortValue is the value used to abort a snapshot instead of confirming its digest.
+// It cannot match a SHA-256 digest because it is shorter than 32 bytes.
+const CheckpointAbortValue = "abort"
+
+// IsValidCheckpointValue reports whether value is exactly "abort" or 32 bytes long.
+func IsValidCheckpointValue(value []byte) bool {
+	return string(value) == CheckpointAbortValue || len(value) == sha256.Size
+}
 
 // CheckpointKey returns the `_checkpoint` key for a snapshot at blockNum.
 // A block has at most one snapshot, so the key needs no transaction number.

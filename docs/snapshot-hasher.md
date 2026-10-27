@@ -75,6 +75,15 @@ row that did not commit.
 | `FAILED` | Hash it again: a clone is immutable, so a retry cannot produce a different digest |
 | `COMPLETED` | Leave untouched — the digest is already published |
 | `CHECKPOINTED` | Leave untouched — re-hashing could only undo the checkpoint |
+| `ABORTED` | Leave untouched — the snapshot was abandoned, so a digest could only be one nobody will attest to |
+
+Only the validator-committer marks a snapshot `ABORTED`, after a `_checkpoint` transaction
+with value `abort` commits. A digest checkpoint marks it `CHECKPOINTED`. Both use the same
+snapshot block-number key and `CheckpointEndorsement` policy.
+
+The hasher cannot abort a snapshot on its own. The abort must be ordered and endorsed so
+every organization, including a node replaying the ledger, sees the same decision. See
+[Aborting a Snapshot](validator-committer.md#aborting-a-snapshot).
 
 Two conditions stop the service instead of being retried:
 
@@ -87,7 +96,10 @@ Two conditions stop the service instead of being retried:
   hasher never hashes; see
   [Snapshot clone deletion](validator-committer.md#snapshot-clone-deletion)). No retry repairs either, and recording a failed
   attempt on the record would invite a later tick to treat it as retryable work, so the
-  service stops and leaves the record as evidence.
+  service stops and leaves the record as evidence. If an active record was read just
+  before a terminal transition and legal clone deletion, a missing-clone open is
+  rechecked against that original record. `CHECKPOINTED` or `ABORTED` means the job is
+  skipped, not corrupt, even if a newer snapshot is already latest.
 - **A record with no `TxRef`** is a hard error, because a record that cannot be named
   cannot be driven; treating it as "nothing to do" would stall hashing silently.
 
@@ -107,8 +119,8 @@ clone content always yields an identical digest:
   on, and exclude what each organization derives locally.** It is every user
   namespace's `ns_<id>` table (from `ns__meta`, the authoritative namespace registry),
   plus the fixed tables `ns__config`, `ns__meta`, `tx_status`, and `ns__checkpoint`.
-    - `ns__checkpoint` is included: a checkpoint is committed by an ordered, endorsed
-      transaction, so it holds the same content at the same height everywhere. There is
+    - `ns__checkpoint` is included: a digest checkpoint or abort marker is committed by
+      an ordered, endorsed transaction, so it holds the same content at the same height everywhere. There is
       no cycle — the checkpoint for a snapshot commits only after that snapshot's digest
       exists, so it can appear in a later clone but never in its own.
     - `metadata` is excluded, and cannot be included: `last committed block number` is
@@ -173,16 +185,20 @@ The hasher holds no state of its own; the `_snapshot` record is the state.
 - **Transient database or clone failure.** The tick logs the failure and records it on
   the record; the loop keeps running and the next tick retries. A failure never stops
   the service, because the durable record is still there to be picked up.
+- **A snapshot aborted mid-hash.** Hashing can take several minutes, so another goroutine
+  checks the snapshot record every `poll-interval`. It reads that record by transaction ID,
+  even if a newer snapshot has been accepted. When the record becomes `ABORTED`, it cancels
+  hashing. The cancelled hash does not write `FAILED` or change the `ABORTED` status.
 - **Hasher down entirely.** Ordinary transaction commit is unaffected — the VC never
   calls this service and never waits on it. Only snapshotting stalls: the outstanding
-  record is not hashed, so it never reaches `CHECKPOINTED`, and the VC rejects further
-  snapshot requests until the hasher returns and drives that record to `COMPLETED`. So
-  at most one snapshot is outstanding while the hasher is down, not a backlog of them.
+  record is not hashed, so it cannot be checkpointed normally. The VC rejects further
+  snapshot requests until the hasher returns and a digest checkpoint closes the lifecycle,
+  or an endorsed abort closes it as `ABORTED`. At most one snapshot lifecycle is active.
 - **A record the hasher refuses to drive.** The service exits, so a supervisor's restart
   loop and the exit message are the signal. Because checkpointing proceeds only from a
   `COMPLETED` record, the snapshot stalls rather than being checkpointed without a
   digest, and the VC keeps rejecting new snapshots until the latest one is
-  `CHECKPOINTED` — so this needs an operator, and the exit message names the record and
+  `CHECKPOINTED` or `ABORTED` — so this needs an operator, and the exit message names the record and
   the clone it could not hash.
 - **A record taken over mid-hash.** A checkpoint transaction can commit for a slow
   organization while its hasher is still scanning, and a second hasher (a deployment
@@ -206,15 +222,24 @@ observed only once a scan returns, so a hash in flight would otherwise look like
 service. Counting starts separately makes it a gap against the terminal counters:
 
 ```promql
-# A hash started and has neither computed a digest nor recorded a failure.
+# A hash started and has neither computed a digest, recorded a failure, nor been aborted.
 snapshothasher_hash_started_total
-  - (snapshothasher_hash_duration_seconds_count + snapshothasher_hash_jobs_failed_total)
+  - (snapshothasher_hash_duration_seconds_count
+     + snapshothasher_hash_jobs_failed_total
+     + snapshothasher_hash_aborted_total)
 ```
 
 `jobs_failed_total` belongs in that sum because a failed hash never reaches the
 histogram — the failure is recorded before the duration is observed — so comparing
 starts against `duration_seconds_count` alone would report a permanent in-flight hash
 after the first failure.
+
+`snapshothasher_hash_aborted_total` counts hashes stopped by an abort. It is deliberately
+separate from `jobs_failed_total`: an abort is a decision an operator made, so counting it
+as a failure would make the failure alert fire on correct behaviour, while leaving it
+uncounted would make the wasted scan visible only in the logs. It also belongs in the
+in-flight expression's subtrahend, since an aborted hash reaches neither the duration
+histogram nor the failure counter.
 
 A value of 1 is a hash running normally; alert on a sustained difference, since that is
 what separates a long scan from a stuck one. Two things this cannot do: a hash lost to a
@@ -248,8 +273,3 @@ See [Metrics Reference](metrics_reference.md).
   has no way to know which algorithm produced that digest. The version belongs in the
   checkpoint transaction payload, which is the artifact organizations agree on and the
   one re-ingestion reads; that payload is not defined yet.
-- **Terminal abort handling is not here yet.** A `FAILED` record is always retried, so
-  a snapshot that can never be hashed — a clone lost for good, say — has no terminal
-  resting state. The `ABORTED` status exists, and `committer delete-clone` accepts it, but
-  nothing sets it yet; an abort snapshot transaction, which is what makes an abort
-  reproducible under re-ingestion, is the immediate next change.
