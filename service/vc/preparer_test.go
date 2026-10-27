@@ -708,6 +708,36 @@ func TestPrepareSnapshotTx(t *testing.T) {
 	require.NotContains(t, preparedTxs.nsToReads, committerpb.MetaNamespaceID)
 }
 
+// TestPrepareSnapshotAbortTx verifies an abort TX keeps its own ReadWrite -- the row is the
+// ordered fact, so it must reach the committer unchanged rather than be replaced by a
+// synthesized SnapshotState -- and takes no _meta namespace-version dependency.
+func TestPrepareSnapshotAbortTx(t *testing.T) {
+	t.Parallel()
+	env := newPrepareTestEnv(t)
+	key := servicepb.CheckpointKey(8)
+	ref := committerpb.NewTxRef(string(txs[0]), 9, 1)
+	batch := &servicepb.VcBatch{Transactions: []*servicepb.VcTx{{
+		Ref: ref,
+		Namespaces: []*applicationpb.TxNamespace{{
+			NsId:       committerpb.CheckpointNamespaceID,
+			ReadWrites: []*applicationpb.ReadWrite{{Key: key, Value: []byte("abort")}},
+		}},
+	}}}
+	channel.NewWriter(t.Context(), env.txBatch).Write(batch)
+	prepared, ok := channel.NewReader(t.Context(), env.preparedTxs).Read()
+	require.True(t, ok)
+	require.Empty(t, prepared.nsToReads)
+	require.NotContains(t, prepared.txIDToNsNewWrites[txs[0]], committerpb.SnapshotNamespaceID)
+	writes := prepared.txIDToNsNewWrites[txs[0]][committerpb.CheckpointNamespaceID]
+	require.Equal(t, [][]byte{key}, writes.keys)
+	require.Equal(t, [][]byte{[]byte("abort")}, writes.values)
+	require.Equal(t, []TxID{txs[0]}, prepared.readToTxIDs[newCmpRead(committerpb.CheckpointNamespaceID, key, nil)])
+	require.NotNil(t, prepared.checkpoint)
+	test.RequireProtoEqual(t, ref, prepared.checkpoint.ref)
+	require.EqualValues(t, 8, prepared.checkpoint.snapshotBlockNum)
+	require.Equal(t, []byte("abort"), prepared.checkpoint.value)
+}
+
 // TestPrepareCheckpointTx verifies that a _checkpoint TX retains its single versioned
 // ReadWrite for checkpoint-specific handling but takes no _meta namespace-version dependency.
 func TestPrepareCheckpointTx(t *testing.T) {
@@ -715,7 +745,7 @@ func TestPrepareCheckpointTx(t *testing.T) {
 	env := newPrepareTestEnv(t)
 
 	heightKey := servicepb.CheckpointKey(8)
-	hashValue := []byte("snapshot-hash")
+	hashValue := checkpointDigest("snapshot-hash")
 
 	tx := &servicepb.VcBatch{
 		Transactions: []*servicepb.VcTx{
@@ -767,7 +797,7 @@ func TestPrepareCheckpointTx(t *testing.T) {
 	require.Equal(t, txs[0], preparedTxs.checkpoint.txID)
 	require.EqualValues(t, 8, preparedTxs.checkpoint.snapshotBlockNum)
 	test.RequireProtoEqual(t, tx.Transactions[0].Ref, preparedTxs.checkpoint.ref)
-	require.Equal(t, hashValue, preparedTxs.checkpoint.hash)
+	require.Equal(t, hashValue, preparedTxs.checkpoint.value)
 }
 
 func TestInvalidatePreparedCheckpoint(t *testing.T) {
@@ -783,7 +813,7 @@ func TestInvalidatePreparedCheckpoint(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			ref := committerpb.NewTxRef("checkpoint", 50, 0)
-			prep := newCheckpointPreparedTx(ref, 42, []byte("hash"))
+			prep := newCheckpointPreparedTx(ref, 42, checkpointDigest("hash"))
 			validated := newValidatedTxsFromPrepared(prep)
 			require.NotNil(t, prep.checkpoint)
 			require.Same(t, prep.checkpoint, validated.checkpoint)
@@ -794,6 +824,46 @@ func TestInvalidatePreparedCheckpoint(t *testing.T) {
 			} else {
 				require.Nil(t, validated.checkpoint)
 				require.NotContains(t, validated.newWrites, tc.invalidTxID)
+			}
+		})
+	}
+}
+
+func TestInvalidatePreparedSnapshotAbort(t *testing.T) {
+	t.Parallel()
+	const abortTxID = "abort"
+	for _, tc := range []struct {
+		name        string
+		invalidTxID TxID
+		status      committerpb.Status
+	}{
+		{name: "unrelated transaction", invalidTxID: "other", status: committerpb.Status_REJECTED_DUPLICATE_TX_ID},
+		{name: "duplicate abort", invalidTxID: abortTxID, status: committerpb.Status_REJECTED_DUPLICATE_TX_ID},
+		{name: "conflicting abort", invalidTxID: abortTxID, status: committerpb.Status_ABORTED_MVCC_CONFLICT},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			prep := newSnapshotAbortPreparedTx(committerpb.NewTxRef(abortTxID, 50, 0), 42)
+			validated := newValidatedTxsFromPrepared(prep)
+			abort := prep.checkpoint
+			require.NotNil(t, abort)
+			require.Same(t, abort, validated.checkpoint)
+
+			if tc.status == committerpb.Status_ABORTED_MVCC_CONFLICT {
+				conflicts := make(namespaceToReads)
+				conflicts.getOrCreate(committerpb.CheckpointNamespaceID).append(servicepb.CheckpointKey(42), nil)
+				require.NoError(t, validated.invalidateTxsOnReadConflicts(conflicts))
+			} else {
+				validated.updateInvalidTxs([]TxID{tc.invalidTxID}, tc.status)
+			}
+
+			require.Equal(t, tc.status, validated.invalidTxStatus[tc.invalidTxID])
+			if tc.invalidTxID == abort.txID {
+				require.Nil(t, validated.checkpoint)
+				require.NotContains(t, validated.newWrites, tc.invalidTxID)
+			} else {
+				require.Same(t, abort, validated.checkpoint)
+				require.Contains(t, validated.newWrites, abort.txID)
 			}
 		})
 	}

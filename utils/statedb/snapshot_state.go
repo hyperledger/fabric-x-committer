@@ -250,20 +250,27 @@ func (s *SnapshotStateManager) Update(ctx context.Context, ref *committerpb.TxRe
 	return err //nolint:wrapcheck // already wrapped inside the retried closure.
 }
 
-// MarkSnapshotCheckpointedInTx marks the latest snapshot CHECKPOINTED in the caller's
-// transaction. The checkpoint write and this update must commit together. Otherwise,
-// a crash could leave the snapshot waiting for a checkpoint and block new snapshots.
+// MarkSnapshotTerminalInTx updates the latest snapshot to target in the same transaction
+// as the checkpoint write. Separate commits could leave the write saved but the snapshot
+// unchanged after a crash, blocking new snapshot requests.
 //
-// An already-CHECKPOINTED record is left unchanged. A missing pointer or a different
-// block returns a non-retryable error: the record no longer matches what was verified.
-func MarkSnapshotCheckpointedInTx(ctx context.Context, tx pgx.Tx, blockNum uint64) error {
+// A record already at target is unchanged. The other final status, a missing snapshot
+// pointer, or a different block number returns a non-retryable error.
+// Only CHECKPOINTED and ABORTED are allowed; use SnapshotStateManager.Update for other statuses.
+func MarkSnapshotTerminalInTx(
+	ctx context.Context, tx pgx.Tx, blockNum uint64, target committerpb.SnapshotState_Status,
+) error {
+	if target != committerpb.SnapshotState_CHECKPOINTED && target != committerpb.SnapshotState_ABORTED {
+		return errors.Wrapf(retry.ErrNonRetryable, "%s is not a terminal snapshot status", target)
+	}
+
 	var key []byte
 	if err := tx.QueryRow(ctx, getLatestSnapshotKeySQL, LatestSnapshotPointerKey).Scan(&key); err != nil {
 		return errors.Wrap(err, "failed to read the latest snapshot key")
 	}
 	if len(key) == 0 {
 		return errors.Wrapf(retry.ErrNonRetryable,
-			"no snapshot record to checkpoint for block %d, but its checkpoint was verified", blockNum)
+			"no snapshot record for block %d to mark %s, but its write was verified", blockNum, target)
 	}
 
 	var raw []byte
@@ -274,28 +281,41 @@ func MarkSnapshotCheckpointedInTx(ctx context.Context, tx pgx.Tx, blockNum uint6
 	if err != nil {
 		return errors.Wrapf(err, "failed to decode _snapshot record for key %s", key)
 	}
-	if state.Status == committerpb.SnapshotState_CHECKPOINTED {
-		return nil // already checkpointed: a resubmitted checkpoint must not rewrite it.
-	}
-	if state.TxRef == nil || state.TxRef.BlockNum != blockNum {
-		return errors.Wrapf(retry.ErrNonRetryable,
-			"the latest snapshot record is not for block %d, but its checkpoint was verified", blockNum)
+	if state.Status == target {
+		return nil // a resubmitted checkpoint or abort must not rewrite the record.
 	}
 
-	state.Status = committerpb.SnapshotState_CHECKPOINTED
+	// Terminal but not target, so it was closed the other way: a checkpoint cannot close an
+	// aborted snapshot, nor an abort a checkpointed one.
+	if state.Status == committerpb.SnapshotState_CHECKPOINTED ||
+		state.Status == committerpb.SnapshotState_ABORTED {
+		return errors.Wrapf(retry.ErrNonRetryable,
+			"the snapshot for block %d is already %s, but its %s write was verified",
+			blockNum, state.Status, target)
+	}
+
+	if state.TxRef == nil || state.TxRef.BlockNum != blockNum {
+		return errors.Wrapf(retry.ErrNonRetryable,
+			"the latest snapshot record is not for block %d, but its %s write was verified", blockNum, target)
+	}
+
+	state.Status = target
 	newRaw, err := EncodeSnapshotState(state)
 	if err != nil {
 		return errors.Wrapf(err, "failed to encode _snapshot record for key %s", key)
 	}
 	_, err = tx.Exec(ctx, updateSnapshotRecordSQL, key, newRaw)
-	return errors.Wrapf(err, "failed to mark the snapshot for block %d as checkpointed", blockNum)
+	return errors.Wrapf(err, "failed to mark the snapshot for block %d as %s", blockNum, target)
 }
 
-// DecodeSnapshotState unmarshals a `_snapshot` record value.
+// DecodeSnapshotState unmarshals a `_snapshot` record and rejects unknown lifecycle statuses.
 func DecodeSnapshotState(raw []byte) (*committerpb.SnapshotState, error) {
 	var state committerpb.SnapshotState
 	if err := proto.Unmarshal(raw, &state); err != nil {
 		return nil, errors.Wrap(err, "failed to decode _snapshot record")
+	}
+	if _, known := committerpb.SnapshotState_Status_name[int32(state.Status)]; !known {
+		return nil, errors.Newf("unexpected snapshot status %d", state.Status)
 	}
 	return &state, nil
 }

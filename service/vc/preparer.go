@@ -226,9 +226,7 @@ func (p *transactionPreparer) prepare(ctx context.Context) error { //nolint:goco
 						}},
 					})
 				case committerpb.ConfigNamespaceID, committerpb.CheckpointNamespaceID:
-					// A config TX is independent. The _checkpoint namespace is a system
-					// namespace: its single ReadWrite is prepared above for checkpoint-specific
-					// handling, but it takes no _meta namespace-version dependency.
+					// Checkpoint transactions take no _meta namespace-version dependency.
 				default:
 					prepTxs.addReadsOnly(tID, &applicationpb.TxNamespace{
 						NsId: committerpb.MetaNamespaceID,
@@ -454,4 +452,34 @@ func (nr namespaceToReads) empty() bool {
 	}
 
 	return true
+}
+
+// checkpointWriteInBatch extracts one checkpoint transaction. A malformed or second write
+// fails the prepared batch so no unchecked checkpoint write can commit.
+func checkpointWriteInBatch(prepTx *preparedTransactions) (*checkpointTx, error) {
+	var cp *checkpointTx
+	for txID, nsWrites := range prepTx.txIDToNsNewWrites {
+		w := nsWrites[committerpb.CheckpointNamespaceID]
+		if w.empty() {
+			continue
+		}
+		blockNum, err := servicepb.BlockNumFromCheckpointKey(w.keys[0])
+		if err != nil {
+			return nil, fmt.Errorf("checkpoint TX %s has an undecodable key: %w", txID, err)
+		}
+		if !servicepb.IsValidCheckpointValue(w.values[0]) {
+			return nil, errors.Newf("checkpoint TX %s has an invalid value", txID)
+		}
+		if cp != nil {
+			return nil, errors.Newf(
+				"a batch carries at most one checkpoint, but it has both TX %s and TX %s", cp.txID, txID,
+			)
+		}
+		h := prepTx.txIDToHeight[txID]
+		cp = &checkpointTx{
+			txID: txID, ref: committerpb.NewTxRef(string(txID), h.BlockNum, h.TxNum),
+			snapshotBlockNum: blockNum, value: w.values[0],
+		}
+	}
+	return cp, nil
 }

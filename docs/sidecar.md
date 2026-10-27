@@ -254,10 +254,12 @@ enum Status {
    MALFORMED_DUPLICATE_KEY_IN_READ_WRITE_SET = 112;    // Duplicate key in the read-write set.
    MALFORMED_MISSING_SIGNATURE = 113;                  // Number of signatures does not match the number of namespaces.
    MALFORMED_NAMESPACE_POLICY_INVALID = 114;           // Invalid namespace policy.
-   MALFORMED_SNAPSHOT_NOT_MARKER_ONLY = 116;           // `_snapshot` namespace has reads/writes; it must be marker only.
+   MALFORMED_SNAPSHOT_NOT_MARKER_ONLY = 116;           // `_snapshot` namespace is not a marker-only request.
    MALFORMED_CHECKPOINT_INVALID_KEY = 117;             // `_checkpoint` namespace form or key is invalid.
    MALFORMED_SYSTEM_TX_NOT_STANDALONE = 118;           // System namespace TX (`_snapshot`/`_checkpoint`) is not standalone.
    REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK = 121;         // More than one `_snapshot` TX in a block; only the first is processed, the rest rejected.
+   REJECTED_SNAPSHOT_ABORT_NO_SUCH_SNAPSHOT = 123;     // An abort names a missing or different snapshot, or one already CHECKPOINTED/ABORTED.
+   MALFORMED_CHECKPOINT_INVALID_VALUE = 124;           // `_checkpoint` value is neither a 32-byte SHA-256 digest nor exact UTF-8 "abort".
 }
 ```
 
@@ -291,23 +293,27 @@ than inventing an ID for it.
 
 The sidecar applies additional form checks for system namespaces before forwarding transactions to the coordinator.
 
-- `_snapshot` transactions must be standalone: exactly one namespace, and that namespace must be `_snapshot`. The
-  `_snapshot` namespace is a marker only, so it must have no reads, no read-writes, and no blind-writes. A non-empty
-  read-write set is rejected with `MALFORMED_SNAPSHOT_NOT_MARKER_ONLY`; a mixed `_snapshot`+user transaction is
-  rejected with `MALFORMED_SYSTEM_TX_NOT_STANDALONE`. Ordinary user namespaces with no writes still use
-  `MALFORMED_NO_WRITES`.
+- `_snapshot` transactions must be standalone marker-only requests: exactly one namespace,
+  no reads, no read-writes, and no blind-writes. Any reads or writes are rejected with
+  `MALFORMED_SNAPSHOT_NOT_MARKER_ONLY`. Mixing `_snapshot`
+  with a user namespace is rejected with `MALFORMED_SYSTEM_TX_NOT_STANDALONE`.
+  Ordinary user namespaces with no writes still use `MALFORMED_NO_WRITES`.
 - `_checkpoint` transactions must be standalone: exactly one namespace, and that namespace must be `_checkpoint`. The
-  namespace must contain exactly one read-write, no reads-only entries, and no blind writes. The read-write key must
+  namespace must contain exactly one read-write with an omitted version, no reads-only entries, and no blind writes. The read-write key must
   contain only the snapshot's block number, encoded by `servicepb.CheckpointKey`. The sidecar decodes it with
   `servicepb.BlockNumFromCheckpointKey` and rejects any extra bytes. Invalid checkpoint format is rejected with
   `MALFORMED_CHECKPOINT_INVALID_KEY`. A transaction that mixes `_checkpoint` with a user namespace is rejected with
-  `MALFORMED_SYSTEM_TX_NOT_STANDALONE`.
+  `MALFORMED_SYSTEM_TX_NOT_STANDALONE`. The value must be either a raw 32-byte SHA-256
+  digest or the exact UTF-8 marker `abort` (`servicepb.CheckpointAbortValue`). Empty values,
+  other short values, and other lengths are rejected with `MALFORMED_CHECKPOINT_INVALID_VALUE`.
+  A 32-byte value beginning with `abort` remains a digest, not an abort.
 - `_meta` keeps the existing namespace-policy update checks. `_config` is rejected if submitted as an
   application transaction namespace.
 - Only the first `_snapshot` transaction in a block is accepted. Any additional `_snapshot` transaction in the same
   block is rejected with `REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK` (a stored status, so the outcome is recorded in the
   state database), regardless of the first snapshot's outcome. This bounds the snapshot drain to at most one barrier
-  per block.
+  per block. This rule, and the drain barrier below, apply to a snapshot **request** only — see
+  [Snapshot split and drain](#snapshot-split-and-drain).
 
 **c. In-Flight Duplicate Transaction Detection**: 
 
@@ -368,8 +374,13 @@ When a block satisfies the criteria outlined in step f, the relay component perf
 
 #### Snapshot split and drain
 
-When a valid `_snapshot` marker transaction appears in a block, the sidecar treats it as a submission barrier and
-always sends the snapshot transaction last, regardless of where it originally appeared in the block:
+When a valid `_snapshot` marker transaction (a **snapshot request** — see
+[System namespace transaction forms](#system-namespace-transaction-forms)) appears in a block, the sidecar treats it
+as a submission barrier and always sends it last, regardless of where it originally appeared in the block:
+
+A snapshot abort uses the `_checkpoint` namespace and is not a barrier. It creates no clone
+and follows ordinary checkpoint batching. The one-`_snapshot`-per-block rule and
+`REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK` likewise apply to requests only.
 
 1. Submit every other transaction in the block (regardless of whether it originally preceded or followed the
    snapshot) to the coordinator.
@@ -394,10 +405,12 @@ snapshot, the first segment is omitted, leaving a single snapshot-only segment.
 
 #### Checkpoint feedback gate
 
-A `_checkpoint` transaction contains the hash agreed on by the organizations for a snapshot. The VC compares it with
+A digest-valued `_checkpoint` transaction contains the hash agreed on by the organizations for a snapshot. The VC compares it with
 the local hash before committing. If the local hash is missing or differs, the VC sends `CheckpointFeedback` through
 the coordinator to the sidecar. A checkpoint for a missing or different snapshot is rejected with a transaction status
-instead. See [validator-committer.md](validator-committer.md), Task 2 step **e**.
+instead. An abort-valued checkpoint emits no HOLD/HALT: it attests to no digest and is accepted
+or rejected through transaction statuses. A digest checkpoint for an aborted snapshot is rejected,
+never held indefinitely. See [validator-committer.md](validator-committer.md), Task 2 step **e**.
 
 The sidecar handles feedback in `processCheckpointFeedback`:
 

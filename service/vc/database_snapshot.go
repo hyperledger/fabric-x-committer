@@ -84,7 +84,7 @@ func (db *database) rejectSnapshotIfPriorNotCheckpointed(
 		return err
 	}
 	if blockStatus == committerpb.Status_STATUS_UNSPECIFIED {
-		return nil // no prior snapshot, or the latest one is CHECKPOINTED -> accept.
+		return nil // no prior snapshot, or the latest one's lifecycle is closed -> accept.
 	}
 
 	vTx.updateInvalidTxs([]TxID{incomingTxID}, blockStatus)
@@ -94,7 +94,11 @@ func (db *database) rejectSnapshotIfPriorNotCheckpointed(
 // determineSnapshotStatus looks up the latest _snapshot record via the
 // statedb.LatestSnapshotPointerKey pointer and returns the rejection status the
 // incoming request should receive, or STATUS_UNSPECIFIED when the request may
-// proceed (no prior snapshot ever accepted, or the latest one is CHECKPOINTED).
+// proceed (no prior snapshot ever accepted, or the latest one's lifecycle is closed).
+//
+// Closed means CHECKPOINTED or ABORTED: nothing further will happen to that snapshot.
+// ABORTED is the only exit for a snapshot that can never be hashed, which would otherwise
+// reject every later request forever.
 //
 // A pointer that names a missing row, or a row whose value fails to decode, is
 // an invariant violation (the pointer is written atomically with its row; see
@@ -112,7 +116,7 @@ func (db *database) determineSnapshotStatus(ctx context.Context) (committerpb.St
 	}
 
 	switch state.Status {
-	case committerpb.SnapshotState_CHECKPOINTED:
+	case committerpb.SnapshotState_CHECKPOINTED, committerpb.SnapshotState_ABORTED:
 		return committerpb.Status_STATUS_UNSPECIFIED, nil
 	case committerpb.SnapshotState_COMPLETED:
 		return committerpb.Status_REJECTED_SNAPSHOT_NO_CHECKPOINT, nil
@@ -165,10 +169,9 @@ func (db *database) createSnapshotIfPresent(ctx context.Context, newWrites trans
 	return nil
 }
 
-// snapshotWriteInBatch returns the single _snapshot namespace write in newWrites, if
-// any. A snapshot TX is submitted standalone, so at most one transaction in the batch
-// carries a _snapshot write, and the preparer adds exactly one key/value pair
-// (key = tx_id) for it.
+// snapshotWriteInBatch returns the single snapshot-request write in newWrites, if any. A
+// snapshot request is submitted standalone, so at most one transaction in the batch
+// carries one, and the preparer adds exactly one key/value pair (key = tx_id) for it.
 func snapshotWriteInBatch(newWrites transactionToWrites) (*namespaceWrites, bool) {
 	for _, nsWrites := range newWrites {
 		w := nsWrites[committerpb.SnapshotNamespaceID]

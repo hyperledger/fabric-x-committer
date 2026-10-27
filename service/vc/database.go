@@ -58,10 +58,8 @@ type (
 		retryProfile         *retry.Profile
 		tablePreSplitTablets int
 		config               *statedb.Config
-		// snapshotState is the shared accessor for the durable `_snapshot` record. The
-		// VC only reads it today, to gate a new snapshot request, and will also write
-		// CHECKPOINTED through it once checkpointing lands; the snapshot service drives
-		// the same record from PENDING to COMPLETED from its own process.
+		// snapshotState reads the durable lifecycle shared with the snapshot hasher.
+		// Terminal transitions use the caller's database transaction.
 		snapshotState *statedb.SnapshotStateManager
 	}
 
@@ -73,8 +71,7 @@ type (
 		newWrites    namespaceToWrites
 		batchStatus  *servicepb.TxStatusBatch
 		txIDToHeight transactionIDToHeight
-		// checkpoint is the verified write, or nil if there is none.
-		// Its snapshot is marked CHECKPOINTED in the same database transaction.
+		// checkpoint closes its snapshot in the same database transaction.
 		checkpoint *checkpointTx
 	}
 
@@ -240,8 +237,9 @@ func (d *database) commit(ctx context.Context, states *statesToBeCommitted) (*co
 	// Commit the checkpoint and snapshot status together. A crash between separate
 	// commits could leave the snapshot waiting for a checkpoint and block new snapshots.
 	if states.checkpoint != nil {
-		if err = statedb.MarkSnapshotCheckpointedInTx(ctx, tx, states.checkpoint.snapshotBlockNum); err != nil {
-			return nil, fmt.Errorf("failed to mark the snapshot as checkpointed: %w", err)
+		target := states.checkpoint.terminalStatus()
+		if err = statedb.MarkSnapshotTerminalInTx(ctx, tx, states.checkpoint.snapshotBlockNum, target); err != nil {
+			return nil, fmt.Errorf("failed to mark the snapshot as %s: %w", target, err)
 		}
 	}
 
@@ -300,11 +298,11 @@ func (d *database) writeStatesByGroup(
 	return nil, nil
 }
 
-// setLatestSnapshotKeyIfPresent points statedb.LatestSnapshotPointerKey at w's
-// sole key, or no-ops when w is empty (normal non-snapshot batch). Writing it here,
-// in the same transaction as the _snapshot row, is what lets the snapshot service
-// find the record it must hash with a single key lookup. The key is pre-seeded
-// (NULL) at DB init, so the existing setMetadataPrepSQLStmt UPDATE is reused as-is.
+// setLatestSnapshotKeyIfPresent points statedb.LatestSnapshotPointerKey at w's sole key,
+// or no-ops when w is empty (normal non-snapshot batch). Writing it here, in the same
+// transaction as the _snapshot row, is what lets the snapshot hasher
+// find the record it must hash with a single key lookup. The key is pre-seeded (NULL) at
+// DB init, so the existing setMetadataPrepSQLStmt UPDATE is reused as-is.
 func setLatestSnapshotKeyIfPresent(ctx context.Context, tx pgx.Tx, w *namespaceWrites) error {
 	if w.empty() {
 		return nil
