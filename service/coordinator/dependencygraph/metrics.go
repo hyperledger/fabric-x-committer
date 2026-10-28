@@ -56,6 +56,10 @@ type perfMetrics struct {
 	// performance of outputFreedExistingTransactions()
 	gdgOutputFreedTxSeconds prometheus.Histogram
 
+	// gdgDepFreeTxCount counts the transactions SimpleManager has released but the output channel
+	// has not taken yet. They are held outside every queue, so no queue gauge shows them.
+	gdgDepFreeTxCount prometheus.Gauge
+
 	// dependentTxCount is not a queue either; it counts the transactions blocked on a dependency
 	// and is maintained incrementally, like gdgWaitingTxCount above, from
 	// globalDependencyManager.constructDependencyGraph and processValidatedTransactions,
@@ -83,6 +87,13 @@ func newPerformanceMetrics(p *monitoring.Provider, q *managerQueues) *perfMetric
 			Subsystem: subsystemGlobalDependencyGraph,
 			Name:      "size",
 			Help:      "Number of transactions held in the global dependency graph waiting to be processed",
+		}),
+		gdgDepFreeTxCount: p.NewGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: subsystemGlobalDependencyGraph,
+			Name:      "dependency_free_size",
+			Help: "Number of transactions released by the global dependency graph that the output " +
+				"channel has not taken yet",
 		}),
 		ldgTxProcessedTotal: p.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
