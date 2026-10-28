@@ -19,10 +19,12 @@ import (
 // Start starts a delivery to fetch committed blocks from the sidecar/ledger service.
 // p.NextBlockNum is updated with the latest block number.
 // It returns a channel to receive the committed blocks.
-func Start(ctx context.Context, t *testing.T, conf *connection.ClientConfig, startBlockNum uint64) chan *common.Block {
-	t.Helper()
+func Start(
+	ctx context.Context, tb testing.TB, conf *connection.ClientConfig, startBlockNum uint64,
+) chan *common.Block {
+	tb.Helper()
 	receivedBlocksFromLedgerService := make(chan *common.Block, 10)
-	test.RunServiceForTest(ctx, t, func(ctx context.Context) error {
+	test.RunServiceForTest(ctx, tb, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(ToQueue(ctx, Parameters{
 			ClientConfig: conf,
 			OutputBlock:  receivedBlocksFromLedgerService,

@@ -497,6 +497,24 @@ func (o *Orderer) SubmitBlock(ctx context.Context, b *common.Block) error {
 	return nil
 }
 
+// SubmitPreparedBlock delivers an already-prepared block, bypassing the Run goroutine that
+// numbers, hashes and signs every other block. The caller owns the whole chain: b must already
+// carry the header, metadata and consenter signatures that testcrypto.PrepareBlockHeaderAndMetadata
+// would have produced, and blocks must be submitted in ascending block-number order.
+//
+// This exists for benchmarks that drive the orderer far faster than it can cut blocks. Preparation
+// deep-clones the block and hashes all of its data, so on a block of several thousand transactions
+// it costs more than the whole delivery path and would make the orderer, not the service under
+// test, the bottleneck. Preparing the blocks up front moves that cost out of the measurement.
+// Regular tests should use SubmitBlock, which needs no valid header.
+//
+// It returns false if ctx ended before the block was cached. Like every other block the orderer
+// serves, it is held in a ring of OutBlockCapacity blocks, so this blocks once that many blocks
+// are waiting to be delivered.
+func (o *Orderer) SubmitPreparedBlock(ctx context.Context, b *common.Block) bool {
+	return o.cache.addBlock(ctx, b)
+}
+
 // SubmitBlockWithConsenters allows submitting config-blocks (with crypto) directly for testing other packages.
 // The block header will be replaced with a generated header.
 func (o *Orderer) SubmitBlockWithConsenters(ctx context.Context, newConfig *BlockWithConsenters) error {

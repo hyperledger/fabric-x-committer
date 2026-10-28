@@ -11,6 +11,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-common/utils/testcrypto"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/signature"
@@ -29,6 +30,42 @@ func GenerateTransactions(tb testing.TB, p *Profile, count int) []*servicepb.Loa
 	require.Len(tb, g, 1)
 	require.Positive(tb, count)
 	return g[0].buildAndSignBatch(uint64(count)) //nolint:gosec // count is a non-negative test batch size.
+}
+
+// GenerateTransactionsConcurrently builds count transactions using workers generators at once. It
+// is equivalent to GenerateTransactions apart from the order: every transaction is a pure function
+// of a global index, and the generators hand those out from one shared TxCounter, so the same
+// transactions are produced whichever way they are split.
+//
+// Use it wherever the transactions are setup rather than the thing being measured. Signing is the
+// bulk of the cost, so a benchmark that needs millions of transactions before it can start spends
+// most of its wall time — and most of any CPU profile taken over the run — in this helper unless it
+// is spread across cores.
+func GenerateTransactionsConcurrently(tb testing.TB, p *Profile, count, workers int) []*servicepb.LoadGenTx {
+	tb.Helper()
+	require.Positive(tb, count)
+	require.Positive(tb, workers)
+	if p == nil {
+		p = DefaultProfile(1)
+	}
+	workers = min(workers, count)
+	p.Workers = uint32(workers) //nolint:gosec // workers is a positive test worker count.
+	gens, err := newIndependentTxGenerators(p, NewTxCounter(p.Transaction))
+	require.NoError(tb, err)
+	require.Len(tb, gens, workers)
+
+	txs := make([]*servicepb.LoadGenTx, count)
+	var g errgroup.Group
+	for i, gen := range gens {
+		start := count * i / workers
+		end := count * (i + 1) / workers
+		g.Go(func() error {
+			copy(txs[start:end], gen.buildAndSignBatch(uint64(end-start))) //nolint:gosec // end > start.
+			return nil
+		})
+	}
+	require.NoError(tb, g.Wait())
+	return txs
 }
 
 // DefaultProfile is used for testing and benchmarking.
