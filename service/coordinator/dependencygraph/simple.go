@@ -37,6 +37,15 @@ type (
 	waiting struct {
 		key   string
 		queue []*waiterGroup
+		// Inline storage for the first group and its first member. A key that no second
+		// transaction ever touches -- every key of a workload without contention, and most keys
+		// of one with it -- is then one allocation rather than four: the struct, the queue
+		// slice, the group, and the group's own slice were all separate objects with the same
+		// lifetime, and all four became garbage together when the key was released. Once a
+		// second group arrives, add's append moves the queue to the heap as before.
+		firstGroup  waiterGroup
+		firstQueue  [1]*waiterGroup
+		firstWaiter [1]*TransactionNode
 	}
 
 	waiterGroup struct {
@@ -195,10 +204,11 @@ func (m *SimpleManager) checkTXFree(tx *TransactionNode, k string, writer bool) 
 			tx.waitForKeysCount++
 		}
 	} else {
-		w = &waiting{
-			key:   k,
-			queue: []*waiterGroup{{writer: writer, group: []*TransactionNode{tx}}},
-		}
+		w = &waiting{key: k}
+		w.firstWaiter[0] = tx
+		w.firstGroup = waiterGroup{group: w.firstWaiter[:], writer: writer}
+		w.firstQueue[0] = &w.firstGroup
+		w.queue = w.firstQueue[:]
 		m.keyToWaitingTXs[k] = w
 	}
 	tx.waitingKeys = append(tx.waitingKeys, w)
