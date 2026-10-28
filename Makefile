@@ -131,7 +131,7 @@ MAKEFLAGS += --jobs=16
 #########################
 
 ROOT_PKG_REGEXP = github.com/hyperledger/fabric-x-committer
-CORE_DB_PACKAGES_REGEXP = ${ROOT_PKG_REGEXP}/service/(vc|query|snapshothasher)
+CORE_DB_PACKAGES_REGEXP = ${ROOT_PKG_REGEXP}/service/(vc|query|snapshothasher|auth)
 REQUIRES_DB_PACKAGES_REGEXP = ${ROOT_PKG_REGEXP}/(loadgen|cmd|utils/(testdb|statedb))
 HEAVY_PACKAGES_REGEXP = ${ROOT_PKG_REGEXP}/(docker|integration)
 
@@ -286,8 +286,10 @@ proto: FORCE $(GOOGLE_PROTOS_SENTINEL) $(FABRIC_PROTOS_SENTINEL)
 		| xargs -0 -n 1 dirname | xargs -n 1 basename | sort -u)"
 	@protoc \
 	  --go_out=paths=source_relative:. \
+	  --go_opt=Mcommon/common.proto=github.com/hyperledger/fabric-protos-go-apiv2/common \
 	  --go-grpc_out=. \
 	  --go-grpc_opt=paths=source_relative \
+	  --go-grpc_opt=Mcommon/common.proto=github.com/hyperledger/fabric-protos-go-apiv2/common \
 	  --grpc-gateway_out=. \
 	  --grpc-gateway_opt=paths=source_relative \
 	  --proto_path="${project_path}" \

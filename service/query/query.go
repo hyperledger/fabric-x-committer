@@ -27,7 +27,6 @@ var queryRowSQLTemplate string
 
 var (
 	queryPoliciesStmt    = fmt.Sprintf("SELECT key, value, version from ns_%s;", committerpb.MetaNamespaceID)
-	queryConfigStmt      = fmt.Sprintf("SELECT key, value, version from ns_%s;", committerpb.ConfigNamespaceID)
 	queryTxIDsStatusStmt = "SELECT tx_id, status, height FROM tx_status WHERE tx_id = ANY($1);"
 )
 
@@ -141,24 +140,6 @@ func queryPolicies(ctx context.Context, queryObj querier) (*applicationpb.Namesp
 		}
 	}
 	return policy, nil
-}
-
-func queryConfig(ctx context.Context, queryObj querier) (*applicationpb.ConfigTransaction, error) {
-	r, err := queryObj.Query(ctx, queryConfigStmt)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to query policies")
-	}
-	defer r.Close()
-	rows, err := readQueryRows(r, 1)
-	if err != nil {
-		return nil, err
-	}
-	configTX := &applicationpb.ConfigTransaction{}
-	for _, row := range rows {
-		configTX.Envelope = row.Value
-		configTX.Version = row.Version
-	}
-	return configTX, nil
 }
 
 func readQueryRows(r pgx.Rows, expectedSize int) ([]*committerpb.Row, error) {
