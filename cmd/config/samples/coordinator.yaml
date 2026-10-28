@@ -102,6 +102,12 @@ dependency-graph:
   # The actual chunk size is the minimum of this value and waiting-txs-limit.
   # Default: 500
   chunk-size: 500
+  # Select the simple dependency graph manager, which holds the whole waiting set in one map
+  # owned by a single goroutine instead of a local constructor pool feeding a mutex-guarded
+  # global graph. It has no lock, so it suits a workload whose graph cost is dominated by lock
+  # contention; it gives up the local constructors' parallelism in exchange.
+  # Default: false
+  use-simple-manager: false
 
 # Base buffer size per goroutine/endpoint for internal channels. The actual
 # buffer size is calculated as this value multiplied by the number of endpoints

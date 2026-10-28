@@ -89,6 +89,31 @@ func TestCoordinatorSecureConnection(t *testing.T) {
 	)
 }
 
+// TestNewCoordinatorServiceDependencyManagerSelection constructs the service with each
+// dependency manager. Both managers register the same Prometheus collectors, so building one
+// must not also build the other: doing so panics with "duplicate metrics collector
+// registration attempted", which no test caught while only one was ever reachable.
+func TestNewCoordinatorServiceDependencyManagerSelection(t *testing.T) {
+	t.Parallel()
+	for _, useSimple := range []bool{false, true} {
+		t.Run("use-simple-manager="+strconv.FormatBool(useSimple), func(t *testing.T) {
+			t.Parallel()
+			require.NotPanics(t, func() {
+				c := NewCoordinatorService(&Config{
+					DependencyGraph: &DependencyGraphConfig{
+						NumOfLocalDepConstructors: 1,
+						WaitingTxsLimit:           10,
+						ChunkSize:                 500,
+						UseSimpleManager:          useSimple,
+					},
+					ChannelBufferSizePerGoroutine: 10,
+				})
+				require.NotNil(t, c)
+			})
+		})
+	}
+}
+
 func newCoordinatorTestEnv(t *testing.T, tConfig *testConfig) *coordinatorTestEnv {
 	t.Helper()
 
