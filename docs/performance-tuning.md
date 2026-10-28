@@ -95,7 +95,11 @@ A small buffer (e.g., 1-10) tightly couples the Sidecar's internal stages: any s
 
 `max-workers-for-tx-parsing` is the most goroutines one block's transactions are parsed on before the Sidecar sends the block to the Coordinator. Parsing covers each transaction's envelope, its classification, and its form checks. Only the TX ID dedup and the batch order stay on a single goroutine.
 
-With 1 worker, one core's parsing rate caps the Sidecar. More workers help only on hosts with spare cores. The relay's sender and receiver, the block store, and the notifier need cores too. `min-tx-parsing-batch-size` is the fewest transactions one goroutine is given: a block is split into batches of at least this many, so a block with fewer than twice this many is parsed on one goroutine. Defaults: 1 and 256.
+Set `max-workers-for-tx-parsing: 0` to enable parallel parsing without choosing a worker count for each deployment's CPU allocation. The Sidecar uses the current `runtime.GOMAXPROCS(0)` as the worker limit for each block, reducing the need for manual tuning. Positive values set a fixed worker limit. The default remains 1, which parses serially. Negative values are rejected.
+
+To size workers effectively in CPU-limited containers, the binary must be built with **Go 1.25 or newer**, which introduced [container-aware GOMAXPROCS](https://go.dev/doc/go1.25#container-aware-gomaxprocs). This repository already requires Go 1.27. On Linux, Go considers cgroup CPU limits, including Kubernetes CPU limits. It does not use CPU requests. An explicit `GOMAXPROCS` setting overrides automatic sizing. The `GODEBUG` settings `containermaxprocs=0` and `updatemaxprocs=0` disable container sizing and periodic updates, respectively.
+
+The existing `min-tx-parsing-batch-size` setting limits how finely a block is split. Its default remains 256, so blocks with fewer than 512 transactions stay serial. Setting `max-workers-for-tx-parsing: 0` chooses only the worker limit. It leaves the configured batch size unchanged. The defaults remain 1 for the worker limit and 256 for the batch size. The Sidecar's other stages share Go's CPU budget, so automatic sizing does not guarantee maximum throughput for every workload.
 
 ### `last-committed-block-set-interval`
 

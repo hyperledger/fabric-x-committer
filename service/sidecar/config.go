@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package sidecar
 
 import (
+	"runtime"
 	"time"
 
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -38,9 +39,9 @@ type (
 	// TxParsingConfig controls how many goroutines parse a block's transactions before the sidecar
 	// sends the block to the coordinator. Its fields sit at the top level of the sidecar's config.
 	TxParsingConfig struct {
-		// MaxWorkers is the most goroutines one block's parsing is split across. Parsing is CPU
-		// bound, so more workers than the cores left over by the sidecar's other stages cannot help.
-		MaxWorkers int `mapstructure:"max-workers-for-tx-parsing" default:"1" validate:"gt=0"`
+		// MaxWorkers limits parsing goroutines per block. Zero uses the current GOMAXPROCS
+		// so deployments do not need to tune this limit to their CPU allocation.
+		MaxWorkers int `mapstructure:"max-workers-for-tx-parsing" default:"1" validate:"gte=0"`
 		// MinBatchSize is the smallest share of a block worth giving a goroutine of its own; below
 		// it, handing the share over costs more than parsing it in place.
 		MinBatchSize int `mapstructure:"min-tx-parsing-batch-size" default:"256" validate:"gt=0"`
@@ -72,3 +73,11 @@ type (
 		StreamWriteTimeout time.Duration `mapstructure:"stream-write-timeout" default:"30s" validate:"gt=0"`
 	}
 )
+
+func (c TxParsingConfig) workerCount(txCount int) int {
+	maxWorkers := c.MaxWorkers
+	if maxWorkers == 0 {
+		maxWorkers = runtime.GOMAXPROCS(0)
+	}
+	return min(maxWorkers, txCount/max(c.MinBatchSize, 1))
+}

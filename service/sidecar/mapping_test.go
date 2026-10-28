@@ -54,7 +54,7 @@ func BenchmarkMapOneBlock(b *testing.B) {
 
 	var dedup txIDDedup
 	b.ResetTimer()
-	mappedBlock, err := mapBlock(block, &dedup, TxParsingConfig{})
+	mappedBlock, err := mapBlock(block, &dedup, TxParsingConfig{MaxWorkers: 1})
 	b.StopTimer()
 	test.ReportTxPerSecond(b)
 	require.NoError(b, err, "This can never occur unless there is a bug in the relay.")
@@ -64,35 +64,32 @@ func BenchmarkMapOneBlock(b *testing.B) {
 func BenchmarkMapBlockSize(b *testing.B) {
 	flogging.ActivateSpec("fatal")
 	for _, blockSize := range []int{100, 1000, 5000, 10000} {
-		for _, workers := range []int{1, 8} {
+		txs := workload.GenerateTransactions(b, benchTxProfile(), blockSize)
+		block := workload.MapToOrdererBlock(1, txs)
+		for _, workers := range []int{0, 1, 2, 4, 8, 16} {
 			b.Run(fmt.Sprintf("blockSize=%d/workers=%d", blockSize, workers), func(b *testing.B) {
-				benchmarkMapBlocks(b, blockSize, TxParsingConfig{MaxWorkers: workers, MinBatchSize: 256})
+				benchmarkMapBlocks(b, block, TxParsingConfig{MaxWorkers: workers, MinBatchSize: 256})
 			})
 		}
 	}
 }
 
-// benchmarkMapBlocks maps b.N transactions, split into blocks of at most blockSize (the final block
-// may be smaller), so ns/op and tx/s are reported per transaction, independent of the block size.
-func benchmarkMapBlocks(b *testing.B, blockSize int, cfg TxParsingConfig) {
+// benchmarkMapBlocks reuses a full block so fixture generation stays outside the timed loop.
+// Each iteration maps one block with a fresh dedup set. ns/tx and tx/s allow block-size comparisons.
+func benchmarkMapBlocks(b *testing.B, block *common.Block, cfg TxParsingConfig) {
 	b.Helper()
-	allTxs := workload.GenerateTransactions(b, benchTxProfile(), b.N)
-	blocks := make([]*common.Block, 0, (b.N+blockSize-1)/blockSize)
-	for off := 0; off < b.N; off += blockSize {
-		blocks = append(blocks, workload.MapToOrdererBlock(
-			uint64(len(blocks)), allTxs[off:min(off+blockSize, b.N)],
-		))
-	}
-
+	blockSize := len(block.Data.Data)
 	b.ResetTimer()
-	for _, blk := range blocks {
+	for range b.N {
 		var dedup txIDDedup
-		if _, err := mapBlock(blk, &dedup, cfg); err != nil {
+		if _, err := mapBlock(block, &dedup, cfg); err != nil {
 			b.Fatal(err)
 		}
 	}
 	b.StopTimer()
-	test.ReportTxPerSecond(b)
+	b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/float64(blockSize), "ns/tx")
+	b.ReportMetric(float64(b.N)*float64(blockSize)/b.Elapsed().Seconds(), "tx/s")
+	b.ReportMetric(float64(max(1, cfg.workerCount(blockSize))), "workers")
 }
 
 func TestBlockMapping(t *testing.T) {
@@ -119,7 +116,7 @@ func TestBlockMapping(t *testing.T) {
 	require.True(t, dedup.add(lgTX.Id))
 
 	block := workload.MapToOrdererBlock(1, txs)
-	mappedBlock, err := mapBlock(block, &dedup, TxParsingConfig{})
+	mappedBlock, err := mapBlock(block, &dedup, TxParsingConfig{MaxWorkers: 1})
 	require.NoError(t, err, "This can never occur unless there is a bug in the relay.")
 
 	require.NotNil(t, mappedBlock)
@@ -142,53 +139,51 @@ func TestBlockMapping(t *testing.T) {
 // far apart the workers that parsed its copies, and only the block's first snapshot TX counts.
 func TestBlockMappingInParallel(t *testing.T) {
 	t.Parallel()
-	cfg := TxParsingConfig{MaxWorkers: 4, MinBatchSize: 32}
+	for _, workers := range []int{0, 4} {
+		t.Run(fmt.Sprintf("workers=%d", workers), func(t *testing.T) {
+			t.Parallel()
+			cfg := TxParsingConfig{MaxWorkers: workers, MinBatchSize: 32}
 
-	txb := &workload.TxBuilder{ChannelID: testChannelID}
-	snapshotTx := func() *servicepb.LoadGenTx {
-		return txb.MakeTx(&applicationpb.Tx{
-			Namespaces:   []*applicationpb.TxNamespace{{NsId: committerpb.SnapshotNamespaceID}},
-			Endorsements: dummyEndorsements(1),
-		})
-	}
-	cases, caseStatuses := MalformedTxTestCases(txb)
-
-	// Block layout: [snapshot#0 (accepted), cases copy 0, copy 1, ..., snapshot#1 (rejected)].
-	// Every copy after the first repeats copy 0's TX IDs, so each of its TXs that has an ID is a
-	// duplicate, and the one that has none keeps its non-stored status.
-	txs := []*servicepb.LoadGenTx{snapshotTx()}
-	expected := []committerpb.Status{statusNotYetValidated}
-	for copyIndex := 0; len(txs) < cfg.MaxWorkers*cfg.MinBatchSize; copyIndex++ {
-		for i, status := range caseStatuses {
-			switch {
-			case !IsStatusStoredInDB(status):
-			case copyIndex == 0:
-				status = statusNotYetValidated
-			default:
-				status = committerpb.Status_REJECTED_DUPLICATE_TX_ID
+			txb := &workload.TxBuilder{ChannelID: testChannelID}
+			snapshotTx := func() *servicepb.LoadGenTx {
+				return txb.MakeTx(&applicationpb.Tx{
+					Namespaces:   []*applicationpb.TxNamespace{{NsId: committerpb.SnapshotNamespaceID}},
+					Endorsements: dummyEndorsements(1),
+				})
 			}
-			txs = append(txs, cases[i])
-			expected = append(expected, status)
-		}
-	}
-	txs = append(txs, snapshotTx())
-	expected = append(expected, statusNotYetValidated)
+			cases, caseStatuses := MalformedTxTestCases(txb)
 
-	var dedup txIDDedup
-	mappedBlock, err := mapBlock(workload.MapToOrdererBlock(1, txs), &dedup, cfg)
-	require.NoError(t, err)
-	require.Equal(t, expected, mappedBlock.withStatus.txStatus)
+			// Block layout: [snapshot#0 (accepted), cases copy 0, copy 1, ..., snapshot#1 (rejected)].
+			// Every copy after the first repeats copy 0's TX IDs, so each of its TXs that has an ID is a
+			// duplicate, and the one that has none keeps its non-stored status.
+			txs := []*servicepb.LoadGenTx{snapshotTx()}
+			expected := []committerpb.Status{statusNotYetValidated}
+			for copyIndex := 0; len(txs) < 4*cfg.MinBatchSize; copyIndex++ {
+				for i, status := range caseStatuses {
+					txs = append(txs, cases[i])
+					expected = append(expected, repeatedTxStatus(status, copyIndex))
+				}
+			}
+			txs = append(txs, snapshotTx())
+			expected = append(expected, statusNotYetValidated)
 
-	require.NotNil(t, mappedBlock.snapshotTx)
-	require.Equal(t, uint32(0), mappedBlock.snapshotTx.Ref.TxNum)
-	lastRejected := mappedBlock.block.Rejected[len(mappedBlock.block.Rejected)-1]
-	require.Equal(t, committerpb.Status_REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK, lastRejected.Status)
-	require.Equal(t, uint32(len(txs)-1), lastRejected.Ref.TxNum) //nolint:gosec // int -> uint32
+			var dedup txIDDedup
+			mappedBlock, err := mapBlock(workload.MapToOrdererBlock(1, txs), &dedup, cfg)
+			require.NoError(t, err)
+			require.Equal(t, expected, mappedBlock.withStatus.txStatus)
 
-	// Only an accepted TX carries its content; a rejected one is streamed without it.
-	accepted := append(slices.Clone(mappedBlock.block.Txs), mappedBlock.snapshotTx)
-	for _, tx := range mappedBlock.withStatus.txs {
-		require.Equal(t, slices.Contains(accepted, tx), tx.Content != nil, "TX [%d]", tx.Ref.TxNum)
+			require.NotNil(t, mappedBlock.snapshotTx)
+			require.Equal(t, uint32(0), mappedBlock.snapshotTx.Ref.TxNum)
+			lastRejected := mappedBlock.block.Rejected[len(mappedBlock.block.Rejected)-1]
+			require.Equal(t, committerpb.Status_REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK, lastRejected.Status)
+			require.Equal(t, uint32(len(txs)-1), lastRejected.Ref.TxNum) //nolint:gosec // int -> uint32
+
+			// Only an accepted TX carries its content; a rejected one is streamed without it.
+			accepted := append(slices.Clone(mappedBlock.block.Txs), mappedBlock.snapshotTx)
+			for _, tx := range mappedBlock.withStatus.txs {
+				require.Equal(t, slices.Contains(accepted, tx), tx.Content != nil, "TX [%d]", tx.Ref.TxNum)
+			}
+		})
 	}
 }
 
@@ -245,7 +240,7 @@ func TestConfigTxMapping(t *testing.T) {
 			configEnv := configTxForTest(t, tc.parts)
 
 			var dedup txIDDedup
-			mappedBlock, err := mapBlock(configBlockForTest(configEnv), &dedup, TxParsingConfig{})
+			mappedBlock, err := mapBlock(configBlockForTest(configEnv), &dedup, TxParsingConfig{MaxWorkers: 1})
 			require.NoError(t, err)
 			require.NotNil(t, mappedBlock)
 
@@ -323,7 +318,7 @@ func TestConfigTxMapping(t *testing.T) {
 			block := configBlockForTest(configTxForTest(t, tc.parts))
 
 			var dedup txIDDedup
-			_, err := mapBlock(block, &dedup, TxParsingConfig{})
+			_, err := mapBlock(block, &dedup, TxParsingConfig{MaxWorkers: 1})
 			require.ErrorContains(t, err, tc.expectedErrorMessage)
 			// The block must be re-fetched, possibly from another orderer, rather than committed.
 			require.ErrorIs(t, err, retry.ErrBackOff)
@@ -344,7 +339,7 @@ func TestConfigTxDuplicateID(t *testing.T) {
 
 	var dedup txIDDedup
 	require.True(t, dedup.add(userTxID))
-	_, err := mapBlock(block, &dedup, TxParsingConfig{})
+	_, err := mapBlock(block, &dedup, TxParsingConfig{MaxWorkers: 1})
 	require.ErrorContains(t, err, "duplicate TX ID ["+userTxID+"]")
 	// The block must be re-fetched, by which time the TX holding the ID may have been processed.
 	require.ErrorIs(t, err, retry.ErrBackOff)
@@ -532,7 +527,7 @@ func TestSystemNamespaceFormValidation(t *testing.T) {
 			block := workload.MapToOrdererBlock(1, []*servicepb.LoadGenTx{txb.MakeTx(tc.tx)})
 
 			var dedup txIDDedup
-			mappedBlock, err := mapBlock(block, &dedup, TxParsingConfig{})
+			mappedBlock, err := mapBlock(block, &dedup, TxParsingConfig{MaxWorkers: 1})
 			require.NoError(t, err)
 			require.NotNil(t, mappedBlock)
 			require.Equal(t, tc.expectedHasSnapshot, mappedBlock.snapshotTx != nil)
@@ -582,7 +577,7 @@ func TestDuplicateSnapshotInBlock(t *testing.T) {
 	})
 
 	var dedup txIDDedup
-	mappedBlock, err := mapBlock(block, &dedup, TxParsingConfig{})
+	mappedBlock, err := mapBlock(block, &dedup, TxParsingConfig{MaxWorkers: 1})
 	require.NoError(t, err)
 	require.NotNil(t, mappedBlock)
 
@@ -869,4 +864,14 @@ func verifyKeysNamespace(ns *applicationpb.TxNamespace) committerpb.Status {
 		Namespaces:   []*applicationpb.TxNamespace{ns},
 		Endorsements: dummyEndorsements(1),
 	})
+}
+
+func repeatedTxStatus(status committerpb.Status, copyIndex int) committerpb.Status {
+	if !IsStatusStoredInDB(status) {
+		return status
+	}
+	if copyIndex == 0 {
+		return statusNotYetValidated
+	}
+	return committerpb.Status_REJECTED_DUPLICATE_TX_ID
 }

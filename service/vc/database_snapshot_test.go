@@ -401,7 +401,7 @@ func TestSnapshotDuplicateTxIDIsIdempotent(t *testing.T) {
 
 	// The commit path starts no hashing at all -- the snapshot service does, from its
 	// own process -- so the record stays exactly where the commit left it.
-	requireSnapshotStatus(t, env.dbEnv, ref.TxId, committerpb.SnapshotState_PENDING)
+	env.dbEnv.requireSnapshotStatus(t, ref.TxId, committerpb.SnapshotState_PENDING)
 
 	// Second submission of the same tx_id at the same height: the commit path
 	// detects the duplicate txID, but setCorrectStatusForDuplicateTxID recognizes
@@ -453,7 +453,7 @@ func TestSnapshotResubmissionSkipsReclone(t *testing.T) {
 
 	// The commit path starts no hashing at all -- the snapshot service does, from its
 	// own process -- so the record stays exactly where the commit left it.
-	requireSnapshotStatus(t, env.dbEnv, ref.TxId, committerpb.SnapshotState_PENDING)
+	env.dbEnv.requireSnapshotStatus(t, ref.TxId, committerpb.SnapshotState_PENDING)
 
 	// Drop the clone out-of-band to prove the resubmission does NOT re-create it:
 	// because txID is already committed, createSnapshotIfPresent must skip database creation.
@@ -649,8 +649,8 @@ func commitFreshSnapshotTx(
 // requireSnapshotStatus checks the saved snapshot status.
 // If wantErrSubstring is supplied, it also checks the error field.
 // An empty substring requires an empty error field.
-func requireSnapshotStatus(
-	t *testing.T, env *DatabaseTestEnv, txID string, want committerpb.SnapshotState_Status,
+func (env *DatabaseTestEnv) requireSnapshotStatus(
+	t *testing.T, txID string, want committerpb.SnapshotState_Status,
 	wantErrSubstring ...string,
 ) {
 	t.Helper()
