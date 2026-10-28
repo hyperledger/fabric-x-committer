@@ -31,6 +31,7 @@ load-profile:
     metadata-size: 150
     read-write-count: 2
     invalid-signatures: 0
+    queries-rate: {{ .LoadGenQueriesRate }}
   policy:
     channel-id: {{ .Policy.ChannelID }}
     artifacts-path: {{ .Policy.ArtifactsPath }}
@@ -57,6 +58,12 @@ generate:
 limit:
   blocks: {{ .LoadGenBlockLimit }}
   transactions: {{ .LoadGenTXLimit }}
+{{- if gt .LoadGenQueriesRate 0.0 }}
+query-client:
+  endpoints:
+    - {{ .Services.Query.GrpcEndpoint }}
+{{ include "tlsConfig" .ClientTLS | indent 2 }}
+{{- end }}
 
 {{ include "logging" . | indent 0 }}
 {{- end }}
