@@ -90,8 +90,12 @@ func BenchmarkDependencyGraph(b *testing.B) {
 				workers int
 			}{
 				{kind: managerKindSimple, workers: 2},
+				{kind: managerKindGlobalLocal, workers: 1},
 				{kind: managerKindGlobalLocal, workers: 2},
 				{kind: managerKindGlobalLocal, workers: 4},
+				{kind: managerKindGlobalLocal, workers: 8},
+				{kind: managerKindGlobalLocal, workers: 16},
+				{kind: managerKindGlobalLocal, workers: 32},
 			} {
 				name := fmt.Sprintf("%s-%d", tc.kind, tc.workers)
 				b.Run(name, func(b *testing.B) {
@@ -142,7 +146,11 @@ func BenchmarkDependencyGraph(b *testing.B) {
 					b.ResetTimer()
 					// Generates the load to the manager's queue.
 					go func() {
-						var i uint64
+						// Batch IDs start at 1, as the coordinator's own numbering does. The local
+						// dependency constructor releases a batch only once its predecessor has been
+						// released, so a batch numbered 0 waits for one that cannot exist and every
+						// global-local case hangs on the first batch.
+						var i uint64 = 1
 						for ctx.Err() == nil && len(txPoll) > 0 {
 							take := min(batchSize, len(txPoll))
 							batch := workload.MapToCoordinatorBatch(i, txPoll[:take])
