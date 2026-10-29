@@ -204,11 +204,28 @@ func (d *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *servi
 }
 
 // commit commits the writes to the database.
-func (d *database) commit(ctx context.Context, states *statesToBeCommitted) (*commitResult, error) {
-	start := time.Now()
+func (d *database) commit(ctx context.Context, states *statesToBeCommitted) (res *commitResult, err error) {
 	if states.empty() {
 		return nil, nil
 	}
+
+	// Deferred so that every return path is observed, and labelled so that rejected attempts are not
+	// averaged with clean commits.
+	start := time.Now()
+	defer func() {
+		var status string
+		switch {
+		case err != nil:
+			status = commitError
+		case res != nil && len(res.duplicates) > 0:
+			status = commitDuplicate
+		case res != nil:
+			status = commitConflict
+		default:
+			status = commitSuccess
+		}
+		promutil.Observe(d.metrics.databaseTxBatchCommitLatencySeconds.WithLabelValues(status), time.Since(start))
+	}()
 
 	// We want to commit all the writes to all namespaces or none at all,
 	// so we use a database transaction. Otherwise, the failure and recovery
@@ -221,12 +238,13 @@ func (d *database) commit(ctx context.Context, states *statesToBeCommitted) (*co
 	// This will be executed if an error occurs. If transaction is committed, this will be a no-op.
 	defer rollBackFunc()
 
-	res, err := d.writeStatesByGroup(ctx, tx, states)
+	res, err = d.writeStatesByGroup(ctx, tx, states)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write states: %w", err)
 	}
 	if res != nil {
-		// rollback
+		// The batch is rejected, so it is rolled back and retried by the caller. The deferred
+		// observation above labels this attempt duplicate or conflict, not success.
 		return res, nil
 	}
 
@@ -246,7 +264,6 @@ func (d *database) commit(ctx context.Context, states *statesToBeCommitted) (*co
 	}
 
 	err = tx.Commit(ctx)
-	promutil.Observe(d.metrics.databaseTxBatchCommitLatencySeconds, time.Since(start))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to perform the final commit on the database transaction")
 	}
@@ -317,11 +334,28 @@ func (d *database) insertTxStatus(
 	ctx context.Context,
 	tx pgx.Tx,
 	states *statesToBeCommitted,
-) ([]TxID /* duplicates */, error) {
-	start := time.Now()
+) (duplicateTxs []TxID, err error) {
 	if states.batchStatus == nil || len(states.batchStatus.Status) == 0 {
 		return nil, nil
 	}
+
+	// Deferred so a failed read is counted too, and started after the guard above so that an empty
+	// batch does not enter the histogram as a near-zero sample.
+	start := time.Now()
+	defer func() {
+		var status string
+		switch {
+		case err != nil:
+			status = commitError
+		case len(duplicateTxs) > 0:
+			status = commitDuplicate
+		default:
+			status = commitSuccess
+		}
+		promutil.Observe(
+			d.metrics.databaseTxBatchCommitTxsStatusLatencySeconds.WithLabelValues(status), time.Since(start),
+		)
+	}()
 
 	numEntries := len(states.batchStatus.Status)
 	ids := make([][]byte, 0, numEntries)
@@ -347,31 +381,40 @@ func (d *database) insertTxStatus(
 		return nil, fmt.Errorf("failed to read result from query [%s]: %w", insertTxStatusSQLStmt, err)
 	}
 	if len(duplicates) == 0 {
-		promutil.Observe(d.metrics.databaseTxBatchCommitTxsStatusLatencySeconds, time.Since(start))
 		return nil, nil
 	}
 
-	duplicateTxs := make([]TxID, len(duplicates))
+	duplicateTxs = make([]TxID, len(duplicates))
 	for i, v := range duplicates {
 		duplicateTxs[i] = TxID(v)
 	}
 	logger.Debugf("Total number of duplicate txs: %d", len(duplicateTxs))
-	promutil.Observe(d.metrics.databaseTxBatchCommitTxsStatusLatencySeconds, time.Since(start))
 	return duplicateTxs, nil
 }
 
 func (d *database) insertStates(
 	ctx context.Context, tx pgx.Tx, nsToWrites namespaceToWrites,
-) (namespaceToReads /* conflicts */, error) {
+) (conflicts namespaceToReads, err error) {
+	// Labelled because a colliding insert raises unique_violation and re-reads the existing keys,
+	// which is a different operation from a clean bulk insert.
 	start := time.Now()
 	defer func() {
+		var status string
+		switch {
+		case err != nil:
+			status = commitError
+		case len(conflicts) > 0:
+			status = commitConflict
+		default:
+			status = commitSuccess
+		}
 		promutil.Observe(
-			d.metrics.databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds,
+			d.metrics.databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds.WithLabelValues(status),
 			time.Since(start),
 		)
 	}()
 
-	conflicts := make(namespaceToReads)
+	conflicts = make(namespaceToReads)
 	for nsID, writes := range nsToWrites {
 		if writes.empty() {
 			continue
@@ -399,21 +442,31 @@ func (d *database) insertStates(
 	return nil, nil
 }
 
-func (d *database) updateStates(ctx context.Context, tx pgx.Tx, nsToWrites namespaceToWrites) error {
+func (d *database) updateStates(ctx context.Context, tx pgx.Tx, nsToWrites namespaceToWrites) (err error) {
+	// Started after the guard, as in insertTxStatus, so a batch with no updates does not enter the
+	// histogram as a near-zero sample. Updates cannot be rejected, so the outcome is success or error.
+	if nsToWrites.empty() {
+		return nil
+	}
 	start := time.Now()
+	defer func() {
+		status := commitSuccess
+		if err != nil {
+			status = commitError
+		}
+		promutil.Observe(d.metrics.databaseTxBatchCommitUpdateLatencySeconds.WithLabelValues(status), time.Since(start))
+	}()
+
 	for nsID, writes := range nsToWrites {
 		if writes.empty() {
 			continue
 		}
 
 		query := statedb.FmtNsID(updateNsStatesSQLTempl, nsID)
-		_, err := tx.Exec(ctx, query, writes.keys, writes.values, writes.versions)
-		if err != nil {
+		if _, err = tx.Exec(ctx, query, writes.keys, writes.values, writes.versions); err != nil {
 			return errors.Wrapf(err, "failed to execute query [%s]", query)
 		}
 	}
-	promutil.Observe(d.metrics.databaseTxBatchCommitUpdateLatencySeconds, time.Since(start))
-
 	return nil
 }
 
