@@ -708,7 +708,8 @@ func newAdapterConfig(ordererClient *adapters.OrdererClientConfig) adapters.Adap
 	return adapters.AdapterConfig{
 		OrdererClient: ordererClient,
 		SidecarClient: &adapters.SidecarClientConfig{
-			SidecarClient: &connection.ClientConfig{FlowControl: defaultFlowControl},
+			SidecarClient:    &connection.ClientConfig{FlowControl: defaultFlowControl},
+			OutBlockCapacity: 1000,
 		},
 		LoadGenClient:     &connection.ClientConfig{FlowControl: defaultFlowControl},
 		CoordinatorClient: &connection.ClientConfig{FlowControl: defaultFlowControl},
