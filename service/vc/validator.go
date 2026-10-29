@@ -125,7 +125,7 @@ func (v *transactionValidator) validate(ctx context.Context, db *database) error
 		}
 
 		// Gate a new snapshot request: reject it unless the latest _snapshot record
-		// is CHECKPOINTED. On rejection this removes the incoming _snapshot write and
+		// is CHECKPOINTED or ABORTED. On rejection this removes the incoming _snapshot write and
 		// sets its invalid status, so createSnapshotIfPresent (committer) later no-ops
 		// and no snapshot database or record is created.
 		if err := db.rejectSnapshotIfPriorNotCheckpointed(ctx, vTxs); err != nil {
@@ -203,7 +203,7 @@ func (v *validatedTransactions) updateInvalidTxs(txIDs []TxID, status committerp
 		delete(v.validTxNonBlindWrites, tID)
 		delete(v.validTxBlindWrites, tID)
 		delete(v.newWrites, tID)
-		// A rejected checkpoint must not advance its snapshot on a commit retry.
+		// A rejected checkpoint or abort must not advance its snapshot on a commit retry.
 		if v.checkpoint != nil && v.checkpoint.txID == tID {
 			v.checkpoint = nil
 		}
