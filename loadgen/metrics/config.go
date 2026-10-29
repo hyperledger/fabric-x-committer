@@ -18,7 +18,11 @@ type (
 	}
 
 	// LatencyConfig describes the latency monitoring parameters.
+	// MaxTrackedTXs bounds the table of in-flight sampled TXs, and so how long a sampled TX can
+	// take to come back before its slot is reused and the measurement lost. Sized against the
+	// sampling rate times the expected round trip.
 	LatencyConfig struct {
+		MaxTrackedTXs uint64        `mapstructure:"max-tracked-txs" default:"10000"`
 		SamplerConfig SamplerConfig `mapstructure:"sampler"`
 		BucketConfig  BucketConfig  `mapstructure:"buckets"`
 	}
@@ -26,11 +30,9 @@ type (
 	// SamplerConfig describes the latency sampling parameters.
 	// Prefix checks for TXs that have the given prefix.
 	// Portion uses the simple and efficient hash of the key to sample the required portion of TXs.
-	// MaxTrackedTXs is used to prevent unbounded growth of the tracked TXs data structure.
 	SamplerConfig struct {
-		Prefix        string  `mapstructure:"prefix" json:"prefix,omitempty"`
-		Portion       float64 `mapstructure:"portion" json:"portion,omitempty"`
-		MaxTrackedTXs uint64  `mapstructure:"max-tracked-txs" json:"max-tracked-txs,omitempty"`
+		Prefix  string  `mapstructure:"prefix" json:"prefix,omitempty"`
+		Portion float64 `mapstructure:"portion" json:"portion,omitempty"`
 	}
 
 	// BucketConfig describes the latency bucket distribution.

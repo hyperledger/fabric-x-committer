@@ -33,15 +33,15 @@ func TestLatencyTrackerPrefix(t *testing.T) {
 		t.Run(fmt.Sprintf("%v", &utils.LazyJSON{O: conf}), func(t *testing.T) {
 			t.Parallel()
 			l := newLatencyReceiverSender(&LatencyConfig{
+				MaxTrackedTXs: 10_000,
 				BucketConfig: BucketConfig{
 					Distribution: BucketUniform,
 					MaxLatency:   10 * time.Second,
 					BucketCount:  1_000,
 				},
 				SamplerConfig: SamplerConfig{
-					Portion:       conf.Portion,
-					Prefix:        conf.Prefix,
-					MaxTrackedTXs: 10_000,
+					Portion: conf.Portion,
+					Prefix:  conf.Prefix,
 				},
 			})
 
