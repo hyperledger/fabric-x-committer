@@ -39,6 +39,10 @@ type (
 		referencedReadKeysTotal  prometheus.CounterFunc
 		referencedWriteKeysTotal prometheus.CounterFunc
 
+		// Read from the stream's rate controller at scrape time, so it also reflects a rate
+		// changed at runtime through SetRateLimit without the setter having to update it.
+		transactionRateLimit prometheus.GaugeFunc
+
 		latencyTracker *latencyReceiverSender
 	}
 
@@ -63,8 +67,8 @@ type (
 )
 
 // NewLoadgenServiceMetrics creates a new PerfMetrics instance. The key-generation counters read from the
-// shared counter at scrape time via KeyStats.
-func NewLoadgenServiceMetrics(c *Config, counter *workload.TxCounter) *PerfMetrics {
+// shared counter at scrape time via KeyStats, and the rate limit gauge reads from the stream the same way.
+func NewLoadgenServiceMetrics(c *Config, counter *workload.TxCounter, stream *workload.TxStream) *PerfMetrics {
 	p := monitoring.NewProvider()
 	latencyTracker := newLatencyReceiverSender(&c.Latency)
 	return &PerfMetrics{
@@ -131,6 +135,14 @@ func NewLoadgenServiceMetrics(c *Config, counter *workload.TxCounter) *PerfMetri
 			Help: "Total number of write accesses (read-write and blind-write) that reused an " +
 				"already-created key instead of introducing a new one",
 		}, func() float64 { return float64(counter.KeyStats().ReferencedWriteKeys) }),
+		transactionRateLimit: p.NewGaugeFunc(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "transaction_rate_limit",
+			Help: "Transaction generation rate the load generator is currently aiming for, in " +
+				"transactions per second; 0 means unlimited. This is the target, not the achieved " +
+				"rate: compare it against the rate of transaction_sent_total to tell a load " +
+				"generator that cannot keep up from a committer that cannot keep up",
+		}, func() float64 { return float64(stream.GetRate()) }),
 	}
 }
 
