@@ -185,3 +185,5 @@ require (
 	moul.io/http2curl/v2 v2.3.0 // indirect
 	mvdan.cc/gofumpt v0.10.0 // indirect
 )
+
+replace github.com/hyperledger/fabric-x-common => github.com/dean-amar/fabric-x-common v0.0.0-20261101122825-bb78ff7e5c3c

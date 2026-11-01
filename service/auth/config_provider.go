@@ -23,9 +23,9 @@ import (
 	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
-// ErrConfigUnavailable is returned before any channel-configuration bundle has loaded, so nothing can be
+// errConfigUnavailable is returned before any channel-configuration bundle has loaded, so nothing can be
 // authenticated or authorized yet. Expected during bootstrap, before the first config block commits.
-var ErrConfigUnavailable = errors.New("channel configuration not available")
+var errConfigUnavailable = errors.New("channel configuration not available")
 
 // configProvider exposes the latest committed channel configuration as a bundle; it never mutates it. The
 // bundle is swapped atomically.
@@ -92,11 +92,11 @@ func (p *configProvider) refresh(ctx context.Context) error {
 	return nil
 }
 
-// current returns the latest loaded bundle, or ErrConfigUnavailable if none has been loaded yet.
+// current returns the latest loaded bundle, or errConfigUnavailable if none has been loaded yet.
 func (p *configProvider) current() (*channelconfig.Bundle, error) {
 	bundle := p.bundle.Load()
 	if bundle == nil {
-		return nil, ErrConfigUnavailable
+		return nil, errConfigUnavailable
 	}
 	return bundle, nil
 }

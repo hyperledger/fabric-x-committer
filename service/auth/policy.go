@@ -16,9 +16,9 @@ import (
 // policyReaders is the policy governing every resource the channel configuration's ACLs do not name.
 const policyReaders = "/Channel/Application/Readers"
 
-// ErrNoPolicyForResource is returned when the policy governing a resource is absent from the channel
+// errNoPolicyForResource is returned when the policy governing a resource is absent from the channel
 // configuration.
-var ErrNoPolicyForResource = errors.New("no policy defined for resource")
+var errNoPolicyForResource = errors.New("no policy defined for resource")
 
 // evaluateResourcePolicy re-resolves the record's identity against the latest bundle, which is what makes
 // a removed organization or rotated MSP take effect immediately, then evaluates the resource's policy.
@@ -36,7 +36,7 @@ func evaluateResourcePolicy(
 	ref := resolvePolicyRef(bundle, resource)
 	policy, ok := bundle.PolicyManager().GetPolicy(ref)
 	if !ok {
-		return errors.Wrapf(ErrNoPolicyForResource, "policy %s for resource %s is absent from the channel config",
+		return errors.Wrapf(errNoPolicyForResource, "policy %s for resource %s is absent from the channel config",
 			ref, resource)
 	}
 	if err = policy.EvaluateIdentities([]msp.Identity{identity}); err != nil {

@@ -28,10 +28,16 @@ The service is composed of focused collaborators, each with one responsibility:
 
 ## RPCs
 
+The `AuthService` is defined in `fabric-x-common/api/committerpb` (`auth.proto`), next to the
+`QueryService` and `SidecarService` it protects, so a client authenticates without importing this module.
+Only the persisted `TokenRecord` is internal, in `api/servicepb`.
+
 - `Authenticate(signed_envelope, requested_scope) -> token, expires_at` — verifies the envelope
   (channel and empty-payload scope, timestamp freshness, TLS certificate binding, MSP identity
   resolution, signature), issues a random opaque token, and writes its hash and the token-to-identity binding
-  to the store.
+  to the store. `requested_scope` only narrows the token: each entry is the gRPC full-method name of a Query,
+  Sidecar or Deliver RPC (e.g. `/committerpb.QueryService/GetRows`), entries are trimmed and de-duplicated,
+  and an empty scope leaves the identity's authority unrestricted.
 - `IssueNonce() -> nonce, expires_at` — issues the single-use challenge a client must sign into its
   envelope. It is the mandatory first step of authentication.
 - `Authorize(token, resource, tls_cert_hash) -> token_expires_at` — resolves the token's record from the
@@ -41,9 +47,10 @@ The service is composed of focused collaborators, each with one responsibility:
   decision lapses.
 
 Every non-authorized outcome is a gRPC status error:
-`Unauthenticated` (invalid/expired/unknown token or certificate mismatch), `PermissionDenied`
-(scope or policy denial), or `Unavailable` (before the configuration is loaded, or AuthService
-unreachable).
+`Unauthenticated` (invalid/expired/unknown token or certificate mismatch, or a failed authentication),
+`PermissionDenied` (scope or policy denial), `InvalidArgument` (no signed envelope, or a scope naming an unknown RPC), `ResourceExhausted`
+(the challenge rate limit), `Unavailable` (before the configuration is loaded, or AuthService
+unreachable), or `Internal` (a token or nonce operation fails).
 
 ## Replay protection: the nonce challenge
 

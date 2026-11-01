@@ -41,9 +41,9 @@ const (
 )
 
 var (
-	// ErrTokenNotFound is returned when a token record is absent from the store, meaning the token was
+	// errTokenNotFound is returned when a token record is absent from the store, meaning the token was
 	// never issued by this deployment or has expired and been swept.
-	ErrTokenNotFound = errors.New("token record not found")
+	errTokenNotFound = errors.New("token record not found")
 
 	// errNonceNotFound is returned when a nonce is unknown, already consumed, or expired. The three are
 	// deliberately indistinguishable to the caller, so a client cannot probe which nonces exist.
@@ -76,7 +76,7 @@ func (db *database) insertToken(ctx context.Context, rec *servicepb.TokenRecord)
 	}, puddle.ErrClosedPool)
 }
 
-// readToken returns the record for a presented token, or ErrTokenNotFound when it is absent.
+// readToken returns the record for a presented token, or errTokenNotFound when it is absent.
 func (db *database) readToken(ctx context.Context, token string) (*servicepb.TokenRecord, error) {
 	records, err := retry.ExecuteWithResult(ctx, db.retry, func() ([][]byte, error) {
 		rows, queryErr := db.pool.Query(ctx, sqlSelectToken, hashToken(token))
@@ -90,7 +90,7 @@ func (db *database) readToken(ctx context.Context, token string) (*servicepb.Tok
 		return nil, err
 	}
 	if len(records) == 0 {
-		return nil, ErrTokenNotFound
+		return nil, errTokenNotFound
 	}
 
 	rec := &servicepb.TokenRecord{}
@@ -116,8 +116,8 @@ func (db *database) insertNonce(ctx context.Context, expiresAt time.Time) ([]byt
 
 // consumeNonce redeems a nonce, returning errNonceNotFound unless it was present and unexpired.
 func (db *database) consumeNonce(ctx context.Context, nonce []byte, now time.Time) error {
-	if len(nonce) == 0 {
-		return errors.Wrap(errNonceNotFound, "envelope carries no nonce")
+	if len(nonce) != randomLength {
+		return errors.Wrap(errNonceNotFound, "envelope carries no nonce or nonce has wrong length")
 	}
 	consumed, err := db.execRowsAffected(ctx, sqlConsumeNonce, nonce, now.Unix())
 	if err != nil {

@@ -12,7 +12,6 @@
 package servicepb
 
 import (
-	common "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	msppb "github.com/hyperledger/fabric-x-common/api/msppb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -27,322 +26,6 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
-
-type IssueNonceRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *IssueNonceRequest) Reset() {
-	*x = IssueNonceRequest{}
-	mi := &file_api_servicepb_auth_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *IssueNonceRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*IssueNonceRequest) ProtoMessage() {}
-
-func (x *IssueNonceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_servicepb_auth_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use IssueNonceRequest.ProtoReflect.Descriptor instead.
-func (*IssueNonceRequest) Descriptor() ([]byte, []int) {
-	return file_api_servicepb_auth_proto_rawDescGZIP(), []int{0}
-}
-
-type IssueNonceResponse struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// nonce is the server-issued challenge the client places in its envelope's SignatureHeader.Nonce.
-	// It is valid for a single Authenticate call and expires at expires_at.
-	Nonce []byte `protobuf:"bytes,1,opt,name=nonce,proto3" json:"nonce,omitempty"`
-	// expires_at is the nonce expiry in unix seconds.
-	ExpiresAt     int64 `protobuf:"varint,2,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *IssueNonceResponse) Reset() {
-	*x = IssueNonceResponse{}
-	mi := &file_api_servicepb_auth_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *IssueNonceResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*IssueNonceResponse) ProtoMessage() {}
-
-func (x *IssueNonceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_servicepb_auth_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use IssueNonceResponse.ProtoReflect.Descriptor instead.
-func (*IssueNonceResponse) Descriptor() ([]byte, []int) {
-	return file_api_servicepb_auth_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *IssueNonceResponse) GetNonce() []byte {
-	if x != nil {
-		return x.Nonce
-	}
-	return nil
-}
-
-func (x *IssueNonceResponse) GetExpiresAt() int64 {
-	if x != nil {
-		return x.ExpiresAt
-	}
-	return 0
-}
-
-type AuthenticateRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// signed_envelope carries the client's serialized MSP identity
-	// and a signature over the payload; under mutual TLS its ChannelHeader also carries the TLS
-	// certificate hash the token is bound to. Its SignatureHeader.Nonce must be an unconsumed nonce
-	// previously issued by IssueNonce.
-	SignedEnvelope *common.Envelope `protobuf:"bytes,1,opt,name=signed_envelope,json=signedEnvelope,proto3" json:"signed_envelope,omitempty"`
-	// requested_scope optionally narrows the token's authority to these gRPC full-method names
-	// (least privilege). A requested scope may only narrow, never broaden, the identity's authority.
-	RequestedScope []string `protobuf:"bytes,2,rep,name=requested_scope,json=requestedScope,proto3" json:"requested_scope,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
-}
-
-func (x *AuthenticateRequest) Reset() {
-	*x = AuthenticateRequest{}
-	mi := &file_api_servicepb_auth_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AuthenticateRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AuthenticateRequest) ProtoMessage() {}
-
-func (x *AuthenticateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_servicepb_auth_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AuthenticateRequest.ProtoReflect.Descriptor instead.
-func (*AuthenticateRequest) Descriptor() ([]byte, []int) {
-	return file_api_servicepb_auth_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *AuthenticateRequest) GetSignedEnvelope() *common.Envelope {
-	if x != nil {
-		return x.SignedEnvelope
-	}
-	return nil
-}
-
-func (x *AuthenticateRequest) GetRequestedScope() []string {
-	if x != nil {
-		return x.RequestedScope
-	}
-	return nil
-}
-
-type AuthenticateResponse struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// token is the issued cert-bound opaque token the client attaches to subsequent RPCs.
-	Token string `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
-	// expires_at is the token expiry in unix seconds.
-	ExpiresAt     int64 `protobuf:"varint,2,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AuthenticateResponse) Reset() {
-	*x = AuthenticateResponse{}
-	mi := &file_api_servicepb_auth_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AuthenticateResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AuthenticateResponse) ProtoMessage() {}
-
-func (x *AuthenticateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_servicepb_auth_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AuthenticateResponse.ProtoReflect.Descriptor instead.
-func (*AuthenticateResponse) Descriptor() ([]byte, []int) {
-	return file_api_servicepb_auth_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *AuthenticateResponse) GetToken() string {
-	if x != nil {
-		return x.Token
-	}
-	return ""
-}
-
-func (x *AuthenticateResponse) GetExpiresAt() int64 {
-	if x != nil {
-		return x.ExpiresAt
-	}
-	return 0
-}
-
-type AuthorizeRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// token is the client's token, forwarded by the resource server.
-	Token string `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
-	// resource is the gRPC full method being authorized, e.g. "/committerpb.QueryService/GetRows".
-	Resource string `protobuf:"bytes,2,opt,name=resource,proto3" json:"resource,omitempty"`
-	// tls_cert_hash is the SHA-256 of the caller's TLS certificate observed at the resource server.
-	// It is empty when the caller connected without a client certificate.
-	TlsCertHash   []byte `protobuf:"bytes,3,opt,name=tls_cert_hash,json=tlsCertHash,proto3" json:"tls_cert_hash,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AuthorizeRequest) Reset() {
-	*x = AuthorizeRequest{}
-	mi := &file_api_servicepb_auth_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AuthorizeRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AuthorizeRequest) ProtoMessage() {}
-
-func (x *AuthorizeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_servicepb_auth_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AuthorizeRequest.ProtoReflect.Descriptor instead.
-func (*AuthorizeRequest) Descriptor() ([]byte, []int) {
-	return file_api_servicepb_auth_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *AuthorizeRequest) GetToken() string {
-	if x != nil {
-		return x.Token
-	}
-	return ""
-}
-
-func (x *AuthorizeRequest) GetResource() string {
-	if x != nil {
-		return x.Resource
-	}
-	return ""
-}
-
-func (x *AuthorizeRequest) GetTlsCertHash() []byte {
-	if x != nil {
-		return x.TlsCertHash
-	}
-	return nil
-}
-
-// AuthorizeResponse is returned only when the identity satisfies the resource policy: every other outcome is a
-// gRPC status error (Unauthenticated for an invalid, expired, or unknown token or a certificate mismatch;
-// PermissionDenied for a scope or policy denial; Unavailable before the configuration is loaded).
-type AuthorizeResponse struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// token_expires_at is the bound token's expiry in unix seconds. A resource server ends a stream at it,
-	// so an expired token cannot keep an established stream alive.
-	TokenExpiresAt int64 `protobuf:"varint,1,opt,name=token_expires_at,json=tokenExpiresAt,proto3" json:"token_expires_at,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
-}
-
-func (x *AuthorizeResponse) Reset() {
-	*x = AuthorizeResponse{}
-	mi := &file_api_servicepb_auth_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AuthorizeResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AuthorizeResponse) ProtoMessage() {}
-
-func (x *AuthorizeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_servicepb_auth_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AuthorizeResponse.ProtoReflect.Descriptor instead.
-func (*AuthorizeResponse) Descriptor() ([]byte, []int) {
-	return file_api_servicepb_auth_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *AuthorizeResponse) GetTokenExpiresAt() int64 {
-	if x != nil {
-		return x.TokenExpiresAt
-	}
-	return 0
-}
 
 // TokenRecord is the persisted token-to-identity binding, stored proto-serialized in the auth service's
 // token store under the token's SHA-256. The token itself is never stored, so a read of the store yields
@@ -366,7 +49,7 @@ type TokenRecord struct {
 
 func (x *TokenRecord) Reset() {
 	*x = TokenRecord{}
-	mi := &file_api_servicepb_auth_proto_msgTypes[6]
+	mi := &file_api_servicepb_auth_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -378,7 +61,7 @@ func (x *TokenRecord) String() string {
 func (*TokenRecord) ProtoMessage() {}
 
 func (x *TokenRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_api_servicepb_auth_proto_msgTypes[6]
+	mi := &file_api_servicepb_auth_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -391,7 +74,7 @@ func (x *TokenRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TokenRecord.ProtoReflect.Descriptor instead.
 func (*TokenRecord) Descriptor() ([]byte, []int) {
-	return file_api_servicepb_auth_proto_rawDescGZIP(), []int{6}
+	return file_api_servicepb_auth_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *TokenRecord) GetIdentity() *msppb.Identity {
@@ -426,36 +109,13 @@ var File_api_servicepb_auth_proto protoreflect.FileDescriptor
 
 const file_api_servicepb_auth_proto_rawDesc = "" +
 	"\n" +
-	"\x18api/servicepb/auth.proto\x12\tservicepb\x1a\x13api/msppb/msp.proto\x1a\x13common/common.proto\"\x13\n" +
-	"\x11IssueNonceRequest\"I\n" +
-	"\x12IssueNonceResponse\x12\x14\n" +
-	"\x05nonce\x18\x01 \x01(\fR\x05nonce\x12\x1d\n" +
-	"\n" +
-	"expires_at\x18\x02 \x01(\x03R\texpiresAt\"y\n" +
-	"\x13AuthenticateRequest\x129\n" +
-	"\x0fsigned_envelope\x18\x01 \x01(\v2\x10.common.EnvelopeR\x0esignedEnvelope\x12'\n" +
-	"\x0frequested_scope\x18\x02 \x03(\tR\x0erequestedScope\"K\n" +
-	"\x14AuthenticateResponse\x12\x14\n" +
-	"\x05token\x18\x01 \x01(\tR\x05token\x12\x1d\n" +
-	"\n" +
-	"expires_at\x18\x02 \x01(\x03R\texpiresAt\"h\n" +
-	"\x10AuthorizeRequest\x12\x14\n" +
-	"\x05token\x18\x01 \x01(\tR\x05token\x12\x1a\n" +
-	"\bresource\x18\x02 \x01(\tR\bresource\x12\"\n" +
-	"\rtls_cert_hash\x18\x03 \x01(\fR\vtlsCertHash\"=\n" +
-	"\x11AuthorizeResponse\x12(\n" +
-	"\x10token_expires_at\x18\x01 \x01(\x03R\x0etokenExpiresAt\"\x99\x01\n" +
+	"\x18api/servicepb/auth.proto\x12\tservicepb\x1a\x13api/msppb/msp.proto\"\x99\x01\n" +
 	"\vTokenRecord\x12+\n" +
 	"\bidentity\x18\x01 \x01(\v2\x0f.msppb.IdentityR\bidentity\x12(\n" +
 	"\x10cert_hash_sha256\x18\x02 \x01(\fR\x0ecertHashSha256\x12\x14\n" +
 	"\x05scope\x18\x03 \x03(\tR\x05scope\x12\x1d\n" +
 	"\n" +
-	"expires_at\x18\x04 \x01(\x03R\texpiresAt2\xf1\x01\n" +
-	"\vAuthService\x12I\n" +
-	"\n" +
-	"IssueNonce\x12\x1c.servicepb.IssueNonceRequest\x1a\x1d.servicepb.IssueNonceResponse\x12O\n" +
-	"\fAuthenticate\x12\x1e.servicepb.AuthenticateRequest\x1a\x1f.servicepb.AuthenticateResponse\x12F\n" +
-	"\tAuthorize\x12\x1b.servicepb.AuthorizeRequest\x1a\x1c.servicepb.AuthorizeResponseB9Z7github.com/hyperledger/fabric-x-committer/api/servicepbb\x06proto3"
+	"expires_at\x18\x04 \x01(\x03R\texpiresAtB9Z7github.com/hyperledger/fabric-x-committer/api/servicepbb\x06proto3"
 
 var (
 	file_api_servicepb_auth_proto_rawDescOnce sync.Once
@@ -469,32 +129,18 @@ func file_api_servicepb_auth_proto_rawDescGZIP() []byte {
 	return file_api_servicepb_auth_proto_rawDescData
 }
 
-var file_api_servicepb_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_api_servicepb_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_api_servicepb_auth_proto_goTypes = []any{
-	(*IssueNonceRequest)(nil),    // 0: servicepb.IssueNonceRequest
-	(*IssueNonceResponse)(nil),   // 1: servicepb.IssueNonceResponse
-	(*AuthenticateRequest)(nil),  // 2: servicepb.AuthenticateRequest
-	(*AuthenticateResponse)(nil), // 3: servicepb.AuthenticateResponse
-	(*AuthorizeRequest)(nil),     // 4: servicepb.AuthorizeRequest
-	(*AuthorizeResponse)(nil),    // 5: servicepb.AuthorizeResponse
-	(*TokenRecord)(nil),          // 6: servicepb.TokenRecord
-	(*common.Envelope)(nil),      // 7: common.Envelope
-	(*msppb.Identity)(nil),       // 8: msppb.Identity
+	(*TokenRecord)(nil),    // 0: servicepb.TokenRecord
+	(*msppb.Identity)(nil), // 1: msppb.Identity
 }
 var file_api_servicepb_auth_proto_depIdxs = []int32{
-	7, // 0: servicepb.AuthenticateRequest.signed_envelope:type_name -> common.Envelope
-	8, // 1: servicepb.TokenRecord.identity:type_name -> msppb.Identity
-	0, // 2: servicepb.AuthService.IssueNonce:input_type -> servicepb.IssueNonceRequest
-	2, // 3: servicepb.AuthService.Authenticate:input_type -> servicepb.AuthenticateRequest
-	4, // 4: servicepb.AuthService.Authorize:input_type -> servicepb.AuthorizeRequest
-	1, // 5: servicepb.AuthService.IssueNonce:output_type -> servicepb.IssueNonceResponse
-	3, // 6: servicepb.AuthService.Authenticate:output_type -> servicepb.AuthenticateResponse
-	5, // 7: servicepb.AuthService.Authorize:output_type -> servicepb.AuthorizeResponse
-	5, // [5:8] is the sub-list for method output_type
-	2, // [2:5] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	1, // 0: servicepb.TokenRecord.identity:type_name -> msppb.Identity
+	1, // [1:1] is the sub-list for method output_type
+	1, // [1:1] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_api_servicepb_auth_proto_init() }
@@ -508,9 +154,9 @@ func file_api_servicepb_auth_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_servicepb_auth_proto_rawDesc), len(file_api_servicepb_auth_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   1,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   0,
 		},
 		GoTypes:           file_api_servicepb_auth_proto_goTypes,
 		DependencyIndexes: file_api_servicepb_auth_proto_depIdxs,

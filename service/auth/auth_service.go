@@ -9,6 +9,7 @@ package auth
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -16,12 +17,15 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
+	"github.com/hyperledger/fabric-x-common/api/committerpb"
 	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -43,7 +47,7 @@ type (
 	// Service is the authentication and authorization service.
 	// It holds no per-connection state, so any instance can serve any client's request.
 	Service struct {
-		servicepb.UnimplementedAuthServiceServer
+		committerpb.UnimplementedAuthServiceServer
 
 		config  *Config
 		metrics *perfMetrics
@@ -51,6 +55,8 @@ type (
 		challenges  *rate.Limiter
 		ready       *channel.Ready
 		healthcheck *health.Server
+		// protectedRPCs are the gRPC full-method names a token's scope may name.
+		protectedRPCs map[string]bool
 
 		// db and configProvider are set by Run, which opens the database pool they read from.
 		db             *database
@@ -65,40 +71,49 @@ type (
 		nonce       []byte
 		signedData  *protoutil.SignedData
 	}
-
-	// verifiedIdentity is the outcome of authenticating an envelope. certHash is nil when the client
-	// connected without a certificate.
-	verifiedIdentity struct {
-		identity *msppb.Identity
-		certHash []byte
-	}
 )
 
 var (
-	// ErrStaleEnvelope is returned when an authentication envelope's timestamp is missing, invalid,
+	// errStaleEnvelope is returned when an authentication envelope's timestamp is missing, invalid,
 	// or outside the configured freshness window.
-	ErrStaleEnvelope = errors.New("authentication envelope is stale")
-	// ErrCertBindingMismatch is returned when the envelope's claimed TLS certificate hash does not
+	errStaleEnvelope = errors.New("authentication envelope is stale")
+	// errCertBindingMismatch is returned when the envelope's claimed TLS certificate hash does not
 	// match the certificate presented on the connection.
-	ErrCertBindingMismatch = errors.New("TLS certificate binding mismatch")
-	// ErrEnvelopeScope is returned when an envelope is not scoped to authentication for this channel
+	errCertBindingMismatch = errors.New("TLS certificate binding mismatch")
+	// errEnvelopeScope is returned when an envelope is not scoped to authentication for this channel
 	// (wrong header type or channel id).
-	ErrEnvelopeScope = errors.New("envelope is not an authentication request for this channel")
-	// ErrNoEnvelope is returned when the request carries no signed envelope at all.
-	ErrNoEnvelope = errors.New("signed envelope is required")
+	errEnvelopeScope = errors.New("envelope is not an authentication request for this channel")
+	// errNoEnvelope is returned when the request carries no signed envelope at all.
+	errNoEnvelope = errors.New("signed envelope is required")
+	// errUnknownScope is returned when a requested scope names an RPC the resource servers do not protect.
+	errUnknownScope = errors.New("requested scope names an unknown RPC")
 )
 
 // NewAuthService creates a new AuthService from a configuration.
 func NewAuthService(config *Config) (*Service, error) {
 	if err := config.ChallengeRateLimit.Validate(); err != nil {
-		return nil, errors.Newf("invalid challenge rate limit: %v", err)
+		return nil, fmt.Errorf("invalid challenge rate limit: %w", err)
 	}
+
+	protected := make(map[string]bool)
+	for _, desc := range []*grpc.ServiceDesc{
+		&committerpb.QueryService_ServiceDesc, &committerpb.SidecarService_ServiceDesc, &peer.Deliver_ServiceDesc,
+	} {
+		for _, m := range desc.Methods {
+			protected[fmt.Sprintf("/%s/%s", desc.ServiceName, m.MethodName)] = true
+		}
+		for _, st := range desc.Streams {
+			protected[fmt.Sprintf("/%s/%s", desc.ServiceName, st.StreamName)] = true
+		}
+	}
+
 	return &Service{
-		config:      config,
-		metrics:     newAuthServiceMetrics(),
-		challenges:  serve.NewRateLimiter(&config.ChallengeRateLimit),
-		ready:       channel.NewReady(),
-		healthcheck: serve.DefaultHealthCheckService(),
+		config:        config,
+		metrics:       newAuthServiceMetrics(),
+		challenges:    serve.NewRateLimiter(&config.ChallengeRateLimit),
+		ready:         channel.NewReady(),
+		healthcheck:   serve.DefaultHealthCheckService(),
+		protectedRPCs: protected,
 	}, nil
 }
 
@@ -147,7 +162,7 @@ func (s *Service) WaitForReady(ctx context.Context) bool {
 
 // RegisterService registers the AuthService's gRPC handlers and monitoring server.
 func (s *Service) RegisterService(srv serve.Servers) {
-	servicepb.RegisterAuthServiceServer(srv.GRPC, s)
+	committerpb.RegisterAuthServiceServer(srv.GRPC, s)
 	healthgrpc.RegisterHealthServer(srv.GRPC, s.healthcheck)
 	monitoring.RegisterMonitoringServer(srv.HTTP, s.metrics.Provider)
 	serve.RegisterServerMetrics(srv.StatsHandler, s.metrics.serverMetrics)
@@ -155,17 +170,18 @@ func (s *Service) RegisterService(srv serve.Servers) {
 
 // IssueNonce issues a single-use nonce for the client's next Authenticate.
 func (s *Service) IssueNonce(
-	ctx context.Context, _ *servicepb.IssueNonceRequest,
-) (*servicepb.IssueNonceResponse, error) {
+	ctx context.Context, _ *committerpb.IssueNonceRequest,
+) (*committerpb.IssueNonceResponse, error) {
 	if err := s.allowChallenge(); err != nil {
 		return nil, grpcerror.WrapResourceExhaustedOrCancelled(ctx, err)
 	}
 	expiresAt := time.Now().Add(s.config.NonceTTL)
 	nonce, err := s.db.insertNonce(ctx, expiresAt)
 	if err != nil {
-		return nil, grpcerror.WrapInternalError(err)
+		logger.Errorf("Failed to persist nonce: %+v", err)
+		return nil, grpcerror.WrapInternalError(errors.New("failed to issue a nonce"))
 	}
-	return &servicepb.IssueNonceResponse{
+	return &committerpb.IssueNonceResponse{
 		Nonce:     nonce,
 		ExpiresAt: expiresAt.Unix(),
 	}, nil
@@ -174,8 +190,8 @@ func (s *Service) IssueNonce(
 // Authenticate exchanges a signed envelope for a cert-bound token. The signature is verified once here;
 // subsequent authorization carries the identity forward via the persisted token record.
 func (s *Service) Authenticate(
-	ctx context.Context, req *servicepb.AuthenticateRequest,
-) (*servicepb.AuthenticateResponse, error) {
+	ctx context.Context, req *committerpb.AuthenticateRequest,
+) (*committerpb.AuthenticateResponse, error) {
 	if err := s.allowChallenge(); err != nil {
 		return nil, grpcerror.WrapResourceExhaustedOrCancelled(ctx, err)
 	}
@@ -184,41 +200,49 @@ func (s *Service) Authenticate(
 		return nil, grpcerror.WrapUnavailable(err)
 	}
 	if req.GetSignedEnvelope() == nil {
-		return nil, grpcerror.WrapInvalidArgument(ErrNoEnvelope)
+		return nil, grpcerror.WrapInvalidArgument(errNoEnvelope)
+	}
+	scope, err := normalizeScope(req.GetRequestedScope(), s.protectedRPCs)
+	if err != nil {
+		return nil, grpcerror.WrapInvalidArgument(err)
 	}
 
 	now := time.Now()
 	parsed, err := parseSignedEnvelope(req.GetSignedEnvelope())
 	if err != nil {
-		return nil, grpcerror.WrapUnauthenticated(errors.Newf("authentication failed: %v", err))
+		return nil, grpcerror.WrapUnauthenticated(fmt.Errorf("authentication failed: %w", err))
 	}
 
 	// Redeem before verifying the signature: redeeming first stops a replayer from making
 	// the service repeat the expensive signature check.
 	if err = s.db.consumeNonce(ctx, parsed.nonce, now); err != nil {
 		if !errors.Is(err, errNonceNotFound) {
-			return nil, grpcerror.WrapInternalError(err)
+			logger.Errorf("Failed to redeem nonce: %+v", err)
+			return nil, grpcerror.WrapInternalError(errors.New("failed to redeem the nonce"))
 		}
-		return nil, grpcerror.WrapUnauthenticated(errors.Newf("authentication failed: %v", err))
+		return nil, grpcerror.WrapUnauthenticated(fmt.Errorf("authentication failed: %w", err))
 	}
 
-	identity, err := s.verifyEnvelope(ctx, parsed, bundle, now)
+	certHash := util.ExtractCertificateHashFromContext(ctx)
+	identity, err := s.verifyEnvelope(parsed, bundle, certHash, now)
 	if err != nil {
-		return nil, grpcerror.WrapUnauthenticated(errors.Newf("authentication failed: %v", err))
+		logger.Debugf("Envelope verification failed: %v", err)
+		return nil, grpcerror.WrapUnauthenticated(errors.New("authentication failed"))
 	}
 
 	rec := &servicepb.TokenRecord{
-		Identity:       identity.identity,
-		CertHashSha256: identity.certHash,
-		Scope:          normalizeScope(req.GetRequestedScope()),
+		Identity:       identity,
+		CertHashSha256: certHash,
+		Scope:          scope,
 		ExpiresAt:      now.Add(s.config.TokenTTL).Unix(),
 	}
 	token, err := s.db.insertToken(ctx, rec)
 	if err != nil {
-		return nil, grpcerror.WrapInternalError(err)
+		logger.Errorf("Failed to persist token record: %+v", err)
+		return nil, grpcerror.WrapInternalError(errors.New("failed to issue a token"))
 	}
 
-	return &servicepb.AuthenticateResponse{
+	return &committerpb.AuthenticateResponse{
 		Token:     token,
 		ExpiresAt: rec.GetExpiresAt(),
 	}, nil
@@ -228,8 +252,8 @@ func (s *Service) Authenticate(
 // against its identity. A resource server calls it per RPC and, for a stream, whenever its cached decision
 // lapses, so expiry and configuration changes both take effect.
 func (s *Service) Authorize(
-	ctx context.Context, req *servicepb.AuthorizeRequest,
-) (*servicepb.AuthorizeResponse, error) {
+	ctx context.Context, req *committerpb.AuthorizeRequest,
+) (*committerpb.AuthorizeResponse, error) {
 	bundle, err := s.configProvider.current()
 	if err != nil {
 		return nil, grpcerror.WrapUnavailable(err)
@@ -237,10 +261,11 @@ func (s *Service) Authorize(
 
 	tokenRecord, err := s.db.readToken(ctx, req.GetToken())
 	switch {
-	case errors.Is(err, ErrTokenNotFound):
-		return nil, grpcerror.WrapUnauthenticated(errors.New("token is not recognized"))
+	case errors.Is(err, errTokenNotFound):
+		return nil, grpcerror.WrapUnauthenticated(fmt.Errorf("authorization failed: %w", err))
 	case err != nil:
-		return nil, grpcerror.WrapUnavailable(errors.New("the token store is unavailable"))
+		logger.Errorf("Failed to read token record: %+v", err)
+		return nil, grpcerror.WrapInternalError(errors.New("failed to read the token record"))
 	}
 
 	if tokenRecord.GetExpiresAt() <= time.Now().Unix() {
@@ -265,7 +290,7 @@ func (s *Service) Authorize(
 		return nil, grpcerror.WrapPermissionDenied(err)
 	}
 
-	return &servicepb.AuthorizeResponse{
+	return &committerpb.AuthorizeResponse{
 		TokenExpiresAt: tokenRecord.GetExpiresAt(),
 	}, nil
 }
@@ -300,17 +325,17 @@ func (s *Service) allowChallenge() error {
 // verifyEnvelope checks scoping, freshness, certificate binding, MSP resolution and the signature, then
 // returns the identity. Redeeming the nonce stays in Authenticate: it is the one stateful step.
 func (s *Service) verifyEnvelope(
-	ctx context.Context, parsed *parsedEnvelope, bundle *channelconfig.Bundle, now time.Time,
-) (*verifiedIdentity, error) {
+	parsed *parsedEnvelope, bundle *channelconfig.Bundle, certHash []byte, now time.Time,
+) (*msppb.Identity, error) {
 	chdr := parsed.chdr
 	if chdr.GetType() != authEnvelopeType {
-		return nil, errors.Wrapf(ErrEnvelopeScope, "unexpected header type %d", chdr.GetType())
+		return nil, errors.Wrapf(errEnvelopeScope, "unexpected header type %d", chdr.GetType())
 	}
 	if expected := bundle.ConfigtxValidator().ChannelID(); chdr.GetChannelId() != expected {
-		return nil, errors.Wrapf(ErrEnvelopeScope, "channel %q does not match %q", chdr.GetChannelId(), expected)
+		return nil, errors.Wrapf(errEnvelopeScope, "channel %q does not match %q", chdr.GetChannelId(), expected)
 	}
 	if len(parsed.payloadData) != 0 {
-		return nil, errors.Wrapf(ErrEnvelopeScope,
+		return nil, errors.Wrapf(errEnvelopeScope,
 			"authentication envelope must carry an empty payload, got %d bytes", len(parsed.payloadData))
 	}
 
@@ -320,9 +345,8 @@ func (s *Service) verifyEnvelope(
 
 	// The token binds to the certificate on the connection, and the envelope must claim exactly that one:
 	// a hash without a certificate, or a certificate without its hash, is refused rather than left unbound.
-	certHash := util.ExtractCertificateHashFromContext(ctx)
 	if !bytes.Equal(chdr.GetTlsCertHash(), certHash) {
-		return nil, ErrCertBindingMismatch
+		return nil, errCertBindingMismatch
 	}
 
 	signedData := parsed.signedData
@@ -337,10 +361,7 @@ func (s *Service) verifyEnvelope(
 		return nil, errors.Wrap(err, "signature verification failed")
 	}
 
-	return &verifiedIdentity{
-		identity: signedData.Identity,
-		certHash: certHash,
-	}, nil
+	return signedData.Identity, nil
 }
 
 // parseSignedEnvelope unpacks the envelope into the pieces verifyEnvelope inspects. The nonce comes from
@@ -377,29 +398,30 @@ func parseSignedEnvelope(env *common.Envelope) (*parsedEnvelope, error) {
 // validateTimestamp rejects a missing, unrepresentable or out-of-window timestamp.
 func validateTimestamp(ts *timestamppb.Timestamp, window time.Duration, now time.Time) error {
 	if err := ts.CheckValid(); err != nil {
-		return errors.Wrapf(ErrStaleEnvelope, "invalid timestamp: %v", err)
+		return errors.Wrap(errors.Join(errStaleEnvelope, err), "invalid timestamp")
 	}
 
 	t := ts.AsTime()
 	if t.Before(now.Add(-window)) || t.After(now.Add(window)) {
-		return errors.Wrapf(ErrStaleEnvelope,
+		return errors.Wrapf(errStaleEnvelope,
 			"timestamp %s is outside the freshness window of %s around %s", t, window, now)
 	}
 	return nil
 }
 
-// normalizeScope trims and de-duplicates a requested scope of gRPC full-method names.
-func normalizeScope(requested []string) []string {
-	normalized := make([]string, 0, len(requested))
+// normalizeScope trims and de-duplicates a requested scope of gRPC full-method names, refusing any entry that
+// is not a protected RPC.
+func normalizeScope(requested []string, protected map[string]bool) ([]string, error) {
+	var normalized []string
 	for _, entry := range requested {
 		entry = strings.TrimSpace(entry)
 		if entry == "" || slices.Contains(normalized, entry) {
 			continue
 		}
+		if !protected[entry] {
+			return nil, errUnknownScope
+		}
 		normalized = append(normalized, entry)
 	}
-	if len(normalized) == 0 {
-		return nil
-	}
-	return normalized
+	return normalized, nil
 }

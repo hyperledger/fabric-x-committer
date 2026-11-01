@@ -20,7 +20,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/acl"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/serve"
@@ -127,7 +126,7 @@ func NewAuthClientTestEnv(
 
 	return &TestEnv{
 		IssueParams: &acl.IssueParams{
-			Client:      servicepb.NewAuthServiceClient(conn),
+			Client:      committerpb.NewAuthServiceClient(conn),
 			Signer:      identities[0],
 			ChannelID:   channelID,
 			TLSCertHash: certHash,

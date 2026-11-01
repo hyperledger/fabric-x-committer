@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package auth
 
 import (
+	"bytes"
 	"context"
 	"testing"
 	"time"
@@ -18,7 +19,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 
-	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/acl"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
 	"github.com/hyperledger/fabric-x-committer/utils/grpcerror"
@@ -37,7 +37,7 @@ func TestAuthSecureConnection(t *testing.T) {
 			return func(ctx context.Context, t *testing.T, cfg connection.TLSConfig) error {
 				t.Helper()
 				client := test.CreateClientWithTLS(
-					t, env.Config.Endpoints[0], cfg, servicepb.NewAuthServiceClient,
+					t, env.Config.Endpoints[0], cfg, committerpb.NewAuthServiceClient,
 				)
 				_, err := client.IssueNonce(ctx, nil)
 				return err
@@ -91,7 +91,7 @@ func TestAuthAuthorizeCases(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			resp, err := env.Client.Authorize(t.Context(), &servicepb.AuthorizeRequest{
+			resp, err := env.Client.Authorize(t.Context(), &committerpb.AuthorizeRequest{
 				Token:       tc.token,
 				Resource:    tc.resource,
 				TlsCertHash: env.TLSCertHash,
@@ -105,12 +105,12 @@ func TestAuthAuthorizeCases(t *testing.T) {
 	// Failure cases.
 	for _, tc := range []struct {
 		name     string
-		request  *servicepb.AuthorizeRequest
+		request  *committerpb.AuthorizeRequest
 		wantCode codes.Code
 	}{
 		{
 			name: "unknown token",
-			request: &servicepb.AuthorizeRequest{
+			request: &committerpb.AuthorizeRequest{
 				Token:       "never-issued",
 				Resource:    committerpb.QueryService_GetRows_FullMethodName,
 				TlsCertHash: env.TLSCertHash,
@@ -119,7 +119,7 @@ func TestAuthAuthorizeCases(t *testing.T) {
 		},
 		{
 			name: "empty token",
-			request: &servicepb.AuthorizeRequest{
+			request: &committerpb.AuthorizeRequest{
 				Resource:    committerpb.QueryService_GetRows_FullMethodName,
 				TlsCertHash: env.TLSCertHash,
 			},
@@ -127,7 +127,7 @@ func TestAuthAuthorizeCases(t *testing.T) {
 		},
 		{
 			name: "certificate mismatch",
-			request: &servicepb.AuthorizeRequest{
+			request: &committerpb.AuthorizeRequest{
 				Token:       token,
 				Resource:    committerpb.QueryService_GetRows_FullMethodName,
 				TlsCertHash: []byte{0xFF},
@@ -136,7 +136,7 @@ func TestAuthAuthorizeCases(t *testing.T) {
 		},
 		{
 			name: "identity outside the resource policy",
-			request: &servicepb.AuthorizeRequest{
+			request: &committerpb.AuthorizeRequest{
 				Token:       consenterToken,
 				Resource:    committerpb.QueryService_GetRows_FullMethodName,
 				TlsCertHash: env.TLSCertHash,
@@ -146,7 +146,7 @@ func TestAuthAuthorizeCases(t *testing.T) {
 		{
 			// Denied although the identity's policy would otherwise allow it.
 			name: "scoped token outside its scope",
-			request: &servicepb.AuthorizeRequest{
+			request: &committerpb.AuthorizeRequest{
 				Token:       scopedToken,
 				Resource:    committerpb.QueryService_GetTransactionStatus_FullMethodName,
 				TlsCertHash: env.TLSCertHash,
@@ -170,7 +170,7 @@ func TestAuthorizeRejectsExpiredToken(t *testing.T) {
 	token := env.IssueToken(t)
 
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		_, err := env.Client.Authorize(t.Context(), &servicepb.AuthorizeRequest{
+		_, err := env.Client.Authorize(t.Context(), &committerpb.AuthorizeRequest{
 			Token: token, Resource: committerpb.QueryService_GetRows_FullMethodName, TlsCertHash: env.TLSCertHash,
 		})
 		require.Equal(ct, codes.Unauthenticated, grpcerror.GetCode(err))
@@ -200,9 +200,9 @@ func TestAuthAuthenticateCases(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			nonce, err := env.Client.IssueNonce(t.Context(), &servicepb.IssueNonceRequest{})
+			nonce, err := env.Client.IssueNonce(t.Context(), &committerpb.IssueNonceRequest{})
 			require.NoError(t, err)
-			resp, err := env.Client.Authenticate(t.Context(), &servicepb.AuthenticateRequest{
+			resp, err := env.Client.Authenticate(t.Context(), &committerpb.AuthenticateRequest{
 				SignedEnvelope: buildEnvelope(t, &env.EnvelopeParams, nonce.GetNonce()),
 				RequestedScope: tc.scope,
 			})
@@ -215,24 +215,32 @@ func TestAuthAuthenticateCases(t *testing.T) {
 	// Failure cases.
 	// The nonce is single-use: once redeemed, the very same envelope is worthless to whoever captured it,
 	// even inside the freshness window.
-	resp, err := env.Client.IssueNonce(t.Context(), &servicepb.IssueNonceRequest{})
+	resp, err := env.Client.IssueNonce(t.Context(), &committerpb.IssueNonceRequest{})
 	require.NoError(t, err)
 	replayed := buildEnvelope(t, &env.EnvelopeParams, resp.GetNonce())
-	_, err = env.Client.Authenticate(t.Context(), &servicepb.AuthenticateRequest{SignedEnvelope: replayed})
+	_, err = env.Client.Authenticate(t.Context(), &committerpb.AuthenticateRequest{SignedEnvelope: replayed})
 	require.NoError(t, err)
 
-	// Rejected before the envelope is verified, so these may be built up front: neither their timestamp
-	// nor their nonce is ever checked for freshness.
+	// withCertHash signs a fresh nonce with a certificate hash by desire.
+	withCertHash := func(certHash []byte) *common.Envelope {
+		resp, err := env.Client.IssueNonce(t.Context(), &committerpb.IssueNonceRequest{})
+		require.NoError(t, err)
+		params := env.EnvelopeParams
+		params.TLSCertHash = certHash
+		return buildEnvelope(t, &params, resp.GetNonce())
+	}
+
 	for _, tc := range []struct {
 		name     string
 		envelope *common.Envelope
+		scope    []string
 		wantCode codes.Code
 		wantErr  string
 	}{
 		{
 			name:     "absent envelope",
 			wantCode: codes.InvalidArgument,
-			wantErr:  ErrNoEnvelope.Error(),
+			wantErr:  errNoEnvelope.Error(),
 		},
 		{
 			name:     "payload has no header",
@@ -243,7 +251,7 @@ func TestAuthAuthenticateCases(t *testing.T) {
 		{
 			// A client cannot invent its own challenge: only a nonce the server issued is redeemable.
 			name:     "nonce the server never issued",
-			envelope: buildEnvelope(t, &env.EnvelopeParams, []byte("home-made-nonce")),
+			envelope: buildEnvelope(t, &env.EnvelopeParams, bytes.Repeat([]byte{0x01}, randomLength)),
 			wantCode: codes.Unauthenticated,
 			wantErr:  errNonceNotFound.Error(),
 		},
@@ -259,11 +267,29 @@ func TestAuthAuthenticateCases(t *testing.T) {
 			wantCode: codes.Unauthenticated,
 			wantErr:  errNonceNotFound.Error(),
 		},
+		{
+			name:     "certificate hash of another connection",
+			envelope: withCertHash([]byte{0xFF}),
+			wantCode: codes.Unauthenticated,
+		},
+		{
+			name:     "no certificate hash on a mutual TLS connection",
+			envelope: withCertHash(nil),
+			wantCode: codes.Unauthenticated,
+		},
+		{
+			name:     "scope naming an unknown RPC",
+			envelope: withCertHash(env.TLSCertHash),
+			scope:    []string{"/committerpb.QueryService/NoSuchMethod"},
+			wantCode: codes.InvalidArgument,
+			wantErr:  errUnknownScope.Error(),
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, authErr := env.Client.Authenticate(t.Context(), &servicepb.AuthenticateRequest{
+			_, authErr := env.Client.Authenticate(t.Context(), &committerpb.AuthenticateRequest{
 				SignedEnvelope: tc.envelope,
+				RequestedScope: tc.scope,
 			})
 			require.Equal(t, tc.wantCode, grpcerror.GetCode(authErr))
 			require.ErrorContains(t, authErr, tc.wantErr)

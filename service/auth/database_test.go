@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package auth
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
@@ -43,7 +44,7 @@ func TestDatabaseDeleteExpired(t *testing.T) {
 	require.Equal(t, int64(1), deletedNonces)
 
 	_, err = db.readToken(ctx, expiredToken)
-	require.ErrorIs(t, err, ErrTokenNotFound)
+	require.ErrorIs(t, err, errTokenNotFound)
 	got, err := db.readToken(ctx, liveToken)
 	require.NoError(t, err)
 	test.RequireProtoEqual(t, live, got)
@@ -70,7 +71,8 @@ func TestDatabaseConsumeNonceRejects(t *testing.T) {
 		nonce     []byte
 		consumeAt time.Time
 	}{
-		{name: "never issued", nonce: []byte("invented-nonce-value"), consumeAt: now},
+		{name: "never issued", nonce: bytes.Repeat([]byte{0x01}, randomLength), consumeAt: now},
+		{name: "not the issued length", nonce: []byte("invented-nonce-value"), consumeAt: now},
 		{name: "empty", nonce: nil, consumeAt: now},
 		{name: "already consumed", nonce: consumed, consumeAt: now},
 		{name: "expired", nonce: expiredNonce, consumeAt: now},
