@@ -15,12 +15,13 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-x-common/api/applicationpb"
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/hyperledger/fabric-x-common/utils/retry"
+	"github.com/jackc/puddle/v2"
 	"github.com/yugabyte/pgx/v5"
 	"github.com/yugabyte/pgx/v5/pgxpool"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
 	"github.com/hyperledger/fabric-x-committer/utils/monitoring/promutil"
-	"github.com/hyperledger/fabric-x-committer/utils/retry"
 	"github.com/hyperledger/fabric-x-committer/utils/statedb"
 )
 
@@ -200,7 +201,10 @@ func (d *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *servi
 	//       and standard comparison operators.
 	v := make([]byte, 8)
 	binary.BigEndian.PutUint64(v, bInfo.Number)
-	return retry.ExecuteSQL(ctx, d.retryProfile, d.pool, setMetadataPrepSQLStmt, lastCommittedBlockNumberKey, v)
+	return retry.Execute(ctx, d.retryProfile, func() error {
+		_, err := d.pool.Exec(ctx, setMetadataPrepSQLStmt, lastCommittedBlockNumberKey, v)
+		return errors.Wrapf(err, "failed to execute the SQL statement [%s]", setMetadataPrepSQLStmt)
+	}, puddle.ErrClosedPool)
 }
 
 // commit commits the writes to the database.
