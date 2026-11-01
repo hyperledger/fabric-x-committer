@@ -403,7 +403,7 @@ Quick essentials:
 
 ## Before you finish
 
-Before you consider the change done (see `CLAUDE.md` and the Makefile):
+Before you consider the change done (see `AGENTS.md` and the Makefile):
 
 - `make lint` (or `make lint-go`) — must pass with no errors.
 - **Do not run the full `make test` locally — it takes too long.** Run only the relevant

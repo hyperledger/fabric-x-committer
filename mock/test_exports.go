@@ -31,12 +31,12 @@ import (
 )
 
 // StartMockVerifierService starts a specified number of mock verifier service and register cancellation.
-func StartMockVerifierService(t *testing.T, p test.StartServerParameters) (
+func StartMockVerifierService(tb testing.TB, p test.StartServerParameters) (
 	*Verifier, *test.Servers,
 ) {
-	t.Helper()
+	tb.Helper()
 	mockVerifier := NewMockSigVerifier()
-	verifierSC := test.ServeManyForTest(t.Context(), t, p, mockVerifier)
+	verifierSC := test.ServeManyForTest(tb.Context(), tb, p, mockVerifier)
 	return mockVerifier, verifierSC
 }
 

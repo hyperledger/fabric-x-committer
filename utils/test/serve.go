@@ -85,26 +85,26 @@ func ServeForTest(
 // ServeManyForTest starts multiple GRPC servers with a default configuration.
 func ServeManyForTest(
 	ctx context.Context,
-	t *testing.T,
+	tb testing.TB,
 	p StartServerParameters,
 	r serve.Registerer,
 ) *Servers {
-	t.Helper()
+	tb.Helper()
 	sc := make([]*serve.Config, p.NumService)
 	for i := range sc {
 		sc[i] = NewLocalHostServiceConfig(p.TLSConfig)
 	}
-	return ServeManyWithConfigForTest(ctx, t, r, sc...)
+	return ServeManyWithConfigForTest(ctx, tb, r, sc...)
 }
 
 // ServeManyWithConfigForTest starts multiple GRPC servers with given configurations.
 func ServeManyWithConfigForTest(
-	ctx context.Context, t *testing.T, r serve.Registerer, sc ...*serve.Config,
+	ctx context.Context, tb testing.TB, r serve.Registerer, sc ...*serve.Config,
 ) *Servers {
-	t.Helper()
+	tb.Helper()
 	serverStoppers := make([]context.CancelFunc, len(sc))
 	for i, c := range sc {
-		serverStoppers[i] = ServeForTest(ctx, t, c, r)
+		serverStoppers[i] = ServeForTest(ctx, tb, c, r)
 	}
 	return &Servers{
 		ServersStop: serverStoppers,

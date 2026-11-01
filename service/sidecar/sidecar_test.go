@@ -26,8 +26,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
@@ -466,11 +464,7 @@ func TestSidecarRecovery(t *testing.T) {
 	//       we reset the block store object so that its in-memory data
 	//       structure reflects the correct height.
 	var err error
-	tempBlockStore, err := newBlockStore(
-		env.config.Ledger.Path,
-		0,
-		newPerformanceMetrics(newQueues(10)),
-	)
+	tempBlockStore, err := newBlockStore(&env.config.Ledger, newPerformanceMetrics(newQueues(10)))
 	require.NoError(t, err)
 	t.Cleanup(tempBlockStore.close)
 	ensureAtLeastHeight(t, tempBlockStore, 1) // back to block 0
@@ -901,22 +895,4 @@ func TestSidecarRecoveryUpdatesOrdererEndpointsBeforeLedgerRecovery(t *testing.T
 
 	t.Log("Verify normal operation continues with recovered state")
 	env.sendTransactionsAndEnsureCommitted(newCtx, t, 12)
-}
-
-// TestDeleteDBCloneForSnapshotUnimplemented pins the snapshot-administration
-// extension point: the RPC is reachable on the unified service and reports
-// UNIMPLEMENTED until the clone-deletion pipeline lands.
-func TestDeleteDBCloneForSnapshotUnimplemented(t *testing.T) {
-	t.Parallel()
-
-	env := newSidecarTestEnvWithTLS(t, sidecarTestConfig{})
-	env.startSidecarService(t.Context(), t)
-
-	conn := test.NewInsecureConnection(t, &env.serverConfig.GRPC.Endpoint)
-	client := committerpb.NewSidecarServiceClient(conn)
-
-	_, err := client.DeleteDBCloneForSnapshot(t.Context(), &committerpb.DeleteDBCloneForSnapshotRequest{
-		TxId: "tx1",
-	})
-	require.Equal(t, codes.Unimplemented, status.Code(err))
 }

@@ -252,11 +252,11 @@ func RequireConnectionMetrics(
 }
 
 // WaitForConnections waits for a connection metric to have the required number of connected labels.
-func WaitForConnections(t *testing.T, p *monitoring.Provider, name string, requiredCount int) {
-	t.Helper()
-	require.Eventually(t, func() bool {
+func WaitForConnections(tb testing.TB, p *monitoring.Provider, name string, requiredCount int) {
+	tb.Helper()
+	require.Eventually(tb, func() bool {
 		gather, err := p.Registry().Gather()
-		require.NoError(t, err)
+		require.NoError(tb, err)
 		connectedCount := 0
 		for _, mf := range gather {
 			if mf.GetName() != name {

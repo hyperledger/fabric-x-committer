@@ -360,9 +360,10 @@ func (d *ftDelivery) checkBlockWithholding() error {
 // race conditions with getProcessingState() which reads this field.
 func (d *ftDelivery) initStreams() (dataWorker streamExecutionParams, headerWorkers []streamExecutionParams) {
 	m := ordererdial.NewDialInfo(d.latestConfig.ConfigBlockMaterial, ordererdial.Parameters{
-		API:   types.Deliver,
-		TLS:   d.params.TLS,
-		Retry: d.params.Retry,
+		API:         types.Deliver,
+		TLS:         d.params.TLS,
+		Retry:       d.params.Retry,
+		FlowControl: d.params.FlowControl,
 	})
 
 	// Update curDataBlockSourceID here, before spawning goroutines, to prevent race

@@ -162,7 +162,7 @@ func (s *Service) WaitForReady(ctx context.Context) bool {
 // Run starts the sidecar service. The call to Run blocks until an error occurs or the context is canceled.
 func (s *Service) Run(ctx context.Context) error {
 	// Deliver the block with status to client.
-	blockStoreInstance, err := newBlockStore(s.config.Ledger.Path, s.config.Ledger.SyncInterval, s.metrics)
+	blockStoreInstance, err := newBlockStore(&s.config.Ledger, s.metrics)
 	if err != nil {
 		return fmt.Errorf("failed to create block store: %w", err)
 	}

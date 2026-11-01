@@ -37,6 +37,10 @@ Each `→` is a bounded channel or gRPC stream. The system uses three types of f
 - **Channel buffers** connect adjacent stages within a process. When full, the producer blocks.
 - **gRPC flow control** operates at the transport layer between services. gRPC uses HTTP/2 flow control windows — when a receiver is slow, its window fills up and the sender is blocked from writing more data. This prevents a fast producer (e.g., Sidecar) from overwhelming a slow consumer (e.g., Coordinator) at the network level, independent of the application-level slot and channel limits.
 
+The windows are configurable per client and per server, under `flow-control` in a client section (including the sidecar's and load generator's `orderer` section) or in the `server` section: `initial-window-size` (per stream, default 16 MB) and `initial-conn-window-size` (per connection, shared by its streams, default 32 MB). They must be sized on both ends of a link, because the window a peer may write into is the one this side advertises — raising it on one side alone achieves nothing. Zero restores gRPC's own BDP-based tuning, which any explicit value disables. The defaults apply to configurations loaded from YAML. These are credit limits rather than allocations, so the cost is bounded buffering per connection, and only under overload.
+
+Windows that are too small do not show up in the queue metrics below: every queue reads zero while the pipeline sits well under capacity, because the senders are blocked inside the transport rather than waiting on a channel. The signature is a goroutine dump with sender goroutines parked in `transport.(*writeQuota).get`, alongside receiving services running far below their CPU capacity. With gRPC's own defaults on a nineteen-machine deployment, every one of the coordinator's senders to the verifiers was blocked there while the verifiers ran 22 of 64 cores; sizing the windows took the pipeline from 510,371 to 578,383 tps and cut its latency at a sustainable 500,000 tps from 645 ms to 392 ms.
+
 Setting any limit too low starves the pipeline — stages run in lock-step rather than streaming, and throughput drops. Setting limits too high increases memory usage and queuing latency. The goal is finding the balance where the pipeline has enough in-flight work to sustain throughput without excessive queuing.
 
 ## 2. Identifying the Bottleneck
@@ -65,7 +69,7 @@ Monitor queue length gauges to find the bottleneck. A growing queue means the do
 
 ### `waiting-txs-limit`
 
-Maximum number of transactions the Sidecar has sent to the Coordinator and is awaiting status for. The Sidecar acquires one slot per transaction before sending a block. Slots are released only when the Coordinator returns the transaction's final status. When all slots are occupied, the Sidecar blocks on slot acquisition, which causes the internal block channel to fill up, and eventually the Sidecar stops pulling blocks from the ordering service.
+Maximum number of transactions the Sidecar has sent to the Coordinator and is awaiting status for. The Sidecar acquires one slot per transaction before sending a block, including the transactions it rejects itself. A slot is released when the Coordinator returns the transaction's final status, or, for a held or halted checkpoint, its checkpoint feedback. When all slots are occupied, the Sidecar blocks on slot acquisition, which causes the internal block channel to fill up, and eventually the Sidecar stops pulling blocks from the ordering service.
 
 This value directly controls how many transactions can be in-flight across the entire pipeline. With a low value (e.g., 100), the Sidecar sends 100 transactions and blocks until all complete — the pipeline runs in lock-step and throughput drops dramatically. With a very high value, more transactions queue across the pipeline, increasing memory and queuing latency. Config blocks trigger a full drain regardless of this value. Default: 20,000,000.
 
@@ -74,6 +78,12 @@ This value directly controls how many transactions can be in-flight across the e
 How often the block store calls `fsync` to durable storage. Every Nth block triggers a full sync; intermediate blocks are written without fsync. Config blocks and file rollovers always sync.
 
 Each fsync is an expensive I/O operation. A low value (e.g., 1) syncs every block, which can bottleneck the block ingestion path. Higher values (100, 500+) significantly improve block append throughput by amortizing I/O cost. The tradeoff is durability — blocks lost on crash are recoverable from the ordering service. Default: 100.
+
+### `ledger.disable-tx-id-index`
+
+Drops the block store's transaction ID index, which `GetBlockByTxID` and `GetTxByID` use to find a transaction. Both queries fail once it is off.
+
+This is the block store's dominant cost at high transaction rates, because it writes one index entry per transaction rather than per block, and its LevelDB compaction rewrites those entries as the index grows. On a cluster committing around 100,000 tx/s, a CPU profile of a saturated Sidecar attributed 35% of its samples to that compaction, with the index at 33 GB against 118 GB of blocks; committed throughput fell by roughly a third over an hour at a fixed offered rate as the index kept growing. A deployment that serves neither query is better off without it. Note that the index also selects the block store's on-disk format, so this setting can only be changed against an empty ledger directory. Default: false.
 
 ### `channel-buffer-size`
 

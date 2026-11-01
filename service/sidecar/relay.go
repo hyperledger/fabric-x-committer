@@ -263,11 +263,18 @@ func (r *relay) queueMappedBlock(
 	queue channel.Writer[*blockMappingResult],
 	mappedBlock *blockMappingResult,
 ) {
-	txsCount := len(mappedBlock.block.Txs)
+	txsCount := inFlightTxCount(mappedBlock.block)
 	promutil.AddToCounter(r.metrics.transactionInThroughput, txsCount)
 	r.waitingTxsSlots.Acquire(ctx, int64(txsCount))
 	promutil.AddToGauge(r.metrics.waitingTransactionsQueueSize, txsCount)
 	queue.Write(mappedBlock)
+}
+
+// inFlightTxCount counts the transactions of a batch that each take a waiting-TX slot. Every
+// transaction sent to the coordinator returns either a status or checkpoint feedback, which
+// releases the slot, so a kind left out here would release a slot it never took.
+func inFlightTxCount(batch *servicepb.CoordinatorBatch) int {
+	return len(batch.Txs) + len(batch.Rejected)
 }
 
 func (r *relay) sendBlocksToCoordinator(
@@ -306,7 +313,7 @@ func (r *relay) sendBlocksToCoordinator(
 		if err := stream.Send(mappedBlock.block); err != nil {
 			return errors.Wrap(err, "failed to send a block to the coordinator")
 		}
-		txsCount := len(mappedBlock.block.Txs)
+		txsCount := inFlightTxCount(mappedBlock.block)
 		promutil.AddToCounter(r.metrics.transactionsSentTotal, txsCount)
 		logger.Debugf("Sent SC block %d with %d TXs to Coordinator", mappedBlock.blockNumber, txsCount)
 		promutil.Observe(r.metrics.mappedBlockProcessingInRelaySeconds, time.Since(startTime))
@@ -346,6 +353,7 @@ func (r *relay) processStatusBatch(
 
 		// Handle feedback separately because a held or halted checkpoint has no status.
 		if tStatus.CheckpointFeedback != nil {
+			r.releaseCheckpointSlot(tStatus.CheckpointFeedback)
 			if err := r.processCheckpointFeedback(ctx, tStatus.CheckpointFeedback); err != nil {
 				return err
 			}
@@ -405,6 +413,26 @@ func (r *relay) processStatusBatch(
 		r.processCommittedBlocksInOrder(ctx, outgoingCommittedBlock, outgoingCommittedBlockWithTxs)
 		promutil.Observe(r.metrics.transactionStatusesProcessingInRelaySeconds, time.Since(startTime))
 	}
+}
+
+// releaseCheckpointSlot releases the slot of a held or halted checkpoint, which returns feedback
+// instead of a status. The session restart that follows would reset the slots anyway, but the
+// relay must not rely on that to keep its count right. Like a status, the feedback releases a
+// slot only if it refers to a transaction the relay still tracks.
+func (r *relay) releaseCheckpointSlot(feedback *servicepb.CheckpointFeedback) {
+	if feedback.Signal == servicepb.CheckpointFeedback_SIGNAL_UNSPECIFIED {
+		return
+	}
+	ref := feedback.GetRef()
+	if ref == nil {
+		return
+	}
+	blkWithStatus := r.inFlightBlocks.get(ref.BlockNum)
+	if blkWithStatus == nil || !blkWithStatus.holds(ref) {
+		return
+	}
+	r.waitingTxsSlots.Release(1)
+	promutil.AddToGauge(r.metrics.waitingTransactionsQueueSize, -1)
 }
 
 // processCheckpointFeedback pauses or stops the sidecar based on checkpoint feedback.

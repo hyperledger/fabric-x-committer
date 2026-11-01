@@ -51,7 +51,10 @@ func TestOrdererConnectionMaterial(t *testing.T) {
 				{ID: 1, Host: "orderer1.org1.com", Port: 7051},
 				{ID: 2, Host: "orderer1.org2.com", Port: 7052},
 			},
-			params:                     ordererdial.Parameters{API: commontypes.Deliver},
+			params: ordererdial.Parameters{
+				API:         commontypes.Deliver,
+				FlowControl: connection.FlowControlConfig{InitialWindowSize: 1024, InitialConnWindowSize: 2048},
+			},
 			expectedJointEndpointCount: 3,
 			expectedEndpointCountPerID: 1,
 			expectedIDs:                []uint32{0, 1, 2},
@@ -130,8 +133,10 @@ func TestOrdererConnectionMaterial(t *testing.T) {
 			require.NotNil(t, dialInfo)
 			require.Len(t, dialInfo.Joint.Endpoints, tc.expectedJointEndpointCount)
 			require.ElementsMatch(t, tc.expectedIDs, slices.Collect(maps.Keys(dialInfo.PartyIDToDialInfo)))
+			require.Equal(t, tc.params.FlowControl, dialInfo.Joint.FlowControl)
 			for _, di := range dialInfo.PartyIDToDialInfo {
 				require.Len(t, di.Endpoints, tc.expectedEndpointCountPerID)
+				require.Equal(t, tc.params.FlowControl, di.FlowControl)
 			}
 			if tc.expectCACerts {
 				require.NotEmpty(t, dialInfo.Joint.TLS.CACerts)

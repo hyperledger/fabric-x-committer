@@ -24,6 +24,8 @@ type (
 		FaultToleranceLevel string               `mapstructure:"fault-tolerance-level" validate:"omitempty,oneof=CFT BFT"` //nolint:lll,revive
 		TLS                 connection.TLSConfig `mapstructure:"tls"`
 		Retry               *retry.Profile       `mapstructure:"reconnect"`
+		// FlowControl sizes the HTTP/2 windows of every orderer connection. See connection.FlowControlConfig.
+		FlowControl connection.FlowControlConfig `mapstructure:"flow-control"`
 		// LatestKnownConfigBlockPath is the path for the latest known config block.
 		// We fetch the orderer endpoints, CA certificates, and channel-ID from this block.
 		// This block might be newer than the block used for verification, to allow using

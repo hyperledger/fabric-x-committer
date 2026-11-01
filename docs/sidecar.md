@@ -459,12 +459,11 @@ to manage these blocks in the file system.
 
 | Service | RPCs | Why separate |
 | --- | --- | --- |
-| `committerpb.SidecarService` | `GetBlockchainInfo`, `GetBlockByNumber`, `GetBlockByTxID`, `GetTxByID`, `OpenNotificationStream`, `StreamBlocks`, `DeleteDBCloneForSnapshot` | Every sidecar RPC that is ours to define. New sidecar RPCs are added here. |
+| `committerpb.SidecarService` | `GetBlockchainInfo`, `GetBlockByNumber`, `GetBlockByTxID`, `GetTxByID`, `OpenNotificationStream`, `StreamBlocks` | Every sidecar RPC that is ours to define. New sidecar RPCs are added here. |
 | Fabric `protos.Deliver` | `Deliver`, `DeliverFiltered`, `DeliverWithPrivateData` | Fabric's own wire contract, so Fabric clients dial the sidecar unchanged. |
 
-One object, `*sidecar.Service`, backs both. It serves the block-store reads directly,
-the two event streams through its embedded notifier, and answers `UNIMPLEMENTED` for
-`DeleteDBCloneForSnapshot` until the snapshot clone-deletion pipeline lands.
+One object, `*sidecar.Service`, backs both. It serves the block-store reads directly
+and the two event streams through its embedded notifier.
 `committerpb.BlockQueryService` and `committerpb.Notifier` were folded into
 `SidecarService` and no longer exist; clients replace `NewBlockQueryServiceClient` and
 `NewNotifierClient` with `NewSidecarServiceClient`, keeping the same method names and

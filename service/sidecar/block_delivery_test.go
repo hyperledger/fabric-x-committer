@@ -111,7 +111,7 @@ func TestBlockDelivery(t *testing.T) {
 func newBlockStoreWithBlocks(t *testing.T, numBlocks int) (*blockStore, [][3]string) {
 	t.Helper()
 
-	bs, err := newBlockStore(t.TempDir(), 0, newPerformanceMetrics(newQueues(10)))
+	bs, err := newBlockStore(&LedgerConfig{Path: t.TempDir()}, newPerformanceMetrics(newQueues(10)))
 	require.NoError(t, err)
 	t.Cleanup(bs.close)
 
@@ -190,7 +190,7 @@ func TestBlockDeliveryWaitsForBlockZeroOnEmptyLedger(t *testing.T) {
 			t.Parallel()
 
 			metrics := newPerformanceMetrics(newQueues(10))
-			bs, err := newBlockStore(t.TempDir(), 0, metrics)
+			bs, err := newBlockStore(&LedgerConfig{Path: t.TempDir()}, metrics)
 			require.NoError(t, err)
 			t.Cleanup(bs.close)
 
