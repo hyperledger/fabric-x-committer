@@ -400,7 +400,7 @@ a clone and a PENDING row; uncommitted attempts may also leave a reusable clone.
 For YugabyteDB, readiness requires `yb_database_clones().state = 'COMPLETE'`
 and a successful connection-cache invalidation; a `pg_database` row alone is
 insufficient. The clone is a consistent copy of the drained state cut and is never
-dropped as part of snapshot creation; it is dropped only by the `committer delete-clone` CLI, and only once the snapshot is `CHECKPOINTED`
+dropped as part of snapshot creation; it is dropped only by the `committer db clone delete` CLI, and only once the snapshot is `CHECKPOINTED`
 or `ABORTED` (see [Snapshot clone deletion](#snapshot-clone-deletion)). Failed or
 losing attempts leave deterministic clones for retry/reuse or operator reconciliation,
 and successful and ambiguous attempts preserve them as well; clone deletion remains
@@ -441,13 +441,32 @@ duplicate-reuse behavior.
 
 ### Snapshot clone deletion
 
-Snapshot clones are never reclaimed on a timer; an operator deletes one with:
+Snapshot clones are never reclaimed on a timer. List recorded snapshot clones:
 
 ```bash
-committer delete-clone --config <vc-config> --tx-id <snapshot-tx-id>
+committer db clone list --config <vc-config>
 ```
 
-Like `init-db`, the command reads the VC config and talks to the state database directly,
+The table contains `TX_ID`, `CLONE_NAME`, and `STATUS`, ordered by transaction ID. Records
+with empty clone names are omitted; no recorded clones produce a header-only table.
+Listing reflects recorded clone names, not whether each database currently exists.
+
+Delete a clone using exactly one nonempty selector, transaction ID or recorded clone name:
+
+```bash
+committer db clone delete --config <vc-config> --tx-id <snapshot-tx-id>
+committer db clone delete --config <vc-config> --name <recorded-clone-name>
+```
+
+Name-based deletion resolves the matching snapshot record. Unknown names (including
+unrecorded database names) are refused without dropping anything. After deletion clears
+the name, retries must use the transaction ID.
+
+The former top-level `init-db` and `delete-clone` commands have been removed. Migrate scripts
+to `committer db init` and `committer db clone delete`, respectively. The test-node wrapper’s
+`run init-db` operation remains supported; internally it invokes `committer db init`.
+
+Like `db init`, the command reads the VC config and talks to the state database directly,
 not through a service, so it can run while the committer is running. It drops the database
 named by the record's `clone_database` field and clears that field. Clearing it *is* the
 deletion signal, since `SnapshotState` has no deletion timestamp. The record is retained, so

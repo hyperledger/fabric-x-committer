@@ -40,6 +40,37 @@ var (
 	}
 )
 
+// DeleteSnapshotCloneByName resolves a recorded clone name before using
+// transaction-ID deletion. An unknown name never reaches DROP DATABASE.
+// After deletion clears the name, retries must use the transaction ID instead.
+func DeleteSnapshotCloneByName(ctx context.Context, config *Config, name string) error {
+	if name == "" {
+		return errors.New("clone name must not be empty")
+	}
+	pool, err := NewPool(ctx, config)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+	states, err := NewSnapshotStateManager(pool, config.Retry).List(ctx)
+	// Release the lookup connection before the deletion path opens its own pool.
+	pool.Close()
+	if err != nil {
+		return fmt.Errorf("failed to list _snapshot records: %w", err)
+	}
+	var txID string
+	for _, state := range states {
+		if state.CloneDatabase != name {
+			continue
+		}
+		txID = state.TxRef.TxId
+		break
+	}
+	if txID == "" {
+		return errors.Newf("no snapshot record names clone %s", name)
+	}
+	return DeleteSnapshotClone(ctx, config, txID)
+}
+
 // DeleteSnapshotClone drops the clone database of the snapshot txID and clears the
 // record's clone_database, but keeps the record. It is safe to run while the committer
 // is live, and on any node connected to the same database cluster.

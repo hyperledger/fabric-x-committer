@@ -219,7 +219,7 @@ func startSecuredDatabaseNode(ctx context.Context, t *testing.T, params startNod
 	return conn.Password
 }
 
-// runDatabaseInitWithReleaseImage runs init-db command in a temporary container.
+// runDatabaseInitWithReleaseImage runs db init in a temporary container.
 func runDatabaseInitWithReleaseImage(
 	ctx context.Context, t *testing.T, params startNodeParameters,
 ) client.ContainerWaitResult {
@@ -232,6 +232,7 @@ func runDatabaseInitWithReleaseImage(
 		config: &container.Config{
 			Image: committerReleaseImage,
 			Cmd: []string{
+				dbName,
 				initDBCommand,
 				configFlag,
 				fmt.Sprintf("%s.yaml", dbInitConfigPath),

@@ -50,7 +50,7 @@ fi
 
 # Initialize the database when either `db` or `init-db` is requested.
 if has_op db || has_op init-db; then
-  "$BINS_PATH/committer" init-db --config "$CONFIGS_PATH/vc.yaml"
+  "$BINS_PATH/committer" db init --config "$CONFIGS_PATH/vc.yaml"
 fi
 
 if has_op orderer; then

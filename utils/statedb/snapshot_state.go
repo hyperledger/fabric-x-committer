@@ -153,6 +153,34 @@ func (s *SnapshotStateManager) Read(ctx context.Context, txID string) (*committe
 	}, retry.ErrNonRetryable, ErrSnapshotNotFound)
 }
 
+// List returns all snapshot records ordered by transaction ID, including cleared clones.
+func (s *SnapshotStateManager) List(ctx context.Context) ([]*committerpb.SnapshotState, error) {
+	return retry.ExecuteWithResult(ctx, s.retryProfile, func() ([]*committerpb.SnapshotState, error) {
+		rows, err := s.pool.Query(ctx, "SELECT key, value FROM ns_"+committerpb.SnapshotNamespaceID+" ORDER BY key")
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to query _snapshot records")
+		}
+
+		states, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (*committerpb.SnapshotState, error) {
+			var key, raw []byte
+			if scanErr := row.Scan(&key, &raw); scanErr != nil {
+				return nil, errors.Wrap(scanErr, "failed to read _snapshot record")
+			}
+			state, decodeErr := DecodeSnapshotState(raw)
+			if decodeErr != nil {
+				return nil, fmt.Errorf("failed to decode _snapshot record for tx %s: %w", key,
+					errors.Join(retry.ErrNonRetryable, decodeErr))
+			}
+			if state.GetTxRef().GetTxId() == "" || state.GetTxRef().GetTxId() != string(key) {
+				return nil, errors.Wrapf(retry.ErrNonRetryable,
+					"_snapshot record for key %s has a mismatched transaction ID", key)
+			}
+			return state, nil
+		})
+		return states, errors.Wrap(err, "failed to read _snapshot records")
+	}, retry.ErrNonRetryable)
+}
+
 // readRecord reads and decodes one snapshot record without retrying.
 // Read and ReadLatest share it so they report read and decode errors the same way.
 func (s *SnapshotStateManager) readRecord(ctx context.Context, key []byte) (*committerpb.SnapshotState, error) {

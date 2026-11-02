@@ -275,7 +275,8 @@ func TestYugabyteDriverDiscoveryWithSingleNodeConnection(t *testing.T) {
 		tlsMode:           connection.NoneTLSMode,
 		dbType:            testdb.YugaDBType,
 		dbEndpointsString: singleTabletAddress,
-		cmd:               []string{runCMD, committerName, initDBCommand, ordererName, loadGenName},
+		// Test-node operations are independent of the committer CLI subcommands.
+		cmd: []string{runCMD, committerName, "init-db", ordererName, loadGenName},
 		additionalEnvs: []string{
 			"SC_VC_DATABASE_ENDPOINTS=" + singleTabletAddress,
 			"SC_VC_DATABASE_USERNAME=" + testdb.YugaDBType,
