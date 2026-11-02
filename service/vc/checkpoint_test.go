@@ -164,7 +164,7 @@ func TestRejectCheckpointForWrongBlock(t *testing.T) {
 	// Bad input must not pause or stop the sidecar.
 	require.Nil(t, status.CheckpointFeedback)
 	require.Len(t, status.Status, 1)
-	require.Equal(t, committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY, status.Status[0].Status)
+	require.Equal(t, committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT, status.Status[0].Status)
 	requireNoCheckpointRow(t, env.dbEnv, otherBlock)
 
 	// Leave the snapshot unchanged so a correct checkpoint can still commit.
@@ -184,7 +184,7 @@ func TestRejectCheckpointWithoutSnapshotRecord(t *testing.T) {
 	status := env.submitCheckpoint(ctx, t, newCheckpointPreparedTx(cpRef, blockNum, checkpointDigest("attested-hash")))
 	require.Nil(t, status.CheckpointFeedback)
 	require.Len(t, status.Status, 1)
-	require.Equal(t, committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY, status.Status[0].Status)
+	require.Equal(t, committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT, status.Status[0].Status)
 	requireNoCheckpointRow(t, env.dbEnv, blockNum)
 
 	// A later snapshot and checkpoint must still succeed.
@@ -351,11 +351,11 @@ func TestDigestAfterAbort(t *testing.T) {
 			verdict, err := env.dbEnv.DB.verifyCheckpoint(ctx, cp.checkpoint)
 			require.NoError(t, err)
 			require.Nil(t, verdict.feedback)
-			require.Equal(t, committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY, verdict.rejectStatus)
+			require.Equal(t, committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT, verdict.rejectStatus)
 			status := env.submitCheckpoint(ctx, t, cp)
 			require.Nil(t, status.CheckpointFeedback)
 			require.Len(t, status.Status, 1)
-			require.Equal(t, committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY, status.Status[0].Status)
+			require.Equal(t, committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT, status.Status[0].Status)
 			requireNoCheckpointRow(t, env.dbEnv, ref.BlockNum)
 			requireSnapshotStatus(t, env.dbEnv, ref.TxId, committerpb.SnapshotState_ABORTED)
 		})
@@ -490,7 +490,7 @@ func TestRejectSnapshotAbortForClosedOrUnknownSnapshot(t *testing.T) {
 
 			status := env.submitSnapshotAbort(ctx, t, newSnapshotAbortPreparedTx(abortRef, tc.abortBlock))
 			require.Len(t, status.Status, 1)
-			require.Equal(t, committerpb.Status_REJECTED_SNAPSHOT_ABORT_NO_SUCH_SNAPSHOT, status.Status[0].Status)
+			require.Equal(t, committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT, status.Status[0].Status)
 
 			// No row is left behind, so a replay cannot reproduce an abort we never accepted.
 			requireNoSnapshotAbortRow(t, env.dbEnv, tc.abortBlock)
@@ -556,10 +556,10 @@ func TestCheckpointClosureRejectedResubmission(t *testing.T) {
 	cpRef := committerpb.NewTxRef("rejected-closure", 940301, 0)
 	value := []byte("abort")
 	first := env.submitCheckpoint(ctx, t, newCheckpointPreparedTx(cpRef, 940300, value))
-	requireClosureStatus(t, first, committerpb.Status_REJECTED_SNAPSHOT_ABORT_NO_SUCH_SNAPSHOT)
+	requireClosureStatus(t, first, committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT)
 	ref := env.seedSnapshotRecord(t, "now-exists", 940300, nil)
 	second := env.submitCheckpoint(ctx, t, newCheckpointPreparedTx(cpRef, ref.BlockNum, value))
-	requireClosureStatus(t, second, committerpb.Status_REJECTED_SNAPSHOT_ABORT_NO_SUCH_SNAPSHOT)
+	requireClosureStatus(t, second, committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT)
 	requireSnapshotStatus(t, env.dbEnv, ref.TxId, committerpb.SnapshotState_PENDING)
 	requireNoCheckpointRow(t, env.dbEnv, ref.BlockNum)
 }
@@ -575,12 +575,12 @@ func TestCheckpointCompetingTransactions(t *testing.T) {
 	}{
 		{
 			name: "abort first", first: []byte("abort"), second: checkpointDigest("competing"),
-			target: committerpb.SnapshotState_ABORTED, reject: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY,
+			target: committerpb.SnapshotState_ABORTED, reject: committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT,
 		},
 		{
 			name: "digest first", first: checkpointDigest("competing"), second: []byte("abort"),
 			target: committerpb.SnapshotState_CHECKPOINTED,
-			reject: committerpb.Status_REJECTED_SNAPSHOT_ABORT_NO_SUCH_SNAPSHOT,
+			reject: committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -739,7 +739,7 @@ func TestCheckpointDivergencePreservesAbortedSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	requireSnapshotStatus(t, env.dbEnv, ref.TxId, committerpb.SnapshotState_ABORTED)
 	require.Nil(t, verdict.feedback)
-	require.Equal(t, committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY, verdict.rejectStatus)
+	require.Equal(t, committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT, verdict.rejectStatus)
 	requireCheckpointRow(t, env.dbEnv, ref.BlockNum, []byte("abort"))
 }
 

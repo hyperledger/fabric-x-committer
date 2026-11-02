@@ -253,8 +253,8 @@ snapshot can be waiting for a checkpoint: the VC rejects new snapshot requests u
 | Check | Result |
 |-------|--------|
 | The block number and hash match the local snapshot | Keep the checkpoint write and commit it normally. |
-| There is no local snapshot, or its block number differs | Reject the transaction with `MALFORMED_CHECKPOINT_INVALID_KEY`. Keep processing other transactions. |
-| The snapshot is already `CHECKPOINTED` or `ABORTED` | Reject the new digest checkpoint with `MALFORMED_CHECKPOINT_INVALID_KEY`; do not send `HOLD`/`HALT` or change the status. |
+| There is no local snapshot, or its block number differs | Reject the transaction with `REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT`. Keep processing other transactions. |
+| The snapshot is already `CHECKPOINTED` or `ABORTED` | Reject the new checkpoint transaction with `REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT`; do not send `HOLD`/`HALT` or change the status. |
 | The local snapshot hash is missing for an active digest checkpoint | Remove the checkpoint write and send `HOLD`. The sidecar waits, then fetches the block again. |
 | The block number matches, but the hashes differ | Remove the checkpoint write and send `HALT`. Save the reason in the snapshot record and stop the sidecar for investigation. |
 
@@ -286,7 +286,7 @@ cannot be hashed.
 
 The validator handles a snapshot abort through the checkpoint path. If the latest snapshot is missing,
 has a different block number, or is already `CHECKPOINTED` or `ABORTED`, it rejects the transaction with
-`REJECTED_SNAPSHOT_ABORT_NO_SUCH_SNAPSHOT`. The logs identify the reason. Transaction IDs are checked
+`REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT`. The logs identify the reason. Transaction IDs are checked
 before reading the latest snapshot: a resubmission at the same height returns its saved status, even
 if a newer snapshot exists. Reusing the ID at another height is rejected as a duplicate.
 
@@ -315,7 +315,7 @@ one is `CHECKPOINTED` or `ABORTED`.
 | Check | Outcome | Effect |
 |-------|---------|--------|
 | The latest snapshot matches the block and is neither `CHECKPOINTED` nor `ABORTED` | Commit | Save the abort write and mark the snapshot `ABORTED` in the same database transaction. |
-| No snapshot exists, the block differs, or the snapshot is already `CHECKPOINTED` or `ABORTED` | Reject transaction | Return `REJECTED_SNAPSHOT_ABORT_NO_SUCH_SNAPSHOT`. Leave the record unchanged and keep processing transactions. |
+| No snapshot exists, the block differs, or the snapshot is already `CHECKPOINTED` or `ABORTED` | Reject transaction | Return `REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT`. Leave the record unchanged and keep processing transactions. |
 | The batch contains more than one checkpoint transaction | Fail batch | Do not allow any unchecked checkpoint write to commit. |
 
 Any known status other than `CHECKPOINTED` or `ABORTED` can be aborted, including `COMPLETED`. This

@@ -83,24 +83,20 @@ func (d *database) verifyCheckpoint(ctx context.Context, cp *checkpointTx) (chec
 	if err != nil {
 		return checkpointVerdict{}, err
 	}
-	rejection := committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY
-	if cp.terminalStatus() == committerpb.SnapshotState_ABORTED {
-		rejection = committerpb.Status_REJECTED_SNAPSHOT_ABORT_NO_SUCH_SNAPSHOT
-	}
 
 	switch {
 	case state == nil || state.TxRef == nil:
 		logger.Warnf("Rejecting checkpoint TX [%s] for block [%d]: no snapshot record exists to close",
 			cp.txID, cp.snapshotBlockNum)
-		return checkpointVerdict{rejectStatus: rejection}, nil
+		return checkpointVerdict{rejectStatus: committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT}, nil
 	case state.TxRef.BlockNum != cp.snapshotBlockNum:
 		logger.Warnf("Rejecting checkpoint TX [%s]: latest snapshot is at block [%d], not [%d]",
 			cp.txID, state.TxRef.BlockNum, cp.snapshotBlockNum)
-		return checkpointVerdict{rejectStatus: rejection}, nil
+		return checkpointVerdict{rejectStatus: committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT}, nil
 	case state.Status == committerpb.SnapshotState_CHECKPOINTED || state.Status == committerpb.SnapshotState_ABORTED:
 		logger.Warnf("Rejecting checkpoint TX [%s] for block [%d]: snapshot is already %s",
 			cp.txID, cp.snapshotBlockNum, state.Status)
-		return checkpointVerdict{rejectStatus: rejection}, nil
+		return checkpointVerdict{rejectStatus: committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT}, nil
 	case cp.terminalStatus() == committerpb.SnapshotState_ABORTED:
 		return checkpointVerdict{}, nil
 	case len(state.Hash) == 0:
