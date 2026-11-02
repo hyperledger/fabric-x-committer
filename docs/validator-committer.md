@@ -147,8 +147,8 @@ The primary goal is to organize the reads and writes from all transactions in th
 * Creating a reverse map from each specific read (key-version pair) back to the transaction IDs that performed it. This is crucial for quickly
 identifying all invalid transactions if a single read proves invalid.
 * Categorizing all transaction writes into new writes, blind writes, and non-blind writes.
-* Parsing the checkpoint's snapshot block number and hash once, then carrying that metadata through validation and commit.
-  An undecodable key or multiple checkpoints fail the batch during preparation.
+* Reading each checkpoint transaction's snapshot block number and value once, then passing them to validation and commit.
+  An invalid key, invalid value, or more than one checkpoint transaction causes the batch to fail.
 
 The main data structure produced by this task is `preparedTransactions`:
 
@@ -241,26 +241,34 @@ type validatedTransactions struct {
 }
 ```
 
-**e. Verifying a Checkpoint Before Commit:** A `_checkpoint` transaction contains a snapshot block number and a hash
-agreed on by the organizations. The VC commits it only if that hash matches the local hash for the same snapshot.
+**e. Verifying a Checkpoint Before Commit:** A `_checkpoint` transaction either confirms a snapshot digest
+or aborts the snapshot. It contains one read-write with an omitted version and a `servicepb.CheckpointKey`
+for the snapshot's block number. Its value is a raw 32-byte SHA-256 digest or the exact UTF-8 string `abort`.
+Other values, including an omitted value, are rejected with `MALFORMED_CHECKPOINT_INVALID_VALUE`.
+Both types of transaction use `/Channel/Application/CheckpointEndorsement`.
 
 The validator uses the checkpoint metadata from preparation to check the latest `_snapshot` record. Only the latest
-snapshot can be waiting for a checkpoint: the VC rejects new snapshot requests until the previous one is `CHECKPOINTED`.
+snapshot can be waiting for a checkpoint: the VC rejects new snapshot requests until the previous one is `CHECKPOINTED` or `ABORTED`.
 
 | Check | Result |
 |-------|--------|
 | The block number and hash match the local snapshot | Keep the checkpoint write and commit it normally. |
 | There is no local snapshot, or its block number differs | Reject the transaction with `MALFORMED_CHECKPOINT_INVALID_KEY`. Keep processing other transactions. |
-| The local snapshot hash is missing | Remove the checkpoint write and send `HOLD`. The sidecar waits, then fetches the block again. |
+| The snapshot is already `CHECKPOINTED` or `ABORTED` | Reject the new digest checkpoint with `MALFORMED_CHECKPOINT_INVALID_KEY`; do not send `HOLD`/`HALT` or change the status. |
+| The local snapshot hash is missing for an active digest checkpoint | Remove the checkpoint write and send `HOLD`. The sidecar waits, then fetches the block again. |
 | The block number matches, but the hashes differ | Remove the checkpoint write and send `HALT`. Save the reason in the snapshot record and stop the sidecar for investigation. |
 
 A wrong block number is bad input, not evidence of a hash mismatch. Anyone who satisfies
 `/Channel/Application/CheckpointEndorsement` can submit a checkpoint. Halting on a wrong block number would let an
 authorized submitter stop the committer, so the VC rejects that transaction instead.
 
-The [sidecar](sidecar.md) checks the transaction's format before sending it to the VC. If the VC still receives an
-invalid key or multiple checkpoints in one batch, it fails the batch. Skipping verification could allow an unverified
-checkpoint to commit.
+The [sidecar](sidecar.md) checks transaction format before sending it to the VC. If the VC still receives an
+invalid key, invalid value, or multiple checkpoint transactions in one batch, it fails the batch rather than
+committing an unchecked write. The snapshot record decoder also rejects unknown statuses.
+
+Before saving a hash-mismatch diagnostic, the VC checks that the snapshot still has the status it read earlier.
+If the status changed, it checks the snapshot again instead of restoring the old status or sending `HALT`
+based on an outdated read.
 
 `HOLD` and `HALT` use `CheckpointFeedback` instead of a transaction status. Transaction statuses are saved in `tx_status`
 except for `REJECTED_DUPLICATE_TX_ID`. Saving a status for a held checkpoint would cause every retry with the same
@@ -269,6 +277,55 @@ transaction ID to be rejected as a duplicate.
 The feedback includes the checkpoint transaction's `TxRef`. The coordinator uses it to release the transaction's node
 from the dependency graph. The sidecar uses the feedback to wait or stop; on retry, it fetches the block again.
 See [Checkpoint feedback gate](sidecar.md#checkpoint-feedback-gate) and [checkpoint.go](/service/vc/checkpoint.go).
+
+The snapshot admission check (`rejectSnapshotIfPriorNotCheckpointed`) applies to a **new snapshot request**,
+not a snapshot abort. It accepts the first request, or a request after the latest snapshot becomes
+`CHECKPOINTED` or `ABORTED`. Otherwise it rejects the request with `REJECTED_SNAPSHOT_NO_CHECKPOINT` or
+`REJECTED_SNAPSHOT_IN_PROGRESS`. Aborting a snapshot allows another request even when the old snapshot
+cannot be hashed.
+
+The validator handles a snapshot abort through the checkpoint path. If the latest snapshot is missing,
+has a different block number, or is already `CHECKPOINTED` or `ABORTED`, it rejects the transaction with
+`REJECTED_SNAPSHOT_ABORT_NO_SUCH_SNAPSHOT`. The logs identify the reason. Transaction IDs are checked
+before reading the latest snapshot: a resubmission at the same height returns its saved status, even
+if a newer snapshot exists. Reusing the ID at another height is rejected as a duplicate.
+
+#### Aborting a Snapshot
+
+A snapshot abort lets an administrator stop using a snapshot that will not be checkpointed. It is a
+`_checkpoint` transaction with one `ReadWrite`, an omitted version, the snapshot block-number key
+(`servicepb.CheckpointKey`), and value `abort` (`servicepb.CheckpointAbortValue`).
+The marker has five UTF-8 bytes, so it cannot equal a 32-byte SHA-256 digest. A 32-byte value beginning
+with `abort` is still a digest; other shorter values are not aborts.
+
+A digest checkpoint and snapshot abort use the same namespace and key. The coordinator processes
+competing transactions in order, and MVCC allows only one to insert that key. The commit also checks
+the snapshot status: a later transaction cannot change `CHECKPOINTED` to `ABORTED` or vice versa.
+
+The abort must be recorded on the ledger so a node replaying it sees the same decision. Without that
+record, the replaying node could hash a snapshot the organization had abandoned. The abort write is
+stored in `ns__checkpoint`, which is included in later snapshot digests. A local update in
+`ns__snapshot` alone is not enough because that namespace is excluded from the digest.
+Both snapshot aborts and digest checkpoints require `/Channel/Application/CheckpointEndorsement`.
+
+The validator checks the latest `_snapshot` record. This is the only snapshot that can still need
+an abort or checkpoint, because the VC does not accept another snapshot request until the previous
+one is `CHECKPOINTED` or `ABORTED`.
+
+| Check | Outcome | Effect |
+|-------|---------|--------|
+| The latest snapshot matches the block and is neither `CHECKPOINTED` nor `ABORTED` | Commit | Save the abort write and mark the snapshot `ABORTED` in the same database transaction. |
+| No snapshot exists, the block differs, or the snapshot is already `CHECKPOINTED` or `ABORTED` | Reject transaction | Return `REJECTED_SNAPSHOT_ABORT_NO_SUCH_SNAPSHOT`. Leave the record unchanged and keep processing transactions. |
+| The batch contains more than one checkpoint transaction | Fail batch | Do not allow any unchecked checkpoint write to commit. |
+
+Any known status other than `CHECKPOINTED` or `ABORTED` can be aborted, including `COMPLETED`. This
+matters when a computed digest differs from other organizations' digests and cannot be checkpointed.
+A snapshot abort does not compare hashes, so it never sends `HOLD` or `HALT`. An abort for a missing
+snapshot is rejected rather than stopping the committer. See [checkpoint.go](/service/vc/checkpoint.go).
+
+A snapshot abort is **not** a submission barrier. It follows ordinary checkpoint batching, creates
+no clone, and does not change the latest-snapshot pointer. Only `_snapshot` requests create clones
+and add new snapshot records.
 
 **f. Enqueueing for Commit:** The `validatedTransactions` object is enqueued into the `validatedTxs` channel for the Committer task.
 
@@ -296,7 +353,7 @@ type statesToBeCommitted struct {
     newWrites    namespaceToWrites
     batchStatus  *protoblocktx.TransactionsStatus
     txIDToHeight transactionIDToHeight
-    // The verified checkpoint write, if any. Its snapshot is marked CHECKPOINTED
+    // The verified checkpoint transaction, if any. Its snapshot becomes CHECKPOINTED or ABORTED
     // in the same database transaction.
     checkpoint   *checkpointTx
 }
@@ -311,18 +368,24 @@ If this happens, the writes and/or statuses for the corresponding transactions a
 
 System transactions also update snapshot metadata in the same database transaction:
 
-- A `_snapshot` write sets the latest-snapshot pointer through `setLatestSnapshotKeyIfPresent`.
-- A verified `_checkpoint` write marks its snapshot `CHECKPOINTED` through `statedb.MarkSnapshotCheckpointedInTx`.
+- A snapshot request sets the latest-snapshot pointer through `setLatestSnapshotKeyIfPresent`.
+- A verified digest checkpoint marks its snapshot `CHECKPOINTED` through `statedb.MarkSnapshotTerminalInTx`.
+- A verified abort write marks its snapshot `ABORTED` through the same helper.
 
-The checkpoint write and snapshot status must commit together. If they committed separately, a crash between them could
-leave a saved checkpoint with a snapshot still waiting for it. The VC would then reject new snapshot requests.
+The write and snapshot status must commit together. If they committed separately, a crash between them could
+leave a saved checkpoint or abort without updating the snapshot status. The VC would then reject new snapshot requests.
 
 Invalidating a checkpoint clears its prepared metadata along with its writes, so commit retries cannot update the
-snapshot record for a removed checkpoint. `HOLD` and `HALT` also clear this metadata. An already-`CHECKPOINTED` record
-is left unchanged.
+snapshot record for a removed checkpoint. `HOLD` and `HALT` also clear this metadata. An already-closed record
+cannot be closed by another transaction.
 
 A missing latest-snapshot pointer or a different block number causes a non-retryable error. The record no longer
 matches what the validator checked, so the committer must not save the checkpoint.
+
+For a valid checkpoint transaction, `checkpointTx.terminalStatus` chooses `CHECKPOINTED` or `ABORTED`,
+and `MarkSnapshotTerminalInTx` saves that status with the write. An opposite final status is a non-retryable
+error. Same-transaction retries return the saved status instead of updating the snapshot again.
+Snapshot aborts leave the latest-snapshot pointer unchanged; it always identifies a `_snapshot` record.
 
 **e. Reporting Status:** After the commit is successful, the `batchStatus` is sent to the `txsStatus` channel, which relays the information 
 back to the Coordinator, completing the workflow for the transaction batch. If the validator supplied

@@ -486,6 +486,9 @@ func TestRejectSnapshotIfPriorNotCheckpointed(t *testing.T) {
 		accepted   bool
 	}{
 		{"checkpointed accepts", 1000, committerpb.SnapshotState_CHECKPOINTED, 0, true},
+		// The stall this fixes: a snapshot that can never be hashed rests at ABORTED, and a
+		// later request must be admitted exactly as it is after a checkpoint.
+		{"aborted accepts", 1006, committerpb.SnapshotState_ABORTED, 0, true},
 		{"unspecified blocks 119", 1001, committerpb.SnapshotState_STATUS_UNSPECIFIED, inProgress, false},
 		{"pending blocks 119", 1002, committerpb.SnapshotState_PENDING, inProgress, false},
 		{"in_progress blocks 119", 1003, committerpb.SnapshotState_IN_PROGRESS, inProgress, false},
@@ -692,3 +695,8 @@ func TestUpdateSnapshotStateSetsErrorMessage(t *testing.T) {
 	require.Equal(t, "missing clone_database", got.Error)
 	require.Equal(t, name, got.CloneDatabase) // preserved, not clobbered.
 }
+
+// TestCommitSnapshotAbort walks every status an abort may close. Everything short of a
+// closed lifecycle is abortable, COMPLETED included: a digest that diverged from the
+// other organizations is exactly a snapshot nobody will checkpoint, so refusing to
+// abort it would leave that stall with no exit.
