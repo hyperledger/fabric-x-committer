@@ -43,6 +43,12 @@ func (c *SidecarAdapter) RunWorkload(ctx context.Context, txStream *workload.Str
 		ArtifactsPath: c.res.Profile.Policy.ArtifactsPath,
 		// The sidecar adapter submits a config block manually.
 		SendGenesisBlock: true,
+		// This adapter submits blocks it has already cut, so the mock orderer never batches
+		// envelopes and BlockSize would only scale the buffer between us and the sidecar
+		// (BlockSize * OutBlockCapacity blocks). Pinning it to 1 makes OutBlockCapacity mean
+		// what it says: the number of blocks buffered.
+		BlockSize:        1,
+		OutBlockCapacity: c.config.OutBlockCapacity,
 		// This adapter builds a block per batch and never touches it again, and MapToOrdererBlock
 		// leaves the data hash in its header, so the orderer needs neither a clone nor a rehash.
 		PrepareInPlace: true,
