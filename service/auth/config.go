@@ -29,7 +29,7 @@ type Config struct {
 	ConfigRefreshInterval time.Duration `mapstructure:"config-refresh-interval" default:"1m" validate:"gt=0"`
 	// SweepInterval is how often expired token and nonce records are deleted from the database.
 	SweepInterval time.Duration `mapstructure:"sweep-interval" default:"1m" validate:"gt=0"`
-	// ChallengeRateLimit caps IssueNonce and Authenticate together: the only RPCs reachable without a token.
-	// Limited apart from the server's rate-limit, which Authorize shares with the resource servers' whole load.
+	// ChallengeRateLimit caps IssueNonce and AuthenticateIdentity together: the only RPCs reachable without a token.
+	// Limited apart from the server's rate-limit, which AuthorizeIdentity shares with the resource servers' whole load.
 	ChallengeRateLimit serve.RateLimitConfig `mapstructure:"challenge-rate-limit" default:"requests-per-second=200 burst=50"` //nolint:lll,revive
 }

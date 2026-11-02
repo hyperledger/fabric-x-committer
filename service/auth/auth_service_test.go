@@ -46,8 +46,9 @@ func TestAuthSecureConnection(t *testing.T) {
 	)
 }
 
-// TestAuthAuthorizeCases verifies the auth service's Authorize method under various token and resource conditions.
-func TestAuthAuthorizeCases(t *testing.T) {
+// TestAuthAuthorizeIdentityCases verifies the auth service's AuthorizeIdentity method under various token and
+// resource conditions.
+func TestAuthAuthorizeIdentityCases(t *testing.T) {
 	t.Parallel()
 
 	artifactsPath := t.TempDir()
@@ -91,7 +92,7 @@ func TestAuthAuthorizeCases(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			resp, err := env.Client.Authorize(t.Context(), &committerpb.AuthorizeRequest{
+			resp, err := env.Client.AuthorizeIdentity(t.Context(), &committerpb.AuthorizeIdentityRequest{
 				Token:       tc.token,
 				Resource:    tc.resource,
 				TlsCertHash: env.TLSCertHash,
@@ -105,12 +106,12 @@ func TestAuthAuthorizeCases(t *testing.T) {
 	// Failure cases.
 	for _, tc := range []struct {
 		name     string
-		request  *committerpb.AuthorizeRequest
+		request  *committerpb.AuthorizeIdentityRequest
 		wantCode codes.Code
 	}{
 		{
 			name: "unknown token",
-			request: &committerpb.AuthorizeRequest{
+			request: &committerpb.AuthorizeIdentityRequest{
 				Token:       "never-issued",
 				Resource:    committerpb.QueryService_GetRows_FullMethodName,
 				TlsCertHash: env.TLSCertHash,
@@ -119,7 +120,7 @@ func TestAuthAuthorizeCases(t *testing.T) {
 		},
 		{
 			name: "empty token",
-			request: &committerpb.AuthorizeRequest{
+			request: &committerpb.AuthorizeIdentityRequest{
 				Resource:    committerpb.QueryService_GetRows_FullMethodName,
 				TlsCertHash: env.TLSCertHash,
 			},
@@ -127,7 +128,7 @@ func TestAuthAuthorizeCases(t *testing.T) {
 		},
 		{
 			name: "certificate mismatch",
-			request: &committerpb.AuthorizeRequest{
+			request: &committerpb.AuthorizeIdentityRequest{
 				Token:       token,
 				Resource:    committerpb.QueryService_GetRows_FullMethodName,
 				TlsCertHash: []byte{0xFF},
@@ -136,7 +137,7 @@ func TestAuthAuthorizeCases(t *testing.T) {
 		},
 		{
 			name: "identity outside the resource policy",
-			request: &committerpb.AuthorizeRequest{
+			request: &committerpb.AuthorizeIdentityRequest{
 				Token:       consenterToken,
 				Resource:    committerpb.QueryService_GetRows_FullMethodName,
 				TlsCertHash: env.TLSCertHash,
@@ -146,7 +147,7 @@ func TestAuthAuthorizeCases(t *testing.T) {
 		{
 			// Denied although the identity's policy would otherwise allow it.
 			name: "scoped token outside its scope",
-			request: &committerpb.AuthorizeRequest{
+			request: &committerpb.AuthorizeIdentityRequest{
 				Token:       scopedToken,
 				Resource:    committerpb.QueryService_GetTransactionStatus_FullMethodName,
 				TlsCertHash: env.TLSCertHash,
@@ -156,21 +157,21 @@ func TestAuthAuthorizeCases(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := env.Client.Authorize(t.Context(), tc.request)
+			_, err := env.Client.AuthorizeIdentity(t.Context(), tc.request)
 			require.Equal(t, tc.wantCode, grpcerror.GetCode(err))
 		})
 	}
 }
 
-// TestAuthorizeRejectsExpiredToken verifies that the auth service rejects tokens that have expired,
+// TestAuthorizeIdentityRejectsExpiredToken verifies that the auth service rejects tokens that have expired,
 // even if they were valid when issued.
-func TestAuthorizeRejectsExpiredToken(t *testing.T) {
+func TestAuthorizeIdentityRejectsExpiredToken(t *testing.T) {
 	t.Parallel()
 	env := newAuthTestEnvWithMutualTLS(t, TestEnvParams{TokenTTL: time.Second})
 	token := env.IssueToken(t)
 
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
-		_, err := env.Client.Authorize(t.Context(), &committerpb.AuthorizeRequest{
+		_, err := env.Client.AuthorizeIdentity(t.Context(), &committerpb.AuthorizeIdentityRequest{
 			Token: token, Resource: committerpb.QueryService_GetRows_FullMethodName, TlsCertHash: env.TLSCertHash,
 		})
 		require.Equal(ct, codes.Unauthenticated, grpcerror.GetCode(err))
@@ -178,8 +179,9 @@ func TestAuthorizeRejectsExpiredToken(t *testing.T) {
 	}, 10*time.Second, 200*time.Millisecond)
 }
 
-// TestAuthAuthenticateCases verifies the auth service's Authenticate method under various envelope conditions.
-func TestAuthAuthenticateCases(t *testing.T) {
+// TestAuthAuthenticateIdentityCases verifies the auth service's AuthenticateIdentity method under various envelope
+// conditions.
+func TestAuthAuthenticateIdentityCases(t *testing.T) {
 	t.Parallel()
 
 	env := newAuthTestEnvWithMutualTLS(t, TestEnvParams{})
@@ -202,7 +204,7 @@ func TestAuthAuthenticateCases(t *testing.T) {
 			t.Parallel()
 			nonce, err := env.Client.IssueNonce(t.Context(), &committerpb.IssueNonceRequest{})
 			require.NoError(t, err)
-			resp, err := env.Client.Authenticate(t.Context(), &committerpb.AuthenticateRequest{
+			resp, err := env.Client.AuthenticateIdentity(t.Context(), &committerpb.AuthenticateIdentityRequest{
 				SignedEnvelope: buildEnvelope(t, &env.EnvelopeParams, nonce.GetNonce()),
 				RequestedScope: tc.scope,
 			})
@@ -218,7 +220,9 @@ func TestAuthAuthenticateCases(t *testing.T) {
 	resp, err := env.Client.IssueNonce(t.Context(), &committerpb.IssueNonceRequest{})
 	require.NoError(t, err)
 	replayed := buildEnvelope(t, &env.EnvelopeParams, resp.GetNonce())
-	_, err = env.Client.Authenticate(t.Context(), &committerpb.AuthenticateRequest{SignedEnvelope: replayed})
+	_, err = env.Client.AuthenticateIdentity(
+		t.Context(), &committerpb.AuthenticateIdentityRequest{SignedEnvelope: replayed},
+	)
 	require.NoError(t, err)
 
 	// withCertHash signs a fresh nonce with a certificate hash by desire.
@@ -287,7 +291,7 @@ func TestAuthAuthenticateCases(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, authErr := env.Client.Authenticate(t.Context(), &committerpb.AuthenticateRequest{
+			_, authErr := env.Client.AuthenticateIdentity(t.Context(), &committerpb.AuthenticateIdentityRequest{
 				SignedEnvelope: tc.envelope,
 				RequestedScope: tc.scope,
 			})

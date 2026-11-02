@@ -46,7 +46,7 @@ type (
 		ArtifactsPath string
 		// Instances is how many AuthServices to start over the one shared database. Zero means one.
 		Instances int
-		// ChallengeRateLimit throttles IssueNonce and Authenticate. Zero disables it.
+		// ChallengeRateLimit throttles IssueNonce and AuthenticateIdentity. Zero disables it.
 		ChallengeRateLimit serve.RateLimitConfig
 	}
 )

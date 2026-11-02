@@ -39,7 +39,7 @@ type (
 
 // IssueToken runs the whole client side of authentication: fetch a nonce, sign it into an envelope, exchange
 // it for a cert-bound token.
-func IssueToken(ctx context.Context, params *IssueParams) (*committerpb.AuthenticateResponse, error) {
+func IssueToken(ctx context.Context, params *IssueParams) (*committerpb.AuthenticateIdentityResponse, error) {
 	nonce, err := params.Client.IssueNonce(ctx, &committerpb.IssueNonceRequest{})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to obtain an authentication nonce")
@@ -49,14 +49,14 @@ func IssueToken(ctx context.Context, params *IssueParams) (*committerpb.Authenti
 		return nil, err
 	}
 
-	resp, err := params.Client.Authenticate(ctx, &committerpb.AuthenticateRequest{
+	resp, err := params.Client.AuthenticateIdentity(ctx, &committerpb.AuthenticateIdentityRequest{
 		SignedEnvelope: envelope,
 		RequestedScope: params.Scope,
 	})
 	return resp, errors.Wrap(err, "failed to authenticate with the auth service")
 }
 
-// BuildAuthEnvelope builds the envelope Authenticate expects: channel-scoped, bound to the TLS certificate, and
+// BuildAuthEnvelope builds the envelope AuthenticateIdentity expects: channel-scoped, bound to the TLS certificate, and
 // signed over the server-issued nonce. Its data is deliberately empty: a transaction always carries a payload,
 // which is the domain separation the AuthService checks.
 func BuildAuthEnvelope(params *EnvelopeParams, nonce []byte) (*common.Envelope, error) {

@@ -5,8 +5,8 @@
 ---
 # Configuration for the server
 server:
-  # The gRPC endpoint where the auth service listens for Authenticate calls from clients and
-  # Authorize calls from resource servers. Format: host:port or :port (binds to all interfaces).
+  # The gRPC endpoint where the auth service listens for AuthenticateIdentity calls from clients and
+  # AuthorizeIdentity calls from resource servers. Format: host:port or :port (binds to all interfaces).
   endpoint: :10001
   tls: &tlsConfig
     # TLS mode for server connections: 'none' (no TLS), 'tls' (server auth only),
@@ -136,8 +136,8 @@ token-ttl: 5m
 envelope-freshness-window: 5m
 
 # How long a server-issued authentication nonce remains redeemable. A client must call IssueNonce and
-# sign the returned nonce into its envelope before calling Authenticate; the nonce is consumed on use,
-# so a captured envelope cannot be replayed. This only has to cover the IssueNonce -> Authenticate round
+# sign the returned nonce into its envelope before calling AuthenticateIdentity; the nonce is consumed on use,
+# so a captured envelope cannot be replayed. This only has to cover the IssueNonce -> AuthenticateIdentity round
 # trip.
 # A shorter window means fewer unredeemed nonces held in the database. Default: 1m.
 nonce-ttl: 1m
@@ -149,9 +149,10 @@ config-refresh-interval: 1m
 # How often expired token and nonce records are deleted from the database. Default: 1m
 sweep-interval: 1m
 
-# Throttles IssueNonce and Authenticate - the only RPCs reachable without a token, and the only ones
+# Throttles IssueNonce and AuthenticateIdentity - the only RPCs reachable without a token, and the only ones
 # costing a signature verification and an MSP resolution. Separate from the server's `rate-limit` above
-# because that must stay high enough for Authorize, which fires once per protected RPC; one number cannot serve both.
+# because that must stay high enough for AuthorizeIdentity, which fires once per protected RPC; one number
+# cannot serve both.
 challenge-rate-limit:
   # Set to 0 to disable. Default: 200
   requests-per-second: 200

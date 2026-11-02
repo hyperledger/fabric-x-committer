@@ -168,7 +168,7 @@ func (s *Service) RegisterService(srv serve.Servers) {
 	serve.RegisterServerMetrics(srv.StatsHandler, s.metrics.serverMetrics)
 }
 
-// IssueNonce issues a single-use nonce for the client's next Authenticate.
+// IssueNonce issues a single-use nonce for the client's next AuthenticateIdentity.
 func (s *Service) IssueNonce(
 	ctx context.Context, _ *committerpb.IssueNonceRequest,
 ) (*committerpb.IssueNonceResponse, error) {
@@ -187,11 +187,11 @@ func (s *Service) IssueNonce(
 	}, nil
 }
 
-// Authenticate exchanges a signed envelope for a cert-bound token. The signature is verified once here;
+// AuthenticateIdentity exchanges a signed envelope for a cert-bound token. The signature is verified once here;
 // subsequent authorization carries the identity forward via the persisted token record.
-func (s *Service) Authenticate(
-	ctx context.Context, req *committerpb.AuthenticateRequest,
-) (*committerpb.AuthenticateResponse, error) {
+func (s *Service) AuthenticateIdentity(
+	ctx context.Context, req *committerpb.AuthenticateIdentityRequest,
+) (*committerpb.AuthenticateIdentityResponse, error) {
 	if err := s.allowChallenge(); err != nil {
 		return nil, grpcerror.WrapResourceExhaustedOrCancelled(ctx, err)
 	}
@@ -242,18 +242,18 @@ func (s *Service) Authenticate(
 		return nil, grpcerror.WrapInternalError(errors.New("failed to issue a token"))
 	}
 
-	return &committerpb.AuthenticateResponse{
+	return &committerpb.AuthenticateIdentityResponse{
 		Token:     token,
 		ExpiresAt: rec.GetExpiresAt(),
 	}, nil
 }
 
-// Authorize resolves a token, checks its expiry, binding and scope, and evaluates the resource policy
+// AuthorizeIdentity resolves a token, checks its expiry, binding and scope, and evaluates the resource policy
 // against its identity. A resource server calls it per RPC and, for a stream, whenever its cached decision
 // lapses, so expiry and configuration changes both take effect.
-func (s *Service) Authorize(
-	ctx context.Context, req *committerpb.AuthorizeRequest,
-) (*committerpb.AuthorizeResponse, error) {
+func (s *Service) AuthorizeIdentity(
+	ctx context.Context, req *committerpb.AuthorizeIdentityRequest,
+) (*committerpb.AuthorizeIdentityResponse, error) {
 	bundle, err := s.configProvider.current()
 	if err != nil {
 		return nil, grpcerror.WrapUnavailable(err)
@@ -290,7 +290,7 @@ func (s *Service) Authorize(
 		return nil, grpcerror.WrapPermissionDenied(err)
 	}
 
-	return &committerpb.AuthorizeResponse{
+	return &committerpb.AuthorizeIdentityResponse{
 		TokenExpiresAt: tokenRecord.GetExpiresAt(),
 	}, nil
 }
@@ -323,7 +323,7 @@ func (s *Service) allowChallenge() error {
 }
 
 // verifyEnvelope checks scoping, freshness, certificate binding, MSP resolution and the signature, then
-// returns the identity. Redeeming the nonce stays in Authenticate: it is the one stateful step.
+// returns the identity. Redeeming the nonce stays in AuthenticateIdentity: it is the one stateful step.
 func (s *Service) verifyEnvelope(
 	parsed *parsedEnvelope, bundle *channelconfig.Bundle, certHash []byte, now time.Time,
 ) (*msppb.Identity, error) {
