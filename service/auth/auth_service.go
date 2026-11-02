@@ -28,6 +28,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -95,25 +96,13 @@ func NewAuthService(config *Config) (*Service, error) {
 		return nil, fmt.Errorf("invalid challenge rate limit: %w", err)
 	}
 
-	protected := make(map[string]bool)
-	for _, desc := range []*grpc.ServiceDesc{
-		&committerpb.QueryService_ServiceDesc, &committerpb.SidecarService_ServiceDesc, &peer.Deliver_ServiceDesc,
-	} {
-		for _, m := range desc.Methods {
-			protected[fmt.Sprintf("/%s/%s", desc.ServiceName, m.MethodName)] = true
-		}
-		for _, st := range desc.Streams {
-			protected[fmt.Sprintf("/%s/%s", desc.ServiceName, st.StreamName)] = true
-		}
-	}
-
 	return &Service{
 		config:        config,
 		metrics:       newAuthServiceMetrics(),
 		challenges:    serve.NewRateLimiter(&config.ChallengeRateLimit),
 		ready:         channel.NewReady(),
 		healthcheck:   serve.DefaultHealthCheckService(),
-		protectedRPCs: protected,
+		protectedRPCs: protectedRPCs(),
 	}, nil
 }
 
@@ -170,7 +159,7 @@ func (s *Service) RegisterService(srv serve.Servers) {
 
 // IssueNonce issues a single-use nonce for the client's next AuthenticateIdentity.
 func (s *Service) IssueNonce(
-	ctx context.Context, _ *committerpb.IssueNonceRequest,
+	ctx context.Context, _ *emptypb.Empty,
 ) (*committerpb.IssueNonceResponse, error) {
 	if err := s.allowChallenge(); err != nil {
 		return nil, grpcerror.WrapResourceExhaustedOrCancelled(ctx, err)
@@ -278,8 +267,8 @@ func (s *Service) AuthorizeIdentity(
 		return nil, grpcerror.WrapUnauthenticated(errors.New("token is not bound to this certificate"))
 	}
 
-	// An empty scope imposes no restriction; a non-empty one allows only the exact methods it lists.
-	if scope := tokenRecord.GetScope(); len(scope) > 0 && !slices.Contains(scope, req.GetResource()) {
+	// A token reaches only the methods its scope names, so a token issued without a scope reaches none.
+	if !slices.Contains(tokenRecord.GetScope(), req.GetResource()) {
 		return nil, grpcerror.WrapPermissionDenied(
 			errors.Newf("resource %s is outside the token scope", req.GetResource()),
 		)
@@ -424,4 +413,21 @@ func normalizeScope(requested []string, protected map[string]bool) ([]string, er
 		normalized = append(normalized, entry)
 	}
 	return normalized, nil
+}
+
+// protectedRPCs returns the gRPC full-method names of the services the resource servers protect, read from
+// their generated descriptors: the only names a token's scope may list.
+func protectedRPCs() map[string]bool {
+	protected := make(map[string]bool)
+	for _, desc := range []*grpc.ServiceDesc{
+		&committerpb.QueryService_ServiceDesc, &committerpb.SidecarService_ServiceDesc, &peer.Deliver_ServiceDesc,
+	} {
+		for _, m := range desc.Methods {
+			protected[fmt.Sprintf("/%s/%s", desc.ServiceName, m.MethodName)] = true
+		}
+		for _, st := range desc.Streams {
+			protected[fmt.Sprintf("/%s/%s", desc.ServiceName, st.StreamName)] = true
+		}
+	}
+	return protected
 }

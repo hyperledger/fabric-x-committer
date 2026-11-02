@@ -35,13 +35,14 @@ Only the persisted `TokenRecord` is internal, in `api/servicepb`.
 - `AuthenticateIdentity(signed_envelope, requested_scope) -> token, expires_at` — verifies the envelope
   (channel and empty-payload scope, timestamp freshness, TLS certificate binding, MSP identity
   resolution, signature), issues a random opaque token, and writes its hash and the token-to-identity binding
-  to the store. `requested_scope` only narrows the token: each entry is the gRPC full-method name of a Query,
-  Sidecar or Deliver RPC (e.g. `/committerpb.QueryService/GetRows`), entries are trimmed and de-duplicated,
-  and an empty scope leaves the identity's authority unrestricted.
+  to the store. `requested_scope` lists the resources the token may reach, and the token reaches nothing
+  else: a token issued with an empty scope is denied every resource. Each entry is the gRPC full-method name
+  of a Query, Sidecar or Deliver RPC (e.g. `/committerpb.QueryService/GetRows`); entries are trimmed and
+  de-duplicated. The scope never adds authority: the identity's policy still decides each resource it names.
 - `IssueNonce() -> nonce, expires_at` — issues the single-use challenge a client must sign into its
   envelope. It is the mandatory first step of authentication.
 - `AuthorizeIdentity(token, resource, tls_cert_hash) -> token_expires_at` — resolves the token's record from the
-  store, checks its expiry, certificate binding and optional resource scope, validates the bound identity,
+  store, checks its expiry, certificate binding and resource scope, validates the bound identity,
   evaluates the resource's policy against the latest configuration, and returns the
   token's expiry. A resource server calls it for every unary RPC and, for a stream, whenever its cached
   decision lapses.

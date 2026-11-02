@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/hyperledger/fabric-x-committer/utils/acl"
 	"github.com/hyperledger/fabric-x-committer/utils/connection"
@@ -56,22 +57,29 @@ func TestAuthAuthorizeIdentityCases(t *testing.T) {
 
 	token := env.IssueToken(t)
 
+	issueToken := func(p *acl.IssueParams) string {
+		t.Helper()
+		resp, err := acl.IssueToken(t.Context(), p)
+		require.NoError(t, err)
+		return resp.GetToken()
+	}
+
+	unscopedParams := *env.IssueParams
+	unscopedParams.Scope = nil
+	unscopedToken := issueToken(&unscopedParams)
+
 	scopedParams := *env.IssueParams
 	scopedParams.Scope = []string{committerpb.QueryService_GetRows_FullMethodName}
-	resp, err := acl.IssueToken(t.Context(), &scopedParams)
-	require.NoError(t, err)
-	scopedToken := resp.GetToken()
+	scopedToken := issueToken(&scopedParams)
 
 	// A consenter belongs to the orderer organization: a channel member, so it authenticates, yet outside
 	// the application organizations that the Readers policy admits.
 	consenters, err := testcrypto.GetConsenterIdentities(artifactsPath)
 	require.NoError(t, err)
 	require.NotEmpty(t, consenters)
-	consenterParams := *env.IssueParams
+	consenterParams := scopedParams
 	consenterParams.Signer = consenters[0]
-	resp, err = acl.IssueToken(t.Context(), &consenterParams)
-	require.NoError(t, err)
-	consenterToken := resp.GetToken()
+	consenterToken := issueToken(&consenterParams)
 
 	// Success cases.
 	for _, tc := range []struct {
@@ -79,15 +87,21 @@ func TestAuthAuthorizeIdentityCases(t *testing.T) {
 		token    string
 		resource string
 	}{
-		{name: "unscoped token", token: token, resource: committerpb.QueryService_GetRows_FullMethodName},
 		{
-			name: "scoped token within its scope", token: scopedToken,
+			name:     "token scoped to every RPC",
+			token:    token,
+			resource: committerpb.QueryService_GetRows_FullMethodName,
+		},
+		{
+			name:     "scoped token within its scope",
+			token:    scopedToken,
 			resource: committerpb.QueryService_GetRows_FullMethodName,
 		},
 		{
 			// A resource the channel configuration's ACLs do not name falls back to the Readers policy.
-			name: "resource with no ACL falls back to the Readers policy", token: token,
-			resource: "/unknown.Service/Method",
+			name:     "resource with no ACL falls back to the Readers policy",
+			token:    token,
+			resource: committerpb.SidecarService_DeleteDBCloneForSnapshot_FullMethodName,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -139,6 +153,16 @@ func TestAuthAuthorizeIdentityCases(t *testing.T) {
 			name: "identity outside the resource policy",
 			request: &committerpb.AuthorizeIdentityRequest{
 				Token:       consenterToken,
+				Resource:    committerpb.QueryService_GetRows_FullMethodName,
+				TlsCertHash: env.TLSCertHash,
+			},
+			wantCode: codes.PermissionDenied,
+		},
+		{
+			// A token reaches only what its scope names, so one issued without a scope reaches nothing.
+			name: "token issued without a scope",
+			request: &committerpb.AuthorizeIdentityRequest{
+				Token:       unscopedToken,
 				Resource:    committerpb.QueryService_GetRows_FullMethodName,
 				TlsCertHash: env.TLSCertHash,
 			},
@@ -202,7 +226,7 @@ func TestAuthAuthenticateIdentityCases(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			nonce, err := env.Client.IssueNonce(t.Context(), &committerpb.IssueNonceRequest{})
+			nonce, err := env.Client.IssueNonce(t.Context(), &emptypb.Empty{})
 			require.NoError(t, err)
 			resp, err := env.Client.AuthenticateIdentity(t.Context(), &committerpb.AuthenticateIdentityRequest{
 				SignedEnvelope: buildEnvelope(t, &env.EnvelopeParams, nonce.GetNonce()),
@@ -217,7 +241,7 @@ func TestAuthAuthenticateIdentityCases(t *testing.T) {
 	// Failure cases.
 	// The nonce is single-use: once redeemed, the very same envelope is worthless to whoever captured it,
 	// even inside the freshness window.
-	resp, err := env.Client.IssueNonce(t.Context(), &committerpb.IssueNonceRequest{})
+	resp, err := env.Client.IssueNonce(t.Context(), &emptypb.Empty{})
 	require.NoError(t, err)
 	replayed := buildEnvelope(t, &env.EnvelopeParams, resp.GetNonce())
 	_, err = env.Client.AuthenticateIdentity(
@@ -227,7 +251,7 @@ func TestAuthAuthenticateIdentityCases(t *testing.T) {
 
 	// withCertHash signs a fresh nonce with a certificate hash by desire.
 	withCertHash := func(certHash []byte) *common.Envelope {
-		resp, err := env.Client.IssueNonce(t.Context(), &committerpb.IssueNonceRequest{})
+		resp, err := env.Client.IssueNonce(t.Context(), &emptypb.Empty{})
 		require.NoError(t, err)
 		params := env.EnvelopeParams
 		params.TLSCertHash = certHash

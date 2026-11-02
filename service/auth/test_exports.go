@@ -7,7 +7,9 @@ SPDX-License-Identifier: Apache-2.0
 package auth
 
 import (
+	"maps"
 	"path"
+	"slices"
 	"testing"
 	"time"
 
@@ -108,7 +110,7 @@ func NewAuthTestEnv(t *testing.T, params *TestEnvParams) *TestEnv {
 
 // NewAuthClientTestEnv connects to running AuthService instances and
 // signs as the first peer identity found under artifactsPath. The client balances across the instances,
-// so a nonce issued by one of them is redeemed at another.
+// so a nonce issued by one of them is redeemed at another. Its tokens are scoped to every protected RPC.
 func NewAuthClientTestEnv(
 	t *testing.T, config *connection.MultiClientConfig, artifactsPath, channelID string,
 ) *TestEnv {
@@ -130,6 +132,8 @@ func NewAuthClientTestEnv(
 			Signer:      identities[0],
 			ChannelID:   channelID,
 			TLSCertHash: certHash,
+			// maps.Keys yields an iterator in random order; sorting makes it a slice that is the same every run.
+			Scope: slices.Sorted(maps.Keys(protectedRPCs())),
 		},
 		Config: config,
 	}

@@ -21,7 +21,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
 	github.com/hyperledger/fabric-lib-go v1.1.5
 	github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7
-	github.com/hyperledger/fabric-x-common v0.2.12
+	github.com/hyperledger/fabric-x-common v0.2.13-0.20261102124848-7e8d3746c19c
 	github.com/jackc/pgerrcode v0.0.0-20250907135507-afb5586c32a6
 	github.com/jackc/puddle/v2 v2.2.2
 	github.com/moby/moby/api v1.55.0
@@ -185,5 +185,3 @@ require (
 	moul.io/http2curl/v2 v2.3.0 // indirect
 	mvdan.cc/gofumpt v0.10.0 // indirect
 )
-
-replace github.com/hyperledger/fabric-x-common => github.com/dean-amar/fabric-x-common v0.0.0-20261102094656-8af5fbd769cd

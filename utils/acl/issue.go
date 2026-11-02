@@ -25,7 +25,8 @@ type (
 		EnvelopeParams
 		// Client authenticates against the AuthService.
 		Client committerpb.AuthServiceClient
-		// Scope optionally requests a least-privilege token limited to these resources.
+		// Scope lists the resources the token may reach, as gRPC full-method names.
+		// An empty scope yields a token that reaches nothing.
 		Scope []string
 	}
 
@@ -40,7 +41,7 @@ type (
 // IssueToken runs the whole client side of authentication: fetch a nonce, sign it into an envelope, exchange
 // it for a cert-bound token.
 func IssueToken(ctx context.Context, params *IssueParams) (*committerpb.AuthenticateIdentityResponse, error) {
-	nonce, err := params.Client.IssueNonce(ctx, &committerpb.IssueNonceRequest{})
+	nonce, err := params.Client.IssueNonce(ctx, &emptypb.Empty{})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to obtain an authentication nonce")
 	}

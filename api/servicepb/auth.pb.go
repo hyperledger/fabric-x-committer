@@ -39,7 +39,7 @@ type TokenRecord struct {
 	Identity *msppb.Identity `protobuf:"bytes,1,opt,name=identity,proto3" json:"identity,omitempty"`
 	// cert_hash_sha256 is the SHA-256 of the client's TLS certificate the token is bound to.
 	CertHashSha256 []byte `protobuf:"bytes,2,opt,name=cert_hash_sha256,json=certHashSha256,proto3" json:"cert_hash_sha256,omitempty"`
-	// scope is the optional least-privilege scope granted at issuance, as gRPC full-method names.
+	// scope is the set of resources the token may reach, as gRPC full-method names. Empty reaches nothing.
 	Scope []string `protobuf:"bytes,3,rep,name=scope,proto3" json:"scope,omitempty"`
 	// expires_at is the token expiry in unix seconds.
 	ExpiresAt     int64 `protobuf:"varint,4,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
