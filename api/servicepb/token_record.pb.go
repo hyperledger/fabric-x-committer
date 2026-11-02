@@ -7,7 +7,7 @@
 // versions:
 // 	protoc-gen-go v1.36.12
 // 	protoc        v7.35.1
-// source: api/servicepb/auth.proto
+// source: api/servicepb/token_record.proto
 
 package servicepb
 
@@ -49,7 +49,7 @@ type TokenRecord struct {
 
 func (x *TokenRecord) Reset() {
 	*x = TokenRecord{}
-	mi := &file_api_servicepb_auth_proto_msgTypes[0]
+	mi := &file_api_servicepb_token_record_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -61,7 +61,7 @@ func (x *TokenRecord) String() string {
 func (*TokenRecord) ProtoMessage() {}
 
 func (x *TokenRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_api_servicepb_auth_proto_msgTypes[0]
+	mi := &file_api_servicepb_token_record_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -74,7 +74,7 @@ func (x *TokenRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TokenRecord.ProtoReflect.Descriptor instead.
 func (*TokenRecord) Descriptor() ([]byte, []int) {
-	return file_api_servicepb_auth_proto_rawDescGZIP(), []int{0}
+	return file_api_servicepb_token_record_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *TokenRecord) GetIdentity() *msppb.Identity {
@@ -105,11 +105,11 @@ func (x *TokenRecord) GetExpiresAt() int64 {
 	return 0
 }
 
-var File_api_servicepb_auth_proto protoreflect.FileDescriptor
+var File_api_servicepb_token_record_proto protoreflect.FileDescriptor
 
-const file_api_servicepb_auth_proto_rawDesc = "" +
+const file_api_servicepb_token_record_proto_rawDesc = "" +
 	"\n" +
-	"\x18api/servicepb/auth.proto\x12\tservicepb\x1a\x13api/msppb/msp.proto\"\x99\x01\n" +
+	" api/servicepb/token_record.proto\x12\tservicepb\x1a\x13api/msppb/msp.proto\"\x99\x01\n" +
 	"\vTokenRecord\x12+\n" +
 	"\bidentity\x18\x01 \x01(\v2\x0f.msppb.IdentityR\bidentity\x12(\n" +
 	"\x10cert_hash_sha256\x18\x02 \x01(\fR\x0ecertHashSha256\x12\x14\n" +
@@ -118,23 +118,23 @@ const file_api_servicepb_auth_proto_rawDesc = "" +
 	"expires_at\x18\x04 \x01(\x03R\texpiresAtB9Z7github.com/hyperledger/fabric-x-committer/api/servicepbb\x06proto3"
 
 var (
-	file_api_servicepb_auth_proto_rawDescOnce sync.Once
-	file_api_servicepb_auth_proto_rawDescData []byte
+	file_api_servicepb_token_record_proto_rawDescOnce sync.Once
+	file_api_servicepb_token_record_proto_rawDescData []byte
 )
 
-func file_api_servicepb_auth_proto_rawDescGZIP() []byte {
-	file_api_servicepb_auth_proto_rawDescOnce.Do(func() {
-		file_api_servicepb_auth_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_api_servicepb_auth_proto_rawDesc), len(file_api_servicepb_auth_proto_rawDesc)))
+func file_api_servicepb_token_record_proto_rawDescGZIP() []byte {
+	file_api_servicepb_token_record_proto_rawDescOnce.Do(func() {
+		file_api_servicepb_token_record_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_api_servicepb_token_record_proto_rawDesc), len(file_api_servicepb_token_record_proto_rawDesc)))
 	})
-	return file_api_servicepb_auth_proto_rawDescData
+	return file_api_servicepb_token_record_proto_rawDescData
 }
 
-var file_api_servicepb_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
-var file_api_servicepb_auth_proto_goTypes = []any{
+var file_api_servicepb_token_record_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_api_servicepb_token_record_proto_goTypes = []any{
 	(*TokenRecord)(nil),    // 0: servicepb.TokenRecord
 	(*msppb.Identity)(nil), // 1: msppb.Identity
 }
-var file_api_servicepb_auth_proto_depIdxs = []int32{
+var file_api_servicepb_token_record_proto_depIdxs = []int32{
 	1, // 0: servicepb.TokenRecord.identity:type_name -> msppb.Identity
 	1, // [1:1] is the sub-list for method output_type
 	1, // [1:1] is the sub-list for method input_type
@@ -143,26 +143,26 @@ var file_api_servicepb_auth_proto_depIdxs = []int32{
 	0, // [0:1] is the sub-list for field type_name
 }
 
-func init() { file_api_servicepb_auth_proto_init() }
-func file_api_servicepb_auth_proto_init() {
-	if File_api_servicepb_auth_proto != nil {
+func init() { file_api_servicepb_token_record_proto_init() }
+func file_api_servicepb_token_record_proto_init() {
+	if File_api_servicepb_token_record_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_servicepb_auth_proto_rawDesc), len(file_api_servicepb_auth_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_servicepb_token_record_proto_rawDesc), len(file_api_servicepb_token_record_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   1,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_api_servicepb_auth_proto_goTypes,
-		DependencyIndexes: file_api_servicepb_auth_proto_depIdxs,
-		MessageInfos:      file_api_servicepb_auth_proto_msgTypes,
+		GoTypes:           file_api_servicepb_token_record_proto_goTypes,
+		DependencyIndexes: file_api_servicepb_token_record_proto_depIdxs,
+		MessageInfos:      file_api_servicepb_token_record_proto_msgTypes,
 	}.Build()
-	File_api_servicepb_auth_proto = out.File
-	file_api_servicepb_auth_proto_goTypes = nil
-	file_api_servicepb_auth_proto_depIdxs = nil
+	File_api_servicepb_token_record_proto = out.File
+	file_api_servicepb_token_record_proto_goTypes = nil
+	file_api_servicepb_token_record_proto_depIdxs = nil
 }
