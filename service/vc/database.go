@@ -58,10 +58,8 @@ type (
 		retryProfile         *retry.Profile
 		tablePreSplitTablets int
 		config               *statedb.Config
-		// snapshotState is the shared accessor for the durable `_snapshot` record. The
-		// VC only reads it today, to gate a new snapshot request, and will also write
-		// CHECKPOINTED through it once checkpointing lands; the snapshot service drives
-		// the same record from PENDING to COMPLETED from its own process.
+		// snapshotState reads the durable lifecycle shared with the snapshot hasher.
+		// Terminal transitions use the caller's database transaction.
 		snapshotState *statedb.SnapshotStateManager
 	}
 
@@ -73,8 +71,7 @@ type (
 		newWrites    namespaceToWrites
 		batchStatus  *servicepb.TxStatusBatch
 		txIDToHeight transactionIDToHeight
-		// checkpoint is the verified write, or nil if there is none.
-		// Its snapshot is marked CHECKPOINTED in the same database transaction.
+		// checkpoint closes its snapshot in the same database transaction.
 		checkpoint *checkpointTx
 	}
 
@@ -204,11 +201,28 @@ func (d *database) setLastCommittedBlockNumber(ctx context.Context, bInfo *servi
 }
 
 // commit commits the writes to the database.
-func (d *database) commit(ctx context.Context, states *statesToBeCommitted) (*commitResult, error) {
-	start := time.Now()
+func (d *database) commit(ctx context.Context, states *statesToBeCommitted) (res *commitResult, err error) {
 	if states.empty() {
 		return nil, nil
 	}
+
+	// Deferred so that every return path is observed, and labelled so that rejected attempts are not
+	// averaged with clean commits.
+	start := time.Now()
+	defer func() {
+		var status string
+		switch {
+		case err != nil:
+			status = commitError
+		case res != nil && len(res.duplicates) > 0:
+			status = commitDuplicate
+		case res != nil:
+			status = commitConflict
+		default:
+			status = commitSuccess
+		}
+		promutil.Observe(d.metrics.databaseTxBatchCommitLatencySeconds.WithLabelValues(status), time.Since(start))
+	}()
 
 	// We want to commit all the writes to all namespaces or none at all,
 	// so we use a database transaction. Otherwise, the failure and recovery
@@ -221,12 +235,13 @@ func (d *database) commit(ctx context.Context, states *statesToBeCommitted) (*co
 	// This will be executed if an error occurs. If transaction is committed, this will be a no-op.
 	defer rollBackFunc()
 
-	res, err := d.writeStatesByGroup(ctx, tx, states)
+	res, err = d.writeStatesByGroup(ctx, tx, states)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write states: %w", err)
 	}
 	if res != nil {
-		// rollback
+		// The batch is rejected, so it is rolled back and retried by the caller. The deferred
+		// observation above labels this attempt duplicate or conflict, not success.
 		return res, nil
 	}
 
@@ -240,13 +255,13 @@ func (d *database) commit(ctx context.Context, states *statesToBeCommitted) (*co
 	// Commit the checkpoint and snapshot status together. A crash between separate
 	// commits could leave the snapshot waiting for a checkpoint and block new snapshots.
 	if states.checkpoint != nil {
-		if err = statedb.MarkSnapshotCheckpointedInTx(ctx, tx, states.checkpoint.snapshotBlockNum); err != nil {
-			return nil, fmt.Errorf("failed to mark the snapshot as checkpointed: %w", err)
+		target := states.checkpoint.terminalStatus()
+		if err = statedb.MarkSnapshotTerminalInTx(ctx, tx, states.checkpoint.snapshotBlockNum, target); err != nil {
+			return nil, fmt.Errorf("failed to mark the snapshot as %s: %w", target, err)
 		}
 	}
 
 	err = tx.Commit(ctx)
-	promutil.Observe(d.metrics.databaseTxBatchCommitLatencySeconds, time.Since(start))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to perform the final commit on the database transaction")
 	}
@@ -300,11 +315,11 @@ func (d *database) writeStatesByGroup(
 	return nil, nil
 }
 
-// setLatestSnapshotKeyIfPresent points statedb.LatestSnapshotPointerKey at w's
-// sole key, or no-ops when w is empty (normal non-snapshot batch). Writing it here,
-// in the same transaction as the _snapshot row, is what lets the snapshot service
-// find the record it must hash with a single key lookup. The key is pre-seeded
-// (NULL) at DB init, so the existing setMetadataPrepSQLStmt UPDATE is reused as-is.
+// setLatestSnapshotKeyIfPresent points statedb.LatestSnapshotPointerKey at w's sole key,
+// or no-ops when w is empty (normal non-snapshot batch). Writing it here, in the same
+// transaction as the _snapshot row, is what lets the snapshot hasher
+// find the record it must hash with a single key lookup. The key is pre-seeded (NULL) at
+// DB init, so the existing setMetadataPrepSQLStmt UPDATE is reused as-is.
 func setLatestSnapshotKeyIfPresent(ctx context.Context, tx pgx.Tx, w *namespaceWrites) error {
 	if w.empty() {
 		return nil
@@ -317,11 +332,28 @@ func (d *database) insertTxStatus(
 	ctx context.Context,
 	tx pgx.Tx,
 	states *statesToBeCommitted,
-) ([]TxID /* duplicates */, error) {
-	start := time.Now()
+) (duplicateTxs []TxID, err error) {
 	if states.batchStatus == nil || len(states.batchStatus.Status) == 0 {
 		return nil, nil
 	}
+
+	// Deferred so a failed read is counted too, and started after the guard above so that an empty
+	// batch does not enter the histogram as a near-zero sample.
+	start := time.Now()
+	defer func() {
+		var status string
+		switch {
+		case err != nil:
+			status = commitError
+		case len(duplicateTxs) > 0:
+			status = commitDuplicate
+		default:
+			status = commitSuccess
+		}
+		promutil.Observe(
+			d.metrics.databaseTxBatchCommitTxsStatusLatencySeconds.WithLabelValues(status), time.Since(start),
+		)
+	}()
 
 	numEntries := len(states.batchStatus.Status)
 	ids := make([][]byte, 0, numEntries)
@@ -347,31 +379,40 @@ func (d *database) insertTxStatus(
 		return nil, fmt.Errorf("failed to read result from query [%s]: %w", insertTxStatusSQLStmt, err)
 	}
 	if len(duplicates) == 0 {
-		promutil.Observe(d.metrics.databaseTxBatchCommitTxsStatusLatencySeconds, time.Since(start))
 		return nil, nil
 	}
 
-	duplicateTxs := make([]TxID, len(duplicates))
+	duplicateTxs = make([]TxID, len(duplicates))
 	for i, v := range duplicates {
 		duplicateTxs[i] = TxID(v)
 	}
 	logger.Debugf("Total number of duplicate txs: %d", len(duplicateTxs))
-	promutil.Observe(d.metrics.databaseTxBatchCommitTxsStatusLatencySeconds, time.Since(start))
 	return duplicateTxs, nil
 }
 
 func (d *database) insertStates(
 	ctx context.Context, tx pgx.Tx, nsToWrites namespaceToWrites,
-) (namespaceToReads /* conflicts */, error) {
+) (conflicts namespaceToReads, err error) {
+	// Labelled because a colliding insert raises unique_violation and re-reads the existing keys,
+	// which is a different operation from a clean bulk insert.
 	start := time.Now()
 	defer func() {
+		var status string
+		switch {
+		case err != nil:
+			status = commitError
+		case len(conflicts) > 0:
+			status = commitConflict
+		default:
+			status = commitSuccess
+		}
 		promutil.Observe(
-			d.metrics.databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds,
+			d.metrics.databaseTxBatchCommitInsertNewKeyWithValueLatencySeconds.WithLabelValues(status),
 			time.Since(start),
 		)
 	}()
 
-	conflicts := make(namespaceToReads)
+	conflicts = make(namespaceToReads)
 	for nsID, writes := range nsToWrites {
 		if writes.empty() {
 			continue
@@ -399,21 +440,31 @@ func (d *database) insertStates(
 	return nil, nil
 }
 
-func (d *database) updateStates(ctx context.Context, tx pgx.Tx, nsToWrites namespaceToWrites) error {
+func (d *database) updateStates(ctx context.Context, tx pgx.Tx, nsToWrites namespaceToWrites) (err error) {
+	// Started after the guard, as in insertTxStatus, so a batch with no updates does not enter the
+	// histogram as a near-zero sample. Updates cannot be rejected, so the outcome is success or error.
+	if nsToWrites.empty() {
+		return nil
+	}
 	start := time.Now()
+	defer func() {
+		status := commitSuccess
+		if err != nil {
+			status = commitError
+		}
+		promutil.Observe(d.metrics.databaseTxBatchCommitUpdateLatencySeconds.WithLabelValues(status), time.Since(start))
+	}()
+
 	for nsID, writes := range nsToWrites {
 		if writes.empty() {
 			continue
 		}
 
 		query := statedb.FmtNsID(updateNsStatesSQLTempl, nsID)
-		_, err := tx.Exec(ctx, query, writes.keys, writes.values, writes.versions)
-		if err != nil {
+		if _, err = tx.Exec(ctx, query, writes.keys, writes.values, writes.versions); err != nil {
 			return errors.Wrapf(err, "failed to execute query [%s]", query)
 		}
 	}
-	promutil.Observe(d.metrics.databaseTxBatchCommitUpdateLatencySeconds, time.Since(start))
-
 	return nil
 }
 

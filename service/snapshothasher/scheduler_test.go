@@ -126,6 +126,97 @@ func TestHashSnapshotRejectsRecordTakenOverMidHash(t *testing.T) {
 	}
 }
 
+// TestWatchForAbort tests the watcher directly so a fast hash cannot hide either exit.
+func TestWatchForAbort(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		blockNum       uint64
+		status         committerpb.SnapshotState_Status
+		cancelled      bool
+		expectedErr    error
+		expectedAborts int
+	}{
+		{
+			blockNum: 760100, status: committerpb.SnapshotState_ABORTED,
+			expectedErr: errSnapshotAborted, expectedAborts: 1,
+		},
+		{blockNum: 760101, status: committerpb.SnapshotState_IN_PROGRESS, cancelled: true},
+	} {
+		t.Run(tc.status.String(), func(t *testing.T) {
+			t.Parallel()
+			env := newTestEnv(t)
+			ref := committerpb.NewTxRef("snap-abort-watch-"+tc.status.String(), tc.blockNum, 0)
+			env.seedRecord(t, ref, tc.status)
+			ctx, cancel := context.WithCancel(createContext(t))
+			defer cancel()
+			if tc.cancelled {
+				cancel()
+			}
+			require.ErrorIs(t, env.scheduler.watchForAbort(ctx, ref), tc.expectedErr)
+			test.RequireIntMetricValue(t, tc.expectedAborts, env.metrics.hashAbortedTotal)
+		})
+	}
+}
+
+// TestHashSnapshotUntilAbortedLeavesAbortedRecordIntact covers the wrapper against an abort
+// that already committed. Which goroutine wins is not asserted -- a small clone can hash
+// faster than a poll -- because either way the hash must not succeed and ABORTED must
+// survive with no digest and no FAILED over it. That last part is failHash's context guard.
+func TestHashSnapshotUntilAbortedLeavesAbortedRecordIntact(t *testing.T) {
+	t.Parallel()
+	env := newTestEnv(t)
+	ctx := createContext(t)
+	env.dbEnv.SeedState(t, seededState([]string{"1", "2"}))
+
+	ref := &committerpb.TxRef{BlockNum: 760102, TxNum: 0, TxId: "snap-abort-mid-hash"}
+	env.seedAbortedRecord(t, ref)
+
+	state, err := env.state.ReadLatest(ctx)
+	require.NoError(t, err)
+	// The premise the job holds in memory: it read the record before the abort committed.
+	state.Status = committerpb.SnapshotState_IN_PROGRESS
+
+	pool, err := env.hasher.openClonePool(ctx, state.CloneDatabase)
+	require.NoError(t, err)
+	t.Cleanup(pool.Close)
+
+	require.Error(t, env.scheduler.hashSnapshotUntilAborted(ctx, state, pool))
+
+	record, found := env.dbEnv.ReadSnapshotRecord(ctx, ref.TxId)
+	require.True(t, found)
+	require.Equal(t, committerpb.SnapshotState_ABORTED, record.State.Status)
+	require.Empty(t, record.State.Hash)
+	require.Empty(t, record.State.Error, "a cancelled hash must not record a failure")
+}
+
+// TestSchedulerRunSurvivesAnAbortedHash pins that an aborted hash is normal operation:
+// the loop keeps running and counts it separately, since counting it as a failed job would
+// fire the failure alert every time an operator aborts a snapshot.
+func TestSchedulerRunSurvivesAnAbortedHash(t *testing.T) {
+	t.Parallel()
+	env := newTestEnv(t)
+	env.dbEnv.SeedState(t, seededState([]string{"1"}))
+
+	ref := &committerpb.TxRef{BlockNum: 760200, TxNum: 0, TxId: "snap-abort-loop"}
+	env.seedRecord(t, ref, committerpb.SnapshotState_ABORTED)
+
+	t.Log("Step 1: start the scheduler loop against an aborted record")
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- env.scheduler.run(ctx) }()
+
+	t.Log("Step 2: several ticks pass without hashing it or failing a job")
+	require.Never(t, func() bool {
+		return test.GetMetricValue(t, env.metrics.hashStartedTotal) > 0 ||
+			test.GetMetricValue(t, env.metrics.hashJobsFailedTotal) > 0 ||
+			test.GetMetricValue(t, env.metrics.pollErrorsTotal) > 0
+	}, 3*testPollInterval, 100*time.Millisecond)
+
+	t.Log("Step 3: the loop stops cleanly on context cancellation")
+	cancel()
+	require.NoError(t, <-done)
+}
+
 // TestHashLatestSnapshotIfNeeded walks every status a tick can find on the latest
 // record. PENDING, IN_PROGRESS, and FAILED all still need hashing, so each reaches
 // COMPLETED with a digest; a record that was orphaned mid-hash by a restart is
@@ -145,6 +236,8 @@ func TestHashLatestSnapshotIfNeeded(t *testing.T) {
 		{name: "FAILED", status: committerpb.SnapshotState_FAILED, blockNum: 800302, wantHashed: true},
 		{name: "COMPLETED", status: committerpb.SnapshotState_COMPLETED, blockNum: 800303, wantHashed: false},
 		{name: "CHECKPOINTED", status: committerpb.SnapshotState_CHECKPOINTED, blockNum: 800304, wantHashed: false},
+		// Terminal like a checkpoint: hashing it could only produce a digest nobody attests to.
+		{name: "ABORTED", status: committerpb.SnapshotState_ABORTED, blockNum: 800305, wantHashed: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -355,9 +448,80 @@ func TestHashLatestSnapshotIfNeededReturnsContextCancellation(t *testing.T) {
 	require.Equal(t, before.Version, record.Version)
 }
 
+func TestHashSnapshotIfNeededAfterClosedCloneDeletion(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		blockNum uint64
+		status   committerpb.SnapshotState_Status
+	}{
+		{name: "aborted", blockNum: 960300, status: committerpb.SnapshotState_ABORTED},
+		{name: "checkpointed", blockNum: 960301, status: committerpb.SnapshotState_CHECKPOINTED},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			env := newTestEnv(t)
+			ctx := createContext(t)
+			ref := committerpb.NewTxRef("deleted-"+tc.name, tc.blockNum, 0)
+			env.seedRecord(t, ref, committerpb.SnapshotState_PENDING)
+			observed, err := env.state.Read(ctx, ref.TxId)
+			require.NoError(t, err)
+			require.NoError(t, env.state.Update(ctx, ref, statedb.SnapshotUpdate{Status: tc.status}))
+			require.NoError(t, statedb.DeleteSnapshotClone(ctx, env.config.Database, ref.TxId))
+			next := committerpb.NewTxRef("after-deletion-"+tc.name, 960400, 0)
+			env.dbEnv.SeedSnapshotRecord(t, vc.SnapshotFixture{Ref: next, Status: committerpb.SnapshotState_PENDING})
+
+			// The job's stale active record still names the clone that legal cleanup dropped.
+			require.NoError(t, env.scheduler.hashSnapshotIfNeeded(ctx, observed))
+			record, err := env.state.Read(ctx, ref.TxId)
+			require.NoError(t, err)
+			require.Equal(t, tc.status, record.Status)
+			require.Empty(t, record.CloneDatabase)
+			test.RequireIntMetricValue(t, 0, env.metrics.hashStartedTotal)
+			test.RequireIntMetricValue(t, 0, env.metrics.hashJobsFailedTotal)
+			test.RequireIntMetricValue(t, 0, env.metrics.pollErrorsTotal)
+		})
+	}
+}
+
+func TestHashSnapshotIfNeededMissingActiveCloneRemainsCorrupt(t *testing.T) {
+	t.Parallel()
+	env := newTestEnv(t)
+	ctx := createContext(t)
+	ref := committerpb.NewTxRef("missing-active-clone", 960500, 0)
+	env.dbEnv.SeedSnapshotRecord(t, vc.SnapshotFixture{
+		Ref: ref, Status: committerpb.SnapshotState_PENDING, CloneDatabase: "missing_active_clone_review",
+	})
+	observed, err := env.state.Read(ctx, ref.TxId)
+	require.NoError(t, err)
+	require.ErrorIs(t, env.scheduler.hashSnapshotIfNeeded(ctx, observed), ErrCorruptSnapshotState)
+}
+
+func TestWatchForAbortAfterLatestSnapshotAdvances(t *testing.T) {
+	t.Parallel()
+	env := newTestEnv(t)
+	ref := committerpb.NewTxRef("watch-original", 960100, 0)
+	env.dbEnv.SeedSnapshotRecord(t, vc.SnapshotFixture{Ref: ref, Status: committerpb.SnapshotState_ABORTED})
+	next := committerpb.NewTxRef("watch-successor", 960200, 0)
+	env.dbEnv.SeedSnapshotRecord(t, vc.SnapshotFixture{Ref: next, Status: committerpb.SnapshotState_PENDING})
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	require.ErrorIs(t, env.scheduler.watchForAbort(ctx, ref), errSnapshotAborted)
+}
+
 // seedRecord commits a `_snapshot` record for ref at status, together with its
 // clone, and returns the record as stored so a test can assert a later tick did
 // not rewrite it.
+// seedAbortedRecord seeds an in-progress record and then aborts it, which is the state a
+// watcher or a mid-flight hash finds after an abort commits.
+func (env *testEnv) seedAbortedRecord(t *testing.T, ref *committerpb.TxRef) {
+	t.Helper()
+	env.seedRecord(t, ref, committerpb.SnapshotState_IN_PROGRESS)
+	require.NoError(t, env.state.Update(t.Context(), ref, statedb.SnapshotUpdate{
+		Status: committerpb.SnapshotState_ABORTED,
+	}))
+}
+
 func (env *testEnv) seedRecord(
 	t *testing.T, ref *committerpb.TxRef, status committerpb.SnapshotState_Status,
 ) *vc.SnapshotRecord {

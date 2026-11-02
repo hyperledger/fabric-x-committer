@@ -47,7 +47,7 @@ func newLatencyReceiverSender(conf *LatencyConfig) *latencyReceiverSender {
 	maxTrackedTXs := uint64(0)
 	if len(buckets) > 0 {
 		txSampler = newSampler(&conf.SamplerConfig)
-		maxTrackedTXs = max(1, conf.SamplerConfig.MaxTrackedTXs)
+		maxTrackedTXs = max(1, conf.MaxTrackedTXs)
 	}
 	return &latencyReceiverSender{
 		txSampler:      txSampler,

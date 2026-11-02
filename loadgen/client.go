@@ -65,7 +65,6 @@ func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 			Profile: conf.LoadProfile,
 			Stream:  conf.Stream,
 			Limit:   conf.Limit,
-			Metrics: metrics.NewLoadgenServiceMetrics(&conf.Monitoring, txCounter),
 		},
 		healthcheck: serve.DefaultHealthCheckService(),
 	}
@@ -87,6 +86,10 @@ func NewLoadGenClient(conf *ClientConfig) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// The metrics read the stream's rate limit at scrape time. The adapter holds &c.resources and
+	// reads the metrics only once it runs, so setting them after its construction is safe.
+	c.resources.Metrics = metrics.NewLoadgenServiceMetrics(&conf.Monitoring, txCounter, c.txStream)
 
 	c.adapter = adapter
 	conf.Generate = adapters.PhasesIntersect(conf.Generate, adapter.Supports())

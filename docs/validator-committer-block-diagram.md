@@ -184,14 +184,22 @@ Flow description:
 4. **Committer → DB:** Committer workers query versions for blind writes, validate reads, commit writes to database.
 5. **Committer → Coordinator:** Committers send final `TxStatusBatch` messages to `txsStatus` channel, returned to Coordinator.
 
-In phase 2, the validator also compares each checkpoint hash with the local snapshot hash:
+In phase 2, the validator checks `_checkpoint` transactions. Each contains one read-write
+with an omitted version and a key naming the snapshot's block number. A 32-byte value is a
+digest checkpoint; value `abort` is a snapshot abort. Both use `CheckpointEndorsement`.
+
+For a digest checkpoint:
 
 - Matching hashes allow the checkpoint to commit.
 - A missing or different snapshot causes a transaction rejection.
 - A missing local hash produces `HOLD`. The sidecar waits, then fetches the block again.
 - Different hashes for the same snapshot produce `HALT`. The sidecar stops for investigation.
 
-The committer forwards `HOLD` and `HALT` in the status batch.
+A snapshot abort either commits or is rejected; it never produces `HOLD` or `HALT`.
+A digest checkpoint for an aborted snapshot is rejected. Both use the same key, so only one
+can commit. The checkpoint write and snapshot status update commit in the same database
+transaction. The status becomes `CHECKPOINTED` for a digest checkpoint or `ABORTED` for a
+snapshot abort. The committer also forwards any `HOLD` or `HALT` feedback.
 See [validator-committer.md](./validator-committer.md), Task 2 step **e**.
 
 Key design points:
@@ -1190,14 +1198,14 @@ Open these files next to connect diagrams to implementation:
 - `service/vc/preparer.go` — Transaction preparation, write categorization, read extraction.
 - `service/vc/validator.go` — MVCC read validation, invalidation of transactions.
 - `service/vc/committer.go` — Blind write resolution, database commit, duplicate handling.
-- `service/vc/checkpoint.go` — Checkpoint hash checks, transaction rejection, and HOLD/HALT feedback.
+- `service/vc/checkpoint.go` — Digest/abort verification, transaction rejection, terminal target, and digest HOLD/HALT feedback.
 
 ### Database Layer
 
 - `service/vc/database.go` — Database connection, stored procedure calls, retry logic.
 - `service/vc/database_snapshot.go` — Creates snapshot clones and checks whether a new snapshot is allowed.
 - `utils/statedb/dbinit.go` — Table and stored procedure creation.
-- `utils/statedb/snapshot_state.go` — Reads and updates snapshot records, including `MarkSnapshotCheckpointedInTx`.
+- `utils/statedb/snapshot_state.go` — Reads and updates snapshot records, including `MarkSnapshotTerminalInTx`.
 - `utils/statedb/snapshot_clone.go` — Deletes snapshot clones (`DeleteSnapshotClone`, used by `committer delete-clone`) and runs admin statements on the maintenance database (`AdminExec`).
 
 ### Data Structures

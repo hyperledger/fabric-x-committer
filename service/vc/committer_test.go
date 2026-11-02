@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-common/api/committerpb"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/fabric-x-committer/api/servicepb"
@@ -421,4 +422,20 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 			env.dbEnv.StatusExistsForNonDuplicateTxID(ctx, t, tt.expectedTxStatuses)
 		})
 	}
+
+	// The rejected attempts return early, so each label proves that its return path is observed:
+	// "new writes with violating" is rejected by a conflict, and "all invalid txs" by a duplicate.
+	dbMetrics := env.dbEnv.DB.metrics
+	require.Positive(t, commitLatency(t, dbMetrics.databaseTxBatchCommitLatencySeconds, commitConflict))
+	require.Positive(t, commitLatency(t, dbMetrics.databaseTxBatchCommitLatencySeconds, commitDuplicate))
+	require.Positive(t, commitLatency(t, dbMetrics.databaseTxBatchCommitLatencySeconds, commitSuccess))
+	require.Positive(t, commitLatency(t, dbMetrics.databaseTxBatchCommitUpdateLatencySeconds, commitSuccess))
+}
+
+// commitLatency returns the mean latency a commit histogram recorded under one outcome label.
+func commitLatency(t *testing.T, h *prometheus.HistogramVec, status string) float64 {
+	t.Helper()
+	child, ok := h.WithLabelValues(status).(prometheus.Metric)
+	require.True(t, ok)
+	return test.GetMetricValue(t, child)
 }

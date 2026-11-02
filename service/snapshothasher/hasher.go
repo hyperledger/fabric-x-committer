@@ -103,10 +103,8 @@ func (h *hasher) hashSnapshotDatabase(ctx context.Context, pool *pgxpool.Pool) (
 // pool on the SOURCE database, which is a different database and a
 // one-statement-at-a-time workload, so they are deliberately ignored here.
 //
-// A clone is created before its snapshot transaction commits, so a committed
-// record naming a clone that does not exist is an invariant violation: it is
-// reported as ErrCorruptSnapshotState, and fails immediately because
-// statedb.NewPool treats a missing database as terminal.
+// A clone may be deleted after this job reads the snapshot record.
+// The scheduler rechecks the record before treating a missing clone as an error.
 func (h *hasher) openClonePool(ctx context.Context, cloneDatabase string) (*pgxpool.Pool, error) {
 	cfg := *h.config.Database
 	cfg.Database = cloneDatabase

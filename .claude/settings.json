@@ -1,4 +1,9 @@
 {
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  },
   "env": {
     "DB_DEPLOYMENT": "local",
     "DB_TYPE": "postgres",

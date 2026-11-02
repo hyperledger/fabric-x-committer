@@ -364,45 +364,30 @@ func TestSystemNamespaceFormValidation(t *testing.T) {
 		expectedHasSnapshot bool
 	}{
 		{
-			name: "marker-only snapshot namespace is valid",
-			tx: &applicationpb.Tx{
-				Namespaces:   []*applicationpb.TxNamespace{{NsId: committerpb.SnapshotNamespaceID}},
-				Endorsements: dummyEndorsements(1),
-			},
+			name:                "marker-only snapshot namespace is valid",
+			tx:                  snapshotNsTx(&applicationpb.TxNamespace{}),
 			expectedStatus:      statusNotYetValidated,
 			expectedHasSnapshot: true,
 		},
 		{
 			name: "snapshot namespace with reads-only is malformed",
-			tx: &applicationpb.Tx{
-				Namespaces: []*applicationpb.TxNamespace{{
-					NsId:      committerpb.SnapshotNamespaceID,
-					ReadsOnly: []*applicationpb.Read{{Key: []byte("key")}},
-				}},
-				Endorsements: dummyEndorsements(1),
-			},
+			tx: snapshotNsTx(&applicationpb.TxNamespace{
+				ReadsOnly: []*applicationpb.Read{{Key: []byte("key")}},
+			}),
 			expectedStatus: committerpb.Status_MALFORMED_SNAPSHOT_NOT_MARKER_ONLY,
 		},
 		{
 			name: "snapshot namespace with read-writes is malformed",
-			tx: &applicationpb.Tx{
-				Namespaces: []*applicationpb.TxNamespace{{
-					NsId:       committerpb.SnapshotNamespaceID,
-					ReadWrites: []*applicationpb.ReadWrite{{Key: []byte("key"), Value: []byte("value")}},
-				}},
-				Endorsements: dummyEndorsements(1),
-			},
+			tx: snapshotNsTx(&applicationpb.TxNamespace{
+				ReadWrites: []*applicationpb.ReadWrite{{Key: []byte("key"), Value: []byte("value")}},
+			}),
 			expectedStatus: committerpb.Status_MALFORMED_SNAPSHOT_NOT_MARKER_ONLY,
 		},
 		{
 			name: "snapshot namespace with blind-writes is malformed",
-			tx: &applicationpb.Tx{
-				Namespaces: []*applicationpb.TxNamespace{{
-					NsId:        committerpb.SnapshotNamespaceID,
-					BlindWrites: []*applicationpb.Write{{Key: []byte("key"), Value: []byte("value")}},
-				}},
-				Endorsements: dummyEndorsements(1),
-			},
+			tx: snapshotNsTx(&applicationpb.TxNamespace{
+				BlindWrites: []*applicationpb.Write{{Key: []byte("key"), Value: []byte("value")}},
+			}),
 			expectedStatus: committerpb.Status_MALFORMED_SNAPSHOT_NOT_MARKER_ONLY,
 		},
 		{
@@ -429,7 +414,7 @@ func TestSystemNamespaceFormValidation(t *testing.T) {
 			tx: &applicationpb.Tx{
 				Namespaces: []*applicationpb.TxNamespace{{
 					NsId:       committerpb.CheckpointNamespaceID,
-					ReadWrites: []*applicationpb.ReadWrite{{Key: checkpointKey, Value: []byte("checkpoint")}},
+					ReadWrites: []*applicationpb.ReadWrite{{Key: checkpointKey, Value: make([]byte, 32)}},
 				}},
 				Endorsements: dummyEndorsements(1),
 			},
@@ -546,6 +531,48 @@ func TestSystemNamespaceFormValidation(t *testing.T) {
 				)
 				require.Empty(t, mappedBlock.block.Txs)
 			}
+		})
+	}
+}
+
+func TestCheckpointValueForm(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		value   []byte
+		version *uint64
+		status  committerpb.Status
+	}{
+		{name: "abort", value: []byte("abort"), status: statusNotYetValidated},
+		{name: "digest", value: make([]byte, 32), status: statusNotYetValidated},
+		{
+			name: "marker-prefixed digest", value: append([]byte("abort"), make([]byte, 27)...),
+			status: statusNotYetValidated,
+		},
+		{name: "empty", status: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_VALUE},
+		{name: "short", value: []byte("hash"), status: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_VALUE},
+		{name: "case", value: []byte("ABORT"), status: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_VALUE},
+		{name: "truncated", value: []byte("abor"), status: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_VALUE},
+		{name: "31 bytes", value: make([]byte, 31), status: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_VALUE},
+		{name: "33 bytes", value: make([]byte, 33), status: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_VALUE},
+		{
+			name: "explicit version", value: []byte("abort"), version: new(uint64(0)),
+			status: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_KEY,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tx := &applicationpb.Tx{
+				Namespaces: []*applicationpb.TxNamespace{{
+					NsId: committerpb.CheckpointNamespaceID,
+					ReadWrites: []*applicationpb.ReadWrite{{
+						Key: servicepb.CheckpointKey(7), Value: tc.value, Version: tc.version,
+					}},
+				}},
+				Endorsements: dummyEndorsements(1),
+			}
+			require.Equal(t, tc.status, verifyTxForm(tx))
+			require.False(t, isSnapshotTx(tx), "checkpoint transactions never take the snapshot barrier")
 		})
 	}
 }
@@ -833,6 +860,15 @@ func TestKeyFormValidation(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tc.expected, verifyKeysNamespace(tc.ns))
 		})
+	}
+}
+
+// snapshotNsTx wraps a snapshot namespace in an endorsed, standalone transaction.
+func snapshotNsTx(ns *applicationpb.TxNamespace) *applicationpb.Tx {
+	ns.NsId = committerpb.SnapshotNamespaceID
+	return &applicationpb.Tx{
+		Namespaces:   []*applicationpb.TxNamespace{ns},
+		Endorsements: dummyEndorsements(1),
 	}
 }
 
