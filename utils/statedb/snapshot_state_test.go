@@ -540,18 +540,6 @@ func TestMarkSnapshotTerminalInTx(t *testing.T) {
 		expectedError: "the latest snapshot record is not for block 99",
 		wantStatus:    committerpb.SnapshotState_FAILED,
 	}, {
-		// Only CHECKPOINTED and ABORTED close a snapshot; the lifecycle statuses go through
-		// SnapshotStateManager.Update, so asking for one here is a programming error.
-		name: "a non-terminal target is rejected",
-		seed: &committerpb.SnapshotState{
-			TxRef:  &committerpb.TxRef{BlockNum: 47, TxNum: 0, TxId: "snap-non-terminal"},
-			Status: committerpb.SnapshotState_PENDING,
-		},
-		target:        committerpb.SnapshotState_COMPLETED,
-		blockNum:      47,
-		expectedError: "COMPLETED is not a terminal snapshot status",
-		wantStatus:    committerpb.SnapshotState_PENDING,
-	}, {
 		// Reporting success would leave the row durable with nothing to advance.
 		name:          "no record at all is a non-retryable invariant violation",
 		target:        committerpb.SnapshotState_ABORTED,

@@ -28,7 +28,7 @@ type checkpointTx struct {
 }
 
 // checkpointVerdict holds the result of verifying a checkpoint transaction:
-//   - rejectStatus rejects invalid values or missing/different snapshots, and snapshots
+//   - rejectStatus rejects missing/different snapshots, and snapshots
 //     already marked CHECKPOINTED or ABORTED.
 //   - feedback requests HOLD if the local hash is missing, or HALT if the hashes differ.
 //   - Both fields are unset for a matching digest checkpoint or a valid snapshot abort.
@@ -79,10 +79,6 @@ func (d *database) rejectCheckpointIfNotVerified(ctx context.Context, vTx *valid
 // Abort attests to nothing, so it bypasses hash comparison and never produces HOLD/HALT.
 // New snapshots are admitted only after the latest lifecycle closes.
 func (d *database) verifyCheckpoint(ctx context.Context, cp *checkpointTx) (checkpointVerdict, error) {
-	if !servicepb.IsValidCheckpointValue(cp.value) {
-		return checkpointVerdict{rejectStatus: committerpb.Status_MALFORMED_CHECKPOINT_INVALID_VALUE}, nil
-	}
-
 	state, err := d.snapshotState.ReadLatest(ctx)
 	if err != nil {
 		return checkpointVerdict{}, err

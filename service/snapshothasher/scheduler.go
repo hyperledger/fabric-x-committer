@@ -199,8 +199,7 @@ func (s *scheduler) watchForAbort(ctx context.Context, ref *committerpb.TxRef) e
 			return errors.Wrapf(err, "failed to check whether snapshot %s was aborted", ref.TxId)
 		}
 
-		if state != nil && state.TxRef != nil && state.TxRef.TxId == ref.TxId &&
-			state.Status == committerpb.SnapshotState_ABORTED {
+		if state.GetTxRef().GetTxId() == ref.TxId && state.Status == committerpb.SnapshotState_ABORTED {
 			promutil.AddToCounter(s.metrics.hashAbortedTotal, 1)
 			return errors.Wrapf(errSnapshotAborted, "snapshot tx %s", ref.TxId)
 		}

@@ -226,7 +226,7 @@ func (p *transactionPreparer) prepare(ctx context.Context) error { //nolint:goco
 						}},
 					})
 				case committerpb.ConfigNamespaceID, committerpb.CheckpointNamespaceID:
-					// Checkpoint transactions take no _meta namespace-version dependency.
+					// Config and checkpoint transactions take no _meta namespace-version dependency.
 				default:
 					prepTxs.addReadsOnly(tID, &applicationpb.TxNamespace{
 						NsId: committerpb.MetaNamespaceID,

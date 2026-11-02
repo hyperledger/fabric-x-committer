@@ -260,10 +260,6 @@ func (s *SnapshotStateManager) Update(ctx context.Context, ref *committerpb.TxRe
 func MarkSnapshotTerminalInTx(
 	ctx context.Context, tx pgx.Tx, blockNum uint64, target committerpb.SnapshotState_Status,
 ) error {
-	if target != committerpb.SnapshotState_CHECKPOINTED && target != committerpb.SnapshotState_ABORTED {
-		return errors.Wrapf(retry.ErrNonRetryable, "%s is not a terminal snapshot status", target)
-	}
-
 	var key []byte
 	if err := tx.QueryRow(ctx, getLatestSnapshotKeySQL, LatestSnapshotPointerKey).Scan(&key); err != nil {
 		return errors.Wrap(err, "failed to read the latest snapshot key")
@@ -285,8 +281,8 @@ func MarkSnapshotTerminalInTx(
 		return nil // a resubmitted checkpoint or abort must not rewrite the record.
 	}
 
-	// Terminal but not target, so it was closed the other way: a checkpoint cannot close an
-	// aborted snapshot, nor an abort a checkpointed one.
+	// Shared-key checkpoint inserts reject competing closures before this call.
+	// This guard catches inconsistent metadata rather than normal commit collisions.
 	if state.Status == committerpb.SnapshotState_CHECKPOINTED ||
 		state.Status == committerpb.SnapshotState_ABORTED {
 		return errors.Wrapf(retry.ErrNonRetryable,

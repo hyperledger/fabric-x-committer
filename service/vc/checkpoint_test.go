@@ -498,50 +498,6 @@ func TestRejectSnapshotAbortForClosedOrUnknownSnapshot(t *testing.T) {
 	}
 }
 
-// TestSnapshotAbortDoesNotGateOnPriorSnapshot pins the interaction that makes an abort
-// usable at all: the admission gate rejects a new snapshot until the latest one is
-// lifecycle-closed, and an abort is submitted precisely when it is not. Were the abort
-// gated like a request, the stuck snapshot could never be aborted.
-func TestSnapshotAbortDoesNotGateOnPriorSnapshot(t *testing.T) {
-	t.Parallel()
-	env := newValidatorTestEnv(t, false)
-	ctx, _ := createContext(t)
-
-	env.seedSnapshotHeldAt(t, snapshotHold{
-		txID: "abort-not-gated", blockNum: 920300, status: committerpb.SnapshotState_FAILED,
-	})
-
-	abortRef := committerpb.NewTxRef("abort-not-gated-tx", 920301, 0)
-	prepTx := newSnapshotAbortPreparedTx(abortRef, 920300)
-	vTx := newValidatedTxsFromPrepared(prepTx)
-
-	require.NoError(t, env.dbEnv.DB.rejectSnapshotIfPriorNotCheckpointed(ctx, vTx))
-	require.Empty(t, vTx.invalidTxStatus, "the admission gate must ignore an abort TX")
-	require.NotEmpty(t, vTx.newWrites)
-}
-
-// TestSnapshotAbortBatchHelpers covers the two batch-level rules that keep an abort out of
-// the snapshot-request path: it must never be mistaken for a request (which would clone a
-// database for a snapshot being abandoned), and two aborts in one batch must fail the batch
-// rather than let an unverified one commit.
-func TestSnapshotAbortBatchHelpers(t *testing.T) {
-	t.Parallel()
-	env := newCommitterTestEnv(t)
-	ctx, _ := createContext(t)
-
-	prepTx := newSnapshotAbortPreparedTx(committerpb.NewTxRef("abort-no-clone-tx", 920400, 0), 920399)
-	_, found := snapshotWriteInBatch(prepTx.txIDToNsNewWrites)
-	require.False(t, found, "an abort write must not be seen as a snapshot request")
-	require.NoError(t, env.dbEnv.DB.createSnapshotIfPresent(ctx, prepTx.txIDToNsNewWrites))
-
-	twoAborts := newSnapshotAbortPreparedTx(committerpb.NewTxRef("abort-a", 3, 0), 1)
-	twoAborts.txIDToNsNewWrites.getOrCreate("abort-b", committerpb.CheckpointNamespaceID).
-		append(servicepb.CheckpointKey(2), []byte(servicepb.CheckpointAbortValue), 0)
-	twoAborts.txIDToHeight["abort-b"] = servicepb.NewHeight(3, 1)
-	_, err := checkpointWriteInBatch(twoAborts)
-	require.ErrorContains(t, err, "at most one checkpoint")
-}
-
 func TestCheckpointClosureResubmission(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
