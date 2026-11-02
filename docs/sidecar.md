@@ -258,8 +258,8 @@ enum Status {
    MALFORMED_CHECKPOINT_INVALID_KEY = 117;             // `_checkpoint` namespace form or key is invalid.
    MALFORMED_SYSTEM_TX_NOT_STANDALONE = 118;           // System namespace TX (`_snapshot`/`_checkpoint`) is not standalone.
    REJECTED_DUPLICATE_SNAPSHOT_IN_BLOCK = 121;         // More than one `_snapshot` TX in a block; only the first is processed, the rest rejected.
-   REJECTED_SNAPSHOT_ABORT_NO_SUCH_SNAPSHOT = 123;     // An abort names a missing or different snapshot, or one already CHECKPOINTED/ABORTED.
-   MALFORMED_CHECKPOINT_INVALID_VALUE = 124;           // `_checkpoint` value is neither a 32-byte SHA-256 digest nor exact UTF-8 "abort".
+   REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT = 122;        // A digest checkpoint or abort names a missing or different snapshot, or one already CHECKPOINTED/ABORTED.
+   MALFORMED_CHECKPOINT_INVALID_VALUE = 123;           // `_checkpoint` value is neither a 32-byte SHA-256 digest nor exact UTF-8 "abort".
 }
 ```
 
