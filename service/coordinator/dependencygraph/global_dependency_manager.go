@@ -197,8 +197,21 @@ func (dm *globalDependencyManager) processValidatedTransactions(ctx context.Cont
 			return
 		}
 		processValidatedStart := time.Now()
-		dm.waitingTxsSlots.Release(int64(len(txsNode)))
-		promutil.SubFromGauge(m.gdgWaitingTxCount, len(txsNode))
+
+		// The slots bound the transactions held by the graph. A rejected transaction (see
+		// NewRejectedTransactionNode) bypasses the graph on its way to the vcservice but returns
+		// on this stream; it still occupies memory until its status is reported, but bounding
+		// that is the sidecar's job, not the graph's. Releasing a slot for it would let the graph
+		// admit one extra transaction per rejection, and counting it as processed would overstate
+		// the graph's work.
+		graphTxCount := 0
+		for _, txNode := range txsNode {
+			if !txNode.rejected {
+				graphTxCount++
+			}
+		}
+		dm.waitingTxsSlots.Release(int64(graphTxCount))
+		promutil.SubFromGauge(m.gdgWaitingTxCount, graphTxCount)
 
 		start := time.Now()
 		dm.mu.Lock()
@@ -225,7 +238,7 @@ func (dm *globalDependencyManager) processValidatedTransactions(ctx context.Cont
 		}
 		promutil.Observe(m.gdgAddFreedTxSeconds, time.Since(start))
 
-		promutil.AddToCounter(dm.metrics.gdgValidatedTxProcessedTotal, len(txsNode))
+		promutil.AddToCounter(dm.metrics.gdgValidatedTxProcessedTotal, graphTxCount)
 		promutil.Observe(m.gdgValidatedTxProcessingSeconds, time.Since(processValidatedStart))
 	}
 }
