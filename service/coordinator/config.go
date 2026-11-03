@@ -25,4 +25,10 @@ type DependencyGraphConfig struct {
 	WaitingTxsLimit           int `mapstructure:"waiting-txs-limit" default:"100000" validate:"gt=0"`
 	// ChunkSize defines the maximum number of transactions to process in a single chunk for the dependency graph.
 	ChunkSize int `mapstructure:"chunk-size" default:"500" validate:"gt=0"`
+	// UseSimpleManager selects the simple dependency graph manager, which keeps the whole
+	// waiting set in one map owned by a single goroutine rather than a local constructor pool
+	// and a mutex-guarded global graph. It trades the local constructors' parallelism for
+	// having no lock at all, so it suits a workload whose graph work is dominated by lock
+	// contention rather than by the per-transaction key scan.
+	UseSimpleManager bool `mapstructure:"use-simple-manager"`
 }
