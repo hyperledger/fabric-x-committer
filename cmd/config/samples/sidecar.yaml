@@ -168,8 +168,8 @@ channel-buffer-size: 100
 # Default: 1m
 checkpoint-hold-retry-interval: 1m
 # The most goroutines one block's transactions are parsed on before the sidecar sends the block
-# to the coordinator. With 1, one core's parsing rate caps the sidecar. Raise it on hosts with
-# spare cores; more workers than the cores the sidecar's other stages leave free cannot help.
+# to the coordinator. Zero uses the current GOMAXPROCS, which accounts for Linux container CPU
+# limits when built with Go 1.25 or later. Set a positive value to override it, or 1 to parse serially.
 # Default: 1
 max-workers-for-tx-parsing: 1
 # The fewest transactions one parsing goroutine is given: a block is split into batches of at

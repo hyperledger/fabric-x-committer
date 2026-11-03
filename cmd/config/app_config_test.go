@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package config
 
 import (
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -161,6 +162,27 @@ func TestReadConfigSidecar(t *testing.T) {
 			require.Equal(t, tc.expectedServerConfig, serverConfig)
 		})
 	}
+}
+
+func TestTxParsingConfigValidation(t *testing.T) {
+	t.Parallel()
+	for _, workers := range []int{0, 1, 8} {
+		t.Run(fmt.Sprintf("workers=%d", workers), func(t *testing.T) {
+			t.Parallel()
+			v := viper.New()
+			v.Set("max-workers-for-tx-parsing", workers)
+			c := new(sidecar.TxParsingConfig)
+			require.NoError(t, unmarshal(v, c))
+			require.Equal(t, workers, c.MaxWorkers)
+			require.Equal(t, 256, c.MinBatchSize)
+		})
+	}
+	t.Run("negative workers", func(t *testing.T) {
+		t.Parallel()
+		v := viper.New()
+		v.Set("max-workers-for-tx-parsing", -1)
+		require.ErrorContains(t, unmarshal(v, new(sidecar.TxParsingConfig)), "gte")
+	})
 }
 
 func TestReadConfigCoordinator(t *testing.T) {
