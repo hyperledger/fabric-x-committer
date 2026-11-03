@@ -117,14 +117,28 @@ type TransactionProfile struct {
 	// InvalidSignatures is the probability [0,1] that a transaction is stamped with a bad signature
 	// (default: 0). The decision is derived deterministically from the transaction index.
 	InvalidSignatures Probability `mapstructure:"invalid-signatures" yaml:"invalid-signatures" validate:"gte=0,lte=1"`
+
+	// QueriesRate is the average number of reads per transaction whose committed version is fetched from
+	// the query service before signing. It is independent of KeyBackrefRate: querying is orthogonal to the
+	// new-vs-existing key split, and applies whether or not backward references are enabled. 0 (default)
+	// means no querying at all — reads keep their nil versions. It is an AVERAGE realized by a stateful
+	// querier (e.g. an accumulator), not a deterministic per-transaction count.
+	QueriesRate float64 `mapstructure:"queries-rate" yaml:"queries-rate" validate:"omitempty,gte=0"`
 }
 
-// Validate checks the split configuration. key-backref-rate must not exceed the total slot count, so the
-// per-transaction reference count never exceeds the transaction's slots; 0 (the default) keeps the
-// historical fresh-key workload. tx-reference-gap and key-lookback-window are always optional and have no
-// minimum — a zero or small window never fails, as references step back beyond it as needed.
+// Validate checks the split configuration and the query rate. key-backref-rate must not exceed the total
+// slot count, so the per-transaction reference count never exceeds the transaction's slots; 0 (the default)
+// keeps the historical fresh-key workload. tx-reference-gap and key-lookback-window are always optional and
+// have no minimum — a zero or small window never fails, as references step back beyond it as needed.
+// queries-rate is independent of the split: it only draws from the version-bearing reads (read-only +
+// read-write; blind writes carry no version), so it must not exceed that count.
 func (p *TransactionProfile) Validate() error {
-	totalSlots := uint64(p.ReadOnlyCount) + uint64(p.ReadWriteCount) + uint64(p.BlindWriteCount)
+	versionedReads := uint64(p.ReadOnlyCount) + uint64(p.ReadWriteCount)
+	if p.QueriesRate > float64(versionedReads) {
+		return errors.Newf("queries-rate %v exceeds versioned reads %d (read-only + read-write)",
+			p.QueriesRate, versionedReads)
+	}
+	totalSlots := versionedReads + uint64(p.BlindWriteCount)
 	if p.KeyBackrefRate > float64(totalSlots) {
 		return errors.Newf("key-backref-rate %v exceeds total slots %d (read-only + read-write + write)",
 			p.KeyBackrefRate, totalSlots)
