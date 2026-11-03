@@ -69,6 +69,21 @@ func WrapNotFound(err error) error {
 	return wrap(codes.NotFound, err)
 }
 
+// WrapUnavailable creates a grpc error with a [codes.Unavailable] status code for a given error.
+func WrapUnavailable(err error) error {
+	return wrap(codes.Unavailable, err)
+}
+
+// WrapUnauthenticated creates a grpc error with a [codes.Unauthenticated] status code for a given error.
+func WrapUnauthenticated(err error) error {
+	return wrap(codes.Unauthenticated, err)
+}
+
+// WrapPermissionDenied creates a grpc error with a [codes.PermissionDenied] status code for a given error.
+func WrapPermissionDenied(err error) error {
+	return wrap(codes.PermissionDenied, err)
+}
+
 // WrapResourceExhaustedOrCancelled returns a [codes.Canceled] gRPC error if the context is done,
 // otherwise returns a [codes.ResourceExhausted] gRPC error.
 func WrapResourceExhaustedOrCancelled(ctx context.Context, err error) error {

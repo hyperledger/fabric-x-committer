@@ -56,6 +56,7 @@ EOF
   generate_service_doc "Validator-Committer" "service/vc/metrics.go"
   generate_service_doc "Query Service" "service/query/metrics.go"
   generate_service_doc "Snapshot Hasher" "service/snapshothasher/metrics.go"
+  generate_service_doc "Auth Service" "service/auth/metrics.go"
   generate_service_doc "Load Generator" "loadgen/metrics/metrics.go"
 
   cat <<'EOF'

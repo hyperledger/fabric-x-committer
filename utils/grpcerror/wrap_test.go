@@ -184,6 +184,27 @@ func TestWrapErrors(t *testing.T) {
 			expectedCode:     codes.NotFound,
 			expectedMsg:      "resource not found",
 		},
+		{
+			name:         "WrapUnavailable returns error with Unavailable code",
+			createFunc:   WrapUnavailable,
+			input:        errors.New("the token store is unavailable"),
+			expectedCode: codes.Unavailable,
+			expectedMsg:  "the token store is unavailable",
+		},
+		{
+			name:         "WrapUnauthenticated returns error with Unauthenticated code",
+			createFunc:   WrapUnauthenticated,
+			input:        errors.New("token is not recognized"),
+			expectedCode: codes.Unauthenticated,
+			expectedMsg:  "token is not recognized",
+		},
+		{
+			name:         "WrapPermissionDenied returns error with PermissionDenied code",
+			createFunc:   WrapPermissionDenied,
+			input:        errors.New("identity is not authorized"),
+			expectedCode: codes.PermissionDenied,
+			expectedMsg:  "identity is not authorized",
+		},
 	}
 
 	for _, tc := range tests {

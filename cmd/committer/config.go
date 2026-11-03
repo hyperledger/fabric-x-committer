@@ -20,6 +20,7 @@ const (
 	verifierService       = "verifier"
 	queryService          = "query"
 	snapshotHasherService = "snapshot-hasher"
+	authService           = "auth"
 )
 
 var serviceNames = map[string]string{
@@ -29,6 +30,7 @@ var serviceNames = map[string]string{
 	verifierService:       "Verifier",
 	queryService:          "Query-Service",
 	snapshotHasherService: "Snapshot-Hasher",
+	authService:           "Auth-Service",
 }
 
 func readConfig(name, configPath string) (any, *serve.Config, error) {
@@ -45,6 +47,8 @@ func readConfig(name, configPath string) (any, *serve.Config, error) {
 		return config.ReadQueryYamlAndSetupLogging(config.NewViperWithQueryDefaults(), configPath)
 	case snapshotHasherService:
 		return config.ReadSnapshotHasherYamlAndSetupLogging(config.NewViperWithSnapshotHasherDefaults(), configPath)
+	case authService:
+		return config.ReadAuthYamlAndSetupLogging(config.NewViperWithAuthDefaults(), configPath)
 	default:
 		return nil, nil, errors.Newf("unknown service: %s", name)
 	}
