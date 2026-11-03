@@ -13,7 +13,7 @@ import (
 
 type (
 	// Config is the configuration for database initialization and connection.
-	// This configuration is shared across multiple services (VC, Query) and the init-db CLI command.
+	// This configuration is shared across multiple services (VC, Query) and the db init CLI command.
 	Config struct {
 		Endpoints            []*connection.Endpoint `mapstructure:"endpoints" default:"localhost:5433"`
 		Username             string                 `mapstructure:"username"`

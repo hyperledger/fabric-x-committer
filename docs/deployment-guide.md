@@ -158,7 +158,7 @@ Start the database cluster first and wait for it to be healthy before starting a
 2. **Initialize Database**
    - Run the database initialization command to create system tables and namespaces:
      ```shell
-     committer init-db --config <path-to-vc-config> --timeout <duration>
+     committer db init --config <path-to-vc-config> --timeout <duration>
      ```
      **Parameters:**
       - `--config`: Path to the VC service configuration file (required)
@@ -199,7 +199,7 @@ Start the database cluster first and wait for it to be healthy before starting a
    `ABORTED`, reclaim its clone with the following command, which can run while the
    committer is running:
    ```shell
-   committer delete-clone --config <path-to-vc-config> --tx-id <snapshot-tx-id>
+   committer db clone delete --config <path-to-vc-config> --tx-id <snapshot-tx-id>
    ```
    See [Snapshot clone deletion](validator-committer.md#snapshot-clone-deletion).
 

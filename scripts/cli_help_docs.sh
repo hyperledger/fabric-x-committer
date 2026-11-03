@@ -29,7 +29,7 @@ generate_doc() {
 
 # committer
 
-The `committer` command starts Fabric-X committer services and checks service health.
+The `committer` command starts Fabric-X committer services, checks service health, and administers the state database.
 
 ## Environment Variables
 
@@ -71,6 +71,11 @@ EOF
     "committer healthcheck verifier"
     "committer healthcheck vc"
     "committer healthcheck query"
+    "committer db"
+    "committer db init"
+    "committer db clone"
+    "committer db clone list"
+    "committer db clone delete"
     "committer version"
   )
 
