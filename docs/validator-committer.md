@@ -449,7 +449,9 @@ committer db clone list --config <vc-config>
 
 The table contains `TX_ID`, `CLONE_NAME`, and `STATUS`, ordered by transaction ID. Records
 with empty clone names are omitted; no recorded clones produce a header-only table.
-Listing reflects recorded clone names, not whether each database currently exists.
+Listing reflects recorded clone names, not whether each database currently exists. Corrupt
+records are omitted and reported as errors; valid records are still printed, but the command
+exits nonzero. Name-based deletion refuses to proceed if any snapshot record is corrupt.
 
 Delete a clone using exactly one nonempty selector, transaction ID or recorded clone name:
 
@@ -461,10 +463,6 @@ committer db clone delete --config <vc-config> --name <recorded-clone-name>
 Name-based deletion resolves the matching snapshot record. Unknown names (including
 unrecorded database names) are refused without dropping anything. After deletion clears
 the name, retries must use the transaction ID.
-
-The former top-level `init-db` and `delete-clone` commands have been removed. Migrate scripts
-to `committer db init` and `committer db clone delete`, respectively. The test-node wrapper’s
-`run init-db` operation remains supported; internally it invokes `committer db init`.
 
 Like `db init`, the command reads the VC config and talks to the state database directly,
 not through a service, so it can run while the committer is running. It drops the database

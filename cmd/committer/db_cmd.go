@@ -23,6 +23,8 @@ import (
 )
 
 const (
+	databaseCommand    = "db"
+	listClonesCommand  = "list"
 	initDBCommand      = "init"
 	cloneCommand       = "clone"
 	deleteCloneCommand = "delete"
@@ -31,7 +33,7 @@ const (
 // databaseCMD groups state database administration commands.
 func databaseCMD() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "db",
+		Use:   databaseCommand,
 		Short: "Administer the state database",
 		Args:  cobra.NoArgs,
 	}
@@ -53,8 +55,8 @@ func databaseInitializationCMD() *cobra.Command {
 		Use:   initDBCommand,
 		Short: "Initialize the database with required tables and namespaces",
 		Long: `Initialize the state database by creating system tables, metadata tables,
-				and system namespaces (meta and config). This is a one-time administrative
-				operation that must be performed before booting the committer for the first time`,
+and system namespaces (meta and config). This is a one-time administrative
+operation that must be performed before booting the committer for the first time.`,
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -85,10 +87,11 @@ func listClonesCMD() *cobra.Command {
 	var configPath string
 	var timeout time.Duration
 	cmd := &cobra.Command{
-		Use:   "list",
+		Use:   listClonesCommand,
 		Short: "List recorded snapshot clones with transaction IDs and statuses",
 		Long: `List recorded snapshot clones in transaction ID order, omitting records with empty clone names.
-This lists recorded state, not database existence.`,
+This lists recorded state, not database existence.
+Corrupt records are omitted and reported as errors; the command exits nonzero.`,
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -105,9 +108,12 @@ This lists recorded state, not database existence.`,
 			defer pool.Close()
 			states, err := statedb.NewSnapshotStateManager(pool, cfg.Database.Retry).List(ctx)
 			if err != nil {
-				return fmt.Errorf("failed to list snapshot database clones: %w", err)
+				err = fmt.Errorf("failed to list snapshot database clones: %w", err)
+				if states == nil {
+					return err
+				}
 			}
-			return writeSnapshotClones(cmd.OutOrStdout(), states)
+			return errors.Join(err, writeSnapshotClones(cmd.OutOrStdout(), states))
 		},
 	}
 	cliutil.SetDefaultFlags(cmd, &configPath)
@@ -131,8 +137,7 @@ the cleared record no longer identifies its former clone name.`,
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if cmd.Flags().Changed("tx-id") == cmd.Flags().Changed("name") ||
-				(txID == "" && cloneName == "") {
+			if txID == "" && cloneName == "" {
 				return errors.New("specify exactly one nonempty selector: --tx-id or --name")
 			}
 			cfg, _, err := config.ReadVCYamlAndSetupLogging(config.NewViperWithVCDefaults(), configPath)
@@ -143,7 +148,7 @@ the cleared record no longer identifies its former clone name.`,
 			ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 			defer cancel()
 
-			if cloneName != "" {
+			if cmd.Flags().Changed("name") {
 				err = statedb.DeleteSnapshotCloneByName(ctx, cfg.Database, cloneName)
 			} else {
 				err = statedb.DeleteSnapshotClone(ctx, cfg.Database, txID)
@@ -152,7 +157,7 @@ the cleared record no longer identifies its former clone name.`,
 				return fmt.Errorf("failed to delete the snapshot database clone: %w", err)
 			}
 
-			if cloneName != "" {
+			if cmd.Flags().Changed("name") {
 				cmd.Printf("Snapshot database clone %s deleted\n", cloneName)
 			} else {
 				cmd.Printf("Snapshot database clone for tx %s deleted\n", txID)
@@ -163,6 +168,8 @@ the cleared record no longer identifies its former clone name.`,
 	cliutil.SetDefaultFlags(cmd, &configPath)
 	cmd.Flags().StringVar(&txID, "tx-id", "", "Transaction ID of the snapshot transaction")
 	cmd.Flags().StringVar(&cloneName, "name", "", "Clone database name recorded in a snapshot record")
+	cmd.MarkFlagsOneRequired("tx-id", "name")
+	cmd.MarkFlagsMutuallyExclusive("tx-id", "name")
 	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Minute, "Timeout for the deletion operation")
 	return cmd
 }

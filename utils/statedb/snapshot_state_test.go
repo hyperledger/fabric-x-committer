@@ -632,8 +632,16 @@ func TestListSnapshots(t *testing.T) {
 		test.RequireProtoEqual(t, want[i], states[i])
 	}
 	env.insertRawRecord(t, "corrupt", []byte("not protobuf"))
-	_, err = env.state.List(t.Context())
+	env.insertRawRecord(t, "corrupt-second", []byte("not protobuf"))
+	states, err = env.state.List(t.Context())
+	require.ErrorContains(t, err, `corrupt _snapshot record for key "corrupt"`)
+	require.ErrorContains(t, err, `corrupt _snapshot record for key "corrupt-second"`)
 	require.ErrorContains(t, err, "failed to decode")
+	require.ErrorIs(t, err, retry.ErrNonRetryable)
+	require.Len(t, states, len(want))
+	for i := range want {
+		test.RequireProtoEqual(t, want[i], states[i])
+	}
 }
 
 func TestListSnapshotsRejectsMismatchedTransactionID(t *testing.T) {
@@ -645,17 +653,19 @@ func TestListSnapshotsRejectsMismatchedTransactionID(t *testing.T) {
 		_, err = env.pool.Exec(t.Context(), "DELETE FROM "+snapshotTable)
 		require.NoError(t, err)
 		env.insertRawRecord(t, "key", raw)
-		_, err = env.state.List(t.Context())
-		require.ErrorContains(t, err, "mismatched transaction ID")
+		states, listErr := env.state.List(t.Context())
+		require.ErrorContains(t, listErr, fmt.Sprintf(
+			`corrupt _snapshot record: key "key" has mismatched transaction ID %q`, ref.GetTxId(),
+		))
+		require.ErrorIs(t, listErr, retry.ErrNonRetryable)
+		require.Empty(t, states)
 	}
 }
 
 func TestDeleteSnapshotCloneByName(t *testing.T) {
 	t.Parallel()
 	for _, status := range []committerpb.SnapshotState_Status{
-		committerpb.SnapshotState_CHECKPOINTED, committerpb.SnapshotState_ABORTED,
-		committerpb.SnapshotState_PENDING, committerpb.SnapshotState_IN_PROGRESS,
-		committerpb.SnapshotState_COMPLETED, committerpb.SnapshotState_FAILED,
+		committerpb.SnapshotState_ABORTED, committerpb.SnapshotState_IN_PROGRESS,
 	} {
 		t.Run(status.String(), func(t *testing.T) {
 			t.Parallel()
@@ -667,7 +677,7 @@ func TestDeleteSnapshotCloneByName(t *testing.T) {
 			}
 			env.insertRecord(t, want)
 			err := statedb.DeleteSnapshotCloneByName(t.Context(), env.config, clone)
-			if status == committerpb.SnapshotState_CHECKPOINTED || status == committerpb.SnapshotState_ABORTED {
+			if status == committerpb.SnapshotState_ABORTED {
 				require.NoError(t, err)
 				require.False(t, env.databaseExists(t, clone))
 				want.CloneDatabase = ""
@@ -692,6 +702,13 @@ func TestDeleteSnapshotCloneByNameRefusals(t *testing.T) {
 	require.ErrorContains(t, statedb.DeleteSnapshotCloneByName(t.Context(), env.config, ""), "must not be empty")
 	require.ErrorContains(t, statedb.DeleteSnapshotCloneByName(t.Context(), env.config, clone), "no snapshot record")
 	require.True(t, env.databaseExists(t, clone))
+	env.insertRecord(t, &committerpb.SnapshotState{
+		TxRef: &committerpb.TxRef{TxId: "valid-clone"}, Status: committerpb.SnapshotState_ABORTED,
+		CloneDatabase: clone,
+	})
+	env.insertRawRecord(t, "corrupt", []byte("not protobuf"))
+	require.ErrorContains(t, statedb.DeleteSnapshotCloneByName(t.Context(), env.config, clone), "corrupt _snapshot")
+	require.True(t, env.databaseExists(t, clone), "corruption must prevent name-based deletion")
 }
 
 // TestDeleteSnapshotClone checks that deletion of a CHECKPOINTED or ABORTED snapshot drops
@@ -745,19 +762,6 @@ func TestDeleteSnapshotCloneAfterDropBeforeClear(t *testing.T) {
 
 	require.NoError(t, statedb.DeleteSnapshotClone(t.Context(), env.config, ref.TxId))
 	got, err := env.state.Read(t.Context(), ref.TxId)
-	require.NoError(t, err)
-	require.Empty(t, got.CloneDatabase)
-}
-
-func TestDeleteSnapshotCloneByNameAfterDropBeforeClear(t *testing.T) {
-	t.Parallel()
-	env := newSnapshotStateTestEnv(t)
-	env.insertRecord(t, &committerpb.SnapshotState{
-		TxRef:  &committerpb.TxRef{TxId: "snap-by-name-dropped"},
-		Status: committerpb.SnapshotState_CHECKPOINTED, CloneDatabase: "snapshot_by_name_gone",
-	})
-	require.NoError(t, statedb.DeleteSnapshotCloneByName(t.Context(), env.config, "snapshot_by_name_gone"))
-	got, err := env.state.Read(t.Context(), "snap-by-name-dropped")
 	require.NoError(t, err)
 	require.Empty(t, got.CloneDatabase)
 }

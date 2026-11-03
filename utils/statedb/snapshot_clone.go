@@ -40,8 +40,8 @@ var (
 	}
 )
 
-// DeleteSnapshotCloneByName resolves a recorded clone name before using
-// transaction-ID deletion. An unknown name never reaches DROP DATABASE.
+// DeleteSnapshotCloneByName resolves a recorded clone name before applying
+// transaction-ID deletion rules. An unknown name never reaches DROP DATABASE.
 // After deletion clears the name, retries must use the transaction ID instead.
 func DeleteSnapshotCloneByName(ctx context.Context, config *Config, name string) error {
 	if name == "" {
@@ -51,24 +51,18 @@ func DeleteSnapshotCloneByName(ctx context.Context, config *Config, name string)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
-	states, err := NewSnapshotStateManager(pool, config.Retry).List(ctx)
-	// Release the lookup connection before the deletion path opens its own pool.
-	pool.Close()
+	defer pool.Close()
+	snapshotState := NewSnapshotStateManager(pool, config.Retry)
+	states, err := snapshotState.List(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list _snapshot records: %w", err)
 	}
-	var txID string
 	for _, state := range states {
-		if state.CloneDatabase != name {
-			continue
+		if state.CloneDatabase == name {
+			return deleteSnapshotClone(ctx, config, snapshotState, state)
 		}
-		txID = state.TxRef.TxId
-		break
 	}
-	if txID == "" {
-		return errors.Newf("no snapshot record names clone %s", name)
-	}
-	return DeleteSnapshotClone(ctx, config, txID)
+	return errors.Newf("no snapshot record names clone %s", name)
 }
 
 // DeleteSnapshotClone drops the clone database of the snapshot txID and clears the
@@ -98,9 +92,17 @@ func DeleteSnapshotClone(ctx context.Context, config *Config, txID string) error
 	if err != nil {
 		return fmt.Errorf("failed to read _snapshot record for tx %s: %w", txID, err)
 	}
+	return deleteSnapshotClone(ctx, config, snapshotState, state)
+}
+
+// deleteSnapshotClone preserves drop-before-clear ordering for either lookup path.
+func deleteSnapshotClone(
+	ctx context.Context, config *Config, snapshotState *SnapshotStateManager, state *committerpb.SnapshotState,
+) error {
 	if state.CloneDatabase == "" {
 		return nil
 	}
+	txID := state.GetTxRef().GetTxId()
 	// Check the status after the empty clone name so repeated deletes still succeed.
 	if !slices.Contains(deletableSnapshotStatuses, state.Status) {
 		return errors.Wrapf(ErrSnapshotCloneInUse, "tx %s is %s", txID, state.Status)

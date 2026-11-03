@@ -35,6 +35,8 @@ const (
 
 	selectSnapshotRecordSQL = "SELECT value FROM ns_" + committerpb.SnapshotNamespaceID + " WHERE key = $1;"
 
+	listSnapshotRecordsSQL = "SELECT key, value FROM ns_" + committerpb.SnapshotNamespaceID + " ORDER BY key;"
+
 	updateSnapshotRecordSQL = "UPDATE ns_" + committerpb.SnapshotNamespaceID +
 		" SET value = $2, version = version + 1 WHERE key = $1;"
 
@@ -153,32 +155,47 @@ func (s *SnapshotStateManager) Read(ctx context.Context, txID string) (*committe
 	}, retry.ErrNonRetryable, ErrSnapshotNotFound)
 }
 
-// List returns all snapshot records ordered by transaction ID, including cleared clones.
+// List returns valid snapshot records ordered by transaction ID, including cleared clones.
+// Corrupt records are omitted and returned as errors alongside the valid records.
 func (s *SnapshotStateManager) List(ctx context.Context) ([]*committerpb.SnapshotState, error) {
-	return retry.ExecuteWithResult(ctx, s.retryProfile, func() ([]*committerpb.SnapshotState, error) {
-		rows, err := s.pool.Query(ctx, "SELECT key, value FROM ns_"+committerpb.SnapshotNamespaceID+" ORDER BY key")
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to query _snapshot records")
+	type snapshotRecord struct {
+		key, raw []byte
+	}
+	records, err := retry.ExecuteWithResult(ctx, s.retryProfile, func() ([]snapshotRecord, error) {
+		rows, queryErr := s.pool.Query(ctx, listSnapshotRecordsSQL)
+		if queryErr != nil {
+			return nil, errors.Wrap(queryErr, "failed to query _snapshot records")
 		}
-
-		states, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (*committerpb.SnapshotState, error) {
-			var key, raw []byte
-			if scanErr := row.Scan(&key, &raw); scanErr != nil {
-				return nil, errors.Wrap(scanErr, "failed to read _snapshot record")
-			}
-			state, decodeErr := DecodeSnapshotState(raw)
-			if decodeErr != nil {
-				return nil, fmt.Errorf("failed to decode _snapshot record for tx %s: %w", key,
-					errors.Join(retry.ErrNonRetryable, decodeErr))
-			}
-			if state.GetTxRef().GetTxId() == "" || state.GetTxRef().GetTxId() != string(key) {
-				return nil, errors.Wrapf(retry.ErrNonRetryable,
-					"_snapshot record for key %s has a mismatched transaction ID", key)
-			}
-			return state, nil
+		records, collectErr := pgx.CollectRows(rows, func(row pgx.CollectableRow) (snapshotRecord, error) {
+			var record snapshotRecord
+			scanErr := row.Scan(&record.key, &record.raw)
+			return record, errors.Wrap(scanErr, "failed to read _snapshot record")
 		})
-		return states, errors.Wrap(err, "failed to read _snapshot records")
+		return records, errors.Wrap(collectErr, "failed to read _snapshot records")
 	}, retry.ErrNonRetryable)
+	if err != nil {
+		return nil, err
+	}
+
+	// Decode outside the retry loop so corruption diagnostics are reported once by the caller.
+	states := make([]*committerpb.SnapshotState, 0, len(records))
+	var corruptRecords []error
+	for _, record := range records {
+		state, decodeErr := DecodeSnapshotState(record.raw)
+		if decodeErr != nil {
+			corruptRecords = append(corruptRecords, fmt.Errorf("corrupt _snapshot record for key %q: %w",
+				record.key, errors.Join(retry.ErrNonRetryable, decodeErr)))
+			continue
+		}
+		if state.GetTxRef().GetTxId() == "" || state.GetTxRef().GetTxId() != string(record.key) {
+			corruptRecords = append(corruptRecords, errors.Wrapf(retry.ErrNonRetryable,
+				"corrupt _snapshot record: key %q has mismatched transaction ID %q",
+				record.key, state.GetTxRef().GetTxId()))
+			continue
+		}
+		states = append(states, state)
+	}
+	return states, errors.Join(corruptRecords...)
 }
 
 // readRecord reads and decodes one snapshot record without retrying.

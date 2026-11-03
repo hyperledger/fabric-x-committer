@@ -265,8 +265,8 @@ Use "Committer db [command] --help" for more information about a command.
 
 ```
 Initialize the state database by creating system tables, metadata tables,
-				and system namespaces (meta and config). This is a one-time administrative
-				operation that must be performed before booting the committer for the first time
+and system namespaces (meta and config). This is a one-time administrative
+operation that must be performed before booting the committer for the first time.
 
 Usage:
   Committer db init [flags]
@@ -302,6 +302,7 @@ Use "Committer db clone [command] --help" for more information about a command.
 ```
 List recorded snapshot clones in transaction ID order, omitting records with empty clone names.
 This lists recorded state, not database existence.
+Corrupt records are omitted and reported as errors; the command exits nonzero.
 
 Usage:
   Committer db clone list [flags]

@@ -33,7 +33,9 @@ const (
 func TestDatabaseCommands(t *testing.T) {
 	t.Parallel()
 	for _, args := range [][]string{
-		{"db", "init"}, {"db", cloneCommand, "list"}, {"db", cloneCommand, deleteCloneCommand},
+		{databaseCommand, initDBCommand},
+		{databaseCommand, cloneCommand, listClonesCommand},
+		{databaseCommand, cloneCommand, deleteCloneCommand},
 	} {
 		t.Run(args[len(args)-1], func(t *testing.T) {
 			t.Parallel()
@@ -49,6 +51,17 @@ func TestDatabaseCommands(t *testing.T) {
 	}
 }
 
+func TestListClonesHelp(t *testing.T) {
+	t.Parallel()
+	cmd := listClonesCMD()
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"--help"})
+	require.NoError(t, cmd.ExecuteContext(t.Context()))
+	require.Contains(t, output.String(),
+		"Corrupt records are omitted and reported as errors; the command exits nonzero.")
+}
+
 func TestWriteEmptySnapshotCloneList(t *testing.T) {
 	t.Parallel()
 	var output bytes.Buffer
@@ -62,13 +75,17 @@ func TestWriteEmptySnapshotCloneList(t *testing.T) {
 func TestDeleteCloneSelectors(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		name  string
-		flags []string
+		name      string
+		flags     []string
+		wantError string
 	}{
-		{name: "missing"},
-		{name: "both", flags: []string{txIDFlagArg, "tx", cloneNameFlagArg, cloneCommand}},
-		{name: "empty transaction ID", flags: []string{txIDFlagArg, ""}},
-		{name: "empty name", flags: []string{cloneNameFlagArg, ""}},
+		{name: "missing", wantError: "at least one of the flags in the group [tx-id name] is required"},
+		{
+			name: "both", flags: []string{txIDFlagArg, "tx", cloneNameFlagArg, "some-clone"},
+			wantError: "none of the others can be",
+		},
+		{name: "empty transaction ID", flags: []string{txIDFlagArg, ""}, wantError: "exactly one nonempty"},
+		{name: "empty name", flags: []string{cloneNameFlagArg, ""}, wantError: "exactly one nonempty"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -76,8 +93,8 @@ func TestDeleteCloneSelectors(t *testing.T) {
 			var output bytes.Buffer
 			cmd.SetOut(&output)
 			cmd.SetErr(&output)
-			cmd.SetArgs(append([]string{"db", cloneCommand, deleteCloneCommand}, tc.flags...))
-			require.ErrorContains(t, cmd.ExecuteContext(t.Context()), "exactly one nonempty")
+			cmd.SetArgs(append([]string{databaseCommand, cloneCommand, deleteCloneCommand}, tc.flags...))
+			require.ErrorContains(t, cmd.ExecuteContext(t.Context()), tc.wantError)
 		})
 	}
 }
@@ -104,24 +121,26 @@ func TestDeleteCloneCMD(t *testing.T) {
 	})
 	require.NoError(t, statedb.AdminExec(t.Context(), dbConfig, "CREATE DATABASE "+cloneSQL))
 
-	raw, err := statedb.EncodeSnapshotState(&committerpb.SnapshotState{
-		TxRef:         &committerpb.TxRef{BlockNum: 1, TxId: txID},
-		Status:        committerpb.SnapshotState_ABORTED,
-		CloneDatabase: clone,
-	})
-	require.NoError(t, err)
 	pool, err := statedb.NewPool(t.Context(), dbConfig)
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
-	_, err = pool.Exec(t.Context(), fmt.Sprintf("INSERT INTO %s (key, value) VALUES ($1, $2)",
-		statedb.TableName(committerpb.SnapshotNamespaceID)), []byte(txID), raw)
-	require.NoError(t, err)
-	cloneExists := func() bool {
+	insertRecord := func(state *committerpb.SnapshotState) {
+		value, encodeErr := statedb.EncodeSnapshotState(state)
+		require.NoError(t, encodeErr)
+		_, insertErr := pool.Exec(t.Context(), fmt.Sprintf("INSERT INTO %s (key, value) VALUES ($1, $2)",
+			statedb.TableName(committerpb.SnapshotNamespaceID)), []byte(state.TxRef.TxId), value)
+		require.NoError(t, insertErr)
+	}
+	cloneExists := func(name string) bool {
 		var exists bool
 		require.NoError(t, pool.QueryRow(t.Context(),
-			"SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", clone).Scan(&exists))
+			"SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", name).Scan(&exists))
 		return exists
 	}
+	insertRecord(&committerpb.SnapshotState{
+		TxRef: &committerpb.TxRef{BlockNum: 1, TxId: txID}, Status: committerpb.SnapshotState_ABORTED,
+		CloneDatabase: clone,
+	})
 
 	s := config.SystemConfig{DB: config.DatabaseConfig{
 		Name: conn.Database, Username: conn.User, Password: conn.Password, Endpoints: conn.Endpoints,
@@ -141,11 +160,7 @@ func TestDeleteCloneCMD(t *testing.T) {
 		},
 		{TxRef: &committerpb.TxRef{TxId: "snap-cleared"}, Status: committerpb.SnapshotState_ABORTED},
 	} {
-		value, encodeErr := statedb.EncodeSnapshotState(state)
-		require.NoError(t, encodeErr)
-		_, err = pool.Exec(t.Context(), fmt.Sprintf("INSERT INTO %s (key, value) VALUES ($1, $2)",
-			statedb.TableName(committerpb.SnapshotNamespaceID)), []byte(state.TxRef.TxId), value)
-		require.NoError(t, err)
+		insertRecord(state)
 	}
 
 	cmd := committerCMD()
@@ -153,7 +168,7 @@ func TestDeleteCloneCMD(t *testing.T) {
 	cmd.SetOut(&output)
 	cmd.SetErr(&output)
 	cfgPath := config.CreateTempConfigFromTemplate(t, config.TemplateVC, &s)
-	cmd.SetArgs([]string{"db", cloneCommand, "list", "--config", cfgPath})
+	cmd.SetArgs([]string{databaseCommand, cloneCommand, listClonesCommand, "--config", cfgPath})
 	require.NoError(t, cmd.ExecuteContext(t.Context()))
 	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
 	require.Len(t, lines, 3)
@@ -161,50 +176,57 @@ func TestDeleteCloneCMD(t *testing.T) {
 	require.Equal(t, []string{"snap-by-name", nameClone, "CHECKPOINTED"}, strings.Fields(lines[1]))
 	require.Equal(t, []string{txID, clone, "ABORTED"}, strings.Fields(lines[2]))
 
+	_, err = pool.Exec(t.Context(), fmt.Sprintf("INSERT INTO %s (key, value) VALUES ($1, $2)",
+		statedb.TableName(committerpb.SnapshotNamespaceID)), []byte("corrupt"), []byte("not protobuf"))
+	require.NoError(t, err)
+	partialCMD := committerCMD()
+	var partialOutput, diagnosticOutput bytes.Buffer
+	partialCMD.SetOut(&partialOutput)
+	partialCMD.SetErr(&diagnosticOutput)
+	partialCMD.SetArgs([]string{databaseCommand, cloneCommand, listClonesCommand, "--config", cfgPath})
+	require.ErrorContains(t, partialCMD.ExecuteContext(t.Context()), `corrupt _snapshot record for key "corrupt"`)
+	require.Equal(t, output.String(), partialOutput.String(), "valid records must still be printed")
+	require.Equal(t, 1, strings.Count(diagnosticOutput.String(), `corrupt _snapshot record for key "corrupt"`))
+	_, err = pool.Exec(t.Context(), "DELETE FROM "+statedb.TableName(committerpb.SnapshotNamespaceID)+" WHERE key = $1",
+		[]byte("corrupt"))
+	require.NoError(t, err)
+
 	for _, tc := range []cliutil.CommandTest{
 		{
 			Name:              "initializes the database through db init",
-			Args:              []string{"db", "init"},
+			Args:              []string{databaseCommand, initDBCommand},
 			CmdStdOutput:      "Database initialized successfully",
 			UseConfigTemplate: config.TemplateVC, System: s,
 		},
 		{
 			Name:              "deletes by recorded name",
-			Args:              []string{"db", cloneCommand, deleteCloneCommand, cloneNameFlagArg, nameClone},
+			Args:              []string{databaseCommand, cloneCommand, deleteCloneCommand, cloneNameFlagArg, nameClone},
 			CmdStdOutput:      "Snapshot database clone " + nameClone + " deleted",
 			UseConfigTemplate: config.TemplateVC, System: s,
 		},
 		{
 			Name:              "deletes the clone",
-			Args:              []string{"db", cloneCommand, deleteCloneCommand, txIDFlagArg, txID},
+			Args:              []string{databaseCommand, cloneCommand, deleteCloneCommand, txIDFlagArg, txID},
 			CmdStdOutput:      "Snapshot database clone for tx snap-delete-cli deleted",
 			UseConfigTemplate: config.TemplateVC,
 			System:            s,
 		},
 		{
 			Name:              "unknown tx-id",
-			Args:              []string{"db", cloneCommand, deleteCloneCommand, txIDFlagArg, "no-such-tx"},
+			Args:              []string{databaseCommand, cloneCommand, deleteCloneCommand, txIDFlagArg, "no-such-tx"},
 			UseConfigTemplate: config.TemplateVC,
 			System:            s,
 			CmdStdErrOutput:   "no snapshot record for the given transaction ID",
 			Err: errors.New("failed to delete the snapshot database clone: failed to read _snapshot " +
 				"record for tx no-such-tx: no-such-tx: no snapshot record for the given transaction ID"),
 		},
-		{
-			Name: "tx-id is required",
-			Args: []string{"db", cloneCommand, deleteCloneCommand},
-			Err:  errors.New("specify exactly one nonempty selector: --tx-id or --name"),
-		},
 	} {
 		t.Run(tc.Name, func(t *testing.T) {
 			cliutil.UnitTestRunner(t, committerCMD(), tc)
 		})
 	}
-	require.False(t, cloneExists(), "the clone must be dropped")
-	var nameCloneExists bool
-	require.NoError(t, pool.QueryRow(t.Context(),
-		"SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", nameClone).Scan(&nameCloneExists))
-	require.False(t, nameCloneExists)
+	require.False(t, cloneExists(clone), "the clone must be dropped")
+	require.False(t, cloneExists(nameClone), "the named clone must be dropped")
 	state, err := statedb.NewSnapshotStateManager(pool, dbConfig.Retry).Read(t.Context(), "snap-by-name")
 	require.NoError(t, err)
 	require.Empty(t, state.CloneDatabase)
