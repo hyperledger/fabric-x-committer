@@ -92,7 +92,7 @@ Two conditions stop the service instead of being retried:
   exists. Neither shape of absence — no `clone_database` recorded, or a recorded name
   whose database is gone — can be produced by this system for a status the hasher
   hashes, which leaves external interference or storage corruption. (`committer
-  delete-clone` clears the name only for `CHECKPOINTED` or `ABORTED` records, which the
+  db clone delete` clears the name only for `CHECKPOINTED` or `ABORTED` records, which the
   hasher never hashes; see
   [Snapshot clone deletion](validator-committer.md#snapshot-clone-deletion)). No retry repairs either, and recording a failed
   attempt on the record would invite a later tick to treat it as retryable work, so the

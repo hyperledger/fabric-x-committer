@@ -610,6 +610,107 @@ func (env *snapshotStateTestEnv) inTx(t *testing.T, op func(tx pgx.Tx) error) er
 	return nil
 }
 
+func TestListSnapshots(t *testing.T) {
+	t.Parallel()
+	env := newSnapshotStateTestEnv(t)
+	states, err := env.state.List(t.Context())
+	require.NoError(t, err)
+	require.Empty(t, states)
+	want := []*committerpb.SnapshotState{
+		{TxRef: &committerpb.TxRef{TxId: "a-cleared"}, Status: committerpb.SnapshotState_ABORTED},
+		{
+			TxRef:  &committerpb.TxRef{TxId: "z-clone"},
+			Status: committerpb.SnapshotState_PENDING, CloneDatabase: "snapshot_z",
+		},
+	}
+	env.insertRecord(t, want[1])
+	env.insertRecord(t, want[0])
+	states, err = env.state.List(t.Context())
+	require.NoError(t, err)
+	require.Len(t, states, 2)
+	for i := range want {
+		test.RequireProtoEqual(t, want[i], states[i])
+	}
+	env.insertRawRecord(t, "corrupt", []byte("not protobuf"))
+	env.insertRawRecord(t, "corrupt-second", []byte("not protobuf"))
+	states, err = env.state.List(t.Context())
+	require.ErrorContains(t, err, `corrupt _snapshot record for key "corrupt"`)
+	require.ErrorContains(t, err, `corrupt _snapshot record for key "corrupt-second"`)
+	require.ErrorContains(t, err, "failed to decode")
+	require.ErrorIs(t, err, retry.ErrNonRetryable)
+	require.Len(t, states, len(want))
+	for i := range want {
+		test.RequireProtoEqual(t, want[i], states[i])
+	}
+}
+
+func TestListSnapshotsRejectsMismatchedTransactionID(t *testing.T) {
+	t.Parallel()
+	env := newSnapshotStateTestEnv(t)
+	for _, ref := range []*committerpb.TxRef{nil, {TxId: "different"}} {
+		raw, err := statedb.EncodeSnapshotState(&committerpb.SnapshotState{TxRef: ref})
+		require.NoError(t, err)
+		_, err = env.pool.Exec(t.Context(), "DELETE FROM "+snapshotTable)
+		require.NoError(t, err)
+		env.insertRawRecord(t, "key", raw)
+		states, listErr := env.state.List(t.Context())
+		require.ErrorContains(t, listErr, fmt.Sprintf(
+			`corrupt _snapshot record: key "key" has mismatched transaction ID %q`, ref.GetTxId(),
+		))
+		require.ErrorIs(t, listErr, retry.ErrNonRetryable)
+		require.Empty(t, states)
+	}
+}
+
+func TestDeleteSnapshotCloneByName(t *testing.T) {
+	t.Parallel()
+	for _, status := range []committerpb.SnapshotState_Status{
+		committerpb.SnapshotState_ABORTED, committerpb.SnapshotState_IN_PROGRESS,
+	} {
+		t.Run(status.String(), func(t *testing.T) {
+			t.Parallel()
+			env := newSnapshotStateTestEnv(t)
+			clone := env.createDatabase(t, "snapshot_by_name")
+			want := &committerpb.SnapshotState{
+				TxRef: &committerpb.TxRef{TxId: "snap-by-name"}, Status: status,
+				CloneDatabase: clone, Hash: []byte("digest"), Error: "diagnostic",
+			}
+			env.insertRecord(t, want)
+			err := statedb.DeleteSnapshotCloneByName(t.Context(), env.config, clone)
+			if status == committerpb.SnapshotState_ABORTED {
+				require.NoError(t, err)
+				require.False(t, env.databaseExists(t, clone))
+				want.CloneDatabase = ""
+				require.ErrorContains(t, statedb.DeleteSnapshotCloneByName(t.Context(), env.config, clone),
+					"no snapshot record")
+				require.NoError(t, statedb.DeleteSnapshotClone(t.Context(), env.config, want.TxRef.TxId))
+			} else {
+				require.ErrorIs(t, err, statedb.ErrSnapshotCloneInUse)
+				require.True(t, env.databaseExists(t, clone))
+			}
+			got, err := env.state.Read(t.Context(), want.TxRef.TxId)
+			require.NoError(t, err)
+			test.RequireProtoEqual(t, want, got)
+		})
+	}
+}
+
+func TestDeleteSnapshotCloneByNameRefusals(t *testing.T) {
+	t.Parallel()
+	env := newSnapshotStateTestEnv(t)
+	clone := env.createDatabase(t, "unrecorded")
+	require.ErrorContains(t, statedb.DeleteSnapshotCloneByName(t.Context(), env.config, ""), "must not be empty")
+	require.ErrorContains(t, statedb.DeleteSnapshotCloneByName(t.Context(), env.config, clone), "no snapshot record")
+	require.True(t, env.databaseExists(t, clone))
+	env.insertRecord(t, &committerpb.SnapshotState{
+		TxRef: &committerpb.TxRef{TxId: "valid-clone"}, Status: committerpb.SnapshotState_ABORTED,
+		CloneDatabase: clone,
+	})
+	env.insertRawRecord(t, "corrupt", []byte("not protobuf"))
+	require.ErrorContains(t, statedb.DeleteSnapshotCloneByName(t.Context(), env.config, clone), "corrupt _snapshot")
+	require.True(t, env.databaseExists(t, clone), "corruption must prevent name-based deletion")
+}
+
 // TestDeleteSnapshotClone checks that deletion of a CHECKPOINTED or ABORTED snapshot drops
 // the clone, clears its name, and keeps the rest of the record. A repeated delete succeeds
 // without rewriting the record.

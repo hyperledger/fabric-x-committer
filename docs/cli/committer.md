@@ -6,7 +6,7 @@
 
 # committer
 
-The `committer` command starts Fabric-X committer services and checks service health.
+The `committer` command starts Fabric-X committer services, checks service health, and administers the state database.
 
 ## Environment Variables
 
@@ -42,13 +42,12 @@ Usage:
   Committer [command]
 
 Available Commands:
-  completion   Generate the autocompletion script for the specified shell
-  delete-clone Delete the database clone of a CHECKPOINTED or ABORTED snapshot
-  healthcheck  Check if a service is healthy.
-  help         Help about any command
-  init-db      Initialize the database with required tables and namespaces
-  start        Start a service.
-  version      print Committer version
+  completion  Generate the autocompletion script for the specified shell
+  db          Administer the state database
+  healthcheck Check if a service is healthy.
+  help        Help about any command
+  start       Start a service.
+  version     print Committer version
 
 Flags:
   -h, --help   help for Committer
@@ -270,6 +269,100 @@ Usage:
 Flags:
   -c, --config string   set the config file path
   -h, --help            help for auth
+```
+
+
+## committer db
+
+```
+Administer the state database
+
+Usage:
+  Committer db [command]
+
+Available Commands:
+  clone       List and delete recorded snapshot database clones
+  init        Initialize the database with required tables and namespaces
+
+Flags:
+  -h, --help   help for db
+
+Use "Committer db [command] --help" for more information about a command.
+```
+
+
+## committer db init
+
+```
+Initialize the state database by creating system tables, metadata tables,
+and system namespaces (meta and config). This is a one-time administrative
+operation that must be performed before booting the committer for the first time.
+
+Usage:
+  Committer db init [flags]
+
+Flags:
+  -c, --config string      set the config file path
+  -h, --help               help for init
+      --timeout duration   Timeout for the initialization operation (default 5m0s)
+```
+
+
+## committer db clone
+
+```
+List and delete recorded snapshot database clones
+
+Usage:
+  Committer db clone [command]
+
+Available Commands:
+  delete      Delete the database clone of a CHECKPOINTED or ABORTED snapshot
+  list        List recorded snapshot clones with transaction IDs and statuses
+
+Flags:
+  -h, --help   help for clone
+
+Use "Committer db clone [command] --help" for more information about a command.
+```
+
+
+## committer db clone list
+
+```
+List recorded snapshot clones in transaction ID order, omitting records with empty clone names.
+This lists recorded state, not database existence.
+Corrupt records are omitted and reported as errors; the command exits nonzero.
+
+Usage:
+  Committer db clone list [flags]
+
+Flags:
+  -c, --config string      set the config file path
+  -h, --help               help for list
+      --timeout duration   Timeout for the listing operation (default 5m0s)
+```
+
+
+## committer db clone delete
+
+```
+Drop the database clone identified by exactly one of --tx-id or --name and clear the clone name from
+its _snapshot record, keeping the record. The snapshot must be CHECKPOINTED or ABORTED, since
+until then its clone may still be hashed. This can run while the committer is running.
+Names must identify exactly one recorded snapshot clone, never an arbitrary database.
+Retrying by --tx-id after a success or failure is safe. After successful deletion,
+the cleared record no longer identifies its former clone name.
+
+Usage:
+  Committer db clone delete [flags]
+
+Flags:
+  -c, --config string      set the config file path
+  -h, --help               help for delete
+      --name string        Clone database name recorded in a snapshot record
+      --timeout duration   Timeout for the deletion operation (default 5m0s)
+      --tx-id string       Transaction ID of the snapshot transaction
 ```
 
 
