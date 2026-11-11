@@ -115,3 +115,44 @@ func TestLoadGenCommitterWithLimit(t *testing.T) {
 	count := c.CountStatus(t, committerpb.Status_COMMITTED)
 	require.Equal(t, expectedTXs, count)
 }
+
+// TestLoadGenWithQueryService runs the committer path and a query service together with a loadgen
+// configured for queries-rate > 0, so the loadgen commits transactions while concurrently fetching
+// committed read versions from the query service before signing (the "load query and committer in
+// parallel" case). It asserts both loads actually flow: the loadgen keeps committing, and the query
+// service keeps receiving key queries. Version hits are not required — with key-backref-rate at its
+// default (0) every read is a fresh key, so queries miss and reads keep nil versions; this exercises
+// the wiring and the
+// query service under a live commit load.
+func TestLoadGenWithQueryService(t *testing.T) {
+	t.Parallel()
+	c := runner.NewRuntime(t, &runner.Config{
+		NumVerifiers:       2,
+		NumVCService:       2,
+		BlockTimeout:       2 * time.Second,
+		BlockSize:          100,
+		LoadGenQueriesRate: 1,
+	})
+	c.Start(t, runner.CommitterTxPathWithLoadGen|runner.QueryService)
+
+	committedTotal := test.GetMetricValueParameters{
+		MetricsConnectionParameters: test.NewMetricsConnectionParameters(
+			t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.LoadGen.HTTPEndpoint,
+		),
+		MetricName: "loadgen_transaction_committed_total",
+	}
+	keysRequested := test.GetMetricValueParameters{
+		MetricsConnectionParameters: test.NewMetricsConnectionParameters(
+			t, c.SystemConfig.ClientTLS, c.SystemConfig.Services.Query.HTTPEndpoint,
+		),
+		MetricName: "queryservice_grpc_key_requested_total",
+	}
+
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		committed := test.GetCounterOrGaugeValueFromURL(ct, committedTotal)
+		queried := test.GetCounterOrGaugeValueFromURL(ct, keysRequested)
+		t.Logf("loadgen_transaction_committed_total=%d queryservice_grpc_key_requested_total=%d", committed, queried)
+		require.Greater(ct, committed, 500)
+		require.Positive(ct, queried)
+	}, 300*time.Second, 1*time.Second)
+}
