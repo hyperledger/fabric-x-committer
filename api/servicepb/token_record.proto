@@ -1,0 +1,30 @@
+/*
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+*/
+
+syntax = "proto3";
+
+option go_package = "github.com/hyperledger/fabric-x-committer/api/servicepb";
+
+package servicepb;
+
+import "api/msppb/msp.proto";
+
+// TokenRecord is the persisted token-to-identity binding, stored proto-serialized in the auth service's
+// token store under the token's SHA-256. The token itself is never stored, so a read of the store yields
+// nothing a client could present. It - not the opaque token - holds the client's
+// MSP identity, so the identity is re-resolved against the latest configuration on every authorization.
+// A token is valid until its expiry: nothing deletes a record to revoke it.
+message TokenRecord {
+    // identity is the client's MSP identity. It is carried as the message rather than as marshaled
+    // bytes.
+    msppb.Identity identity = 1;
+    // cert_hash_sha256 is the SHA-256 of the client's TLS certificate the token is bound to.
+    bytes cert_hash_sha256 = 2;
+    // scope is the set of resources the token may reach, as gRPC full-method names. Empty reaches nothing.
+    repeated string scope = 3;
+    // expires_at is the token expiry in unix seconds.
+    int64 expires_at = 4;
+}

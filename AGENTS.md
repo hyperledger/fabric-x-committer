@@ -88,6 +88,7 @@ service/config/metrics structure, and the full linter cheat sheet.
 │   ├── mock/            # Mock services for testing
 │   └── config/          # Configuration utilities and samples
 ├── service/             # Core service implementations
+│   ├── auth/            # Authentication and authorization (ACL)
 │   ├── coordinator/     # Transaction orchestration
 │   ├── vc/              # Validator-Committer service
 │   ├── sidecar/         # Block fetching middleware
@@ -115,6 +116,7 @@ Detailed architectural documentation is available in the `docs/` directory:
 - `docs/sidecar.md`: Sidecar middleware design and recovery
 - `docs/verification-service.md`: Signature verification details
 - `docs/query-service.md`: Query service API
+- `docs/auth-service.md`: Auth service, ACL enforcement, and token lifecycle
 - `docs/snapshot-hasher.md`: Snapshot hasher service and snapshot record lifecycle
 - `docs/logging.md`: Logging conventions
 - `docs/metrics_reference.md`: Available metrics

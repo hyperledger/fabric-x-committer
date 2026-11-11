@@ -22,7 +22,8 @@ func healthcheckCMD() *cobra.Command {
 		Short: "Check if a service is healthy.",
 	}
 	for _, name := range []string{
-		sidecarService, coordinatorService, vcService, verifierService, queryService, snapshotHasherService,
+		sidecarService, coordinatorService, vcService,
+		verifierService, queryService, snapshotHasherService, authService,
 	} {
 		cmd.AddCommand(healthcheckServiceCommand(name))
 	}

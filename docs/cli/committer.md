@@ -65,6 +65,7 @@ Usage:
   Committer start [command]
 
 Available Commands:
+  auth            Starts Auth-Service.
   coordinator     Starts Coordinator.
   query           Starts Query-Service.
   sidecar         Starts Sidecar.
@@ -149,6 +150,20 @@ Flags:
 ```
 
 
+## committer start auth
+
+```
+Starts Auth-Service.
+
+Usage:
+  Committer start auth [flags]
+
+Flags:
+  -c, --config string   set the config file path
+  -h, --help            help for auth
+```
+
+
 ## committer healthcheck
 
 ```
@@ -158,6 +173,7 @@ Usage:
   Committer healthcheck [command]
 
 Available Commands:
+  auth            Check Auth-Service health.
   coordinator     Check Coordinator health.
   query           Check Query-Service health.
   sidecar         Check Sidecar health.
@@ -239,6 +255,20 @@ Usage:
 Flags:
   -c, --config string   set the config file path
   -h, --help            help for query
+```
+
+
+## committer healthcheck auth
+
+```
+Check Auth-Service health.
+
+Usage:
+  Committer healthcheck auth [flags]
+
+Flags:
+  -c, --config string   set the config file path
+  -h, --help            help for auth
 ```
 
 
