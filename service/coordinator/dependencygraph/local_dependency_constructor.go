@@ -85,7 +85,10 @@ func (p *localDependencyConstructor) run(ctx context.Context, numWorkers int) {
 
 func (p *localDependencyConstructor) construct(ctx context.Context) {
 	stop := context.AfterFunc(ctx, func() {
+		// Under the lock, so a waiter that checked ctx before cancellation is already in Wait.
+		p.orderEnforcer.L.Lock()
 		p.orderEnforcer.Broadcast()
+		p.orderEnforcer.L.Unlock()
 	})
 	defer stop()
 

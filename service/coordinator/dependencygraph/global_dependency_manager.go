@@ -244,10 +244,7 @@ func (dm *globalDependencyManager) processValidatedTransactions(ctx context.Cont
 }
 
 func (dm *globalDependencyManager) outputFreedExistingTransactions(ctx context.Context) {
-	stop := context.AfterFunc(ctx, func() {
-		dm.freedTransactionsSet.nonEmpty.Store(true)
-		dm.freedTransactionsSet.cond.Signal()
-	})
+	stop := context.AfterFunc(ctx, dm.freedTransactionsSet.signal)
 	defer stop()
 
 	for ctx.Err() == nil {
@@ -269,7 +266,15 @@ func (f *dependencyFreedTransactions) add(txsNode TxNodeBatch) {
 	)
 	f.mu.Unlock()
 
+	f.signal()
+}
+
+// signal wakes the waiter in waitAndRemove. The flag is set under cond.L, which the waiter holds from
+// its check until Wait registers it, so the signal cannot fall between the two and be lost.
+func (f *dependencyFreedTransactions) signal() {
+	f.cond.L.Lock()
 	f.nonEmpty.Store(true)
+	f.cond.L.Unlock()
 	f.cond.Signal()
 }
 
