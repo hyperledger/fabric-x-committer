@@ -66,13 +66,13 @@ func StartMockVCServiceFromServerConfig(
 }
 
 // StartMockCoordinatorService starts a mock coordinator service and registers cancellation.
-func StartMockCoordinatorService(t *testing.T, p test.StartServerParameters) (
+func StartMockCoordinatorService(tb testing.TB, p test.StartServerParameters) (
 	*Coordinator, *test.Servers,
 ) {
-	t.Helper()
+	tb.Helper()
 	p.NumService = 1
 	mockCoordinator := NewMockCoordinator()
-	coordinatorSC := test.ServeManyForTest(t.Context(), t, p, mockCoordinator)
+	coordinatorSC := test.ServeManyForTest(tb.Context(), tb, p, mockCoordinator)
 	return mockCoordinator, coordinatorSC
 }
 
@@ -156,10 +156,10 @@ func (p *OrdererTestParameters) ConfigBlockPath() string {
 }
 
 // NewOrdererTestEnv creates and starts a new OrdererTestEnv.
-func NewOrdererTestEnv(t *testing.T, p *OrdererTestParameters) *OrdererTestEnv {
-	t.Helper()
+func NewOrdererTestEnv(tb testing.TB, p *OrdererTestParameters) *OrdererTestEnv {
+	tb.Helper()
 	if p.ArtifactsPath == "" {
-		p.ArtifactsPath = t.TempDir()
+		p.ArtifactsPath = tb.TempDir()
 	}
 	if len(p.ChanID) == 0 {
 		p.ChanID = "channel"
@@ -169,7 +169,7 @@ func NewOrdererTestEnv(t *testing.T, p *OrdererTestParameters) *OrdererTestEnv {
 	p.PeerOrganizationCount = max(1, p.PeerOrganizationCount)
 
 	instanceCount := int(p.NumIDs) * p.ServerPerID
-	t.Logf("Orderer instances: %d; IDs: %d", instanceCount, p.NumIDs)
+	tb.Logf("Orderer instances: %d; IDs: %d", instanceCount, p.NumIDs)
 
 	allServerConfigs := make([]*serve.Config, 0, instanceCount)
 	allEndpoints := make([]*commontypes.OrdererEndpoint, 0, instanceCount)
@@ -177,7 +177,7 @@ func NewOrdererTestEnv(t *testing.T, p *OrdererTestParameters) *OrdererTestEnv {
 	for id := range p.NumIDs {
 		partyStates[id] = &PartyState{PartyID: id}
 		for range p.ServerPerID {
-			serverConfig := test.NewPreAllocatedLocalHostServerConfig(t, p.ServerTLSConfig)
+			serverConfig := test.NewPreAllocatedLocalHostServerConfig(tb, p.ServerTLSConfig)
 			allServerConfigs = append(allServerConfigs, serverConfig)
 			allEndpoints = append(allEndpoints, &commontypes.OrdererEndpoint{
 				ID:   id,
@@ -187,7 +187,7 @@ func NewOrdererTestEnv(t *testing.T, p *OrdererTestParameters) *OrdererTestEnv {
 		}
 	}
 	for i, e := range allEndpoints {
-		t.Logf("ORDERER ENDPOINT [%02d] %s", i, e)
+		tb.Logf("ORDERER ENDPOINT [%02d] %s", i, e)
 	}
 
 	_, err := testcrypto.CreateOrExtendConfigBlockWithCrypto(p.ArtifactsPath, &testcrypto.ConfigBlock{
@@ -195,19 +195,19 @@ func NewOrdererTestEnv(t *testing.T, p *OrdererTestParameters) *OrdererTestEnv {
 		OrdererEndpoints:      filterEndpoints(allEndpoints, p.InitialNumIDs),
 		PeerOrganizationCount: p.PeerOrganizationCount,
 	})
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	p.OrdererConfig.ArtifactsPath = p.ArtifactsPath
 
 	// Start the system.
 	ordererService, err := NewMockOrderer(p.OrdererConfig)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	// Register the party states.
 	for _, ep := range allEndpoints {
 		ordererService.RegisterPartyState(ep.Address(), partyStates[ep.ID])
 	}
 
-	ctx := t.Context()
-	test.RunServiceForTest(ctx, t, func(ctx context.Context) error {
+	ctx := tb.Context()
+	test.RunServiceForTest(ctx, tb, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(ordererService.Run(ctx))
 	}, ordererService.WaitForReady)
 
@@ -219,15 +219,15 @@ func NewOrdererTestEnv(t *testing.T, p *OrdererTestParameters) *OrdererTestEnv {
 		PartyStates:           partyStates,
 		Orderer:               ordererService,
 	}
-	e.StartServers(t)
+	e.StartServers(tb)
 	return e
 }
 
 // StartServers starts the servers for the orderer and maps them to their respective IDs.
-func (e *OrdererTestEnv) StartServers(t *testing.T) {
-	t.Helper()
-	allServers := test.ServeManyWithConfigForTest(t.Context(), t, e.Orderer, e.AllServerConfig...)
-	require.Len(t, allServers.ServersStop, len(e.AllServerConfig))
+func (e *OrdererTestEnv) StartServers(tb testing.TB) {
+	tb.Helper()
+	allServers := test.ServeManyWithConfigForTest(tb.Context(), tb, e.Orderer, e.AllServerConfig...)
+	require.Len(tb, allServers.ServersStop, len(e.AllServerConfig))
 	e.AllServersStop = allServers.ServersStop
 }
 

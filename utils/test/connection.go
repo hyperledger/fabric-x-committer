@@ -99,31 +99,31 @@ func ServerToMultiClientConfig(
 
 // NewSecuredConnection creates the default connection with given transport credentials.
 func NewSecuredConnection(
-	t *testing.T,
+	tb testing.TB,
 	endpoint connection.WithAddress,
 	tlsConfig connection.TLSConfig,
 ) *grpc.ClientConn {
-	t.Helper()
-	return NewSecuredConnectionWithRetry(t, endpoint, tlsConfig, defaultGrpcRetryProfile)
+	tb.Helper()
+	return NewSecuredConnectionWithRetry(tb, endpoint, tlsConfig, defaultGrpcRetryProfile)
 }
 
 // NewSecuredConnectionWithRetry creates the default connection with given transport credentials.
 func NewSecuredConnectionWithRetry(
-	t *testing.T,
+	tb testing.TB,
 	endpoint connection.WithAddress,
 	tlsConfig connection.TLSConfig,
 	retryProfile retry.Profile,
 ) *grpc.ClientConn {
-	t.Helper()
+	tb.Helper()
 	clientCreds, err := tlsConfig.ClientCredentials()
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	conn, err := connection.NewConnection(connection.ClientParameters{
 		Address: endpoint.Address(),
 		Creds:   clientCreds,
 		Retry:   &retryProfile,
 	})
-	require.NoError(t, err)
-	t.Cleanup(func() {
+	require.NoError(tb, err)
+	tb.Cleanup(func() {
 		_ = conn.Close()
 	})
 	return conn
@@ -207,10 +207,10 @@ func MustGetTLSConfig(t *testing.T, tlsConfig *connection.TLSConfig) *tls.Config
 }
 
 // NewPreAllocatedLocalHostServerConfig create a localhost server config with a pre allocated listener and port.
-func NewPreAllocatedLocalHostServerConfig(t *testing.T, tlsConfig connection.TLSConfig) *serve.Config {
-	t.Helper()
+func NewPreAllocatedLocalHostServerConfig(tb testing.TB, tlsConfig connection.TLSConfig) *serve.Config {
+	tb.Helper()
 	serverConfig := NewLocalHostServiceConfig(tlsConfig)
-	serve.PreAllocateListener(t, &serverConfig.GRPC)
+	serve.PreAllocateListener(tb, &serverConfig.GRPC)
 	return serverConfig
 }
 
