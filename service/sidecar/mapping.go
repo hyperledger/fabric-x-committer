@@ -188,9 +188,8 @@ func (m *blockMapper) parseMessages(msgs [][]byte, cfg TxParsingConfig) []parsed
 		}
 	}
 
-	// The max guards the zero-value config, which parses in place. Parsing in place rather than on
-	// a single worker goroutine is worth about 10% on 100-TX blocks.
-	workers := min(cfg.MaxWorkers, len(msgs)/max(cfg.MinBatchSize, 1))
+	// Small blocks stay in place to avoid goroutine overhead.
+	workers := cfg.workerCount(len(msgs))
 	if workers < 2 {
 		parseRange(0, len(msgs))
 		return parsed
