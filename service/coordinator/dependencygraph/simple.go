@@ -183,6 +183,7 @@ func (m *SimpleManager) taskProcessing(ctx context.Context) {
 			promutil.SubFromGauge(m.metrics.dependentTxCount, len(depFree))
 		}
 		promutil.SetGauge(m.metrics.gdgWaitingTxCount, m.waitingTXs)
+		promutil.SetGauge(m.metrics.gdgDepFreeTxCount, len(pending))
 	}
 }
 
