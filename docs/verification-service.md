@@ -632,3 +632,8 @@ The `VerifyNs()` method in the `signature.NsVerifier` verifies signatures for a 
 1. It extracts the signatures for the namespace from the transaction.
 2. It verifies each signature against the namespace policy.
 3. It returns an error if any signature is invalid.
+
+
+## Result transport
+
+Verification streams return `servicepb.TxStatusBatch.tx_result`, with one `TxResult` wrapping each unchanged shared status. Verifier results have empty blind-write versions: version assignment belongs to VC. Input transactions, endorsements and signature verification semantics are unchanged.

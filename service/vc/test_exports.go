@@ -426,9 +426,9 @@ func (env *DatabaseTestEnv) SeedSnapshotRecord(t *testing.T, f SnapshotFixture) 
 	nws.getOrCreate(committerpb.SnapshotNamespaceID).append([]byte(f.Ref.TxId), value, 0)
 	states := &statesToBeCommitted{
 		newWrites: nws,
-		batchStatus: &servicepb.TxStatusBatch{Status: []*committerpb.TxStatus{
+		batchStatus: &servicepb.TxStatusBatch{TxResult: servicepb.NewTxResults([]*committerpb.TxStatus{
 			servicepb.NewHeightFromTxRef(f.Ref).WithStatus(f.Ref.TxId, committerpb.Status_COMMITTED),
-		}},
+		})},
 		txIDToHeight: transactionIDToHeight{TxID(f.Ref.TxId): servicepb.NewHeightFromTxRef(f.Ref)},
 	}
 
@@ -554,8 +554,8 @@ func (env *DatabaseTestEnv) SeedState(t *testing.T, f StateFixture) {
 	batchStatus := &servicepb.TxStatusBatch{}
 	txIDToHeight := transactionIDToHeight{}
 	for _, ref := range f.TxStatuses {
-		batchStatus.Status = append(batchStatus.Status,
-			committerpb.NewTxStatusFromRef(ref, committerpb.Status_COMMITTED))
+		batchStatus.TxResult = append(batchStatus.TxResult,
+			&servicepb.TxResult{Status: committerpb.NewTxStatusFromRef(ref, committerpb.Status_COMMITTED)})
 		txIDToHeight[TxID(ref.TxId)] = servicepb.NewHeightFromTxRef(ref)
 	}
 

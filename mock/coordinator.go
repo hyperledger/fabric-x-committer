@@ -87,7 +87,7 @@ func (c *Coordinator) GetTransactionsStatus(
 		v, _ := c.txsStatus.get(txID)
 		status[i] = v
 	}
-	return &servicepb.TxStatusBatch{Status: status}, nil
+	return &servicepb.TxStatusBatch{TxResult: servicepb.NewTxResults(status)}, nil
 }
 
 // NoPendingTransactionProcessing returns true when all previously submitted
@@ -199,20 +199,20 @@ func (c *Coordinator) sendTxsStatusChunk(
 	txs []*committerpb.TxStatus,
 ) error {
 	b := &servicepb.TxStatusBatch{
-		Status: make([]*committerpb.TxStatus, len(txs)),
+		TxResult: servicepb.NewTxResults(make([]*committerpb.TxStatus, len(txs))),
 	}
 	c.txsStatusMu.Lock()
 	defer c.txsStatusMu.Unlock()
 	for i, info := range txs {
 		s := committerpb.NewTxStatusFromRef(info.Ref, info.Status)
-		b.Status[i] = s
+		b.TxResult[i] = &servicepb.TxResult{Status: s}
 		c.txsStatus.addIfNotExist(info.Ref.TxId, s)
 	}
 	if err := stream.Send(b); err != nil {
 		return errors.Wrap(err, "failed to send status")
 	}
-	logger.Debugf("Sent back batch with %d TXs", len(b.Status))
-	c.numTxsInProgress.Add(-int32(len(b.Status))) //nolint:gosec
+	logger.Debugf("Sent back batch with %d TXs", len(b.TxResult))
+	c.numTxsInProgress.Add(-int32(len(b.TxResult))) //nolint:gosec
 	return nil
 }
 

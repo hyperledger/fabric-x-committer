@@ -48,8 +48,8 @@ func TestCommitCheckpointOnHashMatch(t *testing.T) {
 	cpRef := committerpb.NewTxRef("cp-match-tx", 910101, 0)
 
 	status := env.submitCheckpoint(ctx, t, newCheckpointPreparedTx(cpRef, ref.BlockNum, hash))
-	require.Len(t, status.Status, 1)
-	require.Equal(t, committerpb.Status_COMMITTED, status.Status[0].Status)
+	require.Len(t, status.GetStatuses(), 1)
+	require.Equal(t, committerpb.Status_COMMITTED, status.GetStatuses()[0].Status)
 	// A matching checkpoint returns a transaction status, not feedback.
 	require.Nil(t, status.CheckpointFeedback)
 
@@ -73,7 +73,7 @@ func TestHaltCheckpointOnHashMismatch(t *testing.T) {
 		wantFeedback(servicepb.CheckpointFeedback_HALT, cpRef, ref.BlockNum), "halted")
 	require.Contains(t, status.CheckpointFeedback.Reason, "does not match")
 	// A halted checkpoint returns feedback instead of a transaction status.
-	require.Empty(t, status.Status)
+	require.Empty(t, status.GetStatuses())
 
 	requireNoCheckpointRow(t, env.dbEnv, ref.BlockNum)
 	// Keep the snapshot status and save the mismatch reason for investigation.
@@ -95,7 +95,7 @@ func TestHoldCheckpointUntilHashIsComputed(t *testing.T) {
 	status := env.submitCheckpoint(ctx, t, newCheckpointPreparedTx(cpRef, ref.BlockNum, hash))
 	requireFeedback(t, status.CheckpointFeedback,
 		wantFeedback(servicepb.CheckpointFeedback_HOLD, cpRef, ref.BlockNum), "held")
-	require.Empty(t, status.Status)
+	require.Empty(t, status.GetStatuses())
 	requireNoCheckpointRow(t, env.dbEnv, ref.BlockNum)
 
 	// No status was persisted, so the sidecar can re-submit the identical txID.
@@ -109,8 +109,8 @@ func TestHoldCheckpointUntilHashIsComputed(t *testing.T) {
 	}))
 	resubmitted := env.submitCheckpoint(ctx, t, newCheckpointPreparedTx(cpRef, ref.BlockNum, hash))
 	require.Nil(t, resubmitted.CheckpointFeedback)
-	require.Len(t, resubmitted.Status, 1)
-	require.Equal(t, committerpb.Status_COMMITTED, resubmitted.Status[0].Status)
+	require.Len(t, resubmitted.GetStatuses(), 1)
+	require.Equal(t, committerpb.Status_COMMITTED, resubmitted.GetStatuses()[0].Status)
 
 	requireCheckpointRow(t, env.dbEnv, ref.BlockNum, hash)
 	requireSnapshotStatus(t, env.dbEnv, ref.TxId, committerpb.SnapshotState_CHECKPOINTED)
@@ -128,12 +128,12 @@ func TestDuplicateCheckpointIsIgnored(t *testing.T) {
 	cpRef := committerpb.NewTxRef("cp-dup-tx", 910401, 0)
 
 	first := env.submitCheckpoint(ctx, t, newCheckpointPreparedTx(cpRef, ref.BlockNum, hash))
-	require.Equal(t, committerpb.Status_COMMITTED, first.Status[0].Status)
+	require.Equal(t, committerpb.Status_COMMITTED, first.GetStatuses()[0].Status)
 	committed, found := env.dbEnv.ReadSnapshotRecord(ctx, ref.TxId)
 	require.True(t, found)
 
 	second := env.submitCheckpoint(ctx, t, newCheckpointPreparedTx(cpRef, ref.BlockNum, hash))
-	require.Len(t, second.Status, 1)
+	require.Len(t, second.GetStatuses(), 1)
 
 	// Neither the checkpoint value nor either record's version should change.
 	requireCheckpointRow(t, env.dbEnv, ref.BlockNum, hash)
@@ -163,8 +163,8 @@ func TestRejectCheckpointForWrongBlock(t *testing.T) {
 	status := env.submitCheckpoint(ctx, t, newCheckpointPreparedTx(cpRef, otherBlock, checkpointDigest("local-hash")))
 	// Bad input must not pause or stop the sidecar.
 	require.Nil(t, status.CheckpointFeedback)
-	require.Len(t, status.Status, 1)
-	require.Equal(t, committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT, status.Status[0].Status)
+	require.Len(t, status.GetStatuses(), 1)
+	require.Equal(t, committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT, status.GetStatuses()[0].Status)
 	requireNoCheckpointRow(t, env.dbEnv, otherBlock)
 
 	// Leave the snapshot unchanged so a correct checkpoint can still commit.
@@ -183,8 +183,8 @@ func TestRejectCheckpointWithoutSnapshotRecord(t *testing.T) {
 
 	status := env.submitCheckpoint(ctx, t, newCheckpointPreparedTx(cpRef, blockNum, checkpointDigest("attested-hash")))
 	require.Nil(t, status.CheckpointFeedback)
-	require.Len(t, status.Status, 1)
-	require.Equal(t, committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT, status.Status[0].Status)
+	require.Len(t, status.GetStatuses(), 1)
+	require.Equal(t, committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT, status.GetStatuses()[0].Status)
 	requireNoCheckpointRow(t, env.dbEnv, blockNum)
 
 	// A later snapshot and checkpoint must still succeed.
@@ -193,8 +193,8 @@ func TestRejectCheckpointWithoutSnapshotRecord(t *testing.T) {
 	next := env.submitCheckpoint(ctx, t,
 		newCheckpointPreparedTx(nextCpRef, nextRef.BlockNum, checkpointDigest("later-hash")))
 	require.Nil(t, next.CheckpointFeedback)
-	require.Len(t, next.Status, 1)
-	require.Equal(t, committerpb.Status_COMMITTED, next.Status[0].Status)
+	require.Len(t, next.GetStatuses(), 1)
+	require.Equal(t, committerpb.Status_COMMITTED, next.GetStatuses()[0].Status)
 	requireSnapshotStatus(t, env.dbEnv, nextRef.TxId, committerpb.SnapshotState_CHECKPOINTED)
 }
 
@@ -354,8 +354,8 @@ func TestDigestAfterAbort(t *testing.T) {
 			require.Equal(t, committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT, verdict.rejectStatus)
 			status := env.submitCheckpoint(ctx, t, cp)
 			require.Nil(t, status.CheckpointFeedback)
-			require.Len(t, status.Status, 1)
-			require.Equal(t, committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT, status.Status[0].Status)
+			require.Len(t, status.GetStatuses(), 1)
+			require.Equal(t, committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT, status.GetStatuses()[0].Status)
 			requireNoCheckpointRow(t, env.dbEnv, ref.BlockNum)
 			requireSnapshotStatus(t, env.dbEnv, ref.TxId, committerpb.SnapshotState_ABORTED)
 		})
@@ -388,8 +388,8 @@ func TestCheckpointMarkerPrefixedDigest(t *testing.T) {
 	cp := newCheckpointPreparedTx(committerpb.NewTxRef("marker-prefixed-cp", 930201, 0), ref.BlockNum, hash)
 	status := env.submitCheckpoint(ctx, t, cp)
 	require.Nil(t, status.CheckpointFeedback)
-	require.Len(t, status.Status, 1)
-	require.Equal(t, committerpb.Status_COMMITTED, status.Status[0].Status)
+	require.Len(t, status.GetStatuses(), 1)
+	require.Equal(t, committerpb.Status_COMMITTED, status.GetStatuses()[0].Status)
 	requireSnapshotStatus(t, env.dbEnv, ref.TxId, committerpb.SnapshotState_CHECKPOINTED)
 	requireCheckpointRow(t, env.dbEnv, ref.BlockNum, hash)
 }
@@ -424,8 +424,8 @@ func TestCommitSnapshotAbort(t *testing.T) {
 			abortRef := committerpb.NewTxRef("abort-tx-"+tc.name, tc.blockNum+1, 0)
 
 			status := env.submitSnapshotAbort(ctx, t, newSnapshotAbortPreparedTx(abortRef, tc.blockNum))
-			require.Len(t, status.Status, 1)
-			require.Equal(t, committerpb.Status_COMMITTED, status.Status[0].Status)
+			require.Len(t, status.GetStatuses(), 1)
+			require.Equal(t, committerpb.Status_COMMITTED, status.GetStatuses()[0].Status)
 
 			// Both must be durable: the row is the fact a replay reproduces, the status is
 			// what admits the next snapshot.
@@ -489,8 +489,8 @@ func TestRejectSnapshotAbortForClosedOrUnknownSnapshot(t *testing.T) {
 			abortRef := committerpb.NewTxRef("abort-rej-tx-"+tc.name, tc.abortBlock+1, 0)
 
 			status := env.submitSnapshotAbort(ctx, t, newSnapshotAbortPreparedTx(abortRef, tc.abortBlock))
-			require.Len(t, status.Status, 1)
-			require.Equal(t, committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT, status.Status[0].Status)
+			require.Len(t, status.GetStatuses(), 1)
+			require.Equal(t, committerpb.Status_REJECTED_CHECKPOINT_NO_SUCH_SNAPSHOT, status.GetStatuses()[0].Status)
 
 			// No row is left behind, so a replay cannot reproduce an abort we never accepted.
 			requireNoSnapshotAbortRow(t, env.dbEnv, tc.abortBlock)
@@ -676,8 +676,8 @@ func TestCheckpointClosureConcurrentCommit(t *testing.T) {
 	for i, cp := range checkpoints {
 		status := statuses[i]
 		require.Nil(t, status.CheckpointFeedback)
-		require.Len(t, status.Status, 1)
-		got[i] = status.Status[0].Status
+		require.Len(t, status.GetStatuses(), 1)
+		got[i] = status.GetStatuses()[0].Status
 		if got[i] == committerpb.Status_COMMITTED {
 			winnerValue = cp.value
 		}
@@ -926,6 +926,6 @@ func requireNoSnapshotAbortRow(t *testing.T, env *DatabaseTestEnv, blockNum uint
 func requireClosureStatus(t *testing.T, status *servicepb.TxStatusBatch, want committerpb.Status) {
 	t.Helper()
 	require.Nil(t, status.CheckpointFeedback)
-	require.Len(t, status.Status, 1)
-	require.Equal(t, want, status.Status[0].Status)
+	require.Len(t, status.GetStatuses(), 1)
+	require.Equal(t, want, status.GetStatuses()[0].Status)
 }

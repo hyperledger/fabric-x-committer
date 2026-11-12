@@ -79,8 +79,8 @@ func (c *CoordinatorAdapter) receiveStatus(
 			return errors.Wrap(connection.FilterStreamRPCError(err), "failed receiving block status")
 		}
 
-		logger.Debugf("Received coordinator status batch with %d items", len(txStatus.Status))
-		c.res.Metrics.OnReceiveBatch(toMetricsStatus(txStatus.Status))
+		logger.Debugf("Received coordinator status batch with %d items", len(txStatus.GetStatuses()))
+		c.res.Metrics.OnReceiveBatch(toMetricsStatus(txStatus.GetStatuses()))
 		if c.res.isReceiveLimit() {
 			return nil
 		}

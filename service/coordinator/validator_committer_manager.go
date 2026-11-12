@@ -247,14 +247,26 @@ func (vc *validatorCommitter) receiveStatusAndForwardToOutput(
 			return classifyStreamRecvError(err)
 		}
 
-		logger.Debugf("Batch contains %d TX statuses", len(txsStatus.Status))
+		if txsStatus == nil {
+			return errors.New("nil transaction result batch")
+		}
+		for i, result := range txsStatus.TxResult {
+			if result == nil || result.Status == nil || result.Status.Ref == nil {
+				return errors.Newf("invalid transaction result at index %d", i)
+			}
+			if result.Status.Status != committerpb.Status_COMMITTED && len(result.BlindWriteVersions) != 0 {
+				return errors.Newf("noncommitted result has write versions at index %d", i)
+			}
+		}
+
+		logger.Debugf("Batch contains %d TX statuses", len(txsStatus.TxResult))
 
 		txsNode, untrackedTxIdx := vc.getTxsAndUpdatePolicies(txsStatus)
 		if len(untrackedTxIdx) > 0 {
 			// untrackedTxIdx can be non-empty only when the coordinator restarts.
 			// Negligible performance impact is fine as this is a rare case.
 			for _, i := range slices.Backward(untrackedTxIdx) {
-				txsStatus.Status = append(txsStatus.Status[:i], txsStatus.Status[i+1:]...)
+				txsStatus.TxResult = append(txsStatus.TxResult[:i], txsStatus.TxResult[i+1:]...)
 			}
 		}
 
@@ -265,7 +277,7 @@ func (vc *validatorCommitter) receiveStatusAndForwardToOutput(
 		}
 
 		// Forward feedback even without statuses so the sidecar can retry or stop.
-		if len(txsStatus.Status) == 0 && txsStatus.CheckpointFeedback == nil {
+		if len(txsStatus.TxResult) == 0 && txsStatus.CheckpointFeedback == nil {
 			continue
 		}
 
@@ -291,15 +303,15 @@ func (vc *validatorCommitter) receiveStatusAndForwardToOutput(
 			vc.addTxsBeingValidated(txsNode)
 			return errors.Wrap(ctx.Err(), "context ended")
 		}
-		logger.Debugf("Forwarded batch with %d TX statuses back to coordinator", len(txsStatus.Status))
+		logger.Debugf("Forwarded batch with %d TX statuses back to coordinator", len(txsStatus.TxResult))
 
-		promutil.AddToCounter(vc.metrics.vcs.processedTotal, len(txsStatus.Status))
+		promutil.AddToCounter(vc.metrics.vcs.processedTotal, len(txsStatus.TxResult))
 
 		if len(txsNode) > 0 && !outputTxsNode.Write(txsNode) {
 			vc.addTxsBeingValidated(txsNode)
 			return errors.Wrap(outputTxsNode.Context().Err(), "context ended")
 		}
-		logger.Debugf("Forwarded batch with %d TX statuses back to dep graph", len(txsStatus.Status))
+		logger.Debugf("Forwarded batch with %d TX statuses back to dep graph", len(txsStatus.TxResult))
 	}
 }
 
@@ -339,9 +351,14 @@ func (vc *validatorCommitter) checkpointNodeToRelease(
 func (vc *validatorCommitter) getTxsAndUpdatePolicies(txsStatus *servicepb.TxStatusBatch) (
 	txsNode []*dependencygraph.TransactionNode, untrackedTxIdx []int,
 ) {
-	txsNode = make([]*dependencygraph.TransactionNode, 0, len(txsStatus.Status))
-	for i, txStatus := range txsStatus.Status {
-		txNode, ok := vc.txBeingValidated.LoadAndDelete(*servicepb.NewHeightFromTxRef(txStatus.Ref))
+	txsNode = make([]*dependencygraph.TransactionNode, 0, len(txsStatus.TxResult))
+	for i, result := range txsStatus.TxResult {
+		txStatus := result.Status
+		height := *servicepb.NewHeightFromTxRef(txStatus.Ref)
+		txNode, ok := vc.txBeingValidated.Load(height)
+		if ok {
+			ok = txNode.VCTx.Ref.TxId == txStatus.Ref.TxId && vc.txBeingValidated.CompareAndDelete(height, txNode)
+		}
 		if !ok {
 			// Because the VC manager might submit the same transaction multiple times (for example,
 			// if a VC service fails or the coordinator reconnects to a failed VC service), it could

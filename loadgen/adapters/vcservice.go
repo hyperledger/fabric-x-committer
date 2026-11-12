@@ -90,8 +90,8 @@ func (c *VcAdapter) receiveStatus(
 			return errors.Wrap(connection.FilterStreamRPCError(err), "failed receiving response batch")
 		}
 
-		logger.Debugf("Received VC batch with %d items", len(responseBatch.Status))
-		c.res.Metrics.OnReceiveBatch(toMetricsStatus(responseBatch.Status))
+		logger.Debugf("Received VC batch with %d items", len(responseBatch.GetStatuses()))
+		c.res.Metrics.OnReceiveBatch(toMetricsStatus(responseBatch.GetStatuses()))
 		if c.res.isReceiveLimit() {
 			return nil
 		}

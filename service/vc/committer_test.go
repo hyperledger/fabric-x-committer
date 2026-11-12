@@ -94,10 +94,10 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 			state{"2", 4, 1},
 		),
 		&servicepb.TxStatusBatch{
-			Status: []*committerpb.TxStatus{
+			TxResult: servicepb.NewTxResults([]*committerpb.TxStatus{
 				committerpb.NewTxStatus(committerpb.Status_COMMITTED, string(txs[0]), 1, 1),
 				committerpb.NewTxStatus(committerpb.Status_COMMITTED, string(txs[1]), 1, 2),
-			},
+			}),
 		},
 		transactionIDToHeight{
 			txs[0]: servicepb.NewHeight(1, 1),
@@ -412,7 +412,12 @@ func TestCommit(t *testing.T) { //nolint:maintidx // cannot improve.
 			channel.NewWriter(ctx, env.validatedTxs).Write(tt.txs)
 			txStatus, ok := channel.NewReader(ctx, env.txStatus).Read()
 			require.True(t, ok)
-			test.RequireProtoElementsMatch(t, tt.expectedTxStatuses, txStatus.Status)
+			test.RequireProtoElementsMatch(t, tt.expectedTxStatuses, txStatus.GetStatuses())
+			for _, result := range txStatus.TxResult {
+				if result.Status.Status != committerpb.Status_COMMITTED {
+					require.Empty(t, result.BlindWriteVersions)
+				}
+			}
 			for nsID, expectedRows := range tt.expectedNsRows {
 				env.dbEnv.rowExists(t, nsID, *expectedRows)
 			}

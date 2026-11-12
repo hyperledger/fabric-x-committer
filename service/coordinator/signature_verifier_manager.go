@@ -281,7 +281,19 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 			return classifyStreamRecvError(err)
 		}
 
-		logger.Debugf("New batch came from sv to sv manager, contains %d items", len(response.Status))
+		if response == nil {
+			return errors.New("nil transaction result batch")
+		}
+		for i, result := range response.TxResult {
+			if result == nil || result.Status == nil || result.Status.Ref == nil {
+				return errors.Newf("invalid transaction result at index %d", i)
+			}
+			if result.Status.Status != committerpb.Status_COMMITTED && len(result.BlindWriteVersions) != 0 {
+				return errors.Newf("noncommitted result has write versions at index %d", i)
+			}
+		}
+
+		logger.Debugf("New batch came from sv to sv manager, contains %d items", len(response.TxResult))
 
 		validatedTxs := sv.fetchAndDeleteTxBeingValidated(response)
 		if len(validatedTxs) > 0 && !outputValidatedTxs.Write(validatedTxs) {
@@ -292,21 +304,22 @@ func (sv *signatureVerifier) receiveStatusAndForwardToOutput(
 			return errors.Wrap(outputValidatedTxs.Context().Err(), "context ended")
 		}
 
-		promutil.AddToCounter(sv.metrics.verifiers.processedTotal, len(response.Status))
+		promutil.AddToCounter(sv.metrics.verifiers.processedTotal, len(response.TxResult))
 	}
 }
 
 func (sv *signatureVerifier) fetchAndDeleteTxBeingValidated(
 	response *servicepb.TxStatusBatch,
 ) dependencygraph.TxNodeBatch {
-	validatedTxs := dependencygraph.TxNodeBatch(make([]*dependencygraph.TransactionNode, 0, len(response.Status)))
+	validatedTxs := dependencygraph.TxNodeBatch(make([]*dependencygraph.TransactionNode, 0, len(response.TxResult)))
 	// TODO: introduce metrics to measure the lock wait/holding duration.
 	sv.txMu.Lock()
 	defer sv.txMu.Unlock()
-	for _, resp := range response.Status {
+	for _, result := range response.TxResult {
+		resp := result.Status
 		k := *servicepb.NewHeightFromTxRef(resp.Ref)
 		txNode, ok := sv.txBeingValidated[k]
-		if !ok {
+		if !ok || txNode.VCTx.Ref.TxId != resp.Ref.TxId {
 			continue
 		}
 		delete(sv.txBeingValidated, k)
