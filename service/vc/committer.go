@@ -192,7 +192,7 @@ func prepareStatusForCommit(vTx *validatedTransactions) *servicepb.TxStatusBatch
 	for txID, status := range txIDs {
 		statuses = append(statuses, vTx.txIDToHeight[txID].WithStatus(string(txID), status))
 	}
-	return &servicepb.TxStatusBatch{Status: statuses}
+	return &servicepb.TxStatusBatch{TxResult: servicepb.NewTxResults(statuses)}
 }
 
 // populateVersionsAndCategorizeBlindWrites fetches the current version of the blind-writes keys, and assigns them
@@ -240,7 +240,8 @@ func (c *transactionCommitter) setCorrectStatusForDuplicateTxID(
 ) error {
 	var dupTxIDs [][]byte
 	dupTxIDsIdxMap := make(map[string]int)
-	for i, s := range txsStatus.Status {
+	for i, result := range txsStatus.TxResult {
+		s := result.Status
 		if s.Status == committerpb.Status_REJECTED_DUPLICATE_TX_ID {
 			dupTxIDs = append(dupTxIDs, []byte(s.Ref.TxId))
 			dupTxIDsIdxMap[s.Ref.TxId] = i
@@ -264,7 +265,7 @@ func (c *transactionCommitter) setCorrectStatusForDuplicateTxID(
 		txID := txStatus.Ref.TxId
 		actualHeight := txIDToHeight[TxID(txID)]
 		if txStatus.Ref.IsHeight(actualHeight.BlockNum, actualHeight.TxNum) {
-			txsStatus.Status[dupTxIDsIdxMap[txID]] = txStatus
+			txsStatus.TxResult[dupTxIDsIdxMap[txID]] = &servicepb.TxResult{Status: txStatus}
 		}
 	}
 

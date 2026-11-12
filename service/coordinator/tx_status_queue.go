@@ -96,7 +96,7 @@ func (q *txStatusQueue) len() int {
 // Feedback represents one transaction with no status. Without counting it,
 // numTxsInProgress would never reach zero and recovery would wait forever.
 func txCount(batch *servicepb.TxStatusBatch) int32 {
-	count := int32(len(batch.Status)) //nolint:gosec
+	count := int32(len(batch.TxResult)) //nolint:gosec
 	if batch.CheckpointFeedback != nil {
 		count++
 	}

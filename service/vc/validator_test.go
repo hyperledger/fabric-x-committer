@@ -362,7 +362,7 @@ func TestSnapshotGateEndToEnd(t *testing.T) {
 	writer.Write(prepTx1)
 	s1, ok := reader.Read()
 	require.True(t, ok)
-	require.Equal(t, committerpb.Status_COMMITTED, s1.Status[0].Status)
+	require.Equal(t, committerpb.Status_COMMITTED, s1.GetStatuses()[0].Status)
 
 	// Second, different snapshot is rejected because first is not CHECKPOINTED.
 	secondTxID := "gate-second"
@@ -370,7 +370,7 @@ func TestSnapshotGateEndToEnd(t *testing.T) {
 	writer.Write(prepTx2)
 	s2, ok := reader.Read()
 	require.True(t, ok)
-	require.Equal(t, committerpb.Status_REJECTED_SNAPSHOT_IN_PROGRESS, s2.Status[0].Status)
+	require.Equal(t, committerpb.Status_REJECTED_SNAPSHOT_IN_PROGRESS, s2.GetStatuses()[0].Status)
 
 	// No database and no _snapshot record for the rejected request.
 	require.False(t, cloneExists(t, env.dbEnv.DB, secondName))

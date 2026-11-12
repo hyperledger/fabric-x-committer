@@ -41,7 +41,7 @@ func EnsurePersistedTxStatus(
 	}
 	actualStatus, err := r.GetTransactionsStatus(ctx, &committerpb.TxIDsBatch{TxIds: txIDs})
 	require.NoError(t, err)
-	test.RequireProtoElementsMatch(t, expected, actualStatus.Status)
+	test.RequireProtoElementsMatch(t, expected, actualStatus.GetStatuses())
 }
 
 // RequireStatus fails if the expected status does not appear in the statuses list.

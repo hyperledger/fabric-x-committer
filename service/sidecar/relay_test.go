@@ -334,7 +334,7 @@ func TestRelayDrainWaitsForRejectedTxs(t *testing.T) {
 	r.queueMappedBlock(t.Context(), channel.NewWriter(t.Context(), queue), mappedBlock)
 
 	statusBatch := make(chan *servicepb.TxStatusBatch, 2)
-	statusBatch <- &servicepb.TxStatusBatch{Status: mappedBlock.block.Rejected}
+	statusBatch <- &servicepb.TxStatusBatch{TxResult: servicepb.NewTxResults(mappedBlock.block.Rejected)}
 	test.RunServiceForTest(t.Context(), t, func(ctx context.Context) error {
 		return connection.FilterStreamRPCError(r.processStatusBatch(ctx, statusBatch))
 	}, nil)
@@ -352,7 +352,7 @@ func TestRelayDrainWaitsForRejectedTxs(t *testing.T) {
 	for _, tx := range mappedBlock.block.Txs {
 		accepted = append(accepted, committerpb.NewTxStatusFromRef(tx.Ref, committerpb.Status_COMMITTED))
 	}
-	statusBatch <- &servicepb.TxStatusBatch{Status: accepted}
+	statusBatch <- &servicepb.TxStatusBatch{TxResult: servicepb.NewTxResults(accepted)}
 	require.NoError(t, r.drain(t.Context()))
 	require.Equal(t, int64(100), r.waitingTxsSlots.Load(t))
 }
@@ -372,10 +372,10 @@ func TestRelayHeldCheckpointReleasesSlot(t *testing.T) {
 	r.queueMappedBlock(t.Context(), channel.NewWriter(t.Context(), queue), mappedBlock)
 
 	statusBatch := make(chan *servicepb.TxStatusBatch, 2)
-	statusBatch <- &servicepb.TxStatusBatch{Status: []*committerpb.TxStatus{
+	statusBatch <- &servicepb.TxStatusBatch{TxResult: servicepb.NewTxResults([]*committerpb.TxStatus{
 		committerpb.NewTxStatus(committerpb.Status_COMMITTED, txIDs[0], 0, 0),
 		committerpb.NewTxStatus(committerpb.Status_COMMITTED, txIDs[1], 0, 1),
-	}}
+	})}
 	statusBatch <- &servicepb.TxStatusBatch{CheckpointFeedback: &servicepb.CheckpointFeedback{
 		Signal: servicepb.CheckpointFeedback_HOLD,
 		Ref:    committerpb.NewTxRef(txIDs[2], 0, 2),
@@ -712,11 +712,12 @@ func TestRelayStatusRouting(t *testing.T) {
 
 	committedBlock := make(chan *common.Block, 1)
 	statusUpdates := make(chan []*committerpb.TxStatus, 1)
+	streamBlocks := make(chan *committedBlockWithTxs, 1)
 	r := &relay{
 		metrics:                       newPerformanceMetrics(newQueues(10)),
 		waitingTxsSlots:               utils.NewSlots(int64(len(txIDs))),
 		outgoingCommittedBlock:        committedBlock,
-		outgoingCommittedBlockWithTxs: make(chan *committedBlockWithTxs, 1),
+		outgoingCommittedBlockWithTxs: streamBlocks,
 		outgoingStatusUpdates:         statusUpdates,
 	}
 	r.inFlightBlocks.reset(trackedBlockNum)
@@ -744,7 +745,9 @@ func TestRelayStatusRouting(t *testing.T) {
 	}
 
 	statusBatch := make(chan *servicepb.TxStatusBatch, 1)
-	statusBatch <- &servicepb.TxStatusBatch{Status: append(slices.Clone(dropped), applied...)}
+	results := servicepb.NewTxResults(append(slices.Clone(dropped), applied...))
+
+	statusBatch <- &servicepb.TxStatusBatch{TxResult: results}
 
 	ctx, cancel := context.WithCancel(t.Context())
 	g, gCtx := errgroup.WithContext(ctx)

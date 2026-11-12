@@ -275,8 +275,8 @@ func TestCommitSnapshotTxCreatesCloneAndPendingRow(t *testing.T) {
 	// Committed status is returned.
 	status, ok := channel.NewReader(ctx, env.txStatus).Read()
 	require.True(t, ok)
-	require.Len(t, status.Status, 1)
-	require.Equal(t, committerpb.Status_COMMITTED, status.Status[0].Status)
+	require.Len(t, status.GetStatuses(), 1)
+	require.Equal(t, committerpb.Status_COMMITTED, status.GetStatuses()[0].Status)
 
 	// Snapshot database exists.
 	require.True(t, cloneExists(t, env.dbEnv.DB, name))
@@ -321,7 +321,7 @@ func TestUpdateSnapshotState(t *testing.T) {
 	})
 	s, ok := channel.NewReader(ctx, env.txStatus).Read()
 	require.True(t, ok)
-	require.Equal(t, committerpb.Status_COMMITTED, s.Status[0].Status)
+	require.Equal(t, committerpb.Status_COMMITTED, s.GetStatuses()[0].Status)
 
 	// Move PENDING -> IN_PROGRESS.
 	require.NoError(t, env.dbEnv.DB.snapshotState.Update(ctx, ref, statedb.SnapshotUpdate{
@@ -397,7 +397,7 @@ func TestSnapshotDuplicateTxIDIsIdempotent(t *testing.T) {
 	writer.Write(build())
 	s1, ok := reader.Read()
 	require.True(t, ok)
-	require.Equal(t, committerpb.Status_COMMITTED, s1.Status[0].Status)
+	require.Equal(t, committerpb.Status_COMMITTED, s1.GetStatuses()[0].Status)
 
 	// The commit path starts no hashing at all -- the snapshot service does, from its
 	// own process -- so the record stays exactly where the commit left it.
@@ -410,7 +410,7 @@ func TestSnapshotDuplicateTxIDIsIdempotent(t *testing.T) {
 	writer.Write(build())
 	s2, ok := reader.Read()
 	require.True(t, ok)
-	require.Equal(t, committerpb.Status_COMMITTED, s2.Status[0].Status)
+	require.Equal(t, committerpb.Status_COMMITTED, s2.GetStatuses()[0].Status)
 
 	require.True(t, cloneExists(t, env.dbEnv.DB, name))
 	rows := env.dbEnv.FetchKeys(t, committerpb.SnapshotNamespaceID, [][]byte{[]byte(ref.TxId)})
@@ -448,7 +448,7 @@ func TestSnapshotResubmissionSkipsReclone(t *testing.T) {
 	writer.Write(build())
 	s1, ok := reader.Read()
 	require.True(t, ok)
-	require.Equal(t, committerpb.Status_COMMITTED, s1.Status[0].Status)
+	require.Equal(t, committerpb.Status_COMMITTED, s1.GetStatuses()[0].Status)
 	require.True(t, cloneExists(t, env.dbEnv.DB, name))
 
 	// The commit path starts no hashing at all -- the snapshot service does, from its
@@ -467,7 +467,7 @@ func TestSnapshotResubmissionSkipsReclone(t *testing.T) {
 	writer.Write(build())
 	s2, ok := reader.Read()
 	require.True(t, ok)
-	require.Equal(t, committerpb.Status_COMMITTED, s2.Status[0].Status)
+	require.Equal(t, committerpb.Status_COMMITTED, s2.GetStatuses()[0].Status)
 
 	// The clone was NOT re-created — the resubmission short-circuited on the
 	// already-committed txID and returned the committed status.
@@ -514,9 +514,9 @@ func TestRejectSnapshotIfPriorNotCheckpointed(t *testing.T) {
 
 			_, err = env.dbEnv.DB.commit(ctx, &statesToBeCommitted{
 				newWrites: groupWritesByNamespace(priorNWs),
-				batchStatus: &servicepb.TxStatusBatch{Status: []*committerpb.TxStatus{
+				batchStatus: &servicepb.TxStatusBatch{TxResult: servicepb.NewTxResults([]*committerpb.TxStatus{
 					servicepb.NewHeightFromTxRef(prior).WithStatus(prior.TxId, committerpb.Status_COMMITTED),
-				}},
+				})},
 				txIDToHeight: transactionIDToHeight{TxID(prior.TxId): servicepb.NewHeightFromTxRef(prior)},
 			})
 			require.NoError(t, err)
@@ -558,9 +558,9 @@ func TestRejectSnapshotIfPriorNotCheckpointedMalformedRecord(t *testing.T) {
 		append([]byte(prior.TxId), []byte("not a valid protobuf message"), 0)
 	info := &statesToBeCommitted{
 		newWrites: groupWritesByNamespace(nws),
-		batchStatus: &servicepb.TxStatusBatch{Status: []*committerpb.TxStatus{
+		batchStatus: &servicepb.TxStatusBatch{TxResult: servicepb.NewTxResults([]*committerpb.TxStatus{
 			servicepb.NewHeightFromTxRef(prior).WithStatus(prior.TxId, committerpb.Status_COMMITTED),
-		}},
+		})},
 		txIDToHeight: transactionIDToHeight{TxID(prior.TxId): servicepb.NewHeightFromTxRef(prior)},
 	}
 	_, err := env.dbEnv.DB.commit(ctx, info)
@@ -646,7 +646,7 @@ func commitFreshSnapshotTx(
 	})
 	s, ok := channel.NewReader(ctx, env.txStatus).Read()
 	require.True(t, ok)
-	require.Equal(t, committerpb.Status_COMMITTED, s.Status[0].Status)
+	require.Equal(t, committerpb.Status_COMMITTED, s.GetStatuses()[0].Status)
 }
 
 // requireSnapshotStatus checks the saved snapshot status.

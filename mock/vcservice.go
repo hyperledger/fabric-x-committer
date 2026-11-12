@@ -117,12 +117,12 @@ func (v *VcService) GetTransactionsStatus(
 	_ context.Context,
 	query *committerpb.TxIDsBatch,
 ) (*servicepb.TxStatusBatch, error) {
-	s := &servicepb.TxStatusBatch{Status: make([]*committerpb.TxStatus, 0, len(query.TxIds))}
+	s := &servicepb.TxStatusBatch{TxResult: servicepb.NewTxResults(make([]*committerpb.TxStatus, 0, len(query.TxIds)))}
 	v.txsStatusMu.Lock()
 	defer v.txsStatusMu.Unlock()
 	for _, id := range query.TxIds {
 		if status, ok := v.txsStatus.get(id); ok {
-			s.Status = append(s.Status, status)
+			s.TxResult = append(s.TxResult, &servicepb.TxResult{Status: status})
 		}
 	}
 	return s, nil
@@ -180,7 +180,7 @@ func (v *VcService) sendTransactionStatus(
 		}
 		status, feedback := v.process(txBatch.Transactions)
 		if err := stream.Send(&servicepb.TxStatusBatch{
-			Status:             status,
+			TxResult:           servicepb.NewTxResults(status),
 			CheckpointFeedback: feedback,
 		}); err != nil {
 			return errors.Wrap(err, "error sending transaction status")

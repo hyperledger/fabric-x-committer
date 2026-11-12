@@ -333,7 +333,7 @@ func (d *database) insertTxStatus(
 	tx pgx.Tx,
 	states *statesToBeCommitted,
 ) (duplicateTxs []TxID, err error) {
-	if states.batchStatus == nil || len(states.batchStatus.Status) == 0 {
+	if states.batchStatus == nil || len(states.batchStatus.TxResult) == 0 {
 		return nil, nil
 	}
 
@@ -355,11 +355,12 @@ func (d *database) insertTxStatus(
 		)
 	}()
 
-	numEntries := len(states.batchStatus.Status)
+	numEntries := len(states.batchStatus.TxResult)
 	ids := make([][]byte, 0, numEntries)
 	statues := make([]int, 0, numEntries)
 	heights := make([][]byte, 0, numEntries)
-	for _, status := range states.batchStatus.Status {
+	for _, result := range states.batchStatus.TxResult {
+		status := result.Status
 		// We cannot insert a "duplicate ID" status since we already have a status entry with this ID.
 		if status.Status == committerpb.Status_REJECTED_DUPLICATE_TX_ID {
 			continue
@@ -504,7 +505,7 @@ func (d *database) beginTx(ctx context.Context) (pgx.Tx, func(), error) {
 }
 
 func (s *statesToBeCommitted) empty() bool {
-	return s.updateWrites.empty() && s.newWrites.empty() && (s.batchStatus == nil || len(s.batchStatus.Status) == 0)
+	return s.updateWrites.empty() && s.newWrites.empty() && (s.batchStatus == nil || len(s.batchStatus.TxResult) == 0)
 }
 
 func (d *database) readStatusWithHeight(

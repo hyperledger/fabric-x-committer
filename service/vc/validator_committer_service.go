@@ -203,7 +203,7 @@ func (vc *ValidatorCommitterService) GetTransactionsStatus(
 		return nil, grpcerror.WrapInternalError(err)
 	}
 
-	return &servicepb.TxStatusBatch{Status: txIDsStatus}, nil
+	return &servicepb.TxStatusBatch{TxResult: servicepb.NewTxResults(txIDsStatus)}, nil
 }
 
 // GetNamespacePolicies retrieves the policy data from the database.
@@ -339,7 +339,8 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 		committed := 0
 		mvcc := 0
 		dup := 0
-		for _, s := range txStatus.Status {
+		for _, result := range txStatus.TxResult {
+			s := result.Status
 			switch s.Status { //nolint:revive // default case is not needed.
 			case committerpb.Status_COMMITTED:
 				committed++
@@ -351,10 +352,10 @@ func (vc *ValidatorCommitterService) sendTransactionStatus(
 		}
 
 		logger.Debugf("Sent transaction status update: Committed: %d, MVCC Conflicts: %d, Duplicates: %d, Total: %d",
-			committed, mvcc, dup, len(txStatus.Status))
+			committed, mvcc, dup, len(txStatus.TxResult))
 		promutil.AddToCounter(vc.metrics.transactionCommittedTotal, committed)
 		promutil.AddToCounter(vc.metrics.transactionMVCCConflictTotal, mvcc)
 		promutil.AddToCounter(vc.metrics.transactionDuplicateTxTotal, dup)
-		promutil.AddToCounter(vc.metrics.transactionProcessedTotal, len(txStatus.Status))
+		promutil.AddToCounter(vc.metrics.transactionProcessedTotal, len(txStatus.TxResult))
 	}
 }

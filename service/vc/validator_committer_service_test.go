@@ -126,10 +126,10 @@ func TestCreateConfigAndTables(t *testing.T) {
 	txStatus1, err := env.streams[0].Recv()
 	require.NoError(t, err)
 	require.NotNil(t, txStatus1)
-	require.NotNil(t, txStatus1.Status)
+	require.NotNil(t, txStatus1.GetStatuses())
 
 	expectedConfig := committerpb.NewTxStatus(committerpb.Status_COMMITTED, configID, 0, 0)
-	testapp.RequireStatus(t, expectedConfig, txStatus1.Status)
+	testapp.RequireStatus(t, expectedConfig, txStatus1.GetStatuses())
 
 	ctx, _ := createContext(t)
 	tx, err := env.dbEnv.DB.readConfigTX(ctx)
@@ -158,10 +158,10 @@ func TestCreateConfigAndTables(t *testing.T) {
 	txStatus2, err := env.streams[0].Recv()
 	require.NoError(t, err)
 	require.NotNil(t, txStatus2)
-	require.NotNil(t, txStatus2.Status)
+	require.NotNil(t, txStatus2.GetStatuses())
 
 	expectedMeta := committerpb.NewTxStatus(committerpb.Status_COMMITTED, metaID, 1, 0)
-	testapp.RequireStatus(t, expectedMeta, txStatus2.Status)
+	testapp.RequireStatus(t, expectedMeta, txStatus2.GetStatuses())
 
 	policies, err := env.dbEnv.DB.readNamespacePolicies(ctx)
 	require.NoError(t, err)
@@ -307,7 +307,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 			expectedTxStatus[i] = committerpb.NewTxStatusFromRef(tx.Ref, committerpb.Status_COMMITTED)
 			txIDs[i] = tx.Ref.TxId
 		}
-		test.RequireProtoElementsMatch(t, expectedTxStatus, txStatus.Status)
+		test.RequireProtoElementsMatch(t, expectedTxStatus, txStatus.GetStatuses())
 
 		test.RequireIntMetricValue(t, len(txBatch.Transactions), env.vcs[0].metrics.transactionReceivedTotal)
 
@@ -340,7 +340,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 		require.EventuallyWithT(t, func(ct *assert.CollectT) {
 			txStatus, err = env.streams[0].Recv()
 			require.NoError(t, err)
-			testapp.RequireStatus(ct, expectedStatus, txStatus.Status)
+			testapp.RequireStatus(ct, expectedStatus, txStatus.GetStatuses())
 		}, env.vcs[0].timeoutForMinTxBatchSize, 500*time.Millisecond)
 	})
 
@@ -408,14 +408,14 @@ func TestValidatorAndCommitterService(t *testing.T) {
 			txIDs = append(txIDs, tx.Ref.TxId)
 		}
 
-		test.RequireProtoElementsMatch(t, expectedTxStatus, txStatus.Status)
+		test.RequireProtoElementsMatch(t, expectedTxStatus, txStatus.GetStatuses())
 
 		env.dbEnv.StatusExistsForNonDuplicateTxID(t.Context(), t, expectedTxStatus)
 
 		ctx, _ := createContext(t)
 		status, err := env.commonClient.GetTransactionsStatus(ctx, &committerpb.TxIDsBatch{TxIds: txIDs})
 		require.NoError(t, err)
-		test.RequireProtoElementsMatch(t, expectedTxStatus, status.Status)
+		test.RequireProtoElementsMatch(t, expectedTxStatus, status.GetStatuses())
 	})
 
 	t.Run("config tx returned immediately", func(t *testing.T) {
@@ -460,7 +460,7 @@ func TestValidatorAndCommitterService(t *testing.T) {
 
 		select {
 		case txStatus := <-resultCh:
-			require.Len(t, txStatus.GetStatus(), 1)
+			require.Len(t, txStatus.GetStatuses(), 1)
 		case <-time.After(5 * time.Second):
 			t.Fatal("config tx was not processed immediately - batching delay detected")
 		}
@@ -691,7 +691,7 @@ func TestTransactionResubmission(t *testing.T) {
 		require.NoError(t, env.streams[0].Send(txBatch))
 		txStatus, err := env.streams[0].Recv()
 		require.NoError(t, err)
-		test.RequireProtoElementsMatch(t, expectedTxStatus, txStatus.Status)
+		test.RequireProtoElementsMatch(t, expectedTxStatus, txStatus.GetStatuses())
 		env.dbEnv.StatusExistsForNonDuplicateTxID(ctx, t, expectedTxStatus)
 
 		// we are submitting the same three transactions again to all vcservices.
@@ -700,7 +700,7 @@ func TestTransactionResubmission(t *testing.T) {
 			require.NoError(t, env.streams[i].Send(txBatch))
 			curTxStatus, receiveErr := env.streams[i].Recv()
 			require.NoError(t, receiveErr)
-			test.RequireProtoElementsMatch(t, expectedTxStatus, curTxStatus.Status)
+			test.RequireProtoElementsMatch(t, expectedTxStatus, curTxStatus.GetStatuses())
 			env.dbEnv.StatusExistsForNonDuplicateTxID(ctx, t, expectedTxStatus)
 		}
 
@@ -716,7 +716,7 @@ func TestTransactionResubmission(t *testing.T) {
 			// as minbatchsize used for test is 1, we should receive two status batches.
 			txStatus, err := env.streams[0].Recv()
 			require.NoError(t, err)
-			test.RequireProtoElementsMatch(t, expectedTxStatus, txStatus.Status)
+			test.RequireProtoElementsMatch(t, expectedTxStatus, txStatus.GetStatuses())
 		}
 		env.dbEnv.StatusExistsForNonDuplicateTxID(ctx, t, expectedTxStatus)
 		testapp.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
@@ -732,7 +732,7 @@ func TestTransactionResubmission(t *testing.T) {
 
 		txStatus, err := env.streams[0].Recv()
 		require.NoError(t, err)
-		test.RequireProtoElementsMatch(t, expectedTxStatus, txStatus.Status)
+		test.RequireProtoElementsMatch(t, expectedTxStatus, txStatus.GetStatuses())
 
 		env.dbEnv.StatusExistsForNonDuplicateTxID(ctx, t, expectedTxStatus)
 		testapp.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)
@@ -754,7 +754,7 @@ func TestTransactionResubmission(t *testing.T) {
 		for i := range 3 {
 			txStatus, err := env.streams[i].Recv()
 			require.NoError(t, err)
-			test.RequireProtoElementsMatch(t, expectedTxStatus, txStatus.Status)
+			test.RequireProtoElementsMatch(t, expectedTxStatus, txStatus.GetStatuses())
 		}
 		env.dbEnv.StatusExistsForNonDuplicateTxID(ctx, t, expectedTxStatus)
 		testapp.EnsurePersistedTxStatus(ctx, t, env.commonClient, txIDs, expectedTxStatus)

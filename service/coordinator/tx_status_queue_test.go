@@ -143,5 +143,5 @@ func txStatusBatch(txIDs ...string) *servicepb.TxStatusBatch {
 	for i, txID := range txIDs {
 		statuses[i] = committerpb.NewTxStatus(committerpb.Status_COMMITTED, txID, 1, uint32(i))
 	}
-	return &servicepb.TxStatusBatch{Status: statuses}
+	return &servicepb.TxStatusBatch{TxResult: servicepb.NewTxResults(statuses)}
 }

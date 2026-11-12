@@ -414,8 +414,8 @@ func TestMultipleUpdatePolicies(t *testing.T) {
 		txStatus, err := stream.Recv()
 		require.NoError(t, err)
 		require.NotNil(t, txStatus)
-		require.Len(t, txStatus.Status, 1)
-		if txStatus.Status[0].Status == committerpb.Status_COMMITTED {
+		require.Len(t, txStatus.GetStatuses(), 1)
+		if txStatus.GetStatuses()[0].Status == committerpb.Status_COMMITTED {
 			success++
 		}
 	}
@@ -489,8 +489,8 @@ func requireTestCase(
 	txStatus, err := stream.Recv()
 	require.NoError(t, err)
 	require.NotNil(t, txStatus)
-	require.Len(t, txStatus.Status, 1)
-	resp := txStatus.Status[0]
+	require.Len(t, txStatus.GetStatuses(), 1)
+	resp := txStatus.GetStatuses()[0]
 	require.NotNil(t, resp)
 	test.RequireProtoEqual(t, tt.req.Ref, resp.Ref)
 	require.Equal(t, tt.expectedStatus.String(), resp.Status.String())
@@ -524,8 +524,8 @@ func readStream(
 	defer cancel()
 	go func() {
 		response, err := stream.Recv()
-		if err == nil && response != nil && len(response.Status) > 0 {
-			channel.NewWriter(ctx, outputChan).Write(response.Status)
+		if err == nil && response != nil && len(response.GetStatuses()) > 0 {
+			channel.NewWriter(ctx, outputChan).Write(response.GetStatuses())
 		}
 	}()
 	return channel.NewReader(ctx, outputChan).Read()

@@ -464,7 +464,7 @@ func appendMissingBlock(
 		return logAndWrapCoordinatorError(err, "failed to get transaction status from coordinator")
 	}
 
-	if err := fillStatuses(mappedBlock.withStatus.txStatus, txsStatus.Status, expectedHeight); err != nil {
+	if err := fillStatuses(mappedBlock.withStatus.txStatus, txsStatus.GetStatuses(), expectedHeight); err != nil {
 		return err
 	}
 

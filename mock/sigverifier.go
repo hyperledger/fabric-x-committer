@@ -145,7 +145,7 @@ func (m *VerifierStreamState) sendResponseBatch(
 			break
 		}
 		respBatch := &servicepb.TxStatusBatch{
-			Status: make([]*committerpb.TxStatus, 0, len(reqBatch.Requests)),
+			TxResult: servicepb.NewTxResults(make([]*committerpb.TxStatus, 0, len(reqBatch.Requests))),
 		}
 
 		for i, req := range reqBatch.Requests {
@@ -160,10 +160,9 @@ func (m *VerifierStreamState) sendResponseBatch(
 			if len(req.Content.Endorsements) == 0 && !isConfig {
 				status = committerpb.Status_ABORTED_SIGNATURE_INVALID
 			}
-			respBatch.Status = append(respBatch.Status, &committerpb.TxStatus{
-				Ref:    req.Ref,
-				Status: status,
-			})
+			respBatch.TxResult = append(respBatch.TxResult, &servicepb.TxResult{Status: &committerpb.TxStatus{
+				Ref: req.Ref, Status: status,
+			}})
 		}
 
 		if err := stream.Send(respBatch); err != nil {
