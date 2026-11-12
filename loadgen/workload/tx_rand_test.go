@@ -9,6 +9,7 @@ package workload
 import (
 	"testing"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
 
@@ -283,11 +284,14 @@ func TestGeneratorStreamWorkerCountInvariant(t *testing.T) {
 	require.Equal(t, idSet(1), idSet(4))
 }
 
-// BenchmarkTxGeneration measures full transaction generation per signature scheme. Signing dominates a
-// real transaction by more than an order of magnitude, which is why the choice of derivation
+// BenchmarkTxGeneration measures full transaction generation per signature scheme, one transaction
+// at a time on one goroutine, with no stream around it. Use it to compare the schemes' cost per
+// transaction; BenchmarkGenTx gives the rate a stream reaches with many workers. Signing dominates
+// a real transaction by more than an order of magnitude, which is why the choice of derivation
 // primitive for keys, values, the nonce, and metadata (all SHA-256 derive) is not a throughput
 // concern — the derivation per TX is noise against the tens of µs of signing.
 func BenchmarkTxGeneration(b *testing.B) {
+	flogging.ActivateSpec("fatal")
 	run := func(b *testing.B, scheme signature.Scheme) {
 		b.Helper()
 		p := DefaultProfile(1)
